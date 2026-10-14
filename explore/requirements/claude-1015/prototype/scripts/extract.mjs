@@ -1,13 +1,10 @@
 // 从本地 nano-vllm 仓库导出原型用的源码快照。
-// 用法：node scripts/extract.mjs <nano-vllm 仓库路径>
+// 用法：node scripts/extract.mjs [nano-vllm 仓库路径]，默认用仓库里的 examples/nano-vllm submodule
 import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 
-const repo = process.argv[2];
-if (!repo) {
-  console.error("用法：node scripts/extract.mjs <nano-vllm 仓库路径>");
-  process.exit(1);
-}
+import { fileURLToPath } from "node:url";
+const repo = process.argv[2] ?? fileURLToPath(new URL("../../../../../examples/nano-vllm", import.meta.url));
 const git = (...args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", maxBuffer: 1 << 26 });
 
 // HEAD 是工作区当前版本；OLD 是「两周前」建卡片时钉住的版本，用来演示「有新版本」。

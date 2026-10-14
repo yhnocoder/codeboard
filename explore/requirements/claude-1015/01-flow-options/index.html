@@ -127,7 +127,7 @@ section.opt{margin-top:56px;border-top:1px solid var(--line);padding-top:28px}
     <p class="lede">同一段逻辑画四遍：nano-vllm 里 <code>LLM.generate()</code> 一次推理循环，代码取自 commit <code>bb823b3</code>，行号都是真实的。卡片和箭头是静态示意，方案 C 的折叠可以点。看完告诉我你喜欢哪种，或者哪几种的哪部分。</p>
   </header>
   <nav class="jump" aria-label="跳到方案">
-    <a href="#A"><b>A</b>主线 + 下钻</a>
+    <a href="#A"><b>A</b>逐层展开</a>
     <a href="#B"><b>B</b>模块泳道</a>
     <a href="#C"><b>C</b>嵌套折叠</a>
     <a href="#D"><b>D</b>数据流</a>
@@ -135,7 +135,7 @@ section.opt{margin-top:56px;border-top:1px solid var(--line);padding-top:28px}
   </nav>
 
   <section class="opt" id="A">
-    <div class="opt-head"><span class="letter">A</span><h2>主线 + 下钻</h2>
+    <div class="opt-head"><span class="letter">A</span><h2>逐层展开</h2>
       <p>横向是这一层按顺序发生的事，往下是「钻进某一步里面」。箭头从代码里那一行出发，指向被调用的函数，标签写返回什么。更深的层先折叠成小卡，只显示输入输出。</p></div>
     <div class="scroller"><div class="canvas" id="cvA" style="width:1210px;height:720px"></div></div>
     <div class="facts">
@@ -182,7 +182,7 @@ section.opt{margin-top:56px;border-top:1px solid var(--line);padding-top:28px}
     <h2>我的推荐</h2>
     <p>A 当主画布，再借另外两种的一部分，它们不冲突：</p>
     <ol>
-      <li><b>A 是默认画法。</b>白板的主体是「主线 + 下钻」，你手工搭的和追踪生成的都长这样。</li>
+      <li><b>A 是默认画法。</b>白板的主体是「逐层展开」，你手工搭的和追踪生成的都长这样。</li>
       <li><b>D 变成箭头上的数据标签。</b>不单独做一种视图，A 的每条箭头都可以显示形状，追踪后自动填上。</li>
       <li><b>C 做成侧边栏大纲。</b>白板上所有卡片按调用层级列成可折叠的树，点一项就跳过去。</li>
       <li><b>B 放到以后。</b>等读 DeepEP、vLLM 多进程时，再加一个「按进程分道」的视图。</li>
@@ -247,7 +247,7 @@ function board(cv,spec){
 
 /* ---------- A ---------- */
 board(document.getElementById("cvA"),{
-  frames:[{x:20,y:326,w:1170,h:376,label:"step() 内部，从上面的 50 / 52 / 53 行下钻"}],
+  frames:[{x:20,y:326,w:1170,h:376,label:"step() 内部，从上面的 50 / 52 / 53 行展开"}],
   nodes:[
     {id:"gen",kind:"code",x:40,y:30,w:340,badge:"1",sym:"LLMEngine.generate",path:"engine/llm_engine.py",rev:"bb823b3",
       start:[60,null,73,74,75],lines:["def generate(",null,"while not self.is_finished():","    t = perf_counter()","    output, num_tokens = self.step()"],hl:[73,75]},

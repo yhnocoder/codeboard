@@ -71,7 +71,7 @@ function sidePoint(r: Rect, toward: { x: number; y: number }): { p: [number, num
   return dy > 0 ? { p: [c.x, r.y + r.h], side: "b" } : { p: [c.x, r.y], side: "t" };
 }
 function toPoint(r: Rect, from: [number, number], fromSide: Side): { p: [number, number]; side: Side } {
-  // 从左侧出发、往下钻：像缩进的树一样从左边进入
+  // 从左侧出发、往下展开：像缩进的树一样从左边进入
   if (fromSide === "l" && from[1] < r.y - 10 && from[0] <= r.x + 10) return { p: [r.x, r.y + Math.min(r.h / 2, 20)], side: "l" };
   if (from[1] < r.y - 40 && from[0] > r.x - 260 && from[0] < r.x + r.w + 260) return { p: [r.x + Math.min(r.w / 2, 60), r.y], side: "t" };
   if (from[1] > r.y + r.h + 40 && from[0] > r.x - 260 && from[0] < r.x + r.w + 260) return { p: [r.x + Math.min(r.w / 2, 60), r.y + r.h], side: "b" };

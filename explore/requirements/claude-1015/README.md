@@ -4,7 +4,7 @@
 
 | 目录 | 是什么 |
 | --- | --- |
-| `01-flow-options/index.html` | 第一版讨论稿：同一段 `generate()` 流程的四种画法（A 主线 + 下钻、B 泳道、C 嵌套、D 数据流）。浏览器直接打开。 |
+| `01-flow-options/index.html` | 第一版讨论稿：同一段 `generate()` 流程的四种画法（A 逐层展开、B 泳道、C 嵌套、D 数据流）。浏览器直接打开。 |
 | `prototype/` | 可交互原型，Vite + SolidJS。能拖动、能创建，刷新就重置。 |
 | `prototype/preview.html` | 原型打包成的单个文件，双击就能在浏览器里打开。 |
 
@@ -17,7 +17,7 @@ npm run dev            # 开发模式
 npm run build:single   # 重新打包 preview.html（产物在 dist-single/）
 ```
 
-源码快照在 `prototype/src/data/nanovllm.json`，由 `npm run extract -- <nano-vllm 仓库路径>` 生成，包含 HEAD `bb823b3` 和旧版本 `9e8507e` 两个 commit。
+nano-vllm 作为 submodule 放在仓库根目录的 `examples/nano-vllm`（钉在 `bb823b3`），所有测试和原型都用这一份。克隆后先运行 `git submodule update --init`。原型用的源码快照 `prototype/src/data/nanovllm.json` 由 `npm run extract` 从这个 submodule 生成，包含 HEAD `bb823b3` 和旧版本 `9e8507e` 两个 commit。
 
 ## 原型里可以试的
 
@@ -33,7 +33,7 @@ npm run build:single   # 重新打包 preview.html（产物在 dist-single/）
 
 ## 我拍板的决策
 
-1. **流程用「主线 + 下钻」画。** 横向是同一层按顺序发生的事，往下是钻进某一步。下级卡片缩进放在上级下方，箭头从左边进入，像一棵展开的树。四种画法里，这种最接近读代码时脑子里的样子，也能直接容纳追踪数据。
+1. **流程用「逐层展开」画。** 横向是同一层按顺序发生的事，往下是展开其中某一步。下级卡片缩进放在上级下方，箭头从左边进入，像一棵展开的树。四种画法里，这种最接近读代码时脑子里的样子，也能直接容纳追踪数据。
 2. **箭头从代码的具体一行出发。** 这是和普通白板最大的区别：箭头说明了「是这一行调用了它」。所以代码卡片的行高是固定的（20px），箭头才能对准行。
 3. **点调用就展开，是构建流程的主要方式。** 手动摆卡片太慢。点一下，就能完成建卡、连线、编号、摆位置这四件事。画布上已经有的函数不会重复建卡，只补一条箭头。
 4. **编号就是讲解顺序。** 编号是层级式的（3、3.1、3.2.1），按出发行号自动排。讲解模式和左侧大纲都基于编号和箭头，不需要单独维护。
