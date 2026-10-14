@@ -45,7 +45,7 @@ export const uid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toStr
 export const [state, setState] = createStore({
   boards: seedBoards() as Board[],
   active: "flow",
-  layout: "studio" as Layout,
+  layout: ((window as any).CB_LAYOUT === "focus" || location.hash === "#focus" ? "focus" : "studio") as Layout,
   sidebarTab: "outline" as "files" | "outline",
   workCommit: repo.head, // 工作区当前看的版本
   selected: null as null | { kind: "card" | "edge"; id: string },
