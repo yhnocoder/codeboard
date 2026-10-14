@@ -6,7 +6,7 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 EXT=$(dirname "$HERE")
 REPO=$(cd "$EXT/../.." && pwd)
-CODE=${VSCODE_BIN:-/opt/vscode/code}
+CODE=${VSCODE_BIN:-${VSCODE_TEST_PATH:-/opt/vscode/code}}
 THEME=${THEME:-Default Dark Modern}
 TAG=$(echo "$THEME" | tr 'A-Z ' 'a-z-')
 OUT=$REPO/test-out/$TAG
