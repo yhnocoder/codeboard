@@ -132,7 +132,7 @@ const log = (...a) => console.log('·', ...a);
   await page.locator('#pop input[type=checkbox]').nth(1).check(); await page.waitForTimeout(150);
   await shot('14-variables');
   await page.keyboard.press('Escape');
-  await page.locator(`.vchips[data-link="${lid}"] .vchip[data-k]`).first().hover();
+  await page.locator('.vchips .vchip[data-k]').first().hover();
   await shot('15-variable-hover');
   await page.mouse.move(5, 450);
 

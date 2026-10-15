@@ -2130,9 +2130,12 @@ function showStep(i) {
   const n = walk.list.length; walk.i = (i + n) % n;
   applyWalk();
   const cur = walk.list[walk.i], el = cardEl(topId(cur)); if (!el) return;
+  // only the camera moves: frame the current card (plus the line its Call link comes from, if that still fits); never enlarge cards
   const c = S.cards[topId(cur)];
-  const r = { x: c.x - 24, y: c.y - 24, w: el.offsetWidth + 48, h: Math.min(el.offsetHeight, 900) + 48 };
-  const f = fitRect(r, 1.15); camTo(f.x, f.y, f.k, true);
+  let r = { x: c.x - 24, y: c.y - 24, w: el.offsetWidth + 48, h: el.offsetHeight + 48 };
+  const L = F.parent[cur], p = L && anchorLine(L.a, L.l);
+  if (p) { const u = union([r, { x: p.x - 60, y: p.y - 30, w: 80, h: 60 }]); if (fitRect(u, 1).k >= 0.6) r = u; }
+  const f = fitRect(r, 1); camTo(f.x, f.y, f.k, true);
 }
 function applyWalk() {
   $$('.cdimcol').forEach(n => n.classList.remove('cdimcol'));
