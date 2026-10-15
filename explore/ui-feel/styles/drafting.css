@@ -1,5 +1,6 @@
 /* 制图：工程图纸。只有墨色和线，圆角为零；箭头走直角折线，像标注引线；行号区间画成尺寸线 */
 .s-draft {
+  --selbg: light-dark(rgba(22,22,22,.16), rgba(233,232,228,.22));
   --bg: light-dark(#f2f1ed, #141414);
   --ink: light-dark(#161616, #e9e8e4);
   --ink-2: light-dark(#55544f, #a6a5a0);

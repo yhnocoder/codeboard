@@ -7,6 +7,7 @@
   --ink-2: light-dark(#5f6774, #a6acb8);
   --ink-3: light-dark(#a8aebb, #646a76);
   --hair: light-dark(rgba(20,30,50,.07), rgba(255,255,255,.06));
+  --selbg: color-mix(in srgb, var(--coral) 22%, transparent);
   --coral: light-dark(#f2583e, #ff6a4d);
   --ui: "Jost", "Helvetica Neue", "PingFang SC", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;

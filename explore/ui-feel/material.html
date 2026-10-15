@@ -26,7 +26,7 @@ html, body { margin: 0; }
 body { background: var(--page); color: var(--page-ink); font: 13px/1.5 var(--sys); -webkit-font-smoothing: antialiased;
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 40px; }
 .chrome, .chrome * { user-select: none; -webkit-user-select: none; cursor: default; -webkit-user-drag: none; }
-.chrome .tx { user-select: text; -webkit-user-select: text; cursor: text; }
+.chrome .src, .chrome .src * { user-select: text; -webkit-user-select: text; cursor: text; }
 button { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: default; }
 button:focus { outline: none; }
 button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
@@ -60,9 +60,14 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .cpath { flex: 1 1 0; }
 .rev { flex: none; display: inline-flex; align-items: center; gap: 6px; }
 .code { white-space: pre; }
-.ln { display: flex; position: relative; }
-.ln .no { text-align: right; flex: none; font-variant-numeric: tabular-nums; }
-.ln .tx { overflow: hidden; flex: 1; min-width: 0; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.code { display: flex; position: relative; }
+/* 代码是一整段 <pre>：选区连续，复制出来就是原文；行号在旁边单独一列，选不中 */
+.gutter { flex: none; position: relative; z-index: 1; }
+.gutter .no { display: block; text-align: right; font-variant-numeric: tabular-nums; }
+.src { flex: 1; min-width: 0; margin: 0; padding: 0; font: inherit; color: inherit; white-space: pre; overflow: hidden; position: relative; z-index: 1;
+  -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.src::selection, .src *::selection { background: var(--selbg, color-mix(in srgb, var(--accent, #c15f3c) 26%, transparent)); }
+.hlrow { position: absolute; left: 0; right: 0; pointer-events: none; }
 .elabel { position: absolute; transform: translate(-50%, -50%); white-space: nowrap; }
 .caption { position: absolute; }
 .over { position: absolute; display: flex; align-items: center; gap: 4px; z-index: 5; }
@@ -165,11 +170,11 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .code { padding: 6px 0 8px; font: 11.5px/20px var(--mono); }
 .board:is([data-v="warm"],[data-v="graphite"]) .code { font-size: 11px; }
 .board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .ln { display: flex; white-space: pre; position: relative; }
-.board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .ln .no { width: 40px; text-align: right; padding-right: 12px; color: var(--ink-3); flex: none; font-variant-numeric: tabular-nums; opacity: .8; }
-.board:is([data-v="warm"],[data-v="graphite"]) .ln .no { opacity: .6; }
-.board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .ln .tx { overflow: hidden; flex: 1; min-width: 0; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
-.board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .ln.link { background: var(--row); }
-.board:is([data-v="warm"],[data-v="graphite"]) .ln.link .no { color: var(--accent); opacity: 1; }
+.board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .gutter .no { width: 40px; text-align: right; padding-right: 12px; color: var(--ink-3); flex: none; font-variant-numeric: tabular-nums; opacity: .8; }
+.board:is([data-v="warm"],[data-v="graphite"]) .gutter .no { opacity: .6; }
+.board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .src { overflow: hidden; flex: 1; min-width: 0; -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
+.board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .hlrow { background: var(--row); }
+.board:is([data-v="warm"],[data-v="graphite"]) .no.link { color: var(--accent); opacity: 1; }
 .board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .kw { color: var(--k-kw); } .fn { color: var(--k-fn); } .str { color: var(--k-str); } .com { color: var(--k-com); font-style: italic; }
 .board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .num { color: var(--k-num); } .self { color: var(--k-self); } .p { color: var(--k-p); }
 .board:is([data-v="warm"],[data-v="graphite"]) .call { text-decoration: underline dotted color-mix(in srgb, var(--k-fn) 55%, transparent); text-underline-offset: 3px; }
@@ -204,6 +209,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board:is([data-v="v1"],[data-v="warm"],[data-v="graphite"]) .toast { transform: none; }
 /* 制图：工程图纸。只有墨色和线，圆角为零；箭头走直角折线，像标注引线；行号区间画成尺寸线 */
 .board[data-v="draft"] {
+  --selbg: light-dark(rgba(22,22,22,.16), rgba(233,232,228,.22));
   --bg: light-dark(#f2f1ed, #141414);
   --ink: light-dark(#161616, #e9e8e4);
   --ink-2: light-dark(#55544f, #a6a5a0);
@@ -226,9 +232,9 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="draft"] .rev.new { color: var(--ink); }
 .board[data-v="draft"] .rev.new i { background: currentColor; }
 .board[data-v="draft"] .code { padding: 8px 0 10px; font: 11px/20px var(--mono); color: var(--ink); }
-.board[data-v="draft"] .ln .no { width: 42px; padding-right: 12px; color: var(--ink-3); }
-.board[data-v="draft"] .ln.link { background: var(--tint); }
-.board[data-v="draft"] .ln.link .no { color: var(--ink); }
+.board[data-v="draft"] .gutter .no { width: 42px; padding-right: 12px; color: var(--ink-3); }
+.board[data-v="draft"] .hlrow { background: var(--tint); }
+.board[data-v="draft"] .no.link { color: var(--ink); }
 .board[data-v="draft"] .kw { font-weight: 500; color: var(--ink); }
 .board[data-v="draft"] .fn { color: var(--ink); }
 .board[data-v="draft"] .call { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: var(--ink-3); }
@@ -276,6 +282,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
   --ink-2: light-dark(#5f6774, #a6acb8);
   --ink-3: light-dark(#a8aebb, #646a76);
   --hair: light-dark(rgba(20,30,50,.07), rgba(255,255,255,.06));
+  --selbg: color-mix(in srgb, var(--coral) 22%, transparent);
   --coral: light-dark(#f2583e, #ff6a4d);
   --ui: "Jost", "Helvetica Neue", "PingFang SC", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
@@ -297,9 +304,9 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="soft"] .cpath { grid-column: 1 / -1; font: 400 11px var(--ui); color: var(--ink-3); letter-spacing: .02em; }
 .board[data-v="soft"] .code { margin: 0 10px 10px; padding: 8px 0 10px; border-radius: 12px; background: var(--well); font: 10.5px/19px var(--mono); color: var(--ink);
   box-shadow: inset 0 1px 3px light-dark(rgba(20,30,50,.07), rgba(0,0,0,.35)), inset 0 0 0 .5px var(--hair); }
-.board[data-v="soft"] .ln .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
-.board[data-v="soft"] .ln.link { background: color-mix(in srgb, var(--coral) 8%, transparent); }
-.board[data-v="soft"] .ln.link .no { color: var(--coral); }
+.board[data-v="soft"] .gutter .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
+.board[data-v="soft"] .hlrow { background: color-mix(in srgb, var(--coral) 8%, transparent); }
+.board[data-v="soft"] .no.link { color: var(--coral); }
 .board[data-v="soft"] .kw { color: var(--k-kw); } .board[data-v="soft"] .fn { color: var(--k-fn); } .board[data-v="soft"] .str { color: var(--k-str); } .board[data-v="soft"] .com { color: var(--k-com); }
 .board[data-v="soft"] .num { color: var(--k-num); } .board[data-v="soft"] .self { color: var(--k-self); } .board[data-v="soft"] .p { color: var(--k-p); }
 .board[data-v="soft"] .call { text-decoration: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); text-underline-offset: 3px; }
@@ -349,6 +356,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
   --f2: light-dark(#e2a62f, #e9b647);
   --f3: light-dark(#2f6f68, #3f8d84);
   --paper-ink: light-dark(#f7efdd, #f7efdd);
+  --selbg: color-mix(in srgb, var(--f2) 45%, transparent);
   --ui: "Jost", "Futura", "Avenir Next", "PingFang SC", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   --italic: "Fraunces", "Songti SC", Georgia, serif;
@@ -368,15 +376,15 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="color"] .rev i { width: 7px; height: 7px; border-radius: 50%; background: var(--f3); }
 .board[data-v="color"] .rev.new { color: var(--ink); }
 .board[data-v="color"] .rev.new i { background: var(--f1); }
-.board[data-v="color"] .cband { order: 1; display: flex; position: relative; height: 70px; background: var(--fc); border-bottom: 2px solid var(--line); align-items: center; padding-left: 14px; }
-.board[data-v="color"] .glyph { width: 46px; height: 46px; fill: none; stroke: var(--paper-ink); stroke-width: 2; stroke-linecap: round; color: var(--paper-ink); }
-.board[data-v="color"] .big { position: absolute; right: 12px; top: 6px; font: 600 34px/1 var(--ui); color: rgba(30,20,10,.22); letter-spacing: .02em; }
-.board[data-v="color"] .cname { order: 2; display: block; padding: 12px 14px 0; font: 600 14px var(--ui); letter-spacing: .06em; color: var(--ink); }
-.board[data-v="color"] .cnote { order: 3; display: block; padding: 2px 14px 10px; font: italic 400 12.5px var(--italic); color: color-mix(in srgb, var(--fc) 70%, var(--ink)); }
+.board[data-v="color"] .cband { order: 1; display: flex; position: relative; height: 54px; background: var(--fc); border-bottom: 2px solid var(--line); align-items: center; padding: 0 64px 0 14px; }
+.board[data-v="color"] .f1, .board[data-v="color"] .f3 { --bink: var(--paper-ink); } .board[data-v="color"] .f2 { --bink: #2a231c; }
+.board[data-v="color"] .bt { font: 600 16px var(--ui); letter-spacing: .03em; color: var(--bink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.board[data-v="color"] .big { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font: 600 30px/1 var(--ui); color: rgba(30,20,10,.24); letter-spacing: .02em; }
+.board[data-v="color"] .cnote { order: 3; display: block; padding: 9px 14px 8px; font: italic 400 12.5px var(--italic); color: color-mix(in srgb, var(--fc) 70%, var(--ink)); }
 .board[data-v="color"] .code { order: 4; padding: 0 0 10px; font: 10.5px/19px var(--mono); color: var(--ink); }
-.board[data-v="color"] .ln .no { width: 40px; padding-right: 10px; color: var(--ink-3); }
-.board[data-v="color"] .ln.link { background: color-mix(in srgb, var(--f1) 16%, transparent); }
-.board[data-v="color"] .ln.link .no { color: var(--ink); font-weight: 600; }
+.board[data-v="color"] .gutter .no { width: 40px; padding-right: 10px; color: var(--ink-3); }
+.board[data-v="color"] .hlrow { background: color-mix(in srgb, var(--f1) 16%, transparent); }
+.board[data-v="color"] .no.link { color: var(--ink); font-weight: 600; }
 .board[data-v="color"] .kw { color: var(--k-kw); } .board[data-v="color"] .fn { color: var(--k-fn); } .board[data-v="color"] .str { color: var(--k-str); } .board[data-v="color"] .com { color: var(--k-com); font-style: italic; }
 .board[data-v="color"] .num { color: var(--k-num); } .board[data-v="color"] .self { color: var(--k-self); } .board[data-v="color"] .p { color: var(--k-p); }
 .board[data-v="color"] .call { text-decoration: underline 1.5px color-mix(in srgb, var(--k-fn) 45%, transparent); text-underline-offset: 3px; }
@@ -410,6 +418,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 
 /* 艺术：一张深绿油墨印在薄荷纸上的海报。双线框、居中排版、字距拉得很开；每张卡片下面有一行图注 */
 .board[data-v="art"] {
+  --selbg: color-mix(in srgb, var(--k-fn) 24%, transparent);
   --bg: light-dark(#ecefe7, #0f1f19);
   --paper: light-dark(#f6f7f2, #142821);
   --ink: light-dark(#13372b, #dfe9df);
@@ -441,9 +450,9 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="art"] .cmeta small { display: block; font: 400 8.5px var(--mono); letter-spacing: .3em; color: var(--ink-3); margin-bottom: 3px; }
 .board[data-v="art"] .is-new .cmeta div:last-child { color: var(--k-fn); }
 .board[data-v="art"] .code { order: 3; border-top: .5px solid var(--rule); padding: 8px 0 10px; font: 10.5px/19px var(--mono); color: var(--ink); }
-.board[data-v="art"] .ln .no { width: 40px; padding-right: 10px; color: var(--ink-3); }
-.board[data-v="art"] .ln.link { background: color-mix(in srgb, var(--k-fn) 10%, transparent); }
-.board[data-v="art"] .ln.link .no { color: var(--ink); }
+.board[data-v="art"] .gutter .no { width: 40px; padding-right: 10px; color: var(--ink-3); }
+.board[data-v="art"] .hlrow { background: color-mix(in srgb, var(--k-fn) 10%, transparent); }
+.board[data-v="art"] .no.link { color: var(--ink); }
 .board[data-v="art"] .kw { color: var(--k-kw); font-weight: 600; } .board[data-v="art"] .fn { color: var(--k-fn); } .board[data-v="art"] .str { color: var(--k-str); } .board[data-v="art"] .com { color: var(--k-com); font-style: italic; }
 .board[data-v="art"] .num { color: var(--k-num); } .board[data-v="art"] .self { color: var(--k-self); } .board[data-v="art"] .p { color: var(--k-p); }
 .board[data-v="art"] .call { text-decoration: underline .5px var(--k-fn); text-underline-offset: 3px; }
@@ -589,11 +598,11 @@ function render() {
     const rev = c.isNew ? '<span class="rev new"><i></i>有新版本</span>' : `<span class="rev"><i></i>${c.rev}</span>`;
     el.innerHTML = `
       <div class="chead"><span class="step">${c.step}</span><span class="ctitle">${c.title}</span><span class="cpath">${file}</span>${rev}</div>
-      <div class="cband"><svg viewBox="0 0 48 48" class="glyph">${GLYPHS[c.glyph]}</svg><span class="big">${c.step.padStart(2, '0')}</span></div>
+      <div class="cband"><span class="bt">${c.title}</span><span class="big">${c.step.padStart(2, '0')}</span></div>
       <div class="cname">${c.title}</div>
       <div class="cmeta"><div><small>文件</small>${file}</div><div><small>行</small>${c.start}–${end}</div><div><small>提交</small>${c.isNew ? '有新版本' : c.rev}</div></div>
       <div class="cnote">${c.note}</div>
-      <div class="code">${c.code.map((l, i) => `<div class="ln${c.links && c.links[i] ? ' link' : ''}"><span class="no">${c.start + i}</span><span class="tx">${hl(l, c.calls)}</span></div>`).join('')}</div>
+      <div class="code">${Object.keys(c.links || {}).map(i => `<div class="hlrow" data-i="${i}"></div>`).join('')}<div class="gutter">${c.code.map((l, i) => `<span class="no${c.links && c.links[i] ? ' link' : ''}">${c.start + i}</span>`).join('')}</div><pre class="src">${c.code.map(l => hl(l, c.calls)).join('\n')}</pre></div>
       <div class="cfoot"><span><svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>L${c.start}–${end}</span><span class="act">${c.isNew ? '跟进到最新' : '在编辑器打开'}<svg class="ico" viewBox="0 0 16 16"><path d="M3.5 8h9M9 4.5 12.5 8 9 11.5"/></svg></span></div>`;
     world.appendChild(el); c.el = el;
     const cap = document.createElement('div'); cap.className = 'caption'; cap.textContent = c.fig; world.appendChild(cap); c.cap = cap;
@@ -616,13 +625,19 @@ function layout() {
   bounds = { x: x0 - 30, y: y0 - 30, w: x1 - x0 + 60, h: y1 - y0 + 60 };
   fit();
 }
+function lineBox(c, i) {
+  const code = c.el.querySelector('.code'), src = c.el.querySelector('.src'), cs = getComputedStyle(code);
+  const lh = parseFloat(getComputedStyle(src).lineHeight);
+  return { top: code.offsetTop + parseFloat(cs.paddingTop) + i * lh, h: lh, rel: parseFloat(cs.paddingTop) + i * lh };
+}
 function drawEdges() {
+  for (const c of CARDS) c.el.querySelectorAll('.hlrow').forEach(r => { const b = lineBox(c, +r.dataset.i); r.style.top = b.rel + 'px'; r.style.height = b.h + 'px'; });
   let svg = '';
   const byId = Object.fromEntries(CARDS.map(c => [c.id, c]));
   for (const c of CARDS) for (const [i, to] of Object.entries(c.links || {})) {
     const t = byId[to];
-    const ln = c.el.querySelectorAll('.ln')[i], hd = t.el.querySelector(CFG.entry || '.chead');
-    const x1 = c.x + c.el.offsetWidth, y1 = c.y + ln.offsetTop + ln.offsetHeight / 2;
+    const lb = lineBox(c, +i), hd = t.el.querySelector(CFG.entry || '.chead');
+    const x1 = c.x + c.el.offsetWidth, y1 = c.y + lb.top + lb.h / 2;
     const x2 = t.x - 4, y2 = t.y + hd.offsetTop + hd.offsetHeight / 2;
     let d, mx, my;
     if (CFG.route === 'elbow') {
@@ -659,14 +674,14 @@ document.getElementById('segT').addEventListener('click', e => {
   if (b.dataset.t) document.documentElement.dataset.theme = b.dataset.t; else delete document.documentElement.dataset.theme;
 });
 function drafting(cards, world) {
-  const a = cards[0], lns = a.el.querySelectorAll('.ln');
-  const top = a.y + lns[0].offsetTop, bot = a.y + lns[lns.length - 1].offsetTop + lns[0].offsetHeight;
+  const a = cards[0], first = lineBox(a, 0), last = lineBox(a, a.code.length - 1);
+  const top = a.y + first.top, bot = a.y + last.top + last.h;
   const d = document.createElement('div'); d.className = 'dim';
   d.style.cssText = `left:${a.x - 22}px;top:${top}px;height:${bot - top}px;width:9px`;
   d.innerHTML = `<div class="bar"></div><span>L${a.start}–${a.start + a.code.length - 1}</span>`;
   world.appendChild(d);
   // 便签在这个风格里是「细节标注框」，用虚线引线连到某一行
-  const ln = lns[3], ly = a.y + ln.offsetTop + ln.offsetHeight / 2;
+  const l3 = lineBox(a, 3), ly = a.y + l3.top + l3.h / 2;
   const box = document.createElement('div'); box.className = 'callout';
   const bx = a.x + 40, by = a.y + a.el.offsetHeight + 40;
   box.style.left = bx + 'px'; box.style.top = by + 'px';

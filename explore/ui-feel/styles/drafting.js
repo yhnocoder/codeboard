@@ -1,13 +1,13 @@
 function decorate(cards, world) {
   world.querySelectorAll('.dim, .callout').forEach(n => n.remove());
-  const a = cards[0], lns = a.el.querySelectorAll('.ln');
-  const top = a.y + lns[0].offsetTop, bot = a.y + lns[lns.length - 1].offsetTop + lns[0].offsetHeight;
+  const a = cards[0], first = lineBox(a, 0), last = lineBox(a, a.code.length - 1);
+  const top = a.y + first.top, bot = a.y + last.top + last.h;
   const d = document.createElement('div'); d.className = 'dim';
   d.style.cssText = `left:${a.x - 22}px;top:${top}px;height:${bot - top}px;width:9px`;
   d.innerHTML = `<div class="bar"></div><span>L${a.start}–${a.start + a.code.length - 1}</span>`;
   world.appendChild(d);
   // 便签在这个风格里是「细节标注框」，用虚线引线连到某一行
-  const ln = lns[3], ly = a.y + ln.offsetTop + ln.offsetHeight / 2;
+  const l3 = lineBox(a, 3), ly = a.y + l3.top + l3.h / 2;
   const box = document.createElement('div'); box.className = 'callout';
   const bx = a.x + 40, by = a.y + a.el.offsetHeight + 40;
   box.style.left = bx + 'px'; box.style.top = by + 'px';

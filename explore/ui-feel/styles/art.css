@@ -1,5 +1,6 @@
 /* 艺术：一张深绿油墨印在薄荷纸上的海报。双线框、居中排版、字距拉得很开；每张卡片下面有一行图注 */
 .s-art {
+  --selbg: color-mix(in srgb, var(--k-fn) 24%, transparent);
   --bg: light-dark(#ecefe7, #0f1f19);
   --paper: light-dark(#f6f7f2, #142821);
   --ink: light-dark(#13372b, #dfe9df);

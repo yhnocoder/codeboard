@@ -84,5 +84,6 @@ for a, b in [('%%TITLE%%', 'CodeBoard 材质'), ('%%FONTS%%', fonts), ('%%CSS%%'
              ('const CFG = Object.assign(', 'let CFG = Object.assign('), ('%%CFG%%', '{}'), ('%%JS%%', js), ('<div class="ctl">主题', seg)]:
     assert a in o, a; o = o.replace(a, b)
 o = o.replace('render();\ndocument.fonts', 'document.fonts')
+o = o.replace('.ln.link .no', '.no.link').replace('.ln.link', '.hlrow').replace('.ln .no', '.gutter .no').replace('.ln .tx', '.src')
 open('../material.html', 'w').write(o)
 print('ok')

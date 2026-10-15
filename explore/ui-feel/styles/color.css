@@ -10,6 +10,7 @@
   --f2: light-dark(#e2a62f, #e9b647);
   --f3: light-dark(#2f6f68, #3f8d84);
   --paper-ink: light-dark(#f7efdd, #f7efdd);
+  --selbg: color-mix(in srgb, var(--f2) 45%, transparent);
   --ui: "Jost", "Futura", "Avenir Next", "PingFang SC", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   --italic: "Fraunces", "Songti SC", Georgia, serif;
@@ -29,11 +30,11 @@
 .s-color .rev i { width: 7px; height: 7px; border-radius: 50%; background: var(--f3); }
 .s-color .rev.new { color: var(--ink); }
 .s-color .rev.new i { background: var(--f1); }
-.s-color .cband { order: 1; display: flex; position: relative; height: 70px; background: var(--fc); border-bottom: 2px solid var(--line); align-items: center; padding-left: 14px; }
-.s-color .glyph { width: 46px; height: 46px; fill: none; stroke: var(--paper-ink); stroke-width: 2; stroke-linecap: round; color: var(--paper-ink); }
-.s-color .big { position: absolute; right: 12px; top: 6px; font: 600 34px/1 var(--ui); color: rgba(30,20,10,.22); letter-spacing: .02em; }
-.s-color .cname { order: 2; display: block; padding: 12px 14px 0; font: 600 14px var(--ui); letter-spacing: .06em; color: var(--ink); }
-.s-color .cnote { order: 3; display: block; padding: 2px 14px 10px; font: italic 400 12.5px var(--italic); color: color-mix(in srgb, var(--fc) 70%, var(--ink)); }
+.s-color .cband { order: 1; display: flex; position: relative; height: 54px; background: var(--fc); border-bottom: 2px solid var(--line); align-items: center; padding: 0 64px 0 14px; }
+.s-color .f1, .s-color .f3 { --bink: var(--paper-ink); } .s-color .f2 { --bink: #2a231c; }
+.s-color .bt { font: 600 16px var(--ui); letter-spacing: .03em; color: var(--bink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.s-color .big { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font: 600 30px/1 var(--ui); color: rgba(30,20,10,.24); letter-spacing: .02em; }
+.s-color .cnote { order: 3; display: block; padding: 9px 14px 8px; font: italic 400 12.5px var(--italic); color: color-mix(in srgb, var(--fc) 70%, var(--ink)); }
 .s-color .code { order: 4; padding: 0 0 10px; font: 10.5px/19px var(--mono); color: var(--ink); }
 .s-color .ln .no { width: 40px; padding-right: 10px; color: var(--ink-3); }
 .s-color .ln.link { background: color-mix(in srgb, var(--f1) 16%, transparent); }
