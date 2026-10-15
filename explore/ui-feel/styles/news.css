@@ -17,8 +17,7 @@
 .s-news .card { background: var(--paper); border-top: 3px solid var(--rule); box-shadow: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair); display: flex; flex-direction: column; }
 .s-news .card.sel { outline: 1.5px solid var(--ink); outline-offset: 5px; }
 .s-news .chead { order: 0; height: 28px; padding: 0 12px; gap: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--head); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
-.s-news .step::before { content: "第\00a0"; letter-spacing: 0; }
-.s-news .step::after { content: "\00a0版"; letter-spacing: 0; }
+.s-news .step::before { content: "No.\00a0"; }
 .s-news .ctitle { display: none; }
 .s-news .cpath { color: var(--ink-3); }
 .s-news .rev { font: 400 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink-3); }

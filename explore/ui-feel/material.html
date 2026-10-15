@@ -67,7 +67,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 /* 代码是一整段 <pre>：选区连续，复制出来就是原文；行号在旁边单独一列，选不中 */
 .gutter { flex: none; position: relative; z-index: 1; }
 .gutter .no { display: block; text-align: right; font-variant-numeric: tabular-nums; }
-.src { flex: 1; min-width: 0; margin: 0; padding: 0; font: inherit; color: inherit; white-space: pre; overflow: hidden; position: relative; z-index: 1;
+.src { flex: 1; min-width: 0; margin: 0; padding: 0; font: inherit; color: inherit; white-space: pre; overflow: clip; position: relative; z-index: 1;
   -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
 .src::selection, .src *::selection { background: var(--selbg, color-mix(in srgb, var(--accent, #c15f3c) 26%, transparent)); }
 .hlrow { position: absolute; left: 0; right: 0; pointer-events: none; }
@@ -344,7 +344,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="soft"] .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 4px; }
 .board[data-v="soft"] .zoom { font: 11px var(--mono); color: var(--ink-2); }
 .board[data-v="soft"] .toast { left: auto; right: 20px; top: 22px; bottom: auto; transform: none; background: var(--surface); color: var(--ink); font: 400 12.5px var(--ui); padding: 9px 14px; border-radius: 12px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
-.board[data-v="soft"] .toast .tdot { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+.board[data-v="soft"] .toast .tdot { display: none; }
 .board[data-v="soft"] .toast b { font-weight: 500; color: var(--coral); }
 
 /* 多彩卡片：奶油底、2px 墨线、直角；每个源文件分到一种颜色，卡片顶部是这块颜色加一个小图形 */
@@ -438,8 +438,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="news"] .card { background: var(--paper); border-top: 3px solid var(--rule); box-shadow: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair); display: flex; flex-direction: column; }
 .board[data-v="news"] .card.sel { outline: 1.5px solid var(--ink); outline-offset: 5px; }
 .board[data-v="news"] .chead { order: 0; height: 28px; padding: 0 12px; gap: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--head); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
-.board[data-v="news"] .step::before { content: "第\00a0"; letter-spacing: 0; }
-.board[data-v="news"] .step::after { content: "\00a0版"; letter-spacing: 0; }
+.board[data-v="news"] .step::before { content: "No.\00a0"; }
 .board[data-v="news"] .ctitle { display: none; }
 .board[data-v="news"] .cpath { color: var(--ink-3); }
 .board[data-v="news"] .rev { font: 400 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink-3); }

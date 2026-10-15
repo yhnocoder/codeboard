@@ -66,5 +66,5 @@
 .s-soft .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 4px; }
 .s-soft .zoom { font: 11px var(--mono); color: var(--ink-2); }
 .s-soft .toast { left: auto; right: 20px; top: 22px; bottom: auto; transform: none; background: var(--surface); color: var(--ink); font: 400 12.5px var(--ui); padding: 9px 14px; border-radius: 12px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
-.s-soft .toast .tdot { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+.s-soft .toast .tdot { display: none; }
 .s-soft .toast b { font-weight: 500; color: var(--coral); }

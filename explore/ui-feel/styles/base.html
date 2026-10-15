@@ -67,7 +67,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 /* 代码是一整段 <pre>：选区连续，复制出来就是原文；行号在旁边单独一列，选不中 */
 .gutter { flex: none; position: relative; z-index: 1; }
 .gutter .no { display: block; text-align: right; font-variant-numeric: tabular-nums; }
-.src { flex: 1; min-width: 0; margin: 0; padding: 0; font: inherit; color: inherit; white-space: pre; overflow: hidden; position: relative; z-index: 1;
+.src { flex: 1; min-width: 0; margin: 0; padding: 0; font: inherit; color: inherit; white-space: pre; overflow: clip; position: relative; z-index: 1;
   -webkit-mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(90deg, #000 calc(100% - 28px), transparent); }
 .src::selection, .src *::selection { background: var(--selbg, color-mix(in srgb, var(--accent, #c15f3c) 26%, transparent)); }
 .hlrow { position: absolute; left: 0; right: 0; pointer-events: none; }
