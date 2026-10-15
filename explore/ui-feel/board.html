@@ -264,7 +264,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
       <h2>初版约定</h2>
       <p class="lead">原则：动效只用来说明「东西从哪来、到哪去」；交互按桌面软件的习惯来，不按网页。打开「¼ 慢放」看动效最清楚。</p>
       <h3>动效</h3>
-      <div class="rule chrome"><b>展开一层</b><p>行先闪一下，连线从那一行长出来（260ms），卡片沿着连线从起点弹出。弹簧几乎不过冲。</p><button class="plain" data-demo="expand">演示</button></div>
+      <div class="rule chrome"><b>展开一层</b><p>行先闪一下，卡片从这一行旁边弹出，连线一头钉在调用行、一头始终接在卡片标题上，跟着卡片一起伸出去。弹簧几乎不过冲。</p><button class="plain" data-demo="expand">演示</button></div>
       <div class="rule chrome"><b>镜头</b><p>新卡片在视野里就不动镜头；跑出去了才平滑跟过去，用不过冲的弹簧，绝不瞬移。</p><button class="plain" data-demo="far">演示</button></div>
       <div class="rule chrome"><b>重复展开</b><p>不再新建卡片：镜头飞到已有的那张，卡片外圈扩散一次，提示原地刷新、不堆叠。</p><button class="plain" data-demo="dup">演示</button></div>
       <div class="rule chrome"><b>拖拽</b><p>按下立即抬起（阴影变深、放大 1.2%），跟手 1:1，没有延迟；松手轻轻落下。</p><span class="hint">拖标题栏</span></div>
@@ -409,7 +409,7 @@ function makeCard(id) {
 function place(d) { d.el.style.left = d.x + 'px'; d.el.style.top = d.y + 'px'; d.el.style.width = d.w + 'px'; }
 function edgeGeom(e) {
   const a = cards[e.from], b = cards[e.to];
-  const x1 = a.x + a.w, y1 = a.y + HEAD + 1 + PAD + e.line * LH + LH / 2, x2 = b.x - 6, y2 = b.y + HEAD / 2;
+  const x1 = a.x + a.w, y1 = a.y + HEAD + 1 + PAD + e.line * LH + LH / 2, x2 = b.x + (b.ox || 0) - 6, y2 = b.y + (b.oy || 0) + HEAD / 2;
   const dx = Math.max(40, Math.abs(x2 - x1) * 0.5);
   return { x1, y1, x2, y2, d: `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`, mx: (x1 + 3 * (x1 + dx) + 3 * (x2 - dx) + x2) / 8, my: (y1 + y2) / 2 };
 }
@@ -448,17 +448,24 @@ function expand(fromId, call) {
   const r = rectOf(d);
   if (!visible(r)) { const f = fitRect(union([rectOf(cards[fromId]), r]), cam.k.t); camTo(f.x, f.y, f.k); }
   const g = edgeGeom(e);
-  requestAnimationFrame(() => { e.port.classList.remove('hidden-o'); e.path.classList.remove('hidden'); });
-  // 卡片沿连线从起点弹出，略晚于连线
+  requestAnimationFrame(() => e.port.classList.remove('hidden-o'));
+  // 卡片从调用行旁弹出，连线终点每帧跟着卡片走，始终接在卡片标题上
   const p = new Spring(0, 260, 26, 0.002);
-  const ox = (g.x1 - d.x) * 0.55, oy = (g.y1 - (d.y + HEAD / 2)) * 0.55;
-  const setP = v => { d.el.style.transform = `translate(${(1 - v) * ox}px, ${(1 - v) * oy}px) scale(${0.9 + 0.1 * v})`; d.el.style.opacity = Math.min(1, v * 1.8); };
+  const ox = (g.x1 + 24 - d.x) * 0.7, oy = (g.y1 - (d.y + HEAD / 2)) * 0.7;
+  e.path.classList.remove('hidden');
+  const setP = v => {
+    d.ox = (1 - v) * ox; d.oy = (1 - v) * oy;
+    d.el.style.transform = `translate(${d.ox}px, ${d.oy}px) scale(${0.9 + 0.1 * v})`;
+    const o = Math.min(1, v * 1.8); d.el.style.opacity = o; e.path.style.opacity = o; e.head.style.opacity = o;
+    drawEdge(e);
+  };
+  e.head.classList.remove('hidden-o');
   setP(0);
   setTimeout(() => {
     p.t = 1;
     run((dt, instant) => {
       instant ? p.set(1) : p.step(dt); setP(p.v);
-      if (p.done) { p.set(1); d.el.style.transform = ''; d.el.style.opacity = ''; e.head.classList.remove('hidden-o'); e.label && e.label.classList.remove('hidden-o');
+      if (p.done) { p.set(1); setP(1); d.ox = d.oy = 0; d.el.style.transform = ''; d.el.style.opacity = ''; e.path.style.opacity = ''; e.head.style.opacity = ''; drawEdge(e); e.label && e.label.classList.remove('hidden-o');
         if (d.isNew) setTimeout(() => d.el.querySelector('.rev').classList.add('pulse'), 200 * speed); return true; }
       return false;
     });
