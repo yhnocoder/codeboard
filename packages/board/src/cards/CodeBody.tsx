@@ -4,6 +4,7 @@ import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, 
 import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection, flows } from "../state/store";
 import { setGeo } from "../state/geo";
+import { queueMeasure, observeResize } from "../state/measure";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging } from "../state/ui";
 import * as act from "../actions";
 
@@ -20,23 +21,27 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
 
   // 行号、标记的位置（实测）
   const [ys, setYs] = createSignal<{ y: number; h: number }[]>([]);
-  const measure = () => {
+  const read = () => {
     if (!srcEl) return;
     const out: { y: number; h: number }[] = [];
     const kids = srcEl.querySelectorAll<HTMLElement>(":scope > [data-r]");
     kids.forEach((k) => (out[+k.dataset.r!] = { y: srcEl.offsetTop + k.offsetTop, h: k.offsetHeight }));
-    setYs(out);
     const top = scrollEl.offsetTop; // 代码区相对卡片顶部
-    setGeo(p.card.id, {
+    const g = {
       rows: rows(), ys: out.map((o) => (o ? o.y + top + codeEl.offsetTop : 0)), hs: out.map((o) => o?.h ?? 0),
       top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: top,
-    });
+    };
+    const id = p.card.id;
+    return () => { setYs(out); setGeo(id, g); };
   };
-  const ro = new ResizeObserver(() => measure());
-  onCleanup(() => ro.disconnect());
-  const observe = () => { ro.disconnect(); if (srcEl?.isConnected) ro.observe(srcEl); ro.observe(scrollEl); measure(); };
+  const measure = () => read()?.();
+  const later = () => queueMeasure(read, read);
+  let unobs: (() => void)[] = [];
+  const unobserve = () => { unobs.forEach((f) => f()); unobs = []; };
+  onCleanup(unobserve);
+  const observe = () => { unobserve(); if (srcEl?.isConnected) unobs.push(observeResize(srcEl, later)); unobs.push(observeResize(scrollEl, later)); later(); };
   onMount(observe);
-  createEffect(() => { rows(); notesOn(c().id); queueMicrotask(measure); });
+  createEffect(() => { rows(); notesOn(c().id); later(); });
 
   const fromLines = createMemo(() => new Set(linksFrom(c().id).map((l) => `${l.from.seg}:${l.from.line}`)));
   const isHl = (s: Segment | undefined, l: number) => !!s?.hl?.includes(l);

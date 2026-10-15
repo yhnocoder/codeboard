@@ -12,7 +12,7 @@ const NV = path.join(REPO, "examples/nano-vllm");
 const MEDIA = path.join(REPO, "extensions/vscode/media/board");
 export const OUT = path.join(REPO, "test-out/harness");
 
-const files = new Map<string, { text: string[]; a: FileAnalysis }>();
+export const files = new Map<string, { text: string[]; a: FileAnalysis }>();
 function walk(dir: string, out: string[] = []) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.name.startsWith(".")) continue;
@@ -78,13 +78,14 @@ export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: 
 
 export async function ready() { await initAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm")); if (!files.size) load(); }
 
-export async function open(o: { board?: Board; light?: boolean; w?: number; h?: number } = {}): Promise<Host> {
+export async function open(o: { board?: Board; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void> } = {}): Promise<Host> {
   await ready();
   if (!files.size) load();
   fs.mkdirSync(OUT, { recursive: true });
   const html = path.join(OUT, "index.html");
   fs.writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="file://${MEDIA}/board.css"></head>
 <body class="${o.light ? "vscode-light" : "vscode-dark"}"><div id="root"></div>
+<script>addEventListener("message", (e) => { if (e.data?.type === "init") window.__tInit = performance.now(); }, true); addEventListener("pointerdown", () => { window.__tDown = performance.now(); }, true);</script>
 <script>window.acquireVsCodeApi = () => ({ postMessage: (m) => window.__host(JSON.stringify(m)) });</script>
 <script src="file://${MEDIA}/board.js"></script></body></html>`);
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
@@ -154,6 +155,7 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
       default: if (m.req) return reply(m.req, null);
     }
   });
+  await o.beforeLoad?.(page);
   await page.goto(`file://${html}`);
   await page.waitForFunction(() => document.querySelector(".board"));
   await page.waitForTimeout(300);

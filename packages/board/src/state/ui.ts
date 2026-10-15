@@ -1,6 +1,7 @@
 // 界面状态（不持久化、不进撤销栈）
 import { createSignal, createMemo } from "solid-js";
-import type { Guide, Link } from "@codeboard/core";
+import { createStore, reconcile, unwrap } from "solid-js/store";
+import type { Guide, Link, Sidenote } from "@codeboard/core";
 import { state } from "./store";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
@@ -24,7 +25,15 @@ const fromIndex = createMemo(() => {
 export const linksFrom = (id: string) => fromIndex().get(id) ?? [];
 
 // Always Show 的 Sidenote 变化时要重新量行位置
-export const notesOn = (id: string) => state.board.sidenotes.filter((n) => n.at.card === id && n.kind === "text" && n.alwaysShow).length;
+export const notesOn = (id: string) => notesOf(id).filter((n) => n.kind === "text" && n.alwaysShow).length;
+
+// 卡片 id → 挂在它上面的 Sidenote（每行都要问，按卡分好组）
+const notesIndex = createMemo(() => {
+  const m = new Map<string, Sidenote[]>();
+  for (const n of state.board.sidenotes) { const a = m.get(n.at.card); a ? a.push(n) : m.set(n.at.card, [n]); }
+  return m;
+});
+export const notesOf = (id: string): Sidenote[] => notesIndex().get(id) ?? [];
 
 // 闪一下的行："card:seg:line"
 export const [flashRows, setFlashRows] = createSignal<Set<string>>(new Set());
@@ -53,7 +62,13 @@ export const [connectFrom, setConnectFrom] = createSignal<{ card: string; seg?: 
 export const [hoverLink, setHoverLink] = createSignal<string | null>(null);
 export const [hoverVar, setHoverVar] = createSignal<{ link: string; names: string[]; from: string; to: string } | null>(null);
 // 新卡弹出动画：id → 起点偏移
-export const [popIn, setPopIn] = createSignal<Record<string, { ox: number; oy: number; v: number; slide?: boolean }>>({});
+// 存成 store：卡和线只订阅自己那一项，动画每帧只重算正在弹出的卡，而不是整块白板
+export type PopAnim = { ox: number; oy: number; v: number; slide?: boolean };
+const [popStore, setPopStore] = createStore<Record<string, PopAnim>>({});
+export const popIn = () => popStore;
+export function setPopIn(f: (p: Record<string, PopAnim>) => Record<string, PopAnim>) {
+  setPopStore(reconcile(f({ ...unwrap(popStore) })));
+}
 // 讲解
 export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[] };
 export const [walk, setWalk] = createSignal<Walk | null>(null);

@@ -71,9 +71,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .board.connecting, .board.connecting * { cursor: crosshair !important; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; pointer-events: none; }
-.edge { fill: none; stroke: var(--edge); stroke-width: 1.25; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 0;
-  transition: stroke-dashoffset calc(var(--t) * 260ms) var(--out), opacity .2s; }
-.edge.hidden { stroke-dashoffset: 1; }
+/* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
+.edge { fill: none; stroke: var(--edge); stroke-width: 1.25; stroke-linecap: round; transition: opacity .2s; }
 .edge.retract { transition-duration: calc(var(--t) * 140ms); transition-timing-function: var(--in); }
 .edge.plain { stroke-dasharray: 4 4; stroke-dashoffset: 0; }
 .edge.hot { stroke: var(--accent); stroke-width: 1.6; }

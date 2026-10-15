@@ -1,7 +1,7 @@
 // 白板界面：顶栏（白板名、Workbench | Focus、Search、⋯）、画布、底部工具条、缩放、讲解条、横幅、提示。
 import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { unwrap } from "solid-js/store";
-import { state, mutate, live, toast, scheduleSave, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
+import { state, mutate, live, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
 import { cam, camTarget, zoomAt } from "./state/camera";
 import { banner, setBanner, walk, focusMode, setFocusMode, keysOpen, setKeysOpen, editing, setEditing, paletteOpen, setPaletteOpen } from "./state/ui";
 import { Canvas } from "./canvas/Canvas";
@@ -17,8 +17,7 @@ import * as A from "./actions";
 import { flows, cardById } from "./state/store";
 
 export function App() {
-  // 自动保存：白板一变，约 1 秒后写盘；镜头单独记，停下来再存
-  createEffect(on(() => JSON.stringify(state.board), () => { if (state.loaded) scheduleSave(); }, { defer: true }));
+  // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
   let camT: number | undefined;
   createEffect(on(() => [cam.x, cam.y, cam.z], () => {
     clearTimeout(camT);

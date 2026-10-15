@@ -4,6 +4,7 @@ import { createMemo, For, Show, onMount, onCleanup, createEffect } from "solid-j
 import { alignRows, wordDiff, findCard, type CompareCard, type CodeCard, type Row } from "@codeboard/core";
 import { state, mutate } from "../state/store";
 import { setGeo } from "../state/geo";
+import { queueMeasure, observeResize } from "../state/measure";
 import { Icon } from "../ui/icons";
 import { CodeHead } from "./Card";
 import * as A from "../actions";
@@ -98,12 +99,9 @@ export function CompareBody(p: { card: CompareCard }) {
       setGeo(c.id, { rows, ys, hs, top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: hr ? (hr.bottom - cr.top) / z : 60, colX: ci === 0 ? 0 : card.offsetWidth / 2, colW: card.offsetWidth / 2 });
     });
   };
-  onMount(() => {
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(rowsEl); ro.observe(scrollEl);
-    onCleanup(() => ro.disconnect());
-  });
-  createEffect(() => { items(); k().unified; queueMicrotask(measure); });
+  const later = () => queueMeasure(measure, () => measure);
+  onMount(() => { onCleanup(observeResize(rowsEl, later)); onCleanup(observeResize(scrollEl, later)); });
+  createEffect(() => { items(); k().unified; later(); });
 
   const callAt = (t: HTMLElement) => {
     const x = t.closest?.(".call") as HTMLElement | null;

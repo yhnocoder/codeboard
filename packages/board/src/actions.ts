@@ -13,7 +13,7 @@ import {
   type LineSel,
 } from "./state/store";
 import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "./state/camera";
-import { flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar, focusMode, setFocusMode } from "./state/ui";
+import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar, focusMode, setFocusMode } from "./state/ui";
 import { openMenu, choose, promptText, type Item } from "./ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "./state/pop";
 import { send, ask } from "./host";
@@ -48,7 +48,7 @@ export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(B
 
 export const mdInline = (s: string) => inline(s);
 export const mdBlock = (s: string) => md(s);
-export const sidenotesOf = (cardId: string) => state.board.sidenotes.filter((n) => n.at.card === cardId);
+export const sidenotesOf = notesOf;
 export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
 export const allRects = (skip?: Set<string>) => state.board.cards.filter((c) => !skip?.has(c.id)).map((c) => rectOf(c));
 

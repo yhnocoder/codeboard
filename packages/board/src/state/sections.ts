@@ -20,14 +20,22 @@ export function hiddenByAncestor(s: Section): boolean {
   for (let q = sec(s.parent), i = 0; q && i < 50; q = sec(q.parent), i++) if (q.collapsed) return true;
   return false;
 }
-export const childrenOf = (id: string) => state.board.sections.filter((s) => s.parent === id);
+// 父 → 子 Section、Section → 直属卡：一次分好组，算框时不用每个 Section 都扫一遍所有卡
+const kids = createMemo(() => groupBy(state.board.sections, (s) => s.parent));
+const members = createMemo(() => groupBy(state.board.cards, (c) => c.section));
+function groupBy<T>(xs: T[], key: (x: T) => string | undefined) {
+  const m = new Map<string, T[]>();
+  for (const x of xs) { const k = key(x); if (k === undefined) continue; const a = m.get(k); a ? a.push(x) : m.set(k, [x]); }
+  return m;
+}
+export const childrenOf = (id: string) => kids().get(id) ?? [];
 export function descSections(id: string): Section[] {
   const out: Section[] = [];
   const walk = (x: string) => childrenOf(x).forEach((c) => { if (!out.includes(c)) { out.push(c); walk(c.id); } });
   walk(id);
   return out;
 }
-export const directMembers = (id: string) => state.board.cards.filter((c) => c.section === id);
+export const directMembers = (id: string) => members().get(id) ?? [];
 export const allMembers = (id: string) => {
   const ids = new Set([id, ...descSections(id).map((s) => s.id)]);
   return state.board.cards.filter((c) => c.section && ids.has(c.section));
