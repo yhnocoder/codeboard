@@ -3,13 +3,13 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards,
-  placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canCompare, walkOrder, treeOf, descendants, SIB_GAP,
+  placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canExpand, canCompare, mapLines, walkOrder, treeOf, descendants, SIB_GAP,
   copyText, cardRows, versionLabel, varKey,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment,
   type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor,
 } from "@codeboard/core";
 import {
-  state, setState, mutate, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds,
+  state, setState, mutate, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed,
   type LineSel,
 } from "./state/store";
 import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "./state/camera";
@@ -213,6 +213,8 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   if (!seg) return;
   const key = `${cardId}:${segId}:${call.line}:${call.col}`;
   if (pending.has(key)) return;
+  const okx = canExpand(state.board, cardId);
+  if (!okx.ok) { toast(okx.reason); return; }
   if (call.dispatch) { toast(`${call.name}("${call.dispatch}") is dispatched by name. Not resolved; drag the call onto a card to link it.`); return; }
   pending.add(key);
   let r: ExpandResult;
@@ -317,7 +319,7 @@ export function attachCall(cardId: string, segId: string, call: CallSpan, target
   const t = cardById(target);
   if (!t || !isCode(t.card)) return toast("Only code cards can be the target of a Call link.");
   if (t.host.id === cardById(cardId)?.host.id) return toast("A card cannot call itself.");
-  const ok = canAttach(flows(), cardId, target);
+  const ok = canAttach(state.board, flows(), cardId, target);
   if (!ok.ok) return toast(ok.reason);
   mutate((b) => { b.links.push({ id: uid("l"), kind: "call", from: { card: cardId, seg: segId, line: call.line }, to: { card: target }, call: { name: call.name, col: call.col }, loop: call.loop || undefined }); });
   toast(`Linked to ${cardTitle(t.card)}`);
@@ -351,7 +353,7 @@ export function callMenu(cardId: string, segId: string, call: CallSpan, x: numbe
     {
       label: "Link to Existing Card", kbd: "Drag", sub: cands.length ? cands.map((k) => {
         const n = flows().byId.get(k.id);
-        const ok = canAttach(flows(), cardId, k.id);
+        const ok = canAttach(state.board, flows(), cardId, k.id);
         return { label: `${n ? n.label + "  " : ""}${cardTitle(k)}`, disabled: ok.ok ? false : ok.reason, run: () => attachCall(cardId, segId, call, k.id) };
       }) : [{ label: "No card for this function on the board", disabled: "Drag the call onto any code card to link it" }],
     },
@@ -984,30 +986,32 @@ export function applyNewVersion(cardId: string, segId: string, data: DiffData) {
     if (i < 0) return;
     const old = c.segments[i];
     const map = lineMap(old, ns);
-    ns.hidden = (old.hidden ?? []).map(([a, e]) => [map(a), map(e)]).filter(([a, e]) => a && e && a <= e) as [number, number][];
+    ns.hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter(Boolean) as [number, number][];
     ns.hl = (old.hl ?? []).map(map).filter(Boolean) as number[];
     c.segments[i] = ns;
     for (const l of b.links) if (l.from.card === cardId && l.from.seg === segId && l.from.line) { const m = map(l.from.line); if (m) l.from.line = m; else { l.from.seg = undefined; l.from.line = undefined; } }
     for (const n of b.sidenotes) if (n.at.card === cardId && n.at.seg === segId && n.at.lines) {
-      const a = map(n.at.lines[0]), e = map(n.at.lines[1]);
-      if (a && e) n.at.lines = [a, e]; else { n.at = { card: cardId }; n.lineRemoved = true; }
+      const r = mapRange(map, n.at.lines[0], n.at.lines[1]);
+      if (r) n.at.lines = r; else { n.at = { card: cardId }; n.lineRemoved = true; }
     }
   });
   if (data.newView) setState("views", segId, data.newView);
   setState("stale", segId, { state: "ok" });
   toast("Updated to the new version");
 }
+/**
+ * 旧版本的行号 → 新版本的行号（core 的 LCS 对齐）：没变的行跟过去，改过的行跟到它在新版里配对的那一行；
+ * 真被删掉的返回 0
+ */
 function lineMap(old: Segment, ns: Segment) {
-  // 按内容对行：同样的行映射过去；改动的行就近映射；删掉的返回 0
-  const m = new Map<number, number>();
-  const a = old.text, b = ns.text;
-  let j = 0;
-  for (let i = 0; i < a.length; i++) {
-    let k = j;
-    while (k < b.length && b[k] !== a[i]) k++;
-    if (k < b.length) { m.set(old.start + i, ns.start + k); j = k + 1; }
-  }
+  const m = mapLines(old.text, old.start, ns.text, ns.start, true);
   return (l: number) => m.get(l) ?? 0;
+}
+/** 一段行（隐藏区间）映射到新版本：取区间里还在的行的首尾 */
+function mapRange(map: (l: number) => number, a: number, e: number): [number, number] | null {
+  const got = [];
+  for (let l = a; l <= e; l++) { const m = map(l); if (m) got.push(m); }
+  return got.length ? [Math.min(...got), Math.max(...got)] : null;
 }
 /** Keep：留在钉住的版本，记下这次的 HEAD，同一个新版本不再提醒 */
 export function keepVersion(cardId: string, segId: string) {
@@ -1219,9 +1223,9 @@ export function startWalk(id?: string) {
   if (!root) return toast("Not in a call flow");
   const order = walkOrder(root).map((n) => n.id);
   const before = { ...camTarget() };
-  // 折叠的子树讲解时临时展开
+  // 折叠的子树讲解时临时展开（只是显示状态）
   const expanded = order.filter((cid) => cardById(cid)?.host.collapsed);
-  if (expanded.length) mutate((b) => { for (const cid of expanded) { const c = findCard(b, cid)?.host; if (c) c.collapsed = undefined; } });
+  setShowCollapsed(true);
   const i = Math.max(0, order.indexOf(start));
   setWalk({ root: root.id, order, i, before, expanded });
   clearSel();
@@ -1241,7 +1245,7 @@ export function exitWalk() {
   const w = walk();
   if (!w) return;
   setWalk(null);
-  if (w.expanded.length) mutate((b) => { for (const cid of w.expanded) { const c = findCard(b, cid)?.host; if (c) c.collapsed = true; } });
+  setShowCollapsed(false);
   camTo(w.before.x, w.before.y, w.before.z, true);
 }
 

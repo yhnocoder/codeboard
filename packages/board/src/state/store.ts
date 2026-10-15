@@ -54,7 +54,9 @@ export function reportSelection() {
 // ---------- 派生 ----------
 
 export const flows = createMemo(() => computeFlows(state.board));
-export const collapsedAway = createMemo(() => hiddenByCollapse(state.board, flows()));
+/** Walkthrough 时临时展开所有折叠的子树：只影响显示，不写进白板（不进撤销、不存盘） */
+export const [showCollapsed, setShowCollapsed] = createSignal(false);
+export const collapsedAway = createMemo(() => (showCollapsed() ? new Set<string>() : hiddenByCollapse(state.board, flows())));
 
 export const cardById = (id: string) => findCard(state.board, id);
 

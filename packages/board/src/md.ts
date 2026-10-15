@@ -15,7 +15,8 @@ export function inline(s: string): string {
   const hold = (h: string) => `\u0000${keep.push(h) - 1}\u0000`;
   s = s.replace(/`([^`]+)`/g, (_, c) => hold(`<code>${esc(c)}</code>`));
   s = s.replace(/\$\$([^$]+)\$\$/g, (_, m) => hold(tex(m, true)));
-  s = s.replace(/(^|[^\\$])\$([^$\s][^$]*?)\$/g, (_, p, m) => p + hold(tex(m, false)));
+  // 行内公式照 Pandoc：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字。所以 "$5 and $10" 不算公式
+  s = s.replace(/(^|[^\\$])\$([^$\s](?:[^$]*[^$\s])?)\$(?!\d)/g, (_, p, m) => p + hold(tex(m, false)));
   s = esc(s);
   s = s.replace(/\[([^\]]+)\]\((https?:[^)\s]+)\)/g, (_, t, u) => `<a class="lnk" data-href="${u}">${t}</a>`);
   s = s.replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, (_, p, u) => `${p}<a class="lnk" data-href="${u}">${u}</a>`);
