@@ -133,6 +133,35 @@ const S: Record<string, () => Promise<void>> = {
     console.log("banner:", await h.page.locator(".banner").count(), "cmiss:", await h.page.locator(".cmiss").count(), JSON.stringify(h.board().cards.map((c: any) => [c.keepOld ?? null, c.segments[0].version.commit])));
     await h.page.context().browser()!.close();
   },
+  async misc() {
+    const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
+    await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
+    // Plain link：选两张卡，点 Link
+    await h.page.keyboard.press("Control+a");
+    await h.page.locator(".bbar button", { hasText: "Link" }).click(); await h.page.waitForTimeout(400);
+    // Text：双击空白处
+    await h.page.mouse.dblclick(700, 120); await h.page.waitForTimeout(300);
+    await h.page.keyboard.type("Scheduler overview"); await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
+    await shot(h, "misc-01");
+    // 合并：⌥ 拖第二张卡的标题到第一张标题上
+    const heads = h.page.locator(".card.ccard .chead");
+    const a = await heads.nth(0).boundingBox(), b = await heads.nth(1).boundingBox();
+    await h.page.mouse.move(b!.x + 60, b!.y + 10); await h.page.mouse.down();
+    await h.page.keyboard.down("Alt");
+    await h.page.mouse.move(a!.x + 80, a!.y + 12, { steps: 12 }); await h.page.waitForTimeout(200);
+    await h.page.mouse.up(); await h.page.keyboard.up("Alt"); await h.page.waitForTimeout(700);
+    await shot(h, "misc-02-merged");
+    console.log("kinds:", h.board().cards.map((c: any) => c.kind + (c.segments ? ":" + c.segments.length : "")).join(","), "links:", JSON.stringify(h.board().links.map((l) => [l.kind, l.from.card, l.to.card])));
+    // Section 并折叠
+    await h.page.keyboard.press("Control+a");
+    await h.page.locator(".card.ccard .chead").first().click({ button: "right" }); await h.page.waitForTimeout(200);
+    await h.page.locator(".ctx button", { hasText: "Move to New Section" }).first().click().catch(() => console.log("no Move to New Section"));
+    await h.page.waitForTimeout(300); await h.page.keyboard.type("Scheduler"); await h.page.keyboard.press("Enter");
+    await h.page.waitForTimeout(400);
+    await shot(h, "misc-03-section");
+    console.log("sections:", JSON.stringify(h.board().sections.map((q) => [q.title, q.collapsed ?? false])));
+    await h.page.context().browser()!.close();
+  },
   async palette() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await h.page.keyboard.press("Control+k"); await h.page.keyboard.press("Meta+k");
