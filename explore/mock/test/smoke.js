@@ -14,6 +14,7 @@ const log = (...a) => console.log('·', ...a);
   const card = (title) => page.locator('.card', { has: page.locator(`.chead .ctitle:text-is("${title}")`) }).first();
   const call = async (title, name, nth = 0) => { await card(title).locator(`.src span.call:text-is("${name}")`).nth(nth).click(); await page.waitForTimeout(700); };
   const head = (title) => card(title).locator('.chead .kind');
+  const focus = (title, k = 1) => page.evaluate(([t, k]) => { const c = Object.values(CB.S.cards).find(c => c.title === t || c.text === t); const x = c.cmp ? CB.S.cards[c.cmp] : c; CB.camSet(90 - x.x * k, 80 - x.y * k, k); }, [title, k]);
 
   await page.goto(URL);
   await page.evaluate(() => { try { localStorage.clear(); } catch (e) {} });
@@ -33,7 +34,7 @@ const log = (...a) => console.log('·', ...a);
   await page.evaluate(() => CB.select(null));
   const sc = card('Scheduler.schedule');
   await sc.locator('.chead .kind').click();
-  await page.evaluate(() => { const c = Object.values(CB.S.cards).find(c => c.title === 'Scheduler.schedule'); const r = { x: c.x - 40, y: c.y - 40, w: 700, h: 500 }; const { w, h } = { w: innerWidth, h: innerHeight }; CB.cam.x.set(80 - r.x); CB.cam.y.set(80 - r.y); CB.cam.k.set(1); CB.render(); });
+  await focus('Scheduler.schedule');
   await page.waitForTimeout(200);
   await sc.locator('.gutter .no[data-l="30"]').click();
   await sc.locator('.gutter .no[data-l="31"]').click({ modifiers: ['Shift'] });
@@ -63,18 +64,21 @@ const log = (...a) => console.log('·', ...a);
   await page.keyboard.type('ModelRunner.run');
   await page.keyboard.press('Enter');
   await page.waitForTimeout(600);
+  await focus('ModelRunner.run');
   await call('ModelRunner.run', 'prepare_prefill');
+  await focus('ModelRunner.run');
   await call('ModelRunner.run', 'prepare_decode');
   await page.click('#zFit'); await page.waitForTimeout(600);
   await shot('06-two-trees');
   // select both and compare
   await page.evaluate(() => { const ids = Object.values(CB.S.cards).filter(c => /prepare_(prefill|decode)$/.test(c.title)).map(c => c.id); CB.select(null); ids.forEach(i => CB.select(i, true)); });
+  await focus('ModelRunner.prepare_prefill', 0.8);
   const pf = card('ModelRunner.prepare_prefill');
   await pf.locator('.chead .cpath').click({ button: 'right' });
   await shot('07-compare-menu');
   await page.locator('#ctx button:has-text("Compare")').click();
   await page.waitForTimeout(500);
-  await page.evaluate(() => { const k = Object.values(CB.S.cards).find(c => c.kind === 'compare'); const el = document.querySelector(`.card[data-id="${k.id}"]`); el.scrollIntoView; CB.cam.x.set(60 - k.x * 0.8); CB.cam.y.set(70 - k.y * 0.8); CB.cam.k.set(0.8); CB.render(); });
+  await page.evaluate(() => { const k = Object.values(CB.S.cards).find(c => c.kind === 'compare'); CB.camSet(60 - k.x * 0.9, 70 - k.y * 0.9, 0.9); });
   await shot('08-compare');
   await page.locator('.cmp .seg2:has-text("Hide Same Lines")').click();
   await shot('08b-compare-hide-same');
@@ -83,7 +87,7 @@ const log = (...a) => console.log('·', ...a);
   // 5. cross-tree compare: Scheduler.schedule (A) + ModelRunner.run (B) -> disabled
   await page.evaluate(() => { const ids = Object.values(CB.S.cards).filter(c => c.title === 'Scheduler.schedule' || c.title === 'ModelRunner.run').map(c => c.id); CB.select(null); ids.forEach(i => CB.select(i, true)); });
   await page.click('#zFit'); await page.waitForTimeout(600);
-  await page.evaluate(() => { const c = Object.values(CB.S.cards).find(c => c.title === "ModelRunner.run"); CB.cam.x.set(100 - c.x); CB.cam.y.set(100 - c.y); CB.cam.k.set(1); CB.render(); });
+  await focus('ModelRunner.run', 0.8);
   await head("ModelRunner.run").click({ button: "right" });
   await shot('09-cross-tree-disabled');
   const dis = await page.locator('#ctx button:has-text("Compare")').getAttribute('disabled');
@@ -112,7 +116,64 @@ const log = (...a) => console.log('·', ...a);
   await page.keyboard.press('Escape');
   await page.waitForTimeout(500);
 
-  // 8. undo / redo
+  // 8. variables on a Call link (step:50 -> schedule): open checklist via the link menu, tick the return target
+  await focus('LLMEngine.step', 0.9);
+  const lid = await page.evaluate(() => { const st = Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.step'); return CB.S.links.find(l => l.a === st.id && l.l === 50).id; });
+  const mid = await page.evaluate(id => { const p = document.querySelector(`path.ehit[data-link="${id}"]`); const L = p.getTotalLength(), pt = p.getPointAtLength(L * 0.5), m = p.getScreenCTM(); return { x: pt.x * m.a + m.e, y: pt.y * m.d + m.f }; }, lid);
+  await page.mouse.move(mid.x, mid.y); await page.waitForTimeout(200);
+  await shot('13b-link-hover-plus');
+  await page.mouse.click(mid.x, mid.y, { button: 'right' });
+  await page.waitForTimeout(250);
+  await page.locator('#ctx button:has-text("Add Variables")').click();
+  await page.waitForTimeout(250);
+  const boxes = page.locator('#pop input[type=checkbox]');
+  log('variable candidates:', await boxes.count());
+  await boxes.nth(0).check(); await page.waitForTimeout(150);
+  await page.locator('#pop input[type=checkbox]').nth(1).check(); await page.waitForTimeout(150);
+  await shot('14-variables');
+  await page.keyboard.press('Escape');
+  await page.locator(`.vchips[data-link="${lid}"] .vchip[data-k]`).first().hover();
+  await shot('15-variable-hover');
+  await page.mouse.move(5, 450);
+
+  // 9. drag a call onto an existing card that is already in a flow -> refused; drag onto canvas -> new card there
+  const sched = card('Scheduler.schedule');
+  await focus('LLMEngine.step', 0.7);
+  const src = page.locator('.card', { has: page.locator('.chead .ctitle:text-is("LLMEngine.step")') }).first().locator('.src span.call:text-is("schedule")');
+  const sb = await src.boundingBox(), tb = await sched.locator('.chead').boundingBox();
+  await page.mouse.move(sb.x + 5, sb.y + 5); await page.mouse.down();
+  await page.mouse.move(sb.x + 60, sb.y + 80, { steps: 5 }); await page.mouse.move(tb.x + 100, tb.y + 10, { steps: 8 });
+  await shot('16-call-drag');
+  await page.mouse.up(); await page.waitForTimeout(200);
+  log('toast:', await page.locator('#toast').textContent());
+  await page.mouse.move(sb.x + 5, sb.y + 5); await page.mouse.down();
+  await page.mouse.move(sb.x + 500, sb.y + 40, { steps: 8 }); await page.mouse.up();
+  await page.waitForTimeout(800);
+  await shot('17-call-drop-canvas');
+  log('numbers now', (await page.$$eval('.card .chead .step', els => els.map(e => e.textContent))).join(' '));
+
+  // 10. section + plain link
+  await page.evaluate(() => { const ids = Object.values(CB.S.cards).filter(c => c.kind === 'text').map(c => c.id).slice(0, 2); CB.select(null); ids.forEach(i => CB.select(i, true)); });
+  await page.click('#zFit'); await page.waitForTimeout(500);
+  const t0 = page.locator('.card.text').first();
+  await t0.click({ button: 'right', position: { x: 10, y: 8 } });
+  await page.locator('#ctx button:has-text("Move to New Section")').click();
+  await page.waitForTimeout(150);
+  await page.keyboard.type('说明'); await page.keyboard.press('Enter');
+  const add = card('LLMEngine.add_request');
+  await add.locator('.chead .kind').click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Connect")').first().click();
+  await card('ModelRunner.run').locator('.chead .kind').click();
+  await page.waitForTimeout(300);
+  await shot('18-section-plain-link');
+
+  // 11. dark mode
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await focus('LLMEngine.step', 0.9);
+  await shot('19-dark');
+  await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
+
+  // 12. undo / redo
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+Shift+z');
   await page.click('#zFit');
