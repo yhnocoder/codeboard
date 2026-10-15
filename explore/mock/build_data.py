@@ -572,12 +572,24 @@ for sid, (f, node, cid) in func_nodes.items():
                 nested.add(x)
 
     def in_loop(n):
-        p = parent.get(n)
+        """syntax only: inside a for / while body (or while test) or a comprehension, in the same function"""
+        cur, p = n, parent.get(n)
         while p is not None and p is not node:
-            if isinstance(p, (ast.For, ast.While, ast.AsyncFor)):
+            if isinstance(p, (ast.For, ast.AsyncFor)) and cur is not p.iter and cur is not p.target:
                 return True
-            p = parent.get(p)
+            if isinstance(p, ast.While):
+                return True
+            if isinstance(p, (ast.ListComp, ast.SetComp, ast.DictComp, ast.GeneratorExp)):
+                first_iter = p.generators[0].iter if p.generators else None
+                if cur is not p.generators[0] or not _under(n, first_iter):
+                    return True
+            cur, p = p, parent.get(p)
         return False
+
+    def _under(n, root):
+        if root is None:
+            return False
+        return any(x is n for x in ast.walk(root))
 
     def assign_of(c):
         p, cur = parent.get(c), c

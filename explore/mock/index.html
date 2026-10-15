@@ -100,6 +100,10 @@ input, textarea { font: inherit; color: var(--ink); }
 .edge.retract { transition-duration: calc(var(--t) * 140ms); transition-timing-function: var(--in); }
 .edge.plain { stroke-dasharray: 4 4; stroke-dashoffset: 0; }
 .edge.hot { stroke: var(--accent); stroke-width: 1.6; }
+.edge.rubber { stroke: var(--accent); stroke-dasharray: 5 4; stroke-width: 1.5; }
+.board.linking, .board.linking * { cursor: alias !important; }
+.card.drop-cand { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--k-fn) 70%, transparent), var(--sh-card); }
+.card.drop-hot { box-shadow: 0 0 0 2.5px var(--k-fn), 0 0 0 6px var(--hi), var(--sh-card); }
 .ehit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; }
 .ahead { fill: none; stroke: var(--edge); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; transition: opacity calc(var(--t) * 120ms) linear; }
 .ahead.hot { stroke: var(--accent); }
@@ -161,7 +165,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .code { position: relative; padding: 6px 0 8px; font: 11px/20px var(--mono); min-width: max-content; }
 .gutter { position: absolute; left: 0; top: 0; bottom: 0; width: 58px; z-index: 2; pointer-events: none; }
 .gutter > * { pointer-events: auto; }
-.gutter::before { content: ""; position: absolute; inset: 0; background: var(--surface); z-index: -1; }
 .no { position: absolute; left: 16px; width: 34px; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: .65; }
 .no:hover { opacity: 1; color: var(--ink-2); }
 .no.link { color: var(--accent); opacity: 1; }
@@ -182,7 +185,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .src .l { height: 20px; }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .chrome .src .gap, .chrome .src .gap *, .chrome .src .inote, .chrome .src .inote * { user-select: none; -webkit-user-select: none; cursor: default; }
-.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); padding-left: 6px; margin-left: -58px; padding-left: 64px; }
+.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); padding-left: 8px; margin-right: 12px; border-radius: 3px; }
 .gap b { font-weight: 500; color: var(--ink-2); padding: 1px 5px; border-radius: 4px; }
 .gap b:hover { color: var(--accent); background: var(--row); }
 .inote { white-space: normal; font: 12px/1.55 var(--sys); color: var(--ink-2); background: var(--inote); box-shadow: inset 2px 0 0 var(--ink-3); margin: 2px 12px 4px -2px; padding: 5px 10px; border-radius: 0 5px 5px 0; max-width: 520px; }
@@ -209,8 +212,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .hw { position: absolute; top: 50%; width: 8px; height: 22px; margin-top: -11px; border-radius: 3px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); cursor: ew-resize !important; display: none; }
 .card.text.sel .hw { display: block; }
 .hw.l { left: -8px; } .hw.r { right: -8px; }
-.ttb { position: absolute; left: 0; top: -44px; display: none; }
-.card.text.sel:not(.editing) .ttb { display: flex; }
+.card.text .ttb { position: absolute; left: 0; top: -44px; display: none; }
+.card.text.sel:not(.editing) .ttb { display: inline-flex; }
 .card.note .nbody { padding: 10px 14px 12px; font-size: 13px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
 .card.note .nbody[contenteditable] { cursor: text !important; user-select: text !important; -webkit-user-select: text !important; }
 .card.note .chead .ctitle { font-family: var(--sys); }
@@ -413,7 +416,1866 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 </div>
 <script src="data.js"></script>
 <script>
-/* APP */
+'use strict';
+// =====================================================================
+// CodeBoard mock. Base: explore/ui-feel/board.html (springs, camera, drag, ctx menus, tips, present mode).
+// Data: window.NV from build_data.py (real nano-vllm @ bb823b3).
+// =====================================================================
+const NV = window.NV;
+const COMMIT = NV.commit;
+const LH = 20;
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const isMac = /Mac|iPhone|iPad/.test(navigator.platform || '');
+
+// ---------- symbols ----------
+const SYMS = NV.syms;
+const symsByFile = {};
+for (const [id, s] of Object.entries(SYMS)) (symsByFile[s.f] ||= []).push(id);
+function symAt(f, line) { // innermost symbol containing line
+  let best = null;
+  for (const id of symsByFile[f] || []) { const s = SYMS[id]; if (s.s <= line && line <= s.e && (!best || SYMS[best].e - SYMS[best].s > s.e - s.s)) best = id; }
+  return best;
+}
+function symAtDefLine(f, line) { return (symsByFile[f] || []).find(id => SYMS[id].dl === line) || null; }
+const glyph = k => k === 'c' ? 'C' : k === 'snip' ? '⋮' : 'ƒ';
+const shortPath = f => f;
+function docLines(f, s, e) { // docstring lines of every symbol inside [s, e]
+  const out = new Set();
+  for (const id of symsByFile[f] || []) { const d = SYMS[id].d; if (d && d[0] >= s && d[1] <= e) for (let l = d[0]; l <= d[1]; l++) out.add(l); }
+  return out;
+}
+
+// ---------- syntax highlight (one line, with call / identifier spans keyed by AST column) ----------
+const KW = new Set('def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await'.split(' '));
+const tripleCache = {};
+function tripleStates(f) {
+  if (tripleCache[f]) return tripleCache[f];
+  const st = []; let cur = '';
+  for (const line of NV.files[f]) {
+    st.push(cur);
+    let i = 0;
+    while (i < line.length) {
+      if (cur) { const j = line.indexOf(cur, i); if (j < 0) break; i = j + 3; cur = ''; continue; }
+      const c = line[i];
+      if (c === '#') break;
+      if (line.startsWith('"""', i) || line.startsWith("'''", i)) { cur = line.substr(i, 3); i += 3; continue; }
+      if (c === '"' || c === "'") { let j = i + 1; while (j < line.length && line[j] !== c) { if (line[j] === '\\') j++; j++; } i = j + 1; continue; }
+      i++;
+    }
+  }
+  return (tripleCache[f] = st);
+}
+const siteMap = (arr) => { const m = {}; for (const x of arr || []) m[x[0]] = x; return m; };
+function hlLine(f, n, marks) {
+  const line = NV.files[f][n - 1] ?? '';
+  const st = tripleStates(f)[n - 1];
+  const calls = siteMap(NV.calls[f]?.[n]), peeks = siteMap(NV.peek[f]?.[n]);
+  const mk = (s, a, b) => marks && marks.some(([m0, m1]) => a < m1 && b > m0) ? `<span class="wd">${s}</span>` : s;
+  let out = '', i = 0;
+  if (st) {
+    const j = line.indexOf(st), end = j < 0 ? line.length : j + 3;
+    out += `<span class="str">${esc(line.slice(0, end))}</span>`; i = end;
+    if (j < 0) return out;
+  }
+  const re = /(#.*$)|("""|''')|([rbfuRBFU]{0,2}"(?:[^"\\]|\\.)*"|[rbfuRBFU]{0,2}'(?:[^'\\]|\\.)*')|(\d[\d_.eE]*)|([A-Za-z_]\w*)|(@[\w.]+)|([^\sA-Za-z_\d"'#@]+)|(\s+)/g;
+  re.lastIndex = i; let m, prevKw = '';
+  while ((m = re.exec(line))) {
+    const [t, com, tri, str, num, id, dec, p] = m, a = m.index, b = a + t.length;
+    if (com) out += `<span class="com">${esc(t)}</span>`;
+    else if (tri) {
+      const j = line.indexOf(tri, b), end = j < 0 ? line.length : j + 3;
+      out += `<span class="str">${esc(line.slice(a, end))}</span>`; re.lastIndex = end; if (j < 0) break;
+    }
+    else if (str) out += mk(`<span class="str">${esc(t)}</span>`, a, b);
+    else if (num) out += mk(`<span class="num">${t}</span>`, a, b);
+    else if (id) {
+      const next = line.slice(b).trimStart()[0];
+      let cls = '', data = ` data-c0="${a}"`;
+      if (KW.has(id)) { out += mk(`<span class="kw">${id}</span>`, a, b); prevKw = id; continue; }
+      if (id === 'self' || id === 'cls') cls = 'self';
+      else if (prevKw === 'def' || prevKw === 'class') cls = 'fn';
+      else if (next === '(') cls = 'fn';
+      if (calls[a]) cls += ' call';
+      if (peeks[a] || calls[a]) cls += ' pk';
+      out += mk(`<span class="${cls.trim()}"${data}>${id}</span>`, a, b);
+    }
+    else if (dec) out += `<span class="dec">${esc(t)}</span>`;
+    else if (p) out += mk(`<span class="p">${esc(t)}</span>`, a, b);
+    else out += t;
+    if (!/^\s+$/.test(t)) prevKw = '';
+  }
+  return out;
+}
+
+// ---------- springs (from base) ----------
+let speed = 1;
+const reduce = matchMedia('(prefers-reduced-motion: reduce)');
+class Spring {
+  constructor(v, k = 170, c = 26, eps = 0.01) { this.v = v; this.t = v; this.vel = 0; this.k = k; this.c = c; this.eps = eps; }
+  step(dt) { const n = 4, h = dt / n; for (let i = 0; i < n; i++) { const f = -this.k * (this.v - this.t) - this.c * this.vel; this.vel += f * h; this.v += this.vel * h; } }
+  get done() { return Math.abs(this.v - this.t) < this.eps && Math.abs(this.vel) < this.eps * 10; }
+  set(v) { this.v = this.t = v; this.vel = 0; }
+}
+const anims = new Set();
+let last = 0, rafOn = false;
+function kick() { if (!rafOn) { rafOn = true; last = performance.now(); requestAnimationFrame(tick); } }
+function tick(now) {
+  const dt = Math.min(0.032, (now - last) / 1000) / speed; last = now;
+  for (const a of [...anims]) { let r = true; try { r = a(dt, reduce.matches); } catch (e) { console.error(e); } if (r) anims.delete(a); }
+  if (anims.size) requestAnimationFrame(tick); else rafOn = false;
+}
+function run(fn) { anims.add(fn); kick(); }
+
+// ---------- camera (from base) ----------
+const board = $('#board'), world = $('#world'), edgesSvg = $('#edges'), cardsL = $('#cardsL'), labelsL = $('#labels'), sectsL = $('#sects');
+const zoomEl = $('#zoom');
+const cam = { x: new Spring(0, 120, 22, 0.05), y: new Spring(0, 120, 22, 0.05), k: new Spring(1, 120, 22, 0.0005) };
+let camRunning = false, camGen = 0;
+function stopCam() { camGen++; camRunning = false; for (const s of [cam.x, cam.y, cam.k]) s.set(s.v); }
+function applyCam() {
+  world.style.transform = `translate(${cam.x.v}px, ${cam.y.v}px) scale(${cam.k.v})`;
+  zoomEl.textContent = Math.round(cam.k.v * 100) + '%';
+  repositionPops();
+}
+function camTo(x, y, k, soft) {
+  for (const s of [cam.x, cam.y, cam.k]) { s.k = soft ? 90 : 120; s.c = soft ? 20 : 22; }
+  cam.x.t = x; cam.y.t = y; cam.k.t = k;
+  if (camRunning) return; camRunning = true; const gen = camGen;
+  run((dt, instant) => {
+    if (gen !== camGen) return true;
+    for (const s of [cam.x, cam.y, cam.k]) instant ? s.set(s.t) : s.step(dt);
+    applyCam();
+    const done = cam.x.done && cam.y.done && cam.k.done;
+    if (done) { for (const s of [cam.x, cam.y, cam.k]) s.set(s.t); applyCam(); camRunning = false; }
+    return done;
+  });
+}
+function camSet(x, y, k) { if (camRunning) stopCam(); for (const [s, v] of [[cam.x, x], [cam.y, y], [cam.k, k]]) s.set(v); applyCam(); }
+const view = () => ({ w: board.clientWidth, h: board.clientHeight });
+const SAFE = { l: 32, r: 32, t: 64, b: 64 };
+function fitRect(r, maxK = 1) {
+  const { w, h } = view();
+  const k = clamp(Math.min(maxK, (w - SAFE.l - SAFE.r) / r.w, (h - SAFE.t - SAFE.b) / r.h), 0.2, 2);
+  return { k, x: SAFE.l + (w - SAFE.l - SAFE.r - r.w * k) / 2 - r.x * k, y: SAFE.t + Math.max(0, (h - SAFE.t - SAFE.b - r.h * k) / 2) - r.y * k };
+}
+const union = rs => { rs = rs.filter(Boolean); if (!rs.length) return { x: 0, y: 0, w: 400, h: 300 }; const x = Math.min(...rs.map(r => r.x)), y = Math.min(...rs.map(r => r.y)); return { x, y, w: Math.max(...rs.map(r => r.x + r.w)) - x, h: Math.max(...rs.map(r => r.y + r.h)) - y }; };
+function visibleRect(r) {
+  const { w, h } = view(), k = cam.k.t;
+  const sx = r.x * k + cam.x.t, sy = r.y * k + cam.y.t;
+  return sx >= SAFE.l && sy >= SAFE.t && sx + r.w * k <= w - SAFE.r && sy + r.h * k <= h - SAFE.b;
+}
+// client point -> world point
+function toWorld(cx, cy) { const r = board.getBoundingClientRect(); return { x: (cx - r.left - cam.x.v) / cam.k.v, y: (cy - r.top - cam.y.v) / cam.k.v }; }
+function rectW(el) { // element client rect -> world rect
+  const r = el.getBoundingClientRect(), b = board.getBoundingClientRect(), k = cam.k.v;
+  return { x: (r.left - b.left - cam.x.v) / k, y: (r.top - b.top - cam.y.v) / k, w: r.width / k, h: r.height / k };
+}
+function rectB(el) { const r = el.getBoundingClientRect(), b = board.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height }; }
+
+// ---------- toast (from base) ----------
+const toastEl = $('#toast'); let toastTimer;
+function toast(msg) {
+  const was = toastEl.classList.contains('show');
+  toastEl.textContent = msg; toastEl.classList.add('show');
+  if (was) { toastEl.classList.remove('bump'); void toastEl.offsetWidth; toastEl.classList.add('bump'); }
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => toastEl.classList.remove('show'), 2600 * speed);
+}
+
+// ---------- storage (never required) ----------
+const LSKEY = 'codeboard-mock-v1';
+function lsGet() { try { return window.localStorage.getItem(LSKEY); } catch (e) { return null; } }
+function lsSet(v) { try { window.localStorage.setItem(LSKEY, v); } catch (e) { /* storage unavailable: board still works */ } }
+function lsDel() { try { window.localStorage.removeItem(LSKEY); } catch (e) { } }
+
+// =====================================================================
+// State (everything here is serialisable: undo / autosave are JSON snapshots)
+// =====================================================================
+let S = null;
+const sel = new Set();
+let F = { parent: {}, kids: {}, roots: [], num: {}, tree: {}, order: {} };
+let hiddenIds = new Set();
+const nid = p => p + (S.seq++).toString(36);
+const symId = (f, q) => `${f}::${q}`;
+
+function codeCard(sid, extra) {
+  const s = SYMS[sid];
+  return Object.assign({ id: nid('c'), kind: 'code', sym: sid, f: s.f, s: s.s, e: s.e, title: s.q, sk: s.k === 'c' ? 'c' : 'f', desc: '',
+    x: 0, y: 0, w: 560, h: null, hid: [], tg: { com: false, doc: false, blank: false }, hl: [], notes: [], cmp: null, flow: false, sub: false, n: S.seq, sc: 0 }, extra || {});
+}
+function snippetCard(f, a, b, title) {
+  return { id: nid('c'), kind: 'code', sym: null, f, s: a, e: b, title, sk: 'snip', desc: '', x: 0, y: 0, w: 520, h: null, hid: [], tg: { com: false, doc: false, blank: false },
+    hl: [], notes: [], cmp: null, flow: false, sub: false, n: S.seq, sc: 0 };
+}
+function textCard(x, y, text = '', st = 'body', bg = false) { return { id: nid('t'), kind: 'text', text, st, bold: false, bg, x, y, w: bg ? 280 : 320, h: null, n: S.seq }; }
+const addCard = c => (S.cards[c.id] = c);
+function siteFor(f, l, sid) { return (NV.calls[f]?.[l] || []).find(x => x[2].includes(sid)) || null; }
+function addCall(a, l, b, c0) { const L = { id: nid('l'), t: 'call', a, l, c0, b, vars: [], label: '', n: S.seq }; S.links.push(L); return L; }
+function addPlain(a, b, label = '', l = null) { const L = { id: nid('l'), t: 'plain', a, b, l, label, n: S.seq }; S.links.push(L); return L; }
+
+function startState() {
+  S = { v: 1, name: 'nano-vllm · generate 主流程', seq: 1, cards: {}, links: [], sects: [], tidy: [] };
+  const E = 'engine/llm_engine.py';
+  const g = addCard(codeCard(symId(E, 'LLMEngine.generate'), { flow: true, w: 600 }));
+  g.hid = [[66, 68], [80, 83]];
+  g.desc = '入口：把所有 prompt 放进等待队列，然后反复 step，直到所有序列都结束。';
+  g.notes.push({ id: nid('n'), a: 73, b: 73, kind: 'text', text: '只要 waiting 或 running 里还有序列，就继续下一步。', always: false });
+  const a = addCard(codeCard(symId(E, 'LLMEngine.add_request'), { w: 520 }));
+  addCall(g.id, 70, a.id, siteFor(E, 70, a.sym)[0]);
+  const st = addCard(codeCard(symId(E, 'LLMEngine.step'), { w: 620 }));
+  addCall(g.id, 75, st.id, siteFor(E, 75, st.sym)[0]);
+  st.desc = '一步 = 调度 → 跑模型 → 收尾。prefill 和 decode 走的是同一条路。';
+  st.notes.push({ id: nid('n'), a: 52, b: 52, kind: 'text', text: '这里不是直接调 run：rank 0 先把 "run" 写进共享内存，其他 rank 的进程读到后一起执行。', always: true });
+  const t = addCard(textCard(0, -78, 'generate 主流程', 'title'));
+  t.w = 460;
+  const t2 = addCard(textCard(0, -38, '从 LLM.generate 一路点进去，看一个请求怎么被调度、跑模型、收尾。', 'body'));
+  t2.w = 560;
+  S.tidy = [g.id];
+}
+
+// ---------- flows: Call links form trees; numbering 1, 1.1, 1.2.1; A·/B· prefix when >1 tree ----------
+function computeFlows() {
+  const cards = S.cards, parent = {}, kids = {};
+  const isNode = id => cards[id] && cards[id].kind === 'code';
+  for (const L of S.links) {
+    if (L.t !== 'call' || !isNode(L.a) || !isNode(L.b) || L.a === L.b || parent[L.b]) continue;
+    let p = L.a, cyc = false;
+    while (p) { if (p === L.b) { cyc = true; break; } p = parent[p] && parent[p].a; }
+    if (cyc) continue;
+    parent[L.b] = L; (kids[L.a] ||= []).push(L);
+  }
+  for (const k in kids) kids[k].sort((x, y) => x.l - y.l || x.c0 - y.c0 || x.n - y.n);
+  const roots = Object.values(cards).filter(c => c.kind === 'code' && !parent[c.id] && (kids[c.id] || c.flow)).sort((a, b) => a.n - b.n).map(c => c.id);
+  const num = {}, tree = {}, order = {};
+  // root shows a letter (A, B…); its children are numbered from 1 (1, 2, 2.1 …); with >1 tree children get "A·"
+  roots.forEach((r, i) => {
+    const letter = String.fromCharCode(65 + i), pre = roots.length > 1 ? letter + '·' : '';
+    order[r] = [];
+    const walk = (id, label) => { num[id] = label ? pre + label : letter; tree[id] = r; order[r].push(id); (kids[id] || []).forEach((L, j) => walk(L.b, label ? label + '.' + (j + 1) : String(j + 1))); };
+    walk(r, '');
+  });
+  return { parent, kids, roots, num, tree, order };
+}
+function descendants(id) { const out = []; const walk = i => (F.kids[i] || []).forEach(L => { out.push(L.b); walk(L.b); }); walk(id); return out; }
+function computeHidden() {
+  const h = new Set();
+  for (const c of Object.values(S.cards)) if (c.kind === 'code' && c.sub) descendants(c.id).forEach(d => h.add(d));
+  for (const s of S.sects) if (s.col) s.ids.forEach(i => h.add(i));
+  // a compare card is hidden only if both columns are
+  for (const c of Object.values(S.cards)) if (c.kind === 'compare' && c.cols.every(i => h.has(i))) h.add(c.id);
+  return h;
+}
+const topId = id => { const c = S.cards[id]; return c && c.kind === 'code' && c.cmp ? c.cmp : id; };
+
+// ---------- undo / redo / autosave ----------
+const undoS = [], redoS = [];
+let saveTimer;
+const snapshot = () => JSON.stringify(S);
+function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => lsSet(snapshot()), 300); }
+function pushUndo(before) { undoS.push(before); if (undoS.length > 150) undoS.shift(); redoS.length = 0; updUndo(); }
+function mut(fn, opts = {}) {
+  const before = snapshot();
+  const r = fn();
+  if (r === false) return r;
+  pushUndo(before); save();
+  if (!opts.noRender) render();
+  return r;
+}
+function restore(json) { S = JSON.parse(json); for (const i of [...sel]) if (!S.cards[i]) sel.delete(i); closeAllPops(); render(); save(); }
+function undo() { if (!undoS.length) return toast('Nothing to undo'); exitWalk(true); redoS.push(snapshot()); restore(undoS.pop()); updUndo(); }
+function redo() { if (!redoS.length) return toast('Nothing to redo'); exitWalk(true); undoS.push(snapshot()); restore(redoS.pop()); updUndo(); }
+function updUndo() { $('#bUndo').disabled = !undoS.length; $('#bRedo').disabled = !redoS.length; }
+
+// =====================================================================
+// Rendering
+// =====================================================================
+const ICON_DOTS = '<svg class="ico" viewBox="0 0 16 16"><circle cx="4" cy="8" r=".6"/><circle cx="8" cy="8" r=".6"/><circle cx="12" cy="8" r=".6"/></svg>';
+function md(t) { // tiny markdown: **bold**, `code`, "- " bullets
+  return esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/^- /gm, '• ').replace(/^#{1,3} (.*)$/gm, '<b>$1</b>');
+}
+function countVisibleDesc(id) { return descendants(id).length; }
+
+function headHTML(c) {
+  const num = F.num[c.id], subN = c.sub ? countVisibleDesc(c.id) : 0;
+  return `<div class="chead">${num ? `<span class="step">${num}</span>` : ''}${subN ? `<button class="subc" data-act="expandsub" data-tip="Expand Subtree" data-kbd="">▸ ${subN}</button>` : ''}`
+    + `<span class="kind ${c.sk === 'c' ? 'c' : ''}">${glyph(c.sk)}</span><span class="ctitle">${esc(c.title)}</span>`
+    + `<span class="cpath" data-act="open" data-tip="Open in Editor" data-kbd="⏎">${shortPath(c.f)}:${c.s}</span>`
+    + `<button class="rev" data-act="commit" data-tip="Pinned commit" data-kbd="">${COMMIT} ▾</button>`
+    + `<button class="ib" data-act="menu" aria-label="Card Menu" data-tip="More Actions" data-kbd="">${ICON_DOTS}</button></div>`;
+}
+function rowsHTML(c) {
+  const f = c.f, always = c.notes.filter(n => n.kind === 'text' && n.always);
+  const doc = c.tg.doc ? docLines(f, c.s, c.e) : null;
+  let html = '', jump = false, l = c.s;
+  while (l <= c.e) {
+    const h = c.hid.find(([a, b]) => a <= l && l <= b);
+    if (h) {
+      const n = h[1] - h[0] + 1;
+      html += `<div class="gap" data-a="${h[0]}" data-b="${h[1]}">⋯ ${n} line${n > 1 ? 's' : ''} hidden (${h[0] === h[1] ? h[0] : h[0] + '–' + h[1]}) · <b data-act="showgap">Show</b></div>`;
+      l = h[1] + 1; jump = false; continue;
+    }
+    const t = NV.files[f][l - 1] ?? '';
+    if ((c.tg.blank && !t.trim()) || (c.tg.com && /^\s*#/.test(t)) || (doc && doc.has(l))) { jump = true; l++; continue; }
+    html += `<div class="l${jump ? ' j' : ''}" data-l="${l}">${t ? hlLine(f, l) : '<br>'}</div>`;
+    jump = false;
+    for (const n of always) if (n.b === l) html += `<div class="inote" data-note="${n.id}">${md(n.text)}</div>`;
+    l++;
+  }
+  return html;
+}
+function buildCode(c) {
+  const el = document.createElement('div');
+  el.className = 'card kcode' + (c.h ? '' : ' autoh'); el.dataset.id = c.id;
+  el.innerHTML = headHTML(c) + `<div class="cdesc">${esc(c.desc || '')}</div><div class="cbody"><div class="code"><div class="gutter"></div><div class="src">${rowsHTML(c)}</div></div></div><div class="grip"></div>`;
+  return el;
+}
+function layoutCode(el, c) {
+  const code = el.querySelector('.code'), src = code.querySelector('.src'), gut = code.querySelector('.gutter');
+  const origin = new Set(S.links.filter(L => L.t === 'call' && L.a === c.id).map(L => L.l));
+  const hl = new Set(c.hl), noteBy = {};
+  for (const n of c.notes) (noteBy[n.a] ||= []).push(n);
+  const tops = {};
+  let g = '', bg = '';
+  const st = src.offsetTop;
+  for (const row of src.children) {
+    if (!row.classList.contains('l')) continue;
+    const l = +row.dataset.l, top = st + row.offsetTop;
+    tops[l] = top;
+    g += `<span class="no${origin.has(l) ? ' link' : ''}${row.classList.contains('j') ? ' jump' : ''}" data-l="${l}" style="top:${top}px">${l}</span>`;
+    if (noteBy[l]) g += `<span class="mk" data-l="${l}" style="top:${top}px">${noteBy[l].length}</span>`;
+    if (hl.has(l)) bg += `<div class="rowbg hl" style="top:${top}px"></div>`;
+    if (origin.has(l)) bg += `<div class="rowbg origin" data-l="${l}" style="top:${top}px"></div>`;
+  }
+  for (const n of c.notes) if (n.b > n.a && tops[n.a] != null) {
+    const tb = tops[n.b] ?? tops[n.a];
+    g += `<span class="mkr" style="top:${tops[n.a] + 18}px;height:${Math.max(4, tb + 18 - tops[n.a] - 18)}px"></span>`;
+  }
+  if (lineSel && lineSel.id === c.id && tops[lineSel.a] != null) g += `<button class="addn" data-act="addnote" data-tip="Add Sidenote" data-kbd="S" style="top:${tops[lineSel.a]}px">+</button>`;
+  gut.innerHTML = g;
+  code.querySelectorAll('.rowbg').forEach(n => n.remove());
+  code.insertAdjacentHTML('afterbegin', bg);
+}
+function buildText(c) {
+  const el = document.createElement('div');
+  if (c.bg) {
+    el.className = 'card note' + (c.h ? '' : ' autoh'); el.dataset.id = c.id;
+    el.innerHTML = `<div class="chead"><span class="kind">¶</span><span class="ctitle">Note</span><span class="grow"></span><button class="ib" data-act="menu" aria-label="Note Menu" data-tip="More Actions" data-kbd="">${ICON_DOTS}</button></div><div class="nbody">${md(c.text)}</div><div class="grip"></div>`;
+  } else {
+    el.className = 'card text'; el.dataset.id = c.id;
+    el.innerHTML = `<div class="tx st-${c.st}${c.bold ? ' bold' : ''}" data-ph="Type something…">${md(c.text)}</div><span class="hw l" data-act="tw" data-side="l"></span><span class="hw r" data-act="tw" data-side="r"></span>`
+      + `<div class="ttb pill"><button class="tbtn${c.st === 'title' ? ' on' : ''}" data-act="tst" data-v="title">Title</button><button class="tbtn${c.st === 'heading' ? ' on' : ''}" data-act="tst" data-v="heading">Heading</button><button class="tbtn${c.st === 'body' ? ' on' : ''}" data-act="tst" data-v="body">Body</button><span class="sep"></span><button class="tbtn${c.bold ? ' on' : ''}" data-act="tbold" style="font-weight:700">B</button><span class="sep"></span><button class="tbtn" data-act="tbg">Show Background</button></div>`;
+  }
+  return el;
+}
+function place(el, c) {
+  el.style.left = c.x + 'px'; el.style.top = c.y + 'px'; el.style.width = c.w + 'px';
+  el.style.height = c.h ? c.h + 'px' : '';
+}
+const cardEl = id => cardsL.querySelector(`.card[data-id="${id}"]`);
+
+function render() {
+  F = computeFlows();
+  hiddenIds = computeHidden();
+  cardsL.textContent = ''; labelsL.textContent = ''; edgesSvg.textContent = ''; sectsL.textContent = '';
+  edgeEls = {};
+  const list = Object.values(S.cards).sort((a, b) => a.n - b.n);
+  const built = [];
+  for (const c of list) {
+    if (c.kind === 'code' && c.cmp) continue;
+    if (hiddenIds.has(c.id)) continue;
+    const el = c.kind === 'code' ? buildCode(c) : c.kind === 'compare' ? buildCompare(c) : buildText(c);
+    place(el, c); cardsL.appendChild(el); built.push([el, c]);
+  }
+  for (const [el, c] of built) {
+    if (c.kind === 'code') layoutCode(el, c);
+    const body = el.querySelector('.cbody');
+    if (body) {
+      if (c.sc) body.scrollTop = c.sc;
+      body.addEventListener('scroll', () => { c.sc = body.scrollTop; redrawEdges(); hideSnpopSoon(); }, { passive: true });
+    }
+  }
+  if (S.tidy && S.tidy.length) { const t = S.tidy; S.tidy = []; t.forEach(id => tidyTree(id, false)); return render(); }
+  renderSections();
+  renderEdges();
+  applySel();
+  applyWalk();
+}
+
+// ---------- Compare card: the two real cards glued side by side as two columns ----------
+const normLine = s => s.trim().replace(/\s+/g, ' ');
+function lcs(a, b, eq = (x, y) => x === y) {
+  const n = a.length, m = b.length, dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) dp[i][j] = eq(a[i], b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+  const ops = []; let i = 0, j = 0;
+  while (i < n && j < m) { if (eq(a[i], b[j])) { ops.push(['=', i++, j++]); } else if (dp[i + 1][j] >= dp[i][j + 1]) ops.push(['-', i++]); else ops.push(['+', j++]); }
+  while (i < n) ops.push(['-', i++]); while (j < m) ops.push(['+', j++]);
+  return ops;
+}
+function wordMarks(sa, sb) {
+  const tok = s => { const out = [], re = /\w+|[^\w\s]+/g; let m; while ((m = re.exec(s))) out.push([m[0], m.index, m.index + m[0].length]); return out; };
+  const ta = tok(sa), tb = tok(sb);
+  const ops = lcs(ta.map(t => t[0]), tb.map(t => t[0]));
+  const ma = [], mb = [];
+  for (const o of ops) { if (o[0] === '-') ma.push([ta[o[1]][1], ta[o[1]][2]]); if (o[0] === '+') mb.push([tb[o[1]][1], tb[o[1]][2]]); }
+  return [ma, mb];
+}
+function alignCards(A, B) {
+  const la = [], lb = [];
+  for (let l = A.s; l <= A.e; l++) la.push(l);
+  for (let l = B.s; l <= B.e; l++) lb.push(l);
+  const na = la.map(l => normLine(NV.files[A.f][l - 1])), nb = lb.map(l => normLine(NV.files[B.f][l - 1]));
+  const ops = lcs(na, nb);
+  const rows = []; let dels = [], adds = [];
+  const flush = () => {
+    const k = Math.min(dels.length, adds.length);
+    for (let i = 0; i < k; i++) {
+      const a = la[dels[i]], b = lb[adds[i]];
+      const [ma, mb] = wordMarks(NV.files[A.f][a - 1], NV.files[B.f][b - 1]);
+      rows.push({ t: 'chg', a, b, ma, mb });
+    }
+    for (let i = k; i < dels.length; i++) rows.push({ t: 'del', a: la[dels[i]], b: null });
+    for (let i = k; i < adds.length; i++) rows.push({ t: 'add', a: null, b: lb[adds[i]] });
+    dels = []; adds = [];
+  };
+  for (const o of ops) {
+    if (o[0] === '=') { flush(); rows.push({ t: 'same', a: la[o[1]], b: lb[o[2]] }); }
+    else if (o[0] === '-') dels.push(o[1]); else adds.push(o[1]);
+  }
+  flush();
+  return rows;
+}
+function colHead(card) {
+  const num = F.num[card.id];
+  return `<div data-col="${card.id}">${num ? `<span class="step">${num}</span>` : ''}<span class="kind ${card.sk === 'c' ? 'c' : ''}">${glyph(card.sk)}</span><span class="ctitle">${esc(card.title)}</span>`
+    + `<span class="cpath" data-act="open" data-col-open="${card.id}" data-tip="Open in Editor" data-kbd="⏎">${card.f}:${card.s}</span><span class="grow"></span><button class="rev" data-act="commit" data-cid="${card.id}">${COMMIT} ▾</button></div>`;
+}
+function buildCompare(c) {
+  const A = S.cards[c.cols[0]], B = S.cards[c.cols[1]];
+  const rows = alignCards(A, B);
+  const nSame = rows.filter(r => r.t === 'same').length, nChg = rows.length - nSame;
+  const cell = (card, l, marks) => l == null ? `<div class="cl void" data-col="${card.id}"></div>`
+    : `<div class="cl" data-col="${card.id}"><span class="cno">${l}</span><span class="l" data-col="${card.id}" data-l="${l}">${hlLine(card.f, l, marks)}</span></div>`;
+  let body = '';
+  const sameRun = i => { let j = i; while (j < rows.length && rows[j].t === 'same') j++; return j - i; };
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (c.same && r.t === 'same') { const n = sameRun(i); if (n >= 2) { body += `<div class="cgap">⋯ ${n} same lines</div>`; i += n - 1; continue; } }
+    if (!c.uni) body += `<div class="crow ${r.t}">${cell(A, r.a, r.ma)}${cell(B, r.b, r.mb)}</div>`;
+    else if (r.t === 'same') body += `<div class="urow"><span class="cno">${r.a}</span><span class="cno">${r.b}</span><span class="sg"></span><span class="l" data-col="${A.id}" data-l="${r.a}" data-colb="${B.id}" data-lb="${r.b}">${hlLine(A.f, r.a)}</span></div>`;
+    else {
+      if (r.a != null) body += `<div class="urow del"><span class="cno">${r.a}</span><span class="cno"></span><span class="sg">−</span><span class="l" data-col="${A.id}" data-l="${r.a}">${hlLine(A.f, r.a, r.ma)}</span></div>`;
+      if (r.b != null) body += `<div class="urow add"><span class="cno"></span><span class="cno">${r.b}</span><span class="sg">+</span><span class="l" data-col="${B.id}" data-l="${r.b}">${hlLine(B.f, r.b, r.mb)}</span></div>`;
+    }
+  }
+  const el = document.createElement('div');
+  el.className = 'card cmp' + (c.h ? '' : ' autoh'); el.dataset.id = c.id;
+  const nm = x => x.title.split('.').pop();
+  el.innerHTML = `<div class="chead"><span class="kind">⇆</span><span class="ctitle">Compare · ${esc(nm(A))} ↔ ${esc(nm(B))}</span><span class="grow"></span>`
+    + `<span class="tools"><button class="seg2" data-act="cswap">Swap</button><button class="seg2${c.uni ? ' on' : ''}" data-act="cuni">Unified</button><button class="seg2${c.same ? ' on' : ''}" data-act="csame">Hide Same Lines</button></span>`
+    + `<button class="ib" data-act="menu" aria-label="Compare Menu" data-tip="More Actions" data-kbd="">${ICON_DOTS}</button></div>`
+    + `<div class="colh">${colHead(A)}${colHead(B)}</div>`
+    + `<div class="cbody"><div class="crows" style="--cw:${Math.round((c.w - 2) / 2)}px">${body}</div></div>`
+    + `<div class="cfoot"><span><i style="background:var(--chg)"></i>changed</span><span><i style="background-image:repeating-linear-gradient(135deg,var(--ink-3) 0 1px,transparent 1px 3px)"></i>no matching line</span><span class="grow"></span><span>${nSame} same · ${nChg} changed</span></div><div class="grip"></div>`;
+  return el;
+}
+
+// ---------- sections ----------
+function sectMembers(s) { return [...new Set(s.ids.filter(i => S.cards[i]).map(topId))]; }
+function sectRect(s) {
+  const rs = [];
+  for (const id of sectMembers(s)) { const c = S.cards[id], el = cardEl(id); if (c && el) rs.push({ x: c.x, y: c.y, w: el.offsetWidth, h: el.offsetHeight }); }
+  if (!rs.length) return null;
+  const u = union(rs);
+  return { x: u.x - 22, y: u.y - 30, w: u.w + 44, h: u.h + 52 };
+}
+function renderSections() {
+  for (const s of S.sects) {
+    const el = document.createElement('div');
+    el.className = 'sect' + (s.col ? ' collapsed' : ''); el.dataset.sect = s.id;
+    const n = sectMembers(s).length;
+    el.innerHTML = s.col
+      ? `<div class="slabel" data-sect="${s.id}"><button class="chev2" data-act="scol" aria-label="Expand Section">▸</button><span class="sname">${esc(s.name)}</span><span style="color:var(--ink-3);font-weight:400">&nbsp;· ${n} card${n === 1 ? '' : 's'}</span></div>`
+      : `<div class="slabel" data-sect="${s.id}"><span class="dots">⋮⋮</span><span class="sname">${esc(s.name)}</span><button class="chev2" data-act="scol" aria-label="Collapse Section">▾</button></div>`;
+    sectsL.appendChild(el);
+    if (s.col) { el.style.left = s.cx + 'px'; el.style.top = s.cy + 'px'; el.style.zIndex = 4; cardsL.appendChild(el); }
+  }
+  updateSections();
+}
+function updateSections() {
+  for (const s of S.sects) {
+    if (s.col) continue;
+    const el = sectsL.querySelector(`.sect[data-sect="${s.id}"]`); if (!el) continue;
+    const r = sectRect(s);
+    if (!r) { el.style.display = 'none'; continue; }
+    el.style.display = ''; el.style.left = r.x + 'px'; el.style.top = r.y + 'px'; el.style.width = r.w + 'px'; el.style.height = r.h + 'px';
+    s.cx = r.x; s.cy = r.y;
+  }
+}
+const sectOf = id => S.sects.find(s => s.ids.includes(id));
+
+// ---------- edges ----------
+let edgeEls = {};
+const svgEl = (tag, cls) => { const n = document.createElementNS('http://www.w3.org/2000/svg', tag); n.setAttribute('class', cls); return n; };
+function collapsedPill(id) {
+  const s = S.sects.find(x => x.col && x.ids.includes(id));
+  return s ? cardsL.querySelector(`.sect[data-sect="${s.id}"] .slabel`) : null;
+}
+function subHidden(id) { for (const c of Object.values(S.cards)) if (c.kind === 'code' && c.sub && descendants(c.id).includes(id)) return true; return false; }
+function anchorHead(id) {
+  const pill = collapsedPill(id); if (pill) { const r = rectW(pill); return { x: r.x, y: r.y + r.h / 2, r }; }
+  const c = S.cards[id], el = cardEl(topId(id)); if (!el) return null;
+  if (c.cmp) { const h = el.querySelector(`.colh [data-col="${id}"]`); if (h) { const r = rectW(h); return { x: r.x, y: r.y + r.h / 2, r: rectW(el) }; } }
+  const r = rectW(el), hd = el.querySelector('.chead');
+  return { x: r.x, y: hd ? r.y + hd.offsetHeight / 2 : r.y + Math.min(r.h / 2, 18), r };
+}
+function anchorLine(id, line) {
+  const pill = collapsedPill(id); if (pill) { const r = rectW(pill); return { x: r.x + r.w, y: r.y + r.h / 2, r }; }
+  const c = S.cards[id], el = cardEl(topId(id)); if (!el) return null;
+  const body = el.querySelector('.cbody'), br = rectW(body), cr = rectW(el);
+  let row, x = cr.x;
+  if (c.cmp) {
+    row = el.querySelector(`.l[data-col="${id}"][data-l="${line}"], .l[data-colb="${id}"][data-lb="${line}"]`);
+    if (row) { const cl = row.closest('.cl'); if (cl) x = rectW(cl).x; }
+    else { const h = el.querySelector(`.colh [data-col="${id}"]`); if (h) { const r = rectW(h); return { x: r.x, y: r.y + r.h / 2, r: cr }; } }
+  } else {
+    row = el.querySelector(`.src .l[data-l="${line}"]`);
+    if (!row) row = [...el.querySelectorAll('.src .gap')].find(g => +g.dataset.a <= line && line <= +g.dataset.b);
+    if (!row) row = [...el.querySelectorAll('.src .l')].filter(r => +r.dataset.l < line).pop();
+  }
+  if (!row) return { x, y: br.y + 10, r: cr };
+  const rr = rectW(row);
+  return { x, y: clamp(rr.y + Math.min(rr.h, 20) / 2, br.y + 4, br.y + br.h - 4), r: cr };
+}
+function renderEdges() {
+  for (const L of S.links) {
+    if (!S.cards[L.a] || !S.cards[L.b]) continue;
+    if (subHidden(L.a) || subHidden(L.b)) continue;
+    const sa = collapsedPill(L.a), sb = collapsedPill(L.b);
+    if (sa && sa === sb) continue;
+    const g = { L };
+    g.path = svgEl('path', 'edge' + (L.t === 'plain' ? ' plain' : ''));
+    g.hit = svgEl('path', 'ehit'); g.hit.dataset.link = L.id;
+    edgesSvg.append(g.path);
+    if (L.t === 'call') {
+      g.path.setAttribute('pathLength', '1');
+      g.head = svgEl('path', 'ahead'); g.port = svgEl('circle', 'port'); g.port.setAttribute('r', '3');
+      edgesSvg.append(g.head, g.port);
+      const site = siteOfLink(L);
+      g.loop = site && site[4];
+      if ((L.vars && L.vars.length) || g.loop) { g.chips = document.createElement('div'); g.chips.className = 'vchips'; g.chips.dataset.link = L.id; g.chips.innerHTML = chipsHTML(L, g.loop); labelsL.appendChild(g.chips); }
+    } else if (L.label) {
+      g.lab = document.createElement('div'); g.lab.className = 'elabel user'; g.lab.dataset.link = L.id; g.lab.textContent = L.label; labelsL.appendChild(g.lab);
+    }
+    edgesSvg.append(g.hit);
+    edgeEls[L.id] = g;
+    drawEdge(L.id);
+  }
+}
+function siteOfLink(L) { const A = S.cards[L.a]; if (!A || A.kind !== 'code') return null; return (NV.calls[A.f]?.[L.l] || []).find(x => x[0] === L.c0) || null; }
+function varList(L) { // candidate variables of a call link, syntax-inferred
+  const site = siteOfLink(L); const out = [];
+  if (site && site[2].length === 1 && S.cards[L.b] && S.cards[L.b].sym === site[2][0]) {
+    for (const a of site[3].a || []) out.push({ k: `a:${a[0]}:${a[1]}`, label: a[0] === a[1] ? a[0] : `${a[0]} → ${a[1]}`, arg: a, param: a[1] });
+    if (site[3].r) out.push({ k: 'r', label: `→ ${site[3].r}`, ret: site[3].r });
+  }
+  return out;
+}
+function chipsHTML(L, loop) {
+  const all = varList(L), byK = Object.fromEntries(all.map(v => [v.k, v]));
+  const vs = (L.vars || []).map(k => byK[k] || (k.startsWith('x:') ? { k, label: k.slice(2) } : null)).filter(Boolean);
+  const shown = vs.slice(0, 3), more = vs.length - shown.length;
+  return (loop ? '<span class="vchip loop" title="Called inside a loop">↺</span>' : '')
+    + shown.map(v => `<span class="vchip" data-k="${esc(v.k)}">${esc(v.label)}</span>`).join('')
+    + (more > 0 ? `<span class="vchip" data-more="1" title="${esc(vs.slice(3).map(v => v.label).join(', '))}">+${more}</span>` : '');
+}
+function plainGeom(ra, rb, la) {
+  const ca = { x: ra.x + ra.w / 2, y: ra.y + ra.h / 2 }, cb = { x: rb.x + rb.w / 2, y: rb.y + rb.h / 2 };
+  let x1, y1, x2, y2, h = true;
+  if (la) { // from a specific line: leave from the card's right (or left) edge at that line
+    y1 = la.y; if (cb.x >= ca.x) { x1 = ra.x + ra.w; x2 = rb.x; } else { x1 = ra.x; x2 = rb.x + rb.w; } y2 = clamp(y1, rb.y + 18, rb.y + rb.h - 18);
+    if (rb.y > y1 + 60 || rb.y + rb.h < y1 - 60) y2 = rb.y + Math.min(rb.h / 2, 18);
+  } else if (rb.x > ra.x + ra.w + 16) { x1 = ra.x + ra.w; y1 = ca.y; x2 = rb.x; y2 = cb.y; }
+  else if (rb.x + rb.w < ra.x - 16) { x1 = ra.x; y1 = ca.y; x2 = rb.x + rb.w; y2 = cb.y; }
+  else if (rb.y > ra.y + ra.h) { h = false; x1 = ca.x; y1 = ra.y + ra.h; x2 = cb.x; y2 = rb.y; }
+  else { h = false; x1 = ca.x; y1 = ra.y; x2 = cb.x; y2 = rb.y + rb.h; }
+  if (la || h) { const dx = Math.max(30, Math.abs(x2 - x1) * 0.45) * Math.sign(x2 - x1 || 1); return { x1, y1, x2, y2, d: `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}` }; }
+  const dy = Math.max(30, Math.abs(y2 - y1) * 0.45) * Math.sign(y2 - y1 || 1);
+  return { x1, y1, x2, y2, d: `M${x1} ${y1} C${x1} ${y1 + dy} ${x2} ${y2 - dy} ${x2} ${y2}` };
+}
+function drawEdge(id) {
+  const g = edgeEls[id]; if (!g) return;
+  const L = g.L;
+  let d, mx, my;
+  if (L.t === 'call') {
+    const p1 = anchorLine(L.a, L.l), p2 = anchorHead(L.b);
+    if (!p1 || !p2) { g.path.style.display = 'none'; return; }
+    const x1 = p1.x, y1 = p1.y, x2 = p2.x - 6, y2 = p2.y;
+    const dx = clamp(Math.abs(y2 - y1) * 0.3 + Math.max(0, x1 - x2) * 0.6, 28, 130);
+    d = `M${x1} ${y1} C${x1 - dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
+    mx = (x1 + 3 * (x1 - dx) + 3 * (x2 - dx) + x2) / 8; my = (y1 + y2) / 2;
+    g.head.setAttribute('d', `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`);
+    g.port.setAttribute('cx', x1); g.port.setAttribute('cy', y1);
+  } else {
+    const ea = collapsedPill(L.a) || cardEl(topId(L.a)), eb = collapsedPill(L.b) || cardEl(topId(L.b));
+    if (!ea || !eb) { g.path.style.display = 'none'; return; }
+    const la = L.l && !collapsedPill(L.a) ? anchorLine(L.a, L.l) : null;
+    const pg = plainGeom(rectW(ea), rectW(eb), la);
+    d = pg.d; mx = (pg.x1 + pg.x2) / 2; my = (pg.y1 + pg.y2) / 2;
+  }
+  g.path.style.display = ''; g.path.setAttribute('d', d); g.hit.setAttribute('d', d);
+  g.mx = mx; g.my = my;
+  for (const lab of [g.chips, g.lab]) if (lab) { lab.style.left = mx + 'px'; lab.style.top = my + 'px'; }
+  if (vplusFor === id) placeVplus();
+}
+function redrawEdges() { for (const id in edgeEls) drawEdge(id); }
+
+// ---------- tidy layout (only on demand, only that tree) ----------
+function tidyTree(rootId, animate) {
+  const F2 = computeFlows();
+  const hgt = id => { const el = cardEl(topId(id)); return el ? el.offsetHeight : 300; };
+  const placed = new Set([topId(rootId)]);
+  const root = S.cards[topId(rootId)];
+  let cursor = root.y + hgt(rootId) + 28;
+  const walk = (id) => {
+    const px = S.cards[topId(id)].x;
+    for (const L of F2.kids[id] || []) {
+      const cid = L.b, tid = topId(cid);
+      if (hiddenIds.has(cid) || placed.has(tid)) { walk(cid); continue; }
+      const c = S.cards[tid];
+      c.x = px + 44; c.y = cursor; placed.add(tid); cursor += hgt(cid) + 28;
+      walk(cid);
+    }
+  };
+  walk(rootId);
+  if (animate) {
+    world.classList.add('tidying');
+    for (const id of placed) { const el = cardEl(id); if (el) place(el, S.cards[id]); }
+    const t0 = performance.now();
+    run(() => { redrawEdges(); updateSections(); if (performance.now() - t0 > 420 * speed) { world.classList.remove('tidying'); render(); return true; } return false; });
+  }
+}
+
+// =====================================================================
+// Selection
+// =====================================================================
+function applySel() {
+  for (const el of cardsL.querySelectorAll('.card')) el.classList.toggle('sel', sel.has(el.dataset.id));
+  for (const el of $$('.sect', world)) el.classList.toggle('sel', sel.has(el.dataset.sect));
+}
+function select(id, add) {
+  if (!add) sel.clear();
+  if (id) { if (add && sel.has(id)) sel.delete(id); else sel.add(id); }
+  applySel();
+}
+function selectAll() { sel.clear(); for (const el of cardsL.querySelectorAll('.card')) sel.add(el.dataset.id); applySel(); }
+const selCards = () => [...sel].map(i => S.cards[i]).filter(Boolean);
+
+// line selection inside a code card (drives the dashed "+", S, H and the line menu)
+let lineSel = null;
+function setLineSel(ls) {
+  const prev = lineSel;
+  lineSel = ls;
+  for (const id of new Set([prev && prev.id, ls && ls.id])) { if (!id) continue; const c = S.cards[id], el = cardEl(id); if (c && el && c.kind === 'code' && !c.cmp) layoutCode(el, c); }
+}
+document.addEventListener('selectionchange', () => {
+  const s = getSelection();
+  if (!s.rangeCount || s.isCollapsed) { if (lineSel) setLineSel(null); return; }
+  const r = s.getRangeAt(0);
+  const el = n => n && (n.nodeType === 1 ? n : n.parentElement);
+  const a = el(r.startContainer)?.closest('.src'), b = el(r.endContainer)?.closest('.src');
+  if (!a || a !== b) { if (lineSel) setLineSel(null); return; }
+  const card = a.closest('.card');
+  let rows = [...a.querySelectorAll('.l')].filter(row => s.containsNode(row, true));
+  if (rows.length > 1) { const lastRow = rows[rows.length - 1]; if (r.endContainer === lastRow && r.endOffset === 0) rows.pop(); }
+  if (!rows.length) return;
+  const ls = { id: card.dataset.id, a: +rows[0].dataset.l, b: +rows[rows.length - 1].dataset.l };
+  if (!lineSel || lineSel.id !== ls.id || lineSel.a !== ls.a || lineSel.b !== ls.b) setLineSel(ls);
+});
+function selectRows(id, a, b) {
+  const el = cardEl(id); if (!el) return;
+  const rows = [...el.querySelectorAll('.src .l')].filter(r => +r.dataset.l >= a && +r.dataset.l <= b);
+  if (!rows.length) return;
+  const r = document.createRange(); r.setStart(rows[0], 0); r.setEnd(rows[rows.length - 1], rows[rows.length - 1].childNodes.length);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+
+// =====================================================================
+// Expand: click a call -> callee card + Call link from that exact line
+// =====================================================================
+function colCardId(node) { const col = node.closest('[data-col]'); return col ? col.dataset.col : node.closest('.card').dataset.id; }
+function onCallClick(span) {
+  const cid = colCardId(span), c = S.cards[cid]; if (!c) return;
+  const line = +span.closest('.l').dataset.l, c0 = +span.dataset.c0;
+  const site = (NV.calls[c.f]?.[line] || []).find(x => x[0] === c0); if (!site) return;
+  hidePeek(true);
+  if (site[2].length > 1) return showPicker(span, cid, line, site);
+  expandTo(cid, line, c0, site[2][0]);
+}
+function placeChild(nc, parentId) {
+  const P = S.cards[topId(parentId)], pe = cardEl(P.id);
+  let bottom = P.y + (pe ? pe.offsetHeight : 300);
+  for (const d of descendants(parentId)) { const t = topId(d), el = cardEl(t); if (el && S.cards[t]) bottom = Math.max(bottom, S.cards[t].y + el.offsetHeight); }
+  nc.x = P.x + 44; nc.y = bottom + 28;
+  const lines = nc.e - nc.s + 1, estH = Math.min(500, lines * 20 + 60);
+  for (let k = 0; k < 40; k++) {
+    let hit = null;
+    for (const el of cardsL.querySelectorAll('.card')) {
+      const c = S.cards[el.dataset.id]; if (!c) continue;
+      const r = { x: c.x, y: c.y, w: el.offsetWidth, h: el.offsetHeight };
+      if (nc.x < r.x + r.w && nc.x + nc.w > r.x && nc.y < r.y + r.h + 20 && nc.y + estH > r.y - 20) { hit = r; break; }
+    }
+    if (!hit) break;
+    nc.y = hit.y + hit.h + 28;
+  }
+}
+function revealCard(id, ping = true) {
+  const el = cardEl(topId(id)); if (!el) return;
+  const c = S.cards[topId(id)], r = { x: c.x, y: c.y, w: el.offsetWidth, h: el.offsetHeight };
+  if (!visibleRect(r)) { const f = fitRect(r, Math.max(cam.k.t, 0.6)); camTo(f.x, f.y, Math.min(f.k, Math.max(cam.k.t, .6))); }
+  if (ping) { el.classList.remove('ping'); void el.offsetWidth; el.classList.add('ping'); }
+}
+function expandTo(cid, line, c0, sid, at) { // clicking a call ALWAYS creates a new card
+  let nc;
+  mut(() => { const P = S.cards[cid]; P.sub = false; nc = addCard(codeCard(sid)); if (at) { nc.x = at.x; nc.y = at.y; } else placeChild(nc, cid); addCall(cid, line, nc.id, c0); });
+  animateExpand(nc.id, cid, line);
+}
+// link a call line to a card that is already on the board (one incoming Call link per card)
+function linkExisting(cid, line, c0, tid) {
+  const T = S.cards[tid];
+  if (!T || T.kind !== 'code') return toast('Only code cards can be the target of a Call link.');
+  if (tid === cid) return toast('A card cannot call itself.');
+  if (F.num[tid] || F.parent[tid]) return toast('Already in a flow. Duplicate it first.');
+  let anc = cid; while (anc) { if (anc === tid) return toast('Already in a flow. Duplicate it first.'); anc = F.parent[anc] && F.parent[anc].a; }
+  mut(() => { S.cards[cid].sub = false; addCall(cid, line, tid, c0); });
+  toast(`Linked to ${T.title}`);
+  const el = cardEl(topId(tid)); if (el) { el.classList.remove('ping'); void el.offsetWidth; el.classList.add('ping'); }
+}
+function calleeMatches(c, site) { // does card c show the callee of this call site?
+  if (c.kind !== 'code') return false;
+  return site[2].some(sid => c.sym === sid || (SYMS[sid].f === c.f && SYMS[sid].dl >= c.s && SYMS[sid].dl <= c.e));
+}
+function linkExistingMenu(span, x, y) {
+  const cid = colCardId(span), c = S.cards[cid], line = +span.closest('.l').dataset.l, c0 = +span.dataset.c0;
+  const site = (NV.calls[c.f]?.[line] || []).find(q => q[0] === c0); if (!site) return;
+  const cands = Object.values(S.cards).filter(k => k.id !== cid && calleeMatches(k, site));
+  const items = [{ head: `Link ${span.textContent}() to Existing Card` }];
+  if (!cands.length) items.push({ label: 'No card for this function on the board', disabled: true, why: 'Drag the call onto any code card to link it' });
+  for (const k of cands) { const n = F.num[k.id]; items.push({ label: `${n ? n + '  ' : ''}${k.title}`, kbd: `${k.f}:${k.s}`, disabled: !!n, why: n ? 'Already in a flow. Duplicate it first.' : '', act: () => linkExisting(cid, line, c0, k.id) }); }
+  openCtx(items, x, y);
+}
+function callMenu(span, x, y) {
+  const cid = colCardId(span), c = S.cards[cid], line = +span.closest('.l').dataset.l;
+  openCtx([{ head: `${span.textContent}()  ·  line ${line}` },
+    { label: 'Expand', kbd: 'Click', act: () => onCallClick(span) },
+    { label: 'Link to Existing Card…', kbd: 'Drag', act: () => { const r = rectB(span); setTimeout(() => linkExistingMenu(span, r.x, r.y + r.h + 4), 0); } },
+    null, ...lineMenu(cid, line, line).slice(1)], x, y);
+}
+// drag a call's dotted underline out: rubber-band Call link; drop on a card = link, on canvas = new card there
+let callDrag = null, swallowClick = false;
+function callDragStart(span, ev) {
+  const cid = colCardId(span), c = S.cards[cid], line = +span.closest('.l').dataset.l, c0 = +span.dataset.c0;
+  const site = (NV.calls[c.f]?.[line] || []).find(q => q[0] === c0); if (!site) return;
+  callDrag = { span, cid, line, c0, site, sx: ev.clientX, sy: ev.clientY, on: false, path: null, hot: null };
+  board.setPointerCapture(ev.pointerId);
+}
+function callDragMove(ev) {
+  const d = callDrag;
+  if (!d.on) {
+    if (Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 6) return;
+    d.on = true; hidePeek(true); getSelection().removeAllRanges();
+    d.path = svgEl('path', 'edge rubber'); edgesSvg.appendChild(d.path);
+    for (const el of cardsL.querySelectorAll('.card')) { const k = S.cards[el.dataset.id]; const ok = k && (calleeMatches(k, d.site) || (k.kind === 'compare' && k.cols.some(x => calleeMatches(S.cards[x], d.site)))); if (ok && el.dataset.id !== topId(d.cid)) el.classList.add('drop-cand'); }
+    board.classList.add('linking');
+  }
+  const p1 = anchorLine(d.cid, d.line), w = toWorld(ev.clientX, ev.clientY);
+  const dx = clamp(Math.abs(w.y - p1.y) * 0.3 + Math.max(0, p1.x - w.x) * 0.6, 28, 130);
+  d.path.setAttribute('d', `M${p1.x} ${p1.y} C${p1.x - dx} ${p1.y} ${w.x - dx} ${w.y} ${w.x} ${w.y}`);
+  const under = document.elementFromPoint(ev.clientX, ev.clientY), ce = under && under.closest('#cardsL .card');
+  if (d.hot && d.hot !== ce) d.hot.classList.remove('drop-hot');
+  d.hot = ce && ce.dataset.id !== topId(d.cid) ? ce : null; if (d.hot) d.hot.classList.add('drop-hot');
+  d.under = under;
+}
+function callDragEnd(ev) {
+  const d = callDrag; callDrag = null;
+  swallowClick = true; setTimeout(() => swallowClick = false, 50);
+  if (!d.on) { if (ev.type === 'pointerup') onCallClick(d.span); return; }
+  d.path.remove(); board.classList.remove('linking');
+  $$('.drop-cand, .drop-hot').forEach(n => n.classList.remove('drop-cand', 'drop-hot'));
+  if (d.hot) { let tid = d.hot.dataset.id; const col = d.under && d.under.closest('[data-col]'); if (col) tid = col.dataset.col; else if (S.cards[tid].kind === 'compare') tid = S.cards[tid].cols.find(x => calleeMatches(S.cards[x], d.site)) || S.cards[tid].cols[0]; return linkExisting(d.cid, d.line, d.c0, tid); }
+  const w = toWorld(ev.clientX, ev.clientY), at = { x: w.x + 8, y: w.y - 18 };
+  if (d.site[2].length > 1) return showPicker(d.span, d.cid, d.line, d.site, at);
+  expandTo(d.cid, d.line, d.c0, d.site[2][0], at);
+}
+function animateExpand(id, fromId, line) {
+  const el = cardEl(id), d = S.cards[id]; if (!el) return;
+  const L = S.links[S.links.length - 1], g = edgeEls[L.id];
+  const fromEl = cardEl(topId(fromId));
+  const rb = fromEl && fromEl.querySelector(`.rowbg.origin[data-l="${line}"]`);
+  if (rb) { rb.classList.remove('flash'); void rb.offsetWidth; rb.classList.add('flash'); }
+  const r = { x: d.x, y: d.y, w: el.offsetWidth, h: el.offsetHeight };
+  if (!visibleRect(r)) {
+    const P = S.cards[topId(fromId)];
+    const pr = { x: P.x, y: Math.max(P.y, d.y - 260), w: fromEl.offsetWidth, h: 60 };
+    const u = union([pr, { x: r.x, y: r.y, w: r.w, h: Math.min(r.h, 420) }]);
+    const f = fitRect(u, cam.k.t); camTo(f.x, f.y, f.k);
+  }
+  if (!g) return;
+  const p1 = anchorLine(fromId, line) || { x: d.x, y: d.y };
+  const p = new Spring(0, 260, 26, 0.002);
+  const ox = (p1.x + 30 - d.x) * 0.7, oy = (p1.y - d.y) * 0.7;
+  g.path.classList.add('hidden'); g.head.classList.add('hidden-o'); g.port.classList.add('hidden-o'); if (g.chips) g.chips.classList.add('hidden-o');
+  requestAnimationFrame(() => g.port.classList.remove('hidden-o'));
+  const setP = v => {
+    el.style.transform = `translate(${(1 - v) * ox}px, ${(1 - v) * oy}px) scale(${0.9 + 0.1 * v})`;
+    const o = Math.min(1, v * 1.8); el.style.opacity = o; g.path.style.opacity = o; g.head.style.opacity = o;
+    drawEdge(L.id);
+  };
+  el.style.transition = 'none';
+  setP(0);
+  setTimeout(() => {
+    p.t = 1; g.path.classList.remove('hidden'); g.head.classList.remove('hidden-o');
+    run((dt, instant) => {
+      if (!el.isConnected) return true;
+      instant ? p.set(1) : p.step(dt); setP(p.v);
+      if (p.done) { p.set(1); setP(1); el.style.transform = ''; el.style.opacity = ''; el.style.transition = ''; g.path.style.opacity = ''; g.head.style.opacity = ''; if (g.chips) g.chips.classList.remove('hidden-o'); drawEdge(L.id); updateSections(); return true; }
+      return false;
+    });
+  }, reduce.matches ? 0 : 110 * speed);
+}
+
+// =====================================================================
+// Pointer: drag cards by header, resize, marquee, pan, text cards, sections
+// =====================================================================
+let drag = null, spaceHeld = false, lastPtr = { x: 0, y: 0 }, connectFrom = null;
+const dbl = {};
+function isDbl(key) { const now = performance.now(), r = dbl.key === key && now - dbl.t < 420; dbl.key = key; dbl.t = now; if (r) dbl.key = null; return r; }
+const UI = '.over, .ctx, .present, .pop, .keys, .vchips, .vplus, .elabel';
+
+board.addEventListener('pointerdown', ev => {
+  lastPtr = { x: ev.clientX, y: ev.clientY };
+  if (ev.target.closest(UI)) return;
+  if (ev.target.closest('[contenteditable="true"], [contenteditable="plaintext-only"]')) return;
+  board.focus({ preventScroll: true });
+  if (ev.button === 1 || (ev.button === 0 && spaceHeld)) { startPan(ev); return; }
+  if (ev.button !== 0) return;
+  const t = ev.target;
+  // connect mode: next card clicked is the target of a Plain link
+  if (connectFrom) {
+    const ce = t.closest('.card'); ev.preventDefault();
+    if (ce && ce.dataset.id !== topId(connectFrom)) { const from = connectFrom; endConnect(); let to = ce.dataset.id; const col = t.closest('[data-col]'); if (col) to = col.dataset.col; mut(() => { addPlain(from, to); }); toast('Plain link added'); }
+    else { endConnect(); toast('Connect cancelled'); }
+    return;
+  }
+  if (t.closest('[data-act]') && !t.closest('.hw')) return; // buttons act on click
+  const lab = t.closest('.slabel');
+  if (lab) {
+    const s = S.sects.find(x => x.id === lab.dataset.sect); if (!s) return;
+    ev.preventDefault(); select(s.id, ev.shiftKey);
+    if (isDbl('s' + s.id)) { renameSection(s); return; }
+    const ids = s.col ? [] : sectMembers(s);
+    drag = { kind: 'sect', s, sx: ev.clientX, sy: ev.clientY, before: snapshot(), items: ids.map(id => ({ c: S.cards[id], ox: S.cards[id].x, oy: S.cards[id].y })), ox: s.cx, oy: s.cy };
+    board.setPointerCapture(ev.pointerId); return;
+  }
+  if (t.closest('.call')) { ev.preventDefault(); select(topId(colCardId(t)), false); callDragStart(t.closest('.call'), ev); return; } // click expands; drag links
+  const ce = t.closest('.card');
+  if (!ce) {
+    if (isDbl('canvas')) { ev.preventDefault(); const w = toWorld(ev.clientX, ev.clientY); newText(w.x, w.y - 12); return; }
+    if (!ev.shiftKey) select(null);
+    getSelection().removeAllRanges();
+    drag = { kind: 'marq', sx: ev.clientX, sy: ev.clientY, base: new Set(sel) };
+    board.setPointerCapture(ev.pointerId); ev.preventDefault(); return;
+  }
+  const id = ce.dataset.id, c = S.cards[id];
+  if (t.closest('.grip')) {
+    ev.preventDefault(); select(id);
+    drag = { kind: 'resize', c, el: ce, sx: ev.clientX, sy: ev.clientY, ow: ce.offsetWidth, oh: ce.offsetHeight, before: snapshot() };
+    board.setPointerCapture(ev.pointerId); return;
+  }
+  if (t.closest('.hw')) {
+    ev.preventDefault();
+    drag = { kind: 'tw', c, el: ce, side: t.closest('.hw').dataset.side, sx: ev.clientX, ow: c.w, ox: c.x, before: snapshot() };
+    board.setPointerCapture(ev.pointerId); return;
+  }
+  // gutter: click a line number to select the line (shift extends)
+  const no = t.closest('.no');
+  if (no) { ev.preventDefault(); const l = +no.dataset.l; select(id); if (ev.shiftKey && lineSel && lineSel.id === id) selectRows(id, Math.min(lineSel.a, l), Math.max(lineSel.b, l)); else selectRows(id, l, l); return; }
+  const isText = c.kind === 'text' && !c.bg;
+  const inHead = t.closest('.chead') && !t.closest('.colh');
+  if (isText || inHead) {
+    ev.preventDefault();
+    if (inHead && t.closest('.ctitle') && isDbl('t' + id)) { renameTitle(t.closest('.ctitle'), c); return; }
+    if (isText && isDbl('x' + id)) { editText(id); return; }
+    if (ev.shiftKey) { select(id, true); return; }
+    if (!sel.has(id)) select(id);
+    hidePeek(true); hideSnpop(true);
+    const ids = [...sel].filter(i => S.cards[i] && cardEl(i));
+    drag = { kind: 'card', sx: ev.clientX, sy: ev.clientY, moved: false, before: snapshot(), items: ids.map(i => ({ c: S.cards[i], el: cardEl(i), ox: S.cards[i].x, oy: S.cards[i].y })) };
+    drag.items.forEach(it => it.el.classList.add('lift'));
+    board.setPointerCapture(ev.pointerId); return;
+  }
+  if (c.kind === 'text' && c.bg && t.closest('.nbody') && isDbl('n' + id)) { ev.preventDefault(); editText(id); return; }
+  if (t.closest('.colh') && t.closest('.ctitle') && isDbl('t' + colCardId(t))) { ev.preventDefault(); renameTitle(t.closest('.ctitle'), S.cards[colCardId(t)]); return; }
+  if (t.closest('.cdesc') && isDbl('d' + id)) { ev.preventDefault(); editDesc(ce, c); return; }
+  // body: select card, leave native text selection alone
+  if (!sel.has(id) || sel.size > 1) select(id, ev.shiftKey);
+});
+function startPan(ev) {
+  drag = { kind: 'pan', sx: ev.clientX, sy: ev.clientY, ox: cam.x.v, oy: cam.y.v, vx: 0, vy: 0, lt: performance.now(), lx: ev.clientX, ly: ev.clientY };
+  stopCam(); board.classList.add('panning'); board.setPointerCapture(ev.pointerId); ev.preventDefault();
+}
+board.addEventListener('pointermove', ev => {
+  lastPtr = { x: ev.clientX, y: ev.clientY };
+  if (callDrag) return callDragMove(ev);
+  if (!drag) return;
+  const k = cam.k.v, dx = (ev.clientX - drag.sx) / k, dy = (ev.clientY - drag.sy) / k;
+  if (drag.kind === 'card') {
+    if (!drag.moved && Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) < 2) return;
+    drag.moved = true;
+    for (const it of drag.items) { it.c.x = it.ox + dx; it.c.y = it.oy + dy; place(it.el, it.c); }
+    redrawEdges(); updateSections();
+  } else if (drag.kind === 'sect') {
+    drag.moved = true;
+    for (const it of drag.items) { it.c.x = it.ox + dx; it.c.y = it.oy + dy; const el = cardEl(it.c.id); if (el) place(el, it.c); }
+    if (drag.s.col) { drag.s.cx = drag.ox + dx; drag.s.cy = drag.oy + dy; const el = cardsL.querySelector(`.sect[data-sect="${drag.s.id}"]`); if (el) { el.style.left = drag.s.cx + 'px'; el.style.top = drag.s.cy + 'px'; } }
+    redrawEdges(); updateSections();
+  } else if (drag.kind === 'resize') {
+    drag.moved = true;
+    drag.c.w = Math.max(280, drag.ow + dx); drag.c.h = Math.max(120, drag.oh + dy);
+    drag.el.classList.remove('autoh'); place(drag.el, drag.c);
+    const cr = drag.el.querySelector('.crows'); if (cr) cr.style.setProperty('--cw', Math.round((drag.c.w - 2) / 2) + 'px');
+    redrawEdges(); updateSections();
+  } else if (drag.kind === 'tw') {
+    drag.moved = true;
+    if (drag.side === 'r') drag.c.w = Math.max(80, drag.ow + dx); else { drag.c.w = Math.max(80, drag.ow - dx); drag.c.x = drag.ox + drag.ow - drag.c.w; }
+    place(drag.el, drag.c); redrawEdges(); updateSections();
+  } else if (drag.kind === 'marq') {
+    const m = $('#marq'), b = board.getBoundingClientRect();
+    const x0 = Math.min(drag.sx, ev.clientX) - b.left, y0 = Math.min(drag.sy, ev.clientY) - b.top, w = Math.abs(ev.clientX - drag.sx), h = Math.abs(ev.clientY - drag.sy);
+    if (w + h < 4) return;
+    m.style.display = 'block'; m.style.left = x0 + 'px'; m.style.top = y0 + 'px'; m.style.width = w + 'px'; m.style.height = h + 'px';
+    sel.clear(); drag.base.forEach(i => sel.add(i));
+    for (const el of cardsL.querySelectorAll('.card')) { const r = rectB(el); if (r.x < x0 + w && r.x + r.w > x0 && r.y < y0 + h && r.y + r.h > y0) sel.add(el.dataset.id); }
+    applySel();
+  } else if (drag.kind === 'pan') {
+    const now = performance.now(), dt = Math.max(1, now - drag.lt);
+    drag.vx = drag.vx * 0.5 + 0.5 * (ev.clientX - drag.lx) / dt; drag.vy = drag.vy * 0.5 + 0.5 * (ev.clientY - drag.ly) / dt;
+    drag.lt = now; drag.lx = ev.clientX; drag.ly = ev.clientY;
+    camSet(drag.ox + ev.clientX - drag.sx, drag.oy + ev.clientY - drag.sy, cam.k.v);
+  }
+});
+function endDrag(ev) {
+  if (callDrag) return callDragEnd(ev);
+  if (!drag) return;
+  const d = drag; drag = null;
+  if (d.kind === 'card') {
+    d.items.forEach(it => it.el.classList.remove('lift'));
+    if (d.moved) { for (const it of d.items) updateMembership(it.c.id); pushUndo(d.before); save(); render(); }
+  } else if (d.kind === 'sect' || d.kind === 'resize' || d.kind === 'tw') {
+    if (d.moved) { pushUndo(d.before); save(); render(); }
+  } else if (d.kind === 'marq') { $('#marq').style.display = 'none'; }
+  else if (d.kind === 'pan') {
+    board.classList.remove('panning');
+    let vx = d.vx * 1000, vy = d.vy * 1000;
+    if (performance.now() - d.lt < 60 && Math.hypot(vx, vy) > 80 && !reduce.matches) {
+      const gen = camGen;
+      run(dt => { if (gen !== camGen) return true; vx *= Math.pow(0.004, dt); vy *= Math.pow(0.004, dt); camSet(cam.x.v + vx * dt, cam.y.v + vy * dt, cam.k.v); return Math.hypot(vx, vy) < 8; });
+    }
+  }
+}
+board.addEventListener('pointerup', endDrag);
+board.addEventListener('pointercancel', endDrag);
+function updateMembership(id) { // card centre inside a section frame -> member; outside -> leaves
+  const c = S.cards[id], el = cardEl(id); if (!c || !el) return;
+  const cx = c.x + el.offsetWidth / 2, cy = c.y + Math.min(el.offsetHeight / 2, 40);
+  const ids = c.kind === 'compare' ? [id, ...c.cols] : [id];
+  for (const s of S.sects) {
+    if (s.col) continue;
+    const others = { ...s, ids: s.ids.filter(i => !ids.includes(i)) };
+    const r = sectRect(others);
+    const inside = r && cx > r.x && cx < r.x + r.w && cy > r.y && cy < r.y + r.h;
+    const member = s.ids.some(i => ids.includes(i));
+    if (inside && !member) s.ids.push(id);
+    if (!inside && member && others.ids.length) s.ids = others.ids;
+  }
+}
+board.addEventListener('wheel', ev => {
+  const sc = ev.target.closest('.cbody, .pcode, .sres, .keys, .pop');
+  if (sc && !(ev.ctrlKey || ev.metaKey) && (sc.scrollHeight > sc.clientHeight + 1 || sc.scrollWidth > sc.clientWidth + 1)) return; // native scroll inside a card / popup
+  ev.preventDefault();
+  stopCam();
+  const r = board.getBoundingClientRect(), px = ev.clientX - r.left, py = ev.clientY - r.top;
+  if (ev.ctrlKey || ev.metaKey) {
+    const k0 = cam.k.v, k = clamp(k0 * Math.exp(-ev.deltaY * 0.01), 0.2, 2);
+    camSet(px - (px - cam.x.v) * k / k0, py - (py - cam.y.v) * k / k0, k);
+  } else camSet(cam.x.v - ev.deltaX, cam.y.v - ev.deltaY, cam.k.v);
+}, { passive: false });
+function zoomBy(f) {
+  const { w, h } = view(), k0 = cam.k.t, k = clamp(k0 * f, 0.2, 2);
+  camTo(w / 2 - (w / 2 - cam.x.t) * k / k0, h / 2 - (h / 2 - cam.y.t) * k / k0, k);
+}
+function fitAll() {
+  const rs = [...cardsL.querySelectorAll('.card, .sect')].map(el => rectW(el));
+  const f = fitRect(union(rs), 1); camTo(f.x, f.y, f.k);
+}
+$('#zIn').onclick = () => zoomBy(1.25);
+$('#zOut').onclick = () => zoomBy(0.8);
+$('#zFit').onclick = fitAll;
+
+// =====================================================================
+// Popovers (board coordinates)
+// =====================================================================
+const popEl = $('#pop'), peekEl = $('#peek'), snEl = $('#snpop');
+function placePop(p, r, prefer = 'below', gap = 6) {
+  const W = board.clientWidth, H = board.clientHeight;
+  p.style.left = '0px'; p.style.top = '0px';
+  const pw = p.offsetWidth, ph = p.offsetHeight;
+  let x = clamp(r.x, 8, W - pw - 8), y = prefer === 'right' ? r.y : r.y + r.h + gap;
+  if (prefer === 'right') x = clamp(r.x + r.w + gap, 8, W - pw - 8);
+  if (y + ph > H - 8) y = Math.max(8, (prefer === 'right' ? H - ph - 8 : r.y - ph - gap));
+  p.style.left = x + 'px'; p.style.top = y + 'px';
+}
+function openPop(p) { p.classList.remove('open'); void p.offsetWidth; p.classList.add('open'); }
+let popAnchor = null;
+function closePop() { popEl.classList.remove('open'); popEl.innerHTML = ''; popAnchor = null; }
+function closeAllPops() { closePop(); hidePeek(true); hideSnpop(true); closeCtx(); }
+function repositionPops() {
+  if (peekState && !peekState.pinned && peekState.span && peekState.span.isConnected && peekEl.classList.contains('open')) placePop(peekEl, rectB(peekState.span));
+  if (snState && snState.mk && snState.mk.isConnected && snEl.classList.contains('open') && !snState.pinned) placePop(snEl, rectB(snState.mk), 'right', 8);
+  if (popAnchor) { const r = popAnchor(); if (r) placePop(popEl, r); }
+}
+document.addEventListener('pointerdown', e => {
+  if (!e.target.closest('.ctx')) closeCtx();
+  if (popEl.classList.contains('open') && !e.target.closest('#pop') && !e.target.closest('.vplus')) closePop();
+  if (peekEl.classList.contains('open') && !e.target.closest('#peek') && !(peekState && peekState.pinned)) hidePeek(true);
+  if (snEl.classList.contains('open') && !e.target.closest('#snpop') && !e.target.closest('.mk')) hideSnpop(true);
+}, true);
+
+// ---------- context menus (custom; never the browser's) ----------
+const ctx = $('#ctx');
+let ctxItems = [];
+function closeCtx() { ctx.classList.remove('open'); }
+function openCtx(items, x, y) {
+  hideTip(); ctxItems = items;
+  ctx.innerHTML = items.map((it, i) => !it ? '<hr>' : it.head ? `<div class="mh">${esc(it.head)}</div>`
+    : `<button data-i="${i}"${it.disabled ? ' disabled' : ''}><span class="ck">${it.check ? '✓' : ''}</span>${esc(it.label)}${it.kbd ? `<small>${esc(it.kbd)}</small>` : ''}${it.why ? `<span class="why">${esc(it.why)}</span>` : ''}</button>`).join('');
+  const W = board.clientWidth, H = board.clientHeight;
+  ctx.style.left = '0px'; ctx.style.top = '0px'; ctx.classList.remove('open'); void ctx.offsetWidth;
+  ctx.style.left = Math.min(x, W - ctx.offsetWidth - 8) + 'px';
+  ctx.style.top = Math.max(8, Math.min(y, H - ctx.offsetHeight - 8)) + 'px';
+  ctx.classList.add('open');
+}
+ctx.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; closeCtx(); const it = ctxItems[+b.dataset.i]; it && it.act && it.act(); });
+const K = { mod: isMac ? '⌘' : 'Ctrl+', shift: isMac ? '⇧' : 'Shift+' };
+
+function compareCheck() {
+  const cs = selCards();
+  if (cs.length !== 2 || !cs.every(c => c.kind === 'code' && !c.cmp)) return { ok: false, why: 'Select exactly two code cards' };
+  const ta = F.tree[cs[0].id], tb = F.tree[cs[1].id];
+  if (ta && tb && ta !== tb) return { ok: false, why: 'Cards are in different flows. Duplicate one first.' };
+  return { ok: true };
+}
+function cardMenu(id) {
+  const c = S.cards[id]; if (!c) return [];
+  if (sel.size > 1 && sel.has(id)) {
+    const cmp = compareCheck(), two = sel.size === 2;
+    return [
+      { head: `${sel.size} cards selected` },
+      { label: 'Compare', disabled: !cmp.ok, why: cmp.ok ? '' : cmp.why, act: doCompare },
+      { label: 'Connect with Plain Link', disabled: !two, why: two ? '' : 'Select exactly two cards', act: () => { const [a, b] = [...sel]; mut(() => { addPlain(a, b); }); toast('Plain link added'); } },
+      { label: 'Move to New Section', act: moveToSection },
+      { label: 'Merge into One Card', disabled: true, why: 'Not in this mock' },
+      null,
+      { label: 'Delete', kbd: '⌫', act: deleteSel },
+    ];
+  }
+  if (c.kind === 'text') return c.bg ? [
+    { label: 'Edit', kbd: 'Double-click', act: () => editText(id) },
+    { label: 'Hide Background', act: () => mut(() => { c.bg = false; }) },
+    { label: 'Connect…', act: () => startConnect(id) },
+    { label: 'Move to New Section', act: moveToSection },
+    null, { label: 'Delete', kbd: '⌫', act: deleteSel },
+  ] : [
+    { label: 'Edit', kbd: 'Double-click', act: () => editText(id) },
+    { label: 'Show Background', act: () => mut(() => { c.bg = true; c.w = Math.max(c.w, 260); }) },
+    { label: 'Connect…', act: () => startConnect(id) },
+    { label: 'Move to New Section', act: moveToSection },
+    null, { label: 'Delete', kbd: '⌫', act: deleteSel },
+  ];
+  if (c.kind === 'compare') return [
+    { label: 'Swap', act: () => mut(() => { c.cols.reverse(); }) },
+    { label: 'Unified', check: c.uni, act: () => mut(() => { c.uni = !c.uni; }) },
+    { label: 'Hide Same Lines', check: c.same, act: () => mut(() => { c.same = !c.same; }) },
+    null,
+    { label: 'Separate', act: () => separate(id) },
+    { label: 'Walk Through Flow', kbd: 'P', disabled: !c.cols.some(x => F.tree[x]), why: c.cols.some(x => F.tree[x]) ? '' : 'Not in a call flow', act: startWalk },
+    { label: 'Move to New Section', act: moveToSection },
+    null, { label: 'Delete', kbd: '⌫', act: deleteSel },
+  ];
+  const inTree = !!F.tree[id], hasKids = !!(F.kids[id] && F.kids[id].length), cmp = compareCheck();
+  return [
+    { label: 'Open in Editor', kbd: '⏎', act: () => openInEditor(c.f, c.s) },
+    { label: 'Rename', kbd: 'Double-click Title', act: () => renameTitle(cardEl(id).querySelector('.ctitle'), c) },
+    { label: 'Edit Description', act: () => editDesc(cardEl(id), c) },
+    { label: 'Add Sidenote', kbd: 'S', disabled: !(lineSel && lineSel.id === id), why: lineSel && lineSel.id === id ? '' : 'Select lines in the card first', act: () => openAddNote(lineSel) },
+    null,
+    { label: 'Hide Comments', check: c.tg.com, act: () => mut(() => { c.tg.com = !c.tg.com; }) },
+    { label: 'Hide Docstrings', check: c.tg.doc, act: () => mut(() => { c.tg.doc = !c.tg.doc; }) },
+    { label: 'Hide Blank Lines', check: c.tg.blank, act: () => mut(() => { c.tg.blank = !c.tg.blank; }) },
+    { label: 'Show All Hidden Lines', disabled: !c.hid.length, act: () => mut(() => { c.hid = []; }) },
+    null,
+    { label: 'Walk Through Flow', kbd: 'P', disabled: !inTree, why: inTree ? '' : 'Not in a call flow', act: startWalk },
+    ...(inTree ? [{ label: 'Tidy Layout', kbd: 'this flow', act: () => mut(() => { tidyTree(F.tree[id], true); }, { noRender: true }) }] : []),
+    ...(hasKids ? [{ label: c.sub ? 'Expand Subtree' : 'Collapse Subtree', act: () => mut(() => { c.sub = !c.sub; }) }] : []),
+    null,
+    { label: 'Compare', disabled: true, why: cmp.why || 'Select exactly two code cards' },
+    { label: 'Connect…', act: () => startConnect(id) },
+    { label: 'Move to New Section', act: moveToSection },
+    null,
+    { label: 'Copy Code', act: () => copyText(NV.files[c.f].slice(c.s - 1, c.e).join('\n'), `Copied ${c.e - c.s + 1} lines`) },
+    { label: 'Duplicate', kbd: K.mod + 'D', act: duplicateSel },
+    { label: 'Delete', kbd: '⌫', act: deleteSel },
+  ];
+}
+function lineMenu(id, a, b) {
+  const c = S.cards[id], hlAll = range(a, b).every(l => c.hl.includes(l));
+  const lbl = a === b ? `Line ${a}` : `Lines ${a}–${b}`;
+  return [
+    { head: lbl },
+    { label: 'Hide Lines', kbd: 'H', act: () => hideLines(id, a, b) },
+    { label: hlAll ? 'Remove Highlight' : 'Highlight Lines', act: () => toggleHl(id, a, b) },
+    { label: 'Add Sidenote', kbd: 'S', act: () => openAddNote({ id, a, b }) },
+    { label: 'Copy', kbd: K.mod + 'C', act: () => copyText(NV.files[c.f].slice(a - 1, b).join('\n'), `Copied ${b - a + 1} line${a === b ? '' : 's'}`) },
+  ];
+}
+function canvasMenu(w) {
+  return [
+    { label: 'New Text', kbd: 'T', act: () => newText(w.x, w.y) },
+    { label: 'New Note', kbd: 'N', act: () => newText(w.x, w.y, true) },
+    { label: 'Add Function…', kbd: K.mod + 'K', act: () => openSearch(w) },
+    null,
+    { label: 'Select All', kbd: K.mod + 'A', act: selectAll },
+    { label: 'Fit to Window', kbd: K.shift + '1', act: fitAll },
+  ];
+}
+function linkMenu(L) {
+  return L.t === 'call' ? [
+    { head: 'Call Link' },
+    { label: 'Add Variables…', act: () => openVars(L.id) },
+    { label: 'Convert to Plain Link', act: () => mut(() => { L.t = 'plain'; L.label = ''; }) },
+    null, { label: 'Delete Link', kbd: '⌫', act: () => mut(() => { S.links = S.links.filter(x => x !== L); }) },
+  ] : [
+    { head: 'Plain Link' },
+    { label: 'Edit Label', kbd: 'Double-click', act: () => editLinkLabel(L.id) },
+    null, { label: 'Delete Link', kbd: '⌫', act: () => mut(() => { S.links = S.links.filter(x => x !== L); }) },
+  ];
+}
+function sectMenu(s) {
+  return [
+    { label: 'Rename', kbd: 'Double-click', act: () => renameSection(s) },
+    { label: s.col ? 'Expand' : 'Collapse', act: () => toggleSect(s) },
+    null, { label: 'Delete Section Only', act: () => mut(() => { S.sects = S.sects.filter(x => x !== s); }) },
+  ];
+}
+const range = (a, b) => { const r = []; for (let i = a; i <= b; i++) r.push(i); return r; };
+board.addEventListener('contextmenu', ev => {
+  ev.preventDefault();
+  if (ev.target.closest('.over, .present, .pop, .keys')) return;
+  hidePeek(true); hideSnpop(true); closePop();
+  const r = board.getBoundingClientRect(), x = ev.clientX - r.left, y = ev.clientY - r.top;
+  const hit = ev.target.closest('.ehit, .vchips, .elabel');
+  if (hit) { const L = S.links.find(l => l.id === hit.dataset.link); if (L) return openCtx(linkMenu(L), x, y); }
+  const lab = ev.target.closest('.slabel');
+  if (lab) { const s = S.sects.find(q => q.id === lab.dataset.sect); if (s) return openCtx(sectMenu(s), x, y); }
+  const ce = ev.target.closest('.card');
+  if (!ce) return openCtx(canvasMenu(toWorld(ev.clientX, ev.clientY)), x, y);
+  const id = ce.dataset.id, c = S.cards[id];
+  const callSp = ev.target.closest('.call');
+  if (callSp) { if (!sel.has(id)) select(id); return callMenu(callSp, x, y); }
+  const row = ev.target.closest('.src .l');
+  if (row && c.kind === 'code') {
+    const l = +row.dataset.l;
+    let a = l, b = l;
+    if (lineSel && lineSel.id === id && l >= lineSel.a && l <= lineSel.b) { a = lineSel.a; b = lineSel.b; }
+    else selectRows(id, l, l);
+    if (!sel.has(id)) select(id);
+    return openCtx(lineMenu(id, a, b), x, y);
+  }
+  if (!sel.has(id)) select(id);
+  openCtx(cardMenu(id), x, y);
+});
+
+// ---------- small actions ----------
+function openInEditor(f, l) { toast(`Opened ${NV.root}/${f}:${l} in the editor`); }
+function copyText(t, msg) { try { navigator.clipboard.writeText(t).catch(() => { }); } catch (e) { } toast(msg); }
+function hideLines(id, a, b) {
+  mut(() => { const c = S.cards[id]; let r = [a, b]; c.hid = c.hid.filter(h => { if (h[1] < r[0] - 1 || h[0] > r[1] + 1) return true; r = [Math.min(h[0], r[0]), Math.max(h[1], r[1])]; return false; }); c.hid.push(r); c.hid.sort((x, y) => x[0] - y[0]); });
+  getSelection().removeAllRanges(); lineSel = null;
+}
+function toggleHl(id, a, b) {
+  mut(() => { const c = S.cards[id], ls = range(a, b), all = ls.every(l => c.hl.includes(l)); c.hl = all ? c.hl.filter(l => l < a || l > b) : [...new Set([...c.hl, ...ls])]; });
+}
+function deleteSel() {
+  const ids = new Set(), sects = new Set();
+  for (const id of sel) { const c = S.cards[id]; if (c) { ids.add(id); if (c.kind === 'compare') c.cols.forEach(x => ids.add(x)); } else if (S.sects.some(s => s.id === id)) sects.add(id); }
+  if (!ids.size && !sects.size) return;
+  for (const id of ids) { const el = cardEl(id); if (el) el.classList.add('leaving'); }
+  for (const id in edgeEls) { const g = edgeEls[id]; if (ids.has(g.L.a) || ids.has(g.L.b)) { g.path.classList.add('retract', 'hidden'); g.path.classList.remove('plain'); g.head && g.head.classList.add('hidden-o'); g.port && g.port.classList.add('hidden-o'); g.chips && g.chips.classList.add('hidden-o'); g.lab && g.lab.classList.add('hidden-o'); } }
+  sel.clear();
+  setTimeout(() => mut(() => {
+    for (const id of ids) delete S.cards[id];
+    S.links = S.links.filter(L => !ids.has(L.a) && !ids.has(L.b));
+    S.sects = S.sects.filter(s => !sects.has(s.id));
+    for (const s of S.sects) s.ids = s.ids.filter(i => !ids.has(i));
+    S.sects = S.sects.filter(s => s.ids.length);
+  }), reduce.matches ? 0 : 150 * speed);
+}
+function duplicateSel() {
+  const cs = selCards().filter(c => c.kind === 'code' && !c.cmp);
+  if (!cs.length) return toast('Select a code card to duplicate');
+  const made = [];
+  mut(() => { for (const c of cs) { const d = JSON.parse(JSON.stringify(c)); d.id = nid('c'); d.n = S.seq; d.flow = false; d.sub = false; d.dup = true; d.x += 48; d.y += 48; d.notes.forEach(n => n.id = nid('n')); addCard(d); made.push(d.id); } });
+  sel.clear(); made.forEach(i => sel.add(i)); applySel();
+  toast(made.length > 1 ? `Duplicated ${made.length} cards (no links, no number)` : 'Duplicated. The copy has no links and no number.');
+}
+function doCompare() {
+  const chk = compareCheck(); if (!chk.ok) return toast(chk.why);
+  const [p, q] = selCards().sort((a, b) => a.x - b.x);
+  let k;
+  mut(() => {
+    k = { id: nid('k'), kind: 'compare', cols: [p.id, q.id], x: p.x, y: p.y, w: clamp(p.w + q.w, 760, 1280), h: null, uni: false, same: false, n: S.seq, sc: 0,
+      prev: { [p.id]: { x: p.x, y: p.y }, [q.id]: { x: q.x, y: q.y } } };
+    addCard(k); p.cmp = k.id; q.cmp = k.id;
+    for (const s of S.sects) if (s.ids.includes(q.id) && !s.ids.includes(p.id)) s.ids.push(p.id);
+  });
+  sel.clear(); sel.add(k.id); applySel();
+  const el = cardEl(k.id); if (el) { el.classList.add('ping'); revealCard(k.id, false); }
+}
+function separate(id) {
+  const k = S.cards[id]; if (!k) return;
+  mut(() => { for (const cid of k.cols) { const c = S.cards[cid]; c.cmp = null; if (k.prev && k.prev[cid]) { c.x = k.prev[cid].x; c.y = k.prev[cid].y; } } delete S.cards[id]; for (const s of S.sects) s.ids = s.ids.filter(i => i !== id); });
+  sel.clear(); k.cols.forEach(i => sel.add(i)); applySel();
+}
+function moveToSection() {
+  const ids = [...sel].filter(i => S.cards[i]);
+  if (!ids.length) return;
+  let s;
+  mut(() => { for (const x of S.sects) x.ids = x.ids.filter(i => !ids.includes(i)); S.sects = S.sects.filter(x => x.ids.length); s = { id: nid('s'), name: 'Untitled Section', ids, col: false, cx: 0, cy: 0 }; S.sects.push(s); });
+  renameSection(S.sects.find(x => x.id === s.id), true);
+}
+function toggleSect(s) {
+  mut(() => { const t = S.sects.find(x => x.id === s.id); if (!t.col) { const r = sectRect(t); if (r) { t.cx = r.x; t.cy = r.y; } } t.col = !t.col; });
+}
+function startConnect(id) { connectFrom = id; board.classList.add('connecting'); toast('Click a card to connect · Esc to cancel'); }
+function endConnect() { connectFrom = null; board.classList.remove('connecting'); }
+
+// ---------- inline editing ----------
+function inlineEdit(node, { initial, multiline, onDone, selectAll = true }) {
+  const old = node.innerHTML;
+  if (initial != null) node.textContent = initial;
+  node.contentEditable = 'plaintext-only';
+  if (node.contentEditable !== 'plaintext-only') node.contentEditable = 'true';
+  node.focus();
+  const r = document.createRange(); r.selectNodeContents(node); if (!selectAll) r.collapse(false);
+  const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  let cancelled = false;
+  node.onkeydown = e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') { cancelled = true; node.blur(); }
+    else if (e.key === 'Enter' && (!multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); node.blur(); }
+  };
+  node.onblur = () => {
+    node.onblur = null; node.onkeydown = null; node.contentEditable = 'false'; node.removeAttribute('contenteditable');
+    getSelection().removeAllRanges();
+    const v = node.innerText.replace(/ /g, ' ').replace(/\n+$/, '');
+    if (cancelled) { node.innerHTML = old; onDone(null); } else onDone(v);
+  };
+}
+function renameTitle(t, c) {
+  if (!t || !c) return;
+  inlineEdit(t, { initial: c.title, onDone: v => { if (v && v.trim() && v.trim() !== c.title) mut(() => { c.title = v.trim(); }); else render(); } });
+}
+function editDesc(el, c) {
+  const d = el.querySelector('.cdesc'); if (!d) return;
+  inlineEdit(d, { initial: c.desc || '', multiline: true, selectAll: false, onDone: v => { if (v != null && v.trim() !== (c.desc || '')) mut(() => { c.desc = v.trim(); }); else render(); } });
+}
+function renameSection(s, fresh) {
+  const n = sectsL.querySelector(`.slabel[data-sect="${s.id}"] .sname`) || cardsL.querySelector(`.slabel[data-sect="${s.id}"] .sname`); if (!n) return;
+  inlineEdit(n, { initial: s.name, onDone: v => { if (v && v.trim() && v.trim() !== s.name) { if (fresh) { s.name = v.trim(); save(); render(); } else mut(() => { s.name = v.trim(); }); } else render(); } });
+}
+let pendingNewText = null;
+function newText(x, y, bg = false) {
+  let c;
+  mut(() => { c = addCard(textCard(x, y, '', bg ? 'body' : 'body', bg)); });
+  pendingNewText = c.id;
+  sel.clear(); sel.add(c.id); applySel();
+  editText(c.id);
+}
+function editText(id) {
+  const c = S.cards[id], el = cardEl(id); if (!c || !el) return;
+  const tx = el.querySelector('.tx, .nbody'); el.classList.add('editing');
+  inlineEdit(tx, { initial: c.text, multiline: true, selectAll: false, onDone: v => {
+    el.classList.remove('editing');
+    const fresh = pendingNewText === id; pendingNewText = null;
+    if (v == null) v = c.text;
+    if (!v.trim() && !c.bg) { if (fresh && undoS.length) { restore(undoS.pop()); updUndo(); } else mut(() => { delete S.cards[id]; S.links = S.links.filter(L => L.a !== id && L.b !== id); }); return; }
+    if (v !== c.text) { if (fresh) { c.text = v; save(); render(); } else mut(() => { c.text = v; }); } else render();
+  } });
+}
+function editLinkLabel(lid) {
+  const L = S.links.find(x => x.id === lid), g = edgeEls[lid]; if (!L || !g) return;
+  popEl.innerHTML = `<div class="pb" style="width:240px"><input class="fld" placeholder="Label (optional)" value="${esc(L.label || '')}"></div>`;
+  const anchor = () => { const b = board.getBoundingClientRect(); return { x: g.mx * cam.k.v + cam.x.v - 120, y: g.my * cam.k.v + cam.y.v, w: 0, h: 0 }; };
+  popAnchor = anchor; openPop(popEl); placePop(popEl, anchor());
+  const inp = popEl.querySelector('input'); inp.focus(); inp.select();
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') { const v = inp.value.trim(); closePop(); mut(() => { L.label = v; }); } if (e.key === 'Escape') closePop(); };
+}
+
+// =====================================================================
+// Definition peek: where an identifier is defined / assigned (one hop)
+// =====================================================================
+let peekState = null, peekT = 0, peekHideT = 0, hoverSpan = null, modHeld = false;
+function codeCtx(f, l) { // context lines around a definition
+  const sid = symAtDefLine(f, l);
+  if (sid) { const s = SYMS[sid]; return [Math.max(s.s, l - 1), Math.min(s.e, l + 6)]; }
+  return [Math.max(1, l - 2), Math.min(NV.files[f].length, l + 2)];
+}
+function pcodeHTML(f, a, b, t) {
+  let h = '';
+  for (let l = a; l <= b; l++) h += `<div class="r${l === t ? ' t' : ''}"><span class="cno">${l}</span><span>${hlLine(f, l) || ' '}</span></div>`;
+  return `<div class="pcode">${h}</div>`;
+}
+function showPeek(sp, pin) {
+  const cid = colCardId(sp), c = S.cards[cid]; if (!c) return;
+  const line = +sp.closest('.l').dataset.l, c0 = +sp.dataset.c0, name = sp.textContent;
+  const entry = (NV.peek[c.f]?.[line] || []).find(x => x[0] === c0);
+  let targets = entry ? entry[2] : null;
+  if (!targets) { const site = (NV.calls[c.f]?.[line] || []).find(x => x[0] === c0); targets = site ? site[2].map(s => [SYMS[s].f, SYMS[s].dl]) : []; }
+  peekState = { span: sp, cid, line, name, stack: [{ name, targets, i: 0 }], pinned: false };
+  renderPeek();
+  openPop(peekEl); placePop(peekEl, rectB(sp));
+}
+function renderPeek() {
+  const P = peekState, top = P.stack[P.stack.length - 1];
+  const back = P.stack.length > 1 ? `<button class="btn" data-pk="back" style="height:20px;padding:0 6px">‹ Back</button>` : '';
+  const pinned = P.pinned ? `<span class="pin">Pinned</span><button class="ib" data-pk="close" aria-label="Close" style="width:20px;height:20px">×</button>` : '';
+  const src = `<span class="src2">${NV.lang} · at ${COMMIT}</span>`;
+  let html;
+  if (typeof top.targets === 'string') {
+    const mod = top.targets.slice(4);
+    html = `<div class="ph">${back}<b>${esc(top.name)}</b>${src}${pinned}</div><div class="empty"><code>${esc(top.name)}</code> comes from <code>${esc(mod)}</code>, which is outside this workspace.</div><div class="pf"><button class="btn" data-pk="search">Search Workspace</button></div>`;
+  } else if (top.search) {
+    html = `<div class="ph">${back}<b>Search Workspace</b><span style="color:var(--ink-3)">· ${esc(top.name)}</span>${src}${pinned}</div>`
+      + (top.search.length ? `<div class="cands" style="max-height:260px;overflow:auto;border:0">${top.search.map(([f, l]) => `<button class="cand" data-pk="go" data-f="${f}" data-l="${l}"><code>${esc(NV.files[f][l - 1].trim().slice(0, 56))}</code><span class="loc">${f}:${l}</span></button>`).join('')}</div>` : `<div class="empty">No matches.</div>`);
+  } else if (!top.targets.length) {
+    html = `<div class="ph">${back}<b>${esc(top.name)}</b>${src}${pinned}</div><div class="empty">No definition found for <code>${esc(top.name)}</code>.</div><div class="pf"><button class="btn" data-pk="search">Search Workspace</button></div>`;
+  } else {
+    const [f, l] = top.targets[top.i];
+    const multi = top.targets.length > 1;
+    const head = multi ? `${top.targets.length} definitions · <b>${esc(top.name)}</b>` : `Definition · <b>${f}:${l}</b>`;
+    const cands = multi ? `<div class="cands">${top.targets.map(([ff, ll], i) => { const sid = symAtDefLine(ff, ll); return `<button class="cand${i === top.i ? ' on' : ''}" data-pk="cand" data-i="${i}"><span class="kind">${sid ? glyph(SYMS[sid].k) : '='}</span><code>${esc(NV.files[ff][ll - 1].trim().slice(0, 50))}</code><span class="loc">${ff}:${ll}</span></button>`; }).join('')}</div>` : '';
+    const [a, b] = codeCtx(f, l);
+    const fo = NV.follow[f]?.[l];
+    const follow = fo ? `<div class="pk-follow">↳ <code>${esc(fo[2])}</code><span class="loc">· ${fo[0]}:${fo[1]}</span><span class="grow"></span><button class="btn" data-pk="follow">Follow</button></div>` : '';
+    html = `<div class="ph">${back}<span>${head}</span>${src}${pinned}</div>${cands}${pcodeHTML(f, a, b, l)}${follow}`
+      + `<div class="pf"><button class="btn" data-pk="pin">Pin as Sidenote</button><button class="btn" data-pk="place">Place on Board</button><button class="btn" data-pk="open">Open in Editor</button>${P.pinned ? '' : `<span class="grow"></span><span style="font-size:10.5px;color:var(--ink-3)">${isMac ? '⌘' : 'Ctrl'}-hover to pin</span>`}</div>`;
+  }
+  peekEl.innerHTML = html;
+  peekEl.style.width = '520px';
+}
+function hidePeek(now) {
+  clearTimeout(peekT); clearTimeout(peekHideT);
+  const go = () => { if (peekState && peekState.pinned) return; peekEl.classList.remove('open'); peekState = null; };
+  if (now) go(); else peekHideT = setTimeout(go, 260);
+}
+function pinPeek() { // the open peek becomes its own popup and stays; a new hover gets a fresh one
+  if (!peekState) return;
+  const P = peekState; P.pinned = true; renderPeek();
+  const clone = peekEl.cloneNode(true); clone.removeAttribute('id'); clone.classList.add('pinned-peek'); clone._state = P;
+  clone.style.left = peekEl.style.left; clone.style.top = peekEl.style.top;
+  board.appendChild(clone); bindPeekEl(clone);
+  peekState = null; peekEl.classList.remove('open');
+}
+function peekSearch(name) {
+  const re = new RegExp(`\\b${name.replace(/[^\w]/g, '')}\\b`), defRe = new RegExp(`(def|class)\\s+${name}\\b|\\b${name}\\s*(:[^=]*)?=[^=]`);
+  const hits = [];
+  for (const [f, lines] of Object.entries(NV.files)) lines.forEach((t, i) => { if (re.test(t)) hits.push([f, i + 1, defRe.test(t) ? 0 : 1]); });
+  hits.sort((x, y) => x[2] - y[2]);
+  return hits.slice(0, 12).map(h => [h[0], h[1]]);
+}
+function placeFromLocation(cid, line, f, l, name) {
+  const src = S.cards[topId(cid)], srcEl = cardEl(src.id);
+  const sid = symAtDefLine(f, l);
+  const existing = sid && Object.values(S.cards).find(x => x.kind === 'code' && x.sym === sid);
+  if (existing) {
+    if (!S.links.some(L => (L.a === cid && L.b === existing.id) || (L.b === cid && L.a === existing.id))) mut(() => { addPlain(cid, existing.id, '', line); });
+    toast(`${SYMS[sid].q} is already on the board.`); revealCard(existing.id); return;
+  }
+  let nc;
+  mut(() => {
+    if (sid) nc = codeCard(sid);
+    else { const enc = symAt(f, l), es = enc ? SYMS[enc] : null; const a = Math.max(es ? es.s : 1, l - 2), b = Math.min(es ? es.e : NV.files[f].length, l + 2); nc = snippetCard(f, a, b, `${es ? es.q : f} · ${name}`); }
+    nc.w = Math.min(nc.w, 520);
+    const ay = srcEl ? (anchorLine(cid, line) || { y: src.y }).y : src.y;
+    nc.x = src.x + (srcEl ? srcEl.offsetWidth : src.w) + 90; nc.y = ay - 40;
+    for (let k = 0; k < 30; k++) { const hit = [...cardsL.querySelectorAll('.card')].map(e => ({ c: S.cards[e.dataset.id], e })).find(({ c, e }) => c && nc.x < c.x + e.offsetWidth && nc.x + nc.w > c.x && nc.y < c.y + e.offsetHeight + 16 && nc.y + 200 > c.y - 16); if (!hit) break; nc.y = hit.c.y + hit.e.offsetHeight + 24; }
+    addCard(nc); addPlain(cid, nc.id, '', line);
+  });
+  const el = cardEl(nc.id); if (el) { el.classList.add('ping'); revealCard(nc.id, false); }
+  toast(`Placed ${nc.title} on the board`);
+}
+function bindPeekEl(pe) {
+  pe.addEventListener('pointerenter', () => { clearTimeout(peekHideT); });
+  pe.addEventListener('pointerleave', () => { if (pe.id === 'peek') hidePeek(); });
+  pe.addEventListener('click', e => {
+    const b = e.target.closest('[data-pk]'); if (!b) return;
+    const isMain = pe.id === 'peek';
+    const P = isMain ? peekState : pe._state; if (!P) return;
+    const top = P.stack[P.stack.length - 1];
+    const rerender = () => { if (isMain) renderPeek(); else renderPeekInto(pe, P); };
+    const act = b.dataset.pk;
+    if (act === 'close') { pe.remove(); return; }
+    if (act === 'back') { P.stack.pop(); return rerender(); }
+    if (act === 'cand') { top.i = +b.dataset.i; return rerender(); }
+    if (act === 'search') { P.stack.push({ name: top.name, search: peekSearch(top.name), targets: [], i: 0 }); return rerender(); }
+    if (act === 'go') { P.stack.push({ name: top.name, targets: [[b.dataset.f, +b.dataset.l]], i: 0 }); return rerender(); }
+    const [f, l] = top.targets[top.i] || [];
+    if (act === 'follow') { const fo = NV.follow[f][l]; P.stack.push({ name: fo[2].split('.').pop().replace(/\(.*$/, ''), targets: [[fo[0], fo[1]]], i: 0 }); return rerender(); }
+    if (act === 'open') { openInEditor(f, l); return; }
+    if (act === 'pin') {
+      const c = S.cards[P.cid]; if (!c) return;
+      const sid = symAtDefLine(f, l); const [a, bb] = sid ? [SYMS[sid].s, Math.min(SYMS[sid].e, SYMS[sid].s + 11)] : codeCtx(f, l);
+      const label = sid ? SYMS[sid].q : `${top.name}`;
+      mut(() => { c.notes.push({ id: nid('n'), a: P.line, b: P.line, kind: 'code', ref: { f, l, s: a, e: bb, label, sym: sid } }); });
+      if (isMain) hidePeek(true); else pe.remove();
+      toast(`Pinned as a Code sidenote on line ${P.line}`);
+      return;
+    }
+    if (act === 'place') { if (isMain) hidePeek(true); else pe.remove(); placeFromLocation(P.cid, P.line, f, l, top.name); }
+  });
+}
+function renderPeekInto(pe, P) { const keep = peekEl.innerHTML, w = peekEl.style.width, st = peekState; peekState = P; renderPeek(); pe.innerHTML = peekEl.innerHTML; peekEl.innerHTML = keep; peekEl.style.width = w; peekState = st; }
+bindPeekEl(peekEl);
+board.addEventListener('pointerover', ev => {
+  const sp = ev.target.closest('.src span.pk, .crows span.pk');
+  if (!sp || drag || ev.buttons) return;
+  hoverSpan = sp;
+  clearTimeout(peekHideT);
+  if (peekState && peekState.span === sp && peekEl.classList.contains('open')) return;
+  clearTimeout(peekT);
+  peekT = setTimeout(() => { if (hoverSpan === sp && sp.isConnected && !drag) { showPeek(sp, false); if (ev.metaKey || ev.ctrlKey || modHeld) pinPeek(); } }, 400);
+});
+board.addEventListener('pointerout', ev => { const sp = ev.target.closest('span.pk'); if (sp) { if (hoverSpan === sp) hoverSpan = null; clearTimeout(peekT); hidePeek(); } });
+
+// =====================================================================
+// Sidenotes
+// =====================================================================
+let snState = null, snHideT = 0;
+function noteItemHTML(n) {
+  if (n.kind === 'code') {
+    const r = n.ref;
+    return `<div class="sn-item"><div class="sn-head"><span class="kind ${r.sym && SYMS[r.sym].k === 'c' ? 'c' : ''}">${r.sym ? glyph(SYMS[r.sym].k) : '⋮'}</span><b>${esc(r.label)}</b><span>· ${r.f}:${r.l}</span><span class="grow"></span><span>${COMMIT}</span></div>`
+      + pcodeHTML(r.f, r.s, r.e, r.l).replace('class="pcode"', 'class="pcode" style="max-height:180px"')
+      + `<div class="sn-acts"><button class="btn" data-sn="place" data-id="${n.id}">Place on Board</button><button class="btn" data-sn="open" data-id="${n.id}">Open in Editor</button><button class="btn" data-sn="del" data-id="${n.id}">Delete</button></div></div>`;
+  }
+  return `<div class="sn-item"><div class="sn-head">Text${n.b > n.a ? ` · lines ${n.a}–${n.b}` : ''}</div><div class="sn-text">${md(n.text)}</div>`
+    + `<div class="sn-acts"><button class="btn${n.always ? ' on' : ''}" data-sn="always" data-id="${n.id}">Always Show</button><button class="btn" data-sn="edit" data-id="${n.id}">Edit</button><button class="btn" data-sn="place" data-id="${n.id}">Place on Board</button><button class="btn" data-sn="del" data-id="${n.id}">Delete</button></div></div>`;
+}
+function showSnpop(mk, pin) {
+  const ce = mk.closest('.card'), id = ce.dataset.id, c = S.cards[id], l = +mk.dataset.l;
+  const notes = c.notes.filter(n => n.a === l);
+  snState = { mk, id, l, pinned: !!pin };
+  snEl.innerHTML = `<div class="ph"><b>Sidenotes · line ${l}</b><span>(${notes.length})</span><span class="grow"></span>${pin ? '<span class="pin">Pinned</span><button class="ib" data-sn="close" style="width:20px;height:20px" aria-label="Close">×</button>' : `<span style="font-size:10.5px;color:var(--ink-3)">${isMac ? '⌘' : 'Ctrl'}-hover to pin</span>`}</div>`
+    + `<div style="max-height:360px;overflow:auto">${notes.map(noteItemHTML).join('')}</div><div class="pf"><button class="btn" data-sn="add">+ Add</button></div>`;
+  snEl.style.width = notes.some(n => n.kind === 'code') ? '500px' : '380px';
+  $$('.mk.on').forEach(m => m.classList.remove('on')); mk.classList.add('on');
+  openPop(snEl); placePop(snEl, rectB(mk), 'right', 8);
+}
+function hideSnpop(now) {
+  clearTimeout(snHideT);
+  const go = () => { if (snState && snState.pinned && !now) return; snEl.classList.remove('open'); $$('.mk.on').forEach(m => m.classList.remove('on')); snState = null; };
+  if (now === true) go(); else snHideT = setTimeout(go, 260);
+}
+function hideSnpopSoon() { if (snState && !snState.pinned) hideSnpop(true); }
+board.addEventListener('pointerover', ev => { const mk = ev.target.closest('.mk'); if (!mk || drag || ev.buttons) return; clearTimeout(snHideT); if (snState && snState.mk === mk) return; if (snState && snState.pinned) return; showSnpop(mk, ev.metaKey || ev.ctrlKey || modHeld); });
+board.addEventListener('pointerout', ev => { if (ev.target.closest('.mk') && !(ev.relatedTarget && ev.relatedTarget.closest && ev.relatedTarget.closest('#snpop'))) hideSnpop(); });
+snEl.addEventListener('pointerenter', () => clearTimeout(snHideT));
+snEl.addEventListener('pointerleave', () => { if (snState && !snState.pinned) hideSnpop(); });
+snEl.addEventListener('click', e => {
+  const b = e.target.closest('[data-sn]'); if (!b || !snState) return;
+  const st = snState, c = S.cards[st.id], n = c && c.notes.find(x => x.id === b.dataset.id), act = b.dataset.sn;
+  if (act === 'close') return hideSnpop(true);
+  if (act === 'add') { hideSnpop(true); return openAddNote({ id: st.id, a: st.l, b: st.l }); }
+  if (!n) return;
+  if (act === 'always') { mut(() => { n.always = !n.always; }); hideSnpop(true); return; }
+  if (act === 'edit') { hideSnpop(true); return openAddNote({ id: st.id, a: n.a, b: n.b }, n); }
+  if (act === 'open') return openInEditor(n.ref.f, n.ref.l);
+  if (act === 'del') { mut(() => { c.notes = c.notes.filter(x => x !== n); }); hideSnpop(true); return toast('Sidenote deleted'); }
+  if (act === 'place') { hideSnpop(true); placeNote(st.id, n); }
+});
+function placeNote(cid, n) {
+  const src = S.cards[topId(cid)], el = cardEl(src.id);
+  const ay = el ? (anchorLine(cid, n.a) || { y: src.y }).y : src.y;
+  if (n.kind === 'code') {
+    const r = n.ref;
+    const existing = r.sym && Object.values(S.cards).find(x => x.kind === 'code' && x.sym === r.sym);
+    let nc;
+    mut(() => {
+      S.cards[cid].notes = S.cards[cid].notes.filter(x => x.id !== n.id);
+      if (existing) { addPlain(cid, existing.id, '', n.a); nc = existing; return; }
+      nc = r.sym ? codeCard(r.sym) : snippetCard(r.f, r.s, r.e, r.label);
+      nc.w = 520; nc.x = src.x + (el ? el.offsetWidth : src.w) + 90; nc.y = ay - 40;
+      addCard(nc); addPlain(cid, nc.id, '', n.a);
+    });
+    revealCard(nc.id); toast('Sidenote placed on the board as a card');
+  } else {
+    let nc;
+    mut(() => { S.cards[cid].notes = S.cards[cid].notes.filter(x => x.id !== n.id); nc = addCard(textCard(src.x + (el ? el.offsetWidth : src.w) + 90, ay - 30, n.text, 'body', true)); addPlain(cid, nc.id, '', n.a); });
+    revealCard(nc.id); toast('Sidenote placed on the board as a Note');
+  }
+}
+function openAddNote(ls, editing) {
+  if (!ls) return toast('Select lines in a code card first');
+  const c = S.cards[ls.id]; if (!c) return;
+  hidePeek(true); hideSnpop(true);
+  const lbl = ls.a === ls.b ? `Line ${ls.a}` : `Lines ${ls.a}–${ls.b}`;
+  popEl.innerHTML = `<div class="tabs"><button class="tab on" data-tab="text">Text</button><button class="tab" data-tab="code"${editing ? ' disabled' : ''}>Code</button><button class="tab" disabled title="Not in this mock">Paste</button><button class="tab" disabled title="Not in this mock">Link</button><button class="tab" disabled title="Not in this mock">Card</button><span class="grow"></span><span style="font-size:11px;color:var(--ink-3);padding:6px 4px">${lbl}</span></div>`
+    + `<div class="pb" data-pane="text"><textarea class="fld" placeholder="Write a note… Markdown and \`code\` supported">${editing ? esc(editing.text) : ''}</textarea><label class="chk" style="font-family:var(--sys);font-size:12px;margin-top:6px"><input type="checkbox" ${editing && editing.always ? 'checked' : ''}> Always Show (render between code lines)</label></div>`
+    + `<div class="pb" data-pane="code" hidden><input class="fld" placeholder="Search functions and classes…"><div class="sres"></div><div style="font-size:11px;color:var(--ink-3);margin-top:6px">Or select code in the editor and press ⌥S</div></div>`
+    + `<div class="pf"><span style="font-size:11px;color:var(--ink-3)">${isMac ? '⌘' : 'Ctrl'}+Enter to add</span><span class="grow"></span><button class="btn" data-x="cancel">Cancel</button><button class="btn pri" data-x="add">${editing ? 'Save' : 'Add'}</button></div>`;
+  popEl.style.width = '400px';
+  const anchor = () => { const el = cardEl(topId(ls.id)); const row = el && el.querySelector(`.src .l[data-l="${ls.b}"]`); if (!row) return null; const r = rectB(row); return { x: r.x + 40, y: r.y, w: 0, h: r.h }; };
+  popAnchor = anchor; openPop(popEl); placePop(popEl, anchor() || { x: 200, y: 200, w: 0, h: 0 });
+  const ta = popEl.querySelector('textarea'), inp = popEl.querySelector('input.fld'), res = popEl.querySelector('.sres'), ck = popEl.querySelector('input[type=checkbox]');
+  let tab = 'text', hits = [], hi = 0;
+  ta.focus();
+  const doSearch = () => {
+    const q = inp.value.trim().toLowerCase();
+    hits = q ? Object.keys(SYMS).filter(id => SYMS[id].q.toLowerCase().includes(q)).sort((a, b) => (SYMS[a].n.toLowerCase().startsWith(q) ? 0 : 1) - (SYMS[b].n.toLowerCase().startsWith(q) ? 0 : 1) || SYMS[a].q.length - SYMS[b].q.length).slice(0, 7) : [];
+    hi = 0;
+    res.innerHTML = hits.map((id, i) => `<button class="cand${i === hi ? ' on' : ''}" data-sid="${id}"><span class="kind ${SYMS[id].k === 'c' ? 'c' : ''}">${glyph(SYMS[id].k)}</span><code>${esc(SYMS[id].q)}</code><span class="loc">${SYMS[id].f}:${SYMS[id].dl}</span></button>`).join('') || (q ? '<div class="empty" style="padding:8px 4px">No matches</div>' : '');
+  };
+  const addCode = sid => { const s = SYMS[sid]; closePop(); mut(() => { c.notes.push({ id: nid('n'), a: ls.a, b: ls.b, kind: 'code', ref: { f: s.f, l: s.dl, s: s.s, e: Math.min(s.e, s.s + 11), label: s.q, sym: sid } }); }); toast(`Code sidenote added to ${lbl.toLowerCase()}`); };
+  const submit = () => {
+    if (tab === 'code') { if (hits[hi]) addCode(hits[hi]); return; }
+    const v = ta.value.trim(); if (!v) { ta.focus(); return; }
+    closePop();
+    if (editing) mut(() => { const n = c.notes.find(x => x.id === editing.id); if (n) { n.text = v; n.always = ck.checked; } });
+    else { mut(() => { c.notes.push({ id: nid('n'), a: ls.a, b: ls.b, kind: 'text', text: v, always: ck.checked }); }); toast(`Sidenote added to ${lbl.toLowerCase()}`); }
+    getSelection().removeAllRanges();
+  };
+  popEl.onclick = e => {
+    const t = e.target.closest('[data-tab]'); if (t && !t.disabled) { tab = t.dataset.tab; $$('.tab', popEl).forEach(x => x.classList.toggle('on', x === t)); $$('[data-pane]', popEl).forEach(p => p.hidden = p.dataset.pane !== tab); (tab === 'text' ? ta : inp).focus(); return; }
+    const s = e.target.closest('[data-sid]'); if (s) return addCode(s.dataset.sid);
+    const x = e.target.closest('[data-x]'); if (x) { if (x.dataset.x === 'cancel') closePop(); else submit(); }
+  };
+  popEl.onkeydown = e => {
+    e.stopPropagation();
+    if (e.key === 'Escape') return closePop();
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); return submit(); }
+    if (tab === 'code' && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); hi = clamp(hi + (e.key === 'ArrowDown' ? 1 : -1), 0, hits.length - 1); $$('.cand', res).forEach((b, i) => b.classList.toggle('on', i === hi)); }
+    if (tab === 'code' && e.key === 'Enter') { e.preventDefault(); submit(); }
+  };
+  inp.oninput = doSearch;
+}
+
+// =====================================================================
+// Call link variables: "+" on hover -> checklist of syntax-inferred candidates
+// =====================================================================
+let vplusFor = null, vplusT = 0;
+const vplus = document.createElement('button'); vplus.className = 'vplus'; vplus.textContent = '+'; vplus.setAttribute('aria-label', 'Variables on this call'); labelsL.parentNode.appendChild(vplus);
+function placeVplus() { const g = edgeEls[vplusFor]; if (!g) return; const chipsW = g.chips ? g.chips.offsetWidth / 2 + 14 : 0; vplus.style.left = (g.mx + chipsW) + 'px'; vplus.style.top = g.my + 'px'; vplus.style.zIndex = 7; }
+edgesSvg.addEventListener('pointerover', e => { const h = e.target.closest('.ehit'); if (!h) return; const g = edgeEls[h.dataset.link]; if (!g) return; g.path.classList.add('hot'); g.head && g.head.classList.add('hot'); if (g.L.t !== 'call') return; clearTimeout(vplusT); vplusFor = g.L.id; placeVplus(); vplus.classList.add('show'); });
+edgesSvg.addEventListener('pointerout', e => { const h = e.target.closest('.ehit'); if (!h) return; const g = edgeEls[h.dataset.link]; if (g) { g.path.classList.remove('hot'); g.head && g.head.classList.remove('hot'); } vplusT = setTimeout(() => vplus.classList.remove('show'), 500); });
+vplus.addEventListener('pointerenter', () => clearTimeout(vplusT));
+vplus.addEventListener('pointerleave', () => { vplusT = setTimeout(() => vplus.classList.remove('show'), 400); });
+vplus.addEventListener('click', e => { e.stopPropagation(); if (vplusFor) openVars(vplusFor); });
+edgesSvg.addEventListener('dblclick', e => { const h = e.target.closest('.ehit'); if (!h) return; const L = S.links.find(x => x.id === h.dataset.link); if (L && L.t === 'plain') editLinkLabel(L.id); else if (L) openVars(L.id); });
+labelsL.addEventListener('dblclick', e => { const lb = e.target.closest('.elabel'); if (lb) editLinkLabel(lb.dataset.link); });
+function openVars(lid) {
+  const L = S.links.find(x => x.id === lid), g = edgeEls[lid]; if (!L || !g) return;
+  vplus.classList.remove('show');
+  const cands = varList(L), on = new Set(L.vars || []);
+  const custom = (L.vars || []).filter(k => k.startsWith('x:'));
+  popEl.innerHTML = `<div class="ph"><b>Variables on this call</b></div><div class="pb" style="padding:6px 8px">`
+    + (cands.length ? cands.map(v => `<label class="chk"><input type="checkbox" data-k="${esc(v.k)}"${on.has(v.k) ? ' checked' : ''}>${esc(v.label)}</label>`).join('') : '<div class="empty" style="padding:6px">No candidates</div>')
+    + custom.map(k => `<label class="chk"><input type="checkbox" data-k="${esc(k)}" checked>${esc(k.slice(2))}</label>`).join('')
+    + `<input class="fld" placeholder="Add Custom…" style="margin-top:6px;font-family:var(--mono);font-size:11.5px"></div>`
+    + `<div class="pf" style="font-size:11px;color:var(--ink-3)">Inferred from syntax: arguments ↔ parameters, and what receives the return value.</div>`;
+  popEl.style.width = '300px';
+  const anchor = () => { const gg = edgeEls[lid]; if (!gg) return null; return { x: gg.mx * cam.k.v + cam.x.v + 14, y: gg.my * cam.k.v + cam.y.v, w: 0, h: 6 }; };
+  popAnchor = anchor; openPop(popEl); placePop(popEl, anchor());
+  popEl.onclick = null; popEl.onkeydown = null;
+  popEl.onchange = e => {
+    const cb = e.target.closest('input[type=checkbox]'); if (!cb) return;
+    mut(() => { const s = new Set(L.vars || []); cb.checked ? s.add(cb.dataset.k) : s.delete(cb.dataset.k); const order = [...cands.map(v => v.k), ...custom]; L.vars = [...s].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99)); });
+  };
+  const inp = popEl.querySelector('input.fld');
+  inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Escape') closePop(); if (e.key === 'Enter' && inp.value.trim()) { const k = 'x:' + inp.value.trim(); mut(() => { L.vars = [...new Set([...(L.vars || []), k])]; }); openVars(lid); } };
+}
+function rowEl(cardId, line) {
+  const c = S.cards[cardId], el = cardEl(topId(cardId)); if (!el) return null;
+  return c.cmp ? el.querySelector(`.l[data-col="${cardId}"][data-l="${line}"], .l[data-colb="${cardId}"][data-lb="${line}"]`) : el.querySelector(`.src .l[data-l="${line}"]`);
+}
+function hiVar(lid, k, on) {
+  $$('.vhl').forEach(n => n.classList.remove('vhl'));
+  const g = edgeEls[lid]; if (g) { g.path.classList.toggle('hot', on); g.head && g.head.classList.toggle('hot', on); }
+  if (!on) return;
+  const L = S.links.find(x => x.id === lid); if (!L) return;
+  const v = varList(L).find(x => x.k === k), B = S.cards[L.b];
+  const site = siteOfLink(L);
+  if (v && v.arg) {
+    const [, param, al, c0, c1] = v.arg;
+    const row = rowEl(L.a, al); if (row) $$('[data-c0]', row).forEach(s => { const x = +s.dataset.c0; if (x >= c0 && x < c1) s.classList.add('vhl'); });
+    if (B) for (let l = B.s; l <= Math.min(B.e, B.s + 8); l++) { const r = rowEl(B.id, l); if (r) $$('[data-c0]', r).forEach(s => { if (s.textContent === param) s.classList.add('vhl'); }); if (/\)\s*(->.*)?:\s*$/.test(NV.files[B.f][l - 1])) break; }
+  } else if (v && v.ret && site) {
+    const names = v.ret.split(/[\s,]+/); const row = rowEl(L.a, L.l);
+    if (row) $$('[data-c0]', row).forEach(s => { if (+s.dataset.c0 < site[0] && names.includes(s.textContent)) s.classList.add('vhl'); });
+    if (B) for (let l = B.s; l <= B.e; l++) if (/^\s*return\b/.test(NV.files[B.f][l - 1])) { const r = rowEl(B.id, l); if (r) r.querySelector('.kw')?.classList.add('vhl'); }
+  }
+}
+labelsL.addEventListener('pointerover', e => { const ch = e.target.closest('.vchip[data-k]'); if (ch) hiVar(ch.closest('.vchips').dataset.link, ch.dataset.k, true); });
+labelsL.addEventListener('pointerout', e => { const ch = e.target.closest('.vchip[data-k]'); if (ch) hiVar(ch.closest('.vchips').dataset.link, ch.dataset.k, false); });
+
+// ---------- multiple definitions picker ----------
+function showPicker(span, cid, line, site, at) {
+  popEl.innerHTML = `<div class="picker-h">${site[2].length} definitions found for <code>${esc(span.textContent)}</code></div><div class="cands" style="border:0">`
+    + site[2].map(sid => `<button class="cand" data-sid="${sid}"><span class="kind ${SYMS[sid].k === 'c' ? 'c' : ''}">${glyph(SYMS[sid].k)}</span><code>${esc(SYMS[sid].q)}</code><span class="loc">${SYMS[sid].f}:${SYMS[sid].dl}</span></button>`).join('') + '</div>';
+  popEl.style.width = '';
+  popAnchor = () => span.isConnected ? rectB(span) : null; openPop(popEl); placePop(popEl, rectB(span));
+  popEl.onkeydown = null; popEl.onchange = null;
+  popEl.onclick = e => { const b = e.target.closest('[data-sid]'); if (!b) return; closePop(); expandTo(cid, line, site[0], b.dataset.sid, at); };
+}
+
+// ---------- Add Function… (place a function / class card at viewport centre) ----------
+function openSearch(w) {
+  closeAllPops();
+  popEl.innerHTML = `<div class="pb"><input class="fld" placeholder="Search functions and classes…  e.g. run, prepare_decode"><div class="sres"></div></div><div class="pf" style="font-size:11px;color:var(--ink-3)">Enter: Place on Board · Esc: Close</div>`;
+  popEl.style.width = '440px';
+  popAnchor = null; openPop(popEl);
+  const W = board.clientWidth; popEl.style.left = (W - 440) / 2 + 'px'; popEl.style.top = '70px';
+  const inp = popEl.querySelector('input'), res = popEl.querySelector('.sres');
+  let hits = [], hi = 0;
+  const draw = () => { res.innerHTML = hits.map((id, i) => `<button class="cand${i === hi ? ' on' : ''}" data-sid="${id}"><span class="kind ${SYMS[id].k === 'c' ? 'c' : ''}">${glyph(SYMS[id].k)}</span><code>${esc(SYMS[id].q)}</code><span class="loc">${SYMS[id].f}:${SYMS[id].dl}</span></button>`).join(''); };
+  const go = sid => {
+    closePop();
+    const { w: vw, h: vh } = view(); const ctr = w && w.x != null ? w : toWorld(vw / 2 - 260, vh / 2 - 160);
+    let nc; mut(() => { nc = addCard(codeCard(sid)); nc.x = ctr.x; nc.y = ctr.y; });
+    select(nc.id); const el = cardEl(nc.id); if (el) el.classList.add('ping'); revealCard(nc.id, false);
+  };
+  inp.oninput = () => { const q = inp.value.trim().toLowerCase(); hits = q ? Object.keys(SYMS).filter(id => SYMS[id].q.toLowerCase().includes(q)).sort((a, b) => (SYMS[a].n.toLowerCase().startsWith(q) ? 0 : 1) - (SYMS[b].n.toLowerCase().startsWith(q) ? 0 : 1) || SYMS[a].q.length - SYMS[b].q.length).slice(0, 8) : []; hi = 0; draw(); };
+  popEl.onkeydown = e => { e.stopPropagation(); if (e.key === 'Escape') closePop(); if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); hi = clamp(hi + (e.key === 'ArrowDown' ? 1 : -1), 0, Math.max(0, hits.length - 1)); draw(); } if (e.key === 'Enter' && hits[hi]) go(hits[hi]); };
+  popEl.onclick = e => { const b = e.target.closest('[data-sid]'); if (b) go(b.dataset.sid); };
+  popEl.onchange = null;
+  inp.focus();
+}
+
+// =====================================================================
+// Clicks on in-card buttons and calls
+// =====================================================================
+board.addEventListener('click', ev => {
+  if (ev.target.closest(UI) || swallowClick) return;
+  const call = ev.target.closest('.call');
+  if (call) { const s = getSelection(); if (s && !s.isCollapsed && s.toString().length > 1) return; onCallClick(call); return; }
+  const b = ev.target.closest('[data-act]'); if (!b) return;
+  const ce = b.closest('.card'), id = ce && ce.dataset.id, c = id && S.cards[id];
+  const act = b.dataset.act;
+  if (act === 'open') { const cc = b.dataset.colOpen ? S.cards[b.dataset.colOpen] : c; if (cc) openInEditor(cc.f, cc.s); }
+  else if (act === 'menu') { if (!sel.has(id) || sel.size > 1) select(id); const r = rectB(b); openCtx(cardMenu(id), r.x + r.w - 210, r.y + r.h + 4); }
+  else if (act === 'commit') {
+    const cc = b.dataset.cid ? S.cards[b.dataset.cid] : c, r = rectB(b);
+    openCtx([{ head: `Commits Touching ${cc.title}` }, { label: `${COMMIT}  Merge pull request #218`, kbd: 'Pinned', check: true, act: () => { } }, null,
+      { label: 'Compare with…', disabled: true, why: 'Only one commit (bb823b3) is available in this mock' }, { label: 'Enter Commit / Branch / Tag…', disabled: true }], r.x, r.y + r.h + 4);
+  }
+  else if (act === 'expandsub') mut(() => { c.sub = false; });
+  else if (act === 'showgap') { const g = b.closest('.gap'), a = +g.dataset.a; mut(() => { c.hid = c.hid.filter(h => h[0] !== a); }); }
+  else if (act === 'addnote') openAddNote(lineSel);
+  else if (act === 'tst') mut(() => { c.st = b.dataset.v; });
+  else if (act === 'tbold') mut(() => { c.bold = !c.bold; });
+  else if (act === 'tbg') mut(() => { c.bg = true; c.w = Math.max(c.w, 260); });
+  else if (act === 'cswap') mut(() => { c.cols.reverse(); });
+  else if (act === 'cuni') mut(() => { c.uni = !c.uni; });
+  else if (act === 'csame') mut(() => { c.same = !c.same; });
+  else if (act === 'scol') { const s = S.sects.find(x => x.id === b.closest('.slabel').dataset.sect); if (s) toggleSect(s); }
+});
+
+// =====================================================================
+// Walkthrough: one call tree, in number order
+// =====================================================================
+const presentEl = $('#present'), btnWalk = $('#btnWalk');
+let walk = null;
+function startWalk() {
+  closeAllPops();
+  if (walk) return exitWalk();
+  const pick = selCards().find(c => c.kind === 'code' || c.kind === 'compare');
+  let id = pick ? (pick.kind === 'compare' ? pick.cols.find(x => F.tree[x]) : pick.id) : null;
+  if (!id || !F.tree[id]) {
+    if (!pick && F.roots.length === 1) id = F.roots[0];
+    else return toast(pick ? 'This card is not in a call flow.' : 'Select a card in a flow first, then press P.');
+  }
+  const root = F.tree[id], list = F.order[root].filter(x => !hiddenIds.has(x));
+  walk = { root, list, i: Math.max(0, list.indexOf(id)), saved: { x: cam.x.t, y: cam.y.t, k: cam.k.t } };
+  presentEl.classList.add('on'); btnWalk.classList.add('on');
+  showStep(walk.i);
+}
+function showStep(i) {
+  if (!walk) return;
+  const n = walk.list.length; walk.i = (i + n) % n;
+  applyWalk();
+  const cur = walk.list[walk.i], el = cardEl(topId(cur)); if (!el) return;
+  const c = S.cards[topId(cur)];
+  const r = { x: c.x - 24, y: c.y - 24, w: el.offsetWidth + 48, h: Math.min(el.offsetHeight, 900) + 48 };
+  const f = fitRect(r, 1.15); camTo(f.x, f.y, f.k, true);
+}
+function applyWalk() {
+  $$('.cdimcol').forEach(n => n.classList.remove('cdimcol'));
+  if (!walk) {
+    for (const el of cardsL.querySelectorAll('.card')) el.classList.remove('dim');
+    for (const id in edgeEls) { const g = edgeEls[id]; [g.path, g.head, g.port, g.chips, g.lab].forEach(n => n && (n.style.opacity = '')); }
+    $$('.sect', world).forEach(s => s.style.opacity = '');
+    return;
+  }
+  walk.list = walk.list.filter(x => S.cards[x]);
+  if (!walk.list.length) return exitWalk(true);
+  const cur = walk.list[walk.i % walk.list.length], top = topId(cur);
+  for (const el of cardsL.querySelectorAll('.card')) el.classList.toggle('dim', el.dataset.id !== top);
+  const c = S.cards[cur];
+  if (c.cmp) { const k = S.cards[c.cmp], other = k.cols.find(x => x !== cur); $$(`[data-col="${other}"]`, cardEl(top)).forEach(n => n.classList.add('cdimcol')); }
+  for (const id in edgeEls) { const g = edgeEls[id], on = g.L.a === cur || g.L.b === cur; [g.path, g.head, g.port, g.chips, g.lab].forEach(n => n && (n.style.opacity = on ? '' : .18)); }
+  $$('.sect', world).forEach(s => s.style.opacity = .3);
+  $('#pNum').textContent = F.num[cur] || '';
+  $('#pTitle').textContent = c.title;
+  $('#pCnt').textContent = `${walk.i + 1} / ${walk.list.length}`;
+}
+function exitWalk(silent) {
+  if (!walk) return;
+  const s = walk.saved; walk = null;
+  presentEl.classList.remove('on'); btnWalk.classList.remove('on');
+  applyWalk();
+  if (!silent) camTo(s.x, s.y, s.k, true);
+}
+btnWalk.onclick = () => walk ? exitWalk() : startWalk();
+$('#pNext').onclick = () => showStep(walk.i + 1);
+$('#pPrev').onclick = () => showStep(walk.i - 1);
+$('#pExit').onclick = () => exitWalk();
+
+// =====================================================================
+// Keyboard
+// =====================================================================
+const editingNow = e => { const t = e.target; return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
+document.addEventListener('keydown', ev => {
+  if (ev.key === 'Meta' || ev.key === 'Control') {
+    modHeld = true;
+    if (peekState && peekEl.classList.contains('open')) pinPeek();
+    if (snState && snEl.classList.contains('open') && !snState.pinned) showSnpop(snState.mk, true);
+  }
+  if (editingNow(ev)) return;
+  const mod = ev.metaKey || ev.ctrlKey, k = ev.key, kl = k.toLowerCase();
+  if (k === ' ' && !mod) { spaceHeld = true; board.classList.add('space'); ev.preventDefault(); return; }
+  if (k === 'Escape') {
+    if (ctx.classList.contains('open')) return closeCtx();
+    if (popEl.classList.contains('open')) return closePop();
+    if (peekEl.classList.contains('open') || snEl.classList.contains('open') || $('.pinned-peek')) { hidePeek(true); hideSnpop(true); $$('.pinned-peek').forEach(n => n.remove()); return; }
+    if ($('#keys').classList.contains('open')) return toggleKeys(false);
+    if (connectFrom) { endConnect(); return toast('Connect cancelled'); }
+    if (walk) return exitWalk();
+    select(null); getSelection().removeAllRanges(); return;
+  }
+  if (walk && (k === 'ArrowRight' || k === 'ArrowDown')) { ev.preventDefault(); return showStep(walk.i + 1); }
+  if (walk && (k === 'ArrowLeft' || k === 'ArrowUp')) { ev.preventDefault(); return showStep(walk.i - 1); }
+  if (mod && kl === 'z') { ev.preventDefault(); return ev.shiftKey ? redo() : undo(); }
+  if (mod && kl === 'y') { ev.preventDefault(); return redo(); }
+  if (mod && kl === 'a') { ev.preventDefault(); return selectAll(); }
+  if (mod && kl === 'd') { ev.preventDefault(); return duplicateSel(); }
+  if (mod && kl === 'k') { ev.preventDefault(); return openSearch(); }
+  if (mod && k === '0') { ev.preventDefault(); return fitAll(); }
+  if (mod && k === '1') { ev.preventDefault(); const { w, h } = view(); return camTo(w / 2 - (w / 2 - cam.x.t) / cam.k.t, h / 2 - (h / 2 - cam.y.t) / cam.k.t, 1); }
+  if (mod && (k === '=' || k === '+')) { ev.preventDefault(); return zoomBy(1.25); }
+  if (mod && k === '-') { ev.preventDefault(); return zoomBy(0.8); }
+  if (mod && kl === 'c') { const s = getSelection(); if (s && !s.isCollapsed) return; /* native copy of code text */ const c = selCards().find(x => x.kind === 'code'); if (c) { ev.preventDefault(); copyText(NV.files[c.f].slice(c.s - 1, c.e).join('\n'), 'Copied code'); } return; }
+  if (mod) return;
+  if (k === 'Delete' || k === 'Backspace') { ev.preventDefault(); if (lineSel && !sel.size) return; return deleteSel(); }
+  if (k === '!' || (ev.shiftKey && ev.code === 'Digit1')) return fitAll();
+  if (k === '?') return toggleKeys();
+  if (kl === 's' && lineSel) { ev.preventDefault(); return openAddNote(lineSel); }
+  if (kl === 's') return toast('Select lines in a code card first');
+  if (kl === 'h' && lineSel) { ev.preventDefault(); return hideLines(lineSel.id, lineSel.a, lineSel.b); }
+  if (kl === 't' || kl === 'n') { ev.preventDefault(); const w = toWorld(lastPtr.x, lastPtr.y); return newText(w.x, w.y, kl === 'n'); }
+  if (kl === 'p') return startWalk();
+  if (k === 'Enter') { const c = selCards()[0]; if (c && c.kind === 'code') openInEditor(c.f, c.s); else if (c && c.kind === 'text') editText(c.id); }
+});
+document.addEventListener('keyup', ev => {
+  if (ev.key === ' ') { spaceHeld = false; board.classList.remove('space'); }
+  if (ev.key === 'Meta' || ev.key === 'Control') modHeld = false;
+});
+window.addEventListener('blur', () => { spaceHeld = false; modHeld = false; board.classList.remove('space'); });
+
+// =====================================================================
+// Tooltips (from base): 500ms first time, then instant while sliding between buttons
+// =====================================================================
+const tip = $('#tip'); let tipTimer, warmUntil = 0;
+function showTip(b) {
+  const r = b.getBoundingClientRect(), s = board.getBoundingClientRect(), below = r.top - s.top < 60;
+  tip.innerHTML = `${esc(b.dataset.tip)}${b.dataset.kbd ? `<kbd>${esc(b.dataset.kbd)}</kbd>` : ''}`;
+  tip.style.left = clamp(r.left + r.width / 2 - s.left, 60, s.width - 60) + 'px';
+  tip.style.top = (below ? r.bottom - s.top + 8 : r.top - s.top - 30) + 'px';
+  tip.classList.add('show');
+}
+function hideTip() { clearTimeout(tipTimer); if (tip.classList.contains('show')) warmUntil = performance.now() + 800; tip.classList.remove('show'); }
+board.addEventListener('pointerover', e => {
+  const b = e.target.closest('[data-tip]'); if (!b || drag) return;
+  clearTimeout(tipTimer);
+  if (tip.classList.contains('show') || performance.now() < warmUntil) showTip(b); else tipTimer = setTimeout(() => showTip(b), 500);
+});
+board.addEventListener('pointerout', e => { const b = e.target.closest('[data-tip]'); if (b && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-tip]'))) hideTip(); });
+board.addEventListener('pointerdown', () => { hideTip(); warmUntil = 0; }, true);
+
+// =====================================================================
+// Shortcuts panel
+// =====================================================================
+const KEYS = [
+  ['Board', [['Click a dotted call', 'Expand: callee card + Call link'], ['Hover a name', 'Definition peek (⌘-hover pins)'], ['Drag title bar', 'Move card'], ['Drag empty canvas', 'Marquee select'], ['Space + Drag', 'Pan'], ['Scroll / two fingers', 'Pan'], [`${K.mod}Scroll / pinch`, 'Zoom'], ['Double-click canvas', 'New Text'], ['⇧Click', 'Add to selection']]],
+  ['Lines (select code first)', [['S', 'Add Sidenote'], ['H', 'Hide Lines'], ['Click line number', 'Select line (⇧ extends)'], ['Right-click', 'Line menu: Highlight, Copy…']]],
+  ['Commands', [['T', 'New Text'], ['N', 'New Note'], [`${K.mod}K`, 'Add Function…'], ['P', 'Walk Through Flow'], ['← →', 'Previous / Next step'], ['Esc', 'Close popup / Exit / Clear selection'], ['Delete ⌫', 'Delete selection'], [`${K.mod}A`, 'Select All Cards'], [`${K.mod}D`, 'Duplicate (no links, no number)'], [`${K.mod}Z  ${K.shift}${K.mod}Z`, 'Undo / Redo'], ['Enter', 'Open in Editor'], [`${K.shift}1  ${K.mod}0`, 'Fit to Window'], [`${K.mod}1`, 'Zoom to 100%'], ['?', 'This panel']]],
+];
+function toggleKeys(on) {
+  const k = $('#keys'); on = on ?? !k.classList.contains('open');
+  if (on) k.innerHTML = `<h3>Keyboard Shortcuts<span class="grow"></span><button class="ib" id="keysX" aria-label="Close">×</button></h3>` + KEYS.map(([h, rows]) => `<h4>${h}</h4><table>${rows.map(([a, b]) => `<tr><td>${esc(a)}</td><td>${esc(b)}</td></tr>`).join('')}</table>`).join('');
+  k.classList.toggle('open', on);
+  if (on) $('#keysX').onclick = () => toggleKeys(false);
+}
+$('#btnKeys').onclick = () => toggleKeys();
+$('#bUndo').onclick = undo;
+$('#bRedo').onclick = redo;
+$('#btnReset').onclick = () => { resetDemo(); toast('Board reset to the starting state'); };
+
+// =====================================================================
+// Start
+// =====================================================================
+function initialCamera() {
+  const rs = [...cardsL.querySelectorAll('.card')].map(el => rectW(el));
+  const u = union(rs), { w, h } = view();
+  const k = clamp(Math.min((w - 96) / u.w, (h - 140) / u.h), 0.62, 1);
+  camSet(Math.max(48, (w - u.w * k) / 2) - u.x * k, 70 - u.y * k, k);
+}
+function resetDemo() {
+  exitWalk(true); closeAllPops(); $$('.pinned-peek').forEach(n => n.remove());
+  lsDel(); sel.clear(); undoS.length = 0; redoS.length = 0; lineSel = null;
+  startState(); render(); updUndo(); initialCamera();
+}
+function init() {
+  let ok = false;
+  const saved = lsGet();
+  if (saved) { try { const s = JSON.parse(saved); if (s && s.v === 1 && s.cards && Object.keys(s.cards).length) { S = s; ok = true; } } catch (e) { ok = false; } }
+  if (!ok) startState();
+  render(); updUndo();
+  initialCamera();
+  window.CB = { get S() { return S; }, render, expandTo, startWalk, exitWalk, selectAll, select, sel, F: () => F, cam, toWorld, undo, redo, resetDemo };
+}
+init();
+let rsT; new ResizeObserver(() => { clearTimeout(rsT); rsT = setTimeout(redrawEdges, 60); }).observe(board);
+
 </script>
 </body>
 </html>
