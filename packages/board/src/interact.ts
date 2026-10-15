@@ -61,6 +61,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   if (e.button !== 0) return;
   if (t.closest("[contenteditable], input, textarea, button, .call, .no, .grip, .hw, a.lnk, .lport, .eport")) return;
   if (connectFrom()) return finishConnect(e, id);
+  if (A.picking()) { e.preventDefault(); e.stopPropagation(); const cb = A.takePick(); const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null; cb?.(colEl?.dataset.col ?? id); return; }
   const f = cardById(id);
   if (!f) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
@@ -139,7 +140,7 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
   }, (ev, moved) => {
     clearTimeout(mergeT);
     setGuides([]);
-    setDragging(new Set());
+    setDragging(new Set<string>());
     const drop = dropTarget();
     setDropTarget(null);
     if (!moved) { end(); return; }
@@ -484,6 +485,7 @@ export function installKeys() {
       if (connectFrom()) { setConnectFrom(null); return toast("Connect cancelled"); }
       if (walk()) return A.exitWalk();
       if (tool) return setTool(null);
+      if (A.picking()) { A.takePick(); return toast("Cancelled"); }
       clearSel(); window.getSelection()?.removeAllRanges();
       return;
     }

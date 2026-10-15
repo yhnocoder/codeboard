@@ -13,7 +13,7 @@ import {
   type LineSel,
 } from "./state/store";
 import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "./state/camera";
-import { flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen } from "./state/ui";
+import { flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "./state/ui";
 import { openMenu, choose, promptText, type Item } from "./ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "./state/pop";
 import { send, ask } from "./host";
@@ -594,6 +594,7 @@ export function copyCard(c: CodeCard) {
 
 // ---------- 卡片属性 ----------
 
+export const compareTitle = (c: CompareCard) => cardTitle(c);
 export function renameCard(id: string, v: string) {
   mutate((b) => { const c = findCard(b, id)?.card; if (c) c.title = v.trim() && v.trim() !== cardTitle({ ...c, title: undefined } as Card) ? v.trim() : undefined; });
 }
@@ -877,6 +878,11 @@ export function addPlain(from: { card: string; seg?: string; line?: number }, to
 export function startConnect(id: string) {
   setConnectFrom({ card: id });
   toast("Click a card to connect · Esc to cancel");
+}
+export const setLinkEditing = (id: string) => { select({ links: [id] }); setEditing({ kind: "label", id }); };
+/** 悬停变量 chip：两张卡里出现这个名字的行高亮 */
+export function hiVar(L: Link, v: Var, on: boolean) {
+  setHoverVar(on ? { link: L.id, names: [v.a, v.b].filter(Boolean) as string[], from: L.from.card, to: L.to.card } : null);
 }
 export function setLinkLabel(id: string, v: string) {
   mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) l.label = v.trim() || undefined; });
@@ -1189,3 +1195,137 @@ export function exitWalk() {
 }
 
 export { toggleShown, setKeysOpen, zoomAt, view, center, contains };
+
+export const currentLineSel = () => lineSel();
+
+/** 选中的片段跨了几个顶层函数：按函数拆成几张卡，或一张多段卡 */
+export function splitSnippet(id: string, merge: boolean) {
+  const c = cardById(id)?.card;
+  if (!isCode(c) || c.segments.length !== 1) return;
+  const s = c.segments[0];
+  const defs = (state.views[s.id]?.defs ?? []).filter((d) => !d.qual.includes(".") || true).filter((d) => d.line >= s.start && d.line <= s.end);
+  const tops = defs.filter((d) => !defs.some((o) => o !== d && d.qual.startsWith(o.qual + ".")));
+  if (tops.length < 2) return;
+  const parts: Segment[] = tops.map((d, i) => {
+    const a = i === 0 ? s.start : d.line, e = i + 1 < tops.length ? tops[i + 1].line - 1 : s.end;
+    return { ...structuredClone(unwrap(s)), id: uid("s"), start: a, end: e, text: s.text.slice(a - s.start, e - s.start + 1), symbol: { qual: d.qual, kind: "function" as const }, scope: d.qual, hidden: undefined, hl: undefined };
+  });
+  if (merge) {
+    mutate((b) => { const k = findCard(b, id)?.card; if (isCode(k)) k.segments = parts; });
+  } else {
+    const r = hostRect(id)!;
+    mutate((b) => {
+      b.cards = b.cards.filter((k) => k.id !== id);
+      let y = r.y;
+      for (const p of parts) { b.cards.push({ id: uid("c"), kind: "code", segments: [p], x: r.x, y, w: r.w }); y += Math.min(520, 52 + (p.end - p.start + 1) * 19) + 28; }
+    });
+  }
+  requestViews(parts);
+}
+
+/** 宿主（命令面板、快捷键、状态栏）发来的命令 */
+export function runCommand(name: string, arg?: unknown) {
+  switch (name) {
+    case "fit": return fitAll();
+    case "search": return setPaletteOpen({ mode: "all" });
+    case "walk": return startWalk(arg as string | undefined);
+    case "exportPng": return exportPng();
+    case "undo": return import("./state/store").then((m) => m.undo());
+    case "redo": return import("./state/store").then((m) => m.redo());
+    case "review": return reviewNext();
+    case "reveal": return revealCard(arg as string);
+    case "newNote": return newNote();
+    case "keys": return setKeysOpen(true);
+  }
+}
+
+/** 新版本横幅里的 Review：一张张打开 diff */
+export function reviewNext() {
+  for (const c of allCodeCards(state.board)) {
+    const st = cardStale(c);
+    if (st === "changed" || st === "hidden") { select({ cards: [cardById(c.id)!.host.id] }); revealCard(c.id, false); setTimeout(() => openDiff(c.id), 350); return; }
+  }
+  toast("All cards are up to date");
+}
+export const staleCount = () => allCodeCards(state.board).filter((c) => cardStale(c) === "changed").length;
+
+/** 导出 PNG：把整块白板画到 canvas 上（用 SVG foreignObject 克隆 DOM） */
+export async function exportPng() {
+  const world = document.querySelector(".world") as HTMLElement | null;
+  if (!world) return;
+  const rs = [...state.board.cards.map((c) => rectOf(c)), ...state.board.sections.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h }))];
+  const b = bounds(rs);
+  if (!b) return toast("Nothing to export");
+  const pad = 40, scale = 2;
+  const W = Math.ceil(b.w + pad * 2), H = Math.ceil(b.h + pad * 2);
+  const clone = world.cloneNode(true) as HTMLElement;
+  clone.style.transform = `translate(${-b.x + pad}px, ${-b.y + pad}px)`;
+  clone.querySelectorAll(".sel, .lift").forEach((n) => n.classList.remove("sel", "lift"));
+  const css = [...document.styleSheets].map((s) => { try { return [...s.cssRules].map((r) => r.cssText).join("\n"); } catch { return ""; } }).join("\n");
+  const bg = getComputedStyle(document.body).getPropertyValue("--canvas") || getComputedStyle(document.body).backgroundColor;
+  const rootStyle = document.body.getAttribute("style") ?? "";
+  const xml = new XMLSerializer().serializeToString(clone);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}"><foreignObject width="${W}" height="${H}"><div xmlns="http://www.w3.org/1999/xhtml" class="${document.body.className}" style="${rootStyle};position:relative;width:${W}px;height:${H}px;overflow:hidden;background:${bg}"><style>${css.replace(/</g, "\\3c ")}</style>${xml}</div></foreignObject></svg>`;
+  const img = new Image();
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  try { await img.decode(); } catch { return toast("Export failed"); }
+  const cv = document.createElement("canvas");
+  cv.width = W * scale; cv.height = H * scale;
+  const g = cv.getContext("2d")!;
+  g.fillStyle = bg; g.fillRect(0, 0, cv.width, cv.height);
+  g.drawImage(img, 0, 0);
+  try { send({ type: "exportPng", dataUrl: cv.toDataURL("image/png"), name: `${state.board.name || "board"}.png` }); }
+  catch { toast("Export failed: an image on the board blocks export"); }
+}
+
+// ---------- 其他入口 ----------
+
+/** 点一张卡（Card sidenote 用） */
+let pickCb: ((id: string) => void) | null = null;
+export function pickCardThen(cb: (id: string) => void) { pickCb = cb; document.getElementById("board")?.classList.add("connecting"); }
+export function takePick(): ((id: string) => void) | null { const c = pickCb; pickCb = null; document.getElementById("board")?.classList.remove("connecting"); return c; }
+export const picking = () => !!pickCb;
+
+export function searchWorkspace(word: string) { setPaletteOpen({ mode: "code", q: word } as any); }
+
+export function openWorktreeDiff(id: string) {
+  const c = cardById(id)?.card;
+  if (!isCode(c)) return;
+  const s = c.segments[0];
+  const el = document.querySelector(`.card[data-id="${cardById(id)!.host.id}"] .rev`) ?? undefined;
+  const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
+  ask<DiffData>("diff", { seg: structuredClone(unwrap(s)), against: "worktree" })
+    .then((data) => updatePop(pid, (p) => ({ ...(p as any), data })))
+    .catch((e) => updatePop(pid, (p) => ({ ...(p as any), error: (e as Error).message })));
+}
+
+/** Focus 下点卡片路径：不跳编辑器，浮出只读源码 */
+export async function showSource(id: string) {
+  const c = cardById(id)?.card;
+  if (!isCode(c)) return;
+  const s = c.segments[0];
+  const el = document.querySelector(`.card[data-id="${cardById(id)!.host.id}"] .cpath`) ?? undefined;
+  const pid = openPop({ kind: "source", card: id, seg: structuredClone(unwrap(s)) }, el ? { el, prefer: "below" } : lastPointer());
+  try {
+    const r = await ask<{ html: string[]; start: number }>("source", { seg: structuredClone(unwrap(s)) });
+    updatePop(pid, (p) => ({ ...(p as any), html: r.html, start: r.start }));
+  } catch (e) { closePop(pid); toast((e as Error).message); }
+}
+export function openCodeFromFocus(id: string) {
+  import("./state/ui").then((u) => { u.setFocusMode(false); send({ type: "focusMode", on: false }); openCode(id); });
+}
+/** 卡头上的路径：Workbench 打开编辑器，Focus 浮出源码 */
+export function pathClick(id: string) {
+  import("./state/ui").then((u) => (u.focusMode() ? showSource(id) : openCode(id)));
+}
+
+/** 类卡里点一个成员：展开成函数卡，从类卡那一行连 Call link */
+export function expandMember(cardId: string, d: { line: number; name: string; qual: string }) {
+  const c = cardById(cardId)?.card;
+  if (!isCode(c)) return;
+  const s = c.segments[0];
+  expandCall(cardId, s.id, { line: d.line, col: 0, end: d.name.length, name: d.name, loop: false }, undefined, { path: s.path, line: d.line });
+}
+export function showAllMembers(id: string) {
+  mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c) && c.members) c.members.shown = []; });
+}

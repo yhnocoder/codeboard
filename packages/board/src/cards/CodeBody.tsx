@@ -4,7 +4,7 @@ import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, 
 import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection, flows } from "../state/store";
 import { setGeo } from "../state/geo";
-import { shown, toggleShown, notesOn, linksFrom, flashRows } from "../state/ui";
+import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging } from "../state/ui";
 import * as act from "../actions";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -32,13 +32,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: top,
     });
   };
-  onMount(() => {
-    const ro = new ResizeObserver(() => measure());
-    ro.observe(srcEl);
-    ro.observe(scrollEl);
-    onCleanup(() => ro.disconnect());
-    measure();
-  });
+  const ro = new ResizeObserver(() => measure());
+  onCleanup(() => ro.disconnect());
+  const observe = () => { ro.disconnect(); if (srcEl?.isConnected) ro.observe(srcEl); ro.observe(scrollEl); measure(); };
+  onMount(observe);
   createEffect(() => { rows(); notesOn(c().id); queueMicrotask(measure); });
 
   const fromLines = createMemo(() => new Set(linksFrom(c().id).map((l) => `${l.from.seg}:${l.from.line}`)));
@@ -147,6 +144,52 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
 
   const onScroll = () => measure();
 
+  // ---------- 悬停：标识符 → 定义预览；行尾圆点 → 拉 Plain link ----------
+  const [hoverRow, setHoverRow] = createSignal(-1);
+  let peekKey = "", peekTimer: number | undefined;
+  const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set const auto void return struct template typename".split(" "));
+  const onMove = (e: PointerEvent) => {
+    if (e.buttons || dragging().size) return;
+    const rowE = rowEl(e.target as Node);
+    setHoverRow(rowE ? +rowE.dataset.r! : -1);
+    const doc = document as any;
+    const pos = doc.caretPositionFromPoint?.(e.clientX, e.clientY);
+    const rng: Range | null = pos ? (() => { const r = document.createRange(); r.setStart(pos.offsetNode, pos.offset); return r; })() : doc.caretRangeFromPoint?.(e.clientX, e.clientY);
+    const r = rowE && rows()[+rowE.dataset.r!];
+    if (!rng || !rowE || !r || r.t !== "line" || !rowE.contains(rng.startContainer)) return clearPeek();
+    const pre = document.createRange();
+    pre.selectNodeContents(rowE);
+    pre.setEnd(rng.startContainer, rng.startOffset);
+    const col = pre.toString().length;
+    const s = segById(r.seg)!;
+    const text = s.text[r.line - s.start] ?? "";
+    let a = col, b = col;
+    while (a > 0 && /\w/.test(text[a - 1])) a--;
+    while (b < text.length && /\w/.test(text[b])) b++;
+    const word = text.slice(a, b);
+    // 鼠标确实在这个词上（不是行尾空白）
+    const tr = (rng.startContainer as Text).length !== undefined ? rng : null;
+    if (!word || !/^[A-Za-z_]/.test(word) || KW.has(word) || !tr || /#/.test(text.slice(0, a))) return clearPeek();
+    const key = `${r.seg}:${r.line}:${a}`;
+    if (key === peekKey) return;
+    clearPeek();
+    peekKey = key;
+    const pin = e.metaKey || e.ctrlKey;
+    peekTimer = window.setTimeout(() => { if (peekKey === key) act.showPeek(rowE, c().id, r.seg, r.line, a, word, pin); }, pin ? 0 : 550);
+  };
+  const clearPeek = () => { if (peekKey) { peekKey = ""; clearTimeout(peekTimer); act.scheduleHidePeek(); } };
+  const onLeave = () => { setHoverRow(-1); clearPeek(); };
+  const lportY = createMemo(() => { const i = hoverRow(); const r = rows()[i]; return i >= 0 && r?.t === "line" && ys()[i] ? { y: ys()[i].y, r } : null; });
+  const vhi = (r: Row) => {
+    const hv = hoverVar();
+    if (!hv || (hv.from !== c().id && hv.to !== c().id) || r.t !== "line") return false;
+    const s = segById(r.seg);
+    const t = s?.text[r.line - s.start] ?? "";
+    return hv.names.some((n) => new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t));
+  };
+  const freeEditing = () => editing()?.kind === "free" && editing()?.id === c().id;
+  createEffect(() => { freeEditing(); queueMicrotask(observe); });
+
   // 选中几行时行号旁出现虚线 +
   const addNoteY = createMemo(() => {
     const ls = lineSel();
@@ -177,7 +220,14 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const cmtLine = (r: Row) => r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;
 
   return (
-    <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => act.cardWheel(e, scrollEl)}>
+    <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => act.cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
+      <Show when={freeEditing()}>
+        <textarea class="freeedit" spellcheck={false} value={c().segments[0].text.join("\n")} ref={(el) => queueMicrotask(() => { el.focus(); el.style.height = `${el.scrollHeight}px`; })}
+          onPointerDown={(e) => e.stopPropagation()} onInput={(e) => { e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; }}
+          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "    "); } }}
+          onBlur={(e) => { act.setFreeCode(c().id, e.currentTarget.value.replace(/\s+$/, "")); setEditing(null); }} />
+      </Show>
+      <Show when={!freeEditing()}>
       <div ref={codeEl} class="code" onCopy={onCopy}>
         <div class="gutter">
           <For each={rows()}>
@@ -197,6 +247,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               </Show>
             )}
           </For>
+          <Show when={lportY() && !p.dim?.()}>
+            <span class="lport" style={{ top: `${lportY()!.y}px` }} data-tip="Drag to link this line" onPointerDown={(e) => { const r = lportY()!.r as Extract<Row, { t: "line" }>; const b = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id, seg: r.seg, line: r.line }, b.left + b.width / 2, b.top + b.height / 2); }} />
+          </Show>
           <Show when={addNoteY() !== null}>
             <button class="addn" style={{ top: `${addNoteY()}px` }} data-tip="Add Sidenote" data-kbd="S" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.addSidenoteUI()}>+</button>
           </Show>
@@ -204,12 +257,12 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         <For each={rows()}>
           {(r, i) => (
             <Show when={ys()[i()] && r.t === "line"}>
-              <div class="rowbg" classList={{ hl: isHl(segById(r.seg), (r as any).line), origin: fromLines().has(`${r.seg}:${(r as any).line}`), lsel: inSel(r.seg, (r as any).line), flash: flashRows().has(`${c().id}:${r.seg}:${(r as any).line}`) }}
+              <div class="rowbg" classList={{ hl: isHl(segById(r.seg), (r as any).line), origin: fromLines().has(`${r.seg}:${(r as any).line}`), lsel: inSel(r.seg, (r as any).line), flash: flashRows().has(`${c().id}:${r.seg}:${(r as any).line}`), vhi: vhi(r) }}
                 style={{ top: `${ys()[i()].y}px`, height: `${ys()[i()].h}px` }} />
             </Show>
           )}
         </For>
-        <div ref={srcEl} class="src" onPointerDown={onCodeDown} onContextMenu={onCtx}>
+        <div ref={srcEl} class="src" onPointerDown={onCodeDown} onContextMenu={onCtx} onPointerMove={onMove}>
           <For each={rows()}>
             {(r, i) => (
               <Switch>
@@ -231,6 +284,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           </For>
         </div>
       </div>
+      </Show>
     </div>
   );
 }

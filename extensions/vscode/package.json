@@ -1,7 +1,7 @@
 {
   "name": "codeboard-vscode",
   "displayName": "CodeBoard",
-  "description": "读代码用的白板：把函数放上来，点调用逐层展开，卡片钉在 commit 上。",
+  "description": "A whiteboard for reading code: put functions on it, click calls to expand them layer by layer, cards pinned to commits.",
   "publisher": "yhnocoder",
   "private": true,
   "version": "0.1.0",
@@ -22,62 +22,155 @@
     "commands": [
       {
         "command": "codeboard.openBoard",
-        "title": "打开白板",
+        "title": "Open Board",
         "category": "CodeBoard",
         "icon": "$(window)"
       },
       {
+        "command": "codeboard.openBoardToSide",
+        "title": "Open to the Side",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.newBoard",
-        "title": "新建白板",
+        "title": "New Board",
         "category": "CodeBoard",
         "icon": "$(add)"
       },
       {
+        "command": "codeboard.newGroup",
+        "title": "New Group",
+        "category": "CodeBoard",
+        "icon": "$(new-folder)"
+      },
+      {
         "command": "codeboard.renameBoard",
-        "title": "重命名白板",
+        "title": "Rename Board",
         "category": "CodeBoard",
         "icon": "$(edit)"
       },
       {
-        "command": "codeboard.deleteBoard",
-        "title": "删除白板",
-        "category": "CodeBoard",
-        "icon": "$(trash)"
+        "command": "codeboard.duplicateBoard",
+        "title": "Duplicate Board",
+        "category": "CodeBoard"
       },
       {
-        "command": "codeboard.addSelection",
-        "title": "添加到 CodeBoard",
+        "command": "codeboard.deleteBoard",
+        "title": "Delete Board",
+        "category": "CodeBoard",
+        "icon": "$(close)"
+      },
+      {
+        "command": "codeboard.moveToGroup",
+        "title": "Move to Group…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.revealInFolder",
+        "title": "Reveal in Folder",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.renameGroup",
+        "title": "Rename Group",
+        "category": "CodeBoard",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "codeboard.deleteGroup",
+        "title": "Delete Group",
+        "category": "CodeBoard",
+        "icon": "$(close)"
+      },
+      {
+        "command": "codeboard.addToBoard",
+        "title": "Add to Board",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.addToAnotherBoard",
+        "title": "Add to Another Board…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.addToSelectedCard",
+        "title": "Add to Selected Card",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.addFunction",
+        "title": "Add Function at Cursor",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.addSidenote",
+        "title": "Add as Sidenote",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.revealOnBoard",
+        "title": "Reveal on Board",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.switchTarget",
+        "title": "Switch Target Board",
         "category": "CodeBoard"
       },
       {
         "command": "codeboard.addSymbol",
-        "title": "把光标所在函数放到白板上",
+        "title": "Add Symbol to Board",
         "category": "CodeBoard"
       },
       {
-        "command": "codeboard.focusCard",
-        "title": "在白板上查看",
+        "command": "codeboard.revealSymbol",
+        "title": "Reveal Symbol on Board",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.openGithubFile",
+        "title": "Open GitHub File",
         "category": "CodeBoard"
       }
     ],
     "menus": {
       "editor/context": [
         {
-          "command": "codeboard.addSelection",
-          "when": "editorHasSelection",
-          "group": "9_cutcopypaste@99"
+          "command": "codeboard.addToBoard",
+          "group": "9_codeboard@1"
         },
         {
-          "command": "codeboard.addSymbol",
-          "when": "!editorHasSelection",
-          "group": "9_cutcopypaste@99"
+          "command": "codeboard.addToAnotherBoard",
+          "group": "9_codeboard@2"
+        },
+        {
+          "command": "codeboard.addToSelectedCard",
+          "when": "editorHasSelection",
+          "group": "9_codeboard@3"
+        },
+        {
+          "command": "codeboard.addFunction",
+          "group": "9_codeboard@4"
+        },
+        {
+          "command": "codeboard.addSidenote",
+          "group": "9_codeboard@5"
+        },
+        {
+          "command": "codeboard.revealOnBoard",
+          "group": "9_codeboard@6"
         }
       ],
       "view/title": [
         {
           "command": "codeboard.newBoard",
           "when": "view == codeboard.boards",
-          "group": "navigation"
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeboard.newGroup",
+          "when": "view == codeboard.boards",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -90,15 +183,93 @@
           "command": "codeboard.deleteBoard",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "inline@2"
+        },
+        {
+          "command": "codeboard.openBoard",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "1_open@1"
+        },
+        {
+          "command": "codeboard.openBoardToSide",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "1_open@2"
+        },
+        {
+          "command": "codeboard.renameBoard",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "codeboard.duplicateBoard",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@2"
+        },
+        {
+          "command": "codeboard.moveToGroup",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@3"
+        },
+        {
+          "command": "codeboard.revealInFolder",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "3_misc@1"
+        },
+        {
+          "command": "codeboard.deleteBoard",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "4_del@1"
+        },
+        {
+          "command": "codeboard.newBoard",
+          "when": "view == codeboard.boards && viewItem == group",
+          "group": "1_new@1"
+        },
+        {
+          "command": "codeboard.renameGroup",
+          "when": "view == codeboard.boards && viewItem == group",
+          "group": "2_edit@1"
+        },
+        {
+          "command": "codeboard.deleteGroup",
+          "when": "view == codeboard.boards && viewItem == group",
+          "group": "4_del@1"
         }
       ],
       "commandPalette": [
         {
-          "command": "codeboard.focusCard",
+          "command": "codeboard.openBoardToSide",
           "when": "false"
         },
         {
-          "command": "codeboard.renameBoard",
+          "command": "codeboard.duplicateBoard",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.moveToGroup",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.renameGroup",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.deleteGroup",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.addSymbol",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.revealSymbol",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.openGithubFile",
+          "when": "false"
+        },
+        {
+          "command": "codeboard.revealInFolder",
           "when": "false"
         },
         {
@@ -109,8 +280,13 @@
     },
     "keybindings": [
       {
-        "command": "codeboard.addSymbol",
+        "command": "codeboard.addToBoard",
         "key": "alt+b",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "codeboard.addSidenote",
+        "key": "alt+s",
         "when": "editorTextFocus"
       }
     ],
@@ -127,14 +303,22 @@
       "codeboard": [
         {
           "id": "codeboard.boards",
-          "name": "白板"
+          "name": "Boards"
+        },
+        {
+          "id": "codeboard.github",
+          "name": "GitHub Files"
         }
       ]
     },
     "viewsWelcome": [
       {
         "view": "codeboard.boards",
-        "contents": "还没有白板。\n[新建白板](command:codeboard.newBoard)\n在编辑器里选中代码，右键「添加到 CodeBoard」，或者在函数里按 Alt+B。"
+        "contents": "No boards yet.\n[New Board](command:codeboard.newBoard)\nPlace the cursor in a function and press Alt+B, or select some lines and choose CodeBoard > Add to Board."
+      },
+      {
+        "view": "codeboard.github",
+        "contents": "Paste a GitHub file link (with #L line numbers) onto a board to download the file here."
       }
     ],
     "configuration": {
@@ -143,7 +327,7 @@
         "codeboard.storageDir": {
           "type": "string",
           "default": "",
-          "markdownDescription": "白板文件放在哪个目录。留空时放在 VS Code 为这个工作区准备的存储目录里，不会写进你在读的仓库。可以填绝对路径，或相对工作区根目录的路径。"
+          "markdownDescription": "Folder for board files. Leave empty to use VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
         }
       }
     }

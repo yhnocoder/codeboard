@@ -326,3 +326,7 @@ export function migrateBoard(raw: any): Board {
   }
   return b;
 }
+
+export const varKey = (v: Var) => `${v.ret ? "→" : ""}${v.a}|${v.b ?? ""}`;
+/** 线上显示的文字：名字相同只显示一个；不同显示 a → b；返回值 → logits */
+export const varText = (v: Var) => (v.ret ? `→ ${v.a}` : v.b ? `${v.a} → ${v.b}` : v.a);

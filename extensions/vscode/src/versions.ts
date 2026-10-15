@@ -39,18 +39,16 @@ export async function staleOf(seg: Segment): Promise<Stale> {
     if (!head) return { state: "missing" };
     const headText = await showFile(root, head, seg.path);
     const work = await readText(abs);
-    if (headText === null) {
-      // 文件不在 HEAD 里：没提交过的文件
-      if (v.uncommitted && work !== null) return { state: "uncommitted" };
-      return { state: "lost" };
+    if (v.uncommitted) {
+      // 钉的是工作区内容（用户自己的改动）：跟工作区比，一样 = ok，不一样 = 新版本
+      if (work === null) return { state: "lost" };
+      const { at: _w, ...t } = trackSeg(seg, splitLines(work), symsOf(seg.lang, work), "Working Tree");
+      return t;
     }
+    if (headText === null) return { state: "lost" };
     const headLines = splitLines(headText);
     if (head.startsWith(v.commit) || v.commit.startsWith(head)) {
       // 钉的就是 HEAD：只看工作区有没有未提交改动
-      if (v.uncommitted) {
-        const t = trackSeg(seg, headLines, symsOf(seg.lang, headText), head.slice(0, 7));
-        return t.state === "ok" ? { state: "ok" } : { state: "uncommitted" };
-      }
       if (work !== null && work !== headText) {
         const wl = splitLines(work);
         const at = locateSeg(seg, wl, symsOf(seg.lang, work));

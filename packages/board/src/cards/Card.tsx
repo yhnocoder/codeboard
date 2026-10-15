@@ -7,6 +7,7 @@ import {
 import { state, setSizes, isSel, flows, collapsedAway, sel } from "../state/store";
 import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
+import { collapsedHome } from "../state/sections";
 import { CodeBody } from "./CodeBody";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
@@ -33,20 +34,22 @@ export function CardView(p: { card: Card }) {
     const s: JSX.CSSProperties = { left: `${c().x}px`, top: `${c().y}px`, width: `${c().w}px` };
     if (c().h) s.height = `${c().h}px`;
     const pi = pop();
-    if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
+    if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
+    else if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
     return s;
   };
   const dim = () => {
     const w = walk();
     if (!w) return false;
     const cur = w.order[w.i];
-    if (c().kind === "compare") return !c().cols.some((k) => k.id === cur);
+    const h = c();
+    if (h.kind === "compare") return !h.cols.some((k) => k.id === cur);
     return c().id !== cur;
   };
   const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind);
   const drop = () => dropTarget();
   return (
-    <Show when={!collapsedAway().has(c().id)}>
+    <Show when={!collapsedAway().has(c().id) && !collapsedHome(c().section)}>
       <div ref={el} class={`card ${kindClass()}`} data-id={c().id} style={style()}
         classList={{
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!c().locked, autoh: !c().h,
@@ -64,6 +67,9 @@ export function CardView(p: { card: Card }) {
           <Match when={c().kind === "web"}><WebView card={c() as WebCard} /></Match>
           <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
         </Switch>
+        <Show when={!dragging().size}>
+          <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
+        </Show>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <Show when={!c().locked}>
           <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} />}>
@@ -97,7 +103,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Editable class="ctitle" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
       <Show when={free()} fallback={
-        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openCode(c().id)}>
+        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.pathClick(c().id)}>
           {multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
@@ -109,9 +115,12 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
           data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : "Pinned version"}
           onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
           <Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>
-          {mixed() ? "Mixed versions" : versionLabel(s0()?.version)}{act.uncommitted(c()) ? " + uncommitted" : ""}
+          {mixed() ? "Mixed versions" : versionLabel(s0()?.version)}
           <Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show>
         </button>
+      </Show>
+      <Show when={act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted")}>
+        <button class="rev unc" data-tip="HEAD vs Working Tree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openWorktreeDiff(c().id)}>+ uncommitted</button>
       </Show>
       <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
     </div>

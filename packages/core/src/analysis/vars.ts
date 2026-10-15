@@ -1,6 +1,6 @@
 // Call link 上的变量候选：调用处的实参 ↔ 被调函数的形参，加上返回值被谁接住。
 // 默认一个都不加，只给候选。推不出来（*args 转手、按字符串转发、不知道被调的是谁）时为空。
-import type { Var } from "../model";
+import { varKey, type Var } from "../model";
 import type { CallSite, Sym } from "./index";
 
 const short = (s: string, n = 28) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
@@ -33,7 +33,4 @@ export function varCandidates(call: CallSite, callee: Sym | undefined): Var[] {
 
 const pair = (a: string, b: string): Var => (a === b ? { a } : { a, b });
 
-export const varKey = (v: Var) => `${v.ret ? "→" : ""}${v.a}|${v.b ?? ""}`;
 
-/** 线上显示的文字：名字相同只显示一个；不同显示 a → b；返回值 → logits */
-export const varText = (v: Var) => (v.ret ? `→ ${v.a}` : v.b ? `${v.a} → ${v.b}` : v.a);

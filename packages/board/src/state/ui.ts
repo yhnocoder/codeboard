@@ -51,14 +51,14 @@ export const [rubber, setRubber] = createSignal<{ x1: number; y1: number; x2: nu
 export const [spaceDown, setSpaceDown] = createSignal(false);
 export const [connectFrom, setConnectFrom] = createSignal<{ card: string; seg?: string; line?: number } | null>(null);
 export const [hoverLink, setHoverLink] = createSignal<string | null>(null);
-export const [hoverVar, setHoverVar] = createSignal<{ link: string; i: number } | null>(null);
+export const [hoverVar, setHoverVar] = createSignal<{ link: string; names: string[]; from: string; to: string } | null>(null);
 // 新卡弹出动画：id → 起点偏移
 export const [popIn, setPopIn] = createSignal<Record<string, { ox: number; oy: number; v: number; slide?: boolean }>>({});
 // 讲解
 export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[] };
 export const [walk, setWalk] = createSignal<Walk | null>(null);
 // 弹窗
-export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; then?: (item: unknown) => void }>(false);
+export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; q?: string }>(false);
 export const [keysOpen, setKeysOpen] = createSignal(false);
 export const [focusMode, setFocusMode] = createSignal(false);
 export const [banner, setBanner] = createSignal(true);
