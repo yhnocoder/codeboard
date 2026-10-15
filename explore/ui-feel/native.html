@@ -1,0 +1,440 @@
+<title>去掉网页味</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* 布局：十个小格子，每格一个细节，各自能在「网页」和「原生」之间切换，亲手对比 */
+:root {
+  color-scheme: light;
+  --page: light-dark(#f5f4f1, #141413);
+  --page-ink: light-dark(#23211d, #ecebe7);
+  --page-ink-2: light-dark(#6a665e, #a19d95);
+  --page-hair: light-dark(rgba(40,30,10,.12), rgba(255,250,240,.1));
+  --seg-bg: light-dark(rgba(40,30,10,.06), rgba(255,250,240,.07));
+  --seg-on: light-dark(#ffffff, #3a3936);
+  --bg: light-dark(#eeece6, #191816); --surface: light-dark(#fdfcfa, #252422); --head: light-dark(#f8f6f1, #2a2926);
+  --ink: light-dark(#211f1b, #ece8e0); --ink-2: light-dark(#625e56, #aca79d); --ink-3: light-dark(#9a958b, #78746c);
+  --line: light-dark(rgba(60,45,20,.09), rgba(255,240,220,.07)); --hair: light-dark(rgba(60,45,20,.16), rgba(255,240,220,.11));
+  --accent: light-dark(#b5552d, #e3895f); --accent-press: light-dark(#97441f, #c9704a); --on-accent: #fff;
+  --web: light-dark(#2563eb, #60a5fa);
+  --row: color-mix(in srgb, var(--accent) 9%, transparent);
+  --sh-card: 0 0 0 .5px var(--hair), 0 1px 1px light-dark(rgba(50,35,10,.04), rgba(0,0,0,.25)), 0 6px 16px -6px light-dark(rgba(50,35,10,.14), rgba(0,0,0,.5));
+  --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px light-dark(rgba(50,35,10,.08), rgba(0,0,0,.35)), 0 10px 28px -8px light-dark(rgba(50,35,10,.18), rgba(0,0,0,.55));
+  --glass: light-dark(rgba(253,252,250,.8), rgba(42,41,38,.78));
+  --tip-bg: light-dark(rgba(34,32,28,.92), rgba(245,243,238,.94)); --tip-ink: light-dark(#f6f4ef, #1d1c1a);
+  --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Noto Sans SC", "Helvetica Neue", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --out: cubic-bezier(.2, .8, .2, 1);
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--page); color: var(--page-ink); font: 13px/1.5 var(--sys); -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1160px; margin: 0 auto; display: flex; flex-direction: column; gap: 18px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; }
+header h1 { font: 600 17px/1.2 var(--sys); margin: 0; letter-spacing: -0.01em; }
+header .sub { color: var(--page-ink-2); font-size: 12.5px; max-width: 62ch; }
+.grow { flex: 1; }
+.ctl { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--page-ink-2); }
+/* 页面自己的控件一直是原生手感 */
+.pc, .pc * { user-select: none; -webkit-user-select: none; cursor: default; }
+.pc button { font: inherit; color: inherit; background: none; border: 0; padding: 0; }
+.pc button:focus { outline: none; }
+.pc button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--seg-bg); gap: 2px; }
+.seg button { padding: 2px 10px; border-radius: 6px; font-size: 12px; color: var(--page-ink-2); }
+.seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--page-ink); box-shadow: 0 0 0 .5px var(--page-hair), 0 1px 2px light-dark(rgba(0,0,0,.08), rgba(0,0,0,.4)); }
+.seg button[data-m="web"][aria-pressed="true"] { color: var(--web); }
+
+.grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 860px) { .grid { grid-template-columns: minmax(0, 1fr); } }
+.cell { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border-radius: 12px; background: light-dark(rgba(255,255,255,.55), rgba(255,255,255,.025)); box-shadow: 0 0 0 .5px var(--page-hair); }
+.cell-h { display: flex; align-items: center; gap: 10px; }
+.cell-h b { font-size: 13.5px; font-weight: 600; }
+.cell-h .n { font: 500 11px var(--mono); color: var(--page-ink-2); font-variant-numeric: tabular-nums; }
+.stage { position: relative; min-height: 150px; border-radius: 8px; background: var(--bg); color: var(--ink); padding: 16px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; overflow: hidden; }
+.say { margin: 0; font-size: 12.5px; color: var(--page-ink-2); line-height: 1.6; min-height: 3.2em; }
+.say b { color: var(--page-ink); font-weight: 600; }
+.try { font-size: 11.5px; color: var(--page-ink-2); }
+kbd { font: 10.5px var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--page-hair); }
+
+/* ---------- 示例里共用的小部件 ---------- */
+:where(.stage) button { font: inherit; font-size: 12.5px; color: var(--ink-2); background: none; border: 0; padding: 0; }
+.pill { display: inline-flex; align-items: center; gap: 2px; background: var(--glass); border-radius: 10px; padding: 4px; box-shadow: var(--sh-float); }
+.ib { width: 28px; height: 28px; display: inline-grid; place-items: center; border-radius: 6px; color: var(--ink-2); }
+.tbtn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; }
+.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.mcard { background: var(--surface); border-radius: 8px; box-shadow: var(--sh-card); min-width: 0; overflow: hidden; }
+.mhead { height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-bottom: 1px solid var(--line); background: var(--head); white-space: nowrap; }
+.mhead .t { font: 500 11.5px var(--mono); outline: none; border-radius: 3px; }
+.mhead .t[contenteditable="true"] { box-shadow: 0 0 0 1.5px var(--accent); background: var(--surface); padding: 0 3px; cursor: text; }
+.mhead .p { font-size: 11px; color: var(--ink-3); }
+.mcode { font: 11px/19px var(--mono); padding: 5px 10px 7px; white-space: pre; color: var(--ink-2); }
+.mcode .k { color: light-dark(#9a3f22, #e59572); } .mcode .f { color: light-dark(#2e5d86, #86b4de); } .mcode .s { color: light-dark(#7a4f9a, #c8a3e6); }
+.mcard.sel { box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
+
+/* ---------- 每格的「网页」与「原生」 ---------- */
+/* 1 选中 */
+.c-select[data-mode="native"] .stage { user-select: none; -webkit-user-select: none; cursor: default; }
+.c-select[data-mode="native"] .mcode { user-select: text; -webkit-user-select: text; cursor: text; }
+.c-select[data-mode="native"] .stage *:not(.mcode):not(.mcode *):not([contenteditable="true"]) { cursor: default; }
+.c-select .stage ::selection { background: color-mix(in srgb, var(--accent) 28%, transparent); }
+.c-select[data-mode="web"] .stage ::selection { background: light-dark(#b3d4fc, #264f78); }
+/* 2 ⌘A */
+.c-all .stage { outline: none; }
+.c-all .stage:focus-visible { box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 40%, transparent); }
+.c-all .mcard { width: 120px; }
+.c-all[data-mode="native"] .stage { user-select: none; -webkit-user-select: none; cursor: default; }
+/* 3 光标 */
+.c-cursor[data-mode="web"] .stage button, .c-cursor[data-mode="web"] .stage a { cursor: pointer; }
+.c-cursor[data-mode="native"] .stage, .c-cursor[data-mode="native"] .stage * { cursor: default; user-select: none; -webkit-user-select: none; }
+.c-cursor[data-mode="native"] .stage a { cursor: pointer; }
+.c-cursor .stage a { color: var(--accent); font-size: 12.5px; text-decoration: none; }
+.c-cursor .stage a:hover { text-decoration: underline; text-underline-offset: 3px; }
+.c-cursor .ib:hover, .c-cursor .tbtn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+/* 4 焦点框 */
+.c-focus .stage * { user-select: none; -webkit-user-select: none; cursor: default; }
+.c-focus .ib:hover, .c-focus .tbtn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.c-focus[data-mode="web"] .stage button:focus { outline: 2px solid var(--web); outline-offset: 1px; }
+.c-focus[data-mode="native"] .stage button:focus { outline: none; }
+.c-focus[data-mode="native"] .stage button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* 5 按压 */
+.c-press .stage * { user-select: none; -webkit-user-select: none; cursor: default; }
+.primary { height: 30px; padding: 0 14px; border-radius: 7px; background: var(--accent) !important; color: var(--on-accent) !important; font-weight: 500; }
+.secondary { height: 30px; padding: 0 14px; border-radius: 7px; background: var(--surface) !important; color: var(--ink) !important; box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px light-dark(rgba(0,0,0,.06), rgba(0,0,0,.3)); }
+.c-press[data-mode="web"] .stage button { transition: all .3s ease; }
+.c-press[data-mode="web"] .primary:hover { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 6px 16px -4px color-mix(in srgb, var(--accent) 60%, transparent); }
+.c-press[data-mode="web"] .secondary:hover { transform: translateY(-1px); }
+.c-press[data-mode="web"] .ib:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.c-press[data-mode="native"] .stage button { transition: background .12s, scale .12s, filter .12s; }
+.c-press[data-mode="native"] .stage button:active { transition: none; scale: .97; }
+.c-press[data-mode="native"] .primary:active { background: var(--accent-press) !important; }
+.c-press[data-mode="native"] .secondary:active { filter: brightness(.94); }
+.c-press[data-mode="native"] .ib:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+.c-press[data-mode="native"] .ib:active { background: color-mix(in srgb, var(--ink) 13%, transparent); }
+/* 6 拖图标 */
+.c-drag .stage { user-select: none; -webkit-user-select: none; cursor: default; }
+.c-drag img { width: 44px; height: 44px; border-radius: 10px; box-shadow: var(--sh-card); background: var(--surface); padding: 10px; }
+.c-drag[data-mode="native"] img { -webkit-user-drag: none; }
+/* 7 右键 */
+.c-ctx .stage { user-select: none; -webkit-user-select: none; cursor: default; }
+.c-ctx .mcard { width: 240px; }
+.cmenu { position: absolute; z-index: 5; min-width: 196px; padding: 5px; border-radius: 9px; background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); box-shadow: var(--sh-float);
+  transform-origin: 0 0; opacity: 0; scale: .96; visibility: hidden; transition: opacity 90ms, scale 90ms, visibility 0s 90ms; }
+.cmenu.open { opacity: 1; scale: 1; visibility: visible; transition: opacity 140ms var(--out), scale 160ms var(--out); }
+.cmenu div { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 5px; font-size: 12.5px; color: var(--ink); }
+.cmenu div:hover { background: var(--accent); color: var(--on-accent); }
+.cmenu div small { margin-left: auto; font: 10.5px var(--mono); color: var(--ink-3); }
+.cmenu div:hover small { color: rgba(255,255,255,.75); }
+.cmenu hr { border: 0; height: .5px; background: var(--hair); margin: 4px 6px; }
+/* 8 滚动 */
+.c-scroll .stage { padding: 0; align-items: stretch; user-select: none; -webkit-user-select: none; cursor: default; }
+.blist { height: 150px; overflow-y: auto; width: 100%; padding: 6px; }
+.blist div { display: flex; justify-content: space-between; padding: 6px 10px; border-radius: 6px; font-size: 12.5px; }
+.blist div:hover { background: color-mix(in srgb, var(--ink) 6%, transparent); }
+.blist small { color: var(--ink-3); font: 11px var(--mono); }
+.c-scroll[data-mode="native"] .blist { overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.c-scroll[data-mode="native"] .blist:hover { scrollbar-color: color-mix(in srgb, var(--ink) 25%, transparent) transparent; }
+.c-scroll[data-mode="native"] .blist::-webkit-scrollbar { width: 10px; }
+.c-scroll[data-mode="native"] .blist::-webkit-scrollbar-track { background: transparent; }
+.c-scroll[data-mode="native"] .blist::-webkit-scrollbar-thumb { background: transparent; border-radius: 10px; border: 3px solid transparent; background-clip: content-box; }
+.c-scroll[data-mode="native"] .blist:hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--ink) 25%, transparent); }
+.c-scroll[data-mode="web"] .blist { scrollbar-width: auto; scrollbar-color: auto; overscroll-behavior: auto; }
+/* 9 提示 */
+.c-tip .stage { user-select: none; -webkit-user-select: none; cursor: default; }
+.c-tip .ib:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.tip { position: absolute; z-index: 5; pointer-events: none; padding: 4px 8px; border-radius: 6px; background: var(--tip-bg); color: var(--tip-ink); font-size: 11.5px; white-space: nowrap;
+  translate: -50% 0; opacity: 0; transition: opacity 80ms; display: flex; gap: 8px; align-items: center; }
+.tip.show { opacity: 1; transition: opacity 120ms var(--out); }
+.tip kbd { box-shadow: none; opacity: .6; padding: 0; }
+/* 10 数字 */
+.c-num .stage { user-select: none; -webkit-user-select: none; cursor: default; justify-content: center; }
+.zoom { font: 12px var(--sys); color: var(--ink-2); }
+.c-num[data-mode="native"] .zoom { font-family: var(--mono); font-size: 11.5px; font-variant-numeric: tabular-nums; min-width: 44px; text-align: center; }
+.c-num .ib:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); }
+
+.discuss { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; }
+.discuss h2 { font: 600 15px var(--sys); margin: 0; }
+.discuss ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.6; max-width: 80ch; }
+.discuss li span { color: var(--page-ink-2); }
+</style>
+
+<div class="wrap">
+  <header class="pc">
+    <div>
+      <h1>去掉网页味</h1>
+      <div class="sub">每一格是一个细节。右上角切「网页 / 原生」，亲手试一下区别。「网页」是浏览器默认行为，v1 里多数还是这样。</div>
+    </div>
+    <div class="grow"></div>
+    <div class="ctl">全部
+      <div class="seg" id="all" role="group" aria-label="全部切换">
+        <button id="all-web" data-m="web">网页</button>
+        <button id="all-native" data-m="native" aria-pressed="true">原生</button>
+      </div>
+    </div>
+    <div class="ctl">主题
+      <div class="seg" id="segT" role="group" aria-label="主题">
+        <button id="t-sys" data-t="" aria-pressed="true">跟随</button>
+        <button id="t-light" data-t="light">浅</button>
+        <button id="t-dark" data-t="dark">深</button>
+      </div>
+    </div>
+  </header>
+
+  <div class="grid" id="grid">
+
+    <section class="cell c-select" data-mode="native">
+      <div class="cell-h pc"><span class="n">01</span><b>能选中的只有代码</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage">
+        <div class="pill"><button class="tbtn"><svg class="ico" viewBox="0 0 16 16"><path d="M5 3.5v9l7-4.5z"/></svg>讲解</button><button class="tbtn">第一张白板</button></div>
+        <div class="mcard" style="flex:1 1 220px">
+          <div class="mhead"><span class="t" id="rename">Scheduler.schedule</span><span class="p">scheduler.py</span></div>
+          <div class="mcode"><span class="k">def</span> <span class="f">schedule</span>(<span class="s">self</span>):
+    scheduled_seqs = []
+    num_seqs = <span class="s">0</span></div>
+        </div>
+      </div>
+      <p class="say" data-web="<b>网页：</b>从工具条一路拖到代码，按钮文字、标题、行号全被刷成蓝色；双击标题只会选中一个词。" data-native="<b>原生：</b>按钮、标题、行号都选不中；代码可以选、可以复制，选区用强调色。双击标题直接改名，回车确认。"></p>
+      <span class="try pc">试试：从左边按钮拖到代码末尾；双击标题。</span>
+    </section>
+
+    <section class="cell c-all" data-mode="native">
+      <div class="cell-h pc"><span class="n">02</span><b>⌘A 选的是卡片</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage" tabindex="0" id="allStage">
+        <div class="mcard"><div class="mhead"><span class="t">step</span></div><div class="mcode">seqs = …</div></div>
+        <div class="mcard"><div class="mhead"><span class="t">schedule</span></div><div class="mcode">while …</div></div>
+        <div class="mcard"><div class="mhead"><span class="t">run</span></div><div class="mcode">logits = …</div></div>
+      </div>
+      <p class="say" data-web="<b>网页：</b>⌘A 把这块区域里所有文字刷蓝，在 VS Code 里还会连工具条一起选上。" data-native="<b>原生：</b>⌘A 选中全部卡片，Esc 取消。白板就是一个文档，快捷键应该作用在卡片上。"></p>
+      <span class="try pc">试试：先点一下灰色区域，再按 <kbd>⌘A</kbd> 或 <kbd>Ctrl A</kbd>。</span>
+    </section>
+
+    <section class="cell c-cursor" data-mode="native">
+      <div class="cell-h pc"><span class="n">03</span><b>按钮上是箭头，不是手</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage">
+        <div class="pill">
+          <button class="ib" aria-label="便签"><svg class="ico" viewBox="0 0 16 16"><path d="M3 3h10v6.5L9.5 13H3z"/><path d="M9.5 13V9.5H13"/></svg></button>
+          <button class="ib" aria-label="代码"><svg class="ico" viewBox="0 0 16 16"><path d="M6 4.5 2.5 8 6 11.5M10 4.5 13.5 8 10 11.5"/></svg></button>
+          <button class="tbtn">讲解</button>
+        </div>
+        <a href="#" id="openLink">在编辑器中打开 scheduler.py:24</a>
+      </div>
+      <p class="say" data-web="<b>网页：</b>所有能点的东西都变成小手，像在浏览网页。" data-native="<b>原生：</b>按钮保持箭头，靠 hover 底色说明能点；只有真正跳到别处的链接才用小手。macOS 和大多数桌面软件都是这样。"></p>
+      <span class="try pc">这一条值得讨论：VS Code 自己的工具栏用的是小手。</span>
+    </section>
+
+    <section class="cell c-focus" data-mode="native">
+      <div class="cell-h pc"><span class="n">04</span><b>鼠标点击不出焦点框</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage">
+        <div class="pill">
+          <button class="ib" aria-label="缩小"><svg class="ico" viewBox="0 0 16 16"><path d="M4 8h8"/></svg></button>
+          <button class="ib" aria-label="放大"><svg class="ico" viewBox="0 0 16 16"><path d="M4 8h8M8 4v8"/></svg></button>
+          <button class="ib" aria-label="适应"><svg class="ico" viewBox="0 0 16 16"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg></button>
+          <button class="tbtn">讲解</button>
+        </div>
+      </div>
+      <p class="say" data-web="<b>网页：</b>鼠标点完按钮，蓝框一直挂在上面，直到点别处。" data-native="<b>原生：</b>鼠标点击不留框；只有用 Tab 键盘操作时才出现强调色焦点框，键盘用户不受影响。"></p>
+      <span class="try pc">试试：用鼠标点几个按钮，再按 <kbd>Tab</kbd>。</span>
+    </section>
+
+    <section class="cell c-press" data-mode="native">
+      <div class="cell-h pc"><span class="n">05</span><b>按下就有反应</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage">
+        <button class="secondary">留在旧版本</button>
+        <button class="primary">跟进到最新</button>
+        <div class="pill"><button class="ib" aria-label="上一步"><svg class="ico" viewBox="0 0 16 16"><path d="M10 4 6 8l4 4"/></svg></button><button class="ib" aria-label="下一步"><svg class="ico" viewBox="0 0 16 16"><path d="m6 4 4 4-4 4"/></svg></button></div>
+      </div>
+      <p class="say" data-web="<b>网页：</b>hover 时按钮慢慢上浮发光（0.3s 过渡），按下去却没有任何变化。" data-native="<b>原生：</b>hover 不上浮。按下的瞬间变深、缩小 3%，没有过渡；松开时 120ms 弹回。手感来自按下那一刻。"></p>
+      <span class="try pc">试试：按住按钮不放，感受按下和松开。</span>
+    </section>
+
+    <section class="cell c-drag" data-mode="native">
+      <div class="cell-h pc"><span class="n">06</span><b>图标拖不出残影</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage" id="dragStage"></div>
+      <p class="say" data-web="<b>网页：</b>按住图标一拖，就拖出一个半透明的图片残影，像在网页里拖图片。" data-native="<b>原生：</b>图标是界面的一部分，拖不出来。以后真要支持拖拽（比如把截图拖进白板），用我们自己画的拖拽预览。"></p>
+      <span class="try pc">试试：按住图标往外拖。</span>
+    </section>
+
+    <section class="cell c-ctx" data-mode="native">
+      <div class="cell-h pc"><span class="n">07</span><b>右键是白板自己的菜单</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage" id="ctxStage">
+        <div class="mcard"><div class="mhead"><span class="t">Scheduler.schedule</span><span class="p">scheduler.py</span></div><div class="mcode"><span class="k">def</span> <span class="f">schedule</span>(<span class="s">self</span>):</div></div>
+        <div class="cmenu" id="cmenu">
+          <div>在编辑器中打开<small>⏎</small></div>
+          <div>复制位置<small>scheduler.py:24</small></div>
+          <div>跟进到最新</div>
+          <hr>
+          <div>删除卡片<small>⌫</small></div>
+        </div>
+      </div>
+      <p class="say" data-web="<b>网页：</b>弹出浏览器菜单：剪切、复制、粘贴，在 VS Code webview 里也一样，跟白板毫无关系。" data-native="<b>原生：</b>弹出和这张卡片有关的操作，从光标处长出来，出现 140ms，消失 90ms。"></p>
+      <span class="try pc">试试：在卡片上点右键。</span>
+    </section>
+
+    <section class="cell c-scroll" data-mode="native">
+      <div class="cell-h pc"><span class="n">08</span><b>滚到底不带着页面跑</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage"><div class="blist" id="blist"></div></div>
+      <p class="say" data-web="<b>网页：</b>列表滚到底，再滚就开始滚整个页面；滚动条一直占着位置。" data-native="<b>原生：</b>滚动只在列表内部，到底就停；滚动条细，只在鼠标放上去时出现。"></p>
+      <span class="try pc">试试：在列表里一直往下滚。</span>
+    </section>
+
+    <section class="cell c-tip" data-mode="native">
+      <div class="cell-h pc"><span class="n">09</span><b>提示有节奏</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage" id="tipStage">
+        <div class="pill">
+          <button class="ib" data-tip="便签" data-kbd="N"><svg class="ico" viewBox="0 0 16 16"><path d="M3 3h10v6.5L9.5 13H3z"/><path d="M9.5 13V9.5H13"/></svg></button>
+          <button class="ib" data-tip="代码卡片" data-kbd="C"><svg class="ico" viewBox="0 0 16 16"><path d="M6 4.5 2.5 8 6 11.5M10 4.5 13.5 8 10 11.5"/></svg></button>
+          <button class="ib" data-tip="分组" data-kbd="G"><svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="3" width="11" height="10" rx="1.5" stroke-dasharray="2.5 2"/></svg></button>
+          <button class="ib" data-tip="连线" data-kbd="L"><svg class="ico" viewBox="0 0 16 16"><path d="M7 9a2.8 2.8 0 0 0 4 0l1.8-1.8a2.8 2.8 0 0 0-4-4L8 4M9 7a2.8 2.8 0 0 0-4 0L3.2 8.8a2.8 2.8 0 0 0 4 4L8 12"/></svg></button>
+        </div>
+        <div class="tip" id="tip"></div>
+      </div>
+      <p class="say" data-web="<b>网页：</b>用 title 属性，要停一秒多才出系统黄框，每个按钮都要重新等，样式跟主题无关。" data-native="<b>原生：</b>第一次停 500ms 出现，带快捷键；之后在按钮间滑动立刻切换；按下按钮提示马上消失。"></p>
+      <span class="try pc">试试：停在第一个按钮上，然后横着滑过其他按钮。</span>
+    </section>
+
+    <section class="cell c-num" data-mode="native">
+      <div class="cell-h pc"><span class="n">10</span><b>数字变化时不跳</b><span class="grow"></span><div class="seg"></div></div>
+      <div class="stage">
+        <div class="pill">
+          <button class="ib" aria-label="缩小"><svg class="ico" viewBox="0 0 16 16"><path d="M4 8h8"/></svg></button>
+          <span class="zoom" id="zoomNum">38%</span>
+          <button class="ib" aria-label="放大"><svg class="ico" viewBox="0 0 16 16"><path d="M4 8h8M8 4v8"/></svg></button>
+          <button class="ib" aria-label="适应"><svg class="ico" viewBox="0 0 16 16"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg></button>
+        </div>
+      </div>
+      <p class="say" data-web="<b>网页：</b>比例数字用普通字体，「100%」比「38%」宽，后面的按钮跟着左右抖，正好在你要点它的时候。" data-native="<b>原生：</b>等宽数字加固定宽度，缩放时数字在变，按钮纹丝不动。行号、提交号、计数都同样处理。"></p>
+      <span class="try pc">数字在自动变化，盯着右边两个按钮看。</span>
+    </section>
+  </div>
+
+  <div class="discuss">
+    <h2>需要你拍板的几件事</h2>
+    <ol>
+      <li>按钮光标用箭头还是小手？<span>我倾向箭头，和以后的 macOS app 一致；但 VS Code 自己用小手。</span></li>
+      <li>代码卡片里的代码可以选中复制吗？<span>我倾向可以，拖动只能从标题栏拖。代价是代码区不能直接拖卡片。</span></li>
+      <li>右键菜单要放哪些操作？<span>格子 07 是我的初稿。</span></li>
+      <li>代码字体和字号要跟随 VS Code 的编辑器设置吗？<span>我倾向跟随字体、不跟随字号，白板有自己的缩放。</span></li>
+    </ol>
+  </div>
+</div>
+
+<script>
+// 每格的切换
+const cells = [...document.querySelectorAll('.cell')];
+function setMode(cell, m) {
+  cell.dataset.mode = m;
+  cell.querySelectorAll('.cell-h .seg button').forEach(b => b.setAttribute('aria-pressed', b.dataset.m === m));
+  const say = cell.querySelector('.say'); say.innerHTML = say.dataset[m];
+  cell.dispatchEvent(new CustomEvent('mode'));
+  getSelection().removeAllRanges();
+}
+cells.forEach((cell, i) => {
+  const seg = cell.querySelector('.cell-h .seg'); seg.setAttribute('role', 'group');
+  seg.innerHTML = `<button id="m${i}-web" data-m="web">网页</button><button id="m${i}-native" data-m="native">原生</button>`;
+  seg.addEventListener('click', e => { const b = e.target.closest('button'); if (b) setMode(cell, b.dataset.m); });
+  setMode(cell, 'native');
+});
+document.getElementById('all').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#all button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  cells.forEach(c => setMode(c, b.dataset.m));
+});
+document.getElementById('segT').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  document.querySelectorAll('#segT button').forEach(x => x.setAttribute('aria-pressed', x === b));
+  if (b.dataset.t) document.documentElement.dataset.theme = b.dataset.t; else delete document.documentElement.dataset.theme;
+});
+const mode = el => el.closest('.cell').dataset.mode;
+
+// 01 双击改名
+const rename = document.getElementById('rename');
+rename.addEventListener('dblclick', e => {
+  if (mode(rename) !== 'native') return;
+  rename.contentEditable = 'true'; rename.focus();
+  const r = document.createRange(); r.selectNodeContents(rename); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+});
+rename.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === 'Escape') { e.preventDefault(); rename.blur(); } });
+rename.addEventListener('blur', () => { rename.contentEditable = 'false'; if (!rename.textContent.trim()) rename.textContent = 'Scheduler.schedule'; });
+
+// 02 ⌘A
+const allStage = document.getElementById('allStage');
+allStage.addEventListener('keydown', e => {
+  const cards = allStage.querySelectorAll('.mcard');
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+    e.preventDefault();
+    if (mode(allStage) === 'native') cards.forEach(c => c.classList.add('sel'));
+    else { const r = document.createRange(); r.selectNodeContents(allStage); const s = getSelection(); s.removeAllRanges(); s.addRange(r); }
+  } else if (e.key === 'Escape') cards.forEach(c => c.classList.remove('sel'));
+});
+allStage.addEventListener('pointerdown', e => { if (mode(allStage) === 'native' && !e.target.closest('.mcard')) allStage.querySelectorAll('.mcard').forEach(c => c.classList.remove('sel')); });
+allStage.closest('.cell').addEventListener('mode', () => allStage.querySelectorAll('.mcard').forEach(c => c.classList.remove('sel')));
+
+// 03 链接不真的跳
+document.getElementById('openLink').addEventListener('click', e => e.preventDefault());
+
+// 06 拖图标
+const icons = [
+  '<path d="M3 3h10v6.5L9.5 13H3z"/><path d="M9.5 13V9.5H13"/>',
+  '<path d="M6 4.5 2.5 8 6 11.5M10 4.5 13.5 8 10 11.5"/>',
+  '<rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="m3 11.5 3.5-3.5 3 3L11 9.5l2.5 2.5"/>',
+];
+const dragStage = document.getElementById('dragStage');
+function drawIcons() {
+  const ink = getComputedStyle(document.body).getPropertyValue('color');
+  dragStage.innerHTML = icons.map((p, i) => `<img alt="" src="data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='${ink}' stroke-width='1.3' stroke-linecap='round' stroke-linejoin='round'>${p}</svg>`)}">`).join('');
+  syncDrag();
+}
+function syncDrag() { dragStage.querySelectorAll('img').forEach(img => img.draggable = mode(dragStage) === 'web'); }
+dragStage.addEventListener('dragstart', e => { if (mode(dragStage) === 'native') e.preventDefault(); });
+dragStage.closest('.cell').addEventListener('mode', syncDrag);
+drawIcons();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', drawIcons);
+document.getElementById('segT').addEventListener('click', () => setTimeout(drawIcons));
+
+// 07 右键
+const ctxStage = document.getElementById('ctxStage'), cmenu = document.getElementById('cmenu');
+ctxStage.addEventListener('contextmenu', e => {
+  if (mode(ctxStage) !== 'native') return;
+  e.preventDefault();
+  const r = ctxStage.getBoundingClientRect();
+  cmenu.style.left = Math.min(e.clientX - r.left, r.width - 204) + 'px';
+  cmenu.style.top = Math.min(e.clientY - r.top, r.height - 130) + 'px';
+  cmenu.classList.remove('open'); void cmenu.offsetWidth; cmenu.classList.add('open');
+});
+document.addEventListener('pointerdown', e => { if (!e.target.closest('.cmenu')) cmenu.classList.remove('open'); });
+cmenu.addEventListener('click', () => cmenu.classList.remove('open'));
+ctxStage.closest('.cell').addEventListener('mode', () => cmenu.classList.remove('open'));
+
+// 08 列表
+const names = ['第一张白板', 'KV cache 怎么分配', 'prefill 和 decode', 'block_manager 引用计数', 'CUDA graph 捕获', 'sampler 温度', 'tensor parallel 切分', 'prefix cache 命中', 'Sequence 状态机', 'warmup 流程', 'flash-attn 调用点', 'rotary embedding'];
+document.getElementById('blist').innerHTML = names.map((n, i) => `<div>${n}<small>${[3, 5, 4, 2, 6, 1, 7, 3, 4, 2, 5, 1][i]} 张卡</small></div>`).join('');
+
+// 09 提示
+const tipStage = document.getElementById('tipStage'), tip = document.getElementById('tip');
+let tipTimer, warmUntil = 0;
+function syncTitles() { tipStage.querySelectorAll('[data-tip]').forEach(b => { if (mode(tipStage) === 'web') b.title = b.dataset.tip; else b.removeAttribute('title'); }); hideTip(); }
+function showTip(b) {
+  const r = b.getBoundingClientRect(), s = tipStage.getBoundingClientRect();
+  tip.innerHTML = `${b.dataset.tip}<kbd>${b.dataset.kbd}</kbd>`;
+  tip.style.left = (r.left + r.width / 2 - s.left) + 'px'; tip.style.top = (r.bottom - s.top + 8) + 'px';
+  tip.classList.add('show');
+}
+function hideTip() { clearTimeout(tipTimer); if (tip.classList.contains('show')) warmUntil = performance.now() + 800; tip.classList.remove('show'); }
+tipStage.addEventListener('pointerover', e => {
+  const b = e.target.closest('[data-tip]'); if (!b || mode(tipStage) !== 'native') return;
+  clearTimeout(tipTimer);
+  if (tip.classList.contains('show') || performance.now() < warmUntil) showTip(b); else tipTimer = setTimeout(() => showTip(b), 500);
+});
+tipStage.addEventListener('pointerout', e => { const b = e.target.closest('[data-tip]'); if (b && !b.contains(e.relatedTarget)) { const to = e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest('[data-tip]'); if (!to) hideTip(); } });
+tipStage.addEventListener('pointerdown', () => { hideTip(); warmUntil = 0; });
+tipStage.closest('.cell').addEventListener('mode', syncTitles);
+syncTitles();
+
+// 10 数字
+const zn = document.getElementById('zoomNum'); const seq = [38, 50, 75, 100, 125, 150, 200, 150, 100, 75, 50, 9, 25]; let zi = 0;
+setInterval(() => { zi = (zi + 1) % seq.length; zn.textContent = seq[zi] + '%'; }, 700);
+</script>
