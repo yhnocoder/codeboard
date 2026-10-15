@@ -1,0 +1,388 @@
+// 代码结构分析：用 tree-sitter 解析，得到符号、调用、循环、注释 / docstring / 空行。
+// 纯语法判断，不依赖语言服务；「转到定义」由宿主问 VS Code。
+// Python 系（含 Triton、TileLang）用 python 语法；C / C++ / CUDA 用 cpp 语法（CUDA 的 <<<>>> 会被当成错误节点跳过）。
+import TS from "@vscode/tree-sitter-wasm";
+import type { Parser as TSParser, Language as TSLanguage, Node } from "@vscode/tree-sitter-wasm";
+
+export type Param = { name: string; kind: "self" | "pos" | "kw" | "star" | "dstar" };
+
+export type Sym = {
+  name: string;
+  qual: string; // Scheduler.schedule；C++ 里是 ns::Cls::f
+  kind: "def" | "class";
+  start: number; // 1-based，含装饰器 / template
+  defLine: number; // def / class 所在行
+  end: number; // 1-based，含
+  sig: string; // 一行签名：def schedule(self) -> tuple[list[Sequence], bool]
+  params: Param[];
+  parent?: string; // 所在类的 qual
+};
+
+export type Arg = { text: string; name?: string; kw?: string; star?: boolean };
+
+export type CallSite = {
+  line: number; // 1-based
+  col: number; // 被调名字的起始列（0-based，UTF-16）
+  end: number;
+  name: string;
+  recv?: string; // self.scheduler.schedule() 的 self.scheduler
+  loop: boolean; // 在同一函数的 for / while / 推导式里
+  args: Arg[];
+  assigned?: string[]; // 返回值被谁接住：seqs, is_prefill = …
+  dispatch?: string; // call("run", …) 这种按字符串转发：记下字符串，但不当成调用 run
+};
+
+export const BLANK = 1, COMMENT = 2, DOCSTRING = 4;
+
+export type FileAnalysis = {
+  lang: string;
+  symbols: Sym[];
+  /** 每行的标记（下标 = 行号 - 1）：BLANK / COMMENT（整行是注释）/ DOCSTRING */
+  flags: number[];
+  /** 行尾注释：行号 → 注释开始的列 */
+  trailing: Record<number, number>;
+  calls: CallSite[];
+  /** Python 的 if __name__ == "__main__": 块 */
+  mainBlocks: { start: number; end: number }[];
+};
+
+type Grammar = "python" | "cpp";
+
+let ready: Promise<void> | undefined;
+const langs = new Map<Grammar, TSLanguage>();
+let wasmDir: string | undefined;
+
+/** 宿主启动时调用一次；dir = 放 tree-sitter*.wasm 的目录（Node 下默认用 npm 包里的） */
+export function initAnalysis(dir?: string): Promise<void> {
+  if (dir) wasmDir = dir;
+  return (ready ??= (async () => {
+    const base = wasmDir ?? defaultDir();
+    await TS.Parser.init({ locateFile: (f: string) => join(base, f) });
+    for (const g of ["python", "cpp"] as Grammar[]) langs.set(g, await TS.Language.load(join(base, `tree-sitter-${g}.wasm`)));
+  })());
+}
+
+function defaultDir() {
+  // vitest / node：从包里找
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const p = (globalThis as any).require?.resolve?.("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm") ?? import.meta.resolve?.("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm");
+  const s = String(p).replace(/^file:\/\//, "");
+  return s.slice(0, s.lastIndexOf("/"));
+}
+const join = (a: string, b: string) => (a.endsWith("/") ? a + b : `${a}/${b}`);
+
+export function grammarOf(lang: string): Grammar | null {
+  if (/^(python|triton|tilelang)$/.test(lang)) return "python";
+  if (/^(c|cpp|cuda|cuda-cpp|objective-c|objective-cpp)$/.test(lang)) return "cpp";
+  return null;
+}
+
+const parsers = new Map<Grammar, TSParser>();
+function parse(g: Grammar, text: string) {
+  let p = parsers.get(g);
+  if (!p) {
+    const l = langs.get(g);
+    if (!l) throw new Error("initAnalysis() not awaited");
+    p = new TS.Parser();
+    p.setLanguage(l);
+    parsers.set(g, p);
+  }
+  return p.parse(text)!;
+}
+
+/** 分析一个文件（或一段代码）。不认识的语言只给空行标记 */
+export function analyze(lang: string, text: string): FileAnalysis {
+  const lines = text.split(/\r?\n/);
+  const flags = lines.map((l) => (l.trim() === "" ? BLANK : 0));
+  const out: FileAnalysis = { lang, symbols: [], flags, trailing: {}, calls: [], mainBlocks: [] };
+  const g = grammarOf(lang);
+  if (!g || !langs.size) return out;
+  const tree = parse(g, text);
+  try {
+    if (g === "python") python(tree.rootNode, lines, out);
+    else cpp(tree.rootNode, lines, out);
+    comments(tree.rootNode, lines, out);
+  } finally {
+    tree.delete();
+  }
+  out.symbols.sort((a, b) => a.start - b.start || b.end - a.end);
+  return out;
+}
+
+// ---------- 通用 ----------
+
+function walk(n: Node, fn: (n: Node) => boolean | void) {
+  if (fn(n) === false) return;
+  for (const c of n.namedChildren) if (c) walk(c, fn);
+}
+
+/** 注释：整行都是注释的标 COMMENT，行尾注释记列号 */
+function comments(root: Node, lines: string[], out: FileAnalysis) {
+  const cmt: { r0: number; c0: number; r1: number; c1: number }[] = [];
+  walk(root, (n) => {
+    if (n.type === "comment") cmt.push({ r0: n.startPosition.row, c0: n.startPosition.column, r1: n.endPosition.row, c1: n.endPosition.column });
+  });
+  for (const c of cmt) {
+    for (let r = c.r0; r <= c.r1; r++) {
+      const line = lines[r] ?? "";
+      const s = r === c.r0 ? c.c0 : 0, e = r === c.r1 ? c.c1 : line.length;
+      const before = line.slice(0, s).trim(), after = line.slice(e).trim();
+      if (!before && !after) out.flags[r] |= COMMENT;
+      else if (before && r === c.r0 && !(r + 1 in out.trailing)) out.trailing[r + 1] = colOfByte(line, s);
+    }
+  }
+}
+
+/** web-tree-sitter 解析 JS 字符串时列号已经是 UTF-16 下标 */
+const colOfByte = (_line: string, c: number) => c;
+const col = (n: Node, lines: string[]) => colOfByte(lines[n.startPosition.row] ?? "", n.startPosition.column);
+const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
+
+// ---------- Python ----------
+
+const PY_LOOP_BODY = new Set(["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"]);
+
+function python(root: Node, lines: string[], out: FileAnalysis) {
+  const docstring = (body: Node | null) => {
+    const first = body?.namedChildren[0];
+    if (first?.type === "expression_statement" && first.namedChildren.length === 1 && first.namedChildren[0]?.type === "string")
+      for (let r = first.startPosition.row; r <= first.endPosition.row; r++) out.flags[r] |= DOCSTRING;
+  };
+  docstring(root);
+
+  const visit = (n: Node, scope: string[], cls: string | undefined) => {
+    for (const c of n.namedChildren) {
+      if (!c) continue;
+      let def: Node = c, start = c.startPosition.row;
+      if (c.type === "decorated_definition") { def = c.childForFieldName("definition") ?? c; start = c.startPosition.row; }
+      if (def.type === "function_definition" || def.type === "class_definition") {
+        const name = def.childForFieldName("name")?.text ?? "?";
+        const qual = [...scope, name].join(".");
+        const body = def.childForFieldName("body");
+        const isClass = def.type === "class_definition";
+        const sigEnd = body ? body.startIndex : def.endIndex;
+        let sig = oneLine(def.text.slice(0, sigEnd - def.startIndex)).replace(/:\s*$/, "");
+        if (sig.startsWith("async ")) sig = sig;
+        out.symbols.push({
+          name, qual, kind: isClass ? "class" : "def", start: start + 1, defLine: def.startPosition.row + 1, end: c.endPosition.row + 1,
+          sig, params: isClass ? [] : pyParams(def.childForFieldName("parameters"), !!cls), parent: cls,
+        });
+        docstring(body);
+        if (body) visit(body, [...scope, name], isClass ? qual : undefined);
+        continue;
+      }
+      if (c.type === "if_statement" && scope.length === 0 && /__name__\s*==\s*["']__main__["']/.test(c.childForFieldName("condition")?.text ?? ""))
+        out.mainBlocks.push({ start: c.startPosition.row + 1, end: c.endPosition.row + 1 });
+      // 其他语句里也可能嵌着函数（if 里 def），继续往下找
+      if (c.namedChildCount) visit(c, scope, cls);
+    }
+  };
+  visit(root, [], undefined);
+
+  walk(root, (n) => {
+    if (n.type !== "call") return;
+    const fn = n.childForFieldName("function");
+    if (!fn) return;
+    let nameNode: Node | null = null, recv: string | undefined;
+    if (fn.type === "identifier") nameNode = fn;
+    else if (fn.type === "attribute") { nameNode = fn.childForFieldName("attribute"); recv = fn.childForFieldName("object")?.text; }
+    if (!nameNode) return;
+    const args = pyArgs(n.childForFieldName("arguments"));
+    const name = nameNode.text;
+    if (PY_SKIP.has(name) && !recv) return;
+    const site: CallSite = {
+      line: nameNode.startPosition.row + 1, col: col(nameNode, lines), end: col(nameNode, lines) + name.length, name, recv,
+      loop: pyInLoop(n), args, assigned: assignedTo(n, "python"),
+    };
+    // call("run", …) / getattr(self, "run")：只记下字符串，不猜
+    const firstStr = n.childForFieldName("arguments")?.namedChildren[0];
+    if (firstStr?.type === "string" && /^(call|dispatch|invoke|run_method|getattr)$/.test(name)) site.dispatch = firstStr.text.replace(/^[rbuf]*["']+|["']+$/g, "");
+    out.calls.push(site);
+  });
+}
+
+// 内置函数不当成可展开的调用
+const PY_SKIP = new Set("print len range zip min max sum sorted list dict set tuple int float str bool type getattr setattr hasattr isinstance issubclass enumerate super iter next map filter any all abs round repr id hash open vars dir callable reversed object divmod pow format chr ord".split(" "));
+
+function pyParams(ps: Node | null, method: boolean): Param[] {
+  const out: Param[] = [];
+  let kwOnly = false;
+  for (const p of ps?.namedChildren ?? []) {
+    if (!p) continue;
+    let name = "", kind: Param["kind"] = kwOnly ? "kw" : "pos";
+    switch (p.type) {
+      case "identifier": name = p.text; break;
+      case "typed_parameter": name = p.namedChildren.find((x) => x?.type === "identifier")?.text ?? ""; if (p.namedChildren[0]?.type === "list_splat_pattern") { name = p.namedChildren[0].namedChildren[0]?.text ?? ""; kind = "star"; kwOnly = true; } else if (p.namedChildren[0]?.type === "dictionary_splat_pattern") { name = p.namedChildren[0].namedChildren[0]?.text ?? ""; kind = "dstar"; } break;
+      case "default_parameter": case "typed_default_parameter": name = p.childForFieldName("name")?.text ?? ""; break;
+      case "list_splat_pattern": name = p.namedChildren[0]?.text ?? ""; kind = "star"; kwOnly = true; break;
+      case "dictionary_splat_pattern": name = p.namedChildren[0]?.text ?? ""; kind = "dstar"; break;
+      case "keyword_separator": kwOnly = true; continue;
+      case "positional_separator": continue;
+      default: continue;
+    }
+    if (!name) continue;
+    if (method && out.length === 0 && (name === "self" || name === "cls")) kind = "self";
+    out.push({ name, kind });
+  }
+  return out;
+}
+
+function pyArgs(al: Node | null): Arg[] {
+  const out: Arg[] = [];
+  for (const a of al?.namedChildren ?? []) {
+    if (!a || a.type === "comment") continue;
+    if (a.type === "keyword_argument") {
+      const v = a.childForFieldName("value");
+      out.push({ kw: a.childForFieldName("name")?.text, text: oneLine(v?.text ?? ""), name: v?.type === "identifier" ? v.text : undefined });
+    } else if (a.type === "list_splat" || a.type === "dictionary_splat") out.push({ text: a.text, star: true });
+    else out.push({ text: oneLine(a.text), name: a.type === "identifier" ? a.text : undefined });
+  }
+  return out;
+}
+
+function pyInLoop(n: Node): boolean {
+  let child: Node = n, p = n.parent;
+  while (p) {
+    if (p.type === "function_definition" || p.type === "class_definition" || p.type === "lambda") return false;
+    if (p.type === "for_statement" && p.childForFieldName("body")?.id === child.id) return true;
+    if (p.type === "while_statement") return true;
+    if (PY_LOOP_BODY.has(p.type)) return true;
+    child = p;
+    p = p.parent;
+  }
+  return false;
+}
+
+/** 返回值被谁接住：沿着 .tolist()、x if c else y、await、括号往上，碰到赋值就取左边的名字 */
+function assignedTo(n: Node, g: Grammar): string[] | undefined {
+  let cur: Node = n, p = n.parent;
+  const passThrough = g === "python"
+    ? new Set(["attribute", "call", "conditional_expression", "parenthesized_expression", "await", "subscript"])
+    : new Set(["field_expression", "call_expression", "conditional_expression", "parenthesized_expression"]);
+  while (p && passThrough.has(p.type)) { cur = p; p = p.parent; }
+  if (!p) return undefined;
+  if (g === "python" && (p.type === "assignment" || p.type === "augmented_assignment") && p.childForFieldName("right")?.id === cur.id) {
+    const left = p.childForFieldName("left");
+    if (!left) return undefined;
+    const names: string[] = [];
+    walk(left, (x) => {
+      if (x.type === "identifier" || x.type === "attribute" || x.type === "subscript") { names.push(x.text); return false; }
+    });
+    return names.length ? names : undefined;
+  }
+  if (g === "cpp") {
+    if (p.type === "init_declarator" && p.childForFieldName("value")?.id === cur.id) {
+      const d = p.childForFieldName("declarator");
+      return d ? [d.text.replace(/^[*&\s]+/, "")] : undefined;
+    }
+    if (p.type === "assignment_expression" && p.childForFieldName("right")?.id === cur.id) {
+      const l = p.childForFieldName("left");
+      return l ? [l.text] : undefined;
+    }
+  }
+  return undefined;
+}
+
+// ---------- C / C++ / CUDA ----------
+
+const CPP_SKIP = new Set("sizeof static_cast reinterpret_cast const_cast dynamic_cast printf assert".split(" "));
+
+function cpp(root: Node, lines: string[], out: FileAnalysis) {
+  const visit = (n: Node, scope: string[], cls: string | undefined) => {
+    for (const c of n.namedChildren) {
+      if (!c) continue;
+      let def = c;
+      const start = c.startPosition.row;
+      if (c.type === "template_declaration") def = c.namedChildren.find((x) => x && /function_definition|class_specifier|struct_specifier/.test(x.type)) ?? c;
+      if (def.type === "function_definition") {
+        const decl = funcDeclarator(def.childForFieldName("declarator"));
+        const nameNode = decl?.childForFieldName("declarator");
+        const full = nameNode?.text ?? "?";
+        const name = full.split("::").pop()!;
+        const qual = [...scope, full].join("::");
+        const body = def.childForFieldName("body");
+        const sig = oneLine(def.text.slice(0, (body?.startIndex ?? def.endIndex) - def.startIndex));
+        out.symbols.push({ name, qual, kind: "def", start: start + 1, defLine: def.startPosition.row + 1, end: c.endPosition.row + 1, sig, params: cppParams(decl?.childForFieldName("parameters") ?? null), parent: cls });
+        continue;
+      }
+      if ((def.type === "class_specifier" || def.type === "struct_specifier") && def.childForFieldName("body")) {
+        const name = def.childForFieldName("name")?.text ?? "?";
+        const qual = [...scope, name].join("::");
+        out.symbols.push({ name, qual, kind: "class", start: start + 1, defLine: def.startPosition.row + 1, end: c.endPosition.row + 1, sig: oneLine(def.text.slice(0, def.childForFieldName("body")!.startIndex - def.startIndex)), params: [], parent: cls });
+        visit(def.childForFieldName("body")!, [...scope, name], qual);
+        continue;
+      }
+      if (c.type === "namespace_definition") {
+        const name = c.childForFieldName("name")?.text;
+        const body = c.childForFieldName("body");
+        if (body) visit(body, name ? [...scope, name] : scope, cls);
+        continue;
+      }
+      if (c.namedChildCount && /declaration_list|field_declaration_list|linkage_specification|preproc_/.test(c.type)) visit(c, scope, cls);
+    }
+  };
+  visit(root, [], undefined);
+
+  walk(root, (n) => {
+    if (n.type !== "call_expression") return;
+    const fn = n.childForFieldName("function");
+    if (!fn) return;
+    let nameNode: Node | null = null, recv: string | undefined;
+    if (fn.type === "identifier") nameNode = fn;
+    else if (fn.type === "field_expression") { nameNode = fn.childForFieldName("field"); recv = fn.childForFieldName("argument")?.text; }
+    else if (fn.type === "qualified_identifier") { nameNode = lastName(fn); recv = fn.text.slice(0, fn.text.lastIndexOf("::")); }
+    else if (fn.type === "template_function") nameNode = fn.childForFieldName("name");
+    if (!nameNode || CPP_SKIP.has(nameNode.text)) return;
+    const al = n.childForFieldName("arguments");
+    out.calls.push({
+      line: nameNode.startPosition.row + 1, col: col(nameNode, lines), end: col(nameNode, lines) + nameNode.text.length, name: nameNode.text, recv,
+      loop: cppInLoop(n), args: (al?.namedChildren ?? []).filter((a): a is Node => !!a && a.type !== "comment").map((a) => ({ text: oneLine(a.text), name: a.type === "identifier" ? a.text : undefined })),
+      assigned: assignedTo(n, "cpp"),
+    });
+  });
+}
+
+function funcDeclarator(d: Node | null): Node | null {
+  while (d && d.type !== "function_declarator") d = d.childForFieldName("declarator");
+  return d;
+}
+function lastName(q: Node): Node | null {
+  let n: Node | null = q;
+  while (n?.type === "qualified_identifier") n = n.childForFieldName("name");
+  return n;
+}
+function cppParams(ps: Node | null): Param[] {
+  const out: Param[] = [];
+  for (const p of ps?.namedChildren ?? []) {
+    if (!p || !/parameter_declaration/.test(p.type)) continue;
+    let d = p.childForFieldName("declarator");
+    while (d && d.type !== "identifier") d = d.childForFieldName("declarator") ?? d.namedChildren.find((x) => x?.type === "identifier") ?? null;
+    if (d) out.push({ name: d.text, kind: "pos" });
+  }
+  return out;
+}
+function cppInLoop(n: Node): boolean {
+  let child: Node = n, p = n.parent;
+  while (p) {
+    if (p.type === "function_definition" || p.type === "lambda_expression") return false;
+    if ((p.type === "for_statement" || p.type === "for_range_loop") && p.childForFieldName("body")?.id === child.id) return true;
+    if (p.type === "while_statement" || p.type === "do_statement") return true;
+    child = p;
+    p = p.parent;
+  }
+  return false;
+}
+
+// ---------- 查询 ----------
+
+/** 含有某一行的最内层符号 */
+export function symbolAt(syms: Sym[], line: number, kind?: Sym["kind"]): Sym | undefined {
+  return syms.filter((s) => s.start <= line && line <= s.end && (!kind || s.kind === kind)).sort((a, b) => a.end - a.start - (b.end - b.start))[0];
+}
+
+/** 某行上的调用 */
+export const callsOn = (a: FileAnalysis, line: number) => a.calls.filter((c) => c.line === line);
+
+export * from "./vars";
+export * from "./select";
+export * from "./entry";

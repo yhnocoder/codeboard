@@ -1,26 +1,112 @@
-import type { Board, BoardMeta, CardView, CodeCard } from "./model";
-import type { DiffLine } from "./diff";
+// 宿主 ↔ 白板的消息。白板持有白板状态，改动后整板发回来保存；宿主负责读代码、高亮、版本、跳转。
+// 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
+import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version } from "./model";
+import type { SegView } from "./lines";
 
-/** 新建代码卡片时宿主给出的内容，位置由白板决定 */
-export type NewCodeCard = Omit<CodeCard, "id" | "x" | "y" | "w" | "hl">;
+/** 一段代码和当前代码的关系（「新版本」） */
+export type Stale =
+  | { state: "ok" }
+  | { state: "moved"; start: number; end: number; version?: Version } // 只是挪了位置：白板静默跟上
+  | { state: "changed"; hiddenOnly: boolean; head: string } // 黄点；hiddenOnly = 只有隐藏的行变了（空心点）
+  | { state: "lost" } // 符号找不到（删了或改名）
+  | { state: "many" } // 片段按内容找到多处
+  | { state: "uncommitted" } // 钉在 HEAD，但工作区有未提交改动
+  | { state: "missing" }; // 仓库 / 文件不在：只读快照
+
+export type HostInfo = {
+  fontFamily?: string; // 跟随 VS Code 编辑器字体
+  isMac: boolean;
+  assetBase: string; // assets/ 目录的 webview URI，图片卡用
+  readonly?: string; // 仓库找不到时的提示
+  focus?: boolean; // Focus 布局
+  target: boolean; // 编辑器里 Add to 的目标白板是不是这块
+  /** 这些快捷键被宿主拦下后以 {type:"command", name:"key"} 转回来，白板自己不再处理（免得做两次） */
+  forwardedKeys?: string[];
+};
+
+export type PeekDef = {
+  path: string; // 显示用的路径
+  line: number; // 定义 / 赋值所在行
+  start: number; // 上下文第一行
+  html: string[]; // 上下文几行（高亮）
+  text: string[];
+  seg: Segment; // Pin as Sidenote / Place on Board 用
+  follow?: { label: string; line: number; col: number; path: string }; // 下一跳：config.max_num_batched_tokens · config.py:9
+};
+
+export type SearchItem =
+  | { kind: "symbol"; label: string; detail: string; path: string; line: number; sym: string; glyph: string }
+  | { kind: "file"; label: string; detail: string; path: string }
+  | { kind: "card"; label: string; detail: string; board: string; card: string; num?: string }
+  | { kind: "sidenote"; label: string; detail: string; board: string; card: string; sidenote: string }
+  | { kind: "entry"; label: string; detail: string; path: string; line: number; sym?: string; end?: number };
+
+export type Commit = { commit: string; msg: string; date: string; head?: boolean };
+
+export type DiffData = {
+  title: string; // New Version · Scheduler.schedule
+  left: { label: string; path: string; start: number; text: string[]; html: string[] };
+  right: { label: string; path: string; start: number; text: string[]; html: string[] };
+  lastChange?: string; // Last changed in f64d821 · fix … · 2026-04-26
+  canUpdate: boolean;
+  newSeg?: Segment; // Update / Duplicate 用的新段（HEAD 版本）
+  newView?: SegView;
+};
+
+/** 宿主建好的卡（位置由白板定） */
+export type NewCard = { card: Card; views: Record<string, SegView> };
 
 export type HostToBoard =
-  | { type: "load"; board: Board; boards: BoardMeta[]; views: Record<string, CardView> }
-  | { type: "views"; views: Record<string, CardView> }
-  | { type: "addCode"; card: NewCodeCard; view: CardView; from?: { card: string; line: number } }
-  | { type: "followed"; id: string; patch: Pick<CodeCard, "start" | "end" | "snapshot" | "commit" | "dirty">; lineMap: Record<number, number>; view: CardView }
-  | { type: "diff"; id: string; lines: DiffLine[]; from: string; to: string }
-  | { type: "focusCard"; id: string }
-  | { type: "toast"; text: string };
+  | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo }
+  | { type: "views"; views: Record<string, SegView> }
+  | { type: "stale"; stale: Record<string, Stale> }
+  | { type: "boards"; boards: BoardMeta[] }
+  | { type: "host"; host: Partial<HostInfo> }
+  /** 从编辑器加进来的卡：放在选中卡旁边，没选中放视口中央 */
+  | { type: "add"; cards: NewCard[]; ask?: "split"; sel?: { card: string } }
+  /** 给选中的卡追加一段 */
+  | { type: "appendSegment"; card: string; seg: Segment; view: SegView }
+  /** 编辑器 ⌥S：作为 Sidenote 挂到白板上选中的行 */
+  | { type: "addSidenote"; seg: Segment; view?: SegView }
+  | { type: "reveal"; card: string; seg?: string; lines?: [number, number] }
+  | { type: "command"; name: string; arg?: unknown }
+  | { type: "toast"; text: string; action?: { label: string; command: string; arg?: unknown } }
+  | { type: "reply"; req: number; data?: unknown; error?: string };
 
 export type BoardToHost =
   | { type: "ready" }
   | { type: "save"; board: Board }
-  | { type: "openCode"; id: string; line?: number }
-  | { type: "expand"; id: string; line: number; name: string; recv?: string; col: number }
-  | { type: "requestDiff"; id: string }
-  | { type: "follow"; id: string }
-  | { type: "pickCode" } // 让宿主帮忙选一段代码（打开快速选择）
-  | { type: "switchBoard"; id: string }
-  | { type: "newBoard" }
-  | { type: "openLink"; url: string };
+  | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
+  /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
+  | { type: "open"; card: string; seg?: string; line?: number }
+  | { type: "openPath"; path: string; line?: number }
+  | { type: "openLink"; url: string }
+  /** 点调用展开：回 { cards: NewCard; loop; vars } 或 { pick: 候选 } 或 { none: true } */
+  | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: { path: string; line: number } }
+  | { type: "peek"; req: number; seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } }
+  | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
+  | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
+  | { type: "entryPoints"; req: number }
+  | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD
+  | { type: "commits"; req: number; seg: Segment }
+  | { type: "switchCommit"; req: number; seg: Segment; commit: string } // 回 { seg, view }
+  | { type: "source"; req: number; seg: Segment } // Focus 下的只读源码浮窗：回整个文件（那个版本）的高亮
+  | { type: "resolveRef"; req: number; text: string } // 手输 commit / branch / tag
+  | { type: "paste"; req: number; text: string } // 回 NewCard | null（工作区代码、GitHub 链接）
+  | { type: "github"; req: number; url: string }
+  | { type: "saveAsset"; req: number; name: string; dataUrl: string }
+  | { type: "exportPng"; dataUrl: string; name: string }
+  | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
+  | { type: "checkVersions" }
+  | { type: "relocate"; card: string } // 符号找不到：在编辑器里选新位置
+  | { type: "locateRepo" }
+  | { type: "focusMode"; on: boolean }
+  | { type: "openBoard"; id: string; card?: string }
+  | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
+  | { type: "pickFile"; req: number; kind: "image" };
+
+/** expand 的回答 */
+export type ExpandResult =
+  | { card: CodeCard; views: Record<string, SegView>; vars: Var[] }
+  | { pick: { label: string; detail: string; path: string; line: number }[] }
+  | { none: true; reason: string };

@@ -1,112 +1,298 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { pythonSymbols, braceSymbols, findCalls, rankByReceiver, computeSync, followMap, outlineTree } from "../src";
+import {
+  alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, canAttach, canCompare, hiddenByCollapse, tidy, snapMove, align,
+  cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard,
+  type Board, type CodeCard, type Link, type Segment, type SegView,
+} from "../src";
+import { initAnalysis, analyze, planSelection, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
 
 // 用仓库里的 nano-vllm submodule 做测试数据
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
-const show = (rev: string, path: string) => execFileSync("git", ["-C", repo, "show", `${rev}:${path}`], { encoding: "utf8" }).split("\n");
-const OLD = "9e8507e", NEW = "bb823b3", SCHED = "nanovllm/engine/scheduler.py";
+const show = (rev: string, path: string) => execFileSync("git", ["-C", repo, "show", `${rev}:${path}`], { encoding: "utf8" });
+const NEW = "bb823b3", OLD = "9e8507e";
+const SCHED = "nanovllm/engine/scheduler.py", RUNNER = "nanovllm/engine/model_runner.py", ENGINE = "nanovllm/engine/llm_engine.py";
 
-describe("pythonSymbols", () => {
-  it("finds methods with qualified names and full ranges", () => {
-    const syms = pythonSymbols(show(NEW, SCHED));
-    const s = syms.find((x) => x.qual === "Scheduler.schedule")!;
+beforeAll(() => initAnalysis());
+
+const sym = (a: FileAnalysis, q: string) => a.symbols.find((s) => s.qual === q)!;
+
+describe("analyze (python)", () => {
+  it("finds methods with qualified names, decorators and signatures", () => {
+    const a = analyze("python", show(NEW, SCHED));
+    const s = sym(a, "Scheduler.schedule");
     expect(s.start).toBe(25);
-    expect(show(NEW, SCHED)[s.end - 1].trim()).toBe("return scheduled_seqs, False");
+    expect(s.sig).toBe("def schedule(self) -> tuple[list[Sequence], bool]");
+    expect(s.parent).toBe("Scheduler");
+    const f = sym(analyze("python", show(NEW, "nanovllm/layers/sampler.py")), "Sampler.forward");
+    expect(f.start).toBe(f.defLine - 1); // @torch.compile
   });
-  it("keeps multi-line signatures inside the symbol", () => {
-    const lines = ["def f(", "    a,", "):", "    return a", "x = 1"];
-    expect(pythonSymbols(lines)[0]).toMatchObject({ start: 1, end: 4 });
+  it("flags comments, docstrings, blank lines and trailing comments", () => {
+    const src = 'def f(a):\n    """doc\n    more"""\n    # note\n\n    x = 1  # tail\n    return x\n';
+    const a = analyze("python", src);
+    expect(a.flags[1] & DOCSTRING).toBeTruthy();
+    expect(a.flags[2] & DOCSTRING).toBeTruthy();
+    expect(a.flags[3] & COMMENT).toBeTruthy();
+    expect(a.flags[4] & BLANK).toBeTruthy();
+    expect(a.flags[5]).toBe(0);
+    expect(a.trailing[6]).toBe(11);
   });
-  it("does not end a function at a comment written in column 0", () => {
-    const lines = ["class A:", "    def f(self):", "        x = 1", "# note", "        return x", "", "    def g(self):", "        pass"];
-    expect(pythonSymbols(lines).find((s) => s.qual === "A.f")).toMatchObject({ start: 2, end: 5 });
+  it("finds calls with receivers, loops and who takes the return value", () => {
+    const a = analyze("python", show(NEW, ENGINE));
+    const step = sym(a, "LLMEngine.step");
+    const calls = a.calls.filter((c) => c.line >= step.start && c.line <= step.end);
+    const sched = calls.find((c) => c.name === "schedule")!;
+    expect(sched).toMatchObject({ recv: "self.scheduler", loop: false, assigned: ["seqs", "is_prefill"] });
+    // call("run", …) 记下字符串，但被调的是 call
+    const call = calls.find((c) => c.name === "call")!;
+    expect(call.dispatch).toBe("run");
+    const gen = sym(a, "LLMEngine.generate");
+    const stepCall = a.calls.find((c) => c.name === "step" && c.line > gen.start && c.line <= gen.end)!;
+    expect(stepCall.loop).toBe(true); // while not self.is_finished()
   });
-  it("includes decorators", () => {
-    const syms = pythonSymbols(show(NEW, "nanovllm/layers/sampler.py"));
-    const f = syms.find((x) => x.qual === "Sampler.forward")!;
-    expect(f.start).toBe(f.defLine - 1);
+  it("does not treat the for-loop iterable as inside the loop", () => {
+    const a = analyze("python", "def f(xs):\n    for x in g(xs):\n        h(x)\n");
+    expect(a.calls.find((c) => c.name === "g")!.loop).toBe(false);
+    expect(a.calls.find((c) => c.name === "h")!.loop).toBe(true);
   });
-});
-
-describe("braceSymbols", () => {
-  it("finds C++ functions", () => {
-    const src = ["template <typename T>", "__global__ void add(T* a, int n) {", "  if (n) {", "  }", "}", "int main() { return 0; }"];
-    const syms = braceSymbols(src);
-    expect(syms.map((s) => [s.name, s.start, s.end])).toEqual([["add", 1, 5], ["main", 6, 6]]);
+  it("finds the __main__ block", () => {
+    const a = analyze("python", show(NEW, "example.py"));
+    expect(a.mainBlocks.length).toBe(1);
   });
-});
-
-describe("findCalls", () => {
-  it("finds method calls and their receivers", () => {
-    const calls = findCalls("        seqs, is_prefill = self.scheduler.schedule()");
-    expect(calls).toMatchObject([{ name: "schedule", recv: "scheduler" }]);
-  });
-  it("treats .call(\"run\") as a call to run", () => {
-    const names = findCalls('        token_ids = self.model_runner.call("run", seqs, is_prefill)').map((c) => c.name);
-    expect(names).toContain("run");
-  });
-  it("skips definitions and keywords", () => {
-    expect(findCalls("    def step(self):")).toEqual([]);
-    expect(findCalls("    for x in range(10):")).toEqual([]);
-  });
-  it("ranks candidates by receiver", () => {
-    const r = rankByReceiver([{ qual: "Other.schedule" }, { qual: "Scheduler.schedule" }], "scheduler");
-    expect(r[0].qual).toBe("Scheduler.schedule");
-  });
-});
-
-describe("computeSync", () => {
-  const oldLines = show(OLD, SCHED), newLines = show(NEW, SCHED);
-  const oldSym = pythonSymbols(oldLines).find((s) => s.qual === "Scheduler.schedule")!;
-  const card = { start: oldSym.start, end: oldSym.end, snapshot: oldLines.slice(oldSym.start - 1, oldSym.end), symbol: "Scheduler.schedule" };
-
-  it("reports a changed function with its new range", () => {
-    const s = computeSync(card, newLines, pythonSymbols(newLines));
-    expect(s.state).toBe("changed");
-    if (s.state === "changed") { expect(s.start).toBe(25); expect(s.added).toBeGreaterThan(0); }
-  });
-  it("reports ok when nothing changed", () => {
-    expect(computeSync(card, oldLines, pythonSymbols(oldLines))).toEqual({ state: "ok" });
-  });
-  it("reports moved when lines shift but content is the same", () => {
-    const shifted = ["# new header", "", ...oldLines];
-    expect(computeSync(card, shifted, pythonSymbols(shifted))).toEqual({ state: "moved", start: card.start + 2, end: card.end + 2 });
-  });
-  it("reports lost when the symbol is gone", () => {
-    expect(computeSync(card, ["x = 1"], []).state).toBe("lost");
-  });
-  it("maps old lines to new lines when following", () => {
-    const s = computeSync(card, newLines, pythonSymbols(newLines));
-    if (s.state !== "changed") throw new Error();
-    const map = followMap(card, newLines, s.start, s.end);
-    const oldReturn = card.start + card.snapshot.findIndex((l) => l.includes("return scheduled_seqs, True"));
-    expect(newLines[map[oldReturn] - 1]).toContain("return scheduled_seqs, True");
+  it("handles CJK text before a comment", () => {
+    const a = analyze("python", 'x = "中文"  # 注释\n');
+    expect(a.trailing[1]).toBe('x = "中文"  '.length);
   });
 });
 
-describe("outlineTree", () => {
-  it("nests cards by edges and orders children by source line", () => {
-    const c = (id: string, step?: string) => ({ id, type: "code" as const, x: 0, y: 0, w: 1, path: "a.py", start: 1, end: 1, lang: "python", snapshot: [], commit: null, hl: [], step });
-    const tree = outlineTree({
-      cards: [c("a", "1"), c("b"), c("c")],
-      edges: [
-        { id: "1", from: { card: "a", line: 9 }, to: { card: "b" }, kind: "call" },
-        { id: "2", from: { card: "a", line: 3 }, to: { card: "c" }, kind: "call" },
-      ],
+describe("analyze (c++ / cuda)", () => {
+  it("finds functions, classes and calls", () => {
+    const src = "template <typename T>\n__global__ void add(T* a, int n) {\n  for (int i = 0; i < n; i++) { foo(a, i); }\n}\nstruct S {\n  int f(int x) { return bar(x); }\n};\n";
+    const a = analyze("cuda-cpp", src);
+    expect(a.symbols.map((s) => [s.qual, s.start, s.end])).toEqual([["add", 1, 4], ["S", 5, 7], ["S::f", 6, 6]]);
+    expect(a.calls.find((c) => c.name === "foo")!.loop).toBe(true);
+    expect(a.calls.find((c) => c.name === "bar")!.loop).toBe(false);
+  });
+});
+
+describe("varCandidates", () => {
+  it("pairs args with params, keeps names that differ, and adds the return value", () => {
+    const eng = analyze("python", show(NEW, ENGINE));
+    const gen = sym(eng, "LLMEngine.generate");
+    const add = eng.calls.find((c) => c.name === "add_request" && c.line > gen.start)!;
+    expect(varCandidates(add, sym(eng, "LLMEngine.add_request"))).toEqual([{ a: "prompt" }, { a: "sp", b: "sampling_params" }]);
+    const sched = eng.calls.find((c) => c.name === "schedule")!;
+    expect(varCandidates(sched, sym(analyze("python", show(NEW, SCHED)), "Scheduler.schedule"))).toEqual([{ a: "seqs, is_prefill", ret: true }]);
+  });
+  it("gives nothing for string dispatch", () => {
+    const eng = analyze("python", show(NEW, ENGINE));
+    const call = eng.calls.find((c) => c.name === "call")!;
+    expect(varCandidates(call, sym(analyze("python", show(NEW, RUNNER)), "ModelRunner.call"))).toEqual([]);
+  });
+});
+
+describe("planSelection", () => {
+  const a = () => analyze("python", show(NEW, SCHED));
+  const sel = (s: number, e: number, endCol = 1) => ({ startLine: s, startCol: 4, endLine: e, endCol });
+  it("takes whole lines and trims blank edges", () => {
+    expect(planSelection([sel(28, 33)], a())).toEqual({ kind: "segments", ranges: [{ start: 29, end: 33, scope: "Scheduler.schedule" }] });
+  });
+  it("does not include the next line when the selection stops at its column 0", () => {
+    expect(planSelection([sel(30, 32, 0)], a())).toMatchObject({ ranges: [{ start: 30, end: 31 }] });
+  });
+  it("upgrades to a function card at >= 90% coverage", () => {
+    const s = sym(a(), "Scheduler.schedule");
+    expect(planSelection([sel(s.start + 1, s.end)], a())).toMatchObject({ kind: "function", sym: { qual: "Scheduler.schedule" } });
+  });
+  it("makes a class card when several methods of one class are selected", () => {
+    const an = a();
+    const p = sym(an, "Scheduler.preempt"), post = sym(an, "Scheduler.postprocess");
+    expect(planSelection([sel(p.start, post.end)], an)).toMatchObject({ kind: "class", sym: { qual: "Scheduler" }, members: ["Scheduler.preempt", "Scheduler.postprocess"] });
+  });
+  it("asks when two top-level functions are selected", () => {
+    const an = analyze("python", "def a():\n    pass\n\ndef b():\n    pass\n\nx = 1\ny = 2\n");
+    expect(planSelection([sel(1, 8)], an)).toMatchObject({ kind: "split", syms: [{ qual: "a" }, { qual: "b" }] });
+  });
+  it("keeps the tail of one function and head of the next as one snippet", () => {
+    const an = a();
+    const p = sym(an, "Scheduler.preempt");
+    expect(planSelection([sel(p.start - 3, p.start + 1)], an)).toMatchObject({ kind: "segments", ranges: [{ scope: "Scheduler.schedule" }] });
+  });
+  it("names module-level code as top", () => {
+    expect(planSelection([sel(1, 3)], a())).toMatchObject({ ranges: [{ module: true }] });
+  });
+  it("turns multiple selections into one multi-segment card", () => {
+    const p = planSelection([sel(31, 32), sel(44, 45)], a());
+    expect(p).toMatchObject({ kind: "segments", ranges: [{ start: 31, end: 32 }, { start: 44, end: 45 }] });
+  });
+});
+
+describe("diff and alignment", () => {
+  it("aligns prepare_prefill with prepare_decode side by side", () => {
+    const an = analyze("python", show(NEW, RUNNER));
+    const lines = show(NEW, RUNNER).split("\n");
+    const pf = sym(an, "ModelRunner.prepare_prefill"), pd = sym(an, "ModelRunner.prepare_decode");
+    const rows = alignRows(lines.slice(pf.start - 1, pf.end), lines.slice(pd.start - 1, pd.end));
+    const same = rows.filter((r) => r.kind === "same").map((r) => lines[pf.start - 1 + r.l!].trim());
+    expect(same).toContain("input_ids = []");
+    expect(same).toContain("return input_ids, positions");
+    expect(rows.some((r) => r.kind === "changed")).toBe(true);
+  });
+  it("marks changed words", () => {
+    const w = wordDiff("    input_ids.extend(seq[start:end])", "    input_ids.append(seq.last_token)");
+    expect(w.a.length).toBeGreaterThan(0);
+    expect("    input_ids.extend(seq[start:end])".slice(...w.a[0])).toContain("extend");
+  });
+  it("maps lines across versions by content", () => {
+    const o = show(OLD, SCHED).split("\n"), n = show(NEW, SCHED).split("\n");
+    const so = sym(analyze("python", o.join("\n")), "Scheduler.schedule"), sn = sym(analyze("python", n.join("\n")), "Scheduler.schedule");
+    const m = mapLines(o.slice(so.start - 1, so.end), so.start, n.slice(sn.start - 1, sn.end), sn.start);
+    const ret = o.findIndex((l, i) => i >= so.start - 1 && l.includes("return scheduled_seqs, True")) + 1;
+    expect(n[m.get(ret)! - 1]).toContain("return scheduled_seqs, True");
+  });
+  it("finds a block by content, or by first and last line", () => {
+    const n = show(NEW, SCHED).split("\n");
+    expect(findBlock(["x", ...n], n.slice(40, 43))).toEqual({ start: 42, end: 44 });
+    const edited = [...n.slice(0, 41), "    # inserted", ...n.slice(41)];
+    expect(findBlock(edited, n.slice(40, 45))).toEqual({ start: 41, end: 46 });
+  });
+  it("diffs lines", () => {
+    expect(diffLines(["a", "b"], ["a", "c"]).map((d) => d.op).join("")).toBe(" -+");
+  });
+});
+
+// ---------- 流程 ----------
+
+const seg = (id: string, start = 1, end = 3): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end, text: [], version: { kind: "git", commit: "x" } });
+const code = (id: string): CodeCard => ({ id, kind: "code", x: 0, y: 0, w: 100, segments: [seg(`s${id}`, 1, 50)] });
+const call = (from: string, line: number, to: string): Link => ({ id: `${from}-${to}`, kind: "call", from: { card: from, seg: `s${from}`, line }, to: { card: to } });
+
+describe("computeFlows", () => {
+  const board = (links: Link[], ids = ["a", "b", "c", "d", "e"]): Board => ({ ...emptyBoard("b", "B"), cards: ids.map(code), links });
+  it("numbers root A, children by source line, grandchildren 2.1", () => {
+    const f = computeFlows(board([call("a", 9, "b"), call("a", 3, "c"), call("b", 5, "d")]));
+    expect(["a", "c", "b", "d"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "1", "2", "2.1"]);
+    expect(walkOrder(f.roots[0]).map((n) => n.id)).toEqual(["a", "c", "b", "d"]);
+  });
+  it("prefixes child numbers with the tree letter when there are several trees", () => {
+    const f = computeFlows(board([call("a", 1, "b"), call("c", 1, "d")]));
+    expect(f.byId.get("b")!.label).toBe("A·1");
+    expect(f.byId.get("c")!.label).toBe("B");
+    expect(f.byId.get("d")!.label).toBe("B·1");
+    expect(f.byId.has("e")).toBe(false);
+  });
+  it("refuses to attach a call to a card already in a flow", () => {
+    const f = computeFlows(board([call("a", 1, "b")]));
+    expect(canAttach(f, "a", "b").ok).toBe(false);
+    expect(canAttach(f, "a", "c").ok).toBe(true);
+    expect(canAttach(f, "b", "a").ok).toBe(false);
+  });
+  it("forbids comparing cards of two different flows", () => {
+    const f = computeFlows(board([call("a", 1, "b"), call("c", 1, "d")]));
+    expect(canCompare(f, "b", "d").ok).toBe(false);
+    expect(canCompare(f, "b", "a").ok).toBe(true);
+    expect(canCompare(f, "b", "e").ok).toBe(true);
+  });
+  it("hides collapsed subtrees", () => {
+    const b = board([call("a", 1, "b"), call("b", 1, "c")]);
+    (b.cards[1] as CodeCard).collapsed = true;
+    expect([...hiddenByCollapse(b, computeFlows(b))]).toEqual(["c"]);
+  });
+  it("tidies a tree: children indented below the parent", () => {
+    const f = computeFlows(board([call("a", 1, "b"), call("a", 2, "c"), call("b", 1, "d")]));
+    const pos = tidy(f.roots[0], () => ({ w: 100, h: 50 }), { x: 0, y: 0 });
+    expect(pos.get("b")!.x).toBe(56);
+    expect(pos.get("d")!.x).toBe(112);
+    expect(pos.get("c")!.y).toBeGreaterThan(pos.get("d")!.y);
+  });
+});
+
+describe("snapping and align", () => {
+  it("snaps the left edge to another card", () => {
+    const r = snapMove({ x: 103, y: 300, w: 50, h: 50 }, [{ x: 100, y: 0, w: 80, h: 80 }], 6);
+    expect(r.dx).toBe(-3);
+    expect(r.guides[0]).toMatchObject({ axis: "x", at: 100 });
+  });
+  it("aligns left and distributes", () => {
+    const m = align([{ id: "a", x: 10, y: 0, w: 10, h: 10 }, { id: "b", x: 30, y: 0, w: 10, h: 10 }, { id: "c", x: 100, y: 0, w: 10, h: 10 }], "hdist");
+    expect(m.get("b")!.x).toBe(55);
+  });
+});
+
+describe("cardRows", () => {
+  const s: Segment = { ...seg("s1", 10, 16), text: ["def f():", '    """d"""', "    # c", "", "    x = 1", "    y = 2", "    return x"], hidden: [[15, 15]] };
+  const v: SegView = { html: [], flags: [0, DOCSTRING, COMMENT, BLANK, 0, 0, 0], calls: [], defs: [{ line: 10, name: "f", qual: "f" }] };
+  it("hides by flags with a dashed gutter, and manual hides become a gap bar", () => {
+    const rows = cardRows({ segments: [s], hide: { comments: true, docstrings: true, blank: true } }, { views: { s1: v } });
+    expect(rows).toEqual([
+      { t: "line", seg: "s1", line: 10, skipped: false },
+      { t: "line", seg: "s1", line: 14, skipped: true },
+      { t: "gap", seg: "s1", from: 15, to: 15, manual: true },
+      { t: "line", seg: "s1", line: 16, skipped: false },
+    ]);
+    expect(rowIndexOf(rows, "s1", 15)).toBe(2);
+    expect(rowIndexOf(rows, "s1", 12)).toBe(1);
+  });
+  it("shows a temporarily expanded range", () => {
+    const rows = cardRows({ segments: [s] }, { views: { s1: v }, shown: new Set(["s1:15"]) });
+    expect(rows.filter((r) => r.t === "line").length).toBe(7);
+  });
+  it("separates segments by gap, function and file", () => {
+    const a = { ...seg("a", 1, 2), scope: "A.f" }, b = { ...seg("b", 5, 6), scope: "A.f" }, c = { ...seg("c", 9, 9), scope: "A.g" }, d = { ...seg("d", 1, 1), path: "b.py" };
+    const rows = cardRows({ segments: [a, b, c, d] });
+    expect(rows.filter((r) => r.t !== "line").map((r) => r.t)).toEqual(["gap", "fn", "file"]);
+  });
+  it("copies code without line numbers and keeps relative indent", () => {
+    expect(copyText(["        while x:", "            y()"])).toBe("while x:\n    y()");
+  });
+});
+
+describe("segments", () => {
+  it("sorts by file with the target file first and merges overlaps", () => {
+    const a = { ...seg("a", 10, 12), text: ["1", "2", "3"] }, b = { ...seg("b", 12, 14), text: ["3", "4", "5"] }, c = { ...seg("c", 1, 1), path: "0.py" };
+    const sorted = sortSegments([c, b, a], "a.py");
+    expect(sorted.map((s) => s.id)).toEqual(["a", "b", "c"]);
+    const m = mergeOverlapping(sorted);
+    expect(m[0]).toMatchObject({ start: 10, end: 14, text: ["1", "2", "3", "4", "5"] });
+  });
+});
+
+describe("paste", () => {
+  it("parses GitHub links with line ranges", () => {
+    expect(parseGithubUrl("https://github.com/GeeeekExplorer/nano-vllm/blob/main/nanovllm/engine/scheduler.py#L25-L34")).toEqual({
+      owner: "GeeeekExplorer", name: "nano-vllm", ref: "main", path: "nanovllm/engine/scheduler.py", start: 25, end: 34,
     });
-    expect(tree.map((n) => [n.card.id, n.kids.map((k) => k.card.id)])).toEqual([["a", ["c", "b"]]]);
   });
-  it("lists a card once even when two edges point at it", () => {
-    const c = (id: string) => ({ id, type: "code" as const, x: 0, y: 0, w: 1, path: "a.py", start: 1, end: 1, lang: "python", snapshot: [], commit: null, hl: [] });
-    const tree = outlineTree({
-      cards: [c("a"), c("b")],
-      edges: [
-        { id: "1", from: { card: "a", line: 2 }, to: { card: "b" }, kind: "call" },
-        { id: "2", from: { card: "a", line: 2 }, to: { card: "b" }, kind: "call" },
-      ],
-    });
-    expect(tree[0].kids.length).toBe(1);
+  it("classifies clipboard text", () => {
+    expect(classifyPaste("https://github.com/a/b/blob/main/x.py#L3").kind).toBe("github");
+    expect(classifyPaste("https://arxiv.org/abs/2309.06180").kind).toBe("web");
+    expect(classifyPaste("为什么 prefill 优先\n有新请求时这一步只做 prefill。").kind).toBe("note");
+    expect(classifyPaste("idx = tl.program_id(0)\nslot = tl.load(slot_mapping_ptr + idx)")).toEqual({ kind: "code", lang: "python" });
+    expect(guessLang("__global__ void k(float* x) {\n  int i = threadIdx.x;\n}")).toBe("cuda-cpp");
   });
+});
+
+describe("entry points", () => {
+  it("reads pyproject scripts and package exports", () => {
+    expect(pyprojectScripts('[project]\nname="x"\n[project.scripts]\nnv = "nanovllm.cli:main"\n')).toEqual([{ name: "nv", module: "nanovllm.cli", func: "main" }]);
+    expect(initExports(show(NEW, "nanovllm/__init__.py")).map((e) => e.name)).toEqual(["LLM", "SamplingParams"]);
+  });
+});
+
+describe("migrateBoard", () => {
+  it("turns a v1 board into v2", () => {
+    const b = migrateBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
+      cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }],
+      edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
+    expect(b.version).toBe(2);
+    const c = b.cards[0] as CodeCard;
+    expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [2], symbol: { qual: "f" } });
+    expect(b.links[0].from.seg).toBe(c.segments[0].id);
+  });
+});
+
+it("symbolAt picks the innermost", () => {
+  const a = analyze("python", show(NEW, SCHED));
+  expect(symbolAt(a.symbols, 30)!.qual).toBe("Scheduler.schedule");
 });
