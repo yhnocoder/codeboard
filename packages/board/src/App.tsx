@@ -94,7 +94,8 @@ function Banner() {
     <div class="banner pill">
       <i class="ndot" />
       <span>{n()} card{n() > 1 ? "s have" : " has"} a new version</span>
-      <button class="tbtn" onClick={() => A.reviewNext()}>Review</button>
+      <button class="tbtn" onClick={() => A.reviewNext()}>Review One by One</button>
+      <button class="tbtn" onClick={() => A.updateAll()}>Update All</button>
       <button class="ib" aria-label="Dismiss" onClick={() => setBanner(false)}><Icon name="close" size={14} /></button>
     </div>
   );

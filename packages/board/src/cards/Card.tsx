@@ -1,4 +1,5 @@
 // 卡片外壳：位置、选中、拖动抬起、弹出动画、讲解变暗；按种类渲染内容。
+import { send } from "../host";
 import { createMemo, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
   cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf,
@@ -54,6 +55,7 @@ export function CardView(p: { card: Card }) {
         classList={{
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!c().locked, autoh: !c().h,
           editing: editing()?.id === c().id,
+          lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
           "merge-hot": drop()?.kind === "merge" && drop()?.card === c().id && !!drop()?.armed,
           "merge-arm": drop()?.kind === "merge" && drop()?.card === c().id && !drop()?.armed,
           "drop-hot": drop()?.kind === "card" && drop()?.card === c().id,
@@ -144,7 +146,16 @@ function CodeCardView(p: { card: CodeCard }) {
           </For>
         </div>
       </Show>
-      <Show when={act.missingNote(c())}><div class="cmiss">{act.missingNote(c())}</div></Show>
+      <Show when={act.missingNote(c())}>
+        <div class="cmiss" onPointerDown={(e) => e.stopPropagation()}>
+          <span>{act.missingNote(c())}</span>
+          <Show when={act.cardStale(c()) === "lost"}>
+            <button onClick={() => send({ type: "relocate", card: c().id })}>Relocate…</button>
+            <button onClick={() => act.keepLost(c().id)}>Keep Old Version</button>
+          </Show>
+          <Show when={act.cardStale(c()) === "missing"}><button onClick={() => send({ type: "locateRepo" })}>Locate Repo…</button></Show>
+        </div>
+      </Show>
       <Show when={c().members} fallback={<CodeBody card={c()} hostId={c().id} />}>
         <ClassBody card={c()} />
       </Show>

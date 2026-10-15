@@ -431,7 +431,10 @@ kbd { font: 10.5px var(--mono); }
 .hidebar button { font-size: 11px; padding: 2px 7px; border-radius: 5px; color: var(--ink-3); white-space: nowrap; }
 .hidebar button:hover { background: var(--hlrow); color: var(--ink); }
 .hidebar button.on { color: var(--accent); background: var(--row); }
-.cmiss { padding: 6px 12px; font-size: 11.5px; color: var(--warn); background: var(--chg); border-bottom: 1px solid var(--line); flex: none; }
+.cmiss { padding: 6px 12px; font-size: 11.5px; color: var(--warn); background: var(--chg); border-bottom: 1px solid var(--line); flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.cmiss span { flex: 1 1 200px; }
+.cmiss button { font-size: 11.5px; padding: 2px 8px; border-radius: 5px; color: var(--ink); background: var(--row); }
+.cmiss button:hover { background: var(--hlrow); }
 .card.locked .chead { }
 .fnbar { height: 20px; display: flex; align-items: center; margin: 3px 12px 3px -58px; padding-left: 58px; font: 10.5px/20px var(--mono); color: var(--ink-3); }
 .fnbar::before, .fnbar::after { content: ""; height: 0; border-top: 1px solid var(--line); }
@@ -624,3 +627,4 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .srcpop { width: min(640px, 90vw); }
 .srcbody .pcode { max-height: 60vh; }
 .pop .sres { margin-top: 0; }
+.card.lost .cbody { filter: grayscale(1); opacity: .62; } /* 符号找不到：显示旧代码，变灰 */

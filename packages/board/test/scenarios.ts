@@ -120,6 +120,19 @@ const S: Record<string, () => Promise<void>> = {
     console.log("version:", JSON.stringify((h.board().cards[0] as any).segments[0].version));
     await h.page.context().browser()!.close();
   },
+  async lost() {
+    const b = boardWith("Scheduler.schedule", "Scheduler.postprocess");
+    const h = await open({ board: b, light });
+    const [s1, s2] = b.cards.map((c: any) => c.segments[0].id);
+    await h.post({ type: "stale", stale: { [s1]: { state: "lost" }, [s2]: { state: "changed", hiddenOnly: false, head: "f64d8210" } } } as any);
+    await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(600);
+    await shot(h, "lost-01");
+    await h.page.locator(".banner button", { hasText: "Update All" }).click(); await h.page.waitForTimeout(800);
+    await h.page.locator(".cmiss button", { hasText: "Keep Old Version" }).click(); await h.page.waitForTimeout(500);
+    await shot(h, "lost-02");
+    console.log("banner:", await h.page.locator(".banner").count(), "cmiss:", await h.page.locator(".cmiss").count(), JSON.stringify(h.board().cards.map((c: any) => [c.keepOld ?? null, c.segments[0].version.commit])));
+    await h.page.context().browser()!.close();
+  },
   async palette() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await h.page.keyboard.press("Control+k"); await h.page.keyboard.press("Meta+k");

@@ -35,6 +35,7 @@ export type Segment = {
   scope?: string; // 片段所在的函数（标题、函数边界线用），如 Scheduler.schedule
   hidden?: [number, number][]; // 手动隐藏的行范围
   hl?: number[]; // 显式高亮的行
+  keep?: string; // 用户对这个 HEAD 选了 Keep：同一个新版本不再提醒，HEAD 再变才提醒
 };
 
 // ---------- 卡片 ----------
@@ -64,6 +65,7 @@ export type CodeCard = CardBase & {
   members?: { shown: string[] };
   /** 合并来的卡：合并前的原卡（含位置、说明），Unmerge 时拆回 */
   mergedFrom?: CodeCard[];
+  keepOld?: true; // 符号找不到时选了 Keep Old Version：不再提示
 };
 
 export type NoteCard = CardBase & {

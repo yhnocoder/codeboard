@@ -467,6 +467,10 @@ export function cardMenu(id: string, x: number, y: number) {
   const anyHidden = c.segments.some((s) => s.hidden?.length);
   const items: Item[] = [
     ...(free ? [] : [{ label: "Open in Editor", kbd: "↵", run: () => openCode(c.id) } as Item]),
+    ...(free || c.segments[0]?.src.kind === "github" ? [] : [
+      { label: "Switch Commit…", run: () => { const el = document.querySelector(`.card[data-id="${cardById(c.id)!.host.id}"] .rev`); if (el) commitMenu(c.id, el); } } as Item,
+      { label: "Check for New Version", run: () => { send({ type: "checkVersions" }); toast("Checking for new versions…"); } } as Item,
+    ]),
     { label: "Rename", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id: c.id }) },
     { label: "Edit Description", run: () => setEditing({ kind: "desc", id: c.id }) },
     { label: "Add Sidenote", kbd: "S", disabled: ls?.card === c.id ? false : "Select lines in the card first", run: () => openAddNote({ card: ls!.card, seg: ls!.seg, lines: [ls!.start, ls!.end] }) },
@@ -682,11 +686,18 @@ export function toggleLock(cards: string[], sections: string[] = []) {
   });
   toast(on ? "Locked. It stays put; code inside still works." : "Unlocked");
 }
+/** 符号找不到时选 Keep Old Version：就当成一张钉死的卡，不再提示 */
+export function keepLost(cardId: string) {
+  const c = cardById(cardId)?.card;
+  if (!isCode(c)) return;
+  for (const s of c.segments) if (state.stale[s.id]?.state === "lost" || state.stale[s.id]?.state === "many") setState("stale", s.id, { state: "ok" });
+  mutate((b) => { const k = findCard(b, cardId)?.card; if (isCode(k)) k.keepOld = true; });
+}
 export function missingNote(c: CodeCard): string | null {
   const st = c.segments.map((s) => state.stale[s.id]?.state);
   if (st.includes("missing")) return state.host.readonly ?? "Repository not found. Showing the saved snapshot (read-only).";
-  if (st.includes("lost")) return "Symbol not found in the current code (deleted or renamed). Showing the saved version.";
-  if (st.includes("many")) return "This snippet now appears in several places. Showing the saved version.";
+  if (st.includes("lost") && !c.keepOld) return "Symbol not found in the current code (deleted or renamed). Showing the saved version.";
+  if (st.includes("many") && !c.keepOld) return "This snippet now appears in several places. Showing the saved version.";
   return null;
 }
 
@@ -940,8 +951,9 @@ export function cardStale(c: CodeCard): "changed" | "hidden" | "lost" | "missing
   for (const s of c.segments) {
     const st = state.stale[s.id];
     if (!st) continue;
+    if (st.state === "changed" && s.keep && st.head.startsWith(s.keep)) continue;
     if (st.state === "changed") { if (!st.hiddenOnly) return "changed"; hidden = true; }
-    if (st.state === "lost" || st.state === "many") return "lost";
+    if ((st.state === "lost" || st.state === "many") && !c.keepOld) return "lost";
     if (st.state === "missing") return "missing";
   }
   return hidden ? "hidden" : null;
@@ -997,9 +1009,25 @@ function lineMap(old: Segment, ns: Segment) {
   }
   return (l: number) => m.get(l) ?? 0;
 }
+/** Keep：留在钉住的版本，记下这次的 HEAD，同一个新版本不再提醒 */
 export function keepVersion(cardId: string, segId: string) {
-  setState("stale", segId, { state: "ok" });
-  void cardId;
+  const st = state.stale[segId];
+  const head = st?.state === "changed" ? st.head : undefined;
+  if (head) mutate((b) => { const c = findCard(b, cardId)?.card; if (isCode(c)) { const s = c.segments.find((q) => q.id === segId); if (s) s.keep = head; } });
+  else setState("stale", segId, { state: "ok" });
+}
+/** 横幅里的 Update All：每段都取 diff 再更新，跟一张张点 Update 一样 */
+export async function updateAll() {
+  const todo: [string, Segment][] = [];
+  for (const c of allCodeCards(state.board)) if (cardStale(c) === "changed") for (const s of c.segments) if (state.stale[s.id]?.state === "changed") todo.push([c.id, s]);
+  let n = 0;
+  for (const [cid, s] of todo) {
+    try {
+      const data = await ask<DiffData>("diff", { seg: structuredClone(unwrap(s)) });
+      if (data.canUpdate) { applyNewVersion(cid, s.id, data); n++; }
+    } catch { /* 这张跳过 */ }
+  }
+  toast(n === todo.length ? `Updated ${n} card${n === 1 ? "" : "s"}` : `Updated ${n} of ${todo.length}; open the others to review`);
 }
 export async function duplicateNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
