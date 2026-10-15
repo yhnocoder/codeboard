@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  brokenBy, computeFlows, emptyBoard, hiddenByCollapse, findCard,
+  brokenBy, computeFlows, emptyBoard, hiddenByCollapse,
   type Board, type BoardMeta, type Card, type HostInfo, type SegView, type Stale,
 } from "@codeboard/core";
 import { send } from "../host";
@@ -58,7 +58,16 @@ export const flows = createMemo(() => computeFlows(state.board));
 export const [showCollapsed, setShowCollapsed] = createSignal(false);
 export const collapsedAway = createMemo(() => (showCollapsed() ? new Set<string>() : hiddenByCollapse(state.board, flows())));
 
-export const cardById = (id: string) => findCard(state.board, id);
+/** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
+const cardIndex = createMemo(() => {
+  const m = new Map<string, { card: Card; host: Card }>();
+  for (const c of state.board.cards) {
+    m.set(c.id, { card: c, host: c });
+    if (c.kind === "compare") for (const k of c.cols) m.set(k.id, { card: k, host: c });
+  }
+  return m;
+});
+export const cardById = (id: string) => cardIndex().get(id);
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
 export const [sizes, setSizes] = createStore<Record<string, { w: number; h: number }>>({});
@@ -91,6 +100,7 @@ export function mutate(fn: (b: Board) => void): boolean {
     return false;
   }
   if (snap() === before) return true;
+  changed();
   undoStack.push(before);
   if (undoStack.length > 300) undoStack.shift();
   redoStack.length = 0;
@@ -111,12 +121,14 @@ export function beginGesture(): () => void {
 /** 拖动中的修改（不进撤销栈） */
 export function live(fn: (b: Board) => void) {
   setState("board", produce(fn));
+  changed();
 }
 
 function restore(s: Snap) {
   const b = JSON.parse(s) as Board;
   b.cam = { ...state.board.cam };
   setState("board", reconcile(b));
+  changed();
   const ids = new Set(allIds());
   setSel("cards", (c) => c.filter((x) => ids.has(x)));
   setSel("links", (l) => l.filter((x) => state.board.links.some((k) => k.id === x)));
@@ -151,6 +163,8 @@ export function allIds(): string[] {
 
 // ---------- 自动保存：改动后约 1 秒写盘，没有保存按钮 ----------
 
+// 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接排一次保存，不用盯着整块白板的 JSON 看它变没变
+const changed = () => scheduleSave();
 let saveTimer: number | undefined;
 let lastSaved = "";
 export function scheduleSave() {

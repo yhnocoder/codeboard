@@ -9,6 +9,7 @@ import { state, setSizes, isSel, flows, collapsedAway, sel } from "../state/stor
 import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
+import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
@@ -18,14 +19,12 @@ import * as act from "../actions";
 export function CardView(p: { card: Card }) {
   let el!: HTMLDivElement;
   const c = () => p.card;
-  onMount(() => {
-    const ro = new ResizeObserver(() => {
-      if (!el) return;
-      setSizes(c().id, { w: el.offsetWidth, h: el.offsetHeight });
-    });
-    ro.observe(el);
-    onCleanup(() => { ro.disconnect(); });
-  });
+  const read = () => {
+    if (!el) return;
+    const id = c().id, w = el.offsetWidth, h = el.offsetHeight;
+    return () => setSizes(id, { w, h });
+  };
+  onMount(() => onCleanup(observeResize(el, () => queueMeasure(read, read))));
   createEffect(() => {
     const pg = pingCard();
     if (pg?.id === c().id && el) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
