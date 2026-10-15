@@ -361,11 +361,14 @@ function drawSection(e: PointerEvent) {
     // 只收同一层的东西：中心点在框内、原来属于父级（或更外层）的卡，整个落在框内、和它同父级的 Section
     const fr = frames();
     const c0 = center(r);
-    const parent = deepestAt(fr, c0.x, c0.y)?.id;
+    // 整个落在新框里的 Section 不能当父级（那是从内往外画：它们反过来成为新框的子级）
+    const within = (f: Rect) => f.x >= r.x && f.y >= r.y && f.x + f.w <= r.x + r.w && f.y + f.h <= r.y + r.h;
+    const enclosed = new Set(state.board.sections.filter((s) => { const f = fr.get(s.id); return f && within(f); }).map((s) => s.id));
+    const parent = deepestAt(fr, c0.x, c0.y, enclosed)?.id;
     const outer = new Set<string | undefined>([undefined]);
     for (let p = parent ? sec(parent) : undefined; p; p = p.parent ? sec(p.parent) : undefined) outer.add(p.id);
     const inside = state.board.cards.filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y) && outer.has(c.section); }).map((c) => c.id);
-    const subs = state.board.sections.filter((s) => { const f = fr.get(s.id); return f && s.parent === parent && f.x >= r.x && f.y >= r.y && f.x + f.w <= r.x + r.w && f.y + f.h <= r.y + r.h; }).map((s) => s.id);
+    const subs = state.board.sections.filter((s) => enclosed.has(s.id) && s.parent === parent).map((s) => s.id);
     select({ cards: inside, sections: subs });
     A.moveToNewSection(r, parent);
   });

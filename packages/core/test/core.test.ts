@@ -2,9 +2,9 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, canAttach, canCompare, hiddenByCollapse, tidy, snapMove, align,
+  alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, canAttach, canExpand, canCompare, hiddenByCollapse, tidy, snapMove, align,
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard,
-  type Board, type CodeCard, type Link, type Segment, type SegView,
+  type Board, type Card, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
 import { initAnalysis, analyze, planSelection, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
 
@@ -157,6 +157,12 @@ describe("diff and alignment", () => {
     const edited = [...n.slice(0, 41), "    # inserted", ...n.slice(41)];
     expect(findBlock(edited, n.slice(40, 45))).toEqual({ start: 41, end: 46 });
   });
+  it("maps edited lines to their counterpart and skips only deleted ones", () => {
+    const old = ["def f():", "    x = 1", "", "    y = 2", "    return x + y  # sum"];
+    const now = ["def f():", "    x = 1", "    y = 2", "    return x + y  # total"];
+    const m = mapLines(old, 10, now, 20);
+    expect([10, 11, 12, 13, 14].map((l) => m.get(l))).toEqual([20, 21, undefined, 22, 23]);
+  });
   it("diffs lines", () => {
     expect(diffLines(["a", "b"], ["a", "c"]).map((d) => d.op).join("")).toBe(" -+");
   });
@@ -182,11 +188,27 @@ describe("computeFlows", () => {
     expect(f.byId.get("d")!.label).toBe("B·1");
     expect(f.byId.has("e")).toBe(false);
   });
-  it("refuses to attach a call to a card already in a flow", () => {
-    const f = computeFlows(board([call("a", 1, "b")]));
-    expect(canAttach(f, "a", "b").ok).toBe(false);
-    expect(canAttach(f, "a", "c").ok).toBe(true);
-    expect(canAttach(f, "b", "a").ok).toBe(false);
+  it("attaches only to cards with no incoming call, without loops", () => {
+    const b = board([call("a", 1, "b"), call("c", 1, "d")]);
+    const f = computeFlows(b);
+    expect(canAttach(b, f, "a", "b").ok).toBe(false); // b 已经有进来的 link
+    expect(canAttach(b, f, "a", "e").ok).toBe(true);
+    expect(canAttach(b, f, "b", "a").ok).toBe(false); // 成环
+    expect(canAttach(b, f, "b", "c").ok).toBe(true); // 另一棵树的根：整棵并过来
+  });
+  it("keeps both Compare columns in one flow on expand and attach", () => {
+    const cmp = { id: "k", kind: "compare", x: 0, y: 0, w: 100, cols: [code("p"), code("q")] } as Card;
+    const b: Board = { ...emptyBoard("b", "B"), cards: [...["a", "b", "e"].map(code), cmp], links: [call("p", 1, "a")] };
+    const f = computeFlows(b);
+    expect(canExpand(b, "q").ok).toBe(false); // q 会成为第二棵树的根
+    expect(canExpand(b, "p").ok).toBe(true);
+    expect(canExpand(b, "a").ok).toBe(true);
+    expect(canAttach(b, f, "a", "q").ok).toBe(true); // q 进 p 的树
+    const b2: Board = { ...b, links: [call("p", 1, "a"), call("b", 1, "e")] };
+    expect(canAttach(b2, computeFlows(b2), "b", "q").ok).toBe(false); // q 进 b 的树，p 在另一棵
+    const b3: Board = { ...b, links: [] };
+    expect(canExpand(b3, "q").ok).toBe(true);
+    expect(canAttach(b3, computeFlows(b3), "q", "p").ok).toBe(true);
   });
   it("forbids comparing cards of two different flows", () => {
     const f = computeFlows(board([call("a", 1, "b"), call("c", 1, "d")]));

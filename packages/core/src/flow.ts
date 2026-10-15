@@ -1,5 +1,5 @@
 // Call 流程：一棵由 Call link 组成的树。编号、顺序、能不能接上，都从 Link 算出来，不另外存。
-import { findCard, type Board, type CodeCard, type Link } from "./model";
+import { findCard, type Board, type Card, type CodeCard, type Link } from "./model";
 
 export type FlowNode = { id: string; link?: Link; kids: FlowNode[]; num: string; label: string; depth: number; tree: string };
 export type Flows = {
@@ -109,12 +109,38 @@ export function hiddenByCollapse(b: Pick<Board, "cards">, f: Flows): Set<string>
 }
 
 /**
- * 把一个调用接到已有的卡上：目标卡必须还不在任何流程里（没有编号），
- * 也不能是出发卡自己。在流程里的卡要先 Duplicate。
+ * 假设加上 from → to 这条 Call link（to 缺省 = 展开出来的新卡），
+ * 有没有哪张 Compare 的两栏会落进两棵不同的树。
  */
-export function canAttach(f: Flows, fromCard: string, target: string): { ok: true } | { ok: false; reason: string } {
+export function splitsCompare(b: Pick<Board, "cards" | "links">, from: string, to?: string): boolean {
+  const probe = to ?? "\u0000probe";
+  const cards = to ? b.cards : [...b.cards, { id: probe, kind: "note", md: "", x: 0, y: 0, w: 0 } as Card];
+  const links = [...b.links, { id: "\u0000probe", kind: "call", from: { card: from }, to: { card: probe } } as Link];
+  const f = computeFlows({ cards, links });
+  return b.cards.some((c) => {
+    if (c.kind !== "compare") return false;
+    const ta = f.byId.get(c.cols[0].id)?.tree, tb = f.byId.get(c.cols[1].id)?.tree;
+    return !!ta && !!tb && ta !== tb;
+  });
+}
+
+const SPLIT = "Both columns of a Compare must stay in one flow. Separate the Compare or duplicate the card first.";
+
+/** 点调用展开一张新卡：出发卡会进（或开始）一棵树，不能因此把 Compare 拆到两棵树里 */
+export function canExpand(b: Pick<Board, "cards" | "links">, fromCard: string): { ok: true } | { ok: false; reason: string } {
+  return splitsCompare(b, fromCard) ? { ok: false, reason: SPLIT } : { ok: true };
+}
+
+/**
+ * 把一个调用接到已有的卡上：目标卡不能已经有进来的 Call link（最多一条），
+ * 不能是出发卡自己或它的祖先（会成环），也不能把 Compare 拆到两棵树里。
+ * 一棵树的根没有进来的 link，可以接到别的树下面，整棵树并过去。
+ */
+export function canAttach(b: Pick<Board, "cards" | "links">, f: Flows, fromCard: string, target: string): { ok: true } | { ok: false; reason: string } {
   if (fromCard === target) return { ok: false, reason: "Can't link a card to itself." };
-  if (f.byId.has(target)) return { ok: false, reason: "Already in a flow. Duplicate it first." };
+  if (f.parent.has(target)) return { ok: false, reason: "Already called from another card. Duplicate it first." };
+  for (let k: string | undefined = fromCard; k; k = f.parent.get(k)) if (k === target) return { ok: false, reason: "That card is above this one in the flow; linking it would make a loop." };
+  if (splitsCompare(b, fromCard, target)) return { ok: false, reason: SPLIT };
   return { ok: true };
 }
 

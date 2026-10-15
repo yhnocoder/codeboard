@@ -162,6 +162,76 @@ const S: Record<string, () => Promise<void>> = {
     console.log("sections:", JSON.stringify(h.board().sections.map((q) => [q.title, q.collapsed ?? false])));
     await h.page.context().browser()!.close();
   },
+  // 回归：Compare 的两栏不能被展开 / 连线拆到两棵树里
+  async cmptree() {
+    const h = await open({ board: boardWith("LLMEngine.step", "Scheduler.schedule"), light });
+    await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(400);
+    await h.page.keyboard.press("Control+a");
+    await h.page.locator(".card.ccard .chead").first().click({ button: "right" }); await h.page.waitForTimeout(200);
+    await h.page.locator(".ctx button", { hasText: "Compare" }).first().click(); await h.page.waitForTimeout(800);
+    await h.page.locator(".card .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(800);
+    await h.page.keyboard.press("Escape");
+    await h.page.locator(".card .call", { hasText: /^can_allocate$/ }).first().click(); await h.page.waitForTimeout(800);
+    const toast = await h.page.locator(".toast").textContent().catch(() => "");
+    const roots = new Set(h.board().links.filter((l) => l.kind === "call").map((l) => l.from.card));
+    const b = h.board(); const cmp = b.cards.find((c) => c.kind === "compare") as any;
+    const ok = b.links.filter((l) => l.kind === "call").length === 1 && /one flow/.test(toast ?? "");
+    console.log(ok ? "PASS" : "FAIL", "cmptree", JSON.stringify({ links: b.links.length, roots: [...roots], cols: cmp?.cols.map((c: any) => c.id), toast }));
+    await shot(h, "cmptree");
+    await h.page.context().browser()!.close();
+  },
+  // 回归：Update 后 Sidenote 和高亮跟着改过的行走，不当成删掉
+  async follow() {
+    const b = boardWith("Scheduler.schedule");
+    const c = b.cards[0] as any, s0 = c.segments[0];
+    s0.hl = [s0.start + 3, s0.start + 6];
+    s0.hidden = [[s0.start + 8, s0.start + 9]];
+    b.sidenotes.push({ id: "n1", kind: "text", md: "on the edited line", at: { card: c.id, seg: s0.id, lines: [s0.start + 3, s0.start + 3] } } as any);
+    const h = await open({ board: b, light });
+    await h.post({ type: "stale", stale: { [s0.id]: { state: "changed", hiddenOnly: false, head: "f64d8210" } } } as any);
+    await h.page.waitForTimeout(300);
+    await h.page.locator(".banner button", { hasText: "Update All" }).click(); await h.page.waitForTimeout(900);
+    const nb = h.board() as any, ns = nb.cards[0].segments[0], n = nb.sidenotes[0];
+    const ok = JSON.stringify(n.at.lines) === JSON.stringify([s0.start + 3, s0.start + 3]) && !n.lineRemoved && JSON.stringify(ns.hl) === JSON.stringify(s0.hl) && JSON.stringify(ns.hidden) === JSON.stringify(s0.hidden);
+    console.log(ok ? "PASS" : "FAIL", "follow", JSON.stringify({ at: n.at, removed: n.lineRemoved ?? false, hl: ns.hl, hidden: ns.hidden, version: ns.version.commit }));
+    await h.page.context().browser()!.close();
+  },
+  // 回归：先画内框、再画外框，外框是父级
+  async secout() {
+    const h = await open({ board: boardWith("LLMEngine.step"), light });
+    const r = await h.page.locator(".card").first().boundingBox();
+    const draw = async (pad: number, name: string) => {
+      await h.page.locator(".bbar button", { hasText: "Section" }).click();
+      await h.page.mouse.move(r!.x - pad, r!.y - pad - 20); await h.page.mouse.down();
+      await h.page.mouse.move(r!.x + r!.width + pad, r!.y + r!.height + pad, { steps: 8 }); await h.page.mouse.up();
+      await h.page.waitForTimeout(300); await h.page.keyboard.type(name); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(300);
+    };
+    await draw(30, "Inner"); await draw(90, "Outer"); await h.page.waitForTimeout(1200); // 等自动保存
+    const ss = h.board().sections, inner = ss.find((q) => q.title === "Inner")!, outer = ss.find((q) => q.title === "Outer")!;
+    const ok = inner.parent === outer.id && !outer.parent && h.board().cards[0].section === inner.id;
+    console.log(ok ? "PASS" : "FAIL", "secout", JSON.stringify(ss.map((q) => [q.title, q.parent ? ss.find((x) => x.id === q.parent)!.title : null]).concat([["card", h.board().cards[0].section === inner.id ? "Inner" : "?"]])));
+    await shot(h, "secout");
+    await h.page.context().browser()!.close();
+  },
+  // 回归：Walkthrough 展开折叠的子树不写进白板
+  async walkview() {
+    const h = await open({ board: boardWith("LLMEngine.step"), light });
+    await h.page.locator(".card .src .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(700);
+    const root = h.board().cards[0].id;
+    await h.page.locator(".card").first().locator(".chead").click({ button: "right" }); await h.page.waitForTimeout(200);
+    await h.page.locator(".ctx button", { hasText: /Collapse/ }).first().click(); await h.page.waitForTimeout(1500);
+    const before = JSON.stringify(h.board());
+    await h.page.keyboard.press("Escape"); await h.page.keyboard.press("p"); await h.page.waitForTimeout(600);
+    const shown = await h.page.locator(".card").count();
+    await h.page.keyboard.press("ArrowRight"); await h.page.waitForTimeout(1600);
+    const during = JSON.stringify(h.board());
+    await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(1600);
+    const after = JSON.stringify(h.board()), hidden = await h.page.locator(".card").count();
+    const strip = (j: string) => { const o = JSON.parse(j); delete o.cam; return JSON.stringify(o); };
+    const ok = shown === 2 && hidden === 1 && strip(before) === strip(during) && strip(before) === strip(after) && (JSON.parse(after).cards.find((c: any) => c.id === root)?.collapsed === true);
+    console.log(ok ? "PASS" : "FAIL", "walkview", JSON.stringify({ shown, hidden, savedChanged: strip(before) !== strip(during) }));
+    await h.page.context().browser()!.close();
+  },
   async palette() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await h.page.keyboard.press("Control+k"); await h.page.keyboard.press("Meta+k");
