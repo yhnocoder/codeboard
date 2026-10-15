@@ -1429,6 +1429,8 @@ board.addEventListener('pointerdown', ev => {
     return;
   }
   if (t.closest('[data-act]') && !t.closest('.hw')) return; // buttons act on click
+  const eh = t.closest('.ehit');
+  if (eh) { ev.preventDefault(); if (isDbl('e' + eh.dataset.link)) editLinkLabel(eh.dataset.link); return; } // double-click a link: label
   const lab = t.closest('.slabel');
   if (lab) {
     const s = S.sects.find(x => x.id === lab.dataset.sect); if (!s) return;
@@ -2428,7 +2430,6 @@ edgesSvg.addEventListener('pointerout', e => { const h = e.target.closest('.ehit
 vplus.addEventListener('pointerenter', () => clearTimeout(vplusT));
 vplus.addEventListener('pointerleave', () => { vplusT = setTimeout(() => vplus.classList.remove('show'), 400); });
 vplus.addEventListener('click', e => { e.stopPropagation(); if (vplusFor) openVars(vplusFor); });
-edgesSvg.addEventListener('dblclick', e => { const h = e.target.closest('.ehit'); if (h) editLinkLabel(h.dataset.link); });
 labelsL.addEventListener('dblclick', e => { const lb = e.target.closest('.elabel, .vchips'); if (lb) editLinkLabel(lb.dataset.link); });
 function openVars(lid) {
   const L = S.links.find(x => x.id === lid), g = edgeEls[lid]; if (!L || !g) return;
@@ -2678,9 +2679,9 @@ board.addEventListener('pointerdown', () => { hideTip(); warmUntil = 0; }, true)
 // Shortcuts panel
 // =====================================================================
 const KEYS = [
-  ['Board', [['Click a dotted call', 'Expand: new callee card + Call link'], ['Drag a dotted call', 'Drop on a card: link it · on canvas: new card there'], ['Right-click a call', 'Link to Existing Card…'], ['Hover a name', 'Definition peek (⌘-hover pins)'], ['Drag title bar', 'Move card'], ['Drag empty canvas', 'Marquee select'], ['Space + Drag', 'Pan'], ['Scroll / two fingers', 'Pan'], [`${K.mod}Scroll / pinch`, 'Zoom'], ['Double-click canvas', 'New Text'], ['⇧Click', 'Add to selection']]],
+  ['Board', [['Click a dotted call', 'Expand: new callee card + Call link'], ['Drag a dotted call', 'Drop on a card: link it · on canvas: new card there'], ['Right-click a call', 'Link to Existing Card…'], ['Hover a name', 'Definition peek (⌘-hover pins)'], ['Drag title bar', 'Move card (snaps; hold ⌘/Ctrl to disable)'], ['Pause on another title bar', 'Release to merge'], ['Double-click a link', 'Edit its label'], ['Drag empty canvas', 'Marquee select'], ['Space + Drag', 'Pan'], ['Scroll / two fingers', 'Pan'], [`${K.mod}Scroll / pinch`, 'Zoom'], ['Double-click canvas', 'New Text'], ['⇧Click', 'Add to selection']]],
   ['Lines (select code first)', [['S', 'Add Sidenote'], ['H', 'Hide Lines'], ['Click line number', 'Select line (⇧ extends)'], ['Right-click', 'Line menu: Highlight, Copy…']]],
-  ['Commands', [['T', 'New Text'], ['N', 'New Note'], [`${K.mod}K`, 'Add Function…'], ['P', 'Walk Through Flow'], ['← →', 'Previous / Next step'], ['Esc', 'Close popup / Exit / Clear selection'], ['Delete ⌫', 'Delete selection'], [`${K.mod}A`, 'Select All Cards'], [`${K.mod}D`, 'Duplicate (no links, no number)'], [`${K.mod}Z  ${K.shift}${K.mod}Z`, 'Undo / Redo'], ['Enter', 'Open in Editor'], [`${K.shift}1  ${K.mod}0`, 'Fit to Window'], [`${K.mod}1`, 'Zoom to 100%'], ['?', 'This panel']]],
+  ['Commands', [['T', 'New Text'], ['N', 'New Note'], [`${K.mod}K`, 'Add Function…'], ['P', 'Walk Through Flow'], ['← →', 'Previous / Next step'], ['Esc', 'Close popup / Exit / Clear selection'], ['Delete ⌫', 'Delete selection'], [`${K.mod}A`, 'Select All Cards'], [`${K.mod}D`, 'Duplicate (no links, no number)'], [`${K.mod}${K.shift}L`, 'Lock / Unlock'], [`${K.mod}Z  ${K.shift}${K.mod}Z`, 'Undo / Redo'], ['Enter', 'Open in Editor'], [`${K.shift}1  ${K.mod}0`, 'Fit to Window'], [`${K.mod}1`, 'Zoom to 100%'], ['?', 'This panel']]],
 ];
 function toggleKeys(on) {
   const k = $('#keys'); on = on ?? !k.classList.contains('open');

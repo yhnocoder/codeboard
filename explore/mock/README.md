@@ -8,7 +8,7 @@
 
 - `build_data.py`：读 nano-vllm 源码，生成 `data.js`（`window.NV`：文件行、符号、每行的调用点与候选定义、标识符的定义/赋值位置、Follow 下一跳、实参↔形参与返回值的变量候选、是否在循环里），再把 `index.html` 和 `data.js` 合成单文件 `mock.html`。
 - `index.html`：开发用，`<script src="data.js">` 加载数据。
-- `mock.html`：自包含单文件（约 340 KB），发布用。
+- `mock.html`：自包含单文件（约 372 KB），发布用。唯一外部资源是 cdnjs 上钉死版本的 KaTeX 0.16.9（css + js）；加载失败时公式显示原始 TeX，其他功能不受影响。
 - `test/smoke.js`：Playwright 冒烟测试，截图到 scratchpad 的 `mockshots/`。
 
 ## 重新生成
@@ -36,11 +36,23 @@ NODE_PATH=$(npm root -g) node test/smoke.js   # 可选：冒烟测试 + 截图�
 11. Call link 变量：悬停线出现 +（或右键 Add Variables…）→ 候选清单（实参↔形参、`b → a`、返回值 `→ seqs, is_prefill`），默认一个都不加；可 Add Custom…；线上最多 3 个再 +N；悬停 chip 两端同时高亮。
 12. 多选（⇧点击、空白处拖框选）、Space+拖 / 中键 / 双指滚动平移、⌘/Ctrl+滚轮缩放、Delete、⌘A、⌘D（复制卡：无连线、无编号）、⌘Z / ⇧⌘Z（所有结构操作都进撤销栈）、Tidy Layout（只排这一棵树，按需）、Collapse Subtree（卡头 ▸ N）、localStorage 自动保存（读写都包了 try/catch，被禁用时照常工作）、Reset Demo、⌘K Add Function…。
 13. `?` 快捷键面板。
+14. Section 颜色与嵌套：右键标签 → Color（None / Warm Sand / Light Blue / Light Green / Light Pink，默认 None，每层各自一色）；无限嵌套：选中卡片和已有 Section（⇧点标签）→ Move to New Section 得到外层；拖 Section 标签放进别的框就成为子 Section，拖出来就脱离（也可右键 Move Out of Parent Section）；拖父标签带着所有子孙一起走；折叠父 Section 会把子孙一起收起。卡片归属 = 卡片中心落在哪个框里（取最深的那层）。标签浮在卡片之上，不会被盖住。
+15. Plain link 样式：右键线 → Arrow（None / One-way → / Both ↔）、Style（Dashed / Solid）、Color（Grey / Orange / Blue / Green）；默认无箭头、虚线、灰色。
+16. 连线标签：双击任何连线（Plain 和 Call 都行）写标签，标签停在线的中点并跟着线走；Call link 的标签放在变量 chip 旁边。右键菜单里也有 Add / Edit Label。
+17. Compare 菜单项只在正好选中两张代码卡时出现（单卡菜单里没有）；两张卡分属不同流程时仍显示但置灰，提示「Duplicate one first」。
+18. 公式：Note、Text 卡、Text Sidenote（含 Always Show）、卡片说明支持 `$…$` 行内和 `$$…$$` 块级公式（KaTeX）。起始白板的 Note 里有 `allocate_kv_cache` 的 block_bytes 公式。
+19. Merge into One Card：选 ≥2 张代码卡（函数 / 类 / 片段 / 已合并的卡）→ 右键 Merge into One Card；也可以把一张卡拖到另一张的标题栏上停 0.4 秒，出现「Release to merge」后松手。结果是一张多段卡：按文件再按行排序，跨文件处有文件条，同文件不相邻处有「⋯ N lines hidden (a–b) · in 所在函数」；标题「X +N」，路径处显示「N segments · M files」。连线、Sidenote、高亮、隐藏行都搬到合并卡上；组内互连的线先收起，Unmerge 时放回；Unmerge 把卡拆回原来的几张（在合并卡移动后的位置附近），合并后新加的 Sidenote / 连线按行号分回所属的卡。
+20. 吸附：移动和改大小时，边和中线吸附到其他卡片和 Section 框，蓝色虚线参考线；改大小时宽 / 高和别的卡相等也会吸附，并提示「same width · 600」。按住 ⌘（或 Ctrl）临时关闭吸附。
+21. 对齐工具条：选中 ≥2 张卡时浮在选区上方：左 / 居中 / 右对齐、顶 / 底对齐、水平 / 垂直等距（≥3 张才可用）、Same Width（以第一张选中的卡为准）。
+22. Lock：右键 Lock 或 ⌘⇧L；标题栏出现锁形图标；锁住的卡不能拖、不能改大小，框选和 ⌘A 跳过它；点调用展开、卡内滚动、选文字、加 Sidenote 照常。点锁图标或右键 Unlock 解锁。Section 也能锁：锁住后标签拖不动，框里的卡也一起锁定。
 
 ## 还没做 / 简化
 
 - Sidenote 的 Paste / Link / Card 类型（Tab 置灰）；整卡 Sidenote；把 Note 拖到行上、⌥ 拖卡变 Sidenote。
-- 合并卡片 / 多段卡（菜单置灰）、Section 嵌套、对齐参考线、Workbench / Focus 布局、命令面板只做了 Add Function。
+- Workbench / Focus 布局；命令面板只做了 Add Function。
+- mock 里没有「Free code」卡（自由粘贴的代码），所以 Compare 对 Free code 的支持没法演示；规则上 Free code 算代码卡，但不能 Merge。
+- 合并卡的「⋯ N lines hidden」段间条不可展开；合并卡里分属两个 Call 父卡的情况只保留第一条 Call link 作为流程父边（编号规则：一张卡只有一条入边）。
+- 吸附只看卡片和 Section 框，不吸附网格，也不做等间距吸附；对齐工具条不吸附也不动被锁的卡。
 - 隐藏条的 Show 是直接取消隐藏（可撤销），不是临时展开。
 - Compare 栏里不显示 Sidenote 标记；Unified 视图里右栏行的连线锚点用的是同一行。
 - 定义解析是轻量类型推断，不是 Pylance：未注解的变量、`*args` 转发、字符串分发（`call("run", …)`）解析不到，这和线框里的设定一致。
