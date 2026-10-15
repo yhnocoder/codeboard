@@ -484,6 +484,7 @@ export function installKeys() {
     }
     if (typing(e) || dialogOpen() || paletteOpen()) return;
     const mod = e.metaKey || e.ctrlKey, k = e.key, kl = k.toLowerCase();
+    if (mod && state.host.forwardedKeys?.includes(e.shiftKey && kl === "l" ? "shift+l" : kl)) { e.preventDefault(); return; } // 宿主会转回来
     if (k === " " && !mod) { setSpaceDown(true); boardEl().classList.add("space"); e.preventDefault(); return; }
     if (k === "Escape") {
       if (menuOpen()) return closeMenu();

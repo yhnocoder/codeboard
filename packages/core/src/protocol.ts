@@ -20,6 +20,8 @@ export type HostInfo = {
   readonly?: string; // 仓库找不到时的提示
   focus?: boolean; // Focus 布局
   target: boolean; // 编辑器里 Add to 的目标白板是不是这块
+  /** 这些快捷键被宿主拦下后以 {type:"command", name:"key"} 转回来，白板自己不再处理（免得做两次） */
+  forwardedKeys?: string[];
 };
 
 export type PeekDef = {

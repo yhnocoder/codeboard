@@ -283,7 +283,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
           <Match when={tab() === "code"}>
             <input class="fld" autofocus placeholder="Search functions or files" value={q()} onInput={(e) => setQ(e.currentTarget.value)} ref={(e) => queueMicrotask(() => e.focus())} />
             <div class="sres">
-              <For each={res()}>{(r, k) => <button class="cand" classList={{ on: k() === i() }} onPointerEnter={() => setI(k())} onClick={() => { setI(k()); add(); }}><span class="kind">{r.kind === "symbol" ? r.glyph : "▤"}</span><span class="lb">{r.label}</span><small>{r.detail}</small></button>}</For>
+              <For each={res()}>{(r, k) => <button class="cand" classList={{ on: k() === i() }} onPointerMove={(e) => { if (e.movementX || e.movementY) setI(k()); }} onClick={() => { setI(k()); add(); }}><span class="kind">{r.kind === "symbol" ? r.glyph : "▤"}</span><span class="lb">{r.label}</span><small>{r.detail}</small></button>}</For>
               <Show when={!res().length}><div class="hint">Or select code in the editor and press {A.K.alt}S</div></Show>
             </div>
           </Match>

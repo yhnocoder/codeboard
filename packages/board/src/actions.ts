@@ -1259,6 +1259,18 @@ export function runCommand(name: string, arg?: unknown) {
     case "reveal": return revealCard(arg as string);
     case "newNote": return newNote();
     case "keys": return setKeysOpen(true);
+    case "key": {
+      // 宿主转来的快捷键（VS Code 会先拦下这些键）
+      const k = arg as string;
+      if (k === "search") return setPaletteOpen({ mode: "all" });
+      if (k === "duplicate") return duplicateSel();
+      if (k === "fitAll") return fitAll();
+      if (k === "zoom100") return zoomAt(1 / camTarget().z);
+      if (k === "zoomIn") return zoomAt(1.25);
+      if (k === "zoomOut") return zoomAt(0.8);
+      if (k === "lock") return toggleLock(sel.cards.slice(), sel.sections.slice());
+      return;
+    }
     case "rename": return typeof arg === "string" && arg.trim() && mutate((b) => { b.name = arg.trim(); });
     case "relocated": {
       // Relocate 之后宿主送来新段（同一个 id）：换掉旧段，状态回到正常

@@ -131,6 +131,11 @@
         "command": "codeboard.openGithubFile",
         "title": "Open GitHub File",
         "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "title": "Board Shortcut",
+        "category": "CodeBoard"
       }
     ],
     "menus": {
@@ -275,6 +280,10 @@
         {
           "command": "codeboard.deleteBoard",
           "when": "false"
+        },
+        {
+          "command": "codeboard.boardKey",
+          "when": "false"
         }
       ]
     },
@@ -288,6 +297,55 @@
         "command": "codeboard.addSidenote",
         "key": "alt+s",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+k",
+        "mac": "cmd+k",
+        "args": "search",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+d",
+        "mac": "cmd+d",
+        "args": "duplicate",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+0",
+        "mac": "cmd+0",
+        "args": "fitAll",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+1",
+        "mac": "cmd+1",
+        "args": "zoom100",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+=",
+        "mac": "cmd+=",
+        "args": "zoomIn",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+-",
+        "mac": "cmd+-",
+        "args": "zoomOut",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
+        "args": "lock",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
       }
     ],
     "viewsContainers": {

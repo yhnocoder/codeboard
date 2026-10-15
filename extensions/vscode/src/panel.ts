@@ -53,6 +53,7 @@ export class BoardPanel {
     return {
       fontFamily: ed.get<string>("fontFamily"),
       isMac: process.platform === "darwin",
+      forwardedKeys: ["k", "d", "0", "1", "=", "+", "-", "shift+l"], // 与 package.json 里 codeboard.boardKey 的键一致
       assetBase: this.panel.webview.asWebviewUri(vscode.Uri.file(this.mgr.store.assetsDir())).toString(),
       readonly: this.readonly,
       focus: this.mgr.focusOn,
