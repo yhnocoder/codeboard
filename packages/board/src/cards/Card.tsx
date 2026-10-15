@@ -1,0 +1,210 @@
+// 卡片外壳：位置、选中、拖动抬起、弹出动画、讲解变暗；按种类渲染内容。
+import { createMemo, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
+import {
+  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf,
+  type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard,
+} from "@codeboard/core";
+import { state, setSizes, isSel, flows, collapsedAway, sel } from "../state/store";
+import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
+import { Icon } from "../ui/icons";
+import { CodeBody } from "./CodeBody";
+import { CompareBody } from "./CompareBody";
+import { NoteBody, TextToolbar } from "./NoteBody";
+import { Editable } from "../ui/Editable";
+import * as act from "../actions";
+
+export function CardView(p: { card: Card }) {
+  let el!: HTMLDivElement;
+  const c = () => p.card;
+  onMount(() => {
+    const ro = new ResizeObserver(() => {
+      if (!el) return;
+      setSizes(c().id, { w: el.offsetWidth, h: el.offsetHeight });
+    });
+    ro.observe(el);
+    onCleanup(() => { ro.disconnect(); });
+  });
+  createEffect(() => {
+    const pg = pingCard();
+    if (pg?.id === c().id && el) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
+  });
+  const pop = () => popIn()[c().id];
+  const style = (): JSX.CSSProperties => {
+    const s: JSX.CSSProperties = { left: `${c().x}px`, top: `${c().y}px`, width: `${c().w}px` };
+    if (c().h) s.height = `${c().h}px`;
+    const pi = pop();
+    if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
+    return s;
+  };
+  const dim = () => {
+    const w = walk();
+    if (!w) return false;
+    const cur = w.order[w.i];
+    if (c().kind === "compare") return !c().cols.some((k) => k.id === cur);
+    return c().id !== cur;
+  };
+  const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind);
+  const drop = () => dropTarget();
+  return (
+    <Show when={!collapsedAway().has(c().id)}>
+      <div ref={el} class={`card ${kindClass()}`} data-id={c().id} style={style()}
+        classList={{
+          sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!c().locked, autoh: !c().h,
+          editing: editing()?.id === c().id,
+          "merge-hot": drop()?.kind === "merge" && drop()?.card === c().id && !!drop()?.armed,
+          "merge-arm": drop()?.kind === "merge" && drop()?.card === c().id && !drop()?.armed,
+          "drop-hot": drop()?.kind === "card" && drop()?.card === c().id,
+          "drop-cand": !!drop()?.cands?.includes(c().id),
+        }}
+        onPointerDown={(e) => act.cardPointerDown(e, c().id)} onContextMenu={(e) => act.cardContextMenu(e, c().id)} onDblClick={(e) => act.cardDblClick(e, c().id)}>
+        <Switch>
+          <Match when={c().kind === "code"}><CodeCardView card={c() as CodeCard} /></Match>
+          <Match when={c().kind === "note"}><NoteBody card={c() as NoteCard} /></Match>
+          <Match when={c().kind === "image"}><ImageView card={c() as ImageCard} /></Match>
+          <Match when={c().kind === "web"}><WebView card={c() as WebCard} /></Match>
+          <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
+        </Switch>
+        <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
+        <Show when={!c().locked}>
+          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} />}>
+            <span class="hw l" onPointerDown={(e) => act.resizeDown(e, c().id, { left: true })} />
+            <span class="hw r" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true })} />
+          </Show>
+        </Show>
+      </div>
+    </Show>
+  );
+}
+
+// ---------- 代码卡 ----------
+
+export function CodeHead(p: { card: CodeCard; col?: boolean }) {
+  const c = () => p.card;
+  const node = createMemo(() => flows().byId.get(c().id));
+  const hiddenKids = createMemo(() => (c().collapsed && node() ? countDesc(node()!) : 0));
+  const s0 = () => c().segments[0];
+  const stale = createMemo(() => act.cardStale(c()));
+  const mixed = () => mixedVersions(c());
+  const multi = () => c().segments.length > 1;
+  const free = () => s0()?.src.kind === "free";
+  const notes = () => act.sidenotesOf(c().id).filter((n) => !n.at.lines);
+  return (
+    <div class="chead" data-drag>
+      <Show when={node() && !state.board.hideNumbers}><span class="step">{node()!.label}</span></Show>
+      <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
+      <Show when={c().locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
+      <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
+      <Editable class="ctitle" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
+      <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
+      <Show when={free()} fallback={
+        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openCode(c().id)}>
+          {multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}
+        </span>}>
+        <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
+        <span class="grow" />
+      </Show>
+      <Show when={notes().length}><button class="mk inline" onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
+      <Show when={!free()} fallback={<span class="rev nover">No commit</span>}>
+        <button class="rev" classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
+          data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : "Pinned version"}
+          onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
+          <Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>
+          {mixed() ? "Mixed versions" : versionLabel(s0()?.version)}{act.uncommitted(c()) ? " + uncommitted" : ""}
+          <Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show>
+        </button>
+      </Show>
+      <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
+    </div>
+  );
+}
+
+const countDesc = (n: { kids: any[] }): number => n.kids.reduce((s, k) => s + 1 + countDesc(k), 0);
+export const shortPath = (p: string) => p.split("/").slice(-1)[0];
+
+function CodeCardView(p: { card: CodeCard }) {
+  const c = () => p.card;
+  const showHide = () => isSel(c().id) && sel.cards.length === 1;
+  return (
+    <>
+      <CodeHead card={c()} />
+      <Desc id={c().id} desc={c().desc} />
+      <Show when={showHide()}>
+        <div class="hidebar" onPointerDown={(e) => e.stopPropagation()}>
+          <For each={[["comments", "Hide Comments"], ["docstrings", "Hide Docstrings"], ["blank", "Hide Blank Lines"]] as const}>
+            {([k, label]) => <button classList={{ on: !!c().hide?.[k] }} onClick={() => act.toggleHide(c().id, k)}>{c().hide?.[k] ? "✓ " : ""}{label}</button>}
+          </For>
+        </div>
+      </Show>
+      <Show when={act.missingNote(c())}><div class="cmiss">{act.missingNote(c())}</div></Show>
+      <Show when={c().members} fallback={<CodeBody card={c()} hostId={c().id} />}>
+        <ClassBody card={c()} />
+      </Show>
+      <Show when={c().segments[0]?.src.kind === "free" && c().segments[0]?.src.kind === "free" && (c().segments[0].src as any).url}>
+        <div class="cfoot"><span>Source</span><a class="lnk" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openLink((c().segments[0].src as any).url)}>{(c().segments[0].src as any).url}</a></div>
+      </Show>
+    </>
+  );
+}
+
+/** 类卡：只列成员签名，点成员 → 展开成函数卡并连 Call link */
+function ClassBody(p: { card: CodeCard }) {
+  const s = () => p.card.segments[0];
+  const defs = () => (state.views[s().id]?.defs ?? []).filter((d) => d.qual.split(".").length === (s().symbol?.qual.split(".").length ?? 0) + 1);
+  const shown = () => defs().filter((d) => p.card.members!.shown.length === 0 || p.card.members!.shown.includes(d.qual));
+  const more = () => defs().length - shown().length;
+  const sig = (line: number) => (s().text[line - s().start] ?? "").trim().replace(/:\s*$/, "");
+  return (
+    <div class="cbody">
+      <div class="members">
+        <For each={shown()}>
+          {(d) => (
+            <div class="mrow">
+              <span class="no">{d.line}</span>
+              <span class="msig"><span class="call" onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); act.expandMember(p.card.id, d); }}>{d.name}</span>{sig(d.line).replace(/^.*?\bdef\s+\w+/, "")}</span>
+            </div>
+          )}
+        </For>
+        <Show when={more() > 0}><button class="more" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.showAllMembers(p.card.id)}>+ {more()} more method{more() > 1 ? "s" : ""}</button></Show>
+      </div>
+    </div>
+  );
+}
+
+export function Desc(p: { id: string; desc?: string }) {
+  return (
+    <Show when={p.desc || editing()?.kind === "desc" && editing()?.id === p.id}>
+      <Editable class="cdesc" kind="desc" id={p.id} value={p.desc ?? ""} multiline md onCommit={(v) => act.setDesc(p.id, v)} />
+    </Show>
+  );
+}
+
+// ---------- 图片 / 网页 ----------
+
+function ImageView(p: { card: ImageCard }) {
+  const src = () => (p.card.src.startsWith("data:") || /^https?:/.test(p.card.src) ? p.card.src : `${state.host.assetBase}/${p.card.src}`);
+  return (
+    <>
+      <div class="chead" data-drag><span class="kind"><Icon name="image" size={13} /></span><Editable class="ctitle" kind="title" id={p.card.id} value={cardTitle(p.card)} onCommit={(v) => act.renameCard(p.card.id, v)} /><span class="grow" />
+        <button class="ib" aria-label="Card Menu" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(p.card.id, r.left, r.bottom + 4); }}><Icon name="more" /></button></div>
+      <Desc id={p.card.id} desc={p.card.desc} />
+      <div class="imgb"><img src={src()} alt={p.card.alt ?? ""} draggable={false} /></div>
+    </>
+  );
+}
+
+function WebView(p: { card: WebCard }) {
+  return (
+    <>
+      <div class="chead" data-drag><span class="kind"><Icon name="web" size={13} /></span><Editable class="ctitle sys" kind="title" id={p.card.id} value={cardTitle(p.card)} onCommit={(v) => act.renameCard(p.card.id, v)} /><span class="grow" />
+        <button class="ib" aria-label="Card Menu" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(p.card.id, r.left, r.bottom + 4); }}><Icon name="more" /></button></div>
+      <Desc id={p.card.id} desc={p.card.desc} />
+      <div class="webb">
+        <div class="wt">{p.card.pageTitle || p.card.url}</div>
+        <div class="wd">{domainOf(p.card.url)}</div>
+        <button class="btn" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openLink(p.card.url)}>Open in Browser <Icon name="external" size={12} /></button>
+      </div>
+    </>
+  );
+}
+
+export { LANGS };
