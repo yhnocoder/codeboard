@@ -3,6 +3,7 @@ export * from "./model";
 export * from "./protocol";
 export * from "./diff";
 export * from "./flow";
+export * from "./edit";
 export * from "./layout";
 export * from "./paste";
 export * from "./lines";

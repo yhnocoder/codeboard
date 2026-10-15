@@ -1,0 +1,116 @@
+import { describe, expect, it } from "vitest";
+import {
+  brokenBy, emptyBoard, rebaseSegment, removeCards, shiftBy, splitCompares,
+  type Board, type Card, type CodeCard, type Link, type Segment,
+} from "../src";
+
+const seg = (id: string, start: number, text: string[]): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git", commit: "x" } });
+const code = (id: string, s = seg(`s${id}`, 1, ["pass"])): CodeCard => ({ id, kind: "code", x: 0, y: 0, w: 100, segments: [s] });
+const call = (from: string, to: string, line = 1): Link => ({ id: `${from}-${to}`, kind: "call", from: { card: from, seg: `s${from}`, line }, to: { card: to } });
+const compare = (id: string, a: string, b: string): Card => ({ id, kind: "compare", x: 0, y: 0, w: 100, cols: [code(a), code(b)] });
+
+describe("removeCards", () => {
+  it("takes links, sidenotes on the card and Card sidenotes pointing at it", () => {
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a"), code("b"), compare("k", "p", "q")],
+      links: [call("a", "b"), call("p", "a")],
+      sidenotes: [
+        { id: "n1", at: { card: "b" }, kind: "text", md: "on b" },
+        { id: "n2", at: { card: "a" }, kind: "card", card: "b" },
+        { id: "n3", at: { card: "a" }, kind: "text", md: "stays" },
+        { id: "n4", at: { card: "q" }, kind: "text", md: "on a Compare column" },
+      ],
+    };
+    removeCards(b, ["b", "k"]);
+    expect(b.cards.map((c) => c.id)).toEqual(["a"]);
+    expect(b.links).toEqual([]);
+    expect(b.sidenotes.map((n) => n.id)).toEqual(["n3"]);
+  });
+});
+
+describe("rebaseSegment", () => {
+  const old = seg("s1", 10, ["def f():", "    x = 1", "    y = 2", "    return x + y"]);
+  const board = (): Board => ({
+    ...emptyBoard("b", "B"),
+    cards: [{ ...code("a", { ...old, hidden: [[11, 11]], hl: [12, 13] }) }, code("z")],
+    links: [
+      { id: "l1", kind: "call", from: { card: "a", seg: "s1", line: 13 }, to: { card: "z" } },
+      { id: "l2", kind: "plain", from: { card: "z" }, to: { card: "a", seg: "s1", line: 12 } },
+    ],
+    sidenotes: [
+      { id: "n1", at: { card: "a", seg: "s1", lines: [12, 13] }, kind: "text", md: "" },
+      { id: "n2", at: { card: "a", seg: "s1", lines: [11, 11] }, kind: "text", md: "" },
+    ],
+  });
+
+  it("moves hidden ranges, highlights, both link ends and sidenotes with the content", () => {
+    const b = board();
+    // 新版本：前面多了两行，x = 1 被删
+    rebaseSegment(b, "a", seg("s1", 20, ["import os", "", "def f():", "    y = 2", "    return x + y"]));
+    const s = (b.cards[0] as CodeCard).segments[0];
+    expect([s.start, s.end]).toEqual([20, 24]);
+    expect(s.hidden).toBeUndefined(); // 被隐藏的那一行没了
+    expect(s.hl).toEqual([23, 24]);
+    expect(b.links[0].from).toEqual({ card: "a", seg: "s1", line: 24 });
+    expect(b.links[1].to).toEqual({ card: "a", seg: "s1", line: 23 });
+    expect(b.sidenotes[0].at).toEqual({ card: "a", seg: "s1", lines: [23, 24] });
+    expect(b.sidenotes[1].at).toEqual({ card: "a" });
+    expect(b.sidenotes[1].lineRemoved).toBe(true);
+  });
+
+  it("shifts everything when only the position changed", () => {
+    const b = board();
+    rebaseSegment(b, "a", { ...old, start: 15, end: 18 }, shiftBy(5));
+    const s = (b.cards[0] as CodeCard).segments[0];
+    expect(s.hidden).toEqual([[16, 16]]);
+    expect(s.hl).toEqual([17, 18]);
+    expect(b.links[0].from.line).toBe(18);
+    expect(b.sidenotes[1].at.lines).toEqual([16, 16]);
+  });
+
+  it("works on a Compare column", () => {
+    const b: Board = { ...emptyBoard("b", "B"), cards: [{ id: "k", kind: "compare", x: 0, y: 0, w: 100, cols: [code("a", old), code("c")] }] };
+    rebaseSegment(b, "a", { ...old, start: 11, end: 14 }, shiftBy(1));
+    expect((b.cards[0] as Extract<Card, { kind: "compare" }>).cols[0].segments[0].start).toBe(11);
+  });
+});
+
+describe("brokenBy (Compare stays in one flow)", () => {
+  // R → X → cl，R → Y → cr，cl 和 cr 并成 Compare k
+  const board = (): Board => ({
+    ...emptyBoard("b", "B"),
+    cards: [code("R"), code("X"), code("Y"), compare("k", "cl", "cr")],
+    links: [call("R", "X", 1), call("R", "Y", 2), call("X", "cl"), call("Y", "cr")],
+  });
+
+  it("is fine for the board as built", () => {
+    expect(splitCompares(board()).size).toBe(0);
+  });
+  it("refuses deleting a link that would split the Compare", () => {
+    const before = board();
+    const after = { ...before, links: before.links.filter((l) => l.id !== "R-X") };
+    expect(brokenBy(after, () => before)).toMatch(/Compare/);
+  });
+  it("refuses deleting the shared ancestor card", () => {
+    const before = board();
+    const after = structuredClone(before);
+    removeCards(after, ["R"]);
+    expect(brokenBy(after, () => before)).toMatch(/Compare/);
+  });
+  it("allows changes that keep both columns together", () => {
+    const before = board();
+    const after = structuredClone(before);
+    removeCards(after, ["Y"]); // cr 不在任何树里了，cl 还在：不算拆开
+    expect(brokenBy(after, () => before)).toBeNull();
+    const after2 = { ...before, links: before.links.filter((l) => l.id !== "X-cl") };
+    expect(brokenBy(after2, () => before)).toBeNull();
+  });
+  it("does not block edits on a board that was already split", () => {
+    const before = board();
+    before.links = before.links.filter((l) => l.id !== "R-X");
+    const after = { ...before, links: before.links.filter((l) => l.id !== "Y-cr") };
+    expect(brokenBy(before, () => before)).toBeNull();
+    expect(brokenBy(after, () => before)).toBeNull();
+  });
+});

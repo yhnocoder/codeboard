@@ -283,8 +283,7 @@ async function relocate(p: BoardPanel, cardId: string) {
   const lines = splitLines(text);
   const ns = await makeSegment(await locOfFile(abs), lines, pick.s.start, pick.s.end, { lang, symbol: { qual: pick.s.qual, kind: pick.s.kind === "class" ? "class" : "function" } });
   ns.id = seg.id;
-  ns.hidden = seg.hidden;
-  p.post({ type: "command", name: "relocated", arg: { card: cardId, seg: ns, view: await segView(ns) } });
+  p.post({ type: "replaceSegment", card: cardId, seg: ns, view: await segView(ns) });
   p.post({ type: "stale", stale: { ...p.stale, [seg.id]: { state: "ok" } } });
 }
 

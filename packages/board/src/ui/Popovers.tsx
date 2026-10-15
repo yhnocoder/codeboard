@@ -3,7 +3,7 @@ import { For, Show, Switch, Match, createSignal, createMemo, onMount, createEffe
 import { unwrap } from "solid-js/store";
 import {
   alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang,
-  type Sidenote, type DiffData, type PeekDef, type SearchItem, type NewCard, type Var, type Anchor,
+  type Sidenote, type DiffData, type PeekDef, type PeekResult, type SearchItem, type NewCard, type Var, type Anchor,
 } from "@codeboard/core";
 import { state, cardById, toast, mutate, select } from "../state/store";
 import { cam } from "../state/camera";
@@ -11,7 +11,8 @@ import { pops, closePop, pinPop, updatePop, type PopInst, type Pop } from "../st
 import { setConnectFrom } from "../state/ui";
 import { markHtml } from "../cards/CompareBody";
 import { Icon } from "./icons";
-import { ask } from "../host";
+import { promptText } from "./Menu";
+import { ask, send } from "../host";
 import * as A from "../actions";
 
 export function Popovers() {
@@ -147,7 +148,6 @@ function NoteItem(p: { n: Sidenote }) {
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 async function editText(n: Sidenote) {
   if (n.kind !== "text") return;
-  const { promptText } = await import("./Menu");
   const v = await promptText("Edit Sidenote", n.md, "", "Save");
   if (v !== null) A.updateSidenote(n.id, (k) => { if (k.kind === "text") k.md = v; });
 }
@@ -202,15 +202,15 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
           <div class="follow">↳ <code>{def()!.follow!.label}</code><span class="grow" /><button class="tbtn" onClick={() => {
             const f = def()!.follow!;
             updatePop(p.inst.id, (q) => ({ ...(q as any), data: undefined }));
-            ask<any>("peek", { seg: structuredClone(unwrap(def()!.seg)), line: f.line, col: f.col, word: f.label.split(".").pop()!, at: { path: f.path, line: f.line, col: f.col } })
-              .then((r) => updatePop(p.inst.id, (q) => ({ ...(q as any), data: r })))
+            ask<PeekResult>("peek", { seg: structuredClone(unwrap(def()!.seg)), line: f.line, col: f.col, word: f.label.split(".").pop()!, at: { path: f.path, line: f.line, col: f.col } })
+              .then((r) => updatePop(p.inst.id, (q) => ({ ...(q as any), data: r ?? { none: "No definition found", word: f.label } })))
               .catch(() => updatePop(p.inst.id, (q) => ({ ...(q as any), data: { none: "No definition found", word: f.label } })));
           }}>Follow</button></div>
         </Show>
         <div class="sn-acts">
           <button class="tbtn" onClick={pin}>Pin as Sidenote</button>
           <button class="tbtn" onClick={place}>Place on Board</button>
-          <button class="tbtn" onClick={() => { import("../host").then((h) => h.send({ type: "openPath", path: def()!.path, line: def()!.line })); }}>Open in Editor</button>
+          <button class="tbtn" onClick={() => { send({ type: "openPath", path: def()!.path, line: def()!.line }); }}>Open in Editor</button>
         </div>
       </Show>
     </>

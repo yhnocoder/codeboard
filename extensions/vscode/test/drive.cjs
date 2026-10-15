@@ -21,9 +21,14 @@ async function command(page, text) {
   await page.keyboard.press("Enter"); await sleep(1200);
 }
 async function openFile(page, name, line) {
-  await command(page, "View: Focus First Editor Group"); // 代码在左边一栏，白板在右边（白板聚焦时 Ctrl+1 是 100% 缩放）
-  await page.keyboard.press("Control+p"); await sleep(500);
-  await page.keyboard.type(name); await sleep(900); await page.keyboard.press("Enter"); await sleep(900);
+  // 刚启动时 Quick Open 的文件索引可能还没好，回车会落空：确认编辑器真的打开了这个文件，不行就重试
+  for (let i = 0; i < 5; i++) {
+    await command(page, "View: Focus First Editor Group"); // 代码在左边一栏，白板在右边（白板聚焦时 Ctrl+1 是 100% 缩放）
+    await page.keyboard.press("Control+p"); await sleep(500);
+    await page.keyboard.type(name); await sleep(900 + i * 1000); await page.keyboard.press("Enter"); await sleep(900);
+    if (await page.locator(`.editor-group-container .tab.active[aria-label*="${name}"], .editor-group-container .tab.active:has-text("${name}")`).count()) break;
+    await page.keyboard.press("Escape"); await sleep(1500);
+  }
   if (line) { await page.keyboard.press("Control+g"); await sleep(300); await page.keyboard.type(String(line)); await page.keyboard.press("Enter"); await sleep(400); }
 }
 const shot = (page, n) => page.screenshot({ path: `${OUT}/${n}.png` });

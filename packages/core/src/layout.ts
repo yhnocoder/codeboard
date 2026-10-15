@@ -1,11 +1,20 @@
 // 摆放：新卡放哪、展开出来的子卡放哪、Tidy Layout。只做几何，尺寸由调用方给（白板里是实测尺寸）。
 import type { FlowNode } from "./flow";
+import type { Card } from "./model";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
 export const GAP = 28; // 卡片之间留的空
 export const INDENT = 56; // 子卡相对父卡的缩进
 export const SIB_GAP = 24;
+
+/** 还没渲染、量不到实测尺寸时的估计（白板放新卡、宿主在白板没开时直接写卡都用它） */
+export function estSize(c: Card): { w: number; h: number } {
+  if (c.h) return { w: c.w, h: c.h };
+  if (c.kind !== "code") return { w: c.w, h: 160 };
+  const lines = c.segments.reduce((n, s) => n + s.end - s.start + 1, 0);
+  return { w: c.w, h: Math.min(520, 52 + lines * 19) };
+}
 
 export function overlaps(a: Rect, b: Rect, gap = 0) {
   return a.x < b.x + b.w + gap && b.x < a.x + a.w + gap && a.y < b.y + b.h + gap && b.y < a.y + a.h + gap;

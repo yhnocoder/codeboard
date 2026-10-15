@@ -1,7 +1,7 @@
 // 白板界面：顶栏（白板名、Workbench | Focus、Search、⋯）、画布、底部工具条、缩放、讲解条、横幅、提示。
 import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { unwrap } from "solid-js/store";
-import { state, mutate, scheduleSave, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
+import { state, mutate, live, toast, scheduleSave, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
 import { cam, camTarget, zoomAt } from "./state/camera";
 import { banner, setBanner, walk, focusMode, setFocusMode, keysOpen, setKeysOpen, editing, setEditing, paletteOpen, setPaletteOpen } from "./state/ui";
 import { Canvas } from "./canvas/Canvas";
@@ -28,7 +28,7 @@ export function App() {
       const c = state.board.cam;
       if (Math.abs(c.x - t.x) + Math.abs(c.y - t.y) + Math.abs(c.z - t.z) > 0.5) {
         // 镜头不进撤销栈
-        import("./state/store").then((m) => m.live((b) => { b.cam = { x: Math.round(t.x), y: Math.round(t.y), z: +t.z.toFixed(3) }; }));
+        live((b) => { b.cam = { x: Math.round(t.x), y: Math.round(t.y), z: +t.z.toFixed(3) }; });
       }
     }, 600);
   }));
@@ -112,7 +112,7 @@ function Toolbar() {
     { icon: "link", label: "Link", tip: "Plain Link: select two cards, or pick a card then click another", run: () => {
       if (sel.cards.length === 2) A.addPlain({ card: sel.cards[0] }, { card: sel.cards[1] });
       else if (sel.cards.length === 1) A.startConnect(sel.cards[0]);
-      else import("./state/store").then((m) => m.toast("Select a card first, then click another card"));
+      else toast("Select a card first, then click another card");
     } },
   ];
   return (
