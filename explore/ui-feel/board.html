@@ -460,12 +460,13 @@ function expand(fromId, call) {
     drawEdge(e);
   };
   e.head.classList.remove('hidden-o');
+  d.el.style.transition = 'none'; // 透明度由弹簧逐帧驱动，CSS 过渡会拖后腿，先闪实色再淡
   setP(0);
   setTimeout(() => {
     p.t = 1;
     run((dt, instant) => {
       instant ? p.set(1) : p.step(dt); setP(p.v);
-      if (p.done) { p.set(1); setP(1); d.ox = d.oy = 0; d.el.style.transform = ''; d.el.style.opacity = ''; e.path.style.opacity = ''; e.head.style.opacity = ''; drawEdge(e); e.label && e.label.classList.remove('hidden-o');
+      if (p.done) { p.set(1); setP(1); d.ox = d.oy = 0; d.el.style.transform = ''; d.el.style.opacity = ''; d.el.style.transition = ''; e.path.style.opacity = ''; e.head.style.opacity = ''; drawEdge(e); e.label && e.label.classList.remove('hidden-o');
         if (d.isNew) setTimeout(() => d.el.querySelector('.rev').classList.add('pulse'), 200 * speed); return true; }
       return false;
     });
