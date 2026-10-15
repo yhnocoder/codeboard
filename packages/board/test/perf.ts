@@ -170,6 +170,13 @@ async function once() {
 
   // 修改：方向键挪选中的卡（每次一次 mutate：撤销快照 + 不变量 + 自动保存的依赖）
   res.nudge = sum(await steps(h, cdp, 30, async () => { await h.page.keyboard.press("ArrowRight"); }, "nudge"));
+  res.boardKB = Math.round(JSON.stringify(board).length / 1024);
+  // 再挪 120 次，看撤销栈让堆长了多少（先强制 GC）
+  const heap = async () => { await cdp.send("HeapProfiler.collectGarbage"); return ((await cdp.send("Runtime.getHeapUsage")) as any).usedSize / 2 ** 20; };
+  const h0 = await heap();
+  for (let i = 0; i < 120; i++) await h.page.keyboard.press(i % 2 ? "ArrowLeft" : "ArrowDown");
+  await h.page.waitForTimeout(300);
+  res.heapPer100Edits = +(((await heap()) - h0) / 1.2).toFixed(1);
   res.saveAfterNudge = +(await idle(h, cdp, 1500)).toFixed(1);
   res.undo = sum(await steps(h, cdp, 15, async () => { await h.page.keyboard.press("Meta+z"); }, "undo"));
   res.redo = sum(await steps(h, cdp, 15, async () => { await h.page.keyboard.press("Meta+Shift+z"); }, "redo"));

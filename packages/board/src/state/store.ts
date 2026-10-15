@@ -78,12 +78,37 @@ export function rectOf(c: Pick<Card, "id" | "x" | "y" | "w" | "h">) {
 
 // ---------- 撤销 / 重做 ----------
 
-type Snap = string;
+// 快照按「每张卡 / 每条线 / 每个 Section / 每条 Sidenote 一段 JSON」存，没变的那段直接沿用上一份快照里的字符串，
+// 所以 300 步撤销只多占改过的那几项，而不是 300 份整块白板。镜头不进快照。
+type Snap = { head: string; cards: string[]; links: string[]; sections: string[]; sidenotes: string[] };
 const undoStack: Snap[] = [];
 const redoStack: Snap[] = [];
 export const [canUndo, setCanUndo] = createSignal(false);
 export const [canRedo, setCanRedo] = createSignal(false);
-const snap = (): Snap => JSON.stringify({ ...unwrap(state.board), cam: undefined });
+const last = new Map<string, string>();
+function piece(k: string, o: unknown) {
+  const s = JSON.stringify(o);
+  const p = last.get(k);
+  if (p === s) return p; // 内容一样：用旧的那个字符串，新的马上就能回收
+  last.set(k, s);
+  return s;
+}
+function snap(): Snap {
+  const { cards, links, sections, sidenotes, cam: _cam, ...head } = unwrap(state.board);
+  return {
+    head: JSON.stringify(head),
+    cards: cards.map((x) => piece(`c${x.id}`, x)),
+    links: links.map((x) => piece(`l${x.id}`, x)),
+    sections: sections.map((x) => piece(`s${x.id}`, x)),
+    sidenotes: sidenotes.map((x) => piece(`n${x.id}`, x)),
+  };
+}
+const sameArr = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+const same = (a: Snap, b: Snap) => a.head === b.head && sameArr(a.cards, b.cards) && sameArr(a.links, b.links) && sameArr(a.sections, b.sections) && sameArr(a.sidenotes, b.sidenotes);
+const parse = (s: Snap): Board => {
+  const p = (xs: string[]) => xs.map((x) => JSON.parse(x));
+  return { ...JSON.parse(s.head), cards: p(s.cards), links: p(s.links), sections: p(s.sections), sidenotes: p(s.sidenotes) };
+};
 const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.length > 0); };
 
 /**
@@ -93,13 +118,13 @@ const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.l
 export function mutate(fn: (b: Board) => void): boolean {
   const before = snap();
   setState("board", produce(fn));
-  const why = brokenBy(unwrap(state.board), () => JSON.parse(before) as Board);
+  const why = brokenBy(unwrap(state.board), () => parse(before));
   if (why) {
     restore(before);
     toast(why);
     return false;
   }
-  if (snap() === before) return true;
+  if (same(snap(), before)) return true;
   changed();
   undoStack.push(before);
   if (undoStack.length > 300) undoStack.shift();
@@ -112,7 +137,7 @@ export function mutate(fn: (b: Board) => void): boolean {
 export function beginGesture(): () => void {
   const before = snap();
   return () => {
-    if (snap() === before) return;
+    if (same(snap(), before)) return;
     undoStack.push(before);
     redoStack.length = 0;
     updUndo();
@@ -125,7 +150,7 @@ export function live(fn: (b: Board) => void) {
 }
 
 function restore(s: Snap) {
-  const b = JSON.parse(s) as Board;
+  const b = parse(s);
   b.cam = { ...state.board.cam };
   setState("board", reconcile(b));
   changed();
@@ -150,7 +175,7 @@ export function redo() {
   updUndo();
   return true;
 }
-export function resetHistory() { undoStack.length = 0; redoStack.length = 0; updUndo(); }
+export function resetHistory() { undoStack.length = 0; redoStack.length = 0; last.clear(); updUndo(); }
 
 export function allIds(): string[] {
   const out: string[] = [];
