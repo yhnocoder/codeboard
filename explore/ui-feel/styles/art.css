@@ -1,0 +1,70 @@
+/* 艺术：一张深绿油墨印在薄荷纸上的海报。双线框、居中排版、字距拉得很开；每张卡片下面有一行图注 */
+.s-art {
+  --selbg: color-mix(in srgb, var(--k-fn) 24%, transparent);
+  --bg: light-dark(#ecefe7, #0f1f19);
+  --paper: light-dark(#f6f7f2, #142821);
+  --ink: light-dark(#13372b, #dfe9df);
+  --ink-2: light-dark(#3f5f52, #a8bdb0);
+  --ink-3: light-dark(#7e958a, #62806f);
+  --rule: light-dark(#2e5547, #8fae9d);
+  --gridc: light-dark(rgba(19,55,43,.055), rgba(223,233,223,.045));
+  --band: light-dark(#13372b, #cfe0d3);
+  --band-ink: light-dark(#e6eee5, #0f1f19);
+  --ui: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  --display: "Marcellus", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --k-kw: light-dark(#13372b, #e9f2e8); --k-fn: light-dark(#1f6a50, #8fd1b0); --k-str: light-dark(#7a5a2a, #d9bf8c);
+  --k-com: light-dark(#87998f, #5f7a6c); --k-num: light-dark(#7a5a2a, #d9bf8c); --k-self: light-dark(#4f6f62, #a8c4b5); --k-p: light-dark(#6f857a, #86a093);
+  background-image: linear-gradient(var(--gridc) 1px, transparent 1px), linear-gradient(90deg, var(--gridc) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+.s-art .frame-deco { display: block; position: absolute; inset: 8px; border: 1px solid var(--rule); pointer-events: none; z-index: 3; }
+.s-art .frame-deco::after { content: ""; position: absolute; inset: 4px; border: .5px solid var(--rule); }
+.s-art .card { background: var(--paper); border: 1px solid var(--rule); outline: .5px solid var(--rule); outline-offset: 3px; overflow: visible; display: flex; flex-direction: column; }
+.s-art .card.sel { border-width: 1.5px; outline: 1px solid var(--ink); outline-offset: 5px; }
+.s-art .chead { order: 0; justify-content: center; height: auto; padding: 10px 14px 0; gap: 10px; font: 400 9.5px var(--mono); letter-spacing: .32em; color: var(--ink-2); text-transform: uppercase; }
+.s-art .step::before { content: "NO.\00a0"; }
+.s-art .ctitle, .s-art .rev { display: none; }
+.s-art .cpath { flex: none; }
+.s-art .cname { order: 1; display: block; text-align: center; padding: 3px 14px 0; font: 400 17px/1.25 var(--display); color: var(--ink); letter-spacing: .02em; }
+
+.s-art .cmeta { order: 2; display: flex; justify-content: center; gap: 16px; padding: 4px 10px 9px; text-align: center; font: 500 10.5px var(--mono); color: var(--ink); letter-spacing: .06em; }
+.s-art .cmeta small { font: 400 8.5px var(--mono); letter-spacing: .24em; color: var(--ink-3); margin-right: 6px; }
+.s-art .cmeta div:first-child { display: none; }
+.s-art .is-new .cmeta div:last-child { color: var(--k-fn); }
+.s-art .code { order: 3; border-top: .5px solid var(--rule); padding: 8px 0 10px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.s-art .ln .no { width: 40px; padding-right: 10px; color: var(--ink-3); }
+.s-art .ln.link { background: color-mix(in srgb, var(--k-fn) 10%, transparent); }
+.s-art .ln.link .no { color: var(--ink); }
+.s-art .kw { color: var(--k-kw); font-weight: 600; } .s-art .fn { color: var(--k-fn); } .s-art .str { color: var(--k-str); } .s-art .com { color: var(--k-com); font-style: italic; }
+.s-art .num { color: var(--k-num); } .s-art .self { color: var(--k-self); } .s-art .p { color: var(--k-p); }
+.s-art .call { text-decoration: underline .5px var(--k-fn); text-underline-offset: 3px; }
+.s-art .caption { display: block; text-align: center; font: 400 9px var(--mono); letter-spacing: .3em; color: var(--ink-2); }
+.s-art .edge { fill: none; stroke: var(--rule); stroke-width: 1; }
+.s-art .ahead { fill: none; stroke: var(--rule); stroke-width: 1; }
+.s-art .port { fill: var(--paper); stroke: var(--rule); stroke-width: 1; }
+.s-art .elabel { font: 9.5px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink); background: var(--paper); border: .5px solid var(--rule); padding: 4px 9px; }
+
+.s-art .tb-left { left: 0; right: 0; top: 22px; justify-content: center; pointer-events: none; }
+.s-art .tb-left .pill { background: none; }
+.s-art .bname { flex-direction: column; gap: 6px; }
+.s-art .eyebrow { display: block; font: 400 9px var(--mono); letter-spacing: .4em; color: var(--ink-2); padding-bottom: 6px; border-bottom: .5px solid var(--rule); }
+.s-art .bn { font: 400 24px/1 var(--display); letter-spacing: .08em; color: var(--ink); }
+.s-art .tb-left .chev { display: none; }
+.s-art .tb-right { top: 22px; right: 24px; }
+.s-art .tb-right .pill { background: none; }
+.s-art .tbtn, .s-art .ib { color: var(--ink); font: 400 9.5px var(--mono); letter-spacing: .3em; }
+.s-art .focus-btn { display: none; }
+.s-art #btnPresent { border: .5px solid var(--rule); background: var(--paper); height: 26px; }
+.s-art #btnPresent .ico { width: 12px; height: 12px; }
+.s-art .dock { bottom: 22px; }
+.s-art .dock .pill { background: var(--band); padding: 0 8px; height: 32px; gap: 0; }
+.s-art .dock .ib { color: var(--band-ink); font: 400 9.5px var(--mono); letter-spacing: .3em; padding: 0 10px; }
+.s-art .dock .ib .ico { display: none; }
+.s-art .dock .lab { display: inline; }
+.s-art .dock .ib:not([aria-label]) + .ib:not([aria-label])::before { content: "·"; position: relative; left: -10px; opacity: .5; }
+.s-art .dock .ib[aria-label] .ico { display: block; width: 13px; height: 13px; }
+.s-art .sep { width: .5px; height: 14px; background: var(--band-ink); opacity: .4; margin: 0 6px; }
+.s-art .zoom { color: var(--band-ink); font: 400 10px var(--mono); letter-spacing: .1em; }
+.s-art .toast { bottom: 66px; background: var(--paper); border: .5px solid var(--rule); outline: .5px solid var(--rule); outline-offset: 2px; color: var(--ink); font: 400 10px var(--mono); letter-spacing: .2em; padding: 7px 14px; }
+.s-art .toast b { font-weight: 500; text-decoration: underline .5px; text-underline-offset: 3px; }

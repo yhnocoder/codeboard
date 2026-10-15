@@ -1,0 +1,67 @@
+/* 报纸：新闻纸底、黑色油墨；白板名是报头，每张卡片是一篇报道：栏目眉题、粗体大标题、斜体导语，代码像打字机排的引文 */
+.s-news {
+  --bg: light-dark(#f0ece2, #1a1916);
+  --paper: light-dark(#f6f3eb, #201f1b);
+  --ink: light-dark(#191714, #ece7dc);
+  --ink-2: light-dark(#4a463f, #b8b2a6);
+  --ink-3: light-dark(#8a8478, #77726a);
+  --rule: light-dark(#2a2722, #cfc9bc);
+  --hair: light-dark(rgba(25,23,20,.28), rgba(236,231,220,.25));
+  --stamp: light-dark(#a32a1c, #e2614e);
+  --selbg: light-dark(rgba(25,23,20,.16), rgba(236,231,220,.22));
+  --ui: "Old Standard TT", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --mono: "Courier Prime", "Courier New", ui-monospace, monospace;
+  --head: "Old Standard TT", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --mast: "UnifrakturMaguntia", "Old Standard TT", Georgia, serif;
+}
+.s-news .card { background: var(--paper); border-top: 3px solid var(--rule); box-shadow: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair); display: flex; flex-direction: column; }
+.s-news .card.sel { outline: 1.5px solid var(--ink); outline-offset: 5px; }
+.s-news .chead { order: 0; height: 28px; padding: 0 12px; gap: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--head); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
+.s-news .step::before { content: "No.\00a0"; }
+.s-news .ctitle { display: none; }
+.s-news .cpath { color: var(--ink-3); }
+.s-news .rev { font: 400 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink-3); }
+.s-news .rev.new { font: 700 9px var(--head); letter-spacing: .2em; color: var(--paper); background: var(--stamp); padding: 2px 6px; }
+.s-news .cname { order: 1; display: block; padding: 10px 12px 0; font: 700 21px/1.1 var(--head); color: var(--ink); letter-spacing: -.01em; }
+.s-news .cnote { order: 2; display: block; padding: 4px 12px 10px; font: italic 400 12.5px/1.45 var(--head); color: var(--ink-2); border-bottom: .5px solid var(--hair); }
+.s-news .code { order: 3; padding: 8px 0 10px; font: 11px/19px var(--mono); color: var(--ink); }
+.s-news .gutter .no { width: 40px; padding-right: 10px; color: var(--ink-3); border-right: .5px solid var(--hair); margin-right: 10px; }
+.s-news .hlrow { background: light-dark(rgba(25,23,20,.07), rgba(236,231,220,.07)); }
+.s-news .no.link { color: var(--ink); font-weight: 700; }
+.s-news .kw { font-weight: 700; } .s-news .fn { color: var(--ink); } .s-news .str { color: var(--ink-2); font-style: italic; }
+.s-news .com { color: var(--ink-3); font-style: italic; } .s-news .num, .s-news .self { color: var(--ink-2); } .s-news .p { color: var(--ink-3); }
+.s-news .call { text-decoration: underline 1px; text-underline-offset: 3px; }
+.s-news .edge { fill: none; stroke: var(--ink); stroke-width: 1; }
+.s-news .ahead { fill: var(--ink); }
+.s-news .port { fill: var(--ink); stroke: none; }
+.s-news .elabel { font: italic 400 12px var(--head); color: var(--ink); background: var(--bg); padding: 1px 6px; }
+.s-news .elabel::before { content: "— "; } .s-news .elabel::after { content: " —"; }
+
+/* 报头 */
+.s-news .tb-left { left: 0; right: 0; top: 12px; justify-content: center; pointer-events: none; }
+.s-news .tb-left .pill { background: none; width: calc(100% - 48px); }
+.s-news .bname { width: 100%; flex-direction: column; gap: 2px; border-bottom: 3px double var(--rule); padding-bottom: 6px; }
+.s-news .bname::before { content: "The Nano-vLLM Gazette"; font: 400 30px/1 var(--mast); color: var(--ink); }
+.s-news .eyebrow { display: block; order: 2; width: 100%; text-align: center; font: 400 10px var(--mono); letter-spacing: .14em; color: var(--ink-2);
+  border-top: .5px solid var(--rule); padding-top: 4px; margin-top: 4px; }
+.s-news .eyebrow::before { content: "第一卷 · 第三期　　"; } .s-news .eyebrow::after { content: "　　提交 BB823B3"; }
+.s-news .bn { order: 1; font: 700 13px var(--head); letter-spacing: .3em; color: var(--ink-2); }
+.s-news .tb-left .chev { display: none; }
+.s-news .tb-right { top: 18px; right: 24px; }
+.s-news .tb-right .pill { background: none; }
+.s-news .focus-btn { display: none; }
+.s-news #btnPresent { font: 700 10px var(--head); letter-spacing: .2em; color: var(--ink); border: 1px solid var(--rule); height: 24px; padding: 0 8px; }
+.s-news #btnPresent .ico { width: 11px; height: 11px; }
+.s-news .dock .pill { background: var(--paper); border-top: 2px solid var(--rule); border-bottom: .5px solid var(--rule); padding: 0 4px; height: 32px; gap: 0; }
+.s-news .dock .ib { color: var(--ink); font: 700 10.5px var(--head); letter-spacing: .2em; padding: 0 10px; }
+.s-news .dock .ib:not([aria-label]) .ico { display: none; }
+.s-news .dock .lab { display: inline; }
+.s-news .dock .ib:not([aria-label]) + .ib:not([aria-label]) { border-left: .5px solid var(--hair); }
+.s-news .dock .ib:hover { background: var(--bg); }
+.s-news .ico { stroke-width: 1.3; }
+.s-news .sep { width: .5px; height: 16px; background: var(--rule); margin: 0 4px; }
+.s-news .zoom { font: 400 11px var(--mono); color: var(--ink); }
+.s-news .toast { background: var(--ink); color: var(--paper); font: 400 12px var(--head); padding: 6px 12px 6px 6px; gap: 10px; }
+.s-news .toast .tdot { width: auto; height: auto; }
+.s-news .toast .tdot::before { content: "快讯"; display: inline-block; font: 700 10px var(--head); letter-spacing: .2em; background: var(--stamp); color: #fff; padding: 2px 6px; }
+.s-news .toast b { font-weight: 700; font-style: italic; }
