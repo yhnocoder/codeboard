@@ -117,7 +117,7 @@ function Toolbar() {
   ];
   return (
     <div class="over bbar"><div class="pill">
-      <For each={tools}>{(t) => <button class="tbtn" data-tip={t.tip ?? `New ${t.label}`} data-kbd={t.kbd} onClick={t.run}><Icon name={t.icon} />{t.label}</button>}</For>
+      <For each={tools}>{(t) => <button class="tbtn" aria-label={t.label} data-tip={t.tip ?? `New ${t.label}`} data-kbd={t.kbd} onClick={t.run}><Icon name={t.icon} /><span class="tl">{t.label}</span></button>}</For>
     </div></div>
   );
 }

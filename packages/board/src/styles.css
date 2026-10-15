@@ -628,3 +628,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .srcbody .pcode { max-height: 60vh; }
 .pop .sres { margin-top: 0; }
 .card.lost .cbody { filter: grayscale(1); opacity: .62; } /* 符号找不到：显示旧代码，变灰 */
+/* 白板只占半边窗口时，底部工具条只留图标（悬停仍有提示），不被裁掉 */
+@media (max-width: 760px) { .bbar .tbtn .tl { display: none; } .bbar .tbtn { padding-inline: 7px; } }
+/* 浮动的隐藏开关只在鼠标停在选中卡上时出现，平时不压住上面的卡 */
+.card > .hidebar { opacity: 0; pointer-events: none; transition: opacity calc(var(--t) * .14s) var(--out); }
+.card.sel:hover > .hidebar, .card > .hidebar:hover { opacity: 1; pointer-events: auto; }
