@@ -1,12 +1,12 @@
 /* 制图：工程图纸。只有墨色和线，圆角为零；箭头走直角折线，像标注引线；行号区间画成尺寸线 */
 .s-draft {
-  --selbg: light-dark(rgba(22,22,22,.16), rgba(233,232,228,.22));
-  --bg: light-dark(#f2f1ed, #141414);
-  --ink: light-dark(#161616, #e9e8e4);
-  --ink-2: light-dark(#55544f, #a6a5a0);
-  --ink-3: light-dark(#9b9a95, #5f5e5a);
-  --rule: light-dark(#a8a7a2, #4a4946);
-  --tint: light-dark(rgba(22,22,22,.045), rgba(233,232,228,.05));
+  --selbg: light-dark(rgba(120,80,30,.16), rgba(237,231,219,.22));
+  --bg: light-dark(#f4f0e7, #171512);
+  --ink: light-dark(#1e1a15, #ede7db);
+  --ink-2: light-dark(#5c564c, #aea694);
+  --ink-3: light-dark(#a39c8f, #686052);
+  --rule: light-dark(#b1a898, #50493e);
+  --tint: light-dark(rgba(60,40,15,.05), rgba(237,231,219,.05));
   --ui: "DM Mono", ui-monospace, Menlo, monospace;
   --mono: "DM Mono", ui-monospace, Menlo, monospace;
   --head: "Archivo", "Helvetica Neue", Arial, sans-serif;
