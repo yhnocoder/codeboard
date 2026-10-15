@@ -599,6 +599,18 @@ let F = { parent: {}, kids: {}, roots: [], num: {}, tree: {}, order: {} };
 let hiddenIds = new Set();
 const nid = p => p + (S.seq++).toString(36);
 const symId = (f, q) => `${f}::${q}`;
+// line keys: a single-file card stores plain line numbers; a merged card stores fileIndex*10000+line so rows sort by file then line
+const FILES = Object.keys(NV.files).sort(), FI = Object.fromEntries(FILES.map((f, i) => [f, i]));
+const gk = (f, l) => FI[f] * 10000 + l, kl = k => k % 10000, kfile = k => FILES[Math.floor(k / 10000)];
+const lf = (c, k) => c.segs ? { f: kfile(k), l: kl(k) } : { f: c.f, l: k };
+const dispL = (c, k) => c.segs ? kl(k) : k;
+const keyRanges = c => c.segs ? c.segs.map(g => [gk(g.f, g.s), gk(g.f, g.e)]) : [[c.s, c.e]];
+function cardKeys(c) { const out = []; for (const [a, b] of keyRanges(c)) for (let k = a; k <= b; k++) out.push(k); return out; }
+const keysIn = (c, a, b) => cardKeys(c).filter(k => k >= a && k <= b);
+const lineText = (c, k) => { const p = lf(c, k); return NV.files[p.f][p.l - 1] ?? ''; };
+const callsAt = (c, k) => { const p = lf(c, k); return NV.calls[p.f]?.[p.l] || []; };
+const cardHasDef = (c, f, dl) => c.segs ? c.segs.some(g => g.f === f && dl >= g.s && dl <= g.e) : (c.f === f && dl >= c.s && dl <= c.e);
+const nLines = c => keyRanges(c).reduce((n, [a, b]) => n + b - a + 1, 0);
 
 function codeCard(sid, extra) {
   const s = SYMS[sid];
@@ -700,35 +712,48 @@ function countVisibleDesc(id) { return descendants(id).length; }
 function headHTML(c) {
   const num = F.num[c.id], subN = c.sub ? countVisibleDesc(c.id) : 0;
   return `<div class="chead">${num ? `<span class="step">${num}</span>` : ''}${subN ? `<button class="subc" data-act="expandsub" data-tip="Expand Subtree" data-kbd="">▸ ${subN}</button>` : ''}`
+    + (c.lock ? `<button class="lockb" data-act="unlock" data-tip="Unlock" data-kbd="${K.mod}${K.shift}L">${ICON_LOCK}</button>` : '')
     + `<span class="kind ${c.sk === 'c' ? 'c' : ''}">${glyph(c.sk)}</span><span class="ctitle">${esc(c.title)}</span>`
-    + `<span class="cpath" data-act="open" data-tip="Open in Editor" data-kbd="⏎">${shortPath(c.f)}:${c.s}</span>`
+    + (c.segs ? `<span class="cpath" data-act="open" data-tip="Open First Segment in Editor" data-kbd="⏎">${c.segs.length} segments · ${new Set(c.segs.map(g => g.f)).size} file${new Set(c.segs.map(g => g.f)).size > 1 ? 's' : ''}</span>`
+      : `<span class="cpath" data-act="open" data-tip="Open in Editor" data-kbd="⏎">${shortPath(c.f)}:${c.s}</span>`)
     + `<button class="rev" data-act="commit" data-tip="Pinned commit" data-kbd="">${COMMIT} ▾</button>`
     + `<button class="ib" data-act="menu" aria-label="Card Menu" data-tip="More Actions" data-kbd="">${ICON_DOTS}</button></div>`;
 }
 function rowsHTML(c) {
-  const f = c.f, always = c.notes.filter(n => n.kind === 'text' && n.always);
-  const doc = c.tg.doc ? docLines(f, c.s, c.e) : null;
-  let html = '', jump = false, l = c.s;
-  while (l <= c.e) {
-    const h = c.hid.find(([a, b]) => a <= l && l <= b);
-    if (h) {
-      const n = h[1] - h[0] + 1;
-      html += `<div class="gap" data-a="${h[0]}" data-b="${h[1]}">⋯ ${n} line${n > 1 ? 's' : ''} hidden (${h[0] === h[1] ? h[0] : h[0] + '–' + h[1]}) · <b data-act="showgap">Show</b></div>`;
-      l = h[1] + 1; jump = false; continue;
+  const always = c.notes.filter(n => n.kind === 'text' && n.always);
+  const segs = c.segs || [{ f: c.f, s: c.s, e: c.e }];
+  const multiFile = c.segs && new Set(c.segs.map(g => g.f)).size > 1;
+  let html = '';
+  segs.forEach((g, i) => {
+    const prev = segs[i - 1], base = c.segs ? FI[g.f] * 10000 : 0, f = g.f;
+    if (c.segs && multiFile && (!prev || prev.f !== f)) html += `<div class="fbar"><span class="kind">⋮</span>${esc(f)}</div>`;
+    else if (c.segs && prev && prev.f === f) {
+      const a = prev.e + 1, b = g.s - 1, n = b - a + 1, sid = symAt(f, a);
+      if (n > 0) html += `<div class="mgap">⋯ ${n} line${n > 1 ? 's' : ''} hidden (${a === b ? a : a + '–' + b})${sid ? ` · in <code>${esc(SYMS[sid].q)}</code>` : ''}</div>`;
     }
-    const t = NV.files[f][l - 1] ?? '';
-    if ((c.tg.blank && !t.trim()) || (c.tg.com && /^\s*#/.test(t)) || (doc && doc.has(l))) { jump = true; l++; continue; }
-    html += `<div class="l${jump ? ' j' : ''}" data-l="${l}">${t ? hlLine(f, l) : '<br>'}</div>`;
-    jump = false;
-    for (const n of always) if (n.b === l) html += `<div class="inote" data-note="${n.id}">${md(n.text)}</div>`;
-    l++;
-  }
+    const doc = c.tg.doc ? docLines(f, g.s, g.e) : null;
+    let jump = false, l = g.s;
+    while (l <= g.e) {
+      const k = base + l, h = c.hid.find(([x, y]) => x <= k && k <= y);
+      if (h) {
+        const h0 = Math.max(h[0], base + g.s), h1 = Math.min(h[1], base + g.e), n = h1 - h0 + 1;
+        html += `<div class="gap" data-a="${h[0]}" data-b="${h[1]}">⋯ ${n} line${n > 1 ? 's' : ''} hidden (${h0 === h1 ? h0 - base : (h0 - base) + '–' + (h1 - base)}) · <b data-act="showgap">Show</b></div>`;
+        l = h1 - base + 1; jump = false; continue;
+      }
+      const t = NV.files[f][l - 1] ?? '';
+      if ((c.tg.blank && !t.trim()) || (c.tg.com && /^\s*#/.test(t)) || (doc && doc.has(l))) { jump = true; l++; continue; }
+      html += `<div class="l${jump ? ' j' : ''}" data-l="${k}">${t ? hlLine(f, l) : '<br>'}</div>`;
+      jump = false;
+      for (const n of always) if (n.b === k) html += `<div class="inote" data-note="${n.id}">${md(n.text)}</div>`;
+      l++;
+    }
+  });
   return html;
 }
 function buildCode(c) {
   const el = document.createElement('div');
   el.className = 'card kcode' + (c.h ? '' : ' autoh'); el.dataset.id = c.id;
-  el.innerHTML = headHTML(c) + `<div class="cdesc">${esc(c.desc || '')}</div><div class="cbody"><div class="code"><div class="gutter"></div><div class="src">${rowsHTML(c)}</div></div></div><div class="grip"></div>`;
+  el.innerHTML = headHTML(c) + `<div class="cdesc">${md(c.desc || '')}</div><div class="cbody"><div class="code"><div class="gutter"></div><div class="src">${rowsHTML(c)}</div></div></div><div class="grip"></div>`;
   return el;
 }
 function layoutCode(el, c) {
@@ -743,7 +768,7 @@ function layoutCode(el, c) {
     if (!row.classList.contains('l')) continue;
     const l = +row.dataset.l, top = st + row.offsetTop;
     tops[l] = top;
-    g += `<span class="no${origin.has(l) ? ' link' : ''}${row.classList.contains('j') ? ' jump' : ''}" data-l="${l}" style="top:${top}px">${l}</span>`;
+    g += `<span class="no${origin.has(l) ? ' link' : ''}${row.classList.contains('j') ? ' jump' : ''}" data-l="${l}" style="top:${top}px">${dispL(c, l)}</span>`;
     if (noteBy[l]) g += `<span class="mk" data-l="${l}" style="top:${top}px">${noteBy[l].length}</span>`;
     if (hl.has(l)) bg += `<div class="rowbg hl" style="top:${top}px"></div>`;
     if (origin.has(l)) bg += `<div class="rowbg origin" data-l="${l}" style="top:${top}px"></div>`;
@@ -822,10 +847,8 @@ function wordMarks(sa, sb) {
   return [ma, mb];
 }
 function alignCards(A, B) {
-  const la = [], lb = [];
-  for (let l = A.s; l <= A.e; l++) la.push(l);
-  for (let l = B.s; l <= B.e; l++) lb.push(l);
-  const na = la.map(l => normLine(NV.files[A.f][l - 1])), nb = lb.map(l => normLine(NV.files[B.f][l - 1]));
+  const la = cardKeys(A), lb = cardKeys(B);
+  const na = la.map(l => normLine(lineText(A, l))), nb = lb.map(l => normLine(lineText(B, l)));
   const ops = lcs(na, nb);
   const rows = []; let dels = [], adds = [];
   const sim = (x, y) => { const tx = x.match(/\w+|[^\w\s]+/g) || [], ty = y.match(/\w+|[^\w\s]+/g) || []; if (!tx.length || !ty.length) return 0; const n = lcs(tx, ty).filter(o => o[0] === '=').length; return 2 * n / (tx.length + ty.length); };
@@ -836,7 +859,7 @@ function alignCards(A, B) {
       for (let q = j; q < adds.length; q++) if (sim(na[di], nb[adds[q]]) >= 0.5) { k = q; break; }
       if (k < 0) { rows.push({ t: 'del', a, b: null }); continue; }
       for (; j < k; j++) rows.push({ t: 'add', a: null, b: lb[adds[j]] });
-      const b = lb[adds[k]], [ma, mb] = wordMarks(NV.files[A.f][a - 1], NV.files[B.f][b - 1]);
+      const b = lb[adds[k]], [ma, mb] = wordMarks(lineText(A, a), lineText(B, b));
       rows.push({ t: 'chg', a, b, ma, mb }); j = k + 1;
     }
     for (; j < adds.length; j++) rows.push({ t: 'add', a: null, b: lb[adds[j]] });
@@ -852,24 +875,25 @@ function alignCards(A, B) {
 function colHead(card) {
   const num = F.num[card.id];
   return `<div data-col="${card.id}">${num ? `<span class="step">${num}</span>` : ''}<span class="kind ${card.sk === 'c' ? 'c' : ''}">${glyph(card.sk)}</span><span class="ctitle">${esc(card.title)}</span>`
-    + `<span class="cpath" data-act="open" data-col-open="${card.id}" data-tip="Open in Editor" data-kbd="⏎">${card.f}:${card.s}</span><span class="grow"></span><button class="rev" data-act="commit" data-cid="${card.id}">${COMMIT} ▾</button></div>`;
+    + `<span class="cpath" data-act="open" data-col-open="${card.id}" data-tip="Open in Editor" data-kbd="⏎">${card.segs ? card.segs.length + ' segments' : card.f + ':' + card.s}</span><span class="grow"></span><button class="rev" data-act="commit" data-cid="${card.id}">${COMMIT} ▾</button></div>`;
 }
 function buildCompare(c) {
   const A = S.cards[c.cols[0]], B = S.cards[c.cols[1]];
   const rows = alignCards(A, B);
   const nSame = rows.filter(r => r.t === 'same').length, nChg = rows.length - nSame;
+  const hl2 = (card, l, marks) => { const p = lf(card, l); return hlLine(p.f, p.l, marks); };
   const cell = (card, l, marks) => l == null ? `<div class="cl void" data-col="${card.id}"></div>`
-    : `<div class="cl" data-col="${card.id}"><span class="cno">${l}</span><span class="l" data-col="${card.id}" data-l="${l}">${hlLine(card.f, l, marks)}</span></div>`;
+    : `<div class="cl" data-col="${card.id}"><span class="cno">${dispL(card, l)}</span><span class="l" data-col="${card.id}" data-l="${l}">${hl2(card, l, marks)}</span></div>`;
   let body = '';
   const sameRun = i => { let j = i; while (j < rows.length && rows[j].t === 'same') j++; return j - i; };
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     if (c.same && r.t === 'same') { const n = sameRun(i); if (n >= 2) { body += `<div class="cgap">⋯ ${n} same lines</div>`; i += n - 1; continue; } }
     if (!c.uni) body += `<div class="crow ${r.t}">${cell(A, r.a, r.ma)}${cell(B, r.b, r.mb)}</div>`;
-    else if (r.t === 'same') body += `<div class="urow"><span class="cno">${r.a}</span><span class="cno">${r.b}</span><span class="sg"></span><span class="l" data-col="${A.id}" data-l="${r.a}" data-colb="${B.id}" data-lb="${r.b}">${hlLine(A.f, r.a)}</span></div>`;
+    else if (r.t === 'same') body += `<div class="urow"><span class="cno">${dispL(A, r.a)}</span><span class="cno">${dispL(B, r.b)}</span><span class="sg"></span><span class="l" data-col="${A.id}" data-l="${r.a}" data-colb="${B.id}" data-lb="${r.b}">${hl2(A, r.a)}</span></div>`;
     else {
-      if (r.a != null) body += `<div class="urow del"><span class="cno">${r.a}</span><span class="cno"></span><span class="sg">−</span><span class="l" data-col="${A.id}" data-l="${r.a}">${hlLine(A.f, r.a, r.ma)}</span></div>`;
-      if (r.b != null) body += `<div class="urow add"><span class="cno"></span><span class="cno">${r.b}</span><span class="sg">+</span><span class="l" data-col="${B.id}" data-l="${r.b}">${hlLine(B.f, r.b, r.mb)}</span></div>`;
+      if (r.a != null) body += `<div class="urow del"><span class="cno">${dispL(A, r.a)}</span><span class="cno"></span><span class="sg">−</span><span class="l" data-col="${A.id}" data-l="${r.a}">${hl2(A, r.a, r.ma)}</span></div>`;
+      if (r.b != null) body += `<div class="urow add"><span class="cno"></span><span class="cno">${dispL(B, r.b)}</span><span class="sg">+</span><span class="l" data-col="${B.id}" data-l="${r.b}">${hl2(B, r.b, r.mb)}</span></div>`;
     }
   }
   const el = document.createElement('div');
@@ -976,7 +1000,7 @@ function renderEdges() {
     drawEdge(L.id);
   }
 }
-function siteOfLink(L) { const A = S.cards[L.a]; if (!A || A.kind !== 'code') return null; return (NV.calls[A.f]?.[L.l] || []).find(x => x[0] === L.c0) || null; }
+function siteOfLink(L) { const A = S.cards[L.a]; if (!A || A.kind !== 'code' || L.l == null) return null; return callsAt(A, L.l).find(x => x[0] === L.c0) || null; }
 function varList(L) { // candidate variables of a call link, syntax-inferred
   const site = siteOfLink(L); const out = [];
   if (site && site[2].length === 1 && S.cards[L.b] && S.cards[L.b].sym === site[2][0]) {
@@ -1111,7 +1135,7 @@ function colCardId(node) { const col = node.closest('[data-col]'); return col ? 
 function onCallClick(span) {
   const cid = colCardId(span), c = S.cards[cid]; if (!c) return;
   const line = +span.closest('.l').dataset.l, c0 = +span.dataset.c0;
-  const site = (NV.calls[c.f]?.[line] || []).find(x => x[0] === c0); if (!site) return;
+  const site = callsAt(c, line).find(x => x[0] === c0); if (!site) return;
   hidePeek(true);
   if (site[2].length > 1) return showPicker(span, cid, line, site);
   expandTo(cid, line, c0, site[2][0]);
@@ -1160,20 +1184,20 @@ function linkExisting(cid, line, c0, tid) {
 }
 function calleeMatches(c, site) { // does card c show the callee of this call site?
   if (c.kind !== 'code') return false;
-  return site[2].some(sid => c.sym === sid || (SYMS[sid].f === c.f && SYMS[sid].dl >= c.s && SYMS[sid].dl <= c.e));
+  return site[2].some(sid => c.sym === sid || cardHasDef(c, SYMS[sid].f, SYMS[sid].dl));
 }
 function linkExistingMenu(span, x, y) {
   const cid = colCardId(span), c = S.cards[cid], line = +span.closest('.l').dataset.l, c0 = +span.dataset.c0;
-  const site = (NV.calls[c.f]?.[line] || []).find(q => q[0] === c0); if (!site) return;
+  const site = callsAt(c, line).find(q => q[0] === c0); if (!site) return;
   const cands = Object.values(S.cards).filter(k => k.id !== cid && calleeMatches(k, site));
   const items = [{ head: `Link ${span.textContent}() to Existing Card` }];
   if (!cands.length) items.push({ label: 'No card for this function on the board', disabled: true, why: 'Drag the call onto any code card to link it' });
-  for (const k of cands) { const n = F.num[k.id]; items.push({ label: `${n ? n + '  ' : ''}${k.title}`, kbd: `${k.f}:${k.s}`, disabled: !!n, why: n ? 'Already in a flow. Duplicate it first.' : '', act: () => linkExisting(cid, line, c0, k.id) }); }
+  for (const k of cands) { const n = F.num[k.id]; items.push({ label: `${n ? n + '  ' : ''}${k.title}`, kbd: k.segs ? `${k.segs.length} segments` : `${k.f}:${k.s}`, disabled: !!n, why: n ? 'Already in a flow. Duplicate it first.' : '', act: () => linkExisting(cid, line, c0, k.id) }); }
   openCtx(items, x, y);
 }
 function callMenu(span, x, y) {
   const cid = colCardId(span), c = S.cards[cid], line = +span.closest('.l').dataset.l;
-  openCtx([{ head: `${span.textContent}()  ·  line ${line}` },
+  openCtx([{ head: `${span.textContent}()  ·  line ${dispL(c, line)}` },
     { label: 'Expand', kbd: 'Click', act: () => onCallClick(span) },
     { label: 'Link to Existing Card…', kbd: 'Drag', act: () => { const r = rectB(span); setTimeout(() => linkExistingMenu(span, r.x, r.y + r.h + 4), 0); } },
     null, ...lineMenu(cid, line, line).slice(1)], x, y);
@@ -1182,7 +1206,7 @@ function callMenu(span, x, y) {
 let callDrag = null, swallowClick = false;
 function callDragStart(span, ev) {
   const cid = colCardId(span), c = S.cards[cid], line = +span.closest('.l').dataset.l, c0 = +span.dataset.c0;
-  const site = (NV.calls[c.f]?.[line] || []).find(q => q[0] === c0); if (!site) return;
+  const site = callsAt(c, line).find(q => q[0] === c0); if (!site) return;
   callDrag = { span, cid, line, c0, site, sx: ev.clientX, sy: ev.clientY, on: false, path: null, hot: null };
   board.setPointerCapture(ev.pointerId);
 }
@@ -1539,20 +1563,20 @@ function cardMenu(id) {
     { label: 'Connect…', act: () => startConnect(id) },
     { label: 'Move to New Section', act: moveToSection },
     null,
-    { label: 'Copy Code', act: () => copyText(NV.files[c.f].slice(c.s - 1, c.e).join('\n'), `Copied ${c.e - c.s + 1} lines`) },
+    { label: 'Copy Code', act: () => copyText(cardKeys(c).map(k => lineText(c, k)).join('\n'), `Copied ${nLines(c)} lines`) },
     { label: 'Duplicate', kbd: K.mod + 'D', act: duplicateSel },
     { label: 'Delete', kbd: '⌫', act: deleteSel },
   ];
 }
 function lineMenu(id, a, b) {
-  const c = S.cards[id], hlAll = range(a, b).every(l => c.hl.includes(l));
-  const lbl = a === b ? `Line ${a}` : `Lines ${a}–${b}`;
+  const c = S.cards[id], ks = keysIn(c, a, b), hlAll = ks.every(l => c.hl.includes(l));
+  const lbl = a === b ? `Line ${dispL(c, a)}` : `Lines ${dispL(c, a)}–${dispL(c, b)}`;
   return [
     { head: lbl },
     { label: 'Hide Lines', kbd: 'H', act: () => hideLines(id, a, b) },
     { label: hlAll ? 'Remove Highlight' : 'Highlight Lines', act: () => toggleHl(id, a, b) },
     { label: 'Add Sidenote', kbd: 'S', act: () => openAddNote({ id, a, b }) },
-    { label: 'Copy', kbd: K.mod + 'C', act: () => copyText(NV.files[c.f].slice(a - 1, b).join('\n'), `Copied ${b - a + 1} line${a === b ? '' : 's'}`) },
+    { label: 'Copy', kbd: K.mod + 'C', act: () => copyText(ks.map(k => lineText(c, k)).join('\n'), `Copied ${ks.length} line${ks.length === 1 ? '' : 's'}`) },
   ];
 }
 function canvasMenu(w) {
@@ -1620,7 +1644,7 @@ function hideLines(id, a, b) {
   getSelection().removeAllRanges(); lineSel = null;
 }
 function toggleHl(id, a, b) {
-  mut(() => { const c = S.cards[id], ls = range(a, b), all = ls.every(l => c.hl.includes(l)); c.hl = all ? c.hl.filter(l => l < a || l > b) : [...new Set([...c.hl, ...ls])]; });
+  mut(() => { const c = S.cards[id], ls = keysIn(c, a, b), all = ls.every(l => c.hl.includes(l)); c.hl = all ? c.hl.filter(l => l < a || l > b) : [...new Set([...c.hl, ...ls])]; });
 }
 function deleteSel() {
   const ids = new Set(), sects = new Set();
@@ -1756,9 +1780,9 @@ function showPeek(sp, pin) {
   if (popEl.classList.contains('open') || ctx.classList.contains('open')) return;
   const cid = colCardId(sp), c = S.cards[cid]; if (!c) return;
   const line = +sp.closest('.l').dataset.l, c0 = +sp.dataset.c0, name = sp.textContent;
-  const entry = (NV.peek[c.f]?.[line] || []).find(x => x[0] === c0);
+  const pl = lf(c, line), entry = (NV.peek[pl.f]?.[pl.l] || []).find(x => x[0] === c0);
   let targets = entry ? entry[2] : null;
-  if (!targets) { const site = (NV.calls[c.f]?.[line] || []).find(x => x[0] === c0); targets = site ? site[2].map(s => [SYMS[s].f, SYMS[s].dl]) : []; }
+  if (!targets) { const site = callsAt(c, line).find(x => x[0] === c0); targets = site ? site[2].map(s => [SYMS[s].f, SYMS[s].dl]) : []; }
   peekState = { span: sp, cid, line, name, stack: [{ name, targets, i: 0 }], pinned: false };
   renderPeek();
   openPop(peekEl); placePop(peekEl, rectB(sp));
@@ -1856,7 +1880,7 @@ function bindPeekEl(pe) {
       const label = sid ? SYMS[sid].q : `${top.name}`;
       mut(() => { c.notes.push({ id: nid('n'), a: P.line, b: P.line, kind: 'code', ref: { f, l, s: a, e: bb, label, sym: sid } }); });
       if (isMain) hidePeek(true); else pe.remove();
-      toast(`Pinned as a Code sidenote on line ${P.line}`);
+      toast(`Pinned as a Code sidenote on line ${dispL(S.cards[P.cid] || {}, P.line)}`);
       return;
     }
     if (act === 'place') { if (isMain) hidePeek(true); else pe.remove(); placeFromLocation(P.cid, P.line, f, l, top.name); }
@@ -1946,7 +1970,7 @@ function openAddNote(ls, editing) {
   if (!ls) return toast('Select lines in a code card first');
   const c = S.cards[ls.id]; if (!c) return;
   hidePeek(true); hideSnpop(true);
-  const lbl = ls.a === ls.b ? `Line ${ls.a}` : `Lines ${ls.a}–${ls.b}`;
+  const lbl = ls.a === ls.b ? `Line ${dispL(c, ls.a)}` : `Lines ${dispL(c, ls.a)}–${dispL(c, ls.b)}`;
   popEl.innerHTML = `<div class="tabs"><button class="tab on" data-tab="text">Text</button><button class="tab" data-tab="code"${editing ? ' disabled' : ''}>Code</button><button class="tab" disabled title="Not in this mock">Paste</button><button class="tab" disabled title="Not in this mock">Link</button><button class="tab" disabled title="Not in this mock">Card</button><span class="grow"></span><span style="font-size:11px;color:var(--ink-3);padding:6px 4px">${lbl}</span></div>`
     + `<div class="pb" data-pane="text"><textarea class="fld" placeholder="Write a note… Markdown and \`code\` supported">${editing ? esc(editing.text) : ''}</textarea><label class="chk" style="font-family:var(--sys);font-size:12px;margin-top:6px"><input type="checkbox" ${editing && editing.always ? 'checked' : ''}> Always Show (render between code lines)</label></div>`
     + `<div class="pb" data-pane="code" hidden><input class="fld" placeholder="Search functions and classes…"><div class="sres"></div><div style="font-size:11px;color:var(--ink-3);margin-top:6px">Or select code in the editor and press ⌥S</div></div>`
@@ -2035,11 +2059,11 @@ function hiVar(lid, k, on) {
   if (v && v.arg) {
     const [, param, al, c0, c1] = v.arg;
     const row = rowEl(L.a, al); if (row) $$('[data-c0]', row).forEach(s => { const x = +s.dataset.c0; if (x >= c0 && x < c1) s.classList.add('vhl'); });
-    if (B) for (let l = B.s; l <= Math.min(B.e, B.s + 8); l++) { const r = rowEl(B.id, l); if (r) $$('[data-c0]', r).forEach(s => { if (s.textContent === param) s.classList.add('vhl'); }); if (/\)\s*(->.*)?:\s*$/.test(NV.files[B.f][l - 1])) break; }
+    if (B) for (const l of cardKeys(B).slice(0, 9)) { const r = rowEl(B.id, l); if (r) $$('[data-c0]', r).forEach(s => { if (s.textContent === param) s.classList.add('vhl'); }); if (/\)\s*(->.*)?:\s*$/.test(lineText(B, l))) break; }
   } else if (v && v.ret && site) {
     const names = v.ret.split(/[\s,]+/); const row = rowEl(L.a, L.l);
     if (row) $$('[data-c0]', row).forEach(s => { if (+s.dataset.c0 < site[0] && names.includes(s.textContent)) s.classList.add('vhl'); });
-    if (B) for (let l = B.s; l <= B.e; l++) if (/^\s*return\b/.test(NV.files[B.f][l - 1])) { const r = rowEl(B.id, l); if (r) r.querySelector('.kw')?.classList.add('vhl'); }
+    if (B) for (const l of cardKeys(B)) if (/^\s*return\b/.test(lineText(B, l))) { const r = rowEl(B.id, l); if (r) r.querySelector('.kw')?.classList.add('vhl'); }
   }
 }
 labelsL.addEventListener('pointerover', e => { const ch = e.target.closest('.vchip[data-k]'); if (ch) hiVar(ch.closest('.vchips').dataset.link, ch.dataset.k, true); });
@@ -2203,7 +2227,7 @@ document.addEventListener('keydown', ev => {
   if (mod && k === '1') { ev.preventDefault(); const { w, h } = view(); return camTo(w / 2 - (w / 2 - cam.x.t) / cam.k.t, h / 2 - (h / 2 - cam.y.t) / cam.k.t, 1); }
   if (mod && (k === '=' || k === '+')) { ev.preventDefault(); return zoomBy(1.25); }
   if (mod && k === '-') { ev.preventDefault(); return zoomBy(0.8); }
-  if (mod && kl === 'c') { const s = getSelection(); if (s && !s.isCollapsed) return; /* native copy of code text */ const c = selCards().find(x => x.kind === 'code'); if (c) { ev.preventDefault(); copyText(NV.files[c.f].slice(c.s - 1, c.e).join('\n'), 'Copied code'); } return; }
+  if (mod && kl === 'c') { const s = getSelection(); if (s && !s.isCollapsed) return; /* native copy of code text */ const c = selCards().find(x => x.kind === 'code'); if (c) { ev.preventDefault(); copyText(cardKeys(c).map(k => lineText(c, k)).join('\n'), 'Copied code'); } return; }
   if (mod) return;
   if (k === 'Delete' || k === 'Backspace') { ev.preventDefault(); if (lineSel && !sel.size) return; return deleteSel(); }
   if (k === '!' || (ev.shiftKey && ev.code === 'Digit1')) return fitAll();
