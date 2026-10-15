@@ -124,7 +124,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .vplus:hover { background: var(--accent); color: var(--accent-ink); }
 
 /* ---------- cards ---------- */
-.card { position: absolute; background: var(--surface); border-radius: 9px; box-shadow: var(--sh-card); transform-origin: 0 18px; display: flex; flex-direction: column;
+.card { position: absolute; isolation: isolate; background: var(--surface); border-radius: 9px; box-shadow: var(--sh-card); transform-origin: 0 18px; display: flex; flex-direction: column;
   transition: box-shadow calc(var(--t) * 160ms) var(--out), scale calc(var(--t) * 260ms) cubic-bezier(.3, 1.35, .5, 1), opacity calc(var(--t) * 240ms) var(--out), filter calc(var(--t) * 240ms); }
 .card.sel { box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
 .card.lift { scale: 1.012; box-shadow: var(--sh-lift); transition: box-shadow calc(var(--t) * 120ms) var(--out), scale calc(var(--t) * 120ms) var(--out); z-index: 10; }
@@ -360,9 +360,9 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 .keys.open { display: block; animation: popin calc(var(--t) * 150ms) var(--out); }
 .keys h3 { font: 600 13px var(--sys); margin: 0 0 6px; display: flex; align-items: center; }
 .keys h4 { font: 600 11px var(--sys); color: var(--ink-3); margin: 12px 0 4px; text-transform: none; }
-.keys table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.keys table { width: 100%; border-collapse: collapse; font-size: 12px; table-layout: fixed; }
 .keys td { padding: 3px 0; border-top: .5px solid var(--line); vertical-align: top; }
-.keys td:first-child { width: 112px; font: 11px var(--mono); color: var(--ink-2); white-space: nowrap; }
+.keys td:first-child { width: 150px; padding-right: 10px; font: 11px/1.5 var(--mono); color: var(--ink-2); }
 .picker-h { padding: 8px 12px 6px; font-size: 12px; color: var(--ink-2); border-bottom: 1px solid var(--line); }
 .picker-h code { font: 11.5px var(--mono); color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { :root { --t: 0.001; } }
@@ -1599,7 +1599,7 @@ board.addEventListener('contextmenu', ev => {
   const id = ce.dataset.id, c = S.cards[id];
   const callSp = ev.target.closest('.call');
   if (callSp) { if (!sel.has(id)) select(id); return callMenu(callSp, x, y); }
-  const row = ev.target.closest('.src .l');
+  const row = ev.target.closest('.src .l, .gutter .no');
   if (row && c.kind === 'code') {
     const l = +row.dataset.l;
     let a = l, b = l;
@@ -1682,7 +1682,7 @@ function inlineEdit(node, { initial, multiline, onDone, selectAll = true }) {
   if (initial != null) node.textContent = initial;
   node.contentEditable = 'plaintext-only';
   if (node.contentEditable !== 'plaintext-only') node.contentEditable = 'true';
-  node.focus();
+  node.focus({ preventScroll: true });
   const r = document.createRange(); r.selectNodeContents(node); if (!selectAll) r.collapse(false);
   const s = getSelection(); s.removeAllRanges(); s.addRange(r);
   let cancelled = false;
@@ -1734,7 +1734,7 @@ function editLinkLabel(lid) {
   popEl.innerHTML = `<div class="pb" style="width:240px"><input class="fld" placeholder="Label (optional)" value="${esc(L.label || '')}"></div>`;
   const anchor = () => { const b = board.getBoundingClientRect(); return { x: g.mx * cam.k.v + cam.x.v - 120, y: g.my * cam.k.v + cam.y.v, w: 0, h: 0 }; };
   popAnchor = anchor; openPop(popEl); placePop(popEl, anchor());
-  const inp = popEl.querySelector('input'); inp.focus(); inp.select();
+  const inp = popEl.querySelector('input'); inp.focus({ preventScroll: true }); inp.select();
   inp.onkeydown = e => { e.stopPropagation(); if (e.key === 'Enter') { const v = inp.value.trim(); closePop(); mut(() => { L.label = v; }); } if (e.key === 'Escape') closePop(); };
 }
 
@@ -1753,6 +1753,7 @@ function pcodeHTML(f, a, b, t) {
   return `<div class="pcode">${h}</div>`;
 }
 function showPeek(sp, pin) {
+  if (popEl.classList.contains('open') || ctx.classList.contains('open')) return;
   const cid = colCardId(sp), c = S.cards[cid]; if (!c) return;
   const line = +sp.closest('.l').dataset.l, c0 = +sp.dataset.c0, name = sp.textContent;
   const entry = (NV.peek[c.f]?.[line] || []).find(x => x[0] === c0);
@@ -1955,7 +1956,7 @@ function openAddNote(ls, editing) {
   popAnchor = anchor; openPop(popEl); placePop(popEl, anchor() || { x: 200, y: 200, w: 0, h: 0 });
   const ta = popEl.querySelector('textarea'), inp = popEl.querySelector('input.fld'), res = popEl.querySelector('.sres'), ck = popEl.querySelector('input[type=checkbox]');
   let tab = 'text', hits = [], hi = 0;
-  ta.focus();
+  ta.focus({ preventScroll: true });
   const doSearch = () => {
     const q = inp.value.trim().toLowerCase();
     hits = q ? Object.keys(SYMS).filter(id => SYMS[id].q.toLowerCase().includes(q)).sort((a, b) => (SYMS[a].n.toLowerCase().startsWith(q) ? 0 : 1) - (SYMS[b].n.toLowerCase().startsWith(q) ? 0 : 1) || SYMS[a].q.length - SYMS[b].q.length).slice(0, 7) : [];
@@ -1965,14 +1966,14 @@ function openAddNote(ls, editing) {
   const addCode = sid => { const s = SYMS[sid]; closePop(); mut(() => { c.notes.push({ id: nid('n'), a: ls.a, b: ls.b, kind: 'code', ref: { f: s.f, l: s.dl, s: s.s, e: Math.min(s.e, s.s + 11), label: s.q, sym: sid } }); }); toast(`Code sidenote added to ${lbl.toLowerCase()}`); };
   const submit = () => {
     if (tab === 'code') { if (hits[hi]) addCode(hits[hi]); return; }
-    const v = ta.value.trim(); if (!v) { ta.focus(); return; }
+    const v = ta.value.trim(); if (!v) { ta.focus({ preventScroll: true }); return; }
     closePop();
     if (editing) mut(() => { const n = c.notes.find(x => x.id === editing.id); if (n) { n.text = v; n.always = ck.checked; } });
     else { mut(() => { c.notes.push({ id: nid('n'), a: ls.a, b: ls.b, kind: 'text', text: v, always: ck.checked }); }); toast(`Sidenote added to ${lbl.toLowerCase()}`); }
     getSelection().removeAllRanges();
   };
   popEl.onclick = e => {
-    const t = e.target.closest('[data-tab]'); if (t && !t.disabled) { tab = t.dataset.tab; $$('.tab', popEl).forEach(x => x.classList.toggle('on', x === t)); $$('[data-pane]', popEl).forEach(p => p.hidden = p.dataset.pane !== tab); (tab === 'text' ? ta : inp).focus(); return; }
+    const t = e.target.closest('[data-tab]'); if (t && !t.disabled) { tab = t.dataset.tab; $$('.tab', popEl).forEach(x => x.classList.toggle('on', x === t)); $$('[data-pane]', popEl).forEach(p => p.hidden = p.dataset.pane !== tab); (tab === 'text' ? ta : inp).focus({ preventScroll: true }); return; }
     const s = e.target.closest('[data-sid]'); if (s) return addCode(s.dataset.sid);
     const x = e.target.closest('[data-x]'); if (x) { if (x.dataset.x === 'cancel') closePop(); else submit(); }
   };
@@ -2074,7 +2075,7 @@ function openSearch(w) {
   popEl.onkeydown = e => { e.stopPropagation(); if (e.key === 'Escape') closePop(); if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); hi = clamp(hi + (e.key === 'ArrowDown' ? 1 : -1), 0, Math.max(0, hits.length - 1)); draw(); } if (e.key === 'Enter' && hits[hi]) go(hits[hi]); };
   popEl.onclick = e => { const b = e.target.closest('[data-sid]'); if (b) go(b.dataset.sid); };
   popEl.onchange = null;
-  inp.focus();
+  inp.focus({ preventScroll: true });
 }
 
 // =====================================================================
@@ -2244,7 +2245,7 @@ board.addEventListener('pointerdown', () => { hideTip(); warmUntil = 0; }, true)
 // Shortcuts panel
 // =====================================================================
 const KEYS = [
-  ['Board', [['Click a dotted call', 'Expand: callee card + Call link'], ['Hover a name', 'Definition peek (⌘-hover pins)'], ['Drag title bar', 'Move card'], ['Drag empty canvas', 'Marquee select'], ['Space + Drag', 'Pan'], ['Scroll / two fingers', 'Pan'], [`${K.mod}Scroll / pinch`, 'Zoom'], ['Double-click canvas', 'New Text'], ['⇧Click', 'Add to selection']]],
+  ['Board', [['Click a dotted call', 'Expand: new callee card + Call link'], ['Drag a dotted call', 'Drop on a card: link it · on canvas: new card there'], ['Right-click a call', 'Link to Existing Card…'], ['Hover a name', 'Definition peek (⌘-hover pins)'], ['Drag title bar', 'Move card'], ['Drag empty canvas', 'Marquee select'], ['Space + Drag', 'Pan'], ['Scroll / two fingers', 'Pan'], [`${K.mod}Scroll / pinch`, 'Zoom'], ['Double-click canvas', 'New Text'], ['⇧Click', 'Add to selection']]],
   ['Lines (select code first)', [['S', 'Add Sidenote'], ['H', 'Hide Lines'], ['Click line number', 'Select line (⇧ extends)'], ['Right-click', 'Line menu: Highlight, Copy…']]],
   ['Commands', [['T', 'New Text'], ['N', 'New Note'], [`${K.mod}K`, 'Add Function…'], ['P', 'Walk Through Flow'], ['← →', 'Previous / Next step'], ['Esc', 'Close popup / Exit / Clear selection'], ['Delete ⌫', 'Delete selection'], [`${K.mod}A`, 'Select All Cards'], [`${K.mod}D`, 'Duplicate (no links, no number)'], [`${K.mod}Z  ${K.shift}${K.mod}Z`, 'Undo / Redo'], ['Enter', 'Open in Editor'], [`${K.shift}1  ${K.mod}0`, 'Fit to Window'], [`${K.mod}1`, 'Zoom to 100%'], ['?', 'This panel']]],
 ];
@@ -2283,6 +2284,8 @@ function init() {
   window.CB = { get S() { return S; }, camSet, fitAll, render, expandTo, startWalk, exitWalk, selectAll, select, sel, F: () => F, cam, toWorld, undo, redo, resetDemo };
 }
 init();
+// the board is overflow:hidden; never let focus() or scrollIntoView shift it
+board.addEventListener('scroll', () => { if (board.scrollLeft || board.scrollTop) { board.scrollLeft = 0; board.scrollTop = 0; } });
 let rsT; new ResizeObserver(() => { clearTimeout(rsT); rsT = setTimeout(redrawEdges, 60); }).observe(board);
 
 </script>
