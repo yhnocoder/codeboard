@@ -10,6 +10,16 @@ const log = (...a) => console.log('·', ...a);
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
   page.on('pageerror', e => errors.push('pageerror: ' + e.message));
+  // KaTeX comes from cdnjs (pinned 0.16.9); the sandbox has no direct network, so serve a local copy of the same files
+  const KDIR = process.env.KATEX_DIR || '/tmp/claude-0/-home-user-codeboard/b521005b-c131-5858-8dfb-b33ce650bd19/scratchpad/katex';
+  const fs = require('fs');
+  const serveKatex = async (pg) => pg.route('https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/**', route => {
+    const rel = route.request().url().split('/0.16.9/')[1], file = path.join(KDIR, rel);
+    if (!fs.existsSync(file)) return route.fulfill({ status: 404, body: '' });
+    const type = rel.endsWith('.js') ? 'application/javascript' : rel.endsWith('.css') ? 'text/css' : 'font/woff2';
+    route.fulfill({ status: 200, body: fs.readFileSync(file), headers: { 'content-type': type, 'access-control-allow-origin': '*' } });
+  });
+  await serveKatex(page);
   const shot = async (n) => { await page.waitForTimeout(450); await page.screenshot({ path: `${OUT}/${n}.png` }); log('shot', n); };
   const card = (title) => page.locator('.card', { has: page.locator(`.chead .ctitle:text-is("${title}")`) }).first();
   const call = async (title, name, nth = 0) => { await card(title).locator(`.src span.call:text-is("${name}")`).nth(nth).click(); await page.waitForTimeout(700); };
@@ -220,10 +230,146 @@ const log = (...a) => console.log('·', ...a);
   const p2 = await browser.newPage({ viewport: { width: 1200, height: 800 } });
   p2.on('pageerror', e => errors.push('p2 pageerror: ' + e.message));
   await p2.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('blocked'); } }); });
+  await p2.route('https://cdnjs.cloudflare.com/**', r => r.abort()); // CDN down: math shows raw TeX
   await p2.goto(URL); await p2.waitForTimeout(500);
-  log('no-storage page cards:', await p2.locator('.card').count());
+  log('no-storage page cards:', await p2.locator('.card').count(), '| CDN blocked, raw TeX shown:', JSON.stringify(await p2.locator('.card.note .tex').first().textContent()));
   await p2.close();
 
+  // ===== 14. batch 2: compare visibility, merge, drag-merge, snap, align, lock, nested sections, link styles/labels, math =====
+  const ids = () => page.evaluate(() => Object.fromEntries(Object.values(CB.S.cards).map(c => [c.title || c.text, c.id])));
+  const selectTitles = (ts) => page.evaluate(ts => { CB.select(null); for (const t of ts) { const c = Object.values(CB.S.cards).find(c => c.title === t); CB.select(c.id, true); } }, ts);
+  const menuLabels = () => page.$$eval('#ctx button', bs => bs.map(b => b.childNodes[1] ? b.textContent : b.textContent));
+  const linkMid = (id) => page.evaluate(id => { const p = document.querySelector(`path.ehit[data-link="${id}"]`); const L = p.getTotalLength(), pt = p.getPointAtLength(L * 0.5), m = p.getScreenCTM(); return { x: pt.x * m.a + m.e, y: pt.y * m.d + m.f }; }, id);
+  const bbox = async (loc) => loc.boundingBox();
+  await page.evaluate(() => CB.resetDemo()); await page.waitForTimeout(400);
+  await page.click('#zFit'); await page.waitForTimeout(500);
+  // Compare is hidden on a single card; visible for exactly two code cards
+  await selectTitles(['LLMEngine.step']);
+  await head('LLMEngine.step').click({ button: 'right' });
+  log('single-card menu has Compare:', (await menuLabels()).some(t => t.includes('Compare')));
+  await page.keyboard.press('Escape');
+  await selectTitles(['LLMEngine.add_request', 'LLMEngine.step']);
+  await head('LLMEngine.step').click({ button: 'right' });
+  log('two-card menu:', (await menuLabels()).map(t => t.trim()).filter(Boolean).join(' | '));
+  await shot('23-multi-menu');
+  await page.locator('#ctx button:has-text("Merge into One Card")').click(); await page.waitForTimeout(500);
+  let M = await page.evaluate(() => { const c = Object.values(CB.S.cards).find(c => c.segs); return c && { id: c.id, title: c.title, segs: c.segs.length, links: CB.S.links.filter(l => l.a === c.id || l.b === c.id).length }; });
+  log('merged:', JSON.stringify(M), '| gap bar:', await page.locator('.card .mgap').first().textContent());
+  // expand a call from the merged card, then merge across files
+  await focus(M.title, 0.9);
+  await card(M.title).locator('.src span.call:text-is("schedule")').click(); await page.waitForTimeout(700);
+  await selectTitles([M.title, 'Scheduler.schedule']);
+  await head('Scheduler.schedule').click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Merge into One Card")').click(); await page.waitForTimeout(500);
+  M = await page.evaluate(() => { const c = Object.values(CB.S.cards).find(c => c.segs && c.segs.length > 2); return { id: c.id, title: c.title, segs: c.segs.length, files: new Set(c.segs.map(s => s.f)).size }; });
+  log('merged across files:', JSON.stringify(M), '| file bars:', await page.locator('.card .fbar').count(), '| numbers', (await page.$$eval('.card .chead .step', els => els.map(e => e.textContent))).join(' '));
+  await focus(M.title, 0.75); await shot('24-merged');
+  await head(M.title).click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Unmerge")').click(); await page.waitForTimeout(400);
+  log('after unmerge:', await page.evaluate(() => Object.values(CB.S.cards).filter(c => c.kind === 'code').map(c => c.title + (c.segs ? '[' + c.segs.length + ']' : '')).join(', ')));
+  const t1 = Object.keys(await ids()).find(t => / \+1$/.test(t)); await focus(t1, 0.8); await page.waitForTimeout(200);
+  await selectTitles([t1]);
+  await head(t1).click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Unmerge")').click(); await page.waitForTimeout(400);
+  log('after second unmerge: code cards', await page.evaluate(() => Object.values(CB.S.cards).filter(c => c.kind === 'code').map(c => c.title).join(', ')), '| links', await page.evaluate(() => CB.S.links.length), '| numbers', (await page.$$eval('.card .chead .step', els => els.map(e => e.textContent))).join(' '));
+  // drag-merge: drag add_request by its header onto step's header and pause
+  await page.evaluate(() => CB.resetDemo()); await page.waitForTimeout(400);
+  await focus('LLMEngine.add_request', 0.8); await page.waitForTimeout(300);
+  const ha = await bbox(head('LLMEngine.add_request')), hs = await bbox(card('LLMEngine.step').locator('.chead'));
+  await page.mouse.move(ha.x + 4, ha.y + 4); await page.mouse.down();
+  await page.mouse.move(hs.x + 200, hs.y + hs.height / 2, { steps: 12 }); await page.waitForTimeout(650);
+  await shot('25-release-to-merge');
+  await page.mouse.up(); await page.waitForTimeout(400);
+  log('drag-merge result:', await page.evaluate(() => Object.values(CB.S.cards).filter(c => c.segs).map(c => c.title + ' ' + c.segs.map(s => s.f + ':' + s.s + '-' + s.e).join(' ')).join(';')));
+  await page.keyboard.press('Control+z'); await page.waitForTimeout(300);
+  // snap while moving: drag the KV Note so its left edge lands 4px off the generate card's left edge
+  await page.click('#zFit'); await page.waitForTimeout(500);
+  const note = page.locator('.card.note').first(), nb = await bbox(note.locator('.chead')), gb = await bbox(card('LLMEngine.generate'));
+  await page.mouse.move(nb.x + 30, nb.y + 10); await page.mouse.down();
+  await page.mouse.move(gb.x + 33, gb.y + gb.height + 40, { steps: 10 }); await page.waitForTimeout(200);
+  log('guides while dragging:', await page.locator('#guides .guide').count());
+  await shot('26-snap-guides');
+  await page.mouse.up();
+  log('note x vs generate x:', await page.evaluate(() => { const n = Object.values(CB.S.cards).find(c => c.bg), g = Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.generate'); return [Math.round(n.x * 10) / 10, g.x]; }));
+  await page.keyboard.press('Control+z');
+  // equal-width snap while resizing add_request towards generate's width
+  await focus('LLMEngine.add_request', 0.7); await page.waitForTimeout(300);
+  const ac = card('LLMEngine.add_request'), grip = await bbox(ac.locator('.grip'));
+  const gw = await page.evaluate(() => document.querySelector('#cardsL .card[data-id="' + Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.generate').id + '"]').offsetWidth);
+  const aw = await page.evaluate(() => Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.add_request').w);
+  await page.mouse.move(grip.x + 6, grip.y + 6); await page.mouse.down();
+  await page.mouse.move(grip.x + 6 + (gw - aw - 3) * 0.7, grip.y + 30, { steps: 8 }); await page.waitForTimeout(150);
+  log('size hint:', await page.locator('#guides .ghint').allTextContents());
+  await shot('27-same-width');
+  await page.mouse.up();
+  await page.keyboard.press('Control+z');
+  // align toolbar
+  await page.click('#zFit'); await page.waitForTimeout(400);
+  await selectTitles(['LLMEngine.add_request', 'LLMEngine.step', 'LLMEngine.generate']);
+  await page.waitForTimeout(200);
+  log('align bar visible:', await page.locator('#alignbar.show').count());
+  await shot('28-align-bar');
+  await page.locator('#alignbar [data-al="left"]').click(); await page.waitForTimeout(300);
+  log('x after Align Left:', await page.evaluate(() => Object.values(CB.S.cards).filter(c => c.kind === 'code').map(c => Math.round(c.x)).join(',')));
+  await page.keyboard.press('Control+z');
+  // lock
+  await selectTitles(['LLMEngine.step']); await page.keyboard.press('Control+Shift+L'); await page.waitForTimeout(200);
+  const sb0 = await bbox(head('LLMEngine.step')), y0 = await page.evaluate(() => Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.step').y);
+  await page.mouse.move(sb0.x + 40, sb0.y + 4); await page.mouse.down(); await page.mouse.move(sb0.x + 140, sb0.y + 120, { steps: 6 }); await page.mouse.up();
+  const y1 = await page.evaluate(() => Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.step').y);
+  await page.keyboard.press('Control+a');
+  log('locked: glyph', await card('LLMEngine.step').locator('.lockb').count(), '| moved', y0 !== y1, '| in Select All', await page.evaluate(() => [...CB.sel].includes(Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.step').id)));
+  await page.keyboard.press('Escape');
+  await focus('LLMEngine.step', 0.9);
+  await card('LLMEngine.step').locator('.src span.call:text-is("schedule")').click(); await page.waitForTimeout(600);
+  log('call in locked card still expands:', await card('Scheduler.schedule').count());
+  await focus('LLMEngine.step', 0.9); await shot('29-locked');
+  await card('LLMEngine.step').locator('.lockb').click(); await page.waitForTimeout(200);
+  log('after clicking the lock:', await card('LLMEngine.step').locator('.lockb').count());
+  // nested sections with colours
+  await page.evaluate(() => CB.resetDemo()); await page.waitForTimeout(300);
+  await page.click('#zFit'); await page.waitForTimeout(400);
+  await selectTitles(['LLMEngine.add_request', 'LLMEngine.step']);
+  await head('LLMEngine.step').click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Move to New Section")').click(); await page.waitForTimeout(150);
+  await page.keyboard.type('每一步'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+  const inner = page.locator('.slabel', { hasText: '每一步' });
+  await selectTitles(['LLMEngine.generate']);
+  await inner.click({ modifiers: ['Shift'] });
+  await head('LLMEngine.generate').click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Move to New Section")').click(); await page.waitForTimeout(150);
+  await page.keyboard.type('generate 外层'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+  const outer = page.locator('.slabel', { hasText: 'generate 外层' });
+  await outer.click({ button: 'right' }); await page.locator('#ctx button:has-text("Light Blue")').click();
+  await inner.click({ button: 'right' }); await shot('30-section-color-menu'); await page.locator('#ctx button:has-text("Warm Sand")').click();
+  await page.waitForTimeout(200);
+  log('sections:', await page.evaluate(() => CB.S.sects.map(s => `${s.name}<${s.parent ? CB.S.sects.find(x => x.id === s.parent).name : '-'}> ${s.color}`).join(' ; ')));
+  await page.click('#zFit'); await shot('31-nested-sections');
+  // drag the inner section out by its label, then back in
+  let ib = await bbox(inner); const ob = await bbox(page.locator('.sect', { has: outer }).first());
+  await page.mouse.move(ib.x + 8, ib.y + 8); await page.mouse.down(); await page.mouse.move(ob.x + ob.width + 260, ib.y + 8, { steps: 10 }); await page.mouse.up(); await page.waitForTimeout(300);
+  log('after drag out:', await page.evaluate(() => CB.S.sects.map(s => `${s.name}<${s.parent ? 'child' : 'top'}>`).join(' ; ')));
+  ib = await bbox(inner);
+  await page.mouse.move(ib.x + 8, ib.y + 8); await page.mouse.down(); await page.mouse.move(ob.x + 60, ib.y + 8, { steps: 10 }); await page.mouse.up(); await page.waitForTimeout(300);
+  log('after drag back in:', await page.evaluate(() => CB.S.sects.map(s => `${s.name}<${s.parent ? 'child' : 'top'}>`).join(' ; ')));
+  await page.keyboard.press('Control+z'); await page.keyboard.press('Control+z');
+  // plain link styling + labels on plain and call links
+  await page.evaluate(() => CB.resetDemo()); await page.waitForTimeout(300);
+  await page.click('#zFit'); await page.waitForTimeout(400);
+  await page.evaluate(() => { const g = Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.generate'), n = Object.values(CB.S.cards).find(c => c.bg); CB.select(null); CB.select(g.id, true); CB.select(n.id, true); });
+  await head('LLMEngine.generate').click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Connect with Plain Link")').click(); await page.waitForTimeout(300);
+  const pl = await page.evaluate(() => CB.S.links.find(l => l.t === 'plain').id);
+  for (const item of ['One-way', 'Solid', 'Orange']) { const m = await linkMid(pl); await page.mouse.click(m.x, m.y, { button: 'right' }); await page.waitForTimeout(150); if (item === 'One-way') await shot('32-link-menu'); await page.locator(`#ctx button:has-text("${item}")`).click(); await page.waitForTimeout(150); }
+  let m = await linkMid(pl); await page.mouse.dblclick(m.x, m.y); await page.waitForTimeout(150);
+  await page.keyboard.type('公式出处'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+  const cl = await page.evaluate(() => { const st = Object.values(CB.S.cards).find(c => c.title === 'LLMEngine.step'); return CB.S.links.find(l => l.b === st.id).id; });
+  m = await linkMid(cl); await page.mouse.dblclick(m.x, m.y); await page.waitForTimeout(150);
+  await page.keyboard.type('每轮一次'); await page.keyboard.press('Enter'); await page.waitForTimeout(200);
+  log('plain link:', await page.evaluate(id => { const l = CB.S.links.find(x => x.id === id); return [l.arrow, l.style, l.color, l.label].join(' '); }, pl), '| arrowheads', await page.locator('path.ahead.lc-orange').count(), '| call label chip:', await page.locator('.vchips .vlabel').allTextContents());
+  await shot('33-link-styles-labels');
+  // math in a note: KaTeX rendered
+  log('KaTeX rendered in note:', await page.locator('.card.note .katex').count());
   // 13. undo / redo
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+Shift+z');

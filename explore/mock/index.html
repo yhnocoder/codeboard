@@ -260,7 +260,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .slabel .chev2:hover { background: var(--hlrow); color: var(--ink); }
 .sect.collapsed { border: 0; }
 .sect.collapsed .slabel { position: static; background: var(--surface); box-shadow: var(--sh-card); padding: 6px 12px 6px 6px; border-radius: 8px; }
-.sect.sel .slabel { box-shadow: 0 0 0 1.5px var(--accent); }
+.sect.sel .slabel, .slabel.free.sel { box-shadow: 0 0 0 1.5px var(--accent); }
+#slabels { position: absolute; left: 0; top: 0; z-index: 4; }
+.slabel.free { position: absolute; }
 
 
 /* plain link styles, labels */
@@ -299,8 +301,8 @@ math { font-size: 1.05em; }
 .guide.v { border-left-width: 1px; width: 0; }
 .guide.h { border-top-width: 1px; height: 0; }
 .ghint { position: absolute; transform: translate(-50%, 0); font: 600 10.5px/1 var(--sys); color: #fff; background: var(--guide); padding: 4px 6px; border-radius: 4px; white-space: nowrap; }
-.alignbar { position: absolute; z-index: 15; display: none; }
-.alignbar.show { display: inline-flex; }
+.alignbar.pill { position: absolute; z-index: 15; display: none; }
+.alignbar.pill.show { display: inline-flex; }
 .alignbar .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 /* section colours (nested frames each keep their own) */
 .sect.c-sand { background: var(--s-sand); } .sect.c-blue { background: var(--s-blue); } .sect.c-green { background: var(--s-green); } .sect.c-pink { background: var(--s-pink); }
@@ -425,6 +427,7 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
     <div id="sects"></div>
     <svg class="edges" id="edges"></svg>
     <div id="cardsL"></div>
+    <div id="slabels"></div>
     <div class="labels" id="labels"></div>
     <div id="guides"></div>
   </div>
@@ -585,14 +588,14 @@ function run(fn) { anims.add(fn); kick(); }
 
 // ---------- camera (from base) ----------
 const board = $('#board'), world = $('#world'), edgesSvg = $('#edges'), cardsL = $('#cardsL'), labelsL = $('#labels'), sectsL = $('#sects');
-const zoomEl = $('#zoom');
+const zoomEl = $('#zoom'), slabelsL = $('#slabels');
 const cam = { x: new Spring(0, 120, 22, 0.05), y: new Spring(0, 120, 22, 0.05), k: new Spring(1, 120, 22, 0.0005) };
 let camRunning = false, camGen = 0;
 function stopCam() { camGen++; camRunning = false; for (const s of [cam.x, cam.y, cam.k]) s.set(s.v); }
 function applyCam() {
   world.style.transform = `translate(${cam.x.v}px, ${cam.y.v}px) scale(${cam.k.v})`;
   zoomEl.textContent = Math.round(cam.k.v * 100) + '%';
-  repositionPops();
+  repositionPops(); if (typeof placeAlignBar === 'function') placeAlignBar();
 }
 function camTo(x, y, k, soft) {
   for (const s of [cam.x, cam.y, cam.k]) { s.k = soft ? 90 : 120; s.c = soft ? 20 : 22; }
@@ -769,7 +772,11 @@ function texHTML(tex, block) {
 }
 function md(t) {
   t = String(t ?? ''); let out = '', i = 0; const re = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g; let m;
-  while ((m = re.exec(t))) { out += md0(t.slice(i, m.index)) + texHTML(m[1] ?? m[2], m[1] != null); i = m.index + m[0].length; }
+  while ((m = re.exec(t))) {
+    const block = m[1] != null; let pre = t.slice(i, m.index); i = m.index + m[0].length;
+    if (block) { pre = pre.replace(/\n$/, ''); if (t[i] === '\n') i++; } // a block formula is its own line
+    out += md0(pre) + texHTML(m[1] ?? m[2], block); re.lastIndex = i;
+  }
   return out + md0(t.slice(i));
 }
 let mathT = 0;
@@ -856,10 +863,10 @@ function buildText(c) {
   const el = document.createElement('div');
   if (c.bg) {
     el.className = 'card note' + (c.h ? '' : ' autoh'); el.dataset.id = c.id;
-    el.innerHTML = `<div class="chead"><span class="kind">¶</span><span class="ctitle">Note</span><span class="grow"></span><button class="ib" data-act="menu" aria-label="Note Menu" data-tip="More Actions" data-kbd="">${ICON_DOTS}</button></div><div class="nbody">${md(c.text)}</div><div class="grip"></div>`;
+    el.innerHTML = `<div class="chead">${c.lock ? `<button class="lockb" data-act="unlock" data-tip="Unlock" data-kbd="">${ICON_LOCK}</button>` : ''}<span class="kind">¶</span><span class="ctitle">Note</span><span class="grow"></span><button class="ib" data-act="menu" aria-label="Note Menu" data-tip="More Actions" data-kbd="">${ICON_DOTS}</button></div><div class="nbody">${md(c.text)}</div><div class="grip"></div>`;
   } else {
     el.className = 'card text'; el.dataset.id = c.id;
-    el.innerHTML = `<div class="tx st-${c.st}${c.bold ? ' bold' : ''}" data-ph="Type something…">${md(c.text)}</div><span class="hw l" data-act="tw" data-side="l"></span><span class="hw r" data-act="tw" data-side="r"></span>`
+    el.innerHTML = (c.lock ? `<button class="lockb abs" data-act="unlock" data-tip="Unlock" data-kbd="">${ICON_LOCK}</button>` : '') + `<div class="tx st-${c.st}${c.bold ? ' bold' : ''}" data-ph="Type something…">${md(c.text)}</div><span class="hw l" data-act="tw" data-side="l"></span><span class="hw r" data-act="tw" data-side="r"></span>`
       + `<div class="ttb pill"><button class="tbtn${c.st === 'title' ? ' on' : ''}" data-act="tst" data-v="title">Title</button><button class="tbtn${c.st === 'heading' ? ' on' : ''}" data-act="tst" data-v="heading">Heading</button><button class="tbtn${c.st === 'body' ? ' on' : ''}" data-act="tst" data-v="body">Body</button><span class="sep"></span><button class="tbtn${c.bold ? ' on' : ''}" data-act="tbold" style="font-weight:700">B</button><span class="sep"></span><button class="tbtn" data-act="tbg">Show Background</button></div>`;
   }
   return el;
@@ -873,7 +880,7 @@ const cardEl = id => cardsL.querySelector(`.card[data-id="${id}"]`);
 function render() {
   F = computeFlows();
   hiddenIds = computeHidden();
-  cardsL.textContent = ''; labelsL.textContent = ''; edgesSvg.textContent = ''; sectsL.textContent = '';
+  cardsL.textContent = ''; labelsL.textContent = ''; slabelsL.textContent = ''; edgesSvg.textContent = ''; sectsL.textContent = '';
   edgeEls = {};
   const list = Object.values(S.cards).sort((a, b) => a.n - b.n);
   const built = [];
@@ -881,6 +888,7 @@ function render() {
     if (c.kind === 'code' && c.cmp) continue;
     if (hiddenIds.has(c.id)) continue;
     const el = c.kind === 'code' ? buildCode(c) : c.kind === 'compare' ? buildCompare(c) : buildText(c);
+    if (isLocked(c.id)) el.classList.add('locked');
     place(el, c); cardsL.appendChild(el); built.push([el, c]);
   }
   for (const [el, c] of built) {
@@ -969,7 +977,7 @@ function buildCompare(c) {
   const el = document.createElement('div');
   el.className = 'card cmp' + (c.h ? '' : ' autoh'); el.dataset.id = c.id;
   const nm = x => x.title.split('.').pop();
-  el.innerHTML = `<div class="chead"><span class="kind">⇆</span><span class="ctitle">Compare · ${esc(nm(A))} ↔ ${esc(nm(B))}</span><span class="grow"></span>`
+  el.innerHTML = `<div class="chead">${c.lock ? `<button class="lockb" data-act="unlock" data-tip="Unlock" data-kbd="">${ICON_LOCK}</button>` : ''}<span class="kind">⇆</span><span class="ctitle">Compare · ${esc(nm(A))} ↔ ${esc(nm(B))}</span><span class="grow"></span>`
     + `<span class="tools"><button class="seg2" data-act="cswap">Swap</button><button class="seg2${c.uni ? ' on' : ''}" data-act="cuni">Unified</button><button class="seg2${c.same ? ' on' : ''}" data-act="csame">Hide Same Lines</button></span>`
     + `<button class="ib" data-act="menu" aria-label="Compare Menu" data-tip="More Actions" data-kbd="">${ICON_DOTS}</button></div>`
     + `<div class="colh">${colHead(A)}${colHead(B)}</div>`
@@ -1008,6 +1016,7 @@ function renderSections() {
       : `<div class="slabel" data-sect="${s.id}"><span class="dots">⋮⋮</span>${lock}<span class="sname">${esc(s.name)}</span><button class="chev2" data-act="scol" aria-label="Collapse Section">▾</button></div>`;
     sectsL.appendChild(el);
     if (s.col) { el.style.left = s.cx + 'px'; el.style.top = s.cy + 'px'; el.style.zIndex = 4; cardsL.appendChild(el); }
+    else { const lb = el.querySelector('.slabel'); lb.classList.add('free'); slabelsL.appendChild(lb); } // label floats above cards
   }
   updateSections();
 }
@@ -1016,8 +1025,10 @@ function updateSections() {
     if (s.col) continue;
     const el = sectsL.querySelector(`.sect[data-sect="${s.id}"]`); if (!el) continue;
     const r = sectRect(s);
-    if (!r) { el.style.display = 'none'; continue; }
+    const lb = slabelsL.querySelector(`.slabel[data-sect="${s.id}"]`);
+    if (!r) { el.style.display = 'none'; if (lb) lb.style.display = 'none'; continue; }
     el.style.display = ''; el.style.left = r.x + 'px'; el.style.top = r.y + 'px'; el.style.width = r.w + 'px'; el.style.height = r.h + 'px';
+    if (lb) { lb.style.display = ''; lb.style.left = (r.x + 10) + 'px'; lb.style.top = (r.y - 13) + 'px'; }
     s.cx = r.x; s.cy = r.y;
   }
 }
@@ -1205,13 +1216,15 @@ function tidyTree(rootId, animate) {
 function applySel() {
   for (const el of cardsL.querySelectorAll('.card')) { el.classList.toggle('sel', sel.has(el.dataset.id)); el.classList.toggle('solo', sel.size === 1); }
   for (const el of $$('.sect', world)) el.classList.toggle('sel', sel.has(el.dataset.sect));
+  for (const el of $$('.slabel.free', world)) el.classList.toggle('sel', sel.has(el.dataset.sect));
+  placeAlignBar();
 }
 function select(id, add) {
   if (!add) sel.clear();
   if (id) { if (add && sel.has(id)) sel.delete(id); else sel.add(id); }
   applySel();
 }
-function selectAll() { sel.clear(); for (const el of cardsL.querySelectorAll('.card')) sel.add(el.dataset.id); applySel(); }
+function selectAll() { sel.clear(); for (const el of cardsL.querySelectorAll('.card')) if (S.cards[el.dataset.id] && !isLocked(el.dataset.id)) sel.add(el.dataset.id); applySel(); }
 const selCards = () => [...sel].map(i => S.cards[i]).filter(Boolean);
 
 // line selection inside a code card (drives the dashed "+", S, H and the line menu)
@@ -1396,7 +1409,7 @@ function animateExpand(id, fromId, line) {
 let drag = null, spaceHeld = false, lastPtr = { x: 0, y: 0 }, connectFrom = null;
 const dbl = {};
 function isDbl(key) { const now = performance.now(), r = dbl.key === key && now - dbl.t < 420; dbl.key = key; dbl.t = now; if (r) dbl.key = null; return r; }
-const UI = '.over, .ctx, .present, .pop, .keys, .vchips, .vplus, .elabel';
+const UI = '.over, .ctx, .present, .pop, .keys, .vchips, .vplus, .elabel, .alignbar';
 
 board.addEventListener('pointerdown', ev => {
   lastPtr = { x: ev.clientX, y: ev.clientY };
@@ -1419,8 +1432,11 @@ board.addEventListener('pointerdown', ev => {
     const s = S.sects.find(x => x.id === lab.dataset.sect); if (!s) return;
     ev.preventDefault(); select(s.id, ev.shiftKey);
     if (isDbl('s' + s.id)) { renameSection(s); return; }
-    const ids = s.col ? [] : sectMembers(s);
-    drag = { kind: 'sect', s, sx: ev.clientX, sy: ev.clientY, before: snapshot(), items: ids.map(id => ({ c: S.cards[id], ox: S.cards[id].x, oy: S.cards[id].y })), ox: s.cx, oy: s.cy };
+    if (sectLocked(s)) return; // locked: select only
+    const ids = s.col ? [] : sectAllMembers(s);
+    const subs = s.col ? [] : sectDesc(s).filter(x => x.col && !sectHiddenByAncestor(x));
+    drag = { kind: 'sect', s, sx: ev.clientX, sy: ev.clientY, before: snapshot(), items: ids.map(id => ({ c: S.cards[id], ox: S.cards[id].x, oy: S.cards[id].y })), subs: subs.map(x => ({ s: x, ox: x.cx, oy: x.cy })), ox: s.cx, oy: s.cy,
+      frames: sectFrames(), skip: new Set([s.id, ...sectDesc(s).map(x => x.id)]) };
     board.setPointerCapture(ev.pointerId); return;
   }
   if (t.closest('.call')) { ev.preventDefault(); select(topId(colCardId(t)), false); callDragStart(t.closest('.call'), ev); return; } // click expands; drag links
@@ -1433,12 +1449,12 @@ board.addEventListener('pointerdown', ev => {
     board.setPointerCapture(ev.pointerId); ev.preventDefault(); return;
   }
   const id = ce.dataset.id, c = S.cards[id];
-  if (t.closest('.grip')) {
+  if (t.closest('.grip') && !isLocked(id)) {
     ev.preventDefault(); select(id);
-    drag = { kind: 'resize', c, el: ce, sx: ev.clientX, sy: ev.clientY, ow: ce.offsetWidth, oh: ce.offsetHeight, before: snapshot() };
+    drag = { kind: 'resize', c, el: ce, sx: ev.clientX, sy: ev.clientY, ow: ce.offsetWidth, oh: ce.offsetHeight, before: snapshot(), targets: snapTargets(new Set([id])) };
     board.setPointerCapture(ev.pointerId); return;
   }
-  if (t.closest('.hw')) {
+  if (t.closest('.hw') && !isLocked(id)) {
     ev.preventDefault();
     drag = { kind: 'tw', c, el: ce, side: t.closest('.hw').dataset.side, sx: ev.clientX, ow: c.w, ox: c.x, before: snapshot() };
     board.setPointerCapture(ev.pointerId); return;
@@ -1455,8 +1471,12 @@ board.addEventListener('pointerdown', ev => {
     if (ev.shiftKey) { select(id, true); return; }
     if (!sel.has(id)) select(id);
     hidePeek(true); hideSnpop(true);
-    const ids = [...sel].filter(i => S.cards[i] && cardEl(i));
+    if (inHead && t.closest('.lockb')) return;
+    const ids = [...sel].filter(i => S.cards[i] && cardEl(i) && !isLocked(i));
+    if (!ids.length) return; // locked: click selects, nothing moves
     drag = { kind: 'card', sx: ev.clientX, sy: ev.clientY, moved: false, before: snapshot(), items: ids.map(i => ({ c: S.cards[i], el: cardEl(i), ox: S.cards[i].x, oy: S.cards[i].y })) };
+    drag.box = union(drag.items.map(it => ({ x: it.ox, y: it.oy, w: it.el.offsetWidth, h: it.el.offsetHeight })));
+    drag.targets = snapTargets(new Set(ids)); drag.frames = sectFrames();
     drag.items.forEach(it => it.el.classList.add('lift'));
     board.setPointerCapture(ev.pointerId); return;
   }
@@ -1477,17 +1497,22 @@ board.addEventListener('pointermove', ev => {
   const k = cam.k.v, dx = (ev.clientX - drag.sx) / k, dy = (ev.clientY - drag.sy) / k;
   if (drag.kind === 'card') {
     if (!drag.moved && Math.hypot(ev.clientX - drag.sx, ev.clientY - drag.sy) < 2) return;
-    drag.moved = true;
-    for (const it of drag.items) { it.c.x = it.ox + dx; it.c.y = it.oy + dy; place(it.el, it.c); }
+    drag.moved = true; hideAlignBar();
+    mergeHover(ev);
+    let mx = dx, my = dy;
+    if (!(ev.metaKey || ev.ctrlKey) && !drag.armed) { const sn = snapMove(drag.box, dx, dy, drag.targets); mx = sn.dx; my = sn.dy; } else clearGuides();
+    for (const it of drag.items) { it.c.x = it.ox + mx; it.c.y = it.oy + my; place(it.el, it.c); }
     redrawEdges(); updateSections();
   } else if (drag.kind === 'sect') {
     drag.moved = true;
     for (const it of drag.items) { it.c.x = it.ox + dx; it.c.y = it.oy + dy; const el = cardEl(it.c.id); if (el) place(el, it.c); }
-    if (drag.s.col) { drag.s.cx = drag.ox + dx; drag.s.cy = drag.oy + dy; const el = cardsL.querySelector(`.sect[data-sect="${drag.s.id}"]`); if (el) { el.style.left = drag.s.cx + 'px'; el.style.top = drag.s.cy + 'px'; } }
+    for (const q of [{ s: drag.s, ox: drag.ox, oy: drag.oy }, ...drag.subs]) if (q.s.col) { q.s.cx = q.ox + dx; q.s.cy = q.oy + dy; const el = cardsL.querySelector(`.sect[data-sect="${q.s.id}"]`); if (el) { el.style.left = q.s.cx + 'px'; el.style.top = q.s.cy + 'px'; } }
     redrawEdges(); updateSections();
   } else if (drag.kind === 'resize') {
     drag.moved = true;
-    drag.c.w = Math.max(280, drag.ow + dx); drag.c.h = Math.max(120, drag.oh + dy);
+    let w = Math.max(280, drag.ow + dx), h = Math.max(120, drag.oh + dy);
+    if (!(ev.metaKey || ev.ctrlKey)) ({ w, h } = snapSize(drag.c, w, h, drag.targets)); else clearGuides();
+    drag.c.w = w; drag.c.h = h;
     drag.el.classList.remove('autoh'); place(drag.el, drag.c);
     const cr = drag.el.querySelector('.crows'); if (cr) cr.style.setProperty('--cw', Math.round((drag.c.w - 2) / 2) + 'px');
     redrawEdges(); updateSections();
@@ -1501,7 +1526,7 @@ board.addEventListener('pointermove', ev => {
     if (w + h < 4) return;
     m.style.display = 'block'; m.style.left = x0 + 'px'; m.style.top = y0 + 'px'; m.style.width = w + 'px'; m.style.height = h + 'px';
     sel.clear(); drag.base.forEach(i => sel.add(i));
-    for (const el of cardsL.querySelectorAll('.card')) { const r = rectB(el); if (r.x < x0 + w && r.x + r.w > x0 && r.y < y0 + h && r.y + r.h > y0) sel.add(el.dataset.id); }
+    for (const el of cardsL.querySelectorAll('.card')) { if (isLocked(el.dataset.id)) continue; const r = rectB(el); if (r.x < x0 + w && r.x + r.w > x0 && r.y < y0 + h && r.y + r.h > y0) sel.add(el.dataset.id); }
     applySel();
   } else if (drag.kind === 'pan') {
     const now = performance.now(), dt = Math.max(1, now - drag.lt);
@@ -1514,10 +1539,23 @@ function endDrag(ev) {
   if (callDrag) return callDragEnd(ev);
   if (!drag) return;
   const d = drag; drag = null;
+  clearGuides();
   if (d.kind === 'card') {
     d.items.forEach(it => it.el.classList.remove('lift'));
-    if (d.moved) { for (const it of d.items) updateMembership(it.c.id); pushUndo(d.before); save(); render(); }
-  } else if (d.kind === 'sect' || d.kind === 'resize' || d.kind === 'tw') {
+    clearTimeout(d.mtT); if (d.mt) d.mt.classList.remove('merge-arm', 'merge-hot');
+    if (d.armed && d.mt) { // dropped on another code card's header after a pause: merge
+      for (const it of d.items) { it.c.x = it.ox; it.c.y = it.oy; }
+      const T = S.cards[d.mt.dataset.id];
+      return mergeCards([T.id, ...d.items.map(it => it.c.id)], { x: T.x, y: T.y });
+    }
+    if (d.moved) { for (const it of d.items) updateMembership(it.c.id, d.frames); pruneSects(); pushUndo(d.before); save(); render(); }
+  } else if (d.kind === 'sect') {
+    if (d.moved) {
+      const w = toWorld(ev.clientX, ev.clientY), np = deepestAt(d.frames, w.x, w.y, d.skip), was = d.s.parent || null;
+      if ((np ? np.id : null) !== was) { d.s.parent = np ? np.id : null; toast(np ? `Moved into ${np.name}` : 'Moved out of the section'); }
+      pruneSects(); pushUndo(d.before); save(); render();
+    }
+  } else if (d.kind === 'resize' || d.kind === 'tw') {
     if (d.moved) { pushUndo(d.before); save(); render(); }
   } else if (d.kind === 'marq') { $('#marq').style.display = 'none'; }
   else if (d.kind === 'pan') {
@@ -1531,19 +1569,16 @@ function endDrag(ev) {
 }
 board.addEventListener('pointerup', endDrag);
 board.addEventListener('pointercancel', endDrag);
-function updateMembership(id) { // card centre inside a section frame -> member; outside -> leaves
+function updateMembership(id, frames) { // card centre inside a frame -> member of the deepest such section
   const c = S.cards[id], el = cardEl(id); if (!c || !el) return;
-  const cx = c.x + el.offsetWidth / 2, cy = c.y + Math.min(el.offsetHeight / 2, 40);
+  const cx = c.x + el.offsetWidth / 2, cy = c.y + el.offsetHeight / 2;
   const ids = c.kind === 'compare' ? [id, ...c.cols] : [id];
-  for (const s of S.sects) {
-    if (s.col) continue;
-    const others = { ...s, ids: s.ids.filter(i => !ids.includes(i)) };
-    const r = sectRect(others);
-    const inside = r && cx > r.x && cx < r.x + r.w && cy > r.y && cy < r.y + r.h;
-    const member = s.ids.some(i => ids.includes(i));
-    if (inside && !member) s.ids.push(id);
-    if (!inside && member && others.ids.length) s.ids = others.ids;
-  }
+  const cur = S.sects.find(s => s.ids.some(i => ids.includes(i))) || null;
+  const best = deepestAt(frames || sectFrames(), cx, cy);
+  if (best === cur) return;
+  if (!best && cur && sectMembers(cur).length <= 1 && !sectChildren(cur).length) return; // a lone card takes its section along
+  for (const s of S.sects) s.ids = s.ids.filter(i => !ids.includes(i));
+  if (best) best.ids.push(id);
 }
 board.addEventListener('wheel', ev => {
   const sc = ev.target.closest('.cbody, .pcode, .sres, .keys, .pop');
@@ -1568,6 +1603,134 @@ $('#zIn').onclick = () => zoomBy(1.25);
 $('#zOut').onclick = () => zoomBy(0.8);
 $('#zFit').onclick = fitAll;
 
+// =====================================================================
+// Snapping (move + resize), drag-to-merge, align toolbar
+// =====================================================================
+function snapTargets(excl) { // rects of other visible cards and section frames, measured at drag start
+  const out = [];
+  for (const el of cardsL.querySelectorAll('.card')) { const id = el.dataset.id, c = S.cards[id]; if (!c || excl.has(id)) continue; out.push({ x: c.x, y: c.y, w: el.offsetWidth, h: el.offsetHeight }); }
+  for (const el of cardsL.querySelectorAll('.sect.collapsed')) { const s = sectById(el.dataset.sect); if (s) out.push({ x: s.cx, y: s.cy, w: el.offsetWidth, h: el.offsetHeight }); }
+  const fr = sectFrames(excl); for (const k in fr) out.push(fr[k]);
+  return out;
+}
+const guidesL = () => document.getElementById('guides');
+function clearGuides() { const g = guidesL(); if (g) g.textContent = ''; }
+function drawGuide(axis, v, a, b) {
+  const n = document.createElement('div'), k = cam.k.v;
+  n.className = 'guide ' + axis;
+  if (axis === 'v') { n.style.left = v + 'px'; n.style.top = a + 'px'; n.style.height = (b - a) + 'px'; n.style.borderLeftWidth = (1 / k) + 'px'; }
+  else { n.style.top = v + 'px'; n.style.left = a + 'px'; n.style.width = (b - a) + 'px'; n.style.borderTopWidth = (1 / k) + 'px'; }
+  guidesL().appendChild(n);
+}
+function drawHint(x, y, text) {
+  const n = document.createElement('div'); n.className = 'ghint'; n.textContent = text;
+  n.style.left = x + 'px'; n.style.top = y + 'px'; n.style.transform = `translate(-50%, 0) scale(${1 / cam.k.v})`; n.style.transformOrigin = '50% 0';
+  guidesL().appendChild(n);
+}
+const xs = r => [r.x, r.x + r.w / 2, r.x + r.w], ys = r => [r.y, r.y + r.h / 2, r.y + r.h];
+function bestSnap(mine, targets, lines, T) { // smallest correction that puts one of my lines on a target line
+  let best = null;
+  for (const m of mine) for (const t of targets) for (const v of lines(t)) { const d = v - m; if (Math.abs(d) < T && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, v }; }
+  return best;
+}
+function guideFor(axis, v, box, targets) {
+  const hits = targets.filter(t => (axis === 'v' ? xs(t) : ys(t)).some(q => Math.abs(q - v) < 0.5));
+  if (!hits.length) return;
+  const all = [box, ...hits];
+  if (axis === 'v') drawGuide('v', v, Math.min(...all.map(r => r.y)) - 8, Math.max(...all.map(r => r.y + r.h)) + 8);
+  else drawGuide('h', v, Math.min(...all.map(r => r.x)) - 8, Math.max(...all.map(r => r.x + r.w)) + 8);
+}
+function snapMove(box, dx, dy, targets) {
+  clearGuides();
+  const T = 6 / cam.k.v, b = { ...box, x: box.x + dx, y: box.y + dy };
+  const sx = bestSnap(xs(b), targets, xs, T), sy = bestSnap(ys(b), targets, ys, T);
+  if (sx) { dx += sx.d; b.x += sx.d; } if (sy) { dy += sy.d; b.y += sy.d; }
+  if (sx) guideFor('v', sx.v, b, targets); if (sy) guideFor('h', sy.v, b, targets);
+  return { dx, dy };
+}
+function snapSize(c, w, h, targets) {
+  clearGuides();
+  const T = 6 / cam.k.v;
+  const ex = bestSnap([c.x + w], targets, xs, T), ey = bestSnap([c.y + h], targets, ys, T);
+  let eqW = null, eqH = null;
+  for (const t of targets) { const d = t.w - w; if (Math.abs(d) < T && (!eqW || Math.abs(d) < Math.abs(eqW.d))) eqW = { d, v: t.w }; const e = t.h - h; if (Math.abs(e) < T && (!eqH || Math.abs(e) < Math.abs(eqH.d))) eqH = { d, v: t.h }; }
+  let hintW = false, hintH = false;
+  if (eqW && (!ex || Math.abs(eqW.d) <= Math.abs(ex.d))) { w = eqW.v; hintW = true; } else if (ex) w += ex.d;
+  if (eqH && (!ey || Math.abs(eqH.d) <= Math.abs(ey.d))) { h = eqH.v; hintH = true; } else if (ey) h += ey.d;
+  w = Math.max(280, w); h = Math.max(120, h);
+  const b = { x: c.x, y: c.y, w, h };
+  if (!hintW && ex) guideFor('v', c.x + w, b, targets);
+  if (!hintH && ey) guideFor('h', c.y + h, b, targets);
+  if (hintW) drawHint(c.x + w / 2, c.y + h + 8, `same width · ${Math.round(w)}`);
+  if (hintH) drawHint(c.x + w + 52, c.y + h / 2 - 8, `same height · ${Math.round(h)}`);
+  return { w, h };
+}
+// drag one code card onto another code card's header and pause 0.4 s -> "Release to merge"
+function mergeHover(ev) {
+  const d = drag; if (!d.items.every(it => mergeable(it.c))) return;
+  const mine = new Set(d.items.map(it => it.c.id));
+  let tgt = null;
+  for (const el of cardsL.querySelectorAll('.card.kcode')) {
+    if (mine.has(el.dataset.id) || !mergeable(S.cards[el.dataset.id])) continue;
+    const r = el.querySelector('.chead').getBoundingClientRect();
+    if (ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom) { tgt = el; break; }
+  }
+  if (tgt === d.mt) return;
+  clearTimeout(d.mtT); if (d.mt) d.mt.classList.remove('merge-arm', 'merge-hot');
+  d.mt = tgt; d.armed = false;
+  if (tgt) { tgt.classList.add('merge-arm'); d.mtT = setTimeout(() => { if (drag === d && d.mt === tgt) { d.armed = true; tgt.classList.add('merge-hot'); clearGuides(); } }, 400); }
+}
+// floating align toolbar for ≥2 selected cards
+const AL_ICONS = {
+  left: '<path d="M3 2.5v11"/><rect x="5" y="4" width="8" height="3" rx=".6"/><rect x="5" y="9" width="5" height="3" rx=".6"/>',
+  hcenter: '<path d="M8 2.5v11"/><rect x="3" y="4" width="10" height="3" rx=".6"/><rect x="5" y="9" width="6" height="3" rx=".6"/>',
+  right: '<path d="M13 2.5v11"/><rect x="3" y="4" width="8" height="3" rx=".6"/><rect x="6" y="9" width="5" height="3" rx=".6"/>',
+  top: '<path d="M2.5 3h11"/><rect x="4" y="5" width="3" height="8" rx=".6"/><rect x="9" y="5" width="3" height="5" rx=".6"/>',
+  bottom: '<path d="M2.5 13h11"/><rect x="4" y="3" width="3" height="8" rx=".6"/><rect x="9" y="6" width="3" height="5" rx=".6"/>',
+  disth: '<path d="M2.5 3v10M13.5 3v10"/><rect x="6.5" y="5" width="3" height="6" rx=".6"/>',
+  distv: '<path d="M3 2.5h10M3 13.5h10"/><rect x="5" y="6.5" width="6" height="3" rx=".6"/>',
+  samew: '<path d="M2.5 8h11M4.5 6 2.5 8l2 2M11.5 6l2 2-2 2"/><path d="M2.5 3.5v9M13.5 3.5v9" opacity=".5"/>',
+};
+const AL_TIPS = { left: 'Align Left', hcenter: 'Align Centre', right: 'Align Right', top: 'Align Top', bottom: 'Align Bottom', disth: 'Distribute Horizontally', distv: 'Distribute Vertically', samew: 'Same Width' };
+function alignItems() { return [...sel].map(id => ({ id, c: S.cards[id], el: cardEl(id) })).filter(o => o.c && o.el).map(o => ({ ...o, r: { x: o.c.x, y: o.c.y, w: o.el.offsetWidth, h: o.el.offsetHeight } })); }
+function hideAlignBar() { const b = document.getElementById('alignbar'); if (b) b.classList.remove('show'); }
+function placeAlignBar() {
+  const bar = document.getElementById('alignbar'); if (!bar || !S) return;
+  const its = alignItems();
+  if (its.length < 2 || drag || walk) return bar.classList.remove('show');
+  if (!bar.dataset.built) {
+    bar.dataset.built = 1;
+    bar.innerHTML = ['left', 'hcenter', 'right', '|', 'top', 'bottom', '|', 'disth', 'distv', '|', 'samew'].map(k => k === '|' ? '<span class="sep"></span>'
+      : `<button class="ib" data-al="${k}" aria-label="${AL_TIPS[k]}" data-tip="${AL_TIPS[k]}" data-kbd=""><svg class="ico" viewBox="0 0 16 16">${AL_ICONS[k]}</svg></button>`).join('');
+  }
+  const u = union(its.map(o => o.r)), k = cam.k.v;
+  const sx = u.x * k + cam.x.v, sy = u.y * k + cam.y.v, sw = u.w * k;
+  bar.classList.add('show');
+  bar.querySelector('[data-al="disth"]').disabled = bar.querySelector('[data-al="distv"]').disabled = its.length < 3;
+  const bw = bar.offsetWidth, W = board.clientWidth;
+  let y = sy - bar.offsetHeight - 12; if (y < 56) y = sy + u.h * k + 12;
+  bar.style.left = clamp(sx + sw / 2 - bw / 2, 8, W - bw - 8) + 'px'; bar.style.top = clamp(y, 8, board.clientHeight - 50) + 'px';
+}
+function alignSel(kind) {
+  const its = alignItems(), mov = its.filter(o => !isLocked(o.id));
+  if (its.length < 2) return;
+  const u = union(its.map(o => o.r));
+  mut(() => {
+    if (kind === 'left') mov.forEach(o => o.c.x = u.x);
+    if (kind === 'hcenter') mov.forEach(o => o.c.x = u.x + u.w / 2 - o.r.w / 2);
+    if (kind === 'right') mov.forEach(o => o.c.x = u.x + u.w - o.r.w);
+    if (kind === 'top') mov.forEach(o => o.c.y = u.y);
+    if (kind === 'bottom') mov.forEach(o => o.c.y = u.y + u.h - o.r.h);
+    if (kind === 'disth' || kind === 'distv') {
+      const X = kind === 'disth', key = X ? 'x' : 'y', len = X ? 'w' : 'h';
+      const srt = its.slice().sort((a, b) => a.r[key] - b.r[key]);
+      const span = (X ? u.w : u.h), gap = (span - srt.reduce((n, o) => n + o.r[len], 0)) / (srt.length - 1);
+      let at = u[key]; for (const o of srt) { if (!isLocked(o.id)) o.c[key] = at; at += o.r[len] + gap; }
+    }
+    if (kind === 'samew') { const w = its[0].r.w; mov.forEach(o => { o.c.w = w; }); toast(`Same width · ${Math.round(w)}`); }
+  });
+}
+document.getElementById('alignbar').addEventListener('click', e => { const b = e.target.closest('[data-al]'); if (b && !b.disabled) alignSel(b.dataset.al); });
 // =====================================================================
 // Popovers (board coordinates)
 // =====================================================================
@@ -1735,7 +1898,16 @@ function sectMenu(s) {
   return [
     { label: 'Rename', kbd: 'Double-click', act: () => renameSection(s) },
     { label: s.col ? 'Expand' : 'Collapse', act: () => toggleSect(s) },
-    null, { label: 'Delete Section Only', act: () => mut(() => { S.sects = S.sects.filter(x => x !== s); }) },
+    { label: s.lock ? 'Unlock' : 'Lock', kbd: K.mod + K.shift + 'L', act: () => { select(s.id); toggleLockSel(); } },
+    ...(s.parent ? [{ label: 'Move Out of Parent Section', act: () => mut(() => { const p = sectById(s.parent); s.parent = p ? p.parent || null : null; }) }] : []),
+    { head: 'Color' },
+    ...SCOLORS.map(([v, lb]) => ({ label: lb, sw: v, check: (s.color || 'none') === v, act: () => mut(() => { s.color = v; }) })),
+    null, { label: 'Delete Section Only', why: 'Cards and inner sections stay', act: () => mut(() => {
+      const p = sectById(s.parent);
+      if (p) p.ids.push(...s.ids);
+      for (const ch of sectChildren(s)) ch.parent = s.parent || null;
+      S.sects = S.sects.filter(x => x !== s);
+    }) },
   ];
 }
 const range = (a, b) => { const r = []; for (let i = a; i <= b; i++) r.push(i); return r; };
@@ -1786,9 +1958,10 @@ function deleteSel() {
   setTimeout(() => mut(() => {
     for (const id of ids) delete S.cards[id];
     S.links = S.links.filter(L => !ids.has(L.a) && !ids.has(L.b));
+    for (const s of S.sects) if (sects.has(s.id)) { for (const ch of sectChildren(s)) if (!sects.has(ch.id)) ch.parent = s.parent || null; const p = sectById(s.parent); if (p) p.ids.push(...s.ids); }
     S.sects = S.sects.filter(s => !sects.has(s.id));
     for (const s of S.sects) s.ids = s.ids.filter(i => !ids.has(i));
-    S.sects = S.sects.filter(s => s.ids.length);
+    pruneSects();
   }), reduce.matches ? 0 : 150 * speed);
 }
 function duplicateSel() {
@@ -1847,7 +2020,7 @@ function mergeCards(ids, at) {
     const segs = normSegs(cs.flatMap(c => c.segs || [{ f: c.f, s: c.s, e: c.e }]));
     const x0 = at ? at.x : Math.min(...cs.map(c => c.x)), y0 = at ? at.y : Math.min(...cs.map(c => c.y));
     M = { id: nid('c'), kind: 'code', sym: null, segs, f: segs[0].f, s: segs[0].s, e: segs[0].e,
-      title: `${cs[0].title.replace(/ \+\d+$/, '')} +${cs.length - 1}`, sk: 'snip', desc: cs.map(c => c.desc).filter(Boolean).join('\n'),
+      title: `${cs[0].title.replace(/ \+\d+$/, '')} +${cs.reduce((n, c) => n + (c.mcount || 1), 0) - 1}`, mcount: cs.reduce((n, c) => n + (c.mcount || 1), 0), sk: 'snip', desc: cs.map(c => c.desc).filter(Boolean).join('\n'),
       x: x0, y: y0, x0, y0, w: Math.max(560, ...cs.map(c => c.w || 0)), h: null, hid: [], tg: { ...cs[0].tg }, hl: [], notes: [], cmp: null,
       flow: cs.some(c => c.flow), sub: false, lock: false, n: Math.min(...cs.map(c => c.n)), sc: 0,
       merged: cs.map(c => JSON.parse(JSON.stringify(c))), mlinks: [] };
@@ -1861,8 +2034,8 @@ function mergeCards(ids, at) {
     S.links = S.links.filter(L => {
       const ia = set.has(L.a), ib = set.has(L.b);
       if (ia && ib) { M.mlinks.push(JSON.parse(JSON.stringify(L))); return false; } // links inside the group come back on Unmerge
-      if (ia) { if (L.l != null) L.l = encBy[L.a](L.l); L.ma = L.a; L.a = M.id; }
-      if (ib) { L.mb = L.b; L.b = M.id; }
+      if (ia) { if (L.l != null) L.l = encBy[L.a](L.l); (L.ma ||= []).push(L.a); L.a = M.id; }
+      if (ib) { (L.mb ||= []).push(L.b); L.b = M.id; }
       return true;
     });
     let placed = false;
@@ -1888,8 +2061,8 @@ function unmerge(id) {
     for (const n of M.notes) { const o = owner(n.a); if (!o) continue; const top = rangesOf[o.id].find(([a, b]) => n.a >= a && n.a <= b); o.notes.push({ ...n, a: dec(o, n.a), b: dec(o, Math.min(n.b, top[1])) }); }
     for (const [ha, hb] of M.hid) for (const o of os) for (const [a, b] of rangesOf[o.id]) { const x = Math.max(a, ha), y = Math.min(b, hb); if (x <= y) o.hid.push([dec(o, x), dec(o, y)]); }
     for (const L of S.links) {
-      if (L.a === id) { const o = (L.l != null && owner(L.l)) || os.find(q => q.id === L.ma) || os[0]; if (L.l != null && owner(L.l)) L.l = dec(o, L.l); L.a = o.id; delete L.ma; }
-      if (L.b === id) { L.b = (os.find(q => q.id === L.mb) || os[0]).id; delete L.mb; }
+      if (L.a === id) { const was = L.ma && L.ma.pop(), o = (L.l != null && owner(L.l)) || os.find(q => q.id === was) || os[0]; if (L.l != null && owner(L.l)) L.l = dec(o, L.l); L.a = o.id; if (L.ma && !L.ma.length) delete L.ma; }
+      if (L.b === id) { const was = L.mb && L.mb.pop(); L.b = (os.find(q => q.id === was) || os[0]).id; if (L.mb && !L.mb.length) delete L.mb; }
     }
     delete S.cards[id];
     for (const o of os) addCard(o);
@@ -1913,9 +2086,16 @@ function toggleLockSel() {
 }
 function moveToSection() {
   const ids = [...sel].filter(i => S.cards[i]);
-  if (!ids.length) return;
+  if (!ids.length && ![...sel].some(sectById)) return;
   let s;
-  mut(() => { for (const x of S.sects) x.ids = x.ids.filter(i => !ids.includes(i)); S.sects = S.sects.filter(x => x.ids.length); s = { id: nid('s'), name: 'Untitled Section', ids, col: false, cx: 0, cy: 0 }; S.sects.push(s); });
+  mut(() => {
+    const homes = [...new Set(ids.map(i => sectOf(i)))], parent = homes.length === 1 && homes[0] ? homes[0].id : null;
+    const subs = [...sel].map(sectById).filter(Boolean);
+    for (const x of S.sects) x.ids = x.ids.filter(i => !ids.includes(i));
+    s = { id: nid('s'), name: 'Untitled Section', ids, col: false, cx: 0, cy: 0, parent, color: 'none', lock: false }; S.sects.push(s);
+    for (const q of subs) { let ok = true; for (let a = s; a; a = sectById(a.parent)) if (a === q) ok = false; if (ok) q.parent = s.id; }
+    pruneSects();
+  });
   renameSection(S.sects.find(x => x.id === s.id), true);
 }
 function toggleSect(s) {
@@ -1955,7 +2135,7 @@ function editDesc(el, c) {
   inlineEdit(d, { initial: c.desc || '', multiline: true, selectAll: false, onDone: v => { if (v != null && v.trim() !== (c.desc || '')) mut(() => { c.desc = v.trim(); }); else render(); } });
 }
 function renameSection(s, fresh) {
-  const n = sectsL.querySelector(`.slabel[data-sect="${s.id}"] .sname`) || cardsL.querySelector(`.slabel[data-sect="${s.id}"] .sname`); if (!n) return;
+  const n = world.querySelector(`.slabel[data-sect="${s.id}"] .sname`); if (!n) return;
   inlineEdit(n, { initial: s.name, onDone: v => { if (v && v.trim() && v.trim() !== s.name) { if (fresh) { s.name = v.trim(); save(); render(); } else mut(() => { s.name = v.trim(); }); } else render(); } });
 }
 let pendingNewText = null;
@@ -2352,6 +2532,8 @@ board.addEventListener('click', ev => {
   else if (act === 'cswap') mut(() => { c.cols.reverse(); });
   else if (act === 'cuni') mut(() => { c.uni = !c.uni; });
   else if (act === 'csame') mut(() => { c.same = !c.same; });
+  else if (act === 'unlock') { if (c) mut(() => { c.lock = false; }); toast('Unlocked'); }
+  else if (act === 'sunlock') { const s = sectById(b.closest('.slabel').dataset.sect); if (s) mut(() => { s.lock = false; }); toast('Section unlocked'); }
   else if (act === 'scol') { const s = S.sects.find(x => x.id === b.closest('.slabel').dataset.sect); if (s) toggleSect(s); }
 });
 
@@ -2391,7 +2573,7 @@ function applyWalk() {
   if (!walk) {
     for (const el of cardsL.querySelectorAll('.card')) el.classList.remove('dim');
     for (const id in edgeEls) { const g = edgeEls[id]; [g.path, g.head, g.port, g.chips, g.lab].forEach(n => n && (n.style.opacity = '')); }
-    $$('.sect', world).forEach(s => s.style.opacity = '');
+    $$('.sect, .slabel.free', world).forEach(s => s.style.opacity = '');
     return;
   }
   walk.list = walk.list.filter(x => S.cards[x]);
@@ -2401,7 +2583,7 @@ function applyWalk() {
   const c = S.cards[cur];
   if (c.cmp) { const k = S.cards[c.cmp], other = k.cols.find(x => x !== cur); $$(`[data-col="${other}"]`, cardEl(top)).forEach(n => n.classList.add('cdimcol')); }
   for (const id in edgeEls) { const g = edgeEls[id], on = g.L.a === cur || g.L.b === cur; [g.path, g.head, g.port, g.chips, g.lab].forEach(n => n && (n.style.opacity = on ? '' : .18)); }
-  $$('.sect', world).forEach(s => s.style.opacity = .3);
+  $$('.sect, .slabel.free', world).forEach(s => s.style.opacity = .3);
   $('#pNum').textContent = F.num[cur] || '';
   $('#pTitle').textContent = c.title;
   $('#pCnt').textContent = `${walk.i + 1} / ${walk.list.length}`;
@@ -2442,6 +2624,7 @@ document.addEventListener('keydown', ev => {
   }
   if (walk && (k === 'ArrowRight' || k === 'ArrowDown')) { ev.preventDefault(); return showStep(walk.i + 1); }
   if (walk && (k === 'ArrowLeft' || k === 'ArrowUp')) { ev.preventDefault(); return showStep(walk.i - 1); }
+  if (mod && ev.shiftKey && kl === 'l') { ev.preventDefault(); return toggleLockSel(); }
   if (mod && kl === 'z') { ev.preventDefault(); return ev.shiftKey ? redo() : undo(); }
   if (mod && kl === 'y') { ev.preventDefault(); return redo(); }
   if (mod && kl === 'a') { ev.preventDefault(); return selectAll(); }
