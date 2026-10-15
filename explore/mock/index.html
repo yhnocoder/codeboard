@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>CodeBoard Mock</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css" crossorigin="anonymous" onload="window.__katexCss=1;window.__mathReady&&window.__mathReady()">
 <style>
 /* CodeBoard interactive mock — extends explore/ui-feel/board.html (暖墨 material, spring motion, no-web-feel rules). */
 :root {
@@ -20,6 +21,8 @@
   --chg: rgba(196,138,31,.13); --chg-strong: rgba(196,138,31,.34); --del: rgba(181,85,45,.09); --add: rgba(74,117,54,.10);
   --hatch: rgba(60,45,20,.07);
   --edge: #9a958b;
+  --s-sand: rgba(206,170,110,.16); --s-blue: rgba(96,145,205,.12); --s-green: rgba(110,165,95,.13); --s-pink: rgba(215,120,145,.12);
+  --lk-orange: #c46a2a; --lk-blue: #3a72aa; --lk-green: #4c8a3a; --guide: #2f7de1;
   --glass: rgba(253,252,250,.94);
   --tip-bg: rgba(34,32,28,.92); --tip-ink: #f6f4ef;
   --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,.9), 0 1px 1px rgba(50,35,10,.04), 0 3px 8px -2px rgba(50,35,10,.06), 0 18px 36px -14px rgba(50,35,10,.16);
@@ -48,6 +51,8 @@
     --chg: rgba(224,176,85,.12); --chg-strong: rgba(224,176,85,.32); --del: rgba(227,137,95,.12); --add: rgba(163,201,140,.12);
     --hatch: rgba(255,240,220,.06);
     --edge: #78746c;
+    --s-sand: rgba(214,180,120,.10); --s-blue: rgba(120,165,225,.09); --s-green: rgba(140,195,120,.09); --s-pink: rgba(230,140,165,.09);
+    --lk-orange: #e3955a; --lk-blue: #7fb0e0; --lk-green: #96c47e; --guide: #5aa2ff;
     --glass: rgba(42,41,38,.94);
     --tip-bg: rgba(245,243,238,.94); --tip-ink: #1d1c1a;
     --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,245,230,.06), 0 1px 1px rgba(0,0,0,.25), 0 3px 8px -2px rgba(0,0,0,.3), 0 18px 36px -14px rgba(0,0,0,.55);
@@ -69,6 +74,8 @@
   --chg: rgba(224,176,85,.12); --chg-strong: rgba(224,176,85,.32); --del: rgba(227,137,95,.12); --add: rgba(163,201,140,.12);
   --hatch: rgba(255,240,220,.06);
   --edge: #78746c;
+  --s-sand: rgba(214,180,120,.10); --s-blue: rgba(120,165,225,.09); --s-green: rgba(140,195,120,.09); --s-pink: rgba(230,140,165,.09);
+  --lk-orange: #e3955a; --lk-blue: #7fb0e0; --lk-green: #96c47e; --guide: #5aa2ff;
   --glass: rgba(42,41,38,.94);
   --tip-bg: rgba(245,243,238,.94); --tip-ink: #1d1c1a;
   --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,245,230,.06), 0 1px 1px rgba(0,0,0,.25), 0 3px 8px -2px rgba(0,0,0,.3), 0 18px 36px -14px rgba(0,0,0,.55);
@@ -255,6 +262,50 @@ input, textarea { font: inherit; color: var(--ink); }
 .sect.collapsed .slabel { position: static; background: var(--surface); box-shadow: var(--sh-card); padding: 6px 12px 6px 6px; border-radius: 8px; }
 .sect.sel .slabel { box-shadow: 0 0 0 1.5px var(--accent); }
 
+
+/* plain link styles, labels */
+.edge.plain.solid { stroke-dasharray: none; }
+.edge.lc-orange, .ahead.lc-orange { stroke: var(--lk-orange); }
+.edge.lc-blue, .ahead.lc-blue { stroke: var(--lk-blue); }
+.edge.lc-green, .ahead.lc-green { stroke: var(--lk-green); }
+.edge.lc-orange.plain, .edge.lc-blue.plain, .edge.lc-green.plain { stroke-width: 1.5; }
+.edge.plain.hot, .ahead.hot { stroke: var(--accent); }
+.vlabel { font: 11.5px/1 var(--sys); padding: 4px 7px; border-radius: 5px; background: var(--surface); color: var(--ink-2); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); }
+/* merged card */
+.fbar { height: 24px; display: flex; align-items: center; gap: 6px; font: 11px/24px var(--mono); color: var(--ink-2); background: var(--head); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding-left: 8px; margin: 2px 12px 2px -58px; padding-left: 14px; }
+.fbar .kind { font-style: normal; }
+.mgap { height: 22px; margin: 1px 12px 1px 0; font: 11px/22px var(--sys); color: var(--ink-3); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); padding-left: 8px; background: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 5px); }
+.mgap code { font: 10.5px var(--mono); color: var(--ink-2); }
+.chrome .src .fbar, .chrome .src .fbar *, .chrome .src .mgap, .chrome .src .mgap * { user-select: none; -webkit-user-select: none; cursor: default; }
+.card.merge-arm { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--k-fn) 60%, transparent), var(--sh-card); }
+.card.merge-hot { box-shadow: 0 0 0 2.5px var(--k-fn), 0 0 0 6px var(--hi), var(--sh-card); }
+.card.merge-hot::after { content: "Release to merge"; position: absolute; left: 50%; top: -30px; transform: translateX(-50%); font: 600 11.5px/1 var(--sys); color: #fff; background: var(--k-fn); padding: 6px 10px; border-radius: 6px; white-space: nowrap; box-shadow: var(--sh-float); z-index: 5; }
+/* math */
+.tex { font-family: var(--mono); font-size: .95em; color: var(--ink-2); }
+.mathb { display: block; overflow-x: auto; overflow-y: hidden; padding: 4px 0; text-align: center; }
+.katex { font-size: 1.08em; }
+.cdesc .mathb, .nbody .mathb, .tx .mathb, .inote .mathb { margin: 2px 0; }
+math { font-size: 1.05em; }
+/* lock */
+.lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; color: var(--ink-2); }
+.lockb:hover { background: var(--hlrow); color: var(--accent); }
+.lockb svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; }
+.card.text .lockb.abs { position: absolute; right: -22px; top: 2px; }
+.card.locked .grip, .card.locked .hw { display: none; }
+.slabel .lockb { width: 16px; height: 16px; }
+/* snapping guides, align bar */
+#guides { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 8; }
+.guide { position: absolute; border-color: var(--guide); border-style: dashed; border-width: 0; opacity: .9; }
+.guide.v { border-left-width: 1px; width: 0; }
+.guide.h { border-top-width: 1px; height: 0; }
+.ghint { position: absolute; transform: translate(-50%, 0); font: 600 10.5px/1 var(--sys); color: #fff; background: var(--guide); padding: 4px 6px; border-radius: 4px; white-space: nowrap; }
+.alignbar { position: absolute; z-index: 15; display: none; }
+.alignbar.show { display: inline-flex; }
+.alignbar .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
+/* section colours (nested frames each keep their own) */
+.sect.c-sand { background: var(--s-sand); } .sect.c-blue { background: var(--s-blue); } .sect.c-green { background: var(--s-green); } .sect.c-pink { background: var(--s-pink); }
+.sect.collapsed { background: none !important; }
+.sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; box-shadow: inset 0 0 0 .5px var(--hair); vertical-align: -1px; margin-right: 6px; }
 /* ---------- floating chrome ---------- */
 .over { position: absolute; display: flex; align-items: center; gap: 4px; z-index: 20; }
 .tb-left { left: 12px; top: 10px; }
@@ -375,7 +426,9 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
     <svg class="edges" id="edges"></svg>
     <div id="cardsL"></div>
     <div class="labels" id="labels"></div>
+    <div id="guides"></div>
   </div>
+  <div class="alignbar pill" id="alignbar"></div>
   <div class="marquee" id="marq"></div>
 
   <div class="over tb-left"><div class="pill">
@@ -414,6 +467,7 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
   <div class="ctx" id="ctx" role="menu"></div>
   <div class="tip" id="tip"></div>
 </div>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js" crossorigin="anonymous" onload="window.__mathReady&&window.__mathReady()"></script>
 <script src="data.js"></script>
 <script>
 'use strict';
@@ -585,7 +639,7 @@ function toast(msg) {
 }
 
 // ---------- storage (never required) ----------
-const LSKEY = 'codeboard-mock-v1';
+const LSKEY = 'codeboard-mock-v2';
 function lsGet() { try { return window.localStorage.getItem(LSKEY); } catch (e) { return null; } }
 function lsSet(v) { try { window.localStorage.setItem(LSKEY, v); } catch (e) { /* storage unavailable: board still works */ } }
 function lsDel() { try { window.localStorage.removeItem(LSKEY); } catch (e) { } }
@@ -625,7 +679,7 @@ function textCard(x, y, text = '', st = 'body', bg = false) { return { id: nid('
 const addCard = c => (S.cards[c.id] = c);
 function siteFor(f, l, sid) { return (NV.calls[f]?.[l] || []).find(x => x[2].includes(sid)) || null; }
 function addCall(a, l, b, c0) { const L = { id: nid('l'), t: 'call', a, l, c0, b, vars: [], label: '', n: S.seq }; S.links.push(L); return L; }
-function addPlain(a, b, label = '', l = null) { const L = { id: nid('l'), t: 'plain', a, b, l, label, n: S.seq }; S.links.push(L); return L; }
+function addPlain(a, b, label = '', l = null) { const L = { id: nid('l'), t: 'plain', a, b, l, label, arrow: 'none', style: 'dashed', color: 'grey', n: S.seq }; S.links.push(L); return L; }
 
 function startState() {
   S = { v: 1, name: 'nano-vllm · generate 主流程', seq: 1, cards: {}, links: [], sects: [], tidy: [] };
@@ -644,6 +698,8 @@ function startState() {
   t.w = 460;
   const t2 = addCard(textCard(0, -38, '从 LLM.generate 一路点进去，看一个请求怎么被调度、跑模型、收尾。', 'body'));
   t2.w = 560;
+  const kv = addCard(textCard(660, 0, '**KV cache 一块多大**（`allocate_kv_cache`）\n$$\\text{block\\_bytes} = 2 \\cdot L \\cdot B \\cdot H_{kv} \\cdot d \\cdot s$$\n$L$ 层数，$B$ = block_size，$H_{kv}$ KV 头数，$d$ = head_dim，$s$ = dtype 字节数。2 是 K 和 V 各一份。', 'body', true));
+  kv.w = 330;
   S.tidy = [g.id];
 }
 
@@ -674,7 +730,7 @@ function descendants(id) { const out = []; const walk = i => (F.kids[i] || []).f
 function computeHidden() {
   const h = new Set();
   for (const c of Object.values(S.cards)) if (c.kind === 'code' && c.sub) descendants(c.id).forEach(d => h.add(d));
-  for (const s of S.sects) if (s.col) s.ids.forEach(i => h.add(i));
+  for (const s of S.sects) if (s.col) for (const q of [s, ...sectDesc(s)]) q.ids.forEach(i => { h.add(i); const c = S.cards[i]; if (c && c.kind === 'compare') c.cols.forEach(x => h.add(x)); });
   // a compare card is hidden only if both columns are
   for (const c of Object.values(S.cards)) if (c.kind === 'compare' && c.cols.every(i => h.has(i))) h.add(c.id);
   return h;
@@ -704,7 +760,21 @@ function updUndo() { $('#bUndo').disabled = !undoS.length; $('#bRedo').disabled 
 // Rendering
 // =====================================================================
 const ICON_DOTS = '<svg class="ico" viewBox="0 0 16 16"><circle cx="4" cy="8" r=".6"/><circle cx="8" cy="8" r=".6"/><circle cx="12" cy="8" r=".6"/></svg>';
-function md(t) { // tiny markdown: **bold**, `code`, "- " bullets
+const ICON_LOCK = '<svg viewBox="0 0 12 12"><rect x="2.5" y="5.5" width="7" height="5" rx="1.2"/><path d="M4 5.5V4a2 2 0 0 1 4 0v1.5"/></svg>';
+// math: $…$ inline, $$…$$ block. KaTeX (cdnjs, pinned) when it loaded; otherwise the raw TeX stays visible.
+function texHTML(tex, block) {
+  const K = window.katex;
+  if (K) { try { return `<span class="${block ? 'mathb' : 'mathi'}">${K.renderToString(tex, { throwOnError: false, displayMode: block, output: window.__katexCss ? 'htmlAndMathml' : 'mathml' })}</span>`; } catch (e) { /* fall through to raw */ } }
+  return `<span class="tex${block ? ' mathb' : ''}">${esc(block ? `$$${tex}$$` : `$${tex}$`)}</span>`;
+}
+function md(t) {
+  t = String(t ?? ''); let out = '', i = 0; const re = /\$\$([\s\S]+?)\$\$|\$([^$\n]+?)\$/g; let m;
+  while ((m = re.exec(t))) { out += md0(t.slice(i, m.index)) + texHTML(m[1] ?? m[2], m[1] != null); i = m.index + m[0].length; }
+  return out + md0(t.slice(i));
+}
+let mathT = 0;
+window.__mathReady = () => { clearTimeout(mathT); mathT = setTimeout(() => { if (S) { render(); if (snState) hideSnpop(true); } }, 0); };
+function md0(t) { // tiny markdown: **bold**, `code`, "- " bullets
   return esc(t).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>').replace(/^- /gm, '• ').replace(/^#{1,3} (.*)$/gm, '<b>$1</b>');
 }
 function countVisibleDesc(id) { return descendants(id).length; }
@@ -908,23 +978,34 @@ function buildCompare(c) {
   return el;
 }
 
-// ---------- sections ----------
+// ---------- sections: unlimited nesting (s.parent), own tint each (s.color), card membership = card centre inside the frame ----------
+const SCOLORS = [['none', 'None'], ['sand', 'Warm Sand'], ['blue', 'Light Blue'], ['green', 'Light Green'], ['pink', 'Light Pink']];
 function sectMembers(s) { return [...new Set(s.ids.filter(i => S.cards[i]).map(topId))]; }
-function sectRect(s) {
+const sectChildren = s => S.sects.filter(x => x.parent === s.id);
+function sectDepth(s) { let d = 0; for (let q = S.sects.find(x => x.id === s.parent); q && d < 50; q = S.sects.find(x => x.id === q.parent)) d++; return d; }
+function sectDesc(s) { const out = []; const walk = x => sectChildren(x).forEach(c => { if (!out.includes(c)) { out.push(c); walk(c); } }); walk(s); return out; }
+function sectAllMembers(s) { return [...new Set([s, ...sectDesc(s)].flatMap(sectMembers))]; }
+function sectHiddenByAncestor(s) { for (let q = S.sects.find(x => x.id === s.parent); q; q = S.sects.find(x => x.id === q.parent)) if (q.col) return true; return false; }
+function sectRect(s, excl) {
   const rs = [];
-  for (const id of sectMembers(s)) { const c = S.cards[id], el = cardEl(id); if (c && el) rs.push({ x: c.x, y: c.y, w: el.offsetWidth, h: el.offsetHeight }); }
+  for (const id of sectMembers(s)) { if (excl && excl.has(id)) continue; const c = S.cards[id], el = cardEl(id); if (c && el) rs.push({ x: c.x, y: c.y, w: el.offsetWidth, h: el.offsetHeight }); }
+  for (const ch of sectChildren(s)) {
+    if (ch.col) { const el = cardsL.querySelector(`.sect[data-sect="${ch.id}"]`); if (el) rs.push({ x: ch.cx, y: ch.cy, w: el.offsetWidth, h: el.offsetHeight }); }
+    else { const r = sectRect(ch, excl); if (r) rs.push(r); }
+  }
   if (!rs.length) return null;
   const u = union(rs);
   return { x: u.x - 22, y: u.y - 30, w: u.w + 44, h: u.h + 52 };
 }
 function renderSections() {
-  for (const s of S.sects) {
+  const list = S.sects.filter(s => !sectHiddenByAncestor(s)).sort((a, b) => sectDepth(a) - sectDepth(b));
+  for (const s of list) {
     const el = document.createElement('div');
-    el.className = 'sect' + (s.col ? ' collapsed' : ''); el.dataset.sect = s.id;
-    const n = sectMembers(s).length;
+    el.className = 'sect' + (s.col ? ' collapsed' : '') + (s.color && s.color !== 'none' ? ' c-' + s.color : '') + (sectLocked(s) ? ' locked' : ''); el.dataset.sect = s.id;
+    const n = sectAllMembers(s).length, lock = s.lock ? `<button class="lockb" data-act="sunlock" data-tip="Unlock Section" data-kbd="">${ICON_LOCK}</button>` : '';
     el.innerHTML = s.col
-      ? `<div class="slabel" data-sect="${s.id}"><button class="chev2" data-act="scol" aria-label="Expand Section">▸</button><span class="sname">${esc(s.name)}</span><span style="color:var(--ink-3);font-weight:400">&nbsp;· ${n} card${n === 1 ? '' : 's'}</span></div>`
-      : `<div class="slabel" data-sect="${s.id}"><span class="dots">⋮⋮</span><span class="sname">${esc(s.name)}</span><button class="chev2" data-act="scol" aria-label="Collapse Section">▾</button></div>`;
+      ? `<div class="slabel" data-sect="${s.id}"><button class="chev2" data-act="scol" aria-label="Expand Section">▸</button>${lock}<span class="sname">${esc(s.name)}</span><span style="color:var(--ink-3);font-weight:400">&nbsp;· ${n} card${n === 1 ? '' : 's'}</span></div>`
+      : `<div class="slabel" data-sect="${s.id}"><span class="dots">⋮⋮</span>${lock}<span class="sname">${esc(s.name)}</span><button class="chev2" data-act="scol" aria-label="Collapse Section">▾</button></div>`;
     sectsL.appendChild(el);
     if (s.col) { el.style.left = s.cx + 'px'; el.style.top = s.cy + 'px'; el.style.zIndex = 4; cardsL.appendChild(el); }
   }
@@ -941,13 +1022,38 @@ function updateSections() {
   }
 }
 const sectOf = id => S.sects.find(s => s.ids.includes(id));
+function sectFrames(excl) { // world frames of every visible, expanded section (snapshotted at drag start)
+  const out = {};
+  for (const s of S.sects) if (!s.col && !sectHiddenByAncestor(s)) { const r = sectRect(s, excl); if (r) out[s.id] = r; }
+  return out;
+}
+function deepestAt(frames, x, y, skip) {
+  let best = null, bd = -1, ba = Infinity;
+  for (const s of S.sects) {
+    const r = frames[s.id]; if (!r || (skip && skip.has(s.id))) continue;
+    if (x <= r.x || x >= r.x + r.w || y <= r.y || y >= r.y + r.h) continue;
+    const d = sectDepth(s), a = r.w * r.h;
+    if (d > bd || (d === bd && a < ba)) { best = s; bd = d; ba = a; }
+  }
+  return best;
+}
+function pruneSects() { // sections with no cards and no child sections disappear
+  for (let again = true; again;) {
+    again = false;
+    for (const s of S.sects) s.ids = s.ids.filter(i => S.cards[i]);
+    const dead = S.sects.filter(s => !s.ids.length && !sectChildren(s).length);
+    if (dead.length) { again = true; S.sects = S.sects.filter(s => !dead.includes(s)); }
+  }
+  for (const s of S.sects) if (s.parent && !S.sects.some(x => x.id === s.parent)) s.parent = null;
+}
 
 // ---------- edges ----------
 let edgeEls = {};
 const svgEl = (tag, cls) => { const n = document.createElementNS('http://www.w3.org/2000/svg', tag); n.setAttribute('class', cls); return n; };
-function collapsedPill(id) {
-  const s = S.sects.find(x => x.col && x.ids.includes(id));
-  return s ? cardsL.querySelector(`.sect[data-sect="${s.id}"] .slabel`) : null;
+function collapsedPill(id) { // outermost collapsed section around this card
+  let pill = null;
+  for (let q = S.sects.find(x => x.ids.includes(id) || x.ids.includes(topId(id))); q; q = S.sects.find(x => x.id === q.parent)) if (q.col) pill = q;
+  return pill ? cardsL.querySelector(`.sect[data-sect="${pill.id}"] .slabel`) : null;
 }
 function subHidden(id) { for (const c of Object.values(S.cards)) if (c.kind === 'code' && c.sub && descendants(c.id).includes(id)) return true; return false; }
 function anchorHead(id) {
@@ -982,7 +1088,8 @@ function renderEdges() {
     const sa = collapsedPill(L.a), sb = collapsedPill(L.b);
     if (sa && sa === sb) continue;
     const g = { L };
-    g.path = svgEl('path', 'edge' + (L.t === 'plain' ? ' plain' : ''));
+    const lc = L.t === 'plain' && L.color && L.color !== 'grey' ? ' lc-' + L.color : '';
+    g.path = svgEl('path', 'edge' + (L.t === 'plain' ? ' plain' + (L.style === 'solid' ? ' solid' : '') + lc : ''));
     g.hit = svgEl('path', 'ehit'); g.hit.dataset.link = L.id;
     edgesSvg.append(g.path);
     if (L.t === 'call') {
@@ -991,8 +1098,12 @@ function renderEdges() {
       edgesSvg.append(g.head, g.port);
       const site = siteOfLink(L);
       g.loop = site && site[4];
-      if ((L.vars && L.vars.length) || g.loop) { g.chips = document.createElement('div'); g.chips.className = 'vchips'; g.chips.dataset.link = L.id; g.chips.innerHTML = chipsHTML(L, g.loop); labelsL.appendChild(g.chips); }
-    } else if (L.label) {
+      if ((L.vars && L.vars.length) || g.loop || L.label) { g.chips = document.createElement('div'); g.chips.className = 'vchips'; g.chips.dataset.link = L.id; g.chips.innerHTML = chipsHTML(L, g.loop); labelsL.appendChild(g.chips); }
+    } else {
+      if (L.arrow === 'one' || L.arrow === 'both') { g.head = svgEl('path', 'ahead' + lc); edgesSvg.append(g.head); }
+      if (L.arrow === 'both') { g.tail = svgEl('path', 'ahead' + lc); edgesSvg.append(g.tail); }
+    }
+    if (L.t === 'plain' && L.label) {
       g.lab = document.createElement('div'); g.lab.className = 'elabel user'; g.lab.dataset.link = L.id; g.lab.textContent = L.label; labelsL.appendChild(g.lab);
     }
     edgesSvg.append(g.hit);
@@ -1013,7 +1124,7 @@ function chipsHTML(L, loop) {
   const all = varList(L), byK = Object.fromEntries(all.map(v => [v.k, v]));
   const vs = (L.vars || []).map(k => byK[k] || (k.startsWith('x:') ? { k, label: k.slice(2) } : null)).filter(Boolean);
   const shown = vs.slice(0, 3), more = vs.length - shown.length;
-  return (loop ? '<span class="vchip loop" title="Called inside a loop">↺</span>' : '')
+  return (loop ? '<span class="vchip loop" title="Called inside a loop">↺</span>' : '') + (L.label ? `<span class="vlabel" data-lab="1">${esc(L.label)}</span>` : '')
     + shown.map(v => `<span class="vchip" data-k="${esc(v.k)}">${esc(v.label)}</span>`).join('')
     + (more > 0 ? `<span class="vchip" data-more="1" title="${esc(vs.slice(3).map(v => v.label).join(', '))}">+${more}</span>` : '');
 }
@@ -1027,9 +1138,10 @@ function plainGeom(ra, rb, la) {
   else if (rb.x + rb.w < ra.x - 16) { x1 = ra.x; y1 = ca.y; x2 = rb.x + rb.w; y2 = cb.y; }
   else if (rb.y > ra.y + ra.h) { h = false; x1 = ca.x; y1 = ra.y + ra.h; x2 = cb.x; y2 = rb.y; }
   else { h = false; x1 = ca.x; y1 = ra.y; x2 = cb.x; y2 = rb.y + rb.h; }
-  if (la || h) { const dx = Math.max(30, Math.abs(x2 - x1) * 0.45) * Math.sign(x2 - x1 || 1); return { x1, y1, x2, y2, d: `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}` }; }
-  const dy = Math.max(30, Math.abs(y2 - y1) * 0.45) * Math.sign(y2 - y1 || 1);
-  return { x1, y1, x2, y2, d: `M${x1} ${y1} C${x1} ${y1 + dy} ${x2} ${y2 - dy} ${x2} ${y2}` };
+  let c1, c2;
+  if (la || h) { const dx = Math.max(30, Math.abs(x2 - x1) * 0.45) * Math.sign(x2 - x1 || 1); c1 = [x1 + dx, y1]; c2 = [x2 - dx, y2]; }
+  else { const dy = Math.max(30, Math.abs(y2 - y1) * 0.45) * Math.sign(y2 - y1 || 1); c1 = [x1, y1 + dy]; c2 = [x2, y2 - dy]; }
+  return { x1, y1, x2, y2, c1, c2, d: `M${x1} ${y1} C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${x2} ${y2}` };
 }
 function drawEdge(id) {
   const g = edgeEls[id]; if (!g) return;
@@ -1049,7 +1161,10 @@ function drawEdge(id) {
     if (!ea || !eb) { g.path.style.display = 'none'; return; }
     const la = L.l && !collapsedPill(L.a) ? anchorLine(L.a, L.l) : null;
     const pg = plainGeom(rectW(ea), rectW(eb), la);
-    d = pg.d; mx = (pg.x1 + pg.x2) / 2; my = (pg.y1 + pg.y2) / 2;
+    d = pg.d; mx = (pg.x1 + 3 * pg.c1[0] + 3 * pg.c2[0] + pg.x2) / 8; my = (pg.y1 + 3 * pg.c1[1] + 3 * pg.c2[1] + pg.y2) / 8;
+    const arrowAt = (tx, ty, fx, fy) => { const len = Math.hypot(tx - fx, ty - fy) || 1, ux = (tx - fx) / len, uy = (ty - fy) / len; return `M${tx - 7 * ux - 4 * uy} ${ty - 7 * uy + 4 * ux} L${tx} ${ty} L${tx - 7 * ux + 4 * uy} ${ty - 7 * uy - 4 * ux}`; };
+    if (g.head) g.head.setAttribute('d', arrowAt(pg.x2, pg.y2, pg.c2[0], pg.c2[1]));
+    if (g.tail) g.tail.setAttribute('d', arrowAt(pg.x1, pg.y1, pg.c1[0], pg.c1[1]));
   }
   g.path.style.display = ''; g.path.setAttribute('d', d); g.hit.setAttribute('d', d);
   g.mx = mx; g.my = my;
@@ -1489,7 +1604,7 @@ function closeCtx() { ctx.classList.remove('open'); }
 function openCtx(items, x, y) {
   hideTip(); ctxItems = items;
   ctx.innerHTML = items.map((it, i) => !it ? '<hr>' : it.head ? `<div class="mh">${esc(it.head)}</div>`
-    : `<button data-i="${i}"${it.disabled ? ' disabled' : ''}><span class="ck">${it.check ? '✓' : ''}</span>${esc(it.label)}${it.kbd ? `<small>${esc(it.kbd)}</small>` : ''}${it.why ? `<span class="why">${esc(it.why)}</span>` : ''}</button>`).join('');
+    : `<button data-i="${i}"${it.disabled ? ' disabled' : ''}><span class="ck">${it.check ? '✓' : ''}</span>${it.sw ? `<i class="sw" style="background:${SW[it.sw]}"></i>` : ''}${esc(it.label)}${it.kbd ? `<small>${esc(it.kbd)}</small>` : ''}${it.why ? `<span class="why">${esc(it.why)}</span>` : ''}</button>`).join('');
   const W = board.clientWidth, H = board.clientHeight;
   ctx.style.left = '0px'; ctx.style.top = '0px'; ctx.classList.remove('open'); void ctx.offsetWidth;
   ctx.style.left = Math.min(x, W - ctx.offsetWidth - 8) + 'px';
@@ -1497,6 +1612,7 @@ function openCtx(items, x, y) {
   ctx.classList.add('open');
 }
 ctx.addEventListener('click', e => { const b = e.target.closest('button'); if (!b || b.disabled) return; closeCtx(); const it = ctxItems[+b.dataset.i]; it && it.act && it.act(); });
+const SW = { none: 'transparent', sand: 'var(--s-sand)', blue: 'var(--s-blue)', green: 'var(--s-green)', pink: 'var(--s-pink)', grey: 'var(--edge)', orange: 'var(--lk-orange)', lblue: 'var(--lk-blue)', lgreen: 'var(--lk-green)' };
 const K = { mod: isMac ? '⌘' : 'Ctrl+', shift: isMac ? '⇧' : 'Shift+' };
 
 function compareCheck() {
@@ -1509,13 +1625,16 @@ function compareCheck() {
 function cardMenu(id) {
   const c = S.cards[id]; if (!c) return [];
   if (sel.size > 1 && sel.has(id)) {
-    const cmp = compareCheck(), two = sel.size === 2;
+    const cs = selCards(), two = sel.size === 2, codes = cs.filter(mergeable);
+    const cmp = compareCheck(), mc = mergeCheck(cs), lockAll = cs.length && cs.every(x => x.lock);
     return [
       { head: `${sel.size} cards selected` },
-      { label: 'Compare', disabled: !cmp.ok, why: cmp.ok ? '' : cmp.why, act: doCompare },
+      // Compare only exists for exactly two code cards (hidden otherwise); cross-flow stays visible but disabled
+      ...(cs.length === 2 && codes.length === 2 ? [{ label: 'Compare', disabled: !cmp.ok, why: cmp.ok ? '' : cmp.why, act: doCompare }] : []),
+      ...(codes.length >= 2 ? [{ label: 'Merge into One Card', disabled: !mc.ok, why: mc.ok ? '' : mc.why, act: () => mergeCards([...sel]) }] : []),
       { label: 'Connect with Plain Link', disabled: !two, why: two ? '' : 'Select exactly two cards', act: () => { const [a, b] = [...sel]; mut(() => { addPlain(a, b); }); toast('Plain link added'); } },
       { label: 'Move to New Section', act: moveToSection },
-      { label: 'Merge into One Card', disabled: true, why: 'Not in this mock' },
+      { label: lockAll ? 'Unlock' : 'Lock', kbd: K.mod + K.shift + 'L', act: toggleLockSel },
       null,
       { label: 'Delete', kbd: '⌫', act: deleteSel },
     ];
@@ -1525,12 +1644,14 @@ function cardMenu(id) {
     { label: 'Hide Background', act: () => mut(() => { c.bg = false; }) },
     { label: 'Connect…', act: () => startConnect(id) },
     { label: 'Move to New Section', act: moveToSection },
+    { label: c.lock ? 'Unlock' : 'Lock', kbd: K.mod + K.shift + 'L', act: toggleLockSel },
     null, { label: 'Delete', kbd: '⌫', act: deleteSel },
   ] : [
     { label: 'Edit', kbd: 'Double-click', act: () => editText(id) },
     { label: 'Show Background', act: () => mut(() => { c.bg = true; c.w = Math.max(c.w, 260); }) },
     { label: 'Connect…', act: () => startConnect(id) },
     { label: 'Move to New Section', act: moveToSection },
+    { label: c.lock ? 'Unlock' : 'Lock', kbd: K.mod + K.shift + 'L', act: toggleLockSel },
     null, { label: 'Delete', kbd: '⌫', act: deleteSel },
   ];
   if (c.kind === 'compare') return [
@@ -1541,9 +1662,10 @@ function cardMenu(id) {
     { label: 'Separate', act: () => separate(id) },
     { label: 'Walk Through Flow', kbd: 'P', disabled: !c.cols.some(x => F.tree[x]), why: c.cols.some(x => F.tree[x]) ? '' : 'Not in a call flow', act: startWalk },
     { label: 'Move to New Section', act: moveToSection },
+    { label: c.lock ? 'Unlock' : 'Lock', kbd: K.mod + K.shift + 'L', act: toggleLockSel },
     null, { label: 'Delete', kbd: '⌫', act: deleteSel },
   ];
-  const inTree = !!F.tree[id], hasKids = !!(F.kids[id] && F.kids[id].length), cmp = compareCheck();
+  const inTree = !!F.tree[id], hasKids = !!(F.kids[id] && F.kids[id].length);
   return [
     { label: 'Open in Editor', kbd: '⏎', act: () => openInEditor(c.f, c.s) },
     { label: 'Rename', kbd: 'Double-click Title', act: () => renameTitle(cardEl(id).querySelector('.ctitle'), c) },
@@ -1559,9 +1681,10 @@ function cardMenu(id) {
     ...(inTree ? [{ label: 'Tidy Layout', kbd: 'this flow', act: () => mut(() => { tidyTree(F.tree[id], true); }, { noRender: true }) }] : []),
     ...(hasKids ? [{ label: c.sub ? 'Expand Subtree' : 'Collapse Subtree', act: () => mut(() => { c.sub = !c.sub; }) }] : []),
     null,
-    { label: 'Compare', disabled: true, why: cmp.why || 'Select exactly two code cards' },
+    ...(c.merged ? [{ label: 'Unmerge', act: () => unmerge(id) }] : []),
     { label: 'Connect…', act: () => startConnect(id) },
     { label: 'Move to New Section', act: moveToSection },
+    { label: c.lock ? 'Unlock' : 'Lock', kbd: K.mod + K.shift + 'L', act: toggleLockSel },
     null,
     { label: 'Copy Code', act: () => copyText(cardKeys(c).map(k => lineText(c, k)).join('\n'), `Copied ${nLines(c)} lines`) },
     { label: 'Duplicate', kbd: K.mod + 'D', act: duplicateSel },
@@ -1592,12 +1715,19 @@ function canvasMenu(w) {
 function linkMenu(L) {
   return L.t === 'call' ? [
     { head: 'Call Link' },
+    { label: L.label ? 'Edit Label' : 'Add Label', kbd: 'Double-click', act: () => editLinkLabel(L.id) },
     { label: 'Add Variables…', act: () => openVars(L.id) },
-    { label: 'Convert to Plain Link', act: () => mut(() => { L.t = 'plain'; L.label = ''; }) },
+    { label: 'Convert to Plain Link', act: () => mut(() => { L.t = 'plain'; }) },
     null, { label: 'Delete Link', kbd: '⌫', act: () => mut(() => { S.links = S.links.filter(x => x !== L); }) },
   ] : [
     { head: 'Plain Link' },
-    { label: 'Edit Label', kbd: 'Double-click', act: () => editLinkLabel(L.id) },
+    { label: L.label ? 'Edit Label' : 'Add Label', kbd: 'Double-click', act: () => editLinkLabel(L.id) },
+    { head: 'Arrow' },
+    ...[['none', 'None'], ['one', 'One-way  →'], ['both', 'Both  ↔']].map(([v, lb]) => ({ label: lb, check: (L.arrow || 'none') === v, act: () => mut(() => { L.arrow = v; }) })),
+    { head: 'Style' },
+    ...[['dashed', 'Dashed'], ['solid', 'Solid']].map(([v, lb]) => ({ label: lb, check: (L.style || 'dashed') === v, act: () => mut(() => { L.style = v; }) })),
+    { head: 'Color' },
+    ...[['grey', 'Grey'], ['orange', 'Orange'], ['blue', 'Blue'], ['green', 'Green']].map(([v, lb]) => ({ label: lb, sw: { grey: 'grey', orange: 'orange', blue: 'lblue', green: 'lgreen' }[v], check: (L.color || 'grey') === v, act: () => mut(() => { L.color = v; }) })),
     null, { label: 'Delete Link', kbd: '⌫', act: () => mut(() => { S.links = S.links.filter(x => x !== L); }) },
   ];
 }
@@ -1686,6 +1816,100 @@ function separate(id) {
   const k = S.cards[id]; if (!k) return;
   mut(() => { for (const cid of k.cols) { const c = S.cards[cid]; c.cmp = null; if (k.prev && k.prev[cid]) { c.x = k.prev[cid].x; c.y = k.prev[cid].y; } } delete S.cards[id]; for (const s of S.sects) s.ids = s.ids.filter(i => i !== id); });
   sel.clear(); k.cols.forEach(i => sel.add(i)); applySel();
+}
+// ---------- Merge into One Card: several source-location code cards -> one multi-segment card ----------
+const mergeable = c => !!c && c.kind === 'code' && !c.cmp;
+function mergeCheck(cs) {
+  if (cs.length < 2) return { ok: false, why: 'Select two or more code cards' };
+  if (!cs.every(mergeable)) return { ok: false, why: 'Only code cards from the source can be merged' };
+  return { ok: true };
+}
+const encOf = c => c.segs ? (k => k) : (l => gk(c.f, l));
+const ownKeyRanges = o => o.segs ? keyRanges(o) : [[gk(o.f, o.s), gk(o.f, o.e)]];
+function normSegs(list) { // sort by file then line; overlapping or touching ranges become one segment
+  const a = list.map(g => ({ ...g })).sort((x, y) => FI[x.f] - FI[y.f] || x.s - y.s), out = [];
+  for (const g of a) { const p = out[out.length - 1]; if (p && p.f === g.f && g.s <= p.e + 1) p.e = Math.max(p.e, g.e); else out.push(g); }
+  return out;
+}
+function mergeRanges(rs) {
+  const a = rs.map(r => [...r]).sort((x, y) => x[0] - y[0]), out = [];
+  for (const r of a) { const p = out[out.length - 1]; if (p && r[0] <= p[1] + 1) p[1] = Math.max(p[1], r[1]); else out.push(r); }
+  return out;
+}
+function mergeCards(ids, at) {
+  const cs = ids.map(i => S.cards[i]).filter(Boolean), chk = mergeCheck(cs);
+  if (!chk.ok) return toast(chk.why);
+  const firstKey = c => ownKeyRanges(c)[0][0];
+  cs.sort((a, b) => firstKey(a) - firstKey(b));
+  let M;
+  mut(() => {
+    const set = new Set(cs.map(c => c.id));
+    const segs = normSegs(cs.flatMap(c => c.segs || [{ f: c.f, s: c.s, e: c.e }]));
+    const x0 = at ? at.x : Math.min(...cs.map(c => c.x)), y0 = at ? at.y : Math.min(...cs.map(c => c.y));
+    M = { id: nid('c'), kind: 'code', sym: null, segs, f: segs[0].f, s: segs[0].s, e: segs[0].e,
+      title: `${cs[0].title.replace(/ \+\d+$/, '')} +${cs.length - 1}`, sk: 'snip', desc: cs.map(c => c.desc).filter(Boolean).join('\n'),
+      x: x0, y: y0, x0, y0, w: Math.max(560, ...cs.map(c => c.w || 0)), h: null, hid: [], tg: { ...cs[0].tg }, hl: [], notes: [], cmp: null,
+      flow: cs.some(c => c.flow), sub: false, lock: false, n: Math.min(...cs.map(c => c.n)), sc: 0,
+      merged: cs.map(c => JSON.parse(JSON.stringify(c))), mlinks: [] };
+    for (const c of cs) {
+      const enc = encOf(c);
+      M.hl.push(...c.hl.map(enc)); M.hid.push(...c.hid.map(([a, b]) => [enc(a), enc(b)]));
+      M.notes.push(...c.notes.map(n => ({ ...n, a: enc(n.a), b: enc(n.b) })));
+    }
+    M.hl = [...new Set(M.hl)]; M.hid = mergeRanges(M.hid);
+    const encBy = Object.fromEntries(cs.map(c => [c.id, encOf(c)]));
+    S.links = S.links.filter(L => {
+      const ia = set.has(L.a), ib = set.has(L.b);
+      if (ia && ib) { M.mlinks.push(JSON.parse(JSON.stringify(L))); return false; } // links inside the group come back on Unmerge
+      if (ia) { if (L.l != null) L.l = encBy[L.a](L.l); L.ma = L.a; L.a = M.id; }
+      if (ib) { L.mb = L.b; L.b = M.id; }
+      return true;
+    });
+    let placed = false;
+    for (const s of S.sects) { const had = s.ids.some(i => set.has(i)); s.ids = s.ids.filter(i => !set.has(i)); if (had && !placed) { s.ids.push(M.id); placed = true; } }
+    for (const c of cs) delete S.cards[c.id];
+    addCard(M);
+  });
+  sel.clear(); sel.add(M.id); applySel();
+  const el = cardEl(M.id); if (el) { el.classList.add('ping'); revealCard(M.id, false); }
+  toast(`Merged ${cs.length} cards · ${M.segs.length} segments`);
+}
+function unmerge(id) {
+  const M = S.cards[id]; if (!M || !M.merged) return;
+  let os;
+  mut(() => {
+    os = M.merged.map(o => JSON.parse(JSON.stringify(o)));
+    const rangesOf = Object.fromEntries(os.map(o => [o.id, ownKeyRanges(o)]));
+    const owner = k => os.find(o => rangesOf[o.id].some(([a, b]) => k >= a && k <= b)) || null;
+    const dec = (o, k) => o.segs ? k : kl(k);
+    const dx = M.x - (M.x0 ?? M.x), dy = M.y - (M.y0 ?? M.y);
+    for (const o of os) { o.hl = []; o.hid = []; o.notes = []; o.x += dx; o.y += dy; o.cmp = null; o.sub = false; }
+    for (const k of M.hl) { const o = owner(k); if (o) o.hl.push(dec(o, k)); }
+    for (const n of M.notes) { const o = owner(n.a); if (!o) continue; const top = rangesOf[o.id].find(([a, b]) => n.a >= a && n.a <= b); o.notes.push({ ...n, a: dec(o, n.a), b: dec(o, Math.min(n.b, top[1])) }); }
+    for (const [ha, hb] of M.hid) for (const o of os) for (const [a, b] of rangesOf[o.id]) { const x = Math.max(a, ha), y = Math.min(b, hb); if (x <= y) o.hid.push([dec(o, x), dec(o, y)]); }
+    for (const L of S.links) {
+      if (L.a === id) { const o = (L.l != null && owner(L.l)) || os.find(q => q.id === L.ma) || os[0]; if (L.l != null && owner(L.l)) L.l = dec(o, L.l); L.a = o.id; delete L.ma; }
+      if (L.b === id) { L.b = (os.find(q => q.id === L.mb) || os[0]).id; delete L.mb; }
+    }
+    delete S.cards[id];
+    for (const o of os) addCard(o);
+    for (const L of M.mlinks || []) if (S.cards[L.a] && S.cards[L.b]) S.links.push(L);
+    for (const s of S.sects) if (s.ids.includes(id)) s.ids = [...s.ids.filter(i => i !== id), ...os.map(o => o.id)];
+  });
+  sel.clear(); os.forEach(o => sel.add(o.id)); applySel();
+  toast(`Split into ${os.length} cards`);
+}
+
+// ---------- Lock ----------
+const sectById = id => S.sects.find(s => s.id === id);
+function sectLocked(s) { for (let q = s; q; q = sectById(q.parent)) if (q.lock) return true; return false; }
+function isLocked(id) { const c = S.cards[id]; if (!c) return false; if (c.lock) return true; const s = sectOf(topId(id)); return !!(s && sectLocked(s)); }
+function toggleLockSel() {
+  const cs = selCards(), ss = [...sel].map(sectById).filter(Boolean);
+  if (!cs.length && !ss.length) return;
+  const on = !(cs.every(c => c.lock) && ss.every(s => s.lock));
+  mut(() => { cs.forEach(c => { c.lock = on; }); ss.forEach(s => { s.lock = on; }); });
+  toast(on ? 'Locked. It stays put; code inside still works.' : 'Unlocked');
 }
 function moveToSection() {
   const ids = [...sel].filter(i => S.cards[i]);
@@ -2017,13 +2241,13 @@ function openAddNote(ls, editing) {
 let vplusFor = null, vplusT = 0;
 const vplus = document.createElement('button'); vplus.className = 'vplus'; vplus.textContent = '+'; vplus.setAttribute('aria-label', 'Variables on this call'); labelsL.parentNode.appendChild(vplus);
 function placeVplus() { const g = edgeEls[vplusFor]; if (!g) return; const chipsW = g.chips ? g.chips.offsetWidth / 2 + 14 : 0; vplus.style.left = (g.mx + chipsW) + 'px'; vplus.style.top = g.my + 'px'; vplus.style.zIndex = 7; }
-edgesSvg.addEventListener('pointerover', e => { const h = e.target.closest('.ehit'); if (!h) return; const g = edgeEls[h.dataset.link]; if (!g) return; g.path.classList.add('hot'); g.head && g.head.classList.add('hot'); if (g.L.t !== 'call') return; clearTimeout(vplusT); vplusFor = g.L.id; placeVplus(); vplus.classList.add('show'); });
-edgesSvg.addEventListener('pointerout', e => { const h = e.target.closest('.ehit'); if (!h) return; const g = edgeEls[h.dataset.link]; if (g) { g.path.classList.remove('hot'); g.head && g.head.classList.remove('hot'); } vplusT = setTimeout(() => vplus.classList.remove('show'), 500); });
+edgesSvg.addEventListener('pointerover', e => { const h = e.target.closest('.ehit'); if (!h) return; const g = edgeEls[h.dataset.link]; if (!g) return; g.path.classList.add('hot'); g.head && g.head.classList.add('hot'); g.tail && g.tail.classList.add('hot'); if (g.L.t !== 'call') return; clearTimeout(vplusT); vplusFor = g.L.id; placeVplus(); vplus.classList.add('show'); });
+edgesSvg.addEventListener('pointerout', e => { const h = e.target.closest('.ehit'); if (!h) return; const g = edgeEls[h.dataset.link]; if (g) { g.path.classList.remove('hot'); g.head && g.head.classList.remove('hot'); g.tail && g.tail.classList.remove('hot'); } vplusT = setTimeout(() => vplus.classList.remove('show'), 500); });
 vplus.addEventListener('pointerenter', () => clearTimeout(vplusT));
 vplus.addEventListener('pointerleave', () => { vplusT = setTimeout(() => vplus.classList.remove('show'), 400); });
 vplus.addEventListener('click', e => { e.stopPropagation(); if (vplusFor) openVars(vplusFor); });
-edgesSvg.addEventListener('dblclick', e => { const h = e.target.closest('.ehit'); if (!h) return; const L = S.links.find(x => x.id === h.dataset.link); if (L && L.t === 'plain') editLinkLabel(L.id); else if (L) openVars(L.id); });
-labelsL.addEventListener('dblclick', e => { const lb = e.target.closest('.elabel'); if (lb) editLinkLabel(lb.dataset.link); });
+edgesSvg.addEventListener('dblclick', e => { const h = e.target.closest('.ehit'); if (h) editLinkLabel(h.dataset.link); });
+labelsL.addEventListener('dblclick', e => { const lb = e.target.closest('.elabel, .vchips'); if (lb) editLinkLabel(lb.dataset.link); });
 function openVars(lid) {
   const L = S.links.find(x => x.id === lid), g = edgeEls[lid]; if (!L || !g) return;
   vplus.classList.remove('show');
