@@ -326,7 +326,7 @@ math { font-size: 1.05em; }
 .marquee { position: absolute; z-index: 15; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 2px; display: none; pointer-events: none; }
 
 /* popovers: peek, sidenotes, picker, add sidenote, variables */
-.pop { position: absolute; z-index: 35; background: var(--surface); border-radius: 10px; box-shadow: var(--sh-float), 0 18px 40px -16px rgba(0,0,0,.25); display: none; font-size: 12.5px; color: var(--ink);
+.pop { position: absolute; z-index: 35; background: var(--surface); border-radius: 10px; box-shadow: var(--sh-float), 0 18px 40px -16px rgba(0,0,0,.25); display: none; width: max-content; max-width: calc(100vw - 16px); font-size: 12.5px; color: var(--ink);
   transform-origin: 0 0; }
 .pop.open { display: block; animation: popin calc(var(--t) * 150ms) var(--out); }
 @keyframes popin { from { opacity: 0; scale: .97; } to { opacity: 1; scale: 1; } }
@@ -559,7 +559,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .db button[disabled] { opacity: .45; }
 
 /* palette */
-.palette { width: min(620px, 92vw); display: flex; flex-direction: column; padding: 0; overflow: hidden; border-radius: 12px; background: var(--surface); }
+.palette { width: min(620px, 92vw); display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; border-radius: 12px; background: var(--surface); }
 .palette .pin { border: 0; outline: none; background: none; padding: 13px 16px; font-size: 14px; border-bottom: 1px solid var(--line); color: var(--ink); }
 .plist { max-height: 52vh; overflow: auto; padding: 4px 6px 6px; }
 .pgh { font: 600 10.5px var(--sys); color: var(--ink-3); padding: 8px 8px 3px; text-transform: uppercase; letter-spacing: .04em; }
@@ -573,6 +573,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 
 /* popovers */
 .pop { position: fixed; max-width: min(560px, 92vw); }
+.pop.k-diff { max-width: 92vw; }
 .pop.pinned { box-shadow: 0 0 0 1px var(--accent), var(--sh-float), 0 18px 40px -16px rgba(0,0,0,.25); }
 .pop .ph .pt { overflow: hidden; text-overflow: ellipsis; color: var(--ink); font-weight: 500; }
 .pop .ph code { font: 11px var(--mono); }
@@ -607,6 +608,9 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .fld.sm { width: auto; padding: 3px 6px; }
 .addnote .db, .diffpop .db { padding: 8px 10px; border-top: 1px solid var(--line); }
 .diffpop { width: min(820px, 92vw); display: flex; flex-direction: column; max-height: 80vh; }
+.diffpop .dbody { overflow: auto; min-height: 0; }
+.crows.dt { min-width: 0; }
+.crows.dt .crow { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .lastc { padding: 5px 12px; font-size: 11.5px; color: var(--ink-3); border-bottom: 1px solid var(--line); }
 .colh.dh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); background: var(--head); font-size: 11.5px; }
 .colh.dh > div { display: flex; gap: 8px; padding: 5px 12px !important; white-space: nowrap; overflow: hidden; }

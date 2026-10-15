@@ -113,6 +113,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.locator(".banner button", { hasText: "Review" }).click();
     await h.page.waitForTimeout(1200);
     await shot(h, "ver-02-diff");
+    console.log(await h.page.evaluate(() => [...document.querySelectorAll(".pop, .pop .diffpop, .pop .dbody, .pop .crows, .pop .db")].map((e) => { const r = e.getBoundingClientRect(); return e.className + " " + Math.round(r.x) + " " + Math.round(r.width) + " " + getComputedStyle(e).width; }).join("\n")));
     await h.page.locator(".pop button", { hasText: /^Update/ }).first().click();
     await h.page.waitForTimeout(600);
     await shot(h, "ver-03-updated");
