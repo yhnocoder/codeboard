@@ -1,65 +1,207 @@
+// 白板存储（第 2 版）：一张白板一个 JSON，组 = 子文件夹（只有一层），图片放 assets/。
+// 默认放在 VS Code 给这个工作区的存储目录里（boards/），不往正在读的仓库里写；codeboard.storageDir 可以换位置。
+// 第 1 版的白板文件读进来时用 migrateBoard 迁移，下次保存写成第 2 版。
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { emptyBoard, type Board, type BoardMeta } from "@codeboard/core";
+import { allCodeCards, emptyBoard, migrateBoard, type Board, type BoardMeta } from "@codeboard/core";
+import { mkUid } from "./ws";
 
-/**
- * 白板存成 JSON，一张白板一个文件。默认放在 VS Code 给这个工作区的存储目录里，
- * 不往正在读的仓库里写东西；设置 codeboard.storageDir 可以换位置（比如放进自己的笔记仓库）。
- */
+type Entry = { id: string; file: string; group?: string; mtime: number; birth: number; board: Board };
+
+const RESERVED = new Set(["assets", "github", ".trash"]);
+
 export class Storage {
-  private emitter = new vscode.EventEmitter<void>();
-  readonly onDidChange = this.emitter.event;
+  private changed = new vscode.EventEmitter<void>();
+  /** 白板列表变了（增删、改名、分组、卡片数） */
+  readonly onDidChange = this.changed.event;
+  private saved = new vscode.EventEmitter<Board>();
+  /** 任何一次保存（CodeLens、行号旁标记要跟着变） */
+  readonly onDidSave = this.saved.event;
+  private cache = new Map<string, Entry>();
+  /** 每张白板有新版本的卡片数（版本模块算好填进来） */
+  readonly stale = new Map<string, number>();
+  private emptyGroups = new Set<string>();
+
   constructor(private ctx: vscode.ExtensionContext) {}
 
   dir(): string {
     const set = vscode.workspace.getConfiguration("codeboard").get<string>("storageDir")?.trim();
     const ws = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (set) return path.isAbsolute(set) || !ws ? set : path.join(ws, set);
+    if (set) {
+      const p = set.replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
+      return path.isAbsolute(p) || !ws ? p : path.join(ws, p);
+    }
     return path.join((this.ctx.storageUri ?? this.ctx.globalStorageUri).fsPath, "boards");
   }
-  private file(id: string) {
-    return path.join(this.dir(), `${id}.json`);
+  assetsDir() { return path.join(this.dir(), "assets"); }
+  /** GitHub 文件缓存：按 commit 存，不会变，所有工作区共用 */
+  githubDir() { return path.join(this.ctx.globalStorageUri.fsPath, "github"); }
+
+  /** 扫描存储目录（按修改时间缓存解析结果） */
+  private async scan(): Promise<Entry[]> {
+    const root = this.dir();
+    const files: { file: string; group?: string }[] = [];
+    let names: import("node:fs").Dirent[] = [];
+    try { names = await fs.readdir(root, { withFileTypes: true }); } catch { /* 还没有目录 */ }
+    for (const d of names) {
+      if (d.isFile() && d.name.endsWith(".json")) files.push({ file: path.join(root, d.name) });
+      else if (d.isDirectory() && !RESERVED.has(d.name) && !d.name.startsWith(".")) {
+        this.emptyGroups.add(d.name);
+        let sub: string[] = [];
+        try { sub = await fs.readdir(path.join(root, d.name)); } catch { /* */ }
+        for (const n of sub) if (n.endsWith(".json")) files.push({ file: path.join(root, d.name, n), group: d.name });
+      }
+    }
+    const seen = new Set<string>();
+    const out: Entry[] = [];
+    for (const f of files) {
+      try {
+        const st = await fs.stat(f.file);
+        let e = [...this.cache.values()].find((x) => x.file === f.file);
+        if (!e || e.mtime !== st.mtimeMs) {
+          const raw = JSON.parse(await fs.readFile(f.file, "utf8"));
+          const board = migrateBoard(raw);
+          if (!board.id) board.id = path.basename(f.file, ".json");
+          board.sidenotes ??= [];
+          board.sections ??= [];
+          board.links ??= [];
+          e = { id: board.id, file: f.file, group: f.group, mtime: st.mtimeMs, birth: st.birthtimeMs || st.ctimeMs, board };
+          this.cache.set(board.id, e);
+        }
+        e.group = f.group;
+        seen.add(e.id);
+        out.push(e);
+      } catch { /* 坏文件跳过 */ }
+    }
+    for (const id of [...this.cache.keys()]) if (!seen.has(id)) this.cache.delete(id);
+    return out.sort((a, b) => a.birth - b.birth);
   }
 
   async list(): Promise<BoardMeta[]> {
-    let names: string[] = [];
-    try { names = (await fs.readdir(this.dir())).filter((n) => n.endsWith(".json")); } catch { return []; }
-    const out: (BoardMeta & { t: number })[] = [];
-    for (const n of names) {
-      try {
-        const f = path.join(this.dir(), n);
-        const b = JSON.parse(await fs.readFile(f, "utf8")) as Board;
-        out.push({ id: b.id, name: b.name, t: (await fs.stat(f)).birthtimeMs });
-      } catch { /* 坏文件跳过 */ }
-    }
-    return out.sort((a, b) => a.t - b.t).map(({ id, name }) => ({ id, name }));
+    return (await this.scan()).map((e) => this.meta(e));
+  }
+
+  private meta(e: Entry): BoardMeta {
+    return { id: e.id, name: e.board.name, group: e.group, cards: e.board.cards.length, stale: this.stale.get(e.id) || undefined };
+  }
+
+  /** 所有白板（搜索、CodeLens、Reveal 用） */
+  async all(): Promise<{ board: Board; group?: string }[]> {
+    return (await this.scan()).map((e) => ({ board: e.board, group: e.group }));
+  }
+
+  async groups(): Promise<string[]> {
+    await this.scan();
+    return [...this.emptyGroups].sort();
   }
 
   async load(id: string): Promise<Board | null> {
-    try { return JSON.parse(await fs.readFile(this.file(id), "utf8")) as Board; } catch { return null; }
+    await this.scan();
+    const e = this.cache.get(id);
+    return e ? structuredClone(e.board) : null;
   }
 
-  async save(b: Board, quiet = false) {
-    await fs.mkdir(this.dir(), { recursive: true });
-    const old = await this.load(b.id);
-    await fs.writeFile(this.file(b.id), JSON.stringify(b, null, 1));
-    // 只有名字或卡片结构变了才刷新侧栏，拖动卡片不刷新
-    if (!quiet && (!old || old.name !== b.name || outlineKey(old) !== outlineKey(b))) this.emitter.fire();
+  async save(b: Board, opts: { group?: string | null } = {}) {
+    const old = this.cache.get(b.id);
+    const group = opts.group === undefined ? old?.group : opts.group ?? undefined;
+    const dir = group ? path.join(this.dir(), group) : this.dir();
+    await fs.mkdir(dir, { recursive: true });
+    const file = path.join(dir, `${b.id}.json`);
+    const tmp = `${file}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(b, null, 1));
+    await fs.rename(tmp, file);
+    if (old && old.file !== file) await fs.rm(old.file, { force: true });
+    const st = await fs.stat(file);
+    const e: Entry = { id: b.id, file, group, mtime: st.mtimeMs, birth: old?.birth ?? Date.now(), board: structuredClone(b) };
+    this.cache.set(b.id, e);
+    this.saved.fire(e.board);
+    if (!old || outline(old.board) !== outline(b) || old.group !== group) this.changed.fire();
   }
 
-  async create(name: string): Promise<Board> {
-    const id = `b${Date.now().toString(36)}`;
-    const b = emptyBoard(id, name);
-    await this.save(b);
+  async create(name: string, group?: string): Promise<Board> {
+    const b = emptyBoard(mkUid("b"), name);
+    await this.save(b, { group: group ?? null });
     return b;
   }
 
   async remove(id: string) {
-    await fs.rm(this.file(id), { force: true });
-    this.emitter.fire();
+    const e = this.cache.get(id);
+    if (!e) return;
+    // 放进 .trash，误删还能找回来
+    const trash = path.join(this.dir(), ".trash");
+    await fs.mkdir(trash, { recursive: true });
+    await fs.rename(e.file, path.join(trash, `${id}.${Date.now()}.json`)).catch(() => fs.rm(e.file, { force: true }));
+    this.cache.delete(id);
+    this.changed.fire();
+  }
+
+  async rename(id: string, name: string) {
+    const b = await this.load(id);
+    if (!b) return;
+    b.name = name;
+    await this.save(b);
+  }
+
+  async duplicate(id: string): Promise<Board | null> {
+    const b = await this.load(id);
+    if (!b) return null;
+    const nb: Board = { ...structuredClone(b), id: mkUid("b"), name: `${b.name} copy` };
+    await this.save(nb, { group: this.cache.get(id)?.group ?? null });
+    return nb;
+  }
+
+  async move(id: string, group: string | undefined) {
+    const b = await this.load(id);
+    if (b) await this.save(b, { group: group ?? null });
+  }
+
+  groupOf(id: string) { return this.cache.get(id)?.group; }
+  fileOf(id: string) { return this.cache.get(id)?.file; }
+
+  async newGroup(name: string) {
+    const safe = name.replace(/[\\/:*?"<>|]/g, "-").trim();
+    if (!safe || RESERVED.has(safe)) return;
+    await fs.mkdir(path.join(this.dir(), safe), { recursive: true });
+    this.emptyGroups.add(safe);
+    this.changed.fire();
+  }
+
+  async renameGroup(from: string, to: string) {
+    const safe = to.replace(/[\\/:*?"<>|]/g, "-").trim();
+    if (!safe || RESERVED.has(safe)) return;
+    await fs.rename(path.join(this.dir(), from), path.join(this.dir(), safe));
+    this.emptyGroups.delete(from);
+    this.cache.clear();
+    this.changed.fire();
+  }
+
+  /** 删组：白板移回顶层，再删文件夹 */
+  async removeGroup(name: string) {
+    for (const e of await this.scan()) if (e.group === name) await this.move(e.id, undefined);
+    await fs.rm(path.join(this.dir(), name), { recursive: true, force: true });
+    this.emptyGroups.delete(name);
+    this.changed.fire();
+  }
+
+  /** 设置里换了目录 */
+  reset() { this.cache.clear(); this.emptyGroups.clear(); this.changed.fire(); }
+
+  fireChanged() { this.changed.fire(); }
+
+  /** 存一张图片到 assets/，按内容去重；返回文件名 */
+  async saveAsset(name: string, dataUrl: string): Promise<string> {
+    const m = /^data:([\w/+.-]+);base64,(.*)$/s.exec(dataUrl);
+    if (!m) throw new Error("Not an image");
+    const buf = Buffer.from(m[2], "base64");
+    const { createHash } = await import("node:crypto");
+    const ext = path.extname(name) || `.${(m[1].split("/")[1] ?? "png").replace("jpeg", "jpg").replace("svg+xml", "svg")}`;
+    const file = `${createHash("sha1").update(buf).digest("hex").slice(0, 16)}${ext.toLowerCase()}`;
+    await fs.mkdir(this.assetsDir(), { recursive: true });
+    await fs.writeFile(path.join(this.assetsDir(), file), buf);
+    return file;
   }
 }
 
-const outlineKey = (b: Board) =>
-  JSON.stringify([b.cards.map((c) => (c.type === "code" ? [c.id, c.step, c.symbol, c.title, c.path] : c.id)), b.edges.map((e) => [e.from, e.to])]);
+/** 侧栏关心的部分：名字和卡片数 */
+const outline = (b: Board) => JSON.stringify([b.name, b.cards.length, allCodeCards(b).length]);
