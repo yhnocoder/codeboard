@@ -18,6 +18,7 @@ import { openMenu, choose, promptText, type Item } from "./ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "./state/pop";
 import { send, ask } from "./host";
 import { md, inline } from "./md";
+import { frameOf } from "./state/sections";
 
 export * from "./interact";
 
@@ -298,6 +299,8 @@ export function calleeMatches(c: Card, call: CallSpan) {
   if (!isCode(c)) return false;
   return c.segments.some((s) => s.symbol && s.symbol.qual.split(".").pop() === call.name);
 }
+
+export const allCodeCandidates = (call: CallSpan) => allCodeCards(state.board).filter((k) => calleeMatches(k, call)).map((k) => k.id);
 
 export function showPicker(title: string, items: { label: string; detail: string; run: () => void }[]) {
   const p = lastPointer();
@@ -847,7 +850,16 @@ export function moveToNewSection(rect?: Rect) {
   setEditing({ kind: "section", id });
 }
 export function toggleSection(id: string) {
-  mutate((b) => { const s = b.sections.find((q) => q.id === id); if (s) s.collapsed = !s.collapsed || undefined; });
+  const s0 = sectionById(id);
+  if (!s0) return;
+  // 折叠前把实际框存下来：标题条放在框的左上角，展开后框不变
+  const f = s0.collapsed ? null : frameOf(s0);
+  mutate((b) => {
+    const s = b.sections.find((q) => q.id === id);
+    if (!s) return;
+    if (f) Object.assign(s, { x: Math.round(f.x), y: Math.round(f.y), w: Math.round(f.w), h: Math.round(f.h) });
+    s.collapsed = !s.collapsed || undefined;
+  });
 }
 export function renameSection(id: string, v: string) {
   mutate((b) => { const s = b.sections.find((q) => q.id === id); if (s) s.title = v.trim() || "Untitled Section"; });

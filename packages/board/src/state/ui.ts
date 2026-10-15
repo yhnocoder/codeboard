@@ -38,7 +38,7 @@ let pingN = 0;
 export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 
 // 正在编辑的东西
-export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board"; id: string } | null;
+export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote"; id: string } | null;
 export const [editing, setEditing] = createSignal<Editing>(null);
 
 // 拖动中：吸附参考线、合并目标、落点行……
@@ -47,13 +47,13 @@ export const [sizeHint, setSizeHint] = createSignal<{ x: number; y: number; text
 export const [dropTarget, setDropTarget] = createSignal<{ kind: "merge" | "line" | "card" | "cand"; card: string; seg?: string; line?: number; armed?: boolean; cands?: string[] } | null>(null);
 export const [dragging, setDragging] = createSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = createSignal<{ x: number; y: number; w: number; h: number } | null>(null);
-export const [rubber, setRubber] = createSignal<{ x1: number; y1: number; x2: number; y2: number } | null>(null);
+export const [rubber, setRubber] = createSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);
 export const [spaceDown, setSpaceDown] = createSignal(false);
 export const [connectFrom, setConnectFrom] = createSignal<{ card: string; seg?: string; line?: number } | null>(null);
 export const [hoverLink, setHoverLink] = createSignal<string | null>(null);
 export const [hoverVar, setHoverVar] = createSignal<{ link: string; i: number } | null>(null);
 // 新卡弹出动画：id → 起点偏移
-export const [popIn, setPopIn] = createSignal<Record<string, { ox: number; oy: number; v: number }>>({});
+export const [popIn, setPopIn] = createSignal<Record<string, { ox: number; oy: number; v: number; slide?: boolean }>>({});
 // 讲解
 export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[] };
 export const [walk, setWalk] = createSignal<Walk | null>(null);
