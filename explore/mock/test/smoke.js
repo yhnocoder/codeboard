@@ -346,7 +346,7 @@ const log = (...a) => console.log('·', ...a);
   log('sections:', await page.evaluate(() => CB.S.sects.map(s => `${s.name}<${s.parent ? CB.S.sects.find(x => x.id === s.parent).name : '-'}> ${s.color}`).join(' ; ')));
   await page.click('#zFit'); await shot('31-nested-sections');
   // drag the inner section out by its label, then back in
-  let ib = await bbox(inner); const ob = await bbox(page.locator('.sect', { has: outer }).first());
+  let ib = await bbox(inner); const ob = await bbox(page.locator(`.sect[data-sect="${await outer.getAttribute('data-sect')}"]`));
   await page.mouse.move(ib.x + 8, ib.y + 8); await page.mouse.down(); await page.mouse.move(ob.x + ob.width + 260, ib.y + 8, { steps: 10 }); await page.mouse.up(); await page.waitForTimeout(300);
   log('after drag out:', await page.evaluate(() => CB.S.sects.map(s => `${s.name}<${s.parent ? 'child' : 'top'}>`).join(' ; ')));
   ib = await bbox(inner);
