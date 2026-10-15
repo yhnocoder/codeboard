@@ -28,7 +28,7 @@ export class BoardPanel {
     if (this.ready) void this.panel.webview.postMessage(m);
     else if (m.type !== "init") this.queue.push(m);
   }
-  toast(text: string, action?: { label: string; command: string; arg?: unknown }) { this.post({ type: "toast", text, action }); }
+  toast(text: string) { this.post({ type: "toast", text }); }
 
   /** webview 说 ready：读白板、算所有段的展示数据和版本状态，发 init */
   async init() {

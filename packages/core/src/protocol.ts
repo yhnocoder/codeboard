@@ -20,9 +20,12 @@ export type HostInfo = {
   readonly?: string; // 仓库找不到时的提示
   focus?: boolean; // Focus 布局
   target: boolean; // 编辑器里 Add to 的目标白板是不是这块
-  /** 这些快捷键被宿主拦下后以 {type:"command", name:"key"} 转回来，白板自己不再处理（免得做两次） */
+  /** 这些快捷键（⌘ + 键）被宿主拦下后以 {type:"key"} 转回来，白板自己不再处理（免得做两次） */
   forwardedKeys?: string[];
 };
+
+/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L） */
+export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock";
 
 export type PeekDef = {
   path: string; // 显示用的路径
@@ -69,8 +72,13 @@ export type HostToBoard =
   /** 编辑器 ⌥S：作为 Sidenote 挂到白板上选中的行 */
   | { type: "addSidenote"; seg: Segment; view?: SegView }
   | { type: "reveal"; card: string; seg?: string; lines?: [number, number] }
-  | { type: "command"; name: string; arg?: unknown }
-  | { type: "toast"; text: string; action?: { label: string; command: string; arg?: unknown } }
+  /** 宿主拦下的快捷键转给白板 */
+  | { type: "key"; action: KeyAction }
+  /** 侧栏 / 命令面板改了白板名 */
+  | { type: "rename"; name: string }
+  /** Relocate：符号在编辑器里找到了新位置，换掉这一段（段 id 不变） */
+  | { type: "replaceSegment"; card: string; seg: Segment; view: SegView }
+  | { type: "toast"; text: string }
   | { type: "reply"; req: number; data?: unknown; error?: string };
 
 export type BoardToHost =
@@ -81,9 +89,9 @@ export type BoardToHost =
   | { type: "open"; card: string; seg?: string; line?: number }
   | { type: "openPath"; path: string; line?: number }
   | { type: "openLink"; url: string }
-  /** 点调用展开：回 { cards: NewCard; loop; vars } 或 { pick: 候选 } 或 { none: true } */
+  /** 点调用展开：回 ExpandResult */
   | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: { path: string; line: number } }
-  | { type: "peek"; req: number; seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } }
+  | { type: "peek"; req: number; seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } } // 回 PeekResult
   | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
   | { type: "entryPoints"; req: number }
@@ -104,6 +112,9 @@ export type BoardToHost =
   | { type: "openBoard"; id: string; card?: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
   | { type: "pickFile"; req: number; kind: "image" };
+
+/** peek 的回答：找不到是 null */
+export type PeekResult = PeekDef | null;
 
 /** expand 的回答 */
 export type ExpandResult =

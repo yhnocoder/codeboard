@@ -26,6 +26,16 @@ export function ask<R = unknown, T extends BoardToHost["type"] = BoardToHost["ty
   });
 }
 
+/** 明暗主题：VS Code 在 body 上挂 vscode-light / vscode-dark / vscode-high-contrast(-light)，白板只认 html[data-theme] */
+export function followHostTheme() {
+  const sync = () => {
+    const c = document.body.classList;
+    document.documentElement.dataset.theme = c.contains("vscode-light") || c.contains("vscode-high-contrast-light") ? "light" : "dark";
+  };
+  sync();
+  new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+}
+
 export function listen(fn: (m: HostToBoard) => void) {
   window.addEventListener("message", (e) => {
     const m = e.data as HostToBoard;

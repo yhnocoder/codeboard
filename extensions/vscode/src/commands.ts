@@ -1,7 +1,7 @@
 // 编辑器和侧栏的命令：Add to Board（⌥B）、Add to Another Board…、Add to Selected Card、Add Function at Cursor、
 // Add as Sidenote（⌥S）、Reveal on Board，以及白板的新建 / 改名 / 删除 / 分组。
 import * as vscode from "vscode";
-import { allCodeCards, type Board, type CodeCard } from "@codeboard/core";
+import { allCodeCards, estSize, type Board, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { cardsFromEditor, symCard, withViews, type Built } from "./cards";
 import type { Panels } from "./panel";
@@ -17,7 +17,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
   const cmd = (id: string, fn: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
   // 白板聚焦时，VS Code 自己的快捷键（⌘K 和弦、⌘1 切编辑组、⌘± 缩放窗口……）会抢在白板前面；
   // 这些键在白板里另有用途，所以注册同样的键，转给白板处理
-  cmd("codeboard.boardKey", (key: string) => panels.all().find((p) => p.panel.active)?.post({ type: "command", name: "key", arg: key }));
+  cmd("codeboard.boardKey", (action: KeyAction) => panels.all().find((p) => p.panel.active)?.post({ type: "key", action }));
   const boardArg = (a: unknown): string | undefined => (typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined);
 
   /** Add to 的目标白板：最近聚焦的；没有就第一张；一张都没有就新建 */
@@ -165,7 +165,7 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
     const p = panels.get(b.id);
     if (p?.board) {
       // 白板开着：让白板改（它持有状态，改完会存回来）
-      p.post({ type: "command", name: "rename", arg: name.trim() });
+      p.post({ type: "rename", name: name.trim() });
       p.board.name = name.trim();
       p.panel.title = name.trim();
     }
@@ -248,7 +248,7 @@ export function placeCards(b: Board, cards: CodeCard[]) {
   for (const c of cards) {
     c.x = right;
     c.y = y;
-    y += Math.min(600, c.segments.reduce((n, s) => n + s.text.length, 0) * 19 + 70) + 40;
+    y += estSize(c).h + 40;
     b.cards.push(c);
   }
 }

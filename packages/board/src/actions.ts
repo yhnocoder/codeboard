@@ -3,17 +3,17 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards,
-  placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canExpand, canCompare, mapLines, walkOrder, treeOf, descendants, SIB_GAP,
-  copyText, cardRows, versionLabel, varKey,
+  placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
+  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment,
-  type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor,
+  type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
 } from "@codeboard/core";
 import {
   state, setState, mutate, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed,
   type LineSel,
 } from "./state/store";
 import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "./state/camera";
-import { flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "./state/ui";
+import { flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar, focusMode, setFocusMode } from "./state/ui";
 import { openMenu, choose, promptText, type Item } from "./ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "./state/pop";
 import { send, ask } from "./host";
@@ -51,7 +51,6 @@ export const mdBlock = (s: string) => md(s);
 export const sidenotesOf = (cardId: string) => state.board.sidenotes.filter((n) => n.at.card === cardId);
 export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
 export const allRects = (skip?: Set<string>) => state.board.cards.filter((c) => !skip?.has(c.id)).map((c) => rectOf(c));
-export const estSize = (c: Card) => ({ w: c.w, h: c.h ?? (c.kind === "code" ? Math.min(520, 52 + c.segments.reduce((n, s) => n + s.end - s.start + 1, 0) * 19) : 160) });
 
 export function sectionOf(id: string): Section | undefined {
   const f = cardById(id);
@@ -573,22 +572,20 @@ export function sectionMenu(id: string, x: number, y: number) {
 
 export function deleteSel() {
   const ids = new Set<string>();
-  for (const id of sel.cards) { const f = cardById(id); if (!f) continue; ids.add(f.host.id); if (f.host.kind === "compare") f.host.cols.forEach((k) => ids.add(k.id)); }
+  for (const id of sel.cards) { const f = cardById(id); if (f) ids.add(f.host.id); }
   const links = new Set(sel.links);
   const secs = new Set(sel.sections);
   if (!ids.size && !links.size && !secs.size) return;
-  clearSel();
-  mutate((b) => {
-    b.cards = b.cards.filter((c) => !ids.has(c.id));
-    b.links = b.links.filter((l) => !links.has(l.id) && !ids.has(l.from.card) && !ids.has(l.to.card));
-    b.sidenotes = b.sidenotes.filter((n) => !ids.has(n.at.card) && !(n.kind === "card" && ids.has(n.card)));
+  const ok = mutate((b) => {
+    removeCards(b, ids);
+    b.links = b.links.filter((l) => !links.has(l.id));
     if (secs.size) dropSections(b, secs);
   });
+  if (ok) clearSel();
 }
 export function deleteLinks(ids: string[]) {
   const s = new Set(ids);
-  mutate((b) => { b.links = b.links.filter((l) => !s.has(l.id)); });
-  select({});
+  if (mutate((b) => { b.links = b.links.filter((l) => !s.has(l.id)); })) select({});
 }
 function dropSections(b: Board, secs: Set<string>) {
   for (const s of b.sections) if (secs.has(s.id)) {
@@ -640,7 +637,7 @@ export function setDesc(id: string, v: string) {
 export function setNoteText(id: string, v: string) {
   mutate((b) => { const c = findCard(b, id)?.card; if (c?.kind === "note") c.md = v; });
   const c = cardById(id)?.card;
-  if (c?.kind === "note" && !c.md.trim()) mutate((b) => { b.cards = b.cards.filter((k) => k.id !== id); b.links = b.links.filter((l) => l.from.card !== id && l.to.card !== id); });
+  if (c?.kind === "note" && !c.md.trim()) mutate((b) => removeCards(b, [id]));
 }
 export function setFreeCode(id: string, text: string) {
   let seg: Segment | undefined;
@@ -663,7 +660,7 @@ export function langMenu(id: string, el: Element) {
   const r = el.getBoundingClientRect();
   const c = cardById(id)?.card;
   if (!isCode(c)) return;
-  import("@codeboard/core").then(({ LANGS }) => openMenu(LANGS.map((l) => ({ label: l.label, checked: c.segments[0].lang === l.id, run: () => setLang(id, l.id) })), r.left, r.bottom + 4));
+  openMenu(LANGS.map((l) => ({ label: l.label, checked: c.segments[0].lang === l.id, run: () => setLang(id, l.id) })), r.left, r.bottom + 4);
 }
 export function toggleHide(id: string, k: "comments" | "docstrings" | "blank") {
   mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c)) c.hide = { ...c.hide, [k]: !c.hide?.[k] }; });
@@ -775,7 +772,6 @@ export function separate(id: string) {
 
 // ---------- 合并 / 拆开 ----------
 
-const mergeable = (c?: Card) => isCode(c) && !(c.segments.length === 1 && c.segments[0].src.kind === "free" && false);
 export function mergeCheck(cs: Card[]): { ok: true } | { ok: false; why: string } {
   if (cs.length < 2) return { ok: false, why: "Select two or more code cards" };
   if (!cs.every((c) => c.kind === "code" && !c.members)) return { ok: false, why: "Only code cards can be merged (not Note, Image, Web, Compare or class cards)" };
@@ -791,7 +787,7 @@ export function mergeCards(ids: string[], target?: string) {
   const set = new Set(cs.map((c) => c.id));
   const mid = uid("c");
   let newSegs: Segment[] = [];
-  mutate((b) => {
+  const ok = mutate((b) => {
     const orig = cs.map((c) => structuredClone(unwrap(findCard(b, c.id)!.card)) as CodeCard);
     const T = orig.find((c) => c.id === tgt.id)!;
     const segs = mergeOverlapping(sortSegments(orig.flatMap((c) => c.segments), T.segments[0]?.path));
@@ -821,6 +817,7 @@ export function mergeCards(ids: string[], target?: string) {
     b.cards.push(M);
     newSegs = structuredClone(segs);
   });
+  if (!ok) return;
   // 段 id 没变的直接沿用展示数据；合出来的新段（范围变了）找宿主要
   const fresh = newSegs.filter((s) => { const v = state.views[s.id]; return !v || v.html.length !== s.text.length; });
   requestViews(fresh);
@@ -836,9 +833,9 @@ export function unmerge(id: string) {
   if (!M.mergedFrom && M.segments.length < 2) return;
   const made: string[] = [];
   const need: Segment[] = [];
-  mutate((b) => {
+  const ok = mutate((b) => {
     const m = findCard(b, id)!.card as CodeCard;
-    const dx = m.mergedFrom ? m.x - m.mergedFrom.find((o) => o.title === m.title || true)!.x : 0;
+    const dx = m.mergedFrom ? m.x - m.mergedFrom[0].x : 0;
     const parts: CodeCard[] = m.mergedFrom
       ? m.mergedFrom.map((o) => ({ ...structuredClone(unwrap(o)), x: o.x + dx, y: o.y + (m.y - m.mergedFrom![0].y), section: m.section }))
       : m.segments.map((s, i) => ({ id: uid("c"), kind: "code", segments: [structuredClone(unwrap(s))], x: m.x + i * 40, y: m.y + i * 40, w: m.w, hide: m.hide, section: m.section }));
@@ -864,6 +861,7 @@ export function unmerge(id: string) {
     b.cards = b.cards.filter((c) => c.id !== id);
     for (const p of parts) { b.cards.push(p); made.push(p.id); need.push(...p.segments); }
   });
+  if (!ok) return;
   requestViews(need.filter((s) => !state.views[s.id]));
   select({ cards: made });
   toast(`Split into ${made.length} cards`);
@@ -979,39 +977,10 @@ export function applyNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
   const ns = structuredClone(data.newSeg);
   ns.id = segId;
-  mutate((b) => {
-    const c = findCard(b, cardId)?.card;
-    if (!isCode(c)) return;
-    const i = c.segments.findIndex((s) => s.id === segId);
-    if (i < 0) return;
-    const old = c.segments[i];
-    const map = lineMap(old, ns);
-    ns.hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter(Boolean) as [number, number][];
-    ns.hl = (old.hl ?? []).map(map).filter(Boolean) as number[];
-    c.segments[i] = ns;
-    for (const l of b.links) if (l.from.card === cardId && l.from.seg === segId && l.from.line) { const m = map(l.from.line); if (m) l.from.line = m; else { l.from.seg = undefined; l.from.line = undefined; } }
-    for (const n of b.sidenotes) if (n.at.card === cardId && n.at.seg === segId && n.at.lines) {
-      const r = mapRange(map, n.at.lines[0], n.at.lines[1]);
-      if (r) n.at.lines = r; else { n.at = { card: cardId }; n.lineRemoved = true; }
-    }
-  });
+  mutate((b) => rebaseSegment(b, cardId, ns));
   if (data.newView) setState("views", segId, data.newView);
   setState("stale", segId, { state: "ok" });
   toast("Updated to the new version");
-}
-/**
- * 旧版本的行号 → 新版本的行号（core 的 LCS 对齐）：没变的行跟过去，改过的行跟到它在新版里配对的那一行；
- * 真被删掉的返回 0
- */
-function lineMap(old: Segment, ns: Segment) {
-  const m = mapLines(old.text, old.start, ns.text, ns.start, true);
-  return (l: number) => m.get(l) ?? 0;
-}
-/** 一段行（隐藏区间）映射到新版本：取区间里还在的行的首尾 */
-function mapRange(map: (l: number) => number, a: number, e: number): [number, number] | null {
-  const got = [];
-  for (let l = a; l <= e; l++) { const m = map(l); if (m) got.push(m); }
-  return got.length ? [Math.min(...got), Math.max(...got)] : null;
 }
 /** Keep：留在钉住的版本，记下这次的 HEAD，同一个新版本不再提醒 */
 export function keepVersion(cardId: string, segId: string) {
@@ -1161,16 +1130,13 @@ export async function cardToSidenote(cardId: string, at: Anchor) {
     const ok = await choose(`Turn into a Sidenote?`, ["Turn into Sidenote", "Cancel"], { text: `${links} link${links > 1 ? "s" : ""} on this card will be deleted.` });
     if (ok !== 0) return;
   }
-  mutate((b) => {
+  const ok = mutate((b) => {
+    if (isCode(c) && c.segments.length > 1) { b.sidenotes.push({ id: uid("n"), at, kind: "card", card: cardId }); return; } // 多段卡：挂成 Card sidenote，卡留着
     if (c.kind === "note") b.sidenotes.push({ id: uid("n"), at, kind: "text", md: c.md });
-    else if (isCode(c)) {
-      if (c.segments.length === 1) b.sidenotes.push({ id: uid("n"), at, kind: "code", code: structuredClone(unwrap(c.segments[0])), why: c.desc });
-      else b.sidenotes.push({ id: uid("n"), at, kind: "card", card: cardId });
-    }
-    if (isCode(c) && c.segments.length > 1) return; // 多段卡：挂成 Card sidenote，卡留着
-    b.cards = b.cards.filter((k) => k.id !== cardId);
-    b.links = b.links.filter((l) => l.from.card !== cardId && l.to.card !== cardId);
+    else if (isCode(c)) b.sidenotes.push({ id: uid("n"), at, kind: "code", code: structuredClone(unwrap(c.segments[0])), why: c.desc });
+    removeCards(b, [cardId]);
   });
+  if (!ok) return;
   clearSel();
   toast("Added as Sidenote");
 }
@@ -1194,21 +1160,19 @@ export async function showPeek(el: Element, cardId: string, segId: string, line:
   if (pin) pinPop(pid);
   try {
     const r = await ask<PeekResult>("peek", { seg: structuredClone(unwrap(s)), line, col, word, at });
-    updatePop(pid, (p) => ({ ...(p as any), data: r }));
+    updatePop(pid, (p) => ({ ...(p as any), data: r ?? { none: "No definition found", word } }));
   } catch { updatePop(pid, (p) => ({ ...(p as any), data: { none: "No definition found", word } })); }
 }
-type PeekResult = import("@codeboard/core").PeekDef | { none: string; word: string } | { pick: import("@codeboard/core").PeekDef[] };
 
 // ---------- 粘贴 ----------
 
 export async function pasteText(text: string, at?: { x: number; y: number }) {
   if (!text.trim()) return;
-  const { classifyPaste, guessLang } = await import("@codeboard/core");
   const k = classifyPaste(text);
   if (k.kind === "web") return newWeb(at, k.url);
   if (k.kind === "note") return newNote(at, true, text);
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
-  const r = await ask<import("@codeboard/core").NewCard | null>("paste", { text }).catch(() => null);
+  const r = await ask<NewCard | null>("paste", { text }).catch(() => null);
   if (r) return addCards([r], { at });
   if (k.kind === "github") return toast("Could not fetch this GitHub file");
   newFreeCode(at, text.replace(/\s+$/, ""), guessLang(text) ?? "python");
@@ -1258,7 +1222,7 @@ export function splitSnippet(id: string, merge: boolean) {
   const c = cardById(id)?.card;
   if (!isCode(c) || c.segments.length !== 1) return;
   const s = c.segments[0];
-  const defs = (state.views[s.id]?.defs ?? []).filter((d) => !d.qual.includes(".") || true).filter((d) => d.line >= s.start && d.line <= s.end);
+  const defs = (state.views[s.id]?.defs ?? []).filter((d) => d.line >= s.start && d.line <= s.end);
   const tops = defs.filter((d) => !defs.some((o) => o !== d && d.qual.startsWith(o.qual + ".")));
   if (tops.length < 2) return;
   const parts: Segment[] = tops.map((d, i) => {
@@ -1272,46 +1236,30 @@ export function splitSnippet(id: string, merge: boolean) {
     mutate((b) => {
       b.cards = b.cards.filter((k) => k.id !== id);
       let y = r.y;
-      for (const p of parts) { b.cards.push({ id: uid("c"), kind: "code", segments: [p], x: r.x, y, w: r.w }); y += Math.min(520, 52 + (p.end - p.start + 1) * 19) + 28; }
+      for (const p of parts) { const k: CodeCard = { id: uid("c"), kind: "code", segments: [p], x: r.x, y, w: r.w }; b.cards.push(k); y += estSize(k).h + GAP; }
     });
   }
   requestViews(parts);
 }
 
-/** 宿主（命令面板、快捷键、状态栏）发来的命令 */
-export function runCommand(name: string, arg?: unknown) {
-  switch (name) {
-    case "fit": return fitAll();
+/** 宿主转来的快捷键（VS Code 会先拦下这些键） */
+export function keyAction(a: KeyAction) {
+  switch (a) {
     case "search": return setPaletteOpen({ mode: "all" });
-    case "walk": return startWalk(arg as string | undefined);
-    case "exportPng": return exportPng();
-    case "undo": return import("./state/store").then((m) => m.undo());
-    case "redo": return import("./state/store").then((m) => m.redo());
-    case "review": return reviewNext();
-    case "reveal": return revealCard(arg as string);
-    case "newNote": return newNote();
-    case "keys": return setKeysOpen(true);
-    case "key": {
-      // 宿主转来的快捷键（VS Code 会先拦下这些键）
-      const k = arg as string;
-      if (k === "search") return setPaletteOpen({ mode: "all" });
-      if (k === "duplicate") return duplicateSel();
-      if (k === "fitAll") return fitAll();
-      if (k === "zoom100") return zoomAt(1 / camTarget().z);
-      if (k === "zoomIn") return zoomAt(1.25);
-      if (k === "zoomOut") return zoomAt(0.8);
-      if (k === "lock") return toggleLock(sel.cards.slice(), sel.sections.slice());
-      return;
-    }
-    case "rename": return typeof arg === "string" && arg.trim() && mutate((b) => { b.name = arg.trim(); });
-    case "relocated": {
-      // Relocate 之后宿主送来新段（同一个 id）：换掉旧段，状态回到正常
-      const r = arg as { card: string; seg: Segment; view: import("@codeboard/core").SegView };
-      setState("views", (v) => ({ ...v, [r.seg.id]: r.view }));
-      setState("stale", (st) => ({ ...st, [r.seg.id]: { state: "ok" } }));
-      return mutate((b) => { const c = findCard(b, r.card)?.card; if (isCode(c)) { const i = c.segments.findIndex((q) => q.id === r.seg.id); if (i >= 0) c.segments[i] = r.seg; } });
-    }
+    case "duplicate": return duplicateSel();
+    case "fitAll": return fitAll();
+    case "zoom100": return zoomAt(1 / camTarget().z);
+    case "zoomIn": return zoomAt(1.25);
+    case "zoomOut": return zoomAt(0.8);
+    case "lock": return toggleLock(sel.cards.slice(), sel.sections.slice());
   }
+}
+
+/** Relocate 之后宿主送来新段（同一个 id）：换掉旧段，行号跟过去，状态回到正常 */
+export function replaceSegment(cardId: string, seg: Segment, view: SegView) {
+  setState("views", seg.id, view);
+  setState("stale", seg.id, { state: "ok" });
+  mutate((b) => rebaseSegment(b, cardId, seg));
 }
 
 /** 新版本横幅里的 Review：一张张打开 diff */
@@ -1387,11 +1335,13 @@ export async function showSource(id: string) {
   } catch (e) { closePop(pid); toast((e as Error).message); }
 }
 export function openCodeFromFocus(id: string) {
-  import("./state/ui").then((u) => { u.setFocusMode(false); send({ type: "focusMode", on: false }); openCode(id); });
+  setFocusMode(false);
+  send({ type: "focusMode", on: false });
+  openCode(id);
 }
 /** 卡头上的路径：Workbench 打开编辑器，Focus 浮出源码 */
 export function pathClick(id: string) {
-  import("./state/ui").then((u) => (u.focusMode() ? showSource(id) : openCode(id)));
+  if (focusMode()) showSource(id); else openCode(id);
 }
 
 /** 类卡里点一个成员：展开成函数卡，从类卡那一行连 Call link */

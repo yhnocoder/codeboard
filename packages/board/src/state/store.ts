@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  computeFlows, emptyBoard, hiddenByCollapse, findCard,
+  brokenBy, computeFlows, emptyBoard, hiddenByCollapse, findCard,
   type Board, type BoardMeta, type Card, type HostInfo, type SegView, type Stale,
 } from "@codeboard/core";
 import { send } from "../host";
@@ -77,15 +77,25 @@ export const [canRedo, setCanRedo] = createSignal(false);
 const snap = (): Snap => JSON.stringify({ ...unwrap(state.board), cam: undefined });
 const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.length > 0); };
 
-/** 一次可撤销的修改。fn 里直接改 board（immer 风格） */
-export function mutate(fn: (b: Board) => void) {
+/**
+ * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
+ * 改完会过一遍白板不变量（core 的 brokenBy）：被破坏就整次撤回、提示原因，返回 false。
+ */
+export function mutate(fn: (b: Board) => void): boolean {
   const before = snap();
   setState("board", produce(fn));
-  if (snap() === before) return;
+  const why = brokenBy(unwrap(state.board), () => JSON.parse(before) as Board);
+  if (why) {
+    restore(before);
+    toast(why);
+    return false;
+  }
+  if (snap() === before) return true;
   undoStack.push(before);
   if (undoStack.length > 300) undoStack.shift();
   redoStack.length = 0;
   updUndo();
+  return true;
 }
 
 /** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈 */

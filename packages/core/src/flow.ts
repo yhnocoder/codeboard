@@ -116,15 +116,32 @@ export function splitsCompare(b: Pick<Board, "cards" | "links">, from: string, t
   const probe = to ?? "\u0000probe";
   const cards = to ? b.cards : [...b.cards, { id: probe, kind: "note", md: "", x: 0, y: 0, w: 0 } as Card];
   const links = [...b.links, { id: "\u0000probe", kind: "call", from: { card: from }, to: { card: probe } } as Link];
-  const f = computeFlows({ cards, links });
-  return b.cards.some((c) => {
-    if (c.kind !== "compare") return false;
-    const ta = f.byId.get(c.cols[0].id)?.tree, tb = f.byId.get(c.cols[1].id)?.tree;
-    return !!ta && !!tb && ta !== tb;
-  });
+  return splitCompares({ cards, links }).size > 0;
 }
 
-const SPLIT = "Both columns of a Compare must stay in one flow. Separate the Compare or duplicate the card first.";
+/** 两栏落在两棵不同 Call 树里的 Compare（id）。正常白板里永远是空的 */
+export function splitCompares(b: Pick<Board, "cards" | "links">, f = computeFlows(b)): Set<string> {
+  const out = new Set<string>();
+  for (const c of b.cards) {
+    if (c.kind !== "compare") continue;
+    const ta = f.byId.get(c.cols[0].id)?.tree, tb = f.byId.get(c.cols[1].id)?.tree;
+    if (ta && tb && ta !== tb) out.add(c.id);
+  }
+  return out;
+}
+
+export const SPLIT = "Both columns of a Compare must stay in one flow. Separate the Compare or duplicate the card first.";
+
+/**
+ * 白板不变量的总闸：一次修改之后（删 Link、删卡、转 Plain、合并……）有没有新拆开的 Compare。
+ * 返回拒绝的理由；before 是修改前的白板，只在 after 真有问题时才会被读到。
+ */
+export function brokenBy(after: Pick<Board, "cards" | "links">, before: () => Pick<Board, "cards" | "links">): string | null {
+  const now = splitCompares(after);
+  if (!now.size) return null;
+  const was = splitCompares(before());
+  return [...now].some((id) => !was.has(id)) ? SPLIT : null;
+}
 
 /** 点调用展开一张新卡：出发卡会进（或开始）一棵树，不能因此把 Compare 拆到两棵树里 */
 export function canExpand(b: Pick<Board, "cards" | "links">, fromCard: string): { ok: true } | { ok: false; reason: string } {

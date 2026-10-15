@@ -2,7 +2,7 @@
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { rankByReceiver, type CodeCard, type ExpandResult, type PeekDef, type Segment, type Var } from "@codeboard/core";
+import { rankByReceiver, type CodeCard, type ExpandResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
 import { symbolAt, varCandidates, type CallSite, type Sym } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, symCard } from "./cards";
@@ -168,7 +168,7 @@ async function varsFor(site: CallSite, t: { abs: string; sym: Sym }): Promise<Va
 
 type PeekReq = { seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } };
 
-export async function peek(m: PeekReq): Promise<PeekDef | null> {
+export async function peek(m: PeekReq): Promise<PeekResult> {
   let defs: Def[] = [];
   if (m.at) defs = await lspDefs(fromHostPath(m.at.path), m.at.line, m.at.col);
   else if (m.seg.src.kind !== "free") {

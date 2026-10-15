@@ -1,5 +1,5 @@
 // 白板交互场景：每个场景开一个白板、做一串操作、截图。
-import { ready, open, shot, symCard, findSym, type Host } from "./harness";
+import { ready, open, shot, symCard, findSym, viewOf, type Host } from "./harness";
 import { emptyBoard, type Board } from "@codeboard/core";
 
 const light = process.argv.includes("--light");
@@ -178,6 +178,67 @@ const S: Record<string, () => Promise<void>> = {
     const ok = b.links.filter((l) => l.kind === "call").length === 1 && /one flow/.test(toast ?? "");
     console.log(ok ? "PASS" : "FAIL", "cmptree", JSON.stringify({ links: b.links.length, roots: [...roots], cols: cmp?.cols.map((c: any) => c.id), toast }));
     await shot(h, "cmptree");
+    await h.page.context().browser()!.close();
+  },
+  // 回归：删 Link / 删卡也不能把 Compare 的两栏拆到两棵树里（R → X → cl，R → Y → cr）
+  async cmpdel() {
+    const b = boardWith("LLMEngine.step", "Scheduler.schedule", "Scheduler.postprocess");
+    const [R, X, Y] = b.cards as any[];
+    X.x = R.x + 56; X.y = 700; Y.x = R.x + 56; Y.y = 1300;
+    const cl = symCard(findSym("BlockManager.can_allocate").f, findSym("BlockManager.can_allocate").s);
+    const cr = symCard(findSym("BlockManager.allocate").f, findSym("BlockManager.allocate").s);
+    b.cards.push({ id: "k", kind: "compare", x: 1400, y: 700, w: 900, cols: [cl, cr] } as any);
+    const ln = (c: any, d: number) => c.segments[0].start + d;
+    const call = (id: string, f: any, line: number, t: any) => ({ id, kind: "call", from: { card: f.id, seg: f.segments[0].id, line }, to: { card: t.id } });
+    b.links.push(call("RX", R, ln(R, 2), X) as any, call("RY", R, ln(R, 4), Y) as any, call("Xcl", X, ln(X, 3), cl) as any, call("Ycr", Y, ln(Y, 3), cr) as any);
+    const h = await open({ board: b, light });
+    await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
+    const toast = () => h.page.locator(".toast").textContent().catch(() => "");
+    // 删共同的祖先卡
+    await h.page.locator(".card", { has: h.page.locator(".ctitle", { hasText: /^LLMEngine\.step$/ }) }).locator(".chead").click({ position: { x: 40, y: 10 } });
+    await h.page.waitForTimeout(100);
+    await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
+    const t1 = await toast();
+    await shot(h, "cmpdel-0");
+    // 删 R → X 这条线（右键菜单）
+    await h.page.keyboard.press("Escape");
+    await h.page.waitForTimeout(2800); // 等上一个提示消失
+    await h.page.locator('path.lhit[data-link="RX"]').dispatchEvent("pointerdown", { button: 0 });
+    await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
+    const t2 = await toast();
+    await h.page.waitForTimeout(1300);
+    const nb = h.board();
+    const ok = nb.cards.length === 4 && nb.links.length === 4 && /one flow/.test(t1 ?? "") && /one flow/.test(t2 ?? "");
+    console.log(ok ? "PASS" : "FAIL", "cmpdel", JSON.stringify({ cards: nb.cards.length, links: nb.links.map((l) => l.id), t1, t2 }));
+    await shot(h, "cmpdel");
+    await h.page.context().browser()!.close();
+  },
+  // 回归：Relocate 换段、HEAD 下段挪了位置：Link 两端、Sidenote、隐藏行跟着走；挪位置不进撤销栈
+  async rebase() {
+    const b = boardWith("Scheduler.schedule", "Scheduler.postprocess");
+    const [A, B] = b.cards as any[];
+    const sa = A.segments[0], sb = B.segments[0];
+    sa.hidden = [[sa.start + 8, sa.start + 9]];
+    b.links.push({ id: "L", kind: "plain", from: { card: B.id, seg: sb.id, line: sb.start + 2 }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
+    b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: B.id, seg: sb.id, lines: [sb.start + 2, sb.start + 2] } } as any);
+    const h = await open({ board: b, light });
+    // A 整体下移 5 行（HEAD 变了，内容没变）
+    await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5 } } } as any);
+    await h.page.waitForTimeout(300);
+    // B 被 Relocate 到下移 7 行的位置（同样内容）
+    await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
+    await h.page.waitForTimeout(300);
+    await h.page.keyboard.press("Control+z"); await h.page.keyboard.press("Meta+z"); // 只撤掉 Relocate；挪位置不该被撤
+    await h.page.waitForTimeout(1300);
+    const nb = h.board() as any, L = nb.links[0], na = nb.cards[0].segments[0], nbs = nb.cards[1].segments[0];
+    const ok = na.start === sa.start + 5 && JSON.stringify(na.hidden) === JSON.stringify([[sa.start + 13, sa.start + 14]]) && L.to.line === sa.start + 8
+      && nbs.start === sb.start && L.from.line === sb.start + 2 && nb.sidenotes[0].at.lines[0] === sb.start + 2;
+    // 再做一次 Relocate（不撤销）：Link 起点和 Sidenote 跟到新行
+    await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
+    await h.page.waitForTimeout(1300);
+    const nb2 = h.board() as any;
+    const ok2 = nb2.links[0].from.line === sb.start + 9 && nb2.sidenotes[0].at.lines[0] === sb.start + 9;
+    console.log(ok && ok2 ? "PASS" : "FAIL", "rebase", JSON.stringify({ aStart: na.start - sa.start, hidden: na.hidden?.[0]?.map((x: number) => x - sa.start), to: L.to.line - sa.start, bAfterUndo: nbs.start - sb.start, from: nb2.links[0].from.line - sb.start, note: nb2.sidenotes[0].at.lines[0] - sb.start }));
     await h.page.context().browser()!.close();
   },
   // 回归：Update 后 Sidenote 和高亮跟着改过的行走，不当成删掉
