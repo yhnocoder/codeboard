@@ -1,5 +1,5 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框。
-// ↵ 提交（多行时 ⌘↵），Esc 取消，点别处提交。
+// ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
 import { Show, createEffect, onCleanup } from "solid-js";
 import { editing, setEditing, type Editing } from "../state/ui";
 import { md as renderMd } from "../md";
@@ -48,7 +48,7 @@ export function Editable(p: {
         onPointerDown={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           e.stopPropagation();
-          if (e.key === "Escape") { e.preventDefault(); finish(false); }
+          if (e.key === "Escape") { e.preventDefault(); finish(!!p.multiline); } // 多行正文：Esc 保留写好的字；单行名字：Esc 撤销
           else if (e.key === "Enter" && !e.isComposing && (!p.multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); finish(true); }
         }}
         onBlur={() => finish(true)} />

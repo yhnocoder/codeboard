@@ -7,7 +7,7 @@ import {
 } from "@codeboard/core";
 import {
   state, sel, select, toggleSel, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, mutate, live, beginGesture,
-  undo, redo, toast, setSel,
+  undo, redo, toast, setSel, toastMsg, setToastMsg,
 } from "./state/store";
 import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, fitRect } from "./state/camera";
 import {
@@ -344,7 +344,7 @@ export function canvasPointerDown(e: PointerEvent) {
 
 /** 工具栏 Section：在画布上拖出一个框 */
 let tool: "section" | null = null;
-export const setTool = (t: "section" | null) => { tool = t; boardEl().classList.toggle("drawing", !!t); if (t) toast("Drag on the canvas to draw a section · Esc to cancel"); };
+export const setTool = (t: "section" | null) => { tool = t; boardEl().classList.toggle("drawing", !!t); if (t) toast("Drag on the canvas to draw a section · Esc to cancel"); else if (toastMsg()?.text.startsWith("Drag on the canvas")) setToastMsg(null); };
 function drawSection(e: PointerEvent) {
   const a = worldOf(e);
   const la = local(e);
@@ -357,10 +357,17 @@ function drawSection(e: PointerEvent) {
     const b = worldOf(ev);
     const r = moved ? { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(120, Math.abs(b.x - a.x)), h: Math.max(80, Math.abs(b.y - a.y)) } : { x: a.x, y: a.y, w: 360, h: 240 };
     clearSel();
-    // 框住的卡（中心点在框内）一起放进去
-    const inside = state.board.cards.filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y); }).map((c) => c.id);
-    select({ cards: inside });
-    A.moveToNewSection(r);
+    // 新框落在哪个 Section 里（按框中心，取最深的）就是它的父级；
+    // 只收同一层的东西：中心点在框内、原来属于父级（或更外层）的卡，整个落在框内、和它同父级的 Section
+    const fr = frames();
+    const c0 = center(r);
+    const parent = deepestAt(fr, c0.x, c0.y)?.id;
+    const outer = new Set<string | undefined>([undefined]);
+    for (let p = parent ? sec(parent) : undefined; p; p = p.parent ? sec(p.parent) : undefined) outer.add(p.id);
+    const inside = state.board.cards.filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y) && outer.has(c.section); }).map((c) => c.id);
+    const subs = state.board.sections.filter((s) => { const f = fr.get(s.id); return f && s.parent === parent && f.x >= r.x && f.y >= r.y && f.x + f.w <= r.x + r.w && f.y + f.h <= r.y + r.h; }).map((s) => s.id);
+    select({ cards: inside, sections: subs });
+    A.moveToNewSection(r, parent);
   });
 }
 

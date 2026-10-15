@@ -179,6 +179,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   };
   const clearPeek = () => { if (peekKey) { peekKey = ""; clearTimeout(peekTimer); act.scheduleHidePeek(); } };
   const onLeave = () => { setHoverRow(-1); clearPeek(); };
+  // 按下鼠标 = 要操作（展开调用、选行）：取消待弹的定义；peekKey 留着，同一个词上不再重新计时
   const lportY = createMemo(() => { const i = hoverRow(); const r = rows()[i]; return i >= 0 && r?.t === "line" && ys()[i] ? { y: ys()[i].y, r } : null; });
   const vhi = (r: Row) => {
     const hv = hoverVar();
@@ -262,7 +263,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             </Show>
           )}
         </For>
-        <div ref={srcEl} class="src" onPointerDown={onCodeDown} onContextMenu={onCtx} onPointerMove={onMove}>
+        <div ref={srcEl} class="src" onPointerDown={(e) => { clearTimeout(peekTimer); onCodeDown(e); }} onContextMenu={onCtx} onPointerMove={onMove}>
           <For each={rows()}>
             {(r, i) => (
               <Switch>

@@ -1,12 +1,12 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后整板发回来保存；宿主负责读代码、高亮、版本、跳转。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, CodeCard, Segment, Card, Var } from "./model";
+import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version } from "./model";
 import type { SegView } from "./lines";
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
   | { state: "ok" }
-  | { state: "moved"; start: number; end: number } // 只是挪了位置：白板静默跟上
+  | { state: "moved"; start: number; end: number; version?: Version } // 只是挪了位置：白板静默跟上
   | { state: "changed"; hiddenOnly: boolean; head: string } // 黄点；hiddenOnly = 只有隐藏的行变了（空心点）
   | { state: "lost" } // 符号找不到（删了或改名）
   | { state: "many" } // 片段按内容找到多处

@@ -42,6 +42,7 @@ export function onHost(m: HostToBoard) {
               if (!seg) continue;
               const d = s.start - seg.start;
               seg.start = s.start; seg.end = s.end;
+              if (s.version) seg.version = s.version;
               seg.hidden = seg.hidden?.map(([a, e]) => [a + d, e + d]);
               seg.hl = seg.hl?.map((l) => l + d);
               for (const l of b.links) if (l.from.seg === sid && l.from.line) l.from.line += d;

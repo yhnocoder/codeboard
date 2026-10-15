@@ -384,7 +384,9 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
   const go = async () => {
     const r = ref().trim();
     if (!r) return;
-    const sha = await ask<string>("resolveRef", { text: r }).catch((e) => { toast((e as Error).message); return null; });
+    const got = await ask<string | { commit: string } | null>("resolveRef", { text: r }).catch((e) => { toast((e as Error).message); return null; });
+    const sha = typeof got === "string" ? got : got?.commit;
+    if (!got) toast(`No commit matches “${r}”`);
     if (sha) { closePop(p.inst.id); A.switchCommit(p.pop.card, sha); }
   };
   return (

@@ -3,7 +3,7 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards,
-  placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canCompare, walkOrder, treeOf, descendants,
+  placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canCompare, walkOrder, treeOf, descendants, SIB_GAP,
   copyText, cardRows, versionLabel, varKey,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment,
   type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor,
@@ -235,6 +235,7 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
   const host = cardById(cardId)!.host;
   const id = card.id;
   const size = estSize(card);
+  const pushed: { id: string; dy: number }[] = [];
   mutate((b) => {
     const nc = structuredClone(card) as CodeCard;
     if (at) { nc.x = Math.round(at.x); nc.y = Math.round(at.y); }
@@ -242,14 +243,29 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
       const node = flows().byId.get(cardId);
       // 出发行在它前面的兄弟（及其子树）：新卡放在它们下面
       const before: Rect[] = [];
+      const beforeIds = new Set<string>();
       for (const k of node?.kids ?? []) {
         const kl = k.link!;
         const kseg = kl.from.seg === segId ? 0 : 1;
         if (kseg === 0 && (kl.from.line ?? 0) > call.line) continue;
-        for (const d of [k.id, ...descendants(k)]) { const r = hostRect(d); if (r) before.push(r); }
+        for (const d of [k.id, ...descendants(k)]) { const r = hostRect(d); if (r) before.push(r); beforeIds.add(cardById(d)?.host.id ?? d); }
       }
-      const p = placeChild(rectOf(host), size, before, b.cards.map((k) => rectOf(k)));
+      // 同一棵树里排在后面的卡给新卡让位（整体下移），不让新卡被挤到树的最底下
+      const root = treeOf(flows(), cardId);
+      const chain = new Set<string>();
+      for (let k: string | undefined = cardId; k; k = flows().parent.get(k)) chain.add(cardById(k)?.host.id ?? k);
+      const tree = new Set(root ? [root.id, ...descendants(root)].map((k) => cardById(k)?.host.id ?? k) : []);
+      const outside = b.cards.filter((k) => !tree.has(k.id)).map((k) => rectOf(k));
+      const hb = rectOf(host);
+      const p = placeChild(hb, size, before, outside);
       nc.x = Math.round(p.x); nc.y = Math.round(p.y);
+      const want = { x: p.x, y: p.y, w: size.w, h: size.h };
+      const below = b.cards.filter((k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && k.y >= hb.y + hb.h - 1);
+      const hit = below.some((k) => { const r = rectOf(k); return r.x < want.x + want.w && want.x < r.x + r.w && r.y < want.y + want.h + SIB_GAP; });
+      if (hit) {
+        const dy = size.h + SIB_GAP;
+        for (const k of below) { k.y += dy; pushed.push({ id: k.id, dy }); }
+      }
     }
     const sec = host.section;
     if (sec) nc.section = sec;
@@ -271,6 +287,20 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
     }
     const from = anchorPoint(cardId, segId, call.line);
     popCard(id, from ?? undefined);
+  });
+  if (pushed.length) slideFrom(pushed.map((q) => ({ id: q.id, ox: 0, oy: -q.dy })));
+}
+
+/** 卡片已经挪到新位置，画面上从旧位置滑过去 */
+function slideFrom(list: { id: string; ox: number; oy: number }[]) {
+  if (reduceMotion()) return;
+  const sp = new Spring(0, 170, 26, 0.002); sp.t = 1;
+  setPopIn((p) => { const n = { ...p }; for (const q of list) n[q.id] = { ox: q.ox, oy: q.oy, v: 0, slide: true } as any; return n; });
+  animate((dt) => {
+    sp.step(dt);
+    const done = sp.done;
+    setPopIn((p) => { const n = { ...p }; for (const q of list) { if (done) delete n[q.id]; else n[q.id] = { ...(n[q.id] as any), v: sp.v }; } return n; });
+    return done;
   });
 }
 
@@ -828,14 +858,14 @@ export function unmerge(id: string) {
 
 // ---------- Section ----------
 
-export function moveToNewSection(rect?: Rect) {
+export function moveToNewSection(rect?: Rect, parentId?: string) {
   const ids = sel.cards.map((i) => cardById(i)?.host.id).filter(Boolean) as string[];
   const subs = sel.sections.slice();
   if (!ids.length && !subs.length && !rect) return;
   const id = uid("g");
   mutate((b) => {
     const homes = [...new Set(ids.map((i) => findCard(b, i)!.host.section))];
-    const parent = homes.length === 1 ? homes[0] : undefined;
+    const parent = rect ? parentId : homes.length === 1 ? homes[0] : undefined;
     const r = rect ?? bounds(ids.map((i) => rectOf(findCard(b, i)!.host))) ?? { x: 0, y: 0, w: 200, h: 120 };
     b.sections.push({ id, title: "Untitled Section", x: r.x, y: r.y, w: r.w, h: r.h, parent });
     for (const i of ids) findCard(b, i)!.host.section = id;
@@ -1115,15 +1145,6 @@ export async function cardToSidenote(cardId: string, at: Anchor) {
 
 // ---------- 定义预览 ----------
 
-let peekT: number | undefined;
-export function hoverIdent(el: HTMLElement, cardId: string, segId: string, line: number, col: number, word: string, e: PointerEvent) {
-  clearTimeout(peekT);
-  const pin = e.metaKey || e.ctrlKey;
-  peekT = window.setTimeout(() => showPeek(el, cardId, segId, line, col, word, pin), pin ? 0 : 450);
-  el.addEventListener("pointerleave", () => { clearTimeout(peekT); scheduleHidePeek(); }, { once: true });
-  // 点下去就是要操作（展开调用、选行），不再弹定义
-  el.addEventListener("pointerdown", () => clearTimeout(peekT), { once: true });
-}
 let peekLeave: number | undefined;
 export function scheduleHidePeek() {
   clearTimeout(peekLeave);
@@ -1238,6 +1259,14 @@ export function runCommand(name: string, arg?: unknown) {
     case "reveal": return revealCard(arg as string);
     case "newNote": return newNote();
     case "keys": return setKeysOpen(true);
+    case "rename": return typeof arg === "string" && arg.trim() && mutate((b) => { b.name = arg.trim(); });
+    case "relocated": {
+      // Relocate 之后宿主送来新段（同一个 id）：换掉旧段，状态回到正常
+      const r = arg as { card: string; seg: Segment; view: import("@codeboard/core").SegView };
+      setState("views", (v) => ({ ...v, [r.seg.id]: r.view }));
+      setState("stale", (st) => ({ ...st, [r.seg.id]: { state: "ok" } }));
+      return mutate((b) => { const c = findCard(b, r.card)?.card; if (isCode(c)) { const i = c.segments.findIndex((q) => q.id === r.seg.id); if (i >= 0) c.segments[i] = r.seg; } });
+    }
   }
 }
 

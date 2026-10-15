@@ -46,16 +46,23 @@ export function alignRows(a: string[], b: string[]): AlignRow[] {
       else adds.push(d[k].b!);
       k++;
     }
-    // 相似的行配对（同一缩进、共有词多），配不上的单独放
-    const n = Math.max(dels.length, adds.length);
-    for (let i = 0; i < n; i++) {
-      const l = dels[i], r = adds[i];
-      if (l !== undefined && r !== undefined && similar(a[l], b[r])) rows.push({ kind: "changed", l, r });
-      else {
-        if (l !== undefined) rows.push({ kind: "left", l });
-        if (r !== undefined) rows.push({ kind: "right", r });
-      }
+    // 按顺序配对：先找相似的行对齐（单调，不交叉），中间夹着的按位置并排；
+    // 只剩一边的才留斜纹空位。两段完全不同时也是逐行并排，不会一行一个空位。
+    let i = 0, j = 0;
+    const side = (ie: number, je: number) => {
+      while (i < ie && j < je) rows.push({ kind: "changed", l: dels[i++], r: adds[j++] });
+      while (i < ie) rows.push({ kind: "left", l: dels[i++] });
+      while (j < je) rows.push({ kind: "right", r: adds[j++] });
+    };
+    for (let p = 0; p < dels.length; p++) {
+      if (p < i) continue;
+      let q = -1;
+      for (let t = j; t < Math.min(adds.length, j + 12); t++) if (similar(a[dels[p]], b[adds[t]])) { q = t; break; }
+      if (q < 0) continue;
+      side(p, q);
+      rows.push({ kind: "changed", l: dels[i++], r: adds[j++] });
     }
+    side(dels.length, adds.length);
   }
   return rows;
 }

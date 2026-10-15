@@ -426,7 +426,8 @@ kbd { font: 10.5px var(--mono); }
 .rev.nover { color: var(--ink-3); cursor: default; }
 .rev.lang { color: var(--ink-2); }
 .mk.inline { position: static; margin: 0; flex: none; }
-.hidebar { display: flex; gap: 2px; padding: 3px 6px; border-bottom: 1px solid var(--line); flex: none; background: var(--head); overflow: hidden; }
+/* 选中单张代码卡时浮在卡片上方的小工具条：不改变卡片高度，不挤压下面的卡 */
+.hidebar { position: absolute; bottom: 100%; right: 6px; margin-bottom: 6px; display: flex; gap: 2px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--sh-float); z-index: 3; white-space: nowrap; }
 .hidebar button { font-size: 11px; padding: 2px 7px; border-radius: 5px; color: var(--ink-3); white-space: nowrap; }
 .hidebar button:hover { background: var(--hlrow); color: var(--ink); }
 .hidebar button.on { color: var(--accent); background: var(--row); }
