@@ -213,7 +213,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.text.sel .hw { display: block; }
 .hw.l { left: -8px; } .hw.r { right: -8px; }
 .card.text .ttb { position: absolute; left: 0; top: -44px; display: none; white-space: nowrap; width: max-content; }
-.card.text.sel:not(.editing) .ttb { display: inline-flex; }
+.card.text.sel.solo:not(.editing) .ttb { display: inline-flex; }
 .card.note .nbody { padding: 10px 14px 12px; font-size: 13px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
 .card.note .nbody[contenteditable] { cursor: text !important; user-select: text !important; -webkit-user-select: text !important; }
 .card.note .chead .ctitle { font-family: var(--sys); }
@@ -1064,7 +1064,7 @@ function tidyTree(rootId, animate) {
 // Selection
 // =====================================================================
 function applySel() {
-  for (const el of cardsL.querySelectorAll('.card')) el.classList.toggle('sel', sel.has(el.dataset.id));
+  for (const el of cardsL.querySelectorAll('.card')) { el.classList.toggle('sel', sel.has(el.dataset.id)); el.classList.toggle('solo', sel.size === 1); }
   for (const el of $$('.sect', world)) el.classList.toggle('sel', sel.has(el.dataset.sect));
 }
 function select(id, add) {

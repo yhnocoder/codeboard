@@ -173,7 +173,58 @@ const log = (...a) => console.log('·', ...a);
   await shot('19-dark');
   await page.evaluate(() => document.documentElement.removeAttribute('data-theme'));
 
-  // 12. undo / redo
+  // 12. misc: hide lines (H), comments toggle, highlight, copy without numbers, note, collapse, tidy, duplicate, picker, link menu
+  await page.evaluate(() => CB.resetDemo());
+  await page.waitForTimeout(300);
+  await focus('LLMEngine.step');
+  const stc = card('LLMEngine.step');
+  await stc.locator('.gutter .no[data-l="54"]').click();
+  await stc.locator('.gutter .no[data-l="55"]').click({ modifiers: ['Shift'] });
+  const copied = await page.evaluate(() => getSelection().toString());
+  log('selection text (copy) =', JSON.stringify(copied));
+  await page.keyboard.press('h'); await page.waitForTimeout(200);
+  log('gap bar:', await stc.locator('.gap').first().textContent());
+  await stc.locator('.gutter .no[data-l="51"]').click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Highlight Lines")').click();
+  await stc.locator('.chead [data-act="menu"]').click();
+  await page.locator('#ctx button:has-text("Collapse Subtree")').click().catch(() => log('no Collapse Subtree (no children)'));
+  const gen = card('LLMEngine.generate');
+  await focus('LLMEngine.generate', 0.8);
+  await gen.locator('.chead [data-act="menu"]').click();
+  await page.locator('#ctx button:has-text("Collapse Subtree")').click();
+  log('cards after collapse:', await page.locator('.card.kcode').count(), '| badge', await gen.locator('.subc').textContent());
+  await gen.locator('.subc').click();
+  await gen.locator('.chead [data-act="menu"]').click();
+  await page.locator('#ctx button:has-text("Tidy Layout")').click();
+  await page.waitForTimeout(600);
+  await gen.locator('.chead .kind').click();
+  await page.keyboard.press('Control+d');
+  log('after duplicate, numbered cards:', (await page.$$eval('.card .chead .step', els => els.map(e => e.textContent))).join(' '), '| code cards', await page.locator('.card.kcode').count());
+  // note: new note via N, show/hide background
+  await page.mouse.move(1200, 300); await page.keyboard.press('n'); await page.keyboard.type('prefill 优先：有新请求时这一步只做 prefill。'); await page.mouse.click(1300, 800);
+  await page.waitForTimeout(300);
+  await shot('20-note-dup-tidy');
+  // multiple definitions picker: utils/loader.py load_model -> weight_loader
+  await page.keyboard.press('Control+k'); await page.keyboard.type('load_model'); await page.keyboard.press('Enter'); await page.waitForTimeout(500);
+  await focus('load_model');
+  await card('load_model').locator('.src span.call:text-is("weight_loader")').first().click();
+  await shot('21-picker');
+  await page.keyboard.press('Escape');
+  // right-click a call -> Link to Existing Card…
+  await focus('LLMEngine.step');
+  await card('LLMEngine.step').locator('.src span.call:text-is("schedule")').click({ button: 'right' });
+  await page.locator('#ctx button:has-text("Link to Existing Card")').click(); await page.waitForTimeout(200);
+  await shot('22-link-existing');
+  await page.keyboard.press('Escape');
+  // localStorage unavailable: page must still work
+  const p2 = await browser.newPage({ viewport: { width: 1200, height: 800 } });
+  p2.on('pageerror', e => errors.push('p2 pageerror: ' + e.message));
+  await p2.addInitScript(() => { Object.defineProperty(window, 'localStorage', { get() { throw new Error('blocked'); } }); });
+  await p2.goto(URL); await p2.waitForTimeout(500);
+  log('no-storage page cards:', await p2.locator('.card').count());
+  await p2.close();
+
+  // 13. undo / redo
   await page.keyboard.press('Control+z');
   await page.keyboard.press('Control+Shift+z');
   await page.click('#zFit');
