@@ -103,6 +103,7 @@ export type Link = {
   label?: string; // 用户写的话，浮在线中间
   // Call
   vars?: Var[]; // 勾选了的变量；默认一个都不加
+  cands?: Var[]; // 语法推出来的候选变量（点 + 时列出来）
   loop?: boolean; // 出发行在 for / while 里（↺）
   call?: { name: string; col: number }; // 点的是这一行的哪个调用
   // Plain
