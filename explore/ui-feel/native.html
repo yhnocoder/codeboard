@@ -28,6 +28,9 @@
 }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { color-scheme: dark; } }
 :root[data-theme="dark"] { color-scheme: dark; }
+/* 页面里的「浅 / 深」按钮：宿主会改写 html 上的 data-theme，所以设在 body 上 */
+body[data-mode="dark"] { color-scheme: dark; }
+body[data-mode="light"] { color-scheme: light; }
 
 * { box-sizing: border-box; }
 html, body { margin: 0; }
@@ -346,7 +349,7 @@ document.getElementById('all').addEventListener('click', e => {
 document.getElementById('segT').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   document.querySelectorAll('#segT button').forEach(x => x.setAttribute('aria-pressed', x === b));
-  if (b.dataset.t) document.documentElement.dataset.theme = b.dataset.t; else delete document.documentElement.dataset.theme;
+  if (b.dataset.t) document.body.dataset.mode = b.dataset.t; else delete document.body.dataset.mode;
 });
 const mode = el => el.closest('.cell').dataset.mode;
 

@@ -1,20 +1,20 @@
 /* 柔光：大留白、细字重、柔和的大面积投影；代码放在下沉的凹槽里；珊瑚色只出现在一个圆形按钮和几个小点上 */
 .s-soft {
-  --bg: light-dark(#eceef1, #1b1d21);
-  --surface: light-dark(#ffffff, #25282e);
-  --well: light-dark(#f4f5f7, #1f2126);
-  --ink: light-dark(#1f2430, #eceef2);
-  --ink-2: light-dark(#5f6774, #a6acb8);
-  --ink-3: light-dark(#a8aebb, #646a76);
-  --hair: light-dark(rgba(20,30,50,.07), rgba(255,255,255,.06));
+  --bg: light-dark(#efedea, #1e1c1a);
+  --surface: light-dark(#fffdfa, #2a2724);
+  --well: light-dark(#f6f3ee, #221f1c);
+  --ink: light-dark(#28221c, #efebe5);
+  --ink-2: light-dark(#6b6358, #b1a99d);
+  --ink-3: light-dark(#b2aa9e, #6f675c);
+  --hair: light-dark(rgba(55,38,20,.07), rgba(255,255,255,.06));
   --selbg: color-mix(in srgb, var(--coral) 22%, transparent);
   --coral: light-dark(#f2583e, #ff6a4d);
   --ui: "Jost", "Helvetica Neue", "PingFang SC", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   --k-kw: light-dark(#8a4fd0, #c09cff); --k-fn: light-dark(#2563c9, #7fb0ff); --k-str: light-dark(#1f8a5b, #6fd3a2);
   --k-com: light-dark(#a3a9b5, #6a707c); --k-num: light-dark(#d0602f, #ffa27a); --k-self: light-dark(#c2417a, #f58fbd); --k-p: light-dark(#8a909c, #8d939f);
-  --sh-card: 0 1px 2px light-dark(rgba(20,30,50,.04), rgba(0,0,0,.3)), 0 28px 56px -22px light-dark(rgba(20,30,50,.22), rgba(0,0,0,.7)), inset 0 .5px 0 light-dark(rgba(255,255,255,1), rgba(255,255,255,.06));
-  --sh-soft: 0 12px 30px -12px light-dark(rgba(20,30,50,.2), rgba(0,0,0,.6));
+  --sh-card: 0 1px 2px light-dark(rgba(55,38,20,.04), rgba(0,0,0,.3)), 0 28px 56px -22px light-dark(rgba(55,38,20,.22), rgba(0,0,0,.7)), inset 0 .5px 0 light-dark(rgba(255,255,255,1), rgba(255,255,255,.06));
+  --sh-soft: 0 12px 30px -12px light-dark(rgba(55,38,20,.2), rgba(0,0,0,.6));
 }
 .s-soft .card { background: var(--surface); border-radius: 18px; box-shadow: var(--sh-card); }
 .s-soft .card.sel { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
@@ -28,7 +28,7 @@
 .s-soft .ctitle { grid-column: 1 / -1; font: 300 18px/1.35 var(--ui); color: var(--ink); letter-spacing: -.005em; }
 .s-soft .cpath { grid-column: 1 / -1; font: 400 11px var(--ui); color: var(--ink-3); letter-spacing: .02em; }
 .s-soft .code { margin: 0 10px 10px; padding: 8px 0 10px; border-radius: 12px; background: var(--well); font: 10.5px/19px var(--mono); color: var(--ink);
-  box-shadow: inset 0 1px 3px light-dark(rgba(20,30,50,.07), rgba(0,0,0,.35)), inset 0 0 0 .5px var(--hair); }
+  box-shadow: inset 0 1px 3px light-dark(rgba(55,38,20,.07), rgba(0,0,0,.35)), inset 0 0 0 .5px var(--hair); }
 .s-soft .ln .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
 .s-soft .ln.link { background: color-mix(in srgb, var(--coral) 8%, transparent); }
 .s-soft .ln.link .no { color: var(--coral); }

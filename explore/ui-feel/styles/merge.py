@@ -16,7 +16,7 @@ for ln in oldcss:
 css = '.board { --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --serif: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif; }\n' + '\n'.join(out) + '\n' + OLD + ' .toast { transform: none; }'
 def scope(name, v):
     return open(name).read().replace(f'.s-{ {"draft":"draft","soft":"soft","color":"color","art":"art"}[v] }', f'.board[data-v="{v}"]')
-for f, v in [('drafting.css', 'draft'), ('soft.css', 'soft'), ('color.css', 'color'), ('art.css', 'art')]:
+for f, v in [('drafting.css', 'draft'), ('soft.css', 'soft'), ('color.css', 'color'), ('news.css', 'news'), ('art.css', 'art')]:
     css += '\n' + open(f).read().replace(f'.s-{v}', f'.board[data-v="{v}"]')
 
 NOTES = {
@@ -25,12 +25,11 @@ NOTES = {
  'graphite': '<h2>石墨</h2><p>中性灰，强调色跟随 VS Code 的 focus 颜色，和编辑器融为一体，最接近原生 macOS app。</p>',
  'draft': '''<h2>制图</h2><p>参考 Merit 的唇笔图纸。只有墨和线，没有颜色、阴影和圆角。</p><ul>
 <li><b>箭头</b>走直角虚线，像标注引线；起点是代码行右侧的小方块。</li>
-<li><b>行号区间</b>画成尺寸线（卡片左侧的 L49–55）。</li>
 <li><b>便签</b>是细节标注框，用点线引到某一行。</li>
 <li><b>新版本</b>是实心方块，旧版本是空心方块。</li>
 <li><b>选中</b>是外面再套一圈虚线框。</li></ul>
 <h3>取舍</h3><ul><li>最安静，截图放进文档最好看。</li><li>没有颜色，卡片一多，状态不容易一眼看到。</li><li>缩小后 1px 细线会发虚，要按缩放加粗。</li></ul>''',
- 'soft': '''<h2>柔光</h2><p>参考白色手表商店那张：大留白、细字重、大面积柔和投影，珊瑚色只用在一个圆按钮和几个小点上。</p><ul>
+ 'soft': '''<h2>柔光</h2><p>参考白色手表商店那张：大留白、细字重、大面积柔和投影，珊瑚色只用在一个圆按钮和几个小点上。底色带一点暖。</p><ul>
 <li><b>代码</b>放在卡片里一块下沉的凹槽中，这是「拟物」的部分。</li>
 <li><b>白板列表</b>做成左侧竖排的标签栏，当前白板下面一条珊瑚短线。</li>
 <li><b>讲解</b>是右下角的珊瑚色圆形按钮。</li>
@@ -43,6 +42,13 @@ NOTES = {
 <li><b>讲解进度</b>是右上角的小方格，走到哪一步就填哪一格。</li>
 <li><b>选中</b>是右下方的实心偏移投影。</li></ul>
 <h3>取舍</h3><ul><li>辨识度最高，一眼分清哪张卡来自哪个文件。</li><li>颜色块占高度，卡片一多会很热闹；文件超过 6–8 个时颜色要复用。</li></ul>''',
+ 'news': '''<h2>报纸</h2><p>新闻纸底、黑色油墨，整块白板排成一张报纸的版面。</p><ul>
+<li><b>白板名</b>是报头：哥特体报名，下面一行期号和提交号，再加一道双线。</li>
+<li><b>每张卡片是一篇报道</b>：顶部粗线，眉题写「第 1.1 版 · 文件名」，函数名是粗体大标题，斜体导语是一句话说明。</li>
+<li><b>代码</b>用打字机字体，像报道里的引文。</li>
+<li><b>新版本</b>是一枚红色小印章，提示条是黑底的「快讯」。</li>
+<li><b>箭头上的数据</b>写成斜体，两边加破折号，像图片说明。</li></ul>
+<h3>取舍</h3><ul><li>阅读感最强，适合讲解或导出成长图。</li><li>标题和导语占高度，代码区域比暖墨小。</li><li>几乎没有颜色，状态要靠印章和粗细来区分。</li></ul>''',
  'art': '''<h2>艺术</h2><p>参考 Severance 晚宴海报：薄荷纸、深绿油墨、双线框、居中排版、字距拉得很开。</p><ul>
 <li><b>白板</b>四周有双线边框，背景是很淡的方格纸（这是风格的一部分，可以去掉）。</li>
 <li><b>卡片头</b>居中：编号和文件名、衬线大标题、文件 / 行 / 提交三栏信息。</li>
@@ -55,6 +61,7 @@ VCFG = {
  'draft': {'route': 'elbow', 'head': 'triangle', 'port': 'square', 'gap': 150},
  'soft': {'head': 'dot', 'gap': 150, 'pad': {'l': 84, 'r': 28, 't': 96, 'b': 84}},
  'color': {'head': 'triangle', 'gap': 150},
+ 'news': {'head': 'triangle', 'gap': 150, 'pad': {'l': 40, 'r': 40, 't': 120, 'b': 80}},
  'art': {'port': 'diamond', 'gap': 150, 'pad': {'l': 44, 'r': 44, 't': 100, 'b': 84}},
 }
 draftjs = open('drafting.js').read().replace('function decorate(cards, world) {\n  world.querySelectorAll(\'.dim, .callout\').forEach(n => n.remove());', 'function drafting(cards, world) {')
@@ -72,12 +79,12 @@ setV('warm');
 '''
 seg = '''<div class="ctl">版本
       <div class="seg" id="segV" role="group" aria-label="版本">
-        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button>
+        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button>
       </div>
     </div>
     <div class="ctl">主题'''
 o = open('base.html').read()
-fonts = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&display=swap'
+fonts = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&display=swap'
 for a, b in [('%%TITLE%%', 'CodeBoard 材质'), ('%%FONTS%%', fonts), ('%%CSS%%', css + '\n.notes .tip { font-size: 12px; border-top: .5px solid var(--page-hair); padding-top: 12px; }'),
              ('%%H1%%', '白板材质对照'), ('%%SUB%%', '同一块白板、同一份数据，只换材质。左边模拟 VS Code 里的 webview。'),
              ('class="board %%BOARDCLASS%%"', 'class="board" data-v="warm"'), ('%%EYEBROW%%', 'NANO-VLLM · ENGINE'), ('%%NOTES%%', ''),
