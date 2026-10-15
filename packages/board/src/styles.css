@@ -2,7 +2,7 @@
    主题跟随 VS Code：body 上的 vscode-dark / vscode-light / vscode-high-contrast。 */
 :root {
   --bg: #f4f2ec; --panel: #faf9f5; --surface: #ffffff; --paper: #f1ede2;
-  --ink: #1f1e1b; --ink-2: #5d5a53; --ink-3: #8f8a80; --line: #e3dfd4; --line-2: #d3cdbf; --grid: #d8d3c6;
+  --ink: #1f1e1b; --ink-2: #5d5a53; --ink-3: #8f8a80; --line: #e3dfd4; --line-2: #d3cdbf;
   --accent: #c15f3c; --accent-ink: #ffffff; --accent-soft: rgba(193, 95, 60, 0.1); --hl: #f8e8dc; --sel: rgba(193, 95, 60, 0.14);
   --ok: #5a8a4c; --warn: #c48a1f; --warn-soft: rgba(196, 138, 31, 0.13); --add: rgba(90, 138, 76, 0.13); --del: rgba(193, 95, 60, 0.12);
   --shadow: 0 1px 2px rgba(40, 30, 10, 0.05), 0 4px 14px rgba(40, 30, 10, 0.05); --shadow-lg: 0 10px 40px rgba(40, 30, 10, 0.16);
@@ -18,7 +18,7 @@
 }
 body.vscode-dark, body.vscode-high-contrast:not(.vscode-high-contrast-light) {
   --bg: #1b1a18; --panel: #22211f; --surface: #2a2926; --paper: #312e28;
-  --ink: #ece9e1; --ink-2: #b4afa5; --ink-3: #868177; --line: #3a3833; --line-2: #4a4740; --grid: #36342f;
+  --ink: #ece9e1; --ink-2: #b4afa5; --ink-3: #868177; --line: #3a3833; --line-2: #4a4740;
   --accent: #db7a56; --accent-ink: #1b1a18; --accent-soft: rgba(219, 122, 86, 0.14); --hl: #43302a; --sel: rgba(219, 122, 86, 0.2);
   --ok: #8dbb79; --warn: #e0b055; --warn-soft: rgba(224, 176, 85, 0.14); --add: rgba(141, 187, 121, 0.14); --del: rgba(219, 122, 86, 0.16);
   --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.2); --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.5);
@@ -59,7 +59,7 @@ body.linking, body.linking * { cursor: crosshair !important; user-select: none; 
 @media (max-width: 520px) { .topbar .ghost span { display: none; } }
 /* ---------- 画布 ---------- */
 .canvas { flex: 1; position: relative; overflow: hidden; min-width: 0; cursor: default;
-  background-color: var(--bg); background-image: radial-gradient(var(--grid) 1px, transparent 1.3px); }
+  background: var(--bg); }
 .canvas.panning { cursor: grabbing; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; user-select: none; -webkit-user-select: none; }
 .world textarea, .world input { user-select: text; -webkit-user-select: text; }

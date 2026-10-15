@@ -199,7 +199,6 @@ export function Canvas() {
 
   return (
     <div ref={canvasEl} class="canvas" classList={{ presenting: state.present !== null }}
-      style={{ "background-position": `${cam().x}px ${cam().y}px`, "background-size": `${22 * cam().z}px ${22 * cam().z}px` }}
       onPointerDown={panStart} onDblClick={dbl} onDragOver={(e) => e.preventDefault()} onDrop={drop}>
       <div class="world" style={{ transform: `translate(${cam().x}px, ${cam().y}px) scale(${cam().z})` }}>
         <For each={groups()}>{(g) => <GroupView card={g} />}</For>
