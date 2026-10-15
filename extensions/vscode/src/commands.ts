@@ -1,14 +1,13 @@
 // 编辑器和侧栏的命令：Add to Board（⌥B）、Add to Another Board…、Add to Selected Card、Add Function at Cursor、
 // Add as Sidenote（⌥S）、Reveal on Board，以及白板的新建 / 改名 / 删除 / 分组。
 import * as vscode from "vscode";
-import * as path from "node:path";
-import { allCodeCards, cardTitle, type Board, type CodeCard } from "@codeboard/core";
+import { allCodeCards, type Board, type CodeCard } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { cardsFromEditor, symCard, withViews, type Built } from "./cards";
 import type { Panels } from "./panel";
 import { absOf, locOfFile } from "./source";
 import type { Storage } from "./storage";
-import { boardSegments, workingPlace } from "./versions";
+import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
 import { readText, splitLines } from "./ws";
 
@@ -268,4 +267,3 @@ export async function findOnBoards(store: Storage, abs: string, start: number, e
   return out;
 }
 
-export { cardTitle, boardSegments, path };

@@ -46,7 +46,7 @@ export function CardView(p: { card: Card }) {
     if (h.kind === "compare") return !h.cols.some((k) => k.id === cur);
     return c().id !== cur;
   };
-  const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind);
+  const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
   const drop = () => dropTarget();
   return (
     <Show when={!collapsedAway().has(c().id) && !collapsedHome(c().section)}>

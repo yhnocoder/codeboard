@@ -1,7 +1,7 @@
 // ⌘K 面板：白板上的卡和 Sidenote、工作区的符号和文件；Start from Entry Point…
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { allCodeCards, cardTitle, codeGlyph, type NewCard, type SearchItem } from "@codeboard/core";
+import { allCodeCards, cardTitle, type NewCard, type SearchItem } from "@codeboard/core";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
@@ -168,4 +168,3 @@ export async function entryPoints(): Promise<SearchItem[]> {
   return out;
 }
 
-export { codeGlyph };

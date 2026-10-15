@@ -2,11 +2,11 @@
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { rankByReceiver, type ExpandResult, type PeekDef, type Segment, type Var } from "@codeboard/core";
+import { rankByReceiver, type CodeCard, type ExpandResult, type PeekDef, type Segment, type Var } from "@codeboard/core";
 import { symbolAt, varCandidates, type CallSite, type Sym } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
-import { cardForFileSym, symCard, withViews } from "./cards";
-import { locOfFile, versionText } from "./source";
+import { cardForFileSym, symCard } from "./cards";
+import { absOf, locOfFile, versionText } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight } from "./views";
 import { CODE_EXCLUDE, CODE_GLOB, fromHostPath, hostPath, langOf, mkUid, readText, splitLines } from "./ws";
@@ -128,7 +128,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   const t = targets[0];
   const nc = await cardForFileSym(t.abs, t.sym);
   if (!nc) return none(`Cannot read ${hostPath(t.abs)}.`);
-  return { card: nc.card as import("@codeboard/core").CodeCard, views: nc.views, vars: site ? await varsFor(site, t) : [] };
+  return { card: nc.card as CodeCard, views: nc.views, vars: site ? await varsFor(site, t) : [] };
 }
 
 async function currentFile(seg: Segment) {
@@ -249,12 +249,7 @@ async function localDef(m: PeekReq): Promise<PeekDef | null> {
   const pseg: Segment = { id: mkUid("s"), src: seg.src, path: seg.path, lang: seg.lang, start, end, text: ctx, version: seg.version, scope: symbolAt(a.symbols, hit)?.qual };
   const out: PeekDef = { path: seg.path, line: hit, start, text: ctx, html: await highlight(ctx, seg.lang, full), seg: pseg };
   const f = followOf(lines[hit - 1], name);
-  if (f) out.follow = { label: f.expr, line: hit, col: f.col, path: seg.path };
+  if (f) out.follow = { label: f.expr, line: hit, col: f.col, path: hostPath(absOf(seg) ?? seg.path) };
   return out;
 }
 
-export async function cardFromIndex(e: IndexEntry) {
-  const nc = await cardForFileSym(e.abs, toSym(e));
-  return nc;
-}
-export { withViews };

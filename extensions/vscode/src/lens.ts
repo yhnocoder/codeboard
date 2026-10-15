@@ -1,7 +1,6 @@
 // 编辑器里的标记：CodeLens 只挂在白板上有的函数 / 类上方（「+ Card」「on N boards」），
 // 目标白板上有的行在行号旁画一道细竖条。
 import * as vscode from "vscode";
-import * as path from "node:path";
 import { allCodeCards, type Segment } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import type { Panels } from "./panel";
@@ -73,4 +72,3 @@ export class EditorMarks implements vscode.CodeLensProvider {
   }
 }
 
-export const lensName = (p: string) => path.basename(p);

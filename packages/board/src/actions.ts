@@ -1121,6 +1121,8 @@ export function hoverIdent(el: HTMLElement, cardId: string, segId: string, line:
   const pin = e.metaKey || e.ctrlKey;
   peekT = window.setTimeout(() => showPeek(el, cardId, segId, line, col, word, pin), pin ? 0 : 450);
   el.addEventListener("pointerleave", () => { clearTimeout(peekT); scheduleHidePeek(); }, { once: true });
+  // 点下去就是要操作（展开调用、选行），不再弹定义
+  el.addEventListener("pointerdown", () => clearTimeout(peekT), { once: true });
 }
 let peekLeave: number | undefined;
 export function scheduleHidePeek() {
