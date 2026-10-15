@@ -1,0 +1,6 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "codeboard: build", "type": "npm", "script": "build", "path": ".", "problemMatcher": [] }
+  ]
+}

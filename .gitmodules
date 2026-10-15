@@ -1,0 +1,3 @@
+[submodule "examples/nano-vllm"]
+	path = examples/nano-vllm
+	url = https://github.com/GeeeekExplorer/nano-vllm.git

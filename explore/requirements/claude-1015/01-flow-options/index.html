@@ -1,0 +1,339 @@
+<title>流程展示方案</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&family=Noto+Serif+SC:wght@500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column for prose; each option gets a full-width dotted canvas that scrolls sideways on its own. */
+:root{
+  --bg:#F6F4EE; --surface:#FFFFFF; --ink:#262420; --muted:#706B61; --line:#E2DDD1; --grid:#DCD6C8;
+  --accent:#BF5B39; --accent-soft:rgba(191,91,57,.10); --hl:#F7E6DA;
+  --k:#9A3F22; --f:#2E5D86; --s:#4A7536; --n:#8A6416; --c:#968F82;
+  --good:#5B8A4A; --warn:#C08A2B;
+  --serif:"Source Serif 4","Noto Serif SC",Georgia,"Songti SC",serif;
+  --sans:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Segoe UI",sans-serif;
+  --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#1F1E1C; --surface:#2A2926; --ink:#EEEBE3; --muted:#A39E93; --line:#3B3934; --grid:#3A3833;
+  --accent:#DE7C58; --accent-soft:rgba(222,124,88,.14); --hl:#43312A;
+  --k:#E59572; --f:#86B4DE; --s:#A3C98C; --n:#D9B36A; --c:#8A857A;
+  --good:#8DBB79; --warn:#E0B055; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#1F1E1C; --surface:#2A2926; --ink:#EEEBE3; --muted:#A39E93; --line:#3B3934; --grid:#3A3833;
+  --accent:#DE7C58; --accent-soft:rgba(222,124,88,.14); --hl:#43312A;
+  --k:#E59572; --f:#86B4DE; --s:#A3C98C; --n:#D9B36A; --c:#8A857A;
+  --good:#8DBB79; --warn:#E0B055; color-scheme:dark}
+
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:15px;line-height:1.65}
+.wrap{max-width:1240px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:40px 80px}
+.prose{max-width:68ch}
+h1,h2,h3{font-family:var(--serif);font-weight:600;text-wrap:balance;letter-spacing:-.005em}
+h1{font-size:2rem;line-height:1.25;margin:0 0 .5rem}
+h2{font-size:1.45rem;margin:0}
+h3{font-size:.8rem;font-family:var(--sans);text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:0 0 .35rem;font-weight:600}
+p{margin:.4rem 0}
+code{font-family:var(--mono);font-size:.86em;background:var(--accent-soft);padding:.05em .35em;border-radius:4px}
+.lede{color:var(--muted)}
+nav.jump{display:flex;flex-wrap:wrap;gap:8px;margin:24px 0 8px}
+nav.jump a{color:var(--ink);text-decoration:none;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:4px 14px;font-size:.9rem}
+nav.jump a:hover,nav.jump a:focus-visible{border-color:var(--accent);outline:none}
+nav.jump b{font-family:var(--serif);color:var(--accent);margin-right:6px}
+
+section.opt{margin-top:56px;border-top:1px solid var(--line);padding-top:28px}
+.opt-head{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap}
+.letter{font-family:var(--serif);font-size:2.2rem;line-height:1;color:var(--accent)}
+.opt-head p{flex-basis:100%;margin:.3rem 0 0;max-width:72ch;color:var(--muted)}
+
+.scroller{overflow-x:auto;margin-top:18px;border:1px solid var(--line);border-radius:12px;background:var(--bg)}
+.canvas{position:relative;background-image:radial-gradient(var(--grid) 1px,transparent 1.2px);background-size:20px 20px}
+.canvas svg.edges{position:absolute;inset:0;pointer-events:none;overflow:visible}
+.edges path{fill:none;stroke:var(--muted);stroke-width:1.4}
+.edges path.call{stroke:var(--ink);stroke-width:1.5}
+.edges path.data{stroke:var(--accent);stroke-dasharray:5 4}
+.edges path.loop{stroke:var(--muted);stroke-dasharray:2 4;stroke-linecap:round}
+.elabel{position:absolute;transform:translate(-50%,-50%);font-family:var(--mono);font-size:11.5px;background:var(--bg);color:var(--ink);padding:1px 7px;border-radius:6px;border:1px solid var(--line);white-space:nowrap}
+.elabel.data{color:var(--accent);border-color:var(--accent)}
+.elabel.fn{color:var(--f)}
+
+.card{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 1px 2px rgba(0,0,0,.04);overflow:hidden}
+.card-h{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line);font-size:12.5px}
+.card-h .sym{font-family:var(--mono);font-weight:500}
+.card-h .path{color:var(--muted);font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:1}
+.rev{font-family:var(--mono);font-size:11px;color:var(--muted);display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);border-radius:999px;padding:0 7px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--good);display:inline-block}
+.dot.warn{background:var(--warn)}
+.badge{font-family:var(--serif);font-size:12px;width:20px;height:20px;border-radius:50%;display:inline-grid;place-items:center;background:var(--accent);color:var(--surface);flex:none}
+.code-b{font-family:var(--mono);font-size:12px;line-height:1.7;padding:6px 0;overflow-x:auto}
+.ln{display:flex;white-space:pre;padding-right:12px}
+.ln .no{width:38px;flex:none;text-align:right;padding-right:12px;color:var(--c);user-select:none}
+.ln.hl{background:var(--hl);box-shadow:inset 3px 0 0 var(--accent)}
+.ln.gap .no,.ln.gap .src{color:var(--c)}
+.tk-k{color:var(--k)} .tk-f{color:var(--f)} .tk-s{color:var(--s)} .tk-n{color:var(--n)} .tk-c{color:var(--c);font-style:italic} .tk-self{color:var(--k);font-style:italic}
+.card .anno{font-size:12.5px;color:var(--muted);padding:8px 12px;border-top:1px dashed var(--line);line-height:1.5}
+.card.mini .card-h{border-bottom:0}
+.card.mini .io{font-family:var(--mono);font-size:11.5px;color:var(--accent);padding:0 12px 9px}
+.card.note{background:var(--accent-soft);border-color:transparent;padding:10px 14px;font-size:13px;line-height:1.55;box-shadow:none}
+.frame{position:absolute;border:1.5px dashed var(--line);border-radius:14px}
+.frame span{position:absolute;top:-11px;left:14px;background:var(--bg);padding:0 8px;font-size:12px;color:var(--muted)}
+
+/* swimlanes */
+.lane{position:absolute;left:0;right:0;border-top:1px solid var(--line)}
+.lane:first-of-type{border-top:0}
+.lane b{position:absolute;left:14px;top:12px;font-family:var(--mono);font-size:12px;font-weight:500;color:var(--muted)}
+.chip{position:absolute;background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-family:var(--mono);font-size:12px;white-space:nowrap}
+.chip small{display:block;color:var(--muted);font-size:11px;font-family:var(--sans)}
+.chip.key{border-color:var(--accent);box-shadow:inset 0 0 0 1px var(--accent)}
+.bracket{position:absolute;border:1.5px dotted var(--muted);border-bottom:0;border-radius:10px 10px 0 0;height:14px}
+.bracket span{position:absolute;top:-22px;left:50%;transform:translateX(-50%);font-size:12px;color:var(--muted);background:var(--bg);padding:0 6px;white-space:nowrap}
+
+/* data pills */
+.pill{position:absolute;background:var(--surface);border:1.5px solid var(--accent);border-radius:999px;padding:6px 14px;font-family:var(--mono);font-size:12.5px;white-space:nowrap;text-align:center}
+.pill small{display:block;font-family:var(--sans);font-size:11px;color:var(--muted)}
+.pill.side{border-style:dashed;border-color:var(--muted)}
+
+/* nested */
+.nest{padding:18px;display:flex;flex-direction:column;gap:10px;min-width:960px}
+.box{border:1px solid var(--line);background:var(--surface);border-radius:10px;padding:8px 10px 10px}
+.box .row{display:flex;gap:10px;align-items:center;font-size:13px}
+.box .row button{all:unset;cursor:pointer;width:20px;height:20px;display:grid;place-items:center;border-radius:5px;color:var(--muted);font-size:11px;transition:transform .15s}
+.box .row button:focus-visible{outline:2px solid var(--accent)}
+.box.closed>.row button{transform:rotate(-90deg)}
+.box .row .sym{font-family:var(--mono);font-weight:500}
+.box .row .peek{font-family:var(--mono);font-size:11.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;flex:1}
+.box .row .meta{font-family:var(--mono);font-size:11px;color:var(--accent);white-space:nowrap}
+.box .kids{display:flex;gap:10px;margin-top:8px;padding-left:28px}
+.box .kids.col{flex-direction:column}
+.box .kids>.box{flex:1;min-width:0}
+.box.closed>.kids,.box.closed>.code-b{display:none}
+.box.loop{background:transparent;border-style:dashed}
+.box>.code-b{margin-top:6px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.nest .tip{font-size:12.5px;color:var(--muted)}
+
+.facts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px;margin-top:20px}
+.facts>div{min-width:0}
+.facts p{font-size:14px}
+@media (max-width:760px){.facts{grid-template-columns:1fr;gap:12px}}
+
+.reco{margin-top:64px;border:1px solid var(--accent);border-radius:14px;padding:22px 24px;background:var(--surface)}
+.reco h2{margin-bottom:.4rem}
+.reco ol{margin:.5rem 0 0;padding-left:1.3rem}
+.reco li{margin:.3rem 0}
+@media (prefers-reduced-motion: reduce){*{transition:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="prose">
+    <h1>流程怎么展示：四种画法</h1>
+    <p class="lede">同一段逻辑画四遍：nano-vllm 里 <code>LLM.generate()</code> 一次推理循环，代码取自 commit <code>bb823b3</code>，行号都是真实的。卡片和箭头是静态示意，方案 C 的折叠可以点。看完告诉我你喜欢哪种，或者哪几种的哪部分。</p>
+  </header>
+  <nav class="jump" aria-label="跳到方案">
+    <a href="#A"><b>A</b>逐层展开</a>
+    <a href="#B"><b>B</b>模块泳道</a>
+    <a href="#C"><b>C</b>嵌套折叠</a>
+    <a href="#D"><b>D</b>数据流</a>
+    <a href="#reco"><b>→</b>我的推荐</a>
+  </nav>
+
+  <section class="opt" id="A">
+    <div class="opt-head"><span class="letter">A</span><h2>逐层展开</h2>
+      <p>横向是这一层按顺序发生的事，往下是「钻进某一步里面」。箭头从代码里那一行出发，指向被调用的函数，标签写返回什么。更深的层先折叠成小卡，只显示输入输出。</p></div>
+    <div class="scroller"><div class="canvas" id="cvA" style="width:1210px;height:720px"></div></div>
+    <div class="facts">
+      <div><h3>适合</h3><p>从入口一路往下读，最接近「读代码时脑子里的样子」。每一层都能单独看懂，复习时从左上角顺着走。</p></div>
+      <div><h3>代价</h3><p>调用链很深时会往下越拖越长，需要靠折叠控制。跨模块的来回调用（比如 vLLM 的 worker 通信）不如泳道清楚。</p></div>
+      <div><h3>追踪数据怎么填</h3><p>箭头标签填真实的返回值形状，循环箭头填实际次数（比如 prefill 1 次、decode 37 次），折叠小卡填记录到的入参和返回值。</p></div>
+    </div>
+  </section>
+
+  <section class="opt" id="B">
+    <div class="opt-head"><span class="letter">B</span><h2>模块泳道</h2>
+      <p>每个类或模块一条横道，时间从左往右。每一步只是一个小块，点开才看代码。一眼能看出「控制权在谁手里」，以及谁和谁在来回交互。</p></div>
+    <div class="scroller"><div class="canvas" id="cvB" style="width:1210px;height:470px"></div></div>
+    <div class="facts">
+      <div><h3>适合</h3><p>模块多、来回调用多的系统：调度器和 BlockManager 之间的分配与释放、DeepEP 的多进程通信，每个进程一条道就行。</p></div>
+      <div><h3>代价</h3><p>代码只能点开看，画面上看不到代码本身。和 UML 时序图最像，你说过不想要 UML 的感觉，这是风险。</p></div>
+      <div><h3>追踪数据怎么填</h3><p>追踪记录天然就是「谁在什么时间调用了谁」，可以直接按时间排出来。小块的宽度还可以表示耗时。</p></div>
+    </div>
+  </section>
+
+  <section class="opt" id="C">
+    <div class="opt-head"><span class="letter">C</span><h2>嵌套折叠</h2>
+      <p>调用关系用「盒子套盒子」表示，像带代码的大纲。每个盒子一行摘要，展开才看代码。点左边的小三角试试。</p></div>
+    <div class="scroller"><div class="nest" id="cvC"></div></div>
+    <div class="facts">
+      <div><h3>适合</h3><p>层级关系最清楚，展开收起最自然，不用手动摆位置。很适合作为侧边栏里的「目录」。</p></div>
+      <div><h3>代价</h3><p>不像白板，更像文档或 IDE 的大纲。没法表达跨层的跳跃、数据从哪里流到哪里，也不能自由摆放笔记和图片。</p></div>
+      <div><h3>追踪数据怎么填</h3><p>每个盒子右侧填调用次数和耗时，结构上就是一张可以读代码的火焰图。</p></div>
+    </div>
+  </section>
+
+  <section class="opt" id="D">
+    <div class="opt-head"><span class="letter">D</span><h2>数据流</h2>
+      <p>节点是「数据」，箭头是「函数」。看的是一个 prompt 怎么一步步变成 token：字符串、Sequence、张量、logits，再回到 Sequence。函数名可以点开看代码。</p></div>
+    <div class="scroller"><div class="canvas" id="cvD" style="width:1210px;height:430px"></div></div>
+    <div class="facts">
+      <div><h3>适合</h3><p>理解模型和 kernel 时最有用：形状怎么变、KV cache 写到哪。到了 Triton 和 CUDA，这种视角比调用关系更重要。</p></div>
+      <div><h3>代价</h3><p>控制逻辑（调度策略、抢占、什么时候 prefill）几乎画不出来，只适合看「数据通路」。</p></div>
+      <div><h3>追踪数据怎么填</h3><p>最直接：节点就是追踪记录到的值的摘要。图中 N、B、H、V 现在是符号，追踪后会换成真实数字。</p></div>
+    </div>
+  </section>
+
+  <section class="reco" id="reco">
+    <h2>我的推荐</h2>
+    <p>A 当主画布，再借另外两种的一部分，它们不冲突：</p>
+    <ol>
+      <li><b>A 是默认画法。</b>白板的主体是「逐层展开」，你手工搭的和追踪生成的都长这样。</li>
+      <li><b>D 变成箭头上的数据标签。</b>不单独做一种视图，A 的每条箭头都可以显示形状，追踪后自动填上。</li>
+      <li><b>C 做成侧边栏大纲。</b>白板上所有卡片按调用层级列成可折叠的树，点一项就跳过去。</li>
+      <li><b>B 放到以后。</b>等读 DeepEP、vLLM 多进程时，再加一个「按进程分道」的视图。</li>
+    </ol>
+  </section>
+</div>
+
+<script>
+(function(){
+const esc=s=>s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const KW="def|return|if|else|elif|for|in|while|not|and|or|is|None|True|False|break|continue|class|import|from|lambda";
+const RE=new RegExp(`(#.*$)|("[^"]*"|'[^']*')|\\b(${KW})\\b|\\b(self)\\b|\\b(\\d+(?:\\.\\d+)?)\\b|([A-Za-z_]\\w*)(?=\\()`,"g");
+function hl(line){let out="",last=0,m;RE.lastIndex=0;
+  while((m=RE.exec(line))){out+=esc(line.slice(last,m.index));
+    const t=m[0],c=m[1]?"c":m[2]?"s":m[3]?"k":m[4]?"self":m[5]?"n":"f";
+    out+=`<span class="tk-${c}">${esc(t)}</span>`;last=m.index+t.length;if(!t.length)RE.lastIndex++}
+  return out+esc(line.slice(last));}
+function codeBlock(start,lines,hls){
+  return `<div class="code-b">`+lines.map((s,i)=>{
+    if(s===null)return `<div class="ln gap"><span class="no">⋮</span><span class="src"></span></div>`;
+    const n=Array.isArray(start)?start[i]:start+i;
+    return `<div class="ln${hls.includes(n)?" hl":""}" data-l="${n}"><span class="no">${n}</span><span class="src">${hl(s)}</span></div>`}).join("")+`</div>`;}
+function header(o){return `<div class="card-h">${o.badge?`<span class="badge">${o.badge}</span>`:""}<span class="sym">${o.sym}</span><span class="path">${o.path||""}</span>${o.rev?`<span class="rev"><i class="dot${o.stale?" warn":""}"></i>${o.rev}</span>`:""}</div>`;}
+
+function board(cv,spec){
+  const nodes={};
+  (spec.frames||[]).forEach(f=>{const d=document.createElement("div");d.className="frame";Object.assign(d.style,{left:f.x+"px",top:f.y+"px",width:f.w+"px",height:f.h+"px"});d.innerHTML=`<span>${f.label}</span>`;cv.appendChild(d)});
+  (spec.lanes||[]).forEach(l=>{const d=document.createElement("div");d.className="lane";Object.assign(d.style,{top:l.y+"px",height:l.h+"px"});d.innerHTML=`<b>${l.label}</b>`;cv.appendChild(d)});
+  (spec.brackets||[]).forEach(b=>{const d=document.createElement("div");d.className="bracket";Object.assign(d.style,{left:b.x+"px",top:b.y+"px",width:b.w+"px"});d.innerHTML=`<span>${b.label}</span>`;cv.appendChild(d)});
+  spec.nodes.forEach(n=>{const d=document.createElement("div");
+    if(n.kind==="code"){d.className="card";d.innerHTML=header(n)+codeBlock(n.start,n.lines,n.hl||[])+(n.anno?`<div class="anno">${n.anno}</div>`:"");}
+    else if(n.kind==="mini"){d.className="card mini";d.innerHTML=header(n)+`<div class="io">${n.io}</div>`;}
+    else if(n.kind==="note"){d.className="card note";d.innerHTML=n.html;}
+    else if(n.kind==="chip"){d.className="chip"+(n.key?" key":"");d.innerHTML=n.html;}
+    else if(n.kind==="pill"){d.className="pill"+(n.side?" side":"");d.innerHTML=n.html;}
+    d.style.left=n.x+"px";d.style.top=n.y+"px";if(n.w)d.style.width=n.w+"px";
+    cv.appendChild(d);nodes[n.id]=d;});
+  const NS="http://www.w3.org/2000/svg";const svg=document.createElementNS(NS,"svg");svg.setAttribute("class","edges");
+  const mid="m"+cv.id;
+  svg.innerHTML=`<defs>${["call","seq","data","loop"].map(k=>`<marker id="${mid}-${k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" style="fill:var(${k==="data"?"--accent":k==="call"?"--ink":"--muted"});stroke:none"/></marker>`).join("")}</defs>`;
+  cv.appendChild(svg);
+  const labels=[];
+  function pt(ref,side){const [id,line]=ref.split("@");const el=nodes[id];const c=cv.getBoundingClientRect();const r=el.getBoundingClientRect();
+    let x,y;const L=r.left-c.left,T=r.top-c.top;
+    if(line){const le=el.querySelector(`[data-l="${line}"]`).getBoundingClientRect();y=le.top-c.top+le.height/2;x=side==="l"?L:L+r.width;}
+    else if(side==="r"){x=L+r.width;y=T+r.height/2}else if(side==="l"){x=L;y=T+r.height/2}
+    else if(side==="t"){x=L+r.width/2;y=T}else{x=L+r.width/2;y=T+r.height}
+    return [x,y];}
+  const N={r:[1,0],l:[-1,0],t:[0,-1],b:[0,1]};
+  function draw(){svg.querySelectorAll("path.e").forEach(p=>p.remove());labels.forEach(l=>l.remove());labels.length=0;
+    svg.setAttribute("width",cv.offsetWidth);svg.setAttribute("height",cv.offsetHeight);
+    spec.edges.forEach(e=>{const [f,fs,t,ts,label,kind="seq",lo]=e;
+      const p0=pt(f,fs),p3=pt(t,ts);const dist=Math.hypot(p3[0]-p0[0],p3[1]-p0[1]);const d=lo&&lo.d||Math.max(28,Math.min(140,dist*.42));
+      const c1=[p0[0]+N[fs][0]*d,p0[1]+N[fs][1]*d],c2=[p3[0]+N[ts][0]*d,p3[1]+N[ts][1]*d];
+      const p=document.createElementNS(NS,"path");p.setAttribute("class","e "+kind);
+      p.setAttribute("d",`M${p0}C${c1} ${c2} ${p3}`);p.setAttribute("marker-end",`url(#${mid}-${kind})`);svg.appendChild(p);
+      if(label){const tt=lo&&lo.t||.5,u=1-tt;const bx=u*u*u*p0[0]+3*u*u*tt*c1[0]+3*u*tt*tt*c2[0]+tt*tt*tt*p3[0];const by=u*u*u*p0[1]+3*u*u*tt*c1[1]+3*u*tt*tt*c2[1]+tt*tt*tt*p3[1];
+        const l=document.createElement("div");l.className="elabel "+(lo&&lo.cls||kind);l.textContent=label;
+        l.style.left=(bx+(lo&&lo.dx||0))+"px";l.style.top=(by+(lo&&lo.dy||0))+"px";cv.appendChild(l);labels.push(l);}});}
+  draw();(document.fonts&&document.fonts.ready||Promise.resolve()).then(draw);addEventListener("resize",draw);
+}
+
+/* ---------- A ---------- */
+board(document.getElementById("cvA"),{
+  frames:[{x:20,y:326,w:1170,h:376,label:"step() 内部，从上面的 50 / 52 / 53 行展开"}],
+  nodes:[
+    {id:"gen",kind:"code",x:40,y:30,w:340,badge:"1",sym:"LLMEngine.generate",path:"engine/llm_engine.py",rev:"bb823b3",
+      start:[60,null,73,74,75],lines:["def generate(",null,"while not self.is_finished():","    t = perf_counter()","    output, num_tokens = self.step()"],hl:[73,75]},
+    {id:"step",kind:"code",x:560,y:30,w:590,badge:"2",sym:"LLMEngine.step",path:"engine/llm_engine.py",rev:"bb823b3",
+      start:49,lines:["def step(self):","    seqs, is_prefill = self.scheduler.schedule()","    num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)","    token_ids = self.model_runner.call(\"run\", seqs, is_prefill)","    self.scheduler.postprocess(seqs, token_ids, is_prefill)","    outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]"],hl:[50,52,53]},
+    {id:"sch",kind:"code",x:40,y:360,w:310,badge:"2.1",sym:"Scheduler.schedule",path:"engine/scheduler.py",rev:"bb823b3",
+      start:[25,null,54,55,null,72,73],lines:["def schedule(self):",null,"if scheduled_seqs:","    return scheduled_seqs, True",null,"self.running.extendleft(...)","return scheduled_seqs, False"],hl:[55,73],
+      anno:"有等待中的序列就先 prefill，否则 decode。"},
+    {id:"run",kind:"code",x:380,y:360,w:500,badge:"2.2",sym:"ModelRunner.run",path:"engine/model_runner.py",rev:"bb823b3",
+      start:214,lines:["def run(self, seqs, is_prefill):","    input_ids, positions = self.prepare_prefill(seqs) if is_prefill else ...","    temperatures = self.prepare_sample(seqs) if self.rank == 0 else None","    logits = self.run_model(input_ids, positions, is_prefill)","    token_ids = self.sampler(logits, temperatures).tolist() ...","    reset_context()"],hl:[215,217,218]},
+    {id:"post",kind:"code",x:910,y:360,w:260,badge:"2.3",sym:"Scheduler.postprocess",path:"engine/scheduler.py",rev:"bb823b3",stale:true,
+      start:[81,82,null,88],lines:["def postprocess(self, seqs, ...):","    for seq, token_id in zip(...):",null,"        seq.append_token(token_id)"],hl:[88],
+      anno:"黄点：HEAD 上这个函数有改动，点开看 diff。"},
+    {id:"pre",kind:"mini",x:380,y:620,w:200,sym:"prepare_prefill",io:"→ input_ids [N], positions [N]"},
+    {id:"rm",kind:"mini",x:600,y:620,w:160,sym:"run_model",io:"→ logits [B, V]"},
+    {id:"smp",kind:"mini",x:780,y:620,w:160,sym:"Sampler.forward",io:"→ token_ids [B]"},
+    {id:"note",kind:"note",x:960,y:606,w:200,html:"N 是本步 token 总数，B 是序列数。追踪后这里会变成真实数字。"},
+  ],
+  edges:[
+    ["gen@75","r","step","l","×N 轮","loop"],
+    ["step@50","l","sch","t","seqs, is_prefill","call",{t:.62,dx:-10}],
+    ["step@52","l","run","t","token_ids: list[int]","call",{t:.55,dx:-36}],
+    ["step@53","r","post","t","","call",{d:40}],
+    ["run","b","pre","t","","seq"],["run","b","rm","t","","seq"],["run","b","smp","t","","seq"],
+  ]
+});
+
+/* ---------- B ---------- */
+board(document.getElementById("cvB"),{
+  lanes:[{y:0,h:90,label:"LLMEngine"},{y:90,h:90,label:"Scheduler"},{y:180,h:90,label:"BlockManager"},{y:270,h:90,label:"ModelRunner"},{y:360,h:110,label:"Qwen3 / Sampler"}],
+  brackets:[{x:300,y:44,w:890,label:"step()，循环 ×N"}],
+  nodes:[
+    {id:"g",kind:"chip",x:150,y:26,html:"generate()<small>入口</small>"},
+    {id:"st",kind:"chip",x:320,y:26,key:true,html:"step()<small>一轮推理</small>"},
+    {id:"sc",kind:"chip",x:370,y:116,html:"schedule()<small>选 prefill 或 decode</small>"},
+    {id:"al",kind:"chip",x:470,y:206,html:"allocate()<small>prefill 时分配块</small>"},
+    {id:"rn",kind:"chip",x:600,y:296,key:true,html:"run()<small>准备输入并执行</small>"},
+    {id:"pp",kind:"chip",x:700,y:376,html:"forward()<small>hidden [N, H]</small>"},
+    {id:"lg",kind:"chip",x:830,y:416,html:"compute_logits()<small>logits [B, V]</small>"},
+    {id:"sm",kind:"chip",x:830,y:296,html:"sampler()<small>token_ids [B]</small>"},
+    {id:"po",kind:"chip",x:980,y:116,html:"postprocess()<small>追加 token</small>"},
+    {id:"dl",kind:"chip",x:1030,y:206,html:"deallocate()<small>序列结束时</small>"},
+  ],
+  edges:[
+    ["g","r","st","l","","call"],["st","b","sc","t","","call"],["sc","b","al","t","","call"],
+    ["sc","r","rn","t","","seq"],["rn","b","pp","t","","call"],["pp","r","lg","l","","seq"],["lg","t","sm","b","","seq"],
+    ["sm","t","po","b","","seq"],["po","b","dl","t","","call"],
+  ]
+});
+
+/* ---------- C ---------- */
+function box(o){return `<div class="box${o.cls?" "+o.cls:""}${o.closed?" closed":""}"><div class="row">${o.kids||o.code?`<button aria-label="展开或收起 ${o.sym}">▼</button>`:`<span style="width:20px"></span>`}<span class="sym">${o.sym}</span><span class="peek">${esc(o.peek||"")}</span>${o.meta?`<span class="meta">${o.meta}</span>`:""}</div>${o.code||""}${o.kids?`<div class="kids${o.col?" col":""}">${o.kids}</div>`:""}</div>`;}
+const C=document.getElementById("cvC");
+C.innerHTML=`<div class="tip">盒子右侧的数字是追踪后会出现的调用次数，现在是示意。</div>`+box({sym:"LLMEngine.generate",peek:"for prompt, sp in zip(prompts, sampling_params): self.add_request(prompt, sp)",meta:"×1",
+  col:true,kids:box({sym:"add_request",peek:"seq = Sequence(prompt, sampling_params)",meta:"×B",closed:true,code:codeBlock(43,["def add_request(self, prompt, sampling_params):","    if isinstance(prompt, str):","        prompt = self.tokenizer.encode(prompt)","    seq = Sequence(prompt, sampling_params)","    self.scheduler.add(seq)"],[46])})
+   +box({sym:"while not self.is_finished()",cls:"loop",peek:"每轮一个 step",meta:"×N 轮",col:true,
+     kids:box({sym:"LLMEngine.step",peek:"seqs, is_prefill = self.scheduler.schedule()",meta:"×N",col:true,
+       kids:box({sym:"Scheduler.schedule",peek:"prefill 优先，否则 decode",closed:true,col:true,kids:box({sym:"block_manager.allocate",peek:"prefill 时分配 KV 块"})+box({sym:"preempt",peek:"块不够时把序列踢回等待队列"})})
+           +box({sym:"ModelRunner.run",peek:"input_ids, positions = self.prepare_prefill(seqs) ...",col:true,
+               kids:box({sym:"prepare_prefill / prepare_decode",peek:"→ input_ids [N], positions [N]"})+box({sym:"run_model",peek:"→ logits [B, V]",code:codeBlock(196,["def run_model(self, input_ids, positions, is_prefill):","    if is_prefill or self.enforce_eager or input_ids.size(0) > 512:","        return self.model.compute_logits(self.model(input_ids, positions))"],[198])})+box({sym:"Sampler.forward",peek:"→ token_ids [B]"})})
+           +box({sym:"Scheduler.postprocess",peek:"seq.append_token(token_id)",closed:true,code:codeBlock([81,82,null,88],["def postprocess(self, seqs, token_ids, is_prefill):","    for seq, token_id in zip(seqs, token_ids):",null,"        seq.append_token(token_id)"],[88])})})})
+});
+C.addEventListener("click",e=>{const b=e.target.closest("button");if(b)b.closest(".box").classList.toggle("closed")});
+
+/* ---------- D ---------- */
+board(document.getElementById("cvD"),{
+  nodes:[
+    {id:"p",kind:"pill",x:30,y:50,html:"prompts<small>list[str]</small>"},
+    {id:"s",kind:"pill",x:250,y:50,html:"Sequence ×B<small>token_ids, block_table</small>"},
+    {id:"b",kind:"pill",x:560,y:50,html:"seqs, is_prefill<small>本步要算的序列</small>"},
+    {id:"i",kind:"pill",x:880,y:50,html:"input_ids [N] · positions [N]<small>int64, cuda</small>"},
+    {id:"h",kind:"pill",x:930,y:250,html:"hidden_states [N, H]<small>bf16</small>"},
+    {id:"l",kind:"pill",x:640,y:250,html:"logits [B, V]<small>每条序列只取最后一个位置</small>"},
+    {id:"t",kind:"pill",x:350,y:250,html:"token_ids [B]<small>list[int]</small>"},
+    {id:"kv",kind:"pill",side:true,x:930,y:360,html:"KV cache<small>按 slot_mapping 写入</small>"},
+  ],
+  edges:[
+    ["p","r","s","l","add_request()","data",{cls:"fn"}],
+    ["s","r","b","l","scheduler.schedule()","data",{cls:"fn"}],
+    ["b","r","i","l","prepare_prefill()","data",{cls:"fn"}],
+    ["i","b","h","t","model(input_ids, positions)","data",{cls:"fn",dx:30}],
+    ["h","l","l","r","compute_logits()","data",{cls:"fn",dy:-16}],
+    ["l","l","t","r","sampler()","data",{cls:"fn",dy:-16}],
+    ["t","l","s","b","postprocess() → append_token","loop",{cls:"fn",t:.6}],
+    ["h","b","kv","t","","loop"],
+  ]
+});
+})();
+</script>
