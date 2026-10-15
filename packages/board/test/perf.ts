@@ -163,8 +163,9 @@ async function once() {
   await h.page.mouse.down();
   res.drag = sum(await steps(h, cdp, 60, async (i) => { await h.page.mouse.move(bx.x + 4 + i * 4, bx.y + 4 + i * 2, { steps: 1 }); }, "drag"));
   const tUp = performance.now();
-  await h.page.mouse.up();
-  await raf(h);
+  const bUp = await busy(cdp);
+  await profiled(cdp, "dragEnd", async () => { await h.page.mouse.up(); await raf(h); });
+  res.dragEndBusy = +((await busy(cdp)) - bUp).toFixed(1);
   res.dragEnd = +(performance.now() - tUp).toFixed(1);
   await h.page.waitForTimeout(1200);
 
