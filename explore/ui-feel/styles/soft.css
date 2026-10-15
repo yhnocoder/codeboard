@@ -1,0 +1,69 @@
+/* 柔光：大留白、细字重、柔和的大面积投影；代码放在下沉的凹槽里；珊瑚色只出现在一个圆形按钮和几个小点上 */
+.s-soft {
+  --bg: light-dark(#eceef1, #1b1d21);
+  --surface: light-dark(#ffffff, #25282e);
+  --well: light-dark(#f4f5f7, #1f2126);
+  --ink: light-dark(#1f2430, #eceef2);
+  --ink-2: light-dark(#5f6774, #a6acb8);
+  --ink-3: light-dark(#a8aebb, #646a76);
+  --hair: light-dark(rgba(20,30,50,.07), rgba(255,255,255,.06));
+  --coral: light-dark(#f2583e, #ff6a4d);
+  --ui: "Jost", "Helvetica Neue", "PingFang SC", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --k-kw: light-dark(#8a4fd0, #c09cff); --k-fn: light-dark(#2563c9, #7fb0ff); --k-str: light-dark(#1f8a5b, #6fd3a2);
+  --k-com: light-dark(#a3a9b5, #6a707c); --k-num: light-dark(#d0602f, #ffa27a); --k-self: light-dark(#c2417a, #f58fbd); --k-p: light-dark(#8a909c, #8d939f);
+  --sh-card: 0 1px 2px light-dark(rgba(20,30,50,.04), rgba(0,0,0,.3)), 0 28px 56px -22px light-dark(rgba(20,30,50,.22), rgba(0,0,0,.7)), inset 0 .5px 0 light-dark(rgba(255,255,255,1), rgba(255,255,255,.06));
+  --sh-soft: 0 12px 30px -12px light-dark(rgba(20,30,50,.2), rgba(0,0,0,.6));
+}
+.s-soft .card { background: var(--surface); border-radius: 18px; box-shadow: var(--sh-card); }
+.s-soft .card.sel { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
+.s-soft .chead { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 1px; padding: 14px 18px 12px; }
+.s-soft .step { grid-column: 1; grid-row: 1; display: flex; align-items: center; gap: 10px; font: 500 9.5px var(--ui); letter-spacing: .32em; color: var(--ink-3); }
+.s-soft .step::before { content: "STEP"; }
+.s-soft .step::after { content: ""; width: 26px; height: 1px; background: var(--coral); }
+.s-soft .rev { grid-column: 2; grid-row: 1 / span 2; align-self: start; font: 10.5px var(--mono); color: var(--ink-3); }
+.s-soft .rev.new { color: var(--ink-2); }
+.s-soft .rev.new i { width: 7px; height: 7px; border-radius: 50%; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
+.s-soft .ctitle { grid-column: 1 / -1; font: 300 18px/1.35 var(--ui); color: var(--ink); letter-spacing: -.005em; }
+.s-soft .cpath { grid-column: 1 / -1; font: 400 11px var(--ui); color: var(--ink-3); letter-spacing: .02em; }
+.s-soft .code { margin: 0 10px 10px; padding: 8px 0 10px; border-radius: 12px; background: var(--well); font: 10.5px/19px var(--mono); color: var(--ink);
+  box-shadow: inset 0 1px 3px light-dark(rgba(20,30,50,.07), rgba(0,0,0,.35)), inset 0 0 0 .5px var(--hair); }
+.s-soft .ln .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
+.s-soft .ln.link { background: color-mix(in srgb, var(--coral) 8%, transparent); }
+.s-soft .ln.link .no { color: var(--coral); }
+.s-soft .kw { color: var(--k-kw); } .s-soft .fn { color: var(--k-fn); } .s-soft .str { color: var(--k-str); } .s-soft .com { color: var(--k-com); }
+.s-soft .num { color: var(--k-num); } .s-soft .self { color: var(--k-self); } .s-soft .p { color: var(--k-p); }
+.s-soft .call { text-decoration: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); text-underline-offset: 3px; }
+.s-soft .edge { fill: none; stroke: color-mix(in srgb, var(--ink-3) 85%, transparent); stroke-width: 1.5; stroke-linecap: round; }
+.s-soft .ahead { fill: var(--ink-3); }
+.s-soft .port { fill: var(--surface); stroke: var(--coral); stroke-width: 1.5; }
+.s-soft .elabel { font: 10.5px var(--mono); color: var(--ink-2); background: var(--surface); border-radius: 999px; padding: 5px 10px; box-shadow: var(--sh-soft); }
+
+.s-soft .rail { display: flex; position: absolute; left: 0; top: 0; bottom: 0; width: 56px; z-index: 4; flex-direction: column; align-items: center; justify-content: center; gap: 34px;
+  border-right: 1px solid var(--hair); background: color-mix(in srgb, var(--surface) 55%, transparent); }
+.s-soft .rail span { writing-mode: vertical-rl; text-orientation: sideways; rotate: 180deg; font: 400 12px var(--ui); color: var(--ink-3); letter-spacing: .04em; white-space: nowrap; position: relative; }
+.s-soft .rail span.on { color: var(--ink); }
+.s-soft .rail span.on::after { content: ""; position: absolute; left: 50%; bottom: -22px; width: 1px; height: 14px; background: var(--coral); }
+.s-soft .tb-left { left: 78px; top: 16px; }
+.s-soft .tb-left .pill { background: none; }
+.s-soft .bname { flex-direction: column; align-items: flex-start; gap: 2px; }
+.s-soft .eyebrow { display: flex; align-items: center; gap: 10px; font: 500 9.5px var(--ui); letter-spacing: .32em; color: var(--ink-3); }
+.s-soft .eyebrow::after { content: ""; width: 26px; height: 1px; background: var(--coral); }
+.s-soft .bn { font: 300 26px/1.15 var(--ui); color: var(--ink); letter-spacing: -.01em; }
+.s-soft .tb-left .chev { display: none; }
+.s-soft .tb-right { top: auto; bottom: 18px; right: 18px; }
+.s-soft .tb-right .pill { background: none; }
+.s-soft .focus-btn { display: none; }
+.s-soft #btnPresent { width: 48px; height: 48px; padding: 0; border-radius: 50%; justify-content: center; background: var(--coral); color: #fff;
+  box-shadow: 0 12px 26px -8px color-mix(in srgb, var(--coral) 75%, transparent); }
+.s-soft #btnPresent .tl { display: none; }
+.s-soft #btnPresent .ico { width: 18px; height: 18px; fill: currentColor; }
+.s-soft .dock { left: calc(50% + 28px); }
+.s-soft .dock .pill { background: var(--surface); border-radius: 14px; padding: 5px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
+.s-soft .ib { border-radius: 9px; color: var(--ink-2); width: 30px; height: 30px; }
+.s-soft .ib:hover { background: var(--well); color: var(--ink); }
+.s-soft .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 4px; }
+.s-soft .zoom { font: 11px var(--mono); color: var(--ink-2); }
+.s-soft .toast { left: auto; right: 20px; top: 22px; bottom: auto; transform: none; background: var(--surface); color: var(--ink); font: 400 12.5px var(--ui); padding: 9px 14px; border-radius: 12px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
+.s-soft .toast .tdot { width: 6px; height: 6px; border-radius: 50%; background: var(--coral); }
+.s-soft .toast b { font-weight: 500; color: var(--coral); }

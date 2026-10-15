@@ -1,0 +1,64 @@
+/* 制图：工程图纸。只有墨色和线，圆角为零；箭头走直角折线，像标注引线；行号区间画成尺寸线 */
+.s-draft {
+  --bg: light-dark(#f2f1ed, #141414);
+  --ink: light-dark(#161616, #e9e8e4);
+  --ink-2: light-dark(#55544f, #a6a5a0);
+  --ink-3: light-dark(#9b9a95, #5f5e5a);
+  --rule: light-dark(#a8a7a2, #4a4946);
+  --tint: light-dark(rgba(22,22,22,.045), rgba(233,232,228,.05));
+  --ui: "DM Mono", ui-monospace, Menlo, monospace;
+  --mono: "DM Mono", ui-monospace, Menlo, monospace;
+  --head: "Archivo", "Helvetica Neue", Arial, sans-serif;
+}
+.s-draft .card { background: var(--bg); border: 1px solid var(--rule); overflow: visible; }
+.s-draft .card.sel::after { content: ""; position: absolute; inset: -9px; border: 1px dashed var(--ink-2); pointer-events: none; }
+.s-draft .card.sel::before { content: "已选中"; position: absolute; top: -26px; left: -9px; font: 10px var(--mono); letter-spacing: .12em; color: var(--ink-2); }
+.s-draft .chead { height: 36px; padding: 0 12px; border-bottom: 1px solid var(--rule); gap: 10px; }
+.s-draft .step { font: 10.5px var(--mono); color: var(--ink-3); }
+.s-draft .ctitle { font: 600 12px var(--head); text-transform: uppercase; letter-spacing: .07em; color: var(--ink); }
+.s-draft .cpath { font: 10.5px var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+.s-draft .rev { font: 10.5px var(--mono); color: var(--ink-3); }
+.s-draft .rev i { width: 7px; height: 7px; border: 1px solid currentColor; }
+.s-draft .rev.new { color: var(--ink); }
+.s-draft .rev.new i { background: currentColor; }
+.s-draft .code { padding: 8px 0 10px; font: 11px/20px var(--mono); color: var(--ink); }
+.s-draft .ln .no { width: 42px; padding-right: 12px; color: var(--ink-3); }
+.s-draft .ln.link { background: var(--tint); }
+.s-draft .ln.link .no { color: var(--ink); }
+.s-draft .kw { font-weight: 500; color: var(--ink); }
+.s-draft .fn { color: var(--ink); }
+.s-draft .call { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: var(--ink-3); }
+.s-draft .str, .s-draft .num, .s-draft .self { color: var(--ink-2); }
+.s-draft .com { color: var(--ink-3); }
+.s-draft .p { color: var(--ink-3); }
+.s-draft .edge { fill: none; stroke: var(--ink-2); stroke-width: 1; stroke-dasharray: 3 3; }
+.s-draft .ahead { fill: var(--ink); stroke: none; }
+.s-draft .port { fill: var(--bg); stroke: var(--ink); stroke-width: 1; }
+.s-draft .elabel { font: 10px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: var(--bg); padding: 2px 5px; }
+.s-draft .dim { display: block; position: absolute; }
+.s-draft .dim .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 9px; border-top: 1px solid var(--ink-2); border-bottom: 1px solid var(--ink-2); }
+.s-draft .dim .bar::before { content: ""; position: absolute; left: 4px; top: 0; bottom: 0; border-left: 1px solid var(--ink-2); }
+.s-draft .dim span { position: absolute; left: -6px; top: 50%; translate: -100% -50%; font: 10.5px var(--mono); color: var(--ink); white-space: nowrap; writing-mode: vertical-rl; rotate: 180deg; letter-spacing: .06em; }
+.s-draft .dim.h .bar { width: auto; height: 9px; top: auto; bottom: 0; left: 0; right: 0; border: 0; border-left: 1px solid var(--ink-2); border-right: 1px solid var(--ink-2); }
+.s-draft .dim.h .bar::before { left: 0; right: 0; top: 4px; bottom: auto; border-left: 0; border-top: 1px solid var(--ink-2); }
+.s-draft .dim.h span { left: 50%; top: -4px; translate: -50% -100%; writing-mode: horizontal-tb; rotate: none; }
+.s-draft .dim.lead { border-top: 1px dotted var(--ink-2); border-right: 1px dotted var(--ink-2); }
+.s-draft .callout { position: absolute; border: 1px solid var(--rule); background: var(--bg); padding: 8px 10px; font: 10.5px/1.6 var(--mono); color: var(--ink-2); width: 170px; }
+.s-draft .callout b { display: block; font: 600 10.5px var(--head); letter-spacing: .1em; color: var(--ink); margin-bottom: 4px; }
+.s-draft .pill { background: var(--bg); border: 1px solid var(--rule); padding: 3px; }
+.s-draft .bname { font: 600 12px var(--head); text-transform: uppercase; letter-spacing: .12em; padding: 4px 6px 4px 8px; color: var(--ink); }
+.s-draft .tb-left .pill { border: 0; background: none; padding: 0; }
+.s-draft .tb-left .bname { flex-direction: column; align-items: flex-start; gap: 2px; padding: 0; }
+.s-draft .tb-left .chev { display: none; }
+.s-draft .eyebrow { display: block; font: 10px var(--mono); letter-spacing: .14em; color: var(--ink-3); font-weight: 400; }
+.s-draft .tbtn, .s-draft .ib { color: var(--ink-2); font: 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+.s-draft .ib { padding: 0 6px; }
+.s-draft .tbtn:hover, .s-draft .ib:hover { color: var(--ink); background: var(--tint); }
+.s-draft .ico { stroke-width: 1.1; }
+.s-draft .dock .ib .ico { display: none; }
+.s-draft .dock .lab { display: inline; }
+.s-draft .dock .ib[aria-label] .ico { display: block; }
+.s-draft .sep { width: 1px; height: 16px; background: var(--rule); margin: 0 4px; }
+.s-draft .zoom { font: 10.5px var(--mono); color: var(--ink); }
+.s-draft .toast { border: 1px solid var(--ink); background: var(--bg); color: var(--ink); font: 10.5px var(--mono); letter-spacing: .06em; padding: 7px 12px; text-transform: uppercase; }
+.s-draft .toast b { font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
