@@ -89,6 +89,11 @@ async function menu(f, target, label, sub, opts = {}) {
   if (sub) { await f.locator(".ctx button", { hasText: new RegExp(`^${sub}`) }).last().click(); await sleep(500); }
 }
 
+// 卡片矩形（白板 iframe 内的坐标）
+const rectOf = (loc) => loc.evaluate((e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; });
+const inView = (f, r) => f.evaluate((r) => r.r > 0 && r.b > 0 && r.l < innerWidth && r.t < innerHeight && (Math.min(r.r, innerWidth) - Math.max(r.l, 0)) * (Math.min(r.b, innerHeight) - Math.max(r.t, 0)) > 0.5 * r.w * r.h, r);
+const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, a.t - b.b, b.t - a.b));
+
 (async () => {
   let browser;
   for (let i = 0; i < 60 && !browser; i++) { try { browser = await chromium.connectOverCDP("http://127.0.0.1:9223"); } catch { await sleep(1000); } }
@@ -133,8 +138,10 @@ async function menu(f, target, label, sub, opts = {}) {
     await blank(f, page);
     check(await card(f, "Scheduler.schedule").count() === 1 && await card(f, "Scheduler.postprocess").count() === 1, "两张子卡");
     check(await card(f, "BlockManager.can_allocate").count() === 1, "孙卡 BlockManager.can_allocate");
+    // 编号只标所在的树（v0.1.5 起每张卡都显示树的字母）
+    const root = await card(f, "LLMEngine.step").locator(".step").textContent().catch(() => "");
     const n = await card(f, "BlockManager.can_allocate").locator(".step").textContent().catch(() => "");
-    check(n === "1.1", "孙卡编号 1.1", n);
+    check(!!n && n === root, "孙卡标的是同一棵树", { root, n });
     await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
   });
 
@@ -196,8 +203,8 @@ async function menu(f, target, label, sub, opts = {}) {
     await f.locator('.bbar button[aria-label="Sticker"]').click(); await sleep(400);
     await f.locator(".stkpick .scell").nth(1).click(); await sleep(200);
     await card(f, "LLMEngine.step").locator(".src .l").nth(4).click({ position: { x: 40, y: 6 } }); await sleep(400);
-    await f.locator('.bbar button[aria-label="Sticker"]').click(); await sleep(400);
-    await f.locator(".stkpick .scell").nth(0).click(); await sleep(200);
+    if (!(await f.locator(".stkpick").count())) { await f.locator('.bbar button[aria-label="Sticker"]').click(); await sleep(400); }
+    await f.locator(".stkpick .scell").nth(0).click({ timeout: 5000 }); await sleep(200);
     const bb = await f.locator("#board").boundingBox();
     await f.locator("#board").click({ position: { x: bb.width - 80, y: 90 } }); await sleep(900);
     const k = (await waitJson((b) => b.stickers?.length >= 2))?.stickers ?? [];
@@ -309,6 +316,162 @@ async function menu(f, target, label, sub, opts = {}) {
     }
     await f.locator(".st-sw").first().click(); await sleep(800);
     await page.keyboard.press("Control+,"); await sleep(600);
+  });
+
+  // ---- 以下几步来自 v0.1.5 试用反馈（检查清单第四节 C1 C2 C4 C8） ----
+
+  await step("r15-paste-near", "选中卡片 ⌘C ⌘V，新卡出现在原卡旁边（C8）", async () => {
+    await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(700);
+    const sid = await card(f, "LLMEngine.step").first().getAttribute("data-id");
+    const src = f.locator(`.card[data-id="${sid}"]`), h = src.locator(".chead");
+    await h.click({ position: { x: 120, y: 8 }, force: true }); await sleep(200);
+    const before = boardJson(), ids = new Set((before?.cards ?? []).map((c) => c.id));
+    await page.keyboard.press("Control+c"); await sleep(400);
+    await page.keyboard.press("Control+v"); await sleep(1500);
+    const b = await waitJson((b) => nCards(b) > nCards(before));
+    const nid = (b?.cards ?? []).find((c) => !ids.has(c.id))?.id;
+    check(!!nid, "⌘V 新建了一张卡", { before: nCards(before), after: nCards(b) });
+    if (nid) {
+      await settle(f);
+      const a = await rectOf(src), n = await rectOf(f.locator(`.card[data-id="${nid}"]`));
+      check(await inView(f, n), "新卡在可见范围里", n);
+      check(gap(a, n) <= 160, "新卡紧挨着被复制的卡", { gapPx: Math.round(gap(a, n)), src: a, new: n });
+      await blank(f, page); await page.keyboard.press("Control+z"); await waitJson((b) => nCards(b) === nCards(before));
+    }
+  });
+
+  await step("r16-expand-in-view", "在树的中间展开一个调用，新卡出现在可见范围里（C8）", async () => {
+    await focusCard(f, page, "Scheduler.schedule");
+    const c = callIn(f, "Scheduler.schedule", "allocate");
+    await c.scrollIntoViewIfNeeded().catch(() => {}); await c.click(); await sleep(1800); await settle(f);
+    const n = card(f, "BlockManager.allocate");
+    check(await n.count() === 1, "展开出 BlockManager.allocate");
+    if (await n.count()) { const r = await rectOf(n); check(await inView(f, r), "新卡在可见范围里", r); }
+    await blank(f, page);
+  });
+
+  await step("r17-popup-anchor", "同一行两条旁注，删掉一条，弹窗留在原处（C4）", async () => {
+    // 找一张缩放后能看清三行以上的代码卡（展开后树变大，聚焦的卡未必在视野里）
+    let st = null, nos = [];
+    for (const t of ["LLMEngine.step", "BlockManager.allocate", "Scheduler.postprocess"]) {
+      if (!(await card(f, t).count())) continue;
+      await focusCard(f, page, t); st = card(f, t).first(); nos = await visibleRows(f, st);
+      if (nos.length >= 3) break;
+    }
+    check(nos.length >= 3, "找到能选行的代码卡", nos.length);
+    const n00 = boardJson()?.sidenotes?.length ?? 0;
+    for (const t of ["First note on these lines.", "Second note on the same lines."]) {
+      await blank(f, page); nos = await visibleRows(f, st);
+      await nos[1].click(); await nos[2].click({ modifiers: ["Shift"] });
+      await page.keyboard.press("s"); await sleep(600);
+      await f.locator(".pop button", { hasText: /^Text$/ }).click(); await sleep(300);
+      await page.keyboard.type(t);
+      await f.locator(".pop button", { hasText: /^Add$/ }).click(); await sleep(900);
+    }
+    check(!!(await waitJson((b) => (b.sidenotes?.length ?? 0) >= n00 + 2)), "同一段行上加了两条旁注");
+    await blank(f, page);
+    const mk = st.locator('.mk:not(.inline)[data-notes*=","]').first();
+    await mk.click({ force: true }); await sleep(700);
+    const pop = f.locator(".pop").filter({ has: f.locator('button[aria-label="Delete Sidenote"]') }).first();
+    check(await pop.count() === 1, "点标记打开旁注弹窗");
+    if (!(await pop.count())) return;
+    const r0 = await rectOf(pop), n0 = boardJson()?.sidenotes?.length ?? 0;
+    await pop.locator('button[aria-label="Delete Sidenote"]').first().click(); await sleep(900);
+    await waitJson((b) => (b.sidenotes?.length ?? 0) < n0);
+    const still = await pop.count();
+    check(still === 1, "剩下的旁注还在弹窗里");
+    if (still) {
+      const r1 = await rectOf(pop);
+      check(Math.abs(r1.l - r0.l) < 60 && Math.abs(r1.t - r0.t) < 60, "弹窗留在原来的锚点旁", { before: r0, after: r1 });
+    }
+    // 弹窗留着，让这一步的截图和断言（L10）看到它
+  });
+
+  await step("r18-drag-body", "每种非代码卡按住内容中间都能拖动（C2）", async () => {
+    await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(700);
+    // 粘一张图片，凑齐图片卡
+    await f.evaluate(async () => {
+      const cv = document.createElement("canvas"); cv.width = 320; cv.height = 200;
+      const g = cv.getContext("2d"); g.fillStyle = "#c2643a"; g.fillRect(0, 0, 320, 200); g.fillStyle = "#fff"; g.fillRect(40, 40, 120, 80);
+      const blob = await new Promise((r) => cv.toBlob(r, "image/png"));
+      const dt = new DataTransfer(); dt.items.add(new File([blob], "shot.png", { type: "image/png" }));
+      window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+    });
+    await waitJson((b) => b.cards.some((c) => c.kind === "image")); await sleep(800); await settle(f);
+    // Note（有背景）的正文是可选中的文字，按设计只能拖卡头；这里只查内容不是文字的卡
+    for (const k of ["text", "web", "image"]) {
+      const c = f.locator(`.card.${k}`).first();
+      if (!(await c.count())) { check(false, `白板上有 ${k} 卡可以拖`); continue; }
+      await blank(f, page);
+      // 先选中并缩放到这张卡（Shift+2），保证它整张在视野里、够大
+      const rr = await rectOf(c); await f.locator("#board").click({ position: { x: Math.max(4, rr.l + rr.w / 2), y: Math.max(4, rr.t + 4) }, force: true }).catch(() => {});
+      await page.keyboard.press("Shift+@"); await sleep(900); await settle(f);
+      const r0 = await rectOf(c), fb = await (await f.frameElement()).boundingBox();
+      const x = fb.x + r0.l + r0.w / 2, y = fb.y + r0.t + r0.h * 0.6;
+      await page.mouse.move(x, y); await page.mouse.down();
+      for (let i = 1; i <= 10; i++) { await page.mouse.move(x + 7 * i, y + 5 * i); await sleep(40); }
+      await page.mouse.up(); await sleep(600);
+      const r1 = await rectOf(c);
+      check(Math.hypot(r1.l - r0.l, r1.t - r0.t) > 30, `${k} 卡按住内容中间能拖动`, { before: r0, after: r1 });
+      if (Math.hypot(r1.l - r0.l, r1.t - r0.t) > 1) { await blank(f, page); await page.keyboard.press("Control+z"); await sleep(500); }
+    }
+    await blank(f, page);
+  });
+
+  await step("r19-menu-items", "每种卡的右键菜单逐项点一遍，每项都有效果（C1）", async () => {
+    // 会离开白板或依赖外部的项不在这里点：打开编辑器 / 浏览器、刷新网页预览（沙盒连不上外网）
+    const SKIP = /^(Open In Editor|Open in Editor|Open In Browser|Open in Browser|Refresh Preview|Refetch Preview|Paste)/i;
+    const kinds = [["code", ".card.ccard .chead"], ["note", ".card.note"], ["web", ".card.web"], ["image", ".card.image"]];
+    const fb = await (await f.frameElement()).boundingBox();
+    const dead = [];
+    for (const [k, sel] of kinds) {
+      await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
+      const t = f.locator(sel).first();
+      if (!(await t.count())) continue;
+      const open = async () => { if (!(await t.count())) throw new Error(`${k} 卡在菜单操作后不见了`); const r = await rectOf(t); await page.mouse.click(fb.x + r.l + Math.min(60, r.w / 2), fb.y + r.t + Math.min(10, r.h / 2), { button: "right" }); await sleep(450); };
+      const list = async (m) => m.locator(":scope > button").evaluateAll((bs) => bs.map((b) => ({ label: b.querySelector(".lb")?.textContent.trim(), sub: !!b.querySelector(":scope > svg"), off: b.disabled })));
+      await open();
+      const top = await list(f.locator(".ctx").first());
+      const paths = [];
+      for (const it of top) {
+        if (it.off || SKIP.test(it.label)) continue;
+        if (!it.sub) { paths.push([it.label]); continue; }
+        await f.locator(".ctx").first().locator(":scope > button", { hasText: it.label }).first().hover(); await sleep(450);
+        const subs = await list(f.locator(".ctx").nth(1)).catch(() => []);
+        for (const s of subs) if (!s.off && !s.sub && !SKIP.test(s.label)) paths.push([it.label, s.label]);
+      }
+      await page.keyboard.press("Escape"); await sleep(250);
+      // 判断"有没有效果"看画面和存档：DOM 变了但看不见（比如编辑框被样式盖住）也算没效果
+      const neutral = () => page.mouse.move(fb.x + 4, fb.y + fb.height / 2);
+      const look = async () => { await neutral(); await sleep(250); await settle(f); return page.screenshot({ clip: fb }); };
+      for (const p of paths) {
+        await blank(f, page); await open(); await page.keyboard.press("Escape"); await sleep(250); // 右键会选中卡片，先让选中状态进"之前"的画面
+        const a = await look(), j0 = JSON.stringify(boardJson());
+        await open();
+        if (p.length > 1) { await f.locator(".ctx").first().locator(":scope > button", { hasText: p[0] }).first().hover(); await sleep(450); }
+        const m = f.locator(".ctx").nth(p.length - 1);
+        await m.locator(":scope > button", { has: f.locator(".lb", { hasText: new RegExp(`^${p[p.length - 1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }) }).first().click(); await sleep(700);
+        const b = await look(), j1 = JSON.stringify(await waitJson(() => true, 300));
+        if (process.env.DEBUG) console.log("   ", k, p.join(" › "), a.equals(b) ? "画面没变" : "画面变了", j0 === j1 ? "存档没变" : "存档变了");
+        // 置顶 / 置底在已经到顶 / 到底时本来就没变化（菜单最好把它们置灰，这里不算失败）
+        const last = p[p.length - 1];
+        if (a.equals(b) && j0 === j1 && !/^(Bring|Send) /.test(last)) dead.push(`${k}: ${p.join(" › ")}`);
+        // 打开编辑的项：打开后直接打字要能写进去（只出现编辑框、焦点没给到也算没反应）
+        else if (/Description|Rename|Title|^Edit$/.test(last) && j0 === j1) {
+          await page.keyboard.type("zq9"); await sleep(200);
+          await f.locator("#board").click({ position: { x: 12, y: 160 }, force: true }); await sleep(300);
+          const ok = !!(await waitJson((b) => JSON.stringify(b).includes("zq9"), 2500) && JSON.stringify(boardJson()).includes("zq9"));
+          if (!ok) dead.push(`${k}: ${p.join(" › ")}（编辑框出来了但打不进字）`);
+          else { await blank(f, page); await page.keyboard.press("Control+z"); await sleep(600); }
+        }
+        // 复原：退出编辑 / 模式，改了存档就撤销
+        await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await sleep(200);
+        if (j0 !== j1) { await blank(f, page); await page.keyboard.press("Control+z"); await sleep(600); }
+      }
+      check(paths.length > 0, `${k} 卡的菜单读到了菜单项`, top);
+    }
+    check(!dead.length, "菜单里每一项点了都有效果", dead);
+    await blank(f, page);
   });
 
   check(!errors.length, "没有 webview 报错", errors.slice(0, 3));

@@ -1,5 +1,6 @@
 // 通用界面断言：在白板页面里查"不看具体功能也能判断的错"，对回放的每一步都跑。
-// 对应 Review 检查清单：K1 可点元素重叠、L1 弹层越出视口、L2 文字被截断、L4 元素被容器裁掉、L8 卡片互相重叠。
+// 对应 Review 检查清单：K1 可点元素重叠、L1 弹层越出视口、L2 文字被截断、L4 元素被容器裁掉、L8 卡片互相重叠、
+// L10 弹层丢了锚点跑到左上角（C4）、L11 子菜单压住父菜单（C5）。
 // 用法：const { audit } = require("tools/review/audit.cjs"); const r = await audit(frameOrPage, "步骤名");
 // 返回 { step, issues: [{ rule, what }] }；AUDIT_STRICT=1 时调用方应把有问题的步骤算作失败。
 
@@ -36,6 +37,7 @@ function inPage(SEL) {
   for (let i = 0; i < hits.length; i++) for (let j = i + 1; j < hits.length; j++) {
     const a = hits[i], b = hits[j];
     if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+    if (!!a.el.closest(".world") !== !!b.el.closest(".world")) continue; // 画布上的卡片滚到固定工具条下面是正常的
     const ov = area(a.r, b.r), small = Math.min(a.r.width * a.r.height, b.r.width * b.r.height);
     if (ov > 0.25 * small) issues.push({ rule: "K1 可点元素重叠", what: `${label(a.el)} ↔ ${label(b.el)}` });
   }
@@ -45,6 +47,20 @@ function inPage(SEL) {
     const r = shown(el); if (!r) continue;
     if (r.left < -1 || r.top < -1 || r.right > vw + 1 || r.bottom > vh + 1)
       issues.push({ rule: "L1 弹层越出视口", what: `${label(el)} [${Math.round(r.left)},${Math.round(r.top)} → ${Math.round(r.right)},${Math.round(r.bottom)}] 视口 ${vw}×${vh}` });
+  }
+
+  // L10：弹层贴在视口左上角，多半是锚点没了、位置退回了 (0,0)
+  for (const el of document.querySelectorAll(".pop, .diffpop, .srcpop")) { // 右键菜单本来就开在点击处，可能就在角上，不查
+    const r = shown(el); if (!r) continue;
+    if (r.left <= 10 && r.top <= 10) issues.push({ rule: "L10 弹层跑到左上角", what: label(el) });
+  }
+
+  // L11：子菜单不能压住父菜单（靠边时应翻到另一侧）
+  const menus = [...document.querySelectorAll(".ctx, [role=menu]")].map((el) => ({ el, r: shown(el) })).filter((x) => x.r);
+  for (let i = 0; i < menus.length; i++) for (let j = i + 1; j < menus.length; j++) {
+    const a = menus[i], b = menus[j];
+    if (a.el.contains(b.el) || b.el.contains(a.el)) continue;
+    if (area(a.r, b.r) > 0.08 * Math.min(a.r.width * a.r.height, b.r.width * b.r.height)) issues.push({ rule: "L11 子菜单压住父菜单", what: `${label(a.el)} ↔ ${label(b.el)}` });
   }
 
   // L2：文字被截断（单行省略或被裁）
