@@ -13,7 +13,9 @@
     "vitest": "^5.0.4"
   },
   "dependencies": {
-    "@vscode/tree-sitter-wasm": "^0.3.1"
+    "@vscode/tree-sitter-wasm": "^0.3.1",
+    "diff": "9.0.0",
+    "valibot": "1.5.0"
   },
   "exports": {
     ".": "./src/index.ts",

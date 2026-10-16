@@ -139,8 +139,8 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     check(await card(f, "Scheduler.schedule").count() === 1 && await card(f, "Scheduler.postprocess").count() === 1, "two child cards");
     check(await card(f, "BlockManager.can_allocate").count() === 1, "grandchild BlockManager.can_allocate");
     // Labels only name the tree (since v0.1.5 every card shows its tree's letter)
-    const root = await card(f, "LLMEngine.step").locator(".step").textContent().catch(() => "");
-    const n = await card(f, "BlockManager.can_allocate").locator(".step").textContent().catch(() => "");
+    const root = await card(f, "LLMEngine.step").locator(".chead .step").textContent().catch(() => "");
+    const n = await card(f, "BlockManager.can_allocate").locator(".chead .step").textContent().catch(() => "");
     check(!!n && n === root, "grandchild is labeled with the same tree", { root, n });
     await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
   });
