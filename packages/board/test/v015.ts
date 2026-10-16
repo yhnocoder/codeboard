@@ -479,6 +479,54 @@ export const V015: Record<string, () => Promise<void>> = {
     const v = Object.values(out);
     console.log(Math.max(...v) - Math.min(...v) <= 6 ? "PASS" : "FAIL", "theme-fit", JSON.stringify(out));
   },
+  /** 定义预览：鼠标离开后关掉（e2e 第 5 步的走法） */
+  async v15peekleave() {
+    const b = emptyBoard("b1", "v0.1.5");
+    const sch = card("Scheduler.schedule"); put(b, sch, 200, 80, 560); b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 1300, h: 900 });
+    await h.page.locator(".card .src .call", { hasText: /^can_allocate$/ }).first().hover(); await h.page.waitForTimeout(2500);
+    const shown = await h.page.locator(".pop.k-peek").count();
+    await h.page.mouse.move(5, 500); await h.page.waitForTimeout(800);
+    const after = await h.page.locator(".pop.k-peek").count();
+    await shot(h, "v15-peekleave");
+    console.log(shown === 1 && after === 0 ? "PASS" : "FAIL", "peek-leave", JSON.stringify({ shown, after }));
+    await close(h);
+  },
+  /** Warm Ink：子卡在右上方、横向很近时箭头的样子（截图看） */
+  async v15arrowup() {
+    const b = richBoard();
+    b.place[b.cards[0].id] = { ...b.place[b.cards[0].id], x: 80, y: 420 };
+    b.place[b.cards[1].id] = { ...b.place[b.cards[1].id], x: 760, y: 40 };
+    b.place[b.cards[2].id] = { ...b.place[b.cards[2].id], x: 760, y: 900 };
+    const h = await open({ board: b, light: true, w: 1500, h: 950 });
+    await shot(h, "v15-arrowup");
+    await close(h);
+  },
+  /** 换主题后卡变高：被压住的卡往下推（一步可撤销）；设置成 overlap 时不动 */
+  async v15reflow() {
+    const base = richBoard();
+    let h = await open({ board: base, light, w: 1500, h: 950 });
+    const r0 = (await h.page.locator(`.card[data-id="${base.cards[0].id}"]`).boundingBox())!;
+    await close(h);
+    const y0 = Math.round(r0.y + r0.height + 20); // cam = (0,0,1)：屏幕坐标就是白板坐标
+    const res: any = {};
+    for (const mode of ["push", "overlap"] as const) {
+      const b = richBoard();
+      const st = b.cards[0].id, post = b.cards[2].id;
+      b.place[post] = { ...b.place[post], x: 80, y: y0 };
+      h = await open({ board: b, light, w: 1500, h: 950, settings: { themeReflow: mode } as any });
+      await h.page.keyboard.press("Control+,"); await h.page.waitForTimeout(500);
+      await h.page.locator(".st-sw", { hasText: "Colorful" }).click(); await h.page.waitForTimeout(400);
+      await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(1400);
+      const y1 = h.board().place[post].y;
+      const a = (await h.page.locator(`.card[data-id="${st}"]`).boundingBox())!, p = (await h.page.locator(`.card[data-id="${post}"]`).boundingBox())!;
+      res[mode] = { y1, overlap: a.y + a.height > p.y };
+      if (mode === "push") await shot(h, "v15-reflow");
+      await close(h);
+    }
+    const ok = res.push.y1 > y0 && !res.push.overlap && res.overlap.y1 === y0;
+    console.log(ok ? "PASS" : "FAIL", "theme-reflow", JSON.stringify({ y0, res }));
+  },
   /** 线上的变量框能沿线拖，位置存成 t */
   async v15labeldrag() {
     const b = richBoard();

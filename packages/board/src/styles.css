@@ -78,7 +78,8 @@ input, textarea { font: inherit; color: var(--ink); }
 /* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
 .edge { fill: none; stroke: var(--edge); stroke-width: var(--edge-w); stroke-linecap: round; transition: opacity .2s; }
 .edge.retract { transition-duration: calc(var(--t) * 140ms); transition-timing-function: var(--in); }
-.edge.plain { stroke-dasharray: 4 4; stroke-dashoffset: 0; }
+/* Plain 和 Call 默认一样：实线 + 箭头；虚线要在菜单里选 */
+.edge.plain.dashed { stroke-dasharray: 4 4; stroke-dashoffset: 0; }
 .edge.hot { stroke: var(--accent); stroke-width: 1.6; }
 .edge.rubber { stroke: var(--accent); stroke-dasharray: 5 4; stroke-width: 1.5; }
 .board.linking, .board.linking * { cursor: alias !important; }
@@ -126,6 +127,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .cpath:hover { color: var(--ink); background: var(--hlrow); }
 .rev { display: inline-flex; align-items: center; gap: 3px; font: 10.5px var(--mono); color: var(--ink-3); flex: none; padding: 2px 5px; border-radius: 5px; }
 .rev:hover { color: var(--ink); background: var(--hlrow); }
+/* 卡头太挤时标题优先：版本、语言这些先缩 */
+.chead .rev { flex-shrink: 20; min-width: 0; overflow: hidden; white-space: nowrap; }
+.chead .ctitle { flex-shrink: 1; min-width: 4em; }
 .grow { flex: 1; }
 .ib { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--ink-2); transition: background .1s, color .1s, scale .12s; flex: none; }
 .ib:hover, .tbtn:hover, .bname:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
@@ -166,7 +170,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .src .l { height: 20px; }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .chrome .src .gap, .chrome .src .gap *, .chrome .src .inote, .chrome .src .inote * { user-select: none; -webkit-user-select: none; cursor: default; }
-.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); padding-left: 8px; margin-right: 12px; border-radius: 3px; }
+/* 隐藏行的条和行高亮一样撑满整张卡宽（左边盖住行号栏，右边到卡边） */
+.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: -54px; margin-right: -24px; padding-left: 62px; border-radius: 0; }
 .gap b { font-weight: 500; color: var(--ink-2); padding: 1px 5px; border-radius: 4px; }
 .gap b:hover { color: var(--accent); background: var(--row); }
 .inote { white-space: normal; font: 12px/1.55 var(--sys); color: var(--ink-2); background: var(--inote); box-shadow: inset 2px 0 0 var(--ink-3); margin: 2px 12px 4px -2px; padding: 5px 10px; border-radius: 0 5px 5px 0; max-width: 520px; }
@@ -240,7 +245,6 @@ input, textarea { font: inherit; color: var(--ink); }
 
 
 /* plain link styles, labels */
-.edge.plain.solid { stroke-dasharray: none; }
 .edge.lc-orange, .ahead.lc-orange { stroke: var(--lk-orange); }
 .edge.lc-blue, .ahead.lc-blue { stroke: var(--lk-blue); }
 .edge.lc-green, .ahead.lc-green { stroke: var(--lk-green); }
@@ -653,7 +657,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .pop .sres { margin-top: 0; }
 .card.lost .cbody { filter: grayscale(1); opacity: .62; } /* 符号找不到：显示旧代码，变灰 */
 /* 白板只占半边窗口时，底部工具条只留图标（悬停仍有提示），不被裁掉 */
-@media (max-width: 760px) { .bbar .tbtn .tl { display: none; } .bbar .tbtn { padding-inline: 7px; } }
+/* 底部工具条只有图标（所有主题一样），名字在悬停提示里 */
+.bbar .tbtn { padding-inline: 7px; }
 
 /* 无背景（#39）：内容直接在画布上；头部和细边框只在悬停 / 选中时浮出 */
 .card.nobg { background: transparent; box-shadow: none; }
@@ -782,6 +787,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .slabel .sname.editing { white-space: pre !important; min-width: 60px; display: inline-block; }
 .sect:not([class*=" c-"]) { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
 .cand small.cur { flex: none; color: var(--accent); }
+.k-commits .cand small { flex: none; }
+.k-commits .cand .lb { flex: 1 1 auto; min-width: 0; }
 
 /* 定义预览：顶部是 hover（签名 + 文档），下面源码按定义类型取 */
 .pk-top { padding: 8px 12px 9px; border-bottom: 1px solid var(--line); max-height: 260px; overflow: auto; scrollbar-width: thin; }

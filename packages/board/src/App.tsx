@@ -117,9 +117,9 @@ function Toolbar() {
   };
   return (
     <div class="over bbar"><div class="pill">
-      <For each={tools}>{(t) => <button class="tbtn" aria-label={t.label} data-tip={t.tip ?? `New ${t.label}`} data-kbd={t.kbd} onClick={t.run}><Icon name={t.icon} /><span class="tl">{t.label}</span><Show when={t.more}><Icon name="chev" size={10} /></Show></button>}</For>
+      <For each={tools}>{(t) => <button class="tbtn" aria-label={t.label} data-tip={t.tip ?? `New ${t.label}`} data-kbd={t.kbd} onClick={t.run}><Icon name={t.icon} /><Show when={t.more}><Icon name="chev" size={10} /></Show></button>}</For>
       <span class="sep" />
-      <button class="tbtn" aria-label="Search" data-tip="Search Functions, Files, Cards · ? Shortcuts" data-kbd={`${A.K.mod}K`} onClick={() => setPaletteOpen({ mode: "all" })}><Icon name="search" /><span class="tl">Search</span><kbd>{A.K.mod}K</kbd></button>
+      <button class="tbtn" aria-label="Search" data-tip="Search Functions, Files, Cards · ? Shortcuts" data-kbd={`${A.K.mod}K`} onClick={() => setPaletteOpen({ mode: "all" })}><Icon name="search" /></button>
       <button class="ib" aria-label="More" data-tip="More" onClick={more}><Icon name="more" /></button>
     </div></div>
   );

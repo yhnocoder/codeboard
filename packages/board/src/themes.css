@@ -464,7 +464,7 @@
 :root[data-look="drafting"] .rev i { width: 7px; height: 7px; border-radius: 0; background: currentColor; box-shadow: none; }
 :root[data-look="drafting"] .rev.hollow i { background: none; box-shadow: inset 0 0 0 1px currentColor; }
 :root[data-look="drafting"] .cdesc { border-bottom: 1px solid var(--rule); font: 11px/1.6 var(--mono); }
-:root[data-look="drafting"] .edge:not(.plain) { stroke-dasharray: 3 3; stroke-linecap: butt; }
+:root[data-look="drafting"] .edge:not(.dashed) { stroke-dasharray: 3 3; stroke-linecap: butt; }
 :root[data-look="drafting"] .ahead.triangle { fill: var(--ink); stroke: none; }
 :root[data-look="drafting"] .ahead.triangle.on { fill: var(--accent); }
 :root[data-look="drafting"] .port { fill: var(--bg); stroke: var(--ink); }
@@ -483,7 +483,6 @@
 :root[data-look="drafting"] .tbtn, :root[data-look="drafting"] .ib { color: var(--ink-2); }
 :root[data-look="drafting"] .tbtn { font: 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
 :root[data-look="drafting"] .tbtn:hover, :root[data-look="drafting"] .ib:hover { color: var(--ink); background: var(--tint); }
-:root[data-look="drafting"] .bbar .tbtn > .ico:first-child { display: none; }
 :root[data-look="drafting"] .sep { width: 1px; background: var(--rule); }
 :root[data-look="drafting"] .zoom { font: 10.5px var(--mono); color: var(--ink); }
 :root[data-look="drafting"] .ctx button:not([disabled]):hover { background: var(--ink); color: var(--bg); }
@@ -533,7 +532,7 @@
 :root[data-look="colorful"] .card.note .nbody { font-size: 13.5px; }
 :root[data-look="colorful"] .card.note .nbody h1, :root[data-look="colorful"] .card.note .nbody h2, :root[data-look="colorful"] .card.note .nbody h3 { font-weight: 600; letter-spacing: .02em; }
 :root[data-look="colorful"] .tx.st-title { font-weight: 600; letter-spacing: .02em; }
-:root[data-look="colorful"] .edge:not(.plain), :root[data-look="colorful"] .ahead:not([class*="lc-"]) { stroke: var(--rule); }
+:root[data-look="colorful"] .edge:not([class*="lc-"]), :root[data-look="colorful"] .ahead:not([class*="lc-"]) { stroke: var(--rule); }
 :root[data-look="colorful"] .ahead.triangle:not([class*="lc-"]) { fill: var(--rule); }
 :root[data-look="colorful"] .ahead.on { stroke: var(--accent); fill: var(--accent); }
 :root[data-look="colorful"] .port { stroke: var(--rule); stroke-width: 2; fill: var(--f1); }
@@ -603,7 +602,6 @@
 :root[data-look="newspaper"] .ib, :root[data-look="newspaper"] .tbtn, :root[data-look="newspaper"] .btn, :root[data-look="newspaper"] .ctx button, :root[data-look="newspaper"] .cand, :root[data-look="newspaper"] .segc button, :root[data-look="newspaper"] .db button, :root[data-look="newspaper"] .fld, :root[data-look="newspaper"] .zoom { border-radius: 0; }
 :root[data-look="newspaper"] .bbar .pill, :root[data-look="newspaper"] .dock .pill { height: 34px; padding: 2px 4px 0; gap: 0; box-shadow: inset 0 2px 0 var(--rule), inset 0 -.5px 0 var(--rule); }
 :root[data-look="newspaper"] .pill .tbtn { font: 700 10.5px var(--serif); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); padding: 0 10px; }
-:root[data-look="newspaper"] .bbar .tbtn > .ico:first-child { display: none; }
 :root[data-look="newspaper"] .pill .tbtn + .tbtn { box-shadow: inset .5px 0 0 var(--hair); }
 :root[data-look="newspaper"] .pill .ib { color: var(--ink); }
 :root[data-look="newspaper"] .pill .tbtn:hover, :root[data-look="newspaper"] .pill .ib:hover { background: var(--bg); }
@@ -665,8 +663,6 @@
 :root[data-look="poster"] .bbar .tbtn, :root[data-look="poster"] .bbar .ib, :root[data-look="poster"] .dock .tbtn, :root[data-look="poster"] .dock .ib { color: var(--band-ink); }
 :root[data-look="poster"] .bbar .tbtn:hover, :root[data-look="poster"] .bbar .ib:hover, :root[data-look="poster"] .dock .tbtn:hover, :root[data-look="poster"] .dock .ib:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); color: var(--band-ink); }
 :root[data-look="poster"] .tbtn { font: 400 9.5px var(--mono); letter-spacing: .3em; text-transform: uppercase; }
-:root[data-look="poster"] .bbar .tbtn > .ico:first-child { display: none; }
-:root[data-look="poster"] .bbar .tbtn + .tbtn::before { content: "·"; opacity: .5; margin: 0 8px 0 -10px; letter-spacing: 0; }
 :root[data-look="poster"] .bbar kbd { color: color-mix(in srgb, var(--band-ink) 60%, transparent); }
 :root[data-look="poster"] .bbar .sep, :root[data-look="poster"] .dock .sep { width: .5px; height: 14px; background: var(--band-ink); opacity: .4; margin: 0 6px; }
 :root[data-look="poster"] .dock .zoom { color: var(--band-ink); font: 400 10px var(--mono); letter-spacing: .1em; }
@@ -679,11 +675,6 @@
 :root[data-look="poster"] .mast::before { content: "CODEBOARD"; font: 400 9px var(--mono); letter-spacing: .4em; color: var(--ink-2); padding: 0 6px 6px; border-bottom: .5px solid var(--rule); }
 :root[data-look="poster"] .mast .mn { font: 400 24px/1.1 var(--serif); letter-spacing: .08em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
-/* 白板只占半边窗口时只留图标：只有文字的工具条（Drafting、Newspaper、Poster）把图标请回来 */
-@media (max-width: 760px) {
-  :root[data-look="drafting"] .bbar .tbtn > .ico:first-child, :root[data-look="newspaper"] .bbar .tbtn > .ico:first-child, :root[data-look="poster"] .bbar .tbtn > .ico:first-child { display: block; }
-  :root[data-look="poster"] .bbar .tbtn + .tbtn::before { content: none; }
-}
 
 /* ======================================================================
    Settings 小样：每种材质最显眼的那一点

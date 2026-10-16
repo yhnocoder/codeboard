@@ -478,6 +478,13 @@
           "default": "text",
           "description": "What double-clicking empty board space creates."
         },
+        "codeboard.theme.reflow": {
+          "type": "string",
+          "enum": ["push", "overlap"],
+          "enumDescriptions": ["Push cards below down", "Allow overlap"],
+          "default": "push",
+          "description": "When switching themes makes cards taller: push the cards below them down, or let them overlap."
+        },
         "codeboard.zoom.overview": {
           "type": "number",
           "default": 0.6,

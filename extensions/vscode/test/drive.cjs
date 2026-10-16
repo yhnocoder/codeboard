@@ -69,7 +69,7 @@ const boardJson = () => {
   // 2. 点 schedule：展开 Scheduler.schedule，编号 1，连 Call link
   await card(f, "LLMEngine.step").locator(".src .call", { hasText: /^schedule$/ }).first().click(); await sleep(1800);
   check(await card(f, "Scheduler.schedule").count() === 1, "点 schedule 展开出 Scheduler.schedule");
-  check((await card(f, "Scheduler.schedule").locator(".step").textContent().catch(() => "")) === "1", "子卡编号 1");
+  check((await card(f, "Scheduler.schedule").locator(".step").textContent().catch(() => "")) === "A", "子卡标所在的树 A");
   check(await f.locator("path.edge").count() >= 1, "画出 Call link");
   // 3. 点 postprocess：编号 2
   await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
@@ -84,7 +84,9 @@ const boardJson = () => {
   await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().hover(); await sleep(2500);
   check(await f.locator(".pop.k-peek").count() === 1, "悬停名字弹出定义预览");
   await shot(page, "3-peek");
-  await page.mouse.move(5, 500); await sleep(800);
+  // 分几步移出去：真鼠标会经过 webview 的边，白板才收到 pointerleave；一步跳出 webview 时 Chromium 不给 iframe 发任何离开事件
+  await page.mouse.move(5, 500, { steps: 12 }); await sleep(800);
+  check(await f.locator(".pop.k-peek").count() === 0, "鼠标移开后定义预览关掉");
 
   // 5. Sidenote：选两行，按 S，写一句
   await sch.locator(".no").nth(5).click(); await sch.locator(".no").nth(6).click({ modifiers: ["Shift"] });

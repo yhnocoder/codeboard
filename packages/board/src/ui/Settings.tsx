@@ -46,6 +46,12 @@ function SettingsPage(p: { section?: string }) {
               </button>
             )}</For>
           </div>
+          <div class="st-sub">When a theme makes cards taller</div>
+          <div class="st-chips">
+            <For each={[["push", "Push Cards Below Down"], ["overlap", "Allow Overlap"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().themeReflow ?? "push") === v }} onClick={() => A.setSetting("themeReflow", v)}>{lb}</button>
+            )}</For>
+          </div>
         </Sec>
         <Sec id="hide" title="New cards hide" hint="What new code cards start with hidden. Each card can still toggle them.">
           <div class="st-checks">

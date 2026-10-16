@@ -48,13 +48,12 @@ export function computeFlows(b: Pick<Board, "cards" | "links">): Flows {
   let k = 0;
   for (const c of b.cards) order.set(c.id, k++);
   const rootIds = [...out.keys()].filter((id) => !parent.has(id)).sort((x, y) => (order.get(x) ?? 0) - (order.get(y) ?? 0));
-  const multi = rootIds.length > 1;
   const byId = new Map<string, FlowNode>();
   const roots: FlowNode[] = [];
   rootIds.forEach((rid, i) => {
     const letter = treeLetter(i);
     const build = (id: string, num: string, depth: number, link: CallLink | undefined, seen: Set<string>): FlowNode => {
-      const node: FlowNode = { id, link, kids: [], num, depth, tree: rid, label: depth === 0 ? letter : multi ? `${letter}·${num}` : num };
+      const node: FlowNode = { id, link, kids: [], num, depth, tree: rid, label: letter }; // 卡上只标是哪棵树（A、B…）；num 留给讲解顺序
       byId.set(id, node);
       seen.add(id);
       let n = 0;

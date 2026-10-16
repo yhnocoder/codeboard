@@ -79,12 +79,12 @@ const S: Record<string, () => Promise<void>> = {
     const h = await open({ board: b, light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(600);
     const r = await h.page.locator(".card").first().boundingBox();
-    await h.page.locator(".bbar button", { hasText: "Section" }).click();
+    await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
     await h.page.mouse.move(r!.x - 40, r!.y - 60); await h.page.mouse.down();
     await h.page.mouse.move(r!.x + r!.width + 30, r!.y + r!.height + 40, { steps: 8 }); await h.page.mouse.up();
     await h.page.waitForTimeout(400);
     await h.page.keyboard.type("Engine"); await h.page.keyboard.press("Enter");
-    await h.page.locator(".bbar button", { hasText: "Section" }).click();
+    await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
     await h.page.mouse.move(r!.x - 80, r!.y - 120); await h.page.mouse.down();
     await h.page.mouse.move(1350, 820, { steps: 8 }); await h.page.mouse.up();
     await h.page.waitForTimeout(300);
@@ -142,7 +142,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
     // Plain link：选两张卡，点 Link
     await h.page.keyboard.press("Control+a");
-    await h.page.locator(".bbar button", { hasText: "Arrow" }).click(); await h.page.waitForTimeout(400);
+    await h.page.locator(".bbar button[aria-label=\"Arrow\"]").click(); await h.page.waitForTimeout(400);
     // Text：双击空白处
     await h.page.mouse.dblclick(700, 120); await h.page.waitForTimeout(300);
     await h.page.keyboard.type("Scheduler overview"); await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
@@ -267,7 +267,7 @@ const S: Record<string, () => Promise<void>> = {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     const r = await h.page.locator(".card").first().boundingBox();
     const draw = async (pad: number, name: string) => {
-      await h.page.locator(".bbar button", { hasText: "Section" }).click();
+      await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
       await h.page.mouse.move(r!.x - pad, r!.y - pad - 20); await h.page.mouse.down();
       await h.page.mouse.move(r!.x + r!.width + pad, r!.y + r!.height + pad, { steps: 8 }); await h.page.mouse.up();
       await h.page.waitForTimeout(300); await h.page.keyboard.type(name); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(300);

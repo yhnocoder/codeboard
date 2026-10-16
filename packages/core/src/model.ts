@@ -146,7 +146,7 @@ export type CallLink = LinkBase & {
 export type PlainLink = LinkBase & {
   kind: "plain";
   arrow?: "none" | "end" | "both"; // 默认 end
-  solid?: boolean; // 默认虚线
+  solid?: boolean; // false = 虚线；默认实线（和 Call link 一样）
   color?: string; // 默认灰
 };
 export type Link = CallLink | PlainLink;
@@ -289,8 +289,10 @@ export function domainOf(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
-export function versionLabel(v: Version | undefined): string {
+/** short：卡头里用，尽量短（不在 git 里的文件只显示内容哈希的前 4 位） */
+export function versionLabel(v: Version | undefined, short = false): string {
   if (!v) return "";
+  if (short && v.kind === "hash") return v.hash.slice(0, 4);
   switch (v.kind) {
     case "git": return v.commit.slice(0, 7);
     case "pkg": return `${v.name} ${v.version}`;

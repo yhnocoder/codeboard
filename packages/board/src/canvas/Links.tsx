@@ -114,7 +114,8 @@ function callGeo(L: Link): Geo | null {
     x1 = a.x + a.w;
     if (b.x >= x1 - 24) {
       x2 = b.x - 6;
-      const dx = clamp(Math.abs(x2 - x1) * 0.45, 24, 140);
+      // 横向近、纵向远（子卡在右上 / 右下）：控制柄也跟着纵向距离变长，否则线竖着上去、到卡前急拐，箭头像是断开的
+      const dx = clamp(Math.abs(x2 - x1) * 0.45 + Math.abs(y2 - y1) * 0.3, 24, 180);
       c1x = x1 + dx; c2x = x2 - dx; c2y = y2;
       head = headPath(x2, y2, 1, 0);
     } else {
@@ -130,7 +131,7 @@ function callGeo(L: Link): Geo | null {
     x1 = a.x;
     if (b.x + b.w <= x1 + 24) {
       x2 = b.x + b.w + 6;
-      const dx = clamp(Math.abs(x1 - x2) * 0.45, 24, 140);
+      const dx = clamp(Math.abs(x1 - x2) * 0.45 + Math.abs(y2 - y1) * 0.3, 24, 180);
       c1x = x1 - dx; c2x = x2 + dx; c2y = y2;
       head = headPath(x2, y2, -1, 0);
     } else {
@@ -189,7 +190,7 @@ function plainGeo(L: PlainLink): Geo | null {
     const [e1, e2] = h ? [[xm, y2], [xm, y1]] : [[x2, ym], [x1, ym]];
     return {
       d, mx: h ? xm : (x1 + x2) / 2, my: ym,
-      head: L.arrow === "end" || L.arrow === "both" ? arrow(x2, y2, e1[0], e1[1]) : undefined,
+      head: (L.arrow ?? "end") !== "none" ? arrow(x2, y2, e1[0], e1[1]) : undefined,
       tail: L.arrow === "both" ? arrow(x1, y1, e2[0], e2[1]) : undefined,
       pts: h ? [x1, y1, xm, y1, xm, y2, x2, y2] : [x1, y1, x1, ym, x2, ym, x2, y2],
     };
@@ -197,7 +198,7 @@ function plainGeo(L: PlainLink): Geo | null {
   return {
     d: `M${x1} ${y1} C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${x2} ${y2}`,
     mx: (x1 + 3 * c1[0] + 3 * c2[0] + x2) / 8, my: (y1 + 3 * c1[1] + 3 * c2[1] + y2) / 8,
-    head: L.arrow === "end" || L.arrow === "both" ? arrow(x2, y2, c2[0], c2[1]) : undefined,
+    head: (L.arrow ?? "end") !== "none" ? arrow(x2, y2, c2[0], c2[1]) : undefined,
     tail: L.arrow === "both" ? arrow(x1, y1, c1[0], c1[1]) : undefined,
     pts: [x1, y1, c1[0], c1[1], c2[0], c2[1], x2, y2],
   };
@@ -257,7 +258,7 @@ export function LinksSvg() {
           const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
           const on = () => sel.links.includes(L.id) || hoverLink() === L.id || (A.bindHot() as { link?: string } | null)?.link === L.id;
           const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
-          const cls = () => `edge${L.kind === "plain" ? " plain" + ((L as PlainLink).solid ? " solid" : "") + ((L as PlainLink).color ? ` lc-${(L as PlainLink).color}` : "") : ""}${on() ? " on" : ""}`;
+          const cls = () => `edge${L.kind === "plain" ? " plain" + ((L as PlainLink).solid === false ? " dashed" : "") + ((L as PlainLink).color ? ` lc-${(L as PlainLink).color}` : "") : ""}${on() ? " on" : ""}`;
           return (
             <Show when={g()}>
               <path class={cls()} d={g()!.d} />

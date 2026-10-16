@@ -234,8 +234,8 @@ export function linkMenu(id: string, x: number, y: number) {
   openMenu([
     edit,
     ...(callOn(P.from, P.to) ? [{ label: "Make Call", hint: "This line calls the target function", run: () => makeCall(id) } as Item, null] : []),
-    { label: "Head", sub: ([["none", "None"], ["end", "One-way  →"], ["both", "Both  ↔"]] as const).map(([v, lb]) => ({ label: lb, checked: (P.arrow ?? "none") === v, run: () => setP((l) => { l.arrow = v; }) })) },
-    { label: "Style", sub: [{ label: "Dashed", checked: !P.solid, run: () => setP((l) => { l.solid = false; }) }, { label: "Solid", checked: !!P.solid, run: () => setP((l) => { l.solid = true; }) }] },
+    { label: "Head", sub: ([["none", "None"], ["end", "One-way  →"], ["both", "Both  ↔"]] as const).map(([v, lb]) => ({ label: lb, checked: (P.arrow ?? "end") === v, run: () => setP((l) => { l.arrow = v; }) })) },
+    { label: "Style", sub: [{ label: "Solid", checked: P.solid !== false, run: () => setP((l) => { l.solid = undefined; }) }, { label: "Dashed", checked: P.solid === false, run: () => setP((l) => { l.solid = false; }) }] },
     { label: "Color", sub: LINK_COLORS.map(([v, lb]) => ({ label: lb, checked: (P.color ?? "grey") === v, run: () => setP((l) => { l.color = v === "grey" ? undefined : v; }) })) },
     null, del,
   ], x, y);

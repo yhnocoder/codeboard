@@ -11,6 +11,7 @@ const KEY: Record<keyof Settings, string> = {
   zoomOverview: "zoom.overview",
   zoomMap: "zoom.map",
   dblClick: "doubleClick",
+  themeReflow: "theme.reflow",
   debug: "debug.enabled",
   tune: "debug.tune",
 };

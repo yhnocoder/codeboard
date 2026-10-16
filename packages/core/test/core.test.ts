@@ -178,14 +178,15 @@ describe("computeFlows", () => {
   const board = (links: Link[], ids = ["a", "b", "c", "d", "e"]): Board => ({ ...emptyBoard("b", "B"), cards: ids.map(code), links });
   it("numbers root A, children by source line, grandchildren 2.1", () => {
     const f = computeFlows(board([call("a", 9, "b"), call("a", 3, "c"), call("b", 5, "d")]));
-    expect(["a", "c", "b", "d"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "1", "2", "2.1"]);
+    expect(["a", "c", "b", "d"].map((id) => f.byId.get(id)!.num)).toEqual(["", "1", "2", "2.1"]);
+    expect(["a", "c", "b", "d"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "A", "A", "A"]);
     expect(walkOrder(f.roots[0]).map((n) => n.id)).toEqual(["a", "c", "b", "d"]);
   });
-  it("prefixes child numbers with the tree letter when there are several trees", () => {
+  it("labels every card with its tree's letter", () => {
     const f = computeFlows(board([call("a", 1, "b"), call("c", 1, "d")]));
-    expect(f.byId.get("b")!.label).toBe("A·1");
+    expect(f.byId.get("b")!.label).toBe("A");
     expect(f.byId.get("c")!.label).toBe("B");
-    expect(f.byId.get("d")!.label).toBe("B·1");
+    expect(f.byId.get("d")!.label).toBe("B");
     expect(f.byId.has("e")).toBe(false);
   });
   it("attaches only to cards with no incoming call, without loops", () => {
