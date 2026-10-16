@@ -6,10 +6,20 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { allCodeCards, emptyBoard, migrateBoard, type Board, type BoardMeta } from "@codeboard/core";
 import { mkUid } from "./ws";
+import { log } from "./log";
+
+const badFiles = new Set<string>();
 
 type Entry = { id: string; file: string; group?: string; mtime: number; birth: number; board: Board };
 
 const RESERVED = new Set(["assets", "github", ".trash"]);
+/** 组名就是子文件夹名：去掉路径符号；"."、".." 和点开头的（.trash）、保留名都不行 */
+function groupName(name: string): string | null {
+  const safe = name.replace(/[\\/:*?"<>|]/g, "-").trim();
+  return safe && !safe.startsWith(".") && !RESERVED.has(safe) ? safe : null;
+}
+/** 白板 id 也是文件名：只允许字母、数字、- 和 _ */
+const SAFE_ID = /^[\w-]{1,80}$/;
 
 export class Storage {
   private changed = new vscode.EventEmitter<void>();
@@ -62,7 +72,11 @@ export class Storage {
         if (!e || e.mtime !== st.mtimeMs) {
           const raw = JSON.parse(await fs.readFile(f.file, "utf8"));
           const board = migrateBoard(raw);
-          if (!board.id) board.id = path.basename(f.file, ".json");
+          // id 决定存盘的文件名：只认安全的 id；和别的文件重了（Finder 里复制出来的）就换一个新的，免得两份互相覆盖
+          const base = path.basename(f.file, ".json");
+          if (!SAFE_ID.test(board.id ?? "")) board.id = SAFE_ID.test(base) ? base : mkUid("b");
+          else if (board.id !== base && files.some((g) => path.basename(g.file, ".json") === board.id)) board.id = mkUid("b");
+          if (seen.has(board.id)) board.id = mkUid("b");
           board.sidenotes ??= [];
           board.sections ??= [];
           board.links ??= [];
@@ -72,7 +86,7 @@ export class Storage {
         e.group = f.group;
         seen.add(e.id);
         out.push(e);
-      } catch { /* 坏文件跳过 */ }
+      } catch (e) { if (!badFiles.has(f.file)) { badFiles.add(f.file); log("error", `storage: skipped unreadable board ${f.file}: ${e instanceof Error ? e.message : e}`); } } // 坏文件跳过（只记一次）
     }
     for (const id of [...this.cache.keys()]) if (!seen.has(id)) this.cache.delete(id);
     return out.sort((a, b) => a.birth - b.birth);
@@ -103,6 +117,7 @@ export class Storage {
   }
 
   async save(b: Board, opts: { group?: string | null } = {}) {
+    if (!SAFE_ID.test(b.id)) throw new Error(`Bad board id: ${b.id}`);
     const old = this.cache.get(b.id);
     const group = opts.group === undefined ? old?.group : opts.group ?? undefined;
     const dir = group ? path.join(this.dir(), group) : this.dir();
@@ -153,23 +168,25 @@ export class Storage {
 
   async move(id: string, group: string | undefined) {
     const b = await this.load(id);
-    if (b) await this.save(b, { group: group ?? null });
+    const g = group === undefined ? null : groupName(group);
+    if (group !== undefined && !g) return;
+    if (b) await this.save(b, { group: g });
   }
 
   groupOf(id: string) { return this.cache.get(id)?.group; }
   fileOf(id: string) { return this.cache.get(id)?.file; }
 
   async newGroup(name: string) {
-    const safe = name.replace(/[\\/:*?"<>|]/g, "-").trim();
-    if (!safe || RESERVED.has(safe)) return;
+    const safe = groupName(name);
+    if (!safe) return;
     await fs.mkdir(path.join(this.dir(), safe), { recursive: true });
     this.emptyGroups.add(safe);
     this.changed.fire();
   }
 
   async renameGroup(from: string, to: string) {
-    const safe = to.replace(/[\\/:*?"<>|]/g, "-").trim();
-    if (!safe || RESERVED.has(safe)) return;
+    const safe = groupName(to);
+    if (!safe || !groupName(from)) return;
     await fs.rename(path.join(this.dir(), from), path.join(this.dir(), safe));
     this.emptyGroups.delete(from);
     this.cache.clear();
@@ -178,6 +195,7 @@ export class Storage {
 
   /** 删组：白板移回顶层，再删文件夹 */
   async removeGroup(name: string) {
+    if (!groupName(name)) return; // ".." 之类会删到存储目录外面去
     for (const e of await this.scan()) if (e.group === name) await this.move(e.id, undefined);
     await fs.rm(path.join(this.dir(), name), { recursive: true, force: true });
     this.emptyGroups.delete(name);

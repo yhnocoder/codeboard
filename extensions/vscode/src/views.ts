@@ -8,8 +8,9 @@ import c from "shiki/langs/c.mjs";
 import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
 import type { FileAnalysis } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
-import { versionText } from "./source";
-import { Lru, splitLines } from "./ws";
+import { absOf, versionText } from "./source";
+import { callPkgs } from "./scope";
+import { Lru, readText, splitLines } from "./ws";
 
 const theme = createCssVariablesTheme({ name: "codeboard", variablePrefix: "--shiki-", fontStyle: true });
 let hl: Promise<HighlighterCore> | undefined;
@@ -24,16 +25,20 @@ function shikiLang(lang: string): string | null {
   return null;
 }
 
-const tokCache = new Lru<Tok[][]>(60);
+const tokCache = new Lru<Promise<Tok[][]>>(60);
 
-/** 每行的 token（带白板的颜色 class） */
-export async function tokensOf(lang: string, text: string): Promise<Tok[][]> {
-  const lines = splitLines(text);
+/** 每行的 token（带白板的颜色 class）。缓存的是 promise：同一份文本同时被几个段要时只分词一次 */
+export function tokensOf(lang: string, text: string): Promise<Tok[][]> {
   const sl = shikiLang(lang);
-  if (!sl) return lines.map((l) => [{ text: l }]);
+  if (!sl) return Promise.resolve(splitLines(text).map((l) => [{ text: l }]));
   const k = `${sl}\0${text.length}\0${fingerprint(text)}`;
-  const hit = tokCache.get(k);
-  if (hit) return hit;
+  let p = tokCache.get(k);
+  if (!p) { p = tokenize(sl, text); tokCache.set(k, p); }
+  return p;
+}
+
+async function tokenize(sl: string, text: string): Promise<Tok[][]> {
+  const lines = splitLines(text);
   const h = await highlighter();
   let res: Tok[][];
   try {
@@ -49,7 +54,6 @@ export async function tokensOf(lang: string, text: string): Promise<Tok[][]> {
     let col = 0;
     for (const t of toks) { if (col < end && t.text.trim()) t.cls = "dec"; col += t.text.length; }
   });
-  tokCache.set(k, res);
   return res;
 }
 
@@ -86,33 +90,44 @@ export async function segView(seg: Segment): Promise<SegView> {
   const full = await versionText(seg).catch(() => null);
   if (!full || splitLines(full).length > MAX_FULL) return snippetView(seg);
   const fa = analysisOf(lang, full);
+  // Python 的函数 / 类段从 def / class / 装饰器那行开始，词法状态和文件开头一样：只给段本身分词（大文件里省掉整个文件的 shiki）
+  if (shikiLang(lang) === "python" && seg.symbol && seg.symbol.kind !== "module" && fa.symbols.some((s) => s.start === seg.start && s.qual === seg.symbol!.qual)) {
+    const toks = await tokensOf(lang, seg.text.join("\n"));
+    return build(seg, fa, (i) => toks[i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
+  }
   const toks = await tokensOf(lang, full);
-  return build(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0);
+  return build(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
 }
 
 /** 只有段文本：去掉公共缩进再分析（Python 片段在函数中间时才能解析），列号再加回来 */
-function snippetView(seg: Segment): Promise<SegView> | SegView {
+async function snippetView(seg: Segment): Promise<SegView> {
   const ind = Math.min(...seg.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
   const cut = Number.isFinite(ind) ? ind : 0;
   const ded = seg.text.map((l) => l.slice(Math.min(cut, l.length - l.trimStart().length)));
   const fa = analysisOf(seg.lang, ded.join("\n"));
-  return tokensOf(seg.lang, seg.text.join("\n")).then((toks) => build(seg, fa, (i) => toks[i], cut, seg.start - 1));
+  // import 在文件开头，段里没有：用当前文件的
+  const abs = seg.src.kind === "free" ? null : absOf(seg);
+  const cur = abs ? await readText(abs).catch(() => null) : null;
+  const pk = await callPkgs(seg, cur ? analysisOf(seg.lang, cur).imports : fa.imports, abs);
+  const toks = await tokensOf(seg.lang, seg.text.join("\n"));
+  return build(seg, fa, (i) => toks[i], cut, seg.start - 1, pk);
 }
 
 /**
  * fa 的行号 = 段行号 - lineOff（整个文件：lineOff = 0，fa 行 L 就是真实行 L）；
  * 段文本分析时 fa 的第 1 行是段的第一行，shift = seg.start - 1。colOff = 去掉的缩进。
  */
-function build(seg: Segment, fa: FileAnalysis, tokAt: (i: number) => Tok[] | undefined, colOff: number, shift: number): SegView {
+function build(seg: Segment, fa: FileAnalysis, tokAt: (i: number) => Tok[] | undefined, colOff: number, shift: number, pkgOf: (c: { name: string; recv?: string }) => string | undefined = () => undefined): SegView {
   const calls: CallSpan[] = [];
   const marks = new Map<number, Mark[]>();
   for (const c of fa.calls) {
     const line = c.line + shift;
     if (line < seg.start || line > seg.end) continue;
     const idx = calls.length;
-    calls.push({ line, col: c.col + colOff, end: c.end + colOff, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch });
+    const pkg = pkgOf(c);
+    calls.push({ line, col: c.col + colOff, end: c.end + colOff, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch, pkg });
     const arr = marks.get(line) ?? [];
-    arr.push({ col: c.col + colOff, end: c.end + colOff, idx });
+    arr.push({ col: c.col + colOff, end: c.end + colOff, idx, pkg });
     marks.set(line, arr);
   }
   const html: string[] = [], flags: number[] = [];

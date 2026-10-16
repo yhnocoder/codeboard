@@ -45,7 +45,7 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode> {
     it.tooltip = new vscode.MarkdownString([
       `**${m.name}**`, `${m.cards} cards`, m.stale ? `${m.stale} cards have new versions` : "", target ? "Target for Add to Board" : "", open ? "Open" : "",
     ].filter(Boolean).join("  \n"));
-    it.command = { command: "codeboard.openBoard", title: "Open", arguments: [m.id] };
+    it.command = { command: "codeboard.openBoard", title: "Open", arguments: [m.id, { here: true }] };
     return it;
   }
 }

@@ -96,9 +96,9 @@ const boardJson = () => {
   // 2. Click schedule: expands Scheduler.schedule, numbered 1, with a call link
   await card(f, "LLMEngine.step").locator(".src .call", { hasText: /^schedule$/ }).first().click(); await sleep(1800);
   check(await card(f, "Scheduler.schedule").count() === 1, "clicking schedule expands Scheduler.schedule");
-  check((await card(f, "Scheduler.schedule").locator(".step").textContent().catch(() => "")) === "1", "child card numbered 1");
+  check((await card(f, "Scheduler.schedule").locator(".chead .step").textContent().catch(() => "")) === "A", "child card shows its tree letter A");
   check(await f.locator("path.edge").count() >= 1, "call link drawn");
-  // 3. Click postprocess: numbered 2
+  // 3. Click postprocess: second child in the same tree
   await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
   await card(f, "LLMEngine.step").locator(".src .call", { hasText: /^postprocess$/ }).first().click(); await sleep(1800);
   check(await card(f, "Scheduler.postprocess").count() === 1, "clicking postprocess expands it");
@@ -111,7 +111,9 @@ const boardJson = () => {
   await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().hover(); await sleep(2500);
   check(await f.locator(".pop.k-peek").count() === 1, "hovering a name opens Definition Peek");
   await shot(page, "3-peek");
-  await page.mouse.move(5, 500); await sleep(800);
+  // Move out in steps: a real mouse crosses the webview edge so the board gets pointerleave; a one-jump exit sends the iframe no leave events in Chromium
+  await page.mouse.move(5, 500, { steps: 12 }); await sleep(800);
+  check(await f.locator(".pop.k-peek").count() === 0, "Definition Peek closes after the mouse moves away");
 
   // 5. Sidenote: select two lines, press S, write a sentence
   await sch.locator(".no").nth(5).click(); await sch.locator(".no").nth(6).click({ modifiers: ["Shift"] });
@@ -143,7 +145,36 @@ const boardJson = () => {
   // 8. Autosave
   await sleep(2000);
   const b = boardJson();
-  check(b && b.version === 2 && b.cards.length >= 5 && b.links.length >= 2 && b.sidenotes.length === 1, "board autosaved (v2 format)", b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
+  check(b && b.version === 3 && b.cards.length >= 5 && Object.keys(b.place).length === b.cards.length && b.links.length >= 2 && b.sidenotes.length === 1, "board autosaved (v3 format)", b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
+
+  // 8b. Settings: Ctrl+, inside the board opens the Settings page (the extension routes VS Code's own Ctrl+, back to the board); changing the theme writes codeboard.theme
+  await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
+  await page.keyboard.press("Control+,"); await sleep(900);
+  check(await f.locator(".settings").count() === 1, "Ctrl+, opens the Settings page in the board");
+  await f.locator(".st-sw", { hasText: "Graphite" }).click(); await sleep(1500);
+  const us = fs.readFileSync(`${UD}/User/settings.json`, "utf8");
+  check(/"codeboard\.theme":\s*"graphite"/.test(us), "changing the theme writes codeboard.theme", us.slice(-200));
+  check(await f.evaluate(() => document.documentElement.dataset.look) === "graphite", "board switches to Graphite");
+  await shot(page, "7a-settings");
+  await page.keyboard.press("Control+,"); await sleep(700);
+  check(await f.locator(".settings").count() === 0, "Ctrl+, again closes the Settings page");
+  await command(page, "CodeBoard: Open Settings"); await sleep(800);
+  check(await f.locator(".settings").count() === 1, "command CodeBoard: Open Settings opens the Settings page");
+  await f.locator(".st-sw", { hasText: "Warm Ink" }).click(); await sleep(800);
+  await page.keyboard.press("Escape"); await sleep(400);
+  // Copy Diagnostics: asks whether to include the board JSON, then says it was copied
+  await command(page, "CodeBoard: Copy Diagnostics"); await sleep(800);
+  await page.keyboard.press("Enter"); await sleep(1500);
+  check(await page.locator(".notifications-toasts", { hasText: "Diagnostics copied to clipboard" }).count() > 0, "Copy Diagnostics says it was copied");
+  await shot(page, "7b-diagnostics");
+
+  // 8c. Change a card's file outside VS Code (another editor / git checkout): the card shows + uncommitted too
+  const llm = path.join(WS, "nanovllm/engine/llm_engine.py");
+  const orig = fs.readFileSync(llm, "utf8");
+  fs.writeFileSync(llm, orig.replace("def step(self):", "def step(self):  # edited outside VS Code")); await sleep(4000);
+  check(await f.locator(".rev.unc").count() >= 1, "card shows + uncommitted after the file changes outside VS Code");
+  fs.writeFileSync(llm, orig); await sleep(2500);
+  check(await f.locator(".rev.unc").count() === 0, "+ uncommitted goes away after changing it back");
 
   // 9. Edit code in the editor: the card shows + uncommitted (nothing committed to git)
   await openFile(page, "scheduler.py", 30);

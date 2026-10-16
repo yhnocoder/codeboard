@@ -8,6 +8,9 @@ import type { Storage } from "./storage";
 import { boardSegments, countStale, staleFor } from "./versions";
 import { viewsFor } from "./views";
 import { present, srcLabel } from "./source";
+import { readSettings } from "./settings";
+import { log } from "./log";
+import { warmBoard } from "./prefetch";
 
 export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown> | unknown;
 
@@ -46,6 +49,8 @@ export class BoardPanel {
     this.queue = [];
     for (const m of q) void this.panel.webview.postMessage(m);
     this.mgr.staleChanged(this.id, countStale(b, stale));
+    // 白板已经出来了：后台让语言服务先热起来
+    warmBoard(segs, () => this.mgr.get(this.id) === this);
   }
 
   host(): HostInfo {
@@ -53,10 +58,10 @@ export class BoardPanel {
     return {
       fontFamily: ed.get<string>("fontFamily"),
       isMac: process.platform === "darwin",
-      forwardedKeys: ["k", "d", "0", "1", "=", "+", "-", "shift+l"], // 与 package.json 里 codeboard.boardKey 的键一致
+      forwardedKeys: ["k", "d", "0", "1", "=", "+", "-", "shift+l", ","], // 与 package.json 里 codeboard.boardKey 的键一致
       assetBase: this.panel.webview.asWebviewUri(vscode.Uri.file(this.mgr.store.assetsDir())).toString(),
       readonly: this.readonly,
-      focus: this.mgr.focusOn,
+      settings: readSettings(),
       target: this.mgr.target === this.id,
     };
   }
@@ -95,7 +100,6 @@ export class Panels {
   static readonly viewType = "codeboard.board";
   private panels = new Map<string, BoardPanel>();
   target: string | undefined;
-  focusOn = false;
   private targetEmitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTarget = this.targetEmitter.event;
   private staleEmitter = new vscode.EventEmitter<void>();
@@ -111,12 +115,13 @@ export class Panels {
   metas(): Promise<BoardMeta[]> { return this.store.list(); }
 
   /** 打开（或切到）一张白板 */
-  async show(id: string, opts: { preserveFocus?: boolean; side?: boolean } = {}): Promise<BoardPanel | undefined> {
+  async show(id: string, opts: { preserveFocus?: boolean; side?: boolean; here?: boolean } = {}): Promise<BoardPanel | undefined> {
     const ex = this.panels.get(id);
     if (ex) { ex.panel.reveal(undefined, opts.preserveFocus); return ex; }
     const b = await this.store.load(id);
     if (!b) return undefined;
-    const col = opts.side ? vscode.ViewColumn.Beside : this.boardColumn() ?? vscode.ViewColumn.Beside;
+    // here：侧栏里点的，开在当前这一栏（不新开分栏）
+    const col = opts.side ? vscode.ViewColumn.Beside : opts.here ? vscode.ViewColumn.Active : this.boardColumn() ?? vscode.ViewColumn.Beside;
     const panel = vscode.window.createWebviewPanel(Panels.viewType, b.name, { viewColumn: col, preserveFocus: opts.preserveFocus }, { enableScripts: true, retainContextWhenHidden: true });
     const p = this.attach(id, panel);
     if (!opts.preserveFocus) this.setTarget(id);
@@ -155,6 +160,7 @@ export class Panels {
 
   private async onMessage(p: BoardPanel, m: BoardToHost) {
     const req = "req" in m ? (m as { req: number }).req : undefined;
+    const t0 = performance.now();
     try {
       if (m.type === "ready") return void (await p.init());
       const data = await this.handler(p, m);
@@ -162,8 +168,13 @@ export class Panels {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[codeboard]", m.type, e);
+      log("error", `${m.type}: ${msg}${e instanceof Error && e.stack ? `\n${e.stack}` : ""}`);
       if (req !== undefined) p.post({ type: "reply", req, error: msg });
       else p.toast(`Error: ${msg}`);
+    } finally {
+      // 慢的请求记一笔（Copy Diagnostics 里能看到），方便对照白板那边的耗时
+      const ms = performance.now() - t0;
+      if (ms > 150 && m.type !== "confirm" && m.type !== "pickFile") log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
     }
   }
 

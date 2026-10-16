@@ -1,4 +1,4 @@
-// 打包 perf-host.ts（vscode 换成假的）给 Node 跑。用法：node run-perf-host.mjs [--cards 240] [--runs 3]
+// Bundles perf-host.ts (with a fake vscode) to run under Node. Usage: node run-perf-host.mjs [--cards 240] [--runs 3]
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";

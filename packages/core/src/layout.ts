@@ -1,6 +1,6 @@
 // 摆放：新卡放哪、展开出来的子卡放哪、Tidy Layout。只做几何，尺寸由调用方给（白板里是实测尺寸）。
 import type { FlowNode } from "./flow";
-import type { Card } from "./model";
+import type { Card, Place } from "./model";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -9,11 +9,27 @@ export const INDENT = 56; // 子卡相对父卡的缩进
 export const SIB_GAP = 24;
 
 /** 还没渲染、量不到实测尺寸时的估计（白板放新卡、宿主在白板没开时直接写卡都用它） */
-export function estSize(c: Card): { w: number; h: number } {
-  if (c.h) return { w: c.w, h: c.h };
-  if (c.kind !== "code") return { w: c.w, h: 160 };
+export function estSize(c: Card, p: Pick<Place, "w" | "h"> = { w: defaultWidth(c) }): { w: number; h: number } {
+  if (p.h) return { w: p.w, h: p.h };
+  if (c.kind === "links") return { w: p.w, h: 52 + c.items.length * (c.rich ? 72 : 30) };
+  if (c.kind !== "code") return { w: p.w, h: c.kind === "web" ? 112 : 160 };
   const lines = c.segments.reduce((n, s) => n + s.end - s.start + 1, 0);
-  return { w: c.w, h: Math.min(520, 52 + lines * 19) };
+  return { w: p.w, h: Math.min(520, 52 + lines * 19) };
+}
+
+/** 新卡的默认宽度（代码卡按最长的行估） */
+export function defaultWidth(c: Card): number {
+  switch (c.kind) {
+    case "code": {
+      const longest = Math.max(20, ...c.segments.flatMap((s) => s.text.map((l) => l.replace(/\t/g, "    ").length)));
+      return Math.round(Math.min(760, Math.max(380, longest * 7.4 + 70)));
+    }
+    case "note": return c.bg ? 280 : 320;
+    case "image": return 320;
+    case "web": return 420;
+    case "links": return 380;
+    case "compare": return 900;
+  }
 }
 
 export function overlaps(a: Rect, b: Rect, gap = 0) {
@@ -64,12 +80,13 @@ export function besideFree(sel: Rect, size: { w: number; h: number }, others: Re
 }
 
 /**
- * 展开出来的子卡：缩进放在父卡下方，按出发行号从上到下。
- * siblings = 父卡已有的子卡（及其子树）的矩形；新卡放在出发行比它小的兄弟下面。
+ * 展开出来的子卡：down = 缩进放在父卡下方；right = 放在父卡右边、和出发行齐平。按出发行号从上到下。
+ * before = 出发行在它前面的兄弟（及其子树）的矩形；新卡放在它们下面。
  */
-export function placeChild(parent: Rect, size: { w: number; h: number }, before: Rect[], others: Rect[]): { x: number; y: number } {
-  const x = parent.x + INDENT;
+export function placeChild(parent: Rect, size: { w: number; h: number }, before: Rect[], others: Rect[], dir: TidyDir = "down", lineY?: number): { x: number; y: number } {
+  let x = parent.x + INDENT;
   let y = parent.y + parent.h + GAP;
+  if (dir === "right") { x = parent.x + parent.w + GAP * 2; y = Math.max(parent.y, (lineY ?? parent.y + 20) - 20); }
   for (const s of before) y = Math.max(y, s.y + s.h + SIB_GAP);
   return findFreeDown({ x, y, ...size }, others);
 }
@@ -86,26 +103,23 @@ function findFreeDown(want: Rect, others: Rect[]) {
 }
 
 /**
- * Tidy Layout：只重排这一棵树。根不动；每个子卡缩进放在父卡下面，
- * 兄弟按编号从上到下，每个兄弟让出自己整棵子树的高度。
+ * 视野里离 want 最近的空位（网格 40 步）。卡太高时只要求上面 minVis 露在视野里。没有就返回 null。
  */
-export function tidy(root: FlowNode, size: (id: string) => { w: number; h: number }, at: { x: number; y: number }, skip?: Set<string>): Map<string, { x: number; y: number }> {
-  const pos = new Map<string, { x: number; y: number }>();
-  const place = (n: FlowNode, x: number, y: number): number => {
-    pos.set(n.id, { x, y });
-    let bottom = y + size(n.id).h;
-    let cy = bottom + GAP;
-    for (const k of n.kids) {
-      if (skip?.has(k.id)) continue;
-      const b = place(k, x + INDENT, cy);
-      bottom = Math.max(bottom, b);
-      cy = b + SIB_GAP;
-    }
-    return bottom;
-  };
-  place(root, at.x, at.y);
-  return pos;
+export function freeInView(want: Rect, others: Rect[], view: Rect, minVis = 200, gap = GAP): { x: number; y: number } | null {
+  const step = 40, vh = Math.min(want.h, minVis);
+  const x1 = view.x + view.w - Math.min(want.w, view.w), y1 = view.y + view.h - vh;
+  let best: { x: number; y: number } | null = null, bd = Infinity;
+  for (let y = view.y; y <= y1; y += step) for (let x = view.x; x <= x1; x += step) {
+    const d = Math.hypot(x - want.x, y - want.y);
+    if (d >= bd) continue;
+    if (others.some((o) => overlaps({ x, y, w: want.w, h: want.h }, o, gap))) continue;
+    best = { x, y }; bd = d;
+  }
+  return best;
 }
+
+export type TidyDir = "down" | "right";
+
 
 // ---------- 吸附 ----------
 
@@ -166,9 +180,9 @@ export function snapResize(r: Rect, edges: { right?: boolean; bottom?: boolean }
 
 // ---------- 对齐工具条 ----------
 
-export type AlignOp = "left" | "hcenter" | "right" | "top" | "bottom" | "hdist" | "vdist" | "sameWidth";
+export type AlignOp = "left" | "hcenter" | "right" | "top" | "bottom" | "hdist" | "vdist";
 
-/** 返回每个矩形的新 x / y / w */
+/** 返回每个矩形的新 x / y */
 export function align(rs: (Rect & { id: string })[], op: AlignOp): Map<string, Partial<Rect>> {
   const out = new Map<string, Partial<Rect>>();
   if (rs.length < 2) return out;
@@ -193,11 +207,6 @@ export function align(rs: (Rect & { id: string })[], op: AlignOp): Map<string, P
       const gap = (b.h - total) / (s.length - 1);
       let y = b.y;
       for (const r of s) { out.set(r.id, { y }); y += r.h + gap; }
-      break;
-    }
-    case "sameWidth": {
-      const w = rs[0].w; // 以第一张选中的卡为准
-      rs.forEach((r) => out.set(r.id, { w }));
       break;
     }
   }

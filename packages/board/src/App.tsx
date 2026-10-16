@@ -1,13 +1,18 @@
-// 白板界面：顶栏（白板名、Workbench | Focus、Search、⋯）、画布、底部工具条、缩放、讲解条、横幅、提示。
+// 白板界面：画布、底部唯一的工具栏（新建 · Search · ⋯）、缩放、讲解条、横幅、提示。看板就是一个普通编辑器标签页。
 import { Show, For, createEffect, createMemo, on } from "solid-js";
+import { tune } from "./state/tune";
 import { unwrap } from "solid-js/store";
 import { state, mutate, live, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
 import { cam, camTarget, zoomAt } from "./state/camera";
-import { banner, setBanner, walk, focusMode, setFocusMode, keysOpen, setKeysOpen, editing, setEditing, paletteOpen, setPaletteOpen } from "./state/ui";
+import { banner, setBanner, walk, keysOpen, setKeysOpen, editing, setEditing, paletteOpen, setPaletteOpen } from "./state/ui";
 import { Canvas } from "./canvas/Canvas";
 import { Popovers } from "./ui/Popovers";
+import { StickerPicker, PlacingGhost } from "./stickers/Picker";
 import { Palette } from "./ui/Palette";
-import { MenuLayer, DialogLayer, TooltipLayer, openMenu } from "./ui/Menu";
+import { SettingsLayer } from "./ui/Settings";
+import { SHORTCUTS, keyText } from "./ui/shortcuts";
+import { GitHubPicker } from "./ui/GitHubPicker";
+import { MenuLayer, DialogLayer, TooltipLayer, openMenu, promptText } from "./ui/Menu";
 import { Editable } from "./ui/Editable";
 import { Icon } from "./ui/icons";
 import { setTool } from "./interact";
@@ -19,6 +24,9 @@ import { flows, cardById } from "./state/store";
 export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
   let camT: number | undefined;
+  createEffect(() => document.documentElement.style.setProperty("--menu-ms", `${tune("menuOpen")}ms`));
+  // 慢动作：CSS 里的时长都乘 --t（系统「减少动态效果」时 styles.css 的 media 规则仍然优先）
+  createEffect(() => { const s = tune("animSpeed"); if (s === 100) document.documentElement.style.removeProperty("--t"); else document.documentElement.style.setProperty("--t", String(100 / s)); });
   createEffect(on(() => [cam.x, cam.y, cam.z], () => {
     clearTimeout(camT);
     camT = window.setTimeout(() => {
@@ -32,58 +40,26 @@ export function App() {
     }, 600);
   }));
   return (
-    <div class="app chrome" classList={{ focus: focusMode() }} style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}>
+    <div class="app chrome" style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}>
       <Canvas />
-      <TopBar />
+      {/* 报头 / 海报标题：只有 Newspaper、Poster、Soft Light、Drafting 显示（themes.css），默认 display: none */}
+      <div class="mast" aria-hidden="true"><span class="mn">{state.board.name}</span></div>
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
       <Show when={!walk()}><Toolbar /></Show>
       <Dock />
       <Show when={walk()}><WalkBar /></Show>
       <Show when={keysOpen()}><Keys /></Show>
       <Popovers />
+      <Show when={A.stickerPick()}><StickerPicker /></Show>
+      <PlacingGhost />
       <Show when={paletteOpen()}><Palette /></Show>
+      <SettingsLayer />
+      <Show when={A.ghPicker()}><GitHubPicker /></Show>
       <Toast />
       <MenuLayer />
       <DialogLayer />
       <TooltipLayer />
     </div>
-  );
-}
-
-function TopBar() {
-  const more = (e: MouseEvent) => {
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    const tidyRoot = sel.cards.map((id) => flows().byId.get(id)).find(Boolean) ?? flows().roots[0];
-    openMenu([
-      { label: "Undo", kbd: `${A.K.mod}Z`, disabled: !canUndo(), run: () => undo() },
-      { label: "Redo", kbd: `${A.K.shift}${A.K.mod}Z`, disabled: !canRedo(), run: () => redo() },
-      null,
-      { label: "Tidy Layout", hint: "Rearranges one flow", disabled: tidyRoot ? false : "No call flow on this board", run: () => A.tidyFlow(tidyRoot!.id) },
-      { label: "Export as PNG…", run: () => A.exportPng() },
-      null,
-      { label: "Hide All Comments", checked: !!state.board.hideAllComments, run: () => mutate((b) => { b.hideAllComments = !b.hideAllComments || undefined; }) },
-      { label: "Hide Flow Numbers", checked: !!state.board.hideNumbers, run: () => mutate((b) => { b.hideNumbers = !b.hideNumbers || undefined; }) },
-      null,
-      { label: "Keyboard Shortcuts", kbd: "?", run: () => setKeysOpen(true) },
-    ], r.right - 220, r.bottom + 6);
-  };
-  const setFocus = (v: boolean) => { setFocusMode(v); send({ type: "focusMode", on: v }); };
-  return (
-    <>
-      <div class="over tb-left"><div class="pill">
-        <Show when={!state.host.target}><span class="tdot" data-tip="Add to (⌥B) goes to another board. Click to make this the target." onClick={() => send({ type: "openBoard", id: state.board.id })} /></Show>
-        <Editable class="bname" kind="board" id="board" value={state.board.name} onCommit={(v) => v.trim() && mutate((b) => { b.name = v.trim(); })} />
-      </div></div>
-      <div class="over tb-right"><div class="pill">
-        <div class="segc" role="tablist">
-          <button classList={{ on: !focusMode() }} onClick={() => setFocus(false)}>Workbench</button>
-          <button classList={{ on: focusMode() }} onClick={() => setFocus(true)}>Focus</button>
-        </div>
-        <span class="sep" />
-        <button class="tbtn" data-tip="Search Functions, Files, Cards" data-kbd={`${A.K.mod}K`} onClick={() => setPaletteOpen({ mode: "all" })}><Icon name="search" />Search<kbd>{A.K.mod}K</kbd></button>
-        <button class="ib" aria-label="More" data-tip="More" onClick={more}><Icon name="more" /></button>
-      </div></div>
-    </>
   );
 }
 
@@ -100,23 +76,49 @@ function Banner() {
   );
 }
 
+/** 唯一的工具栏：新建（Note、Text、Code ▾、Image、Web、Section、Arrow、Sticker）· Search · ⋯ */
 function Toolbar() {
-  const tools: { icon: string; label: string; run: () => void; tip?: string; kbd?: string }[] = [
+  const at = (e: MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); return [r.left, r.top - 6] as const; };
+  const up = (items: Parameters<typeof openMenu>[0], e: MouseEvent) => { const [x, y] = at(e); openMenu(items, x, y, { up: true }); };
+  const codeMenu = (e: MouseEvent) => up([
+    { label: "New Code", run: () => A.newFreeCode() },
+    { label: "From GitHub…", run: () => A.openGitHubPicker() },
+    { label: "Add Function…", kbd: `${A.K.mod}K`, run: () => setPaletteOpen({ mode: "code" }) },
+  ], e);
+  const tools: { icon: string; label: string; run: (e: MouseEvent) => void; tip?: string; kbd?: string; more?: boolean }[] = [
     { icon: "note", label: "Note", kbd: "N", run: () => A.newNote() },
     { icon: "text", label: "Text", kbd: "T", run: () => A.newNote(undefined, false) },
-    { icon: "code", label: "Code", tip: "Free Code Card", run: () => A.newFreeCode() },
+    { icon: "code", label: "Code", tip: "New Code, From GitHub, Add Function", more: true, run: codeMenu },
     { icon: "image", label: "Image", run: () => A.newImage() },
-    { icon: "web", label: "Web", tip: "Web Link Card", run: () => A.newWeb() },
+    { icon: "web", label: "Web", tip: "New Web Card", run: () => A.newWeb() },
     { icon: "section", label: "Section", tip: "Draw a Section", run: () => setTool("section") },
-    { icon: "link", label: "Link", tip: "Plain Link: select two cards, or pick a card then click another", run: () => {
+    { icon: "link", label: "Arrow", tip: "Select two cards, or pick a card then click another", run: () => {
       if (sel.cards.length === 2) A.addPlain({ card: sel.cards[0] }, { card: sel.cards[1] });
       else if (sel.cards.length === 1) A.startConnect(sel.cards[0]);
       else toast("Select a card first, then click another card");
     } },
+    { icon: "sticker", label: "Sticker", tip: "Add a Sticker", run: (e) => A.stickerPicker(e.currentTarget as HTMLElement) },
   ];
+  const more = (e: MouseEvent) => {
+    const [x, y] = at(e);
+    openMenu([
+      { label: "Undo", kbd: `${A.K.mod}Z`, disabled: !canUndo(), run: () => undo() },
+      { label: "Redo", kbd: `${A.K.shift}${A.K.mod}Z`, disabled: !canRedo(), run: () => redo() },
+      null,
+      { label: "Rename Board…", run: () => promptText("Rename Board", state.board.name).then((v) => v && mutate((b) => { b.name = v; })) },
+      { label: "Export as PNG…", run: () => A.exportPng() },
+      null,
+      { label: "Settings…", kbd: `${A.K.mod},`, run: () => A.openSettings() },
+      { label: "Keyboard Shortcuts", kbd: "?", run: () => setKeysOpen(true) },
+      { label: "Copy Diagnostics", run: () => A.copyDiagnostics() },
+    ], x, y, { up: true });
+  };
   return (
     <div class="over bbar"><div class="pill">
-      <For each={tools}>{(t) => <button class="tbtn" aria-label={t.label} data-tip={t.tip ?? `New ${t.label}`} data-kbd={t.kbd} onClick={t.run}><Icon name={t.icon} /><span class="tl">{t.label}</span></button>}</For>
+      <For each={tools}>{(t) => <button class="tbtn" aria-label={t.label} data-tip={t.tip ?? `New ${t.label}`} data-kbd={t.kbd} onClick={t.run}><Icon name={t.icon} /><Show when={t.more}><Icon name="chev" size={10} /></Show></button>}</For>
+      <span class="sep" />
+      <button class="tbtn" aria-label="Search" data-tip="Search Functions, Files, Cards · ? Shortcuts" data-kbd={`${A.K.mod}K`} onClick={() => setPaletteOpen({ mode: "all" })}><Icon name="search" /></button>
+      <button class="ib" aria-label="More" data-tip="More" onClick={more}><Icon name="more" /></button>
     </div></div>
   );
 }
@@ -165,19 +167,11 @@ function Toast() {
   );
 }
 
-const KEYS: [string, [string, string][]][] = [
-  ["Canvas", [["Drag empty space", "Select with a box"], ["Space + drag / two fingers", "Pan"], ["⌘ + scroll / pinch", "Zoom"], ["⇧1", "Fit to window"], ["⇧2", "Fit selection"], ["⌘0 / ⌘1", "Fit / 100%"], ["Double-click empty space", "New Text"], ["N / T", "New Note / Text"], ["⌘K", "Search"], ["⌘V", "Paste code, link or image"]]],
-  ["Cards", [["Drag title bar", "Move (snaps; ⌘ to turn off)"], ["Drag onto a title bar, pause", "Merge (⌥ = at once)"], ["⌥ + drag onto a line", "Turn into a Code Sidenote"], ["Click a call", "Expand into a new card"], ["Drag a call", "Link to an existing card"], ["↵", "Open in editor"], ["⌘D", "Duplicate"], ["⌫", "Delete"], ["⌘⇧L", "Lock / Unlock"], ["⌥Z", "Wrap lines"], ["Arrows", "Nudge (⇧ = 10px)"]]],
-  ["Lines", [["Click line numbers", "Select lines (⇧ extends)"], ["S", "Add Sidenote"], ["H", "Hide lines"], ["⌘C", "Copy code without line numbers"], ["Hover a name", "Definition peek"], ["⌘ + hover", "Pin a popup"]]],
-  ["Flow", [["P", "Walk through flow"], ["← →", "Previous / next step"], ["Esc", "Exit"]]],
-  ["Editor", [["⌥B", "Add to board"], ["⌥S", "Add as Sidenote to selected lines"]]],
-];
 function Keys() {
-  const fix = (s: string) => (state.host.isMac ? s : s.replace(/⌘/g, "Ctrl+").replace(/⌥/g, "Alt+").replace(/⇧/g, "Shift+"));
   return (
     <div class="pill keys open" onPointerDown={(e) => e.stopPropagation()}>
-      <h3>Keyboard Shortcuts<span class="grow" /><button class="ib" aria-label="Close" onClick={() => setKeysOpen(false)}><Icon name="close" size={14} /></button></h3>
-      <For each={KEYS}>{([h, rows]) => <><h4>{h}</h4><table><tbody><For each={rows}>{([k, v]) => <tr><td>{fix(k)}</td><td>{v}</td></tr>}</For></tbody></table></>}</For>
+      <h3>Keyboard Shortcuts<span class="grow" /><button class="tlink" onClick={() => A.openSettings("shortcuts")}>Search…</button><button class="ib" aria-label="Close" onClick={() => setKeysOpen(false)}><Icon name="close" size={14} /></button></h3>
+      <For each={SHORTCUTS}>{([h, rows]) => <><h4>{h}</h4><table><tbody><For each={rows}>{([k, v]) => <tr><td>{keyText(k, state.host.isMac)}</td><td>{v}</td></tr>}</For></tbody></table></>}</For>
     </div>
   );
 }

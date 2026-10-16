@@ -12,7 +12,8 @@ export type SegView = {
   calls: CallSpan[]; // 可以点开的调用
   defs: { line: number; name: string; qual: string }[]; // 段里开始的函数（画函数边界线）
 };
-export type CallSpan = { line: number; col: number; end: number; name: string; recv?: string; loop: boolean; dispatch?: string };
+/** pkg = 调用绑到的 library 包（工作区外）；在 Study Scope 里的包白板照 project 处理 */
+export type CallSpan = { line: number; col: number; end: number; name: string; recv?: string; loop: boolean; dispatch?: string; pkg?: string };
 
 export type Row =
   | { t: "line"; seg: string; line: number; skipped: boolean } // skipped = 上面有被开关藏掉的行（行号栏画虚线）

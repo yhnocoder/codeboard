@@ -16,6 +16,12 @@ export const analysisReady = () => ready;
 
 const cache = new Lru<FileAnalysis>(80);
 
+/** 已经分析过（还在缓存里）才返回，不会新做分析 */
+export function cachedAnalysis(lang: string, text: string): FileAnalysis | undefined {
+  const k = `${lang}\0${text.length}\0${fingerprint(text)}`;
+  return cache.has(k) ? cache.get(k) : undefined;
+}
+
 /** 分析一份文本（按语言 + 内容指纹缓存）；tree-sitter 没准备好时只有空行标记 */
 export function analysisOf(lang: string, text: string): FileAnalysis {
   const k = `${lang}\0${text.length}\0${fingerprint(text)}`;

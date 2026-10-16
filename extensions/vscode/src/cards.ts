@@ -16,11 +16,11 @@ export function widthFor(segs: Segment[]): number {
 }
 
 export function newCodeCard(segs: Segment[], extra: Partial<CodeCard> = {}): CodeCard {
-  return { id: uid("c"), kind: "code", x: 0, y: 0, w: widthFor(segs), segments: segs, ...extra };
+  return { id: uid("c"), kind: "code", segments: segs, ...extra };
 }
 
 export async function withViews(cards: CodeCard[]): Promise<NewCard[]> {
-  return Promise.all(cards.map(async (card) => ({ card, views: await viewsFor(card.segments) })));
+  return Promise.all(cards.map(async (card) => ({ card, views: await viewsFor(card.segments), w: widthFor(card.segments) })));
 }
 
 /** 一个符号 → 函数卡 / 类卡（类卡只列成员签名，shown = 显示哪些成员） */

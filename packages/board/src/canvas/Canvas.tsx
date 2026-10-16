@@ -1,11 +1,14 @@
 // 画布：镜头变换后的世界层（Section 框 → Link → 卡片 → Section 标签 → Link 标签 → 参考线），
 // 加上屏幕坐标的框选框、对齐工具条。
-import { For, Show, onMount, onCleanup, createMemo } from "solid-js";
+import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
-import { state, sel, rectOf, cardById, mutate } from "../state/store";
-import { cam, setViewport } from "../state/camera";
+import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
+import { cam, setViewport, lod, camMoving } from "../state/camera";
+import { trackOffscreen } from "../state/cull";
+import { trackCardLod, izMap } from "../state/lodcards";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
+import { CanvasStickers, LinkStickers } from "../stickers/Picker";
 import { LinksSvg, LinkLabels } from "./Links";
 import { SectionFrames, SectionLabels } from "./Sections";
 import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
@@ -14,7 +17,24 @@ import * as A from "../actions";
 import { align } from "@codeboard/core";
 
 export function Canvas() {
-  let el!: HTMLDivElement;
+  let el!: HTMLDivElement, world!: HTMLDivElement;
+  trackOffscreen();
+  trackCardLod();
+  // 停下以后一两帧去掉 will-change 的提示（styles.css 的 .world.settle）：位图缩放过的内容按新比例重新清晰栅格化
+  const [settle, setSettle] = createSignal(false);
+  createEffect(on(camMoving, (m) => {
+    setSettle(!m);
+    if (!m) requestAnimationFrame(() => requestAnimationFrame(() => setSettle(false)));
+  }, { defer: true }));
+  // 打开白板后，世界层的 transform 要先变过一次，之后的平移才便宜：没变过时，Chromium 每帧都把整块世界层重新分层（实测每帧 40+ ms，
+  // 变过一次以后 ~13 ms）。所以白板一加载好就悄悄动 0.01px 再放回，用户的第一段平移就不会卡
+  createEffect(on(() => state.loaded, (ok) => {
+    if (!ok || !world) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      world.style.translate = "0.01px 0";
+      requestAnimationFrame(() => { world.style.translate = ""; });
+    }));
+  }));
   onMount(() => {
     const ro = new ResizeObserver(() => setViewport(el.clientWidth, el.clientHeight));
     ro.observe(el);
@@ -23,14 +43,15 @@ export function Canvas() {
     onCleanup(() => { ro.disconnect(); el.removeEventListener("wheel", canvasWheel); });
   });
   return (
-    <div ref={el} id="board" class="board" classList={{ connecting: !!connectFrom(), walking: !!walk(), dragging: dragging().size > 0 }}
+    <div ref={el} id="board" class="board" classList={{ connecting: !!connectFrom(), walking: !!walk(), dragging: dragging().size > 0, placing: !!A.placing(), "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
-      <div class="world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})` }}>
+      <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
         <LinksSvg />
-        <For each={state.board.cards}>{(c) => <CardView card={c} />}</For>
+        <For each={placed()}>{(c) => <CardView card={c} />}</For>
+        <CanvasStickers />
         <SectionLabels />
-        <div class="labels"><LinkLabels /></div>
+        <div class="labels" classList={{ "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}><LinkLabels /><LinkStickers /></div>
         <div class="guides">
           <For each={guides()}>
             {(g) => g.axis === "x"
@@ -43,7 +64,7 @@ export function Canvas() {
       </div>
       <Show when={marquee()}>{(m) => <div class="marquee" style={{ left: `${m().x}px`, top: `${m().y}px`, width: `${m().w}px`, height: `${m().h}px`, display: "block" }} />}</Show>
       <AlignBar />
-      <Show when={!state.board.cards.length && state.loaded}><EmptyHint /></Show>
+      <Show when={!placed().length && state.loaded}><EmptyHint /></Show>
     </div>
   );
 }
@@ -64,7 +85,7 @@ function DropHint() {
 const AL: { op: AlignOp; icon: string; tip: string }[] = [
   { op: "left", icon: "alignL", tip: "Align Left" }, { op: "hcenter", icon: "alignC", tip: "Align Centre" }, { op: "right", icon: "alignR", tip: "Align Right" },
   { op: "top", icon: "alignT", tip: "Align Top" }, { op: "bottom", icon: "alignB", tip: "Align Bottom" },
-  { op: "hdist", icon: "distH", tip: "Distribute Horizontally" }, { op: "vdist", icon: "distV", tip: "Distribute Vertically" }, { op: "sameWidth", icon: "sameW", tip: "Same Width" },
+  { op: "hdist", icon: "distH", tip: "Distribute Horizontally" }, { op: "vdist", icon: "distV", tip: "Distribute Vertically" },
 ];
 
 /** 选中 ≥2 张卡时浮在上方的对齐工具条 */
@@ -74,13 +95,13 @@ function AlignBar() {
   const pos = () => { const b = box()!; return { x: b.x * cam.z + cam.x + (b.w * cam.z) / 2, y: b.y * cam.z + cam.y - 12 }; };
   const run = (op: AlignOp) => {
     const m = align(rs(), op);
-    mutate((b) => { for (const [id, p] of m) { const c = b.cards.find((k) => k.id === id); if (c && !A.isLocked(id)) Object.assign(c, p); } });
+    mutate((b) => { for (const [id, p] of m) { const c = b.place[id]; if (c && !A.isLocked(id)) Object.assign(c, p); } });
   };
   return (
     <Show when={rs().length >= 2 && dragging().size === 0 && !walk()}>
       <div class="alignbar pill show" style={{ left: `${pos().x}px`, top: `${Math.max(56, pos().y)}px` }} onPointerDown={(e) => e.stopPropagation()}>
         <For each={AL}>{(a, i) => <>
-          <Show when={i() === 3 || i() === 5 || i() === 7}><span class="sep" /></Show>
+          <Show when={i() === 3 || i() === 5}><span class="sep" /></Show>
           <button class="ib" aria-label={a.tip} data-tip={a.tip} onClick={() => run(a.op)}><Icon name={a.icon} /></button>
         </>}</For>
       </div>

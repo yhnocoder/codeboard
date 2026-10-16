@@ -12,6 +12,7 @@ const P: Record<string, string> = {
   right: "m6 4 4 4-4 4",
   close: "m4.5 4.5 7 7M11.5 4.5l-7 7",
   play: "M5 3.5v9l7-4.5z",
+  entry: "M9.5 3h3v10h-3M2.5 8h7M7 5.5 9.5 8 7 10.5",
   search: "M7 11.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9ZM10.5 10.5 13.5 13.5",
   note: "M4 2.5h6l2.5 2.5v8.5h-8.5zM10 2.5V5h2.5M6 8h4.5M6 10.5h3",
   code: "M6 4.5 2.5 8 6 11.5M10 4.5l3.5 3.5-3.5 3.5",
@@ -43,11 +44,14 @@ const P: Record<string, string> = {
   copy: "M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3",
   trash: "M3 4.5h10M6.5 4.5v-2h3v2M4.5 4.5l.5 9h6l.5-9",
   dot: "M8 8h.01",
+  compact: "M2.5 4.5h11M2.5 8h11M2.5 11.5h11",
+  rich: "M2.5 3.5h4.5v4.5h-4.5zM9 4.5h4.5M9 7h3M2.5 10.5h11M2.5 13h7",
+  sticker: "M13.5 8.5V3.5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h5zM13.5 8.5h-4a1 1 0 0 0-1 1v4",
 };
 
 export function Icon(p: { name: keyof typeof P | string; size?: number; class?: string; style?: JSX.CSSProperties }) {
   return (
-    <svg class={`ico ${p.class ?? ""}`} viewBox="0 0 16 16" width={p.size ?? 16} height={p.size ?? 16} aria-hidden="true" style={p.style}>
+    <svg class={`ico${p.name === "more" ? " dots" : ""} ${p.class ?? ""}`} viewBox="0 0 16 16" width={p.size ?? 16} height={p.size ?? 16} aria-hidden="true" style={p.style}>
       <path d={P[p.name] ?? ""} />
     </svg>
   );

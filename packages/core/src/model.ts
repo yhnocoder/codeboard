@@ -1,7 +1,9 @@
-// 白板的持久化数据模型（第 2 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
-// 四个基本元素：Card、Link、Section、Sidenote。流程、讲解、Compare 都由它们派生。
+// 白板的持久化数据模型（第 3 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
+// 卡片内容（Card）和它在这块白板上的摆放（Place）分开存：v0.2 的共享卡片、子白板会让同一张卡出现在几块白板上，
+// 内容只有一份，摆放每块白板各一份。Compare 只引用两张卡的 id，那两张卡在 cards 里但没有 Place（不单独出现在画布上）。
+// 基本元素：Card、Place、Link、Section、Sidenote、Sticker。流程、讲解、Compare 都由它们派生。
 
-export const BOARD_VERSION = 2;
+export const BOARD_VERSION = 3;
 
 // ---------- 版本 ----------
 
@@ -38,19 +40,12 @@ export type Segment = {
   keep?: string; // 用户对这个 HEAD 选了 Keep：同一个新版本不再提醒，HEAD 再变才提醒
 };
 
-// ---------- 卡片 ----------
+// ---------- 卡片（内容） ----------
 
 type CardBase = {
   id: string;
-  x: number;
-  y: number;
-  w: number;
-  h?: number; // 用户拖过高度才有；否则按内容自动高，上限后卡内滚动
   title?: string; // 用户改过的名字；没有就用默认名
   desc?: string; // 卡片说明（标题下一段话，Walkthrough 时显示）
-  locked?: boolean;
-  section?: string; // 所在 Section（按卡片中心点判断，拖动结束时更新）
-  collapsed?: boolean; // 折叠了它下面的 Call 子树
 };
 
 export type HideFlags = { comments?: boolean; docstrings?: boolean; blank?: boolean };
@@ -61,10 +56,12 @@ export type CodeCard = CardBase & {
   segments: Segment[];
   hide?: HideFlags;
   wrap?: boolean;
+  /** 无背景：代码直接写在画布上，头部和边框只在悬停 / 选中时浮出 */
+  nobg?: boolean;
   /** 类卡：只列成员签名；shown = 卡上显示的成员（qual），其余收在「+ N more methods」 */
   members?: { shown: string[] };
-  /** 合并来的卡：合并前的原卡（含位置、说明），Unmerge 时拆回 */
-  mergedFrom?: CodeCard[];
+  /** 合并来的卡：合并前的原卡和它们的摆放（Unmerge 时拆回） */
+  mergedFrom?: { card: CodeCard; place: Place }[];
   keepOld?: true; // 符号找不到时选了 Keep Old Version：不再提示
 };
 
@@ -75,44 +72,84 @@ export type NoteCard = CardBase & {
   size?: "title" | "heading" | "body"; // Text 的字号
   bold?: boolean;
 };
-export type ImageCard = CardBase & { kind: "image"; src: string; alt?: string }; // src = assets/ 下的文件名，或 data: URL
-export type WebCard = CardBase & { kind: "web"; url: string; pageTitle?: string };
-/** Compare：两张代码卡原地并成两栏。不是拷贝，cols 就是原卡（保留 id、编号和 Link），Separate 拆回原位 */
+/** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */
+export type ImageCard = CardBase & { kind: "image"; src: string; alt?: string; bg?: boolean }; // src = assets/ 下的文件名，或 data: URL
+
+/** 网页的元信息：插件端贴链接时抓一次，图片存进 assets/，离线也能显示 */
+export type WebMeta = {
+  title?: string; // og:title / <title>
+  desc?: string; // og:description / meta description
+  site?: string; // og:site_name
+  image?: string; // og:image：assets/ 下的文件名（或抓不到时的原始 URL）
+  icon?: string; // favicon：assets/ 下的文件名
+  at?: number; // 抓取时间
+  failed?: boolean; // 什么都没抓到（需要登录 / 离线）
+};
+/** Web 卡：书签样式（标题 + 两行描述 + 域名 + 右侧预览图） */
+/** Web 卡样式：不填 = Auto（横图放上面，方图放右边） */
+export type WebStyle = "banner" | "side" | "text" | "compact";
+export type WebCard = CardBase & { kind: "web"; url: string; meta?: WebMeta; style?: WebStyle };
+/** Link List 里的一行 */
+export type LinkItem = { id: string; url: string; title?: string; meta?: WebMeta; rich?: boolean };
+/** Web List：几个链接合成一张卡；rich = 整张卡默认的显示方式（每行可以单独设） */
+export type LinksCard = CardBase & { kind: "links"; items: LinkItem[]; rich?: boolean };
+/** Compare：两张代码卡原地并成两栏。cols 引用两张卡（保留 id、编号和 Link），Separate 拆回原位 */
 export type CompareCard = CardBase & {
   kind: "compare";
-  cols: [CodeCard, CodeCard];
+  cols: [string, string];
   swap?: boolean;
   unified?: boolean;
   hideSame?: boolean;
 };
 
-export type Card = CodeCard | NoteCard | ImageCard | WebCard | CompareCard;
+export type Card = CodeCard | NoteCard | ImageCard | WebCard | LinksCard | CompareCard;
 export type CardKind = Card["kind"];
 
-// ---------- Link ----------
+// ---------- 摆放 ----------
+
+/** 一张卡在这块白板上的位置和状态 */
+export type Place = {
+  x: number;
+  y: number;
+  w: number;
+  h?: number; // 用户拖过高度才有；否则按内容自动高，上限后卡内滚动
+  section?: string; // 所在 Section（按卡片中心点判断，拖动结束时更新）
+  locked?: boolean;
+  collapsed?: boolean; // 折叠了它下面的 Call 子树
+};
+
+// ---------- Link（界面上叫 Arrow） ----------
 
 /** Link 的一端：整张卡，或卡里某一段的某一行 */
 export type End = { card: string; seg?: string; line?: number };
 
-/** Call link 上的变量：a = 调用处，b = 被调函数里的名字（名字不同才有）；ret = 返回值被谁接住 */
+/** Call 上的变量：a = 调用处，b = 被调函数里的名字（名字不同才有）；ret = 返回值被谁接住 */
 export type Var = { a: string; b?: string; ret?: boolean; custom?: boolean };
 
-export type Link = {
+type LinkBase = {
   id: string;
-  kind: "call" | "plain";
   from: End;
   to: End;
   label?: string; // 用户写的话，浮在线中间
-  // Call
+  at?: number; // 标签框沿线的位置 0..1（用户拖过才有；默认在中间）
+  side?: "left" | "right"; // 用户选过起点：从这一行（卡）的哪一端出（没有 = 自动）
+};
+/** 调用：从代码行到被调函数的卡。参与编号、Walkthrough、Tidy、变量 */
+export type CallLink = LinkBase & {
+  kind: "call";
   vars?: Var[]; // 勾选了的变量；默认一个都不加
   cands?: Var[]; // 语法推出来的候选变量（点 + 时列出来）
   loop?: boolean; // 出发行在 for / while 里（↺）
   call?: { name: string; col: number }; // 点的是这一行的哪个调用
-  // Plain
-  arrow?: "none" | "end" | "both"; // 默认 none
-  solid?: boolean; // 默认虚线
+};
+/** 普通箭头：不编号；可设箭头、虚实、颜色、文字 */
+export type PlainLink = LinkBase & {
+  kind: "plain";
+  arrow?: "none" | "end" | "both"; // 默认 end
+  solid?: boolean; // false = 虚线；默认实线（和 Call link 一样）
   color?: string; // 默认灰
 };
+export type Link = CallLink | PlainLink;
 
 // ---------- Section ----------
 
@@ -149,19 +186,40 @@ export type Sidenote = {
 );
 export type SidenoteKind = Sidenote["kind"];
 
+// ---------- Sticker ----------
+
+/** 图标：包名 + 图标名。builtin = 内置的十几个；emoji = 系统 emoji（name 就是那个字符）；其余是 Sticker Packs 目录里的包 */
+export type IconRef = { pack: string; name: string };
+
+/**
+ * 贴在哪：代码行（进行号栏，随 Update 跟行走）、卡片角上（旧）、画布任意位置，
+ * 或绑在卡 / 箭头上（跟着走，同一图层）：on.card 时 x、y 是相对卡左上角的偏移；on.link 时 t 是沿线的位置 0..1，x、y 是相对那一点的偏移
+ */
+export type StickerOn = { card: string } | { link: string; t: number };
+export type StickerAt =
+  | { kind: "line"; card: string; seg: string; line: number }
+  | { kind: "card"; card: string }
+  | { kind: "canvas"; x: number; y: number; size?: number; on?: StickerOn };
+
+export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt };
+
 // ---------- 白板 ----------
 
 export type Camera = { x: number; y: number; z: number };
 
 export type Board = {
-  version: 2;
+  version: 3;
   id: string;
   name: string;
   cam: Camera;
+  /** 卡片内容（顺序 = 叠放顺序）；Compare 的两栏也在这里 */
   cards: Card[];
+  /** 卡片 id → 在这块白板上的摆放；没有 Place 的卡不单独出现在画布上（Compare 的栏） */
+  place: Record<string, Place>;
   links: Link[];
   sections: Section[];
   sidenotes: Sidenote[];
+  stickers: Sticker[];
   hideAllComments?: boolean;
   hideNumbers?: boolean;
 };
@@ -169,7 +227,7 @@ export type Board = {
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number };
 
 export function emptyBoard(id: string, name: string): Board {
-  return { version: 2, id, name, cam: { x: 80, y: 80, z: 1 }, cards: [], links: [], sections: [], sidenotes: [] };
+  return { version: BOARD_VERSION, id, name, cam: { x: 80, y: 80, z: 1 }, cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [] };
 }
 
 // ---------- 小工具 ----------
@@ -180,31 +238,34 @@ export const uid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toStr
 export const isCode = (c: Card | undefined): c is CodeCard => c?.kind === "code";
 
 /** 卡片的显示名 */
-export function cardTitle(c: Card): string {
+export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
   if (c.title) return c.title;
   switch (c.kind) {
     case "code": return codeTitle(c);
     case "note": return firstLine(c.md) || (c.bg ? "Note" : "Text");
     case "image": return c.alt || "Image";
-    case "web": return c.pageTitle || domainOf(c.url);
-    case "compare": return `Compare · ${compareName(c)}`;
+    case "web": return c.meta?.title || domainOf(c.url);
+    case "links": return "Links";
+    case "compare": return `Compare · ${b ? compareName(c, b) : ""}`;
   }
 }
 
-function compareName(c: CompareCard) {
-  const [a, b] = c.cols.map((k) => shortName(cardTitle(k)));
-  if (a === b) {
-    const va = versionLabel(c.cols[0].segments[0]?.version), vb = versionLabel(c.cols[1].segments[0]?.version);
+function compareName(c: CompareCard, b: Pick<Board, "cards">) {
+  const cols = colsOf(b, c);
+  if (!cols) return "";
+  const [a, k] = cols.map((x) => shortName(cardTitle(x)));
+  if (a === k) {
+    const va = versionLabel(cols[0].segments[0]?.version), vb = versionLabel(cols[1].segments[0]?.version);
     return `${a} · ${va} ↔ ${vb}`;
   }
-  return `${a} ↔ ${b}`;
+  return `${a} ↔ ${k}`;
 }
 const shortName = (s: string) => s.split(".").pop() ?? s;
 
 export function codeTitle(c: CodeCard): string {
   const s = c.segments[0];
   if (!s) return "Empty";
-  if (s.src.kind === "free") return "Free code";
+  if (s.src.kind === "free") return "Code";
   if (s.symbol) return s.symbol.kind === "module" ? `${baseName(s.path)} (top)` : s.symbol.qual;
   if (s.scope) return `${s.scope} ${s.start}–${s.end}`;
   return `${baseName(s.path)} ${s.start}–${s.end}`;
@@ -228,8 +289,10 @@ export function domainOf(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
 
-export function versionLabel(v: Version | undefined): string {
+/** short：卡头里用，尽量短（不在 git 里的文件只显示内容哈希的前 4 位） */
+export function versionLabel(v: Version | undefined, short = false): string {
   if (!v) return "";
+  if (short && v.kind === "hash") return v.hash.slice(0, 4);
   switch (v.kind) {
     case "git": return v.commit.slice(0, 7);
     case "pkg": return `${v.name} ${v.version}`;
@@ -248,24 +311,34 @@ export function sameVersion(a: Version, b: Version) {
   }
 }
 
-/** 一张代码卡在画布上「代表」的所有卡 id：Compare 卡的两栏也算 */
+/** 白板上所有代码卡（含 Compare 的两栏） */
 export function allCodeCards(b: Pick<Board, "cards">): CodeCard[] {
-  const out: CodeCard[] = [];
-  for (const c of b.cards) {
-    if (c.kind === "code") out.push(c);
-    else if (c.kind === "compare") out.push(...c.cols);
-  }
-  return out;
+  return b.cards.filter(isCode);
 }
 
-/** 按 id 找卡，Compare 的栏也能找到；host = 画布上真正的那张卡 */
-export function findCard(b: Pick<Board, "cards">, id: string): { card: Card; host: Card } | undefined {
-  for (const c of b.cards) {
-    if (c.id === id) return { card: c, host: c };
-    if (c.kind === "compare") for (const k of c.cols) if (k.id === id) return { card: k, host: c };
-  }
-  return undefined;
+/** Compare 的两栏（按 cols 的顺序）；有一栏找不到时返回 undefined */
+export function colsOf(b: Pick<Board, "cards">, c: CompareCard): [CodeCard, CodeCard] | undefined {
+  const a = b.cards.find((k) => k.id === c.cols[0]), k = b.cards.find((x) => x.id === c.cols[1]);
+  return isCode(a) && isCode(k) ? [a, k] : undefined;
 }
+
+/** 按 id 找卡；host = 画布上真正摆着的那张卡（Compare 的栏 → 那张 Compare） */
+export function findCard(b: Pick<Board, "cards">, id: string): { card: Card; host: Card } | undefined {
+  const card = b.cards.find((c) => c.id === id);
+  if (!card) return undefined;
+  const host = b.cards.find((c) => c.kind === "compare" && c.cols.includes(id)) ?? card;
+  return { card, host };
+}
+
+/** Compare 的栏 id → 那张 Compare 的 id */
+export function colHosts(b: Pick<Board, "cards">): Map<string, string> {
+  const m = new Map<string, string>();
+  for (const c of b.cards) if (c.kind === "compare") for (const k of c.cols) m.set(k, c.id);
+  return m;
+}
+
+/** 画布上摆着的卡（有 Place 的），按叠放顺序 */
+export const placedCards = (b: Pick<Board, "cards" | "place">): Card[] => b.cards.filter((c) => b.place[c.id]);
 
 export const segOf = (c: CodeCard, seg?: string) => (seg ? c.segments.find((s) => s.id === seg) : c.segments[0]);
 
@@ -295,11 +368,72 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
   return out;
 }
 
-/** 第 1 版白板（v1 插件）迁移到第 2 版 */
+// ---------- 迁移 ----------
+
+/** 读进来的白板文件（第 1、2、3 版）→ 第 3 版 */
 export function migrateBoard(raw: any): Board {
-  if (raw?.version === 2) return raw as Board;
-  const b = emptyBoard(raw.id, raw.name ?? "Board");
-  b.cam = raw.cam ?? b.cam;
+  // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
+  if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
+  if (raw?.version === 3) {
+    const b = raw as Board;
+    b.place ??= {};
+    b.links ??= [];
+    b.sections ??= [];
+    b.sidenotes ??= [];
+    b.stickers ??= [];
+    return b;
+  }
+  return v2to3(raw?.version === 2 ? raw : v1to2(raw));
+}
+
+const GEO = ["x", "y", "w", "h", "section", "locked", "collapsed"] as const;
+/** 第 2 版的卡（几何、状态混在卡里）拆成内容 + 摆放 */
+function splitV2(c: any): { card: any; place: Place } {
+  const place: any = {};
+  const card: any = {};
+  for (const [k, v] of Object.entries(c)) {
+    if ((GEO as readonly string[]).includes(k)) { if (v !== undefined) place[k] = v; }
+    else card[k] = v;
+  }
+  place.x ??= 0; place.y ??= 0; place.w ??= 320;
+  return { card, place };
+}
+function contentV2(c: any, out: Card[], place: Record<string, Place> | null): Card {
+  const { card, place: p } = splitV2(c);
+  if (card.kind === "web") {
+    if (card.pageTitle) card.meta = { title: card.pageTitle };
+    delete card.pageTitle;
+  }
+  if (card.kind === "image") card.bg = true; // 旧图片保持原来的样子（有外框）
+  if (card.kind === "code" && card.mergedFrom) card.mergedFrom = card.mergedFrom.map((o: any) => { const s = splitV2(o); return { card: s.card, place: s.place }; });
+  if (card.kind === "compare") {
+    const cols = card.cols as any[];
+    card.cols = cols.map((k) => { const col = contentV2(k, out, null); return col.id; });
+  }
+  out.push(card as Card);
+  if (place) place[card.id] = p;
+  return card as Card;
+}
+
+function v2to3(o: any): Board {
+  const b = emptyBoard(o.id, o.name ?? "Board");
+  b.cam = o.cam ?? b.cam;
+  b.hideAllComments = o.hideAllComments;
+  b.hideNumbers = o.hideNumbers;
+  const cards: Card[] = [];
+  // Compare 的栏排在 Compare 前面（contentV2 先放栏再放自己）；栏没有 Place，叠放顺序不受影响
+  for (const c of o.cards ?? []) contentV2(c, cards, b.place);
+  b.cards = cards;
+  b.links = (o.links ?? []).map((l: any) => (l.kind === "plain" ? { ...l, arrow: l.arrow ?? "none" } : l)); // 旧的 Plain link 默认没有箭头
+  b.sections = o.sections ?? [];
+  b.sidenotes = o.sidenotes ?? [];
+  b.stickers = [];
+  return b;
+}
+
+/** 第 1 版白板（v1 插件）迁移到第 2 版的结构 */
+function v1to2(raw: any): any {
+  const b: any = { version: 2, id: raw.id, name: raw.name ?? "Board", cam: raw.cam ?? { x: 80, y: 80, z: 1 }, cards: [], links: [], sections: [], sidenotes: [] };
   for (const c of raw.cards ?? []) {
     const base = { id: c.id, x: c.x, y: c.y, w: c.w };
     if (c.type === "code") {
@@ -322,7 +456,7 @@ export function migrateBoard(raw: any): Board {
   }
   // 行级 Link 要挂到段上
   for (const l of b.links) {
-    const c = b.cards.find((k) => k.id === l.from.card);
+    const c = b.cards.find((k: any) => k.id === l.from.card);
     if (c?.kind === "code" && l.from.line) l.from.seg = c.segments[0].id;
     else delete l.from.line;
   }

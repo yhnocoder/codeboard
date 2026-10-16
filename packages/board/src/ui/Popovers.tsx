@@ -16,7 +16,11 @@ import { ask, send } from "../host";
 import * as A from "../actions";
 
 export function Popovers() {
-  return <For each={pops()}>{(p) => <PopFrame inst={p} />}</For>;
+  return <>
+    {/* library 调用的样式跟着 Study Scope 变（这里顺带挂上，免得改 App） */}
+    <style>{A.libCallCss()}</style>
+    <For each={pops()}>{(p) => <PopFrame inst={p} />}</For>
+  </>;
 }
 
 function PopFrame(p: { inst: PopInst }) {
@@ -27,10 +31,18 @@ function PopFrame(p: { inst: PopInst }) {
     ro.observe(el);
     onCleanup(() => ro.disconnect());
   });
+  let last: { x: number; y: number } | undefined;
   const pos = createMemo(() => {
     void cam.x; void cam.y; void cam.z; // 镜头动时跟着元素走
     const at = p.inst.at, s = size();
     const W = window.innerWidth, H = window.innerHeight;
+    // 锚点元素被重画掉了（比如删了一条旁注，标记换成新的）：Sidenote 弹窗改挂到还剩的那条的标记上；找不到就停在原地
+    if (at.el && !at.el.isConnected && p.inst.pop.kind === "notes") {
+      const ids = p.inst.pop.ids.filter((id) => state.board.sidenotes.some((n) => n.id === id));
+      const mk = [...document.querySelectorAll("[data-notes]")].find((m) => (m as HTMLElement).dataset.notes!.split(",").some((id) => ids.includes(id)));
+      if (mk) at.el = mk;
+    }
+    if (at.el && !at.el.isConnected && last) return last;
     let x = at.x ?? 0, y = at.y ?? 0;
     if (at.el?.isConnected) {
       const r = at.el.getBoundingClientRect();
@@ -38,7 +50,7 @@ function PopFrame(p: { inst: PopInst }) {
       else if (at.prefer === "above") { x = r.left; y = r.top - s.h - 6; }
       else { x = r.left; y = r.bottom + 6; if (y + s.h > H - 8) y = r.top - s.h - 6; }
     }
-    return { x: Math.max(8, Math.min(x, W - s.w - 8)), y: Math.max(8, Math.min(y, H - s.h - 8)) };
+    return (last = { x: Math.max(8, Math.min(x, W - s.w - 8)), y: Math.max(8, Math.min(y, H - s.h - 8)) });
   });
   const k = () => p.inst.pop.kind;
   return (
@@ -54,7 +66,6 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "pick"}><PickPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "pick" }>} /></Match>
         <Match when={k() === "commits"}><CommitsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "commits" }>} /></Match>
         <Match when={k() === "vars"}><VarsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vars" }>} /></Match>
-        <Match when={k() === "source"}><SourcePop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "source" }>} /></Match>
       </Switch>
     </div>
   );
@@ -70,11 +81,12 @@ function Head(p: { title: any; inst: PopInst; right?: any }) {
   );
 }
 
-/** 一小段只读代码（带行号） */
-function Code(p: { start: number; html: string[]; hl?: number }) {
+/** 一小段只读代码（带行号）；rows = 每行的行号（不连续时） */
+function Code(p: { start: number; html: string[]; hl?: number; rows?: number[] }) {
+  const no = (i: number) => p.rows?.[i] ?? p.start + i;
   return (
     <div class="pcode"><div class="pc-in">
-      <For each={p.html}>{(h, i) => <div class="pl" classList={{ hl: p.hl === p.start + i() }}><span class="no">{p.start + i()}</span><span class="t" innerHTML={h || "​"} /></div>}</For>
+      <For each={p.html}>{(h, i) => <div class="pl" classList={{ hl: p.hl === no(i()), jump: i() > 0 && !!p.rows && no(i()) !== no(i() - 1) + 1 }}><span class="no">{no(i())}</span><span class="t" innerHTML={h || "​"} /></div>}</For>
     </div></div>
   );
 }
@@ -95,6 +107,7 @@ function NotesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "notes" }> }) {
       <div class="sn-acts">
         <button class="tbtn" onClick={() => { const n = notes()[0]; if (n) { closePop(p.inst.id); A.openAddNote(n.at); } }}>+ Add</button>
         <Show when={curNote()?.kind === "text"}>
+          <button class="tbtn" onClick={() => editText(curNote()!)}>Edit</button>
           <button class="tbtn" classList={{ on: !!(curNote() as any)?.alwaysShow }} onClick={() => A.updateSidenote(curNote()!.id, (n) => { if (n.kind === "text") n.alwaysShow = !n.alwaysShow || undefined; })}>Always Show</button>
         </Show>
         <Show when={curNote() && curNote()!.kind !== "card"}><button class="tbtn" onClick={() => A.placeSidenote(curNote()!.id)}>Place on Board</button></Show>
@@ -126,7 +139,9 @@ function NoteItem(p: { n: Sidenote }) {
           </>;
         })()}</Match>
         <Match when={n().kind === "text"}>
-          <div class="sn-text md" innerHTML={A.mdBlock((n() as any).md)} onDblClick={() => editText(n())} />
+          <Show when={snEditing() === n().id} fallback={<div class="sn-text md" data-tip="Double-click to edit" innerHTML={A.mdBlock((n() as any).md)} onDblClick={() => editText(n())} />}>
+            <SidenoteEditor n={n() as Extract<Sidenote, { kind: "text" }>} />
+          </Show>
         </Match>
         <Match when={n().kind === "link"}>
           <div class="sn-head"><b>Link</b></div>
@@ -146,10 +161,26 @@ function NoteItem(p: { n: Sidenote }) {
   );
 }
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-async function editText(n: Sidenote) {
+// 旁注原地编辑（#37）：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。⌘↵ 保存，Esc 取消
+const [snEditing, setSnEditing] = createSignal<string | null>(null);
+function editText(n: Sidenote) {
   if (n.kind !== "text") return;
-  const v = await promptText("Edit Sidenote", n.md, "", "Save");
-  if (v !== null) A.updateSidenote(n.id, (k) => { if (k.kind === "text") k.md = v; });
+  for (const q of pops()) if (q.pop.kind === "notes" && q.pop.ids.includes(n.id)) pinPop(q.id);
+  setSnEditing(n.id);
+}
+function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
+  const [v, setV] = createSignal(p.n.md);
+  const grow = (el: HTMLTextAreaElement) => { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
+  const save = () => { const t = v().trim(); setSnEditing(null); if (t && t !== p.n.md) A.updateSidenote(p.n.id, (k) => { if (k.kind === "text") k.md = t; }); };
+  return (
+    <div class="sn-edit" onPointerDown={(e) => e.stopPropagation()}>
+      <textarea spellcheck={false} value={v()} ref={(el) => queueMicrotask(() => { el.focus(); el.setSelectionRange(el.value.length, el.value.length); grow(el); })}
+        onInput={(e) => { setV(e.currentTarget.value); grow(e.currentTarget); }}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") { e.preventDefault(); setSnEditing(null); } if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); } }} />
+      <Show when={v().trim()}><div class="sn-text md sn-prev" innerHTML={A.mdBlock(v())} /></Show>
+      <div class="sn-eacts"><span>Markdown and $math$ · {A.K.mod}↵ to save</span><span class="grow" /><button class="tbtn" onClick={() => setSnEditing(null)}>Cancel</button><button class="tbtn pri" onClick={save}>Save</button></div>
+    </div>
+  );
 }
 
 // ---------- 定义预览 ----------
@@ -157,17 +188,20 @@ async function editText(n: Sidenote) {
 function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
   const d = () => p.pop.data;
   const def = () => (d() && "seg" in d()! ? (d() as PeekDef) : null);
+  const lib = () => { const l = def()?.lib; return l && !state.host.settings.studyScope.includes(l) ? l : ""; };
   const pin = () => {
     const x = def();
     if (!x) return;
     const c = cardById(p.pop.card)?.card;
     const at: Anchor = { card: p.pop.card, seg: p.pop.seg, lines: [p.pop.line, p.pop.line] };
     if (!c) return;
-    A.addSidenote({ at, kind: "code", code: { ...structuredClone(x.seg), id: crypto.randomUUID?.() ?? `s${Date.now()}` } } as any);
+    // Follow 跟过的中间步骤（如 get_context = context._default_context.get_context）按顺序一起放进旁注，最后是最终定义
+    const steps = [...(p.pop.trail ?? []), x];
+    const segs = steps.map((k, i) => ({ ...structuredClone(unwrap(k.seg)), id: `${crypto.randomUUID?.() ?? Date.now().toString(36)}-${i}` }));
+    A.addSidenotes(segs.map((code) => ({ at, kind: "code", code }) as any));
     // 展示数据用定义预览里那几行（段的 id 换了，重新要一次）
-    const n = state.board.sidenotes[state.board.sidenotes.length - 1];
-    if (n?.kind === "code") A.requestViews([n.code]);
-    toast("Pinned as Sidenote");
+    A.requestViews(segs);
+    toast(steps.length > 1 ? `Pinned ${steps.length} steps as Sidenotes` : "Pinned as Sidenote");
     closePop(p.inst.id);
   };
   const place = () => {
@@ -176,7 +210,7 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
     const r = A.hostRect(p.pop.card)!;
     const id = `c${Date.now().toString(36)}`;
     const seg = { ...structuredClone(x.seg) };
-    A.addCards([{ card: { id, kind: "code", segments: [seg], x: 0, y: 0, w: 480 }, views: {} }], { at: { x: r.x + r.w + 48, y: r.y } });
+    A.addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: 480 }], { at: { x: r.x + r.w + 48, y: r.y } });
     A.requestViews([seg]);
     A.addPlain({ card: p.pop.card, seg: p.pop.seg, line: p.pop.line }, { card: id });
     closePop(p.inst.id);
@@ -196,26 +230,52 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
           </Show>
         </Show>
       }>
-        <Head title={<>Definition · {baseName(def()!.path)}:{def()!.line}</>} inst={p.inst} right={<span class="src-tag">{def()!.seg.version.kind === "git" ? "at HEAD" : ""}</span>} />
-        <Code start={def()!.start} html={def()!.html} hl={def()!.line} />
+        <Head title={<>Definition · {def()!.title ?? `${baseName(def()!.path)}:${def()!.line}`}</>} inst={p.inst}
+          right={lib() ? <span class="lib-tag" data-tip={`Library code · ${lib()}`}>library</span> : <span class="src-tag">{def()!.seg.version.kind === "git" && def()!.kind !== "module" ? "at HEAD" : ""}</span>} />
+        <Show when={def()!.sig || def()!.doc}>
+          <div class="pk-top">
+            <Show when={def()!.sig}><div class="pk-sig" innerHTML={def()!.sigHtml ?? escH(def()!.sig!)} /></Show>
+            <Show when={def()!.doc}><div class="pk-doc md" innerHTML={docHtml(def()!.doc!)} onClick={onDocClick} /></Show>
+          </div>
+        </Show>
+        <Show when={def()!.kind !== "module" && def()!.html.length}>
+          <Show when={def()!.head}><div class="pk-head">{def()!.head}</div></Show>
+          <Code start={def()!.start} html={def()!.html} hl={def()!.line} rows={def()!.rows} />
+          <Show when={def()!.more}><div class="pk-more">⋯ {def()!.more} more line{def()!.more! > 1 ? "s" : ""}</div></Show>
+        </Show>
         <Show when={def()!.follow}>
           <div class="follow">↳ <code>{def()!.follow!.label}</code><span class="grow" /><button class="tbtn" onClick={() => {
             const f = def()!.follow!;
-            updatePop(p.inst.id, (q) => ({ ...(q as any), data: undefined }));
+            const prev = def()!;
+            updatePop(p.inst.id, (q) => ({ ...(q as any), trail: [...((q as any).trail ?? []), prev], data: undefined }));
             ask<PeekResult>("peek", { seg: structuredClone(unwrap(def()!.seg)), line: f.line, col: f.col, word: f.label.split(".").pop()!, at: { path: f.path, line: f.line, col: f.col } })
               .then((r) => updatePop(p.inst.id, (q) => ({ ...(q as any), data: r ?? { none: "No definition found", word: f.label } })))
               .catch(() => updatePop(p.inst.id, (q) => ({ ...(q as any), data: { none: "No definition found", word: f.label } })));
           }}>Follow</button></div>
         </Show>
         <div class="sn-acts">
-          <button class="tbtn" onClick={pin}>Pin as Sidenote</button>
-          <button class="tbtn" onClick={place}>Place on Board</button>
+          <Show when={def()!.kind !== "module"}>
+            <button class="tbtn" onClick={pin}>Pin as Sidenote</button>
+            <button class="tbtn" onClick={place}>Place on Board</button>
+          </Show>
           <button class="tbtn" onClick={() => { send({ type: "openPath", path: def()!.path, line: def()!.line }); }}>Open in Editor</button>
         </div>
       </Show>
     </>
   );
 }
+
+/** hover 文档：Markdown，代码块顺手着色 */
+function docHtml(src: string) {
+  return A.mdBlock(src).replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_, c: string) => `<pre><code>${hlPy(c)}</code></pre>`);
+}
+// 极简 Python 着色（在转义过的 HTML 上做）：注释、字符串、数字、关键字
+const PY_RE = /(#[^\n]*)|(&quot;(?:(?!&quot;)[^\n])*&quot;|'[^'\n]*')|(\b\d+(?:\.\d+)?\b)|\b(def|class|return|if|else|elif|for|while|in|not|and|or|is|None|True|False|import|from|as|with|lambda|yield|raise|try|except|finally|pass|async|await)\b/g;
+const hlPy = (h: string) => h.replace(PY_RE, (m, com, str, num) => `<span class="${com ? "com" : str ? "str" : num ? "num" : "kw"}">${m}</span>`);
+const onDocClick = (e: MouseEvent) => {
+  const a = (e.target as HTMLElement).closest?.("a.lnk") as HTMLElement | null;
+  if (a?.dataset.href) { e.preventDefault(); A.openLink(a.dataset.href); }
+};
 
 // ---------- 加 Sidenote ----------
 
@@ -396,7 +456,7 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
         <div class="sres">
           <For each={p.pop.list}>{(c) => (
             <button class="cand" classList={{ on: c.commit === pinned() }} onClick={() => { closePop(p.inst.id); if (c.commit !== pinned()) A.switchCommit(p.pop.card, c.commit); }}>
-              <span class="sha">{c.commit.slice(0, 7)}</span><span class="lb">{c.msg}</span><small>{c.commit === pinned() ? "✓ pinned" : c.head ? "= HEAD" : c.date}</small>
+              <span class="sha">{c.commit.slice(0, 7)}</span><span class="lb">{c.msg}</span><small classList={{ cur: c.commit === pinned() }}>{c.commit === pinned() ? "✓ Current" : c.head ? "= HEAD" : c.date}</small>
             </button>
           )}</For>
           <Show when={!p.pop.list!.length}><div class="empty">No history (not in git).</div></Show>
@@ -411,7 +471,7 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
 }
 
 function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
-  const L = () => state.board.links.find((l) => l.id === p.pop.link);
+  const L = () => { const l = state.board.links.find((l) => l.id === p.pop.link); return l?.kind === "call" ? l : undefined; };
   const [custom, setCustom] = createSignal("");
   const has = (v: Var) => (L()?.vars ?? []).some((x) => varKey(x) === varKey(v));
   const all = () => { const l = L(); if (!l) return []; const c = l.cands ?? []; return [...c, ...(l.vars ?? []).filter((v) => !c.some((x) => varKey(x) === varKey(v)))]; };
@@ -428,20 +488,4 @@ function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
   );
 }
 
-function SourcePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "source" }> }) {
-  let box!: HTMLDivElement;
-  createEffect(() => {
-    if (!p.pop.html || !box) return;
-    queueMicrotask(() => { const el = box.querySelector(".hl"); el?.scrollIntoView({ block: "center" }); });
-  });
-  return (
-    <div class="srcpop">
-      <Head title={<>{baseName(p.pop.seg.path)}:{p.pop.seg.start} · {versionLabel(p.pop.seg.version)} · Read-only</>} inst={p.inst}
-        right={<button class="tbtn" onClick={() => { closePop(p.inst.id); A.openCodeFromFocus(p.pop.card); }}>Open in Editor</button>} />
-      <div ref={box} class="srcbody">
-        <Show when={p.pop.html} fallback={<div class="empty">Loading…</div>}><Code start={p.pop.start ?? 1} html={p.pop.html!} hl={p.pop.seg.start} /></Show>
-      </div>
-    </div>
-  );
-}
 void pinPop; void mutate; void select; void setConnectFrom; void findCard;

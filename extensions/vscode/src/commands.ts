@@ -3,12 +3,13 @@
 import * as vscode from "vscode";
 import { allCodeCards, estSize, type Board, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { cardsFromEditor, symCard, withViews, type Built } from "./cards";
+import { cardsFromEditor, symCard, widthFor, withViews, type Built } from "./cards";
 import type { Panels } from "./panel";
 import { absOf, locOfFile } from "./source";
 import type { Storage } from "./storage";
 import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
+import { copyDiagnostics } from "./diagnostics";
 import { readText, splitLines } from "./ws";
 
 type Node = { kind: "board"; id: string } | { kind: "group"; name: string } | undefined;
@@ -18,6 +19,14 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
   // 白板聚焦时，VS Code 自己的快捷键（⌘K 和弦、⌘1 切编辑组、⌘± 缩放窗口……）会抢在白板前面；
   // 这些键在白板里另有用途，所以注册同样的键，转给白板处理
   cmd("codeboard.boardKey", (action: KeyAction) => panels.all().find((p) => p.panel.active)?.post({ type: "key", action }));
+  // Open Settings：在当前白板里开设置页；没有白板在前台就开目标白板
+  cmd("codeboard.openSettings", async () => {
+    const p = panels.all().find((x) => x.panel.active) ?? (panels.target ? await panels.show(panels.target) : panels.all()[0]);
+    if (!p) { void vscode.window.showInformationMessage("Open a board first. CodeBoard settings are also under Settings → Extensions → CodeBoard."); return; }
+    p.panel.reveal();
+    p.post({ type: "key", action: "openSettings" });
+  });
+  cmd("codeboard.copyDiagnostics", () => copyDiagnostics((panels.all().find((x) => x.panel.active) ?? (panels.target ? panels.get(panels.target) : undefined))?.board));
   const boardArg = (a: unknown): string | undefined => (typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined);
 
   /** Add to 的目标白板：最近聚焦的；没有就第一张；一张都没有就新建 */
@@ -141,9 +150,9 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
 
   // ---------- 白板管理 ----------
 
-  cmd("codeboard.openBoard", async (a?: unknown) => {
+  cmd("codeboard.openBoard", async (a?: unknown, o?: { here?: boolean }) => {
     const id = boardArg(a) ?? (await targetId());
-    await panels.show(id);
+    await panels.show(id, { here: !!o?.here });
   });
   cmd("codeboard.openBoardToSide", async (a?: unknown) => {
     const id = boardArg(a);
@@ -222,6 +231,11 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
     const f = id ? store.fileOf(id) : undefined;
     await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(f ?? store.dir()));
   });
+  // GITHUB FILES 的 Add Repo…：在目标白板上打开 From GitHub… 面板
+  cmd("codeboard.addGithubRepo", async () => {
+    const p = await panels.show(await targetId());
+    p?.post({ type: "githubPicker" });
+  });
   cmd("codeboard.openGithubFile", async (abs: string) => {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
     await vscode.window.showTextDocument(doc, { preview: true });
@@ -243,13 +257,14 @@ export async function pickBoard(store: Storage, placeHolder: string, allowNew: b
 
 /** 白板关着时：新卡放在已有卡片的右边，一张接一张往下排 */
 export function placeCards(b: Board, cards: CodeCard[]) {
-  const right = b.cards.length ? Math.max(...b.cards.map((c) => c.x + c.w)) + 80 : b.cam.x > 0 ? 80 : -b.cam.x + 80;
-  let y = b.cards.length ? Math.min(...b.cards.map((c) => c.y)) : 80;
+  const ps = Object.values(b.place);
+  const right = ps.length ? Math.max(...ps.map((p) => p.x + p.w)) + 80 : b.cam.x > 0 ? 80 : -b.cam.x + 80;
+  let y = ps.length ? Math.min(...ps.map((p) => p.y)) : 80;
   for (const c of cards) {
-    c.x = right;
-    c.y = y;
-    y += estSize(c).h + 40;
+    const p = { x: right, y, w: widthFor(c.segments) };
+    y += estSize(c, p).h + 40;
     b.cards.push(c);
+    b.place[c.id] = p;
   }
 }
 

@@ -2,16 +2,17 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  brokenBy, computeFlows, emptyBoard, hiddenByCollapse,
-  type Board, type BoardMeta, type Card, type HostInfo, type SegView, type Stale,
+  brokenBy, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS,
+  type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type Stale,
 } from "@codeboard/core";
-import { send } from "../host";
+import { ask, send } from "../host";
+import { ghostOut } from "./ghost";
 
 export const [state, setState] = createStore({
   loaded: false,
   board: emptyBoard("", "") as Board,
   boards: [] as BoardMeta[],
-  host: { isMac: true, assetBase: "", target: true } as HostInfo,
+  host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as HostInfo,
   views: {} as Record<string, SegView>,
   stale: {} as Record<string, Stale>,
 });
@@ -61,26 +62,35 @@ export const collapsedAway = createMemo(() => (showCollapsed() ? new Set<string>
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
 const cardIndex = createMemo(() => {
   const m = new Map<string, { card: Card; host: Card }>();
-  for (const c of state.board.cards) {
-    m.set(c.id, { card: c, host: c });
-    if (c.kind === "compare") for (const k of c.cols) m.set(k.id, { card: k, host: c });
-  }
+  for (const c of state.board.cards) if (!m.has(c.id)) m.set(c.id, { card: c, host: c });
+  for (const c of state.board.cards) if (c.kind === "compare") for (const k of c.cols) { const f = m.get(k); if (f) m.set(k, { card: f.card, host: c }); }
   return m;
 });
 export const cardById = (id: string) => cardIndex().get(id);
+/** 画布上摆着的卡（有 Place 的），按叠放顺序 */
+export const placed = createMemo(() => state.board.cards.filter((c) => state.board.place[c.id]));
+
+const NOWHERE: Place = { x: 0, y: 0, w: 320 };
+/** 卡（或 Compare 的栏 → 它的 Compare）的摆放 */
+export function placeOf(id: string): Place {
+  return state.board.place[id] ?? state.board.place[cardById(id)?.host.id ?? ""] ?? NOWHERE;
+}
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
 export const [sizes, setSizes] = createStore<Record<string, { w: number; h: number }>>({});
-export function rectOf(c: Pick<Card, "id" | "x" | "y" | "w" | "h">) {
-  const s = sizes[c.id];
-  return { x: c.x, y: c.y, w: s?.w ?? c.w, h: s?.h ?? c.h ?? 120 };
+/** 卡片在画布上的矩形：位置来自 Place，宽高优先用实测（量到 0 的不算：卡被藏起来时量到的） */
+export function rectOf(c: { id: string } | string) {
+  const id = typeof c === "string" ? c : c.id;
+  const p = placeOf(id);
+  const s = sizes[cardById(id)?.host.id ?? id];
+  return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ?? 120 };
 }
 
 // ---------- 撤销 / 重做 ----------
 
 // 快照按「每张卡 / 每条线 / 每个 Section / 每条 Sidenote 一段 JSON」存，没变的那段直接沿用上一份快照里的字符串，
 // 所以 300 步撤销只多占改过的那几项，而不是 300 份整块白板。镜头不进快照。
-type Snap = { head: string; cards: string[]; links: string[]; sections: string[]; sidenotes: string[] };
+type Snap = { head: string; cards: string[]; place: string[]; links: string[]; sections: string[]; sidenotes: string[]; stickers: string[] };
 const undoStack: Snap[] = [];
 const redoStack: Snap[] = [];
 export const [canUndo, setCanUndo] = createSignal(false);
@@ -93,21 +103,31 @@ function piece(k: string, o: unknown) {
   last.set(k, s);
   return s;
 }
+// 当前白板的快照缓存：mutate 改完拍的那份，就是下一次 mutate 的「改之前」。只有 mutate 会填它，
+// 其它写白板的地方（live、restore、宿主 init）都会让它作废，所以每次 mutate 只拍一次快照，不是两次
+let cur: Snap | null = null;
 function snap(): Snap {
-  const { cards, links, sections, sidenotes, cam: _cam, ...head } = unwrap(state.board);
+  if (cur) return cur;
+  return snapNow();
+}
+function snapNow(): Snap {
+  const { cards, place, links, sections, sidenotes, stickers, cam: _cam, ...head } = unwrap(state.board);
   return {
     head: JSON.stringify(head),
     cards: cards.map((x) => piece(`c${x.id}`, x)),
+    place: Object.entries(place).map(([id, x]) => piece(`p${id}`, [id, x])),
     links: links.map((x) => piece(`l${x.id}`, x)),
     sections: sections.map((x) => piece(`s${x.id}`, x)),
     sidenotes: sidenotes.map((x) => piece(`n${x.id}`, x)),
+    stickers: stickers.map((x) => piece(`k${x.id}`, x)),
   };
 }
+const KEYS = ["cards", "place", "links", "sections", "sidenotes", "stickers"] as const;
 const sameArr = (a: string[], b: string[]) => a.length === b.length && a.every((x, i) => x === b[i]);
-const same = (a: Snap, b: Snap) => a.head === b.head && sameArr(a.cards, b.cards) && sameArr(a.links, b.links) && sameArr(a.sections, b.sections) && sameArr(a.sidenotes, b.sidenotes);
+const same = (a: Snap, b: Snap) => a.head === b.head && KEYS.every((k) => sameArr(a[k], b[k]));
 const parse = (s: Snap): Board => {
   const p = (xs: string[]) => xs.map((x) => JSON.parse(x));
-  return { ...JSON.parse(s.head), cards: p(s.cards), links: p(s.links), sections: p(s.sections), sidenotes: p(s.sidenotes) };
+  return { ...JSON.parse(s.head), cards: p(s.cards), place: Object.fromEntries(p(s.place)), links: p(s.links), sections: p(s.sections), sidenotes: p(s.sidenotes), stickers: p(s.stickers) };
 };
 const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.length > 0); };
 
@@ -117,73 +137,123 @@ const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.l
  */
 export function mutate(fn: (b: Board) => void): boolean {
   const before = snap();
-  setState("board", produce(fn));
+  cur = null;
+  try { setState("board", produce(fn)); }
+  catch (e) {
+    // 改到一半抛错：produce 已经改了一部分，整次撤回，别留下半截的白板
+    restore(before);
+    console.error("mutate failed", e);
+    toast("Something went wrong; the change was undone.");
+    return false;
+  }
+  const bad = danglingRefs(unwrap(state.board));
+  if (bad.length) console.warn("[codeboard] dangling references after a change:", bad); // 自检：应该永远是空的，harness 会把它当失败
   const why = brokenBy(unwrap(state.board), () => parse(before));
   if (why) {
     restore(before);
     toast(why);
     return false;
   }
-  if (same(snap(), before)) return true;
+  const after = snapNow();
+  if (same(after, before)) { cur = before; return true; }
+  cur = after;
   changed();
+  pushUndo(before);
+  return true;
+}
+
+function pushUndo(before: Snap) {
   undoStack.push(before);
   if (undoStack.length > 300) undoStack.shift();
   redoStack.length = 0;
   updUndo();
-  return true;
+}
+
+// 新建、还没写内容的 Note / Text / Code：建卡这一步先不进撤销栈。
+// 写了内容 → 「建卡 + 内容」算撤销栈里的一步；什么都没写就失焦 → 卡自动消失，就像没建过。
+const fresh = new Map<string, Snap>();
+export function createFresh(id: string, fn: (b: Board) => void) {
+  const before = snap();
+  live(fn);
+  fresh.set(id, before);
+}
+export const isFresh = (id: string) => fresh.has(id);
+/** 结束新卡的第一次编辑：keep = 写了内容（fn 是写内容的修改） */
+export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) {
+  const before = fresh.get(id);
+  if (!before) return;
+  fresh.delete(id);
+  if (!keep) { ghostOut([id]); live((b) => removeCards(b, [id])); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
+  if (fn) live(fn);
+  pushUndo(before);
 }
 
 /** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈 */
 export function beginGesture(): () => void {
   const before = snap();
-  return () => {
-    if (same(snap(), before)) return;
-    undoStack.push(before);
-    redoStack.length = 0;
-    updUndo();
-  };
+  return () => { if (!same(snap(), before)) pushUndo(before); };
 }
 /** 拖动中的修改（不进撤销栈） */
 export function live(fn: (b: Board) => void) {
+  cur = null;
   setState("board", produce(fn));
   changed();
 }
 
-function restore(s: Snap) {
-  const b = parse(s);
-  b.cam = { ...state.board.cam };
-  setState("board", reconcile(b));
+// 撤销 / 重做：只把和现在不一样的那几段换回去。整块 reconcile 要把 241 张卡、196 条线挨个解析、比对一遍（每次 ~25ms）
+function restore(s: Snap, now?: Snap) {
+  cur = null;
+  if (!now || !patch(now, s)) {
+    const b = parse(s);
+    b.cam = { ...state.board.cam };
+    setState("board", reconcile(b));
+  }
+  cur = s;
   changed();
   const ids = new Set(allIds());
-  setSel("cards", (c) => c.filter((x) => ids.has(x)));
-  setSel("links", (l) => l.filter((x) => state.board.links.some((k) => k.id === x)));
-  setSel("sections", (l) => l.filter((x) => state.board.sections.some((k) => k.id === x)));
+  // 选中的东西都还在就不动 sel：换成新数组的话，每张卡的 isSel 都要重算一遍
+  const keep = <T,>(xs: T[], ok: (x: T) => boolean) => (xs.every(ok) ? xs : xs.filter(ok));
+  setSel("cards", (c) => keep(c, (x) => ids.has(x)));
+  setSel("links", (l) => keep(l, (x) => state.board.links.some((k) => k.id === x)));
+  setSel("sections", (l) => keep(l, (x) => state.board.sections.some((k) => k.id === x)));
+}
+/** now → s 只是某几项内容变了（顺序、数量、白板本身的字段都没变）时，只改那几项；改不了返回 false */
+function patch(now: Snap, s: Snap): boolean {
+  if (now.head !== s.head || KEYS.some((k) => now[k].length !== s[k].length)) return false;
+  const ops: [typeof KEYS[number], number | string, unknown][] = [];
+  for (const k of KEYS) {
+    for (let i = 0; i < s[k].length; i++) {
+      if (s[k][i] === now[k][i]) continue;
+      const a = JSON.parse(now[k][i]), b = JSON.parse(s[k][i]);
+      if (k === "place") { if (a[0] !== b[0]) return false; ops.push([k, b[0], b[1]]); }
+      else { if (a.id !== b.id) return false; ops.push([k, i, b]); }
+    }
+  }
+  batch(() => { for (const [k, at, v] of ops) setState("board", k as any, at as any, reconcile(v as any)); });
+  return true;
 }
 export function undo() {
   const s = undoStack.pop();
   if (!s) return false;
-  redoStack.push(snap());
-  restore(s);
+  const now = snap();
+  redoStack.push(now);
+  restore(s, now);
   updUndo();
   return true;
 }
 export function redo() {
   const s = redoStack.pop();
   if (!s) return false;
-  undoStack.push(snap());
-  restore(s);
+  const now = snap();
+  undoStack.push(now);
+  restore(s, now);
   updUndo();
   return true;
 }
-export function resetHistory() { undoStack.length = 0; redoStack.length = 0; last.clear(); updUndo(); }
+export function resetHistory() { cur = null; undoStack.length = 0; redoStack.length = 0; last.clear(); updUndo(); }
 
 export function allIds(): string[] {
-  const out: string[] = [];
-  for (const c of state.board.cards) {
-    out.push(c.id);
-    if (c.kind === "compare") out.push(...c.cols.map((k) => k.id));
-  }
-  return out;
+  return state.board.cards.map((c) => c.id);
 }
 
 // ---------- 自动保存：改动后约 1 秒写盘，没有保存按钮 ----------
@@ -202,7 +272,14 @@ export function flushSave() {
   const s = JSON.stringify(unwrap(state.board));
   if (s === lastSaved) return;
   lastSaved = s;
-  send({ type: "save", board: JSON.parse(s) });
+  // 宿主写盘成功才算存上；失败（磁盘满、没权限）就记成没存，过几秒再试，关窗前的 flush 也会再发
+  ask("save", { board: JSON.parse(s) }).catch((e: Error) => {
+    if (lastSaved !== s) return;
+    lastSaved = "";
+    toast(`Couldn't save the board: ${e.message}. Retrying…`);
+    clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(flushSave, 5000);
+  });
 }
 export function markSaved() { lastSaved = JSON.stringify(unwrap(state.board)); }
 

@@ -6,11 +6,17 @@ import { findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabe
 import { analysisOf } from "./analysis";
 import { gitUri } from "./cards";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
-import { githubCard } from "./github";
+import { githubCard, ghQuery } from "./github";
+import { webMeta } from "./web";
 import { pasteCard } from "./paste";
+import { writeSetting } from "./settings";
+import { readPacks } from "./stickers";
+import { log } from "./log";
+import { copyDiagnostics, openStickerDir } from "./diagnostics";
 import type { BoardPanel, Panels } from "./panel";
-import { expand, peek } from "./resolve";
+import { callVars, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints } from "./search";
+import { prefetchCall } from "./prefetch";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { highlight, segView, viewsFor } from "./views";
@@ -23,6 +29,7 @@ export function makeHandler(panels: Panels) {
   return async (p: BoardPanel, m: BoardToHost): Promise<unknown> => {
     switch (m.type) {
       case "save": {
+        if (p.board) m.board.id = p.board.id; // 存到这块面板打开的那个文件，不信白板发来的 id
         const renamed = p.board?.name !== m.board.name;
         p.board = m.board;
         await store.save(m.board);
@@ -32,16 +39,22 @@ export function makeHandler(panels: Panels) {
       case "selection": p.selection = m; return;
       case "open": return openCard(p, m);
       case "openPath": return openAt(fromHostPath(m.path), m.line);
-      case "openLink": return void vscode.env.openExternal(vscode.Uri.parse(m.url));
+      case "openLink": {
+        // 白板文件里的链接只放行网页和邮件：file:// 之类会直接打开本机的程序
+        const u = vscode.Uri.parse(m.url);
+        if (!/^(https?|mailto)$/.test(u.scheme)) { log("info", `openLink: blocked ${u.scheme}: link`); return; }
+        return void vscode.env.openExternal(u);
+      }
       case "expand": return expand(m);
       case "peek": return peek(m);
+      case "prefetch": return prefetchCall(m);
+      case "callVars": return callVars(m);
       case "search": return search(store, m.q, m.scope);
       case "searchPick": return searchPick(m.item);
       case "entryPoints": return entryPoints();
       case "diff": return diff(m.seg, m.against);
       case "commits": return commits(m.seg);
       case "switchCommit": return switchCommit(m.seg, m.commit);
-      case "source": return source(m.seg);
       case "resolveRef": return resolveTyped(p, m.text);
       case "paste": return pasteCard(m.text);
       case "github": return githubCard(m.url);
@@ -51,7 +64,13 @@ export function makeHandler(panels: Panels) {
       case "checkVersions": return p.refreshStale();
       case "relocate": return relocate(p, m.card);
       case "locateRepo": return locateRepo(p);
-      case "focusMode": return focusMode(panels, p, m.on);
+      case "setSetting": return writeSetting(m.key, m.value);
+      case "webMeta": return webMeta(store, m.url);
+      case "gh": return ghQuery(m.q);
+      case "stickerPacks": return readPacks();
+      case "openStickerDir": return openStickerDir();
+      case "copyDiagnostics": return copyDiagnostics(p.board, m.board);
+      case "log": return log(m.level, m.text);
       case "openBoard": {
         const np = await panels.show(m.id);
         if (np && m.card) np.post({ type: "reveal", card: m.card });
@@ -197,6 +216,11 @@ async function commits(seg: Segment): Promise<Commit[]> {
     const info = await commitInfo(root, pinned);
     if (info) log.push(info);
   }
+  // HEAD 没改这个函数（比如是个合并提交）时 git log -L 不列它；总放在最上面，切到旧版本后还能切回来
+  if (head && !log.some((c) => c.commit === head)) {
+    const info = await commitInfo(root, head);
+    if (info) log.unshift(info);
+  }
   return log.map((c) => ({ commit: c.commit, msg: c.msg, date: c.date, head: !!head && c.commit === head }));
 }
 
@@ -237,15 +261,6 @@ async function resolveTyped(p: BoardPanel, text: string): Promise<Commit | null>
 }
 
 /** Focus 模式的只读源码浮窗：整个文件（那个版本） */
-async function source(seg: Segment) {
-  const text = (await versionText(seg)) ?? seg.text.join("\n");
-  const lines = splitLines(text);
-  const whole = lines.length > seg.text.length || seg.start === 1;
-  return {
-    path: seg.path, lang: seg.lang, start: whole ? 1 : seg.start, line: seg.start, end: seg.end,
-    version: versionLabel(seg.version), text: lines, html: await highlight(lines, seg.lang),
-  };
-}
 
 // ---------- 其他 ----------
 
@@ -311,11 +326,4 @@ async function locateRepo(p: BoardPanel) {
   await p.reload();
 }
 
-async function focusMode(panels: Panels, p: BoardPanel, on: boolean) {
-  if (panels.focusOn === on) return;
-  panels.focusOn = on;
-  p.panel.reveal(undefined, false);
-  await vscode.commands.executeCommand("workbench.action.toggleMaximizeEditorGroup").then(undefined, () => vscode.commands.executeCommand("workbench.action.maximizeEditor"));
-  panels.broadcast({ type: "host", host: { focus: on } });
-}
 

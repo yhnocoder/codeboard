@@ -1,5 +1,7 @@
 // 镜头和动效：弹簧（几乎不过冲）、平滑移动、惯性。系统设了「减少动态效果」时全部直接切换。
 import { createStore } from "solid-js/store";
+import { createSignal, batch } from "solid-js";
+import { tune } from "./tune";
 
 export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -18,7 +20,8 @@ type Anim = (dt: number, instant: boolean) => boolean;
 const anims = new Set<Anim>();
 let last = 0, rafOn = false;
 function tick(now: number) {
-  const dt = Math.min(0.032, (now - last) / 1000);
+  // Debug 里的慢动作：弹簧、镜头都按比例放慢
+  const dt = Math.min(0.032, (now - last) / 1000) * (tune("animSpeed") / 100);
   last = now;
   const instant = reduceMotion();
   for (const a of [...anims]) if (a(dt, instant)) anims.delete(a);
@@ -32,7 +35,16 @@ export function animate(fn: Anim) {
 
 // ---------- 镜头 ----------
 
-export const [cam, setCamStore] = createStore({ x: 80, y: 80, z: 1 });
+export const [cam, setCamStore0] = createStore({ x: 80, y: 80, z: 1 });
+/** 镜头在动（最后一次变化后 180ms 内）。这时 .world.moving 让浏览器把世界层当位图缩放；停下后按新比例重新清晰绘制（#15） */
+export const [camMoving, setCamMoving] = createSignal(false);
+let still: number | undefined;
+// 「在动」和镜头本身同一批更新：先改镜头再标「在动」的话，第一帧会把按停下比例画的东西（stillZ）多重画一遍
+function setCamStore(p: Partial<{ x: number; y: number; z: number }>) {
+  batch(() => { if (!camMoving()) setCamMoving(true); setCamStore0(p); });
+  clearTimeout(still);
+  still = window.setTimeout(() => setCamMoving(false), 180);
+}
 const sx = new Spring(0, 120, 22, 0.05), sy = new Spring(0, 120, 22, 0.05), sz = new Spring(1, 120, 22, 0.0005);
 let running = false, gen = 0;
 
@@ -79,7 +91,10 @@ export function fling(vx: number, vy: number) {
 export type Rect = { x: number; y: number; w: number; h: number };
 
 let viewport = { w: 800, h: 600 };
-export const setViewport = (w: number, h: number) => { viewport = { w, h }; };
+const [viewSig, setViewSig] = createSignal(viewport);
+export const setViewport = (w: number, h: number) => { viewport = { w, h }; setViewSig(viewport); };
+/** 同 view()，但能被跟踪（视野大小变了会重算） */
+export const viewTracked = viewSig;
 export const view = () => viewport;
 export const SAFE = { l: 24, r: 24, t: 60, b: 64 };
 
@@ -101,6 +116,11 @@ export function isVisible(r: Rect, c = camTarget()) {
   const x = r.x * c.z + c.x, y = r.y * c.z + c.y;
   return x >= SAFE.l && y >= SAFE.t && x + r.w * c.z <= w - SAFE.r && y + Math.min(r.h * c.z, h - SAFE.t - SAFE.b) <= h - SAFE.b;
 }
+/** 视野（去掉四周留白）在白板坐标里的矩形 */
+export function worldView(c = camTarget()): Rect {
+  const { w, h } = viewport;
+  return { x: (SAFE.l - c.x) / c.z, y: (SAFE.t - c.y) / c.z, w: (w - SAFE.l - SAFE.r) / c.z, h: (h - SAFE.t - SAFE.b) / c.z };
+}
 /** 不在视野里时平移把它带进来（必要时缩小，不放大） */
 export function ensureVisible(r: Rect, also?: Rect) {
   const c = camTarget();
@@ -121,3 +141,21 @@ export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smoo
 }
 export const toWorld = (px: number, py: number) => ({ x: (px - cam.x) / cam.z, y: (py - cam.y) / cam.z });
 export const viewportCenter = () => toWorld(viewport.w / 2, viewport.h / 2);
+
+// ---------- 缩放分档（#11）：100% 正常；概览只剩卡片名、编号和灰条；地图只剩名字和色块 ----------
+
+import { createMemo } from "solid-js";
+let heldZ = 1;
+/**
+ * 停下来时的缩放比例，镜头动的时候不变。按 1/z 保持屏幕上粗细的东西（箭头的点击区等）用它：
+ * 缩放的每一帧都改 196 条线的样式，会让整层重新绘制（每帧 ~25ms）；动的时候整层本来就按位图缩放，停下再按准确比例画
+ */
+export const stillZ = createMemo(() => (camMoving() ? heldZ : (heldZ = cam.z)));
+import { state } from "./store";
+export type Lod = "full" | "overview" | "map";
+export const lod = createMemo<Lod>(() => {
+  const s = state.host.settings;
+  return cam.z >= (s?.zoomOverview ?? 0.6) ? "full" : cam.z >= (s?.zoomMap ?? 0.25) ? "overview" : "map";
+});
+/** 缩得很小时不弹定义预览、旁注（#12） */
+export const quietHover = () => lod() !== "full";

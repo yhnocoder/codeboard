@@ -8,13 +8,12 @@ export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "rig
 
 export type Pop =
   | { kind: "notes"; card: string; ids: string[]; title: string; sel?: string }
-  | { kind: "peek"; card: string; seg: string; line: number; word: string; data?: PeekDef | { none: string; word: string } | { pick: PeekDef[] } }
+  | { kind: "peek"; card: string; seg: string; line: number; word: string; trail?: PeekDef[]; data?: PeekDef | { none: string; word: string } | { pick: PeekDef[] } }
   | { kind: "addNote"; at: Anchor; tab: "code" | "paste" | "text" | "link" | "card"; editing?: string }
   | { kind: "diff"; card: string; seg: string; data?: DiffData; error?: string }
   | { kind: "pick"; title: string; items: { label: string; detail: string; run: () => void }[] }
   | { kind: "commits"; card: string; seg: Segment; list?: Commit[] }
   | { kind: "vars"; link: string }
-  | { kind: "source"; card: string; seg: Segment; html?: string[]; start?: number };
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 

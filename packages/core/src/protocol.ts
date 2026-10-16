@@ -1,6 +1,6 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后整板发回来保存；宿主负责读代码、高亮、版本、跳转。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version } from "./model";
+import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags } from "./model";
 import type { SegView } from "./lines";
 
 /** 一段代码和当前代码的关系（「新版本」） */
@@ -13,19 +13,47 @@ export type Stale =
   | { state: "uncommitted" } // 钉在 HEAD，但工作区有未提交改动
   | { state: "missing" }; // 仓库 / 文件不在：只读快照
 
+/** 8 种材质主题；明暗跟随 VS Code */
+export const THEMES = [
+  ["warm-ink", "Warm Ink"], ["graphite", "Graphite"], ["soft-light", "Soft Light"], ["drafting", "Drafting"],
+  ["colorful", "Colorful"], ["newspaper", "Newspaper"], ["poster", "Poster"], ["classic", "Classic"],
+] as const;
+export type ThemeId = (typeof THEMES)[number][0];
+
+/** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用 */
+export type Settings = {
+  theme: ThemeId;
+  hideOnNew: HideFlags; // 新卡默认隐藏什么（替代卡片上的 Hide 浮条）
+  studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
+  stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
+  zoomOverview: number; // 低于这个比例：概览（代码变灰条）
+  zoomMap: number; // 低于这个比例：地图（只剩编号和名字）
+  dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
+  hideNumbers?: boolean; // 卡片上不显示流程字母（A / B）
+  themeReflow?: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
+  debug?: boolean; // 打开后设置页多一节 Debug（调常量）
+  tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
+};
+export const DEFAULT_SETTINGS: Settings = {
+  theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
+};
+
+/** 贴纸图标包：Iconify JSON 一个文件一套，或一个装 .svg 的文件夹（文件夹名 = 包名） */
+export type StickerPack = { id: string; name: string; icons: { name: string; svg: string }[] };
+
 export type HostInfo = {
   fontFamily?: string; // 跟随 VS Code 编辑器字体
   isMac: boolean;
   assetBase: string; // assets/ 目录的 webview URI，图片卡用
   readonly?: string; // 仓库找不到时的提示
-  focus?: boolean; // Focus 布局
   target: boolean; // 编辑器里 Add to 的目标白板是不是这块
+  settings: Settings;
   /** 这些快捷键（⌘ + 键）被宿主拦下后以 {type:"key"} 转回来，白板自己不再处理（免得做两次） */
   forwardedKeys?: string[];
 };
 
-/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L） */
-export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock";
+/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
+export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock" | "settings" | "openSettings";
 
 export type PeekDef = {
   path: string; // 显示用的路径
@@ -35,6 +63,16 @@ export type PeekDef = {
   text: string[];
   seg: Segment; // Pin as Sidenote / Place on Board 用
   follow?: { label: string; line: number; col: number; path: string }; // 下一跳：config.max_num_batched_tokens · config.py:9
+  // 以下 v0.1.5 起；旧的宿主没有，白板按 start 连续行显示
+  kind?: "field" | "function" | "class" | "module" | "other"; // 源码部分按定义类型取（module 不放源码）
+  rows?: number[]; // html / text 每一行的行号（不连续时）；缺省 = start 起连续
+  head?: string; // 行上面的小标题：class Config
+  more?: number; // 「⋯ N more lines」
+  sig?: string; // hover 的签名：(variable) kvcache_block_size: int
+  sigHtml?: string; // 签名高亮后的 HTML
+  doc?: string; // hover 的文档（Markdown）
+  lib?: string; // 定义在 library code 里：包名（在 Study Scope 里时白板不标 library）
+  title?: string; // 标题里代替 文件:行（模块：torch/multiprocessing）
 };
 
 export type SearchItem =
@@ -56,8 +94,19 @@ export type DiffData = {
   newView?: SegView;
 };
 
-/** 宿主建好的卡（位置由白板定） */
-export type NewCard = { card: Card; views: Record<string, SegView> };
+/** 宿主建好的卡（位置由白板定；w 缺省按内容估） */
+export type NewCard = { card: Card; views: Record<string, SegView>; w?: number };
+
+/** From GitHub… 面板向宿主要的数据（走 GitHub REST API，需要时用 VS Code 的 GitHub 登录） */
+export type GhQuery =
+  | { op: "repo"; owner: string; name: string } // 回 GhRepo
+  | { op: "commit"; owner: string; name: string; ref: string } // 回 Commit（ref 解析成完整 sha）
+  | { op: "tree"; owner: string; name: string; commit: string } // 回 GhTree
+  | { op: "file"; owner: string; name: string; commit: string; ref?: string; path: string } // 回 GhFile（文件同时缓存到本地，出现在 GITHUB FILES 侧栏）
+  | { op: "card"; owner: string; name: string; commit: string; ref: string; path: string; start: number; end: number }; // 回 NewCard
+export type GhRepo = { owner: string; name: string; branch: string; branches: string[]; tags: string[]; private?: boolean; desc?: string };
+export type GhTree = { commit: string; paths: { path: string; dir?: boolean }[]; truncated?: boolean };
+export type GhFile = { path: string; lang: string; text: string[]; html: string[] };
 
 export type HostToBoard =
   | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo }
@@ -79,18 +128,24 @@ export type HostToBoard =
   /** Relocate：符号在编辑器里找到了新位置，换掉这一段（段 id 不变） */
   | { type: "replaceSegment"; card: string; seg: Segment; view: SegView }
   | { type: "toast"; text: string }
+  /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
+  | { type: "githubPicker"; repo?: string }
   | { type: "reply"; req: number; data?: unknown; error?: string };
 
 export type BoardToHost =
   | { type: "ready" }
-  | { type: "save"; board: Board }
+  | { type: "save"; req: number; board: Board } // 回 null；写盘失败回 error，白板过一会儿重试
   | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
   /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
   | { type: "open"; card: string; seg?: string; line?: number }
   | { type: "openPath"; path: string; line?: number }
   | { type: "openLink"; url: string }
   /** 点调用展开：回 ExpandResult */
-  | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: { path: string; line: number } }
+  | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick }
+  /** 鼠标停在调用上：宿主先在后台问定义、读好目标文件（不回答；点下去的 expand 复用） */
+  | { type: "prefetch"; seg: Segment; line: number; col: number; name: string }
+  /** 调用接到已有的卡上：算变量候选（回 Var[]） */
+  | { type: "callVars"; req: number; seg: Segment; line: number; col: number; name: string; target: Segment }
   | { type: "peek"; req: number; seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } } // 回 PeekResult
   | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
@@ -98,26 +153,37 @@ export type BoardToHost =
   | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD
   | { type: "commits"; req: number; seg: Segment }
   | { type: "switchCommit"; req: number; seg: Segment; commit: string } // 回 { seg, view }
-  | { type: "source"; req: number; seg: Segment } // Focus 下的只读源码浮窗：回整个文件（那个版本）的高亮
   | { type: "resolveRef"; req: number; text: string } // 手输 commit / branch / tag
   | { type: "paste"; req: number; text: string } // 回 NewCard | null（工作区代码、GitHub 链接）
   | { type: "github"; req: number; url: string }
+  | { type: "gh"; req: number; q: GhQuery }
   | { type: "saveAsset"; req: number; name: string; dataUrl: string }
   | { type: "exportPng"; dataUrl: string; name: string }
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
   | { type: "checkVersions" }
   | { type: "relocate"; card: string } // 符号找不到：在编辑器里选新位置
   | { type: "locateRepo" }
-  | { type: "focusMode"; on: boolean }
+  /** 改一项全局设置（宿主写进 codeboard.*，再广播给所有白板） */
+  | { type: "setSetting"; key: keyof Settings; value: unknown }
+  /** 网页元信息：抓一次，图片存进 assets/ */
+  | { type: "webMeta"; req: number; url: string } // 回 WebMeta
+  | { type: "stickerPacks"; req: number } // 回 StickerPack[]
+  | { type: "openStickerDir" }
+  | { type: "copyDiagnostics"; board?: boolean }
+  /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
+  | { type: "log"; level: "info" | "warn" | "error"; text: string }
   | { type: "openBoard"; id: string; card?: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
   | { type: "pickFile"; req: number; kind: "image" };
+
+/** 指定展开哪个定义。rel = path 相对 seg 自己的来源根（类卡点成员；工作区外的文件也对），qual = 按符号找（钉的版本行号可能挪了） */
+export type ExpandPick = { path: string; line: number; rel?: true; qual?: string };
 
 /** peek 的回答：找不到是 null */
 export type PeekResult = PeekDef | null;
 
 /** expand 的回答 */
 export type ExpandResult =
-  | { card: CodeCard; views: Record<string, SegView>; vars: Var[] }
+  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number }
   | { pick: { label: string; detail: string; path: string; line: number }[] }
   | { none: true; reason: string };

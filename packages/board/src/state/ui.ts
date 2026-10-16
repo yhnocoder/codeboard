@@ -75,5 +75,6 @@ export const [walk, setWalk] = createSignal<Walk | null>(null);
 // 弹窗
 export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; q?: string }>(false);
 export const [keysOpen, setKeysOpen] = createSignal(false);
-export const [focusMode, setFocusMode] = createSignal(false);
+// Settings 页（整窗）；section = 打开时滚到哪一节
+export const [settingsOpen, setSettingsOpen] = createSignal<false | { section?: string }>(false);
 export const [banner, setBanner] = createSignal(true);

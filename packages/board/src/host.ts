@@ -36,6 +36,19 @@ export function followHostTheme() {
   new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
 }
 
+/** 白板里的报错转给宿主：写进 Output 的 CodeBoard 频道，Copy Diagnostics 会带上（同一条 5 秒内只发一次） */
+export function forwardErrors() {
+  const seen = new Map<string, number>();
+  const out = (text: string) => {
+    const now = Date.now();
+    if (now - (seen.get(text) ?? 0) < 5000) return;
+    seen.set(text, now);
+    try { send({ type: "log", level: "error", text: `board: ${text}`.slice(0, 2000) }); } catch { /* 宿主不在 */ }
+  };
+  window.addEventListener("error", (e) => out(`${e.message}${e.filename ? ` @ ${e.filename.split("/").pop()}:${e.lineno}:${e.colno}` : ""}${e.error?.stack ? `\n${e.error.stack}` : ""}`));
+  window.addEventListener("unhandledrejection", (e) => { const r = e.reason; out(`unhandled rejection: ${r instanceof Error ? `${r.message}\n${r.stack ?? ""}` : String(r)}`); });
+}
+
 export function listen(fn: (m: HostToBoard) => void) {
   window.addEventListener("message", (e) => {
     const m = e.data as HostToBoard;

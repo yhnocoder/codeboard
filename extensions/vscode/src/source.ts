@@ -82,9 +82,17 @@ export async function locOfFile(abs: string): Promise<Loc> {
 }
 
 /** pip / conda 包：site-packages 下顶层目录对应的 *.dist-info 里的版本 */
+// 标准库：…/lib/python3.12/xxx.py（不在 site-packages 里）；Pylance 自带的 typeshed 存根
+const STDLIB = /[\\/]python(\d+\.\d+)[\\/](?!.*[\\/](?:site|dist)-packages[\\/])/i;
+const TYPESHED = /[\\/]typeshed(?:-fallback)?[\\/]stdlib[\\/]/;
+
 async function pkgVersion(abs: string): Promise<{ name: string; version: string } | null> {
   const site = SITE.exec(abs);
-  if (!site) return null;
+  if (!site) {
+    if (TYPESHED.test(abs)) return { name: "typeshed", version: "stdlib" };
+    const std = STDLIB.exec(abs);
+    return std ? { name: "Python", version: `${std[1]} stdlib` } : null;
+  }
   const root = abs.slice(0, site.index + site[0].length - 1);
   const top = posix(path.relative(root, abs)).split("/")[0].replace(/\.py$/, "");
   let dirs: string[] = [];

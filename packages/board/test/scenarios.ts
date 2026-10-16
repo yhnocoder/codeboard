@@ -1,19 +1,23 @@
-// 白板交互场景：每个场景开一个白板、做一串操作、截图。
-import { ready, open, shot, symCard, findSym, viewOf, type Host } from "./harness";
+// Board interaction scenarios: each one opens a board, performs a series of actions, and takes screenshots.
+import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
 import { emptyBoard, type Board } from "@codeboard/core";
+import { V015 } from "./v015";
+import { WEB } from "./scenarios-web";
 
 const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
 function boardWith(...quals: string[]): Board {
-  const b = emptyBoard("b1", "nano-vllm · generate 主流程");
+  const b = emptyBoard("b1", "nano-vllm · generate main flow");
   let x = 80;
-  for (const q of quals) { const s = findSym(q); const c = symCard(s.f, s.s); c.x = x; c.y = 80; x += 640; b.cards.push(c); }
+  for (const q of quals) { const s = findSym(q); const c = symCard(s.f, s.s); put(b, c, x, 80); x += 640; }
   return b;
 }
 const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .call:text-is("${name}")`).nth(nth);
 
 const S: Record<string, () => Promise<void>> = {
+  ...V015,
+  ...WEB,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");
@@ -31,7 +35,7 @@ const S: Record<string, () => Promise<void>> = {
     await callEl(h, "schedule").click(); await h.page.waitForTimeout(700);
     await shot(h, "flow-00");
     await callEl(h, "postprocess").first().click({ timeout: 5000 }); await h.page.waitForTimeout(700);
-    const pos = () => JSON.stringify(h.board().cards.map((c: any) => [c.segments?.[0]?.symbol?.qual, c.x, c.y]));
+    const pos = () => JSON.stringify(h.board().cards.map((c: any) => [c.segments?.[0]?.symbol?.qual, h.board().place[c.id]?.x, h.board().place[c.id]?.y]));
     await h.page.waitForTimeout(1200); console.log(pos());
     await h.page.locator(".card .src .call", { hasText: "allocate" }).first().click();
     await h.page.waitForTimeout(1200); console.log(pos(), JSON.stringify(h.board().links.map((l) => [l.from.card, l.to.card]))); await h.page.waitForTimeout(700);
@@ -75,19 +79,19 @@ const S: Record<string, () => Promise<void>> = {
     const h = await open({ board: b, light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(600);
     const r = await h.page.locator(".card").first().boundingBox();
-    await h.page.locator(".bbar button", { hasText: "Section" }).click();
+    await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
     await h.page.mouse.move(r!.x - 40, r!.y - 60); await h.page.mouse.down();
     await h.page.mouse.move(r!.x + r!.width + 30, r!.y + r!.height + 40, { steps: 8 }); await h.page.mouse.up();
     await h.page.waitForTimeout(400);
     await h.page.keyboard.type("Engine"); await h.page.keyboard.press("Enter");
-    await h.page.locator(".bbar button", { hasText: "Section" }).click();
+    await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
     await h.page.mouse.move(r!.x - 80, r!.y - 120); await h.page.mouse.down();
     await h.page.mouse.move(1350, 820, { steps: 8 }); await h.page.mouse.up();
     await h.page.waitForTimeout(300);
     await h.page.keyboard.type("Generate step"); await h.page.keyboard.press("Enter");
     await h.page.waitForTimeout(400);
     await shot(h, "sec-01-nested");
-    console.log(JSON.stringify(h.board().sections.map((s) => [s.name, s.parent ?? null])), JSON.stringify(h.board().cards.map((c) => c.section ?? null)));
+    console.log(JSON.stringify(h.board().sections.map((s) => [s.name, s.parent ?? null])), JSON.stringify(h.board().cards.map((c) => h.board().place[c.id]?.section ?? null)));
     await h.page.context().browser()!.close();
   },
   async compare() {
@@ -101,6 +105,11 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.waitForTimeout(900);
     await shot(h, "cmp-02-compare");
     console.log("kinds:", h.board().cards.map((c) => c.kind).join(","));
+    // Unified: switching turns it into a single-column diff (previously rows weren't redrawn and stayed side by side)
+    await h.page.locator(".cmpwrap .tools button", { hasText: "Unified" }).click(); await h.page.waitForTimeout(500);
+    const u = { urow: await h.page.locator(".cmpwrap .urow").count(), crow: await h.page.locator(".cmpwrap .crow").count() };
+    await shot(h, "cmp-03-unified");
+    console.log(u.urow > 0 && u.crow === 0 ? "PASS" : "FAIL", "compare-unified", JSON.stringify(u));
     await h.page.context().browser()!.close();
   },
   async versions() {
@@ -136,14 +145,14 @@ const S: Record<string, () => Promise<void>> = {
   async misc() {
     const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
-    // Plain link：选两张卡，点 Link
+    // Plain link: select two cards, click Link
     await h.page.keyboard.press("Control+a");
-    await h.page.locator(".bbar button", { hasText: "Link" }).click(); await h.page.waitForTimeout(400);
-    // Text：双击空白处
+    await h.page.locator(".bbar button[aria-label=\"Arrow\"]").click(); await h.page.waitForTimeout(400);
+    // Text: double-click empty space
     await h.page.mouse.dblclick(700, 120); await h.page.waitForTimeout(300);
     await h.page.keyboard.type("Scheduler overview"); await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
     await shot(h, "misc-01");
-    // 合并：⌥ 拖第二张卡的标题到第一张标题上
+    // Merge: ⌥-drag the second card's title onto the first card's title
     const heads = h.page.locator(".card.ccard .chead");
     const a = await heads.nth(0).boundingBox(), b = await heads.nth(1).boundingBox();
     await h.page.mouse.move(b!.x + 60, b!.y + 10); await h.page.mouse.down();
@@ -152,7 +161,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.mouse.up(); await h.page.keyboard.up("Alt"); await h.page.waitForTimeout(700);
     await shot(h, "misc-02-merged");
     console.log("kinds:", h.board().cards.map((c: any) => c.kind + (c.segments ? ":" + c.segments.length : "")).join(","), "links:", JSON.stringify(h.board().links.map((l) => [l.kind, l.from.card, l.to.card])));
-    // Section 并折叠
+    // Section, then collapse
     await h.page.keyboard.press("Control+a");
     await h.page.locator(".card.ccard .chead").first().click({ button: "right" }); await h.page.waitForTimeout(200);
     await h.page.locator(".ctx button", { hasText: "Move to New Section" }).first().click().catch(() => console.log("no Move to New Section"));
@@ -162,7 +171,7 @@ const S: Record<string, () => Promise<void>> = {
     console.log("sections:", JSON.stringify(h.board().sections.map((q) => [q.title, q.collapsed ?? false])));
     await h.page.context().browser()!.close();
   },
-  // 回归：Compare 的两栏不能被展开 / 连线拆到两棵树里
+  // Regression: expanding / linking must not split a Compare's two panes into two trees
   async cmptree() {
     const h = await open({ board: boardWith("LLMEngine.step", "Scheduler.schedule"), light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(400);
@@ -176,44 +185,45 @@ const S: Record<string, () => Promise<void>> = {
     const roots = new Set(h.board().links.filter((l) => l.kind === "call").map((l) => l.from.card));
     const b = h.board(); const cmp = b.cards.find((c) => c.kind === "compare") as any;
     const ok = b.links.filter((l) => l.kind === "call").length === 1 && /one flow/.test(toast ?? "");
-    console.log(ok ? "PASS" : "FAIL", "cmptree", JSON.stringify({ links: b.links.length, roots: [...roots], cols: cmp?.cols.map((c: any) => c.id), toast }));
+    console.log(ok ? "PASS" : "FAIL", "cmptree", JSON.stringify({ links: b.links.length, roots: [...roots], cols: cmp?.cols, toast }));
     await shot(h, "cmptree");
     await h.page.context().browser()!.close();
   },
-  // 回归：删 Link / 删卡也不能把 Compare 的两栏拆到两棵树里（R → X → cl，R → Y → cr）
+  // Regression: deleting a Link / card must not split a Compare's two panes into two trees either (R → X → cl, R → Y → cr)
   async cmpdel() {
     const b = boardWith("LLMEngine.step", "Scheduler.schedule", "Scheduler.postprocess");
     const [R, X, Y] = b.cards as any[];
-    X.x = R.x + 56; X.y = 700; Y.x = R.x + 56; Y.y = 1300;
+    const P = b.place; P[X.id].x = P[R.id].x + 56; P[X.id].y = 700; P[Y.id].x = P[R.id].x + 56; P[Y.id].y = 1300;
     const cl = symCard(findSym("BlockManager.can_allocate").f, findSym("BlockManager.can_allocate").s);
     const cr = symCard(findSym("BlockManager.allocate").f, findSym("BlockManager.allocate").s);
-    b.cards.push({ id: "k", kind: "compare", x: 1400, y: 700, w: 900, cols: [cl, cr] } as any);
+    b.cards.push(cl, cr, { id: "k", kind: "compare", cols: [cl.id, cr.id] });
+    b.place.k = { x: 1400, y: 700, w: 900 };
     const ln = (c: any, d: number) => c.segments[0].start + d;
     const call = (id: string, f: any, line: number, t: any) => ({ id, kind: "call", from: { card: f.id, seg: f.segments[0].id, line }, to: { card: t.id } });
     b.links.push(call("RX", R, ln(R, 2), X) as any, call("RY", R, ln(R, 4), Y) as any, call("Xcl", X, ln(X, 3), cl) as any, call("Ycr", Y, ln(Y, 3), cr) as any);
     const h = await open({ board: b, light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
     const toast = () => h.page.locator(".toast").textContent().catch(() => "");
-    // 删共同的祖先卡
+    // Delete the common ancestor card
     await h.page.locator(".card", { has: h.page.locator(".ctitle", { hasText: /^LLMEngine\.step$/ }) }).locator(".chead").click({ position: { x: 40, y: 10 } });
     await h.page.waitForTimeout(100);
     await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
     const t1 = await toast();
     await shot(h, "cmpdel-0");
-    // 删 R → X 这条线（右键菜单）
+    // Delete the R → X link (context menu)
     await h.page.keyboard.press("Escape");
-    await h.page.waitForTimeout(2800); // 等上一个提示消失
+    await h.page.waitForTimeout(2800); // wait for the previous toast to disappear
     await h.page.locator('path.lhit[data-link="RX"]').dispatchEvent("pointerdown", { button: 0 });
     await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
     const t2 = await toast();
     await h.page.waitForTimeout(1300);
     const nb = h.board();
-    const ok = nb.cards.length === 4 && nb.links.length === 4 && /one flow/.test(t1 ?? "") && /one flow/.test(t2 ?? "");
+    const ok = nb.cards.length === 6 && nb.links.length === 4 && /one flow/.test(t1 ?? "") && /one flow/.test(t2 ?? "");
     console.log(ok ? "PASS" : "FAIL", "cmpdel", JSON.stringify({ cards: nb.cards.length, links: nb.links.map((l) => l.id), t1, t2 }));
     await shot(h, "cmpdel");
     await h.page.context().browser()!.close();
   },
-  // 回归：Relocate 换段、HEAD 下段挪了位置：Link 两端、Sidenote、隐藏行跟着走；挪位置不进撤销栈
+  // Regression: Relocate changes the snippet, or the snippet moved at HEAD: Link endpoints, Sidenotes and hidden lines follow; moves don't go on the undo stack
   async rebase() {
     const b = boardWith("Scheduler.schedule", "Scheduler.postprocess");
     const [A, B] = b.cards as any[];
@@ -222,18 +232,18 @@ const S: Record<string, () => Promise<void>> = {
     b.links.push({ id: "L", kind: "plain", from: { card: B.id, seg: sb.id, line: sb.start + 2 }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
     b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: B.id, seg: sb.id, lines: [sb.start + 2, sb.start + 2] } } as any);
     const h = await open({ board: b, light });
-    // A 整体下移 5 行（HEAD 变了，内容没变）
+    // A moves down 5 lines as a whole (HEAD changed, content didn't)
     await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5 } } } as any);
     await h.page.waitForTimeout(300);
-    // B 被 Relocate 到下移 7 行的位置（同样内容）
+    // B is Relocated 7 lines down (same content)
     await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
     await h.page.waitForTimeout(300);
-    await h.page.keyboard.press("Control+z"); await h.page.keyboard.press("Meta+z"); // 只撤掉 Relocate；挪位置不该被撤
+    await h.page.keyboard.press("Control+z"); await h.page.keyboard.press("Meta+z"); // undoes only the Relocate; the move must not be undone
     await h.page.waitForTimeout(1300);
     const nb = h.board() as any, L = nb.links[0], na = nb.cards[0].segments[0], nbs = nb.cards[1].segments[0];
     const ok = na.start === sa.start + 5 && JSON.stringify(na.hidden) === JSON.stringify([[sa.start + 13, sa.start + 14]]) && L.to.line === sa.start + 8
       && nbs.start === sb.start && L.from.line === sb.start + 2 && nb.sidenotes[0].at.lines[0] === sb.start + 2;
-    // 再做一次 Relocate（不撤销）：Link 起点和 Sidenote 跟到新行
+    // Relocate again (no undo): Link start and Sidenote follow to the new lines
     await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
     await h.page.waitForTimeout(1300);
     const nb2 = h.board() as any;
@@ -241,7 +251,7 @@ const S: Record<string, () => Promise<void>> = {
     console.log(ok && ok2 ? "PASS" : "FAIL", "rebase", JSON.stringify({ aStart: na.start - sa.start, hidden: na.hidden?.[0]?.map((x: number) => x - sa.start), to: L.to.line - sa.start, bAfterUndo: nbs.start - sb.start, from: nb2.links[0].from.line - sb.start, note: nb2.sidenotes[0].at.lines[0] - sb.start }));
     await h.page.context().browser()!.close();
   },
-  // 回归：Update 后 Sidenote 和高亮跟着改过的行走，不当成删掉
+  // Regression: after Update, Sidenotes and highlights follow edited lines instead of being treated as deleted
   async follow() {
     const b = boardWith("Scheduler.schedule");
     const c = b.cards[0] as any, s0 = c.segments[0];
@@ -257,29 +267,30 @@ const S: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "follow", JSON.stringify({ at: n.at, removed: n.lineRemoved ?? false, hl: ns.hl, hidden: ns.hidden, version: ns.version.commit }));
     await h.page.context().browser()!.close();
   },
-  // 回归：先画内框、再画外框，外框是父级
+  // Regression: draw the inner frame first, then the outer one; the outer frame is the parent
   async secout() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     const r = await h.page.locator(".card").first().boundingBox();
     const draw = async (pad: number, name: string) => {
-      await h.page.locator(".bbar button", { hasText: "Section" }).click();
+      await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
       await h.page.mouse.move(r!.x - pad, r!.y - pad - 20); await h.page.mouse.down();
       await h.page.mouse.move(r!.x + r!.width + pad, r!.y + r!.height + pad, { steps: 8 }); await h.page.mouse.up();
       await h.page.waitForTimeout(300); await h.page.keyboard.type(name); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(300);
     };
-    await draw(30, "Inner"); await draw(90, "Outer"); await h.page.waitForTimeout(1200); // 等自动保存
+    await draw(30, "Inner"); await draw(90, "Outer"); await h.page.waitForTimeout(1200); // wait for autosave
     const ss = h.board().sections, inner = ss.find((q) => q.title === "Inner")!, outer = ss.find((q) => q.title === "Outer")!;
-    const ok = inner.parent === outer.id && !outer.parent && h.board().cards[0].section === inner.id;
-    console.log(ok ? "PASS" : "FAIL", "secout", JSON.stringify(ss.map((q) => [q.title, q.parent ? ss.find((x) => x.id === q.parent)!.title : null]).concat([["card", h.board().cards[0].section === inner.id ? "Inner" : "?"]])));
+    const ok = inner.parent === outer.id && !outer.parent && h.board().place[h.board().cards[0].id]?.section === inner.id;
+    console.log(ok ? "PASS" : "FAIL", "secout", JSON.stringify(ss.map((q) => [q.title, q.parent ? ss.find((x) => x.id === q.parent)!.title : null]).concat([["card", h.board().place[h.board().cards[0].id]?.section === inner.id ? "Inner" : "?"]])));
     await shot(h, "secout");
     await h.page.context().browser()!.close();
   },
-  // 回归：Walkthrough 展开折叠的子树不写进白板
+  // Regression: subtrees expanded by Walkthrough are not written to the board
   async walkview() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await h.page.locator(".card .src .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(700);
     const root = h.board().cards[0].id;
     await h.page.locator(".card").first().locator(".chead").click({ button: "right" }); await h.page.waitForTimeout(200);
+    await h.page.locator('.ctx button:has(.lb:text-is("Flow"))').hover(); await h.page.waitForTimeout(400);
     await h.page.locator(".ctx button", { hasText: /Collapse/ }).first().click(); await h.page.waitForTimeout(1500);
     const before = JSON.stringify(h.board());
     await h.page.keyboard.press("Escape"); await h.page.keyboard.press("p"); await h.page.waitForTimeout(600);
@@ -289,7 +300,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(1600);
     const after = JSON.stringify(h.board()), hidden = await h.page.locator(".card").count();
     const strip = (j: string) => { const o = JSON.parse(j); delete o.cam; return JSON.stringify(o); };
-    const ok = shown === 2 && hidden === 1 && strip(before) === strip(during) && strip(before) === strip(after) && (JSON.parse(after).cards.find((c: any) => c.id === root)?.collapsed === true);
+    const ok = shown === 2 && hidden === 1 && strip(before) === strip(during) && strip(before) === strip(after) && (JSON.parse(after).place[root]?.collapsed === true);
     console.log(ok ? "PASS" : "FAIL", "walkview", JSON.stringify({ shown, hidden, savedChanged: strip(before) !== strip(during) }));
     await h.page.context().browser()!.close();
   },
@@ -312,7 +323,169 @@ const S: Record<string, () => Promise<void>> = {
     await shot(h, "peek-01");
     await h.page.context().browser()!.close();
   },
+  // #3 #4: field / function / module / library previews
+  async peekkinds() {
+    const h = await open({ board: boardWith("LLMEngine.__init__", "ModelRunner.__init__"), light });
+    const cases: [string, string, string, string][] = [
+      ["field", "LLMEngine.__init__", "config.kvcache_block_size", "kvcache_block_size"],
+      ["function", "ModelRunner.__init__", "load_model(self.model", "load_model"],
+      ["module", "LLMEngine.__init__", "mp.get_context", "mp"],
+      ["library", "LLMEngine.__init__", "mp.get_context", "get_context"],
+    ];
+    for (const [k, card, line, word] of cases) {
+      await h.page.mouse.move(5, 5); await h.page.waitForTimeout(500);
+      await hoverWord(h, card, line, word); await h.page.waitForTimeout(1100);
+      const pop = h.page.locator(".pop.k-peek");
+      const info = await pop.evaluate((e) => ({
+        title: e.querySelector(".pt")?.textContent, sig: e.querySelector(".pk-sig")?.textContent, doc: !!e.querySelector(".pk-doc"),
+        rows: [...e.querySelectorAll(".pl .no")].map((x) => x.textContent).join(","), hl: e.querySelector(".pl.hl .no")?.textContent,
+        more: e.querySelector(".pk-more")?.textContent, lib: e.querySelector(".lib-tag")?.textContent, head: e.querySelector(".pk-head")?.textContent,
+      })).catch(() => null);
+      console.log(k, JSON.stringify(info));
+      await shot(h, `peekkinds-${k}`);
+    }
+    await h.page.context().browser()!.close();
+  },
+  // #34: library calls get no underline and don't expand on click; ⌥-click / context menu Expand Anyway; restored after adding to Study Scope
+  async libcalls() {
+    const h = await open({ board: boardWith("ModelRunner.warmup_model"), light });
+    const lib = h.page.locator(`.card .src .call[data-p="torch"]`).first();
+    const deco = () => lib.evaluate((e) => getComputedStyle(e).textDecorationLine);
+    console.log("lib calls:", await h.page.locator(".card .src .call[data-p]").count(), "project calls:", await h.page.locator(".card .src .call:not([data-p])").count(), "lib deco:", await deco());
+    await shot(h, "libcalls-01");
+    await lib.click(); await h.page.waitForTimeout(700);
+    console.log("after click: cards", h.board().cards.length, "expand sent", h.sent.filter((m) => m.type === "expand").length);
+    await lib.click({ modifiers: ["Alt"] }); await h.page.waitForTimeout(700);
+    console.log("after alt-click: expand sent", h.sent.filter((m) => m.type === "expand").length);
+    await h.page.mouse.move(5, 5); await h.page.waitForTimeout(400);
+    await lib.click({ button: "right" }); await h.page.waitForTimeout(400);
+    console.log("menu:", JSON.stringify(await h.page.locator(".ctx button").allTextContents()));
+    await shot(h, "libcalls-02-menu");
+    await h.page.locator(".ctx button", { hasText: "Study Scope" }).first().click(); await h.page.waitForTimeout(500);
+    console.log("setSetting:", JSON.stringify(h.sent.filter((m) => m.type === "setSetting")), "deco now:", await deco());
+    await shot(h, "libcalls-03-scoped");
+    await h.page.context().browser()!.close();
+  },
+  // #32: dragging onto an existing card also offers variable candidates
+  async attachvars() {
+    const h = await open({ board: boardWith("ModelRunner.__init__", "Qwen3ForCausalLM"), light });
+    const c = await callEl(h, "Qwen3ForCausalLM").boundingBox();
+    const t = await h.page.locator(".card").nth(1).locator(".chead").boundingBox();
+    await h.page.mouse.move(c!.x + 10, c!.y + c!.height / 2); await h.page.mouse.down();
+    await h.page.mouse.move(t!.x + 60, t!.y + 40, { steps: 10 }); await h.page.mouse.up();
+    await h.page.waitForTimeout(2500);
+    console.log("links:", JSON.stringify(h.board().links.map((l: any) => ({ kind: l.kind, cands: l.cands }))));
+    await shot(h, "attachvars");
+    await h.page.context().browser()!.close();
+  },
+  async themes() {
+    // Themes: switch through 8 materials × light/dark in Settings, one board screenshot each.
+    // Board: entry function with two expanded calls (laid out to the right, variables on links), a Note, a Section, a labeled arrow and a heading; entry card selected and a toast shown
+    const b = boardWith("LLMEngine.step");
+    for (const [q, name] of [["Scheduler.schedule", "schedule"], ["ModelRunner.run", "call"]] as const) {
+      const s0 = findSym(q); const c = symCard(s0.f, s0.s); put(b, c, 0, 0);
+      const seg = (b.cards[0] as any).segments[0], i = seg.text.findIndex((t: string) => t.includes(`.${name}(`));
+      b.links.push({ id: `c${b.links.length}`, kind: "call", from: { card: b.cards[0].id, seg: seg.id, line: seg.start + i }, to: { card: c.id }, call: { name, col: seg.text[i].indexOf(`.${name}(`) + 1 } } as any);
+    }
+    const [a] = b.cards;
+    const kids = b.links.filter((l) => l.kind === "call").map((l) => l.to.card);
+    b.place[a.id] = { x: 80, y: 200, w: 520 };
+    kids.forEach((id, i) => { b.place[id] = { x: 760, y: 60 + i * 420, w: 470, h: i ? 300 : 360 }; });
+    const vars = [[{ a: "seqs" }, { a: "is_prefill" }], [{ a: "token_ids", ret: true }]];
+    b.links.filter((l) => l.kind === "call").forEach((l, i) => { (l as any).vars = vars[i] ?? []; });
+    const note = { id: "n1", kind: "note" as const, md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.", bg: true };
+    const title = { id: "t1", kind: "note" as const, md: "Engine loop", bg: false, size: "title" as const };
+    b.cards.push(note, title);
+    b.place[note.id] = { x: 110, y: 520, w: 360, section: "sec1" }; b.place[title.id] = { x: 70, y: 70, w: 300 };
+    b.sections.push({ id: "sec1", title: "Engine", x: 50, y: 160, w: 600, h: 560, color: "sand" });
+    b.place[a.id].section = "sec1";
+    b.links.push({ id: "l1", kind: "plain", from: { card: note.id }, to: { card: a.id }, color: "blue", label: "why" } as any);
+    b.cam = { x: 120, y: 60, z: 0.92 };
+    const h = await open({ board: b, light: false });
+    await h.page.waitForTimeout(600);
+    await h.page.keyboard.press("Escape");
+    const poke = async () => {
+      // Show a toast (click Arrow with no card selected), then select the entry card (click its header)
+      await h.page.keyboard.press("Escape");
+      await h.page.mouse.click(700, 24); // empty canvas: clear selection
+      await h.page.locator('.bbar .tbtn[aria-label="Arrow"]').click();
+      // An empty spot on the card header (header layout varies by material; find a point that hits .chead itself)
+      const pt = await h.page.evaluate((id) => {
+        const card = document.querySelector(`.card[data-id="${id}"]`)!, hd = card.querySelector(".chead")!, r = card.getBoundingClientRect();
+        for (let y = r.top + 3; y < r.top + 120; y += 4) for (let x = r.right - 40; x > r.left; x -= 6) { const e = document.elementFromPoint(x, y); if (e === hd || e?.matches(".chead .grow, .cband, .cband .cname")) return { x, y }; }
+        return { x: r.left + 4, y: r.top + 4 };
+      }, a.id);
+      await h.page.mouse.click(pt.x, pt.y);
+    };
+    await poke(); await h.page.waitForTimeout(400);
+    console.log("cards after poke:", h.board().cards.length, "toast:", await h.page.locator(".toast").count(), "selected:", await h.page.locator(".card.sel").count());
+    const mode = async (m: "light" | "dark") => { await h.page.evaluate((c) => { document.body.className = c; }, `vscode-${m}`); await h.page.waitForTimeout(100); };
+    for (const m of ["light", "dark"] as const) {
+      await mode(m);
+      await h.page.mouse.move(5, 450);
+      await shot(h, `theme-${m}-warm-ink-base`);
+      await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(300);
+      await shot(h, `theme-${m}-settings`);
+      if (m === "light") {
+        await h.page.keyboard.press("Escape"); await h.page.keyboard.press("?"); await h.page.waitForTimeout(200);
+        await shot(h, `theme-${m}-keys-overlay`);
+        await h.page.locator(".keys .tlink").click(); await h.page.waitForTimeout(300);
+        console.log("Search… in ? overlay opens Settings:", await h.page.locator(".settings").count() === 1, "overlay closed:", !(await h.page.locator(".keys").count()));
+        await h.page.locator(".st-filter").scrollIntoViewIfNeeded();
+        await shot(h, `theme-${m}-settings-keys`);
+        await h.page.locator(".st-filter").fill("zoom"); await h.page.waitForTimeout(100);
+        await shot(h, `theme-${m}-settings-keys-zoom`);
+        await h.page.locator(".st-filter").fill("");
+        await h.page.locator(".st-filter").press("Escape"); await h.page.waitForTimeout(200);
+        console.log("Esc in filter closes settings:", !(await h.page.locator(".settings").count()));
+        await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(300);
+      }
+      const n = await h.page.locator(".st-sw").count();
+      for (let i = 0; i < n; i++) {
+        const sw = h.page.locator(".st-sw").nth(i);
+        const name = (await sw.locator(".st-swn").textContent())!.toLowerCase().replace(/ /g, "-");
+        await sw.click(); await h.page.waitForTimeout(150);
+        if (i === n - 1) await shot(h, `theme-${m}-settings-${name}`);
+        await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(150);
+        await poke();
+        if (await h.page.locator(".card.sel").count() !== 1) console.log("theme", m, name, "selected", await h.page.locator(".card.sel").count());
+        await h.page.mouse.move(5, 450);
+        await shot(h, `theme-${m}-${i}-${name}`);
+        await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(150);
+      }
+      await h.page.locator(".st-sw").first().click();
+      await h.page.keyboard.press("Escape");
+    }
+    const set = h.sent.filter((x) => x.type === "setSetting");
+    console.log("setSetting:", set.length, JSON.stringify(set.at(-1)));
+    console.log("links:", h.board().links.length, "sections:", h.board().sections.length);
+    await h.page.context().browser()!.close();
+  },
 };
+
+/** Move the mouse to the middle of `word` on the line (containing `line`) in a card */
+async function hoverWord(h: Host, card: string, line: string, word: string) {
+  const pt = await h.page.evaluate(([card, line, word]) => {
+    for (const c of document.querySelectorAll(".card")) {
+      if (!c.querySelector(".chead")?.textContent?.includes(card)) continue;
+      for (const l of c.querySelectorAll(".src .l")) {
+        const t = l.textContent ?? "";
+        const i = t.indexOf(line);
+        if (i < 0) continue;
+        const at = i + line.indexOf(word) + 1;
+        const w = document.createTreeWalker(l, NodeFilter.SHOW_TEXT);
+        let n = 0;
+        for (let x = w.nextNode() as Text | null; x; x = w.nextNode() as Text | null) {
+          if (n + x.length > at) { const r = document.createRange(); r.setStart(x, at - n); r.setEnd(x, at - n + 1); const b = r.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }
+          n += x.length;
+        }
+      }
+    }
+    return null;
+  }, [card, line, word]);
+  if (!pt) throw new Error(`hoverWord: ${line} not found`);
+  await h.page.mouse.move(pt.x - 3, pt.y); await h.page.mouse.move(pt.x, pt.y, { steps: 2 });
+}
 
 (async () => {
   await ready();

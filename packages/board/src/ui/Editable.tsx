@@ -14,7 +14,9 @@ export function Editable(p: {
   createEffect(() => {
     if (!on() || !el) return;
     el.textContent = p.value;
-    queueMicrotask(() => {
+    // 从菜单点进来时，菜单关掉那一下会把焦点放回 body：等这一帧过去再拿焦点
+    const grab = () => {
+      if (!on() || !el.isConnected) return;
       el.focus({ preventScroll: true });
       const r = document.createRange();
       r.selectNodeContents(el);
@@ -22,7 +24,9 @@ export function Editable(p: {
       const s = window.getSelection();
       s?.removeAllRanges();
       s?.addRange(r);
-    });
+    };
+    queueMicrotask(grab);
+    requestAnimationFrame(() => { if (document.activeElement !== el) grab(); });
   });
   let done = false;
   const finish = (ok: boolean) => {
@@ -49,6 +53,12 @@ export function Editable(p: {
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === "Escape") { e.preventDefault(); finish(!!p.multiline); } // 多行正文：Esc 保留写好的字；单行名字：Esc 撤销
+          // ⌘A 自己选中这一块的字：VS Code 的 webview 会把 ⌘A 交给宿主，回来时不一定落在编辑框里
+          else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "a") {
+            e.preventDefault();
+            const r = document.createRange(); r.selectNodeContents(el);
+            const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
+          }
           else if (e.key === "Enter" && !e.isComposing && (!p.multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); finish(true); }
         }}
         onBlur={() => finish(true)} />
