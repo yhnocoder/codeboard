@@ -135,7 +135,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .ib:hover, .tbtn:hover, .bname:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ib:active, .tbtn:active, .bname:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
 .ib[disabled] { opacity: .35; }
-.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1.4); stroke-linecap: round; stroke-linejoin: round; }
+.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1.5); stroke-linecap: round; stroke-linejoin: round; }
+/* 1x 屏上细线落在半个像素上会糊：统一 1px；高分屏才用各主题的粗细 */
+@media (max-resolution: 1.49dppx) { .ico { stroke-width: 1; } }
 .cdesc { padding: 7px 12px 6px; font-size: 12px; line-height: 1.55; color: var(--ink-2); border-bottom: 1px solid var(--line); flex: none; }
 .cdesc[contenteditable], .ctitle[contenteditable], .slabel .sname[contenteditable] { user-select: text; -webkit-user-select: text; cursor: text; outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 3px; background: var(--surface); text-overflow: clip; }
 .cdesc:empty { display: none; }
@@ -306,7 +308,7 @@ math { font-size: 1.05em; }
 .over { position: absolute; display: flex; align-items: center; gap: 4px; z-index: 20; }
 .tb-left { left: 12px; top: 10px; }
 .tb-right { right: 12px; top: 10px; }
-.dock { bottom: 12px; left: 50%; transform: translateX(-50%); }
+.dock { bottom: 12px; }
 .pill { display: inline-flex; align-items: center; gap: 2px; background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); border-radius: 10px; padding: 4px; box-shadow: var(--sh-float); }
 .bname { font: 600 13.5px var(--display); padding: 3px 8px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); border-radius: 6px; height: 28px; }
 .bname small { font: 11px var(--sys); color: var(--ink-3); font-weight: 400; }
@@ -570,8 +572,9 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .segc { display: inline-flex; background: color-mix(in srgb, var(--ink) 6%, transparent); border-radius: 7px; padding: 2px; }
 .segc button { height: 24px; padding: 0 10px; border-radius: 5px; font-size: 12px; color: var(--ink-2); }
 .segc button.on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.08); }
-.bbar { bottom: 12px; left: 50%; transform: translateX(-50%); }
-.dock { left: auto; right: 12px; transform: none; }
+/* 居中不用 translateX(-50%)：宽度是奇数时会落在半个像素上，图标发糊 */
+.bbar { bottom: 12px; left: 0; right: 0; width: max-content; margin-inline: auto; }
+.dock { right: 12px; }
 .banner { position: absolute; top: 52px; left: 50%; translate: -50% 0; z-index: 21; padding: 3px 3px 3px 12px; gap: 8px; font-size: 12.5px; animation: popin calc(var(--t) * 200ms) var(--out); }
 .ndot { width: 7px; height: 7px; border-radius: 50%; background: var(--warn); display: inline-block; }
 .present.show { translate: -50% 0; opacity: 1; pointer-events: auto; }
@@ -585,7 +588,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .eh-t { font: 600 15px var(--display); color: var(--ink-2); margin-bottom: 6px; }
 .eh-d { font-size: 12.5px; line-height: 1.8; }
 .eh-d kbd { padding: 1px 5px; border-radius: 4px; background: var(--hlrow); color: var(--ink-2); }
-.over .tbtn .ico { width: 15px; height: 15px; }
 .zoom { cursor: default; border-radius: 5px; padding: 3px 0; }
 .zoom:hover { background: var(--hlrow); }
 
