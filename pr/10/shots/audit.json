@@ -1,0 +1,40 @@
+[
+ {
+  "step": "1-first-card",
+  "issues": []
+ },
+ {
+  "step": "2-flow",
+  "issues": []
+ },
+ {
+  "step": "3-peek",
+  "issues": []
+ },
+ {
+  "step": "4-sidenote",
+  "issues": []
+ },
+ {
+  "step": "5-search",
+  "issues": []
+ },
+ {
+  "step": "6-board",
+  "issues": [
+   {
+    "rule": "L8 卡片重叠",
+    "what": "div.ctitle \"Scheduler.schedule\" ↔ span.ctitle.sys \"Note\""
+   }
+  ]
+ },
+ {
+  "step": "7-uncommitted",
+  "issues": [
+   {
+    "rule": "L8 卡片重叠",
+    "what": "div.ctitle \"Scheduler.schedule\" ↔ span.ctitle.sys \"Note\""
+   }
+  ]
+ }
+]
