@@ -243,7 +243,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     await page.keyboard.type("free text"); await page.keyboard.press("Escape"); await sleep(600);
     const paste = (t) => f.evaluate((t) => { const dt = new DataTransfer(); dt.setData("text/plain", t); window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })); }, t);
     await paste("https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3/nanovllm/engine/scheduler.py#L24-L40"); await sleep(2500);
-    await paste("https://arxiv.org/abs/2309.06180"); await sleep(2500);
+    await paste(process.env.WEB_URL || "https://arxiv.org/abs/2309.06180"); await sleep(2500);
     const b = await waitJson((b) => nCards(b) >= before + 4), kinds = (b?.cards ?? []).map((c) => c.kind);
     check(nCards(b) >= before + 4, "4 more cards", { before, after: nCards(b), kinds });
     check(kinds.includes("web"), "plain URL became a Web card", kinds);
@@ -418,11 +418,15 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     await pasteImage(f);
     // A Note (with background) has selectable text, so by design it drags by its header; only check cards whose content is not text
     for (const k of ["text", "web", "image"]) {
-      const c = f.locator(`.card.${k}`).first();
+      // For Web cards prefer one with a loaded preview (title, description, image): that is the one users grab by its content.
+      // Locally (no internet) WEB_URL can point the pasted URL at a page served on localhost
+      const rich = f.locator(".card.web", { has: f.locator(".wimg") });
+      const c = k === "web" && (await rich.count()) ? rich.first() : f.locator(`.card.${k}`).first();
       if (!(await c.count())) { check(false, `board has a ${k} card to drag`); continue; }
-      await blank(f, page);
+      // Fit first: the previous card's zoom can leave this one off screen, and a click there would select nothing
+      await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600); await settle(f);
       // Select the card and zoom to it (Shift+2) so it is fully in view and large enough
-      const rr = await rectOf(c); await f.locator("#board").click({ position: { x: Math.max(4, rr.l + rr.w / 2), y: Math.max(4, rr.t + 4) }, force: true }).catch(() => {});
+      const rr = await rectOf(c); await f.locator("#board").click({ position: { x: rr.l + rr.w / 2, y: rr.t + Math.min(8, rr.h / 2) }, force: true }).catch(() => {});
       await page.keyboard.press("Shift+@"); await sleep(900); await settle(f);
       const r0 = await rectOf(c), fb = await (await f.frameElement()).boundingBox();
       const x = fb.x + r0.l + r0.w / 2, y = fb.y + r0.t + r0.h * 0.6;
