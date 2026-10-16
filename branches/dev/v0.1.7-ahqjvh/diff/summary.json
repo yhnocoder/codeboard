@@ -7,32 +7,32 @@
  {
   "name": "2-flow.png",
   "status": "same",
-  "ratio": 0.001
+  "ratio": 0
  },
  {
   "name": "3-peek.png",
-  "status": "changed",
-  "ratio": 0.0459
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "4-sidenote.png",
   "status": "same",
-  "ratio": 0.0014
+  "ratio": 0
  },
  {
   "name": "5-search.png",
-  "status": "changed",
-  "ratio": 0.0163
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "6-board.png",
-  "status": "changed",
-  "ratio": 0.0087
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "7-uncommitted.png",
-  "status": "changed",
-  "ratio": 0.0098
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "7a-settings.png",
@@ -41,7 +41,7 @@
  },
  {
   "name": "7b-diagnostics.png",
-  "status": "changed",
-  "ratio": 0.0097
+  "status": "same",
+  "ratio": 0
  }
 ]
