@@ -219,6 +219,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const rowE = rowEl(e.target as Node);
     clearTimeout(leaveT);
     setHoverRow(rowE ? +rowE.dataset.r! : -1);
+    act.hoverCall(c().id, (rowE && (rows()[+rowE.dataset.r!] as { seg?: string } | undefined))?.seg, e.target);
     const doc = document as any;
     const pos = doc.caretPositionFromPoint?.(e.clientX, e.clientY);
     const rng: Range | null = pos ? (() => { const r = document.createRange(); r.setStart(pos.offsetNode, pos.offset); return r; })() : doc.caretRangeFromPoint?.(e.clientX, e.clientY);

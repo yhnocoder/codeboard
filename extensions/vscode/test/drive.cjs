@@ -69,7 +69,7 @@ const boardJson = () => {
   // 2. 点 schedule：展开 Scheduler.schedule，编号 1，连 Call link
   await card(f, "LLMEngine.step").locator(".src .call", { hasText: /^schedule$/ }).first().click(); await sleep(1800);
   check(await card(f, "Scheduler.schedule").count() === 1, "点 schedule 展开出 Scheduler.schedule");
-  check((await card(f, "Scheduler.schedule").locator(".step").textContent().catch(() => "")) === "A", "子卡标所在的树 A");
+  check((await card(f, "Scheduler.schedule").locator(".chead .step").textContent().catch(() => "")) === "A", "子卡标所在的树 A");
   check(await f.locator("path.edge").count() >= 1, "画出 Call link");
   // 3. 点 postprocess：编号 2
   await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);

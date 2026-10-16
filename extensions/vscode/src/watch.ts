@@ -8,6 +8,7 @@ import { absOf } from "./source";
 import type { Storage } from "./storage";
 import { boardSegments, countStale, staleFor } from "./versions";
 import { debounce, wsFolders } from "./ws";
+import { forgetDefs } from "./defcache";
 
 export function watchVersions(ctx: vscode.ExtensionContext, panels: Panels, store: Storage) {
   const watched = new Set<string>();
@@ -53,6 +54,7 @@ export function watchVersions(ctx: vscode.ExtensionContext, panels: Panels, stor
       if (lastHead.get(r) !== h) { changed = true; lastHead.set(r, h); }
     }
     if (!changed) return;
+    forgetDefs(); // checkout 之类：文件可能整批换了
     await panels.refreshStale();
     await countClosed();
   }, 600);

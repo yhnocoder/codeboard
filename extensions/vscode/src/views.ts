@@ -25,16 +25,20 @@ function shikiLang(lang: string): string | null {
   return null;
 }
 
-const tokCache = new Lru<Tok[][]>(60);
+const tokCache = new Lru<Promise<Tok[][]>>(60);
 
-/** 每行的 token（带白板的颜色 class） */
-export async function tokensOf(lang: string, text: string): Promise<Tok[][]> {
-  const lines = splitLines(text);
+/** 每行的 token（带白板的颜色 class）。缓存的是 promise：同一份文本同时被几个段要时只分词一次 */
+export function tokensOf(lang: string, text: string): Promise<Tok[][]> {
   const sl = shikiLang(lang);
-  if (!sl) return lines.map((l) => [{ text: l }]);
+  if (!sl) return Promise.resolve(splitLines(text).map((l) => [{ text: l }]));
   const k = `${sl}\0${text.length}\0${fingerprint(text)}`;
-  const hit = tokCache.get(k);
-  if (hit) return hit;
+  let p = tokCache.get(k);
+  if (!p) { p = tokenize(sl, text); tokCache.set(k, p); }
+  return p;
+}
+
+async function tokenize(sl: string, text: string): Promise<Tok[][]> {
+  const lines = splitLines(text);
   const h = await highlighter();
   let res: Tok[][];
   try {
@@ -50,7 +54,6 @@ export async function tokensOf(lang: string, text: string): Promise<Tok[][]> {
     let col = 0;
     for (const t of toks) { if (col < end && t.text.trim()) t.cls = "dec"; col += t.text.length; }
   });
-  tokCache.set(k, res);
   return res;
 }
 
@@ -87,6 +90,11 @@ export async function segView(seg: Segment): Promise<SegView> {
   const full = await versionText(seg).catch(() => null);
   if (!full || splitLines(full).length > MAX_FULL) return snippetView(seg);
   const fa = analysisOf(lang, full);
+  // Python 的函数 / 类段从 def / class / 装饰器那行开始，词法状态和文件开头一样：只给段本身分词（大文件里省掉整个文件的 shiki）
+  if (shikiLang(lang) === "python" && seg.symbol && seg.symbol.kind !== "module" && fa.symbols.some((s) => s.start === seg.start && s.qual === seg.symbol!.qual)) {
+    const toks = await tokensOf(lang, seg.text.join("\n"));
+    return build(seg, fa, (i) => toks[i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
+  }
   const toks = await tokensOf(lang, full);
   return build(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
 }

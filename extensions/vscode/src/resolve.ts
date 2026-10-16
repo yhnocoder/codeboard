@@ -4,14 +4,15 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
 import { isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
-import { analysisOf } from "./analysis";
+import { analysisOf, cachedAnalysis } from "./analysis";
+import { sharedDefs, type Def } from "./defcache";
 import { cardForFileSym, symCard } from "./cards";
 import { absOf, locOfFile, versionText } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
 import { libOf, resetScope } from "./scope";
 import { log } from "./log";
-import { CODE_EXCLUDE, CODE_GLOB, exists, fromHostPath, hostPath, langOf, mkUid, readText, splitLines, wsFolders } from "./ws";
+import { CODE_EXCLUDE, CODE_GLOB, exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, splitLines, wsFolders } from "./ws";
 
 // ---------- 名字索引 ----------
 
@@ -55,9 +56,10 @@ export function resetIndex() { index = undefined; byFile.clear(); resetScope(); 
 
 // ---------- 转到定义 ----------
 
-type Def = { abs: string; line: number; col: number };
+/** 问语言服务（同一个文件、位置、内容的请求共用：悬停时可能已经在问了） */
+export const lspDefs = (abs: string, line: number, col: number): Promise<Def[]> => sharedDefs(abs, line, col, () => askDefs(abs, line, col));
 
-async function lspDefs(abs: string, line: number, col: number): Promise<Def[]> {
+async function askDefs(abs: string, line: number, col: number): Promise<Def[]> {
   try {
     const r = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
       "vscode.executeDefinitionProvider", vscode.Uri.file(abs), new vscode.Position(line - 1, col),
@@ -78,7 +80,7 @@ async function lspDefs(abs: string, line: number, col: number): Promise<Def[]> {
 }
 
 /** 定义位置 → 那里的函数 / 类 */
-async function symAtDef(d: Def, name?: string, qual?: string): Promise<{ abs: string; sym: Sym } | null> {
+export async function symAtDef(d: Def, name?: string, qual?: string): Promise<{ abs: string; sym: Sym } | null> {
   const text = await readText(d.abs);
   if (text === null) return null;
   const syms = analysisOf(langOf(d.abs), text).symbols;
@@ -125,8 +127,11 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
         if (t && !targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
       }
     }
+    // 语言服务给了定义、只是那里不是函数 / 类（变量、属性、参数）：不再去建全工作区的名字索引（大仓库要几十秒）
+    // 语言服务说了话就不扫工作区：只在当前文件和已经分析过的文件里按名字找
     if (!targets.length) {
-      const cands = ((await nameIndex()).get(m.name) ?? []).map((e) => ({ ...e, path: hostPath(e.abs), line: e.defLine }));
+      const ents = lspN ? await nearbyEntries(m.name, wp?.abs) : ((await nameIndex()).get(m.name) ?? []);
+      const cands = ents.map((e) => ({ ...e, path: hostPath(e.abs), line: e.defLine }));
       if (cands.length) {
         const selfClass = (seg.symbol?.kind === "class" ? seg.symbol.qual : seg.symbol?.qual.split(".").slice(0, -1).join(".")) || seg.scope?.split(".").slice(0, -1).join(".");
         const here = await currentFile(seg);
@@ -147,6 +152,19 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   const nc = await cardForFileSym(t.abs, t.sym);
   if (!nc) { log("error", `expand ${m.name} → cannot read ${hostPath(t.abs)}`); return none(`Cannot read ${hostPath(t.abs)}.`); }
   return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site ? await varsFor(site, t) : [] };
+}
+
+/** 不扫工作区的名字查找：当前文件 + 最近读过、分析还在缓存里的文件 */
+async function nearbyEntries(name: string, here?: string): Promise<IndexEntry[]> {
+  const out: IndexEntry[] = [];
+  const files = [...new Set([...(here ? [here] : []), ...recentFiles()])];
+  for (const abs of files) {
+    const text = await readText(abs);
+    if (text === null) continue;
+    const a = abs === here ? analysisOf(langOf(abs), text) : cachedAnalysis(langOf(abs), text);
+    for (const s of a?.symbols ?? []) if (s.name === name) out.push({ name: s.name, qual: s.qual, kind: s.kind, abs, start: s.start, end: s.end, defLine: s.defLine, sig: s.sig });
+  }
+  return out;
 }
 
 async function currentFile(seg: Segment) {
