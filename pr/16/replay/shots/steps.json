@@ -1,0 +1,296 @@
+[
+ {
+  "name": "r01-first-card",
+  "title": "Alt+B inside a function, open the board",
+  "checks": [
+   {
+    "ok": true,
+    "what": "LLMEngine.step is on the board"
+   }
+  ]
+ },
+ {
+  "name": "r02-expand",
+  "title": "Expand schedule and postprocess, then can_allocate from schedule",
+  "checks": [
+   {
+    "ok": true,
+    "what": "two child cards"
+   },
+   {
+    "ok": true,
+    "what": "grandchild BlockManager.can_allocate"
+   },
+   {
+    "ok": true,
+    "what": "grandchild is labeled with the same tree"
+   }
+  ]
+ },
+ {
+  "name": "r03-arrow-right",
+  "title": "Drag the schedule card to the right of its parent; the arrow now leaves from the line's right end",
+  "checks": [
+   {
+    "ok": true,
+    "what": "child card is right of the parent"
+   },
+   {
+    "ok": true,
+    "what": "arrow starts at the parent's right edge"
+   }
+  ]
+ },
+ {
+  "name": "r05-section",
+  "title": "Put schedule and can_allocate in a new Section, name it, collapse and expand",
+  "checks": [
+   {
+    "ok": true,
+    "what": "Section created and named"
+   },
+   {
+    "ok": true,
+    "what": "Section collapsed"
+   }
+  ]
+ },
+ {
+  "name": "r06-sidenote",
+  "title": "Select two lines and add a multi-line sidenote (with math)",
+  "checks": [
+   {
+    "ok": true,
+    "what": "sidenote saved, with math"
+   },
+   {
+    "ok": true,
+    "what": "sidenote marker appears beside the lines"
+   }
+  ]
+ },
+ {
+  "name": "r07-sticker",
+  "title": "Toolbar Sticker: one on a code line, one on the canvas",
+  "checks": [
+   {
+    "ok": true,
+    "what": "stickers placed on a line and on the canvas"
+   }
+  ]
+ },
+ {
+  "name": "r08-new-cards",
+  "title": "New Note and Text, paste a GitHub link and a plain URL",
+  "checks": [
+   {
+    "ok": true,
+    "what": "4 more cards"
+   },
+   {
+    "ok": true,
+    "what": "plain URL became a Web card"
+   },
+   {
+    "ok": true,
+    "what": "GitHub link became a GitHub Code card (needs GitHub API access)"
+   }
+  ]
+ },
+ {
+  "name": "r09-menu-edges",
+  "title": "Open context menus at the four corners and on the lowest card",
+  "checks": [
+   {
+    "ok": true,
+    "what": "menu at the top-left corner fully visible"
+   },
+   {
+    "ok": true,
+    "what": "menu at the top-right corner fully visible"
+   },
+   {
+    "ok": true,
+    "what": "menu at the bottom-left corner fully visible"
+   },
+   {
+    "ok": true,
+    "what": "menu at the bottom-right corner fully visible"
+   },
+   {
+    "ok": true,
+    "what": "menu on the lowest card fully visible"
+   }
+  ]
+ },
+ {
+  "name": "r10-version",
+  "title": "Edit one source line → card shows the local change → open the version picker",
+  "checks": [
+   {
+    "ok": true,
+    "what": "editing the file outside the editor shows + uncommitted"
+   },
+   {
+    "ok": true,
+    "what": "version picker opens"
+   }
+  ]
+ },
+ {
+  "name": "r11a-zoom-min",
+  "title": "Zoom all the way out, hovering opens no popup",
+  "checks": [
+   {
+    "ok": true,
+    "what": "no Definition Peek when zoomed far out"
+   }
+  ]
+ },
+ {
+  "name": "r11b-zoom-fit",
+  "title": "Back to fit-to-window",
+  "checks": []
+ },
+ {
+  "name": "r11c-zoom-max",
+  "title": "Zoom all the way in",
+  "checks": []
+ },
+ {
+  "name": "r12-undo-redo",
+  "title": "Undo to the start, redo to the end, same as before undo",
+  "checks": [
+   {
+    "ok": true,
+    "what": "Ctrl+Z reached the board"
+   },
+   {
+    "ok": true,
+    "what": "undo really removed cards"
+   },
+   {
+    "ok": true,
+    "what": "after redoing everything the cards match the state before undo"
+   }
+  ]
+ },
+ {
+  "name": "r13-reopen",
+  "title": "Close and reopen the board, content is still there",
+  "checks": [
+   {
+    "ok": true,
+    "what": "same card count after reopening"
+   }
+  ]
+ },
+ {
+  "name": "r14-themes",
+  "title": "One screenshot per theme (8)",
+  "checks": [
+   {
+    "ok": true,
+    "what": "Settings lists 8 themes"
+   }
+  ]
+ },
+ {
+  "name": "r15-paste-near",
+  "title": "Select a card, ⌘C ⌘V: the new card appears next to the original (C8)",
+  "checks": [
+   {
+    "ok": true,
+    "what": "⌘V created a card"
+   },
+   {
+    "ok": true,
+    "what": "new card is in view"
+   },
+   {
+    "ok": true,
+    "what": "new card is right next to the copied card"
+   }
+  ]
+ },
+ {
+  "name": "r16-expand-in-view",
+  "title": "Expand a call in the middle of the tree: the new card is in view (C8)",
+  "checks": [
+   {
+    "ok": true,
+    "what": "BlockManager.allocate expanded"
+   },
+   {
+    "ok": true,
+    "what": "new card is in view"
+   }
+  ]
+ },
+ {
+  "name": "r17-popup-anchor",
+  "title": "Two sidenotes on the same lines, delete one, the popup stays put (C4)",
+  "checks": [
+   {
+    "ok": true,
+    "what": "found a code card whose lines can be selected"
+   },
+   {
+    "ok": true,
+    "what": "two sidenotes added on the same lines"
+   },
+   {
+    "ok": true,
+    "what": "clicking the marker opens the sidenote popup"
+   },
+   {
+    "ok": true,
+    "what": "the remaining sidenote is still in the popup"
+   },
+   {
+    "ok": true,
+    "what": "popup stays next to its anchor"
+   }
+  ]
+ },
+ {
+  "name": "r18-drag-body",
+  "title": "Every non-code card can be dragged from the middle of its content (C2)",
+  "checks": [
+   {
+    "ok": true,
+    "what": "text card drags from the middle of its content"
+   },
+   {
+    "ok": false,
+    "what": "web card drags from the middle of its content",
+    "extra": {
+     "before": {
+      "l": -737.60009765625,
+      "t": -107.699951171875,
+      "r": -149.60009765625,
+      "b": 375.190673828125,
+      "w": 588,
+      "h": 482.890625
+     },
+     "after": {
+      "l": -737.60009765625,
+      "t": -107.699951171875,
+      "r": -149.60009765625,
+      "b": 375.190673828125,
+      "w": 588,
+      "h": 482.890625
+     }
+    }
+   },
+   {
+    "ok": true,
+    "what": "image card drags from the middle of its content"
+   },
+   {
+    "ok": true,
+    "what": "no webview errors"
+   }
+  ]
+ }
+]
