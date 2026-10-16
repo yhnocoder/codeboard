@@ -12,12 +12,12 @@
  {
   "name": "3-peek.png",
   "status": "changed",
-  "ratio": 0.0256
+  "ratio": 0.0213
  },
  {
   "name": "4-sidenote.png",
   "status": "same",
-  "ratio": 0.003
+  "ratio": 0.0028
  },
  {
   "name": "5-search.png",
@@ -26,22 +26,22 @@
  },
  {
   "name": "6-board.png",
-  "status": "changed",
-  "ratio": 0.0104
+  "status": "same",
+  "ratio": 0.0017
  },
  {
   "name": "7-uncommitted.png",
-  "status": "changed",
-  "ratio": 0.0115
+  "status": "same",
+  "ratio": 0.0017
  },
  {
   "name": "7a-settings.png",
-  "status": "same",
-  "ratio": 0.0012
+  "status": "changed",
+  "ratio": 0.0389
  },
  {
   "name": "7b-diagnostics.png",
-  "status": "changed",
-  "ratio": 0.0097
+  "status": "same",
+  "ratio": 0.0044
  }
 ]
