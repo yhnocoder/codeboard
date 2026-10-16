@@ -193,7 +193,7 @@ export const V015: Record<string, () => Promise<void>> = {
     b.links.push({ id: "L1", kind: "call", from: { card: par.id, seg: s0.id, line: ln }, to: { card: kid.id }, call: { name: "load_model", col: 8 } });
     b.cam = { x: 0, y: 0, z: 0.7 };
     const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
-    const port = (hh: Host) => hh.page.locator("circle.port").first().evaluate((e) => +e.getAttribute("cx")!);
+    const port = (hh: Host) => hh.page.locator("path.port").first().evaluate((e) => +e.getAttribute("data-x")!);
     const auto = await port(h);
     await shot(h, "v15-side-1");
     await close(h);

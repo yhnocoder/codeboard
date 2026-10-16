@@ -13,6 +13,7 @@ import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { CardStickers, BoundStickers } from "../stickers/Picker";
 import { lod } from "../state/camera";
+import { fileHue } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
@@ -54,7 +55,7 @@ export function CardView(p: { card: Card }) {
   const drop = () => dropTarget();
   return (
     <Show when={!collapsedAway().has(c().id) && !collapsedHome(pl().section)}>
-      <div ref={el} class={`card ${kindClass()}`} data-id={c().id} style={style()}
+      <div ref={el} class={`card ${kindClass()}`} data-id={c().id} data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined} style={style()}
         classList={{
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
           editing: editing()?.id === c().id,
@@ -138,6 +139,50 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   );
 }
 
+/** 材质用的卡片部件（默认 display: none，由 themes.css 按主题打开）：
+ *  cband = 色带 / 大标题（函数名 + 行号区间和版本 + 大号编号），cxfoot = 底栏（行号区间 · 打开 / 看差异），cfig = 卡片下方的图注。
+ *  只用卡片已有的数据：标题、flows() 编号、第一段的行号和版本。 */
+function CodeBand(p: { card: CodeCard }) {
+  const c = () => p.card;
+  const s0 = () => c().segments[0];
+  const label = () => (state.board.hideNumbers ? "" : flows().byId.get(c().id)?.label ?? "");
+  const big = () => (/^\d$/.test(label()) ? `0${label()}` : label());
+  const stale = () => act.cardStale(c());
+  const isNew = () => stale() === "changed" || stale() === "hidden";
+  return (
+    <>
+      <div class="cband" data-drag>
+        <span class="cname">{c().title || cardTitle(c())}</span>
+        <Show when={s0() && s0()!.src.kind !== "free"}>
+          <span class="cmeta">
+            <span class="cm"><small>Lines</small>{s0()!.start}–{s0()!.end}</span>
+            <button class="cm v" classList={{ new: isNew() }} onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => (isNew() ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}><small>Commit</small>{isNew() ? "New version" : mixedVersions(c()) ? "Mixed" : versionLabel(s0()?.version)}</button>
+          </span>
+        </Show>
+        <Show when={big()}><span class="big">{big()}</span></Show>
+      </div>
+      <Show when={label()}><span class="cfig">Fig. {label()} — {c().title || cardTitle(c())}</span></Show>
+    </>
+  );
+}
+
+function CodeFoot(p: { card: CodeCard }) {
+  const c = () => p.card;
+  const s0 = () => c().segments[0];
+  const isNew = () => { const s = act.cardStale(c()); return s === "changed" || s === "hidden"; };
+  return (
+    <Show when={s0() && s0()!.src.kind !== "free"}>
+      <div class="cxfoot" classList={{ new: isNew() }} data-drag>
+        <span class="fl"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3l2 1.5" /></svg>L{s0()!.start}–{s0()!.end}</span>
+        <button class="act" onPointerDown={(e) => e.stopPropagation()} onClick={() => (isNew() ? act.openDiff(c().id) : act.openCode(c().id))}>
+          {isNew() ? "View Diff" : "Open in Editor"}<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" /></svg>
+        </button>
+      </div>
+    </Show>
+  );
+}
+
 const countDesc = (n: { kids: any[] }): number => n.kids.reduce((s, k) => s + 1 + countDesc(k), 0);
 export const shortPath = (p: string) => p.split("/").slice(-1)[0];
 
@@ -146,6 +191,7 @@ function CodeCardView(p: { card: CodeCard }) {
   return (
     <>
       <CodeHead card={c()} />
+      <CodeBand card={c()} />
       <Desc id={c().id} desc={c().desc} />
       <Show when={act.missingNote(c())}>
         <div class="cmiss" onPointerDown={(e) => e.stopPropagation()}>
@@ -163,6 +209,7 @@ function CodeCardView(p: { card: CodeCard }) {
       <Show when={c().segments[0]?.src.kind === "free" && c().segments[0]?.src.kind === "free" && (c().segments[0].src as any).url}>
         <div class="cfoot"><span>Source</span><a class="lnk" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openLink((c().segments[0].src as any).url)}>{(c().segments[0].src as any).url}</a></div>
       </Show>
+      <CodeFoot card={c()} />
     </>
   );
 }

@@ -5,6 +5,7 @@ import { installKeys } from "./interact";
 import { flushSave } from "./state/store";
 import { listen, send, followHostTheme, forwardErrors } from "./host";
 import "katex/dist/katex.min.css";
+import "./fonts.css";
 import "./styles.css";
 import "./themes.css";
 import "./settings.css";

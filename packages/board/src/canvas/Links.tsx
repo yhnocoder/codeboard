@@ -7,6 +7,7 @@ import { frames, collapsedHome } from "../state/sections";
 import { hoverLink, setHoverLink, rubber, editing, popIn } from "../state/ui";
 import { cam, toWorld } from "../state/camera";
 import { boardOffset } from "../actions/common";
+import { shape, fileHue } from "../state/look";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
@@ -66,6 +67,21 @@ export function nearestT(p: number[], x: number, y: number) {
   return best;
 }
 
+/** 箭头：tip 是尖，(ux, uy) 是来的方向（单位向量）。形状跟材质走（look.ts） */
+function headPath(tx: number, ty: number, ux: number, uy: number) {
+  const k = shape().head;
+  if (k === "dot") return `M${tx - 3.5} ${ty} a3.5 3.5 0 1 0 7 0 a3.5 3.5 0 1 0 -7 0`;
+  const l = k === "triangle" ? 8 : 7, w = 4;
+  const a = `M${tx - l * ux - w * uy} ${ty - l * uy + w * ux} L${tx} ${ty} L${tx - l * ux + w * uy} ${ty - l * uy - w * ux}`;
+  return k === "triangle" ? a + " Z" : a;
+}
+function portPath(x: number, y: number) {
+  const k = shape().port;
+  if (k === "square") return `M${x - 3} ${y - 3} h6 v6 h-6 Z`;
+  if (k === "diamond") return `M${x} ${y - 4} l4 4 -4 4 -4 -4 Z`;
+  return `M${x - 3} ${y} a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0`;
+}
+
 /**
  * Call link 从这一行的哪一端出：子卡整个在右 → 右；整个在左 → 左；上下错开（横向重叠）时看子卡左边在不在父卡中线右边（宽松）。
  * 用户拖过起点（L.side）就照用户的，除非子卡已经远远到了另一边（严格：整个越过父卡外 120px 才翻）。
@@ -99,7 +115,7 @@ function callGeo(L: Link): Geo | null {
       x2 = b.x - 6;
       const dx = clamp(Math.abs(x2 - x1) * 0.45, 24, 140);
       c1x = x1 + dx; c2x = x2 - dx; c2y = y2;
-      head = `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`;
+      head = headPath(x2, y2, 1, 0);
     } else {
       // 子卡在下面（或上面）、又在起点左边：从它的上（下）边进，箭头竖着
       const down = b.y + b.h / 2 >= y1;
@@ -115,7 +131,7 @@ function callGeo(L: Link): Geo | null {
       x2 = b.x + b.w + 6;
       const dx = clamp(Math.abs(x1 - x2) * 0.45, 24, 140);
       c1x = x1 - dx; c2x = x2 + dx; c2y = y2;
-      head = `M${x2 + 5} ${y2 - 4} L${x2} ${y2} L${x2 + 5} ${y2 + 4}`;
+      head = headPath(x2, y2, -1, 0);
     } else {
       x2 = b.x - 6;
       // 子卡在很远的下方：两端的水平控制柄要跟着距离变长，否则线先竖着下来、到卡前急拐一下
@@ -123,6 +139,13 @@ function callGeo(L: Link): Geo | null {
       c1x = x1 - dx; c2x = x2 - dx * 0.8; c2y = y2;
       head = arrowHead(x2, y2, c2x, y2);
     }
+  }
+  if (shape().route === "elbow") {
+    // 制图：直角折线，像标注引线
+    const vert = c2x === x2; // 从上 / 下边进
+    const xm = vert ? x2 : side === "left" && x2 > x1 ? Math.min(x1, x2) - 24 : x1 + (x2 - x1) * 0.5;
+    const d = vert ? `M${x1} ${y1} H${x2} V${y2}` : `M${x1} ${y1} H${xm} V${y2} H${x2}`;
+    return { d, mx: xm, my: (y1 + y2) / 2, head: vert ? headPath(x2, y2, 0, Math.sign(y2 - y1) || 1) : head, port: { x: x1, y: y1 }, pts: [x1, y1, xm, y1, xm, y2, x2, y2] };
   }
   return {
     d: `M${x1} ${y1} C${c1x} ${c1y} ${c2x} ${c2y} ${x2} ${y2}`,
@@ -133,8 +156,8 @@ function callGeo(L: Link): Geo | null {
 
 /** 箭头头顺着线最后一段的方向（从控制点指向终点） */
 function arrowHead(tx: number, ty: number, fx: number, fy: number) {
-  const len = Math.hypot(tx - fx, ty - fy) || 1, ux = (tx - fx) / len, uy = (ty - fy) / len;
-  return `M${tx - 5 * ux - 4 * uy} ${ty - 5 * uy + 4 * ux} L${tx} ${ty} L${tx - 5 * ux + 4 * uy} ${ty - 5 * uy - 4 * ux}`;
+  const len = Math.hypot(tx - fx, ty - fy) || 1;
+  return headPath(tx, ty, (tx - fx) / len, (ty - fy) / len);
 }
 
 function plainGeo(L: PlainLink): Geo | null {
@@ -158,10 +181,18 @@ function plainGeo(L: PlainLink): Geo | null {
   let c1: number[], c2: number[];
   if (h) { const dx = Math.max(30, Math.abs(x2 - x1) * 0.45) * Math.sign(x2 - x1 || 1); c1 = [x1 + dx, y1]; c2 = [x2 - dx, y2]; }
   else { const dy = Math.max(30, Math.abs(y2 - y1) * 0.45) * Math.sign(y2 - y1 || 1); c1 = [x1, y1 + dy]; c2 = [x2, y2 - dy]; }
-  const arrow = (tx: number, ty: number, fx: number, fy: number) => {
-    const len = Math.hypot(tx - fx, ty - fy) || 1, ux = (tx - fx) / len, uy = (ty - fy) / len;
-    return `M${tx - 7 * ux - 4 * uy} ${ty - 7 * uy + 4 * ux} L${tx} ${ty} L${tx - 7 * ux + 4 * uy} ${ty - 7 * uy - 4 * ux}`;
-  };
+  const arrow = arrowHead;
+  if (shape().route === "elbow") {
+    const xm = (x1 + x2) / 2, ym = (y1 + y2) / 2;
+    const d = h ? `M${x1} ${y1} H${xm} V${y2} H${x2}` : `M${x1} ${y1} V${ym} H${x2} V${y2}`;
+    const [e1, e2] = h ? [[xm, y2], [xm, y1]] : [[x2, ym], [x1, ym]];
+    return {
+      d, mx: h ? xm : (x1 + x2) / 2, my: ym,
+      head: L.arrow === "end" || L.arrow === "both" ? arrow(x2, y2, e1[0], e1[1]) : undefined,
+      tail: L.arrow === "both" ? arrow(x1, y1, e2[0], e2[1]) : undefined,
+      pts: h ? [x1, y1, xm, y1, xm, y2, x2, y2] : [x1, y1, x1, ym, x2, ym, x2, y2],
+    };
+  }
   return {
     d: `M${x1} ${y1} C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${x2} ${y2}`,
     mx: (x1 + 3 * c1[0] + 3 * c2[0] + x2) / 8, my: (y1 + 3 * c1[1] + 3 * c2[1] + y2) / 8,
@@ -207,13 +238,14 @@ export function LinksSvg() {
         {(L) => {
           const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
           const on = () => sel.links.includes(L.id) || hoverLink() === L.id || (A.bindHot() as { link?: string } | null)?.link === L.id;
+          const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
           const cls = () => `edge${L.kind === "plain" ? " plain" + ((L as PlainLink).solid ? " solid" : "") + ((L as PlainLink).color ? ` lc-${(L as PlainLink).color}` : "") : ""}${on() ? " on" : ""}`;
           return (
             <Show when={g()}>
               <path class={cls()} d={g()!.d} />
-              <Show when={g()!.head}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
-              <Show when={g()!.tail}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
-              <Show when={g()!.port}><circle class="port" r="3" cx={g()!.port!.x} cy={g()!.port!.y} />
+              <Show when={g()!.head}><path class={`ahead ${shape().head}${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
+              <Show when={g()!.tail}><path class={`ahead ${shape().head}${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
+              <Show when={g()!.port}><path class={`port fc-${toHue()}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
                 <Show when={on() && L.kind === "call"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / cam.z} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
               <path class="lhit" data-link={L.id} d={g()!.d} style={{ "stroke-width": `${12 / cam.z}px` }}
                 onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
