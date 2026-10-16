@@ -69,20 +69,22 @@ NOTES = {
 <li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>
 <li><b>工具条</b>是一小卷手卷，两头有木轴；白板名用行草写，后面盖一枚「白板」小印。</li></ul>
 <h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>''',
- 'clay': '''<h2>3D · 黏土</h2><p>整块白板是一张稍微向后倾的桌面，卡片是有厚度的软黏土块，鼠标在白板上移动时桌面会跟着轻轻转一点（±3°），像在看一个实物模型。</p><ul>
-<li><b>卡片</b>是圆角厚块：顶面是浅色，侧面露出 6px 的厚度，底下有一圈落在桌面上的阴影。</li>
-<li><b>选中</b>就是卡片被抬起来：厚度和阴影都变大，边上一圈亮色。</li>
-<li><b>连线</b>是一根粗管子，起点和终点是两颗小球。</li>
-<li><b>箭头上的数据</b>和工具条按钮都是实体按键，按下去会真的往下沉。</li>
-<li><b>桌面</b>上有一层透视网格，倾斜时网格一起转，能看出空间感。</li></ul>
-<h3>取舍</h3><ul><li>卡片和连线都在同一个平面上，倾斜时不会错位；文字始终是正的，读代码不受影响。</li><li>倾斜会让底部的卡片稍微变大、顶部稍微变小，卡片多时远处的字会小一点，可以只在空闲时倾斜、拖动时回正。</li><li>厚度和阴影比较占地方，卡片之间要多留点空。</li></ul>''',
+ 'clay': '''<h2>3D · 等距积木</h2><p>白板是一张等距网格纸，卡片是一块块往右下方挤出厚度的彩色积木，像等距视角的小游戏。和柔光的白色软阴影正好相反：实心的厚度、黑色描边、饱和色。</p><ul>
+<li><b>每个源文件一种颜色</b>：llm_engine 是珊瑚红，scheduler 是青绿，model_runner 是靛蓝。标题带和侧面都是这个颜色。</li>
+<li><b>选中</b>就是积木被抬起来：往左上移一点，厚度从 9px 变成 13px，外面一圈黄色。</li>
+<li><b>连线</b>是一根黑色粗线，影子朝同一个方向，看起来也有厚度；起点是黄色小圆钮。</li>
+<li><b>标签、工具条、按钮</b>都是同一套积木按键，按下去会往右下沉，厚度消失。</li>
+<li><b>有新版本</b>和白板名都是黄色积木块。</li></ul>
+<h3>取舍</h3><ul><li>立体感来自固定方向的厚度，没有倾斜和透视，文字始终是正的，也没有常驻动画。</li><li>颜色重、描边粗，卡片很多时会很热闹；文件超过 6 个时颜色要复用。</li><li>右下方的厚度会占掉一点空间，卡片之间要多留 10px。</li></ul>''',
  'city': '''<h2>城市道路</h2><p>白板是一张平面城市地图：街区、河流、公园做底，调用关系画成真正的马路。</p><ul>
-<li><b>连线</b>是马路：灰色路面、白色路沿、黄色中线，横平竖直，拐角是圆的。路上停着两辆小车，车头朝调用方向。</li>
+<li><b>连线</b>是马路：灰色路面、白色路沿、黄色中线，横平竖直，拐角是圆的。</li>
+<li><b>箭头</b>换成一辆小车：停在路的尽头，车头朝着被调用的卡片。</li>
+<li><b>几张卡同时调用一张卡</b>时，几条路在这张卡前面的同一个路口汇合，最后一段路共用，只停一辆车。演示里多了一张 ModelRunner.loop：其他 rank 的进程在这里收到命令后，也会走到 run。</li>
 <li><b>卡片标题</b>是蓝底白字的路牌；<b>编号</b>是红色的国道牌，比如 G1.1。</li>
 <li><b>箭头上的数据</b>写在绿色的高速指路牌上。</li>
 <li><b>有新版本</b>是橙白相间的施工牌。</li>
 <li><b>深色</b>是夜里的地图：路面暗下来，中线和车灯是暖黄色。</li></ul>
-<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>没有常驻动画：小车是停着的。会动的版本留到 standalone app。</li></ul>''',
+<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>没有常驻动画，车是停着的。会动的版本留到 standalone app。</li><li>汇合后共用的最后一段上放不下各自的数据牌，所以牌子挂在每条路的起点那段。</li></ul>''',
 }
 VCFG = {
  'v1': {'head': 'triangle'}, 'warm': {}, 'graphite': {},
@@ -94,35 +96,13 @@ VCFG = {
  'bamboo': {'head': 'dot', 'gap': 140, 'pad': {'l': 28, 'r': 28, 't': 70, 'b': 72}},
  'ink': {'head': 'dot', 'gap': 150, 'pad': {'l': 32, 'r': 32, 't': 78, 'b': 76}, 'defs': '<defs><filter id="brush" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="8000" height="8000"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="2"/><feDisplacementMap in="SourceGraphic" scale="2.4"/></filter></defs>'},
  'clay': {'head': 'dot', 'gap': 150, 'pad': {'l': 40, 'r': 40, 't': 80, 'b': 84},
-   'defs': '<defs><radialGradient id="sph" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".35" stop-color="currentColor"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient><filter id="tubeShadow" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="8000" height="8000"><feDropShadow dx="0" dy="5" stdDeviation="3" flood-opacity=".22"/></filter></defs>'},
- 'city': {'route': 'street', 'head': 'none', 'port': 'circle', 'gap': 170, 'layers': ['casing', 'road', 'lane'], 'pad': {'l': 32, 'r': 32, 't': 74, 'b': 76}},
+   'defs': '<defs><filter id="isoShadow" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="8000" height="8000"><feDropShadow dx="3" dy="3" stdDeviation="0" flood-opacity=".22"/></filter></defs>'},
+ 'city': {'route': 'street', 'head': 'car', 'merge': True, 'port': 'circle', 'gap': 240, 'layers': ['casing', 'road', 'lane'], 'pad': {'l': 32, 'r': 32, 't': 74, 'b': 76}},
 }
 SCENES = {'ink': open('scene-ink.svg').read(), 'city': open('scene-city.svg').read()}
 draftjs = open('drafting.js').read().replace('function decorate(cards, world) {\n  world.querySelectorAll(\'.dim, .callout\').forEach(n => n.remove());', 'function drafting(cards, world) {')
 js = draftjs + f'''
-function decorate(cards, world) {{ world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); if (board.dataset.v === 'city') cityCars(); }}
-const reduceMo = matchMedia('(prefers-reduced-motion: reduce)');
-// 城市：每条路上停两辆小车，车头朝调用方向，靠右行驶；不做常驻动画
-function cityCars() {{
-  const ns = 'http://www.w3.org/2000/svg';
-  edges.querySelectorAll('path.road').forEach((p, i) => {{
-    const len = p.getTotalLength();
-    [0.28 + i * .06, 0.74].forEach((f, k) => {{
-      const a = p.getPointAtLength(len * f), b = p.getPointAtLength(len * f + 1), deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
-      const car = document.createElementNS(ns, 'g'); car.setAttribute('class', `car k${{(i + k) % 3}}`);
-      car.setAttribute('transform', `translate(${{a.x}} ${{a.y}}) rotate(${{deg}}) translate(0 3)`);
-      car.innerHTML = '<rect class="beam" x="5" y="-3" width="16" height="6" rx="3"/><rect class="body" x="-6" y="-3" width="12" height="6" rx="2"/><rect class="roof" x="-2.5" y="-2.2" width="5" height="4.4" rx="1"/>';
-      edges.appendChild(car);
-    }});
-  }});
-}}
-// 3D：鼠标在白板上移动时，桌面跟着轻轻转
-board.addEventListener('pointermove', e => {{
-  if (board.dataset.v !== 'clay' || reduceMo.matches) return;
-  const r = board.getBoundingClientRect(), px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5;
-  board.style.setProperty('--ry', (px * 6).toFixed(2) + 'deg'); board.style.setProperty('--rx', (10 - py * 6).toFixed(2) + 'deg');
-}});
-board.addEventListener('pointerleave', () => {{ board.style.removeProperty('--ry'); board.style.removeProperty('--rx'); }});
+function decorate(cards, world) {{ world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); }}
 const BASECFG = Object.assign({{}}, CFG), VCFG = {json.dumps(VCFG)}, NOTES = {json.dumps(NOTES, ensure_ascii=False)}, SCENES = {json.dumps(SCENES)};
 function setV(v) {{
   board.dataset.v = v; board.querySelector('.scene').innerHTML = SCENES[v] || ''; CFG = Object.assign({{}}, BASECFG, VCFG[v]);
