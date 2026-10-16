@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  alignRows, wordDiff, mapLines, findBlock, diffLines, walkOrder, outLinks, snapMove, align,
+  alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, canAttach, canExpand, canCompare, hiddenByCollapse, snapMove, align,
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard,
   type Board, type Card, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
@@ -172,25 +172,57 @@ describe("diff and alignment", () => {
 
 const seg = (id: string, start = 1, end = 3): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end, text: [], version: { kind: "git", commit: "x" } });
 const code = (id: string): CodeCard => ({ id, kind: "code", segments: [seg(`s${id}`, 1, 50)] });
-const arrow = (from: string, line: number | undefined, to: string, toLine?: number): Link => ({ id: `${from}${line ?? ""}-${to}${toLine ?? ""}`, kind: "plain", from: line === undefined ? { card: from } : { card: from, seg: `s${from}`, line }, to: toLine === undefined ? { card: to } : { card: to, seg: `s${to}`, line: toLine } });
+const call = (from: string, line: number, to: string): Link => ({ id: `${from}-${to}`, kind: "call", from: { card: from, seg: `s${from}`, line }, to: { card: to } });
 
-describe("walkOrder", () => {
+describe("computeFlows", () => {
   const board = (links: Link[], ids = ["a", "b", "c", "d", "e"]): Board => ({ ...emptyBoard("b", "B"), cards: ids.map(code), links });
-  it("goes card → its own arrows → each line's arrows by line, depth first", () => {
-    const b = board([arrow("a", 9, "b"), arrow("a", 3, "c"), arrow("b", 5, "d"), arrow("a", undefined, "e")]);
-    expect(walkOrder(b, "a")).toEqual(["a", "e", "c", "b", "d"]);
-    expect(outLinks(b, "a").map((l) => l.to.card)).toEqual(["e", "c", "b"]);
+  it("numbers root A, children by source line, grandchildren 2.1", () => {
+    const f = computeFlows(board([call("a", 9, "b"), call("a", 3, "c"), call("b", 5, "d")]));
+    expect(["a", "c", "b", "d"].map((id) => f.byId.get(id)!.num)).toEqual(["", "1", "2", "2.1"]);
+    expect(["a", "c", "b", "d"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "A", "A", "A"]);
+    expect(walkOrder(f.roots[0]).map((n) => n.id)).toEqual(["a", "c", "b", "d"]);
   });
-  it("allows many arrows from one line, to lines, between cards, and loops", () => {
-    const b = board([arrow("a", 3, "b"), arrow("a", 3, "c", 7), arrow("c", undefined, "a"), arrow("b", 1, "c")]);
-    expect(walkOrder(b, "a")).toEqual(["a", "b", "c"]);
-    expect(walkOrder(b, "c")).toEqual(["c", "a", "b"]);
+  it("labels every card with its tree's letter", () => {
+    const f = computeFlows(board([call("a", 1, "b"), call("c", 1, "d")]));
+    expect(f.byId.get("b")!.label).toBe("A");
+    expect(f.byId.get("c")!.label).toBe("B");
+    expect(f.byId.get("d")!.label).toBe("B");
+    expect(f.byId.has("e")).toBe(false);
   });
-  it("walks a Compare as one step and follows its columns' arrows", () => {
+  it("attaches only to cards with no incoming call, without loops", () => {
+    const b = board([call("a", 1, "b"), call("c", 1, "d")]);
+    const f = computeFlows(b);
+    expect(canAttach(b, f, "a", "b").ok).toBe(false); // b 已经有进来的 link
+    expect(canAttach(b, f, "a", "e").ok).toBe(true);
+    expect(canAttach(b, f, "b", "a").ok).toBe(false); // 成环
+    expect(canAttach(b, f, "b", "c").ok).toBe(true); // 另一棵树的根：整棵并过来
+  });
+  it("keeps both Compare columns in one flow on expand and attach", () => {
     const cmp: Card = { id: "k", kind: "compare", cols: ["p", "q"] };
-    const b: Board = { ...emptyBoard("b", "B"), cards: [...["a", "p", "q", "x"].map(code), cmp], links: [arrow("a", 1, "p"), arrow("q", 2, "x")] };
-    expect(walkOrder(b, "a")).toEqual(["a", "k", "x"]);
+    const b: Board = { ...emptyBoard("b", "B"), cards: [...["a", "b", "e", "p", "q"].map(code), cmp], links: [call("p", 1, "a")] };
+    const f = computeFlows(b);
+    expect(canExpand(b, "q").ok).toBe(false); // q 会成为第二棵树的根
+    expect(canExpand(b, "p").ok).toBe(true);
+    expect(canExpand(b, "a").ok).toBe(true);
+    expect(canAttach(b, f, "a", "q").ok).toBe(true); // q 进 p 的树
+    const b2: Board = { ...b, links: [call("p", 1, "a"), call("b", 1, "e")] };
+    expect(canAttach(b2, computeFlows(b2), "b", "q").ok).toBe(false); // q 进 b 的树，p 在另一棵
+    const b3: Board = { ...b, links: [] };
+    expect(canExpand(b3, "q").ok).toBe(true);
+    expect(canAttach(b3, computeFlows(b3), "q", "p").ok).toBe(true);
   });
+  it("forbids comparing cards of two different flows", () => {
+    const f = computeFlows(board([call("a", 1, "b"), call("c", 1, "d")]));
+    expect(canCompare(f, "b", "d").ok).toBe(false);
+    expect(canCompare(f, "b", "a").ok).toBe(true);
+    expect(canCompare(f, "b", "e").ok).toBe(true);
+  });
+  it("hides collapsed subtrees", () => {
+    const b = board([call("a", 1, "b"), call("b", 1, "c")]);
+    b.place.b = { x: 0, y: 0, w: 100, collapsed: true };
+    expect([...hiddenByCollapse(b, computeFlows(b))]).toEqual(["c"]);
+  });
+
 });
 
 describe("snapping and align", () => {
@@ -269,17 +301,12 @@ describe("migrateBoard", () => {
   it("turns a v1 board into v3", () => {
     const b = migrateBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }],
-      edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call", label: "x" }] });
+      edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
     expect(b.version).toBe(3);
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [2], symbol: { qual: "f" } });
     expect(b.place.c1).toEqual({ x: 0, y: 0, w: 500 });
     expect(b.links[0].from.seg).toBe(c.segments[0].id);
-    expect(b.links[0]).toMatchObject({ kind: "plain", label: "x" }); // 旧 Call link 变成箭头
-  });
-  it("turns v3 call links into arrows", () => {
-    const b = migrateBoard({ ...emptyBoard("b", "B"), links: [{ id: "l", kind: "call", from: { card: "a", seg: "s", line: 3 }, to: { card: "b" }, vars: [{ a: "x" }], loop: true, side: "left", call: { name: "f", col: 4 } }] });
-    expect(b.links[0]).toEqual({ id: "l", kind: "plain", from: { card: "a", seg: "s", line: 3 }, to: { card: "b" }, side: "left", call: { name: "f", col: 4 } });
   });
   it("splits v2 cards into content and placement; Compare references its columns", () => {
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });

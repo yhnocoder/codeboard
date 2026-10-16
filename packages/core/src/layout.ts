@@ -1,4 +1,5 @@
 // 摆放：新卡放哪、展开出来的子卡放哪、Tidy Layout。只做几何，尺寸由调用方给（白板里是实测尺寸）。
+import type { FlowNode } from "./flow";
 import type { Card, Place } from "./model";
 
 export type Rect = { x: number; y: number; w: number; h: number };

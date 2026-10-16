@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Page } from "playwright-core";
-import { uid, emptyBoard, migrateBoard, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
+import { uid, emptyBoard, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
 import { initAnalysis, analyze, symbolAt, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 
 export const REPO = path.resolve(__dirname, "../.."); // 打包后在 test-out/harness/
@@ -100,7 +100,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
 <script src="file://${MEDIA}/board.js"></script></body></html>`);
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
   const page = await browser.newPage({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
-  let board = o.board ? migrateBoard(o.board) : emptyBoard("b1", "nano-vllm · generate"); // 和宿主读文件一样先迁移（旧的 Call link → 箭头）
+  let board = o.board ?? emptyBoard("b1", "nano-vllm · generate");
   const sent: BoardToHost[] = [];
   const post = (m: HostToBoard) => page.evaluate((s) => window.postMessage(JSON.parse(s), "*"), JSON.stringify(m));
   const reply = (req: number, data?: unknown, error?: string) => post({ type: "reply", req, data, error });

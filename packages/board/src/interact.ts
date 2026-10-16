@@ -87,6 +87,8 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`)) return setEditing({ kind: "title", id: target });
+  // 编号角标：点 = 选中整棵子树，拖 = 整棵子树一起走（#29）
+  if (t.closest(".step")) { A.selectSubtree(target, e.shiftKey); closeAllPops(); return startCardDrag(e, f.host.id); }
   if (isText && isDbl(`x${id}`)) return setEditing({ kind: "note", id });
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
   if (!isSel(f.host.id)) A.selectCard(f.host.id);

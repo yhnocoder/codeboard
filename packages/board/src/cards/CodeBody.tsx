@@ -21,7 +21,7 @@ let lastDown: HTMLElement | null = null;
 window.addEventListener("pointerdown", (e) => { lastDown = e.target as HTMLElement; }, true);
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
 import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
-import { state, lineSel, setLineSel, reportSelection } from "../state/store";
+import { state, lineSel, setLineSel, reportSelection, flows } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import { setGeo } from "../state/geo";
@@ -431,3 +431,5 @@ function versionChip(c: CodeCard, s: Segment): string | undefined {
   if (JSON.stringify(first.version) === JSON.stringify(s.version)) return undefined;
   return s.version.kind === "git" ? s.version.commit.slice(0, 7) : s.version.kind === "pkg" ? `${s.version.name} ${s.version.version}` : undefined;
 }
+// flows 被 CodeCard 头部用到；这里引用一下避免 tree-shaking 掉初始化顺序
+void flows;

@@ -65,6 +65,7 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "diff"}><DiffPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "diff" }>} /></Match>
         <Match when={k() === "pick"}><PickPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "pick" }>} /></Match>
         <Match when={k() === "commits"}><CommitsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "commits" }>} /></Match>
+        <Match when={k() === "vars"}><VarsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vars" }>} /></Match>
       </Switch>
     </div>
   );
@@ -465,6 +466,24 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
       <Show when={A.uncommitted(cardById(p.pop.card)?.card as any) || state.stale[p.pop.seg.id]?.state === "uncommitted"}>
         <button class="cand" onClick={() => { closePop(p.inst.id); A.openWorktreeDiff(p.pop.card); }}><span class="lb">Show Uncommitted Changes</span><small>HEAD vs Working Tree</small></button>
       </Show>
+    </>
+  );
+}
+
+function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
+  const L = () => { const l = state.board.links.find((l) => l.id === p.pop.link); return l?.kind === "call" ? l : undefined; };
+  const [custom, setCustom] = createSignal("");
+  const has = (v: Var) => (L()?.vars ?? []).some((x) => varKey(x) === varKey(v));
+  const all = () => { const l = L(); if (!l) return []; const c = l.cands ?? []; return [...c, ...(l.vars ?? []).filter((v) => !c.some((x) => varKey(x) === varKey(v)))]; };
+  return (
+    <>
+      <div class="picker-h">Variables on this call</div>
+      <div class="sres">
+        <For each={all()}>{(v) => <label class="chk"><input type="checkbox" checked={has(v)} onChange={() => A.toggleVar(p.pop.link, v)} />{varText(v)}</label>}</For>
+        <Show when={!all().length}><div class="empty">No arguments or return value found.</div></Show>
+      </div>
+      <div class="an-body"><input class="fld" placeholder="Add your own (e.g. seqs[0].block_table)" value={custom()} onInput={(e) => setCustom(e.currentTarget.value)}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && custom().trim()) { A.toggleVar(p.pop.link, { a: custom().trim(), custom: true }); setCustom(""); } if (e.key === "Escape") closePop(p.inst.id); }} /></div>
     </>
   );
 }

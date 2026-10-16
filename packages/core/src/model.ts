@@ -134,18 +134,22 @@ type LinkBase = {
   at?: number; // 标签框沿线的位置 0..1（用户拖过才有；默认在中间）
   side?: "left" | "right"; // 用户选过起点：从这一行（卡）的哪一端出（没有 = 自动）
 };
-/**
- * 箭头：只有这一种。两端各是「整张卡」或「某张代码卡的某一行」，一行 / 一张卡可以连出任意多条。
- * （v0.1.5 起不再有 Call link：没有树、编号、变量；旧白板里的 Call link 读进来时转成箭头）
- */
+/** 调用：从代码行到被调函数的卡。参与编号、Walkthrough、Tidy、变量 */
+export type CallLink = LinkBase & {
+  kind: "call";
+  vars?: Var[]; // 勾选了的变量；默认一个都不加
+  cands?: Var[]; // 语法推出来的候选变量（点 + 时列出来）
+  loop?: boolean; // 出发行在 for / while 里（↺）
+  call?: { name: string; col: number }; // 点的是这一行的哪个调用
+};
+/** 普通箭头：不编号；可设箭头、虚实、颜色、文字 */
 export type PlainLink = LinkBase & {
   kind: "plain";
-  call?: { name: string; col: number }; // 点调用展开出来的：点的是这一行的哪个调用
   arrow?: "none" | "end" | "both"; // 默认 end
   solid?: boolean; // false = 虚线；默认实线（和 Call link 一样）
   color?: string; // 默认灰
 };
-export type Link = PlainLink;
+export type Link = CallLink | PlainLink;
 
 // ---------- Section ----------
 
@@ -217,6 +221,7 @@ export type Board = {
   sidenotes: Sidenote[];
   stickers: Sticker[];
   hideAllComments?: boolean;
+  hideNumbers?: boolean;
 };
 
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number };
@@ -374,7 +379,6 @@ export function migrateBoard(raw: any): Board {
     b.sections ??= [];
     b.sidenotes ??= [];
     b.stickers ??= [];
-    b.links = b.links.map(fromCallLink);
     return b;
   }
   return v2to3(raw?.version === 2 ? raw : v1to2(raw));
@@ -413,11 +417,12 @@ function v2to3(o: any): Board {
   const b = emptyBoard(o.id, o.name ?? "Board");
   b.cam = o.cam ?? b.cam;
   b.hideAllComments = o.hideAllComments;
+  b.hideNumbers = o.hideNumbers;
   const cards: Card[] = [];
   // Compare 的栏排在 Compare 前面（contentV2 先放栏再放自己）；栏没有 Place，叠放顺序不受影响
   for (const c of o.cards ?? []) contentV2(c, cards, b.place);
   b.cards = cards;
-  b.links = (o.links ?? []).map((l: any) => (l.kind === "plain" ? { ...l, arrow: l.arrow ?? "none" } : fromCallLink(l))); // 旧的 Plain link 默认没有箭头
+  b.links = (o.links ?? []).map((l: any) => (l.kind === "plain" ? { ...l, arrow: l.arrow ?? "none" } : l)); // 旧的 Plain link 默认没有箭头
   b.sections = o.sections ?? [];
   b.sidenotes = o.sidenotes ?? [];
   b.stickers = [];
@@ -454,13 +459,6 @@ function v1to2(raw: any): any {
     else delete l.from.line;
   }
   return b;
-}
-
-/** 旧的 Call link → 箭头（实线、有箭头，起点行、终点卡、标签、起点边都留着；变量、↺ 不要了） */
-function fromCallLink(l: any): Link {
-  if (l.kind !== "call") return l;
-  const { vars: _v, cands: _c, loop: _l, kind: _k, ...rest } = l;
-  return { ...rest, kind: "plain" };
 }
 
 export const varKey = (v: Var) => `${v.ret ? "→" : ""}${v.a}|${v.b ?? ""}`;

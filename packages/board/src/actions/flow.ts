@@ -1,18 +1,18 @@
-// 流程：点调用展开、接到已有的卡、讲解（Walkthrough）、类卡成员。
+// 流程：点调用展开、接到已有的卡、Tidy Layout、折叠子树、讲解（Walkthrough）、类卡成员。
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, freeInView, besideFree, findFree, bounds, center, contains, outLinks, removeCards, rebaseSegment, walkOrder, reachable, SIB_GAP, GAP,
+  placeChild, freeInView, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
   type WebMeta, type CallSpan, type ExpandPick, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
 } from "@codeboard/core";
 import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, sizes, toast, allIds, placeOf, placed,
+  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
   type LineSel,
 } from "../state/store";
 import { camTo, camTarget, worldView, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen } from "../state/ui";
+import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
 import { openMenu, choose, promptText, type Item } from "../ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
 import { send, ask } from "../host";
@@ -25,7 +25,7 @@ import { anchorPoint, hostRect, popCard, showPicker, slideFrom } from "./common"
 const pending = new Set<string>();
 
 /**
- * 点调用 = 新建一张卡（永远新建，不复用已有的），从这一行连一条箭头过去。
+ * 点调用 = 新建一张卡（永远新建，不复用已有的），连一条 Call link。
  * at：拖出来松在画布上时的位置。
  */
 
@@ -36,6 +36,8 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   if (!seg) return;
   const key = `${cardId}:${segId}:${call.line}:${call.col}`;
   if (pending.has(key)) return;
+  const okx = canExpand(state.board, cardId);
+  if (!okx.ok) { toast(okx.reason); return; }
   if (call.dispatch) { toast(`${call.name}("${call.dispatch}") is dispatched by name. Not resolved; drag the call onto a card to link it.`); return; }
   pending.add(key);
   let r: ExpandResult;
@@ -50,10 +52,10 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
     showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }) })));
     return;
   }
-  placeExpanded(cardId, segId, call, r.card, r.views, at, r.w);
+  placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w);
 }
 
-function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, at?: { x: number; y: number }, w?: number) {
+function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number) {
   setState("views", (v) => ({ ...v, ...views }));
   const host = cardById(cardId)!.host;
   const id = card.id;
@@ -64,18 +66,21 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
     const np: Place = { x: 0, y: 0, w: size.w };
     if (at) { np.x = Math.round(at.x); np.y = Math.round(at.y); }
     else {
-      const hid = (k: string) => cardById(k)?.host.id ?? k;
-      const self = hid(cardId);
-      // 出发行在它前面的箭头连着的卡（及它们往下连着的）：新卡放在它们下面
+      const node = flows().byId.get(cardId);
+      // 出发行在它前面的兄弟（及其子树）：新卡放在它们下面
       const before: Rect[] = [];
       const beforeIds = new Set<string>();
-      for (const l of outLinks(state.board, self)) {
-        if (l.from.line !== undefined && l.from.seg === segId && l.from.line > call.line) continue;
-        for (const d of [l.to.card, ...reachable(state.board, l.to.card)]) { const h = hid(d); if (h === self || beforeIds.has(h)) continue; const r = hostRect(h); if (r) before.push(r); beforeIds.add(h); }
+      for (const k of node?.kids ?? []) {
+        const kl = k.link!;
+        const kseg = kl.from.seg === segId ? 0 : 1;
+        if (kseg === 0 && (kl.from.line ?? 0) > call.line) continue;
+        for (const d of [k.id, ...descendants(k)]) { const r = hostRect(d); if (r) before.push(r); beforeIds.add(cardById(d)?.host.id ?? d); }
       }
-      // 这张卡往下连着的、排在后面的卡给新卡让位（整体下移），不让新卡被挤到最底下
-      const chain = new Set([self]);
-      const tree = new Set([self, ...reachable(state.board, self).map(hid)]);
+      // 同一棵树里排在后面的卡给新卡让位（整体下移），不让新卡被挤到树的最底下
+      const root = treeOf(flows(), cardId);
+      const chain = new Set<string>();
+      for (let k: string | undefined = cardId; k; k = flows().parent.get(k)) chain.add(cardById(k)?.host.id ?? k);
+      const tree = new Set(root ? [root.id, ...descendants(root)].map((k) => cardById(k)?.host.id ?? k) : []);
       const outside = placed().filter((k) => !tree.has(k.id)).map((k) => rectOf(k));
       const hb = rectOf(host);
       let p = placeChild(hb, size, before, outside, "down");
@@ -104,7 +109,7 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
     if (hp?.collapsed) hp.collapsed = undefined;
     b.cards.push(nc);
     b.place[id] = np;
-    b.links.push({ id: uid("l"), kind: "plain", from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: { name: call.name, col: call.col } });
+    b.links.push({ id: uid("l"), kind: "call", from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: { name: call.name, col: call.col }, loop: call.loop || undefined, cands: vars.length ? vars : undefined });
   });
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);
@@ -124,14 +129,24 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
 }
 
 
-/** 把调用接到白板上已有的卡（拖过去，或右键 Link to Existing Card…）：就是从这一行连一条箭头 */
+/** 把调用接到白板上已有的卡（拖过去，或右键 Link to Existing Card…） */
 export function attachCall(cardId: string, segId: string, call: CallSpan, target: string) {
   const t = cardById(target);
-  if (!t) return;
-  if (t.host.id === cardById(cardId)?.host.id) return toast("A card cannot link to itself.");
-  mutate((b) => { b.links.push({ id: uid("l"), kind: "plain", from: { card: cardId, seg: segId, line: call.line }, to: { card: target }, call: { name: call.name, col: call.col } }); });
+  if (!t || !isCode(t.card)) return toast("Only code cards can be the target of a Call link.");
+  if (t.host.id === cardById(cardId)?.host.id) return toast("A card cannot call itself.");
+  const ok = canAttach(state.board, flows(), cardId, target);
+  if (!ok.ok) return toast(ok.reason);
+  const lid = uid("l");
+  mutate((b) => { b.links.push({ id: lid, kind: "call", from: { card: cardId, seg: segId, line: call.line }, to: { card: target }, call: { name: call.name, col: call.col }, loop: call.loop || undefined }); });
   toast(`Linked to ${cardTitle(t.card)}`);
   ping(t.host.id);
+  // 变量候选：按目标卡的函数问宿主（候选不进撤销历史）
+  const seg = segOf(cardById(cardId)!.card as CodeCard, segId);
+  const tseg = t.card.segments.find((s) => s.symbol) ?? t.card.segments[0];
+  if (!seg || !tseg) return;
+  ask<Var[]>("callVars", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, target: structuredClone(unwrap(tseg)) })
+    .then((vs) => { if (vs?.length) live((b) => { const l = b.links.find((x) => x.id === lid); if (l?.kind === "call") l.cands = vs; }); })
+    .catch(() => {});
 }
 
 // ---------- project / library code ----------
@@ -165,16 +180,37 @@ export function calleeMatches(c: Card, call: CallSpan) {
 export const allCodeCandidates = (call: CallSpan) => allCodeCards(state.board).filter((k) => calleeMatches(k, call)).map((k) => k.id);
 
 
-// ---------- 讲解（Walkthrough）：从选中的卡开始，沿箭头一步步移镜头 ----------
+// ---------- 流程 ----------
+
+/** 选中这张卡和它所有下游（#29：点编号角标） */
+export function selectSubtree(id: string, add = false) {
+  const n = flows().byId.get(id);
+  if (!n) return;
+  const ids = [...new Set([id, ...descendants(n)].map((k) => cardById(k)?.host.id ?? k))];
+  select({ cards: add ? [...new Set([...sel.cards, ...ids])] : ids });
+}
+/** Select Flow：从根开始整棵树 */
+export function selectFlow(id: string) {
+  const r = treeOf(flows(), id);
+  if (r) selectSubtree(r.id);
+}
+
+// ---------- 讲解（Walkthrough）：沿一棵 Call 树一步步移镜头 ----------
 
 export function startWalk(id?: string) {
-  const start = id ?? sel.cards[0];
-  if (!start) return toast("Select a card to start the walkthrough from.");
-  const order = walkOrder(state.board, cardById(start)?.host.id ?? start);
+  const start = id ?? sel.cards[0] ?? flows().roots[0]?.id;
+  if (!start) return toast("No call flow on this board yet. Click a call in a code card to start one.");
+  const root = treeOf(flows(), start);
+  if (!root) return toast("Not in a call flow");
+  const order = walkOrder(root).map((n) => n.id);
   const before = { ...camTarget() };
-  setWalk({ root: order[0], order, i: 0, before });
+  // 折叠的子树讲解时临时展开（只是显示状态）
+  const expanded = order.filter((cid) => placeOf(cid).collapsed);
+  setShowCollapsed(true);
+  const i = Math.max(0, order.indexOf(start));
+  setWalk({ root: root.id, order, i, before, expanded });
   clearSel();
-  requestAnimationFrame(() => walkTo(0));
+  requestAnimationFrame(() => walkTo(i));
 }
 export function walkTo(i: number) {
   const w = walk();
@@ -190,11 +226,12 @@ export function exitWalk() {
   const w = walk();
   if (!w) return;
   setWalk(null);
+  setShowCollapsed(false);
   camTo(w.before.x, w.before.y, w.before.z, true);
 }
 
 
-/** 类卡里点一个成员：展开成函数卡，从类卡那一行连一条箭头 */
+/** 类卡里点一个成员：展开成函数卡，从类卡那一行连 Call link */
 export function expandMember(cardId: string, d: { line: number; name: string; qual: string }) {
   const c = cardById(cardId)?.card;
   if (!isCode(c)) return;

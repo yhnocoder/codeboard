@@ -1,7 +1,7 @@
-// Link 层：SVG 曲线 + 浮在中间的标签。端点每帧跟着卡片和行走（都是响应式的）。
+// Link 层：SVG 曲线 + 浮在中间的标签 / 变量 chip。端点每帧跟着卡片和行走（都是响应式的）。
 import { For, Show, createMemo } from "solid-js";
-import { type Link, type Rect } from "@codeboard/core";
-import { state, sel, select, rectOf, cardById, placeOf, live, beginGesture } from "../state/store";
+import { findCard, varText, varKey, type Link, type PlainLink, type Rect } from "@codeboard/core";
+import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, live, beginGesture } from "../state/store";
 import { geo, lineY } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
 import { hoverLink, setHoverLink, rubber, editing, popIn } from "../state/ui";
@@ -55,7 +55,7 @@ type Geo = { d: string; mx: number; my: number; head?: string; tail?: string; po
 export function linkCurve(id: string): number[] | null {
   const L = state.board.links.find((l) => l.id === id);
   if (!L || !visible(L)) return null;
-  return linkGeo(L)?.pts ?? null;
+  return (L.kind === "call" ? callGeo(L) : plainGeo(L))?.pts ?? null;
 }
 export function curveAt(p: number[], t: number) {
   const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
@@ -84,7 +84,7 @@ function portPath(x: number, y: number) {
 }
 
 /**
- * 从一行连到一张卡的箭头从这一行的哪一端出：子卡整个在右 → 右；整个在左 → 左；上下错开（横向重叠）时看子卡左边在不在父卡中线右边（宽松）。
+ * Call link 从这一行的哪一端出：子卡整个在右 → 右；整个在左 → 左；上下错开（横向重叠）时看子卡左边在不在父卡中线右边（宽松）。
  * 用户拖过起点或在菜单 Start From 里选过（L.side）就一直照用户的。
  */
 export function callSide(L: Link, a: Rect, b: Rect): "left" | "right" {
@@ -94,16 +94,11 @@ export function callSide(L: Link, a: Rect, b: Rect): "left" | "right" {
   return b.x >= a.x + a.w / 2 ? "right" : "left";
 }
 
-/** 行 → 整张卡用 lineGeo（起点在行的一端，有小圆点可拖到另一端）；其它（卡 → 卡、→ 某一行）用 plainGeo */
-function linkGeo(L: Link): Geo | null {
-  return L.from.line !== undefined && L.to.line === undefined ? lineGeo(L) : plainGeo(L);
-}
-
 /**
- * 行 → 卡：起点自动选边（#27），也可以拖起点或在菜单里改（L.side）。
+ * Call link：起点自动选边（#27），也可以拖起点改（L.side）。
  * 右端出：子卡在右 → 进子卡左侧；子卡在下（或上）→ 从上（下）边进子卡。左端出：子卡在左 → 进子卡右侧；否则绕进子卡左侧。
  */
-function lineGeo(L: Link): Geo | null {
+function callGeo(L: Link): Geo | null {
   const p1 = lineAt(L.from.card, L.from.seg, L.from.line);
   const e2 = endRect(L.to.card);
   if (!p1 || !e2) return null;
@@ -144,19 +139,17 @@ function lineGeo(L: Link): Geo | null {
       head = arrowHead(x2, y2, c2x, y2);
     }
   }
-  const hd = (L.arrow ?? "end") !== "none" ? head : undefined;
-  const tail = L.arrow === "both" ? headPath(x1, y1, side === "right" ? -1 : 1, 0) : undefined;
   if (shape().route === "elbow") {
     // 制图：直角折线，像标注引线
     const vert = c2x === x2; // 从上 / 下边进
     const xm = vert ? x2 : side === "left" && x2 > x1 ? Math.min(x1, x2) - 24 : x1 + (x2 - x1) * 0.5;
     const d = vert ? `M${x1} ${y1} H${x2} V${y2}` : `M${x1} ${y1} H${xm} V${y2} H${x2}`;
-    return { d, mx: xm, my: (y1 + y2) / 2, head: hd && (vert ? headPath(x2, y2, 0, Math.sign(y2 - y1) || 1) : head), tail, port: { x: x1, y: y1 }, pts: [x1, y1, xm, y1, xm, y2, x2, y2] };
+    return { d, mx: xm, my: (y1 + y2) / 2, head: vert ? headPath(x2, y2, 0, Math.sign(y2 - y1) || 1) : head, port: { x: x1, y: y1 }, pts: [x1, y1, xm, y1, xm, y2, x2, y2] };
   }
   return {
     d: `M${x1} ${y1} C${c1x} ${c1y} ${c2x} ${c2y} ${x2} ${y2}`,
     mx: (x1 + 3 * c1x + 3 * c2x + x2) / 8, my: (y1 + 3 * c1y + 3 * c2y + y2) / 8,
-    head: hd, tail, port: { x: x1, y: y1 }, pts: [x1, y1, c1x, c1y, c2x, c2y, x2, y2],
+    head, port: { x: x1, y: y1 }, pts: [x1, y1, c1x, c1y, c2x, c2y, x2, y2],
   };
 }
 
@@ -166,7 +159,7 @@ function arrowHead(tx: number, ty: number, fx: number, fy: number) {
   return headPath(tx, ty, (tx - fx) / len, (ty - fy) / len);
 }
 
-function plainGeo(L: Link): Geo | null {
+function plainGeo(L: PlainLink): Geo | null {
   const ea = endRect(L.from.card), eb = endRect(L.to.card);
   if (!ea || !eb) return null;
   const ra = ea.r, rb = eb.r;
@@ -216,6 +209,7 @@ function plainGeo(L: Link): Geo | null {
 function visible(L: Link) {
   const a = cardById(L.from.card), b = cardById(L.to.card);
   if (!a || !b) return false;
+  if (collapsedAway().has(a.host.id) || collapsedAway().has(b.host.id)) return false;
   const ha = collapsedHome(placeOf(a.host.id).section), hb = collapsedHome(placeOf(b.host.id).section);
   if (ha && ha === hb) return false;
   return true;
@@ -243,14 +237,14 @@ function portDrag(e: PointerEvent, id: string) {
   if (e.button !== 0) return;
   e.stopPropagation(); e.preventDefault();
   const L = state.board.links.find((l) => l.id === id);
-  if (!L || L.from.line === undefined) return;
+  if (L?.kind !== "call") return;
   const a = endRect(L.from.card)?.r;
   if (!a) return;
   const end = beginGesture();
   const move = (ev: PointerEvent) => {
     const o = boardOffset(), w = toWorld(ev.clientX - o.x, ev.clientY - o.y);
     const side = w.x >= a.x + a.w / 2 ? "right" : "left";
-    live((b) => { const k = b.links.find((l) => l.id === id); if (k && k.side !== side) k.side = side; });
+    live((b) => { const k = b.links.find((l) => l.id === id); if (k?.kind === "call" && k.side !== side) k.side = side; });
   };
   const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); end(); };
   window.addEventListener("pointermove", move);
@@ -263,18 +257,17 @@ export function LinksSvg() {
     <svg class="edges" width="1" height="1">
       <For each={links()}>
         {(L) => {
-          const g = createMemo(() => linkGeo(L));
+          const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
           const on = () => sel.links.includes(L.id) || hoverLink() === L.id || (A.bindHot() as { link?: string } | null)?.link === L.id;
           const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
-          const lc = () => (L.color ? ` lc-${L.color}` : "");
-          const cls = () => `edge plain${L.solid === false ? " dashed" : ""}${lc()}${on() ? " on" : ""}`;
+          const cls = () => `edge${L.kind === "plain" ? " plain" + ((L as PlainLink).solid === false ? " dashed" : "") + ((L as PlainLink).color ? ` lc-${(L as PlainLink).color}` : "") : ""}${on() ? " on" : ""}`;
           return (
             <Show when={g()}>
               <path class={cls()} d={g()!.d} />
-              <Show when={g()!.head}><path class={`ahead ${shape().head}${lc()}${on() ? " on" : ""}`} d={g()!.head} /></Show>
-              <Show when={g()!.tail}><path class={`ahead ${shape().head}${lc()}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
+              <Show when={g()!.head}><path class={`ahead ${shape().head}${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
+              <Show when={g()!.tail}><path class={`ahead ${shape().head}${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
               <Show when={g()!.port}><path class={`port fc-${toHue()}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
-                <Show when={on()}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / cam.z} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
+                <Show when={on() && L.kind === "call"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / cam.z} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
               <path class="lhit" data-link={L.id} d={g()!.d} style={{ "stroke-width": `${12 / cam.z}px` }}
                 onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
                 onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
@@ -298,30 +291,60 @@ export function LinksSvg() {
   );
 }
 
-/** 线中间的标签（HTML，在 SVG 上面） */
+/** 线中间的标签和变量 chip（HTML，在 SVG 上面） */
 export function LinkLabels() {
   const links = createMemo(() => state.board.links.filter(visible));
   return (
     <For each={links()}>
       {(L) => {
-        const g = createMemo(() => linkGeo(L));
+        const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
+        const vars = () => (L.kind === "call" ? L.vars ?? [] : []);
         const editingLabel = () => editing()?.kind === "label" && editing()?.id === L.id;
+        const mk = createMemo(() => L.kind === "plain" && !!A.callOn(L.from, L.to));
+        const has = () => L.label || editingLabel() || mk() || (L.kind === "call" && (vars().length || !!L.loop));
+        const plus = () => L.kind === "call" && hoverLink() === L.id;
         // 标签框的位置：拖过就按沿线的 t，否则在中间
         const pos = () => { const gg = g()!; return L.at !== undefined ? curveAt(gg.pts, L.at) : { x: gg.mx, y: gg.my }; };
         return (
-          <Show when={g() && (L.label || editingLabel())}>
-            <div class="vchips user" classList={{ on: sel.links.includes(L.id) }} data-link={L.id} style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
-              onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
-              onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); if ((e.target as HTMLElement).closest(".editing")) return; e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); labelDrag(e, L.id); }}>
-              <div class="vcard">
-                <div class="vhead">
-                  <Editable class="vlabel" kind="label" id={L.id} value={L.label ?? ""} placeholder="Label" onCommit={(v) => A.setLinkLabel(L.id, v)} />
-                </div>
+          <Show when={g()}>
+            <Show when={has()}>
+              <div class="vchips" classList={{ user: L.kind === "plain", on: sel.links.includes(L.id) }} data-link={L.id} style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
+                onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
+                onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus")) return; e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); labelDrag(e, L.id); }}>
+                <Show when={plus() && vars().length}><button class="vplus in" data-tip="Variables on this call" aria-label="Variables on this call" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button></Show>
+                {/* 一个框：上面一行是 ↺ 和自己写的标签，下面是变量；只有其中一样时就只是那一样 */}
+                <Show when={(L.kind === "call" && L.loop) || L.label || editingLabel() || vars().length}>
+                  <div class="vcard" classList={{ split: !!((L.kind === "call" && L.loop) || L.label || editingLabel()) && !!vars().length }}>
+                    <Show when={(L.kind === "call" && L.loop) || L.label || editingLabel()}>
+                      <div class="vhead">
+                        <Show when={L.kind === "call" && L.loop}><span class="vloop" data-tip="Called inside a loop">↺<Show when={!L.label && !editingLabel()}><i>in a loop</i></Show></span></Show>
+                        <Show when={L.label || editingLabel()}>
+                          <Editable class="vlabel" kind="label" id={L.id} value={L.label ?? ""} placeholder="Label" onCommit={(v) => A.setLinkLabel(L.id, v)} />
+                        </Show>
+                      </div>
+                    </Show>
+                    <Show when={vars().length}>
+                      <div class="vbox">
+                        <For each={vars()}>{(v) => (
+                          <div class="vrow" data-k={varKey(v)} onPointerEnter={() => A.hiVar(L, v, true)} onPointerLeave={() => A.hiVar(L, v, false)}>
+                            <span class="va">{v.ret ? "return" : v.a}</span><span class="vto">{v.ret || v.b ? "→" : ""}</span><span class="vb">{v.ret ? v.a : v.b ?? ""}</span>
+                          </div>
+                        )}</For>
+                      </div>
+                    </Show>
+                  </div>
+                </Show>
+                <Show when={mk()}><button class="mkcall" data-tip="This line calls the target. Make it a numbered call." onPointerDown={(e) => e.stopPropagation()} onClick={() => A.makeCall(L.id)}>Make Call</button></Show>
               </div>
-            </div>
+            </Show>
+            <Show when={plus() && !vars().length}>
+              <button class="vplus" style={{ left: `${pos().x}px`, top: `${pos().y}px` }} data-tip="Variables on this call" aria-label="Variables on this call"
+                onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button>
+            </Show>
           </Show>
         );
       }}
     </For>
   );
 }
+void findCard;
