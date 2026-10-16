@@ -5,7 +5,8 @@
    - 结构规则在后半，只挂在 :root[data-look] 下面。
    - 要 JS 配合的只有连线走法、箭头 / 端口形状（state/look.ts）和几个默认隐藏的部件：
      .cband（色带 / 大标题）、.cxfoot（卡片底栏）、.cfig（图注）、.mast（报头）。
-   Warm Ink 是 styles.css 里的默认值，不在这里。 */
+   Warm Ink 是 styles.css 里的默认值，不在这里。
+   - 代码区的字号、字宽、行高、上下留白所有主题都一样（11px / 20px 行，字宽 6.6px）：换主题时卡片装得下同样的内容。 */
 
 /* ======================================================================
    Tokens
@@ -381,7 +382,6 @@
 :root[data-look="classic"] .chead .rev:not(.lang):not(.unc) { border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; gap: 5px; }
 :root[data-look="classic"] .chead .rev:not(.new):not(.lang):not(.unc):not(.lost)::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 :root[data-look="classic"] .chead .rev.new { border-color: var(--warn); color: var(--ink-2); background: color-mix(in srgb, var(--warn) 13%, transparent); }
-:root[data-look="classic"] .code { font-size: 11.5px; }
 :root[data-look="classic"] .port { display: none; }
 :root[data-look="classic"] .vcard, :root[data-look="classic"] .vbox, :root[data-look="classic"] .vlabel, :root[data-look="classic"] .vchip { background: var(--bg); box-shadow: 0 0 0 1px var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; }
 :root[data-look="classic"] .pill, :root[data-look="classic"] .ctx, :root[data-look="classic"] .pop, :root[data-look="classic"] .dialog, :root[data-look="classic"] .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 9px; }
@@ -418,7 +418,6 @@
 :root[data-look="soft-light"] .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
 :root[data-look="soft-light"] .ccard > .cbody { margin: 0 10px 10px; border-radius: 12px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
 :root[data-theme="dark"][data-look="soft-light"] .ccard > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
-:root[data-look="soft-light"] .code { font-size: 10.5px; padding-top: 8px; padding-bottom: 10px; }
 :root[data-look="soft-light"] .card.note > .chead { padding-top: 6px; }
 :root[data-look="soft-light"] .card.note .nbody { font-weight: 300; font-size: 14px; padding: 2px 18px 16px; }
 :root[data-look="soft-light"] .card.note .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
@@ -525,7 +524,6 @@
 :root[data-look="colorful"] .cband .cmeta { display: none; }
 :root[data-look="colorful"] .cband .big { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font: 600 30px/1 var(--sys); color: rgba(30,20,10,.24); letter-spacing: .02em; }
 :root[data-look="colorful"] .cdesc { padding: 9px 14px 8px; border-bottom: 0; font: italic 400 12.5px/1.5 var(--italic); color: color-mix(in srgb, var(--fc) 70%, var(--ink)); }
-:root[data-look="colorful"] .code { font-size: 10.5px; }
 :root[data-look="colorful"] .cxfoot { display: flex; flex: none; height: 32px; border-top: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
 :root[data-look="colorful"] .cxfoot > .fl, :root[data-look="colorful"] .cxfoot > .act { display: flex; align-items: center; gap: 6px; padding: 0 12px; color: var(--ink-2); white-space: nowrap; }
 :root[data-look="colorful"] .cxfoot .fl { flex: 1; border-right: 2px solid var(--rule); }
@@ -587,7 +585,6 @@
 :root[data-look="newspaper"] .cband .cmeta, :root[data-look="newspaper"] .cband .big { display: none; }
 :root[data-look="newspaper"] .cdesc { margin-top: -4px; padding: 0 12px 10px; border-bottom: 0; font: italic 400 12.5px/1.45 var(--serif); color: var(--ink-2); }
 :root[data-look="newspaper"] .ccard > .cbody { border-top: .5px solid var(--hair); }
-:root[data-look="newspaper"] .code { padding-top: 8px; padding-bottom: 10px; }
 :root[data-look="newspaper"] .gutter::after { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; border-left: .5px solid var(--hair); }
 :root[data-look="newspaper"] .port { fill: var(--ink); stroke: none; }
 :root[data-look="newspaper"] .ahead.triangle { stroke: none; }
@@ -651,7 +648,6 @@
 :root[data-look="poster"] .cband .big { display: none; }
 :root[data-look="poster"] .cdesc { text-align: center; border-bottom: 0; padding: 0 14px 9px; font-size: 11.5px; }
 :root[data-look="poster"] .ccard > .cbody { border-top: .5px solid var(--rule); }
-:root[data-look="poster"] .code { font-size: 10.5px; padding-top: 8px; padding-bottom: 10px; }
 :root[data-look="poster"] .cfig { display: block; position: absolute; left: 0; right: 0; top: calc(100% + 12px); text-align: center; font: 400 9px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 :root[data-look="poster"] .ahead { stroke: var(--rule); }
 :root[data-look="poster"] .port { fill: var(--surface); stroke: var(--rule); }
@@ -735,3 +731,10 @@
 /* Poster：饱和色 + 粗墨边 */
 [data-look="poster"] .glyph.bi { --stk-bg: oklch(from var(--c) l calc(c * 1.25) h); --stk-fg: #fff; --stk-ring: var(--ink); --stk-rw: 2; }
 [data-look="poster"] .glyph.bi .fg { stroke-width: 2.4; }
+
+/* 代码卡比 Warm Ink 多出来的卡头 / 底栏高度（v15metrics 量的）：手动定了高度的卡显示时加上，换主题后看到的行数不变 */
+:root[data-look="classic"] { --hx: 2px; }
+:root[data-look="soft-light"] { --hx: 66px; }
+:root[data-look="colorful"] { --hx: 80px; }
+:root[data-look="newspaper"] { --hx: 37px; }
+:root[data-look="poster"] { --hx: 39px; }

@@ -1,4 +1,5 @@
 // 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、指针位置、打开编辑器 / 链接。
+import { chromeExtra } from "../state/look";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
@@ -212,7 +213,7 @@ export function fitContent(ids: string[]) {
       if (!p) continue;
       if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
       const c = b.cards.find((k) => k.id === id);
-      p.h = c?.kind === "note" || c?.kind === "web" ? undefined : Math.round(n.h);
+      p.h = c?.kind === "note" || c?.kind === "web" ? undefined : Math.round(n.h - (c?.kind === "code" ? chromeExtra() : 0));
     }
   });
 }

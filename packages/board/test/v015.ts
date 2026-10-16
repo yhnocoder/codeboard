@@ -445,6 +445,40 @@ export const V015: Record<string, () => Promise<void>> = {
       await close(h);
     }
   },
+  /** 各主题下代码卡的尺寸指标：字宽、行高、卡头高、代码区上下留白；换主题时卡片要装得下同样的内容 */
+  async v15metrics() {
+    const rows: any[] = [];
+    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster"]) {
+      const b = richBoard();
+      const h = await open({ board: b, light, w: 1500, h: 950, settings: { theme } as any });
+      await h.page.waitForTimeout(500);
+      const m = await h.page.evaluate((id) => {
+        const c = document.querySelector(`.card[data-id="${id}"]`)!;
+        const code = c.querySelector(".code") as HTMLElement, src = c.querySelector(".src") as HTMLElement;
+        const sp = document.createElement("span"); sp.textContent = "x".repeat(100); sp.style.position = "absolute"; src.appendChild(sp);
+        const ch = sp.getBoundingClientRect().width / 100; sp.remove();
+        const cs = getComputedStyle(code), hd = c.querySelector(".chead") as HTMLElement;
+        return { ch: +ch.toFixed(3), fs: cs.fontSize, lh: cs.lineHeight, pad: `${cs.paddingTop}/${cs.paddingBottom}`, head: hd?.getBoundingClientRect().height, srcLeft: src.getBoundingClientRect().left - code.getBoundingClientRect().left, font: cs.fontFamily.split(",")[0], need: Math.round(c.scrollHeight), have: Math.round(c.getBoundingClientRect().height) };
+      }, b.cards[0].id);
+      rows.push({ theme, ...m });
+      await close(h);
+    }
+    console.table(rows);
+  },
+  /** 定了高度的代码卡：换主题后看到的代码区高度不变 */
+  async v15themefit() {
+    const out: Record<string, number> = {};
+    for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite"]) {
+      const b = richBoard();
+      b.place[b.cards[1].id].h = 200;
+      const h = await open({ board: b, light, w: 1500, h: 950, settings: { theme } as any });
+      await h.page.waitForTimeout(400);
+      out[theme] = await h.page.locator(`.card[data-id="${b.cards[1].id}"] .cbody`).evaluate((e) => Math.round(e.getBoundingClientRect().height));
+      await close(h);
+    }
+    const v = Object.values(out);
+    console.log(Math.max(...v) - Math.min(...v) <= 6 ? "PASS" : "FAIL", "theme-fit", JSON.stringify(out));
+  },
   /** 线上的变量框能沿线拖，位置存成 t */
   async v15labeldrag() {
     const b = richBoard();

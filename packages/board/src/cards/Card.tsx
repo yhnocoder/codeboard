@@ -37,7 +37,7 @@ export function CardView(p: { card: Card }) {
   const pl = () => placeOf(c().id);
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
-    if (pl().h) s.height = `${pl().h}px`;
+    if (pl().h) s.height = c().kind === "code" ? `calc(${pl().h}px + var(--hx, 0px))` : `${pl().h}px`;
     const pi = pop();
     if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
     else if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
