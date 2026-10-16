@@ -323,18 +323,25 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
 
   // One screenshot of the same board per theme, for side-by-side comparison with the material reference in T2 (checklist S11)
   await step("r14-themes", "One screenshot per theme (8)", async () => {
+    // Close Settings with its own button: a stray Ctrl+, that reaches VS Code instead of the board opens VS Code's Settings over the board,
+    // after which the hidden webview stops painting (stale screenshots, every later step waits out settle())
+    const isOpen = async () => (await f.locator(".st-sw").count()) > 0;
+    const openSettings = async () => { for (let t = 0; t < 2 && !(await isOpen()); t++) { await blank(f, page); await page.keyboard.press("Control+,"); await sleep(800); } };
+    const closeSettings = async () => { if (await isOpen()) { await f.locator('button[aria-label="Close Settings"]').click(); await sleep(700); } };
     await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
-    await page.keyboard.press("Control+,"); await sleep(800);
+    await openSettings();
     const names = await f.locator(".st-sw").allTextContents();
     check(names.length >= 8, "Settings lists 8 themes", names);
     for (let i = 0; i < names.length; i++) {
       await f.locator(".st-sw").nth(i).click(); await sleep(1200);
-      await page.keyboard.press("Control+,"); await sleep(700);
+      await closeSettings();
       await shot(page, f, `r14-theme-${String(i + 1).padStart(2, "0")}-${names[i].trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}`);
-      await page.keyboard.press("Control+,"); await sleep(700);
+      await openSettings();
     }
     await f.locator(".st-sw").first().click(); await sleep(800);
-    await page.keyboard.press("Control+,"); await sleep(600);
+    await closeSettings();
+    const tab = await page.locator(".tab.active").first().textContent().catch(() => "");
+    check(!/Settings/.test(tab), "the board is still the active editor after Settings", tab);
   });
 
   // ---- The steps below come from v0.1.5 trial feedback (checklist section 4: C1 C2 C4 C8) ----
