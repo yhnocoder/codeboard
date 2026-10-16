@@ -4,7 +4,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { allCodeCards, emptyBoard, migrateBoard, type Board, type BoardMeta } from "@codeboard/core";
+import { allCodeCards, emptyBoard, loadBoard, type Board, type BoardMeta } from "@codeboard/core";
 import { mkUid } from "./ws";
 import { log } from "./log";
 
@@ -71,7 +71,7 @@ export class Storage {
         let e = [...this.cache.values()].find((x) => x.file === f.file);
         if (!e || e.mtime !== st.mtimeMs) {
           const raw = JSON.parse(await fs.readFile(f.file, "utf8"));
-          const board = migrateBoard(raw);
+          const board = loadBoard(raw);
           // id 决定存盘的文件名：只认安全的 id；和别的文件重了（Finder 里复制出来的）就换一个新的，免得两份互相覆盖
           const base = path.basename(f.file, ".json");
           if (!SAFE_ID.test(board.id ?? "")) board.id = SAFE_ID.test(base) ? base : mkUid("b");

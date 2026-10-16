@@ -1,7 +1,7 @@
 // 宿主发来的消息。
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
-import { migrateBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, type HostToBoard } from "@codeboard/core";
+import { loadBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, type HostToBoard } from "@codeboard/core";
 import { state, setState, markSaved, resetHistory, select, toast, mutate, live, setLineSel, sel } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner } from "./state/ui";
@@ -11,7 +11,7 @@ import { choose } from "./ui/Menu";
 export function onHost(m: HostToBoard) {
   switch (m.type) {
     case "init": {
-      const b = migrateBoard(m.board);
+      const b = loadBoard(m.board);
       batch(() => {
         setState("host", m.host);
         setState("boards", m.boards);
