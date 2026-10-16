@@ -1,13 +1,16 @@
 import { render } from "solid-js/web";
-import { createRoot } from "solid-js";
 import { App } from "./App";
-import { installAutosave, onHost } from "./store";
-import { installKeys } from "./components/Canvas";
-import { listen, send } from "./host";
+import { onHost } from "./hostio";
+import { installKeys } from "./interact";
+import { flushSave } from "./state/store";
+import { listen, send, followHostTheme } from "./host";
+import "katex/dist/katex.min.css";
 import "./styles.css";
 
-createRoot(() => installAutosave());
 listen(onHost);
 installKeys();
+followHostTheme();
+window.addEventListener("beforeunload", flushSave);
+document.addEventListener("visibilitychange", () => { if (document.hidden) flushSave(); });
 render(() => <App />, document.getElementById("root")!);
 send({ type: "ready" });
