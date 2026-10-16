@@ -21,8 +21,8 @@
  },
  {
   "name": "5-search.png",
-  "status": "changed",
-  "ratio": 0.0128
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "6-board.png",
@@ -36,8 +36,8 @@
  },
  {
   "name": "7a-settings.png",
-  "status": "changed",
-  "ratio": 0.0391
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "7b-diagnostics.png",
