@@ -2,10 +2,10 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  brokenBy, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS,
+  brokenBy, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS,
   type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type Stale,
 } from "@codeboard/core";
-import { send } from "../host";
+import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
 
 export const [state, setState] = createStore({
@@ -130,7 +130,16 @@ const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.l
  */
 export function mutate(fn: (b: Board) => void): boolean {
   const before = snap();
-  setState("board", produce(fn));
+  try { setState("board", produce(fn)); }
+  catch (e) {
+    // 改到一半抛错：produce 已经改了一部分，整次撤回，别留下半截的白板
+    restore(before);
+    console.error("mutate failed", e);
+    toast("Something went wrong; the change was undone.");
+    return false;
+  }
+  const bad = danglingRefs(unwrap(state.board));
+  if (bad.length) console.warn("[codeboard] dangling references after a change:", bad); // 自检：应该永远是空的，harness 会把它当失败
   const why = brokenBy(unwrap(state.board), () => parse(before));
   if (why) {
     restore(before);
@@ -228,7 +237,14 @@ export function flushSave() {
   const s = JSON.stringify(unwrap(state.board));
   if (s === lastSaved) return;
   lastSaved = s;
-  send({ type: "save", board: JSON.parse(s) });
+  // 宿主写盘成功才算存上；失败（磁盘满、没权限）就记成没存，过几秒再试，关窗前的 flush 也会再发
+  ask("save", { board: JSON.parse(s) }).catch((e: Error) => {
+    if (lastSaved !== s) return;
+    lastSaved = "";
+    toast(`Couldn't save the board: ${e.message}. Retrying…`);
+    clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(flushSave, 5000);
+  });
 }
 export function markSaved() { lastSaved = JSON.stringify(unwrap(state.board)); }
 

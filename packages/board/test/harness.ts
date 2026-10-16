@@ -104,7 +104,11 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
   const sent: BoardToHost[] = [];
   const post = (m: HostToBoard) => page.evaluate((s) => window.postMessage(JSON.parse(s), "*"), JSON.stringify(m));
   const reply = (req: number, data?: unknown, error?: string) => post({ type: "reply", req, data, error });
-  page.on("console", (m) => { if (m.type() === "error" || m.type() === "warning") console.log(`[page ${m.type()}]`, m.text()); });
+  page.on("console", (m) => {
+    // mutate's self-check (core danglingRefs): any hit is a failure in every scenario
+    if (m.text().includes("dangling references")) console.log("FAIL dangling-refs", m.text());
+    else if (m.type() === "error" || m.type() === "warning") console.log(`[page ${m.type()}]`, m.text());
+  });
   page.on("pageerror", (e) => console.log("[page error]", e.message));
   await page.exposeFunction("__host", async (s: string) => {
     const m = JSON.parse(s) as BoardToHost & { req?: number };
@@ -118,7 +122,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
         await post({ type: "init", board, boards: [{ id: board.id, name: board.name, cards: board.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS, ...(o.settings ?? {}) } } });
         break;
       }
-      case "save": board = m.board; break;
+      case "save": board = m.board; return reply(m.req, null);
       case "expand": {
         const want = m.pick ? allSyms().find((x) => x.f === m.pick!.path && (x.s.defLine === m.pick!.line || x.s.qual === m.pick!.qual)) : undefined;
         let cands = want ? [want] : allSyms().filter((x) => x.s.name === m.name || (m.name === x.s.qual.split(".")[0] && x.s.kind === "class"));

@@ -28,6 +28,7 @@ export function makeHandler(panels: Panels) {
   return async (p: BoardPanel, m: BoardToHost): Promise<unknown> => {
     switch (m.type) {
       case "save": {
+        if (p.board) m.board.id = p.board.id; // 存到这块面板打开的那个文件，不信白板发来的 id
         const renamed = p.board?.name !== m.board.name;
         p.board = m.board;
         await store.save(m.board);
@@ -37,7 +38,12 @@ export function makeHandler(panels: Panels) {
       case "selection": p.selection = m; return;
       case "open": return openCard(p, m);
       case "openPath": return openAt(fromHostPath(m.path), m.line);
-      case "openLink": return void vscode.env.openExternal(vscode.Uri.parse(m.url));
+      case "openLink": {
+        // 白板文件里的链接只放行网页和邮件：file:// 之类会直接打开本机的程序
+        const u = vscode.Uri.parse(m.url);
+        if (!/^(https?|mailto)$/.test(u.scheme)) { log("info", `openLink: blocked ${u.scheme}: link`); return; }
+        return void vscode.env.openExternal(u);
+      }
       case "expand": return expand(m);
       case "peek": return peek(m);
       case "callVars": return callVars(m);

@@ -372,6 +372,8 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
 
 /** 读进来的白板文件（第 1、2、3 版）→ 第 3 版 */
 export function migrateBoard(raw: any): Board {
+  // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
+  if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
   if (raw?.version === 3) {
     const b = raw as Board;
     b.place ??= {};

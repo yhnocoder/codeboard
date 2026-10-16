@@ -134,7 +134,7 @@ export type HostToBoard =
 
 export type BoardToHost =
   | { type: "ready" }
-  | { type: "save"; board: Board }
+  | { type: "save"; req: number; board: Board } // 回 null；写盘失败回 error，白板过一会儿重试
   | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
   /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
   | { type: "open"; card: string; seg?: string; line?: number }

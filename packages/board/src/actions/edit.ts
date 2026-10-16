@@ -1,7 +1,7 @@
 // 改白板：行（隐藏、高亮、复制）、删除 / 复制卡、卡片属性、Compare、合并 / 拆开、Section。
 import { unwrap } from "solid-js/store";
 import {
-  pruneStickers,
+  pruneStickers, retargetCards,
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
   placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
@@ -285,6 +285,8 @@ export function separate(id: string) {
     const wa = defaultWidth(a), wc = defaultWidth(c);
     b.place[a.id] = { x: kp.x, y: kp.y, w: wa, section: kp.section };
     b.place[c.id] = { x: kp.x + wa + 40, y: kp.y, w: wc, section: kp.section };
+    // 连在 Compare 上的箭头、贴在它上面的 Sticker 改到左栏
+    retargetCards(b, [id], () => ({ card: a.id }));
     b.cards = b.cards.filter((x) => x.id !== id);
     delete b.place[id];
   });
@@ -322,22 +324,15 @@ export function mergeCards(ids: string[], target?: string) {
     };
     // 另一张卡的说明转成 Text sidenote 挂在整张卡上
     for (const o of orig) if (o !== T && o.desc) b.sidenotes.push({ id: uid("n"), at: { card: mid }, kind: "text", md: o.desc });
-    for (const l of b.links) {
-      if (set.has(l.from.card)) {
-        const os = l.from.seg ? oldSegs.get(l.from.seg) : undefined;
-        l.from = { card: mid, seg: os ? segFor(os, l.from.line).id : undefined, line: l.from.line };
-      }
-      if (set.has(l.to.card)) l.to = { card: mid };
-    }
-    b.links = b.links.filter((l) => !(l.from.card === mid && l.to.card === mid));
-    for (const n of b.sidenotes) if (set.has(n.at.card)) {
-      const os = n.at.seg ? oldSegs.get(n.at.seg) : undefined;
-      n.at = { card: mid, seg: os ? segFor(os, n.at.lines?.[0]).id : undefined, lines: n.at.lines };
-    }
+    retargetCards(b, set, (at) => {
+      const os = at.seg ? oldSegs.get(at.seg) : undefined;
+      return { card: mid, seg: os ? segFor(os, at.line).id : undefined };
+    });
+    const w = Math.max(560, ...orig.map((c) => b.place[c.id]?.w ?? 560)); // 先量宽度，再删原来的摆放
     b.cards = b.cards.filter((c) => !set.has(c.id));
     for (const i of set) delete b.place[i];
     b.cards.push(M);
-    b.place[mid] = { x: TP.x, y: TP.y, w: Math.max(560, ...orig.map((c) => b.place[c.id]?.w ?? 560)), section: TP.section };
+    b.place[mid] = { x: TP.x, y: TP.y, w, section: TP.section };
     newSegs = structuredClone(segs);
   });
   if (!ok) return;
@@ -354,6 +349,7 @@ export function unmerge(id: string) {
   const M = cardById(id)?.card;
   if (!isCode(M)) return;
   if (!M.mergedFrom && M.segments.length < 2) return;
+  if (!state.board.place[id]) return toast("Separate the Compare first");
   const made: string[] = [];
   const need: Segment[] = [];
   const ok = mutate((b) => {
@@ -362,7 +358,12 @@ export function unmerge(id: string) {
     const dx = f0 ? mp.x - f0.x : 0, dy = f0 ? mp.y - f0.y : 0;
     const pp: Place[] = [];
     const parts: CodeCard[] = m.mergedFrom
-      ? m.mergedFrom.map((o) => { pp.push({ ...structuredClone(unwrap(o.place)), x: o.place.x + dx, y: o.place.y + dy, section: mp.section }); return structuredClone(unwrap(o.card)); })
+      ? m.mergedFrom.map((o) => {
+        pp.push({ ...structuredClone(unwrap(o.place)), x: o.place.x + dx, y: o.place.y + dy, section: mp.section });
+        const k = structuredClone(unwrap(o.card));
+        if (b.cards.some((c) => c.id === k.id)) k.id = uid("c"); // 复制过的合并卡再拆：原卡的 id 已经被另一份占了
+        return k;
+      })
       : m.segments.map((s, i) => { pp.push({ x: mp.x + i * 40, y: mp.y + i * 40, w: mp.w, section: mp.section }); return { id: uid("c"), kind: "code", segments: [structuredClone(unwrap(s))], hide: m.hide }; });
     // 段的高亮 / 隐藏跟着行走
     for (const p of parts) for (const s of p.segments) {
@@ -378,11 +379,7 @@ export function unmerge(id: string) {
       for (const p of parts) for (const s of p.segments) if (s.path === ms.path && sameVersion(s.version, ms.version) && (line === undefined ? s.start <= ms.end && s.end >= ms.start : line >= s.start && line <= s.end)) return { card: p.id, seg: s.id };
       return { card: parts[0].id, seg: undefined };
     };
-    for (const l of b.links) {
-      if (l.from.card === id) { const o = owner(l.from.seg, l.from.line); l.from = { card: o.card, seg: o.seg, line: o.seg ? l.from.line : undefined }; }
-      if (l.to.card === id) l.to = { card: parts[0].id };
-    }
-    for (const n of b.sidenotes) if (n.at.card === id) { const o = owner(n.at.seg, n.at.lines?.[0]); n.at = { card: o.card, seg: o.seg, lines: o.seg ? n.at.lines : undefined }; }
+    retargetCards(b, [id], (at) => (at.seg ? owner(at.seg, at.line) : { card: parts[0].id }));
     b.cards = b.cards.filter((c) => c.id !== id);
     delete b.place[id];
     parts.forEach((p, i) => { b.cards.push(p); b.place[p.id] = pp[i]; made.push(p.id); need.push(...p.segments); });

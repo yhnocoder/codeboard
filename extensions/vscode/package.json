@@ -483,7 +483,7 @@
           "default": false,
           "description": "Hide the flow letters (A, B…) on cards."
         },
-        "codeboard.theme.reflow": {
+        "codeboard.themeReflow": {
           "type": "string",
           "enum": ["push", "overlap"],
           "enumDescriptions": ["Push cards below down", "Allow overlap"],
