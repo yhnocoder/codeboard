@@ -120,6 +120,30 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(h.board().stickers.length === 6 ? "PASS" : "FAIL", "sticker-delete");
     await close(h);
   },
+  // 自定义贴纸包的 SVG 由白板用 DOMPurify 清洗：脚本、事件属性、javascript: 链接（包括实体编码的）、foreignObject、<style> 都去掉
+  async stickersvg() {
+    const bad: Record<string, string> = {
+      onload: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" onload="window.__pwned=1"><circle cx="8" cy="8" r="6" onclick="window.__pwned=2"/></svg>`,
+      script: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><script>window.__pwned=3</script><rect width="16" height="16"/></svg>`,
+      jshref: `<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 16 16"><a href="javascript:window.__pwned=4"><rect width="8" height="8"/></a><a xlink:href="javascript:alert(1)"><rect x="8" width="8" height="8"/></a></svg>`,
+      entity: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><a href="&#106;avascript&#58;window.__pwned=5"><rect width="16" height="16"/></a><a href="&#x6A;&#x61;vascript:x"><rect width="4" height="4"/></a></svg>`,
+      foreign: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><foreignObject width="16" height="16"><iframe src="javascript:window.__pwned=6"></iframe><img src="x" onerror="window.__pwned=7"></foreignObject><style>body{display:none}</style><path d="M0 0h16v16z"/></svg>`,
+    };
+    const b = emptyBoard("b1", "svg");
+    Object.keys(bad).forEach((name, i) => b.stickers.push({ id: "k" + i, icon: { pack: "evil", name }, at: { kind: "canvas", x: 200 + i * 60, y: 200, size: 40 } }));
+    const h = await open({ board: b, light, on: (m, reply) => (m.type === "stickerPacks" ? (void reply(m.req!, [{ id: "evil", name: "Evil", icons: Object.entries(bad).map(([name, svg]) => ({ name, svg })) }]), true) : false) });
+    await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.waitForTimeout(400);
+    const r = await h.page.evaluate(() => {
+      const gs = [...document.querySelectorAll(".glyph.custom")];
+      const html = gs.map((g) => g.innerHTML).join("\n");
+      const attrs = gs.flatMap((g) => [...g.querySelectorAll("*")].flatMap((e) => [...e.attributes].map((a) => `${a.name}=${a.value}`)));
+      return { n: gs.length, html, pwned: (window as any).__pwned, script: /<script|<foreignobject|<iframe|<style|<img/i.test(html), on: attrs.filter((a) => /^on/i.test(a)), js: attrs.filter((a) => /javascript/i.test(a)), svgs: gs.filter((g) => g.querySelector("svg")).length };
+    });
+    const ok = r.n >= 5 && r.svgs === r.n && !r.pwned && !r.script && !r.on.length && !r.js.length;
+    console.log(ok ? "PASS" : "FAIL", "sticker-svg-clean", JSON.stringify({ n: r.n, svgs: r.svgs, pwned: r.pwned, script: r.script, on: r.on, js: r.js }));
+    if (!ok) console.log(r.html);
+    await close(h);
+  },
   async v15fresh() {
     const b = emptyBoard("b1", "fresh");
     const h = await open({ board: b, light });
