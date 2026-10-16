@@ -4,7 +4,7 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
 import { isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
-import { analysisOf, cachedAnalysis } from "./analysis";
+import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
 import { sharedDefs, type Def } from "./defcache";
 import { cardForFileSym, symCard } from "./cards";
 import { absOf, locOfFile, versionText } from "./source";
@@ -175,7 +175,7 @@ async function currentFile(seg: Segment) {
 function callSite(seg: Segment, full: string | null, m: ExpandReq): CallSite | undefined {
   let calls: CallSite[];
   let shift = 0, colOff = 0;
-  if (full) calls = analysisOf(seg.lang, full).calls;
+  if (full) calls = segAnalysis(seg.lang, full, m.line, m.line, absOf(seg) ?? undefined).calls;
   else {
     const ind = Math.min(...seg.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
     colOff = Number.isFinite(ind) ? ind : 0;
@@ -353,7 +353,7 @@ async function importedModule(m: PeekReq): Promise<PeekDef | null> {
   const seg = m.seg;
   if (seg.src.kind === "free" || m.word.includes(".")) return null;
   const full = await versionText(seg);
-  const a: FileAnalysis | null = full ? analysisOf(seg.lang, full) : null;
+  const a: FileAnalysis | null = full ? segAnalysis(seg.lang, full, 1, 0, absOf(seg) ?? undefined) : null; // 只用 import
   const im = a?.imports.find((i) => i.name === m.word && !i.from);
   if (!a || !im || !full) return null;
   const rel = im.module.split(".");
@@ -378,7 +378,7 @@ async function localDef(m: PeekReq): Promise<PeekDef | null> {
   const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const isSelf = m.word.startsWith("self.");
   const re = new RegExp(isSelf ? `^\\s*self\\.${esc}\\s*(:[^=]*)?=(?!=)` : `^\\s*${esc}\\s*(:[^=]*)?=(?!=)|^\\s*(?:async\\s+)?def\\s+\\w+\\(.*\\b${esc}\\b`);
-  const a = analysisOf(seg.lang, full);
+  const a = analysisOf(seg.lang, full, absOf(seg) ?? undefined);
   const fn = symbolAt(a.symbols, m.line, "def");
   const cls = isSelf ? a.symbols.find((s) => s.kind === "class" && fn?.parent === s.qual) : undefined;
   const lo = cls?.start ?? fn?.start ?? 1, hi = cls ? cls.end : m.line - 1;

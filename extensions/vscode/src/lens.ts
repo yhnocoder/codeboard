@@ -60,7 +60,7 @@ export class EditorMarks implements vscode.CodeLensProvider {
     const ents = this.byFile.get(doc.uri.fsPath);
     if (!ents?.length || doc.uri.scheme !== "file") return [];
     const out: vscode.CodeLens[] = [];
-    for (const s of analysisOf(doc.languageId, doc.getText()).symbols) {
+    for (const s of analysisOf(doc.languageId, doc.getText(), doc.uri.fsPath).symbols) {
       const on = ents.filter((e) => e.seg.symbol?.qual === s.qual);
       if (!on.length) continue;
       const boards = new Set(on.map((e) => e.board));

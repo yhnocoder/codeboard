@@ -4,7 +4,8 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import type { CodeCard, ExpandResult, PeekDef, Segment } from "@codeboard/core";
-import { startAnalysis, analysisOf } from "../src/analysis";
+import { startAnalysis, analysisOf, segAnalysis } from "../src/analysis";
+import { clipAnalysis } from "@codeboard/core/analysis";
 import { cardForFileSym } from "../src/cards";
 import { callVars, expand, peek } from "../src/resolve";
 import { viewsFor } from "../src/views";
@@ -144,6 +145,16 @@ void (async () => {
     await sleep(2500);
     check(calls === 3 && maxLive === 1, "warmBoard: one request per distinct file, one at a time", { calls, maxLive });
     (commands as { executeCommand: unknown }).executeCommand = orig;
+  }
+
+  // 卡片的段只分析那几行：和整文件分析再裁剪一样；整文件分析过以后直接裁剪
+  {
+    const t = fs.readFileSync(path.join(WS, "nanovllm/engine/llm_engine.py"), "utf8") + "\n# segment test\n"; // 新内容：不在缓存里
+    const s1 = segAnalysis("python", t, 20, 45, "seg-test");
+    const full = analysisOf("python", t, "seg-test");
+    check(s1.calls.length > 0 && JSON.stringify(s1) === JSON.stringify(clipAnalysis(full, 20, 45)), "segAnalysis = whole-file analysis clipped to the segment");
+    check(JSON.stringify(segAnalysis("python", t, 20, 45)) === JSON.stringify(s1), "segAnalysis after the whole file was analyzed: same result");
+    check(JSON.stringify(segAnalysis("python", t, 1, 0).imports) === JSON.stringify(full.imports), "segAnalysis with no lines still has the file's imports");
   }
 
   console.log(failed ? `${failed} failed` : "All passed");
