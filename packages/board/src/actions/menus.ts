@@ -23,7 +23,7 @@ import { addPlain, callOn, makeCall, openVars, startConnect } from "./links";
 import { addToStudyScope, attachCall, calleeMatches, expandCall, isLibCall, selectFlow, startWalk } from "./flow";
 import { commitMenu } from "./versions";
 import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
-import { newFreeCode, newNote, pasteText } from "./create";
+import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, webMenuItems } from "./web";
 
@@ -63,6 +63,7 @@ function lineItems(ls: LineSel): Item[] {
     { label: "Hide Lines", kbd: "H", run: () => hideLines(ls) },
     { label: hlAll ? "Remove Highlight" : "Highlight Lines", run: () => toggleHl(ls) },
     { label: "Add Sidenote", kbd: "S", run: () => openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) },
+    { label: "New Card from Lines", run: () => cardFromLines(ls) },
     { label: "Copy", kbd: `${K.mod}C`, run: () => copyLines(ls) },
   ];
 }

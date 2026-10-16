@@ -29,6 +29,8 @@ export type Settings = {
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）
   zoomMap: number; // 低于这个比例：地图（只剩编号和名字）
   dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
+  debug?: boolean; // 打开后设置页多一节 Debug（调常量）
+  tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",

@@ -9,6 +9,7 @@ import {
   state, sel, select, toggleSel, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, mutate, live, beginGesture,
   undo, redo, toast, placeOf, placed, setSel, toastMsg, setToastMsg,
 } from "./state/store";
+import { tune } from "./state/tune";
 import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, fitRect, lod } from "./state/camera";
 import {
   setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, spaceDown, setSpaceDown,
@@ -48,7 +49,7 @@ function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: Point
 // 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）
 const dbl: { key?: string; t: number } = { t: 0 };
 export function isDbl(key: string) {
-  const now = performance.now(), r = dbl.key === key && now - dbl.t < 420;
+  const now = performance.now(), r = dbl.key === key && now - dbl.t < tune("dblClick");
   dbl.key = r ? undefined : key; dbl.t = now;
   return r;
 }
@@ -142,7 +143,7 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
     if (drop?.kind === "merge" && dropTarget()?.kind === "merge" && dropTarget()!.card === drop.card && dropTarget()!.armed) drop = dropTarget();
     setDropTarget(drop);
     if (!(ev.metaKey || ev.ctrlKey) && !drop) {
-      const sn = snapMove({ ...box, x: box.x + dx, y: box.y + dy }, targets, 6 / z);
+      const sn = snapMove({ ...box, x: box.x + dx, y: box.y + dy }, targets, tune("snap") / z);
       dx += sn.dx; dy += sn.dy;
       setGuides(sn.guides);
     } else setGuides([]);
@@ -230,7 +231,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
     if (edges.bottom) h = Math.max(minH, r0.h + dy);
     let hint: string | null = null;
     if (!(ev.metaKey || ev.ctrlKey) && !edges.left) {
-      const sn = snapResize({ x, y: r0.y, w, h }, { right: edges.right, bottom: edges.bottom }, targets, 6 / z);
+      const sn = snapResize({ x, y: r0.y, w, h }, { right: edges.right, bottom: edges.bottom }, targets, tune("snap") / z);
       w = sn.w; h = sn.h;
       setGuides(sn.guides.filter(() => !sn.same));
       if (sn.same === "w") hint = `same width · ${Math.round(w)}`;

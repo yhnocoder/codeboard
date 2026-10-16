@@ -302,4 +302,31 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(afterOpen === 1 && afterPick === 1 && focused && afterAway === 0 ? "PASS" : "FAIL", "free-lang-keeps-card", JSON.stringify({ afterOpen, afterPick, focused, afterAway }));
     await close(h);
   },
+  /** 选几行 → 右键 New Card from Lines：新卡只有这几行；行号栏没有 + 按钮 */
+  async v15fromlines() {
+    const b = emptyBoard("b1", "lines");
+    put(b, card("Scheduler.schedule"), 80, 80, 560);
+    const h = await open({ board: b, light, w: 1400, h: 800 });
+    const no = h.page.locator(".card .gutter .no");
+    await no.nth(5).click(); await no.nth(8).click({ modifiers: ["Shift"] }); await h.page.waitForTimeout(200);
+    const plus = await h.page.locator(".addn").count();
+    const lb = (await h.page.locator(".card .src .l").nth(6).boundingBox())!; // 用坐标点：locator.click 会把很宽的行横向滚进视野
+    await h.page.mouse.click(lb.x + 60, lb.y + 8, { button: "right" }); await h.page.waitForTimeout(300);
+    await h.page.locator(".ctx button", { hasText: "New Card from Lines" }).click(); await h.page.waitForTimeout(1500);
+    const cs = h.board().cards as any[];
+    const nc = cs[1]?.segments?.[0];
+    await shot(h, "v15-fromlines");
+    console.log(cs.length === 2 && nc?.text.length === 4 && plus === 0 ? "PASS" : "FAIL", "card-from-lines", JSON.stringify({ n: cs.length, lines: nc?.text.length, start: nc?.start, plus }));
+    await close(h);
+  },
+  /** codeboard.debug.enabled 打开时设置页有 Debug 一节；拖滑块改 Peek 延时 */
+  async v15debug() {
+    const h = await open({ board: emptyBoard("b1", "dbg"), light, w: 1200, h: 900, settings: { debug: true } });
+    await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(400);
+    await h.page.locator('[data-sec="debug"]').scrollIntoViewIfNeeded();
+    await shot(h, "v15-debug");
+    const n = await h.page.locator('[data-sec="debug"] .st-tr').count();
+    console.log(n >= 6 ? "PASS" : "FAIL", "debug-tune", n);
+    await close(h);
+  },
 };

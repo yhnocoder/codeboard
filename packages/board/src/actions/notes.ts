@@ -19,6 +19,7 @@ import { send, ask } from "../host";
 import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { addCards, requestViews } from "./create";
+import { tune } from "../state/tune";
 import { hostRect, lastPointer, revealCard } from "./common";
 
 // ---------- Sidenote ----------
@@ -133,7 +134,7 @@ export function scheduleHidePeek() {
   peekLeave = window.setTimeout(() => {
     const p = pops().find((q) => !q.pinned && q.pop.kind === "peek");
     if (p && !document.querySelector(`.pop[data-pop="${p.id}"]:hover`)) closePop(p.id);
-  }, 260);
+  }, tune("peekHide"));
 }
 export const cancelHidePeek = () => clearTimeout(peekLeave);
 export async function showPeek(el: Element, cardId: string, segId: string, line: number, col: number, word: string, pin = false, at?: { path: string; line: number; col: number }) {

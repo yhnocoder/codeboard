@@ -461,6 +461,16 @@
           "default": "",
           "description": "Folder with sticker packs (Iconify JSON files or folders of SVGs)."
         },
+        "codeboard.debug.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a Debug section in CodeBoard Settings for tuning timings and distances."
+        },
+        "codeboard.debug.tune": {
+          "type": "object",
+          "default": {},
+          "description": "Tuned constants from the Debug section (empty = defaults)."
+        },
         "codeboard.doubleClick": {
           "type": "string",
           "enum": ["text", "note", "code", "none"],

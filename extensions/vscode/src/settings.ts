@@ -11,6 +11,8 @@ const KEY: Record<keyof Settings, string> = {
   zoomOverview: "zoom.overview",
   zoomMap: "zoom.map",
   dblClick: "doubleClick",
+  debug: "debug.enabled",
+  tune: "debug.tune",
 };
 
 export function readSettings(): Settings {

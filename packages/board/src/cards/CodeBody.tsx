@@ -2,6 +2,7 @@
 // 代码是一整块，选区连续；复制时只要代码文本、不带行号（copy 事件里自己拼）。
 import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
+import { tune } from "../state/tune";
 
 /** 第 i 个字符前面有没有没配对的引号（单行内；三引号字符串的中间行靠高亮 class 判断） */
 function inQuotes(t: string, i: number) {
@@ -201,7 +202,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
 
   // ---------- 悬停：标识符 → 定义预览；行尾圆点 → 拉 Plain link ----------
   const [hoverRow, setHoverRow] = createSignal(-1);
-  let peekKey = "", peekTimer: number | undefined;
+  let peekKey = "", peekTimer: number | undefined, peekPt = { x: 0, y: 0 };
   const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set const auto void return struct template typename".split(" "));
   const onMove = (e: PointerEvent) => {
     if (e.buttons || dragging().size) return;
@@ -229,12 +230,17 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     // 字符串、注释里的字不是代码里的名字：不弹 Peek（看高亮的 class；没高亮时数引号）
     const tok = (rng.startContainer.parentElement as HTMLElement | null)?.closest?.(".str, .com");
     if (tok || inQuotes(text, a)) return clearPeek();
+    // 选中的行上不弹（选行时很容易扫过名字）
+    if (inSel(r.seg, r.line)) return clearPeek();
     const key = `${r.seg}:${r.line}:${a}`;
-    if (key === peekKey) return;
-    clearPeek();
-    peekKey = key;
     const pin = e.metaKey || e.ctrlKey;
-    peekTimer = window.setTimeout(() => { if (peekKey === key) act.showPeek(rowE, c().id, r.seg, r.line, a, word, pin); }, pin ? 0 : 550);
+    // 同一个词上：鼠标还在晃就重新计时，停稳了才弹
+    if (key === peekKey && !pin) {
+      if (Math.hypot(e.clientX - peekPt.x, e.clientY - peekPt.y) <= tune("peekStill")) return;
+      clearTimeout(peekTimer);
+    } else { clearPeek(); peekKey = key; }
+    peekPt = { x: e.clientX, y: e.clientY };
+    peekTimer = window.setTimeout(() => { if (peekKey === key) act.showPeek(rowE, c().id, r.seg, r.line, a, word, pin); }, pin ? 0 : tune("peekDelay"));
   };
   const clearPeek = () => { if (peekKey) { peekKey = ""; clearTimeout(peekTimer); act.scheduleHidePeek(); } };
   let leaveT: number | undefined;
@@ -366,9 +372,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               </Show>
             )}
           </For>
-          <Show when={addNoteY() !== null}>
-            <button class="addn" style={{ top: `${addNoteY()}px` }} data-tip="Add Sidenote" data-kbd="S" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.addSidenoteUI()}>+</button>
-          </Show>
         </div>
         <For each={rows()}>
           {(r, i) => (

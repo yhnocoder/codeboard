@@ -19,6 +19,7 @@ import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/po
 import { send, ask } from "../host";
 import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
+import { lineY } from "../state/geo";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
 
@@ -143,6 +144,24 @@ export async function pasteText(text: string, at?: { x: number; y: number }) {
 
 
 /** 选中的片段跨了几个顶层函数：按函数拆成几张卡，或一张多段卡 */
+/** 选中的几行另起一张卡：同一个文件、同一个版本，放在原卡右边那几行的高度 */
+export function cardFromLines(ls: LineSel) {
+  const f = cardById(ls.card);
+  if (!f || !isCode(f.card)) return;
+  const s = segOf(f.card, ls.seg);
+  if (!s) return;
+  const seg: Segment = {
+    ...structuredClone(unwrap(s)), id: uid("s"), start: ls.start, end: ls.end, text: s.text.slice(ls.start - s.start, ls.end - s.start + 1),
+    hidden: s.hidden?.map(([a, b]) => [Math.max(a, ls.start), Math.min(b, ls.end)] as [number, number]).filter(([a, b]) => a <= b),
+    hl: s.hl?.filter((l) => l >= ls.start && l <= ls.end),
+  };
+  const r = hostRect(f.host.id)!;
+  const y = lineY(ls.card, ls.seg, ls.start)?.y ?? r.y;
+  const id = uid("c");
+  addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: Math.min(r.w, 560) }], { at: { x: r.x + r.w + 48, y: y - 40 } });
+  requestViews([seg]);
+}
+
 export function splitSnippet(id: string, merge: boolean) {
   const c = cardById(id)?.card;
   if (!isCode(c) || c.segments.length !== 1) return;

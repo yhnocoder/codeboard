@@ -8,6 +8,7 @@ import { hoverLink, setHoverLink, rubber, editing, popIn } from "../state/ui";
 import { cam, toWorld } from "../state/camera";
 import { boardOffset } from "../actions/common";
 import { shape, fileHue } from "../state/look";
+import { tune } from "../state/tune";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
@@ -17,7 +18,7 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 // 离开连线后过 300ms 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停（#30）
 let leaveT: number | undefined;
 const enterLink = (id: string) => { clearTimeout(leaveT); setHoverLink(id); };
-const leaveLink = () => { clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverLink(null), 300); };
+const leaveLink = () => { clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverLink(null), tune("linkLeave")); };
 
 /** 卡（或 Compare 的一栏）的矩形；在折叠的 Section 里时是那个标题条 */
 function endRect(id: string): { r: Rect; pill: boolean } | null {

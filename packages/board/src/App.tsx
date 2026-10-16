@@ -1,5 +1,6 @@
 // 白板界面：画布、底部唯一的工具栏（新建 · Search · ⋯）、缩放、讲解条、横幅、提示。看板就是一个普通编辑器标签页。
 import { Show, For, createEffect, createMemo, on } from "solid-js";
+import { tune } from "./state/tune";
 import { unwrap } from "solid-js/store";
 import { state, mutate, live, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
 import { cam, camTarget, zoomAt } from "./state/camera";
@@ -23,6 +24,7 @@ import { flows, cardById } from "./state/store";
 export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
   let camT: number | undefined;
+  createEffect(() => document.documentElement.style.setProperty("--menu-ms", `${tune("menuOpen")}ms`));
   createEffect(on(() => [cam.x, cam.y, cam.z], () => {
     clearTimeout(camT);
     camT = window.setTimeout(() => {

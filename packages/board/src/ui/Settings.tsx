@@ -9,6 +9,7 @@ import * as A from "../actions";
 import { Icon } from "./icons";
 import { promptText } from "./Menu";
 import { filterShortcuts, keyText } from "./shortcuts";
+import { TUNE, tune, type TuneKey } from "../state/tune";
 
 const cur = (): S => ({ ...DEFAULT_SETTINGS, ...state.host.settings });
 
@@ -88,6 +89,7 @@ function SettingsPage(p: { section?: string }) {
         <Sec id="diagnostics" title="Troubleshooting" hint="Versions, workspace state and recent log lines, with your home folder shown as ~.">
           <button class="btn" onClick={() => A.copyDiagnostics()}>Copy Diagnostics</button>
         </Sec>
+        <Show when={cur().debug}><DebugTune /></Show>
         <Shortcuts />
       </div>
     </div>
@@ -154,6 +156,30 @@ function Shortcuts() {
             <h4>{g}</h4>
             <For each={rows}>{([k, a]) => <div class="st-kr"><span>{a}</span><kbd>{keyText(k, mac())}</kbd></div>}</For>
           </div>
+        )}</For>
+      </div>
+    </section>
+  );
+}
+
+/** Debug：现调时间、距离这些常量（codeboard.debug.enabled 打开时才有）。改了立刻生效，Reset 回默认 */
+function DebugTune() {
+  const set = (k: TuneKey, v: number | undefined) => {
+    const t = { ...(cur().tune ?? {}) };
+    t[k] = v ?? TUNE[k].def; // Solid 的 store 合并对象，删 key 删不掉：Reset 就写回默认值
+    A.setSetting("tune", t);
+  };
+  return (
+    <section class="st-sec" data-sec="debug">
+      <div class="st-h"><h3>Debug</h3><p>Timings and distances. Changes apply right away. Shown because codeboard.debug.enabled is on.</p></div>
+      <div class="st-c st-tune">
+        <For each={Object.keys(TUNE) as TuneKey[]}>{(k) => (
+          <label class="st-tr">
+            <span>{TUNE[k].label}</span>
+            <input type="range" min={TUNE[k].min} max={TUNE[k].max} value={tune(k)} onInput={(e) => set(k, +e.currentTarget.value)} />
+            <code>{tune(k)}{TUNE[k].unit}</code>
+            <button class="st-x" aria-label={`Reset ${TUNE[k].label}`} data-tip="Reset" disabled={tune(k) === TUNE[k].def} onClick={() => set(k, undefined)}><Icon name="undo" size={11} /></button>
+          </label>
         )}</For>
       </div>
     </section>
