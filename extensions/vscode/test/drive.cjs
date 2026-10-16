@@ -36,9 +36,9 @@ const { audit } = require("../../../tools/review/audit.cjs");
 const audits = [];
 // 截图前等白板静止（动画放完、画布不再移动），并只截白板区域，避免 VS Code 状态栏等无关变化干扰截图比对
 const settle = (fr) => fr.evaluate(async () => {
-  const sig = () => { const w = document.querySelector(".world"); return (w ? getComputedStyle(w).transform : "") + "|" + [...document.querySelectorAll(".card")].map((c) => { const r = c.getBoundingClientRect(); return `${r.x|0},${r.y|0},${r.width|0},${r.height|0}`; }).join(";"); };
+  const sig = () => { const w = document.querySelector(".world"); return (w ? getComputedStyle(w).transform : "") + "|" + [...document.querySelectorAll(".card")].map((c) => { const r = c.getBoundingClientRect(); return `${r.x|0},${r.y|0},${r.width|0},${r.height|0}`; }).join(";") + "|" + (document.querySelector("#board")?.innerHTML.length ?? 0); }; // 含 DOM 大小：语义高亮晚到也算没静止
   let last = "", same = 0;
-  for (let i = 0; i < 50 && same < 3; i++) {
+  for (let i = 0; i < 80 && same < 14; i++) {
     await new Promise((r) => setTimeout(r, 150));
     const busy = document.getAnimations().some((a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity);
     const s = sig(); same = !busy && s === last ? same + 1 : 0; last = s;
@@ -48,7 +48,11 @@ const shot = async (page, n) => {
   let fr = null;
   for (const x of page.frames()) if (await x.$("#board").catch(() => null)) { fr = x; break; }
   if (!fr) { await page.screenshot({ path: `${OUT}/${n}.png` }); return; }
-  await settle(fr);
+  // 截图前统一"适合窗口"：卡片尺寸可能在之前的 fit 之后才量好，相机位置每次跑会差一点，统一后截图才可比
+  // 有弹层或输入框时不按（会把 "!" 打进搜索框、或关掉要截的弹层）
+  const busy = await fr.evaluate(() => !!document.querySelector(".palette, .pop, .ctx, .dialog") || /^(INPUT|TEXTAREA)$/.test(document.activeElement?.tagName ?? "") || !!document.activeElement?.isContentEditable);
+  // 点白板自己的 Fit to Window 按钮，不用快捷键：键盘焦点可能在代码编辑器里
+  await settle(fr); if (!busy) { await fr.locator('button[aria-label="Fit to Window"]').first().click({ timeout: 3000 }).catch(() => {}); await settle(fr); }
   const box = await (await fr.frameElement()).boundingBox();
   await page.screenshot({ path: `${OUT}/${n}.png`, clip: box ?? undefined });
   const r = await audit(fr, n); audits.push(r);

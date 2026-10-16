@@ -41,9 +41,9 @@ async function openFile(page, name, line) {
   if (line) { await page.keyboard.press("Control+g"); await sleep(300); await page.keyboard.type(String(line)); await page.keyboard.press("Enter"); await sleep(400); }
 }
 const settle = (fr) => fr.evaluate(async () => {
-  const sig = () => { const w = document.querySelector(".world"); return (w ? getComputedStyle(w).transform : "") + "|" + [...document.querySelectorAll(".card")].map((c) => { const r = c.getBoundingClientRect(); return `${r.x | 0},${r.y | 0},${r.width | 0},${r.height | 0}`; }).join(";"); };
+  const sig = () => { const w = document.querySelector(".world"); return (w ? getComputedStyle(w).transform : "") + "|" + [...document.querySelectorAll(".card")].map((c) => { const r = c.getBoundingClientRect(); return `${r.x | 0},${r.y | 0},${r.width | 0},${r.height | 0}`; }).join(";") + "|" + (document.querySelector("#board")?.innerHTML.length ?? 0); }; // 含 DOM 大小：语义高亮晚到也算没静止
   let last = "", same = 0;
-  for (let i = 0; i < 50 && same < 3; i++) {
+  for (let i = 0; i < 80 && same < 14; i++) {
     await new Promise((r) => setTimeout(r, 150));
     const busy = document.getAnimations().some((a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity);
     const s = sig(); same = !busy && s === last ? same + 1 : 0; last = s;
