@@ -127,7 +127,7 @@ export function CompareBody(p: { card: CompareCard }) {
     A.callMenu(h.col, h.seg, h.call, e.clientX, e.clientY);
   };
   const cell = (c: CodeCard, l: L | undefined, html: string | undefined) =>
-    l ? <div class="cl" data-col={c.id}><span class="cno">{l.line}</span><span class="l" data-col={c.id} data-seg={l.seg} data-l={l.line} innerHTML={html || "​"} /></div>
+    l ? <div class="cl" data-col={c.id}><span class="cno">{l.line}</span><span class="l cmpl" data-col={c.id} data-seg={l.seg} data-l={l.line} innerHTML={html || "​"} /></div>
       : <div class="cl void" data-col={c.id} />;
 
   return (
@@ -153,11 +153,11 @@ export function CompareBody(p: { card: CompareCard }) {
               const r = data()[it.i];
               const [a, b] = cols();
               if (!k().unified) return <div class={`crow ${r.kind}`}>{cell(a, r.L, r.lh)}{cell(b, r.R, r.rh)}</div>;
-              if (r.kind === "same") return <div class="urow"><span class="cno">{r.L!.line}</span><span class="cno">{r.R!.line}</span><span class="sg" /><span class="l" data-col={a.id} data-seg={r.L!.seg} data-l={r.L!.line} innerHTML={r.lh} /></div>;
+              if (r.kind === "same") return <div class="urow"><span class="cno">{r.L!.line}</span><span class="cno">{r.R!.line}</span><span class="sg" /><span class="l cmpl" data-col={a.id} data-seg={r.L!.seg} data-l={r.L!.line} innerHTML={r.lh} /></div>;
               return (
                 <>
-                  <Show when={r.L}><div class="urow del"><span class="cno">{r.L!.line}</span><span class="cno" /><span class="sg">−</span><span class="l" data-col={a.id} data-seg={r.L!.seg} data-l={r.L!.line} innerHTML={r.lh} /></div></Show>
-                  <Show when={r.R}><div class="urow add"><span class="cno" /><span class="cno">{r.R!.line}</span><span class="sg">+</span><span class="l" data-col={b.id} data-seg={r.R!.seg} data-l={r.R!.line} innerHTML={r.rh} /></div></Show>
+                  <Show when={r.L}><div class="urow del"><span class="cno">{r.L!.line}</span><span class="cno" /><span class="sg">−</span><span class="l cmpl" data-col={a.id} data-seg={r.L!.seg} data-l={r.L!.line} innerHTML={r.lh} /></div></Show>
+                  <Show when={r.R}><div class="urow add"><span class="cno" /><span class="cno">{r.R!.line}</span><span class="sg">+</span><span class="l cmpl" data-col={b.id} data-seg={r.R!.seg} data-l={r.R!.line} innerHTML={r.rh} /></div></Show>
                 </>
               );
             }}

@@ -1,6 +1,7 @@
 // Performance benchmark: builds a large board from nano-vllm and measures camera, drag, mutate, expand, undo and load times in the browser.
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--runs 3] [--json out.json]
-// Each scenario reports two numbers: wall clock (action → next frame painted) and main-thread busy time (CDP TaskDuration).
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--runs 3] [--json out.json] [--quick] [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] (--long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
+// Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
+// (frameP95 / frameMax / over16: main-thread task durations; the 60 fps budget is 16.7 ms).
 import * as fs from "node:fs";
 import { ready, open, symCard, files, type Host } from "./harness";
 import { emptyBoard, uid, type Board, type CodeCard, type Link, type Section, type Sidenote } from "@codeboard/core";
@@ -49,7 +50,7 @@ export function bigBoard(n: number): Board {
   return b;
 }
 
-type M = { wall: number[]; busy: number; parts?: Record<string, number> };
+type M = { wall: number[]; busy: number; parts?: Record<string, number>; tasks?: number[] };
 const PARTS = ["ScriptDuration", "RecalcStyleDuration", "LayoutDuration"];
 async function metrics(cdp: CDPSession) {
   const { metrics } = await cdp.send("Performance.getMetrics");
@@ -65,8 +66,11 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
   const wall: number[] = [];
   const prof = name && name === PROFILE;
   const tr = name && name === arg("trace", "");
+  // Always trace: each main-thread task is the work for one frame; a task over 16.7 ms drops a frame
   const events: any[] = [];
-  if (tr) { cdp.on("Tracing.dataCollected", (e: any) => events.push(...e.value)); await cdp.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline", transferMode: "ReportEvents" } as any); }
+  const onData = (e: any) => events.push(...e.value);
+  cdp.on("Tracing.dataCollected", onData);
+  await cdp.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline", transferMode: "ReportEvents" } as any);
   if (prof) { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }
   const b0 = await busy(cdp);
   const m0 = await metrics(cdp);
@@ -75,21 +79,30 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
     await step(i);
     await raf(h);
     wall.push(performance.now() - t);
+    if (name && name === arg("steps", "")) console.log(`  ${name} #${i} ${wall[i].toFixed(0)}ms`, await h.page.evaluate(() => `${document.querySelector(".board")?.className} ${(document.querySelector(".world") as HTMLElement)?.style.transform}`));
   }
   const bz = (await busy(cdp)) - b0;
   const m1 = await metrics(cdp);
   const parts = Object.fromEntries(PARTS.map((k) => [k.replace("Duration", ""), +(((m1[k] - m0[k]) * 1000) / n).toFixed(2)]));
-  if (prof) top((await cdp.send("Profiler.stop")).profile as any);
+  if (prof) { const pr = (await cdp.send("Profiler.stop")).profile as any; if (process.env.PROFILE_OUT) fs.writeFileSync(process.env.PROFILE_OUT, JSON.stringify(pr)); top(pr); }
+  const done = new Promise((r) => cdp.once("Tracing.tracingComplete", r));
+  await cdp.send("Tracing.end"); await done;
+  cdp.off("Tracing.dataCollected", onData);
+  const main = events.find((e) => e.name === "thread_name" && e.args?.name === "CrRendererMain");
+  const tasks = events.filter((e) => e.ph === "X" && e.name === "RunTask" && main && e.pid === main.pid && e.tid === main.tid && e.dur > 1000).map((e) => e.dur / 1000);
+  if (name && name === arg("long", "")) {
+    // What each dropped frame spent its time on (events inside the task, >1.5 ms)
+    for (const t of events.filter((e) => e.ph === "X" && e.name === "RunTask" && main && e.pid === main.pid && e.tid === main.tid && e.dur > 16700))
+      console.log(`  long ${(t.dur / 1000).toFixed(0)}ms:`, events.filter((e) => e.ph === "X" && e.pid === main.pid && e.tid === main.tid && e.ts >= t.ts && e.ts + e.dur <= t.ts + t.dur && e.dur > 1500 && e.name !== "RunTask")
+        .map((e) => `${e.name}${e.args?.data?.functionName ? "(" + e.args.data.functionName + ")" : ""} ${(e.dur / 1000).toFixed(1)}`).join(" > "));
+  }
   if (tr) {
-    const done = new Promise((r) => cdp.once("Tracing.tracingComplete", r));
-    await cdp.send("Tracing.end"); await done;
-    const main = events.find((e) => e.name === "thread_name" && e.args?.name === "CrRendererMain");
     const by = new Map<string, number>();
     for (const e of events) if (e.ph === "X" && e.dur && (!main || (e.pid === main.pid && e.tid === main.tid))) by.set(e.name, (by.get(e.name) ?? 0) + e.dur / 1000);
     console.log("-- trace (main thread, inclusive ms)");
     for (const [k, v] of [...by].sort((a, b) => b[1] - a[1]).slice(0, 25)) console.log(`${v.toFixed(0).padStart(8)}  ${k}`);
   }
-  return { wall, busy: bz, parts };
+  return { wall, busy: bz, parts, tasks };
 }
 /** Profile results: top 30 functions by self time and total time */
 function top(p: { nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; children?: number[] }[]; samples: number[]; timeDeltas: number[] }) {
@@ -111,7 +124,9 @@ function top(p: { nodes: { id: number; callFrame: { functionName: string; url: s
 }
 const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
 const p95 = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(s.length * 0.95))]; };
-const sum = (m: M) => ({ median: +med(m.wall).toFixed(1), p95: +p95(m.wall).toFixed(1), busyPerStep: +(m.busy / m.wall.length).toFixed(2), ...m.parts });
+const sum = (m: M) => ({ median: +med(m.wall).toFixed(1), p95: +p95(m.wall).toFixed(1), busyPerStep: +(m.busy / m.wall.length).toFixed(2), ...m.parts,
+  // Frames: duration of each main-thread task (>1 ms). frameMax over 16.7 means a dropped frame; over16 counts such tasks
+  frameP95: +p95(m.tasks?.length ? m.tasks : [0]).toFixed(1), frameMax: +Math.max(0, ...(m.tasks ?? [])).toFixed(1), over16: (m.tasks ?? []).filter((t) => t > 16.7).length });
 
 async function profiled<T>(cdp: CDPSession, name: string, fn: () => Promise<T>): Promise<T> {
   if (name !== PROFILE) return fn();
@@ -146,9 +161,17 @@ async function once() {
   }
   res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
 
+  // Pan the canvas (gesture starts over empty canvas, so the board pans instead of a card scrolling); the first pan after opening
+  const spot = await h.page.evaluate(() => { for (let y = 120; y < 860; y += 20) for (let x = 80; x < 1350; x += 20) { const e = document.elementFromPoint(x, y); if (e && (e.classList.contains("board") || e.classList.contains("world"))) return [x, y]; } return [700, 450]; });
+  await h.page.mouse.move(spot[0], spot[1]);
+  res.panCanvas = sum(await steps(h, cdp, 30, async (i) => { await h.page.mouse.wheel(i % 2 ? 25 : -25, 0); }, "panCanvas"));
+  await h.page.waitForTimeout(600);
+
   await h.page.mouse.move(700, 450);
   res.pan = sum(await steps(h, cdp, 60, async () => { await h.page.mouse.wheel(0, 40); }, "pan"));
   res.zoom = sum(await steps(h, cdp, 40, async (i) => { await h.page.keyboard.down("Control"); await h.page.mouse.wheel(0, i < 20 ? 30 : -30); await h.page.keyboard.up("Control"); }, "zoom"));
+  // Trackpad pinch: many small steps from 100% down to the map level and back (passes every level and every switch)
+  res.pinch = sum(await steps(h, cdp, 100, async (i) => { await h.page.keyboard.down("Control"); await h.page.mouse.wheel(0, i < 50 ? 5 : -5); await h.page.keyboard.up("Control"); }, "pinch"));
   await h.page.waitForTimeout(800);
 
   // Drag: the card with the most links (endpoints follow every frame)

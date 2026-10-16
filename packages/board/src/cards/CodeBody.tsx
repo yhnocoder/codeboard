@@ -27,6 +27,7 @@ import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/s
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize } from "../state/measure";
+import { whenIdle } from "../state/idle";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
 import * as act from "../actions";
 
@@ -79,23 +80,32 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const inSel = (seg: string, l: number) => { const ls = lineSel(); return !!ls && ls.card === c().id && ls.seg === seg && l >= ls.start && l <= ls.end; };
 
   /**
-   * 概览档的代码轮廓：每行按真实缩进和长度画一根圆角条，整张卡合成一张 SVG 当遮罩（.src::before 用它，颜色跟主题）。
+   * 概览档的代码轮廓：每行按真实缩进和长度画一根圆角条，整张卡合成一张 SVG 当遮罩（.ovm 用它，颜色跟主题）。
    * 只在概览档算；行本身不加内联样式，样式共享不受影响，切档时只多算这一个属性。
+   * .ovm 是 .src 的兄弟、盖住整个代码区（行号 + 代码）：概览档用 opacity 藏行号和代码（不继承，不用重算里面几千个节点的样式），
+   * 指针落在 .ovm 上，跟以前它们被 visibility 藏起来时一样交给卡片。
    */
+  // 概览档的灰条（.ovm）在空闲时就提前做好，藏着（styles.css），进概览档时只是显示出来：
+  // 241 张卡的灰条在切档那一帧里一起建要好几十 ms
+  const [warm, setWarm] = createSignal(false);
+  onMount(() => whenIdle(() => setWarm(true)));
   const overviewMask = createMemo(() => {
-    if (lod() !== "overview" || !srcEl) return undefined;
-    const rs = rows(), y = ys(), cw = charWidth(srcEl), base = srcEl.offsetTop;
-    let out = "";
+    if ((!warm() && lod() !== "overview") || !srcEl) return undefined;
+    // 只用已经量好的行位置（ys，相对 .code），不在这里读 DOM：切到概览档时 241 张卡挨个读会让浏览器每张卡排一次版
+    const rs = rows(), y = ys(), cw = charWidth(srcEl);
+    // 每行一个直角色块：CSS 背景层（纯色渐变），不用图片，浏览器不用为每张卡解析、栅格化一张 SVG
+    const img: string[] = [], size: string[] = [], pos: string[] = [];
     rs.forEach((r, i) => {
       if (r.t !== "line" || !y[i]) return;
       const s = segById(r.seg);
       const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ").trimEnd();
       const ind = t.length - t.trimStart().length;
       if (t.length === ind) return;
-      const op = cmtLine(r) ? ".45" : "1";
-      out += `<rect x='${(ind * cw).toFixed(1)}' y='${y[i].y - base + 5}' width='${((t.length - ind) * cw).toFixed(1)}' height='10' rx='3' fill-opacity='${op}'/>`;
+      img.push(cmtLine(r) ? "linear-gradient(var(--bar-c), var(--bar-c))" : "linear-gradient(var(--bar), var(--bar))");
+      size.push(`${((t.length - ind) * cw).toFixed(1)}px 10px`);
+      pos.push(`${(54 + ind * cw).toFixed(1)}px ${y[i].y + 5}px`);
     });
-    return out ? `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${srcEl.scrollWidth}' height='${srcEl.offsetHeight}'>${out}</svg>`)}")` : undefined;
+    return img.length ? { img: img.join(","), size: size.join(","), pos: pos.join(",") } : { img: undefined, size: undefined, pos: undefined };
   });
   const lineHtml = (r: Extract<Row, { t: "line" }>) => {
     const s = segById(r.seg);
@@ -375,6 +385,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             )}
           </For>
         </div>
+        <div class="rowbgs">
         <For each={rows()}>
           {(r, i) => (
             <Show when={ys()[i()] && r.t === "line"}>
@@ -383,8 +394,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             </Show>
           )}
         </For>
+        </div>
+        <Show when={overviewMask()}>{(m) => <i class="ovm" style={{ "background-image": m().img, "background-size": m().size, "background-position": m().pos }} />}</Show>
         <div ref={srcEl} class="src" onPointerDown={(e) => { clearTimeout(peekTimer); onCodeDown(e); }} onContextMenu={onCtx} onPointerMove={onMove}>
-          <Show when={overviewMask()}>{(m) => <i class="ovm" style={{ "-webkit-mask-image": m(), "mask-image": m() }} />}</Show>
           <For each={rows()}>
             {(r, i) => (
               <Switch>

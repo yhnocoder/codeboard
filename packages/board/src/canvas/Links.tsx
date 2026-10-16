@@ -1,11 +1,11 @@
 // Link 层：SVG 曲线 + 浮在中间的标签 / 变量 chip。端点每帧跟着卡片和行走（都是响应式的）。
-import { For, Show, createMemo } from "solid-js";
+import { For, Show, createMemo, onCleanup } from "solid-js";
 import { findCard, varText, varKey, type Link, type PlainLink, type Rect } from "@codeboard/core";
 import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, live, beginGesture } from "../state/store";
 import { geo, lineY } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
 import { hoverLink, setHoverLink, rubber, editing, popIn } from "../state/ui";
-import { cam, toWorld } from "../state/camera";
+import { cam, toWorld, stillZ, lod } from "../state/camera";
 import { boardOffset } from "../actions/common";
 import { shape, fileHue } from "../state/look";
 import { tune } from "../state/tune";
@@ -251,13 +251,17 @@ function portDrag(e: PointerEvent, id: string) {
   window.addEventListener("pointerup", up);
 }
 
+// 一条线的几何只算一次：LinksSvg 建的 memo，LinkLabels 直接拿来用（拿不到就自己算）
+const shared = new WeakMap<Link, () => Geo | null>();
 export function LinksSvg() {
   const links = createMemo(() => state.board.links.filter(visible));
   return (
-    <svg class="edges" width="1" height="1">
+    <svg class="edges" classList={{ "lod-map": lod() === "map" }} width="1" height="1">
       <For each={links()}>
         {(L) => {
           const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
+          shared.set(L, g);
+          onCleanup(() => { if (shared.get(L) === g) shared.delete(L); });
           const on = () => sel.links.includes(L.id) || hoverLink() === L.id || (A.bindHot() as { link?: string } | null)?.link === L.id;
           const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
           const cls = () => `edge${L.kind === "plain" ? " plain" + ((L as PlainLink).solid === false ? " dashed" : "") + ((L as PlainLink).color ? ` lc-${(L as PlainLink).color}` : "") : ""}${on() ? " on" : ""}`;
@@ -267,8 +271,8 @@ export function LinksSvg() {
               <Show when={g()!.head}><path class={`ahead ${shape().head}${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
               <Show when={g()!.tail}><path class={`ahead ${shape().head}${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
               <Show when={g()!.port}><path class={`port fc-${toHue()}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
-                <Show when={on() && L.kind === "call"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / cam.z} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
-              <path class="lhit" data-link={L.id} d={g()!.d} style={{ "stroke-width": `${12 / cam.z}px` }}
+                <Show when={on() && L.kind === "call"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
+              <path class="lhit" data-link={L.id} d={g()!.d} style={{ "stroke-width": `${12 / stillZ()}px` }}
                 onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
                 onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
             </Show>
@@ -297,7 +301,7 @@ export function LinkLabels() {
   return (
     <For each={links()}>
       {(L) => {
-        const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
+        const g = shared.get(L) ?? createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
         const vars = () => (L.kind === "call" ? L.vars ?? [] : []);
         const editingLabel = () => editing()?.kind === "label" && editing()?.id === L.id;
         const mk = createMemo(() => L.kind === "plain" && !!A.callOn(L.from, L.to));

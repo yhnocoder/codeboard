@@ -181,7 +181,7 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number }
   const f = cardById(id);
   const body = el.querySelector<HTMLElement>(".cbody");
   const code = body?.querySelector<HTMLElement>(":scope > .code");
-  const head = el.querySelector<HTMLElement>(":scope > .chead")?.offsetHeight ?? 0;
+  const head = el.querySelector<HTMLElement>(":scope > .cface > .chead")?.offsetHeight ?? 0;
   if (f && isCode(f.card) && body && code) {
     const src = code.querySelector<HTMLElement>(".src");
     const top = body.offsetTop;

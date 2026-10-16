@@ -35,6 +35,31 @@ export const V015: Record<string, () => Promise<void>> = {
       b.cam = { x: 60, y: 60, z };
       const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
       await shot(h, n);
+      if (n === "v15-12-overview") {
+        // Overview hides code with opacity, so the hidden code must not take the pointer: a press on a call lands on the cover and goes to the card
+        const hit = await h.page.evaluate(() => {
+          const el = document.querySelector<HTMLElement>(".card .src .call");
+          if (!el) return { call: false, inSrc: true, cover: false };
+          const r = el.getBoundingClientRect(), t = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) as HTMLElement | null;
+          return { call: true, inSrc: !!t?.closest(".src, .gutter"), cover: !!t?.classList.contains("ovm") };
+        });
+        console.log(hit.call && !hit.inSrc && hit.cover ? "PASS" : "FAIL", "overview-hidden-code-takes-no-pointer", JSON.stringify(hit));
+      }
+      if (n === "v15-13-map") {
+        // Map labels hold their size while the camera moves (they scale with the board), then settle to the exact size after it stops
+        await h.page.mouse.move(700, 450);
+        await h.page.keyboard.down("Control");
+        for (let i = 0; i < 4; i++) { await h.page.mouse.wheel(0, 20); await h.page.waitForTimeout(40); }
+        await h.page.keyboard.up("Control");
+        await shot(h, "v15-13b-map-pinch-mid");
+        const fs = () => h.page.evaluate(() => { const e = document.querySelector(".maplabel"); return e ? getComputedStyle(e).fontSize : "none"; });
+        const mid = await fs();
+        await h.page.waitForTimeout(200); await shot(h, "v15-13c-map-pinch-200ms");
+        await h.page.waitForTimeout(300); await shot(h, "v15-13d-map-pinch-settled");
+        const z = await h.page.evaluate(() => +((document.querySelector(".world") as HTMLElement).style.transform.match(/scale\(([\d.]+)\)/)?.[1] ?? 1));
+        const end = await fs(), iz = await h.page.evaluate(() => +getComputedStyle(document.querySelector(".world > .card")!).getPropertyValue("--iz"));
+        console.log(Math.abs(iz * z - 1) < 0.01 ? "PASS" : "FAIL", "map-labels-settle-after-pinch", JSON.stringify({ mid, end, z, iz }));
+      }
       await close(h);
     }
     const h = await open({ board: structuredClone({ ...b, cam: { x: 0, y: 0, z: 0.8 } }), light, w: 1400, h: 900 });
