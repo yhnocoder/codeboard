@@ -10,7 +10,8 @@ REPO=$(cd "$EXT/../.." && pwd)
 CODE=${VSCODE_BIN:-${VSCODE_TEST_PATH:-/opt/vscode/code}}
 THEME=${THEME:-Default Dark Modern}
 TAG=$(echo "$THEME" | tr 'A-Z ' 'a-z-')
-OUT=$REPO/test-out/$TAG
+DRIVER=${DRIVER:-drive.cjs}   # DRIVER=replay.cjs 跑固定的学习任务回放
+OUT=${E2E_OUT:-$REPO/test-out/$TAG}
 WS=/tmp/codeboard-e2e/ws
 UD=/tmp/codeboard-e2e/user
 pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true; sleep 1
@@ -33,7 +34,7 @@ eval $RUN "$CODE" "$WS" --extensionDevelopmentPath="$EXT" --user-data-dir="$UD" 
   --remote-debugging-port=9223 --window-size=1600,1000 >"$OUT/code.log" 2>&1 &
 PID=$!
 set +e
-node "$HERE/drive.cjs" "$OUT" "$WS" "$UD"
+node "$HERE/$DRIVER" "$OUT" "$WS" "$UD"
 RC=$?
 kill $PID 2>/dev/null; pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true
 exit $RC

@@ -5,8 +5,8 @@
 
 const SEL = {
   hit: "button, [role=button], [role=menuitem], a[href], input, select, textarea, .call, .mk, .step, .handle, [data-hit]",
-  pop: ".pop, .menu, [role=menu], [role=dialog], .palette",
-  text: "button, [role=menuitem], .ctitle, .pop *, .menu *, .toolbar *, .chead *",
+  pop: ".pop, .menu, .ctx, .dialog, .diffpop, .srcpop, .stkpick, [role=menu], [role=dialog], .palette",
+  text: "button, [role=menuitem], .ctitle, .pop *, .menu *, .ctx *, .bbar *, .chead *",
   card: ".card",
 };
 
