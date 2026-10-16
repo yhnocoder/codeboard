@@ -49,8 +49,8 @@ export type HostInfo = {
   forwardedKeys?: string[];
 };
 
-/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L） */
-export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock";
+/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
+export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock" | "settings" | "openSettings";
 
 export type PeekDef = {
   path: string; // 显示用的路径

@@ -3,10 +3,13 @@ import { App } from "./App";
 import { onHost } from "./hostio";
 import { installKeys } from "./interact";
 import { flushSave } from "./state/store";
-import { listen, send, followHostTheme } from "./host";
+import { listen, send, followHostTheme, forwardErrors } from "./host";
 import "katex/dist/katex.min.css";
 import "./styles.css";
+import "./themes.css";
+import "./settings.css";
 
+forwardErrors();
 listen(onHost);
 installKeys();
 followHostTheme();

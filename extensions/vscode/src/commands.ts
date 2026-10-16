@@ -9,6 +9,7 @@ import { absOf, locOfFile } from "./source";
 import type { Storage } from "./storage";
 import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
+import { copyDiagnostics } from "./diagnostics";
 import { readText, splitLines } from "./ws";
 
 type Node = { kind: "board"; id: string } | { kind: "group"; name: string } | undefined;
@@ -18,6 +19,14 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
   // 白板聚焦时，VS Code 自己的快捷键（⌘K 和弦、⌘1 切编辑组、⌘± 缩放窗口……）会抢在白板前面；
   // 这些键在白板里另有用途，所以注册同样的键，转给白板处理
   cmd("codeboard.boardKey", (action: KeyAction) => panels.all().find((p) => p.panel.active)?.post({ type: "key", action }));
+  // Open Settings：在当前白板里开设置页；没有白板在前台就开目标白板
+  cmd("codeboard.openSettings", async () => {
+    const p = panels.all().find((x) => x.panel.active) ?? (panels.target ? await panels.show(panels.target) : panels.all()[0]);
+    if (!p) { void vscode.window.showInformationMessage("Open a board first. CodeBoard settings are also under Settings → Extensions → CodeBoard."); return; }
+    p.panel.reveal();
+    p.post({ type: "key", action: "openSettings" });
+  });
+  cmd("codeboard.copyDiagnostics", () => copyDiagnostics((panels.all().find((x) => x.panel.active) ?? (panels.target ? panels.get(panels.target) : undefined))?.board));
   const boardArg = (a: unknown): string | undefined => (typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined);
 
   /** Add to 的目标白板：最近聚焦的；没有就第一张；一张都没有就新建 */

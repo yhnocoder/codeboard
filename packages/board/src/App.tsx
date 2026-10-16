@@ -7,6 +7,8 @@ import { banner, setBanner, walk, keysOpen, setKeysOpen, editing, setEditing, pa
 import { Canvas } from "./canvas/Canvas";
 import { Popovers } from "./ui/Popovers";
 import { Palette } from "./ui/Palette";
+import { SettingsLayer } from "./ui/Settings";
+import { SHORTCUTS, keyText } from "./ui/shortcuts";
 import { MenuLayer, DialogLayer, TooltipLayer, openMenu } from "./ui/Menu";
 import { Editable } from "./ui/Editable";
 import { Icon } from "./ui/icons";
@@ -42,6 +44,7 @@ export function App() {
       <Show when={keysOpen()}><Keys /></Show>
       <Popovers />
       <Show when={paletteOpen()}><Palette /></Show>
+      <SettingsLayer />
       <Toast />
       <MenuLayer />
       <DialogLayer />
@@ -159,19 +162,11 @@ function Toast() {
   );
 }
 
-const KEYS: [string, [string, string][]][] = [
-  ["Canvas", [["Drag empty space", "Select with a box"], ["Space + drag / two fingers", "Pan"], ["⌘ + scroll / pinch", "Zoom"], ["⇧1", "Fit to window"], ["⇧2", "Fit selection"], ["⌘0 / ⌘1", "Fit / 100%"], ["Double-click empty space", "New Text"], ["N / T", "New Note / Text"], ["⌘K", "Search"], ["⌘V", "Paste code, link or image"]]],
-  ["Cards", [["Drag title bar", "Move (snaps; ⌘ to turn off)"], ["Drag onto a title bar, pause", "Merge (⌥ = at once)"], ["⌥ + drag onto a line", "Turn into a Code Sidenote"], ["Click a call", "Expand into a new card"], ["Drag a call", "Link to an existing card"], ["↵", "Open in editor"], ["⌘D", "Duplicate"], ["⌫", "Delete"], ["⌘⇧L", "Lock / Unlock"], ["⌥Z", "Wrap lines"], ["Arrows", "Nudge (⇧ = 10px)"]]],
-  ["Lines", [["Click line numbers", "Select lines (⇧ extends)"], ["S", "Add Sidenote"], ["H", "Hide lines"], ["⌘C", "Copy code without line numbers"], ["Hover a name", "Definition peek"], ["⌘ + hover", "Pin a popup"]]],
-  ["Flow", [["P", "Walk through flow"], ["← →", "Previous / next step"], ["Esc", "Exit"]]],
-  ["Editor", [["⌥B", "Add to board"], ["⌥S", "Add as Sidenote to selected lines"]]],
-];
 function Keys() {
-  const fix = (s: string) => (state.host.isMac ? s : s.replace(/⌘/g, "Ctrl+").replace(/⌥/g, "Alt+").replace(/⇧/g, "Shift+"));
   return (
     <div class="pill keys open" onPointerDown={(e) => e.stopPropagation()}>
-      <h3>Keyboard Shortcuts<span class="grow" /><button class="ib" aria-label="Close" onClick={() => setKeysOpen(false)}><Icon name="close" size={14} /></button></h3>
-      <For each={KEYS}>{([h, rows]) => <><h4>{h}</h4><table><tbody><For each={rows}>{([k, v]) => <tr><td>{fix(k)}</td><td>{v}</td></tr>}</For></tbody></table></>}</For>
+      <h3>Keyboard Shortcuts<span class="grow" /><button class="tlink" onClick={() => A.openSettings("shortcuts")}>Search…</button><button class="ib" aria-label="Close" onClick={() => setKeysOpen(false)}><Icon name="close" size={14} /></button></h3>
+      <For each={SHORTCUTS}>{([h, rows]) => <><h4>{h}</h4><table><tbody><For each={rows}>{([k, v]) => <tr><td>{keyText(k, state.host.isMac)}</td><td>{v}</td></tr>}</For></tbody></table></>}</For>
     </div>
   );
 }

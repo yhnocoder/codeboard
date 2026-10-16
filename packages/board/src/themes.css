@@ -1,0 +1,284 @@
+/* 材质主题：html[data-look]（Settings → Theme），明暗仍跟随 VS Code（html[data-theme]）。
+   Warm Ink 是 styles.css 里的默认值；这里每种主题只换变量：画布、卡面、边线、强调色、连线、Section 底色、圆角、标题字体。
+   代码配色（--k-*）不动，各主题的卡面都要让它读得清楚。[data-look] 也能挂在元素上（设置页的小样）。
+   注意：亮色块的每个变量，暗色块都要再写一遍，否则暗色下会漏出亮色的值。 */
+
+/* ---------- Graphite：冷灰 ---------- */
+:root[data-look="graphite"], [data-look="graphite"] {
+  color-scheme: light;
+  --bg: #e7e8ea; --surface: #fcfcfd; --head: #f4f5f7;
+  --ink: #1d2025; --ink-2: #5a606a; --ink-3: #9097a1;
+  --line: rgba(25,35,55,.09); --hair: rgba(25,35,55,.17);
+  --accent: #3e6a9c; --accent-ink: #ffffff; --warn: #b7862a;
+  --mark: #363a41; --mark-ink: #f4f5f7;
+  --inote: rgba(25,35,55,.05); --hlrow: rgba(25,35,55,.065); --hlbar: #646b76; --hatch: rgba(25,35,55,.07);
+  --edge: #8c939d;
+  --s-sand: rgba(185,170,135,.15); --s-blue: rgba(90,130,190,.12); --s-green: rgba(100,150,125,.13); --s-pink: rgba(190,120,150,.11);
+  --lk-orange: #c06a30; --lk-blue: #36689e; --lk-green: #477f45;
+  --glass: rgba(252,252,253,.94);
+  --tip-bg: rgba(29,32,37,.92); --tip-ink: #f4f5f7;
+  --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,.9), 0 1px 1px rgba(15,25,40,.04), 0 3px 8px -2px rgba(15,25,40,.06), 0 18px 36px -14px rgba(15,25,40,.16);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(15,25,40,.1), 0 30px 60px -18px rgba(15,25,40,.3);
+  --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(15,25,40,.08), 0 10px 28px -8px rgba(15,25,40,.18);
+  --r-card: 8px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
+  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
+}
+:root[data-theme="dark"][data-look="graphite"], :root[data-theme="dark"] [data-look="graphite"] {
+  color-scheme: dark;
+  --bg: #17191c; --surface: #222428; --head: #272a2f;
+  --ink: #e4e7eb; --ink-2: #a1a7b0; --ink-3: #6d737c;
+  --line: rgba(210,225,245,.075); --hair: rgba(210,225,245,.12);
+  --accent: #8cb1de; --accent-ink: #15171a; --warn: #dcb05a;
+  --mark: #d4d8de; --mark-ink: #17191c;
+  --inote: rgba(210,225,245,.05); --hlrow: rgba(210,225,245,.07); --hlbar: #a1a7b0; --hatch: rgba(210,225,245,.06);
+  --edge: #6f7680;
+  --s-sand: rgba(200,185,150,.08); --s-blue: rgba(120,160,220,.09); --s-green: rgba(130,180,150,.08); --s-pink: rgba(210,140,170,.08);
+  --lk-orange: #e0975e; --lk-blue: #86b2e2; --lk-green: #93c28a;
+  --glass: rgba(39,42,47,.94);
+  --tip-bg: rgba(240,242,245,.94); --tip-ink: #17191c;
+  --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(230,240,255,.05), 0 1px 1px rgba(0,0,0,.25), 0 3px 8px -2px rgba(0,0,0,.3), 0 18px 36px -14px rgba(0,0,0,.55);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(0,0,0,.4), 0 30px 60px -18px rgba(0,0,0,.75);
+  --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.35), 0 10px 28px -8px rgba(0,0,0,.55);
+  --r-card: 8px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
+  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
+}
+
+/* ---------- Soft Light：通透、低对比、柔和大阴影 ---------- */
+:root[data-look="soft-light"], [data-look="soft-light"] {
+  color-scheme: light;
+  --bg: #f7f6f3; --surface: #ffffff; --head: #fcfbf9;
+  --ink: #3b3934; --ink-2: #7b776f; --ink-3: #aeaaa2;
+  --line: rgba(70,60,40,.06); --hair: rgba(70,60,40,.1);
+  --accent: #6e85c6; --accent-ink: #ffffff; --warn: #c9973a;
+  --mark: #8a92ab; --mark-ink: #ffffff;
+  --inote: rgba(70,60,40,.04); --hlrow: rgba(70,60,40,.05); --hlbar: #9aa1b8; --hatch: rgba(70,60,40,.05);
+  --edge: #bdbab4;
+  --s-sand: rgba(225,200,150,.13); --s-blue: rgba(140,170,230,.11); --s-green: rgba(150,195,140,.11); --s-pink: rgba(230,160,180,.1);
+  --lk-orange: #d39466; --lk-blue: #7d97d4; --lk-green: #80ad6e;
+  --glass: rgba(255,255,255,.9);
+  --tip-bg: rgba(59,57,52,.9); --tip-ink: #ffffff;
+  --sh-card: 0 0 0 .5px var(--hair), 0 1px 2px rgba(70,55,30,.03), 0 10px 30px -10px rgba(70,55,30,.12);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 6px 14px -4px rgba(70,55,30,.08), 0 30px 60px -18px rgba(70,55,30,.22);
+  --sh-float: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(70,55,30,.05), 0 14px 34px -10px rgba(70,55,30,.14);
+  --r-card: 13px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.15;
+  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 45%, transparent);
+}
+:root[data-theme="dark"][data-look="soft-light"], :root[data-theme="dark"] [data-look="soft-light"] {
+  color-scheme: dark;
+  --bg: #29292b; --surface: #323235; --head: #363639;
+  --ink: #dad9d6; --ink-2: #a3a2a0; --ink-3: #777779;
+  --line: rgba(240,240,255,.06); --hair: rgba(240,240,255,.09);
+  --accent: #a5b5e6; --accent-ink: #29292b; --warn: #d9b06a;
+  --mark: #b7bccd; --mark-ink: #29292b;
+  --inote: rgba(240,240,255,.04); --hlrow: rgba(240,240,255,.055); --hlbar: #a3a2a0; --hatch: rgba(240,240,255,.05);
+  --edge: #6e6e72;
+  --s-sand: rgba(220,195,145,.07); --s-blue: rgba(140,180,225,.07); --s-green: rgba(150,195,140,.07); --s-pink: rgba(230,155,175,.07);
+  --lk-orange: #dca27a; --lk-blue: #9db2e6; --lk-green: #a2c693;
+  --glass: rgba(54,54,57,.92);
+  --tip-bg: rgba(236,236,240,.92); --tip-ink: #29292b;
+  --sh-card: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.15), 0 12px 30px -12px rgba(0,0,0,.45);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 6px 14px -4px rgba(0,0,0,.3), 0 30px 60px -18px rgba(0,0,0,.6);
+  --sh-float: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(0,0,0,.25), 0 14px 34px -10px rgba(0,0,0,.45);
+  --r-card: 13px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.15;
+  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 45%, transparent);
+}
+
+/* ---------- Drafting：工程图纸 / 蓝图（暗色 = 蓝图底） ---------- */
+:root[data-look="drafting"], [data-look="drafting"] {
+  color-scheme: light;
+  --bg: #e5ebf0; --surface: #fbfcfd; --head: #eef3f8;
+  --ink: #17283c; --ink-2: #48607a; --ink-3: #8698ae;
+  --line: rgba(30,85,150,.13); --hair: rgba(30,85,150,.26);
+  --accent: #1c5fae; --accent-ink: #ffffff; --warn: #b9862a;
+  --mark: #1f3c5e; --mark-ink: #eef3f8;
+  --inote: rgba(30,85,150,.05); --hlrow: rgba(30,85,150,.065); --hlbar: #4f78a6; --hatch: rgba(30,85,150,.08);
+  --edge: #5579a3;
+  --s-sand: rgba(205,175,115,.13); --s-blue: rgba(40,110,200,.07); --s-green: rgba(60,150,120,.08); --s-pink: rgba(200,90,130,.07);
+  --lk-orange: #c0652a; --lk-blue: #1c5fae; --lk-green: #3a7f4a;
+  --glass: rgba(251,252,253,.95);
+  --tip-bg: rgba(23,40,60,.94); --tip-ink: #eef3f8;
+  --sh-card: 0 0 0 1px var(--hair), 0 1px 0 rgba(20,60,110,.06), 0 8px 18px -12px rgba(20,60,110,.22);
+  --sh-lift: 0 0 0 1px var(--hair), 0 4px 10px -3px rgba(20,60,110,.12), 0 24px 48px -18px rgba(20,60,110,.3);
+  --sh-float: 0 0 0 1px var(--hair), 0 8px 22px -10px rgba(20,60,110,.22);
+  --r-card: 3px; --display: var(--mono); --label-font: var(--mono); --note-h: var(--sys); --edge-w: 1.15;
+  --sect-border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+}
+:root[data-theme="dark"][data-look="drafting"], :root[data-theme="dark"] [data-look="drafting"] {
+  color-scheme: dark;
+  --bg: #0f2541; --surface: #132e4e; --head: #163456;
+  --ink: #e2ecf7; --ink-2: #a5bcd5; --ink-3: #7290b2;
+  --line: rgba(170,210,255,.12); --hair: rgba(170,210,255,.24);
+  --accent: #74bdff; --accent-ink: #0f2541; --warn: #e6b85c;
+  --mark: #cfe0f2; --mark-ink: #0f2541;
+  --inote: rgba(170,210,255,.06); --hlrow: rgba(170,210,255,.08); --hlbar: #a5bcd5; --hatch: rgba(170,210,255,.08);
+  --edge: #87a7cc;
+  --s-sand: rgba(230,200,140,.07); --s-blue: rgba(120,190,255,.07); --s-green: rgba(130,210,170,.07); --s-pink: rgba(240,150,190,.07);
+  --lk-orange: #f0a066; --lk-blue: #8cc8ff; --lk-green: #96d0a0;
+  --glass: rgba(22,52,86,.94);
+  --tip-bg: rgba(226,236,247,.95); --tip-ink: #0f2541;
+  --sh-card: 0 0 0 1px var(--hair), 0 8px 20px -12px rgba(0,8,20,.6);
+  --sh-lift: 0 0 0 1px var(--hair), 0 4px 10px -3px rgba(0,8,20,.4), 0 24px 48px -18px rgba(0,8,20,.7);
+  --sh-float: 0 0 0 1px var(--hair), 0 8px 22px -10px rgba(0,8,20,.6);
+  --r-card: 3px; --display: var(--mono); --label-font: var(--mono); --note-h: var(--sys); --edge-w: 1.15;
+  --sect-border: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+}
+
+/* ---------- Colorful：活泼的强调色 ---------- */
+:root[data-look="colorful"], [data-look="colorful"] {
+  color-scheme: light;
+  --bg: #f3efe9; --surface: #fffdfa; --head: #fdf6f1;
+  --ink: #2a2433; --ink-2: #675f73; --ink-3: #a199ab;
+  --line: rgba(70,40,95,.08); --hair: rgba(70,40,95,.15);
+  --accent: #d6457a; --accent-ink: #ffffff; --warn: #e0951a;
+  --mark: #6c4fd0; --mark-ink: #ffffff;
+  --inote: rgba(108,79,208,.06); --hlrow: rgba(108,79,208,.07); --hlbar: #6c4fd0; --hatch: rgba(70,40,95,.07);
+  --edge: #9787c4;
+  --s-sand: rgba(250,185,60,.2); --s-blue: rgba(70,145,250,.15); --s-green: rgba(60,190,115,.16); --s-pink: rgba(245,100,155,.15);
+  --lk-orange: #ec7a14; --lk-blue: #2f7fe0; --lk-green: #23995a;
+  --glass: rgba(255,253,250,.94);
+  --tip-bg: rgba(42,36,51,.92); --tip-ink: #fffdfa;
+  --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,.9), 0 1px 1px rgba(60,30,80,.04), 0 3px 8px -2px rgba(60,30,80,.07), 0 18px 36px -14px rgba(60,30,80,.18);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(60,30,80,.1), 0 30px 60px -18px rgba(60,30,80,.3);
+  --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(60,30,80,.08), 0 10px 28px -8px rgba(60,30,80,.18);
+  --r-card: 12px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.4;
+  --sect-border: 1.5px dashed color-mix(in srgb, var(--mark) 40%, transparent);
+}
+:root[data-theme="dark"][data-look="colorful"], :root[data-theme="dark"] [data-look="colorful"] {
+  color-scheme: dark;
+  --bg: #1c1a24; --surface: #272432; --head: #2c2839;
+  --ink: #ece8f4; --ink-2: #aaa3b8; --ink-3: #767087;
+  --line: rgba(230,215,255,.075); --hair: rgba(230,215,255,.12);
+  --accent: #ff7aa8; --accent-ink: #1c1a24; --warn: #f2b84b;
+  --mark: #b6a3ff; --mark-ink: #1c1a24;
+  --inote: rgba(182,163,255,.07); --hlrow: rgba(182,163,255,.08); --hlbar: #b6a3ff; --hatch: rgba(230,215,255,.06);
+  --edge: #8d7fc0;
+  --s-sand: rgba(250,190,70,.1); --s-blue: rgba(90,160,255,.1); --s-green: rgba(80,210,135,.09); --s-pink: rgba(255,110,165,.1);
+  --lk-orange: #ffa04d; --lk-blue: #6fb0ff; --lk-green: #5fd38f;
+  --glass: rgba(44,40,57,.94);
+  --tip-bg: rgba(240,236,248,.94); --tip-ink: #1c1a24;
+  --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(240,230,255,.06), 0 1px 1px rgba(0,0,0,.25), 0 3px 8px -2px rgba(0,0,0,.3), 0 18px 36px -14px rgba(0,0,0,.55);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(0,0,0,.4), 0 30px 60px -18px rgba(0,0,0,.75);
+  --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.35), 0 10px 28px -8px rgba(0,0,0,.55);
+  --r-card: 12px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.4;
+  --sect-border: 1.5px dashed color-mix(in srgb, var(--mark) 40%, transparent);
+}
+
+/* ---------- Newspaper：衬线标题、米白纸、细线 ---------- */
+:root[data-look="newspaper"], [data-look="newspaper"] {
+  color-scheme: light;
+  --bg: #e8e5dc; --surface: #faf8f2; --head: #f2efe6;
+  --ink: #1b1a17; --ink-2: #4e4b44; --ink-3: #8a867c;
+  --line: rgba(30,25,15,.12); --hair: rgba(30,25,15,.22);
+  --accent: #a2241e; --accent-ink: #ffffff; --warn: #a87a1c;
+  --mark: #1b1a17; --mark-ink: #faf8f2;
+  --inote: rgba(30,25,15,.045); --hlrow: rgba(30,25,15,.06); --hlbar: #4e4b44; --hatch: rgba(30,25,15,.07);
+  --edge: #6f6b62;
+  --s-sand: rgba(175,145,90,.12); --s-blue: rgba(70,100,145,.09); --s-green: rgba(85,120,80,.1); --s-pink: rgba(160,80,95,.09);
+  --lk-orange: #a2241e; --lk-blue: #2d4f7c; --lk-green: #3f6a3a;
+  --glass: rgba(250,248,242,.95);
+  --tip-bg: rgba(27,26,23,.94); --tip-ink: #faf8f2;
+  --sh-card: 0 0 0 .5px var(--hair), 0 1px 1px rgba(30,25,15,.05), 0 6px 14px -8px rgba(30,25,15,.16);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -3px rgba(30,25,15,.1), 0 24px 44px -18px rgba(30,25,15,.28);
+  --sh-float: 0 0 0 .5px var(--hair), 0 8px 22px -10px rgba(30,25,15,.2);
+  --r-card: 2px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 1.1;
+  --sect-border: 1px solid color-mix(in srgb, var(--ink) 30%, transparent);
+}
+:root[data-theme="dark"][data-look="newspaper"], :root[data-theme="dark"] [data-look="newspaper"] {
+  color-scheme: dark;
+  --bg: #181715; --surface: #22201d; --head: #272522;
+  --ink: #ece8de; --ink-2: #b1ab9f; --ink-3: #7d786e;
+  --line: rgba(255,248,235,.09); --hair: rgba(255,248,235,.16);
+  --accent: #e3705f; --accent-ink: #181715; --warn: #d8ae5c;
+  --mark: #ece8de; --mark-ink: #181715;
+  --inote: rgba(255,248,235,.045); --hlrow: rgba(255,248,235,.06); --hlbar: #b1ab9f; --hatch: rgba(255,248,235,.06);
+  --edge: #8a857b;
+  --s-sand: rgba(200,170,115,.07); --s-blue: rgba(120,150,195,.07); --s-green: rgba(130,165,120,.07); --s-pink: rgba(200,120,135,.07);
+  --lk-orange: #e3705f; --lk-blue: #8fafd8; --lk-green: #93b98a;
+  --glass: rgba(39,37,34,.95);
+  --tip-bg: rgba(236,232,222,.95); --tip-ink: #181715;
+  --sh-card: 0 0 0 .5px var(--hair), 0 1px 1px rgba(0,0,0,.25), 0 8px 18px -8px rgba(0,0,0,.5);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -3px rgba(0,0,0,.4), 0 24px 44px -18px rgba(0,0,0,.7);
+  --sh-float: 0 0 0 .5px var(--hair), 0 8px 22px -10px rgba(0,0,0,.55);
+  --r-card: 2px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 1.1;
+  --sect-border: 1px solid color-mix(in srgb, var(--ink) 28%, transparent);
+}
+
+/* ---------- Poster：粗线、高对比、硬投影 ---------- */
+:root[data-look="poster"], [data-look="poster"] {
+  color-scheme: light;
+  --bg: #f1eee6; --surface: #ffffff; --head: #ffffff;
+  --ink: #0d0d0d; --ink-2: #2e2e2e; --ink-3: #6a6a6a;
+  --line: rgba(0,0,0,.14); --hair: rgba(0,0,0,.55);
+  --accent: #ee4a17; --accent-ink: #ffffff; --warn: #d99000;
+  --mark: #0d0d0d; --mark-ink: #ffffff;
+  --inote: rgba(0,0,0,.045); --hlrow: rgba(0,0,0,.06); --hlbar: #0d0d0d; --hatch: rgba(0,0,0,.08);
+  --edge: #1a1a1a;
+  --s-sand: rgba(255,196,0,.22); --s-blue: rgba(0,105,255,.13); --s-green: rgba(0,165,90,.15); --s-pink: rgba(255,60,120,.14);
+  --lk-orange: #ee4a17; --lk-blue: #0b5fe0; --lk-green: #0b8a48;
+  --glass: rgba(255,255,255,.97);
+  --tip-bg: #0d0d0d; --tip-ink: #ffffff;
+  --sh-card: 0 0 0 1.5px #111111, 4px 4px 0 #111111;
+  --sh-lift: 0 0 0 1.5px #111111, 8px 8px 0 #111111;
+  --sh-float: 0 0 0 1.5px #111111, 3px 3px 0 #111111;
+  --r-card: 6px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 2;
+  --sect-border: 2px solid #111111;
+}
+:root[data-theme="dark"][data-look="poster"], :root[data-theme="dark"] [data-look="poster"] {
+  color-scheme: dark;
+  --bg: #0e0e0e; --surface: #1b1b1b; --head: #1b1b1b;
+  --ink: #ffffff; --ink-2: #d6d6d6; --ink-3: #9a9a9a;
+  --line: rgba(255,255,255,.16); --hair: rgba(255,255,255,.6);
+  --accent: #ff6b3d; --accent-ink: #0e0e0e; --warn: #ffbf2e;
+  --mark: #ffffff; --mark-ink: #0e0e0e;
+  --inote: rgba(255,255,255,.05); --hlrow: rgba(255,255,255,.08); --hlbar: #ffffff; --hatch: rgba(255,255,255,.08);
+  --edge: #e8e8e8;
+  --s-sand: rgba(255,196,0,.09); --s-blue: rgba(40,130,255,.12); --s-green: rgba(0,200,110,.11); --s-pink: rgba(255,70,130,.12);
+  --lk-orange: #ff7a45; --lk-blue: #59a0ff; --lk-green: #3fd18a;
+  --glass: rgba(27,27,27,.97);
+  --tip-bg: #ffffff; --tip-ink: #0e0e0e;
+  --sh-card: 0 0 0 1.5px #ececec, 4px 4px 0 #454545;
+  --sh-lift: 0 0 0 1.5px #ececec, 8px 8px 0 #454545;
+  --sh-float: 0 0 0 1.5px #ececec, 3px 3px 0 #454545;
+  --r-card: 6px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 2;
+  --sect-border: 2px solid #d8d8d8;
+}
+
+/* ---------- Classic：朴素，像 VS Code 本身 ---------- */
+:root[data-look="classic"], [data-look="classic"] {
+  color-scheme: light;
+  --bg: #f0f0f0; --surface: #ffffff; --head: #f8f8f8;
+  --ink: #1f1f1f; --ink-2: #5f5f5f; --ink-3: #8c8c8c;
+  --line: rgba(0,0,0,.08); --hair: rgba(0,0,0,.15);
+  --accent: #005fb8; --accent-ink: #ffffff; --warn: #bf8803;
+  --mark: #3b3b3b; --mark-ink: #ffffff;
+  --inote: rgba(0,0,0,.04); --hlrow: rgba(0,0,0,.05); --hlbar: #616161; --hatch: rgba(0,0,0,.06);
+  --edge: #8c8c8c;
+  --s-sand: rgba(190,160,100,.13); --s-blue: rgba(0,95,184,.08); --s-green: rgba(56,138,52,.09); --s-pink: rgba(190,60,110,.08);
+  --lk-orange: #c75b12; --lk-blue: #005fb8; --lk-green: #388a34;
+  --glass: rgba(255,255,255,.97);
+  --tip-bg: rgba(37,37,37,.95); --tip-ink: #f8f8f8;
+  --sh-card: 0 0 0 1px var(--hair), 0 1px 3px rgba(0,0,0,.06);
+  --sh-lift: 0 0 0 1px var(--hair), 0 8px 24px -6px rgba(0,0,0,.2);
+  --sh-float: 0 0 0 1px var(--hair), 0 4px 14px -4px rgba(0,0,0,.16);
+  --r-card: 4px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.15;
+  --sect-border: 1px solid rgba(0,0,0,.2);
+}
+:root[data-theme="dark"][data-look="classic"], :root[data-theme="dark"] [data-look="classic"] {
+  color-scheme: dark;
+  --bg: #181818; --surface: #1f1f1f; --head: #252526;
+  --ink: #cccccc; --ink-2: #9d9d9d; --ink-3: #6e6e6e;
+  --line: rgba(255,255,255,.07); --hair: rgba(255,255,255,.13);
+  --accent: #3794ff; --accent-ink: #ffffff; --warn: #cca700;
+  --mark: #cccccc; --mark-ink: #1f1f1f;
+  --inote: rgba(255,255,255,.04); --hlrow: rgba(255,255,255,.06); --hlbar: #9d9d9d; --hatch: rgba(255,255,255,.05);
+  --edge: #6e6e6e;
+  --s-sand: rgba(210,180,120,.07); --s-blue: rgba(55,148,255,.07); --s-green: rgba(115,200,110,.07); --s-pink: rgba(230,110,160,.07);
+  --lk-orange: #e2894a; --lk-blue: #3794ff; --lk-green: #73c991;
+  --glass: rgba(37,37,38,.97);
+  --tip-bg: rgba(204,204,204,.95); --tip-ink: #1f1f1f;
+  --sh-card: 0 0 0 1px var(--hair), 0 2px 6px rgba(0,0,0,.3);
+  --sh-lift: 0 0 0 1px var(--hair), 0 8px 24px -6px rgba(0,0,0,.6);
+  --sh-float: 0 0 0 1px var(--hair), 0 4px 14px -4px rgba(0,0,0,.5);
+  --r-card: 4px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.15;
+  --sect-border: 1px solid rgba(255,255,255,.18);
+}

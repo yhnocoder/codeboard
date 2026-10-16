@@ -11,3 +11,4 @@ export * from "./lines";
 export * from "./track";
 export * from "./render";
 export * from "./rank";
+export * from "./diagnostics";

@@ -9,6 +9,7 @@ import { boardSegments, countStale, staleFor } from "./versions";
 import { viewsFor } from "./views";
 import { present, srcLabel } from "./source";
 import { readSettings } from "./settings";
+import { log } from "./log";
 
 export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown> | unknown;
 
@@ -54,7 +55,7 @@ export class BoardPanel {
     return {
       fontFamily: ed.get<string>("fontFamily"),
       isMac: process.platform === "darwin",
-      forwardedKeys: ["k", "d", "0", "1", "=", "+", "-", "shift+l"], // 与 package.json 里 codeboard.boardKey 的键一致
+      forwardedKeys: ["k", "d", "0", "1", "=", "+", "-", "shift+l", ","], // 与 package.json 里 codeboard.boardKey 的键一致
       assetBase: this.panel.webview.asWebviewUri(vscode.Uri.file(this.mgr.store.assetsDir())).toString(),
       readonly: this.readonly,
       settings: readSettings(),
@@ -162,6 +163,7 @@ export class Panels {
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[codeboard]", m.type, e);
+      log("error", `${m.type}: ${msg}${e instanceof Error && e.stack ? `\n${e.stack}` : ""}`);
       if (req !== undefined) p.post({ type: "reply", req, error: msg });
       else p.toast(`Error: ${msg}`);
     }

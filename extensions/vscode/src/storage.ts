@@ -6,6 +6,9 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { allCodeCards, emptyBoard, migrateBoard, type Board, type BoardMeta } from "@codeboard/core";
 import { mkUid } from "./ws";
+import { log } from "./log";
+
+const badFiles = new Set<string>();
 
 type Entry = { id: string; file: string; group?: string; mtime: number; birth: number; board: Board };
 
@@ -72,7 +75,7 @@ export class Storage {
         e.group = f.group;
         seen.add(e.id);
         out.push(e);
-      } catch { /* 坏文件跳过 */ }
+      } catch (e) { if (!badFiles.has(f.file)) { badFiles.add(f.file); log("error", `storage: skipped unreadable board ${f.file}: ${e instanceof Error ? e.message : e}`); } } // 坏文件跳过（只记一次）
     }
     for (const id of [...this.cache.keys()]) if (!seen.has(id)) this.cache.delete(id);
     return out.sort((a, b) => a.birth - b.birth);

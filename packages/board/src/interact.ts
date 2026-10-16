@@ -12,7 +12,7 @@ import {
 import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, fitRect } from "./state/camera";
 import {
   setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, spaceDown, setSpaceDown,
-  connectFrom, setConnectFrom, walk, setEditing, editing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen,
+  connectFrom, setConnectFrom, walk, setEditing, editing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen, settingsOpen,
 } from "./state/ui";
 import { frames, deepestAt, frameOf, sec, descSections, allMembers, collapsedHome } from "./state/sections";
 import { geo } from "./state/geo";
@@ -491,6 +491,8 @@ export function installKeys() {
     if (typing(e) || dialogOpen() || paletteOpen()) return;
     const mod = e.metaKey || e.ctrlKey, k = e.key, kl = k.toLowerCase();
     if (mod && state.host.forwardedKeys?.includes(e.shiftKey && kl === "l" ? "shift+l" : kl)) { e.preventDefault(); return; } // 宿主会转回来
+    if (settingsOpen()) { if (k === "Escape" || (mod && k === ",")) { e.preventDefault(); A.closeSettings(); } return; } // 设置页盖住白板：白板快捷键都不响应
+    if (mod && k === ",") { e.preventDefault(); return A.openSettings(); }
     if (k === " " && !mod) { setSpaceDown(true); boardEl().classList.add("space"); e.preventDefault(); return; }
     if (k === "Escape") {
       if (menuOpen()) return closeMenu();

@@ -136,6 +136,16 @@
         "command": "codeboard.boardKey",
         "title": "Board Shortcut",
         "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.openSettings",
+        "title": "Open Settings",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.copyDiagnostics",
+        "title": "Copy Diagnostics",
+        "category": "CodeBoard"
       }
     ],
     "menus": {
@@ -345,6 +355,13 @@
         "key": "ctrl+shift+l",
         "mac": "cmd+shift+l",
         "args": "lock",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+,",
+        "mac": "cmd+,",
+        "args": "settings",
         "when": "activeWebviewPanelId == 'codeboard.board'"
       }
     ],
