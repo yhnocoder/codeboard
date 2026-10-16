@@ -66,11 +66,6 @@ function SettingsPage(p: { section?: string }) {
             }}>+ Add Package</button>
           </div>
         </Sec>
-        <Sec id="tidy" title="Tidy Layout direction" hint="Where Tidy Layout and expanded calls place child cards.">
-          <div class="segc">
-            <For each={[["down", "Down"], ["right", "Right"]] as [S["tidy"], string][]}>{([v, lb]) => <button classList={{ on: cur().tidy === v }} onClick={() => A.setSetting("tidy", v)}>{lb}</button>}</For>
-          </div>
-        </Sec>
         <Sec id="stickers" title="Sticker Packs folder" hint="Iconify JSON files, or folders of SVGs.">
           <div class="st-row">
             <PathField />

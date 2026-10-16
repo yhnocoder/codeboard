@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, canAttach, canExpand, canCompare, hiddenByCollapse, tidy, snapMove, align,
+  alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, canAttach, canExpand, canCompare, hiddenByCollapse, snapMove, align,
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard,
   type Board, type Card, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
@@ -221,21 +221,7 @@ describe("computeFlows", () => {
     b.place.b = { x: 0, y: 0, w: 100, collapsed: true };
     expect([...hiddenByCollapse(b, computeFlows(b))]).toEqual(["c"]);
   });
-  it("tidies a tree: children indented below the parent", () => {
-    const f = computeFlows(board([call("a", 1, "b"), call("a", 2, "c"), call("b", 1, "d")]));
-    const pos = tidy(f.roots[0], () => ({ w: 100, h: 50 }), { x: 0, y: 0 });
-    expect(pos.get("b")!.x).toBe(56);
-    expect(pos.get("d")!.x).toBe(112);
-    expect(pos.get("c")!.y).toBeGreaterThan(pos.get("d")!.y);
-  });
-  it("tidies a tree to the right: children in a column beside the parent", () => {
-    const f = computeFlows(board([call("a", 1, "b"), call("a", 2, "c"), call("b", 1, "d")]));
-    const pos = tidy(f.roots[0], () => ({ w: 100, h: 50 }), { x: 0, y: 0 }, undefined, "right");
-    expect(pos.get("b")).toEqual({ x: 156, y: 0 });
-    expect(pos.get("d")).toEqual({ x: 312, y: 0 });
-    expect(pos.get("c")!.x).toBe(156);
-    expect(pos.get("c")!.y).toBeGreaterThan(50);
-  });
+
 });
 
 describe("snapping and align", () => {

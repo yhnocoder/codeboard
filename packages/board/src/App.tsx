@@ -94,14 +94,11 @@ function Toolbar() {
     { icon: "sticker", label: "Sticker", tip: "Add a Sticker", run: (e) => A.stickerPicker(e.currentTarget as HTMLElement) },
   ];
   const more = (e: MouseEvent) => {
-    const tidyRoot = sel.cards.map((id) => flows().byId.get(id)).find(Boolean) ?? flows().roots[0];
-    const tidy = (dir: "down" | "right") => ({ label: dir === "down" ? "Down" : "Right", checked: state.host.settings.tidy === dir, run: () => A.tidyFlow(tidyRoot!.id, dir) });
     const [x, y] = at(e);
     openMenu([
       { label: "Undo", kbd: `${A.K.mod}Z`, disabled: !canUndo(), run: () => undo() },
       { label: "Redo", kbd: `${A.K.shift}${A.K.mod}Z`, disabled: !canRedo(), run: () => redo() },
       null,
-      { label: "Tidy Layout", hint: "Rearranges one flow", disabled: tidyRoot ? false : "No call flow on this board", sub: [tidy("down"), tidy("right")] },
       { label: "Hide All Comments", checked: !!state.board.hideAllComments, run: () => mutate((b) => { b.hideAllComments = !b.hideAllComments || undefined; }) },
       { label: "Hide Flow Numbers", checked: !!state.board.hideNumbers, run: () => mutate((b) => { b.hideNumbers = !b.hideNumbers || undefined; }) },
       null,

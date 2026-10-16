@@ -5,7 +5,7 @@ import {
   cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard,
 } from "@codeboard/core";
-import { state, setSizes, isSel, flows, collapsedAway, sel, placeOf } from "../state/store";
+import { state, setSizes, isSel, flows, collapsedAway, sel, placeOf, rectOf } from "../state/store";
 import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
@@ -214,7 +214,20 @@ function ImageView(p: { card: ImageCard }) {
 function MapLabel(p: { card: Card }) {
   const n = () => flows().byId.get(p.card.kind === "compare" ? p.card.cols[0] : p.card.id)?.label;
   const t = () => (p.card.kind === "note" ? p.card.md.split("\n")[0].replace(/^#+\s*/, "").slice(0, 60) : cardTitle(p.card, state.board));
-  return <div class="maplabel"><Show when={n() && !state.board.hideNumbers}><span class="step">{n()}</span></Show><span>{t()}</span></div>;
+  // 名字只在 . 和 _ 后面换行，不在单词中间断开
+  const parts = () => t().split(/(?<=[._])/);
+  // 一行放得下的字号：宽 / (字数 × 平均字宽)，高度最多占 45%
+  const fit = () => {
+    const r = rectOf(p.card);
+    const chars = t().length + (n() ? n()!.length + 2 : 0);
+    return `${Math.max(1, Math.min((r.w - 24) / (Math.max(chars, 4) * 0.58), r.h * 0.45))}px`;
+  };
+  return (
+    <div class="maplabel" style={{ "--fit": fit() }}>
+      <Show when={n() && !state.board.hideNumbers}><span class="step">{n()}</span></Show>
+      <span class="mt"><For each={parts()}>{(x) => <>{x}<wbr /></>}</For></span>
+    </div>
+  );
 }
 
 export { LANGS };

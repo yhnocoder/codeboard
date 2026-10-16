@@ -37,7 +37,7 @@ export function SectionLabels() {
         return (
           <Show when={r()}>
             <div class="slabel" classList={{ collapsed: !!s.collapsed, [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id) }} data-sect={s.id}
-              style={{ left: `${r()!.x + (s.collapsed ? 0 : 10)}px`, top: `${r()!.y + (s.collapsed ? 0 : -13)}px`, ...(s.collapsed ? { width: `${r()!.w}px`, height: `${r()!.h}px` } : {}) }}
+              style={{ left: `${r()!.x + (s.collapsed ? 0 : 10)}px`, top: `${r()!.y + (s.collapsed ? 0 : 6)}px`, ...(s.collapsed ? { width: `${r()!.w}px`, height: `${r()!.h}px` } : {}) }}
               onPointerDown={(e) => sectionLabelDown(e, s.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); A.sectionMenu(s.id, e.clientX, e.clientY); }}>
               <Show when={!s.collapsed}><span class="dots">⋮⋮</span></Show>
               <Show when={s.collapsed}><button class="chev2" aria-label="Expand Section" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.toggleSection(s.id)}>▸</button></Show>

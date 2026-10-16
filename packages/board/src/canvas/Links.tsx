@@ -69,15 +69,22 @@ function callGeo(L: Link): Geo | null {
     head = `M${x2 + 5} ${y2 - 4} L${x2} ${y2} L${x2 + 5} ${y2 + 4}`;
   } else {
     x1 = a.x; x2 = b.x - 6;
-    const dx = clamp(Math.abs(y2 - y1) * 0.3 + Math.max(0, x1 - x2) * 0.6, 28, 130);
-    c1 = x1 - dx; c2 = x2 - dx;
-    head = `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`;
+    // 子卡在很远的下方：两端的水平控制柄要跟着距离变长，否则线先竖着下来、到卡前急拐一下
+    const dx = clamp(Math.abs(y2 - y1) * 0.4 + Math.max(0, x1 - x2) * 0.6, 28, 280);
+    c1 = x1 - dx; c2 = x2 - dx * 0.8;
+    head = arrowHead(x2, y2, c2, y2);
   }
   return {
     d: `M${x1} ${y1} C${c1} ${y1} ${c2} ${y2} ${x2} ${y2}`,
     mx: (x1 + 3 * c1 + 3 * c2 + x2) / 8, my: (y1 + y2) / 2,
     head, port: { x: x1, y: y1 },
   };
+}
+
+/** 箭头头顺着线最后一段的方向（从控制点指向终点） */
+function arrowHead(tx: number, ty: number, fx: number, fy: number) {
+  const len = Math.hypot(tx - fx, ty - fy) || 1, ux = (tx - fx) / len, uy = (ty - fy) / len;
+  return `M${tx - 5 * ux - 4 * uy} ${ty - 5 * uy + 4 * ux} L${tx} ${ty} L${tx - 5 * ux + 4 * uy} ${ty - 5 * uy - 4 * ux}`;
 }
 
 function plainGeo(L: PlainLink): Geo | null {

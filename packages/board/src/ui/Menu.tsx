@@ -28,7 +28,8 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
   const [open, setOpen] = createSignal(false);
   const [subOf, setSubOf] = createSignal<{ i: number; x: number; y: number } | null>(null);
   onMount(() => {
-    const r = el.getBoundingClientRect();
+    // 用 offset 尺寸：打开动画里 scale < 1，getBoundingClientRect 会量小，贴边时伸出窗口几像素
+    const r = { width: el.offsetWidth, height: el.offsetHeight };
     const W = window.innerWidth, H = window.innerHeight;
     // 放不下就往上翻；还放不下就限高滚动（最后一项总能看到）
     let y = p.up ? p.y - r.height : p.y;

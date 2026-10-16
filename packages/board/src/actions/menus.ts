@@ -2,9 +2,9 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
+  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type PlainLink, type TidyDir, type Section, type Sidenote, type Segment, type Place,
+  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type PlainLink, type Section, type Sidenote, type Segment, type Place,
   type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
 } from "@codeboard/core";
 import {
@@ -20,7 +20,7 @@ import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
 import { addPlain, callOn, makeCall, openVars, startConnect } from "./links";
-import { addToStudyScope, attachCall, calleeMatches, expandCall, isLibCall, selectFlow, startWalk, tidyFlow } from "./flow";
+import { addToStudyScope, attachCall, calleeMatches, expandCall, isLibCall, selectFlow, startWalk } from "./flow";
 import { commitMenu } from "./versions";
 import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg } from "./edit";
 import { newFreeCode, newNote, pasteText } from "./create";
@@ -133,7 +133,6 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Wrap Lines", kbd: `${K.alt}Z`, checked: !!c.wrap, run: () => toggleWrap([c.id]) },
     ...(col ? [] : [{ label: "No Background", checked: !!c.nobg, run: () => toggleNoBg(c.id) } as Item]),
   ];
-  const tidyDir = (d: TidyDir) => ({ label: d === "down" ? "Down" : "Right", checked: state.host.settings.tidy === d, run: () => tidyFlow(c.id, d) } as Item);
   const items: Item[] = [
     ...(free ? [] : [{ label: "Open in Editor", kbd: "↵", run: () => openCode(c.id) } as Item]),
     ...(free || c.segments[0]?.src.kind === "github" ? [] : [
@@ -148,7 +147,6 @@ export function cardMenu(id: string, x: number, y: number) {
     null,
     { label: "Select Flow", disabled: node ? false : "Not in a call flow", run: () => selectFlow(c.id) },
     { label: "Walk Through Flow", kbd: "P", disabled: node ? false : "Not in a call flow", run: () => startWalk(c.id) },
-    ...(node ? [{ label: "Tidy Layout", hint: "Rearranges this flow only", sub: [tidyDir("down"), tidyDir("right")] } as Item] : []),
     ...(hasKids ? [{ label: placeOf(c.id).collapsed ? "Expand Subtree" : "Collapse Subtree", run: () => toggleCollapse(c.id) } as Item] : []),
     null,
     ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, lockItem]),

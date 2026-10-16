@@ -2,7 +2,7 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
+  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
   type WebMeta, type CallSpan, type ExpandPick, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
@@ -81,11 +81,9 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
       const chain = new Set<string>();
       for (let k: string | undefined = cardId; k; k = flows().parent.get(k)) chain.add(cardById(k)?.host.id ?? k);
       const tree = new Set(root ? [root.id, ...descendants(root)].map((k) => cardById(k)?.host.id ?? k) : []);
-      const dir = state.host.settings.tidy;
       const outside = placed().filter((k) => !tree.has(k.id)).map((k) => rectOf(k));
       const hb = rectOf(host);
-      const ly = dir === "right" ? anchorPoint(cardId, segId, call.line)?.y : undefined;
-      const p = placeChild(hb, size, before, outside, dir, ly);
+      const p = placeChild(hb, size, before, outside, "down");
       np.x = Math.round(p.x); np.y = Math.round(p.y);
       const want = { x: p.x, y: p.y, w: size.w, h: size.h };
       const below = placed().filter((k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && b.place[k.id].y >= hb.y + hb.h - 1);
@@ -185,26 +183,6 @@ export function selectFlow(id: string) {
   const r = treeOf(flows(), id);
   if (r) selectSubtree(r.id);
 }
-
-export function tidyFlow(id: string, dir = state.host.settings.tidy) {
-  const root = treeOf(flows(), id);
-  if (!root) return;
-  const r = hostRect(root.id)!;
-  const pos = tidy(root, (cid) => { const h = hostRect(cid); return { w: h?.w ?? 400, h: h?.h ?? 200 }; }, { x: r.x, y: r.y }, undefined, dir);
-  const from = new Map([...pos.keys()].map((k) => [k, { ...hostRect(k)! }]));
-  mutate((b) => { for (const [cid, p] of pos) { const h = findCard(b, cid)?.host, q = h && b.place[h.id]; if (q) { q.x = Math.round(p.x); q.y = Math.round(p.y); } } });
-  // 平滑过去
-  if (reduceMotion()) return;
-  const sp = new Spring(0, 170, 26, 0.002); sp.t = 1;
-  setPopIn((p) => { const n = { ...p }; for (const [cid] of pos) { const a = from.get(cid)!, c = placeOf(cid); n[cid] = { ox: a.x - c.x, oy: a.y - c.y, v: 0, slide: true } as any; } return n; });
-  animate((dt) => {
-    sp.step(dt);
-    const done = sp.done;
-    setPopIn((p) => { const n = { ...p }; for (const [cid] of pos) { if (done) delete n[cid]; else n[cid] = { ...(n[cid] as any), v: sp.v }; } return n; });
-    return done;
-  });
-}
-
 
 // ---------- 讲解（Walkthrough）：沿一棵 Call 树一步步移镜头 ----------
 

@@ -104,30 +104,6 @@ function findFreeDown(want: Rect, others: Rect[]) {
 
 export type TidyDir = "down" | "right";
 
-/**
- * Tidy Layout：只重排这一棵树。根不动。
- * down：每个子卡缩进放在父卡下面；right：子卡放在父卡右边一列。
- * 兄弟按编号从上到下，每个兄弟让出自己整棵子树的高度。
- */
-export function tidy(root: FlowNode, size: (id: string) => { w: number; h: number }, at: { x: number; y: number }, skip?: Set<string>, dir: TidyDir = "down"): Map<string, { x: number; y: number }> {
-  const pos = new Map<string, { x: number; y: number }>();
-  const place = (n: FlowNode, x: number, y: number): number => {
-    pos.set(n.id, { x, y });
-    const s = size(n.id);
-    let bottom = y + s.h;
-    let cx = x + INDENT, cy = bottom + GAP;
-    if (dir === "right") { cx = x + s.w + GAP * 2; cy = y; }
-    for (const k of n.kids) {
-      if (skip?.has(k.id)) continue;
-      const b = place(k, cx, cy);
-      bottom = Math.max(bottom, b);
-      cy = b + SIB_GAP;
-    }
-    return bottom;
-  };
-  place(root, at.x, at.y);
-  return pos;
-}
 
 // ---------- 吸附 ----------
 

@@ -79,6 +79,20 @@ export function watchVersions(ctx: vscode.ExtensionContext, panels: Panels, stor
   // 保存文件：只影响 uncommitted 和仓库外文件，重算开着的白板
   const onSave = debounce(() => void panels.refreshStale(), 500);
   ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(() => onSave()));
-  // 白板上加了新仓库的代码：也监听它
-  ctx.subscriptions.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); })()));
+  // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听
+  const watchedFiles = new Set<string>();
+  const watchFiles = async () => {
+    for (const { board } of await store.all()) for (const s of boardSegments(board)) {
+      if (s.src.kind === "free" || s.src.kind === "github") continue;
+      const a = absOf(s);
+      if (!a || watchedFiles.has(a)) continue;
+      watchedFiles.add(a);
+      const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(path.dirname(a)), path.basename(a)));
+      w.onDidChange(onSave); w.onDidCreate(onSave); w.onDidDelete(onSave);
+      ctx.subscriptions.push(w);
+    }
+  };
+  void watchFiles();
+  // 白板上加了新仓库 / 新文件的代码：也监听它
+  ctx.subscriptions.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); await watchFiles(); })()));
 }

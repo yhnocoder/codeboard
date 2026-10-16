@@ -139,6 +139,14 @@ const boardJson = () => {
   check(await page.locator(".notifications-toasts", { hasText: "Diagnostics copied to clipboard" }).count() > 0, "Copy Diagnostics 提示已复制");
   await shot(page, "7b-diagnostics");
 
+  // 8b. 在 VS Code 外面改卡片用到的文件（像别的编辑器 / git checkout）：卡片也要显示 + uncommitted
+  const llm = path.join(WS, "nanovllm/engine/llm_engine.py");
+  const orig = fs.readFileSync(llm, "utf8");
+  fs.writeFileSync(llm, orig + "\n# edited outside VS Code\n"); await sleep(4000);
+  check(await f.locator(".rev.unc").count() >= 1, "在 VS Code 外改文件后卡片显示 + uncommitted");
+  fs.writeFileSync(llm, orig); await sleep(2500);
+  check(await f.locator(".rev.unc").count() === 0, "改回去之后 + uncommitted 消失");
+
   // 9. 在编辑器里改代码：卡片显示 + uncommitted（不保存到 git）
   await openFile(page, "scheduler.py", 30);
   await page.keyboard.press("End"); await page.keyboard.type("  # local edit"); await page.keyboard.press("Control+s"); await sleep(3500);

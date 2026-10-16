@@ -2,7 +2,6 @@
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
 import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags } from "./model";
 import type { SegView } from "./lines";
-import type { TidyDir } from "./layout";
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
@@ -26,13 +25,12 @@ export type Settings = {
   theme: ThemeId;
   hideOnNew: HideFlags; // 新卡默认隐藏什么（替代卡片上的 Hide 浮条）
   studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
-  tidy: TidyDir; // Tidy Layout 的默认方向；展开调用时新卡也按它摆
   stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）
   zoomMap: number; // 低于这个比例：地图（只剩编号和名字）
 };
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], tidy: "down", stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25,
+  theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25,
 };
 
 /** 贴纸图标包：Iconify JSON 一个文件一套，或一个装 .svg 的文件夹（文件夹名 = 包名） */

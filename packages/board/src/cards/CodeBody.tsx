@@ -49,6 +49,14 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const isHl = (s: Segment | undefined, l: number) => !!s?.hl?.includes(l);
   const inSel = (seg: string, l: number) => { const ls = lineSel(); return !!ls && ls.card === c().id && ls.seg === seg && l >= ls.start && l <= ls.end; };
 
+  /** 行首缩进（字符数）：概览档画灰条时从这里开始，看起来像真代码 */
+  const indentOf = (r: Extract<Row, { t: "line" }>) => {
+    const s = segById(r.seg);
+    const t = s?.text[r.line - s.start] ?? "";
+    let n = 0;
+    for (const ch of t) { if (ch === " ") n++; else if (ch === "\t") n += 4; else break; }
+    return n;
+  };
   const lineHtml = (r: Extract<Row, { t: "line" }>) => {
     const s = segById(r.seg);
     const v = viewOf(r.seg);
@@ -321,7 +329,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             {(r, i) => (
               <Switch>
                 <Match when={r.t === "line"}>
-                  <div class="l" classList={{ cmt: !!cmtLine(r) }} data-r={i()} innerHTML={lineHtml(r as any) || "​"} />
+                  <div class="l" classList={{ cmt: !!cmtLine(r) }} data-r={i()} style={{ "--i": indentOf(r as any) }} innerHTML={lineHtml(r as any) || "​"} />
                   <For each={alwaysNotes(r.seg, (r as any).line)}>{(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline((n as any).md)} />}</For>
                 </Match>
                 <Match when={r.t === "gap"}>

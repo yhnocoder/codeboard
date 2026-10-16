@@ -129,35 +129,21 @@ export const V015: Record<string, () => Promise<void>> = {
     await shot(h, "v15-11-fit");
     await close(h);
   },
-  // #20：建 Section、折叠、展开、删掉之后 Tidy Layout，子卡不能叠在一起
-  async v15tidy() {
-    const b = emptyBoard("b1", "tidy");
-    put(b, card("LLMEngine.step"), 80, 80, 600);
+  // 回归：空白处右键菜单在四个角都整个留在窗口里
+  async v15ctx() {
+    const b = emptyBoard("b1", "ctx");
+    put(b, card("Scheduler.schedule"), 80, 80, 560);
     const h = await open({ board: b, light });
-    const call = (n: string) => h.page.locator(`.card .src .call:text-is("${n}")`).first();
-    for (const n of ["schedule", "postprocess"]) { await call(n).click(); await h.page.waitForTimeout(800); }
-    for (const n of ["can_allocate", "allocate", "may_append"]) { await call(n).click().catch(() => console.log("no call", n)); await h.page.waitForTimeout(800); }
-    await h.page.keyboard.press("Escape"); await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(600);
-    await shot(h, "v15-12-tidy-0");
-    await h.page.keyboard.press("Control+a");
-    await h.page.locator(".card.ccard .chead").first().click({ button: "right", timeout: 5000 }); await h.page.waitForTimeout(200);
-    await h.page.locator(".ctx button", { hasText: "Move to New Section" }).first().click(); await h.page.waitForTimeout(300);
-    await h.page.keyboard.type("Tmp"); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(300);
-    await h.page.locator(".slabel .chev2").first().click(); await h.page.waitForTimeout(700);
-    await h.page.locator(".slabel .chev2").first().click(); await h.page.waitForTimeout(700);
-    await h.page.locator(".slabel").first().click({ button: "right" }); await h.page.waitForTimeout(200);
-    await h.page.locator(".ctx button", { hasText: "Remove Section" }).first().click(); await h.page.waitForTimeout(500);
-    await h.page.locator(".card.ccard .chead").first().click({ button: "right" }); await h.page.waitForTimeout(200);
-    await h.page.locator(".ctx button", { hasText: "Tidy Layout" }).first().hover(); await h.page.waitForTimeout(200);
-    await h.page.locator(".ctx button", { hasText: "Down" }).first().click(); await h.page.waitForTimeout(1500);
-    const boxes = await h.page.locator(".card.ccard").evaluateAll((es) => es.map((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
-    let hits = 0;
-    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
-      const a = boxes[i], c = boxes[j];
-      if (a.x < c.x + c.w - 2 && c.x < a.x + a.w - 2 && a.y < c.y + c.h - 2 && c.y < a.y + a.h - 2) hits++;
+    const vw = h.page.viewportSize()!;
+    const out: any[] = [];
+    for (const [x, y] of [[vw.width - 8, 8], [8, vw.height - 70], [vw.width - 8, vw.height - 70], [vw.width - 30, vw.height / 2]]) {
+      await h.page.mouse.click(x, y, { button: "right" }); await h.page.waitForTimeout(350);
+      const r = await h.page.locator(".ctx").first().evaluate((e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, sh: e.scrollHeight, ch: e.clientHeight }; }).catch(() => null);
+      out.push(r && { at: [x, y], ...r, ok: r.l >= 0 && r.t >= 0 && r.r <= vw.width && r.b <= vw.height });
+      await shot(h, `v15-ctx-${out.length}`);
+      await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(200);
     }
-    console.log(boxes.length >= 5 && !hits ? "PASS" : "FAIL", "tidy-after-section", JSON.stringify({ cards: boxes.length, overlaps: hits }));
-    await shot(h, "v15-12-tidy");
+    console.log(out.every((o) => o?.ok) ? "PASS" : "FAIL", "ctx-in-viewport", JSON.stringify(out));
     await close(h);
   },
 };

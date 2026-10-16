@@ -7,7 +7,6 @@ const KEY: Record<keyof Settings, string> = {
   theme: "theme",
   hideOnNew: "newCards.hide",
   studyScope: "studyScope",
-  tidy: "tidyLayout",
   stickerDir: "stickerFolder",
   zoomOverview: "zoom.overview",
   zoomMap: "zoom.map",

@@ -456,15 +456,6 @@
           "default": [],
           "description": "Packages outside the workspace that count as project code (e.g. torch, vllm)."
         },
-        "codeboard.tidyLayout": {
-          "type": "string",
-          "enum": [
-            "down",
-            "right"
-          ],
-          "default": "down",
-          "description": "Where Tidy Layout and expanded calls place child cards."
-        },
         "codeboard.stickerFolder": {
           "type": "string",
           "default": "",
