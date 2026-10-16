@@ -16,15 +16,15 @@
 
 ![4-sidenote.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/11/diff/4-sidenote.png?raw=true)
 
-**5-search** · changed · 7.7% of pixels
+**5-search** · changed · 7.9% of pixels
 
 ![5-search.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/11/diff/5-search.png?raw=true)
 
-**6-board** · changed · 3.9% of pixels
+**6-board** · changed · 4.0% of pixels
 
 ![6-board.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/11/diff/6-board.png?raw=true)
 
-**7-uncommitted** · changed · 4.0% of pixels
+**7-uncommitted** · changed · 4.1% of pixels
 
 ![7-uncommitted.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/11/diff/7-uncommitted.png?raw=true)
 
