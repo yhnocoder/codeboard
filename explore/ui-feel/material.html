@@ -58,6 +58,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; }
 .card { position: absolute; overflow: hidden; }
+.board:not([data-v="city"]) .traffic { display: none !important; }
 .cband, .cname, .cmeta, .cnote, .cfoot, .cside, .caption, .rail, .dim, .eyebrow, .prog, .lab, .frame-deco, .scene { display: none; }
 .scene { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
 .scene svg { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -579,28 +580,45 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
   --ui: "Noto Serif SC", "Songti SC", serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   --brush: "Ma Shan Zheng", "Kaiti SC", "STKaiti", "KaiTi", serif;
-  background-image: repeating-linear-gradient(0deg, var(--tex) 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, var(--tex) 0 1px, transparent 1px 4px);
+  --fiber: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.004 .55' numOctaves='3' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .22 0 0 0 0 .06 0 0 0 1.1 -.42'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+  /* 每根简是一根剖开的竹子：上沿受光，下沿压暗，像一截圆柱 */
+  --round: repeating-linear-gradient(180deg, transparent 0 1px, light-dark(rgba(255,250,225,.55), rgba(255,230,180,.14)) 1px 2.5px, transparent 5px 12px, light-dark(rgba(90,55,10,.16), rgba(0,0,0,.3)) 15px 18px, transparent 18px 19px);
+  /* 竹节：隔几根简出现一个深色的节 */
+  --nodes: radial-gradient(5px 9px at 63% 9.5px, light-dark(rgba(110,75,25,.22), rgba(0,0,0,.35)), transparent),
+    radial-gradient(5px 9px at 41% 66.5px, light-dark(rgba(110,75,25,.2), rgba(0,0,0,.32)), transparent),
+    radial-gradient(5px 9px at 84% 104.5px, light-dark(rgba(110,75,25,.22), rgba(0,0,0,.35)), transparent);
+  /* 每根简颜色深浅不一 */
+  --tone: repeating-linear-gradient(180deg, transparent 0 19px, light-dark(rgba(120,80,20,.07), rgba(0,0,0,.14)) 19px 38px, transparent 38px 76px, light-dark(rgba(255,240,200,.18), rgba(255,220,160,.05)) 76px 95px, light-dark(rgba(120,80,20,.12), rgba(0,0,0,.2)) 95px 114px, transparent 114px 133px);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8 .05' numOctaves='2' seed='9'/%3E%3CfeColorMatrix values='0 0 0 0 .4 0 0 0 0 .3 0 0 0 0 .15 0 0 0 .5 -.18'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"), radial-gradient(120% 90% at 50% 40%, transparent 50%, light-dark(rgba(90,60,20,.12), rgba(0,0,0,.4)));
+  background-color: var(--bg); background-blend-mode: multiply, normal;
 }
 .board[data-v="bamboo"] .card { overflow: visible; display: grid; grid-template-columns: 30px minmax(0, 1fr); background: none;
-  filter: drop-shadow(0 1px 1px light-dark(rgba(60,40,10,.25), rgba(0,0,0,.6))) drop-shadow(0 10px 14px light-dark(rgba(60,40,10,.18), rgba(0,0,0,.5))); }
+  filter: drop-shadow(0 1px 1px light-dark(rgba(60,40,10,.35), rgba(0,0,0,.7))) drop-shadow(0 14px 18px light-dark(rgba(60,40,10,.28), rgba(0,0,0,.6))); }
 .board[data-v="bamboo"] .card.sel { outline: 1.5px solid var(--zhu); outline-offset: 5px; border-radius: 2px; }
 /* 首简：竖写编号 */
 .board[data-v="bamboo"] .cside { display: flex; grid-column: 1; grid-row: 1 / 4; justify-content: center; padding-top: 12px; margin-right: 2px; border-radius: 3px 0 0 3px;
-  background: linear-gradient(90deg, var(--slip-hi), var(--slip)); box-shadow: inset -1px 0 0 var(--gap); }
+  background: var(--fiber) 0 0 / 120px 360px, linear-gradient(90deg, light-dark(rgba(255,250,225,.5), rgba(255,230,180,.1)) 0 3px, transparent 8px 22px, light-dark(rgba(90,55,10,.2), rgba(0,0,0,.35)) 28px), var(--slip-hi);
+  background-blend-mode: multiply, normal, normal; box-shadow: inset -1.5px 0 0 var(--gap); }
 .board[data-v="bamboo"] .cside span { writing-mode: vertical-rl; font: 400 15px/1 var(--brush); color: var(--zhu); letter-spacing: .12em; }
 /* 标题简 */
-.board[data-v="bamboo"] .chead { grid-column: 2; grid-row: 1; height: 30px; padding: 0 26px 0 10px; background: var(--slip-hi); border-bottom: 2px solid var(--gap); border-radius: 0 3px 0 0; }
+.board[data-v="bamboo"] .chead { grid-column: 2; grid-row: 1; height: 30px; padding: 0 26px 0 10px; border-bottom: 2px solid var(--gap);
+  background: var(--fiber) 0 -40px / 360px 120px, linear-gradient(180deg, light-dark(rgba(255,250,225,.6), rgba(255,230,180,.14)) 0 3px, transparent 8px 20px, light-dark(rgba(90,55,10,.16), rgba(0,0,0,.3))), var(--slip-hi); border-radius: 0 3px 0 0; }
 .board[data-v="bamboo"] .step { display: none; }
 .board[data-v="bamboo"] .ctitle { font: 600 12px var(--mono); color: var(--ink); }
 .board[data-v="bamboo"] .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
 .board[data-v="bamboo"] .rev { font: 10px var(--mono); color: var(--ink-3); }
 .board[data-v="bamboo"] .rev.new { font: 400 12px var(--brush); color: var(--slip-hi); background: var(--zhu); padding: 1px 5px 0; border-radius: 2px; letter-spacing: .1em; }
-.board[data-v="bamboo"] .cnote { display: block; grid-column: 2; grid-row: 2; padding: 3px 26px 2px 10px; font: 400 14px/20px var(--brush); color: var(--ink-2); background: var(--slip); border-bottom: 2px solid var(--gap); letter-spacing: .06em; }
+.board[data-v="bamboo"] .cnote { display: block; grid-column: 2; grid-row: 2; padding: 3px 26px 2px 10px; font: 400 14px/20px var(--brush); color: var(--ink-2); border-bottom: 2px solid var(--gap);
+  background: var(--fiber) 0 -80px / 360px 120px, linear-gradient(180deg, light-dark(rgba(255,250,225,.5), rgba(255,230,180,.12)) 0 3px, transparent 8px 60%, light-dark(rgba(90,55,10,.16), rgba(0,0,0,.3))), var(--slip); letter-spacing: .06em; }
 /* 正文：一行一简，简与简之间留一道缝 */
 .board[data-v="bamboo"] .code { grid-column: 2; grid-row: 3; padding: 0; font: 10.5px/19px var(--mono); color: var(--ink); border-radius: 0 0 3px 0;
-  background: repeating-linear-gradient(90deg, var(--grain) 0 1px, transparent 1px 9px), repeating-linear-gradient(180deg, transparent 0 38px, var(--grain) 38px 57px, transparent 57px 76px, rgba(255,255,255,.06) 76px 95px), repeating-linear-gradient(180deg, var(--slip) 0 17px, var(--gap) 17px 19px); }
+  background: var(--nodes), var(--round), var(--tone), var(--fiber), repeating-linear-gradient(180deg, var(--slip) 0 18px, var(--gap) 18px 19px);
+  background-size: 100% 133px, auto, auto, 360px 120px, auto; }
+/* 墨迹微微洇开 */
+.board[data-v="bamboo"] .src { text-shadow: 0 0 .6px light-dark(rgba(33,24,14,.55), rgba(240,227,196,.35)); }
 .board[data-v="bamboo"] .code::before, .board[data-v="bamboo"] .code::after { content: ""; position: absolute; top: -52px; bottom: -4px; width: 3px; z-index: 2; border-radius: 2px;
-  background: repeating-linear-gradient(160deg, var(--cord) 0 3px, var(--cord-2) 3px 5px); box-shadow: 1px 0 1px rgba(0,0,0,.25); }
+  width: 4px; background: linear-gradient(90deg, rgba(255,230,180,.35), transparent 40%, rgba(0,0,0,.35)), repeating-linear-gradient(155deg, var(--cord) 0 2.5px, var(--cord-2) 2.5px 4px, var(--cord) 4px 5px);
+  box-shadow: 2px 0 2px rgba(0,0,0,.35), -1px 0 1px rgba(0,0,0,.15); }
 .board[data-v="bamboo"] .code::before { left: -3px; }
 .board[data-v="bamboo"] .code::after { right: 12px; }
 .board[data-v="bamboo"] .gutter .no { width: 34px; padding-right: 8px; color: var(--ink-3); }
@@ -623,13 +641,30 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="bamboo"] .bn { font: 400 18px/1.2 var(--brush); color: var(--ink); letter-spacing: .1em; }
 .board[data-v="bamboo"] .bn::after { content: "壹"; margin-left: 10px; font-size: 12px; color: var(--slip-hi); background: var(--zhu); padding: 1px 4px; border-radius: 2px; vertical-align: 2px; }
 .board[data-v="bamboo"] .chev { color: var(--ink-3); }
-.board[data-v="bamboo"] .tb-right .pill, .board[data-v="bamboo"] .dock .pill { background: var(--slip-hi); border-radius: 3px; padding: 3px 6px; box-shadow: 0 0 0 1px var(--gap), 0 6px 12px -6px rgba(40,25,5,.5); }
-.board[data-v="bamboo"] .tbtn, .board[data-v="bamboo"] .ib { color: var(--ink); border-radius: 2px; font: 400 14px var(--brush); }
-.board[data-v="bamboo"] .ib:hover, .board[data-v="bamboo"] .tbtn:hover { background: var(--slip); }
-.board[data-v="bamboo"] .sep { width: 2px; height: 18px; background: var(--gap); margin: 0 4px; }
-.board[data-v="bamboo"] .zoom { font: 11px var(--mono); color: var(--ink-2); }
-.board[data-v="bamboo"] .toast { background: var(--ink); color: var(--slip-hi); font: 400 14px var(--brush); padding: 6px 14px; border-radius: 2px; letter-spacing: .04em; }
-.board[data-v="bamboo"] .toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--zhu); }
+/* 右上角和底部工具条：竖着排的一小捆竹简，一根简放一个按钮，上下两道麻绳 */
+.board[data-v="bamboo"] .tb-right .pill, .board[data-v="bamboo"] .dock .pill { position: relative; padding: 6px 0; gap: 0; border-radius: 3px;
+  background: linear-gradient(90deg, transparent 0 calc(100% - 1px), var(--gap) 0) 0 0 / 34px 100%,
+    linear-gradient(90deg, light-dark(rgba(255,250,225,.55), rgba(255,230,180,.12)) 0 3px, transparent 9px 24px, light-dark(rgba(90,55,10,.18), rgba(0,0,0,.32)) 31px 33px, transparent 33px) 0 0 / 34px 100%,
+    var(--fiber) 0 0 / 120px 360px, var(--slip);
+  box-shadow: 0 0 0 1px var(--gap), 0 1px 1px light-dark(rgba(60,40,10,.35), rgba(0,0,0,.7)), 0 12px 16px -8px light-dark(rgba(60,40,10,.4), rgba(0,0,0,.6)); }
+.board[data-v="bamboo"] .tb-right .pill::before, .board[data-v="bamboo"] .dock .pill::before, .board[data-v="bamboo"] .tb-right .pill::after, .board[data-v="bamboo"] .dock .pill::after {
+  content: ""; position: absolute; left: -3px; right: -3px; height: 3px; border-radius: 2px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,230,180,.35), transparent 40%, rgba(0,0,0,.35)), repeating-linear-gradient(65deg, var(--cord) 0 2.5px, var(--cord-2) 2.5px 4px, var(--cord) 4px 5px);
+  box-shadow: 0 2px 2px rgba(0,0,0,.3); }
+.board[data-v="bamboo"] .tb-right .pill::before, .board[data-v="bamboo"] .dock .pill::before { top: 4px; }
+.board[data-v="bamboo"] .tb-right .pill::after, .board[data-v="bamboo"] .dock .pill::after { bottom: 4px; }
+.board[data-v="bamboo"] .tbtn, .board[data-v="bamboo"] .ib { color: var(--ink); border-radius: 0; font: 400 14px var(--brush); height: 30px; text-shadow: 0 0 .6px currentColor; }
+.board[data-v="bamboo"] .ib { width: 34px; min-width: 34px; }
+.board[data-v="bamboo"] .tbtn { min-width: 68px; padding: 0; justify-content: center; }
+.board[data-v="bamboo"] .ib:hover, .board[data-v="bamboo"] .tbtn:hover { background: light-dark(rgba(120,80,20,.1), rgba(0,0,0,.2)); }
+.board[data-v="bamboo"] .sep { display: none; }
+.board[data-v="bamboo"] .zoom { width: 68px; font: 11px var(--mono); color: var(--ink-2); }
+/* 提示是一块木牍：比竹简宽，墨书 */
+.board[data-v="bamboo"] .toast { color: var(--ink); font: 400 15px var(--brush); padding: 8px 18px; border-radius: 3px; letter-spacing: .04em;
+  background: linear-gradient(180deg, light-dark(rgba(255,250,225,.5), rgba(255,230,180,.12)) 0 3px, transparent 10px calc(100% - 8px), light-dark(rgba(90,55,10,.2), rgba(0,0,0,.35))), var(--fiber) 0 0 / 360px 120px, var(--slip-hi);
+  box-shadow: 0 0 0 1px var(--gap), 0 12px 16px -8px light-dark(rgba(60,40,10,.4), rgba(0,0,0,.6)); }
+.board[data-v="bamboo"] .toast::before { content: ""; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; background: var(--bg); box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+.board[data-v="bamboo"] .toast .tdot { display: none; }
 .board[data-v="bamboo"] .toast b { font-weight: 400; color: var(--zhu); }
 
 /* 水墨：宣纸底、远山淡墨、一缕雾慢慢飘；卡片是一页纸，编号是白文朱印，连线是毛笔线。深色是拓片：黑底白字 */
@@ -650,6 +685,10 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   --brush: "Zhi Mang Xing", "Ma Shan Zheng", "Kaiti SC", serif;
   --seal: "Ma Shan Zheng", "Kaiti SC", serif;
+  --paper-solid: light-dark(#faf7f0, #1c1b19);
+  --silk: light-dark(#a9b8bd, #3b4447);
+  --silk-pat: light-dark(rgba(255,255,255,.35), rgba(255,255,255,.08));
+  --knob: light-dark(#e9e2cf, #b9b2a0);
 }
 .board[data-v="ink"] .scene { display: block; }
 .board[data-v="ink"] .card { background: var(--paper); box-shadow: 0 0 0 .5px var(--wash), 0 18px 34px -22px light-dark(rgba(30,25,15,.35), rgba(0,0,0,.8)); display: flex; flex-direction: column; overflow: visible; }
@@ -686,22 +725,39 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="ink"] .bn { font: 400 26px/1 var(--brush); color: var(--ink); letter-spacing: .04em; }
 .board[data-v="ink"] .bname::after { content: "白板"; font: 400 11px/1 var(--seal); color: var(--paper); background: var(--zhu); padding: 3px 2px 2px; border-radius: 2px; writing-mode: vertical-rl; margin-left: 8px; }
 .board[data-v="ink"] .chev { display: none; }
-.board[data-v="ink"] .tb-right .pill { background: none; }
-.board[data-v="ink"] .tbtn, .board[data-v="ink"] .ib { color: var(--ink); font: 400 13px var(--ui); border-radius: 3px; }
+.board[data-v="ink"] .tb-right .pill { background: none; gap: 8px; }
+.board[data-v="ink"] .tbtn, .board[data-v="ink"] .ib { color: var(--ink); font: 400 13px var(--ui); border-radius: 2px; }
 .board[data-v="ink"] .ib:hover, .board[data-v="ink"] .tbtn:hover { background: var(--wash); }
-/* 工具条是一小卷手卷，两头是轴 */
-.board[data-v="ink"] .dock .pill { background: var(--paper); padding: 3px 10px; position: relative; box-shadow: 0 0 0 .5px var(--wash), 0 10px 20px -12px rgba(0,0,0,.4); }
-.board[data-v="ink"] .dock .pill::before, .board[data-v="ink"] .dock .pill::after { content: ""; position: absolute; top: -4px; bottom: -4px; width: 5px; border-radius: 3px; background: light-dark(#4a3424, #8a6a4c); }
-.board[data-v="ink"] .dock .pill::before { left: -4px; } .board[data-v="ink"] .dock .pill::after { right: -4px; }
-.board[data-v="ink"] .sep { width: .5px; height: 16px; background: var(--ink-3); margin: 0 4px; }
-.board[data-v="ink"] .zoom { font: 11px var(--mono); color: var(--ink-2); }
+/* 讲解是一枚朱印，按下去像盖章 */
+.board[data-v="ink"] #btnPresent { background: var(--zhu); color: var(--paper); font: 400 15px var(--seal); letter-spacing: .1em; padding: 0 10px; height: 30px; border-radius: 3px;
+  box-shadow: inset 0 0 0 2px var(--zhu), inset 0 0 0 3px light-dark(rgba(250,247,240,.7), rgba(28,27,25,.6)); rotate: -2deg; transition: scale 60ms; }
+.board[data-v="ink"] #btnPresent:active { scale: .94; }
+.board[data-v="ink"] #btnPresent .ico { fill: currentColor; stroke: none; width: 12px; }
+/* 工具条是一小段手卷：中间宣纸，两边绫边，最外是带轴头的木轴；按钮之间是朱丝栏 */
+.board[data-v="ink"] .dock { bottom: 16px; }
+.board[data-v="ink"] .dock .pill { position: relative; padding: 5px 22px; gap: 0;
+  background: linear-gradient(90deg, transparent 13px, light-dark(rgba(60,50,30,.35), rgba(220,210,190,.25)) 13px 14px, transparent 14px calc(100% - 14px), light-dark(rgba(60,50,30,.35), rgba(220,210,190,.25)) calc(100% - 14px) calc(100% - 13px), transparent 0),
+    linear-gradient(90deg, var(--silk) 0 13px, transparent 13px calc(100% - 13px), var(--silk) 0),
+    repeating-linear-gradient(45deg, transparent 0 3px, var(--silk-pat) 3px 4px), repeating-linear-gradient(-45deg, transparent 0 3px, var(--silk-pat) 3px 4px),
+    var(--paper-solid);
+  background-size: 100% 100%, 100% 100%, 13px 100%, 13px 100%, 100% 100%;
+  background-repeat: no-repeat, no-repeat, repeat-y, repeat-y, no-repeat;
+  box-shadow: inset 0 1.5px 0 var(--silk), inset 0 -1.5px 0 var(--silk), 0 12px 22px -12px rgba(0,0,0,.45); }
+.board[data-v="ink"] .dock .pill::before, .board[data-v="ink"] .dock .pill::after { content: ""; position: absolute; top: -7px; bottom: -7px; width: 8px; border-radius: 4px;
+  background: linear-gradient(180deg, var(--knob) 0 7px, transparent 7px calc(100% - 7px), var(--knob) 0),
+    linear-gradient(90deg, light-dark(#2e1f14, #5e4632), light-dark(#6e4c32, #a07b5a) 45%, light-dark(#2e1f14, #4a3626));
+  box-shadow: 0 3px 5px rgba(0,0,0,.35); }
+.board[data-v="ink"] .dock .pill::before { left: -5px; } .board[data-v="ink"] .dock .pill::after { right: -5px; }
+.board[data-v="ink"] .dock .ib { width: 34px; height: 28px; }
+.board[data-v="ink"] .dock .ib + .ib, .board[data-v="ink"] .dock .zoom, .board[data-v="ink"] .dock .zoom + .ib { box-shadow: -.5px 0 0 color-mix(in srgb, var(--zhu) 45%, transparent); }
+.board[data-v="ink"] .sep { width: 0; margin: 0; }
+.board[data-v="ink"] .zoom { min-width: 50px; font: 400 14px var(--seal); color: var(--ink-2); }
 .board[data-v="ink"] .toast { background: var(--paper); color: var(--ink); font: 400 12.5px var(--ui); padding: 7px 14px 7px 8px; box-shadow: 0 0 0 .5px var(--wash), 0 10px 20px -12px rgba(0,0,0,.4); }
 .board[data-v="ink"] .toast .tdot { width: 14px; height: 14px; background: var(--zhu); border-radius: 2px; }
 .board[data-v="ink"] .toast b { font-weight: 600; color: var(--zhu); }
 /* 远山和雾 */
 .board[data-v="ink"] .mtn { fill: var(--mtn); }
 .board[data-v="ink"] .mist { fill: var(--mist); animation: inkMist calc(var(--t, 1) * 70s) ease-in-out infinite alternate; }
-.board[data-v="ink"] .sun { fill: var(--zhu); opacity: .55; }
 @keyframes inkMist { from { transform: translateX(-60px); } to { transform: translateX(80px); } }
 @media (prefers-reduced-motion: reduce) { .board[data-v="ink"] .mist { animation: none; } }
 
@@ -788,6 +844,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
   --lane: light-dark(#f6c93b, #e8b84a);
   --sign: light-dark(#1f5fbf, #2d5ea8);
   --sign-ink: #ffffff;
+  --pole: light-dark(#9aa1ab, #4a5260);
   --guide: light-dark(#13804a, #1d6c43);
   --shield: #c7281f;
   --paper: light-dark(#ffffff, #1d222c);
@@ -854,16 +911,37 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="city"] .eyebrow { display: block; order: 2; font: 600 8.5px var(--ui); letter-spacing: .2em; color: rgba(255,255,255,.75); }
 .board[data-v="city"] .bn { font: 700 14px var(--ui); color: #fff; letter-spacing: .06em; }
 .board[data-v="city"] .chev { display: none; }
-.board[data-v="city"] .tb-right .pill, .board[data-v="city"] .dock .pill { background: var(--paper); border-radius: 10px; padding: 3px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 6px 14px -6px rgba(0,0,0,.35); }
-.board[data-v="city"] .tbtn, .board[data-v="city"] .ib { color: var(--ink); border-radius: 7px; font: 500 12.5px var(--ui); }
-.board[data-v="city"] .ib:hover, .board[data-v="city"] .tbtn:hover { background: var(--paper-2); }
-.board[data-v="city"] #btnPresent { color: var(--sign); }
-.board[data-v="city"] #btnPresent .ico { fill: currentColor; }
-.board[data-v="city"] .sep { width: 1px; height: 16px; background: light-dark(rgba(0,0,0,.1), rgba(255,255,255,.1)); margin: 0 4px; }
-.board[data-v="city"] .zoom { font: 11px var(--mono); color: var(--ink-2); }
+/* 工具条是一排挂在横杆上的交通标志：蓝色圆形指示标志放按钮，缩放比例是一块限速牌；讲解是蓝色指路牌，车流开关是一盏红绿灯 */
+.board[data-v="city"] .tb-right .pill, .board[data-v="city"] .dock .pill { background: linear-gradient(180deg, transparent calc(50% - 2px), var(--pole) calc(50% - 2px) calc(50% + 2px), transparent 0); gap: 10px; padding: 4px 6px; }
+.board[data-v="city"] .ib { width: 30px; height: 30px; min-width: 30px; border-radius: 50%; color: #fff; background: var(--sign);
+  box-shadow: inset 0 0 0 1.5px var(--sign), inset 0 0 0 3px #fff, 0 2px 4px rgba(0,0,0,.3); }
+.board[data-v="city"] .ib .ico { stroke-width: 1.8; width: 15px; height: 15px; }
+.board[data-v="city"] .ib:hover { filter: brightness(1.12); }
+.board[data-v="city"] .ib:active, .board[data-v="city"] .tbtn:active { translate: 0 1px; }
+.board[data-v="city"] .ib[aria-label="缩小"], .board[data-v="city"] .ib[aria-label="放大"] { width: 24px; height: 24px; min-width: 24px; }
+.board[data-v="city"] .sep { display: none; }
+.board[data-v="city"] .zoom { width: 38px; height: 38px; min-width: 38px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+  background: #fff; color: #111; font: 800 12.5px var(--ui); letter-spacing: -.03em; box-shadow: inset 0 0 0 4px #d6261d, 0 2px 4px rgba(0,0,0,.3); }
+.board[data-v="city"] .tbtn { height: 30px; padding: 0 12px; border-radius: 4px; color: #fff; font: 700 12.5px var(--ui); background: var(--sign);
+  box-shadow: inset 0 0 0 1.5px var(--sign), inset 0 0 0 3px #fff, 0 2px 4px rgba(0,0,0,.3); }
+.board[data-v="city"] .tbtn .ico { fill: currentColor; }
+/* 红绿灯：开着是绿灯，关了是红灯 */
+.board[data-v="city"] .traffic { display: inline-flex; width: 18px; min-width: 18px; height: 40px; padding: 0; border-radius: 5px; background: #2a2e35;
+  box-shadow: 0 2px 4px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08); --r: #4a2522; --y: #4a4122; --g: #ff3b2f; }
+.board[data-v="city"] .traffic[aria-pressed="true"] { --r: #4a2522; --g: #22d36b; background: #2a2e35; }
+.board[data-v="city"] .traffic:not([aria-pressed="true"]) { --r: #ff3b2f; --g: #1f4a30; }
+.board[data-v="city"] .traffic .ico, .board[data-v="city"] .traffic .tl { display: none; }
+.board[data-v="city"] .traffic::before { content: ""; width: 10px; height: 34px; margin: auto;
+  background: radial-gradient(circle at 50% 5px, var(--r) 0 4px, transparent 4.5px), radial-gradient(circle at 50% 17px, var(--y) 0 4px, transparent 4.5px), radial-gradient(circle at 50% 29px, var(--g) 0 4px, transparent 4.5px); }
+.board[data-v="city"] .traffic[aria-pressed="true"]::before { filter: drop-shadow(0 0 3px #22d36b); }
+.board[data-v="city"] .traffic:not([aria-pressed="true"])::before { filter: drop-shadow(0 0 3px #ff3b2f); }
 .board[data-v="city"] .toast { background: var(--paper); color: var(--ink); font: 500 12.5px var(--ui); padding: 8px 14px 8px 10px; border-radius: 8px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 8px 18px -8px rgba(0,0,0,.4); }
 .board[data-v="city"] .toast .tdot { width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--shield); }
 .board[data-v="city"] .toast b { font-weight: 700; color: var(--sign); }
+/* 车流开关和行驶中的车 */
+.board[data-v="city"] .mover .body { fill: #2f7de1; stroke: rgba(0,0,0,.3); stroke-width: .6; } .board[data-v="city"] .mover.k1 .body { fill: #f2c230; } .board[data-v="city"] .mover.k2 .body { fill: #f4f4f4; }
+.board[data-v="city"] .mover .roof { fill: rgba(255,255,255,.55); } .board[data-v="city"] .mover.k2 .roof { fill: rgba(0,0,0,.18); }
+.board[data-v="city"] .mover .beam { fill: light-dark(transparent, rgba(255,214,120,.3)); }
 
 .notes .tip { font-size: 12px; border-top: .5px solid var(--page-hair); padding-top: 12px; }
 </style>
@@ -897,6 +975,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
         <div class="over tb-left"><div class="pill"><span class="bname"><small class="eyebrow">NANO-VLLM · ENGINE</small><span class="bn">第一张白板</span><svg class="ico chev" viewBox="0 0 16 16"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg></span></div></div>
         <div class="over tb-right"><div class="pill">
           <span class="prog"><i class="on"></i><i></i><i></i></span>
+          <button class="tbtn traffic" id="btnTraffic" aria-pressed="true"><svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="5.5" width="11" height="5" rx="1.6"/><path d="M5 5.5 6 3.5h4l1 2"/><circle cx="5.2" cy="11.2" r="1.1"/><circle cx="10.8" cy="11.2" r="1.1"/></svg><span class="tl">车流</span></button>
           <button class="tbtn" id="btnPresent"><svg class="ico" viewBox="0 0 16 16"><path d="M5 3.5v9l7-4.5z"/></svg><span class="tl">讲解</span></button>
           <button class="ib focus-btn" aria-label="专注"><svg class="ico" viewBox="0 0 16 16"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg></button>
         </div></div>
@@ -1096,8 +1175,29 @@ function drafting(cards, world) {
   world.append(l1, l2);
 }
 
-function decorate(cards, world) { world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); }
-const BASECFG = Object.assign({}, CFG), VCFG = {"v1": {"head": "triangle"}, "warm": {}, "graphite": {}, "draft": {"route": "elbow", "head": "triangle", "port": "square", "gap": 150}, "soft": {"head": "dot", "gap": 150, "pad": {"l": 84, "r": 28, "t": 96, "b": 84}}, "color": {"head": "triangle", "gap": 150}, "news": {"head": "triangle", "gap": 150, "pad": {"l": 40, "r": 40, "t": 120, "b": 80}}, "art": {"port": "diamond", "gap": 150, "pad": {"l": 44, "r": 44, "t": 100, "b": 84}}, "bamboo": {"head": "dot", "gap": 140, "pad": {"l": 28, "r": 28, "t": 70, "b": 72}}, "ink": {"head": "dot", "gap": 150, "pad": {"l": 32, "r": 32, "t": 78, "b": 76}, "defs": "<defs><filter id=\"brush\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"2\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"2.4\"/></filter></defs>"}, "clay": {"head": "dot", "gap": 150, "pad": {"l": 40, "r": 40, "t": 80, "b": 84}, "defs": "<defs><filter id=\"isoShadow\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feDropShadow dx=\"3\" dy=\"3\" stdDeviation=\"0\" flood-opacity=\".22\"/></filter></defs>"}, "city": {"route": "street", "head": "car", "merge": true, "port": "circle", "gap": 240, "layers": ["casing", "road", "lane"], "pad": {"l": 32, "r": 32, "t": 74, "b": 76}}}, NOTES = {"v1": "<h2>v1 现状</h2><p>整体干净，但材质偏「网页 div」：实线边框、同一种阴影、强调色用得太多。</p>", "warm": "<h2>暖墨 · 已选定</h2><p>延续 v1 的暖灰和陶土色，把材质做实：0.5px 发丝线加三层阴影，工具条磨砂半透明，强调色只留给「选中」和「箭头出发的那一行」。</p>", "graphite": "<h2>石墨</h2><p>中性灰，强调色跟随 VS Code 的 focus 颜色，和编辑器融为一体，最接近原生 macOS app。</p>", "draft": "<h2>制图</h2><p>参考 Merit 的唇笔图纸。只有墨和线，没有颜色、阴影和圆角。</p><ul>\n<li><b>箭头</b>走直角虚线，像标注引线；起点是代码行右侧的小方块。</li>\n<li><b>便签</b>是细节标注框，用点线引到某一行。</li>\n<li><b>新版本</b>是实心方块，旧版本是空心方块。</li>\n<li><b>选中</b>是外面再套一圈虚线框。</li></ul>\n<h3>取舍</h3><ul><li>最安静，截图放进文档最好看。</li><li>没有颜色，卡片一多，状态不容易一眼看到。</li><li>缩小后 1px 细线会发虚，要按缩放加粗。</li></ul>", "soft": "<h2>柔光</h2><p>参考白色手表商店那张：大留白、细字重、大面积柔和投影，珊瑚色只用在一个圆按钮和几个小点上。底色带一点暖。</p><ul>\n<li><b>代码</b>放在卡片里一块下沉的凹槽中，这是「拟物」的部分。</li>\n<li><b>白板列表</b>做成左侧竖排的标签栏，当前白板下面一条珊瑚短线。</li>\n<li><b>讲解</b>是右下角的珊瑚色圆形按钮。</li>\n<li><b>新版本</b>是一颗珊瑚色小圆点，像购物车角标。</li></ul>\n<h3>取舍</h3><ul><li>最「产品化」，演示时很体面。</li><li>大投影和大圆角很占地方，半宽 webview 里卡片之间要拉得更开。</li><li>深色主题下拟物感会弱很多。</li></ul>", "color": "<h2>多彩卡片</h2><p>参考 Marigold：奶油底、2px 墨线、直角，颜色成块使用。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 橙、scheduler 黄、model_runner 青，卡片顶部是这块颜色加一个小图形和大号编号。</li>\n<li><b>卡片头</b>分成格子：步骤号、文件名、版本状态；底部格子放行号区间和「跟进到最新」。</li>\n<li><b>斜体衬线</b>那一行是卡片的一句话说明，相当于标题下的批注。</li>\n<li><b>讲解进度</b>是右上角的小方格，走到哪一步就填哪一格。</li>\n<li><b>选中</b>是右下方的实心偏移投影。</li></ul>\n<h3>取舍</h3><ul><li>辨识度最高，一眼分清哪张卡来自哪个文件。</li><li>颜色块占高度，卡片一多会很热闹；文件超过 6–8 个时颜色要复用。</li></ul>", "news": "<h2>报纸</h2><p>新闻纸底、黑色油墨，整块白板排成一张报纸的版面。</p><ul>\n<li><b>白板名</b>是报头：哥特体报名，下面一行期号和提交号，再加一道双线。</li>\n<li><b>每张卡片是一篇报道</b>：顶部粗线，眉题写「第 1.1 版 · 文件名」，函数名是粗体大标题，斜体导语是一句话说明。</li>\n<li><b>代码</b>用打字机字体，像报道里的引文。</li>\n<li><b>新版本</b>是一枚红色小印章，提示条是黑底的「快讯」。</li>\n<li><b>箭头上的数据</b>写成斜体，两边加破折号，像图片说明。</li></ul>\n<h3>取舍</h3><ul><li>阅读感最强，适合讲解或导出成长图。</li><li>标题和导语占高度，代码区域比暖墨小。</li><li>几乎没有颜色，状态要靠印章和粗细来区分。</li></ul>", "art": "<h2>艺术</h2><p>参考 Severance 晚宴海报：薄荷纸、深绿油墨、双线框、居中排版、字距拉得很开。</p><ul>\n<li><b>白板</b>四周有双线边框，背景是很淡的方格纸（这是风格的一部分，可以去掉）。</li>\n<li><b>卡片头</b>居中：编号和文件名、衬线大标题、文件 / 行 / 提交三栏信息。</li>\n<li><b>图注</b>写在卡片下方，像插图编号：FIG. 1.1 — THE BATCH IS CHOSEN。</li>\n<li><b>工具条</b>是一条深绿色色带，按钮是字距拉开的文字。</li></ul>\n<h3>取舍</h3><ul><li>最有个性，截图分享最好看。</li><li>头部很高，同样大小的白板能放的代码最少。</li><li>双线和网格缩小后会变成噪点。</li></ul>", "bamboo": "<h2>竹简</h2><p>每张卡片是一卷竹简：一行代码写在一根简上，简与简之间留一道缝，两道麻绳从头穿到尾。</p><ul>\n<li><b>首简</b>是左边一根宽简，竖着写编号「一之一」，用朱砂。</li>\n<li><b>标题简</b>写函数名，下面一根简用毛笔字写这张卡的一句话说明。</li>\n<li><b>朱砂</b>是唯一的颜色，相当于古人的批注：关键字、可展开的调用、箭头出发的那一行。</li>\n<li><b>连线</b>是麻绳，两头打结；箭头上的数据挂在一块小木签上。</li>\n<li><b>有新版本</b>是一枚朱红小印。</li></ul>\n<h3>取舍</h3><ul><li>代码行和竹简一一对应，行感很强，读长函数时眼睛不容易串行。</li><li>行距被竹简锁死在 19px，用户改字号时竹简要跟着变宽。</li><li>首简占掉 30px 宽度，半宽 webview 里代码区更窄。</li></ul>", "ink": "<h2>水墨</h2><p>宣纸底，下方几层淡墨远山，一缕雾慢慢左右飘（70 秒一个来回，几乎感觉不到）。浅色是一幅画；深色换成碑帖拓片，黑底白字。</p><ul>\n<li><b>编号</b>是一枚白文朱印「一之一」，盖在卡片右上角；<b>有新版本</b>是朱文印「新」，红框红字。</li>\n<li><b>标题下</b>是一笔干笔墨痕，代替分隔线。</li>\n<li><b>代码配色</b>用国画颜料：函数是花青，字符串和数字是赭石，关键字是浓墨，朱砂只标可展开的调用。</li>\n<li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>\n<li><b>工具条</b>是一小卷手卷，两头有木轴；白板名用行草写，后面盖一枚「白板」小印。</li></ul>\n<h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>", "clay": "<h2>3D · 等距积木</h2><p>白板是一张等距网格纸，卡片是一块块往右下方挤出厚度的彩色积木，像等距视角的小游戏。和柔光的白色软阴影正好相反：实心的厚度、黑色描边、饱和色。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 是珊瑚红，scheduler 是青绿，model_runner 是靛蓝。标题带和侧面都是这个颜色。</li>\n<li><b>选中</b>就是积木被抬起来：往左上移一点，厚度从 9px 变成 13px，外面一圈黄色。</li>\n<li><b>连线</b>是一根黑色粗线，影子朝同一个方向，看起来也有厚度；起点是黄色小圆钮。</li>\n<li><b>标签、工具条、按钮</b>都是同一套积木按键，按下去会往右下沉，厚度消失。</li>\n<li><b>有新版本</b>和白板名都是黄色积木块。</li></ul>\n<h3>取舍</h3><ul><li>立体感来自固定方向的厚度，没有倾斜和透视，文字始终是正的，也没有常驻动画。</li><li>颜色重、描边粗，卡片很多时会很热闹；文件超过 6 个时颜色要复用。</li><li>右下方的厚度会占掉一点空间，卡片之间要多留 10px。</li></ul>", "city": "<h2>城市道路</h2><p>白板是一张平面城市地图：街区、河流、公园做底，调用关系画成真正的马路。</p><ul>\n<li><b>连线</b>是马路：灰色路面、白色路沿、黄色中线，横平竖直，拐角是圆的。</li>\n<li><b>箭头</b>换成一辆小车：停在路的尽头，车头朝着被调用的卡片。</li>\n<li><b>几张卡同时调用一张卡</b>时，几条路在这张卡前面的同一个路口汇合，最后一段路共用，只停一辆车。演示里多了一张 ModelRunner.loop：其他 rank 的进程在这里收到命令后，也会走到 run。</li>\n<li><b>卡片标题</b>是蓝底白字的路牌；<b>编号</b>是红色的国道牌，比如 G1.1。</li>\n<li><b>箭头上的数据</b>写在绿色的高速指路牌上。</li>\n<li><b>有新版本</b>是橙白相间的施工牌。</li>\n<li><b>深色</b>是夜里的地图：路面暗下来，中线和车灯是暖黄色。</li></ul>\n<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>没有常驻动画，车是停着的。会动的版本留到 standalone app。</li><li>汇合后共用的最后一段上放不下各自的数据牌，所以牌子挂在每条路的起点那段。</li></ul>"}, SCENES = {"ink": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMax slice\">\n  <defs>\n    <filter id=\"paper\" x=\"0\" y=\"0\" width=\"100%\" height=\"100%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"3\"/><feColorMatrix values=\"0 0 0 0 .5  0 0 0 0 .45  0 0 0 0 .38  0 0 0 .06 0\"/></filter>\n    <filter id=\"wash\" x=\"-10%\" y=\"-30%\" width=\"120%\" height=\"160%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".012 .05\" numOctaves=\"3\" seed=\"7\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"26\"/><feGaussianBlur stdDeviation=\"2.4\"/></filter>\n    <filter id=\"fog\"><feGaussianBlur stdDeviation=\"18\"/></filter>\n    <linearGradient id=\"fade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\".75\" stop-color=\"#fff\" stop-opacity=\".25\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0\"/></linearGradient>\n    <mask id=\"mfade\"><rect x=\"0\" y=\"0\" width=\"800\" height=\"640\" fill=\"url(#fade)\"/></mask>\n  </defs>\n  <rect width=\"800\" height=\"640\" filter=\"url(#paper)\"/>\n  <circle class=\"sun\" cx=\"420\" cy=\"78\" r=\"15\"/>\n  <g mask=\"url(#mfade)\">\n    <path class=\"mtn\" opacity=\".13\" filter=\"url(#wash)\" d=\"M-20 470 C60 420 110 360 170 380 S260 300 330 340 420 280 480 330 560 300 620 260 700 330 820 300 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".2\" filter=\"url(#wash)\" d=\"M-20 520 C40 500 90 430 150 455 S240 410 300 450 380 470 430 430 520 380 590 420 680 460 820 420 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".32\" filter=\"url(#wash)\" d=\"M420 640 C460 590 500 520 560 540 S650 480 700 520 760 560 820 540 V640Z\"/>\n  </g>\n  <ellipse class=\"mist\" cx=\"300\" cy=\"470\" rx=\"320\" ry=\"26\" filter=\"url(#fog)\" opacity=\".9\"/>\n  <ellipse class=\"mist\" cx=\"620\" cy=\"540\" rx=\"260\" ry=\"20\" filter=\"url(#fog)\" opacity=\".8\" style=\"animation-delay:-30s\"/>\n</svg>\n", "city": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMid slice\">\n  <path class=\"river\" d=\"M-40 560 C120 520 210 600 330 560 S520 470 600 520 760 600 860 560 L860 620 C760 650 640 590 560 580 S380 640 300 625 120 590 -40 625Z\"/>\n  <path class=\"park\" d=\"M60 70 h150 a14 14 0 0 1 14 14 v80 a14 14 0 0 1 -14 14 h-150 a14 14 0 0 1 -14 -14 v-80 a14 14 0 0 1 14 -14z\"/>\n  <path class=\"park\" d=\"M610 430 h120 a14 14 0 0 1 14 14 v50 a14 14 0 0 1 -14 14 h-120 a14 14 0 0 1 -14 -14 v-50 a14 14 0 0 1 14 -14z\"/>\n  <g class=\"trees\"><circle cx=\"90\" cy=\"110\" r=\"9\"/><circle cx=\"118\" cy=\"128\" r=\"11\"/><circle cx=\"160\" cy=\"100\" r=\"8\"/><circle cx=\"186\" cy=\"140\" r=\"10\"/><circle cx=\"640\" cy=\"465\" r=\"9\"/><circle cx=\"676\" cy=\"480\" r=\"11\"/><circle cx=\"712\" cy=\"458\" r=\"8\"/></g>\n  <g class=\"bldg\"><rect x=\"300\" y=\"60\" width=\"40\" height=\"28\" rx=\"3\"/><rect x=\"350\" y=\"60\" width=\"26\" height=\"40\" rx=\"3\"/><rect x=\"420\" y=\"70\" width=\"52\" height=\"24\" rx=\"3\"/><rect x=\"40\" y=\"420\" width=\"44\" height=\"30\" rx=\"3\"/><rect x=\"96\" y=\"410\" width=\"30\" height=\"44\" rx=\"3\"/><rect x=\"250\" y=\"440\" width=\"60\" height=\"22\" rx=\"3\"/><rect x=\"560\" y=\"70\" width=\"34\" height=\"34\" rx=\"3\"/><rect x=\"690\" y=\"90\" width=\"48\" height=\"26\" rx=\"3\"/></g>\n</svg>\n"};
+function decorate(cards, world) { world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); if (board.dataset.v === 'city') traffic(); }
+// 城市：可开关的车流。小车从调用行出发，沿路开到被调用的卡片前，靠右行驶
+const reduceMo = matchMedia('(prefers-reduced-motion: reduce)'), btnTraffic = document.getElementById('btnTraffic');
+function traffic() {
+  edges.querySelectorAll('.mover').forEach(n => n.remove());
+  if (btnTraffic.getAttribute('aria-pressed') !== 'true' || reduceMo.matches) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  edges.querySelectorAll('path.road').forEach((p, i) => {
+    const len = p.getTotalLength(), dur = len / 46;
+    for (const k of [0, 1, 2]) {
+      const car = document.createElementNS(ns, 'g'); car.setAttribute('class', `mover k${(i + k) % 3}`);
+      car.innerHTML = '<g transform="translate(0 3.5) scale(1.2)"><rect class="beam" x="7" y="-3.5" width="18" height="7" rx="3.5"/><rect class="body" x="-8" y="-3.5" width="16" height="7" rx="2.5"/><rect class="roof" x="-3.5" y="-2.6" width="6.5" height="5.2" rx="1.2"/></g>';
+      const begin = (-dur * (k / 3 + i * .17)).toFixed(2) + 's';
+      const am = document.createElementNS(ns, 'animateMotion');
+      Object.entries({ dur: dur + 's', repeatCount: 'indefinite', rotate: 'auto', path: p.getAttribute('d'), begin, keyPoints: '0;.92', keyTimes: '0;1', calcMode: 'linear' }).forEach(([a, v]) => am.setAttribute(a, v));
+      const op = document.createElementNS(ns, 'animate');
+      Object.entries({ attributeName: 'opacity', dur: dur + 's', repeatCount: 'indefinite', begin, values: '0;1;1;0', keyTimes: '0;.08;.85;1' }).forEach(([a, v]) => op.setAttribute(a, v));
+      car.append(am, op); edges.insertBefore(car, edges.querySelector('.car'));
+    }
+  });
+}
+btnTraffic.addEventListener('click', () => { btnTraffic.setAttribute('aria-pressed', btnTraffic.getAttribute('aria-pressed') !== 'true'); traffic(); });
+const BASECFG = Object.assign({}, CFG), VCFG = {"v1": {"head": "triangle"}, "warm": {}, "graphite": {}, "draft": {"route": "elbow", "head": "triangle", "port": "square", "gap": 150}, "soft": {"head": "dot", "gap": 150, "pad": {"l": 84, "r": 28, "t": 96, "b": 84}}, "color": {"head": "triangle", "gap": 150}, "news": {"head": "triangle", "gap": 150, "pad": {"l": 40, "r": 40, "t": 120, "b": 80}}, "art": {"port": "diamond", "gap": 150, "pad": {"l": 44, "r": 44, "t": 100, "b": 84}}, "bamboo": {"head": "dot", "gap": 140, "pad": {"l": 28, "r": 28, "t": 70, "b": 72}}, "ink": {"head": "dot", "gap": 150, "pad": {"l": 32, "r": 32, "t": 78, "b": 76}, "defs": "<defs><filter id=\"brush\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"2\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"2.4\"/></filter></defs>"}, "clay": {"head": "dot", "gap": 150, "pad": {"l": 40, "r": 40, "t": 80, "b": 84}, "defs": "<defs><filter id=\"isoShadow\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feDropShadow dx=\"3\" dy=\"3\" stdDeviation=\"0\" flood-opacity=\".22\"/></filter></defs>"}, "city": {"route": "street", "head": "car", "merge": true, "port": "circle", "gap": 240, "layers": ["casing", "road", "lane"], "pad": {"l": 32, "r": 32, "t": 74, "b": 76}}}, NOTES = {"v1": "<h2>v1 现状</h2><p>整体干净，但材质偏「网页 div」：实线边框、同一种阴影、强调色用得太多。</p>", "warm": "<h2>暖墨 · 已选定</h2><p>延续 v1 的暖灰和陶土色，把材质做实：0.5px 发丝线加三层阴影，工具条磨砂半透明，强调色只留给「选中」和「箭头出发的那一行」。</p>", "graphite": "<h2>石墨</h2><p>中性灰，强调色跟随 VS Code 的 focus 颜色，和编辑器融为一体，最接近原生 macOS app。</p>", "draft": "<h2>制图</h2><p>参考 Merit 的唇笔图纸。只有墨和线，没有颜色、阴影和圆角。</p><ul>\n<li><b>箭头</b>走直角虚线，像标注引线；起点是代码行右侧的小方块。</li>\n<li><b>便签</b>是细节标注框，用点线引到某一行。</li>\n<li><b>新版本</b>是实心方块，旧版本是空心方块。</li>\n<li><b>选中</b>是外面再套一圈虚线框。</li></ul>\n<h3>取舍</h3><ul><li>最安静，截图放进文档最好看。</li><li>没有颜色，卡片一多，状态不容易一眼看到。</li><li>缩小后 1px 细线会发虚，要按缩放加粗。</li></ul>", "soft": "<h2>柔光</h2><p>参考白色手表商店那张：大留白、细字重、大面积柔和投影，珊瑚色只用在一个圆按钮和几个小点上。底色带一点暖。</p><ul>\n<li><b>代码</b>放在卡片里一块下沉的凹槽中，这是「拟物」的部分。</li>\n<li><b>白板列表</b>做成左侧竖排的标签栏，当前白板下面一条珊瑚短线。</li>\n<li><b>讲解</b>是右下角的珊瑚色圆形按钮。</li>\n<li><b>新版本</b>是一颗珊瑚色小圆点，像购物车角标。</li></ul>\n<h3>取舍</h3><ul><li>最「产品化」，演示时很体面。</li><li>大投影和大圆角很占地方，半宽 webview 里卡片之间要拉得更开。</li><li>深色主题下拟物感会弱很多。</li></ul>", "color": "<h2>多彩卡片</h2><p>参考 Marigold：奶油底、2px 墨线、直角，颜色成块使用。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 橙、scheduler 黄、model_runner 青，卡片顶部是这块颜色加一个小图形和大号编号。</li>\n<li><b>卡片头</b>分成格子：步骤号、文件名、版本状态；底部格子放行号区间和「跟进到最新」。</li>\n<li><b>斜体衬线</b>那一行是卡片的一句话说明，相当于标题下的批注。</li>\n<li><b>讲解进度</b>是右上角的小方格，走到哪一步就填哪一格。</li>\n<li><b>选中</b>是右下方的实心偏移投影。</li></ul>\n<h3>取舍</h3><ul><li>辨识度最高，一眼分清哪张卡来自哪个文件。</li><li>颜色块占高度，卡片一多会很热闹；文件超过 6–8 个时颜色要复用。</li></ul>", "news": "<h2>报纸</h2><p>新闻纸底、黑色油墨，整块白板排成一张报纸的版面。</p><ul>\n<li><b>白板名</b>是报头：哥特体报名，下面一行期号和提交号，再加一道双线。</li>\n<li><b>每张卡片是一篇报道</b>：顶部粗线，眉题写「第 1.1 版 · 文件名」，函数名是粗体大标题，斜体导语是一句话说明。</li>\n<li><b>代码</b>用打字机字体，像报道里的引文。</li>\n<li><b>新版本</b>是一枚红色小印章，提示条是黑底的「快讯」。</li>\n<li><b>箭头上的数据</b>写成斜体，两边加破折号，像图片说明。</li></ul>\n<h3>取舍</h3><ul><li>阅读感最强，适合讲解或导出成长图。</li><li>标题和导语占高度，代码区域比暖墨小。</li><li>几乎没有颜色，状态要靠印章和粗细来区分。</li></ul>", "art": "<h2>艺术</h2><p>参考 Severance 晚宴海报：薄荷纸、深绿油墨、双线框、居中排版、字距拉得很开。</p><ul>\n<li><b>白板</b>四周有双线边框，背景是很淡的方格纸（这是风格的一部分，可以去掉）。</li>\n<li><b>卡片头</b>居中：编号和文件名、衬线大标题、文件 / 行 / 提交三栏信息。</li>\n<li><b>图注</b>写在卡片下方，像插图编号：FIG. 1.1 — THE BATCH IS CHOSEN。</li>\n<li><b>工具条</b>是一条深绿色色带，按钮是字距拉开的文字。</li></ul>\n<h3>取舍</h3><ul><li>最有个性，截图分享最好看。</li><li>头部很高，同样大小的白板能放的代码最少。</li><li>双线和网格缩小后会变成噪点。</li></ul>", "bamboo": "<h2>竹简</h2><p>每张卡片是一卷竹简：一行代码写在一根简上，简与简之间留一道缝，两道麻绳从头穿到尾。</p><ul>\n<li><b>首简</b>是左边一根宽简，竖着写编号「一之一」，用朱砂。</li>\n<li><b>标题简</b>写函数名，下面一根简用毛笔字写这张卡的一句话说明。</li>\n<li><b>朱砂</b>是唯一的颜色，相当于古人的批注：关键字、可展开的调用、箭头出发的那一行。</li>\n<li><b>连线</b>是麻绳，两头打结；箭头上的数据挂在一块小木签上。</li>\n<li><b>有新版本</b>是一枚朱红小印。</li>\n<li><b>工具条</b>是竖着排的一小捆竹简，一根简放一个按钮，上下两道麻绳；<b>提示</b>写在一块木牍上。</li>\n<li><b>质感</b>：竹纤维纹理、每根简上亮下暗像一截圆柱、深浅不一的简、偶尔一个竹节、墨迹微微洇开。</li></ul>\n<h3>取舍</h3><ul><li>代码行和竹简一一对应，行感很强，读长函数时眼睛不容易串行。</li><li>行距被竹简锁死在 19px，用户改字号时竹简要跟着变宽。</li><li>首简占掉 30px 宽度，半宽 webview 里代码区更窄。</li></ul>", "ink": "<h2>水墨</h2><p>宣纸底，下方几层淡墨远山，一缕雾慢慢左右飘（70 秒一个来回，几乎感觉不到）。不画太阳。浅色是一幅画；深色换成碑帖拓片，黑底白字。</p><ul>\n<li><b>编号</b>是一枚白文朱印「一之一」，盖在卡片右上角；<b>有新版本</b>是朱文印「新」，红框红字。</li>\n<li><b>标题下</b>是一笔干笔墨痕，代替分隔线。</li>\n<li><b>代码配色</b>用国画颜料：函数是花青，字符串和数字是赭石，关键字是浓墨，朱砂只标可展开的调用。</li>\n<li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>\n<li><b>工具条</b>是一段手卷：中间宣纸，两边是带暗纹的绫边，最外是带轴头的木轴，按钮之间画朱丝栏。</li>\n<li><b>讲解</b>按钮是一枚朱印，按下去像盖章；白板名用行草写，后面盖一枚「白板」小印。</li></ul>\n<h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>", "clay": "<h2>3D · 等距积木</h2><p>白板是一张等距网格纸，卡片是一块块往右下方挤出厚度的彩色积木，像等距视角的小游戏。和柔光的白色软阴影正好相反：实心的厚度、黑色描边、饱和色。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 是珊瑚红，scheduler 是青绿，model_runner 是靛蓝。标题带和侧面都是这个颜色。</li>\n<li><b>选中</b>就是积木被抬起来：往左上移一点，厚度从 9px 变成 13px，外面一圈黄色。</li>\n<li><b>连线</b>是一根黑色粗线，影子朝同一个方向，看起来也有厚度；起点是黄色小圆钮。</li>\n<li><b>标签、工具条、按钮</b>都是同一套积木按键，按下去会往右下沉，厚度消失。</li>\n<li><b>有新版本</b>和白板名都是黄色积木块。</li></ul>\n<h3>取舍</h3><ul><li>立体感来自固定方向的厚度，没有倾斜和透视，文字始终是正的，也没有常驻动画。</li><li>颜色重、描边粗，卡片很多时会很热闹；文件超过 6 个时颜色要复用。</li><li>右下方的厚度会占掉一点空间，卡片之间要多留 10px。</li></ul>", "city": "<h2>城市道路</h2><p>白板是一张平面城市地图：街区、河流、公园做底，调用关系画成真正的马路。</p><ul>\n<li><b>连线</b>是马路：灰色路面、白色路沿、黄色中线，横平竖直，拐角是圆的。</li>\n<li><b>箭头</b>换成一辆小车：停在路的尽头，车头朝着被调用的卡片。</li>\n<li><b>几张卡同时调用一张卡</b>时，几条路在这张卡前面的同一个路口汇合，最后一段路共用，只停一辆车。演示里多了一张 ModelRunner.loop：其他 rank 的进程在这里收到命令后，也会走到 run。</li>\n<li><b>卡片标题</b>是蓝底白字的路牌；<b>编号</b>是红色的国道牌，比如 G1.1。</li>\n<li><b>箭头上的数据</b>写在绿色的高速指路牌上。</li>\n<li><b>有新版本</b>是橙白相间的施工牌。</li>\n<li><b>工具条</b>是一排挂在横杆上的交通标志：按钮是蓝色圆形指示标志，缩放比例是一块限速牌；讲解是蓝色指路牌，车流开关是一盏红绿灯，绿灯表示车在开。</li>\n<li><b>车流</b>：右上角的红绿灯可以开关。打开时小车从调用行出发，沿着路开到被调用的卡片前，靠右行驶；系统开了「减少动态效果」时不显示。</li>\n<li><b>深色</b>是夜里的地图：路面暗下来，中线和车灯是暖黄色。</li></ul>\n<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>车流是常驻动画，在 VS Code 里建议默认关掉，由用户自己打开；白板不在前台时暂停。</li><li>汇合后共用的最后一段上放不下各自的数据牌，所以牌子挂在每条路的起点那段。</li></ul>"}, SCENES = {"ink": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMax slice\">\n  <defs>\n    <filter id=\"paper\" x=\"0\" y=\"0\" width=\"100%\" height=\"100%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"3\"/><feColorMatrix values=\"0 0 0 0 .5  0 0 0 0 .45  0 0 0 0 .38  0 0 0 .06 0\"/></filter>\n    <filter id=\"wash\" x=\"-10%\" y=\"-30%\" width=\"120%\" height=\"160%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".012 .05\" numOctaves=\"3\" seed=\"7\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"26\"/><feGaussianBlur stdDeviation=\"2.4\"/></filter>\n    <filter id=\"fog\"><feGaussianBlur stdDeviation=\"18\"/></filter>\n    <linearGradient id=\"fade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\".75\" stop-color=\"#fff\" stop-opacity=\".25\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0\"/></linearGradient>\n    <mask id=\"mfade\"><rect x=\"0\" y=\"0\" width=\"800\" height=\"640\" fill=\"url(#fade)\"/></mask>\n  </defs>\n  <rect width=\"800\" height=\"640\" filter=\"url(#paper)\"/>\n  <g mask=\"url(#mfade)\">\n    <path class=\"mtn\" opacity=\".13\" filter=\"url(#wash)\" d=\"M-20 470 C60 420 110 360 170 380 S260 300 330 340 420 280 480 330 560 300 620 260 700 330 820 300 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".2\" filter=\"url(#wash)\" d=\"M-20 520 C40 500 90 430 150 455 S240 410 300 450 380 470 430 430 520 380 590 420 680 460 820 420 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".32\" filter=\"url(#wash)\" d=\"M420 640 C460 590 500 520 560 540 S650 480 700 520 760 560 820 540 V640Z\"/>\n  </g>\n  <ellipse class=\"mist\" cx=\"300\" cy=\"470\" rx=\"320\" ry=\"26\" filter=\"url(#fog)\" opacity=\".9\"/>\n  <ellipse class=\"mist\" cx=\"620\" cy=\"540\" rx=\"260\" ry=\"20\" filter=\"url(#fog)\" opacity=\".8\" style=\"animation-delay:-30s\"/>\n</svg>\n", "city": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMid slice\">\n  <path class=\"river\" d=\"M-40 560 C120 520 210 600 330 560 S520 470 600 520 760 600 860 560 L860 620 C760 650 640 590 560 580 S380 640 300 625 120 590 -40 625Z\"/>\n  <path class=\"park\" d=\"M60 70 h150 a14 14 0 0 1 14 14 v80 a14 14 0 0 1 -14 14 h-150 a14 14 0 0 1 -14 -14 v-80 a14 14 0 0 1 14 -14z\"/>\n  <path class=\"park\" d=\"M610 430 h120 a14 14 0 0 1 14 14 v50 a14 14 0 0 1 -14 14 h-120 a14 14 0 0 1 -14 -14 v-50 a14 14 0 0 1 14 -14z\"/>\n  <g class=\"trees\"><circle cx=\"90\" cy=\"110\" r=\"9\"/><circle cx=\"118\" cy=\"128\" r=\"11\"/><circle cx=\"160\" cy=\"100\" r=\"8\"/><circle cx=\"186\" cy=\"140\" r=\"10\"/><circle cx=\"640\" cy=\"465\" r=\"9\"/><circle cx=\"676\" cy=\"480\" r=\"11\"/><circle cx=\"712\" cy=\"458\" r=\"8\"/></g>\n  <g class=\"bldg\"><rect x=\"300\" y=\"60\" width=\"40\" height=\"28\" rx=\"3\"/><rect x=\"350\" y=\"60\" width=\"26\" height=\"40\" rx=\"3\"/><rect x=\"420\" y=\"70\" width=\"52\" height=\"24\" rx=\"3\"/><rect x=\"40\" y=\"420\" width=\"44\" height=\"30\" rx=\"3\"/><rect x=\"96\" y=\"410\" width=\"30\" height=\"44\" rx=\"3\"/><rect x=\"250\" y=\"440\" width=\"60\" height=\"22\" rx=\"3\"/><rect x=\"560\" y=\"70\" width=\"34\" height=\"34\" rx=\"3\"/><rect x=\"690\" y=\"90\" width=\"48\" height=\"26\" rx=\"3\"/></g>\n</svg>\n"};
 function setV(v) {
   board.dataset.v = v; board.querySelector('.scene').innerHTML = SCENES[v] || ''; CFG = Object.assign({}, BASECFG, VCFG[v]);
   document.querySelectorAll('#segV button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v));

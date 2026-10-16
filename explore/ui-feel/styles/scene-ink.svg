@@ -7,7 +7,6 @@
     <mask id="mfade"><rect x="0" y="0" width="800" height="640" fill="url(#fade)"/></mask>
   </defs>
   <rect width="800" height="640" filter="url(#paper)"/>
-  <circle class="sun" cx="420" cy="78" r="15"/>
   <g mask="url(#mfade)">
     <path class="mtn" opacity=".13" filter="url(#wash)" d="M-20 470 C60 420 110 360 170 380 S260 300 330 340 420 280 480 330 560 300 620 260 700 330 820 300 V640 H-20Z"/>
     <path class="mtn" opacity=".2" filter="url(#wash)" d="M-20 520 C40 500 90 430 150 455 S240 410 300 450 380 470 430 430 520 380 590 420 680 460 820 420 V640 H-20Z"/>

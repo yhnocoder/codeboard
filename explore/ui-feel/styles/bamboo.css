@@ -16,28 +16,45 @@
   --ui: "Noto Serif SC", "Songti SC", serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
   --brush: "Ma Shan Zheng", "Kaiti SC", "STKaiti", "KaiTi", serif;
-  background-image: repeating-linear-gradient(0deg, var(--tex) 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, var(--tex) 0 1px, transparent 1px 4px);
+  --fiber: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='120'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.004 .55' numOctaves='3' seed='4'/%3E%3CfeColorMatrix values='0 0 0 0 .35 0 0 0 0 .22 0 0 0 0 .06 0 0 0 1.1 -.42'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+  /* 每根简是一根剖开的竹子：上沿受光，下沿压暗，像一截圆柱 */
+  --round: repeating-linear-gradient(180deg, transparent 0 1px, light-dark(rgba(255,250,225,.55), rgba(255,230,180,.14)) 1px 2.5px, transparent 5px 12px, light-dark(rgba(90,55,10,.16), rgba(0,0,0,.3)) 15px 18px, transparent 18px 19px);
+  /* 竹节：隔几根简出现一个深色的节 */
+  --nodes: radial-gradient(5px 9px at 63% 9.5px, light-dark(rgba(110,75,25,.22), rgba(0,0,0,.35)), transparent),
+    radial-gradient(5px 9px at 41% 66.5px, light-dark(rgba(110,75,25,.2), rgba(0,0,0,.32)), transparent),
+    radial-gradient(5px 9px at 84% 104.5px, light-dark(rgba(110,75,25,.22), rgba(0,0,0,.35)), transparent);
+  /* 每根简颜色深浅不一 */
+  --tone: repeating-linear-gradient(180deg, transparent 0 19px, light-dark(rgba(120,80,20,.07), rgba(0,0,0,.14)) 19px 38px, transparent 38px 76px, light-dark(rgba(255,240,200,.18), rgba(255,220,160,.05)) 76px 95px, light-dark(rgba(120,80,20,.12), rgba(0,0,0,.2)) 95px 114px, transparent 114px 133px);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8 .05' numOctaves='2' seed='9'/%3E%3CfeColorMatrix values='0 0 0 0 .4 0 0 0 0 .3 0 0 0 0 .15 0 0 0 .5 -.18'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"), radial-gradient(120% 90% at 50% 40%, transparent 50%, light-dark(rgba(90,60,20,.12), rgba(0,0,0,.4)));
+  background-color: var(--bg); background-blend-mode: multiply, normal;
 }
 .s-bamboo .card { overflow: visible; display: grid; grid-template-columns: 30px minmax(0, 1fr); background: none;
-  filter: drop-shadow(0 1px 1px light-dark(rgba(60,40,10,.25), rgba(0,0,0,.6))) drop-shadow(0 10px 14px light-dark(rgba(60,40,10,.18), rgba(0,0,0,.5))); }
+  filter: drop-shadow(0 1px 1px light-dark(rgba(60,40,10,.35), rgba(0,0,0,.7))) drop-shadow(0 14px 18px light-dark(rgba(60,40,10,.28), rgba(0,0,0,.6))); }
 .s-bamboo .card.sel { outline: 1.5px solid var(--zhu); outline-offset: 5px; border-radius: 2px; }
 /* 首简：竖写编号 */
 .s-bamboo .cside { display: flex; grid-column: 1; grid-row: 1 / 4; justify-content: center; padding-top: 12px; margin-right: 2px; border-radius: 3px 0 0 3px;
-  background: linear-gradient(90deg, var(--slip-hi), var(--slip)); box-shadow: inset -1px 0 0 var(--gap); }
+  background: var(--fiber) 0 0 / 120px 360px, linear-gradient(90deg, light-dark(rgba(255,250,225,.5), rgba(255,230,180,.1)) 0 3px, transparent 8px 22px, light-dark(rgba(90,55,10,.2), rgba(0,0,0,.35)) 28px), var(--slip-hi);
+  background-blend-mode: multiply, normal, normal; box-shadow: inset -1.5px 0 0 var(--gap); }
 .s-bamboo .cside span { writing-mode: vertical-rl; font: 400 15px/1 var(--brush); color: var(--zhu); letter-spacing: .12em; }
 /* 标题简 */
-.s-bamboo .chead { grid-column: 2; grid-row: 1; height: 30px; padding: 0 26px 0 10px; background: var(--slip-hi); border-bottom: 2px solid var(--gap); border-radius: 0 3px 0 0; }
+.s-bamboo .chead { grid-column: 2; grid-row: 1; height: 30px; padding: 0 26px 0 10px; border-bottom: 2px solid var(--gap);
+  background: var(--fiber) 0 -40px / 360px 120px, linear-gradient(180deg, light-dark(rgba(255,250,225,.6), rgba(255,230,180,.14)) 0 3px, transparent 8px 20px, light-dark(rgba(90,55,10,.16), rgba(0,0,0,.3))), var(--slip-hi); border-radius: 0 3px 0 0; }
 .s-bamboo .step { display: none; }
 .s-bamboo .ctitle { font: 600 12px var(--mono); color: var(--ink); }
 .s-bamboo .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
 .s-bamboo .rev { font: 10px var(--mono); color: var(--ink-3); }
 .s-bamboo .rev.new { font: 400 12px var(--brush); color: var(--slip-hi); background: var(--zhu); padding: 1px 5px 0; border-radius: 2px; letter-spacing: .1em; }
-.s-bamboo .cnote { display: block; grid-column: 2; grid-row: 2; padding: 3px 26px 2px 10px; font: 400 14px/20px var(--brush); color: var(--ink-2); background: var(--slip); border-bottom: 2px solid var(--gap); letter-spacing: .06em; }
+.s-bamboo .cnote { display: block; grid-column: 2; grid-row: 2; padding: 3px 26px 2px 10px; font: 400 14px/20px var(--brush); color: var(--ink-2); border-bottom: 2px solid var(--gap);
+  background: var(--fiber) 0 -80px / 360px 120px, linear-gradient(180deg, light-dark(rgba(255,250,225,.5), rgba(255,230,180,.12)) 0 3px, transparent 8px 60%, light-dark(rgba(90,55,10,.16), rgba(0,0,0,.3))), var(--slip); letter-spacing: .06em; }
 /* 正文：一行一简，简与简之间留一道缝 */
 .s-bamboo .code { grid-column: 2; grid-row: 3; padding: 0; font: 10.5px/19px var(--mono); color: var(--ink); border-radius: 0 0 3px 0;
-  background: repeating-linear-gradient(90deg, var(--grain) 0 1px, transparent 1px 9px), repeating-linear-gradient(180deg, transparent 0 38px, var(--grain) 38px 57px, transparent 57px 76px, rgba(255,255,255,.06) 76px 95px), repeating-linear-gradient(180deg, var(--slip) 0 17px, var(--gap) 17px 19px); }
+  background: var(--nodes), var(--round), var(--tone), var(--fiber), repeating-linear-gradient(180deg, var(--slip) 0 18px, var(--gap) 18px 19px);
+  background-size: 100% 133px, auto, auto, 360px 120px, auto; }
+/* 墨迹微微洇开 */
+.s-bamboo .src { text-shadow: 0 0 .6px light-dark(rgba(33,24,14,.55), rgba(240,227,196,.35)); }
 .s-bamboo .code::before, .s-bamboo .code::after { content: ""; position: absolute; top: -52px; bottom: -4px; width: 3px; z-index: 2; border-radius: 2px;
-  background: repeating-linear-gradient(160deg, var(--cord) 0 3px, var(--cord-2) 3px 5px); box-shadow: 1px 0 1px rgba(0,0,0,.25); }
+  width: 4px; background: linear-gradient(90deg, rgba(255,230,180,.35), transparent 40%, rgba(0,0,0,.35)), repeating-linear-gradient(155deg, var(--cord) 0 2.5px, var(--cord-2) 2.5px 4px, var(--cord) 4px 5px);
+  box-shadow: 2px 0 2px rgba(0,0,0,.35), -1px 0 1px rgba(0,0,0,.15); }
 .s-bamboo .code::before { left: -3px; }
 .s-bamboo .code::after { right: 12px; }
 .s-bamboo .gutter .no { width: 34px; padding-right: 8px; color: var(--ink-3); }
@@ -60,11 +77,28 @@
 .s-bamboo .bn { font: 400 18px/1.2 var(--brush); color: var(--ink); letter-spacing: .1em; }
 .s-bamboo .bn::after { content: "壹"; margin-left: 10px; font-size: 12px; color: var(--slip-hi); background: var(--zhu); padding: 1px 4px; border-radius: 2px; vertical-align: 2px; }
 .s-bamboo .chev { color: var(--ink-3); }
-.s-bamboo .tb-right .pill, .s-bamboo .dock .pill { background: var(--slip-hi); border-radius: 3px; padding: 3px 6px; box-shadow: 0 0 0 1px var(--gap), 0 6px 12px -6px rgba(40,25,5,.5); }
-.s-bamboo .tbtn, .s-bamboo .ib { color: var(--ink); border-radius: 2px; font: 400 14px var(--brush); }
-.s-bamboo .ib:hover, .s-bamboo .tbtn:hover { background: var(--slip); }
-.s-bamboo .sep { width: 2px; height: 18px; background: var(--gap); margin: 0 4px; }
-.s-bamboo .zoom { font: 11px var(--mono); color: var(--ink-2); }
-.s-bamboo .toast { background: var(--ink); color: var(--slip-hi); font: 400 14px var(--brush); padding: 6px 14px; border-radius: 2px; letter-spacing: .04em; }
-.s-bamboo .toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--zhu); }
+/* 右上角和底部工具条：竖着排的一小捆竹简，一根简放一个按钮，上下两道麻绳 */
+.s-bamboo .tb-right .pill, .s-bamboo .dock .pill { position: relative; padding: 6px 0; gap: 0; border-radius: 3px;
+  background: linear-gradient(90deg, transparent 0 calc(100% - 1px), var(--gap) 0) 0 0 / 34px 100%,
+    linear-gradient(90deg, light-dark(rgba(255,250,225,.55), rgba(255,230,180,.12)) 0 3px, transparent 9px 24px, light-dark(rgba(90,55,10,.18), rgba(0,0,0,.32)) 31px 33px, transparent 33px) 0 0 / 34px 100%,
+    var(--fiber) 0 0 / 120px 360px, var(--slip);
+  box-shadow: 0 0 0 1px var(--gap), 0 1px 1px light-dark(rgba(60,40,10,.35), rgba(0,0,0,.7)), 0 12px 16px -8px light-dark(rgba(60,40,10,.4), rgba(0,0,0,.6)); }
+.s-bamboo .tb-right .pill::before, .s-bamboo .dock .pill::before, .s-bamboo .tb-right .pill::after, .s-bamboo .dock .pill::after {
+  content: ""; position: absolute; left: -3px; right: -3px; height: 3px; border-radius: 2px; pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,230,180,.35), transparent 40%, rgba(0,0,0,.35)), repeating-linear-gradient(65deg, var(--cord) 0 2.5px, var(--cord-2) 2.5px 4px, var(--cord) 4px 5px);
+  box-shadow: 0 2px 2px rgba(0,0,0,.3); }
+.s-bamboo .tb-right .pill::before, .s-bamboo .dock .pill::before { top: 4px; }
+.s-bamboo .tb-right .pill::after, .s-bamboo .dock .pill::after { bottom: 4px; }
+.s-bamboo .tbtn, .s-bamboo .ib { color: var(--ink); border-radius: 0; font: 400 14px var(--brush); height: 30px; text-shadow: 0 0 .6px currentColor; }
+.s-bamboo .ib { width: 34px; min-width: 34px; }
+.s-bamboo .tbtn { min-width: 68px; padding: 0; justify-content: center; }
+.s-bamboo .ib:hover, .s-bamboo .tbtn:hover { background: light-dark(rgba(120,80,20,.1), rgba(0,0,0,.2)); }
+.s-bamboo .sep { display: none; }
+.s-bamboo .zoom { width: 68px; font: 11px var(--mono); color: var(--ink-2); }
+/* 提示是一块木牍：比竹简宽，墨书 */
+.s-bamboo .toast { color: var(--ink); font: 400 15px var(--brush); padding: 8px 18px; border-radius: 3px; letter-spacing: .04em;
+  background: linear-gradient(180deg, light-dark(rgba(255,250,225,.5), rgba(255,230,180,.12)) 0 3px, transparent 10px calc(100% - 8px), light-dark(rgba(90,55,10,.2), rgba(0,0,0,.35))), var(--fiber) 0 0 / 360px 120px, var(--slip-hi);
+  box-shadow: 0 0 0 1px var(--gap), 0 12px 16px -8px light-dark(rgba(60,40,10,.4), rgba(0,0,0,.6)); }
+.s-bamboo .toast::before { content: ""; width: 7px; height: 7px; border-radius: 50%; margin-right: 2px; background: var(--bg); box-shadow: inset 0 1px 2px rgba(0,0,0,.5); }
+.s-bamboo .toast .tdot { display: none; }
 .s-bamboo .toast b { font-weight: 400; color: var(--zhu); }

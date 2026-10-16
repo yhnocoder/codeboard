@@ -60,14 +60,17 @@ NOTES = {
 <li><b>标题简</b>写函数名，下面一根简用毛笔字写这张卡的一句话说明。</li>
 <li><b>朱砂</b>是唯一的颜色，相当于古人的批注：关键字、可展开的调用、箭头出发的那一行。</li>
 <li><b>连线</b>是麻绳，两头打结；箭头上的数据挂在一块小木签上。</li>
-<li><b>有新版本</b>是一枚朱红小印。</li></ul>
+<li><b>有新版本</b>是一枚朱红小印。</li>
+<li><b>工具条</b>是竖着排的一小捆竹简，一根简放一个按钮，上下两道麻绳；<b>提示</b>写在一块木牍上。</li>
+<li><b>质感</b>：竹纤维纹理、每根简上亮下暗像一截圆柱、深浅不一的简、偶尔一个竹节、墨迹微微洇开。</li></ul>
 <h3>取舍</h3><ul><li>代码行和竹简一一对应，行感很强，读长函数时眼睛不容易串行。</li><li>行距被竹简锁死在 19px，用户改字号时竹简要跟着变宽。</li><li>首简占掉 30px 宽度，半宽 webview 里代码区更窄。</li></ul>''',
- 'ink': '''<h2>水墨</h2><p>宣纸底，下方几层淡墨远山，一缕雾慢慢左右飘（70 秒一个来回，几乎感觉不到）。浅色是一幅画；深色换成碑帖拓片，黑底白字。</p><ul>
+ 'ink': '''<h2>水墨</h2><p>宣纸底，下方几层淡墨远山，一缕雾慢慢左右飘（70 秒一个来回，几乎感觉不到）。不画太阳。浅色是一幅画；深色换成碑帖拓片，黑底白字。</p><ul>
 <li><b>编号</b>是一枚白文朱印「一之一」，盖在卡片右上角；<b>有新版本</b>是朱文印「新」，红框红字。</li>
 <li><b>标题下</b>是一笔干笔墨痕，代替分隔线。</li>
 <li><b>代码配色</b>用国画颜料：函数是花青，字符串和数字是赭石，关键字是浓墨，朱砂只标可展开的调用。</li>
 <li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>
-<li><b>工具条</b>是一小卷手卷，两头有木轴；白板名用行草写，后面盖一枚「白板」小印。</li></ul>
+<li><b>工具条</b>是一段手卷：中间宣纸，两边是带暗纹的绫边，最外是带轴头的木轴，按钮之间画朱丝栏。</li>
+<li><b>讲解</b>按钮是一枚朱印，按下去像盖章；白板名用行草写，后面盖一枚「白板」小印。</li></ul>
 <h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>''',
  'clay': '''<h2>3D · 等距积木</h2><p>白板是一张等距网格纸，卡片是一块块往右下方挤出厚度的彩色积木，像等距视角的小游戏。和柔光的白色软阴影正好相反：实心的厚度、黑色描边、饱和色。</p><ul>
 <li><b>每个源文件一种颜色</b>：llm_engine 是珊瑚红，scheduler 是青绿，model_runner 是靛蓝。标题带和侧面都是这个颜色。</li>
@@ -83,8 +86,10 @@ NOTES = {
 <li><b>卡片标题</b>是蓝底白字的路牌；<b>编号</b>是红色的国道牌，比如 G1.1。</li>
 <li><b>箭头上的数据</b>写在绿色的高速指路牌上。</li>
 <li><b>有新版本</b>是橙白相间的施工牌。</li>
+<li><b>工具条</b>是一排挂在横杆上的交通标志：按钮是蓝色圆形指示标志，缩放比例是一块限速牌；讲解是蓝色指路牌，车流开关是一盏红绿灯，绿灯表示车在开。</li>
+<li><b>车流</b>：右上角的红绿灯可以开关。打开时小车从调用行出发，沿着路开到被调用的卡片前，靠右行驶；系统开了「减少动态效果」时不显示。</li>
 <li><b>深色</b>是夜里的地图：路面暗下来，中线和车灯是暖黄色。</li></ul>
-<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>没有常驻动画，车是停着的。会动的版本留到 standalone app。</li><li>汇合后共用的最后一段上放不下各自的数据牌，所以牌子挂在每条路的起点那段。</li></ul>''',
+<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>车流是常驻动画，在 VS Code 里建议默认关掉，由用户自己打开；白板不在前台时暂停。</li><li>汇合后共用的最后一段上放不下各自的数据牌，所以牌子挂在每条路的起点那段。</li></ul>''',
 }
 VCFG = {
  'v1': {'head': 'triangle'}, 'warm': {}, 'graphite': {},
@@ -102,7 +107,28 @@ VCFG = {
 SCENES = {'ink': open('scene-ink.svg').read(), 'city': open('scene-city.svg').read()}
 draftjs = open('drafting.js').read().replace('function decorate(cards, world) {\n  world.querySelectorAll(\'.dim, .callout\').forEach(n => n.remove());', 'function drafting(cards, world) {')
 js = draftjs + f'''
-function decorate(cards, world) {{ world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); }}
+function decorate(cards, world) {{ world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); if (board.dataset.v === 'city') traffic(); }}
+// 城市：可开关的车流。小车从调用行出发，沿路开到被调用的卡片前，靠右行驶
+const reduceMo = matchMedia('(prefers-reduced-motion: reduce)'), btnTraffic = document.getElementById('btnTraffic');
+function traffic() {{
+  edges.querySelectorAll('.mover').forEach(n => n.remove());
+  if (btnTraffic.getAttribute('aria-pressed') !== 'true' || reduceMo.matches) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  edges.querySelectorAll('path.road').forEach((p, i) => {{
+    const len = p.getTotalLength(), dur = len / 46;
+    for (const k of [0, 1, 2]) {{
+      const car = document.createElementNS(ns, 'g'); car.setAttribute('class', `mover k${{(i + k) % 3}}`);
+      car.innerHTML = '<g transform="translate(0 3.5) scale(1.2)"><rect class="beam" x="7" y="-3.5" width="18" height="7" rx="3.5"/><rect class="body" x="-8" y="-3.5" width="16" height="7" rx="2.5"/><rect class="roof" x="-3.5" y="-2.6" width="6.5" height="5.2" rx="1.2"/></g>';
+      const begin = (-dur * (k / 3 + i * .17)).toFixed(2) + 's';
+      const am = document.createElementNS(ns, 'animateMotion');
+      Object.entries({{ dur: dur + 's', repeatCount: 'indefinite', rotate: 'auto', path: p.getAttribute('d'), begin, keyPoints: '0;.92', keyTimes: '0;1', calcMode: 'linear' }}).forEach(([a, v]) => am.setAttribute(a, v));
+      const op = document.createElementNS(ns, 'animate');
+      Object.entries({{ attributeName: 'opacity', dur: dur + 's', repeatCount: 'indefinite', begin, values: '0;1;1;0', keyTimes: '0;.08;.85;1' }}).forEach(([a, v]) => op.setAttribute(a, v));
+      car.append(am, op); edges.insertBefore(car, edges.querySelector('.car'));
+    }}
+  }});
+}}
+btnTraffic.addEventListener('click', () => {{ btnTraffic.setAttribute('aria-pressed', btnTraffic.getAttribute('aria-pressed') !== 'true'); traffic(); }});
 const BASECFG = Object.assign({{}}, CFG), VCFG = {json.dumps(VCFG)}, NOTES = {json.dumps(NOTES, ensure_ascii=False)}, SCENES = {json.dumps(SCENES)};
 function setV(v) {{
   board.dataset.v = v; board.querySelector('.scene').innerHTML = SCENES[v] || ''; CFG = Object.assign({{}}, BASECFG, VCFG[v]);
