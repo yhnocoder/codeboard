@@ -371,7 +371,7 @@
 
 /* ---------- Classic ---------- */
 /* 代码行里成千上万的小元素（关键字、行号、调用、图标、端口）只换变量、不加规则：缩放时整板样式重算不变慢 */
-:root[data-look="classic"] { --no-o: .8; --call-deco: none; --ico-w: 1.6; }
+:root[data-look="classic"] { --no-o: .8; --call-deco: none; --ico-w: 2; }
 :root[data-look="classic"] .card:not(.text):not(.nobg) { box-shadow: 0 0 0 1px var(--line), var(--sh-card); }
 :root[data-look="classic"] .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent), var(--sh-card); }
 :root[data-look="classic"] .card.lift { box-shadow: 0 0 0 1px var(--line), var(--sh-lift); }
@@ -446,7 +446,7 @@
 :root[data-look="soft-light"] .mast .mn { font: 300 24px/1.15 var(--sys); color: var(--ink); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Drafting ---------- */
-:root[data-look="drafting"] { --no-o: 1; --kw-w: 500; --com-i: normal; --call-deco: underline 1px var(--ink-3); --ico-w: 1.1; --port-r: 0; }
+:root[data-look="drafting"] { --no-o: 1; --kw-w: 500; --com-i: normal; --call-deco: underline 1px var(--ink-3); --ico-w: 1; --port-r: 0; }
 :root[data-look="drafting"] .card:not(.text):not(.nobg) { background: var(--bg); box-shadow: 0 0 0 1px var(--rule); }
 :root[data-look="drafting"] .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--ink); }
 :root[data-look="drafting"] .card.sel:not(.text)::after { content: ""; position: absolute; inset: -9px; border: 1px dashed var(--ink-2); pointer-events: none; }
@@ -494,7 +494,7 @@
 :root[data-look="drafting"] .mast .mn { display: block; font: 600 12px var(--head-font); text-transform: uppercase; letter-spacing: .12em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Colorful ---------- */
-:root[data-look="colorful"] { --no-link: var(--ink); --no-link-w: 600; --call-deco: underline 1.5px color-mix(in srgb, var(--k-fn) 45%, transparent); --ico-w: 1.7; --port-ring: 2px; --port-ring-c: var(--rule); --port-bg: var(--f2); }
+:root[data-look="colorful"] { --no-link: var(--ink); --no-link-w: 600; --call-deco: underline 1.5px color-mix(in srgb, var(--k-fn) 45%, transparent); --ico-w: 2; --port-ring: 2px; --port-ring-c: var(--rule); --port-bg: var(--f2); }
 :root[data-look="colorful"] .card { --fc: var(--f1); --bink: var(--paper-ink); }
 :root[data-look="colorful"] .card[data-fc="1"] { --fc: var(--f2); --bink: #2a231c; }
 :root[data-look="colorful"] .card[data-fc="2"] { --fc: var(--f3); }
@@ -565,7 +565,7 @@
 :root[data-look="colorful"] .mast .mn { font: 600 11.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Newspaper ---------- */
-:root[data-look="newspaper"] { --no-o: 1; --no-link: var(--ink); --no-link-w: 700; --kw-w: 700; --str-i: italic; --call-deco: underline 1px currentColor; --ico-w: 1.3; }
+:root[data-look="newspaper"] { --no-o: 1; --no-link: var(--ink); --no-link-w: 700; --kw-w: 700; --str-i: italic; --call-deco: underline 1px currentColor; --ico-w: 2; }
 :root[data-look="newspaper"] .card:not(.text):not(.nobg) { border-top: 3px solid var(--rule); }
 :root[data-look="newspaper"] .card.sel:not(.text) { box-shadow: var(--sh-card); outline: 1.5px solid var(--ink); outline-offset: 5px; }
 :root[data-look="newspaper"] .chead { height: 28px; padding: 0 6px 0 12px; gap: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
@@ -618,7 +618,7 @@
 :root[data-look="newspaper"] .mast::after { content: "Vol. I · CodeBoard Edition"; font: 400 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); border-top: .5px solid var(--rule); padding-top: 3px; width: 100%; text-align: center; }
 
 /* ---------- Poster（艺术） ---------- */
-:root[data-look="poster"] { --no-link: var(--ink); --kw-w: 600; --call-deco: underline .5px var(--k-fn); --ico-w: 1.3; --port-r: 0; --port-rot: 45deg; }
+:root[data-look="poster"] { --no-link: var(--ink); --kw-w: 600; --call-deco: underline .5px var(--k-fn); --ico-w: 2; --port-r: 0; --port-rot: 45deg; }
 :root[data-look="poster"] .board { background-image: linear-gradient(var(--gridc) 1px, transparent 1px), linear-gradient(90deg, var(--gridc) 1px, transparent 1px); background-size: 44px 44px; }
 :root[data-look="poster"] .board::before, :root[data-look="poster"] .board::after { content: ""; position: absolute; pointer-events: none; z-index: 3; }
 :root[data-look="poster"] .board::before { inset: 8px; border: 1px solid var(--rule); }
