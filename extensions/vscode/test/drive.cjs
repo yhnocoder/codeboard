@@ -118,6 +118,27 @@ const boardJson = () => {
   const b = boardJson();
   check(b && b.version === 3 && b.cards.length >= 5 && Object.keys(b.place).length === b.cards.length && b.links.length >= 2 && b.sidenotes.length === 1, "白板自动存盘（v3 格式）", b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
 
+  // 8b. Settings：白板里 Ctrl+, 打开设置页（VS Code 自己的 Ctrl+, 被插件转回白板），换主题写进 codeboard.theme
+  await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
+  await page.keyboard.press("Control+,"); await sleep(900);
+  check(await f.locator(".settings").count() === 1, "Ctrl+, 在白板里打开 Settings 页");
+  await f.locator(".st-sw", { hasText: "Graphite" }).click(); await sleep(1500);
+  const us = fs.readFileSync(`${UD}/User/settings.json`, "utf8");
+  check(/"codeboard\.theme":\s*"graphite"/.test(us), "换主题写进 codeboard.theme", us.slice(-200));
+  check(await f.evaluate(() => document.documentElement.dataset.look) === "graphite", "白板换成 Graphite");
+  await shot(page, "7a-settings");
+  await page.keyboard.press("Control+,"); await sleep(700);
+  check(await f.locator(".settings").count() === 0, "再按 Ctrl+, 关掉 Settings 页");
+  await command(page, "CodeBoard: Open Settings"); await sleep(800);
+  check(await f.locator(".settings").count() === 1, "命令 CodeBoard: Open Settings 打开设置页");
+  await f.locator(".st-sw", { hasText: "Warm Ink" }).click(); await sleep(800);
+  await page.keyboard.press("Escape"); await sleep(400);
+  // Copy Diagnostics：问要不要附上白板 JSON，然后提示已复制
+  await command(page, "CodeBoard: Copy Diagnostics"); await sleep(800);
+  await page.keyboard.press("Enter"); await sleep(1500);
+  check(await page.locator(".notifications-toasts", { hasText: "Diagnostics copied to clipboard" }).count() > 0, "Copy Diagnostics 提示已复制");
+  await shot(page, "7b-diagnostics");
+
   // 9. 在编辑器里改代码：卡片显示 + uncommitted（不保存到 git）
   await openFile(page, "scheduler.py", 30);
   await page.keyboard.press("End"); await page.keyboard.type("  # local edit"); await page.keyboard.press("Control+s"); await sleep(3500);

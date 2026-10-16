@@ -9,6 +9,7 @@ export * from "./links";
 export * from "./versions";
 export * from "./notes";
 export * from "./misc";
+export * from "./settings";
 export * from "../interact";
 export * from "./stubs";
 export * from "./stickers";

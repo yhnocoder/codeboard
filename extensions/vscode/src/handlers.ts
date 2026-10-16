@@ -11,6 +11,7 @@ import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
 import { readPacks } from "./stickers";
 import { log } from "./log";
+import { copyDiagnostics, openStickerDir } from "./diagnostics";
 import type { BoardPanel, Panels } from "./panel";
 import { callVars, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints } from "./search";
@@ -57,8 +58,8 @@ export function makeHandler(panels: Panels) {
       case "setSetting": return writeSetting(m.key, m.value);
       case "webMeta": return { failed: true }; // TODO(W): 抓网页元数据
       case "stickerPacks": return readPacks();
-      case "openStickerDir": return;
-      case "copyDiagnostics": return;
+      case "openStickerDir": return openStickerDir();
+      case "copyDiagnostics": return copyDiagnostics(p.board, m.board);
       case "log": return log(m.level, m.text);
       case "openBoard": {
         const np = await panels.show(m.id);

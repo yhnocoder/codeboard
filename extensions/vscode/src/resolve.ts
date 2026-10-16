@@ -10,6 +10,7 @@ import { absOf, locOfFile, versionText } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
 import { libOf, resetScope } from "./scope";
+import { log } from "./log";
 import { CODE_EXCLUDE, CODE_GLOB, exists, fromHostPath, hostPath, langOf, mkUid, readText, splitLines, wsFolders } from "./ws";
 
 // ---------- 名字索引 ----------
@@ -70,7 +71,10 @@ async function lspDefs(abs: string, line: number, col: number): Promise<Def[]> {
       out.push({ abs: uri.fsPath, line: range.start.line + 1, col: range.start.character });
     }
     return out;
-  } catch { return []; }
+  } catch (e) {
+    log("warn", `definition provider failed at ${hostPath(abs)}:${line}:${col}: ${e instanceof Error ? e.message : e}`);
+    return [];
+  }
 }
 
 /** 定义位置 → 那里的函数 / 类 */
@@ -100,7 +104,9 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   if (seg.src.kind === "github") return none("Expanding calls in GitHub code is not supported yet.");
   const full = await versionText(seg);
   const site = callSite(seg, full, m);
-  if (site?.dispatch && site.dispatch === m.name) return none("Dynamic dispatch: not resolved");
+  if (!site) log("warn", `vars ${m.name} → callSite miss path=${seg.path}:${m.line}:${m.col}${full ? "" : " (file text unavailable, used saved lines)"}`);
+  if (site?.dispatch && site.dispatch === m.name) { log("info", `expand ${m.name} → dynamic dispatch path=${seg.path}:${m.line}`); return none("Dynamic dispatch: not resolved"); }
+  let resolved: string | undefined, lspN = 0;
 
   let targets: { abs: string; sym: Sym }[] = [];
   if (m.pick) {
@@ -109,9 +115,12 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
     if (t) targets = [t];
   } else {
     const wp = await workingPlace(seg);
+    resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
-      for (const d of await lspDefs(wp.abs, line, m.col)) {
+      const defs = await lspDefs(wp.abs, line, m.col);
+      lspN = defs.length;
+      for (const d of defs) {
         const t = await symAtDef(d, m.name);
         if (t && !targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
       }
@@ -127,12 +136,16 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
       }
     }
   }
-  if (!targets.length) return none(site?.dispatch ? "Dynamic dispatch: not resolved" : `No definition found for “${m.name}”.`);
+  if (!targets.length) {
+    const why = site?.dispatch ? "Dynamic dispatch: not resolved" : `No definition found for “${m.name}”.`;
+    log("warn", `expand ${m.name} → ${why} path=${seg.path}:${m.line}:${m.col} resolved=${resolved ?? "none"} lsp=${lspN}${m.pick ? ` pick=${m.pick.path}:${m.pick.line}` : ""}`);
+    return none(why);
+  }
   if (targets.length > 1) return { pick: targets.map((t) => ({ label: t.sym.qual, detail: `${hostPath(t.abs)}:${t.sym.defLine}`, path: hostPath(t.abs), line: t.sym.defLine })) };
 
   const t = targets[0];
   const nc = await cardForFileSym(t.abs, t.sym);
-  if (!nc) return none(`Cannot read ${hostPath(t.abs)}.`);
+  if (!nc) { log("error", `expand ${m.name} → cannot read ${hostPath(t.abs)}`); return none(`Cannot read ${hostPath(t.abs)}.`); }
   return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site ? await varsFor(site, t) : [] };
 }
 

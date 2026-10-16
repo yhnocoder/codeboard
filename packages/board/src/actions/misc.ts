@@ -20,6 +20,7 @@ import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { duplicateSel, toggleLock } from "./edit";
 import { fitAll, lastPointer, openCode } from "./common";
+import { toggleSettings, openSettings } from "./settings";
 
 export { toggleShown, setKeysOpen, zoomAt, view, center, contains };
 
@@ -36,6 +37,8 @@ export function keyAction(a: KeyAction) {
     case "zoomIn": return zoomAt(1.25);
     case "zoomOut": return zoomAt(0.8);
     case "lock": return toggleLock(sel.cards.slice(), sel.sections.slice());
+    case "settings": return toggleSettings();
+    case "openSettings": return openSettings();
   }
 }
 

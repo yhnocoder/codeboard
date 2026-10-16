@@ -370,6 +370,62 @@ const S: Record<string, () => Promise<void>> = {
     await shot(h, "attachvars");
     await h.page.context().browser()!.close();
   },
+  async themes() {
+    // 主题：Settings 里切换 8 种材质 × 明暗，每种截一张白板
+    const b = boardWith("LLMEngine.step");
+    const [a] = b.cards;
+    b.place[a.id] = { x: 80, y: 120, w: 560 };
+    const note = { id: "n1", kind: "note" as const, md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.", bg: true };
+    const title = { id: "t1", kind: "note" as const, md: "Engine loop", bg: false, size: "title" as const };
+    b.cards.push(note, title);
+    b.place[note.id] = { x: 120, y: 420, w: 360, section: "sec1" }; b.place[title.id] = { x: 60, y: 10, w: 300 };
+    b.sections.push({ id: "sec1", title: "Engine", x: 50, y: 80, w: 640, h: 520, color: "sand" });
+    b.place[a.id].section = "sec1";
+    b.links.push({ id: "l1", kind: "plain", from: { card: note.id }, to: { card: a.id }, color: "blue", label: "why" } as any);
+    const h = await open({ board: b, light: false });
+    await callEl(h, "schedule").click(); await h.page.waitForTimeout(900);
+    await h.page.keyboard.press("Escape");
+    await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(700);
+    const mode = async (m: "light" | "dark") => { await h.page.evaluate((c) => { document.body.className = c; }, `vscode-${m}`); await h.page.waitForTimeout(100); };
+    for (const m of ["light", "dark"] as const) {
+      await mode(m);
+      await h.page.mouse.move(5, 450);
+      await shot(h, `theme-${m}-warm-ink-base`);
+      await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(300);
+      await shot(h, `theme-${m}-settings`);
+      if (m === "light") {
+        await h.page.keyboard.press("Escape"); await h.page.keyboard.press("?"); await h.page.waitForTimeout(200);
+        await shot(h, `theme-${m}-keys-overlay`);
+        await h.page.locator(".keys .tlink").click(); await h.page.waitForTimeout(300);
+        console.log("Search… in ? overlay opens Settings:", await h.page.locator(".settings").count() === 1, "overlay closed:", !(await h.page.locator(".keys").count()));
+        await h.page.locator(".st-filter").scrollIntoViewIfNeeded();
+        await shot(h, `theme-${m}-settings-keys`);
+        await h.page.locator(".st-filter").fill("zoom"); await h.page.waitForTimeout(100);
+        await shot(h, `theme-${m}-settings-keys-zoom`);
+        await h.page.locator(".st-filter").fill("");
+        await h.page.locator(".st-filter").press("Escape"); await h.page.waitForTimeout(200);
+        console.log("Esc in filter closes settings:", !(await h.page.locator(".settings").count()));
+        await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(300);
+      }
+      const n = await h.page.locator(".st-sw").count();
+      for (let i = 0; i < n; i++) {
+        const sw = h.page.locator(".st-sw").nth(i);
+        const name = (await sw.locator(".st-swn").textContent())!.toLowerCase().replace(/ /g, "-");
+        await sw.click(); await h.page.waitForTimeout(150);
+        if (i === n - 1) await shot(h, `theme-${m}-settings-${name}`);
+        await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(150);
+        await h.page.mouse.move(5, 450);
+        await shot(h, `theme-${m}-${i}-${name}`);
+        await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(150);
+      }
+      await h.page.locator(".st-sw").first().click();
+      await h.page.keyboard.press("Escape");
+    }
+    const set = h.sent.filter((x) => x.type === "setSetting");
+    console.log("setSetting:", set.length, JSON.stringify(set.at(-1)));
+    console.log("links:", h.board().links.length, "sections:", h.board().sections.length);
+    await h.page.context().browser()!.close();
+  },
 };
 
 /** 把鼠标放到某张卡里某一行（含 line 文本）上的 word 中间 */
