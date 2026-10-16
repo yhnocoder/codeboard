@@ -2,12 +2,16 @@
 // 每帧最多 PER 张，离屏幕中心近的先换（不能把屏幕外的放到最后：快速缩小时它们正好是刚进到屏幕里的）。241 张一起换要 100+ ms（样式 + 排版 + 重画），分开换每帧几 ms。
 // --iz（地图档 = 1/z，让名字和描边在屏幕上大小不变）：镜头动的时候定住，名字跟着整层一起缩放；停下再一批批换成准确的值。
 // 每一步都改的话，每一步都要把所有名字重新排版（241 张卡每步 ~60ms）
-import { createEffect, createMemo, createSignal, untrack } from "solid-js";
+import { batch, createEffect, createMemo, createSignal } from "solid-js";
 import { createStore } from "solid-js/store";
 import { cam, camMoving, lod, view, type Lod } from "./camera";
 import { placed, rectOf, state } from "./store";
+import { offscreen } from "./cull";
 
 const PER = 12;
+// 正在一批批换档（还没换完）：cull.ts 这时先不显示屏幕外的卡
+const [busy, setBusy] = createSignal(false);
+export const lodBusy = busy;
 const [cardLod, setCardLod] = createStore<Record<string, Lod>>({});
 const [cardIz, setCardIz] = createStore<Record<string, number>>({});
 /** 进地图档那一刻的 --iz（地图档门槛的倒数）：提前建好的名字按它排版 */
@@ -29,25 +33,32 @@ export const lodOf = (id: string): Lod => cardLod[id] ?? settled();
 
 /** Canvas 里调用一次 */
 export function trackCardLod() {
-  const [tick, setTick] = createSignal(0);
-  let again = false;
-  createEffect(() => {
-    tick();
+  // 换档只在 rAF 里做：在滚轮事件里（镜头一变 lod() 就变）先换一批的话，同一帧的 rAF 里又换一批，那一帧就是两批
+  let on = false;
+  const later = () => { if (!on) { on = true; requestAnimationFrame(run); } };
+  function run() {
+    on = false;
     const want = lod(), iz = izWant();
-    untrack(() => {
-      const { w, h } = view(), z = cam.z;
-      const todo: [string, number][] = [];
-      for (const c of placed()) {
-        if (lodOf(c.id) === want && (want !== "map" || cardIz[c.id] === iz)) continue;
-        const r = rectOf(c);
-        const cx = (r.x + r.w / 2) * z + cam.x, cy = (r.y + r.h / 2) * z + cam.y;
-        todo.push([c.id, Math.hypot(cx - w / 2, cy - h / 2)]);
-      }
-      if (!todo.length) { if (settled() !== want) setSettled(want); return; }
-      todo.sort((a, b) => a[1] - b[1]);
-      for (const [id] of todo.slice(0, PER)) { setCardLod(id, want); if (want === "map") setCardIz(id, iz); }
-      if (todo.length <= PER) setSettled(want);
-      else if (!again) { again = true; requestAnimationFrame(() => { again = false; setTick((t) => t + 1); }); }
+    const { w, h } = view(), z = cam.z;
+    const todo: [string, number, boolean][] = [];
+    for (const c of placed()) {
+      const was = lodOf(c.id);
+      if (was === want && (want !== "map" || cardIz[c.id] === iz)) continue;
+      const r = rectOf(c);
+      const L = r.x * z + cam.x, T = r.y * z + cam.y, R = L + r.w * z, B = T + r.h * z;
+      todo.push([c.id, Math.hypot((L + R) / 2 - w / 2, (T + B) / 2 - h / 2), was === "map" && want !== "map" && offscreen(c.id) && R > 0 && L < w && B > 0 && T < h]);
+    }
+    if (!todo.length) { batch(() => { if (settled() !== want) setSettled(want); setBusy(false); }); return; }
+    todo.sort((a, b) => a[1] - b[1]);
+    // 一帧的量：换一张算 1；从地图档换出来、内容还藏着（cull.ts）又已经在屏幕里的，这一帧还要显示内容，算 3
+    let n = 0, i = 0;
+    for (; i < todo.length && n < PER; i++) n += todo[i][2] ? 3 : 1;
+    batch(() => {
+      for (const [id] of todo.slice(0, i)) { setCardLod(id, want); if (want === "map") setCardIz(id, iz); }
+      if (i === todo.length) setSettled(want);
+      setBusy(i < todo.length);
     });
-  });
+    if (i < todo.length) later();
+  }
+  createEffect(() => { lod(); izWant(); later(); });
 }

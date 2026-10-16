@@ -23,7 +23,11 @@ import * as A from "./actions";
 import { send } from "./host";
 
 const boardEl = () => document.getElementById("board")!;
-const local = (e: { clientX: number; clientY: number }) => { const r = boardEl().getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+// 白板是 position: fixed 铺满窗口，左上角只在窗口变大小时可能变：记下来，不在每个滚轮 / 指针事件里读布局
+// （读 getBoundingClientRect 会让浏览器在事件里先把上一批改动的样式、排版做掉，同一帧里再做一遍）
+let boardAt: { left: number; top: number } | null = null;
+window.addEventListener("resize", () => { boardAt = null; });
+const local = (e: { clientX: number; clientY: number }) => { const r = (boardAt ??= boardEl().getBoundingClientRect()); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 const worldOf = (e: { clientX: number; clientY: number }) => { const p = local(e); return toWorld(p.x, p.y); };
 
 /** 通用拖动：按下后跟踪移动，松手收尾。返回 false 的 move 不算移动。 */

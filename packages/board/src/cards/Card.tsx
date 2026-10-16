@@ -58,18 +58,23 @@ export function CardView(p: { card: Card }) {
     return c().id !== cur;
   };
   const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
-  const drop = () => dropTarget();
+  // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
+  // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
+  const lift = createMemo(() => dragging().has(c().id));
+  const drop = createMemo(() => {
+    const d = dropTarget(), id = c().id;
+    if (!d) return 0;
+    const m = d.kind === "merge" && d.card === id;
+    return (m && d.armed ? 1 : 0) | (m && !d.armed ? 2 : 0) | (d.kind === "card" && d.card === id ? 4 : 0) | (d.cands?.includes(id) ? 8 : 0);
+  });
   return (
     <Show when={!collapsedAway().has(c().id) && !collapsedHome(pl().section)}>
       <div ref={el} class={`card ${kindClass()}`} data-id={c().id} data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined} style={style()}
         classList={{
-          sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
+          sel: isSel(c().id), solo: sel.cards.length === 1, lift: lift(), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
           editing: editing()?.id === c().id, off: offscreen(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
-          "merge-hot": drop()?.kind === "merge" && drop()?.card === c().id && !!drop()?.armed,
-          "merge-arm": drop()?.kind === "merge" && drop()?.card === c().id && !drop()?.armed,
-          "drop-hot": drop()?.kind === "card" && drop()?.card === c().id,
-          "drop-cand": !!drop()?.cands?.includes(c().id),
+          "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8),
           "bind-hot": (act.bindHot() as { card?: string } | null)?.card === c().id,
           "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
         }}

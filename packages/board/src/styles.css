@@ -74,10 +74,11 @@ input, textarea { font: inherit; color: var(--ink); }
 .board.connecting, .board.connecting * { cursor: crosshair !important; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 /* 世界层一直单独成层，镜头一动就按位图缩放、不重画（#15）。停下时 Canvas 给 .settle 一两帧：去掉 will-change 的提示，让浏览器按新比例重新清晰栅格化。
-   这两帧用一个看不出来的 3D 变换（绕 x 轴转 0°）让它还是单独一层：退回普通层的话要把整层重画一遍（概览档 ~60ms）。
+   一直带着一个看不出来的 3D 变换（绕 x 轴转 0°），去掉 will-change 时它还是单独一层：退回普通层的话要把整层重画一遍（概览档 ~60ms）。
+   这个 3D 变换不能只在 .settle 时加：加上、去掉都会让浏览器把整个世界层 3 万个节点的绘制属性重走一遍（每次 ~20ms，停下时连掉两帧）。
    只在动的时候才升层的话，每段手势的第一帧都要把整层重画一遍（~25ms，掉一帧） */
-.world { will-change: transform; }
-.world.settle { will-change: auto; rotate: x 0deg; }
+.world { will-change: transform; rotate: x 0deg; }
+.world.settle { will-change: auto; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; pointer-events: none; }
 /* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
 .edge { fill: none; stroke: var(--edge); stroke-width: var(--edge-w); stroke-linecap: round; transition: opacity .2s; }
@@ -531,13 +532,14 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* edge ports (drag out a plain link) */
 .eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair !important; }
 .card:hover > .cface > .eport { opacity: 1; }
-.card.text > .cface > .eport, .card.lift > .cface > .eport { display: none; }
+.card.text > .cface > .eport { display: none; }
+.card.lift > .cface > .eport { visibility: hidden; transition: none; } /* 不用 display：拿起、放下时不用重新排版。transition: none 跟 display: none 一样：藏着时不留半截淡入淡出 */
 .eport:hover { background: var(--accent); box-shadow: 0 0 0 1.5px var(--accent); }
 .eport.t { left: 50%; top: -5px; margin-left: -4.5px; }
 .eport.b { left: 50%; bottom: -5px; margin-left: -4.5px; }
 .eport.l { top: 50%; left: -5px; margin-top: -4.5px; }
 .eport.r { top: 50%; right: -5px; margin-top: -4.5px; }
-.board.dragging .eport { display: none; }
+.board.dragging .eport { visibility: hidden; transition: none; } /* 同上：不用 display，拖动开始、松开时几百张卡的圆点不用重新排版（松手那一帧 ~20ms） */
 
 /* links */
 .lhit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: pointer; }
