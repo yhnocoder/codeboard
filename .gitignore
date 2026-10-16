@@ -3,3 +3,5 @@ dist/
 .DS_Store
 extensions/vscode/media/board/
 test-out/
+.vscode-test/
+.ci-shots/
