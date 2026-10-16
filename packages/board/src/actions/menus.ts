@@ -184,7 +184,7 @@ export function canvasMenu(x: number, y: number) {
   openMenu([
     { label: "New Text", kbd: "T", run: () => newNote(w, false) },
     { label: "New Note", kbd: "N", run: () => newNote(w, true) },
-    { label: "New Free Code", run: () => newFreeCode(w) },
+    { label: "New Code", run: () => newFreeCode(w) },
     { label: "Add Function…", kbd: `${K.mod}K`, run: () => setPaletteOpen({ mode: "code" }) },
     { label: "Paste", kbd: `${K.mod}V`, run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) },
     null,

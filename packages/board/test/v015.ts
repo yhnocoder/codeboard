@@ -129,4 +129,35 @@ export const V015: Record<string, () => Promise<void>> = {
     await shot(h, "v15-11-fit");
     await close(h);
   },
+  // #20：建 Section、折叠、展开、删掉之后 Tidy Layout，子卡不能叠在一起
+  async v15tidy() {
+    const b = emptyBoard("b1", "tidy");
+    put(b, card("LLMEngine.step"), 80, 80, 600);
+    const h = await open({ board: b, light });
+    const call = (n: string) => h.page.locator(`.card .src .call:text-is("${n}")`).first();
+    for (const n of ["schedule", "postprocess"]) { await call(n).click(); await h.page.waitForTimeout(800); }
+    for (const n of ["can_allocate", "allocate", "may_append"]) { await call(n).click().catch(() => console.log("no call", n)); await h.page.waitForTimeout(800); }
+    await h.page.keyboard.press("Escape"); await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(600);
+    await shot(h, "v15-12-tidy-0");
+    await h.page.keyboard.press("Control+a");
+    await h.page.locator(".card.ccard .chead").first().click({ button: "right", timeout: 5000 }); await h.page.waitForTimeout(200);
+    await h.page.locator(".ctx button", { hasText: "Move to New Section" }).first().click(); await h.page.waitForTimeout(300);
+    await h.page.keyboard.type("Tmp"); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(300);
+    await h.page.locator(".slabel .chev2").first().click(); await h.page.waitForTimeout(700);
+    await h.page.locator(".slabel .chev2").first().click(); await h.page.waitForTimeout(700);
+    await h.page.locator(".slabel").first().click({ button: "right" }); await h.page.waitForTimeout(200);
+    await h.page.locator(".ctx button", { hasText: "Remove Section" }).first().click(); await h.page.waitForTimeout(500);
+    await h.page.locator(".card.ccard .chead").first().click({ button: "right" }); await h.page.waitForTimeout(200);
+    await h.page.locator(".ctx button", { hasText: "Tidy Layout" }).first().hover(); await h.page.waitForTimeout(200);
+    await h.page.locator(".ctx button", { hasText: "Down" }).first().click(); await h.page.waitForTimeout(1500);
+    const boxes = await h.page.locator(".card.ccard").evaluateAll((es) => es.map((e) => { const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, w: r.width, h: r.height }; }));
+    let hits = 0;
+    for (let i = 0; i < boxes.length; i++) for (let j = i + 1; j < boxes.length; j++) {
+      const a = boxes[i], c = boxes[j];
+      if (a.x < c.x + c.w - 2 && c.x < a.x + a.w - 2 && a.y < c.y + c.h - 2 && c.y < a.y + a.h - 2) hits++;
+    }
+    console.log(boxes.length >= 5 && !hits ? "PASS" : "FAIL", "tidy-after-section", JSON.stringify({ cards: boxes.length, overlaps: hits }));
+    await shot(h, "v15-12-tidy");
+    await close(h);
+  },
 };
