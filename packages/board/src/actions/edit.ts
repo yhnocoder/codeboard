@@ -16,6 +16,7 @@ import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setCo
 import { openMenu, choose, promptText, type Item } from "../ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
 import { send, ask } from "../host";
+import { ghostOut } from "../state/ghost";
 import { md, inline } from "../md";
 import { frameOf, allMembers } from "../state/sections";
 import { popCard, revealCard, sectionById, selCards } from "./common";
@@ -65,6 +66,7 @@ export function deleteSel() {
   const links = new Set(sel.links);
   const secs = new Set(sel.sections);
   if (!ids.size && !links.size && !secs.size) return;
+  ghostOut(ids);
   const ok = mutate((b) => {
     removeCards(b, ids);
     b.links = b.links.filter((l) => !links.has(l.id));

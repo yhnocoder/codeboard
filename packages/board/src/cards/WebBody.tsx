@@ -28,6 +28,8 @@ export function Bookmark(p: {
   onTitle?: (v: string) => void; onDesc?: (v: string) => void; onRetry?: () => void; busy?: boolean;
 }) {
   const [imgBad, setImgBad] = createSignal(false);
+  // 图的形状（加载后量）：横图（比 1.4:1 还宽）单独一张卡时放在上面当横幅，整张显示；方图 / 竖图还放右栏
+  const [wide, setWide] = createSignal(false);
   const title = () => p.title || p.meta?.title;
   const desc = () => p.desc ?? p.meta?.desc;
   const site = () => p.meta?.site && !domainOf(p.url).includes(p.meta.site.toLowerCase()) ? `${domainOf(p.url)} · ${p.meta.site}` : domainOf(p.url);
@@ -37,7 +39,7 @@ export function Bookmark(p: {
   const eid = () => p.editId ?? "";
   const editingDesc = () => editing()?.kind === "desc" && editing()?.id === eid();
   return (
-    <div class="wbm" classList={{ small: p.small, none: none() }} data-drag={p.drag ? "" : undefined}>
+    <div class="wbm" classList={{ small: p.small, none: none(), banner: wide() && !p.small && !!img() }} data-drag={p.drag ? "" : undefined}>
       <div class="wmain">
         <Show when={!none()} fallback={
           <>
@@ -71,7 +73,8 @@ export function Bookmark(p: {
           <div class="wsite" data-tip={p.url}><Fav meta={p.meta} url={p.url} /><span>{site()}</span></div>
         </Show>
       </div>
-      <Show when={img()}><div class="wimg"><img src={img()} alt="" draggable={false} onError={() => setImgBad(true)} /></div></Show>
+      <Show when={img()}><div class="wimg"><img src={img()} alt="" draggable={false} onError={() => setImgBad(true)}
+        onLoad={(e) => { const i = e.currentTarget; setWide(i.naturalWidth > i.naturalHeight * 1.4); }} /></div></Show>
     </div>
   );
 }
@@ -159,7 +162,7 @@ function LinkRow(p: { card: LinksCard; item: LinkItem; dropBefore: boolean; drop
           onTitle={(v) => A.renameItem(p.card.id, it().id, v)} onRetry={() => A.retryMeta(p.card.id, it().id)} />
       </Show>
       <div class="ltools" onPointerDown={stop}>
-        <button class="lb" onClick={() => A.toggleItemRich(p.card.id, it().id)}>{rich() ? "Compact" : "Rich"}</button>
+        <button class="lb" aria-label={rich() ? "Show as Compact" : "Show as Rich"} data-tip={rich() ? "Show as Compact" : "Show as Rich"} onClick={() => A.toggleItemRich(p.card.id, it().id)}><Icon name={rich() ? "compact" : "rich"} size={12} /></button>
         <button class="lb" aria-label="Open in Browser" data-tip="Open in Browser" onClick={() => A.openLink(it().url)}><Icon name="external" size={12} /></button>
         <button class="lb" aria-label="Remove from List" data-tip="Remove from List" onClick={() => A.removeItem(p.card.id, it().id)}><Icon name="close" size={12} /></button>
       </div>

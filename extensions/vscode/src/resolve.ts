@@ -221,7 +221,8 @@ async function hoverAt(abs: string, line: number, col: number): Promise<Hover | 
       else if ("language" in c) parts.push("```" + c.language + "\n" + c.value + "\n```");
       else if (c.value) parts.push(c.value);
     }
-    const r = splitHover(parts.join("\n\n"));
+    // Pylance 在文档末尾带 <!--moduleHash:...--> 之类的 HTML 注释，Markdown 渲染时会原样显示，先去掉
+    const r = splitHover(parts.join("\n\n").replace(/<!--[\s\S]*?-->/g, "").trim());
     return r.sig || r.doc ? r : null;
   } catch { return null; }
 }

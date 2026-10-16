@@ -1,5 +1,6 @@
 // 代码卡的代码区：行号栏（绝对定位，按实测行位置摆）+ Sidenote 标记列 + 一整块连续的代码文本。
 // 代码是一整块，选区连续；复制时只要代码文本、不带行号（copy 事件里自己拼）。
+import { lod } from "../state/camera";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
 import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection, flows } from "../state/store";
@@ -11,6 +12,15 @@ import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, s
 import * as act from "../actions";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+/** 等宽字体一个字的宽度（概览档画轮廓用；量一次） */
+let cw0 = 0;
+function charWidth(el: Element) {
+  if (cw0) return cw0;
+  const ctx = document.createElement("canvas").getContext("2d")!;
+  ctx.font = getComputedStyle(el).font;
+  return (cw0 = ctx.measureText("0".repeat(100)).width / 100 || 7.2);
+}
 
 export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; dim?: () => boolean }) {
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
@@ -49,14 +59,25 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const isHl = (s: Segment | undefined, l: number) => !!s?.hl?.includes(l);
   const inSel = (seg: string, l: number) => { const ls = lineSel(); return !!ls && ls.card === c().id && ls.seg === seg && l >= ls.start && l <= ls.end; };
 
-  /** 行首缩进（字符数）：概览档画灰条时从这里开始，看起来像真代码 */
-  const indentOf = (r: Extract<Row, { t: "line" }>) => {
-    const s = segById(r.seg);
-    const t = s?.text[r.line - s.start] ?? "";
-    let n = 0;
-    for (const ch of t) { if (ch === " ") n++; else if (ch === "\t") n += 4; else break; }
-    return n;
-  };
+  /**
+   * 概览档的代码轮廓：每行按真实缩进和长度画一根圆角条，整张卡合成一张 SVG 当遮罩（.src::before 用它，颜色跟主题）。
+   * 只在概览档算；行本身不加内联样式，样式共享不受影响，切档时只多算这一个属性。
+   */
+  const overviewMask = createMemo(() => {
+    if (lod() !== "overview" || !srcEl) return undefined;
+    const rs = rows(), y = ys(), cw = charWidth(srcEl), base = srcEl.offsetTop;
+    let out = "";
+    rs.forEach((r, i) => {
+      if (r.t !== "line" || !y[i]) return;
+      const s = segById(r.seg);
+      const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ").trimEnd();
+      const ind = t.length - t.trimStart().length;
+      if (t.length === ind) return;
+      const op = cmtLine(r) ? ".45" : "1";
+      out += `<rect x='${(ind * cw).toFixed(1)}' y='${y[i].y - base + 5}' width='${((t.length - ind) * cw).toFixed(1)}' height='10' rx='3' fill-opacity='${op}'/>`;
+    });
+    return out ? `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${srcEl.scrollWidth}' height='${srcEl.offsetHeight}'>${out}</svg>`)}")` : undefined;
+  });
   const lineHtml = (r: Extract<Row, { t: "line" }>) => {
     const s = segById(r.seg);
     const v = viewOf(r.seg);
@@ -325,11 +346,12 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           )}
         </For>
         <div ref={srcEl} class="src" onPointerDown={(e) => { clearTimeout(peekTimer); onCodeDown(e); }} onContextMenu={onCtx} onPointerMove={onMove}>
+          <Show when={overviewMask()}>{(m) => <i class="ovm" style={{ "-webkit-mask-image": m(), "mask-image": m() }} />}</Show>
           <For each={rows()}>
             {(r, i) => (
               <Switch>
                 <Match when={r.t === "line"}>
-                  <div class="l" classList={{ cmt: !!cmtLine(r) }} data-r={i()} style={{ "--i": indentOf(r as any) }} innerHTML={lineHtml(r as any) || "​"} />
+                  <div class="l" classList={{ cmt: !!cmtLine(r) }} data-r={i()} innerHTML={lineHtml(r as any) || "​"} />
                   <For each={alwaysNotes(r.seg, (r as any).line)}>{(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline((n as any).md)} />}</For>
                 </Match>
                 <Match when={r.t === "gap"}>

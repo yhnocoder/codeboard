@@ -187,11 +187,13 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
     const c = cardById(p.pop.card)?.card;
     const at: Anchor = { card: p.pop.card, seg: p.pop.seg, lines: [p.pop.line, p.pop.line] };
     if (!c) return;
-    A.addSidenote({ at, kind: "code", code: { ...structuredClone(x.seg), id: crypto.randomUUID?.() ?? `s${Date.now()}` } } as any);
+    // Follow 跟过的中间步骤（如 get_context = context._default_context.get_context）按顺序一起放进旁注，最后是最终定义
+    const steps = [...(p.pop.trail ?? []), x];
+    const segs = steps.map((k, i) => ({ ...structuredClone(unwrap(k.seg)), id: `${crypto.randomUUID?.() ?? Date.now().toString(36)}-${i}` }));
+    A.addSidenotes(segs.map((code) => ({ at, kind: "code", code }) as any));
     // 展示数据用定义预览里那几行（段的 id 换了，重新要一次）
-    const n = state.board.sidenotes[state.board.sidenotes.length - 1];
-    if (n?.kind === "code") A.requestViews([n.code]);
-    toast("Pinned as Sidenote");
+    A.requestViews(segs);
+    toast(steps.length > 1 ? `Pinned ${steps.length} steps as Sidenotes` : "Pinned as Sidenote");
     closePop(p.inst.id);
   };
   const place = () => {
@@ -236,7 +238,8 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
         <Show when={def()!.follow}>
           <div class="follow">↳ <code>{def()!.follow!.label}</code><span class="grow" /><button class="tbtn" onClick={() => {
             const f = def()!.follow!;
-            updatePop(p.inst.id, (q) => ({ ...(q as any), data: undefined }));
+            const prev = def()!;
+            updatePop(p.inst.id, (q) => ({ ...(q as any), trail: [...((q as any).trail ?? []), prev], data: undefined }));
             ask<PeekResult>("peek", { seg: structuredClone(unwrap(def()!.seg)), line: f.line, col: f.col, word: f.label.split(".").pop()!, at: { path: f.path, line: f.line, col: f.col } })
               .then((r) => updatePop(p.inst.id, (q) => ({ ...(q as any), data: r ?? { none: "No definition found", word: f.label } })))
               .catch(() => updatePop(p.inst.id, (q) => ({ ...(q as any), data: { none: "No definition found", word: f.label } })));

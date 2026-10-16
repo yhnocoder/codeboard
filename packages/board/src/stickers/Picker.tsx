@@ -72,7 +72,7 @@ export function CanvasStickers() {
         const at = () => s.at as Extract<typeof s.at, { kind: "canvas" }>;
         const size = () => at().size ?? 32;
         return (
-          <div class="stk canvas" classList={{ sel: selSticker() === s.id }} data-sticker={s.id} data-tip={stickerLabel(s.icon)} style={{ left: `${at().x}px`, top: `${at().y}px`, width: `${size()}px`, height: `${size()}px` }}
+          <div class="stk canvas" classList={{ sel: selSticker() === s.id }} data-sticker={s.id} data-tip={stickerLabel(s.icon)} style={{ left: `${at().x}px`, top: `${at().y}px`, "min-width": `${size()}px`, height: `${size()}px`, "--s": `${size()}px` }}
             onPointerDown={(e) => stickerDown(e, s.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(s.id, e.clientX, e.clientY); }}>
             <Glyph icon={s.icon} color={s.color} size={size()} />
             <Show when={selSticker() === s.id}><span class="sgrip" style={{ scale: `${1 / cam.z}` }} onPointerDown={(e) => stickerDown(e, s.id, true)} /></Show>

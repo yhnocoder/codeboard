@@ -70,6 +70,12 @@ export function addSidenote(n: Omit<Sidenote, "id">, view?: SegView) {
   mutate((b) => { b.sidenotes.push(sn); });
   return id;
 }
+/** 一次加好几条（一个撤销步骤），返回新 id */
+export function addSidenotes(list: Omit<Sidenote, "id">[]) {
+  const sns = list.map((n) => ({ ...n, id: uid("n") }) as Sidenote);
+  mutate((b) => { b.sidenotes.push(...sns); });
+  return sns.map((n) => n.id);
+}
 export function updateSidenote(id: string, f: (n: Sidenote) => void) {
   mutate((b) => { const n = b.sidenotes.find((k) => k.id === id); if (n) f(n); });
 }

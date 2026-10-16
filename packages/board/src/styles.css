@@ -297,9 +297,14 @@ math { font-size: 1.05em; }
 .zoom { font: 11.5px var(--mono); color: var(--ink-2); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 
 .ctx { position: absolute; z-index: 40; overflow-y: auto; overscroll-behavior: contain; min-width: 210px; max-width: 300px; padding: 5px; border-radius: 10px; background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
-  box-shadow: var(--sh-float); transform-origin: 0 0; opacity: 0; scale: .96; visibility: hidden;
+  box-shadow: var(--sh-float); transform-origin: 0 0; opacity: 0; scale: .9 .82; visibility: hidden;
   transition: opacity calc(var(--t) * 90ms) var(--in), scale calc(var(--t) * 90ms) var(--in), visibility 0s linear calc(var(--t) * 90ms); }
-.ctx.open { opacity: 1; scale: 1; visibility: visible; transition: opacity calc(var(--t) * 140ms) var(--out), scale calc(var(--t) * 160ms) var(--out), visibility 0s; }
+/* 打开：从点击点弹开，带一点回弹（弹簧曲线），菜单项随后依次落位 */
+.ctx.open { opacity: 1; scale: 1; visibility: visible;
+  transition: opacity calc(var(--t) * 110ms) var(--out), scale calc(var(--t) * 420ms) var(--spring, linear(0, .2 6%, .55 14%, .86 23%, 1.03 32%, 1.08 39%, 1.06 47%, 1.01 57%, .99 68%, 1)), visibility 0s; }
+.ctx.open > button, .ctx.open > hr { animation: ctx-item calc(var(--t) * 240ms) var(--out) both; animation-delay: calc(var(--t) * min(var(--i, 0), 12) * 14ms); }
+@keyframes ctx-item { from { opacity: 0; translate: 0 -4px; } }
+@media (prefers-reduced-motion: reduce) { .ctx.open, .ctx.open > button { transition-duration: 0s; animation: none; } }
 .ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 5px; font-size: 12.5px; color: var(--ink); text-align: left; }
 .ctx button .ck { width: 12px; flex: none; color: var(--accent); font-size: 11px; }
 .ctx button:not([disabled]):hover { background: var(--accent); color: var(--accent-ink); }
@@ -661,11 +666,16 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .glyph.custom svg { width: 100%; height: 100%; display: block; }
 .glyph.missing { border-radius: 4px; background: color-mix(in srgb, var(--ink-3) 30%, transparent); }
 .glyph.tag { width: auto; padding: 0 .55em; border-radius: 999px; color: #fff; font-family: var(--sys); font-weight: 700; letter-spacing: .04em; }
-.stk { position: absolute; cursor: grab !important; display: grid; place-items: center; border-radius: 50%; }
+/* 选中框和缩放手柄贴合贴纸的形状：内置圆形 = 圆，TODO 这类文字标签 = 胶囊，emoji / 自定义图标 = 圆角方块 */
+.stk { position: absolute; cursor: grab !important; display: grid; place-items: center; border-radius: 6px; }
+.stk:has(> svg.glyph) { border-radius: 50%; }
+.stk:has(> .glyph.tag) { border-radius: 999px; }
+/* 圆 / 胶囊：手柄放在右下 45° 的轮廓上，不悬在外接方框的角上 */
+.stk:has(> svg.glyph) .sgrip, .stk:has(> .glyph.tag) .sgrip { right: calc(var(--s, 32px) * .146 - 5px); bottom: calc(var(--s, 32px) * .146 - 5px); }
 .stk.sel { outline: 1.5px solid var(--accent); outline-offset: 2px; }
 .stk.canvas { z-index: 4; }
 .stk.canvas .glyph { filter: drop-shadow(0 1px 2px rgba(0,0,0,.18)); }
-.stk .sgrip { position: absolute; right: -6px; bottom: -6px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); cursor: nwse-resize !important; }
+.stk .sgrip { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); cursor: nwse-resize !important; }
 .cstks { position: absolute; right: 34px; top: -11px; display: flex; gap: 3px; z-index: 5; }
 .cstks .stk { position: static; }
 .cstks .glyph { filter: drop-shadow(0 1px 2px rgba(0,0,0,.2)); }
@@ -704,9 +714,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .board.lod-overview .card .gutter, .board.lod-overview .card .rowbg, .board.lod-overview .card .crows .l, .board.lod-overview .card .cno,
 .board.lod-overview .card .cpath, .board.lod-overview .card .rev, .board.lod-overview .card .chead .ib, .board.lod-overview .lport, .board.lod-overview .vbox { visibility: hidden; }
 /* 概览档：文字透明，每行按真实缩进和长度画一根圆角灰条，轮廓就是这段代码本身的样子（不额外加元素，只换画法） */
-.board.lod-overview .card .src, .board.lod-overview .card .src * { color: transparent !important; text-decoration: none !important; background: none !important; }
-.board.lod-overview .card .src .l { width: fit-content; max-width: 100%;
-  background: linear-gradient(var(--bar), var(--bar)) calc(var(--i, 0) * 1ch) 5px / calc(100% - var(--i, 0) * 1ch) 10px no-repeat !important; border-radius: 3px; }
+.board.lod-overview .card .src > :not(.ovm) { visibility: hidden; }
+.card .src > .ovm { position: absolute; inset: 0; background: var(--bar); -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; pointer-events: none; }
 .board.lod-overview .card .src .l.cmt { --bar: color-mix(in srgb, var(--ink) 6%, transparent); }
 .board.lod-overview .card .ctitle { font-size: 15px; font-weight: 600; }
 .board.lod-map .card > *:not(.maplabel) { visibility: hidden; }
@@ -753,3 +762,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .pcode .pl.jump { box-shadow: inset 0 1px 0 var(--line); }
 .pk-more { padding: 0 12px 6px 52px; font: 11px var(--mono); color: var(--ink-3); }
 .pop .lib-tag { font: 500 10px/16px var(--sys); color: var(--ink-3); padding: 0 6px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--hair); letter-spacing: .02em; }
+
+/* 删掉的卡：原地留一份副本缩小淡出（state/ghost.ts） */
+.card.ghost-out { pointer-events: none !important; transition: opacity calc(var(--t) * 180ms) var(--in, ease-in), scale calc(var(--t) * 200ms) var(--in, ease-in); transform-origin: 50% 40%; }
+.card.ghost-out.go { opacity: 0; scale: .94; }

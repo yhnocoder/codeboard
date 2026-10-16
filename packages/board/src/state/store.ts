@@ -6,6 +6,7 @@ import {
   type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type Stale,
 } from "@codeboard/core";
 import { send } from "../host";
+import { ghostOut } from "./ghost";
 
 export const [state, setState] = createStore({
   loaded: false,
@@ -163,7 +164,7 @@ export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) 
   const before = fresh.get(id);
   if (!before) return;
   fresh.delete(id);
-  if (!keep) { live((b) => removeCards(b, [id])); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
+  if (!keep) { ghostOut([id]); live((b) => removeCards(b, [id])); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
   if (fn) live(fn);
   pushUndo(before);
 }
