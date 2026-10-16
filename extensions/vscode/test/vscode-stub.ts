@@ -19,3 +19,5 @@ export const workspace = {
 export const Uri = { file: (fsPath: string) => ({ fsPath, scheme: "file" }) };
 export const commands = { executeCommand: async () => undefined };
 export class Position { constructor(public line: number, public character: number) {} }
+const quiet = () => {};
+export const window = { createOutputChannel: () => ({ info: quiet, warn: quiet, error: quiet, appendLine: quiet }) };
