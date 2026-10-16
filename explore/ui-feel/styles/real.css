@@ -1,0 +1,89 @@
+/* 拟物：一块软木板。卡片是图钉钉着的索引卡，连线是红毛线，便签是黄色便利贴，白板名是标签机打的凸字条，工具条是一把钢尺 */
+.s-real {
+  --cork: light-dark(#c39a6b, #4a3726);
+  --cork-dot1: light-dark(rgba(110,70,30,.35), rgba(0,0,0,.35));
+  --cork-dot2: light-dark(rgba(255,235,200,.35), rgba(255,220,170,.08));
+  --wood: light-dark(#8a5a33, #3b2717);
+  --card: light-dark(#fbf8ef, #d9d1bf);
+  --rule-b: light-dark(rgba(70,130,200,.28), rgba(50,100,160,.3));
+  --rule-r: light-dark(rgba(220,70,70,.55), rgba(180,50,50,.55));
+  --ink: #26241f;
+  --ink-2: #57534a;
+  --ink-3: #8f897c;
+  --ribbon: #c0281c;
+  --yarn: light-dark(#c3241a, #d2382b);
+  --postit: light-dark(#ffe76a, #e9cf4a);
+  --hi: rgba(255,226,0,.5);
+  --selbg: rgba(70,130,200,.25);
+  --ui: "Archivo", "Helvetica Neue", "PingFang SC", sans-serif;
+  --mono: "Courier Prime", "Courier New", monospace;
+  --hand: "Caveat", "Kaiti SC", cursive;
+  background-color: var(--cork);
+  background-image:
+    radial-gradient(circle at 30% 20%, light-dark(rgba(255,255,255,.08), rgba(255,200,120,.14)), transparent 60%),
+    radial-gradient(var(--cork-dot1) 1px, transparent 1.6px), radial-gradient(var(--cork-dot2) 1px, transparent 1.6px), radial-gradient(var(--cork-dot1) .8px, transparent 1.2px);
+  background-size: auto, 7px 9px, 11px 7px, 5px 5px;
+  background-position: 0 0, 0 0, 3px 4px, 1px 2px;
+}
+.s-real .frame-deco { display: block; position: absolute; inset: 0; z-index: 4; pointer-events: none; border: 11px solid var(--wood);
+  box-shadow: inset 0 2px 6px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
+.s-real .card { background: var(--card); overflow: visible; border-radius: 1px; display: flex; flex-direction: column;
+  box-shadow: 0 1px 1px rgba(0,0,0,.18), 0 10px 16px -8px rgba(40,20,0,.45); transition: box-shadow .2s; }
+.s-real .card.f1 { rotate: -.5deg; } .s-real .card.f2 { rotate: .7deg; } .s-real .card.f3 { rotate: -.35deg; }
+/* 选中就是被拿起来一点 */
+.s-real .card.sel { box-shadow: 0 2px 3px rgba(0,0,0,.2), 0 24px 30px -12px rgba(40,20,0,.55); translate: 0 -2px; }
+/* 一截和纸胶带 */
+.s-real .card::before { content: ""; position: absolute; top: -9px; left: 50%; width: 64px; height: 18px; margin-left: -32px; rotate: -2deg; z-index: 2;
+  background: light-dark(rgba(200,220,210,.62), rgba(150,170,160,.55)); box-shadow: 0 1px 1px rgba(0,0,0,.08);
+  -webkit-mask: linear-gradient(90deg, transparent 0 1px, #000 1px calc(100% - 1px), transparent 0); }
+.s-real .chead { order: 0; height: 40px; padding: 4px 14px 0 30px; gap: 10px; border-bottom: 1.5px solid var(--rule-r); }
+.s-real .step { font: 700 10.5px var(--mono); color: var(--ink-3); }
+.s-real .step::before { content: "#"; }
+.s-real .ctitle { font: 700 21px/1 var(--hand); color: light-dark(#1f3f8a, #1f3f8a); }
+.s-real .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
+.s-real .rev { font: 10px var(--mono); color: var(--ink-3); }
+/* 新版本：一枚歪着盖的红色橡皮章 */
+.s-real .rev.new { font: 700 10px var(--ui); letter-spacing: .1em; color: var(--ribbon); border: 1.5px solid var(--ribbon); border-radius: 3px; padding: 2px 5px; rotate: -8deg; opacity: .85; }
+.s-real .rev.new i { display: none; }
+.s-real .cnote { display: block; order: 1; padding: 3px 14px 1px 30px; font: 400 15px/20px var(--hand); color: #6b6658; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 横格：蓝线正好落在每行代码下面 */
+.s-real .code { order: 2; padding: 0 0 8px; font: 11px/19px var(--mono); color: var(--ink);
+  background: repeating-linear-gradient(180deg, transparent 0 17.5px, var(--rule-b) 17.5px 19px) 0 0 / 100% calc(100% - 8px) no-repeat; }
+.s-real .gutter .no { width: 30px; padding-right: 8px; color: var(--ink-3); font-size: 9.5px; }
+.s-real .hlrow { background: var(--hi); left: 30px; right: 18px; border-radius: 2px 6px 3px 5px; transform: skewX(-8deg); }
+.s-real .no.link { color: var(--ink); font-weight: 700; }
+/* 打字机的红黑双色色带：关键字和可展开的调用打成红色 */
+.s-real .kw { color: var(--ribbon); } .s-real .call { color: var(--ribbon); text-decoration: underline 1px; text-underline-offset: 3px; }
+.s-real .fn { color: var(--ink); } .s-real .str, .s-real .num, .s-real .self { color: var(--ink-2); } .s-real .com, .s-real .p { color: var(--ink-3); }
+/* 红毛线，两头是图钉 */
+.s-real .edges { z-index: 3; }
+.s-real .edge { fill: none; stroke: var(--yarn); stroke-width: 1.8; filter: url(#yarnShadow); }
+.s-real .pin { fill: url(#pinR); filter: url(#pinShadow); }
+.s-real .elabel { font: 400 16px/1.1 var(--hand); color: #3b3418; background: var(--postit); padding: 8px 12px 9px; rotate: -3deg; z-index: 3;
+  box-shadow: 0 1px 1px rgba(0,0,0,.12), 4px 8px 10px -6px rgba(0,0,0,.4); }
+.s-real .elabel.f3 { rotate: 2.5deg; background: light-dark(#ffb3c7, #e295a9); }
+
+/* 标签机打的凸字条 */
+.s-real .tb-left { left: 26px; top: 24px; }
+.s-real .tb-left .pill { background: #1c1c1c; padding: 5px 12px; border-radius: 2px; rotate: -1.2deg; box-shadow: 0 2px 3px rgba(0,0,0,.35); }
+.s-real .bn { font: 700 13px var(--ui); letter-spacing: .14em; color: #f2f2f2; text-shadow: 0 -1px 0 rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.18); }
+.s-real .chev { color: #f2f2f2; }
+.s-real .tb-right { right: 26px; top: 24px; }
+.s-real .tb-right .pill { background: none; }
+.s-real #btnPresent { background: #b8261b; color: #fff; font: 700 12px var(--ui); letter-spacing: .14em; border-radius: 2px; rotate: 1deg; box-shadow: 0 2px 3px rgba(0,0,0,.35); text-shadow: 0 -1px 0 rgba(0,0,0,.4); }
+.s-real #btnPresent .ico { fill: currentColor; }
+.s-real .focus-btn { display: none; }
+/* 钢尺 */
+.s-real .dock { bottom: 22px; }
+.s-real .dock .pill { padding: 6px 10px 4px; border-radius: 2px; position: relative;
+  background: linear-gradient(180deg, #e9ecee, #bfc5ca 55%, #d5d9dc); box-shadow: 0 0 0 .5px rgba(0,0,0,.35), 0 6px 10px -4px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.8); }
+.s-real .dock .pill::before { content: ""; position: absolute; left: 4px; right: 4px; top: 0; height: 6px;
+  background: repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 1px, transparent 1px 5px), repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 1px, transparent 1px 25px);
+  background-size: 100% 3px, 100% 6px; background-repeat: no-repeat; }
+.s-real .ib { color: #2a2d30; border-radius: 3px; }
+.s-real .ib:hover { background: rgba(0,0,0,.08); }
+.s-real .sep { width: 1px; height: 16px; background: rgba(0,0,0,.3); margin: 0 4px; }
+.s-real .zoom { font: 700 11px var(--mono); color: #2a2d30; }
+.s-real .toast { bottom: 76px; background: var(--postit); color: #3b3418; font: 400 18px var(--hand); padding: 8px 14px; rotate: 1.5deg; box-shadow: 0 1px 1px rgba(0,0,0,.12), 4px 8px 10px -6px rgba(0,0,0,.4); }
+.s-real .toast .tdot { display: none; }
+.s-real .toast b { font-weight: 700; text-decoration: underline 1.5px; }

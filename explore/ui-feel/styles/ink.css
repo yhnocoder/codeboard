@@ -1,0 +1,72 @@
+/* 水墨：宣纸底、远山淡墨、一缕雾慢慢飘；卡片是一页纸，编号是白文朱印，连线是毛笔线。深色是拓片：黑底白字 */
+.s-ink {
+  --bg: light-dark(#f2ede2, #131312);
+  --paper: light-dark(rgba(250,247,240,.93), rgba(28,27,25,.92));
+  --ink: light-dark(#1d1c1a, #e9e5da);
+  --ink-2: light-dark(#4c4943, #b9b4a8);
+  --ink-3: light-dark(#9a958b, #6e6a62);
+  --wash: light-dark(rgba(29,28,26,.06), rgba(233,229,218,.07));
+  --zhu: light-dark(#b8321f, #d6533a);
+  --huaqing: light-dark(#2d5b70, #8fb7c9);  /* 花青 */
+  --zheshi: light-dark(#9a5a2c, #d39a6c);   /* 赭石 */
+  --mtn: light-dark(#2a2926, #d8d3c6);
+  --mist: light-dark(#f7f3ea, #2a2926);
+  --selbg: light-dark(rgba(29,28,26,.14), rgba(233,229,218,.2));
+  --ui: "Noto Serif SC", "Songti SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --brush: "Zhi Mang Xing", "Ma Shan Zheng", "Kaiti SC", serif;
+  --seal: "Ma Shan Zheng", "Kaiti SC", serif;
+}
+.s-ink .scene { display: block; }
+.s-ink .card { background: var(--paper); box-shadow: 0 0 0 .5px var(--wash), 0 18px 34px -22px light-dark(rgba(30,25,15,.35), rgba(0,0,0,.8)); display: flex; flex-direction: column; overflow: visible; }
+.s-ink .card.sel { box-shadow: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), 0 18px 34px -22px rgba(0,0,0,.4); }
+.s-ink .chead { order: 0; position: relative; height: 38px; padding: 0 12px 0 14px; gap: 10px; }
+.s-ink .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 0; height: 7px; background: var(--ink); opacity: .75;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat; }
+/* 白文印：朱底留白字 */
+.s-ink .step { order: 9; font-size: 0; }
+.s-ink .step::after { content: attr(data-cn); display: inline-block; font: 400 12px/1 var(--seal); color: var(--paper); background: var(--zhu); padding: 4px 3px 3px; border-radius: 2px; writing-mode: vertical-rl; rotate: 2deg; opacity: .92; }
+.s-ink .ctitle { font: 600 13px var(--ui); color: var(--ink); letter-spacing: .01em; }
+.s-ink .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
+.s-ink .rev { font: 10px var(--mono); color: var(--ink-3); }
+/* 有新版本：朱文印，红框红字 */
+.s-ink .rev.new { font-size: 0; }
+.s-ink .rev.new::after { content: "新"; font: 400 12px/1 var(--seal); color: var(--zhu); border: 1.2px solid var(--zhu); padding: 2px 3px 1px; border-radius: 2px; rotate: -3deg; }
+.s-ink .cnote { display: block; order: 1; padding: 7px 14px 2px; font: 400 12px/1.5 var(--ui); color: var(--ink-2); }
+.s-ink .code { order: 2; padding: 6px 0 12px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.s-ink .gutter .no { width: 38px; padding-right: 10px; color: var(--ink-3); }
+.s-ink .hlrow { background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent); }
+.s-ink .no.link { color: var(--zhu); }
+.s-ink .kw { color: var(--ink); font-weight: 600; } .s-ink .fn { color: var(--huaqing); } .s-ink .str { color: var(--zheshi); }
+.s-ink .com { color: var(--ink-3); font-style: italic; } .s-ink .num { color: var(--zheshi); } .s-ink .self { color: var(--ink-2); } .s-ink .p { color: var(--ink-3); }
+.s-ink .call { text-decoration: underline 1px var(--zhu); text-underline-offset: 3px; }
+/* 毛笔线：纸纹把边缘扰乱一点 */
+.s-ink .edge { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; opacity: .82; filter: url(#brush); }
+.s-ink .ahead { fill: var(--ink); opacity: .85; }
+.s-ink .port { fill: var(--ink); stroke: none; }
+.s-ink .elabel { font: italic 400 12px var(--ui); color: var(--ink-2); padding: 1px 8px; background: radial-gradient(closest-side, var(--bg) 60%, transparent); }
+
+.s-ink .tb-left { top: 14px; left: 18px; }
+.s-ink .tb-left .pill { background: none; gap: 10px; }
+.s-ink .bn { font: 400 26px/1 var(--brush); color: var(--ink); letter-spacing: .04em; }
+.s-ink .bname::after { content: "白板"; font: 400 11px/1 var(--seal); color: var(--paper); background: var(--zhu); padding: 3px 2px 2px; border-radius: 2px; writing-mode: vertical-rl; margin-left: 8px; }
+.s-ink .chev { display: none; }
+.s-ink .tb-right .pill { background: none; }
+.s-ink .tbtn, .s-ink .ib { color: var(--ink); font: 400 13px var(--ui); border-radius: 3px; }
+.s-ink .ib:hover, .s-ink .tbtn:hover { background: var(--wash); }
+/* 工具条是一小卷手卷，两头是轴 */
+.s-ink .dock .pill { background: var(--paper); padding: 3px 10px; position: relative; box-shadow: 0 0 0 .5px var(--wash), 0 10px 20px -12px rgba(0,0,0,.4); }
+.s-ink .dock .pill::before, .s-ink .dock .pill::after { content: ""; position: absolute; top: -4px; bottom: -4px; width: 5px; border-radius: 3px; background: light-dark(#4a3424, #8a6a4c); }
+.s-ink .dock .pill::before { left: -4px; } .s-ink .dock .pill::after { right: -4px; }
+.s-ink .sep { width: .5px; height: 16px; background: var(--ink-3); margin: 0 4px; }
+.s-ink .zoom { font: 11px var(--mono); color: var(--ink-2); }
+.s-ink .toast { background: var(--paper); color: var(--ink); font: 400 12.5px var(--ui); padding: 7px 14px 7px 8px; box-shadow: 0 0 0 .5px var(--wash), 0 10px 20px -12px rgba(0,0,0,.4); }
+.s-ink .toast .tdot { width: 14px; height: 14px; background: var(--zhu); border-radius: 2px; }
+.s-ink .toast b { font-weight: 600; color: var(--zhu); }
+/* 远山和雾 */
+.s-ink .mtn { fill: var(--mtn); }
+.s-ink .mist { fill: var(--mist); animation: inkMist calc(var(--t, 1) * 70s) ease-in-out infinite alternate; }
+.s-ink .sun { fill: var(--zhu); opacity: .55; }
+@keyframes inkMist { from { transform: translateX(-60px); } to { transform: translateX(80px); } }
+@media (prefers-reduced-motion: reduce) { .s-ink .mist { animation: none; } }
