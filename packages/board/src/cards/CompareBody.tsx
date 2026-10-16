@@ -65,6 +65,8 @@ export function CompareBody(p: { card: CompareCard }) {
   const nSame = () => data().filter((r) => r.kind === "same").length;
   type Item = { t: "row"; i: number } | { t: "gap"; n: number };
   const items = createMemo<Item[]>(() => {
+    // 读一下 unified：切换时生成新的一组 item，For 才会按新模式重画每一行（行的渲染函数本身不跟踪）
+    void k().unified;
     const d = data(), out: Item[] = [];
     for (let i = 0; i < d.length; i++) {
       if (k().hideSame && d[i].kind === "same") {
@@ -140,7 +142,7 @@ export function CompareBody(p: { card: CompareCard }) {
         <button class="ib" aria-label="Compare Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); A.cardMenu(k().id, r.left, r.bottom + 4); }}><Icon name="more" /></button>
       </div>
       <div class="colh">
-        <For each={cols()}>{(c) => <div data-col={c.id}><CodeHead card={c} col /></div>}</For>
+        <For each={cols()}>{(c, i) => <div data-col={c.id}><Show when={k().unified}><span class="usign" classList={{ add: i() === 1 }}>{i() === 0 ? "−" : "+"}</span></Show><CodeHead card={c} col /></div>}</For>
       </div>
       <div ref={scrollEl} class="cbody" onScroll={measure} onWheel={(e) => A.cardWheel(e, scrollEl)}>
         <div ref={rowsEl} class="crows" onPointerDown={onDown} onContextMenu={onCtx} style={{ "--cw": `${Math.round((placeOf(k().id).w - 2) / 2)}px` }}>

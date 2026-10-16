@@ -632,7 +632,7 @@ export function installKeys() {
       return;
     }
     const text = e.clipboardData?.getData("text/plain");
-    if (text) { e.preventDefault(); A.pasteText(text, w); }
+    if (text) { e.preventDefault(); const near = A.pasteNear(text); A.pasteText(text, near ?? w, !!near); }
   });
   // 拖文件进来：图片
   window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault(); });

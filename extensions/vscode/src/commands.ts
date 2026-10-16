@@ -150,9 +150,9 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
 
   // ---------- 白板管理 ----------
 
-  cmd("codeboard.openBoard", async (a?: unknown) => {
+  cmd("codeboard.openBoard", async (a?: unknown, o?: { here?: boolean }) => {
     const id = boardArg(a) ?? (await targetId());
-    await panels.show(id);
+    await panels.show(id, { here: !!o?.here });
   });
   cmd("codeboard.openBoardToSide", async (a?: unknown) => {
     const id = boardArg(a);

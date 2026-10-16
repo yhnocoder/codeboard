@@ -23,12 +23,24 @@ import { frameOf, allMembers } from "../state/sections";
 import { K, popCard, revealCard, sectionById, selCards } from "./common";
 import { requestViews } from "./create";
 
+/** 最近一次 ⌘C 复制的是哪张卡的哪段字：⌘V 粘回来时放在那张卡旁边（错开一点，允许重叠），不去找空地 */
+let lastCopy: { card: string; text: string; n: number } | null = null;
+export function pasteNear(text: string): { x: number; y: number } | null {
+  if (!lastCopy || lastCopy.text.trim() !== text.trim()) return null;
+  const h = cardById(lastCopy.card)?.host;
+  if (!h || !state.board.place[h.id]) return null;
+  const r = rectOf(h);
+  const k = ++lastCopy.n;
+  return { x: r.x + 36 * k, y: r.y + 36 * k };
+}
+const remember = (card: string, text: string) => { lastCopy = { card, text, n: 0 }; };
 export function copyLines(ls: LineSel) {
   const f = cardById(ls.card);
   if (!f || !isCode(f.card)) return;
   const s = segOf(f.card, ls.seg)!;
   const t = copyText(s.text.slice(ls.start - s.start, ls.end - s.start + 1));
   navigator.clipboard?.writeText(t).catch(() => {});
+  remember(ls.card, t);
   toast(`Copied ${ls.end - ls.start + 1} line${ls.end > ls.start ? "s" : ""}`);
 }
 export function hideLines(ls: LineSel) {
@@ -154,6 +166,7 @@ export function copyCard(c: CodeCard) {
   const lines: string[] = [];
   for (const r of rows) if (r.t === "line") { const s = c.segments.find((q) => q.id === r.seg)!; lines.push(s.text[r.line - s.start] ?? ""); }
   navigator.clipboard?.writeText(lines.join("\n")).catch(() => {});
+  remember(c.id, lines.join("\n"));
   toast(`Copied ${lines.length} lines`);
 }
 

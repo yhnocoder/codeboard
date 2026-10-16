@@ -112,12 +112,13 @@ export class Panels {
   metas(): Promise<BoardMeta[]> { return this.store.list(); }
 
   /** 打开（或切到）一张白板 */
-  async show(id: string, opts: { preserveFocus?: boolean; side?: boolean } = {}): Promise<BoardPanel | undefined> {
+  async show(id: string, opts: { preserveFocus?: boolean; side?: boolean; here?: boolean } = {}): Promise<BoardPanel | undefined> {
     const ex = this.panels.get(id);
     if (ex) { ex.panel.reveal(undefined, opts.preserveFocus); return ex; }
     const b = await this.store.load(id);
     if (!b) return undefined;
-    const col = opts.side ? vscode.ViewColumn.Beside : this.boardColumn() ?? vscode.ViewColumn.Beside;
+    // here：侧栏里点的，开在当前这一栏（不新开分栏）
+    const col = opts.side ? vscode.ViewColumn.Beside : opts.here ? vscode.ViewColumn.Active : this.boardColumn() ?? vscode.ViewColumn.Beside;
     const panel = vscode.window.createWebviewPanel(Panels.viewType, b.name, { viewColumn: col, preserveFocus: opts.preserveFocus }, { enableScripts: true, retainContextWhenHidden: true });
     const p = this.attach(id, panel);
     if (!opts.preserveFocus) this.setTarget(id);

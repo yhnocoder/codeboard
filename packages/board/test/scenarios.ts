@@ -105,6 +105,11 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.waitForTimeout(900);
     await shot(h, "cmp-02-compare");
     console.log("kinds:", h.board().cards.map((c) => c.kind).join(","));
+    // Unified：切过去就变成一栏 diff（之前行不重画，还是左右两栏）
+    await h.page.locator(".cmpwrap .tools button", { hasText: "Unified" }).click(); await h.page.waitForTimeout(500);
+    const u = { urow: await h.page.locator(".cmpwrap .urow").count(), crow: await h.page.locator(".cmpwrap .crow").count() };
+    await shot(h, "cmp-03-unified");
+    console.log(u.urow > 0 && u.crow === 0 ? "PASS" : "FAIL", "compare-unified", JSON.stringify(u));
     await h.page.context().browser()!.close();
   },
   async versions() {

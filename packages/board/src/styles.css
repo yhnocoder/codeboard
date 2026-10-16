@@ -208,6 +208,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .cmp .colh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); flex: none; background: var(--head); }
 .cmp .colh > div { display: flex; align-items: center; gap: 6px; padding: 5px 8px 5px 10px; min-width: 0; white-space: nowrap; transition: opacity .2s; }
 .cmp .colh > div + div { border-left: 1px solid var(--line); }
+.cmp .colh .usign { flex: none; width: 16px; height: 16px; border-radius: 4px; display: inline-grid; place-items: center; font: 600 12px/1 var(--mono); background: var(--del); color: var(--ink-2); }
+.cmp .colh .usign.add { background: var(--add); }
 .cmp .tools { display: inline-flex; gap: 2px; }
 .seg2 { font-size: 11.5px; padding: 3px 8px; border-radius: 6px; color: var(--ink-2); }
 .seg2:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }

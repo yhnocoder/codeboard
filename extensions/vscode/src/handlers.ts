@@ -208,6 +208,11 @@ async function commits(seg: Segment): Promise<Commit[]> {
     const info = await commitInfo(root, pinned);
     if (info) log.push(info);
   }
+  // HEAD 没改这个函数（比如是个合并提交）时 git log -L 不列它；总放在最上面，切到旧版本后还能切回来
+  if (head && !log.some((c) => c.commit === head)) {
+    const info = await commitInfo(root, head);
+    if (info) log.unshift(info);
+  }
   return log.map((c) => ({ commit: c.commit, msg: c.msg, date: c.date, head: !!head && c.commit === head }));
 }
 

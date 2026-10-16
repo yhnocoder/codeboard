@@ -527,6 +527,25 @@ export const V015: Record<string, () => Promise<void>> = {
     const ok = res.push.y1 > y0 && !res.push.overlap && res.overlap.y1 === y0;
     console.log(ok ? "PASS" : "FAIL", "theme-reflow", JSON.stringify({ y0, res }));
   },
+  /** ⌘C 一张卡再 ⌘V：新卡放在原卡旁边（错开 36，允许重叠），不去找空地 */
+  async v15pastenear() {
+    const b = richBoard();
+    const st = b.cards[0] as CodeCard;
+    const h = await open({ board: b, light, w: 1500, h: 950 });
+    await h.page.locator(`.card[data-id="${st.id}"] .chead .ctitle`).click(); await h.page.waitForTimeout(200);
+    await h.page.keyboard.press("Control+c"); await h.page.waitForTimeout(200);
+    await h.page.mouse.move(1300, 800);
+    const text = st.segments[0].text.join("\n");
+    await h.page.evaluate((t) => { const dt = new DataTransfer(); dt.setData("text/plain", t); document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })); }, text);
+    await h.page.waitForTimeout(1400);
+    const nb = h.board(), p0 = nb.place[st.id];
+    const nid = nb.cards.find((c) => !b.cards.some((o) => o.id === c.id))?.id;
+    const p1 = nid ? nb.place[nid] : undefined;
+    await shot(h, "v15-pastenear");
+    const ok = !!p1 && p1.x === p0.x + 36 && p1.y === p0.y + 36;
+    console.log(ok ? "PASS" : "FAIL", "paste-near", JSON.stringify({ p0, p1 }));
+    await close(h);
+  },
   /** 线上的变量框能沿线拖，位置存成 t */
   async v15labeldrag() {
     const b = richBoard();

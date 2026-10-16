@@ -31,7 +31,7 @@ function withDefaults(c: Card): Card {
 }
 
 /** 把宿主建好的卡放到白板上：有选中的卡就放旁边，没有就放视口中央 */
-export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; besideSel?: boolean; section?: string } = {}) {
+export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; exact?: boolean; besideSel?: boolean; section?: string } = {}) {
   if (!list.length) return [];
   setState("views", (v) => ({ ...v, ...Object.assign({}, ...list.map((n) => n.views)) }));
   const ids: string[] = [];
@@ -44,7 +44,8 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; be
       const size = estSize(c, { w });
       let p: { x: number; y: number };
       const others = b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k));
-      if (o.at) p = findFree({ ...o.at, ...size }, others);
+      if (o.at && o.exact) { p = o.at; o.at = { x: o.at.x + 36, y: o.at.y + 36 }; }
+      else if (o.at) p = findFree({ ...o.at, ...size }, others);
       else if (prev) p = besideFree(prev, size, others);
       else { const vc = viewportCenter(); p = findFree({ x: vc.x - size.w / 2, y: vc.y - Math.min(size.h, 300) / 2, ...size }, others); }
       const pl: Place = { x: Math.round(p.x), y: Math.round(p.y), w };
@@ -99,12 +100,12 @@ export async function newWeb(at?: { x: number; y: number }, url?: string) {
   addCards([{ card: { id, kind: "web", url }, views: {} }], { at });
   fetchMeta(id, url);
 }
-export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "python", url?: string) {
+export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "python", url?: string, exact = false) {
   const sid = uid("s");
   const seg: Segment = { id: sid, src: { kind: "free", url }, path: "", lang, start: 1, end: Math.max(1, text.split("\n").length), text: text ? text.split("\n") : [""], version: { kind: "none" } };
   const id = uid("c");
   if (text) {
-    addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: 480 }], { at });
+    addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: 480 }], { at, exact });
   } else {
     // 空卡：写了代码才进撤销栈，什么都没写就消失
     const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 240, y: v.y - 60 }; })();
@@ -127,7 +128,7 @@ export async function requestViews(segs: Segment[]) {
 
 // ---------- 粘贴 ----------
 
-export async function pasteText(text: string, at?: { x: number; y: number }) {
+export async function pasteText(text: string, at?: { x: number; y: number }, exact = false) {
   if (!text.trim()) return;
   const k = classifyPaste(text);
   if (k.kind === "web") return newWeb(at, k.url);
@@ -136,10 +137,10 @@ export async function pasteText(text: string, at?: { x: number; y: number }) {
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";
   const r = await ask<NewCard | null>("paste", { text }).catch((e) => { err = (e as Error).message; return null; });
-  if (r) return addCards([r], { at });
+  if (r) return addCards([r], { at, exact });
   // GitHub 文件拿不到（离线、私有仓库没登录）：先留一张书签，链接不丢
   if (k.kind === "github") { toast(`Could not fetch this GitHub file${err ? `: ${err}` : ""}`); return newWeb(at, text.trim()); }
-  newFreeCode(at, text.replace(/\s+$/, ""), guessLang(text) ?? "python");
+  newFreeCode(at, text.replace(/\s+$/, ""), guessLang(text) ?? "python", undefined, exact);
 }
 
 
