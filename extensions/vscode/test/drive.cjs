@@ -34,15 +34,26 @@ async function openFile(page, name, line) {
 // 每次截图顺带跑通用界面断言（tools/review/audit.cjs），结果汇总到 audit.json；AUDIT_STRICT=1 时有问题算失败
 const { audit } = require("../../../tools/review/audit.cjs");
 const audits = [];
-const shot = async (page, n) => {
-  await page.screenshot({ path: `${OUT}/${n}.png` });
-  for (const fr of page.frames()) {
-    if (!(await fr.$("#board").catch(() => null))) continue;
-    const r = await audit(fr, n); audits.push(r);
-    for (const i of r.issues) console.log(`  ⚠ ${n}: ${i.rule} — ${i.what}`);
-    if (process.env.AUDIT_STRICT === "1") check(!r.issues.length, `${n} 通过界面断言`);
-    break;
+// 截图前等白板静止（动画放完、画布不再移动），并只截白板区域，避免 VS Code 状态栏等无关变化干扰截图比对
+const settle = (fr) => fr.evaluate(async () => {
+  const sig = () => { const w = document.querySelector(".world"); return (w ? getComputedStyle(w).transform : "") + "|" + [...document.querySelectorAll(".card")].map((c) => { const r = c.getBoundingClientRect(); return `${r.x|0},${r.y|0},${r.width|0},${r.height|0}`; }).join(";"); };
+  let last = "", same = 0;
+  for (let i = 0; i < 50 && same < 3; i++) {
+    await new Promise((r) => setTimeout(r, 150));
+    const busy = document.getAnimations().some((a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity);
+    const s = sig(); same = !busy && s === last ? same + 1 : 0; last = s;
   }
+}).catch(() => {});
+const shot = async (page, n) => {
+  let fr = null;
+  for (const x of page.frames()) if (await x.$("#board").catch(() => null)) { fr = x; break; }
+  if (!fr) { await page.screenshot({ path: `${OUT}/${n}.png` }); return; }
+  await settle(fr);
+  const box = await (await fr.frameElement()).boundingBox();
+  await page.screenshot({ path: `${OUT}/${n}.png`, clip: box ?? undefined });
+  const r = await audit(fr, n); audits.push(r);
+  for (const i of r.issues) console.log(`  ⚠ ${n}: ${i.rule} — ${i.what}`);
+  if (process.env.AUDIT_STRICT === "1") check(!r.issues.length, `${n} 通过界面断言`);
 };
 const card = (f, title) => f.locator(".card", { has: f.locator(".chead .ctitle", { hasText: new RegExp(`^${title.replace(/\./g, "\\.")}$`) }) });
 const boardJson = () => {

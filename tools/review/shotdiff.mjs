@@ -8,7 +8,7 @@ import { chromium } from "playwright-core";
 const [base, head, out, urlPrefix = "", urlSuffix = ""] = process.argv.slice(2);
 if (!base || !head || !out) { console.error("用法：shotdiff.mjs <基线> <这次> <输出> [URL 前缀]"); process.exit(2); }
 const THRESH = 32;        // 单个像素任一通道差超过这个值才算变了（滤掉抗锯齿）
-const CHANGED = 0.002;    // 变化像素超过 0.2% 才算这一步变了（滤掉光标闪烁等）
+const CHANGED = 0.005;    // 变化像素超过 0.5% 才算这一步变了（滤掉光标闪烁、语义高亮到达早晚等）
 fs.mkdirSync(out, { recursive: true });
 const pngs = (d) => (fs.existsSync(d) ? fs.readdirSync(d).filter((n) => n.endsWith(".png")).sort() : []);
 const exe = process.env.CHROMIUM ?? (fs.existsSync("/opt/pw-browsers/chromium-1194/chrome-linux/chrome") ? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" : undefined);
