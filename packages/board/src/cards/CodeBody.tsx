@@ -6,6 +6,7 @@ import { state, lineSel, setLineSel, reportSelection, flows } from "../state/sto
 import { Glyph } from "../stickers/glyphs";
 import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import { setGeo } from "../state/geo";
+import { look } from "../state/look";
 import { queueMeasure, observeResize } from "../state/measure";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging } from "../state/ui";
 import * as act from "../actions";
@@ -43,7 +44,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   onCleanup(unobserve);
   const observe = () => { unobserve(); if (srcEl?.isConnected) unobs.push(observeResize(srcEl, later)); unobs.push(observeResize(scrollEl, later)); later(); };
   onMount(observe);
-  createEffect(() => { rows(); notesOn(c().id); later(); });
+  createEffect(() => { rows(); notesOn(c().id); look(); later(); }); // 换材质主题：标题区高度变了，行的位置要重量
 
   const fromLines = createMemo(() => new Set(linksFrom(c().id).map((l) => `${l.from.seg}:${l.from.line}`)));
   const isHl = (s: Segment | undefined, l: number) => !!s?.hl?.includes(l);

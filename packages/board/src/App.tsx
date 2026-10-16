@@ -38,6 +38,8 @@ export function App() {
   return (
     <div class="app chrome" style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}>
       <Canvas />
+      {/* 报头 / 海报标题：只有 Newspaper、Poster、Soft Light、Drafting 显示（themes.css），默认 display: none */}
+      <div class="mast" aria-hidden="true"><span class="mn">{state.board.name}</span></div>
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
       <Show when={!walk()}><Toolbar /></Show>
       <Dock />

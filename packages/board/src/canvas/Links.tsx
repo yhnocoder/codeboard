@@ -6,6 +6,7 @@ import { geo, lineY } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
 import { hoverLink, setHoverLink, rubber, editing, popIn } from "../state/ui";
 import { cam } from "../state/camera";
+import { shape, fileHue } from "../state/look";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
@@ -48,6 +49,21 @@ function lineAt(id: string, seg?: string, line?: number) {
 
 type Geo = { d: string; mx: number; my: number; head?: string; tail?: string; port?: { x: number; y: number } };
 
+/** 箭头：tip 是尖，(ux, uy) 是来的方向（单位向量）。形状跟材质走（look.ts） */
+function headPath(tx: number, ty: number, ux: number, uy: number) {
+  const k = shape().head;
+  if (k === "dot") return `M${tx - 3.5} ${ty} a3.5 3.5 0 1 0 7 0 a3.5 3.5 0 1 0 -7 0`;
+  const l = k === "triangle" ? 8 : 7, w = 4;
+  const a = `M${tx - l * ux - w * uy} ${ty - l * uy + w * ux} L${tx} ${ty} L${tx - l * ux + w * uy} ${ty - l * uy - w * ux}`;
+  return k === "triangle" ? a + " Z" : a;
+}
+function portPath(x: number, y: number) {
+  const k = shape().port;
+  if (k === "square") return `M${x - 3} ${y - 3} h6 v6 h-6 Z`;
+  if (k === "diamond") return `M${x} ${y - 4} l4 4 -4 4 -4 -4 Z`;
+  return `M${x - 3} ${y} a3 3 0 1 0 6 0 a3 3 0 1 0 -6 0`;
+}
+
 /** Call link：起点自动选边（#27）。子卡在右 → 从这一行右端出；在左 → 左端出、进子卡右侧；在下面 → 左端出绕进子卡左侧 */
 function callGeo(L: Link): Geo | null {
   const p1 = lineAt(L.from.card, L.from.seg, L.from.line);
@@ -56,27 +72,30 @@ function callGeo(L: Link): Geo | null {
   const a = p1.r, b = e2.r;
   const y1 = p1.y, y2 = e2.pill ? b.y + b.h / 2 : headY(L.to.card, b);
   const side = b.x >= a.x + a.w - 24 ? "right" : b.x + b.w <= a.x + 24 ? "left" : "below";
-  let x1: number, x2: number, c1: number, c2: number, head: string;
+  let x1: number, x2: number, c1: number, c2: number, ux: number;
   if (side === "right") {
-    x1 = a.x + a.w; x2 = b.x - 6;
+    x1 = a.x + a.w; x2 = b.x - 6; ux = 1;
     const dx = clamp(Math.abs(x2 - x1) * 0.45, 24, 140);
     c1 = x1 + dx; c2 = x2 - dx;
-    head = `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`;
   } else if (side === "left") {
-    x1 = a.x; x2 = b.x + b.w + 6;
+    x1 = a.x; x2 = b.x + b.w + 6; ux = -1;
     const dx = clamp(Math.abs(x1 - x2) * 0.45, 24, 140);
     c1 = x1 - dx; c2 = x2 + dx;
-    head = `M${x2 + 5} ${y2 - 4} L${x2} ${y2} L${x2 + 5} ${y2 + 4}`;
   } else {
-    x1 = a.x; x2 = b.x - 6;
+    x1 = a.x; x2 = b.x - 6; ux = 1;
     const dx = clamp(Math.abs(y2 - y1) * 0.3 + Math.max(0, x1 - x2) * 0.6, 28, 130);
     c1 = x1 - dx; c2 = x2 - dx;
-    head = `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`;
+  }
+  const head = headPath(x2, y2, ux, 0), port = { x: x1, y: y1 };
+  if (shape().route === "elbow") {
+    // 制图：直角折线，像标注引线
+    const xm = side === "below" ? Math.min(x1, x2) - 24 : x1 + (x2 - x1) * 0.5;
+    return { d: `M${x1} ${y1} H${xm} V${y2} H${x2}`, mx: xm, my: (y1 + y2) / 2, head, port };
   }
   return {
     d: `M${x1} ${y1} C${c1} ${y1} ${c2} ${y2} ${x2} ${y2}`,
     mx: (x1 + 3 * c1 + 3 * c2 + x2) / 8, my: (y1 + y2) / 2,
-    head, port: { x: x1, y: y1 },
+    head, port,
   };
 }
 
@@ -102,9 +121,19 @@ function plainGeo(L: PlainLink): Geo | null {
   if (h) { const dx = Math.max(30, Math.abs(x2 - x1) * 0.45) * Math.sign(x2 - x1 || 1); c1 = [x1 + dx, y1]; c2 = [x2 - dx, y2]; }
   else { const dy = Math.max(30, Math.abs(y2 - y1) * 0.45) * Math.sign(y2 - y1 || 1); c1 = [x1, y1 + dy]; c2 = [x2, y2 - dy]; }
   const arrow = (tx: number, ty: number, fx: number, fy: number) => {
-    const len = Math.hypot(tx - fx, ty - fy) || 1, ux = (tx - fx) / len, uy = (ty - fy) / len;
-    return `M${tx - 7 * ux - 4 * uy} ${ty - 7 * uy + 4 * ux} L${tx} ${ty} L${tx - 7 * ux + 4 * uy} ${ty - 7 * uy - 4 * ux}`;
+    const len = Math.hypot(tx - fx, ty - fy) || 1;
+    return headPath(tx, ty, (tx - fx) / len, (ty - fy) / len);
   };
+  if (shape().route === "elbow") {
+    const xm = (x1 + x2) / 2, ym = (y1 + y2) / 2;
+    const d = h ? `M${x1} ${y1} H${xm} V${y2} H${x2}` : `M${x1} ${y1} V${ym} H${x2} V${y2}`;
+    const [e1, e2] = h ? [[xm, y2], [xm, y1]] : [[x2, ym], [x1, ym]];
+    return {
+      d, mx: h ? xm : (x1 + x2) / 2, my: ym,
+      head: L.arrow === "end" || L.arrow === "both" ? arrow(x2, y2, e1[0], e1[1]) : undefined,
+      tail: L.arrow === "both" ? arrow(x1, y1, e2[0], e2[1]) : undefined,
+    };
+  }
   return {
     d: `M${x1} ${y1} C${c1[0]} ${c1[1]} ${c2[0]} ${c2[1]} ${x2} ${y2}`,
     mx: (x1 + 3 * c1[0] + 3 * c2[0] + x2) / 8, my: (y1 + 3 * c1[1] + 3 * c2[1] + y2) / 8,
@@ -130,13 +159,14 @@ export function LinksSvg() {
         {(L) => {
           const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
           const on = () => sel.links.includes(L.id) || hoverLink() === L.id;
+          const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
           const cls = () => `edge${L.kind === "plain" ? " plain" + ((L as PlainLink).solid ? " solid" : "") + ((L as PlainLink).color ? ` lc-${(L as PlainLink).color}` : "") : ""}${on() ? " on" : ""}`;
           return (
             <Show when={g()}>
               <path class={cls()} d={g()!.d} />
-              <Show when={g()!.head}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
-              <Show when={g()!.tail}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
-              <Show when={g()!.port}><circle class="port" r="3" cx={g()!.port!.x} cy={g()!.port!.y} /></Show>
+              <Show when={g()!.head}><path class={`ahead ${shape().head}${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
+              <Show when={g()!.tail}><path class={`ahead ${shape().head}${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
+              <Show when={g()!.port}><path class={`port fc-${toHue()}`} d={portPath(g()!.port!.x, g()!.port!.y)} /></Show>
               <path class="lhit" data-link={L.id} d={g()!.d} style={{ "stroke-width": `${12 / cam.z}px` }}
                 onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
                 onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />

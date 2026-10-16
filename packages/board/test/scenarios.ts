@@ -373,21 +373,46 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.context().browser()!.close();
   },
   async themes() {
-    // 主题：Settings 里切换 8 种材质 × 明暗，每种截一张白板
+    // 主题：Settings 里切换 8 种材质 × 明暗，每种截一张白板。
+    // 白板：入口函数展开两个调用（向右摆开、线上带变量），一张 Note、一个 Section、一条带标签的箭头、一行标题；选中入口卡、弹一条提示
     const b = boardWith("LLMEngine.step");
+    for (const [q, name] of [["Scheduler.schedule", "schedule"], ["ModelRunner.run", "call"]] as const) {
+      const s0 = findSym(q); const c = symCard(s0.f, s0.s); put(b, c, 0, 0);
+      const seg = (b.cards[0] as any).segments[0], i = seg.text.findIndex((t: string) => t.includes(`.${name}(`));
+      b.links.push({ id: `c${b.links.length}`, kind: "call", from: { card: b.cards[0].id, seg: seg.id, line: seg.start + i }, to: { card: c.id }, call: { name, col: seg.text[i].indexOf(`.${name}(`) + 1 } } as any);
+    }
     const [a] = b.cards;
-    b.place[a.id] = { x: 80, y: 120, w: 560 };
+    const kids = b.links.filter((l) => l.kind === "call").map((l) => l.to.card);
+    b.place[a.id] = { x: 80, y: 200, w: 520 };
+    kids.forEach((id, i) => { b.place[id] = { x: 760, y: 60 + i * 420, w: 470, h: i ? 300 : 360 }; });
+    const vars = [[{ a: "seqs" }, { a: "is_prefill" }], [{ a: "token_ids", ret: true }]];
+    b.links.filter((l) => l.kind === "call").forEach((l, i) => { (l as any).vars = vars[i] ?? []; });
     const note = { id: "n1", kind: "note" as const, md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.", bg: true };
     const title = { id: "t1", kind: "note" as const, md: "Engine loop", bg: false, size: "title" as const };
     b.cards.push(note, title);
-    b.place[note.id] = { x: 120, y: 420, w: 360, section: "sec1" }; b.place[title.id] = { x: 60, y: 10, w: 300 };
-    b.sections.push({ id: "sec1", title: "Engine", x: 50, y: 80, w: 640, h: 520, color: "sand" });
+    b.place[note.id] = { x: 110, y: 520, w: 360, section: "sec1" }; b.place[title.id] = { x: 70, y: 70, w: 300 };
+    b.sections.push({ id: "sec1", title: "Engine", x: 50, y: 160, w: 600, h: 560, color: "sand" });
     b.place[a.id].section = "sec1";
     b.links.push({ id: "l1", kind: "plain", from: { card: note.id }, to: { card: a.id }, color: "blue", label: "why" } as any);
+    b.cam = { x: 120, y: 60, z: 0.92 };
     const h = await open({ board: b, light: false });
-    await callEl(h, "schedule").click(); await h.page.waitForTimeout(900);
+    await h.page.waitForTimeout(600);
     await h.page.keyboard.press("Escape");
-    await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(700);
+    const poke = async () => {
+      // 弹一条提示（没选卡时点 Arrow），再选中入口卡（点卡片头）
+      await h.page.keyboard.press("Escape");
+      await h.page.mouse.click(700, 24); // 画布空白处：清掉选择
+      await h.page.locator('.bbar .tbtn[aria-label="Arrow"]').click();
+      // 卡片头上一处空白（各材质的头排法不同，找一个点下去就是 .chead 本身的位置）
+      const pt = await h.page.evaluate((id) => {
+        const card = document.querySelector(`.card[data-id="${id}"]`)!, hd = card.querySelector(".chead")!, r = card.getBoundingClientRect();
+        for (let y = r.top + 3; y < r.top + 120; y += 4) for (let x = r.right - 40; x > r.left; x -= 6) { const e = document.elementFromPoint(x, y); if (e === hd || e?.matches(".chead .grow, .cband, .cband .cname")) return { x, y }; }
+        return { x: r.left + 4, y: r.top + 4 };
+      }, a.id);
+      await h.page.mouse.click(pt.x, pt.y);
+    };
+    await poke(); await h.page.waitForTimeout(400);
+    console.log("cards after poke:", h.board().cards.length, "toast:", await h.page.locator(".toast").count(), "selected:", await h.page.locator(".card.sel").count());
     const mode = async (m: "light" | "dark") => { await h.page.evaluate((c) => { document.body.className = c; }, `vscode-${m}`); await h.page.waitForTimeout(100); };
     for (const m of ["light", "dark"] as const) {
       await mode(m);
@@ -416,6 +441,8 @@ const S: Record<string, () => Promise<void>> = {
         await sw.click(); await h.page.waitForTimeout(150);
         if (i === n - 1) await shot(h, `theme-${m}-settings-${name}`);
         await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(150);
+        await poke();
+        if (await h.page.locator(".card.sel").count() !== 1) console.log("theme", m, name, "selected", await h.page.locator(".card.sel").count());
         await h.page.mouse.move(5, 450);
         await shot(h, `theme-${m}-${i}-${name}`);
         await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(150);

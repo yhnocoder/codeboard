@@ -24,8 +24,8 @@
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(50,35,10,.08), 0 10px 28px -8px rgba(50,35,10,.18);
 
   --sys: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", "PingFang SC", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
-  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
-  --serif: "Iowan Old Style", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  --serif: "Source Serif 4", "Iowan Old Style", "Songti SC", "Noto Serif SC", Georgia, serif;
   --t: 1;
   /* 材质主题（themes.css）可换的形状和字体 */
   --r-card: 9px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
@@ -132,7 +132,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .ib:hover, .tbtn:hover, .bname:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ib:active, .tbtn:active, .bname:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
 .ib[disabled] { opacity: .35; }
-.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1.4); stroke-linecap: round; stroke-linejoin: round; }
 .cdesc { padding: 7px 12px 6px; font-size: 12px; line-height: 1.55; color: var(--ink-2); border-bottom: 1px solid var(--line); flex: none; }
 .cdesc[contenteditable="true"], .ctitle[contenteditable="true"], .slabel .sname[contenteditable="true"] { user-select: text; -webkit-user-select: text; cursor: text; outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 3px; background: var(--surface); text-overflow: clip; }
 .cdesc:empty { display: none; }
@@ -147,9 +147,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .code { position: relative; padding: 6px 0 8px; font: 11px/20px var(--mono); min-width: max-content; }
 .gutter { position: absolute; left: 0; top: 0; bottom: 0; width: 54px; z-index: 2; pointer-events: none; }
 .gutter > * { pointer-events: auto; }
-.no { position: absolute; left: 2px; width: 30px; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: .65; }
+.no { position: absolute; left: 2px; width: 30px; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: var(--no-o, .65); }
 .no:hover { opacity: 1; color: var(--ink-2); }
-.no.link { color: var(--accent); opacity: 1; }
+.no.link { color: var(--no-link, var(--accent)); font-weight: var(--no-link-w, inherit); opacity: 1; }
 .no.jump::before { content: ""; position: absolute; left: 6px; right: -4px; top: -1px; border-top: 1px dashed var(--ink-3); opacity: .7; }
 .mk { position: absolute; left: 36px; width: 14px; height: 14px; margin-top: 3px; border-radius: 3.5px; background: var(--mark); color: var(--mark-ink); font: 600 9px/14px var(--sys); text-align: center; z-index: 2; }
 .mk:hover, .mk.on { background: var(--accent); color: var(--accent-ink); }
@@ -171,9 +171,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .gap b { font-weight: 500; color: var(--ink-2); padding: 1px 5px; border-radius: 4px; }
 .gap b:hover { color: var(--accent); background: var(--row); }
 .inote { white-space: normal; font: 12px/1.55 var(--sys); color: var(--ink-2); background: var(--inote); box-shadow: inset 2px 0 0 var(--ink-3); margin: 2px 12px 4px -2px; padding: 5px 10px; border-radius: 0 5px 5px 0; max-width: 520px; }
-.kw { color: var(--k-kw); } .fn { color: var(--k-fn); } .str { color: var(--k-str); } .com { color: var(--k-com); font-style: italic; }
+.kw { color: var(--k-kw); font-weight: var(--kw-w, inherit); } .fn { color: var(--k-fn); } .str { color: var(--k-str); font-style: var(--str-i, inherit); } .com { color: var(--k-com); font-style: var(--com-i, italic); }
 .num { color: var(--k-num); } .self { color: var(--k-self); } .p { color: var(--k-p); } .dec { color: var(--k-num); }
-.call { text-decoration: underline dotted color-mix(in srgb, var(--k-fn) 60%, transparent); text-underline-offset: 3px; cursor: pointer !important; border-radius: 3px; transition: background calc(var(--t) * 100ms); }
+.call { text-decoration: var(--call-deco, underline dotted color-mix(in srgb, var(--k-fn) 60%, transparent)); text-underline-offset: 3px; cursor: pointer !important; border-radius: 3px; transition: background calc(var(--t) * 100ms); }
 .call:hover { background: color-mix(in srgb, var(--k-fn) 12%, transparent); text-decoration-color: var(--k-fn); }
 .src span.pk:hover { background: var(--hlrow); border-radius: 3px; }
 .vhl { background: var(--hi) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--k-fn) 50%, transparent); border-radius: 3px; }
@@ -247,6 +247,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .edge.lc-green, .ahead.lc-green { stroke: var(--lk-green); }
 .edge.lc-orange.plain, .edge.lc-blue.plain, .edge.lc-green.plain { stroke-width: calc(var(--edge-w) * 1.2); }
 .edge.plain.hot, .ahead.hot { stroke: var(--accent); }
+.ahead.triangle, .ahead.dot { fill: var(--edge); }
+.ahead.triangle.lc-orange, .ahead.dot.lc-orange { fill: var(--lk-orange); } .ahead.triangle.lc-blue, .ahead.dot.lc-blue { fill: var(--lk-blue); } .ahead.triangle.lc-green, .ahead.dot.lc-green { fill: var(--lk-green); }
+.ahead.triangle.on, .ahead.dot.on, .ahead.triangle.hot, .ahead.dot.hot { fill: var(--accent); }
 .vlabel { font: 11.5px/1 var(--sys); padding: 4px 7px; border-radius: 5px; background: var(--surface); color: var(--ink-2); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); }
 /* merged card */
 .fbar { height: 24px; display: flex; align-items: center; gap: 6px; font: 11px/24px var(--mono); color: var(--ink-2); background: var(--head); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding-left: 8px; margin: 2px 12px 2px -58px; padding-left: 14px; }
@@ -418,6 +421,9 @@ kbd { font: 10.5px var(--mono); }
 .card.note .nbody, .card.text .tx { white-space: normal; }
 .card.note .nbody.editing, .card.text .tx.editing { white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
 
+/* 材质主题的部件（themes.css 按主题打开）：色带 / 大标题、卡片底栏、图注、报头 */
+.cband, .cxfoot, .cfig, .mast { display: none; }
+
 /* code card extras */
 .chead .ctitle { flex: 0 1 auto; }
 .plusn { font: 10.5px var(--mono); color: var(--ink-3); flex: none; }
@@ -450,7 +456,7 @@ kbd { font: 10.5px var(--mono); }
 .rowbg.vhi { background: var(--hi); }
 .no.sel { color: var(--accent); opacity: 1; }
 .gutter .no { cursor: pointer !important; }
-.lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--edge); z-index: 4; cursor: crosshair !important; opacity: .0; transition: opacity .1s; }
+.lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: var(--port-r, 50%); rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); z-index: 4; cursor: crosshair !important; opacity: .0; transition: opacity .1s; }
 .lport.l { left: -5px; } .lport.r { right: -5px; }
 .lport { opacity: 1; }
 .card:hover .lport { opacity: 1; }
@@ -486,7 +492,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .webb .wd { font: 11px var(--mono); color: var(--ink-3); }
 
 /* edge ports (drag out a plain link) */
-.eport { position: absolute; width: 9px; height: 9px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--edge); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair !important; }
+.eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair !important; }
 .card:hover > .eport { opacity: 1; }
 .card.text > .eport, .card.lift > .eport { display: none; }
 .eport:hover { background: var(--accent); box-shadow: 0 0 0 1.5px var(--accent); }
