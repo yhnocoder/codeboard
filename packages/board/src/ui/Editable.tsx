@@ -14,7 +14,9 @@ export function Editable(p: {
   createEffect(() => {
     if (!on() || !el) return;
     el.textContent = p.value;
-    queueMicrotask(() => {
+    // 从菜单点进来时，菜单关掉那一下会把焦点放回 body：等这一帧过去再拿焦点
+    const grab = () => {
+      if (!on() || !el.isConnected) return;
       el.focus({ preventScroll: true });
       const r = document.createRange();
       r.selectNodeContents(el);
@@ -22,7 +24,9 @@ export function Editable(p: {
       const s = window.getSelection();
       s?.removeAllRanges();
       s?.addRange(r);
-    });
+    };
+    queueMicrotask(grab);
+    requestAnimationFrame(() => { if (document.activeElement !== el) grab(); });
   });
   let done = false;
   const finish = (ok: boolean) => {

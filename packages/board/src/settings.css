@@ -71,3 +71,6 @@
   .st-keys { columns: 1; }
   .st-filter { width: 160px; }
 }
+.st-chip.pick { font: 12px var(--sys); color: var(--ink-2); background: none; box-shadow: inset 0 0 0 1px var(--hair); }
+.st-chip.pick:hover { background: var(--hlrow); }
+.st-chip.pick.on { color: var(--accent-ink); background: var(--accent); box-shadow: none; }

@@ -72,6 +72,13 @@ function SettingsPage(p: { section?: string }) {
             <button class="btn" onClick={() => send({ type: "openStickerDir" })}>Open Folder</button>
           </div>
         </Sec>
+        <Sec id="dblclick" title="Double-click on the board" hint="What double-clicking empty space creates.">
+          <div class="st-chips">
+            <For each={[["text", "Text"], ["note", "Note"], ["code", "Code"], ["none", "Nothing"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().dblClick ?? "text") === v }} onClick={() => A.setSetting("dblClick", v)}>{lb}</button>
+            )}</For>
+          </div>
+        </Sec>
         <Sec id="zoom" title="Zoom levels" hint="Below Overview, code turns into outlines. Below Map, cards show only numbers and titles.">
           <div class="st-row">
             <Pct label="Overview below" k="zoomOverview" min={20} max={100} />

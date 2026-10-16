@@ -149,8 +149,8 @@ export const WEB: Record<string, () => Promise<void>> = {
     await rows.nth(2).hover(); await h.page.waitForTimeout(800);
     await shot(h, "ll-03-hover-peek");
     // 单行切到 Rich
-    await rows.nth(1).hover(); await rows.nth(1).locator(".ltools .lb", { hasText: "Rich" }).click(); await h.page.waitForTimeout(200);
-    await rows.nth(0).hover(); await rows.nth(0).locator(".ltools .lb", { hasText: "Rich" }).click(); await h.page.waitForTimeout(200);
+    await rows.nth(1).hover(); await rows.nth(1).locator('.ltools .lb[aria-label="Show as Rich"]').click(); await h.page.waitForTimeout(200);
+    await rows.nth(0).hover(); await rows.nth(0).locator('.ltools .lb[aria-label="Show as Rich"]').click(); await h.page.waitForTimeout(200);
     await h.page.mouse.move(1300, 860); await h.page.waitForTimeout(200);
     await shot(h, "ll-04-mixed");
     await rows.nth(1).hover(); await h.page.waitForTimeout(250);

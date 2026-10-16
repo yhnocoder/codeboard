@@ -39,7 +39,7 @@ export function Bookmark(p: {
   const eid = () => p.editId ?? "";
   const editingDesc = () => editing()?.kind === "desc" && editing()?.id === eid();
   return (
-    <div class="wbm" classList={{ small: p.small, none: none(), banner: wide() && !p.small && !!img() }} data-drag={p.drag ? "" : undefined}>
+    <div class="wbm" classList={{ small: p.small, none: none(), wbanner: wide() && !p.small && !!img() }} data-drag={p.drag ? "" : undefined}>
       <div class="wmain">
         <Show when={!none()} fallback={
           <>

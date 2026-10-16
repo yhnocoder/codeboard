@@ -133,9 +133,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .ib[disabled] { opacity: .35; }
 .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1.4); stroke-linecap: round; stroke-linejoin: round; }
 .cdesc { padding: 7px 12px 6px; font-size: 12px; line-height: 1.55; color: var(--ink-2); border-bottom: 1px solid var(--line); flex: none; }
-.cdesc[contenteditable="true"], .ctitle[contenteditable="true"], .slabel .sname[contenteditable="true"] { user-select: text; -webkit-user-select: text; cursor: text; outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 3px; background: var(--surface); text-overflow: clip; }
+.cdesc[contenteditable], .ctitle[contenteditable], .slabel .sname[contenteditable] { user-select: text; -webkit-user-select: text; cursor: text; outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 3px; background: var(--surface); text-overflow: clip; }
 .cdesc:empty { display: none; }
-.cdesc[contenteditable="true"]:empty { display: block; min-height: 30px; }
+.cdesc[contenteditable]:empty { display: block; min-height: 30px; }
 .cbody { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; border-radius: 0 0 var(--r-card) var(--r-card); }
 .card.autoh .cbody { max-height: 460px; }
 .grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize !important; z-index: 3; }
@@ -307,11 +307,14 @@ math { font-size: 1.05em; }
   transition: opacity calc(var(--t) * 70ms) linear, scale calc(var(--t) * 300ms) linear(0, .42 6%, .74 13%, .93 21%, 1.03 30%, 1.05 37%, 1.035 46%, 1.01 58%, .998 72%, 1), visibility 0s; }
 @media (prefers-reduced-motion: reduce) { .ctx.open { transition-duration: 0s; } }
 .ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 5px; font-size: 12.5px; color: var(--ink); text-align: left; }
+.ctx button .lb { flex: 1 1 auto; }
 .ctx button .ck { width: 12px; flex: none; color: var(--accent); font-size: 11px; }
 .ctx button:not([disabled]):hover { background: var(--accent); color: var(--accent-ink); }
 .ctx button:not([disabled]):hover .ck { color: var(--accent-ink); }
 .ctx button small { margin-left: auto; font: 10.5px var(--mono); color: var(--ink-3); padding-left: 12px; white-space: nowrap; }
 .ctx button:not([disabled]):hover small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+.ctx button.danger { color: #d6453d; }
+.ctx button.danger:not([disabled]):hover { background: #d6453d; color: #fff; }
 .ctx button[disabled] { color: var(--ink-3); flex-wrap: wrap; row-gap: 0; }
 .ctx button .why { flex-basis: 100%; font: 11px/1.35 var(--sys); color: var(--ink-3); padding: 1px 0 2px 22px; white-space: normal; }
 .ctx hr { border: 0; height: .5px; background: var(--hair); margin: 4px 6px; }
@@ -421,7 +424,8 @@ kbd { font: 10.5px var(--mono); }
 .sp { height: .6em; }
 .math { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
 .card.note .nbody, .card.text .tx { white-space: normal; }
-.card.note .nbody.editing, .card.text .tx.editing { white-space: pre-wrap; font-family: var(--mono); font-size: 12px; }
+/* 编辑时跟显示时同一种字体、同一个位置，不再套一层白框（卡本身已经有选中框） */
+.card.note .nbody.editing, .card.text .tx.editing { white-space: pre-wrap; box-shadow: none; background: none; border-radius: 0; }
 
 /* 材质主题的部件（themes.css 按主题打开）：色带 / 大标题、卡片底栏、图注、报头 */
 .cband, .cxfoot, .cfig, .mast { display: none; }
@@ -664,6 +668,16 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .vrow .vto { color: var(--ink-3); }
 .vrow:hover > span { color: var(--k-fn); background: var(--hi); }
 .vchips.on .vbox { box-shadow: 0 0 0 1.5px var(--accent); }
+/* 标签框：↺ / 自己写的标签在上，变量在下，同一个框 */
+.vcard { display: flex; flex-direction: column; align-items: stretch; border-radius: 6px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); overflow: hidden; }
+.vcard .vbox, .vcard .vlabel { background: none; box-shadow: none; border-radius: 0; }
+.vhead { display: flex; align-items: center; gap: 5px; padding: 0 7px 0 6px; min-height: 22px; }
+.vhead .vlabel { padding: 4px 0; font-weight: 500; color: var(--ink); }
+.vloop { display: inline-flex; align-items: center; gap: 4px; font: 11px/1 var(--sys); color: var(--k-fn); }
+.vloop i { font-style: normal; color: var(--ink-3); }
+.vcard.split .vhead { border-bottom: .5px solid var(--hair); background: color-mix(in srgb, var(--surface) 92%, var(--ink)); }
+.vchips.on .vcard { box-shadow: 0 0 0 1.5px var(--accent); }
+.vchips.on .vcard .vbox, .vchips.on .vcard .vlabel { box-shadow: none; }
 .mkcall { font: 500 10.5px/1 var(--sys); padding: 4px 7px; border-radius: 5px; background: var(--surface); color: var(--accent); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
 .mkcall:hover { background: var(--accent); color: var(--accent-ink); }
 
@@ -779,3 +793,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 删掉的卡：原地留一份副本缩小淡出（state/ghost.ts） */
 .card.ghost-out { pointer-events: none !important; transition: opacity calc(var(--t) * 180ms) var(--in, ease-in), scale calc(var(--t) * 200ms) var(--in, ease-in); transform-origin: 50% 40%; }
 .card.ghost-out.go { opacity: 0; scale: .94; }
+/* Copy Code：只有图标，悬停 / 选中卡时出现 */
+.chead .ib.cpy { opacity: 0; transition: opacity calc(var(--t) * 120ms); }
+.card:hover .chead .ib.cpy, .card.sel .chead .ib.cpy, .chead .ib.cpy:focus-visible { opacity: 1; }

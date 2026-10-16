@@ -289,17 +289,26 @@ export function LinkLabels() {
                 onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
                 onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus")) return; e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }}>
                 <Show when={plus() && vars().length}><button class="vplus in" data-tip="Variables on this call" aria-label="Variables on this call" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button></Show>
-                <Show when={L.kind === "call" && L.loop}><span class="vchip loop" data-tip="Called inside a loop">↺</span></Show>
-                <Show when={L.label || editingLabel()}>
-                  <Editable class="vlabel" kind="label" id={L.id} value={L.label ?? ""} placeholder="Label" onCommit={(v) => A.setLinkLabel(L.id, v)} />
-                </Show>
-                <Show when={vars().length}>
-                  <div class="vbox">
-                    <For each={vars()}>{(v) => (
-                      <div class="vrow" data-k={varKey(v)} onPointerEnter={() => A.hiVar(L, v, true)} onPointerLeave={() => A.hiVar(L, v, false)}>
-                        <span class="va">{v.ret ? "return" : v.a}</span><span class="vto">{v.ret || v.b ? "→" : ""}</span><span class="vb">{v.ret ? v.a : v.b ?? ""}</span>
+                {/* 一个框：上面一行是 ↺ 和自己写的标签，下面是变量；只有其中一样时就只是那一样 */}
+                <Show when={(L.kind === "call" && L.loop) || L.label || editingLabel() || vars().length}>
+                  <div class="vcard" classList={{ split: !!((L.kind === "call" && L.loop) || L.label || editingLabel()) && !!vars().length }}>
+                    <Show when={(L.kind === "call" && L.loop) || L.label || editingLabel()}>
+                      <div class="vhead">
+                        <Show when={L.kind === "call" && L.loop}><span class="vloop" data-tip="Called inside a loop">↺<Show when={!L.label && !editingLabel()}><i>in a loop</i></Show></span></Show>
+                        <Show when={L.label || editingLabel()}>
+                          <Editable class="vlabel" kind="label" id={L.id} value={L.label ?? ""} placeholder="Label" onCommit={(v) => A.setLinkLabel(L.id, v)} />
+                        </Show>
                       </div>
-                    )}</For>
+                    </Show>
+                    <Show when={vars().length}>
+                      <div class="vbox">
+                        <For each={vars()}>{(v) => (
+                          <div class="vrow" data-k={varKey(v)} onPointerEnter={() => A.hiVar(L, v, true)} onPointerLeave={() => A.hiVar(L, v, false)}>
+                            <span class="va">{v.ret ? "return" : v.a}</span><span class="vto">{v.ret || v.b ? "→" : ""}</span><span class="vb">{v.ret ? v.a : v.b ?? ""}</span>
+                          </div>
+                        )}</For>
+                      </div>
+                    </Show>
                   </div>
                 </Show>
                 <Show when={mk()}><button class="mkcall" data-tip="This line calls the target. Make it a numbered call." onPointerDown={(e) => e.stopPropagation()} onClick={() => A.makeCall(L.id)}>Make Call</button></Show>

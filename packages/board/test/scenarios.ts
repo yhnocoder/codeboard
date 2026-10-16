@@ -285,6 +285,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.locator(".card .src .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(700);
     const root = h.board().cards[0].id;
     await h.page.locator(".card").first().locator(".chead").click({ button: "right" }); await h.page.waitForTimeout(200);
+    await h.page.locator('.ctx button:has(.lb:text-is("Flow"))').hover(); await h.page.waitForTimeout(400);
     await h.page.locator(".ctx button", { hasText: /Collapse/ }).first().click(); await h.page.waitForTimeout(1500);
     const before = JSON.stringify(h.board());
     await h.page.keyboard.press("Escape"); await h.page.keyboard.press("p"); await h.page.waitForTimeout(600);

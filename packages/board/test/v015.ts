@@ -81,8 +81,8 @@ export const V015: Record<string, () => Promise<void>> = {
     await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.waitForTimeout(300);
     await shot(h, "v15-07-picker");
     await h.page.locator(".stkpick .scell").nth(3).click();
-    const l = h.page.locator(".card").first().locator(".src .l").nth(5);
-    await l.click({ position: { x: 40, y: 8 } }); await h.page.waitForTimeout(200);
+    // 点行号栏 → 贴在那一行（点代码正文 → 绑在卡上，v15bind 测）
+    await h.page.locator(".card").first().locator(".gutter .no").nth(5).click(); await h.page.waitForTimeout(200);
     await h.page.mouse.click(1200, 800); await h.page.waitForTimeout(200);
     await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.waitForTimeout(200);
     await h.page.locator(".stkpick .scell").nth(0).click();
@@ -238,6 +238,68 @@ export const V015: Record<string, () => Promise<void>> = {
     const [m, s] = rs;
     const ok = rs.length === 2 && (s.l >= m.r - 6 || s.r <= m.l + 6) && s.r <= vw.width && s.l >= 0;
     console.log(ok ? "PASS" : "FAIL", "submenu-no-cover", JSON.stringify(rs));
+    await close(h);
+  },
+  /** 代码卡菜单：Edit ▸ Add Description 进入编辑、打字、⌘↵ 保存；标题栏有 Copy Code 图标 */
+  async v15desc() {
+    const b = emptyBoard("b1", "desc");
+    put(b, card("Scheduler.schedule"), 80, 80, 560);
+    const h = await open({ board: b, light, w: 1200, h: 800 });
+    const hd = h.page.locator(".card .chead").first();
+    await hd.click({ button: "right", position: { x: 200, y: 12 } }); await h.page.waitForTimeout(350);
+    await shot(h, "v15-cardmenu");
+    await h.page.locator('.ctx button:has(.lb:text-is("Edit"))').hover(); await h.page.waitForTimeout(400);
+    await shot(h, "v15-cardmenu-edit");
+    await h.page.locator(".ctx button", { hasText: "Add Description" }).click(); await h.page.waitForTimeout(300);
+    const editing = await h.page.locator(".cdesc.editing").count();
+    const focused = await h.page.evaluate(() => document.activeElement?.classList.contains("cdesc") ?? false);
+    await h.page.keyboard.type("Picks prefill first."); await h.page.keyboard.press("Meta+Enter"); await h.page.keyboard.press("Control+Enter"); await h.page.waitForTimeout(1400);
+    const desc = (h.board().cards[0] as any).desc;
+    await hd.hover(); await h.page.waitForTimeout(200);
+    const cpy = await h.page.locator(".chead .ib.cpy").first().evaluate((e) => getComputedStyle(e).opacity);
+    await shot(h, "v15-desc");
+    console.log(editing === 1 && focused && desc === "Picks prefill first." && cpy === "1" ? "PASS" : "FAIL", "add-description", JSON.stringify({ editing, focused, desc, cpy }));
+    await close(h);
+  },
+  /** 线上的标签框：↺ + 变量、自己写的标签 + 变量、只有 ↺、只有标签 */
+  async v15vlabel() {
+    const b = richBoard();
+    const L1 = b.links[0] as any, L2 = b.links[1] as any;
+    L1.loop = true; L2.label = "my own label"; L2.loop = true;
+    const step = b.cards[0], tail = card("Scheduler.preempt");
+    put(b, tail, 780, 640, 420);
+    b.links.push({ id: "L3", kind: "plain", from: { card: b.cards[2].id }, to: { card: tail.id }, label: "only a label", arrow: "end" } as any);
+    void step;
+    const h = await open({ board: b, light, w: 1400, h: 950 });
+    await shot(h, "v15-vlabel");
+    const n = await h.page.locator(".vcard").count();
+    console.log(n === 3 ? "PASS" : "FAIL", "vlabel-boxes", n);
+    await close(h);
+  },
+  /** 双击空白处新建 Text：编辑时跟显示时同字体、同位置，没有套白框 */
+  async v15dbl() {
+    const h = await open({ board: emptyBoard("b1", "dbl"), light, w: 900, h: 600 });
+    await h.page.mouse.dblclick(300, 200); await h.page.waitForTimeout(300);
+    await shot(h, "v15-dbl-1");
+    await h.page.keyboard.type("Hello board");
+    await shot(h, "v15-dbl-2");
+    const r = await h.page.evaluate(() => { const t = document.querySelector<HTMLElement>(".tx.editing")!; const cs = getComputedStyle(t); const c = t.closest(".card")!.getBoundingClientRect(), tr = t.getBoundingClientRect(); return { font: cs.fontFamily.slice(0, 20), bg: cs.backgroundColor, sh: cs.boxShadow, inset: Math.round(tr.left - c.left), w: Math.round(c.width - tr.width) }; });
+    console.log(r.sh === "none" && r.inset < 10 && r.w < 20 ? "PASS" : "FAIL", "dblclick-text", JSON.stringify(r));
+    await close(h);
+  },
+  /** 空的 New Code：点它自己的语言下拉、选一项，卡还在；之后点空白处才消失 */
+  async v15freelang() {
+    const h = await open({ board: emptyBoard("b1", "free"), light, w: 1000, h: 700 });
+    await h.page.mouse.click(300, 200, { button: "right" }); await h.page.waitForTimeout(300);
+    await h.page.locator(".ctx button", { hasText: "New Code" }).click(); await h.page.waitForTimeout(400);
+    await h.page.locator(".card .rev.lang").first().click(); await h.page.waitForTimeout(400);
+    const afterOpen = await h.page.locator(".card").count();
+    await h.page.locator(".ctx button").nth(2).click(); await h.page.waitForTimeout(400);
+    const afterPick = await h.page.locator(".card").count();
+    const focused = await h.page.evaluate(() => document.activeElement?.classList.contains("freeedit") ?? false);
+    await h.page.mouse.click(800, 500); await h.page.waitForTimeout(600);
+    const afterAway = await h.page.locator(".card:not(.ghost-out)").count();
+    console.log(afterOpen === 1 && afterPick === 1 && focused && afterAway === 0 ? "PASS" : "FAIL", "free-lang-keeps-card", JSON.stringify({ afterOpen, afterPick, focused, afterAway }));
     await close(h);
   },
 };

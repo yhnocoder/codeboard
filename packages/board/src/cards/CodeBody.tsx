@@ -1,6 +1,23 @@
 // 代码卡的代码区：行号栏（绝对定位，按实测行位置摆）+ Sidenote 标记列 + 一整块连续的代码文本。
 // 代码是一整块，选区连续；复制时只要代码文本、不带行号（copy 事件里自己拼）。
 import { lod } from "../state/camera";
+import { menuOpen } from "../ui/Menu";
+
+/** 第 i 个字符前面有没有没配对的引号（单行内；三引号字符串的中间行靠高亮 class 判断） */
+function inQuotes(t: string, i: number) {
+  let q = "";
+  for (let k = 0; k < i; k++) {
+    const ch = t[k];
+    if (q) { if (ch === "\\") k++; else if (ch === q) q = ""; }
+    else if (ch === '"' || ch === "'") q = ch;
+    else if (ch === "#") return true;
+  }
+  return !!q;
+}
+
+// 最近一次按下的元素（blur 时判断焦点是不是被同一张卡上的东西拿走的；不可聚焦的地方 relatedTarget 是空的）
+let lastDown: HTMLElement | null = null;
+window.addEventListener("pointerdown", (e) => { lastDown = e.target as HTMLElement; }, true);
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
 import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection, flows } from "../state/store";
@@ -209,6 +226,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     // 鼠标确实在这个词上（不是行尾空白）
     const tr = (rng.startContainer as Text).length !== undefined ? rng : null;
     if (!word || !/^[A-Za-z_]/.test(word) || KW.has(word) || !tr || /#/.test(text.slice(0, a))) return clearPeek();
+    // 字符串、注释里的字不是代码里的名字：不弹 Peek（看高亮的 class；没高亮时数引号）
+    const tok = (rng.startContainer.parentElement as HTMLElement | null)?.closest?.(".str, .com");
+    if (tok || inQuotes(text, a)) return clearPeek();
     const key = `${r.seg}:${r.line}:${a}`;
     if (key === peekKey) return;
     clearPeek();
@@ -296,7 +316,19 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         <textarea class="freeedit" spellcheck={false} value={c().segments[0].text.join("\n")} ref={(el) => queueMicrotask(() => { el.focus(); el.style.height = `${el.scrollHeight}px`; })}
           onPointerDown={(e) => e.stopPropagation()} onInput={(e) => { e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; }}
           onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "    "); } }}
-          onBlur={(e) => { act.setFreeCode(c().id, e.currentTarget.value.replace(/\s+$/, "")); setEditing(null); }} />
+          onBlur={(e) => {
+            const el = e.currentTarget;
+            // 点的是这张卡自己的东西（语言下拉、标题栏按钮）或它弹出的菜单：还在编辑，菜单关掉后把光标放回来；不算"点了别处"
+            const t = (e.relatedTarget as HTMLElement | null) ?? lastDown;
+            if (t && t !== el && (el.closest(".card")?.contains(t) || t.closest?.(".ctx"))) {
+              const back = () => { if (!el.isConnected || editing()?.id !== c().id) return; if (menuOpen()) return void setTimeout(back, 80);
+                const d = lastDown, mine = !!d && (el.closest(".card")?.contains(d) || !!d.closest?.(".ctx"));
+                if (mine) el.focus({ preventScroll: true }); else { act.setFreeCode(c().id, el.value.replace(/\s+$/, "")); setEditing(null); } };
+              setTimeout(back, 0);
+              return;
+            }
+            act.setFreeCode(c().id, el.value.replace(/\s+$/, "")); setEditing(null);
+          }} />
       </Show>
       <Show when={!freeEditing()}>
       <div ref={codeEl} class="code" onCopy={onCopy}>

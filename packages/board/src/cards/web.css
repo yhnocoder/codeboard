@@ -15,9 +15,9 @@
 .wbm .wimg { flex: 0 0 30%; max-width: 156px; min-height: 84px; position: relative; border-left: 1px solid var(--line); background: var(--hlrow); }
 .wbm .wimg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: center; display: block; pointer-events: none; }
 /* 横幅：横图放在卡片顶上，按原比例整张显示（最高 220px，超出时居中裁） */
-.wbm.banner { flex-direction: column; }
-.wbm.banner .wimg { order: -1; flex: none; max-width: none; min-height: 0; width: 100%; aspect-ratio: 1.91 / 1; max-height: 220px; border-left: 0; border-bottom: 1px solid var(--line); }
-.wbm.banner .wtitle { padding-right: 0; }
+.wbm.wbanner { flex-direction: column; }
+.wbm.wbanner .wimg { order: -1; flex: none; max-width: none; min-height: 0; width: 100%; aspect-ratio: 1.91 / 1; max-height: 220px; border-left: 0; border-bottom: 1px solid var(--line); }
+.wbm.wbanner .wtitle { padding-right: 0; }
 /* 什么都没抓到：域名首字母 + 域名 + 路径（按字符断行，最多两行） */
 .wbm .wpath { font: 11px/1.45 var(--mono); color: var(--ink-3); word-break: break-all; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .wbm .wacts2 { display: flex; align-items: center; gap: 4px; font-size: 11.5px; color: var(--ink-3); margin-top: 2px; }

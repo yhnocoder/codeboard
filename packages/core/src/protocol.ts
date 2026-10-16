@@ -28,9 +28,10 @@ export type Settings = {
   stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）
   zoomMap: number; // 低于这个比例：地图（只剩编号和名字）
+  dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
 };
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25,
+  theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
 };
 
 /** 贴纸图标包：Iconify JSON 一个文件一套，或一个装 .svg 的文件夹（文件夹名 = 包名） */

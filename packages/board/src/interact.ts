@@ -351,7 +351,13 @@ export function canvasPointerDown(e: PointerEvent) {
   if (connectFrom()) { setConnectFrom(null); toast("Connect cancelled"); return; }
   e.preventDefault();
   closeAllPops();
-  if (isDbl("canvas")) { const w = worldOf(e); A.newNote({ x: w.x, y: w.y - 12 }, false); return; }
+  if (isDbl("canvas")) {
+    const w = worldOf(e), k = state.host.settings.dblClick ?? "text";
+    if (k === "text") A.newNote({ x: w.x, y: w.y - 12 }, false);
+    else if (k === "note") A.newNote({ x: w.x, y: w.y - 18 }, true);
+    else if (k === "code") A.newFreeCode({ x: w.x, y: w.y - 18 });
+    return;
+  }
   if (tool === "section") return drawSection(e);
   const base = e.shiftKey ? [...sel.cards] : [];
   if (!e.shiftKey) clearSel();

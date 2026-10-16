@@ -134,6 +134,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted")}>
         <button class="rev unc" data-tip="HEAD vs Working Tree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openWorktreeDiff(c().id)}>+ uncommitted</button>
       </Show>
+      <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
       <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
     </div>
   );

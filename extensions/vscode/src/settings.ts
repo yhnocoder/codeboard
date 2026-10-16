@@ -10,6 +10,7 @@ const KEY: Record<keyof Settings, string> = {
   stickerDir: "stickerFolder",
   zoomOverview: "zoom.overview",
   zoomMap: "zoom.map",
+  dblClick: "doubleClick",
 };
 
 export function readSettings(): Settings {

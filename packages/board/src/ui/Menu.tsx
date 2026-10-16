@@ -49,7 +49,7 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
           it ? (
             <button role="menuitem" class={it.danger ? "danger" : ""} disabled={!!it.disabled} title={typeof it.disabled === "string" ? it.disabled : it.hint}
               onPointerEnter={(e) => {
-                if (it.sub) { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); if (subOf()?.i !== i()) setSubOf({ i: i(), x: r.right - 4, y: r.top - 5, alt: pos().x }); }
+                if (it.sub && !it.disabled) { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); if (subOf()?.i !== i()) setSubOf({ i: i(), x: r.right - 4, y: r.top - 5, alt: pos().x }); }
                 else setSubOf(null);
               }}
               onClick={() => { if (it.sub || it.disabled) return; p.onClose(); it.run?.(); }}>

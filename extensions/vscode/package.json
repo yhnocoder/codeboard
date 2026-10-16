@@ -461,6 +461,13 @@
           "default": "",
           "description": "Folder with sticker packs (Iconify JSON files or folders of SVGs)."
         },
+        "codeboard.doubleClick": {
+          "type": "string",
+          "enum": ["text", "note", "code", "none"],
+          "enumDescriptions": ["Text", "Note", "Free Code card", "Nothing"],
+          "default": "text",
+          "description": "What double-clicking empty board space creates."
+        },
         "codeboard.zoom.overview": {
           "type": "number",
           "default": 0.6,

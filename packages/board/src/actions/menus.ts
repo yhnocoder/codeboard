@@ -91,9 +91,9 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Edit", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) },
     { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
     null, ...common, null,
-    { label: "Delete", kbd: "⌫", run: deleteSel },
+    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
   ], x, y);
-  if (c.kind === "web" || c.kind === "links") return openMenu([...webMenuItems(c), null, ...common, null, { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel }, { label: "Delete", kbd: "⌫", run: deleteSel }], x, y);
+  if (c.kind === "web" || c.kind === "links") return openMenu([...webMenuItems(c), null, ...common, null, { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel }, { label: "Delete", kbd: "⌫", danger: true, run: deleteSel }], x, y);
   if (c.kind === "image") return openMenu([
     { label: "Background", checked: !!c.bg, run: () => toggleNoBg(id) },
     { label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent([id]) },
@@ -101,7 +101,7 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Edit Description", run: () => setEditing({ kind: "desc", id }) },
     null, ...common, null,
     { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
-    { label: "Delete", kbd: "⌫", run: deleteSel },
+    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
   ], x, y);
   if (c.kind === "compare") {
     const inFlow = c.cols.some((k) => flows().byId.has(k));
@@ -114,7 +114,7 @@ export function cardMenu(id: string, x: number, y: number) {
       { label: "Walk Through Flow", kbd: "P", disabled: inFlow ? false : "Not in a call flow", run: () => startWalk(c.cols.find((k) => flows().byId.has(k))!) },
       { label: "Move to New Section", run: () => moveToNewSection() },
       lockItem, arrangeItem(() => [host.id]), null,
-      { label: "Delete", kbd: "⌫", run: deleteSel },
+      { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
     ], x, y);
   }
   if (!isCode(c)) return;
@@ -134,27 +134,28 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Wrap Lines", kbd: `${K.alt}Z`, checked: !!c.wrap, run: () => toggleWrap([c.id]) },
     ...(col ? [] : [{ label: "No Background", checked: !!c.nobg, run: () => toggleNoBg(c.id) } as Item]),
   ];
+  // 界面上已经有的（双击标题改名、标题栏的 commit 按钮、Copy Code 图标、⌘D）不进菜单。先这样分组，用一阵看哪些高频再拿出来
+  const edit: Item[] = [
+    { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
+    { label: "Add Sidenote", kbd: "S", run: () => (ls?.card === c.id ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) : openAddNote({ card: c.id })) },
+    ...(col ? [] : [lockItem]),
+    ...(c.segments.length > 1 || c.mergedFrom ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
+  ];
+  const flow: Item[] = [
+    { label: "Select", run: () => selectFlow(c.id) },
+    { label: "Walk Through", kbd: "P", run: () => startWalk(c.id) },
+    { label: placeOf(c.id).collapsed ? "Expand" : "Collapse", disabled: hasKids ? false : "No calls below this card", run: () => toggleCollapse(c.id) },
+  ];
   const items: Item[] = [
     ...(free ? [] : [{ label: "Open in Editor", kbd: "↵", run: () => openCode(c.id) } as Item]),
-    ...(free || c.segments[0]?.src.kind === "github" ? [] : [
-      { label: "Switch Commit…", run: () => { const el = document.querySelector(`.card[data-id="${cardById(c.id)!.host.id}"] .rev`); if (el) commitMenu(c.id, el); } } as Item,
-    ]),
-    { label: "Rename", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id: c.id }) },
-    { label: c.desc ? "Edit Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
-    { label: "Add Sidenote", kbd: "S", run: () => (ls?.card === c.id ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) : openAddNote({ card: c.id })) },
-    null,
-    { label: "View", sub: view },
     ...(col ? [] : [{ label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
+    { label: "Edit", sub: edit },
+    { label: "View", sub: view },
+    { label: "Flow", sub: flow, disabled: node ? false : "Not in a call flow" },
+    ...(col ? [] : [arrangeItem(() => [host.id])]),
     null,
-    { label: "Select Flow", disabled: node ? false : "Not in a call flow", run: () => selectFlow(c.id) },
-    { label: "Walk Through Flow", kbd: "P", disabled: node ? false : "Not in a call flow", run: () => startWalk(c.id) },
-    ...(hasKids ? [{ label: placeOf(c.id).collapsed ? "Expand Subtree" : "Collapse Subtree", run: () => toggleCollapse(c.id) } as Item] : []),
-    null,
-    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, lockItem, arrangeItem(() => [host.id])]),
-    ...(c.segments.length > 1 || c.mergedFrom ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
-    { label: "Copy Code", run: () => copyCard(c) },
-    { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
-    { label: "Delete", kbd: "⌫", run: deleteSel },
+    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item]),
+    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
   ];
   openMenu(items, x, y);
 }
@@ -175,7 +176,7 @@ function multiItems(): Item[] {
     arrangeItem(() => [...sel.cards]),
     null,
     { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
-    { label: "Delete", kbd: "⌫", run: deleteSel },
+    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
   ];
 }
 
