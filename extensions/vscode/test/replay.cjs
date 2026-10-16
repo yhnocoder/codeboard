@@ -435,7 +435,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     const kinds = [["code", ".card.ccard .chead"], ["note", ".card.note"], ["web", ".card.web"], ["image", ".card.image"]].filter(([k]) => !R19_KINDS || R19_KINDS.includes(k));
     if (!(await f.locator(".card.image").count())) { await blank(f, page); await pasteImage(f); }
     const fb = await (await f.frameElement()).boundingBox();
-    const dead = [];
+    const dead = [], unreachable = [];
     for (const [k, sel] of kinds) {
       await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
       const t = f.locator(sel).first();
@@ -448,7 +448,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       for (const it of top) {
         if (it.off || SKIP.test(it.label)) continue;
         if (!it.sub) { paths.push([it.label]); continue; }
-        await f.locator(".ctx").first().locator(":scope > button", { hasText: it.label }).first().hover(); await sleep(450);
+        await f.locator(".ctx").first().locator(":scope > button", { hasText: it.label }).first().hover({ timeout: 5000 }).catch(() => {}); await sleep(450);
         const subs = await list(f.locator(".ctx").nth(1)).catch(() => []);
         for (const s of subs) if (!s.off && !s.sub && !SKIP.test(s.label)) paths.push([it.label, s.label]);
       }
@@ -456,13 +456,23 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       // "Has an effect" means the picture or the saved board changed: a DOM change nobody can see (e.g. an editor hidden by CSS) does not count
       const neutral = () => page.mouse.move(fb.x + 4, fb.y + fb.height / 2);
       const look = async () => { await neutral(); await sleep(250); await settle(f); return page.screenshot({ clip: fb }); };
+      // Open the menu and click the item at path p; one retry with the menu reopened (a tooltip or late re-render can close it)
+      const pick = async (p) => {
+        for (let t = 0; ; t++) {
+          try {
+            await open();
+            if (p.length > 1) { await f.locator(".ctx").first().locator(":scope > button", { hasText: p[0] }).first().hover({ timeout: 5000 }); await sleep(450); }
+            const m = f.locator(".ctx").nth(p.length - 1);
+            await m.locator(":scope > button", { has: f.locator(".lb", { hasText: new RegExp(`^${p[p.length - 1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }) }).first().click({ timeout: 5000 });
+            return true;
+          } catch (e) { if (t) { unreachable.push(`${k}: ${p.join(" › ")} (${String(e.message).split("\n")[0]})`); return false; } await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await sleep(400); }
+        }
+      };
       for (const p of paths) {
         await blank(f, page); await open(); await page.keyboard.press("Escape"); await sleep(250); // right-click selects the card, so let the selection into the "before" picture
         const a = await look(), j0 = JSON.stringify(boardJson());
-        await open();
-        if (p.length > 1) { await f.locator(".ctx").first().locator(":scope > button", { hasText: p[0] }).first().hover(); await sleep(450); }
-        const m = f.locator(".ctx").nth(p.length - 1);
-        await m.locator(":scope > button", { has: f.locator(".lb", { hasText: new RegExp(`^${p[p.length - 1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }) }).first().click(); await sleep(700);
+        if (!(await pick(p))) continue;
+        await sleep(700);
         const b = await look(), j1 = JSON.stringify(await waitJson(() => true, 300));
         if (process.env.DEBUG) console.log("   ", k, p.join(" › "), a.equals(b) ? "picture unchanged" : "picture changed", j0 === j1 ? "save unchanged" : "save changed");
         // Bring to front / send to back are no-ops when already there (the menu should ideally disable them; not a failure here)
@@ -482,6 +492,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       }
       check(paths.length > 0, `read the menu items of the ${k} card`, top);
     }
+    check(!unreachable.length, "every menu item can be clicked", unreachable);
     check(!dead.length, "every menu item has an effect", dead);
     await blank(f, page);
   });
