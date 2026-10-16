@@ -2,7 +2,7 @@
 #   unit     build, typecheck, unit tests, host tests
 #   harness  browser harness scenarios, split into 3 shards
 #   e2e      real VS Code (with Pylance) e2e + generic UI audit
-#   replay   scripted study-task replay in real VS Code, on base and on head (2 parallel parts each), for before/after screenshots
+#   replay   scripted study-task replay in real VS Code, on base and on head (3 parallel parts each), for before/after screenshots
 #   perf     board + host perf benchmarks on base and head in one job; fails on a regression
 #   report   fails on replay checks that fail on head but not on base; publishes screenshots to the ci-screenshots branch
 #            and updates the marked section of the PR description
@@ -67,8 +67,8 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix: { side: [head, base], part: [1, 2] }
-    name: replay (${{ matrix.side }}, ${{ matrix.part }}/2)
+      matrix: { side: [head, base], part: [1, 2, 3] }
+    name: replay (${{ matrix.side }}, ${{ matrix.part }}/3)
     steps:
       - uses: actions/checkout@v4
         with: { submodules: true, fetch-depth: 0 }
@@ -124,10 +124,10 @@ jobs:
         id: replay
         run: |
           A=test-out/artifacts
-          # one folder per side: part 2 first, so part 1's screenshots of the shared setup steps win
-          for s in head base; do mkdir -p $A/replay-$s; for p in 2 1; do [ -d $A/replay-$s-$p ] && cp -r $A/replay-$s-$p/. $A/replay-$s/; done; done
-          BASE=""; [ -n "$BASE_SHA" ] && BASE="--base $A/replay-base-1 $A/replay-base-2"
-          node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $BASE
+          # one folder per side: parts 3 and 2 first, so part 1's screenshots of the shared setup steps win
+          for s in head base; do mkdir -p $A/replay-$s; for p in 3 2 1; do [ -d $A/replay-$s-$p ] && cp -r $A/replay-$s-$p/. $A/replay-$s/; done; done
+          BASE=""; [ -n "$BASE_SHA" ] && BASE="--base $A/replay-base-1 $A/replay-base-2 $A/replay-base-3"
+          node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $A/replay-head-3 $BASE
       - name: Diff and publish screenshots
         if: always()
         run: |
@@ -149,7 +149,7 @@ jobs:
             const A = "test-out/artifacts";
             const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
             const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
-            const audit = [...json(`${A}/e2e/audit.json`), ...json(`${A}/replay-head-1/audit.json`), ...json(`${A}/replay-head-2/audit.json`)];
+            const audit = [...json(`${A}/e2e/audit.json`), ...json(`${A}/replay-head-1/audit.json`), ...json(`${A}/replay-head-2/audit.json`), ...json(`${A}/replay-head-3/audit.json`)];
             const issues = [...new Set(audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`)))];
             const jobs = JSON.parse(process.env.JOBS);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;

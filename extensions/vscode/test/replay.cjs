@@ -124,9 +124,11 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   const maximize = async () => { await command(page, "View: Focus Second Editor Group"); await command(page, "View: Maximize Editor Group"); await sleep(1200); };
 
   const only = process.env.ONLY ? process.env.ONLY.split(",") : null;
-  // PART=1|2 splits the replay across two parallel CI jobs: part 2 is the long menu walk (r19) plus the steps that build the cards it needs
-  const PART2 = ["r01", "r08", "r19"], part = process.env.PART;
-  const inPart = (name) => !part || (part === "2" ? PART2.some((p) => name.startsWith(p)) : !name.startsWith("r19"));
+  // PART=1|2|3 splits the replay across parallel CI jobs: parts 2 and 3 each walk half of the long menu walk (r19, split by card kind),
+  // after the steps that build the cards it needs; part 1 runs everything else
+  const part = process.env.PART, MENU = ["r01", "r08", "r19"];
+  const R19_KINDS = { 2: ["code", "note"], 3: ["web", "image"] }[part];
+  const inPart = (name) => !part || (part === "1" ? !name.startsWith("r19") : MENU.some((p) => name.startsWith(p)));
   const step = async (name, title, fn) => {
     if (only && !only.some((o) => name.startsWith(o))) return;
     if (!inPart(name)) return;
@@ -430,7 +432,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   await step("r19-menu-items", "Click every item of each card type's context menu; every item has an effect (C1)", async () => {
     // Items that leave the board or need the outside world are skipped: open in editor / browser, refresh web preview (no internet in the sandbox)
     const SKIP = /^(Open In Editor|Open in Editor|Open In Browser|Open in Browser|Refresh Preview|Refetch Preview|Paste)/i;
-    const kinds = [["code", ".card.ccard .chead"], ["note", ".card.note"], ["web", ".card.web"], ["image", ".card.image"]];
+    const kinds = [["code", ".card.ccard .chead"], ["note", ".card.note"], ["web", ".card.web"], ["image", ".card.image"]].filter(([k]) => !R19_KINDS || R19_KINDS.includes(k));
     if (!(await f.locator(".card.image").count())) { await blank(f, page); await pasteImage(f); }
     const fb = await (await f.frameElement()).boundingBox();
     const dead = [];
