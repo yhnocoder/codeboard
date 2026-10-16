@@ -7,15 +7,15 @@ const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
 const close = (h: Host) => h.page.context().browser()!.close();
 
-/** step → schedule（子卡在右）、→ postprocess（子卡在下），带变量、旁注、各种贴纸 */
+/** step → schedule（子卡在右）、→ postprocess（子卡在下），带标签、旁注、各种贴纸 */
 function richBoard(): Board {
   const b = emptyBoard("b1", "v0.1.5");
   const step = card("LLMEngine.step"), sch = card("Scheduler.schedule"), post = card("Scheduler.postprocess");
   put(b, step, 80, 80, 600); put(b, sch, 780, 60, 560); put(b, post, 140, 420, 560);
   const s0 = step.segments[0];
   const l1 = lineOf(step, /scheduler\.schedule\(/), l2 = lineOf(step, /scheduler\.postprocess\(/);
-  b.links.push({ id: "L1", kind: "call", from: { card: step.id, seg: s0.id, line: l1 }, to: { card: sch.id }, call: { name: "schedule", col: 37 }, vars: [{ a: "seqs", ret: true }, { a: "is_prefill", ret: true }] });
-  b.links.push({ id: "L2", kind: "call", from: { card: step.id, seg: s0.id, line: l2 }, to: { card: post.id }, call: { name: "postprocess", col: 23 }, vars: [{ a: "seqs" }, { a: "token_ids" }, { a: "is_prefill" }] });
+  b.links.push({ id: "L1", kind: "plain", from: { card: step.id, seg: s0.id, line: l1 }, to: { card: sch.id }, call: { name: "schedule", col: 37 }, label: "seqs, is_prefill" });
+  b.links.push({ id: "L2", kind: "plain", from: { card: step.id, seg: s0.id, line: l2 }, to: { card: post.id }, call: { name: "postprocess", col: 23 }, label: "seqs, token_ids" });
   b.sidenotes.push({ id: "n1", kind: "text", md: "Prefill first, then decode.", at: { card: step.id, seg: s0.id, lines: [l1, l1] } });
   b.stickers.push({ id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: step.id, seg: s0.id, line: l1 } });
   b.stickers.push({ id: "k2", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: step.id, seg: s0.id, line: l1 + 2 } });
@@ -49,10 +49,11 @@ export const V015: Record<string, () => Promise<void>> = {
     await shot(h, "v15-01-board");
     await h.page.locator('path.lhit[data-link="L2"]').hover({ force: true }); await h.page.waitForTimeout(150);
     await h.page.mouse.move(10, 10); await h.page.waitForTimeout(120);
-    const plusSoon = await h.page.locator(".vplus").count();
+    // 离开线后过一小会儿才取消悬停高亮（从线移到标签框的路上不闪）
+    const onSoon = await h.page.locator(".edge.on").count();
     await h.page.waitForTimeout(400);
-    const plusLater = await h.page.locator(".vplus").count();
-    console.log(plusSoon >= 1 && plusLater === 0 ? "PASS" : "FAIL", "vplus-delay", JSON.stringify({ plusSoon, plusLater }));
+    const onLater = await h.page.locator(".edge.on").count();
+    console.log(onSoon >= 1 && onLater === 0 ? "PASS" : "FAIL", "hover-delay", JSON.stringify({ onSoon, onLater }));
     await h.page.locator(".card .src .l").nth(3).hover(); await h.page.waitForTimeout(250);
     await shot(h, "v15-02-ports");
     await close(h);
@@ -163,7 +164,7 @@ export const V015: Record<string, () => Promise<void>> = {
     // 拖 post 的标题栏往下 60
     const hd = h.page.locator(`.card[data-id="${post}"] .chead`).first();
     const r = (await hd.boundingBox())!;
-    await h.page.mouse.move(r.x + 200, r.y + 15); await h.page.mouse.down(); await h.page.mouse.move(r.x + 200, r.y + 75, { steps: 6 }); await h.page.mouse.up();
+    await h.page.mouse.move(r.x + 330, r.y + 15); await h.page.mouse.down(); await h.page.mouse.move(r.x + 330, r.y + 75, { steps: 6 }); // 标题栏空白处（不是 Open in Editor 的路径） await h.page.mouse.up();
     await h.page.waitForTimeout(200);
     const p1 = await pos();
     const follows = p1.k6[1] - p0.k6[1] === 60 && p1.k6[0] === p0.k6[0];
@@ -184,13 +185,13 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
 
-  /** 子卡在右下、跟父卡横向重叠：起点自动在右端，从上边进子卡；用户改到左端后要更远才翻回 */
+  /** 子卡在右下、跟父卡横向重叠：起点自动在右端，从上边进子卡；用户选了左端就一直在左端 */
   async v15side() {
     const b = emptyBoard("b1", "side");
     const par = card("ModelRunner.__init__"), kid = card("load_model");
     put(b, par, 20, 20, 1100); put(b, kid, 850, 560, 600);
     const s0 = par.segments[0], ln = lineOf(par, /load_model\(/);
-    b.links.push({ id: "L1", kind: "call", from: { card: par.id, seg: s0.id, line: ln }, to: { card: kid.id }, call: { name: "load_model", col: 8 } });
+    b.links.push({ id: "L1", kind: "plain", from: { card: par.id, seg: s0.id, line: ln }, to: { card: kid.id }, call: { name: "load_model", col: 8 } });
     b.cam = { x: 0, y: 0, z: 0.7 };
     const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
     const port = (hh: Host) => hh.page.locator("path.port").first().evaluate((e) => +e.getAttribute("data-x")!);
@@ -265,7 +266,7 @@ export const V015: Record<string, () => Promise<void>> = {
   async v15vlabel() {
     const b = richBoard();
     const L1 = b.links[0] as any, L2 = b.links[1] as any;
-    L1.loop = true; L2.label = "my own label"; L2.loop = true;
+    L2.label = "my own label"; void L1;
     const step = b.cards[0], tail = card("Scheduler.preempt");
     put(b, tail, 780, 640, 420);
     b.links.push({ id: "L3", kind: "plain", from: { card: b.cards[2].id }, to: { card: tail.id }, label: "only a label", arrow: "end" } as any);

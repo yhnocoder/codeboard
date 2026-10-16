@@ -199,7 +199,7 @@ const S: Record<string, () => Promise<void>> = {
     b.cards.push(cl, cr, { id: "k", kind: "compare", cols: [cl.id, cr.id] });
     b.place.k = { x: 1400, y: 700, w: 900 };
     const ln = (c: any, d: number) => c.segments[0].start + d;
-    const call = (id: string, f: any, line: number, t: any) => ({ id, kind: "call", from: { card: f.id, seg: f.segments[0].id, line }, to: { card: t.id } });
+    const call = (id: string, f: any, line: number, t: any) => ({ id, kind: "plain", from: { card: f.id, seg: f.segments[0].id, line }, to: { card: t.id } });
     b.links.push(call("RX", R, ln(R, 2), X) as any, call("RY", R, ln(R, 4), Y) as any, call("Xcl", X, ln(X, 3), cl) as any, call("Ycr", Y, ln(Y, 3), cr) as any);
     const h = await open({ board: b, light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
@@ -385,7 +385,7 @@ const S: Record<string, () => Promise<void>> = {
     for (const [q, name] of [["Scheduler.schedule", "schedule"], ["ModelRunner.run", "call"]] as const) {
       const s0 = findSym(q); const c = symCard(s0.f, s0.s); put(b, c, 0, 0);
       const seg = (b.cards[0] as any).segments[0], i = seg.text.findIndex((t: string) => t.includes(`.${name}(`));
-      b.links.push({ id: `c${b.links.length}`, kind: "call", from: { card: b.cards[0].id, seg: seg.id, line: seg.start + i }, to: { card: c.id }, call: { name, col: seg.text[i].indexOf(`.${name}(`) + 1 } } as any);
+      b.links.push({ id: `c${b.links.length}`, kind: "plain", from: { card: b.cards[0].id, seg: seg.id, line: seg.start + i }, to: { card: c.id }, call: { name, col: seg.text[i].indexOf(`.${name}(`) + 1 } } as any);
     }
     const [a] = b.cards;
     const kids = b.links.filter((l) => l.kind === "call").map((l) => l.to.card);

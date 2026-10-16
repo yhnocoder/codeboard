@@ -19,7 +19,7 @@ import { setTool } from "./interact";
 import { send } from "./host";
 import { cardTitle } from "@codeboard/core";
 import * as A from "./actions";
-import { flows, cardById } from "./state/store";
+import { cardById } from "./state/store";
 
 export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
@@ -138,12 +138,10 @@ function Dock() {
 function WalkBar() {
   const w = () => walk()!;
   const cur = () => w().order[w().i];
-  const node = () => flows().byId.get(cur());
   const title = () => { const c = cardById(cur())?.card; return c ? cardTitle(c) : ""; };
   const desc = () => cardById(cur())?.card.desc;
   return (
     <div class="present on"><div class="pill">
-      <span class="pn">{node()?.label}</span>
       <span class="ptitle">{title()}</span>
       <span class="cnt">{w().i + 1} / {w().order.length}</span>
       <button class="ib" aria-label="Previous Step" data-tip="Previous Step" data-kbd="←" disabled={w().i === 0} onClick={() => A.walkTo(w().i - 1)}><Icon name="left" /></button>

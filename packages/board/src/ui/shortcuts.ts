@@ -7,7 +7,7 @@ export const SHORTCUTS: [group: string, rows: Shortcut[]][] = [
   ["View", [["⌘K", "Search"], ["⇧1", "Fit to Window"], ["⇧2", "Fit Selection"], ["⌘0", "Fit All"], ["⌘1", "Zoom to 100%"], ["⌘+ / ⌘−", "Zoom In / Out"], ["⌘ + scroll / pinch", "Zoom"], ["Space + drag / two fingers", "Pan"]]],
   ["Cards", [["Drag empty space", "Select with a box"], ["⌘A", "Select All"], ["Drag title bar", "Move (snaps; ⌘ to turn off)"], ["Drag onto a title bar, pause", "Merge (⌥ = at once)"], ["⌥ + drag onto a line", "Turn into a Code Sidenote"], ["↵", "Open in Editor"], ["⌘D", "Duplicate"], ["⌘] / ⌘[", "Bring Forward / Send Backward"], ["⌘⇧] / ⌘⇧[", "Bring to Front / Send to Back"], ["⌫", "Delete"], ["⌘⇧L", "Lock / Unlock"], ["⌥Z", "Wrap Lines"], ["Arrows", "Nudge (⇧ = 10px)"]]],
   ["Code", [["Click a call", "Expand into a new card"], ["Drag a call", "Arrow to an existing card"], ["Click line numbers", "Select lines (⇧ extends)"], ["H", "Hide lines"], ["⌘C", "Copy code without line numbers"], ["Hover a name", "Definition peek"], ["⌘ + hover", "Pin a popup"]]],
-  ["Flow", [["P", "Walk Through Flow"], ["→ / ←", "Next / Previous Step"], ["Esc", "Exit"]]],
+  ["Walkthrough", [["P", "Walk Through from Selected Card"], ["→ / ←", "Next / Previous Step"], ["Esc", "Exit"]]],
   ["Board", [["⌘Z", "Undo"], ["⇧⌘Z", "Redo"], ["⌘,", "Settings"], ["?", "Keyboard Shortcuts"]]],
 ];
 

@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  brokenBy, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS,
+  emptyBoard, removeCards, DEFAULT_SETTINGS,
   type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type Stale,
 } from "@codeboard/core";
 import { send } from "../host";
@@ -54,10 +54,6 @@ export function reportSelection() {
 
 // ---------- 派生 ----------
 
-export const flows = createMemo(() => computeFlows(state.board));
-/** Walkthrough 时临时展开所有折叠的子树：只影响显示，不写进白板（不进撤销、不存盘） */
-export const [showCollapsed, setShowCollapsed] = createSignal(false);
-export const collapsedAway = createMemo(() => (showCollapsed() ? new Set<string>() : hiddenByCollapse(state.board, flows())));
 
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
 const cardIndex = createMemo(() => {
@@ -126,17 +122,10 @@ const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.l
 
 /**
  * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
- * 改完会过一遍白板不变量（core 的 brokenBy）：被破坏就整次撤回、提示原因，返回 false。
  */
 export function mutate(fn: (b: Board) => void): boolean {
   const before = snap();
   setState("board", produce(fn));
-  const why = brokenBy(unwrap(state.board), () => parse(before));
-  if (why) {
-    restore(before);
-    toast(why);
-    return false;
-  }
   if (same(snap(), before)) return true;
   changed();
   pushUndo(before);

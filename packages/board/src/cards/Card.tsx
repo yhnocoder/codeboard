@@ -5,7 +5,7 @@ import {
   cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard,
 } from "@codeboard/core";
-import { state, setSizes, isSel, flows, collapsedAway, sel, placeOf, rectOf } from "../state/store";
+import { state, setSizes, isSel, sel, placeOf, rectOf } from "../state/store";
 import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
@@ -54,7 +54,7 @@ export function CardView(p: { card: Card }) {
   const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
   const drop = () => dropTarget();
   return (
-    <Show when={!collapsedAway().has(c().id) && !collapsedHome(pl().section)}>
+    <Show when={!collapsedHome(pl().section)}>
       <div ref={el} class={`card ${kindClass()}`} data-id={c().id} data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined} style={style()}
         classList={{
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
@@ -96,8 +96,6 @@ export function CardView(p: { card: Card }) {
 
 export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const c = () => p.card;
-  const node = createMemo(() => flows().byId.get(c().id));
-  const hiddenKids = createMemo(() => (placeOf(c().id).collapsed && node() ? countDesc(node()!) : 0));
   const s0 = () => c().segments[0];
   const stale = createMemo(() => act.cardStale(c()));
   const mixed = () => mixedVersions(c());
@@ -106,8 +104,6 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const notes = () => act.sidenotesOf(c().id).filter((n) => !n.at.lines);
   return (
     <div class="chead" data-drag>
-      <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: select subtree · Drag: move subtree">{node()!.label}</span></Show>
-      <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
       <Show when={!free() || c().title || (editing()?.kind === "title" && editing()?.id === c().id)}>
@@ -143,12 +139,10 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
 
 /** 材质用的卡片部件（默认 display: none，由 themes.css 按主题打开）：
  *  cband = 色带 / 大标题（函数名 + 行号区间和版本 + 大号编号），cxfoot = 底栏（行号区间 · 打开 / 看差异），cfig = 卡片下方的图注。
- *  只用卡片已有的数据：标题、flows() 编号、第一段的行号和版本。 */
+ *  只用卡片已有的数据：标题、第一段的行号和版本。 */
 function CodeBand(p: { card: CodeCard }) {
   const c = () => p.card;
   const s0 = () => c().segments[0];
-  const label = () => (state.host.settings?.hideNumbers ? "" : flows().byId.get(c().id)?.label ?? "");
-  const big = () => (/^\d$/.test(label()) ? `0${label()}` : label());
   const stale = () => act.cardStale(c());
   const isNew = () => stale() === "changed" || stale() === "hidden";
   return (
@@ -162,9 +156,8 @@ function CodeBand(p: { card: CodeCard }) {
               onClick={(e) => (isNew() ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}><small>Commit</small>{isNew() ? "New version" : mixedVersions(c()) ? "Mixed" : versionLabel(s0()?.version)}</button>
           </span>
         </Show>
-        <Show when={big()}><span class="big">{big()}</span></Show>
       </div>
-      <Show when={label()}><span class="cfig">Fig. {label()} — {c().title || cardTitle(c())}</span></Show>
+      <span class="cfig">{c().title || cardTitle(c())}</span>
     </>
   );
 }
@@ -185,7 +178,6 @@ function CodeFoot(p: { card: CodeCard }) {
   );
 }
 
-const countDesc = (n: { kids: any[] }): number => n.kids.reduce((s, k) => s + 1 + countDesc(k), 0);
 export const shortPath = (p: string) => p.split("/").slice(-1)[0];
 
 function CodeCardView(p: { card: CodeCard }) {
@@ -261,21 +253,19 @@ function ImageView(p: { card: ImageCard }) {
   );
 }
 
-/** 地图档：卡片只剩编号 + 名字，字号按缩放反向放大，始终看得清 */
+/** 地图档：卡片只剩名字，字号按缩放反向放大，始终看得清 */
 function MapLabel(p: { card: Card }) {
-  const n = () => flows().byId.get(p.card.kind === "compare" ? p.card.cols[0] : p.card.id)?.label;
   const t = () => (p.card.kind === "note" ? p.card.md.split("\n")[0].replace(/^#+\s*/, "").slice(0, 60) : cardTitle(p.card, state.board));
   // 名字只在 . 和 _ 后面换行，不在单词中间断开
   const parts = () => t().split(/(?<=[._])/);
   // 一行放得下的字号：宽 / (字数 × 平均字宽)，高度最多占 45%
   const fit = () => {
     const r = rectOf(p.card);
-    const chars = t().length + (n() ? n()!.length + 2 : 0);
+    const chars = t().length;
     return `${Math.max(1, Math.min((r.w - 24) / (Math.max(chars, 4) * 0.58), r.h * 0.45))}px`;
   };
   return (
     <div class="maplabel" style={{ "--fit": fit() }}>
-      <Show when={n() && !state.host.settings?.hideNumbers}><span class="step">{n()}</span></Show>
       <span class="mt"><For each={parts()}>{(x) => <>{x}<wbr /></>}</For></span>
     </div>
   );

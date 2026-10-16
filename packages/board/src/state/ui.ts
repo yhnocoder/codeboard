@@ -70,7 +70,7 @@ export function setPopIn(f: (p: Record<string, PopAnim>) => Record<string, PopAn
   setPopStore(reconcile(f({ ...unwrap(popStore) })));
 }
 // 讲解
-export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[] };
+export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number } };
 export const [walk, setWalk] = createSignal<Walk | null>(null);
 // 弹窗
 export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; q?: string }>(false);

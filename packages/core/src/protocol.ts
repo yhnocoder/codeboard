@@ -29,7 +29,6 @@ export type Settings = {
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）
   zoomMap: number; // 低于这个比例：地图（只剩编号和名字）
   dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
-  hideNumbers?: boolean; // 卡片上不显示流程字母（A / B）
   themeReflow?: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
   debug?: boolean; // 打开后设置页多一节 Debug（调常量）
   tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值

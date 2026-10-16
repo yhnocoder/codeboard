@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  brokenBy, emptyBoard, rebaseSegment, removeCards, shiftBy, splitCompares,
+  emptyBoard, rebaseSegment, removeCards, shiftBy,
   type Board, type Card, type CodeCard, type Link, type Segment,
 } from "../src";
 
 const seg = (id: string, start: number, text: string[]): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git", commit: "x" } });
 const code = (id: string, s = seg(`s${id}`, 1, ["pass"])): CodeCard => ({ id, kind: "code", segments: [s] });
-const call = (from: string, to: string, line = 1): Link => ({ id: `${from}-${to}`, kind: "call", from: { card: from, seg: `s${from}`, line }, to: { card: to } });
+const call = (from: string, to: string, line = 1): Link => ({ id: `${from}-${to}`, kind: "plain", from: { card: from, seg: `s${from}`, line }, to: { card: to } });
 const compare = (id: string, a: string, b: string): Card => ({ id, kind: "compare", cols: [a, b] });
 
 describe("removeCards", () => {
@@ -42,7 +42,7 @@ describe("rebaseSegment", () => {
     ...emptyBoard("b", "B"),
     cards: [{ ...code("a", { ...old, hidden: [[11, 11]], hl: [12, 13] }) }, code("z")],
     links: [
-      { id: "l1", kind: "call", from: { card: "a", seg: "s1", line: 13 }, to: { card: "z" } },
+      { id: "l1", kind: "plain", from: { card: "a", seg: "s1", line: 13 }, to: { card: "z" } },
       { id: "l2", kind: "plain", from: { card: "z" }, to: { card: "a", seg: "s1", line: 12 } },
     ],
     sidenotes: [
@@ -89,41 +89,3 @@ describe("rebaseSegment", () => {
   });
 });
 
-describe("brokenBy (Compare stays in one flow)", () => {
-  // R → X → cl，R → Y → cr，cl 和 cr 并成 Compare k
-  const board = (): Board => ({
-    ...emptyBoard("b", "B"),
-    cards: [code("R"), code("X"), code("Y"), code("cl"), code("cr"), compare("k", "cl", "cr")],
-    links: [call("R", "X", 1), call("R", "Y", 2), call("X", "cl"), call("Y", "cr")],
-  });
-
-  it("is fine for the board as built", () => {
-    expect(splitCompares(board()).size).toBe(0);
-  });
-  it("refuses deleting a link that would split the Compare", () => {
-    const before = board();
-    const after = { ...before, links: before.links.filter((l) => l.id !== "R-X") };
-    expect(brokenBy(after, () => before)).toMatch(/Compare/);
-  });
-  it("refuses deleting the shared ancestor card", () => {
-    const before = board();
-    const after = structuredClone(before);
-    removeCards(after, ["R"]);
-    expect(brokenBy(after, () => before)).toMatch(/Compare/);
-  });
-  it("allows changes that keep both columns together", () => {
-    const before = board();
-    const after = structuredClone(before);
-    removeCards(after, ["Y"]); // cr 不在任何树里了，cl 还在：不算拆开
-    expect(brokenBy(after, () => before)).toBeNull();
-    const after2 = { ...before, links: before.links.filter((l) => l.id !== "X-cl") };
-    expect(brokenBy(after2, () => before)).toBeNull();
-  });
-  it("does not block edits on a board that was already split", () => {
-    const before = board();
-    before.links = before.links.filter((l) => l.id !== "R-X");
-    const after = { ...before, links: before.links.filter((l) => l.id !== "Y-cr") };
-    expect(brokenBy(before, () => before)).toBeNull();
-    expect(brokenBy(after, () => before)).toBeNull();
-  });
-});

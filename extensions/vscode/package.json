@@ -478,11 +478,6 @@
           "default": "text",
           "description": "What double-clicking empty board space creates."
         },
-        "codeboard.flowNumbers.hide": {
-          "type": "boolean",
-          "default": false,
-          "description": "Hide the flow letters (A, B…) on cards."
-        },
         "codeboard.theme.reflow": {
           "type": "string",
           "enum": ["push", "overlap"],

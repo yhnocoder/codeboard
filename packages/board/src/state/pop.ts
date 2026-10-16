@@ -13,7 +13,6 @@ export type Pop =
   | { kind: "diff"; card: string; seg: string; data?: DiffData; error?: string }
   | { kind: "pick"; title: string; items: { label: string; detail: string; run: () => void }[] }
   | { kind: "commits"; card: string; seg: Segment; list?: Commit[] }
-  | { kind: "vars"; link: string }
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 
