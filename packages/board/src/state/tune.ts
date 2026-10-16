@@ -8,6 +8,7 @@ export const TUNE = {
   linkLeave: { def: 300, label: "Arrow hover: keep after leaving", unit: "ms", min: 0, max: 2000 },
   dblClick: { def: 420, label: "Double-click window", unit: "ms", min: 150, max: 800 },
   snap: { def: 6, label: "Snap distance", unit: "px", min: 0, max: 30 },
+  snapSpeed: { def: 700, label: "No snapping while dragging faster than", unit: "px/s", min: 100, max: 5000 },
   menuOpen: { def: 300, label: "Menu open animation", unit: "ms", min: 0, max: 1200 },
 } as const;
 export type TuneKey = keyof typeof TUNE;

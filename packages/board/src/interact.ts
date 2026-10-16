@@ -46,6 +46,8 @@ function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: Point
   window.addEventListener("pointercancel", onUp, true);
 }
 
+const ev0x = (e: PointerEvent) => e.clientX, ev0y = (e: PointerEvent) => e.clientY;
+
 // 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）
 const dbl: { key?: string; t: number } = { t: 0 };
 export function isDbl(key: string) {
@@ -112,9 +114,19 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
   const webOk = ids.every((i) => { const k = cardById(i)!.card.kind; return k === "web" || k === "links"; }); // Web 卡拖到另一张的标题上 → Link List
   const noteOk = ids.length === 1 && g.kind === "note" && g.bg;
   setDragging(new Set(ids));
-  track(e, (ev) => {
+  // 拖得快时不吸附（顺滑），慢下来才对齐：屏幕上的速度，指数平滑
+  let vx = ev0x(e), vy = ev0y(e), vt = performance.now(), speed = 0;
+  let settleT: number | undefined;
+  const onMove = (ev: PointerEvent, still = false) => {
+    clearTimeout(settleT);
+    // 停住不动时没有 move 事件：停一下就当速度为 0 再算一次（这时才吸附）
+    if (!still) settleT = window.setTimeout(() => onMove(ev, true), 110);
     const z = cam.z;
     let dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
+    const now = performance.now(), dt = Math.max(1, now - vt);
+    speed = still ? 0 : speed * 0.6 + (Math.hypot(ev.clientX - vx, ev.clientY - vy) / dt) * 1000 * 0.4;
+    vx = ev.clientX; vy = ev.clientY; vt = now;
+    const fast = speed > tune("snapSpeed");
     // 合并 / 变成 Sidenote 的落点
     const under = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => (n as HTMLElement).closest?.(".card") && !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!)) as HTMLElement | undefined;
     const uc = under?.closest(".card") as HTMLElement | undefined;
@@ -142,13 +154,15 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
     }
     if (drop?.kind === "merge" && dropTarget()?.kind === "merge" && dropTarget()!.card === drop.card && dropTarget()!.armed) drop = dropTarget();
     setDropTarget(drop);
-    if (!(ev.metaKey || ev.ctrlKey) && !drop) {
+    if (!(ev.metaKey || ev.ctrlKey) && !drop && !fast) {
       const sn = snapMove({ ...box, x: box.x + dx, y: box.y + dy }, targets, tune("snap") / z);
       dx += sn.dx; dy += sn.dy;
       setGuides(sn.guides);
     } else setGuides([]);
     live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = Math.round(it.ox + dx); c.y = Math.round(it.oy + dy); } } });
-  }, (ev, moved) => {
+  };
+  track(e, (ev) => onMove(ev), (ev, moved) => {
+    clearTimeout(settleT);
     clearTimeout(mergeT);
     setGuides([]);
     setDragging(new Set<string>());

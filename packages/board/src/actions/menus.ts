@@ -25,7 +25,7 @@ import { commitMenu } from "./versions";
 import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
-import { canLinkList, mergeIntoLinkList, webMenuItems } from "./web";
+import { canLinkList, mergeIntoLinkList, retryMeta, setListRich } from "./web";
 
 export function callMenu(cardId: string, segId: string, call: CallSpan, x: number, y: number) {
   selectCard(cardId);
@@ -82,27 +82,47 @@ export function cardMenu(id: string, x: number, y: number) {
   const c = f.card;
   const host = f.host;
   const lockItem: Item = { label: placeOf(host.id).locked ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock([host.id]) };
-  const common: Item[] = [
-    { label: "Connect…", run: () => startConnect(c.id) },
-    { label: "Move to New Section", run: () => moveToNewSection() },
-    lockItem,
+  // 每种卡同一个结构：常用操作 → Edit ▸ → Arrange ▸ → 分隔线 → Move to New Section、Delete（红）。
+  // 界面上已经有的（双击改名、⌘D、拖圆点连线）不进菜单
+  const tail: Item[] = [
     arrangeItem(() => [host.id]),
+    null,
+    { label: "Move to New Section", run: () => moveToNewSection() },
+    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
   ];
   if (c.kind === "note") return openMenu([
-    { label: "Edit", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) },
     { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
-    null, ...common, null,
-    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+    { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
+    ...tail,
   ], x, y);
-  if (c.kind === "web" || c.kind === "links") return openMenu([...webMenuItems(c), null, ...common, null, { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel }, { label: "Delete", kbd: "⌫", danger: true, run: deleteSel }], x, y);
+  if (c.kind === "web") return openMenu([
+    { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },
+    { label: "Refresh Preview", run: () => retryMeta(c.id) },
+    { label: "Edit", sub: [
+      { label: "Title", run: () => setEditing({ kind: "title", id: c.id }) },
+      { label: "Description", run: () => setEditing({ kind: "desc", id: c.id }) },
+      lockItem,
+    ] },
+    ...tail,
+  ], x, y);
+  if (c.kind === "links") return openMenu([
+    { label: "Open All in Browser", run: () => c.items.forEach((it) => openLink(it.url)) },
+    { label: "View", sub: [
+      { label: "Compact", checked: !c.rich, run: () => setListRich(c.id, false) },
+      { label: "Rich", checked: !!c.rich, run: () => setListRich(c.id, true) },
+    ] },
+    { label: "Edit", sub: [{ label: "Title", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id: c.id }) }, lockItem] },
+    ...tail,
+  ], x, y);
   if (c.kind === "image") return openMenu([
-    { label: "Background", checked: !!c.bg, run: () => toggleNoBg(id) },
     { label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent([id]) },
-    { label: "Rename", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id }) },
-    { label: "Edit Description", run: () => setEditing({ kind: "desc", id }) },
-    null, ...common, null,
-    { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
-    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+    { label: "Background", checked: !!c.bg, run: () => toggleNoBg(id) },
+    { label: "Edit", sub: [
+      { label: "Title", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id }) },
+      { label: "Description", run: () => setEditing({ kind: "desc", id }) },
+      lockItem,
+    ] },
+    ...tail,
   ], x, y);
   if (c.kind === "compare") {
     const inFlow = c.cols.some((k) => flows().byId.has(k));

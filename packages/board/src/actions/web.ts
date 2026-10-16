@@ -144,24 +144,6 @@ export function moveItemOut(id: string, item: string, at?: { x: number; y: numbe
 // ---------- 菜单 ----------
 
 /** Web 卡 / Link List 的 ⋯ 菜单里自己的那几项（通用项由 cardMenu 接在后面） */
-export function webMenuItems(c: Card): Item[] {
-  if (c.kind === "web") return [
-    { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },
-    { label: "Edit Title", run: () => setEditing({ kind: "title", id: c.id }) },
-    { label: "Edit Description", run: () => setEditing({ kind: "desc", id: c.id }) },
-    { label: "Refetch Preview", run: () => retryMeta(c.id) },
-  ];
-  if (c.kind === "links") return [
-    { label: "Rename", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id: c.id }) },
-    { label: "View", sub: [
-      { label: "Compact", checked: !c.rich, run: () => setListRich(c.id, false) },
-      { label: "Rich", checked: !!c.rich, run: () => setListRich(c.id, true) },
-    ] },
-    { label: "Open All in Browser", run: () => c.items.forEach((it) => openLink(it.url)) },
-  ];
-  return [];
-}
-
 /** 右键一行 */
 export function rowMenu(id: string, item: string, x: number, y: number) {
   const c = cardById(id)?.card;

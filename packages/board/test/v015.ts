@@ -329,4 +329,27 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(n >= 6 ? "PASS" : "FAIL", "debug-tune", n);
     await close(h);
   },
+  /** 拖得快：不吸附；慢慢拖、停一下：对齐吸附（左边对齐另一张卡） */
+  async v15snap() {
+    const b = emptyBoard("b1", "snap");
+    b.cards.push({ id: "a", kind: "note", md: "A", bg: true }, { id: "m", kind: "note", md: "moving", bg: true });
+    b.place.a = { x: 100, y: 100, w: 260 }; b.place.m = { x: 500, y: 400, w: 260 };
+    const h = await open({ board: b, light, w: 1200, h: 800 });
+    const hd = h.page.locator('.card[data-id="m"] .chead');
+    const drag = async (to: number, slow: boolean) => {
+      const r = (await hd.boundingBox())!;
+      await h.page.mouse.move(r.x + 40, r.y + 10); await h.page.mouse.down();
+      const x0 = r.x + 40, tx = x0 + to;
+      if (slow) { for (let i = 1; i <= 30; i++) { await h.page.mouse.move(x0 + (to * i) / 30, r.y + 10); await h.page.waitForTimeout(25); } await h.page.waitForTimeout(250); }
+      else { for (let i = 1; i <= 4; i++) { await h.page.mouse.move(x0 + (to * i) / 4, r.y + 10); await h.page.waitForTimeout(8); } }
+      await h.page.mouse.move(tx, r.y + 10); await h.page.mouse.up(); await h.page.waitForTimeout(1300);
+    };
+    await drag(-397, false); // 停在 x = 103，离 100 只差 3px
+    const fastX = h.board().place.m.x;
+    await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300);
+    await drag(-397, true);
+    const slowX = h.board().place.m.x;
+    console.log(fastX === 103 && slowX === 100 ? "PASS" : "FAIL", "snap-only-when-slow", JSON.stringify({ fastX, slowX }));
+    await close(h);
+  },
 };
