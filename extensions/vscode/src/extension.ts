@@ -1,28 +1,30 @@
-// 插件入口：存储、白板面板、命令、侧栏、编辑器标记、版本监听。
+// 插件入口（VS Code 适配层）：接上 Workspace，再注册存储、白板面板、命令、侧栏、编辑器标记、版本监听。
 import * as vscode from "vscode";
-import { affectsSettings, readSettings } from "./settings";
 import * as path from "node:path";
+import { affectsSettings, readSettings } from "./settings";
 import { startAnalysis } from "./analysis";
-import { GIT_SCHEME, parseGitUri } from "./cards";
 import { registerCommands } from "./commands";
 import { showFile } from "./git";
 import { makeHandler } from "./handlers";
 import { EditorMarks } from "./lens";
 import { Panels } from "./panel";
-import { reindexFile, resetIndex } from "./resolve";
+import { watchNameIndex } from "./nameindex";
 import { BoardsTree, GithubTree } from "./sidebar";
 import { initSource } from "./source";
-import { Storage } from "./storage";
+import { githubDir, openStorage } from "./storage";
 import { watchVersions } from "./watch";
-import { debounce } from "./ws";
+import { debounce, useWorkspace } from "./ws";
 import { forgetDefs } from "./defcache";
+import { registerVersionDocs, vscodeWorkspace } from "./vscode/workspace";
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const sub = (d: vscode.Disposable) => ctx.subscriptions.push(d);
+  const ws = vscodeWorkspace(ctx);
+  useWorkspace(ws);
   // tree-sitter 的 wasm 由 esbuild 脚本拷进 dist/
   const ready = startAnalysis(path.join(ctx.extensionUri.fsPath, "dist"));
-  const store = new Storage(ctx);
-  initSource(ctx, store.githubDir());
+  const store = openStorage();
+  initSource(githubDir());
   const panels = new Panels(ctx, store);
   panels.handler = makeHandler(panels);
 
@@ -39,12 +41,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   sub(vscode.languages.registerCodeLensProvider([{ scheme: "file", language: "python" }, { scheme: "file", language: "cpp" }, { scheme: "file", language: "cuda-cpp" }, { scheme: "file", language: "c" }], marks));
 
   // 历史版本的只读文档
-  sub(vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, {
-    provideTextDocumentContent: async (u) => {
-      const q = parseGitUri(u);
-      return q ? ((await showFile(q.root, q.commit, q.path)) ?? "") : "";
-    },
-  }));
+  sub(registerVersionDocs(showFile));
 
   // 状态栏：目标白板 + 有新版本的卡片数
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
@@ -59,28 +56,30 @@ export async function activate(ctx: vscode.ExtensionContext) {
     status.show();
   }, 100);
 
+  const files = ws.files;
   sub(store.onDidChange(() => { tree.refresh(); void panels.pushBoards(); updateStatus(); }));
   sub(store.onDidSave(() => marks.rebuild()));
   sub(panels.onDidChangeTarget(() => { tree.refresh(); updateStatus(); marks.rebuild(); }));
   sub(panels.onDidChangeStale(() => { tree.refresh(); updateStatus(); void panels.pushBoards(); }));
   sub(vscode.window.onDidChangeVisibleTextEditors(() => marks.redecorate()));
   // 文件改了：缓存的「转到定义」结果作废
-  sub(vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length) { marks.redecorate(); if (e.document.uri.scheme === "file") forgetDefs(); } }));
-  sub(vscode.workspace.onDidSaveTextDocument((d) => { if (d.uri.scheme === "file") { forgetDefs(); void reindexFile(d.uri.fsPath); } }));
-  sub(vscode.workspace.onDidCreateFiles(() => { forgetDefs(); resetIndex(); }));
-  sub(vscode.workspace.onDidDeleteFiles(() => { forgetDefs(); resetIndex(); }));
-  sub(vscode.workspace.onDidRenameFiles(() => forgetDefs()));
-  sub(vscode.workspace.onDidChangeWorkspaceFolders(() => resetIndex()));
-  sub(vscode.workspace.onDidChangeConfiguration((e) => {
-    if (e.affectsConfiguration("codeboard.storageDir")) { store.reset(); marks.rebuild(); }
+  sub(files.onDidEdit((abs) => { marks.redecorate(); if (abs) forgetDefs(); }));
+  sub(files.onDidSave((abs) => { if (abs) forgetDefs(); }));
+  sub(files.onDidCreate(() => forgetDefs()));
+  sub(files.onDidDelete(() => forgetDefs()));
+  sub(files.onDidRename(() => forgetDefs()));
+  // 名字索引跟着文件的保存、新建、删除、外面的改动增量更新
+  sub(watchNameIndex());
+  sub(ws.settings.onDidChange((e) => {
+    if (e.affects("codeboard.storageDir")) { store.reset(); marks.rebuild(); }
     if (affectsSettings(e)) panels.broadcast({ type: "host", host: { settings: readSettings() } });
-    if (e.affectsConfiguration("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: vscode.workspace.getConfiguration("editor").get<string>("fontFamily") } });
+    if (e.affects("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
   }));
   // GitHub 缓存可能在白板里加了新文件
   sub(store.onDidSave(() => gh.refresh()));
 
   await ready;
-  watchVersions(ctx, panels, store);
+  sub(watchVersions(panels, store));
   marks.rebuild();
   updateStatus();
 }

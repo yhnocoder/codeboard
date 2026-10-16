@@ -4,15 +4,23 @@ import { analyze, clipAnalysis, initAnalysis, type FileAnalysis } from "@codeboa
 import { Lru } from "./ws";
 
 let ready = false;
+let started: Promise<void> | undefined;
 export async function startAnalysis(dir: string) {
-  try {
-    await initAnalysis(dir);
-    ready = true;
-  } catch (e) {
-    console.error("[codeboard] tree-sitter init failed", e);
-  }
+  return (started = (async () => {
+    try {
+      await initAnalysis(dir);
+      ready = true;
+    } catch (e) {
+      console.error("[codeboard] tree-sitter init failed", e);
+    }
+  })());
 }
 export const analysisReady = () => ready;
+/** tree-sitter 准备好（或者失败了）之后 */
+export async function whenAnalysisReady() {
+  while (!started) await new Promise((r) => setTimeout(r, 50));
+  await started;
+}
 
 const cache = new Lru<FileAnalysis>(80);
 const segCache = new Lru<FileAnalysis>(200);
@@ -53,4 +61,9 @@ export function segAnalysis(lang: string, text: string, start: number, end: numb
     if (ready) segCache.set(sk, a);
   }
   return a;
+}
+
+/** 只要符号（名字索引用）：缓存里有就用，没有就分析但不放进缓存（建索引时几千个文件别把常用的挤出去） */
+export function symbolsOf(lang: string, text: string) {
+  return (cachedAnalysis(lang, text) ?? analyze(lang, text)).symbols;
 }

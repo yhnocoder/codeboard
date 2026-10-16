@@ -1,6 +1,6 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后整板发回来保存；宿主负责读代码、高亮、版本、跳转。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags } from "./model";
+import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta } from "./model";
 import type { SegView } from "./lines";
 
 /** 一段代码和当前代码的关系（「新版本」） */
@@ -130,7 +130,7 @@ export type HostToBoard =
   | { type: "toast"; text: string }
   /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
   | { type: "githubPicker"; repo?: string }
-  | { type: "reply"; req: number; data?: unknown; error?: string };
+  | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
   | { type: "ready" }
@@ -187,3 +187,34 @@ export type ExpandResult =
   | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number }
   | { pick: { label: string; detail: string; path: string; line: number }[] }
   | { none: true; reason: string };
+
+/** 要回答的请求（带 req）：白板用 ask 发，宿主用 { type: "reply", req, data } 回 */
+export type AskType = Extract<BoardToHost, { req: number }>["type"];
+
+/** 请求 → 回答的类型表：白板的 ask 和宿主的回答两边都按它检查 */
+type Replies = {
+  save: null;
+  expand: ExpandResult;
+  callVars: Var[];
+  peek: PeekResult;
+  search: SearchItem[];
+  searchPick: NewCard | null;
+  entryPoints: SearchItem[];
+  diff: DiffData;
+  commits: Commit[];
+  switchCommit: { seg: Segment; view: SegView };
+  resolveRef: Commit | null;
+  paste: NewCard | null;
+  github: NewCard;
+  gh: GhReplyOf<GhQuery["op"]>; // 按 q.op
+  saveAsset: string; // assets/ 里的文件名
+  views: Record<string, SegView>;
+  webMeta: WebMeta;
+  stickerPacks: StickerPack[];
+  confirm: boolean;
+  pickFile: string | null; // data URL
+};
+export type ReplyOf<T extends AskType> = Replies[T];
+/** From GitHub… 的回答：按 GhQuery 的 op */
+type GhReplies = { repo: GhRepo; commit: Commit; tree: GhTree; file: GhFile; card: NewCard };
+export type GhReplyOf<O extends GhQuery["op"]> = GhReplies[O];

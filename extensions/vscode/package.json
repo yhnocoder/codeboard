@@ -512,7 +512,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "e2e": "bash test/run.sh",
-    "test:host": "node test/run-host-resolve.mjs"
+    "test:host": "node test/check-vscode-imports.mjs && node test/run-host-resolve.mjs"
   },
   "dependencies": {
     "@codeboard/core": "^0.1.0",

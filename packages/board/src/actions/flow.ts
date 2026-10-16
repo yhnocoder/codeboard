@@ -57,7 +57,7 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   pending.add(key);
   let r: ExpandResult;
   try {
-    r = await ask<ExpandResult>("expand", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, recv: call.recv, pick });
+    r = await ask("expand", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, recv: call.recv, pick });
   } catch (e) {
     toast(`Could not expand ${call.name}(): ${(e as Error).message}`);
     return;
@@ -159,7 +159,7 @@ export function attachCall(cardId: string, segId: string, call: CallSpan, target
   const seg = segOf(cardById(cardId)!.card as CodeCard, segId);
   const tseg = t.card.segments.find((s) => s.symbol) ?? t.card.segments[0];
   if (!seg || !tseg) return;
-  ask<Var[]>("callVars", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, target: structuredClone(unwrap(tseg)) })
+  ask("callVars", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, target: structuredClone(unwrap(tseg)) })
     .then((vs) => { if (vs?.length) live((b) => { const l = b.links.find((x) => x.id === lid); if (l?.kind === "call") l.cands = vs; }); })
     .catch(() => {});
 }

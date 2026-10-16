@@ -3,7 +3,7 @@
 import * as path from "node:path";
 import { importPkg, type FileAnalysis } from "@codeboard/core/analysis";
 import type { Segment } from "@codeboard/core";
-import { exists, inWorkspace, wsFolders } from "./ws";
+import { exists, inWorkspace, wsRoots } from "./ws";
 
 const wsPkg = new Map<string, Promise<boolean>>();
 export const resetScope = () => wsPkg.clear();
@@ -13,8 +13,7 @@ export function isWorkspacePkg(pkg: string): Promise<boolean> {
   let p = wsPkg.get(pkg);
   if (!p) {
     p = (async () => {
-      for (const f of wsFolders()) {
-        const r = f.uri.fsPath;
+      for (const r of wsRoots()) {
         if (path.basename(r) === pkg) return true;
         for (const c of [path.join(r, pkg), path.join(r, `${pkg}.py`), path.join(r, "src", pkg)]) if (await exists(c)) return true;
       }

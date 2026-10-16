@@ -1,6 +1,5 @@
 // 点调用展开（expand）、标识符悬停看定义（peek）、全工作区的符号名字索引。
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
-import * as vscode from "vscode";
 import * as path from "node:path";
 import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
 import { isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
@@ -10,69 +9,42 @@ import { cardForFileSym, symCard } from "./cards";
 import { absOf, locOfFile, versionText } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
-import { libOf, resetScope } from "./scope";
+import { libOf } from "./scope";
+import { entriesOf, indexedFiles, lookupName, type IndexEntry } from "./nameindex";
 import { log } from "./log";
-import { CODE_EXCLUDE, CODE_GLOB, exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, splitLines, wsFolders } from "./ws";
+import { exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
 
-// ---------- 名字索引 ----------
+// ---------- 名字索引（nameindex.ts） ----------
 
-export type IndexEntry = { name: string; qual: string; kind: Sym["kind"]; abs: string; start: number; end: number; defLine: number; sig: string };
-
-let index: Promise<Map<string, IndexEntry[]>> | undefined;
-const byFile = new Map<string, IndexEntry[]>();
-
-async function indexFile(abs: string, text?: string | null) {
-  text ??= await readText(abs);
-  const old = byFile.get(abs) ?? [];
-  const ents: IndexEntry[] = [];
-  if (text !== null && text.length < 2_000_000) {
-    for (const s of analysisOf(langOf(abs), text).symbols) ents.push({ name: s.name, qual: s.qual, kind: s.kind, abs, start: s.start, end: s.end, defLine: s.defLine, sig: s.sig });
-  }
-  byFile.set(abs, ents);
-  return { old, ents };
-}
-
-export function nameIndex(): Promise<Map<string, IndexEntry[]>> {
-  return (index ??= (async () => {
-    const files = await vscode.workspace.findFiles(CODE_GLOB, CODE_EXCLUDE, 8000);
-    const m = new Map<string, IndexEntry[]>();
-    for (const f of files) {
-      const { ents } = await indexFile(f.fsPath);
-      for (const e of ents) (m.get(e.name) ?? m.set(e.name, []).get(e.name)!).push(e);
-    }
-    return m;
-  })());
-}
-
-/** 文件保存 / 新建 / 删除：只重做这个文件 */
-export async function reindexFile(abs: string) {
-  if (!index) return;
-  const m = await index;
-  const { old, ents } = await indexFile(abs);
-  for (const e of old) { const l = m.get(e.name); if (l) m.set(e.name, l.filter((x) => x.abs !== abs)); }
-  for (const e of ents) (m.get(e.name) ?? m.set(e.name, []).get(e.name)!).push(e);
-}
-export function resetIndex() { index = undefined; byFile.clear(); resetScope(); }
+export { nameIndexReady, resetIndex, startNameIndex } from "./nameindex";
 
 // ---------- 转到定义 ----------
 
 /** 问语言服务（同一个文件、位置、内容的请求共用：悬停时可能已经在问了） */
 export const lspDefs = (abs: string, line: number, col: number): Promise<Def[]> => sharedDefs(abs, line, col, () => askDefs(abs, line, col));
 
+// Pylance 刚启动时会先回空：还没见它答过话时，空的回答隔一会儿再问几次，再退到名字索引
+const RETRY = 3, RETRY_GAP = 600, RETRY_CLICKS = 3;
+let lspSeen = false, retryClicks = 0;
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** 测试用：当作语言服务还没答过话 */
+export const forgetLspSeen = () => { lspSeen = false; retryClicks = 0; };
+
+/** 点击时问定义：语言服务像是还在启动（装了 Pylance、还没答过）就重试 */
+export async function clickDefs(abs: string, line: number, col: number): Promise<Def[]> {
+  let d = await lspDefs(abs, line, col);
+  if (d.length || lspSeen || retryClicks >= RETRY_CLICKS || langOf(abs) !== "python" || !workspace().about.hasExtension("ms-python.vscode-pylance")) return d;
+  retryClicks++;
+  for (let k = 0; k < RETRY && !d.length && !lspSeen; k++) { await sleep(RETRY_GAP); d = await lspDefs(abs, line, col); }
+  if (d.length) log("info", `definition at ${hostPath(abs)}:${line}:${col} answered after retry (language server starting)`);
+  return d;
+}
+
 async function askDefs(abs: string, line: number, col: number): Promise<Def[]> {
   try {
-    const r = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
-      "vscode.executeDefinitionProvider", vscode.Uri.file(abs), new vscode.Position(line - 1, col),
-    );
-    const out: Def[] = [];
-    for (const d of r ?? []) {
-      const uri = "targetUri" in d ? d.targetUri : d.uri;
-      const range = "targetUri" in d ? (d.targetSelectionRange ?? d.targetRange) : d.range;
-      if (uri.scheme !== "file") continue;
-      if (uri.fsPath === abs && range.start.line === line - 1) continue; // 指回调用处自己
-      out.push({ abs: uri.fsPath, line: range.start.line + 1, col: range.start.character });
-    }
-    return out;
+    const r = await workspace().language.definitions(abs, line, col);
+    if (r.length) lspSeen = true;
+    return r.filter((d) => !(d.abs === abs && d.line === line)); // 指回调用处自己
   } catch (e) {
     log("warn", `definition provider failed at ${hostPath(abs)}:${line}:${col}: ${e instanceof Error ? e.message : e}`);
     return [];
@@ -120,7 +92,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
     resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
-      const defs = await lspDefs(wp.abs, line, m.col);
+      const defs = await clickDefs(wp.abs, line, m.col);
       lspN = defs.length;
       for (const d of defs) {
         const t = await symAtDef(d, m.name);
@@ -130,7 +102,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
     // 语言服务给了定义、只是那里不是函数 / 类（变量、属性、参数）：不再去建全工作区的名字索引（大仓库要几十秒）
     // 语言服务说了话就不扫工作区：只在当前文件和已经分析过的文件里按名字找
     if (!targets.length) {
-      const ents = lspN ? await nearbyEntries(m.name, wp?.abs) : ((await nameIndex()).get(m.name) ?? []);
+      const ents = lspN ? await nearbyEntries(m.name, wp?.abs) : await lookupName(m.name);
       const cands = ents.map((e) => ({ ...e, path: hostPath(e.abs), line: e.defLine }));
       if (cands.length) {
         const selfClass = (seg.symbol?.kind === "class" ? seg.symbol.qual : seg.symbol?.qual.split(".").slice(0, -1).join(".")) || seg.scope?.split(".").slice(0, -1).join(".");
@@ -232,13 +204,7 @@ type Hover = { sig?: string; doc?: string };
 /** VS Code 的 hover（Pylance：签名代码块 + Markdown 文档）；没有语言服务时为 null */
 async function hoverAt(abs: string, line: number, col: number): Promise<Hover | null> {
   try {
-    const hs = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", vscode.Uri.file(abs), new vscode.Position(line - 1, col));
-    const parts: string[] = [];
-    for (const h of hs ?? []) for (const c of h.contents) {
-      if (typeof c === "string") parts.push(c);
-      else if ("language" in c) parts.push("```" + c.language + "\n" + c.value + "\n```");
-      else if (c.value) parts.push(c.value);
-    }
+    const parts = await workspace().language.hover(abs, line, col);
     // Pylance 在文档末尾带 <!--moduleHash:...--> 之类的 HTML 注释，Markdown 渲染时会原样显示，先去掉
     const r = splitHover(parts.join("\n\n").replace(/<!--[\s\S]*?-->/g, "").trim());
     return r.sig || r.doc ? r : null;
@@ -253,7 +219,7 @@ export async function peek(m: PeekReq): Promise<PeekResult> {
     const wp = await workingPlace(m.seg);
     if (wp?.exact) use = { abs: wp.abs, line: wp.start + (m.line - m.seg.start), col: m.col };
   }
-  if (use) defs = await lspDefs(use.abs, use.line, use.col);
+  if (use) defs = await clickDefs(use.abs, use.line, use.col);
   if (defs.length) {
     // hover 在使用处问（Pylance 给的类型更具体），没有再问定义处
     const hov = (use && (await hoverAt(use.abs, use.line, use.col))) || (await hoverAt(defs[0].abs, defs[0].line, defs[0].col));
@@ -267,7 +233,7 @@ export async function peek(m: PeekReq): Promise<PeekResult> {
   if (local) return local;
   // 兜底 3：名字索引里的函数 / 类
   const word = m.word.split(".").pop()!;
-  const hits = (await nameIndex()).get(word);
+  const hits = await lookupName(word);
   if (hits?.length) {
     const e = hits.length === 1 ? hits[0] : rankByReceiver(hits.map((h) => ({ ...h, path: hostPath(h.abs), line: h.defLine })), m.word.includes(".") ? m.word.split(".").slice(0, -1).join(".") : undefined, { path: m.seg.path }).ranked[0];
     return peekAt({ abs: e.abs, line: e.defLine, col: 0 }, word);
@@ -279,12 +245,17 @@ export async function peek(m: PeekReq): Promise<PeekResult> {
 
 async function classField(word: string): Promise<Def | null> {
   if (!/^[A-Za-z_]\w*$/.test(word)) return null;
-  await nameIndex();
   const re = new RegExp(`^\\s+${word}\\s*(:[^=]*)?=(?!=)`);
   let n = 0;
-  for (const [abs, ents] of byFile) {
+  for (const { abs, ents: known } of await indexedFiles()) {
+    let ents = known, text: string | null | undefined;
+    if (!ents) { // 还没分析过：文本里没有这个词就不用分析
+      text = await readText(abs);
+      if (!text || !text.includes(word)) continue;
+      ents = await entriesOf(abs);
+    }
     if (!ents.some((e) => e.kind === "class") || n++ > 400) continue;
-    const text = await readText(abs);
+    text ??= await readText(abs);
     if (!text || !text.includes(word)) continue;
     const lines = splitLines(text);
     const a = analysisOf(langOf(abs), text);
@@ -357,7 +328,7 @@ async function importedModule(m: PeekReq): Promise<PeekDef | null> {
   const im = a?.imports.find((i) => i.name === m.word && !i.from);
   if (!a || !im || !full) return null;
   const rel = im.module.split(".");
-  for (const f of wsFolders()) for (const c of [path.join(f.uri.fsPath, ...rel, "__init__.py"), path.join(f.uri.fsPath, ...rel) + ".py"])
+  for (const f of wsRoots()) for (const c of [path.join(f, ...rel, "__init__.py"), path.join(f, ...rel) + ".py"])
     if (await exists(c)) return peekAt({ abs: c, line: 1, col: 0 }, m.word, null, true);
   const lines = splitLines(full);
   const pseg: Segment = { id: mkUid("s"), src: seg.src, path: seg.path, lang: seg.lang, start: im.line, end: im.line, text: [lines[im.line - 1] ?? ""], version: seg.version };

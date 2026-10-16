@@ -25,7 +25,7 @@ export const fetching = (k: string) => busy().has(k);
 export async function fetchMeta(id: string, url: string, item?: string) {
   const k = item ? `${id}/${item}` : id;
   setBusy((s) => new Set(s).add(k));
-  const meta = (await ask<WebMeta | null>("webMeta", { url }).catch(() => null)) ?? { failed: true, at: Date.now() };
+  const meta = (await ask("webMeta", { url }).catch(() => null)) ?? { failed: true, at: Date.now() };
   setBusy((s) => { const n = new Set(s); n.delete(k); return n; });
   live((b) => {
     const c = findCard(b, id)?.card;

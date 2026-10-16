@@ -77,12 +77,12 @@ export function newNote(at?: { x: number; y: number }, bg = true, text = "") {
   return id;
 }
 export async function newImage(at?: { x: number; y: number }) {
-  const dataUrl = await ask<string | null>("pickFile", { kind: "image" }).catch(() => null);
+  const dataUrl = await ask("pickFile", { kind: "image" }).catch(() => null);
   if (!dataUrl) return;
   return addImage(dataUrl, "image.png", at);
 }
 export async function addImage(dataUrl: string, name: string, at?: { x: number; y: number }) {
-  const file = await ask<string>("saveAsset", { name, dataUrl }).catch(() => null);
+  const file = await ask("saveAsset", { name, dataUrl }).catch(() => null);
   const src = file ?? dataUrl;
   const img = new Image();
   img.src = dataUrl;
@@ -121,7 +121,7 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
 /** 白板自己生成的段（合并、Free code 改动）找宿主要高亮 */
 export async function requestViews(segs: Segment[]) {
   if (!segs.length) return;
-  const v = await ask<Record<string, SegView>>("views", { segs: unwrap(segs).map((s) => structuredClone(unwrap(s))) }).catch(() => null);
+  const v = await ask("views", { segs: unwrap(segs).map((s) => structuredClone(unwrap(s))) }).catch(() => null);
   if (v) setState("views", (o) => ({ ...o, ...v }));
 }
 
@@ -136,7 +136,7 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   if (k.kind === "note") return newNote(at, true, text);
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";
-  const r = await ask<NewCard | null>("paste", { text }).catch((e) => { err = (e as Error).message; return null; });
+  const r = await ask("paste", { text }).catch((e) => { err = (e as Error).message; return null; });
   if (r) return addCards([r], { at, exact });
   // GitHub 文件拿不到（离线、私有仓库没登录）：先留一张书签，链接不丢
   if (k.kind === "github") { toast(`Could not fetch this GitHub file${err ? `: ${err}` : ""}`); return newWeb(at, text.trim()); }

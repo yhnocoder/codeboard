@@ -245,7 +245,7 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
             const f = def()!.follow!;
             const prev = def()!;
             updatePop(p.inst.id, (q) => ({ ...(q as any), trail: [...((q as any).trail ?? []), prev], data: undefined }));
-            ask<PeekResult>("peek", { seg: structuredClone(unwrap(def()!.seg)), line: f.line, col: f.col, word: f.label.split(".").pop()!, at: { path: f.path, line: f.line, col: f.col } })
+            ask("peek", { seg: structuredClone(unwrap(def()!.seg)), line: f.line, col: f.col, word: f.label.split(".").pop()!, at: { path: f.path, line: f.line, col: f.col } })
               .then((r) => updatePop(p.inst.id, (q) => ({ ...(q as any), data: r ?? { none: "No definition found", word: f.label } })))
               .catch(() => updatePop(p.inst.id, (q) => ({ ...(q as any), data: { none: "No definition found", word: f.label } })));
           }}>Follow</button></div>
@@ -294,7 +294,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
     const s = q();
     clearTimeout(t);
     if (tab() !== "code" || !s.trim()) { setRes([]); return; }
-    t = window.setTimeout(() => ask<SearchItem[]>("search", { q: s, scope: "code" }).then((r) => { setRes(r.filter((x) => x.kind === "symbol" || x.kind === "file").slice(0, 8)); setI(0); }).catch(() => setRes([])), 120);
+    t = window.setTimeout(() => ask("search", { q: s, scope: "code" }).then((r) => { setRes(r.filter((x) => x.kind === "symbol" || x.kind === "file").slice(0, 8)); setI(0); }).catch(() => setRes([])), 120);
   });
   const done = (n: Omit<Sidenote, "id" | "at">, view?: any) => {
     A.addSidenote({ ...n, at: at(), why: why().trim() || undefined } as any, view);
@@ -306,7 +306,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
       case "code": {
         const it = res()[i()];
         if (!it) return;
-        const r = await ask<NewCard>("searchPick", { item: it, alt: true }).catch(() => null);
+        const r = await ask("searchPick", { item: it, alt: true }).catch(() => null);
         const c = r?.card;
         if (!c || !isCode(c)) return toast("Could not read that code");
         const seg = c.segments[0];
@@ -441,7 +441,7 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
   const go = async () => {
     const r = ref().trim();
     if (!r) return;
-    const got = await ask<string | { commit: string } | null>("resolveRef", { text: r }).catch((e) => { toast((e as Error).message); return null; });
+    const got = await ask("resolveRef", { text: r }).catch((e) => { toast((e as Error).message); return null; });
     const sha = typeof got === "string" ? got : got?.commit;
     if (!got) toast(`No commit matches “${r}”`);
     if (sha) { closePop(p.inst.id); A.switchCommit(p.pop.card, sha); }

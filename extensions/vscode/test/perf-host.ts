@@ -9,7 +9,10 @@ import { startAnalysis } from "../src/analysis";
 import { staleFor } from "../src/versions";
 import { viewsFor } from "../src/views";
 import { forgetHeads } from "../src/git";
-import { WS } from "./vscode-stub";
+import { useWorkspace } from "../src/ws";
+import { WS, nodeWorkspace } from "./node-workspace";
+
+useWorkspace(nodeWorkspace());
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const N = +arg("cards", "240"), RUNS = +arg("runs", "3");

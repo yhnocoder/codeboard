@@ -26,7 +26,7 @@ export function Palette() {
     const my = ++n;
     t = window.setTimeout(async () => {
       setBusy(true);
-      const r = s ? await ask<SearchItem[]>("search", { q: s, scope: init.mode === "code" ? "code" : "all" }).catch(() => []) : await ask<SearchItem[]>("entryPoints", {}).catch(() => []);
+      const r = s ? await ask("search", { q: s, scope: init.mode === "code" ? "code" : "all" }).catch(() => []) : await ask("entryPoints", {}).catch(() => []);
       if (my !== n) return;
       setRes(r); setI(0); setBusy(false);
     }, s ? 90 : 0);
@@ -45,7 +45,7 @@ export function Palette() {
       else send({ type: "openBoard", id: it.board, card: it.card });
       return;
     }
-    const r = await ask<NewCard | null>("searchPick", { item: it }).catch((e) => { toast((e as Error).message); return null; });
+    const r = await ask("searchPick", { item: it }).catch((e) => { toast((e as Error).message); return null; });
     if (r) A.addCards([r], { besideSel: false });
   };
   const onKey = (e: KeyboardEvent) => {

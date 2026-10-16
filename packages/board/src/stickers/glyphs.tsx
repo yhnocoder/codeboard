@@ -30,7 +30,7 @@ const [packs, setPacks] = createSignal<StickerPack[] | null>(null);
 let loading: Promise<void> | null = null;
 export function loadPacks(force = false) {
   if (loading && !force) return loading;
-  loading = ask<StickerPack[]>("stickerPacks", {}).then((p) => void setPacks(p ?? []), () => void setPacks([]));
+  loading = ask("stickerPacks", {}).then((p) => void setPacks(p ?? []), () => void setPacks([]));
   return loading;
 }
 export { packs };
