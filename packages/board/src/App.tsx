@@ -25,6 +25,8 @@ export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
   let camT: number | undefined;
   createEffect(() => document.documentElement.style.setProperty("--menu-ms", `${tune("menuOpen")}ms`));
+  // 慢动作：CSS 里的时长都乘 --t（系统「减少动态效果」时 styles.css 的 media 规则仍然优先）
+  createEffect(() => { const s = tune("animSpeed"); if (s === 100) document.documentElement.style.removeProperty("--t"); else document.documentElement.style.setProperty("--t", String(100 / s)); });
   createEffect(on(() => [cam.x, cam.y, cam.z], () => {
     clearTimeout(camT);
     camT = window.setTimeout(() => {
@@ -103,17 +105,13 @@ function Toolbar() {
       { label: "Undo", kbd: `${A.K.mod}Z`, disabled: !canUndo(), run: () => undo() },
       { label: "Redo", kbd: `${A.K.shift}${A.K.mod}Z`, disabled: !canRedo(), run: () => redo() },
       null,
-      { label: "Hide All Comments", checked: !!state.board.hideAllComments, run: () => mutate((b) => { b.hideAllComments = !b.hideAllComments || undefined; }) },
-      { label: "Hide Flow Numbers", checked: !!state.board.hideNumbers, run: () => mutate((b) => { b.hideNumbers = !b.hideNumbers || undefined; }) },
-      null,
       { label: "Rename Board…", run: () => promptText("Rename Board", state.board.name).then((v) => v && mutate((b) => { b.name = v; })) },
-      { label: "Add-to Target", hint: "⌥B in the editor adds here", checked: !!state.host.target, run: () => send({ type: "openBoard", id: state.board.id }) },
       { label: "Export as PNG…", run: () => A.exportPng() },
       null,
       { label: "Settings…", kbd: `${A.K.mod},`, run: () => A.openSettings() },
       { label: "Keyboard Shortcuts", kbd: "?", run: () => setKeysOpen(true) },
       { label: "Copy Diagnostics", run: () => A.copyDiagnostics() },
-    ], x + 180, y, { up: true });
+    ], x, y, { up: true });
   };
   return (
     <div class="over bbar"><div class="pill">

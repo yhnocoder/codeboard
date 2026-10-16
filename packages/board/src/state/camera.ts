@@ -1,5 +1,6 @@
 // 镜头和动效：弹簧（几乎不过冲）、平滑移动、惯性。系统设了「减少动态效果」时全部直接切换。
 import { createStore } from "solid-js/store";
+import { tune } from "./tune";
 
 export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -18,7 +19,8 @@ type Anim = (dt: number, instant: boolean) => boolean;
 const anims = new Set<Anim>();
 let last = 0, rafOn = false;
 function tick(now: number) {
-  const dt = Math.min(0.032, (now - last) / 1000);
+  // Debug 里的慢动作：弹簧、镜头都按比例放慢
+  const dt = Math.min(0.032, (now - last) / 1000) * (tune("animSpeed") / 100);
   last = now;
   const instant = reduceMotion();
   for (const a of [...anims]) if (a(dt, instant)) anims.delete(a);

@@ -85,13 +85,10 @@ function portPath(x: number, y: number) {
 
 /**
  * Call link 从这一行的哪一端出：子卡整个在右 → 右；整个在左 → 左；上下错开（横向重叠）时看子卡左边在不在父卡中线右边（宽松）。
- * 用户拖过起点（L.side）就照用户的，除非子卡已经远远到了另一边（严格：整个越过父卡外 120px 才翻）。
+ * 用户拖过起点或在菜单 Start From 里选过（L.side）就一直照用户的。
  */
 export function callSide(L: Link, a: Rect, b: Rect): "left" | "right" {
-  const side = L.kind === "call" ? L.side : undefined;
-  if (side === "left" && b.x >= a.x + a.w + 120) return "right";
-  if (side === "right" && b.x + b.w <= a.x - 120) return "left";
-  if (side) return side;
+  if (L.side) return L.side;
   if (b.x >= a.x + a.w - 24) return "right";
   if (b.x + b.w <= a.x + 24) return "left";
   return b.x >= a.x + a.w / 2 ? "right" : "left";
@@ -172,7 +169,7 @@ function plainGeo(L: PlainLink): Geo | null {
   let x1: number, y1: number, x2: number, y2: number, h = true;
   if (la || lb) {
     const right = cb.x >= ca.x;
-    x1 = right ? ra.x + ra.w : ra.x; x2 = right ? rb.x : rb.x + rb.w;
+    x1 = (L.side ?? (right ? "right" : "left")) === "right" ? ra.x + ra.w : ra.x; x2 = right ? rb.x : rb.x + rb.w;
     y1 = la ? la.y : ca.y;
     y2 = lb ? lb.y : clamp(y1, rb.y + 18, rb.y + rb.h - 18);
     if (!lb && (rb.y > y1 + 60 || rb.y + rb.h < y1 - 60)) y2 = rb.y + Math.min(rb.h / 2, 18);
@@ -181,7 +178,12 @@ function plainGeo(L: PlainLink): Geo | null {
   else if (rb.y > ra.y + ra.h) { h = false; x1 = ca.x; y1 = ra.y + ra.h; x2 = cb.x; y2 = rb.y; }
   else { h = false; x1 = ca.x; y1 = ra.y; x2 = cb.x; y2 = rb.y + rb.h; }
   let c1: number[], c2: number[];
-  if (h) { const dx = Math.max(30, Math.abs(x2 - x1) * 0.45) * Math.sign(x2 - x1 || 1); c1 = [x1 + dx, y1]; c2 = [x2 - dx, y2]; }
+  if (h) {
+    // 两端各自朝卡外出 / 进（起点被用户指定到另一边时线会先往外绕）
+    const dx = Math.max(30, Math.abs(x2 - x1) * 0.45);
+    const o1 = x1 >= ra.x + ra.w - 0.5 ? 1 : -1, o2 = x2 <= rb.x + 0.5 ? 1 : -1;
+    c1 = [x1 + dx * o1, y1]; c2 = [x2 - dx * o2, y2];
+  }
   else { const dy = Math.max(30, Math.abs(y2 - y1) * 0.45) * Math.sign(y2 - y1 || 1); c1 = [x1, y1 + dy]; c2 = [x2, y2 - dy]; }
   const arrow = arrowHead;
   if (shape().route === "elbow") {

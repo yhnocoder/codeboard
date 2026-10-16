@@ -132,6 +132,7 @@ type LinkBase = {
   to: End;
   label?: string; // 用户写的话，浮在线中间
   at?: number; // 标签框沿线的位置 0..1（用户拖过才有；默认在中间）
+  side?: "left" | "right"; // 用户选过起点：从这一行（卡）的哪一端出（没有 = 自动）
 };
 /** 调用：从代码行到被调函数的卡。参与编号、Walkthrough、Tidy、变量 */
 export type CallLink = LinkBase & {
@@ -140,7 +141,6 @@ export type CallLink = LinkBase & {
   cands?: Var[]; // 语法推出来的候选变量（点 + 时列出来）
   loop?: boolean; // 出发行在 for / while 里（↺）
   call?: { name: string; col: number }; // 点的是这一行的哪个调用
-  side?: "left" | "right"; // 用户拖过起点：从这一行的哪一端出（没有 = 自动）
 };
 /** 普通箭头：不编号；可设箭头、虚实、颜色、文字 */
 export type PlainLink = LinkBase & {

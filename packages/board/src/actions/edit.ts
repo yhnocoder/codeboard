@@ -162,7 +162,7 @@ export function duplicateSel() {
   toast(made.length > 1 ? `Duplicated ${made.length} cards (no links, no number)` : "Duplicated. The copy has no links and no number.");
 }
 export function copyCard(c: CodeCard) {
-  const rows = cardRows(c, { views: state.views, hideAllComments: state.board.hideAllComments });
+  const rows = cardRows(c, { views: state.views });
   const lines: string[] = [];
   for (const r of rows) if (r.t === "line") { const s = c.segments.find((q) => q.id === r.seg)!; lines.push(s.text[r.line - s.start] ?? ""); }
   navigator.clipboard?.writeText(lines.join("\n")).catch(() => {});

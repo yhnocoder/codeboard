@@ -540,7 +540,9 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .vchips.on .vlabel, .vchips.on .vchip { box-shadow: 0 0 0 1.5px var(--accent); }
 .vlabel.editing { min-width: 60px; }
 .vplus { opacity: 1; margin: -10px 0 0 -10px; }
-.vplus.in { position: static; margin: 0; flex: none; }
+/* + 浮在框左边、不占位：占位会把居中的框挤开，鼠标就滑出框外 → + 消失 → 框回来 → 来回闪 */
+.vplus.in { position: absolute; right: 100%; top: 50%; margin: -10px 4px 0 0; flex: none; }
+.vplus.in::after { content: ""; position: absolute; inset: -4px -8px -4px -4px; }
 .drophint { position: absolute; font: 600 11.5px/1 var(--sys); color: #fff; background: var(--k-fn); padding: 6px 10px; border-radius: 6px; white-space: nowrap; box-shadow: var(--sh-float); transform-origin: 50% 100%; z-index: 9; pointer-events: none; }
 .card.merge-hot::after { content: none; }
 .guides { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 8; }
@@ -683,12 +685,14 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card.nobg .cbody { background: transparent; }
 
 /* 调用上的变量：一行一个，→ 对齐，收在一个小框里（#31） */
-.vbox { display: grid; grid-template-columns: auto auto auto; column-gap: 5px; row-gap: 1px; padding: 4px 7px; border-radius: 6px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); font: 10.5px/15px var(--mono); color: var(--ink-2); }
-.vrow { display: contents; }
-.vrow > span { padding: 0 1px; border-radius: 3px; }
+.vbox { display: grid; grid-template-columns: auto auto auto; padding: 3px 4px; border-radius: 6px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); font: 10.5px/15px var(--mono); color: var(--ink-2); }
+/* 一整行（含字间空隙）是一个悬停区，不再只绑在字上：鼠标在框里移动时代码高亮不会一闪一闪 */
+.vrow { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 5px; padding: .5px 3px; border-radius: 3px; }
+.vrow > span { padding: 0 1px; }
 .vrow .va { text-align: right; }
 .vrow .vto { color: var(--ink-3); }
-.vrow:hover > span { color: var(--k-fn); background: var(--hi); }
+.vrow:hover { background: var(--hi); }
+.vrow:hover > span { color: var(--k-fn); }
 .vchips.on .vbox { box-shadow: 0 0 0 1.5px var(--accent); }
 /* 标签框：↺ / 自己写的标签在上，变量在下，同一个框 */
 .vcard { display: flex; flex-direction: column; align-items: stretch; border-radius: 6px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); overflow: hidden; }

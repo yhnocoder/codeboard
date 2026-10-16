@@ -106,7 +106,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const notes = () => act.sidenotesOf(c().id).filter((n) => !n.at.lines);
   return (
     <div class="chead" data-drag>
-      <Show when={node() && !state.board.hideNumbers}><span class="step" data-tip="Click: select subtree · Drag: move subtree">{node()!.label}</span></Show>
+      <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: select subtree · Drag: move subtree">{node()!.label}</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
@@ -147,7 +147,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
 function CodeBand(p: { card: CodeCard }) {
   const c = () => p.card;
   const s0 = () => c().segments[0];
-  const label = () => (state.board.hideNumbers ? "" : flows().byId.get(c().id)?.label ?? "");
+  const label = () => (state.host.settings?.hideNumbers ? "" : flows().byId.get(c().id)?.label ?? "");
   const big = () => (/^\d$/.test(label()) ? `0${label()}` : label());
   const stale = () => act.cardStale(c());
   const isNew = () => stale() === "changed" || stale() === "hidden";
@@ -275,7 +275,7 @@ function MapLabel(p: { card: Card }) {
   };
   return (
     <div class="maplabel" style={{ "--fit": fit() }}>
-      <Show when={n() && !state.board.hideNumbers}><span class="step">{n()}</span></Show>
+      <Show when={n() && !state.host.settings?.hideNumbers}><span class="step">{n()}</span></Show>
       <span class="mt"><For each={parts()}>{(x) => <>{x}<wbr /></>}</For></span>
     </div>
   );

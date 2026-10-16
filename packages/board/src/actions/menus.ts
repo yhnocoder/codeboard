@@ -213,9 +213,6 @@ export function canvasMenu(x: number, y: number) {
     null,
     { label: "Select All", kbd: `${K.mod}A`, run: selectAll },
     { label: "Fit to Window", kbd: `${K.shift}1`, run: fitAll },
-    null,
-    { label: "Hide All Comments", checked: !!state.board.hideAllComments, run: () => mutate((b) => { b.hideAllComments = !b.hideAllComments; }) },
-    { label: "Hide Flow Numbers", checked: !!state.board.hideNumbers, run: () => mutate((b) => { b.hideNumbers = !b.hideNumbers; }) },
   ], x, y);
 }
 
@@ -227,7 +224,8 @@ export function linkMenu(id: string, x: number, y: number) {
   const set = (f: (l: Link) => void) => mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) f(l); });
   const edit: Item = { label: L.label ? "Edit Label" : "Add Label", kbd: "Double-click", run: () => setEditing({ kind: "label", id }) };
   const del: Item = { label: "Delete Arrow", kbd: "⌫", run: () => deleteLinks([id]) };
-  if (L.kind === "call") return openMenu([edit, { label: "Variables…", run: () => openVars(id) }, null, del], x, y);
+  const start: Item = { label: "Start From", sub: ([[undefined, "Auto"], ["left", "Left End"], ["right", "Right End"]] as const).map(([v, lb]) => ({ label: lb, checked: L.side === v, run: () => set((l) => { l.side = v; }) })) };
+  if (L.kind === "call") return openMenu([edit, { label: "Variables…", run: () => openVars(id) }, start, null, del], x, y);
   if (L.kind !== "plain") return;
   const P = L;
   const setP = (f: (l: PlainLink) => void) => set((l) => { if (l.kind === "plain") f(l); });
@@ -236,6 +234,7 @@ export function linkMenu(id: string, x: number, y: number) {
     ...(callOn(P.from, P.to) ? [{ label: "Make Call", hint: "This line calls the target function", run: () => makeCall(id) } as Item, null] : []),
     { label: "Head", sub: ([["none", "None"], ["end", "One-way  →"], ["both", "Both  ↔"]] as const).map(([v, lb]) => ({ label: lb, checked: (P.arrow ?? "end") === v, run: () => setP((l) => { l.arrow = v; }) })) },
     { label: "Style", sub: [{ label: "Solid", checked: P.solid !== false, run: () => setP((l) => { l.solid = undefined; }) }, { label: "Dashed", checked: P.solid === false, run: () => setP((l) => { l.solid = false; }) }] },
+    ...(P.from.line !== undefined ? [start] : []),
     { label: "Color", sub: LINK_COLORS.map(([v, lb]) => ({ label: lb, checked: (P.color ?? "grey") === v, run: () => setP((l) => { l.color = v === "grey" ? undefined : v; }) })) },
     null, del,
   ], x, y);

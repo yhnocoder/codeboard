@@ -45,7 +45,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
   const c = () => p.card;
   const rows = createMemo<Row[]>(() =>
-    cardRows(c(), { views: state.views, hideAllComments: state.board.hideAllComments, shown: shown(), versionOf: (s) => versionChip(c(), s) }),
+    cardRows(c(), { views: state.views, shown: shown(), versionOf: (s) => versionChip(c(), s) }),
   );
   const segById = (id: string) => c().segments.find((s) => s.id === id);
   const viewOf = (id: string): SegView | undefined => state.views[id];
@@ -101,7 +101,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const s = segById(r.seg);
     const v = viewOf(r.seg);
     const i = r.line - (s?.start ?? 0);
-    const hideTail = (c().hide?.comments || state.board.hideAllComments) && v?.bare?.[r.line] !== undefined;
+    const hideTail = c().hide?.comments && v?.bare?.[r.line] !== undefined;
     if (hideTail) return v!.bare![r.line];
     return v?.html[i] ?? esc(s?.text[i] ?? "");
   };

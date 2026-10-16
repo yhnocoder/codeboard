@@ -12,6 +12,7 @@ const KEY: Record<keyof Settings, string> = {
   zoomMap: "zoom.map",
   dblClick: "doubleClick",
   themeReflow: "theme.reflow",
+  hideNumbers: "flowNumbers.hide",
   debug: "debug.enabled",
   tune: "debug.tune",
 };
