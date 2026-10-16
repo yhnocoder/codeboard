@@ -11,6 +11,8 @@ import { pops, closePop, pinPop, updatePop, type PopInst, type Pop } from "../st
 import { setConnectFrom } from "../state/ui";
 import { markHtml } from "../cards/CompareBody";
 import { Icon } from "./icons";
+import { autoUpdate } from "@floating-ui/dom";
+import { placePop, virtual } from "./place";
 import { promptText } from "./Menu";
 import { ask, send } from "../host";
 import * as A from "../actions";
@@ -25,33 +27,28 @@ export function Popovers() {
 
 function PopFrame(p: { inst: PopInst }) {
   let el!: HTMLDivElement;
-  const [size, setSize] = createSignal({ w: 0, h: 0 });
-  onMount(() => {
-    const ro = new ResizeObserver(() => setSize({ w: el.offsetWidth, h: el.offsetHeight }));
-    ro.observe(el);
-    onCleanup(() => ro.disconnect());
-  });
-  let last: { x: number; y: number } | undefined;
-  const pos = createMemo(() => {
-    void cam.x; void cam.y; void cam.z; // 镜头动时跟着元素走
-    const at = p.inst.at, s = size();
-    const W = window.innerWidth, H = window.innerHeight;
+  const [pos, setPos] = createSignal({ x: 0, y: 0 });
+  const [anchor, setAnchor] = createSignal<Element | undefined>();
+  let last: { x: number; y: number } | undefined, n = 0;
+  const place = () => {
+    const at = p.inst.at;
     // 锚点元素被重画掉了（比如删了一条旁注，标记换成新的）：Sidenote 弹窗改挂到还剩的那条的标记上；找不到就停在原地
     if (at.el && !at.el.isConnected && p.inst.pop.kind === "notes") {
       const ids = p.inst.pop.ids.filter((id) => state.board.sidenotes.some((n) => n.id === id));
       const mk = [...document.querySelectorAll("[data-notes]")].find((m) => (m as HTMLElement).dataset.notes!.split(",").some((id) => ids.includes(id)));
-      if (mk) at.el = mk;
+      if (mk) { at.el = mk; setAnchor(mk); }
     }
-    if (at.el && !at.el.isConnected && last) return last;
-    let x = at.x ?? 0, y = at.y ?? 0;
-    if (at.el?.isConnected) {
-      const r = at.el.getBoundingClientRect();
-      if (at.prefer === "right") { x = r.right + 8; y = r.top - 6; if (x + s.w > W - 8) x = r.left - s.w - 8; }
-      else if (at.prefer === "above") { x = r.left; y = r.top - s.h - 6; }
-      else { x = r.left; y = r.bottom + 6; if (y + s.h > H - 8) y = r.top - s.h - 6; }
-    }
-    return (last = { x: Math.max(8, Math.min(x, W - s.w - 8)), y: Math.max(8, Math.min(y, H - s.h - 8)) });
+    if (at.el && !at.el.isConnected && last) return;
+    const k = ++n;
+    void placePop(el, at.el?.isConnected ? at.el : virtual({ x: at.x ?? 0, y: at.y ?? 0 }), at.prefer).then((r) => { if (k === n) setPos(last = { x: r.x, y: r.y }); });
+  };
+  // 镜头动时跟着元素走；弹窗自己或锚点变大小、窗口变大小时重新放（autoUpdate）
+  createEffect(() => setAnchor(p.inst.at.el));
+  createEffect(() => {
+    const a = anchor();
+    onCleanup(autoUpdate(a?.isConnected ? a : virtual({ x: 0, y: 0 }), el, place, { layoutShift: false }));
   });
+  createEffect(() => { void cam.x; void cam.y; void cam.z; place(); });
   const k = () => p.inst.pop.kind;
   return (
     <div ref={el} class={`pop open k-${k()}`} classList={{ pinned: p.inst.pinned }} data-pop={p.inst.id} style={{ left: `${pos().x}px`, top: `${pos().y}px` }}

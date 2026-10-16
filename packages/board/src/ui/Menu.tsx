@@ -1,6 +1,7 @@
 // 自定义右键菜单、对话框、提示。浏览器自带的右键菜单全部屏蔽。
 import { createSignal, For, Show, onCleanup, onMount, createEffect } from "solid-js";
 import { Icon } from "./icons";
+import { placeMenu } from "./place";
 
 export type Item =
   | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string }
@@ -28,18 +29,13 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
   const [open, setOpen] = createSignal(false);
   const [subOf, setSubOf] = createSignal<{ i: number; x: number; y: number; alt: number } | null>(null);
   onMount(() => {
-    // 用 offset 尺寸：打开动画里 scale < 1，getBoundingClientRect 会量小，贴边时伸出窗口几像素
-    const r = { width: el.offsetWidth, height: el.offsetHeight };
-    const W = window.innerWidth, H = window.innerHeight;
-    // 放不下就往上翻；还放不下就限高滚动（最后一项总能看到）
-    let y = p.up ? p.y - r.height : p.y;
-    if (!p.up && y + r.height > H - 6 && p.y - r.height >= 4) y = p.y - r.height;
-    // 二级菜单右边放不下：翻到一级菜单左边（不压在一级菜单上）
-    const flip = p.sub && p.alt !== undefined && p.x + r.width > W - 6 && p.alt - r.width + 4 >= 4;
-    const x = flip ? p.alt! - r.width + 4 : Math.max(4, Math.min(p.x, W - r.width - 6)), yy = Math.max(4, Math.min(y, H - r.height - 6));
-    // 从点击的那一点展开（翻上去 / 被推到左边时，原点跟着换到那个角）
-    setPos({ x, y: yy, ox: `${Math.max(0, Math.min(r.width, p.x - x))}px`, oy: `${Math.max(0, Math.min(r.height, (p.up ? p.y : p.y) - yy))}px` });
-    requestAnimationFrame(() => setOpen(true));
+    // 放不下就往上翻；还放不下就限高滚动（最后一项总能看到）；二级菜单右边放不下：翻到一级菜单左边（不压在一级菜单上）
+    void placeMenu(el, { x: p.x, y: p.y, up: p.up, alt: p.sub ? p.alt : undefined }).then(({ x, y }) => {
+      // 从点击的那一点展开（翻上去 / 被推到左边时，原点跟着换到那个角）
+      const w = el.offsetWidth, h = el.offsetHeight;
+      setPos({ x, y, ox: `${Math.max(0, Math.min(w, p.x - x))}px`, oy: `${Math.max(0, Math.min(h, p.y - y))}px` });
+      requestAnimationFrame(() => setOpen(true));
+    });
   });
   return (
     <><div ref={el} class="ctx" classList={{ open: open() }} role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px`, "max-height": `${window.innerHeight - 8}px`, "transform-origin": `${pos().ox} ${pos().oy}` }}
