@@ -24,6 +24,14 @@
   "issues": []
  },
  {
+  "step": "7a-settings",
+  "issues": []
+ },
+ {
+  "step": "7b-diagnostics",
+  "issues": []
+ },
+ {
   "step": "7-uncommitted",
   "issues": []
  }
