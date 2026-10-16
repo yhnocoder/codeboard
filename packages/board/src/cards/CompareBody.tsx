@@ -113,7 +113,7 @@ export function CompareBody(p: { card: CompareCard }) {
   const onDown = (e: PointerEvent) => {
     if (e.button !== 0) return;
     const h = callAt(e.target as HTMLElement);
-    if (!h) return;
+    if (!h || (A.isLibCall(h.call) && !e.altKey)) return;
     e.preventDefault(); e.stopPropagation();
     A.callPointerDown(e, h.col, h.seg, h.call, h.x);
   };

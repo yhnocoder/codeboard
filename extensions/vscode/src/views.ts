@@ -8,8 +8,9 @@ import c from "shiki/langs/c.mjs";
 import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
 import type { FileAnalysis } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
-import { versionText } from "./source";
-import { Lru, splitLines } from "./ws";
+import { absOf, versionText } from "./source";
+import { callPkgs } from "./scope";
+import { Lru, readText, splitLines } from "./ws";
 
 const theme = createCssVariablesTheme({ name: "codeboard", variablePrefix: "--shiki-", fontStyle: true });
 let hl: Promise<HighlighterCore> | undefined;
@@ -87,32 +88,38 @@ export async function segView(seg: Segment): Promise<SegView> {
   if (!full || splitLines(full).length > MAX_FULL) return snippetView(seg);
   const fa = analysisOf(lang, full);
   const toks = await tokensOf(lang, full);
-  return build(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0);
+  return build(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
 }
 
 /** 只有段文本：去掉公共缩进再分析（Python 片段在函数中间时才能解析），列号再加回来 */
-function snippetView(seg: Segment): Promise<SegView> | SegView {
+async function snippetView(seg: Segment): Promise<SegView> {
   const ind = Math.min(...seg.text.filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
   const cut = Number.isFinite(ind) ? ind : 0;
   const ded = seg.text.map((l) => l.slice(Math.min(cut, l.length - l.trimStart().length)));
   const fa = analysisOf(seg.lang, ded.join("\n"));
-  return tokensOf(seg.lang, seg.text.join("\n")).then((toks) => build(seg, fa, (i) => toks[i], cut, seg.start - 1));
+  // import 在文件开头，段里没有：用当前文件的
+  const abs = seg.src.kind === "free" ? null : absOf(seg);
+  const cur = abs ? await readText(abs).catch(() => null) : null;
+  const pk = await callPkgs(seg, cur ? analysisOf(seg.lang, cur).imports : fa.imports, abs);
+  const toks = await tokensOf(seg.lang, seg.text.join("\n"));
+  return build(seg, fa, (i) => toks[i], cut, seg.start - 1, pk);
 }
 
 /**
  * fa 的行号 = 段行号 - lineOff（整个文件：lineOff = 0，fa 行 L 就是真实行 L）；
  * 段文本分析时 fa 的第 1 行是段的第一行，shift = seg.start - 1。colOff = 去掉的缩进。
  */
-function build(seg: Segment, fa: FileAnalysis, tokAt: (i: number) => Tok[] | undefined, colOff: number, shift: number): SegView {
+function build(seg: Segment, fa: FileAnalysis, tokAt: (i: number) => Tok[] | undefined, colOff: number, shift: number, pkgOf: (c: { name: string; recv?: string }) => string | undefined = () => undefined): SegView {
   const calls: CallSpan[] = [];
   const marks = new Map<number, Mark[]>();
   for (const c of fa.calls) {
     const line = c.line + shift;
     if (line < seg.start || line > seg.end) continue;
     const idx = calls.length;
-    calls.push({ line, col: c.col + colOff, end: c.end + colOff, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch });
+    const pkg = pkgOf(c);
+    calls.push({ line, col: c.col + colOff, end: c.end + colOff, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch, pkg });
     const arr = marks.get(line) ?? [];
-    arr.push({ col: c.col + colOff, end: c.end + colOff, idx });
+    arr.push({ col: c.col + colOff, end: c.end + colOff, idx, pkg });
     marks.set(line, arr);
   }
   const html: string[] = [], flags: number[] = [];

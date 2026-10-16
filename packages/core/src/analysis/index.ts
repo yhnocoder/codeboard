@@ -16,6 +16,7 @@ export type Sym = {
   sig: string; // 一行签名：def schedule(self) -> tuple[list[Sequence], bool]
   params: Param[];
   parent?: string; // 所在类的 qual
+  doc?: string; // docstring（去掉引号、公共缩进）
 };
 
 export type Arg = { text: string; name?: string; kw?: string; star?: boolean };
@@ -44,6 +45,10 @@ export type FileAnalysis = {
   calls: CallSite[];
   /** Python 的 if __name__ == "__main__": 块 */
   mainBlocks: { start: number; end: number }[];
+  /** 模块 docstring */
+  doc?: string;
+  /** import 绑定的名字：import torch.multiprocessing as mp → { name: "mp", module: "torch.multiprocessing" }；相对导入 module 以 . 开头 */
+  imports: { name: string; module: string; line: number; from?: true }[]; // from = from X import name（name 不一定是模块）
 };
 
 type Grammar = "python" | "cpp";
@@ -94,7 +99,7 @@ function parse(g: Grammar, text: string) {
 export function analyze(lang: string, text: string): FileAnalysis {
   const lines = text.split(/\r?\n/);
   const flags = lines.map((l) => (l.trim() === "" ? BLANK : 0));
-  const out: FileAnalysis = { lang, symbols: [], flags, trailing: {}, calls: [], mainBlocks: [] };
+  const out: FileAnalysis = { lang, symbols: [], flags, trailing: {}, calls: [], mainBlocks: [], imports: [] };
   const g = grammarOf(lang);
   if (!g || !langs.size) return out;
   const tree = parse(g, text);
@@ -143,12 +148,15 @@ const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const PY_LOOP_BODY = new Set(["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"]);
 
 function python(root: Node, lines: string[], out: FileAnalysis) {
-  const docstring = (body: Node | null) => {
-    const first = body?.namedChildren[0];
-    if (first?.type === "expression_statement" && first.namedChildren.length === 1 && first.namedChildren[0]?.type === "string")
+  const docstring = (body: Node | null): string | undefined => {
+    const first = body?.namedChildren.find((x) => x?.type !== "comment");
+    if (first?.type === "expression_statement" && first.namedChildren.length === 1 && first.namedChildren[0]?.type === "string") {
       for (let r = first.startPosition.row; r <= first.endPosition.row; r++) out.flags[r] |= DOCSTRING;
+      return cleanDoc(first.namedChildren[0].text) || undefined;
+    }
   };
-  docstring(root);
+  out.doc = docstring(root);
+  pyImports(root, out);
 
   const visit = (n: Node, scope: string[], cls: string | undefined) => {
     for (const c of n.namedChildren) {
@@ -163,11 +171,13 @@ function python(root: Node, lines: string[], out: FileAnalysis) {
         const sigEnd = body ? body.startIndex : def.endIndex;
         let sig = oneLine(def.text.slice(0, sigEnd - def.startIndex)).replace(/:\s*$/, "");
         if (sig.startsWith("async ")) sig = sig;
-        out.symbols.push({
+        const sym: Sym = {
           name, qual, kind: isClass ? "class" : "def", start: start + 1, defLine: def.startPosition.row + 1, end: c.endPosition.row + 1,
           sig, params: isClass ? [] : pyParams(def.childForFieldName("parameters"), !!cls), parent: cls,
-        });
-        docstring(body);
+        };
+        out.symbols.push(sym);
+        const doc = docstring(body);
+        if (doc) sym.doc = doc;
         if (body) visit(body, [...scope, name], isClass ? qual : undefined);
         continue;
       }
@@ -199,6 +209,51 @@ function python(root: Node, lines: string[], out: FileAnalysis) {
     if (firstStr?.type === "string" && /^(call|dispatch|invoke|run_method|getattr)$/.test(name)) site.dispatch = firstStr.text.replace(/^[rbuf]*["']+|["']+$/g, "");
     out.calls.push(site);
   });
+}
+
+/** 字符串字面量 → docstring 正文（照 inspect.cleandoc） */
+export function cleanDoc(lit: string): string {
+  const m = /^[rRbBuUfF]*("""|'''|"|')([\s\S]*?)\1$/.exec(lit.trim());
+  const lines = (m ? m[2] : lit).replace(/\t/g, "    ").split(/\r?\n/);
+  const ind = Math.min(...lines.slice(1).filter((l) => l.trim()).map((l) => l.length - l.trimStart().length));
+  const out = [lines[0].trim(), ...lines.slice(1).map((l) => (Number.isFinite(ind) ? l.slice(ind) : l).trimEnd())];
+  while (out.length && !out[0]) out.shift();
+  while (out.length && !out[out.length - 1]) out.pop();
+  return out.join("\n");
+}
+
+function pyImports(root: Node, out: FileAnalysis) {
+  walk(root, (n) => {
+    if (n.type === "function_definition" || n.type === "class_definition") return false; // 只看模块级（含 if / try 里的）
+    const line = n.startPosition.row + 1;
+    if (n.type === "import_statement") {
+      for (const c of n.namedChildren) {
+        if (c?.type === "dotted_name") out.imports.push({ name: c.text.split(".")[0], module: c.text.split(".")[0], line });
+        else if (c?.type === "aliased_import") out.imports.push({ name: c.childForFieldName("alias")?.text ?? "", module: c.childForFieldName("name")?.text ?? "", line });
+      }
+      return false;
+    }
+    if (n.type === "import_from_statement") {
+      const mod = n.childForFieldName("module_name")?.text ?? "";
+      for (const c of n.childrenForFieldName("name")) {
+        if (c?.type === "dotted_name") out.imports.push({ name: c.text, module: mod, line, from: true });
+        else if (c?.type === "aliased_import") out.imports.push({ name: c.childForFieldName("alias")?.text ?? "", module: mod, line, from: true });
+      }
+      return false;
+    }
+  });
+}
+
+/**
+ * 调用名字绑到哪个包：沿 recv（或名字本身）的第一个名字找 import，返回顶层包名。
+ * 相对导入、本地定义、self.x 都返回 undefined（和当前文件同一个包）。
+ */
+export function importPkg(a: Pick<FileAnalysis, "imports">, call: { name: string; recv?: string }): string | undefined {
+  const root = /^[A-Za-z_]\w*/.exec(call.recv ?? call.name)?.[0];
+  if (!root) return undefined;
+  const im = a.imports.find((i) => i.name === root);
+  if (!im || !im.module || im.module.startsWith(".")) return undefined;
+  return im.module.split(".")[0];
 }
 
 // 内置函数不当成可展开的调用
@@ -386,3 +441,4 @@ export const callsOn = (a: FileAnalysis, line: number) => a.calls.filter((c) => 
 export * from "./vars";
 export * from "./select";
 export * from "./entry";
+export * from "./peek";

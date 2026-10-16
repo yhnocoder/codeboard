@@ -601,7 +601,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .follow { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
 .follow code { font: 11px var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
 .follow .tbtn { height: 22px; font-size: 11.5px; }
-.k-peek { width: 480px; }
+.k-peek { width: 520px; }
 .addnote { width: 420px; }
 .addnote .tabs { align-items: center; }
 .addnote .where { font: 11px var(--mono); color: var(--ink-3); padding-right: 4px; }
@@ -631,7 +631,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card.lost .cbody { filter: grayscale(1); opacity: .62; } /* 符号找不到：显示旧代码，变灰 */
 /* 白板只占半边窗口时，底部工具条只留图标（悬停仍有提示），不被裁掉 */
 @media (max-width: 760px) { .bbar .tbtn .tl { display: none; } .bbar .tbtn { padding-inline: 7px; } }
-/* 浮动的隐藏开关只在鼠标停在选中卡上时出现，平时不压住上面的卡 */
 
 /* 无背景（#39）：内容直接在画布上；头部和细边框只在悬停 / 选中时浮出 */
 .card.nobg { background: transparent; box-shadow: none; }
@@ -723,3 +722,22 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .slabel .sname.editing { white-space: pre !important; min-width: 60px; display: inline-block; }
 .sect:not([class*=" c-"]) { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
 .cand small.cur { flex: none; color: var(--accent); }
+
+/* 定义预览：顶部是 hover（签名 + 文档），下面源码按定义类型取 */
+.pk-top { padding: 8px 12px 9px; border-bottom: 1px solid var(--line); max-height: 260px; overflow: auto; scrollbar-width: thin; }
+.pk-sig { font: 11.5px/1.55 var(--mono); color: var(--ink); white-space: pre-wrap; word-break: break-word; }
+.pk-doc { margin-top: 6px; font-size: 12.5px; line-height: 1.55; color: var(--ink-2); }
+.pk-sig + .pk-doc { padding-top: 6px; border-top: 1px solid var(--line); }
+.pk-doc p { margin: 0; }
+.pk-doc code { font: 11px var(--mono); background: var(--hlrow); padding: 0 3px; border-radius: 3px; color: var(--ink); }
+.pk-doc pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 5px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
+.pk-doc pre code { background: none; padding: 0; }
+.pk-doc ul, .pk-doc ol { margin: 2px 0; padding-left: 1.3em; }
+.pk-doc h1, .pk-doc h2, .pk-doc h3 { margin: 4px 0 2px; font: 600 1em/1.4 var(--sys); color: var(--ink); }
+.pk-doc a.lnk { color: var(--k-fn); cursor: pointer; }
+.chrome .pk-top, .chrome .pk-top * { user-select: text; -webkit-user-select: text; }
+.k-peek .pcode { max-height: 330px; }
+.pk-head { padding: 6px 12px 0; font: 10.5px var(--mono); color: var(--ink-3); }
+.pcode .pl.jump { box-shadow: inset 0 1px 0 var(--line); }
+.pk-more { padding: 0 12px 6px 52px; font: 11px var(--mono); color: var(--ink-3); }
+.pop .lib-tag { font: 500 10px/16px var(--sys); color: var(--ink-3); padding: 0 6px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--hair); letter-spacing: .02em; }

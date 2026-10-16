@@ -16,7 +16,11 @@ import { ask, send } from "../host";
 import * as A from "../actions";
 
 export function Popovers() {
-  return <For each={pops()}>{(p) => <PopFrame inst={p} />}</For>;
+  return <>
+    {/* library 调用的样式跟着 Study Scope 变（这里顺带挂上，免得改 App） */}
+    <style>{A.libCallCss()}</style>
+    <For each={pops()}>{(p) => <PopFrame inst={p} />}</For>
+  </>;
 }
 
 function PopFrame(p: { inst: PopInst }) {
@@ -69,11 +73,12 @@ function Head(p: { title: any; inst: PopInst; right?: any }) {
   );
 }
 
-/** 一小段只读代码（带行号） */
-function Code(p: { start: number; html: string[]; hl?: number }) {
+/** 一小段只读代码（带行号）；rows = 每行的行号（不连续时） */
+function Code(p: { start: number; html: string[]; hl?: number; rows?: number[] }) {
+  const no = (i: number) => p.rows?.[i] ?? p.start + i;
   return (
     <div class="pcode"><div class="pc-in">
-      <For each={p.html}>{(h, i) => <div class="pl" classList={{ hl: p.hl === p.start + i() }}><span class="no">{p.start + i()}</span><span class="t" innerHTML={h || "​"} /></div>}</For>
+      <For each={p.html}>{(h, i) => <div class="pl" classList={{ hl: p.hl === no(i()), jump: i() > 0 && !!p.rows && no(i()) !== no(i() - 1) + 1 }}><span class="no">{no(i())}</span><span class="t" innerHTML={h || "​"} /></div>}</For>
     </div></div>
   );
 }
@@ -175,6 +180,7 @@ function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
 function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
   const d = () => p.pop.data;
   const def = () => (d() && "seg" in d()! ? (d() as PeekDef) : null);
+  const lib = () => { const l = def()?.lib; return l && !state.host.settings.studyScope.includes(l) ? l : ""; };
   const pin = () => {
     const x = def();
     if (!x) return;
@@ -214,8 +220,19 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
           </Show>
         </Show>
       }>
-        <Head title={<>Definition · {baseName(def()!.path)}:{def()!.line}</>} inst={p.inst} right={<span class="src-tag">{def()!.seg.version.kind === "git" ? "at HEAD" : ""}</span>} />
-        <Code start={def()!.start} html={def()!.html} hl={def()!.line} />
+        <Head title={<>Definition · {def()!.title ?? `${baseName(def()!.path)}:${def()!.line}`}</>} inst={p.inst}
+          right={lib() ? <span class="lib-tag" data-tip={`Library code · ${lib()}`}>library</span> : <span class="src-tag">{def()!.seg.version.kind === "git" && def()!.kind !== "module" ? "at HEAD" : ""}</span>} />
+        <Show when={def()!.sig || def()!.doc}>
+          <div class="pk-top">
+            <Show when={def()!.sig}><div class="pk-sig" innerHTML={def()!.sigHtml ?? escH(def()!.sig!)} /></Show>
+            <Show when={def()!.doc}><div class="pk-doc md" innerHTML={docHtml(def()!.doc!)} onClick={onDocClick} /></Show>
+          </div>
+        </Show>
+        <Show when={def()!.kind !== "module" && def()!.html.length}>
+          <Show when={def()!.head}><div class="pk-head">{def()!.head}</div></Show>
+          <Code start={def()!.start} html={def()!.html} hl={def()!.line} rows={def()!.rows} />
+          <Show when={def()!.more}><div class="pk-more">⋯ {def()!.more} more line{def()!.more! > 1 ? "s" : ""}</div></Show>
+        </Show>
         <Show when={def()!.follow}>
           <div class="follow">↳ <code>{def()!.follow!.label}</code><span class="grow" /><button class="tbtn" onClick={() => {
             const f = def()!.follow!;
@@ -226,14 +243,28 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
           }}>Follow</button></div>
         </Show>
         <div class="sn-acts">
-          <button class="tbtn" onClick={pin}>Pin as Sidenote</button>
-          <button class="tbtn" onClick={place}>Place on Board</button>
+          <Show when={def()!.kind !== "module"}>
+            <button class="tbtn" onClick={pin}>Pin as Sidenote</button>
+            <button class="tbtn" onClick={place}>Place on Board</button>
+          </Show>
           <button class="tbtn" onClick={() => { send({ type: "openPath", path: def()!.path, line: def()!.line }); }}>Open in Editor</button>
         </div>
       </Show>
     </>
   );
 }
+
+/** hover 文档：Markdown，代码块顺手着色 */
+function docHtml(src: string) {
+  return A.mdBlock(src).replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_, c: string) => `<pre><code>${hlPy(c)}</code></pre>`);
+}
+// 极简 Python 着色（在转义过的 HTML 上做）：注释、字符串、数字、关键字
+const PY_RE = /(#[^\n]*)|(&quot;(?:(?!&quot;)[^\n])*&quot;|'[^'\n]*')|(\b\d+(?:\.\d+)?\b)|\b(def|class|return|if|else|elif|for|while|in|not|and|or|is|None|True|False|import|from|as|with|lambda|yield|raise|try|except|finally|pass|async|await)\b/g;
+const hlPy = (h: string) => h.replace(PY_RE, (m, com, str, num) => `<span class="${com ? "com" : str ? "str" : num ? "num" : "kw"}">${m}</span>`);
+const onDocClick = (e: MouseEvent) => {
+  const a = (e.target as HTMLElement).closest?.("a.lnk") as HTMLElement | null;
+  if (a?.dataset.href) { e.preventDefault(); A.openLink(a.dataset.href); }
+};
 
 // ---------- 加 Sidenote ----------
 

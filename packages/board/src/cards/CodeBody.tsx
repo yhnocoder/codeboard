@@ -132,7 +132,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const r = rowE && rows()[+rowE.dataset.r!];
     if (!r || r.t !== "line") return;
     const call = viewOf(r.seg)?.calls[+x.dataset.c!];
-    if (!call) return;
+    if (!call || (act.isLibCall(call) && !e.altKey)) return; // library 调用：⌥ 点击才展开
     e.preventDefault();
     e.stopPropagation();
     act.callPointerDown(e, c().id, r.seg, call, x);

@@ -12,7 +12,7 @@ import { writeSetting } from "./settings";
 import { readPacks } from "./stickers";
 import { log } from "./log";
 import type { BoardPanel, Panels } from "./panel";
-import { expand, peek } from "./resolve";
+import { callVars, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints } from "./search";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
@@ -38,6 +38,7 @@ export function makeHandler(panels: Panels) {
       case "openLink": return void vscode.env.openExternal(vscode.Uri.parse(m.url));
       case "expand": return expand(m);
       case "peek": return peek(m);
+      case "callVars": return callVars(m);
       case "search": return search(store, m.q, m.scope);
       case "searchPick": return searchPick(m.item);
       case "entryPoints": return entryPoints();

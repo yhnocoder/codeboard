@@ -5,7 +5,7 @@ import {
   placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
+  type WebMeta, type CallSpan, type ExpandPick, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
 } from "@codeboard/core";
 import {
   state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
@@ -29,7 +29,7 @@ const pending = new Set<string>();
  * at：拖出来松在画布上时的位置。
  */
 
-export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: { path: string; line: number }) {
+export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: ExpandPick) {
   const f = cardById(cardId);
   if (!f || !isCode(f.card)) return;
   const seg = segOf(f.card, segId);
@@ -127,9 +127,39 @@ export function attachCall(cardId: string, segId: string, call: CallSpan, target
   if (t.host.id === cardById(cardId)?.host.id) return toast("A card cannot call itself.");
   const ok = canAttach(state.board, flows(), cardId, target);
   if (!ok.ok) return toast(ok.reason);
-  mutate((b) => { b.links.push({ id: uid("l"), kind: "call", from: { card: cardId, seg: segId, line: call.line }, to: { card: target }, call: { name: call.name, col: call.col }, loop: call.loop || undefined }); });
+  const lid = uid("l");
+  mutate((b) => { b.links.push({ id: lid, kind: "call", from: { card: cardId, seg: segId, line: call.line }, to: { card: target }, call: { name: call.name, col: call.col }, loop: call.loop || undefined }); });
   toast(`Linked to ${cardTitle(t.card)}`);
   ping(t.host.id);
+  // 变量候选：按目标卡的函数问宿主（候选不进撤销历史）
+  const seg = segOf(cardById(cardId)!.card as CodeCard, segId);
+  const tseg = t.card.segments.find((s) => s.symbol) ?? t.card.segments[0];
+  if (!seg || !tseg) return;
+  ask<Var[]>("callVars", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, target: structuredClone(unwrap(tseg)) })
+    .then((vs) => { if (vs?.length) live((b) => { const l = b.links.find((x) => x.id === lid); if (l?.kind === "call") l.cands = vs; }); })
+    .catch(() => {});
+}
+
+// ---------- project / library code ----------
+
+/** library 调用：宿主标了包名，且不在 Study Scope 里 */
+export const isLibCall = (call: Pick<CallSpan, "pkg">) => !!call.pkg && !state.host.settings.studyScope.includes(call.pkg);
+
+/** 把包加进 Study Scope（先改本地设置，界面立即生效；宿主写进 codeboard.studyScope 再广播回来） */
+export function addToStudyScope(pkg: string) {
+  const cur = state.host.settings.studyScope;
+  if (cur.includes(pkg)) return;
+  const next = [...cur, pkg];
+  setState("host", "settings", "studyScope", next);
+  send({ type: "setSetting", key: "studyScope", value: next });
+  toast(`Added “${pkg}” to Study Scope`);
+}
+
+/** library 调用的样式：不画下划线、不是手型（Study Scope 里的包除外）。按设置生成一条规则，改设置时不用重画代码 */
+export function libCallCss() {
+  const ok = state.host.settings.studyScope.filter((p) => /^[\w.-]+$/.test(p));
+  const sel = `.call[data-p]${ok.map((p) => `:not([data-p="${p}"])`).join("")}`;
+  return `${sel}{text-decoration:none;cursor:inherit !important}${sel}:hover{background:none}`;
 }
 
 /** 这张卡是不是这个调用的被调函数（拖动时高亮候选） */
@@ -217,7 +247,8 @@ export function expandMember(cardId: string, d: { line: number; name: string; qu
   const c = cardById(cardId)?.card;
   if (!isCode(c)) return;
   const s = c.segments[0];
-  expandCall(cardId, s.id, { line: d.line, col: 0, end: d.name.length, name: d.name, loop: false }, undefined, { path: s.path, line: d.line });
+  // 路径相对段自己的来源根（工作区外的类卡也能找到文件），按 qual 找（钉的版本行号可能挪了）
+  expandCall(cardId, s.id, { line: d.line, col: 0, end: d.name.length, name: d.name, loop: false }, undefined, { path: s.path, line: d.line, rel: true, qual: d.qual });
 }
 export function showAllMembers(id: string) {
   mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c) && c.members) c.members.shown = []; });
