@@ -94,6 +94,7 @@ function NotesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "notes" }> }) {
       <div class="sn-acts">
         <button class="tbtn" onClick={() => { const n = notes()[0]; if (n) { closePop(p.inst.id); A.openAddNote(n.at); } }}>+ Add</button>
         <Show when={curNote()?.kind === "text"}>
+          <button class="tbtn" onClick={() => editText(curNote()!)}>Edit</button>
           <button class="tbtn" classList={{ on: !!(curNote() as any)?.alwaysShow }} onClick={() => A.updateSidenote(curNote()!.id, (n) => { if (n.kind === "text") n.alwaysShow = !n.alwaysShow || undefined; })}>Always Show</button>
         </Show>
         <Show when={curNote() && curNote()!.kind !== "card"}><button class="tbtn" onClick={() => A.placeSidenote(curNote()!.id)}>Place on Board</button></Show>
@@ -125,7 +126,9 @@ function NoteItem(p: { n: Sidenote }) {
           </>;
         })()}</Match>
         <Match when={n().kind === "text"}>
-          <div class="sn-text md" innerHTML={A.mdBlock((n() as any).md)} onDblClick={() => editText(n())} />
+          <Show when={snEditing() === n().id} fallback={<div class="sn-text md" data-tip="Double-click to edit" innerHTML={A.mdBlock((n() as any).md)} onDblClick={() => editText(n())} />}>
+            <SidenoteEditor n={n() as Extract<Sidenote, { kind: "text" }>} />
+          </Show>
         </Match>
         <Match when={n().kind === "link"}>
           <div class="sn-head"><b>Link</b></div>
@@ -145,10 +148,26 @@ function NoteItem(p: { n: Sidenote }) {
   );
 }
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-async function editText(n: Sidenote) {
+// 旁注原地编辑（#37）：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。⌘↵ 保存，Esc 取消
+const [snEditing, setSnEditing] = createSignal<string | null>(null);
+function editText(n: Sidenote) {
   if (n.kind !== "text") return;
-  const v = await promptText("Edit Sidenote", n.md, "", "Save");
-  if (v !== null) A.updateSidenote(n.id, (k) => { if (k.kind === "text") k.md = v; });
+  for (const q of pops()) if (q.pop.kind === "notes" && q.pop.ids.includes(n.id)) pinPop(q.id);
+  setSnEditing(n.id);
+}
+function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
+  const [v, setV] = createSignal(p.n.md);
+  const grow = (el: HTMLTextAreaElement) => { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
+  const save = () => { const t = v().trim(); setSnEditing(null); if (t && t !== p.n.md) A.updateSidenote(p.n.id, (k) => { if (k.kind === "text") k.md = t; }); };
+  return (
+    <div class="sn-edit" onPointerDown={(e) => e.stopPropagation()}>
+      <textarea spellcheck={false} value={v()} ref={(el) => queueMicrotask(() => { el.focus(); el.setSelectionRange(el.value.length, el.value.length); grow(el); })}
+        onInput={(e) => { setV(e.currentTarget.value); grow(e.currentTarget); }}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") { e.preventDefault(); setSnEditing(null); } if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); } }} />
+      <Show when={v().trim()}><div class="sn-text md sn-prev" innerHTML={A.mdBlock(v())} /></Show>
+      <div class="sn-eacts"><span>Markdown and $math$ · {A.K.mod}↵ to save</span><span class="grow" /><button class="tbtn" onClick={() => setSnEditing(null)}>Cancel</button><button class="tbtn pri" onClick={save}>Save</button></div>
+    </div>
+  );
 }
 
 // ---------- 定义预览 ----------
@@ -395,7 +414,7 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
         <div class="sres">
           <For each={p.pop.list}>{(c) => (
             <button class="cand" classList={{ on: c.commit === pinned() }} onClick={() => { closePop(p.inst.id); if (c.commit !== pinned()) A.switchCommit(p.pop.card, c.commit); }}>
-              <span class="sha">{c.commit.slice(0, 7)}</span><span class="lb">{c.msg}</span><small>{c.commit === pinned() ? "✓ pinned" : c.head ? "= HEAD" : c.date}</small>
+              <span class="sha">{c.commit.slice(0, 7)}</span><span class="lb">{c.msg}</span><small classList={{ cur: c.commit === pinned() }}>{c.commit === pinned() ? "✓ Current" : c.head ? "= HEAD" : c.date}</small>
             </button>
           )}</For>
           <Show when={!p.pop.list!.length}><div class="empty">No history (not in git).</div></Show>

@@ -121,3 +121,15 @@ export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smoo
 }
 export const toWorld = (px: number, py: number) => ({ x: (px - cam.x) / cam.z, y: (py - cam.y) / cam.z });
 export const viewportCenter = () => toWorld(viewport.w / 2, viewport.h / 2);
+
+// ---------- 缩放分档（#11）：100% 正常；概览只剩卡片名、编号和灰条；地图只剩名字和色块 ----------
+
+import { createMemo } from "solid-js";
+import { state } from "./store";
+export type Lod = "full" | "overview" | "map";
+export const lod = createMemo<Lod>(() => {
+  const s = state.host.settings;
+  return cam.z >= (s?.zoomOverview ?? 0.6) ? "full" : cam.z >= (s?.zoomMap ?? 0.25) ? "overview" : "map";
+});
+/** 缩得很小时不弹定义预览、旁注（#12） */
+export const quietHover = () => lod() !== "full";

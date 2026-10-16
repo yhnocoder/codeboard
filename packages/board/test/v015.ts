@@ -27,6 +27,23 @@ function richBoard(): Board {
 }
 
 export const V015: Record<string, () => Promise<void>> = {
+  async v15zoom() {
+    const b = richBoard();
+    b.sections.push({ id: "g1", title: "Scheduling", x: 740, y: 20, w: 640, h: 560, color: "blue" });
+    b.place[b.cards[1].id].section = "g1";
+    for (const [z, n] of [[0.45, "v15-12-overview"], [0.18, "v15-13-map"]] as const) {
+      b.cam = { x: 60, y: 60, z };
+      const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
+      await shot(h, n);
+      await close(h);
+    }
+    const h = await open({ board: structuredClone({ ...b, cam: { x: 0, y: 0, z: 0.8 } }), light, w: 1400, h: 900 });
+    await h.page.locator('.slabel[data-sect="g1"] button[aria-label="Collapse Section"]').click(); await h.page.waitForTimeout(120);
+    await shot(h, "v15-14-folding");
+    await h.page.waitForTimeout(900);
+    await shot(h, "v15-15-folded");
+    await close(h);
+  },
   async v15board() {
     const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
     await shot(h, "v15-01-board");

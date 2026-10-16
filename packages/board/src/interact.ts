@@ -9,7 +9,7 @@ import {
   state, sel, select, toggleSel, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, mutate, live, beginGesture,
   undo, redo, toast, placeOf, placed, setSel, toastMsg, setToastMsg,
 } from "./state/store";
-import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, fitRect } from "./state/camera";
+import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, fitRect, lod } from "./state/camera";
 import {
   setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, spaceDown, setSpaceDown,
   connectFrom, setConnectFrom, walk, setEditing, editing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen,
@@ -196,6 +196,8 @@ export function cardContextMenu(e: MouseEvent, id: string) {
 }
 export function cardDblClick(e: MouseEvent, id: string) {
   const t = e.target as HTMLElement;
+  // 概览 / 地图里双击卡片：放大到这张卡 100%
+  if (lod() !== "full") { e.preventDefault(); const r = rectOf(cardById(id)!.host), w = view().w; return camTo(24 + Math.max(0, (w - 48 - r.w) / 2) - r.x, 72 - r.y, 1); }
   if (t.closest(".cdesc")) { e.preventDefault(); setEditing({ kind: "desc", id }); return; }
   const c = cardById(id)?.card;
   if (c?.kind === "note" && c.bg && t.closest(".nbody")) { e.preventDefault(); setEditing({ kind: "note", id }); }
@@ -237,11 +239,25 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }
 
-/** 卡里滚动：代码区能滚就滚，滚到头或 ⌘ 时交给画布 */
+// 一次滚动手势从哪开始就一直归谁（#51）：画布上开始 → 一路平移，经过卡片也不停；停 ~200ms 才算结束。
+// 卡片里滚代码只在：卡片已选中，或者不是紧跟着一次画布平移开始的滚动
+let wheelOwner: HTMLElement | "canvas" | null = null, wheelLast = 0, panEnd = 0;
+function ownerFor(e: WheelEvent, el: HTMLElement | null): HTMLElement | "canvas" {
+  const now = performance.now();
+  if (now - wheelLast > 200) {
+    if (wheelOwner === "canvas") panEnd = wheelLast;
+    const card = el?.closest(".card") as HTMLElement | null;
+    const can = !!el && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
+    const selected = !!card && isSel(card.dataset.id!);
+    wheelOwner = can && !e.ctrlKey && !e.metaKey && (selected || now - panEnd > 500) ? el! : "canvas";
+  }
+  wheelLast = now;
+  return wheelOwner!;
+}
+/** 卡里滚动：这次手势归这张卡就原生滚动，否则交给画布 */
 export function cardWheel(e: WheelEvent, el: HTMLElement) {
   if (e.ctrlKey || e.metaKey) return; // 交给画布缩放
-  const canY = el.scrollHeight > el.clientHeight + 1, canX = el.scrollWidth > el.clientWidth + 1;
-  if (canY || canX) e.stopPropagation();
+  if (ownerFor(e, el) === el) e.stopPropagation();
 }
 
 // ---------- 调用：点 = 展开；拖 = 接到已有卡 / 放到指定位置 ----------
@@ -405,8 +421,9 @@ function startPan(e: PointerEvent) {
 /** 滚轮：两指平移；⌘ / 捏合 缩放 */
 export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
-  if (t.closest(".pop, .ctx, .palette, .keys")) return;
+  if (t.closest(".pop, .ctx, .palette, .keys, .stkpick")) return;
   e.preventDefault();
+  if (!t.closest(".cbody")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
   stopCam();
   const p = local(e);
   if (e.ctrlKey || e.metaKey) {

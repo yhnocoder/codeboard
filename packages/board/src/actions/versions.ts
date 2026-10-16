@@ -99,8 +99,13 @@ export async function commitMenu(id: string, el: Element) {
   if (!isCode(c)) return;
   const s = c.segments[0];
   if (s.src.kind === "github" || s.src.kind === "free") return;
-  const pid = openPop({ kind: "commits", card: id, seg: structuredClone(unwrap(s)) }, { el, prefer: "below" });
-  const list = await ask<Commit[]>("commits", { seg: structuredClone(unwrap(s)) }).catch(() => [] as Commit[]);
+  // 先拿列表再开弹窗：弹窗不会先以 Loading 打开再变大、换位置（#19 开选择器时卡片闪一下）；拿得慢才先开
+  const seg = structuredClone(unwrap(s));
+  const req = ask<Commit[]>("commits", { seg }).catch(() => [] as Commit[]);
+  const quick = await Promise.race([req, new Promise<null>((r) => setTimeout(() => r(null), 250))]);
+  if (quick) return void openPop({ kind: "commits", card: id, seg, list: quick }, { el, prefer: "below" });
+  const pid = openPop({ kind: "commits", card: id, seg }, { el, prefer: "below" });
+  const list = await req;
   updatePop(pid, (p) => ({ ...(p as any), list }));
 }
 export async function switchCommit(id: string, commit: string) {

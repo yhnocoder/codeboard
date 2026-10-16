@@ -140,7 +140,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
     // Plain link：选两张卡，点 Link
     await h.page.keyboard.press("Control+a");
-    await h.page.locator(".bbar button", { hasText: "Link" }).click(); await h.page.waitForTimeout(400);
+    await h.page.locator(".bbar button", { hasText: "Arrow" }).click(); await h.page.waitForTimeout(400);
     // Text：双击空白处
     await h.page.mouse.dblclick(700, 120); await h.page.waitForTimeout(300);
     await h.page.keyboard.type("Scheduler overview"); await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);

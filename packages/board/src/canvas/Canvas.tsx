@@ -1,9 +1,9 @@
 // 画布：镜头变换后的世界层（Section 框 → Link → 卡片 → Section 标签 → Link 标签 → 参考线），
 // 加上屏幕坐标的框选框、对齐工具条。
-import { For, Show, onMount, onCleanup, createMemo } from "solid-js";
+import { For, Show, onMount, onCleanup, createMemo, createEffect, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
 import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
-import { cam, setViewport } from "../state/camera";
+import { cam, setViewport, lod } from "../state/camera";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
 import { CanvasStickers } from "../stickers/Picker";
@@ -15,7 +15,15 @@ import * as A from "../actions";
 import { align } from "@codeboard/core";
 
 export function Canvas() {
-  let el!: HTMLDivElement;
+  let el!: HTMLDivElement, world!: HTMLDivElement;
+  // 镜头动的时候才让浏览器把世界层当位图缩放；停下 ~180ms 后去掉，按新比例重新清晰绘制（#15）
+  let still: number | undefined;
+  createEffect(on(() => [cam.x, cam.y, cam.z], () => {
+    if (!world) return;
+    world.classList.add("moving");
+    clearTimeout(still);
+    still = window.setTimeout(() => world.classList.remove("moving"), 180);
+  }, { defer: true }));
   onMount(() => {
     const ro = new ResizeObserver(() => setViewport(el.clientWidth, el.clientHeight));
     ro.observe(el);
@@ -24,9 +32,9 @@ export function Canvas() {
     onCleanup(() => { ro.disconnect(); el.removeEventListener("wheel", canvasWheel); });
   });
   return (
-    <div ref={el} id="board" class="board" classList={{ connecting: !!connectFrom(), walking: !!walk(), dragging: dragging().size > 0, placing: !!A.placing() }}
+    <div ref={el} id="board" class="board" classList={{ connecting: !!connectFrom(), walking: !!walk(), dragging: dragging().size > 0, placing: !!A.placing(), "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
-      <div class="world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})` }}>
+      <div ref={world} class="world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--iz": lod() === "map" ? String(1 / cam.z) : undefined }}>
         <SectionFrames />
         <LinksSvg />
         <For each={placed()}>{(c) => <CardView card={c} />}</For>

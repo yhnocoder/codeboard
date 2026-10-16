@@ -11,7 +11,7 @@ import {
   state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
   type LineSel,
 } from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
+import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion, quietHover } from "../state/camera";
 import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
 import { openMenu, choose, promptText, type Item } from "../ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
@@ -25,6 +25,7 @@ import { hostRect, lastPointer, revealCard } from "./common";
 
 let hoverT: number | undefined, leaveT: number | undefined;
 export function hoverMarker(el: Element, ids: string[], e: PointerEvent) {
+  if (quietHover()) return;
   clearTimeout(leaveT);
   const pin = e.metaKey || e.ctrlKey;
   clearTimeout(hoverT);
@@ -130,6 +131,7 @@ export function scheduleHidePeek() {
 }
 export const cancelHidePeek = () => clearTimeout(peekLeave);
 export async function showPeek(el: Element, cardId: string, segId: string, line: number, col: number, word: string, pin = false, at?: { path: string; line: number; col: number }) {
+  if (quietHover() && !pin) return;
   const c = cardById(cardId)?.card;
   const s = isCode(c) ? segOf(c, segId) : undefined;
   if (!s) return;

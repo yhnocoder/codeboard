@@ -17,7 +17,7 @@ import { openMenu, choose, promptText, type Item } from "../ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
 import { send, ask } from "../host";
 import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
+import { frameOf, allMembers } from "../state/sections";
 import { popCard, revealCard, sectionById, selCards } from "./common";
 import { requestViews } from "./create";
 
@@ -366,11 +366,31 @@ export function toggleSection(id: string) {
   if (!s0) return;
   // 折叠前把实际框存下来：标题条放在框的左上角，展开后框不变
   const f = s0.collapsed ? null : frameOf(s0);
-  mutate((b) => {
+  const apply = () => mutate((b) => {
     const s = b.sections.find((q) => q.id === id);
     if (!s) return;
     if (f) Object.assign(s, { x: Math.round(f.x), y: Math.round(f.y), w: Math.round(f.w), h: Math.round(f.h) });
     s.collapsed = !s.collapsed || undefined;
+  });
+  const members = allMembers(id).map((c) => c.id);
+  const at = f ?? { x: s0.x, y: s0.y };
+  const pt = { x: at.x + 10, y: at.y };
+  if (reduceMotion() || !members.length) return apply();
+  if (s0.collapsed) {
+    // 展开：卡片从标题条里弹出来
+    apply();
+    requestAnimationFrame(() => members.forEach((m) => popCard(m, pt)));
+    return;
+  }
+  // 折叠：卡片收进标题条（往标签缩、变淡），收完再真正折叠（#10）
+  const offs = new Map(members.map((m) => { const p = placeOf(m); return [m, { ox: pt.x - p.x, oy: pt.y - p.y }]; }));
+  const sp = new Spring(1, 200, 26, 0.02); sp.t = 0;
+  animate((dt) => {
+    sp.step(dt);
+    const done = sp.v < 0.05;
+    setPopIn((p) => { const n = { ...p }; for (const [m, o] of offs) { if (done) delete n[m]; else n[m] = { ...o, v: Math.max(0, sp.v) }; } return n; });
+    if (done) apply();
+    return done;
   });
 }
 export function renameSection(id: string, v: string) {

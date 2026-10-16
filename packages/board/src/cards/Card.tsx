@@ -12,6 +12,7 @@ import { collapsedHome } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { CardStickers } from "../stickers/Picker";
+import { lod } from "../state/camera";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
 import { Editable } from "../ui/Editable";
@@ -74,6 +75,7 @@ export function CardView(p: { card: Card }) {
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <CardStickers card={c().id} />
+        <Show when={lod() === "map"}><MapLabel card={c()} /></Show>
         <Show when={!pl().locked}>
           <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>
             <span class="hw l" onPointerDown={(e) => act.resizeDown(e, c().id, { left: true })} />
@@ -220,6 +222,13 @@ function WebView(p: { card: WebCard }) {
       </div>
     </>
   );
+}
+
+/** 地图档：卡片只剩编号 + 名字，字号按缩放反向放大，始终看得清 */
+function MapLabel(p: { card: Card }) {
+  const n = () => flows().byId.get(p.card.kind === "compare" ? p.card.cols[0] : p.card.id)?.label;
+  const t = () => (p.card.kind === "note" ? p.card.md.split("\n")[0].replace(/^#+\s*/, "").slice(0, 60) : cardTitle(p.card, state.board));
+  return <div class="maplabel"><Show when={n() && !state.board.hideNumbers}><span class="step">{n()}</span></Show><span>{t()}</span></div>;
 }
 
 export { LANGS };

@@ -69,7 +69,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .board.panning, .board.space { cursor: grab; }
 .board.panning * , .board.space * { cursor: grab !important; }
 .board.connecting, .board.connecting * { cursor: crosshair !important; }
-.world { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+.world.moving { will-change: transform; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; pointer-events: none; }
 /* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
 .edge { fill: none; stroke: var(--edge); stroke-width: 1.25; stroke-linecap: round; transition: opacity .2s; }
@@ -268,7 +269,7 @@ math { font-size: 1.05em; }
 .slabel .lockb { width: 16px; height: 16px; }
 /* snapping guides, align bar */
 #guides { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 8; }
-.guide { position: absolute; border-color: var(--guide); border-style: dashed; border-width: 0; opacity: .9; }
+.guide { position: absolute; border-color: color-mix(in srgb, var(--ink-3) 85%, transparent); border-style: dashed; border-width: 0; opacity: .9; }
 .guide.v { border-left-width: 1px; width: 0; }
 .guide.h { border-top-width: 1px; height: 0; }
 .ghint { position: absolute; transform: translate(-50%, 0); font: 600 10.5px/1 var(--sys); color: #fff; background: var(--guide); padding: 4px 6px; border-radius: 4px; white-space: nowrap; }
@@ -692,3 +693,33 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .lstks.dot:hover .glyph { width: 14px !important; height: 14px !important; }
 .lstks.dot .glyph.tag { font-size: 0 !important; padding: 0; }
 .stkpick { align-items: stretch; text-align: left; }
+
+/* 缩放分档（#11）：概览 = 名字 + 编号 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量） */
+.board { --bar: color-mix(in srgb, var(--ink) 13%, transparent); }
+.board.lod-overview .card .src, .board.lod-overview .card .gutter, .board.lod-overview .card .rowbg, .board.lod-overview .card .crows .l, .board.lod-overview .card .cno,
+.board.lod-overview .card .cpath, .board.lod-overview .card .rev, .board.lod-overview .card .chead .ib, .board.lod-overview .lport, .board.lod-overview .vbox { visibility: hidden; }
+.board.lod-overview .card .code { background: repeating-linear-gradient(to bottom, transparent 0 6px, var(--bar) 6px 14px, transparent 14px 20px) 54px 6px / calc(100% - 96px) calc(100% - 14px) no-repeat; }
+.board.lod-overview .card .ctitle { font-size: 15px; font-weight: 600; }
+.board.lod-map .card > *:not(.maplabel) { visibility: hidden; }
+.board.lod-map .card { background: color-mix(in srgb, var(--surface) 92%, var(--accent)); box-shadow: 0 0 0 calc(1px * var(--iz, 1)) var(--hair); }
+.board.lod-map .card.note { background: color-mix(in srgb, var(--surface) 70%, var(--mark)); }
+.board.lod-map .card.text { background: transparent; }
+.board.lod-map .card.sel { box-shadow: 0 0 0 calc(2px * var(--iz, 1)) var(--accent); }
+.board.lod-map .vchips, .board.lod-map .stk.canvas .sgrip { display: none; }
+.maplabel { position: absolute; inset: 0; display: flex; align-items: flex-start; flex-wrap: wrap; gap: calc(4px * var(--iz, 1)); padding: calc(5px * var(--iz, 1)); overflow: hidden;
+  font: 600 calc(10px * var(--iz, 1))/1.2 var(--sys); color: var(--ink); pointer-events: none; word-break: break-word; align-content: flex-start; }
+.maplabel .step { height: auto; padding: calc(1px * var(--iz, 1)) calc(4px * var(--iz, 1)); font-size: calc(9px * var(--iz, 1)); border-radius: calc(4px * var(--iz, 1)); }
+
+/* 旁注原地编辑（#37） */
+.sn-edit { padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 6px; min-width: 340px; }
+.sn-edit textarea { font: 12px/1.55 var(--mono); color: var(--ink); background: var(--surface); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 8px; resize: none; outline: none; min-height: 60px; max-height: 320px; overflow-y: auto; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
+.sn-edit .sn-prev { padding: 6px 8px; border-radius: 6px; background: var(--hlrow); max-width: none; }
+.sn-eacts { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--ink-3); }
+.tbtn.pri { background: var(--accent); color: var(--accent-ink); }
+.tbtn.pri:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); color: var(--accent-ink); }
+
+/* Section（#8 #9）：标题一行、按内容变宽；区域铺一层很淡的底色（有颜色时用那个颜色） */
+.slabel { width: max-content; }
+.slabel .sname.editing { white-space: pre !important; min-width: 60px; display: inline-block; }
+.sect:not([class*=" c-"]) { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
+.cand small.cur { flex: none; color: var(--accent); }
