@@ -31,10 +31,18 @@ function PopFrame(p: { inst: PopInst }) {
     ro.observe(el);
     onCleanup(() => ro.disconnect());
   });
+  let last: { x: number; y: number } | undefined;
   const pos = createMemo(() => {
     void cam.x; void cam.y; void cam.z; // 镜头动时跟着元素走
     const at = p.inst.at, s = size();
     const W = window.innerWidth, H = window.innerHeight;
+    // 锚点元素被重画掉了（比如删了一条旁注，标记换成新的）：Sidenote 弹窗改挂到还剩的那条的标记上；找不到就停在原地
+    if (at.el && !at.el.isConnected && p.inst.pop.kind === "notes") {
+      const ids = p.inst.pop.ids.filter((id) => state.board.sidenotes.some((n) => n.id === id));
+      const mk = [...document.querySelectorAll("[data-notes]")].find((m) => (m as HTMLElement).dataset.notes!.split(",").some((id) => ids.includes(id)));
+      if (mk) at.el = mk;
+    }
+    if (at.el && !at.el.isConnected && last) return last;
     let x = at.x ?? 0, y = at.y ?? 0;
     if (at.el?.isConnected) {
       const r = at.el.getBoundingClientRect();
@@ -42,7 +50,7 @@ function PopFrame(p: { inst: PopInst }) {
       else if (at.prefer === "above") { x = r.left; y = r.top - s.h - 6; }
       else { x = r.left; y = r.bottom + 6; if (y + s.h > H - 8) y = r.top - s.h - 6; }
     }
-    return { x: Math.max(8, Math.min(x, W - s.w - 8)), y: Math.max(8, Math.min(y, H - s.h - 8)) };
+    return (last = { x: Math.max(8, Math.min(x, W - s.w - 8)), y: Math.max(8, Math.min(y, H - s.h - 8)) });
   });
   const k = () => p.inst.pop.kind;
   return (

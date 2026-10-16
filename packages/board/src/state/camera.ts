@@ -101,6 +101,11 @@ export function isVisible(r: Rect, c = camTarget()) {
   const x = r.x * c.z + c.x, y = r.y * c.z + c.y;
   return x >= SAFE.l && y >= SAFE.t && x + r.w * c.z <= w - SAFE.r && y + Math.min(r.h * c.z, h - SAFE.t - SAFE.b) <= h - SAFE.b;
 }
+/** 视野（去掉四周留白）在白板坐标里的矩形 */
+export function worldView(c = camTarget()): Rect {
+  const { w, h } = viewport;
+  return { x: (SAFE.l - c.x) / c.z, y: (SAFE.t - c.y) / c.z, w: (w - SAFE.l - SAFE.r) / c.z, h: (h - SAFE.t - SAFE.b) / c.z };
+}
 /** 不在视野里时平移把它带进来（必要时缩小，不放大） */
 export function ensureVisible(r: Rect, also?: Rect) {
   const c = camTarget();

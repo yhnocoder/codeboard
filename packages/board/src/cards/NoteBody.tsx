@@ -24,16 +24,13 @@ export function NoteBody(p: { card: NoteCard }) {
   );
 }
 
-const SIZES = [["title", "Title"], ["heading", "Heading"], ["body", "Body"]] as const;
 
-/** Text 选中时上方的小工具条：字号、粗体、加背景 */
+/** Text 选中时上方的小工具条：粗体、加背景 */
 export function TextToolbar(p: { card: NoteCard }) {
   const set = (f: (n: NoteCard) => void) => mutate((b) => { const n = findCard(b, p.card.id)?.card; if (n?.kind === "note") f(n); });
   return (
     <Show when={isSel(p.card.id) && sel.cards.length === 1 && editing()?.id !== p.card.id}>
       <div class="ttb pill" onPointerDown={(e) => e.stopPropagation()}>
-        <For each={SIZES}>{([v, lb]) => <button class="tbtn" classList={{ on: (p.card.size ?? "body") === v }} onClick={() => set((n) => { n.size = v; })}>{lb}</button>}</For>
-        <span class="sep" />
         <button class="tbtn" classList={{ on: !!p.card.bold }} style={{ "font-weight": 700 }} onClick={() => set((n) => { n.bold = !n.bold || undefined; })}>B</button>
         <span class="sep" />
         <button class="tbtn" onClick={() => A.setNoteBg(p.card.id, true)}>Show Background</button>

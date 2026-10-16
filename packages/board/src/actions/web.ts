@@ -3,7 +3,7 @@ import { createSignal } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, removeCards, estSize, defaultWidth, findFree,
-  type Board, type Card, type LinkItem, type LinksCard, type WebCard, type WebMeta, type Place,
+  type Board, type Card, type LinkItem, type LinksCard, type WebCard, type WebMeta, type WebStyle, type Place,
 } from "@codeboard/core";
 import { state, mutate, live, select, cardById, rectOf, placeOf, toast, sel } from "../state/store";
 import { toWorld, viewportCenter } from "../state/camera";
@@ -99,6 +99,9 @@ const itemOf = (id: string, item: string) => { const c = cardById(id)?.card; ret
 export const isRich = (c: LinksCard, it: LinkItem) => it.rich ?? !!c.rich;
 
 /** ⋯ → View ▸ Compact / Rich：整张卡的默认（单独设过的行不变） */
+export function setWebStyle(id: string, style: WebStyle | undefined) {
+  mutate((b) => { const c = findCard(b, id)?.card; if (c?.kind === "web") c.style = style; });
+}
 export const setListRich = (id: string, rich: boolean) => setList(id, (c) => { c.rich = rich || undefined; });
 export const toggleItemRich = (id: string, item: string) => setList(id, (c) => {
   const it = c.items.find((x) => x.id === item);

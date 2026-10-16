@@ -25,7 +25,7 @@ import { commitMenu } from "./versions";
 import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
-import { canLinkList, mergeIntoLinkList, retryMeta, setListRich } from "./web";
+import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 
 export function callMenu(cardId: string, segId: string, call: CallSpan, x: number, y: number) {
   selectCard(cardId);
@@ -103,6 +103,8 @@ export function cardMenu(id: string, x: number, y: number) {
       { label: "Description", run: () => setEditing({ kind: "desc", id: c.id }) },
       lockItem,
     ] },
+    { label: "View", sub: ([[undefined, "Auto"], ["banner", "Image on Top"], ["side", "Image on Side"], ["text", "No Image"], ["compact", "Compact"]] as const).map(([s, label]) =>
+      ({ label, checked: c.style === s, run: () => setWebStyle(c.id, s) })) },
     ...tail,
   ], x, y);
   if (c.kind === "links") return openMenu([

@@ -102,6 +102,22 @@ function findFreeDown(want: Rect, others: Rect[]) {
   return { x: want.x, y };
 }
 
+/**
+ * 视野里离 want 最近的空位（网格 40 步）。卡太高时只要求上面 minVis 露在视野里。没有就返回 null。
+ */
+export function freeInView(want: Rect, others: Rect[], view: Rect, minVis = 200, gap = GAP): { x: number; y: number } | null {
+  const step = 40, vh = Math.min(want.h, minVis);
+  const x1 = view.x + view.w - Math.min(want.w, view.w), y1 = view.y + view.h - vh;
+  let best: { x: number; y: number } | null = null, bd = Infinity;
+  for (let y = view.y; y <= y1; y += step) for (let x = view.x; x <= x1; x += step) {
+    const d = Math.hypot(x - want.x, y - want.y);
+    if (d >= bd) continue;
+    if (others.some((o) => overlaps({ x, y, w: want.w, h: want.h }, o, gap))) continue;
+    best = { x, y }; bd = d;
+  }
+  return best;
+}
+
 export type TidyDir = "down" | "right";
 
 

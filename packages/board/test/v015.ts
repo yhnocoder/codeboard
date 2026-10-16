@@ -382,6 +382,69 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(hot === 1 && at.on?.card === b.cards[1].id ? "PASS" : "FAIL", "sticker-magnet", JSON.stringify({ hot, at }));
     await close(h);
   },
+  /** 父卡下面被别的卡堵满：展开的子卡放在视野里，不跑到屏幕外 */
+  async v15placeview() {
+    const b = emptyBoard("b1", "v0.1.5");
+    const step = card("LLMEngine.step");
+    put(b, step, 80, 80, 600);
+    for (let i = 0; i < 3; i++) { const id = `wall${i}`; b.cards.push({ id, kind: "note", md: `wall ${i}`, bg: true } as any); b.place[id] = { x: -200 + i * 900, y: 640, w: 860, h: 3000 }; }
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 1500, h: 950 });
+    await h.page.locator(`.card[data-id="${step.id}"] .src .call`, { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(1600);
+    const nb = h.board();
+    const nid = nb.cards.find((c) => c.id !== step.id && !c.id.startsWith("wall"))?.id;
+    const r = nid && (await h.page.locator(`.card[data-id="${nid}"]`).boundingBox());
+    await shot(h, "v15-placeview");
+    const ok = !!r && !!nid && nb.place[nid].y < 900 && r.y >= 0 && r.y < 950 - 100 && r.x >= 0 && r.x < 1500 - 100;
+    console.log(ok ? "PASS" : "FAIL", "place-in-view", JSON.stringify({ p: nid && nb.place[nid], r }));
+    await close(h);
+  },
+  /** 删掉一条旁注：弹窗留在标记旁边，不跳到左上角 */
+  async v15notedel() {
+    const b = richBoard();
+    const n1 = b.sidenotes[0];
+    b.sidenotes.push({ ...n1, id: "n2", md: "Second note." } as any);
+    const h = await open({ board: b, light, w: 1500, h: 950 });
+    await h.page.locator(".mk").first().click(); await h.page.waitForTimeout(500);
+    const p0 = (await h.page.locator(".pop.k-notes").boundingBox())!;
+    await h.page.locator('.pop.k-notes [aria-label="Delete Sidenote"]').click(); await h.page.waitForTimeout(600);
+    const p1 = (await h.page.locator(".pop.k-notes").boundingBox())!;
+    await shot(h, "v15-notedel");
+    const ok = Math.abs(p1.x - p0.x) < 30 && Math.abs(p1.y - p0.y) < 30 && h.board().sidenotes.length === 1;
+    console.log(ok ? "PASS" : "FAIL", "note-delete-stays", JSON.stringify({ p0, p1 }));
+    await close(h);
+  },
+  /** Note 里的 # 标题有层级；⌘A 在编辑框里只选中这块字 */
+  async v15notehead() {
+    const b = emptyBoard("b1", "v0.1.5");
+    b.cards.push({ id: "t1", kind: "note", md: "# Head\n\n## Sub\n\nBody text here." } as any); b.place.t1 = { x: 60, y: 60, w: 320 };
+    b.cards.push({ id: "t2", kind: "note", md: "# Head\n\nBody text here.", bg: true } as any); b.place.t2 = { x: 460, y: 60, w: 320 };
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 900, h: 500 });
+    const fs = await h.page.evaluate(() => [...document.querySelectorAll(".card h1, .card h2, .card p")].map((e) => [e.tagName, parseFloat(getComputedStyle(e).fontSize)]));
+    await shot(h, "v15-notehead");
+    await h.page.locator('.card[data-id="t2"] .nbody').dblclick(); await h.page.waitForTimeout(400);
+    await h.page.keyboard.press("Control+a"); await h.page.waitForTimeout(200);
+    const selTxt = await h.page.evaluate(() => String(window.getSelection()));
+    const h1 = fs.find((x) => x[0] === "H1")?.[1] as number, p = fs.find((x) => x[0] === "P")?.[1] as number;
+    const ok = h1 >= p * 1.6 && selTxt.includes("# Head") && selTxt.includes("Body text here.");
+    console.log(ok ? "PASS" : "FAIL", "note-head", JSON.stringify({ fs, selTxt }));
+    await close(h);
+  },
+  /** 内置贴纸在每个主题里的样子 */
+  async v15stkthemes() {
+    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster"]) {
+      const b = emptyBoard("b1", "v0.1.5");
+      const names = ["star", "question", "exclaim", "check", "flag", "zap", "bug", "todo", "heart", "hourglass", "warning", "todo-text"];
+      names.forEach((n, i) => b.stickers.push({ id: `k${i}`, icon: { pack: "builtin", name: n }, at: { kind: "canvas", x: 40 + i * 52, y: 40, size: 36 } }));
+      b.cam = { x: 0, y: 0, z: 1 };
+      const h = await open({ board: b, light, w: 760, h: 140, settings: { theme } as any });
+      const bg = await h.page.locator('[data-sticker="k0"] circle.bg').evaluate((e) => getComputedStyle(e).fill);
+      await shot(h, `v15-stk-${theme}`);
+      console.log("stk", theme, bg);
+      await close(h);
+    }
+  },
   /** 线上的变量框能沿线拖，位置存成 t */
   async v15labeldrag() {
     const b = richBoard();

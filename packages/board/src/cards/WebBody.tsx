@@ -2,7 +2,7 @@
 // 抓不全时缺什么收什么：没图 → 没有右栏；只有标题 → 标题 + 域名；什么都没有 → 域名首字母方块 + 域名当标题 + 路径 + Retry / Edit Title。
 import { For, Show, createSignal, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
-import { cardTitle, domainOf, urlPath, type LinkItem, type LinksCard, type WebCard, type WebMeta } from "@codeboard/core";
+import { cardTitle, domainOf, urlPath, type LinkItem, type LinksCard, type WebCard, type WebMeta, type WebStyle } from "@codeboard/core";
 import { editing, setEditing } from "../state/ui";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
@@ -24,7 +24,7 @@ function Fav(p: { meta?: WebMeta; url: string; big?: boolean }) {
 
 /** 一张书签：Web 卡的正文，也是 Link List 的 Rich 行 / 悬停预览 */
 export function Bookmark(p: {
-  url: string; meta?: WebMeta; title?: string; desc?: string; editId?: string; small?: boolean; drag?: boolean;
+  url: string; meta?: WebMeta; title?: string; desc?: string; editId?: string; small?: boolean; drag?: boolean; style?: WebStyle;
   onTitle?: (v: string) => void; onDesc?: (v: string) => void; onRetry?: () => void; busy?: boolean;
 }) {
   const [imgBad, setImgBad] = createSignal(false);
@@ -33,13 +33,14 @@ export function Bookmark(p: {
   const title = () => p.title || p.meta?.title;
   const desc = () => p.desc ?? p.meta?.desc;
   const site = () => p.meta?.site && !domainOf(p.url).includes(p.meta.site.toLowerCase()) ? `${domainOf(p.url)} · ${p.meta.site}` : domainOf(p.url);
-  const img = () => (imgBad() ? undefined : A.assetSrc(p.meta?.image));
+  const img = () => (imgBad() || p.style === "text" || p.style === "compact" ? undefined : A.assetSrc(p.meta?.image));
+  const banner = () => !p.small && !!img() && (p.style === "banner" || (!p.style && wide()));
   const loading = () => !!p.busy;
   const none = () => !title() && !desc();
   const eid = () => p.editId ?? "";
   const editingDesc = () => editing()?.kind === "desc" && editing()?.id === eid();
   return (
-    <div class="wbm" classList={{ small: p.small, none: none(), wbanner: wide() && !p.small && !!img() }} data-drag={p.drag ? "" : undefined}>
+    <div class="wbm" classList={{ small: p.small, none: none(), wbanner: banner(), wcompact: p.style === "compact" && !none() }} data-drag={p.drag ? "" : undefined}>
       <div class="wmain">
         <Show when={!none()} fallback={
           <>
@@ -65,7 +66,7 @@ export function Bookmark(p: {
               <Editable class="wt" kind="title" id={eid()} value={title() || domainOf(p.url)} onCommit={(v) => p.onTitle!(v)} />
             </Show>
           </div>
-          <Show when={desc() || editingDesc()}>
+          <Show when={(desc() && p.style !== "compact") || editingDesc()}>
             <Show when={p.onDesc} fallback={<div class="wdesc">{desc()}</div>}>
               <Editable class="wdesc" kind="desc" id={eid()} value={desc() ?? ""} multiline onCommit={(v) => p.onDesc!(v)} />
             </Show>
@@ -86,7 +87,7 @@ export function WebBody(p: { card: WebCard }) {
   const menu = (e: MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); A.cardMenu(c().id, r.left, r.bottom + 4); };
   return (
     <>
-      <Bookmark url={c().url} meta={c().meta} title={c().title} desc={c().desc} editId={c().id} drag busy={A.fetching(c().id)}
+      <Bookmark url={c().url} meta={c().meta} title={c().title} desc={c().desc} editId={c().id} drag busy={A.fetching(c().id)} style={c().style}
         onTitle={(v) => A.renameCard(c().id, v)} onDesc={(v) => A.setDesc(c().id, v)} onRetry={() => A.retryMeta(c().id)} />
       <div class="wacts" onPointerDown={stop}>
         <button class="ib" aria-label="Open in Browser" data-tip="Open in Browser" data-kbd="Double-click" onClick={() => A.openLink(c().url)}><Icon name="external" size={13} /></button>

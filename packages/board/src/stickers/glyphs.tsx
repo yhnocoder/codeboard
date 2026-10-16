@@ -1,4 +1,4 @@
-// 贴纸图标：内置一套（彩色圆底 + 白色线条），Emoji 直接用系统字体，自定义包（Iconify JSON / SVG 文件夹）由插件读本地目录。
+// 贴纸图标：内置一套（彩色圆底 + 白色线条；各主题在 themes.css 里换成自己的画法），Emoji 直接用系统字体，自定义包（Iconify JSON / SVG 文件夹）由插件读本地目录。
 import { createSignal, Show, type JSX } from "solid-js";
 import type { IconRef, StickerPack } from "@codeboard/core";
 import { ask } from "../host";
@@ -46,11 +46,11 @@ export function Glyph(p: { icon: IconRef; color?: string; size: number; class?: 
         <Show when={svgOf(p.icon)} fallback={<span class={`glyph missing ${p.class ?? ""}`} style={base()} data-tip={`Missing icon ${p.icon.pack}:${p.icon.name}`} />}>
           <span class={`glyph custom ${p.class ?? ""}`} style={{ ...base(), color: col() }} innerHTML={svgOf(p.icon)} />
         </Show>}>
-        <Show when={!b()!.text} fallback={<span class={`glyph tag ${p.class ?? ""}`} style={{ height: `${p.size}px`, "font-size": `${p.size * 0.5}px`, background: col(), ...p.style }}>{b()!.text}</span>}>
-          <svg class={`glyph ${p.class ?? ""}`} viewBox="0 0 24 24" style={base()} aria-hidden="true">
-            <circle cx="12" cy="12" r="11" fill={col()} />
-            <Show when={b()!.d}><path d={b()!.d} fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></Show>
-            <Show when={b()!.fill}><path d={b()!.fill} fill="#fff" /></Show>
+        <Show when={!b()!.text} fallback={<span class={`glyph tag bi ${p.class ?? ""}`} style={{ height: `${p.size}px`, "font-size": `${p.size * 0.5}px`, "--c": col(), ...p.style }}>{b()!.text}</span>}>
+          <svg class={`glyph bi ${p.class ?? ""}`} viewBox="0 0 24 24" style={{ ...base(), "--c": col() }} aria-hidden="true">
+            <circle class="bg" cx="12" cy="12" r="11" fill={col()} />
+            <Show when={b()!.d}><path class="fg" d={b()!.d} fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></Show>
+            <Show when={b()!.fill}><path class="fgf" d={b()!.fill} fill="#fff" /></Show>
           </svg>
         </Show>
       </Show>

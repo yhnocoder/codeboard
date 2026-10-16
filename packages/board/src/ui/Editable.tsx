@@ -53,6 +53,12 @@ export function Editable(p: {
         onKeyDown={(e) => {
           e.stopPropagation();
           if (e.key === "Escape") { e.preventDefault(); finish(!!p.multiline); } // 多行正文：Esc 保留写好的字；单行名字：Esc 撤销
+          // ⌘A 自己选中这一块的字：VS Code 的 webview 会把 ⌘A 交给宿主，回来时不一定落在编辑框里
+          else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "a") {
+            e.preventDefault();
+            const r = document.createRange(); r.selectNodeContents(el);
+            const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
+          }
           else if (e.key === "Enter" && !e.isComposing && (!p.multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); finish(true); }
         }}
         onBlur={() => finish(true)} />

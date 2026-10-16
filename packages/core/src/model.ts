@@ -86,7 +86,9 @@ export type WebMeta = {
   failed?: boolean; // 什么都没抓到（需要登录 / 离线）
 };
 /** Web 卡：书签样式（标题 + 两行描述 + 域名 + 右侧预览图） */
-export type WebCard = CardBase & { kind: "web"; url: string; meta?: WebMeta };
+/** Web 卡样式：不填 = Auto（横图放上面，方图放右边） */
+export type WebStyle = "banner" | "side" | "text" | "compact";
+export type WebCard = CardBase & { kind: "web"; url: string; meta?: WebMeta; style?: WebStyle };
 /** Link List 里的一行 */
 export type LinkItem = { id: string; url: string; title?: string; meta?: WebMeta; rich?: boolean };
 /** Web List：几个链接合成一张卡；rich = 整张卡默认的显示方式（每行可以单独设） */

@@ -117,6 +117,31 @@ export const WEB: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Link List：拖到标题上合并、多行粘贴、Compact / Rich、悬停、右键、排序、拖出 */
+  /** 五种样式并排；↗ 只在悬停时出现 */
+  async webstyles() {
+    const b = emptyBoard("b1", "v0.1.5");
+    const url = "https://arxiv.org/abs/2309.06180";
+    const styles = [undefined, "banner", "side", "text", "compact"] as const;
+    const ids = styles.map((st, i) => { const c = { ...web(url), style: st }; put(b, c, 40 + (i % 3) * 400, 40 + Math.floor(i / 3) * 380, 360); return c.id; });
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 1300, h: 820, on: webHost });
+    await h.page.waitForTimeout(600);
+    const op = (id: string) => h.page.locator(`.card[data-id="${id}"] .wacts`).evaluate((e) => +getComputedStyle(e).opacity);
+    const hidden = await op(ids[2]);
+    const r = (await h.page.locator(`.card[data-id="${ids[2]}"]`).boundingBox())!;
+    await h.page.mouse.move(r.x + 40, r.y + 40); await h.page.waitForTimeout(300);
+    const shown = await op(ids[2]);
+    const info = await Promise.all(ids.map((id) => h.page.locator(`.card[data-id="${id}"] .wbm`).evaluate((e) => ({ banner: e.classList.contains("wbanner"), compact: e.classList.contains("wcompact"), img: !!e.querySelector(".wimg"), h: Math.round(e.getBoundingClientRect().height) }))));
+    await shot(h, "web-styles");
+    // 菜单 View ▸ No Image
+    await h.page.mouse.click(r.x + 40, r.y + 40, { button: "right" }); await h.page.waitForTimeout(400);
+    await h.page.locator(".ctx button", { hasText: /^View/ }).hover(); await h.page.waitForTimeout(400);
+    await h.page.locator(".ctx button", { hasText: "No Image" }).click(); await h.page.waitForTimeout(1400);
+    const st = (h.board().cards.find((c) => c.id === ids[2]) as WebCard).style;
+    const ok = hidden === 0 && shown === 1 && info[1].banner && !info[2].banner && info[2].img && !info[3].img && info[4].compact && !info[4].img && info[4].h < 50 && st === "text";
+    console.log(ok ? "PASS" : "FAIL", "web-styles", JSON.stringify({ hidden, shown, info, st }));
+    await close(h);
+  },
   async linklist() {
     const b: Board = emptyBoard("b1", "KV Cache Reading");
     const a = web("https://arxiv.org/abs/2309.06180"), c = web("https://github.com/GeeeekExplorer/nano-vllm/blob/main/nanovllm/engine/block_manager.py");
