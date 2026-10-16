@@ -17,9 +17,7 @@
   --brush: "Zhi Mang Xing", "Ma Shan Zheng", "Kaiti SC", serif;
   --seal: "Ma Shan Zheng", "Kaiti SC", serif;
   --paper-solid: light-dark(#faf7f0, #1c1b19);
-  --silk: light-dark(#a9b8bd, #3b4447);
-  --silk-pat: light-dark(rgba(255,255,255,.35), rgba(255,255,255,.08));
-  --knob: light-dark(#e9e2cf, #b9b2a0);
+  --paperfiber: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .4 0 0 0 0 .32 0 0 0 .55 -.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
 }
 .s-ink .scene { display: block; }
 .s-ink .card { background: var(--paper); box-shadow: 0 0 0 .5px var(--wash), 0 18px 34px -22px light-dark(rgba(30,25,15,.35), rgba(0,0,0,.8)); display: flex; flex-direction: column; overflow: visible; }
@@ -64,23 +62,13 @@
   box-shadow: inset 0 0 0 2px var(--zhu), inset 0 0 0 3px light-dark(rgba(250,247,240,.7), rgba(28,27,25,.6)); rotate: -2deg; transition: scale 60ms; }
 .s-ink #btnPresent:active { scale: .94; }
 .s-ink #btnPresent .ico { fill: currentColor; stroke: none; width: 12px; }
-/* 工具条是一小段手卷：中间宣纸，两边绫边，最外是带轴头的木轴；按钮之间是朱丝栏 */
-.s-ink .dock { bottom: 16px; }
-.s-ink .dock .pill { position: relative; padding: 5px 22px; gap: 0;
-  background: linear-gradient(90deg, transparent 13px, light-dark(rgba(60,50,30,.35), rgba(220,210,190,.25)) 13px 14px, transparent 14px calc(100% - 14px), light-dark(rgba(60,50,30,.35), rgba(220,210,190,.25)) calc(100% - 14px) calc(100% - 13px), transparent 0),
-    linear-gradient(90deg, var(--silk) 0 13px, transparent 13px calc(100% - 13px), var(--silk) 0),
-    repeating-linear-gradient(45deg, transparent 0 3px, var(--silk-pat) 3px 4px), repeating-linear-gradient(-45deg, transparent 0 3px, var(--silk-pat) 3px 4px),
-    var(--paper-solid);
-  background-size: 100% 100%, 100% 100%, 13px 100%, 13px 100%, 100% 100%;
-  background-repeat: no-repeat, no-repeat, repeat-y, repeat-y, no-repeat;
-  box-shadow: inset 0 1.5px 0 var(--silk), inset 0 -1.5px 0 var(--silk), 0 12px 22px -12px rgba(0,0,0,.45); }
-.s-ink .dock .pill::before, .s-ink .dock .pill::after { content: ""; position: absolute; top: -7px; bottom: -7px; width: 8px; border-radius: 4px;
-  background: linear-gradient(180deg, var(--knob) 0 7px, transparent 7px calc(100% - 7px), var(--knob) 0),
-    linear-gradient(90deg, light-dark(#2e1f14, #5e4632), light-dark(#6e4c32, #a07b5a) 45%, light-dark(#2e1f14, #4a3626));
-  box-shadow: 0 3px 5px rgba(0,0,0,.35); }
-.s-ink .dock .pill::before { left: -5px; } .s-ink .dock .pill::after { right: -5px; }
-.s-ink .dock .ib { width: 34px; height: 28px; }
-.s-ink .dock .ib + .ib, .s-ink .dock .zoom, .s-ink .dock .zoom + .ib { box-shadow: -.5px 0 0 color-mix(in srgb, var(--zhu) 45%, transparent); }
+/* 工具条是一条素宣纸，右侧斜搁着一支毛笔 */
+.s-ink .dock { bottom: 18px; }
+.s-ink .dock .pill { position: relative; padding: 4px 26px 4px 12px; gap: 2px; border-radius: 1px;
+  background: var(--paperfiber), var(--paper-solid); background-blend-mode: multiply, normal; box-shadow: 0 0 0 .5px var(--wash), 0 1px 2px light-dark(rgba(60,40,10,.12), rgba(0,0,0,.5)), 0 12px 22px -12px rgba(0,0,0,.4); }
+.s-ink .dock .pill::after { content: ""; position: absolute; right: 0; top: -10px; width: 13px; height: 64px; rotate: 24deg; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 84'%3E%3Cdefs%3E%3ClinearGradient id='h' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%236b4a26'/%3E%3Cstop offset='.45' stop-color='%23c79a5c'/%3E%3Cstop offset='1' stop-color='%235a3c1c'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23111'/%3E%3Cstop offset='.45' stop-color='%23444'/%3E%3Cstop offset='1' stop-color='%230b0b0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.5a1.6 1.6 0 0 1 0 3.2' fill='none' stroke='%23b0322a' stroke-width='1'/%3E%3Crect x='5' y='4' width='6' height='50' rx='2.6' fill='url(%23h)'/%3E%3Cpath d='M5.4 22h5.2M5.4 40h5.2' stroke='%235a3c1c' stroke-width='.7' opacity='.7'/%3E%3Crect x='4.6' y='52' width='6.8' height='5' rx='1.2' fill='%23222'/%3E%3Cpath d='M4.8 57c0 8 1.6 16 3.2 25 1.6-9 3.2-17 3.2-25z' fill='url(%23t)'/%3E%3C/svg%3E") center / contain no-repeat; filter: drop-shadow(2px 3px 2px rgba(0,0,0,.3)); }
+.s-ink .dock .ib { width: 32px; height: 28px; }
 .s-ink .sep { width: 0; margin: 0; }
 .s-ink .zoom { min-width: 50px; font: 400 14px var(--seal); color: var(--ink-2); }
 .s-ink .toast { background: var(--paper); color: var(--ink); font: 400 12.5px var(--ui); padding: 7px 14px 7px 8px; box-shadow: 0 0 0 .5px var(--wash), 0 10px 20px -12px rgba(0,0,0,.4); }
