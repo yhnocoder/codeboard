@@ -6,6 +6,7 @@ export * from "./flow";
 export * from "./edit";
 export * from "./layout";
 export * from "./paste";
+export * from "./web";
 export * from "./lines";
 // 宿主用的小工具（白板不引入也没关系，打包时会摇掉）
 export * from "./track";

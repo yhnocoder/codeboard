@@ -231,6 +231,11 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
     const f = id ? store.fileOf(id) : undefined;
     await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(f ?? store.dir()));
   });
+  // GITHUB FILES 的 Add Repo…：在目标白板上打开 From GitHub… 面板
+  cmd("codeboard.addGithubRepo", async () => {
+    const p = await panels.show(await targetId());
+    p?.post({ type: "githubPicker" });
+  });
   cmd("codeboard.openGithubFile", async (abs: string) => {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));
     await vscode.window.showTextDocument(doc, { preview: true });

@@ -85,7 +85,10 @@ export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: 
 
 export async function ready() { await initAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm")); if (!files.size) load(); }
 
-export async function open(o: { board?: Board; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void> } = {}): Promise<Host> {
+/** 场景自己扮演宿主的一部分：处理了就返回 true */
+export type OnMsg = (m: BoardToHost & { req?: number }, reply: (req: number, data?: unknown, error?: string) => Promise<void>) => boolean | Promise<boolean>;
+
+export async function open(o: { board?: Board; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void>; on?: OnMsg } = {}): Promise<Host> {
   await ready();
   if (!files.size) load();
   fs.mkdirSync(OUT, { recursive: true });
@@ -106,6 +109,7 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
   await page.exposeFunction("__host", async (s: string) => {
     const m = JSON.parse(s) as BoardToHost & { req?: number };
     sent.push(m);
+    if (o.on && (await o.on(m, reply))) return;
     switch (m.type) {
       case "ready": {
         const views: Record<string, SegView> = {};

@@ -2,6 +2,7 @@
 import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
 import { emptyBoard, type Board } from "@codeboard/core";
 import { V015 } from "./v015";
+import { WEB } from "./scenarios-web";
 
 const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -16,6 +17,7 @@ const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .c
 
 const S: Record<string, () => Promise<void>> = {
   ...V015,
+  ...WEB,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");

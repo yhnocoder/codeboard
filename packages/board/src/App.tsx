@@ -10,6 +10,7 @@ import { StickerPicker, PlacingGhost } from "./stickers/Picker";
 import { Palette } from "./ui/Palette";
 import { SettingsLayer } from "./ui/Settings";
 import { SHORTCUTS, keyText } from "./ui/shortcuts";
+import { GitHubPicker } from "./ui/GitHubPicker";
 import { MenuLayer, DialogLayer, TooltipLayer, openMenu, promptText } from "./ui/Menu";
 import { Editable } from "./ui/Editable";
 import { Icon } from "./ui/icons";
@@ -47,6 +48,7 @@ export function App() {
       <PlacingGhost />
       <Show when={paletteOpen()}><Palette /></Show>
       <SettingsLayer />
+      <Show when={A.ghPicker()}><GitHubPicker /></Show>
       <Toast />
       <MenuLayer />
       <DialogLayer />

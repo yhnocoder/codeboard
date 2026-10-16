@@ -94,6 +94,17 @@ export type DiffData = {
 /** 宿主建好的卡（位置由白板定；w 缺省按内容估） */
 export type NewCard = { card: Card; views: Record<string, SegView>; w?: number };
 
+/** From GitHub… 面板向宿主要的数据（走 GitHub REST API，需要时用 VS Code 的 GitHub 登录） */
+export type GhQuery =
+  | { op: "repo"; owner: string; name: string } // 回 GhRepo
+  | { op: "commit"; owner: string; name: string; ref: string } // 回 Commit（ref 解析成完整 sha）
+  | { op: "tree"; owner: string; name: string; commit: string } // 回 GhTree
+  | { op: "file"; owner: string; name: string; commit: string; ref?: string; path: string } // 回 GhFile（文件同时缓存到本地，出现在 GITHUB FILES 侧栏）
+  | { op: "card"; owner: string; name: string; commit: string; ref: string; path: string; start: number; end: number }; // 回 NewCard
+export type GhRepo = { owner: string; name: string; branch: string; branches: string[]; tags: string[]; private?: boolean; desc?: string };
+export type GhTree = { commit: string; paths: { path: string; dir?: boolean }[]; truncated?: boolean };
+export type GhFile = { path: string; lang: string; text: string[]; html: string[] };
+
 export type HostToBoard =
   | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo }
   | { type: "views"; views: Record<string, SegView> }
@@ -114,6 +125,8 @@ export type HostToBoard =
   /** Relocate：符号在编辑器里找到了新位置，换掉这一段（段 id 不变） */
   | { type: "replaceSegment"; card: string; seg: Segment; view: SegView }
   | { type: "toast"; text: string }
+  /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
+  | { type: "githubPicker"; repo?: string }
   | { type: "reply"; req: number; data?: unknown; error?: string };
 
 export type BoardToHost =
@@ -138,6 +151,7 @@ export type BoardToHost =
   | { type: "resolveRef"; req: number; text: string } // 手输 commit / branch / tag
   | { type: "paste"; req: number; text: string } // 回 NewCard | null（工作区代码、GitHub 链接）
   | { type: "github"; req: number; url: string }
+  | { type: "gh"; req: number; q: GhQuery }
   | { type: "saveAsset"; req: number; name: string; dataUrl: string }
   | { type: "exportPng"; dataUrl: string; name: string }
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据

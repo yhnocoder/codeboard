@@ -15,6 +15,7 @@ import { CardStickers } from "../stickers/Picker";
 import { lod } from "../state/camera";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
+import { WebBody, LinksBody } from "./WebBody";
 import { Editable } from "../ui/Editable";
 import * as act from "../actions";
 
@@ -68,7 +69,7 @@ export function CardView(p: { card: Card }) {
           <Match when={c().kind === "code"}><CodeCardView card={c() as CodeCard} /></Match>
           <Match when={c().kind === "note"}><NoteBody card={c() as NoteCard} /></Match>
           <Match when={c().kind === "image"}><ImageView card={c() as ImageCard} /></Match>
-          <Match when={c().kind === "web"}><WebView card={c() as WebCard} /></Match>
+          <Match when={c().kind === "web" || c().kind === "links"}>{c().kind === "web" ? <WebBody card={c() as WebCard} /> : <LinksBody card={c() as any} />}</Match>
           <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
         </Switch>
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
@@ -205,21 +206,6 @@ function ImageView(p: { card: ImageCard }) {
         <button class="ib" aria-label="Card Menu" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(p.card.id, r.left, r.bottom + 4); }}><Icon name="more" /></button></div>
       <Desc id={p.card.id} desc={p.card.desc} />
       <div class="imgb"><img src={src()} alt={p.card.alt ?? ""} draggable={false} /></div>
-    </>
-  );
-}
-
-function WebView(p: { card: WebCard }) {
-  return (
-    <>
-      <div class="chead" data-drag><span class="kind"><Icon name="web" size={13} /></span><Editable class="ctitle sys" kind="title" id={p.card.id} value={cardTitle(p.card)} onCommit={(v) => act.renameCard(p.card.id, v)} /><span class="grow" />
-        <button class="ib" aria-label="Card Menu" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(p.card.id, r.left, r.bottom + 4); }}><Icon name="more" /></button></div>
-      <Desc id={p.card.id} desc={p.card.desc} />
-      <div class="webb">
-        <div class="wt">{p.card.meta?.title || p.card.url}</div>
-        <div class="wd">{domainOf(p.card.url)}</div>
-        <button class="btn" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openLink(p.card.url)}>Open in Browser <Icon name="external" size={12} /></button>
-      </div>
     </>
   );
 }

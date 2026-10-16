@@ -6,7 +6,8 @@ import { findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabe
 import { analysisOf } from "./analysis";
 import { gitUri } from "./cards";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
-import { githubCard } from "./github";
+import { githubCard, ghQuery } from "./github";
+import { webMeta } from "./web";
 import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
 import { readPacks } from "./stickers";
@@ -56,7 +57,8 @@ export function makeHandler(panels: Panels) {
       case "relocate": return relocate(p, m.card);
       case "locateRepo": return locateRepo(p);
       case "setSetting": return writeSetting(m.key, m.value);
-      case "webMeta": return { failed: true }; // TODO(W): 抓网页元数据
+      case "webMeta": return webMeta(store, m.url);
+      case "gh": return ghQuery(m.q);
       case "stickerPacks": return readPacks();
       case "openStickerDir": return openStickerDir();
       case "copyDiagnostics": return copyDiagnostics(p.board, m.board);
