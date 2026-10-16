@@ -29,9 +29,8 @@ describe("diff (jsdiff) vs v0.1.5 LCS on nano-vllm history", () => {
   it("finds an LCS of the same length", () => {
     for (const p of ps) expect(diffLines(p.a, p.b).filter((x) => x.op === " ").length, p.name).toBe(lcs.diffLines(p.a, p.b).filter((x) => x.op === " ").length);
   });
-  // 等长 LCS 有多种对齐时，Myers 和旧版的取法不同（旧版先删，配对的重复行靠后）。这几处都是重复的空行 / break 落在哪一行
-  const TIES = ["44a51af:nanovllm/engine/scheduler.py", "77dd709:nanovllm/engine/scheduler.py", "df99418:nanovllm/layers/linear.py"];
-  it("gives the same lines, rows and word marks except on equal-length ties", () => {
+  // 中间部分小于 LCS 表上限：和旧版逐行一致
+  it("gives the same lines, rows and line mapping", () => {
     const differ: string[] = [];
     for (const p of ps) {
       const same = JSON.stringify(diffLines(p.a, p.b)) === JSON.stringify(lcs.diffLines(p.a, p.b));
@@ -40,7 +39,16 @@ describe("diff (jsdiff) vs v0.1.5 LCS on nano-vllm history", () => {
       expect(mapLines(p.a, 1, p.b, 1), p.name).toEqual(lcs.mapLines(p.a, 1, p.b, 1));
       expect(mapLines(p.a, 1, p.b, 1, false), p.name).toEqual(lcs.mapLines(p.a, 1, p.b, 1, false));
     }
-    expect(differ.sort()).toEqual([...TIES].sort());
+    expect(differ).toEqual([]);
+  });
+  // 剥掉头尾后超过 LCS 表上限的走 Myers：公共行一样多（取哪几行可以不同）
+  it("Myers path on large real inputs keeps an LCS of the same length", () => {
+    const a = ps.slice(0, 60).flatMap((p) => p.a), b = ps.slice(0, 60).flatMap((p) => p.b);
+    expect(a.length * b.length).toBeGreaterThan(1 << 22);
+    const d = diffLines(a, b);
+    expect(d.filter((x) => x.op === " ").length).toBe(lcs.diffLines(a, b).filter((x) => x.op === " ").length);
+    expect(d.filter((x) => x.op !== "+").map((x) => x.text)).toEqual(a);
+    expect(d.filter((x) => x.op !== "-").map((x) => x.text)).toEqual(b);
   });
   it("word diff matches", () => {
     for (const [x, y] of [["    input_ids.extend(seq[start:end])", "    input_ids.append(seq.last_token)"], ["a b c", "a c"], ["", "x"], ["foo(bar)", "foo(baz)"]])

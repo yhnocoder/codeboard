@@ -19,9 +19,14 @@ type Op = DiffLine["op"];
 /** 改动超过这么多行就不再找最短编辑（Myers 是 O((n+m)·D)），改用两边各只出现一次的行做锚点分段 */
 const MAX_EDIT = 1000;
 
+/** 剥掉头尾后不超过这么多格（n·m）就用 LCS 表（16 MB 以内） */
+const MAX_TABLE = 1 << 22;
+
 /**
- * jsdiff 的 Myers（时间 / 内存随改动量增长，不是 n·m）。先剥掉相同的头尾：长文件也快，
- * 而且新增的整段贴在共同的尾巴前面（和旧版 LCS 一样）
+ * 先剥掉相同的头尾：长文件也快，而且新增的整段贴在共同的尾巴前面。
+ * 中间部分小的用 LCS 表，大的用 jsdiff 的 Myers（时间 / 内存随改动量增长，不是 n·m）。
+ * 小的不用 Myers：等长的公共子序列有多种取法时，Myers 和这里取得不一样（Compare 的行对齐、词级高亮会变），
+ * 这里的取法是「能删就先删」，界面一直是这样。
  */
 function ops(a: string[], b: string[]): Op[] {
   let pre = 0;
@@ -30,10 +35,30 @@ function ops(a: string[], b: string[]): Op[] {
   while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
   const A = a.slice(pre, a.length - suf), B = b.slice(pre, b.length - suf);
   const out: Op[] = Array(pre).fill(" ");
-  const cs = A.length && B.length ? diffArrays(A, B, { maxEditLength: MAX_EDIT }) : undefined;
-  if (cs) for (const c of cs) for (let k = 0; k < c.count; k++) out.push(c.removed ? "-" : c.added ? "+" : " ");
-  else out.push(...anchored(A, B));
+  if (A.length * B.length <= MAX_TABLE) out.push(...table(A, B));
+  else {
+    const cs = diffArrays(A, B, { maxEditLength: MAX_EDIT });
+    if (cs) for (const c of cs) for (let k = 0; k < c.count; k++) out.push(c.removed ? "-" : c.added ? "+" : " ");
+    else out.push(...anchored(A, B));
+  }
   for (let k = 0; k < suf; k++) out.push(" ");
+  return out;
+}
+
+/** LCS 表：从后往前填，从前往后走；不相等时能删（不丢公共行）就先删 */
+function table(A: string[], B: string[]): Op[] {
+  const n = A.length, m = B.length, w = m + 1;
+  const dp = new Uint32Array((n + 1) * w);
+  for (let i = n - 1; i >= 0; i--)
+    for (let j = m - 1; j >= 0; j--)
+      dp[i * w + j] = A[i] === B[j] ? dp[(i + 1) * w + j + 1] + 1 : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
+  const out: Op[] = [];
+  let i = 0, j = 0;
+  while (i < n || j < m) {
+    if (i < n && j < m && A[i] === B[j]) { out.push(" "); i++; j++; }
+    else if (i < n && (j >= m || dp[(i + 1) * w + j] >= dp[i * w + j + 1])) { out.push("-"); i++; }
+    else { out.push("+"); j++; }
+  }
   return out;
 }
 
