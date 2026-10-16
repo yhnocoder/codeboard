@@ -2,9 +2,10 @@
 #   unit     build, typecheck, unit tests, host tests
 #   harness  browser harness scenarios, split into 3 shards
 #   e2e      real VS Code (with Pylance) e2e + generic UI audit
-#   replay   scripted study-task replay in real VS Code, on base and on head, for before/after screenshots
+#   replay   scripted study-task replay in real VS Code, on base and on head (2 parallel parts each), for before/after screenshots
 #   perf     board + host perf benchmarks on base and head in one job; fails on a regression
-#   report   publishes screenshots to the ci-screenshots branch and updates the marked section of the PR description
+#   report   fails on replay checks that fail on head but not on base; publishes screenshots to the ci-screenshots branch
+#            and updates the marked section of the PR description
 name: CI
 on:
   push:
@@ -66,8 +67,8 @@ jobs:
     timeout-minutes: 30
     strategy:
       fail-fast: false
-      matrix: { side: [head, base] }
-    name: replay (${{ matrix.side }})
+      matrix: { side: [head, base], part: [1, 2] }
+    name: replay (${{ matrix.side }}, ${{ matrix.part }}/2)
     steps:
       - uses: actions/checkout@v4
         with: { submodules: true, fetch-depth: 0 }
@@ -80,14 +81,14 @@ jobs:
         if: matrix.side == 'head' || env.BASE_SHA != ''
       - name: Study-task replay
         if: matrix.side == 'head' || env.BASE_SHA != ''
-        # The base run only provides "before" screenshots: its step failures are expected when head adds features
-        continue-on-error: ${{ matrix.side == 'base' }}
+        # Pass or fail is decided in the report job, by comparing head's failed checks with base's
+        continue-on-error: true
         run: |
           DIR=.; [ "${{ matrix.side }}" = base ] && DIR=base
-          DRIVER=replay.cjs E2E_OUT=$PWD/test-out/replay-${{ matrix.side }} bash $DIR/extensions/vscode/test/run.sh
+          PART=${{ matrix.part }} DRIVER=replay.cjs E2E_OUT=$PWD/test-out/replay bash $DIR/extensions/vscode/test/run.sh
       - uses: actions/upload-artifact@v4
         if: always()
-        with: { name: "replay-${{ matrix.side }}", path: "test-out/replay-${{ matrix.side }}", retention-days: 14, if-no-files-found: ignore }
+        with: { name: "replay-${{ matrix.side }}-${{ matrix.part }}", path: test-out/replay, retention-days: 14, if-no-files-found: ignore }
 
   perf:
     runs-on: ubuntu-24.04
@@ -119,7 +120,16 @@ jobs:
       - uses: ./.github/actions/chromium
       - uses: actions/download-artifact@v4
         with: { path: test-out/artifacts }
+      - name: Replay, head vs base
+        id: replay
+        run: |
+          A=test-out/artifacts
+          # one folder per side: part 2 first, so part 1's screenshots of the shared setup steps win
+          for s in head base; do mkdir -p $A/replay-$s; for p in 2 1; do [ -d $A/replay-$s-$p ] && cp -r $A/replay-$s-$p/. $A/replay-$s/; done; done
+          BASE=""; [ -n "$BASE_SHA" ] && BASE="--base $A/replay-base-1 $A/replay-base-2"
+          node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $BASE
       - name: Diff and publish screenshots
+        if: always()
         run: |
           A=test-out/artifacts
           if [ "${{ github.event_name }}" = pull_request ]; then KEY="pr/${{ github.event.pull_request.number }}"; BASEKEY="branches/${{ github.base_ref }}"
@@ -129,7 +139,7 @@ jobs:
           # replay: compared with the base commit replayed in this same run
           if ls $A/replay-head/*.png >/dev/null 2>&1; then tools/review/publish-shots.sh $A/replay-head "$KEY/replay" $A/replay-base test-out/replay-summary.md; fi
       - name: Update the CI section in the PR description
-        if: github.event_name == 'pull_request'
+        if: always() && github.event_name == 'pull_request'
         uses: actions/github-script@v7
         env:
           JOBS: ${{ toJSON(needs) }}
@@ -139,10 +149,8 @@ jobs:
             const A = "test-out/artifacts";
             const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
             const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
-            const audit = [...json(`${A}/e2e/audit.json`), ...json(`${A}/replay-head/audit.json`)];
-            const issues = audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`));
-            const steps = json(`${A}/replay-head/steps.json`);
-            const failed = steps.flatMap((s) => s.checks.filter((c) => !c.ok).map((c) => `- ${s.name}: ${c.what}`));
+            const audit = [...json(`${A}/e2e/audit.json`), ...json(`${A}/replay-head-1/audit.json`), ...json(`${A}/replay-head-2/audit.json`)];
+            const issues = [...new Set(audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`)))];
             const jobs = JSON.parse(process.env.JOBS);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const section = [
@@ -150,7 +158,7 @@ jobs:
               `Commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [Run log](${run}) · ` + Object.entries(jobs).map(([k, v]) => `${k} ${v.result === "success" ? "✅" : v.result === "skipped" ? "–" : "❌"}`).join(" · "), "",
               read(`${A}/perf/summary.md`) || "**Performance**: no results.", "",
               `**UI audit**: ${issues.length ? `${issues.length} warning${issues.length > 1 ? "s" : ""}` : "no issues"}`, ...issues.slice(0, 30), "",
-              `**Study-task replay**: ${steps.length ? (failed.length ? `${failed.length} failed check${failed.length > 1 ? "s" : ""}` : `all ${steps.length} steps passed`) : "no results"}`, ...failed.slice(0, 20), "",
+              read("test-out/replay-result.md") || "**Study-task replay**: no results.", "",
               "<details><summary>Replay screenshots, base → head</summary>", "", read("test-out/replay-summary.md") || "No screenshots.", "</details>", "",
               "<details><summary>e2e screenshots, vs target branch</summary>", "", read("test-out/e2e-summary.md") || "No screenshots.", "</details>",
               "<!-- ci-screenshots:end -->",

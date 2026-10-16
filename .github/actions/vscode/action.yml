@@ -11,7 +11,9 @@ runs:
         key: vscode-${{ env.VSCODE_VERSION }}-${{ env.E2E_EXTENSIONS }}
     - shell: bash
       run: |
-        sudo apt-get install -y -q xvfb libasound2t64 libgbm1 libnss3 libgtk-3-0 libxkbfile1 libsecret-1-0 >/dev/null
+        # The runner image has most of these: install only what is missing (apt-get install costs ~40 s even when nothing is new)
+        MISSING=$(for p in xvfb libasound2t64 libgbm1 libnss3 libgtk-3-0 libxkbfile1 libsecret-1-0; do dpkg -s $p >/dev/null 2>&1 || echo $p; done)
+        if [ -n "$MISSING" ]; then echo "installing $MISSING"; sudo apt-get install -y -q $MISSING >/dev/null; fi
         if [ ! -x .vscode-test/VSCode-linux-x64/code ]; then
           mkdir -p .vscode-test
           curl -sSL "https://update.code.visualstudio.com/$VSCODE_VERSION/linux-x64/stable" | tar -xz -C .vscode-test
