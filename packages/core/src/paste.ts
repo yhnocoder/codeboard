@@ -14,9 +14,28 @@ export function parseGithubUrl(url: string): GithubRef | null {
   return null;
 }
 
+// 文档类文件的 blob 链接（README.md 之类）还是当网页书签；代码文件、或带 #L 行号的 → GitHub Code 卡
+const DOC_EXT = /\.(md|markdown|rst|txt|ipynb|pdf|png|jpe?g|gif|svg|webp|html?)$/i;
+function isGithubCode(url: string, g: GithubRef) {
+  if (g.start) return true;
+  return /^https?:\/\/(github\.com\/[^/]+\/[^/]+\/blob\/|raw\.githubusercontent\.com\/)/.test(url) && !DOC_EXT.test(g.path);
+}
+
+/** From GitHub… 面板的输入：owner/repo、仓库网址、tree / blob 链接 */
+export type RepoInput = { owner: string; name: string; ref?: string; path?: string; start?: number; end?: number };
+export function parseRepoInput(text: string): RepoInput | null {
+  const t = text.trim().replace(/^git@github\.com:/, "https://github.com/");
+  const g = parseGithubUrl(/^https?:/.test(t) ? t : `https://${t}`);
+  if (g) return { owner: g.owner, name: g.name, ref: g.ref, path: g.path.replace(/\/$/, "") || undefined, ...(g.start ? { start: g.start, end: g.end } : {}) };
+  const m = /^(?:https?:\/\/)?(?:www\.)?(?:github\.com\/)?([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:\/(?:tree|commit)\/([^/#?]+)(?:\/([^#?]*))?)?\/?(?:[#?].*)?$/.exec(t);
+  if (!m || m[1] === "github.com") return null;
+  return { owner: m[1], name: m[2], ref: m[3], path: m[4] ? decodeURIComponent(m[4]).replace(/\/$/, "") || undefined : undefined };
+}
+
 export type PasteKind =
   | { kind: "github"; ref: GithubRef }
   | { kind: "web"; url: string }
+  | { kind: "links"; urls: string[] } // 一次贴多个链接（每行一个）→ 一张 Link List
   | { kind: "code"; lang: string }
   | { kind: "note" };
 
@@ -27,9 +46,11 @@ export function classifyPaste(text: string): PasteKind {
   const t = text.trim();
   if (URL_RE.test(t)) {
     const g = parseGithubUrl(t);
-    if (g && g.start) return { kind: "github", ref: g };
+    if (g && isGithubCode(t, g)) return { kind: "github", ref: g };
     return { kind: "web", url: t };
   }
+  const ls = t.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (ls.length > 1 && ls.every((l) => URL_RE.test(l))) return { kind: "links", urls: [...new Set(ls)] };
   const lang = guessLang(t);
   return lang ? { kind: "code", lang } : { kind: "note" };
 }

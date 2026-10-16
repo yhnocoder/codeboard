@@ -133,6 +133,12 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.addGithubRepo",
+        "title": "Add Repo…",
+        "category": "CodeBoard",
+        "icon": "$(add)"
+      },
+      {
         "command": "codeboard.boardKey",
         "title": "Board Shortcut",
         "category": "CodeBoard"
@@ -176,6 +182,11 @@
           "command": "codeboard.newGroup",
           "when": "view == codeboard.boards",
           "group": "navigation@2"
+        },
+        {
+          "command": "codeboard.addGithubRepo",
+          "when": "view == codeboard.github",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -376,7 +387,7 @@
       },
       {
         "view": "codeboard.github",
-        "contents": "Paste a GitHub file link (with #L line numbers) onto a board to download the file here."
+        "contents": "Browse a GitHub repo, pick a file and lines, and add them to a board.\n[Add Repo…](command:codeboard.addGithubRepo)\nOr paste a GitHub file link onto a board."
       }
     ],
     "configuration": {
