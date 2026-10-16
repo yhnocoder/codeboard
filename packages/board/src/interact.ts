@@ -79,7 +79,11 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   e.preventDefault();
   (document.activeElement as HTMLElement | null)?.blur?.();
   window.getSelection()?.removeAllRanges();
-  if (inHead && t.closest(".ctitle") && isDbl(`t${target}`)) return setEditing({ kind: "title", id: target });
+  const tc = cardById(target)?.card;
+  const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
+  if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`)) return setEditing({ kind: "title", id: target });
+  // 编号角标：点 = 选中整棵子树，拖 = 整棵子树一起走（#29）
+  if (t.closest(".step")) { A.selectSubtree(target, e.shiftKey); closeAllPops(); return startCardDrag(e, f.host.id); }
   if (isText && isDbl(`x${id}`)) return setEditing({ kind: "note", id });
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
@@ -206,11 +210,13 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   if (!c || A.isLocked(id)) return;
   A.selectCard(id);
   const r0 = rectOf(c);
-  const targets = state.board.cards.filter((k) => k.id !== id).map((k) => rectOf(k));
+  const targets = placed().filter((k) => k.id !== id).map((k) => rectOf(k));
   const end = beginGesture();
   const sx = e.clientX, sy = e.clientY;
   const text = c.kind === "note" && !c.bg;
-  const minW = text ? 80 : 240, minH = 100;
+  // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（#2：单行卡拉高后能缩回去）
+  const nat = A.naturalSize(c.id);
+  const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
   track(e, (ev) => {
     const z = cam.z, dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     let w = r0.w, h = r0.h, x = r0.x;
@@ -226,7 +232,8 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
       if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
     } else setGuides([]);
     setSizeHint(hint ? { x: x + w / 2, y: r0.y + h + 8, text: hint } : null);
-    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (edges.bottom) k.h = Math.round(h); });
+    const auto = edges.bottom && nat && Math.abs(h - nat.h) < 8 / z;
+    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (edges.bottom) k.h = auto ? undefined : Math.round(h); });
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }
 
@@ -496,6 +503,8 @@ export function installKeys() {
       if (menuOpen()) return closeMenu();
       if (pops().length) return closeAllPops();
       if (keysOpen()) return setKeysOpen(false);
+      if (A.placing()) { A.setPlacing(null); return toast("Cancelled"); }
+      if (A.selSticker()) return A.setSelSticker(null);
       if (connectFrom()) { setConnectFrom(null); return toast("Connect cancelled"); }
       if (walk()) return A.exitWalk();
       if (tool) return setTool(null);
@@ -527,7 +536,9 @@ export function installKeys() {
       return;
     }
     if (e.altKey && (e.code === "KeyZ")) { e.preventDefault(); return A.toggleWrap(sel.cards.length ? sel.cards : []); }
+    if (e.altKey && e.code === "KeyF" && sel.cards.length) { e.preventDefault(); return A.fitContent(sel.cards); }
     if (mod || e.altKey) return;
+    if ((k === "Delete" || k === "Backspace") && A.selSticker()) { e.preventDefault(); return A.removeSticker(A.selSticker()!); }
     if (k === "Delete" || k === "Backspace") { e.preventDefault(); if (lineSel() && !sel.cards.length) return; return A.deleteSel(); }
     if (k === "!" || (e.shiftKey && e.code === "Digit1")) return A.fitAll();
     if (e.shiftKey && e.code === "Digit2") return A.fitSelection();
@@ -587,3 +598,10 @@ export function installKeys() {
 
 export { send, unwrap, cardTitle, union, fitRect, view, camTo, setSel, editing };
 export type { Card, Rect, NoteCard };
+
+// 放贴纸：在卡片和画布自己的处理之前接住这一下；点到贴纸以外的地方就取消贴纸选中
+window.addEventListener("pointerdown", (e) => {
+  const t = e.target as HTMLElement;
+  if (A.placing() && e.button === 0 && t.closest?.("#board") && !t.closest(".bbar, .dock, .pop, .ctx, .alignbar")) return void A.placeStickerAt(e);
+  if (A.selSticker() && !t.closest?.("[data-sticker], .ctx")) A.setSelSticker(null);
+}, true);

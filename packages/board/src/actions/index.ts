@@ -10,3 +10,5 @@ export * from "./versions";
 export * from "./notes";
 export * from "./misc";
 export * from "../interact";
+export * from "./stubs";
+export * from "./stickers";

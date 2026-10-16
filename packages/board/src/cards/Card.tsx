@@ -11,6 +11,7 @@ import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
+import { CardStickers } from "../stickers/Picker";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
 import { Editable } from "../ui/Editable";
@@ -53,7 +54,7 @@ export function CardView(p: { card: Card }) {
     <Show when={!collapsedAway().has(c().id) && !collapsedHome(pl().section)}>
       <div ref={el} class={`card ${kindClass()}`} data-id={c().id} style={style()}
         classList={{
-          sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!pl().locked, autoh: !pl().h,
+          sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
           editing: editing()?.id === c().id,
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
           "merge-hot": drop()?.kind === "merge" && drop()?.card === c().id && !!drop()?.armed,
@@ -72,8 +73,9 @@ export function CardView(p: { card: Card }) {
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
+        <CardStickers card={c().id} />
         <Show when={!pl().locked}>
-          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} />}>
+          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>
             <span class="hw l" onPointerDown={(e) => act.resizeDown(e, c().id, { left: true })} />
             <span class="hw r" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true })} />
           </Show>
@@ -97,21 +99,23 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const notes = () => act.sidenotesOf(c().id).filter((n) => !n.at.lines);
   return (
     <div class="chead" data-drag>
-      <Show when={node() && !state.board.hideNumbers}><span class="step">{node()!.label}</span></Show>
+      <Show when={node() && !state.board.hideNumbers}><span class="step" data-tip="Click: select subtree · Drag: move subtree">{node()!.label}</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
-      <Editable class="ctitle" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
+      <Show when={!free() || c().title || (editing()?.kind === "title" && editing()?.id === c().id)}>
+        <Editable class="ctitle" kind="title" id={c().id} value={free() ? c().title ?? "" : cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
+      </Show>
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
       <Show when={free()} fallback={
         <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openCode(c().id)}>
           {multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
-        <span class="grow" />
       </Show>
+      <span class="grow" />
       <Show when={notes().length}><button class="mk inline" onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
-      <Show when={!free()} fallback={<span class="rev nover">No commit</span>}>
+      <Show when={!free()}>
         <button class="rev" classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : "Pinned version"}
           onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
@@ -133,18 +137,10 @@ export const shortPath = (p: string) => p.split("/").slice(-1)[0];
 
 function CodeCardView(p: { card: CodeCard }) {
   const c = () => p.card;
-  const showHide = () => isSel(c().id) && sel.cards.length === 1;
   return (
     <>
       <CodeHead card={c()} />
       <Desc id={c().id} desc={c().desc} />
-      <Show when={showHide()}>
-        <div class="hidebar" onPointerDown={(e) => e.stopPropagation()}>
-          <For each={[["comments", "Hide Comments"], ["docstrings", "Hide Docstrings"], ["blank", "Hide Blank Lines"]] as const}>
-            {([k, label]) => <button classList={{ on: !!c().hide?.[k] }} onClick={() => act.toggleHide(c().id, k)}>{c().hide?.[k] ? "✓ " : ""}{label}</button>}
-          </For>
-        </div>
-      </Show>
       <Show when={act.missingNote(c())}>
         <div class="cmiss" onPointerDown={(e) => e.stopPropagation()}>
           <span>{act.missingNote(c())}</span>

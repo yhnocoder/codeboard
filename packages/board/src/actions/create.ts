@@ -1,4 +1,5 @@
 // 建卡：宿主建好的卡放到白板上、Note / Text / Image / Web / Code、粘贴、选区拆成几张卡。
+import { createRoot, createEffect } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
@@ -12,7 +13,7 @@ import {
   type LineSel,
 } from "../state/store";
 import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
+import { editing, notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
 import { openMenu, choose, promptText, type Item } from "../ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
 import { send, ask } from "../host";
@@ -174,3 +175,18 @@ export function splitSnippet(id: string, merge: boolean) {
   requestViews(parts);
 }
 
+
+// 新建的 Note / Text / Code 第一次编辑结束时还是空的：直接消失，不进撤销（#26）。
+// 写了内容的在 setNoteText / setFreeCode 里结算；这里兜住“什么都没改”（Editable 不提交）的情况。
+createRoot(() => {
+  let prev: string | undefined;
+  createEffect(() => {
+    const cur = editing()?.id;
+    const p = prev;
+    prev = cur;
+    if (!p || p === cur || !isFresh(p)) return;
+    const c = cardById(p)?.card;
+    const empty = !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
+    queueMicrotask(() => { if (isFresh(p)) settleFresh(p, !empty); });
+  });
+});

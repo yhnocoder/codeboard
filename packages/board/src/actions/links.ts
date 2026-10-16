@@ -19,15 +19,41 @@ import { send, ask } from "../host";
 import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { lastPointer } from "./common";
+import { attachCall, calleeMatches } from "./flow";
 
 // ---------- Plain link ----------
 
-export function addPlain(from: { card: string; seg?: string; line?: number }, to: { card: string; seg?: string; line?: number }) {
+type EndRef = { card: string; seg?: string; line?: number };
+
+/** 这条箭头其实是调用：从代码行连到「这一行调用的函数」所在的卡（#28：只有一种 Arrow，是不是调用自动判断） */
+export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
+  if (from.line === undefined || !from.seg || to.line !== undefined) return;
+  const t = cardById(to.card)?.card;
+  if (!isCode(t) || !isCode(cardById(from.card)?.card)) return;
+  return state.views[from.seg]?.calls.find((c) => c.line === from.line && calleeMatches(t, c));
+}
+
+/** 新箭头：是调用就建 Call link（编号、Walkthrough、变量），否则普通箭头 */
+export function addPlain(from: EndRef, to: EndRef) {
   if (cardById(from.card)?.host.id === cardById(to.card)?.host.id && from.line === to.line) return;
+  const call = callOn(from, to);
+  if (call && canAttach(state.board, flows(), from.card, to.card).ok) return void attachCall(from.card, from.seg!, call, to.card);
   const id = uid("l");
   mutate((b) => { b.links.push({ id, kind: "plain", from, to }); });
-  toast("Plain link added");
   return id;
+}
+/** 普通箭头后来能认出是调用（V03 默认不自动转）：箭头上出 Make Call，点了才转 */
+export function makeCall(id: string) {
+  const L = state.board.links.find((l) => l.id === id);
+  if (!L || L.kind !== "plain") return;
+  const call = callOn(L.from, L.to);
+  if (!call) return;
+  const ok = canAttach(state.board, flows(), L.from.card, L.to.card);
+  if (!ok.ok) return toast(ok.reason);
+  mutate((b) => {
+    const i = b.links.findIndex((l) => l.id === id);
+    if (i >= 0) b.links[i] = { id, kind: "call", from: { ...L.from }, to: { card: L.to.card }, label: L.label, call: { name: call.name, col: call.col }, loop: call.loop || undefined };
+  });
 }
 export function startConnect(id: string) {
   setConnectFrom({ card: id });

@@ -143,6 +143,19 @@ export const allCodeCandidates = (call: CallSpan) => allCodeCards(state.board).f
 
 // ---------- 流程 ----------
 
+/** 选中这张卡和它所有下游（#29：点编号角标） */
+export function selectSubtree(id: string, add = false) {
+  const n = flows().byId.get(id);
+  if (!n) return;
+  const ids = [...new Set([id, ...descendants(n)].map((k) => cardById(k)?.host.id ?? k))];
+  select({ cards: add ? [...new Set([...sel.cards, ...ids])] : ids });
+}
+/** Select Flow：从根开始整棵树 */
+export function selectFlow(id: string) {
+  const r = treeOf(flows(), id);
+  if (r) selectSubtree(r.id);
+}
+
 export function tidyFlow(id: string, dir = state.host.settings.tidy) {
   const root = treeOf(flows(), id);
   if (!root) return;

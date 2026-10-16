@@ -161,3 +161,58 @@ export function openCode(id: string, seg?: string, line?: number) {
 }
 export function openLink(url: string) { send({ type: "openLink", url }); }
 
+
+// ---------- 内容本来的大小（Fit Content、改大小时用；直接量 DOM） ----------
+
+let charW = 0;
+/** 等宽字体一个字的宽度 */
+function monoW(el: Element) {
+  if (charW) return charW;
+  const ctx = document.createElement("canvas").getContext("2d")!;
+  ctx.font = getComputedStyle(el).font;
+  charW = ctx.measureText("0".repeat(100)).width / 100 || 6.6;
+  return charW;
+}
+/** 卡片内容刚好装下的宽高；minH = 头部 + 一行 */
+export function naturalSize(id: string): { w?: number; h: number; minH: number } | null {
+  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
+  if (!el) return null;
+  const f = cardById(id);
+  const body = el.querySelector<HTMLElement>(".cbody");
+  const code = body?.querySelector<HTMLElement>(":scope > .code");
+  const head = el.querySelector<HTMLElement>(":scope > .chead")?.offsetHeight ?? 0;
+  if (f && isCode(f.card) && body && code) {
+    const src = code.querySelector<HTMLElement>(".src");
+    const top = body.offsetTop;
+    const h = top + code.offsetHeight + 2;
+    let w: number | undefined;
+    if (src && !f.card.wrap) {
+      const cs = getComputedStyle(src);
+      const longest = Math.max(12, ...f.card.segments.flatMap((s) => s.text.map((t) => t.replace(/\t/g, "    ").length)));
+      w = Math.ceil(longest * monoW(src) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4);
+    }
+    return { w, h, minH: top + 6 + 20 + 8 + 2 };
+  }
+  if (f?.card.kind === "image") {
+    const img = el.querySelector("img");
+    const w = el.offsetWidth;
+    return img?.naturalWidth ? { h: Math.round(head + (w * img.naturalHeight) / img.naturalWidth), minH: head + 40 } : null;
+  }
+  return { h: el.scrollHeight, minH: head + 30 };
+}
+
+/** Fit Content（#25）：宽 = 最长行，高 = 所有可见行；多选时各自适配 */
+export function fitContent(ids: string[]) {
+  const sz = new Map<string, { w?: number; h: number }>();
+  for (const id of ids) { const h = cardById(id)?.host.id; const n = h && naturalSize(h); if (h && n) sz.set(h, n); }
+  if (!sz.size) return;
+  mutate((b) => {
+    for (const [id, n] of sz) {
+      const p = b.place[id];
+      if (!p) continue;
+      if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
+      const c = b.cards.find((k) => k.id === id);
+      p.h = c?.kind === "note" || c?.kind === "web" ? undefined : Math.round(n.h);
+    }
+  });
+}

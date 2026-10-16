@@ -6,6 +6,7 @@ import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
 import { cam, setViewport } from "../state/camera";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
+import { CanvasStickers } from "../stickers/Picker";
 import { LinksSvg, LinkLabels } from "./Links";
 import { SectionFrames, SectionLabels } from "./Sections";
 import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
@@ -23,12 +24,13 @@ export function Canvas() {
     onCleanup(() => { ro.disconnect(); el.removeEventListener("wheel", canvasWheel); });
   });
   return (
-    <div ref={el} id="board" class="board" classList={{ connecting: !!connectFrom(), walking: !!walk(), dragging: dragging().size > 0 }}
+    <div ref={el} id="board" class="board" classList={{ connecting: !!connectFrom(), walking: !!walk(), dragging: dragging().size > 0, placing: !!A.placing() }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
       <div class="world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})` }}>
         <SectionFrames />
         <LinksSvg />
         <For each={placed()}>{(c) => <CardView card={c} />}</For>
+        <CanvasStickers />
         <SectionLabels />
         <div class="labels"><LinkLabels /></div>
         <div class="guides">

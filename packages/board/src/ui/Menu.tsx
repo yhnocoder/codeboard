@@ -6,22 +6,23 @@ export type Item =
   | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string }
   | null; // 分隔线
 
-type MenuState = { items: Item[]; x: number; y: number; n: number };
+type MenuState = { items: Item[]; x: number; y: number; n: number; up?: boolean };
 const [menu, setMenu] = createSignal<MenuState | null>(null);
 let menuN = 0;
 
-export function openMenu(items: Item[], x: number, y: number) {
+/** up：y 是菜单底边（从工具栏往上开） */
+export function openMenu(items: Item[], x: number, y: number, o: { up?: boolean } = {}) {
   // 连续的分隔线、首尾分隔线去掉
   const clean: Item[] = [];
   for (const it of items) if (it || (clean.length && clean[clean.length - 1])) clean.push(it);
   while (clean.length && !clean[clean.length - 1]) clean.pop();
   if (!clean.length) return;
-  setMenu({ items: clean, x, y, n: ++menuN });
+  setMenu({ items: clean, x, y, n: ++menuN, up: o.up });
 }
 export const closeMenu = () => setMenu(null);
 export const menuOpen = () => !!menu();
 
-function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void; sub?: boolean }) {
+function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void; sub?: boolean; up?: boolean }) {
   let el!: HTMLDivElement;
   const [pos, setPos] = createSignal({ x: p.x, y: p.y });
   const [open, setOpen] = createSignal(false);
@@ -29,11 +30,14 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
   onMount(() => {
     const r = el.getBoundingClientRect();
     const W = window.innerWidth, H = window.innerHeight;
-    setPos({ x: Math.max(4, Math.min(p.x, W - r.width - 6)), y: Math.max(4, Math.min(p.y, H - r.height - 6)) });
+    // 放不下就往上翻；还放不下就限高滚动（最后一项总能看到）
+    let y = p.up ? p.y - r.height : p.y;
+    if (!p.up && y + r.height > H - 6 && p.y - r.height >= 4) y = p.y - r.height;
+    setPos({ x: Math.max(4, Math.min(p.x, W - r.width - 6)), y: Math.max(4, Math.min(y, H - r.height - 6)) });
     requestAnimationFrame(() => setOpen(true));
   });
   return (
-    <div ref={el} class="ctx" classList={{ open: open() }} role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
+    <><div ref={el} class="ctx" classList={{ open: open() }} role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px`, "max-height": `${window.innerHeight - 8}px` }}
       onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
       <For each={p.items}>
         {(it, i) =>
@@ -52,10 +56,10 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
           ) : <hr />
         }
       </For>
-      <Show when={subOf()}>
-        {(s) => <MenuList items={(p.items[s().i] as Exclude<Item, null>).sub!} x={s().x} y={s().y} onClose={p.onClose} sub />}
-      </Show>
     </div>
+    <Show when={subOf()}>
+      {(s) => <MenuList items={(p.items[s().i] as Exclude<Item, null>).sub!} x={s().x} y={s().y} onClose={p.onClose} sub />}
+    </Show></>
   );
 }
 
@@ -68,7 +72,7 @@ export function MenuLayer() {
   onCleanup(() => { window.removeEventListener("pointerdown", onDown, true); window.removeEventListener("keydown", onKey, true); });
   return (
     <Show when={menu()} keyed>
-      {(m) => <MenuList items={m.items} x={m.x} y={m.y} onClose={closeMenu} />}
+      {(m) => <MenuList items={m.items} x={m.x} y={m.y} up={m.up} onClose={closeMenu} />}
     </Show>
   );
 }

@@ -12,6 +12,11 @@ import * as A from "../actions";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
+// 离开连线后过 300ms 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停（#30）
+let leaveT: number | undefined;
+const enterLink = (id: string) => { clearTimeout(leaveT); setHoverLink(id); };
+const leaveLink = () => { clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverLink(null), 300); };
+
 /** 卡（或 Compare 的一栏）的矩形；在折叠的 Section 里时是那个标题条 */
 function endRect(id: string): { r: Rect; pill: boolean } | null {
   const f = cardById(id);
@@ -43,16 +48,35 @@ function lineAt(id: string, seg?: string, line?: number) {
 
 type Geo = { d: string; mx: number; my: number; head?: string; tail?: string; port?: { x: number; y: number } };
 
+/** Call link：起点自动选边（#27）。子卡在右 → 从这一行右端出；在左 → 左端出、进子卡右侧；在下面 → 左端出绕进子卡左侧 */
 function callGeo(L: Link): Geo | null {
   const p1 = lineAt(L.from.card, L.from.seg, L.from.line);
   const e2 = endRect(L.to.card);
   if (!p1 || !e2) return null;
-  const x1 = p1.x, y1 = p1.y, x2 = e2.r.x - 6, y2 = e2.pill ? e2.r.y + e2.r.h / 2 : headY(L.to.card, e2.r);
-  const dx = clamp(Math.abs(y2 - y1) * 0.3 + Math.max(0, x1 - x2) * 0.6, 28, 130);
+  const a = p1.r, b = e2.r;
+  const y1 = p1.y, y2 = e2.pill ? b.y + b.h / 2 : headY(L.to.card, b);
+  const side = b.x >= a.x + a.w - 24 ? "right" : b.x + b.w <= a.x + 24 ? "left" : "below";
+  let x1: number, x2: number, c1: number, c2: number, head: string;
+  if (side === "right") {
+    x1 = a.x + a.w; x2 = b.x - 6;
+    const dx = clamp(Math.abs(x2 - x1) * 0.45, 24, 140);
+    c1 = x1 + dx; c2 = x2 - dx;
+    head = `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`;
+  } else if (side === "left") {
+    x1 = a.x; x2 = b.x + b.w + 6;
+    const dx = clamp(Math.abs(x1 - x2) * 0.45, 24, 140);
+    c1 = x1 - dx; c2 = x2 + dx;
+    head = `M${x2 + 5} ${y2 - 4} L${x2} ${y2} L${x2 + 5} ${y2 + 4}`;
+  } else {
+    x1 = a.x; x2 = b.x - 6;
+    const dx = clamp(Math.abs(y2 - y1) * 0.3 + Math.max(0, x1 - x2) * 0.6, 28, 130);
+    c1 = x1 - dx; c2 = x2 - dx;
+    head = `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`;
+  }
   return {
-    d: `M${x1} ${y1} C${x1 - dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`,
-    mx: (x1 + 3 * (x1 - dx) + 3 * (x2 - dx) + x2) / 8, my: (y1 + y2) / 2,
-    head: `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`, port: { x: x1, y: y1 },
+    d: `M${x1} ${y1} C${c1} ${y1} ${c2} ${y2} ${x2} ${y2}`,
+    mx: (x1 + 3 * c1 + 3 * c2 + x2) / 8, my: (y1 + y2) / 2,
+    head, port: { x: x1, y: y1 },
   };
 }
 
@@ -114,7 +138,7 @@ export function LinksSvg() {
               <Show when={g()!.tail}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
               <Show when={g()!.port}><circle class="port" r="3" cx={g()!.port!.x} cy={g()!.port!.y} /></Show>
               <path class="lhit" data-link={L.id} d={g()!.d} style={{ "stroke-width": `${12 / cam.z}px` }}
-                onPointerEnter={() => setHoverLink(L.id)} onPointerLeave={() => setHoverLink(null)}
+                onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
                 onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
             </Show>
           );
@@ -144,27 +168,36 @@ export function LinkLabels() {
       {(L) => {
         const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
         const vars = () => (L.kind === "call" ? L.vars ?? [] : []);
-        const shown = () => vars().slice(0, 3);
-        const more = () => vars().length - shown().length;
         const editingLabel = () => editing()?.kind === "label" && editing()?.id === L.id;
-        const has = () => L.label || editingLabel() || (L.kind === "call" && (vars().length || !!L.loop));
+        const mk = createMemo(() => L.kind === "plain" && !!A.callOn(L.from, L.to));
+        const has = () => L.label || editingLabel() || mk() || (L.kind === "call" && (vars().length || !!L.loop));
+        const plus = () => L.kind === "call" && hoverLink() === L.id;
         return (
           <Show when={g()}>
             <Show when={has()}>
               <div class="vchips" classList={{ user: L.kind === "plain", on: sel.links.includes(L.id) }} data-link={L.id} style={{ left: `${g()!.mx}px`, top: `${g()!.my}px` }}
-                onPointerEnter={() => setHoverLink(L.id)} onPointerLeave={() => setHoverLink(null)}
-                onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); if ((e.target as HTMLElement).closest(".editing")) return; e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }}>
+                onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
+                onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus")) return; e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }}>
+                <Show when={plus() && vars().length}><button class="vplus in" data-tip="Variables on this call" aria-label="Variables on this call" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button></Show>
                 <Show when={L.kind === "call" && L.loop}><span class="vchip loop" data-tip="Called inside a loop">↺</span></Show>
                 <Show when={L.label || editingLabel()}>
                   <Editable class="vlabel" kind="label" id={L.id} value={L.label ?? ""} placeholder="Label" onCommit={(v) => A.setLinkLabel(L.id, v)} />
                 </Show>
-                <For each={shown()}>{(v) => <span class="vchip" data-k={varKey(v)} onPointerEnter={() => A.hiVar(L, v, true)} onPointerLeave={() => A.hiVar(L, v, false)}>{varText(v)}</span>}</For>
-                <Show when={more() > 0}><span class="vchip" data-tip={vars().slice(3).map(varText).join(", ")}>+{more()}</span></Show>
+                <Show when={vars().length}>
+                  <div class="vbox">
+                    <For each={vars()}>{(v) => (
+                      <div class="vrow" data-k={varKey(v)} onPointerEnter={() => A.hiVar(L, v, true)} onPointerLeave={() => A.hiVar(L, v, false)}>
+                        <span class="va">{v.ret ? "return" : v.a}</span><span class="vto">{v.ret || v.b ? "→" : ""}</span><span class="vb">{v.ret ? v.a : v.b ?? ""}</span>
+                      </div>
+                    )}</For>
+                  </div>
+                </Show>
+                <Show when={mk()}><button class="mkcall" data-tip="This line calls the target. Make it a numbered call." onPointerDown={(e) => e.stopPropagation()} onClick={() => A.makeCall(L.id)}>Make Call</button></Show>
               </div>
             </Show>
-            <Show when={L.kind === "call" && hoverLink() === L.id}>
+            <Show when={plus() && !vars().length}>
               <button class="vplus" style={{ left: `${g()!.mx}px`, top: `${g()!.my}px` }} data-tip="Variables on this call" aria-label="Variables on this call"
-                onPointerEnter={() => setHoverLink(L.id)} onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button>
+                onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button>
             </Show>
           </Show>
         );

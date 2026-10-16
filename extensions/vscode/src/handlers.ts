@@ -9,6 +9,7 @@ import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "
 import { githubCard } from "./github";
 import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
+import { readPacks } from "./stickers";
 import { log } from "./log";
 import type { BoardPanel, Panels } from "./panel";
 import { expand, peek } from "./resolve";
@@ -54,7 +55,7 @@ export function makeHandler(panels: Panels) {
       case "locateRepo": return locateRepo(p);
       case "setSetting": return writeSetting(m.key, m.value);
       case "webMeta": return { failed: true }; // TODO(W): 抓网页元数据
-      case "stickerPacks": return [];
+      case "stickerPacks": return readPacks();
       case "openStickerDir": return;
       case "copyDiagnostics": return;
       case "log": return log(m.level, m.text);

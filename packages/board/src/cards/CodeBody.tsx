@@ -3,6 +3,8 @@
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
 import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection, flows } from "../state/store";
+import { Glyph } from "../stickers/glyphs";
+import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import { setGeo } from "../state/geo";
 import { queueMeasure, observeResize } from "../state/measure";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging } from "../state/ui";
@@ -147,7 +149,8 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     if (ls && ls.card === c().id) { e.preventDefault(); e.stopPropagation(); act.lineMenu(ls, e.clientX, e.clientY); }
   };
 
-  const onScroll = () => measure();
+  const [scrollY, setScrollY] = createSignal(0);
+  const onScroll = () => { setScrollY(scrollEl.scrollTop); measure(); };
 
   // ---------- 悬停：标识符 → 定义预览；行尾圆点 → 拉 Plain link ----------
   const [hoverRow, setHoverRow] = createSignal(-1);
@@ -156,6 +159,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const onMove = (e: PointerEvent) => {
     if (e.buttons || dragging().size) return;
     const rowE = rowEl(e.target as Node);
+    clearTimeout(leaveT);
     setHoverRow(rowE ? +rowE.dataset.r! : -1);
     const doc = document as any;
     const pos = doc.caretPositionFromPoint?.(e.clientX, e.clientY);
@@ -183,7 +187,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     peekTimer = window.setTimeout(() => { if (peekKey === key) act.showPeek(rowE, c().id, r.seg, r.line, a, word, pin); }, pin ? 0 : 550);
   };
   const clearPeek = () => { if (peekKey) { peekKey = ""; clearTimeout(peekTimer); act.scheduleHidePeek(); } };
-  const onLeave = () => { setHoverRow(-1); clearPeek(); };
+  let leaveT: number | undefined;
+  const onLeave = () => { clearPeek(); clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverRow(-1), 200); };
+  const keepRow = () => clearTimeout(leaveT);
   // 按下鼠标 = 要操作（展开调用、选行）：取消待弹的定义；peekKey 留着，同一个词上不再重新计时
   const lportY = createMemo(() => { const i = hoverRow(); const r = rows()[i]; return i >= 0 && r?.t === "line" && ys()[i] ? { y: ys()[i].y, r } : null; });
   const vhi = (r: Row) => {
@@ -195,15 +201,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   };
   const freeEditing = () => editing()?.kind === "free" && editing()?.id === c().id;
   createEffect(() => { freeEditing(); queueMicrotask(observe); });
-
-  // 选中几行时行号旁出现虚线 +
-  const addNoteY = createMemo(() => {
-    const ls = lineSel();
-    if (!ls || ls.card !== c().id) return null;
-    const i = rows().findIndex((r) => r.t === "line" && r.seg === ls.seg && r.line === ls.start);
-    const y = ys()[i];
-    return y ? y.y : null;
-  });
 
   // Sidenote 标记：按行（范围的第一行）计数
   const marks = createMemo(() => {
@@ -222,10 +219,48 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     return out;
   });
 
+  // 贴在行上的贴纸（进行号栏）；同一行已有旁注标记时缩成标记左上角一个小点，悬停展开
+  const lineStk = createMemo(() => {
+    const out: { row: number; ids: string[] }[] = [];
+    const by = new Map<number, string[]>();
+    for (const k of state.board.stickers) {
+      if (k.at.kind !== "line" || k.at.card !== c().id) continue;
+      const at = k.at;
+      const i = rows().findIndex((r) => (r.t === "line" && r.seg === at.seg && r.line === at.line) || (r.t === "gap" && r.seg === at.seg && r.from <= at.line && at.line <= r.to));
+      if (i < 0) continue;
+      const a = by.get(i) ?? [];
+      a.push(k.id);
+      by.set(i, a);
+    }
+    for (const [row, ids] of by) out.push({ row, ids });
+    return out;
+  });
+  const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
+  // 选中几行时行号旁出现虚线 +
+  const addNoteY = createMemo(() => {
+    const ls = lineSel();
+    if (!ls || ls.card !== c().id) return null;
+    // 和旁注标记、贴纸同一列：放在选中范围里第一行空着的位置
+    const busy = new Set([...marks().map((m) => m.row), ...lineStk().map((k) => k.row)]);
+    let i = rows().findIndex((r) => r.t === "line" && r.seg === ls.seg && r.line === ls.start);
+    for (let j = i; j >= 0 && j < rows().length; j++) { const r = rows()[j]; if (r.t !== "line" || r.line > ls.end) break; if (!busy.has(j)) { i = j; break; } }
+    const y = ys()[i];
+    return y ? y.y : null;
+  });
+
+  const stickerById = (id: string) => state.board.stickers.find((k) => k.id === id);
+
   const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n) => n.kind === "text" && n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
   const cmtLine = (r: Row) => r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;
 
+  // 行的连线端点：在卡片左右边框上（不占行号栏，供 Call link 自动选边）
+  const portTop = () => { const l = lportY(); return l && scrollEl ? scrollEl.offsetTop + codeEl.offsetTop + l.y + 10 - scrollY() : null; };
+  const portDown = (e: PointerEvent) => { const r = lportY()!.r as Extract<Row, { t: "line" }>; const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); act.linkPortDown(e, { card: c().id, seg: r.seg, line: r.line }, b.left + b.width / 2, b.top + b.height / 2); };
   return (
+    <>
+    <Show when={portTop() !== null && !p.dim?.() && !freeEditing()}>
+      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} style={{ top: `${portTop()}px` }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={portDown} />}</For>
+    </Show>
     <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => act.cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
       <Show when={freeEditing()}>
         <textarea class="freeedit" spellcheck={false} value={c().segments[0].text.join("\n")} ref={(el) => queueMicrotask(() => { el.focus(); el.style.height = `${el.scrollHeight}px`; })}
@@ -239,7 +274,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           <For each={rows()}>
             {(r, i) => (
               <Show when={r.t === "line" && ys()[i()]}>
-                <span class="no" classList={{ link: fromLines().has(`${r.seg}:${(r as any).line}`), jump: (r as any).skipped, sel: inSel(r.seg, (r as any).line) }}
+                <span class="no" data-r={i()} classList={{ link: fromLines().has(`${r.seg}:${(r as any).line}`), jump: (r as any).skipped, sel: inSel(r.seg, (r as any).line) }}
                   style={{ top: `${ys()[i()].y}px` }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => clickNo(r as any, e)}>{(r as any).line}</span>
               </Show>
             )}
@@ -253,9 +288,22 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               </Show>
             )}
           </For>
-          <Show when={lportY() && !p.dim?.()}>
-            <span class="lport" style={{ top: `${lportY()!.y}px` }} data-tip="Drag to link this line" onPointerDown={(e) => { const r = lportY()!.r as Extract<Row, { t: "line" }>; const b = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id, seg: r.seg, line: r.line }, b.left + b.width / 2, b.top + b.height / 2); }} />
-          </Show>
+          <For each={lineStk()}>
+            {(k) => (
+              <Show when={ys()[k.row]}>
+                <span class="lstks" classList={{ dot: markRows().has(k.row) }} style={{ top: `${ys()[k.row].y}px` }}>
+                  <For each={k.ids}>{(id) => (
+                    <Show when={stickerById(id)}>{(st) => (
+                      <span class="stk" classList={{ sel: selSticker() === id }} data-sticker={id} data-tip={stickerLabel(st().icon)}
+                        onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, id); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); }}>
+                        <Glyph icon={st().icon} color={st().color} size={14} />
+                      </span>
+                    )}</Show>
+                  )}</For>
+                </span>
+              </Show>
+            )}
+          </For>
           <Show when={addNoteY() !== null}>
             <button class="addn" style={{ top: `${addNoteY()}px` }} data-tip="Add Sidenote" data-kbd="S" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.addSidenoteUI()}>+</button>
           </Show>
@@ -292,6 +340,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       </div>
       </Show>
     </div>
+    </>
   );
 }
 

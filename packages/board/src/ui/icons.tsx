@@ -43,6 +43,7 @@ const P: Record<string, string> = {
   copy: "M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3",
   trash: "M3 4.5h10M6.5 4.5v-2h3v2M4.5 4.5l.5 9h6l.5-9",
   dot: "M8 8h.01",
+  sticker: "M13.5 8.5V3.5a1 1 0 0 0-1-1h-9a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h5zM13.5 8.5h-4a1 1 0 0 0-1 1v4",
 };
 
 export function Icon(p: { name: keyof typeof P | string; size?: number; class?: string; style?: JSX.CSSProperties }) {

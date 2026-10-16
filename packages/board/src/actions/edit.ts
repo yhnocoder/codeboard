@@ -377,3 +377,14 @@ export function renameSection(id: string, v: string) {
   mutate((b) => { const s = b.sections.find((q) => q.id === id); if (s) s.title = v.trim() || "Untitled Section"; });
 }
 
+
+// ---------- 无背景（#39）：Image 默认无背景，Code 可选 ----------
+
+export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && !!c.nobg);
+export function toggleNoBg(id: string) {
+  mutate((b) => {
+    const c = findCard(b, id)?.card;
+    if (c?.kind === "image") c.bg = !c.bg || undefined;
+    else if (c?.kind === "code") c.nobg = !c.nobg || undefined;
+  });
+}

@@ -4,7 +4,7 @@ import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
   placeChild, besideFree, findFree, tidy, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type PlainLink, type Section, type Sidenote, type Segment, type Place,
+  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type PlainLink, type TidyDir, type Section, type Sidenote, type Segment, type Place,
   type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
 } from "@codeboard/core";
 import {
@@ -18,11 +18,11 @@ import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/po
 import { send, ask } from "../host";
 import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
-import { K, boardOffset, fitAll, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
-import { addPlain, openVars, startConnect } from "./links";
-import { attachCall, calleeMatches, expandCall, startWalk, tidyFlow } from "./flow";
+import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
+import { addPlain, callOn, makeCall, openVars, startConnect } from "./links";
+import { attachCall, calleeMatches, expandCall, selectFlow, startWalk, tidyFlow } from "./flow";
 import { commitMenu } from "./versions";
-import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge } from "./edit";
+import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg } from "./edit";
 import { newFreeCode, newNote, pasteText } from "./create";
 import { openAddNote, setNoteBg } from "./notes";
 
@@ -89,6 +89,7 @@ export function cardMenu(id: string, x: number, y: number) {
   ], x, y);
   if (c.kind === "image" || c.kind === "web") return openMenu([
     ...(c.kind === "web" ? [{ label: "Open in Browser", run: () => openLink(c.url) } as Item] : []),
+    ...(c.kind === "image" ? [{ label: "Background", checked: !!c.bg, run: () => toggleNoBg(id) } as Item, { label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent([id]) } as Item] : []),
     { label: "Rename", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id }) },
     { label: "Edit Description", run: () => setEditing({ kind: "desc", id }) },
     null, ...common, null,
@@ -110,37 +111,42 @@ export function cardMenu(id: string, x: number, y: number) {
     ], x, y);
   }
   if (!isCode(c)) return;
-  // 代码卡（也可能是 Compare 里的一栏）
+  // 代码卡（也可能是 Compare 里的一栏）。分组短一点，Hide*/Wrap 收进 View ▸（#24）
   const col = f.host.id !== c.id;
   const node = flows().byId.get(c.id);
   const hasKids = !!node?.kids.length;
   const ls = lineSel();
   const free = c.segments[0]?.src.kind === "free";
   const anyHidden = c.segments.some((s) => s.hidden?.length);
+  const view: Item[] = [
+    { label: "Hide Blank Lines", checked: !!c.hide?.blank, run: () => toggleHide(c.id, "blank") },
+    { label: "Hide Comments", checked: !!c.hide?.comments, run: () => toggleHide(c.id, "comments") },
+    { label: "Hide Docstrings", checked: !!c.hide?.docstrings, run: () => toggleHide(c.id, "docstrings") },
+    { label: "Show All Hidden Lines", disabled: !anyHidden, run: () => mutate((b) => { const k = findCard(b, c.id)!.card as CodeCard; k.segments.forEach((s) => (s.hidden = undefined)); }) },
+    null,
+    { label: "Wrap Lines", kbd: `${K.alt}Z`, checked: !!c.wrap, run: () => toggleWrap([c.id]) },
+    ...(col ? [] : [{ label: "No Background", checked: !!c.nobg, run: () => toggleNoBg(c.id) } as Item]),
+  ];
+  const tidyDir = (d: TidyDir) => ({ label: d === "down" ? "Down" : "Right", checked: state.host.settings.tidy === d, run: () => tidyFlow(c.id, d) } as Item);
   const items: Item[] = [
     ...(free ? [] : [{ label: "Open in Editor", kbd: "↵", run: () => openCode(c.id) } as Item]),
     ...(free || c.segments[0]?.src.kind === "github" ? [] : [
       { label: "Switch Commit…", run: () => { const el = document.querySelector(`.card[data-id="${cardById(c.id)!.host.id}"] .rev`); if (el) commitMenu(c.id, el); } } as Item,
-      { label: "Check for New Version", run: () => { send({ type: "checkVersions" }); toast("Checking for new versions…"); } } as Item,
     ]),
     { label: "Rename", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id: c.id }) },
-    { label: "Edit Description", run: () => setEditing({ kind: "desc", id: c.id }) },
-    { label: "Add Sidenote", kbd: "S", disabled: ls?.card === c.id ? false : "Select lines in the card first", run: () => openAddNote({ card: ls!.card, seg: ls!.seg, lines: [ls!.start, ls!.end] }) },
-    { label: "Add Sidenote to Card", run: () => openAddNote({ card: c.id }) },
+    { label: c.desc ? "Edit Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
+    { label: "Add Sidenote", kbd: "S", run: () => (ls?.card === c.id ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) : openAddNote({ card: c.id })) },
     null,
-    { label: "Hide Comments", checked: !!c.hide?.comments, run: () => toggleHide(c.id, "comments") },
-    { label: "Hide Docstrings", checked: !!c.hide?.docstrings, run: () => toggleHide(c.id, "docstrings") },
-    { label: "Hide Blank Lines", checked: !!c.hide?.blank, run: () => toggleHide(c.id, "blank") },
-    { label: "Show All Hidden Lines", disabled: !anyHidden, run: () => mutate((b) => { const k = findCard(b, c.id)!.card as CodeCard; k.segments.forEach((s) => (s.hidden = undefined)); }) },
-    { label: "Wrap Lines", kbd: `${K.alt}Z`, checked: !!c.wrap, run: () => toggleWrap([c.id]) },
+    { label: "View", sub: view },
+    ...(col ? [] : [{ label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
     null,
+    { label: "Select Flow", disabled: node ? false : "Not in a call flow", run: () => selectFlow(c.id) },
     { label: "Walk Through Flow", kbd: "P", disabled: node ? false : "Not in a call flow", run: () => startWalk(c.id) },
-    ...(node ? [{ label: "Tidy Layout", hint: "Rearranges this flow only", run: () => tidyFlow(c.id) } as Item] : []),
+    ...(node ? [{ label: "Tidy Layout", hint: "Rearranges this flow only", sub: [tidyDir("down"), tidyDir("right")] } as Item] : []),
     ...(hasKids ? [{ label: placeOf(c.id).collapsed ? "Expand Subtree" : "Collapse Subtree", run: () => toggleCollapse(c.id) } as Item] : []),
     null,
+    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, lockItem]),
     ...(c.segments.length > 1 || c.mergedFrom ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
-    ...(col ? [] : common),
-    null,
     { label: "Copy Code", run: () => copyCard(c) },
     { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
     { label: "Delete", kbd: "⌫", run: deleteSel },
@@ -190,14 +196,15 @@ export function linkMenu(id: string, x: number, y: number) {
   select({ links: [id] });
   const set = (f: (l: Link) => void) => mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) f(l); });
   const edit: Item = { label: L.label ? "Edit Label" : "Add Label", kbd: "Double-click", run: () => setEditing({ kind: "label", id }) };
-  const del: Item = { label: "Delete Link", kbd: "⌫", run: () => deleteLinks([id]) };
-  if (L.kind === "call") return openMenu([edit, { label: "Add Variables…", run: () => openVars(id) }, { label: "Convert to Plain Link", run: () => set((l) => { l.kind = "plain"; }) }, null, del], x, y);
+  const del: Item = { label: "Delete Arrow", kbd: "⌫", run: () => deleteLinks([id]) };
+  if (L.kind === "call") return openMenu([edit, { label: "Variables…", run: () => openVars(id) }, null, del], x, y);
   if (L.kind !== "plain") return;
   const P = L;
   const setP = (f: (l: PlainLink) => void) => set((l) => { if (l.kind === "plain") f(l); });
   openMenu([
     edit,
-    { label: "Arrow", sub: ([["none", "None"], ["end", "One-way  →"], ["both", "Both  ↔"]] as const).map(([v, lb]) => ({ label: lb, checked: (P.arrow ?? "none") === v, run: () => setP((l) => { l.arrow = v; }) })) },
+    ...(callOn(P.from, P.to) ? [{ label: "Make Call", hint: "This line calls the target function", run: () => makeCall(id) } as Item, null] : []),
+    { label: "Head", sub: ([["none", "None"], ["end", "One-way  →"], ["both", "Both  ↔"]] as const).map(([v, lb]) => ({ label: lb, checked: (P.arrow ?? "none") === v, run: () => setP((l) => { l.arrow = v; }) })) },
     { label: "Style", sub: [{ label: "Dashed", checked: !P.solid, run: () => setP((l) => { l.solid = false; }) }, { label: "Solid", checked: !!P.solid, run: () => setP((l) => { l.solid = true; }) }] },
     { label: "Color", sub: LINK_COLORS.map(([v, lb]) => ({ label: lb, checked: (P.color ?? "grey") === v, run: () => setP((l) => { l.color = v === "grey" ? undefined : v; }) })) },
     null, del,
