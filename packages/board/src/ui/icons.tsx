@@ -51,7 +51,7 @@ const P: Record<string, string> = {
 
 export function Icon(p: { name: keyof typeof P | string; size?: number; class?: string; style?: JSX.CSSProperties }) {
   return (
-    <svg class={`ico ${p.class ?? ""}`} viewBox="0 0 16 16" width={p.size ?? 16} height={p.size ?? 16} aria-hidden="true" style={p.style}>
+    <svg class={`ico${p.name === "more" ? " dots" : ""} ${p.class ?? ""}`} viewBox="0 0 16 16" width={p.size ?? 16} height={p.size ?? 16} aria-hidden="true" style={p.style}>
       <path d={P[p.name] ?? ""} />
     </svg>
   );
