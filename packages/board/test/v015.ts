@@ -352,4 +352,47 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(fastX === 103 && slowX === 100 ? "PASS" : "FAIL", "snap-only-when-slow", JSON.stringify({ fastX, slowX }));
     await close(h);
   },
+  /** 图片卡没有标题栏，拖图片本身就能移动 */
+  async v15img() {
+    const b = emptyBoard("b1", "img");
+    const svg = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240"><rect width="400" height="240" fill="#e8a33d"/><text x="40" y="130" font-size="40">diagram</text></svg>');
+    b.cards.push({ id: "i1", kind: "image", src: svg, bg: true } as any);
+    b.place.i1 = { x: 120, y: 120, w: 400, h: 240 };
+    const h = await open({ board: b, light, w: 1000, h: 700 });
+    const heads = await h.page.locator('.card[data-id="i1"] .chead').count();
+    const r = (await h.page.locator('.card[data-id="i1"]').boundingBox())!;
+    await h.page.mouse.move(r.x + 200, r.y + 120); await h.page.mouse.down(); await h.page.mouse.move(r.x + 260, r.y + 170, { steps: 8 }); await h.page.waitForTimeout(150); await h.page.mouse.up(); await h.page.waitForTimeout(1300);
+    const p = h.board().place.i1;
+    await shot(h, "v15-img");
+    console.log(heads === 0 && p.x === 180 && p.y === 170 ? "PASS" : "FAIL", "image-drag-body", JSON.stringify({ heads, x: p.x, y: p.y }));
+    await close(h);
+  },
+  /** 贴纸拖到卡片外面、离边 20px：也吸附绑定（卡亮一圈） */
+  async v15magnet() {
+    const b = richBoard();
+    const h = await open({ board: b, light, w: 1500, h: 950 });
+    const k5 = (await h.page.locator('[data-sticker="k5"]').boundingBox())!;
+    const sch = (await h.page.locator(`.card[data-id="${b.cards[1].id}"]`).boundingBox())!;
+    await h.page.mouse.move(k5.x + 20, k5.y + 20); await h.page.mouse.down();
+    await h.page.mouse.move(sch.x + 30, sch.y - 22, { steps: 10 });
+    const hot = await h.page.locator(".card.bind-hot").count();
+    await shot(h, "v15-magnet");
+    await h.page.mouse.up(); await h.page.waitForTimeout(1300);
+    const at = h.board().stickers.find((k) => k.id === "k5")!.at as any;
+    console.log(hot === 1 && at.on?.card === b.cards[1].id ? "PASS" : "FAIL", "sticker-magnet", JSON.stringify({ hot, at }));
+    await close(h);
+  },
+  /** 线上的变量框能沿线拖，位置存成 t */
+  async v15labeldrag() {
+    const b = richBoard();
+    const h = await open({ board: b, light, w: 1500, h: 950 });
+    const box = h.page.locator('.vchips[data-link="L2"]');
+    const r0 = (await box.boundingBox())!;
+    await h.page.mouse.move(r0.x + 10, r0.y + 8); await h.page.mouse.down(); await h.page.mouse.move(r0.x + 10, r0.y + 120, { steps: 8 }); await h.page.mouse.up(); await h.page.waitForTimeout(1300);
+    const r1 = (await box.boundingBox())!;
+    const at = (h.board().links.find((l) => l.id === "L2") as any).at;
+    await shot(h, "v15-labeldrag");
+    console.log(at !== undefined && Math.abs(r1.y - r0.y) > 40 ? "PASS" : "FAIL", "label-drag", JSON.stringify({ at, dy: r1.y - r0.y }));
+    await close(h);
+  },
 };

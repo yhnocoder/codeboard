@@ -94,7 +94,7 @@ input, textarea { font: inherit; color: var(--ink); }
   box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); border-radius: 5px; padding: 4px 7px; pointer-events: auto;
   transition: opacity calc(var(--t) * 160ms) var(--out); }
 .elabel.user { font-family: var(--sys); font-size: 11.5px; }
-.vchips { position: absolute; transform: translate(-50%, -50%); display: flex; gap: 3px; align-items: center; pointer-events: auto; white-space: nowrap; }
+.vchips { cursor: grab; position: absolute; transform: translate(-50%, -50%); display: flex; gap: 3px; align-items: center; pointer-events: auto; white-space: nowrap; }
 .vchip { font: 10.5px/1 var(--mono); padding: 3px 6px; border-radius: 5px; background: var(--surface); color: var(--ink-2); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); }
 .vchip:hover, .vchip.on { color: var(--k-fn); box-shadow: 0 0 0 1px var(--k-fn); background: color-mix(in srgb, var(--surface) 80%, var(--hi)); }
 .vchip.loop { font-family: var(--sys); color: var(--ink-3); }
@@ -491,7 +491,9 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .members .more:hover { color: var(--accent); background: var(--row); }
 
 /* image / web */
-.imgb { flex: 1 1 auto; min-height: 0; overflow: hidden; border-radius: 0 0 var(--r-card) var(--r-card); display: flex; }
+.imgb { flex: 1 1 auto; min-height: 0; overflow: hidden; border-radius: var(--r-card); display: flex; cursor: grab; }
+.imgb:has(+ .cdesc) { border-radius: var(--r-card) var(--r-card) 0 0; }
+.card.image .cdesc { border-bottom: 0; border-top: 1px solid var(--line); }
 .imgb img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
 .webb { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .webb .wt { font: 500 13px/1.45 var(--sys); color: var(--ink); }

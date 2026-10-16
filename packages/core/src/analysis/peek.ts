@@ -38,9 +38,23 @@ export function classFields(a: FileAnalysis, lines: string[], cls: Sym): number[
     const ind = indentOf(t);
     if (base < 0) base = ind;
     if (ind !== base || /^\s*@/.test(t) || /^\s*(pass|\.\.\.)\s*$/.test(t)) continue;
-    out.push(l);
+    // 跨行的字段（packed_modules_mapping = { … }）整条都要
+    const e = stmtEnd(lines, l);
+    for (let k = l; k <= e; k++) if ((lines[k - 1] ?? "").trim()) out.push(k);
+    l = e;
   }
   return out;
+}
+
+/** 从第 l 行开始的这条语句在哪一行结束：括号没配平、行尾 \ 都接着往下（最多 40 行） */
+export function stmtEnd(lines: string[], l: number): number {
+  let depth = 0;
+  for (let k = l; k <= Math.min(lines.length, l + 40); k++) {
+    const t = (lines[k - 1] ?? "").replace(/(["'])(?:\\.|(?!\1).)*\1/g, "").replace(/#.*$/, "");
+    for (const ch of t) { if ("([{".includes(ch)) depth++; else if (")]}".includes(ch)) depth--; }
+    if (depth <= 0 && !/\\\s*$/.test(t)) return k;
+  }
+  return l;
 }
 
 /** 太多行时以当前行为中心截一段 */
@@ -92,8 +106,11 @@ export function peekPlan(a: FileAnalysis, lines: string[], line: number, o: { wo
     const shown = around(rows, line);
     return { kind: "field", rows: shown, head: inner.qual, more: rows.length - shown.length || undefined, sig: field };
   }
-  const s = Math.max(1, line - 1), e = Math.min(lines.length, line + 1);
-  return { kind: "other", rows: range(s, e), sig: /^\s*\w[\w.]*\s*(:[^=]*)?=/.test(text) ? field : undefined };
+  // 其他（模块级的赋值等）：整条语句，前后各带一行；太长就截
+  const se = stmtEnd(lines, line);
+  const s = Math.max(1, line - 1), e = Math.min(lines.length, se + 1);
+  const all = range(s, e), shown = all.slice(0, MAX_ROWS);
+  return { kind: "other", rows: shown, more: all.length - shown.length || undefined, sig: /^\s*\w[\w.]*\s*(:[^=]*)?=/.test(text) ? field : undefined };
 }
 
 const range = (a: number, b: number) => Array.from({ length: Math.max(0, b - a + 1) }, (_, i) => a + i);

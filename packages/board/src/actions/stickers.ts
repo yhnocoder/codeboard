@@ -62,16 +62,35 @@ export const boundCardOf = (id: string | null) => {
   return s?.at.kind === "canvas" && s.at.on && "card" in s.at.on ? s.at.on.card : null;
 };
 
-/** 指针下面第一张卡或第一条箭头（跳过贴纸自己） */
+/**
+ * 指针下面的卡或箭头（跳过贴纸自己）；不在任何东西上时吸附最近的：
+ * 离卡边 40px、离箭头 24px（屏幕距离）以内都算，像贴在卡角外面也能绑上
+ */
+const MAG_CARD = 40, MAG_LINK = 24;
 function targetAt(cx: number, cy: number): Target | null {
   for (const el of document.elementsFromPoint(cx, cy) as HTMLElement[]) {
-    if (el.closest?.(".stk, .ctx, .toolbar")) continue;
+    if (el.closest?.(".stk, .ctx, .toolbar, .bbar")) continue;
     const l = (el as HTMLElement).dataset?.link ?? el.closest?.("[data-link]")?.getAttribute("data-link");
     if (l && state.board.links.some((k) => k.id === l)) return { link: l };
     const c = el.closest?.(".card[data-id]") as HTMLElement | null;
     if (c && state.board.place[c.dataset.id!]) return { card: c.dataset.id! };
   }
-  return null;
+  const o = boardOffset(), w = toWorld(cx - o.x, cy - o.y), z = cam.z;
+  let best: Target | null = null, bd = Infinity;
+  for (const id of Object.keys(state.board.place)) {
+    if (!document.querySelector(`.card[data-id="${id}"]`)) continue; // 折叠起来、看不见的不算
+    const r = rectOf(id);
+    const dx = Math.max(r.x - w.x, 0, w.x - (r.x + r.w)), dy = Math.max(r.y - w.y, 0, w.y - (r.y + r.h));
+    const d = Math.hypot(dx, dy) * z;
+    if (d <= MAG_CARD && d < bd) { bd = d; best = { card: id }; }
+  }
+  for (const l of state.board.links) {
+    const c = linkCurve(l.id);
+    if (!c) continue;
+    const q = curveAt(c, nearestT(c, w.x, w.y)), d = Math.hypot(q.x - w.x, q.y - w.y) * z;
+    if (d <= MAG_LINK && d < bd) { bd = d; best = { link: l.id }; }
+  }
+  return best;
 }
 
 /** 贴纸左上角的世界坐标 */

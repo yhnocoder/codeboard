@@ -118,8 +118,7 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent([id]) },
     { label: "Background", checked: !!c.bg, run: () => toggleNoBg(id) },
     { label: "Edit", sub: [
-      { label: "Title", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id }) },
-      { label: "Description", run: () => setEditing({ kind: "desc", id }) },
+      { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id }) },
       lockItem,
     ] },
     ...tail,

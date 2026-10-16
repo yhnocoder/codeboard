@@ -129,6 +129,7 @@ type LinkBase = {
   from: End;
   to: End;
   label?: string; // 用户写的话，浮在线中间
+  at?: number; // 标签框沿线的位置 0..1（用户拖过才有；默认在中间）
 };
 /** 调用：从代码行到被调函数的卡。参与编号、Walkthrough、Tidy、变量 */
 export type CallLink = LinkBase & {

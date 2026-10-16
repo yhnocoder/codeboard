@@ -212,6 +212,23 @@ function visible(L: Link) {
   return true;
 }
 
+/** 拖线上的标签框：只能沿着这条线走（存沿线的位置 t） */
+function labelDrag(e: PointerEvent, id: string) {
+  const sx = e.clientX, sy = e.clientY;
+  let end: (() => void) | null = null;
+  const move = (ev: PointerEvent) => {
+    if (!end) { if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return; end = beginGesture(); }
+    const c = linkCurve(id);
+    if (!c) return;
+    const o = boardOffset(), w = toWorld(ev.clientX - o.x, ev.clientY - o.y);
+    const t = Math.round(Math.max(0.08, Math.min(0.92, nearestT(c, w.x, w.y))) * 100) / 100;
+    live((b) => { const k = b.links.find((l) => l.id === id); if (k) k.at = t; });
+  };
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); end?.(); };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
 /** 拖起点的小圆点：只能换到这一行的另一端（左 / 右），松手时看指针在父卡中线哪边 */
 function portDrag(e: PointerEvent, id: string) {
   if (e.button !== 0) return;
@@ -283,12 +300,14 @@ export function LinkLabels() {
         const mk = createMemo(() => L.kind === "plain" && !!A.callOn(L.from, L.to));
         const has = () => L.label || editingLabel() || mk() || (L.kind === "call" && (vars().length || !!L.loop));
         const plus = () => L.kind === "call" && hoverLink() === L.id;
+        // 标签框的位置：拖过就按沿线的 t，否则在中间
+        const pos = () => { const gg = g()!; return L.at !== undefined ? curveAt(gg.pts, L.at) : { x: gg.mx, y: gg.my }; };
         return (
           <Show when={g()}>
             <Show when={has()}>
-              <div class="vchips" classList={{ user: L.kind === "plain", on: sel.links.includes(L.id) }} data-link={L.id} style={{ left: `${g()!.mx}px`, top: `${g()!.my}px` }}
+              <div class="vchips" classList={{ user: L.kind === "plain", on: sel.links.includes(L.id) }} data-link={L.id} style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
                 onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
-                onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus")) return; e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }}>
+                onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus")) return; e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); labelDrag(e, L.id); }}>
                 <Show when={plus() && vars().length}><button class="vplus in" data-tip="Variables on this call" aria-label="Variables on this call" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button></Show>
                 {/* 一个框：上面一行是 ↺ 和自己写的标签，下面是变量；只有其中一样时就只是那一样 */}
                 <Show when={(L.kind === "call" && L.loop) || L.label || editingLabel() || vars().length}>
@@ -316,7 +335,7 @@ export function LinkLabels() {
               </div>
             </Show>
             <Show when={plus() && !vars().length}>
-              <button class="vplus" style={{ left: `${g()!.mx}px`, top: `${g()!.my}px` }} data-tip="Variables on this call" aria-label="Variables on this call"
+              <button class="vplus" style={{ left: `${pos().x}px`, top: `${pos().y}px` }} data-tip="Variables on this call" aria-label="Variables on this call"
                 onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button>
             </Show>
           </Show>

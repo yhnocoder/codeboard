@@ -253,10 +253,9 @@ function ImageView(p: { card: ImageCard }) {
   const src = () => (p.card.src.startsWith("data:") || /^https?:/.test(p.card.src) ? p.card.src : `${state.host.assetBase}/${p.card.src}`);
   return (
     <>
-      <div class="chead" data-drag><span class="kind"><Icon name="image" size={13} /></span><Editable class="ctitle" kind="title" id={p.card.id} value={cardTitle(p.card)} onCommit={(v) => act.renameCard(p.card.id, v)} /><span class="grow" />
-        <button class="ib" aria-label="Card Menu" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(p.card.id, r.left, r.bottom + 4); }}><Icon name="more" /></button></div>
+      {/* 跟 Note 一样没有标题栏：整张图都能拖，菜单用右键 */}
+      <div class="imgb" data-drag><img src={src()} alt={p.card.alt ?? ""} draggable={false} /></div>
       <Desc id={p.card.id} desc={p.card.desc} />
-      <div class="imgb"><img src={src()} alt={p.card.alt ?? ""} draggable={false} /></div>
     </>
   );
 }

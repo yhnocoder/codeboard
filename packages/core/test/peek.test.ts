@@ -26,6 +26,14 @@ describe("peekPlan", () => {
     expect(p.more).toBe(28 - 15);
     expect(p.sig).toBe("(function) def load_model(model: nn.Module, path: str)");
   });
+  it("multi-line field and module assignment: whole statement shown", () => {
+    const src = `class Qwen3ForCausalLM:\n    packed_modules_mapping = {\n        "q_proj": ("qkv_proj", "q"),\n        "k_proj": ("qkv_proj", "k"),\n    }\n    tie = False\n\nTABLE = [\n    1,\n    2,\n]\nx = 1\n`;
+    const lines = src.split("\n"), a = analyze("python", src);
+    const f = peekPlan(a, lines, 2);
+    expect(f.rows).toEqual(expect.arrayContaining([2, 3, 4, 5]));
+    const m = peekPlan(a, lines, 8);
+    expect(m.rows).toEqual(expect.arrayContaining([8, 9, 10, 11]));
+  });
   it("self.x in __init__: all self assignments of that method", () => {
     const { a, lines } = fa("nanovllm/engine/scheduler.py");
     const l = lines.findIndex((x) => /self\.max_num_seqs\s*=/.test(x)) + 1;
