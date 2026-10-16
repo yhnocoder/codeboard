@@ -1,0 +1,91 @@
+/* 城市道路：一张平面城市地图。调用关系是马路（路沿、路面、黄色中线，圆角拐弯），路上停着小车；
+   卡片标题是蓝底白字路牌，编号是红色国道牌，箭头上的数据写在绿色指路牌上，有新版本是施工牌 */
+.s-city {
+  --land: light-dark(#ece8de, #161a22);
+  --street: light-dark(#fbfaf6, #222833);
+  --block-line: light-dark(rgba(0,0,0,.03), rgba(255,255,255,.02));
+  --park: light-dark(#cfe5bf, #1b2a22);
+  --tree: light-dark(#a9d18f, #23382b);
+  --water: light-dark(#b8d6ec, #142538);
+  --bldg: light-dark(#e0dbcf, #1c212b);
+  --bldg-edge: light-dark(#d2ccbe, #262c38);
+  --casing: light-dark(#ffffff, #3a4150);
+  --asphalt: light-dark(#7c828c, #313844);
+  --lane: light-dark(#f6c93b, #e8b84a);
+  --sign: light-dark(#1f5fbf, #2d5ea8);
+  --sign-ink: #ffffff;
+  --guide: light-dark(#13804a, #1d6c43);
+  --shield: #c7281f;
+  --paper: light-dark(#ffffff, #1d222c);
+  --paper-2: light-dark(#f7f6f2, #191d26);
+  --ink: light-dark(#23272e, #e6e9ef);
+  --ink-2: light-dark(#5a606b, #a8afbb);
+  --ink-3: light-dark(#9aa0a8, #69707c);
+  --selbg: light-dark(rgba(31,95,191,.2), rgba(110,160,240,.3));
+  --ui: "Archivo", "Helvetica Neue", "PingFang SC", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --k-kw: light-dark(#1f5fbf, #8cb6ff); --k-fn: light-dark(#13804a, #7fd3a3); --k-str: light-dark(#b0521c, #f0a370);
+  --k-com: light-dark(#9aa0a8, #646b77); --k-num: light-dark(#b0521c, #f0a370); --k-self: light-dark(#a3367a, #e892c4); --k-p: light-dark(#7f858f, #848b98);
+  background-color: var(--land);
+  /* 街区：每 120px 一条白色小街 */
+  background-image: linear-gradient(var(--street) 0 7px, transparent 7px), linear-gradient(90deg, var(--street) 0 7px, transparent 7px),
+    linear-gradient(var(--block-line) 1px, transparent 1px), linear-gradient(90deg, var(--block-line) 1px, transparent 1px);
+  background-size: 120px 120px, 120px 120px, 20px 20px, 20px 20px;
+  background-position: 0 50px, 40px 0, 0 0, 0 0;
+}
+.s-city .scene { display: block; }
+.s-city .river { fill: var(--water); }
+.s-city .park { fill: var(--park); }
+.s-city .trees { fill: var(--tree); }
+.s-city .bldg { fill: var(--bldg); stroke: var(--bldg-edge); stroke-width: 1; }
+
+.s-city .card { background: var(--paper); border-radius: 6px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 6px 14px -6px light-dark(rgba(30,40,60,.3), rgba(0,0,0,.6)); }
+.s-city .card.sel { box-shadow: 0 0 0 2.5px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), 0 6px 14px -6px rgba(30,40,60,.3); }
+/* 路牌：蓝底白字，内圈一道白线 */
+.s-city .chead { height: 38px; margin: 5px 5px 0; padding: 0 10px; gap: 8px; border-radius: 4px; background: var(--sign); color: var(--sign-ink);
+  box-shadow: inset 0 0 0 1.5px var(--sign), inset 0 0 0 2.5px rgba(255,255,255,.85); }
+/* 国道牌 */
+.s-city .step { font: 700 10.5px var(--ui); color: #fff; background: var(--shield); padding: 2px 5px 2px; border-radius: 3px 3px 8px 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.75); letter-spacing: .02em; }
+.s-city .step::before { content: "G"; }
+.s-city .ctitle { font: 600 13px var(--ui); color: #fff; }
+.s-city .cpath { font: 400 11px var(--ui); color: rgba(255,255,255,.72); }
+.s-city .rev { font: 10px var(--mono); color: rgba(255,255,255,.72); }
+/* 施工牌 */
+.s-city .rev.new { font: 700 10px var(--ui); color: #2b2b2b; padding: 2px 7px; border-radius: 2px; letter-spacing: .04em;
+  background: repeating-linear-gradient(-45deg, #ffffff 0 5px, #f28a1c 5px 10px); text-shadow: 0 0 2px #fff, 0 0 2px #fff; }
+.s-city .rev.new i { display: none; }
+.s-city .code { padding: 7px 0 9px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.s-city .gutter .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
+.s-city .hlrow { background: color-mix(in srgb, var(--lane) 26%, transparent); }
+.s-city .no.link { color: var(--ink); font-weight: 700; }
+.s-city .kw { color: var(--k-kw); } .s-city .fn { color: var(--k-fn); } .s-city .str { color: var(--k-str); } .s-city .com { color: var(--k-com); }
+.s-city .num { color: var(--k-num); } .s-city .self { color: var(--k-self); } .s-city .p { color: var(--k-p); }
+.s-city .call { text-decoration: underline 2px color-mix(in srgb, var(--lane) 80%, transparent); text-underline-offset: 3px; }
+/* 马路：路沿、路面、中线三层 */
+.s-city .edge { fill: none; stroke-linejoin: round; }
+.s-city .edge.casing { stroke: var(--casing); stroke-width: 18; }
+.s-city .edge.road { stroke: var(--asphalt); stroke-width: 14; }
+.s-city .edge.lane { stroke: var(--lane); stroke-width: 1.3; stroke-dasharray: 7 6; }
+.s-city .port { fill: var(--asphalt); stroke: var(--casing); stroke-width: 2; r: 8px; }
+.s-city .car .body { fill: #e5533d; } .s-city .car.k1 .body { fill: #2f7de1; } .s-city .car.k2 .body { fill: #f2c230; }
+.s-city .car .roof { fill: rgba(255,255,255,.55); }
+.s-city .car .beam { fill: light-dark(transparent, rgba(255,214,120,.35)); }
+/* 指路牌 */
+.s-city .elabel { font: 600 10.5px var(--mono); color: #fff; background: var(--guide); padding: 5px 10px; border-radius: 4px;
+  box-shadow: inset 0 0 0 1.5px var(--guide), inset 0 0 0 2.5px rgba(255,255,255,.85), 0 3px 6px -3px rgba(0,0,0,.4); }
+
+.s-city .tb-left .pill { background: var(--sign); padding: 6px 12px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--sign), inset 0 0 0 2.5px rgba(255,255,255,.85), 0 6px 12px -6px rgba(0,0,0,.4); }
+.s-city .bname { flex-direction: column; align-items: flex-start; gap: 0; }
+.s-city .eyebrow { display: block; order: 2; font: 600 8.5px var(--ui); letter-spacing: .2em; color: rgba(255,255,255,.75); }
+.s-city .bn { font: 700 14px var(--ui); color: #fff; letter-spacing: .06em; }
+.s-city .chev { display: none; }
+.s-city .tb-right .pill, .s-city .dock .pill { background: var(--paper); border-radius: 10px; padding: 3px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 6px 14px -6px rgba(0,0,0,.35); }
+.s-city .tbtn, .s-city .ib { color: var(--ink); border-radius: 7px; font: 500 12.5px var(--ui); }
+.s-city .ib:hover, .s-city .tbtn:hover { background: var(--paper-2); }
+.s-city #btnPresent { color: var(--sign); }
+.s-city #btnPresent .ico { fill: currentColor; }
+.s-city .sep { width: 1px; height: 16px; background: light-dark(rgba(0,0,0,.1), rgba(255,255,255,.1)); margin: 0 4px; }
+.s-city .zoom { font: 11px var(--mono); color: var(--ink-2); }
+.s-city .toast { background: var(--paper); color: var(--ink); font: 500 12.5px var(--ui); padding: 8px 14px 8px 10px; border-radius: 8px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 8px 18px -8px rgba(0,0,0,.4); }
+.s-city .toast .tdot { width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--shield); }
+.s-city .toast b { font-weight: 700; color: var(--sign); }

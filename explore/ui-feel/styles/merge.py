@@ -16,7 +16,7 @@ for ln in oldcss:
 css = '.board { --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --serif: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif; }\n' + '\n'.join(out) + '\n' + OLD + ' .toast { transform: none; }'
 def scope(name, v):
     return open(name).read().replace(f'.s-{ {"draft":"draft","soft":"soft","color":"color","art":"art"}[v] }', f'.board[data-v="{v}"]')
-for f, v in [('drafting.css', 'draft'), ('soft.css', 'soft'), ('color.css', 'color'), ('news.css', 'news'), ('art.css', 'art'), ('bamboo.css', 'bamboo'), ('ink.css', 'ink'), ('real.css', 'real'), ('land.css', 'land')]:
+for f, v in [('drafting.css', 'draft'), ('soft.css', 'soft'), ('color.css', 'color'), ('news.css', 'news'), ('art.css', 'art'), ('bamboo.css', 'bamboo'), ('ink.css', 'ink'), ('clay.css', 'clay'), ('city.css', 'city')]:
     css += '\n' + open(f).read().replace(f'.s-{v}', f'.board[data-v="{v}"]')
 
 NOTES = {
@@ -69,21 +69,20 @@ NOTES = {
 <li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>
 <li><b>工具条</b>是一小卷手卷，两头有木轴；白板名用行草写，后面盖一枚「白板」小印。</li></ul>
 <h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>''',
- 'real': '''<h2>拟物 · 软木板</h2><p>模仿一块真实的调查板：软木底、木框，卡片是图钉钉上去的索引卡，用红毛线把它们串起来。</p><ul>
-<li><b>卡片</b>是横格索引卡：红线下是标题，蓝色横线正好落在每行代码下面；顶上贴一截和纸胶带，每张有一点点歪。</li>
-<li><b>代码</b>用打字机字体，红黑双色色带：关键字和能展开的调用打成红色。</li>
-<li><b>箭头出发的那一行</b>是黄色荧光笔划过的。</li>
-<li><b>连线</b>是红毛线，两头各一枚红图钉，中间自然下垂；箭头上的数据写在便利贴上。</li>
-<li><b>选中</b>就是卡片被拿起来一点，阴影变深。<b>有新版本</b>是一枚歪着盖的红色橡皮章。</li>
-<li><b>白板名</b>是标签机打出来的黑色凸字条，<b>工具条</b>是一把钢尺。</li></ul>
-<h3>取舍</h3><ul><li>最有趣、一眼就懂，适合讲解和分享。</li><li>倾斜、胶带、下垂的线都在提醒「这是一块板」，卡片多了会显得乱，可以只保留其中几样。</li><li>深色下是台灯照着的夜里的木板，纸卡还是亮的，和深色编辑器放在一起会有点跳。</li></ul>''',
- 'land': '''<h2>风景 · 湖畔</h2><p>背景是一片会动的湖畔。浅色是清晨：云慢慢飘，湖面有波光，偶尔飞过一行鸟。深色是星夜：星星在闪，湖里有月亮的倒影。</p><ul>
-<li><b>卡片</b>是磨砂玻璃，风景从后面透出来，但被模糊过，不会干扰读代码。</li>
-<li><b>连线</b>是一条小径：一串点在慢慢往前走，方向就是调用方向。</li>
-<li><b>箭头上的数据</b>写在木头路牌上，箭头形的牌子指向被调用的那张卡。</li>
-<li><b>编号</b>前面是一个小山峰，像山里的路标；提示条也用这个山峰。</li>
-<li><b>动效</b>都只用 transform 和 opacity；系统开了「减少动态效果」就全部停下。</li></ul>
-<h3>取舍</h3><ul><li>最有氛围感，打开白板有种「到了某个地方」的感觉。</li><li>磨砂玻璃和常驻动画在 VS Code 里比别的风格耗电，适合做成可选项，并在白板不可见时暂停。</li><li>以后可以出好几幅风景，也可以按真实时间自动在清晨和星夜之间切换。</li></ul>''',
+ 'clay': '''<h2>3D · 黏土</h2><p>整块白板是一张稍微向后倾的桌面，卡片是有厚度的软黏土块，鼠标在白板上移动时桌面会跟着轻轻转一点（±3°），像在看一个实物模型。</p><ul>
+<li><b>卡片</b>是圆角厚块：顶面是浅色，侧面露出 6px 的厚度，底下有一圈落在桌面上的阴影。</li>
+<li><b>选中</b>就是卡片被抬起来：厚度和阴影都变大，边上一圈亮色。</li>
+<li><b>连线</b>是一根粗管子，起点和终点是两颗小球。</li>
+<li><b>箭头上的数据</b>和工具条按钮都是实体按键，按下去会真的往下沉。</li>
+<li><b>桌面</b>上有一层透视网格，倾斜时网格一起转，能看出空间感。</li></ul>
+<h3>取舍</h3><ul><li>卡片和连线都在同一个平面上，倾斜时不会错位；文字始终是正的，读代码不受影响。</li><li>倾斜会让底部的卡片稍微变大、顶部稍微变小，卡片多时远处的字会小一点，可以只在空闲时倾斜、拖动时回正。</li><li>厚度和阴影比较占地方，卡片之间要多留点空。</li></ul>''',
+ 'city': '''<h2>城市道路</h2><p>白板是一张平面城市地图：街区、河流、公园做底，调用关系画成真正的马路。</p><ul>
+<li><b>连线</b>是马路：灰色路面、白色路沿、黄色中线，横平竖直，拐角是圆的。路上停着两辆小车，车头朝调用方向。</li>
+<li><b>卡片标题</b>是蓝底白字的路牌；<b>编号</b>是红色的国道牌，比如 G1.1。</li>
+<li><b>箭头上的数据</b>写在绿色的高速指路牌上。</li>
+<li><b>有新版本</b>是橙白相间的施工牌。</li>
+<li><b>深色</b>是夜里的地图：路面暗下来，中线和车灯是暖黄色。</li></ul>
+<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>没有常驻动画：小车是停着的。会动的版本留到 standalone app。</li></ul>''',
 }
 VCFG = {
  'v1': {'head': 'triangle'}, 'warm': {}, 'graphite': {},
@@ -94,14 +93,36 @@ VCFG = {
  'art': {'port': 'diamond', 'gap': 150, 'pad': {'l': 44, 'r': 44, 't': 100, 'b': 84}},
  'bamboo': {'head': 'dot', 'gap': 140, 'pad': {'l': 28, 'r': 28, 't': 70, 'b': 72}},
  'ink': {'head': 'dot', 'gap': 150, 'pad': {'l': 32, 'r': 32, 't': 78, 'b': 76}, 'defs': '<defs><filter id="brush" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="8000" height="8000"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="2"/><feDisplacementMap in="SourceGraphic" scale="2.4"/></filter></defs>'},
- 'real': {'route': 'sag', 'head': 'pin', 'port': 'pin', 'sag': 46, 'gap': 150, 'pad': {'l': 50, 'r': 50, 't': 84, 'b': 92},
-   'defs': '<defs><radialGradient id="pinR" cx=".35" cy=".35" r=".7"><stop offset="0" stop-color="#ff9a8a"/><stop offset=".45" stop-color="#d42a1c"/><stop offset="1" stop-color="#7c1209"/></radialGradient><filter id="pinShadow" x="-1" y="-1" width="3" height="3"><feDropShadow dx="1.5" dy="2.5" stdDeviation="1.2" flood-opacity=".45"/></filter><filter id="yarnShadow" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="8000" height="8000"><feDropShadow dx="0" dy="3" stdDeviation="1.4" flood-opacity=".3"/></filter></defs>'},
- 'land': {'gap': 150, 'pad': {'l': 28, 'r': 28, 't': 74, 'b': 74}},
+ 'clay': {'head': 'dot', 'gap': 150, 'pad': {'l': 40, 'r': 40, 't': 80, 'b': 84},
+   'defs': '<defs><radialGradient id="sph" cx=".35" cy=".3" r=".75"><stop offset="0" stop-color="#fff" stop-opacity=".9"/><stop offset=".35" stop-color="currentColor"/><stop offset="1" stop-color="#000" stop-opacity=".35"/></radialGradient><filter id="tubeShadow" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="8000" height="8000"><feDropShadow dx="0" dy="5" stdDeviation="3" flood-opacity=".22"/></filter></defs>'},
+ 'city': {'route': 'street', 'head': 'none', 'port': 'circle', 'gap': 170, 'layers': ['casing', 'road', 'lane'], 'pad': {'l': 32, 'r': 32, 't': 74, 'b': 76}},
 }
-SCENES = {'ink': open('scene-ink.svg').read(), 'land': open('scene-land.svg').read()}
+SCENES = {'ink': open('scene-ink.svg').read(), 'city': open('scene-city.svg').read()}
 draftjs = open('drafting.js').read().replace('function decorate(cards, world) {\n  world.querySelectorAll(\'.dim, .callout\').forEach(n => n.remove());', 'function drafting(cards, world) {')
 js = draftjs + f'''
-function decorate(cards, world) {{ world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); }}
+function decorate(cards, world) {{ world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); if (board.dataset.v === 'city') cityCars(); }}
+const reduceMo = matchMedia('(prefers-reduced-motion: reduce)');
+// 城市：每条路上停两辆小车，车头朝调用方向，靠右行驶；不做常驻动画
+function cityCars() {{
+  const ns = 'http://www.w3.org/2000/svg';
+  edges.querySelectorAll('path.road').forEach((p, i) => {{
+    const len = p.getTotalLength();
+    [0.28 + i * .06, 0.74].forEach((f, k) => {{
+      const a = p.getPointAtLength(len * f), b = p.getPointAtLength(len * f + 1), deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const car = document.createElementNS(ns, 'g'); car.setAttribute('class', `car k${{(i + k) % 3}}`);
+      car.setAttribute('transform', `translate(${{a.x}} ${{a.y}}) rotate(${{deg}}) translate(0 3)`);
+      car.innerHTML = '<rect class="beam" x="5" y="-3" width="16" height="6" rx="3"/><rect class="body" x="-6" y="-3" width="12" height="6" rx="2"/><rect class="roof" x="-2.5" y="-2.2" width="5" height="4.4" rx="1"/>';
+      edges.appendChild(car);
+    }});
+  }});
+}}
+// 3D：鼠标在白板上移动时，桌面跟着轻轻转
+board.addEventListener('pointermove', e => {{
+  if (board.dataset.v !== 'clay' || reduceMo.matches) return;
+  const r = board.getBoundingClientRect(), px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5;
+  board.style.setProperty('--ry', (px * 6).toFixed(2) + 'deg'); board.style.setProperty('--rx', (10 - py * 6).toFixed(2) + 'deg');
+}});
+board.addEventListener('pointerleave', () => {{ board.style.removeProperty('--ry'); board.style.removeProperty('--rx'); }});
 const BASECFG = Object.assign({{}}, CFG), VCFG = {json.dumps(VCFG)}, NOTES = {json.dumps(NOTES, ensure_ascii=False)}, SCENES = {json.dumps(SCENES)};
 function setV(v) {{
   board.dataset.v = v; board.querySelector('.scene').innerHTML = SCENES[v] || ''; CFG = Object.assign({{}}, BASECFG, VCFG[v]);
@@ -114,12 +135,12 @@ setV('warm');
 '''
 seg = '''<div class="ctl">版本
       <div class="seg" id="segV" role="group" aria-label="版本">
-        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button><button id="v-bamboo" data-v="bamboo">竹简</button><button id="v-ink" data-v="ink">水墨</button><button id="v-real" data-v="real">拟物</button><button id="v-land" data-v="land">风景</button>
+        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button><button id="v-bamboo" data-v="bamboo">竹简</button><button id="v-ink" data-v="ink">水墨</button><button id="v-clay" data-v="clay">3D</button><button id="v-city" data-v="city">城市</button>
       </div>
     </div>
     <div class="ctl">主题'''
 o = open('base.html').read()
-fonts = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600;700&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&family=Noto+Serif+SC:wght@400;600&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Caveat:wght@400;700&display=swap'
+fonts = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600;700&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&family=Noto+Serif+SC:wght@400;600&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&display=swap'
 for a, b in [('%%TITLE%%', 'CodeBoard 材质'), ('%%FONTS%%', fonts), ('%%CSS%%', css + '\n.notes .tip { font-size: 12px; border-top: .5px solid var(--page-hair); padding-top: 12px; }'),
              ('%%H1%%', '白板材质对照'), ('%%SUB%%', '同一块白板、同一份数据，只换材质。左边模拟 VS Code 里的 webview。'),
              ('class="board %%BOARDCLASS%%"', 'class="board" data-v="warm"'), ('%%EYEBROW%%', 'NANO-VLLM · ENGINE'), ('%%NOTES%%', ''),

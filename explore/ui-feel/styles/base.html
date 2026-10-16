@@ -54,6 +54,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 /* ---------- 白板骨架：只管位置，长相交给各风格 ---------- */
 .board { position: relative; height: 640px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--ui); }
 @media (max-width: 600px) { .board { height: 540px; } }
+.tilt { position: absolute; inset: 0; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; }
 .card { position: absolute; overflow: hidden; }
@@ -119,7 +120,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
       <div class="board %%BOARDCLASS%%" id="board">
         <div class="scene" aria-hidden="true"></div>
         <div class="frame-deco"></div>
-        <div class="world" id="world"><svg class="edges" id="edges"></svg></div>
+        <div class="tilt"><div class="world" id="world"><svg class="edges" id="edges"></svg></div></div>
         <nav class="rail"><span class="on">第一张白板</span><span>KV cache</span><span>prefill · decode</span></nav>
         <div class="over tb-left"><div class="pill"><span class="bname"><small class="eyebrow">%%EYEBROW%%</small><span class="bn">第一张白板</span><svg class="ico chev" viewBox="0 0 16 16"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg></span></div></div>
         <div class="over tb-right"><div class="pill">
@@ -252,6 +253,9 @@ function drawEdges() {
     if (CFG.route === 'elbow') {
       const xm = x1 + (x2 - x1) * (+i === 1 ? 0.4 : 0.55);
       d = `M${x1} ${y1} H${xm} V${y2} H${x2}`; mx = xm; my = (y1 + y2) / 2;
+    } else if (CFG.route === 'street') { // 像街道：横平竖直，拐角是圆的
+      const xm = x1 + (x2 - x1) * (+i === 1 ? 0.32 : 0.68), r = Math.min(16, Math.abs(y2 - y1) / 2), s = y2 > y1 ? 1 : -1;
+      d = `M${x1} ${y1} H${xm - r} Q${xm} ${y1} ${xm} ${y1 + s * r} V${y2 - s * r} Q${xm} ${y2} ${xm + r} ${y2} H${x2}`; mx = xm; my = (y1 + y2) / 2;
     } else if (CFG.route === 'sag') { // 线是软的，两头钉住，中间往下垂
       const xm = (x1 + x2) / 2, cy = Math.max(y1, y2) + (CFG.sag || 50);
       d = `M${x1} ${y1} Q${xm} ${cy} ${x2} ${y2}`; mx = xm; my = (y1 + 2 * cy + y2) / 4;
@@ -260,7 +264,7 @@ function drawEdges() {
       d = `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
       mx = (x1 + 3 * (x1 + dx) + 3 * (x2 - dx) + x2) / 8; my = (y1 + y2) / 2;
     }
-    svg += `<path class="edge ${t.file}" d="${d}"/>`;
+    svg += (CFG.layers || ['']).map(l => `<path class="edge ${l} ${t.file}" d="${d}"/>`).join('');
     if (CFG.head === 'triangle') svg += `<path class="ahead fill ${t.file}" d="M${x2 + 2} ${y2} l-8 -4 v8 z"/>`;
     else if (CFG.head === 'pin') svg += `<circle class="ahead pin" cx="${x2}" cy="${y2}" r="5"/>`;
     else if (CFG.head === 'none') {}

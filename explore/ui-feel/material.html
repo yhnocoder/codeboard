@@ -1,7 +1,7 @@
 <title>CodeBoard 材质</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600;700&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&family=Noto+Serif+SC:wght@400;600&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&family=Caveat:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600;700&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&family=Noto+Serif+SC:wght@400;600&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&display=swap">
 <style>
 /* 页面外框：上方切换条；左边模拟 VS Code 半屏 webview 里的白板，右边是这种风格的取舍 */
 :root {
@@ -54,6 +54,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 /* ---------- 白板骨架：只管位置，长相交给各风格 ---------- */
 .board { position: relative; height: 640px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--ui); }
 @media (max-width: 600px) { .board { height: 540px; } }
+.tilt { position: absolute; inset: 0; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; }
 .card { position: absolute; overflow: hidden; }
@@ -704,189 +705,173 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 @keyframes inkMist { from { transform: translateX(-60px); } to { transform: translateX(80px); } }
 @media (prefers-reduced-motion: reduce) { .board[data-v="ink"] .mist { animation: none; } }
 
-/* 拟物：一块软木板。卡片是图钉钉着的索引卡，连线是红毛线，便签是黄色便利贴，白板名是标签机打的凸字条，工具条是一把钢尺 */
-.board[data-v="real"] {
-  --cork: light-dark(#c39a6b, #4a3726);
-  --cork-dot1: light-dark(rgba(110,70,30,.35), rgba(0,0,0,.35));
-  --cork-dot2: light-dark(rgba(255,235,200,.35), rgba(255,220,170,.08));
-  --wood: light-dark(#8a5a33, #3b2717);
-  --card: light-dark(#fbf8ef, #d9d1bf);
-  --rule-b: light-dark(rgba(70,130,200,.28), rgba(50,100,160,.3));
-  --rule-r: light-dark(rgba(220,70,70,.55), rgba(180,50,50,.55));
-  --ink: #26241f;
-  --ink-2: #57534a;
-  --ink-3: #8f897c;
-  --ribbon: #c0281c;
-  --yarn: light-dark(#c3241a, #d2382b);
-  --postit: light-dark(#ffe76a, #e9cf4a);
-  --hi: rgba(255,226,0,.5);
-  --selbg: rgba(70,130,200,.25);
-  --ui: "Archivo", "Helvetica Neue", "PingFang SC", sans-serif;
-  --mono: "Courier Prime", "Courier New", monospace;
-  --hand: "Caveat", "Kaiti SC", cursive;
-  background-color: var(--cork);
-  background-image:
-    radial-gradient(circle at 30% 20%, light-dark(rgba(255,255,255,.08), rgba(255,200,120,.14)), transparent 60%),
-    radial-gradient(var(--cork-dot1) 1px, transparent 1.6px), radial-gradient(var(--cork-dot2) 1px, transparent 1.6px), radial-gradient(var(--cork-dot1) .8px, transparent 1.2px);
-  background-size: auto, 7px 9px, 11px 7px, 5px 5px;
-  background-position: 0 0, 0 0, 3px 4px, 1px 2px;
-}
-.board[data-v="real"] .frame-deco { display: block; position: absolute; inset: 0; z-index: 4; pointer-events: none; border: 11px solid var(--wood);
-  box-shadow: inset 0 2px 6px rgba(0,0,0,.45), inset 0 0 0 1px rgba(0,0,0,.25); }
-.board[data-v="real"] .card { background: var(--card); overflow: visible; border-radius: 1px; display: flex; flex-direction: column;
-  box-shadow: 0 1px 1px rgba(0,0,0,.18), 0 10px 16px -8px rgba(40,20,0,.45); transition: box-shadow .2s; }
-.board[data-v="real"] .card.f1 { rotate: -.5deg; } .board[data-v="real"] .card.f2 { rotate: .7deg; } .board[data-v="real"] .card.f3 { rotate: -.35deg; }
-/* 选中就是被拿起来一点 */
-.board[data-v="real"] .card.sel { box-shadow: 0 2px 3px rgba(0,0,0,.2), 0 24px 30px -12px rgba(40,20,0,.55); translate: 0 -2px; }
-/* 一截和纸胶带 */
-.board[data-v="real"] .card::before { content: ""; position: absolute; top: -9px; left: 50%; width: 64px; height: 18px; margin-left: -32px; rotate: -2deg; z-index: 2;
-  background: light-dark(rgba(200,220,210,.62), rgba(150,170,160,.55)); box-shadow: 0 1px 1px rgba(0,0,0,.08);
-  -webkit-mask: linear-gradient(90deg, transparent 0 1px, #000 1px calc(100% - 1px), transparent 0); }
-.board[data-v="real"] .chead { order: 0; height: 40px; padding: 4px 14px 0 30px; gap: 10px; border-bottom: 1.5px solid var(--rule-r); }
-.board[data-v="real"] .step { font: 700 10.5px var(--mono); color: var(--ink-3); }
-.board[data-v="real"] .step::before { content: "#"; }
-.board[data-v="real"] .ctitle { font: 700 21px/1 var(--hand); color: light-dark(#1f3f8a, #1f3f8a); }
-.board[data-v="real"] .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
-.board[data-v="real"] .rev { font: 10px var(--mono); color: var(--ink-3); }
-/* 新版本：一枚歪着盖的红色橡皮章 */
-.board[data-v="real"] .rev.new { font: 700 10px var(--ui); letter-spacing: .1em; color: var(--ribbon); border: 1.5px solid var(--ribbon); border-radius: 3px; padding: 2px 5px; rotate: -8deg; opacity: .85; }
-.board[data-v="real"] .rev.new i { display: none; }
-.board[data-v="real"] .cnote { display: block; order: 1; padding: 3px 14px 1px 30px; font: 400 15px/20px var(--hand); color: #6b6658; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-/* 横格：蓝线正好落在每行代码下面 */
-.board[data-v="real"] .code { order: 2; padding: 0 0 8px; font: 11px/19px var(--mono); color: var(--ink);
-  background: repeating-linear-gradient(180deg, transparent 0 17.5px, var(--rule-b) 17.5px 19px) 0 0 / 100% calc(100% - 8px) no-repeat; }
-.board[data-v="real"] .gutter .no { width: 30px; padding-right: 8px; color: var(--ink-3); font-size: 9.5px; }
-.board[data-v="real"] .hlrow { background: var(--hi); left: 30px; right: 18px; border-radius: 2px 6px 3px 5px; transform: skewX(-8deg); }
-.board[data-v="real"] .no.link { color: var(--ink); font-weight: 700; }
-/* 打字机的红黑双色色带：关键字和可展开的调用打成红色 */
-.board[data-v="real"] .kw { color: var(--ribbon); } .board[data-v="real"] .call { color: var(--ribbon); text-decoration: underline 1px; text-underline-offset: 3px; }
-.board[data-v="real"] .fn { color: var(--ink); } .board[data-v="real"] .str, .board[data-v="real"] .num, .board[data-v="real"] .self { color: var(--ink-2); } .board[data-v="real"] .com, .board[data-v="real"] .p { color: var(--ink-3); }
-/* 红毛线，两头是图钉 */
-.board[data-v="real"] .edges { z-index: 3; }
-.board[data-v="real"] .edge { fill: none; stroke: var(--yarn); stroke-width: 1.8; filter: url(#yarnShadow); }
-.board[data-v="real"] .pin { fill: url(#pinR); filter: url(#pinShadow); }
-.board[data-v="real"] .elabel { font: 400 16px/1.1 var(--hand); color: #3b3418; background: var(--postit); padding: 8px 12px 9px; rotate: -3deg; z-index: 3;
-  box-shadow: 0 1px 1px rgba(0,0,0,.12), 4px 8px 10px -6px rgba(0,0,0,.4); }
-.board[data-v="real"] .elabel.f3 { rotate: 2.5deg; background: light-dark(#ffb3c7, #e295a9); }
-
-/* 标签机打的凸字条 */
-.board[data-v="real"] .tb-left { left: 26px; top: 24px; }
-.board[data-v="real"] .tb-left .pill { background: #1c1c1c; padding: 5px 12px; border-radius: 2px; rotate: -1.2deg; box-shadow: 0 2px 3px rgba(0,0,0,.35); }
-.board[data-v="real"] .bn { font: 700 13px var(--ui); letter-spacing: .14em; color: #f2f2f2; text-shadow: 0 -1px 0 rgba(0,0,0,.6), 0 1px 0 rgba(255,255,255,.18); }
-.board[data-v="real"] .chev { color: #f2f2f2; }
-.board[data-v="real"] .tb-right { right: 26px; top: 24px; }
-.board[data-v="real"] .tb-right .pill { background: none; }
-.board[data-v="real"] #btnPresent { background: #b8261b; color: #fff; font: 700 12px var(--ui); letter-spacing: .14em; border-radius: 2px; rotate: 1deg; box-shadow: 0 2px 3px rgba(0,0,0,.35); text-shadow: 0 -1px 0 rgba(0,0,0,.4); }
-.board[data-v="real"] #btnPresent .ico { fill: currentColor; }
-.board[data-v="real"] .focus-btn { display: none; }
-/* 钢尺 */
-.board[data-v="real"] .dock { bottom: 22px; }
-.board[data-v="real"] .dock .pill { padding: 6px 10px 4px; border-radius: 2px; position: relative;
-  background: linear-gradient(180deg, #e9ecee, #bfc5ca 55%, #d5d9dc); box-shadow: 0 0 0 .5px rgba(0,0,0,.35), 0 6px 10px -4px rgba(0,0,0,.45), inset 0 1px 0 rgba(255,255,255,.8); }
-.board[data-v="real"] .dock .pill::before { content: ""; position: absolute; left: 4px; right: 4px; top: 0; height: 6px;
-  background: repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 1px, transparent 1px 5px), repeating-linear-gradient(90deg, rgba(0,0,0,.55) 0 1px, transparent 1px 25px);
-  background-size: 100% 3px, 100% 6px; background-repeat: no-repeat; }
-.board[data-v="real"] .ib { color: #2a2d30; border-radius: 3px; }
-.board[data-v="real"] .ib:hover { background: rgba(0,0,0,.08); }
-.board[data-v="real"] .sep { width: 1px; height: 16px; background: rgba(0,0,0,.3); margin: 0 4px; }
-.board[data-v="real"] .zoom { font: 700 11px var(--mono); color: #2a2d30; }
-.board[data-v="real"] .toast { bottom: 76px; background: var(--postit); color: #3b3418; font: 400 18px var(--hand); padding: 8px 14px; rotate: 1.5deg; box-shadow: 0 1px 1px rgba(0,0,0,.12), 4px 8px 10px -6px rgba(0,0,0,.4); }
-.board[data-v="real"] .toast .tdot { display: none; }
-.board[data-v="real"] .toast b { font-weight: 700; text-decoration: underline 1.5px; }
-
-/* 风景：背景是一片会动的湖畔，浅色是清晨（云在飘、湖面有波光、偶尔一行鸟），深色是星夜（星星闪、月亮倒影）。
-   卡片是磨砂玻璃，连线是一条徒步小径，箭头上的数据写在木头路牌上 */
-.board[data-v="land"] {
-  --sky1: light-dark(#8fb3d6, #070d1c);
-  --sky2: light-dark(#cfdcea, #13203a);
-  --sky3: light-dark(#f6e3cb, #2a3552);
-  --orb: light-dark(#fff3d6, #f4f1e4);
-  --cloud: light-dark(#ffffff, #3a4766);
-  --m1: light-dark(#9db0c4, #1a2440);
-  --m2: light-dark(#7891a6, #141d35);
-  --m3: light-dark(#40594f, #0b1224);
-  --lake1: light-dark(#a9bfd0, #111b33);
-  --lake2: light-dark(#6f8ea3, #070c18);
-  --star: light-dark(transparent, #ffffff);
-  --shim: light-dark(rgba(255,255,255,.7), rgba(244,241,228,.45));
-  --bird: light-dark(rgba(40,50,60,.55), transparent);
-  --glass: light-dark(rgba(255,255,255,.7), rgba(14,20,36,.62));
-  --glass-2: light-dark(rgba(255,255,255,.5), rgba(14,20,36,.45));
-  --edge-glass: light-dark(rgba(255,255,255,.8), rgba(255,255,255,.12));
-  --ink: light-dark(#1d2a33, #e9eef6);
-  --ink-2: light-dark(#4b5c68, #aab7c9);
-  --ink-3: light-dark(#8494a0, #6e7d93);
-  --accent: light-dark(#d9772f, #f2b25c);
-  --trail: light-dark(rgba(255,255,255,.95), rgba(242,178,92,.85));
-  --sign: light-dark(#7a5232, #6a4528);
-  --selbg: light-dark(rgba(217,119,47,.22), rgba(242,178,92,.3));
+/* 3D · 黏土：白板是一张略微后倾的桌面，鼠标移动时轻轻转动；卡片是有厚度的软黏土块，选中会抬起来；连线是粗管子，按钮是实体按键 */
+.board[data-v="clay"] {
+  --rx: 10deg; --ry: 0deg;
+  --bg: light-dark(#e7e8f1, #14151d);
+  --floor: light-dark(rgba(80,90,140,.1), rgba(150,165,255,.07));
+  --top: light-dark(#fbfbfe, #262938);
+  --top-2: light-dark(#f1f2f8, #1f2230);
+  --side: light-dark(#cdd1e2, #0c0e15);
+  --side-2: light-dark(#b9bed4, #08090e);
+  --ink: light-dark(#262a3b, #e8eaf4);
+  --ink-2: light-dark(#5d6380, #a9aec6);
+  --ink-3: light-dark(#9aa0ba, #6a7090);
+  --accent: light-dark(#ff7a59, #ff8f6e);
+  --accent-side: light-dark(#d9573a, #b8543c);
+  --tube: light-dark(#9ea6c8, #4b5170);
+  --selbg: color-mix(in srgb, var(--accent) 24%, transparent);
   --ui: "Jost", "Helvetica Neue", "PingFang SC", sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  --k-kw: light-dark(#7a3fb8, #c9a2ff); --k-fn: light-dark(#1f62b5, #8cc0ff); --k-str: light-dark(#2f7d4f, #8fd6a8);
-  --k-com: light-dark(#8a97a3, #66758b); --k-num: light-dark(#c0601e, #ffb27a); --k-self: light-dark(#b23c70, #f59ac0); --k-p: light-dark(#7d8a96, #8592a6);
-  background: var(--lake2);
+  --k-kw: light-dark(#7c4dd6, #c3a5ff); --k-fn: light-dark(#2a6fd6, #8fbaff); --k-str: light-dark(#23905e, #84dbaa);
+  --k-com: light-dark(#a2a8c0, #616884); --k-num: light-dark(#d9573a, #ffaa8a); --k-self: light-dark(#c03f7c, #f59ac4); --k-p: light-dark(#8c92ad, #8389a6);
+  --thick: 0 1px 0 var(--side), 0 2px 0 var(--side), 0 3px 0 var(--side), 0 4px 0 var(--side), 0 5px 0 var(--side-2), 0 6px 0 var(--side-2);
+  --ground: 0 16px 22px -10px light-dark(rgba(50,60,110,.35), rgba(0,0,0,.7));
+  perspective: 1500px; perspective-origin: 50% 30%;
+  background: radial-gradient(120% 80% at 50% 0%, light-dark(#f4f5fa, #1d1f2b), var(--bg));
 }
-.board[data-v="land"] .scene { display: block; }
-.board[data-v="land"] .stars circle { fill: var(--star); animation: lTwinkle 5s ease-in-out infinite alternate; }
-.board[data-v="land"] .cloud { fill: var(--cloud); opacity: .75; }
-.board[data-v="land"] .c1 { animation: lDrift 160s linear infinite; } .board[data-v="land"] .c2 { animation: lDrift 220s linear infinite -90s; opacity: .55; } .board[data-v="land"] .c3 { animation: lDrift 280s linear infinite -40s; opacity: .45; }
-.board[data-v="land"] .birds { fill: none; stroke: var(--bird); stroke-width: 1.4; stroke-linecap: round; animation: lBirds 50s linear infinite; }
-.board[data-v="land"] .m1 { fill: var(--m1); } .board[data-v="land"] .m2 { fill: var(--m2); } .board[data-v="land"] .m3 { fill: var(--m3); }
-.board[data-v="land"] .refl { opacity: .35; }
-.board[data-v="land"] .orbref { fill: var(--orb); opacity: .35; }
-.board[data-v="land"] .shim { fill: var(--shim); animation: lShim 4.5s ease-in-out infinite; }
-@keyframes lTwinkle { from { opacity: .25; } to { opacity: 1; } }
-@keyframes lDrift { from { transform: translateX(-420px); } to { transform: translateX(900px); } }
-@keyframes lBirds { from { transform: translate(-60px, 170px); } to { transform: translate(860px, 110px); } }
-@keyframes lShim { 0%, 100% { opacity: 0; transform: translateX(-10px); } 50% { opacity: 1; transform: translateX(10px); } }
-@media (prefers-reduced-motion: reduce) { .board[data-v="land"] .scene * { animation: none !important; } }
+.board[data-v="clay"] .tilt { transform: rotateX(var(--rx)) rotateY(var(--ry)); transform-origin: 50% 55%; transition: transform calc(var(--t, 1) * 700ms) cubic-bezier(.2, .8, .2, 1); }
+.board[data-v="clay"] .tilt::before { content: ""; position: absolute; inset: -40% -30%; pointer-events: none;
+  background-image: linear-gradient(var(--floor) 1px, transparent 1px), linear-gradient(90deg, var(--floor) 1px, transparent 1px); background-size: 48px 48px;
+  -webkit-mask: radial-gradient(closest-side, #000 40%, transparent); mask: radial-gradient(closest-side, #000 40%, transparent); }
+@media (prefers-reduced-motion: reduce) { .board[data-v="clay"] .tilt { transition: none; } }
+.board[data-v="clay"] .card { background: linear-gradient(180deg, var(--top), var(--top-2)); border-radius: 16px; overflow: visible;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6), var(--thick), var(--ground); transition: box-shadow calc(var(--t, 1) * 260ms) cubic-bezier(.2, .8, .2, 1), translate calc(var(--t, 1) * 260ms) cubic-bezier(.2, .8, .2, 1); }
+.board[data-v="clay"] .card.sel { translate: 0 -5px; box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 0 0 2px var(--accent), var(--thick), 0 7px 0 var(--side-2), 0 9px 0 var(--side-2), 0 11px 0 var(--side-2), 0 30px 34px -12px light-dark(rgba(50,60,110,.45), rgba(0,0,0,.8)); }
+.board[data-v="clay"] .chead { height: 40px; padding: 0 14px; gap: 9px; }
+.board[data-v="clay"] .step { min-width: 24px; height: 22px; padding: 0 6px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center;
+  font: 600 11px var(--ui); color: #fff; background: var(--accent); box-shadow: 0 2px 0 var(--accent-side); }
+.board[data-v="clay"] .ctitle { font: 600 13.5px var(--ui); color: var(--ink); }
+.board[data-v="clay"] .cpath { font: 400 11.5px var(--ui); color: var(--ink-3); }
+.board[data-v="clay"] .rev { font: 10px var(--mono); color: var(--ink-3); }
+.board[data-v="clay"] .rev.new { font: 500 11px var(--ui); color: var(--accent); }
+.board[data-v="clay"] .rev.new i { width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff 0 15%, var(--accent) 45%, var(--accent-side)); }
+/* 代码在卡片顶面里压出来的一个浅槽 */
+.board[data-v="clay"] .code { margin: 0 8px 10px; padding: 7px 0 9px; border-radius: 10px; background: var(--top-2); font: 10.5px/19px var(--mono); color: var(--ink);
+  box-shadow: inset 0 2px 3px light-dark(rgba(60,70,120,.12), rgba(0,0,0,.45)), inset 0 -1px 0 rgba(255,255,255,.35); }
+.board[data-v="clay"] .gutter .no { width: 34px; padding-right: 10px; color: var(--ink-3); }
+.board[data-v="clay"] .hlrow { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.board[data-v="clay"] .no.link { color: var(--accent); font-weight: 600; }
+.board[data-v="clay"] .kw { color: var(--k-kw); } .board[data-v="clay"] .fn { color: var(--k-fn); } .board[data-v="clay"] .str { color: var(--k-str); } .board[data-v="clay"] .com { color: var(--k-com); }
+.board[data-v="clay"] .num { color: var(--k-num); } .board[data-v="clay"] .self { color: var(--k-self); } .board[data-v="clay"] .p { color: var(--k-p); }
+.board[data-v="clay"] .call { text-decoration: underline 2px color-mix(in srgb, var(--k-fn) 35%, transparent); text-underline-offset: 3px; }
+/* 管子 + 小球 */
+.board[data-v="clay"] .edges { color: var(--accent); }
+.board[data-v="clay"] .edge { fill: none; stroke: var(--tube); stroke-width: 6; stroke-linecap: round; filter: url(#tubeShadow); }
+.board[data-v="clay"] .ahead, .board[data-v="clay"] .port { fill: url(#sph); stroke: none; }
+.board[data-v="clay"] .ahead { r: 6px; } .board[data-v="clay"] .port { r: 6px; }
+/* 实体按键 */
+.board[data-v="clay"] .elabel, .board[data-v="clay"] .ib, .board[data-v="clay"] .tbtn { background: var(--top); color: var(--ink); border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 0 var(--side), 0 2px 0 var(--side), 0 3px 0 var(--side-2), 0 8px 10px -6px light-dark(rgba(50,60,110,.4), rgba(0,0,0,.7)); }
+.board[data-v="clay"] .elabel { font: 500 10.5px var(--mono); padding: 5px 10px; }
+.board[data-v="clay"] .ib, .board[data-v="clay"] .tbtn { height: 30px; font: 500 12.5px var(--ui); transition: translate 60ms, box-shadow 60ms; }
+.board[data-v="clay"] .ib { width: 32px; }
+.board[data-v="clay"] .ib:active, .board[data-v="clay"] .tbtn:active { translate: 0 3px; box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 0 0 var(--side), 0 2px 4px -2px rgba(0,0,0,.3); }
+.board[data-v="clay"] .pill { background: none; gap: 8px; }
+.board[data-v="clay"] .tb-left .pill { background: var(--top); padding: 6px 12px; border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 0 var(--side), 0 2px 0 var(--side), 0 3px 0 var(--side-2), 0 10px 14px -8px rgba(50,60,110,.4); }
+.board[data-v="clay"] .bn { font: 600 14px var(--ui); color: var(--ink); }
+.board[data-v="clay"] .chev { color: var(--ink-3); }
+.board[data-v="clay"] #btnPresent { background: var(--accent); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 1px 0 var(--accent-side), 0 2px 0 var(--accent-side), 0 3px 0 var(--accent-side), 0 8px 10px -6px rgba(200,70,40,.6); }
+.board[data-v="clay"] #btnPresent .ico { fill: currentColor; }
+.board[data-v="clay"] .dock { bottom: 18px; }
+.board[data-v="clay"] .sep { width: 0; margin: 0 2px; }
+.board[data-v="clay"] .zoom { font: 500 11px var(--mono); color: var(--ink-2); min-width: 46px; }
+.board[data-v="clay"] .toast { bottom: 70px; background: var(--ink); color: var(--top); font: 500 12.5px var(--ui); padding: 9px 16px; border-radius: 12px;
+  box-shadow: 0 3px 0 light-dark(#0e1020, #000), 0 14px 20px -10px rgba(0,0,0,.5); }
+.board[data-v="clay"] .toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.board[data-v="clay"] .toast b { font-weight: 600; color: var(--accent); }
 
-.board[data-v="land"] .card { background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); border-radius: 14px;
-  box-shadow: inset 0 0 0 .5px var(--edge-glass), inset 0 1px 0 var(--edge-glass), 0 20px 40px -18px rgba(5,15,30,.45); }
-.board[data-v="land"] .card.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 24px -2px color-mix(in srgb, var(--accent) 55%, transparent), 0 20px 40px -18px rgba(5,15,30,.45); }
-.board[data-v="land"] .chead { height: 38px; padding: 0 14px; gap: 9px; }
-/* 编号像山间的路标：一个小山峰加数字 */
-.board[data-v="land"] .step { display: inline-flex; align-items: center; gap: 5px; font: 600 11px var(--ui); color: var(--accent); }
-.board[data-v="land"] .step::before { content: ""; width: 11px; height: 9px; background: currentColor; clip-path: polygon(0 100%, 38% 20%, 55% 55%, 72% 0, 100% 100%); }
-.board[data-v="land"] .ctitle { font: 500 13.5px var(--ui); color: var(--ink); }
-.board[data-v="land"] .cpath { font: 400 11.5px var(--ui); color: var(--ink-3); }
-.board[data-v="land"] .rev { font: 10px var(--mono); color: var(--ink-3); }
-.board[data-v="land"] .rev.new { font: 500 11px var(--ui); color: var(--accent); }
-.board[data-v="land"] .rev.new i { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 8px var(--accent); }
-.board[data-v="land"] .code { margin: 0 6px 6px; padding: 7px 0 9px; border-radius: 9px; background: var(--glass-2); font: 10.5px/19px var(--mono); color: var(--ink); }
-.board[data-v="land"] .gutter .no { width: 34px; padding-right: 10px; color: var(--ink-3); }
-.board[data-v="land"] .hlrow { background: color-mix(in srgb, var(--accent) 16%, transparent); }
-.board[data-v="land"] .no.link { color: var(--accent); }
-.board[data-v="land"] .kw { color: var(--k-kw); } .board[data-v="land"] .fn { color: var(--k-fn); } .board[data-v="land"] .str { color: var(--k-str); } .board[data-v="land"] .com { color: var(--k-com); }
-.board[data-v="land"] .num { color: var(--k-num); } .board[data-v="land"] .self { color: var(--k-self); } .board[data-v="land"] .p { color: var(--k-p); }
-.board[data-v="land"] .call { text-decoration: underline dotted color-mix(in srgb, var(--k-fn) 60%, transparent); text-underline-offset: 3px; }
-/* 小径：一串慢慢往前走的点 */
-.board[data-v="land"] .edge { fill: none; stroke: var(--trail); stroke-width: 2.8; stroke-linecap: round; stroke-dasharray: .1 7; animation: lWalk 3s linear infinite;
-  filter: drop-shadow(0 0 1px rgba(10,20,40,.55)) drop-shadow(0 1px 2px rgba(10,20,40,.3)); }
-@keyframes lWalk { to { stroke-dashoffset: -7.1; } }
-@media (prefers-reduced-motion: reduce) { .board[data-v="land"] .edge { animation: none; } }
-.board[data-v="land"] .ahead { fill: var(--trail); }
-.board[data-v="land"] .port { fill: var(--accent); stroke: var(--trail); stroke-width: 1.5; }
-.board[data-v="land"] .elabel { font: 500 10.5px var(--mono); color: #fbf1e3; background: var(--sign); padding: 4px 16px 4px 9px; border-radius: 2px;
-  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 50%, calc(100% - 8px) 100%, 0 100%); box-shadow: inset 0 -2px 0 rgba(0,0,0,.2); }
+/* 城市道路：一张平面城市地图。调用关系是马路（路沿、路面、黄色中线，圆角拐弯），路上停着小车；
+   卡片标题是蓝底白字路牌，编号是红色国道牌，箭头上的数据写在绿色指路牌上，有新版本是施工牌 */
+.board[data-v="city"] {
+  --land: light-dark(#ece8de, #161a22);
+  --street: light-dark(#fbfaf6, #222833);
+  --block-line: light-dark(rgba(0,0,0,.03), rgba(255,255,255,.02));
+  --park: light-dark(#cfe5bf, #1b2a22);
+  --tree: light-dark(#a9d18f, #23382b);
+  --water: light-dark(#b8d6ec, #142538);
+  --bldg: light-dark(#e0dbcf, #1c212b);
+  --bldg-edge: light-dark(#d2ccbe, #262c38);
+  --casing: light-dark(#ffffff, #3a4150);
+  --asphalt: light-dark(#7c828c, #313844);
+  --lane: light-dark(#f6c93b, #e8b84a);
+  --sign: light-dark(#1f5fbf, #2d5ea8);
+  --sign-ink: #ffffff;
+  --guide: light-dark(#13804a, #1d6c43);
+  --shield: #c7281f;
+  --paper: light-dark(#ffffff, #1d222c);
+  --paper-2: light-dark(#f7f6f2, #191d26);
+  --ink: light-dark(#23272e, #e6e9ef);
+  --ink-2: light-dark(#5a606b, #a8afbb);
+  --ink-3: light-dark(#9aa0a8, #69707c);
+  --selbg: light-dark(rgba(31,95,191,.2), rgba(110,160,240,.3));
+  --ui: "Archivo", "Helvetica Neue", "PingFang SC", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --k-kw: light-dark(#1f5fbf, #8cb6ff); --k-fn: light-dark(#13804a, #7fd3a3); --k-str: light-dark(#b0521c, #f0a370);
+  --k-com: light-dark(#9aa0a8, #646b77); --k-num: light-dark(#b0521c, #f0a370); --k-self: light-dark(#a3367a, #e892c4); --k-p: light-dark(#7f858f, #848b98);
+  background-color: var(--land);
+  /* 街区：每 120px 一条白色小街 */
+  background-image: linear-gradient(var(--street) 0 7px, transparent 7px), linear-gradient(90deg, var(--street) 0 7px, transparent 7px),
+    linear-gradient(var(--block-line) 1px, transparent 1px), linear-gradient(90deg, var(--block-line) 1px, transparent 1px);
+  background-size: 120px 120px, 120px 120px, 20px 20px, 20px 20px;
+  background-position: 0 50px, 40px 0, 0 0, 0 0;
+}
+.board[data-v="city"] .scene { display: block; }
+.board[data-v="city"] .river { fill: var(--water); }
+.board[data-v="city"] .park { fill: var(--park); }
+.board[data-v="city"] .trees { fill: var(--tree); }
+.board[data-v="city"] .bldg { fill: var(--bldg); stroke: var(--bldg-edge); stroke-width: 1; }
 
-.board[data-v="land"] .pill { background: var(--glass); -webkit-backdrop-filter: blur(16px) saturate(1.5); backdrop-filter: blur(16px) saturate(1.5); border-radius: 10px; padding: 3px;
-  box-shadow: inset 0 0 0 .5px var(--edge-glass), 0 10px 24px -12px rgba(5,15,30,.5); }
-.board[data-v="land"] .tb-left .pill { padding: 5px 12px 5px 10px; }
-.board[data-v="land"] .bname { flex-direction: column; align-items: flex-start; gap: 0; }
-.board[data-v="land"] .eyebrow { display: block; font: 500 9px var(--ui); letter-spacing: .24em; color: var(--ink-3); }
-.board[data-v="land"] .bn { font: 500 14px var(--ui); color: var(--ink); }
-.board[data-v="land"] .chev { display: none; }
-.board[data-v="land"] .tbtn, .board[data-v="land"] .ib { color: var(--ink); border-radius: 7px; font: 500 12.5px var(--ui); }
-.board[data-v="land"] .ib:hover, .board[data-v="land"] .tbtn:hover { background: var(--glass-2); }
-.board[data-v="land"] #btnPresent { color: var(--accent); }
-.board[data-v="land"] #btnPresent .ico { fill: currentColor; }
-.board[data-v="land"] .sep { width: 1px; height: 16px; background: var(--edge-glass); margin: 0 4px; }
-.board[data-v="land"] .zoom { font: 11px var(--mono); color: var(--ink-2); }
-.board[data-v="land"] .toast { background: var(--glass); -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px); color: var(--ink); font: 400 12.5px var(--ui); padding: 8px 14px; border-radius: 10px;
-  box-shadow: inset 0 0 0 .5px var(--edge-glass), 0 10px 24px -12px rgba(5,15,30,.5); }
-.board[data-v="land"] .toast .tdot { width: 11px; height: 9px; background: var(--accent); clip-path: polygon(0 100%, 38% 20%, 55% 55%, 72% 0, 100% 100%); }
-.board[data-v="land"] .toast b { font-weight: 500; color: var(--accent); }
+.board[data-v="city"] .card { background: var(--paper); border-radius: 6px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 6px 14px -6px light-dark(rgba(30,40,60,.3), rgba(0,0,0,.6)); }
+.board[data-v="city"] .card.sel { box-shadow: 0 0 0 2.5px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), 0 6px 14px -6px rgba(30,40,60,.3); }
+/* 路牌：蓝底白字，内圈一道白线 */
+.board[data-v="city"] .chead { height: 38px; margin: 5px 5px 0; padding: 0 10px; gap: 8px; border-radius: 4px; background: var(--sign); color: var(--sign-ink);
+  box-shadow: inset 0 0 0 1.5px var(--sign), inset 0 0 0 2.5px rgba(255,255,255,.85); }
+/* 国道牌 */
+.board[data-v="city"] .step { font: 700 10.5px var(--ui); color: #fff; background: var(--shield); padding: 2px 5px 2px; border-radius: 3px 3px 8px 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.75); letter-spacing: .02em; }
+.board[data-v="city"] .step::before { content: "G"; }
+.board[data-v="city"] .ctitle { font: 600 13px var(--ui); color: #fff; }
+.board[data-v="city"] .cpath { font: 400 11px var(--ui); color: rgba(255,255,255,.72); }
+.board[data-v="city"] .rev { font: 10px var(--mono); color: rgba(255,255,255,.72); }
+/* 施工牌 */
+.board[data-v="city"] .rev.new { font: 700 10px var(--ui); color: #2b2b2b; padding: 2px 7px; border-radius: 2px; letter-spacing: .04em;
+  background: repeating-linear-gradient(-45deg, #ffffff 0 5px, #f28a1c 5px 10px); text-shadow: 0 0 2px #fff, 0 0 2px #fff; }
+.board[data-v="city"] .rev.new i { display: none; }
+.board[data-v="city"] .code { padding: 7px 0 9px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.board[data-v="city"] .gutter .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
+.board[data-v="city"] .hlrow { background: color-mix(in srgb, var(--lane) 26%, transparent); }
+.board[data-v="city"] .no.link { color: var(--ink); font-weight: 700; }
+.board[data-v="city"] .kw { color: var(--k-kw); } .board[data-v="city"] .fn { color: var(--k-fn); } .board[data-v="city"] .str { color: var(--k-str); } .board[data-v="city"] .com { color: var(--k-com); }
+.board[data-v="city"] .num { color: var(--k-num); } .board[data-v="city"] .self { color: var(--k-self); } .board[data-v="city"] .p { color: var(--k-p); }
+.board[data-v="city"] .call { text-decoration: underline 2px color-mix(in srgb, var(--lane) 80%, transparent); text-underline-offset: 3px; }
+/* 马路：路沿、路面、中线三层 */
+.board[data-v="city"] .edge { fill: none; stroke-linejoin: round; }
+.board[data-v="city"] .edge.casing { stroke: var(--casing); stroke-width: 18; }
+.board[data-v="city"] .edge.road { stroke: var(--asphalt); stroke-width: 14; }
+.board[data-v="city"] .edge.lane { stroke: var(--lane); stroke-width: 1.3; stroke-dasharray: 7 6; }
+.board[data-v="city"] .port { fill: var(--asphalt); stroke: var(--casing); stroke-width: 2; r: 8px; }
+.board[data-v="city"] .car .body { fill: #e5533d; } .board[data-v="city"] .car.k1 .body { fill: #2f7de1; } .board[data-v="city"] .car.k2 .body { fill: #f2c230; }
+.board[data-v="city"] .car .roof { fill: rgba(255,255,255,.55); }
+.board[data-v="city"] .car .beam { fill: light-dark(transparent, rgba(255,214,120,.35)); }
+/* 指路牌 */
+.board[data-v="city"] .elabel { font: 600 10.5px var(--mono); color: #fff; background: var(--guide); padding: 5px 10px; border-radius: 4px;
+  box-shadow: inset 0 0 0 1.5px var(--guide), inset 0 0 0 2.5px rgba(255,255,255,.85), 0 3px 6px -3px rgba(0,0,0,.4); }
+
+.board[data-v="city"] .tb-left .pill { background: var(--sign); padding: 6px 12px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--sign), inset 0 0 0 2.5px rgba(255,255,255,.85), 0 6px 12px -6px rgba(0,0,0,.4); }
+.board[data-v="city"] .bname { flex-direction: column; align-items: flex-start; gap: 0; }
+.board[data-v="city"] .eyebrow { display: block; order: 2; font: 600 8.5px var(--ui); letter-spacing: .2em; color: rgba(255,255,255,.75); }
+.board[data-v="city"] .bn { font: 700 14px var(--ui); color: #fff; letter-spacing: .06em; }
+.board[data-v="city"] .chev { display: none; }
+.board[data-v="city"] .tb-right .pill, .board[data-v="city"] .dock .pill { background: var(--paper); border-radius: 10px; padding: 3px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 6px 14px -6px rgba(0,0,0,.35); }
+.board[data-v="city"] .tbtn, .board[data-v="city"] .ib { color: var(--ink); border-radius: 7px; font: 500 12.5px var(--ui); }
+.board[data-v="city"] .ib:hover, .board[data-v="city"] .tbtn:hover { background: var(--paper-2); }
+.board[data-v="city"] #btnPresent { color: var(--sign); }
+.board[data-v="city"] #btnPresent .ico { fill: currentColor; }
+.board[data-v="city"] .sep { width: 1px; height: 16px; background: light-dark(rgba(0,0,0,.1), rgba(255,255,255,.1)); margin: 0 4px; }
+.board[data-v="city"] .zoom { font: 11px var(--mono); color: var(--ink-2); }
+.board[data-v="city"] .toast { background: var(--paper); color: var(--ink); font: 500 12.5px var(--ui); padding: 8px 14px 8px 10px; border-radius: 8px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 8px 18px -8px rgba(0,0,0,.4); }
+.board[data-v="city"] .toast .tdot { width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--shield); }
+.board[data-v="city"] .toast b { font-weight: 700; color: var(--sign); }
 
 .notes .tip { font-size: 12px; border-top: .5px solid var(--page-hair); padding-top: 12px; }
 </style>
@@ -897,7 +882,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
     <div class="grow"></div>
     <div class="ctl">版本
       <div class="seg" id="segV" role="group" aria-label="版本">
-        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button><button id="v-bamboo" data-v="bamboo">竹简</button><button id="v-ink" data-v="ink">水墨</button><button id="v-real" data-v="real">拟物</button><button id="v-land" data-v="land">风景</button>
+        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button><button id="v-bamboo" data-v="bamboo">竹简</button><button id="v-ink" data-v="ink">水墨</button><button id="v-clay" data-v="clay">3D</button><button id="v-city" data-v="city">城市</button>
       </div>
     </div>
     <div class="ctl">主题
@@ -915,7 +900,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
       <div class="board" data-v="warm" id="board">
         <div class="scene" aria-hidden="true"></div>
         <div class="frame-deco"></div>
-        <div class="world" id="world"><svg class="edges" id="edges"></svg></div>
+        <div class="tilt"><div class="world" id="world"><svg class="edges" id="edges"></svg></div></div>
         <nav class="rail"><span class="on">第一张白板</span><span>KV cache</span><span>prefill · decode</span></nav>
         <div class="over tb-left"><div class="pill"><span class="bname"><small class="eyebrow">NANO-VLLM · ENGINE</small><span class="bn">第一张白板</span><svg class="ico chev" viewBox="0 0 16 16"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg></span></div></div>
         <div class="over tb-right"><div class="pill">
@@ -1048,6 +1033,9 @@ function drawEdges() {
     if (CFG.route === 'elbow') {
       const xm = x1 + (x2 - x1) * (+i === 1 ? 0.4 : 0.55);
       d = `M${x1} ${y1} H${xm} V${y2} H${x2}`; mx = xm; my = (y1 + y2) / 2;
+    } else if (CFG.route === 'street') { // 像街道：横平竖直，拐角是圆的
+      const xm = x1 + (x2 - x1) * (+i === 1 ? 0.32 : 0.68), r = Math.min(16, Math.abs(y2 - y1) / 2), s = y2 > y1 ? 1 : -1;
+      d = `M${x1} ${y1} H${xm - r} Q${xm} ${y1} ${xm} ${y1 + s * r} V${y2 - s * r} Q${xm} ${y2} ${xm + r} ${y2} H${x2}`; mx = xm; my = (y1 + y2) / 2;
     } else if (CFG.route === 'sag') { // 线是软的，两头钉住，中间往下垂
       const xm = (x1 + x2) / 2, cy = Math.max(y1, y2) + (CFG.sag || 50);
       d = `M${x1} ${y1} Q${xm} ${cy} ${x2} ${y2}`; mx = xm; my = (y1 + 2 * cy + y2) / 4;
@@ -1056,7 +1044,7 @@ function drawEdges() {
       d = `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
       mx = (x1 + 3 * (x1 + dx) + 3 * (x2 - dx) + x2) / 8; my = (y1 + y2) / 2;
     }
-    svg += `<path class="edge ${t.file}" d="${d}"/>`;
+    svg += (CFG.layers || ['']).map(l => `<path class="edge ${l} ${t.file}" d="${d}"/>`).join('');
     if (CFG.head === 'triangle') svg += `<path class="ahead fill ${t.file}" d="M${x2 + 2} ${y2} l-8 -4 v8 z"/>`;
     else if (CFG.head === 'pin') svg += `<circle class="ahead pin" cx="${x2}" cy="${y2}" r="5"/>`;
     else if (CFG.head === 'none') {}
@@ -1101,8 +1089,30 @@ function drafting(cards, world) {
   world.append(l1, l2);
 }
 
-function decorate(cards, world) { world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); }
-const BASECFG = Object.assign({}, CFG), VCFG = {"v1": {"head": "triangle"}, "warm": {}, "graphite": {}, "draft": {"route": "elbow", "head": "triangle", "port": "square", "gap": 150}, "soft": {"head": "dot", "gap": 150, "pad": {"l": 84, "r": 28, "t": 96, "b": 84}}, "color": {"head": "triangle", "gap": 150}, "news": {"head": "triangle", "gap": 150, "pad": {"l": 40, "r": 40, "t": 120, "b": 80}}, "art": {"port": "diamond", "gap": 150, "pad": {"l": 44, "r": 44, "t": 100, "b": 84}}, "bamboo": {"head": "dot", "gap": 140, "pad": {"l": 28, "r": 28, "t": 70, "b": 72}}, "ink": {"head": "dot", "gap": 150, "pad": {"l": 32, "r": 32, "t": 78, "b": 76}, "defs": "<defs><filter id=\"brush\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"2\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"2.4\"/></filter></defs>"}, "real": {"route": "sag", "head": "pin", "port": "pin", "sag": 46, "gap": 150, "pad": {"l": 50, "r": 50, "t": 84, "b": 92}, "defs": "<defs><radialGradient id=\"pinR\" cx=\".35\" cy=\".35\" r=\".7\"><stop offset=\"0\" stop-color=\"#ff9a8a\"/><stop offset=\".45\" stop-color=\"#d42a1c\"/><stop offset=\"1\" stop-color=\"#7c1209\"/></radialGradient><filter id=\"pinShadow\" x=\"-1\" y=\"-1\" width=\"3\" height=\"3\"><feDropShadow dx=\"1.5\" dy=\"2.5\" stdDeviation=\"1.2\" flood-opacity=\".45\"/></filter><filter id=\"yarnShadow\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feDropShadow dx=\"0\" dy=\"3\" stdDeviation=\"1.4\" flood-opacity=\".3\"/></filter></defs>"}, "land": {"gap": 150, "pad": {"l": 28, "r": 28, "t": 74, "b": 74}}}, NOTES = {"v1": "<h2>v1 现状</h2><p>整体干净，但材质偏「网页 div」：实线边框、同一种阴影、强调色用得太多。</p>", "warm": "<h2>暖墨 · 已选定</h2><p>延续 v1 的暖灰和陶土色，把材质做实：0.5px 发丝线加三层阴影，工具条磨砂半透明，强调色只留给「选中」和「箭头出发的那一行」。</p>", "graphite": "<h2>石墨</h2><p>中性灰，强调色跟随 VS Code 的 focus 颜色，和编辑器融为一体，最接近原生 macOS app。</p>", "draft": "<h2>制图</h2><p>参考 Merit 的唇笔图纸。只有墨和线，没有颜色、阴影和圆角。</p><ul>\n<li><b>箭头</b>走直角虚线，像标注引线；起点是代码行右侧的小方块。</li>\n<li><b>便签</b>是细节标注框，用点线引到某一行。</li>\n<li><b>新版本</b>是实心方块，旧版本是空心方块。</li>\n<li><b>选中</b>是外面再套一圈虚线框。</li></ul>\n<h3>取舍</h3><ul><li>最安静，截图放进文档最好看。</li><li>没有颜色，卡片一多，状态不容易一眼看到。</li><li>缩小后 1px 细线会发虚，要按缩放加粗。</li></ul>", "soft": "<h2>柔光</h2><p>参考白色手表商店那张：大留白、细字重、大面积柔和投影，珊瑚色只用在一个圆按钮和几个小点上。底色带一点暖。</p><ul>\n<li><b>代码</b>放在卡片里一块下沉的凹槽中，这是「拟物」的部分。</li>\n<li><b>白板列表</b>做成左侧竖排的标签栏，当前白板下面一条珊瑚短线。</li>\n<li><b>讲解</b>是右下角的珊瑚色圆形按钮。</li>\n<li><b>新版本</b>是一颗珊瑚色小圆点，像购物车角标。</li></ul>\n<h3>取舍</h3><ul><li>最「产品化」，演示时很体面。</li><li>大投影和大圆角很占地方，半宽 webview 里卡片之间要拉得更开。</li><li>深色主题下拟物感会弱很多。</li></ul>", "color": "<h2>多彩卡片</h2><p>参考 Marigold：奶油底、2px 墨线、直角，颜色成块使用。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 橙、scheduler 黄、model_runner 青，卡片顶部是这块颜色加一个小图形和大号编号。</li>\n<li><b>卡片头</b>分成格子：步骤号、文件名、版本状态；底部格子放行号区间和「跟进到最新」。</li>\n<li><b>斜体衬线</b>那一行是卡片的一句话说明，相当于标题下的批注。</li>\n<li><b>讲解进度</b>是右上角的小方格，走到哪一步就填哪一格。</li>\n<li><b>选中</b>是右下方的实心偏移投影。</li></ul>\n<h3>取舍</h3><ul><li>辨识度最高，一眼分清哪张卡来自哪个文件。</li><li>颜色块占高度，卡片一多会很热闹；文件超过 6–8 个时颜色要复用。</li></ul>", "news": "<h2>报纸</h2><p>新闻纸底、黑色油墨，整块白板排成一张报纸的版面。</p><ul>\n<li><b>白板名</b>是报头：哥特体报名，下面一行期号和提交号，再加一道双线。</li>\n<li><b>每张卡片是一篇报道</b>：顶部粗线，眉题写「第 1.1 版 · 文件名」，函数名是粗体大标题，斜体导语是一句话说明。</li>\n<li><b>代码</b>用打字机字体，像报道里的引文。</li>\n<li><b>新版本</b>是一枚红色小印章，提示条是黑底的「快讯」。</li>\n<li><b>箭头上的数据</b>写成斜体，两边加破折号，像图片说明。</li></ul>\n<h3>取舍</h3><ul><li>阅读感最强，适合讲解或导出成长图。</li><li>标题和导语占高度，代码区域比暖墨小。</li><li>几乎没有颜色，状态要靠印章和粗细来区分。</li></ul>", "art": "<h2>艺术</h2><p>参考 Severance 晚宴海报：薄荷纸、深绿油墨、双线框、居中排版、字距拉得很开。</p><ul>\n<li><b>白板</b>四周有双线边框，背景是很淡的方格纸（这是风格的一部分，可以去掉）。</li>\n<li><b>卡片头</b>居中：编号和文件名、衬线大标题、文件 / 行 / 提交三栏信息。</li>\n<li><b>图注</b>写在卡片下方，像插图编号：FIG. 1.1 — THE BATCH IS CHOSEN。</li>\n<li><b>工具条</b>是一条深绿色色带，按钮是字距拉开的文字。</li></ul>\n<h3>取舍</h3><ul><li>最有个性，截图分享最好看。</li><li>头部很高，同样大小的白板能放的代码最少。</li><li>双线和网格缩小后会变成噪点。</li></ul>", "bamboo": "<h2>竹简</h2><p>每张卡片是一卷竹简：一行代码写在一根简上，简与简之间留一道缝，两道麻绳从头穿到尾。</p><ul>\n<li><b>首简</b>是左边一根宽简，竖着写编号「一之一」，用朱砂。</li>\n<li><b>标题简</b>写函数名，下面一根简用毛笔字写这张卡的一句话说明。</li>\n<li><b>朱砂</b>是唯一的颜色，相当于古人的批注：关键字、可展开的调用、箭头出发的那一行。</li>\n<li><b>连线</b>是麻绳，两头打结；箭头上的数据挂在一块小木签上。</li>\n<li><b>有新版本</b>是一枚朱红小印。</li></ul>\n<h3>取舍</h3><ul><li>代码行和竹简一一对应，行感很强，读长函数时眼睛不容易串行。</li><li>行距被竹简锁死在 19px，用户改字号时竹简要跟着变宽。</li><li>首简占掉 30px 宽度，半宽 webview 里代码区更窄。</li></ul>", "ink": "<h2>水墨</h2><p>宣纸底，下方几层淡墨远山，一缕雾慢慢左右飘（70 秒一个来回，几乎感觉不到）。浅色是一幅画；深色换成碑帖拓片，黑底白字。</p><ul>\n<li><b>编号</b>是一枚白文朱印「一之一」，盖在卡片右上角；<b>有新版本</b>是朱文印「新」，红框红字。</li>\n<li><b>标题下</b>是一笔干笔墨痕，代替分隔线。</li>\n<li><b>代码配色</b>用国画颜料：函数是花青，字符串和数字是赭石，关键字是浓墨，朱砂只标可展开的调用。</li>\n<li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>\n<li><b>工具条</b>是一小卷手卷，两头有木轴；白板名用行草写，后面盖一枚「白板」小印。</li></ul>\n<h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>", "real": "<h2>拟物 · 软木板</h2><p>模仿一块真实的调查板：软木底、木框，卡片是图钉钉上去的索引卡，用红毛线把它们串起来。</p><ul>\n<li><b>卡片</b>是横格索引卡：红线下是标题，蓝色横线正好落在每行代码下面；顶上贴一截和纸胶带，每张有一点点歪。</li>\n<li><b>代码</b>用打字机字体，红黑双色色带：关键字和能展开的调用打成红色。</li>\n<li><b>箭头出发的那一行</b>是黄色荧光笔划过的。</li>\n<li><b>连线</b>是红毛线，两头各一枚红图钉，中间自然下垂；箭头上的数据写在便利贴上。</li>\n<li><b>选中</b>就是卡片被拿起来一点，阴影变深。<b>有新版本</b>是一枚歪着盖的红色橡皮章。</li>\n<li><b>白板名</b>是标签机打出来的黑色凸字条，<b>工具条</b>是一把钢尺。</li></ul>\n<h3>取舍</h3><ul><li>最有趣、一眼就懂，适合讲解和分享。</li><li>倾斜、胶带、下垂的线都在提醒「这是一块板」，卡片多了会显得乱，可以只保留其中几样。</li><li>深色下是台灯照着的夜里的木板，纸卡还是亮的，和深色编辑器放在一起会有点跳。</li></ul>", "land": "<h2>风景 · 湖畔</h2><p>背景是一片会动的湖畔。浅色是清晨：云慢慢飘，湖面有波光，偶尔飞过一行鸟。深色是星夜：星星在闪，湖里有月亮的倒影。</p><ul>\n<li><b>卡片</b>是磨砂玻璃，风景从后面透出来，但被模糊过，不会干扰读代码。</li>\n<li><b>连线</b>是一条小径：一串点在慢慢往前走，方向就是调用方向。</li>\n<li><b>箭头上的数据</b>写在木头路牌上，箭头形的牌子指向被调用的那张卡。</li>\n<li><b>编号</b>前面是一个小山峰，像山里的路标；提示条也用这个山峰。</li>\n<li><b>动效</b>都只用 transform 和 opacity；系统开了「减少动态效果」就全部停下。</li></ul>\n<h3>取舍</h3><ul><li>最有氛围感，打开白板有种「到了某个地方」的感觉。</li><li>磨砂玻璃和常驻动画在 VS Code 里比别的风格耗电，适合做成可选项，并在白板不可见时暂停。</li><li>以后可以出好几幅风景，也可以按真实时间自动在清晨和星夜之间切换。</li></ul>"}, SCENES = {"ink": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMax slice\">\n  <defs>\n    <filter id=\"paper\" x=\"0\" y=\"0\" width=\"100%\" height=\"100%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"3\"/><feColorMatrix values=\"0 0 0 0 .5  0 0 0 0 .45  0 0 0 0 .38  0 0 0 .06 0\"/></filter>\n    <filter id=\"wash\" x=\"-10%\" y=\"-30%\" width=\"120%\" height=\"160%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".012 .05\" numOctaves=\"3\" seed=\"7\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"26\"/><feGaussianBlur stdDeviation=\"2.4\"/></filter>\n    <filter id=\"fog\"><feGaussianBlur stdDeviation=\"18\"/></filter>\n    <linearGradient id=\"fade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\".75\" stop-color=\"#fff\" stop-opacity=\".25\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0\"/></linearGradient>\n    <mask id=\"mfade\"><rect x=\"0\" y=\"0\" width=\"800\" height=\"640\" fill=\"url(#fade)\"/></mask>\n  </defs>\n  <rect width=\"800\" height=\"640\" filter=\"url(#paper)\"/>\n  <circle class=\"sun\" cx=\"420\" cy=\"78\" r=\"15\"/>\n  <g mask=\"url(#mfade)\">\n    <path class=\"mtn\" opacity=\".13\" filter=\"url(#wash)\" d=\"M-20 470 C60 420 110 360 170 380 S260 300 330 340 420 280 480 330 560 300 620 260 700 330 820 300 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".2\" filter=\"url(#wash)\" d=\"M-20 520 C40 500 90 430 150 455 S240 410 300 450 380 470 430 430 520 380 590 420 680 460 820 420 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".32\" filter=\"url(#wash)\" d=\"M420 640 C460 590 500 520 560 540 S650 480 700 520 760 560 820 540 V640Z\"/>\n  </g>\n  <ellipse class=\"mist\" cx=\"300\" cy=\"470\" rx=\"320\" ry=\"26\" filter=\"url(#fog)\" opacity=\".9\"/>\n  <ellipse class=\"mist\" cx=\"620\" cy=\"540\" rx=\"260\" ry=\"20\" filter=\"url(#fog)\" opacity=\".8\" style=\"animation-delay:-30s\"/>\n</svg>\n", "land": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMax slice\">\n  <defs>\n    <linearGradient id=\"lsky\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" style=\"stop-color:var(--sky1)\"/><stop offset=\".55\" style=\"stop-color:var(--sky2)\"/><stop offset=\".78\" style=\"stop-color:var(--sky3)\"/></linearGradient>\n    <linearGradient id=\"llake\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" style=\"stop-color:var(--lake1)\"/><stop offset=\"1\" style=\"stop-color:var(--lake2)\"/></linearGradient>\n    <radialGradient id=\"lorb\"><stop offset=\"0\" style=\"stop-color:var(--orb)\"/><stop offset=\".25\" style=\"stop-color:var(--orb)\"/><stop offset=\".3\" style=\"stop-color:var(--orb);stop-opacity:.35\"/><stop offset=\"1\" style=\"stop-color:var(--orb);stop-opacity:0\"/></radialGradient>\n    <filter id=\"lblur\"><feGaussianBlur stdDeviation=\"10\"/></filter>\n    <filter id=\"lrefl\"><feGaussianBlur stdDeviation=\"2 5\"/></filter>\n  </defs>\n  <rect width=\"800\" height=\"640\" fill=\"url(#llake)\"/>\n  <rect width=\"800\" height=\"480\" fill=\"url(#lsky)\"/>\n  <g class=\"stars\"><circle cx=\"362\" cy=\"185\" r=\"1\" style=\"animation-delay:-2.7s;animation-duration:6.4s\"/><circle cx=\"152\" cy=\"265\" r=\"1\" style=\"animation-delay:-3.8s;animation-duration:6.2s\"/><circle cx=\"75\" cy=\"100\" r=\"0.6\" style=\"animation-delay:-3.2s;animation-duration:6.6s\"/><circle cx=\"508\" cy=\"196\" r=\"1\" style=\"animation-delay:-5.8s;animation-duration:5.6s\"/><circle cx=\"492\" cy=\"52\" r=\"0.6\" style=\"animation-delay:-5.0s;animation-duration:3.3s\"/><circle cx=\"29\" cy=\"290\" r=\"1.2\" style=\"animation-delay:-0.2s;animation-duration:4.9s\"/><circle cx=\"352\" cy=\"278\" r=\"1.2\" style=\"animation-delay:-1.4s;animation-duration:4.2s\"/><circle cx=\"4\" cy=\"28\" r=\"1.5\" style=\"animation-delay:-1.7s;animation-duration:7.0s\"/><circle cx=\"797\" cy=\"277\" r=\"1.5\" style=\"animation-delay:-1.5s;animation-duration:6.0s\"/><circle cx=\"410\" cy=\"10\" r=\"1.2\" style=\"animation-delay:-4.6s;animation-duration:4.6s\"/><circle cx=\"677\" cy=\"128\" r=\"0.6\" style=\"animation-delay:-5.1s;animation-duration:3.0s\"/><circle cx=\"168\" cy=\"300\" r=\"1\" style=\"animation-delay:-2.3s;animation-duration:5.8s\"/><circle cx=\"336\" cy=\"187\" r=\"0.8\" style=\"animation-delay:-4.7s;animation-duration:4.1s\"/><circle cx=\"70\" cy=\"110\" r=\"1\" style=\"animation-delay:-4.5s;animation-duration:3.5s\"/><circle cx=\"197\" cy=\"33\" r=\"0.6\" style=\"animation-delay:-2.8s;animation-duration:4.9s\"/><circle cx=\"546\" cy=\"62\" r=\"1.2\" style=\"animation-delay:-1.1s;animation-duration:5.9s\"/><circle cx=\"105\" cy=\"212\" r=\"0.6\" style=\"animation-delay:-2.4s;animation-duration:7.0s\"/><circle cx=\"0\" cy=\"285\" r=\"1.2\" style=\"animation-delay:-1.8s;animation-duration:6.5s\"/><circle cx=\"169\" cy=\"130\" r=\"1.2\" style=\"animation-delay:-3.9s;animation-duration:3.4s\"/><circle cx=\"791\" cy=\"70\" r=\"0.8\" style=\"animation-delay:-0.1s;animation-duration:5.4s\"/><circle cx=\"664\" cy=\"127\" r=\"0.6\" style=\"animation-delay:-0.5s;animation-duration:5.3s\"/><circle cx=\"194\" cy=\"198\" r=\"0.8\" style=\"animation-delay:-3.7s;animation-duration:3.5s\"/><circle cx=\"470\" cy=\"275\" r=\"0.8\" style=\"animation-delay:-5.2s;animation-duration:3.7s\"/><circle cx=\"123\" cy=\"300\" r=\"1.2\" style=\"animation-delay:-1.5s;animation-duration:3.8s\"/><circle cx=\"592\" cy=\"310\" r=\"0.8\" style=\"animation-delay:-4.1s;animation-duration:4.6s\"/><circle cx=\"386\" cy=\"26\" r=\"0.6\" style=\"animation-delay:-0.6s;animation-duration:3.2s\"/><circle cx=\"770\" cy=\"79\" r=\"1.5\" style=\"animation-delay:-2.3s;animation-duration:4.7s\"/><circle cx=\"724\" cy=\"162\" r=\"1.2\" style=\"animation-delay:-1.1s;animation-duration:5.9s\"/><circle cx=\"55\" cy=\"75\" r=\"1.2\" style=\"animation-delay:-3.9s;animation-duration:5.5s\"/><circle cx=\"59\" cy=\"70\" r=\"0.8\" style=\"animation-delay:-4.5s;animation-duration:3.3s\"/><circle cx=\"329\" cy=\"82\" r=\"0.6\" style=\"animation-delay:-1.1s;animation-duration:4.5s\"/><circle cx=\"458\" cy=\"43\" r=\"0.8\" style=\"animation-delay:-0.8s;animation-duration:4.8s\"/><circle cx=\"265\" cy=\"242\" r=\"1.2\" style=\"animation-delay:-3.5s;animation-duration:3.6s\"/><circle cx=\"28\" cy=\"6\" r=\"0.8\" style=\"animation-delay:-4.2s;animation-duration:6.9s\"/><circle cx=\"17\" cy=\"210\" r=\"1\" style=\"animation-delay:-0.4s;animation-duration:4.2s\"/><circle cx=\"109\" cy=\"24\" r=\"1\" style=\"animation-delay:-3.3s;animation-duration:5.9s\"/><circle cx=\"720\" cy=\"243\" r=\"1.5\" style=\"animation-delay:-0.8s;animation-duration:6.9s\"/><circle cx=\"273\" cy=\"28\" r=\"1\" style=\"animation-delay:-5.4s;animation-duration:6.5s\"/><circle cx=\"334\" cy=\"261\" r=\"1\" style=\"animation-delay:-3.4s;animation-duration:5.5s\"/><circle cx=\"306\" cy=\"192\" r=\"1.2\" style=\"animation-delay:-0.4s;animation-duration:3.4s\"/><circle cx=\"92\" cy=\"85\" r=\"1\" style=\"animation-delay:-4.4s;animation-duration:4.6s\"/><circle cx=\"588\" cy=\"192\" r=\"1\" style=\"animation-delay:-2.8s;animation-duration:5.2s\"/><circle cx=\"415\" cy=\"170\" r=\"0.8\" style=\"animation-delay:-3.6s;animation-duration:4.9s\"/><circle cx=\"184\" cy=\"230\" r=\"1\" style=\"animation-delay:-4.7s;animation-duration:5.6s\"/><circle cx=\"389\" cy=\"296\" r=\"0.8\" style=\"animation-delay:-1.8s;animation-duration:5.7s\"/><circle cx=\"162\" cy=\"56\" r=\"0.8\" style=\"animation-delay:-4.0s;animation-duration:4.8s\"/><circle cx=\"713\" cy=\"108\" r=\"1.5\" style=\"animation-delay:-1.5s;animation-duration:5.5s\"/><circle cx=\"643\" cy=\"249\" r=\"0.8\" style=\"animation-delay:-5.3s;animation-duration:4.5s\"/><circle cx=\"466\" cy=\"104\" r=\"0.8\" style=\"animation-delay:-0.8s;animation-duration:4.4s\"/><circle cx=\"717\" cy=\"13\" r=\"0.6\" style=\"animation-delay:-5.7s;animation-duration:4.1s\"/><circle cx=\"135\" cy=\"149\" r=\"0.8\" style=\"animation-delay:-5.6s;animation-duration:6.3s\"/><circle cx=\"306\" cy=\"172\" r=\"1.5\" style=\"animation-delay:-1.9s;animation-duration:6.4s\"/><circle cx=\"786\" cy=\"149\" r=\"0.6\" style=\"animation-delay:-5.0s;animation-duration:4.1s\"/><circle cx=\"486\" cy=\"224\" r=\"0.8\" style=\"animation-delay:-3.4s;animation-duration:4.2s\"/><circle cx=\"633\" cy=\"6\" r=\"0.8\" style=\"animation-delay:-2.4s;animation-duration:3.8s\"/><circle cx=\"615\" cy=\"88\" r=\"0.8\" style=\"animation-delay:-4.8s;animation-duration:6.9s\"/><circle cx=\"92\" cy=\"36\" r=\"1.2\" style=\"animation-delay:-3.9s;animation-duration:6.2s\"/><circle cx=\"767\" cy=\"226\" r=\"0.8\" style=\"animation-delay:-4.9s;animation-duration:4.0s\"/><circle cx=\"571\" cy=\"249\" r=\"1.2\" style=\"animation-delay:-4.3s;animation-duration:3.7s\"/><circle cx=\"218\" cy=\"114\" r=\"1.5\" style=\"animation-delay:-5.7s;animation-duration:5.0s\"/><circle cx=\"797\" cy=\"53\" r=\"1.5\" style=\"animation-delay:-5.4s;animation-duration:3.3s\"/><circle cx=\"746\" cy=\"238\" r=\"0.8\" style=\"animation-delay:-2.7s;animation-duration:3.8s\"/><circle cx=\"710\" cy=\"2\" r=\"1.2\" style=\"animation-delay:-3.4s;animation-duration:6.5s\"/><circle cx=\"637\" cy=\"312\" r=\"1\" style=\"animation-delay:-2.0s;animation-duration:6.9s\"/><circle cx=\"79\" cy=\"286\" r=\"1.5\" style=\"animation-delay:-5.5s;animation-duration:3.5s\"/><circle cx=\"194\" cy=\"129\" r=\"0.6\" style=\"animation-delay:-5.9s;animation-duration:5.1s\"/><circle cx=\"633\" cy=\"106\" r=\"1.5\" style=\"animation-delay:-5.1s;animation-duration:4.4s\"/><circle cx=\"66\" cy=\"145\" r=\"1.2\" style=\"animation-delay:-2.5s;animation-duration:4.1s\"/><circle cx=\"736\" cy=\"72\" r=\"0.6\" style=\"animation-delay:-2.6s;animation-duration:3.1s\"/><circle cx=\"426\" cy=\"227\" r=\"0.8\" style=\"animation-delay:-2.8s;animation-duration:7.0s\"/></g>\n  <circle cx=\"330\" cy=\"105\" r=\"100\" fill=\"url(#lorb)\"/>\n  <g class=\"cloud c1\" filter=\"url(#lblur)\"><ellipse cx=\"160\" cy=\"120\" rx=\"110\" ry=\"18\"/><ellipse cx=\"220\" cy=\"108\" rx=\"60\" ry=\"16\"/></g>\n  <g class=\"cloud c2\" filter=\"url(#lblur)\"><ellipse cx=\"520\" cy=\"230\" rx=\"140\" ry=\"14\"/><ellipse cx=\"470\" cy=\"220\" rx=\"60\" ry=\"12\"/></g>\n  <g class=\"cloud c3\" filter=\"url(#lblur)\"><ellipse cx=\"320\" cy=\"300\" rx=\"160\" ry=\"10\"/></g>\n  <g class=\"birds\"><path d=\"M0 0 q4 -4 8 0 q4 -4 8 0\"/><path d=\"M22 -10 q3 -3 6 0 q3 -3 6 0\"/><path d=\"M14 12 q3 -3 6 0 q3 -3 6 0\"/></g>\n  <path class=\"m1\" d=\"M-10 480 L60 420 110 440 190 360 250 410 300 380 380 300 450 370 510 340 590 400 650 350 720 400 810 360 V480Z\"/>\n  <path class=\"m2\" d=\"M-10 480 L40 450 120 410 200 450 260 430 340 460 420 420 500 455 580 430 660 460 740 425 810 450 V480Z\"/>\n  <path class=\"m3\" d=\"M-10 482 L-5 450 L1 482 L5 449 L11 482 L11 445 L15 482 L18 441 L23 482 L28 452 L36 482 L39 449 L44 482 L50 446 L56 482 L59 446 L64 482 L68 461 L73 482 L79 447 L85 482 L91 443 L98 482 L102 453 L110 482 L117 460 L124 482 L124 442 L130 482 L134 455 L141 482 L144 454 L150 482 L154 443 L161 482 L167 444 L175 482 L182 458 L188 482 L195 443 L203 482 L208 457 L215 482 L220 456 L227 482 L229 441 L237 482 L239 453 L246 482 L247 446 L252 482 L256 449 L261 482 L264 455 L271 482 L279 451 L286 482 L292 460 L298 482 L300 458 L305 482 L310 458 L316 482 L319 455 L326 482 L334 454 L341 482 V482Z\" />\n  <path class=\"m3\" d=\"M560 482 L567 440 L573 482 L580 440 L588 482 L592 447 L597 482 L603 436 L610 482 L611 452 L617 482 L622 458 L628 482 L630 436 L635 482 L639 439 L644 482 L647 455 L654 482 L656 453 L664 482 L667 437 L675 482 L678 445 L686 482 L689 435 L695 482 L701 437 L709 482 L710 454 L716 482 L717 451 L722 482 L725 442 L729 482 L732 438 L738 482 L741 446 L747 482 L750 435 L755 482 L758 438 L765 482 L767 449 L774 482 L776 457 L781 482 L786 453 L794 482 L800 435 L808 482 L809 445 L815 482 V482Z\" />\n  <g class=\"refl\" filter=\"url(#lrefl)\" transform=\"translate(0 962) scale(1 -1)\">\n    <path class=\"m1\" d=\"M-10 480 L60 420 110 440 190 360 250 410 300 380 380 300 450 370 510 340 590 400 650 350 720 400 810 360 V480Z\"/>\n    <path class=\"m3\" d=\"M-10 482 L-5 450 L1 482 L5 449 L11 482 L11 445 L15 482 L18 441 L23 482 L28 452 L36 482 L39 449 L44 482 L50 446 L56 482 L59 446 L64 482 L68 461 L73 482 L79 447 L85 482 L91 443 L98 482 L102 453 L110 482 L117 460 L124 482 L124 442 L130 482 L134 455 L141 482 L144 454 L150 482 L154 443 L161 482 L167 444 L175 482 L182 458 L188 482 L195 443 L203 482 L208 457 L215 482 L220 456 L227 482 L229 441 L237 482 L239 453 L246 482 L247 446 L252 482 L256 449 L261 482 L264 455 L271 482 L279 451 L286 482 L292 460 L298 482 L300 458 L305 482 L310 458 L316 482 L319 455 L326 482 L334 454 L341 482 V482Z\" /><path class=\"m3\" d=\"M560 482 L567 440 L573 482 L580 440 L588 482 L592 447 L597 482 L603 436 L610 482 L611 452 L617 482 L622 458 L628 482 L630 436 L635 482 L639 439 L644 482 L647 455 L654 482 L656 453 L664 482 L667 437 L675 482 L678 445 L686 482 L689 435 L695 482 L701 437 L709 482 L710 454 L716 482 L717 451 L722 482 L725 442 L729 482 L732 438 L738 482 L741 446 L747 482 L750 435 L755 482 L758 438 L765 482 L767 449 L774 482 L776 457 L781 482 L786 453 L794 482 L800 435 L808 482 L809 445 L815 482 V482Z\" />\n  </g>\n  <ellipse class=\"orbref\" cx=\"330\" cy=\"560\" rx=\"18\" ry=\"60\" filter=\"url(#lrefl)\"/>\n  <g class=\"shims\"><rect class=\"shim\" x=\"638\" y=\"562\" width=\"84\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-2.2s\"/><rect class=\"shim\" x=\"626\" y=\"569\" width=\"85\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-3.8s\"/><rect class=\"shim\" x=\"352\" y=\"567\" width=\"96\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-2.8s\"/><rect class=\"shim\" x=\"182\" y=\"562\" width=\"103\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-1.3s\"/><rect class=\"shim\" x=\"496\" y=\"615\" width=\"100\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-3.0s\"/><rect class=\"shim\" x=\"269\" y=\"517\" width=\"74\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-1.4s\"/><rect class=\"shim\" x=\"389\" y=\"549\" width=\"39\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-0.0s\"/><rect class=\"shim\" x=\"314\" y=\"565\" width=\"34\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-4.6s\"/><rect class=\"shim\" x=\"417\" y=\"619\" width=\"40\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-0.5s\"/><rect class=\"shim\" x=\"183\" y=\"612\" width=\"67\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-4.6s\"/><rect class=\"shim\" x=\"576\" y=\"548\" width=\"50\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-2.5s\"/><rect class=\"shim\" x=\"291\" y=\"608\" width=\"105\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-4.6s\"/><rect class=\"shim\" x=\"405\" y=\"513\" width=\"64\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-0.1s\"/><rect class=\"shim\" x=\"241\" y=\"584\" width=\"108\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-0.2s\"/><rect class=\"shim\" x=\"176\" y=\"501\" width=\"53\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-3.6s\"/><rect class=\"shim\" x=\"232\" y=\"560\" width=\"70\" height=\"1.2\" rx=\".6\" style=\"animation-delay:-2.9s\"/></g>\n</svg>\n"};
+function decorate(cards, world) { world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); if (board.dataset.v === 'city') cityCars(); }
+const reduceMo = matchMedia('(prefers-reduced-motion: reduce)');
+// 城市：每条路上停两辆小车，车头朝调用方向，靠右行驶；不做常驻动画
+function cityCars() {
+  const ns = 'http://www.w3.org/2000/svg';
+  edges.querySelectorAll('path.road').forEach((p, i) => {
+    const len = p.getTotalLength();
+    [0.28 + i * .06, 0.74].forEach((f, k) => {
+      const a = p.getPointAtLength(len * f), b = p.getPointAtLength(len * f + 1), deg = Math.atan2(b.y - a.y, b.x - a.x) * 180 / Math.PI;
+      const car = document.createElementNS(ns, 'g'); car.setAttribute('class', `car k${(i + k) % 3}`);
+      car.setAttribute('transform', `translate(${a.x} ${a.y}) rotate(${deg}) translate(0 3)`);
+      car.innerHTML = '<rect class="beam" x="5" y="-3" width="16" height="6" rx="3"/><rect class="body" x="-6" y="-3" width="12" height="6" rx="2"/><rect class="roof" x="-2.5" y="-2.2" width="5" height="4.4" rx="1"/>';
+      edges.appendChild(car);
+    });
+  });
+}
+// 3D：鼠标在白板上移动时，桌面跟着轻轻转
+board.addEventListener('pointermove', e => {
+  if (board.dataset.v !== 'clay' || reduceMo.matches) return;
+  const r = board.getBoundingClientRect(), px = (e.clientX - r.left) / r.width - .5, py = (e.clientY - r.top) / r.height - .5;
+  board.style.setProperty('--ry', (px * 6).toFixed(2) + 'deg'); board.style.setProperty('--rx', (10 - py * 6).toFixed(2) + 'deg');
+});
+board.addEventListener('pointerleave', () => { board.style.removeProperty('--ry'); board.style.removeProperty('--rx'); });
+const BASECFG = Object.assign({}, CFG), VCFG = {"v1": {"head": "triangle"}, "warm": {}, "graphite": {}, "draft": {"route": "elbow", "head": "triangle", "port": "square", "gap": 150}, "soft": {"head": "dot", "gap": 150, "pad": {"l": 84, "r": 28, "t": 96, "b": 84}}, "color": {"head": "triangle", "gap": 150}, "news": {"head": "triangle", "gap": 150, "pad": {"l": 40, "r": 40, "t": 120, "b": 80}}, "art": {"port": "diamond", "gap": 150, "pad": {"l": 44, "r": 44, "t": 100, "b": 84}}, "bamboo": {"head": "dot", "gap": 140, "pad": {"l": 28, "r": 28, "t": 70, "b": 72}}, "ink": {"head": "dot", "gap": 150, "pad": {"l": 32, "r": 32, "t": 78, "b": 76}, "defs": "<defs><filter id=\"brush\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"2\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"2.4\"/></filter></defs>"}, "clay": {"head": "dot", "gap": 150, "pad": {"l": 40, "r": 40, "t": 80, "b": 84}, "defs": "<defs><radialGradient id=\"sph\" cx=\".35\" cy=\".3\" r=\".75\"><stop offset=\"0\" stop-color=\"#fff\" stop-opacity=\".9\"/><stop offset=\".35\" stop-color=\"currentColor\"/><stop offset=\"1\" stop-color=\"#000\" stop-opacity=\".35\"/></radialGradient><filter id=\"tubeShadow\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feDropShadow dx=\"0\" dy=\"5\" stdDeviation=\"3\" flood-opacity=\".22\"/></filter></defs>"}, "city": {"route": "street", "head": "none", "port": "circle", "gap": 170, "layers": ["casing", "road", "lane"], "pad": {"l": 32, "r": 32, "t": 74, "b": 76}}}, NOTES = {"v1": "<h2>v1 现状</h2><p>整体干净，但材质偏「网页 div」：实线边框、同一种阴影、强调色用得太多。</p>", "warm": "<h2>暖墨 · 已选定</h2><p>延续 v1 的暖灰和陶土色，把材质做实：0.5px 发丝线加三层阴影，工具条磨砂半透明，强调色只留给「选中」和「箭头出发的那一行」。</p>", "graphite": "<h2>石墨</h2><p>中性灰，强调色跟随 VS Code 的 focus 颜色，和编辑器融为一体，最接近原生 macOS app。</p>", "draft": "<h2>制图</h2><p>参考 Merit 的唇笔图纸。只有墨和线，没有颜色、阴影和圆角。</p><ul>\n<li><b>箭头</b>走直角虚线，像标注引线；起点是代码行右侧的小方块。</li>\n<li><b>便签</b>是细节标注框，用点线引到某一行。</li>\n<li><b>新版本</b>是实心方块，旧版本是空心方块。</li>\n<li><b>选中</b>是外面再套一圈虚线框。</li></ul>\n<h3>取舍</h3><ul><li>最安静，截图放进文档最好看。</li><li>没有颜色，卡片一多，状态不容易一眼看到。</li><li>缩小后 1px 细线会发虚，要按缩放加粗。</li></ul>", "soft": "<h2>柔光</h2><p>参考白色手表商店那张：大留白、细字重、大面积柔和投影，珊瑚色只用在一个圆按钮和几个小点上。底色带一点暖。</p><ul>\n<li><b>代码</b>放在卡片里一块下沉的凹槽中，这是「拟物」的部分。</li>\n<li><b>白板列表</b>做成左侧竖排的标签栏，当前白板下面一条珊瑚短线。</li>\n<li><b>讲解</b>是右下角的珊瑚色圆形按钮。</li>\n<li><b>新版本</b>是一颗珊瑚色小圆点，像购物车角标。</li></ul>\n<h3>取舍</h3><ul><li>最「产品化」，演示时很体面。</li><li>大投影和大圆角很占地方，半宽 webview 里卡片之间要拉得更开。</li><li>深色主题下拟物感会弱很多。</li></ul>", "color": "<h2>多彩卡片</h2><p>参考 Marigold：奶油底、2px 墨线、直角，颜色成块使用。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 橙、scheduler 黄、model_runner 青，卡片顶部是这块颜色加一个小图形和大号编号。</li>\n<li><b>卡片头</b>分成格子：步骤号、文件名、版本状态；底部格子放行号区间和「跟进到最新」。</li>\n<li><b>斜体衬线</b>那一行是卡片的一句话说明，相当于标题下的批注。</li>\n<li><b>讲解进度</b>是右上角的小方格，走到哪一步就填哪一格。</li>\n<li><b>选中</b>是右下方的实心偏移投影。</li></ul>\n<h3>取舍</h3><ul><li>辨识度最高，一眼分清哪张卡来自哪个文件。</li><li>颜色块占高度，卡片一多会很热闹；文件超过 6–8 个时颜色要复用。</li></ul>", "news": "<h2>报纸</h2><p>新闻纸底、黑色油墨，整块白板排成一张报纸的版面。</p><ul>\n<li><b>白板名</b>是报头：哥特体报名，下面一行期号和提交号，再加一道双线。</li>\n<li><b>每张卡片是一篇报道</b>：顶部粗线，眉题写「第 1.1 版 · 文件名」，函数名是粗体大标题，斜体导语是一句话说明。</li>\n<li><b>代码</b>用打字机字体，像报道里的引文。</li>\n<li><b>新版本</b>是一枚红色小印章，提示条是黑底的「快讯」。</li>\n<li><b>箭头上的数据</b>写成斜体，两边加破折号，像图片说明。</li></ul>\n<h3>取舍</h3><ul><li>阅读感最强，适合讲解或导出成长图。</li><li>标题和导语占高度，代码区域比暖墨小。</li><li>几乎没有颜色，状态要靠印章和粗细来区分。</li></ul>", "art": "<h2>艺术</h2><p>参考 Severance 晚宴海报：薄荷纸、深绿油墨、双线框、居中排版、字距拉得很开。</p><ul>\n<li><b>白板</b>四周有双线边框，背景是很淡的方格纸（这是风格的一部分，可以去掉）。</li>\n<li><b>卡片头</b>居中：编号和文件名、衬线大标题、文件 / 行 / 提交三栏信息。</li>\n<li><b>图注</b>写在卡片下方，像插图编号：FIG. 1.1 — THE BATCH IS CHOSEN。</li>\n<li><b>工具条</b>是一条深绿色色带，按钮是字距拉开的文字。</li></ul>\n<h3>取舍</h3><ul><li>最有个性，截图分享最好看。</li><li>头部很高，同样大小的白板能放的代码最少。</li><li>双线和网格缩小后会变成噪点。</li></ul>", "bamboo": "<h2>竹简</h2><p>每张卡片是一卷竹简：一行代码写在一根简上，简与简之间留一道缝，两道麻绳从头穿到尾。</p><ul>\n<li><b>首简</b>是左边一根宽简，竖着写编号「一之一」，用朱砂。</li>\n<li><b>标题简</b>写函数名，下面一根简用毛笔字写这张卡的一句话说明。</li>\n<li><b>朱砂</b>是唯一的颜色，相当于古人的批注：关键字、可展开的调用、箭头出发的那一行。</li>\n<li><b>连线</b>是麻绳，两头打结；箭头上的数据挂在一块小木签上。</li>\n<li><b>有新版本</b>是一枚朱红小印。</li></ul>\n<h3>取舍</h3><ul><li>代码行和竹简一一对应，行感很强，读长函数时眼睛不容易串行。</li><li>行距被竹简锁死在 19px，用户改字号时竹简要跟着变宽。</li><li>首简占掉 30px 宽度，半宽 webview 里代码区更窄。</li></ul>", "ink": "<h2>水墨</h2><p>宣纸底，下方几层淡墨远山，一缕雾慢慢左右飘（70 秒一个来回，几乎感觉不到）。浅色是一幅画；深色换成碑帖拓片，黑底白字。</p><ul>\n<li><b>编号</b>是一枚白文朱印「一之一」，盖在卡片右上角；<b>有新版本</b>是朱文印「新」，红框红字。</li>\n<li><b>标题下</b>是一笔干笔墨痕，代替分隔线。</li>\n<li><b>代码配色</b>用国画颜料：函数是花青，字符串和数字是赭石，关键字是浓墨，朱砂只标可展开的调用。</li>\n<li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>\n<li><b>工具条</b>是一小卷手卷，两头有木轴；白板名用行草写，后面盖一枚「白板」小印。</li></ul>\n<h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>", "clay": "<h2>3D · 黏土</h2><p>整块白板是一张稍微向后倾的桌面，卡片是有厚度的软黏土块，鼠标在白板上移动时桌面会跟着轻轻转一点（±3°），像在看一个实物模型。</p><ul>\n<li><b>卡片</b>是圆角厚块：顶面是浅色，侧面露出 6px 的厚度，底下有一圈落在桌面上的阴影。</li>\n<li><b>选中</b>就是卡片被抬起来：厚度和阴影都变大，边上一圈亮色。</li>\n<li><b>连线</b>是一根粗管子，起点和终点是两颗小球。</li>\n<li><b>箭头上的数据</b>和工具条按钮都是实体按键，按下去会真的往下沉。</li>\n<li><b>桌面</b>上有一层透视网格，倾斜时网格一起转，能看出空间感。</li></ul>\n<h3>取舍</h3><ul><li>卡片和连线都在同一个平面上，倾斜时不会错位；文字始终是正的，读代码不受影响。</li><li>倾斜会让底部的卡片稍微变大、顶部稍微变小，卡片多时远处的字会小一点，可以只在空闲时倾斜、拖动时回正。</li><li>厚度和阴影比较占地方，卡片之间要多留点空。</li></ul>", "city": "<h2>城市道路</h2><p>白板是一张平面城市地图：街区、河流、公园做底，调用关系画成真正的马路。</p><ul>\n<li><b>连线</b>是马路：灰色路面、白色路沿、黄色中线，横平竖直，拐角是圆的。路上停着两辆小车，车头朝调用方向。</li>\n<li><b>卡片标题</b>是蓝底白字的路牌；<b>编号</b>是红色的国道牌，比如 G1.1。</li>\n<li><b>箭头上的数据</b>写在绿色的高速指路牌上。</li>\n<li><b>有新版本</b>是橙白相间的施工牌。</li>\n<li><b>深色</b>是夜里的地图：路面暗下来，中线和车灯是暖黄色。</li></ul>\n<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>没有常驻动画：小车是停着的。会动的版本留到 standalone app。</li></ul>"}, SCENES = {"ink": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMax slice\">\n  <defs>\n    <filter id=\"paper\" x=\"0\" y=\"0\" width=\"100%\" height=\"100%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"3\"/><feColorMatrix values=\"0 0 0 0 .5  0 0 0 0 .45  0 0 0 0 .38  0 0 0 .06 0\"/></filter>\n    <filter id=\"wash\" x=\"-10%\" y=\"-30%\" width=\"120%\" height=\"160%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".012 .05\" numOctaves=\"3\" seed=\"7\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"26\"/><feGaussianBlur stdDeviation=\"2.4\"/></filter>\n    <filter id=\"fog\"><feGaussianBlur stdDeviation=\"18\"/></filter>\n    <linearGradient id=\"fade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\".75\" stop-color=\"#fff\" stop-opacity=\".25\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0\"/></linearGradient>\n    <mask id=\"mfade\"><rect x=\"0\" y=\"0\" width=\"800\" height=\"640\" fill=\"url(#fade)\"/></mask>\n  </defs>\n  <rect width=\"800\" height=\"640\" filter=\"url(#paper)\"/>\n  <circle class=\"sun\" cx=\"420\" cy=\"78\" r=\"15\"/>\n  <g mask=\"url(#mfade)\">\n    <path class=\"mtn\" opacity=\".13\" filter=\"url(#wash)\" d=\"M-20 470 C60 420 110 360 170 380 S260 300 330 340 420 280 480 330 560 300 620 260 700 330 820 300 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".2\" filter=\"url(#wash)\" d=\"M-20 520 C40 500 90 430 150 455 S240 410 300 450 380 470 430 430 520 380 590 420 680 460 820 420 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".32\" filter=\"url(#wash)\" d=\"M420 640 C460 590 500 520 560 540 S650 480 700 520 760 560 820 540 V640Z\"/>\n  </g>\n  <ellipse class=\"mist\" cx=\"300\" cy=\"470\" rx=\"320\" ry=\"26\" filter=\"url(#fog)\" opacity=\".9\"/>\n  <ellipse class=\"mist\" cx=\"620\" cy=\"540\" rx=\"260\" ry=\"20\" filter=\"url(#fog)\" opacity=\".8\" style=\"animation-delay:-30s\"/>\n</svg>\n", "city": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMid slice\">\n  <path class=\"river\" d=\"M-40 560 C120 520 210 600 330 560 S520 470 600 520 760 600 860 560 L860 620 C760 650 640 590 560 580 S380 640 300 625 120 590 -40 625Z\"/>\n  <path class=\"park\" d=\"M60 70 h150 a14 14 0 0 1 14 14 v80 a14 14 0 0 1 -14 14 h-150 a14 14 0 0 1 -14 -14 v-80 a14 14 0 0 1 14 -14z\"/>\n  <path class=\"park\" d=\"M610 430 h120 a14 14 0 0 1 14 14 v50 a14 14 0 0 1 -14 14 h-120 a14 14 0 0 1 -14 -14 v-50 a14 14 0 0 1 14 -14z\"/>\n  <g class=\"trees\"><circle cx=\"90\" cy=\"110\" r=\"9\"/><circle cx=\"118\" cy=\"128\" r=\"11\"/><circle cx=\"160\" cy=\"100\" r=\"8\"/><circle cx=\"186\" cy=\"140\" r=\"10\"/><circle cx=\"640\" cy=\"465\" r=\"9\"/><circle cx=\"676\" cy=\"480\" r=\"11\"/><circle cx=\"712\" cy=\"458\" r=\"8\"/></g>\n  <g class=\"bldg\"><rect x=\"300\" y=\"60\" width=\"40\" height=\"28\" rx=\"3\"/><rect x=\"350\" y=\"60\" width=\"26\" height=\"40\" rx=\"3\"/><rect x=\"420\" y=\"70\" width=\"52\" height=\"24\" rx=\"3\"/><rect x=\"40\" y=\"420\" width=\"44\" height=\"30\" rx=\"3\"/><rect x=\"96\" y=\"410\" width=\"30\" height=\"44\" rx=\"3\"/><rect x=\"250\" y=\"440\" width=\"60\" height=\"22\" rx=\"3\"/><rect x=\"560\" y=\"70\" width=\"34\" height=\"34\" rx=\"3\"/><rect x=\"690\" y=\"90\" width=\"48\" height=\"26\" rx=\"3\"/></g>\n</svg>\n"};
 function setV(v) {
   board.dataset.v = v; board.querySelector('.scene').innerHTML = SCENES[v] || ''; CFG = Object.assign({}, BASECFG, VCFG[v]);
   document.querySelectorAll('#segV button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v));

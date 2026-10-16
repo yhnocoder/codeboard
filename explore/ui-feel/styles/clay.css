@@ -1,0 +1,75 @@
+/* 3D · 黏土：白板是一张略微后倾的桌面，鼠标移动时轻轻转动；卡片是有厚度的软黏土块，选中会抬起来；连线是粗管子，按钮是实体按键 */
+.s-clay {
+  --rx: 10deg; --ry: 0deg;
+  --bg: light-dark(#e7e8f1, #14151d);
+  --floor: light-dark(rgba(80,90,140,.1), rgba(150,165,255,.07));
+  --top: light-dark(#fbfbfe, #262938);
+  --top-2: light-dark(#f1f2f8, #1f2230);
+  --side: light-dark(#cdd1e2, #0c0e15);
+  --side-2: light-dark(#b9bed4, #08090e);
+  --ink: light-dark(#262a3b, #e8eaf4);
+  --ink-2: light-dark(#5d6380, #a9aec6);
+  --ink-3: light-dark(#9aa0ba, #6a7090);
+  --accent: light-dark(#ff7a59, #ff8f6e);
+  --accent-side: light-dark(#d9573a, #b8543c);
+  --tube: light-dark(#9ea6c8, #4b5170);
+  --selbg: color-mix(in srgb, var(--accent) 24%, transparent);
+  --ui: "Jost", "Helvetica Neue", "PingFang SC", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --k-kw: light-dark(#7c4dd6, #c3a5ff); --k-fn: light-dark(#2a6fd6, #8fbaff); --k-str: light-dark(#23905e, #84dbaa);
+  --k-com: light-dark(#a2a8c0, #616884); --k-num: light-dark(#d9573a, #ffaa8a); --k-self: light-dark(#c03f7c, #f59ac4); --k-p: light-dark(#8c92ad, #8389a6);
+  --thick: 0 1px 0 var(--side), 0 2px 0 var(--side), 0 3px 0 var(--side), 0 4px 0 var(--side), 0 5px 0 var(--side-2), 0 6px 0 var(--side-2);
+  --ground: 0 16px 22px -10px light-dark(rgba(50,60,110,.35), rgba(0,0,0,.7));
+  perspective: 1500px; perspective-origin: 50% 30%;
+  background: radial-gradient(120% 80% at 50% 0%, light-dark(#f4f5fa, #1d1f2b), var(--bg));
+}
+.s-clay .tilt { transform: rotateX(var(--rx)) rotateY(var(--ry)); transform-origin: 50% 55%; transition: transform calc(var(--t, 1) * 700ms) cubic-bezier(.2, .8, .2, 1); }
+.s-clay .tilt::before { content: ""; position: absolute; inset: -40% -30%; pointer-events: none;
+  background-image: linear-gradient(var(--floor) 1px, transparent 1px), linear-gradient(90deg, var(--floor) 1px, transparent 1px); background-size: 48px 48px;
+  -webkit-mask: radial-gradient(closest-side, #000 40%, transparent); mask: radial-gradient(closest-side, #000 40%, transparent); }
+@media (prefers-reduced-motion: reduce) { .s-clay .tilt { transition: none; } }
+.s-clay .card { background: linear-gradient(180deg, var(--top), var(--top-2)); border-radius: 16px; overflow: visible;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.6), var(--thick), var(--ground); transition: box-shadow calc(var(--t, 1) * 260ms) cubic-bezier(.2, .8, .2, 1), translate calc(var(--t, 1) * 260ms) cubic-bezier(.2, .8, .2, 1); }
+.s-clay .card.sel { translate: 0 -5px; box-shadow: inset 0 1px 0 rgba(255,255,255,.6), 0 0 0 2px var(--accent), var(--thick), 0 7px 0 var(--side-2), 0 9px 0 var(--side-2), 0 11px 0 var(--side-2), 0 30px 34px -12px light-dark(rgba(50,60,110,.45), rgba(0,0,0,.8)); }
+.s-clay .chead { height: 40px; padding: 0 14px; gap: 9px; }
+.s-clay .step { min-width: 24px; height: 22px; padding: 0 6px; border-radius: 7px; display: inline-flex; align-items: center; justify-content: center;
+  font: 600 11px var(--ui); color: #fff; background: var(--accent); box-shadow: 0 2px 0 var(--accent-side); }
+.s-clay .ctitle { font: 600 13.5px var(--ui); color: var(--ink); }
+.s-clay .cpath { font: 400 11.5px var(--ui); color: var(--ink-3); }
+.s-clay .rev { font: 10px var(--mono); color: var(--ink-3); }
+.s-clay .rev.new { font: 500 11px var(--ui); color: var(--accent); }
+.s-clay .rev.new i { width: 8px; height: 8px; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #fff 0 15%, var(--accent) 45%, var(--accent-side)); }
+/* 代码在卡片顶面里压出来的一个浅槽 */
+.s-clay .code { margin: 0 8px 10px; padding: 7px 0 9px; border-radius: 10px; background: var(--top-2); font: 10.5px/19px var(--mono); color: var(--ink);
+  box-shadow: inset 0 2px 3px light-dark(rgba(60,70,120,.12), rgba(0,0,0,.45)), inset 0 -1px 0 rgba(255,255,255,.35); }
+.s-clay .gutter .no { width: 34px; padding-right: 10px; color: var(--ink-3); }
+.s-clay .hlrow { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.s-clay .no.link { color: var(--accent); font-weight: 600; }
+.s-clay .kw { color: var(--k-kw); } .s-clay .fn { color: var(--k-fn); } .s-clay .str { color: var(--k-str); } .s-clay .com { color: var(--k-com); }
+.s-clay .num { color: var(--k-num); } .s-clay .self { color: var(--k-self); } .s-clay .p { color: var(--k-p); }
+.s-clay .call { text-decoration: underline 2px color-mix(in srgb, var(--k-fn) 35%, transparent); text-underline-offset: 3px; }
+/* 管子 + 小球 */
+.s-clay .edges { color: var(--accent); }
+.s-clay .edge { fill: none; stroke: var(--tube); stroke-width: 6; stroke-linecap: round; filter: url(#tubeShadow); }
+.s-clay .ahead, .s-clay .port { fill: url(#sph); stroke: none; }
+.s-clay .ahead { r: 6px; } .s-clay .port { r: 6px; }
+/* 实体按键 */
+.s-clay .elabel, .s-clay .ib, .s-clay .tbtn { background: var(--top); color: var(--ink); border-radius: 10px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 0 var(--side), 0 2px 0 var(--side), 0 3px 0 var(--side-2), 0 8px 10px -6px light-dark(rgba(50,60,110,.4), rgba(0,0,0,.7)); }
+.s-clay .elabel { font: 500 10.5px var(--mono); padding: 5px 10px; }
+.s-clay .ib, .s-clay .tbtn { height: 30px; font: 500 12.5px var(--ui); transition: translate 60ms, box-shadow 60ms; }
+.s-clay .ib { width: 32px; }
+.s-clay .ib:active, .s-clay .tbtn:active { translate: 0 3px; box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 0 0 var(--side), 0 2px 4px -2px rgba(0,0,0,.3); }
+.s-clay .pill { background: none; gap: 8px; }
+.s-clay .tb-left .pill { background: var(--top); padding: 6px 12px; border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,.7), 0 1px 0 var(--side), 0 2px 0 var(--side), 0 3px 0 var(--side-2), 0 10px 14px -8px rgba(50,60,110,.4); }
+.s-clay .bn { font: 600 14px var(--ui); color: var(--ink); }
+.s-clay .chev { color: var(--ink-3); }
+.s-clay #btnPresent { background: var(--accent); color: #fff; box-shadow: inset 0 1px 0 rgba(255,255,255,.4), 0 1px 0 var(--accent-side), 0 2px 0 var(--accent-side), 0 3px 0 var(--accent-side), 0 8px 10px -6px rgba(200,70,40,.6); }
+.s-clay #btnPresent .ico { fill: currentColor; }
+.s-clay .dock { bottom: 18px; }
+.s-clay .sep { width: 0; margin: 0 2px; }
+.s-clay .zoom { font: 500 11px var(--mono); color: var(--ink-2); min-width: 46px; }
+.s-clay .toast { bottom: 70px; background: var(--ink); color: var(--top); font: 500 12.5px var(--ui); padding: 9px 16px; border-radius: 12px;
+  box-shadow: 0 3px 0 light-dark(#0e1020, #000), 0 14px 20px -10px rgba(0,0,0,.5); }
+.s-clay .toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.s-clay .toast b { font-weight: 600; color: var(--accent); }
