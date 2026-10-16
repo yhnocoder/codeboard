@@ -27,6 +27,7 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
+      - run: npm run test:host -w codeboard-vscode --if-present # v0.1.5 起有宿主端测试
 
       - name: Chromium（harness 和截图比对用）
         run: |
