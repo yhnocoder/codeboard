@@ -60,6 +60,16 @@ export type PeekDef = {
   text: string[];
   seg: Segment; // Pin as Sidenote / Place on Board 用
   follow?: { label: string; line: number; col: number; path: string }; // 下一跳：config.max_num_batched_tokens · config.py:9
+  // 以下 v0.1.5 起；旧的宿主没有，白板按 start 连续行显示
+  kind?: "field" | "function" | "class" | "module" | "other"; // 源码部分按定义类型取（module 不放源码）
+  rows?: number[]; // html / text 每一行的行号（不连续时）；缺省 = start 起连续
+  head?: string; // 行上面的小标题：class Config
+  more?: number; // 「⋯ N more lines」
+  sig?: string; // hover 的签名：(variable) kvcache_block_size: int
+  sigHtml?: string; // 签名高亮后的 HTML
+  doc?: string; // hover 的文档（Markdown）
+  lib?: string; // 定义在 library code 里：包名（在 Study Scope 里时白板不标 library）
+  title?: string; // 标题里代替 文件:行（模块：torch/multiprocessing）
 };
 
 export type SearchItem =
@@ -115,7 +125,9 @@ export type BoardToHost =
   | { type: "openPath"; path: string; line?: number }
   | { type: "openLink"; url: string }
   /** 点调用展开：回 ExpandResult */
-  | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: { path: string; line: number } }
+  | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick }
+  /** 调用接到已有的卡上：算变量候选（回 Var[]） */
+  | { type: "callVars"; req: number; seg: Segment; line: number; col: number; name: string; target: Segment }
   | { type: "peek"; req: number; seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } } // 回 PeekResult
   | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
@@ -144,6 +156,9 @@ export type BoardToHost =
   | { type: "openBoard"; id: string; card?: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
   | { type: "pickFile"; req: number; kind: "image" };
+
+/** 指定展开哪个定义。rel = path 相对 seg 自己的来源根（类卡点成员；工作区外的文件也对），qual = 按符号找（钉的版本行号可能挪了） */
+export type ExpandPick = { path: string; line: number; rel?: true; qual?: string };
 
 /** peek 的回答：找不到是 null */
 export type PeekResult = PeekDef | null;

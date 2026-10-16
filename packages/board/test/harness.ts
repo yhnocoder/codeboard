@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Page } from "playwright-core";
 import { uid, emptyBoard, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
-import { initAnalysis, analyze, symbolAt, varCandidates, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
+import { initAnalysis, analyze, symbolAt, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 
 export const REPO = path.resolve(__dirname, "../.."); // 打包后在 test-out/harness/
 const NV = path.join(REPO, "examples/nano-vllm");
@@ -37,7 +37,12 @@ export function viewOf(seg: Segment): SegView {
   for (let l = seg.start; l <= seg.end; l++) {
     const t = seg.text[l - seg.start] ?? "";
     const cs = (a?.calls ?? []).filter((c) => c.line === l);
-    const marks = cs.map((c) => { calls.push({ line: l, col: c.col, end: c.end, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch }); return { col: c.col, end: c.end, idx: calls.length - 1 }; });
+    const marks = cs.map((c) => {
+      // 工作区只有 nanovllm：其余 import 进来的包是 library
+      const p = a && importPkg(a, c), pkg = p && p !== "nanovllm" ? p : undefined;
+      calls.push({ line: l, col: c.col, end: c.end, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch, pkg });
+      return { col: c.col, end: c.end, idx: calls.length - 1, pkg };
+    });
     const toks = tokenize(t);
     html.push(renderLine(toks, marks));
     flags.push(a?.flags[l - 1] ?? (t.trim() ? 0 : F_BLANK));
@@ -111,7 +116,7 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
       }
       case "save": board = m.board; break;
       case "expand": {
-        const want = m.pick ? allSyms().find((x) => x.f === m.pick!.path && x.s.defLine === m.pick!.line) : undefined;
+        const want = m.pick ? allSyms().find((x) => x.f === m.pick!.path && (x.s.defLine === m.pick!.line || x.s.qual === m.pick!.qual)) : undefined;
         let cands = want ? [want] : allSyms().filter((x) => x.s.name === m.name || (m.name === x.s.qual.split(".")[0] && x.s.kind === "class"));
         if (m.name === "__init__" || /^[A-Z]/.test(m.name)) cands = cands.filter((x) => x.s.kind === "class" ? true : x.s.name === m.name);
         if (!cands.length) return reply(m.req, { none: true, reason: `No definition found for ${m.name}()` });
@@ -137,13 +142,13 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
         const c = symCard(x.f, x.s);
         return reply(m.req, { card: c, views: { [c.segments[0].id]: viewOf(c.segments[0]) }, w: 560 });
       }
-      case "peek": {
-        const x = allSyms().find((k) => k.s.name === m.word);
-        if (!x) return reply(m.req, { none: "No definition found", word: m.word });
-        const f = files.get(x.f)!;
-        const start = Math.max(1, x.s.defLine - 1), end = Math.min(f.text.length, x.s.defLine + 3);
-        const seg: Segment = { id: uid("s"), src: { kind: "repo", repo: "" }, path: x.f, lang: "python", start, end, text: f.text.slice(start - 1, end), version: { kind: "git", commit: "bb823b3" } };
-        return reply(m.req, { path: x.f, line: x.s.defLine, start, html: viewOf(seg).html, text: seg.text, seg });
+      case "peek": return reply(m.req, peekMock(m.seg, m.word));
+      case "callVars": {
+        const call = files.get(m.seg.path)?.a.calls.find((k) => k.line === m.line && k.col === m.col);
+        const t = m.target.symbol && allSyms().find((x) => x.s.qual === m.target.symbol!.qual);
+        if (!call || !t) return reply(m.req, []);
+        const callee = t.s.kind === "class" ? allSyms().find((x) => x.s.qual === `${t.s.qual}.__init__`)?.s ?? t.s : t.s;
+        return reply(m.req, varCandidates(call, callee));
       }
       case "diff": {
         const seg = m.seg;
@@ -161,6 +166,41 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
   await page.waitForFunction(() => document.querySelector(".board"));
   await page.waitForTimeout(300);
   return { page, board: () => board, sent, post };
+}
+
+// ---------- 定义预览：按 peekPlan 取行，hover 用 docstring 扮演（library 用下面的假数据） ----------
+
+const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const TORCH_MP = "torch.multiprocessing is a wrapper around the native [multiprocessing](https://docs.python.org/3/library/multiprocessing.html) module.\n\nIt registers custom reducers, that use shared memory to provide shared views on the same data in different processes. Once the tensor/storage is moved to shared_memory (see `share_memory_()`), it will be possible to send it to other processes without making any copies.\n\nThe API is 100% compatible with the original module - it's enough to change `import multiprocessing` to `import torch.multiprocessing` to have all the tensors sent through the queues or shared via other mechanisms, moved to shared memory.";
+const LIB_FN = ["    def get_context(self, method=None):", "        if method is None:", "            if self._actual_context is None:", "                self._actual_context = self._default_context", "            return self._actual_context", "        else:", "            return super().get_context(method)"];
+const libSeg = (path: string, text: string[], start: number): Segment => ({ id: uid("s"), src: { kind: "external", root: "/usr/lib/python3.12" }, path, lang: "python", start, end: start + text.length - 1, text, version: { kind: "hash", hash: "3a7b" } });
+
+export function peekMock(seg: Segment, word: string): any {
+  const src = files.get(seg.path);
+  const im = src?.a.imports.find((i) => i.name === word && !i.from);
+  if (im) {
+    const lib = im.module.split(".")[0];
+    return { path: im.module.replace(/\./g, "/") + "/__init__.py", line: 1, start: 1, text: [], html: [], seg: libSeg("torch/multiprocessing/__init__.py", ["# mypy: allow-untyped-defs"], 1), kind: "module", rows: [], sig: `(module) ${word}`, sigHtml: `<span class="p">(</span>module<span class="p">)</span> ${esc(word)}`, doc: im.module === "torch.multiprocessing" ? TORCH_MP : undefined, lib, title: im.module.replace(/\./g, "/") };
+  }
+  if (word === "get_context" && src?.text.some((l) => /mp\.get_context/.test(l))) {
+    const s = libSeg("multiprocessing/context.py", LIB_FN, 186);
+    return { path: "/usr/lib/python3.12/multiprocessing/context.py", line: 186, start: 186, text: LIB_FN.slice(0, 4), html: LIB_FN.slice(0, 4).map((t) => renderLine(tokenize(t))), seg: s, kind: "function", rows: [186, 187, 188, 189], more: 3, sig: "(method) def get_context(method: str | None = None) -> BaseContext", sigHtml: renderLine(tokenize("(method) def get_context(method: str | None = None) -> BaseContext")), lib: "multiprocessing" };
+  }
+  // 定义在哪：函数 / 类 → 类的字段 → self.x 赋值
+  let at: { f: string; line: number } | undefined;
+  const sym = allSyms().find((k) => k.s.name === word);
+  if (sym) at = { f: sym.f, line: sym.s.defLine };
+  const re = new RegExp(`^\\s+(self\\.)?${word}\\s*(:[^=]*)?=(?!=)`);
+  if (!at) for (const [f, x] of files) { const i = x.text.findIndex((l) => re.test(l)); if (i >= 0) { at = { f, line: i + 1 }; break; } }
+  if (!at) return { none: "No definition found", word };
+  const f = files.get(at.f)!;
+  const plan = peekPlan(f.a, f.text, at.line, { word });
+  const rows = plan.rows;
+  const s: Segment = { id: uid("s"), src: { kind: "repo", repo: "" }, path: at.f, lang: "python", start: rows[0], end: rows[rows.length - 1], text: f.text.slice(rows[0] - 1, rows[rows.length - 1]), version: { kind: "git", commit: "bb823b3" } };
+  return {
+    path: at.f, line: at.line, start: rows[0], rows, text: rows.map((l) => f.text[l - 1]), html: rows.map((l) => renderLine(tokenize(f.text[l - 1] ?? ""))), seg: s,
+    kind: plan.kind, head: plan.head, more: plan.more, sig: plan.sig, sigHtml: plan.sig ? renderLine(tokenize(plan.sig)) : undefined, doc: plan.doc,
+  };
 }
 
 export async function shot(h: Host, name: string) {

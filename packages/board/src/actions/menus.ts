@@ -20,18 +20,22 @@ import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { K, boardOffset, fitAll, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
 import { addPlain, openVars, startConnect } from "./links";
-import { attachCall, calleeMatches, expandCall, startWalk, tidyFlow } from "./flow";
+import { addToStudyScope, attachCall, calleeMatches, expandCall, isLibCall, startWalk, tidyFlow } from "./flow";
 import { commitMenu } from "./versions";
 import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge } from "./edit";
 import { newFreeCode, newNote, pasteText } from "./create";
-import { openAddNote, setNoteBg } from "./notes";
+import { openAddNote, setNoteBg, showPeek } from "./notes";
 
 export function callMenu(cardId: string, segId: string, call: CallSpan, x: number, y: number) {
   selectCard(cardId);
   const f = cardById(cardId)!;
   const cands = allCodeCards(state.board).filter((k) => k.id !== cardId && calleeMatches(k, call));
+  const lib = isLibCall(call);
+  const el = document.elementFromPoint(x, y)?.closest(".call");
   const items: Item[] = [
-    { label: "Expand", kbd: "Click", run: () => expandCall(cardId, segId, call) },
+    ...(el ? [{ label: "Peek Definition", run: () => showPeek(el, cardId, segId, call.line, call.col, call.name, true) }] : []),
+    lib ? { label: "Expand Anyway", kbd: K.alt.endsWith("+") ? `${K.alt}Click` : `${K.alt} Click`, run: () => expandCall(cardId, segId, call) } : { label: "Expand", kbd: "Click", run: () => expandCall(cardId, segId, call) },
+    ...(lib ? [{ label: `Add "${call.pkg}" to Study Scope`, run: () => addToStudyScope(call.pkg!) }] : []),
     {
       label: "Link to Existing Card", kbd: "Drag", sub: cands.length ? cands.map((k) => {
         const n = flows().byId.get(k.id);

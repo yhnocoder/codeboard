@@ -313,7 +313,86 @@ const S: Record<string, () => Promise<void>> = {
     await shot(h, "peek-01");
     await h.page.context().browser()!.close();
   },
+  // #3 #4：字段 / 函数 / 模块 / library 四种预览
+  async peekkinds() {
+    const h = await open({ board: boardWith("LLMEngine.__init__", "ModelRunner.__init__"), light });
+    const cases: [string, string, string, string][] = [
+      ["field", "LLMEngine.__init__", "config.kvcache_block_size", "kvcache_block_size"],
+      ["function", "ModelRunner.__init__", "load_model(self.model", "load_model"],
+      ["module", "LLMEngine.__init__", "mp.get_context", "mp"],
+      ["library", "LLMEngine.__init__", "mp.get_context", "get_context"],
+    ];
+    for (const [k, card, line, word] of cases) {
+      await h.page.mouse.move(5, 5); await h.page.waitForTimeout(500);
+      await hoverWord(h, card, line, word); await h.page.waitForTimeout(1100);
+      const pop = h.page.locator(".pop.k-peek");
+      const info = await pop.evaluate((e) => ({
+        title: e.querySelector(".pt")?.textContent, sig: e.querySelector(".pk-sig")?.textContent, doc: !!e.querySelector(".pk-doc"),
+        rows: [...e.querySelectorAll(".pl .no")].map((x) => x.textContent).join(","), hl: e.querySelector(".pl.hl .no")?.textContent,
+        more: e.querySelector(".pk-more")?.textContent, lib: e.querySelector(".lib-tag")?.textContent, head: e.querySelector(".pk-head")?.textContent,
+      })).catch(() => null);
+      console.log(k, JSON.stringify(info));
+      await shot(h, `peekkinds-${k}`);
+    }
+    await h.page.context().browser()!.close();
+  },
+  // #34：library 调用不画下划线、点了不展开；⌥ 点击 / 右键 Expand Anyway；加进 Study Scope 后恢复
+  async libcalls() {
+    const h = await open({ board: boardWith("ModelRunner.warmup_model"), light });
+    const lib = h.page.locator(`.card .src .call[data-p="torch"]`).first();
+    const deco = () => lib.evaluate((e) => getComputedStyle(e).textDecorationLine);
+    console.log("lib calls:", await h.page.locator(".card .src .call[data-p]").count(), "project calls:", await h.page.locator(".card .src .call:not([data-p])").count(), "lib deco:", await deco());
+    await shot(h, "libcalls-01");
+    await lib.click(); await h.page.waitForTimeout(700);
+    console.log("after click: cards", h.board().cards.length, "expand sent", h.sent.filter((m) => m.type === "expand").length);
+    await lib.click({ modifiers: ["Alt"] }); await h.page.waitForTimeout(700);
+    console.log("after alt-click: expand sent", h.sent.filter((m) => m.type === "expand").length);
+    await h.page.mouse.move(5, 5); await h.page.waitForTimeout(400);
+    await lib.click({ button: "right" }); await h.page.waitForTimeout(400);
+    console.log("menu:", JSON.stringify(await h.page.locator(".ctx button").allTextContents()));
+    await shot(h, "libcalls-02-menu");
+    await h.page.locator(".ctx button", { hasText: "Study Scope" }).first().click(); await h.page.waitForTimeout(500);
+    console.log("setSetting:", JSON.stringify(h.sent.filter((m) => m.type === "setSetting")), "deco now:", await deco());
+    await shot(h, "libcalls-03-scoped");
+    await h.page.context().browser()!.close();
+  },
+  // #32：拖到已有的卡上也有变量候选
+  async attachvars() {
+    const h = await open({ board: boardWith("ModelRunner.__init__", "Qwen3ForCausalLM"), light });
+    const c = await callEl(h, "Qwen3ForCausalLM").boundingBox();
+    const t = await h.page.locator(".card").nth(1).locator(".chead").boundingBox();
+    await h.page.mouse.move(c!.x + 10, c!.y + c!.height / 2); await h.page.mouse.down();
+    await h.page.mouse.move(t!.x + 60, t!.y + 40, { steps: 10 }); await h.page.mouse.up();
+    await h.page.waitForTimeout(2500);
+    console.log("links:", JSON.stringify(h.board().links.map((l: any) => ({ kind: l.kind, cands: l.cands }))));
+    await shot(h, "attachvars");
+    await h.page.context().browser()!.close();
+  },
 };
+
+/** 把鼠标放到某张卡里某一行（含 line 文本）上的 word 中间 */
+async function hoverWord(h: Host, card: string, line: string, word: string) {
+  const pt = await h.page.evaluate(([card, line, word]) => {
+    for (const c of document.querySelectorAll(".card")) {
+      if (!c.querySelector(".chead")?.textContent?.includes(card)) continue;
+      for (const l of c.querySelectorAll(".src .l")) {
+        const t = l.textContent ?? "";
+        const i = t.indexOf(line);
+        if (i < 0) continue;
+        const at = i + line.indexOf(word) + 1;
+        const w = document.createTreeWalker(l, NodeFilter.SHOW_TEXT);
+        let n = 0;
+        for (let x = w.nextNode() as Text | null; x; x = w.nextNode() as Text | null) {
+          if (n + x.length > at) { const r = document.createRange(); r.setStart(x, at - n); r.setEnd(x, at - n + 1); const b = r.getBoundingClientRect(); return { x: b.x + b.width / 2, y: b.y + b.height / 2 }; }
+          n += x.length;
+        }
+      }
+    }
+    return null;
+  }, [card, line, word]);
+  if (!pt) throw new Error(`hoverWord: ${line} not found`);
+  await h.page.mouse.move(pt.x - 3, pt.y); await h.page.mouse.move(pt.x, pt.y, { steps: 2 });
+}
 
 (async () => {
   await ready();

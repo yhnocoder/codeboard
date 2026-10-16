@@ -59,7 +59,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const t = e.target as HTMLElement;
   if (e.button === 1 || (e.button === 0 && spaceDown())) return startPan(e);
   if (e.button !== 0) return;
-  if (t.closest("[contenteditable], input, textarea, button, .call, .no, .grip, .hw, a.lnk, .lport, .eport")) return;
+  if (t.closest("[contenteditable], input, textarea, button, .call:not([data-p]), .no, .grip, .hw, a.lnk, .lport, .eport")) return; // library 调用（data-p）当普通文字
   if (connectFrom()) return finishConnect(e, id);
   if (A.picking()) { e.preventDefault(); e.stopPropagation(); const cb = A.takePick(); const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null; cb?.(colEl?.dataset.col ?? id); return; }
   const f = cardById(id);
