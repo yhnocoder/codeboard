@@ -1,7 +1,7 @@
 // Compare：两张代码卡原地并成两栏。相同的行对齐在同一水平线，改了的行标词级差异，
 // 只有一边有的行另一边留斜纹空位。两栏还是原来的卡（编号、Link 都在）。
 import { createMemo, For, Show, onMount, onCleanup, createEffect } from "solid-js";
-import { alignRows, wordDiff, findCard, type CompareCard, type CodeCard, type Row } from "@codeboard/core";
+import { alignRows, wordDiff, findCard, cardTitle, type CompareCard, type CodeCard, type Row } from "@codeboard/core";
 import { state, mutate, cardById, placeOf } from "../state/store";
 import { setGeo } from "../state/geo";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -98,7 +98,8 @@ export function CompareBody(p: { card: CompareCard }) {
       });
       const head = rootEl.querySelector<HTMLElement>(`.colh [data-col="${c.id}"]`);
       const hr = head?.getBoundingClientRect();
-      setGeo(c.id, { rows, ys, hs, top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: hr ? (hr.bottom - cr.top) / z : 60, colX: ci === 0 ? 0 : card.offsetWidth / 2, colW: card.offsetWidth / 2 });
+      setGeo(c.id, { rows, ys, hs, top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: hr ? (hr.bottom - cr.top) / z : 60, ...(k().unified ? { colX: 0, colW: card.offsetWidth } : { colX: ci === 0 ? 0 : card.offsetWidth / 2, colW: card.offsetWidth / 2 }) });
+      // Unified 只有一栏：两边的行都按整张卡的宽度算，箭头接在卡的外边，不从中间穿过
     });
   };
   const later = () => queueMeasure(measure, () => measure);
@@ -130,7 +131,7 @@ export function CompareBody(p: { card: CompareCard }) {
       : <div class="cl void" data-col={c.id} />;
 
   return (
-    <div ref={rootEl} class="cmpwrap">
+    <div ref={rootEl} class="cmpwrap" classList={{ unified: !!k().unified, difffn: cols().length === 2 && cardTitle(cols()[0]) !== cardTitle(cols()[1]) }}>
       <div class="chead" data-drag>
         <Show when={placeOf(k().id).locked}><button class="lockb" data-tip="Unlock" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.toggleLock([k().id])}><Icon name="lock" /></button></Show>
         <span class="kind">⇆</span><span class="ctitle">{A.compareTitle(k())}</span><span class="grow" />
@@ -142,7 +143,7 @@ export function CompareBody(p: { card: CompareCard }) {
         <button class="ib" aria-label="Compare Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); A.cardMenu(k().id, r.left, r.bottom + 4); }}><Icon name="more" /></button>
       </div>
       <div class="colh">
-        <For each={cols()}>{(c, i) => <div data-col={c.id}><Show when={k().unified}><span class="usign" classList={{ add: i() === 1 }}>{i() === 0 ? "−" : "+"}</span></Show><CodeHead card={c} col /></div>}</For>
+        <For each={cols()}>{(c) => <div data-col={c.id}><CodeHead card={c} col /></div>}</For>
       </div>
       <div ref={scrollEl} class="cbody" onScroll={measure} onWheel={(e) => A.cardWheel(e, scrollEl)}>
         <div ref={rowsEl} class="crows" onPointerDown={onDown} onContextMenu={onCtx} style={{ "--cw": `${Math.round((placeOf(k().id).w - 2) / 2)}px` }}>
