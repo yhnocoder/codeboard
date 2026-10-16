@@ -2,17 +2,17 @@
  {
   "name": "1-first-card.png",
   "status": "same",
-  "ratio": 0
+  "ratio": 0.0005
  },
  {
   "name": "2-flow.png",
   "status": "changed",
-  "ratio": 0.0141
+  "ratio": 0.0162
  },
  {
   "name": "3-peek.png",
   "status": "changed",
-  "ratio": 0.0232
+  "ratio": 0.023
  },
  {
   "name": "4-sidenote.png",
@@ -22,7 +22,7 @@
  {
   "name": "5-search.png",
   "status": "changed",
-  "ratio": 0.017
+  "ratio": 0.0179
  },
  {
   "name": "6-board.png",
