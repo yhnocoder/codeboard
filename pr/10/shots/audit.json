@@ -21,20 +21,10 @@
  },
  {
   "step": "6-board",
-  "issues": [
-   {
-    "rule": "L8 卡片重叠",
-    "what": "div.ctitle \"Scheduler.schedule\" ↔ span.ctitle.sys \"Note\""
-   }
-  ]
+  "issues": []
  },
  {
   "step": "7-uncommitted",
-  "issues": [
-   {
-    "rule": "L8 卡片重叠",
-    "what": "div.ctitle \"Scheduler.schedule\" ↔ span.ctitle.sys \"Note\""
-   }
-  ]
+  "issues": []
  }
 ]

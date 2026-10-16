@@ -1,37 +1,37 @@
 [
  {
   "name": "1-first-card.png",
-  "status": "same",
-  "ratio": 0
+  "status": "changed",
+  "ratio": 0.0331
  },
  {
   "name": "2-flow.png",
-  "status": "changed",
-  "ratio": 0.0753
+  "status": "same",
+  "ratio": 0.0025
  },
  {
   "name": "3-peek.png",
-  "status": "changed",
-  "ratio": 0.0891
+  "status": "same",
+  "ratio": 0.0011
  },
  {
   "name": "4-sidenote.png",
   "status": "changed",
-  "ratio": 0.1028
+  "ratio": 0.0179
  },
  {
   "name": "5-search.png",
-  "status": "changed",
-  "ratio": 0.0394
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "6-board.png",
   "status": "changed",
-  "ratio": 0.0541
+  "ratio": 0.0365
  },
  {
   "name": "7-uncommitted.png",
   "status": "changed",
-  "ratio": 0.0541
+  "ratio": 0.0366
  }
 ]
