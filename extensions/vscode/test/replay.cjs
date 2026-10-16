@@ -135,22 +135,28 @@ async function menu(f, target, label, sub, opts = {}) {
     check(await card(f, "BlockManager.can_allocate").count() === 1, "孙卡 BlockManager.can_allocate");
     const n = await card(f, "BlockManager.can_allocate").locator(".step").textContent().catch(() => "");
     check(n === "1.1", "孙卡编号 1.1", n);
-    await page.keyboard.press("Shift+!"); await sleep(600);
+    await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
   });
 
-  await step("r03-tidy-right", "Tidy Layout ▸ Right", async () => {
-    await menu(f, card(f, "LLMEngine.step").locator(".chead"), "Tidy Layout", "Right", { position: { x: 120, y: 12 } });
-    await page.keyboard.press("Shift+!"); await sleep(600);
-    const box = async (t) => card(f, t).boundingBox();
-    const p = await box("LLMEngine.step"), c = await box("Scheduler.schedule");
-    check(p && c && c.x > p.x + p.width - 4, "子卡在父卡右侧", { p, c });
-  });
-
-  await step("r04-tidy-down", "Tidy Layout ▸ Down", async () => {
-    await menu(f, card(f, "LLMEngine.step").locator(".chead"), "Tidy Layout", "Down", { position: { x: 120, y: 12 } });
-    await page.keyboard.press("Shift+!"); await sleep(600);
-    const p = await card(f, "LLMEngine.step").boundingBox(), c = await card(f, "Scheduler.schedule").boundingBox();
-    check(p && c && c.y > p.y + p.height - 4, "子卡在父卡下方", { p, c });
+  await step("r03-arrow-right", "把 schedule 子卡拖到父卡右边，箭头改从行的右端出", async () => {
+    const p = await card(f, "LLMEngine.step").boundingBox(), h = await card(f, "Scheduler.schedule").locator(".chead").boundingBox();
+    await page.mouse.move(h.x + 150, h.y + h.height / 2); await page.mouse.down();
+    const tx = p.x + p.width + 60 + 150, ty = p.y + 10;
+    for (let i = 1; i <= 12; i++) { await page.mouse.move(h.x + 150 + (tx - h.x - 150) * i / 12, h.y + h.height / 2 + (ty - h.y - h.height / 2) * i / 12); await sleep(30); }
+    await page.mouse.up(); await sleep(900);
+    const r = await f.evaluate(() => {
+      const st = [...document.querySelectorAll(".card")].find((c) => c.querySelector(".ctitle")?.textContent === "LLMEngine.step").getBoundingClientRect();
+      const ch = [...document.querySelectorAll(".card")].find((c) => c.querySelector(".ctitle")?.textContent === "Scheduler.schedule").getBoundingClientRect();
+      const ends = [...document.querySelectorAll("path.edge")].map((e) => { const L = e.getTotalLength(); const m = e.getScreenCTM(); const pt = (t) => { const q = e.getPointAtLength(t); return { x: q.x * m.a + m.e, y: q.y * m.d + m.f }; }; return { a: pt(0), b: pt(L) }; });
+      const near = (q, r) => Math.abs(q.x - r.left) < 40 || Math.abs(q.x - r.right) < 40;
+      const e = ends.find((x) => x.b.x > st.right && near(x.b, ch) || x.a.x > st.right && near(x.a, ch));
+      return { st: { l: st.left, r: st.right }, ch: { l: ch.left }, e };
+    });
+    check(r.ch.l > r.st.r, "子卡已在父卡右侧", r);
+    const start = r.e && (r.e.a.x < r.e.b.x ? r.e.a : r.e.b);
+    check(start && Math.abs(start.x - r.st.r) < 30, "箭头从父卡右边出发", r);
+    await page.keyboard.press("Control+z"); await sleep(800);
+    await f.locator('button[aria-label="Fit to Window"]').first().click(); await sleep(600);
   });
 
   await step("r05-section", "把 schedule 和 can_allocate 放进新 Section，命名，折叠再展开", async () => {
@@ -201,7 +207,7 @@ async function menu(f, target, label, sub, opts = {}) {
 
   await step("r08-new-cards", "新建 Note、Text，粘贴 GitHub 链接和普通网址", async () => {
     const before = nCards(boardJson());
-    await blank(f, page); await page.keyboard.press("Shift+!"); await sleep(800);
+    await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(800);
     const bb = await f.locator("#board").boundingBox();
     await page.mouse.move(bb.x + bb.width - 260, bb.y + bb.height - 220);
     await page.keyboard.press("n"); await sleep(500);
@@ -217,7 +223,7 @@ async function menu(f, target, label, sub, opts = {}) {
     check(kinds.includes("web"), "普通网址成了 Web 卡", kinds);
     check((b?.cards ?? []).some((c) => c.kind === "code" && /github|gh/i.test(JSON.stringify(c.segments?.[0]?.src ?? c.source ?? c.gh ?? ""))), "GitHub 链接成了 GitHub Code 卡（需要能访问 GitHub API）", kinds);
     await blank(f, page);
-    await page.keyboard.press("Shift+!"); await sleep(600);
+    await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
   });
 
   await step("r09-menu-edges", "在白板四角和最底下的卡片上打开右键菜单", async () => {
@@ -248,14 +254,14 @@ async function menu(f, target, label, sub, opts = {}) {
   });
 
   await step("r11a-zoom-min", "缩到最小，悬停不弹窗", async () => {
-    await blank(f, page); await page.keyboard.press("Shift+!"); await sleep(500);
+    await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(500);
     for (let i = 0; i < 14; i++) { await page.keyboard.press("Control+-"); await sleep(120); }
     await sleep(600);
     const c = f.locator(".card .src .call").first();
     if (await c.count()) { await c.hover({ force: true }).catch(() => {}); await sleep(1500); }
     check(await f.locator(".pop.k-peek").count() === 0, "缩得很小时不弹定义预览");
   });
-  await step("r11b-zoom-fit", "恢复到适合窗口", async () => { await page.mouse.move(5, 5); await page.keyboard.press("Shift+!"); await sleep(600); });
+  await step("r11b-zoom-fit", "恢复到适合窗口", async () => { await page.mouse.move(5, 5); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600); });
   await step("r11c-zoom-max", "放到最大", async () => {
     await focusCard(f, page, "LLMEngine.step");
     for (let i = 0; i < 12; i++) { await page.keyboard.press("Control+="); await sleep(120); }
@@ -263,7 +269,7 @@ async function menu(f, target, label, sub, opts = {}) {
   });
 
   await step("r12-undo-redo", "撤销到底、重做到底，结果和撤销前一致", async () => {
-    await page.keyboard.press("Shift+!"); await sleep(500);
+    await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(500);
     await blank(f, page);
     if (process.env.DEBUG) console.log("  focus after blank", await f.evaluate(() => [document.hasFocus(), document.activeElement?.tagName]), await page.evaluate(() => [document.activeElement?.tagName, document.activeElement?.className?.slice?.(0, 60)]));
     const want = JSON.stringify(boardJson()?.cards?.map((c) => c.id).sort());
@@ -277,7 +283,7 @@ async function menu(f, target, label, sub, opts = {}) {
     const got = JSON.stringify(boardJson()?.cards?.map((c) => c.id).sort());
     check(mid < nCards(boardJson()), "撤销确实撤掉了卡片", { mid });
     check(got === want, "重做到底后卡片和撤销前一致", { want, got });
-    await page.keyboard.press("Shift+!"); await sleep(600);
+    await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
   });
 
   await step("r13-reopen", "关掉白板再打开，内容还在", async () => {
@@ -291,7 +297,7 @@ async function menu(f, target, label, sub, opts = {}) {
 
   // 每个主题各截一张同样内容的白板，给 T2 和材质参考稿并排对照（检查清单 S11）
   await step("r14-themes", "8 个主题各截一张", async () => {
-    await blank(f, page); await page.keyboard.press("Shift+!"); await sleep(600);
+    await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
     await page.keyboard.press("Control+,"); await sleep(800);
     const names = await f.locator(".st-sw").allTextContents();
     check(names.length >= 8, "设置页列出 8 个主题", names);
