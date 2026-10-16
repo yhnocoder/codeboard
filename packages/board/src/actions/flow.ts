@@ -18,7 +18,7 @@ import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/po
 import { send, ask } from "../host";
 import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
-import { anchorPoint, hostRect, popCard, showPicker, slideFrom } from "./common";
+import { anchorPoint, hostRect, popCard, revealCard, showPicker, slideFrom } from "./common";
 
 // ---------- 点调用展开 ----------
 
@@ -29,11 +29,26 @@ const pending = new Set<string>();
  * at：拖出来松在画布上时的位置。
  */
 
-export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: ExpandPick) {
+/** 这一行的这个调用已经连到哪张卡（点过展开，或自己连到了这个函数的卡）：有就返回那张卡 */
+export function expandedTo(cardId: string, segId: string, call: CallSpan): string | undefined {
+  const host = cardById(cardId)?.host.id;
+  for (const l of state.board.links) {
+    if (cardById(l.from.card)?.host.id !== host || l.from.seg !== segId || l.from.line !== call.line) continue;
+    const t = cardById(l.to.card);
+    if (!t) continue;
+    const lc = l.kind === "call" ? l.call : undefined;
+    if (lc ? lc.name === call.name && (lc.col === call.col || lc.col === 0 || call.col === 0) : calleeMatches(t.card, call)) return l.to.card;
+  }
+}
+
+/** again：已经展开过也再建一张（右键 Expand Again）；默认再点只是跳到已有的那张 */
+export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: ExpandPick, again = false) {
   const f = cardById(cardId);
   if (!f || !isCode(f.card)) return;
   const seg = segOf(f.card, segId);
   if (!seg) return;
+  const had = !again && !at && !pick ? expandedTo(cardId, segId, call) : undefined;
+  if (had) { select({ cards: [cardById(had)!.host.id] }); flash(cardId, segId, [call.line]); revealCard(had); return; }
   const key = `${cardId}:${segId}:${call.line}:${call.col}`;
   if (pending.has(key)) return;
   const okx = canExpand(state.board, cardId);
@@ -49,7 +64,7 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   } finally { pending.delete(key); }
   if ("none" in r) { toast(r.reason || `No definition found for ${call.name}()`); return; }
   if ("pick" in r) {
-    showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }) })));
+    showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again) })));
     return;
   }
   placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w);

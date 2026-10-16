@@ -332,7 +332,8 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
     const ce = under?.closest(".card") as HTMLElement | null;
     to = null;
     if (ce && cardById(ce.dataset.id!)) {
-      const row = under?.closest(".src > .l") as HTMLElement | null;
+      // 松在代码行上或行号上 → 连到那一行；松在卡的其它地方 → 连到整张卡
+      const row = under?.closest(".src > .l, .gutter .no") as HTMLElement | null;
       const at = row ? rowAnchor(row, ce.dataset.id!) : null;
       const colEl = under?.closest("[data-col]") as HTMLElement | null;
       to = at ? { card: at.card, seg: at.seg, line: at.lines![0] } : { card: colEl?.dataset.col ?? ce.dataset.id! };

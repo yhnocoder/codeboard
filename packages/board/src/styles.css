@@ -168,6 +168,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .src { margin: 0 0 0 54px; padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
 .chrome .src, .chrome .src * { user-select: text; -webkit-user-select: text; cursor: text; }
 .src .l { height: 20px; }
+.src .l.drop { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+.gutter .no.drop { color: var(--accent); font-weight: 600; }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .chrome .src .gap, .chrome .src .gap *, .chrome .src .inote, .chrome .src .inote * { user-select: none; -webkit-user-select: none; cursor: default; }
 /* 隐藏行的条和行高亮一样撑满整张卡宽（左边盖住行号栏，右边到卡边） */

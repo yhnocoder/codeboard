@@ -547,6 +547,42 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** 线上的变量框能沿线拖，位置存成 t */
+  /** 从一行拖到另一张卡的行号上 → 连到那一行（松手前那一行亮起） */
+  async v15line2line() {
+    const b = richBoard();
+    b.links = [];
+    const h = await open({ board: b, light, w: 1500, h: 950 });
+    const step = b.cards[0].id, sch = b.cards[1].id;
+    const row = (await h.page.locator(`.card[data-id="${step}"] .src .l`).nth(4).boundingBox())!;
+    await h.page.mouse.move(row.x + 100, row.y + row.height / 2); await h.page.waitForTimeout(150);
+    const p = (await h.page.locator(`.card[data-id="${step}"] .lport.r`).boundingBox())!;
+    const no = (await h.page.locator(`.card[data-id="${sch}"] .gutter .no`).nth(5).boundingBox())!;
+    await h.page.mouse.move(p.x + 4, p.y + 4); await h.page.mouse.down();
+    await h.page.mouse.move(no.x + no.width / 2, no.y + no.height / 2, { steps: 10 });
+    const lit = await h.page.locator(`.card[data-id="${sch}"] .no.drop`).count();
+    await shot(h, "v15-line2line-1");
+    await h.page.mouse.up(); await h.page.waitForTimeout(1300);
+    const l = h.board().links[0] as any;
+    await shot(h, "v15-line2line-2");
+    console.log(l?.from.line && l?.to.line && lit === 1 ? "PASS" : "FAIL", "line-to-line", JSON.stringify({ from: l?.from, to: l?.to, lit }));
+    await close(h);
+  },
+  /** 同一个调用点第二次：跳到已经展开的卡，不再新建 */
+  async v15reexpand() {
+    const b = emptyBoard("b1", "reexpand");
+    const step = card("LLMEngine.step");
+    put(b, step, 80, 80, 600);
+    const h = await open({ board: b, light, w: 1400, h: 900 });
+    const call = h.page.locator(`.card[data-id="${step.id}"] .call`, { hasText: /^schedule$/ });
+    await call.click(); await h.page.waitForTimeout(900);
+    const n1 = await h.page.locator(".card").count();
+    await h.page.mouse.click(1300, 850); await h.page.waitForTimeout(200);
+    await call.click(); await h.page.waitForTimeout(900);
+    const n2 = await h.page.locator(".card").count();
+    const selected = await h.page.locator(".card.sel").count();
+    console.log(n1 === 2 && n2 === 2 && selected === 1 ? "PASS" : "FAIL", "reexpand-reuses", JSON.stringify({ n1, n2, selected }));
+    await close(h);
+  },
   async v15labeldrag() {
     const b = richBoard();
     const h = await open({ board: b, light, w: 1500, h: 950 });

@@ -27,7 +27,7 @@ import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/s
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize } from "../state/measure";
-import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging } from "../state/ui";
+import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
 import * as act from "../actions";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -247,6 +247,8 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const onLeave = () => { clearPeek(); clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverRow(-1), 200); };
   const keepRow = () => clearTimeout(leaveT);
   // 按下鼠标 = 要操作（展开调用、选行）：取消待弹的定义；peekKey 留着，同一个词上不再重新计时
+  // 拖箭头松手会连到这一行：行号和这一行都亮起来
+  const dropAt = (seg: string, line: number) => { const d = dropTarget(); return d?.kind === "line" && d.seg === seg && d.line === line; };
   const lportY = createMemo(() => { const i = hoverRow(); const r = rows()[i]; return i >= 0 && r?.t === "line" && ys()[i] ? { y: ys()[i].y, r } : null; });
   const vhi = (r: Row) => {
     const hv = hoverVar();
@@ -342,7 +344,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           <For each={rows()}>
             {(r, i) => (
               <Show when={r.t === "line" && ys()[i()]}>
-                <span class="no" data-r={i()} classList={{ link: fromLines().has(`${r.seg}:${(r as any).line}`), jump: (r as any).skipped, sel: inSel(r.seg, (r as any).line) }}
+                <span class="no" data-r={i()} classList={{ link: fromLines().has(`${r.seg}:${(r as any).line}`), jump: (r as any).skipped, sel: inSel(r.seg, (r as any).line), drop: dropAt(r.seg, (r as any).line) }}
                   style={{ top: `${ys()[i()].y}px` }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => clickNo(r as any, e)}>{(r as any).line}</span>
               </Show>
             )}
@@ -387,7 +389,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             {(r, i) => (
               <Switch>
                 <Match when={r.t === "line"}>
-                  <div class="l" classList={{ cmt: !!cmtLine(r) }} data-r={i()} innerHTML={lineHtml(r as any) || "​"} />
+                  <div class="l" classList={{ cmt: !!cmtLine(r), drop: dropAt(r.seg, (r as any).line) }} data-r={i()} innerHTML={lineHtml(r as any) || "​"} />
                   <For each={alwaysNotes(r.seg, (r as any).line)}>{(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline((n as any).md)} />}</For>
                 </Match>
                 <Match when={r.t === "gap"}>

@@ -20,7 +20,7 @@ import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
 import { addPlain, callOn, makeCall, openVars, startConnect } from "./links";
-import { addToStudyScope, attachCall, calleeMatches, expandCall, isLibCall, selectFlow, startWalk } from "./flow";
+import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, selectFlow, startWalk } from "./flow";
 import { commitMenu } from "./versions";
 import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
@@ -36,6 +36,7 @@ export function callMenu(cardId: string, segId: string, call: CallSpan, x: numbe
   const items: Item[] = [
     ...(el ? [{ label: "Peek Definition", run: () => showPeek(el, cardId, segId, call.line, call.col, call.name, true) }] : []),
     lib ? { label: "Expand Anyway", kbd: K.alt.endsWith("+") ? `${K.alt}Click` : `${K.alt} Click`, run: () => expandCall(cardId, segId, call) } : { label: "Expand", kbd: "Click", run: () => expandCall(cardId, segId, call) },
+    ...(expandedTo(cardId, segId, call) ? [{ label: "Expand Again", hint: "Clicking jumps to the card already expanded", run: () => expandCall(cardId, segId, call, undefined, undefined, true) } as Item] : []),
     ...(lib ? [{ label: `Add "${call.pkg}" to Study Scope`, run: () => addToStudyScope(call.pkg!) }] : []),
     {
       label: "Link to Existing Card", kbd: "Drag", sub: cands.length ? cands.map((k) => {
