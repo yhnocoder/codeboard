@@ -1,29 +1,65 @@
 // 行级 / 词级 diff，Compare 卡和「新版本」diff 窗共用的对齐算法，以及按内容迁移行号。
+import { diffArrays } from "diff";
 
 export type DiffLine = { op: " " | "+" | "-"; text: string; a?: number; b?: number };
 
-/** 行级 LCS diff；a、b 是行号（相对各自起点） */
+/** 行级 diff；a、b 是行号（相对各自起点） */
 export function diffLines(a: string[], b: string[], aStart = 1, bStart = 1): DiffLine[] {
-  // 先剥掉相同的头尾，长文件也快
+  const out: DiffLine[] = [];
+  let i = 0, j = 0;
+  for (const op of ops(a, b)) {
+    if (op === "-") out.push({ op, text: a[i], a: aStart + i++ });
+    else if (op === "+") out.push({ op, text: b[j], b: bStart + j++ });
+    else out.push({ op, text: a[i], a: aStart + i++, b: bStart + j++ });
+  }
+  return out;
+}
+
+type Op = DiffLine["op"];
+/** 改动超过这么多行就不再找最短编辑（Myers 是 O((n+m)·D)），改用两边各只出现一次的行做锚点分段 */
+const MAX_EDIT = 1000;
+
+/**
+ * jsdiff 的 Myers（时间 / 内存随改动量增长，不是 n·m）。先剥掉相同的头尾：长文件也快，
+ * 而且新增的整段贴在共同的尾巴前面（和旧版 LCS 一样）
+ */
+function ops(a: string[], b: string[]): Op[] {
   let pre = 0;
   while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
   let suf = 0;
   while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
   const A = a.slice(pre, a.length - suf), B = b.slice(pre, b.length - suf);
-  const n = A.length, m = B.length;
-  const dp: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--)
-      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-  const out: DiffLine[] = [];
-  for (let k = 0; k < pre; k++) out.push({ op: " ", text: a[k], a: aStart + k, b: bStart + k });
+  const out: Op[] = Array(pre).fill(" ");
+  const cs = A.length && B.length ? diffArrays(A, B, { maxEditLength: MAX_EDIT }) : undefined;
+  if (cs) for (const c of cs) for (let k = 0; k < c.count; k++) out.push(c.removed ? "-" : c.added ? "+" : " ");
+  else out.push(...anchored(A, B));
+  for (let k = 0; k < suf; k++) out.push(" ");
+  return out;
+}
+
+/** 两段差得太多：两边都只出现一次的行按顺序（最长递增）当锚点，锚点之间再分别 diff；没有锚点就整段删 + 整段加 */
+function anchored(a: string[], b: string[]): Op[] {
+  const seen = new Map<string, { na: number; nb: number; ia: number; ib: number }>();
+  a.forEach((l, i) => { const e = seen.get(l); if (e) e.na++; else seen.set(l, { na: 1, nb: 0, ia: i, ib: -1 }); });
+  b.forEach((l, j) => { const e = seen.get(l); if (e) { e.nb++; e.ib = j; } });
+  const cand = [...seen.values()].filter((e) => e.na === 1 && e.nb === 1).sort((x, y) => x.ia - y.ia);
+  // b 下标的最长递增子序列（耐心排序）
+  const tails: number[] = [], prev: number[] = [];
+  cand.forEach((e, k) => {
+    let lo = 0, hi = tails.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (cand[tails[mid]].ib < e.ib) lo = mid + 1; else hi = mid; }
+    prev[k] = lo ? tails[lo - 1] : -1; tails[lo] = k;
+  });
+  const anchors: { ia: number; ib: number }[] = [];
+  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) anchors.unshift(cand[k]);
+  if (!anchors.length) return [...Array(a.length).fill("-"), ...Array(b.length).fill("+")];
+  const out: Op[] = [];
   let i = 0, j = 0;
-  while (i < n || j < m) {
-    if (i < n && j < m && A[i] === B[j]) { out.push({ op: " ", text: A[i], a: aStart + pre + i, b: bStart + pre + j }); i++; j++; }
-    else if (i < n && (j >= m || dp[i + 1][j] >= dp[i][j + 1])) { out.push({ op: "-", text: A[i], a: aStart + pre + i }); i++; }
-    else { out.push({ op: "+", text: B[j], b: bStart + pre + j }); j++; }
+  for (const x of [...anchors, { ia: a.length, ib: b.length }]) {
+    out.push(...ops(a.slice(i, x.ia), b.slice(j, x.ib)));
+    if (x.ia < a.length) out.push(" ");
+    i = x.ia + 1; j = x.ib + 1;
   }
-  for (let k = 0; k < suf; k++) out.push({ op: " ", text: a[a.length - suf + k], a: aStart + a.length - suf + k, b: bStart + b.length - suf + k });
   return out;
 }
 
