@@ -1,14 +1,14 @@
-// 截图比对：把这次的截图和基线逐张比，生成"前 | 后 | 差异"三联图和汇总。
-// 用法：node tools/review/shotdiff.mjs <基线目录> <这次目录> <输出目录> [图片 URL 前缀] [图片 URL 后缀]
-// 输出：<输出>/<名>.png（三联图，只有变化或新增的步骤）、summary.json、summary.md（给 PR 描述 / 任务报告用）
+// Screenshot diff: compare each screenshot of this run with the baseline; write "before | after | diff" triptychs and a summary.
+// Usage: node tools/review/shotdiff.mjs <baseline dir> <this run dir> <out dir> [image URL prefix] [image URL suffix]
+// Output: <out>/<name>.png (triptychs, only for changed or new steps), summary.json, summary.md (for the PR description / task report)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium } from "playwright-core";
 
 const [base, head, out, urlPrefix = "", urlSuffix = ""] = process.argv.slice(2);
-if (!base || !head || !out) { console.error("用法：shotdiff.mjs <基线> <这次> <输出> [URL 前缀]"); process.exit(2); }
-const THRESH = 32;        // 单个像素任一通道差超过这个值才算变了（滤掉抗锯齿）
-const CHANGED = 0.005;    // 变化像素超过 0.5% 才算这一步变了（滤掉光标闪烁、语义高亮到达早晚等）
+if (!base || !head || !out) { console.error("usage: shotdiff.mjs <baseline> <head> <out> [URL prefix]"); process.exit(2); }
+const THRESH = 32;        // a pixel counts as changed when any channel differs by more than this (filters antialiasing)
+const CHANGED = 0.005;    // a step counts as changed when more than 0.5% of pixels changed (filters caret blink, late semantic highlighting, etc.)
 fs.mkdirSync(out, { recursive: true });
 const pngs = (d) => (fs.existsSync(d) ? fs.readdirSync(d).filter((n) => n.endsWith(".png")).sort() : []);
 const exe = process.env.CHROMIUM ?? (fs.existsSync("/opt/pw-browsers/chromium-1194/chrome-linux/chrome") ? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" : undefined);
@@ -34,7 +34,7 @@ for (const name of names) {
       else { const g = (db.data[i] + db.data[i + 1] + db.data[i + 2]) / 3 * 0.35; diff.data.set([g, g, g, 255], i); }
     }
     const ratio = n / (w * h);
-    // 三联图：前 | 后 | 差异，各缩到一半宽
+    // triptych: before | after | diff, each scaled to half width
     const s = 0.5, gap = 12, W = Math.round(w * s), H = Math.round(h * s);
     const c = new OffscreenCanvas(W * 3 + gap * 2, H + 28); const x = c.getContext("2d");
     x.fillStyle = "#1b1b1b"; x.fillRect(0, 0, c.width, c.height);
@@ -55,11 +55,11 @@ await browser.close();
 
 fs.writeFileSync(path.join(out, "summary.json"), JSON.stringify(results, null, 1));
 const changed = results.filter((x) => x.status !== "same");
-const label = { new: "新增", removed: "删除", changed: "变化" };
+const label = { new: "new", removed: "removed", changed: "changed" };
 const md = [
-  `**截图比对**：${results.length} 步，${changed.length} 步有变化${changed.length ? "" : "，和基线一致"}。`,
+  `**Screenshot diff**: ${results.length} steps, ${changed.length} changed${changed.length ? "" : ", identical to baseline"}.`,
   "",
-  ...changed.flatMap((x) => [`**${x.name.replace(/\.png$/, "")}** · ${label[x.status]}${x.status === "changed" ? ` · ${(x.ratio * 100).toFixed(1)}% 像素` : ""}`, "", `![${x.name}](${urlPrefix}${x.name}${urlSuffix})`, ""]),
+  ...changed.flatMap((x) => [`**${x.name.replace(/\.png$/, "")}** · ${label[x.status]}${x.status === "changed" ? ` · ${(x.ratio * 100).toFixed(1)}% of pixels` : ""}`, "", `![${x.name}](${urlPrefix}${x.name}${urlSuffix})`, ""]),
 ].join("\n");
 fs.writeFileSync(path.join(out, "summary.md"), md);
 console.log(md.split("\n")[0]);

@@ -1,5 +1,5 @@
-# T0：每次推送自动跑。构建、类型检查、单测、浏览器 harness、真实 VS Code（带 Pylance）e2e + 通用界面断言；
-# 截图和基线比对，推到 ci-screenshots 分支，PR 上自动更新描述里的截图区块。
+# T0: runs on every push. Build, typecheck, unit tests, browser harness, real VS Code (with Pylance) e2e + generic UI audit;
+# screenshots are diffed against a baseline and pushed to the ci-screenshots branch; on PRs the screenshot section of the description is updated.
 name: CI
 on:
   push:
@@ -20,40 +20,40 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: true, fetch-depth: 0 } # 单测要用 nano-vllm 的历史提交
+        with: { submodules: true, fetch-depth: 0 } # unit tests need nano-vllm commit history
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
-      - run: npm run test:host -w codeboard-vscode --if-present # v0.1.5 起有宿主端测试
+      - run: npm run test:host -w codeboard-vscode --if-present # host-side tests (v0.1.5+)
 
-      - name: Chromium（harness 和截图比对用）
+      - name: Chromium (for the harness and screenshot diff)
         run: |
           npx playwright-core install --with-deps chromium
           echo "CHROMIUM=$(node -e "console.log(require('playwright-core').chromium.executablePath())")" >> $GITHUB_ENV
       - name: Browser harness
         run: node packages/board/test/run-harness.mjs
 
-      - name: VS Code 缓存
+      - name: VS Code cache
         uses: actions/cache@v4
         with:
           path: |
             .vscode-test
             /tmp/codeboard-ext-cache
           key: vscode-${{ env.VSCODE_VERSION }}-${{ env.E2E_EXTENSIONS }}
-      - name: 下载 VS Code
+      - name: Download VS Code
         run: |
           sudo apt-get install -y -q xvfb libasound2t64 libgbm1 libnss3 libgtk-3-0 libxkbfile1 libsecret-1-0 >/dev/null
           if [ ! -x .vscode-test/VSCode-linux-x64/code ]; then
             mkdir -p .vscode-test
             curl -sSL "https://update.code.visualstudio.com/$VSCODE_VERSION/linux-x64/stable" | tar -xz -C .vscode-test
           fi
-      - name: VS Code e2e（Pylance + 界面断言）
+      - name: VS Code e2e (Pylance + UI audit)
         run: VSCODE_BIN=$PWD/.vscode-test/VSCode-linux-x64/code npm run e2e
 
-      - name: 截图比对并发布
+      - name: Diff and publish screenshots
         if: always() && hashFiles('test-out/default-dark-modern/*.png') != '' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
         run: |
           if [ "${{ github.event_name }}" = pull_request ]; then
@@ -61,19 +61,19 @@ jobs:
           else
             tools/review/publish-shots.sh test-out/default-dark-modern "branches/${{ github.ref_name }}" "branches/${{ github.ref_name }}"
           fi
-      - name: 更新 PR 描述里的截图区块
+      - name: Update the screenshot section in the PR description
         if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('test-out/shots-summary.md') != ''
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require("fs");
             const audit = fs.existsSync("test-out/default-dark-modern/audit.json") ? JSON.parse(fs.readFileSync("test-out/default-dark-modern/audit.json", "utf8")) : [];
-            const issues = audit.flatMap((a) => a.issues.map((i) => `- ${a.step}：${i.rule} — ${i.what}`));
+            const issues = audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`));
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const section = [
-              "<!-- ci-screenshots:start -->", "## CI 截图", "",
-              `提交 ${context.payload.pull_request.head.sha.slice(0, 7)} · [运行记录](${run})`, "",
-              `**界面断言**：${issues.length ? `${issues.length} 条提示` : "无问题"}`, ...issues.slice(0, 30), "",
+              "<!-- ci-screenshots:start -->", "## CI screenshots", "",
+              `Commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [Run log](${run})`, "",
+              `**UI audit**: ${issues.length ? `${issues.length} warning${issues.length > 1 ? "s" : ""}` : "no issues"}`, ...issues.slice(0, 30), "",
               fs.readFileSync("test-out/shots-summary.md", "utf8"),
               "<!-- ci-screenshots:end -->",
             ].join("\n");

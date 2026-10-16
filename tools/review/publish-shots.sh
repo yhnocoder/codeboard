@@ -1,7 +1,7 @@
 #!/bin/bash
-# CI 用：把这次 e2e 截图和基线比对，结果推到 ci-screenshots 分支，输出给 PR 描述用的 Markdown。
-# 用法：publish-shots.sh <这次截图目录> <存放键，如 pr/12 或 branches/main> <基线键，如 branches/main>
-# 需要：GITHUB_REPOSITORY；在仓库根目录、已配置好可推送的 origin 下运行。输出 test-out/shots-summary.md
+# For CI: diff this e2e run's screenshots against the baseline, push the result to the ci-screenshots branch, and write Markdown for the PR description.
+# Usage: publish-shots.sh <this run's screenshot dir> <storage key, e.g. pr/12 or branches/main> <baseline key, e.g. branches/main>
+# Needs: GITHUB_REPOSITORY; run from the repo root with a pushable origin. Writes test-out/shots-summary.md
 set -e
 SHOTS=$1; KEY=$2; BASE=$3
 ROOT=$(pwd); WT=$ROOT/.ci-shots
@@ -9,7 +9,7 @@ git config user.name "codeboard-ci"; git config user.email "ci@users.noreply.git
 rm -rf "$WT"
 if git fetch -q --depth 1 origin ci-screenshots; then git worktree add -q "$WT" FETCH_HEAD
 else git worktree add -q --detach "$WT"; (cd "$WT" && git checkout -q --orphan ci-screenshots && git rm -rqf . ); fi
-# 先用旧的这次键做基线兜底：PR 第一次跑、base 还没有截图时，至少和自己上一次推送比
+# Fall back to this key's previous shots as the baseline: on a PR's first run, when base has no screenshots yet, at least compare with our own last push
 B="$WT/$BASE/shots"; [ -d "$B" ] || B="$WT/$KEY/shots"
 rm -rf "$ROOT/test-out/shots-diff"
 node "$ROOT/tools/review/shotdiff.mjs" "$B" "$SHOTS" "$ROOT/test-out/shots-diff" \
