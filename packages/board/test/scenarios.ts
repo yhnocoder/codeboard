@@ -1,4 +1,4 @@
-// 白板交互场景：每个场景开一个白板、做一串操作、截图。
+// Board interaction scenarios: each one opens a board, performs a series of actions, and takes screenshots.
 import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
 import { emptyBoard, type Board } from "@codeboard/core";
 import { V015 } from "./v015";
@@ -8,7 +8,7 @@ const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
 function boardWith(...quals: string[]): Board {
-  const b = emptyBoard("b1", "nano-vllm · generate 主流程");
+  const b = emptyBoard("b1", "nano-vllm · generate main flow");
   let x = 80;
   for (const q of quals) { const s = findSym(q); const c = symCard(s.f, s.s); put(b, c, x, 80); x += 640; }
   return b;
@@ -105,7 +105,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.waitForTimeout(900);
     await shot(h, "cmp-02-compare");
     console.log("kinds:", h.board().cards.map((c) => c.kind).join(","));
-    // Unified：切过去就变成一栏 diff（之前行不重画，还是左右两栏）
+    // Unified: switching turns it into a single-column diff (previously rows weren't redrawn and stayed side by side)
     await h.page.locator(".cmpwrap .tools button", { hasText: "Unified" }).click(); await h.page.waitForTimeout(500);
     const u = { urow: await h.page.locator(".cmpwrap .urow").count(), crow: await h.page.locator(".cmpwrap .crow").count() };
     await shot(h, "cmp-03-unified");
@@ -145,14 +145,14 @@ const S: Record<string, () => Promise<void>> = {
   async misc() {
     const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
-    // Plain link：选两张卡，点 Link
+    // Plain link: select two cards, click Link
     await h.page.keyboard.press("Control+a");
     await h.page.locator(".bbar button[aria-label=\"Arrow\"]").click(); await h.page.waitForTimeout(400);
-    // Text：双击空白处
+    // Text: double-click empty space
     await h.page.mouse.dblclick(700, 120); await h.page.waitForTimeout(300);
     await h.page.keyboard.type("Scheduler overview"); await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
     await shot(h, "misc-01");
-    // 合并：⌥ 拖第二张卡的标题到第一张标题上
+    // Merge: ⌥-drag the second card's title onto the first card's title
     const heads = h.page.locator(".card.ccard .chead");
     const a = await heads.nth(0).boundingBox(), b = await heads.nth(1).boundingBox();
     await h.page.mouse.move(b!.x + 60, b!.y + 10); await h.page.mouse.down();
@@ -161,7 +161,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.mouse.up(); await h.page.keyboard.up("Alt"); await h.page.waitForTimeout(700);
     await shot(h, "misc-02-merged");
     console.log("kinds:", h.board().cards.map((c: any) => c.kind + (c.segments ? ":" + c.segments.length : "")).join(","), "links:", JSON.stringify(h.board().links.map((l) => [l.kind, l.from.card, l.to.card])));
-    // Section 并折叠
+    // Section, then collapse
     await h.page.keyboard.press("Control+a");
     await h.page.locator(".card.ccard .chead").first().click({ button: "right" }); await h.page.waitForTimeout(200);
     await h.page.locator(".ctx button", { hasText: "Move to New Section" }).first().click().catch(() => console.log("no Move to New Section"));
@@ -171,7 +171,7 @@ const S: Record<string, () => Promise<void>> = {
     console.log("sections:", JSON.stringify(h.board().sections.map((q) => [q.title, q.collapsed ?? false])));
     await h.page.context().browser()!.close();
   },
-  // 回归：Compare 的两栏不能被展开 / 连线拆到两棵树里
+  // Regression: expanding / linking must not split a Compare's two panes into two trees
   async cmptree() {
     const h = await open({ board: boardWith("LLMEngine.step", "Scheduler.schedule"), light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(400);
@@ -189,7 +189,7 @@ const S: Record<string, () => Promise<void>> = {
     await shot(h, "cmptree");
     await h.page.context().browser()!.close();
   },
-  // 回归：删 Link / 删卡也不能把 Compare 的两栏拆到两棵树里（R → X → cl，R → Y → cr）
+  // Regression: deleting a Link / card must not split a Compare's two panes into two trees either (R → X → cl, R → Y → cr)
   async cmpdel() {
     const b = boardWith("LLMEngine.step", "Scheduler.schedule", "Scheduler.postprocess");
     const [R, X, Y] = b.cards as any[];
@@ -204,15 +204,15 @@ const S: Record<string, () => Promise<void>> = {
     const h = await open({ board: b, light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
     const toast = () => h.page.locator(".toast").textContent().catch(() => "");
-    // 删共同的祖先卡
+    // Delete the common ancestor card
     await h.page.locator(".card", { has: h.page.locator(".ctitle", { hasText: /^LLMEngine\.step$/ }) }).locator(".chead").click({ position: { x: 40, y: 10 } });
     await h.page.waitForTimeout(100);
     await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
     const t1 = await toast();
     await shot(h, "cmpdel-0");
-    // 删 R → X 这条线（右键菜单）
+    // Delete the R → X link (context menu)
     await h.page.keyboard.press("Escape");
-    await h.page.waitForTimeout(2800); // 等上一个提示消失
+    await h.page.waitForTimeout(2800); // wait for the previous toast to disappear
     await h.page.locator('path.lhit[data-link="RX"]').dispatchEvent("pointerdown", { button: 0 });
     await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
     const t2 = await toast();
@@ -223,7 +223,7 @@ const S: Record<string, () => Promise<void>> = {
     await shot(h, "cmpdel");
     await h.page.context().browser()!.close();
   },
-  // 回归：Relocate 换段、HEAD 下段挪了位置：Link 两端、Sidenote、隐藏行跟着走；挪位置不进撤销栈
+  // Regression: Relocate changes the snippet, or the snippet moved at HEAD: Link endpoints, Sidenotes and hidden lines follow; moves don't go on the undo stack
   async rebase() {
     const b = boardWith("Scheduler.schedule", "Scheduler.postprocess");
     const [A, B] = b.cards as any[];
@@ -232,18 +232,18 @@ const S: Record<string, () => Promise<void>> = {
     b.links.push({ id: "L", kind: "plain", from: { card: B.id, seg: sb.id, line: sb.start + 2 }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
     b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: B.id, seg: sb.id, lines: [sb.start + 2, sb.start + 2] } } as any);
     const h = await open({ board: b, light });
-    // A 整体下移 5 行（HEAD 变了，内容没变）
+    // A moves down 5 lines as a whole (HEAD changed, content didn't)
     await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5 } } } as any);
     await h.page.waitForTimeout(300);
-    // B 被 Relocate 到下移 7 行的位置（同样内容）
+    // B is Relocated 7 lines down (same content)
     await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
     await h.page.waitForTimeout(300);
-    await h.page.keyboard.press("Control+z"); await h.page.keyboard.press("Meta+z"); // 只撤掉 Relocate；挪位置不该被撤
+    await h.page.keyboard.press("Control+z"); await h.page.keyboard.press("Meta+z"); // undoes only the Relocate; the move must not be undone
     await h.page.waitForTimeout(1300);
     const nb = h.board() as any, L = nb.links[0], na = nb.cards[0].segments[0], nbs = nb.cards[1].segments[0];
     const ok = na.start === sa.start + 5 && JSON.stringify(na.hidden) === JSON.stringify([[sa.start + 13, sa.start + 14]]) && L.to.line === sa.start + 8
       && nbs.start === sb.start && L.from.line === sb.start + 2 && nb.sidenotes[0].at.lines[0] === sb.start + 2;
-    // 再做一次 Relocate（不撤销）：Link 起点和 Sidenote 跟到新行
+    // Relocate again (no undo): Link start and Sidenote follow to the new lines
     await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
     await h.page.waitForTimeout(1300);
     const nb2 = h.board() as any;
@@ -251,7 +251,7 @@ const S: Record<string, () => Promise<void>> = {
     console.log(ok && ok2 ? "PASS" : "FAIL", "rebase", JSON.stringify({ aStart: na.start - sa.start, hidden: na.hidden?.[0]?.map((x: number) => x - sa.start), to: L.to.line - sa.start, bAfterUndo: nbs.start - sb.start, from: nb2.links[0].from.line - sb.start, note: nb2.sidenotes[0].at.lines[0] - sb.start }));
     await h.page.context().browser()!.close();
   },
-  // 回归：Update 后 Sidenote 和高亮跟着改过的行走，不当成删掉
+  // Regression: after Update, Sidenotes and highlights follow edited lines instead of being treated as deleted
   async follow() {
     const b = boardWith("Scheduler.schedule");
     const c = b.cards[0] as any, s0 = c.segments[0];
@@ -267,7 +267,7 @@ const S: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "follow", JSON.stringify({ at: n.at, removed: n.lineRemoved ?? false, hl: ns.hl, hidden: ns.hidden, version: ns.version.commit }));
     await h.page.context().browser()!.close();
   },
-  // 回归：先画内框、再画外框，外框是父级
+  // Regression: draw the inner frame first, then the outer one; the outer frame is the parent
   async secout() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     const r = await h.page.locator(".card").first().boundingBox();
@@ -277,14 +277,14 @@ const S: Record<string, () => Promise<void>> = {
       await h.page.mouse.move(r!.x + r!.width + pad, r!.y + r!.height + pad, { steps: 8 }); await h.page.mouse.up();
       await h.page.waitForTimeout(300); await h.page.keyboard.type(name); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(300);
     };
-    await draw(30, "Inner"); await draw(90, "Outer"); await h.page.waitForTimeout(1200); // 等自动保存
+    await draw(30, "Inner"); await draw(90, "Outer"); await h.page.waitForTimeout(1200); // wait for autosave
     const ss = h.board().sections, inner = ss.find((q) => q.title === "Inner")!, outer = ss.find((q) => q.title === "Outer")!;
     const ok = inner.parent === outer.id && !outer.parent && h.board().place[h.board().cards[0].id]?.section === inner.id;
     console.log(ok ? "PASS" : "FAIL", "secout", JSON.stringify(ss.map((q) => [q.title, q.parent ? ss.find((x) => x.id === q.parent)!.title : null]).concat([["card", h.board().place[h.board().cards[0].id]?.section === inner.id ? "Inner" : "?"]])));
     await shot(h, "secout");
     await h.page.context().browser()!.close();
   },
-  // 回归：Walkthrough 展开折叠的子树不写进白板
+  // Regression: subtrees expanded by Walkthrough are not written to the board
   async walkview() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await h.page.locator(".card .src .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(700);
@@ -323,7 +323,7 @@ const S: Record<string, () => Promise<void>> = {
     await shot(h, "peek-01");
     await h.page.context().browser()!.close();
   },
-  // #3 #4：字段 / 函数 / 模块 / library 四种预览
+  // #3 #4: field / function / module / library previews
   async peekkinds() {
     const h = await open({ board: boardWith("LLMEngine.__init__", "ModelRunner.__init__"), light });
     const cases: [string, string, string, string][] = [
@@ -346,7 +346,7 @@ const S: Record<string, () => Promise<void>> = {
     }
     await h.page.context().browser()!.close();
   },
-  // #34：library 调用不画下划线、点了不展开；⌥ 点击 / 右键 Expand Anyway；加进 Study Scope 后恢复
+  // #34: library calls get no underline and don't expand on click; ⌥-click / context menu Expand Anyway; restored after adding to Study Scope
   async libcalls() {
     const h = await open({ board: boardWith("ModelRunner.warmup_model"), light });
     const lib = h.page.locator(`.card .src .call[data-p="torch"]`).first();
@@ -366,7 +366,7 @@ const S: Record<string, () => Promise<void>> = {
     await shot(h, "libcalls-03-scoped");
     await h.page.context().browser()!.close();
   },
-  // #32：拖到已有的卡上也有变量候选
+  // #32: dragging onto an existing card also offers variable candidates
   async attachvars() {
     const h = await open({ board: boardWith("ModelRunner.__init__", "Qwen3ForCausalLM"), light });
     const c = await callEl(h, "Qwen3ForCausalLM").boundingBox();
@@ -379,8 +379,8 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.context().browser()!.close();
   },
   async themes() {
-    // 主题：Settings 里切换 8 种材质 × 明暗，每种截一张白板。
-    // 白板：入口函数展开两个调用（向右摆开、线上带变量），一张 Note、一个 Section、一条带标签的箭头、一行标题；选中入口卡、弹一条提示
+    // Themes: switch through 8 materials × light/dark in Settings, one board screenshot each.
+    // Board: entry function with two expanded calls (laid out to the right, variables on links), a Note, a Section, a labeled arrow and a heading; entry card selected and a toast shown
     const b = boardWith("LLMEngine.step");
     for (const [q, name] of [["Scheduler.schedule", "schedule"], ["ModelRunner.run", "call"]] as const) {
       const s0 = findSym(q); const c = symCard(s0.f, s0.s); put(b, c, 0, 0);
@@ -405,11 +405,11 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.waitForTimeout(600);
     await h.page.keyboard.press("Escape");
     const poke = async () => {
-      // 弹一条提示（没选卡时点 Arrow），再选中入口卡（点卡片头）
+      // Show a toast (click Arrow with no card selected), then select the entry card (click its header)
       await h.page.keyboard.press("Escape");
-      await h.page.mouse.click(700, 24); // 画布空白处：清掉选择
+      await h.page.mouse.click(700, 24); // empty canvas: clear selection
       await h.page.locator('.bbar .tbtn[aria-label="Arrow"]').click();
-      // 卡片头上一处空白（各材质的头排法不同，找一个点下去就是 .chead 本身的位置）
+      // An empty spot on the card header (header layout varies by material; find a point that hits .chead itself)
       const pt = await h.page.evaluate((id) => {
         const card = document.querySelector(`.card[data-id="${id}"]`)!, hd = card.querySelector(".chead")!, r = card.getBoundingClientRect();
         for (let y = r.top + 3; y < r.top + 120; y += 4) for (let x = r.right - 40; x > r.left; x -= 6) { const e = document.elementFromPoint(x, y); if (e === hd || e?.matches(".chead .grow, .cband, .cband .cname")) return { x, y }; }
@@ -463,7 +463,7 @@ const S: Record<string, () => Promise<void>> = {
   },
 };
 
-/** 把鼠标放到某张卡里某一行（含 line 文本）上的 word 中间 */
+/** Move the mouse to the middle of `word` on the line (containing `line`) in a card */
 async function hoverWord(h: Host, card: string, line: string, word: string) {
   const pt = await h.page.evaluate(([card, line, word]) => {
     for (const c of document.querySelectorAll(".card")) {

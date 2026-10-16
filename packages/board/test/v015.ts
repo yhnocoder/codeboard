@@ -1,4 +1,4 @@
-// v0.1.5 外壳、卡片、箭头、贴纸的场景（node run-harness.mjs v15board v15menus v15fresh …）
+// v0.1.5 scenarios for the shell, cards, arrows and stickers (node run-harness.mjs v15board v15menus v15fresh …)
 import { open, shot, symCard, findSym, put, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 
@@ -7,7 +7,7 @@ const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
 const close = (h: Host) => h.page.context().browser()!.close();
 
-/** step → schedule（子卡在右）、→ postprocess（子卡在下），带变量、旁注、各种贴纸 */
+/** step → schedule (child to the right), → postprocess (child below), with variables, sidenotes and assorted stickers */
 function richBoard(): Board {
   const b = emptyBoard("b1", "v0.1.5");
   const step = card("LLMEngine.step"), sch = card("Scheduler.schedule"), post = card("Scheduler.postprocess");
@@ -70,7 +70,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await h.page.locator('.bbar button[aria-label="More"]').click(); await h.page.waitForTimeout(250);
     await shot(h, "v15-06-more");
     await h.page.keyboard.press("Escape");
-    // 菜单碰到底边：往上翻，最后一项看得到
+    // Menu hits the bottom edge: flips upward, last item visible
     await h.page.locator(".card.ccard").nth(2).locator(".chead").click({ button: "right", position: { x: 200, y: 12 } }); await h.page.waitForTimeout(250);
     const vis = await h.page.evaluate(() => { const m = document.querySelector(".ctx")!; const r = m.getBoundingClientRect(); const last = [...m.querySelectorAll("button")].pop()!.getBoundingClientRect(); return r.top >= 0 && last.bottom <= innerHeight; });
     console.log(vis ? "PASS" : "FAIL", "menu-fits");
@@ -81,7 +81,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.waitForTimeout(300);
     await shot(h, "v15-07-picker");
     await h.page.locator(".stkpick .scell").nth(3).click();
-    // 点行号栏 → 贴在那一行（点代码正文 → 绑在卡上，v15bind 测）
+    // Click the gutter → stick to that line (click code body → bind to the card, tested by v15bind)
     await h.page.locator(".card").first().locator(".gutter .no").nth(5).click(); await h.page.waitForTimeout(200);
     await h.page.mouse.click(1200, 800); await h.page.waitForTimeout(200);
     await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.waitForTimeout(200);
@@ -129,7 +129,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await shot(h, "v15-11-fit");
     await close(h);
   },
-  // 回归：空白处右键菜单在四个角都整个留在窗口里
+  // Regression: the empty-space context menu stays fully inside the window at all four corners
   async v15ctx() {
     const b = emptyBoard("b1", "ctx");
     put(b, card("Scheduler.schedule"), 80, 80, 560);
@@ -146,7 +146,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(out.every((o) => o?.ok) ? "PASS" : "FAIL", "ctx-in-viewport", JSON.stringify(out));
     await close(h);
   },
-  /** 贴纸绑在卡 / 箭头上：拖卡时跟着走；被别的卡盖住时一起被盖住；选中时画虚线 */
+  /** Stickers bound to a card / arrow: follow when the card is dragged; covered along with it by other cards; dashed outline when selected */
   async v15bind() {
     const b = richBoard();
     const post = b.cards[2].id;
@@ -157,10 +157,10 @@ export const V015: Record<string, () => Promise<void>> = {
     const h = await open({ board: b, light, w: 1400, h: 900 });
     const pos = () => h.page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLElement>("[data-sticker]")].map((e) => { const r = e.getBoundingClientRect(); return [e.dataset.sticker, [Math.round(r.left), Math.round(r.top)]]; })));
     const p0 = await pos();
-    // 被盖住：卡 nb 在 post 上面，k6 在 nb 下面
+    // Covered: card nb is above post, k6 is below nb
     const covered = await h.page.evaluate(() => { const e = document.querySelector<HTMLElement>('[data-sticker="k6"]')!; const r = e.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) as HTMLElement; return !!top.closest('.card[data-id="nb"]'); });
     await shot(h, "v15-bind-1");
-    // 拖 post 的标题栏往下 60
+    // Drag post's title bar down 60
     const hd = h.page.locator(`.card[data-id="${post}"] .chead`).first();
     const r = (await hd.boundingBox())!;
     await h.page.mouse.move(r.x + 200, r.y + 15); await h.page.mouse.down(); await h.page.mouse.move(r.x + 200, r.y + 75, { steps: 6 }); await h.page.mouse.up();
@@ -172,7 +172,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await h.page.waitForTimeout(150);
     await shot(h, "v15-bind-2");
     const tether = await h.page.locator(".tether line").count();
-    // 把 k5（画布上的）拖到 schedule 卡上 → 绑上去
+    // Drag k5 (on the canvas) onto the schedule card → binds to it
     const k5 = (await h.page.locator('[data-sticker="k5"]').boundingBox())!;
     const sch = (await h.page.locator(`.card[data-id="${b.cards[1].id}"]`).boundingBox())!;
     await h.page.mouse.move(k5.x + 10, k5.y + 10); await h.page.mouse.down(); await h.page.mouse.move(sch.x + 200, sch.y + 200, { steps: 8 });
@@ -184,7 +184,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
 
-  /** 子卡在右下、跟父卡横向重叠：起点自动在右端，从上边进子卡；用户改到左端后要更远才翻回 */
+  /** Child below-right, horizontally overlapping the parent: start auto-anchors on the right, enters the child from the top; once the user moves it to the left it takes more distance to flip back */
   async v15side() {
     const b = emptyBoard("b1", "side");
     const par = card("ModelRunner.__init__"), kid = card("load_model");
@@ -205,7 +205,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(auto > 1000 && user < 100 ? "PASS" : "FAIL", "call-side", JSON.stringify({ auto, user }));
   },
 
-  /** Note 切 Show / Hide Background：字的位置、大小、宽度不变 */
+  /** Note Show / Hide Background toggle: text position, size and width unchanged */
   async v15notebg() {
     const b = emptyBoard("b1", "notebg");
     b.cards.push({ id: "n1", kind: "note", md: "Hello\n$a$\n\n$$aaa$$", bg: true });
@@ -225,7 +225,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
 
-  /** 屏幕右边打开卡片菜单的二级菜单：翻到左边，不盖住一级菜单 */
+  /** Card menu submenu opened near the right edge: flips left without covering the parent menu */
   async v15submenu() {
     const b = emptyBoard("b1", "sub");
     put(b, card("Scheduler.schedule"), 700, 80, 560);
@@ -240,7 +240,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "submenu-no-cover", JSON.stringify(rs));
     await close(h);
   },
-  /** 代码卡菜单：Edit ▸ Add Description 进入编辑、打字、⌘↵ 保存；标题栏有 Copy Code 图标 */
+  /** Code card menu: Edit ▸ Add Description enters editing, type, ⌘↵ saves; title bar has a Copy Code icon */
   async v15desc() {
     const b = emptyBoard("b1", "desc");
     put(b, card("Scheduler.schedule"), 80, 80, 560);
@@ -261,7 +261,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(editing === 1 && focused && desc === "Picks prefill first." && cpy === "1" ? "PASS" : "FAIL", "add-description", JSON.stringify({ editing, focused, desc, cpy }));
     await close(h);
   },
-  /** 线上的标签框：↺ + 变量、自己写的标签 + 变量、只有 ↺、只有标签 */
+  /** Link label boxes: ↺ + variables, custom label + variables, ↺ only, label only */
   async v15vlabel() {
     const b = richBoard();
     const L1 = b.links[0] as any, L2 = b.links[1] as any;
@@ -276,7 +276,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(n === 3 ? "PASS" : "FAIL", "vlabel-boxes", n);
     await close(h);
   },
-  /** 双击空白处新建 Text：编辑时跟显示时同字体、同位置，没有套白框 */
+  /** Double-click empty space for new Text: same font and position while editing as when displayed, no white box */
   async v15dbl() {
     const h = await open({ board: emptyBoard("b1", "dbl"), light, w: 900, h: 600 });
     await h.page.mouse.dblclick(300, 200); await h.page.waitForTimeout(300);
@@ -287,7 +287,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(r.sh === "none" && r.inset < 10 && r.w < 20 ? "PASS" : "FAIL", "dblclick-text", JSON.stringify(r));
     await close(h);
   },
-  /** 空的 New Code：点它自己的语言下拉、选一项，卡还在；之后点空白处才消失 */
+  /** Empty New Code: clicking its own language dropdown and picking an item keeps the card; it disappears only after clicking empty space */
   async v15freelang() {
     const h = await open({ board: emptyBoard("b1", "free"), light, w: 1000, h: 700 });
     await h.page.mouse.click(300, 200, { button: "right" }); await h.page.waitForTimeout(300);
@@ -302,7 +302,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(afterOpen === 1 && afterPick === 1 && focused && afterAway === 0 ? "PASS" : "FAIL", "free-lang-keeps-card", JSON.stringify({ afterOpen, afterPick, focused, afterAway }));
     await close(h);
   },
-  /** 选几行 → 右键 New Card from Lines：新卡只有这几行；行号栏没有 + 按钮 */
+  /** Select lines → context menu New Card from Lines: new card has only those lines; no + button in the gutter */
   async v15fromlines() {
     const b = emptyBoard("b1", "lines");
     put(b, card("Scheduler.schedule"), 80, 80, 560);
@@ -310,7 +310,7 @@ export const V015: Record<string, () => Promise<void>> = {
     const no = h.page.locator(".card .gutter .no");
     await no.nth(5).click(); await no.nth(8).click({ modifiers: ["Shift"] }); await h.page.waitForTimeout(200);
     const plus = await h.page.locator(".addn").count();
-    const lb = (await h.page.locator(".card .src .l").nth(6).boundingBox())!; // 用坐标点：locator.click 会把很宽的行横向滚进视野
+    const lb = (await h.page.locator(".card .src .l").nth(6).boundingBox())!; // click by coordinates: locator.click would scroll wide lines horizontally into view
     await h.page.mouse.click(lb.x + 60, lb.y + 8, { button: "right" }); await h.page.waitForTimeout(300);
     await h.page.locator(".ctx button", { hasText: "New Card from Lines" }).click(); await h.page.waitForTimeout(1500);
     const cs = h.board().cards as any[];
@@ -319,7 +319,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(cs.length === 2 && nc?.text.length === 4 && plus === 0 ? "PASS" : "FAIL", "card-from-lines", JSON.stringify({ n: cs.length, lines: nc?.text.length, start: nc?.start, plus }));
     await close(h);
   },
-  /** codeboard.debug.enabled 打开时设置页有 Debug 一节；拖滑块改 Peek 延时 */
+  /** With codeboard.debug.enabled, Settings has a Debug section; drag the slider to change Peek delay */
   async v15debug() {
     const h = await open({ board: emptyBoard("b1", "dbg"), light, w: 1200, h: 900, settings: { debug: true } });
     await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(400);
@@ -329,7 +329,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(n >= 6 ? "PASS" : "FAIL", "debug-tune", n);
     await close(h);
   },
-  /** 拖得快：不吸附；慢慢拖、停一下：对齐吸附（左边对齐另一张卡） */
+  /** Fast drag: no snapping; slow drag with a pause: alignment snap (left edge to another card) */
   async v15snap() {
     const b = emptyBoard("b1", "snap");
     b.cards.push({ id: "a", kind: "note", md: "A", bg: true }, { id: "m", kind: "note", md: "moving", bg: true });
@@ -344,7 +344,7 @@ export const V015: Record<string, () => Promise<void>> = {
       else { for (let i = 1; i <= 4; i++) { await h.page.mouse.move(x0 + (to * i) / 4, r.y + 10); await h.page.waitForTimeout(8); } }
       await h.page.mouse.move(tx, r.y + 10); await h.page.mouse.up(); await h.page.waitForTimeout(1300);
     };
-    await drag(-397, false); // 停在 x = 103，离 100 只差 3px
+    await drag(-397, false); // stops at x = 103, only 3px from 100
     const fastX = h.board().place.m.x;
     await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300);
     await drag(-397, true);
@@ -352,7 +352,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(fastX === 103 && slowX === 100 ? "PASS" : "FAIL", "snap-only-when-slow", JSON.stringify({ fastX, slowX }));
     await close(h);
   },
-  /** 图片卡没有标题栏，拖图片本身就能移动 */
+  /** Image cards have no title bar; dragging the image itself moves the card */
   async v15img() {
     const b = emptyBoard("b1", "img");
     const svg = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240"><rect width="400" height="240" fill="#e8a33d"/><text x="40" y="130" font-size="40">diagram</text></svg>');
@@ -367,7 +367,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(heads === 0 && p.x === 180 && p.y === 170 ? "PASS" : "FAIL", "image-drag-body", JSON.stringify({ heads, x: p.x, y: p.y }));
     await close(h);
   },
-  /** 贴纸拖到卡片外面、离边 20px：也吸附绑定（卡亮一圈） */
+  /** Sticker dropped outside a card within 20px of its edge: still snaps and binds (card gets a highlight ring) */
   async v15magnet() {
     const b = richBoard();
     const h = await open({ board: b, light, w: 1500, h: 950 });
@@ -382,7 +382,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(hot === 1 && at.on?.card === b.cards[1].id ? "PASS" : "FAIL", "sticker-magnet", JSON.stringify({ hot, at }));
     await close(h);
   },
-  /** 父卡下面被别的卡堵满：展开的子卡放在视野里，不跑到屏幕外 */
+  /** Space below the parent is blocked by other cards: the expanded child stays in view, not off-screen */
   async v15placeview() {
     const b = emptyBoard("b1", "v0.1.5");
     const step = card("LLMEngine.step");
@@ -399,7 +399,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "place-in-view", JSON.stringify({ p: nid && nb.place[nid], r }));
     await close(h);
   },
-  /** 删掉一条旁注：弹窗留在标记旁边，不跳到左上角 */
+  /** Deleting a sidenote: the popup stays next to the marker instead of jumping to the top-left */
   async v15notedel() {
     const b = richBoard();
     const n1 = b.sidenotes[0];
@@ -414,7 +414,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "note-delete-stays", JSON.stringify({ p0, p1 }));
     await close(h);
   },
-  /** Note 里的 # 标题有层级；⌘A 在编辑框里只选中这块字 */
+  /** # headings in Notes have levels; ⌘A in the editor selects only that block's text */
   async v15notehead() {
     const b = emptyBoard("b1", "v0.1.5");
     b.cards.push({ id: "t1", kind: "note", md: "# Head\n\n## Sub\n\nBody text here." } as any); b.place.t1 = { x: 60, y: 60, w: 320 };
@@ -431,7 +431,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "note-head", JSON.stringify({ fs, selTxt }));
     await close(h);
   },
-  /** 内置贴纸在每个主题里的样子 */
+  /** Built-in stickers in every theme */
   async v15stkthemes() {
     for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster"]) {
       const b = emptyBoard("b1", "v0.1.5");
@@ -445,7 +445,7 @@ export const V015: Record<string, () => Promise<void>> = {
       await close(h);
     }
   },
-  /** 各主题下代码卡的尺寸指标：字宽、行高、卡头高、代码区上下留白；换主题时卡片要装得下同样的内容 */
+  /** Code card metrics per theme: char width, line height, header height, code area vertical padding; cards must fit the same content after a theme switch */
   async v15metrics() {
     const rows: any[] = [];
     for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster"]) {
@@ -465,7 +465,7 @@ export const V015: Record<string, () => Promise<void>> = {
     }
     console.table(rows);
   },
-  /** 定了高度的代码卡：换主题后看到的代码区高度不变 */
+  /** Fixed-height code card: visible code area height unchanged after a theme switch */
   async v15themefit() {
     const out: Record<string, number> = {};
     for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite"]) {
@@ -479,7 +479,7 @@ export const V015: Record<string, () => Promise<void>> = {
     const v = Object.values(out);
     console.log(Math.max(...v) - Math.min(...v) <= 6 ? "PASS" : "FAIL", "theme-fit", JSON.stringify(out));
   },
-  /** 定义预览：鼠标离开后关掉（e2e 第 5 步的走法） */
+  /** Definition preview: closes when the mouse leaves (same moves as e2e step 5) */
   async v15peekleave() {
     const b = emptyBoard("b1", "v0.1.5");
     const sch = card("Scheduler.schedule"); put(b, sch, 200, 80, 560); b.cam = { x: 0, y: 0, z: 1 };
@@ -492,7 +492,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(shown === 1 && after === 0 ? "PASS" : "FAIL", "peek-leave", JSON.stringify({ shown, after }));
     await close(h);
   },
-  /** Warm Ink：子卡在右上方、横向很近时箭头的样子（截图看） */
+  /** Warm Ink: arrow shape when the child is up-right and horizontally close (check screenshot) */
   async v15arrowup() {
     const b = richBoard();
     b.place[b.cards[0].id] = { ...b.place[b.cards[0].id], x: 80, y: 420 };
@@ -502,13 +502,13 @@ export const V015: Record<string, () => Promise<void>> = {
     await shot(h, "v15-arrowup");
     await close(h);
   },
-  /** 换主题后卡变高：被压住的卡往下推（一步可撤销）；设置成 overlap 时不动 */
+  /** Cards grow taller after a theme switch: overlapped cards get pushed down (one undoable step); left alone when set to overlap */
   async v15reflow() {
     const base = richBoard();
     let h = await open({ board: base, light, w: 1500, h: 950 });
     const r0 = (await h.page.locator(`.card[data-id="${base.cards[0].id}"]`).boundingBox())!;
     await close(h);
-    const y0 = Math.round(r0.y + r0.height + 20); // cam = (0,0,1)：屏幕坐标就是白板坐标
+    const y0 = Math.round(r0.y + r0.height + 20); // cam = (0,0,1): screen coordinates equal board coordinates
     const res: any = {};
     for (const mode of ["push", "overlap"] as const) {
       const b = richBoard();
@@ -527,7 +527,7 @@ export const V015: Record<string, () => Promise<void>> = {
     const ok = res.push.y1 > y0 && !res.push.overlap && res.overlap.y1 === y0;
     console.log(ok ? "PASS" : "FAIL", "theme-reflow", JSON.stringify({ y0, res }));
   },
-  /** ⌘C 一张卡再 ⌘V：新卡放在原卡旁边（错开 36，允许重叠），不去找空地 */
+  /** ⌘C a card then ⌘V: the copy goes next to the original (offset 36, overlap allowed), no search for free space */
   async v15pastenear() {
     const b = richBoard();
     const st = b.cards[0] as CodeCard;
@@ -546,8 +546,8 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "paste-near", JSON.stringify({ p0, p1 }));
     await close(h);
   },
-  /** 线上的变量框能沿线拖，位置存成 t */
-  /** 从一行拖到另一张卡的行号上 → 连到那一行（松手前那一行亮起） */
+  /** Variable boxes on links can be dragged along the link; position is stored as t */
+  /** Drag from a line onto another card's line number → links to that line (the line highlights before release) */
   async v15line2line() {
     const b = richBoard();
     b.links = [];
@@ -567,7 +567,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(l?.from.line && l?.to.line && lit === 1 ? "PASS" : "FAIL", "line-to-line", JSON.stringify({ from: l?.from, to: l?.to, lit }));
     await close(h);
   },
-  /** 同一个调用点第二次：跳到已经展开的卡，不再新建 */
+  /** Same call site a second time: jumps to the already expanded card instead of creating a new one */
   async v15reexpand() {
     const b = emptyBoard("b1", "reexpand");
     const step = card("LLMEngine.step");

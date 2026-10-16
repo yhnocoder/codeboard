@@ -1,6 +1,6 @@
-// 性能基准：用 nano-vllm 拼一块大白板，在浏览器里量镜头、拖动、修改、展开、撤销、加载的耗时。
-// 用法：node packages/board/test/run-perf.mjs [--cards 240] [--runs 3] [--json out.json]
-// 每个场景报两样：墙钟（操作 → 下一帧画出来）和主线程忙的时间（CDP 的 TaskDuration）。
+// Performance benchmark: builds a large board from nano-vllm and measures camera, drag, mutate, expand, undo and load times in the browser.
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--runs 3] [--json out.json]
+// Each scenario reports two numbers: wall clock (action → next frame painted) and main-thread busy time (CDP TaskDuration).
 import * as fs from "node:fs";
 import { ready, open, symCard, files, type Host } from "./harness";
 import { emptyBoard, uid, type Board, type CodeCard, type Link, type Section, type Sidenote } from "@codeboard/core";
@@ -9,13 +9,13 @@ import type { CDPSession } from "playwright-core";
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const NCARDS = +arg("cards", "240"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", "");
 
-/** 一块大白板：nano-vllm 的函数（不够就重复），按调用连成树，每 12 张一个 Section（两层嵌套），一些 Sidenote */
+/** A large board: nano-vllm functions (repeated if too few), linked into trees by calls, a Section every 12 cards (two levels nested), some Sidenotes */
 export function bigBoard(n: number): Board {
   const b = emptyBoard("perf", `perf · ${n} cards`);
   const defs = [...files.entries()].flatMap(([f, x]) => x.a.symbols.filter((s) => s.kind === "def").map((s) => ({ f, s, calls: x.a.calls.filter((c) => c.line >= s.start && c.line <= s.end && !c.dispatch) })));
   const cards: { c: CodeCard; d: (typeof defs)[number] }[] = [];
   for (let i = 0; cards.length < n; i++) { const d = defs[i % defs.length]; cards.push({ c: symCard(d.f, d.s), d }); }
-  // 第 0 张是 LLMEngine.step 且不连线，留给「展开」场景点
+  // Card 0 is LLMEngine.step with no links, reserved for the expand scenario to click
   const step = defs.find((d) => d.s.qual === "LLMEngine.step")!;
   cards.unshift({ c: symCard(step.f, step.s), d: { ...step, calls: [] } });
   const COLS = 12;
@@ -30,7 +30,7 @@ export function bigBoard(n: number): Board {
       b.links.push(L);
     }
   });
-  // 再加些 Plain link，凑够和卡差不多的数量
+  // Add Plain links until there are about as many as cards
   for (let i = 1; b.links.length < n && i + 7 < cards.length; i += 3) b.links.push({ id: uid("l"), kind: "plain", from: { card: cards[i].c.id }, to: { card: cards[i + 7].c.id }, arrow: "end" });
   const rows = Math.ceil(cards.length / COLS);
   for (let r = 0; r < rows; r++) {
@@ -60,7 +60,7 @@ async function busy(cdp: CDPSession) {
   const { metrics } = await cdp.send("Performance.getMetrics");
   return (metrics.find((m) => m.name === "TaskDuration")?.value ?? 0) * 1000;
 }
-/** 跑 n 步，每步一次操作再等它画出来 */
+/** Run n steps, each one action followed by waiting for it to paint */
 async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => Promise<void>, name = ""): Promise<M> {
   const wall: number[] = [];
   const prof = name && name === PROFILE;
@@ -91,7 +91,7 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
   }
   return { wall, busy: bz, parts };
 }
-/** 剖析结果：按函数的自身时间和总时间排前 30 */
+/** Profile results: top 30 functions by self time and total time */
 function top(p: { nodes: { id: number; callFrame: { functionName: string; url: string; lineNumber: number }; children?: number[] }[]; samples: number[]; timeDeltas: number[] }) {
   const self = new Map<number, number>();
   p.samples.forEach((id, i) => self.set(id, (self.get(id) ?? 0) + (p.timeDeltas[i] ?? 0)));
@@ -133,7 +133,7 @@ async function once() {
     await cdp.send("Performance.enable");
     if (PROFILE === "load") { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }
   } });
-  // 加载：收到 init → 所有卡都画出来（页面里量）
+  // Load: init received → all cards painted (measured in the page)
   const ld = await h.page.waitForFunction((n) => document.querySelectorAll(".card").length >= n && performance.now() - (window as any).__tInit, board.cards.length, { timeout: 60000 });
   res.load = +(+(await ld.jsonValue())).toFixed(0);
   res.openTotal = +(performance.now() - t0).toFixed(0);
@@ -151,7 +151,7 @@ async function once() {
   res.zoom = sum(await steps(h, cdp, 40, async (i) => { await h.page.keyboard.down("Control"); await h.page.mouse.wheel(0, i < 20 ? 30 : -30); await h.page.keyboard.up("Control"); }, "zoom"));
   await h.page.waitForTimeout(800);
 
-  // 拖动：连线最多的那张卡（端点每帧跟着走）
+  // Drag: the card with the most links (endpoints follow every frame)
   const deg = new Map<string, number>();
   for (const L of board.links) for (const id of [L.from.card, L.to.card]) deg.set(id, (deg.get(id) ?? 0) + 1);
   const hub = [...deg.entries()].sort((a, b) => b[1] - a[1])[0][0];
@@ -169,10 +169,10 @@ async function once() {
   res.dragEnd = +(performance.now() - tUp).toFixed(1);
   await h.page.waitForTimeout(1200);
 
-  // 修改：方向键挪选中的卡（每次一次 mutate：撤销快照 + 不变量 + 自动保存的依赖）
+  // Mutate: move the selected card with arrow keys (one mutate each: undo snapshot + invariants + autosave dependencies)
   res.nudge = sum(await steps(h, cdp, 30, async () => { await h.page.keyboard.press("ArrowRight"); }, "nudge"));
   res.boardKB = Math.round(JSON.stringify(board).length / 1024);
-  // 再挪 120 次，看撤销栈让堆长了多少（先强制 GC）
+  // Move 120 more times to see how much the undo stack grows the heap (force GC first)
   const heap = async () => { await cdp.send("HeapProfiler.collectGarbage"); return ((await cdp.send("Runtime.getHeapUsage")) as any).usedSize / 2 ** 20; };
   const h0 = await heap();
   for (let i = 0; i < 120; i++) await h.page.keyboard.press(i % 2 ? "ArrowLeft" : "ArrowDown");
@@ -184,13 +184,13 @@ async function once() {
   await h.page.waitForTimeout(1200);
 
   if (process.argv.includes("--quick")) { await h.page.context().browser()!.close(); return res; }
-  // 展开：点第 0 张卡里的调用，等新卡出来
+  // Expand: click a call in card 0 and wait for the new card
   const ex: number[] = [];
   for (const name of ["schedule", "postprocess"]) {
     await focusCard(h, board.cards[0].id);
     const n0 = await h.page.locator(".card").count();
     const el = h.page.locator(`.card[data-id="${board.cards[0].id}"] .src .call:text-is("${name}")`).first();
-    // 按下 → 新卡出现在 DOM 里（页面里量，含宿主回答的往返）
+    // Press → new card appears in the DOM (measured in the page, includes the host round trip)
     await profiled(cdp, "expand", async () => {
       await el.click();
       const r = await h.page.waitForFunction((n) => document.querySelectorAll(".card").length > n && performance.now() - (window as any).__tDown, n0);
@@ -200,7 +200,7 @@ async function once() {
   }
   res.expand = ex.map((x) => +x.toFixed(1));
 
-  // 版本：宿主推一批「新版本」，再 Update All
+  // Versions: host pushes a batch of "new versions", then Update All
   const stale: Record<string, unknown> = {};
   for (const c of board.cards) for (const s of (c as CodeCard).segments ?? []) stale[s.id] = { state: "changed", hiddenOnly: false, head: "f64d821" };
   let t = performance.now();
@@ -211,7 +211,7 @@ async function once() {
 }
 
 async function focusCard(h: Host, id: string) {
-  // 宿主的 Reveal on Board：镜头移到这张卡并选中它
+  // Host Reveal on Board: camera moves to the card and selects it
   await h.post({ type: "reveal", card: id });
   await h.page.waitForTimeout(1200);
 }

@@ -57,11 +57,11 @@ describe("rebaseSegment", () => {
 
   it("moves hidden ranges, highlights, both link ends and sidenotes with the content", () => {
     const b = board();
-    // 新版本：前面多了两行，x = 1 被删
+    // New version: two lines added at the top, x = 1 removed
     rebaseSegment(b, "a", seg("s1", 20, ["import os", "", "def f():", "    y = 2", "    return x + y"]));
     const s = (b.cards[0] as CodeCard).segments[0];
     expect([s.start, s.end]).toEqual([20, 24]);
-    expect(s.hidden).toBeUndefined(); // 被隐藏的那一行没了
+    expect(s.hidden).toBeUndefined(); // the hidden line is gone
     expect(s.hl).toEqual([23, 24]);
     expect(b.links[0].from).toEqual({ card: "a", seg: "s1", line: 24 });
     expect(b.links[1].to).toEqual({ card: "a", seg: "s1", line: 23 });
@@ -90,7 +90,7 @@ describe("rebaseSegment", () => {
 });
 
 describe("brokenBy (Compare stays in one flow)", () => {
-  // R → X → cl，R → Y → cr，cl 和 cr 并成 Compare k
+  // R → X → cl, R → Y → cr; cl and cr merged into Compare k
   const board = (): Board => ({
     ...emptyBoard("b", "B"),
     cards: [code("R"), code("X"), code("Y"), code("cl"), code("cr"), compare("k", "cl", "cr")],
@@ -114,7 +114,7 @@ describe("brokenBy (Compare stays in one flow)", () => {
   it("allows changes that keep both columns together", () => {
     const before = board();
     const after = structuredClone(before);
-    removeCards(after, ["Y"]); // cr 不在任何树里了，cl 还在：不算拆开
+    removeCards(after, ["Y"]); // cr is no longer in any tree, cl still is: not counted as a split
     expect(brokenBy(after, () => before)).toBeNull();
     const after2 = { ...before, links: before.links.filter((l) => l.id !== "X-cl") };
     expect(brokenBy(after2, () => before)).toBeNull();

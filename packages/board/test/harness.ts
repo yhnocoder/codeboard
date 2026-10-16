@@ -1,13 +1,13 @@
-// 浏览器里测白板：Chromium 打开白板页面，Node 这边扮演宿主（读 nano-vllm、分析、回消息）。
-// 不需要 VS Code，改白板界面时快速看效果、截图、跑交互脚本。
-// 用法：node packages/board/test/run-harness.mjs <脚本名> [--light]   截图在 test-out/harness/
+// In-browser board tests: Chromium opens the board page, Node plays the host (reads nano-vllm, analyzes, replies to messages).
+// No VS Code needed: quickly preview board UI changes, take screenshots and run interaction scripts.
+// Usage: node packages/board/test/run-harness.mjs <scenario> [--light]   screenshots go to test-out/harness/
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Page } from "playwright-core";
 import { uid, emptyBoard, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
 import { initAnalysis, analyze, symbolAt, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 
-export const REPO = path.resolve(__dirname, "../.."); // 打包后在 test-out/harness/
+export const REPO = path.resolve(__dirname, "../.."); // bundled into test-out/harness/
 const NV = path.join(REPO, "examples/nano-vllm");
 const MEDIA = path.join(REPO, "extensions/vscode/media/board");
 export const OUT = path.join(REPO, "test-out/harness");
@@ -38,7 +38,7 @@ export function viewOf(seg: Segment): SegView {
     const t = seg.text[l - seg.start] ?? "";
     const cs = (a?.calls ?? []).filter((c) => c.line === l);
     const marks = cs.map((c) => {
-      // 工作区只有 nanovllm：其余 import 进来的包是 library
+      // The workspace is only nanovllm: other imported packages are libraries
       const p = a && importPkg(a, c), pkg = p && p !== "nanovllm" ? p : undefined;
       calls.push({ line: l, col: c.col, end: c.end, name: c.name, recv: c.recv, loop: c.loop, dispatch: c.dispatch, pkg });
       return { col: c.col, end: c.end, idx: calls.length - 1, pkg };
@@ -52,7 +52,7 @@ export function viewOf(seg: Segment): SegView {
   const defs = (a?.symbols ?? []).filter((s) => s.defLine >= seg.start && s.defLine <= seg.end).map((s) => ({ line: s.defLine, name: s.name, qual: s.qual }));
   return { html, flags, calls, defs, bare };
 }
-// 粗糙的 Python 着色：关键字、字符串、注释、数字
+// Crude Python highlighting: keywords, strings, comments, numbers
 const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await".split(" "));
 function tokenize(t: string) {
   const out: { text: string; cls?: string }[] = [];
@@ -77,7 +77,7 @@ export function symCard(f: string, s: Sym): CodeCard {
   };
   return { id: uid("c"), kind: "code", segments: [seg], members: s.kind === "class" ? { shown: [] } : undefined };
 }
-/** 把卡放上白板 */
+/** Put a card on the board */
 export function put(b: Board, c: Card, x: number, y: number, w = 560) { b.cards.push(c); b.place[c.id] = { x, y, w }; }
 export const findSym = (qual: string) => allSyms().find((x) => x.s.qual === qual)!;
 
@@ -85,7 +85,7 @@ export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: 
 
 export async function ready() { await initAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm")); if (!files.size) load(); }
 
-/** 场景自己扮演宿主的一部分：处理了就返回 true */
+/** Lets a scenario play part of the host: return true if handled */
 export type OnMsg = (m: BoardToHost & { req?: number }, reply: (req: number, data?: unknown, error?: string) => Promise<void>) => boolean | Promise<boolean>;
 
 export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT_SETTINGS>; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void>; on?: OnMsg } = {}): Promise<Host> {
@@ -172,7 +172,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
   return { page, board: () => board, sent, post };
 }
 
-// ---------- 定义预览：按 peekPlan 取行，hover 用 docstring 扮演（library 用下面的假数据） ----------
+// ---------- Definition preview: lines taken per peekPlan, hover faked with docstrings (libraries use the fake data below) ----------
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const TORCH_MP = "torch.multiprocessing is a wrapper around the native [multiprocessing](https://docs.python.org/3/library/multiprocessing.html) module.\n\nIt registers custom reducers, that use shared memory to provide shared views on the same data in different processes. Once the tensor/storage is moved to shared_memory (see `share_memory_()`), it will be possible to send it to other processes without making any copies.\n\nThe API is 100% compatible with the original module - it's enough to change `import multiprocessing` to `import torch.multiprocessing` to have all the tensors sent through the queues or shared via other mechanisms, moved to shared memory.";
@@ -190,7 +190,7 @@ export function peekMock(seg: Segment, word: string): any {
     const s = libSeg("multiprocessing/context.py", LIB_FN, 186);
     return { path: "/usr/lib/python3.12/multiprocessing/context.py", line: 186, start: 186, text: LIB_FN.slice(0, 4), html: LIB_FN.slice(0, 4).map((t) => renderLine(tokenize(t))), seg: s, kind: "function", rows: [186, 187, 188, 189], more: 3, sig: "(method) def get_context(method: str | None = None) -> BaseContext", sigHtml: renderLine(tokenize("(method) def get_context(method: str | None = None) -> BaseContext")), lib: "multiprocessing" };
   }
-  // 定义在哪：函数 / 类 → 类的字段 → self.x 赋值
+  // Where it's defined: function / class → class field → self.x assignment
   let at: { f: string; line: number } | undefined;
   const sym = allSyms().find((k) => k.s.name === word);
   if (sym) at = { f: sym.f, line: sym.s.defLine };

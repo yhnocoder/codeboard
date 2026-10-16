@@ -8,7 +8,7 @@ import {
 } from "../src";
 import { initAnalysis, analyze, planSelection, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
 
-// 用仓库里的 nano-vllm submodule 做测试数据
+// Uses the repo's nano-vllm submodule as test data
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
 const show = (rev: string, path: string) => execFileSync("git", ["-C", repo, "show", `${rev}:${path}`], { encoding: "utf8" });
 const NEW = "bb823b3", OLD = "9e8507e";
@@ -44,7 +44,7 @@ describe("analyze (python)", () => {
     const calls = a.calls.filter((c) => c.line >= step.start && c.line <= step.end);
     const sched = calls.find((c) => c.name === "schedule")!;
     expect(sched).toMatchObject({ recv: "self.scheduler", loop: false, assigned: ["seqs", "is_prefill"] });
-    // call("run", …) 记下字符串，但被调的是 call
+    // call("run", …) records the string, but the callee is call
     const call = calls.find((c) => c.name === "call")!;
     expect(call.dispatch).toBe("run");
     const gen = sym(a, "LLMEngine.generate");
@@ -168,7 +168,7 @@ describe("diff and alignment", () => {
   });
 });
 
-// ---------- 流程 ----------
+// ---------- Flows ----------
 
 const seg = (id: string, start = 1, end = 3): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end, text: [], version: { kind: "git", commit: "x" } });
 const code = (id: string): CodeCard => ({ id, kind: "code", segments: [seg(`s${id}`, 1, 50)] });
@@ -192,21 +192,21 @@ describe("computeFlows", () => {
   it("attaches only to cards with no incoming call, without loops", () => {
     const b = board([call("a", 1, "b"), call("c", 1, "d")]);
     const f = computeFlows(b);
-    expect(canAttach(b, f, "a", "b").ok).toBe(false); // b 已经有进来的 link
+    expect(canAttach(b, f, "a", "b").ok).toBe(false); // b already has an incoming link
     expect(canAttach(b, f, "a", "e").ok).toBe(true);
-    expect(canAttach(b, f, "b", "a").ok).toBe(false); // 成环
-    expect(canAttach(b, f, "b", "c").ok).toBe(true); // 另一棵树的根：整棵并过来
+    expect(canAttach(b, f, "b", "a").ok).toBe(false); // would form a cycle
+    expect(canAttach(b, f, "b", "c").ok).toBe(true); // root of another tree: the whole tree merges in
   });
   it("keeps both Compare columns in one flow on expand and attach", () => {
     const cmp: Card = { id: "k", kind: "compare", cols: ["p", "q"] };
     const b: Board = { ...emptyBoard("b", "B"), cards: [...["a", "b", "e", "p", "q"].map(code), cmp], links: [call("p", 1, "a")] };
     const f = computeFlows(b);
-    expect(canExpand(b, "q").ok).toBe(false); // q 会成为第二棵树的根
+    expect(canExpand(b, "q").ok).toBe(false); // q would become the root of a second tree
     expect(canExpand(b, "p").ok).toBe(true);
     expect(canExpand(b, "a").ok).toBe(true);
-    expect(canAttach(b, f, "a", "q").ok).toBe(true); // q 进 p 的树
+    expect(canAttach(b, f, "a", "q").ok).toBe(true); // q joins p's tree
     const b2: Board = { ...b, links: [call("p", 1, "a"), call("b", 1, "e")] };
-    expect(canAttach(b2, computeFlows(b2), "b", "q").ok).toBe(false); // q 进 b 的树，p 在另一棵
+    expect(canAttach(b2, computeFlows(b2), "b", "q").ok).toBe(false); // q joins b's tree while p is in another
     const b3: Board = { ...b, links: [] };
     expect(canExpand(b3, "q").ok).toBe(true);
     expect(canAttach(b3, computeFlows(b3), "q", "p").ok).toBe(true);

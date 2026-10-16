@@ -1,4 +1,4 @@
-// 打包 host-resolve.ts（vscode 换成假的）给 Node 跑：没有语言服务时宿主的展开 / 预览 / 变量候选。用法：node run-host-resolve.mjs
+// Bundles host-resolve.ts (with a fake vscode) to run in Node: host expand / preview / variable candidates without a language service. Usage: node run-host-resolve.mjs
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";

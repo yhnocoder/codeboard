@@ -1,4 +1,4 @@
-// 打包 scenarios.ts（连同 core 和分析）给 Node 跑。用法：node run-harness.mjs <场景名…> [--light]
+// Bundles scenarios.ts (with core and analysis) to run under Node. Usage: node run-harness.mjs <scenario…> [--light]
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";
