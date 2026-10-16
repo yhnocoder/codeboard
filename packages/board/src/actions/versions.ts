@@ -117,11 +117,8 @@ export async function switchCommit(id: string, commit: string) {
     try { segs.push(await ask("switchCommit", { seg: structuredClone(unwrap(s)), commit })); }
     catch (e) { return toast((e as Error).message); }
   }
-  mutate((b) => {
-    const k = findCard(b, id)?.card;
-    if (!isCode(k)) return;
-    for (const r of segs) { const i = k.segments.findIndex((s) => s.id === r.seg.id); if (i >= 0) k.segments[i] = r.seg; }
-  });
+  // 走 rebaseSegment：段上的隐藏 / 高亮，Link、Sidenote、Sticker 的行号按内容跟到那个 commit 的行上
+  mutate((b) => { for (const r of segs) rebaseSegment(b, id, r.seg); });
   for (const r of segs) { setState("views", r.seg.id, r.view); setState("stale", r.seg.id, undefined as any); }
   send({ type: "checkVersions" });
   toast(`Switched to ${commit.slice(0, 7)}`);

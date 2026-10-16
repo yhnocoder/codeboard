@@ -42,7 +42,7 @@ export function CardView(p: { card: Card }) {
   const pl = () => placeOf(c().id);
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
-    if (pl().h) s.height = c().kind === "code" ? `calc(${pl().h}px + var(--hx, 0px))` : `${pl().h}px`;
+    if (pl().h && c().kind !== "code") s.height = `${pl().h}px`; // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
     const pi = pop();
     if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
@@ -204,6 +204,7 @@ function CodeCardView(p: { card: CodeCard }) {
     <>
       <CodeHead card={c()} />
       <CodeBand card={c()} />
+      <div class="carea" style={placeOf(c().id).h ? { height: `${placeOf(c().id).h}px` } : undefined}>
       <Desc id={c().id} desc={c().desc} />
       <Show when={act.missingNote(c())}>
         <div class="cmiss" onPointerDown={(e) => e.stopPropagation()}>
@@ -221,6 +222,7 @@ function CodeCardView(p: { card: CodeCard }) {
       <Show when={c().segments[0]?.src.kind === "free" && c().segments[0]?.src.kind === "free" && (c().segments[0].src as any).url}>
         <div class="cfoot"><span>Source</span><a class="lnk" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openLink((c().segments[0].src as any).url)}>{(c().segments[0].src as any).url}</a></div>
       </Show>
+      </div>
       <CodeFoot card={c()} />
     </>
   );

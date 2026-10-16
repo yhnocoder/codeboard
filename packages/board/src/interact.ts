@@ -1,6 +1,5 @@
 // 指针交互：拖卡（吸附、合并、⌥ 拖成 Sidenote、进出 Section）、改大小、框选、平移、缩放、
 // 拖 Section 标签、从调用拖出 Call link、从行尾 / 卡边拖出 Plain link，以及键盘快捷键。
-import { chromeExtra } from "./state/look";
 import { unwrap } from "solid-js/store";
 import {
   findCard, isCode, snapMove, snapResize, union, bounds, center, contains, cardTitle,
@@ -238,7 +237,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（#2：单行卡拉高后能缩回去）
   const nat = A.naturalSize(c.id);
   const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
-  const hx = c.kind === "code" ? chromeExtra() : 0;
+  const hx = c.kind === "code" ? A.chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
   track(e, (ev) => {
     const z = cam.z, dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     let w = r0.w, h = r0.h, x = r0.x;

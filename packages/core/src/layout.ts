@@ -1,6 +1,6 @@
 // 摆放：新卡放哪、展开出来的子卡放哪、Tidy Layout。只做几何，尺寸由调用方给（白板里是实测尺寸）。
 import type { FlowNode } from "./flow";
-import type { Card, Place } from "./model";
+import { V3_CODE_CHROME, type Card, type Place } from "./model";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -10,7 +10,7 @@ export const SIB_GAP = 24;
 
 /** 还没渲染、量不到实测尺寸时的估计（白板放新卡、宿主在白板没开时直接写卡都用它） */
 export function estSize(c: Card, p: Pick<Place, "w" | "h"> = { w: defaultWidth(c) }): { w: number; h: number } {
-  if (p.h) return { w: p.w, h: p.h };
+  if (p.h) return { w: p.w, h: p.h + (c.kind === "code" ? V3_CODE_CHROME : 0) }; // 代码卡的 h 不含卡头：按 Warm Ink 的卡头加回去
   if (c.kind === "links") return { w: p.w, h: 52 + c.items.length * (c.rich ? 72 : 30) };
   if (c.kind !== "code") return { w: p.w, h: c.kind === "web" ? 112 : 160 };
   const lines = c.segments.reduce((n, s) => n + s.end - s.start + 1, 0);

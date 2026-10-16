@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, canAttach, canExpand, canCompare, hiddenByCollapse, snapMove, align,
-  cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard,
+  cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize,
   type Board, type Card, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
 import { initAnalysis, analyze, planSelection, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
@@ -298,11 +298,11 @@ describe("entry points", () => {
 });
 
 describe("migrateBoard", () => {
-  it("turns a v1 board into v3", () => {
+  it("turns a v1 board into v4", () => {
     const b = migrateBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
-    expect(b.version).toBe(3);
+    expect(b.version).toBe(4);
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [2], symbol: { qual: "f" } });
     expect(b.place.c1).toEqual({ x: 0, y: 0, w: 500 });
@@ -320,7 +320,7 @@ describe("migrateBoard", () => {
       ],
       links: [{ id: "l", kind: "plain", from: { card: "a" }, to: { card: "w" } }],
     });
-    expect(b.place.a).toEqual({ x: 1, y: 2, w: 400, h: 90, section: "g", locked: true, collapsed: true });
+    expect(b.place.a).toEqual({ x: 1, y: 2, w: 400, h: 54, section: "g", locked: true, collapsed: true }); // v4: code area only
     expect(b.cards.find((c) => c.id === "a")).toEqual({ id: "a", kind: "code", title: "T", segments: [seg("sa")] });
     expect(b.cards.find((c) => c.id === "k")).toEqual({ id: "k", kind: "compare", cols: ["p", "q"], swap: true });
     expect(b.cards.map((c) => c.id)).toEqual(["a", "p", "q", "k", "w", "i"]);
@@ -331,6 +331,22 @@ describe("migrateBoard", () => {
     expect(b.links[0]).toMatchObject({ kind: "plain", arrow: "none" });
     expect(b.stickers).toEqual([]);
     expect(migrateBoard(structuredClone(b))).toEqual(b);
+  });
+  it("v3 → v4: code cards store the code area height (minus the 36px Warm Ink header), other cards keep theirs", () => {
+    const a = { id: "a", kind: "code", segments: [seg("sa")], mergedFrom: [{ card: { id: "m", kind: "code", segments: [seg("sm")] }, place: { x: 0, y: 0, w: 300, h: 200 } }] };
+    const raw = {
+      version: 3, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 },
+      cards: [a, { id: "z", kind: "code", segments: [seg("sz")] }, { id: "n", kind: "note", md: "x" }],
+      place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
+    };
+    const b = migrateBoard(structuredClone(raw));
+    expect(b.version).toBe(4);
+    expect(b.place.a.h).toBe(264);
+    expect(b.place.z.h).toBeUndefined();
+    expect(b.place.n.h).toBe(120);
+    expect((b.cards[0] as CodeCard).mergedFrom![0].place.h).toBe(164);
+    expect(migrateBoard(structuredClone(b))).toEqual(b); // v4 is read as is
+    expect(estSize(b.cards[0], b.place.a).h).toBe(300); // estimates still count the header
   });
 });
 

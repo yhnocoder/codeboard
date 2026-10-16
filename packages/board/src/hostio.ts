@@ -2,7 +2,7 @@
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, live, setLineSel, sel } from "./state/store";
+import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, setLineSel, sel } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner } from "./state/ui";
 import * as A from "./actions";
@@ -31,10 +31,10 @@ export function onHost(m: HostToBoard) {
     case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
     case "stale": {
       // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移）。
-      // 这是跟宿主同步，不是用户的操作，所以不进撤销栈（⌘Z 不会撤掉它）
+      // 这是跟宿主同步，不是用户的操作，所以走 sync：不进撤销栈，⌘Z 回到更早的快照后会再平移一次（按段现在的位置算到目标行，不会平移两遍）
       const moved = Object.entries(m.stale).filter(([, s]) => s.state === "moved");
       if (moved.length) {
-        live((b) => {
+        sync((b) => {
           for (const [sid, s] of moved) {
             if (s.state !== "moved") continue;
             for (const k of allCodeCards(b)) {

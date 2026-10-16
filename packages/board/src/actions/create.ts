@@ -3,7 +3,7 @@ import { createRoot, createEffect } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
+  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, retargetCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
   type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
@@ -174,21 +174,29 @@ export function splitSnippet(id: string, merge: boolean) {
     const a = i === 0 ? s.start : d.line, e = i + 1 < tops.length ? tops[i + 1].line - 1 : s.end;
     return { ...structuredClone(unwrap(s)), id: uid("s"), start: a, end: e, text: s.text.slice(a - s.start, e - s.start + 1), symbol: { qual: d.qual, kind: "function" as const }, scope: d.qual, hidden: undefined, hl: undefined };
   });
+  // 指着原来那段的行（Link、Sidenote、Sticker）跟到包含那一行的新段 / 新卡上；没有行的落在（第一张）卡上
+  const partOf = (line?: number) => Math.max(0, parts.findIndex((p) => line !== undefined && line >= p.start && line <= p.end));
   if (merge) {
-    mutate((b) => { const k = findCard(b, id)?.card; if (isCode(k)) k.segments = parts; });
+    mutate((b) => {
+      const k = findCard(b, id)?.card;
+      if (!isCode(k)) return;
+      retargetCards(b, [id], (at) => ({ card: id, seg: at.seg === s.id && at.line ? parts[partOf(at.line)].id : undefined }));
+      k.segments = parts;
+    });
   } else {
     const r = hostRect(id)!;
     const pl = placeOf(id);
+    const ids = parts.map(() => uid("c"));
     mutate((b) => {
-      b.cards = b.cards.filter((k) => k.id !== id);
-      delete b.place[id];
+      retargetCards(b, [id], (at) => { const i = partOf(at.seg === s.id ? at.line : undefined); return { card: ids[i], seg: at.seg === s.id && at.line ? parts[i].id : undefined }; });
+      removeCards(b, [id]);
       let y = r.y;
-      for (const p of parts) {
-        const k: CodeCard = { id: uid("c"), kind: "code", segments: [p] };
+      parts.forEach((p, i) => {
+        const k: CodeCard = { id: ids[i], kind: "code", segments: [p] };
         b.cards.push(k);
         b.place[k.id] = { x: r.x, y, w: r.w, section: pl.section };
         y += estSize(k, { w: r.w }).h + GAP;
-      }
+      });
     });
   }
   requestViews(parts);

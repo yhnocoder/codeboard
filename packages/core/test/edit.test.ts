@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import {
-  brokenBy, danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, retargetCards, shiftBy, splitCompares,
+  brokenBy, danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, removeLinks, replaceCards, retargetCards, shiftBy, splitCompares,
   type Board, type Card, type CodeCard, type Link, type Segment,
 } from "../src";
 
@@ -184,6 +187,94 @@ describe("danglingRefs", () => {
 
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
-    expect(() => migrateBoard({ version: 4, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 5, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
+  });
+});
+
+// v0.1.6 S3: the board actions keep references through these primitives (see the guard test at the end)
+describe("reference upkeep in board actions", () => {
+  const sw = (commit: string, start: number, text: string[]): Segment => ({ ...seg("s1", start, text), version: { kind: "git", commit } });
+  it("switching a card to another commit (switchCommit) rebases: hidden lines, links, sidenotes and stickers follow the content", () => {
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a", { ...sw("x", 10, ["def f():", "    x = 1", "    return x"]), hidden: [[11, 11]] }), code("z")],
+      links: [{ id: "l", kind: "plain", from: { card: "z" }, to: { card: "a", seg: "s1", line: 12 } }],
+      sidenotes: [{ id: "n", at: { card: "a", seg: "s1", lines: [11, 11] }, kind: "text", md: "" }],
+      stickers: [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "a", seg: "s1", line: 12 } }],
+    };
+    rebaseSegment(b, "a", sw("y", 30, ["# moved", "def f():", "    x = 1", "    return x"]));
+    const s = (b.cards[0] as CodeCard).segments[0];
+    expect([s.start, s.version]).toEqual([30, { kind: "git", commit: "y" }]);
+    expect(s.hidden).toEqual([[32, 32]]);
+    expect(b.links[0].to.line).toBe(33);
+    expect(b.sidenotes[0].at.lines).toEqual([32, 32]);
+    expect(b.stickers[0].at).toMatchObject({ kind: "line", line: 33 });
+  });
+  it("splitting a snippet into cards (splitSnippet) moves line references to the part holding the line", () => {
+    const s = seg("s1", 1, ["def f():", "    pass", "def g():", "    pass"]);
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a", s), code("z")],
+      place: { a: { x: 0, y: 0, w: 1 }, z: { x: 0, y: 0, w: 1 } },
+      links: [{ id: "l1", kind: "call", from: { card: "a", seg: "s1", line: 4 }, to: { card: "z" } }, { id: "l2", kind: "plain", from: { card: "z" }, to: { card: "a" } }],
+      sidenotes: [{ id: "n", at: { card: "a", seg: "s1", lines: [2, 2] }, kind: "text", md: "" }],
+    };
+    const parts = [seg("p1", 1, s.text.slice(0, 2)), seg("p2", 3, s.text.slice(2))];
+    const ids = ["c1", "c2"];
+    const i = (line?: number) => Math.max(0, parts.findIndex((p) => line !== undefined && line >= p.start && line <= p.end));
+    retargetCards(b, ["a"], (at) => ({ card: ids[i(at.line)], seg: at.seg === "s1" && at.line ? parts[i(at.line)].id : undefined }));
+    removeCards(b, ["a"]);
+    parts.forEach((p, k) => { b.cards.push(code(ids[k], p)); b.place[ids[k]] = { x: 0, y: 0, w: 1 }; });
+    expect(b.links.map((l) => [l.from, l.to])).toEqual([[{ card: "c2", seg: "p2", line: 4 }, { card: "z" }], [{ card: "z" }, { card: "c1", seg: undefined, line: undefined }]]);
+    expect(b.sidenotes[0].at).toEqual({ card: "c1", seg: "p1", lines: [2, 2] });
+    expect(danglingRefs(b)).toEqual([]);
+  });
+  it("updating a merged card also updates its mergedFrom snapshot, so Unmerge still finds the lines", () => {
+    const a = seg("sa", 10, ["def f():", "    return 1"]), c = { ...seg("sc", 12, ["def g():", "    return 2"]) };
+    const merged = seg("m1", 10, [...a.text, ...c.text]);
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [{ id: "m", kind: "code", segments: [merged], mergedFrom: [{ card: code("a", a), place: { x: 0, y: 0, w: 1 } }, { card: code("c", c), place: { x: 0, y: 0, w: 1 } }] }],
+      place: { m: { x: 0, y: 0, w: 1 } },
+    };
+    // New version: one line added on top
+    rebaseSegment(b, "m", { ...seg("m1", 20, ["import os", ...merged.text]), version: { kind: "git", commit: "y" } });
+    const snap = (b.cards[0] as CodeCard).mergedFrom!.map((o) => o.card.segments[0]);
+    expect(snap.map((s) => [s.start, s.end, s.version, s.text])).toEqual([
+      [21, 22, { kind: "git", commit: "y" }, a.text],
+      [23, 24, { kind: "git", commit: "y" }, c.text],
+    ]);
+  });
+  it("removeLinks takes stickers bound to the links; replaceCards keeps Compare columns", () => {
+    const b: Board = {
+      ...emptyBoard("b", "B"),
+      cards: [code("a"), code("p"), code("q"), compare("k", "p", "q")],
+      place: { a: { x: 0, y: 0, w: 1 }, k: { x: 0, y: 0, w: 1 } },
+      links: [call("a", "k")],
+      stickers: [{ id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { link: "a-k", t: 0 } } }],
+    };
+    const c = structuredClone(b);
+    removeLinks(b, ["a-k"]);
+    expect([b.links, b.stickers]).toEqual([[], []]);
+    replaceCards(c, ["k"], () => ({ card: "p" }));
+    c.place.p = { x: 0, y: 0, w: 1 };
+    expect(c.cards.map((x) => x.id)).toEqual(["a", "p", "q"]);
+    expect(c.links[0].to).toEqual({ card: "p", seg: undefined, line: undefined });
+    expect(c.place.k).toBeUndefined();
+  });
+});
+
+describe("guard: the board never drops cards or links by hand", () => {
+  // 引用维护只在 core/edit.ts：删卡 removeCards、换卡 replaceCards / retargetCards、删线 removeLinks
+  it("no direct b.cards / b.links filter or splice in packages/board/src", () => {
+    const root = fileURLToPath(new URL("../../board/src", import.meta.url));
+    const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
+    const bad: string[] = [];
+    for (const f of walk(root)) {
+      fs.readFileSync(f, "utf8").split("\n").forEach((t, i) => {
+        if (/\.(cards|links)\s*=\s*[^;=]*\.filter\(|\.(cards|links)\.splice\(/.test(t)) bad.push(`${path.relative(root, f)}:${i + 1}: ${t.trim()}`);
+      });
+    }
+    expect(bad).toEqual([]);
   });
 });

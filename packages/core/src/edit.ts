@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import type { Board, End, Segment, Sticker } from "./model";
+import { sameVersion, type Board, type End, type Segment, type Sticker } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -13,6 +13,13 @@ export function removeCards(b: Board, ids: Iterable<string>): void {
   b.links = b.links.filter((l) => !gone.has(l.from.card) && !gone.has(l.to.card));
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card) && !(n.kind === "card" && gone.has(n.card)));
   b.stickers = b.stickers.filter((k) => k.at.kind === "canvas" || !gone.has(k.at.card));
+  pruneStickers(b);
+}
+
+/** 删掉这些 Link，绑在它们上面的 Sticker 一起删 */
+export function removeLinks(b: Board, ids: Iterable<string>): void {
+  const gone = new Set(ids);
+  b.links = b.links.filter((l) => !gone.has(l.id));
   pruneStickers(b);
 }
 
@@ -31,7 +38,7 @@ export type Retarget = (at: { card: string; seg?: string; line?: number }) => { 
 /**
  * 一批卡被别的卡替换（合并、拆开、拆 Compare）：指着它们的 Link 两端、Sidenote（挂在上面的和 kind card 指向它的）、
  * Sticker（行上、卡角、绑在卡上的）都按 to 搬过去。搬完两端落在同一张卡上的 Link 删掉，绑着它的 Sticker 一起删。
- * 删卡本身由调用方做；这里只管引用，任何换卡的操作都应该走这里，而不是各自改一遍。
+ * 删卡本身由调用方做（replaceCards / removeCards）；这里只管引用，任何换卡的操作都应该走这里，而不是各自改一遍。
  */
 export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): void {
   const gone = new Set(ids);
@@ -63,6 +70,14 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
     else if (at.kind === "canvas" && at.on && "card" in at.on && gone.has(at.on.card)) at.on = { card: to({ card: at.on.card }).card };
   }
   pruneStickers(b);
+}
+
+/** 换卡：引用按 to 搬走（retargetCards），再删掉旧卡和它们的摆放。只删这几张：拆 Compare 时它的栏留下 */
+export function replaceCards(b: Board, ids: Iterable<string>, to: Retarget): void {
+  const gone = new Set(ids);
+  retargetCards(b, gone, to);
+  b.cards = b.cards.filter((c) => !gone.has(c.id));
+  for (const id of gone) delete b.place[id];
 }
 
 /**
@@ -119,6 +134,7 @@ export function mapRange(map: LineMap, a: number, e: number): [number, number] |
  * 把卡里的一段换成新的（同一个段 id）：新版本 Update、HEAD 下只是挪了位置、Relocate 都走这里。
  * 段上的隐藏 / 高亮，Link 两端、Sidenote、Sticker 的行号都按 map 搬过去；
  * 行没了的：Link 端点退回整张卡，Sidenote 改挂整卡并标上 lineRemoved，Sticker 挪到卡片角上。
+ * 合并卡的 mergedFrom（拆开时用的原卡快照）里落在这段上的段也一起换版本、挪行，Unmerge 时行锚还对得上。
  */
 export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns)): void {
   const owner = findOwner(b, cardId);
@@ -128,6 +144,16 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
   const hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter(Boolean) as [number, number][];
   const hl = (old.hl ?? []).map(map).filter(Boolean);
   owner.segments[i] = { ...ns, hidden: hidden.length ? hidden : undefined, hl: hl.length ? hl : undefined };
+  for (const o of owner.mergedFrom ?? []) {
+    o.card.segments = o.card.segments.map((s) => {
+      if (s.path !== old.path || s.src.kind !== old.src.kind || !sameVersion(s.version, old.version) || s.start > old.end || s.end < old.start) return s;
+      const r = mapRange(map, Math.max(s.start, old.start), Math.min(s.end, old.end));
+      if (!r) return s;
+      const sh = (s.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter(Boolean) as [number, number][];
+      const sl = (s.hl ?? []).map(map).filter(Boolean);
+      return { ...s, start: r[0], end: r[1], text: ns.text.slice(r[0] - ns.start, r[1] - ns.start + 1), version: ns.version, hidden: sh.length ? sh : undefined, hl: sl.length ? sl : undefined };
+    });
+  }
   const moveEnd = (e: End) => {
     if (e.card !== cardId || e.seg !== ns.id || !e.line) return;
     const m = map(e.line);

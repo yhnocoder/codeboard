@@ -3,8 +3,6 @@
 import { createMemo, createRoot } from "solid-js";
 import { state } from "./store";
 
-/** 代码卡存的高度按 Warm Ink 的卡头算；别的主题卡头 / 底栏更高，多出来的部分（--hx）显示时加上、存的时候减掉，换主题后能看到的行数不变 */
-export const chromeExtra = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--hx")) || 0;
 export const look = () => state.host.settings?.theme ?? "warm-ink";
 
 type Shape = { route: "curve" | "elbow"; head: "chevron" | "triangle" | "dot"; port: "circle" | "square" | "diamond" };

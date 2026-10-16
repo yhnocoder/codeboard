@@ -519,7 +519,7 @@ export const V015: Record<string, () => Promise<void>> = {
     const out: Record<string, number> = {};
     for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite"]) {
       const b = richBoard();
-      b.place[b.cards[1].id].h = 200;
+      b.place[b.cards[1].id].h = 164; // code area height (format v4): 200 tall in Warm Ink
       const h = await open({ board: b, light, w: 1500, h: 950, settings: { theme } as any });
       await h.page.waitForTimeout(400);
       out[theme] = await h.page.locator(`.card[data-id="${b.cards[1].id}"] .cbody`).evaluate((e) => Math.round(e.getBoundingClientRect().height));
@@ -575,6 +575,30 @@ export const V015: Record<string, () => Promise<void>> = {
     }
     const ok = res.push.y1 > y0 && !res.push.overlap && res.overlap.y1 === y0;
     console.log(ok ? "PASS" : "FAIL", "theme-reflow", JSON.stringify({ y0, res }));
+  },
+  /** A theme switch is not an undo step: ⌘Z after it undoes the previous change, and the reflow push stays */
+  async v16themeundo() {
+    const base = richBoard();
+    let h = await open({ board: base, light, w: 1500, h: 950 });
+    const r0 = (await h.page.locator(`.card[data-id="${base.cards[0].id}"]`).boundingBox())!;
+    await close(h);
+    const y0 = Math.round(r0.y + r0.height + 20);
+    const b = richBoard();
+    const post = b.cards[2].id, name0 = b.name;
+    b.place[post] = { ...b.place[post], x: 80, y: y0 };
+    h = await open({ board: b, light, w: 1500, h: 950 });
+    await h.post({ type: "rename", name: "Renamed" }); await h.page.waitForTimeout(200);
+    await h.page.keyboard.press("Control+,"); await h.page.waitForTimeout(500);
+    await h.page.locator(".st-sw", { hasText: "Colorful" }).click(); await h.page.waitForTimeout(400);
+    await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(1400);
+    const y1 = h.board().place[post].y;
+    await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300);
+    const u = { name: h.board().name, y: h.board().place[post].y };
+    await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300);
+    const u2 = { name: h.board().name, y: h.board().place[post].y };
+    const ok = y1 > y0 && u.name === name0 && u.y === y1 && u2.y === y1;
+    console.log(ok ? "PASS" : "FAIL", "theme-undo", JSON.stringify({ y0, y1, u, u2 }));
+    await close(h);
   },
   /** ⌘C a card then ⌘V: the copy goes next to the original (offset 36, overlap allowed), no search for free space */
   async v15pastenear() {

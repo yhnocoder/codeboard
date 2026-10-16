@@ -8,7 +8,7 @@ import {
   type WebMeta, type CallSpan, type ExpandPick, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
 } from "@codeboard/core";
 import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
+  state, setState, mutate, sync, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
   type LineSel,
 } from "../state/store";
 import { camTo, camTarget, worldView, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
@@ -160,7 +160,7 @@ export function attachCall(cardId: string, segId: string, call: CallSpan, target
   const tseg = t.card.segments.find((s) => s.symbol) ?? t.card.segments[0];
   if (!seg || !tseg) return;
   ask("callVars", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name, target: structuredClone(unwrap(tseg)) })
-    .then((vs) => { if (vs?.length) live((b) => { const l = b.links.find((x) => x.id === lid); if (l?.kind === "call") l.cands = vs; }); })
+    .then((vs) => { if (vs?.length) sync((b) => { const l = b.links.find((x) => x.id === lid); if (l?.kind === "call") l.cands = vs; }); })
     .catch(() => {});
 }
 

@@ -5,7 +5,7 @@ import {
   uid, findCard, removeCards, estSize, defaultWidth, findFree,
   type Board, type Card, type LinkItem, type LinksCard, type WebCard, type WebMeta, type WebStyle, type Place,
 } from "@codeboard/core";
-import { state, mutate, live, select, cardById, rectOf, placeOf, toast, sel } from "../state/store";
+import { state, mutate, sync, select, cardById, rectOf, placeOf, toast, sel } from "../state/store";
 import { toWorld, viewportCenter } from "../state/camera";
 import { setEditing } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
@@ -27,7 +27,7 @@ export async function fetchMeta(id: string, url: string, item?: string) {
   setBusy((s) => new Set(s).add(k));
   const meta = (await ask("webMeta", { url }).catch(() => null)) ?? { failed: true, at: Date.now() };
   setBusy((s) => { const n = new Set(s); n.delete(k); return n; });
-  live((b) => {
+  sync((b) => {
     const c = findCard(b, id)?.card;
     if (c?.kind === "web" && !item && c.url === url) c.meta = meta;
     if (c?.kind === "links") { const it = c.items.find((x) => x.id === item); if (it && it.url === url) it.meta = meta; }
