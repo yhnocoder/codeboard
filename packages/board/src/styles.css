@@ -491,6 +491,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .eport.b { left: 50%; bottom: -5px; margin-left: -4.5px; }
 .eport.l { top: 50%; left: -5px; margin-top: -4.5px; }
 .eport.r { top: 50%; right: -5px; margin-top: -4.5px; }
+.board.dragging .eport { display: none; }
 
 /* links */
 .lhit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: pointer; }

@@ -68,9 +68,8 @@ export function CardView(p: { card: Card }) {
           <Match when={c().kind === "web"}><WebView card={c() as WebCard} /></Match>
           <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
         </Switch>
-        <Show when={!dragging().size}>
-          <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
-        </Show>
+        {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
+        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <Show when={!c().locked}>
           <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} />}>
