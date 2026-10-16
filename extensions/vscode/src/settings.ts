@@ -11,7 +11,7 @@ const KEY: Record<keyof Settings, string> = {
   zoomOverview: "zoom.overview",
   zoomMap: "zoom.map",
   dblClick: "doubleClick",
-  themeReflow: "themeReflow", // 不能叫 theme.reflow：codeboard.theme 是字符串，VS Code 会忽略它下面的键
+  themeReflow: "themeReflow", // not "theme.reflow": codeboard.theme is a string, so VS Code ignores keys under it
   hideNumbers: "flowNumbers.hide",
   debug: "debug.enabled",
   tune: "debug.tune",
