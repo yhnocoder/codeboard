@@ -1,0 +1,58 @@
+[
+ {
+  "step": "1-first-card",
+  "issues": []
+ },
+ {
+  "step": "2-flow",
+  "issues": []
+ },
+ {
+  "step": "3-peek",
+  "issues": []
+ },
+ {
+  "step": "4-sidenote",
+  "issues": []
+ },
+ {
+  "step": "5-search",
+  "issues": []
+ },
+ {
+  "step": "6-board",
+  "issues": [
+   {
+    "rule": "L8 overlapping cards",
+    "what": "div.ctitle \"BlockManager.allocate\" ↔ span.ctitle.sys \"Note\""
+   }
+  ]
+ },
+ {
+  "step": "7a-settings",
+  "issues": [
+   {
+    "rule": "L8 overlapping cards",
+    "what": "div.ctitle \"BlockManager.allocate\" ↔ span.ctitle.sys \"Note\""
+   }
+  ]
+ },
+ {
+  "step": "7b-diagnostics",
+  "issues": [
+   {
+    "rule": "L8 overlapping cards",
+    "what": "div.ctitle \"BlockManager.allocate\" ↔ span.ctitle.sys \"Note\""
+   }
+  ]
+ },
+ {
+  "step": "7-uncommitted",
+  "issues": [
+   {
+    "rule": "L8 overlapping cards",
+    "what": "div.ctitle \"BlockManager.allocate\" ↔ span.ctitle.sys \"Note\""
+   }
+  ]
+ }
+]

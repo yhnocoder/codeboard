@@ -1,0 +1,47 @@
+[
+ {
+  "name": "1-first-card.png",
+  "status": "same",
+  "ratio": 0
+ },
+ {
+  "name": "2-flow.png",
+  "status": "same",
+  "ratio": 0
+ },
+ {
+  "name": "3-peek.png",
+  "status": "changed",
+  "ratio": 0.0246
+ },
+ {
+  "name": "4-sidenote.png",
+  "status": "same",
+  "ratio": 0.0004
+ },
+ {
+  "name": "5-search.png",
+  "status": "same",
+  "ratio": 0
+ },
+ {
+  "name": "6-board.png",
+  "status": "changed",
+  "ratio": 0.0087
+ },
+ {
+  "name": "7-uncommitted.png",
+  "status": "changed",
+  "ratio": 0.0098
+ },
+ {
+  "name": "7a-settings.png",
+  "status": "same",
+  "ratio": 0
+ },
+ {
+  "name": "7b-diagnostics.png",
+  "status": "changed",
+  "ratio": 0.0139
+ }
+]
