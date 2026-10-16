@@ -22,10 +22,15 @@ export const inWorkspace = (abs: string) => wsFolders().some((f) => {
 
 /** 文件当前内容：编辑器里打开着就用编辑器的（含未保存的改动），否则读磁盘 */
 export async function readText(abs: string): Promise<string | null> {
+  recent.set(abs, true);
   const doc = vscode.workspace.textDocuments.find((d) => d.uri.scheme === "file" && d.uri.fsPath === abs);
   if (doc) return doc.getText();
   try { return await fs.readFile(abs, "utf8"); } catch { return null; }
 }
+/** 最近读过的文件（不扫工作区的兜底查找用）。Lru 在本文件后面定义，用到时才建 */
+let recentLru: Lru<true> | undefined;
+const recent = { set: (k: string, v: true) => (recentLru ??= new Lru<true>(80)).set(k, v) };
+export const recentFiles = (): string[] => (recentLru ? recentLru.keys() : []);
 
 export const splitLines = (t: string) => t.split(/\r?\n/);
 
@@ -73,4 +78,7 @@ export class Lru<V> {
     if (this.m.size > this.max) this.m.delete(this.m.keys().next().value!);
   }
   clear() { this.m.clear(); }
+  keys() { return [...this.m.keys()]; }
+  has(k: string) { return this.m.has(k); }
+  delete(k: string) { this.m.delete(k); }
 }

@@ -16,6 +16,7 @@ import { copyDiagnostics, openStickerDir } from "./diagnostics";
 import type { BoardPanel, Panels } from "./panel";
 import { callVars, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints } from "./search";
+import { prefetchCall } from "./prefetch";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { highlight, segView, viewsFor } from "./views";
@@ -46,6 +47,7 @@ export function makeHandler(panels: Panels) {
       }
       case "expand": return expand(m);
       case "peek": return peek(m);
+      case "prefetch": return prefetchCall(m);
       case "callVars": return callVars(m);
       case "search": return search(store, m.q, m.scope);
       case "searchPick": return searchPick(m.item);

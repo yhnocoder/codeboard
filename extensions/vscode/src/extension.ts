@@ -15,6 +15,7 @@ import { initSource } from "./source";
 import { Storage } from "./storage";
 import { watchVersions } from "./watch";
 import { debounce } from "./ws";
+import { forgetDefs } from "./defcache";
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const sub = (d: vscode.Disposable) => ctx.subscriptions.push(d);
@@ -63,10 +64,12 @@ export async function activate(ctx: vscode.ExtensionContext) {
   sub(panels.onDidChangeTarget(() => { tree.refresh(); updateStatus(); marks.rebuild(); }));
   sub(panels.onDidChangeStale(() => { tree.refresh(); updateStatus(); void panels.pushBoards(); }));
   sub(vscode.window.onDidChangeVisibleTextEditors(() => marks.redecorate()));
-  sub(vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length) marks.redecorate(); }));
-  sub(vscode.workspace.onDidSaveTextDocument((d) => { if (d.uri.scheme === "file") void reindexFile(d.uri.fsPath); }));
-  sub(vscode.workspace.onDidCreateFiles(() => resetIndex()));
-  sub(vscode.workspace.onDidDeleteFiles(() => resetIndex()));
+  // 文件改了：缓存的「转到定义」结果作废
+  sub(vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length) { marks.redecorate(); if (e.document.uri.scheme === "file") forgetDefs(); } }));
+  sub(vscode.workspace.onDidSaveTextDocument((d) => { if (d.uri.scheme === "file") { forgetDefs(); void reindexFile(d.uri.fsPath); } }));
+  sub(vscode.workspace.onDidCreateFiles(() => { forgetDefs(); resetIndex(); }));
+  sub(vscode.workspace.onDidDeleteFiles(() => { forgetDefs(); resetIndex(); }));
+  sub(vscode.workspace.onDidRenameFiles(() => forgetDefs()));
   sub(vscode.workspace.onDidChangeWorkspaceFolders(() => resetIndex()));
   sub(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration("codeboard.storageDir")) { store.reset(); marks.rebuild(); }

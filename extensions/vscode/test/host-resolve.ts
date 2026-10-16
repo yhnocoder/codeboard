@@ -8,7 +8,9 @@ import { startAnalysis, analysisOf } from "../src/analysis";
 import { cardForFileSym } from "../src/cards";
 import { callVars, expand, peek } from "../src/resolve";
 import { viewsFor } from "../src/views";
-import { WS } from "./vscode-stub";
+import { forgetDefs } from "../src/defcache";
+import { prefetchCall, warmBoard } from "../src/prefetch";
+import { WS, commands, workspace } from "./vscode-stub";
 
 const REPO = path.resolve(__dirname, ".."); // bundled into test-out/
 const EXT = "/tmp/codeboard-perf/ext/multiprocessing"; // not git, not in site-packages: external root = this folder
@@ -84,6 +86,65 @@ void (async () => {
   check(v.html.some((h) => h.includes('data-p="torch"')), "Library calls carry data-p in HTML");
   const ve = (await viewsFor([shm.seg]))[shm.seg.id];
   check(ve.calls.length > 0 && ve.calls.every((c) => c.pkg === "multiprocessing" || c.pkg === "os"), "Calls in files outside the workspace are all library", ve.calls.map((c) => [c.name, c.pkg]));
+
+  // Hover prefetch: the definition request is shared with the click, keyed by file + position + content
+  {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const schAbs = path.join(WS, "nanovllm/engine/scheduler.py");
+    const defLine = analysisOf("python", fs.readFileSync(schAbs, "utf8")).symbols.find((x) => x.qual === "Scheduler.schedule")!.defLine;
+    let calls = 0, live = 0, maxLive = 0, delay = 60, empty = false;
+    const orig = commands.executeCommand;
+    (commands as { executeCommand: unknown }).executeCommand = async (cmd: string) => {
+      if (cmd !== "vscode.executeDefinitionProvider") return undefined;
+      calls++; live++; maxLive = Math.max(maxLive, live);
+      await sleep(delay);
+      live--;
+      return empty ? [] : [{ uri: { fsPath: schAbs, scheme: "file" }, range: { start: { line: defLine - 1, character: 8 } } }];
+    };
+    const step = await card(path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.step");
+    const sl = lineOf(step.seg, /self\.scheduler\.schedule\(\)/);
+    const req = { seg: step.seg, line: sl, col: step.seg.text[sl - step.seg.start].indexOf("schedule("), name: "schedule" };
+    const isSchedule = (r: ExpandResult) => "card" in r && r.card.segments[0].symbol?.qual === "Scheduler.schedule";
+    forgetDefs();
+    prefetchCall(req);
+    await sleep(5);
+    const r1 = await expand(req);
+    check(isSchedule(r1) && calls === 1, "Click during an in-flight prefetch reuses its definition request", { calls });
+    const r2 = await expand(req);
+    check(isSchedule(r2) && calls === 1, "Second click uses the cached definition", { calls });
+    check("card" in r1 && "card" in r2 && r1.card.id !== r2.card.id, "Each click still builds a fresh card (no reused ids)");
+    forgetDefs();
+    await expand(req);
+    check(calls === 2, "forgetDefs (file changed) drops cached definitions", { calls });
+    // The calling file's content changed (open editor with unsaved edits): different key, asks again
+    const llmAbs = path.join(WS, "nanovllm/engine/llm_engine.py");
+    const edited = fs.readFileSync(llmAbs, "utf8") + "\n# edited\n";
+    workspace.textDocuments.push({ uri: { scheme: "file", fsPath: llmAbs }, getText: () => edited });
+    const r3 = await expand(req);
+    check(isSchedule(r3) && calls === 3, "Changed file content is a cache miss", { calls });
+    workspace.textDocuments.length = 0;
+    // Empty answers (language server still starting) are not cached
+    forgetDefs(); empty = true;
+    prefetchCall(req);
+    await sleep(delay + 30);
+    empty = false;
+    const r4 = await expand(req);
+    check(isSchedule(r4) && calls === 5, "Empty prefetch answer is not reused by the click", { calls });
+    // Concurrency cap: many hovers in a row run at most 2 at a time and drop the oldest queued ones
+    forgetDefs(); calls = 0; maxLive = 0; delay = 80;
+    const sites = analysisOf("python", fs.readFileSync(llmAbs, "utf8")).calls.filter((c) => c.line >= step.seg.start && c.line <= step.seg.end);
+    for (let i = 0; i < 12; i++) { const c = sites[i % sites.length]; prefetchCall({ seg: step.seg, line: c.line, col: c.col, name: c.name }); }
+    await sleep(800);
+    check(maxLive <= 2 && calls <= 6, "Prefetch queue: at most 2 running, older queued hovers dropped", { maxLive, calls, sites: sites.length });
+    // Board open warm-up: one definition request per distinct file, in the background, sequential
+    forgetDefs(); calls = 0; maxLive = 0; delay = 20;
+    const t0 = Date.now();
+    warmBoard([step.seg, eng.seg, mr.seg, sch.seg], () => true);
+    check(calls === 0 && Date.now() - t0 < 50, "warmBoard returns at once and waits before asking");
+    await sleep(2500);
+    check(calls === 3 && maxLive === 1, "warmBoard: one request per distinct file, one at a time", { calls, maxLive });
+    (commands as { executeCommand: unknown }).executeCommand = orig;
+  }
 
   console.log(failed ? `${failed} failed` : "All passed");
   process.exit(failed ? 1 : 0);

@@ -73,7 +73,11 @@ input, textarea { font: inherit; color: var(--ink); }
 .board.panning * , .board.space * { cursor: grab !important; }
 .board.connecting, .board.connecting * { cursor: crosshair !important; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-.world.moving { will-change: transform; }
+/* 世界层一直单独成层，镜头一动就按位图缩放、不重画（#15）。停下时 Canvas 给 .settle 一两帧：去掉 will-change 的提示，让浏览器按新比例重新清晰栅格化。
+   这两帧用一个看不出来的 3D 变换（绕 x 轴转 0°）让它还是单独一层：退回普通层的话要把整层重画一遍（概览档 ~60ms）。
+   只在动的时候才升层的话，每段手势的第一帧都要把整层重画一遍（~25ms，掉一帧） */
+.world { will-change: transform; }
+.world.settle { will-change: auto; rotate: x 0deg; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; pointer-events: none; }
 /* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
 .edge { fill: none; stroke: var(--edge); stroke-width: var(--edge-w); stroke-linecap: round; transition: opacity .2s; }
@@ -162,6 +166,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .mkr { position: absolute; left: 42.5px; width: 1.5px; background: var(--mark); opacity: .45; border-radius: 1px; }
 .addn { position: absolute; left: 36px; width: 14px; height: 14px; margin-top: 3px; border-radius: 3.5px; border: 1px dashed var(--ink-2); color: var(--ink-2); font: 12px/12px var(--sys); text-align: center; background: var(--surface); z-index: 3; }
 .addn:hover { border-style: solid; border-color: var(--accent); color: var(--accent); }
+.rowbgs { position: absolute; inset: 0; pointer-events: none; }
 .rowbg { position: absolute; left: 0; right: 0; height: 20px; pointer-events: none; z-index: 0; }
 .rowbg.origin { background: var(--row); }
 .rowbg.hl { background: var(--hlrow); box-shadow: inset 2px 0 0 var(--hlbar); }
@@ -525,8 +530,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 
 /* edge ports (drag out a plain link) */
 .eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair !important; }
-.card:hover > .eport { opacity: 1; }
-.card.text > .eport, .card.lift > .eport { display: none; }
+.card:hover > .cface > .eport { opacity: 1; }
+.card.text > .cface > .eport, .card.lift > .cface > .eport { display: none; }
 .eport:hover { background: var(--accent); box-shadow: 0 0 0 1.5px var(--accent); }
 .eport.t { left: 50%; top: -5px; margin-left: -4.5px; }
 .eport.b { left: 50%; bottom: -5px; margin-left: -4.5px; }
@@ -540,7 +545,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .edge.on, .ahead.on { stroke: var(--accent); stroke-width: 1.7; }
 .port { pointer-events: none; }
 .porthit { fill: transparent; pointer-events: all; cursor: ew-resize !important; }
-.board.dragging .porthit, .board.lod-map .porthit { display: none; }
+.board.dragging .porthit, .edges.lod-map .porthit { display: none; }
 .vchips { z-index: 6; }
 .vchips.on .vlabel, .vchips.on .vchip { box-shadow: 0 0 0 1.5px var(--accent); }
 .vlabel.editing { min-width: 60px; }
@@ -681,12 +686,12 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 无背景（#39）：内容直接在画布上；头部和细边框只在悬停 / 选中时浮出 */
 .card.nobg { background: transparent; box-shadow: none; }
 .card.nobg:hover:not(.sel) { box-shadow: 0 0 0 1px var(--hair); }
-.card.nobg > .chead { position: absolute; left: -1px; right: auto; bottom: calc(100% + 6px); max-width: min(100%, 320px); height: 26px; gap: 4px; padding: 0 2px 0 8px; border: none; border-radius: 7px;
+.card.nobg > .cface > .chead { position: absolute; left: -1px; right: auto; bottom: calc(100% + 6px); max-width: min(100%, 320px); height: 26px; gap: 4px; padding: 0 2px 0 8px; border: none; border-radius: 7px;
   background: var(--glass); -webkit-backdrop-filter: blur(18px) saturate(1.5); backdrop-filter: blur(18px) saturate(1.5); box-shadow: var(--sh-float); font-size: 12px;
   opacity: 0; translate: 0 3px; pointer-events: none; transition: opacity calc(var(--t) * 120ms) var(--out), translate calc(var(--t) * 160ms) var(--out); }
-.card.nobg > .chead > .grow { display: none; }
-.card.nobg > .chead .ctitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.card.nobg:hover > .chead, .card.nobg.sel > .chead { opacity: 1; translate: 0 0; pointer-events: auto; }
+.card.nobg > .cface > .chead > .grow { display: none; }
+.card.nobg > .cface > .chead .ctitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card.nobg:hover > .cface > .chead, .card.nobg.sel > .cface > .chead { opacity: 1; translate: 0 0; pointer-events: auto; }
 .card.nobg .cbody { background: transparent; }
 
 /* 调用上的变量：一行一个，→ 对齐，收在一个小框里（#31） */
@@ -773,21 +778,35 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .lstks.dot .glyph.tag { font-size: 0 !important; padding: 0; }
 .stkpick { align-items: stretch; text-align: left; }
 
-/* 缩放分档（#11）：概览 = 名字 + 编号 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量） */
+/* 缩放分档（#11）：概览 = 名字 + 编号 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量）。
+   卡上的样子跟着卡自己的 .lo-ov / .lo-map 走（state/lodcards.ts 每帧换一批，屏幕中间的先换），不跟着 .board 一次全换：241 张卡一起换要 100+ ms，掉好几帧 */
 .board { --bar: color-mix(in srgb, var(--ink) 13%, transparent); }
-.board.lod-overview .card .gutter, .board.lod-overview .card .rowbg, .board.lod-overview .card .crows .l, .board.lod-overview .card .cno,
-.board.lod-overview .card .cpath, .board.lod-overview .card .rev, .board.lod-overview .card .chead .ib, .board.lod-overview .lport, .board.lod-overview .vbox { visibility: hidden; }
-/* 概览档：文字透明，每行按真实缩进和长度画一根圆角灰条，轮廓就是这段代码本身的样子（不额外加元素，只换画法） */
-.board.lod-overview .card .src > :not(.ovm) { visibility: hidden; }
-.card .src > .ovm { position: absolute; inset: 0; background: var(--bar); -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; pointer-events: none; }
-.board.lod-overview .card .src .l.cmt { --bar: color-mix(in srgb, var(--ink) 6%, transparent); }
-.board.lod-overview .card .ctitle { font-size: 15px; font-weight: 600; }
-.board.lod-map .card > *:not(.maplabel):not(.stk) { visibility: hidden; }
-.board.lod-map .card { background: color-mix(in srgb, var(--surface) 92%, var(--accent)); box-shadow: 0 0 0 calc(1px * var(--iz, 1)) var(--hair); }
-.board.lod-map .card.note { background: color-mix(in srgb, var(--surface) 70%, var(--mark)); }
-.board.lod-map .card.text { background: transparent; }
-.board.lod-map .card.sel { box-shadow: 0 0 0 calc(2px * var(--iz, 1)) var(--accent); }
-.board.lod-map .vchips, .board.lod-map .stk.canvas .sgrip { display: none; }
+.card.lo-ov .crows .cmpl, .card.lo-ov .cno,
+.card.lo-ov .cpath, .card.lo-ov .rev, .card.lo-ov .chead .ib, .card.lo-ov .lport, .labels.lod-overview .vbox { visibility: hidden; }
+/* 代码和行号节点多（241 张卡 ≈ 3 万个）：用 opacity 藏，不用 visibility。visibility 会继承，切档时里面每个节点都要重算样式（一次 0.3–0.5 秒）；
+   opacity 不继承，只算这两个元素。指针由盖住整个代码区的 .ovm 接住，跟以前点到被藏起来的行号和代码一样交给卡片 */
+.card.lo-ov .gutter, .card.lo-ov .src, .card.lo-ov .rowbgs { opacity: 0; }
+/* 概览档：每行按真实缩进和长度画一根直角灰条（注释行淡一些），轮廓就是这段代码本身的样子 */
+.card .code > .ovm { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; --bar-c: color-mix(in srgb, var(--ink) 6%, transparent); } /* 色块的 x 从 54px（行号区宽，跟 .src 的 margin-left 一致）算起 */
+.card .code > .ovm { visibility: hidden; } .card.lo-ov .code > .ovm { visibility: visible; } /* 提前做好、不在概览档时藏着（CodeBody） */
+.card.lo-ov .ctitle { font-size: 15px; font-weight: 600; }
+/* --iz（地图档 = 1/z）：注册成不继承，只有卡和名字用到，卡里的几千个代码节点就不用跟着重算样式 */
+@property --iz { syntax: "<number>"; inherits: false; initial-value: 1; }
+.maplabel, .maplabel * { --iz: inherit; } /* 卡上的 --iz 由 state/lodcards.ts 写在卡的 style 上 */
+/* 不在地图档时名字也在（提前建好），藏着，按进地图档那一刻的比例（--izmap，Canvas）排好版 */
+.card:not(.lo-map) > .maplabel { visibility: hidden; --iz: var(--izmap, 4); }
+/* 卡的内容（除了名字、贴纸）都在 .cface 里，跟卡一样是竖排 flex；地图档整块用 clip-path 藏起来（不继承，里面的节点不用重算样式，也挡住指针）。
+   别写成 .card > :not(...) 再用会继承的 visibility：最右边没有类名，切档时浏览器只能把整块白板 3 万个节点全重算一遍 */
+.card.off > .cface { visibility: hidden; } /* state/cull.ts：离屏幕很远的卡不画内容 */
+.cface { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; min-width: 0; }
+.card.lo-map > .cface { clip-path: inset(50%); }
+.card.lo-map { background: color-mix(in srgb, var(--surface) 92%, var(--accent)); box-shadow: 0 0 0 calc(1px * var(--iz, 1)) var(--hair); }
+/* 地图档的描边每一步缩放都跟着 --iz 变：不给 box-shadow 过渡，不然每一步给 241 张卡各起一段 160ms 的动画（其余过渡跟 .card 一样） */
+.card.lo-map { transition: scale calc(var(--t) * 260ms) cubic-bezier(.3, 1.35, .5, 1), opacity calc(var(--t) * 240ms) var(--out), filter calc(var(--t) * 240ms); }
+.card.lo-map.note { background: color-mix(in srgb, var(--surface) 70%, var(--mark)); }
+.card.lo-map.text { background: transparent; }
+.card.lo-map.sel { box-shadow: 0 0 0 calc(2px * var(--iz, 1)) var(--accent); }
+.labels.lod-map .vchips, .stk.canvas.lod-map .sgrip { display: none; } /* 分档类名写在这几个小容器上，不写成 .board.lod-* 的后代规则：那样换档时浏览器要把整块白板 3 万个节点走一遍找它们（~15ms） */
 /* 地图档：编号 + 名字靠左、上下居中；字号由卡片大小和名字长度算出（--fit，世界坐标），再按屏幕上 11–22px 夹住 */
 .maplabel { position: absolute; inset: 0; display: flex; align-items: center; align-content: center; flex-wrap: wrap; gap: calc(4px * var(--iz, 1)); padding: 0 calc(8px * var(--iz, 1)); overflow: hidden;
   font: 600 clamp(calc(11px * var(--iz, 1)), var(--fit, 10px), calc(22px * var(--iz, 1)))/1.15 var(--sys); color: var(--ink); pointer-events: none; overflow-wrap: normal; word-break: normal; }

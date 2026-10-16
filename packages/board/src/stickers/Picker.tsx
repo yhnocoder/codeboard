@@ -6,7 +6,7 @@ import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, packs } from "./glyphs";
 import { stickerPick, setStickerPick, pickSticker, stickerColor, setStickerColor, placing, selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import { state } from "../state/store";
 import { send } from "../host";
-import { cam } from "../state/camera";
+import { cam, lod } from "../state/camera";
 
 const MAX = 240; // 大图标包只画前这么多个（搜索缩小范围）
 
@@ -71,7 +71,7 @@ function FreeSticker(p: { s: Sticker; x: number; y: number }) {
   const at = () => p.s.at as FreeAt;
   const size = () => at().size ?? 32;
   return (
-    <div class="stk canvas" classList={{ sel: selSticker() === p.s.id, bound: !!at().on }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
+    <div class="stk canvas" classList={{ sel: selSticker() === p.s.id, bound: !!at().on, "lod-map": lod() === "map" }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
       style={{ left: `${p.x}px`, top: `${p.y}px`, "min-width": `${size()}px`, height: `${size()}px`, "--s": `${size()}px` }}
       onPointerDown={(e) => stickerDown(e, p.s.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(p.s.id, e.clientX, e.clientY); }}>
       <Glyph icon={p.s.icon} color={p.s.color} size={size()} />
