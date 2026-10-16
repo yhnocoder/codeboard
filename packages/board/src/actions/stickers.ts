@@ -67,7 +67,9 @@ export const boundCardOf = (id: string | null) => {
  * 离卡边 40px、离箭头 24px（屏幕距离）以内都算，像贴在卡角外面也能绑上
  */
 const MAG_CARD = 40, MAG_LINK = 24;
-function targetAt(cx: number, cy: number): Target | null {
+/** 画布上看得见的卡（折叠起来的不在 DOM 里）。一次拖动里不会变：拖之前量一次，不要每次 pointermove 对每张卡各查一次 DOM */
+const shownCards = () => new Set([...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((e) => e.dataset.id!));
+function targetAt(cx: number, cy: number, shown = shownCards()): Target | null {
   for (const el of document.elementsFromPoint(cx, cy) as HTMLElement[]) {
     if (el.closest?.(".stk, .ctx, .toolbar, .bbar")) continue;
     const l = (el as HTMLElement).dataset?.link ?? el.closest?.("[data-link]")?.getAttribute("data-link");
@@ -78,7 +80,7 @@ function targetAt(cx: number, cy: number): Target | null {
   const o = boardOffset(), w = toWorld(cx - o.x, cy - o.y), z = cam.z;
   let best: Target | null = null, bd = Infinity;
   for (const id of Object.keys(state.board.place)) {
-    if (!document.querySelector(`.card[data-id="${id}"]`)) continue; // 折叠起来、看不见的不算
+    if (!shown.has(id)) continue; // 折叠起来、看不见的不算
     const r = rectOf(id);
     const dx = Math.max(r.x - w.x, 0, w.x - (r.x + r.w)), dy = Math.max(r.y - w.y, 0, w.y - (r.y + r.h));
     const d = Math.hypot(dx, dy) * z;
@@ -87,6 +89,9 @@ function targetAt(cx: number, cy: number): Target | null {
   for (const l of state.board.links) {
     const c = linkCurve(l.id);
     if (!c) continue;
+    // 贝塞尔曲线在四个控制点的包围盒里：离包围盒都超过吸附距离的线不用逐点找最近点
+    const m = MAG_LINK / z;
+    if (w.x < Math.min(c[0], c[2], c[4], c[6]) - m || w.x > Math.max(c[0], c[2], c[4], c[6]) + m || w.y < Math.min(c[1], c[3], c[5], c[7]) - m || w.y > Math.max(c[1], c[3], c[5], c[7]) + m) continue;
     const q = curveAt(c, nearestT(c, w.x, w.y)), d = Math.hypot(q.x - w.x, q.y - w.y) * z;
     if (d <= MAG_LINK && d < bd) { bd = d; best = { link: l.id }; }
   }
@@ -168,7 +173,7 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
   if (!w0) return;
   const a0 = { ...s.at }, size = a0.size ?? 32, sx = e.clientX, sy = e.clientY;
   const end = beginGesture();
-  let moved = false;
+  let moved = false, shown: Set<string> | undefined;
   const move = (ev: PointerEvent) => {
     const dx = (ev.clientX - sx) / cam.z, dy = (ev.clientY - sy) / cam.z;
     if (resize) {
@@ -179,12 +184,12 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
     moved = true;
     // 拖的时候先放到最上层（画布层），松手再决定绑到哪
     live((b) => { const k = b.stickers.find((q) => q.id === id); if (k) k.at = { kind: "canvas", x: Math.round(w0.x + dx), y: Math.round(w0.y + dy), size: a0.size }; });
-    setBindHot(ev.altKey ? null : targetAt(ev.clientX, ev.clientY));
+    setBindHot(ev.altKey ? null : targetAt(ev.clientX, ev.clientY, (shown ??= shownCards())));
   };
   const up = (ev: PointerEvent) => {
     window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up);
     if (moved) {
-      const t = ev.altKey ? null : targetAt(ev.clientX, ev.clientY);
+      const t = ev.altKey ? null : targetAt(ev.clientX, ev.clientY, shown);
       const w = { x: w0.x + (ev.clientX - sx) / cam.z, y: w0.y + (ev.clientY - sy) / cam.z };
       const at = bindAt(w, size, t);
       if (a0.size === undefined) delete (at as any).size;

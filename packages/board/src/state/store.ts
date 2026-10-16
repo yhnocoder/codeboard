@@ -2,10 +2,10 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  brokenBy, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS,
+  brokenBy, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS,
   type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type Stale,
 } from "@codeboard/core";
-import { send } from "../host";
+import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
 
 export const [state, setState] = createStore({
@@ -103,7 +103,14 @@ function piece(k: string, o: unknown) {
   last.set(k, s);
   return s;
 }
+// 当前白板的快照缓存：mutate 改完拍的那份，就是下一次 mutate 的「改之前」。只有 mutate 会填它，
+// 其它写白板的地方（live、restore、宿主 init）都会让它作废，所以每次 mutate 只拍一次快照，不是两次
+let cur: Snap | null = null;
 function snap(): Snap {
+  if (cur) return cur;
+  return snapNow();
+}
+function snapNow(): Snap {
   const { cards, place, links, sections, sidenotes, stickers, cam: _cam, ...head } = unwrap(state.board);
   return {
     head: JSON.stringify(head),
@@ -130,14 +137,26 @@ const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.l
  */
 export function mutate(fn: (b: Board) => void): boolean {
   const before = snap();
-  setState("board", produce(fn));
+  cur = null;
+  try { setState("board", produce(fn)); }
+  catch (e) {
+    // 改到一半抛错：produce 已经改了一部分，整次撤回，别留下半截的白板
+    restore(before);
+    console.error("mutate failed", e);
+    toast("Something went wrong; the change was undone.");
+    return false;
+  }
+  const bad = danglingRefs(unwrap(state.board));
+  if (bad.length) console.warn("[codeboard] dangling references after a change:", bad); // 自检：应该永远是空的，harness 会把它当失败
   const why = brokenBy(unwrap(state.board), () => parse(before));
   if (why) {
     restore(before);
     toast(why);
     return false;
   }
-  if (same(snap(), before)) return true;
+  const after = snapNow();
+  if (same(after, before)) { cur = before; return true; }
+  cur = after;
   changed();
   pushUndo(before);
   return true;
@@ -176,37 +195,62 @@ export function beginGesture(): () => void {
 }
 /** 拖动中的修改（不进撤销栈） */
 export function live(fn: (b: Board) => void) {
+  cur = null;
   setState("board", produce(fn));
   changed();
 }
 
-function restore(s: Snap) {
-  const b = parse(s);
-  b.cam = { ...state.board.cam };
-  setState("board", reconcile(b));
+// 撤销 / 重做：只把和现在不一样的那几段换回去。整块 reconcile 要把 241 张卡、196 条线挨个解析、比对一遍（每次 ~25ms）
+function restore(s: Snap, now?: Snap) {
+  cur = null;
+  if (!now || !patch(now, s)) {
+    const b = parse(s);
+    b.cam = { ...state.board.cam };
+    setState("board", reconcile(b));
+  }
+  cur = s;
   changed();
   const ids = new Set(allIds());
-  setSel("cards", (c) => c.filter((x) => ids.has(x)));
-  setSel("links", (l) => l.filter((x) => state.board.links.some((k) => k.id === x)));
-  setSel("sections", (l) => l.filter((x) => state.board.sections.some((k) => k.id === x)));
+  // 选中的东西都还在就不动 sel：换成新数组的话，每张卡的 isSel 都要重算一遍
+  const keep = <T,>(xs: T[], ok: (x: T) => boolean) => (xs.every(ok) ? xs : xs.filter(ok));
+  setSel("cards", (c) => keep(c, (x) => ids.has(x)));
+  setSel("links", (l) => keep(l, (x) => state.board.links.some((k) => k.id === x)));
+  setSel("sections", (l) => keep(l, (x) => state.board.sections.some((k) => k.id === x)));
+}
+/** now → s 只是某几项内容变了（顺序、数量、白板本身的字段都没变）时，只改那几项；改不了返回 false */
+function patch(now: Snap, s: Snap): boolean {
+  if (now.head !== s.head || KEYS.some((k) => now[k].length !== s[k].length)) return false;
+  const ops: [typeof KEYS[number], number | string, unknown][] = [];
+  for (const k of KEYS) {
+    for (let i = 0; i < s[k].length; i++) {
+      if (s[k][i] === now[k][i]) continue;
+      const a = JSON.parse(now[k][i]), b = JSON.parse(s[k][i]);
+      if (k === "place") { if (a[0] !== b[0]) return false; ops.push([k, b[0], b[1]]); }
+      else { if (a.id !== b.id) return false; ops.push([k, i, b]); }
+    }
+  }
+  batch(() => { for (const [k, at, v] of ops) setState("board", k as any, at as any, reconcile(v as any)); });
+  return true;
 }
 export function undo() {
   const s = undoStack.pop();
   if (!s) return false;
-  redoStack.push(snap());
-  restore(s);
+  const now = snap();
+  redoStack.push(now);
+  restore(s, now);
   updUndo();
   return true;
 }
 export function redo() {
   const s = redoStack.pop();
   if (!s) return false;
-  undoStack.push(snap());
-  restore(s);
+  const now = snap();
+  undoStack.push(now);
+  restore(s, now);
   updUndo();
   return true;
 }
-export function resetHistory() { undoStack.length = 0; redoStack.length = 0; last.clear(); updUndo(); }
+export function resetHistory() { cur = null; undoStack.length = 0; redoStack.length = 0; last.clear(); updUndo(); }
 
 export function allIds(): string[] {
   return state.board.cards.map((c) => c.id);
@@ -228,7 +272,14 @@ export function flushSave() {
   const s = JSON.stringify(unwrap(state.board));
   if (s === lastSaved) return;
   lastSaved = s;
-  send({ type: "save", board: JSON.parse(s) });
+  // 宿主写盘成功才算存上；失败（磁盘满、没权限）就记成没存，过几秒再试，关窗前的 flush 也会再发
+  ask("save", { board: JSON.parse(s) }).catch((e: Error) => {
+    if (lastSaved !== s) return;
+    lastSaved = "";
+    toast(`Couldn't save the board: ${e.message}. Retrying…`);
+    clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(flushSave, 5000);
+  });
 }
 export function markSaved() { lastSaved = JSON.stringify(unwrap(state.board)); }
 

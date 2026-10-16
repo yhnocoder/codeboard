@@ -1,9 +1,11 @@
 // 画布：镜头变换后的世界层（Section 框 → Link → 卡片 → Section 标签 → Link 标签 → 参考线），
 // 加上屏幕坐标的框选框、对齐工具条。
-import { For, Show, onMount, onCleanup, createMemo, createEffect, on } from "solid-js";
+import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
 import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
-import { cam, setViewport, lod } from "../state/camera";
+import { cam, setViewport, lod, camMoving } from "../state/camera";
+import { trackOffscreen } from "../state/cull";
+import { trackCardLod, izMap } from "../state/lodcards";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
 import { CanvasStickers, LinkStickers } from "../stickers/Picker";
@@ -16,14 +18,23 @@ import { align } from "@codeboard/core";
 
 export function Canvas() {
   let el!: HTMLDivElement, world!: HTMLDivElement;
-  // 镜头动的时候才让浏览器把世界层当位图缩放；停下 ~180ms 后去掉，按新比例重新清晰绘制（#15）
-  let still: number | undefined;
-  createEffect(on(() => [cam.x, cam.y, cam.z], () => {
-    if (!world) return;
-    world.classList.add("moving");
-    clearTimeout(still);
-    still = window.setTimeout(() => world.classList.remove("moving"), 180);
+  trackOffscreen();
+  trackCardLod();
+  // 停下以后一两帧去掉 will-change 的提示（styles.css 的 .world.settle）：位图缩放过的内容按新比例重新清晰栅格化
+  const [settle, setSettle] = createSignal(false);
+  createEffect(on(camMoving, (m) => {
+    setSettle(!m);
+    if (!m) requestAnimationFrame(() => requestAnimationFrame(() => setSettle(false)));
   }, { defer: true }));
+  // 打开白板后，世界层的 transform 要先变过一次，之后的平移才便宜：没变过时，Chromium 每帧都把整块世界层重新分层（实测每帧 40+ ms，
+  // 变过一次以后 ~13 ms）。所以白板一加载好就悄悄动 0.01px 再放回，用户的第一段平移就不会卡
+  createEffect(on(() => state.loaded, (ok) => {
+    if (!ok || !world) return;
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      world.style.translate = "0.01px 0";
+      requestAnimationFrame(() => { world.style.translate = ""; });
+    }));
+  }));
   onMount(() => {
     const ro = new ResizeObserver(() => setViewport(el.clientWidth, el.clientHeight));
     ro.observe(el);
@@ -34,13 +45,13 @@ export function Canvas() {
   return (
     <div ref={el} id="board" class="board" classList={{ connecting: !!connectFrom(), walking: !!walk(), dragging: dragging().size > 0, placing: !!A.placing(), "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
-      <div ref={world} class="world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--iz": lod() === "map" ? String(1 / cam.z) : undefined }}>
+      <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
         <LinksSvg />
         <For each={placed()}>{(c) => <CardView card={c} />}</For>
         <CanvasStickers />
         <SectionLabels />
-        <div class="labels"><LinkLabels /><LinkStickers /></div>
+        <div class="labels" classList={{ "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}><LinkLabels /><LinkStickers /></div>
         <div class="guides">
           <For each={guides()}>
             {(g) => g.axis === "x"

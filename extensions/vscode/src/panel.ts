@@ -10,6 +10,7 @@ import { viewsFor } from "./views";
 import { present, srcLabel } from "./source";
 import { readSettings } from "./settings";
 import { log } from "./log";
+import { warmBoard } from "./prefetch";
 
 export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown> | unknown;
 
@@ -48,6 +49,8 @@ export class BoardPanel {
     this.queue = [];
     for (const m of q) void this.panel.webview.postMessage(m);
     this.mgr.staleChanged(this.id, countStale(b, stale));
+    // 白板已经出来了：后台让语言服务先热起来
+    warmBoard(segs, () => this.mgr.get(this.id) === this);
   }
 
   host(): HostInfo {
@@ -157,6 +160,7 @@ export class Panels {
 
   private async onMessage(p: BoardPanel, m: BoardToHost) {
     const req = "req" in m ? (m as { req: number }).req : undefined;
+    const t0 = performance.now();
     try {
       if (m.type === "ready") return void (await p.init());
       const data = await this.handler(p, m);
@@ -167,6 +171,10 @@ export class Panels {
       log("error", `${m.type}: ${msg}${e instanceof Error && e.stack ? `\n${e.stack}` : ""}`);
       if (req !== undefined) p.post({ type: "reply", req, error: msg });
       else p.toast(`Error: ${msg}`);
+    } finally {
+      // 慢的请求记一笔（Copy Diagnostics 里能看到），方便对照白板那边的耗时
+      const ms = performance.now() - t0;
+      if (ms > 150 && m.type !== "confirm" && m.type !== "pickFile") log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
     }
   }
 

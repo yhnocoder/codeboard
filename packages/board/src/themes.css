@@ -401,24 +401,24 @@
 :root[data-look="soft-light"] .card.sel:not(.text) { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
 :root[data-look="soft-light"] .card.sel.lift { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), var(--sh-lift); }
 :root[data-look="soft-light"] .chead { background: none; border-bottom: 0; }
-:root[data-look="soft-light"] .ccard > .chead { height: auto; flex-wrap: wrap; row-gap: 1px; column-gap: 8px; padding: 14px 10px 10px 18px; }
-:root[data-look="soft-light"] .ccard > .chead .kind, :root[data-look="soft-light"] .ccard > .chead .grow, :root[data-look="soft-light"] .ccard > .chead .plusn { display: none; }
-:root[data-look="soft-light"] .ccard > .chead .step { order: 0; height: 16px; padding: 0; min-width: 0; gap: 10px; display: inline-flex; background: none; color: var(--ink-3); font: 500 9.5px var(--sys); letter-spacing: .32em; }
-:root[data-look="soft-light"] .ccard > .chead .step::before { content: "STEP\00a0"; }
-:root[data-look="soft-light"] .ccard > .chead .step::after { content: ""; width: 26px; height: 1px; background: var(--coral); }
-:root[data-look="soft-light"] .ccard > .chead .step:hover { color: var(--coral); background: none; }
-:root[data-look="soft-light"] .ccard > .chead .subc, :root[data-look="soft-light"] .ccard > .chead .lockb, :root[data-look="soft-light"] .ccard > .chead .mk { order: 1; }
-:root[data-look="soft-light"] .ccard > .chead .rev { order: 2; margin-left: auto; color: var(--ink-3); }
-:root[data-look="soft-light"] .ccard > .chead .rev ~ .rev { margin-left: 0; }
-:root[data-look="soft-light"] .ccard > .chead .ib { order: 3; border-radius: 9px; }
-:root[data-look="soft-light"] .ccard > .chead .ctitle { order: 5; flex: 1 0 100%; font: 300 18px/1.35 var(--sys); color: var(--ink); letter-spacing: -.005em; }
-:root[data-look="soft-light"] .ccard > .chead .cpath { order: 6; flex: 1 0 100%; font: 400 11px var(--sys); color: var(--ink-3); letter-spacing: .02em; padding: 0; }
-:root[data-look="soft-light"] .ccard > .chead .rev.new { color: var(--ink-2); gap: 7px; }
+:root[data-look="soft-light"] .ccard > .cface > .chead { height: auto; flex-wrap: wrap; row-gap: 1px; column-gap: 8px; padding: 14px 10px 10px 18px; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .kind, :root[data-look="soft-light"] .ccard > .cface > .chead .grow, :root[data-look="soft-light"] .ccard > .cface > .chead .plusn { display: none; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .step { order: 0; height: 16px; padding: 0; min-width: 0; gap: 10px; display: inline-flex; background: none; color: var(--ink-3); font: 500 9.5px var(--sys); letter-spacing: .32em; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .step::before { content: "STEP\00a0"; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .step::after { content: ""; width: 26px; height: 1px; background: var(--coral); }
+:root[data-look="soft-light"] .ccard > .cface > .chead .step:hover { color: var(--coral); background: none; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .subc, :root[data-look="soft-light"] .ccard > .cface > .chead .lockb, :root[data-look="soft-light"] .ccard > .cface > .chead .mk { order: 1; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .rev { order: 2; margin-left: auto; color: var(--ink-3); }
+:root[data-look="soft-light"] .ccard > .cface > .chead .rev ~ .rev { margin-left: 0; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .ib { order: 3; border-radius: 9px; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .ctitle { order: 5; flex: 1 0 100%; font: 300 18px/1.35 var(--sys); color: var(--ink); letter-spacing: -.005em; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .cpath { order: 6; flex: 1 0 100%; font: 400 11px var(--sys); color: var(--ink-3); letter-spacing: .02em; padding: 0; }
+:root[data-look="soft-light"] .ccard > .cface > .chead .rev.new { color: var(--ink-2); gap: 7px; }
 :root[data-look="soft-light"] .rev.new i { width: 7px; height: 7px; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
 :root[data-look="soft-light"] .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
-:root[data-look="soft-light"] .ccard > .cbody { margin: 0 10px 10px; border-radius: 12px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
-:root[data-theme="dark"][data-look="soft-light"] .ccard > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
-:root[data-look="soft-light"] .card.note > .chead { padding-top: 6px; }
+:root[data-look="soft-light"] .ccard > .cface > .cbody { margin: 0 10px 10px; border-radius: 12px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
+:root[data-theme="dark"][data-look="soft-light"] .ccard > .cface > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
+:root[data-look="soft-light"] .card.note > .cface > .chead { padding-top: 6px; }
 :root[data-look="soft-light"] .card.note .nbody { font-weight: 300; font-size: 14px; padding: 2px 18px 16px; }
 :root[data-look="soft-light"] .card.note .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
 :root[data-look="soft-light"] .tx.st-title { font-weight: 300; font-size: 30px; }
@@ -506,8 +506,8 @@
 :root[data-look="colorful"] .chead { height: 30px; gap: 0; padding: 0; border-bottom: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
 :root[data-look="colorful"] .chead > .step, :root[data-look="colorful"] .chead > .subc, :root[data-look="colorful"] .chead > .lockb, :root[data-look="colorful"] .chead > .kind, :root[data-look="colorful"] .chead > .ctitle, :root[data-look="colorful"] .chead > .plusn, :root[data-look="colorful"] .chead > .cpath, :root[data-look="colorful"] .chead > .rev, :root[data-look="colorful"] .chead > .mk, :root[data-look="colorful"] .chead > .ib, :root[data-look="colorful"] .chead > .seg2, :root[data-look="colorful"] .chead > .tools, :root[data-look="colorful"] .chead > .lcount { height: 100%; display: flex; align-items: center; padding: 0 10px; border-radius: 0; }
 :root[data-look="colorful"] .chead .kind, :root[data-look="colorful"] .chead .grow { display: none; }
-:root[data-look="colorful"] .ccard > .chead .ctitle { display: none; }
-:root[data-look="colorful"] .card:not(.ccard) > .chead .ctitle { font: 600 9.5px var(--sys); letter-spacing: .2em; flex: 1 1 auto; }
+:root[data-look="colorful"] .ccard > .cface > .chead .ctitle { display: none; }
+:root[data-look="colorful"] .card:not(.ccard) > .cface > .chead .ctitle { font: 600 9.5px var(--sys); letter-spacing: .2em; flex: 1 1 auto; }
 :root[data-look="colorful"] .chead .step { white-space: nowrap; background: var(--rule); color: var(--paper-ink); font: 600 9.5px var(--sys); letter-spacing: .2em; min-width: 0; }
 :root[data-look="colorful"] .chead .step::before { content: "STEP\00a0"; }
 :root[data-look="colorful"] .chead .step:hover { background: var(--fc); color: var(--bink); }
@@ -570,8 +570,8 @@
 :root[data-look="newspaper"] .card.sel:not(.text) { box-shadow: var(--sh-card); outline: 1.5px solid var(--ink); outline-offset: 5px; }
 :root[data-look="newspaper"] .chead { height: 28px; padding: 0 6px 0 12px; gap: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
 :root[data-look="newspaper"] .chead .kind { display: none; }
-:root[data-look="newspaper"] .ccard > .chead .ctitle { display: none; }
-:root[data-look="newspaper"] .card:not(.ccard) > .chead .ctitle { font: inherit; letter-spacing: inherit; }
+:root[data-look="newspaper"] .ccard > .cface > .chead .ctitle { display: none; }
+:root[data-look="newspaper"] .card:not(.ccard) > .cface > .chead .ctitle { font: inherit; letter-spacing: inherit; }
 :root[data-look="newspaper"] .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink); font: 700 9.5px var(--serif); letter-spacing: .1em; text-transform: none; padding: 0; min-width: 0; height: auto; }
 :root[data-look="newspaper"] .chead .step::before { content: "No.\00a0"; }
 :root[data-look="newspaper"] .chead .step:hover { background: none; color: var(--stamp); }
@@ -583,7 +583,7 @@
 :root[data-look="newspaper"] .cband .cname { display: block; font: 700 21px/1.1 var(--serif); color: var(--ink); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :root[data-look="newspaper"] .cband .cmeta, :root[data-look="newspaper"] .cband .big { display: none; }
 :root[data-look="newspaper"] .cdesc { margin-top: -4px; padding: 0 12px 10px; border-bottom: 0; font: italic 400 12.5px/1.45 var(--serif); color: var(--ink-2); }
-:root[data-look="newspaper"] .ccard > .cbody { border-top: .5px solid var(--hair); }
+:root[data-look="newspaper"] .ccard > .cface > .cbody { border-top: .5px solid var(--hair); }
 :root[data-look="newspaper"] .gutter::after { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; border-left: .5px solid var(--hair); }
 :root[data-look="newspaper"] .port { fill: var(--ink); stroke: none; }
 :root[data-look="newspaper"] .ahead.triangle { stroke: none; }
@@ -625,17 +625,17 @@
 :root[data-look="poster"] .board::after { inset: 12px; border: .5px solid var(--rule); }
 :root[data-look="poster"] .card:not(.text):not(.nobg) { outline: .5px solid var(--rule); outline-offset: 3px; }
 :root[data-look="poster"] .card.sel:not(.text) { box-shadow: 0 0 0 1.5px var(--rule); outline: 1px solid var(--ink); outline-offset: 5px; }
-:root[data-look="poster"] .ccard > .chead { position: relative; justify-content: center; height: auto; padding: 10px 32px 0; gap: 10px; border-bottom: 0; font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-2); }
-:root[data-look="poster"] .ccard > .chead .kind, :root[data-look="poster"] .ccard > .chead .grow, :root[data-look="poster"] .ccard > .chead .ctitle, :root[data-look="poster"] .ccard > .chead .rev:not(.unc) { display: none; }
-:root[data-look="poster"] .ccard > .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink-2); font: inherit; letter-spacing: inherit; padding: 0; min-width: 0; height: auto; }
-:root[data-look="poster"] .ccard > .chead .step::before { content: "NO.\00a0"; }
-:root[data-look="poster"] .ccard > .chead .step:hover { background: none; color: var(--ink); }
-:root[data-look="poster"] .ccard > .chead .cpath { flex: none; font: inherit; color: var(--ink-2); padding: 0; }
-:root[data-look="poster"] .ccard > .chead .ib { position: absolute; right: 4px; top: 4px; }
-:root[data-look="poster"] .card:not(.ccard) > .chead { border-bottom: .5px solid var(--rule); font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; justify-content: center; position: relative; }
-:root[data-look="poster"] .card:not(.ccard) > .chead .kind, :root[data-look="poster"] .card:not(.ccard) > .chead .grow { display: none; }
-:root[data-look="poster"] .card:not(.ccard) > .chead .ctitle { font: inherit; letter-spacing: inherit; flex: none; }
-:root[data-look="poster"] .card:not(.ccard) > .chead .ib { position: absolute; right: 4px; top: 5px; }
+:root[data-look="poster"] .ccard > .cface > .chead { position: relative; justify-content: center; height: auto; padding: 10px 32px 0; gap: 10px; border-bottom: 0; font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-2); }
+:root[data-look="poster"] .ccard > .cface > .chead .kind, :root[data-look="poster"] .ccard > .cface > .chead .grow, :root[data-look="poster"] .ccard > .cface > .chead .ctitle, :root[data-look="poster"] .ccard > .cface > .chead .rev:not(.unc) { display: none; }
+:root[data-look="poster"] .ccard > .cface > .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink-2); font: inherit; letter-spacing: inherit; padding: 0; min-width: 0; height: auto; }
+:root[data-look="poster"] .ccard > .cface > .chead .step::before { content: "NO.\00a0"; }
+:root[data-look="poster"] .ccard > .cface > .chead .step:hover { background: none; color: var(--ink); }
+:root[data-look="poster"] .ccard > .cface > .chead .cpath { flex: none; font: inherit; color: var(--ink-2); padding: 0; }
+:root[data-look="poster"] .ccard > .cface > .chead .ib { position: absolute; right: 4px; top: 4px; }
+:root[data-look="poster"] .card:not(.ccard) > .cface > .chead { border-bottom: .5px solid var(--rule); font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; justify-content: center; position: relative; }
+:root[data-look="poster"] .card:not(.ccard) > .cface > .chead .kind, :root[data-look="poster"] .card:not(.ccard) > .cface > .chead .grow { display: none; }
+:root[data-look="poster"] .card:not(.ccard) > .cface > .chead .ctitle { font: inherit; letter-spacing: inherit; flex: none; }
+:root[data-look="poster"] .card:not(.ccard) > .cface > .chead .ib { position: absolute; right: 4px; top: 5px; }
 :root[data-look="poster"] .cband { display: block; flex: none; text-align: center; padding: 3px 14px 9px; }
 :root[data-look="poster"] .cband .cname { display: block; font: 400 17px/1.25 var(--serif); color: var(--ink); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :root[data-look="poster"] .cband .cmeta { display: flex; justify-content: center; gap: 16px; padding-top: 4px; font: 500 10.5px var(--mono); color: var(--ink); letter-spacing: .06em; }
@@ -645,7 +645,7 @@
 :root[data-look="poster"] .cband .cm.v.new { color: var(--k-fn); }
 :root[data-look="poster"] .cband .big { display: none; }
 :root[data-look="poster"] .cdesc { text-align: center; border-bottom: 0; padding: 0 14px 9px; font-size: 11.5px; }
-:root[data-look="poster"] .ccard > .cbody { border-top: .5px solid var(--rule); }
+:root[data-look="poster"] .ccard > .cface > .cbody { border-top: .5px solid var(--rule); }
 :root[data-look="poster"] .cfig { display: block; position: absolute; left: 0; right: 0; top: calc(100% + 12px); text-align: center; font: 400 9px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 :root[data-look="poster"] .ahead { stroke: var(--rule); }
 :root[data-look="poster"] .port { fill: var(--surface); stroke: var(--rule); }

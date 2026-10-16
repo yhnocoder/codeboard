@@ -96,7 +96,7 @@ const boardJson = () => {
   // 2. Click schedule: expands Scheduler.schedule, numbered 1, with a call link
   await card(f, "LLMEngine.step").locator(".src .call", { hasText: /^schedule$/ }).first().click(); await sleep(1800);
   check(await card(f, "Scheduler.schedule").count() === 1, "clicking schedule expands Scheduler.schedule");
-  check((await card(f, "Scheduler.schedule").locator(".step").textContent().catch(() => "")) === "A", "child card shows its tree letter A");
+  check((await card(f, "Scheduler.schedule").locator(".chead .step").textContent().catch(() => "")) === "A", "child card shows its tree letter A");
   check(await f.locator("path.edge").count() >= 1, "call link drawn");
   // 3. Click postprocess: second child in the same tree
   await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);

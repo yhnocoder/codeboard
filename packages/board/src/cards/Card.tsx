@@ -1,6 +1,6 @@
 // 卡片外壳：位置、选中、拖动抬起、弹出动画、讲解变暗；按种类渲染内容。
 import { send } from "../host";
-import { createMemo, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
+import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
   cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard,
@@ -19,6 +19,9 @@ import { NoteBody, TextToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
 import { Editable } from "../ui/Editable";
 import * as act from "../actions";
+import { offscreen } from "../state/cull";
+import { lodOf, izOf } from "../state/lodcards";
+import { whenIdle } from "../state/idle";
 
 export function CardView(p: { card: Card }) {
   let el!: HTMLDivElement;
@@ -33,11 +36,14 @@ export function CardView(p: { card: Card }) {
     const pg = pingCard();
     if (pg?.id === c().id && el) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
   });
+  const [labelReady, setLabelReady] = createSignal(false);
+  onMount(() => whenIdle(() => setLabelReady(true)));
   const pop = () => popIn()[c().id];
   const pl = () => placeOf(c().id);
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
     if (pl().h) s.height = c().kind === "code" ? `calc(${pl().h}px + var(--hx, 0px))` : `${pl().h}px`;
+    if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
     const pi = pop();
     if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
     else if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
@@ -58,7 +64,7 @@ export function CardView(p: { card: Card }) {
       <div ref={el} class={`card ${kindClass()}`} data-id={c().id} data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined} style={style()}
         classList={{
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
-          editing: editing()?.id === c().id,
+          editing: editing()?.id === c().id, off: offscreen(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
           "merge-hot": drop()?.kind === "merge" && drop()?.card === c().id && !!drop()?.armed,
           "merge-arm": drop()?.kind === "merge" && drop()?.card === c().id && !drop()?.armed,
@@ -68,6 +74,7 @@ export function CardView(p: { card: Card }) {
           "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
         }}
         onPointerDown={(e) => act.cardPointerDown(e, c().id)} onContextMenu={(e) => act.cardContextMenu(e, c().id)} onDblClick={(e) => act.cardDblClick(e, c().id)}>
+        <div class="cface">
         <Switch>
           <Match when={c().kind === "code"}><CodeCardView card={c() as CodeCard} /></Match>
           <Match when={c().kind === "note"}><NoteBody card={c() as NoteCard} /></Match>
@@ -79,14 +86,17 @@ export function CardView(p: { card: Card }) {
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <CardStickers card={c().id} />
-        <BoundStickers card={c().id} />
-        <Show when={lod() === "map"}><MapLabel card={c()} /></Show>
         <Show when={!pl().locked}>
           <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>
             <span class="hw l" onPointerDown={(e) => act.resizeDown(e, c().id, { left: true })} />
             <span class="hw r" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true })} />
           </Show>
         </Show>
+        </div>
+        {/* 地图档只留下面这些：.cface 整块藏起来 */}
+        <BoundStickers card={c().id} />
+        {/* 地图档的名字空闲时就建好、藏着（styles.css），切到地图档只是显示出来 */}
+        <Show when={labelReady() || lodOf(c().id) === "map"}><MapLabel card={c()} /></Show>
       </div>
     </Show>
   );

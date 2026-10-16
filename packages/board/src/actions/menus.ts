@@ -162,7 +162,7 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
     { label: "Add Sidenote", kbd: "S", run: () => (ls?.card === c.id ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) : openAddNote({ card: c.id })) },
     ...(col ? [] : [lockItem]),
-    ...(c.segments.length > 1 || c.mergedFrom ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
+    ...(!col && (c.segments.length > 1 || c.mergedFrom) ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
   ];
   const flow: Item[] = [
     { label: "Select", run: () => selectFlow(c.id) },

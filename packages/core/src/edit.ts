@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import type { Board, End, Segment } from "./model";
+import type { Board, End, Segment, Sticker } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -23,6 +23,80 @@ export function pruneStickers(b: Board): void {
     const on = k.at.kind === "canvas" ? k.at.on : undefined;
     return !on || ("card" in on ? cards.has(on.card) : links.has(on.link));
   });
+}
+
+/** 旧卡上的一个位置（整卡，或某段某行）在替换它的卡上落在哪；seg 为空 = 落在整张卡上 */
+export type Retarget = (at: { card: string; seg?: string; line?: number }) => { card: string; seg?: string };
+
+/**
+ * 一批卡被别的卡替换（合并、拆开、拆 Compare）：指着它们的 Link 两端、Sidenote（挂在上面的和 kind card 指向它的）、
+ * Sticker（行上、卡角、绑在卡上的）都按 to 搬过去。搬完两端落在同一张卡上的 Link 删掉，绑着它的 Sticker 一起删。
+ * 删卡本身由调用方做；这里只管引用，任何换卡的操作都应该走这里，而不是各自改一遍。
+ */
+export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): void {
+  const gone = new Set(ids);
+  const moveEnd = (e: End): End => {
+    const o = to(e);
+    return { card: o.card, seg: o.seg, line: o.seg ? e.line : undefined };
+  };
+  const touched = new Set<string>();
+  for (const l of b.links) {
+    const f = gone.has(l.from.card), t = gone.has(l.to.card);
+    if (f) l.from = moveEnd(l.from);
+    if (t) l.to = moveEnd(l.to);
+    if (f || t) touched.add(l.id);
+  }
+  b.links = b.links.filter((l) => !(touched.has(l.id) && l.from.card === l.to.card));
+  for (const n of b.sidenotes) {
+    if (gone.has(n.at.card)) {
+      const o = to({ card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] });
+      n.at = { card: o.card, seg: o.seg, lines: o.seg ? n.at.lines : undefined };
+    }
+    if (n.kind === "card" && gone.has(n.card)) n.card = to({ card: n.card }).card;
+  }
+  for (const k of b.stickers) {
+    const at = k.at;
+    if (at.kind === "line" && gone.has(at.card)) {
+      const o = to({ card: at.card, seg: at.seg, line: at.line });
+      k.at = o.seg ? { kind: "line", card: o.card, seg: o.seg, line: at.line } : { kind: "card", card: o.card };
+    } else if (at.kind === "card" && gone.has(at.card)) k.at = { kind: "card", card: to({ card: at.card }).card };
+    else if (at.kind === "canvas" && at.on && "card" in at.on && gone.has(at.on.card)) at.on = { card: to({ card: at.on.card }).card };
+  }
+  pruneStickers(b);
+}
+
+/**
+ * 白板里指向不存在的东西的引用（应该永远是空的）：Link 两端、Sidenote、Sticker、Compare 的栏、Place、Section 父子，以及重复的 id。
+ * 给测试和 mutate 的自检用；返回每一处问题的说明。
+ */
+export function danglingRefs(b: Board): string[] {
+  const out: string[] = [];
+  const cards = new Map<string, Board["cards"][number]>();
+  for (const c of b.cards) { if (cards.has(c.id)) out.push(`duplicate card id ${c.id}`); cards.set(c.id, c); }
+  const links = new Set(b.links.map((l) => l.id));
+  const sections = new Set(b.sections.map((s) => s.id));
+  const segOk = (card: string, seg?: string) => {
+    const c = cards.get(card);
+    if (!c) return false;
+    return !seg || (c.kind === "code" && c.segments.some((s) => s.id === seg));
+  };
+  for (const l of b.links) for (const e of [l.from, l.to]) if (!segOk(e.card, e.seg)) out.push(`link ${l.id} → missing ${e.card}${e.seg ? `/${e.seg}` : ""}`);
+  for (const n of b.sidenotes) {
+    if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
+    if (n.kind === "card" && !cards.has(n.card)) out.push(`sidenote ${n.id} points to missing ${n.card}`);
+  }
+  const stickerRef = (k: Sticker): string | null => {
+    const at = k.at;
+    if (at.kind === "line") return segOk(at.card, at.seg) ? null : at.card;
+    if (at.kind === "card") return cards.has(at.card) ? null : at.card;
+    if (!at.on) return null;
+    return "card" in at.on ? (cards.has(at.on.card) ? null : at.on.card) : links.has(at.on.link) ? null : at.on.link;
+  };
+  for (const k of b.stickers) { const m = stickerRef(k); if (m) out.push(`sticker ${k.id} on missing ${m}`); }
+  for (const c of b.cards) if (c.kind === "compare") for (const k of c.cols) if (!cards.has(k)) out.push(`compare ${c.id} column missing ${k}`);
+  for (const id of Object.keys(b.place)) if (!cards.has(id)) out.push(`place for missing card ${id}`);
+  for (const s of b.sections) if (s.parent && !sections.has(s.parent)) out.push(`section ${s.id} parent missing ${s.parent}`);
+  return out;
 }
 
 /** 旧行号 → 新行号；0 = 这一行在新版本里没了 */

@@ -23,3 +23,12 @@ npm run e2e        # 在真的 VS Code 里跑一遍主要流程并截图（需�
 ```
 
 在 VS Code 里打开这个仓库，按 F5 选「CodeBoard：在 nano-vllm 上调试插件」，会开一个装好插件、打开 nano-vllm 的新窗口。
+
+## 架构规则
+
+改代码时要守住的几条（来自 v0.1、v0.1.5 的架构审查）：
+
+- 白板的每次修改都走 store 的 `mutate()`；白板不变量写在 core 的 `brokenBy`，不散在各个动作里。
+- 引用维护只在 `packages/core/src/edit.ts`：删卡用 `removeCards`，换段用 `rebaseSegment`，换卡（合并、拆开、拆 Compare）用 `retargetCards`。动作层不直接过滤 `b.cards` / `b.links`。每次修改后 `danglingRefs` 自检，harness 里出现就算失败。
+- 新的宿主功能不直接调用 vscode API：先放进宿主侧一个与 VS Code 无关的模块（读文件、git、符号、设置、网络），vscode 只出现在适配层。macOS 版之前会把它收成 `Workspace` 接口。
+- 成熟的通用问题用库（diff、Markdown、浮层定位、SVG 清洗、文件校验），白板本身的交互（画布、箭头、调用树）自己写；需要大量定制的地方不硬套库。

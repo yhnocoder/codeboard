@@ -134,7 +134,7 @@ export type HostToBoard =
 
 export type BoardToHost =
   | { type: "ready" }
-  | { type: "save"; board: Board }
+  | { type: "save"; req: number; board: Board } // 回 null；写盘失败回 error，白板过一会儿重试
   | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
   /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
   | { type: "open"; card: string; seg?: string; line?: number }
@@ -142,6 +142,8 @@ export type BoardToHost =
   | { type: "openLink"; url: string }
   /** 点调用展开：回 ExpandResult */
   | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick }
+  /** 鼠标停在调用上：宿主先在后台问定义、读好目标文件（不回答；点下去的 expand 复用） */
+  | { type: "prefetch"; seg: Segment; line: number; col: number; name: string }
   /** 调用接到已有的卡上：算变量候选（回 Var[]） */
   | { type: "callVars"; req: number; seg: Segment; line: number; col: number; name: string; target: Segment }
   | { type: "peek"; req: number; seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } } // 回 PeekResult

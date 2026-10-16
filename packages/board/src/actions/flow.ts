@@ -164,6 +164,36 @@ export function attachCall(cardId: string, segId: string, call: CallSpan, target
     .catch(() => {});
 }
 
+// ---------- 悬停在调用上：让宿主先去问定义 ----------
+
+const PREFETCH_DWELL = 150; // 停这么久才算（鼠标扫过去的不算）
+let preKey = "", preTimer: number | undefined;
+const sent = new Map<string, number>(); // 已经发过的调用 → 时间（宿主有缓存，短时间内不再发）
+
+/** CodeBody 的 pointermove 调：target 在 .call 上停稳了就发 prefetch（不等回答） */
+export function hoverCall(cardId: string, segId: string | undefined, target: EventTarget | null) {
+  const x = (target as Element | null)?.closest?.(".call") as HTMLElement | null;
+  const key = x && segId ? `${cardId}:${segId}:${x.dataset.c}` : "";
+  if (key === preKey) return;
+  preKey = key;
+  clearTimeout(preTimer);
+  if (!key) return;
+  preTimer = window.setTimeout(() => {
+    if (preKey !== key) return;
+    preKey = ""; // 离开再回来还能再触发
+    if (!x!.isConnected || !x!.matches(":hover")) return;
+    const call = state.views[segId!]?.calls[+x!.dataset.c!];
+    const f = cardById(cardId);
+    const seg = f && isCode(f.card) ? segOf(f.card, segId!) : undefined;
+    if (!call || !seg || call.dispatch || isLibCall(call) || expandedTo(cardId, segId!, call)) return;
+    const k = `${segId}:${call.line}:${call.col}`, now = Date.now();
+    if (now - (sent.get(k) ?? 0) < 20_000) return;
+    if (sent.size > 200) sent.clear();
+    sent.set(k, now);
+    send({ type: "prefetch", seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name });
+  }, PREFETCH_DWELL);
+}
+
 // ---------- project / library code ----------
 
 /** library 调用：宿主标了包名，且不在 Study Scope 里 */
