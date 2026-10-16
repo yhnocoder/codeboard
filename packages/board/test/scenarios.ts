@@ -489,5 +489,8 @@ async function hoverWord(h: Host, card: string, line: string, word: string) {
 
 (async () => {
   await ready();
-  for (const n of names.length ? names : Object.keys(S)) { console.log("▶", n); await S[n](); }
+  // --shard i/n runs every n-th scenario starting at i (CI splits the harness across parallel jobs)
+  const shard = process.argv.find((a) => a.startsWith("--shard="))?.slice(8).split("/").map(Number);
+  const all = names.length ? names : Object.keys(S);
+  for (const n of shard ? all.filter((_, k) => k % shard[1] === shard[0] - 1) : all) { console.log("▶", n); await S[n](); }
 })().catch((e) => { console.error(e); process.exit(1); });

@@ -1,5 +1,10 @@
-# T0: runs on every push. Build, typecheck, unit tests, browser harness, real VS Code (with Pylance) e2e + generic UI audit;
-# screenshots are diffed against a baseline and pushed to the ci-screenshots branch; on PRs the screenshot section of the description is updated.
+# T0: runs on every push and PR. Jobs run in parallel:
+#   unit     build, typecheck, unit tests, host tests
+#   harness  browser harness scenarios, split into 3 shards
+#   e2e      real VS Code (with Pylance) e2e + generic UI audit
+#   replay   scripted study-task replay in real VS Code, on base and on head, for before/after screenshots
+#   perf     board + host perf benchmarks on base and head in one job; fails on a regression
+#   report   publishes screenshots to the ci-screenshots branch and updates the marked section of the PR description
 name: CI
 on:
   push:
@@ -14,67 +19,140 @@ concurrency:
 env:
   VSCODE_VERSION: "1.142.0"
   E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
+  # PR: compare with the target branch; push: compare with the previous tip (empty for a new branch)
+  BASE_SHA: ${{ github.event.pull_request.base.sha || (github.event.before != '0000000000000000000000000000000000000000' && github.event.before) || '' }}
 jobs:
-  check:
+  unit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true, fetch-depth: 0 } # unit tests need nano-vllm commit history
+      - uses: ./.github/actions/setup
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:host -w codeboard-vscode --if-present
+
+  harness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: { shard: [1, 2, 3] }
+    name: harness (${{ matrix.shard }}/3)
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - run: node packages/board/test/run-harness.mjs --shard=${{ matrix.shard }}/3
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/vscode
+      - name: VS Code e2e (Pylance + UI audit)
+        run: npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: e2e, path: test-out/default-dark-modern, retention-days: 14 }
+
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: { side: [head, base] }
+    name: replay (${{ matrix.side }})
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true, fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+        if: matrix.side == 'head'
+      - name: Check out and build base, with head's replay scripts
+        if: matrix.side == 'base' && env.BASE_SHA != ''
+        run: tools/review/checkout-base.sh "$BASE_SHA" base --test-drivers
+      - uses: ./.github/actions/vscode
+        if: matrix.side == 'head' || env.BASE_SHA != ''
+      - name: Study-task replay
+        if: matrix.side == 'head' || env.BASE_SHA != ''
+        # The base run only provides "before" screenshots: its step failures are expected when head adds features
+        continue-on-error: ${{ matrix.side == 'base' }}
+        run: |
+          DIR=.; [ "${{ matrix.side }}" = base ] && DIR=base
+          DRIVER=replay.cjs E2E_OUT=$PWD/test-out/replay-${{ matrix.side }} bash $DIR/extensions/vscode/test/run.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "replay-${{ matrix.side }}", path: "test-out/replay-${{ matrix.side }}", retention-days: 14, if-no-files-found: ignore }
+
+  perf:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: true, fetch-depth: 0 } # unit tests need nano-vllm commit history
+        with: { submodules: true, fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - name: Check out and build base
+        if: env.BASE_SHA != ''
+        run: tools/review/checkout-base.sh "$BASE_SHA" base
+      - name: Perf, base vs head
+        run: tools/review/perf-ab.sh "${{ env.BASE_SHA != '' && 'base' || '' }}" test-out/perf
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: perf, path: test-out/perf, retention-days: 14 }
+
+  report:
+    needs: [e2e, replay, perf]
+    if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
-      - run: npm ci
-      - run: npm run build
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run test:host -w codeboard-vscode --if-present # host-side tests (v0.1.5+)
-
-      - name: Chromium (for the harness and screenshot diff)
-        run: |
-          npx playwright-core install --with-deps chromium
-          echo "CHROMIUM=$(node -e "console.log(require('playwright-core').chromium.executablePath())")" >> $GITHUB_ENV
-      - name: Browser harness
-        run: node packages/board/test/run-harness.mjs
-
-      - name: VS Code cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .vscode-test
-            /tmp/codeboard-ext-cache
-          key: vscode-${{ env.VSCODE_VERSION }}-${{ env.E2E_EXTENSIONS }}
-      - name: Download VS Code
-        run: |
-          sudo apt-get install -y -q xvfb libasound2t64 libgbm1 libnss3 libgtk-3-0 libxkbfile1 libsecret-1-0 >/dev/null
-          if [ ! -x .vscode-test/VSCode-linux-x64/code ]; then
-            mkdir -p .vscode-test
-            curl -sSL "https://update.code.visualstudio.com/$VSCODE_VERSION/linux-x64/stable" | tar -xz -C .vscode-test
-          fi
-      - name: VS Code e2e (Pylance + UI audit)
-        run: VSCODE_BIN=$PWD/.vscode-test/VSCode-linux-x64/code npm run e2e
-
+      - run: npm ci --no-audit --no-fund
+      - uses: ./.github/actions/chromium
+      - uses: actions/download-artifact@v4
+        with: { path: test-out/artifacts }
       - name: Diff and publish screenshots
-        if: always() && hashFiles('test-out/default-dark-modern/*.png') != '' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
         run: |
-          if [ "${{ github.event_name }}" = pull_request ]; then
-            tools/review/publish-shots.sh test-out/default-dark-modern "pr/${{ github.event.pull_request.number }}" "branches/${{ github.base_ref }}"
-          else
-            tools/review/publish-shots.sh test-out/default-dark-modern "branches/${{ github.ref_name }}" "branches/${{ github.ref_name }}"
-          fi
-      - name: Update the screenshot section in the PR description
-        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('test-out/shots-summary.md') != ''
+          A=test-out/artifacts
+          if [ "${{ github.event_name }}" = pull_request ]; then KEY="pr/${{ github.event.pull_request.number }}"; BASEKEY="branches/${{ github.base_ref }}"
+          else KEY="branches/${{ github.ref_name }}"; BASEKEY="$KEY"; fi
+          # e2e: compared with the last screenshots stored for the target branch
+          if ls $A/e2e/*.png >/dev/null 2>&1; then tools/review/publish-shots.sh $A/e2e "$KEY" "$BASEKEY" test-out/e2e-summary.md; fi
+          # replay: compared with the base commit replayed in this same run
+          if ls $A/replay-head/*.png >/dev/null 2>&1; then tools/review/publish-shots.sh $A/replay-head "$KEY/replay" $A/replay-base test-out/replay-summary.md; fi
+      - name: Update the CI section in the PR description
+        if: github.event_name == 'pull_request'
         uses: actions/github-script@v7
+        env:
+          JOBS: ${{ toJSON(needs) }}
         with:
           script: |
             const fs = require("fs");
-            const audit = fs.existsSync("test-out/default-dark-modern/audit.json") ? JSON.parse(fs.readFileSync("test-out/default-dark-modern/audit.json", "utf8")) : [];
+            const A = "test-out/artifacts";
+            const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
+            const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
+            const audit = [...json(`${A}/e2e/audit.json`), ...json(`${A}/replay-head/audit.json`)];
             const issues = audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`));
+            const steps = json(`${A}/replay-head/steps.json`);
+            const failed = steps.flatMap((s) => s.checks.filter((c) => !c.ok).map((c) => `- ${s.name}: ${c.what}`));
+            const jobs = JSON.parse(process.env.JOBS);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const section = [
-              "<!-- ci-screenshots:start -->", "## CI screenshots", "",
-              `Commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [Run log](${run})`, "",
+              "<!-- ci-screenshots:start -->", "## CI report", "",
+              `Commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [Run log](${run}) · ` + Object.entries(jobs).map(([k, v]) => `${k} ${v.result === "success" ? "✅" : v.result === "skipped" ? "–" : "❌"}`).join(" · "), "",
+              read(`${A}/perf/summary.md`) || "**Performance**: no results.", "",
               `**UI audit**: ${issues.length ? `${issues.length} warning${issues.length > 1 ? "s" : ""}` : "no issues"}`, ...issues.slice(0, 30), "",
-              fs.readFileSync("test-out/shots-summary.md", "utf8"),
+              `**Study-task replay**: ${steps.length ? (failed.length ? `${failed.length} failed check${failed.length > 1 ? "s" : ""}` : `all ${steps.length} steps passed`) : "no results"}`, ...failed.slice(0, 20), "",
+              "<details><summary>Replay screenshots, base → head</summary>", "", read("test-out/replay-summary.md") || "No screenshots.", "</details>", "",
+              "<details><summary>e2e screenshots, vs target branch</summary>", "", read("test-out/e2e-summary.md") || "No screenshots.", "</details>",
               "<!-- ci-screenshots:end -->",
             ].join("\n");
             const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
@@ -82,6 +160,3 @@ jobs:
             const re = /<!-- ci-screenshots:start -->[\s\S]*<!-- ci-screenshots:end -->/;
             const next = re.test(body) ? body.replace(re, section) : `${body}\n\n${section}`;
             await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: next });
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: test-out, path: test-out, retention-days: 14 }

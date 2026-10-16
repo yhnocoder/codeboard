@@ -1,0 +1,14 @@
+name: Chromium
+description: Playwright's Chromium (browser cached between runs), exported as CHROMIUM for the harness, perf and screenshot diff
+runs:
+  using: composite
+  steps:
+    - id: v
+      shell: bash
+      run: echo "v=$(node -p "require('playwright-core/package.json').version")" >> $GITHUB_OUTPUT
+    - uses: actions/cache@v4
+      with: { path: ~/.cache/ms-playwright, key: "chromium-${{ steps.v.outputs.v }}" }
+    - shell: bash
+      run: |
+        npx playwright-core install --with-deps chromium
+        echo "CHROMIUM=$(node -e "console.log(require('playwright-core').chromium.executablePath())")" >> $GITHUB_ENV
