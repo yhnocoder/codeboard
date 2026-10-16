@@ -90,6 +90,7 @@ export function onHost(m: HostToBoard) {
     case "rename": if (m.name.trim()) mutate((b) => { b.name = m.name.trim(); }); break;
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
     case "toast": toast(m.text); break;
+    case "githubPicker": A.openGitHubPicker(m.repo); break;
   }
 }
 

@@ -25,6 +25,7 @@ import { commitMenu } from "./versions";
 import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge } from "./edit";
 import { newFreeCode, newNote, pasteText } from "./create";
 import { openAddNote, setNoteBg } from "./notes";
+import { canLinkList, mergeIntoLinkList, webMenuItems } from "./web";
 
 export function callMenu(cardId: string, segId: string, call: CallSpan, x: number, y: number) {
   selectCard(cardId);
@@ -87,8 +88,8 @@ export function cardMenu(id: string, x: number, y: number) {
     null, ...common, null,
     { label: "Delete", kbd: "⌫", run: deleteSel },
   ], x, y);
-  if (c.kind === "image" || c.kind === "web") return openMenu([
-    ...(c.kind === "web" ? [{ label: "Open in Browser", run: () => openLink(c.url) } as Item] : []),
+  if (c.kind === "web" || c.kind === "links") return openMenu([...webMenuItems(c), null, ...common, null, { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel }, { label: "Delete", kbd: "⌫", run: deleteSel }], x, y);
+  if (c.kind === "image") return openMenu([
     { label: "Rename", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id }) },
     { label: "Edit Description", run: () => setEditing({ kind: "desc", id }) },
     null, ...common, null,
@@ -157,6 +158,7 @@ function multiItems(): Item[] {
   return [
     ...(cs.length === 2 && codes.length === 2 ? [{ label: "Compare", disabled: cmp.ok ? false : cmp.why, run: doCompare } as Item] : []),
     ...(codes.length >= 2 ? [{ label: "Merge into One Card", disabled: mc.ok ? false : mc.why, run: () => mergeCards(sel.cards) } as Item] : []),
+    ...(canLinkList(cs) ? [{ label: "Merge into Link List", run: () => mergeIntoLinkList(sel.cards) } as Item] : []),
     { label: "Connect with Plain Link", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addPlain({ card: a.id }, { card: b.id }); } },
     { label: "Move to New Section", run: () => moveToNewSection() },
     { label: lockAll ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock(sel.cards, sel.sections) },

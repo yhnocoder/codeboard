@@ -79,6 +79,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   e.preventDefault();
   (document.activeElement as HTMLElement | null)?.blur?.();
   window.getSelection()?.removeAllRanges();
+  if (c.kind === "web" && inHead && isDbl(`w${id}`)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
   if (inHead && t.closest(".ctitle") && isDbl(`t${target}`)) return setEditing({ kind: "title", id: target });
   if (isText && isDbl(`x${id}`)) return setEditing({ kind: "note", id });
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
@@ -103,6 +104,7 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
   let mergeT: number | undefined, mergeTgt: string | undefined;
   const g = cardById(grabbed)!.host;
   const mergeOk = ids.every((i) => { const c = cardById(i)!.card; return c.kind === "code" && !c.members; });
+  const webOk = ids.every((i) => { const k = cardById(i)!.card.kind; return k === "web" || k === "links"; }); // Web 卡拖到另一张的标题上 → Link List
   const noteOk = ids.length === 1 && g.kind === "note" && g.bg;
   setDragging(new Set(ids));
   track(e, (ev) => {
@@ -116,7 +118,8 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
     const row = under?.closest(".src > .l") as HTMLElement | null;
     const ucard = uid ? cardById(uid) : undefined;
     let drop = dropTarget();
-    if (mergeOk && uid && head && ucard && isCode(ucard.card) && !ucard.card.members && ucard.host.kind === "code") {
+    const webHead = webOk && uid && ucard && (ucard.host.kind === "web" || ucard.host.kind === "links") && under?.closest(".chead, .wtitle");
+    if (webHead || (mergeOk && uid && head && ucard && isCode(ucard.card) && !ucard.card.members && ucard.host.kind === "code")) {
       if (ev.altKey) { drop = { kind: "merge", card: uid, armed: true }; clearTimeout(mergeT); }
       else if (mergeTgt !== uid) {
         clearTimeout(mergeT);
@@ -150,7 +153,7 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
     if (drop?.kind === "merge" && drop.armed) {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
       end();
-      return A.mergeCards([drop.card, ...ids], drop.card);
+      return webOk ? A.mergeIntoLinkList([drop.card, ...ids], drop.card) : A.mergeCards([drop.card, ...ids], drop.card);
     }
     if (drop?.kind === "line") {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });

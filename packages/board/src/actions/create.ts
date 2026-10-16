@@ -19,6 +19,7 @@ import { send, ask } from "../host";
 import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { hostRect, popCard } from "./common";
+import { fetchMeta, newLinkList } from "./web";
 
 /** 新代码卡按设置默认隐藏注释 / 文档字符串 / 空行（卡上已经有设定的不动） */
 function withDefaults(c: Card): Card {
@@ -96,11 +97,6 @@ export async function newWeb(at?: { x: number; y: number }, url?: string) {
   addCards([{ card: { id, kind: "web", url }, views: {} }], { at });
   fetchMeta(id, url);
 }
-/** 贴链接那一刻抓一次网页信息（标题、描述、图标、预览图），存进卡里 */
-export async function fetchMeta(id: string, url: string) {
-  const meta = await ask<WebMeta | null>("webMeta", { url }).catch(() => null);
-  mutate((b) => { const c = b.cards.find((k) => k.id === id); if (c?.kind === "web") c.meta = meta ?? { failed: true, at: Date.now() }; });
-}
 export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "python", url?: string) {
   const sid = uid("s");
   const seg: Segment = { id: sid, src: { kind: "free", url }, path: "", lang, start: 1, end: Math.max(1, text.split("\n").length), text: text ? text.split("\n") : [""], version: { kind: "none" } };
@@ -133,11 +129,14 @@ export async function pasteText(text: string, at?: { x: number; y: number }) {
   if (!text.trim()) return;
   const k = classifyPaste(text);
   if (k.kind === "web") return newWeb(at, k.url);
+  if (k.kind === "links") return newLinkList(k.urls, at);
   if (k.kind === "note") return newNote(at, true, text);
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
-  const r = await ask<NewCard | null>("paste", { text }).catch(() => null);
+  let err = "";
+  const r = await ask<NewCard | null>("paste", { text }).catch((e) => { err = (e as Error).message; return null; });
   if (r) return addCards([r], { at });
-  if (k.kind === "github") return toast("Could not fetch this GitHub file");
+  // GitHub 文件拿不到（离线、私有仓库没登录）：先留一张书签，链接不丢
+  if (k.kind === "github") { toast(`Could not fetch this GitHub file${err ? `: ${err}` : ""}`); return newWeb(at, text.trim()); }
   newFreeCode(at, text.replace(/\s+$/, ""), guessLang(text) ?? "python");
 }
 

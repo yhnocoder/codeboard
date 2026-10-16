@@ -1,6 +1,7 @@
 // 白板交互场景：每个场景开一个白板、做一串操作、截图。
 import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
 import { emptyBoard, type Board } from "@codeboard/core";
+import { WEB } from "./scenarios-web";
 
 const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -14,6 +15,7 @@ function boardWith(...quals: string[]): Board {
 const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .call:text-is("${name}")`).nth(nth);
 
 const S: Record<string, () => Promise<void>> = {
+  ...WEB,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");

@@ -7,6 +7,7 @@ import { banner, setBanner, walk, keysOpen, setKeysOpen, editing, setEditing, pa
 import { Canvas } from "./canvas/Canvas";
 import { Popovers } from "./ui/Popovers";
 import { Palette } from "./ui/Palette";
+import { GitHubPicker } from "./ui/GitHubPicker";
 import { MenuLayer, DialogLayer, TooltipLayer, openMenu } from "./ui/Menu";
 import { Editable } from "./ui/Editable";
 import { Icon } from "./ui/icons";
@@ -42,6 +43,7 @@ export function App() {
       <Show when={keysOpen()}><Keys /></Show>
       <Popovers />
       <Show when={paletteOpen()}><Palette /></Show>
+      <Show when={A.ghPicker()}><GitHubPicker /></Show>
       <Toast />
       <MenuLayer />
       <DialogLayer />
