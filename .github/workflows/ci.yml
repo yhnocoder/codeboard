@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: true }
+        with: { submodules: true, fetch-depth: 0 } # 单测要用 nano-vllm 的历史提交
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
       - run: npm ci
@@ -53,7 +53,7 @@ jobs:
         run: VSCODE_BIN=$PWD/.vscode-test/VSCode-linux-x64/code npm run e2e
 
       - name: 截图比对并发布
-        if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        if: always() && hashFiles('test-out/default-dark-modern/*.png') != '' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
         run: |
           if [ "${{ github.event_name }}" = pull_request ]; then
             tools/review/publish-shots.sh test-out/default-dark-modern "pr/${{ github.event.pull_request.number }}" "branches/${{ github.base_ref }}"
