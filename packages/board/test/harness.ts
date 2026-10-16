@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Page } from "playwright-core";
-import { uid, emptyBoard, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
+import { uid, emptyBoard, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
 import { initAnalysis, analyze, symbolAt, varCandidates, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 
 export const REPO = path.resolve(__dirname, "../.."); // 打包后在 test-out/harness/
@@ -70,8 +70,10 @@ export function symCard(f: string, s: Sym): CodeCard {
     text: file.text.slice(s.start - 1, s.end), version: { kind: "git", commit: "bb823b3c0ffee" },
     symbol: { qual: s.qual, kind: s.kind === "class" ? "class" : "function" },
   };
-  return { id: uid("c"), kind: "code", segments: [seg], x: 0, y: 0, w: 560, members: s.kind === "class" ? { shown: [] } : undefined };
+  return { id: uid("c"), kind: "code", segments: [seg], members: s.kind === "class" ? { shown: [] } : undefined };
 }
+/** 把卡放上白板 */
+export function put(b: Board, c: Card, x: number, y: number, w = 560) { b.cards.push(c); b.place[c.id] = { x, y, w }; }
 export const findSym = (qual: string) => allSyms().find((x) => x.s.qual === qual)!;
 
 export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void> };
@@ -102,9 +104,9 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
     switch (m.type) {
       case "ready": {
         const views: Record<string, SegView> = {};
-        for (const c of board.cards) for (const k of c.kind === "compare" ? c.cols : [c]) if (k.kind === "code") for (const sg of k.segments) views[sg.id] = viewOf(sg);
+        for (const k of board.cards) if (k.kind === "code") for (const sg of k.segments) views[sg.id] = viewOf(sg);
         for (const n of board.sidenotes) if (n.kind === "code") views[n.code.id] = viewOf(n.code);
-        await post({ type: "init", board, boards: [{ id: board.id, name: board.name, cards: board.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true } });
+        await post({ type: "init", board, boards: [{ id: board.id, name: board.name, cards: board.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } });
         break;
       }
       case "save": board = m.board; break;
@@ -118,7 +120,7 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
         const c = symCard(cands[0].f, cands[0].s);
         const call = files.get(m.seg.path)?.a.calls.find((k) => k.line === m.line && k.col === m.col);
         const vars = call ? varCandidates(call, cands[0].s) : [];
-        return reply(m.req, { card: c, views: { [c.segments[0].id]: viewOf(c.segments[0]) }, vars });
+        return reply(m.req, { card: c, views: { [c.segments[0].id]: viewOf(c.segments[0]) }, vars, w: 560 });
       }
       case "views": return reply(m.req, Object.fromEntries(m.segs.map((s) => [s.id, viewOf(s)])));
       case "search": {
@@ -133,7 +135,7 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
         const x = allSyms().find((k) => k.s.qual === it.sym) ?? allSyms().find((k) => k.f === it.path);
         if (!x) return reply(m.req, null);
         const c = symCard(x.f, x.s);
-        return reply(m.req, { card: c, views: { [c.segments[0].id]: viewOf(c.segments[0]) } });
+        return reply(m.req, { card: c, views: { [c.segments[0].id]: viewOf(c.segments[0]) }, w: 560 });
       }
       case "peek": {
         const x = allSyms().find((k) => k.s.name === m.word);
@@ -151,7 +153,6 @@ export async function open(o: { board?: Board; light?: boolean; w?: number; h?: 
       }
       case "commits": return reply(m.req, [{ commit: "f64d8210aa", msg: "fix chunked prefill bugs", date: "2026-04-26", head: true }, { commit: "bb823b3c0ffee", msg: "support chunked prefill", date: "2026-04-20" }]);
       case "paste": return reply(m.req, null);
-      case "source": return reply(m.req, { html: viewOf({ ...m.seg, start: 1, end: files.get(m.seg.path)!.text.length, text: files.get(m.seg.path)!.text }).html, start: 1 });
       default: if (m.req) return reply(m.req, null);
     }
   });

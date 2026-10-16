@@ -1,7 +1,8 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后整板发回来保存；宿主负责读代码、高亮、版本、跳转。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version } from "./model";
+import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags } from "./model";
 import type { SegView } from "./lines";
+import type { TidyDir } from "./layout";
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
@@ -13,13 +14,37 @@ export type Stale =
   | { state: "uncommitted" } // 钉在 HEAD，但工作区有未提交改动
   | { state: "missing" }; // 仓库 / 文件不在：只读快照
 
+/** 8 种材质主题；明暗跟随 VS Code */
+export const THEMES = [
+  ["warm-ink", "Warm Ink"], ["graphite", "Graphite"], ["soft-light", "Soft Light"], ["drafting", "Drafting"],
+  ["colorful", "Colorful"], ["newspaper", "Newspaper"], ["poster", "Poster"], ["classic", "Classic"],
+] as const;
+export type ThemeId = (typeof THEMES)[number][0];
+
+/** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用 */
+export type Settings = {
+  theme: ThemeId;
+  hideOnNew: HideFlags; // 新卡默认隐藏什么（替代卡片上的 Hide 浮条）
+  studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
+  tidy: TidyDir; // Tidy Layout 的默认方向；展开调用时新卡也按它摆
+  stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
+  zoomOverview: number; // 低于这个比例：概览（代码变灰条）
+  zoomMap: number; // 低于这个比例：地图（只剩编号和名字）
+};
+export const DEFAULT_SETTINGS: Settings = {
+  theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], tidy: "down", stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25,
+};
+
+/** 贴纸图标包：Iconify JSON 一个文件一套，或一个装 .svg 的文件夹（文件夹名 = 包名） */
+export type StickerPack = { id: string; name: string; icons: { name: string; svg: string }[] };
+
 export type HostInfo = {
   fontFamily?: string; // 跟随 VS Code 编辑器字体
   isMac: boolean;
   assetBase: string; // assets/ 目录的 webview URI，图片卡用
   readonly?: string; // 仓库找不到时的提示
-  focus?: boolean; // Focus 布局
   target: boolean; // 编辑器里 Add to 的目标白板是不是这块
+  settings: Settings;
   /** 这些快捷键（⌘ + 键）被宿主拦下后以 {type:"key"} 转回来，白板自己不再处理（免得做两次） */
   forwardedKeys?: string[];
 };
@@ -56,8 +81,8 @@ export type DiffData = {
   newView?: SegView;
 };
 
-/** 宿主建好的卡（位置由白板定） */
-export type NewCard = { card: Card; views: Record<string, SegView> };
+/** 宿主建好的卡（位置由白板定；w 缺省按内容估） */
+export type NewCard = { card: Card; views: Record<string, SegView>; w?: number };
 
 export type HostToBoard =
   | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo }
@@ -98,7 +123,6 @@ export type BoardToHost =
   | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD
   | { type: "commits"; req: number; seg: Segment }
   | { type: "switchCommit"; req: number; seg: Segment; commit: string } // 回 { seg, view }
-  | { type: "source"; req: number; seg: Segment } // Focus 下的只读源码浮窗：回整个文件（那个版本）的高亮
   | { type: "resolveRef"; req: number; text: string } // 手输 commit / branch / tag
   | { type: "paste"; req: number; text: string } // 回 NewCard | null（工作区代码、GitHub 链接）
   | { type: "github"; req: number; url: string }
@@ -108,7 +132,15 @@ export type BoardToHost =
   | { type: "checkVersions" }
   | { type: "relocate"; card: string } // 符号找不到：在编辑器里选新位置
   | { type: "locateRepo" }
-  | { type: "focusMode"; on: boolean }
+  /** 改一项全局设置（宿主写进 codeboard.*，再广播给所有白板） */
+  | { type: "setSetting"; key: keyof Settings; value: unknown }
+  /** 网页元信息：抓一次，图片存进 assets/ */
+  | { type: "webMeta"; req: number; url: string } // 回 WebMeta
+  | { type: "stickerPacks"; req: number } // 回 StickerPack[]
+  | { type: "openStickerDir" }
+  | { type: "copyDiagnostics"; board?: boolean }
+  /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
+  | { type: "log"; level: "info" | "warn" | "error"; text: string }
   | { type: "openBoard"; id: string; card?: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
   | { type: "pickFile"; req: number; kind: "image" };
@@ -118,6 +150,6 @@ export type PeekResult = PeekDef | null;
 
 /** expand 的回答 */
 export type ExpandResult =
-  | { card: CodeCard; views: Record<string, SegView>; vars: Var[] }
+  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number }
   | { pick: { label: string; detail: string; path: string; line: number }[] }
   | { none: true; reason: string };

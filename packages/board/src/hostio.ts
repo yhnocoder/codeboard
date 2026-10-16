@@ -4,7 +4,7 @@ import { reconcile } from "solid-js/store";
 import { migrateBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, type HostToBoard } from "@codeboard/core";
 import { state, setState, markSaved, resetHistory, select, toast, mutate, live, setLineSel, sel } from "./state/store";
 import { setCam } from "./state/camera";
-import { setBanner, setFocusMode } from "./state/ui";
+import { setBanner } from "./state/ui";
 import * as A from "./actions";
 import { choose } from "./ui/Menu";
 
@@ -19,7 +19,7 @@ export function onHost(m: HostToBoard) {
         setState("stale", m.stale);
         setState("board", reconcile(b));
         setState("loaded", true);
-        setFocusMode(!!m.host.focus);
+
         setBanner(true);
       });
       setCam(b.cam.x, b.cam.y, b.cam.z);
@@ -53,7 +53,7 @@ export function onHost(m: HostToBoard) {
       break;
     }
     case "boards": setState("boards", m.boards); break;
-    case "host": setState("host", (h) => ({ ...h, ...m.host })); if (m.host.focus !== undefined) setFocusMode(!!m.host.focus); break;
+    case "host": setState("host", (h) => ({ ...h, ...m.host })); break;
     case "add": {
       const ids = A.addCards(m.cards);
       if (m.ask === "split" && ids.length === 1) askSplit(ids[0]);

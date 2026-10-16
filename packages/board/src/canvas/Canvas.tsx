@@ -2,7 +2,7 @@
 // 加上屏幕坐标的框选框、对齐工具条。
 import { For, Show, onMount, onCleanup, createMemo } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
-import { state, sel, rectOf, cardById, mutate } from "../state/store";
+import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
 import { cam, setViewport } from "../state/camera";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
@@ -28,7 +28,7 @@ export function Canvas() {
       <div class="world" style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})` }}>
         <SectionFrames />
         <LinksSvg />
-        <For each={state.board.cards}>{(c) => <CardView card={c} />}</For>
+        <For each={placed()}>{(c) => <CardView card={c} />}</For>
         <SectionLabels />
         <div class="labels"><LinkLabels /></div>
         <div class="guides">
@@ -43,7 +43,7 @@ export function Canvas() {
       </div>
       <Show when={marquee()}>{(m) => <div class="marquee" style={{ left: `${m().x}px`, top: `${m().y}px`, width: `${m().w}px`, height: `${m().h}px`, display: "block" }} />}</Show>
       <AlignBar />
-      <Show when={!state.board.cards.length && state.loaded}><EmptyHint /></Show>
+      <Show when={!placed().length && state.loaded}><EmptyHint /></Show>
     </div>
   );
 }
@@ -64,7 +64,7 @@ function DropHint() {
 const AL: { op: AlignOp; icon: string; tip: string }[] = [
   { op: "left", icon: "alignL", tip: "Align Left" }, { op: "hcenter", icon: "alignC", tip: "Align Centre" }, { op: "right", icon: "alignR", tip: "Align Right" },
   { op: "top", icon: "alignT", tip: "Align Top" }, { op: "bottom", icon: "alignB", tip: "Align Bottom" },
-  { op: "hdist", icon: "distH", tip: "Distribute Horizontally" }, { op: "vdist", icon: "distV", tip: "Distribute Vertically" }, { op: "sameWidth", icon: "sameW", tip: "Same Width" },
+  { op: "hdist", icon: "distH", tip: "Distribute Horizontally" }, { op: "vdist", icon: "distV", tip: "Distribute Vertically" },
 ];
 
 /** 选中 ≥2 张卡时浮在上方的对齐工具条 */
@@ -74,13 +74,13 @@ function AlignBar() {
   const pos = () => { const b = box()!; return { x: b.x * cam.z + cam.x + (b.w * cam.z) / 2, y: b.y * cam.z + cam.y - 12 }; };
   const run = (op: AlignOp) => {
     const m = align(rs(), op);
-    mutate((b) => { for (const [id, p] of m) { const c = b.cards.find((k) => k.id === id); if (c && !A.isLocked(id)) Object.assign(c, p); } });
+    mutate((b) => { for (const [id, p] of m) { const c = b.place[id]; if (c && !A.isLocked(id)) Object.assign(c, p); } });
   };
   return (
     <Show when={rs().length >= 2 && dragging().size === 0 && !walk()}>
       <div class="alignbar pill show" style={{ left: `${pos().x}px`, top: `${Math.max(56, pos().y)}px` }} onPointerDown={(e) => e.stopPropagation()}>
         <For each={AL}>{(a, i) => <>
-          <Show when={i() === 3 || i() === 5 || i() === 7}><span class="sep" /></Show>
+          <Show when={i() === 3 || i() === 5}><span class="sep" /></Show>
           <button class="ib" aria-label={a.tip} data-tip={a.tip} onClick={() => run(a.op)}><Icon name={a.icon} /></button>
         </>}</For>
       </div>

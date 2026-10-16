@@ -3,7 +3,7 @@ import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { unwrap } from "solid-js/store";
 import { state, mutate, live, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
 import { cam, camTarget, zoomAt } from "./state/camera";
-import { banner, setBanner, walk, focusMode, setFocusMode, keysOpen, setKeysOpen, editing, setEditing, paletteOpen, setPaletteOpen } from "./state/ui";
+import { banner, setBanner, walk, keysOpen, setKeysOpen, editing, setEditing, paletteOpen, setPaletteOpen } from "./state/ui";
 import { Canvas } from "./canvas/Canvas";
 import { Popovers } from "./ui/Popovers";
 import { Palette } from "./ui/Palette";
@@ -32,7 +32,7 @@ export function App() {
     }, 600);
   }));
   return (
-    <div class="app chrome" classList={{ focus: focusMode() }} style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}>
+    <div class="app chrome" style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}>
       <Canvas />
       <TopBar />
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
@@ -67,7 +67,6 @@ function TopBar() {
       { label: "Keyboard Shortcuts", kbd: "?", run: () => setKeysOpen(true) },
     ], r.right - 220, r.bottom + 6);
   };
-  const setFocus = (v: boolean) => { setFocusMode(v); send({ type: "focusMode", on: v }); };
   return (
     <>
       <div class="over tb-left"><div class="pill">
@@ -75,11 +74,6 @@ function TopBar() {
         <Editable class="bname" kind="board" id="board" value={state.board.name} onCommit={(v) => v.trim() && mutate((b) => { b.name = v.trim(); })} />
       </div></div>
       <div class="over tb-right"><div class="pill">
-        <div class="segc" role="tablist">
-          <button classList={{ on: !focusMode() }} onClick={() => setFocus(false)}>Workbench</button>
-          <button classList={{ on: focusMode() }} onClick={() => setFocus(true)}>Focus</button>
-        </div>
-        <span class="sep" />
         <button class="tbtn" data-tip="Search Functions, Files, Cards" data-kbd={`${A.K.mod}K`} onClick={() => setPaletteOpen({ mode: "all" })}><Icon name="search" />Search<kbd>{A.K.mod}K</kbd></button>
         <button class="ib" aria-label="More" data-tip="More" onClick={more}><Icon name="more" /></button>
       </div></div>

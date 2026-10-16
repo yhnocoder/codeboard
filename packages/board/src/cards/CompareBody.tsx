@@ -2,7 +2,7 @@
 // 只有一边有的行另一边留斜纹空位。两栏还是原来的卡（编号、Link 都在）。
 import { createMemo, For, Show, onMount, onCleanup, createEffect } from "solid-js";
 import { alignRows, wordDiff, findCard, type CompareCard, type CodeCard, type Row } from "@codeboard/core";
-import { state, mutate } from "../state/store";
+import { state, mutate, cardById, placeOf } from "../state/store";
 import { setGeo } from "../state/geo";
 import { queueMeasure, observeResize } from "../state/measure";
 import { Icon } from "../ui/icons";
@@ -50,7 +50,7 @@ export function markHtml(html: string, ranges: [number, number][]): string {
 
 export function CompareBody(p: { card: CompareCard }) {
   const k = () => p.card;
-  const cols = createMemo(() => (k().swap ? [k().cols[1], k().cols[0]] : [k().cols[0], k().cols[1]]) as [CodeCard, CodeCard]);
+  const cols = createMemo(() => (k().swap ? [k().cols[1], k().cols[0]] : [k().cols[0], k().cols[1]]).map((id) => cardById(id)?.card) as [CodeCard, CodeCard]);
   const data = createMemo(() => {
     const [a, b] = cols();
     const la = linesOf(a), lb = linesOf(b);
@@ -130,7 +130,7 @@ export function CompareBody(p: { card: CompareCard }) {
   return (
     <div ref={rootEl} class="cmpwrap">
       <div class="chead" data-drag>
-        <Show when={k().locked}><button class="lockb" data-tip="Unlock" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.toggleLock([k().id])}><Icon name="lock" /></button></Show>
+        <Show when={placeOf(k().id).locked}><button class="lockb" data-tip="Unlock" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.toggleLock([k().id])}><Icon name="lock" /></button></Show>
         <span class="kind">⇆</span><span class="ctitle">{A.compareTitle(k())}</span><span class="grow" />
         <span class="tools" onPointerDown={(e) => e.stopPropagation()}>
           <button class="seg2" onClick={() => set((c) => { c.swap = !c.swap; })}>Swap</button>
@@ -143,7 +143,7 @@ export function CompareBody(p: { card: CompareCard }) {
         <For each={cols()}>{(c) => <div data-col={c.id}><CodeHead card={c} col /></div>}</For>
       </div>
       <div ref={scrollEl} class="cbody" onScroll={measure} onWheel={(e) => A.cardWheel(e, scrollEl)}>
-        <div ref={rowsEl} class="crows" onPointerDown={onDown} onContextMenu={onCtx} style={{ "--cw": `${Math.round((k().w - 2) / 2)}px` }}>
+        <div ref={rowsEl} class="crows" onPointerDown={onDown} onContextMenu={onCtx} style={{ "--cw": `${Math.round((placeOf(k().id).w - 2) / 2)}px` }}>
           <For each={items()}>
             {(it) => {
               if (it.t === "gap") return <div class="cgap">⋯ {it.n} same lines</div>;

@@ -116,7 +116,7 @@ const boardJson = () => {
   // 8. 自动保存
   await sleep(2000);
   const b = boardJson();
-  check(b && b.version === 2 && b.cards.length >= 5 && b.links.length >= 2 && b.sidenotes.length === 1, "白板自动存盘（v2 格式）", b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
+  check(b && b.version === 3 && b.cards.length >= 5 && Object.keys(b.place).length === b.cards.length && b.links.length >= 2 && b.sidenotes.length === 1, "白板自动存盘（v3 格式）", b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
 
   // 9. 在编辑器里改代码：卡片显示 + uncommitted（不保存到 git）
   await openFile(page, "scheduler.py", 30);

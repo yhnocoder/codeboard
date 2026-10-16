@@ -5,15 +5,16 @@ import {
 } from "../src";
 
 const seg = (id: string, start: number, text: string[]): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git", commit: "x" } });
-const code = (id: string, s = seg(`s${id}`, 1, ["pass"])): CodeCard => ({ id, kind: "code", x: 0, y: 0, w: 100, segments: [s] });
+const code = (id: string, s = seg(`s${id}`, 1, ["pass"])): CodeCard => ({ id, kind: "code", segments: [s] });
 const call = (from: string, to: string, line = 1): Link => ({ id: `${from}-${to}`, kind: "call", from: { card: from, seg: `s${from}`, line }, to: { card: to } });
-const compare = (id: string, a: string, b: string): Card => ({ id, kind: "compare", x: 0, y: 0, w: 100, cols: [code(a), code(b)] });
+const compare = (id: string, a: string, b: string): Card => ({ id, kind: "compare", cols: [a, b] });
 
 describe("removeCards", () => {
   it("takes links, sidenotes on the card and Card sidenotes pointing at it", () => {
     const b: Board = {
       ...emptyBoard("b", "B"),
-      cards: [code("a"), code("b"), compare("k", "p", "q")],
+      cards: [code("a"), code("b"), code("p"), code("q"), compare("k", "p", "q")],
+      place: { a: { x: 0, y: 0, w: 1 }, b: { x: 0, y: 0, w: 1 }, k: { x: 0, y: 0, w: 1 } },
       links: [call("a", "b"), call("p", "a")],
       sidenotes: [
         { id: "n1", at: { card: "b" }, kind: "text", md: "on b" },
@@ -21,11 +22,17 @@ describe("removeCards", () => {
         { id: "n3", at: { card: "a" }, kind: "text", md: "stays" },
         { id: "n4", at: { card: "q" }, kind: "text", md: "on a Compare column" },
       ],
+      stickers: [
+        { id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "card", card: "b" } },
+        { id: "k2", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0 } },
+      ],
     };
     removeCards(b, ["b", "k"]);
     expect(b.cards.map((c) => c.id)).toEqual(["a"]);
     expect(b.links).toEqual([]);
     expect(b.sidenotes.map((n) => n.id)).toEqual(["n3"]);
+    expect(Object.keys(b.place)).toEqual(["a"]);
+    expect(b.stickers.map((k) => k.id)).toEqual(["k2"]);
   });
 });
 
@@ -42,6 +49,10 @@ describe("rebaseSegment", () => {
       { id: "n1", at: { card: "a", seg: "s1", lines: [12, 13] }, kind: "text", md: "" },
       { id: "n2", at: { card: "a", seg: "s1", lines: [11, 11] }, kind: "text", md: "" },
     ],
+    stickers: [
+      { id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "a", seg: "s1", line: 13 } },
+      { id: "k2", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "a", seg: "s1", line: 11 } },
+    ],
   });
 
   it("moves hidden ranges, highlights, both link ends and sidenotes with the content", () => {
@@ -57,6 +68,8 @@ describe("rebaseSegment", () => {
     expect(b.sidenotes[0].at).toEqual({ card: "a", seg: "s1", lines: [23, 24] });
     expect(b.sidenotes[1].at).toEqual({ card: "a" });
     expect(b.sidenotes[1].lineRemoved).toBe(true);
+    expect(b.stickers[0].at).toEqual({ kind: "line", card: "a", seg: "s1", line: 24 });
+    expect(b.stickers[1].at).toEqual({ kind: "card", card: "a" });
   });
 
   it("shifts everything when only the position changed", () => {
@@ -70,9 +83,9 @@ describe("rebaseSegment", () => {
   });
 
   it("works on a Compare column", () => {
-    const b: Board = { ...emptyBoard("b", "B"), cards: [{ id: "k", kind: "compare", x: 0, y: 0, w: 100, cols: [code("a", old), code("c")] }] };
+    const b: Board = { ...emptyBoard("b", "B"), cards: [code("a", old), code("c"), { id: "k", kind: "compare", cols: ["a", "c"] }] };
     rebaseSegment(b, "a", { ...old, start: 11, end: 14 }, shiftBy(1));
-    expect((b.cards[0] as Extract<Card, { kind: "compare" }>).cols[0].segments[0].start).toBe(11);
+    expect((b.cards[0] as CodeCard).segments[0].start).toBe(11);
   });
 });
 
@@ -80,7 +93,7 @@ describe("brokenBy (Compare stays in one flow)", () => {
   // R → X → cl，R → Y → cr，cl 和 cr 并成 Compare k
   const board = (): Board => ({
     ...emptyBoard("b", "B"),
-    cards: [code("R"), code("X"), code("Y"), compare("k", "cl", "cr")],
+    cards: [code("R"), code("X"), code("Y"), code("cl"), code("cr"), compare("k", "cl", "cr")],
     links: [call("R", "X", 1), call("R", "Y", 2), call("X", "cl"), call("Y", "cr")],
   });
 

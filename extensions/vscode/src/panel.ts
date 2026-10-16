@@ -8,6 +8,7 @@ import type { Storage } from "./storage";
 import { boardSegments, countStale, staleFor } from "./versions";
 import { viewsFor } from "./views";
 import { present, srcLabel } from "./source";
+import { readSettings } from "./settings";
 
 export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown> | unknown;
 
@@ -56,7 +57,7 @@ export class BoardPanel {
       forwardedKeys: ["k", "d", "0", "1", "=", "+", "-", "shift+l"], // 与 package.json 里 codeboard.boardKey 的键一致
       assetBase: this.panel.webview.asWebviewUri(vscode.Uri.file(this.mgr.store.assetsDir())).toString(),
       readonly: this.readonly,
-      focus: this.mgr.focusOn,
+      settings: readSettings(),
       target: this.mgr.target === this.id,
     };
   }
@@ -95,7 +96,6 @@ export class Panels {
   static readonly viewType = "codeboard.board";
   private panels = new Map<string, BoardPanel>();
   target: string | undefined;
-  focusOn = false;
   private targetEmitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTarget = this.targetEmitter.event;
   private staleEmitter = new vscode.EventEmitter<void>();

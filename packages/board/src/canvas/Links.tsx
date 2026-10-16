@@ -1,7 +1,7 @@
 // Link 层：SVG 曲线 + 浮在中间的标签 / 变量 chip。端点每帧跟着卡片和行走（都是响应式的）。
 import { For, Show, createMemo } from "solid-js";
-import { findCard, varText, varKey, type Link, type Rect } from "@codeboard/core";
-import { state, sel, select, rectOf, cardById, collapsedAway } from "../state/store";
+import { findCard, varText, varKey, type Link, type PlainLink, type Rect } from "@codeboard/core";
+import { state, sel, select, rectOf, cardById, collapsedAway, placeOf } from "../state/store";
 import { geo, lineY } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
 import { hoverLink, setHoverLink, rubber, editing, popIn } from "../state/ui";
@@ -16,7 +16,7 @@ const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 function endRect(id: string): { r: Rect; pill: boolean } | null {
   const f = cardById(id);
   if (!f) return null;
-  const home = collapsedHome(f.host.section);
+  const home = collapsedHome(placeOf(f.host.id).section);
   if (home) { const r = frames().get(home.id); return r ? { r, pill: true } : null; }
   const r = rectOf(f.host);
   const pi = popIn()[f.host.id];
@@ -56,7 +56,7 @@ function callGeo(L: Link): Geo | null {
   };
 }
 
-function plainGeo(L: Link): Geo | null {
+function plainGeo(L: PlainLink): Geo | null {
   const ea = endRect(L.from.card), eb = endRect(L.to.card);
   if (!ea || !eb) return null;
   const ra = ea.r, rb = eb.r;
@@ -93,7 +93,7 @@ function visible(L: Link) {
   const a = cardById(L.from.card), b = cardById(L.to.card);
   if (!a || !b) return false;
   if (collapsedAway().has(a.host.id) || collapsedAway().has(b.host.id)) return false;
-  const ha = collapsedHome(a.host.section), hb = collapsedHome(b.host.section);
+  const ha = collapsedHome(placeOf(a.host.id).section), hb = collapsedHome(placeOf(b.host.id).section);
   if (ha && ha === hb) return false;
   return true;
 }
@@ -106,12 +106,12 @@ export function LinksSvg() {
         {(L) => {
           const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
           const on = () => sel.links.includes(L.id) || hoverLink() === L.id;
-          const cls = () => `edge${L.kind === "plain" ? " plain" + (L.solid ? " solid" : "") + (L.color ? ` lc-${L.color}` : "") : ""}${on() ? " on" : ""}`;
+          const cls = () => `edge${L.kind === "plain" ? " plain" + ((L as PlainLink).solid ? " solid" : "") + ((L as PlainLink).color ? ` lc-${(L as PlainLink).color}` : "") : ""}${on() ? " on" : ""}`;
           return (
             <Show when={g()}>
               <path class={cls()} d={g()!.d} />
-              <Show when={g()!.head}><path class={`ahead${L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
-              <Show when={g()!.tail}><path class={`ahead${L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
+              <Show when={g()!.head}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
+              <Show when={g()!.tail}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
               <Show when={g()!.port}><circle class="port" r="3" cx={g()!.port!.x} cy={g()!.port!.y} /></Show>
               <path class="lhit" data-link={L.id} d={g()!.d} style={{ "stroke-width": `${12 / cam.z}px` }}
                 onPointerEnter={() => setHoverLink(L.id)} onPointerLeave={() => setHoverLink(null)}
@@ -143,18 +143,18 @@ export function LinkLabels() {
     <For each={links()}>
       {(L) => {
         const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
-        const vars = () => L.vars ?? [];
+        const vars = () => (L.kind === "call" ? L.vars ?? [] : []);
         const shown = () => vars().slice(0, 3);
         const more = () => vars().length - shown().length;
         const editingLabel = () => editing()?.kind === "label" && editing()?.id === L.id;
-        const has = () => L.label || editingLabel() || (L.kind === "call" && (vars().length || L.loop));
+        const has = () => L.label || editingLabel() || (L.kind === "call" && (vars().length || !!L.loop));
         return (
           <Show when={g()}>
             <Show when={has()}>
               <div class="vchips" classList={{ user: L.kind === "plain", on: sel.links.includes(L.id) }} data-link={L.id} style={{ left: `${g()!.mx}px`, top: `${g()!.my}px` }}
                 onPointerEnter={() => setHoverLink(L.id)} onPointerLeave={() => setHoverLink(null)}
                 onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); if ((e.target as HTMLElement).closest(".editing")) return; e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }}>
-                <Show when={L.loop}><span class="vchip loop" data-tip="Called inside a loop">↺</span></Show>
+                <Show when={L.kind === "call" && L.loop}><span class="vchip loop" data-tip="Called inside a loop">↺</span></Show>
                 <Show when={L.label || editingLabel()}>
                   <Editable class="vlabel" kind="label" id={L.id} value={L.label ?? ""} placeholder="Label" onCommit={(v) => A.setLinkLabel(L.id, v)} />
                 </Show>

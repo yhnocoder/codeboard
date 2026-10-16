@@ -54,7 +54,6 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "pick"}><PickPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "pick" }>} /></Match>
         <Match when={k() === "commits"}><CommitsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "commits" }>} /></Match>
         <Match when={k() === "vars"}><VarsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vars" }>} /></Match>
-        <Match when={k() === "source"}><SourcePop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "source" }>} /></Match>
       </Switch>
     </div>
   );
@@ -176,7 +175,7 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
     const r = A.hostRect(p.pop.card)!;
     const id = `c${Date.now().toString(36)}`;
     const seg = { ...structuredClone(x.seg) };
-    A.addCards([{ card: { id, kind: "code", segments: [seg], x: 0, y: 0, w: 480 }, views: {} }], { at: { x: r.x + r.w + 48, y: r.y } });
+    A.addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: 480 }], { at: { x: r.x + r.w + 48, y: r.y } });
     A.requestViews([seg]);
     A.addPlain({ card: p.pop.card, seg: p.pop.seg, line: p.pop.line }, { card: id });
     closePop(p.inst.id);
@@ -411,7 +410,7 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
 }
 
 function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
-  const L = () => state.board.links.find((l) => l.id === p.pop.link);
+  const L = () => { const l = state.board.links.find((l) => l.id === p.pop.link); return l?.kind === "call" ? l : undefined; };
   const [custom, setCustom] = createSignal("");
   const has = (v: Var) => (L()?.vars ?? []).some((x) => varKey(x) === varKey(v));
   const all = () => { const l = L(); if (!l) return []; const c = l.cands ?? []; return [...c, ...(l.vars ?? []).filter((v) => !c.some((x) => varKey(x) === varKey(v)))]; };
@@ -428,20 +427,4 @@ function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
   );
 }
 
-function SourcePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "source" }> }) {
-  let box!: HTMLDivElement;
-  createEffect(() => {
-    if (!p.pop.html || !box) return;
-    queueMicrotask(() => { const el = box.querySelector(".hl"); el?.scrollIntoView({ block: "center" }); });
-  });
-  return (
-    <div class="srcpop">
-      <Head title={<>{baseName(p.pop.seg.path)}:{p.pop.seg.start} · {versionLabel(p.pop.seg.version)} · Read-only</>} inst={p.inst}
-        right={<button class="tbtn" onClick={() => { closePop(p.inst.id); A.openCodeFromFocus(p.pop.card); }}>Open in Editor</button>} />
-      <div ref={box} class="srcbody">
-        <Show when={p.pop.html} fallback={<div class="empty">Loading…</div>}><Code start={p.pop.start ?? 1} html={p.pop.html!} hl={p.pop.seg.start} /></Show>
-      </div>
-    </div>
-  );
-}
 void pinPop; void mutate; void select; void setConnectFrom; void findCard;

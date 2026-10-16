@@ -8,6 +8,8 @@ import { gitUri } from "./cards";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
 import { githubCard } from "./github";
 import { pasteCard } from "./paste";
+import { writeSetting } from "./settings";
+import { log } from "./log";
 import type { BoardPanel, Panels } from "./panel";
 import { expand, peek } from "./resolve";
 import { search, searchPick, entryPoints } from "./search";
@@ -41,7 +43,6 @@ export function makeHandler(panels: Panels) {
       case "diff": return diff(m.seg, m.against);
       case "commits": return commits(m.seg);
       case "switchCommit": return switchCommit(m.seg, m.commit);
-      case "source": return source(m.seg);
       case "resolveRef": return resolveTyped(p, m.text);
       case "paste": return pasteCard(m.text);
       case "github": return githubCard(m.url);
@@ -51,7 +52,12 @@ export function makeHandler(panels: Panels) {
       case "checkVersions": return p.refreshStale();
       case "relocate": return relocate(p, m.card);
       case "locateRepo": return locateRepo(p);
-      case "focusMode": return focusMode(panels, p, m.on);
+      case "setSetting": return writeSetting(m.key, m.value);
+      case "webMeta": return { failed: true }; // TODO(W): 抓网页元数据
+      case "stickerPacks": return [];
+      case "openStickerDir": return;
+      case "copyDiagnostics": return;
+      case "log": return log(m.level, m.text);
       case "openBoard": {
         const np = await panels.show(m.id);
         if (np && m.card) np.post({ type: "reveal", card: m.card });
@@ -237,15 +243,6 @@ async function resolveTyped(p: BoardPanel, text: string): Promise<Commit | null>
 }
 
 /** Focus 模式的只读源码浮窗：整个文件（那个版本） */
-async function source(seg: Segment) {
-  const text = (await versionText(seg)) ?? seg.text.join("\n");
-  const lines = splitLines(text);
-  const whole = lines.length > seg.text.length || seg.start === 1;
-  return {
-    path: seg.path, lang: seg.lang, start: whole ? 1 : seg.start, line: seg.start, end: seg.end,
-    version: versionLabel(seg.version), text: lines, html: await highlight(lines, seg.lang),
-  };
-}
 
 // ---------- 其他 ----------
 
@@ -311,11 +308,4 @@ async function locateRepo(p: BoardPanel) {
   await p.reload();
 }
 
-async function focusMode(panels: Panels, p: BoardPanel, on: boolean) {
-  if (panels.focusOn === on) return;
-  panels.focusOn = on;
-  p.panel.reveal(undefined, false);
-  await vscode.commands.executeCommand("workbench.action.toggleMaximizeEditorGroup").then(undefined, () => vscode.commands.executeCommand("workbench.action.maximizeEditor"));
-  panels.broadcast({ type: "host", host: { focus: on } });
-}
 

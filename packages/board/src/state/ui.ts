@@ -75,5 +75,4 @@ export const [walk, setWalk] = createSignal<Walk | null>(null);
 // 弹窗
 export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; q?: string }>(false);
 export const [keysOpen, setKeysOpen] = createSignal(false);
-export const [focusMode, setFocusMode] = createSignal(false);
 export const [banner, setBanner] = createSignal(true);

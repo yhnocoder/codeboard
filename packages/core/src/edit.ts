@@ -4,13 +4,15 @@
 import { mapLines } from "./diff";
 import type { Board, End, Segment } from "./model";
 
-/** 删掉这些卡（Compare 连同两栏），以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote */
+/** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
-  for (const c of b.cards) if (c.kind === "compare" && gone.has(c.id)) c.cols.forEach((k) => gone.add(k.id));
+  for (const c of b.cards) if (c.kind === "compare" && gone.has(c.id)) c.cols.forEach((k) => gone.add(k));
   b.cards = b.cards.filter((c) => !gone.has(c.id));
+  for (const id of gone) delete b.place[id];
   b.links = b.links.filter((l) => !gone.has(l.from.card) && !gone.has(l.to.card));
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card) && !(n.kind === "card" && gone.has(n.card)));
+  b.stickers = b.stickers.filter((k) => k.at.kind === "canvas" || !gone.has(k.at.card));
 }
 
 /** 旧行号 → 新行号；0 = 这一行在新版本里没了 */
@@ -31,8 +33,8 @@ export function mapRange(map: LineMap, a: number, e: number): [number, number] |
 
 /**
  * 把卡里的一段换成新的（同一个段 id）：新版本 Update、HEAD 下只是挪了位置、Relocate 都走这里。
- * 段上的隐藏 / 高亮，Link 两端、Sidenote 的行号都按 map 搬过去；
- * 行没了的：Link 端点退回整张卡，Sidenote 改挂整卡并标上 lineRemoved。
+ * 段上的隐藏 / 高亮，Link 两端、Sidenote、Sticker 的行号都按 map 搬过去；
+ * 行没了的：Link 端点退回整张卡，Sidenote 改挂整卡并标上 lineRemoved，Sticker 挪到卡片角上。
  */
 export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns)): void {
   const owner = findOwner(b, cardId);
@@ -53,16 +55,18 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
     const r = mapRange(map, n.at.lines[0], n.at.lines[1]);
     if (r) n.at.lines = r; else { n.at = { card: cardId }; n.lineRemoved = true; }
   }
+  for (const k of b.stickers) {
+    if (k.at.kind !== "line" || k.at.card !== cardId || k.at.seg !== ns.id) continue;
+    const m = map(k.at.line);
+    if (m) k.at.line = m; else k.at = { kind: "card", card: cardId };
+  }
 }
 
 /** 段只是整体挪了几行（内容没变） */
 export const shiftBy = (d: number): LineMap => (l) => l + d;
 
 function findOwner(b: Board, cardId: string) {
-  for (const c of b.cards) {
-    if (c.kind === "code" && c.id === cardId) return c;
-    if (c.kind === "compare") for (const k of c.cols) if (k.id === cardId) return k;
-  }
-  return undefined;
+  const c = b.cards.find((k) => k.id === cardId);
+  return c?.kind === "code" ? c : undefined;
 }
 const findSeg = (b: Board, cardId: string, segId: string) => findOwner(b, cardId)?.segments.find((s) => s.id === segId);

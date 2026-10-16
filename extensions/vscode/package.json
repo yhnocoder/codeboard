@@ -386,6 +386,75 @@
           "type": "string",
           "default": "",
           "markdownDescription": "Folder for board files. Leave empty to use VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
+        },
+        "codeboard.theme": {
+          "type": "string",
+          "default": "warm-ink",
+          "enum": [
+            "warm-ink",
+            "graphite",
+            "soft-light",
+            "drafting",
+            "colorful",
+            "newspaper",
+            "poster",
+            "classic"
+          ],
+          "description": "Board theme. Each theme has a light and a dark variant that follows VS Code."
+        },
+        "codeboard.newCards.hide": {
+          "type": "object",
+          "default": {
+            "blank": false
+          },
+          "properties": {
+            "comments": {
+              "type": "boolean"
+            },
+            "docstrings": {
+              "type": "boolean"
+            },
+            "blank": {
+              "type": "boolean"
+            }
+          },
+          "description": "What new code cards hide by default."
+        },
+        "codeboard.studyScope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Packages outside the workspace that count as project code (e.g. torch, vllm)."
+        },
+        "codeboard.tidyLayout": {
+          "type": "string",
+          "enum": [
+            "down",
+            "right"
+          ],
+          "default": "down",
+          "description": "Where Tidy Layout and expanded calls place child cards."
+        },
+        "codeboard.stickerFolder": {
+          "type": "string",
+          "default": "",
+          "description": "Folder with sticker packs (Iconify JSON files or folders of SVGs)."
+        },
+        "codeboard.zoom.overview": {
+          "type": "number",
+          "default": 0.6,
+          "minimum": 0.2,
+          "maximum": 1,
+          "description": "Below this zoom, cards show an overview (titles and structure)."
+        },
+        "codeboard.zoom.map": {
+          "type": "number",
+          "default": 0.25,
+          "minimum": 0.05,
+          "maximum": 0.6,
+          "description": "Below this zoom, cards show only their titles (map view)."
         }
       }
     }

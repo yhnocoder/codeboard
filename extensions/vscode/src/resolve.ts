@@ -128,7 +128,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   const t = targets[0];
   const nc = await cardForFileSym(t.abs, t.sym);
   if (!nc) return none(`Cannot read ${hostPath(t.abs)}.`);
-  return { card: nc.card as CodeCard, views: nc.views, vars: site ? await varsFor(site, t) : [] };
+  return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site ? await varsFor(site, t) : [] };
 }
 
 async function currentFile(seg: Segment) {

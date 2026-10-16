@@ -19,7 +19,7 @@ export function bigBoard(n: number): Board {
   const step = defs.find((d) => d.s.qual === "LLMEngine.step")!;
   cards.unshift({ c: symCard(step.f, step.s), d: { ...step, calls: [] } });
   const COLS = 12;
-  cards.forEach(({ c }, i) => { c.x = (i % COLS) * 620; c.y = Math.floor(i / COLS) * 700; b.cards.push(c); });
+  cards.forEach(({ c }, i) => { b.cards.push(c); b.place[c.id] = { x: (i % COLS) * 620, y: Math.floor(i / COLS) * 700, w: 560 }; });
   const hasIn = new Set<string>();
   cards.forEach(({ c, d }, i) => {
     for (const call of d.calls) {
@@ -37,7 +37,7 @@ export function bigBoard(n: number): Board {
     const outer: Section = { id: uid("x"), title: `Row ${r}`, x: -40, y: r * 700 - 60, w: COLS * 620 + 40, h: 640 };
     const inner: Section = { id: uid("x"), title: `Row ${r} left`, x: -20, y: r * 700 - 40, w: 6 * 620, h: 600, parent: outer.id };
     b.sections.push(outer, inner);
-    cards.slice(r * COLS, r * COLS + COLS).forEach(({ c }, k) => { c.section = k < 6 ? inner.id : outer.id; });
+    cards.slice(r * COLS, r * COLS + COLS).forEach(({ c }, k) => { b.place[c.id].section = k < 6 ? inner.id : outer.id; });
   }
   cards.forEach(({ c }, i) => {
     if (i % 3) return;

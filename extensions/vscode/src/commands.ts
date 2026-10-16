@@ -3,7 +3,7 @@
 import * as vscode from "vscode";
 import { allCodeCards, estSize, type Board, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { cardsFromEditor, symCard, withViews, type Built } from "./cards";
+import { cardsFromEditor, symCard, widthFor, withViews, type Built } from "./cards";
 import type { Panels } from "./panel";
 import { absOf, locOfFile } from "./source";
 import type { Storage } from "./storage";
@@ -243,13 +243,14 @@ export async function pickBoard(store: Storage, placeHolder: string, allowNew: b
 
 /** 白板关着时：新卡放在已有卡片的右边，一张接一张往下排 */
 export function placeCards(b: Board, cards: CodeCard[]) {
-  const right = b.cards.length ? Math.max(...b.cards.map((c) => c.x + c.w)) + 80 : b.cam.x > 0 ? 80 : -b.cam.x + 80;
-  let y = b.cards.length ? Math.min(...b.cards.map((c) => c.y)) : 80;
+  const ps = Object.values(b.place);
+  const right = ps.length ? Math.max(...ps.map((p) => p.x + p.w)) + 80 : b.cam.x > 0 ? 80 : -b.cam.x + 80;
+  let y = ps.length ? Math.min(...ps.map((p) => p.y)) : 80;
   for (const c of cards) {
-    c.x = right;
-    c.y = y;
-    y += estSize(c).h + 40;
+    const p = { x: right, y, w: widthFor(c.segments) };
+    y += estSize(c, p).h + 40;
     b.cards.push(c);
+    b.place[c.id] = p;
   }
 }
 

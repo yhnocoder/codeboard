@@ -5,7 +5,7 @@ import {
   cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard,
 } from "@codeboard/core";
-import { state, setSizes, isSel, flows, collapsedAway, sel } from "../state/store";
+import { state, setSizes, isSel, flows, collapsedAway, sel, placeOf } from "../state/store";
 import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
@@ -20,7 +20,7 @@ export function CardView(p: { card: Card }) {
   let el!: HTMLDivElement;
   const c = () => p.card;
   const read = () => {
-    if (!el) return;
+    if (!el?.isConnected) return; // 卡被藏起来（折叠的 Section、折叠的子树）时不量：量到的是 0
     const id = c().id, w = el.offsetWidth, h = el.offsetHeight;
     return () => setSizes(id, { w, h });
   };
@@ -30,9 +30,10 @@ export function CardView(p: { card: Card }) {
     if (pg?.id === c().id && el) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
   });
   const pop = () => popIn()[c().id];
+  const pl = () => placeOf(c().id);
   const style = (): JSX.CSSProperties => {
-    const s: JSX.CSSProperties = { left: `${c().x}px`, top: `${c().y}px`, width: `${c().w}px` };
-    if (c().h) s.height = `${c().h}px`;
+    const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
+    if (pl().h) s.height = `${pl().h}px`;
     const pi = pop();
     if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
     else if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
@@ -43,16 +44,16 @@ export function CardView(p: { card: Card }) {
     if (!w) return false;
     const cur = w.order[w.i];
     const h = c();
-    if (h.kind === "compare") return !h.cols.some((k) => k.id === cur);
+    if (h.kind === "compare") return !h.cols.includes(cur);
     return c().id !== cur;
   };
   const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
   const drop = () => dropTarget();
   return (
-    <Show when={!collapsedAway().has(c().id) && !collapsedHome(c().section)}>
+    <Show when={!collapsedAway().has(c().id) && !collapsedHome(pl().section)}>
       <div ref={el} class={`card ${kindClass()}`} data-id={c().id} style={style()}
         classList={{
-          sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!c().locked, autoh: !c().h,
+          sel: isSel(c().id), solo: sel.cards.length === 1, lift: dragging().has(c().id), dim: dim(), locked: !!pl().locked, autoh: !pl().h,
           editing: editing()?.id === c().id,
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
           "merge-hot": drop()?.kind === "merge" && drop()?.card === c().id && !!drop()?.armed,
@@ -71,7 +72,7 @@ export function CardView(p: { card: Card }) {
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
-        <Show when={!c().locked}>
+        <Show when={!pl().locked}>
           <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} />}>
             <span class="hw l" onPointerDown={(e) => act.resizeDown(e, c().id, { left: true })} />
             <span class="hw r" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true })} />
@@ -87,7 +88,7 @@ export function CardView(p: { card: Card }) {
 export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const c = () => p.card;
   const node = createMemo(() => flows().byId.get(c().id));
-  const hiddenKids = createMemo(() => (c().collapsed && node() ? countDesc(node()!) : 0));
+  const hiddenKids = createMemo(() => (placeOf(c().id).collapsed && node() ? countDesc(node()!) : 0));
   const s0 = () => c().segments[0];
   const stale = createMemo(() => act.cardStale(c()));
   const mixed = () => mixedVersions(c());
@@ -98,12 +99,12 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
     <div class="chead" data-drag>
       <Show when={node() && !state.board.hideNumbers}><span class="step">{node()!.label}</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
-      <Show when={c().locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
+      <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
       <Editable class="ctitle" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
       <Show when={free()} fallback={
-        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.pathClick(c().id)}>
+        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openCode(c().id)}>
           {multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
@@ -217,7 +218,7 @@ function WebView(p: { card: WebCard }) {
         <button class="ib" aria-label="Card Menu" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(p.card.id, r.left, r.bottom + 4); }}><Icon name="more" /></button></div>
       <Desc id={p.card.id} desc={p.card.desc} />
       <div class="webb">
-        <div class="wt">{p.card.pageTitle || p.card.url}</div>
+        <div class="wt">{p.card.meta?.title || p.card.url}</div>
         <div class="wd">{domainOf(p.card.url)}</div>
         <button class="btn" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openLink(p.card.url)}>Open in Browser <Icon name="external" size={12} /></button>
       </div>

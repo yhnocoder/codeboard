@@ -3,16 +3,16 @@
 import { unwrap } from "solid-js/store";
 import {
   findCard, isCode, snapMove, snapResize, union, bounds, center, contains, cardTitle,
-  type Card, type CallSpan, type Rect, type Anchor, type NoteCard,
+  type Board, type Card, type CallSpan, type Rect, type Anchor, type NoteCard,
 } from "@codeboard/core";
 import {
   state, sel, select, toggleSel, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, mutate, live, beginGesture,
-  undo, redo, toast, setSel, toastMsg, setToastMsg,
+  undo, redo, toast, placeOf, placed, setSel, toastMsg, setToastMsg,
 } from "./state/store";
 import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, fitRect } from "./state/camera";
 import {
   setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, spaceDown, setSpaceDown,
-  connectFrom, setConnectFrom, walk, setEditing, editing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen, focusMode,
+  connectFrom, setConnectFrom, walk, setEditing, editing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen,
 } from "./state/ui";
 import { frames, deepestAt, frameOf, sec, descSections, allMembers, collapsedHome } from "./state/sections";
 import { geo } from "./state/geo";
@@ -87,13 +87,16 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   startCardDrag(e, f.host.id);
 }
 
+/** 卡（或 Compare 里一栏）所在那张摆放卡的位置 */
+const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };
+
 function startCardDrag(e: PointerEvent, grabbed: string) {
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
   if (!ids.length) return;
   const skip = new Set(ids);
-  const items = ids.map((i) => { const c = cardById(i)!.host; return { id: i, ox: c.x, oy: c.y }; });
+  const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y }; });
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
-  const targets = [...state.board.cards.filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
+  const targets = [...placed().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
   const end = beginGesture();
   const sx = e.clientX, sy = e.clientY;
@@ -136,7 +139,7 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
       dx += sn.dx; dy += sn.dy;
       setGuides(sn.guides);
     } else setGuides([]);
-    live((b) => { for (const it of items) { const c = findCard(b, it.id)?.host; if (c) { c.x = Math.round(it.ox + dx); c.y = Math.round(it.oy + dy); } } });
+    live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = Math.round(it.ox + dx); c.y = Math.round(it.oy + dy); } } });
   }, (ev, moved) => {
     clearTimeout(mergeT);
     setGuides([]);
@@ -145,21 +148,21 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
     setDropTarget(null);
     if (!moved) { end(); return; }
     if (drop?.kind === "merge" && drop.armed) {
-      live((b) => { for (const it of items) { const c = findCard(b, it.id)?.host; if (c) { c.x = it.ox; c.y = it.oy; } } });
+      live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
       end();
       return A.mergeCards([drop.card, ...ids], drop.card);
     }
     if (drop?.kind === "line") {
-      live((b) => { for (const it of items) { const c = findCard(b, it.id)?.host; if (c) { c.x = it.ox; c.y = it.oy; } } });
+      live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
       end();
       return A.cardToSidenote(ids[0], { card: drop.card, seg: drop.seg, lines: [drop.line!, drop.line!] });
     }
     // 中心点决定进出哪个 Section
     live((b) => {
       for (const it of items) {
-        const c = findCard(b, it.id)?.host;
+        const c = hostPlace(b, it.id);
         if (!c) continue;
-        const r = rectOf(c), p = center(r);
+        const r = rectOf(cardById(it.id)!.host), p = center(r);
         const best = deepestAt(fr, p.x, p.y);
         c.section = best?.id;
       }
@@ -223,7 +226,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
       if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
     } else setGuides([]);
     setSizeHint(hint ? { x: x + w / 2, y: r0.y + h + 8, text: hint } : null);
-    live((b) => { const k = findCard(b, id)!.host; k.w = Math.round(w); k.x = Math.round(x); if (edges.bottom) k.h = Math.round(h); });
+    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (edges.bottom) k.h = Math.round(h); });
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }
 
@@ -264,7 +267,7 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
     if (hot) {
       let tid = hot;
       const h = cardById(hot)!.host;
-      if (h.kind === "compare" && tid === h.id) tid = h.cols.find((k) => A.calleeMatches(k, call))?.id ?? h.cols[0].id;
+      if (h.kind === "compare" && tid === h.id) tid = h.cols.find((k) => A.calleeMatches(cardById(k)!.card, call)) ?? h.cols[0];
       return A.attachCall(cardId, seg, call, tid);
     }
     const w = worldOf(ev);
@@ -333,8 +336,8 @@ export function canvasPointerDown(e: PointerEvent) {
     const m = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
     setMarquee(m);
     const w0 = toWorld(m.x, m.y), w1 = toWorld(m.x + m.w, m.y + m.h);
-    const hit = state.board.cards.filter((c) => {
-      if (A.isLocked(c.id) || collapsedHome(c.section)) return false;
+    const hit = placed().filter((c) => {
+      if (A.isLocked(c.id) || collapsedHome(placeOf(c.id).section)) return false;
       const r = rectOf(c);
       return r.x < w1.x && r.x + r.w > w0.x && r.y < w1.y && r.y + r.h > w0.y;
     }).map((c) => c.id);
@@ -367,7 +370,7 @@ function drawSection(e: PointerEvent) {
     const parent = deepestAt(fr, c0.x, c0.y, enclosed)?.id;
     const outer = new Set<string | undefined>([undefined]);
     for (let p = parent ? sec(parent) : undefined; p; p = p.parent ? sec(p.parent) : undefined) outer.add(p.id);
-    const inside = state.board.cards.filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y) && outer.has(c.section); }).map((c) => c.id);
+    const inside = placed().filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y) && outer.has(placeOf(c.id).section); }).map((c) => c.id);
     const subs = state.board.sections.filter((s) => enclosed.has(s.id) && s.parent === parent).map((s) => s.id);
     select({ cards: inside, sections: subs });
     A.moveToNewSection(r, parent);
@@ -434,7 +437,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
   if (A.sectionLocked(s)) return;
   const subs = [s, ...descSections(id)];
   const members = allMembers(id);
-  const items = [...members.map((c) => ({ kind: "c" as const, id: c.id, ox: c.x, oy: c.y })), ...subs.map((q) => ({ kind: "s" as const, id: q.id, ox: q.x, oy: q.y }))];
+  const items = [...members.map((c) => { const q = placeOf(c.id); return { kind: "c" as const, id: c.id, ox: q.x, oy: q.y }; }), ...subs.map((q) => ({ kind: "s" as const, id: q.id, ox: q.x, oy: q.y }))];
   const skip = new Set(subs.map((q) => q.id));
   const fr = new Map(frames());
   const end = beginGesture();
@@ -443,7 +446,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
     const dx = (ev.clientX - sx) / cam.z, dy = (ev.clientY - sy) / cam.z;
     live((b) => {
       for (const it of items) {
-        const o = it.kind === "c" ? b.cards.find((c) => c.id === it.id) : b.sections.find((q) => q.id === it.id);
+        const o = it.kind === "c" ? b.place[it.id] : b.sections.find((q) => q.id === it.id);
         if (o) { o.x = Math.round(it.ox + dx); o.y = Math.round(it.oy + dy); }
       }
     });
@@ -545,7 +548,7 @@ export function installKeys() {
       e.preventDefault();
       const d = e.shiftKey ? 10 : 1;
       const dx = k === "ArrowLeft" ? -d : k === "ArrowRight" ? d : 0, dy = k === "ArrowUp" ? -d : k === "ArrowDown" ? d : 0;
-      mutate((b) => { for (const id of sel.cards) { const c = findCard(b, id)?.host; if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } });
+      mutate((b) => { for (const id of sel.cards) { const c = hostPlace(b, id); if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } });
     }
   });
   window.addEventListener("keyup", (e) => {
@@ -582,5 +585,5 @@ export function installKeys() {
   });
 }
 
-export { send, unwrap, cardTitle, union, fitRect, view, camTo, setSel, focusMode, editing };
+export { send, unwrap, cardTitle, union, fitRect, view, camTo, setSel, editing };
 export type { Card, Rect, NoteCard };

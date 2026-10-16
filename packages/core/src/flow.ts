@@ -1,7 +1,7 @@
 // Call 流程：一棵由 Call link 组成的树。编号、顺序、能不能接上，都从 Link 算出来，不另外存。
-import { findCard, type Board, type Card, type CodeCard, type Link } from "./model";
+import { colHosts, type Board, type Card, type CallLink, type Link } from "./model";
 
-export type FlowNode = { id: string; link?: Link; kids: FlowNode[]; num: string; label: string; depth: number; tree: string };
+export type FlowNode = { id: string; link?: CallLink; kids: FlowNode[]; num: string; label: string; depth: number; tree: string };
 export type Flows = {
   roots: FlowNode[];
   /** 卡片 id → 节点（只有在某棵树里的卡才有） */
@@ -14,8 +14,8 @@ const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 export const treeLetter = (i: number) => (i < 26 ? LETTERS[i] : LETTERS[Math.floor(i / 26) - 1] + LETTERS[i % 26]);
 
 /** Link 出发位置的排序键：先按段在卡里的顺序，再按行号 */
-function fromKey(b: Pick<Board, "cards">, l: Link): number {
-  const c = findCard(b, l.from.card)?.card;
+function fromKey(byId: Map<string, Card>, l: CallLink): number {
+  const c = byId.get(l.from.card);
   if (c?.kind !== "code") return 0;
   const si = Math.max(0, c.segments.findIndex((s) => s.id === l.from.seg));
   return si * 1e6 + (l.from.line ?? 0) + (l.call?.col ?? 0) / 1000;
@@ -26,36 +26,34 @@ function fromKey(b: Pick<Board, "cards">, l: Link): number {
  * 多于一棵树时子卡带前缀 A·2.1。一张卡最多一条进来的 Call link。
  */
 export function computeFlows(b: Pick<Board, "cards" | "links">): Flows {
-  const calls = b.links.filter((l) => l.kind === "call" && findCard(b, l.from.card) && findCard(b, l.to.card));
+  const cardsById = new Map(b.cards.map((c) => [c.id, c]));
+  const calls = b.links.filter((l): l is CallLink => l.kind === "call" && cardsById.has(l.from.card) && cardsById.has(l.to.card));
   const parent = new Map<string, string>();
-  const inLink = new Map<string, Link>();
+  const inLink = new Map<string, CallLink>();
   for (const l of calls) {
     if (inLink.has(l.to.card) || l.to.card === l.from.card) continue; // 只认第一条
     inLink.set(l.to.card, l);
     parent.set(l.to.card, l.from.card);
   }
-  const out = new Map<string, Link[]>();
+  const out = new Map<string, CallLink[]>();
   for (const l of inLink.values()) {
     const arr = out.get(l.from.card) ?? [];
     arr.push(l);
     out.set(l.from.card, arr);
   }
-  for (const arr of out.values()) arr.sort((x, y) => fromKey(b, x) - fromKey(b, y));
+  for (const arr of out.values()) arr.sort((x, y) => fromKey(cardsById, x) - fromKey(cardsById, y));
 
   // 根：有出去的 Call link，自己没有进来的。按卡片在白板里的先后（创建顺序）排字母
   const order = new Map<string, number>();
   let k = 0;
-  for (const c of b.cards) {
-    order.set(c.id, k++);
-    if (c.kind === "compare") for (const col of c.cols) order.set(col.id, k++);
-  }
+  for (const c of b.cards) order.set(c.id, k++);
   const rootIds = [...out.keys()].filter((id) => !parent.has(id)).sort((x, y) => (order.get(x) ?? 0) - (order.get(y) ?? 0));
   const multi = rootIds.length > 1;
   const byId = new Map<string, FlowNode>();
   const roots: FlowNode[] = [];
   rootIds.forEach((rid, i) => {
     const letter = treeLetter(i);
-    const build = (id: string, num: string, depth: number, link: Link | undefined, seen: Set<string>): FlowNode => {
+    const build = (id: string, num: string, depth: number, link: CallLink | undefined, seen: Set<string>): FlowNode => {
       const node: FlowNode = { id, link, kids: [], num, depth, tree: rid, label: depth === 0 ? letter : multi ? `${letter}·${num}` : num };
       byId.set(id, node);
       seen.add(id);
@@ -95,9 +93,10 @@ export function descendants(n: FlowNode): string[] {
 }
 
 /** 因为祖先折叠而看不见的卡 */
-export function hiddenByCollapse(b: Pick<Board, "cards">, f: Flows): Set<string> {
+export function hiddenByCollapse(b: Pick<Board, "cards" | "place">, f: Flows): Set<string> {
   const hidden = new Set<string>();
-  const collapsed = (id: string) => (findCard(b, id)?.host as CodeCard | undefined)?.collapsed;
+  const host = colHosts(b);
+  const collapsed = (id: string) => !!b.place[host.get(id) ?? id]?.collapsed;
   for (const r of f.roots) {
     const go = (n: FlowNode, under: boolean) => {
       if (under) hidden.add(n.id);
@@ -114,7 +113,7 @@ export function hiddenByCollapse(b: Pick<Board, "cards">, f: Flows): Set<string>
  */
 export function splitsCompare(b: Pick<Board, "cards" | "links">, from: string, to?: string): boolean {
   const probe = to ?? "\u0000probe";
-  const cards = to ? b.cards : [...b.cards, { id: probe, kind: "note", md: "", x: 0, y: 0, w: 0 } as Card];
+  const cards = to ? b.cards : [...b.cards, { id: probe, kind: "note", md: "", bg: true } as Card];
   const links = [...b.links, { id: "\u0000probe", kind: "call", from: { card: from }, to: { card: probe } } as Link];
   return splitCompares({ cards, links }).size > 0;
 }
@@ -124,7 +123,7 @@ export function splitCompares(b: Pick<Board, "cards" | "links">, f = computeFlow
   const out = new Set<string>();
   for (const c of b.cards) {
     if (c.kind !== "compare") continue;
-    const ta = f.byId.get(c.cols[0].id)?.tree, tb = f.byId.get(c.cols[1].id)?.tree;
+    const ta = f.byId.get(c.cols[0])?.tree, tb = f.byId.get(c.cols[1])?.tree;
     if (ta && tb && ta !== tb) out.add(c.id);
   }
   return out;

@@ -1,5 +1,6 @@
 // 插件入口：存储、白板面板、命令、侧栏、编辑器标记、版本监听。
 import * as vscode from "vscode";
+import { affectsSettings, readSettings } from "./settings";
 import * as path from "node:path";
 import { startAnalysis } from "./analysis";
 import { GIT_SCHEME, parseGitUri } from "./cards";
@@ -69,6 +70,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   sub(vscode.workspace.onDidChangeWorkspaceFolders(() => resetIndex()));
   sub(vscode.workspace.onDidChangeConfiguration((e) => {
     if (e.affectsConfiguration("codeboard.storageDir")) { store.reset(); marks.rebuild(); }
+    if (affectsSettings(e)) panels.broadcast({ type: "host", host: { settings: readSettings() } });
     if (e.affectsConfiguration("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: vscode.workspace.getConfiguration("editor").get<string>("fontFamily") } });
   }));
   // GitHub 缓存可能在白板里加了新文件

@@ -2,7 +2,7 @@
 // 成员关系：卡片中心点落在哪个最深的框里（拖动结束时更新）。
 import { createMemo } from "solid-js";
 import { union, type Rect } from "@codeboard/core";
-import { state, rectOf } from "./store";
+import { state, rectOf, placed } from "./store";
 import type { Section } from "@codeboard/core";
 
 export const PAD = { l: 22, r: 22, t: 34, b: 22 };
@@ -22,7 +22,7 @@ export function hiddenByAncestor(s: Section): boolean {
 }
 // 父 → 子 Section、Section → 直属卡：一次分好组，算框时不用每个 Section 都扫一遍所有卡
 const kids = createMemo(() => groupBy(state.board.sections, (s) => s.parent));
-const members = createMemo(() => groupBy(state.board.cards, (c) => c.section));
+const members = createMemo(() => groupBy(placed(), (c) => state.board.place[c.id]?.section));
 function groupBy<T>(xs: T[], key: (x: T) => string | undefined) {
   const m = new Map<string, T[]>();
   for (const x of xs) { const k = key(x); if (k === undefined) continue; const a = m.get(k); a ? a.push(x) : m.set(k, [x]); }
@@ -38,7 +38,7 @@ export function descSections(id: string): Section[] {
 export const directMembers = (id: string) => members().get(id) ?? [];
 export const allMembers = (id: string) => {
   const ids = new Set([id, ...descSections(id).map((s) => s.id)]);
-  return state.board.cards.filter((c) => c.section && ids.has(c.section));
+  return placed().filter((c) => { const s = state.board.place[c.id]?.section; return !!s && ids.has(s); });
 };
 
 /** 展开着的 Section 的框（世界坐标）；skip = 拖动中的卡不算 */

@@ -1,5 +1,5 @@
 // 白板交互场景：每个场景开一个白板、做一串操作、截图。
-import { ready, open, shot, symCard, findSym, viewOf, type Host } from "./harness";
+import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
 import { emptyBoard, type Board } from "@codeboard/core";
 
 const light = process.argv.includes("--light");
@@ -8,7 +8,7 @@ const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 function boardWith(...quals: string[]): Board {
   const b = emptyBoard("b1", "nano-vllm · generate 主流程");
   let x = 80;
-  for (const q of quals) { const s = findSym(q); const c = symCard(s.f, s.s); c.x = x; c.y = 80; x += 640; b.cards.push(c); }
+  for (const q of quals) { const s = findSym(q); const c = symCard(s.f, s.s); put(b, c, x, 80); x += 640; }
   return b;
 }
 const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .call:text-is("${name}")`).nth(nth);
@@ -31,7 +31,7 @@ const S: Record<string, () => Promise<void>> = {
     await callEl(h, "schedule").click(); await h.page.waitForTimeout(700);
     await shot(h, "flow-00");
     await callEl(h, "postprocess").first().click({ timeout: 5000 }); await h.page.waitForTimeout(700);
-    const pos = () => JSON.stringify(h.board().cards.map((c: any) => [c.segments?.[0]?.symbol?.qual, c.x, c.y]));
+    const pos = () => JSON.stringify(h.board().cards.map((c: any) => [c.segments?.[0]?.symbol?.qual, h.board().place[c.id]?.x, h.board().place[c.id]?.y]));
     await h.page.waitForTimeout(1200); console.log(pos());
     await h.page.locator(".card .src .call", { hasText: "allocate" }).first().click();
     await h.page.waitForTimeout(1200); console.log(pos(), JSON.stringify(h.board().links.map((l) => [l.from.card, l.to.card]))); await h.page.waitForTimeout(700);
@@ -87,7 +87,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.keyboard.type("Generate step"); await h.page.keyboard.press("Enter");
     await h.page.waitForTimeout(400);
     await shot(h, "sec-01-nested");
-    console.log(JSON.stringify(h.board().sections.map((s) => [s.name, s.parent ?? null])), JSON.stringify(h.board().cards.map((c) => c.section ?? null)));
+    console.log(JSON.stringify(h.board().sections.map((s) => [s.name, s.parent ?? null])), JSON.stringify(h.board().cards.map((c) => h.board().place[c.id]?.section ?? null)));
     await h.page.context().browser()!.close();
   },
   async compare() {
@@ -176,7 +176,7 @@ const S: Record<string, () => Promise<void>> = {
     const roots = new Set(h.board().links.filter((l) => l.kind === "call").map((l) => l.from.card));
     const b = h.board(); const cmp = b.cards.find((c) => c.kind === "compare") as any;
     const ok = b.links.filter((l) => l.kind === "call").length === 1 && /one flow/.test(toast ?? "");
-    console.log(ok ? "PASS" : "FAIL", "cmptree", JSON.stringify({ links: b.links.length, roots: [...roots], cols: cmp?.cols.map((c: any) => c.id), toast }));
+    console.log(ok ? "PASS" : "FAIL", "cmptree", JSON.stringify({ links: b.links.length, roots: [...roots], cols: cmp?.cols, toast }));
     await shot(h, "cmptree");
     await h.page.context().browser()!.close();
   },
@@ -184,10 +184,11 @@ const S: Record<string, () => Promise<void>> = {
   async cmpdel() {
     const b = boardWith("LLMEngine.step", "Scheduler.schedule", "Scheduler.postprocess");
     const [R, X, Y] = b.cards as any[];
-    X.x = R.x + 56; X.y = 700; Y.x = R.x + 56; Y.y = 1300;
+    const P = b.place; P[X.id].x = P[R.id].x + 56; P[X.id].y = 700; P[Y.id].x = P[R.id].x + 56; P[Y.id].y = 1300;
     const cl = symCard(findSym("BlockManager.can_allocate").f, findSym("BlockManager.can_allocate").s);
     const cr = symCard(findSym("BlockManager.allocate").f, findSym("BlockManager.allocate").s);
-    b.cards.push({ id: "k", kind: "compare", x: 1400, y: 700, w: 900, cols: [cl, cr] } as any);
+    b.cards.push(cl, cr, { id: "k", kind: "compare", cols: [cl.id, cr.id] });
+    b.place.k = { x: 1400, y: 700, w: 900 };
     const ln = (c: any, d: number) => c.segments[0].start + d;
     const call = (id: string, f: any, line: number, t: any) => ({ id, kind: "call", from: { card: f.id, seg: f.segments[0].id, line }, to: { card: t.id } });
     b.links.push(call("RX", R, ln(R, 2), X) as any, call("RY", R, ln(R, 4), Y) as any, call("Xcl", X, ln(X, 3), cl) as any, call("Ycr", Y, ln(Y, 3), cr) as any);
@@ -208,7 +209,7 @@ const S: Record<string, () => Promise<void>> = {
     const t2 = await toast();
     await h.page.waitForTimeout(1300);
     const nb = h.board();
-    const ok = nb.cards.length === 4 && nb.links.length === 4 && /one flow/.test(t1 ?? "") && /one flow/.test(t2 ?? "");
+    const ok = nb.cards.length === 6 && nb.links.length === 4 && /one flow/.test(t1 ?? "") && /one flow/.test(t2 ?? "");
     console.log(ok ? "PASS" : "FAIL", "cmpdel", JSON.stringify({ cards: nb.cards.length, links: nb.links.map((l) => l.id), t1, t2 }));
     await shot(h, "cmpdel");
     await h.page.context().browser()!.close();
@@ -269,8 +270,8 @@ const S: Record<string, () => Promise<void>> = {
     };
     await draw(30, "Inner"); await draw(90, "Outer"); await h.page.waitForTimeout(1200); // 等自动保存
     const ss = h.board().sections, inner = ss.find((q) => q.title === "Inner")!, outer = ss.find((q) => q.title === "Outer")!;
-    const ok = inner.parent === outer.id && !outer.parent && h.board().cards[0].section === inner.id;
-    console.log(ok ? "PASS" : "FAIL", "secout", JSON.stringify(ss.map((q) => [q.title, q.parent ? ss.find((x) => x.id === q.parent)!.title : null]).concat([["card", h.board().cards[0].section === inner.id ? "Inner" : "?"]])));
+    const ok = inner.parent === outer.id && !outer.parent && h.board().place[h.board().cards[0].id]?.section === inner.id;
+    console.log(ok ? "PASS" : "FAIL", "secout", JSON.stringify(ss.map((q) => [q.title, q.parent ? ss.find((x) => x.id === q.parent)!.title : null]).concat([["card", h.board().place[h.board().cards[0].id]?.section === inner.id ? "Inner" : "?"]])));
     await shot(h, "secout");
     await h.page.context().browser()!.close();
   },
@@ -289,7 +290,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(1600);
     const after = JSON.stringify(h.board()), hidden = await h.page.locator(".card").count();
     const strip = (j: string) => { const o = JSON.parse(j); delete o.cam; return JSON.stringify(o); };
-    const ok = shown === 2 && hidden === 1 && strip(before) === strip(during) && strip(before) === strip(after) && (JSON.parse(after).cards.find((c: any) => c.id === root)?.collapsed === true);
+    const ok = shown === 2 && hidden === 1 && strip(before) === strip(during) && strip(before) === strip(after) && (JSON.parse(after).place[root]?.collapsed === true);
     console.log(ok ? "PASS" : "FAIL", "walkview", JSON.stringify({ shown, hidden, savedChanged: strip(before) !== strip(during) }));
     await h.page.context().browser()!.close();
   },

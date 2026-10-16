@@ -14,7 +14,6 @@ export type Pop =
   | { kind: "pick"; title: string; items: { label: string; detail: string; run: () => void }[] }
   | { kind: "commits"; card: string; seg: Segment; list?: Commit[] }
   | { kind: "vars"; link: string }
-  | { kind: "source"; card: string; seg: Segment; html?: string[]; start?: number };
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 
