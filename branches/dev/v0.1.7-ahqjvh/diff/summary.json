@@ -7,22 +7,22 @@
  {
   "name": "2-flow.png",
   "status": "same",
-  "ratio": 0
+  "ratio": 0.001
  },
  {
   "name": "3-peek.png",
   "status": "changed",
-  "ratio": 0.045
+  "ratio": 0.0459
  },
  {
   "name": "4-sidenote.png",
   "status": "same",
-  "ratio": 0.0003
+  "ratio": 0.0014
  },
  {
   "name": "5-search.png",
   "status": "changed",
-  "ratio": 0.0164
+  "ratio": 0.0163
  },
  {
   "name": "6-board.png",

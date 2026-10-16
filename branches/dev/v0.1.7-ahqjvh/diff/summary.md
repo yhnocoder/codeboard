@@ -1,6 +1,6 @@
 **Screenshot diff**: 9 steps, 5 changed.
 
-**3-peek** · changed · 4.5% of pixels
+**3-peek** · changed · 4.6% of pixels
 
 ![3-peek.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/branches/dev/v0.1.7-ahqjvh/diff/3-peek.png?raw=true)
 
