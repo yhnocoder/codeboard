@@ -31,7 +31,19 @@ async function openFile(page, name, line) {
   }
   if (line) { await page.keyboard.press("Control+g"); await sleep(300); await page.keyboard.type(String(line)); await page.keyboard.press("Enter"); await sleep(400); }
 }
-const shot = (page, n) => page.screenshot({ path: `${OUT}/${n}.png` });
+// 每次截图顺带跑通用界面断言（tools/review/audit.cjs），结果汇总到 audit.json；AUDIT_STRICT=1 时有问题算失败
+const { audit } = require("../../../tools/review/audit.cjs");
+const audits = [];
+const shot = async (page, n) => {
+  await page.screenshot({ path: `${OUT}/${n}.png` });
+  for (const fr of page.frames()) {
+    if (!(await fr.$("#board").catch(() => null))) continue;
+    const r = await audit(fr, n); audits.push(r);
+    for (const i of r.issues) console.log(`  ⚠ ${n}: ${i.rule} — ${i.what}`);
+    if (process.env.AUDIT_STRICT === "1") check(!r.issues.length, `${n} 通过界面断言`);
+    break;
+  }
+};
 const card = (f, title) => f.locator(".card", { has: f.locator(".chead .ctitle", { hasText: new RegExp(`^${title.replace(/\./g, "\\.")}$`) }) });
 const boardJson = () => {
   const d = execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards 2>/dev/null || true`).toString().trim().split("\n")[0];
@@ -125,6 +137,7 @@ const boardJson = () => {
   await shot(page, "7-uncommitted");
 
   check(!errors.length, "没有 webview 报错", errors.slice(0, 3));
+  fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
   console.log(failed ? `${failed} 项失败` : "全部通过");
   await browser.close().catch(() => {});
   process.exit(failed ? 1 : 0);

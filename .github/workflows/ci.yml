@@ -1,0 +1,86 @@
+# T0：每次推送自动跑。构建、类型检查、单测、浏览器 harness、真实 VS Code（带 Pylance）e2e + 通用界面断言；
+# 截图和基线比对，推到 ci-screenshots 分支，PR 上自动更新描述里的截图区块。
+name: CI
+on:
+  push:
+    branches: [main, "dev/**"]
+  pull_request:
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+env:
+  VSCODE_VERSION: "1.142.0"
+  E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
+
+      - name: Chromium（harness 和截图比对用）
+        run: |
+          npx playwright-core install --with-deps chromium
+          echo "CHROMIUM=$(node -e "console.log(require('playwright-core').chromium.executablePath())")" >> $GITHUB_ENV
+      - name: Browser harness
+        run: node packages/board/test/run-harness.mjs
+
+      - name: VS Code 缓存
+        uses: actions/cache@v4
+        with:
+          path: |
+            .vscode-test
+            /tmp/codeboard-ext-cache
+          key: vscode-${{ env.VSCODE_VERSION }}-${{ env.E2E_EXTENSIONS }}
+      - name: 下载 VS Code
+        run: |
+          sudo apt-get install -y -q xvfb libasound2t64 libgbm1 libnss3 libgtk-3-0 libxkbfile1 libsecret-1-0 >/dev/null
+          if [ ! -x .vscode-test/VSCode-linux-x64/code ]; then
+            mkdir -p .vscode-test
+            curl -sSL "https://update.code.visualstudio.com/$VSCODE_VERSION/linux-x64/stable" | tar -xz -C .vscode-test
+          fi
+      - name: VS Code e2e（Pylance + 界面断言）
+        run: VSCODE_BIN=$PWD/.vscode-test/VSCode-linux-x64/code npm run e2e
+
+      - name: 截图比对并发布
+        if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            tools/review/publish-shots.sh test-out/default-dark-modern "pr/${{ github.event.pull_request.number }}" "branches/${{ github.base_ref }}"
+          else
+            tools/review/publish-shots.sh test-out/default-dark-modern "branches/${{ github.ref_name }}" "branches/${{ github.ref_name }}"
+          fi
+      - name: 更新 PR 描述里的截图区块
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && hashFiles('test-out/shots-summary.md') != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const audit = fs.existsSync("test-out/default-dark-modern/audit.json") ? JSON.parse(fs.readFileSync("test-out/default-dark-modern/audit.json", "utf8")) : [];
+            const issues = audit.flatMap((a) => a.issues.map((i) => `- ${a.step}：${i.rule} — ${i.what}`));
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const section = [
+              "<!-- ci-screenshots:start -->", "## CI 截图", "",
+              `提交 ${context.sha.slice(0, 7)} · [运行记录](${run})`, "",
+              `**界面断言**：${issues.length ? `${issues.length} 条提示` : "无问题"}`, ...issues.slice(0, 30), "",
+              fs.readFileSync("test-out/shots-summary.md", "utf8"),
+              "<!-- ci-screenshots:end -->",
+            ].join("\n");
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
+            const body = pr.body || "";
+            const re = /<!-- ci-screenshots:start -->[\s\S]*<!-- ci-screenshots:end -->/;
+            const next = re.test(body) ? body.replace(re, section) : `${body}\n\n${section}`;
+            await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: next });
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: test-out, path: test-out, retention-days: 14 }
