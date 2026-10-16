@@ -543,6 +543,10 @@ export function installKeys() {
     if (mod && kl === "y") { e.preventDefault(); return void redo(); }
     if (mod && kl === "a") { e.preventDefault(); return A.selectAll(); }
     if (mod && kl === "d") { e.preventDefault(); return A.duplicateSel(); }
+    if (mod && (e.code === "BracketRight" || e.code === "BracketLeft") && sel.cards.length) {
+      e.preventDefault();
+      return A.arrange([...sel.cards], e.code === "BracketRight" ? (e.shiftKey ? "front" : "forward") : e.shiftKey ? "back" : "backward");
+    }
     if (mod && kl === "k") { e.preventDefault(); return setPaletteOpen({ mode: "all" }); }
     if (mod && k === "0") { e.preventDefault(); return A.fitAll(); }
     if (mod && k === "1") { e.preventDefault(); return zoomAt(1 / camTarget().z); }

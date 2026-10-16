@@ -22,7 +22,7 @@ import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, se
 import { addPlain, callOn, makeCall, openVars, startConnect } from "./links";
 import { addToStudyScope, attachCall, calleeMatches, expandCall, isLibCall, selectFlow, startWalk } from "./flow";
 import { commitMenu } from "./versions";
-import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg } from "./edit";
+import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, webMenuItems } from "./web";
@@ -85,6 +85,7 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Connect…", run: () => startConnect(c.id) },
     { label: "Move to New Section", run: () => moveToNewSection() },
     lockItem,
+    arrangeItem(() => [host.id]),
   ];
   if (c.kind === "note") return openMenu([
     { label: "Edit", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) },
@@ -112,7 +113,7 @@ export function cardMenu(id: string, x: number, y: number) {
       { label: "Separate", run: () => separate(id) },
       { label: "Walk Through Flow", kbd: "P", disabled: inFlow ? false : "Not in a call flow", run: () => startWalk(c.cols.find((k) => flows().byId.has(k))!) },
       { label: "Move to New Section", run: () => moveToNewSection() },
-      lockItem, null,
+      lockItem, arrangeItem(() => [host.id]), null,
       { label: "Delete", kbd: "⌫", run: deleteSel },
     ], x, y);
   }
@@ -149,7 +150,7 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Walk Through Flow", kbd: "P", disabled: node ? false : "Not in a call flow", run: () => startWalk(c.id) },
     ...(hasKids ? [{ label: placeOf(c.id).collapsed ? "Expand Subtree" : "Collapse Subtree", run: () => toggleCollapse(c.id) } as Item] : []),
     null,
-    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, lockItem]),
+    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, lockItem, arrangeItem(() => [host.id])]),
     ...(c.segments.length > 1 || c.mergedFrom ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
     { label: "Copy Code", run: () => copyCard(c) },
     { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
@@ -171,6 +172,7 @@ function multiItems(): Item[] {
     { label: "Connect with Plain Link", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addPlain({ card: a.id }, { card: b.id }); } },
     { label: "Move to New Section", run: () => moveToNewSection() },
     { label: lockAll ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock(sel.cards, sel.sections) },
+    arrangeItem(() => [...sel.cards]),
     null,
     { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
     { label: "Delete", kbd: "⌫", run: deleteSel },

@@ -1,6 +1,7 @@
 // 改白板：行（隐藏、高亮、复制）、删除 / 复制卡、卡片属性、Compare、合并 / 拆开、Section。
 import { unwrap } from "solid-js/store";
 import {
+  pruneStickers,
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
   placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
@@ -19,7 +20,7 @@ import { send, ask } from "../host";
 import { ghostOut } from "../state/ghost";
 import { md, inline } from "../md";
 import { frameOf, allMembers } from "../state/sections";
-import { popCard, revealCard, sectionById, selCards } from "./common";
+import { K, popCard, revealCard, sectionById, selCards } from "./common";
 import { requestViews } from "./create";
 
 export function copyLines(ls: LineSel) {
@@ -70,13 +71,14 @@ export function deleteSel() {
   const ok = mutate((b) => {
     removeCards(b, ids);
     b.links = b.links.filter((l) => !links.has(l.id));
+    pruneStickers(b);
     if (secs.size) dropSections(b, secs);
   });
   if (ok) clearSel();
 }
 export function deleteLinks(ids: string[]) {
   const s = new Set(ids);
-  if (mutate((b) => { b.links = b.links.filter((l) => !s.has(l.id)); })) select({});
+  if (mutate((b) => { b.links = b.links.filter((l) => !s.has(l.id)); pruneStickers(b); })) select({});
 }
 function dropSections(b: Board, secs: Set<string>) {
   for (const s of b.sections) if (secs.has(s.id)) {
@@ -86,6 +88,45 @@ function dropSections(b: Board, secs: Set<string>) {
   b.sections = b.sections.filter((s) => !secs.has(s.id));
 }
 export function removeSections(ids: string[]) { mutate((b) => dropSections(b, new Set(ids))); select({}); }
+
+/** 图层：卡的叠放顺序就是 b.cards 的顺序。上移 / 下移一层只越过跟它重叠的卡（不重叠的换了也看不出来） */
+export type Arrange = "front" | "forward" | "backward" | "back";
+export function arrange(ids: string[], how: Arrange) {
+  const set = new Set(ids.map((id) => cardById(id)?.host.id ?? id));
+  if (!set.size) return;
+  const hit = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+  mutate((b) => {
+    const moving = b.cards.filter((c) => set.has(c.id)), rest = b.cards.filter((c) => !set.has(c.id));
+    if (how === "front") { b.cards = [...rest, ...moving]; return; }
+    if (how === "back") { b.cards = [...moving, ...rest]; return; }
+    const rs = moving.filter((c) => b.place[c.id]).map((c) => rectOf(c.id));
+    const idx = b.cards.map((c) => c.id);
+    const overl = (id: string) => !!b.place[id] && rs.some((r) => hit(r, rectOf(id)));
+    if (how === "forward") {
+      const top = Math.max(...moving.map((c) => idx.indexOf(c.id)));
+      const next = b.cards.findIndex((c, i) => i > top && !set.has(c.id) && overl(c.id));
+      if (next < 0) { b.cards = [...rest, ...moving]; return; }
+      const at = rest.findIndex((c) => c.id === idx[next]);
+      b.cards = [...rest.slice(0, at + 1), ...moving, ...rest.slice(at + 1)];
+    } else {
+      const bot = Math.min(...moving.map((c) => idx.indexOf(c.id)));
+      let prev = -1;
+      for (let i = bot - 1; i >= 0; i--) if (!set.has(b.cards[i].id) && overl(b.cards[i].id)) { prev = i; break; }
+      if (prev < 0) { b.cards = [...moving, ...rest]; return; }
+      const at = rest.findIndex((c) => c.id === idx[prev]);
+      b.cards = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+    }
+  });
+}
+export const arrangeItem = (ids: () => string[]): Item => ({
+  label: "Arrange",
+  sub: [
+    { label: "Bring to Front", kbd: `${K.mod}⇧]`, run: () => arrange(ids(), "front") },
+    { label: "Bring Forward", kbd: `${K.mod}]`, run: () => arrange(ids(), "forward") },
+    { label: "Send Backward", kbd: `${K.mod}[`, run: () => arrange(ids(), "backward") },
+    { label: "Send to Back", kbd: `${K.mod}⇧[`, run: () => arrange(ids(), "back") },
+  ],
+});
 
 export function duplicateSel() {
   const cs = selCards().filter((c) => c.kind !== "compare");

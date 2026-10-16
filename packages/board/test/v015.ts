@@ -146,4 +146,98 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(out.every((o) => o?.ok) ? "PASS" : "FAIL", "ctx-in-viewport", JSON.stringify(out));
     await close(h);
   },
+  /** 贴纸绑在卡 / 箭头上：拖卡时跟着走；被别的卡盖住时一起被盖住；选中时画虚线 */
+  async v15bind() {
+    const b = richBoard();
+    const post = b.cards[2].id;
+    b.stickers.push({ id: "k6", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 420, y: 70, size: 32, on: { card: post } } });
+    b.stickers.push({ id: "k7", icon: { pack: "builtin", name: "todo-text" }, at: { kind: "canvas", x: 10, y: -40, size: 28, on: { link: "L2", t: 0.5 } } });
+    b.cards.push({ id: "nb", kind: "note", md: "Covers the star", bg: true });
+    b.place.nb = { x: 520, y: 470, w: 260 };
+    const h = await open({ board: b, light, w: 1400, h: 900 });
+    const pos = () => h.page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLElement>("[data-sticker]")].map((e) => { const r = e.getBoundingClientRect(); return [e.dataset.sticker, [Math.round(r.left), Math.round(r.top)]]; })));
+    const p0 = await pos();
+    // 被盖住：卡 nb 在 post 上面，k6 在 nb 下面
+    const covered = await h.page.evaluate(() => { const e = document.querySelector<HTMLElement>('[data-sticker="k6"]')!; const r = e.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) as HTMLElement; return !!top.closest('.card[data-id="nb"]'); });
+    await shot(h, "v15-bind-1");
+    // 拖 post 的标题栏往下 60
+    const hd = h.page.locator(`.card[data-id="${post}"] .chead`).first();
+    const r = (await hd.boundingBox())!;
+    await h.page.mouse.move(r.x + 200, r.y + 15); await h.page.mouse.down(); await h.page.mouse.move(r.x + 200, r.y + 75, { steps: 6 }); await h.page.mouse.up();
+    await h.page.waitForTimeout(200);
+    const p1 = await pos();
+    const follows = p1.k6[1] - p0.k6[1] === 60 && p1.k6[0] === p0.k6[0];
+    const linkMoved = p1.k7[1] !== p0.k7[1] || p1.k7[0] !== p0.k7[0];
+    await h.page.locator('[data-sticker="k7"]').click();
+    await h.page.waitForTimeout(150);
+    await shot(h, "v15-bind-2");
+    const tether = await h.page.locator(".tether line").count();
+    // 把 k5（画布上的）拖到 schedule 卡上 → 绑上去
+    const k5 = (await h.page.locator('[data-sticker="k5"]').boundingBox())!;
+    const sch = (await h.page.locator(`.card[data-id="${b.cards[1].id}"]`).boundingBox())!;
+    await h.page.mouse.move(k5.x + 10, k5.y + 10); await h.page.mouse.down(); await h.page.mouse.move(sch.x + 200, sch.y + 200, { steps: 8 });
+    const hot = await h.page.locator(".card.bind-hot").count();
+    await h.page.mouse.up(); await h.page.waitForTimeout(150);
+    const bound = await h.page.evaluate(() => !!document.querySelector('.card [data-sticker="k5"]'));
+    await shot(h, "v15-bind-3");
+    console.log(covered && follows && linkMoved && tether === 1 && hot === 1 && bound ? "PASS" : "FAIL", "sticker-bind", JSON.stringify({ covered, follows, linkMoved, tether, hot, bound, p0: p0.k6, p1: p1.k6 }));
+    await close(h);
+  },
+
+  /** 子卡在右下、跟父卡横向重叠：起点自动在右端，从上边进子卡；用户改到左端后要更远才翻回 */
+  async v15side() {
+    const b = emptyBoard("b1", "side");
+    const par = card("ModelRunner.__init__"), kid = card("load_model");
+    put(b, par, 20, 20, 1100); put(b, kid, 850, 560, 600);
+    const s0 = par.segments[0], ln = lineOf(par, /load_model\(/);
+    b.links.push({ id: "L1", kind: "call", from: { card: par.id, seg: s0.id, line: ln }, to: { card: kid.id }, call: { name: "load_model", col: 8 } });
+    b.cam = { x: 0, y: 0, z: 0.7 };
+    const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
+    const port = (hh: Host) => hh.page.locator("circle.port").first().evaluate((e) => +e.getAttribute("cx")!);
+    const auto = await port(h);
+    await shot(h, "v15-side-1");
+    await close(h);
+    (b.links[0] as any).side = "left";
+    const h2 = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
+    const user = await port(h2);
+    await shot(h2, "v15-side-2");
+    await close(h2);
+    console.log(auto > 1000 && user < 100 ? "PASS" : "FAIL", "call-side", JSON.stringify({ auto, user }));
+  },
+
+  /** Note 切 Show / Hide Background：字的位置、大小、宽度不变 */
+  async v15notebg() {
+    const b = emptyBoard("b1", "notebg");
+    b.cards.push({ id: "n1", kind: "note", md: "Hello\n$a$\n\n$$aaa$$", bg: true });
+    b.place.n1 = { x: 120, y: 120, w: 300 };
+    const h = await open({ board: b, light, w: 900, h: 600 });
+    const first = () => h.page.evaluate(() => { const c = document.querySelector('.card[data-id="n1"]')!; const t = c.querySelector(".nbody, .tx")!; const r = document.createRange(); r.selectNodeContents(t); const q = r.getClientRects()[0]; const f = getComputedStyle(t).fontSize; const cs = getComputedStyle(t); return { x: Math.round(q.left), y: Math.round(q.top), f, w: Math.round(t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) }; });
+    const a = await first();
+    await shot(h, "v15-notebg-1");
+    const box = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
+    await h.page.mouse.click(box.x + 100, box.y + 60, { button: "right" }); await h.page.waitForTimeout(300);
+    await h.page.locator(".ctx button", { hasText: "Hide Background" }).click(); await h.page.waitForTimeout(300);
+    await h.page.mouse.click(10, 500); await h.page.waitForTimeout(200);
+    const c = await first();
+    await shot(h, "v15-notebg-2");
+    const ok = Math.abs(a.x - c.x) <= 1 && Math.abs(a.y - c.y) <= 1 && a.f === c.f && Math.abs(a.w - c.w) <= 1;
+    console.log(ok ? "PASS" : "FAIL", "note-bg-same-layout", JSON.stringify({ a, c }));
+    await close(h);
+  },
+
+  /** 屏幕右边打开卡片菜单的二级菜单：翻到左边，不盖住一级菜单 */
+  async v15submenu() {
+    const b = emptyBoard("b1", "sub");
+    put(b, card("Scheduler.schedule"), 700, 80, 560);
+    const h = await open({ board: b, light, w: 1300, h: 800 });
+    const vw = h.page.viewportSize()!;
+    await h.page.mouse.click(vw.width - 30, 200, { button: "right" }); await h.page.waitForTimeout(400);
+    await h.page.locator(".ctx button", { hasText: "View" }).hover(); await h.page.waitForTimeout(500);
+    const rs = await h.page.locator(".ctx").evaluateAll((es) => es.map((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; }));
+    await shot(h, "v15-submenu");
+    const [m, s] = rs;
+    const ok = rs.length === 2 && (s.l >= m.r - 6 || s.r <= m.l + 6) && s.r <= vw.width && s.l >= 0;
+    console.log(ok ? "PASS" : "FAIL", "submenu-no-cover", JSON.stringify(rs));
+    await close(h);
+  },
 };

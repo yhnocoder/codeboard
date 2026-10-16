@@ -11,7 +11,7 @@ import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
-import { CardStickers } from "../stickers/Picker";
+import { CardStickers, BoundStickers } from "../stickers/Picker";
 import { lod } from "../state/camera";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
@@ -63,6 +63,8 @@ export function CardView(p: { card: Card }) {
           "merge-arm": drop()?.kind === "merge" && drop()?.card === c().id && !drop()?.armed,
           "drop-hot": drop()?.kind === "card" && drop()?.card === c().id,
           "drop-cand": !!drop()?.cands?.includes(c().id),
+          "bind-hot": (act.bindHot() as { card?: string } | null)?.card === c().id,
+          "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
         }}
         onPointerDown={(e) => act.cardPointerDown(e, c().id)} onContextMenu={(e) => act.cardContextMenu(e, c().id)} onDblClick={(e) => act.cardDblClick(e, c().id)}>
         <Switch>
@@ -76,6 +78,7 @@ export function CardView(p: { card: Card }) {
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <CardStickers card={c().id} />
+        <BoundStickers card={c().id} />
         <Show when={lod() === "map"}><MapLabel card={c()} /></Show>
         <Show when={!pl().locked}>
           <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>

@@ -185,7 +185,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.text .tx { white-space: pre-wrap; word-break: break-word; outline: none; min-height: 1.4em; color: var(--ink); }
 .tx.st-title { font: 600 26px/1.25 var(--display); letter-spacing: -0.01em; }
 .tx.st-heading { font: 600 16px/1.4 var(--sys); }
-.tx.st-body { font: 13px/1.6 var(--sys); color: var(--ink-2); }
+.tx.st-body { font: 13px/1.6 var(--sys); color: var(--ink); }
 .tx.bold { font-weight: 700; }
 .tx[contenteditable] { cursor: text !important; user-select: text !important; -webkit-user-select: text !important; }
 .tx[contenteditable]:empty::before { content: attr(data-ph); color: var(--ink-3); }
@@ -297,14 +297,12 @@ math { font-size: 1.05em; }
 .zoom { font: 11.5px var(--mono); color: var(--ink-2); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 
 .ctx { position: absolute; z-index: 40; overflow-y: auto; overscroll-behavior: contain; min-width: 210px; max-width: 300px; padding: 5px; border-radius: 10px; background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
-  box-shadow: var(--sh-float); transform-origin: 0 0; opacity: 0; scale: .9 .82; visibility: hidden;
+  box-shadow: var(--sh-float); transform-origin: 0 0; opacity: 0; scale: .45 .3; visibility: hidden;
   transition: opacity calc(var(--t) * 90ms) var(--in), scale calc(var(--t) * 90ms) var(--in), visibility 0s linear calc(var(--t) * 90ms); }
-/* 打开：从点击点弹开，带一点回弹（弹簧曲线），菜单项随后依次落位 */
+/* 打开：从点击点"弹"出来。起步就快（初速度大），冲过头一点再落稳；内容整体出现，不逐项飘入（逐项飘入像网页） */
 .ctx.open { opacity: 1; scale: 1; visibility: visible;
-  transition: opacity calc(var(--t) * 110ms) var(--out), scale calc(var(--t) * 420ms) var(--spring, linear(0, .2 6%, .55 14%, .86 23%, 1.03 32%, 1.08 39%, 1.06 47%, 1.01 57%, .99 68%, 1)), visibility 0s; }
-.ctx.open > button, .ctx.open > hr { animation: ctx-item calc(var(--t) * 240ms) var(--out) both; animation-delay: calc(var(--t) * min(var(--i, 0), 12) * 14ms); }
-@keyframes ctx-item { from { opacity: 0; translate: 0 -4px; } }
-@media (prefers-reduced-motion: reduce) { .ctx.open, .ctx.open > button { transition-duration: 0s; animation: none; } }
+  transition: opacity calc(var(--t) * 70ms) linear, scale calc(var(--t) * 300ms) linear(0, .42 6%, .74 13%, .93 21%, 1.03 30%, 1.05 37%, 1.035 46%, 1.01 58%, .998 72%, 1), visibility 0s; }
+@media (prefers-reduced-motion: reduce) { .ctx.open { transition-duration: 0s; } }
 .ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 5px; font-size: 12.5px; color: var(--ink); text-align: left; }
 .ctx button .ck { width: 12px; flex: none; color: var(--accent); font-size: 11px; }
 .ctx button:not([disabled]):hover { background: var(--accent); color: var(--accent-ink); }
@@ -505,6 +503,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .edges { z-index: 2; }
 .edge.on, .ahead.on { stroke: var(--accent); stroke-width: 1.7; }
 .port { pointer-events: none; }
+.porthit { fill: transparent; pointer-events: all; cursor: ew-resize !important; }
+.board.dragging .porthit, .board.lod-map .porthit { display: none; }
 .vchips { z-index: 6; }
 .vchips.on .vlabel, .vchips.on .vchip { box-shadow: 0 0 0 1.5px var(--accent); }
 .vlabel.editing { min-width: 60px; }
@@ -674,6 +674,13 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .stk:has(> svg.glyph) .sgrip, .stk:has(> .glyph.tag) .sgrip { right: calc(var(--s, 32px) * .146 - 5px); bottom: calc(var(--s, 32px) * .146 - 5px); }
 .stk.sel { outline: 1.5px solid var(--accent); outline-offset: 2px; }
 .stk.canvas { z-index: 4; }
+/* 绑定：拖到卡 / 箭头上时那张卡亮一圈；选中绑在卡上的贴纸时，那张卡画一圈虚线，绑在箭头上的画一条虚线连到线上 */
+.card.bind-hot { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent), var(--sh-card); }
+.card.bind-anchor::after { content: ""; position: absolute; inset: -5px; border: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent); border-radius: calc(var(--r-card) + 5px); pointer-events: none; }
+.labels .stk { pointer-events: auto; z-index: 6; }
+.tether { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.tether line { stroke: var(--accent); stroke-dasharray: 3 3; }
+.tether circle { fill: var(--accent); }
 .stk.canvas .glyph { filter: drop-shadow(0 1px 2px rgba(0,0,0,.18)); }
 .stk .sgrip { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); cursor: nwse-resize !important; }
 .cstks { position: absolute; right: 34px; top: -11px; display: flex; gap: 3px; z-index: 5; }
@@ -718,7 +725,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card .src > .ovm { position: absolute; inset: 0; background: var(--bar); -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat; pointer-events: none; }
 .board.lod-overview .card .src .l.cmt { --bar: color-mix(in srgb, var(--ink) 6%, transparent); }
 .board.lod-overview .card .ctitle { font-size: 15px; font-weight: 600; }
-.board.lod-map .card > *:not(.maplabel) { visibility: hidden; }
+.board.lod-map .card > *:not(.maplabel):not(.stk) { visibility: hidden; }
 .board.lod-map .card { background: color-mix(in srgb, var(--surface) 92%, var(--accent)); box-shadow: 0 0 0 calc(1px * var(--iz, 1)) var(--hair); }
 .board.lod-map .card.note { background: color-mix(in srgb, var(--surface) 70%, var(--mark)); }
 .board.lod-map .card.text { background: transparent; }

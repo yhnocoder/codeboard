@@ -13,6 +13,16 @@ export function removeCards(b: Board, ids: Iterable<string>): void {
   b.links = b.links.filter((l) => !gone.has(l.from.card) && !gone.has(l.to.card));
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card) && !(n.kind === "card" && gone.has(n.card)));
   b.stickers = b.stickers.filter((k) => k.at.kind === "canvas" || !gone.has(k.at.card));
+  pruneStickers(b);
+}
+
+/** 绑着的卡 / 箭头没了的 Sticker 一起删（删卡、删箭头之后调用；撤销时一起回来） */
+export function pruneStickers(b: Board): void {
+  const cards = new Set(b.cards.map((c) => c.id)), links = new Set(b.links.map((l) => l.id));
+  b.stickers = b.stickers.filter((k) => {
+    const on = k.at.kind === "canvas" ? k.at.on : undefined;
+    return !on || ("card" in on ? cards.has(on.card) : links.has(on.link));
+  });
 }
 
 /** 旧行号 → 新行号；0 = 这一行在新版本里没了 */

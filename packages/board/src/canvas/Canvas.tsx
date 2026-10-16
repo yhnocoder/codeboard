@@ -6,7 +6,7 @@ import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
 import { cam, setViewport, lod } from "../state/camera";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
-import { CanvasStickers } from "../stickers/Picker";
+import { CanvasStickers, LinkStickers } from "../stickers/Picker";
 import { LinksSvg, LinkLabels } from "./Links";
 import { SectionFrames, SectionLabels } from "./Sections";
 import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
@@ -40,7 +40,7 @@ export function Canvas() {
         <For each={placed()}>{(c) => <CardView card={c} />}</For>
         <CanvasStickers />
         <SectionLabels />
-        <div class="labels"><LinkLabels /></div>
+        <div class="labels"><LinkLabels /><LinkStickers /></div>
         <div class="guides">
           <For each={guides()}>
             {(g) => g.axis === "x"

@@ -35,7 +35,7 @@ function SettingsPage(p: { section?: string }) {
         <span class="grow" />
         <button class="ib" aria-label="Close Settings" data-tip="Close" data-kbd="Esc" onClick={() => A.closeSettings()}><Icon name="close" /></button>
       </div>
-      <div class="st-body">
+      <div class="st-page">
         <Sec id="theme" title="Theme" hint="Light / dark follows VS Code.">
           <div class="st-themes">
             <For each={THEMES}>{([id, name]) => (

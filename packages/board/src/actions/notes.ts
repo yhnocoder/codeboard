@@ -155,8 +155,13 @@ export function setNoteBg(id: string, on: boolean) {
   mutate((b) => {
     const n = findCard(b, id)?.card;
     if (n?.kind !== "note") return;
+    if (!!n.bg === on) return;
     n.bg = on;
+    // 字留在原地：Note 的字在标题栏（36，含下边线）下面、内边距 10 / 14；Text 的内边距 2 / 4。卡挪一下、宽度跟着变，字的位置和折行都不变
     const p = b.place[id];
-    if (on && p) p.w = Math.max(p.w, 260);
+    if (!p) return;
+    const dx = 14 - 4, dy = 36 + 10 - 2;
+    if (on) { p.x -= dx; p.y -= dy; p.w += 2 * dx; if (p.h) p.h += dy + 12 - 2; }
+    else { p.x += dx; p.y += dy; p.w -= 2 * dx; if (p.h) p.h = Math.max(24, p.h - dy - 12 + 2); }
   });
 }

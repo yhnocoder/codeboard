@@ -137,6 +137,7 @@ export type CallLink = LinkBase & {
   cands?: Var[]; // 语法推出来的候选变量（点 + 时列出来）
   loop?: boolean; // 出发行在 for / while 里（↺）
   call?: { name: string; col: number }; // 点的是这一行的哪个调用
+  side?: "left" | "right"; // 用户拖过起点：从这一行的哪一端出（没有 = 自动）
 };
 /** 普通箭头：不编号；可设箭头、虚实、颜色、文字 */
 export type PlainLink = LinkBase & {
@@ -187,11 +188,15 @@ export type SidenoteKind = Sidenote["kind"];
 /** 图标：包名 + 图标名。builtin = 内置的十几个；emoji = 系统 emoji（name 就是那个字符）；其余是 Sticker Packs 目录里的包 */
 export type IconRef = { pack: string; name: string };
 
-/** 贴在哪：代码行（进行号栏，随 Update 跟行走）、卡片角上、画布任意位置 */
+/**
+ * 贴在哪：代码行（进行号栏，随 Update 跟行走）、卡片角上（旧）、画布任意位置，
+ * 或绑在卡 / 箭头上（跟着走，同一图层）：on.card 时 x、y 是相对卡左上角的偏移；on.link 时 t 是沿线的位置 0..1，x、y 是相对那一点的偏移
+ */
+export type StickerOn = { card: string } | { link: string; t: number };
 export type StickerAt =
   | { kind: "line"; card: string; seg: string; line: number }
   | { kind: "card"; card: string }
-  | { kind: "canvas"; x: number; y: number; size?: number };
+  | { kind: "canvas"; x: number; y: number; size?: number; on?: StickerOn };
 
 export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt };
 

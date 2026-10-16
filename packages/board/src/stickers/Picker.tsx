@@ -1,6 +1,7 @@
 // 选贴纸的面板：Built-in / 自定义包 / Emoji，搜索，颜色。开在工具栏 Sticker 按钮上面。
 import { createMemo, createSignal, For, Show, onCleanup, onMount } from "solid-js";
-import type { IconRef } from "@codeboard/core";
+import type { IconRef, Sticker } from "@codeboard/core";
+import { linkCurve, curveAt } from "../canvas/Links";
 import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, packs } from "./glyphs";
 import { stickerPick, setStickerPick, pickSticker, stickerColor, setStickerColor, placing, selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import { state } from "../state/store";
@@ -63,20 +64,52 @@ export function PlacingGhost() {
   return <Show when={placing()}>{(p) => <div class="stkghost" style={{ left: `${pt().x}px`, top: `${pt().y}px` }}><Glyph icon={p().icon} color={p().color} size={28} /></div>}</Show>;
 }
 
-/** 画布上的贴纸（世界坐标层） */
+type FreeAt = Extract<Sticker["at"], { kind: "canvas" }>;
+
+/** 一枚可拖、可改大小的贴纸；x、y 是它所在那一层的坐标（画布 = 世界坐标，卡里 = 相对卡左上角） */
+function FreeSticker(p: { s: Sticker; x: number; y: number }) {
+  const at = () => p.s.at as FreeAt;
+  const size = () => at().size ?? 32;
+  return (
+    <div class="stk canvas" classList={{ sel: selSticker() === p.s.id, bound: !!at().on }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
+      style={{ left: `${p.x}px`, top: `${p.y}px`, "min-width": `${size()}px`, height: `${size()}px`, "--s": `${size()}px` }}
+      onPointerDown={(e) => stickerDown(e, p.s.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(p.s.id, e.clientX, e.clientY); }}>
+      <Glyph icon={p.s.icon} color={p.s.color} size={size()} />
+      <Show when={selSticker() === p.s.id}><span class="sgrip" style={{ scale: `${1 / cam.z}` }} onPointerDown={(e) => stickerDown(e, p.s.id, true)} /></Show>
+    </div>
+  );
+}
+
+/** 画布上没绑东西的贴纸（世界坐标层，在所有卡上面） */
 export function CanvasStickers() {
-  const list = createMemo(() => state.board.stickers.filter((s) => s.at.kind === "canvas"));
+  const list = createMemo(() => state.board.stickers.filter((s) => s.at.kind === "canvas" && !s.at.on));
+  return <For each={list()}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} />}</For>;
+}
+
+/** 绑在卡上的贴纸：放在卡里面，跟卡同一图层、一起走 */
+export function BoundStickers(p: { card: string }) {
+  const list = createMemo(() => state.board.stickers.filter((s) => s.at.kind === "canvas" && s.at.on && "card" in s.at.on && s.at.on.card === p.card));
+  return <For each={list()}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} />}</For>;
+}
+
+/** 绑在箭头上的贴纸：沿线位置 t + 偏移；选中时画一条虚线连到线上那一点 */
+export function LinkStickers() {
+  const list = createMemo(() => state.board.stickers.filter((s) => s.at.kind === "canvas" && s.at.on && "link" in s.at.on));
   return (
     <For each={list()}>
       {(s) => {
-        const at = () => s.at as Extract<typeof s.at, { kind: "canvas" }>;
-        const size = () => at().size ?? 32;
+        const at = () => s.at as FreeAt;
+        const anchor = createMemo(() => { const on = at().on as { link: string; t: number }; const c = linkCurve(on.link); return c ? curveAt(c, on.t) : null; });
+        const half = () => (at().size ?? 32) / 2;
         return (
-          <div class="stk canvas" classList={{ sel: selSticker() === s.id }} data-sticker={s.id} data-tip={stickerLabel(s.icon)} style={{ left: `${at().x}px`, top: `${at().y}px`, "min-width": `${size()}px`, height: `${size()}px`, "--s": `${size()}px` }}
-            onPointerDown={(e) => stickerDown(e, s.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(s.id, e.clientX, e.clientY); }}>
-            <Glyph icon={s.icon} color={s.color} size={size()} />
-            <Show when={selSticker() === s.id}><span class="sgrip" style={{ scale: `${1 / cam.z}` }} onPointerDown={(e) => stickerDown(e, s.id, true)} /></Show>
-          </div>
+          <Show when={anchor()}>
+            {(q) => <>
+              <Show when={selSticker() === s.id}>
+                <svg class="tether" width="1" height="1"><line x1={q().x} y1={q().y} x2={q().x + at().x + half()} y2={q().y + at().y + half()} style={{ "stroke-width": `${1 / cam.z}px` }} /><circle cx={q().x} cy={q().y} r={3 / Math.max(cam.z, 0.5)} /></svg>
+              </Show>
+              <FreeSticker s={s} x={q().x + at().x} y={q().y + at().y} />
+            </>}
+          </Show>
         );
       }}
     </For>

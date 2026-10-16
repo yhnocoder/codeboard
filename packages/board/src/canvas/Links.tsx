@@ -1,11 +1,12 @@
 // Link 层：SVG 曲线 + 浮在中间的标签 / 变量 chip。端点每帧跟着卡片和行走（都是响应式的）。
 import { For, Show, createMemo } from "solid-js";
 import { findCard, varText, varKey, type Link, type PlainLink, type Rect } from "@codeboard/core";
-import { state, sel, select, rectOf, cardById, collapsedAway, placeOf } from "../state/store";
+import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, live, beginGesture } from "../state/store";
 import { geo, lineY } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
 import { hoverLink, setHoverLink, rubber, editing, popIn } from "../state/ui";
-import { cam } from "../state/camera";
+import { cam, toWorld } from "../state/camera";
+import { boardOffset } from "../actions/common";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
@@ -46,38 +47,87 @@ function lineAt(id: string, seg?: string, line?: number) {
   return { x: e.r.x, y, r: e.r };
 }
 
-type Geo = { d: string; mx: number; my: number; head?: string; tail?: string; port?: { x: number; y: number } };
+type Geo = { d: string; mx: number; my: number; head?: string; tail?: string; port?: { x: number; y: number }; pts: number[] };
 
-/** Call link：起点自动选边（#27）。子卡在右 → 从这一行右端出；在左 → 左端出、进子卡右侧；在下面 → 左端出绕进子卡左侧 */
+/** 线的三次贝塞尔控制点 [x1 y1 c1x c1y c2x c2y x2 y2]（贴纸绑在线上时用） */
+export function linkCurve(id: string): number[] | null {
+  const L = state.board.links.find((l) => l.id === id);
+  if (!L || !visible(L)) return null;
+  return (L.kind === "call" ? callGeo(L) : plainGeo(L))?.pts ?? null;
+}
+export function curveAt(p: number[], t: number) {
+  const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+  return { x: a * p[0] + b * p[2] + c * p[4] + d * p[6], y: a * p[1] + b * p[3] + c * p[5] + d * p[7] };
+}
+/** 离 (x, y) 最近的那一点的 t */
+export function nearestT(p: number[], x: number, y: number) {
+  let best = 0.5, bd = Infinity;
+  for (let i = 0; i <= 100; i++) { const q = curveAt(p, i / 100), d = (q.x - x) ** 2 + (q.y - y) ** 2; if (d < bd) { bd = d; best = i / 100; } }
+  return best;
+}
+
+/**
+ * Call link 从这一行的哪一端出：子卡整个在右 → 右；整个在左 → 左；上下错开（横向重叠）时看子卡左边在不在父卡中线右边（宽松）。
+ * 用户拖过起点（L.side）就照用户的，除非子卡已经远远到了另一边（严格：整个越过父卡外 120px 才翻）。
+ */
+export function callSide(L: Link, a: Rect, b: Rect): "left" | "right" {
+  const side = L.kind === "call" ? L.side : undefined;
+  if (side === "left" && b.x >= a.x + a.w + 120) return "right";
+  if (side === "right" && b.x + b.w <= a.x - 120) return "left";
+  if (side) return side;
+  if (b.x >= a.x + a.w - 24) return "right";
+  if (b.x + b.w <= a.x + 24) return "left";
+  return b.x >= a.x + a.w / 2 ? "right" : "left";
+}
+
+/**
+ * Call link：起点自动选边（#27），也可以拖起点改（L.side）。
+ * 右端出：子卡在右 → 进子卡左侧；子卡在下（或上）→ 从上（下）边进子卡。左端出：子卡在左 → 进子卡右侧；否则绕进子卡左侧。
+ */
 function callGeo(L: Link): Geo | null {
   const p1 = lineAt(L.from.card, L.from.seg, L.from.line);
   const e2 = endRect(L.to.card);
   if (!p1 || !e2) return null;
   const a = p1.r, b = e2.r;
-  const y1 = p1.y, y2 = e2.pill ? b.y + b.h / 2 : headY(L.to.card, b);
-  const side = b.x >= a.x + a.w - 24 ? "right" : b.x + b.w <= a.x + 24 ? "left" : "below";
-  let x1: number, x2: number, c1: number, c2: number, head: string;
+  const y1 = p1.y;
+  let y2 = e2.pill ? b.y + b.h / 2 : headY(L.to.card, b);
+  const side = callSide(L, a, b);
+  let x1: number, x2: number, c1x: number, c1y = y1, c2x: number, c2y: number, head: string;
   if (side === "right") {
-    x1 = a.x + a.w; x2 = b.x - 6;
-    const dx = clamp(Math.abs(x2 - x1) * 0.45, 24, 140);
-    c1 = x1 + dx; c2 = x2 - dx;
-    head = `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`;
-  } else if (side === "left") {
-    x1 = a.x; x2 = b.x + b.w + 6;
-    const dx = clamp(Math.abs(x1 - x2) * 0.45, 24, 140);
-    c1 = x1 - dx; c2 = x2 + dx;
-    head = `M${x2 + 5} ${y2 - 4} L${x2} ${y2} L${x2 + 5} ${y2 + 4}`;
+    x1 = a.x + a.w;
+    if (b.x >= x1 - 24) {
+      x2 = b.x - 6;
+      const dx = clamp(Math.abs(x2 - x1) * 0.45, 24, 140);
+      c1x = x1 + dx; c2x = x2 - dx; c2y = y2;
+      head = `M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}`;
+    } else {
+      // 子卡在下面（或上面）、又在起点左边：从它的上（下）边进，箭头竖着
+      const down = b.y + b.h / 2 >= y1;
+      x2 = clamp(x1 + 48, b.x + 28, b.x + b.w - 28);
+      y2 = down ? b.y - 6 : b.y + b.h + 6;
+      const dx = clamp(Math.abs(x2 - x1) * 0.5 + 36, 36, 220), dy = clamp(Math.abs(y2 - y1) * 0.5, 30, 220);
+      c1x = x1 + dx; c2x = x2; c2y = down ? y2 - dy : y2 + dy;
+      head = arrowHead(x2, y2, c2x, c2y);
+    }
   } else {
-    x1 = a.x; x2 = b.x - 6;
-    // 子卡在很远的下方：两端的水平控制柄要跟着距离变长，否则线先竖着下来、到卡前急拐一下
-    const dx = clamp(Math.abs(y2 - y1) * 0.4 + Math.max(0, x1 - x2) * 0.6, 28, 280);
-    c1 = x1 - dx; c2 = x2 - dx * 0.8;
-    head = arrowHead(x2, y2, c2, y2);
+    x1 = a.x;
+    if (b.x + b.w <= x1 + 24) {
+      x2 = b.x + b.w + 6;
+      const dx = clamp(Math.abs(x1 - x2) * 0.45, 24, 140);
+      c1x = x1 - dx; c2x = x2 + dx; c2y = y2;
+      head = `M${x2 + 5} ${y2 - 4} L${x2} ${y2} L${x2 + 5} ${y2 + 4}`;
+    } else {
+      x2 = b.x - 6;
+      // 子卡在很远的下方：两端的水平控制柄要跟着距离变长，否则线先竖着下来、到卡前急拐一下
+      const dx = clamp(Math.abs(y2 - y1) * 0.4 + Math.max(0, x1 - x2) * 0.6, 28, 280);
+      c1x = x1 - dx; c2x = x2 - dx * 0.8; c2y = y2;
+      head = arrowHead(x2, y2, c2x, y2);
+    }
   }
   return {
-    d: `M${x1} ${y1} C${c1} ${y1} ${c2} ${y2} ${x2} ${y2}`,
-    mx: (x1 + 3 * c1 + 3 * c2 + x2) / 8, my: (y1 + y2) / 2,
-    head, port: { x: x1, y: y1 },
+    d: `M${x1} ${y1} C${c1x} ${c1y} ${c2x} ${c2y} ${x2} ${y2}`,
+    mx: (x1 + 3 * c1x + 3 * c2x + x2) / 8, my: (y1 + 3 * c1y + 3 * c2y + y2) / 8,
+    head, port: { x: x1, y: y1 }, pts: [x1, y1, c1x, c1y, c2x, c2y, x2, y2],
   };
 }
 
@@ -117,6 +167,7 @@ function plainGeo(L: PlainLink): Geo | null {
     mx: (x1 + 3 * c1[0] + 3 * c2[0] + x2) / 8, my: (y1 + 3 * c1[1] + 3 * c2[1] + y2) / 8,
     head: L.arrow === "end" || L.arrow === "both" ? arrow(x2, y2, c2[0], c2[1]) : undefined,
     tail: L.arrow === "both" ? arrow(x1, y1, c1[0], c1[1]) : undefined,
+    pts: [x1, y1, c1[0], c1[1], c2[0], c2[1], x2, y2],
   };
 }
 
@@ -129,6 +180,25 @@ function visible(L: Link) {
   return true;
 }
 
+/** 拖起点的小圆点：只能换到这一行的另一端（左 / 右），松手时看指针在父卡中线哪边 */
+function portDrag(e: PointerEvent, id: string) {
+  if (e.button !== 0) return;
+  e.stopPropagation(); e.preventDefault();
+  const L = state.board.links.find((l) => l.id === id);
+  if (L?.kind !== "call") return;
+  const a = endRect(L.from.card)?.r;
+  if (!a) return;
+  const end = beginGesture();
+  const move = (ev: PointerEvent) => {
+    const o = boardOffset(), w = toWorld(ev.clientX - o.x, ev.clientY - o.y);
+    const side = w.x >= a.x + a.w / 2 ? "right" : "left";
+    live((b) => { const k = b.links.find((l) => l.id === id); if (k?.kind === "call" && k.side !== side) k.side = side; });
+  };
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); end(); };
+  window.addEventListener("pointermove", move);
+  window.addEventListener("pointerup", up);
+}
+
 export function LinksSvg() {
   const links = createMemo(() => state.board.links.filter(visible));
   return (
@@ -136,14 +206,15 @@ export function LinksSvg() {
       <For each={links()}>
         {(L) => {
           const g = createMemo(() => (L.kind === "call" ? callGeo(L) : plainGeo(L)));
-          const on = () => sel.links.includes(L.id) || hoverLink() === L.id;
+          const on = () => sel.links.includes(L.id) || hoverLink() === L.id || (A.bindHot() as { link?: string } | null)?.link === L.id;
           const cls = () => `edge${L.kind === "plain" ? " plain" + ((L as PlainLink).solid ? " solid" : "") + ((L as PlainLink).color ? ` lc-${(L as PlainLink).color}` : "") : ""}${on() ? " on" : ""}`;
           return (
             <Show when={g()}>
               <path class={cls()} d={g()!.d} />
               <Show when={g()!.head}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.head} /></Show>
               <Show when={g()!.tail}><path class={`ahead${L.kind === "plain" && L.color ? ` lc-${L.color}` : ""}${on() ? " on" : ""}`} d={g()!.tail} /></Show>
-              <Show when={g()!.port}><circle class="port" r="3" cx={g()!.port!.x} cy={g()!.port!.y} /></Show>
+              <Show when={g()!.port}><circle class="port" r="3" cx={g()!.port!.x} cy={g()!.port!.y} />
+                <Show when={on() && L.kind === "call"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / cam.z} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
               <path class="lhit" data-link={L.id} d={g()!.d} style={{ "stroke-width": `${12 / cam.z}px` }}
                 onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
                 onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
