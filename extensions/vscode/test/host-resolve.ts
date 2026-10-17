@@ -22,6 +22,10 @@ import { makeHandler } from "../src/handlers";
 import { BoardPanel, type BoardHost, type BoardView } from "../src/boards";
 import { treeChildren } from "../src/boardtree";
 import { captureRun, listRuns, runApply, saveRun } from "../src/runs";
+import { addVariant, syncVariants, variantSources } from "../src/variants";
+import { staleFor, staleSegments } from "../src/versions";
+import { forgetHeads } from "../src/git";
+import { addVariant as addV, switchVariant, type Board } from "@codeboard/core";
 
 const W = nodeWorkspace();
 useWorkspace(W);
@@ -410,6 +414,90 @@ void (async () => {
     check(bad.exit === 3 && bad.calls.length === 0, "A failing command still returns a record with its exit code", { exit: bad.exit });
     fs.rmSync(FIX, { recursive: true, force: true }); fs.rmSync(SD, { recursive: true, force: true });
     useWorkspace(W);
+  }
+
+
+  // 我的改动（线框 07）：临时仓库 + git worktree add。Variant 从分支、工作区、另一个 worktree、复制的文件读，按函数名找；
+  // 刷新：worktree 里保存、分支 rebase（按函数名重新定位）、合进 main；有 Variant 的卡的新版本跟 main 比，不跟 HEAD 比
+  {
+    const FIX = fs.mkdtempSync("/tmp/codeboard-var-");
+    const R = path.join(FIX, "vllm"), WT = path.join(FIX, "vllm-exp");
+    fs.mkdirSync(R);
+    const git = (cwd: string, ...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd, stdio: "pipe" }).toString().trim();
+    const F = ["import torch", "", "", "class RejectionSampler:", "    def forward(self, draft, target, k):", "        accepted = draft < target", "        first = accepted.int().argmax(dim=-1)", "        out[:, first + 1:] = -1", "        return out", "", "    def other(self):", "        return 1", ""];
+    fs.writeFileSync(path.join(R, "sampler.py"), F.join("\n"));
+    git(R, "init", "-q", "-b", "main"); git(R, "add", "-A"); git(R, "commit", "-qm", "base");
+    const base = git(R, "rev-parse", "HEAD");
+    git(R, "worktree", "add", "-q", WT, "-b", "exp-overlap");
+    const MINE = F.slice(); MINE.splice(6, 1, "        first = (~accepted).int().argmax(dim=-1)", "        first[accepted.all(-1)] = k");
+    fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n"));
+    git(WT, "commit", "-qam", "fix all-accepted rows");
+    useWorkspace(nodeWorkspace(R));
+    forgetHeads();
+    const { card: c, seg } = await card(path.join(R, "sampler.py"), "RejectionSampler.forward");
+    check(seg.version.kind === "git" && seg.version.commit === base, "Variants: card pinned to main", seg.version);
+    const src = await variantSources(seg);
+    check(src.worktrees.length === 1 && src.worktrees[0].dir === WT && src.worktrees[0].branch === "exp-overlap" && /vllm-exp · exp-overlap/.test(src.worktrees[0].label), "Add Variant lists the other worktree (git worktree list)", src);
+    check(src.branches.includes("exp-overlap") && src.current === "main", "…and local branches", src);
+    const wt = await addVariant([seg], { kind: "wt", dir: WT, branch: "exp-overlap" });
+    check(wt?.name === "vllm-exp" && wt.segs[0].src.kind === "external" && wt.segs[0].text.includes("        first[accepted.all(-1)] = k") && !(wt.segs[0].version as { uncommitted?: boolean }).uncommitted, "Worktree variant reads the other worktree's file", wt?.segs[0]);
+    check(!!wt && Object.keys(wt.views).length === 1 && wt.views[seg.id].html.length === wt.segs[0].text.length, "…with views for the switch (prefetched)");
+    const br = await addVariant([seg], { kind: "ref", ref: "exp-overlap" });
+    check(br?.segs[0].text.length === MINE.slice(4, 10).length && br.segs[0].version.kind === "git" && br.segs[0].version.commit === git(R, "rev-parse", "exp-overlap"), "Branch variant reads the branch tip", br?.segs[0]);
+    // 复制出来的文件：函数挪到了别处，按名字找
+    const CP = path.join(FIX, "mla_v2_stage3.py");
+    fs.writeFileSync(CP, ["# copied", "BLOCK_N = 64", "", ...MINE].join("\n"));
+    const fv = await addVariant([seg], { kind: "file", abs: CP });
+    check(fv?.name === "mla_v2_stage3.py" && fv.segs[0].start === seg.start + 3 && fv.segs[0].version.kind === "hash", "File variant: found by function name in the copied file", fv?.segs[0]);
+    // 工作区（未提交）
+    fs.writeFileSync(path.join(R, "sampler.py"), F.join("\n").replace("return out", "return out  # wip"));
+    const wk = await addVariant([seg], { kind: "worktree" });
+    check(wk?.segs[0].text.some((l) => l.includes("# wip")) && (wk.segs[0].version as { uncommitted?: boolean }).uncommitted === true, "Working-tree variant includes uncommitted changes", wk?.segs[0]);
+    fs.writeFileSync(path.join(R, "sampler.py"), F.join("\n"));
+    const missing = await addVariant([seg], { kind: "ref", ref: "nope" }).catch((e: Error) => e.message);
+    check(typeof missing === "string" && /not in/.test(missing), "Unknown branch: a clear error", missing);
+    // 白板：卡上挂两个 Variant，显示 worktree 那个
+    const b: Board = emptyBoard("bv", "variants");
+    b.cards.push(c); b.place[c.id] = { x: 0, y: 0, w: 500 };
+    addV(b, c.id, { id: "vw", name: wt!.name, from: wt!.from, segs: wt!.segs });
+    addV(b, c.id, { id: "vb", name: br!.name, from: br!.from, segs: br!.segs });
+    switchVariant(b, c.id, "vw");
+    const sent = new Map<string, string>();
+    let r = (await syncVariants(b, sent))[c.id];
+    check(!!r && !r.segs && r.latest?.label === `main ${base.slice(0, 7)}` && r.latest.segs[0].text.join("\n") === seg.text.join("\n"), "Sync: nothing changed yet; upstream latest = main", r);
+    check(Object.keys(await syncVariants(b, sent)).length === 0, "Sync again: nothing sent");
+    // 在另一个 worktree 里保存（不提交）
+    fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n").replace("return out", "return out  # tuned"));
+    r = (await syncVariants(b, sent))[c.id];
+    check(r?.segs?.vw?.[0].text.some((l) => l.includes("# tuned")) && (r.segs.vw[0].version as { uncommitted?: boolean }).uncommitted === true && !!r.views?.[seg.id], "Saving in the other worktree refreshes that variant (shown → views by segment id)", r);
+    fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n"));
+    await syncVariants(b, sent);
+    // main 加了一个 commit（函数前面多了几行），分支 rebase 上去：按函数名重新定位，提示 rebase；落后 0
+    fs.writeFileSync(path.join(R, "sampler.py"), ["import torch", "import math", "", "SCALE = 1", ...F.slice(1)].join("\n"));
+    git(R, "commit", "-qam", "upstream: imports");
+    const main2 = git(R, "rev-parse", "HEAD");
+    const behind = (await syncVariants(b, sent))[c.id];
+    check(behind?.behind?.vb === 1 && behind.latest?.segs[0].start === seg.start + 3, "Branch is 1 commit behind main; upstream latest moved by 3 lines", { behind: behind?.behind, start: behind?.latest?.segs[0].start });
+    const ss = staleSegments(b);
+    const st = await staleFor(ss.segs, ss.up);
+    check(ss.up.has(seg.id) && st[seg.id]?.state === "moved", "Upstream staleness compares with main (moved, not my branch's changes)", st[seg.id]);
+    git(WT, "rebase", "-q", "main");
+    forgetHeads();
+    r = (await syncVariants(b, sent))[c.id];
+    check(r?.rebased?.includes("vb") && r.rebased.includes("vw") && r.segs?.vb?.[0].start === seg.start + 3 && r.segs.vb[0].text.includes("        first[accepted.all(-1)] = k"), "After rebase: variants re-anchored by function name", { rebased: r?.rebased, segs: r?.segs && Object.fromEntries(Object.entries(r.segs).map(([k, v]) => [k, [v[0].start, v[0].version]])) });
+    // 合进 main
+    git(R, "merge", "-q", "--ff-only", "exp-overlap");
+    forgetHeads();
+    r = (await syncVariants(b, sent))[c.id];
+    const tip = git(R, "rev-parse", "HEAD");
+    check(r?.merged?.vb === `main ${tip.slice(0, 7)}` && r.merged.vw === `main ${tip.slice(0, 7)}` && tip !== main2, "Merged into main: prompt to turn back into a normal card", r);
+    // 上游 main 上这段变了：有 Variant 的卡的新版本提示（HEAD 是什么无所谓）
+    const st2 = await staleFor(ss.segs, ss.up);
+    check(st2[seg.id]?.state === "changed" && (st2[seg.id] as { head: string }).head === `main ${tip.slice(0, 7)}`, "Upstream new version: changed on main", st2[seg.id]);
+    git(R, "worktree", "remove", "--force", WT);
+    fs.rmSync(FIX, { recursive: true, force: true });
+    useWorkspace(W);
+    forgetHeads();
   }
 
   console.log(failed ? `${failed} failed` : "All passed");
