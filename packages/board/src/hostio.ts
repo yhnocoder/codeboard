@@ -10,6 +10,7 @@ import * as A from "./actions";
 import { choose } from "./ui/Menu";
 import { setAssetBase } from "./md/render";
 import { preloadEditor } from "./md/load";
+import { preloadCm } from "./cm/load";
 
 let preloaded = false;
 export function onHost(m: HostToBoard) {
@@ -19,7 +20,7 @@ export function onHost(m: HostToBoard) {
       batch(() => {
         setState("host", m.host);
         setAssetBase(m.host.assetBase);
-        if (!preloaded) { preloaded = true; preloadEditor(); }
+        if (!preloaded) { preloaded = true; preloadEditor(); preloadCm(); }
         setState("boards", m.boards);
         setState("views", m.views);
         setState("stale", m.stale);

@@ -352,18 +352,20 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     </Show>
     <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => act.cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
       <Show when={freeEditing()}>
-        <FreeEdit card={c} wrap={() => !!c().wrap} onExit={(v) => { act.setFreeCode(c().id, v.replace(/\s+$/, "")); setEditing(null); }} onBlur={(e) => {
-            const el = e.currentTarget;
+        <FreeEdit card={c} wrap={() => !!c().wrap} onExit={(v) => { act.setFreeCode(c().id, v.replace(/\s+$/, "")); setEditing(null); }} onBlur={(e, ed) => {
+            const el = ed.el;
             // 点的是这张卡自己的东西（语言下拉、标题栏按钮）或它弹出的菜单：还在编辑，菜单关掉后把光标放回来；不算"点了别处"
             const t = (e.relatedTarget as HTMLElement | null) ?? lastDown;
-            if (t && t !== el && (el.closest(".card")?.contains(t) || t.closest?.(".ctx"))) {
+            if (t && !el.contains(t) && (el.closest(".card")?.contains(t) || t.closest?.(".ctx"))) {
               const back = () => { if (!el.isConnected || editing()?.id !== c().id) return; if (menuOpen()) return void setTimeout(back, 80);
                 const d = lastDown, mine = !!d && (el.closest(".card")?.contains(d) || !!d.closest?.(".ctx"));
-                if (mine) el.focus({ preventScroll: true }); else { act.setFreeCode(c().id, el.value.replace(/\s+$/, "")); setEditing(null); } };
+                if (mine) ed.focus(); else { act.setFreeCode(c().id, ed.text().replace(/\s+$/, "")); setEditing(null); } };
               setTimeout(back, 0);
               return;
             }
-            act.setFreeCode(c().id, el.value.replace(/\s+$/, "")); setEditing(null);
+            // 补全菜单、提示框（挂在 body 上）里点的：还在编辑
+            if (t?.closest?.(".cbcm-tip, .cm-tooltip")) { setTimeout(() => ed.focus(), 0); return; }
+            act.setFreeCode(c().id, ed.text().replace(/\s+$/, "")); setEditing(null);
           }} />
       </Show>
       <Show when={!freeEditing()}>

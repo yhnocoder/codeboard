@@ -2,7 +2,7 @@
 // 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选卡、
 // 公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。
 import { keepKey } from "../../ui/editkeys";
-import { Editor, Extension, InputRule, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
+import { Editor, Extension, InputRule, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -12,6 +12,7 @@ import { render } from "solid-js/web";
 import { createSignal, For, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
+import { CodeBlockView } from "./codeblock";
 import { Typora, reconvert } from "./typora";
 import { place, virtual } from "../../ui/place";
 
@@ -282,7 +283,10 @@ function MathPop(p: { editor: Editor; ui: Ui }) {
 // ---------- 编辑器专用的扩展 ----------
 function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement, exit: () => void, complete: (b: string, a: string) => Promise<string | null>): AnyExtension[] {
   const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
-  const base = baseExtensions.map((x) => (x.name === "inlineMath" || x.name === "blockMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false, displayMode: x.name === "blockMath" } }) : x));
+  const base = baseExtensions.map((x) => (x.name === "inlineMath" || x.name === "blockMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false, displayMode: x.name === "blockMath" } })
+    // 代码块：编辑时用 CodeMirror（和 Free code 卡同一个编辑器）
+    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete }) })
+    : x));
   const Slash = Extension.create({
     name: "cbSlash",
     addProseMirrorPlugins() {

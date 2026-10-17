@@ -482,7 +482,7 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 
 /* ===================== v0.1 additions ===================== */
 .app { position: fixed; inset: 0; }
-.chrome .nbody, .chrome .nbody *, .chrome .cdesc, .chrome .cdesc *, .chrome .tx, .chrome .tx *, .chrome .inote, .chrome .inote *, .chrome .sn-text, .chrome .sn-text *, .chrome .freeedit, .chrome .fld, .chrome .pin { user-select: text; -webkit-user-select: text; }
+.chrome .nbody, .chrome .nbody *, .chrome .cdesc, .chrome .cdesc *, .chrome .tx, .chrome .tx *, .chrome .inote, .chrome .inote *, .chrome .sn-text, .chrome .sn-text *, .chrome .fld, .chrome .pin { user-select: text; -webkit-user-select: text; }
 .chrome .nbody, .chrome .cdesc, .chrome .tx { cursor: default; }
 .editing { outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 3px; background: var(--surface); text-overflow: clip !important; cursor: text !important; user-select: text !important; -webkit-user-select: text !important; white-space: pre-wrap; }
 .editing:empty::before, [data-ph]:empty::before { content: attr(data-ph); color: var(--ink-3); }
@@ -672,12 +672,36 @@ kbd { font: 10.5px var(--mono); }
 .cbody.wrap .code { min-width: 0; }
 .cbody.wrap .src { white-space: pre-wrap; word-break: break-all; }
 .cbody.wrap .src .l { height: auto; min-height: 20px; }
-/* 自由代码的编辑：下面是和显示时同一套 .code 排版（行号、着色），上面盖透明的 textarea 接打字；字的位置一点不动 */
-.freecode .freeedit { position: absolute; top: 6px; bottom: 8px; left: 54px; right: 0; z-index: 3; display: block; margin: 0; padding: 0 24px 0 0; border: 0; outline: none; resize: none; background: transparent; color: transparent; caret-color: var(--ink); font: inherit; white-space: pre; overflow: hidden; tab-size: 4; }
-.freecode .freeedit::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); color: transparent; }
-.cbody.wrap .freecode .freeedit { white-space: pre-wrap; word-break: break-all; }
-.freecode .rowbg.cur { background: var(--hlrow); }
-.freecode .src { pointer-events: none; }
+/* 代码编辑（CodeMirror，cm/editor.ts）：字体、行高跟着外面（Free code 卡是 .code，Note 里是 pre），没有内边距；字的位置和显示时一样 */
+.cbcm .cm-content .call { cursor: text !important; }
+.cbcm .cm-content .call:hover { background: none; }
+.chrome .cbcm .cm-content, .chrome .cbcm .cm-content * { user-select: text; -webkit-user-select: text; cursor: text; }
+.cbcm .cm-gutters { cursor: default; }
+/* 补全菜单、悬停、签名提示：挂在 body 上（不跟着白板缩放），样式和白板的弹出框一样 */
+.cbcm-tip.cm-tooltip, .cm-tooltip.cm-tooltip-hover, .cm-tooltip.cbcm-sig, .cm-tooltip.cm-completionInfo { border: none !important; border-radius: 8px; background: var(--surface) !important; color: var(--ink); box-shadow: var(--sh-float); font: 12px/1.45 var(--sys); z-index: 60; }
+.cbcm-ac.cm-tooltip-autocomplete > ul { font: 11.5px/1.2 var(--mono); max-height: 248px !important; min-width: 220px; max-width: 460px; padding: 4px; }
+.cbcm-ac.cm-tooltip-autocomplete > ul > li.cbcm-opt { display: flex; align-items: baseline; gap: 10px; padding: 4px 8px; border-radius: 5px; color: var(--ink); line-height: 16px; }
+.cbcm-ac.cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--accent); color: var(--accent-ink); }
+.cbcm-ac .cm-completionLabel { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.cbcm-ac .cm-completionMatchedText { text-decoration: none; font-weight: 650; }
+.cbcm-ac .cm-completionDetail { margin-left: auto; font: 11px var(--sys); font-style: normal; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.cbcm-ac li[aria-selected] .cm-completionDetail { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+.cbcm-ac li.cbcm-opt::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 2px; background: var(--ink-3); opacity: .55; align-self: center; }
+.cbcm-ac li.cbcm-opt.k-function::before, .cbcm-ac li.cbcm-opt.k-method::before { background: var(--k-fn); opacity: 1; border-radius: 50%; }
+.cbcm-ac li.cbcm-opt.k-class::before, .cbcm-ac li.cbcm-opt.k-interface::before, .cbcm-ac li.cbcm-opt.k-type::before, .cbcm-ac li.cbcm-opt.k-enum::before { background: var(--k-self); opacity: 1; }
+.cbcm-ac li.cbcm-opt.k-keyword::before { background: var(--k-kw); opacity: 1; }
+.cbcm-ac li.cbcm-opt.k-module::before { background: var(--k-str); opacity: 1; }
+.cbcm-ac li.cbcm-opt.k-variable::before, .cbcm-ac li.cbcm-opt.k-property::before, .cbcm-ac li.cbcm-opt.k-constant::before { background: var(--k-num); opacity: 1; }
+.cbcm-ac li[aria-selected]::before { background: var(--accent-ink) !important; }
+.cm-tooltip.cm-completionInfo { box-shadow: var(--sh-float); padding: 8px 10px; max-width: 420px; max-height: 260px; overflow: auto; font: 12px/1.5 var(--sys); }
+.cbcm-hover { padding: 8px 12px; max-width: 520px; max-height: 320px; overflow: auto; font: 12px/1.5 var(--sys); }
+.cbcm-hover pre, .cbcm-doc pre { margin: 2px 0 6px; padding: 0; background: none; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; }
+.cbcm-hover hr, .cbcm-doc hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
+.cbcm-hover p, .cbcm-doc p { margin: 0 0 4px; }
+.cbcm-sig { padding: 6px 10px; max-width: 560px; }
+.cbcm-sig-l { font: 11.5px/1.5 var(--mono); white-space: pre-wrap; color: var(--ink-2); }
+.cbcm-sig-l b { color: var(--k-fn); font-weight: 650; background: color-mix(in srgb, var(--k-fn) 12%, transparent); border-radius: 3px; }
+.cbcm-sig-d { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); white-space: pre-wrap; }
 .cfoot { min-width: 0; overflow: hidden; }
 .cfoot span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cfoot .sw.chg { background: var(--chg-strong); }
@@ -1341,3 +1365,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .three .tl.k-mine, .three .tl.k-theirs { background: var(--chg); }
 .three .tl.k-add { background: var(--add); }
 .three .tl.k-both { background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+/* Note 里的代码块（md/editor/codeblock.ts）：pre 是 ProseMirror 的不可编辑节点，里面的 CodeMirror 照样不折行、没有内边距 */
+.md-pm pre .cbcm .cm-content { white-space: pre; padding: 0; }
+.md-pm pre .cbcm .cm-content.cm-lineWrapping { white-space: pre-wrap; }
