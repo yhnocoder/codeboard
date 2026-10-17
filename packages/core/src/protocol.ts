@@ -7,6 +7,7 @@ import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
 import type { SharedInfo } from "./shared";
 import type { Skeleton } from "./subboard";
+import type { RunApply } from "./run";
 
 /** 子白板的面包屑：从最外层到当前白板的上一级（进入子白板时宿主记着；frame = 在那块白板上是哪个框） */
 export type Crumb = { id: string; name: string; frame: string };
@@ -163,6 +164,8 @@ export type HostToBoard =
   | { type: "sharedGone"; cards: string[] }
   /** 这块白板上的子白板的骨架（变了的那几块；null = 那块白板没了）。子白板存盘后宿主重算，防抖 */
   | { type: "skeletons"; boards: Record<string, Skeleton | null> }
+  /** 一次运行（Capture Run 跑完，或 Apply Run… 选的）：白板给对上的 Call 箭头挂 observed 证据和实参，没对上的列出来 */
+  | { type: "run"; apply: RunApply }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
@@ -230,7 +233,10 @@ export type BoardToHost =
   /** Generated 卡的内容：剪贴板或选一个文件（回 GenSource；取消回 null） */
   | { type: "genSource"; req: number; from: "clipboard" | "file" }
   /** Note 编辑时的灰字补全：光标前后的文字，回接在光标处的一段（没有可用模型时回 null） */
-  | { type: "complete"; req: number; before: string; after: string };
+  | { type: "complete"; req: number; before: string; after: string }
+  /** 白板的 ⋯ 菜单：Capture Run…（问命令、跑一次、发回 run）/ Apply Run…（从存着的运行记录里选一次） */
+  | { type: "captureRun" }
+  | { type: "applyRun" };
 
 /** 贴过来的别的白板上的卡（views = 各段的展示数据） */
 export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; views: Record<string, SegView> };

@@ -48,7 +48,11 @@ type CardBase = {
   id: string;
   title?: string; // 用户改过的名字；没有就用默认名
   desc?: string; // 卡片说明（标题下一段话，Walkthrough 时显示）
+  /** 进程标签（线框 03）：自由文字（rank 0、rank 1…N、Scheduler × TP）；light = 线程 / CUDA stream，浅一点的样式 */
+  procs?: ProcTag[];
 };
+
+export type ProcTag = { text: string; light?: boolean };
 
 export type HideFlags = { comments?: boolean; docstrings?: boolean; blank?: boolean };
 
@@ -75,6 +79,8 @@ export type NoteCard = CardBase & {
   bg: boolean; // false = Text（没有背景、边框、标题栏，直接写在画布上）
   size?: "title" | "heading" | "body"; // Text 的字号
   bold?: boolean;
+  /** 消息卡（线框 03）：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
+  msg?: { where?: string };
 };
 /** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */
 export type ImageCard = CardBase & { kind: "image"; src: string; alt?: string; bg?: boolean }; // src = assets/ 下的文件名，或 data: URL
@@ -127,6 +133,7 @@ export type Place = {
   section?: string; // 所在 Section（按卡片中心点判断，拖动结束时更新）
   locked?: boolean;
   collapsed?: boolean; // 折叠了它下面的 Call 子树
+  start?: boolean; // 起点卡（线框 12）：不选卡直接 Walkthrough、调用树从这里开始
 };
 
 // ---------- Link（界面上叫 Arrow） ----------
@@ -159,10 +166,19 @@ export type CallMark = {
   alts?: CallAlt[];
   /** 动态分发：一共有几个实现（目标卡头的「1 of 4」） */
   impls?: number;
+  /** 运行时看到的几次调用的实参（observed 时才有；前几次 + 最后一次，标签框里 ◀ ▶ 切换） */
+  seen?: CallSample[];
 };
 
-/** via = 怎么补上的（registry、search）；cmd / log / at / commit = observed 的证据：运行命令、日志行、时间、当时的 commit */
-export type CallEvidence = { kind: "manual" | "observed"; via?: string; cmd?: string; log?: string[]; at?: number; commit?: string };
+/**
+ * 证据分三档（线框 13）：没有 ev = static（静态解析出来的）；manual = 手动补的；observed = 一次运行里真的从这一行进了那个函数。
+ * 线上画最强的那档（observed > static > manual），悬停列出全部：observed 时 base 记下它原来是哪档（manual；没有 = static）。
+ * via = 怎么补上的（registry、search）；cmd / log / at / commit = observed 的证据：运行命令、日志行、时间、当时的 commit；
+ * count = 那次运行里调了几次，run = 运行记录的 id（<存储目录>/runs/<id>.json）
+ */
+export type CallEvidence = { kind: "manual" | "observed"; via?: string; cmd?: string; log?: string[]; at?: number; commit?: string; count?: number; run?: string; base?: "manual" };
+/** 运行时的一次调用：n = 第几次（从 1 数），args = [形参名, 值的简写]（tensor 只记 shape / dtype / device） */
+export type CallSample = { n: number; args: [string, string][] };
 /** 一个取值：name → value；opts = 可能的几个值（让人选一个，其余是灰色分支），from = 取值从哪来（SWITCH_RANKS(num_ranks)） */
 export type BoundVal = { name: string; value: string; opts?: string[]; from?: string };
 /** 一个备选：别的实现（path + line + qual，path 是宿主给的显示路径）或别的一组取值（vals）。lib = 在 library 里（不在 Study Scope，⌥ 才展开） */
@@ -186,7 +202,21 @@ export type Link = {
   sides?: { from?: LinkSide; to?: LinkSide }; // 用户选过的进出边
   lost?: { from?: true; to?: true }; // 这一端连着的行在代码更新后没了：端点退到卡头，画成红色，等用户重连或删掉
   gen?: true; // Generated from：从 Generated 卡连回生成它的那一行（点线）
+  /** RPC 标记（线框 03）：不是直接调用，而是发消息让另一个进程去做（点划线）。和 Call 一样连进调用图，标记字母跨过去 */
+  rpc?: RpcMark;
+  /** 「↩ back to」：回到起点的线（结果送回去），Walkthrough 走到这里停，不沿它走 */
+  back?: true;
 };
+
+/** 跨进程的机制 */
+export const RPC_MECHS = ["shm", "zmq", "HTTP", "gRPC", "torch.distributed", "queue", "ray", "custom"] as const;
+/** mech = 机制（custom 时 custom 是用户写的名字）；msg = 消息或方法名；fan = 一对一 / 一对所有 rank */
+export type RpcMark = { mech: string; custom?: string; msg?: string; fan?: "one" | "all" };
+/** 线上的文字：RPC · shm · "run" · one → all */
+export function rpcText(r: RpcMark): string {
+  const m = r.mech === "custom" ? r.custom || "custom" : r.mech;
+  return ["RPC", m, r.msg ? (/^["']/.test(r.msg) ? r.msg : `"${r.msg}"`) : "", r.fan === "all" ? "one → all ranks" : ""].filter(Boolean).join(" · ");
+}
 
 /** 默认只有终点有箭头 */
 export const headOf = (l: Pick<Link, "style">) => ({ start: !!l.style?.head?.start, end: l.style?.head?.end !== false });
@@ -275,7 +305,14 @@ export type Board = {
   seq?: number;
   /** 用户改过的调用图标记：键是那张调用图里最早建的卡 */
   marks?: Record<string, GraphMark>;
+  /** Arrow 图例（线框 12）：内置几种样式的名字，用户改过的才存 */
+  legend?: Partial<Record<LegendKey, string>>;
 };
+
+/** 图例：只给样式起名字，不加规则 */
+export const LEGEND = [["call", "Call"], ["rpc", "RPC"], ["observed", "Observed"], ["gen", "Generated from"], ["see", "See also"]] as const;
+export type LegendKey = (typeof LEGEND)[number][0];
+export const legendName = (b: Pick<Board, "legend">, k: LegendKey) => b.legend?.[k] || LEGEND.find((x) => x[0] === k)![1];
 
 // ---------- 共享卡（第 6 版） ----------
 

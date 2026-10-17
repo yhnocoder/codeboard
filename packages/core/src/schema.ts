@@ -26,9 +26,9 @@ const Segment = obj({
   hidden: opt(v.array(v.tuple([num, num]))), hl: opt(v.array(num)), keep: opt(str),
 });
 
-const Place = obj({ x: num, y: num, w: num, h: opt(num), section: opt(str), locked: opt(bool), collapsed: opt(bool) });
+const Place = obj({ x: num, y: num, w: num, h: opt(num), section: opt(str), locked: opt(bool), collapsed: opt(bool), start: opt(bool) });
 
-const base = { id: str, title: opt(str), desc: opt(str) };
+const base = { id: str, title: opt(str), desc: opt(str), procs: opt(v.array(obj({ text: str, light: opt(bool) }))) };
 const WebMeta = obj({ title: opt(str), desc: opt(str), site: opt(str), image: opt(str), icon: opt(str), at: opt(num), failed: opt(bool) });
 const codeEntries = {
   ...base, kind: v.literal("code"), segments: v.array(Segment),
@@ -42,7 +42,7 @@ const CodeCard: v.GenericSchema = obj(codeEntries);
 export type CodeCardSchemaKeys = keyof typeof codeEntries;
 const Card = v.variant("kind", [
   CodeCard as v.LooseObjectSchema<{ kind: v.LiteralSchema<"code", undefined> }, undefined>,
-  obj({ ...base, kind: v.literal("note"), md: str, bg: opt(bool), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool) }),
+  obj({ ...base, kind: v.literal("note"), md: str, bg: opt(bool), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), msg: opt(obj({ where: opt(str) })) }),
   obj({ ...base, kind: v.literal("image"), src: str, alt: opt(str), bg: opt(bool) }),
   obj({ ...base, kind: v.literal("web"), url: str, meta: opt(WebMeta), style: opt(v.picklist(["banner", "side", "text", "compact"])) }),
   obj({ ...base, kind: v.literal("links"), items: v.array(obj({ id: str, url: str, title: opt(str), meta: opt(WebMeta), rich: opt(bool) })), rich: opt(bool) }),
@@ -56,10 +56,11 @@ const Side = v.picklist(["left", "right", "top", "bottom"]);
 const BoundVal = obj({ name: str, value: str, opts: opt(v.array(str)), from: opt(str) });
 const callEntries = {
   name: str, col: num, vars: opt(v.array(Var)), cands: opt(v.array(Var)), loop: opt(bool),
-  ev: opt(obj({ kind: v.picklist(["manual", "observed"]), via: opt(str), cmd: opt(str), log: opt(v.array(str)), at: opt(num), commit: opt(str) })),
+  ev: opt(obj({ kind: v.picklist(["manual", "observed"]), via: opt(str), cmd: opt(str), log: opt(v.array(str)), at: opt(num), commit: opt(str), count: opt(num), run: opt(str), base: opt(v.literal("manual")) })),
   bound: opt(str), vals: opt(v.array(BoundVal)),
   alts: opt(v.array(obj({ label: str, detail: opt(str), path: opt(str), line: opt(num), qual: opt(str), lib: opt(str), vals: opt(v.array(BoundVal)) }))),
   impls: opt(num),
+  seen: opt(v.array(obj({ n: num, args: v.array(v.tuple([str, str])) }))),
 };
 const CallMark = obj(callEntries);
 const Link = obj({
@@ -69,6 +70,8 @@ const Link = obj({
   sides: opt(obj({ from: opt(Side), to: opt(Side) })),
   lost: opt(obj({ from: opt(bool), to: opt(bool) })),
   gen: opt(bool),
+  rpc: opt(obj({ mech: str, custom: opt(str), msg: opt(str), fan: opt(v.picklist(["one", "all"])) })),
+  back: opt(bool),
 });
 const GraphMark = v.union([obj({ letter: str }), obj({ icon: str })]);
 
@@ -97,6 +100,7 @@ const boardEntries = {
   cards: v.array(Card), place: v.record(str, Place), links: v.array(Link), sections: v.array(Section), sidenotes: v.array(Sidenote), stickers: v.array(Sticker),
   hideAllComments: opt(bool), hideNumbers: opt(bool),
   born: opt(v.record(str, num)), seq: opt(num), marks: opt(v.record(str, GraphMark)),
+  legend: opt(v.record(str, opt(str))),
 };
 /** 当前版本（迁移之后）、共享卡已经换成内容的白板（界面拿到的）。id 可以缺：宿主扫描时按文件名补 */
 export const BoardSchema = obj(boardEntries);

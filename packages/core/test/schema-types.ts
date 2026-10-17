@@ -4,7 +4,7 @@
 // 不比可选 / 必填和 null：schema 故意更宽（可选字段允许 null；Board.id、Section.title、Segment.lang 在文件里可以缺；true 写成 boolean）
 import type * as v from "valibot";
 import type { BoardFileSchema, BoardSchema, CodeCardSchemaKeys, SharedCardSchema } from "../src/schema";
-import type { Board, BoardFile, BoundVal, CallAlt, CallEvidence, Card, CodeCard, Link, Place, Section, Segment, SharedCardFile, SharedRef, Sidenote, Sticker } from "../src/model";
+import type { Board, BoardFile, BoundVal, CallAlt, CallEvidence, CallSample, RpcMark, Card, CodeCard, Link, Place, Section, Segment, SharedCardFile, SharedRef, Sidenote, Sticker } from "../src/model";
 
 type In = v.InferInput<typeof BoardSchema>;
 type Out = v.InferOutput<typeof BoardSchema>;
@@ -35,6 +35,8 @@ export const keys = {
   ev: ok({} as SameKeys<CallEvidence, NonNullable<NonNullable<Out["links"][number]["call"]>["ev"]>>),
   alt: ok({} as SameKeys<CallAlt, NonNullable<NonNullable<Out["links"][number]["call"]>["alts"]>[number]>),
   val: ok({} as SameKeys<BoundVal, NonNullable<NonNullable<Out["links"][number]["call"]>["vals"]>[number]>),
+  sample: ok({} as SameKeys<CallSample, NonNullable<NonNullable<Out["links"][number]["call"]>["seen"]>[number]>),
+  rpc: ok({} as SameKeys<RpcMark, NonNullable<Out["links"][number]["rpc"]>>),
   section: ok({} as SameKeys<Section, Out["sections"][number]>),
   sticker: ok({} as SameKeys<Sticker, Out["stickers"][number]>),
   segment: ok({} as SameKeys<Segment, ByKind<SNote, "code">["code"]>),
