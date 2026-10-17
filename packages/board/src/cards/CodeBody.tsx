@@ -1,6 +1,6 @@
 // 代码卡的代码区：行号栏（绝对定位，按实测行位置摆）+ Sidenote 标记列 + 一整块连续的代码文本。
 // 代码是一整块，选区连续；复制时只要代码文本、不带行号（copy 事件里自己拼）。
-import { keepKey } from "../ui/editkeys";
+import { FreeEdit } from "./FreeEdit";
 import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
@@ -340,10 +340,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     </Show>
     <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => act.cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
       <Show when={freeEditing()}>
-        <textarea class="freeedit" spellcheck={false} value={c().segments[0].text.join("\n")} ref={(el) => queueMicrotask(() => { el.focus(); el.style.height = `${el.scrollHeight}px`; })}
-          onPointerDown={(e) => e.stopPropagation()} onInput={(e) => { e.currentTarget.style.height = "auto"; e.currentTarget.style.height = `${e.currentTarget.scrollHeight}px`; }}
-          onKeyDown={(e) => { keepKey(e); if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) { e.preventDefault(); e.currentTarget.blur(); } if (e.key === "Tab") { e.preventDefault(); document.execCommand("insertText", false, "    "); } }}
-          onBlur={(e) => {
+        <FreeEdit card={c} wrap={() => !!c().wrap} onExit={(v) => { act.setFreeCode(c().id, v.replace(/\s+$/, "")); setEditing(null); }} onBlur={(e) => {
             const el = e.currentTarget;
             // 点的是这张卡自己的东西（语言下拉、标题栏按钮）或它弹出的菜单：还在编辑，菜单关掉后把光标放回来；不算"点了别处"
             const t = (e.relatedTarget as HTMLElement | null) ?? lastDown;

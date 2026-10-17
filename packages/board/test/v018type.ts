@@ -309,4 +309,81 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     await close(h);
     if (failed) throw new Error("v18accept failed");
   },
+  /** 自由代码卡编辑时和显示时一样：字、行号的位置不动，着色、当前行；Tab / ⇧Tab / 回车缩进、⌘/ 注释。所有主题、亮暗都看 */
+  async v18codeedit() {
+    failed = 0;
+    const code = ["def f(x):", "    y = x + 1  # one", "    return y", "", "print(f(2))"];
+    const mk = (): Board => {
+      const b = emptyBoard("b1", "free");
+      b.cards.push({ id: "c1", kind: "code", segments: [{ id: "s1", src: { kind: "free" }, path: "", lang: "python", start: 1, end: code.length, text: code.slice(), version: { kind: "none" } }] } as any);
+      b.place.c1 = { x: 80, y: 80, w: 480 };
+      b.cam = { x: 0, y: 0, z: 1 };
+      return b;
+    };
+    // 每行第一个字、每个行号的位置；卡片大小；着色（行的 HTML）
+    const geo = (pg: Page) => pg.evaluate(() => {
+      const card = document.querySelector('.card[data-id="c1"]')!;
+      const glyph = (l: Element) => { const w = document.createTreeWalker(l, NodeFilter.SHOW_TEXT); for (let t = w.nextNode(); t; t = w.nextNode()) { const i = t.textContent!.search(/\S/); if (i >= 0) { const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1); const b = r.getBoundingClientRect(); return [Math.round(b.x * 2) / 2, Math.round(b.y * 2) / 2]; } } return null; };
+      const cb = card.getBoundingClientRect();
+      return {
+        lines: [...card.querySelectorAll(".src .l")].map(glyph),
+        nos: [...card.querySelectorAll(".gutter .no")].map((n) => { const b = n.getBoundingClientRect(); return [Math.round(b.x), Math.round(b.y), n.textContent]; }),
+        html: [...card.querySelectorAll(".src .l")].map((l) => l.innerHTML),
+        size: [Math.round(cb.width), Math.round(cb.height)],
+        font: getComputedStyle(card.querySelector(".src")!).font,
+        ta: (() => { const t = card.querySelector("textarea"); if (!t) return null; const cs = getComputedStyle(t); const b = t.getBoundingClientRect(); const s = card.querySelector(".src")!.getBoundingClientRect(); return { font: cs.font, dx: Math.round(b.x - s.x), dy: Math.round(b.y - s.y), color: cs.color, caret: cs.caretColor }; })(),
+        cur: card.querySelectorAll(".rowbg.cur").length,
+        shadow: getComputedStyle(card).boxShadow,
+      };
+    });
+    const looks: [string, boolean][] = [];
+    for (const t of ["warm-ink", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "classic", "ink-wash", "city"]) for (const light of [true, false]) looks.push([t, light]);
+    const only = process.env.LOOKS ? looks.filter(([t]) => process.env.LOOKS!.split(",").includes(t)) : looks;
+    for (const [theme, light] of only) {
+      const h = await open({ board: mk(), light, w: 1000, h: 700, settings: { theme } as any });
+      const pg = h.page;
+      await pg.waitForTimeout(400);
+      const a = await geo(pg);
+      await pg.locator('.card[data-id="c1"] .src .l').nth(2).dblclick();
+      await pg.waitForSelector('.card[data-id="c1"] textarea.freeedit');
+      await pg.waitForTimeout(150);
+      const b = await geo(pg);
+      const same = JSON.stringify(a.lines) === JSON.stringify(b.lines) && JSON.stringify(a.nos) === JSON.stringify(b.nos) && JSON.stringify(a.size) === JSON.stringify(b.size);
+      const ok = same && JSON.stringify(a.html) === JSON.stringify(b.html) && b.ta?.font === a.font && b.ta?.dx === 0 && b.ta?.dy === 0 && b.cur === 1 && /rgba\(0, 0, 0, 0\)|transparent/.test(b.ta?.color ?? "");
+      check(`v18codeedit ${theme} ${light ? "light" : "dark"} looks the same`, ok, ok ? { size: b.size } : { a, b });
+      if (theme === "warm-ink" && light) {
+        // 打字：新的一行很快就着色；回车保持缩进（: 结尾多一级）
+        await pg.keyboard.press("Control+End");
+        await pg.keyboard.press("Enter");
+        await pg.keyboard.type("for i in range(3):");
+        await pg.keyboard.press("Enter");
+        await pg.keyboard.type("pass");
+        await pg.waitForTimeout(200);
+        const val = () => pg.locator('.card[data-id="c1"] textarea').inputValue();
+        const v1 = await val();
+        const colored = await pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .src .l')].slice(-2).map((l) => l.querySelectorAll("span").length));
+        // 选中两行 Tab / ⇧Tab；⌘/ 注释再取消
+        await pg.evaluate(() => { const t = document.querySelector<HTMLTextAreaElement>('.card[data-id="c1"] textarea')!; const v = t.value; t.setSelectionRange(v.indexOf("for"), v.length); });
+        await pg.keyboard.press("Tab");
+        const v2 = await val();
+        await pg.keyboard.press("Shift+Tab");
+        const v3 = await val();
+        await pg.keyboard.press("Control+/");
+        const v4 = await val();
+        await pg.keyboard.press("Control+/");
+        const v5 = await val();
+        const tail = (v: string) => v.split("\n").slice(-2).join("|");
+        const ok2 = tail(v1) === "for i in range(3):|    pass" && colored.every((n) => n > 0)
+          && tail(v2) === "    for i in range(3):|        pass" && tail(v3) === tail(v1) && tail(v4) === "# for i in range(3):|#     pass" && tail(v5) === tail(v1);
+        check("v18codeedit typing: highlight, indent, Tab, comment", ok2, { v1: tail(v1), colored, v2: tail(v2), v3: tail(v3), v4: tail(v4), v5: tail(v5) });
+        await pg.keyboard.press("Escape");
+        await pg.waitForTimeout(1500);
+        const exited = await pg.locator("textarea.freeedit").count() === 0;
+        const saved = (h.board().cards[0] as any).segments[0].text.join("\n");
+        check("v18codeedit saved", saved === `${code.join("\n")}\nfor i in range(3):\n    pass`, { saved });
+      }
+      await close(h);
+    }
+    if (failed) throw new Error(`v18codeedit: ${failed} failed`);
+  },
 };

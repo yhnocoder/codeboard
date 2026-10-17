@@ -657,7 +657,12 @@ kbd { font: 10.5px var(--mono); }
 .cbody.wrap .code { min-width: 0; }
 .cbody.wrap .src { white-space: pre-wrap; word-break: break-all; }
 .cbody.wrap .src .l { height: auto; min-height: 20px; }
-.freeedit { display: block; width: 100%; min-height: 80px; border: 0; outline: none; resize: none; padding: 6px 12px 8px 58px; font: 11px/20px var(--mono); background: var(--surface); color: var(--ink); white-space: pre; overflow: hidden; tab-size: 4; box-shadow: inset 0 0 0 1.5px var(--accent); border-radius: 0 0 var(--r-card) var(--r-card); }
+/* 自由代码的编辑：下面是和显示时同一套 .code 排版（行号、着色），上面盖透明的 textarea 接打字；字的位置一点不动 */
+.freecode .freeedit { position: absolute; top: 6px; bottom: 8px; left: 54px; right: 0; z-index: 3; display: block; margin: 0; padding: 0 24px 0 0; border: 0; outline: none; resize: none; background: transparent; color: transparent; caret-color: var(--ink); font: inherit; white-space: pre; overflow: hidden; tab-size: 4; }
+.freecode .freeedit::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); color: transparent; }
+.cbody.wrap .freecode .freeedit { white-space: pre-wrap; word-break: break-all; }
+.freecode .rowbg.cur { background: var(--hlrow); }
+.freecode .src { pointer-events: none; }
 .cfoot { min-width: 0; overflow: hidden; }
 .cfoot span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cfoot .sw.chg { background: var(--chg-strong); }
