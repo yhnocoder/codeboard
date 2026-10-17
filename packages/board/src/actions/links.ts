@@ -2,10 +2,10 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
+  placeChild, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
+  type WebMeta, type CallSpan, type LinkStyle, type LinkSide, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
 } from "@codeboard/core";
 import {
   state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
@@ -19,7 +19,7 @@ import { send, ask } from "../host";
 import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { lastPointer } from "./common";
-import { attachCall, calleeMatches } from "./flow";
+import { askCands, attachCall, calleeMatches, callMark } from "./flow";
 
 // ---------- Plain link ----------
 
@@ -33,27 +33,30 @@ export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
   return state.views[from.seg]?.calls.find((c) => c.line === from.line && calleeMatches(t, c));
 }
 
-/** 新箭头：是调用就建 Call link（编号、Walkthrough、变量），否则普通箭头 */
-export function addPlain(from: EndRef, to: EndRef) {
+/**
+ * 新箭头。从代码行连到「这一行调用的函数」所在的卡时自动带上 Call 标记（W01 B：手画的线连到被调函数），
+ * 连到别的（Note、某一行）就是普通箭头。两端可以是整张卡或某一行，数量不限；只有同一张卡的同一处连自己不行
+ */
+export function addPlain(from: EndRef, to: EndRef, side?: LinkSide) {
   if (cardById(from.card)?.host.id === cardById(to.card)?.host.id && from.line === to.line) return;
+  const sides = side ? { from: side } : undefined;
   const call = callOn(from, to);
-  if (call && canAttach(state.board, flows(), from.card, to.card).ok) return void attachCall(from.card, from.seg!, call, to.card);
+  if (call) return void attachCall(from.card, from.seg!, call, to.card, sides);
   const id = uid("l");
-  mutate((b) => { b.links.push({ id, kind: "plain", from, to }); });
+  mutate((b) => { b.links.push(sides ? { id, from, to, sides } : { id, from, to }); });
   return id;
 }
-/** 普通箭头后来能认出是调用（V03 默认不自动转）：箭头上出 Make Call，点了才转 */
+/** 普通箭头能认出是调用（出发行调用了目标卡的函数）：加上 Call 标记（右键 Call Mark，或悬停时的 Call 按钮），再去问参数候选 */
 export function makeCall(id: string) {
   const L = state.board.links.find((l) => l.id === id);
-  if (!L || L.kind !== "plain") return;
+  if (!L || L.call) return;
   const call = callOn(L.from, L.to);
   if (!call) return;
-  const ok = canAttach(state.board, flows(), L.from.card, L.to.card);
-  if (!ok.ok) return toast(ok.reason);
   mutate((b) => {
-    const i = b.links.findIndex((l) => l.id === id);
-    if (i >= 0) b.links[i] = { id, kind: "call", from: { ...L.from }, to: { card: L.to.card }, label: L.label, call: { name: call.name, col: call.col }, loop: call.loop || undefined };
+    const l = b.links.find((k) => k.id === id);
+    if (l) l.call = callMark(call);
   });
+  askCands(id, L.from.card, L.from.seg!, call, L.to.card);
 }
 export function startConnect(id: string) {
   setConnectFrom({ card: id });
@@ -68,17 +71,70 @@ export function setLinkLabel(id: string, v: string) {
   mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) l.label = v.trim() || undefined; });
 }
 export function openVars(id: string) {
-  const el = document.querySelector(`[data-link="${id}"].lmid`) ?? document.querySelector(`[data-link="${id}"]`);
+  const el = document.querySelector(`.vchips[data-link="${id}"]`) ?? document.querySelector(`.vplus[data-link="${id}"]`);
   openPop({ kind: "vars", link: id }, el ? { el, prefer: "below" } : lastPointer());
 }
 export function toggleVar(id: string, v: Var) {
   mutate((b) => {
     const l = b.links.find((k) => k.id === id);
-    if (l?.kind !== "call") return;
+    const c = l?.call;
+    if (!c) return;
     const k = varKey(v);
-    const has = (l.vars ?? []).some((x) => varKey(x) === k);
-    l.vars = has ? l.vars!.filter((x) => varKey(x) !== k) : [...(l.vars ?? []), v];
-    if (!l.vars.length) l.vars = undefined;
+    const has = (c.vars ?? []).some((x) => varKey(x) === k);
+    const next = has ? c.vars!.filter((x) => varKey(x) !== k) : [...(c.vars ?? []), v];
+    if (next.length) c.vars = next; else delete c.vars;
   });
 }
 
+
+// ---------- 箭头走哪一侧（W03 10：右键 Start Side / End Side 固定，Reset Sides 回到自动） ----------
+
+/**
+ * 固定起点 / 终点走哪一侧。每一端：不传（undefined）= 不变；"auto" = 回到自动；left / right / top / bottom = 固定。
+ * 行端只能左右（固定成上下会被忽略、照自动走）
+ */
+export function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") {
+  mutate((b) => {
+    const l = b.links.find((k) => k.id === id);
+    if (!l) return;
+    const s = { ...l.sides };
+    if (from === "auto") delete s.from; else if (from) s.from = from;
+    if (to === "auto") delete s.to; else if (to) s.to = to;
+    if (s.from || s.to) l.sides = s; else delete l.sides;
+  });
+}
+/** 两端都回到自动 */
+export const resetSides = (id: string) => setSides(id, "auto", "auto");
+
+// ---------- WS3：箭头 / 标签菜单改的数据（都走 mutate，可撤销） ----------
+
+const editLink = (id: string, f: (l: Link) => void) => mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) f(l); });
+
+/** 改样子：空了的 style 不留（width 2、只有终点箭头是默认，不存） */
+export function setLinkStyle(id: string, f: (s: LinkStyle) => void) {
+  editLink(id, (l) => {
+    const s: LinkStyle = { ...l.style, head: l.style?.head ? { ...l.style.head } : undefined };
+    f(s);
+    if (s.width === 2) delete s.width;
+    if (s.head && s.head.start !== true) delete s.head.start;
+    if (s.head && s.head.end !== false) delete s.head.end;
+    if (s.head && !Object.keys(s.head).length) delete s.head;
+    for (const k of Object.keys(s) as (keyof LinkStyle)[]) if (s[k] === undefined) delete s[k];
+    if (Object.keys(s).length) l.style = s; else delete l.style;
+  });
+}
+/** 某一端从哪边进出；undefined = Auto */
+export const setLinkSide = (id: string, end: "from" | "to", side: LinkSide | undefined) => (end === "from" ? setSides(id, side ?? "auto") : setSides(id, undefined, side ?? "auto"));
+export const clearLinkSides = (id: string) => resetSides(id);
+/** Call 标记开关：关掉时参数和 ↺ 跟着收起，自己写的字留着；打开要出发行确实调用了目标卡 */
+export function toggleCallMark(id: string) {
+  const L = state.board.links.find((l) => l.id === id);
+  if (!L) return;
+  if (L.call) return editLink(id, (l) => { delete l.call; });
+  makeCall(id);
+}
+/** ↺ 开关（只在 Call 上） */
+export const toggleLoopMark = (id: string) => editLink(id, (l) => { if (!l.call) return; if (l.call.loop) delete l.call.loop; else l.call.loop = true; });
+export const resetLabelPos = (id: string) => editLink(id, (l) => { delete l.at; });
+/** Delete Label：只删自己写的字（参数、↺ 不动） */
+export const deleteLabel = (id: string) => editLink(id, (l) => { delete l.label; });

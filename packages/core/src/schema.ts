@@ -47,11 +47,15 @@ const Card = v.variant("kind", [
 
 const End = obj({ card: str, seg: opt(str), line: opt(num) });
 const Var = obj({ a: str, b: opt(str), ret: opt(bool), custom: opt(bool) });
-const linkBase = { id: str, from: End, to: End, label: opt(str), at: opt(num), side: opt(v.picklist(["left", "right"])) };
-const Link = v.variant("kind", [
-  obj({ ...linkBase, kind: v.literal("call"), vars: opt(v.array(Var)), cands: opt(v.array(Var)), loop: opt(bool), call: opt(obj({ name: str, col: num })) }),
-  obj({ ...linkBase, kind: v.literal("plain"), arrow: opt(v.picklist(["none", "end", "both"])), solid: opt(bool), color: opt(str) }),
-]);
+const Side = v.picklist(["left", "right", "top", "bottom"]);
+const Link = obj({
+  id: str, from: End, to: End, label: opt(str), at: opt(num),
+  call: opt(obj({ name: str, col: num, vars: opt(v.array(Var)), cands: opt(v.array(Var)), loop: opt(bool) })),
+  style: opt(obj({ dash: opt(bool), width: opt(v.picklist([1, 2, 3])), head: opt(obj({ start: opt(bool), end: opt(bool) })), color: opt(str) })),
+  sides: opt(obj({ from: opt(Side), to: opt(Side) })),
+  lost: opt(obj({ from: opt(bool), to: opt(bool) })),
+});
+const GraphMark = v.union([obj({ letter: str }), obj({ icon: str })]);
 
 const Section = obj({ id: str, title: opt(str), x: num, y: num, w: num, h: num, parent: opt(str), color: opt(str), collapsed: opt(bool), locked: opt(bool), desc: opt(str) });
 
@@ -78,6 +82,7 @@ export const BoardSchema = obj({
   version: v.literal(BOARD_VERSION), id: opt(str), name: str, cam: obj({ x: num, y: num, z: num }),
   cards: v.array(Card), place: v.record(str, Place), links: v.array(Link), sections: v.array(Section), sidenotes: v.array(Sidenote), stickers: v.array(Sticker),
   hideAllComments: opt(bool), hideNumbers: opt(bool),
+  born: opt(v.record(str, num)), seq: opt(num), marks: opt(v.record(str, GraphMark)),
 });
 
 /** 迁移前只要求是个对象、版本号（有的话）是数字；认不认得这个版本由 migrateBoard 判断 */

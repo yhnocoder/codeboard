@@ -3,7 +3,7 @@
 import { unwrap } from "solid-js/store";
 import {
   findCard, isCode, snapMove, snapResize, union, bounds, center, contains, cardTitle,
-  type Board, type Card, type CallSpan, type Rect, type Anchor, type NoteCard,
+  type Board, type Card, type CallSpan, type Rect, type Anchor, type NoteCard, type LinkSide,
 } from "@codeboard/core";
 import {
   state, sel, select, toggleSel, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, mutate, live, beginGesture,
@@ -90,8 +90,13 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`)) return setEditing({ kind: "title", id: target });
-  // 编号角标：点 = 选中整棵子树，拖 = 整棵子树一起走（#29）
-  if (t.closest(".step")) { A.selectSubtree(target, e.shiftKey); closeAllPops(); return startCardDrag(e, f.host.id); }
+  // 调用图标记：点 = 改标记（字母 / 图标），拖 = 连同它往下调用的卡一起走（#29）
+  if (t.closest(".step")) {
+    const el = t.closest(".step")!;
+    const was = [...sel.cards];
+    A.selectSubtree(target, e.shiftKey); closeAllPops();
+    return startCardDrag(e, f.host.id, () => { select({ cards: was.length ? was : [f.host.id] }); A.openMarkPicker(target, el); });
+  }
   if (isText && isDbl(`x${id}`)) return setEditing({ kind: "note", id });
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
@@ -102,9 +107,10 @@ export function cardPointerDown(e: PointerEvent, id: string) {
 /** 卡（或 Compare 里一栏）所在那张摆放卡的位置 */
 const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };
 
-function startCardDrag(e: PointerEvent, grabbed: string) {
+/** onClick：按下去没拖动就松手时调用 */
+function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
-  if (!ids.length) return;
+  if (!ids.length) return onClick?.();
   const skip = new Set(ids);
   const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y }; });
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
@@ -172,7 +178,7 @@ function startCardDrag(e: PointerEvent, grabbed: string) {
     setDragging(new Set<string>());
     const drop = dropTarget();
     setDropTarget(null);
-    if (!moved) { end(); return; }
+    if (!moved) { end(); onClick?.(); return; }
     if (drop?.kind === "merge" && drop.armed) {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
       end();
@@ -323,7 +329,8 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
 
 // ---------- Plain link：从行尾圆点 / 卡边圆点拖出 ----------
 
-export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string; line?: number }, sx: number, sy: number) {
+/** side：用户从哪个圆点拖出来，起点就固定在那一侧（不再按位置自动推） */
+export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string; line?: number }, sx: number, sy: number, side?: LinkSide) {
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
@@ -346,7 +353,7 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
   }, (_ev, moved) => {
     setRubber(null);
     setDropTarget(null);
-    if (moved && to) A.addPlain(from, to);
+    if (moved && to) A.addPlain(from, to, side);
   }, 4);
 }
 
@@ -577,6 +584,8 @@ export function installKeys() {
     if (mod && kl === "k") { e.preventDefault(); return setPaletteOpen({ mode: "all" }); }
     if (mod && k === "0") { e.preventDefault(); return A.fitAll(); }
     if (mod && k === "1") { e.preventDefault(); return zoomAt(1 / camTarget().z); }
+    // 跳转后的后退 / 前进：⌃- / ⌃⇧-（Windows / Linux 上 Ctrl+- 是缩小，用 Ctrl+Alt+-，和 VS Code 一样）
+    if (e.ctrlKey && !e.metaKey && e.code === "Minus" && (state.host.isMac || e.altKey)) { e.preventDefault(); return e.shiftKey ? A.navForward() : A.navBack(); }
     if (mod && (k === "=" || k === "+")) { e.preventDefault(); return zoomAt(1.25); }
     if (mod && k === "-") { e.preventDefault(); return zoomAt(0.8); }
     if (mod && kl === "c") {
@@ -601,6 +610,8 @@ export function installKeys() {
     if (kl === "t" || kl === "n") { e.preventDefault(); const p = A.lastPointer(); const w = worldOf({ clientX: p.x, clientY: p.y }); return void A.newNote(w, kl === "n"); }
     if (kl === "p") return A.startWalk();
     if (k === "Enter") {
+      // 只选了一条箭头：Enter 编辑它的标签（Label 菜单的 Edit Label）
+      if (sel.links.length === 1 && !sel.cards.length && !sel.sections.length) { e.preventDefault(); return A.setLinkEditing(sel.links[0]); }
       const c = A.selCards()[0];
       if (!c) return;
       e.preventDefault();

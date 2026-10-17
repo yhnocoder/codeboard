@@ -4,7 +4,7 @@
   "workspaces": ["packages/*", "extensions/*"],
   "scripts": {
     "build": "npm run build -w @codeboard/board && npm run build -w codeboard-vscode",
-    "test": "npm test -w @codeboard/core",
+    "test": "npm test -w @codeboard/core && npm test -w @codeboard/board",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "e2e": "npm run e2e -w codeboard-vscode"
   }

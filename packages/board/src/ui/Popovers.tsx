@@ -3,9 +3,10 @@ import { For, Show, Switch, Match, createSignal, createMemo, onMount, createEffe
 import { unwrap } from "solid-js/store";
 import {
   alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang,
-  type Sidenote, type DiffData, type PeekDef, type PeekResult, type SearchItem, type NewCard, type Var, type Anchor,
+  type GraphMark, type Sidenote, type DiffData, type PeekDef, type PeekResult, type SearchItem, type NewCard, type Var, type Anchor,
 } from "@codeboard/core";
-import { state, cardById, toast, mutate, select } from "../state/store";
+import { state, cardById, toast, mutate, select, flows } from "../state/store";
+import { Glyph } from "../stickers/glyphs";
 import { cam } from "../state/camera";
 import { pops, closePop, pinPop, updatePop, type PopInst, type Pop } from "../state/pop";
 import { setConnectFrom } from "../state/ui";
@@ -67,6 +68,7 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "pick"}><PickPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "pick" }>} /></Match>
         <Match when={k() === "commits"}><CommitsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "commits" }>} /></Match>
         <Match when={k() === "vars"}><VarsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vars" }>} /></Match>
+        <Match when={k() === "mark"}><MarkPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "mark" }>} /></Match>
       </Switch>
     </div>
   );
@@ -472,13 +474,13 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
 }
 
 function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
-  const L = () => { const l = state.board.links.find((l) => l.id === p.pop.link); return l?.kind === "call" ? l : undefined; };
+  const L = () => state.board.links.find((l) => l.id === p.pop.link)?.call;
   const [custom, setCustom] = createSignal("");
   const has = (v: Var) => (L()?.vars ?? []).some((x) => varKey(x) === varKey(v));
   const all = () => { const l = L(); if (!l) return []; const c = l.cands ?? []; return [...c, ...(l.vars ?? []).filter((v) => !c.some((x) => varKey(x) === varKey(v)))]; };
   return (
     <>
-      <div class="picker-h">Variables on this call</div>
+      <div class="picker-h">Arguments</div>
       <div class="sres">
         <For each={all()}>{(v) => <label class="chk"><input type="checkbox" checked={has(v)} onChange={() => A.toggleVar(p.pop.link, v)} />{varText(v)}</label>}</For>
         <Show when={!all().length}><div class="empty">No arguments or return value found.</div></Show>
@@ -486,6 +488,33 @@ function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
       <div class="an-body"><input class="fld" placeholder="Add your own (e.g. seqs[0].block_table)" value={custom()} onInput={(e) => setCustom(e.currentTarget.value)}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && custom().trim()) { A.toggleVar(p.pop.link, { a: custom().trim(), custom: true }); setCustom(""); } if (e.key === "Escape") closePop(p.inst.id); }} /></div>
     </>
+  );
+}
+
+// ---------- 调用图标记 ----------
+
+/** 图标用内置贴纸（名字引用，画法跟着贴纸走） */
+export const MARK_ICONS = ["star", "flag", "zap", "bug", "heart", "question", "check", "hourglass"];
+const MARK_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
+function MarkPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "mark" }> }) {
+  const g = () => flows().byId.get(p.pop.card);
+  // 别的图正在用的字母（自动的或用户选的）：灰一点，但还能选
+  const used = createMemo(() => new Set(flows().graphs.filter((x) => x !== g() && x.label).map((x) => x.label)));
+  const pick = (m: GraphMark | null) => { closePop(p.inst.id); A.setGraphMark(p.pop.card, m); };
+  const isLetter = (l: string) => { const m = g()?.mark; return !!m && "letter" in m && m.letter === l; };
+  const isIcon = (n: string) => { const m = g()?.mark; return !!m && "icon" in m && m.icon === n; };
+  return (
+    <Show when={g()}>
+      <div class="picker-h">Call Graph Mark</div>
+      <div class="markgrid">
+        <For each={MARK_LETTERS}>{(l) => <button class="mk-l" classList={{ on: isLetter(l), used: used().has(l) }} onClick={() => pick({ letter: l })}>{l}</button>}</For>
+      </div>
+      <div class="markgrid icons">
+        <For each={MARK_ICONS}>{(n) => <button class="mk-i" classList={{ on: isIcon(n) }} aria-label={n} onClick={() => pick({ icon: n })}><Glyph icon={{ pack: "builtin", name: n }} size={16} /></button>}</For>
+      </div>
+      <button class="cand" disabled={!g()!.custom} onClick={() => pick(null)}><span class="lb">Auto</span><small>Letter by creation order</small></button>
+    </Show>
   );
 }
 

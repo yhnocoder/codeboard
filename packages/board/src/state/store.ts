@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  brokenBy, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS, V3_CODE_CHROME,
+  brokenBy, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, DEFAULT_SETTINGS, V3_CODE_CHROME,
   type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type Stale,
 } from "@codeboard/core";
 import { ask, send } from "../host";
@@ -54,10 +54,13 @@ export function reportSelection() {
 
 // ---------- 派生 ----------
 
+/** 调用图（标记、Call 箭头的父子）。只读卡的 id / 段、线的两端和 Call 标记、born / marks：拖动卡片不会让它重算 */
 export const flows = createMemo(() => computeFlows(state.board));
-/** Walkthrough 时临时展开所有折叠的子树：只影响显示，不写进白板（不进撤销、不存盘） */
+/** 因为折叠藏起来的卡（不管 Walkthrough 有没有临时展开） */
+export const collapsedSet = createMemo(() => hiddenByCollapse(state.board, flows()));
+/** Walkthrough 时临时展开所有折叠的卡：只影响显示，不写进白板（不进撤销、不存盘） */
 export const [showCollapsed, setShowCollapsed] = createSignal(false);
-export const collapsedAway = createMemo(() => (showCollapsed() ? new Set<string>() : hiddenByCollapse(state.board, flows())));
+export const collapsedAway = createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet()));
 
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
 const cardIndex = createMemo(() => {
@@ -139,10 +142,24 @@ const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.l
  * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
  * 改完会过一遍白板不变量（core 的 brokenBy）：被破坏就整次撤回、提示原因，返回 false。
  */
+/**
+ * 新卡记下创建顺序（core stampBorn）。先在原始对象上看有没有缺的：挪卡、撤销这些不加卡的改动直接跳过，不走 produce 代理把每张卡读一遍。
+ * 缺的话在一份普通对象上编号，再整个换掉 born：宿主写进来的一批卡（没有编号）一次编完只通知一次，
+ * 不是每张卡一次（241 张卡时第一次挪卡要 30ms）
+ */
+function stamp(b: Board) {
+  const raw = unwrap(b), born = raw.born;
+  if (born && raw.cards.every((c) => born[c.id] !== undefined)) return;
+  const tmp = { cards: raw.cards, born: { ...born }, seq: raw.seq } as Board;
+  stampBorn(tmp);
+  b.born = tmp.born;
+  b.seq = tmp.seq;
+}
+
 export function mutate(fn: (b: Board) => void): boolean {
   const before = snap();
   cur = null;
-  try { setState("board", produce(fn)); }
+  try { setState("board", produce((b: Board) => { fn(b); stamp(b); })); }
   catch (e) {
     // 改到一半抛错：produce 已经改了一部分，整次撤回，别留下半截的白板
     restore(before);
@@ -188,7 +205,7 @@ export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) 
   if (!before) return;
   fresh.delete(id);
   if (!keep) { ghostOut([id]); live((b) => removeCards(b, [id])); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
-  if (fn) live(fn);
+  live((b) => { fn?.(b); stamp(b); });
   pushUndo(before);
 }
 
@@ -217,7 +234,7 @@ const SYNC_MAX = 2000;
  */
 export function sync(fn: (b: Board) => void) {
   cur = null;
-  setState("board", produce(fn));
+  setState("board", produce((b: Board) => { fn(b); stamp(b); }));
   syncLog.push({ n: ++syncN, fn });
   trimSync();
   changed();

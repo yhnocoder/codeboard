@@ -14,8 +14,8 @@ function richBoard(): Board {
   put(b, step, 80, 80, 600); put(b, sch, 780, 60, 560); put(b, post, 140, 420, 560);
   const s0 = step.segments[0];
   const l1 = lineOf(step, /scheduler\.schedule\(/), l2 = lineOf(step, /scheduler\.postprocess\(/);
-  b.links.push({ id: "L1", kind: "call", from: { card: step.id, seg: s0.id, line: l1 }, to: { card: sch.id }, call: { name: "schedule", col: 37 }, vars: [{ a: "seqs", ret: true }, { a: "is_prefill", ret: true }] });
-  b.links.push({ id: "L2", kind: "call", from: { card: step.id, seg: s0.id, line: l2 }, to: { card: post.id }, call: { name: "postprocess", col: 23 }, vars: [{ a: "seqs" }, { a: "token_ids" }, { a: "is_prefill" }] });
+  b.links.push({ id: "L1", from: { card: step.id, seg: s0.id, line: l1 }, to: { card: sch.id }, call: { name: "schedule", col: 37, vars: [{ a: "seqs", ret: true }, { a: "is_prefill", ret: true }] } });
+  b.links.push({ id: "L2", from: { card: step.id, seg: s0.id, line: l2 }, to: { card: post.id }, call: { name: "postprocess", col: 23, vars: [{ a: "seqs" }, { a: "token_ids" }, { a: "is_prefill" }] } });
   b.sidenotes.push({ id: "n1", kind: "text", md: "Prefill first, then decode.", at: { card: step.id, seg: s0.id, lines: [l1, l1] } });
   b.stickers.push({ id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: step.id, seg: s0.id, line: l1 } });
   b.stickers.push({ id: "k2", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: step.id, seg: s0.id, line: l1 + 2 } });
@@ -239,14 +239,14 @@ export const V015: Record<string, () => Promise<void>> = {
     const par = card("ModelRunner.__init__"), kid = card("load_model");
     put(b, par, 20, 20, 1100); put(b, kid, 850, 560, 600);
     const s0 = par.segments[0], ln = lineOf(par, /load_model\(/);
-    b.links.push({ id: "L1", kind: "call", from: { card: par.id, seg: s0.id, line: ln }, to: { card: kid.id }, call: { name: "load_model", col: 8 } });
+    b.links.push({ id: "L1", from: { card: par.id, seg: s0.id, line: ln }, to: { card: kid.id }, call: { name: "load_model", col: 8 } });
     b.cam = { x: 0, y: 0, z: 0.7 };
     const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
     const port = (hh: Host) => hh.page.locator("path.port").first().evaluate((e) => +e.getAttribute("data-x")!);
     const auto = await port(h);
     await shot(h, "v15-side-1");
     await close(h);
-    (b.links[0] as any).side = "left";
+    b.links[0].sides = { from: "left" };
     const h2 = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
     const user = await port(h2);
     await shot(h2, "v15-side-2");
@@ -314,10 +314,10 @@ export const V015: Record<string, () => Promise<void>> = {
   async v15vlabel() {
     const b = richBoard();
     const L1 = b.links[0] as any, L2 = b.links[1] as any;
-    L1.loop = true; L2.label = "my own label"; L2.loop = true;
+    L1.call.loop = true; L2.label = "my own label"; L2.call.loop = true;
     const step = b.cards[0], tail = card("Scheduler.preempt");
     put(b, tail, 780, 640, 420);
-    b.links.push({ id: "L3", kind: "plain", from: { card: b.cards[2].id }, to: { card: tail.id }, label: "only a label", arrow: "end" } as any);
+    b.links.push({ id: "L3", from: { card: b.cards[2].id }, to: { card: tail.id }, label: "only a label" });
     void step;
     const h = await open({ board: b, light, w: 1400, h: 950 });
     await shot(h, "v15-vlabel");
@@ -482,7 +482,7 @@ export const V015: Record<string, () => Promise<void>> = {
   },
   /** Built-in stickers in every theme */
   async v15stkthemes() {
-    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster"]) {
+    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "bamboo", "ink-wash", "blocks", "city"]) {
       const b = emptyBoard("b1", "v0.1.5");
       const names = ["star", "question", "exclaim", "check", "flag", "zap", "bug", "todo", "heart", "hourglass", "warning", "todo-text"];
       names.forEach((n, i) => b.stickers.push({ id: `k${i}`, icon: { pack: "builtin", name: n }, at: { kind: "canvas", x: 40 + i * 52, y: 40, size: 36 } }));
@@ -497,7 +497,7 @@ export const V015: Record<string, () => Promise<void>> = {
   /** Code card metrics per theme: char width, line height, header height, code area vertical padding; cards must fit the same content after a theme switch */
   async v15metrics() {
     const rows: any[] = [];
-    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster"]) {
+    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "bamboo", "ink-wash", "blocks", "city"]) {
       const b = richBoard();
       const h = await open({ board: b, light, w: 1500, h: 950, settings: { theme } as any });
       await h.page.waitForTimeout(500);
@@ -517,7 +517,7 @@ export const V015: Record<string, () => Promise<void>> = {
   /** Fixed-height code card: visible code area height unchanged after a theme switch */
   async v15themefit() {
     const out: Record<string, number> = {};
-    for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite"]) {
+    for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite", "bamboo", "ink-wash", "blocks", "city"]) {
       const b = richBoard();
       b.place[b.cards[1].id].h = 164; // code area height (format v4): 200 tall in Warm Ink
       const h = await open({ board: b, light, w: 1500, h: 950, settings: { theme } as any });

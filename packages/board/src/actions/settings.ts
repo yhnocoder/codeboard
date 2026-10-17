@@ -25,7 +25,10 @@ export function applyLook(id: string | undefined) {
   if (el.dataset.look === (id ?? "warm-ink")) return;
   const first = !el.dataset.look;
   const before = first ? null : new Map(placed().map((k) => [k.id, rectOf(k)]));
+  // themes.css 的结构规则挂在 html.look-<id> 下（类名进得了祖先过滤，别的主题的规则不用逐个比到根）；data-look 留给变量块和小样
+  if (!first) el.classList.remove(`look-${el.dataset.look}`);
   el.dataset.look = id ?? "warm-ink";
+  el.classList.add(`look-${el.dataset.look}`);
   // 卡头 / 色带高度跟主题变：等新尺寸量完（两帧），把被压住的卡往下推（设置里可以改成允许重叠）。
   // 代码卡卡头的高度由布局决定：新主题的字体还在加载时量到的是后备字体的高度，等字体到了再量两帧
   const two = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));

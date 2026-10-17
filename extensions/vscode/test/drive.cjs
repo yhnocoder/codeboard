@@ -150,7 +150,7 @@ const boardJson = () => {
   // 8. Autosave
   await sleep(2000);
   const b = boardJson();
-  check(b && b.version === 4 && b.cards.length >= 5 && Object.keys(b.place).length === b.cards.length && b.links.length >= 2 && b.sidenotes.length === 1, "board autosaved (v4 format)", b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
+  check(b && b.version === 5 && b.cards.length >= 5 && Object.keys(b.place).length === b.cards.length && b.links.length >= 2 && b.sidenotes.length === 1, "board autosaved (v5 format)", b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
 
   // 8b. Settings: Ctrl+, inside the board opens the Settings page (the extension routes VS Code's own Ctrl+, back to the board); changing the theme writes codeboard.theme
   await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);

@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
-  alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, canAttach, canExpand, canCompare, hiddenByCollapse, snapMove, align,
+  alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, descendants, hiddenByCollapse, stampBorn, loadBoard, snapMove, align,
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize,
   type Board, type Card, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
@@ -172,57 +172,90 @@ describe("diff and alignment", () => {
 
 const seg = (id: string, start = 1, end = 3): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end, text: [], version: { kind: "git", commit: "x" } });
 const code = (id: string): CodeCard => ({ id, kind: "code", segments: [seg(`s${id}`, 1, 50)] });
-const call = (from: string, line: number, to: string): Link => ({ id: `${from}-${to}`, kind: "call", from: { card: from, seg: `s${from}`, line }, to: { card: to } });
+const call = (from: string, line: number, to: string): Link => ({ id: `${from}-${to}`, from: { card: from, seg: `s${from}`, line }, to: { card: to }, call: { name: to, col: 0 } });
+const plain = (from: string, to: string, line?: number): Link => ({ id: `p${from}-${to}`, from: { card: from, seg: line ? `s${from}` : undefined, line }, to: { card: to } });
 
-describe("computeFlows", () => {
-  const board = (links: Link[], ids = ["a", "b", "c", "d", "e"]): Board => ({ ...emptyBoard("b", "B"), cards: ids.map(code), links });
-  it("numbers root A, children by source line, grandchildren 2.1", () => {
+describe("call graphs", () => {
+  const board = (links: Link[], ids = ["a", "b", "c", "d", "e"]): Board => {
+    const b: Board = { ...emptyBoard("b", "B"), cards: ids.map(code), links };
+    stampBorn(b);
+    return b;
+  };
+  it("one mark per graph, shown on every card in it; no numbering", () => {
     const f = computeFlows(board([call("a", 9, "b"), call("a", 3, "c"), call("b", 5, "d")]));
-    expect(["a", "c", "b", "d"].map((id) => f.byId.get(id)!.num)).toEqual(["", "1", "2", "2.1"]);
-    expect(["a", "c", "b", "d"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "A", "A", "A"]);
-    expect(walkOrder(f.roots[0]).map((n) => n.id)).toEqual(["a", "c", "b", "d"]);
-  });
-  it("labels every card with its tree's letter", () => {
-    const f = computeFlows(board([call("a", 1, "b"), call("c", 1, "d")]));
-    expect(f.byId.get("b")!.label).toBe("A");
-    expect(f.byId.get("c")!.label).toBe("B");
-    expect(f.byId.get("d")!.label).toBe("B");
+    expect(["a", "b", "c", "d"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "A", "A", "A"]);
+    expect(f.graphs).toHaveLength(1);
+    expect(f.graphs[0].roots).toEqual(["a"]);
+    expect(f.kids.get("a")!.map((l) => l.to.card)).toEqual(["c", "b"]); // by source line
     expect(f.byId.has("e")).toBe(false);
   });
-  it("attaches only to cards with no incoming call, without loops", () => {
+  it("letters follow the creation order of each graph's oldest card, not b.cards order", () => {
+    const b = board([call("c", 1, "d"), call("b", 1, "a")]);
+    expect(computeFlows(b).byId.get("d")!.label).toBe("B");
+    expect(computeFlows(b).byId.get("a")!.label).toBe("A"); // a and b are older than c and d
+    b.cards.reverse(); // Arrange (send to back / bring to front) reorders b.cards
+    expect(computeFlows(b).byId.get("d")!.label).toBe("B");
+    expect(computeFlows(b).byId.get("a")!.label).toBe("A");
+  });
+  it("a card can have several callers; joining two graphs keeps the older graph's mark", () => {
     const b = board([call("a", 1, "b"), call("c", 1, "d")]);
+    expect(computeFlows(b).byId.get("d")!.label).toBe("B");
+    b.links.push(call("b", 2, "d")); // d is now called from c and from b
     const f = computeFlows(b);
-    expect(canAttach(b, f, "a", "b").ok).toBe(false); // b already has an incoming link
-    expect(canAttach(b, f, "a", "e").ok).toBe(true);
-    expect(canAttach(b, f, "b", "a").ok).toBe(false); // would form a cycle
-    expect(canAttach(b, f, "b", "c").ok).toBe(true); // root of another tree: the whole tree merges in
+    expect(f.graphs).toHaveLength(1);
+    expect(["a", "b", "c", "d"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "A", "A", "A"]);
+    expect(f.parents.get("d")!.map((l) => l.from.card).sort()).toEqual(["b", "c"]);
+    expect(f.graphs[0].roots.sort()).toEqual(["a", "c"]);
   });
-  it("keeps both Compare columns in one flow on expand and attach", () => {
-    const cmp: Card = { id: "k", kind: "compare", cols: ["p", "q"] };
-    const b: Board = { ...emptyBoard("b", "B"), cards: [...["a", "b", "e", "p", "q"].map(code), cmp], links: [call("p", 1, "a")] };
+  it("user marks are keyed by the graph's oldest card; auto letters skip the letters users took", () => {
+    const b = board([call("a", 1, "b"), call("c", 1, "d")], ["a", "b", "c", "d", "e", "f"]);
+    b.links.push(call("e", 1, "f"));
+    b.marks = { c: { letter: "A" } };
+    let f = computeFlows(b);
+    expect(["a", "c", "e"].map((id) => f.byId.get(id)!.label)).toEqual(["B", "A", "C"]);
+    expect(f.byId.get("c")!.custom).toBe(true);
+    b.marks = { a: { icon: "star" } };
+    f = computeFlows(b);
+    expect(f.byId.get("b")!.mark).toEqual({ icon: "star" });
+    expect(["a", "c", "e"].map((id) => f.byId.get(id)!.label)).toEqual(["", "A", "B"]);
+    // joining: the younger graph's own mark yields to the older graph's
+    b.marks = { c: { letter: "Z" } };
+    b.links.push(call("b", 2, "c"));
+    f = computeFlows(b);
+    expect(f.byId.get("d")!.label).toBe("A");
+  });
+  it("cycles are allowed; self-calls do not make a graph", () => {
+    const f = computeFlows(board([call("a", 1, "b"), call("b", 1, "a"), call("c", 1, "c")]));
+    expect(f.graphs).toHaveLength(1);
+    expect(f.graphs[0].roots).toEqual(["a"]);
+    expect(f.byId.has("c")).toBe(false);
+    expect(descendants(f, "a")).toEqual(["b"]);
+  });
+  it("Compare columns may sit in different graphs", () => {
+    const b = board([call("a", 1, "p"), call("b", 1, "q")], ["a", "b", "p", "q"]);
+    b.cards.push({ id: "k", kind: "compare", cols: ["p", "q"] });
     const f = computeFlows(b);
-    expect(canExpand(b, "q").ok).toBe(false); // q would become the root of a second tree
-    expect(canExpand(b, "p").ok).toBe(true);
-    expect(canExpand(b, "a").ok).toBe(true);
-    expect(canAttach(b, f, "a", "q").ok).toBe(true); // q joins p's tree
-    const b2: Board = { ...b, links: [call("p", 1, "a"), call("b", 1, "e")] };
-    expect(canAttach(b2, computeFlows(b2), "b", "q").ok).toBe(false); // q joins b's tree while p is in another
-    const b3: Board = { ...b, links: [] };
-    expect(canExpand(b3, "q").ok).toBe(true);
-    expect(canAttach(b3, computeFlows(b3), "q", "p").ok).toBe(true);
+    expect([f.byId.get("p")!.label, f.byId.get("q")!.label]).toEqual(["A", "B"]);
   });
-  it("forbids comparing cards of two different flows", () => {
-    const f = computeFlows(board([call("a", 1, "b"), call("c", 1, "d")]));
-    expect(canCompare(f, "b", "d").ok).toBe(false);
-    expect(canCompare(f, "b", "a").ok).toBe(true);
-    expect(canCompare(f, "b", "e").ok).toBe(true);
+  it("walkthrough: Call arrows depth-first by source line, then plain arrows; visited once", () => {
+    // step → schedule → alloc (calls), step → note (plain), alloc → step (call, a cycle)
+    const ids = ["step", "schedule", "note", "alloc", "x"];
+    const b = board([plain("step", "note", 2), call("step", 5, "schedule"), call("schedule", 3, "alloc"), call("alloc", 1, "step"), plain("note", "x")], ids);
+    expect(walkOrder(b, "step")).toEqual(["step", "schedule", "alloc", "note", "x"]);
+    expect(walkOrder(b, "schedule")).toEqual(["schedule", "alloc", "step", "note", "x"]);
+    const c = board([call("a", 9, "b"), call("a", 3, "c"), call("b", 5, "d"), call("c", 1, "d")]);
+    expect(walkOrder(c, "a")).toEqual(["a", "c", "d", "b"]);
   });
-  it("hides collapsed subtrees", () => {
-    const b = board([call("a", 1, "b"), call("b", 1, "c")]);
+  it("collapse hides a card only when every call path from a root passes through a collapsed card", () => {
+    const b = board([call("a", 1, "b"), call("b", 1, "c"), call("a", 2, "d"), call("d", 1, "c"), call("c", 1, "e")]);
     b.place.b = { x: 0, y: 0, w: 100, collapsed: true };
-    expect([...hiddenByCollapse(b, computeFlows(b))]).toEqual(["c"]);
+    expect([...hiddenByCollapse(b, computeFlows(b))]).toEqual([]); // c is still reachable through d
+    b.place.d = { x: 0, y: 0, w: 100, collapsed: true };
+    expect([...hiddenByCollapse(b, computeFlows(b))].sort()).toEqual(["c", "e"]);
+    b.place.a = { x: 0, y: 0, w: 100, collapsed: true };
+    b.place.b.collapsed = undefined; b.place.d.collapsed = undefined;
+    expect([...hiddenByCollapse(b, computeFlows(b))].sort()).toEqual(["b", "c", "d", "e"]); // roots stay visible
   });
-
 });
 
 describe("snapping and align", () => {
@@ -298,11 +331,12 @@ describe("entry points", () => {
 });
 
 describe("migrateBoard", () => {
-  it("turns a v1 board into v4", () => {
+  it("turns a v1 board into v5", () => {
     const b = migrateBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
-    expect(b.version).toBe(4);
+    expect(b.version).toBe(5);
+    expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [2], symbol: { qual: "f" } });
     expect(b.place.c1).toEqual({ x: 0, y: 0, w: 500 });
@@ -328,7 +362,7 @@ describe("migrateBoard", () => {
     expect(b.place.k).toEqual({ x: 10, y: 20, w: 900 });
     expect(b.cards.find((c) => c.id === "w")).toEqual({ id: "w", kind: "web", url: "https://x.org", meta: { title: "X" } });
     expect(b.cards.find((c) => c.id === "i")).toMatchObject({ bg: true });
-    expect(b.links[0]).toMatchObject({ kind: "plain", arrow: "none" });
+    expect(b.links[0]).toEqual({ id: "l", from: { card: "a" }, to: { card: "w" }, style: { head: { end: false } } }); // old plain links had no arrowhead
     expect(b.stickers).toEqual([]);
     expect(migrateBoard(structuredClone(b))).toEqual(b);
   });
@@ -340,13 +374,59 @@ describe("migrateBoard", () => {
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(4);
+    expect(b.version).toBe(5);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
     expect((b.cards[0] as CodeCard).mergedFrom![0].place.h).toBe(164);
-    expect(migrateBoard(structuredClone(b))).toEqual(b); // v4 is read as is
+    expect(migrateBoard(structuredClone(b))).toEqual(b); // v5 is read as is
     expect(estSize(b.cards[0], b.place.a).h).toBe(300); // estimates still count the header
+  });
+  it("v4 → v5: call links become Call-marked arrows, plain links keep their look", () => {
+    const raw = {
+      version: 4, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, sections: [], sidenotes: [], stickers: [],
+      cards: [code("a"), code("b"), { id: "n", kind: "note", md: "x", bg: true }],
+      place: { a: { x: 0, y: 0, w: 1 }, b: { x: 0, y: 0, w: 1 }, n: { x: 0, y: 0, w: 1 } },
+      links: [
+        { id: "c", kind: "call", from: { card: "a", seg: "sa", line: 3 }, to: { card: "b" }, call: { name: "g", col: 8 }, vars: [{ a: "x", b: "y" }], cands: [{ a: "x", b: "y" }, { a: "r", ret: true }], loop: true, label: "hot", at: 0.3, side: "left" },
+        { id: "p1", kind: "plain", from: { card: "n" }, to: { card: "a", seg: "sa", line: 2 }, arrow: "both", solid: false, color: "blue" },
+        { id: "p2", kind: "plain", from: { card: "a", seg: "sa", line: 1 }, to: { card: "n" }, arrow: "end", side: "right" },
+        { id: "p3", kind: "plain", from: { card: "a" }, to: { card: "n" } },
+      ],
+    };
+    const b = loadBoard(structuredClone(raw));
+    expect(b.version).toBe(5);
+    expect(b.links).toEqual([
+      { id: "c", from: { card: "a", seg: "sa", line: 3 }, to: { card: "b" }, label: "hot", at: 0.3, sides: { from: "left" }, call: { name: "g", col: 8, vars: [{ a: "x", b: "y" }], cands: [{ a: "x", b: "y" }, { a: "r", ret: true }], loop: true } },
+      { id: "p1", from: { card: "n" }, to: { card: "a", seg: "sa", line: 2 }, style: { dash: true, head: { start: true }, color: "blue" } },
+      { id: "p2", from: { card: "a", seg: "sa", line: 1 }, to: { card: "n" }, sides: { from: "right" } },
+      { id: "p3", from: { card: "a" }, to: { card: "n" } },
+    ]);
+    expect(b.links.every((l) => !("kind" in l))).toBe(true);
+    expect(migrateBoard(structuredClone(b))).toEqual(b);
+  });
+  it("v4 → v5 keeps every flow letter, and Arrange no longer changes them", () => {
+    // Old letters: trees ordered by their root's place in b.cards; a child card earlier in b.cards than its root (r2's child k) must not change that
+    const ids = ["k", "x", "r1", "c1", "r2", "y"];
+    const old = (from: string, to: string, line = 1) => ({ id: `${from}-${to}`, kind: "call", from: { card: from, seg: `s${from}`, line }, to: { card: to } });
+    const raw = {
+      version: 4, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, sections: [], sidenotes: [], stickers: [], place: {},
+      cards: ids.map(code), links: [old("r1", "c1"), old("r2", "k"), old("r2", "x", 2)],
+    };
+    const b = loadBoard(structuredClone(raw));
+    let f = computeFlows(b);
+    expect(["r1", "c1", "r2", "k", "x"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "A", "B", "B", "B"]);
+    expect(f.graphs.map((g) => g.id)).toEqual(["r1", "r2"]); // the old root is the graph's oldest card
+    b.cards = [b.cards[4], ...b.cards.filter((_, i) => i !== 4)]; // r2 sent to back (it used to become A)
+    f = computeFlows(b);
+    expect(["r1", "r2"].map((id) => f.byId.get(id)!.label)).toEqual(["A", "B"]);
+    // a card added later is younger than everything migrated
+    b.cards.push(code("z"));
+    stampBorn(b);
+    expect(b.born!.z).toBe(6);
+  });
+  it("refuses a board written by a newer CodeBoard", () => {
+    expect(() => migrateBoard({ version: 6, id: "b", name: "x", cards: [] })).toThrow(/newer/);
   });
 });
 

@@ -2,7 +2,7 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
+  placeChild, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
   type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
@@ -102,7 +102,7 @@ export function placeSidenote(id: string) {
   if (isCode(card) && card.segments[0].src.kind === "free") requestViews(card.segments);
   mutate((b) => {
     b.sidenotes = b.sidenotes.filter((k) => k.id !== id);
-    b.links.push({ id: uid("l"), kind: "plain", from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card: nid } });
+    b.links.push({ id: uid("l"), from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card: nid } });
   });
   closePop();
 }

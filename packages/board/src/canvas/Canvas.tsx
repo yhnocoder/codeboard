@@ -9,7 +9,8 @@ import { trackCardLod, izMap } from "../state/lodcards";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
 import { CanvasStickers, LinkStickers } from "../stickers/Picker";
-import { LinksSvg, LinkLabels } from "./Links";
+import { LinksSvg, Traffic } from "./Links";
+import { LinkLabels } from "./Labels";
 import { SectionFrames, SectionLabels } from "./Sections";
 import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
 import { Icon } from "../ui/icons";
@@ -48,6 +49,7 @@ export function Canvas() {
       <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
         <LinksSvg />
+        <Traffic />
         <For each={placed()}>{(c) => <CardView card={c} />}</For>
         <CanvasStickers />
         <SectionLabels />

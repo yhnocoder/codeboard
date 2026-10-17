@@ -1,5 +1,5 @@
 // 白板界面：画布、底部唯一的工具栏（新建 · Search · ⋯）、缩放、讲解条、横幅、提示。看板就是一个普通编辑器标签页。
-import { Show, For, createEffect, createMemo, on } from "solid-js";
+import { Show, For, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
 import { tune } from "./state/tune";
 import { unwrap } from "solid-js/store";
 import { state, mutate, live, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
@@ -20,6 +20,8 @@ import { send } from "./host";
 import { cardTitle } from "@codeboard/core";
 import * as A from "./actions";
 import { flows, cardById } from "./state/store";
+import { MarkView } from "./cards/Card";
+import { look, traffic, setTraffic } from "./state/look";
 
 export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
@@ -48,6 +50,7 @@ export function App() {
       <Show when={!walk()}><Toolbar /></Show>
       <Dock />
       <Show when={walk()}><WalkBar /></Show>
+      <Show when={!walk()}><NavBar /></Show>
       <Show when={keysOpen()}><Keys /></Show>
       <Popovers />
       <Show when={A.stickerPick()}><StickerPicker /></Show>
@@ -126,6 +129,11 @@ function Toolbar() {
 function Dock() {
   return (
     <div class="over dock"><div class="pill">
+      {/* City 的红绿灯：车流开关，默认红灯（车不动）；绿灯时车沿路开（canvas/Links.tsx 的 Traffic） */}
+      <Show when={look() === "city"}>
+        <button class="ib traffic" aria-label="Moving Cars" aria-pressed={traffic()} data-tip={traffic() ? "Stop Cars" : "Start Cars"} onClick={() => setTraffic(!traffic())} />
+        <span class="sep" />
+      </Show>
       <button class="ib" aria-label="Zoom Out" data-tip="Zoom Out" data-kbd={`${A.K.mod}−`} onClick={() => zoomAt(0.8)}><Icon name="minus" /></button>
       <span class="zoom" onClick={() => zoomAt(1 / camTarget().z)} data-tip="Zoom to 100%" data-kbd={`${A.K.mod}1`}>{Math.round(cam.z * 100)}%</span>
       <button class="ib" aria-label="Zoom In" data-tip="Zoom In" data-kbd={`${A.K.mod}+`} onClick={() => zoomAt(1.25)}><Icon name="plus" /></button>
@@ -143,13 +151,33 @@ function WalkBar() {
   const desc = () => cardById(cur())?.card.desc;
   return (
     <div class="present on"><div class="pill">
-      <span class="pn">{node()?.label}</span>
+      <Show when={node()}><span class="pn"><MarkView g={node()!} /></span></Show>
       <span class="ptitle">{title()}</span>
       <span class="cnt">{w().i + 1} / {w().order.length}</span>
       <button class="ib" aria-label="Previous Step" data-tip="Previous Step" data-kbd="←" disabled={w().i === 0} onClick={() => A.walkTo(w().i - 1)}><Icon name="left" /></button>
       <button class="ib" aria-label="Next Step" data-tip="Next Step" data-kbd="→" disabled={w().i === w().order.length - 1} onClick={() => A.walkTo(w().i + 1)}><Icon name="right" /></button>
       <button class="ib" aria-label="Exit Walkthrough" data-tip="Exit Walkthrough" data-kbd="Esc" onClick={() => A.exitWalk()}><Icon name="close" /></button>
       <Show when={desc()}><div class="pdesc" innerHTML={A.mdBlock(desc()!)} /></Show>
+    </div></div>
+  );
+}
+
+/** 跳转（Go to、Linked here）之后在顶上显示一会儿：◀ Back · Forward ▶（⌃- / ⌃⇧-） */
+function NavBar() {
+  const [show, setShow] = createSignal(false);
+  let t: number | undefined;
+  createEffect(on(A.navState, (n) => {
+    clearTimeout(t);
+    const any = n.back > 0 || n.fwd > 0;
+    setShow(any && n.at > 0);
+    if (any) t = window.setTimeout(() => setShow(false), 6000);
+  }, { defer: true }));
+  onCleanup(() => clearTimeout(t));
+  const mac = () => state.host.isMac;
+  return (
+    <div class="present navbar" classList={{ on: show() }}><div class="pill">
+      <button class="tlink" disabled={!A.navState().back} data-tip="Back" data-kbd={mac() ? "⌃-" : "Ctrl+Alt+-"} onClick={() => A.navBack()}>◀ Back</button>
+      <button class="tlink" disabled={!A.navState().fwd} data-tip="Forward" data-kbd={mac() ? "⌃⇧-" : "Ctrl+Alt+Shift+-"} onClick={() => A.navForward()}>Forward ▶</button>
     </div></div>
   );
 }

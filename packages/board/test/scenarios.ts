@@ -3,6 +3,9 @@ import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./h
 import { emptyBoard, type Board } from "@codeboard/core";
 import { V015 } from "./v015";
 import { WEB } from "./scenarios-web";
+import { V017 } from "./v017";
+import { V017LABELS } from "./v017labels";
+import { THEMES_V17 } from "./scenarios-themes";
 
 const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -18,6 +21,9 @@ const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .c
 const S: Record<string, () => Promise<void>> = {
   ...V015,
   ...WEB,
+  ...V017,
+  ...V017LABELS,
+  ...THEMES_V17,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");
@@ -171,7 +177,7 @@ const S: Record<string, () => Promise<void>> = {
     console.log("sections:", JSON.stringify(h.board().sections.map((q) => [q.title, q.collapsed ?? false])));
     await h.page.context().browser()!.close();
   },
-  // Regression: expanding / linking must not split a Compare's two panes into two trees
+  // v0.1.7: the Compare one-flow rule is gone: each column can expand into its own call graph, and the Compare shows both marks
   async cmptree() {
     const h = await open({ board: boardWith("LLMEngine.step", "Scheduler.schedule"), light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(400);
@@ -180,16 +186,15 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.locator(".ctx button", { hasText: "Compare" }).first().click(); await h.page.waitForTimeout(800);
     await h.page.locator(".card .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(800);
     await h.page.keyboard.press("Escape");
-    await h.page.locator(".card .call", { hasText: /^can_allocate$/ }).first().click(); await h.page.waitForTimeout(800);
-    const toast = await h.page.locator(".toast").textContent().catch(() => "");
-    const roots = new Set(h.board().links.filter((l) => l.kind === "call").map((l) => l.from.card));
+    await h.page.locator(".card .call", { hasText: /^can_allocate$/ }).first().click(); await h.page.waitForTimeout(1600);
     const b = h.board(); const cmp = b.cards.find((c) => c.kind === "compare") as any;
-    const ok = b.links.filter((l) => l.kind === "call").length === 1 && /one flow/.test(toast ?? "");
-    console.log(ok ? "PASS" : "FAIL", "cmptree", JSON.stringify({ links: b.links.length, roots: [...roots], cols: cmp?.cols, toast }));
+    const marks = await h.page.locator(".card.cmp .chead .step").allTextContents();
+    const ok = b.links.filter((l) => l.call).length === 2 && marks.length === 2 && new Set(marks).size === 2;
+    console.log(ok ? "PASS" : "FAIL", "cmptree", JSON.stringify({ links: b.links.length, cols: cmp?.cols, marks }));
     await shot(h, "cmptree");
     await h.page.context().browser()!.close();
   },
-  // Regression: deleting a Link / card must not split a Compare's two panes into two trees either (R → X → cl, R → Y → cr)
+  // v0.1.7: deleting a link or card under a Compare is no longer refused (R → X → cl, R → Y → cr); the columns end up in two graphs
   async cmpdel() {
     const b = boardWith("LLMEngine.step", "Scheduler.schedule", "Scheduler.postprocess");
     const [R, X, Y] = b.cards as any[];
@@ -199,27 +204,21 @@ const S: Record<string, () => Promise<void>> = {
     b.cards.push(cl, cr, { id: "k", kind: "compare", cols: [cl.id, cr.id] });
     b.place.k = { x: 1400, y: 700, w: 900 };
     const ln = (c: any, d: number) => c.segments[0].start + d;
-    const call = (id: string, f: any, line: number, t: any) => ({ id, kind: "call", from: { card: f.id, seg: f.segments[0].id, line }, to: { card: t.id } });
-    b.links.push(call("RX", R, ln(R, 2), X) as any, call("RY", R, ln(R, 4), Y) as any, call("Xcl", X, ln(X, 3), cl) as any, call("Ycr", Y, ln(Y, 3), cr) as any);
+    const call = (id: string, f: any, line: number, t: any) => ({ id, from: { card: f.id, seg: f.segments[0].id, line }, to: { card: t.id }, call: { name: "f", col: 0 } });
+    b.links.push(call("RX", R, ln(R, 2), X), call("RY", R, ln(R, 4), Y), call("Xcl", X, ln(X, 3), cl), call("Ycr", Y, ln(Y, 3), cr));
     const h = await open({ board: b, light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
-    const toast = () => h.page.locator(".toast").textContent().catch(() => "");
-    // Delete the common ancestor card
-    await h.page.locator(".card", { has: h.page.locator(".ctitle", { hasText: /^LLMEngine\.step$/ }) }).locator(".chead").click({ position: { x: 40, y: 10 } });
-    await h.page.waitForTimeout(100);
-    await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
-    const t1 = await toast();
-    await shot(h, "cmpdel-0");
-    // Delete the R → X link (context menu)
-    await h.page.keyboard.press("Escape");
-    await h.page.waitForTimeout(2800); // wait for the previous toast to disappear
+    const marks0 = await h.page.locator(".card.cmp .chead .step").allTextContents();
+    // Delete the R → X link, then the common ancestor card
     await h.page.locator('path.lhit[data-link="RX"]').dispatchEvent("pointerdown", { button: 0 });
     await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
-    const t2 = await toast();
-    await h.page.waitForTimeout(1300);
+    await h.page.locator(".card", { has: h.page.locator(".ctitle", { hasText: /^LLMEngine\.step$/ }) }).locator(".chead").click({ position: { x: 40, y: 10 } });
+    await h.page.waitForTimeout(100);
+    await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(1600);
     const nb = h.board();
-    const ok = nb.cards.length === 6 && nb.links.length === 4 && /one flow/.test(t1 ?? "") && /one flow/.test(t2 ?? "");
-    console.log(ok ? "PASS" : "FAIL", "cmpdel", JSON.stringify({ cards: nb.cards.length, links: nb.links.map((l) => l.id), t1, t2 }));
+    const marks = await h.page.locator(".card.cmp .chead .step").allTextContents();
+    const ok = nb.cards.length === 5 && nb.links.map((l) => l.id).join() === "Xcl,Ycr" && marks0.join() === "A,A" && new Set(marks).size === 2;
+    console.log(ok ? "PASS" : "FAIL", "cmpdel", JSON.stringify({ cards: nb.cards.length, links: nb.links.map((l) => l.id), marks0, marks }));
     await shot(h, "cmpdel");
     await h.page.context().browser()!.close();
   },
@@ -229,7 +228,7 @@ const S: Record<string, () => Promise<void>> = {
     const [A, B] = b.cards as any[];
     const sa = A.segments[0], sb = B.segments[0];
     sa.hidden = [[sa.start + 8, sa.start + 9]];
-    b.links.push({ id: "L", kind: "plain", from: { card: B.id, seg: sb.id, line: sb.start + 2 }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
+    b.links.push({ id: "L", from: { card: B.id, seg: sb.id, line: sb.start + 2 }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
     b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: B.id, seg: sb.id, lines: [sb.start + 2, sb.start + 2] } } as any);
     const h = await open({ board: b, light });
     // A moves down 5 lines as a whole (HEAD changed, content didn't)
@@ -256,7 +255,7 @@ const S: Record<string, () => Promise<void>> = {
     const b = boardWith("Scheduler.schedule", "Scheduler.postprocess");
     const [A, B] = b.cards as any[];
     const sa = A.segments[0], name0 = b.name;
-    b.links.push({ id: "L", kind: "plain", from: { card: B.id }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
+    b.links.push({ id: "L", from: { card: B.id }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
     b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: A.id, seg: sa.id, lines: [sa.start + 2, sa.start + 2] } } as any);
     const h = await open({ board: b, light });
     await h.post({ type: "rename", name: "Renamed" }); await h.page.waitForTimeout(200);
@@ -313,7 +312,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.locator(".card .src .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(700);
     const root = h.board().cards[0].id;
     await h.page.locator(".card").first().locator(".chead").click({ button: "right" }); await h.page.waitForTimeout(200);
-    await h.page.locator('.ctx button:has(.lb:text-is("Flow"))').hover(); await h.page.waitForTimeout(400);
+    await h.page.locator('.ctx button:has(.lb:text-is("Call Graph"))').hover(); await h.page.waitForTimeout(400);
     await h.page.locator(".ctx button", { hasText: /Collapse/ }).first().click(); await h.page.waitForTimeout(1500);
     const before = JSON.stringify(h.board());
     await h.page.keyboard.press("Escape"); await h.page.keyboard.press("p"); await h.page.waitForTimeout(600);
@@ -397,7 +396,8 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.mouse.move(c!.x + 10, c!.y + c!.height / 2); await h.page.mouse.down();
     await h.page.mouse.move(t!.x + 60, t!.y + 40, { steps: 10 }); await h.page.mouse.up();
     await h.page.waitForTimeout(2500);
-    console.log("links:", JSON.stringify(h.board().links.map((l: any) => ({ kind: l.kind, cands: l.cands }))));
+    const ls = h.board().links;
+    console.log(ls.length === 1 && ls[0].call && ls[0].call.cands?.length ? "PASS" : "FAIL", "attachvars", JSON.stringify(ls.map((l) => l.call)));
     await shot(h, "attachvars");
     await h.page.context().browser()!.close();
   },
@@ -408,21 +408,21 @@ const S: Record<string, () => Promise<void>> = {
     for (const [q, name] of [["Scheduler.schedule", "schedule"], ["ModelRunner.run", "call"]] as const) {
       const s0 = findSym(q); const c = symCard(s0.f, s0.s); put(b, c, 0, 0);
       const seg = (b.cards[0] as any).segments[0], i = seg.text.findIndex((t: string) => t.includes(`.${name}(`));
-      b.links.push({ id: `c${b.links.length}`, kind: "call", from: { card: b.cards[0].id, seg: seg.id, line: seg.start + i }, to: { card: c.id }, call: { name, col: seg.text[i].indexOf(`.${name}(`) + 1 } } as any);
+      b.links.push({ id: `c${b.links.length}`, from: { card: b.cards[0].id, seg: seg.id, line: seg.start + i }, to: { card: c.id }, call: { name, col: seg.text[i].indexOf(`.${name}(`) + 1 } } as any);
     }
     const [a] = b.cards;
-    const kids = b.links.filter((l) => l.kind === "call").map((l) => l.to.card);
+    const kids = b.links.filter((l) => l.call).map((l) => l.to.card);
     b.place[a.id] = { x: 80, y: 200, w: 520 };
     kids.forEach((id, i) => { b.place[id] = { x: 760, y: 60 + i * 420, w: 470, h: i ? 264 : 324 }; }); // code area height (format v4): 300 / 360 tall in Warm Ink
     const vars = [[{ a: "seqs" }, { a: "is_prefill" }], [{ a: "token_ids", ret: true }]];
-    b.links.filter((l) => l.kind === "call").forEach((l, i) => { (l as any).vars = vars[i] ?? []; });
+    b.links.filter((l) => l.call).forEach((l, i) => { l.call!.vars = vars[i] ?? []; });
     const note = { id: "n1", kind: "note" as const, md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.", bg: true };
     const title = { id: "t1", kind: "note" as const, md: "Engine loop", bg: false, size: "title" as const };
     b.cards.push(note, title);
     b.place[note.id] = { x: 110, y: 520, w: 360, section: "sec1" }; b.place[title.id] = { x: 70, y: 70, w: 300 };
     b.sections.push({ id: "sec1", title: "Engine", x: 50, y: 160, w: 600, h: 560, color: "sand" });
     b.place[a.id].section = "sec1";
-    b.links.push({ id: "l1", kind: "plain", from: { card: note.id }, to: { card: a.id }, color: "blue", label: "why" } as any);
+    b.links.push({ id: "l1", from: { card: note.id }, to: { card: a.id }, style: { color: "blue" }, label: "why" });
     b.cam = { x: 120, y: 60, z: 0.92 };
     const h = await open({ board: b, light: false });
     await h.page.waitForTimeout(600);

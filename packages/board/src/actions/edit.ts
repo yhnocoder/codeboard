@@ -3,7 +3,7 @@ import { unwrap } from "solid-js/store";
 import {
   replaceCards, removeLinks,
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
+  placeChild, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
   type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
@@ -254,8 +254,7 @@ export function missingNote(c: CodeCard): string | null {
 export function compareCheck(): { ok: true } | { ok: false; why: string } {
   const cs = selCards();
   if (cs.length !== 2 || !cs.every((c) => c.kind === "code")) return { ok: false, why: "Select exactly two code cards" };
-  const r = canCompare(flows(), cs[0].id, cs[1].id);
-  return r.ok ? { ok: true } : { ok: false, why: r.reason };
+  return { ok: true };
 }
 export function doCompare() {
   const chk = compareCheck();
