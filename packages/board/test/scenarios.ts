@@ -8,6 +8,7 @@ import { V017LABELS } from "./v017labels";
 import { V017STACK } from "./v017stack";
 import { THEMES_V17 } from "./scenarios-themes";
 import { V018MD } from "./v018md";
+import { CODEEDIT } from "./scenarios-codeedit";
 import { V018TYPE } from "./v018type";
 import { V018REVIEW } from "./v018review";
 import { SHARED } from "./scenarios-shared";
@@ -36,6 +37,9 @@ const S: Record<string, () => Promise<void>> = {
   ...V017STACK,
   ...THEMES_V17,
   ...V018MD,
+  ...CODEEDIT,
+  /** 旧名字：v0.1.8 的 textarea 编辑换成 CodeMirror 后由 codeedit 接着查 */
+  v18codeedit: () => CODEEDIT.codeedit(),
   ...V018TYPE,
   ...V018REVIEW,
   ...SHARED,

@@ -500,6 +500,57 @@ void (async () => {
     forgetHeads();
   }
 
+  // 编辑中的代码（PR9）：没有语言服务时补全 / 悬停 / 签名都回空、不报错；有的话先同步虚拟文档再问，放在 near 那个文件旁边，
+  // 按光标前的词筛、截断，被新请求顶掉的作废，编辑结束清掉
+  {
+    const store = new Storage(nodeFs, { dir: () => fs.mkdtempSync("/tmp/codeboard-ce-") });
+    const h = makeHandler({ store } as unknown as BoardHost);
+    const p = {} as BoardPanel;
+    const send = (m: BoardToHost) => h(p, m);
+    await send({ type: "codeDoc", id: "free-a", lang: "python", text: "import os\nos." });
+    const c0 = await send({ type: "lspComplete", req: 1, id: "free-a", text: "import os\nos.", line: 1, col: 3, trigger: "." });
+    const h0 = await send({ type: "lspHover", req: 2, id: "free-a", text: "import os\nos.", line: 0, col: 7 });
+    const s0 = await send({ type: "lspSignature", req: 3, id: "free-a", text: "print(", line: 0, col: 6, trigger: "(" });
+    await send({ type: "codeDocClose", id: "free-a" });
+    check(JSON.stringify([c0, h0, s0]) === JSON.stringify([[], [], null]), "No language service (Pylance absent): completion, hover and signature come back empty", [c0, h0, s0]);
+
+    // 假的语言服务：记下同步了什么、问的时候文档是什么
+    const log: string[] = [];
+    const docs = new Map<string, string>();
+    let slow = 0;
+    W.language.scratch = {
+      sync: async (id, lang, text, near) => { log.push(`sync ${id} ${lang} ${near ? path.relative(WS, near) : "-"} ${JSON.stringify(text)}`); docs.set(id, text); },
+      close: async (id) => { log.push(`close ${id}`); docs.delete(id); },
+      completions: async (id, line, col) => {
+        if (slow) await new Promise((r) => setTimeout(r, slow));
+        log.push(`complete ${JSON.stringify(docs.get(id))} ${line}:${col}`);
+        return [...Array.from({ length: 1000 }, (_, i) => ({ label: `zz${i}` })), { label: "schedule", kind: "method" as const }, { label: "is_finished", kind: "method" as const }, { label: "reschedule" }];
+      },
+      hover: async () => ["```python\ndef schedule(self) -> tuple[list[Sequence], bool]\n```"],
+      signature: async () => ({ label: "allocate(seq: Sequence)", params: [{ at: [9, 22] as [number, number] }], active: 0 }),
+    };
+    const near = { src: { kind: "repo" as const, repo: "" }, path: "nanovllm/engine/llm_engine.py", version: { kind: "none" as const } };
+    await send({ type: "codeDoc", id: "free-b", lang: "python", text: "self.scheduler.", near });
+    const items = await send({ type: "lspComplete", req: 4, id: "free-b", text: "self.scheduler.sch", line: 0, col: 18 }) as { label: string }[];
+    check(log[0] === `sync free-b python nanovllm/engine/llm_engine.py "self.scheduler."` && log.includes(`complete "self.scheduler.sch" 0:18`), "The virtual document sits next to the linked source file and is synced before asking", log);
+    check(items.length === 2 && items[0].label === "schedule" && items[1].label === "reschedule", "Completion narrowed by the word before the cursor (prefix matches first)", items.slice(0, 5));
+    const all = await send({ type: "lspComplete", req: 5, id: "free-b", text: "self.scheduler.", line: 0, col: 15 }) as unknown[];
+    check(all.length === 300, "An empty prefix is capped at 300 items", all.length);
+    slow = 80;
+    const [a, b] = await Promise.all([
+      send({ type: "lspComplete", req: 6, id: "free-b", text: "self.scheduler.s", line: 0, col: 16 }),
+      send({ type: "lspComplete", req: 7, id: "free-b", text: "self.scheduler.sc", line: 0, col: 17 }),
+    ]) as unknown[][];
+    check(a.length === 0 && b.length === 2 && !log.includes(`complete "self.scheduler.s" 0:16`), "A newer request drops the older one before it reaches the language service", { a: a.length, b: b.length });
+    slow = 0;
+    const hv = await send({ type: "lspHover", req: 8, id: "free-b", text: "self.scheduler.schedule()", line: 0, col: 16 }) as string[];
+    const sg = await send({ type: "lspSignature", req: 9, id: "free-b", text: "self.block_manager.allocate(", line: 0, col: 28, trigger: "(" }) as { active: number } | null;
+    check(hv.length === 1 && /def schedule/.test(hv[0]) && sg?.active === 0, "Hover and signature help pass through", { hv, sg });
+    await send({ type: "codeDocClose", id: "free-b" });
+    check(log.at(-1) === "close free-b", "Closing the editor closes the virtual document", log.at(-1));
+    delete W.language.scratch;
+  }
+
   console.log(failed ? `${failed} failed` : "All passed");
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(2); });

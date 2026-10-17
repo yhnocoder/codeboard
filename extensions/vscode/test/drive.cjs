@@ -185,6 +185,63 @@ async function variantsStep(page) {
   await card(f, "Scheduler.schedule").locator(".vtab.up").click(); await sleep(600);
   check(await card(f, "Scheduler.schedule").locator(".chead .mine").count() === 0 && !/keep order/.test(await card(f, "Scheduler.schedule").locator(".src").textContent()), "switching back to Upstream shows the upstream code");
 }
+// PR9 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
+// 旁边的隐藏文件（这里是 nanovllm/engine/.codeboard-<卡>.py），import 按那个目录找；git status 里看不到，编辑完就删掉，
+// 也不会冒出未保存的标签页（重新加载窗口后也没有）。要 E2E_EXTENSIONS 里有 Pylance。E2E_ONLY=codeedit 只跑这一步
+async function codeeditStep(page) {
+  await openFile(page, "llm_engine.py", 51);
+  await page.keyboard.press("Alt+b"); await sleep(2500);
+  await command(page, "CodeBoard: Open Board");
+  let f = await boardFrame(page); await sleep(2500);
+  await f.locator("#board").click({ button: "right", position: { x: 80, y: 560 } }); await sleep(600);
+  await f.locator(".ctx button", { hasText: /^New Code/ }).first().click(); await sleep(1500);
+  check(await f.locator(".card .cm-content").count() === 1, "New Code opens a CodeMirror editor on the card");
+  await sleep(4000); // Pylance 先起来
+  const type = async (t) => { await page.keyboard.type(t, { delay: 40 }); };
+  const line = async (t) => { await type(t); await page.keyboard.press("Escape"); await page.keyboard.press("Enter"); }; // Esc 先关补全菜单（Enter 会接受补全）
+  const menu = async () => { await f.locator(".cbcm-ac li").first().waitFor({ timeout: 8000 }).catch(() => {}); await sleep(500); return f.locator(".cbcm-ac li .cm-completionLabel").allTextContents().catch(() => []); };
+  /** 打 t，等菜单里出现 want；没有就删掉、等语言服务分析完再试 */
+  const ask = async (t, want) => {
+    let items = [];
+    for (let i = 0; i < 4 && !items.includes(want); i++) {
+      if (i) { await page.keyboard.press("Escape"); for (let k = 0; k < t.length; k++) await page.keyboard.press("Backspace"); await sleep(2500); }
+      await type(t); items = await menu();
+    }
+    return items;
+  };
+  await line("import os");
+  await line("from nanovllm.engine.block_manager import BlockManager");
+  await line("from .scheduler import Scheduler");
+  const scratch = path.join(WS, "nanovllm/engine");
+  const hidden = fs.readdirSync(scratch).filter((n) => n.startsWith(".codeboard-"));
+  const status = execSync(`git -C "${WS}" status --porcelain`).toString().trim();
+  check(hidden.length === 1 && !status, "the virtual document is a hidden file next to the source, not in git status", { hidden, status });
+  const items = await ask("os.pat", "path");
+  check(items.includes("path"), "typing os.pat shows Pylance's completion menu with path", items.slice(0, 8));
+  await shot(page, "16-codeedit-completion");
+  await page.keyboard.press("Tab"); await sleep(300);
+  await type(".join(");
+  await f.locator(".cbcm-sig").first().waitFor({ timeout: 8000 }).catch(() => {});
+  const sig = await f.locator(".cbcm-sig-l").textContent().catch(() => "");
+  check(/^\(a: StrPath|join|path/.test(sig), "typing os.path.join( shows signature help", sig);
+  await shot(page, "17-codeedit-signature");
+  await page.keyboard.press("Escape"); await line("'a')");
+  const abs = await ask("BlockManager.", "allocate");
+  check(abs.includes("allocate"), "an absolute import from the workspace resolves (BlockManager. lists allocate)", abs.slice(0, 8));
+  await page.keyboard.press("Escape"); await line("allocate");
+  const rel = await ask("Scheduler.", "schedule");
+  check(rel.includes("schedule"), "a relative import next to the source resolves (Scheduler. lists schedule)", rel.slice(0, 8));
+  await page.keyboard.press("Escape"); await type("schedule");
+  await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await sleep(1500);
+  const b = boardJson();
+  const fc = b && b.cards.find((k) => k.kind === "code" && k.segments[0].src.kind === "free");
+  check(fc && fc.segments[0].text.join("\n").includes("os.path.join('a')"), "the edited code is saved on the card", fc && fc.segments[0].text);
+  await sleep(1000);
+  check(!fs.readdirSync(scratch).some((n) => n.startsWith(".codeboard-")), "the hidden file is deleted when editing ends");
+  await command(page, "Developer: Reload Window"); await sleep(9000);
+  const tabs = await page.locator(".tabs-container .tab").allTextContents().catch(() => []);
+  check(!tabs.some((t) => /codeboard-|Untitled/.test(t)), "no leftover editor tab for the virtual document after reloading the window", tabs);
+}
 const finish = async (browser, errors) => {
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
@@ -209,6 +266,7 @@ const finish = async (browser, errors) => {
   if (process.env.E2E_ONLY === "capture") { await captureStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "export") { await exportStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "variants") { await variantsStep(page); return finish(browser, errors); }
+  if (process.env.E2E_ONLY === "codeedit") { await codeeditStep(page); return finish(browser, errors); }
 
   // 1. Alt+B inside a function: the board opens and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
