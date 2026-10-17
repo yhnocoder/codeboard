@@ -69,7 +69,7 @@ const boardJson = () => {
 
 (async () => {
   let browser;
-  for (let i = 0; i < 60 && !browser; i++) { try { browser = await chromium.connectOverCDP("http://127.0.0.1:9223"); } catch { await sleep(1000); } }
+  for (let i = 0; i < 60 && !browser; i++) { try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${process.env.CDP_PORT || 9223}`); } catch { await sleep(1000); } }
   if (!browser) throw new Error("cannot connect to VS Code");
   let page;
   for (let i = 0; i < 60 && !page; i++) {
