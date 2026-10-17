@@ -1,7 +1,7 @@
 // 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
 import { githubCard, ghQuery } from "./github";
@@ -20,6 +20,8 @@ import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLab
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { highlight, segView, viewsFor } from "./views";
 import { fromHostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
+
+const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
 /** 处理函数的返回值：要回答的请求是它的回答，其他的不管 */
@@ -100,6 +102,47 @@ export function makeHandler(panels: BoardHost): Handler {
     confirm: async (_p, m) => (await workspace().ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
     pickFile: () => pickImage(),
     complete: (p, m) => complete(p, m.before, m.after),
+    // ---------- 子白板 ----------
+    skeletons: async (_p, m) => {
+      await store.list(); // 缓存里还没有的白板先扫进来
+      return Object.fromEntries(m.ids.map((id) => [id, panels.skeleton(id)]));
+    },
+    newBoard: async (p, m) => {
+      // Turn into Board：白板拆好的新白板（schema 校验一遍）。共享卡在新白板上还是共享卡；放在父白板的组里
+      const b = loadBoard(structuredClone({ ...m.board, version: BOARD_VERSION }));
+      if (!SAFE_BOARD_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
+      const refs = [...store.refsOf(p.id)].filter((id) => b.cards.some((c) => c.id === id));
+      await store.save(b, { group: store.groupOf(p.id) ?? null, refs });
+      return true;
+    },
+    enterBoard: async (p, m) => {
+      // 不能套成环：子白板里（一路往下）有这块白板
+      const metas = await store.list();
+      const subs = (id: string) => metas.find((x) => x.id === id)?.subs;
+      if (m.id === p.id || wouldCycle(subs, p.id, m.id)) { p.toast("Can't open a board inside itself."); return; }
+      const name = p.board?.name ?? metas.find((x) => x.id === p.id)?.name ?? "";
+      const ok = await panels.switchBoard(p, m.id, { crumbs: [...p.crumbs, { id: p.id, name, frame: m.frame }], cams: [...p.cams, m.cam], walk: m.walk });
+      if (!ok) p.toast("That board is already open in another tab.");
+    },
+    leaveBoard: async (p, m) => {
+      if (!p.crumbs.length) return;
+      const depth = Math.max(0, Math.min(p.crumbs.length - 1, m.depth ?? p.crumbs.length - 1));
+      const to = p.crumbs[depth];
+      const ok = await panels.switchBoard(p, to.id, { crumbs: p.crumbs.slice(0, depth), cams: p.cams.slice(0, depth), walk: m.walk, cam: p.cams[depth] });
+      if (!ok) p.toast("That board is already open in another tab.");
+    },
+    deleteBoard: async (p, m) => {
+      const b = await store.load(m.id);
+      if (!b) return false;
+      const ok = await workspace().ui.warn(`Delete board “${b.name}”?`, { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` }, "Delete");
+      if (ok !== "Delete") return false;
+      const open = panels.get(m.id);
+      if (open && open !== p) open.view.dispose();
+      await store.remove(m.id);
+      if (panels.target === m.id) panels.setTarget(undefined);
+      await panels.pushBoards();
+      return true;
+    },
   };
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }

@@ -14,6 +14,12 @@ import { prefetchCall, warmBoard } from "../src/prefetch";
 import { useWorkspace } from "../src/ws";
 import { allNames, lookupName, nameIndexReady, resetIndex, startNameIndex, watchNameIndex, type IndexEntry } from "../src/nameindex";
 import { WS, nodeWorkspace } from "./node-workspace";
+import { emptyBoard, skeletonOf, type BoardToHost, type Camera, type Crumb, type HostToBoard, type WalkHop } from "@codeboard/core";
+import { Storage } from "@codeboard/core/storage";
+import { nodeFs } from "../src/nodefs";
+import { makeHandler } from "../src/handlers";
+import { BoardPanel, type BoardHost, type BoardView } from "../src/boards";
+import { treeChildren } from "../src/boardtree";
 
 const W = nodeWorkspace();
 useWorkspace(W);
@@ -226,6 +232,59 @@ void (async () => {
     check(s1.calls.length > 0 && JSON.stringify(s1) === JSON.stringify(clipAnalysis(full, 20, 45)), "segAnalysis = whole-file analysis clipped to the segment");
     check(JSON.stringify(segAnalysis("python", t, 20, 45)) === JSON.stringify(s1), "segAnalysis after the whole file was analyzed: same result");
     check(JSON.stringify(segAnalysis("python", t, 1, 0).imports) === JSON.stringify(full.imports), "segAnalysis with no lines still has the file's imports");
+  }
+
+  // 子白板（线框 05）：进入 / 返回换的是同一个面板（面包屑、镜头、讲解带过去）、不能套成环、Turn into Board 存到父白板的组、侧栏的树
+  {
+    const dir = fs.mkdtempSync("/tmp/codeboard-sub-");
+    const store = new Storage(nodeFs, { dir: () => dir });
+    const E = emptyBoard("bE", "Engine"), S = emptyBoard("bS", "Scheduler"), X = emptyBoard("bX", "Other");
+    E.cards.push({ id: "f", kind: "board", board: "bS" }); E.place.f = { x: 0, y: 0, w: 560, h: 360 };
+    S.cards.push({ id: "n", kind: "note", md: "hi", bg: true }); S.place.n = { x: 0, y: 0, w: 200 };
+    await store.save(E, { group: "g1" }); await store.save(S); await store.save(X);
+    const switches: { to: string; crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }[] = [];
+    const toasts: string[] = [];
+    const view: BoardView = { postMessage: (m: HostToBoard) => { if (m.type === "toast") toasts.push(m.text); }, title: "", visible: true, active: true, reveal: () => undefined, dispose: () => undefined, resourceUrl: () => "" };
+    const panels: BoardHost = {
+      store, target: undefined, clip: undefined,
+      get: () => undefined, all: () => [], metas: () => store.list(), show: async () => undefined, setTarget: () => undefined, broadcast: () => undefined,
+      pushBoards: async () => undefined, staleChanged: () => undefined, refreshStale: async () => undefined, refreshShared: () => undefined, refreshSkeletons: () => undefined,
+      skeleton: (id) => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)?.name) : null; },
+      switchBoard: async (p, to, o) => { switches.push({ to, ...o }); p.id = to; p.crumbs = o.crumbs; p.cams = o.cams; return true; },
+    };
+    const h = makeHandler(panels);
+    const p = new BoardPanel("bE", view, panels);
+    p.ready = true;
+    p.board = store.peek("bE");
+    const send = (m: BoardToHost) => h(p, m);
+    const sk = await send({ type: "skeletons", req: 1, ids: ["bS", "nope"] }) as Record<string, unknown>;
+    check((sk.bS as { n: number }).n === 1 && sk.nope === null, "Skeletons: the child board's skeleton, null for a missing board", sk);
+    await send({ type: "enterBoard", id: "bS", frame: "f", cam: { x: 1, y: 2, z: 0.5 }, walk: { into: { root: "r", i: 2 }, start: "n" } });
+    check(p.id === "bS" && JSON.stringify(switches[0].crumbs) === JSON.stringify([{ id: "bE", name: "Engine", frame: "f" }]) && switches[0].cams[0].z === 0.5 && switches[0].walk?.start === "n", "Enter: same panel switches to the child with a breadcrumb, the parent camera and the walkthrough hop", switches[0]);
+    // 在子白板里放父白板：成环，拒绝（白板那边先拦；宿主这边进入时也查）
+    S.cards.push({ id: "g", kind: "board", board: "bE" }); S.place.g = { x: 0, y: 400, w: 560, h: 360 };
+    await send({ type: "enterBoard", id: "bE", frame: "g", cam: { x: 0, y: 0, z: 1 } });
+    check(switches.length === 1 && /inside itself/.test(toasts.at(-1) ?? ""), "Enter refuses a cycle", toasts);
+    await send({ type: "leaveBoard", walk: { resume: { root: "r", i: 3 } } });
+    check(p.id === "bE" && switches[1].crumbs.length === 0 && switches[1].cam?.z === 0.5 && switches[1].walk?.resume?.i === 3, "Leave: back to the parent with its camera and the walkthrough resume", switches[1]);
+    const nb = emptyBoard("bN", "New"); nb.cards.push({ id: "c1", kind: "note", md: "x", bg: true }); nb.place.c1 = { x: 80, y: 80, w: 200 };
+    const made = await send({ type: "newBoard", req: 2, board: nb });
+    check(made === true && store.groupOf("bN") === "g1" && (await store.load("bN"))?.cards.length === 1, "Turn into Board: the new board is saved in the parent's group");
+    // 侧栏：Scheduler 缩进在 Engine 下面，不在顶层；Other 在顶层
+    const metas = await store.list();
+    const top = treeChildren(metas, ["g1"]);
+    const g1 = treeChildren(metas, ["g1"], top.find((n) => n.kind === "group"));
+    const eng = g1.find((n) => n.kind === "board" && n.id === "bE")!;
+    const kids = treeChildren(metas, [], eng);
+    check(top.some((n) => n.kind === "board" && n.id === "bX") && !top.some((n) => n.kind === "board" && n.id === "bS") && kids.length === 1 && kids[0].kind === "board" && kids[0].id === "bS" && kids[0].path.join("/") === "bE/bS",
+      "Sidebar: child boards nest under their parents", { top, kids });
+    // 同一块白板在两块父白板下面各出现一次
+    X.cards.push({ id: "h", kind: "board", board: "bS" }); X.place.h = { x: 0, y: 0, w: 560, h: 360 };
+    await store.save(X);
+    const m2 = await store.list();
+    const ox = treeChildren(m2, ["g1"]).find((n) => n.kind === "board" && n.id === "bX")!;
+    check(treeChildren(m2, [], ox).some((n) => n.kind === "board" && n.id === "bS"), "Sidebar: a board can appear under several parents");
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 
   console.log(failed ? `${failed} failed` : "All passed");

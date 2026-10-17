@@ -1,6 +1,6 @@
 // 一块打开的白板（与 VS Code 无关的部分）：读白板、算段的展示数据和版本状态、发 init；宿主信息；版本状态重算。
 // 白板状态由 webview 持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。webview 本身（BoardView）和面板管理（BoardHost）由 VS Code 适配层实现。
-import type { Board, BoardMeta, BoardToHost, HostInfo, HostToBoard, Stale } from "@codeboard/core";
+import type { Board, BoardMeta, BoardToHost, Camera, Crumb, HostInfo, HostToBoard, Skeleton, Stale, WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor } from "./versions";
 import { viewsFor } from "./views";
@@ -11,7 +11,7 @@ import { startNameIndex } from "./nameindex";
 import { workspace } from "./ws";
 
 /** 宿主转发的 ⌘ / Ctrl 键（webview 里不自己处理）：与 package.json 里 codeboard.boardKey 的键一致（"+" 是 "=" 那个键按了 Shift）；board 的 lists.test.ts 会核对 */
-export const FORWARDED_KEYS = ["k", "d", "0", "1", "=", "+", "-", "shift+l", ","];
+export const FORWARDED_KEYS = ["k", "d", "0", "1", "=", "+", "-", "shift+l", "shift+b", ","];
 
 /** 白板的界面（VS Code 里是一个 webview 标签页） */
 export interface BoardView {
@@ -44,6 +44,12 @@ export interface BoardHost {
   clip: CardClip | undefined;
   /** 共享卡的情况（在几块白板上、谁连到它）重新推给白板；now = 不等防抖 */
   refreshShared(now?: boolean, fresh?: string): void;
+  /** 面板换一块白板显示（进入 / 离开子白板） */
+  /** 子白板的骨架重新推给白板（变了的）；now = 不等防抖，fresh = 刚 init 的白板 */
+  refreshSkeletons(now?: boolean, fresh?: string): void;
+  /** 一块白板的骨架（没了 = null） */
+  skeleton(id: string): Skeleton | null;
+  switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean>;
 }
 
 const INDEX_DELAY = 4000;
@@ -56,8 +62,14 @@ export class BoardPanel {
   selection: Extract<BoardToHost, { type: "selection" }> | undefined;
   stale: Record<string, Stale> = {};
   readonly: string | undefined;
+  /** 子白板的面包屑（从最外层到上一级）和每一级离开时的镜头；顶层白板是空的 */
+  crumbs: Crumb[] = [];
+  cams: Camera[] = [];
+  /** 下一次 init 要带上的：接着讲解、换掉存着的镜头（回到父白板时） */
+  next: { walk?: WalkHop; cam?: Camera } = {};
 
-  constructor(readonly id: string, readonly view: BoardView, private mgr: BoardHost) {}
+  /** id 会变：进入子白板时同一个面板换成那块白板（Panels.switchBoard） */
+  constructor(public id: string, readonly view: BoardView, private mgr: BoardHost) {}
 
   get visible() { return this.view.visible; }
 
@@ -71,18 +83,25 @@ export class BoardPanel {
   async init() {
     const b = await this.mgr.store.load(this.id);
     if (!b) { this.view.dispose(); return; }
+    const next = this.next;
+    this.next = {};
+    if (next.cam) b.cam = next.cam;
     this.board = b;
     this.view.title = b.name;
     const segs = boardSegments(b);
     const [views, stale, boards] = await Promise.all([viewsFor(segs), staleFor(segs), this.mgr.metas()]);
     this.stale = stale;
     this.readonly = await this.readonlyNote(b);
-    this.view.postMessage({ type: "init", board: b, boards, views, stale, host: this.host() });
+    const init: HostToBoard = { type: "init", board: b, boards, views, stale, host: this.host() };
+    if (this.crumbs.length) init.crumbs = this.crumbs;
+    if (next.walk) init.walk = next.walk;
+    this.view.postMessage(init);
     this.ready = true;
     const q = this.queue;
     this.queue = [];
     for (const m of q) this.view.postMessage(m);
     this.mgr.refreshShared(true, this.id);
+    this.mgr.refreshSkeletons(true, this.id);
     this.mgr.staleChanged(this.id, countStale(b, stale));
     // 白板已经出来了：后台让语言服务先热起来
     warmBoard(segs, () => this.mgr.get(this.id) === this);

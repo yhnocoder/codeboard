@@ -1,12 +1,13 @@
 // 侧栏：BOARDS（组 = 文件夹，白板后面是卡片数，有新版本的卡时加圆点）和 GITHUB FILES（下载过的 GitHub 文件）。
+// 子白板缩进在父白板下面（一块白板可以在几块父白板下面各出现一次）；有父白板的不再列在顶层。
 import * as vscode from "vscode";
-import type { BoardMeta } from "@codeboard/core";
 import { cachedFiles, githubFiles } from "./github";
 import type { Panels } from "./panel";
 import type { Storage } from "./storage";
 import { debounce } from "./ws";
+import { treeChildren, type TreeNode } from "./boardtree";
 
-type BNode = { kind: "group"; name: string } | { kind: "board"; id: string; meta: BoardMeta };
+type BNode = TreeNode;
 
 export class BoardsTree implements vscode.TreeDataProvider<BNode> {
   private emitter = new vscode.EventEmitter<void>();
@@ -15,14 +16,7 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode> {
   constructor(private store: Storage, private panels: Panels) {}
 
   async getChildren(n?: BNode): Promise<BNode[]> {
-    const metas = await this.store.list();
-    const board = (meta: BoardMeta): BNode => ({ kind: "board", id: meta.id, meta });
-    if (!n) {
-      const groups = await this.store.groups();
-      return [...groups.map((name): BNode => ({ kind: "group", name })), ...metas.filter((m) => !m.group).map(board)];
-    }
-    if (n.kind === "group") return metas.filter((m) => m.group === n.name).map(board);
-    return [];
+    return treeChildren(await this.store.list(), n ? [] : await this.store.groups(), n);
   }
 
   getTreeItem(n: BNode): vscode.TreeItem {
@@ -34,8 +28,9 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode> {
       return it;
     }
     const m = n.meta;
-    const it = new vscode.TreeItem(m.name, vscode.TreeItemCollapsibleState.None);
-    it.id = `b:${m.id}`;
+    const kids = (m.subs ?? []).some((id) => !n.path.includes(id));
+    const it = new vscode.TreeItem(m.name, kids ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
+    it.id = `b:${n.path.join("/")}`;
     it.contextValue = "board";
     const open = !!this.panels.get(m.id), target = this.panels.target === m.id;
     it.iconPath = new vscode.ThemeIcon(target ? "layout-sidebar-right" : "layout", m.stale ? new vscode.ThemeColor("charts.orange") : undefined);
