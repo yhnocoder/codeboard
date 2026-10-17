@@ -173,6 +173,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   const mod = p.ui.opts.isMac ? "⌘" : "Ctrl+";
   const applyLink = (v: string) => {
     const url = v.trim();
+    e.view.focus(); // 先同步把焦点还给编辑器再拿掉输入框（见 toggleRaw）
     setLink(null);
     const c = e.chain().focus().extendMarkRange("link");
     if (url) c.setLink({ href: /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}` }).run(); else c.unsetLink().run();
@@ -197,7 +198,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
         </>}>
           <input class="md-linkin" placeholder="Paste or type a link…" value={link() ?? ""} spellcheck={false}
             ref={(i) => queueMicrotask(() => { i.focus(); i.select(); })}
-            onKeyDown={(ev) => { ev.stopPropagation(); if (ev.key === "Enter") { ev.preventDefault(); applyLink(ev.currentTarget.value); } if (ev.key === "Escape") { ev.preventDefault(); setLink(null); e.commands.focus(); } }}
+            onKeyDown={(ev) => { ev.stopPropagation(); if (ev.key === "Enter") { ev.preventDefault(); applyLink(ev.currentTarget.value); } if (ev.key === "Escape") { ev.preventDefault(); e.view.focus(); setLink(null); } }}
             onBlur={(ev) => { if (link() !== null) applyLink(ev.currentTarget.value); }} />
         </Show>
       </div>
@@ -211,6 +212,7 @@ function MathPop(p: { editor: Editor; ui: Ui }) {
   const e = p.editor;
   const done = (latex: string | null) => {
     const m = p.ui.math();
+    e.view.focus(); // 同上：焦点不经过 body
     p.ui.setMath(null);
     if (!m) return;
     const n = e.state.doc.nodeAt(m.pos);
@@ -463,9 +465,14 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     } else {
       const v = raw.value;
       if (v !== rawStart) { editor.commands.setContent(parseMd(v), { emitUpdate: true }); changed = true; }
-      raw.remove(); raw = null;
+      // 先同步把焦点交给编辑器再拿掉原文框：否则拿掉的那一下焦点落到 body（TipTap 的 focus 要等下一帧），
+      // 慢的机器上失焦检查会先跑，或者紧接着的按键（Esc）落到白板上
       editor.view.dom.style.display = "";
-      editor.commands.focus("end");
+      editor.view.dispatch(editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)));
+      editor.view.focus();
+      const r = raw;
+      raw = null;
+      r.remove();
     }
   };
   const onKey = (ev: KeyboardEvent) => {

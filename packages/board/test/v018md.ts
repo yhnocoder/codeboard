@@ -164,7 +164,9 @@ export const V018MD: Record<string, () => Promise<void>> = {
     await pg.keyboard.press("Control+/");
     const rawVal = await pg.locator(".md-raw").inputValue().catch(() => "");
     await pg.keyboard.type("\nraw line");
+    // 切回来时焦点要立刻（同一个按键里）回到编辑器：之前要等下一帧，CI 上紧接着的 Esc 落到了白板上，没保存也没退出
     await pg.keyboard.press("Control+/");
+    const focusBack = await pg.evaluate(() => !!document.activeElement?.closest(".md-pm"));
     const backWys = await pg.locator('.card[data-id="n1"] .md-pm').isVisible();
     // Esc 保存退出
     await pg.keyboard.press("Escape");
@@ -172,10 +174,10 @@ export const V018MD: Record<string, () => Promise<void>> = {
     const after = md();
     const exited = await pg.locator(".md-pm").count();
     const r = { focus, boldNow, cards0, cardsNow: nCards(), slash: slash.slice(0, 3), table, refItems: refItems.slice(0, 3), chip, bubble, italic, italicAfterUndo, stillEditing,
-      rawHas: rawVal.includes("[[Scheduler.schedule]]"), backWys, exited,
+      rawHas: rawVal.includes("[[Scheduler.schedule]]"), backWys, focusBack, exited,
       saved: { world: after.includes("Hello **world** and t"), table: /\| *cell *\|/.test(after), ref: after.includes("[[Scheduler.schedule]]"), raw: after.includes("raw line"), under: after.includes("block_manager") && !after.includes("block\\_") } };
     const ok = focus && boldNow === 1 && r.cardsNow === cards0 && slash[0]?.startsWith("Table") && table === tables0 + 1 && refItems[0] === "Scheduler.schedule" && chip === 2 && bubble === 1 && italic === 1 && italicAfterUndo === 0 && stillEditing === 1
-      && r.rawHas && backWys && exited === 0 && Object.values(r.saved).every(Boolean);
+      && r.rawHas && backWys && focusBack && exited === 0 && Object.values(r.saved).every(Boolean);
     await saveShot(h, "v18-edit-saved");
     check("v18mdedit", ok, r);
     await close(h);
