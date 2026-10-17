@@ -38,7 +38,8 @@ jobs:
     name: replay (${{ matrix.side }}, ${{ matrix.part }}/3)
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: true, fetch-depth: 0 }
+        with: { fetch-depth: 0 }
+      - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
         if: matrix.side == 'head'
       - name: Check out and build base, with head's replay scripts

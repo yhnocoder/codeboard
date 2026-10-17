@@ -6,7 +6,7 @@
 set -e
 SHA=$1; DIR=$2
 git worktree add -q --detach "$DIR" "$SHA"
-git -C "$DIR" submodule update -q --init
+git -C "$DIR" submodule update -q --init examples/nano-vllm
 if [ "$3" = --test-drivers ]; then
   mkdir -p "$DIR/tools/review"
   cp extensions/vscode/test/run.sh extensions/vscode/test/replay.cjs "$DIR/extensions/vscode/test/"
