@@ -31,8 +31,8 @@
  },
  {
   "name": "7-uncommitted.png",
-  "status": "same",
-  "ratio": 0.0043
+  "status": "changed",
+  "ratio": 0.0144
  },
  {
   "name": "7a-settings.png",
@@ -41,7 +41,7 @@
  },
  {
   "name": "7b-diagnostics.png",
-  "status": "same",
-  "ratio": 0.0043
+  "status": "changed",
+  "ratio": 0.019
  }
 ]
