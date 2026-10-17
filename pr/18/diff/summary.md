@@ -8,15 +8,15 @@
 
 ![2-flow.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/2-flow.png?raw=true)
 
-**3-peek** · changed · 6.1% of pixels
+**3-peek** · changed · 7.4% of pixels
 
 ![3-peek.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/3-peek.png?raw=true)
 
-**4-sidenote** · changed · 6.1% of pixels
+**4-sidenote** · changed · 4.9% of pixels
 
 ![4-sidenote.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/4-sidenote.png?raw=true)
 
-**5-search** · changed · 2.2% of pixels
+**5-search** · changed · 1.6% of pixels
 
 ![5-search.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/5-search.png?raw=true)
 
@@ -32,6 +32,6 @@
 
 ![7a-settings.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/7a-settings.png?raw=true)
 
-**7b-diagnostics** · changed · 1.2% of pixels
+**7b-diagnostics** · changed · 0.8% of pixels
 
 ![7b-diagnostics.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/7b-diagnostics.png?raw=true)
