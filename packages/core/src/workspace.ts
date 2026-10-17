@@ -50,6 +50,8 @@ export interface WorkspaceLanguage {
   definitions(abs: string, line: number, col: number): Promise<{ abs: string; line: number; col: number }[]>;
   /** 悬停：每一段内容转成 Markdown（带语言的签名是代码块） */
   hover(abs: string, line: number, col: number): Promise<string[]>;
+  /** 转到实现：在基类方法上问，回所有覆盖它的子类方法（Pylance）；没有语言服务时回空 */
+  implementations(abs: string, line: number, col: number): Promise<{ abs: string; line: number; col: number }[]>;
 }
 
 /** 用户设置，键是完整的点分名字（codeboard.theme、editor.fontFamily） */
@@ -110,6 +112,8 @@ export interface WorkspaceUi {
   /** 在系统文件管理器里选中文件 */
   revealInOS(abs: string): Promise<void>;
   copy(text: string): Promise<void>;
+  /** 读剪贴板的文字 */
+  clipboard(): Promise<string>;
 }
 
 /** 语言模型（VS Code 的 Language Model API 之类）：可选，宿主没有就不给 */

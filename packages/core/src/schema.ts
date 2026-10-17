@@ -35,6 +35,7 @@ const codeEntries = {
   hide: opt(obj({ comments: opt(bool), docstrings: opt(bool), blank: opt(bool) })), wrap: opt(bool), nobg: opt(bool),
   members: opt(obj({ shown: v.array(str) })),
   mergedFrom: opt(v.array(obj({ card: v.lazy(() => CodeCard), place: Place }))), keepOld: opt(bool),
+  gen: opt(obj({ what: str, run: opt(str) })),
 };
 const CodeCard: v.GenericSchema = obj(codeEntries);
 /** 代码卡是递归的（mergedFrom），上面只能标成 GenericSchema；它的字段名单独导出给 test/schema-types.ts 和 model.ts 的 CodeCard 对照 */
@@ -52,12 +53,22 @@ const Card = v.variant("kind", [
 const End = obj({ card: str, seg: opt(str), line: opt(num), sub: opt(str) });
 const Var = obj({ a: str, b: opt(str), ret: opt(bool), custom: opt(bool) });
 const Side = v.picklist(["left", "right", "top", "bottom"]);
+const BoundVal = obj({ name: str, value: str, opts: opt(v.array(str)), from: opt(str) });
+const callEntries = {
+  name: str, col: num, vars: opt(v.array(Var)), cands: opt(v.array(Var)), loop: opt(bool),
+  ev: opt(obj({ kind: v.picklist(["manual", "observed"]), via: opt(str), cmd: opt(str), log: opt(v.array(str)), at: opt(num), commit: opt(str) })),
+  bound: opt(str), vals: opt(v.array(BoundVal)),
+  alts: opt(v.array(obj({ label: str, detail: opt(str), path: opt(str), line: opt(num), qual: opt(str), lib: opt(str), vals: opt(v.array(BoundVal)) }))),
+  impls: opt(num),
+};
+const CallMark = obj(callEntries);
 const Link = obj({
   id: str, from: End, to: End, label: opt(str), at: opt(num),
-  call: opt(obj({ name: str, col: num, vars: opt(v.array(Var)), cands: opt(v.array(Var)), loop: opt(bool) })),
+  call: opt(CallMark),
   style: opt(obj({ dash: opt(bool), width: opt(v.picklist([1, 2, 3])), head: opt(obj({ start: opt(bool), end: opt(bool) })), color: opt(str) })),
   sides: opt(obj({ from: opt(Side), to: opt(Side) })),
   lost: opt(obj({ from: opt(bool), to: opt(bool) })),
+  gen: opt(bool),
 });
 const GraphMark = v.union([obj({ letter: str }), obj({ icon: str })]);
 

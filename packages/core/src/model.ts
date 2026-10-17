@@ -65,6 +65,8 @@ export type CodeCard = CardBase & {
   /** 合并来的卡：合并前的原卡和它们的摆放（Unmerge 时拆回） */
   mergedFrom?: { card: CodeCard; place: Place }[];
   keepOld?: true; // 符号找不到时选了 Keep Old Version：不再提示
+  /** Generated 卡：生成出来的代码 / 编译产物（what = CUDA source、Inductor output），钉在一次运行和那组参数上（run），不钉 commit */
+  gen?: { what: string; run?: string };
 };
 
 export type NoteCard = CardBase & {
@@ -145,7 +147,26 @@ export type LinkSide = "left" | "right" | "top" | "bottom";
  * Call 标记：这条箭头是「这一行调用了那个函数」。有 Call 标记的箭头连成调用图（Walkthrough、折叠、调用图标记、变量都看它）。
  * name / col：点的是出发行的哪个调用；vars = 勾选了的变量（默认一个都不加）；cands = 语法推出来的候选；loop = 出发行在 for / while 里（↺）
  */
-export type CallMark = { name: string; col: number; vars?: Var[]; cands?: Var[]; loop?: boolean };
+export type CallMark = {
+  name: string; col: number; vars?: Var[]; cands?: Var[]; loop?: boolean;
+  /** 证据：没有 = static（静态解析出来的）；manual = 手动补的（虚线）；observed = 跑出来确认过（绿色，OBSERVED） */
+  ev?: CallEvidence;
+  /** 跨了什么边界：pybind · deep_ep.cpp m.def、kernel[grid]、launch macro…（标签框的第一行） */
+  bound?: string;
+  /** 跨边界时定下来的取值（模板参数、constexpr、config、工厂参数）：标签框的第二行 kNumRanks → 8 · kNumThreads → 768 */
+  vals?: BoundVal[];
+  /** 同一个调用点的其他可能（别的实现、别的一组 config）：目标卡旁边的灰色虚框，点一下换成它 */
+  alts?: CallAlt[];
+  /** 动态分发：一共有几个实现（目标卡头的「1 of 4」） */
+  impls?: number;
+};
+
+/** via = 怎么补上的（registry、search）；cmd / log / at / commit = observed 的证据：运行命令、日志行、时间、当时的 commit */
+export type CallEvidence = { kind: "manual" | "observed"; via?: string; cmd?: string; log?: string[]; at?: number; commit?: string };
+/** 一个取值：name → value；opts = 可能的几个值（让人选一个，其余是灰色分支），from = 取值从哪来（SWITCH_RANKS(num_ranks)） */
+export type BoundVal = { name: string; value: string; opts?: string[]; from?: string };
+/** 一个备选：别的实现（path + line + qual，path 是宿主给的显示路径）或别的一组取值（vals）。lib = 在 library 里（不在 Study Scope，⌥ 才展开） */
+export type CallAlt = { label: string; detail?: string; path?: string; line?: number; qual?: string; lib?: string; vals?: BoundVal[] };
 
 /** 箭头的样子：dash = 虚线；width 默认 2；head 默认只有终点有箭头；color 默认灰 */
 export type LinkStyle = { dash?: true; width?: 1 | 2 | 3; head?: { start?: boolean; end?: boolean }; color?: string };
@@ -164,6 +185,7 @@ export type Link = {
   style?: LinkStyle;
   sides?: { from?: LinkSide; to?: LinkSide }; // 用户选过的进出边
   lost?: { from?: true; to?: true }; // 这一端连着的行在代码更新后没了：端点退到卡头，画成红色，等用户重连或删掉
+  gen?: true; // Generated from：从 Generated 卡连回生成它的那一行（点线）
 };
 
 /** 默认只有终点有箭头 */

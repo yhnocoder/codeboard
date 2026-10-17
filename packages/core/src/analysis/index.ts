@@ -34,6 +34,7 @@ export type CallSite = {
   args: Arg[];
   assigned?: string[]; // 返回值被谁接住：seqs, is_prefill = …
   dispatch?: string; // call("run", …) 这种按字符串转发：记下字符串，但不当成调用 run
+  launch?: "grid" | "<<<"; // kernel 启动：Triton 的 kernel[grid](…)、CUDA 的 kernel<<<…>>>(…)
 };
 
 // 行标记和 lines.ts 的 F_* 是同一套值
@@ -80,6 +81,7 @@ export function analyze(lang: string, text: string, o: AnalyzeOpts = {}): FileAn
     const cx: Cx = { text, lines, out, r0: r ? r.start - 1 : 0, r1: r ? r.end - 1 : Infinity };
     const root = tree.rootNode;
     if (g === "python") out.doc = docstring(cx, root);
+    else if (g === "rust") rustSymbols(cx, root);
     else cppSymbols(cx, root);
     if (!r) run(g, cx, sorted(query(g, "all", STRUCT[g] + FLOW[g]).captures(root)));
     else {
@@ -118,6 +120,7 @@ const STRUCT: Record<Grammar, string> = {
 (if_statement condition: (_) @main (#match? @main "__main__"))
 `,
   cpp: "", // C++ 的定义只在顶层 / 命名空间 / 类里找，走 cppSymbols
+  rust: "", // Rust 同理，走 rustSymbols
 };
 const FLOW: Record<Grammar, string> = {
   python: `
@@ -146,6 +149,18 @@ const FLOW: Record<Grammar, string> = {
 (assignment_expression right: (_) @rhs)
 (call_expression) @call
 (comment) @comment
+`,
+  rust: `
+(function_item) @fn
+(closure_expression) @fn
+(for_expression body: (_) @loop)
+(while_expression) @loop
+(loop_expression) @loop
+(let_declaration value: (_) @rhs)
+(assignment_expression right: (_) @rhs)
+(call_expression) @call
+(line_comment) @comment
+(block_comment) @comment
 `,
 };
 
@@ -180,11 +195,12 @@ function run(g: Grammar, cx: Cx, caps: Cap[]) {
       case "fn": flow.push({ e: c.e, loop: false }); break;
       case "loop": flow.push({ e: c.e, loop: true }); break;
       case "rhs": rhs.push(c.e); break; // 赋值右边：只有在这里面的调用才可能有人接住返回值
-      case "call": (g === "python" ? pyCall : cppCall)(cx, c.node, !!flow[flow.length - 1]?.loop, rhs.length > 0); break;
+      case "call": (g === "python" ? pyCall : g === "rust" ? rustCall : cppCall)(cx, c.node, !!flow[flow.length - 1]?.loop, rhs.length > 0); break;
       case "comment": cmt.push(c.node); break;
     }
   }
   comments(cmt, cx);
+  if (g === "cpp") cudaLaunches(cx);
 }
 
 // ---------- 通用 ----------
@@ -249,9 +265,15 @@ function pyDef(cx: Cx, def: Node, up: DefFrame | undefined): DefFrame {
 }
 
 function pyCall(cx: Cx, n: Node, loop: boolean, inRhs: boolean) {
-  const fn = n.childForFieldName("function");
+  let fn = n.childForFieldName("function");
   if (!fn) return;
   let nameNode: Node | null = null, recv: string | undefined;
+  // Triton：kernel[grid](…)：被调的是 kernel，记下是 [grid] 启动
+  let launch: CallSite["launch"];
+  if (fn.type === "subscript") {
+    const v = fn.childForFieldName("value");
+    if (v?.type === "identifier" || v?.type === "attribute") { fn = v; launch = "grid"; }
+  }
   if (fn.type === "identifier") nameNode = fn;
   else if (fn.type === "attribute") { nameNode = fn.childForFieldName("attribute"); recv = fn.childForFieldName("object")?.text; }
   if (!nameNode) return;
@@ -260,6 +282,7 @@ function pyCall(cx: Cx, n: Node, loop: boolean, inRhs: boolean) {
   const al = n.childForFieldName("arguments");
   const col = nameNode.startPosition.column;
   const site: CallSite = { line: nameNode.startPosition.row + 1, col, end: col + name.length, name, recv, loop, args: pyArgs(al), assigned: inRhs ? assignedTo(n, "python") : undefined };
+  if (launch) site.launch = launch;
   // call("run", …) / getattr(self, "run")：只记下字符串，不猜
   if (/^(call|dispatch|invoke|run_method|getattr)$/.test(name)) {
     const firstStr = al?.firstNamedChild;
@@ -454,6 +477,89 @@ function cppParams(ps: Node | null): Param[] {
   return out;
 }
 
+// ---------- CUDA：kernel<<<grid, block>>>(…) ----------
+// tree-sitter 的 C++ 语法不认 <<<>>>（当成错误节点），按行认：名字（可带模板参数）后面紧跟 <<<
+
+const LAUNCH = /([A-Za-z_]\w*)\s*(?:<[^<>;]*(?:<[^<>;]*>[^<>;]*)*>)?\s*<<</g;
+function cudaLaunches(cx: Cx) {
+  const { lines, out } = cx;
+  for (let r = Math.max(0, cx.r0); r < lines.length && r <= cx.r1; r++) {
+    const t = lines[r];
+    if (!t.includes("<<<")) continue;
+    LAUNCH.lastIndex = 0;
+    for (let m; (m = LAUNCH.exec(t)); ) {
+      const col = m.index, name = m[1];
+      const at = out.calls.find((c) => c.line === r + 1 && c.col === col);
+      if (at) { at.launch = "<<<"; continue; }
+      out.calls.push({ line: r + 1, col, end: col + name.length, name, loop: false, args: [], launch: "<<<" });
+    }
+  }
+  out.calls.sort((a, b) => a.line - b.line || a.col - b.col);
+}
+
+// ---------- Rust ----------
+
+/** 符号：fn、impl 里的方法（Type::f）、trait、struct / enum（当类）、mod；#[…] 属性算进起始行（和 Python 的装饰器一样） */
+function rustSymbols({ out, text }: Cx, root: Node) {
+  const visit = (n: Node, scope: string[], cls: string | undefined) => {
+    let attrStart = -1;
+    for (const c of n.namedChildren) {
+      if (!c) continue;
+      if (c.type === "attribute_item") { if (attrStart < 0) attrStart = c.startPosition.row; continue; }
+      const start = attrStart >= 0 ? attrStart : c.startPosition.row;
+      attrStart = -1;
+      if (c.type === "function_item" || c.type === "function_signature_item") {
+        const name = c.childForFieldName("name")?.text ?? "?";
+        const body = c.childForFieldName("body");
+        const sig = oneLine(text.slice(c.startIndex, body ? body.startIndex : c.endIndex)).replace(/;$/, "");
+        const params: Param[] = [];
+        for (const p of c.childForFieldName("parameters")?.namedChildren ?? []) {
+          if (p?.type === "self_parameter") params.push({ name: "self", kind: "self" });
+          else if (p?.type === "parameter") { const pat = p.childForFieldName("pattern")?.text; if (pat) params.push({ name: pat.replace(/^mut\s+/, ""), kind: "pos" }); }
+        }
+        out.symbols.push({ name, qual: [...scope, name].join("::"), kind: "def", start: start + 1, defLine: c.startPosition.row + 1, end: c.endPosition.row + 1, sig, params, parent: cls });
+        continue;
+      }
+      if (c.type === "impl_item" || c.type === "trait_item") {
+        const ty = (c.childForFieldName(c.type === "impl_item" ? "type" : "name")?.text ?? "?").replace(/<.*$/, "");
+        const body = c.childForFieldName("body");
+        if (c.type === "trait_item") out.symbols.push({ name: ty, qual: [...scope, ty].join("::"), kind: "class", start: start + 1, defLine: c.startPosition.row + 1, end: c.endPosition.row + 1, sig: oneLine(text.slice(c.startIndex, body ? body.startIndex : c.endIndex)), params: [], parent: cls });
+        if (body) visit(body, [...scope, ty], [...scope, ty].join("::"));
+        continue;
+      }
+      if (c.type === "struct_item" || c.type === "enum_item") {
+        const name = c.childForFieldName("name")?.text ?? "?";
+        out.symbols.push({ name, qual: [...scope, name].join("::"), kind: "class", start: start + 1, defLine: c.startPosition.row + 1, end: c.endPosition.row + 1, sig: oneLine(text.slice(c.startIndex, c.childForFieldName("body")?.startIndex ?? c.endIndex)), params: [], parent: cls });
+        continue;
+      }
+      if (c.type === "mod_item") {
+        const name = c.childForFieldName("name")?.text;
+        const body = c.childForFieldName("body");
+        if (body && name) visit(body, [...scope, name], cls);
+      }
+    }
+  };
+  visit(root, [], undefined);
+}
+
+function rustCall({ out }: Cx, n: Node, loop: boolean, inRhs: boolean) {
+  let fn = n.childForFieldName("function");
+  if (fn?.type === "generic_function") fn = fn.childForFieldName("function");
+  if (!fn) return;
+  let nameNode: Node | null = null, recv: string | undefined;
+  if (fn.type === "identifier") nameNode = fn;
+  else if (fn.type === "field_expression") { nameNode = fn.childForFieldName("field"); recv = fn.childForFieldName("value")?.text; }
+  else if (fn.type === "scoped_identifier") { nameNode = fn.childForFieldName("name"); recv = fn.childForFieldName("path")?.text; }
+  if (!nameNode) return;
+  const al = n.childForFieldName("arguments");
+  const assigned = inRhs && n.parent?.type === "let_declaration" ? [n.parent.childForFieldName("pattern")?.text ?? ""].filter(Boolean) : undefined;
+  out.calls.push({
+    line: nameNode.startPosition.row + 1, col: nameNode.startPosition.column, end: nameNode.startPosition.column + nameNode.text.length, name: nameNode.text, recv, loop,
+    args: (al?.namedChildren ?? []).filter((a): a is Node => !!a && !/comment/.test(a.type)).map((a) => ({ text: oneLine(a.text), name: a.type === "identifier" ? a.text : undefined })),
+    assigned: assigned?.length ? assigned : undefined,
+  });
+}
+
 // ---------- 按行查 ----------
 
 /** 含有某一行的最内层符号 */
@@ -468,3 +574,4 @@ export * from "./vars";
 export * from "./select";
 export * from "./entry";
 export * from "./peek";
+export * from "./bridge";

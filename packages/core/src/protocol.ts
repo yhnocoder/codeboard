@@ -1,7 +1,7 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta } from "./model";
+import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt } from "./model";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
@@ -95,6 +95,8 @@ export type PeekDef = {
   doc?: string; // hover 的文档（Markdown）
   lib?: string; // 定义在 library code 里：包名（在 Study Scope 里时白板不标 library）
   title?: string; // 标题里代替 文件:行（模块：torch/multiprocessing）
+  /** 动态分发：定义处是基类的方法，有 n 个实现（悬停显示「Dynamic dispatch · n implementations」） */
+  dispatch?: { n: number; base: string; abstract?: boolean };
 };
 
 export type SearchItem =
@@ -223,6 +225,10 @@ export type BoardToHost =
   /** 子白板框的 Delete Board…：删掉那块白板（放进 .trash；先问）。回删没删 */
   | { type: "deleteBoard"; req: number; id: string }
   | { type: "pickFile"; req: number; kind: "image" }
+  /** 解析不到的调用：按名字在所有语言里找（定义 + 字符串注册），回 NameHit[] */
+  | { type: "searchName"; req: number; name: string }
+  /** Generated 卡的内容：剪贴板或选一个文件（回 GenSource；取消回 null） */
+  | { type: "genSource"; req: number; from: "clipboard" | "file" }
   /** Note 编辑时的灰字补全：光标前后的文字，回接在光标处的一段（没有可用模型时回 null） */
   | { type: "complete"; req: number; before: string; after: string };
 
@@ -235,11 +241,25 @@ export type ExpandPick = { path: string; line: number; rel?: true; qual?: string
 /** peek 的回答：找不到是 null */
 export type PeekResult = PeekDef | null;
 
-/** expand 的回答 */
+/**
+ * expand 的回答。card：建卡连线；mark = 跨边界时要并进 Call 标记的（边界、取值、备选），title = 模板实例名（dispatch<8, 768>）。
+ * impls：动态分发，列出全部实现让人选（base = 静态类型的方法）。none：解析不到（name = 可以按名字跨语言搜）
+ */
 export type ExpandResult =
-  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number }
+  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number; mark?: CrossMark; title?: string }
   | { pick: { label: string; detail: string; path: string; line: number }[] }
-  | { none: true; reason: string };
+  | { impls: ImplPick[]; base: string }
+  | { none: true; reason: string; name?: string };
+
+/** 跨边界时宿主给的 Call 标记部分 */
+export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev">;
+/** 动态分发的一个实现：qual / 路径 / 行；lib = 在 library 里（包名）；base = 基类自己的实现（不是抽象的） */
+export type ImplPick = { label: string; detail: string; path: string; line: number; qual: string; lib?: string; base?: true };
+/** 跨语言按名字搜到的一处：lang = py / cpp / cuda / rust；def = 定义，否则是字符串注册（"name"） */
+export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
+/** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
+export type GenSource = { text: string; lang: string; name: string };
+export type { BoundVal, CallAlt };
 
 /** 要回答的请求（带 req）：白板用 ask 发，宿主用 { type: "reply", req, data } 回 */
 export type AskType = Extract<BoardToHost, { req: number }>["type"];
@@ -266,6 +286,8 @@ type Replies = {
   stickerPacks: StickerPack[];
   confirm: boolean;
   pickFile: string | null; // data URL
+  searchName: NameHit[];
+  genSource: GenSource | null;
   complete: string | null;
   pasteCards: PastedCards | null;
   deleteEverywhere: number;

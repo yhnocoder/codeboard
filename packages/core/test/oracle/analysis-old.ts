@@ -3,7 +3,7 @@ import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Node } from "@vscode/tree-sitter-wasm";
 import { BLANK, COMMENT, DOCSTRING, grammarOf, cleanDoc, languageOf, type FileAnalysis, type Sym, type Param, type Arg, type CallSite } from "../../src/analysis";
 
-type Grammar = "python" | "cpp";
+type Grammar = "python" | "cpp" | "rust";
 const parsers = new Map<Grammar, TSParser>();
 function parse(g: Grammar, text: string) {
   let p = parsers.get(g);
@@ -23,6 +23,7 @@ export function analyzeOld(lang: string, text: string): FileAnalysis {
     if (g === "python") python(tree.rootNode, lines, out);
     else cpp(tree.rootNode, lines, out);
     comments(tree.rootNode, lines, out);
+    if (g === "cpp") launches(lines, out);
   } finally {
     tree.delete();
   }
@@ -107,9 +108,12 @@ function python(root: Node, lines: string[], out: FileAnalysis) {
 
   walk(root, (n) => {
     if (n.type !== "call") return;
-    const fn = n.childForFieldName("function");
+    let fn = n.childForFieldName("function");
     if (!fn) return;
     let nameNode: Node | null = null, recv: string | undefined;
+    // v0.2 起：Triton 的 kernel[grid](…)（照新实现补上）
+    let launch: "grid" | undefined;
+    if (fn.type === "subscript") { const v = fn.childForFieldName("value"); if (v?.type === "identifier" || v?.type === "attribute") { fn = v; launch = "grid"; } }
     if (fn.type === "identifier") nameNode = fn;
     else if (fn.type === "attribute") { nameNode = fn.childForFieldName("attribute"); recv = fn.childForFieldName("object")?.text; }
     if (!nameNode) return;
@@ -120,6 +124,7 @@ function python(root: Node, lines: string[], out: FileAnalysis) {
       line: nameNode.startPosition.row + 1, col: col(nameNode, lines), end: col(nameNode, lines) + name.length, name, recv,
       loop: pyInLoop(n), args, assigned: assignedTo(n, "python"),
     };
+    if (launch) site.launch = launch;
     // call("run", …) / getattr(self, "run")：只记下字符串，不猜
     const firstStr = n.childForFieldName("arguments")?.namedChildren[0];
     if (firstStr?.type === "string" && /^(call|dispatch|invoke|run_method|getattr)$/.test(name)) site.dispatch = firstStr.text.replace(/^[rbuf]*["']+|["']+$/g, "");
@@ -321,3 +326,18 @@ function cppInLoop(n: Node): boolean {
   return false;
 }
 
+
+// v0.2 起：CUDA 的 kernel<<<…>>>(…)（照新实现补上）
+function launches(lines: string[], out: FileAnalysis) {
+  const re = /([A-Za-z_]\w*)\s*(?:<[^<>;]*(?:<[^<>;]*>[^<>;]*)*>)?\s*<<</g;
+  lines.forEach((t, r) => {
+    if (!t.includes("<<<")) return;
+    re.lastIndex = 0;
+    for (let m; (m = re.exec(t)); ) {
+      const at = out.calls.find((c) => c.line === r + 1 && c.col === m!.index);
+      if (at) { at.launch = "<<<"; continue; }
+      out.calls.push({ line: r + 1, col: m.index, end: m.index + m[1].length, name: m[1], loop: false, args: [], launch: "<<<" });
+    }
+  });
+  out.calls.sort((a, b) => a.line - b.line || a.col - b.col);
+}

@@ -129,7 +129,29 @@ describe("query-based analysis matches the v0.1.5 node walk", () => {
     expect(a.calls.length).toBeGreaterThan(1);
     same(a, analyzeOld(f.lang, f.text));
   });
-  it("unknown languages only mark blank lines", () => same(analyze("rust", "fn main() {}\n\n"), analyzeOld("rust", "fn main() {}\n\n")));
+  it("unknown languages only mark blank lines", () => same(analyze("go", "func main() {}\n\n"), analyzeOld("go", "func main() {}\n\n")));
+});
+
+describe("v0.2 call kinds", () => {
+  it("Triton kernel[grid](…) is a call to kernel, marked as a grid launch", () => {
+    const a = analyze("python", "def f(x):\n    grid = (4,)\n    my_kernel[grid](x, BLOCK=64)\n    mod.k2[(1, 2)](x)\n");
+    const k = a.calls.find((c) => c.name === "my_kernel")!;
+    expect(k).toMatchObject({ line: 3, col: 4, launch: "grid" });
+    expect(k.args.map((x) => x.kw ?? x.text)).toEqual(["x", "BLOCK"]);
+    expect(a.calls.find((c) => c.name === "k2")).toMatchObject({ recv: "mod", launch: "grid" });
+  });
+  it("CUDA kernel<<<…>>>(…) is a call marked as a launch", () => {
+    const a = analyze("cuda-cpp", "void go(int* p) {\n  dispatch<8, 768><<<grid, 256, 0, s>>>(p);\n  plain<<<1, 1>>>();\n}\n");
+    expect(a.calls.filter((c) => c.launch === "<<<").map((c) => [c.name, c.line, c.col])).toEqual([["dispatch", 2, 2], ["plain", 3, 2]]);
+  });
+  it("Rust: functions, impl methods, attributes in the start line, calls", () => {
+    const src = "use pyo3::prelude::*;\n\n#[pyfunction]\n#[pyo3(name = \"tok\")]\nfn tokenize(s: &str) -> Vec<u32> {\n    let v = encode(s);\n    v\n}\n\nstruct Tree { n: u32 }\n\nimpl Tree {\n    pub fn insert(&mut self, k: u32) {\n        self.grow(k);\n        helpers::fix(k);\n    }\n}\n";
+    const a = analyze("rust", src);
+    expect(a.symbols.map((s) => [s.qual, s.kind, s.start, s.defLine, s.end])).toEqual([["tokenize", "def", 3, 5, 8], ["Tree", "class", 10, 10, 10], ["Tree::insert", "def", 13, 13, 16]]);
+    expect(a.symbols[2].params.map((p) => p.kind)).toEqual(["self", "pos"]);
+    expect(a.calls.map((c) => [c.name, c.recv, c.line])).toEqual([["encode", undefined, 6], ["grow", "self", 14], ["fix", "helpers", 15]]);
+    expect(a.calls[0].assigned).toEqual(["v"]);
+  });
 });
 
 describe("segment analysis", () => {
