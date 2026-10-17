@@ -1,7 +1,7 @@
 // 界面状态（不持久化、不进撤销栈）
 import { createSignal, createMemo } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
-import type { Guide, Link, Sidenote } from "@codeboard/core";
+import type { CallSpan, Guide, Link, Sidenote } from "@codeboard/core";
 import { state } from "./store";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
@@ -47,7 +47,7 @@ let pingN = 0;
 export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 
 // 正在编辑的东西
-export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote"; id: string } | null;
+export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen"; id: string } | null;
 export const [editing, setEditing] = createSignal<Editing>(null);
 
 // 拖动中：吸附参考线、合并目标、落点行……
@@ -58,7 +58,7 @@ export const [dragging, setDragging] = createSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = createSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = createSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);
 export const [spaceDown, setSpaceDown] = createSignal(false);
-export const [connectFrom, setConnectFrom] = createSignal<{ card: string; seg?: string; line?: number } | null>(null);
+export const [connectFrom, setConnectFrom] = createSignal<{ card: string; seg?: string; line?: number; call?: CallSpan } | null>(null);
 export const [hoverLink, setHoverLink] = createSignal<string | null>(null);
 // 指针下的卡（它的线临时浮到最上面一层，见 canvas/Links.tsx 的 enterCard）、正在拖的线（拖起点圆点、拖标签框）
 export const [hoverCard, setHoverCard] = createSignal<string | null>(null);

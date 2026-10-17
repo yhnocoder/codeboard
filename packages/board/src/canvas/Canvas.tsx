@@ -12,6 +12,7 @@ import { CardView } from "../cards/Card";
 import { CanvasStickers } from "../stickers/Picker";
 import { trackLinks, LinkLayer } from "./Links";
 import { Traffic } from "./Traffic";
+import { AltBoxes } from "./Labels";
 import { SectionFrames, SectionLabels } from "./Sections";
 import { frames } from "../state/sections";
 import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
@@ -75,6 +76,8 @@ export function Canvas() {
         <LinkLayer ports />
         <CanvasStickers />
         <SectionLabels />
+        {/* 灰色备选：在所有卡上面、浮上来的线下面 */}
+        <div class="alts" classList={{ "lod-overview": lod() === "overview" }}><Show when={lod() !== "map"}><AltBoxes /></Show></div>
         <LinkLayer top />
         <div class="guides">
           <For each={guides()}>

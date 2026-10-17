@@ -1,14 +1,14 @@
 // 线上的标签框：↺、自己写的字、调用参数（一条线一个框，沿线拖动）。W01 C 13–21、D 23。
 import { For, Show, createMemo, createSignal, onCleanup, type Accessor } from "solid-js";
 import { varKey, callText, varGone, loopLine, segOf, isCode, type Link, type Rect } from "@codeboard/core";
-import { sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
+import { state, sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
 import { hoverLink, editing, setDragLink } from "../state/ui";
 import { toWorld } from "../state/camera";
 import { boardOffset } from "../actions/common";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
-import { enterLink, leaveLink, type Geo } from "./Links";
+import { enterLink, leaveLink, visible, type Geo } from "./Links";
 import { bezAt, dragT, placeT, type Box } from "./labelpos";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
@@ -58,6 +58,38 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
 
 const NONE = new Set<string>();
 
+/** OBSERVED 的悬停：哪次运行看到的 */
+function obsTip(ev: NonNullable<NonNullable<Link["call"]>["ev"]>): string {
+  const when = ev.at ? new Date(ev.at).toLocaleString() : "";
+  return ["Observed at runtime", ev.cmd && `Run: ${ev.cmd}`, when, ev.commit && `@ ${ev.commit.slice(0, 7)}`, ...(ev.log ?? []).slice(0, 3)].filter(Boolean).join("\n");
+}
+
+/** 灰色备选（线框 01）：同一个调用点的别的实现 / 别的取值，虚线灰框排在目标卡右边；点一下换成它（原来的变灰）。map 缩放级别不画 */
+export function AltBoxes() {
+  const links = createMemo(() => state.board.links.filter((l) => l.call && (l.call.alts?.length || l.call.vals?.some((v) => (v.opts?.length ?? 0) > 1)) && visible(l)));
+  return <For each={links()}>{(L) => <AltsOf L={L} />}</For>;
+}
+function AltsOf(p: { L: Link }) {
+  const items = createMemo(() => A.altsOf(p.L));
+  const r = () => { const t = cardById(p.L.to.card); return t ? rectOf(t.host) : null; };
+  return (
+    <Show when={items().length && r()}>
+      <div class="altcol" data-link={p.L.id} style={{ left: `${r()!.x + r()!.w + 28}px`, top: `${r()!.y}px` }}>
+        <div class="alt-h">{p.L.call!.impls ? `${items().length} other implementation${items().length > 1 ? "s" : ""}` : "Other branches"}</div>
+        <For each={items()}>{(it, k) => (
+          <button class="altbox" classList={{ lib: !!it.alt.lib }} data-tip={it.alt.lib ? `Library code (${it.alt.lib}) · ${A.K.alt}-click to swap in` : "Click to swap in · the current one turns grey"}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { A.setAltDown(e.altKey); void A.swapAlt(p.L.id, k()); }}>
+            <span class="lb">{it.alt.label}</span>
+            <Show when={it.alt.lib}><span class="lib-tag">library</span></Show>
+            <Show when={it.alt.detail}><small>{it.alt.detail}</small></Show>
+          </button>
+        )}</For>
+      </div>
+    </Show>
+  );
+}
+
 /** 线中间的标签框（HTML，在这一层的 SVG 上面；Links.tsx 给每条线建一个，g 是那条线画出来的几何） */
 export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
   const L = p.L;
@@ -67,7 +99,13 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
   const loop = () => !!L.call?.loop;
   const editingLabel = () => editing()?.kind === "label" && editing()?.id === L.id;
   const head = () => loop() || !!L.label || editingLabel();
-  const has = () => head() || vars().length > 0;
+  // 跨边界 / 证据 / Generated from：框最上面一行是边界类型（或证据），下一行是取值（线框 02）
+  const ev = () => L.call?.ev;
+  const bvals = () => L.call?.vals ?? [];
+  const [allVals, setAllVals] = createSignal(false);
+  const shownVals = () => (allVals() || bvals().length <= 4 ? bvals() : bvals().slice(0, 3));
+  const top = () => !!L.call?.bound || !!ev() || !!L.gen || bvals().length > 0;
+  const has = () => head() || top() || vars().length > 0;
   // 普通箭头、出发行其实调用了目标卡：悬停时出 Call 按钮（右键菜单里也有 Call Mark）
   const mk = createMemo(() => !L.call && !!A.callOn(L.from, L.to));
   const hov = () => hoverLink() === L.id;
@@ -122,14 +160,14 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
   return (
     <Show when={pos()}>
       <Show when={has()} fallback={<><Show when={plus()}>{plusBtn(false)}</Show><Show when={mk() && hov()}>{callBtn(false)}</Show></>}>
-        <div class="vchips" classList={{ user: !L.call, on: sel.links.includes(L.id), argsonly: !head() }} data-link={L.id} style={style()}
+        <div class="vchips" classList={{ user: !L.call && !L.gen, on: sel.links.includes(L.id), argsonly: !head() && !top(), gen: !!L.gen, [`ev-${ev()?.kind}`]: !!ev() }} data-link={L.id} style={style()}
           ref={(el) => watchSize(el, setBox)}
           onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); A.labelMenu(L.id, e.clientX, e.clientY); }}
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.stopPropagation();
-            if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus")) return;
+            if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus, .vval.opt, .vmore")) return;
             e.preventDefault();
             if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id);
             select({ links: [L.id] }, e.shiftKey);
@@ -137,7 +175,33 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
           }}>
           <Show when={plus()}>{plusBtn(true)}</Show>
           {/* 一个框：上面一行是 ↺ 和自己写的字，下面一个参数一行；只有其中一样时就只是那一样（W01 C 16） */}
-          <div class="vcard" classList={{ split: head() && vars().length > 0 }}>
+          <div class="vcard" classList={{ split: (head() || top()) && vars().length > 0 }}>
+            <Show when={top()}>
+              <div class="vtop" classList={{ under: head() }}>
+                <Show when={L.gen || L.call?.bound || ev()}>
+                  <div class="vbnd">
+                    <Show when={L.gen}><span class="vbt">Generated from</span></Show>
+                    <Show when={L.call?.bound}><span class="vbt">{L.call!.bound}</span></Show>
+                    <Show when={ev()?.kind === "manual"}><span class="ev-tag manual" data-tip="Drawn by hand: no static evidence for this call">{ev()!.via ? `via ${ev()!.via} · manual` : "manual"}</span></Show>
+                    <Show when={ev()?.kind === "observed"}><span class="ev-tag observed" data-tip={obsTip(ev()!)}>OBSERVED</span></Show>
+                  </div>
+                </Show>
+                <Show when={bvals().length}>
+                  <div class="vvals">
+                    <For each={shownVals()}>{(v, i) => (
+                      <span class="vval" classList={{ opt: (v.opts?.length ?? 0) > 1 }} data-tip={(v.opts?.length ?? 0) > 1 ? `${v.opts!.length} possible values · click to pick` : v.from ? `From ${v.from}` : undefined}
+                        onPointerDown={(e) => { if ((v.opts?.length ?? 0) > 1) e.stopPropagation(); }}
+                        onClick={(e) => { if ((v.opts?.length ?? 0) > 1) A.openValPicker(L.id, i(), e.currentTarget); }}>
+                        {v.name} → <b>{v.value}</b><Show when={(v.opts?.length ?? 0) > 1}><i>▾</i></Show>
+                      </span>
+                    )}</For>
+                    <Show when={shownVals().length < bvals().length}>
+                      <span class="vmore" onPointerDown={(e) => e.stopPropagation()} onClick={() => setAllVals(true)}>+{bvals().length - shownVals().length} more</span>
+                    </Show>
+                  </div>
+                </Show>
+              </div>
+            </Show>
             <Show when={head()}>
               <div class="vhead">
                 <Show when={loop()}><span class="vloop" data-tip={loopTip()}>↺<Show when={!L.label && !editingLabel()}><i>in a loop</i></Show></span></Show>

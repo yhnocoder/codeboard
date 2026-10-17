@@ -5,7 +5,7 @@ import {
   placeChild, freeInView, walkOrder, descendants, SIB_GAP,
   estSize, defaultWidth,
   type Card, type CodeCard, type Link, type Place,
-  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView,
+  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
 import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
 import { camTo, camTarget, worldView, fitRect, fitTop, isVisible, union } from "../state/camera";
@@ -15,6 +15,7 @@ import { send, ask } from "../host";
 import { headPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
 import { jumpTo } from "./nav";
 import { walkBack, setWalkBack, walkIntoFrame, walkOut } from "./subboards";
+import { openImplPicker, unresolvedMenu } from "./chains";
 
 // ---------- 点调用展开 ----------
 
@@ -37,8 +38,11 @@ export function expandedTo(cardId: string, segId: string, call: CallSpan): strin
   }
 }
 
+/** 展开时一起带上的：并进 Call 标记的（动态分发的备选、跨边界的取值）、箭头上的字（Why this one?） */
+export type ExpandExtra = { mark?: CrossMark; label?: string };
+
 /** again：已经展开过也再建一张（右键 Expand Again）；默认再点只是跳到已有的那张 */
-export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: ExpandPick, again = false) {
+export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: ExpandPick, again = false, extra?: ExpandExtra) {
   const f = cardById(cardId);
   if (!f || !isCode(f.card)) return;
   const seg = segOf(f.card, segId);
@@ -56,15 +60,19 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
     toast(`Could not expand ${call.name}(): ${(e as Error).message}`);
     return;
   } finally { pending.delete(key); }
-  if ("none" in r) { toast(r.reason || `No definition found for ${call.name}()`); return; }
+  // 解析不到（字符串注册表等）：给两条路，按名字跨语言搜或手动补边（线框 01 二）
+  if ("none" in r) { if (r.name) unresolvedMenu(cardId, segId, call, r.reason); else toast(r.reason || `No definition found for ${call.name}()`); return; }
   if ("pick" in r) {
-    showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again) })));
+    showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again, extra) })));
     return;
   }
-  placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w);
+  // 动态分发：列出全部实现，选一个（线框 01 一）
+  if ("impls" in r) return openImplPicker(cardId, segId, call, r, at, again);
+  placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w, { mark: { ...r.mark, ...extra?.mark }, label: extra?.label, title: r.title });
 }
 
-function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number) {
+/** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>） */
+export function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number, ex?: ExpandExtra & { title?: string }) {
   setState("views", (v) => ({ ...v, ...views }));
   const host = cardById(cardId)!.host;
   const id = card.id;
@@ -120,9 +128,12 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
     const hp = b.place[host.id];
     if (hp?.section) np.section = hp.section;
     if (hp?.collapsed) hp.collapsed = undefined;
+    if (ex?.title) nc.title = ex.title;
     b.cards.push(nc);
     b.place[id] = np;
-    b.links.push({ id: uid("l"), from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: callMark(call, vars) });
+    const mk = { ...callMark(call, vars), ...ex?.mark };
+    for (const k of Object.keys(mk) as (keyof typeof mk)[]) if (mk[k] === undefined) delete mk[k];
+    b.links.push({ id: uid("l"), from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: mk, ...(ex?.label ? { label: ex.label } : {}) });
   });
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);

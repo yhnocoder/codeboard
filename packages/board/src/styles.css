@@ -1098,3 +1098,62 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .crumbs .crumb:hover { background: var(--row); color: var(--ink); }
 .crumbs .crumb.cur { color: var(--ink); font-weight: 600; cursor: default; }
 .crumbs .csep { color: var(--ink-3); }
+
+/* ---------- 接上断掉的调用链、跨语言（线框 01、02） ---------- */
+/* 证据：manual = 虚线，observed = 绿；Generated from = 点线（和别的线同一层，只换样式） */
+:root { --ev-obs: var(--ok, #4f8a4a); }
+:root[data-theme="dark"] { --ev-obs: var(--ok, #8dbb79); }
+.edge.ev-manual { stroke-dasharray: 6 5; }
+.edge.ev-observed, .ahead.ev-observed { stroke: var(--ev-obs); }
+.ahead.triangle.ev-observed, .ahead.dot.ev-observed { fill: var(--ev-obs); }
+.edge.gen { stroke-dasharray: 1.5 4; stroke-opacity: .7; }
+/* 标签框最上面：边界类型 / 证据，下一行是取值 */
+.vtop { display: flex; flex-direction: column; gap: 2px; padding: 4px 7px 5px; font: 10.5px/15px var(--mono); color: var(--ink-2); }
+.vtop.under { border-bottom: .5px solid var(--hair); }
+.vbnd { display: flex; align-items: center; gap: 6px; }
+.vbt { font: 500 10.5px/15px var(--sys); color: var(--ink); }
+.ev-tag { font: 600 9px/14px var(--sys); letter-spacing: .04em; padding: 0 5px; border-radius: 4px; color: var(--ink-3); box-shadow: inset 0 0 0 1px var(--hair); }
+.ev-tag.manual { font-weight: 500; letter-spacing: 0; border: 1px dashed var(--ink-3); box-shadow: none; }
+.ev-tag.observed { color: var(--surface); background: var(--ev-obs); box-shadow: none; }
+.vvals { display: flex; flex-wrap: wrap; gap: 2px 8px; width: max-content; max-width: 420px; }
+.vval { white-space: nowrap; }
+.vval b { font-weight: 600; color: var(--ink); }
+.vval.opt { cursor: pointer; border-radius: 3px; padding: 0 2px; margin: 0 -2px; box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--accent) 60%, transparent); }
+.vval.opt:hover { background: var(--row); }
+.vval i { font-style: normal; font-size: 8px; margin-left: 2px; color: var(--ink-3); }
+.vmore { cursor: pointer; color: var(--ink-3); }
+.vmore:hover { color: var(--accent); }
+.vchips.gen .vcard { background: color-mix(in srgb, var(--surface) 70%, transparent); box-shadow: 0 0 0 .5px var(--hair); }
+/* 灰色备选：目标卡右边一列虚线灰框 */
+.alts { position: absolute; left: 0; top: 0; z-index: 4; pointer-events: none; }
+.altcol { position: absolute; display: flex; flex-direction: column; gap: 8px; width: 240px; pointer-events: none; }
+.alt-h { font: 10.5px var(--sys); color: var(--ink-3); padding-left: 2px; }
+.altbox { pointer-events: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; text-align: left; padding: 8px 10px; border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent); border-radius: 8px; background: color-mix(in srgb, var(--surface) 55%, transparent); color: var(--ink-3); font: 11.5px var(--mono); cursor: pointer; transition: border-color .12s, color .12s; }
+.altbox .lb { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; }
+.altbox small { flex-basis: 100%; font: 10px var(--sys); color: var(--ink-3); opacity: .85; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.altbox:hover { border-color: var(--accent); color: var(--ink-2); }
+.altbox .lib-tag { font: 500 9.5px/14px var(--sys); padding: 0 5px; border-radius: 4px; box-shadow: inset 0 0 0 1px var(--hair); }
+.lod-overview .altcol { opacity: .8; }
+/* 卡头：语言标签、1 of N、Generated */
+.lchip { flex-shrink: 0; font: 600 9px/15px var(--sys); letter-spacing: .05em; padding: 0 5px; border-radius: 4px; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--hair); }
+.lchip[data-l="PY"] { color: #3b6ea8; } .lchip[data-l="C++"] { color: #8a4baf; } .lchip[data-l="CUDA"] { color: #4f8a2a; }
+.lchip[data-l="TRITON"] { color: #b5552d; } .lchip[data-l="TILELANG"] { color: #a0731c; } .lchip[data-l="RUST"] { color: #9c4a32; }
+:root[data-theme="dark"] .lchip { filter: brightness(1.5); }
+.disp1 { flex-shrink: 0; font: 10.5px var(--sys); color: var(--ink-3); }
+.gentag { flex-shrink: 0; font: 500 10.5px/16px var(--sys); color: var(--ink-2); padding: 0 6px; border-radius: 4px; border: 1px dashed var(--ink-3); }
+.genrun { min-width: 40px; flex-shrink: 10; overflow: hidden; cursor: text; }
+.genrun .grun { font: 10.5px var(--mono); color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.genrun .grun:empty::before { content: attr(data-ph); opacity: .7; }
+.card.ccard.gen { outline: 1.5px dashed color-mix(in srgb, var(--ink-3) 80%, transparent); outline-offset: 2px; }
+/* 浮层：选实现、取值、跨语言搜 */
+.pk-disp { display: flex; align-items: center; gap: 6px; padding: 6px 12px; font: 11.5px var(--sys); color: var(--ink-2); border-bottom: 1px solid var(--line); }
+.pk-disp code { font: 11px var(--mono); color: var(--ink); }
+.pk-disp small { color: var(--ink-3); }
+.disp-tag { font: 600 9.5px/16px var(--sys); letter-spacing: .03em; padding: 0 6px; border-radius: 4px; color: var(--accent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 45%, transparent); }
+.pop.k-impls { width: 440px; }
+.sres.impls .cand.lib .lb { color: var(--ink-3); }
+.sres.impls .cand .src-tag { margin-left: 4px; }
+.pop.k-impls .pk-more, .pop.k-vals .pk-more { padding: 2px 12px 8px; font: 11px var(--sys); }
+.pop.k-names { width: 420px; }
+.sres.names .grp-h { padding: 6px 12px 2px; font: 600 10px var(--sys); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
+.sres.names .empty.sm { padding: 2px 12px 4px; font-size: 11px; }

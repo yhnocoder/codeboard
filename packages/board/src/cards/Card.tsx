@@ -2,12 +2,12 @@
 import { send } from "../host";
 import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
-  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
+  cardTitle, cardChip, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type BoardCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
-import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
+import { editing, setEditing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -79,6 +79,7 @@ export function CardView(p: { card: Card }) {
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: lift(), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
           editing: ed(), off: offscreen(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
+          gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8),
           "bind-hot": (act.bindHot() as { card?: string } | null)?.card === c().id,
           "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
@@ -137,6 +138,10 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
+      <Show when={!free() && act.mixedLangs() && cardChip(c())}>{(k) => <span class="lchip" data-l={k()}>{k()}</span>}</Show>
+      <Show when={c().gen}>
+        <span class="gentag" data-tip="Generated code: pinned to a run, not a commit">Generated · {c().gen!.what}</span>
+      </Show>
       <Show when={!free() || c().title || (editing()?.kind === "title" && editing()?.id === c().id)}>
         <Editable class="ctitle" kind="title" id={c().id} value={free() ? c().title ?? "" : cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
       </Show>
@@ -147,6 +152,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
       </Show>
+      <Show when={act.dispatchOf(c().id)}>{(n) => <span class="disp1" data-tip="Picked from a dynamic dispatch: the others are the grey boxes beside it">1 of {n()}</span>}</Show>
       <span class="grow" />
       {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
       <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
@@ -154,6 +160,11 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
       <Show when={linkedIn()}><button class="linkedin" data-tip="Linked here: show where the arrows come from" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}>← {linkedIn()}</button></Show>
       <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
+      <Show when={c().gen}>
+        <span class="genrun" data-tip="The run or params this was generated from · click to edit" onPointerDown={(e) => e.stopPropagation()} onClick={() => setEditing({ kind: "gen", id: c().id })}>
+          <Editable class="grun" kind="gen" id={c().id} value={c().gen!.run ?? ""} placeholder="Run / params" onCommit={(v) => act.setGenRun(c().id, v)} />
+        </span>
+      </Show>
       <Show when={!free()}>
         <button class="rev" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}

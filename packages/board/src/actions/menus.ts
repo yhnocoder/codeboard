@@ -14,6 +14,7 @@ import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, se
 import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
+import { searchAllLangs, drawManual, addGenerated } from "./chains";
 import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
@@ -60,6 +61,9 @@ export function callMenu(cardId: string, segId: string, call: CallSpan, x: numbe
         return { label: `${n?.label ? n.label + "  " : ""}${cardTitle(k)}`, run: () => attachCall(cardId, segId, call, k.id) };
       }) : [{ label: "No card for this function on the board", disabled: "Drag the call onto any code card to link it" }],
     },
+    // 解析不到的调用（字符串注册、跨语言）：按名字搜，或手动补一条 Call 箭头（线框 01 二）
+    { label: `Search “${call.name}” in All Languages`, run: () => searchAllLangs(cardId, segId, call) },
+    { label: "Draw Call Arrow Manually…", run: () => drawManual(cardId, segId, call) },
     null,
     ...lineItems({ card: f.card.id, seg: segId, start: call.line, end: call.line }),
   ];
@@ -80,9 +84,15 @@ function lineItems(ls: LineSel): Item[] {
     { label: hlAll ? "Remove Highlight" : "Highlight Lines", run: () => toggleHl(ls) },
     { label: "Add Sidenote", kbd: "S", run: () => openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) },
     { label: "New Card from Lines", run: () => cardFromLines(ls) },
+    // 生成的代码 / 编译产物：钉在一次运行上，点线连回这一行（线框 02 三）
+    { label: "Add Generated Code", sub: genItems({ card: ls.card, seg: ls.seg, line: ls.start }) },
     { label: "Copy", kbd: `${K.mod}C`, run: () => copyLines(ls) },
   ];
 }
+const genItems = (at: { card: string; seg?: string; line?: number }): Item[] => [
+  { label: "Paste from Clipboard", run: () => addGenerated(at, "clipboard") },
+  { label: "Choose File…", run: () => addGenerated(at, "file") },
+];
 export function lineMenu(ls: LineSel, x: number, y: number) {
   selectCard(ls.card);
   openMenu(lineItems(ls), x, y);
@@ -188,6 +198,7 @@ export function cardMenu(id: string, x: number, y: number) {
   const edit: Item[] = [
     { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
     { label: "Add Sidenote", kbd: "S", run: () => (ls?.card === c.id ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) : openAddNote({ card: c.id })) },
+    { label: "Add Generated Code", sub: genItems(ls?.card === c.id ? { card: c.id, seg: ls.seg, line: ls.start } : { card: c.id }) },
     ...(col ? [] : [lockItem]),
     ...(!col && (c.segments.length > 1 || c.mergedFrom) ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
   ];

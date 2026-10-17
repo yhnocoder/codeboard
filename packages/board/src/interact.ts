@@ -370,6 +370,8 @@ function finishConnect(e: PointerEvent, id: string) {
   const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
   const to = colEl?.dataset.col ?? id;
   if (cardById(to)?.host.id === cardById(from.card)?.host.id) return toast("Connect cancelled");
+  // 手动补的 Call 箭头（解析不到的调用）
+  if (from.call) return A.manualCallTo({ ...from, call: from.call }, to);
   const sub = ((e.target as Element).closest("[data-sub]") as HTMLElement | SVGElement | null)?.dataset.sub;
   A.addLink(from, sub && !sub.startsWith("more:") && cardById(to)?.card.kind === "board" ? { card: to, sub } : { card: to });
 }

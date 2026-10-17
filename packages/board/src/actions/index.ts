@@ -16,3 +16,4 @@ export * from "./web";
 export * from "../interact";
 export * from "./stickers";
 export * from "./subboards";
+export * from "./chains";

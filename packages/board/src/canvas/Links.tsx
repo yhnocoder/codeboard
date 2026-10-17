@@ -571,7 +571,8 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
   const L = r.L;
   const on = () => isOn(L.id);
   const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
-  const style = () => `${colorCls(L)}${widthCls(L)}`;
+  // 证据（manual 虚线、observed 绿）、Generated from（点线）：同一层，只换样式
+  const style = () => `${colorCls(L)}${widthCls(L)}${L.call?.ev ? ` ev-${L.call.ev.kind}` : ""}${L.gen ? " gen" : ""}`;
   const gutter = () => r.base()?.kind === "gutter";
   const road: Road = L.call ? "main" : "street";
   const cls = () => `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`;

@@ -72,6 +72,9 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "vars"}><VarsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vars" }>} /></Match>
         <Match when={k() === "mark"}><MarkPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "mark" }>} /></Match>
         <Match when={k() === "boards"}><BoardsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "boards" }>} /></Match>
+        <Match when={k() === "impls"}><ImplsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "impls" }>} /></Match>
+        <Match when={k() === "vals"}><ValsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vals" }>} /></Match>
+        <Match when={k() === "names"}><NamesPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "names" }>} /></Match>
       </Switch>
     </div>
   );
@@ -256,6 +259,9 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
       }>
         <Head title={<>Definition · {def()!.title ?? `${baseName(def()!.path)}:${def()!.line}`}</>} inst={p.inst}
           right={lib() ? <span class="lib-tag" data-tip={`Library code · ${lib()}`}>library</span> : <span class="src-tag">{def()!.seg.version.kind === "git" && def()!.kind !== "module" ? "at HEAD" : ""}</span>} />
+        <Show when={def()!.dispatch}>{(dp) => (
+          <div class="pk-disp"><span class="disp-tag">Dynamic dispatch</span> {dp().n} implementation{dp().n > 1 ? "s" : ""} · Static type: <code>{dp().base}</code>{dp().abstract ? " (abstract)" : ""}<span class="grow" /><small>Click the call to choose</small></div>
+        )}</Show>
         <Show when={def()!.sig || def()!.doc}>
           <div class="pk-top">
             <Show when={def()!.sig}><div class="pk-sig" innerHTML={def()!.sigHtml ?? escH(def()!.sig!)} /></Show>
@@ -546,6 +552,89 @@ function MarkPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "mark" }> }) {
       </div>
       <button class="cand" disabled={!g()!.custom} onClick={() => pick(null)}><span class="lb">Auto</span><small>Letter by creation order</small></button>
     </Show>
+  );
+}
+
+// ---------- 接上断掉的调用链（线框 01、02） ----------
+
+/** 动态分发：N 个实现选一个。library 的要 ⌥；Why this one? 写进箭头的标签框 */
+function ImplsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "impls" }> }) {
+  const d = () => p.pop.data;
+  const [why, setWhy] = createSignal("");
+  const [i, setI] = createSignal(-1);
+  const go = (k: number, alt: boolean) => { if (A.pickImpl(d(), k, why(), alt)) closePop(p.inst.id); };
+  const short = (q: string) => q.split(".").slice(-2).join(".");
+  return (
+    <>
+      <Head title={<>{d().impls.length} implementations of <code>{short(d().base)}</code></>} inst={p.inst} right={<span class="disp-tag">Dynamic dispatch</span>} />
+      <div class="sres impls">
+        <For each={d().impls}>{(it, k) => {
+          const lib = () => !!it.lib && !state.host.settings.studyScope.includes(it.lib);
+          return (
+            <button class="cand impl" classList={{ on: k() === i(), lib: lib() }} onPointerMove={() => setI(k())}
+              onClick={(e) => go(k(), e.altKey)} data-tip={lib() ? `Library code (${it.lib}) · ${A.K.alt}-click to expand` : undefined}>
+              <span class="kind">ƒ</span><span class="lb">{it.label}</span>
+              <Show when={it.base}><span class="src-tag">base</span></Show>
+              <Show when={lib()}><span class="lib-tag">library</span></Show>
+              <small>{it.detail}</small>
+            </button>
+          );
+        }}</For>
+      </div>
+      <div class="an-body"><input class="fld" placeholder="Why this one? (optional)" value={why()} onInput={(e) => setWhy(e.currentTarget.value)}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") closePop(p.inst.id); if (e.key === "Enter" && i() >= 0) go(i(), e.altKey); }} /></div>
+      <div class="pk-more">The others stay as grey branches next to the card you pick.</div>
+    </>
+  );
+}
+
+/** 跨边界的取值：kNumRanks 取几，其余的留成灰色分支 */
+function ValsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vals" }> }) {
+  const v = () => state.board.links.find((l) => l.id === p.pop.link)?.call?.vals?.[p.pop.val];
+  createEffect(() => { if (!v()) closePop(p.inst.id); });
+  return (
+    <Show when={v()}>
+      <div class="picker-h"><code>{v()!.name}</code>: pick a value</div>
+      <Show when={v()!.from}><div class="pk-more">Comes from <code>{v()!.from}</code></div></Show>
+      <For each={v()!.opts ?? [v()!.value]}>{(o) => (
+        <button class="cand" classList={{ on: o === v()!.value }} onClick={() => { closePop(p.inst.id); A.setVal(p.pop.link, p.pop.val, o); }}>
+          <span class="lb"><code>{v()!.name} → {o}</code></span><small>{o === v()!.value ? "✓ Current" : ""}</small>
+        </button>
+      )}</For>
+      <div class="pk-more">Other values stay as grey branches.</div>
+    </Show>
+  );
+}
+
+const LANG_NAMES: Record<string, string> = { py: "Python", cpp: "C++", cuda: "CUDA", rust: "Rust" };
+
+/** 解析不到的调用：按名字在所有语言里搜，按语言分组；点一处建卡 + 虚线 Call 箭头（via registry · manual） */
+function NamesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "names" }> }) {
+  const d = () => p.pop.data;
+  const groups = createMemo(() => {
+    const hs = d().hits ?? [];
+    const keys = [...new Set(["py", "cpp", ...hs.map((h) => h.lang)])];
+    return keys.map((k) => ({ lang: k, hits: hs.filter((h) => h.lang === k) }));
+  });
+  return (
+    <>
+      <Head title={<>Search <code>{d().call.name}</code> in all languages</>} inst={p.inst} />
+      <Show when={d().hits} fallback={<div class="empty">Searching…</div>}>
+        <div class="sres names">
+          <For each={groups()}>{(g) => (
+            <>
+              <div class="grp-h">{LANG_NAMES[g.lang] ?? g.lang}</div>
+              <For each={g.hits} fallback={<div class="empty sm">no matches</div>}>{(h) => (
+                <button class="cand" onClick={() => { closePop(p.inst.id); void A.placeNameHit(d(), h); }}>
+                  <span class="kind">{h.def ? "ƒ" : "“”"}</span><span class="lb">{h.label}</span><small>{h.detail}</small>
+                </button>
+              )}</For>
+            </>
+          )}</For>
+        </div>
+      </Show>
+      <div class="sn-acts"><button class="tbtn" onClick={() => { closePop(p.inst.id); A.drawManual(d().card, d().seg, d().call); }}>Draw Call Arrow Manually…</button></div>
+    </>
   );
 }
 
