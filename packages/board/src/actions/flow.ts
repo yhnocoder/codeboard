@@ -1,24 +1,18 @@
-// 流程：点调用展开、接到已有的卡、Tidy Layout、折叠子树、讲解（Walkthrough）、类卡成员。
+// 流程：点调用展开、接到已有的卡、折叠子树、讲解（Walkthrough）、类卡成员。
 import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, freeInView, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type GraphMark, type WebMeta, type CallSpan, type ExpandPick, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
+  uid, findCard, isCode, cardTitle, segOf, allCodeCards,
+  placeChild, freeInView, walkOrder, descendants, SIB_GAP,
+  estSize, defaultWidth,
+  type Card, type CodeCard, type Link, type Place,
+  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView,
 } from "@codeboard/core";
-import {
-  state, setState, mutate, sync, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, worldView, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
+import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
+import { camTo, camTarget, worldView, fitRect, fitTop, isVisible, union } from "../state/camera";
+import { flash, ping, setWalk, walk } from "../state/ui";
+import { openPop } from "../state/pop";
 import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
-import { anchorPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
+import { headPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
 import { jumpTo } from "./nav";
 
 // ---------- 点调用展开 ----------
@@ -26,7 +20,7 @@ import { jumpTo } from "./nav";
 const pending = new Set<string>();
 
 /**
- * 点调用 = 新建一张卡（永远新建，不复用已有的），连一条 Call link。
+ * 点调用 = 新建一张卡（永远新建，不复用已有的），连一条带 Call 标记的箭头。
  * at：拖出来松在画布上时的位置。
  */
 
@@ -101,13 +95,13 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
       const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hid));
       const outside = placed().filter((k) => !tree.has(k.id)).map((k) => rectOf(k));
       const hb = rectOf(host);
-      let p = placeChild(hb, size, before, outside, "down");
+      let p = placeChild(hb, size, before, outside);
       // 树下面被别的卡占满时，空位可能被推到屏幕外很远：改在视野里、靠近默认位置找空位；视野里也没有就放默认位置（压住别的卡，新卡在最上层）
       let inTree = true;
       const vr = worldView();
       const offscreen = p.y < vr.y || p.y + Math.min(size.h, 200) > vr.y + vr.h || p.x + Math.min(size.w, vr.w) > vr.x + vr.w;
       if (offscreen) {
-        const slot = placeChild(hb, size, before, [], "down");
+        const slot = placeChild(hb, size, before, []);
         const all = placed().map((k) => rectOf(k));
         const f = freeInView({ ...slot, ...size }, all, vr);
         if (f && isVisible(hb)) { p = f; inTree = false; }
@@ -140,7 +134,7 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
       const f = fitRect(u, camTarget().z);
       camTo(f.x, f.y, f.z);
     }
-    const from = anchorPoint(cardId, segId, call.line);
+    const from = headPoint(cardId);
     popCard(id, from ?? undefined);
   });
   if (pushed.length) slideFrom(pushed.map((q) => ({ id: q.id, ox: 0, oy: -q.dy })));
@@ -311,7 +305,7 @@ export function exitWalk() {
 }
 
 
-/** 类卡里点一个成员：展开成函数卡，从类卡那一行连 Call link */
+/** 类卡里点一个成员：展开成函数卡，从类卡那一行连一条带 Call 标记的箭头 */
 export function expandMember(cardId: string, d: { line: number; name: string; qual: string }) {
   const c = cardById(cardId)?.card;
   if (!isCode(c)) return;

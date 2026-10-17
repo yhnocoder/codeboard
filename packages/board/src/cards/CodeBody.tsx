@@ -3,6 +3,17 @@
 import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
+import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
+import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
+import { state, lineSel, setLineSel, reportSelection } from "../state/store";
+import { Glyph } from "../stickers/glyphs";
+import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
+import { setGeo } from "../state/geo";
+import { look } from "../state/look";
+import { queueMeasure, observeResize } from "../state/measure";
+import { whenIdle } from "../state/idle";
+import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
+import * as act from "../actions";
 
 /** 第 i 个字符前面有没有没配对的引号（单行内；三引号字符串的中间行靠高亮 class 判断） */
 function inQuotes(t: string, i: number) {
@@ -19,17 +30,6 @@ function inQuotes(t: string, i: number) {
 // 最近一次按下的元素（blur 时判断焦点是不是被同一张卡上的东西拿走的；不可聚焦的地方 relatedTarget 是空的）
 let lastDown: HTMLElement | null = null;
 window.addEventListener("pointerdown", (e) => { lastDown = e.target as HTMLElement; }, true);
-import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
-import { state, lineSel, setLineSel, reportSelection, flows } from "../state/store";
-import { Glyph } from "../stickers/glyphs";
-import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
-import { setGeo } from "../state/geo";
-import { look } from "../state/look";
-import { queueMeasure, observeResize } from "../state/measure";
-import { whenIdle } from "../state/idle";
-import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
-import * as act from "../actions";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -229,7 +229,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const [scrollY, setScrollY] = createSignal(0);
   const onScroll = () => { setScrollY(scrollEl.scrollTop); measure(); };
 
-  // ---------- 悬停：标识符 → 定义预览；行尾圆点 → 拉 Plain link ----------
+  // ---------- 悬停：标识符 → 定义预览；行尾圆点 → 拉箭头 ----------
   const [hoverRow, setHoverRow] = createSignal(-1);
   let peekKey = "", peekTimer: number | undefined, peekPt = { x: 0, y: 0 };
   const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set const auto void return struct template typename".split(" "));
@@ -324,24 +324,12 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     return out;
   });
   const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
-  // 选中几行时行号旁出现虚线 +
-  const addNoteY = createMemo(() => {
-    const ls = lineSel();
-    if (!ls || ls.card !== c().id) return null;
-    // 和旁注标记、贴纸同一列：放在选中范围里第一行空着的位置
-    const busy = new Set([...marks().map((m) => m.row), ...lineStk().map((k) => k.row)]);
-    let i = rows().findIndex((r) => r.t === "line" && r.seg === ls.seg && r.line === ls.start);
-    for (let j = i; j >= 0 && j < rows().length; j++) { const r = rows()[j]; if (r.t !== "line" || r.line > ls.end) break; if (!busy.has(j)) { i = j; break; } }
-    const y = ys()[i];
-    return y ? y.y : null;
-  });
-
   const stickerById = (id: string) => state.board.stickers.find((k) => k.id === id);
 
   const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n) => n.kind === "text" && n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
   const cmtLine = (r: Row) => r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;
 
-  // 行的连线端点：在卡片左右边框上（不占行号栏，供 Call link 自动选边）
+  // 行的连线端点：在卡片左右边框上（不占行号栏，供带 Call 标记的箭头自动选边）
   const portTop = () => { const l = lportY(); return l && scrollEl ? scrollEl.offsetTop + codeEl.offsetTop + l.y + 10 - scrollY() : null; };
   const portDown = (e: PointerEvent, side: "left" | "right") => { const r = lportY()!.r as Extract<Row, { t: "line" }>; const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); act.linkPortDown(e, { card: c().id, seg: r.seg, line: r.line }, b.left + b.width / 2, b.top + b.height / 2, side); };
   return (
@@ -466,5 +454,3 @@ function versionChip(c: CodeCard, s: Segment): string | undefined {
   if (JSON.stringify(first.version) === JSON.stringify(s.version)) return undefined;
   return s.version.kind === "git" ? s.version.commit.slice(0, 7) : s.version.kind === "pkg" ? `${s.version.name} ${s.version.version}` : undefined;
 }
-// flows 被 CodeCard 头部用到；这里引用一下避免 tree-shaking 掉初始化顺序
-void flows;

@@ -37,5 +37,3 @@ export function closePop(id?: number) {
   setPops((ps) => (id === undefined ? ps.filter((p) => p.pinned) : ps.filter((p) => p.id !== id)));
 }
 export const closeAllPops = () => setPops([]);
-export const popOf = (kind: Pop["kind"]) => pops().find((p) => !p.pinned && p.pop.kind === kind);
-export const anyPopOpen = () => pops().length > 0;

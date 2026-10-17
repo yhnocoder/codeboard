@@ -16,7 +16,7 @@ export type Anchor = { x: number; y: number; nx: number; ny: number };
  * 直角折线绕到卡外面时，竖（横）的那段离卡边多远。默认 24；City 的路有 16px 宽的路沿，
  * 材质给更大的值（shape().clear），路和卡边之间留出一条路宽，汇在一起的主干不贴着卡走
  */
-export const CLEAR = 24;
+const CLEAR = 24;
 
 const cx = (b: Box) => b.x + b.w / 2, cy = (b: Box) => b.y + b.h / 2;
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -52,7 +52,7 @@ export function sidesOf(m: Mode): [Side, Side] {
   }
 }
 
-export const normalOf = (s: Side): Pt => (s === "left" ? { x: -1, y: 0 } : s === "right" ? { x: 1, y: 0 } : s === "top" ? { x: 0, y: -1 } : { x: 0, y: 1 });
+const normalOf = (s: Side): Pt => (s === "left" ? { x: -1, y: 0 } : s === "right" ? { x: 1, y: 0 } : s === "top" ? { x: 0, y: -1 } : { x: 0, y: 1 });
 
 /** 端点：行端在那一行的左 / 右边；卡端在左右边时落在卡头那一行（rowY），上下边时在边的正中 */
 export function anchorOn(b: Box, side: Side, rowY: number): Anchor {

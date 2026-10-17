@@ -1,9 +1,9 @@
 // 浮层：Sidenote、定义预览、加 Sidenote、版本 diff、多个定义选择、commit 列表、变量、只读源码。
-import { For, Show, Switch, Match, createSignal, createMemo, onMount, createEffect, onCleanup } from "solid-js";
+import { For, Show, Switch, Match, createSignal, createMemo, createEffect, onCleanup } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang,
-  type GraphMark, type Sidenote, type DiffData, type PeekDef, type PeekResult, type SearchItem, type NewCard, type Var, type Anchor,
+  type GraphMark, type Sidenote, type PeekDef, type SearchItem, type Var, type Anchor,
 } from "@codeboard/core";
 import { state, cardById, toast, mutate, select, flows } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
@@ -14,7 +14,6 @@ import { markHtml } from "../cards/CompareBody";
 import { Icon } from "./icons";
 import { autoUpdate } from "@floating-ui/dom";
 import { place, virtual } from "./place";
-import { promptText } from "./Menu";
 import { ask, send } from "../host";
 import * as A from "../actions";
 
@@ -215,7 +214,7 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
     const seg = { ...structuredClone(x.seg) };
     A.addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: 480 }], { at: { x: r.x + r.w + 48, y: r.y } });
     A.requestViews([seg]);
-    A.addPlain({ card: p.pop.card, seg: p.pop.seg, line: p.pop.line }, { card: id });
+    A.addLink({ card: p.pop.card, seg: p.pop.seg, line: p.pop.line }, { card: id });
     closePop(p.inst.id);
   };
   return (
@@ -371,7 +370,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
 
 // ---------- 版本 diff（和 Compare 同一套对齐） ----------
 
-export function DiffTable(p: { left: { start: number; text: string[]; html: string[] }; right: { start: number; text: string[]; html: string[] } }) {
+function DiffTable(p: { left: { start: number; text: string[]; html: string[] }; right: { start: number; text: string[]; html: string[] } }) {
   const rows = createMemo(() => {
     const norm = (s: string) => s.trim().replace(/\s+/g, " ");
     return alignRows(p.left.text.map(norm), p.right.text.map(norm)).map((r) => {
@@ -494,7 +493,7 @@ function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
 // ---------- 调用图标记 ----------
 
 /** 图标用内置贴纸（名字引用，画法跟着贴纸走） */
-export const MARK_ICONS = ["star", "flag", "zap", "bug", "heart", "question", "check", "hourglass"];
+const MARK_ICONS = ["star", "flag", "zap", "bug", "heart", "question", "check", "hourglass"];
 const MARK_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 function MarkPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "mark" }> }) {

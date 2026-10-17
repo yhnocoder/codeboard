@@ -5,6 +5,7 @@ import { V015 } from "./v015";
 import { WEB } from "./scenarios-web";
 import { V017 } from "./v017";
 import { V017LABELS } from "./v017labels";
+import { V017STACK } from "./v017stack";
 import { THEMES_V17 } from "./scenarios-themes";
 
 const light = process.argv.includes("--light");
@@ -23,6 +24,7 @@ const S: Record<string, () => Promise<void>> = {
   ...WEB,
   ...V017,
   ...V017LABELS,
+  ...V017STACK,
   ...THEMES_V17,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
@@ -151,7 +153,7 @@ const S: Record<string, () => Promise<void>> = {
   async misc() {
     const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
-    // Plain link: select two cards, click Link
+    // Arrow: select two cards, click Link
     await h.page.keyboard.press("Control+a");
     await h.page.locator(".bbar button[aria-label=\"Arrow\"]").click(); await h.page.waitForTimeout(400);
     // Text: double-click empty space

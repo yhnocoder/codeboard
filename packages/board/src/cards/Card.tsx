@@ -2,7 +2,7 @@
 import { send } from "../host";
 import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
-  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf, descendants,
+  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf } from "../state/store";
@@ -13,7 +13,6 @@ import { collapsedHome } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { CardStickers, BoundStickers } from "../stickers/Picker";
-import { lod } from "../state/camera";
 import { fileHue } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
@@ -23,6 +22,7 @@ import * as act from "../actions";
 import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
+import { landed, enterCard, leaveCard } from "../canvas/Links";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
@@ -81,6 +81,7 @@ export function CardView(p: { card: Card }) {
           "bind-hot": (act.bindHot() as { card?: string } | null)?.card === c().id,
           "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
         }}
+        onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => act.cardPointerDown(e, c().id)} onContextMenu={(e) => act.cardContextMenu(e, c().id)} onDblClick={(e) => act.cardDblClick(e, c().id)}>
         <div class="cface">
         <Switch>
@@ -91,7 +92,7 @@ export function CardView(p: { card: Card }) {
           <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
         </Switch>
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
-        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
+        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <CardStickers card={c().id} />
         <Show when={!pl().locked}>
@@ -163,8 +164,8 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
 }
 
 /** 材质用的卡片部件（默认 display: none，由 themes.css 按主题打开）：
- *  cband = 色带 / 大标题（函数名 + 行号区间和版本 + 大号编号），cxfoot = 底栏（行号区间 · 打开 / 看差异），cfig = 卡片下方的图注。
- *  只用卡片已有的数据：标题、flows() 编号、第一段的行号和版本。 */
+ *  cband = 色带 / 大标题（函数名 + 行号区间和版本 + 大号图标记），cxfoot = 底栏（行号区间 · 打开 / 看差异），cfig = 卡片下方的图注。
+ *  只用卡片已有的数据：标题、flows() 的图标记、第一段的行号和版本。 */
 function CodeBand(p: { card: CodeCard }) {
   const c = () => p.card;
   const s0 = () => c().segments[0];
@@ -210,7 +211,7 @@ function CodeFoot(p: { card: CodeCard }) {
 export function MarkView(p: { g: Graph }) {
   return <Show when={"icon" in p.g.mark} fallback={<>{p.g.label}</>}><Glyph icon={{ pack: "builtin", name: (p.g.mark as { icon: string }).icon }} size={13} /></Show>;
 }
-export const shortPath = (p: string) => p.split("/").slice(-1)[0];
+const shortPath = (p: string) => p.split("/").slice(-1)[0];
 
 function CodeCardView(p: { card: CodeCard }) {
   const c = () => p.card;
@@ -242,7 +243,7 @@ function CodeCardView(p: { card: CodeCard }) {
   );
 }
 
-/** 类卡：只列成员签名，点成员 → 展开成函数卡并连 Call link */
+/** 类卡：只列成员签名，点成员 → 展开成函数卡并连一条带 Call 标记的箭头 */
 function ClassBody(p: { card: CodeCard }) {
   const s = () => p.card.segments[0];
   const defs = () => (state.views[s().id]?.defs ?? []).filter((d) => d.qual.split(".").length === (s().symbol?.qual.split(".").length ?? 0) + 1);
@@ -266,7 +267,7 @@ function ClassBody(p: { card: CodeCard }) {
   );
 }
 
-export function Desc(p: { id: string; desc?: string }) {
+function Desc(p: { id: string; desc?: string }) {
   return (
     <Show when={p.desc || editing()?.kind === "desc" && editing()?.id === p.id}>
       <Editable class="cdesc" kind="desc" id={p.id} value={p.desc ?? ""} multiline md onCommit={(v) => act.setDesc(p.id, v)} />
@@ -287,7 +288,7 @@ function ImageView(p: { card: ImageCard }) {
   );
 }
 
-/** 地图档：卡片只剩编号 + 名字，字号按缩放反向放大，始终看得清 */
+/** 地图档：卡片只剩图标记 + 名字，字号按缩放反向放大，始终看得清 */
 function MapLabel(p: { card: Card }) {
   const g = () => { const c = p.card; return c.kind === "compare" ? flows().byId.get(c.cols[0]) ?? flows().byId.get(c.cols[1]) : flows().byId.get(c.id); };
   const n = () => g()?.label || (g() ? "•" : "");
@@ -307,5 +308,3 @@ function MapLabel(p: { card: Card }) {
     </div>
   );
 }
-
-export { LANGS };

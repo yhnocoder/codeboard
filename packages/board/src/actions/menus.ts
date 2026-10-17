@@ -1,29 +1,20 @@
 // 右键 / ⋯ 菜单：卡片、多选、画布、连线、Section、调用、选中的行。
-import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, headOf, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type LinkStyle, type LinkSide, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
+  findCard, isCode, cardTitle, segOf, allCodeCards,
+  walkOrder,
+  headOf,
+  type CodeCard, type CompareCard, type LinkSide, type Section,
+  type CallSpan,
 } from "@codeboard/core";
-import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
-import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
+import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, placeOf, type LineSel } from "../state/store";
+import { toWorld } from "../state/camera";
+import { setEditing, setPaletteOpen } from "../state/ui";
+import { openMenu, type Item } from "../ui/Menu";
 import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
-import { addPlain, callOn, manualCall, openVars, startConnect, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
+import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
-import { commitMenu } from "./versions";
-import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
+import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
@@ -199,7 +190,7 @@ function multiItems(): Item[] {
     ...(cs.length === 2 && codes.length === 2 ? [{ label: "Compare", disabled: cmp.ok ? false : cmp.why, run: doCompare } as Item] : []),
     ...(codes.length >= 2 ? [{ label: "Merge into One Card", disabled: mc.ok ? false : mc.why, run: () => mergeCards(sel.cards) } as Item] : []),
     ...(canLinkList(cs) ? [{ label: "Merge into Link List", run: () => mergeIntoLinkList(sel.cards) } as Item] : []),
-    { label: "Connect with Plain Link", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addPlain({ card: a.id }, { card: b.id }); } },
+    { label: "Connect with Arrow", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addLink({ card: a.id }, { card: b.id }); } },
     { label: "Move to New Section", run: () => moveToNewSection() },
     { label: lockAll ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock(sel.cards, sel.sections) },
     arrangeItem(() => [...sel.cards]),
@@ -282,8 +273,8 @@ export function labelMenu(id: string, x: number, y: number) {
     { label: "Delete Label", danger: true, disabled: L.label ? false : "No text written on this arrow", run: () => deleteLabel(id) },
   ], x, y);
 }
-export const LINK_COLORS = [["grey", "Grey"], ["orange", "Orange"], ["blue", "Blue"], ["green", "Green"]] as const;
-export const SECTION_COLORS = [["none", "None"], ["sand", "Warm Sand"], ["blue", "Light Blue"], ["green", "Light Green"], ["pink", "Light Pink"]] as const;
+const LINK_COLORS = [["grey", "Grey"], ["orange", "Orange"], ["blue", "Blue"], ["green", "Green"]] as const;
+const SECTION_COLORS = [["none", "None"], ["sand", "Warm Sand"], ["blue", "Light Blue"], ["green", "Light Green"], ["pink", "Light Pink"]] as const;
 
 export function sectionMenu(id: string, x: number, y: number) {
   const s = sectionById(id);

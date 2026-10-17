@@ -1,27 +1,12 @@
 // 箭头（Link）：普通箭头、连接模式、标签、调用上的变量。
-import { unwrap } from "solid-js/store";
-import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type LinkStyle, type LinkSide, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
-} from "@codeboard/core";
-import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
-import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
+import { uid, isCode, cardTitle, varKey, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
+import { state, mutate, select, cardById, toast } from "../state/store";
+import { setEditing, setConnectFrom, setHoverVar } from "../state/ui";
+import { openPop } from "../state/pop";
 import { lastPointer } from "./common";
 import { askCands, attachCall, calleeMatches, callMark } from "./flow";
 
-// ---------- Plain link ----------
+// ---------- 箭头 ----------
 
 type EndRef = { card: string; seg?: string; line?: number };
 
@@ -51,7 +36,7 @@ export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
  * 新箭头。从代码行连到「这一行调用的函数」所在的卡时自动带上 Call 标记（W01 B：手画的线连到被调函数），
  * 连到别的（Note、某一行）就是普通箭头。两端可以是整张卡或某一行，数量不限；只有同一张卡的同一处连自己不行
  */
-export function addPlain(from: EndRef, to: EndRef, side?: LinkSide) {
+export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
   if (cardById(from.card)?.host.id === cardById(to.card)?.host.id && from.line === to.line) return;
   const sides = side ? { from: side } : undefined;
   const call = callOn(from, to);
@@ -108,7 +93,7 @@ export function toggleVar(id: string, v: Var) {
  * 固定起点 / 终点走哪一侧。每一端：不传（undefined）= 不变；"auto" = 回到自动；left / right / top / bottom = 固定。
  * 行端只能左右（固定成上下会被忽略、照自动走）
  */
-export function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") {
+function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") {
   mutate((b) => {
     const l = b.links.find((k) => k.id === id);
     if (!l) return;
@@ -119,7 +104,7 @@ export function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "
   });
 }
 /** 两端都回到自动 */
-export const resetSides = (id: string) => setSides(id, "auto", "auto");
+const resetSides = (id: string) => setSides(id, "auto", "auto");
 
 // ---------- WS3：箭头 / 标签菜单改的数据（都走 mutate，可撤销） ----------
 

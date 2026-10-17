@@ -1,26 +1,24 @@
 // 指针交互：拖卡（吸附、合并、⌥ 拖成 Sidenote、进出 Section）、改大小、框选、平移、缩放、
-// 拖 Section 标签、从调用拖出 Call link、从行尾 / 卡边拖出 Plain link，以及键盘快捷键。
-import { unwrap } from "solid-js/store";
+// 拖 Section 标签、从调用拖出带 Call 标记的箭头、从行尾 / 卡边拖出箭头，以及键盘快捷键。
 import {
-  findCard, isCode, snapMove, snapResize, union, bounds, center, contains, cardTitle,
-  type Board, type Card, type CallSpan, type Rect, type Anchor, type NoteCard, type LinkSide,
+  findCard, isCode, snapMove, snapResize, bounds, center, contains,
+  type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
   state, sel, select, toggleSel, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, mutate, live, beginGesture,
-  undo, redo, toast, placeOf, placed, setSel, toastMsg, setToastMsg,
+  undo, redo, toast, placeOf, placed, toastMsg, setToastMsg,
 } from "./state/store";
 import { tune } from "./state/tune";
-import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, fitRect, lod } from "./state/camera";
+import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
 import {
   setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, spaceDown, setSpaceDown,
-  connectFrom, setConnectFrom, walk, setEditing, editing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen, settingsOpen,
+  connectFrom, setConnectFrom, walk, setEditing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen, settingsOpen,
 } from "./state/ui";
 import { frames, deepestAt, frameOf, sec, descSections, allMembers, collapsedHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { closeMenu, menuOpen, dialogOpen } from "./ui/Menu";
-import { pops, closePop, closeAllPops, pinPop } from "./state/pop";
+import { pops, closeAllPops, pinPop } from "./state/pop";
 import * as A from "./actions";
-import { send } from "./host";
 
 const boardEl = () => document.getElementById("board")!;
 // 白板是 position: fixed 铺满窗口，左上角只在窗口变大小时可能变：记下来，不在每个滚轮 / 指针事件里读布局
@@ -331,7 +329,7 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
   }, 6);
 }
 
-// ---------- Plain link：从行尾圆点 / 卡边圆点拖出 ----------
+// ---------- 箭头：从行尾圆点 / 卡边圆点拖出 ----------
 
 /** side：用户从哪个圆点拖出来，起点就固定在那一侧（不再按位置自动推） */
 export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string; line?: number }, sx: number, sy: number, side?: LinkSide) {
@@ -357,7 +355,7 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
   }, (_ev, moved) => {
     setRubber(null);
     setDropTarget(null);
-    if (moved && to) A.addPlain(from, to, side);
+    if (moved && to) A.addLink(from, to, side);
   }, 4);
 }
 
@@ -369,7 +367,7 @@ function finishConnect(e: PointerEvent, id: string) {
   const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
   const to = colEl?.dataset.col ?? id;
   if (cardById(to)?.host.id === cardById(from.card)?.host.id) return toast("Connect cancelled");
-  A.addPlain(from, { card: to });
+  A.addLink(from, { card: to });
 }
 
 // ---------- 画布 ----------
@@ -663,9 +661,6 @@ export function installKeys() {
     files.forEach((f, i) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name, { x: w.x + i * 24, y: w.y + i * 24 }); rd.readAsDataURL(f); });
   });
 }
-
-export { send, unwrap, cardTitle, union, fitRect, view, camTo, setSel, editing };
-export type { Card, Rect, NoteCard };
 
 // 放贴纸：在卡片和画布自己的处理之前接住这一下；点到贴纸以外的地方就取消贴纸选中
 window.addEventListener("pointerdown", (e) => {

@@ -1,14 +1,14 @@
 // 线上的标签框：↺、自己写的字、调用参数（一条线一个框，沿线拖动）。W01 C 13–21、D 23。
-import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
+import { For, Show, createMemo, createSignal, onCleanup, type Accessor } from "solid-js";
 import { varKey, callText, varGone, loopLine, segOf, isCode, type Link, type Rect } from "@codeboard/core";
-import { state, sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
-import { hoverLink, editing } from "../state/ui";
+import { sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
+import { hoverLink, editing, setDragLink } from "../state/ui";
 import { toWorld } from "../state/camera";
 import { boardOffset } from "../actions/common";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
-import { geoOf, visible, sharedGeo, enterLink, leaveLink } from "./Links";
+import { enterLink, leaveLink, type Geo } from "./Links";
 import { bezAt, dragT, placeT, type Box } from "./labelpos";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
@@ -41,6 +41,7 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
     if (!end) {
       if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
       end = beginGesture();
+      setDragLink(id);
       box = { w: el.offsetWidth, h: el.offsetHeight };
       rs = ends();
     }
@@ -50,26 +51,17 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
     const t = dragT(p, w.x - grab.x, w.y - grab.y, box, rs);
     live((b) => { const k = b.links.find((l) => l.id === id); if (k && k.at !== t) k.at = t; });
   };
-  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); end?.(); };
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); if (end) setDragLink(null); end?.(); };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
 }
 
 const NONE = new Set<string>();
 
-/** 线中间的标签框（HTML，在 SVG 上面） */
-export function LinkLabels() {
-  const links = createMemo(() => state.board.links.filter(visible));
-  return (
-    <For each={links()}>
-      {(L) => <LinkLabel L={L} />}
-    </For>
-  );
-}
-
-function LinkLabel(p: { L: Link }) {
+/** 线中间的标签框（HTML，在这一层的 SVG 上面；Links.tsx 给每条线建一个，g 是那条线画出来的几何） */
+export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
   const L = p.L;
-  const g = sharedGeo(L) ?? createMemo(() => geoOf(L));
+  const g = p.g;
   // 参数和 ↺ 只在有 Call 标记的线上（W01 C 14、15）；自己写的字任何线都能有（13）
   const vars = () => L.call?.vars ?? [];
   const loop = () => !!L.call?.loop;
@@ -118,7 +110,6 @@ function LinkLabel(p: { L: Link }) {
     return bezAt(gg.pts, bx ? placeT(gg.pts, L.at, bx, ends()) : L.at);
   });
   const style = () => { const q = pos()!; return { left: `${q.x}px`, top: `${q.y}px` }; };
-
   const plusBtn = (inside: boolean) => (
     <button class="vplus" classList={{ in: inside }} data-link={inside ? undefined : L.id} style={inside ? undefined : style()} data-tip="Arguments" aria-label="Arguments"
       onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button>

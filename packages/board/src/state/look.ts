@@ -1,13 +1,14 @@
 // 材质主题（Settings → Theme）里少数要 JS 配合的东西：连线的走法、箭头和端口的形状，源文件的颜色。
 // 其余全在 themes.css。切主题时这里只重算一次连线几何，不加每帧的工作。
 import { createMemo, createRoot, createSignal } from "solid-js";
+import type { ThemeId } from "@codeboard/core";
 import { state } from "./store";
 
 export const look = () => state.host.settings?.theme ?? "warm-ink";
 
 /** clear：直角折线绕到卡外时离卡边多远（route.ts 的 CLEAR），只有路面宽的材质要加大 */
 type Shape = { route: "curve" | "elbow"; head: "chevron" | "triangle" | "dot" | "car"; port: "circle" | "square" | "diamond" | "plaza"; clear?: number };
-const SHAPES: Record<string, Partial<Shape>> = {
+const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
   classic: { head: "triangle" },
   drafting: { route: "elbow", head: "triangle", port: "square" },
   "soft-light": { head: "dot" },

@@ -88,7 +88,7 @@ export function fling(vx: number, vy: number) {
   });
 }
 
-export type Rect = { x: number; y: number; w: number; h: number };
+type Rect = { x: number; y: number; w: number; h: number };
 
 let viewport = { w: 800, h: 600 };
 const [viewSig, setViewSig] = createSignal(viewport);
@@ -96,7 +96,7 @@ export const setViewport = (w: number, h: number) => { viewport = { w, h }; setV
 /** 同 view()，但能被跟踪（视野大小变了会重算） */
 export const viewTracked = viewSig;
 export const view = () => viewport;
-export const SAFE = { l: 24, r: 24, t: 60, b: 64 };
+const SAFE = { l: 24, r: 24, t: 60, b: 64 };
 
 /** 能放下 r 的镜头（不超过 maxZ） */
 export function fitRect(r: Rect, maxZ = 1) {
@@ -142,7 +142,7 @@ export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smoo
 export const toWorld = (px: number, py: number) => ({ x: (px - cam.x) / cam.z, y: (py - cam.y) / cam.z });
 export const viewportCenter = () => toWorld(viewport.w / 2, viewport.h / 2);
 
-// ---------- 缩放分档（#11）：100% 正常；概览只剩卡片名、编号和灰条；地图只剩名字和色块 ----------
+// ---------- 缩放分档（#11）：100% 正常；概览只剩卡片名、图标记和灰条；地图只剩名字和色块 ----------
 
 import { createMemo } from "solid-js";
 let heldZ = 1;

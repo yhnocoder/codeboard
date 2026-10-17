@@ -1,12 +1,13 @@
 // Link 层：SVG 箭头。走线规则见 route.ts（W03）；这里把卡、行、Compare 栏的位置读出来，按条建 memo，只在它两端的卡变了时重算。
+// 线都画在所有卡下面那一层（见下面的「图层」），选中的、正拖着的、指针下那张卡的线临时浮到所有卡上面。
 // 每条线：base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：各自画到合并点，合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
-import { For, Index, Show, batch, createEffect, createMemo, createRenderEffect, createSignal, mapArray, on, onCleanup, untrack, type Accessor, type Setter } from "solid-js";
+import { For, Index, Show, batch, createEffect, createMemo, createRenderEffect, createRoot, createSelector, createSignal, mapArray, on, onCleanup, untrack, type Accessor } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
-import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, live, beginGesture } from "../state/store";
+import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
 import { geo, lineY } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
-import { hoverLink, setHoverLink, rubber, popIn } from "../state/ui";
+import { hoverLink, setHoverLink, hoverCard, setHoverCard, dragLink, setDragLink, rubber, popIn } from "../state/ui";
 import { cam, toWorld, stillZ, lod, reduceMotion, camMoving, worldView } from "../state/camera";
 import { lodOf } from "../state/lodcards";
 import { boardOffset } from "../actions/common";
@@ -14,14 +15,11 @@ import { shape, fileHue, look, traffic } from "../state/look";
 import { tune } from "../state/tune";
 import { isDbl } from "../interact";
 import * as A from "../actions";
+import { LinkLabel } from "./Labels";
+import { LinkStickers } from "../stickers/Picker";
 import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, carAt, carPaths, laneOf, zebraBack, driveFrames, type Road, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-
-// 离开连线后过 300ms 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停（#30）
-let leaveT: number | undefined;
-export const enterLink = (id: string) => { clearTimeout(leaveT); setHoverLink(id); };
-export const leaveLink = () => { clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverLink(null), tune("linkLeave")); };
 
 /** 卡（或 Compare 的一栏）的矩形；在折叠的 Section 里时是那个标题条 */
 function endRect(id: string): { r: Rect; pill: boolean } | null {
@@ -109,7 +107,7 @@ function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
 const anchorsFor = (bs: Base, s: [Side, Side], atMap: readonly [boolean, boolean]): [Anchor, Anchor] =>
   [anchorOn(bs.a.box, s[0], atMap[0] ? bs.a.hy : bs.a.y), anchorOn(bs.b.box, s[1], atMap[1] ? bs.b.hy : bs.b.y)];
 
-type Geo = { d: string; mx: number; my: number; head?: string; tail?: string; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[] };
+export type Geo = { d: string; mx: number; my: number; head?: string; tail?: string; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[] };
 
 /** 粗细档 → 箭头放大多少 */
 const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);
@@ -170,10 +168,12 @@ type Route = {
   ends: Accessor<[Anchor, Anchor] | null>;
   /** 汇合用的签名：同一个终点、同一侧、有没有箭头都一样的才合并；自连 / 对照线 = "" */
   sig: Accessor<string>;
+  /** 画出来的几何（含合并、滑动）；trackLinks 给要画的线填上 */
   geo?: Accessor<Geo | null>;
-  /** 同一份几何，响应式地给 City 的路沿层、车流用（LinksSvg 画这条线时填上） */
-  shown: Accessor<Accessor<Geo | null> | undefined>;
-  setShown: Setter<Accessor<Geo | null> | undefined>;
+  /** 画在哪张卡的那一层（两端里叠放次序高的那张，见下面的「图层」） */
+  owner?: Accessor<string>;
+  /** 这条线的节点：只建一次，换层时整块搬过去 */
+  dom?: Dom;
 };
 const routes = new Map<string, Route>();
 
@@ -224,8 +224,7 @@ function makeRoute(L: Link): Route {
     if (!bs || !s || bs.kind !== "normal") return "";
     return `${s.split("|")[1]}|${headOf(L).end ? 1 : 0}`;
   });
-  const [shown, setShown] = createSignal<Accessor<Geo | null>>();
-  return { L, base, sides, ends, sig, shown, setShown };
+  return { L, base, sides, ends, sig };
 }
 
 /** 终点是同一处的几条线（同一张卡的卡头，或同一行）：终点的 key */
@@ -283,96 +282,87 @@ function portDrag(e: PointerEvent, id: string) {
   const a = endRect(L.from.card)?.r;
   if (!a) return;
   const end = beginGesture();
+  setDragLink(id);
   const move = (ev: PointerEvent) => {
     const o = boardOffset(), w = toWorld(ev.clientX - o.x, ev.clientY - o.y);
     const side = w.x >= a.x + a.w / 2 ? "right" : "left";
     live((b) => { const k = b.links.find((l) => l.id === id); if (k && k.sides?.from !== side) k.sides = { ...k.sides, from: side }; });
   };
-  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); end(); };
+  const up = () => { window.removeEventListener("pointermove", move); window.removeEventListener("pointerup", up); setDragLink(null); end(); };
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
 }
+
 
 /** 画着的线的走线状态（City 的车流要读） */
 const [roads, setRoads] = createSignal<Accessor<Route[]>>(() => []);
 
 /**
- * City 的车流（红绿灯是绿灯时）：镜头附近最多 MAX_ROADS 条调用路上各开两辆车。车是 HTML 小块，用 Web Animations 沿路走：
- * 关键帧只有 transform 和 opacity，整段交给合成器跑，主线程每帧什么都不做；只在路变了（拖卡片）时重建那条路上的两段动画。
- * 红灯、别的材质、系统开了「减少动态效果」时整层不存在（没有动画、没有计时器）。挑哪几条路只在镜头停下时算一次
+ * 卡端（不连行）落在哪张卡的哪一边：「卡 id|边」。那一边的圆点（.eport）就不画了，线头已经标出那个位置（圆点盖在箭头上很难看），
+ * 鼠标移上去照样能拖。只读每条线的 sides memo：拖卡片时不重算，只在换边、增删线时变；createSelector 只通知结果变了的那几个圆点
  */
-const MAX_ROADS = 16;
-export function Traffic() {
-  return <Show when={look() === "city" && traffic() && !reduceMotion()}><Movers /></Show>;
-}
-function Movers() {
-  const pick = createMemo(on([camMoving, () => roads()()], ([moving], _, prev?: Route[]) => {
-    if (moving && prev) return prev;
-    return untrack(() => {
-      const v = worldView(), m = 200;
-      const out: Route[] = [];
-      for (const r of roads()()) {
-        if (!r.L.call || r.base()?.kind !== "normal") continue;
-        const p = r.shown()?.()?.pts;
-        if (!p) continue;
-        const xs = [p[0], p[2], p[4], p[6]], ys = [p[1], p[3], p[5], p[7]];
-        if (Math.max(...xs) < v.x - m || Math.min(...xs) > v.x + v.w + m || Math.max(...ys) < v.y - m || Math.min(...ys) > v.y + v.h + m) continue;
-        out.push(r);
-        if (out.length >= MAX_ROADS) break;
-      }
-      return out;
-    });
-  }));
-  return (
-    <div class="movers">
-      <For each={pick()}>
-        {(r, i) => {
-          const d = () => r.shown()?.()?.d ?? "";
-          return <Index each={[0, 1]}>{(k) => <Mover d={d} k={(i() + k()) % 3} phase={k() / 2 + i() * 0.17} />}</Index>;
-        }}
-      </For>
-    </div>
-  );
-}
-/** 一辆车：路（d）变了就换一段动画，接着原来开到的地方（按比例）往下开 */
-function Mover(p: { d: () => string; k: number; phase: number }) {
-  let el!: HTMLDivElement;
-  let anims: Animation[] = [];
-  const stop = () => { for (const a of anims) a.cancel(); anims = []; };
-  createEffect(on(p.d, (d) => {
-    const old = anims[0], was = old ? ((old.currentTime as number) ?? 0) / ((old.effect?.getTiming().duration as number) || 1) : p.phase;
-    stop();
-    const f = d ? driveFrames(d) : null;
-    if (!f) return;
-    // 车速大约 50px/s
-    const ms = Math.max(3000, (f.len / 50) * 1000);
-    const at = ((was % 1) + 1) % 1 * ms;
-    const opt: KeyframeAnimationOptions = { duration: ms, iterations: Infinity, easing: "linear" };
-    anims = [el.animate(f.frames, opt), el.animate([{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 1, offset: 0.88 }, { opacity: 0 }], opt)];
-    for (const a of anims) a.currentTime = at;
-  }));
-  onCleanup(stop);
-  return <div ref={el} class={`mover k${p.k}`} />;
+export const landed = createRoot(() => {
+  const keys = createMemo(() => {
+    const out = new Set<string>();
+    for (const r of roads()()) {
+      const s = r.sides();
+      if (!s) continue;
+      const [a, b] = s.split("|");
+      if (r.L.from.line === undefined) out.add(`${r.L.from.card}|${a}`);
+      if (r.L.to.line === undefined) out.add(`${r.L.to.card}|${b}`);
+    }
+    return out;
+  }, new Set<string>(), { equals: (x, y) => x.size === y.size && [...x].every((k) => y.has(k)) });
+  return createSelector(keys, (k: string, set) => set.has(k));
+});
+
+// ---------- 图层 ----------
+// 所有的线画在所有卡下面那一层（BOTTOM，Section 框上面、第一张卡前面），全白板共用一个 SVG：卡盖得住线，线不压任何卡。
+// 同一层里按线两端里叠放次序（b.cards 的顺序）高的那张卡排，同一张卡的线保持 links 里的先后。
+// 选中的线、正在拖 / 正在连的线、指针下那张卡的线临时放到最上面一层（.lyr.top），结束了回到下面。
+// 线头的圆点（path.port、拖行端的 .porthit）落在卡边上，在卡下面会被盖住一半：圆点单独放在所有卡上面的一层（PORTS），浮上来的线的圆点跟线一起在最上面。
+// 每条线的节点（线、City 的路沿和白边线、圆点、标签框和贴纸）只建一次，浮上来、落回去时整块搬（insertBefore），不拆掉重建：
+// 几何 memo、量好的标签框大小、正拖着的元素都还在
+
+const TOP = " top", BOTTOM = " bottom", PORTS = " ports";
+type Dom = { line: SVGGElement; casing: SVGGElement; kerb: SVGGElement; port?: SVGGElement; label?: HTMLElement };
+type MergeV = { members: Accessor<Link[]>; dom: Dom };
+type Slot = { casings: SVGGElement; kerbs: SVGGElement; lines: SVGGElement; merges: SVGGElement; ports: SVGGElement; labels: HTMLDivElement; rs: Route[]; ms: MergeV[]; pt: Route[] };
+/** pt：圆点放在 PORTS 层的线（没浮上来的） */
+type Plan = { m: Map<string, { rs: Route[]; ms: MergeV[] }>; pt: Route[] };
+const NO_PLAN: Plan = { m: new Map(), pt: [] };
+const slots = new Map<string, Slot>();
+const [slotTick, setSlotTick] = createSignal(0);
+let plan: Accessor<Plan> = () => NO_PLAN;
+let pick: Accessor<Route[]> = () => [];
+
+const same = <T,>(a: readonly T[], b: readonly T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
+/** 让 p 的子节点从头开始依次是 ns（已经在位置上的不动；后面剩下的是要搬走的） */
+function order(p: Element, ns: Element[]) {
+  let at = p.firstElementChild;
+  for (const n of ns) { if (n === at) at = at.nextElementSibling; else p.insertBefore(n, at); }
 }
 
-// 一条线的几何只算一次：LinksSvg 建的 memo，LinkLabels 直接拿来用（拿不到就自己算）
-const shared = new WeakMap<Link, () => Geo | null>();
-/** LinksSvg 建好的几何 memo（LinkLabels 复用） */
-export const sharedGeo = (L: Link) => shared.get(L);
+// 指针下的卡：离开后过 linkLeave 才算离开，鼠标从卡移到它的线上时线不掉下去。镜头动的时候不换（内容从指针下滑过也会进出卡），停下再按最后的那张算
+let hovNow: string | null = null, cardT: number | undefined;
+const hostOf = (id: string) => cardById(id)?.host.id;
+const settleHover = () => { clearTimeout(cardT); cardT = window.setTimeout(() => { if (!camMoving()) setHoverCard(hovNow); }, tune("linkLeave")); };
+export const enterCard = (id: string) => { hovNow = id; clearTimeout(cardT); if (!camMoving()) setHoverCard(id); };
+export const leaveCard = (id: string) => { if (hovNow === id) hovNow = null; settleHover(); };
 
-/**
- * 点击区的粗细（屏幕上 12px）：单独一个 effect。写在 JSX 的 style 里会和这条线的其它属性编进同一个 effect，
- * 镜头每次停下（stillZ 变）196 条线都要把 class、合并、路径整个重算一遍
- */
-const hitWidth = (el: SVGPathElement) => createRenderEffect(() => el.style.setProperty("stroke-width", `${12 / stillZ()}px`));
+// 离开连线后过 300ms 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停（#30）。移到指针下那张卡的线上时，那张卡也还算悬停着
+let leaveT: number | undefined;
+export const enterLink = (id: string) => {
+  clearTimeout(leaveT); setHoverLink(id);
+  const L = routes.get(id)?.L, hc = untrack(hoverCard);
+  if (L && hc && (hostOf(L.from.card) === hc || hostOf(L.to.card) === hc)) clearTimeout(cardT);
+};
+export const leaveLink = () => { clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverLink(null), tune("linkLeave")); if (untrack(hoverCard) !== hovNow) settleHover(); };
 
-const colorCls = (L: Link) => (L.style?.color ? ` lc-${L.style.color}` : "");
-const widthCls = (L: Link) => (L.style?.width === 1 ? " w1" : L.style?.width === 3 ? " w3" : "");
-const isOn = (id: string) => sel.links.includes(id) || hoverLink() === id || (A.bindHot() as { link?: string } | null)?.link === id;
-
-export function LinksSvg() {
+/** Canvas 里调用一次：每条线的走线、几何、节点，和它画在哪一层 */
+export function trackLinks() {
   const links = createMemo(() => state.board.links.filter(visible));
-  // 每条线的走线状态先全建好（合并要读别的线走哪一侧），再画
+  // 每条线的走线状态先全建好（合并要读别的线走哪一侧），再算几何
   const list = createMemo(mapArray(links, (L) => {
     const r = makeRoute(L);
     routes.set(L.id, r);
@@ -402,93 +392,245 @@ export function LinksSvg() {
     }
     return out.join("\n");
   });
-  const mergeKeys = () => (merges() ? merges().split("\n") : []);
-  setRoads(() => list);
   const city = () => look() === "city";
-  // City 的路沿层、白边线层共用的合并段
-  const stubs = createMemo(mapArray(() => (city() ? mergeKeys() : []), (key) => stubOf(key, groups, byId)));
-  return (
-    <svg class="edges" classList={{ "lod-map": lod() === "map" }} width="1" height="1">
-      {/* City：所有路的路沿画在最底下一层，几条路交叉、汇合时路面连成一片 */}
-      <Show when={city()}>
-        <g class="casings">
-          <For each={list()}>
-            {(r) => <Show when={r.base()?.kind !== "gutter" && r.shown()?.()}>{(g) => <path class={`casing${r.L.call ? "" : " plain"}${widthCls(r.L)}`} d={g().d} />}</Show>}
-          </For>
-          <For each={stubs()}>{(st) => <Show when={st.g()}><path class={`casing${st.members().every((L) => !L.call) ? " plain" : ""}`} d={st.g()!.d} /></Show>}</For>
-        </g>
-        {/* 大路两边的白边线：在所有路面下面，几条路交叉、汇合时路口里没有边线 */}
-        <g class="kerbs">
-          <For each={list()}>
-            {(r) => <Show when={r.L.call && r.base()?.kind !== "gutter" && r.shown()?.()}>{(g) => <path class={`kerb${widthCls(r.L)}`} d={g().d} />}</Show>}
-          </For>
-          <For each={stubs()}>{(st) => <Show when={st.g() && st.members().some((L) => L.call)}><path class="kerb" d={st.g()!.d} /></Show>}</For>
-        </g>
-      </Show>
-      <For each={list()}>
-        {(r) => {
-          const L = r.L;
-          const merged = createMemo(() => mergedWith(L, r.sig()));
-          const g = createMemo(() => { const bs = r.base(), e = r.ends(); return bs && e ? geoFrom(L, bs, e[0], e[1], merged()) : null; });
-          r.geo = g;
-          r.setShown(() => g);
-          shared.set(L, g);
-          onCleanup(() => { if (shared.get(L) === g) shared.delete(L); if (r.geo === g) r.geo = undefined; if (r.shown() === g) r.setShown(undefined); });
-          const on = () => isOn(L.id);
-          const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
-          const style = () => `${colorCls(L)}${widthCls(L)}`;
-          const gutter = () => r.base()?.kind === "gutter";
-          const road: Road = L.call ? "main" : "street";
-          const cls = () => `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`;
-          return (
-            <Show when={g()}>
-              <g class="link" data-lk={L.id} data-from={L.from.card} data-to={L.to.card} data-call={L.call ? "" : undefined} data-merged={merged() ? "" : undefined} data-sides={r.sides()}>
-                <path class={cls()} d={g()!.d} />
-                <Show when={city() && !gutter()}><Lane d={g()!.d} road={road} s={headScale(L)} start={!!g()!.tail} end={!!g()!.head} /></Show>
-                <Show when={g()!.head}><Head cls={`ahead end ${shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} road={road} /></Show>
-                <Show when={g()!.tail}><Head cls={`ahead start ${shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.tail!} road={road} /></Show>
-                <Show when={g()!.port}><path class={`port fc-${toHue()}${L.lost?.from ? " lost" : ""}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
-                  <Show when={on() && L.from.line !== undefined && r.base()?.kind === "normal"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
-                <Show when={g()!.port2}><path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} /></Show>
-                <path class="lhit" data-link={L.id} d={g()!.d} ref={hitWidth}
-                  onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
-                  onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
-              </g>
-            </Show>
-          );
-        }}
-      </For>
-      <For each={mergeKeys()}>
-        {(key) => <Merge key={key} groups={groups} byId={byId} />}
-      </For>
-      <Show when={rubber()}>
-        {(rb) => {
-          const w0 = () => ({ x: (rb().x1 - cam.x) / cam.z, y: (rb().y1 - cam.y) / cam.z }), w1 = () => ({ x: (rb().x2 - cam.x) / cam.z, y: (rb().y2 - cam.y) / cam.z });
-          const d = () => {
-            const a = w0(), b = w1();
-            if (rb().plain) {
-              // 从行旁的点拖出：先朝拖的方向水平出去，再弯到指针
-              const dx = clamp(Math.abs(b.x - a.x) * 0.5, 20, 120) * (b.x >= a.x ? 1 : -1);
-              return `M${a.x} ${a.y} C${a.x + dx} ${a.y} ${b.x - dx * 0.3} ${b.y} ${b.x} ${b.y}`;
-            }
-            const dx = clamp(Math.abs(b.y - a.y) * 0.3 + Math.max(0, a.x - b.x) * 0.6, 28, 130);
-            return `M${a.x} ${a.y} C${a.x - dx} ${a.y} ${b.x - dx} ${b.y} ${b.x} ${b.y}`;
-          };
-          return <path class={`edge rubber${rb().plain ? " plain" : ""}`} d={d()} />;
-        }}
-      </Show>
-    </svg>
+  // 卡的叠放次序：b.cards 里第几张（placed() 跟它同序）。只在增删卡、Arrange 时变
+  const rank = createMemo(() => new Map(placed().map((c, i) => [c.id, i])));
+  const views = createMemo(mapArray(list, (r) => {
+    const L = r.L;
+    const merged = createMemo(() => mergedWith(L, r.sig()));
+    const g = createMemo(() => { const bs = r.base(), e = r.ends(); return bs && e ? geoFrom(L, bs, e[0], e[1], merged()) : null; });
+    r.geo = g;
+    // 两端里叠放次序高的那张卡；两张都不在画布上时是 ""（画在所有卡上面那一层）
+    r.owner = createMemo(() => {
+      const a = hostOf(L.from.card), b = hostOf(L.to.card), k = rank();
+      const ia = a ? k.get(a) ?? -1 : -1, ib = b ? k.get(b) ?? -1 : -1;
+      return ia < 0 && ib < 0 ? "" : ia >= ib ? a! : b!;
+    });
+    const dom = linkDom(r, g, merged, city);
+    r.dom = dom;
+    onCleanup(() => { if (r.geo === g) r.geo = undefined; dom.line.remove(); dom.casing.remove(); dom.kerb.remove(); dom.port?.remove(); dom.label?.remove(); });
+    return r;
+  }));
+  setRoads(() => views);
+  const mviews = createMemo(mapArray(() => (merges() ? merges().split("\n") : []), (key) => {
+    const st = stubOf(key, groups, byId);
+    const dom = mergeDom(key, st, city);
+    onCleanup(() => { dom.line.remove(); dom.casing.remove(); dom.kerb.remove(); });
+    return { members: st.members, dom } as MergeV;
+  }));
+  // 临时放到最上面的线：选中的、正在拖的、指针下那张卡的
+  const lifted = createMemo(() => {
+    const out = new Set<string>(sel.links);
+    const d = dragLink();
+    if (d) out.add(d);
+    const hc = hoverCard();
+    if (hc) for (const r of list()) if (hostOf(r.L.from.card) === hc || hostOf(r.L.to.card) === hc) out.add(r.L.id);
+    return out;
+  }, new Set<string>(), { equals: (a, b) => a.size === b.size && [...a].every((x) => b.has(x)) });
+  // 每一层画哪些线、哪些合并段：浮上来的在最上面那层（合并段的成员里有浮上来的，合并段也一起浮上来）。
+  // 同一层里按线所属的卡的叠放次序排，同一张卡的线保持 links 里的先后
+  plan = createMemo<Plan>(() => {
+    const lf = lifted(), rk = rank(), m: Plan["m"] = new Map();
+    const slot = (k: string) => { let x = m.get(k); if (!x) m.set(k, (x = { rs: [], ms: [] })); return x; };
+    const pt: Route[] = [];
+    for (const r of views()) { const k = lf.has(r.L.id) ? TOP : BOTTOM; slot(k).rs.push(r); if (k !== TOP) pt.push(r); }
+    const ord = (r: Route) => rk.get(r.owner!()) ?? -1;
+    for (const x of m.values()) x.rs.sort((a, b) => ord(a) - ord(b));
+    for (const x of mviews()) slot(x.members().some((L) => lf.has(L.id)) ? TOP : BOTTOM).ms.push(x);
+    return { m, pt };
+  });
+  // 把节点搬到它该在的那一层：只动内容变了的层，层里已经在位置上的节点不动
+  createEffect(() => {
+    const { m, pt } = plan();
+    slotTick();
+    for (const [k, s] of slots) {
+      const want = m.get(k) ?? { rs: [], ms: [] };
+      // 圆点：没浮上来的线的在 PORTS 层，浮上来的跟线一起在最上面那层
+      const wp = k === PORTS ? pt : k === TOP ? want.rs : [];
+      if (!same(s.pt, wp)) { order(s.ports, wp.map((r) => r.dom!.port!)); s.pt = wp; }
+      if (same(s.rs, want.rs) && same(s.ms, want.ms)) continue;
+      order(s.casings, [...want.rs.map((r) => r.dom!.casing), ...want.ms.map((x) => x.dom.casing)]);
+      order(s.kerbs, [...want.rs.map((r) => r.dom!.kerb), ...want.ms.map((x) => x.dom.kerb)]);
+      order(s.lines, want.rs.map((r) => r.dom!.line));
+      order(s.merges, want.ms.map((x) => x.dom.line));
+      order(s.labels, want.rs.map((r) => r.dom!.label!));
+      s.rs = want.rs; s.ms = want.ms;
+    }
+  });
+  createEffect(on(camMoving, (mv) => { if (!mv) setHoverCard(hovNow); }, { defer: true }));
+  // City 的车流：挑哪几条路只在镜头停下时算一次
+  const trafficOn = () => look() === "city" && traffic() && !reduceMotion();
+  pick = createMemo(on([camMoving, views, trafficOn], ([moving, rs, ok], _, prev?: Route[]) => {
+    if (!ok) return [];
+    if (moving && prev?.length) return prev;
+    return untrack(() => {
+      const v = worldView(), m = 200;
+      const out: Route[] = [];
+      for (const r of rs) {
+        if (!r.L.call || r.base()?.kind !== "normal") continue;
+        const p = r.geo?.()?.pts;
+        if (!p) continue;
+        const xs = [p[0], p[2], p[4], p[6]], ys = [p[1], p[3], p[5], p[7]];
+        if (Math.max(...xs) < v.x - m || Math.min(...xs) > v.x + v.w + m || Math.max(...ys) < v.y - m || Math.min(...ys) > v.y + v.h + m) continue;
+        out.push(r);
+        if (out.length >= MAX_ROADS) break;
+      }
+      return out;
+    });
+  }));
+}
+
+/** 线的一层：bottom = 所有卡下面那一层；ports = 没浮上来的线的圆点；top = 临时浮上来的线和正在连的线 */
+export function LinkLayer(p: { top?: boolean; bottom?: boolean; ports?: boolean }) {
+  return <Layer k={p.top ? TOP : p.bottom ? BOTTOM : PORTS} />;
+}
+function Layer(p: { k: string }) {
+  const top = p.k === TOP;
+  const s = { rs: [], ms: [], pt: [] } as unknown as Slot;
+  const el = (
+    <div class="lyr" classList={{ top, bottom: p.k === BOTTOM, ports: p.k === PORTS, "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}>
+      <svg class="edges" width="1" height="1">
+        {/* City：这一层所有路的路沿在最底下，再是大路两边的白边线，都在路面下面：同一层的几条路交叉、汇合时路面连成一片，路口里没有边线 */}
+        <g class="casings" ref={s.casings} />
+        <g class="kerbs" ref={s.kerbs} />
+        <g ref={s.lines} />
+        <g ref={s.merges} />
+        <g ref={s.ports} />
+        <Show when={top}><Rubber /></Show>
+      </svg>
+      <div class="lw" ref={s.labels} />
+    </div>
   );
+  slots.set(p.k, s);
+  setSlotTick((t) => t + 1);
+  onCleanup(() => { if (slots.get(p.k) === s) slots.delete(p.k); });
+  return el;
+}
+
+/** 正在连的线（橡皮筋），在最上面那一层 */
+function Rubber() {
+  return (
+    <Show when={rubber()}>
+      {(rb) => {
+        const w0 = () => ({ x: (rb().x1 - cam.x) / cam.z, y: (rb().y1 - cam.y) / cam.z }), w1 = () => ({ x: (rb().x2 - cam.x) / cam.z, y: (rb().y2 - cam.y) / cam.z });
+        const d = () => {
+          const a = w0(), b = w1();
+          if (rb().plain) {
+            // 从行旁的点拖出：先朝拖的方向水平出去，再弯到指针
+            const dx = clamp(Math.abs(b.x - a.x) * 0.5, 20, 120) * (b.x >= a.x ? 1 : -1);
+            return `M${a.x} ${a.y} C${a.x + dx} ${a.y} ${b.x - dx * 0.3} ${b.y} ${b.x} ${b.y}`;
+          }
+          const dx = clamp(Math.abs(b.y - a.y) * 0.3 + Math.max(0, a.x - b.x) * 0.6, 28, 130);
+          return `M${a.x} ${a.y} C${a.x - dx} ${a.y} ${b.x - dx} ${b.y} ${b.x} ${b.y}`;
+        };
+        return <path class={`edge rubber${rb().plain ? " plain" : ""}`} d={d()} />;
+      }}
+    </Show>
+  );
+}
+
+/**
+ * City 的车流（红绿灯是绿灯时）：镜头附近最多 MAX_ROADS 条调用路上各开两辆车。车是 HTML 小块，用 Web Animations 沿路走：
+ * 关键帧只有 transform 和 opacity，整段交给合成器跑，主线程每帧什么都不做；只在路变了（拖卡片）时重建那条路上的两段动画。
+ * 车不跟着路分到各张卡的那一层，跟以前一样全在一层（.movers，在所有卡上面）：分开的话每层车都要另起合成层，拖、改动时慢一倍以上。
+ * 停着的车（.ahead.car）和路一起在路的那一层。
+ * 红灯、别的材质、系统开了「减少动态效果」时整层不存在（没有动画、没有计时器）。挑哪几条路只在镜头停下时算一次（trackLinks 的 pick）
+ */
+const MAX_ROADS = 16;
+export function Traffic() {
+  return <Show when={look() === "city" && traffic() && !reduceMotion()}><Movers /></Show>;
+}
+function Movers() {
+  return (
+    <div class="movers">
+      <For each={pick()}>
+        {(r, i) => {
+          const d = () => r.geo?.()?.d ?? "";
+          return <Index each={[0, 1]}>{(k) => <Mover d={d} k={(i() + k()) % 3} phase={k() / 2 + i() * 0.17} />}</Index>;
+        }}
+      </For>
+    </div>
+  );
+}
+/** 一辆车：路（d）变了就换一段动画，接着原来开到的地方（按比例）往下开 */
+function Mover(p: { d: () => string; k: number; phase: number }) {
+  let el!: HTMLDivElement;
+  let anims: Animation[] = [];
+  const stop = () => { for (const a of anims) a.cancel(); anims = []; };
+  createEffect(on(p.d, (d) => {
+    const old = anims[0], was = old ? ((old.currentTime as number) ?? 0) / ((old.effect?.getTiming().duration as number) || 1) : p.phase;
+    stop();
+    const f = d ? driveFrames(d) : null;
+    if (!f) return;
+    // 车速大约 50px/s
+    const ms = Math.max(3000, (f.len / 50) * 1000);
+    const at = ((was % 1) + 1) % 1 * ms;
+    const opt: KeyframeAnimationOptions = { duration: ms, iterations: Infinity, easing: "linear" };
+    anims = [el.animate(f.frames, opt), el.animate([{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 1, offset: 0.88 }, { opacity: 0 }], opt)];
+    for (const a of anims) a.currentTime = at;
+  }));
+  onCleanup(stop);
+  return <div ref={el} class={`mover k${p.k}`} />;
+}
+
+/**
+ * 点击区的粗细（屏幕上 12px）：单独一个 effect。写在 JSX 的 style 里会和这条线的其它属性编进同一个 effect，
+ * 镜头每次停下（stillZ 变）196 条线都要把 class、合并、路径整个重算一遍
+ */
+const hitWidth = (el: SVGPathElement) => createRenderEffect(() => el.style.setProperty("stroke-width", `${12 / stillZ()}px`));
+
+const colorCls = (L: Link) => (L.style?.color ? ` lc-${L.style.color}` : "");
+const widthCls = (L: Link) => (L.style?.width === 1 ? " w1" : L.style?.width === 3 ? " w3" : "");
+const isOn = (id: string) => sel.links.includes(id) || hoverLink() === id || (A.bindHot() as { link?: string } | null)?.link === id;
+
+/** 一条线的节点：线本身、City 的路沿和白边线、标签框和贴纸。外面各包一层不变的节点，换层时整块搬 */
+function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, city: () => boolean): Dom {
+  const L = r.L;
+  const on = () => isOn(L.id);
+  const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
+  const style = () => `${colorCls(L)}${widthCls(L)}`;
+  const gutter = () => r.base()?.kind === "gutter";
+  const road: Road = L.call ? "main" : "street";
+  const cls = () => `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`;
+  const line = (
+    <g>
+      <Show when={g()}>
+        <g class="link" data-lk={L.id} data-from={L.from.card} data-to={L.to.card} data-call={L.call ? "" : undefined} data-merged={merged() ? "" : undefined} data-sides={r.sides()}>
+          <path class={cls()} d={g()!.d} />
+          <Show when={city() && !gutter()}><Lane d={g()!.d} road={road} s={headScale(L)} start={!!g()!.tail} end={!!g()!.head} /></Show>
+          <Show when={g()!.head}><Head cls={`ahead end ${shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} road={road} /></Show>
+          <Show when={g()!.tail}><Head cls={`ahead start ${shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.tail!} road={road} /></Show>
+          <path class="lhit" data-link={L.id} d={g()!.d} ref={hitWidth}
+            onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
+            onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
+        </g>
+      </Show>
+    </g>
+  ) as SVGGElement;
+  // 线头的圆点：单独一组，放在卡上面那一层（见「图层」）
+  const port = (
+    <g data-lk={L.id}>
+      <Show when={g()}>
+        <Show when={g()!.port}><path class={`port fc-${toHue()}${L.lost?.from ? " lost" : ""}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
+          <Show when={on() && L.from.line !== undefined && r.base()?.kind === "normal"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
+        <Show when={g()!.port2}><path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} /></Show>
+      </Show>
+    </g>
+  ) as SVGGElement;
+  const casing = <g><Show when={city() && !gutter() && g()}>{(gg) => <path class={`casing${L.call ? "" : " plain"}${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
+  const kerb = <g><Show when={city() && L.call && !gutter() && g()}>{(gg) => <path class={`kerb${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
+  const label = <div class="lw"><LinkLabel L={L} g={g} /><LinkStickers link={L.id} /></div> as HTMLDivElement;
+  return { line, casing, kerb, port, label };
 }
 
 /**
  * 几条线汇到同一处（W03 8 / 9）：合并点到终点的一小段 + 一个箭头。
  * 结构固定，方便材质另画（City 的路口等）：<g class="merge" data-card data-line data-side data-n> 里一条 .edge.stub 和一个 .ahead.end
  */
-/** 一个合并组：成员和合并段（Merge 和 City 的路沿层共用） */
+/** 一个合并组：成员和合并段（Merge 和 City 的路沿、白边线共用） */
 function stubOf(key: string, groups: Accessor<Map<string, Link[]>>, byId: Accessor<Map<string, Route>>) {
   const [k, sig] = key.split("#");
-  const members = createMemo(() => (groups().get(k) ?? []).filter((L) => byId().get(L.id)?.sig() === sig));
+  const members = createMemo(() => (groups().get(k) ?? []).filter((L) => byId().get(L.id)?.sig() === sig), [], { equals: same });
   const g = createMemo(() => {
     const ms = members(), r = byId().get(ms[0]?.id ?? ""), e = r?.ends();
     if (!r || !e) return null;
@@ -500,12 +642,19 @@ function stubOf(key: string, groups: Accessor<Map<string, Link[]>>, byId: Access
   });
   return { members, g };
 }
+type Stub = ReturnType<typeof stubOf>;
 
-function Merge(p: { key: string; groups: Accessor<Map<string, Link[]>>; byId: Accessor<Map<string, Route>> }) {
+function mergeDom(key: string, st: Stub, city: () => boolean): Dom {
+  const casing = <g><Show when={city() && st.g()}><path class={`casing${st.members().every((L) => !L.call) ? " plain" : ""}`} d={st.g()!.d} /></Show></g> as SVGGElement;
+  const kerb = <g><Show when={city() && st.g() && st.members().some((L) => L.call)}><path class="kerb" d={st.g()!.d} /></Show></g> as SVGGElement;
+  return { line: <g><Merge key={key} st={st} /></g> as SVGGElement, casing, kerb };
+}
+
+function Merge(p: { key: string; st: Stub }) {
   const [k, sig] = p.key.split("#");
   const side = sig.split("|")[0];
   const [card, , line] = k.split("|");
-  const { members, g } = stubOf(p.key, p.groups, p.byId);
+  const { members, g } = p.st;
   const on = () => members().some((L) => isOn(L.id));
   const style = () => {
     const ms = members(), L = ms[0];
