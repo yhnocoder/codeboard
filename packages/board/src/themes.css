@@ -788,15 +788,14 @@
 
 /* ---------- Ink Wash（水墨） ---------- */
 /* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
-:root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1;
-  --fiber: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .4 0 0 0 0 .32 0 0 0 .55 -.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E"); }
+:root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1; }
 :root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--bg); }
 :root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--bg); }
 :root.look-ink-wash .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), var(--sh-card); }
 :root.look-ink-wash .card.sel.lift { box-shadow: 0 0 0 1px var(--ink), var(--sh-lift); }
 /* 卡头下面不画分隔线，换成一笔干笔墨痕 */
 :root.look-ink-wash .card:not(.nobg) > .cface > .chead { position: relative; height: 38px; padding: 0 8px 0 14px; gap: 9px; border-bottom: 0; }
-:root.look-ink-wash .card:not(.nobg) > .cface > .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 0; height: 7px; background: var(--ink); opacity: .7; pointer-events: none;
+:root.look-ink-wash .card:not(.nobg) > .cface > .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 1px; height: 3.5px; background: var(--ink); opacity: .55; pointer-events: none;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
           mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat; }
 :root.look-ink-wash .chead .kind { display: none; }
@@ -821,10 +820,11 @@
 :root.look-ink-wash .slabel { font: italic 400 13px/20px var(--serif); border-radius: 2px; }
 :root.look-ink-wash .pill, :root.look-ink-wash .ctx, :root.look-ink-wash .pop, :root.look-ink-wash .dialog, :root.look-ink-wash .keys, :root.look-ink-wash .palette, :root.look-ink-wash .stkpick { background: var(--paper); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 2px; box-shadow: var(--sh-float); }
 /* 底部工具条：一条素宣纸，右边斜搁一支毛笔 */
-:root.look-ink-wash .bbar .pill { position: relative; padding: 4px 28px 4px 10px; border-radius: 1px; background: var(--fiber), var(--paper); background-blend-mode: multiply, normal; }
+:root.look-ink-wash .bbar .pill { position: relative; padding: 5px 30px 5px 12px; border-radius: 1px; background: linear-gradient(180deg, color-mix(in srgb, var(--paper) 96%, #fff), var(--paper));
+  box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); } /* 像装裱：纸面 + 里面一道细框线（原来的纤维噪点底纹在 1x 屏上发糊） */
 :root.look-ink-wash .bbar .pill::after { content: ""; position: absolute; right: 3px; top: -12px; width: 13px; height: 62px; rotate: 24deg; pointer-events: none; filter: drop-shadow(2px 3px 2px rgba(0,0,0,.3));
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 84'%3E%3Cdefs%3E%3ClinearGradient id='h' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%236b4a26'/%3E%3Cstop offset='.45' stop-color='%23c79a5c'/%3E%3Cstop offset='1' stop-color='%235a3c1c'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23111'/%3E%3Cstop offset='.45' stop-color='%23444'/%3E%3Cstop offset='1' stop-color='%230b0b0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.5a1.6 1.6 0 0 1 0 3.2' fill='none' stroke='%23b0322a' stroke-width='1'/%3E%3Crect x='5' y='4' width='6' height='50' rx='2.6' fill='url(%23h)'/%3E%3Cpath d='M5.4 22h5.2M5.4 40h5.2' stroke='%235a3c1c' stroke-width='.7' opacity='.7'/%3E%3Crect x='4.6' y='52' width='6.8' height='5' rx='1.2' fill='%23222'/%3E%3Cpath d='M4.8 57c0 8 1.6 16 3.2 25 1.6-9 3.2-17 3.2-25z' fill='url(%23t)'/%3E%3C/svg%3E") center / contain no-repeat; }
-:root.look-ink-wash .dock .pill { border-radius: 1px; }
+:root.look-ink-wash .dock .pill { border-radius: 1px; box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); }
 :root.look-ink-wash .ib, :root.look-ink-wash .tbtn, :root.look-ink-wash .btn, :root.look-ink-wash .ctx button, :root.look-ink-wash .cand, :root.look-ink-wash .segc button, :root.look-ink-wash .db button, :root.look-ink-wash .fld, :root.look-ink-wash .zoom { border-radius: 2px; }
 :root.look-ink-wash .pill .tbtn, :root.look-ink-wash .pill .ib { color: var(--ink); }
 :root.look-ink-wash .pill .tbtn:hover, :root.look-ink-wash .pill .ib:hover, :root.look-ink-wash .ctx button:not([disabled]):hover { background: var(--wash); color: var(--ink); }
