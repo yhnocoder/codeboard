@@ -3,6 +3,7 @@ import { cardTitle, isCode } from "@codeboard/core";
 import { state, placed } from "../state/store";
 import { ask } from "../host";
 import { editing } from "../state/ui";
+import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
 import type { MdEditorOpts, MdEditorHandle } from "./editor";
 
@@ -13,13 +14,22 @@ export const loadEditor = () => (mod ??= import("./editor").then((m) => (ready =
 /** 已经加载好了就直接拿（同一帧里挂上编辑器，不等 Promise） */
 export const editorNow = () => ready;
 
-/** 白板打开后空闲时预加载，第一次双击就不用等 */
+/** 白板打开后空闲时预加载，再预热（建好那一个编辑器），第一次双击就不用等 */
 export function preloadEditor() {
-  const ric = (window as any).requestIdleCallback as ((f: () => void, o?: { timeout: number }) => void) | undefined;
-  const later = (f: () => void, t: number) => setTimeout(() => (ric ? ric(f, { timeout: t }) : f()), 0);
-  // 加载完再等一次空闲，屏幕外挂一次预热（只挂过才会编译、初始化各插件）
-  const go = () => void loadEditor().then((m) => later(() => { if (!editing()) m.warmUp(editorOpts()); }, 4000)).catch(() => { mod = undefined; });
-  setTimeout(() => (ric ? ric(go, { timeout: 4000 }) : go()), 2500);
+  setTimeout(() => whenIdle(() => void loadEditor().then((m) => whenIdle(() => m.warmUp(sampleNote()))).catch(() => { mod = undefined; })), 2500);
+}
+/** 白板上最长的一张 Note 的原文（预热用） */
+function sampleNote() {
+  let best = "";
+  for (const c of state.board.cards) if (c.kind === "note" && c.md.length > best.length) best = c.md;
+  return best.slice(0, 4000);
+}
+// 真空闲才做（这一段空闲 ≥ 40ms、镜头没在动、没在编辑）：加载和预热各要几十毫秒，不能挤进平移、缩放的帧里
+function whenIdle(f: () => void) {
+  const ric = (window as any).requestIdleCallback as ((cb: (d: IdleDeadline) => void) => void) | undefined;
+  if (!ric) return void setTimeout(f, 0);
+  const tryIt = (d: IdleDeadline) => { if (d.timeRemaining() >= 40 && !camMoving() && !editing()) f(); else setTimeout(() => ric(tryIt), 100); };
+  ric(tryIt);
 }
 
 /** 白板上的卡（[[ 引用的候选）：标题、种类 */

@@ -3,7 +3,7 @@
 // 公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。
 import { Editor, Extension, InputRule, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
-import { PluginKey, Selection, TextSelection } from "@tiptap/pm/state";
+import { EditorState, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
@@ -246,7 +246,7 @@ function MathPop(p: { editor: Editor; ui: Ui }) {
 }
 
 // ---------- 编辑器专用的扩展 ----------
-function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement, exit: () => void): AnyExtension[] {
+function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement, exit: () => void, complete: (b: string, a: string) => Promise<string | null>): AnyExtension[] {
   const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
   const base = baseExtensions.map((x) => (x.name === "inlineMath" || x.name === "blockMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false, displayMode: x.name === "blockMath" } }) : x));
   const Slash = Extension.create({
@@ -299,9 +299,9 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
     ...base, Slash, Ref, Rules, Exit,
-    Placeholder.configure({ placeholder: o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
+    Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),
-    Ghost.configure({ complete: o.complete }),
+    Ghost.configure({ complete }),
   ];
 }
 
@@ -356,44 +356,35 @@ function dedent(s: string) {
 }
 
 // ---------- 挂载 ----------
-/** 预热：空闲时在屏幕外挂一次再拆掉，第一次双击不用等 JIT 和各插件第一次初始化 */
-export function warmUp(o: Omit<MdEditorOpts, "value" | "onDone">) {
-  const host = document.createElement("div");
-  host.style.cssText = "position:fixed;left:-10000px;top:0;width:400px;visibility:hidden;contain:strict";
-  document.body.append(host);
-  const handle = document.createElement("div");
-  let e!: Editor;
-  try {
-    e = new Editor({
-      element: host, injectCSS: false, autofocus: false,
-      extensions: editorExtensions({ ...o, value: "", onDone: () => {} }, () => e, handle, () => {}),
-      content: parseMd("## a\n\ntext **b** `c` $x$ [[d]][^1]\n\n- [ ] t\n\n```python\ndef f(): pass\n```\n\n$$\nx\n$$\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n<details>\n<summary>s</summary>\n\nb\n\n</details>\n\n[^1]: n"),
-    });
-    serializeMd(e.getJSON());
-  } catch { /* 预热失败不要紧 */ }
-  e?.destroy();
-  host.remove();
-}
+// 编辑器只建一次（空闲时预热好），每次编辑把它挪进这张卡、换一个新的 EditorState（文档、撤销、各插件状态都是新的）：
+// 不用每次重建 schema、扩展、插件和视图，进入编辑只剩把这份文档画出来
+type Sess = { o: MdEditorOpts; onTx: (tr: Transaction) => void; onFocus: () => void; onBlur: (ev: FocusEvent) => void; finish: () => void };
+type Inst = { editor: Editor; box: HTMLElement; handle: HTMLElement; sess: Sess | null };
+let pool: Inst | undefined;
 
-export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle {
-  let changed = false, raw: HTMLTextAreaElement | null = null, rawStart = "", done = false;
-  const [tick, setTick] = createSignal(0);
-  const [menu, setMenu] = createSignal<ReturnType<Ui["menu"]>>(null);
-  const [math, setMath] = createSignal<ReturnType<Ui["math"]>>(null);
+function makeInst(): Inst {
+  const box = document.createElement("div");
+  box.style.display = "contents";
   const handle = document.createElement("div");
   handle.className = "md-handle";
   handle.textContent = "⋮⋮";
   handle.setAttribute("data-tip", "Drag to move");
-  let editor!: Editor;
-  editor = new Editor({
-    element: host,
-    extensions: editorExtensions(o, () => editor, handle, () => finish()),
-    content: parseMd(o.value),
+  const inst: Inst = { editor: undefined as unknown as Editor, box, handle, sess: null };
+  // 扩展里读到的选项都转到当前这次编辑上
+  const o = new Proxy({} as MdEditorOpts, { get: (_t, k) => (inst.sess?.o as Record<string | symbol, unknown> | undefined)?.[k] });
+  const complete = (b: string, a: string) => (o.complete ? o.complete(b, a) : Promise.resolve(null));
+  inst.editor = new Editor({
+    element: box,
+    extensions: editorExtensions(o, () => inst.editor, handle, () => inst.sess?.finish(), complete),
+    content: { type: "doc", content: [{ type: "paragraph" }] },
     autofocus: false,
     injectCSS: false, // 基础样式在 styles.css
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
-      handlePaste: (_v, ev) => handlePaste(editor, o, ev),
+      handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
+      // 白板上的 Note 不滚动（卡片跟着内容长高）：每打一个字都去量光标位置、找能滚的祖先，要强制排版一次，白花。
+      // 只有代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常
+      handleScrollToSelection: (v) => !v.state.selection.$head.parent.type.spec.code && !!v.dom.closest(".card"),
       handleClick: (_v, _pos, ev) => {
         // ⌘ 点链接：打开
         const a = (ev.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
@@ -401,23 +392,89 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
         return false;
       },
     },
-    onTransaction: ({ transaction }) => { if (transaction.docChanged && !transaction.getMeta("cbInit")) changed = true; setTick((t) => t + 1); },
-    onFocus: () => setTick((t) => t + 1),
-    onBlur: ({ event }) => { setTick((t) => t + 1); blurred(event as FocusEvent); },
+    onTransaction: ({ transaction }) => inst.sess?.onTx(transaction),
+    onFocus: () => inst.sess?.onFocus(),
+    onBlur: ({ event }) => inst.sess?.onBlur(event as FocusEvent),
   });
-  // 光标放到正文末尾（脚注列表前面）；正文最后是代码、表格、折叠块这类时，后面先垫一个空段落（不算改动，没打字就不保存）
+  return inst;
+}
+/**
+ * 同一套插件、全新的状态（文档、撤销栈、各插件的状态都从头来）。跟 EditorState.create 一样，只是沿用原来那份插件配置：
+ * 配置是同一个对象，视图就不会以为换了插件（那样要拆了重建所有插件视图，还要 scrollTop = 0，强制整页排版一次）
+ */
+function freshState(prev: EditorState, doc: PMNode): EditorState {
+  const cfg = (prev as unknown as { config?: { fields?: { name: string; init: (c: object, s: EditorState) => unknown }[] } }).config;
+  if (!cfg?.fields) return EditorState.create({ doc, plugins: prev.plugins });
+  const st = new (EditorState as unknown as new (c: unknown) => EditorState)(cfg);
+  for (const f of cfg.fields) (st as unknown as Record<string, unknown>)[f.name] = f.init({ doc }, st);
+  return st;
+}
+const SAMPLE = "## a\n\ntext **b** `c` $x$ [[d]][^1]\n\n- [ ] t\n\n```python\ndef f(): pass\n```\n\n$$\nx\n$$\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n<details>\n<summary>s</summary>\n\nb\n\n</details>\n\n[^1]: n";
+/** 预热：空闲时建好那一个编辑器，屏幕外画一遍各种节点（编译、各插件第一次初始化） */
+export function warmUp(extra?: string) {
+  if (pool) return;
+  try {
+    const inst = makeInst();
+    const host = document.createElement("div");
+    host.style.cssText = "position:fixed;left:-10000px;top:0;width:400px;visibility:hidden;contain:strict";
+    document.body.append(host);
+    host.append(inst.box);
+    const e = inst.editor;
+    // 样例里各种节点都有；再画一遍白板上真有的一张 Note（真实内容走到的路径更多）
+    for (const md of extra ? [SAMPLE, extra] : [SAMPLE]) {
+      e.view.updateState(freshState(e.state, e.schema.nodeFromJSON(parseMd(md))));
+      serializeMd(e.getJSON());
+    }
+    // ProseMirror 第一次 focus 时要先探测浏览器支不支持 preventScroll（会读一遍所有祖先的滚动位置，强制整页排版）：
+    // 在这里探测掉。宿主是 visibility:hidden，拿不到焦点，不会把焦点从白板上抢走
+    e.view.focus();
+    inst.box.remove();
+    host.remove();
+    pool = inst;
+  } catch { /* 预热失败不要紧，第一次编辑时再建 */ }
+}
+
+export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle {
+  let changed = false, raw: HTMLTextAreaElement | null = null, rawStart = "", done = false;
+  const [tick, setTick] = createSignal(0);
+  const [menu, setMenu] = createSignal<ReturnType<Ui["menu"]>>(null);
+  const [math, setMath] = createSignal<ReturnType<Ui["math"]>>(null);
+  // 那一个正被别的 Note 用着（两次编辑交接的那一下）：这次单独建一个，用完拆掉
+  if (!pool) pool = makeInst();
+  const inst = pool.sess ? makeInst() : pool;
+  const pooled = inst === pool;
+  const editor = inst.editor;
+  const sess: Sess = {
+    o,
+    onTx: (tr) => { if (tr.docChanged) changed = true; setTick((t) => t + 1); },
+    onFocus: () => setTick((t) => t + 1),
+    onBlur: (ev) => { setTick((t) => t + 1); blurred(ev); },
+    finish: () => finish(),
+  };
+  inst.sess = sess;
+  editor.view.dom.style.display = "";
+  // 新的状态：文档、撤销栈、各插件都从头来。光标放到正文末尾（脚注列表前面）；正文最后是代码、表格、折叠块这类时，
+  // 后面先垫一个空段落（不算改动，没打字就不保存）
   {
-    let d = editor.state.doc;
+    let st = freshState(editor.state, editor.schema.nodeFromJSON(parseMd(o.value)));
+    let d = st.doc;
     let end = d.content.size;
     if (d.lastChild?.type.name === "footnotes") end -= d.lastChild.nodeSize;
     const last = d.resolve(end).nodeBefore;
-    const tr = editor.state.tr;
+    const tr = st.tr;
     if (last && !/^(paragraph|heading|bulletList|orderedList|taskList)$/.test(last.type.name)) {
       tr.insert(end, editor.schema.nodes.paragraph.create()).setMeta("addToHistory", false);
       d = tr.doc; end += 2;
     }
-    tr.setSelection(Selection.near(d.resolve(end), -1)).setMeta("cbInit", true);
-    editor.view.dispatch(tr);
+    tr.setSelection(Selection.near(d.resolve(end), -1));
+    st = st.apply(tr);
+    // 先在页面外换好文档再挂上：挂在页面上换的话，ProseMirror 读 DOM 选区会强制整页排版一次（帧里还要再排一次）
+    inst.box.remove();
+    editor.view.updateState(st);
+    host.append(inst.box);
+    // 这一个任务里就拿焦点（不等 TipTap 的下一帧），光标和编辑器同一帧出现。放进微任务：双击是在 pointerdown 里进来的，
+    // 同一个事件冒泡到画布时会把焦点 blur 掉；从菜单进来时菜单关掉会把焦点放回 body，下一帧再补一次
+    queueMicrotask(() => { if (inst.sess === sess && !editor.view.hasFocus()) editor.view.focus(); });
     editor.commands.focus(undefined, { scrollIntoView: false });
   }
   const ui: Ui = { menu, setMenu, math, setMath, opts: o };
@@ -489,8 +546,12 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     host.removeEventListener("keydown", onKey);
     disposeUi();
     layer.remove();
-    handle.remove();
-    if (!editor.isDestroyed) editor.destroy();
+    raw?.remove();
+    // 先让编辑器失焦再拿走（拿走正有焦点的元素不会触发 blur，ProseMirror 会以为自己还有焦点）
+    inst.sess = null;
+    if (editor.view.hasFocus()) (editor.view.dom as HTMLElement).blur();
+    inst.box.remove();
+    if (!pooled && !editor.isDestroyed) editor.destroy();
   };
   return { value, editor: () => editor, destroy: () => { if (!done) { done = true; destroy(); } } };
 }
