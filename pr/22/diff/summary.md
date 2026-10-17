@@ -1,1 +1,5 @@
-**Screenshot diff**: 9 steps, 0 changed, identical to baseline.
+**Screenshot diff**: 9 steps, 1 changed.
+
+**5-search** · changed · 1.6% of pixels
+
+![5-search.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/22/diff/5-search.png?raw=true)
