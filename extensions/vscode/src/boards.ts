@@ -10,6 +10,9 @@ import { warmBoard } from "./prefetch";
 import { startNameIndex } from "./nameindex";
 import { workspace } from "./ws";
 
+/** 宿主转发的 ⌘ / Ctrl 键（webview 里不自己处理）：与 package.json 里 codeboard.boardKey 的键一致（"+" 是 "=" 那个键按了 Shift）；board 的 lists.test.ts 会核对 */
+export const FORWARDED_KEYS = ["k", "d", "0", "1", "=", "+", "-", "shift+l", ","];
+
 /** 白板的界面（VS Code 里是一个 webview 标签页） */
 export interface BoardView {
   /** 直接发给界面（不排队） */
@@ -86,7 +89,7 @@ export class BoardPanel {
     return {
       fontFamily: workspace().settings.get<string>("editor.fontFamily"),
       isMac: process.platform === "darwin",
-      forwardedKeys: ["k", "d", "0", "1", "=", "+", "-", "shift+l", ","], // 与 package.json 里 codeboard.boardKey 的键一致
+      forwardedKeys: FORWARDED_KEYS,
       assetBase: this.view.resourceUrl(this.mgr.store.assetsDir()),
       readonly: this.readonly,
       settings: readSettings(),
