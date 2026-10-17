@@ -310,7 +310,9 @@ async function complete(p: BoardPanel, before: string, after: string): Promise<s
   inflight.get(p)?.abort();
   const ac = new AbortController();
   inflight.set(p, ac);
-  const raw = await ai.ask(COMPLETE_SYSTEM, completePrompt(before, after), { signal: ac.signal, maxChars: 600 });
+  const raw = ai.complete
+    ? await ai.complete(before, after, { signal: ac.signal })
+    : await ai.ask(COMPLETE_SYSTEM, completePrompt(before, after), { signal: ac.signal, maxChars: 600 });
   if (ac.signal.aborted || raw === undefined) return null;
   return cleanCompletion(raw, before, after) || null;
 }

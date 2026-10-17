@@ -1,7 +1,7 @@
 // Workspace 的 VS Code 实现：功能代码只经过它访问编辑器和工作区（见 core/workspace.ts）。
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { Emitter, type Workspace } from "@codeboard/core";
+import { COMPLETE_SYSTEM, Emitter, completePrompt, deepseekComplete, type Workspace } from "@codeboard/core";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
 
@@ -61,6 +61,29 @@ function codeColumn(): vscode.ViewColumn {
 const splitKey = (k: string) => { const i = k.indexOf("."); return [k.slice(0, i), k.slice(i + 1)] as const; };
 
 const fileOrUndef = (u: vscode.Uri) => (u.scheme === "file" ? u.fsPath : undefined);
+
+/** DeepSeek 的 API 密钥在 SecretStorage 里的名字（不进设置、不进白板文件、不写日志） */
+export const DEEPSEEK_SECRET = "codeboard.deepseekApiKey";
+
+// 用户装了 Copilot 之类提供模型的扩展才有；第一次用时 VS Code 会问用户同不同意。任何失败都静默回 undefined
+async function copilotAsk(system: string, prompt: string, o?: { signal?: AbortSignal; maxChars?: number }): Promise<string | undefined> {
+  const lm = (vscode as any).lm as typeof vscode.lm | undefined;
+  if (!lm?.selectChatModels) return undefined;
+  try {
+    const all = await lm.selectChatModels();
+    if (!all.length) return undefined;
+    // 补全要快：优先小模型
+    const fast = /mini|haiku|flash|nano|small|fast/i;
+    const m = all.find((x) => fast.test(x.family) || fast.test(x.id)) ?? all[0];
+    const cts = new vscode.CancellationTokenSource();
+    o?.signal?.addEventListener("abort", () => cts.cancel());
+    if (o?.signal?.aborted) return undefined;
+    const r = await m.sendRequest([vscode.LanguageModelChatMessage.User(`${system}\n\n${prompt}`)], { justification: "CodeBoard suggests gray inline completions while you write a Note." }, cts.token);
+    let out = "";
+    for await (const t of r.text) { out += t; if (o?.maxChars && out.length > o.maxChars) { cts.cancel(); break; } }
+    return out;
+  } catch { return undefined; }
+}
 
 export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
   let ch: vscode.LogOutputChannel | undefined;
@@ -174,24 +197,18 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       copy: async (text) => vscode.env.clipboard.writeText(text),
     },
     ai: {
-      // 用户装了 Copilot 之类提供模型的扩展才有；第一次用时 VS Code 会问用户同不同意。任何失败都静默回 undefined
-      ask: async (system, prompt, o) => {
-        const lm = (vscode as any).lm as typeof vscode.lm | undefined;
-        if (!lm?.selectChatModels) return undefined;
-        try {
-          const all = await lm.selectChatModels();
-          if (!all.length) return undefined;
-          // 补全要快：优先小模型
-          const fast = /mini|haiku|flash|nano|small|fast/i;
-          const m = all.find((x) => fast.test(x.family) || fast.test(x.id)) ?? all[0];
-          const cts = new vscode.CancellationTokenSource();
-          o?.signal?.addEventListener("abort", () => cts.cancel());
-          if (o?.signal?.aborted) return undefined;
-          const r = await m.sendRequest([vscode.LanguageModelChatMessage.User(`${system}\n\n${prompt}`)], { justification: "CodeBoard suggests gray inline completions while you write a Note." }, cts.token);
-          let out = "";
-          for await (const t of r.text) { out += t; if (o?.maxChars && out.length > o.maxChars) { cts.cancel(); break; } }
-          return out;
-        } catch { return undefined; }
+      ask: copilotAsk,
+      // 灰字补全：codeboard.ai.provider 选模型。auto = 设了 DeepSeek 密钥就用 DeepSeek，否则 Copilot
+      complete: async (before, after, o) => {
+        const cfg = vscode.workspace.getConfiguration("codeboard.ai");
+        const provider = cfg.get<string>("provider", "auto");
+        if (provider === "off") return undefined;
+        if (provider === "deepseek" || provider === "auto") {
+          const key = await ctx.secrets.get(DEEPSEEK_SECRET);
+          if (key) return deepseekComplete({ key, model: cfg.get<string>("deepseekModel") || undefined, baseUrl: cfg.get<string>("deepseekBaseUrl") || undefined, signal: o?.signal }, before, after);
+          if (provider === "deepseek") return undefined;
+        }
+        return copilotAsk(COMPLETE_SYSTEM, completePrompt(before, after), { signal: o?.signal, maxChars: 600 });
       },
     },
     githubToken: async (ask) => (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))?.accessToken,

@@ -16,5 +16,6 @@ export * from "./render";
 export * from "./rank";
 export * from "./diagnostics";
 export * from "./complete";
+export * from "./deepseek";
 export * from "./emitter";
 export * from "./workspace";

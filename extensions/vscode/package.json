@@ -27,6 +27,16 @@
         "icon": "$(window)"
       },
       {
+        "command": "codeboard.setDeepseekKey",
+        "title": "Set DeepSeek API Key",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.clearDeepseekKey",
+        "title": "Clear DeepSeek API Key",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.openBoardToSide",
         "title": "Open to the Side",
         "category": "CodeBoard"
@@ -410,6 +420,28 @@
     "configuration": {
       "title": "CodeBoard",
       "properties": {
+        "codeboard.ai.provider": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "copilot", "deepseek", "off"],
+          "enumDescriptions": [
+            "DeepSeek if an API key is set, otherwise a VS Code language model such as Copilot.",
+            "A VS Code language model (for example GitHub Copilot).",
+            "DeepSeek. Set the key with \"CodeBoard: Set DeepSeek API Key\".",
+            "No gray inline completions."
+          ],
+          "markdownDescription": "Model for the gray inline completions while you write a Note. The DeepSeek API key is kept in VS Code's secret storage: use **CodeBoard: Set DeepSeek API Key**."
+        },
+        "codeboard.ai.deepseekModel": {
+          "type": "string",
+          "default": "deepseek-chat",
+          "description": "DeepSeek model for inline completions."
+        },
+        "codeboard.ai.deepseekBaseUrl": {
+          "type": "string",
+          "default": "https://api.deepseek.com",
+          "description": "DeepSeek API base URL."
+        },
         "codeboard.storageDir": {
           "type": "string",
           "default": "",

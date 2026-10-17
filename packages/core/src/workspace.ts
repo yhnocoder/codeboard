@@ -116,6 +116,8 @@ export interface WorkspaceUi {
 export interface WorkspaceAi {
   /** 发一次提示，回模型的文字；没有可用模型、用户没同意或被取消时回 undefined（不抛出） */
   ask(system: string, prompt: string, opts?: { signal?: AbortSignal; maxChars?: number }): Promise<string | undefined>;
+  /** 灰字补全：光标前后的文字 → 模型的原话（清理交给 cleanCompletion）。宿主按设置选模型（Copilot、DeepSeek…）；不给时用 ask */
+  complete?(before: string, after: string, opts?: { signal?: AbortSignal }): Promise<string | undefined>;
 }
 
 export interface Workspace {
