@@ -1,5 +1,5 @@
 // Performance benchmark: builds a large board from nano-vllm and measures camera, drag, mutate, expand, undo and load times in the browser.
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] (--inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] (--inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16: main-thread task durations; the 60 fps budget is 16.7 ms).
 import * as fs from "node:fs";
@@ -8,7 +8,7 @@ import { emptyBoard, stampBorn, uid, type Board, type CodeCard, type Link, type 
 import type { CDPSession } from "playwright-core";
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
-const NCARDS = +arg("cards", "240"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", ""), THEME = arg("theme", "");
+const NCARDS = +arg("cards", "240"), NNOTES = +arg("notes", "0"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", ""), THEME = arg("theme", "");
 
 /** A large board: nano-vllm functions (repeated if too few), linked into trees by calls, a Section every 12 cards (two levels nested), some Sidenotes */
 export function bigBoard(n: number): Board {
@@ -48,6 +48,32 @@ export function bigBoard(n: number): Board {
   });
   b.cam = { x: 80, y: 80, z: 1 };
   // Creation order, like every board the app has saved (v0.1.7+) or migrated: without it the first edit numbers all 241 cards at once
+  stampBorn(b);
+  return b;
+}
+
+/** A board of Notes with the Markdown people write: headings, lists and tasks, code, math, tables, links, quotes */
+export function notesBoard(n: number): Board {
+  const b = emptyBoard("perf", `perf · ${n} notes`);
+  const fns = ["Scheduler.schedule", "BlockManager.allocate", "ModelRunner.run", "LLMEngine.step", "Sequence.append_token", "Sampler.forward"];
+  const COLS = 10;
+  for (let i = 0; i < n; i++) {
+    const f = fns[i % fns.length], k = i % 4;
+    const md = [
+      `## ${i}. ${f}`, "",
+      `prefill 时先调 **${f.split(".")[1]}**，见 [nano-vllm](https://github.com/GeeeekExplorer/nano-vllm) 和 \`seq.block_table\`。复杂度 $O(n^2)$，每步 $b \\cdot t$ 个 token。`, "",
+      "- [ ] check `can_allocate(seq)`", "- [x] 按 hash 复用前缀块", "  - 命中就 `ref_count += 1`", "- waiting → running", "",
+      ...(k === 0 ? ["```python", `def ${f.split(".")[1]}(self, seq):`, "    # 先找空闲块", "    block = self._allocate_block(self.free_block_ids[0])", "    for i in range(len(seq)):", "        seq.block_table.append(block.block_id)", "    return len(seq) * 2", "```", ""] : []),
+      ...(k === 1 ? ["$$", "\\mathrm{softmax}(x)_i = \\frac{e^{x_i}}{\\sum_j e^{x_j}}", "$$", ""] : []),
+      ...(k === 2 ? ["| 阶段 | 每步 token | 显存 |", "| --- | --- | --- |", "| prefill | 整个 prompt | 高 |", "| decode | 1 | 低 |", ""] : []),
+      ...(k === 3 ? ["> 抢占时把最后一个 running 的序列放回 waiting，释放它的块", "", "1. schedule", "2. run", "3. postprocess", ""] : []),
+      `See also the next note, ${fns[(i + 1) % fns.length]}, and the decode path.`,
+    ].join("\n");
+    const c = { id: `n${i}`, kind: "note", md, ...(i % 3 ? { bg: true } : {}) } as Board["cards"][number];
+    b.cards.push(c);
+    b.place[c.id] = { x: (i % COLS) * 480, y: Math.floor(i / COLS) * 620, w: 420 };
+  }
+  b.cam = { x: 80, y: 80, z: 1 };
   stampBorn(b);
   return b;
 }
@@ -160,14 +186,16 @@ async function profiled<T>(cdp: CDPSession, name: string, fn: () => Promise<T>):
   if (name !== PROFILE) return fn();
   await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start");
   const r = await fn();
-  top((await cdp.send("Profiler.stop")).profile as any);
+  const pr = (await cdp.send("Profiler.stop")).profile as any;
+  if (process.env.PROFILE_OUT) fs.writeFileSync(process.env.PROFILE_OUT, JSON.stringify(pr));
+  top(pr);
   return r;
 }
 async function idle(h: Host, cdp: CDPSession, ms: number) { const b0 = await busy(cdp); await h.page.waitForTimeout(ms); return (await busy(cdp)) - b0; }
 
 async function once() {
   await ready();
-  const board = bigBoard(NCARDS);
+  const board = NNOTES ? notesBoard(NNOTES) : bigBoard(NCARDS);
   const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length };
   const t0 = performance.now();
   let cdp!: CDPSession;
@@ -268,6 +296,7 @@ async function once() {
   res.pinch = sum(await steps(h, cdp, 100, async (i) => { await h.page.keyboard.down("Control"); await h.page.mouse.wheel(0, i < 50 ? 5 : -5); await h.page.keyboard.up("Control"); }, "pinch"));
   await h.page.waitForTimeout(800);
   if (arg("stop", "") === "pinch") { await h.page.context().browser()!.close(); return res; }
+  if (NNOTES) { await notesEdit(h, cdp, board, res); await h.page.context().browser()!.close(); return res; }
 
   // Drag: the card with the most links (endpoints follow every frame)
   const deg = new Map<string, number>();
@@ -351,6 +380,53 @@ async function once() {
   res.staleMsg = +(performance.now() - t).toFixed(1);
   await h.page.context().browser()!.close();
   return res;
+}
+
+/** Notes board: double-click a Note → its editor has focus (10 different Notes, the first one includes loading the editor if it was not preloaded),
+ * then type 80 characters one key at a time, then Esc (save and leave) */
+async function notesEdit(h: Host, cdp: CDPSession, board: Board, res: Record<string, unknown>) {
+  const ids = board.cards.slice(0, 10).map((c) => c.id);
+  const center = (id: string) => h.page.evaluate((id) => { const r = document.querySelector(`.card[data-id="${id}"] .nbody, .card[data-id="${id}"] .tx`)!.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + Math.min(r.height / 2, 60) }; }, id);
+  const editingIn = (id: string) => h.page.waitForFunction((id) => { const a = document.activeElement as HTMLElement | null; return !!a?.isContentEditable && !!a.closest(`.card[data-id="${id}"]`); }, id, { timeout: 10000 });
+  // Double-click → focused editor, then the next frame (camera moves between Notes are not timed).
+  // In the page: last pointerdown → focus lands in the editor (enterJs: the work done in that task), → the frame after it is painted (enterPaint)
+  await h.page.evaluate(() => {
+    const w = window as any;
+    w.__enter = [];
+    addEventListener("pointerdown", () => { w.__tDown2 = performance.now(); }, true);
+    addEventListener("focusin", (e) => {
+      if (!(e.target as HTMLElement).isContentEditable) return;
+      const t0 = w.__tDown2, js = performance.now() - t0;
+      requestAnimationFrame(() => setTimeout(() => w.__enter.push([js, performance.now() - t0])));
+    }, true);
+  });
+  const enter: number[] = [];
+  await profiled(cdp, "editEnter", async () => { for (let i = 0; i < ids.length; i++) {
+    if (i) { await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300); }
+    await focusCard(h, ids[i]);
+    const pt = await center(ids[i]);
+    const t = performance.now();
+    await h.page.mouse.dblclick(pt.x, pt.y);
+    await editingIn(ids[i]);
+    await raf(h);
+    enter.push(+(performance.now() - t).toFixed(1));
+  } });
+  res.editEnter = { first: enter[0], median: +med(enter).toFixed(1), p95: +p95(enter).toFixed(1) };
+  const inPage = (await h.page.evaluate(() => (window as any).__enter)) as [number, number][];
+  const js = inPage.map((x) => x[0]), paint = inPage.map((x) => x[1]);
+  res.editEnterJs = { first: +js[0].toFixed(1), median: +med(js).toFixed(1), p95: +p95(js).toFixed(1) };
+  res.editEnterPaint = { first: +paint[0].toFixed(1), median: +med(paint).toFixed(1), p95: +p95(paint).toFixed(1) };
+  await h.page.keyboard.press("ControlOrMeta+End");
+  await h.page.keyboard.press("Enter");
+  const text = "Prefill admits waiting seqs until the token budget runs out, then decode. ";
+  res.type = sum(await steps(h, cdp, 80, async (i) => { await h.page.keyboard.type(text[i % text.length]); }, "type"));
+  const t = performance.now();
+  await h.page.keyboard.press("Escape");
+  await h.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable);
+  await raf(h);
+  res.editExit = +(performance.now() - t).toFixed(1);
+  await h.page.waitForTimeout(1500);
+  res.typed = (h.board().cards.find((c) => c.id === ids[ids.length - 1]) as { md: string }).md.includes("Prefill admits waiting");
 }
 
 async function focusCard(h: Host, id: string) {
