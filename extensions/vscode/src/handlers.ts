@@ -17,6 +17,7 @@ import { search, searchPick, entryPoints, searchName, genSource } from "./search
 import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
+import { allQuestions, exportFile, permalinks } from "./exports";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { highlight, segView, viewsFor } from "./views";
@@ -79,14 +80,7 @@ export function makeHandler(panels: BoardHost): Handler {
     openStickerDir: () => openStickerDir(),
     copyDiagnostics: (p, m) => copyDiagnostics(p.board, m.board),
     log: (_p, m) => log(m.level, m.text),
-    openBoard: async (_p, m) => {
-      const np = await panels.show(m.id);
-      if (!np || !m.card) return;
-      // 行（别的白板上连进来的箭头从哪一行出发）：选中那一行
-      const c = np.board && findCard(np.board, m.card)?.card;
-      const seg = m.line !== undefined && c && isCode(c) ? c.segments.find((s) => m.line! >= s.start && m.line! <= s.end) : undefined;
-      np.post(seg ? { type: "reveal", card: m.card, seg: seg.id, lines: [m.line!, m.line!] } : { type: "reveal", card: m.card });
-    },
+    openBoard: (_p, m) => openOnBoard(panels, m.id, m.card, m.line, m.sticker),
     copyCards: (p, m) => {
       panels.clip = { board: p.id, cards: m.cards, text: m.text };
       panels.broadcast({ type: "host", host: { clip: { board: p.id, n: m.cards.length } } });
@@ -108,6 +102,11 @@ export function makeHandler(panels: BoardHost): Handler {
     // ---------- 运行时（线框 13） ----------
     captureRun: (p) => void captureFlow(store.dir(), p),
     applyRun: (p) => void applyFlow(store.dir(), p),
+    // ---------- 问题、导出（线框 06、08） ----------
+    questions: () => allQuestions(store),
+    permalinks: (_p, m) => permalinks(m.segs),
+    exportFile: (_p, m) => exportFile(store, m.kind, m.name, m.text),
+    copyText: (_p, m) => workspace().ui.copy(m.text),
     // ---------- 子白板 ----------
     skeletons: async (_p, m) => {
       await store.list(); // 缓存里还没有的白板先扫进来
@@ -305,6 +304,15 @@ async function resolveTyped(p: BoardPanel, text: string): Promise<Commit | null>
 /** Focus 模式的只读源码浮窗：整个文件（那个版本） */
 
 // ---------- 其他 ----------
+
+/** 打开一块白板，选中那张卡（和那一行：别的白板上连进来的箭头从哪一行出发、问题贴在哪一行）；sticker = 再打开那个问题 */
+export async function openOnBoard(panels: BoardHost, id: string, card?: string, line?: number, sticker?: string) {
+  const np = await panels.show(id);
+  if (!np || !card) return;
+  const c = np.board && findCard(np.board, card)?.card;
+  const seg = line !== undefined && c && isCode(c) ? c.segments.find((s) => line >= s.start && line <= s.end) : undefined;
+  np.post({ type: "reveal", card, ...(seg ? { seg: seg.id, lines: [line!, line!] as [number, number] } : {}), ...(sticker ? { sticker } : {}) });
+}
 
 async function exportPng(dataUrl: string, name: string) {
   const ui = workspace().ui;

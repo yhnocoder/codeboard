@@ -1,6 +1,6 @@
 // 一块打开的白板（与 VS Code 无关的部分）：读白板、算段的展示数据和版本状态、发 init；宿主信息；版本状态重算。
 // 白板状态由 webview 持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。webview 本身（BoardView）和面板管理（BoardHost）由 VS Code 适配层实现。
-import type { Board, BoardMeta, BoardToHost, Camera, Crumb, HostInfo, HostToBoard, Skeleton, Stale, WalkHop } from "@codeboard/core";
+import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostInfo, type HostToBoard, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor } from "./versions";
 import { viewsFor } from "./views";
@@ -50,6 +50,19 @@ export interface BoardHost {
   /** 一块白板的骨架（没了 = null） */
   skeleton(id: string): Skeleton | null;
   switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean>;
+  /** 每块白板上次打开的时间（「回来接上」的提示用）；opened 记下这一次 */
+  lastOpened?(id: string): number | undefined;
+  opened?(id: string): void;
+}
+
+const DAY = 864e5;
+/** 「回来接上」（线框 06）：设置 welcomeBack 允许、隔得够久、这块白板上还有没解决的问题时才提示 */
+export function welcomeOf(b: Board, last: number | undefined, mode: Settings["welcomeBack"], now = Date.now()): { days: number; open: number } | undefined {
+  if (mode === "off" || last === undefined) return undefined;
+  const days = Math.floor((now - last) / DAY);
+  if (mode !== "always" && now - last < 2 * DAY) return undefined;
+  const open = boardQuestions(b).filter((q) => !q.done).length;
+  return open ? { days, open } : undefined;
 }
 
 const INDEX_DELAY = 4000;
@@ -92,8 +105,12 @@ export class BoardPanel {
     const [views, stale, boards] = await Promise.all([viewsFor(segs), staleFor(segs), this.mgr.metas()]);
     this.stale = stale;
     this.readonly = await this.readonlyNote(b);
-    const init: HostToBoard = { type: "init", board: b, boards, views, stale, host: this.host() };
+    const host = this.host();
+    const init: HostToBoard = { type: "init", board: b, boards, views, stale, host };
     if (this.crumbs.length) init.crumbs = this.crumbs;
+    // 进出子白板不算「回来」
+    if (!this.crumbs.length && !next.walk) { const w = welcomeOf(b, this.mgr.lastOpened?.(b.id), host.settings.welcomeBack); if (w) init.welcome = w; }
+    this.mgr.opened?.(b.id);
     if (next.walk) init.walk = next.walk;
     this.view.postMessage(init);
     this.ready = true;

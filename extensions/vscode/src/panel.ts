@@ -120,6 +120,13 @@ export class Panels implements BoardHost {
    * 面板换一块白板显示（进入子白板、从面包屑回去）：白板那边已经存好了（发消息前 flush 过）。
    * 子白板已经在别的面板里开着时切到那个面板（同一块白板不开两份），返回 false
    */
+  /** 上次打开的时间（globalState，跨工作区；「回来接上」的提示用） */
+  lastOpened(id: string): number | undefined { return this.ctx.globalState.get<Record<string, number>>("codeboard.opened")?.[id]; }
+  opened(id: string) {
+    const m = { ...(this.ctx.globalState.get<Record<string, number>>("codeboard.opened") ?? {}), [id]: Date.now() };
+    void this.ctx.globalState.update("codeboard.opened", m);
+  }
+
   async switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean> {
     const other = this.panels.get(to);
     if (other && other !== p) { other.view.reveal(); return false; }

@@ -6,6 +6,8 @@ import type { Panels } from "./panel";
 import type { Storage } from "./storage";
 import { debounce } from "./ws";
 import { treeChildren, type TreeNode } from "./boardtree";
+import { questionLine, type QuestionItem } from "@codeboard/core";
+import { allQuestions } from "./exports";
 
 type BNode = TreeNode;
 
@@ -70,6 +72,55 @@ export class GithubTree implements vscode.TreeDataProvider<GNode> {
     it.description = n.cards ? `${n.cards} card${n.cards > 1 ? "s" : ""}` : undefined;
     it.resourceUri = vscode.Uri.file(n.abs);
     it.command = { command: "codeboard.openGithubFile", title: "Open", arguments: [n.abs] };
+    return it;
+  }
+}
+
+// ---------- QUESTIONS（线框 06）：所有白板上的问题，按白板分组；默认只看没解决的 ----------
+
+type QNode = { kind: "board"; id: string; name: string; items: QuestionItem[] } | { kind: "q"; q: QuestionItem };
+
+export class QuestionsTree implements vscode.TreeDataProvider<QNode> {
+  private emitter = new vscode.EventEmitter<void>();
+  readonly onDidChangeTreeData = this.emitter.event;
+  readonly refresh = debounce(() => this.emitter.fire(), 400);
+  /** 列出解决了的 */
+  all = false;
+  constructor(private store: Storage) {}
+
+  setAll(v: boolean) { this.all = v; void vscode.commands.executeCommand("setContext", "codeboard.questionsAll", v); this.emitter.fire(); }
+
+  async shown(): Promise<QuestionItem[]> {
+    const qs = await allQuestions(this.store);
+    return this.all ? qs : qs.filter((q) => !q.done);
+  }
+
+  async getChildren(n?: QNode): Promise<QNode[]> {
+    if (n) return n.kind === "board" ? n.items.map((q) => ({ kind: "q", q })) : [];
+    const by = new Map<string, QNode & { kind: "board" }>();
+    for (const q of await this.shown()) {
+      let g = by.get(q.board);
+      if (!g) by.set(q.board, (g = { kind: "board", id: q.board, name: q.group ? `${q.group} · ${q.boardName}` : q.boardName, items: [] }));
+      g.items.push(q);
+    }
+    return [...by.values()];
+  }
+
+  getTreeItem(n: QNode): vscode.TreeItem {
+    if (n.kind === "board") {
+      const it = new vscode.TreeItem(n.name, vscode.TreeItemCollapsibleState.Expanded);
+      it.id = `qb:${n.id}`;
+      it.description = `${n.items.filter((q) => !q.done).length} open`;
+      it.iconPath = new vscode.ThemeIcon("layout");
+      return it;
+    }
+    const q = n.q;
+    const it = new vscode.TreeItem(questionLine(q.md) || "(no text)", vscode.TreeItemCollapsibleState.None);
+    it.id = `q:${q.board}:${q.sticker}`;
+    it.description = [q.title, q.file && `${q.file}${q.line !== undefined ? `:${q.line}` : ""}`].filter(Boolean).join(" · ");
+    it.iconPath = new vscode.ThemeIcon(q.done ? "pass" : "question", new vscode.ThemeColor(q.done ? "charts.green" : "charts.orange"));
+    it.tooltip = new vscode.MarkdownString([q.md || "(no text)", q.done ? `*Answered${q.answerTitle ? ` by “${q.answerTitle}”` : ""}*` : ""].filter(Boolean).join("\n\n"));
+    it.command = { command: "codeboard.openQuestion", title: "Open", arguments: [q.board, q.card, q.line, q.sticker] };
     return it;
   }
 }

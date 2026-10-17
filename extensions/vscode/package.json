@@ -172,6 +172,29 @@
         "command": "codeboard.applyRun",
         "title": "Apply Run…",
         "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.questions.showAll",
+        "title": "Show All Questions",
+        "category": "CodeBoard",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "codeboard.questions.showOpen",
+        "title": "Show Open Questions Only",
+        "category": "CodeBoard",
+        "icon": "$(filter-filled)"
+      },
+      {
+        "command": "codeboard.copyQuestions",
+        "title": "Copy Questions as List",
+        "category": "CodeBoard",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "codeboard.openQuestion",
+        "title": "Open Question",
+        "category": "CodeBoard"
       }
     ],
     "menus": {
@@ -217,6 +240,21 @@
           "command": "codeboard.addGithubRepo",
           "when": "view == codeboard.github",
           "group": "navigation@1"
+        },
+        {
+          "command": "codeboard.questions.showAll",
+          "when": "view == codeboard.questions && !codeboard.questionsAll",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeboard.questions.showOpen",
+          "when": "view == codeboard.questions && codeboard.questionsAll",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeboard.copyQuestions",
+          "when": "view == codeboard.questions",
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
@@ -282,6 +320,10 @@
         }
       ],
       "commandPalette": [
+        {
+          "command": "codeboard.openQuestion",
+          "when": "false"
+        },
         {
           "command": "codeboard.openBoardToSide",
           "when": "false"
@@ -419,6 +461,10 @@
           "name": "Boards"
         },
         {
+          "id": "codeboard.questions",
+          "name": "Questions"
+        },
+        {
           "id": "codeboard.github",
           "name": "GitHub Files"
         }
@@ -428,6 +474,10 @@
       {
         "view": "codeboard.boards",
         "contents": "No boards yet.\n[New Board](command:codeboard.newBoard)\nPlace the cursor in a function and press Alt+B, or select some lines and choose CodeBoard > Add to Board."
+      },
+      {
+        "view": "codeboard.questions",
+        "contents": "No open questions. Put a ? sticker on a code line, or right-click a line and choose Ask a Question."
       },
       {
         "view": "codeboard.github",
@@ -566,6 +616,37 @@
           "enumDescriptions": ["Ask every time", "Update on all boards", "Update this board only (makes a copy here)"],
           "default": "ask",
           "description": "When updating a card that is on several boards to a new version."
+        },
+        "codeboard.subBoards.preview": {
+          "type": "string",
+          "enum": ["skeleton", "title"],
+          "enumDescriptions": ["Named skeleton: card titles, call graph marks and arrows of the board inside", "Title only: the board's name and card count"],
+          "default": "skeleton",
+          "description": "What a sub-board frame shows on its parent board."
+        },
+        "codeboard.questions.welcomeBack": {
+          "type": "string",
+          "enum": ["2d", "always", "off"],
+          "enumDescriptions": ["When the board was last opened more than 2 days ago", "Every time a board with open questions opens", "Never"],
+          "default": "2d",
+          "description": "When reopening a board, show how many questions on it are still open."
+        },
+        "codeboard.export.includeQuestions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include questions (? stickers) in HTML and Markdown exports by default."
+        },
+        "codeboard.export.includeBoardOnlyNotes": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include Board-only sidenotes (private notes on linked cards) in exports by default."
+        },
+        "codeboard.export.scope": {
+          "type": "string",
+          "enum": ["board", "sections", "walk"],
+          "enumDescriptions": ["Whole board", "Selected sections", "One walkthrough path (from the Start card or the selected card)"],
+          "default": "board",
+          "description": "What the Export dialog exports by default."
         },
         "codeboard.zoom.overview": {
           "type": "number",

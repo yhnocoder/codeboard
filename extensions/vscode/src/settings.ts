@@ -18,6 +18,11 @@ const KEY: Record<keyof Settings, string> = {
   tune: "debug.tune",
   pasteOther: "sharedCards.paste",
   sharedUpdate: "sharedCards.update",
+  subPreview: "subBoards.preview",
+  welcomeBack: "questions.welcomeBack",
+  exportQuestions: "export.includeQuestions",
+  exportBoardOnly: "export.includeBoardOnlyNotes",
+  exportScope: "export.scope",
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -37,6 +42,11 @@ const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   tune: (v) => v === undefined || (isObj(v) && Object.values(v).every(num)),
   pasteOther: (v) => v === undefined || v === "linked" || v === "copy",
   sharedUpdate: (v) => v === undefined || v === "ask" || v === "all" || v === "this",
+  subPreview: (v) => v === undefined || v === "skeleton" || v === "title",
+  welcomeBack: (v) => v === undefined || v === "2d" || v === "always" || v === "off",
+  exportQuestions: (v) => v === undefined || typeof v === "boolean",
+  exportBoardOnly: (v) => v === undefined || typeof v === "boolean",
+  exportScope: (v) => v === undefined || v === "board" || v === "sections" || v === "walk",
 };
 
 export const validSetting = (k: string, v: unknown): k is keyof Settings => k in KEY && VALID[k as keyof Settings](v);
