@@ -219,6 +219,45 @@ const boardJson = () => {
   check(await f.locator(".rev.unc").count() >= 1, "card shows + uncommitted after a local edit");
   await shot(page, "7-uncommitted");
 
+  // 10. 共享卡：板 1 上 Ctrl+C 一张卡，新建板 2 上 Ctrl+V = 同一张卡（⧉ 2 boards），板 2 上加的 Sidenote 板 1 上也有
+  await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
+  const sch1 = card(f, "Scheduler.schedule");
+  const mk0 = await sch1.locator(".mk").count();
+  await sch1.locator(".chead .ctitle").click(); await sleep(300);
+  await page.keyboard.press("Control+c"); await sleep(800);
+  await command(page, "CodeBoard: New Board"); await sleep(600);
+  await page.keyboard.press("Control+a"); await page.keyboard.type("Shared E2E"); await page.keyboard.press("Enter"); await sleep(3000);
+  let g = null;
+  for (let i = 0; i < 40 && !g; i++) { for (const x of page.frames()) { if (x !== f && await x.$("#board").catch(() => null)) { g = x; break; } } if (!g) await sleep(500); }
+  check(!!g, "New Board opens a second board");
+  if (g) {
+    await sleep(1500);
+    await g.locator("#board").click({ position: { x: 300, y: 300 } }); await sleep(300);
+    await page.keyboard.press("Control+v"); await sleep(2000);
+    // 剪贴板在 xvfb 里不一定转得进 webview：退一步用画布右键菜单
+    if (!(await card(g, "Scheduler.schedule").count())) {
+      await g.locator("#board").click({ button: "right", position: { x: 300, y: 300 } }); await sleep(500);
+      await g.locator(".ctx button", { hasText: /^Paste as Linked Card/ }).first().click({ timeout: 3000 }).catch(() => {}); await sleep(2000);
+    }
+    const sch2 = card(g, "Scheduler.schedule");
+    check(await sch2.count() === 1, "Ctrl+V on another board pastes the copied card");
+    let badge = ""; for (let i = 0; i < 20 && !/2 boards/.test(badge); i++) { badge = (await sch2.locator(".shb").textContent().catch(() => "")) ?? ""; if (!/2 boards/.test(badge)) await sleep(250); }
+    check(/2 boards/.test(badge), "the pasted card is linked: both boards show ⧉ 2 boards", badge);
+    check(await sch2.locator(".mk").count() === mk0, "sidenotes travel with the linked card", { mk0, now: await sch2.locator(".mk").count() });
+    // 板 2 上给另外两行加一条 Sidenote
+    await sch2.locator(".no").nth(10).click(); await sch2.locator(".no").nth(11).click({ modifiers: ["Shift"] });
+    await page.keyboard.press("s"); await sleep(600);
+    await g.locator(".pop button", { hasText: /^Text$/ }).click(); await sleep(200);
+    await page.keyboard.type("Shared across both boards.");
+    await g.locator(".pop button", { hasText: /^Add$/ }).click(); await sleep(800);
+    await page.keyboard.press("Escape");
+    check(await sch2.locator(".mk").count() === mk0 + 1, "sidenote added on board 2");
+    let mk1 = 0; for (let i = 0; i < 20 && (mk1 = await sch1.locator(".mk").count()) <= mk0; i++) await sleep(250);
+    check(mk1 === mk0 + 1, "the sidenote shows up on board 1 too", { mk0, mk1 });
+    check((await sch1.locator(".shb").textContent().catch(() => "")).includes("2 boards"), "board 1 also shows ⧉ 2 boards");
+    await shot(page, "8-shared");
+  }
+
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
   console.log(failed ? `${failed} checks failed` : "all passed");
