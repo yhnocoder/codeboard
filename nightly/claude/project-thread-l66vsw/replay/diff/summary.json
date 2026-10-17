@@ -1,142 +1,142 @@
 [
  {
   "name": "r01-first-card.png",
-  "status": "new",
-  "ratio": 0.9974
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r02-expand.png",
-  "status": "new",
-  "ratio": 0.9994
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r03-arrow-right.png",
-  "status": "new",
-  "ratio": 0.9994
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r05-section.png",
-  "status": "new",
-  "ratio": 0.9993
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r06-sidenote.png",
-  "status": "new",
-  "ratio": 0.9936
+  "status": "changed",
+  "ratio": 0.0622
  },
  {
   "name": "r07-sticker.png",
-  "status": "new",
-  "ratio": 0.9936
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r08-new-cards.png",
-  "status": "new",
-  "ratio": 0.9984
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r09-menu-edges.png",
-  "status": "new",
-  "ratio": 0.998
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r10-version.png",
-  "status": "new",
-  "ratio": 0.9888
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r11a-zoom-min.png",
-  "status": "new",
-  "ratio": 0.999
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r11b-zoom-fit.png",
-  "status": "new",
-  "ratio": 0.9984
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r11c-zoom-max.png",
-  "status": "new",
-  "ratio": 0.991
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r12-undo-redo.png",
-  "status": "new",
-  "ratio": 0.9987
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r13-reopen.png",
-  "status": "new",
-  "ratio": 0.9986
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-theme-01-warm-ink.png",
-  "status": "new",
-  "ratio": 0.9984
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-theme-02-graphite.png",
-  "status": "new",
-  "ratio": 0.9983
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-theme-03-soft-light.png",
-  "status": "new",
-  "ratio": 0.9987
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-theme-04-drafting.png",
-  "status": "new",
-  "ratio": 0.9988
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-theme-05-colorful.png",
-  "status": "new",
-  "ratio": 0.9988
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-theme-06-newspaper.png",
-  "status": "new",
-  "ratio": 0.9979
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-theme-07-poster.png",
-  "status": "new",
-  "ratio": 0.9966
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-theme-08-classic.png",
-  "status": "new",
-  "ratio": 0.9985
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r14-themes.png",
-  "status": "new",
-  "ratio": 0.9986
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r15-paste-near.png",
-  "status": "new",
-  "ratio": 0.9986
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r16-expand-in-view.png",
-  "status": "new",
-  "ratio": 0.9938
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r17-popup-anchor.png",
-  "status": "new",
-  "ratio": 0.9934
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r18-drag-body.png",
-  "status": "new",
-  "ratio": 0.9997
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "r19-menu-items.png",
-  "status": "new",
-  "ratio": 0.9958
+  "status": "same",
+  "ratio": 0
  }
 ]
