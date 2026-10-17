@@ -2,22 +2,24 @@
 // 线都画在所有卡下面那一层（见下面的「图层」），选中的、正拖着的、指针下那张卡的线临时浮到所有卡上面。
 // 每条线：base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：各自画到合并点，合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
-import { For, Index, Show, batch, createEffect, createMemo, createRenderEffect, createRoot, createSelector, createSignal, mapArray, on, onCleanup, untrack, type Accessor } from "solid-js";
+import { Show, batch, createEffect, createMemo, createRenderEffect, createRoot, createSelector, createSignal, mapArray, on, onCleanup, untrack, type Accessor } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
 import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
 import { geo, lineY } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
 import { hoverLink, setHoverLink, hoverCard, setHoverCard, dragLink, setDragLink, rubber, popIn } from "../state/ui";
-import { cam, toWorld, stillZ, lod, reduceMotion, camMoving, worldView } from "../state/camera";
+import { cam, toWorld, stillZ, lod, reduceMotion, camMoving } from "../state/camera";
 import { lodOf } from "../state/lodcards";
 import { boardOffset } from "../actions/common";
-import { shape, fileHue, look, traffic } from "../state/look";
+import { shape, fileHue, look } from "../state/look";
 import { tune } from "../state/tune";
 import { isDbl } from "../interact";
 import * as A from "../actions";
 import { LinkLabel } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
-import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, carAt, carPaths, laneOf, zebraBack, driveFrames, type Road, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
+import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
+import { carAt, type CarPose, type Road } from "./city";
+import { Car, Lane, trackTraffic } from "./Traffic";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
@@ -107,35 +109,20 @@ function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
 const anchorsFor = (bs: Base, s: [Side, Side], atMap: readonly [boolean, boolean]): [Anchor, Anchor] =>
   [anchorOn(bs.a.box, s[0], atMap[0] ? bs.a.hy : bs.a.y), anchorOn(bs.b.box, s[1], atMap[1] ? bs.b.hy : bs.b.y)];
 
-export type Geo = { d: string; mx: number; my: number; head?: string; tail?: string; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[] };
+export type Geo = { d: string; mx: number; my: number; head?: string | CarPose; tail?: string | CarPose; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[] };
 
 /** 粗细档 → 箭头放大多少 */
 const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);
 /** 合并点离终点多远 */
 const STUB = 28;
 
-/** 箭头的 d；City（head = "car"）是那辆车的 transform（Car 把它烤进 path） */
+/** 箭头的 d；City（head = "car"）是那辆车的位置（Car 把它烤进 path） */
 const headOrCar = (k: Shape0["head"], tx: number, ty: number, ux: number, uy: number, s: number) =>
   k === "car" ? carAt(tx, ty, ux, uy, s) : headPath(k, tx, ty, ux, uy, s);
 type Shape0 = ReturnType<typeof shape>;
-/** 箭头（或 City 的车）：同一份几何画成 path，或车的三条 path */
-function Car(p: { cls: string; at: string; road?: Road }) {
-  const c = createMemo(() => carPaths(p.at, p.road));
-  return <g class={p.cls} data-at={p.at}><path class="cbody" d={c().body} /><path class="croof" d={c().roof} /><path class="clamp" d={c().lamp} /></g>;
-}
-function Head(p: { cls: string; d: string; road?: Road }) {
-  return <>{shape().head === "car" ? <Car cls={p.cls} at={p.d} road={p.road} /> : <path class={p.cls} d={p.d} />}</>;
-}
-/**
- * City 的路面标线（一个 path）：大路是双黄线，小街是一道白中线；停车和人行横道那头剪掉（车停在横道前，见 carPaths）。
- * 实线不用 stroke-dasharray（见 themes.css 里 .lane 的注释）
- */
-function Lane(p: { d: string; road: Road; s: number; start: boolean; end: boolean }) {
-  const d = createMemo(() => {
-    const t = (zebraBack(p.road) + 1) * p.s;
-    return laneOf(p.d, p.road === "main" ? 1.1 : 0, p.start ? t : 0, p.end ? t : 0);
-  });
-  return <path class={p.road === "main" ? "lane" : "cline"} d={d()} />;
+/** 箭头（或 City 的车）：同一份几何画成 path，或车的三条 path（见 Traffic.tsx） */
+function Head(p: { cls: string; d: string | CarPose; road?: Road }) {
+  return <>{shape().head === "car" ? <Car cls={p.cls} at={p.d as CarPose} road={p.road} /> : <path class={p.cls} d={p.d as string} />}</>;
 }
 
 function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean): Geo {
@@ -334,7 +321,6 @@ const NO_PLAN: Plan = { m: new Map(), pt: [] };
 const slots = new Map<string, Slot>();
 const [slotTick, setSlotTick] = createSignal(0);
 let plan: Accessor<Plan> = () => NO_PLAN;
-let pick: Accessor<Route[]> = () => [];
 
 const same = <T,>(a: readonly T[], b: readonly T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 /** 让 p 的子节点从头开始依次是 ns（已经在位置上的不动；后面剩下的是要搬走的） */
@@ -458,26 +444,8 @@ export function trackLinks() {
     }
   });
   createEffect(on(camMoving, (mv) => { if (!mv) setHoverCard(hovNow); }, { defer: true }));
-  // City 的车流：挑哪几条路只在镜头停下时算一次
-  const trafficOn = () => look() === "city" && traffic() && !reduceMotion();
-  pick = createMemo(on([camMoving, views, trafficOn], ([moving, rs, ok], _, prev?: Route[]) => {
-    if (!ok) return [];
-    if (moving && prev?.length) return prev;
-    return untrack(() => {
-      const v = worldView(), m = 200;
-      const out: Route[] = [];
-      for (const r of rs) {
-        if (!r.L.call || r.base()?.kind !== "normal") continue;
-        const p = r.geo?.()?.pts;
-        if (!p) continue;
-        const xs = [p[0], p[2], p[4], p[6]], ys = [p[1], p[3], p[5], p[7]];
-        if (Math.max(...xs) < v.x - m || Math.min(...xs) > v.x + v.w + m || Math.max(...ys) < v.y - m || Math.min(...ys) > v.y + v.h + m) continue;
-        out.push(r);
-        if (out.length >= MAX_ROADS) break;
-      }
-      return out;
-    });
-  }));
+  // City 的车流：挑哪几条路只在镜头停下时算一次（Traffic.tsx）
+  trackTraffic(views);
 }
 
 /** 线的一层：bottom = 所有卡下面那一层；ports = 没浮上来的线的圆点；top = 临时浮上来的线和正在连的线 */
@@ -527,50 +495,6 @@ function Rubber() {
       }}
     </Show>
   );
-}
-
-/**
- * City 的车流（红绿灯是绿灯时）：镜头附近最多 MAX_ROADS 条调用路上各开两辆车。车是 HTML 小块，用 Web Animations 沿路走：
- * 关键帧只有 transform 和 opacity，整段交给合成器跑，主线程每帧什么都不做；只在路变了（拖卡片）时重建那条路上的两段动画。
- * 车不跟着路分到各张卡的那一层，跟以前一样全在一层（.movers，在所有卡上面）：分开的话每层车都要另起合成层，拖、改动时慢一倍以上。
- * 停着的车（.ahead.car）和路一起在路的那一层。
- * 红灯、别的材质、系统开了「减少动态效果」时整层不存在（没有动画、没有计时器）。挑哪几条路只在镜头停下时算一次（trackLinks 的 pick）
- */
-const MAX_ROADS = 16;
-export function Traffic() {
-  return <Show when={look() === "city" && traffic() && !reduceMotion()}><Movers /></Show>;
-}
-function Movers() {
-  return (
-    <div class="movers">
-      <For each={pick()}>
-        {(r, i) => {
-          const d = () => r.geo?.()?.d ?? "";
-          return <Index each={[0, 1]}>{(k) => <Mover d={d} k={(i() + k()) % 3} phase={k() / 2 + i() * 0.17} />}</Index>;
-        }}
-      </For>
-    </div>
-  );
-}
-/** 一辆车：路（d）变了就换一段动画，接着原来开到的地方（按比例）往下开 */
-function Mover(p: { d: () => string; k: number; phase: number }) {
-  let el!: HTMLDivElement;
-  let anims: Animation[] = [];
-  const stop = () => { for (const a of anims) a.cancel(); anims = []; };
-  createEffect(on(p.d, (d) => {
-    const old = anims[0], was = old ? ((old.currentTime as number) ?? 0) / ((old.effect?.getTiming().duration as number) || 1) : p.phase;
-    stop();
-    const f = d ? driveFrames(d) : null;
-    if (!f) return;
-    // 车速大约 50px/s
-    const ms = Math.max(3000, (f.len / 50) * 1000);
-    const at = ((was % 1) + 1) % 1 * ms;
-    const opt: KeyframeAnimationOptions = { duration: ms, iterations: Infinity, easing: "linear" };
-    anims = [el.animate(f.frames, opt), el.animate([{ opacity: 0 }, { opacity: 1, offset: 0.08 }, { opacity: 1, offset: 0.88 }, { opacity: 0 }], opt)];
-    for (const a of anims) a.currentTime = at;
-  }));
-  onCleanup(stop);
-  return <div ref={el} class={`mover k${p.k}`} />;
 }
 
 /**
