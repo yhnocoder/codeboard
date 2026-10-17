@@ -1,0 +1,142 @@
+[
+ {
+  "name": "r01-first-card.png",
+  "status": "new",
+  "ratio": 0.9974
+ },
+ {
+  "name": "r02-expand.png",
+  "status": "new",
+  "ratio": 0.9994
+ },
+ {
+  "name": "r03-arrow-right.png",
+  "status": "new",
+  "ratio": 0.9994
+ },
+ {
+  "name": "r05-section.png",
+  "status": "new",
+  "ratio": 0.9993
+ },
+ {
+  "name": "r06-sidenote.png",
+  "status": "new",
+  "ratio": 0.9936
+ },
+ {
+  "name": "r07-sticker.png",
+  "status": "new",
+  "ratio": 0.9936
+ },
+ {
+  "name": "r08-new-cards.png",
+  "status": "new",
+  "ratio": 0.9984
+ },
+ {
+  "name": "r09-menu-edges.png",
+  "status": "new",
+  "ratio": 0.998
+ },
+ {
+  "name": "r10-version.png",
+  "status": "new",
+  "ratio": 0.9888
+ },
+ {
+  "name": "r11a-zoom-min.png",
+  "status": "new",
+  "ratio": 0.999
+ },
+ {
+  "name": "r11b-zoom-fit.png",
+  "status": "new",
+  "ratio": 0.9984
+ },
+ {
+  "name": "r11c-zoom-max.png",
+  "status": "new",
+  "ratio": 0.991
+ },
+ {
+  "name": "r12-undo-redo.png",
+  "status": "new",
+  "ratio": 0.9987
+ },
+ {
+  "name": "r13-reopen.png",
+  "status": "new",
+  "ratio": 0.9986
+ },
+ {
+  "name": "r14-theme-01-warm-ink.png",
+  "status": "new",
+  "ratio": 0.9984
+ },
+ {
+  "name": "r14-theme-02-graphite.png",
+  "status": "new",
+  "ratio": 0.9983
+ },
+ {
+  "name": "r14-theme-03-soft-light.png",
+  "status": "new",
+  "ratio": 0.9987
+ },
+ {
+  "name": "r14-theme-04-drafting.png",
+  "status": "new",
+  "ratio": 0.9988
+ },
+ {
+  "name": "r14-theme-05-colorful.png",
+  "status": "new",
+  "ratio": 0.9988
+ },
+ {
+  "name": "r14-theme-06-newspaper.png",
+  "status": "new",
+  "ratio": 0.9979
+ },
+ {
+  "name": "r14-theme-07-poster.png",
+  "status": "new",
+  "ratio": 0.9966
+ },
+ {
+  "name": "r14-theme-08-classic.png",
+  "status": "new",
+  "ratio": 0.9985
+ },
+ {
+  "name": "r14-themes.png",
+  "status": "new",
+  "ratio": 0.9986
+ },
+ {
+  "name": "r15-paste-near.png",
+  "status": "new",
+  "ratio": 0.9986
+ },
+ {
+  "name": "r16-expand-in-view.png",
+  "status": "new",
+  "ratio": 0.9938
+ },
+ {
+  "name": "r17-popup-anchor.png",
+  "status": "new",
+  "ratio": 0.9934
+ },
+ {
+  "name": "r18-drag-body.png",
+  "status": "new",
+  "ratio": 0.9997
+ },
+ {
+  "name": "r19-menu-items.png",
+  "status": "new",
+  "ratio": 0.9958
+ }
+]
