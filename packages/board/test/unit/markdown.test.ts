@@ -23,7 +23,10 @@ describe("markdown round trip", () => {
     expect(rt("\\# not a heading")).toBe("\\# not a heading");
     expect(rt("\\- not a list")).toBe("\\- not a list");
     expect(rt("a \\<b\\> tag")).toBe("a &lt;b> tag");
-    expect(rt("price \\$5\\$")).toMatch(/^price \\\$5\$|^price \$5\\\$$/);
+    // 旧版存下的 \$…\$（打字时被转义的公式）：按 Pandoc 规则能当公式就当公式
+    expect(rt("price \\$5\\$")).toBe("price $5$");
+    expect(rt("costs \\$5 or \\$6")).toMatch(/^costs \\?\$5 or \\?\$6$/);
+    stable("costs \\$5 or \\$6");
     stable("\\[not a link\\](x)");
   });
   it("math: $…$ inline, $$…$$ block, Pandoc rules for money", () => {
@@ -155,5 +158,26 @@ describe("AI completion text", () => {
     const p = completePrompt("before text", "after text");
     expect(p).toContain("before text");
     expect(p).toContain("after text");
+  });
+});
+
+describe("typed math and block source (v0.1.8 review)", () => {
+  it("re-parses text that is Pandoc inline math", () => {
+    const d = parseMd("a \\$\\frac{a}{b}\\$ b");
+    expect(JSON.stringify(d)).toContain('"inlineMath"');
+    expect(rt("a \\$\\frac{a}{b}\\$ b")).toBe("a $\\frac{a}{b}$ b");
+  });
+  it("leaves money and $ followed by a digit alone", () => {
+    same("pay $5 and $6 today");
+    expect(JSON.stringify(parseMd("from $1 to $2"))).not.toContain("inlineMath");
+  });
+  it("inline $$x$$ stays display math in the paragraph", () => {
+    same("sum $$x$$ here");
+  });
+  it("blockSource gives the block's Markdown without escaping", async () => {
+    const { blockSource } = await import("../../src/md/schema");
+    const p = parseMd("**b** and $m$").content![0];
+    expect(blockSource(p)).toBe("**b** and $m$");
+    expect(blockSource({ type: "paragraph", content: [{ type: "text", text: "x $y$ *z*" }] })).toBe("x $y$ *z*");
   });
 });

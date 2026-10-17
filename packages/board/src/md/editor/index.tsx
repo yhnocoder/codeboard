@@ -1,6 +1,7 @@
 // Note 的所见即所得 Markdown 编辑器（TipTap）。这一块单独打包，第一次编辑时才加载（见 ../load.ts）。
 // 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选卡、
 // 公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。
+import { keepKey } from "../../ui/editkeys";
 import { Editor, Extension, InputRule, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
@@ -11,6 +12,7 @@ import { render } from "solid-js/web";
 import { createSignal, For, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
+import { Typora, reconvert } from "./typora";
 import { place, virtual } from "../../ui/place";
 
 export type MdEditorOpts = {
@@ -58,6 +60,9 @@ type Ui = {
   setMenu: (v: { kind: "slash" | "ref"; items: MenuItem[]; i: number } | null) => void;
   math: Accessor<{ pos: number; latex: string; block: boolean } | null>;
   setMath: (v: { pos: number; latex: string; block: boolean } | null) => void;
+  /** 工具条里的链接输入框（null = 没打开） */
+  link: Accessor<string | null>;
+  setLink: (v: string | null) => void;
   opts: MdEditorOpts;
 };
 const uiOf = new WeakMap<Editor, Ui>();
@@ -152,7 +157,7 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
 // ---------- 选中工具条 ----------
 function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   let el!: HTMLDivElement;
-  const [link, setLink] = createSignal<string | null>(null);
+  const link = p.ui.link, setLink = p.ui.setLink;
   const e = p.editor;
   const shown = () => {
     p.tick();
@@ -171,12 +176,22 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     <button class="tbtn" classList={{ on: (p.tick(), q.on()) }} data-tip={q.tip} style={q.style} onClick={q.run}>{q.label}</button>
   );
   const mod = p.ui.opts.isMac ? "⌘" : "Ctrl+";
+  let busy = false;
   const applyLink = (v: string) => {
+    if (link() === null || busy) return;
     const url = v.trim();
+    busy = true; // 下面 focus 会同步触发 blur，别再插一次
     e.view.focus(); // 先同步把焦点还给编辑器再拿掉输入框（见 toggleRaw）
     setLink(null);
+    busy = false;
+    const href = /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}`;
+    // 没选字、光标也不在链接上（⌘K）：把网址当字插进去
+    if (e.state.selection.empty && !e.isActive("link")) {
+      if (url) e.chain().focus().insertContent({ type: "text", text: url, marks: [{ type: "link", attrs: { href } }] }).unsetMark("link").run();
+      return;
+    }
     const c = e.chain().focus().extendMarkRange("link");
-    if (url) c.setLink({ href: /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}` }).run(); else c.unsetLink().run();
+    if (url) c.setLink({ href }).run(); else c.unsetLink().run();
   };
   const toMath = () => {
     const { from, to } = e.state.selection;
@@ -198,7 +213,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
         </>}>
           <input class="md-linkin" placeholder="Paste or type a link…" value={link() ?? ""} spellcheck={false}
             ref={(i) => queueMicrotask(() => { i.focus(); i.select(); })}
-            onKeyDown={(ev) => { ev.stopPropagation(); if (ev.key === "Enter") { ev.preventDefault(); applyLink(ev.currentTarget.value); } if (ev.key === "Escape") { ev.preventDefault(); e.view.focus(); setLink(null); } }}
+            onKeyDown={(ev) => { keepKey(ev); if (ev.key === "Enter") { ev.preventDefault(); applyLink(ev.currentTarget.value); } if (ev.key === "Escape") { ev.preventDefault(); e.view.focus(); setLink(null); } }}
             onBlur={(ev) => { if (link() !== null) applyLink(ev.currentTarget.value); }} />
         </Show>
       </div>
@@ -210,8 +225,17 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
 function MathPop(p: { editor: Editor; ui: Ui }) {
   let el!: HTMLDivElement;
   const e = p.editor;
+  // 边打边预览：公式节点跟着源码框改（不进撤销），结束时先换回原样再按一步写进去
+  const live = (latex: string, hist = false) => {
+    const m = p.ui.math(), n = m && e.state.doc.nodeAt(m.pos);
+    if (!m || !n || n.attrs.latex === latex) return;
+    const tr = e.state.tr.setNodeMarkup(m.pos, undefined, { ...n.attrs, latex });
+    if (!hist) tr.setMeta("addToHistory", false);
+    e.view.dispatch(tr);
+  };
   const done = (latex: string | null) => {
     const m = p.ui.math();
+    if (m) live(m.latex);
     e.view.focus(); // 同上：焦点不经过 body
     p.ui.setMath(null);
     if (!m) return;
@@ -232,8 +256,9 @@ function MathPop(p: { editor: Editor; ui: Ui }) {
         <div ref={el} class="pill md-mathpop" onPointerDown={(ev) => ev.stopPropagation()}>
           <textarea spellcheck={false} rows={m().block ? 3 : 1} value={m().latex} placeholder="LaTeX, e.g. \frac{a}{b}"
             ref={(t) => queueMicrotask(() => { t.focus(); t.select(); })}
+            onInput={(ev) => live(ev.currentTarget.value)}
             onKeyDown={(ev) => {
-              ev.stopPropagation();
+              keepKey(ev);
               if (ev.key === "Escape") { ev.preventDefault(); done(null); }
               else if (ev.key === "Enter" && !ev.isComposing && (!m().block || ev.metaKey || ev.ctrlKey || !ev.shiftKey)) { ev.preventDefault(); done(ev.currentTarget.value); }
             }}
@@ -270,16 +295,12 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       })];
     },
   });
-  // 打字时的转换：[[标题]] → 引用，$x$ → 行内公式（照旧版的 Pandoc 规则：$ 后不是空白、结尾 $ 前不是空白）
+  // 打字时的转换：[[标题]] → 引用（其余的见 typora.ts）
   const Rules = Extension.create({
     name: "cbRules",
     addInputRules() {
       return [
         new InputRule({ find: /\[\[([^\[\]\n]+)\]\]$/, handler: ({ range, match, chain }) => { chain().insertContentAt(range, { type: "cardRef", attrs: { label: match[1].trim() } }).run(); } }),
-        new InputRule({ find: /(?:^|[^$\\])(\$([^$\s](?:[^$]*[^$\s\\])?)\$)$/, handler: ({ range, match, chain }) => {
-          const from = range.from + (match[0].length - match[1].length);
-          chain().insertContentAt({ from, to: range.to }, { type: "inlineMath", attrs: { latex: match[2] } }).run();
-        } }),
       ];
     },
     addKeyboardShortcuts() {
@@ -299,6 +320,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
     ...base, Slash, Ref, Rules, Exit,
+    Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),
     Ghost.configure({ complete }),
@@ -342,9 +364,14 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
     return true;
   }
   // 纯文字里有 Markdown 的样子：按 Markdown 解析（HTML 的交给 ProseMirror 按 schema 解析，写回时自然是干净的 Markdown）
+  // 之后把光标所在的这一段再当 Markdown 解析一遍：粘进来的字补完了前面打了一半的记号（打了 $\frac{，粘贴 a}{b}$）也能变
   if (text && !cd.getData("text/html") && MD_HINT.test(text)) {
     const doc = parseMd(text);
-    e.chain().focus().insertContent(doc.content as JSONContent[]).run();
+    e.chain().focus().insertContent(doc.content as JSONContent[]).command(({ tr }) => { reconvert(tr); return true; }).run();
+    return true;
+  }
+  if (text && !cd.getData("text/html") && !text.includes("\n") && /[$*`~\]>]/.test(text)) {
+    e.view.dispatch(reconvert(e.state.tr.insertText(text)));
     return true;
   }
   return false;
@@ -382,6 +409,12 @@ function makeInst(): Inst {
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
       handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
+      // 复制：text/plain 放 Markdown（text/html 照旧）；代码块里选的字原样
+      clipboardTextSerializer: (slice) => {
+        const one = slice.content.childCount === 1 ? slice.content.firstChild! : null;
+        if (one?.type.spec.code && slice.openStart > 0) return one.textContent;
+        try { return serializeMd({ type: "doc", content: slice.content.toJSON() ?? [] }); } catch { return slice.content.textBetween(0, slice.content.size, "\n\n"); }
+      },
       // 白板上的 Note 不滚动（卡片跟着内容长高）：每打一个字都去量光标位置、找能滚的祖先，要强制排版一次，白花。
       // 只有代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常
       handleScrollToSelection: (v) => !v.state.selection.$head.parent.type.spec.code && !!v.dom.closest(".card"),
@@ -497,7 +530,8 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     queueMicrotask(() => { if (inst.sess === sess && !editor.view.hasFocus()) editor.view.focus(); });
     editor.commands.focus(undefined, { scrollIntoView: false });
   }
-  const ui: Ui = { menu, setMenu, math, setMath, opts: o };
+  const [link, setLink] = createSignal<string | null>(null);
+  const ui: Ui = { menu, setMenu, math, setMath, link, setLink, opts: o };
   uiOf.set(editor, ui);
   // 浮在页面上的部件（菜单、工具条、公式框）放在 body 下的一层里
   const layer = document.createElement("div");

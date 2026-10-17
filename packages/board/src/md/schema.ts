@@ -2,6 +2,8 @@
 // MarkdownManager 全应用只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
 import { Node, mergeAttributes, type AnyExtension, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
+import Bold, { starInputRegex, starPasteRegex } from "@tiptap/extension-bold";
+import { markInputRule, markPasteRule } from "@tiptap/core";
 import Document from "@tiptap/extension-document";
 import { MarkdownManager } from "@tiptap/markdown";
 import { Marked } from "marked";
@@ -21,6 +23,8 @@ const Math1 = InlineMath.extend({
   addAttributes() {
     return { ...this.parent?.(), display: { default: false, parseHTML: (e) => e.getAttribute("data-display") === "yes", renderHTML: (a) => (a.display ? { "data-display": "yes" } : {}) } };
   },
+  // 打字时的转换在编辑器里（editor/typora.ts，照 Pandoc 规则；TipTap 自带的把 $$x$$ 当行内小公式）
+  addInputRules: () => [],
   parseMarkdown: (t) => ({ type: "inlineMath", attrs: { latex: t.latex, display: !!t.display } }),
   renderMarkdown: (n) => (n.attrs?.display ? `$$${n.attrs.latex}$$` : `$${n.attrs?.latex ?? ""}$`),
   markdownTokenizer: {
@@ -39,6 +43,7 @@ const Math1 = InlineMath.extend({
 const BLOCK_MATH = /^ {0,3}\$\$([^$]+?)\$\$[ \t]*(?:\n|$)/;
 const lineStart = (re: RegExp) => (src: string) => { const m = re.exec(src); return m ? m.index + (m[0].startsWith("\n") ? 1 : 0) : -1; };
 const Math2 = BlockMath.extend({
+  addInputRules: () => [],
   renderMarkdown: (n) => `$$\n${n.attrs?.latex ?? ""}\n$$`,
   markdownTokenizer: {
     name: "blockMath", level: "block",
@@ -179,10 +184,12 @@ const Head = TableHeader.extend({ content: "paragraph" });
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
   StarterKit.configure({
-    document: false, codeBlock: false, underline: false, trailingNode: false,
+    document: false, codeBlock: false, underline: false, trailingNode: false, bold: false,
     link: { openOnClick: false, autolink: true, linkOnPaste: true, HTMLAttributes: { class: "lnk", rel: null, target: null } },
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
+  // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
+  Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
   Doc, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Table.configure({ resizable: false }), TableRow, Head, Cell,
   CardRef, FnList, FnDef, FnRef,
@@ -225,7 +232,10 @@ const mm = new MarkdownManager({
   })(),
   extensions: baseExtensions,
 });
+// 原样写出字（不转义）：把一段当 Markdown 源码重新解析时用（见 blockSource）
+let rawText = false;
 (mm as any).encodeTextForMarkdown = function (text: string, node: JSONContent, parent?: JSONContent) {
+  if (rawText) return text;
   const codeTypes: Set<string> = (this as any).codeTypes;
   if ((parent?.type && codeTypes.has(parent.type)) || (node.marks ?? []).some((m) => codeTypes.has(typeof m === "string" ? m : (m as any).type))) return text;
   return escText(text);
@@ -254,7 +264,7 @@ export function parseMd(src: string): JSONContent {
     rest.push({ type: "footnotes", content: refs.map((id, i) => ({ type: "footnote", content: defs.get(id)?.content ?? [{ type: "paragraph" }], attrs: { "data-id": id, id: `fn:${i + 1}` } })) });
   }
   if (!rest.length) rest.push({ type: "paragraph" });
-  return { type: "doc", content: splitImages(rest) };
+  return { type: "doc", content: splitImages(mathify(rest)!) };
 }
 function splitImages(ns: JSONContent[]): JSONContent[] {
   const out: JSONContent[] = [];
@@ -286,6 +296,39 @@ export function serializeMd(doc: JSONContent): string {
   if (defs.length) out = `${out.trimEnd()}\n\n${defs.join("\n")}`;
   return out.replace(/^\n+/, "").replace(/\s+$/, "");
 }
+/** 一个块当成 Markdown 源码：字原样写出（不转义），重新解析时字里的 **b**、$m$、# 之类就生效（接受补全、粘贴之后用） */
+export function blockSource(n: JSONContent): string {
+  rawText = true;
+  try { return mm.serialize({ type: "doc", content: [n] }).replace(/^\n+/, "").replace(/\s+$/, ""); } finally { rawText = false; }
+}
+
+// 字里看着像 $公式$ 的（Pandoc 规则）变成公式：旧版编辑器里打的 $\frac{a}{b}$ 没转成公式，写回成了 \$…\$，再读进来时转过来
+const TEXT_MATH = /(^|[^$\\])\$([^$\s](?:[^$]*[^$\s\\])?)\$(?![\d$])/g;
+function mathify(ns: JSONContent[] | undefined): JSONContent[] | undefined {
+  if (!ns) return ns;
+  const out: JSONContent[] = [];
+  for (const n of ns) {
+    if (n.type === "codeBlock") { out.push(n); continue; }
+    if (n.type === "text" && n.text?.includes("$") && !(n.marks ?? []).some((m) => m.type === "code")) {
+      let last = 0, m: RegExpExecArray | null;
+      const t = n.text;
+      TEXT_MATH.lastIndex = 0;
+      while ((m = TEXT_MATH.exec(t))) {
+        const at = m.index + m[1].length;
+        if (at > last) out.push({ ...n, text: t.slice(last, at) });
+        out.push({ type: "inlineMath", attrs: { latex: m[2], display: false } });
+        last = at + m[2].length + 2;
+        TEXT_MATH.lastIndex = last;
+      }
+      if (last === 0) out.push(n);
+      else if (last < t.length) out.push({ ...n, text: t.slice(last) });
+      continue;
+    }
+    out.push(n.content ? { ...n, content: mathify(n.content) } : n);
+  }
+  return out;
+}
+
 // 段落里行首的 # > - + * 1. 会被当成块语法：前面加 \（只看没有格式的开头文字）
 function markStarts(ns: JSONContent[]): JSONContent[] {
   return ns.map((n): JSONContent => {

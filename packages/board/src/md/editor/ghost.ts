@@ -3,6 +3,8 @@
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
+import { closeHistory } from "@tiptap/pm/history";
+import { reconvert } from "./typora";
 
 type G = { text: string; pos: number } | null;
 export const ghostKey = new PluginKey<G>("cbGhost");
@@ -75,7 +77,8 @@ export const Ghost = Extension.create<{ complete?: (before: string, after: strin
           const g = ghostKey.getState(view.state);
           if (!g || e.isComposing) return false;
           if (e.key === "Tab" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
-            view.dispatch(view.state.tr.insertText(g.text, g.pos).setMeta(ghostKey, null));
+            // 一次进来一整段：打字规则不会触发，这一段当 Markdown 重新解析（$a$、**b**、补完前面打了一半的 $\frac{…）。单独一步撤销
+            view.dispatch(reconvert(closeHistory(view.state.tr).insertText(g.text, g.pos).setMeta(ghostKey, null)));
             return true;
           }
           if (e.key === "Escape") { view.dispatch(view.state.tr.setMeta(ghostKey, null)); return true; }
