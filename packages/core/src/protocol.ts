@@ -1,7 +1,7 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt } from "./model";
+import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt, VariantFrom } from "./model";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
@@ -174,6 +174,8 @@ export type HostToBoard =
   | { type: "skeletons"; boards: Record<string, Skeleton | null> }
   /** 一次运行（Capture Run 跑完，或 Apply Run… 选的）：白板给对上的 Call 箭头挂 observed 证据和实参，没对上的列出来 */
   | { type: "run"; apply: RunApply }
+  /** 有 Variant 的卡（线框 07）：Variant 的代码变了（保存、分支 rebase、PR 更新）、合进了上游、上游最新的代码。只发有变化的卡 */
+  | { type: "variants"; cards: Record<string, VariantSync> }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
@@ -195,7 +197,7 @@ export type BoardToHost =
   | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
   | { type: "entryPoints"; req: number }
-  | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD
+  | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD；"upstream" = 上游最新（有 Variant 的卡）
   | { type: "commits"; req: number; seg: Segment }
   | { type: "switchCommit"; req: number; seg: Segment; commit: string } // 回 { seg, view }
   | { type: "resolveRef"; req: number; text: string } // 手输 commit / branch / tag
@@ -252,7 +254,31 @@ export type BoardToHost =
   /** 导出（线框 08）：存成文件（先问存到哪）。html 里的 cbres: 引用由宿主换成 data: URL（单个文件、离线能开）。回存了没有 */
   | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
   /** 写剪贴板（webview 里写可能被拦下） */
-  | { type: "copyText"; text: string };
+  | { type: "copyText"; text: string }
+  /** Add Variant 菜单（线框 07）：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
+  | { type: "variantSources"; req: number; seg: Segment }
+  /** 加一个 Variant：segs = 上游的段，宿主在那个来源里按函数名重新找（file 没给 abs 时先让用户选文件）。回 NewVariant；取消回 null */
+  | { type: "addVariant"; req: number; segs: Segment[]; from: AddVariantFrom };
+
+/** Add Variant 的来源：file 不给 abs = 让用户选；PR 只给编号（仓库从 origin 推出来） */
+export type AddVariantFrom = Exclude<VariantFrom, { kind: "upstream" | "file" | "pr" }> | { kind: "file"; abs?: string } | { kind: "pr"; num: number };
+/** 同一仓库的其他 worktree（git worktree list，不含这段代码所在的那个）；branches = 本地分支；pr = 能不能加 GitHub PR（origin 在 GitHub 上） */
+export type VariantSources = { worktrees: { dir: string; branch?: string; label: string; dirty?: boolean }[]; branches: string[]; current?: string; pr?: string };
+/** 宿主建好的 Variant（段 id 和请求里的一一对应；views 按段 id） */
+export type NewVariant = { name: string; from: VariantFrom; segs: Segment[]; views: Record<string, SegView> };
+/**
+ * 一张卡的 Variant 状态。segs：变了的 Variant 的新段（Variant id → 段）；views：它们的展示数据（键 viewKey(段, Variant)）；
+ * rebased：分支 / worktree 不是快进（rebase、force push），按函数名重新定位了；merged：合进了上游（Variant id → 合进的版本，如 main 4c1d0e9）；
+ * behind：分支落后上游几个 commit；latest：上游最新的代码（对比基准、三方对照用；label 如 main 4c1d0e9）
+ */
+export type VariantSync = {
+  segs?: Record<string, Segment[]>;
+  views?: Record<string, SegView>;
+  rebased?: string[];
+  merged?: Record<string, string>;
+  behind?: Record<string, number>;
+  latest?: { label: string; segs: Segment[]; views: Record<string, SegView> };
+};
 
 /** 贴过来的别的白板上的卡（views = 各段的展示数据） */
 export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; views: Record<string, SegView> };
@@ -319,6 +345,8 @@ type Replies = {
   questions: QuestionItem[];
   permalinks: Record<string, string>;
   exportFile: boolean;
+  variantSources: VariantSources;
+  addVariant: NewVariant | null;
 };
 export type ReplyOf<T extends AskType> = Replies[T];
 /** From GitHub… 的回答：按 GhQuery 的 op */

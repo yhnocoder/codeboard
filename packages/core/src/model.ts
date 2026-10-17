@@ -71,7 +71,28 @@ export type CodeCard = CardBase & {
   keepOld?: true; // 符号找不到时选了 Keep Old Version：不再提示
   /** Generated 卡：生成出来的代码 / 编译产物（what = CUDA source、Inductor output），钉在一次运行和那组参数上（run），不钉 commit */
   gen?: { what: string; run?: string };
+  /**
+   * 我的改动（线框 07）：同一段代码的几个版本，卡上一排标签页。第一个永远是上游（钉住的版本，from.kind = upstream）。
+   * 当前显示的那个（active）的段就是 segments；其余 Variant 的段存在各自的 segs 里，段 id 和 segments 一一对应（Link、Sidenote 的 seg 不用换）。
+   * 第 6 版里加的（还没发布过，不升版本）
+   */
+  variants?: Variant[];
+  active?: string; // 当前显示的 Variant 的 id；没有 = 上游
 };
+
+/** Variant 从哪来 */
+export type VariantFrom =
+  | { kind: "upstream" } // 钉住的上游版本（卡原来的段）
+  | { kind: "ref"; ref: string } // 分支 / tag / commit（分支会跟着走：rebase 后按函数名重新定位）
+  | { kind: "worktree" } // 当前工作区（含未提交改动），保存时刷新
+  | { kind: "wt"; dir: string; branch?: string } // 同一仓库的另一个 worktree（绝对路径；含它的未提交改动）
+  | { kind: "file"; abs: string } // 复制出来改的文件（仓库外也行），按函数名在里面找
+  | { kind: "pr"; owner: string; name: string; num: number; branch?: string }; // GitHub Pull Request（跟着 PR 的 head）
+/**
+ * 一个 Variant：name = 标签上的名字；note = 一行说明（参数、性能数字）；segs = 不是当前显示的时候它的段；
+ * merged = 已经提示过「合进上游」、用户选了 Keep Variants：合进的那个版本的标签，同一次合入不再提示
+ */
+export type Variant = { id: string; name: string; from: VariantFrom; note?: string; segs?: Segment[]; merged?: string };
 
 export type NoteCard = CardBase & {
   kind: "note";
@@ -252,6 +273,7 @@ export type Sidenote = {
   lineRemoved?: boolean; // 更新版本时原来的行被删了，改挂整卡
   boardOnly?: true; // 挂在共享卡上、但只属于这块白板（不跟着卡去别的白板）
   review?: string; // Update 时挂着的行变了：新版本的标签（如 9f3e2a1），琥珀色提醒复查；用户看过就去掉
+  variant?: string; // 只在卡的这个 Variant 上显示（线框 07）；行号按那个 Variant 的代码算。没有 = 跟着卡，所有 Variant 都显示
 } & (
   | { kind: "code"; code: Segment } // 仓库里或仓库外的代码，钉版本
   | { kind: "paste"; text: string; lang: string; url?: string }

@@ -26,6 +26,19 @@ const Segment = obj({
   hidden: opt(v.array(v.tuple([num, num]))), hl: opt(v.array(num)), keep: opt(str),
 });
 
+/** 代码卡的 Variant（线框 07）；单独导出给 test/schema-types.ts 对照 model.ts */
+export const VariantSchema = obj({
+  id: str, name: str, note: opt(str), segs: opt(v.array(Segment)), merged: opt(str),
+  from: v.variant("kind", [
+    obj({ kind: v.literal("upstream") }),
+    obj({ kind: v.literal("ref"), ref: str }),
+    obj({ kind: v.literal("worktree") }),
+    obj({ kind: v.literal("wt"), dir: str, branch: opt(str) }),
+    obj({ kind: v.literal("file"), abs: str }),
+    obj({ kind: v.literal("pr"), owner: str, name: str, num: num, branch: opt(str) }),
+  ]),
+});
+
 const Place = obj({ x: num, y: num, w: num, h: opt(num), section: opt(str), locked: opt(bool), collapsed: opt(bool), start: opt(bool) });
 
 const base = { id: str, title: opt(str), desc: opt(str), procs: opt(v.array(obj({ text: str, light: opt(bool) }))) };
@@ -36,6 +49,8 @@ const codeEntries = {
   members: opt(obj({ shown: v.array(str) })),
   mergedFrom: opt(v.array(obj({ card: v.lazy(() => CodeCard), place: Place }))), keepOld: opt(bool),
   gen: opt(obj({ what: str, run: opt(str) })),
+  variants: opt(v.array(VariantSchema)),
+  active: opt(str),
 };
 const CodeCard: v.GenericSchema = obj(codeEntries);
 /** 代码卡是递归的（mergedFrom），上面只能标成 GenericSchema；它的字段名单独导出给 test/schema-types.ts 和 model.ts 的 CodeCard 对照 */
@@ -77,7 +92,7 @@ const GraphMark = v.union([obj({ letter: str }), obj({ icon: str })]);
 
 const Section = obj({ id: str, title: opt(str), x: num, y: num, w: num, h: num, parent: opt(str), color: opt(str), collapsed: opt(bool), locked: opt(bool), desc: opt(str) });
 
-const noteBase = { id: str, at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }), why: opt(str), lineRemoved: opt(bool), boardOnly: opt(bool), review: opt(str) };
+const noteBase = { id: str, at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }), why: opt(str), lineRemoved: opt(bool), boardOnly: opt(bool), review: opt(str), variant: opt(str) };
 const Sidenote = v.variant("kind", [
   obj({ ...noteBase, kind: v.literal("code"), code: Segment }),
   obj({ ...noteBase, kind: v.literal("paste"), text: str, lang: str, url: opt(str) }),

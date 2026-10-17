@@ -198,7 +198,7 @@ export function mapRange(map: LineMap, a: number, e: number): [number, number] |
  * 合并卡的 mergedFrom（拆开时用的原卡快照）里落在这段上的段也一起换版本、挪行，Unmerge 时行锚还对得上。
  * review：挂在内容变了的行上的 Sidenote 标上 review（新版本的标签），提醒复查（Update 时传）
  */
-export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns), o: { review?: string } = {}): void {
+export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns), o: { review?: string; notes?: (n: Sidenote) => boolean } = {}): void {
   const owner = findOwner(b, cardId);
   const i = owner?.segments.findIndex((s) => s.id === ns.id) ?? -1;
   if (!owner || i < 0) return;
@@ -216,7 +216,9 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
       return { ...s, start: r[0], end: r[1], text: ns.text.slice(r[0] - ns.start, r[1] - ns.start + 1), version: ns.version, hidden: sh.length ? sh : undefined, hl: sl.length ? sl : undefined };
     });
   }
-  moveLineRefs(b, cardId, old, ns, map, { review: o.review });
+  // 有 Variant 的卡：「只在某个 Variant」的 Sidenote 行号按那个 Variant 的代码算，只跟着当前显示的那个挪
+  const notes = o.notes ?? (owner.variants ? (n: Sidenote) => !n.variant || n.variant === (owner.active ?? "up") : undefined);
+  moveLineRefs(b, cardId, old, ns, map, { review: o.review, notes });
 }
 
 /**
@@ -308,7 +310,10 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
   for (const it of todo) {
     const c = copy(it.card);
     c.id = cards[it.card.id];
-    if (c.kind === "code") for (const s of c.segments) { const n = o.copy ? uid("s") : s.id; segs[s.id] = n; s.id = n; }
+    if (c.kind === "code") {
+      for (const s of c.segments) { const n = o.copy ? uid("s") : s.id; segs[s.id] = n; s.id = n; }
+      for (const v of c.variants ?? []) for (const s of v.segs ?? []) s.id = segs[s.id] ?? s.id; // Variant 的段和卡上的段同一个 id
+    }
     if (c.kind === "compare") c.cols = [cards[c.cols[0]] ?? c.cols[0], cards[c.cols[1]] ?? c.cols[1]];
     b.cards.push(c);
     if (it.place) {
