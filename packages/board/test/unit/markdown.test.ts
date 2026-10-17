@@ -22,7 +22,7 @@ describe("markdown round trip", () => {
     expect(rt("\\*not italic\\*")).toBe("\\*not italic\\*");
     expect(rt("\\# not a heading")).toBe("\\# not a heading");
     expect(rt("\\- not a list")).toBe("\\- not a list");
-    expect(rt("a \\<b\\> tag")).toBe("a &lt;b> tag");
+    expect(rt("a \\<b\\> tag")).toBe("a \\<b> tag");
     // 旧版存下的 \$…\$（打字时被转义的公式）：按 Pandoc 规则能当公式就当公式
     expect(rt("price \\$5\\$")).toBe("price $5$");
     expect(rt("costs \\$5 or \\$6")).toMatch(/^costs \\?\$5 or \\?\$6$/);
@@ -46,9 +46,10 @@ describe("markdown round trip", () => {
   it("image", () => {
     same("![alt text](https://a.b/c.png)");
     same("![](assets/shot.png)");
-    // 和字混在一段：拆成段落 + 图
+    // 和字混在一段：图片是行内的，留在段里
     const d = parseMd("see ![x](a.png) here");
-    expect(d.content!.map((n) => n.type)).toEqual(["paragraph", "image", "paragraph"]);
+    expect(d.content!.map((n) => n.type)).toEqual(["paragraph"]);
+    expect(d.content![0].content!.map((n) => n.type)).toEqual(["text", "image", "text"]);
   });
   it("details", () => {
     const s = "<details>\n<summary>More & less</summary>\n\nbody **text**\n\n- a\n- b\n\n</details>";
@@ -179,5 +180,45 @@ describe("typed math and block source (v0.1.8 review)", () => {
     const p = parseMd("**b** and $m$").content![0];
     expect(blockSource(p)).toBe("**b** and $m$");
     expect(blockSource({ type: "paragraph", content: [{ type: "text", text: "x $y$ *z*" }] })).toBe("x $y$ *z*");
+  });
+});
+
+describe("v0.1.8 review: data must not be rewritten", () => {
+  it("inline images stay in their paragraph (#4)", () => {
+    same("pic ![a](https://x.y/a.png) end");
+    same("![cat](https://x.y/cat.png)");
+  });
+  it("typed HTML is escaped with a backslash, never an entity (#8)", () => {
+    expect(rt("a \\<details> b")).toBe("a \\<details> b");
+    expect(serializeMd({ type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "a <span>x</span> b" }] }] })).toBe("a \\<span>x\\</span> b");
+  });
+  it("<u> and <kbd> are formatting (#8, #15)", () => {
+    same("a <u>under</u> b");
+    same("press <kbd>Ctrl</kbd> now");
+    expect(JSON.stringify(parseMd("a <u>x</u>"))).toContain('"underline"');
+  });
+  it("footnotes without text do not write empty definitions (#9)", () => {
+    const d = parseMd("claim[^1] ok");
+    expect(serializeMd(d)).toBe("claim[^1] ok");
+    same("ref[^1]\n\n[^1]: the note");
+  });
+  it("code spans with backticks inside (#23)", () => {
+    same("a ``x ` y`` b");
+  });
+});
+
+describe("empty paragraphs", () => {
+  it("are not written as blank lines or &nbsp;", () => {
+    const code = { type: "codeBlock", attrs: { language: "python" }, content: [{ type: "text", text: "x" }] };
+    const p = (t?: string) => (t ? { type: "paragraph", content: [{ type: "text", text: t }] } : { type: "paragraph" });
+    expect(serializeMd({ type: "doc", content: [code, p(), p(), p("y")] })).toBe("```python\nx\n```\n\ny");
+    expect(serializeMd({ type: "doc", content: [p("a"), p(), p("b")] })).toBe("a\n\nb");
+    expect(serializeMd({ type: "doc", content: [{ type: "blockquote", content: [p("q"), p()] }] })).toBe("> q");
+  });
+});
+
+describe("tables", () => {
+  it("no extra blank lines around a table", () => {
+    same("word here\n\n| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\nafter");
   });
 });

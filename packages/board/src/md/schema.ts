@@ -1,9 +1,12 @@
 // Markdown 的唯一一套 schema + 解析 / 写回：编辑器（懒加载）和其他卡片的静态显示都用它，所以编辑和显示长得一样。
 // MarkdownManager 全应用只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
-import { Node, mergeAttributes, type AnyExtension, type JSONContent } from "@tiptap/core";
+import { Mark, Node, mergeAttributes, type AnyExtension, type JSONContent } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import Bold, { starInputRegex, starPasteRegex } from "@tiptap/extension-bold";
-import { markInputRule, markPasteRule } from "@tiptap/core";
+import { InputRule, markInputRule, markPasteRule } from "@tiptap/core";
+import Underline from "@tiptap/extension-underline";
+import HorizontalRule from "@tiptap/extension-horizontal-rule";
+import CodeMark from "@tiptap/extension-code";
 import Document from "@tiptap/extension-document";
 import { MarkdownManager } from "@tiptap/markdown";
 import { Marked } from "marked";
@@ -101,7 +104,7 @@ const Det = Details.extend({
     const [sum, body] = n.content ?? [];
     const title = escHtml((sum?.content ?? []).map((x: JSONContent) => x.text ?? "").join(""));
     const inner = body ? h.renderChildren(body.content ?? [], "\n\n").trim() : "";
-    return `<details>\n<summary>${title}</summary>\n\n${inner}\n\n</details>`;
+    return `<details>\n<summary>${title}</summary>\n\n${inner ? `${inner}\n\n` : ""}</details>`;
   },
   markdownTokenizer: {
     name: "details", level: "block",
@@ -141,6 +144,16 @@ export const CardRef = Node.create({
 
 // ---------- 脚注：正文 [^1]，定义 [^1]: 内容（写回时按出现顺序重新编号） ----------
 const FnRef = FootnoteReference.extend({
+  // 打 [^1] 变引用；段首的先不变（可能是在写定义 [^1]: …，见 editor/typora.ts）
+  addInputRules() {
+    return [new InputRule({
+      find: /\[\^([^\]\s]+)\]$/, undoable: true,
+      handler: ({ state, range, chain }) => {
+        if (range.from === state.doc.resolve(range.from).start()) return null;
+        chain().deleteRange(range).addFootnote().run();
+      },
+    })];
+  },
   parseMarkdown: (t) => ({ type: "footnoteReference", attrs: { "data-id": `fn-${t.label}`, referenceNumber: t.label } }),
   renderMarkdown: (n) => `[^${fnNum.get(n.attrs?.["data-id"]) ?? n.attrs?.referenceNumber ?? "?"}]`,
   markdownTokenizer: {
@@ -173,25 +186,58 @@ const FnList = Footnotes.extend({ markdownTokenName: "footnotes", parseMarkdown:
 const Doc = Document.extend({ content: "block+ footnotes?" });
 
 // ---------- 其他 ----------
-// 图片是块（单独一段的图解析出来就在块级）；和字混在一段里的，解析后把段落拆开（见 splitImages）
-const Img = Image.configure({ allowBase64: true });
+// 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）
+const Img = Image.configure({ inline: true, allowBase64: true });
+// ---------- 行内 HTML：<u>、<kbd> 是格式；别的标签按字原样留着（写回时 < 转义成 \<，不写实体） ----------
+const htmlTok = (tag: string) => ({
+  name: `html_${tag}`, level: "inline" as const,
+  start: (src: string) => src.indexOf(`<${tag}>`),
+  tokenize: (src: string, _t: unknown, lx: any) => {
+    const m = new RegExp(`^<${tag}>([\\s\\S]+?)</${tag}>`).exec(src);
+    if (!m) return;
+    return { type: `html_${tag}`, raw: m[0], tokens: lx.inlineTokens(m[1]) };
+  },
+});
+const U = Underline.extend({
+  markdownTokenName: "html_u",
+  parseMarkdown: (t: any, h: any) => h.applyMark("underline", h.parseInline(t.tokens ?? [])),
+  renderMarkdown: (n: JSONContent, h: any) => `<u>${h.renderChildren(n)}</u>`,
+  markdownTokenizer: htmlTok("u"),
+});
+const Kbd = Mark.create({
+  name: "kbd",
+  excludes: "_",
+  parseHTML: () => [{ tag: "kbd" }],
+  renderHTML: ({ HTMLAttributes }) => ["kbd", HTMLAttributes, 0],
+  markdownTokenName: "html_kbd",
+  parseMarkdown: (t: any, h: any) => h.applyMark("kbd", h.parseInline(t.tokens ?? [])),
+  renderMarkdown: (n: JSONContent, h: any) => `<kbd>${h.renderChildren(n)}</kbd>`,
+  markdownTokenizer: htmlTok("kbd"),
+});
+// 分隔线只在回车时变（--- 打完就变会和 YAML 头、setext 标题冲突；见 editor/typora.ts）
+const Hr = HorizontalRule.extend({ addInputRules: () => [] });
+// 行内代码的打字规则在 editor/typora.ts（反引号按长度配对）
+const InlineCode = CodeMark.extend({ addInputRules: () => [] });
 // 编辑器里的勾选框节点视图不带 data-type：样式靠这个属性，补上
 const Task = TaskItem.configure({ nested: true, HTMLAttributes: { "data-type": "taskItem" } });
 // 表格：GFM 存不下合并单元格和一格多段，所以一格只放一段
 const Cell = TableCell.extend({ content: "paragraph" });
+// 表格前后不多写空行
+const Tbl = Table.extend({ renderMarkdown: (n: JSONContent, h: any, c: any) => String((Table.config as any).renderMarkdown(n, h, c)).replace(/^\n+|\n+$/g, "") }).configure({ resizable: false });
 const Head = TableHeader.extend({ content: "paragraph" });
 
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
   StarterKit.configure({
-    document: false, codeBlock: false, underline: false, trailingNode: false, bold: false,
+    document: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false,
     link: { openOnClick: false, autolink: true, linkOnPaste: true, HTMLAttributes: { class: "lnk", rel: null, target: null } },
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
+  U, Kbd, Hr, InlineCode,
   Doc, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
-  Table.configure({ resizable: false }), TableRow, Head, Cell,
+  Tbl, TableRow, Head, Cell,
   CardRef, FnList, FnDef, FnRef,
 ];
 
@@ -215,7 +261,7 @@ function escText(s: string): string {
       case "*": case "~": out += (c === "*" ? star : tilde) && !(/\s/.test(prev || " ") && /\s/.test(next || " ")) ? `\\${c}` : c; break;
       case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) ? "\\[" : c; break;
       case "$": out += INLINE_MATH.test(s.slice(i)) ? "\\$" : c; break;
-      case "<": out += /[A-Za-z/!?]/.test(next) ? "&lt;" : c; break;
+      case "<": out += /[A-Za-z/!?]/.test(next) ? "\\<" : c; break;
       case "&": out += /^&(?:#\d+|#x[\da-f]+|\w+);/i.test(s.slice(i)) ? "&amp;" : c; break;
       default: out += c;
     }
@@ -264,19 +310,7 @@ export function parseMd(src: string): JSONContent {
     rest.push({ type: "footnotes", content: refs.map((id, i) => ({ type: "footnote", content: defs.get(id)?.content ?? [{ type: "paragraph" }], attrs: { "data-id": id, id: `fn:${i + 1}` } })) });
   }
   if (!rest.length) rest.push({ type: "paragraph" });
-  return { type: "doc", content: splitImages(mathify(rest)!) };
-}
-function splitImages(ns: JSONContent[]): JSONContent[] {
-  const out: JSONContent[] = [];
-  for (const n of ns) {
-    if (n.type === "paragraph" && n.content?.some((c) => c.type === "image")) {
-      let cur: JSONContent[] = [];
-      const flush = () => { while (cur[0]?.type === "text" && !cur[0].text?.trim()) cur.shift(); if (cur.length) out.push({ ...n, content: cur }); cur = []; };
-      for (const c of n.content) if (c.type === "image") { flush(); out.push(c); } else cur.push(c);
-      flush();
-    } else out.push(n.content ? { ...n, content: splitImages(n.content) } : n);
-  }
-  return out;
+  return { type: "doc", content: mathify(rest)! };
 }
 function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }
@@ -290,9 +324,11 @@ export function serializeMd(doc: JSONContent): string {
   const fns = fi >= 0 ? content.splice(fi, 1)[0] : undefined;
   fnNum = new Map();
   walk(content, (n) => { if (n.type === "footnoteReference" && !fnNum.has(n.attrs?.["data-id"])) fnNum.set(n.attrs?.["data-id"], fnNum.size + 1); });
-  let out = mm.serialize({ type: "doc", content: markStarts(content) });
+  let out = mm.serialize({ type: "doc", content: markStarts(dropEmpty(content)) });
+  // 还没写内容的脚注不写空定义（[^1] 读回来照样是脚注）
   const defs = (fns?.content ?? []).filter((f) => fnNum.has(f.attrs?.["data-id"])).sort((a, b) => fnNum.get(a.attrs!["data-id"])! - fnNum.get(b.attrs!["data-id"])!)
-    .map((f) => `[^${fnNum.get(f.attrs!["data-id"])}]: ${mm.serialize({ type: "doc", content: markStarts(f.content ?? []) }).trim().replace(/\n/g, "\n    ")}`);
+    .map((f) => [fnNum.get(f.attrs!["data-id"]), mm.serialize({ type: "doc", content: markStarts(f.content ?? []) }).trim()] as const)
+    .filter(([, body]) => body).map(([k, body]) => `[^${k}]: ${body.replace(/\n/g, "\n    ")}`);
   if (defs.length) out = `${out.trimEnd()}\n\n${defs.join("\n")}`;
   return out.replace(/^\n+/, "").replace(/\s+$/, "");
 }
@@ -327,6 +363,13 @@ function mathify(ns: JSONContent[] | undefined): JSONContent[] | undefined {
     out.push(n.content ? { ...n, content: mathify(n.content) } : n);
   }
   return out;
+}
+
+// 空段落写不进 Markdown（TipTap 会写成多余的空行或 &nbsp;）：写回时去掉；表格格子里的、容器里唯一的一段留着
+const HOLDS = new Set(["blockquote", "listItem", "taskItem", "detailsContent", "footnote"]);
+function dropEmpty(ns: JSONContent[], holder = true): JSONContent[] {
+  const kept = holder ? ns.filter((n) => !(n.type === "paragraph" && !n.content?.length)) : ns;
+  return (kept.length ? kept : ns.slice(0, 1)).map((n) => (n.content && n.type !== "paragraph" ? { ...n, content: dropEmpty(n.content, HOLDS.has(n.type!)) } : n));
 }
 
 // 段落里行首的 # > - + * 1. 会被当成块语法：前面加 \（只看没有格式的开头文字）
