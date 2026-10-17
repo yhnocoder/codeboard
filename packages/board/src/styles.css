@@ -1086,7 +1086,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
   background: color-mix(in srgb, var(--surface) 88%, transparent); font: 700 calc(12px * var(--iz, 1))/1.25 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 1; --iz: inherit; }
 .card.board.lo-map > .cface { clip-path: none; --iz: inherit; }
 .card.board.lo-map .sbfar { visibility: visible; }
-.card.board.lo-map .sbhead > :not(.step), .card.board.lo-map .sbgone { visibility: hidden; }
+.card.board.lo-map .sbhead > svg, .card.board.lo-map .sbname, .card.board.lo-map .sbmeta, .card.board.lo-map .sbgone { visibility: hidden; }
 .card.board.lo-map .skel .sk-t, .card.board.lo-map .skel .sk-l, .card.board.lo-map .skel .sk-mk, .card.board.lo-map .skel .sk-bars { display: none; }
 .card.board.lo-map .skel .sk-box { fill: color-mix(in srgb, var(--ink) 18%, transparent); stroke: none; }
 .card.board.lo-map .skel .sk-sec { stroke: none; }
