@@ -116,6 +116,43 @@ export const WEB: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "web", JSON.stringify({ opened, n: cards.length }));
     await close(h);
   },
+  /** A loaded bookmark (title, description, image) drags from anywhere in its content, not only its edge (C2) */
+  async webdrag() {
+    const b: Board = emptyBoard("b1", "Drag");
+    const url = "https://arxiv.org/abs/2309.06180";
+    put(b, web(url), 200, 120, 588);
+    const h = await open({ board: b, light, on: webHost });
+    await h.page.waitForTimeout(400);
+    const c = h.page.locator(".card.web").first();
+    const spots: Record<string, string> = { image: ".wimg img", title: ".wtitle", description: ".wdesc", site: ".wsite" };
+    const bad: string[] = [];
+    for (const [name, sel] of Object.entries(spots)) {
+      const el = c.locator(sel).first();
+      if (!(await el.count())) { bad.push(`${name}: not rendered`); continue; }
+      const r = (await el.boundingBox())!, before = (await c.boundingBox())!;
+      const x = r.x + r.width / 2, y = r.y + r.height / 2;
+      await h.page.mouse.move(x, y); await h.page.mouse.down();
+      for (let i = 1; i <= 10; i++) { await h.page.mouse.move(x + 7 * i, y + 5 * i); await h.page.waitForTimeout(16); }
+      await h.page.mouse.up(); await h.page.waitForTimeout(300);
+      const after = (await c.boundingBox())!;
+      if (Math.hypot(after.x - before.x, after.y - before.y) < 30) bad.push(`${name}: card did not move`);
+    }
+    // The replay's way (r18): select by a click near the top, zoom to the card (Shift+2), drag from 60% down the middle
+    {
+      const r0 = (await c.boundingBox())!;
+      await h.page.mouse.click(r0.x + r0.width / 2, r0.y + 4); await h.page.keyboard.press("Shift+@"); await h.page.waitForTimeout(900);
+      const r = (await c.boundingBox())!, x = r.x + r.width / 2, y = r.y + r.height * 0.6;
+      const hit = await h.page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y) as HTMLElement; return e ? `${e.tagName}.${e.className}` : ""; }, [x, y]);
+      await h.page.mouse.move(x, y); await h.page.mouse.down();
+      for (let i = 1; i <= 10; i++) { await h.page.mouse.move(x + 7 * i, y + 5 * i); await h.page.waitForTimeout(40); }
+      await h.page.mouse.up(); await h.page.waitForTimeout(600);
+      const a = (await c.boundingBox())!;
+      if (Math.hypot(a.x - r.x, a.y - r.y) < 30) bad.push(`after zoom, middle (${hit}): card did not move`);
+    }
+    await shot(h, "web-drag");
+    console.log(bad.length ? "FAIL" : "PASS", "webdrag", JSON.stringify(bad));
+    await close(h);
+  },
   /** Link List: drop on title to merge, multi-line paste, Compact / Rich, hover, context menu, reorder, drag out */
   /** Five styles side by side; ↗ appears only on hover */
   async webstyles() {

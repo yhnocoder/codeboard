@@ -1,0 +1,147 @@
+# Study-task replay: the scripted study task in real VS Code (25+ steps), too long for every push. It runs:
+#   nightly    every day on main (and on demand from the Actions tab). Failures go to the issue labelled "replay-nightly":
+#              a comment when the set of failing checks changes, including when everything passes again.
+#   PR label   when the label "replay" is added to a PR (remove and add it again to re-run): base and head are both replayed
+#              with head's script, it fails on checks that fail on head but not on base, and it updates the replay section of
+#              the PR description.
+# Each replay is split into 3 parts, each in its own job. Screenshots go to the ci-screenshots branch.
+name: Replay
+on:
+  schedule:
+    - cron: "0 19 * * *" # 03:00 Beijing time
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+concurrency:
+  # per label, so adding some other label to a PR doesn't cancel a replay in progress
+  group: replay-${{ github.event.pull_request.number || github.ref }}-${{ github.event.label.name }}
+  cancel-in-progress: true
+env:
+  VSCODE_VERSION: "1.142.0"
+  E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
+  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+jobs:
+  replay:
+    if: github.event_name != 'pull_request' || github.event.label.name == 'replay'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # nightly replays only the checked-out commit; a PR also replays its base
+      matrix:
+        side: ${{ fromJSON(github.event_name == 'pull_request' && '["head","base"]' || '["head"]') }}
+        part: [1, 2, 3]
+    name: replay (${{ matrix.side }}, ${{ matrix.part }}/3)
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true, fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+        if: matrix.side == 'head'
+      - name: Check out and build base, with head's replay scripts
+        if: matrix.side == 'base' && env.BASE_SHA != ''
+        run: tools/review/checkout-base.sh "$BASE_SHA" base --test-drivers
+      - uses: ./.github/actions/vscode
+        if: matrix.side == 'head' || env.BASE_SHA != ''
+      - name: Study-task replay
+        if: matrix.side == 'head' || env.BASE_SHA != ''
+        # Pass or fail is decided in the report job
+        continue-on-error: true
+        run: |
+          DIR=.; [ "${{ matrix.side }}" = base ] && DIR=base
+          PART=${{ matrix.part }} DRIVER=replay.cjs E2E_OUT=$PWD/test-out/replay bash $DIR/extensions/vscode/test/run.sh
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: "replay-${{ matrix.side }}-${{ matrix.part }}", path: test-out/replay, retention-days: 14, if-no-files-found: ignore }
+
+  report:
+    needs: [replay]
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || (github.event.label.name == 'replay' && github.event.pull_request.head.repo.full_name == github.repository)) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - uses: ./.github/actions/chromium
+      - uses: actions/download-artifact@v4
+        with: { path: test-out/artifacts, pattern: "replay-*" }
+      - name: Replay result
+        # PR: fails on checks that fail on head but not on base. Nightly: never fails here; failures go to the issue below.
+        run: |
+          A=test-out/artifacts
+          # one folder per side: parts 3 and 2 first, so part 1's screenshots of the shared setup steps win
+          for s in head base; do mkdir -p $A/replay-$s; for p in 3 2 1; do [ -d $A/replay-$s-$p ] && cp -r $A/replay-$s-$p/. $A/replay-$s/; done; done
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $A/replay-head-3 --base $A/replay-base-1 $A/replay-base-2 $A/replay-base-3
+          else
+            node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $A/replay-head-3 || true
+          fi
+      - name: Diff and publish screenshots
+        if: ${{ !cancelled() }}
+        run: |
+          A=test-out/artifacts
+          ls $A/replay-head/*.png >/dev/null 2>&1 || exit 0
+          # PR: base → head from this run. Nightly: compared with the previous nightly's screenshots.
+          if [ "${{ github.event_name }}" = pull_request ]; then tools/review/publish-shots.sh $A/replay-head "pr/${{ github.event.pull_request.number }}/replay" $A/replay-base test-out/replay-summary.md
+          else K="nightly/${{ github.ref_name }}/replay"; tools/review/publish-shots.sh $A/replay-head "$K" "$K" test-out/replay-summary.md; fi
+      - name: Report to the PR description or the nightly issue
+        if: ${{ !cancelled() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const A = "test-out/artifacts";
+            const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
+            const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
+            const steps = [1, 2, 3].flatMap((p) => json(`${A}/replay-head-${p}/steps.json`));
+            const audit = [1, 2, 3].flatMap((p) => json(`${A}/replay-head-${p}/audit.json`));
+            const issues = [...new Set(audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`)))];
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const sha = (context.payload.pull_request?.head.sha || context.sha).slice(0, 7);
+            const shots = ["<details><summary>Replay screenshots</summary>", "", read("test-out/replay-summary.md") || "No screenshots.", "</details>"];
+
+            if (context.eventName === "pull_request") {
+              const section = [
+                "<!-- ci-replay:start -->", "## Study-task replay", "",
+                `Commit ${sha} · [Run log](${run}) · re-run by removing and adding the \`replay\` label`, "",
+                read("test-out/replay-result.md") || "**Study-task replay**: no results.", "",
+                `**UI audit during the replay**: ${issues.length ? `${issues.length} warning${issues.length > 1 ? "s" : ""}` : "no issues"}`, ...issues.slice(0, 30), "",
+                ...shots, "<!-- ci-replay:end -->",
+              ].join("\n");
+              const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
+              const body = pr.body || "";
+              const re = /<!-- ci-replay:start -->[\s\S]*<!-- ci-replay:end -->/;
+              await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: re.test(body) ? body.replace(re, section) : `${body}\n\n${section}` });
+              return;
+            }
+
+            // Nightly: one open issue labelled replay-nightly collects the results
+            const LABEL = "replay-nightly";
+            const open = await github.rest.issues.listForRepo({ ...context.repo, labels: LABEL, state: "open", per_page: 1 });
+            const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Nightly study-task replay", labels: [LABEL],
+              body: "The nightly study-task replay (`.github/workflows/replay.yml`) comments here when the set of failing checks changes, including when everything passes again." })).data;
+            // The failures last reported are kept in a hidden marker in the latest comment that has one
+            const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: issue.number, per_page: 100 });
+            const lastMark = comments.reverse().map((c) => /<!-- replay-failures: (.*) -->/.exec(c.body || "")).find(Boolean);
+            const before = new Set(lastMark ? JSON.parse(lastMark[1]) : []);
+            const crashed = steps.length === 0;
+            const fails = crashed ? ["(no results: the replay crashed before writing steps.json)"]
+              : steps.flatMap((s) => s.checks.filter((c) => !c.ok).map((c) => `${s.name}: ${c.what}`));
+            const same = fails.length === before.size && fails.every((f) => before.has(f));
+            core.info(`failing: ${fails.length}, last reported: ${before.size}, changed: ${!same}`);
+            if (same) return;
+            const nChecks = steps.reduce((n, s) => n + s.checks.length, 0);
+            const fixed = [...before].filter((f) => !fails.includes(f));
+            const body = [
+              fails.length ? `❌ **${fails.length} failing** on ${context.ref.replace("refs/heads/", "")} @ ${sha}` : `✅ **All ${nChecks} checks pass again** on ${context.ref.replace("refs/heads/", "")} @ ${sha}`,
+              `[Run log](${run})`, "",
+              ...fails.map((f) => `- ${before.has(f) ? "" : "🆕 "}${f}`),
+              ...(fixed.length ? ["", "Passing again:", ...fixed.map((f) => `- ${f}`)] : []), "",
+              ...shots, "", `<!-- replay-failures: ${JSON.stringify(fails)} -->`,
+            ].join("\n");
+            await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body });

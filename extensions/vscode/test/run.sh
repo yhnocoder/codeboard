@@ -12,10 +12,13 @@ THEME=${THEME:-Default Dark Modern}
 TAG=$(echo "$THEME" | tr 'A-Z ' 'a-z-')
 DRIVER=${DRIVER:-drive.cjs}   # DRIVER=replay.cjs runs the scripted study-task replay
 OUT=${E2E_OUT:-$REPO/test-out/$TAG}
-WS=/tmp/codeboard-e2e/ws
-UD=/tmp/codeboard-e2e/user
+# E2E_TMP and CDP_PORT let several instances run side by side on one machine
+TMP=${E2E_TMP:-/tmp/codeboard-e2e}
+export CDP_PORT=${CDP_PORT:-9223}
+WS=$TMP/ws
+UD=$TMP/user
 pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true; sleep 1
-rm -rf /tmp/codeboard-e2e "$OUT"; mkdir -p "$OUT" "$UD/User"
+rm -rf "$TMP" "$OUT"; mkdir -p "$OUT" "$UD/User"
 git clone -q "$REPO/examples/nano-vllm" "$WS"
 # E2E_EXTENSIONS="ms-python.python ms-python.vscode-pylance": install into a cache dir first (skipped if already there), then copy into this run's extensions dir
 if [ -n "$E2E_EXTENSIONS" ]; then
@@ -31,7 +34,7 @@ JSON
 RUN=""; [ -z "$DISPLAY" ] && RUN="xvfb-run -a -s '-screen 0 1700x1100x24'"
 eval $RUN "$CODE" "$WS" --extensionDevelopmentPath="$EXT" --user-data-dir="$UD" --extensions-dir="$UD/ext" \
   --disable-workspace-trust --skip-welcome --skip-release-notes --disable-gpu --no-sandbox \
-  --remote-debugging-port=9223 --window-size=1600,1000 >"$OUT/code.log" 2>&1 &
+  --remote-debugging-port=$CDP_PORT --window-size=1600,1000 >"$OUT/code.log" 2>&1 &
 PID=$!
 set +e
 node "$HERE/$DRIVER" "$OUT" "$WS" "$UD"

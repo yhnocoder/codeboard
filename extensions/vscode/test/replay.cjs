@@ -73,6 +73,17 @@ async function waitJson(pred, ms = 5000) {
   return b;
 }
 // Click empty canvas to deselect and close popups
+// Paste a generated PNG so the board has an Image card
+async function pasteImage(f) {
+  await f.evaluate(async () => {
+    const cv = document.createElement("canvas"); cv.width = 320; cv.height = 200;
+    const g = cv.getContext("2d"); g.fillStyle = "#c2643a"; g.fillRect(0, 0, 320, 200); g.fillStyle = "#fff"; g.fillRect(40, 40, 120, 80);
+    const blob = await new Promise((r) => cv.toBlob(r, "image/png"));
+    const dt = new DataTransfer(); dt.items.add(new File([blob], "shot.png", { type: "image/png" }));
+    window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
+  });
+  await waitJson((b) => b.cards.some((c) => c.kind === "image")); await sleep(800); await settle(f);
+}
 const blank = async (f, page) => { await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await f.locator("#board").click({ position: { x: 12, y: 160 }, force: true }); await sleep(250); };
 // Line-number elements of a card that are inside the viewport (after zooming part of the card may be off screen)
 async function visibleRows(f, c) {
@@ -96,7 +107,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
 
 (async () => {
   let browser;
-  for (let i = 0; i < 60 && !browser; i++) { try { browser = await chromium.connectOverCDP("http://127.0.0.1:9223"); } catch { await sleep(1000); } }
+  for (let i = 0; i < 60 && !browser; i++) { try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${process.env.CDP_PORT || 9223}`); } catch { await sleep(1000); } }
   if (!browser) throw new Error("cannot connect to VS Code");
   let page;
   for (let i = 0; i < 60 && !page; i++) {
@@ -106,14 +117,21 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   if (!page) throw new Error("VS Code main window not found");
   await sleep(6000);
   const errors = [];
-  page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
+  // Node deprecation warnings from other extensions are logged as errors too, and the workspace path contains "codeboard": not ours
+  page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text()) && !/DeprecationWarning/.test(m.text())) errors.push(m.text()); });
   let f = null;
   // Maximize the board's editor group (by default it shares the width with code, leaving the board ~540px wide, too small to click after zooming)
   const maximize = async () => { await command(page, "View: Focus Second Editor Group"); await command(page, "View: Maximize Editor Group"); await sleep(1200); };
 
   const only = process.env.ONLY ? process.env.ONLY.split(",") : null;
+  // PART=1|2|3 splits the replay across parallel CI jobs: parts 2 and 3 each walk half of the long menu walk (r19, split by card kind),
+  // after the steps that build the cards it needs; part 1 runs everything else
+  const part = process.env.PART, MENU = ["r01", "r08", "r19"];
+  const R19_KINDS = { 2: ["code", "note"], 3: ["web", "image"] }[part];
+  const inPart = (name) => !part || (part === "1" ? !name.startsWith("r19") : MENU.some((p) => name.startsWith(p)));
   const step = async (name, title, fn) => {
     if (only && !only.some((o) => name.startsWith(o))) return;
+    if (!inPart(name)) return;
     cur = { name, title, checks: [] }; steps.push(cur);
     console.log(`▶ ${name} ${title}`);
     try { await fn(); } catch (e) { check(false, "step ran without errors", String(e.message || e).split("\n")[0]); }
@@ -130,17 +148,16 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   });
 
   await step("r02-expand", "Expand schedule and postprocess, then can_allocate from schedule", async () => {
-    await callIn(f, "LLMEngine.step", "schedule").click(); await sleep(1800);
-    await blank(f, page);
-    await callIn(f, "LLMEngine.step", "postprocess").click(); await sleep(1800);
-    await blank(f, page);
-    await callIn(f, "Scheduler.schedule", "can_allocate").click(); await sleep(1800);
-    await blank(f, page);
+    // Expanding waits on the language server, which is slow on a cold runner: wait for each card instead of a fixed time
+    const expand = async (from, call, title) => { await callIn(f, from, call).click(); await card(f, title).first().waitFor({ timeout: 20000 }).catch(() => {}); await sleep(600); await blank(f, page); };
+    await expand("LLMEngine.step", "schedule", "Scheduler.schedule");
+    await expand("LLMEngine.step", "postprocess", "Scheduler.postprocess");
+    await expand("Scheduler.schedule", "can_allocate", "BlockManager.can_allocate");
     check(await card(f, "Scheduler.schedule").count() === 1 && await card(f, "Scheduler.postprocess").count() === 1, "two child cards");
     check(await card(f, "BlockManager.can_allocate").count() === 1, "grandchild BlockManager.can_allocate");
     // Labels only name the tree (since v0.1.5 every card shows its tree's letter)
-    const root = await card(f, "LLMEngine.step").locator(".chead .step").textContent().catch(() => "");
-    const n = await card(f, "BlockManager.can_allocate").locator(".chead .step").textContent().catch(() => "");
+    const root = await card(f, "LLMEngine.step").locator(".chead .step").first().textContent().catch(() => "");
+    const n = await card(f, "BlockManager.can_allocate").locator(".chead .step").first().textContent().catch(() => "");
     check(!!n && n === root, "grandchild is labeled with the same tree", { root, n });
     await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
   });
@@ -202,11 +219,13 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     await focusCard(f, page, "LLMEngine.step"); await blank(f, page);
     await f.locator('.bbar button[aria-label="Sticker"]').click(); await sleep(400);
     await f.locator(".stkpick .scell").nth(1).click(); await sleep(200);
-    await card(f, "LLMEngine.step").locator(".src .l").nth(4).click({ position: { x: 40, y: 6 } }); await sleep(400);
+    // A sticker sticks to a line when dropped on its line number (on the code it binds to the card).
+    // While placing, an overlay takes the pointer: click through it as a user would (force skips Playwright's "covered" wait)
+    await card(f, "LLMEngine.step").locator(".gutter .no").nth(4).click({ force: true }); await sleep(400);
     if (!(await f.locator(".stkpick").count())) { await f.locator('.bbar button[aria-label="Sticker"]').click(); await sleep(400); }
     await f.locator(".stkpick .scell").nth(0).click({ timeout: 5000 }); await sleep(200);
     const bb = await f.locator("#board").boundingBox();
-    await f.locator("#board").click({ position: { x: bb.width - 80, y: 90 } }); await sleep(900);
+    await f.locator("#board").click({ position: { x: bb.width - 80, y: 90 }, force: true }); await sleep(900);
     const k = (await waitJson((b) => b.stickers?.length >= 2))?.stickers ?? [];
     check(k.some((s) => s.at.kind === "line") && k.some((s) => s.at.kind === "canvas"), "stickers placed on a line and on the canvas", k.map((s) => s.at.kind));
     await blank(f, page);
@@ -224,7 +243,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     await page.keyboard.type("free text"); await page.keyboard.press("Escape"); await sleep(600);
     const paste = (t) => f.evaluate((t) => { const dt = new DataTransfer(); dt.setData("text/plain", t); window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })); }, t);
     await paste("https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3/nanovllm/engine/scheduler.py#L24-L40"); await sleep(2500);
-    await paste("https://arxiv.org/abs/2309.06180"); await sleep(2500);
+    await paste(process.env.WEB_URL || "https://arxiv.org/abs/2309.06180"); await sleep(2500);
     const b = await waitJson((b) => nCards(b) >= before + 4), kinds = (b?.cards ?? []).map((c) => c.kind);
     check(nCards(b) >= before + 4, "4 more cards", { before, after: nCards(b), kinds });
     check(kinds.includes("web"), "plain URL became a Web card", kinds);
@@ -304,18 +323,25 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
 
   // One screenshot of the same board per theme, for side-by-side comparison with the material reference in T2 (checklist S11)
   await step("r14-themes", "One screenshot per theme (8)", async () => {
+    // Close Settings with its own button: a stray Ctrl+, that reaches VS Code instead of the board opens VS Code's Settings over the board,
+    // after which the hidden webview stops painting (stale screenshots, every later step waits out settle())
+    const isOpen = async () => (await f.locator(".st-sw").count()) > 0;
+    const openSettings = async () => { for (let t = 0; t < 2 && !(await isOpen()); t++) { await blank(f, page); await page.keyboard.press("Control+,"); await sleep(800); } };
+    const closeSettings = async () => { if (await isOpen()) { await f.locator('button[aria-label="Close Settings"]').click(); await sleep(700); } };
     await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
-    await page.keyboard.press("Control+,"); await sleep(800);
+    await openSettings();
     const names = await f.locator(".st-sw").allTextContents();
     check(names.length >= 8, "Settings lists 8 themes", names);
     for (let i = 0; i < names.length; i++) {
       await f.locator(".st-sw").nth(i).click(); await sleep(1200);
-      await page.keyboard.press("Control+,"); await sleep(700);
+      await closeSettings();
       await shot(page, f, `r14-theme-${String(i + 1).padStart(2, "0")}-${names[i].trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}`);
-      await page.keyboard.press("Control+,"); await sleep(700);
+      await openSettings();
     }
     await f.locator(".st-sw").first().click(); await sleep(800);
-    await page.keyboard.press("Control+,"); await sleep(600);
+    await closeSettings();
+    const tab = await page.locator(".tab.active").first().textContent().catch(() => "");
+    check(!/Settings/.test(tab), "the board is still the active editor after Settings", tab);
   });
 
   // ---- The steps below come from v0.1.5 trial feedback (checklist section 4: C1 C2 C4 C8) ----
@@ -389,22 +415,18 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
 
   await step("r18-drag-body", "Every non-code card can be dragged from the middle of its content (C2)", async () => {
     await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(700);
-    // Paste an image so there is an Image card
-    await f.evaluate(async () => {
-      const cv = document.createElement("canvas"); cv.width = 320; cv.height = 200;
-      const g = cv.getContext("2d"); g.fillStyle = "#c2643a"; g.fillRect(0, 0, 320, 200); g.fillStyle = "#fff"; g.fillRect(40, 40, 120, 80);
-      const blob = await new Promise((r) => cv.toBlob(r, "image/png"));
-      const dt = new DataTransfer(); dt.items.add(new File([blob], "shot.png", { type: "image/png" }));
-      window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true }));
-    });
-    await waitJson((b) => b.cards.some((c) => c.kind === "image")); await sleep(800); await settle(f);
+    await pasteImage(f);
     // A Note (with background) has selectable text, so by design it drags by its header; only check cards whose content is not text
     for (const k of ["text", "web", "image"]) {
-      const c = f.locator(`.card.${k}`).first();
+      // For Web cards prefer one with a loaded preview (title, description, image): that is the one users grab by its content.
+      // Locally (no internet) WEB_URL can point the pasted URL at a page served on localhost
+      const rich = f.locator(".card.web", { has: f.locator(".wimg") });
+      const c = k === "web" && (await rich.count()) ? rich.first() : f.locator(`.card.${k}`).first();
       if (!(await c.count())) { check(false, `board has a ${k} card to drag`); continue; }
-      await blank(f, page);
+      // Fit first: the previous card's zoom can leave this one off screen, and a click there would select nothing
+      await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600); await settle(f);
       // Select the card and zoom to it (Shift+2) so it is fully in view and large enough
-      const rr = await rectOf(c); await f.locator("#board").click({ position: { x: Math.max(4, rr.l + rr.w / 2), y: Math.max(4, rr.t + 4) }, force: true }).catch(() => {});
+      const rr = await rectOf(c); await f.locator("#board").click({ position: { x: rr.l + rr.w / 2, y: rr.t + Math.min(8, rr.h / 2) }, force: true }).catch(() => {});
       await page.keyboard.press("Shift+@"); await sleep(900); await settle(f);
       const r0 = await rectOf(c), fb = await (await f.frameElement()).boundingBox();
       const x = fb.x + r0.l + r0.w / 2, y = fb.y + r0.t + r0.h * 0.6;
@@ -421,9 +443,10 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   await step("r19-menu-items", "Click every item of each card type's context menu; every item has an effect (C1)", async () => {
     // Items that leave the board or need the outside world are skipped: open in editor / browser, refresh web preview (no internet in the sandbox)
     const SKIP = /^(Open In Editor|Open in Editor|Open In Browser|Open in Browser|Refresh Preview|Refetch Preview|Paste)/i;
-    const kinds = [["code", ".card.ccard .chead"], ["note", ".card.note"], ["web", ".card.web"], ["image", ".card.image"]];
+    const kinds = [["code", ".card.ccard .chead"], ["note", ".card.note"], ["web", ".card.web"], ["image", ".card.image"]].filter(([k]) => !R19_KINDS || R19_KINDS.includes(k));
+    if (!(await f.locator(".card.image").count())) { await blank(f, page); await pasteImage(f); }
     const fb = await (await f.frameElement()).boundingBox();
-    const dead = [];
+    const dead = [], unreachable = [];
     for (const [k, sel] of kinds) {
       await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
       const t = f.locator(sel).first();
@@ -436,7 +459,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       for (const it of top) {
         if (it.off || SKIP.test(it.label)) continue;
         if (!it.sub) { paths.push([it.label]); continue; }
-        await f.locator(".ctx").first().locator(":scope > button", { hasText: it.label }).first().hover(); await sleep(450);
+        await f.locator(".ctx").first().locator(":scope > button", { hasText: it.label }).first().hover({ timeout: 5000 }).catch(() => {}); await sleep(450);
         const subs = await list(f.locator(".ctx").nth(1)).catch(() => []);
         for (const s of subs) if (!s.off && !s.sub && !SKIP.test(s.label)) paths.push([it.label, s.label]);
       }
@@ -444,13 +467,23 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       // "Has an effect" means the picture or the saved board changed: a DOM change nobody can see (e.g. an editor hidden by CSS) does not count
       const neutral = () => page.mouse.move(fb.x + 4, fb.y + fb.height / 2);
       const look = async () => { await neutral(); await sleep(250); await settle(f); return page.screenshot({ clip: fb }); };
+      // Open the menu and click the item at path p; one retry with the menu reopened (a tooltip or late re-render can close it)
+      const pick = async (p) => {
+        for (let t = 0; ; t++) {
+          try {
+            await open();
+            if (p.length > 1) { await f.locator(".ctx").first().locator(":scope > button", { hasText: p[0] }).first().hover({ timeout: 5000 }); await sleep(450); }
+            const m = f.locator(".ctx").nth(p.length - 1);
+            await m.locator(":scope > button", { has: f.locator(".lb", { hasText: new RegExp(`^${p[p.length - 1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }) }).first().click({ timeout: 5000 });
+            return true;
+          } catch (e) { if (t) { unreachable.push(`${k}: ${p.join(" › ")} (${String(e.message).split("\n")[0]})`); return false; } await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await sleep(400); }
+        }
+      };
       for (const p of paths) {
         await blank(f, page); await open(); await page.keyboard.press("Escape"); await sleep(250); // right-click selects the card, so let the selection into the "before" picture
         const a = await look(), j0 = JSON.stringify(boardJson());
-        await open();
-        if (p.length > 1) { await f.locator(".ctx").first().locator(":scope > button", { hasText: p[0] }).first().hover(); await sleep(450); }
-        const m = f.locator(".ctx").nth(p.length - 1);
-        await m.locator(":scope > button", { has: f.locator(".lb", { hasText: new RegExp(`^${p[p.length - 1].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`) }) }).first().click(); await sleep(700);
+        if (!(await pick(p))) continue;
+        await sleep(700);
         const b = await look(), j1 = JSON.stringify(await waitJson(() => true, 300));
         if (process.env.DEBUG) console.log("   ", k, p.join(" › "), a.equals(b) ? "picture unchanged" : "picture changed", j0 === j1 ? "save unchanged" : "save changed");
         // Bring to front / send to back are no-ops when already there (the menu should ideally disable them; not a failure here)
@@ -470,6 +503,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       }
       check(paths.length > 0, `read the menu items of the ${k} card`, top);
     }
+    check(!unreachable.length, "every menu item can be clicked", unreachable);
     check(!dead.length, "every menu item has an effect", dead);
     await blank(f, page);
   });
