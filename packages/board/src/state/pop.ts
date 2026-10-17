@@ -24,6 +24,8 @@ export type Pop =
   | { kind: "vals"; link: string; val: number }
   /** 解析不到：按名字在所有语言里搜 */
   | { kind: "names"; data: NamesPop }
+  /** RPC 箭头的属性：机制、消息名、一对多、消息卡、↩ back to（线框 03） */
+  | { kind: "rpc"; link: string }
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 

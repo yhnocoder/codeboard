@@ -4,6 +4,7 @@ import { For, Show, Switch, Match, createSignal, createMemo, createEffect, onCle
 import { unwrap } from "solid-js/store";
 import {
   alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang,
+  RPC_MECHS,
   type GraphMark, type Sidenote, type PeekDef, type SearchItem, type Var, type Anchor,
 } from "@codeboard/core";
 import { state, cardById, toast, mutate, select, flows, shared, sharedOn } from "../state/store";
@@ -75,6 +76,7 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "impls"}><ImplsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "impls" }>} /></Match>
         <Match when={k() === "vals"}><ValsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vals" }>} /></Match>
         <Match when={k() === "names"}><NamesPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "names" }>} /></Match>
+        <Match when={k() === "rpc"}><RpcPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "rpc" }>} /></Match>
       </Switch>
     </div>
   );
@@ -635,6 +637,40 @@ function NamesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "names" }> }) {
       </Show>
       <div class="sn-acts"><button class="tbtn" onClick={() => { closePop(p.inst.id); A.drawManual(d().card, d().seg, d().call); }}>Draw Call Arrow Manually…</button></div>
     </>
+  );
+}
+
+/** RPC 箭头的属性（线框 03 三）：机制、消息 / 方法名、一对多、插一张消息卡、↩ back to。改了马上生效，都能以后再改 */
+function RpcPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "rpc" }> }) {
+  const L = () => state.board.links.find((l) => l.id === p.pop.link);
+  const r = () => L()?.rpc;
+  createEffect(() => { if (!r()) closePop(p.inst.id); });
+  const msg = () => A.msgOf(p.pop.link);
+  const commit = (f: (x: NonNullable<ReturnType<typeof r>>) => void) => A.setRpc(p.pop.link, f);
+  return (
+    <Show when={r()}>
+      <Head title={<b>RPC Arrow</b>} inst={p.inst} />
+      <div class="rpcf">
+        <label>Mechanism
+          <select class="fld sel" value={r()!.mech} onChange={(e) => commit((x) => { x.mech = e.currentTarget.value; })}>
+            <For each={RPC_MECHS}>{(m) => <option value={m}>{m}</option>}</For>
+          </select>
+        </label>
+        <Show when={r()!.mech === "custom"}>
+          <label>Name<input class="fld" value={r()!.custom ?? ""} placeholder="e.g. NCCL p2p" onKeyDown={(e) => e.stopPropagation()} onChange={(e) => commit((x) => { x.custom = e.currentTarget.value.trim() || undefined; })} /></label>
+        </Show>
+        <label>Message / method<input class="fld mono" value={r()!.msg ?? ""} placeholder={`"run"  ·  TokenizedGenerateReqInput`} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); }} onChange={(e) => commit((x) => { x.msg = e.currentTarget.value.trim() || undefined; })} /></label>
+        <label>Fan-out
+          <select class="fld sel" value={r()!.fan ?? "one"} onChange={(e) => commit((x) => { x.fan = e.currentTarget.value === "all" ? "all" : undefined; })}>
+            <option value="one">One to one</option>
+            <option value="all">One to all ranks</option>
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" checked={!!msg()} onChange={() => A.toggleMsgCard(p.pop.link)} />Insert message card<small>sender → message → receiver</small></label>
+        <label class="chk"><input type="checkbox" checked={!!L()?.back} onChange={() => A.toggleBack(p.pop.link)} />↩ Back to start<small>Walkthrough stops here</small></label>
+      </div>
+      <div class="sn-acts"><span class="grow" /><button class="tbtn" onClick={() => { closePop(p.inst.id); A.clearRpc(p.pop.link); }}>Remove RPC Mark</button></div>
+    </Show>
   );
 }
 

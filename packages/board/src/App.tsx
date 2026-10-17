@@ -21,6 +21,7 @@ import { flows, cardById } from "./state/store";
 import { MarkView } from "./cards/Card";
 import { look, traffic, setTraffic } from "./state/look";
 import { crumbs } from "./state/subboards";
+import { LegendPanel, CallTreePanel, RunPanel } from "./ui/CallPanels";
 
 export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
@@ -49,6 +50,10 @@ export function App() {
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
       <Show when={!walk()}><Toolbar /></Show>
       <Dock />
+      {/* 调用树侧栏、Arrow 图例、运行面板（线框 12、13）：开着才有 */}
+      <Show when={A.treeOpen()}><CallTreePanel /></Show>
+      <Show when={A.legendOpen()}><LegendPanel /></Show>
+      <Show when={A.runState()}><RunPanel /></Show>
       <Show when={walk()}><WalkBar /></Show>
       <Show when={keysOpen()}><Keys /></Show>
       <Popovers />
@@ -120,6 +125,10 @@ function Toolbar() {
       { label: "Rename Board…", run: () => promptText("Rename Board", state.board.name).then((v) => v && mutate((b) => { b.name = v; })) },
       { label: "Export as PNG…", run: () => A.exportPng() },
       null,
+      // 运行时（线框 13）：跑一次入口，给 Call 箭头挂上 observed 证据和实参
+      { label: "Capture Run…", hint: "Run a Python entry once and mark the calls it makes", run: () => A.captureRun() },
+      { label: "Apply Run…", run: () => A.pickRun() },
+      null,
       { label: "Settings…", kbd: `${A.K.mod},`, run: () => A.openSettings() },
       { label: "Keyboard Shortcuts", kbd: "?", run: () => setKeysOpen(true) },
       { label: "Copy Diagnostics", run: () => A.copyDiagnostics() },
@@ -143,6 +152,9 @@ function Dock() {
         <button class="ib traffic" aria-label="Moving Cars" aria-pressed={traffic()} data-tip={traffic() ? "Stop Cars" : "Start Cars"} onClick={() => setTraffic(!traffic())} />
         <span class="sep" />
       </Show>
+      <button class="ib" aria-label="Call Tree" aria-pressed={A.treeOpen()} data-tip="Call Tree" onClick={() => A.setTreeOpen(!A.treeOpen())}><Icon name="layout" /></button>
+      <button class="ib" aria-label="Arrow Legend" aria-pressed={A.legendOpen()} data-tip="Arrow Legend" onClick={() => A.setLegendOpen(!A.legendOpen())}><Icon name="compact" /></button>
+      <span class="sep" />
       <button class="ib" aria-label="Zoom Out" data-tip="Zoom Out" data-kbd={`${A.K.mod}−`} onClick={() => zoomAt(0.8)}><Icon name="minus" /></button>
       <span class="zoom" onClick={() => zoomAt(1 / camTarget().z)} data-tip="Zoom to 100%" data-kbd={`${A.K.mod}1`}>{Math.round(cam.z * 100)}%</span>
       <button class="ib" aria-label="Zoom In" data-tip="Zoom In" data-kbd={`${A.K.mod}+`} onClick={() => zoomAt(1.25)}><Icon name="plus" /></button>

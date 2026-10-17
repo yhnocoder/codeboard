@@ -22,6 +22,8 @@ import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } f
 import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
+import { addProc, clearRpc, legendOf, markRpc, setLegendOpen, toggleBack, toggleStart } from "./calls";
+import { LEGEND, legendName, type Link } from "@codeboard/core";
 
 /**
  * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
@@ -127,6 +129,12 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
     { label: "Delete Board…", danger: true, run: () => void deleteFrameBoard(id) },
   ], x, y);
+  if (c.kind === "note" && c.msg) return openMenu([
+    { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "title", id }) },
+    { label: "Process Tag…", run: () => void addProc(id) },
+    { label: "Start Card", checked: !!placeOf(id).start, run: () => toggleStart(id) },
+    ...tail,
+  ], x, y);
   if (c.kind === "note") return openMenu([
     { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
     { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
@@ -201,8 +209,15 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Add Generated Code", sub: genItems(ls?.card === c.id ? { card: c.id, seg: ls.seg, line: ls.start } : { card: c.id }) },
     ...(col ? [] : [lockItem]),
     ...(!col && (c.segments.length > 1 || c.mergedFrom) ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
+    null,
+    // 进程标签（线框 03）：自由文字；线程 / CUDA stream 用浅一点的标签
+    { label: "Process Tag…", hint: "rank 0, rank 1…N, Scheduler × TP", run: () => void addProc(c.id) },
+    { label: "Thread / Stream Tag…", run: () => void addProc(c.id, true) },
   ];
   const flow: Item[] = [
+    // 起点卡（线框 12）：不选卡直接 Walkthrough、调用树从这里开始
+    { label: "Start Card", checked: !!placeOf(host.id).start, hint: "Walkthrough with nothing selected starts here", run: () => toggleStart(c.id) },
+    null,
     { label: "Select", disabled: node ? false : "Not in a call graph", run: () => selectFlow(c.id) },
     { label: "Walk Through", kbd: "P", disabled: canWalk ? false : "No arrows go out of this card", run: () => startWalk(c.id) },
     { label: placeOf(c.id).collapsed ? "Expand" : "Collapse", disabled: hasKids || placeOf(c.id).collapsed ? false : "No calls below this card", run: () => toggleCollapse(c.id) },
@@ -213,7 +228,7 @@ export function cardMenu(id: string, x: number, y: number) {
     ...(col ? [] : [{ label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
     { label: "Edit", sub: edit },
     { label: "View", sub: view },
-    { label: "Call Graph", sub: flow, disabled: node || canWalk ? false : "Not in a call graph" },
+    { label: "Call Graph", sub: flow },
     ...(col ? [] : [arrangeItem(() => [host.id])]),
     null,
     ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, turnItem()]),
@@ -291,7 +306,13 @@ export function linkMenu(id: string, x: number, y: number) {
   const found = !L.call && !!callOn(L.from, L.to);
   const canCall = !!L.call || found || !!manualCall(L.from, L.to);
   openMenu([
-    ...(canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item, null] : []),
+    ...(canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item] : []),
+    // 跨进程（线框 03）：RPC 也是线上的标记；↩ back to = 回到起点的线
+    { label: L.rpc ? "Edit RPC…" : "Mark as RPC…", run: () => markRpc(id) },
+    ...(L.rpc ? [{ label: "Remove RPC Mark", run: () => clearRpc(id) } as Item] : []),
+    { label: "↩ Back to Start", checked: !!L.back, hint: "A return path: Walkthrough stops here", run: () => toggleBack(id) },
+    null,
+    { label: "Style", sub: styleItems(L) },
     { label: "Line", sub: [
       { label: "Solid", checked: !L.style?.dash, run: () => setLinkStyle(id, (s) => { delete s.dash; }) },
       { label: "Dashed", checked: !!L.style?.dash, run: () => setLinkStyle(id, (s) => { s.dash = true; }) },
@@ -311,6 +332,24 @@ export function linkMenu(id: string, x: number, y: number) {
   ], x, y);
 }
 
+/**
+ * Style ▸（线框 12 三）：图例里的几种样式，名字是这块白板的图例。只是挑个样式，不加规则：
+ * Call / See also / RPC 能直接换；Observed 来自一次运行，Generated from 来自 Add Generated Code，只显示
+ */
+function styleItems(L: Link): Item[] {
+  const cur = legendOf(L);
+  const id = L.id;
+  const canCall = !!L.call || !!callOn(L.from, L.to) || !!manualCall(L.from, L.to);
+  const run: Record<string, Item> = {
+    call: { label: legendName(state.board, "call"), checked: cur === "call", disabled: canCall ? false : "Only between code cards", run: () => { if (L.rpc) clearRpc(id); if (!L.call) toggleCallMark(id); setLinkStyle(id, (s) => { delete s.dash; }); } },
+    rpc: { label: legendName(state.board, "rpc"), checked: cur === "rpc", run: () => markRpc(id) },
+    observed: { label: legendName(state.board, "observed"), checked: cur === "observed", disabled: "Comes from a run: CodeBoard: Capture Run…" },
+    gen: { label: legendName(state.board, "gen"), checked: cur === "gen", disabled: "Comes from Add Generated Code" },
+    see: { label: legendName(state.board, "see"), checked: cur === "see", run: () => { if (L.rpc) clearRpc(id); if (L.call) toggleCallMark(id); setLinkStyle(id, (s) => { s.dash = true; }); } },
+  };
+  return [...LEGEND.map(([k]) => run[k]), null, { label: "Edit Legend…", run: () => setLegendOpen(true) }];
+}
+
 /** 标签框右键（W01 D 23）：编辑、选参数和 ↺（只在 Call 上）、回到中间、删掉自己写的字 */
 export function labelMenu(id: string, x: number, y: number) {
   const L = state.board.links.find((l) => l.id === id);
@@ -318,6 +357,7 @@ export function labelMenu(id: string, x: number, y: number) {
   select({ links: [id] });
   openMenu([
     { label: "Edit Label", kbd: "Enter", run: () => setLinkEditing(id) },
+    ...(L.rpc ? [{ label: "Edit RPC…", run: () => markRpc(id) } as Item] : []),
     ...(L.call ? [
       { label: "Arguments…", run: () => openVars(id) },
       { label: "Loop Mark", checked: !!L.call.loop, run: () => toggleLoopMark(id) },

@@ -1157,3 +1157,88 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .pop.k-names { width: 420px; }
 .sres.names .grp-h { padding: 6px 12px 2px; font: 600 10px var(--sys); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
 .sres.names .empty.sm { padding: 2px 12px 4px; font-size: 11px; }
+
+/* ---------- 调用（线框 03、12、13）：RPC、进程标签、消息卡、起点、步数、图例、调用树、运行时的实参 ---------- */
+/* RPC = 点划线（跨进程）；↩ back to 淡一点 */
+.edge.rpc, .edge.rpc.ev-manual { stroke-dasharray: 9 4 2 4; }
+.edge.back { stroke-opacity: .7; }
+.vbt.rpcl { font-weight: 600; cursor: pointer; }
+.vbt.back { color: var(--ink-2); }
+.vchips.rpc .vcard { border-radius: 9px; }
+/* 进程标签：浅紫圆角；线程 / CUDA stream 更浅 */
+:root { --proc-bg: #e6e0f2; --proc-ink: #3f2f6b; }
+:root[data-theme="dark"] { --proc-bg: #3b3352; --proc-ink: #d9cff3; }
+.proc { flex-shrink: 0; border: 0; cursor: pointer; font: 600 10px/16px var(--sys); padding: 0 7px; border-radius: 8px; background: var(--proc-bg); color: var(--proc-ink); white-space: nowrap; }
+.proc.light { font-weight: 500; background: color-mix(in srgb, var(--proc-bg) 45%, transparent); color: var(--ink-2); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--proc-bg) 90%, transparent); }
+.proc:hover { box-shadow: inset 0 0 0 1px var(--accent); }
+/* 起点卡 */
+:root { --start: #2f7d4f; }
+.startt { flex-shrink: 0; font: 700 9.5px/15px var(--sys); letter-spacing: .04em; color: #fff; background: var(--start); border-radius: 3px; padding: 0 5px; }
+/* Walkthrough 的步数（算出来的，不存） */
+/* Walkthrough 步号：画在卡片层之上，不跟 dim 一起变淡 */
+.wsteps { position: absolute; left: 0; top: 0; pointer-events: none; }
+.wstep { position: absolute; transform-origin: left bottom; font: 700 11px/18px var(--sys); color: var(--ink-2); background: var(--surface); border: 1px solid var(--hair); border-radius: 10px; padding: 0 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wstep.cur { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+/* 消息卡：圆角小卡，类型名 + message */
+.card.note.msg { border-radius: 14px; }
+.card.note.msg .cface { border-radius: 14px; }
+.msgb { padding: 6px 12px 7px; display: flex; flex-direction: column; gap: 2px; cursor: grab; }
+.msgb .mrow1, .msgb .mrow2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.msgb .mname { font: 600 12px/18px var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.msgb .mk2 { font: 10.5px/15px var(--sys); color: var(--ink-3); }
+.msgb .step { font: 600 10px var(--mono); color: var(--accent); }
+/* 运行时的实参：值接在参数后面，◀ ▶ 一次一次看 */
+.vrow .vv { color: var(--ev-obs); font-weight: 500; padding-left: 4px; }
+.vrun { display: grid; grid-template-columns: auto auto; column-gap: 6px; padding: 3px 7px 4px; font: 10.5px/15px var(--mono); color: var(--ink-2); border-top: .5px solid var(--hair); }
+.vrun .vrow { grid-template-columns: subgrid; }
+.vrun .vv { padding-left: 0; }
+.vstep { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: 6px; font: 10px/16px var(--sys); color: var(--ink-3); }
+.vsb { border: 0; background: none; color: var(--ink-2); font-size: 9px; padding: 0 3px; border-radius: 3px; cursor: pointer; }
+.vsb:hover:not(:disabled) { background: var(--row); color: var(--accent); }
+.vsb:disabled { opacity: .35; cursor: default; }
+/* RPC 浮层 */
+.pop.k-rpc { width: 340px; }
+.rpcf { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 10px; }
+.rpcf label { display: grid; grid-template-columns: 112px 1fr; align-items: center; gap: 8px; font: 12px/1.4 var(--sys); color: var(--ink-2); }
+.rpcf .fld { padding: 4px 7px; }
+.rpcf select.fld { appearance: auto; }
+.rpcf label.chk { grid-template-columns: auto auto 1fr; gap: 6px; }
+.rpcf label.chk { cursor: pointer; }
+.rpcf label.chk small { color: var(--ink-3); font: 11px var(--sys); text-align: right; }
+/* 面板：图例（右下）、调用树（右上）、运行（左上） */
+.cpanel { position: absolute; z-index: 21; display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 4px 4px 6px; font-size: 12px; color: var(--ink); animation: popin calc(var(--t) * 150ms) var(--out); }
+.cph { display: flex; align-items: center; gap: 8px; padding: 2px 2px 4px 8px; white-space: nowrap; }
+.cph small { color: var(--ink-3); font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.cph .ib { width: 22px; height: 22px; }
+.cpf { padding: 4px 8px 0; font-size: 11px; color: var(--ink-3); }
+.cpanel.legend { right: 12px; bottom: 60px; width: 300px; }
+.lgrow { display: grid; grid-template-columns: 48px auto 1fr; align-items: center; gap: 8px; padding: 3px 8px; border-radius: 6px; cursor: default; }
+.lgrow:hover { background: var(--row); }
+.lgline { overflow: visible; }
+.lgline .edge { stroke-width: 1.8; }
+.lgname { font-weight: 600; white-space: nowrap; }
+.lgrow small { color: var(--ink-3); font-size: 10.5px; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cpanel.ctree { right: 12px; top: 12px; width: 300px; max-height: min(70vh, 640px); }
+.ctrows { overflow: auto; display: flex; flex-direction: column; }
+.ctrow { display: flex; align-items: center; gap: 5px; border: 0; background: none; text-align: left; padding: 3px 8px; border-radius: 5px; font: 12px/18px var(--mono); color: var(--ink); cursor: pointer; white-space: nowrap; min-width: 0; }
+.ctrow:hover { background: var(--row); }
+.ctrow.on { background: var(--hlrow); color: var(--accent); }
+.ctrow.again { color: var(--ink-3); }
+.ctrow .ctt { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ctrow .ctm { font: 600 9.5px/14px var(--sys); color: #fff; background: var(--ink-3); border-radius: 3px; padding: 0 3px; }
+.ctrow .ctrpc { font: 600 9px/14px var(--sys); color: var(--ink-2); border: 1px dashed var(--ink-3); border-radius: 3px; padding: 0 3px; }
+.ctrow .ctag { font: 10.5px var(--sys); color: var(--ink-3); margin-left: auto; padding-left: 6px; }
+.cpanel.runp { left: 16px; bottom: 72px; width: min(420px, calc(100% - 32px)); max-height: min(42vh, 400px); }
+.runp .rentry { font: 11px var(--mono); color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; }
+.runp .rmeta { padding: 0 8px 4px; font-size: 11px; color: var(--ink-3); }
+.runp .rsub { padding: 4px 8px 2px; font-size: 11px; font-weight: 600; color: var(--ink-2); border-top: 1px solid var(--line); }
+.rrows { overflow: auto; display: flex; flex-direction: column; }
+.rrow { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 6px; padding: 2px 4px 2px 8px; border-radius: 5px; font: 11.5px/20px var(--mono); }
+.rrow:hover { background: var(--row); }
+.rrow .rfrom { color: var(--ink-3); }
+.rrow .rto { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rrow .rn { color: var(--ev-obs); font-size: 10.5px; }
+.rrow .radd { height: 22px; font-size: 11.5px; padding: 0 8px; }
+.rrow .radd:disabled { opacity: .4; cursor: default; }
+.cpanel .empty.sm { padding: 6px 8px; color: var(--ink-3); font-size: 11.5px; white-space: normal; }
+.dock .ib[aria-pressed="true"] { color: var(--accent); background: var(--row); }

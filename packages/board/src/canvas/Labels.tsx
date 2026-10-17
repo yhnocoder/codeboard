@@ -58,11 +58,8 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
 
 const NONE = new Set<string>();
 
-/** OBSERVED 的悬停：哪次运行看到的 */
-function obsTip(ev: NonNullable<NonNullable<Link["call"]>["ev"]>): string {
-  const when = ev.at ? new Date(ev.at).toLocaleString() : "";
-  return ["Observed at runtime", ev.cmd && `Run: ${ev.cmd}`, when, ev.commit && `@ ${ev.commit.slice(0, 7)}`, ...(ev.log ?? []).slice(0, 3)].filter(Boolean).join("\n");
-}
+/** 证据标签的悬停：三档证据都列出来（线上只画最强的那档，线框 13） */
+const evTip = (L: Link) => ["Evidence for this call", ...A.evidenceLines(L)].join("\n");
 
 /** 灰色备选（线框 01）：同一个调用点的别的实现 / 别的取值，虚线灰框排在目标卡右边；点一下换成它（原来的变灰）。map 缩放级别不画 */
 export function AltBoxes() {
@@ -104,10 +101,18 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
   const bvals = () => L.call?.vals ?? [];
   const [allVals, setAllVals] = createSignal(false);
   const shownVals = () => (allVals() || bvals().length <= 4 ? bvals() : bvals().slice(0, 3));
-  const top = () => !!L.call?.bound || !!ev() || !!L.gen || bvals().length > 0;
-  const has = () => head() || top() || vars().length > 0;
+  // RPC（线框 03）：RPC · shm · "run"；回到起点的线：↩ back to A
+  const rpcT = () => A.rpcLabel(L);
+  const backT = () => (L.back ? A.backLabel(L) : "");
+  // 运行时看到的实参（observed）：一次一组，◀ ▶ 切换（不存，默认第一次）
+  const seen = () => L.call?.seen ?? [];
+  const [si, setSi] = createSignal(0);
+  const sample = () => seen()[Math.min(si(), seen().length - 1)];
+  const valOf = (name: string) => sample()?.args.find((a) => a[0] === name)?.[1];
+  const top = () => !!L.call?.bound || !!ev() || !!L.gen || bvals().length > 0 || !!rpcT() || !!backT();
+  const has = () => head() || top() || vars().length > 0 || seen().length > 0;
   // 普通箭头、出发行其实调用了目标卡：悬停时出 Call 按钮（右键菜单里也有 Call Mark）
-  const mk = createMemo(() => !L.call && !!A.callOn(L.from, L.to));
+  const mk = createMemo(() => !L.call && !L.rpc && !!A.callOn(L.from, L.to));
   const hov = () => hoverLink() === L.id;
   const plus = () => !!L.call && hov();
 
@@ -160,14 +165,14 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
   return (
     <Show when={pos()}>
       <Show when={has()} fallback={<><Show when={plus()}>{plusBtn(false)}</Show><Show when={mk() && hov()}>{callBtn(false)}</Show></>}>
-        <div class="vchips" classList={{ user: !L.call && !L.gen, on: sel.links.includes(L.id), argsonly: !head() && !top(), gen: !!L.gen, [`ev-${ev()?.kind}`]: !!ev() }} data-link={L.id} style={style()}
+        <div class="vchips" classList={{ user: !L.call && !L.gen && !L.rpc && !L.back, rpc: !!L.rpc, on: sel.links.includes(L.id), argsonly: !head() && !top(), gen: !!L.gen, [`ev-${ev()?.kind}`]: !!ev() }} data-link={L.id} style={style()}
           ref={(el) => watchSize(el, setBox)}
           onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); A.labelMenu(L.id, e.clientX, e.clientY); }}
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.stopPropagation();
-            if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus, .vval.opt, .vmore")) return;
+            if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus, .vval.opt, .vmore, .vsb, .rpcl")) return;
             e.preventDefault();
             if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id);
             select({ links: [L.id] }, e.shiftKey);
@@ -175,15 +180,17 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
           }}>
           <Show when={plus()}>{plusBtn(true)}</Show>
           {/* 一个框：上面一行是 ↺ 和自己写的字，下面一个参数一行；只有其中一样时就只是那一样（W01 C 16） */}
-          <div class="vcard" classList={{ split: (head() || top()) && vars().length > 0 }}>
+          <div class="vcard" classList={{ split: (head() || top()) && (vars().length > 0 || seen().length > 0) }}>
             <Show when={top()}>
               <div class="vtop" classList={{ under: head() }}>
-                <Show when={L.gen || L.call?.bound || ev()}>
+                <Show when={L.gen || L.call?.bound || ev() || rpcT() || backT()}>
                   <div class="vbnd">
+                    <Show when={backT()}><span class="vbt back">{backT()}</span></Show>
+                    <Show when={rpcT()}><span class="vbt rpcl" data-tip="RPC · click to edit" onClick={(e) => { e.stopPropagation(); A.markRpc(L.id, e.currentTarget.closest(".vchips") ?? undefined); }}>{rpcT()}</span></Show>
                     <Show when={L.gen}><span class="vbt">Generated from</span></Show>
                     <Show when={L.call?.bound}><span class="vbt">{L.call!.bound}</span></Show>
-                    <Show when={ev()?.kind === "manual"}><span class="ev-tag manual" data-tip="Drawn by hand: no static evidence for this call">{ev()!.via ? `via ${ev()!.via} · manual` : "manual"}</span></Show>
-                    <Show when={ev()?.kind === "observed"}><span class="ev-tag observed" data-tip={obsTip(ev()!)}>OBSERVED</span></Show>
+                    <Show when={ev()?.kind === "manual"}><span class="ev-tag manual" data-tip={evTip(L)}>{ev()!.via ? `via ${ev()!.via} · manual` : "manual"}</span></Show>
+                    <Show when={ev()?.kind === "observed"}><span class="ev-tag observed" data-tip={evTip(L)}>OBSERVED<Show when={ev()!.count}> · {ev()!.count}×</Show></span></Show>
                   </div>
                 </Show>
                 <Show when={bvals().length}>
@@ -218,9 +225,23 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
                     <div class="vrow" classList={{ gone: x() }} data-k={varKey(v)} data-tip={x() ? "No longer in the code. Remove it in Arguments…" : undefined}
                       onPointerEnter={() => A.hiVar(L, v, true)} onPointerLeave={() => A.hiVar(L, v, false)}>
                       <span class="va">{v.ret ? "return" : v.a}</span><span class="vto">{v.ret || v.b ? "→" : ""}</span><span class="vb">{v.ret ? v.a : v.b ?? ""}</span>
+                      <Show when={!v.ret && valOf(v.b ?? v.a)}>{(x) => <span class="vv">{x()}</span>}</Show>
                     </div>
                   );
                 }}</For>
+              </div>
+            </Show>
+            {/* 运行时的实参：没勾参数时整组列出来；勾了的参数值接在那一行后面（上面） */}
+            <Show when={seen().length}>
+              <div class="vrun">
+                <Show when={!vars().length}>
+                  <For each={sample()?.args ?? []}>{(a) => <div class="vrow"><span class="va">{a[0]}</span><span class="vv">{a[1]}</span></div>}</For>
+                </Show>
+                <div class="vstep">
+                  <button class="vsb" aria-label="Previous call" disabled={si() <= 0} onPointerDown={(e) => e.stopPropagation()} onClick={() => setSi((i) => Math.max(0, i - 1))}>◀</button>
+                  <span>call {sample()?.n} / {ev()?.count ?? seen().length}</span>
+                  <button class="vsb" aria-label="Next call" disabled={si() >= seen().length - 1} onPointerDown={(e) => e.stopPropagation()} onClick={() => setSi((i) => Math.min(seen().length - 1, i + 1))}>▶</button>
+                </div>
               </div>
             </Show>
           </div>

@@ -3,7 +3,7 @@
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
 import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
-import { cam, setViewport, lod, camMoving } from "../state/camera";
+import { cam, setViewport, lod, camMoving, stillZ } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";
 import { trackSkeletons } from "../state/subboards";
@@ -79,6 +79,8 @@ export function Canvas() {
         {/* 灰色备选：在所有卡上面、浮上来的线下面 */}
         <div class="alts" classList={{ "lod-overview": lod() === "overview" }}><Show when={lod() !== "map"}><AltBoxes /></Show></div>
         <LinkLayer top />
+        {/* Walkthrough 的步数：卡上方的小号码（算出来的，不存；走过的卡不再走），在卡外面一层，变暗的卡也看得清 */}
+        <Show when={walk()}><WalkSteps /></Show>
         <div class="guides">
           <For each={guides()}>
             {(g) => g.axis === "x"
@@ -92,6 +94,21 @@ export function Canvas() {
       <Show when={marquee()}>{(m) => <div class="marquee" style={{ left: `${m().x}px`, top: `${m().y}px`, width: `${m().w}px`, height: `${m().h}px`, display: "block" }} />}</Show>
       <AlignBar />
       <Show when={!placed().length && state.loaded}><EmptyHint /></Show>
+    </div>
+  );
+}
+
+function WalkSteps() {
+  const items = createMemo(() => [...(A.walkSteps() ?? new Map<string, number>()).entries()]);
+  const cur = () => { const w = walk(); return w ? cardById(w.order[w.i])?.host.id : undefined; };
+  // 字号跟着镜头停下后的缩放反向放大一点（镜头动的时候不重算）
+  const k = () => Math.max(1, 0.9 / stillZ());
+  return (
+    <div class="wsteps">
+      <For each={items()}>{([id, n]) => {
+        const r = () => rectOf(id);
+        return <span class="wstep" classList={{ cur: cur() === id }} data-card={id} style={{ left: `${r().x}px`, top: `${r().y - 6}px`, transform: `translateY(-100%) scale(${k()})` }}>{n}</span>;
+      }}</For>
     </div>
   );
 }

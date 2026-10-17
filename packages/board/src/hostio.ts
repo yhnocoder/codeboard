@@ -35,7 +35,7 @@ export function onHost(m: HostToBoard) {
       A.resetNav();
       select({});
       // 换了一块白板（进入 / 离开子白板）：讲解、骨架、面包屑都是上一块白板的
-      batch(() => { setWalk(null); setShowCollapsed(false); A.setWalkBack(null); resetSubboards(m.crumbs); });
+      batch(() => { setWalk(null); setShowCollapsed(false); A.setWalkBack(null); resetSubboards(m.crumbs); A.setRunState(null); });
       if (m.walk) hopWalk(m.walk);
       break;
     }
@@ -102,6 +102,7 @@ export function onHost(m: HostToBoard) {
     case "rename": if (m.name.trim()) mutate((b) => { b.name = m.name.trim(); }); break;
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
     case "toast": toast(m.text); break;
+    case "run": A.applyRunMsg(m.apply); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
     case "shared": syncShared(m.cards, m.views); break;
     case "sharedInfo": setShared(reconcile(m.cards)); break;

@@ -19,6 +19,7 @@ import { NoteBody, TextToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
 import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
+import { openMenu } from "../ui/Menu";
 import * as act from "../actions";
 import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
@@ -61,7 +62,7 @@ export function CardView(p: { card: Card }) {
     if (h.kind === "compare") return !h.cols.includes(cur);
     return c().id !== cur;
   };
-  const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
+  const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).msg ? "note msg" : (c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
   const lift = createMemo(() => dragging().has(c().id));
@@ -89,6 +90,7 @@ export function CardView(p: { card: Card }) {
         <div class="cface">
         <Switch>
           <Match when={c().kind === "code"}><CodeCardView card={c() as CodeCard} /></Match>
+          <Match when={c().kind === "note" && (c() as NoteCard).msg}><MsgBody card={c() as NoteCard} /></Match>
           <Match when={c().kind === "note"}><NoteBody card={c() as NoteCard} /></Match>
           <Match when={c().kind === "image"}><ImageView card={c() as ImageCard} /></Match>
           <Match when={c().kind === "web" || c().kind === "links"}>{c().kind === "web" ? <WebBody card={c() as WebCard} /> : <LinksBody card={c() as any} />}</Match>
@@ -135,6 +137,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   return (
     <div class="chead" data-drag>
       <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
+      <Show when={!p.col && placeOf(c().id).start}><span class="startt" data-tip="Start card: Walkthrough and the call tree start here">START</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
@@ -154,6 +157,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       </Show>
       <Show when={act.dispatchOf(c().id)}>{(n) => <span class="disp1" data-tip="Picked from a dynamic dispatch: the others are the grey boxes beside it">1 of {n()}</span>}</Show>
       <span class="grow" />
+      <Procs card={c().id} procs={c().procs} />
       {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
       <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
       <Show when={review()}><span class="rvdot" data-tip="A sidenote's line changed in the new version: check it" /></Show>
@@ -223,6 +227,31 @@ function CodeFoot(p: { card: CodeCard }) {
         </button>
       </div>
     </Show>
+  );
+}
+
+/** 进程标签（线框 03）：rank 0、Scheduler × TP；浅的是线程 / CUDA stream。点一下改或删 */
+export function Procs(p: { card: string; procs?: { text: string; light?: boolean }[] }) {
+  return (
+    <For each={p.procs ?? []}>{(t, i) => (
+      <button class={act.procCls(t)} data-tip={t.light ? "Thread / stream · click to edit" : "Process · click to edit"} onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu([{ label: "Edit…", run: () => void act.editProc(p.card, i()) }, { label: "Remove", danger: true, run: () => act.removeProc(p.card, i()) }], r.left, r.bottom + 4); }}>{t.text}</button>
+    )}</For>
+  );
+}
+
+/** 消息卡（线框 03）：跨进程时夹在发送点和接收处之间，圆角小卡：类型名 + 「message」 */
+function MsgBody(p: { card: NoteCard }) {
+  const c = () => p.card;
+  return (
+    <div class="msgb" data-drag onDblClick={(e) => { e.stopPropagation(); setEditing({ kind: "title", id: c().id }); }}>
+      <div class="mrow1">
+        <Show when={flows().byId.get(c().id) && !state.host.settings?.hideNumbers}><span class="step"><MarkView g={flows().byId.get(c().id)!} /></span></Show>
+        <Show when={placeOf(c().id).start}><span class="startt">START</span></Show>
+        <Editable class="mname" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
+      </div>
+      <div class="mrow2"><span class="mk2">message{c().msg?.where ? ` · ${c().msg!.where}` : ""}</span><span class="grow" /><Procs card={c().id} procs={c().procs} /></div>
+    </div>
   );
 }
 

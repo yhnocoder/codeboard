@@ -2,7 +2,7 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, allCodeCards,
-  placeChild, freeInView, walkOrder, descendants, SIB_GAP,
+  placeChild, freeInView, walkOrder, descendants, startCards, SIB_GAP,
   estSize, defaultWidth,
   type Card, type CodeCard, type Link, type Place,
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
@@ -283,10 +283,10 @@ export function openMarkPicker(cardId: string, el?: Element) {
   openPop({ kind: "mark", card: cardId }, at ? { el: at, prefer: "below" } : lastPointer());
 }
 
-// ---------- 讲解（Walkthrough）：从选中的卡出发，先沿 Call 箭头走到底，再走普通箭头 ----------
+// ---------- 讲解（Walkthrough）：从选中的卡出发（没选就从起点卡），先沿 Call 箭头走到底，再走普通箭头 ----------
 
 export function startWalk(id?: string, o: { at?: number; single?: boolean } = {}) {
-  const start = id ?? sel.cards[0] ?? flows().graphs[0]?.roots[0];
+  const start = id ?? sel.cards[0] ?? startCards(state.board)[0] ?? flows().graphs[0]?.roots[0];
   if (!start) return toast("No call graph on this board yet. Click a call in a code card to start one.");
   const order = walkOrder(state.board, start);
   // 从父白板讲进来的（single）：只有一张卡也讲，讲完回去
