@@ -172,6 +172,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
       }
       case "commits": return reply(m.req, [{ commit: "f64d8210aa", msg: "fix chunked prefill bugs", date: "2026-04-26", head: true }, { commit: "bb823b3c0ffee", msg: "support chunked prefill", date: "2026-04-20" }]);
       case "paste": return reply(m.req, null);
+      case "searchName": return reply(m.req, []);
       default: if (m.req) return reply(m.req, null);
     }
   });

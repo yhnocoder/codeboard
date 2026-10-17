@@ -288,6 +288,42 @@ const boardJson = () => {
     check(await fb.locator(".crumbs").count() === 0 && await fb.locator(".card.board").count() === 1, "clicking the parent crumb returns to the parent board");
   }
 
+  // 12. 动态分发选实现（线框 01）：调用处的静态类型是基类，Pylance 的 Implementation 列出两个子类；选一个建卡，另一个是灰色备选框。
+  // 没装 Pylance（E2E_EXTENSIONS 里没有）时 Python 没有语言服务，跳过
+  if (/pylance/i.test(process.env.E2E_EXTENSIONS || "")) {
+    fs.writeFileSync(path.join(WS, "nanovllm/e2e_dispatch.py"), [
+      "class Sampler:", "    def sample(self, logits):", "        raise NotImplementedError", "", "",
+      "class Greedy(Sampler):", "    def sample(self, logits):", "        return logits.argmax(-1)", "", "",
+      "class TopK(Sampler):", "    def sample(self, logits):", "        return logits.topk(5)", "", "",
+      "def pick_tokens(s: Sampler, logits):", "    return s.sample(logits)", "",
+    ].join("\n"));
+    await sleep(1500);
+    await openFile(page, "e2e_dispatch.py", 16); // def 那一行：光标在调用上时 Alt+B 会顺带把被调的也放上来
+    await sleep(6000); // Pylance 先把文件分析完
+    await page.keyboard.press("Alt+b"); await sleep(2500);
+    f = await boardFrame(page); await sleep(1000);
+    const pt = card(f, "pick_tokens");
+    check(await pt.count() === 1, "Alt+B puts pick_tokens on the board");
+    // 白板窄、卡多，适应窗口后在概览档（代码是灰条，点不到调用）：用白板自己的按钮放大一档
+    // （不按键：焦点可能还在编辑器里，Shift+2 会把 @ 打进代码）
+    await f.locator('button[aria-label="Fit to Window"]').first().click(); await sleep(1200);
+    for (let i = 0; i < 3 && await pt.locator(".ovm").isVisible().catch(() => false); i++) { await f.locator('button[aria-label="Zoom In"]').first().click(); await sleep(900); }
+    await sleep(1200); // 镜头动画停下
+    let impls = 0;
+    for (let i = 0; i < 6 && !impls; i++) {
+      await pt.locator(".src .call", { hasText: /^sample$/ }).first().click({ timeout: 8000 }).catch((e) => console.log("  click failed:", e.message.split("\n")[0])); await sleep(2500);
+      impls = await f.locator(".pop.k-impls .cand").count();
+      if (!impls) { await page.keyboard.press("Escape"); await sleep(3000); } // 语言服务还没就绪：退回按名字找的结果，等一下再点
+    }
+    check(impls === 2, "clicking s.sample lists the 2 implementations (Pylance Implementation)", impls);
+    check(/2 implementations of/.test(await f.locator(".pop.k-impls .pt").textContent().catch(() => "")), "the picker names the base method");
+    await f.locator(".pop.k-impls input.fld").fill("top-k sampling in this config").catch(() => {});
+    await f.locator(".pop.k-impls .cand", { hasText: "TopK.sample" }).first().click().catch(() => {}); await sleep(2500);
+    check(await card(f, "TopK.sample").count() === 1, "picking TopK.sample puts it on the board");
+    check(await f.locator(".altbox", { hasText: "Greedy.sample" }).count() === 1, "Greedy.sample stays as a grey alternative");
+    await shot(page, "10-pick-impl");
+  } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
+
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
   console.log(failed ? `${failed} checks failed` : "all passed");
