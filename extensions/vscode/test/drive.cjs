@@ -147,6 +147,44 @@ async function exportStep(page) {
   await v.screenshot({ path: `${OUT}/13-export-html.png` });
   await vb.close().catch(() => {});
 }
+// 07. 我的改动：同一仓库的另一个 worktree（git worktree add，含未提交改动）在 Add Variant 菜单里自动列出；加上后卡上有标签页和 MINE，
+// 在那个 worktree 里改文件（VS Code 外面），卡上的代码跟着刷新。E2E_ONLY=variants 只跑这一步
+async function variantsStep(page) {
+  const WT = path.join(path.dirname(WS), "ws-exp");
+  execSync(`git -C "${WS}" -c user.email=t@t -c user.name=t worktree add -q "${WT}" -b exp-overlap`);
+  const file = path.join(WT, "nanovllm/engine/scheduler.py");
+  const orig = fs.readFileSync(file, "utf8");
+  fs.writeFileSync(file, orig.replace("        scheduled_seqs = []\n", "        scheduled_seqs = list()  # keep order\n        budget = self.max_num_batched_tokens\n"));
+  await openFile(page, "scheduler.py", 26);
+  await page.keyboard.press("Alt+b"); await sleep(2500);
+  await command(page, "CodeBoard: Open Board");
+  let f = await boardFrame(page); await sleep(1500);
+  const sch = card(f, "Scheduler.schedule");
+  check(await sch.count() === 1, "Alt+B puts Scheduler.schedule on the board");
+  await sch.locator(".chead").click({ button: "right", position: { x: 140, y: 12 } }); await sleep(500);
+  await f.locator(".ctx button", { hasText: /^Add Variant…/ }).click(); await sleep(1500);
+  const items = await f.locator(".ctx button").allTextContents();
+  check(items.some((t) => /Other Worktree.*ws-exp · exp-overlap/.test(t)), "Add Variant lists the other worktree", items);
+  await shot(page, "14-add-variant-menu");
+  await f.locator(".ctx button", { hasText: /Other Worktree/ }).click(); await sleep(2500);
+  const tabs = await sch.locator(".vtab:not(.vadd)").allTextContents();
+  check(tabs.length === 2 && /ws-exp/.test(tabs[1]), "the card has an Upstream tab and the worktree tab", tabs);
+  check(await sch.locator(".chead .mine").count() === 1, "MINE shows on the card");
+  check((await sch.locator(".vmk").allTextContents()).join("") === "~+", "the changed and added lines are marked", await sch.locator(".vmk").allTextContents());
+  await sleep(1200);
+  const b = boardJson();
+  const c = b && b.cards.find((k) => k.kind === "code" && k.variants);
+  check(c && c.variants.length === 2 && c.variants[1].from.kind === "wt" && c.variants[1].from.dir === WT && c.segments[0].src.kind === "external", "the variant is saved with the card", c && c.variants);
+  await shot(page, "15-variant-worktree");
+  // 在 worktree 里再改一下（VS Code 外面）：卡跟着刷新
+  fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("        num_batched_tokens = 0\n", "        num_batched_tokens = 0  # tuned\n"));
+  let live = false;
+  for (let i = 0; i < 30 && !live; i++) { await sleep(500); f = await boardFrame(page); live = /# tuned/.test(await card(f, "Scheduler.schedule").locator(".src").textContent().catch(() => "")); }
+  check(live, "editing the worktree file refreshes the variant on the card");
+  // 切回上游：代码换回来、MINE 没了
+  await card(f, "Scheduler.schedule").locator(".vtab.up").click(); await sleep(600);
+  check(await card(f, "Scheduler.schedule").locator(".chead .mine").count() === 0 && !/keep order/.test(await card(f, "Scheduler.schedule").locator(".src").textContent()), "switching back to Upstream shows the upstream code");
+}
 const finish = async (browser, errors) => {
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
@@ -170,6 +208,7 @@ const finish = async (browser, errors) => {
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
   if (process.env.E2E_ONLY === "capture") { await captureStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "export") { await exportStep(page); return finish(browser, errors); }
+  if (process.env.E2E_ONLY === "variants") { await variantsStep(page); return finish(browser, errors); }
 
   // 1. Alt+B inside a function: the board opens and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
