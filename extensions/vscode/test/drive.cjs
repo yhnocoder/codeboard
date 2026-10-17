@@ -258,6 +258,36 @@ const boardJson = () => {
     await shot(page, "8-shared");
   }
 
+  // 11. 子白板：板 1 画布右键 Insert Board ▸ Shared E2E → 骨架框；双击进去有面包屑，Esc 回来；侧栏 Shared E2E 挂在板 1 下面
+  if (g) {
+    // Shared E2E 已经在另一个标签页开着时双击框只是切过去：先关掉它
+    await page.locator(".tabs-container .tab", { hasText: "Shared E2E" }).first().click({ button: "middle" }); await sleep(1500);
+    await page.locator(".tabs-container .tab", { hasText: "New Board" }).first().click(); await sleep(2000);
+    f = await boardFrame(page); await sleep(1500);
+    await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
+    await f.locator("#board").click({ button: "right", position: { x: 260, y: 520 } }); await sleep(500);
+    await f.locator(".ctx button", { hasText: /^Insert Board/ }).first().hover(); await sleep(500);
+    await f.locator(".ctx button", { hasText: /^Shared E2E/ }).first().click({ timeout: 3000 }).catch(() => {}); await sleep(1500);
+    const fr = f.locator(".card.board");
+    check(await fr.count() === 1, "Insert Board puts a sub-board frame on the board");
+    let subs = 0; for (let i = 0; i < 20 && !(subs = await fr.locator(".skel [data-sub]").count()); i++) await sleep(250);
+    check(subs >= 1, "the frame shows the sub-board's skeleton", subs);
+    check(/1 card/.test(await fr.locator(".sbmeta").textContent().catch(() => "")), "the frame title bar shows the card count");
+    await shot(page, "9-subboard");
+    await fr.locator(".sbhead").dblclick(); await sleep(2500);
+    let fb = await boardFrame(page);
+    check(await fb.locator(".crumbs").count() === 1 && /Shared E2E/.test(await fb.locator(".crumbs").textContent().catch(() => "")), "double-click enters the sub-board with a breadcrumb");
+    // 侧栏：Shared E2E 挂在板 1 下面（展开）
+    await command(page, "Focus on Boards View"); await sleep(1200);
+    await page.screenshot({ path: `${OUT}/9b-sidebar-nesting.png` });
+    const rows = await page.locator(".part.sidebar .monaco-list-row").evaluateAll((els) => els.map((e) => `${e.getAttribute("aria-level")}:${e.textContent}`));
+    check(rows.some((r) => /^2:.*Shared E2E/.test(r)), "sidebar nests the sub-board under its parent", rows.slice(0, 8));
+    // 回去：点面包屑里的上一级（Esc 在 harness 的 subboards 里测；这里 xvfb 下侧栏拿走焦点后按键进不了 webview）
+    await fb.locator(".crumbs button", { hasText: "New Board" }).first().click(); await sleep(2500);
+    fb = await boardFrame(page);
+    check(await fb.locator(".crumbs").count() === 0 && await fb.locator(".card.board").count() === 1, "clicking the parent crumb returns to the parent board");
+  }
+
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
   console.log(failed ? `${failed} checks failed` : "all passed");

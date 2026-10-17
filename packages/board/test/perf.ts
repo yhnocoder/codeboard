@@ -4,11 +4,11 @@
 // (frameP95 / frameMax / over16: main-thread task durations; the 60 fps budget is 16.7 ms).
 import * as fs from "node:fs";
 import { ready, open, symCard, files, type Host } from "./harness";
-import { emptyBoard, stampBorn, uid, type Board, type CodeCard, type Link, type Section, type Sidenote } from "@codeboard/core";
+import { emptyBoard, skeletonOf, stampBorn, uid, type Board, type BoardCard, type CodeCard, type Link, type Section, type Sidenote, type Skeleton } from "@codeboard/core";
 import type { CDPSession } from "playwright-core";
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
-const NCARDS = +arg("cards", "240"), NNOTES = +arg("notes", "0"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", ""), THEME = arg("theme", "");
+const NCARDS = +arg("cards", "240"), NNOTES = +arg("notes", "0"), NFRAMES = +arg("frames", "0"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", ""), THEME = arg("theme", "");
 
 /** A large board: nano-vllm functions (repeated if too few), linked into trees by calls, a Section every 12 cards (two levels nested), some Sidenotes */
 export function bigBoard(n: number): Board {
@@ -50,6 +50,28 @@ export function bigBoard(n: number): Board {
   // Creation order, like every board the app has saved (v0.1.7+) or migrated: without it the first edit numbers all 241 cards at once
   stampBorn(b);
   return b;
+}
+
+/**
+ * --frames N：把镜头附近的 N 张卡原地换成子白板框（骨架 = 一块 12 张卡的白板），连进来的箭头改连到骨架里第一张卡（End.sub），
+ * 连出去的改成从框出。宿主那边的 skeletons 请求由 open 的 on 回答
+ */
+export function withFrames(b: Board, n: number): Skeleton {
+  const child = bigBoard(12);
+  child.id = "perf-sub"; child.name = "Sub board";
+  const sk = skeletonOf(child);
+  const first = sk.cards[0].id;
+  const ids = new Set<string>();
+  // 第 0 张（LLMEngine.step）留给 expand；从第一、二行里隔着挑
+  for (let i = 2; ids.size < n && i < b.cards.length; i += 5) ids.add(b.cards[i].id);
+  b.cards = b.cards.map((c) => (ids.has(c.id) ? ({ id: c.id, kind: "board", board: child.id } satisfies BoardCard) : c));
+  for (const id of ids) b.place[id] = { ...b.place[id], h: 360 };
+  for (const l of b.links) {
+    if (ids.has(l.to.card)) l.to = { card: l.to.card, sub: first };
+    if (ids.has(l.from.card)) { l.from = { card: l.from.card }; delete l.call; }
+  }
+  b.sidenotes = b.sidenotes.filter((s) => !ids.has(s.at.card));
+  return sk;
 }
 
 /** A board of Notes with the Markdown people write: headings, lists and tasks, code, math, tables, links, quotes */
@@ -200,10 +222,11 @@ async function idle(h: Host, cdp: CDPSession, ms: number) { const b0 = await bus
 async function once() {
   await ready();
   const board = NNOTES ? notesBoard(NNOTES) : bigBoard(NCARDS);
-  const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length };
+  const sk = NFRAMES ? withFrames(board, NFRAMES) : null;
+  const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length, ...(sk ? { frames: NFRAMES } : {}) };
   const t0 = performance.now();
   let cdp!: CDPSession;
-  const h = await open({ board, settings: THEME ? { theme: THEME } as any : undefined, beforeLoad: async (page) => {
+  const h = await open({ board, settings: THEME ? { theme: THEME } as any : undefined, on: sk ? (m, reply) => (m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : false) : undefined, beforeLoad: async (page) => {
     cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
     if (PROFILE === "load") { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }
