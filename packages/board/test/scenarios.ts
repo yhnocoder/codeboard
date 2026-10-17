@@ -1,6 +1,6 @@
 // Board interaction scenarios: each one opens a board, performs a series of actions, and takes screenshots.
 import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
-import { emptyBoard, type Board } from "@codeboard/core";
+import { emptyBoard, putShared, type Board } from "@codeboard/core";
 import { V015 } from "./v015";
 import { WEB } from "./scenarios-web";
 import { V017 } from "./v017";
@@ -279,6 +279,83 @@ const S: Record<string, () => Promise<void>> = {
     const moved = (x: any) => x.start === 5 && x.to === 8 && x.note === 7;
     const ok = u.name === name0 && moved(u) && r.name === "Renamed" && moved(r) && u2.name === name0 && moved(u2);
     console.log(ok ? "PASS" : "FAIL", "sync-undo", JSON.stringify({ u, r, u2 }));
+    await h.page.context().browser()!.close();
+  },
+  // Autosave sends item-level patches: the host copy built from patches must equal the board the page holds.
+  // A failed save makes the page resend the whole board (full patch) after 5 s; that full board must equal the incremental copy.
+  async patchsave() {
+    const b = boardWith("Scheduler.schedule", "Scheduler.postprocess", "LLMEngine.step");
+    const [A, B] = b.cards;
+    b.links.push({ id: "L", from: { card: A.id }, to: { card: B.id } });
+    b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: A.id } } as any);
+    let fail = false;
+    const patches: any[] = [];
+    const h = await open({ board: b, light, on: (m, reply) => {
+      if (m.type !== "patch") return false;
+      patches.push(m.patch);
+      if (!fail) return false;
+      fail = false; void reply(m.req!, undefined, "disk full"); return true;
+    } });
+    const head = (i: number) => h.page.locator(".card").nth(i).locator(".chead");
+    await head(0).click({ position: { x: 60, y: 10 } }); await h.page.waitForTimeout(1200);
+    const idle = patches.length; // selecting is not a change
+    await h.page.keyboard.press("ArrowRight"); await h.page.waitForTimeout(1200);
+    const nudge = patches.at(-1); // the first change also numbers the cards (head.born)
+    await h.page.keyboard.press("Meta+Shift+BracketRight"); await h.page.waitForTimeout(1200); // bring to front: order only
+    const front = patches.at(-1);
+    await head(1).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Backspace"); await h.page.waitForTimeout(1200);
+    const del = patches.at(-1);
+    await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1200);
+    await h.post({ type: "rename", name: "Renamed" }); await h.page.waitForTimeout(1200);
+    const ren = patches.at(-1);
+    const inc = structuredClone(h.board());
+    fail = true;
+    await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("ArrowDown"); await h.page.waitForTimeout(1200);
+    const failed = patches.at(-1);
+    const toast = await h.page.locator(".toast").textContent().catch(() => "");
+    await h.page.waitForTimeout(5500);
+    const full = patches.at(-1);
+    const { applyPatch } = await import("@codeboard/core");
+    applyPatch(inc, failed);
+    const strip = (x: any) => JSON.stringify({ ...x, cam: null });
+    const ok = idle === 0 && nudge?.place && !nudge.cards && Object.keys(nudge.place.set).length === 1
+      && front?.cards?.order && !front.cards.set && del?.cards?.del?.length === 1
+      && ren?.head?.name === "Renamed" && !ren.cards && /Retrying/.test(toast ?? "") && full?.full === true && strip(inc) === strip(h.board());
+    console.log(ok ? "PASS" : "FAIL", "patch-save", JSON.stringify({ idle, nudge: nudge && Object.keys(nudge), front: front && Object.keys(front.cards ?? {}), del: del && Object.keys(del), ren: ren && Object.keys(ren), toast, full: !!full?.full, same: strip(inc) === strip(h.board()) }));
+    await h.page.context().browser()!.close();
+  },
+  // A shared card changed on another board (host "shared" message): applied as a sync (no patch back, not undoable).
+  // Undoing a local change to that card afterwards keeps the other board's version and says so
+  async sharedsync() {
+    const b = boardWith("Scheduler.schedule", "Scheduler.postprocess");
+    const [A, B] = b.cards as any[];
+    const patches: any[] = [];
+    const h = await open({ board: b, light, on: (m) => { if (m.type === "patch") patches.push(m); return false; } });
+    const head = (i: number) => h.page.locator(".card").nth(i).locator(".chead");
+    await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Alt+z"); await h.page.waitForTimeout(1200);
+    const wrote = patches.at(-1)?.patch.cards?.set?.[0]?.wrap === true;
+    const n0 = patches.length;
+    // Another board renames the card (its copy has our wrap); the host's copy already has it
+    const sc = { card: { ...structuredClone(A), wrap: true, title: "Remote" }, sidenotes: [{ id: "rn", kind: "text", md: "remote note", at: { card: A.id } }], items: [A.id, "rn"] } as any;
+    putShared(h.board(), structuredClone(sc));
+    await h.post({ type: "shared", cards: [sc] });
+    await h.page.waitForTimeout(1200);
+    const echo = patches.length - n0; // must be 0
+    const title = await h.page.locator(".card").nth(0).locator(".ctitle").textContent();
+    await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(300);
+    const toast = await h.page.locator(".toast").textContent().catch(() => "");
+    await h.page.waitForTimeout(1200);
+    const after = h.board().cards.find((c) => c.id === A.id) as any;
+    const undoPatch = patches.slice(n0).find((m) => m.undo);
+    // A local card still undoes normally, without the toast
+    await h.page.locator(".toast").evaluate((e) => e.remove()).catch(() => {});
+    await head(1).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Alt+z"); await h.page.waitForTimeout(1200);
+    await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1200);
+    const local = (h.board().cards.find((c) => c.id === B.id) as any).wrap;
+    const toast2 = await h.page.locator(".toast").count();
+    const ok = wrote && echo === 0 && title === "Remote" && /not undone/.test(toast ?? "") && after.wrap === true && after.title === "Remote"
+      && h.board().sidenotes.some((n) => n.id === "rn") && !local && toast2 === 0;
+    console.log(ok ? "PASS" : "FAIL", "shared-sync", JSON.stringify({ wrote, echo, title, toast, after: { wrap: after.wrap, title: after.title }, undoPatch: !!undoPatch, local, toast2 }));
     await h.page.context().browser()!.close();
   },
   // Regression: after Update, Sidenotes and highlights follow edited lines instead of being treated as deleted
