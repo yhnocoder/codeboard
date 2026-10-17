@@ -16,6 +16,7 @@ import { callVars, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints, searchName, genSource } from "./search";
 import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
+import { applyFlow, captureFlow } from "./runs";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { highlight, segView, viewsFor } from "./views";
@@ -104,6 +105,9 @@ export function makeHandler(panels: BoardHost): Handler {
     searchName: (_p, m) => searchName(m.name),
     genSource: (_p, m) => genSource(m.from),
     complete: (p, m) => complete(p, m.before, m.after),
+    // ---------- 运行时（线框 13） ----------
+    captureRun: (p) => void captureFlow(store.dir(), p),
+    applyRun: (p) => void applyFlow(store.dir(), p),
     // ---------- 子白板 ----------
     skeletons: async (_p, m) => {
       await store.list(); // 缓存里还没有的白板先扫进来

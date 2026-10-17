@@ -67,6 +67,50 @@ const boardJson = () => {
   return f ? JSON.parse(fs.readFileSync(path.join(d, f), "utf8")) : null;
 };
 
+// 13. Capture Run（线框 13）：跑一次工作区里的小脚本（nano-vllm 要 torch，这里没有），tracer 只记 Study Scope 里的调用；
+// 白板上已有的 Call 箭头变 Observed，没有箭头的调用列在 Run 面板里。E2E_ONLY=capture 只跑这一步
+async function captureStep(page) {
+  fs.writeFileSync(path.join(WS, "e2e_capture.py"), [
+    "def leaf(x):", "    return x * 2", "", "",
+    "def mid(xs):", "    out = []", "    for x in xs:", "        out.append(leaf(x))", "    return out", "", "",
+    "def main():", "    print(sum(mid([1, 2, 3])))", "", "",
+    'if __name__ == "__main__":', "    main()", "",
+  ].join("\n"));
+  await sleep(1500);
+  await openFile(page, "e2e_capture.py", 8);
+  await page.keyboard.press("Alt+b"); await sleep(2500);
+  await command(page, "CodeBoard: Open Board");
+  let f = await boardFrame(page); await sleep(1500);
+  check(await card(f, "mid").count() === 1, "Alt+B puts mid on the board");
+  await command(page, "CodeBoard: Capture Run");
+  await page.keyboard.press("Control+a"); await page.keyboard.type("e2e_capture.py"); await page.keyboard.press("Enter");
+  let panel = 0;
+  for (let i = 0; i < 40 && !panel; i++) { await sleep(500); f = await boardFrame(page); panel = await f.locator(".cpanel.runp").count(); }
+  check(panel === 1, "Capture Run opens the Run panel on the board");
+  const runs = execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards/runs 2>/dev/null || true`).toString().trim().split("\n")[0];
+  const recs = runs ? fs.readdirSync(runs).filter((n) => n.endsWith(".json")) : [];
+  check(recs.length === 1, "the run record is saved under <storageDir>/runs/", runs);
+  const rec = recs.length ? JSON.parse(fs.readFileSync(path.join(runs, recs[0]), "utf8")) : null;
+  check(rec && rec.version === 1 && rec.exit === 0 && rec.calls.some((c) => c.to.qual === "leaf" && c.count === 3), "the record has leaf called 3 times", rec && rec.calls.map((c) => [c.to.qual, c.count]));
+  check(!fs.existsSync(path.join(WS, "sitecustomize.py")), "nothing written into the workspace");
+  const rows = await f.locator(".cpanel.runp .rrow").allTextContents();
+  check(rows.some((r) => /e2e_capture\.py:8.*leaf.*3×/.test(r)) && rows.some((r) => /e2e_capture\.py:13.*mid/.test(r)), "calls with no arrow are listed in the Run panel", rows);
+  // mid 在白板上：Add 建 leaf 卡和一条已经是 Observed 的 Call 箭头
+  await f.locator(".cpanel.runp .rrow", { hasText: "leaf" }).first().locator(".radd").click(); await sleep(3000);
+  check(await card(f, "leaf").count() === 1, "Add puts leaf on the board");
+  check(await f.locator(".ev-tag.observed").count() === 1 && /3/.test(await f.locator(".ev-tag.observed").first().textContent().catch(() => "")), "the new mid → leaf Call arrow is Observed · 3×");
+  const b = boardJson();
+  check(b && b.links.some((l) => l.call && l.call.ev && l.call.ev.kind === "observed" && l.call.ev.count === 3), "the Observed evidence is saved with the board");
+  await shot(page, "11-capture-run");
+}
+const finish = async (browser, errors) => {
+  check(!errors.length, "no webview errors", errors.slice(0, 3));
+  fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
+  console.log(failed ? `${failed} checks failed` : "all passed");
+  await browser.close().catch(() => {});
+  process.exit(failed ? 1 : 0);
+};
+
 (async () => {
   let browser;
   for (let i = 0; i < 60 && !browser; i++) { try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${process.env.CDP_PORT || 9223}`); } catch { await sleep(1000); } }
@@ -80,6 +124,7 @@ const boardJson = () => {
   await sleep(6000);
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
+  if (process.env.E2E_ONLY === "capture") { await captureStep(page); return finish(browser, errors); }
 
   // 1. Alt+B inside a function: the board opens and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
@@ -324,9 +369,6 @@ const boardJson = () => {
     await shot(page, "10-pick-impl");
   } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
 
-  check(!errors.length, "no webview errors", errors.slice(0, 3));
-  fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
-  console.log(failed ? `${failed} checks failed` : "all passed");
-  await browser.close().catch(() => {});
-  process.exit(failed ? 1 : 0);
+  await captureStep(page);
+  await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });

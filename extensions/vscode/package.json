@@ -162,6 +162,16 @@
         "command": "codeboard.copyDiagnostics",
         "title": "Copy Diagnostics",
         "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.captureRun",
+        "title": "Capture Run…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.applyRun",
+        "title": "Apply Run…",
+        "category": "CodeBoard"
       }
     ],
     "menus": {

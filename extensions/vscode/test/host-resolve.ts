@@ -21,6 +21,7 @@ import { nodeFs } from "../src/nodefs";
 import { makeHandler } from "../src/handlers";
 import { BoardPanel, type BoardHost, type BoardView } from "../src/boards";
 import { treeChildren } from "../src/boardtree";
+import { captureRun, listRuns, runApply, saveRun } from "../src/runs";
 
 const W = nodeWorkspace();
 useWorkspace(W);
@@ -377,6 +378,38 @@ void (async () => {
     W2.language.definitions = async () => []; W2.language.implementations = async () => [];
     forgetDefs();
     fs.rmSync(FIX, { recursive: true, force: true });
+  }
+
+  // Capture Run（线框 13）：注入的 tracer 只记 Study Scope 里的调用，运行记录存到 <storageDir>/runs/，按工作区路径对回白板
+  {
+    const FIX = fs.mkdtempSync("/tmp/codeboard-run-");
+    fs.cpSync(path.join(REPO, "extensions/vscode/test/fixtures/runtime"), FIX, { recursive: true });
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: FIX, stdio: "pipe" }).toString().trim();
+    git("init", "-q"); git("add", "-A"); git("commit", "-qm", "fixture");
+    const head = git("rev-parse", "HEAD");
+    useWorkspace(nodeWorkspace(FIX));
+    const before = fs.readdirSync(FIX).sort().join(",");
+    const rec = await captureRun({ cmd: "run.py 2", cwd: FIX, scope: [FIX], pkgs: [] });
+    const quals = new Set(rec.calls.map((c) => c.to.qual));
+    check(rec.exit === 0 && rec.commit === head && rec.entry === "run.py 2", "Capture Run: exit 0, commit and command recorded", { exit: rec.exit, commit: rec.commit });
+    check(quals.has("Scheduler.schedule") && quals.has("ModelRunner.run") && ![...quals].some((q) => /^</.test(q)) && !quals.has("Tensor"), "Only function calls in scope: no <genexpr>/<module>, no class bodies", [...quals]);
+    check(rec.calls.every((c) => c.from.file.startsWith(FIX) && c.to.file.startsWith(FIX)), "Every recorded call is inside Study Scope (stdlib left out)");
+    const sch = rec.calls.find((c) => c.to.qual === "Scheduler.schedule");
+    check(sch?.from.file === path.join(FIX, "toyllm/engine.py") && sch.from.line === 11 && sch.count === 2, "Call site file:line and count", sch);
+    const smp = rec.calls.find((c) => c.to.qual === "ModelRunner.sample");
+    check(smp?.samples[0].args.some(([k, v]) => k === "logits" && v === "Tensor[10, 64] float16"), "Tensor-like values shown as Type[shape] dtype", smp?.samples[0]);
+    const run = rec.calls.find((c) => c.to.qual === "ModelRunner.run");
+    check(run?.samples[0].args.every(([k]) => k !== "self"), "self is left out of the values");
+    check(fs.readdirSync(FIX).sort().join(",") === before, "Nothing written into the workspace");
+    const SD = fs.mkdtempSync("/tmp/codeboard-store-");
+    const f = await saveRun(SD, rec);
+    check(f === path.join(SD, "runs", `${rec.id}.json`) && (await listRuns(SD))[0]?.id === rec.id, "Run record saved under <storageDir>/runs/ and read back through the schema");
+    const a = await runApply(rec);
+    check(a.locs[path.join(FIX, "toyllm/engine.py")]?.path === "toyllm/engine.py", "runLocs: absolute files map to workspace-relative paths", a.locs[path.join(FIX, "toyllm/engine.py")]);
+    const bad = await captureRun({ cmd: "-c \"raise SystemExit(3)\"", cwd: FIX, scope: [FIX], pkgs: [] });
+    check(bad.exit === 3 && bad.calls.length === 0, "A failing command still returns a record with its exit code", { exit: bad.exit });
+    fs.rmSync(FIX, { recursive: true, force: true }); fs.rmSync(SD, { recursive: true, force: true });
+    useWorkspace(W);
   }
 
   console.log(failed ? `${failed} failed` : "All passed");

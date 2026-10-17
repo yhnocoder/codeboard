@@ -9,6 +9,7 @@ import type { Storage } from "./storage";
 import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
 import { copyDiagnostics } from "./diagnostics";
+import { applyFlow, captureFlow } from "./runs";
 import { langOf, readText, splitLines, workspace } from "./ws";
 
 /** 侧栏的节点（命令参数） */
@@ -87,6 +88,9 @@ export function makeActions(panels: BoardHost, store: Storage) {
       p.view.reveal();
       p.post({ type: "key", action: "openSettings" });
     },
+    // 运行时（线框 13）：跑一次入口，结果给前台的白板（没有就给目标白板）
+    "codeboard.captureRun": async () => { await captureFlow(store.dir(), active() ?? (panels.target ? panels.get(panels.target) : undefined)); },
+    "codeboard.applyRun": async () => { await applyFlow(store.dir(), active() ?? (panels.target ? panels.get(panels.target) : undefined)); },
     "codeboard.copyDiagnostics": () => copyDiagnostics((active() ?? (panels.target ? panels.get(panels.target) : undefined))?.board),
 
     "codeboard.addToBoard": async () => {
