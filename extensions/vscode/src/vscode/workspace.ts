@@ -1,6 +1,7 @@
 // Workspace 的 VS Code 实现：功能代码只经过它访问编辑器和工作区（见 core/workspace.ts）。
 import * as vscode from "vscode";
 import * as path from "node:path";
+import { vscodeScratch, isScratch } from "./scratch";
 import { COMPLETE_SYSTEM, Emitter, completePrompt, deepseekComplete, type Workspace } from "@codeboard/core";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
@@ -112,12 +113,12 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       findFiles: async (include, exclude, max) => (await vscode.workspace.findFiles(include, exclude, max)).map((u) => u.fsPath),
       watch: (base, glob, fn) => {
         const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(base), glob));
-        const f = (u: vscode.Uri) => fn(u.fsPath);
+        const f = (u: vscode.Uri) => { if (!isScratch(u)) fn(u.fsPath); };
         w.onDidChange(f); w.onDidCreate(f); w.onDidDelete(f);
         return w;
       },
-      onDidSave: (fn) => vscode.workspace.onDidSaveTextDocument((d) => fn(fileOrUndef(d.uri))),
-      onDidEdit: (fn) => vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length) fn(fileOrUndef(e.document.uri)); }),
+      onDidSave: (fn) => vscode.workspace.onDidSaveTextDocument((d) => { if (!isScratch(d.uri)) fn(fileOrUndef(d.uri)); }),
+      onDidEdit: (fn) => vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length && !isScratch(e.document.uri)) fn(fileOrUndef(e.document.uri)); }),
       onDidCreate: (fn) => vscode.workspace.onDidCreateFiles((e) => fn(e.files.map((u) => u.fsPath))),
       onDidDelete: (fn) => vscode.workspace.onDidDeleteFiles((e) => fn(e.files.map((u) => u.fsPath))),
       onDidRename: (fn) => vscode.workspace.onDidRenameFiles((e) => fn(e.files.map((f) => ({ from: f.oldUri.fsPath, to: f.newUri.fsPath })))),
@@ -146,6 +147,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
         }
         return parts;
       },
+      scratch: vscodeScratch(() => ctx.globalStorageUri.fsPath),
     },
     settings: {
       get: (key) => { const [s, k] = splitKey(key); return vscode.workspace.getConfiguration(s).get(k); },

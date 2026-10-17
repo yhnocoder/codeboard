@@ -9,6 +9,7 @@ import type { SharedInfo } from "./shared";
 import type { Skeleton } from "./subboard";
 import type { RunApply } from "./run";
 import type { QuestionItem } from "./questions";
+import type { LspItem, LspSignature } from "./workspace";
 
 /** 子白板的面包屑：从最外层到当前白板的上一级（进入子白板时宿主记着；frame = 在那块白板上是哪个框） */
 export type Crumb = { id: string; name: string; frame: string };
@@ -242,6 +243,15 @@ export type BoardToHost =
   | { type: "searchName"; req: number; name: string }
   /** Generated 卡的内容：剪贴板或选一个文件（回 GenSource；取消回 null） */
   | { type: "genSource"; req: number; from: "clipboard" | "file" }
+  /** 编辑中的代码（Free code 卡、Note 里的代码块）：宿主给它留一个隐藏的虚拟文档（语言 lang、内容 text），语言服务（Pylance…）照它回答。
+   *  near = 放在哪段代码旁边（Python 的 import 才找得到）；打字时防抖地发，补全 / 悬停 / 签名请求也都带着全文 */
+  | { type: "codeDoc"; id: string; lang: string; text: string; near?: Pick<Segment, "src" | "path" | "version"> }
+  /** 编辑结束：清掉那个虚拟文档 */
+  | { type: "codeDocClose"; id: string }
+  /** 编辑中的代码：line / col 处的补全、悬停、签名（行列都从 0 开始；trigger = 触发的字符，如 "." "("）。同一个 id 来了新的请求就作废旧的 */
+  | { type: "lspComplete"; req: number; id: string; text: string; line: number; col: number; trigger?: string }
+  | { type: "lspHover"; req: number; id: string; text: string; line: number; col: number }
+  | { type: "lspSignature"; req: number; id: string; text: string; line: number; col: number; trigger?: string }
   /** Note 编辑时的灰字补全：光标前后的文字，回接在光标处的一段（没有可用模型时回 null） */
   | { type: "complete"; req: number; before: string; after: string }
   /** 白板的 ⋯ 菜单：Capture Run…（问命令、跑一次、发回 run）/ Apply Run…（从存着的运行记录里选一次） */
@@ -337,6 +347,9 @@ type Replies = {
   searchName: NameHit[];
   genSource: GenSource | null;
   complete: string | null;
+  lspComplete: LspItem[];
+  lspHover: string[];
+  lspSignature: LspSignature | null;
   pasteCards: PastedCards | null;
   deleteEverywhere: number;
   skeletons: Record<string, Skeleton | null>;

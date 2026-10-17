@@ -19,6 +19,7 @@ import { watchVersions } from "./watch";
 import { debounce, useWorkspace } from "./ws";
 import { forgetDefs } from "./defcache";
 import { registerVersionDocs, vscodeWorkspace } from "./vscode/workspace";
+import { disposeScratch } from "./vscode/scratch";
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const sub = (d: vscode.Disposable) => ctx.subscriptions.push(d);
@@ -102,4 +103,4 @@ export async function activate(ctx: vscode.ExtensionContext) {
   updateStatus();
 }
 
-export function deactivate() {}
+export function deactivate() { disposeScratch(); }

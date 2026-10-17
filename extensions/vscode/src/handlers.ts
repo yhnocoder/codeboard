@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
+import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { githubCard, ghQuery } from "./github";
 import { webMeta } from "./web";
@@ -100,6 +101,12 @@ export function makeHandler(panels: BoardHost): Handler {
     searchName: (_p, m) => searchName(m.name),
     genSource: (_p, m) => genSource(m.from),
     complete: (p, m) => complete(p, m.before, m.after),
+    // ---------- 编辑中的代码：虚拟文档、补全、悬停、签名（codeedit.ts） ----------
+    codeDoc: (_p, m) => codeDoc(m.id, m.lang, m.text, m.near),
+    codeDocClose: (_p, m) => codeDocClose(m.id),
+    lspComplete: (_p, m) => lspComplete(m.id, m.text, m.line, m.col, m.trigger),
+    lspHover: (_p, m) => lspHover(m.id, m.text, m.line, m.col),
+    lspSignature: (_p, m) => lspSignature(m.id, m.text, m.line, m.col, m.trigger),
     // ---------- 运行时（线框 13） ----------
     captureRun: (p) => void captureFlow(store.dir(), p),
     applyRun: (p) => void applyFlow(store.dir(), p),

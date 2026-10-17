@@ -52,6 +52,25 @@ export interface WorkspaceLanguage {
   hover(abs: string, line: number, col: number): Promise<string[]>;
   /** 转到实现：在基类方法上问，回所有覆盖它的子类方法（Pylance）；没有语言服务时回空 */
   implementations(abs: string, line: number, col: number): Promise<{ abs: string; line: number; col: number }[]>;
+  /** 白板里编辑中的代码的虚拟文档；宿主没有语言服务时不给 */
+  scratch?: WorkspaceScratch;
+}
+
+/** 补全的一项（从语言服务转过来）：insert 缺省 = label；from / to = 这一行上要替换的列（缺省 = 光标前的词） */
+export type LspItem = { label: string; kind?: LspKind; detail?: string; doc?: string; insert?: string; from?: number; to?: number };
+export type LspKind = "function" | "method" | "class" | "interface" | "enum" | "variable" | "constant" | "property" | "module" | "keyword" | "type" | "text";
+/** 签名提示：label 是整个签名，params 是每个参数在 label 里的 [起, 止)，active = 当前参数（没有时 -1） */
+export type LspSignature = { label: string; doc?: string; params: { at: [number, number]; doc?: string }[]; active: number };
+
+/** 白板里编辑中的代码的虚拟文档（不在编辑器里显示）：语言服务照它回答。行列从 0 开始 */
+export interface WorkspaceScratch {
+  /** 建或更新：near = 放在这个文件旁边（同目录，Python 的 import 才找得到）；没给就放在工作区根 */
+  sync(id: string, lang: string, text: string, near?: string): Promise<void>;
+  /** 用完了：清空、放掉 */
+  close(id: string): Promise<void>;
+  completions(id: string, line: number, col: number, trigger?: string): Promise<LspItem[]>;
+  hover(id: string, line: number, col: number): Promise<string[]>;
+  signature(id: string, line: number, col: number, trigger?: string): Promise<LspSignature | null>;
 }
 
 /** 用户设置，键是完整的点分名字（codeboard.theme、editor.fontFamily） */
