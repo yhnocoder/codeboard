@@ -103,6 +103,50 @@ async function captureStep(page) {
   check(b && b.links.some((l) => l.call && l.call.ev && l.call.ev.kind === "observed" && l.call.ev.count === 3), "the Observed evidence is saved with the board");
   await shot(page, "11-capture-run");
 }
+// 08. 导出 HTML 快照：⋯ → Export… → HTML Snapshot，存盘用 VS Code 自己的简易对话框（run.sh 打开 files.simpleDialog；原生对话框在 CDP 里够不着），
+// 再在 e2e 的 Chromium 里打开导出的文件：离线、只读、能拖能缩放。E2E_ONLY=export 只跑这一步
+async function exportStep(page) {
+  await openFile(page, "scheduler.py", 26);
+  await page.keyboard.press("Alt+b"); await sleep(2500);
+  await command(page, "CodeBoard: Open Board");
+  let f = await boardFrame(page); await sleep(1500);
+  check(await f.locator(".card").count() >= 1, "Alt+B puts a card on the board");
+  await command(page, "Notifications: Clear All Notifications");
+  // 白板在右边一栏、比较窄：底栏和 dock 不能叠在一起（叠了就点不到 More）
+  const [bb, dk] = await f.evaluate(() => [".bbar .pill", ".dock .pill"].map((q) => { const r = document.querySelector(q).getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom]; }));
+  check(bb[1] <= dk[0] || bb[2] >= dk[3] || dk[2] >= bb[3], "the bottom bar and the dock do not overlap in a narrow pane", { bb, dk });
+  await f.locator('button[aria-label="More"]').first().click(); await sleep(400);
+  await f.locator(".ctx :is(button,div,li)", { hasText: /^Export…/ }).first().click(); await sleep(600);
+  check(await f.locator(".dialog.xdlg").count() === 1, "Export… opens the export dialog");
+  await f.locator(".dialog.xdlg .seg button", { hasText: "HTML Snapshot" }).click();
+  await shot(page, "12-export-dialog");
+  await f.locator(".dialog.xdlg button.def").click();
+  const out = path.join(WS, "e2e-export.html");
+  const input = page.locator(".quick-input-widget input.input");
+  await input.waitFor({ state: "visible", timeout: 15000 }).catch(() => {});
+  check(await input.isVisible().catch(() => false), "the save dialog appears");
+  await input.fill(out); await sleep(300); await page.keyboard.press("Enter");
+  for (let i = 0; i < 40 && !fs.existsSync(out); i++) await sleep(500);
+  check(fs.existsSync(out), "the snapshot is written", out);
+  if (!fs.existsSync(out)) return;
+  const html = fs.readFileSync(out, "utf8");
+  check(!/cbres:/.test(html) && /data:font\/woff2;base64/.test(html), "fonts are inlined, no unresolved references", html.length);
+  // VS Code 的 CDP 连接开不了新上下文：另起一个和 harness 同一个 Chromium，断网打开
+  const vb = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+  const ctx = await vb.newContext({ offline: true, viewport: { width: 1400, height: 900 } }); const v = await ctx.newPage();
+  const net = [], errs = [];
+  v.on("request", (r) => { if (!/^(file|data|about):/.test(r.url())) net.push(r.url()); });
+  v.on("pageerror", (e) => errs.push(String(e)));
+  await v.goto("file://" + out); await sleep(1200);
+  check(await v.locator(".card").count() >= 1, "the snapshot renders the cards", await v.locator(".card").count());
+  check(await v.locator(".card .src .kw").count() > 0, "code in the snapshot is highlighted");
+  const before = await v.evaluate(() => getComputedStyle(document.querySelector(".world")).transform);
+  await v.mouse.move(300, 600); await v.mouse.down(); await v.mouse.move(420, 660, { steps: 6 }); await v.mouse.up(); await sleep(300);
+  check(before !== await v.evaluate(() => getComputedStyle(document.querySelector(".world")).transform), "the snapshot pans by drag");
+  check(!net.length && !errs.length, "no network requests and no errors in the snapshot", { net: net.slice(0, 3), errs: errs.slice(0, 3) });
+  await v.screenshot({ path: `${OUT}/13-export-html.png` });
+  await vb.close().catch(() => {});
+}
 const finish = async (browser, errors) => {
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
@@ -125,6 +169,7 @@ const finish = async (browser, errors) => {
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
   if (process.env.E2E_ONLY === "capture") { await captureStep(page); return finish(browser, errors); }
+  if (process.env.E2E_ONLY === "export") { await exportStep(page); return finish(browser, errors); }
 
   // 1. Alt+B inside a function: the board opens and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
