@@ -1,5 +1,5 @@
-// 白板面板：一张白板一个 webview 标签页（可以同时开几张）。白板状态由 webview 持有，每次改动整板发回来保存；
-// 宿主负责读代码、高亮、版本、跳转。最近聚焦的白板是编辑器里 Add to 的目标。
+// 白板面板：一张白板一个 webview 标签页（可以同时开几张）。白板状态由 webview 持有，改动后把变了的项发回来保存（patch）；
+// 宿主负责读代码、高亮、版本、跳转，共享卡改了就转给开着同一张卡的别的白板。最近聚焦的白板是编辑器里 Add to 的目标。
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -38,6 +38,17 @@ export class Panels implements BoardHost {
 
   constructor(private ctx: vscode.ExtensionContext, readonly store: Storage) {
     this.target = ctx.workspaceState.get<string>("codeboard.target");
+    // 共享卡写进了卡库：开着同一张卡的别的白板换上（存储里的那份已经换好了）
+    ctx.subscriptions.push(store.onDidShare((e) => {
+      for (const p of this.all()) {
+        if (p.id === e.from) continue;
+        const refs = store.refsOf(p.id);
+        const cards = e.cards.filter((sc) => refs.has(sc.card.id));
+        if (!cards.length) continue;
+        p.board = store.peek(p.id);
+        p.post({ type: "shared", cards });
+      }
+    }));
   }
 
   get(id: string) { return this.panels.get(id); }

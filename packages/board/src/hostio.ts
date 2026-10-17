@@ -2,7 +2,7 @@
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, setLineSel, sel } from "./state/store";
+import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, setLineSel, sel } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner } from "./state/ui";
 import * as A from "./actions";
@@ -28,8 +28,8 @@ export function onHost(m: HostToBoard) {
         setBanner(true);
       });
       setCam(b.cam.x, b.cam.y, b.cam.z);
-      markSaved();
       resetHistory();
+      markSaved();
       A.resetNav();
       select({});
       break;
@@ -97,6 +97,7 @@ export function onHost(m: HostToBoard) {
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
     case "toast": toast(m.text); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
+    case "shared": syncShared(m.cards); break;
   }
 }
 
