@@ -276,7 +276,14 @@ export type StickerAt =
   | { kind: "card"; card: string }
   | { kind: "canvas"; x: number; y: number; size?: number; on?: StickerOn };
 
-export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt };
+/**
+ * 疑问（线框 06）：「?」贴纸上写的问题。md = 问题（Markdown）；done = 已解决（贴纸画成 ✓）；answer = 解答它的卡（Note 或别的卡）；at = 提问时间。
+ * 第 6 版里加的（还没发布过，不升版本）
+ */
+export type Question = { md: string; done?: true; answer?: string; at?: number };
+export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt; q?: Question };
+/** 内置的「?」贴纸，或写了问题的贴纸 */
+export const isQuestion = (s: Pick<Sticker, "icon" | "q">) => !!s.q || (s.icon.pack === "builtin" && s.icon.name === "question");
 
 // ---------- 白板 ----------
 
@@ -387,7 +394,7 @@ export function codeGlyph(c: CodeCard): string {
 }
 
 export const baseName = (p: string) => p.split("/").pop() ?? p;
-const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").trim()).find(Boolean) ?? "";
+const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*\*$/, "").trim()).find(Boolean) ?? "";
 export function domainOf(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }

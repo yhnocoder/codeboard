@@ -8,6 +8,7 @@ import type { CardCopy } from "./edit";
 import type { SharedInfo } from "./shared";
 import type { Skeleton } from "./subboard";
 import type { RunApply } from "./run";
+import type { QuestionItem } from "./questions";
 
 /** 子白板的面包屑：从最外层到当前白板的上一级（进入子白板时宿主记着；frame = 在那块白板上是哪个框） */
 export type Crumb = { id: string; name: string; frame: string };
@@ -52,6 +53,11 @@ export type Settings = {
   tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
   pasteOther?: "linked" | "copy"; // 卡贴到另一块白板上：共享卡（默认）/ 独立副本；⌥ 粘贴是另一种
   sharedUpdate?: "ask" | "all" | "this"; // 共享卡 Update 新版本：每次问（默认）/ 所有白板 / 只这块白板（拆成副本）
+  subPreview?: "skeleton" | "title"; // 子白板框里画什么：带名字的骨架（默认）/ 只有标题
+  welcomeBack?: "2d" | "always" | "off"; // 回到一块白板时提示还有几个问题：隔 2 天以上（默认）/ 每次 / 不提示
+  exportQuestions?: boolean; // 导出时带上问题（默认不带）
+  exportBoardOnly?: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
+  exportScope?: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
@@ -135,7 +141,8 @@ export type GhFile = { path: string; lang: string; text: string[]; html: string[
 
 export type HostToBoard =
   /** crumbs：这块白板是从哪几块父白板一路进来的（没有 = 顶层）；walk：进来 / 回来时接着讲解 */
-  | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo; crumbs?: Crumb[]; walk?: WalkHop }
+  /** welcome：隔了一阵再打开（设置 welcomeBack）、这块白板还有没解决的问题：days = 上次打开是几天前，open = 几个问题 */
+  | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo; crumbs?: Crumb[]; walk?: WalkHop; welcome?: { days: number; open: number } }
   | { type: "views"; views: Record<string, SegView> }
   | { type: "stale"; stale: Record<string, Stale> }
   | { type: "boards"; boards: BoardMeta[] }
@@ -146,7 +153,8 @@ export type HostToBoard =
   | { type: "appendSegment"; card: string; seg: Segment; view: SegView }
   /** 编辑器 ⌥S：作为 Sidenote 挂到白板上选中的行 */
   | { type: "addSidenote"; seg: Segment; view?: SegView }
-  | { type: "reveal"; card: string; seg?: string; lines?: [number, number] }
+  /** sticker：顺带打开这个问题（Questions 面板点进来的） */
+  | { type: "reveal"; card: string; seg?: string; lines?: [number, number]; sticker?: string }
   /** 宿主拦下的快捷键转给白板 */
   | { type: "key"; action: KeyAction }
   /** 侧栏 / 命令面板改了白板名 */
@@ -209,7 +217,7 @@ export type BoardToHost =
   | { type: "copyDiagnostics"; board?: boolean }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
   | { type: "log"; level: "info" | "warn" | "error"; text: string }
-  | { type: "openBoard"; id: string; card?: string; line?: number }
+  | { type: "openBoard"; id: string; card?: string; line?: number; sticker?: string }
   /** ⌘C 复制了这些卡（text = 写进剪贴板的文字）：宿主记下来，贴到别的白板时用 */
   | { type: "copyCards"; cards: string[]; text: string }
   /** 粘贴：剪贴板里是别的白板上复制的卡就回 PastedCards（text 对不上、同一块白板回 null）；copy = 独立副本 */
@@ -236,7 +244,15 @@ export type BoardToHost =
   | { type: "complete"; req: number; before: string; after: string }
   /** 白板的 ⋯ 菜单：Capture Run…（问命令、跑一次、发回 run）/ Apply Run…（从存着的运行记录里选一次） */
   | { type: "captureRun" }
-  | { type: "applyRun" };
+  | { type: "applyRun" }
+  /** Questions 面板（线框 06）：所有白板上的问题（宿主按存好的白板算；这块白板白板自己按当前状态换掉） */
+  | { type: "questions"; req: number }
+  /** 导出 Markdown 前：段的 GitHub 永久链接（段 id → URL；算不出的不给） */
+  | { type: "permalinks"; req: number; segs: Segment[] }
+  /** 导出（线框 08）：存成文件（先问存到哪）。html 里的 cbres: 引用由宿主换成 data: URL（单个文件、离线能开）。回存了没有 */
+  | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
+  /** 写剪贴板（webview 里写可能被拦下） */
+  | { type: "copyText"; text: string };
 
 /** 贴过来的别的白板上的卡（views = 各段的展示数据） */
 export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; views: Record<string, SegView> };
@@ -300,6 +316,9 @@ type Replies = {
   skeletons: Record<string, Skeleton | null>;
   newBoard: boolean;
   deleteBoard: boolean;
+  questions: QuestionItem[];
+  permalinks: Record<string, string>;
+  exportFile: boolean;
 };
 export type ReplyOf<T extends AskType> = Replies[T];
 /** From GitHub… 的回答：按 GhQuery 的 op */

@@ -13,6 +13,7 @@ export function removeCards(b: Board, ids: Iterable<string>): void {
   b.links = b.links.filter((l) => !gone.has(l.from.card) && !gone.has(l.to.card));
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card) && !(n.kind === "card" && gone.has(n.card)));
   b.stickers = b.stickers.filter((k) => k.at.kind === "canvas" || !gone.has(k.at.card));
+  for (const k of b.stickers) if (k.q?.answer && gone.has(k.q.answer)) delete k.q.answer; // 解答它的卡删了：问题还在
   forget(b, gone);
   pruneStickers(b);
 }
@@ -59,6 +60,7 @@ export function renameCard(b: Board, from: string, to: string): void {
     const at = k.at;
     if (at.kind !== "canvas") at.card = r(at.card);
     else if (at.on && "card" in at.on) at.on.card = r(at.on.card);
+    if (k.q?.answer) k.q.answer = r(k.q.answer);
   }
   for (const m of [b.born, b.marks] as (Record<string, unknown> | undefined)[]) if (m && from in m) { m[to] = m[from]; delete m[from]; }
 }

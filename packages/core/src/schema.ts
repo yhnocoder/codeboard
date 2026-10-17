@@ -93,6 +93,7 @@ const Sticker = obj({
     obj({ kind: v.literal("card"), card: str }),
     obj({ kind: v.literal("canvas"), x: num, y: num, size: opt(num), on: opt(v.union([obj({ card: str }), obj({ link: str, t: num })])) }),
   ]),
+  q: opt(obj({ md: str, done: opt(bool), answer: opt(str), at: opt(num) })),
 });
 
 const boardEntries = {
