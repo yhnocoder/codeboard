@@ -3,7 +3,7 @@ import type { Rect } from "@codeboard/core";
 
 export type Box = { w: number; h: number };
 /** 框离卡边至少留这么多（世界坐标 px） */
-export const LABEL_GAP = 6;
+const LABEL_GAP = 6;
 
 /** 三次贝塞尔 [x1 y1 c1x c1y c2x c2y x2 y2] 在 t 处的点 */
 export function bezAt(p: number[], t: number) {

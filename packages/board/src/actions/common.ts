@@ -35,9 +35,8 @@ export const mdInline = (s: string) => inline(s);
 export const mdBlock = (s: string) => md(s);
 export const sidenotesOf = notesOf;
 export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
-export const allRects = (skip?: Set<string>) => placed().filter((c) => !skip?.has(c.id)).map((c) => rectOf(c));
 
-export function sectionOf(id: string): Section | undefined {
+function sectionOf(id: string): Section | undefined {
   const f = cardById(id);
   const sid = f && placeOf(f.host.id).section;
   return sid ? state.board.sections.find((s) => s.id === sid) : undefined;
@@ -116,12 +115,10 @@ export function slideFrom(list: { id: string; ox: number; oy: number }[]) {
   });
 }
 
-/** 一行在世界坐标里的左端点（Call link 出发处） */
-export function anchorPoint(cardId: string, seg?: string, line?: number) {
-  const el = document.querySelector(`.card[data-id="${cardById(cardId)?.host.id}"]`);
+/** 卡（所在宿主卡）卡头左端在世界坐标里的位置：展开出来的新卡从这里弹出 */
+export function headPoint(cardId: string) {
   const r = hostRect(cardId);
-  if (!el || !r) return null;
-  return { x: r.x, y: r.y + 20 };
+  return r ? { x: r.x, y: r.y + 20 } : null;
 }
 
 

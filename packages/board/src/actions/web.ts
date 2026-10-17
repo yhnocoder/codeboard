@@ -116,14 +116,14 @@ export const renameItem = (id: string, item: string, v: string) => setList(id, (
 export function removeItem(id: string, item: string) {
   setList(id, (c, b) => { c.items = c.items.filter((x) => x.id !== item); if (!c.items.length) removeCards(b, [id]); });
 }
-export const reorderItem = (id: string, item: string, to: number) => setList(id, (c) => {
+const reorderItem = (id: string, item: string, to: number) => setList(id, (c) => {
   const i = c.items.findIndex((x) => x.id === item);
   if (i < 0) return;
   const [it] = c.items.splice(i, 1);
   c.items.splice(Math.max(0, Math.min(c.items.length, to > i ? to - 1 : to)), 0, it);
 });
 /** 一行拆出来成为单独的 Web 卡（at = 世界坐标；缺省放在卡右边） */
-export function moveItemOut(id: string, item: string, at?: { x: number; y: number }) {
+function moveItemOut(id: string, item: string, at?: { x: number; y: number }) {
   const it = itemOf(id, item);
   if (!it) return;
   const nid = uid("w");

@@ -196,7 +196,7 @@ export function setFreeCode(id: string, text: string) {
   else mutate(set);
   if (seg) requestViews([seg]);
 }
-export function setLang(id: string, lang: string) {
+function setLang(id: string, lang: string) {
   let seg: Segment | undefined;
   mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c)) { c.segments[0].lang = lang; seg = structuredClone(unwrap(c.segments[0])); } });
   if (seg) requestViews([seg]);

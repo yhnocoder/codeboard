@@ -2,7 +2,7 @@
 import { send } from "../host";
 import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
-  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, descendants,
+  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf } from "../state/store";
@@ -209,7 +209,7 @@ function CodeFoot(p: { card: CodeCard }) {
 export function MarkView(p: { g: Graph }) {
   return <Show when={"icon" in p.g.mark} fallback={<>{p.g.label}</>}><Glyph icon={{ pack: "builtin", name: (p.g.mark as { icon: string }).icon }} size={13} /></Show>;
 }
-export const shortPath = (p: string) => p.split("/").slice(-1)[0];
+const shortPath = (p: string) => p.split("/").slice(-1)[0];
 
 function CodeCardView(p: { card: CodeCard }) {
   const c = () => p.card;
@@ -265,7 +265,7 @@ function ClassBody(p: { card: CodeCard }) {
   );
 }
 
-export function Desc(p: { id: string; desc?: string }) {
+function Desc(p: { id: string; desc?: string }) {
   return (
     <Show when={p.desc || editing()?.kind === "desc" && editing()?.id === p.id}>
       <Editable class="cdesc" kind="desc" id={p.id} value={p.desc ?? ""} multiline md onCommit={(v) => act.setDesc(p.id, v)} />
@@ -306,5 +306,3 @@ function MapLabel(p: { card: Card }) {
     </div>
   );
 }
-
-export { LANGS };

@@ -3,6 +3,17 @@
 import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
+import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
+import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
+import { state, lineSel, setLineSel, reportSelection } from "../state/store";
+import { Glyph } from "../stickers/glyphs";
+import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
+import { setGeo } from "../state/geo";
+import { look } from "../state/look";
+import { queueMeasure, observeResize } from "../state/measure";
+import { whenIdle } from "../state/idle";
+import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
+import * as act from "../actions";
 
 /** 第 i 个字符前面有没有没配对的引号（单行内；三引号字符串的中间行靠高亮 class 判断） */
 function inQuotes(t: string, i: number) {
@@ -19,17 +30,6 @@ function inQuotes(t: string, i: number) {
 // 最近一次按下的元素（blur 时判断焦点是不是被同一张卡上的东西拿走的；不可聚焦的地方 relatedTarget 是空的）
 let lastDown: HTMLElement | null = null;
 window.addEventListener("pointerdown", (e) => { lastDown = e.target as HTMLElement; }, true);
-import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
-import { state, lineSel, setLineSel, reportSelection, flows } from "../state/store";
-import { Glyph } from "../stickers/glyphs";
-import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
-import { setGeo } from "../state/geo";
-import { look } from "../state/look";
-import { queueMeasure, observeResize } from "../state/measure";
-import { whenIdle } from "../state/idle";
-import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
-import * as act from "../actions";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
@@ -454,5 +454,3 @@ function versionChip(c: CodeCard, s: Segment): string | undefined {
   if (JSON.stringify(first.version) === JSON.stringify(s.version)) return undefined;
   return s.version.kind === "git" ? s.version.commit.slice(0, 7) : s.version.kind === "pkg" ? `${s.version.name} ${s.version.version}` : undefined;
 }
-// flows 被 CodeCard 头部用到；这里引用一下避免 tree-shaking 掉初始化顺序
-void flows;

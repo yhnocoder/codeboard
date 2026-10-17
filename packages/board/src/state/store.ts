@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  brokenBy, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, DEFAULT_SETTINGS, V3_CODE_CHROME,
+  danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, DEFAULT_SETTINGS, V3_CODE_CHROME,
   type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type Stale,
 } from "@codeboard/core";
 import { ask, send } from "../host";
@@ -41,7 +41,6 @@ export function toggleSel(kind: keyof Sel, id: string) {
 }
 export const clearSel = () => { select({}); setLineSel(null); };
 export const isSel = (id: string) => sel.cards.includes(id);
-export const selCount = () => sel.cards.length + sel.links.length + sel.sections.length;
 
 let selTimer: number | undefined;
 export function reportSelection() {
@@ -139,10 +138,6 @@ const parse = (s: Snap): Board => {
 const updUndo = () => { setCanUndo(undoStack.length > 0); setCanRedo(redoStack.length > 0); };
 
 /**
- * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
- * 改完会过一遍白板不变量（core 的 brokenBy）：被破坏就整次撤回、提示原因，返回 false。
- */
-/**
  * 新卡记下创建顺序（core stampBorn）。先在原始对象上看有没有缺的：挪卡、撤销这些不加卡的改动直接跳过，不走 produce 代理把每张卡读一遍。
  * 缺的话在一份普通对象上编号，再整个换掉 born：宿主写进来的一批卡（没有编号）一次编完只通知一次，
  * 不是每张卡一次（241 张卡时第一次挪卡要 30ms）
@@ -156,6 +151,10 @@ function stamp(b: Board) {
   b.seq = tmp.seq;
 }
 
+/**
+ * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
+ * fn 抛错就整次撤回、提示一下，返回 false；什么都没改不进撤销栈。
+ */
 export function mutate(fn: (b: Board) => void): boolean {
   const before = snap();
   cur = null;
@@ -169,12 +168,6 @@ export function mutate(fn: (b: Board) => void): boolean {
   }
   const bad = danglingRefs(unwrap(state.board));
   if (bad.length) console.warn("[codeboard] dangling references after a change:", bad); // 自检：应该永远是空的，harness 会把它当失败
-  const why = brokenBy(unwrap(state.board), () => parse(before));
-  if (why) {
-    restore(before);
-    toast(why);
-    return false;
-  }
   const after = snapNow();
   if (same(after, before)) { cur = before; return true; }
   cur = after;
@@ -320,7 +313,7 @@ export function allIds(): string[] {
 const changed = () => scheduleSave();
 let saveTimer: number | undefined;
 let lastSaved = "";
-export function scheduleSave() {
+function scheduleSave() {
   if (!state.loaded) return;
   clearTimeout(saveTimer);
   saveTimer = window.setTimeout(flushSave, 800);

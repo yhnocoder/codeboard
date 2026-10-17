@@ -5,8 +5,8 @@ import { union, type Rect } from "@codeboard/core";
 import { state, rectOf, placed } from "./store";
 import type { Section } from "@codeboard/core";
 
-export const PAD = { l: 22, r: 22, t: 34, b: 22 };
-export const PILL = { w: 220, h: 32 };
+const PAD = { l: 22, r: 22, t: 34, b: 22 };
+const PILL = { w: 220, h: 32 };
 
 const byId = createMemo(() => new Map(state.board.sections.map((s) => [s.id, s])));
 export const sec = (id?: string) => (id ? byId().get(id) : undefined);
@@ -28,14 +28,14 @@ function groupBy<T>(xs: T[], key: (x: T) => string | undefined) {
   for (const x of xs) { const k = key(x); if (k === undefined) continue; const a = m.get(k); a ? a.push(x) : m.set(k, [x]); }
   return m;
 }
-export const childrenOf = (id: string) => kids().get(id) ?? [];
+const childrenOf = (id: string) => kids().get(id) ?? [];
 export function descSections(id: string): Section[] {
   const out: Section[] = [];
   const walk = (x: string) => childrenOf(x).forEach((c) => { if (!out.includes(c)) { out.push(c); walk(c.id); } });
   walk(id);
   return out;
 }
-export const directMembers = (id: string) => members().get(id) ?? [];
+const directMembers = (id: string) => members().get(id) ?? [];
 export const allMembers = (id: string) => {
   const ids = new Set([id, ...descSections(id).map((s) => s.id)]);
   return placed().filter((c) => { const s = state.board.place[c.id]?.section; return !!s && ids.has(s); });

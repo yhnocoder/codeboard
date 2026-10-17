@@ -3,6 +3,7 @@
 // Python 系（含 Triton、TileLang）用 python 语法；C / C++ / CUDA 用 cpp 语法（CUDA 的 <<<>>> 会被当成错误节点跳过）。
 import type { Node, QueryCapture } from "@vscode/tree-sitter-wasm";
 import { grammarOf, languageOf, query, treeOf, type Edit, type Grammar } from "./tree";
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "../lines";
 export { initAnalysis, grammarOf, languageOf, diffEdit, forgetTree, setTreeCacheSize, type Edit } from "./tree";
 
 
@@ -35,7 +36,8 @@ export type CallSite = {
   dispatch?: string; // call("run", …) 这种按字符串转发：记下字符串，但不当成调用 run
 };
 
-export const BLANK = 1, COMMENT = 2, DOCSTRING = 4;
+// 行标记和 lines.ts 的 F_* 是同一套值
+export const BLANK = F_BLANK, COMMENT = F_COMMENT, DOCSTRING = F_DOCSTRING;
 
 export type FileAnalysis = {
   lang: string;

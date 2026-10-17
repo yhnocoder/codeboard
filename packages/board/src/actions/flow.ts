@@ -12,7 +12,7 @@ import { camTo, camTarget, worldView, fitRect, fitTop, isVisible, union } from "
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
 import { send, ask } from "../host";
-import { anchorPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
+import { headPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
 import { jumpTo } from "./nav";
 
 // ---------- 点调用展开 ----------
@@ -95,13 +95,13 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
       const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hid));
       const outside = placed().filter((k) => !tree.has(k.id)).map((k) => rectOf(k));
       const hb = rectOf(host);
-      let p = placeChild(hb, size, before, outside, "down");
+      let p = placeChild(hb, size, before, outside);
       // 树下面被别的卡占满时，空位可能被推到屏幕外很远：改在视野里、靠近默认位置找空位；视野里也没有就放默认位置（压住别的卡，新卡在最上层）
       let inTree = true;
       const vr = worldView();
       const offscreen = p.y < vr.y || p.y + Math.min(size.h, 200) > vr.y + vr.h || p.x + Math.min(size.w, vr.w) > vr.x + vr.w;
       if (offscreen) {
-        const slot = placeChild(hb, size, before, [], "down");
+        const slot = placeChild(hb, size, before, []);
         const all = placed().map((k) => rectOf(k));
         const f = freeInView({ ...slot, ...size }, all, vr);
         if (f && isVisible(hb)) { p = f; inTree = false; }
@@ -134,7 +134,7 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
       const f = fitRect(u, camTarget().z);
       camTo(f.x, f.y, f.z);
     }
-    const from = anchorPoint(cardId, segId, call.line);
+    const from = headPoint(cardId);
     popCard(id, from ?? undefined);
   });
   if (pushed.length) slideFrom(pushed.map((q) => ({ id: q.id, ox: 0, oy: -q.dy })));

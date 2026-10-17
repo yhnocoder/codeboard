@@ -93,7 +93,7 @@ export function toggleVar(id: string, v: Var) {
  * 固定起点 / 终点走哪一侧。每一端：不传（undefined）= 不变；"auto" = 回到自动；left / right / top / bottom = 固定。
  * 行端只能左右（固定成上下会被忽略、照自动走）
  */
-export function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") {
+function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") {
   mutate((b) => {
     const l = b.links.find((k) => k.id === id);
     if (!l) return;
@@ -104,7 +104,7 @@ export function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "
   });
 }
 /** 两端都回到自动 */
-export const resetSides = (id: string) => setSides(id, "auto", "auto");
+const resetSides = (id: string) => setSides(id, "auto", "auto");
 
 // ---------- WS3：箭头 / 标签菜单改的数据（都走 mutate，可撤销） ----------
 

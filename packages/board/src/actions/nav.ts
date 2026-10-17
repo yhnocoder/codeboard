@@ -27,7 +27,7 @@ const inIndex = createMemo(() => {
 export const linksInto = (id: string): Link[] => inIndex().get(id) ?? [];
 
 /** 箭头出发处的说明：卡名 · L52 */
-export function sourceLabel(l: Link): string {
+function sourceLabel(l: Link): string {
   const c = cardById(l.from.card)?.card;
   if (!c) return "";
   return `${cardTitle(c, state.board)}${l.from.line !== undefined ? ` · L${l.from.line}` : ""}`;

@@ -99,7 +99,7 @@ function targetAt(cx: number, cy: number, shown = shownCards()): Target | null {
 }
 
 /** 贴纸左上角的世界坐标 */
-export function stickerWorld(s: Sticker): { x: number; y: number } | null {
+function stickerWorld(s: Sticker): { x: number; y: number } | null {
   if (s.at.kind !== "canvas") return null;
   const on = s.at.on;
   if (!on) return { x: s.at.x, y: s.at.y };
@@ -124,7 +124,7 @@ function bindAt(w: { x: number; y: number }, size: number, t: Target | null): St
 }
 
 /** 解绑：留在原地，变成画布上的贴纸 */
-export function detachSticker(id: string) {
+function detachSticker(id: string) {
   const s = state.board.stickers.find((k) => k.id === id);
   const w = s && stickerWorld(s);
   if (!s || !w || s.at.kind !== "canvas") return;
@@ -143,7 +143,7 @@ export function removeSticker(id: string) {
   mutate((b) => { b.stickers = b.stickers.filter((s) => s.id !== id); });
   if (selSticker() === id) setSelSticker(null);
 }
-export function setStickerColorOf(id: string, color: string | undefined) {
+function setStickerColorOf(id: string, color: string | undefined) {
   mutate((b) => { const s = b.stickers.find((k) => k.id === id); if (s) s.color = color && color !== defaultColor(s.icon) ? color : undefined; });
 }
 export function stickerMenu(id: string, x: number, y: number) {

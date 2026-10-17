@@ -165,11 +165,3 @@ export function hiddenByCollapse(b: Pick<Board, "cards" | "place">, f: Flows): S
   }
   return hidden;
 }
-
-/**
- * 白板不变量的总闸：一次修改之后有没有破坏什么，返回拒绝的理由（store 的 mutate 会整次撤回）。
- * 第 5 版起调用图没有要守的不变量了（一张卡可以有多个调用来源，Compare 的两栏可以在不同的图里）；口子留着
- */
-export function brokenBy(_after: Pick<Board, "cards" | "links">, _before: () => Pick<Board, "cards" | "links">): string | null {
-  return null;
-}

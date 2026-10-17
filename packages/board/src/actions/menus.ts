@@ -273,8 +273,8 @@ export function labelMenu(id: string, x: number, y: number) {
     { label: "Delete Label", danger: true, disabled: L.label ? false : "No text written on this arrow", run: () => deleteLabel(id) },
   ], x, y);
 }
-export const LINK_COLORS = [["grey", "Grey"], ["orange", "Orange"], ["blue", "Blue"], ["green", "Green"]] as const;
-export const SECTION_COLORS = [["none", "None"], ["sand", "Warm Sand"], ["blue", "Light Blue"], ["green", "Light Green"], ["pink", "Light Pink"]] as const;
+const LINK_COLORS = [["grey", "Grey"], ["orange", "Orange"], ["blue", "Blue"], ["green", "Green"]] as const;
+const SECTION_COLORS = [["none", "None"], ["sand", "Warm Sand"], ["blue", "Light Blue"], ["green", "Light Green"], ["pink", "Light Pink"]] as const;
 
 export function sectionMenu(id: string, x: number, y: number) {
   const s = sectionById(id);

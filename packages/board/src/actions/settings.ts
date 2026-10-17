@@ -38,7 +38,7 @@ export function applyLook(id: string | undefined) {
 type R = { x: number; y: number; w: number; h: number };
 /** 换主题后：原来不重叠的上下两张卡，上面那张变高压住了下面那张 → 下面那张（连同更下面的）往下挪，间距保持原样（最多 24）。
  *  视图推出来的改动：走 sync，换主题不产生撤销步骤 */
-export function reflowAfterTheme(before: Map<string, R>) {
+function reflowAfterTheme(before: Map<string, R>) {
   const ids = [...before.keys()].filter((id) => state.board.place[id]).sort((a, b) => before.get(a)!.y - before.get(b)!.y);
   const now = new Map(ids.map((id) => [id, rectOf(id)]));
   const dy = new Map<string, number>();

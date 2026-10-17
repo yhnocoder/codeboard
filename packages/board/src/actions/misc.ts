@@ -1,16 +1,14 @@
 // 其他：宿主转来的快捷键、导出 PNG、点选一张卡、Search Workspace、工作区 diff。
 import { unwrap } from "solid-js/store";
-import { isCode, bounds, center, contains, type KeyAction } from "@codeboard/core";
+import { isCode, bounds, type KeyAction } from "@codeboard/core";
 import { state, sel, lineSel, cardById, rectOf, toast } from "../state/store";
-import { camTarget, view, zoomAt } from "../state/camera";
-import { setPaletteOpen, toggleShown, setKeysOpen } from "../state/ui";
+import { camTarget, zoomAt } from "../state/camera";
+import { setPaletteOpen } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";
 import { send, ask } from "../host";
 import { duplicateSel, toggleLock } from "./edit";
 import { fitAll, lastPointer } from "./common";
 import { toggleSettings, openSettings } from "./settings";
-
-export { toggleShown, setKeysOpen, zoomAt, view, center, contains };
 
 export const currentLineSel = () => lineSel();
 

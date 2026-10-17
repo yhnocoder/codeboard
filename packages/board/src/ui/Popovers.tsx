@@ -370,7 +370,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
 
 // ---------- 版本 diff（和 Compare 同一套对齐） ----------
 
-export function DiffTable(p: { left: { start: number; text: string[]; html: string[] }; right: { start: number; text: string[]; html: string[] } }) {
+function DiffTable(p: { left: { start: number; text: string[]; html: string[] }; right: { start: number; text: string[]; html: string[] } }) {
   const rows = createMemo(() => {
     const norm = (s: string) => s.trim().replace(/\s+/g, " ");
     return alignRows(p.left.text.map(norm), p.right.text.map(norm)).map((r) => {
@@ -493,7 +493,7 @@ function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
 // ---------- 调用图标记 ----------
 
 /** 图标用内置贴纸（名字引用，画法跟着贴纸走） */
-export const MARK_ICONS = ["star", "flag", "zap", "bug", "heart", "question", "check", "hourglass"];
+const MARK_ICONS = ["star", "flag", "zap", "bug", "heart", "question", "check", "hourglass"];
 const MARK_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
 function MarkPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "mark" }> }) {
