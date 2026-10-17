@@ -1,4 +1,4 @@
-// v0.1.7 looks (Bamboo, Ink Wash, Blocks, City): node run-harness.mjs v17looks [--light]; City roads, cars and traffic: v17city
+// v0.1.7 looks (Ink Wash, City): node run-harness.mjs v17looks [--light]; City roads, cars and traffic: v17city
 import * as fs from "node:fs";
 import { open, shot, symCard, findSym, put } from "./harness";
 import { emptyBoard, type Board } from "@codeboard/core";
@@ -17,7 +17,7 @@ function board(): Board {
   return b;
 }
 
-const STROKE: Record<string, string> = { bamboo: "1px", "ink-wash": "1px", blocks: "2px", city: "2px" };
+const STROKE: Record<string, string> = { "ink-wash": "1px", city: "2px" };
 
 export const THEMES_V17: Record<string, () => Promise<void>> = {
   /** City: every arrow end is a parked car (merged ends: one car per junction), roads have a casing and a centre line,
@@ -85,7 +85,6 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
         const head = (i: number) => getComputedStyle(cards[i].querySelector(".chead")!).backgroundColor;
         return {
           look: document.documentElement.dataset.look,
-          hues: cards.map((c) => c.style.getPropertyValue("--file-hue")),
           heads: [head(0), head(1)],
           stroke: getComputedStyle(document.querySelector(".bbar .ico")!).strokeWidth,
           scene: getComputedStyle(document.querySelector(".board")!).backgroundImage.includes("data:image/svg"),
@@ -102,9 +101,8 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
         await h.page.locator(".dock .traffic").click(); await h.page.mouse.move(5, 500); await h.page.waitForTimeout(200);
       }
       await shot(h, `v17-look-${theme}-${light ? "light" : "dark"}`);
-      const ok = r.look === theme && r.hues.length === 3 && r.hues.every((x) => /^\d+$/.test(x)) && new Set(r.hues).size === 3
+      const ok = r.look === theme
         && r.stroke === STROKE[theme] && r.endless === 0 && (theme === "city" ? endlessOn > 0 : endlessOn === 0)
-        && (theme === "blocks" ? r.heads[0] !== r.heads[1] : true)
         && (theme === "ink-wash" || theme === "city" ? r.scene : true)
         && (theme === "city" ? r.traffic === 1 && r.pressed === "false" && toggled === "true" : r.traffic === 0);
       console.log(ok ? "PASS" : "FAIL", "v17look", theme, light ? "light" : "dark", JSON.stringify(r), toggled ?? "");

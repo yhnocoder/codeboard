@@ -14,7 +14,7 @@ import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { CardStickers, BoundStickers } from "../stickers/Picker";
 import { lod } from "../state/camera";
-import { fileHue, fileHash } from "../state/look";
+import { fileHue } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
@@ -43,11 +43,8 @@ export function CardView(p: { card: Card }) {
   onMount(() => whenIdle(() => setLabelReady(true)));
   const pop = () => popIn()[c().id];
   const pl = () => placeOf(c().id);
-  // 源文件的色相（Blocks 主题按它上色）：路径不变就不重算，拖动时只读缓存
-  const hue = createMemo(() => fileHash(c().kind === "code" ? (c() as CodeCard).segments[0]?.path : undefined));
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
-    if (hue() !== undefined) (s as Record<string, string>)["--file-hue"] = String(hue());
     if (pl().h && c().kind !== "code") s.height = `${pl().h}px`; // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
     const pi = pop();

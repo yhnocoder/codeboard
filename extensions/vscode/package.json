@@ -427,9 +427,7 @@
             "newspaper",
             "poster",
             "classic",
-            "bamboo",
             "ink-wash",
-            "blocks",
             "city"
           ],
           "description": "Board theme. Each theme has a light and a dark variant that follows VS Code."

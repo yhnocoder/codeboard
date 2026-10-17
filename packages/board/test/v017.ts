@@ -343,4 +343,27 @@ export const V017: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "head-drag", JSON.stringify({ moved, menuAfterDrag, menuOnClick }));
     await close(h);
   },
+  /** An arrow the code doesn't show as a call (Process(target=…), cross-language, string dispatch): right-click → Call Mark still marks it (Linda 10-17 03:11) */
+  async v17manualcall() {
+    const b = emptyBoard("b1", "manualcall");
+    const eng = card("LLMEngine.__init__"), sch = card("Scheduler.schedule");
+    put(b, eng, 80, 80, 640); put(b, sch, 860, 120, 560);
+    b.links.push({ id: "LM", from: { card: eng.id, seg: eng.segments[0].id, line: lineOf(eng, /ctx\.Process\(/) }, to: { card: sch.id } });
+    b.cam = { x: 0, y: 0, z: 0.8 };
+    const h = await open({ board: b, light, w: 1500, h: 900 });
+    const pt = await h.page.evaluate(() => {
+      const p = document.querySelector<SVGPathElement>('path.lhit[data-link="LM"]')!, m = p.getScreenCTM()!;
+      for (const f of [0.5, 0.4, 0.6, 0.3, 0.7]) { const q = p.getPointAtLength(p.getTotalLength() * f); const x = q.x * m.a + q.y * m.c + m.e, y = q.x * m.b + q.y * m.d + m.f; if ((document.elementFromPoint(x, y) as Element | null)?.closest("[data-link]")) return { x, y }; }
+      return null;
+    });
+    await h.page.mouse.click(pt!.x, pt!.y, { button: "right" }); await h.page.waitForTimeout(300);
+    const items = await h.page.locator(".ctx").first().locator(":scope > button").allTextContents();
+    await h.page.locator(".ctx button", { hasText: "Call Mark" }).first().click(); await h.page.waitForTimeout(900);
+    const call = (h.board().links[0] as Link).call;
+    const marks = await h.page.locator(".card .chead .step").allTextContents();
+    await shot(h, "v17-manualcall");
+    const ok = items.some((t) => t.includes("Call Mark")) && call?.name === "schedule" && call.col === 0 && marks.length === 2;
+    console.log(ok ? "PASS" : "FAIL", "manual-call", JSON.stringify({ items, call, marks }));
+    await close(h);
+  },
 };

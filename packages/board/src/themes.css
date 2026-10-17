@@ -369,59 +369,6 @@
   --sect-border: 1px solid var(--rule);
 }
 
-/* ---------- Bamboo（竹简）：每行代码写在一根竹简上；左边一根宽简放编号和行号，两道麻绳穿起来；朱砂是唯一的颜色 ---------- */
-:root.look-bamboo, [data-look="bamboo"] {
-  color-scheme: light;
-  --sys: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif;
-  --slip: #dcc596; --slip-hi: #e6d3a8; --gap: #9c7d4c; --cord: #5e3f1d; --cord-2: #87612f; --zhu: #ac2f1b;
-  --tex: rgba(90,70,40,.05);
-  --bg: #ebe4d3; --surface: #e6d3a8; --head: #e6d3a8;
-  --ink: #21180e; --ink-2: #5b4630; --ink-3: #977c54;
-  --line: rgba(94,63,29,.22); --hair: rgba(94,63,29,.35);
-  --accent: #ac2f1b; --accent-ink: #f3e6c4; --warn: #ac2f1b;
-  --row: rgba(172,47,27,.13);
-  --k-kw: #ac2f1b; --k-fn: #21180e; --k-str: #5b4630; --k-com: #977c54; --k-num: #ac2f1b; --k-self: #5b4630; --k-p: #977c54;
-  --hi: rgba(172,47,27,.16);
-  --chg: rgba(172,47,27,.1); --chg-strong: rgba(172,47,27,.26); --del: rgba(172,47,27,.1); --add: rgba(94,63,29,.08);
-  --mark: #5e3f1d; --mark-ink: #f3e6c4;
-  --inote: rgba(94,63,29,.08); --hlrow: rgba(94,63,29,.1); --hlbar: #ac2f1b; --hatch: rgba(94,63,29,.1);
-  --edge: #5e3f1d;
-  --s-sand: rgba(156,125,76,.14); --s-blue: rgba(90,110,140,.1); --s-green: rgba(100,125,70,.12); --s-pink: rgba(172,47,27,.08);
-  --lk-orange: #ac2f1b; --lk-blue: #3d5670; --lk-green: #4f6a2c; --guide: #ac2f1b;
-  --glass: #e6d3a8;
-  --tip-bg: #21180e; --tip-ink: #e6d3a8;
-  --sh-card: 0 1px 1px rgba(60,40,10,.25), 0 10px 14px -6px rgba(60,40,10,.22);
-  --sh-lift: 0 2px 3px rgba(60,40,10,.25), 0 24px 34px -14px rgba(60,40,10,.4);
-  --sh-float: 0 0 0 1px var(--gap), 0 6px 12px -6px rgba(40,25,5,.5);
-  --r-card: 3px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 2;
-  --sect-border: 1.5px dashed color-mix(in srgb, var(--gap) 80%, transparent);
-}
-:root.look-bamboo[data-theme="dark"], :root[data-theme="dark"] [data-look="bamboo"] {
-  color-scheme: dark;
-  --slip: #4b3c27; --slip-hi: #574631; --gap: #110c07; --cord: #b48a52; --cord-2: #7c5b31; --zhu: #ec6a4f;
-  --tex: rgba(255,220,170,.035);
-  --bg: #17120d; --surface: #574631; --head: #574631;
-  --ink: #f0e3c4; --ink-2: #c9b48d; --ink-3: #8d7856;
-  --line: rgba(0,0,0,.35); --hair: rgba(240,227,196,.16);
-  --accent: #ec6a4f; --accent-ink: #17120d; --warn: #ec6a4f;
-  --row: rgba(236,106,79,.18);
-  --k-kw: #ec6a4f; --k-fn: #f0e3c4; --k-str: #c9b48d; --k-com: #8d7856; --k-num: #ec6a4f; --k-self: #c9b48d; --k-p: #8d7856;
-  --hi: rgba(236,106,79,.24);
-  --chg: rgba(236,106,79,.12); --chg-strong: rgba(236,106,79,.3); --del: rgba(236,106,79,.12); --add: rgba(240,227,196,.06);
-  --mark: #b48a52; --mark-ink: #17120d;
-  --inote: rgba(0,0,0,.14); --hlrow: rgba(240,227,196,.08); --hlbar: #ec6a4f; --hatch: rgba(0,0,0,.18);
-  --edge: #b48a52;
-  --s-sand: rgba(180,138,82,.08); --s-blue: rgba(120,150,190,.07); --s-green: rgba(140,170,100,.07); --s-pink: rgba(236,106,79,.06);
-  --lk-orange: #ec6a4f; --lk-blue: #8fb0d4; --lk-green: #a5c27a; --guide: #ec6a4f;
-  --glass: #574631;
-  --tip-bg: #f0e3c4; --tip-ink: #17120d;
-  --sh-card: 0 1px 1px rgba(0,0,0,.6), 0 10px 14px -6px rgba(0,0,0,.5);
-  --sh-lift: 0 2px 3px rgba(0,0,0,.6), 0 24px 34px -14px rgba(0,0,0,.75);
-  --sh-float: 0 0 0 1px var(--gap), 0 6px 12px -6px rgba(0,0,0,.7);
-  --r-card: 3px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 2;
-  --sect-border: 1.5px dashed color-mix(in srgb, var(--cord) 55%, transparent);
-}
-
 /* ---------- Ink Wash（水墨）：宣纸底、几层淡墨远山（静止，没有太阳、没有飘动的雾）；编号是朱印，连线是墨线。深色是拓片：黑底白字 ---------- */
 :root.look-ink-wash, [data-look="ink-wash"] {
   color-scheme: light;
@@ -471,59 +418,6 @@
   --sh-float: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.5), 0 12px 22px -12px rgba(0,0,0,.6);
   --r-card: 2px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 2;
   --sect-border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
-}
-
-/* ---------- Blocks（3D · 等距积木）：等距网格纸上的彩色积木，往右下方挤出厚度；每个源文件一种饱和色（--file-hue），黑色描边，静止不倾斜 ---------- */
-:root.look-blocks, [data-look="blocks"] {
-  color-scheme: light;
-  --ui: "Archivo", "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif;
-  --rim: #1f1d2b; --yel: #ffd23f; --gridc: rgba(120,90,40,.09);
-  --bl: 64%; --bc: .17; --sl: 42%; --sc: .12; /* 顶面色带、侧面的亮度和彩度（oklch），色相来自源文件 */
-  --soft: 16px 20px 22px -8px rgba(80,50,10,.3); --soft-lift: 24px 30px 30px -8px rgba(80,50,10,.4);
-  --bg: #f2ebdc; --surface: #fffaf0; --head: #fffaf0;
-  --ink: #1f1d2b; --ink-2: #5b5768; --ink-3: #a09a8c;
-  --line: rgba(31,29,43,.14); --hair: rgba(31,29,43,.3);
-  --accent: #ef5b3f; --accent-ink: #ffffff; --warn: #e0590f;
-  --row: rgba(255,210,63,.3);
-  --k-kw: #c2381f; --k-fn: #3446c4; --k-str: #0f7a75; --k-com: #a7a091; --k-num: #c2381f; --k-self: #8a3fa8; --k-p: #8a8578;
-  --hi: rgba(255,210,63,.45);
-  --mark: #1f1d2b; --mark-ink: #ffd23f;
-  --inote: rgba(255,210,63,.14); --hlrow: rgba(31,29,43,.06); --hlbar: #1f1d2b; --hatch: rgba(31,29,43,.08);
-  --edge: #1f1d2b;
-  --s-sand: rgba(255,210,63,.16); --s-blue: rgba(74,91,216,.1); --s-green: rgba(20,149,143,.11); --s-pink: rgba(239,91,63,.1);
-  --lk-orange: #ef5b3f; --lk-blue: #4a5bd8; --lk-green: #14958f; --guide: #ef5b3f;
-  --glass: #fffaf0;
-  --tip-bg: #1f1d2b; --tip-ink: #ffffff;
-  --sh-card: 0 0 0 2px var(--rim);
-  --sh-lift: 0 0 0 2px var(--rim), 10px 12px 0 var(--rim);
-  --sh-float: 0 0 0 2px var(--rim), 4px 4px 0 2px var(--rim);
-  --r-card: 4px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 3;
-  --sect-border: 2px dashed color-mix(in srgb, var(--rim) 55%, transparent);
-}
-:root.look-blocks[data-theme="dark"], :root[data-theme="dark"] [data-look="blocks"] {
-  color-scheme: dark;
-  --rim: #0a0b12; --yel: #f2c53d; --gridc: rgba(170,180,255,.06);
-  --bl: 58%; --bc: .14; --sl: 30%; --sc: .08;
-  --soft: 16px 20px 22px -8px rgba(0,0,0,.6); --soft-lift: 24px 30px 30px -8px rgba(0,0,0,.7);
-  --bg: #15161f; --surface: #24263a; --head: #24263a;
-  --ink: #eceaf6; --ink-2: #b0adc4; --ink-3: #6f6c88;
-  --line: rgba(236,234,246,.1); --hair: rgba(236,234,246,.22);
-  --accent: #ff8a70; --accent-ink: #15161f; --warn: #f2c53d;
-  --row: rgba(242,197,61,.2);
-  --k-kw: #ff8a70; --k-fn: #9aa8ff; --k-str: #6fd6cf; --k-com: #6d6a86; --k-num: #ff8a70; --k-self: #d79af0; --k-p: #8d8aa6;
-  --hi: rgba(242,197,61,.35);
-  --mark: #f2c53d; --mark-ink: #0a0b12;
-  --inote: rgba(242,197,61,.08); --hlrow: rgba(236,234,246,.07); --hlbar: #f2c53d; --hatch: rgba(236,234,246,.07);
-  --edge: #c9c6e0;
-  --s-sand: rgba(242,197,61,.08); --s-blue: rgba(84,101,214,.12); --s-green: rgba(28,138,133,.12); --s-pink: rgba(217,86,61,.1);
-  --lk-orange: #ff8a70; --lk-blue: #9aa8ff; --lk-green: #6fd6cf; --guide: #ff8a70;
-  --glass: #24263a;
-  --tip-bg: #eceaf6; --tip-ink: #15161f;
-  --sh-card: 0 0 0 2px var(--rim);
-  --sh-lift: 0 0 0 2px var(--rim), 10px 12px 0 var(--rim);
-  --sh-float: 0 0 0 2px var(--rim), 4px 4px 0 2px var(--rim);
-  --r-card: 4px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 3;
-  --sect-border: 2px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
 }
 
 /* ---------- City（城市道路）：平面城市地图（街区、河、公园、楼）；卡片标题是蓝底白字路牌，编号是红色国道牌，箭头上的数据是绿色指路牌，有新版本是施工牌 ---------- */
@@ -892,49 +786,6 @@
 :root.look-poster .mast .mn { font: 400 24px/1.1 var(--serif); letter-spacing: .08em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 
-/* ---------- Bamboo（竹简） ---------- */
-/* 一行一简：.src .l 的 --l-sh 画每根简下面的缝（变量挂在 styles.css 的 .src .l 上，这里不加匹配代码行的规则）。
-   左边 54px 是一根宽简（编号 + 行号），两道麻绳：左绳在宽简右边，右绳在卡片右边，从卡头穿到卡底 */
-:root.look-bamboo { --no-o: .9; --no-link: var(--zhu); --no-link-w: 600; --call-deco: underline 1px var(--zhu); --ico-w: 1;
-  --l-sh: inset 0 -2px 0 var(--gap);
-  --side: linear-gradient(90deg, var(--slip-hi), var(--slip) 51px, var(--gap) 51px 54px, transparent 54px);
-  --rope: repeating-linear-gradient(160deg, var(--cord) 0 3px, var(--cord-2) 3px 5px); }
-:root.look-bamboo .board { background-image: repeating-linear-gradient(0deg, var(--tex) 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, var(--tex) 0 1px, transparent 1px 4px); }
-:root.look-bamboo .card:not(.text):not(.nobg) { background: var(--slip); }
-/* 卡头下沿的线留一点点透明（99%）：卡头整块不透明时，Chromium 会把缩放分档切换时每张卡的行号栏单独提成合成层（几百层，捏合缩放每帧多 20–30ms） */
-:root.look-bamboo .chead { background: var(--slip-hi); border-bottom: 2px solid color-mix(in srgb, var(--gap) 99%, transparent); }
-:root.look-bamboo .ccard > .cface > .chead { padding: 0 24px 0 62px; background: var(--side), var(--slip-hi); }
-:root.look-bamboo .ccard > .cface > .chead .kind { display: none; }
-:root.look-bamboo .ccard > .cface > .chead .step { position: absolute; left: 0; top: 0; width: 51px; height: 36px; min-width: 0; padding: 0; border-radius: var(--r-card) 0 0 0; background: none; color: var(--zhu); font: 600 11px/36px var(--mono); }
-:root.look-bamboo .ccard > .cface > .chead .step:hover { background: color-mix(in srgb, var(--zhu) 14%, transparent); color: var(--zhu); }
-:root.look-bamboo .ctitle { font: 600 12px var(--mono); color: var(--ink); }
-:root.look-bamboo .cpath { color: var(--ink-3); }
-:root.look-bamboo .chead .rev.new { color: var(--slip-hi); background: var(--zhu); border-radius: 2px; font: 600 10px var(--mono); }
-:root.look-bamboo .chead .rev.new i { display: none; }
-:root.look-bamboo .ccard .cdesc { padding: 4px 24px 3px 62px; background: var(--side), var(--slip); border-bottom: 2px solid var(--gap); font: italic 400 13px/20px var(--serif); color: var(--ink-2); }
-:root.look-bamboo .ccard .carea > .cbody { background: var(--side), var(--slip); }
-:root.look-bamboo .ccard > .cface::before, :root.look-bamboo .ccard > .cface::after { content: ""; position: absolute; top: 0; bottom: 0; width: 3px; z-index: 3; pointer-events: none; border-radius: 2px; background: var(--rope); box-shadow: 1px 0 1px rgba(0,0,0,.25); }
-:root.look-bamboo .ccard > .cface::before { left: 51px; }
-:root.look-bamboo .ccard > .cface::after { right: 11px; }
-:root.look-bamboo .card.note .nbody { font: 13.5px/1.6 var(--serif); }
-:root.look-bamboo .rowbg.hl { background: color-mix(in srgb, var(--zhu) 16%, transparent); box-shadow: none; }
-:root.look-bamboo .port { fill: var(--cord); stroke: none; }
-:root.look-bamboo .vcard, :root.look-bamboo .vbox, :root.look-bamboo .vlabel, :root.look-bamboo .vchip { font: 10.5px/14px var(--mono); color: var(--ink); background: var(--slip-hi); border-radius: 2px; padding: 3px 9px; box-shadow: 0 0 0 1px var(--gap), 0 4px 8px -4px rgba(40,25,5,.5); }
-:root.look-bamboo .vlabel { font-family: var(--serif); }
-:root.look-bamboo .pill, :root.look-bamboo .ctx, :root.look-bamboo .pop, :root.look-bamboo .dialog, :root.look-bamboo .keys, :root.look-bamboo .palette, :root.look-bamboo .stkpick { background: var(--slip-hi); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 3px; box-shadow: var(--sh-float); }
-:root.look-bamboo .ib, :root.look-bamboo .tbtn, :root.look-bamboo .btn, :root.look-bamboo .ctx button, :root.look-bamboo .cand, :root.look-bamboo .segc button, :root.look-bamboo .db button, :root.look-bamboo .fld, :root.look-bamboo .zoom { border-radius: 2px; }
-:root.look-bamboo .pill .tbtn:hover, :root.look-bamboo .pill .ib:hover, :root.look-bamboo .ctx button:not([disabled]):hover { background: var(--slip); color: var(--ink); }
-:root.look-bamboo .ctx button:not([disabled]):hover .ck, :root.look-bamboo .ctx button:not([disabled]):hover small { color: var(--ink-3); }
-:root.look-bamboo .pill .tbtn, :root.look-bamboo .pill .ib { color: var(--ink); }
-:root.look-bamboo .sep { width: 2px; height: 18px; background: var(--gap); }
-:root.look-bamboo .zoom { color: var(--ink-2); }
-:root.look-bamboo .toast { background: var(--ink); color: var(--slip-hi); border-radius: 2px; box-shadow: none; font: 13px var(--serif); }
-:root.look-bamboo .toast::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--zhu); flex: none; }
-:root.look-bamboo .toast .tlink { color: var(--slip-hi); text-decoration: underline 1px var(--zhu); text-underline-offset: 3px; }
-:root.look-bamboo .tip { border-radius: 2px; }
-:root.look-bamboo .slabel { font-family: var(--serif); border-radius: 2px; }
-:root.look-bamboo .sect { border-radius: 4px; }
-
 /* ---------- Ink Wash（水墨） ---------- */
 /* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
 :root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1;
@@ -950,7 +801,7 @@
           mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat; }
 :root.look-ink-wash .chead .kind { display: none; }
 /* 编号是一枚朱印，盖在卡头右边 */
-/* 印的底色留 1% 透明：见 Bamboo 卡头的注释 */
+/* 印的底色留 1% 透明：卡头整块不透明时，Chromium 会在缩放分档切换时把每张卡的行号栏单独提成合成层（几百层，捏合缩放每帧多 20–30ms） */
 :root.look-ink-wash .chead > .step { order: 9; height: 20px; padding: 0 5px; border-radius: 2px; background: color-mix(in srgb, var(--zhu) 99%, transparent); color: var(--paper); font: 600 10.5px var(--serif); letter-spacing: .04em; rotate: 2deg; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper) 35%, transparent); }
 :root.look-ink-wash .chead > .step:hover { background: color-mix(in srgb, var(--zhu) 82%, var(--ink)); color: var(--paper); }
 :root.look-ink-wash .chead > .ib:not(.cpy) { order: 10; }
@@ -989,61 +840,13 @@
 :root.look-ink-wash .mast .mn { font: 400 24px/1.15 var(--serif); color: var(--ink); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 :root.look-ink-wash .mast::after { content: ""; flex: none; width: 11px; height: 20px; border-radius: 2px; background: var(--zhu); box-shadow: inset 0 0 0 2px var(--zhu), inset 0 0 0 3px color-mix(in srgb, var(--paper) 55%, transparent); rotate: 3deg; }
 
-/* ---------- Blocks（3D · 等距积木） ---------- */
-/* 每张卡的颜色和厚度在卡自己身上算（--file-hue 由 Card.tsx 按源文件路径给）；选中、拖起、落点提示都沿用 styles.css 里叠在 --sh-card 外面的写法 */
-:root.look-blocks { --no-link: var(--ink); --no-link-w: 700; --kw-w: 600; --call-deco: underline 2px var(--yel); --ico-w: 2; --port-ring: 2px; --port-ring-c: var(--rim); --port-bg: var(--yel); }
 /* 界面字体只给浮在白板上的部件和卡头用（--ui），不换 --sys：白板里大量文字换成网页字体后，Chromium 在缩放分档切换时会把每张卡的行号栏提成合成层 */
-:root.look-blocks .app, :root.look-city .app { font-family: var(--ui); }
-:root.look-blocks .app > .board, :root.look-city .app > .board { font-family: var(--sys); }
-:root.look-blocks .board { background-image: repeating-linear-gradient(30deg, var(--gridc) 0 1px, transparent 1px 26px), repeating-linear-gradient(150deg, var(--gridc) 0 1px, transparent 1px 26px); }
-:root.look-blocks .card { --c: oklch(var(--bl) var(--bc) var(--file-hue, 88)); --s: oklch(var(--sl) var(--sc) var(--file-hue, 88));
-  --ext: 1px 1px 0 var(--s), 2px 2px 0 var(--s), 3px 3px 0 var(--s), 4px 4px 0 var(--s), 5px 5px 0 var(--s), 6px 6px 0 var(--s), 7px 7px 0 var(--s), 8px 8px 0 var(--s), 8px 8px 0 2px var(--rim);
-  --sh-card: 0 0 0 2px var(--rim), var(--ext), var(--soft);
-  --sh-lift: 0 0 0 2px var(--rim), var(--ext), var(--soft-lift); }
-:root.look-blocks .card.note { --c: var(--yel); --s: color-mix(in oklab, var(--yel) 55%, #000); }
-:root.look-blocks .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 2px var(--rim), 0 0 0 5px var(--yel), var(--ext), var(--soft); }
-:root.look-blocks .card.sel.lift { box-shadow: 0 0 0 2px var(--rim), 0 0 0 5px var(--yel), var(--sh-lift); }
-:root.look-blocks .card:not(.nobg) > .cface > .chead { gap: 8px; padding: 0 6px 0 10px; background: var(--c); color: #fff; border-bottom: 2px solid color-mix(in srgb, var(--rim) 99%, transparent); border-radius: 2px 2px 0 0; } /* 99%：见 Bamboo 卡头的注释 */
-:root.look-blocks .card.note > .cface > .chead { color: var(--rim); }
-:root.look-blocks .chead .ctitle { font: 700 13px var(--ui); letter-spacing: 0; }
-:root.look-blocks .card:not(.note) .chead .cpath.cpath, :root.look-blocks .card:not(.note) .chead .rev:not(.new), :root.look-blocks .card:not(.note) .chead .kind.kind, :root.look-blocks .card:not(.note) .chead .plusn.plusn { color: rgba(255,255,255,.82); }
-:root.look-blocks .card:not(.note) .chead .ib, :root.look-blocks .card:not(.note) .chead .lockb, :root.look-blocks .card:not(.note) .chead .subc { color: #fff; }
-:root.look-blocks .chead .ib.ib:hover, :root.look-blocks .chead .cpath.cpath:hover, :root.look-blocks .chead .rev:not(.new):hover, :root.look-blocks .chead .subc.subc:hover { background: rgba(255,255,255,.2); color: inherit; }
-:root.look-blocks .chead .cpath { font: 500 11px var(--ui); }
-:root.look-blocks .chead .step { height: 20px; padding: 0 6px; border-radius: 3px; background: #fff; color: var(--rim); font: 800 11px var(--ui); box-shadow: 0 0 0 2px var(--rim), 2px 2px 0 2px var(--rim); margin: 0 2px; }
-:root.look-blocks .chead .step:hover { background: var(--yel); color: var(--rim); }
-:root.look-blocks .chead .rev.new { margin-left: 4px; color: var(--rim); background: var(--yel); border-radius: 3px; font: 800 10.5px var(--ui); box-shadow: 0 0 0 2px var(--rim), 2px 2px 0 2px var(--rim); }
-:root.look-blocks .chead .rev.new i { display: none; }
-:root.look-blocks .cdesc { border-bottom: 2px solid var(--line); }
-:root.look-blocks .rowbg.hl { background: color-mix(in srgb, var(--yel) 38%, transparent); box-shadow: inset 2px 0 0 var(--hlbar); }
-:root.look-blocks .edge.plain.dashed { stroke-dasharray: 6 6; }
-:root.look-blocks .edge.on, :root.look-blocks .ahead.on { stroke-width: 3; }
-:root.look-blocks .port { fill: var(--yel); stroke: var(--rim); stroke-width: 2; }
-:root.look-blocks .vcard, :root.look-blocks .vbox, :root.look-blocks .vlabel, :root.look-blocks .vchip { font: 600 10.5px/15px var(--mono); color: var(--ink); background: var(--surface); border-radius: 4px; padding: 3px 9px; box-shadow: 0 0 0 2px var(--rim), 3px 3px 0 2px var(--rim); }
-:root.look-blocks .vlabel { font-family: var(--ui); }
-:root.look-blocks .tx.st-title { font-weight: 800; letter-spacing: -.01em; }
-:root.look-blocks .sect { border-radius: 8px; }
-:root.look-blocks .slabel { top: -14px; color: var(--rim); background: var(--yel); border-radius: 4px; font-weight: 700; box-shadow: 0 0 0 2px var(--rim), 2px 2px 0 2px var(--rim); }
-:root.look-blocks .slabel .dots, :root.look-blocks .slabel .chev2 { color: color-mix(in srgb, var(--rim) 65%, transparent); }
-:root.look-blocks .ctx, :root.look-blocks .pop, :root.look-blocks .dialog, :root.look-blocks .keys, :root.look-blocks .palette, :root.look-blocks .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 4px; box-shadow: var(--sh-float); }
-:root.look-blocks .ctx button:not([disabled]):hover { background: var(--yel); color: var(--rim); }
-:root.look-blocks .ctx button:not([disabled]):hover .ck, :root.look-blocks .ctx button:not([disabled]):hover small { color: var(--rim); }
+:root.look-city .app { font-family: var(--ui); }
+:root.look-city .app > .board { font-family: var(--sys); }
+/* 99%：见 Ink Wash 卡头编号印章的注释 */
 /* 工具条没有底板：每个按钮是一块积木键，按下去往右下沉，厚度消失 */
-:root.look-blocks :is(.bbar, .dock) .pill { gap: 9px; padding: 2px 6px 6px 2px; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
-:root.look-blocks .bbar .pill > .tbtn, :root.look-blocks .bbar .pill > .ib, :root.look-blocks .dock .pill > .ib, :root.look-blocks .dock .zoom.zoom { height: 30px; border-radius: 4px; color: var(--ink); background: var(--surface); box-shadow: 0 0 0 2px var(--rim), 3px 3px 0 2px var(--rim); transition: translate 50ms, box-shadow 50ms, background .1s; }
-:root.look-blocks .bbar .pill > .ib, :root.look-blocks .dock .pill > .ib { width: 30px; }
-:root.look-blocks .dock .zoom { display: inline-grid; place-items: center; padding: 0 6px; font: 700 11px var(--mono); }
-:root.look-blocks .bbar .pill > .tbtn:hover, :root.look-blocks .bbar .pill > .ib:hover, :root.look-blocks .dock .pill > .ib:hover, :root.look-blocks .dock .zoom.zoom:hover { background: var(--yel); color: var(--rim); }
-:root.look-blocks .bbar .pill > .tbtn:active, :root.look-blocks .bbar .pill > .ib:active, :root.look-blocks .dock .pill > .ib:active, :root.look-blocks .dock .zoom.zoom:active { translate: 3px 3px; scale: none; box-shadow: 0 0 0 2px var(--rim); }
-:root.look-blocks :is(.bbar, .dock) .sep { display: none; }
-:root.look-blocks .ib, :root.look-blocks .tbtn, :root.look-blocks .btn, :root.look-blocks .ctx button, :root.look-blocks .cand, :root.look-blocks .segc button, :root.look-blocks .db button, :root.look-blocks .fld { border-radius: 4px; }
-:root.look-blocks .toast { background: var(--rim); color: #fff; border-radius: 4px; box-shadow: 3px 3px 0 var(--yel); font: 600 12.5px var(--ui); }
-:root.look-blocks .toast::before { content: ""; width: 10px; height: 10px; border-radius: 2px; background: var(--yel); flex: none; }
-:root.look-blocks .toast .tlink { color: var(--yel); }
-:root.look-blocks .tip { border-radius: 4px; }
-:root.look-blocks .mast { display: flex; position: absolute; left: 16px; top: 14px; z-index: 3; pointer-events: none; height: 30px; align-items: center; padding: 0 12px; max-width: 40%; border-radius: 4px; background: var(--yel); box-shadow: 0 0 0 2px var(--rim), 3px 3px 0 2px var(--rim); }
-:root.look-blocks .mast .mn { font: 800 13px var(--ui); color: var(--rim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
+.dock) .pill { gap: 9px; padding: 2px 6px 6px 2px; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+.dock) .sep { display: none; }
 /* ---------- City（城市道路） ---------- */
 /* 街区、河、公园、楼是白板背景（固定在窗口上，镜头动时不重画）。
    调用是马路：路沿（.casings 里一层，在所有线下面）+ 路面（.edge）+ 黄色虚中线（.lane），横平竖直；被调用那头停一辆车（三条 path，见 route.ts carPaths）代替箭头；
@@ -1060,7 +863,7 @@
 :root.look-city .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-card); }
 :root.look-city .card.sel.lift { box-shadow: 0 0 0 2px var(--sign), var(--sh-lift); }
 /* 卡头是一块蓝底白字的路牌（内圈一道白线）；Note 是绿色指路牌 */
-:root.look-city .card:not(.nobg) > .cface > .chead { margin: 5px 5px 0; padding: 0 6px 0 9px; gap: 8px; border: 0; border-bottom: 1px solid rgba(0,0,0,.01); border-radius: 4px; /* 透明的下沿：见 Bamboo 卡头的注释 */ background: var(--sign); color: var(--sign-ink); box-shadow: var(--signbox); }
+:root.look-city .card:not(.nobg) > .cface > .chead { margin: 5px 5px 0; padding: 0 6px 0 9px; gap: 8px; border: 0; border-bottom: 1px solid rgba(0,0,0,.01); border-radius: 4px; /* 透明的下沿：见 Ink Wash 卡头编号印章的注释 */ background: var(--sign); color: var(--sign-ink); box-shadow: var(--signbox); }
 :root.look-city .card.note > .cface > .chead { background: var(--gsign); box-shadow: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85); }
 :root.look-city .chead .ctitle { font: 600 13px var(--ui); letter-spacing: 0; }
 :root.look-city .card:not(.nobg) > .cface > .chead .cpath.cpath, :root.look-city .card:not(.nobg) > .cface > .chead .rev:not(.new), :root.look-city .card:not(.nobg) > .cface > .chead .kind.kind, :root.look-city .card:not(.nobg) > .cface > .chead .plusn.plusn { color: rgba(255,255,255,.75); }
@@ -1158,23 +961,11 @@
 .st-prev[data-look="poster"] .sp-card { outline: .5px solid var(--rule); outline-offset: 1.5px; }
 .st-prev[data-look="poster"] .sp-h { justify-content: center; background: none; }
 .st-prev[data-look="poster"] .sp-step { display: none; }
-.st-prev[data-look="bamboo"] .sp-card { background: repeating-linear-gradient(180deg, var(--slip) 0 4px, var(--gap) 4px 5px); box-shadow: var(--sh-card); }
-.st-prev[data-look="bamboo"] .sp-h { background: var(--slip-hi); border-bottom: 1px solid var(--gap); }
-.st-prev[data-look="bamboo"] .sp-step { background: var(--zhu); }
-.st-prev[data-look="bamboo"] .sp-card.a::after { content: ""; position: absolute; top: 0; bottom: 0; right: 5px; width: 1.5px; background: var(--cord); }
 .st-prev[data-look="ink-wash"] { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--bg); }
 :root[data-theme="dark"] .st-prev[data-look="ink-wash"] { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--bg); }
 .st-prev[data-look="ink-wash"] .sp-h { background: none; border-bottom: 0; }
 .st-prev[data-look="ink-wash"] .sp-step { order: 2; margin-left: auto; width: 4px; height: 5px; background: var(--zhu); }
 .st-prev[data-look="ink-wash"] .sp-edge path { stroke-width: 1.4; }
-.st-prev[data-look="blocks"] { background-image: repeating-linear-gradient(30deg, var(--gridc) 0 1px, transparent 1px 8px), repeating-linear-gradient(150deg, var(--gridc) 0 1px, transparent 1px 8px); }
-.st-prev[data-look="blocks"] .sp-card { overflow: visible; border-radius: 2px; box-shadow: 0 0 0 1px var(--rim), 1px 1px 0 oklch(var(--sl) var(--sc) 30), 2px 2px 0 oklch(var(--sl) var(--sc) 30), 3px 3px 0 oklch(var(--sl) var(--sc) 30), 3px 3px 0 1px var(--rim); }
-.st-prev[data-look="blocks"] .sp-card.b { box-shadow: 0 0 0 1px var(--rim), 1px 1px 0 oklch(var(--sl) var(--sc) 190), 2px 2px 0 oklch(var(--sl) var(--sc) 190), 3px 3px 0 oklch(var(--sl) var(--sc) 190), 3px 3px 0 1px var(--rim); }
-.st-prev[data-look="blocks"] .sp-h { height: 10px; background: oklch(var(--bl) var(--bc) 30); border-bottom: 1px solid var(--rim); }
-.st-prev[data-look="blocks"] .sp-card.b .sp-h { background: oklch(var(--bl) var(--bc) 190); }
-.st-prev[data-look="blocks"] .sp-step { background: #fff; box-shadow: 0 0 0 1px var(--rim); }
-.st-prev[data-look="blocks"] .sp-t { background: #fff; }
-.st-prev[data-look="blocks"] .sp-edge path { stroke-width: 1.8; }
 .st-prev[data-look="city"] { background: linear-gradient(var(--street) 0 3px, transparent 3px) 0 12px / 40px 40px, linear-gradient(90deg, var(--street) 0 3px, transparent 3px) 14px 0 / 40px 40px, var(--bg); }
 .st-prev[data-look="city"] .sp-h { height: 10px; margin: 2px 2px 1px; border-radius: 2px; border: 0; background: var(--sign); }
 .st-prev[data-look="city"] .sp-step { background: var(--shield); }
@@ -1204,12 +995,7 @@
 /* Poster：饱和色 + 粗墨边 */
 [data-look="poster"] .glyph.bi { --stk-bg: oklch(from var(--c) l calc(c * 1.25) h); --stk-fg: #fff; --stk-ring: var(--ink); --stk-rw: 2; }
 [data-look="poster"] .glyph.bi .fg { stroke-width: 2.4; }
-/* Bamboo：朱砂和竹色，像刻在竹片上的印 */
-[data-look="bamboo"] .glyph.bi { --stk-bg: color-mix(in oklab, var(--c) 45%, #6b3a1c); --stk-fg: #f3e6c4; --stk-ring: #f3e6c4; --stk-rw: 1; }
 /* Ink Wash：淡墨里留一点颜色 */
 [data-look="ink-wash"] .glyph.bi { --stk-bg: color-mix(in oklab, var(--c) 30%, var(--ink)); --stk-fg: var(--paper); }
-/* Blocks：饱和色 + 黑描边 */
-[data-look="blocks"] .glyph.bi { --stk-bg: oklch(from var(--c) l calc(c * 1.3) h); --stk-fg: #fff; --stk-ring: var(--rim); --stk-rw: 2; }
-[data-look="blocks"] .glyph.bi .fg { stroke-width: 2.4; }
 /* City：交通标志，白边 */
 [data-look="city"] .glyph.bi { --stk-bg: var(--c); --stk-fg: #fff; --stk-ring: #fff; --stk-rw: 1.6; }

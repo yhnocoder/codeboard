@@ -148,7 +148,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .ib:active, .tbtn:active, .bname:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
 .ib[disabled] { opacity: .35; }
 /* 图标（ui/icons.tsx）横竖线画在整数坐标上：2px 描边正好盖满两行像素；1px 描边整组平移 (-.5, -.5) 落到半像素中心上。
-   线宽只能是 1px 或 2px（1.4 / 1.5 在 1x 和 2x 屏上都会糊）。轻量主题 1px；繁复主题（Classic、Colorful、Newspaper、Poster、Blocks、City）
+   线宽只能是 1px 或 2px（1.4 / 1.5 在 1x 和 2x 屏上都会糊）。轻量主题 1px；繁复主题（Classic、Colorful、Newspaper、Poster、City）
    在 themes.css 里设 --ico-w: 2。.f 是填色的小方块（⋯ 的点），本身在整像素上，不平移 */
 .ico { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1); stroke-linecap: round; stroke-linejoin: round; }
 .ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
@@ -187,12 +187,14 @@ input, textarea { font: inherit; color: var(--ink); }
 .src { tab-size: 4; }
 /* 藏起来的公共缩进：代码往左挪，留 16px 画几根细竖线（一根 = 一层，最多 4 根） */
 .src.ded .l { text-indent: calc(16px - var(--ded) * 1ch); }
-.dedm { position: absolute; left: 55px; top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; background: repeating-linear-gradient(90deg, var(--hair) 0 1px, transparent 1px 3px); border-radius: 1px; }
+.dedm { position: absolute; left: 55px; top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; opacity: .7;
+  background: repeating-linear-gradient(90deg, var(--hair) 0 .5px, transparent .5px 3px);
+  -webkit-mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); } /* 很淡的细虚线，不抢代码的眼 */
 .dedm::before { content: ""; position: absolute; inset: 0 -4px; } /* 悬停热区宽一点，好看到提示 */
-.dedm:hover { background: repeating-linear-gradient(90deg, var(--ink-3) 0 1px, transparent 1px 3px); }
+.dedm:hover { opacity: 1; }
 .card.lo-ov .dedm { visibility: hidden; }
 .chrome .src, .chrome .src * { user-select: text; -webkit-user-select: text; cursor: text; }
-.src .l { height: 20px; box-shadow: var(--l-sh, none); } /* --l-sh：Bamboo 每根竹简下面的缝（主题只换变量，不加匹配代码行的规则） */
+.src .l { height: 20px; }
 .src .l.drop { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .gutter .no.drop { color: var(--accent); font-weight: 600; }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }

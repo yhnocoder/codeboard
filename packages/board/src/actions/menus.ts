@@ -19,7 +19,7 @@ import { send, ask } from "../host";
 import { md, inline } from "../md";
 import { frameOf } from "../state/sections";
 import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
-import { addPlain, callOn, openVars, startConnect, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
+import { addPlain, callOn, manualCall, openVars, startConnect, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
 import { commitMenu } from "./versions";
@@ -242,10 +242,11 @@ export function linkMenu(id: string, x: number, y: number) {
     const opts = [[undefined, "Auto"], ["left", "Left"], ["right", "Right"], ...(whole ? [["top", "Top"], ["bottom", "Bottom"]] : [])] as [LinkSide | undefined, string][];
     return opts.map(([v, lb]) => ({ label: lb, checked: cur === v, run: () => setLinkSide(id, end, v) }));
   };
-  // Call Mark 只在出发行确实调用了目标卡时给（已经有的总能关掉）
-  const canCall = !!L.call || !!callOn(L.from, L.to);
+  // Call Mark：出发行确实调用了目标卡时自动认出；认不出时代码卡之间也能手动标（已经有的总能关掉）
+  const found = !L.call && !!callOn(L.from, L.to);
+  const canCall = !!L.call || found || !!manualCall(L.from, L.to);
   openMenu([
-    ...(canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : "This line calls the target function", run: () => toggleCallMark(id) } as Item, null] : []),
+    ...(canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item, null] : []),
     { label: "Line", sub: [
       { label: "Solid", checked: !L.style?.dash, run: () => setLinkStyle(id, (s) => { delete s.dash; }) },
       { label: "Dashed", checked: !!L.style?.dash, run: () => setLinkStyle(id, (s) => { s.dash = true; }) },

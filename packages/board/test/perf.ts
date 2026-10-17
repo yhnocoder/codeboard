@@ -277,7 +277,7 @@ async function once() {
   await focusCard(h, hub);
   // Grab the header at a point that really is the header: arrows are drawn above the cards, and a long arrow between two other
   // cards of the same row runs along the heading row (card ends attach there), so the kind glyph (the spot v0.1.6 grabbed) can be
-  // under its hit area (City, Bamboo). Take the glyph when it is free, so drag numbers stay comparable with v0.1.6; otherwise scan
+  // under its hit area (City). Take the glyph when it is free, so drag numbers stay comparable with v0.1.6; otherwise scan
   // the header for a draggable point that is not a button and not covered
   const bx = await h.page.evaluate((id) => {
     const free = (x: number, y: number) => {

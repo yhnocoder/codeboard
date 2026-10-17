@@ -34,6 +34,20 @@ export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
 }
 
 /**
+ * 认不出调用（Process(target=…)、动态分发、整张卡连整张卡）时用户手动标成 Call：名字取目标卡的函数名（__init__ 取类名），
+ * col 0 = 不指定是行里哪一处。两端都得是代码卡（可以不同语言）
+ */
+export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
+  const f = cardById(from.card)?.card, t = cardById(to.card)?.card;
+  if (!isCode(f) || !isCode(t) || cardById(from.card)?.host.id === cardById(to.card)?.host.id) return;
+  const q = t.segments.find((s) => s.symbol)?.symbol?.qual.split(".");
+  // 没有函数的卡（跨语言片段、自由代码）用卡名
+  const name = !q ? cardTitle(t) : q[q.length - 1] === "__init__" && q.length > 1 ? q[q.length - 2] : q[q.length - 1];
+  if (!name) return;
+  return { line: from.line ?? 0, col: 0, end: 0, name, loop: false };
+}
+
+/**
  * 新箭头。从代码行连到「这一行调用的函数」所在的卡时自动带上 Call 标记（W01 B：手画的线连到被调函数），
  * 连到别的（Note、某一行）就是普通箭头。两端可以是整张卡或某一行，数量不限；只有同一张卡的同一处连自己不行
  */
@@ -50,13 +64,14 @@ export function addPlain(from: EndRef, to: EndRef, side?: LinkSide) {
 export function makeCall(id: string) {
   const L = state.board.links.find((l) => l.id === id);
   if (!L || L.call) return;
-  const call = callOn(L.from, L.to);
+  const found = callOn(L.from, L.to);
+  const call = found ?? manualCall(L.from, L.to);
   if (!call) return;
   mutate((b) => {
     const l = b.links.find((k) => k.id === id);
     if (l) l.call = callMark(call);
   });
-  askCands(id, L.from.card, L.from.seg!, call, L.to.card);
+  if (found) askCands(id, L.from.card, L.from.seg!, call, L.to.card);
 }
 export function startConnect(id: string) {
   setConnectFrom({ card: id });
@@ -126,7 +141,7 @@ export function setLinkStyle(id: string, f: (s: LinkStyle) => void) {
 /** 某一端从哪边进出；undefined = Auto */
 export const setLinkSide = (id: string, end: "from" | "to", side: LinkSide | undefined) => (end === "from" ? setSides(id, side ?? "auto") : setSides(id, undefined, side ?? "auto"));
 export const clearLinkSides = (id: string) => resetSides(id);
-/** Call 标记开关：关掉时参数和 ↺ 跟着收起，自己写的字留着；打开要出发行确实调用了目标卡 */
+/** Call 标记开关：关掉时参数和 ↺ 跟着收起，自己写的字留着；打开时认不出调用也能手动标（manualCall） */
 export function toggleCallMark(id: string) {
   const L = state.board.links.find((l) => l.id === id);
   if (!L) return;

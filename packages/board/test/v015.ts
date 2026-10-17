@@ -482,7 +482,7 @@ export const V015: Record<string, () => Promise<void>> = {
   },
   /** Built-in stickers in every theme */
   async v15stkthemes() {
-    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "bamboo", "ink-wash", "blocks", "city"]) {
+    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "ink-wash", "city"]) {
       const b = emptyBoard("b1", "v0.1.5");
       const names = ["star", "question", "exclaim", "check", "flag", "zap", "bug", "todo", "heart", "hourglass", "warning", "todo-text"];
       names.forEach((n, i) => b.stickers.push({ id: `k${i}`, icon: { pack: "builtin", name: n }, at: { kind: "canvas", x: 40 + i * 52, y: 40, size: 36 } }));
@@ -497,7 +497,7 @@ export const V015: Record<string, () => Promise<void>> = {
   /** Code card metrics per theme: char width, line height, header height, code area vertical padding; cards must fit the same content after a theme switch */
   async v15metrics() {
     const rows: any[] = [];
-    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "bamboo", "ink-wash", "blocks", "city"]) {
+    for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "ink-wash", "city"]) {
       const b = richBoard();
       const h = await open({ board: b, light, w: 1500, h: 950, settings: { theme } as any });
       await h.page.waitForTimeout(500);
@@ -517,7 +517,7 @@ export const V015: Record<string, () => Promise<void>> = {
   /** Fixed-height code card: visible code area height unchanged after a theme switch */
   async v15themefit() {
     const out: Record<string, number> = {};
-    for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite", "bamboo", "ink-wash", "blocks", "city"]) {
+    for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite", "ink-wash", "city"]) {
       const b = richBoard();
       b.place[b.cards[1].id].h = 164; // code area height (format v4): 200 tall in Warm Ink
       const h = await open({ board: b, light, w: 1500, h: 950, settings: { theme } as any });

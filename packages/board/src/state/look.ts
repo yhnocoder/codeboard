@@ -2,7 +2,6 @@
 // 其余全在 themes.css。切主题时这里只重算一次连线几何，不加每帧的工作。
 import { createMemo, createRoot, createSignal } from "solid-js";
 import { state } from "./store";
-export { fileHash } from "./filehash";
 
 export const look = () => state.host.settings?.theme ?? "warm-ink";
 
@@ -15,9 +14,7 @@ const SHAPES: Record<string, Partial<Shape>> = {
   colorful: { head: "triangle" },
   newspaper: { head: "triangle" },
   poster: { port: "diamond" },
-  bamboo: { head: "dot" },
   "ink-wash": { head: "dot" },
-  blocks: { head: "dot" },
   // City：路横平竖直；被调用那头停一辆车代替箭头；起点是一块圆形小广场。路沿、中线、路口、车流见 canvas/Links.tsx
   // clear 40：路面中线离卡边 40，路沿（16px）外还空出 32，约两条路宽
   city: { route: "elbow", head: "car", port: "plaza", clear: 40 },

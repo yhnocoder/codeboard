@@ -17,7 +17,7 @@ export type Stale =
 export const THEMES = [
   ["warm-ink", "Warm Ink"], ["graphite", "Graphite"], ["soft-light", "Soft Light"], ["drafting", "Drafting"],
   ["colorful", "Colorful"], ["newspaper", "Newspaper"], ["poster", "Poster"], ["classic", "Classic"],
-  ["bamboo", "Bamboo"], ["ink-wash", "Ink Wash"], ["blocks", "Blocks"], ["city", "City"],
+  ["ink-wash", "Ink Wash"], ["city", "City"],
 ] as const;
 export type ThemeId = (typeof THEMES)[number][0];
 
