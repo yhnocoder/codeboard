@@ -433,9 +433,16 @@ export function trackLinks() {
     return { m, pt };
   });
   // 把节点搬到它该在的那一层：只动内容变了的层，层里已经在位置上的节点不动
+  const was = new WeakMap<object, string>();
   createEffect(() => {
     const { m, pt } = plan();
     slotTick();
+    // 在上下两层之间换了层的线和合并段：先在原来那层留个影子，再搬，然后淡入 / 淡出
+    for (const [k, x] of m) {
+      if (k !== TOP && k !== BOTTOM) continue;
+      for (const r of x.rs) { const d = r.dom!; if (was.has(r) && was.get(r) !== k) crossfade(r, [d.casing, d.kerb, d.line, d.label!], k === TOP); was.set(r, k); }
+      for (const v of x.ms) { if (was.has(v) && was.get(v) !== k) crossfade(v, [v.dom.casing, v.dom.kerb, v.dom.line], k === TOP); was.set(v, k); }
+    }
     for (const [k, s] of slots) {
       const want = m.get(k) ?? { rs: [], ms: [] };
       // 圆点：没浮上来的线的在 PORTS 层，浮上来的跟线一起在最上面那层
@@ -453,6 +460,28 @@ export function trackLinks() {
   createEffect(on(camMoving, (mv) => { if (!mv) setHoverCard(hovNow); }, { defer: true }));
   // City 的车流：挑哪几条路只在镜头停下时算一次（Traffic.tsx）
   trackTraffic(views);
+}
+
+// 线浮上来、落回去时不硬切（Linda 10-17：太僵）：原来那层留一份影子，浮上来的那份从透明淡入（影子在卡下面垫着，没被卡盖住的那段一直在）；
+// 落回去时影子留在上面一层淡出。影子只是拷贝的几条 path，去掉 data-lk / data-link，不接事件，动画完就删
+const fading = new Map<object, () => void>();
+function crossfade(key: object, els: Element[], up: boolean) {
+  fading.get(key)?.();
+  const ms = tune("liftFade") * (100 / tune("animSpeed"));
+  if (ms <= 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  els = els.filter((el) => el.firstElementChild);
+  const ghosts = els.map((el) => {
+    const c = el.cloneNode(true) as Element;
+    for (const x of [c, ...c.querySelectorAll("[data-lk],[data-link],[id]")]) { x.removeAttribute("data-lk"); x.removeAttribute("data-link"); x.removeAttribute("id"); }
+    c.classList.add("ghost");
+    el.before(c);
+    return c;
+  });
+  // 标签框外面那层是 display: contents，透明度只能写在它里面的元素上
+  const fx = (up ? els : ghosts).flatMap((el) => (el instanceof HTMLElement ? [...el.children] : [el])).map((el) => el.animate(up ? [{ opacity: 0 }, { opacity: 1 }] : [{ opacity: 1 }, { opacity: 0 }], { duration: ms, easing: "ease-out" }));
+  const done = () => { if (fading.get(key) !== done) return; fading.delete(key); for (const a of fx) a.cancel(); for (const g of ghosts) g.remove(); };
+  fading.set(key, done);
+  if (fx[0]) fx[0].onfinish = done; else done();
 }
 
 /** 线的一层：bottom = 所有卡下面那一层；ports = 没浮上来的线的圆点；top = 临时浮上来的线和正在连的线 */

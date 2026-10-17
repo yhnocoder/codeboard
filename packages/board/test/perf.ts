@@ -312,6 +312,20 @@ async function once() {
   }
   await h.page.waitForTimeout(1200);
 
+  // Hover the hub card and leave it: all its arrows lift above the cards and drop back, with a cross-fade each way
+  const on = await h.page.evaluate((id) => { const r = document.querySelector(`.card[data-id="${id}"] [data-drag]`)!.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; }, hub);
+  const off = await h.page.evaluate(() => {
+    for (let y = 20; y < innerHeight - 60; y += 20) for (let x = 20; x < innerWidth - 20; x += 20) { const e = document.elementFromPoint(x, y); if (e?.closest(".world, .board") && !e.closest(".card, [data-link], .lw, .stk")) return { x, y }; }
+    return null;
+  });
+  if (off) {
+    await h.page.mouse.move(off.x, off.y); await h.page.waitForTimeout(500);
+    res.hover = sum(await steps(h, cdp, 12, async (i) => {
+      if (i % 2) await h.page.mouse.move(off.x, off.y); else await h.page.mouse.move(on.x, on.y);
+      await h.page.waitForTimeout(i % 2 ? 500 : 250);
+    }, "hover"));
+  }
+
   // Mutate: move the selected card with arrow keys (one mutate each: undo snapshot + invariants + autosave dependencies)
   res.nudge = sum(await steps(h, cdp, 30, async () => { await h.page.keyboard.press("ArrowRight"); }, "nudge"));
   res.boardKB = Math.round(JSON.stringify(board).length / 1024);
