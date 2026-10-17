@@ -94,6 +94,10 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
   const wall: number[] = [];
   const prof = name && name === PROFILE;
   const tr = name && name === arg("trace", "");
+  // Start every scenario from a collected heap: otherwise a major GC owed by earlier work (load, drag, the autosave) lands in
+  // whichever scenario happens to cross V8's threshold, and that scenario's work per step jumps by its cost (seen as a 1.5x nudge "regression")
+  await cdp.send("HeapProfiler.collectGarbage");
+  await raf(h);
   // Always trace: each main-thread task is the work for one frame; a task over 16.7 ms drops a frame
   const events: any[] = [];
   const onData = (e: any) => events.push(...e.value);

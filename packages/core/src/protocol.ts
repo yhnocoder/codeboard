@@ -1,7 +1,9 @@
-// 宿主 ↔ 白板的消息。白板持有白板状态，改动后整板发回来保存；宿主负责读代码、高亮、版本、跳转。
+// 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
+// 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
 import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta } from "./model";
 import type { SegView } from "./lines";
+import type { BoardPatch, SharedUpdate } from "./patch";
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
@@ -135,11 +137,14 @@ export type HostToBoard =
   | { type: "toast"; text: string }
   /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
   | { type: "githubPicker"; repo?: string }
+  /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
+  | { type: "shared"; cards: SharedUpdate[] }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
   | { type: "ready" }
-  | { type: "save"; req: number; board: Board } // 回 null；写盘失败回 error，白板过一会儿重试
+  /** 自动保存：变了的项（undo = 这批改动里有撤销 / 重做）。回跳过的共享项数；写盘失败回 error，白板过一会儿整块重发 */
+  | { type: "patch"; req: number; patch: BoardPatch; undo?: true }
   | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
   /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
   | { type: "open"; card: string; seg?: string; line?: number }
@@ -200,7 +205,7 @@ export type AskType = Extract<BoardToHost, { req: number }>["type"];
 
 /** 请求 → 回答的类型表：白板的 ask 和宿主的回答两边都按它检查 */
 type Replies = {
-  save: null;
+  patch: { skipped: number };
   expand: ExpandResult;
   callVars: Var[];
   peek: PeekResult;

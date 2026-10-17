@@ -1,5 +1,5 @@
 // 一块打开的白板（与 VS Code 无关的部分）：读白板、算段的展示数据和版本状态、发 init；宿主信息；版本状态重算。
-// 白板状态由 webview 持有，每次改动整板发回来保存。webview 本身（BoardView）和面板管理（BoardHost）由 VS Code 适配层实现。
+// 白板状态由 webview 持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。webview 本身（BoardView）和面板管理（BoardHost）由 VS Code 适配层实现。
 import type { Board, BoardMeta, BoardToHost, HostInfo, HostToBoard, Stale } from "@codeboard/core";
 import type { Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor } from "./versions";

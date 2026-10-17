@@ -2,7 +2,7 @@
 import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { tune } from "./state/tune";
 import { unwrap } from "solid-js/store";
-import { state, mutate, live, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
+import { state, mutate, liveCam, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
 import { cam, camTarget, zoomAt } from "./state/camera";
 import { banner, setBanner, walk, keysOpen, setKeysOpen, editing, setEditing, paletteOpen, setPaletteOpen } from "./state/ui";
 import { Canvas } from "./canvas/Canvas";
@@ -35,7 +35,7 @@ export function App() {
       const c = state.board.cam;
       if (Math.abs(c.x - t.x) + Math.abs(c.y - t.y) + Math.abs(c.z - t.z) > 0.5) {
         // 镜头不进撤销栈
-        live((b) => { b.cam = { x: Math.round(t.x), y: Math.round(t.y), z: +t.z.toFixed(3) }; });
+        liveCam({ x: Math.round(t.x), y: Math.round(t.y), z: +t.z.toFixed(3) });
       }
     }, 600);
   }));

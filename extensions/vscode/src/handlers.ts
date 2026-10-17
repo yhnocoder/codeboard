@@ -30,13 +30,15 @@ export function makeHandler(panels: BoardHost): Handler {
   const store = panels.store;
   const h: Handlers = {
     ready: () => undefined, // Panels 自己处理
-    save: async (p, m) => {
-      if (p.board) m.board.id = p.board.id; // 存到这块面板打开的那个文件，不信白板发来的 id
-      const renamed = p.board?.name !== m.board.name;
-      p.board = m.board;
-      await store.save(m.board);
-      if (renamed) { p.view.title = m.board.name; void panels.pushBoards(); }
-      return null;
+    patch: async (p, m) => {
+      // 存到这块面板打开的那个文件（p.id），不信白板发来的东西里的 id
+      const name = p.board?.name;
+      const skipped = await store.patch(p.id, m.patch, { undo: m.undo });
+      p.board = store.peek(p.id);
+      // 撤销时跳过的共享项：宿主这边留着别的白板的版本，白板换回来
+      if (skipped.length) p.post({ type: "shared", cards: skipped });
+      if (p.board && p.board.name !== name) { p.view.title = p.board.name; void panels.pushBoards(); }
+      return { skipped: skipped.length };
     },
     selection: (p, m) => { p.selection = m; },
     open: (p, m) => openCard(p, m),

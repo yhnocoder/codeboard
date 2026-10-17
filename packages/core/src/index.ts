@@ -5,6 +5,7 @@ export * from "./protocol";
 export * from "./diff";
 export * from "./flow";
 export * from "./edit";
+export * from "./patch";
 export * from "./layout";
 export * from "./paste";
 export * from "./web";
