@@ -1,5 +1,5 @@
 // 白板界面：画布、底部唯一的工具栏（新建 · Search · ⋯）、缩放、讲解条、横幅、提示。看板就是一个普通编辑器标签页。
-import { Show, For, createEffect, createMemo, createSignal, on, onCleanup } from "solid-js";
+import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { tune } from "./state/tune";
 import { unwrap } from "solid-js/store";
 import { state, mutate, live, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
@@ -13,10 +13,8 @@ import { SettingsLayer } from "./ui/Settings";
 import { SHORTCUTS, keyText } from "./ui/shortcuts";
 import { GitHubPicker } from "./ui/GitHubPicker";
 import { MenuLayer, DialogLayer, TooltipLayer, openMenu, promptText } from "./ui/Menu";
-import { Editable } from "./ui/Editable";
 import { Icon } from "./ui/icons";
 import { setTool } from "./interact";
-import { send } from "./host";
 import { cardTitle } from "@codeboard/core";
 import * as A from "./actions";
 import { flows, cardById } from "./state/store";

@@ -1,23 +1,17 @@
 // 流程：点调用展开、接到已有的卡、Tidy Layout、折叠子树、讲解（Walkthrough）、类卡成员。
 import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, freeInView, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type GraphMark, type WebMeta, type CallSpan, type ExpandPick, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
+  uid, findCard, isCode, cardTitle, segOf, allCodeCards,
+  placeChild, freeInView, walkOrder, descendants, SIB_GAP,
+  estSize, defaultWidth,
+  type Card, type CodeCard, type Link, type Place,
+  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView,
 } from "@codeboard/core";
-import {
-  state, setState, mutate, sync, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, worldView, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
+import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
+import { camTo, camTarget, worldView, fitRect, fitTop, isVisible, union } from "../state/camera";
+import { flash, ping, setWalk, walk } from "../state/ui";
+import { openPop } from "../state/pop";
 import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
 import { anchorPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
 import { jumpTo } from "./nav";
 

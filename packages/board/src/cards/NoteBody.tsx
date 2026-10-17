@@ -1,5 +1,5 @@
 // Note（有背景的便签）和 Text（直接写在画布上的字）。内容是 Markdown，支持公式。
-import { Show, For } from "solid-js";
+import { Show } from "solid-js";
 import { findCard, type NoteCard } from "@codeboard/core";
 import { mutate, isSel, sel, placeOf } from "../state/store";
 import { editing } from "../state/ui";

@@ -1,7 +1,7 @@
 // 贴纸（#44 #45）：工具栏 Sticker → 选图标 → 点一下放下。贴在代码行（进行号栏，随 Update 跟行走）、卡片角上、或画布任意位置。
 import { createSignal } from "solid-js";
 import { uid, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
-import { state, mutate, live, beginGesture, cardById, toast, rectOf } from "../state/store";
+import { state, mutate, live, beginGesture, toast, rectOf } from "../state/store";
 import { linkCurve, curveAt, nearestT } from "../canvas/Links";
 import { cam } from "../state/camera";
 import { openMenu, type Item } from "../ui/Menu";

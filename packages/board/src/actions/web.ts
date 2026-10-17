@@ -3,7 +3,7 @@ import { createSignal } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, removeCards, estSize, defaultWidth, findFree,
-  type Board, type Card, type LinkItem, type LinksCard, type WebCard, type WebMeta, type WebStyle, type Place,
+  type Board, type Card, type LinkItem, type LinksCard, type WebCard, type WebStyle, type Place,
 } from "@codeboard/core";
 import { state, mutate, sync, select, cardById, rectOf, placeOf, toast, sel } from "../state/store";
 import { toWorld, viewportCenter } from "../state/camera";

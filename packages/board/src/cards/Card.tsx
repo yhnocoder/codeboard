@@ -2,7 +2,7 @@
 import { send } from "../host";
 import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
-  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf, descendants,
+  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, descendants,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf } from "../state/store";
@@ -13,7 +13,6 @@ import { collapsedHome } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { CardStickers, BoundStickers } from "../stickers/Picker";
-import { lod } from "../state/camera";
 import { fileHue } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";

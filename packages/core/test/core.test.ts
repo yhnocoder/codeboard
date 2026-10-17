@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import {
   alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, descendants, hiddenByCollapse, stampBorn, loadBoard, snapMove, align,
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize,
-  type Board, type Card, type CodeCard, type Link, type Segment, type SegView,
+  type Board, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
 import { initAnalysis, analyze, planSelection, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
 

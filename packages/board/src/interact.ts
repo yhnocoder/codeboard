@@ -18,7 +18,7 @@ import {
 import { frames, deepestAt, frameOf, sec, descSections, allMembers, collapsedHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { closeMenu, menuOpen, dialogOpen } from "./ui/Menu";
-import { pops, closePop, closeAllPops, pinPop } from "./state/pop";
+import { pops, closeAllPops, pinPop } from "./state/pop";
 import * as A from "./actions";
 import { send } from "./host";
 

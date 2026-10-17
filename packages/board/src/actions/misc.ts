@@ -1,25 +1,13 @@
 // 其他：宿主转来的快捷键、导出 PNG、点选一张卡、Search Workspace、工作区 diff。
 import { unwrap } from "solid-js/store";
-import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
-} from "@codeboard/core";
-import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
+import { isCode, bounds, center, contains, type KeyAction } from "@codeboard/core";
+import { state, sel, lineSel, cardById, rectOf, toast } from "../state/store";
+import { camTarget, view, zoomAt } from "../state/camera";
+import { setPaletteOpen, toggleShown, setKeysOpen } from "../state/ui";
+import { openPop, updatePop } from "../state/pop";
 import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
 import { duplicateSel, toggleLock } from "./edit";
-import { fitAll, lastPointer, openCode } from "./common";
+import { fitAll, lastPointer } from "./common";
 import { toggleSettings, openSettings } from "./settings";
 
 export { toggleShown, setKeysOpen, zoomAt, view, center, contains };

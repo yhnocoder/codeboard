@@ -2,23 +2,20 @@
 import { unwrap } from "solid-js/store";
 import {
   replaceCards, removeLinks,
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
+  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion,
+  bounds, removeCards,
+  copyText, cardRows, LANGS, defaultWidth,
+  type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment, type Place,
+  type Rect,
 } from "@codeboard/core";
 import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
+  state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, rectOf, toast, placeOf,
   type LineSel,
 } from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
-import { send, ask } from "../host";
+import { animate, Spring, reduceMotion } from "../state/camera";
+import { setEditing, setPopIn } from "../state/ui";
+import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
-import { md, inline } from "../md";
 import { frameOf, allMembers } from "../state/sections";
 import { K, popCard, revealCard, sectionById, selCards } from "./common";
 import { requestViews } from "./create";
@@ -302,7 +299,6 @@ export function mergeCards(ids: string[], target?: string) {
   const chk = mergeCheck(cs);
   if (!chk.ok) return toast(chk.why);
   const tgt = (cs.find((c) => c.id === target) ?? cs[0]) as CodeCard;
-  const others = cs.filter((c) => c !== tgt) as CodeCard[];
   const set = new Set(cs.map((c) => c.id));
   const mid = uid("c");
   let newSegs: Segment[] = [];

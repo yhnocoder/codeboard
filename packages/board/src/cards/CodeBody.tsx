@@ -324,18 +324,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     return out;
   });
   const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
-  // 选中几行时行号旁出现虚线 +
-  const addNoteY = createMemo(() => {
-    const ls = lineSel();
-    if (!ls || ls.card !== c().id) return null;
-    // 和旁注标记、贴纸同一列：放在选中范围里第一行空着的位置
-    const busy = new Set([...marks().map((m) => m.row), ...lineStk().map((k) => k.row)]);
-    let i = rows().findIndex((r) => r.t === "line" && r.seg === ls.seg && r.line === ls.start);
-    for (let j = i; j >= 0 && j < rows().length; j++) { const r = rows()[j]; if (r.t !== "line" || r.line > ls.end) break; if (!busy.has(j)) { i = j; break; } }
-    const y = ys()[i];
-    return y ? y.y : null;
-  });
-
   const stickerById = (id: string) => state.board.stickers.find((k) => k.id === id);
 
   const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n) => n.kind === "text" && n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);

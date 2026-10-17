@@ -1,23 +1,8 @@
 // 箭头（Link）：普通箭头、连接模式、标签、调用上的变量。
-import { unwrap } from "solid-js/store";
-import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, removeCards, rebaseSegment, walkOrder, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type LinkStyle, type LinkSide, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
-} from "@codeboard/core";
-import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
-import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
+import { uid, isCode, cardTitle, varKey, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
+import { state, mutate, select, cardById, toast } from "../state/store";
+import { setEditing, setConnectFrom, setHoverVar } from "../state/ui";
+import { openPop } from "../state/pop";
 import { lastPointer } from "./common";
 import { askCands, attachCall, calleeMatches, callMark } from "./flow";
 
