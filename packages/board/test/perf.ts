@@ -406,10 +406,12 @@ async function notesEdit(h: Host, cdp: CDPSession, board: Board, res: Record<str
     await focusCard(h, ids[i]);
     const pt = await center(ids[i]);
     const t = performance.now();
+    const tr = arg("long", "") === "editEnter" ? await traceStart(cdp) : null;
     await h.page.mouse.dblclick(pt.x, pt.y);
     await editingIn(ids[i]);
     await raf(h);
     enter.push(+(performance.now() - t).toFixed(1));
+    if (tr) await tr();
   } });
   res.editEnter = { first: enter[0], median: +med(enter).toFixed(1), p95: +p95(enter).toFixed(1) };
   const inPage = (await h.page.evaluate(() => (window as any).__enter)) as [number, number][];
@@ -427,6 +429,27 @@ async function notesEdit(h: Host, cdp: CDPSession, board: Board, res: Record<str
   res.editExit = +(performance.now() - t).toFixed(1);
   await h.page.waitForTimeout(1500);
   res.typed = (h.board().cards.find((c) => c.id === ids[ids.length - 1]) as { md: string }).md.includes("Prefill admits waiting");
+}
+
+/** --long editEnter: what each main-thread task over 4 ms spent its time on (events inside it over 0.8 ms) */
+async function traceStart(cdp: CDPSession) {
+  const events: any[] = [];
+  const onData = (e: any) => events.push(...e.value);
+  cdp.on("Tracing.dataCollected", onData);
+  await cdp.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline,disabled-by-default-devtools.timeline.stack", transferMode: "ReportEvents" } as any);
+  return async () => {
+    const done = new Promise((r) => cdp.once("Tracing.tracingComplete", r));
+    await cdp.send("Tracing.end"); await done;
+    cdp.off("Tracing.dataCollected", onData);
+    const main = events.find((e) => e.name === "thread_name" && e.args?.name === "CrRendererMain");
+    const on = (e: any) => main && e.pid === main.pid && e.tid === main.tid;
+    for (const t of events.filter((e) => e.ph === "X" && e.name === "RunTask" && on(e) && e.dur > 4000))
+      console.log(`  task ${(t.dur / 1000).toFixed(1)}ms:`, events.filter((e) => e.ph === "X" && on(e) && e.ts >= t.ts && e.ts + e.dur <= t.ts + t.dur && e.dur > 800 && e.name !== "RunTask")
+        .map((e) => `${e.name}${e.args?.data?.functionName ? "(" + e.args.data.functionName + ")" : e.args?.data?.type ? "(" + e.args.data.type + ")" : ""} ${(e.dur / 1000).toFixed(1)}`).join(" > "));
+    if (process.env.LAYOUT_STACKS) for (const e of events.filter((e) => on(e) && (e.name === "Layout" || e.name === "UpdateLayoutTree") && e.dur > 800 && (e.args?.beginData?.stackTrace || e.args?.data?.stackTrace)))
+      console.log(`  forced ${e.name} ${(e.dur / 1000).toFixed(1)}:`, (e.args?.beginData?.stackTrace ?? e.args?.data?.stackTrace).slice(0, 6).map((f: any) => `${f.functionName}@${f.lineNumber}`).join(" < "));
+    console.log("  --");
+  };
 }
 
 async function focusCard(h: Host, id: string) {

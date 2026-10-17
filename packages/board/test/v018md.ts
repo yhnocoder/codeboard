@@ -183,6 +183,78 @@ export const V018MD: Record<string, () => Promise<void>> = {
     await close(h);
   },
 
+  /** One editor is reused across Notes: each edit starts from that Note's text with its own undo history */
+  async v18mdreuse() {
+    const { b } = mdBoard();
+    const h = await open({ board: b, light, w: 1400, h: 950 });
+    const pg = h.page;
+    const mdOf = (id: string) => (h.board().cards.find((c) => c.id === id) as NoteCard).md;
+    const pm = (id: string) => pg.locator(`.card[data-id="${id}"] .md-pm`);
+    await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 200, y: 40 } });
+    await pm("n1").waitFor({ timeout: 5000 });
+    await pg.keyboard.press("Enter"); await pg.keyboard.type("first edit AAA");
+    await pg.keyboard.press("Escape");
+    await pg.locator('.card[data-id="t1"] .tx').dblclick();
+    await pm("t1").waitFor({ timeout: 5000 });
+    const t1Text = await pm("t1").innerText();
+    // 撤销不能撤回上一张 Note 的内容
+    for (let i = 0; i < 3; i++) await pg.keyboard.press("ControlOrMeta+z");
+    const afterUndo = await pm("t1").innerText();
+    await pg.keyboard.press("Enter"); await pg.keyboard.type("second BBB");
+    await pg.keyboard.press("Escape");
+    await pg.waitForTimeout(1500);
+    const n1 = mdOf("n1"), t1 = mdOf("t1");
+    const r = { t1Fresh: t1Text.includes("Reading notes") && !t1Text.includes("AAA"), undoKept: afterUndo === t1Text, n1Saved: n1.includes("first edit AAA") && !n1.includes("BBB"),
+      t1Saved: t1.includes("second BBB") && !t1.includes("AAA") && t1.startsWith("# Reading notes"), stale: await pg.locator(".md-pm").count() };
+    check("v18mdreuse", r.t1Fresh && r.undoKept && r.n1Saved && r.t1Saved && r.stale === 0, r);
+    await close(h);
+  },
+
+  /** Large board, pan and zoom straight into areas not rendered yet: a Note in view never shows its raw-text placeholder, every frame */
+  async v18mdlazy() {
+    const b = emptyBoard("b1", "lazy");
+    const cols = 16;
+    for (let i = 0; i < 320; i++) {
+      const c: NoteCard = { id: `z${i}`, kind: "note", md: `## Note ${i}\n\nsome **bold** and $x_${i % 9}^2$ text\n\n- [ ] task ${i}\n- item\n\n\`\`\`python\ndef f${i}(x):\n    return x * ${i}\n\`\`\``, ...(i % 2 ? { bg: true } : {}) };
+      put(b, c, (i % cols) * 460, Math.floor(i / cols) * 520, 400);
+    }
+    b.cam = { x: 40, y: 40, z: 1 };
+    const h = await open({ board: b, light, w: 1400, h: 900 });
+    const pg = h.page;
+    // 每一帧都查：视野里有没有还没渲染的 Note（藏着的）、有没有露出来的原文（没藏的占位）
+    await pg.evaluate(() => {
+      const w = window as any;
+      w.__lz = { frames: 0, hiddenInView: 0, rawShown: 0, pendSeen: 0, culled: 0 };
+      const tick = () => {
+        w.__lz.frames++;
+        for (const e of document.querySelectorAll<HTMLElement>(".card .md-pend")) {
+          w.__lz.pendSeen++;
+          const r = e.getBoundingClientRect();
+          if (r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth) {
+            if (e.closest(".card.off")) w.__lz.culled++; // 卡片自己被 cull.ts 藏着（原来就有的行为），不算
+            else if (getComputedStyle(e).visibility === "hidden") w.__lz.hiddenInView++; else w.__lz.rawShown++;
+          }
+        }
+        if (w.__lz.on) requestAnimationFrame(tick);
+      };
+      w.__lz.on = true; requestAnimationFrame(tick);
+    });
+    await pg.mouse.move(700, 450);
+    // 马上往远处平移（右下），再缩小、放大
+    for (let i = 0; i < 40; i++) { await pg.mouse.wheel(60, 50); await pg.waitForTimeout(16); }
+    await pg.keyboard.down("Control");
+    for (let i = 0; i < 12; i++) { await pg.mouse.wheel(0, 40); await pg.waitForTimeout(16); }
+    for (let i = 0; i < 12; i++) { await pg.mouse.wheel(0, -40); await pg.waitForTimeout(16); }
+    await pg.keyboard.up("Control");
+    for (let i = 0; i < 30; i++) { await pg.mouse.wheel(-40, 60); await pg.waitForTimeout(16); }
+    await pg.waitForTimeout(1500);
+    const r = await pg.evaluate(() => { const w = window as any; w.__lz.on = false; return { ...w.__lz, leftAfter: document.querySelectorAll(".md-pend").length, rendered: document.querySelectorAll(".card .nbody h2, .card .tx h2").length }; });
+    await saveShot(h, "v18-md-lazy");
+    // pendSeen > 0：确实有过排队的（不然这项没测到什么）；1.5 秒后全部渲染完
+    check("v18mdlazy", r.pendSeen > 0 && r.rawShown === 0 && r.hiddenInView === 0 && r.leftAfter === 0 && r.rendered === 320, r);
+    await close(h);
+  },
+
   /** Paste: HTML becomes clean markdown, VS Code code keeps its indentation, markdown text is parsed */
   async v18mdpaste() {
     const { b } = mdBoard();
