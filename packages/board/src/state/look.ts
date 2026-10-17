@@ -16,7 +16,7 @@ const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
   newspaper: { head: "triangle" },
   poster: { port: "diamond" },
   "ink-wash": { head: "dot" },
-  // City：路横平竖直；被调用那头停一辆车代替箭头；起点是一块圆形小广场。路沿、中线、路口、车流见 canvas/Links.tsx
+  // City：路横平竖直；被调用那头停一辆车代替箭头；起点是一块圆形小广场。路沿、路口见 canvas/Links.tsx，车、标线和车流见 canvas/Traffic.tsx
   // clear 40：路面中线离卡边 40，路沿（16px）外还空出 32，约两条路宽
   city: { route: "elbow", head: "car", port: "plaza", clear: 40 },
 };
@@ -33,5 +33,5 @@ const order = createRoot(() => createMemo(() => {
 }));
 export const fileHue = (path: string | undefined) => (path ? order().get(path) ?? 0 : 0);
 
-/** City 的红绿灯（车流开关）：不存进设置，每次打开白板都是红灯（车不动，没有常驻动画）。绿灯时车沿路开（canvas/Links.tsx 的 Traffic） */
+/** City 的红绿灯（车流开关）：不存进设置，每次打开白板都是红灯（车不动，没有常驻动画）。绿灯时车沿路开（canvas/Traffic.tsx） */
 export const [traffic, setTraffic] = createSignal(false);

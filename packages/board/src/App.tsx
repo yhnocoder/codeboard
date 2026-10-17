@@ -126,7 +126,7 @@ function Toolbar() {
 function Dock() {
   return (
     <div class="over dock"><div class="pill">
-      {/* City 的红绿灯：车流开关，默认红灯（车不动）；绿灯时车沿路开（canvas/Links.tsx 的 Traffic） */}
+      {/* City 的红绿灯：车流开关，默认红灯（车不动）；绿灯时车沿路开（canvas/Traffic.tsx） */}
       <Show when={look() === "city"}>
         <button class="ib traffic" aria-label="Moving Cars" aria-pressed={traffic()} data-tip={traffic() ? "Stop Cars" : "Start Cars"} onClick={() => setTraffic(!traffic())} />
         <span class="sep" />

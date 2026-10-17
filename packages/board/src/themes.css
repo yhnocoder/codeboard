@@ -850,9 +850,9 @@
 /* ---------- City（城市道路） ---------- */
 /* 街区、河、公园、楼是白板背景（固定在窗口上，镜头动时不重画）。
    调用是大路：路肩（.casings 里一层，在所有线下面）+ 白边线（.kerbs 里一层，也在所有路面下面，路口里就没有边线）+ 路面（.edge）+ 双黄线（.lane，一个 path 两条线），横平竖直；
-   普通箭头是小街：白路沿 + 路面 + 一道白中线（.cline）；被调用那头停一辆车（三条 path，见 route.ts carPaths）代替箭头，车前是人行横道（画进车灯那条 path）；
+   普通箭头是小街：白路沿 + 路面 + 一道白中线（.cline）；被调用那头停一辆车（三条 path，见 canvas/city.ts carPaths）代替箭头，车前是人行横道（画进车灯那条 path）；
    几条路进同一张卡时在合并点（路口）汇成一段（.merge 的 .stub），只停一辆车。红绿灯打开时 .movers 里的小车沿路开（只动 offset-distance / opacity）。
-   这些额外的节点只在 City 里才有（canvas/Links.tsx） */
+   这些额外的节点只在 City 里才有（canvas/Links.tsx、canvas/Traffic.tsx） */
 :root.look-city { --no-link: var(--ink); --no-link-w: 700; --call-deco: underline 2px color-mix(in srgb, var(--lane) 80%, transparent); --ico-w: 2; --port-ring: 2px; --port-ring-c: var(--casing); --port-bg: var(--asphalt);
   --signbox: inset 0 0 0 2px var(--sign), inset 0 0 0 3px rgba(255,255,255,.85); }
 :root.look-city .board { background: url("./scenes/city-light.svg") center / cover no-repeat,
@@ -900,7 +900,7 @@
 :root.look-city .ahead.car .croof { fill: rgba(255,255,255,.6); }
 :root.look-city .ahead.car .clamp { fill: var(--zebra); } /* 车灯和人行横道是一条 path */
 :root.look-city .port { fill: var(--asphalt); stroke: var(--casing); stroke-width: 2; }
-/* 车流：小车沿路开（关键帧由 Links.tsx 用 Web Animations 加上），靠右行驶；只有 transform 和 opacity 在变，合成器自己跑 */
+/* 车流：小车沿路开（关键帧由 Traffic.tsx 用 Web Animations 加上），靠右行驶；只有 transform 和 opacity 在变，合成器自己跑 */
 :root.look-city .movers { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 2; pointer-events: none; }
 :root.look-city .mover { position: absolute; left: 0; top: 0; width: 22px; height: 10px; border-radius: 3px; background: #2f7de1; box-shadow: inset 0 0 0 .6px rgba(0,0,0,.3);
   opacity: 0; will-change: transform, opacity; }

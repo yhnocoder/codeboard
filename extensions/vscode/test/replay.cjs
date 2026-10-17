@@ -330,7 +330,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     const closeSettings = async () => { if (await isOpen()) { await f.locator('button[aria-label="Close Settings"]').click(); await sleep(700); } };
     await blank(f, page); await f.locator('button[aria-label="Fit to Window"]').first().click().catch(() => {}); await sleep(600);
     await openSettings();
-    const names = await f.locator(".st-sw").allTextContents();
+    const names = await f.locator(".st-sw .st-swn").allTextContents();
     check(names.length >= 8, "Settings lists 8 themes", names);
     for (let i = 0; i < names.length; i++) {
       await f.locator(".st-sw").nth(i).click(); await sleep(1200);

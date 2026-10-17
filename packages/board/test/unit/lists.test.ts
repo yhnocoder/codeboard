@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
-import { THEMES } from "@codeboard/core";
+import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import { FORWARDED_KEYS } from "../../../../extensions/vscode/src/boards";
 
 const ROOT = path.resolve(__dirname, "../../../..");
@@ -12,6 +12,8 @@ const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "extensions/vscode/packag
 describe("hand-synced lists", () => {
   it("codeboard.theme enum = core THEMES", () => {
     expect(pkg.contributes.configuration.properties["codeboard.theme"].enum).toEqual(THEMES.map(([id]) => id));
+    // 实验性的主题在 VS Code 设置的下拉里也标 Experimental
+    expect(pkg.contributes.configuration.properties["codeboard.theme"].enumDescriptions).toEqual(THEMES.map(([id, name]) => (EXPERIMENTAL_THEMES.includes(id) ? `${name} (Experimental)` : name)));
   });
 
   it("forwarded keys = the keys package.json binds to codeboard.boardKey", () => {

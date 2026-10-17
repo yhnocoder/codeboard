@@ -43,7 +43,7 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
           cars: Object.fromEntries(links.map((g) => [g.dataset.lk, g.querySelectorAll(".ahead.end.car").length])),
           merged: links.filter((g) => g.dataset.merged !== undefined).map((g) => g.dataset.lk),
           merges: [...document.querySelectorAll<SVGGElement>("g.merge")].map((g) => ({ n: g.dataset.n, cars: g.querySelectorAll(".ahead.end.car").length, lanes: g.querySelectorAll(".lane").length })),
-          rot: document.querySelector('g.link[data-lk="L1"] .ahead.end')?.getAttribute("data-at") ?? "",
+          rot: document.querySelector('g.link[data-lk="L1"] .ahead.end')?.getAttribute("data-deg") ?? "",
           casings: document.querySelectorAll(".casings .casing").length,
           lanes: document.querySelectorAll("g.link .lane").length,
           kerbs: document.querySelectorAll(".kerbs .kerb").length,
@@ -69,7 +69,7 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
       const reduced = await probe();
       const ok = off.cars.L1 === 1 && off.cars.L2 === 0 && off.cars.L3 === 0 && off.cars.P1 === 1 && off.merged.sort().join() === "L2,L3"
         && off.merges.length === 1 && off.merges[0].n === "2" && off.merges[0].cars === 1 && off.merges[0].lanes === 1
-        && /rotate\(0\)/.test(off.rot) && off.casings === 5 && off.lanes === 3 && off.kerbs === 4 && off.clines === 1 && off.zebra.sort().join() === "3,4,4" && !!off.carColor
+        && off.rot === "0" && off.casings === 5 && off.lanes === 3 && off.kerbs === 4 && off.clines === 1 && off.zebra.sort().join() === "3,4,4" && !!off.carColor
         && off.movers === 0 && off.running === 0
         && on.movers >= 4 && on.running === 2 * on.movers && on.compOnly
         && back.movers === 0 && back.running === 0 && reduced.movers === 0 && reduced.running === 0;

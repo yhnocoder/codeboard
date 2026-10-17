@@ -103,7 +103,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .ahead.hot { stroke: var(--accent); }
 .port { fill: var(--surface); stroke: var(--edge); stroke-width: var(--edge-w); transition: opacity calc(var(--t) * 120ms); }
 .hidden-o { opacity: 0; }
-/* 线的图层（canvas/Links.tsx 的「图层」）：线都在 .bottom 这一层（所有卡下面），放线、City 的路、线的标签框和贴纸（开着的车全在一层 .movers，见 Links.tsx 的 Traffic）。
+/* 线的图层（canvas/Links.tsx 的「图层」）：线都在 .bottom 这一层（所有卡下面），放线、City 的路、线的标签框和贴纸（开着的车全在一层 .movers，见 Traffic.tsx）。
    标签框、贴纸原来的 z-index 在层里清掉，不然会跑到所有卡上面。线头的圆点在 .ports 这一层（在所有卡上面，跟以前的 .edges 一样）。
    浮上来的线（选中、拖着、指针下那张卡的）在 .top 这一层，在所有卡和画布贴纸上面 */
 .lyr { position: absolute; left: 0; top: 0; pointer-events: none; }
