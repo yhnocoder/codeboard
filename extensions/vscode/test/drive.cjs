@@ -111,8 +111,13 @@ const boardJson = () => {
   await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().hover(); await sleep(2500);
   check(await f.locator(".pop.k-peek").count() === 1, "hovering a name opens Definition Peek");
   await shot(page, "3-peek");
-  // Move out in steps: a real mouse crosses the webview edge so the board gets pointerleave; a one-jump exit sends the iframe no leave events in Chromium
-  await page.mouse.move(5, 500, { steps: 12 }); await sleep(800);
+  // Move away onto the code below the name (the peek opens above it here), then out of the webview in steps.
+  // Synthetic CDP moves that leave the iframe deliver no leave events to it, so the path must not leave the webview straight from the peek:
+  // the peek would keep :hover and stay open, which is a test artefact rather than what a real mouse does
+  const w = await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().boundingBox();
+  const y = w ? w.y + w.height + 40 : 500;
+  if (w) await page.mouse.move(w.x + w.width / 2, y, { steps: 4 });
+  await page.mouse.move(5, y, { steps: 12 }); await sleep(800);
   check(await f.locator(".pop.k-peek").count() === 0, "Definition Peek closes after the mouse moves away");
 
   // 5. Sidenote: select two lines, press S, write a sentence
