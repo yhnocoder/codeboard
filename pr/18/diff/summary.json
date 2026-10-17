@@ -16,32 +16,32 @@
  },
  {
   "name": "4-sidenote.png",
-  "status": "removed",
-  "ratio": 0.9846
+  "status": "changed",
+  "ratio": 0.0488
  },
  {
   "name": "5-search.png",
-  "status": "removed",
-  "ratio": 0.9849
+  "status": "changed",
+  "ratio": 0.0159
  },
  {
   "name": "6-board.png",
-  "status": "removed",
-  "ratio": 0.9984
+  "status": "changed",
+  "ratio": 0.0079
  },
  {
   "name": "7-uncommitted.png",
-  "status": "removed",
-  "ratio": 0.9984
+  "status": "changed",
+  "ratio": 0.0092
  },
  {
   "name": "7a-settings.png",
-  "status": "removed",
-  "ratio": 0.9937
+  "status": "changed",
+  "ratio": 0.0338
  },
  {
   "name": "7b-diagnostics.png",
-  "status": "removed",
-  "ratio": 0.9991
+  "status": "changed",
+  "ratio": 0.0079
  }
 ]

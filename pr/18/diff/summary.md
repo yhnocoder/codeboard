@@ -12,26 +12,26 @@
 
 ![3-peek.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/3-peek.png?raw=true)
 
-**4-sidenote** · removed
+**4-sidenote** · changed · 4.9% of pixels
 
 ![4-sidenote.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/4-sidenote.png?raw=true)
 
-**5-search** · removed
+**5-search** · changed · 1.6% of pixels
 
 ![5-search.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/5-search.png?raw=true)
 
-**6-board** · removed
+**6-board** · changed · 0.8% of pixels
 
 ![6-board.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/6-board.png?raw=true)
 
-**7-uncommitted** · removed
+**7-uncommitted** · changed · 0.9% of pixels
 
 ![7-uncommitted.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/7-uncommitted.png?raw=true)
 
-**7a-settings** · removed
+**7a-settings** · changed · 3.4% of pixels
 
 ![7a-settings.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/7a-settings.png?raw=true)
 
-**7b-diagnostics** · removed
+**7b-diagnostics** · changed · 0.8% of pixels
 
 ![7b-diagnostics.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/18/diff/7b-diagnostics.png?raw=true)
