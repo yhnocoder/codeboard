@@ -4,7 +4,7 @@ import { getSchema } from "@tiptap/core";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { history, undo, redo, closeHistory } from "@tiptap/pm/history";
 import { baseExtensions, parseMd, serializeMd } from "../../src/md/schema";
-import { reconvert } from "../../src/md/editor/typora";
+import { codeSpanAtEnd, reconvert } from "../../src/md/editor/typora";
 
 const schema = getSchema(baseExtensions);
 function state(md: string) {
@@ -47,5 +47,18 @@ describe("reconvert", () => {
   it("a whole $$…$$ paragraph becomes a math block", () => {
     const s = accept(state(""), "$$y$$");
     expect(s.doc.firstChild!.type.name).not.toBe("paragraph");
+  });
+});
+
+describe("code span typing rule", () => {
+  it("pairs runs of the same length", () => {
+    expect(codeSpanAtEnd("a `x`")?.replaceWith).toBe("x");
+    expect(codeSpanAtEnd("a ``x ` y``")?.replaceWith).toBe("x ` y");
+    expect(codeSpanAtEnd("a `` x ``")?.replaceWith).toBe("x");
+  });
+  it("waits while a longer run is still open", () => {
+    expect(codeSpanAtEnd("a ``x ` y`")).toBeNull();
+    expect(codeSpanAtEnd("a `")).toBeNull();
+    expect(codeSpanAtEnd("a \\`x`")).toBeNull();
   });
 });

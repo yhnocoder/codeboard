@@ -154,6 +154,9 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
   );
 }
 
+/** 焦点去的地方还在编辑器（或它的浮层）里 */
+const isInside = (e: Editor, t: EventTarget | null) => t instanceof Node && (e.view.dom.contains(t) || !!(t as Element).closest?.(".mdui, .md-bubble, .md-mathpop"));
+
 // ---------- 选中工具条 ----------
 function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   let el!: HTMLDivElement;
@@ -177,21 +180,23 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   );
   const mod = p.ui.opts.isMac ? "⌘" : "Ctrl+";
   let busy = false;
-  const applyLink = (v: string) => {
+  const applyLink = (v: string, stay = true) => {
     if (link() === null || busy) return;
     const url = v.trim();
     busy = true; // 下面 focus 会同步触发 blur，别再插一次
-    e.view.focus(); // 先同步把焦点还给编辑器再拿掉输入框（见 toggleRaw）
+    if (stay) e.view.focus(); // 先同步把焦点还给编辑器再拿掉输入框（见 toggleRaw）
     setLink(null);
     busy = false;
     const href = /^[a-z][\w+.-]*:/i.test(url) ? url : `https://${url}`;
     // 没选字、光标也不在链接上（⌘K）：把网址当字插进去
     if (e.state.selection.empty && !e.isActive("link")) {
-      if (url) e.chain().focus().insertContent({ type: "text", text: url, marks: [{ type: "link", attrs: { href } }] }).unsetMark("link").run();
+      if (url) (stay ? e.chain().focus() : e.chain()).insertContent({ type: "text", text: url, marks: [{ type: "link", attrs: { href } }] }).unsetMark("link").run();
+      if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur"));
       return;
     }
-    const c = e.chain().focus().extendMarkRange("link");
+    const c = (stay ? e.chain().focus() : e.chain()).extendMarkRange("link");
     if (url) c.setLink({ href }).run(); else c.unsetLink().run();
+    if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // 点到了外面：照样保存退出
   };
   const toMath = () => {
     const { from, to } = e.state.selection;
@@ -214,7 +219,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
           <input class="md-linkin" placeholder="Paste or type a link…" value={link() ?? ""} spellcheck={false}
             ref={(i) => queueMicrotask(() => { i.focus(); i.select(); })}
             onKeyDown={(ev) => { keepKey(ev); if (ev.key === "Enter") { ev.preventDefault(); applyLink(ev.currentTarget.value); } if (ev.key === "Escape") { ev.preventDefault(); e.view.focus(); setLink(null); } }}
-            onBlur={(ev) => { if (link() !== null) applyLink(ev.currentTarget.value); }} />
+            onBlur={(ev) => { if (link() !== null) applyLink(ev.currentTarget.value, isInside(e, ev.relatedTarget)); }} />
         </Show>
       </div>
     </Show>
@@ -233,17 +238,21 @@ function MathPop(p: { editor: Editor; ui: Ui }) {
     if (!hist) tr.setMeta("addToHistory", false);
     e.view.dispatch(tr);
   };
-  const done = (latex: string | null) => {
+  // stay=false：焦点去了编辑器外面（点了别的卡片）——写好公式后照样保存退出，不把焦点拉回来
+  const done = (latex: string | null, stay = true) => {
     const m = p.ui.math();
     if (m) live(m.latex);
-    e.view.focus(); // 同上：焦点不经过 body
+    if (stay) e.view.focus(); // 同上：焦点不经过 body
     p.ui.setMath(null);
-    if (!m) return;
+    const c = () => (stay ? e.chain().focus() : e.chain());
+    const leave = () => { if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); };
+    if (!m) return leave();
     const n = e.state.doc.nodeAt(m.pos);
-    if (latex === null) { if (n && !n.attrs.latex) e.chain().focus().deleteRange({ from: m.pos, to: m.pos + n.nodeSize }).run(); else e.commands.focus(); return; }
-    if (!n) return;
-    if (!latex.trim()) { e.chain().focus().deleteRange({ from: m.pos, to: m.pos + n.nodeSize }).run(); return; }
-    e.chain().focus().command(({ tr }) => { tr.setNodeMarkup(m.pos, undefined, { ...n.attrs, latex }); return true; }).setTextSelection(m.pos + n.nodeSize).run();
+    if (latex === null) { if (n && !n.attrs.latex) c().deleteRange({ from: m.pos, to: m.pos + n.nodeSize }).run(); else if (stay) e.commands.focus(); return leave(); }
+    if (!n) return leave();
+    if (!latex.trim()) { c().deleteRange({ from: m.pos, to: m.pos + n.nodeSize }).run(); return leave(); }
+    c().command(({ tr }) => { tr.setNodeMarkup(m.pos, undefined, { ...n.attrs, latex }); tr.setSelection(TextSelection.near(tr.doc.resolve(m.pos + n.nodeSize))); return true; }).run();
+    leave();
   };
   return (
     <Show when={p.ui.math()}>{(m) => {
@@ -262,7 +271,7 @@ function MathPop(p: { editor: Editor; ui: Ui }) {
               if (ev.key === "Escape") { ev.preventDefault(); done(null); }
               else if (ev.key === "Enter" && !ev.isComposing && (!m().block || ev.metaKey || ev.ctrlKey || !ev.shiftKey)) { ev.preventDefault(); done(ev.currentTarget.value); }
             }}
-            onBlur={(ev) => { if (p.ui.math()) done(ev.currentTarget.value); }} />
+            onBlur={(ev) => { if (p.ui.math()) done(ev.currentTarget.value, isInside(e, ev.relatedTarget)); }} />
           <span class="md-mathhint">↵ Done</span>
         </div>
       );
@@ -328,7 +337,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
 }
 
 // ---------- 粘贴 ----------
-const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\|.*\|)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|\$[^$\s][^$]*\$/m;
+const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\$\$|\|.*\|)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|\$[^$\s][^$]*\$/m;
 function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
@@ -367,7 +376,9 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
   // 之后把光标所在的这一段再当 Markdown 解析一遍：粘进来的字补完了前面打了一半的记号（打了 $\frac{，粘贴 a}{b}$）也能变
   if (text && !cd.getData("text/html") && MD_HINT.test(text)) {
     const doc = parseMd(text);
-    e.chain().focus().insertContent(doc.content as JSONContent[]).command(({ tr }) => { reconvert(tr); return true; }).run();
+    // 只有一段：把段里的东西插在光标处（不另起一段）
+    const one = doc.content?.length === 1 && doc.content[0].type === "paragraph" ? doc.content[0].content ?? [] : doc.content!;
+    e.chain().focus().insertContent(one as JSONContent[]).command(({ tr }) => { reconvert(tr); return true; }).run();
     return true;
   }
   if (text && !cd.getData("text/html") && !text.includes("\n") && /[$*`~\]>]/.test(text)) {

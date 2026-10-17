@@ -5,6 +5,18 @@ import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { closeHistory } from "@tiptap/pm/history";
 import { reconvert } from "./typora";
+import { serializeMd } from "../schema";
+
+const CARET = "\uE000";
+/** 光标前后的 Markdown 原文（模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown） */
+export function mdAround(s: EditorState, pos: number): [string, string] {
+  try {
+    const md = serializeMd(s.tr.insertText(CARET, pos).doc.toJSON());
+    const i = md.indexOf(CARET);
+    if (i >= 0) return [md.slice(0, i), md.slice(i + 1)];
+  } catch { /* 退回纯文字 */ }
+  return [s.doc.textBetween(0, pos, "\n", " "), s.doc.textBetween(pos, s.doc.content.size, "\n", " ")];
+}
 
 type G = { text: string; pos: number } | null;
 export const ghostKey = new PluginKey<G>("cbGhost");
@@ -24,8 +36,9 @@ export const Ghost = Extension.create<{ complete?: (before: string, after: strin
       const $p = sel.$head;
       const p = $p.parent;
       if (!p.isTextblock || p.type.spec.code || p.type.name === "detailsSummary") return false;
-      // 只在一段的末尾、前面有字时
-      return $p.parentOffset === p.content.size && p.textContent.trim().length >= 3;
+      // 前面有字；在段尾，或者后面紧跟空白 / 收尾的标点（段中也补，像 Copilot）
+      const next = p.textBetween($p.parentOffset, Math.min(p.content.size, $p.parentOffset + 1), undefined, "\ufffc");
+      return (!next || /[\s.,;:!?)\]}，。；：！？）]/.test(next)) && p.textContent.trim().length >= 3;
     };
     const schedule = (view: EditorView) => {
       clearTimeout(timer);
@@ -35,7 +48,7 @@ export const Ghost = Extension.create<{ complete?: (before: string, after: strin
         const s = view.state;
         if (id !== ask || view.composing || !want(s)) return;
         const pos = s.selection.head;
-        const before = s.doc.textBetween(0, pos, "\n", " "), after = s.doc.textBetween(pos, s.doc.content.size, "\n", " ");
+        const [before, after] = mdAround(s, pos);
         const text = await complete(before, after).catch(() => null);
         // 等回答的时候又动过：作废
         if (id !== ask || !text || view.isDestroyed || view.state.doc !== s.doc || view.state.selection.head !== pos) return;
@@ -79,6 +92,13 @@ export const Ghost = Extension.create<{ complete?: (before: string, after: strin
           if (e.key === "Tab" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
             // 一次进来一整段：打字规则不会触发，这一段当 Markdown 重新解析（$a$、**b**、补完前面打了一半的 $\frac{…）。单独一步撤销
             view.dispatch(reconvert(closeHistory(view.state.tr).insertText(g.text, g.pos).setMeta(ghostKey, null)));
+            return true;
+          }
+          // ⌘→（Windows / Linux 上 Ctrl+→）：只接受下一个词
+          if (e.key === "ArrowRight" && (e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey) {
+            const w = /^\s*[^\s]+/.exec(g.text)?.[0] ?? g.text;
+            const tr = view.state.tr.insertText(w, g.pos);
+            view.dispatch(w.length === g.text.length ? reconvert(tr.setMeta(ghostKey, null)) : tr);
             return true;
           }
           if (e.key === "Escape") { view.dispatch(view.state.tr.setMeta(ghostKey, null)); return true; }
