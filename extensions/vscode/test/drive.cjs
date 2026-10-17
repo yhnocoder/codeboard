@@ -155,6 +155,8 @@ const boardJson = () => {
   {
     const pm = f.locator(".card.note .md-pm");
     const txt = async () => (await pm.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+    // the new Note sits at the board's left edge, half under the toolbar: zoom to it first (it is still selected)
+    await page.keyboard.press("Shift+Digit2"); await sleep(1200);
     await f.locator(".card.note .nbody").dblclick(); await pm.waitFor({ timeout: 5000 }).catch(() => {});
     await page.keyboard.press("Control+End"); await page.keyboard.type(" cutme"); await sleep(300);
     for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
