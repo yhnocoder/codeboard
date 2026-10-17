@@ -16,13 +16,13 @@
  },
  {
   "name": "4-sidenote.png",
-  "status": "changed",
-  "ratio": 0.0332
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "5-search.png",
-  "status": "changed",
-  "ratio": 0.0203
+  "status": "same",
+  "ratio": 0.0024
  },
  {
   "name": "6-board.png",
