@@ -331,11 +331,11 @@ describe("entry points", () => {
 });
 
 describe("migrateBoard", () => {
-  it("turns a v1 board into v5", () => {
+  it("turns a v1 board into v6", () => {
     const b = migrateBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
-    expect(b.version).toBe(5);
+    expect(b.version).toBe(6);
     expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [2], symbol: { qual: "f" } });
@@ -374,12 +374,12 @@ describe("migrateBoard", () => {
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(5);
+    expect(b.version).toBe(6);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
     expect((b.cards[0] as CodeCard).mergedFrom![0].place.h).toBe(164);
-    expect(migrateBoard(structuredClone(b))).toEqual(b); // v5 is read as is
+    expect(migrateBoard(structuredClone(b))).toEqual(b); // v6 is read as is
     expect(estSize(b.cards[0], b.place.a).h).toBe(300); // estimates still count the header
   });
   it("v4 → v5: call links become Call-marked arrows, plain links keep their look", () => {
@@ -395,7 +395,7 @@ describe("migrateBoard", () => {
       ],
     };
     const b = loadBoard(structuredClone(raw));
-    expect(b.version).toBe(5);
+    expect(b.version).toBe(6);
     expect(b.links).toEqual([
       { id: "c", from: { card: "a", seg: "sa", line: 3 }, to: { card: "b" }, label: "hot", at: 0.3, sides: { from: "left" }, call: { name: "g", col: 8, vars: [{ a: "x", b: "y" }], cands: [{ a: "x", b: "y" }, { a: "r", ret: true }], loop: true } },
       { id: "p1", from: { card: "n" }, to: { card: "a", seg: "sa", line: 2 }, style: { dash: true, head: { start: true }, color: "blue" } },
@@ -426,7 +426,7 @@ describe("migrateBoard", () => {
     expect(b.born!.z).toBe(6);
   });
   it("refuses a board written by a newer CodeBoard", () => {
-    expect(() => migrateBoard({ version: 6, id: "b", name: "x", cards: [] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 7, id: "b", name: "x", cards: [] })).toThrow(/newer/);
   });
 });
 

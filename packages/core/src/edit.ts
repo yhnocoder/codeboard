@@ -42,6 +42,27 @@ export function stampBorn(b: Board): void {
   }
 }
 
+/** 卡换个 id：摆放、Link 两端、Sidenote（挂在上面的和指向它的）、Sticker、Compare 的栏、创建顺序、调用图标记都跟着换 */
+export function renameCard(b: Board, from: string, to: string): void {
+  const r = (id: string) => (id === from ? to : id);
+  for (const c of b.cards) {
+    c.id = r(c.id);
+    if (c.kind === "compare") c.cols = [r(c.cols[0]), r(c.cols[1])];
+  }
+  if (b.place[from]) { b.place[to] = b.place[from]; delete b.place[from]; }
+  for (const l of b.links) { l.from.card = r(l.from.card); l.to.card = r(l.to.card); }
+  for (const n of b.sidenotes) {
+    n.at.card = r(n.at.card);
+    if (n.kind === "card") n.card = r(n.card);
+  }
+  for (const k of b.stickers) {
+    const at = k.at;
+    if (at.kind !== "canvas") at.card = r(at.card);
+    else if (at.on && "card" in at.on) at.on.card = r(at.on.card);
+  }
+  for (const m of [b.born, b.marks] as (Record<string, unknown> | undefined)[]) if (m && from in m) { m[to] = m[from]; delete m[from]; }
+}
+
 /** 删掉这些 Link，绑在它们上面的 Sticker 一起删 */
 export function removeLinks(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
