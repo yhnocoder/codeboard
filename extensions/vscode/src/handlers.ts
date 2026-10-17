@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
+import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { githubCard, ghQuery } from "./github";
 import { webMeta } from "./web";
 import { pasteCard } from "./paste";
@@ -20,6 +20,7 @@ import { applyFlow, captureFlow } from "./runs";
 import { allQuestions, exportFile, permalinks } from "./exports";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
+import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { fromHostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
 
@@ -107,6 +108,9 @@ export function makeHandler(panels: BoardHost): Handler {
     permalinks: (_p, m) => permalinks(m.segs),
     exportFile: (_p, m) => exportFile(store, m.kind, m.name, m.text),
     copyText: (_p, m) => workspace().ui.copy(m.text),
+    // ---------- 我的改动（线框 07） ----------
+    variantSources: (_p, m) => variantSources(m.seg),
+    addVariant: (_p, m) => addVariant(m.segs, m.from),
     // ---------- 子白板 ----------
     skeletons: async (_p, m) => {
       await store.list(); // 缓存里还没有的白板先扫进来
@@ -213,10 +217,12 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
     if (seg.version.kind === "git") newVersion = { kind: "git", commit: (root && (await headOf(root))) || seg.version.commit, uncommitted: true };
     else if (text !== null) newVersion = seg.version.kind === "pkg" ? { kind: "pkg", ...(splitPkg(await currentVersionLabel(abs, seg.version)) ?? seg.version) } : { kind: "hash", hash: fingerprint(text) };
   } else if (root) {
-    const sha = against ? await resolveRef(root, against) : await headOf(root);
+    // upstream：有 Variant 的卡跟上游分支比（HEAD 可能是我的分支）
+    const ref = against === "upstream" ? await upstreamRef(root) : against;
+    const sha = ref ? await resolveRef(root, ref) : await headOf(root);
     if (!sha) throw new Error(`Unknown commit “${against}”.`);
     text = await showFile(root, sha, rel);
-    label = `${against && against !== "HEAD" ? against : "HEAD"} ${sha.slice(0, 7)}`;
+    label = `${ref && ref !== "HEAD" ? ref.replace(/^origin\//, "") : "HEAD"} ${sha.slice(0, 7)}`;
     newVersion = { kind: "git", commit: sha };
   }
   if (text === null) return empty(label || "Not found");

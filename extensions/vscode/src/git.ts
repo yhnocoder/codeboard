@@ -73,3 +73,49 @@ export function gitDirOf(root: string) {
   if (!p) { p = git(root, ["rev-parse", "--absolute-git-dir"]).then((s) => s?.trim() || null); gitDirs.set(root, p); }
   return p;
 }
+
+/** a 是不是 b 的祖先（含相等） */
+export const isAncestor = async (root: string, a: string, b: string) => (await git(root, ["merge-base", "--is-ancestor", a, b])) !== null;
+
+const ups = new Map<string, Promise<string>>();
+/** 上游分支（线框 07 的「上游最新」）：origin/HEAD 指的分支，没有就本地 main / master，都没有 = HEAD */
+export function upstreamRef(root: string): Promise<string> {
+  let p = ups.get(root);
+  if (!p) {
+    p = (async () => {
+      const o = (await git(root, ["symbolic-ref", "-q", "--short", "refs/remotes/origin/HEAD"]))?.trim();
+      if (o) return o;
+      for (const b of ["main", "master"]) if (await resolveRef(root, b)) return b;
+      return "HEAD";
+    })();
+    ups.set(root, p);
+  }
+  return p;
+}
+
+export type Worktree = { dir: string; head?: string; branch?: string };
+/** git worktree list：同一仓库的所有 worktree（含 root 自己） */
+export async function worktrees(root: string): Promise<Worktree[]> {
+  const out = await git(root, ["worktree", "list", "--porcelain"]);
+  const list: Worktree[] = [];
+  let cur: Worktree | null = null;
+  for (const l of (out ?? "").split("\n")) {
+    if (l.startsWith("worktree ")) { cur = { dir: path.normalize(l.slice(9)) }; list.push(cur); }
+    else if (cur && l.startsWith("HEAD ")) cur.head = l.slice(5).trim();
+    else if (cur && l.startsWith("branch ")) cur.branch = l.slice(7).trim().replace(/^refs\/heads\//, "");
+  }
+  return list;
+}
+
+/** 本地分支（Add Variant 的 Branch or Commit… 列表），最近提交的在前 */
+export async function branches(root: string, n = 30): Promise<string[]> {
+  const out = await git(root, ["for-each-ref", "--sort=-committerdate", `--count=${n}`, "--format=%(refname:short)", "refs/heads"]);
+  return (out ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+}
+
+/** origin 是 GitHub 仓库时的 owner / name */
+export async function githubRemote(root: string): Promise<{ owner: string; name: string } | null> {
+  const u = (await git(root, ["remote", "get-url", "origin"]))?.trim() ?? "";
+  const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(u);
+  return m ? { owner: m[1], name: m[2] } : null;
+}

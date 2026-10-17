@@ -85,6 +85,12 @@ export async function fetchFile(owner: string, name: string, commit: string, rel
   return text;
 }
 
+/** Pull Request 的 head（Variant 跟着它走）、分支名、合没合、合进哪个分支 */
+export async function pullRequest(owner: string, name: string, num: number): Promise<{ head: string; branch: string; merged: boolean; base: string }> {
+  const pr = await json<{ head: { sha: string; ref: string }; base: { ref: string }; merged?: boolean; merged_at?: string | null }>(`${repoUrl(owner, name)}/pulls/${num}`, `Pull request #${num}`);
+  return { head: pr.head.sha, branch: pr.head.ref, merged: !!(pr.merged || pr.merged_at), base: pr.base.ref };
+}
+
 /** 某个 commit 的文件 → 卡（有行范围就按选区规则建卡，没有就文件开头 60 行） */
 async function cardAt(owner: string, name: string, commit: string, ref: string, rel: string, s?: number, e?: number): Promise<NewCard> {
   const text = await fetchFile(owner, name, commit, rel, ref);

@@ -10,6 +10,7 @@ import { BoardPanel, type BoardHost, type BoardView } from "./boards";
 import type { Handler } from "./handlers";
 import { log } from "./log";
 import { viewsFor } from "./views";
+import { variantSegments } from "./versions";
 
 export { BoardPanel };
 
@@ -52,7 +53,8 @@ export class Panels implements BoardHost {
           const refs = store.refsOf(p.id);
           const cards = e.cards.filter((sc) => refs.has(sc.card.id));
           if (!cards.length) continue;
-          const segs: Segment[] = cards.flatMap((sc) => (sc.items.includes(sc.card.id) && sc.card.kind === "code" ? sc.card.segments : []));
+          // Variant 的段（不在显示的）也要展示数据：切换时直接换上
+          const segs: Segment[] = cards.flatMap((sc) => (sc.items.includes(sc.card.id) && sc.card.kind === "code" ? [...sc.card.segments, ...variantSegments({ cards: [sc.card] })] : []));
           const views = segs.length ? await viewsFor(segs) : undefined;
           p.board = store.peek(p.id);
           p.post({ type: "shared", cards, views });

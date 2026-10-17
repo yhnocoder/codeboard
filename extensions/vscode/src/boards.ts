@@ -2,7 +2,8 @@
 // 白板状态由 webview 持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。webview 本身（BoardView）和面板管理（BoardHost）由 VS Code 适配层实现。
 import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostInfo, type HostToBoard, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
-import { boardSegments, countStale, staleFor } from "./versions";
+import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
+import { syncVariants } from "./variants";
 import { viewsFor } from "./views";
 import { present, srcLabel } from "./source";
 import { readSettings } from "./settings";
@@ -102,7 +103,8 @@ export class BoardPanel {
     this.board = b;
     this.view.title = b.name;
     const segs = boardSegments(b);
-    const [views, stale, boards] = await Promise.all([viewsFor(segs), staleFor(segs), this.mgr.metas()]);
+    const ss = staleSegments(b);
+    const [views, stale, boards] = await Promise.all([viewsFor([...segs, ...variantSegments(b)]), staleFor(ss.segs, ss.up), this.mgr.metas()]);
     this.stale = stale;
     this.readonly = await this.readonlyNote(b);
     const host = this.host();
@@ -120,6 +122,8 @@ export class BoardPanel {
     this.mgr.refreshShared(true, this.id);
     this.mgr.refreshSkeletons(true, this.id);
     this.mgr.staleChanged(this.id, countStale(b, stale));
+    this.variantSent.clear();
+    void this.refreshVariants(true);
     // 白板已经出来了：后台让语言服务先热起来
     warmBoard(segs, () => this.mgr.get(this.id) === this);
     // 名字索引也在后台建（语言服务给不出定义时用），等白板和预热先跑一会儿
@@ -149,10 +153,23 @@ export class BoardPanel {
     return `Repo ${names} not found in this workspace. Showing saved code, read-only.`;
   }
 
+  /** 有 Variant 的卡：每张卡上次发过的状态（只发变了的） */
+  private variantSent = new Map<string, string>();
+  /** 刷新 Variant（保存、HEAD 变了、打开白板）；net = 也问 GitHub（PR 的 head、合没合），只在打开白板时 */
+  async refreshVariants(net = false) {
+    if (!this.board || !this.ready) return;
+    try {
+      const cards = await syncVariants(this.board, this.variantSent, { net });
+      if (Object.keys(cards).length) this.post({ type: "variants", cards });
+    } catch (e) { workspace().log("warn", `variants: ${e instanceof Error ? e.message : e}`); }
+  }
+
   /** 重算版本状态并推给白板 */
   async refreshStale() {
     if (!this.board || !this.ready) return;
-    const st = await staleFor(boardSegments(this.board));
+    void this.refreshVariants();
+    const ss = staleSegments(this.board);
+    const st = await staleFor(ss.segs, ss.up);
     const changed = JSON.stringify(st) !== JSON.stringify(this.stale);
     this.stale = st;
     if (changed) this.post({ type: "stale", stale: st });
@@ -164,7 +181,7 @@ export class BoardPanel {
     if (!this.board) return;
     const segs = boardSegments(this.board);
     this.readonly = await this.readonlyNote(this.board);
-    this.post({ type: "views", views: await viewsFor(segs) });
+    this.post({ type: "views", views: await viewsFor([...segs, ...variantSegments(this.board)]) });
     this.post({ type: "host", host: { readonly: this.readonly } });
     await this.refreshStale();
   }
