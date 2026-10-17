@@ -17,9 +17,11 @@ async function keys(pg: Page, seq: string) {
   for (const part of seq.split(/(\{(?:Enter|Tab|Home|End|Backspace|Escape|Arrow\w+|Control\+[^}]+|Shift\+[^}]+)\})/)) {
     if (!part) continue;
     if (part.startsWith("{") && part.endsWith("}")) {
-      // 刚打完字马上按 Home，无头 Chromium 偶尔丢（与编辑器无关），先等一下
-      if (/Home/.test(part)) await pg.waitForTimeout(300);
+      // Home / End 是浏览器自己移光标，ProseMirror 要等异步的 selectionchange 才知道；脚本按键比人快得多，前后各等一下
+      const nav = /Home|End/.test(part);
+      if (nav) await pg.waitForTimeout(300);
       await pg.keyboard.press(part.slice(1, -1));
+      if (nav) await pg.waitForTimeout(100);
     }
     else await pg.keyboard.type(part);
   }
@@ -123,6 +125,9 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       // 标题行首退格：变回段落
       // （刚在空 Note 里打完字马上按 Home，headless Chromium 里偶尔落回行尾：先停一下）
       { name: "heading backspace", seq: "## h", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "h" },
+      { name: "quote backspace", seq: "> q", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "q" },
+      { name: "list backspace", seq: "- a{Enter}b", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "- a\n\nb" },
+      { name: "task backspace", seq: "- [ ] t", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "t" },
       { name: "home in text", init: "hello", seq: " ab{Home}x", md: "xhello ab" },
       // 光标在格式里：显示记号
       { name: "markers bold", seq: "x **bo**{ArrowLeft}", md: "x **bo**", dom: marks, domOk: (v) => JSON.stringify(v) === '["**","**"]' },
@@ -218,7 +223,9 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     }, inNote(n, "p"));
     await pg.waitForTimeout(100);
     await pg.keyboard.press("Control+c");
-    await pg.keyboard.press("End");
+    // 收起选区再剪（按 End 在 CI 上偶尔赶在选区同步前，选区没收起来）
+    await pg.evaluate(() => getSelection()!.collapseToEnd());
+    await pg.waitForTimeout(100);
     await pg.keyboard.press("Control+x"); // 没选中：什么都不剪
     await pg.keyboard.press("Control+a");
     await pg.keyboard.press("Control+x");

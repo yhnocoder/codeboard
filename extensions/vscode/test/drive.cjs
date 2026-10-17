@@ -151,6 +151,32 @@ const boardJson = () => {
   await page.keyboard.press("Shift+!"); await sleep(900);
   await shot(page, "6-board");
 
+  // 7b. Clipboard while editing a Note: VS Code's webview host runs cut / copy / paste (they must reach it, not stop in the editor)
+  {
+    const pm = f.locator(".card.note .md-pm");
+    const txt = async () => (await pm.innerText().catch(() => "")).replace(/\s+/g, " ").trim();
+    await f.locator(".card.note .nbody").dblclick(); await pm.waitFor({ timeout: 5000 }).catch(() => {});
+    await page.keyboard.press("Control+End"); await page.keyboard.type(" cutme"); await sleep(300);
+    for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
+    await sleep(200);
+    await page.keyboard.press("Control+x"); await sleep(700);
+    const afterCut = await txt();
+    await page.keyboard.press("Control+v"); await sleep(700);
+    const afterPaste = await txt();
+    // copy the pasted word and paste it again at the end
+    for (let i = 0; i < 5; i++) await page.keyboard.press("Shift+ArrowLeft");
+    await sleep(200);
+    await page.keyboard.press("Control+c"); await sleep(500);
+    await page.keyboard.press("End"); await page.keyboard.type(" "); await page.keyboard.press("Control+v"); await sleep(700);
+    const afterCopy = await txt();
+    await page.keyboard.press("Escape"); await sleep(2500);
+    const md = (boardJson()?.cards ?? []).find((c) => c.kind === "note")?.md ?? "";
+    check(/postprocess $/.test(afterCut) || /postprocess$/.test(afterCut), "Ctrl+X in a Note cuts the selection", afterCut);
+    check(/postprocess cutme$/.test(afterPaste), "Ctrl+V in a Note pastes it back", afterPaste);
+    check(/cutme cutme$/.test(afterCopy), "Ctrl+C then Ctrl+V in a Note copies", afterCopy);
+    check(md === "**Takeaway**: schedule → run → postprocess cutme cutme", "Note saved with the clipboard edits", md);
+  }
+
   // 8. Autosave
   await sleep(2000);
   const b = boardJson();
