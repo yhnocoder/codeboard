@@ -7,6 +7,9 @@ import { V017 } from "./v017";
 import { V017LABELS } from "./v017labels";
 import { V017STACK } from "./v017stack";
 import { THEMES_V17 } from "./scenarios-themes";
+import { V018MD } from "./v018md";
+import { V018TYPE } from "./v018type";
+import { V018REVIEW } from "./v018review";
 
 const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -26,6 +29,9 @@ const S: Record<string, () => Promise<void>> = {
   ...V017LABELS,
   ...V017STACK,
   ...THEMES_V17,
+  ...V018MD,
+  ...V018TYPE,
+  ...V018REVIEW,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");
@@ -516,6 +522,7 @@ async function hoverWord(h: Host, card: string, line: string, word: string) {
   await ready();
   // --shard i/n runs every n-th scenario starting at i (CI splits the harness across parallel jobs)
   const shard = process.argv.find((a) => a.startsWith("--shard="))?.slice(8).split("/").map(Number);
-  const all = names.length ? names : Object.keys(S);
+  // 只记录、不判对错的（v18review）不进默认那一轮，要跑就点名
+  const all = names.length ? names : Object.keys(S).filter((n) => n !== "v18review");
   for (const n of shard ? all.filter((_, k) => k % shard[1] === shard[0] - 1) : all) { console.log("▶", n); await S[n](); }
 })().catch((e) => { console.error(e); process.exit(1); });

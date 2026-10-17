@@ -1,7 +1,7 @@
 // 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
 import { githubCard, ghQuery } from "./github";
@@ -79,6 +79,7 @@ export function makeHandler(panels: BoardHost): Handler {
     },
     confirm: async (_p, m) => (await workspace().ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
     pickFile: () => pickImage(),
+    complete: (p, m) => complete(p, m.before, m.after),
   };
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
@@ -300,3 +301,18 @@ async function locateRepo(p: BoardPanel) {
 }
 
 
+
+/** Note 的灰字补全：同一块面板新的请求来了就取消旧的；没有模型回 null */
+const inflight = new WeakMap<BoardPanel, AbortController>();
+async function complete(p: BoardPanel, before: string, after: string): Promise<string | null> {
+  const ai = workspace().ai;
+  if (!ai) return null;
+  inflight.get(p)?.abort();
+  const ac = new AbortController();
+  inflight.set(p, ac);
+  const raw = ai.complete
+    ? await ai.complete(before, after, { signal: ac.signal })
+    : await ai.ask(COMPLETE_SYSTEM, completePrompt(before, after), { signal: ac.signal, maxChars: 600 }).then((r) => r === undefined ? r : spaceChatReply(r, before));
+  if (ac.signal.aborted || raw === undefined) return null;
+  return cleanCompletion(raw, before, after) || null;
+}

@@ -1,6 +1,7 @@
 // ⌘K：搜函数、类、文件、白板上的卡片、Sidenote。↵ 放到白板 / 跳到卡片；⌥↵ 在编辑器里打开；Esc 关。
 // 鼠标只有真的移动才改高亮项：结果刷新时停在原地的鼠标不该抢走键盘选中的那项。
 // 没输入时列出入口（pyproject scripts、__init__ 导出、__main__、examples）。
+import { keepKey } from "./editkeys";
 import { Icon } from "./icons";
 import { For, Show, createSignal, createEffect, onMount, createMemo } from "solid-js";
 import type { SearchItem } from "@codeboard/core";
@@ -49,7 +50,7 @@ export function Palette() {
     if (r) A.addCards([r], { besideSel: false });
   };
   const onKey = (e: KeyboardEvent) => {
-    e.stopPropagation();
+    keepKey(e);
     const n2 = ordered().length;
     if (e.key === "Escape") { e.preventDefault(); close(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); setI((x) => (x + 1) % Math.max(1, n2)); }

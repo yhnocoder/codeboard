@@ -94,6 +94,7 @@ export class BoardPanel {
       readonly: this.readonly,
       settings: readSettings(),
       target: this.mgr.target === this.id,
+      complete: !!workspace().ai,
     };
   }
 

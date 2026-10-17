@@ -1,4 +1,5 @@
 // 选贴纸的面板：Built-in / 自定义包 / Emoji，搜索，颜色。开在工具栏 Sticker 按钮上面。
+import { keepKey } from "../ui/editkeys";
 import { createMemo, createRoot, createSignal, For, Show, onCleanup, onMount } from "solid-js";
 import type { IconRef, Sticker } from "@codeboard/core";
 import { linkCurve, curveAt } from "../canvas/Links";
@@ -35,7 +36,7 @@ export function StickerPicker() {
         <For each={packs() ?? []}>{(pk) => <button classList={{ on: tab() === pk.id }} onClick={() => setTab(pk.id)}>{pk.name}</button>}</For>
         <button classList={{ on: tab() === "emoji" }} onClick={() => setTab("emoji")}>Emoji</button>
       </div>
-      <input class="sq" placeholder="Search icons…" value={q()} onInput={(e) => setQ(e.currentTarget.value)} onKeyDown={(e) => e.stopPropagation()} />
+      <input class="sq" placeholder="Search icons…" value={q()} onInput={(e) => setQ(e.currentTarget.value)} onKeyDown={keepKey} />
       <div class="sgrid">
         <For each={items()}>{(it) => <button class="scell" data-tip={it.label} onClick={() => pickSticker(it.icon)}><Glyph icon={it.icon} color={tab() === "emoji" ? undefined : stickerColor()} size={22} /></button>}</For>
         <Show when={!items().length}><div class="sempty">{tab() === "builtin" || tab() === "emoji" ? "No match" : "No icons in this pack"}</div></Show>

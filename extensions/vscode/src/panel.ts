@@ -142,13 +142,14 @@ export class Panels implements BoardHost {
       `img-src ${w.cspSource} data: blob: https: http:`,
       `style-src ${w.cspSource} 'unsafe-inline'`,
       `font-src ${w.cspSource} data:`,
-      `script-src 'nonce-${nonce}'`,
+      // 入口是 ES module：import() 进来的 chunk 也在 media/board 下面
+      `script-src 'nonce-${nonce}' ${w.cspSource}`,
     ].join("; ");
     // 在 state 里记下白板 id，窗口重新加载时据此恢复（不影响白板自己用 setState）
     const keep = `(function(){var a=acquireVsCodeApi(),id=${JSON.stringify(id)};var w={postMessage:function(m){a.postMessage(m)},getState:function(){var s=a.getState();if(s&&typeof s==="object"){s=Object.assign({},s);delete s.__board}return s},setState:function(s){a.setState(Object.assign({},s||{},{__board:id}));return s}};var s0=a.getState();a.setState(Object.assign({},s0||{},{__board:id}));window.acquireVsCodeApi=function(){return w}})();`;
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1">${css}<title>CodeBoard</title></head>
-<body><div id="root"></div><script nonce="${nonce}">${keep}</script><script nonce="${nonce}" src="${u("board.js")}"></script></body></html>`;
+<body><div id="root"></div><script nonce="${nonce}">${keep}</script><script type="module" nonce="${nonce}" src="${u("board.js")}"></script></body></html>`;
   }
 }
