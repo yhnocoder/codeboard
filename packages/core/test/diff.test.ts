@@ -1,9 +1,8 @@
-// jsdiff 版 diff 和 v0.1.5 的 LCS 版对比（nano-vllm 的 git 历史里每个改过的文件）
+// jsdiff 版 diff：nano-vllm 的 git 历史里每个改过的文件，结果是最短编辑（公共行数等于 LCS 长度）且合法
 import { describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { alignRows, diffLines, mapLines, wordDiff } from "../src";
-import * as lcs from "./fixtures/diff-lcs";
+import { alignRows, diffLines, mapLines, wordDiff, type DiffLine } from "../src";
 
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
 const git = (...a: string[]) => execFileSync("git", ["-C", repo, ...a], { encoding: "utf8", maxBuffer: 1 << 26 });
@@ -23,36 +22,59 @@ function pairs(): { name: string; a: string[]; b: string[] }[] {
 }
 
 
-describe("diff (jsdiff) vs v0.1.5 LCS on nano-vllm history", () => {
+/** LCS 长度（两行滚动的表），只作对照 */
+function lcsLength(a: string[], b: string[]): number {
+  let prev = new Uint32Array(b.length + 1), cur = new Uint32Array(b.length + 1);
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) cur[j] = a[i - 1] === b[j - 1] ? prev[j - 1] + 1 : Math.max(prev[j], cur[j - 1]);
+    [prev, cur] = [cur, prev];
+  }
+  return prev[b.length];
+}
+
+/** 编辑脚本合法：去掉 + 是 a，去掉 - 是 b，行号连续 */
+function valid(d: DiffLine[], a: string[], b: string[], aStart = 1, bStart = 1) {
+  expect(d.filter((x) => x.op !== "+").map((x) => x.text)).toEqual(a);
+  expect(d.filter((x) => x.op !== "-").map((x) => x.text)).toEqual(b);
+  expect(d.filter((x) => x.op !== "+").map((x) => x.a)).toEqual(a.map((_, i) => aStart + i));
+  expect(d.filter((x) => x.op !== "-").map((x) => x.b)).toEqual(b.map((_, i) => bStart + i));
+}
+
+describe("diff (jsdiff) on nano-vllm history", () => {
   const ps = pairs();
   it("has real file pairs", () => { expect(ps.length).toBeGreaterThan(50); });
-  it("finds an LCS of the same length", () => {
-    for (const p of ps) expect(diffLines(p.a, p.b).filter((x) => x.op === " ").length, p.name).toBe(lcs.diffLines(p.a, p.b).filter((x) => x.op === " ").length);
-  });
-  // 中间部分小于 LCS 表上限：和旧版逐行一致
-  it("gives the same lines, rows and line mapping", () => {
-    const differ: string[] = [];
+  it("gives a valid edit script with an LCS-length set of common lines", () => {
     for (const p of ps) {
-      const same = JSON.stringify(diffLines(p.a, p.b)) === JSON.stringify(lcs.diffLines(p.a, p.b));
-      if (!same) { differ.push(p.name); continue; }
-      expect(alignRows(p.a, p.b), p.name).toEqual(lcs.alignRows(p.a, p.b));
-      expect(mapLines(p.a, 1, p.b, 1), p.name).toEqual(lcs.mapLines(p.a, 1, p.b, 1));
-      expect(mapLines(p.a, 1, p.b, 1, false), p.name).toEqual(lcs.mapLines(p.a, 1, p.b, 1, false));
+      const d = diffLines(p.a, p.b);
+      valid(d, p.a, p.b);
+      expect(d.filter((x) => x.op === " ").length, p.name).toBe(lcsLength(p.a, p.b));
     }
-    expect(differ).toEqual([]);
   });
-  // 剥掉头尾后超过 LCS 表上限的走 Myers：公共行一样多（取哪几行可以不同）
-  it("Myers path on large real inputs keeps an LCS of the same length", () => {
+  it("aligned rows cover both sides in order; line mapping follows the rows", () => {
+    for (const p of ps) {
+      const rows = alignRows(p.a, p.b);
+      expect(rows.filter((r) => r.l !== undefined).map((r) => r.l), p.name).toEqual(p.a.map((_, i) => i));
+      expect(rows.filter((r) => r.r !== undefined).map((r) => r.r), p.name).toEqual(p.b.map((_, i) => i));
+      for (const r of rows) if (r.kind === "same") expect(p.a[r.l!]).toBe(p.b[r.r!]);
+      const m = mapLines(p.a, 1, p.b, 1, false);
+      for (const [x, y] of m) expect(p.a[x - 1], p.name).toBe(p.b[y - 1]);
+      expect(m.size).toBe(lcsLength(p.a, p.b));
+      expect([...mapLines(p.a, 1, p.b, 1)]).toEqual(rows.filter((r) => r.l !== undefined && r.r !== undefined).map((r) => [r.l! + 1, r.r! + 1]));
+    }
+  });
+  it("large real inputs keep an LCS of the same length", () => {
     const a = ps.slice(0, 60).flatMap((p) => p.a), b = ps.slice(0, 60).flatMap((p) => p.b);
-    expect(a.length * b.length).toBeGreaterThan(1 << 22);
     const d = diffLines(a, b);
-    expect(d.filter((x) => x.op === " ").length).toBe(lcs.diffLines(a, b).filter((x) => x.op === " ").length);
-    expect(d.filter((x) => x.op !== "+").map((x) => x.text)).toEqual(a);
-    expect(d.filter((x) => x.op !== "-").map((x) => x.text)).toEqual(b);
+    valid(d, a, b);
+    expect(d.filter((x) => x.op === " ").length).toBe(lcsLength(a, b));
   });
-  it("word diff matches", () => {
-    for (const [x, y] of [["    input_ids.extend(seq[start:end])", "    input_ids.append(seq.last_token)"], ["a b c", "a c"], ["", "x"], ["foo(bar)", "foo(baz)"]])
-      expect(wordDiff(x, y)).toEqual(lcs.wordDiff(x, y));
+  it("word diff marks exactly what changed", () => {
+    const cut = (s: string, rs: [number, number][]) => rs.reduceRight((t, [x, y]) => t.slice(0, x) + t.slice(y), s);
+    for (const [x, y] of [["    input_ids.extend(seq[start:end])", "    input_ids.append(seq.last_token)"], ["a b c", "a c"], ["", "x"], ["foo(bar)", "foo(baz)"]]) {
+      const w = wordDiff(x, y);
+      expect(cut(x, w.a)).toBe(cut(y, w.b));
+    }
+    expect(wordDiff("foo(bar)", "foo(baz)")).toEqual({ a: [[4, 7]], b: [[4, 7]] });
   });
 });
 
@@ -62,8 +84,7 @@ describe("diff on 10k-line inputs", () => {
   const check = (b: string[]) => {
     const t = performance.now(), d = diffLines(a, b);
     expect(performance.now() - t).toBeLessThan(3000);
-    expect(d.filter((x) => x.op !== "+").map((x) => x.text)).toEqual(a);
-    expect(d.filter((x) => x.op !== "-").map((x) => x.text)).toEqual(b);
+    valid(d, a, b);
     return d;
   };
   it("scattered edits: exact", () => {
@@ -74,9 +95,14 @@ describe("diff on 10k-line inputs", () => {
     const d = check(Array.from({ length: N }, (_, i) => `other ${i}`));
     expect(d.map((x) => x.op).join("")).toBe("-".repeat(N) + "+".repeat(N));
   });
-  it("mostly different with shared lines: anchors on unique lines", () => {
-    const b = Array.from({ length: N }, (_, i) => (i % 100 === 0 ? a[i] : i % 3 ? `x ${i}` : ""));
-    expect(check(b).filter((x) => x.op === " ").length).toBeGreaterThanOrEqual(N / 100);
+  it("mostly different with shared lines, or reversed: still a valid script in time", () => {
+    check(Array.from({ length: N }, (_, i) => (i % 100 === 0 ? a[i] : i % 3 ? `x ${i}` : "")));
     check([...a].reverse());
+  });
+  it("small but very different inputs are still exact", () => {
+    const x = Array.from({ length: 600 }, (_, i) => `l ${i % 40}`), y = Array.from({ length: 600 }, (_, i) => `l ${(i * 7) % 45}`);
+    const d = diffLines(x, y);
+    valid(d, x, y);
+    expect(d.filter((t) => t.op === " ").length).toBe(lcsLength(x, y));
   });
 });

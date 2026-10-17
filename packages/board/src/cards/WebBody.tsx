@@ -6,6 +6,7 @@ import { cardTitle, domainOf, urlPath, type LinkItem, type LinksCard, type WebCa
 import { editing, setEditing } from "../state/ui";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
+import { place, virtual } from "../ui/place";
 import * as A from "../actions";
 import "./web.css";
 
@@ -131,20 +132,21 @@ function LinkRow(p: { card: LinksCard; item: LinkItem; dropBefore: boolean; drop
   const title = () => it().title || it().meta?.title || domainOf(it().url);
   const dragged = () => A.rowDrag()?.item === it().id;
   // 悬停 Compact 行一会儿：旁边浮出完整书签
-  const [peek, setPeek] = createSignal<{ x: number; y: number } | null>(null);
+  const [peek, setPeek] = createSignal(false);
+  const [peekPos, setPeekPos] = createSignal<{ x: number; y: number } | null>(null);
   let el!: HTMLDivElement, t: number | undefined;
   const enter = () => {
     if (rich() || A.rowDrag()) return;
     clearTimeout(t);
-    t = window.setTimeout(() => {
-      if (!el?.isConnected || A.rowDrag() || editing()) return;
-      const r = el.getBoundingClientRect(), cr = (el.closest(".card") as HTMLElement).getBoundingClientRect();
-      const W = window.innerWidth;
-      const x = cr.right + 10 + 340 < W ? cr.right + 10 : Math.max(8, cr.left - 350);
-      setPeek({ x, y: Math.max(8, Math.min(r.top - 8, window.innerHeight - 170)) });
-    }, 550);
+    t = window.setTimeout(() => { if (el?.isConnected && !A.rowDrag() && !editing()) setPeek(true); }, 550);
   };
-  const leave = () => { clearTimeout(t); setPeek(null); };
+  // 卡片右边、和这一行齐平（右边放不下翻到左边）：锚点是卡片在这一行高度上的那一条
+  const placePeek = (pe: HTMLElement) => {
+    const r = el.getBoundingClientRect(), cr = (el.closest(".card") as HTMLElement).getBoundingClientRect();
+    void place(pe, virtual({ x: cr.left, y: r.top, width: cr.width, height: r.height }), "right-start", { gap: { mainAxis: 10, crossAxis: -8 }, strategy: "fixed" })
+      .then(({ x, y }) => { if (peek()) setPeekPos({ x, y }); });
+  };
+  const leave = () => { clearTimeout(t); setPeek(false); setPeekPos(null); };
   onCleanup(() => clearTimeout(t));
   return (
     <div ref={el} class="lrow" classList={{ rich: rich(), "drop-before": p.dropBefore, "drop-after": p.dropAfter, dragged: dragged() }}
@@ -168,7 +170,7 @@ function LinkRow(p: { card: LinksCard; item: LinkItem; dropBefore: boolean; drop
         <button class="lb" aria-label="Remove from List" data-tip="Remove from List" onClick={() => A.removeItem(p.card.id, it().id)}><Icon name="close" size={12} /></button>
       </div>
       <Show when={peek()}>
-        <Portal><div class="lpeek" style={{ left: `${peek()!.x}px`, top: `${peek()!.y}px` }}><Bookmark url={it().url} meta={it().meta} title={it().title} /></div></Portal>
+        <Portal><div ref={(e) => queueMicrotask(() => placePeek(e))} class="lpeek" style={{ left: `${peekPos()?.x ?? 0}px`, top: `${peekPos()?.y ?? 0}px`, visibility: peekPos() ? undefined : "hidden" }}><Bookmark url={it().url} meta={it().meta} title={it().title} /></div></Portal>
       </Show>
     </div>
   );

@@ -3,88 +3,18 @@ import { diffArrays } from "diff";
 
 export type DiffLine = { op: " " | "+" | "-"; text: string; a?: number; b?: number };
 
-/** 行级 diff；a、b 是行号（相对各自起点） */
+/** 行级 diff（jsdiff 的 Myers）；a、b 是行号（相对各自起点） */
 export function diffLines(a: string[], b: string[], aStart = 1, bStart = 1): DiffLine[] {
   const out: DiffLine[] = [];
+  // Myers 是 O((n+m)·D)：改动数封顶，两段差得太多就整段删 + 整段加，长文件也不会卡住
+  const cs = diffArrays(a, b, { maxEditLength: Math.max(1000, Math.floor(4e7 / (a.length + b.length + 1))) });
   let i = 0, j = 0;
-  for (const op of ops(a, b)) {
-    if (op === "-") out.push({ op, text: a[i], a: aStart + i++ });
-    else if (op === "+") out.push({ op, text: b[j], b: bStart + j++ });
-    else out.push({ op, text: a[i], a: aStart + i++, b: bStart + j++ });
-  }
-  return out;
-}
-
-type Op = DiffLine["op"];
-/** 改动超过这么多行就不再找最短编辑（Myers 是 O((n+m)·D)），改用两边各只出现一次的行做锚点分段 */
-const MAX_EDIT = 1000;
-
-/** 剥掉头尾后不超过这么多格（n·m）就用 LCS 表（16 MB 以内） */
-const MAX_TABLE = 1 << 22;
-
-/**
- * 先剥掉相同的头尾：长文件也快，而且新增的整段贴在共同的尾巴前面。
- * 中间部分小的用 LCS 表，大的用 jsdiff 的 Myers（时间 / 内存随改动量增长，不是 n·m）。
- * 小的不用 Myers：等长的公共子序列有多种取法时，Myers 和这里取得不一样（Compare 的行对齐、词级高亮会变），
- * 这里的取法是「能删就先删」，界面一直是这样。
- */
-function ops(a: string[], b: string[]): Op[] {
-  let pre = 0;
-  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-  let suf = 0;
-  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-  const A = a.slice(pre, a.length - suf), B = b.slice(pre, b.length - suf);
-  const out: Op[] = Array(pre).fill(" ");
-  if (A.length * B.length <= MAX_TABLE) out.push(...table(A, B));
-  else {
-    const cs = diffArrays(A, B, { maxEditLength: MAX_EDIT });
-    if (cs) for (const c of cs) for (let k = 0; k < c.count; k++) out.push(c.removed ? "-" : c.added ? "+" : " ");
-    else out.push(...anchored(A, B));
-  }
-  for (let k = 0; k < suf; k++) out.push(" ");
-  return out;
-}
-
-/** LCS 表：从后往前填，从前往后走；不相等时能删（不丢公共行）就先删 */
-function table(A: string[], B: string[]): Op[] {
-  const n = A.length, m = B.length, w = m + 1;
-  const dp = new Uint32Array((n + 1) * w);
-  for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--)
-      dp[i * w + j] = A[i] === B[j] ? dp[(i + 1) * w + j + 1] + 1 : Math.max(dp[(i + 1) * w + j], dp[i * w + j + 1]);
-  const out: Op[] = [];
-  let i = 0, j = 0;
-  while (i < n || j < m) {
-    if (i < n && j < m && A[i] === B[j]) { out.push(" "); i++; j++; }
-    else if (i < n && (j >= m || dp[(i + 1) * w + j] >= dp[i * w + j + 1])) { out.push("-"); i++; }
-    else { out.push("+"); j++; }
-  }
-  return out;
-}
-
-/** 两段差得太多：两边都只出现一次的行按顺序（最长递增）当锚点，锚点之间再分别 diff；没有锚点就整段删 + 整段加 */
-function anchored(a: string[], b: string[]): Op[] {
-  const seen = new Map<string, { na: number; nb: number; ia: number; ib: number }>();
-  a.forEach((l, i) => { const e = seen.get(l); if (e) e.na++; else seen.set(l, { na: 1, nb: 0, ia: i, ib: -1 }); });
-  b.forEach((l, j) => { const e = seen.get(l); if (e) { e.nb++; e.ib = j; } });
-  const cand = [...seen.values()].filter((e) => e.na === 1 && e.nb === 1).sort((x, y) => x.ia - y.ia);
-  // b 下标的最长递增子序列（耐心排序）
-  const tails: number[] = [], prev: number[] = [];
-  cand.forEach((e, k) => {
-    let lo = 0, hi = tails.length;
-    while (lo < hi) { const mid = (lo + hi) >> 1; if (cand[tails[mid]].ib < e.ib) lo = mid + 1; else hi = mid; }
-    prev[k] = lo ? tails[lo - 1] : -1; tails[lo] = k;
-  });
-  const anchors: { ia: number; ib: number }[] = [];
-  for (let k = tails.length ? tails[tails.length - 1] : -1; k >= 0; k = prev[k]) anchors.unshift(cand[k]);
-  if (!anchors.length) return [...Array(a.length).fill("-"), ...Array(b.length).fill("+")];
-  const out: Op[] = [];
-  let i = 0, j = 0;
-  for (const x of [...anchors, { ia: a.length, ib: b.length }]) {
-    out.push(...ops(a.slice(i, x.ia), b.slice(j, x.ib)));
-    if (x.ia < a.length) out.push(" ");
-    i = x.ia + 1; j = x.ib + 1;
-  }
+  for (const c of cs ?? [{ removed: true, added: false, count: a.length }, { removed: false, added: true, count: b.length }])
+    for (let k = 0; k < c.count; k++) {
+      if (c.removed) out.push({ op: "-", text: a[i], a: aStart + i++ });
+      else if (c.added) out.push({ op: "+", text: b[j], b: bStart + j++ });
+      else out.push({ op: " ", text: a[i], a: aStart + i++, b: bStart + j++ });
+    }
   return out;
 }
 

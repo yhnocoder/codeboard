@@ -12,7 +12,7 @@ import { setConnectFrom } from "../state/ui";
 import { markHtml } from "../cards/CompareBody";
 import { Icon } from "./icons";
 import { autoUpdate } from "@floating-ui/dom";
-import { placePop, virtual } from "./place";
+import { place, virtual } from "./place";
 import { promptText } from "./Menu";
 import { ask, send } from "../host";
 import * as A from "../actions";
@@ -30,7 +30,7 @@ function PopFrame(p: { inst: PopInst }) {
   const [pos, setPos] = createSignal({ x: 0, y: 0 });
   const [anchor, setAnchor] = createSignal<Element | undefined>();
   let last: { x: number; y: number } | undefined, n = 0;
-  const place = () => {
+  const reposition = () => {
     const at = p.inst.at;
     // 锚点元素被重画掉了（比如删了一条旁注，标记换成新的）：Sidenote 弹窗改挂到还剩的那条的标记上；找不到就停在原地
     if (at.el && !at.el.isConnected && p.inst.pop.kind === "notes") {
@@ -40,15 +40,19 @@ function PopFrame(p: { inst: PopInst }) {
     }
     if (at.el && !at.el.isConnected && last) return;
     const k = ++n;
-    void placePop(el, at.el?.isConnected ? at.el : virtual({ x: at.x ?? 0, y: at.y ?? 0 }), at.prefer).then((r) => { if (k === n) setPos(last = { x: r.x, y: r.y }); });
+    // 贴着锚点元素：下方 / 右侧 / 上方，放不下翻到另一边；没有元素就放在点 (x, y)
+    const ref = at.el?.isConnected ? at.el : virtual({ x: at.x ?? 0, y: at.y ?? 0 });
+    const r = at.el?.isConnected && at.prefer === "right" ? place(el, ref, "right-start", { gap: { mainAxis: 8, crossAxis: -6 } })
+      : place(el, ref, at.prefer === "above" ? "top-start" : "bottom-start", { gap: at.el?.isConnected ? 6 : 0 });
+    void r.then((r) => { if (k === n) setPos(last = { x: r.x, y: r.y }); });
   };
   // 镜头动时跟着元素走；弹窗自己或锚点变大小、窗口变大小时重新放（autoUpdate）
   createEffect(() => setAnchor(p.inst.at.el));
   createEffect(() => {
     const a = anchor();
-    onCleanup(autoUpdate(a?.isConnected ? a : virtual({ x: 0, y: 0 }), el, place, { layoutShift: false }));
+    onCleanup(autoUpdate(a?.isConnected ? a : virtual({ x: 0, y: 0 }), el, reposition, { layoutShift: false }));
   });
-  createEffect(() => { void cam.x; void cam.y; void cam.z; place(); });
+  createEffect(() => { void cam.x; void cam.y; void cam.z; reposition(); });
   const k = () => p.inst.pop.kind;
   return (
     <div ref={el} class={`pop open k-${k()}`} classList={{ pinned: p.inst.pinned }} data-pop={p.inst.id} style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
