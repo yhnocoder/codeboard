@@ -88,7 +88,7 @@ export async function ready() { await initAnalysis(path.join(REPO, "node_modules
 /** Lets a scenario play part of the host: return true if handled */
 export type OnMsg = (m: BoardToHost & { req?: number }, reply: (req: number, data?: unknown, error?: string) => Promise<void>) => boolean | Promise<boolean>;
 
-export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT_SETTINGS>; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void>; on?: OnMsg } = {}): Promise<Host> {
+export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT_SETTINGS>; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void>; on?: OnMsg; host?: Record<string, unknown> } = {}): Promise<Host> {
   await ready();
   if (!files.size) load();
   fs.mkdirSync(OUT, { recursive: true });
@@ -119,7 +119,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
         const views: Record<string, SegView> = {};
         for (const k of board.cards) if (k.kind === "code") for (const sg of k.segments) views[sg.id] = viewOf(sg);
         for (const n of board.sidenotes) if (n.kind === "code") views[n.code.id] = viewOf(n.code);
-        await post({ type: "init", board, boards: [{ id: board.id, name: board.name, cards: board.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS, ...(o.settings ?? {}) } } });
+        await post({ type: "init", board, boards: [{ id: board.id, name: board.name, cards: board.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS, ...(o.settings ?? {}) }, ...(o.host ?? {}) } as any });
         break;
       }
       case "save": {
