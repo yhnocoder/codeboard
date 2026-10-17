@@ -354,6 +354,25 @@ function dedent(s: string) {
 }
 
 // ---------- 挂载 ----------
+/** 预热：空闲时在屏幕外挂一次再拆掉，第一次双击不用等 JIT 和各插件第一次初始化 */
+export function warmUp(o: Omit<MdEditorOpts, "value" | "onDone">) {
+  const host = document.createElement("div");
+  host.style.cssText = "position:fixed;left:-10000px;top:0;width:400px;visibility:hidden;contain:strict";
+  document.body.append(host);
+  const handle = document.createElement("div");
+  let e!: Editor;
+  try {
+    e = new Editor({
+      element: host, injectCSS: false, autofocus: false,
+      extensions: editorExtensions({ ...o, value: "", onDone: () => {} }, () => e, handle, () => {}),
+      content: parseMd("## a\n\ntext **b** `c` $x$ [[d]][^1]\n\n- [ ] t\n\n```python\ndef f(): pass\n```\n\n$$\nx\n$$\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n<details>\n<summary>s</summary>\n\nb\n\n</details>\n\n[^1]: n"),
+    });
+    serializeMd(e.getJSON());
+  } catch { /* 预热失败不要紧 */ }
+  e?.destroy();
+  host.remove();
+}
+
 export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle {
   let changed = false, raw: HTMLTextAreaElement | null = null, rawStart = "", done = false;
   const [tick, setTick] = createSignal(0);
@@ -369,6 +388,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     extensions: editorExtensions(o, () => editor, handle, () => finish()),
     content: parseMd(o.value),
     autofocus: false,
+    injectCSS: false, // 基础样式在 styles.css
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
       handlePaste: (_v, ev) => handlePaste(editor, o, ev),

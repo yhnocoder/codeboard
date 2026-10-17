@@ -1,9 +1,9 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框（md 的是所见即所得的 Markdown 编辑器）。
 // ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
-import { Show, createEffect, onCleanup } from "solid-js";
+import { Show, createEffect, onCleanup, onMount } from "solid-js";
 import { editing, setEditing, type Editing } from "../state/ui";
 import { MdStatic } from "./Md";
-import { loadEditor, editorOpts, type MdEditorHandle } from "../md/load";
+import { loadEditor, editorNow, editorOpts, type MdEditorHandle } from "../md/load";
 
 export function Editable(p: {
   class?: string; kind: NonNullable<Editing>["kind"]; id: string; value: string; multiline?: boolean; md?: boolean; placeholder?: string;
@@ -82,11 +82,15 @@ function MdEdit(p: P) {
     if (v !== null && v !== p.value) p.onCommit(v);
   };
   const start = p.value;
-  void loadEditor().then((m) => {
+  const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
     if (done || !el.isConnected) return;
     el.textContent = "";
     ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder, onDone: finish });
-  }).catch((e) => { console.error("markdown editor failed to load", e); finish(null); });
+  };
+  // 预加载过的：元素挂到页面上后立刻挂编辑器（同一个任务里，不闪静态内容）；否则等加载完
+  const now = editorNow();
+  if (now) onMount(() => mount(now));
+  else void loadEditor().then(mount).catch((e) => { console.error("markdown editor failed to load", e); finish(null); });
   onCleanup(() => {
     if (done) return;
     const v = ed?.value() ?? null;
@@ -96,7 +100,7 @@ function MdEdit(p: P) {
   return (
     <div ref={el} class={`${p.class ?? ""} md editing`} style={p.style} data-ph={p.placeholder}
       onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} onKeyUp={(e) => e.stopPropagation()}>
-      <MdStatic src={p.value} class="md-loading" />
+      {now ? null : <MdStatic src={p.value} class="md-loading" />}
     </div>
   );
 }

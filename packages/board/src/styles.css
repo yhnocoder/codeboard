@@ -549,6 +549,17 @@ kbd { font: 10.5px var(--mono); }
 /* Markdown 编辑器（md/editor，懒加载）：内容沿用上面 .md 的样式，这里只管编辑时才有的东西 */
 .md.editing { position: relative; }
 .md-pm { outline: none; min-height: 1.6em; cursor: text; }
+/* TipTap 自带的基础样式（injectCSS 关掉了：每次挂载 / 卸载它都要在整个页面里查一遍 style 标签和 .tiptap） */
+.md-pm { position: relative; word-wrap: break-word; white-space: break-spaces; font-variant-ligatures: none; font-feature-settings: "liga" 0; }
+.md-pm [contenteditable="false"] { white-space: normal; }
+.md-pm [contenteditable="false"] [contenteditable="true"] { white-space: pre-wrap; }
+.md-pm img.ProseMirror-separator { display: inline !important; border: none !important; margin: 0 !important; width: 0 !important; height: 0 !important; }
+.md-pm .ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; margin: 0; }
+.md-pm .ProseMirror-gapcursor::after { content: ""; display: block; position: absolute; top: -2px; width: 20px; border-top: 1px solid var(--ink); animation: pm-blink 1.1s steps(2, start) infinite; }
+@keyframes pm-blink { to { visibility: hidden; } }
+.md-pm.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+.md-pm.ProseMirror-hideselection *::selection { background: transparent; }
+.md-pm.ProseMirror-hideselection * { caret-color: transparent; }
 .md-pm p.is-empty:first-child:last-child::before, .md-pm .is-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; height: 0; pointer-events: none; }
 .md-pm .ProseMirror-selectednode { outline: 1.5px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 .md-pm ::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }

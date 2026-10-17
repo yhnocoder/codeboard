@@ -2,18 +2,23 @@
 import { cardTitle, isCode } from "@codeboard/core";
 import { state, placed } from "../state/store";
 import { ask } from "../host";
+import { editing } from "../state/ui";
 import { openLink } from "../actions/common";
 import type { MdEditorOpts, MdEditorHandle } from "./editor";
 
 export type { MdEditorHandle };
 type Mod = typeof import("./editor");
-let mod: Promise<Mod> | undefined;
-export const loadEditor = () => (mod ??= import("./editor"));
+let mod: Promise<Mod> | undefined, ready: Mod | undefined;
+export const loadEditor = () => (mod ??= import("./editor").then((m) => (ready = m)));
+/** 已经加载好了就直接拿（同一帧里挂上编辑器，不等 Promise） */
+export const editorNow = () => ready;
 
 /** 白板打开后空闲时预加载，第一次双击就不用等 */
 export function preloadEditor() {
-  const go = () => void loadEditor().catch(() => { mod = undefined; });
   const ric = (window as any).requestIdleCallback as ((f: () => void, o?: { timeout: number }) => void) | undefined;
+  const later = (f: () => void, t: number) => setTimeout(() => (ric ? ric(f, { timeout: t }) : f()), 0);
+  // 加载完再等一次空闲，屏幕外挂一次预热（只挂过才会编译、初始化各插件）
+  const go = () => void loadEditor().then((m) => later(() => { if (!editing()) m.warmUp(editorOpts()); }, 4000)).catch(() => { mod = undefined; });
   setTimeout(() => (ric ? ric(go, { timeout: 4000 }) : go()), 2500);
 }
 
