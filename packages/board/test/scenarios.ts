@@ -13,6 +13,7 @@ import { V018REVIEW } from "./v018review";
 import { SHARED } from "./scenarios-shared";
 import { SUBBOARDS } from "./scenarios-subboards";
 import { CHAINS } from "./scenarios-chains";
+import { CALLS } from "./scenarios-calls";
 
 const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -38,6 +39,7 @@ const S: Record<string, () => Promise<void>> = {
   ...SHARED,
   ...SUBBOARDS,
   ...CHAINS,
+  ...CALLS,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");
