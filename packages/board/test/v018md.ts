@@ -224,7 +224,7 @@ export const V018MD: Record<string, () => Promise<void>> = {
     // 每一帧都查：视野里有没有还没渲染的 Note（藏着的）、有没有露出来的原文（没藏的占位）
     await pg.evaluate(() => {
       const w = window as any;
-      w.__lz = { frames: 0, hiddenInView: 0, rawShown: 0, pendSeen: 0, culled: 0 };
+      w.__lz = { frames: 0, hiddenInView: 0, rawShown: 0, pendSeen: 0, culled: 0, blankInView: 0, wait: {}, waits: [] };
       const tick = () => {
         w.__lz.frames++;
         for (const e of document.querySelectorAll<HTMLElement>(".card .md-pend")) {
@@ -234,6 +234,16 @@ export const V018MD: Record<string, () => Promise<void>> = {
             if (e.closest(".card.off")) w.__lz.culled++; // 卡片自己被 cull.ts 藏着（原来就有的行为），不算
             else if (getComputedStyle(e).visibility === "hidden") w.__lz.hiddenInView++; else w.__lz.rawShown++;
           }
+        }
+        // 卡片内容被 cull.ts 藏着（.off）：在屏幕里 = 空白卡（不许有）；在屏幕外半屏以内 = 等着显示，记它等了几帧
+        const W = innerWidth, H = innerHeight;
+        for (const c of document.querySelectorAll<HTMLElement>(".card")) {
+          const r = c.getBoundingClientRect(), id = c.dataset.id!;
+          const inView = r.bottom > 0 && r.top < H && r.right > 0 && r.left < W;
+          const inRing = r.bottom > -H / 2 && r.top < H * 1.5 && r.right > -W / 2 && r.left < W * 1.5;
+          if (c.classList.contains("off") && inView) w.__lz.blankInView++;
+          if (c.classList.contains("off") && inRing) w.__lz.wait[id] = (w.__lz.wait[id] ?? 0) + 1;
+          else if (w.__lz.wait[id]) { w.__lz.waits.push(w.__lz.wait[id]); delete w.__lz.wait[id]; }
         }
         if (w.__lz.on) requestAnimationFrame(tick);
       };
@@ -248,10 +258,17 @@ export const V018MD: Record<string, () => Promise<void>> = {
     await pg.keyboard.up("Control");
     for (let i = 0; i < 30; i++) { await pg.mouse.wheel(-40, 60); await pg.waitForTimeout(16); }
     await pg.waitForTimeout(1500);
-    const r = await pg.evaluate(() => { const w = window as any; w.__lz.on = false; return { ...w.__lz, leftAfter: document.querySelectorAll(".md-pend").length, rendered: document.querySelectorAll(".card .nbody h2, .card .tx h2").length }; });
+    const r = await pg.evaluate(() => {
+      const w = window as any; w.__lz.on = false;
+      const ws = [...w.__lz.waits].sort((a: number, b: number) => a - b);
+      const { wait: _w, waits: _ws, ...rest } = w.__lz;
+      // 显示延迟：卡进到屏幕外半屏以内以后，过了几帧内容才显示
+      return { ...rest, revealN: ws.length, revealP95: ws[Math.floor(ws.length * 0.95)] ?? 0, revealMax: ws[ws.length - 1] ?? 0,
+        leftAfter: document.querySelectorAll(".md-pend").length, rendered: document.querySelectorAll(".card .nbody h2, .card .tx h2").length };
+    });
     await saveShot(h, "v18-md-lazy");
     // pendSeen > 0：确实有过排队的（不然这项没测到什么）；1.5 秒后全部渲染完
-    check("v18mdlazy", r.pendSeen > 0 && r.rawShown === 0 && r.hiddenInView === 0 && r.leftAfter === 0 && r.rendered === 320, r);
+    check("v18mdlazy", r.pendSeen > 0 && r.rawShown === 0 && r.hiddenInView === 0 && r.blankInView === 0 && r.leftAfter === 0 && r.rendered === 320, r);
     await close(h);
   },
 

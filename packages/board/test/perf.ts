@@ -405,6 +405,9 @@ async function notesEdit(h: Host, cdp: CDPSession, board: Board, res: Record<str
     if (i) { await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300); }
     await focusCard(h, ids[i]);
     const pt = await center(ids[i]);
+    // 真实用户先移到 Note 上再双击；--hover 0 关闭
+    const hov = +arg("hover", "300");
+    if (hov) { await h.page.mouse.move(pt.x, pt.y); await h.page.waitForTimeout(hov); }
     const t = performance.now();
     const tr = arg("long", "") === "editEnter" ? await traceStart(cdp) : null;
     await h.page.mouse.dblclick(pt.x, pt.y);
@@ -422,16 +425,20 @@ async function notesEdit(h: Host, cdp: CDPSession, board: Board, res: Record<str
   await h.page.keyboard.press("Enter");
   const text = "Prefill admits waiting seqs until the token budget runs out, then decode. ";
   res.type = sum(await steps(h, cdp, 80, async (i) => { await h.page.keyboard.type(text[i % text.length]); }, "type"));
+  const tx = arg("long", "") === "editExit" ? await traceStart(cdp) : null;
   const t = performance.now();
-  await h.page.keyboard.press("Escape");
-  await h.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable);
+  await profiled(cdp, "editExit", async () => {
+    await h.page.keyboard.press("Escape");
+    await h.page.waitForFunction(() => !(document.activeElement as HTMLElement | null)?.isContentEditable);
+  });
   await raf(h);
   res.editExit = +(performance.now() - t).toFixed(1);
+  if (tx) await tx();
   await h.page.waitForTimeout(1500);
   res.typed = (h.board().cards.find((c) => c.id === ids[ids.length - 1]) as { md: string }).md.includes("Prefill admits waiting");
 }
 
-/** --long editEnter: what each main-thread task over 4 ms spent its time on (events inside it over 0.8 ms) */
+/** --long editEnter / editExit: what each main-thread task over 4 ms spent its time on (events inside it over 0.8 ms) */
 async function traceStart(cdp: CDPSession) {
   const events: any[] = [];
   const onData = (e: any) => events.push(...e.value);
