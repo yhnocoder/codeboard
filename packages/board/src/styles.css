@@ -546,6 +546,52 @@ kbd { font: 10.5px var(--mono); }
 .mmd.ok { display: flex; justify-content: center; overflow: hidden; }
 .mmd.ok svg { max-width: 100%; height: auto; }
 .mmd-err { font: 11px/1.45 var(--mono); color: var(--warn); margin-bottom: 2px; }
+/* Markdown 编辑器（md/editor，懒加载）：内容沿用上面 .md 的样式，这里只管编辑时才有的东西 */
+.md.editing { position: relative; }
+.md-pm { outline: none; min-height: 1.6em; cursor: text; }
+.md-pm p.is-empty:first-child:last-child::before, .md-pm .is-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; height: 0; pointer-events: none; }
+.md-pm .ProseMirror-selectednode { outline: 1.5px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+.md-pm ::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+.md-pm pre { white-space: pre; tab-size: 4; }
+.md-pm pre code { white-space: inherit; }
+.md-pm .tiptap-mathematics-render { cursor: pointer !important; border-radius: 4px; }
+.md-pm .tiptap-mathematics-render:hover { background: var(--hlrow); }
+.md-pm [data-type="block-math"] { display: block; text-align: center; padding: 2px 0; overflow-x: auto; }
+.md-pm [data-type="block-math"]:has(.block-math-inner:empty)::after, .md-pm [data-type="inline-math"]:empty::after { content: "Empty formula"; color: var(--ink-3); font-size: .9em; }
+.md-pm .block-math-error, .md-pm .inline-math-error { color: var(--warn); font-family: var(--mono); font-size: .9em; }
+.md-pm [data-type="details"] { display: flex; gap: 2px; margin: 4px 0; padding: 2px 0 2px 4px; border-left: 2px solid var(--hair); }
+.md-pm [data-type="details"] > button { flex: none; width: 18px; height: 1.6em; color: var(--ink-3); border-radius: 4px; }
+.md-pm [data-type="details"] > button::before { content: "▸"; display: inline-block; transition: transform calc(var(--t) * 120ms); }
+.md-pm [data-type="details"].is-open > button::before { transform: rotate(90deg); }
+.md-pm [data-type="details"] > button:hover { color: var(--ink); background: var(--hlrow); }
+.md-pm [data-type="details"] > div { flex: 1; min-width: 0; }
+.md-pm [data-type="details"] summary { font-weight: 600; list-style: none; }
+.md-pm [data-type="details"] summary::before { content: none; }
+.md-pm [data-type="details"]:not(.is-open) [data-type="detailsContent"] { display: none; }
+.md-pm .tableWrapper { overflow-x: auto; margin: 4px 0; }
+.md-pm .tableWrapper table { display: table; margin: 0; }
+.md-pm .selectedCell { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.md-pm sup a.footnote-ref, .md-pm sup a { color: var(--k-fn); text-decoration: none; font-size: .8em; }
+.md-pm ol.footnotes li::marker { color: var(--ink-3); }
+.md-pm a { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; }
+.md-pm img { cursor: default; }
+.md-pm img.ProseMirror-selectednode { outline-offset: 2px; }
+.md-ghost { color: var(--ink-3); opacity: .85; pointer-events: none; user-select: none; -webkit-user-select: none; }
+.md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab !important; user-select: none; -webkit-user-select: none; }
+.md-handle:hover { color: var(--ink); background: var(--hlrow); }
+.md-raw { display: block; width: 100%; min-height: 3em; margin: 0; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow: hidden; }
+.mdui-anchor { z-index: 60; }
+.md-menu { position: static; max-height: 300px; min-width: 220px; }
+.md-menu button.sel { background: var(--accent); color: var(--accent-ink); }
+.md-menu button.sel small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+.md-empty { padding: 6px 8px; font-size: 12px; color: var(--ink-3); }
+.md-bubble, .md-mathpop { position: absolute; z-index: 60; left: 0; top: 0; }
+.md-bubble .tbtn { height: 26px; padding: 0 8px; min-width: 26px; justify-content: center; }
+.md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
+.md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
+.md-mathpop { display: flex; align-items: flex-end; gap: 6px; padding: 6px; }
+.md-mathpop textarea { width: 300px; border: 0; outline: none; resize: vertical; background: var(--surface); border-radius: 6px; padding: 5px 7px; font: 12px/1.5 var(--mono); box-shadow: inset 0 0 0 1px var(--hair); }
+.md-mathhint { font-size: 11px; color: var(--ink-3); padding-bottom: 4px; white-space: nowrap; }
 .card.note .nbody, .card.text .tx { white-space: normal; }
 /* 编辑时跟显示时同一种字体、同一个位置，不再套一层白框（卡本身已经有选中框） */
 .card.note .nbody.editing, .card.text .tx.editing { white-space: pre-wrap; box-shadow: none; background: none; border-radius: 0; }

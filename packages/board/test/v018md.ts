@@ -107,4 +107,73 @@ export const V018MD: Record<string, () => Promise<void>> = {
       await close(h);
     }
   },
+
+  /** WYSIWYG editing: lazy chunk loads, typing with input rules, / menu, [[ picker, bubble toolbar, raw mode, ⌘Z stays in the editor, Esc saves */
+  async v18mdedit() {
+    const { b } = mdBoard();
+    const h = await open({ board: b, light, w: 1400, h: 950 });
+    const pg = h.page;
+    const md = () => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
+    const nCards = () => h.board().cards.length;
+    await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 200, y: 40 } });
+    await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
+    const focus = await pg.evaluate(() => !!document.activeElement?.closest(".md-pm"));
+    // 文末打字：**x** 自动变粗体，板子的快捷键不响应（t 不会新建 Text）
+    await pg.keyboard.press("Enter");
+    await pg.keyboard.type("Hello **world** and t");
+    const tables0 = await pg.locator('.card[data-id="n1"] .md-pm table').count();
+    const boldNow = await pg.locator('.card[data-id="n1"] .md-pm strong', { hasText: "world" }).count();
+    const cards0 = nCards();
+    // / 菜单：过滤后回车插入表格
+    await pg.keyboard.press("Enter");
+    await pg.keyboard.type("/tab");
+    await pg.waitForTimeout(150);
+    const slash = await pg.locator(".md-menu button").allTextContents();
+    await saveShot(h, "v18-edit-slash");
+    await pg.keyboard.press("Enter");
+    await pg.waitForTimeout(100);
+    const table = await pg.locator('.card[data-id="n1"] .md-pm table').count();
+    await pg.keyboard.type("cell");
+    // 跳出表格：表格后面再来一段（光标在表格最后一格，↓ 出表格）
+    for (let i = 0; i < 3; i++) await pg.keyboard.press("ArrowDown");
+    // [[ 选卡
+    await pg.keyboard.type(" see [[sched");
+    await pg.waitForTimeout(150);
+    const refItems = await pg.locator(".md-menu button .lb").allTextContents();
+    await saveShot(h, "v18-edit-ref");
+    await pg.keyboard.press("Enter");
+    const chip = await pg.locator('.card[data-id="n1"] .md-pm .cref').count();
+    // 选中几个字：出工具条，点 I 变斜体
+    await pg.keyboard.type("tail words");
+    for (let i = 0; i < 5; i++) await pg.keyboard.press("Shift+ArrowLeft");
+    await pg.waitForTimeout(150);
+    const bubble = await pg.locator(".md-bubble").count();
+    await saveShot(h, "v18-edit-bubble");
+    await pg.locator(".md-bubble .tbtn", { hasText: /^I$/ }).click();
+    const italic = await pg.locator('.card[data-id="n1"] .md-pm em', { hasText: "words" }).count();
+    // ⌘Z：编辑器里的撤销（斜体没了），板子不撤销
+    await pg.keyboard.press("ArrowRight");
+    await pg.keyboard.press("ControlOrMeta+z");
+    const italicAfterUndo = await pg.locator('.card[data-id="n1"] .md-pm em', { hasText: "words" }).count();
+    const stillEditing = await pg.locator('.card[data-id="n1"] .md-pm').count();
+    // ⌘/ 原文模式
+    await pg.keyboard.press("Control+/");
+    const rawVal = await pg.locator(".md-raw").inputValue().catch(() => "");
+    await pg.keyboard.type("\nraw line");
+    await pg.keyboard.press("Control+/");
+    const backWys = await pg.locator('.card[data-id="n1"] .md-pm').isVisible();
+    // Esc 保存退出
+    await pg.keyboard.press("Escape");
+    await pg.waitForTimeout(1500); // 自动保存约 1 秒后才发给宿主
+    const after = md();
+    const exited = await pg.locator(".md-pm").count();
+    const r = { focus, boldNow, cards0, cardsNow: nCards(), slash: slash.slice(0, 3), table, refItems: refItems.slice(0, 3), chip, bubble, italic, italicAfterUndo, stillEditing,
+      rawHas: rawVal.includes("[[Scheduler.schedule]]"), backWys, exited,
+      saved: { world: after.includes("Hello **world** and t"), table: /\| *cell *\|/.test(after), ref: after.includes("[[Scheduler.schedule]]"), raw: after.includes("raw line"), under: after.includes("block_manager") && !after.includes("block\\_") } };
+    const ok = focus && boldNow === 1 && r.cardsNow === cards0 && slash[0]?.startsWith("Table") && table === tables0 + 1 && refItems[0] === "Scheduler.schedule" && chip === 2 && bubble === 1 && italic === 1 && italicAfterUndo === 0 && stillEditing === 1
+      && r.rawHas && backWys && exited === 0 && Object.values(r.saved).every(Boolean);
+    await saveShot(h, "v18-edit-saved");
+    check("v18mdedit", ok, r);
+    await close(h);
+  },
 };

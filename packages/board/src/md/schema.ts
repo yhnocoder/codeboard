@@ -170,7 +170,8 @@ const Doc = Document.extend({ content: "block+ footnotes?" });
 // ---------- 其他 ----------
 // 图片是块（单独一段的图解析出来就在块级）；和字混在一段里的，解析后把段落拆开（见 splitImages）
 const Img = Image.configure({ allowBase64: true });
-const Task = TaskItem.configure({ nested: true });
+// 编辑器里的勾选框节点视图不带 data-type：样式靠这个属性，补上
+const Task = TaskItem.configure({ nested: true, HTMLAttributes: { "data-type": "taskItem" } });
 // 表格：GFM 存不下合并单元格和一格多段，所以一格只放一段
 const Cell = TableCell.extend({ content: "paragraph" });
 const Head = TableHeader.extend({ content: "paragraph" });

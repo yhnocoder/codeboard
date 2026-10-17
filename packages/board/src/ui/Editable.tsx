@@ -3,6 +3,7 @@
 import { Show, createEffect, onCleanup } from "solid-js";
 import { editing, setEditing, type Editing } from "../state/ui";
 import { MdStatic } from "./Md";
+import { loadEditor, editorOpts, type MdEditorHandle } from "../md/load";
 
 export function Editable(p: {
   class?: string; kind: NonNullable<Editing>["kind"]; id: string; value: string; multiline?: boolean; md?: boolean; placeholder?: string;
@@ -15,7 +16,7 @@ export function Editable(p: {
         ? <MdStatic class={p.class} style={p.style} ph={p.placeholder} src={p.value} onToggle={(v) => p.onCommit(v)} />
         : <div class={p.class} style={p.style} data-ph={p.placeholder}>{p.value}</div>
     }>
-      <PlainEdit {...p} />
+      {p.md ? <MdEdit {...p} /> : <PlainEdit {...p} />}
     </Show>
   );
 }
@@ -68,3 +69,34 @@ function PlainEdit(p: P) {
   );
 }
 
+
+/** Markdown 编辑：编辑器代码第一次用到时才加载（单独一个 chunk），加载完之前先显示静态内容 */
+function MdEdit(p: P) {
+  let el!: HTMLDivElement;
+  let ed: MdEditorHandle | undefined;
+  let done = false;
+  const finish = (v: string | null) => {
+    if (done) return;
+    done = true;
+    if (editing()?.kind === p.kind && editing()?.id === p.id) setEditing(null);
+    if (v !== null && v !== p.value) p.onCommit(v);
+  };
+  const start = p.value;
+  void loadEditor().then((m) => {
+    if (done || !el.isConnected) return;
+    el.textContent = "";
+    ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder, onDone: finish });
+  }).catch((e) => { console.error("markdown editor failed to load", e); finish(null); });
+  onCleanup(() => {
+    if (done) return;
+    const v = ed?.value() ?? null;
+    ed?.destroy();
+    finish(v);
+  });
+  return (
+    <div ref={el} class={`${p.class ?? ""} md editing`} style={p.style} data-ph={p.placeholder}
+      onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} onKeyUp={(e) => e.stopPropagation()}>
+      <MdStatic src={p.value} class="md-loading" />
+    </div>
+  );
+}
