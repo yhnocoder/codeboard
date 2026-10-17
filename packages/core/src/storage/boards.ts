@@ -7,6 +7,7 @@ import { Emitter } from "../emitter";
 import { loadBoardFile, loadSharedCard } from "../schema";
 import { applyPatch, deflate, inflate, putShared, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
 import { removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
+import { subBoardsOf } from "../subboard";
 import { baseName, extName, type Fs } from "./fs";
 
 /** refs = 这块白板上的共享卡；used = 换进来的是卡库里的哪一版（卡文件在外面被改了时重新换） */
@@ -160,7 +161,8 @@ export class Storage {
   }
 
   private meta(e: Entry): BoardMeta {
-    return { id: e.id, name: e.board.name, group: e.group, cards: e.board.cards.length, stale: this.stale.get(e.id) || undefined };
+    const subs = subBoardsOf(e.board);
+    return { id: e.id, name: e.board.name, group: e.group, cards: e.board.cards.length, stale: this.stale.get(e.id) || undefined, subs: subs.length ? subs : undefined };
   }
 
   /** 所有白板（搜索、CodeLens、Reveal 用） */
@@ -516,5 +518,5 @@ function bumped(prev: SharedCardFile | undefined, sc: SharedCard, touch: (item: 
   return dirty ? structuredClone({ version: BOARD_VERSION, card: sc.card, sidenotes: sc.sidenotes, rev }) : null;
 }
 
-/** 侧栏关心的部分：名字和卡片数 */
-const outline = (b: Board) => JSON.stringify([b.name, b.cards.length, allCodeCards(b).length]);
+/** 侧栏关心的部分：名字、卡片数、子白板 */
+const outline = (b: Board) => JSON.stringify([b.name, b.cards.length, allCodeCards(b).length, subBoardsOf(b)]);

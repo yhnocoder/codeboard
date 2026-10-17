@@ -39,5 +39,5 @@ export const keys = {
   shared: ok({} as SameKeys<SharedCardFile, SharedOut>),
   code: ok({} as Same<keyof CodeCard, CodeCardSchemaKeys> extends true ? true : { model: Exclude<keyof CodeCard, CodeCardSchemaKeys>; schema: Exclude<CodeCardSchemaKeys, keyof CodeCard> }),
 };
-export const cards: AllTrue<EachKind<Exclude<Card, CodeCard>, Out["cards"][number]>> = { note: true, image: true, web: true, links: true, compare: true };
+export const cards: AllTrue<EachKind<Exclude<Card, CodeCard>, Out["cards"][number]>> = { note: true, image: true, web: true, links: true, compare: true, board: true };
 export const sidenotes: AllTrue<EachKind<Sidenote, SNote>> = { code: true, paste: true, text: true, link: true, card: true };

@@ -1,11 +1,20 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta } from "./model";
+import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta } from "./model";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
 import type { SharedInfo } from "./shared";
+import type { Skeleton } from "./subboard";
+
+/** 子白板的面包屑：从最外层到当前白板的上一级（进入子白板时宿主记着；frame = 在那块白板上是哪个框） */
+export type Crumb = { id: string; name: string; frame: string };
+/**
+ * 跨白板的讲解。进入子白板：into = 父白板的讲解走到了第几步（root 出发），start = 从子白板的这张卡讲起（没有 = 从第一张图的根）；
+ * 回到父白板：resume = 从 root 出发的讲解接着讲第 i 步。宿主只是转一下
+ */
+export type WalkHop = { into?: { root: string; i: number }; start?: string; resume?: { root: string; i: number } };
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
@@ -65,8 +74,8 @@ export type HostInfo = {
   clip?: { board: string; n: number };
 };
 
-/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
-export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock" | "settings" | "openSettings";
+/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘⇧B ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
+export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock" | "settings" | "openSettings" | "turnIntoBoard";
 
 export type PeekDef = {
   path: string; // 显示用的路径
@@ -122,7 +131,8 @@ export type GhTree = { commit: string; paths: { path: string; dir?: boolean }[];
 export type GhFile = { path: string; lang: string; text: string[]; html: string[] };
 
 export type HostToBoard =
-  | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo }
+  /** crumbs：这块白板是从哪几块父白板一路进来的（没有 = 顶层）；walk：进来 / 回来时接着讲解 */
+  | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo; crumbs?: Crumb[]; walk?: WalkHop }
   | { type: "views"; views: Record<string, SegView> }
   | { type: "stale"; stale: Record<string, Stale> }
   | { type: "boards"; boards: BoardMeta[] }
@@ -149,6 +159,8 @@ export type HostToBoard =
   | { type: "sharedInfo"; cards: Record<string, SharedInfo> }
   /** 别的白板 Delete Everywhere 删掉了这些共享卡：白板用 sync 删掉（不进撤销栈） */
   | { type: "sharedGone"; cards: string[] }
+  /** 这块白板上的子白板的骨架（变了的那几块；null = 那块白板没了）。子白板存盘后宿主重算，防抖 */
+  | { type: "skeletons"; boards: Record<string, Skeleton | null> }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
@@ -200,6 +212,16 @@ export type BoardToHost =
   /** 共享卡 Delete Everywhere：从所有白板上删掉（回删了它的白板数） */
   | { type: "deleteEverywhere"; req: number; card: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
+  /** 子白板的骨架（白板上出现了还没有骨架的框时要；null = 那块白板没了） */
+  | { type: "skeletons"; req: number; ids: string[] }
+  /** Turn into Board：选中的卡拆出来的新白板（id 白板定），存到父白板所在的组；共享卡还是共享卡。回 ok */
+  | { type: "newBoard"; req: number; board: Board }
+  /** 双击子白板框：在这个面板里打开子白板（frame = 框的卡 id，cam = 父白板回来时的镜头）；walk.start = 接着讲解 */
+  | { type: "enterBoard"; id: string; frame: string; cam: Camera; walk?: WalkHop }
+  /** 面包屑 / Esc：回到第 depth 层父白板（0 = 最外层；缺省 = 上一级）；walk.back = 父白板接着讲解 */
+  | { type: "leaveBoard"; depth?: number; walk?: WalkHop }
+  /** 子白板框的 Delete Board…：删掉那块白板（放进 .trash；先问）。回删没删 */
+  | { type: "deleteBoard"; req: number; id: string }
   | { type: "pickFile"; req: number; kind: "image" }
   /** Note 编辑时的灰字补全：光标前后的文字，回接在光标处的一段（没有可用模型时回 null） */
   | { type: "complete"; req: number; before: string; after: string };
@@ -247,6 +269,9 @@ type Replies = {
   complete: string | null;
   pasteCards: PastedCards | null;
   deleteEverywhere: number;
+  skeletons: Record<string, Skeleton | null>;
+  newBoard: boolean;
+  deleteBoard: boolean;
 };
 export type ReplyOf<T extends AskType> = Replies[T];
 /** From GitHub… 的回答：按 GhQuery 的 op */

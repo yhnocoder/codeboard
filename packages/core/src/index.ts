@@ -7,6 +7,7 @@ export * from "./flow";
 export * from "./edit";
 export * from "./patch";
 export * from "./shared";
+export * from "./subboard";
 export * from "./layout";
 export * from "./paste";
 export * from "./web";

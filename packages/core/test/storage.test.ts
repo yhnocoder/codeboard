@@ -428,3 +428,22 @@ describe("card library (shared cards)", () => {
     expect([...store.refsOf("A")]).toEqual(["s"]);
   });
 });
+
+describe("sub-boards in the library", () => {
+  it("lists each board's sub-boards and tells the sidebar when a frame is added or removed", async () => {
+    const { store } = setup();
+    const parent = await store.create("Engine");
+    const child = await store.create("Scheduler");
+    let changed = 0;
+    store.onDidChange(() => changed++);
+    await store.patch(parent.id, { cards: { set: [{ id: "f", kind: "board", board: child.id }] }, place: { set: { f: { x: 0, y: 0, w: 560, h: 360 } } } });
+    expect(changed).toBe(1);
+    expect((await store.list()).find((m) => m.id === parent.id)?.subs).toEqual([child.id]);
+    expect((await store.list()).find((m) => m.id === child.id)?.subs).toBeUndefined();
+    await store.patch(parent.id, { place: { set: { f: { x: 50, y: 0, w: 560, h: 360 } } } });
+    expect(changed).toBe(1); // moving the frame is not a sidebar change
+    await store.patch(parent.id, { cards: { del: ["f"] }, place: { del: ["f"] } });
+    expect(changed).toBe(2);
+    expect((await store.list()).find((m) => m.id === parent.id)?.subs).toBeUndefined();
+  });
+});

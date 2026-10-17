@@ -104,7 +104,14 @@ export type CompareCard = CardBase & {
   hideSame?: boolean;
 };
 
-export type Card = CodeCard | NoteCard | ImageCard | WebCard | LinksCard | CompareCard;
+/**
+ * 子白板：另一块白板嵌在这块白板上，画成带名字的骨架（卡片标题、调用图标记、连线、Section 色，不画代码）。
+ * 只存是哪块白板；骨架由宿主按那块白板算好发来（白板界面里没有子白板的完整内容）。Place 总有 h（框的大小由用户定）。
+ * 第 6 版里加的（第 6 版还没发布过，所以不升版本）
+ */
+export type BoardCard = CardBase & { kind: "board"; board: string };
+
+export type Card = CodeCard | NoteCard | ImageCard | WebCard | LinksCard | CompareCard | BoardCard;
 export type CardKind = Card["kind"];
 
 // ---------- 摆放 ----------
@@ -122,8 +129,11 @@ export type Place = {
 
 // ---------- Link（界面上叫 Arrow） ----------
 
-/** Link 的一端：整张卡，或卡里某一段的某一行 */
-export type End = { card: string; seg?: string; line?: number };
+/**
+ * Link 的一端：整张卡，或卡里某一段的某一行。
+ * sub：card 是子白板（BoardCard）时，连到子白板里的哪张卡（线穿过框上的入口点落到骨架里那张卡上）；那张卡没了时 lost
+ */
+export type End = { card: string; seg?: string; line?: number; sub?: string };
 
 /** Call 上的变量：a = 调用处，b = 被调函数里的名字（名字不同才有）；ret = 返回值被谁接住 */
 export type Var = { a: string; b?: string; ret?: boolean; custom?: boolean };
@@ -256,7 +266,8 @@ export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。rev：每一项（卡、每条 Sidenote，按 id）被改过几次 */
 export type SharedCardFile = SharedCard & { version: 6; rev: Record<string, number> };
 
-export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number };
+/** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
+export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };
 
 export function emptyBoard(id: string, name: string): Board {
   return { version: BOARD_VERSION, id, name, cam: { x: 80, y: 80, z: 1 }, cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0 };
@@ -279,6 +290,7 @@ export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
     case "web": return c.meta?.title || domainOf(c.url);
     case "links": return "Links";
     case "compare": return `Compare · ${b ? compareName(c, b) : ""}`;
+    case "board": return "Board";
   }
 }
 
