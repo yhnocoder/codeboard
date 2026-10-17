@@ -1,7 +1,7 @@
 // Settings 页：白板里的整窗页面（⌘, / ⋯ → Settings… / 命令 CodeBoard: Open Settings）。
 // 改动乐观更新 state.host.settings，宿主写进 codeboard.*；快捷键清单和 ? 浮层共用 shortcuts.ts。
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
-import { THEMES, DEFAULT_SETTINGS, type HideFlags, type Settings as S } from "@codeboard/core";
+import { THEMES, EXPERIMENTAL_THEMES, DEFAULT_SETTINGS, type HideFlags, type Settings as S } from "@codeboard/core";
 import { state } from "../state/store";
 import { settingsOpen } from "../state/ui";
 import { send } from "../host";
@@ -43,6 +43,7 @@ function SettingsPage(p: { section?: string }) {
               <button class="st-sw" classList={{ on: cur().theme === id }} aria-pressed={cur().theme === id} onClick={() => A.setSetting("theme", id)}>
                 <Swatch id={id} />
                 <span class="st-swn">{name}</span>
+                <Show when={EXPERIMENTAL_THEMES.includes(id)}><span class="st-exp">Experimental</span></Show>
               </button>
             )}</For>
           </div>

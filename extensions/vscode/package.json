@@ -430,7 +430,19 @@
             "ink-wash",
             "city"
           ],
-          "description": "Board theme. Each theme has a light and a dark variant that follows VS Code."
+          "enumDescriptions": [
+            "Warm Ink",
+            "Graphite",
+            "Soft Light",
+            "Drafting",
+            "Colorful",
+            "Newspaper",
+            "Poster",
+            "Classic",
+            "Ink Wash",
+            "City (Experimental)"
+          ],
+          "description": "Board theme. Each theme has a light and a dark variant that follows VS Code. City is experimental."
         },
         "codeboard.newCards.hide": {
           "type": "object",

@@ -20,6 +20,8 @@ export const THEMES = [
   ["ink-wash", "Ink Wash"], ["city", "City"],
 ] as const;
 export type ThemeId = (typeof THEMES)[number][0];
+/** 实验性的主题：主题选择里和 VS Code 设置说明里标 Experimental；性能测试和 CI 的性能门槛不管它们（City 太复杂，容易超时） */
+export const EXPERIMENTAL_THEMES: readonly ThemeId[] = ["city"];
 
 /** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用 */
 export type Settings = {
