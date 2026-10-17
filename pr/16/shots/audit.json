@@ -21,38 +21,18 @@
  },
  {
   "step": "6-board",
-  "issues": [
-   {
-    "rule": "L8 overlapping cards",
-    "what": "div.ctitle \"BlockManager.allocate\" ↔ span.ctitle.sys \"Note\""
-   }
-  ]
+  "issues": []
  },
  {
   "step": "7a-settings",
-  "issues": [
-   {
-    "rule": "L8 overlapping cards",
-    "what": "div.ctitle \"BlockManager.allocate\" ↔ span.ctitle.sys \"Note\""
-   }
-  ]
+  "issues": []
  },
  {
   "step": "7b-diagnostics",
-  "issues": [
-   {
-    "rule": "L8 overlapping cards",
-    "what": "div.ctitle \"BlockManager.allocate\" ↔ span.ctitle.sys \"Note\""
-   }
-  ]
+  "issues": []
  },
  {
   "step": "7-uncommitted",
-  "issues": [
-   {
-    "rule": "L8 overlapping cards",
-    "what": "div.ctitle \"BlockManager.allocate\" ↔ span.ctitle.sys \"Note\""
-   }
-  ]
+  "issues": []
  }
 ]
