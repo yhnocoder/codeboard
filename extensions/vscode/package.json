@@ -434,7 +434,7 @@
         },
         "codeboard.ai.deepseekModel": {
           "type": "string",
-          "default": "deepseek-chat",
+          "default": "deepseek-flash",
           "description": "DeepSeek model for inline completions."
         },
         "codeboard.ai.deepseekBaseUrl": {
