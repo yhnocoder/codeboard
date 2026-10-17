@@ -11,6 +11,8 @@ import { pops, closePop, pinPop, updatePop, type PopInst, type Pop } from "../st
 import { setConnectFrom } from "../state/ui";
 import { markHtml } from "../cards/CompareBody";
 import { Icon } from "./icons";
+import { autoUpdate } from "@floating-ui/dom";
+import { place, virtual } from "./place";
 import { promptText } from "./Menu";
 import { ask, send } from "../host";
 import * as A from "../actions";
@@ -25,33 +27,32 @@ export function Popovers() {
 
 function PopFrame(p: { inst: PopInst }) {
   let el!: HTMLDivElement;
-  const [size, setSize] = createSignal({ w: 0, h: 0 });
-  onMount(() => {
-    const ro = new ResizeObserver(() => setSize({ w: el.offsetWidth, h: el.offsetHeight }));
-    ro.observe(el);
-    onCleanup(() => ro.disconnect());
-  });
-  let last: { x: number; y: number } | undefined;
-  const pos = createMemo(() => {
-    void cam.x; void cam.y; void cam.z; // 镜头动时跟着元素走
-    const at = p.inst.at, s = size();
-    const W = window.innerWidth, H = window.innerHeight;
+  const [pos, setPos] = createSignal({ x: 0, y: 0 });
+  const [anchor, setAnchor] = createSignal<Element | undefined>();
+  let last: { x: number; y: number } | undefined, n = 0;
+  const reposition = () => {
+    const at = p.inst.at;
     // 锚点元素被重画掉了（比如删了一条旁注，标记换成新的）：Sidenote 弹窗改挂到还剩的那条的标记上；找不到就停在原地
     if (at.el && !at.el.isConnected && p.inst.pop.kind === "notes") {
       const ids = p.inst.pop.ids.filter((id) => state.board.sidenotes.some((n) => n.id === id));
       const mk = [...document.querySelectorAll("[data-notes]")].find((m) => (m as HTMLElement).dataset.notes!.split(",").some((id) => ids.includes(id)));
-      if (mk) at.el = mk;
+      if (mk) { at.el = mk; setAnchor(mk); }
     }
-    if (at.el && !at.el.isConnected && last) return last;
-    let x = at.x ?? 0, y = at.y ?? 0;
-    if (at.el?.isConnected) {
-      const r = at.el.getBoundingClientRect();
-      if (at.prefer === "right") { x = r.right + 8; y = r.top - 6; if (x + s.w > W - 8) x = r.left - s.w - 8; }
-      else if (at.prefer === "above") { x = r.left; y = r.top - s.h - 6; }
-      else { x = r.left; y = r.bottom + 6; if (y + s.h > H - 8) y = r.top - s.h - 6; }
-    }
-    return (last = { x: Math.max(8, Math.min(x, W - s.w - 8)), y: Math.max(8, Math.min(y, H - s.h - 8)) });
+    if (at.el && !at.el.isConnected && last) return;
+    const k = ++n;
+    // 贴着锚点元素：下方 / 右侧 / 上方，放不下翻到另一边；没有元素就放在点 (x, y)
+    const ref = at.el?.isConnected ? at.el : virtual({ x: at.x ?? 0, y: at.y ?? 0 });
+    const r = at.el?.isConnected && at.prefer === "right" ? place(el, ref, "right-start", { gap: { mainAxis: 8, crossAxis: -6 } })
+      : place(el, ref, at.prefer === "above" ? "top-start" : "bottom-start", { gap: at.el?.isConnected ? 6 : 0 });
+    void r.then((r) => { if (k === n) setPos(last = { x: r.x, y: r.y }); });
+  };
+  // 镜头动时跟着元素走；弹窗自己或锚点变大小、窗口变大小时重新放（autoUpdate）
+  createEffect(() => setAnchor(p.inst.at.el));
+  createEffect(() => {
+    const a = anchor();
+    onCleanup(autoUpdate(a?.isConnected ? a : virtual({ x: 0, y: 0 }), el, reposition, { layoutShift: false }));
   });
+  createEffect(() => { void cam.x; void cam.y; void cam.z; reposition(); });
   const k = () => p.inst.pop.kind;
   return (
     <div ref={el} class={`pop open k-${k()}`} classList={{ pinned: p.inst.pinned }} data-pop={p.inst.id} style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
@@ -248,7 +249,7 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
             const f = def()!.follow!;
             const prev = def()!;
             updatePop(p.inst.id, (q) => ({ ...(q as any), trail: [...((q as any).trail ?? []), prev], data: undefined }));
-            ask<PeekResult>("peek", { seg: structuredClone(unwrap(def()!.seg)), line: f.line, col: f.col, word: f.label.split(".").pop()!, at: { path: f.path, line: f.line, col: f.col } })
+            ask("peek", { seg: structuredClone(unwrap(def()!.seg)), line: f.line, col: f.col, word: f.label.split(".").pop()!, at: { path: f.path, line: f.line, col: f.col } })
               .then((r) => updatePop(p.inst.id, (q) => ({ ...(q as any), data: r ?? { none: "No definition found", word: f.label } })))
               .catch(() => updatePop(p.inst.id, (q) => ({ ...(q as any), data: { none: "No definition found", word: f.label } })));
           }}>Follow</button></div>
@@ -297,7 +298,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
     const s = q();
     clearTimeout(t);
     if (tab() !== "code" || !s.trim()) { setRes([]); return; }
-    t = window.setTimeout(() => ask<SearchItem[]>("search", { q: s, scope: "code" }).then((r) => { setRes(r.filter((x) => x.kind === "symbol" || x.kind === "file").slice(0, 8)); setI(0); }).catch(() => setRes([])), 120);
+    t = window.setTimeout(() => ask("search", { q: s, scope: "code" }).then((r) => { setRes(r.filter((x) => x.kind === "symbol" || x.kind === "file").slice(0, 8)); setI(0); }).catch(() => setRes([])), 120);
   });
   const done = (n: Omit<Sidenote, "id" | "at">, view?: any) => {
     A.addSidenote({ ...n, at: at(), why: why().trim() || undefined } as any, view);
@@ -309,7 +310,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
       case "code": {
         const it = res()[i()];
         if (!it) return;
-        const r = await ask<NewCard>("searchPick", { item: it, alt: true }).catch(() => null);
+        const r = await ask("searchPick", { item: it, alt: true }).catch(() => null);
         const c = r?.card;
         if (!c || !isCode(c)) return toast("Could not read that code");
         const seg = c.segments[0];
@@ -444,7 +445,7 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
   const go = async () => {
     const r = ref().trim();
     if (!r) return;
-    const got = await ask<string | { commit: string } | null>("resolveRef", { text: r }).catch((e) => { toast((e as Error).message); return null; });
+    const got = await ask("resolveRef", { text: r }).catch((e) => { toast((e as Error).message); return null; });
     const sha = typeof got === "string" ? got : got?.commit;
     if (!got) toast(`No commit matches “${r}”`);
     if (sha) { closePop(p.inst.id); A.switchCommit(p.pop.card, sha); }

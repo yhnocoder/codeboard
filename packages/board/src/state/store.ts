@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  brokenBy, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS,
+  brokenBy, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, DEFAULT_SETTINGS, V3_CODE_CHROME,
   type Board, type BoardMeta, type Card, type HostInfo, type Place, type SegView, type Stale,
 } from "@codeboard/core";
 import { ask, send } from "../host";
@@ -83,14 +83,17 @@ export function rectOf(c: { id: string } | string) {
   const id = typeof c === "string" ? c : c.id;
   const p = placeOf(id);
   const s = sizes[cardById(id)?.host.id ?? id];
-  return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ?? 120 };
+  // 还没量到：代码卡的 h 只是内容区，按 Warm Ink 的卡头加回去
+  return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? V3_CODE_CHROME : 0) : 120 };
 }
 
 // ---------- 撤销 / 重做 ----------
 
+// 三层：mutate = 用户的修改（进撤销栈）；sync = 宿主同步来的、视图推出来的（存盘，不进撤销栈）；live = 拖动中的修改（结束时整个手势进一次撤销栈）。
 // 快照按「每张卡 / 每条线 / 每个 Section / 每条 Sidenote 一段 JSON」存，没变的那段直接沿用上一份快照里的字符串，
 // 所以 300 步撤销只多占改过的那几项，而不是 300 份整块白板。镜头不进快照。
-type Snap = { head: string; cards: string[]; place: string[]; links: string[]; sections: string[]; sidenotes: string[]; stickers: string[] };
+// epoch = 拍快照时 sync 记到第几次：撤销 / 重做回到这份快照后，把它之后的 sync 重放一遍
+type Snap = { epoch: number; head: string; cards: string[]; place: string[]; links: string[]; sections: string[]; sidenotes: string[]; stickers: string[] };
 const undoStack: Snap[] = [];
 const redoStack: Snap[] = [];
 export const [canUndo, setCanUndo] = createSignal(false);
@@ -113,6 +116,7 @@ function snap(): Snap {
 function snapNow(): Snap {
   const { cards, place, links, sections, sidenotes, stickers, cam: _cam, ...head } = unwrap(state.board);
   return {
+    epoch: syncN,
     head: JSON.stringify(head),
     cards: cards.map((x) => piece(`c${x.id}`, x)),
     place: Object.entries(place).map(([id, x]) => piece(`p${id}`, [id, x])),
@@ -191,13 +195,49 @@ export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) 
 /** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈 */
 export function beginGesture(): () => void {
   const before = snap();
-  return () => { if (!same(snap(), before)) pushUndo(before); };
+  held.add(before);
+  return () => { held.delete(before); if (!same(snap(), before)) pushUndo(before); };
 }
+/** 还没进撤销栈、但以后会进的快照（拖动开始时拍的）：它们之后的 sync 记录不能丢 */
+const held = new Set<Snap>();
 /** 拖动中的修改（不进撤销栈） */
 export function live(fn: (b: Board) => void) {
   cur = null;
   setState("board", produce(fn));
   changed();
+}
+
+// sync 的记录：撤销 / 重做后要重放。只留撤销 / 重做栈里最老的快照之后的那些，再多也不超过 SYNC_MAX 条
+const syncLog: { n: number; fn: (b: Board) => void }[] = [];
+let syncN = 0;
+const SYNC_MAX = 2000;
+/**
+ * 宿主同步来的、视图推出来的修改（代码挪了几行、网页信息、变量候选、换主题后的 reflow）：写进白板、存盘，但不进撤销栈。
+ * 撤销 / 重做恢复到它之前的快照后会再跑一遍 fn，所以 fn 要能用在更早的白板上：按 id 找、找不到就跳过，按绝对目标算（不是 += 上次的差）。
+ */
+export function sync(fn: (b: Board) => void) {
+  cur = null;
+  setState("board", produce(fn));
+  syncLog.push({ n: ++syncN, fn });
+  trimSync();
+  changed();
+}
+function trimSync() {
+  let min = syncN;
+  for (const s of undoStack) min = Math.min(min, s.epoch);
+  for (const s of redoStack) min = Math.min(min, s.epoch);
+  for (const s of fresh.values()) min = Math.min(min, s.epoch);
+  for (const s of held) min = Math.min(min, s.epoch);
+  let i = 0;
+  while (i < syncLog.length && (syncLog[i].n <= min || syncLog.length - i > SYNC_MAX)) i++;
+  if (i) syncLog.splice(0, i);
+}
+/** 回到快照 s 之后：重放 s 之后的 sync（不进撤销栈）。返回有没有重放 */
+function replaySync(s: Snap): boolean {
+  const xs = syncLog.filter((x) => x.n > s.epoch);
+  if (!xs.length) return false;
+  setState("board", produce((b: Board) => { for (const x of xs) x.fn(b); }));
+  return true;
 }
 
 // 撤销 / 重做：只把和现在不一样的那几段换回去。整块 reconcile 要把 241 张卡、196 条线挨个解析、比对一遍（每次 ~25ms）
@@ -208,7 +248,8 @@ function restore(s: Snap, now?: Snap) {
     b.cam = { ...state.board.cam };
     setState("board", reconcile(b));
   }
-  cur = s;
+  // 快照之后宿主同步来的改动再做一遍（不然 ⌘Z 会把行号退回去）；重放过的白板和快照不一样了，快照缓存作废
+  cur = replaySync(s) ? null : { ...s, epoch: syncN };
   changed();
   const ids = new Set(allIds());
   // 选中的东西都还在就不动 sel：换成新数组的话，每张卡的 isSel 都要重算一遍
@@ -250,7 +291,7 @@ export function redo() {
   updUndo();
   return true;
 }
-export function resetHistory() { cur = null; undoStack.length = 0; redoStack.length = 0; last.clear(); updUndo(); }
+export function resetHistory() { cur = null; undoStack.length = 0; redoStack.length = 0; syncLog.length = 0; last.clear(); updUndo(); }
 
 export function allIds(): string[] {
   return state.board.cards.map((c) => c.id);

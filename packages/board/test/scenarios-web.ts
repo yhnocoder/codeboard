@@ -192,9 +192,10 @@ export const WEB: Record<string, () => Promise<void>> = {
     await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().dispatchEvent("click"); await h.page.waitForTimeout(300);
     await h.page.mouse.move(1300, 860);
     await shot(h, "ll-07-all-rich");
+    // L() is the last board the page saved; autosave runs ~800ms after a change, so read it only after that
+    await h.page.waitForTimeout(900);
     const rich = !!L()?.rich;
     // Reorder via ⋮⋮: drag row 4 to the top
-    await h.page.waitForTimeout(900);
     const order0 = L()!.items.map((x) => x.url);
     await rows.nth(3).hover();
     const g = await rows.nth(3).locator(".lgrip").boundingBox();

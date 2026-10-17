@@ -4,13 +4,19 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";
 import type { CodeCard, ExpandResult, PeekDef, Segment } from "@codeboard/core";
-import { startAnalysis, analysisOf } from "../src/analysis";
+import { startAnalysis, analysisOf, segAnalysis } from "../src/analysis";
+import { clipAnalysis } from "@codeboard/core/analysis";
 import { cardForFileSym } from "../src/cards";
-import { callVars, expand, peek } from "../src/resolve";
+import { callVars, expand, forgetLspSeen, peek } from "../src/resolve";
 import { viewsFor } from "../src/views";
 import { forgetDefs } from "../src/defcache";
 import { prefetchCall, warmBoard } from "../src/prefetch";
-import { WS, commands, workspace } from "./vscode-stub";
+import { useWorkspace } from "../src/ws";
+import { allNames, lookupName, nameIndexReady, resetIndex, startNameIndex, watchNameIndex, type IndexEntry } from "../src/nameindex";
+import { WS, nodeWorkspace } from "./node-workspace";
+
+const W = nodeWorkspace();
+useWorkspace(W);
 
 const REPO = path.resolve(__dirname, ".."); // bundled into test-out/
 const EXT = "/tmp/codeboard-perf/ext/multiprocessing"; // not git, not in site-packages: external root = this folder
@@ -93,13 +99,12 @@ void (async () => {
     const schAbs = path.join(WS, "nanovllm/engine/scheduler.py");
     const defLine = analysisOf("python", fs.readFileSync(schAbs, "utf8")).symbols.find((x) => x.qual === "Scheduler.schedule")!.defLine;
     let calls = 0, live = 0, maxLive = 0, delay = 60, empty = false;
-    const orig = commands.executeCommand;
-    (commands as { executeCommand: unknown }).executeCommand = async (cmd: string) => {
-      if (cmd !== "vscode.executeDefinitionProvider") return undefined;
+    const orig = W.language.definitions;
+    W.language.definitions = async () => {
       calls++; live++; maxLive = Math.max(maxLive, live);
       await sleep(delay);
       live--;
-      return empty ? [] : [{ uri: { fsPath: schAbs, scheme: "file" }, range: { start: { line: defLine - 1, character: 8 } } }];
+      return empty ? [] : [{ abs: schAbs, line: defLine, col: 8 }];
     };
     const step = await card(path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.step");
     const sl = lineOf(step.seg, /self\.scheduler\.schedule\(\)/);
@@ -119,10 +124,10 @@ void (async () => {
     // The calling file's content changed (open editor with unsaved edits): different key, asks again
     const llmAbs = path.join(WS, "nanovllm/engine/llm_engine.py");
     const edited = fs.readFileSync(llmAbs, "utf8") + "\n# edited\n";
-    workspace.textDocuments.push({ uri: { scheme: "file", fsPath: llmAbs }, getText: () => edited });
+    W.open.set(llmAbs, edited);
     const r3 = await expand(req);
     check(isSchedule(r3) && calls === 3, "Changed file content is a cache miss", { calls });
-    workspace.textDocuments.length = 0;
+    W.open.clear();
     // Empty answers (language server still starting) are not cached
     forgetDefs(); empty = true;
     prefetchCall(req);
@@ -143,7 +148,84 @@ void (async () => {
     check(calls === 0 && Date.now() - t0 < 50, "warmBoard returns at once and waits before asking");
     await sleep(2500);
     check(calls === 3 && maxLive === 1, "warmBoard: one request per distinct file, one at a time", { calls, maxLive });
-    (commands as { executeCommand: unknown }).executeCommand = orig;
+    W.language.definitions = orig;
+  }
+
+  // Name index: looking a name up does not wait for the whole index, gives the same entries as a full scan, and follows file changes
+  {
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    watchNameIndex();
+    resetIndex();
+    const finds = W.finds;
+    const files = await W.files.findFiles("**/*.{py,pyi,cu,cuh,cc,cpp,cxx,c,h,hpp}");
+    const full = new Map<string, string[]>();
+    for (const f of files) for (const s of analysisOf("python", fs.readFileSync(f, "utf8")).symbols) (full.get(s.name) ?? full.set(s.name, []).get(s.name)!).push(`${f}:${s.qual}:${s.defLine}`);
+    const key = (es: IndexEntry[]) => es.map((e) => `${e.abs}:${e.qual}:${e.defLine}`);
+    const sched = await lookupName("Scheduler");
+    check(JSON.stringify(key(sched)) === JSON.stringify(full.get("Scheduler")), "Lookup before the index is built finds the same definitions as a full scan", key(sched));
+    let same = true;
+    for (const [name, want] of full) if (JSON.stringify(key(await lookupName(name))) !== JSON.stringify(want)) { same = false; console.log("  differs:", name); break; }
+    check(same, `Every name (${full.size}) matches the full scan`);
+    check(W.finds === finds + 2, "The workspace file list is read once (plus the test's own scan)", { finds: W.finds - finds });
+    await nameIndexReady();
+    const all = await allNames();
+    check(all.reduce((n, l) => n + l.length, 0) === [...full.values()].reduce((n, l) => n + l.length, 0), "allNames has every entry once");
+    // Created / changed / deleted files update just that file
+    const tmp = path.join(WS, "nanovllm/zz_index_probe.py");
+    fs.writeFileSync(tmp, "def probe_one():\n    pass\n");
+    W.fire.create.fire([tmp]);
+    check((await lookupName("probe_one")).length === 1, "New file is indexed");
+    fs.writeFileSync(tmp, "def probe_two():\n    pass\n");
+    W.fire.change.fire(tmp);
+    const c1 = (await lookupName("probe_one")).length, c2 = (await lookupName("probe_two")).length;
+    check(c1 === 0 && c2 === 1, "Changed file is re-indexed", { c1, c2 });
+    W.open.set(tmp, "def probe_three():\n    pass\n");
+    W.fire.save.fire(tmp);
+    check((await lookupName("probe_three")).length === 1, "Saved editor buffer is re-indexed");
+    W.open.clear();
+    fs.rmSync(tmp);
+    W.fire.delete.fire([tmp]);
+    check((await lookupName("probe_two")).length === 0 && (await lookupName("probe_three")).length === 0 && W.finds === finds + 2, "Deleted file leaves the index without a rescan");
+    // Background build yields between files
+    resetIndex();
+    let ticks = 0;
+    const t = setInterval(() => ticks++, 1);
+    startNameIndex();
+    await nameIndexReady();
+    clearInterval(t);
+    check(ticks > 3, "Background build lets timers run while indexing", { ticks });
+
+    // Pylance still starting: an empty answer is retried before falling back to the name index
+    const step = await card(path.join(WS, "nanovllm/engine/llm_engine.py"), "LLMEngine.step");
+    const sl = lineOf(step.seg, /self\.scheduler\.schedule\(\)/);
+    const req = { seg: step.seg, line: sl, col: step.seg.text[sl - step.seg.start].indexOf("schedule("), name: "schedule" };
+    const schAbs = path.join(WS, "nanovllm/engine/scheduler.py");
+    const defLine = analysisOf("python", fs.readFileSync(schAbs, "utf8")).symbols.find((x) => x.qual === "Scheduler.schedule")!.defLine;
+    let asks = 0;
+    const orig = W.language.definitions, origHas = W.about.hasExtension;
+    W.about.hasExtension = (id) => id === "ms-python.vscode-pylance";
+    forgetLspSeen();
+    W.language.definitions = async () => (++asks < 3 ? [] : [{ abs: schAbs, line: defLine, col: 8 }]);
+    forgetDefs();
+    const r = await expand(req);
+    check("card" in r && r.card.segments[0].symbol?.qual === "Scheduler.schedule" && asks === 3, "Empty answers while Pylance starts are retried", { asks });
+    asks = 0;
+    W.language.definitions = async () => { asks++; return []; };
+    forgetDefs();
+    await expand(req);
+    check(asks === 1, "Once Pylance has answered, an empty answer is not retried", { asks });
+    W.language.definitions = orig; W.about.hasExtension = origHas;
+    await sleep(0);
+  }
+
+  // 卡片的段只分析那几行：和整文件分析再裁剪一样；整文件分析过以后直接裁剪
+  {
+    const t = fs.readFileSync(path.join(WS, "nanovllm/engine/llm_engine.py"), "utf8") + "\n# segment test\n"; // 新内容：不在缓存里
+    const s1 = segAnalysis("python", t, 20, 45, "seg-test");
+    const full = analysisOf("python", t, "seg-test");
+    check(s1.calls.length > 0 && JSON.stringify(s1) === JSON.stringify(clipAnalysis(full, 20, 45)), "segAnalysis = whole-file analysis clipped to the segment");
+    check(JSON.stringify(segAnalysis("python", t, 20, 45)) === JSON.stringify(s1), "segAnalysis after the whole file was analyzed: same result");
+    check(JSON.stringify(segAnalysis("python", t, 1, 0).imports) === JSON.stringify(full.imports), "segAnalysis with no lines still has the file's imports");
   }
 
   console.log(failed ? `${failed} failed` : "All passed");

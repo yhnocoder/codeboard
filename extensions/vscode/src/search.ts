@@ -1,15 +1,14 @@
 // ⌘K 面板：白板上的卡和 Sidenote、工作区的符号和文件；Start from Entry Point…
-import * as vscode from "vscode";
 import * as path from "node:path";
 import { allCodeCards, cardTitle, type NewCard, type SearchItem } from "@codeboard/core";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
 import { locOfFile } from "./source";
-import { nameIndex } from "./resolve";
+import { allNames } from "./nameindex";
 import type { Storage } from "./storage";
 import { makeSegment } from "./versions";
-import { CODE_EXCLUDE, exists, fromHostPath, hostPath, langOf, readText, splitLines, wsFolders } from "./ws";
+import { CODE_EXCLUDE, exists, fromHostPath, hostPath, langOf, readText, splitLines, workspace, wsRoots } from "./ws";
 
 /** 简单的子序列模糊匹配打分：连续、开头、词首加分；不匹配返回 -1 */
 export function fuzzy(q: string, s: string): number {
@@ -47,15 +46,15 @@ export async function search(store: Storage, q: string, scope: "all" | "code" | 
     }
   }
   if (q.trim()) {
-    for (const ents of (await nameIndex()).values()) for (const e of ents) {
+    for (const ents of await allNames()) for (const e of ents) {
       const s = Math.max(fuzzy(q, e.name) + 5, fuzzy(q, e.qual));
       if (s < 0) continue;
       scored.push({ s, item: { kind: "symbol", label: e.qual, detail: `${hostPath(e.abs)}:${e.defLine}`, path: hostPath(e.abs), line: e.defLine, sym: e.qual, glyph: e.kind === "class" ? "C" : "ƒ" } });
     }
     if (scope !== "symbols") {
-      const files = await vscode.workspace.findFiles(`**/*${q.replace(/[^\w.-]/g, "")}*`, CODE_EXCLUDE, 200);
+      const files = await workspace().files.findFiles(`**/*${q.replace(/[^\w.-]/g, "")}*`, CODE_EXCLUDE, 200);
       for (const f of files) {
-        const rel = hostPath(f.fsPath);
+        const rel = hostPath(f);
         const s = fuzzy(q, path.basename(rel));
         if (s >= 0) scored.push({ s: s - 5, item: { kind: "file", label: path.basename(rel), detail: rel, path: rel } });
       }
@@ -116,8 +115,7 @@ export async function entryPoints(): Promise<SearchItem[]> {
     const t = await readText(abs);
     return t === null ? undefined : analysisOf("python", t).symbols.find((s) => s.qual === qual);
   };
-  for (const f of wsFolders()) {
-    const root = f.uri.fsPath;
+  for (const root of wsRoots()) {
     // pyproject [project.scripts]
     const toml = await readText(path.join(root, "pyproject.toml"));
     if (toml) for (const s of pyprojectScripts(toml)) {
@@ -129,30 +127,30 @@ export async function entryPoints(): Promise<SearchItem[]> {
     }
   }
   // 包 __init__.py 里导出的公共 API（浅层包）
-  const inits = await vscode.workspace.findFiles("{*/__init__.py,*/*/__init__.py,src/*/__init__.py}", CODE_EXCLUDE, 50);
+  const inits = await workspace().files.findFiles("{*/__init__.py,*/*/__init__.py,src/*/__init__.py}", CODE_EXCLUDE, 50);
   for (const u of inits) {
-    const text = await readText(u.fsPath);
+    const text = await readText(u);
     if (!text) continue;
-    const dir = path.dirname(u.fsPath);
+    const dir = path.dirname(u);
     for (const ex of initExports(text)) {
       if (!ex.from.startsWith(".")) continue;
       for (const cand of moduleFiles(ex.from)) {
         const abs = path.join(dir, cand);
         if (!(await exists(abs))) continue;
         const sym = await symIn(abs, ex.name);
-        if (sym) add({ kind: "entry", label: sym.qual, detail: `exported from ${hostPath(u.fsPath)}`, path: hostPath(abs), line: sym.defLine, sym: sym.qual });
+        if (sym) add({ kind: "entry", label: sym.qual, detail: `exported from ${hostPath(u)}`, path: hostPath(abs), line: sym.defLine, sym: sym.qual });
         break;
       }
     }
   }
   // __main__ 块和示例脚本
-  const scripts = await vscode.workspace.findFiles("{*.py,examples/**/*.py,example/**/*.py,scripts/*.py,*/__main__.py}", CODE_EXCLUDE, 200);
+  const scripts = await workspace().files.findFiles("{*.py,examples/**/*.py,example/**/*.py,scripts/*.py,*/__main__.py}", CODE_EXCLUDE, 200);
   for (const u of scripts) {
-    const text = await readText(u.fsPath);
+    const text = await readText(u);
     if (!text) continue;
     const a = analysisOf("python", text);
-    for (const b of a.mainBlocks) add({ kind: "entry", label: path.basename(u.fsPath), detail: `${hostPath(u.fsPath)} · if __name__ == "__main__"`, path: hostPath(u.fsPath), line: b.start, end: b.end });
-    if (!a.mainBlocks.length && path.basename(u.fsPath) === "__main__.py") add({ kind: "entry", label: hostPath(u.fsPath), detail: "python -m", path: hostPath(u.fsPath), line: 1, end: Math.min(splitLines(text).length, 80) });
+    for (const b of a.mainBlocks) add({ kind: "entry", label: path.basename(u), detail: `${hostPath(u)} · if __name__ == "__main__"`, path: hostPath(u), line: b.start, end: b.end });
+    if (!a.mainBlocks.length && path.basename(u) === "__main__.py") add({ kind: "entry", label: hostPath(u), detail: "python -m", path: hostPath(u), line: 1, end: Math.min(splitLines(text).length, 80) });
   }
   // __main__ 块里调用的 main() 之类
   for (const it of [...out]) {

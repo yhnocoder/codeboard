@@ -1,10 +1,9 @@
 // GitHub 代码链接 → GitHub Code 卡：ref 解析成 commit，文件按 commit 缓存到本地，卡钉在这个 commit 上不更新。
 // From GitHub… 面板（仓库、分支 / tag、文件树、文件）也走这里。私有仓库用 VS Code 自带的 GitHub 登录：
 // 平时只静默拿已有的登录；请求被拒（401 / 403 / 404）时才弹窗请用户登录一次。
-import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { parseGithubUrl, renderLine, type Commit, type GhFile, type GhQuery, type GhRepo, type GhTree, type GithubRef, type NewCard } from "@codeboard/core";
+import { parseGithubUrl, renderLine, type ReplyOf, type Commit, type GhFile, type GhQuery, type GhRepo, type GhTree, type GithubRef, type NewCard } from "@codeboard/core";
 import { planSelection } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardsFromPlan, newCodeCard, withViews } from "./cards";
@@ -12,14 +11,14 @@ import { log } from "./log";
 import { githubFileDir, githubRoot, type Loc } from "./source";
 import { makeSegment } from "./versions";
 import { highlight } from "./views";
-import { langOf, posix, splitLines } from "./ws";
+import { langOf, posix, splitLines, workspace } from "./ws";
+import type { Storage } from "./storage";
 
 const API = "https://api.github.com";
 
 async function token(ask: boolean): Promise<string | undefined> {
   try {
-    const s = await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true });
-    return s?.accessToken;
+    return await workspace().githubToken(ask);
   } catch { return undefined; } // 用户取消登录
 }
 
@@ -111,7 +110,7 @@ export async function githubCard(url: string): Promise<NewCard> {
 
 // ---------- From GitHub… ----------
 
-export async function ghQuery(q: GhQuery): Promise<unknown> {
+export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
   const base = repoUrl(q.owner, q.name);
   switch (q.op) {
     case "repo": {
@@ -165,4 +164,16 @@ export async function cachedFiles(): Promise<{ owner: string; name: string; comm
     }
   }
   return out;
+}
+
+/** 侧栏 GITHUB FILES 里一个仓库 commit 下的文件，和每个文件上有几张卡 */
+export async function githubFiles(store: Storage, r: { owner: string; name: string; commit: string; files: string[] }): Promise<{ abs: string; rel: string; cards: number }[]> {
+  const count = new Map<string, number>();
+  for (const { board } of await store.all()) for (const c of board.cards) {
+    if (c.kind !== "code") continue;
+    const s = c.segments.find((x) => x.src.kind === "github" && x.src.owner === r.owner && x.src.name === r.name && x.version.kind === "git" && x.version.commit === r.commit);
+    if (s) count.set(s.path, (count.get(s.path) ?? 0) + 1);
+  }
+  const dir = githubFileDir(r.owner, r.name, r.commit);
+  return r.files.map((rel) => ({ abs: path.join(dir, rel), rel, cards: count.get(rel) ?? 0 }));
 }

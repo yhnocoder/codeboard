@@ -88,7 +88,7 @@ export function openWorktreeDiff(id: string) {
   const s = c.segments[0];
   const el = document.querySelector(`.card[data-id="${cardById(id)!.host.id}"] .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
-  ask<DiffData>("diff", { seg: structuredClone(unwrap(s)), against: "worktree" })
+  ask("diff", { seg: structuredClone(unwrap(s)), against: "worktree" })
     .then((data) => updatePop(pid, (p) => ({ ...(p as any), data })))
     .catch((e) => updatePop(pid, (p) => ({ ...(p as any), error: (e as Error).message })));
 }

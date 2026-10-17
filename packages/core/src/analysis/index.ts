@@ -1,8 +1,10 @@
 // 代码结构分析：用 tree-sitter 解析，得到符号、调用、循环、注释 / docstring / 空行。
 // 纯语法判断，不依赖语言服务；「转到定义」由宿主问 VS Code。
 // Python 系（含 Triton、TileLang）用 python 语法；C / C++ / CUDA 用 cpp 语法（CUDA 的 <<<>>> 会被当成错误节点跳过）。
-import TS from "@vscode/tree-sitter-wasm";
-import type { Parser as TSParser, Language as TSLanguage, Node } from "@vscode/tree-sitter-wasm";
+import type { Node, QueryCapture } from "@vscode/tree-sitter-wasm";
+import { grammarOf, languageOf, query, treeOf, type Edit, type Grammar } from "./tree";
+export { initAnalysis, grammarOf, languageOf, diffEdit, forgetTree, setTreeCacheSize, type Edit } from "./tree";
+
 
 export type Param = { name: string; kind: "self" | "pos" | "kw" | "star" | "dstar" };
 
@@ -51,67 +53,136 @@ export type FileAnalysis = {
   imports: { name: string; module: string; line: number; from?: true }[]; // from = from X import name（name 不一定是模块）
 };
 
-type Grammar = "python" | "cpp";
-
-let ready: Promise<void> | undefined;
-const langs = new Map<Grammar, TSLanguage>();
-let wasmDir: string | undefined;
-
-/** 宿主启动时调用一次；dir = 放 tree-sitter*.wasm 的目录（Node 下默认用 npm 包里的） */
-export function initAnalysis(dir?: string): Promise<void> {
-  if (dir) wasmDir = dir;
-  return (ready ??= (async () => {
-    const base = wasmDir ?? defaultDir();
-    await TS.Parser.init({ locateFile: (f: string) => join(base, f) });
-    for (const g of ["python", "cpp"] as Grammar[]) langs.set(g, await TS.Language.load(join(base, `tree-sitter-${g}.wasm`)));
-  })());
-}
-
-function defaultDir() {
-  // vitest / node：从包里找
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const p = (globalThis as any).require?.resolve?.("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm") ?? import.meta.resolve?.("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm");
-  const s = String(p).replace(/^file:\/\//, "");
-  return s.slice(0, s.lastIndexOf("/"));
-}
-const join = (a: string, b: string) => (a.endsWith("/") ? a + b : `${a}/${b}`);
-
-export function grammarOf(lang: string): Grammar | null {
-  if (/^(python|triton|tilelang)$/.test(lang)) return "python";
-  if (/^(c|cpp|cuda|cuda-cpp|objective-c|objective-cpp)$/.test(lang)) return "cpp";
-  return null;
-}
-
-const parsers = new Map<Grammar, TSParser>();
-function parse(g: Grammar, text: string) {
-  let p = parsers.get(g);
-  if (!p) {
-    const l = langs.get(g);
-    if (!l) throw new Error("initAnalysis() not awaited");
-    p = new TS.Parser();
-    p.setLanguage(l);
-    parsers.set(g, p);
-  }
-  return p.parse(text)!;
-}
+export type AnalyzeOpts = {
+  /** 文件的 key（通常是路径）：留着语法树，下次同一个 key 的文本变了就增量解析，没变就不再解析 */
+  key?: string;
+  /** 上次（同一个 key）的文本 → 这次文本的编辑；不给就按公共前后缀算 */
+  edit?: Edit;
+  /**
+   * 只要这几行（1-based，含两头）：calls、COMMENT / DOCSTRING 标记、trailing 只算这段，symbols 只给和这段相交的；
+   * imports、mainBlocks、doc、BLANK 标记仍是整个文件的。结果等于 clipAnalysis(整文件分析, start, end)
+   */
+  lines?: { start: number; end: number };
+};
 
 /** 分析一个文件（或一段代码）。不认识的语言只给空行标记 */
-export function analyze(lang: string, text: string): FileAnalysis {
+export function analyze(lang: string, text: string, o: AnalyzeOpts = {}): FileAnalysis {
   const lines = text.split(/\r?\n/);
   const flags = lines.map((l) => (l.trim() === "" ? BLANK : 0));
   const out: FileAnalysis = { lang, symbols: [], flags, trailing: {}, calls: [], mainBlocks: [], imports: [] };
   const g = grammarOf(lang);
-  if (!g || !langs.size) return out;
-  const tree = parse(g, text);
+  if (!g || !languageOf(g)) return out;
+  const { tree, owned } = treeOf(g, text, o.key, o.edit);
+  const r = o.lines;
   try {
-    if (g === "python") python(tree.rootNode, lines, out);
-    else cpp(tree.rootNode, lines, out);
-    comments(tree.rootNode, lines, out);
+    const cx: Cx = { text, lines, out, r0: r ? r.start - 1 : 0, r1: r ? r.end - 1 : Infinity };
+    const root = tree.rootNode;
+    if (g === "python") out.doc = docstring(cx, root);
+    else cppSymbols(cx, root);
+    if (!r) run(g, cx, sorted(query(g, "all", STRUCT[g] + FLOW[g]).captures(root)));
+    else {
+      // 结构（定义、import）整个文件查，调用、循环、注释只查这几行
+      if (STRUCT[g]) run(g, cx, sorted(query(g, "struct", STRUCT[g]).captures(root)));
+      if (r.start <= r.end) run(g, cx, sorted(query(g, "flow", FLOW[g]).captures(root, { startPosition: { row: cx.r0, column: 0 }, endPosition: { row: cx.r1 + 1, column: 0 } })));
+    }
   } finally {
-    tree.delete();
+    if (owned) tree.delete();
   }
   out.symbols.sort((a, b) => a.start - b.start || b.end - a.end);
-  return out;
+  return r ? Object.assign(out, clipAnalysis(out, r.start, r.end)) : out;
+}
+
+/** 整文件的分析结果裁剪到几行（和 analyze(…, { lines }) 的结果一致） */
+export function clipAnalysis(a: FileAnalysis, start: number, end: number): FileAnalysis {
+  const inR = (l: number) => l >= start && l <= end;
+  const trailing: Record<number, number> = {};
+  for (const k in a.trailing) if (inR(+k)) trailing[+k] = a.trailing[k];
+  return {
+    ...a, symbols: a.symbols.filter((s) => s.start <= end && s.end >= start), calls: a.calls.filter((c) => inR(c.line)),
+    flags: a.flags.map((f, i) => (inR(i + 1) ? f : f & BLANK)), trailing,
+  };
+}
+
+// ---------- 查询 ----------
+// 每个语法一个查询，解析完跑一遍拿到要用的全部节点（定义、调用、循环、注释、import），按位置顺序处理：
+// 定义、循环 / 函数各压一个栈，处理到某个节点时栈顶就是包着它的最内层定义 / 循环。
+
+const STRUCT: Record<Grammar, string> = {
+  python: `
+(function_definition) @def
+(class_definition) @def
+(import_statement) @import
+(import_from_statement) @import
+(if_statement condition: (_) @main (#match? @main "__main__"))
+`,
+  cpp: "", // C++ 的定义只在顶层 / 命名空间 / 类里找，走 cppSymbols
+};
+const FLOW: Record<Grammar, string> = {
+  python: `
+(function_definition) @fn
+(class_definition) @fn
+(lambda) @fn
+(for_statement body: (_) @loop)
+(while_statement) @loop
+(list_comprehension) @loop
+(set_comprehension) @loop
+(dictionary_comprehension) @loop
+(generator_expression) @loop
+(assignment right: (_) @rhs)
+(augmented_assignment right: (_) @rhs)
+(call) @call
+(comment) @comment
+`,
+  cpp: `
+(function_definition) @fn
+(lambda_expression) @fn
+(for_statement body: (_) @loop)
+(for_range_loop body: (_) @loop)
+(while_statement) @loop
+(do_statement) @loop
+(init_declarator value: (_) @rhs)
+(assignment_expression right: (_) @rhs)
+(call_expression) @call
+(comment) @comment
+`,
+};
+
+// 范围相同的节点：外层先处理。循环排在函数前（for 的 body 只有一个 lambda 时两者范围相同，lambda 在里面），都在调用前
+const RANK: Record<string, number> = { loop: 0, rhs: 0, fn: 1, def: 1 };
+type Cap = { name: string; node: Node; s: number; e: number; rank: number };
+function sorted(caps: QueryCapture[]): Cap[] {
+  const out = caps.map((c) => ({ name: c.name, node: c.node, s: c.node.startIndex, e: c.node.endIndex, rank: RANK[c.name] ?? 2 }));
+  return out.sort((a, b) => a.s - b.s || b.e - a.e || a.rank - b.rank);
+}
+
+/** text / lines：源码；r0..r1：只要这几行（0-based，含） */
+type Cx = { text: string; lines: string[]; out: FileAnalysis; r0: number; r1: number };
+/** 外围的定义。visited = 旧的递归能走到（定义在外层定义的 body 里）；bs / be = body 的范围 */
+type DefFrame = { e: number; visited: boolean; scope: string[]; qual: string; isClass: boolean; bs: number; be: number };
+
+function run(g: Grammar, cx: Cx, caps: Cap[]) {
+  const defs: DefFrame[] = [], flow: { e: number; loop: boolean }[] = [], rhs: number[] = [];
+  const cmt: Node[] = [];
+  for (const c of caps) {
+    while (defs.length && defs[defs.length - 1].e <= c.s) defs.pop();
+    while (flow.length && flow[flow.length - 1].e <= c.s) flow.pop();
+    while (rhs.length && rhs[rhs.length - 1] <= c.s) rhs.pop();
+    switch (c.name) {
+      case "def": defs.push(pyDef(cx, c.node, defs[defs.length - 1])); break;
+      case "import": if (!defs.length) pyImport(c.node, cx.out); break; // 只看模块级（含 if / try 里的）
+      case "main": {
+        const n = c.node.parent;
+        if (n && !defs.length && /__name__\s*==\s*["']__main__["']/.test(c.node.text)) cx.out.mainBlocks.push({ start: n.startPosition.row + 1, end: n.endPosition.row + 1 });
+        break;
+      }
+      case "fn": flow.push({ e: c.e, loop: false }); break;
+      case "loop": flow.push({ e: c.e, loop: true }); break;
+      case "rhs": rhs.push(c.e); break; // 赋值右边：只有在这里面的调用才可能有人接住返回值
+      case "call": (g === "python" ? pyCall : cppCall)(cx, c.node, !!flow[flow.length - 1]?.loop, rhs.length > 0); break;
+      case "comment": cmt.push(c.node); break;
+    }
+  }
+  comments(cmt, cx);
 }
 
 // ---------- 通用 ----------
@@ -122,93 +193,77 @@ function walk(n: Node, fn: (n: Node) => boolean | void) {
 }
 
 /** 注释：整行都是注释的标 COMMENT，行尾注释记列号 */
-function comments(root: Node, lines: string[], out: FileAnalysis) {
-  const cmt: { r0: number; c0: number; r1: number; c1: number }[] = [];
-  walk(root, (n) => {
-    if (n.type === "comment") cmt.push({ r0: n.startPosition.row, c0: n.startPosition.column, r1: n.endPosition.row, c1: n.endPosition.column });
-  });
-  for (const c of cmt) {
-    for (let r = c.r0; r <= c.r1; r++) {
+function comments(nodes: Node[], { lines, out, r0, r1 }: Cx) {
+  for (const n of nodes) {
+    const a = n.startPosition, b = n.endPosition;
+    for (let r = Math.max(a.row, r0); r <= b.row && r <= r1; r++) {
       const line = lines[r] ?? "";
-      const s = r === c.r0 ? c.c0 : 0, e = r === c.r1 ? c.c1 : line.length;
+      const s = r === a.row ? a.column : 0, e = r === b.row ? b.column : line.length;
       const before = line.slice(0, s).trim(), after = line.slice(e).trim();
       if (!before && !after) out.flags[r] |= COMMENT;
-      else if (before && r === c.r0 && !(r + 1 in out.trailing)) out.trailing[r + 1] = colOfByte(line, s);
+      else if (before && r === a.row && !(r + 1 in out.trailing)) out.trailing[r + 1] = s;
     }
   }
 }
 
-/** web-tree-sitter 解析 JS 字符串时列号已经是 UTF-16 下标 */
-const colOfByte = (_line: string, c: number) => c;
-const col = (n: Node, lines: string[]) => colOfByte(lines[n.startPosition.row] ?? "", n.startPosition.column);
+// web-tree-sitter 解析 JS 字符串时下标、列号都是 UTF-16 的
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
+const meets = (cx: Cx, n: Node) => n.startPosition.row <= cx.r1 && n.endPosition.row >= cx.r0;
 
 // ---------- Python ----------
 
-const PY_LOOP_BODY = new Set(["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"]);
+/** body 的第一条语句是字符串：标 DOCSTRING，返回正文 */
+function docstring(cx: Cx, body: Node | null): string | undefined {
+  let first = body?.firstNamedChild ?? null;
+  while (first?.type === "comment") first = first.nextNamedSibling;
+  if (first?.type === "expression_statement" && first.namedChildCount === 1 && first.firstNamedChild?.type === "string") {
+    for (let r = first.startPosition.row; r <= first.endPosition.row; r++) cx.out.flags[r] |= DOCSTRING;
+    return cleanDoc(first.firstNamedChild.text) || undefined;
+  }
+}
 
-function python(root: Node, lines: string[], out: FileAnalysis) {
-  const docstring = (body: Node | null): string | undefined => {
-    const first = body?.namedChildren.find((x) => x?.type !== "comment");
-    if (first?.type === "expression_statement" && first.namedChildren.length === 1 && first.namedChildren[0]?.type === "string") {
-      for (let r = first.startPosition.row; r <= first.endPosition.row; r++) out.flags[r] |= DOCSTRING;
-      return cleanDoc(first.namedChildren[0].text) || undefined;
-    }
+function pyDef(cx: Cx, def: Node, up: DefFrame | undefined): DefFrame {
+  const p = def.parent;
+  const c = p?.type === "decorated_definition" ? p : def; // 带装饰器的从装饰器那行算起
+  const cs = c.startIndex, e = def.endIndex;
+  // 外层定义没被走到，或者不在外层定义的 body 里（出错的树）：旧的递归走不到，不算
+  if (up && !(up.visited && up.bs <= cs && e <= up.be)) return { e, visited: false, scope: [], qual: "", isClass: false, bs: 0, be: 0 };
+  const scope = up?.scope ?? [], cls = up?.isClass ? up.qual : undefined;
+  const name = def.childForFieldName("name")?.text ?? "?";
+  const qual = [...scope, name].join(".");
+  const body = def.childForFieldName("body");
+  const isClass = def.type === "class_definition";
+  const frame = { e, visited: true, scope: [...scope, name], qual, isClass, bs: body?.startIndex ?? 0, be: body?.endIndex ?? -1 };
+  if (!meets(cx, c)) return frame;
+  const sig = oneLine(cx.text.slice(def.startIndex, body ? body.startIndex : e)).replace(/:\s*$/, "");
+  const sym: Sym = {
+    name, qual, kind: isClass ? "class" : "def", start: c.startPosition.row + 1, defLine: def.startPosition.row + 1, end: c.endPosition.row + 1,
+    sig, params: isClass ? [] : pyParams(def.childForFieldName("parameters"), !!cls), parent: cls,
   };
-  out.doc = docstring(root);
-  pyImports(root, out);
+  cx.out.symbols.push(sym);
+  const doc = docstring(cx, body);
+  if (doc) sym.doc = doc;
+  return frame;
+}
 
-  const visit = (n: Node, scope: string[], cls: string | undefined) => {
-    for (const c of n.namedChildren) {
-      if (!c) continue;
-      let def: Node = c, start = c.startPosition.row;
-      if (c.type === "decorated_definition") { def = c.childForFieldName("definition") ?? c; start = c.startPosition.row; }
-      if (def.type === "function_definition" || def.type === "class_definition") {
-        const name = def.childForFieldName("name")?.text ?? "?";
-        const qual = [...scope, name].join(".");
-        const body = def.childForFieldName("body");
-        const isClass = def.type === "class_definition";
-        const sigEnd = body ? body.startIndex : def.endIndex;
-        let sig = oneLine(def.text.slice(0, sigEnd - def.startIndex)).replace(/:\s*$/, "");
-        if (sig.startsWith("async ")) sig = sig;
-        const sym: Sym = {
-          name, qual, kind: isClass ? "class" : "def", start: start + 1, defLine: def.startPosition.row + 1, end: c.endPosition.row + 1,
-          sig, params: isClass ? [] : pyParams(def.childForFieldName("parameters"), !!cls), parent: cls,
-        };
-        out.symbols.push(sym);
-        const doc = docstring(body);
-        if (doc) sym.doc = doc;
-        if (body) visit(body, [...scope, name], isClass ? qual : undefined);
-        continue;
-      }
-      if (c.type === "if_statement" && scope.length === 0 && /__name__\s*==\s*["']__main__["']/.test(c.childForFieldName("condition")?.text ?? ""))
-        out.mainBlocks.push({ start: c.startPosition.row + 1, end: c.endPosition.row + 1 });
-      // 其他语句里也可能嵌着函数（if 里 def），继续往下找
-      if (c.namedChildCount) visit(c, scope, cls);
-    }
-  };
-  visit(root, [], undefined);
-
-  walk(root, (n) => {
-    if (n.type !== "call") return;
-    const fn = n.childForFieldName("function");
-    if (!fn) return;
-    let nameNode: Node | null = null, recv: string | undefined;
-    if (fn.type === "identifier") nameNode = fn;
-    else if (fn.type === "attribute") { nameNode = fn.childForFieldName("attribute"); recv = fn.childForFieldName("object")?.text; }
-    if (!nameNode) return;
-    const args = pyArgs(n.childForFieldName("arguments"));
-    const name = nameNode.text;
-    if (PY_SKIP.has(name) && !recv) return;
-    const site: CallSite = {
-      line: nameNode.startPosition.row + 1, col: col(nameNode, lines), end: col(nameNode, lines) + name.length, name, recv,
-      loop: pyInLoop(n), args, assigned: assignedTo(n, "python"),
-    };
-    // call("run", …) / getattr(self, "run")：只记下字符串，不猜
-    const firstStr = n.childForFieldName("arguments")?.namedChildren[0];
-    if (firstStr?.type === "string" && /^(call|dispatch|invoke|run_method|getattr)$/.test(name)) site.dispatch = firstStr.text.replace(/^[rbuf]*["']+|["']+$/g, "");
-    out.calls.push(site);
-  });
+function pyCall(cx: Cx, n: Node, loop: boolean, inRhs: boolean) {
+  const fn = n.childForFieldName("function");
+  if (!fn) return;
+  let nameNode: Node | null = null, recv: string | undefined;
+  if (fn.type === "identifier") nameNode = fn;
+  else if (fn.type === "attribute") { nameNode = fn.childForFieldName("attribute"); recv = fn.childForFieldName("object")?.text; }
+  if (!nameNode) return;
+  const name = nameNode.text;
+  if (PY_SKIP.has(name) && !recv) return;
+  const al = n.childForFieldName("arguments");
+  const col = nameNode.startPosition.column;
+  const site: CallSite = { line: nameNode.startPosition.row + 1, col, end: col + name.length, name, recv, loop, args: pyArgs(al), assigned: inRhs ? assignedTo(n, "python") : undefined };
+  // call("run", …) / getattr(self, "run")：只记下字符串，不猜
+  if (/^(call|dispatch|invoke|run_method|getattr)$/.test(name)) {
+    const firstStr = al?.firstNamedChild;
+    if (firstStr?.type === "string") site.dispatch = firstStr.text.replace(/^[rbuf]*["']+|["']+$/g, "");
+  }
+  cx.out.calls.push(site);
 }
 
 /** 字符串字面量 → docstring 正文（照 inspect.cleandoc） */
@@ -222,26 +277,20 @@ export function cleanDoc(lit: string): string {
   return out.join("\n");
 }
 
-function pyImports(root: Node, out: FileAnalysis) {
-  walk(root, (n) => {
-    if (n.type === "function_definition" || n.type === "class_definition") return false; // 只看模块级（含 if / try 里的）
-    const line = n.startPosition.row + 1;
-    if (n.type === "import_statement") {
-      for (const c of n.namedChildren) {
-        if (c?.type === "dotted_name") out.imports.push({ name: c.text.split(".")[0], module: c.text.split(".")[0], line });
-        else if (c?.type === "aliased_import") out.imports.push({ name: c.childForFieldName("alias")?.text ?? "", module: c.childForFieldName("name")?.text ?? "", line });
-      }
-      return false;
+function pyImport(n: Node, out: FileAnalysis) {
+  const line = n.startPosition.row + 1;
+  if (n.type === "import_statement") {
+    for (const c of n.namedChildren) {
+      if (c?.type === "dotted_name") out.imports.push({ name: c.text.split(".")[0], module: c.text.split(".")[0], line });
+      else if (c?.type === "aliased_import") out.imports.push({ name: c.childForFieldName("alias")?.text ?? "", module: c.childForFieldName("name")?.text ?? "", line });
     }
-    if (n.type === "import_from_statement") {
-      const mod = n.childForFieldName("module_name")?.text ?? "";
-      for (const c of n.childrenForFieldName("name")) {
-        if (c?.type === "dotted_name") out.imports.push({ name: c.text, module: mod, line, from: true });
-        else if (c?.type === "aliased_import") out.imports.push({ name: c.childForFieldName("alias")?.text ?? "", module: mod, line, from: true });
-      }
-      return false;
+  } else {
+    const mod = n.childForFieldName("module_name")?.text ?? "";
+    for (const c of n.childrenForFieldName("name")) {
+      if (c?.type === "dotted_name") out.imports.push({ name: c.text, module: mod, line, from: true });
+      else if (c?.type === "aliased_import") out.imports.push({ name: c.childForFieldName("alias")?.text ?? "", module: mod, line, from: true });
     }
-  });
+  }
 }
 
 /**
@@ -295,19 +344,6 @@ function pyArgs(al: Node | null): Arg[] {
   return out;
 }
 
-function pyInLoop(n: Node): boolean {
-  let child: Node = n, p = n.parent;
-  while (p) {
-    if (p.type === "function_definition" || p.type === "class_definition" || p.type === "lambda") return false;
-    if (p.type === "for_statement" && p.childForFieldName("body")?.id === child.id) return true;
-    if (p.type === "while_statement") return true;
-    if (PY_LOOP_BODY.has(p.type)) return true;
-    child = p;
-    p = p.parent;
-  }
-  return false;
-}
-
 /** 返回值被谁接住：沿着 .tolist()、x if c else y、await、括号往上，碰到赋值就取左边的名字 */
 function assignedTo(n: Node, g: Grammar): string[] | undefined {
   let cur: Node = n, p = n.parent;
@@ -342,7 +378,7 @@ function assignedTo(n: Node, g: Grammar): string[] | undefined {
 
 const CPP_SKIP = new Set("sizeof static_cast reinterpret_cast const_cast dynamic_cast printf assert".split(" "));
 
-function cpp(root: Node, lines: string[], out: FileAnalysis) {
+function cppSymbols({ out }: Cx, root: Node) {
   const visit = (n: Node, scope: string[], cls: string | undefined) => {
     for (const c of n.namedChildren) {
       if (!c) continue;
@@ -377,23 +413,22 @@ function cpp(root: Node, lines: string[], out: FileAnalysis) {
     }
   };
   visit(root, [], undefined);
+}
 
-  walk(root, (n) => {
-    if (n.type !== "call_expression") return;
-    const fn = n.childForFieldName("function");
-    if (!fn) return;
-    let nameNode: Node | null = null, recv: string | undefined;
-    if (fn.type === "identifier") nameNode = fn;
-    else if (fn.type === "field_expression") { nameNode = fn.childForFieldName("field"); recv = fn.childForFieldName("argument")?.text; }
-    else if (fn.type === "qualified_identifier") { nameNode = lastName(fn); recv = fn.text.slice(0, fn.text.lastIndexOf("::")); }
-    else if (fn.type === "template_function") nameNode = fn.childForFieldName("name");
-    if (!nameNode || CPP_SKIP.has(nameNode.text)) return;
-    const al = n.childForFieldName("arguments");
-    out.calls.push({
-      line: nameNode.startPosition.row + 1, col: col(nameNode, lines), end: col(nameNode, lines) + nameNode.text.length, name: nameNode.text, recv,
-      loop: cppInLoop(n), args: (al?.namedChildren ?? []).filter((a): a is Node => !!a && a.type !== "comment").map((a) => ({ text: oneLine(a.text), name: a.type === "identifier" ? a.text : undefined })),
-      assigned: assignedTo(n, "cpp"),
-    });
+function cppCall({ out }: Cx, n: Node, loop: boolean, inRhs: boolean) {
+  const fn = n.childForFieldName("function");
+  if (!fn) return;
+  let nameNode: Node | null = null, recv: string | undefined;
+  if (fn.type === "identifier") nameNode = fn;
+  else if (fn.type === "field_expression") { nameNode = fn.childForFieldName("field"); recv = fn.childForFieldName("argument")?.text; }
+  else if (fn.type === "qualified_identifier") { nameNode = lastName(fn); recv = fn.text.slice(0, fn.text.lastIndexOf("::")); }
+  else if (fn.type === "template_function") nameNode = fn.childForFieldName("name");
+  if (!nameNode || CPP_SKIP.has(nameNode.text)) return;
+  const al = n.childForFieldName("arguments");
+  out.calls.push({
+    line: nameNode.startPosition.row + 1, col: nameNode.startPosition.column, end: nameNode.startPosition.column + nameNode.text.length, name: nameNode.text, recv,
+    loop, args: (al?.namedChildren ?? []).filter((a): a is Node => !!a && a.type !== "comment").map((a) => ({ text: oneLine(a.text), name: a.type === "identifier" ? a.text : undefined })),
+    assigned: inRhs ? assignedTo(n, "cpp") : undefined,
   });
 }
 
@@ -416,19 +451,8 @@ function cppParams(ps: Node | null): Param[] {
   }
   return out;
 }
-function cppInLoop(n: Node): boolean {
-  let child: Node = n, p = n.parent;
-  while (p) {
-    if (p.type === "function_definition" || p.type === "lambda_expression") return false;
-    if ((p.type === "for_statement" || p.type === "for_range_loop") && p.childForFieldName("body")?.id === child.id) return true;
-    if (p.type === "while_statement" || p.type === "do_statement") return true;
-    child = p;
-    p = p.parent;
-  }
-  return false;
-}
 
-// ---------- 查询 ----------
+// ---------- 按行查 ----------
 
 /** 含有某一行的最内层符号 */
 export function symbolAt(syms: Sym[], line: number, kind?: Sym["kind"]): Sym | undefined {

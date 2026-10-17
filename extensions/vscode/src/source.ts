@@ -1,10 +1,9 @@
 // 代码从哪来、钉在哪个版本：文件绝对路径 ⇄ Source + path，建卡时的 Version，以及读「那个版本」的文件内容。
-import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { fingerprint, locateSeg, parseDistInfo, sameLines, type Segment, type Source, type Version } from "@codeboard/core";
 import { headOf, repoRootOf, showFile } from "./git";
-import { exists, inWorkspace, posix, readText, splitLines, ws0 } from "./ws";
+import { exists, inWorkspace, posix, readText, splitLines, workspace, ws0 } from "./ws";
 import { analysisOf } from "./analysis";
 
 /** 一个文件在白板上的位置：src + path，root = src 对应的绝对根目录 */
@@ -12,18 +11,16 @@ export type Loc = { src: Source; path: string; root: string; abs: string; fixed?
 
 let ghRoot = "";
 let repoMap: Record<string, string> = {};
-let ctxRef: vscode.ExtensionContext | undefined;
 
-export function initSource(ctx: vscode.ExtensionContext, githubDir: string) {
-  ctxRef = ctx;
+export function initSource(githubDir: string) {
   ghRoot = githubDir;
-  repoMap = ctx.workspaceState.get<Record<string, string>>("codeboard.repoMap") ?? {};
+  repoMap = workspace().storage.get<Record<string, string>>("codeboard.repoMap") ?? {};
 }
 
 /** Locate Repo… 记住的映射：repo → 本机绝对路径 */
 export async function mapRepo(key: string, root: string) {
   repoMap[key] = root;
-  await ctxRef?.workspaceState.update("codeboard.repoMap", repoMap);
+  await workspace().storage.set("codeboard.repoMap", repoMap);
 }
 export const srcKey = (s: Source) => (s.kind === "repo" ? `repo:${s.repo}` : s.kind === "external" ? `ext:${s.root}` : s.kind === "github" ? `gh:${s.owner}/${s.name}` : "free");
 export const srcLabel = (s: Source) => (s.kind === "repo" ? (s.repo ? path.basename(s.repo) : path.basename(ws0()) || "workspace") : s.kind === "external" ? s.root : s.kind === "github" ? `${s.owner}/${s.name}` : "Free code");
@@ -75,8 +72,8 @@ export async function locOfFile(abs: string): Promise<Loc> {
     const root = abs.slice(0, site.index + site[0].length - 1);
     return { src: { kind: "external", root }, path: posix(path.relative(root, abs)), root, abs };
   }
-  const folder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(abs));
-  if (folder) return { src: { kind: "repo", repo: posix(path.relative(ws0(), folder.uri.fsPath)) }, path: posix(path.relative(folder.uri.fsPath, abs)), root: folder.uri.fsPath, abs };
+  const folder = workspace().files.rootOf(abs);
+  if (folder) return { src: { kind: "repo", repo: posix(path.relative(ws0(), folder)) }, path: posix(path.relative(folder, abs)), root: folder, abs };
   const root = path.dirname(abs);
   return { src: { kind: "external", root }, path: path.basename(abs), root, abs };
 }

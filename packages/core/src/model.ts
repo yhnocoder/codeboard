@@ -1,9 +1,9 @@
-// 白板的持久化数据模型（第 3 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
+// 白板的持久化数据模型（第 4 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
 // 卡片内容（Card）和它在这块白板上的摆放（Place）分开存：v0.2 的共享卡片、子白板会让同一张卡出现在几块白板上，
 // 内容只有一份，摆放每块白板各一份。Compare 只引用两张卡的 id，那两张卡在 cards 里但没有 Place（不单独出现在画布上）。
 // 基本元素：Card、Place、Link、Section、Sidenote、Sticker。流程、讲解、Compare 都由它们派生。
 
-export const BOARD_VERSION = 3;
+export const BOARD_VERSION = 4;
 
 // ---------- 版本 ----------
 
@@ -112,7 +112,7 @@ export type Place = {
   x: number;
   y: number;
   w: number;
-  h?: number; // 用户拖过高度才有；否则按内容自动高，上限后卡内滚动
+  h?: number; // 用户拖过高度才有；否则按内容自动高，上限后卡内滚动。代码卡（第 4 版起）存的是内容区的高度，不含卡头 / 底栏（那部分随主题变）
   section?: string; // 所在 Section（按卡片中心点判断，拖动结束时更新）
   locked?: boolean;
   collapsed?: boolean; // 折叠了它下面的 Call 子树
@@ -208,7 +208,7 @@ export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt
 export type Camera = { x: number; y: number; z: number };
 
 export type Board = {
-  version: 3;
+  version: 4;
   id: string;
   name: string;
   cam: Camera;
@@ -370,20 +370,36 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
 
 // ---------- 迁移 ----------
 
-/** 读进来的白板文件（第 1、2、3 版）→ 第 3 版 */
+/** 读进来的白板文件（第 1–4 版）→ 第 4 版 */
 export function migrateBoard(raw: any): Board {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
-  if (raw?.version === 3) {
+  if (raw?.version === 4 || raw?.version === 3) {
     const b = raw as Board;
     b.place ??= {};
     b.links ??= [];
     b.sections ??= [];
     b.sidenotes ??= [];
     b.stickers ??= [];
-    return b;
+    return raw.version === 3 ? v3to4(b) : b;
   }
-  return v2to3(raw?.version === 2 ? raw : v1to2(raw));
+  return v3to4(v2to3(raw?.version === 2 ? raw : v1to2(raw)));
+}
+
+/**
+ * 第 3 版代码卡的 Place.h 是整张卡的高度（按 Warm Ink 量；别的主题显示时再加 CSS 的 --hx）。
+ * 第 4 版只存内容区（.carea）的高度，卡头 / 底栏由各主题的布局撑开。Warm Ink 的代码卡卡头是 36px（35 + 1px 下边线，没有色带和底栏；
+ * harness 里实测：定高 300 的卡 .cbody 264，自动高的卡 = 36 + 内容）。
+ */
+export const V3_CODE_CHROME = 36;
+function v3to4(b: Board): Board {
+  const fix = (c: Card | undefined, p: Place | undefined) => { if (c?.kind === "code" && p?.h) p.h = Math.max(1, p.h - V3_CODE_CHROME); };
+  for (const c of b.cards) {
+    fix(c, b.place[c.id]);
+    if (c.kind === "code") for (const m of c.mergedFrom ?? []) fix(m.card, m.place);
+  }
+  b.version = BOARD_VERSION;
+  return b;
 }
 
 const GEO = ["x", "y", "w", "h", "section", "locked", "collapsed"] as const;

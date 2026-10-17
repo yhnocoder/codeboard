@@ -1,10 +1,8 @@
-// 白板发来的消息。带 req 的请求返回值就是回答（Panels 包成 reply）。
-import * as vscode from "vscode";
+// 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type BoardToHost, type Commit, type DiffData, type Segment } from "@codeboard/core";
+import { findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { gitUri } from "./cards";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
 import { githubCard, ghQuery } from "./github";
 import { webMeta } from "./web";
@@ -13,129 +11,103 @@ import { writeSetting } from "./settings";
 import { readPacks } from "./stickers";
 import { log } from "./log";
 import { copyDiagnostics, openStickerDir } from "./diagnostics";
-import type { BoardPanel, Panels } from "./panel";
+import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints } from "./search";
 import { prefetchCall } from "./prefetch";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { highlight, segView, viewsFor } from "./views";
-import { fromHostPath, langOf, readText, splitLines, ws0 } from "./ws";
+import { fromHostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
+/** 处理函数的返回值：要回答的请求是它的回答，其他的不管 */
+type Out<T extends BoardToHost["type"]> = T extends AskType ? ReplyOf<T> : unknown;
+type Handlers = { [T in BoardToHost["type"]]: (p: BoardPanel, m: Msg<T>) => Promise<Out<T>> | Out<T> };
+export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown>;
 
-export function makeHandler(panels: Panels) {
+export function makeHandler(panels: BoardHost): Handler {
   const store = panels.store;
-  return async (p: BoardPanel, m: BoardToHost): Promise<unknown> => {
-    switch (m.type) {
-      case "save": {
-        if (p.board) m.board.id = p.board.id; // 存到这块面板打开的那个文件，不信白板发来的 id
-        const renamed = p.board?.name !== m.board.name;
-        p.board = m.board;
-        await store.save(m.board);
-        if (renamed) { p.panel.title = m.board.name; void panels.pushBoards(); }
-        return;
-      }
-      case "selection": p.selection = m; return;
-      case "open": return openCard(p, m);
-      case "openPath": return openAt(fromHostPath(m.path), m.line);
-      case "openLink": {
-        // 白板文件里的链接只放行网页和邮件：file:// 之类会直接打开本机的程序
-        const u = vscode.Uri.parse(m.url);
-        if (!/^(https?|mailto)$/.test(u.scheme)) { log("info", `openLink: blocked ${u.scheme}: link`); return; }
-        return void vscode.env.openExternal(u);
-      }
-      case "expand": return expand(m);
-      case "peek": return peek(m);
-      case "prefetch": return prefetchCall(m);
-      case "callVars": return callVars(m);
-      case "search": return search(store, m.q, m.scope);
-      case "searchPick": return searchPick(m.item);
-      case "entryPoints": return entryPoints();
-      case "diff": return diff(m.seg, m.against);
-      case "commits": return commits(m.seg);
-      case "switchCommit": return switchCommit(m.seg, m.commit);
-      case "resolveRef": return resolveTyped(p, m.text);
-      case "paste": return pasteCard(m.text);
-      case "github": return githubCard(m.url);
-      case "saveAsset": return store.saveAsset(m.name, m.dataUrl);
-      case "exportPng": return exportPng(m.dataUrl, m.name);
-      case "views": return viewsFor(m.segs);
-      case "checkVersions": return p.refreshStale();
-      case "relocate": return relocate(p, m.card);
-      case "locateRepo": return locateRepo(p);
-      case "setSetting": return writeSetting(m.key, m.value);
-      case "webMeta": return webMeta(store, m.url);
-      case "gh": return ghQuery(m.q);
-      case "stickerPacks": return readPacks();
-      case "openStickerDir": return openStickerDir();
-      case "copyDiagnostics": return copyDiagnostics(p.board, m.board);
-      case "log": return log(m.level, m.text);
-      case "openBoard": {
-        const np = await panels.show(m.id);
-        if (np && m.card) np.post({ type: "reveal", card: m.card });
-        return;
-      }
-      case "confirm": {
-        const r = await vscode.window.showWarningMessage(m.text, { modal: true, detail: m.detail }, m.ok);
-        return r === m.ok;
-      }
-      case "pickFile": return pickImage();
-      default: return;
-    }
+  const h: Handlers = {
+    ready: () => undefined, // Panels 自己处理
+    save: async (p, m) => {
+      if (p.board) m.board.id = p.board.id; // 存到这块面板打开的那个文件，不信白板发来的 id
+      const renamed = p.board?.name !== m.board.name;
+      p.board = m.board;
+      await store.save(m.board);
+      if (renamed) { p.view.title = m.board.name; void panels.pushBoards(); }
+      return null;
+    },
+    selection: (p, m) => { p.selection = m; },
+    open: (p, m) => openCard(p, m),
+    openPath: (_p, m) => openAt(fromHostPath(m.path), m.line),
+    openLink: (_p, m) => {
+      // 白板文件里的链接只放行网页和邮件：file:// 之类会直接打开本机的程序
+      const scheme = /^([^:/?#]+?):/.exec(m.url)?.[1] ?? "file";
+      if (!/^(https?|mailto)$/.test(scheme)) { log("info", `openLink: blocked ${scheme}: link`); return; }
+      void workspace().ui.openUrl(m.url);
+    },
+    expand: (_p, m) => expand(m),
+    peek: (_p, m) => peek(m),
+    prefetch: (_p, m) => prefetchCall(m),
+    callVars: (_p, m) => callVars(m),
+    search: (_p, m) => search(store, m.q, m.scope),
+    searchPick: (_p, m) => searchPick(m.item),
+    entryPoints: () => entryPoints(),
+    diff: (_p, m) => diff(m.seg, m.against),
+    commits: (_p, m) => commits(m.seg),
+    switchCommit: (_p, m) => switchCommit(m.seg, m.commit),
+    resolveRef: (p, m) => resolveTyped(p, m.text),
+    paste: (_p, m) => pasteCard(m.text),
+    github: (_p, m) => githubCard(m.url),
+    saveAsset: (_p, m) => store.saveAsset(m.name, m.dataUrl),
+    exportPng: (_p, m) => exportPng(m.dataUrl, m.name),
+    views: (_p, m) => viewsFor(m.segs),
+    checkVersions: (p) => p.refreshStale(),
+    relocate: (p, m) => relocate(p, m.card),
+    locateRepo: (p) => locateRepo(p),
+    setSetting: (_p, m) => writeSetting(m.key, m.value),
+    webMeta: (_p, m) => webMeta(store, m.url),
+    gh: (_p, m) => ghQuery(m.q),
+    stickerPacks: () => readPacks(),
+    openStickerDir: () => openStickerDir(),
+    copyDiagnostics: (p, m) => copyDiagnostics(p.board, m.board),
+    log: (_p, m) => log(m.level, m.text),
+    openBoard: async (_p, m) => {
+      const np = await panels.show(m.id);
+      if (np && m.card) np.post({ type: "reveal", card: m.card });
+    },
+    confirm: async (_p, m) => (await workspace().ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
+    pickFile: () => pickImage(),
   };
+  return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
 
 // ---------- 跳转 ----------
 
-const flashDeco = vscode.window.createTextEditorDecorationType({ backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"), isWholeLine: true });
-
-async function show(uri: vscode.Uri, line: number | undefined, end?: number, readonly = false) {
-  const doc = await vscode.workspace.openTextDocument(uri);
-  const ed = await vscode.window.showTextDocument(doc, { viewColumn: codeColumn(), preserveFocus: false, preview: true });
-  if (readonly && uri.scheme === "file") await vscode.commands.executeCommand("workbench.action.files.setActiveEditorReadonlyInSession").then(undefined, () => {});
-  if (line) {
-    const l = Math.max(0, Math.min(doc.lineCount - 1, line - 1));
-    const pos = new vscode.Position(l, doc.lineAt(l).firstNonWhitespaceCharacterIndex);
-    ed.selection = new vscode.Selection(pos, pos);
-    ed.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-    const r = new vscode.Range(l, 0, Math.max(l, Math.min(doc.lineCount - 1, (end ?? line) - 1)), 0);
-    ed.setDecorations(flashDeco, [r]);
-    setTimeout(() => ed.setDecorations(flashDeco, []), 1200);
-  }
-}
-
-/** 代码开在白板旁边的那一栏（白板在第一栏时开第二栏） */
-function codeColumn(): vscode.ViewColumn {
-  const tab = vscode.window.tabGroups.activeTabGroup;
-  const boardActive = tab.activeTab?.input instanceof vscode.TabInputWebview;
-  if (!boardActive) return tab.viewColumn;
-  const other = vscode.window.tabGroups.all.find((g) => g !== tab);
-  return other?.viewColumn ?? vscode.ViewColumn.Beside;
-}
-
-export const openAt = (abs: string, line?: number) => show(vscode.Uri.file(abs), line);
+export const openAt = (abs: string, line?: number) => workspace().editor.open(abs, { line });
 
 /** Open in Editor：钉的版本就是当前代码时开工作区文件，否则开那个 commit 的只读版本 */
 export async function openSeg(seg: Segment, line?: number) {
   if (seg.src.kind === "free") throw new Error("Free code has no source file.");
+  const ed = workspace().editor;
   const abs = absOf(seg);
   if (seg.src.kind === "github") {
     if (!abs) throw new Error("GitHub file is not cached.");
-    return show(vscode.Uri.file(abs), line ?? seg.start, undefined, true);
+    return ed.open(abs, { line: line ?? seg.start, readonly: true });
   }
   if (!(await present(seg))) throw new Error(`Repo “${srcLabel(seg.src)}” not found. Use Locate Repo… to point to it.`);
   const wp = await workingPlace(seg);
   if (wp?.exact) {
     const l = line === undefined ? wp.start : wp.start + (line - seg.start);
-    return show(vscode.Uri.file(wp.abs), l, line === undefined ? wp.end : l);
+    return ed.open(wp.abs, { line: l, end: line === undefined ? wp.end : l });
   }
   if (seg.version.kind === "git" && abs) {
     const root = await repoRootOf(abs);
     if (root && (await showFile(root, seg.version.commit, path.relative(root, abs).split(path.sep).join("/"))) !== null)
-      return show(gitUri(root, seg.version.commit, path.relative(root, abs).split(path.sep).join("/")), line ?? seg.start);
+      return ed.openVersion({ root, commit: seg.version.commit, path: path.relative(root, abs).split(path.sep).join("/") }, line ?? seg.start);
   }
-  if (wp) return show(vscode.Uri.file(wp.abs), mapLineTo(seg, line ?? seg.start, wp.lines.slice(wp.start - 1, wp.end), wp.start));
+  if (wp) return ed.open(wp.abs, { line: mapLineTo(seg, line ?? seg.start, wp.lines.slice(wp.start - 1, wp.end), wp.start) });
   throw new Error(`Cannot open ${seg.path}.`);
 }
 
@@ -225,7 +197,7 @@ async function commits(seg: Segment): Promise<Commit[]> {
 }
 
 /** 段换到另一个 commit：在那个版本里重新找符号 / 内容 */
-async function switchCommit(seg: Segment, commit: string): Promise<{ seg: Segment; view: unknown }> {
+async function switchCommit(seg: Segment, commit: string): Promise<{ seg: Segment; view: SegView }> {
   const abs = absOf(seg);
   const root = abs && (await repoRootOf(abs));
   if (!abs || !root) throw new Error("This code is not in a git repo.");
@@ -265,17 +237,18 @@ async function resolveTyped(p: BoardPanel, text: string): Promise<Commit | null>
 // ---------- 其他 ----------
 
 async function exportPng(dataUrl: string, name: string) {
-  const uri = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(ws0() || process.env.HOME || "", `${name || "board"}.png`)), filters: { "PNG Image": ["png"] } });
-  if (!uri) return;
-  await fs.writeFile(uri.fsPath, Buffer.from(dataUrl.replace(/^data:[^,]*,/, ""), "base64"));
-  void vscode.window.showInformationMessage(`Exported ${path.basename(uri.fsPath)}`, "Reveal").then((r) => r && vscode.commands.executeCommand("revealFileInOS", uri));
+  const ui = workspace().ui;
+  const file = await ui.saveDialog({ defaultPath: path.join(ws0() || process.env.HOME || "", `${name || "board"}.png`), filters: { "PNG Image": ["png"] } });
+  if (!file) return;
+  await fs.writeFile(file, Buffer.from(dataUrl.replace(/^data:[^,]*,/, ""), "base64"));
+  void ui.info(`Exported ${path.basename(file)}`, "Reveal").then((r) => (r ? ui.revealInOS(file) : undefined));
 }
 
 async function pickImage(): Promise<string | null> {
-  const r = await vscode.window.showOpenDialog({ canSelectMany: false, filters: { Images: ["png", "jpg", "jpeg", "gif", "svg", "webp"] }, openLabel: "Add Image" });
-  if (!r?.[0]) return null;
-  const buf = await fs.readFile(r[0].fsPath);
-  const ext = path.extname(r[0].fsPath).slice(1).toLowerCase();
+  const file = await workspace().ui.openDialog({ filters: { Images: ["png", "jpg", "jpeg", "gif", "svg", "webp"] }, label: "Add Image" });
+  if (!file) return null;
+  const buf = await fs.readFile(file);
+  const ext = path.extname(file).slice(1).toLowerCase();
   const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" ? "image/jpeg" : `image/${ext}`;
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
@@ -290,7 +263,7 @@ async function relocate(p: BoardPanel, cardId: string) {
   if (!abs || text === null || text === undefined) throw new Error(`${seg.path} not found.`);
   const lang = langOf(abs);
   const syms = analysisOf(lang, text).symbols;
-  const pick = await vscode.window.showQuickPick(
+  const pick = await workspace().ui.pick(
     syms.map((s) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${path.basename(abs)}:${s.defLine}`, s })),
     { placeHolder: `Where is ${seg.symbol?.qual ?? "this code"} now?`, matchOnDescription: true },
   );
@@ -310,19 +283,19 @@ async function locateRepo(p: BoardPanel) {
   if (!miss.size) { p.toast("All repos are available."); return; }
   let key = [...miss.keys()][0];
   if (miss.size > 1) {
-    const r = await vscode.window.showQuickPick([...miss.entries()].map(([k, s]) => ({ label: srcLabel(s.src), description: k, k })), { placeHolder: "Which repo do you want to locate?" });
+    const r = await workspace().ui.pick([...miss.entries()].map(([k, s]) => ({ label: srcLabel(s.src), description: k, k })), { placeHolder: "Which repo do you want to locate?" });
     if (!r) return;
     key = r.k;
   }
   const seg = miss.get(key)!;
-  const dir = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, openLabel: "Use This Folder", title: `Locate “${srcLabel(seg.src)}”` });
-  if (!dir?.[0]) return;
-  const exists = await fs.stat(path.join(dir[0].fsPath, seg.path)).then(() => true, () => false);
+  const dir = await workspace().ui.openDialog({ folders: true, label: "Use This Folder", title: `Locate “${srcLabel(seg.src)}”` });
+  if (!dir) return;
+  const exists = await fs.stat(path.join(dir, seg.path)).then(() => true, () => false);
   if (!exists) {
-    const go = await vscode.window.showWarningMessage(`${seg.path} is not in this folder.`, { modal: true }, "Use Anyway");
+    const go = await workspace().ui.warn(`${seg.path} is not in this folder.`, { modal: true }, "Use Anyway");
     if (go !== "Use Anyway") return;
   }
-  await mapRepo(key, dir[0].fsPath);
+  await mapRepo(key, dir);
   await p.reload();
 }
 

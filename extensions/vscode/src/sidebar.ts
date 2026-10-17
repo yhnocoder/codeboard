@@ -1,10 +1,8 @@
 // 侧栏：BOARDS（组 = 文件夹，白板后面是卡片数，有新版本的卡时加圆点）和 GITHUB FILES（下载过的 GitHub 文件）。
 import * as vscode from "vscode";
-import * as path from "node:path";
 import type { BoardMeta } from "@codeboard/core";
-import { cachedFiles } from "./github";
+import { cachedFiles, githubFiles } from "./github";
 import type { Panels } from "./panel";
-import { githubFileDir } from "./source";
 import type { Storage } from "./storage";
 import { debounce } from "./ws";
 
@@ -61,15 +59,7 @@ export class GithubTree implements vscode.TreeDataProvider<GNode> {
   async getChildren(n?: GNode): Promise<GNode[]> {
     if (!n) return (await cachedFiles()).map((r) => ({ kind: "repo", ...r }));
     if (n.kind !== "repo") return [];
-    // 每个文件上有几张卡
-    const count = new Map<string, number>();
-    for (const { board } of await this.store.all()) for (const c of board.cards) {
-      if (c.kind !== "code") continue;
-      const s = c.segments.find((x) => x.src.kind === "github" && x.src.owner === n.owner && x.src.name === n.name && x.version.kind === "git" && x.version.commit === n.commit);
-      if (s) count.set(s.path, (count.get(s.path) ?? 0) + 1);
-    }
-    const dir = githubFileDir(n.owner, n.name, n.commit);
-    return n.files.map((rel) => ({ kind: "file", abs: path.join(dir, rel), rel, cards: count.get(rel) ?? 0 }));
+    return (await githubFiles(this.store, n)).map((f) => ({ kind: "file", ...f }));
   }
 
   getTreeItem(n: GNode): vscode.TreeItem {

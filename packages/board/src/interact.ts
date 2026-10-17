@@ -1,6 +1,5 @@
 // 指针交互：拖卡（吸附、合并、⌥ 拖成 Sidenote、进出 Section）、改大小、框选、平移、缩放、
 // 拖 Section 标签、从调用拖出 Call link、从行尾 / 卡边拖出 Plain link，以及键盘快捷键。
-import { chromeExtra } from "./state/look";
 import { unwrap } from "solid-js/store";
 import {
   findCard, isCode, snapMove, snapResize, union, bounds, center, contains, cardTitle,
@@ -24,7 +23,11 @@ import * as A from "./actions";
 import { send } from "./host";
 
 const boardEl = () => document.getElementById("board")!;
-const local = (e: { clientX: number; clientY: number }) => { const r = boardEl().getBoundingClientRect(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+// 白板是 position: fixed 铺满窗口，左上角只在窗口变大小时可能变：记下来，不在每个滚轮 / 指针事件里读布局
+// （读 getBoundingClientRect 会让浏览器在事件里先把上一批改动的样式、排版做掉，同一帧里再做一遍）
+let boardAt: { left: number; top: number } | null = null;
+window.addEventListener("resize", () => { boardAt = null; });
+const local = (e: { clientX: number; clientY: number }) => { const r = (boardAt ??= boardEl().getBoundingClientRect()); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
 const worldOf = (e: { clientX: number; clientY: number }) => { const p = local(e); return toWorld(p.x, p.y); };
 
 /** 通用拖动：按下后跟踪移动，松手收尾。返回 false 的 move 不算移动。 */
@@ -238,7 +241,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（#2：单行卡拉高后能缩回去）
   const nat = A.naturalSize(c.id);
   const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
-  const hx = c.kind === "code" ? chromeExtra() : 0;
+  const hx = c.kind === "code" ? A.chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
   track(e, (ev) => {
     const z = cam.z, dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     let w = r0.w, h = r0.h, x = r0.x;

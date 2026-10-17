@@ -46,7 +46,7 @@ export async function openDiff(id: string, segId?: string) {
   const el = document.querySelector(`.card[data-id="${cardById(id)!.host.id}"] .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
   try {
-    const data = await ask<DiffData>("diff", { seg: structuredClone(unwrap(s)) });
+    const data = await ask("diff", { seg: structuredClone(unwrap(s)) });
     updatePop(pid, (p) => ({ ...(p as any), data }));
   } catch (e) { updatePop(pid, (p) => ({ ...(p as any), error: (e as Error).message })); }
 }
@@ -74,7 +74,7 @@ export async function updateAll() {
   let n = 0;
   for (const [cid, s] of todo) {
     try {
-      const data = await ask<DiffData>("diff", { seg: structuredClone(unwrap(s)) });
+      const data = await ask("diff", { seg: structuredClone(unwrap(s)) });
       if (data.canUpdate) { applyNewVersion(cid, s.id, data); n++; }
     } catch { /* 这张跳过 */ }
   }
@@ -101,7 +101,7 @@ export async function commitMenu(id: string, el: Element) {
   if (s.src.kind === "github" || s.src.kind === "free") return;
   // 先拿列表再开弹窗：弹窗不会先以 Loading 打开再变大、换位置（#19 开选择器时卡片闪一下）；拿得慢才先开
   const seg = structuredClone(unwrap(s));
-  const req = ask<Commit[]>("commits", { seg }).catch(() => [] as Commit[]);
+  const req = ask("commits", { seg }).catch(() => [] as Commit[]);
   const quick = await Promise.race([req, new Promise<null>((r) => setTimeout(() => r(null), 250))]);
   if (quick) return void openPop({ kind: "commits", card: id, seg, list: quick }, { el, prefer: "below" });
   const pid = openPop({ kind: "commits", card: id, seg }, { el, prefer: "below" });
@@ -114,14 +114,11 @@ export async function switchCommit(id: string, commit: string) {
   const segs: { seg: Segment; view: SegView }[] = [];
   for (const s of c.segments) {
     if (s.src.kind !== "repo" && s.src.kind !== "external") continue;
-    try { segs.push(await ask<{ seg: Segment; view: SegView }>("switchCommit", { seg: structuredClone(unwrap(s)), commit })); }
+    try { segs.push(await ask("switchCommit", { seg: structuredClone(unwrap(s)), commit })); }
     catch (e) { return toast((e as Error).message); }
   }
-  mutate((b) => {
-    const k = findCard(b, id)?.card;
-    if (!isCode(k)) return;
-    for (const r of segs) { const i = k.segments.findIndex((s) => s.id === r.seg.id); if (i >= 0) k.segments[i] = r.seg; }
-  });
+  // 走 rebaseSegment：段上的隐藏 / 高亮，Link、Sidenote、Sticker 的行号按内容跟到那个 commit 的行上
+  mutate((b) => { for (const r of segs) rebaseSegment(b, id, r.seg); });
   for (const r of segs) { setState("views", r.seg.id, r.view); setState("stale", r.seg.id, undefined as any); }
   send({ type: "checkVersions" });
   toast(`Switched to ${commit.slice(0, 7)}`);

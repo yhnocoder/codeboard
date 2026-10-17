@@ -1,8 +1,7 @@
 // 建卡：从文件位置、符号、编辑器选区做成 CodeCard（位置由白板定）。
-import * as vscode from "vscode";
-import * as path from "node:path";
-import { uid, type CodeCard, type NewCard, type Segment } from "@codeboard/core";
+import { uid, type CodeCard, type EditorState, type NewCard, type Segment } from "@codeboard/core";
 import { planSelection, symbolAtCursor, type Plan, type Sel, type Sym } from "@codeboard/core/analysis";
+import * as path from "node:path";
 import { analysisOf } from "./analysis";
 import { locOfFile, type Loc } from "./source";
 import { makeSegment } from "./versions";
@@ -56,51 +55,36 @@ export async function cardsFromPlan(loc: Loc, lines: string[], plan: Plan, lang:
 }
 
 /** 编辑器 → 白板位置。没保存的新文件、不在磁盘上的文档 → null（建 Free code） */
-export async function locOfDoc(doc: vscode.TextDocument): Promise<Loc | null> {
-  if (doc.uri.scheme === "file") return locOfFile(doc.uri.fsPath);
-  if (doc.uri.scheme === GIT_SCHEME) {
-    const q = parseGitUri(doc.uri);
-    if (!q) return null;
-    const loc = await locOfFile(q.abs);
-    return { ...loc, fixed: { kind: "git", commit: q.commit } };
+export async function locOfEditor(ed: EditorState): Promise<Loc | null> {
+  if (ed.file) return locOfFile(ed.path);
+  if (ed.version) {
+    const loc = await locOfFile(path.join(ed.version.root, ed.version.path));
+    return { ...loc, fixed: { kind: "git", commit: ed.version.commit } };
   }
   return null;
 }
 
-export const GIT_SCHEME = "codeboard-git";
-/** 只读的历史版本文档：codeboard-git:/<path>?{root, commit, path} */
-export function gitUri(root: string, commit: string, rel: string): vscode.Uri {
-  return vscode.Uri.from({ scheme: GIT_SCHEME, path: `/${commit.slice(0, 7)}/${rel}`, query: JSON.stringify({ root, commit, path: rel }) });
-}
-export function parseGitUri(u: vscode.Uri): { root: string; commit: string; path: string; abs: string } | null {
-  try {
-    const q = JSON.parse(u.query);
-    return { ...q, abs: path.join(q.root, q.path) };
-  } catch { return null; }
-}
-
 /** 编辑器里的选区 → 卡片；没有选区 = 光标所在的函数 */
-export async function cardsFromEditor(ed: vscode.TextEditor, mode: "auto" | "function" = "auto"): Promise<Built | { error: string }> {
-  const doc = ed.document;
-  const text = doc.getText();
+export async function cardsFromEditor(ed: EditorState, mode: "auto" | "function" = "auto"): Promise<Built | { error: string }> {
+  const text = ed.text;
   const lines = splitLines(text);
-  const lang = doc.languageId;
-  const loc = await locOfDoc(doc);
+  const lang = ed.lang;
+  const loc = await locOfEditor(ed);
   const a = analysisOf(lang, text);
-  const empty = ed.selections.every((s) => s.isEmpty);
+  const isEmpty = (s: Sel) => s.startLine === s.endLine && s.startCol === s.endCol;
+  const empty = ed.selections.every(isEmpty);
   if (!loc) {
     // 未命名文件 / 不在磁盘上：Free code
-    const sel = empty ? new vscode.Range(0, 0, doc.lineCount, 0) : ed.selection;
-    const t = doc.getText(sel).replace(/\n$/, "");
+    const t = (empty ? text : ed.selectionText).replace(/\n$/, "");
     if (!t.trim()) return { error: "Nothing to add." };
     return { cards: [freeCard(t, lang)] };
   }
   if (empty || mode === "function") {
-    const sym = symbolAtCursor(a, ed.selection.active.line + 1);
+    const sym = symbolAtCursor(a, ed.cursorLine);
     if (!sym) return { error: "The cursor is not inside a function or class. Select some lines first." };
     return { cards: [await symCard(loc, lines, sym, lang)] };
   }
-  const sels: Sel[] = ed.selections.filter((s) => !s.isEmpty).map((s) => ({ startLine: s.start.line + 1, startCol: s.start.character, endLine: s.end.line + 1, endCol: s.end.character }));
+  const sels: Sel[] = ed.selections.filter((s) => !isEmpty(s));
   const plan = planSelection(sels, a);
   if (!plan) return { error: "The selection only has blank lines." };
   return cardsFromPlan(loc, lines, plan, lang);
