@@ -194,7 +194,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .dedm:hover { opacity: 1; }
 .card.lo-ov .dedm { visibility: hidden; }
 .chrome .src, .chrome .src * { user-select: text; -webkit-user-select: text; cursor: text; }
-.src .l { height: 20px; }
+.src .l { height: 20px; margin-right: -24px; padding-right: 24px; } /* 行伸进 .src 右边的 24px 留白：鼠标往右去拿行尾圆点时一直还在这一行上，不会落到 .src 本身上把悬停行清掉。宽度、折行都不变 */
 .src .l.drop { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 .gutter .no.drop { color: var(--accent); font-weight: 600; }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
@@ -563,6 +563,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card.text > .cface > .eport { display: none; }
 .card.lift > .cface > .eport { visibility: hidden; transition: none; } /* 不用 display：拿起、放下时不用重新排版。transition: none 跟 display: none 一样：藏着时不留半截淡入淡出 */
 .eport:hover { background: var(--accent); box-shadow: 0 0 0 1.5px var(--accent); }
+.card > .cface > .eport.land { opacity: 0; } /* 这一边已经有线头落在这个点上：圆点不画（盖在箭头上难看），还能悬停、拖 */
+.card > .cface > .eport.land:hover { opacity: 1; }
 .eport.t { left: 50%; top: -5px; margin-left: -4.5px; }
 .eport.b { left: 50%; bottom: -5px; margin-left: -4.5px; }
 .eport.l { top: 17px; left: -5px; margin-top: -4.5px; } /* 左右圆点在卡头那一行，和箭头落点 headY 对齐 */

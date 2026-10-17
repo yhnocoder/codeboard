@@ -22,6 +22,7 @@ import * as act from "../actions";
 import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
+import { landed } from "../canvas/Links";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
@@ -90,7 +91,7 @@ export function CardView(p: { card: Card }) {
           <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
         </Switch>
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
-        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
+        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <CardStickers card={c().id} />
         <Show when={!pl().locked}>

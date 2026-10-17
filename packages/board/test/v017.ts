@@ -366,4 +366,68 @@ export const V017: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "manual-call", JSON.stringify({ items, call, marks }));
     await close(h);
   },
+  /** 悬停一行、鼠标往右移到这一行的圆点：圆点一直在、行不变，邻行右边圆点上已经有箭头（owner 10-17 截图） */
+  async v17lporthold() {
+    const b = emptyBoard("b1", "lporthold");
+    const eng = card("LLMEngine.__init__"), mr = card("ModelRunner.__init__");
+    put(b, eng, 80, 80, 640); put(b, mr, 900, 60, 520);
+    const s0 = eng.segments[0];
+    b.links.push({ id: "A", from: { card: eng.id, seg: s0.id, line: s0.start + 2 }, to: { card: mr.id } });
+    b.links.push({ id: "B", from: { card: eng.id, seg: s0.id, line: s0.start + 4 }, to: { card: mr.id } });
+    b.links.push({ id: "C", from: { card: mr.id }, to: { card: eng.id } });
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 1500, h: 800 });
+    const ce = h.page.locator(`.card[data-id="${eng.id}"]`);
+    const row = (await ce.locator(".src .l").nth(3).boundingBox())!;
+    // 停在行首缩进上（不在名字上，不弹 Peek）
+    await h.page.mouse.move(row.x + 20, row.y + row.height / 2); await h.page.waitForTimeout(150);
+    const port = () => ce.evaluate((c) => { const e = c.querySelector(".lport.r"); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
+    const p = (await port())!;
+    const py = p.y + p.height / 2, px = p.x + p.width / 2;
+    // 一路往右挪到圆点中心，每一步记下圆点还在不在、在不在原来那一行
+    const trail: string[] = [];
+    let ok = true, shotAt = false;
+    for (let x = row.x + 20; x <= px; x += 6) {
+      await h.page.mouse.move(Math.min(x, px), py); await h.page.waitForTimeout(30);
+      const q = await port();
+      const top = await h.page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y) as HTMLElement | null; return e ? e.tagName + "." + (e.getAttribute("class") ?? "") : "-"; }, [Math.min(x, px), py]);
+      const same = !!q && Math.abs(q.y + q.height / 2 - py) < 1;
+      if (!same) ok = false;
+      if (Math.min(x, px) > px - 12 && !shotAt) { shotAt = true; await shot(h, "v17-lporthold-1"); }
+      trail.push(`${Math.round(Math.min(x, px) - px)}:${same ? "ok" : q ? "moved" : "gone"}:${top}`);
+    }
+    await h.page.waitForTimeout(400);
+    const still = await port();
+    if (!still || Math.abs(still.y + still.height / 2 - py) >= 1) ok = false;
+    await shot(h, "v17-lporthold-2");
+    console.log(ok ? "PASS" : "FAIL", "lport-hold", JSON.stringify(trail.filter((t, i) => !t.includes(":ok:") || i > trail.length - 6)));
+    await close(h);
+  },
+  /** 卡头那一行：有线头落在右边那个点上 → 右边圆点不画（不盖在箭头上），自己悬停时还亮；没有线头的一边照常 */
+  async v17eportland() {
+    const b = emptyBoard("b1", "eportland");
+    const eng = card("LLMEngine.__init__"), mr = card("ModelRunner.__init__");
+    put(b, eng, 80, 80, 640); put(b, mr, 900, 60, 520);
+    b.links.push({ id: "C", from: { card: mr.id }, to: { card: eng.id } });
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 1500, h: 800 });
+    const ce = h.page.locator(`.card[data-id="${eng.id}"]`), cm = h.page.locator(`.card[data-id="${mr.id}"]`);
+    const op = (c: typeof ce, s: string) => c.locator(`.eport.${s}`).evaluate((e) => getComputedStyle(e).opacity);
+    const sides = await h.page.locator("g.link").getAttribute("data-sides");
+    const box = (await ce.boundingBox())!;
+    await h.page.mouse.move(box.x + 200, box.y + 10); await h.page.waitForTimeout(300);
+    const r = await op(ce, "r"), l = await op(ce, "l");
+    await shot(h, "v17-eportland-1");
+    const mb = (await cm.boundingBox())!;
+    await h.page.mouse.move(mb.x + 200, mb.y + 10); await h.page.waitForTimeout(300);
+    const ml = await op(cm, "l"), mrr = await op(cm, "r");
+    const dot = (await ce.locator(".eport.r").boundingBox())!;
+    // 圆点外半边被线的点击区盖着，靠卡里的那半边悬停
+    await h.page.mouse.move(dot.x + 2, dot.y + dot.height / 2); await h.page.waitForTimeout(300);
+    const rh = await op(ce, "r");
+    await shot(h, "v17-eportland-2");
+    const ok = sides === "left|right" && r === "0" && l === "1" && ml === "0" && mrr === "1" && rh === "1";
+    console.log(ok ? "PASS" : "FAIL", "eport-land", JSON.stringify({ sides, r, l, ml, mr: mrr, rh }));
+    await close(h);
+  },
 };

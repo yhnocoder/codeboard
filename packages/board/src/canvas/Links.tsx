@@ -1,7 +1,7 @@
 // Link 层：SVG 箭头。走线规则见 route.ts（W03）；这里把卡、行、Compare 栏的位置读出来，按条建 memo，只在它两端的卡变了时重算。
 // 每条线：base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：各自画到合并点，合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
-import { For, Index, Show, batch, createEffect, createMemo, createRenderEffect, createSignal, mapArray, on, onCleanup, untrack, type Accessor, type Setter } from "solid-js";
+import { For, Index, Show, batch, createEffect, createMemo, createRenderEffect, createRoot, createSelector, createSignal, mapArray, on, onCleanup, untrack, type Accessor, type Setter } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
 import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, live, beginGesture } from "../state/store";
 import { geo, lineY } from "../state/geo";
@@ -295,6 +295,25 @@ function portDrag(e: PointerEvent, id: string) {
 
 /** 画着的线的走线状态（City 的车流要读） */
 const [roads, setRoads] = createSignal<Accessor<Route[]>>(() => []);
+
+/**
+ * 卡端（不连行）落在哪张卡的哪一边：「卡 id|边」。那一边的圆点（.eport）就不画了，线头已经标出那个位置（圆点盖在箭头上很难看），
+ * 鼠标移上去照样能拖。只读每条线的 sides memo：拖卡片时不重算，只在换边、增删线时变；createSelector 只通知结果变了的那几个圆点
+ */
+export const landed = createRoot(() => {
+  const keys = createMemo(() => {
+    const out = new Set<string>();
+    for (const r of roads()()) {
+      const s = r.sides();
+      if (!s) continue;
+      const [a, b] = s.split("|");
+      if (r.L.from.line === undefined) out.add(`${r.L.from.card}|${a}`);
+      if (r.L.to.line === undefined) out.add(`${r.L.to.card}|${b}`);
+    }
+    return out;
+  }, new Set<string>(), { equals: (x, y) => x.size === y.size && [...x].every((k) => y.has(k)) });
+  return createSelector(keys, (k: string, set) => set.has(k));
+});
 
 /**
  * City 的车流（红绿灯是绿灯时）：镜头附近最多 MAX_ROADS 条调用路上各开两辆车。车是 HTML 小块，用 Web Animations 沿路走：
