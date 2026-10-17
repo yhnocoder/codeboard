@@ -212,3 +212,143 @@ describe("core storage", () => {
     expect((await store.list()).map((m) => m.name).sort()).toEqual(["B copy", "C"]);
   });
 });
+
+describe("card library (shared cards)", () => {
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  /** Two boards with the same card "s" (one shared through the library) and a board-only card each */
+  async function two() {
+    const t = setup();
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("s"), note("la")); a.place.s = { x: 0, y: 0, w: 100 }; a.place.la = { x: 200, y: 0, w: 100 };
+    a.sidenotes.push({ id: "n1", kind: "text", md: "travels", at: { card: "s" } }, { id: "n2", kind: "text", md: "mine", at: { card: "s" }, boardOnly: true });
+    await t.store.save(a);
+    expect(await t.store.share("A", ["s"])).toEqual({});
+    // B gets the shared card the way a duplicate of A would: same refs
+    const d = (await t.store.duplicate("A"))!;
+    await t.store.patch(d.id, { sidenotes: { del: ["n2"] } }); // the copy drops A's board-only sidenote
+    const shared: { from: string; ids: string[]; items: string[] }[] = [];
+    t.store.onDidShare((e) => shared.push({ from: e.from, ids: e.cards.map((c) => c.card.id), items: e.cards.flatMap((c) => c.items) }));
+    return { ...t, a, B: d.id, shared };
+  }
+  const card = (fs: MemFs, id: string) => JSON.parse(fs.files.get(`${ROOT}/cards/${id}.json`)!.data as string);
+  const file = (fs: MemFs, id: string) => JSON.parse(fs.files.get(`${ROOT}/${id}.json`)!.data as string);
+
+  it("stores a shared card once: refs in board files, content and travelling sidenotes in cards/<id>.json", async () => {
+    const { fs, store, B } = await two();
+    expect(file(fs, "A").cards).toEqual([{ id: "s", kind: "shared" }, note("la")]);
+    expect(file(fs, "A").sidenotes.map((n: any) => n.id)).toEqual(["n2"]);
+    const c = card(fs, "s");
+    expect(c).toMatchObject({ version: 6, card: note("s"), rev: { s: 1, n1: 1 } });
+    expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
+    // Loading inflates
+    const a = (await store.load("A"))!;
+    expect(a.cards.map((x) => x.id)).toEqual(["s", "la"]);
+    expect(a.sidenotes.map((n) => n.id).sort()).toEqual(["n1", "n2"]);
+    expect(await store.boardsWith("s")).toEqual(["A", B]);
+    expect([...store.refsOf(B)]).toEqual(["s"]);
+    // Re-reading from disk (fresh storage) gives the same boards
+    const again = new Storage(fs, { dir: () => ROOT });
+    const sorted = (b: any) => ({ ...b, sidenotes: [...b.sidenotes].sort((x: any, y: any) => x.id.localeCompare(y.id)) });
+    expect(sorted(await again.load("A"))).toEqual(sorted(a));
+  });
+
+  it("a patch to a shared card writes the card file, bumps the item's rev, updates the other board and reports it once", async () => {
+    const { fs, store, B, shared } = await two();
+    const before = file(fs, B);
+    const back = await store.patch("A", { cards: { set: [note("s", "edited")] }, sidenotes: { set: [{ id: "n3", kind: "text", md: "new", at: { card: "s" } }] } });
+    expect(back).toEqual([]);
+    expect(card(fs, "s")).toMatchObject({ card: { md: "edited" }, rev: { s: 2, n1: 1, n3: 1 } });
+    expect(file(fs, B)).toEqual(before); // only the card file changes for the other board
+    expect(shared).toEqual([{ from: "A", ids: ["s"], items: ["s", "n3"] }]);
+    const b = store.peek(B)!;
+    expect((b.cards[0] as any).md).toBe("edited");
+    expect(b.sidenotes.map((n) => n.id)).toContain("n3");
+    expect(b.sidenotes.map((n) => n.id)).not.toContain("n2"); // A's board-only sidenote stays on A
+    // A no-op write (e.g. the same content again) does not bump or broadcast
+    await store.patch("A", { cards: { set: [note("s", "edited")] } });
+    expect(card(fs, "s").rev.s).toBe(2);
+    expect(shared.length).toBe(1);
+    // Local cards never touch the library
+    await store.patch("A", { cards: { set: [note("la", "x")] } });
+    expect(shared.length).toBe(1);
+  });
+
+  it("removing a shared card from one board keeps it in the library and on the other board", async () => {
+    const { fs, store, B } = await two();
+    await store.patch("A", { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1", "n2"] } });
+    expect(file(fs, "A").cards).toEqual([note("la")]);
+    expect(card(fs, "s").sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
+    expect(await store.boardsWith("s")).toEqual([B]);
+    expect((await store.load(B))!.sidenotes.map((n) => n.id)).toEqual(["n1"]);
+  });
+
+  it("deleting or board-only-ing a travelling sidenote removes it from the library", async () => {
+    const { fs, store, B, shared } = await two();
+    await store.patch(B, { sidenotes: { set: [{ id: "n1", kind: "text", md: "travels", at: { card: "s" }, boardOnly: true }] } });
+    expect(card(fs, "s").sidenotes).toEqual([]);
+    expect(card(fs, "s").rev.n1).toBeUndefined();
+    expect(shared.at(-1)).toEqual({ from: B, ids: ["s"], items: ["n1"] });
+    expect(store.peek("A")!.sidenotes.map((n) => n.id)).toEqual(["n2"]); // gone from A, stays on B as its own
+    expect(file(fs, B).sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
+  });
+
+  it("undo skips shared items another board changed since this board wrote them", async () => {
+    const { fs, store, B } = await two();
+    await store.patch("A", { cards: { set: [note("s", "by A")] } });
+    await store.patch(B, { cards: { set: [note("s", "by B")] } });
+    // A undoes its edit: B wrote the card after A, so A's undo is skipped and A gets B's version back
+    const back = await store.patch("A", { cards: { set: [note("s", "s"), note("la", "undone too")] } }, { undo: true });
+    expect(back).toEqual([{ card: note("s", "by B"), sidenotes: [expect.objectContaining({ id: "n1" })], items: ["s"] }]);
+    expect(card(fs, "s").card.md).toBe("by B");
+    expect((store.peek("A")!.cards[1] as any).md).toBe("undone too"); // local items in the same patch still apply
+    // B undoes its own last write: allowed
+    expect(await store.patch(B, { cards: { set: [note("s", "by A")] } }, { undo: true })).toEqual([]);
+    expect(card(fs, "s").card.md).toBe("by A");
+    // Without undo it is last writer wins
+    expect(await store.patch("A", { cards: { set: [note("s", "A again")] } })).toEqual([]);
+    expect(card(fs, "s").card.md).toBe("A again");
+  });
+
+  it("undo of a shared sidenote follows the same rule per item", async () => {
+    const { fs, store, B } = await two();
+    await store.patch(B, { sidenotes: { set: [{ id: "n1", kind: "text", md: "B's", at: { card: "s" } }] } });
+    const back = await store.patch("A", { sidenotes: { del: ["n1"] } }, { undo: true });
+    expect(back.map((x) => x.items)).toEqual([["n1"]]);
+    expect(card(fs, "s").sidenotes.map((n: any) => n.md)).toEqual(["B's"]);
+  });
+
+  it("unshare leaves this board an own copy; sharing again with a taken id renames the card", async () => {
+    const { fs, store, B } = await two();
+    expect(await store.unshare(B, "s")).toBe(true);
+    expect(file(fs, B).cards[0]).toEqual(note("s"));
+    expect(file(fs, B).sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
+    expect(await store.boardsWith("s")).toEqual(["A"]);
+    await store.patch(B, { cards: { set: [note("s", "B only")] } });
+    expect(card(fs, "s").card.md).toBe("s");
+    const r = await store.share(B, ["s"]);
+    const n = r.s;
+    expect(n).toMatch(/^c/);
+    expect(card(fs, n).card.md).toBe("B only");
+    expect(store.peek(B)!.place[n]).toBeTruthy();
+    expect(await store.boardsWith("s")).toEqual(["A"]);
+  });
+
+  it("picks up a shared card edited outside the app", async () => {
+    const { fs, store, B } = await two();
+    const c = card(fs, "s");
+    c.card.md = "outside";
+    fs.put(`${ROOT}/cards/s.json`, c);
+    expect(((await store.load(B))!.cards[0] as any).md).toBe("outside");
+    expect(((await store.load("A"))!.cards[0] as any).md).toBe("outside");
+  });
+
+  it("a full patch (after a failed save) replaces the board", async () => {
+    const { store } = await two();
+    await store.patch("A", { full: true, head: { name: "Full" } as any, cards: { set: [note("s"), note("x")] }, place: { set: { s: { x: 1, y: 1, w: 1 }, x: { x: 1, y: 1, w: 1 } } } });
+    const a = (await store.load("A"))!;
+    expect(a.name).toBe("Full");
+    expect(a.cards.map((c) => c.id)).toEqual(["s", "x"]);
+    expect(a.sidenotes).toEqual([]);
+    expect([...store.refsOf("A")]).toEqual(["s"]);
+  });
+});
