@@ -115,7 +115,9 @@ const boardJson = () => {
   // Synthetic CDP moves that leave the iframe deliver no leave events to it, so the path must not leave the webview straight from the peek:
   // the peek would keep :hover and stay open, which is a test artefact rather than what a real mouse does
   const w = await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().boundingBox();
-  const y = w ? w.y + w.height + 40 : 500;
+  // 停在卡下面的空白画布上：停在代码行上可能正好落在另一个调用上，又打开一个 Peek
+  const cb = await sch.boundingBox();
+  const y = cb ? cb.y + cb.height + 30 : w ? w.y + w.height + 40 : 500;
   if (w) await page.mouse.move(w.x + w.width / 2, y, { steps: 4 });
   await page.mouse.move(5, y, { steps: 12 });
   // 关闭有一段延迟（还要等离开事件）：CI 机器慢时 800ms 不一定够，最多等 3s
