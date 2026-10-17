@@ -2,8 +2,8 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, travels, DEFAULT_SETTINGS, V3_CODE_CHROME,
-  type Board, type BoardMeta, type BoardPatch, type Camera, type Card, type HostInfo, type ListPatch, type Place, type SegView, type SharedUpdate, type Stale,
+  danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, DEFAULT_SETTINGS, V3_CODE_CHROME,
+  type Board, type BoardMeta, type BoardPatch, type Camera, type Card, type HostInfo, type ListPatch, type Place, type SegView, type SharedInfo, type SharedUpdate, type Stale,
 } from "@codeboard/core";
 import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
@@ -16,6 +16,14 @@ export const [state, setState] = createStore({
   views: {} as Record<string, SegView>,
   stale: {} as Record<string, Stale>,
 });
+
+/**
+ * 共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算好发来，整个换掉；reconcile 只通知变了的卡）。
+ * 只有在两块以上白板上的卡才有；不进撤销栈、不存盘
+ */
+export const [shared, setShared] = createStore<Record<string, SharedInfo>>({});
+/** 这张卡在几块白板上（不是共享卡、或只在这块白板上时是 0） */
+export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
 
 // ---------- 选择 ----------
 
@@ -260,29 +268,25 @@ export function sync(fn: (b: Board) => void, shared?: string[]) {
  * 别的白板改了共享卡（宿主转来的，或者撤销时宿主跳过的项）：按项换上，不进撤销栈、撤销后重放；不再发回宿主。
  * items = 变了的项（卡 id、Sidenote id）；Sidenote 在 sc 里没有 = 删了
  */
-export function syncShared(cards: SharedUpdate[]) {
+export function syncShared(cards: SharedUpdate[], views?: Record<string, SegView>) {
   // 先把还没发的改动发出去：之后把「已发」整个对齐到现在，宿主那边的这几项不会被发回去
   flushSave();
   const keys = cards.flatMap((sc) => sc.items.map((id) => (id === sc.card.id ? `c${id}` : `n${id}`)));
-  sync((b) => {
-    for (const sc of cards) {
-      const id = sc.card.id;
-      const i = b.cards.findIndex((c) => c.id === id);
-      if (i < 0) continue;
-      // 每次都放一份新的：撤销时 reconcile 会就地改白板里的对象，重放时不能拿到被改过的那份。按下标改，别的卡不通知
-      if (sc.items.includes(id)) b.cards[i] = structuredClone(sc.card);
-      for (const nid of sc.items) {
-        if (nid === id) continue;
-        const n = sc.sidenotes.find((x) => x.id === nid);
-        const j = b.sidenotes.findIndex((x) => x.id === nid);
-        if (n && j >= 0) b.sidenotes[j] = structuredClone(n);
-        else if (n) b.sidenotes.push(structuredClone(n));
-        else if (j >= 0 && travels(b.sidenotes[j], id)) b.sidenotes.splice(j, 1);
-      }
-    }
-  }, keys);
-  if (sent) { const s = snap(); cur = s; sent = { snap: s, cam: camKey(state.board.cam) }; }
+  batch(() => {
+    if (views) setState("views", (v) => ({ ...v, ...views }));
+    // core applySharedUpdate：按下标换，别的卡不通知；每次都放一份新的（撤销时 reconcile 会就地改白板里的对象，重放时不能拿到被改过的那份）
+    sync((b) => { for (const sc of cards) applySharedUpdate(b, sc); }, keys);
+  });
+  alignSent();
 }
+/** 别的白板 Delete Everywhere 删掉了这些共享卡：跟着删（不进撤销栈、撤销后重放），不再发回宿主（宿主那边已经删了） */
+export function syncGone(ids: string[]) {
+  flushSave();
+  sync((b) => removeCards(b, ids.filter((id) => b.cards.some((c) => c.id === id))));
+  alignSent();
+}
+/** 「已发」对齐到现在：宿主那边已经是这个样子了 */
+function alignSent() { if (sent) { const s = snap(); cur = s; sent = { snap: s, cam: camKey(state.board.cam) }; } }
 function trimSync() {
   let min = syncN;
   for (const s of undoStack) min = Math.min(min, s.epoch);

@@ -57,6 +57,8 @@ export const ICONS = {
   sameW: [rect(2, 2, 14, 6, R) + rect(2, 10, 14, 14, R), "", "stretch-horizontal"],
   external: ["M10 2h4v4M14 2 7 9" + poly([[12, 9], [12, 14, R], [2, 14, R], [2, 4, R], [7, 4]]), "", "external-link"],
   copy: [rect(6, 6, 14, 14, R) + poly([[3, 10], [2, 10, R], [2, 2, R], [10, 2, R], [10, 3]]), "", "copy"],
+  // 共享卡「⧉ N boards」：三张叠着的方块（square-stack 简化成三层，线间距 3）
+  boards: [poly([[2, 7], [2, 2, R], [7, 2]]) + poly([[5, 10], [5, 5, R], [10, 5]]) + rect(8, 8, 14, 14, R), "", "square-stack"],
   trash: ["M2 4h12M6 7v4M10 7v4" + poly([[13, 4], [13, 14, R], [3, 14, R], [3, 4]]) + poly([[6, 4], [6, 2, R], [10, 2, R], [10, 4]]), "", "trash-2"],
   dot: ["", "M7 7h2v2H7z", "dot"],
   compact: ["M2 4h12M2 8h12M2 12h12", "", "menu"],

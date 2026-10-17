@@ -90,6 +90,20 @@ function SettingsPage(p: { section?: string }) {
             )}</For>
           </div>
         </Sec>
+        <Sec id="shared" title="Shared cards" hint="A card pasted onto another board can be the same card on both boards (linked: code, version and sidenotes stay in sync) or a copy.">
+          <div class="st-sub">Paste onto another board</div>
+          <div class="st-chips">
+            <For each={[["linked", "Linked"], ["copy", "Copy"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().pasteOther ?? "linked") === v }} onClick={() => A.setSetting("pasteOther", v)}>{lb}</button>
+            )}</For>
+          </div>
+          <div class="st-sub">Update a linked card</div>
+          <div class="st-chips">
+            <For each={[["ask", "Ask Every Time"], ["all", "All Boards"], ["this", "This Board Only"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().sharedUpdate ?? "ask") === v }} onClick={() => A.setSetting("sharedUpdate", v)}>{lb}</button>
+            )}</For>
+          </div>
+        </Sec>
         <Sec id="zoom" title="Zoom levels" hint="Below Overview, code turns into outlines. Below Map, cards show only numbers and titles.">
           <div class="st-row">
             <Pct label="Overview below" k="zoomOverview" min={20} max={100} />

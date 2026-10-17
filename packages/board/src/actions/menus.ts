@@ -6,7 +6,7 @@ import {
   type CodeCard, type CompareCard, type LinkSide, type Section,
   type CallSpan,
 } from "@codeboard/core";
-import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, placeOf, type LineSel } from "../state/store";
+import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, placeOf, sharedOn, type LineSel } from "../state/store";
 import { toWorld } from "../state/camera";
 import { setEditing, setPaletteOpen } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
@@ -18,6 +18,25 @@ import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSe
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
+import { unlinkShared } from "./edit";
+import { deleteEverywhere, pasteFromBoard, copyCardsSel } from "./shared";
+
+/**
+ * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
+ * 普通卡就是 Delete
+ */
+function deleteItems(id: string): Item[] {
+  const n = sharedOn(id);
+  if (n < 2) return [{ label: "Delete", kbd: "⌫", danger: true, run: deleteSel }];
+  const c = cardById(id)?.card;
+  return [
+    { label: `${c ? cardTitle(c, state.board) : "Card"} · on ${n} boards`, head: true },
+    { label: "Remove from This Board", kbd: "⌫", run: deleteSel },
+    { label: "Delete Everywhere…", kbd: `${K.mod}⌫`, danger: true, run: () => void deleteEverywhere([id]) },
+    null,
+    { label: "Unlink (Make This a Copy)", run: () => unlinkShared(id) },
+  ];
+}
 
 export function callMenu(cardId: string, segId: string, call: CallSpan, x: number, y: number) {
   selectCard(cardId);
@@ -84,7 +103,7 @@ export function cardMenu(id: string, x: number, y: number) {
     arrangeItem(() => [host.id]),
     null,
     { label: "Move to New Section", run: () => moveToNewSection() },
-    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+    ...deleteItems(host.id),
   ];
   if (c.kind === "note") return openMenu([
     { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
@@ -132,7 +151,7 @@ export function cardMenu(id: string, x: number, y: number) {
       { label: "Walk Through", kbd: "P", disabled: canWalk ? false : "No arrows go out of this card", run: () => startWalk(id) },
       { label: "Move to New Section", run: () => moveToNewSection() },
       lockItem, arrangeItem(() => [host.id]), null,
-      { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+      ...deleteItems(host.id),
     ], x, y);
   }
   if (!isCode(c)) return;
@@ -175,7 +194,7 @@ export function cardMenu(id: string, x: number, y: number) {
     ...(col ? [] : [arrangeItem(() => [host.id])]),
     null,
     ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item]),
-    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+    ...deleteItems(host.id),
   ];
   openMenu(items, x, y);
 }
@@ -195,8 +214,9 @@ function multiItems(): Item[] {
     { label: lockAll ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock(sel.cards, sel.sections) },
     arrangeItem(() => [...sel.cards]),
     null,
+    { label: "Copy", kbd: `${K.mod}C`, run: () => copyCardsSel() },
     { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
-    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+    { label: cs.some((c) => sharedOn(c.id) > 1) ? "Remove from This Board" : "Delete", kbd: "⌫", danger: !cs.some((c) => sharedOn(c.id) > 1), run: deleteSel },
   ];
 }
 
@@ -207,7 +227,13 @@ export function canvasMenu(x: number, y: number) {
     { label: "New Note", kbd: "N", run: () => newNote(w, true) },
     { label: "New Code", run: () => newFreeCode(w) },
     { label: "Add Function…", kbd: `${K.mod}K`, run: () => setPaletteOpen({ mode: "code" }) },
-    { label: "Paste", kbd: `${K.mod}V`, run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) },
+    // 复制的是别的白板上的卡：默认贴成共享卡（设置里可以换），⌥ 是另一种
+    ...(state.host.clip && state.host.clip.board !== state.board.id ? [
+      { label: state.host.settings?.pasteOther === "copy" ? "Paste as Copy" : "Paste as Linked Card", kbd: `${K.mod}V`, run: () => void pasteFromBoard(undefined, w) },
+      { label: state.host.settings?.pasteOther === "copy" ? "Paste as Linked Card" : "Paste as Copy", kbd: `${K.alt}${K.mod}V`, run: () => void pasteFromBoard(undefined, w, true) },
+    ] as Item[] : [
+      { label: "Paste", kbd: `${K.mod}V`, run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) } as Item,
+    ]),
     null,
     { label: "Select All", kbd: `${K.mod}A`, run: selectAll },
     { label: "Fit to Window", kbd: `${K.shift}1`, run: fitAll },

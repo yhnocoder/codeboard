@@ -10,6 +10,7 @@ export * from "./nav";
 export * from "./versions";
 export * from "./notes";
 export * from "./misc";
+export * from "./shared";
 export * from "./settings";
 export * from "./web";
 export * from "../interact";

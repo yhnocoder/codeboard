@@ -6,7 +6,7 @@ import {
   alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang,
   type GraphMark, type Sidenote, type PeekDef, type SearchItem, type Var, type Anchor,
 } from "@codeboard/core";
-import { state, cardById, toast, mutate, select, flows } from "../state/store";
+import { state, cardById, toast, mutate, select, flows, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { cam } from "../state/camera";
 import { pops, closePop, pinPop, updatePop, type PopInst, type Pop } from "../state/pop";
@@ -18,6 +18,7 @@ import { place, virtual } from "./place";
 import { ask, send } from "../host";
 import * as A from "../actions";
 import { MdStatic } from "./Md";
+import { openMenu, type Item } from "./Menu";
 
 export function Popovers() {
   return <>
@@ -70,6 +71,7 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "commits"}><CommitsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "commits" }>} /></Match>
         <Match when={k() === "vars"}><VarsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vars" }>} /></Match>
         <Match when={k() === "mark"}><MarkPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "mark" }>} /></Match>
+        <Match when={k() === "boards"}><BoardsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "boards" }>} /></Match>
       </Switch>
     </div>
   );
@@ -106,7 +108,7 @@ function NotesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "notes" }> }) {
     <>
       <Head title={`${p.pop.title} (${notes().length})`} inst={p.inst} />
       <div class="sn-list">
-        <For each={notes()}>{(n) => <div class="sn-item" classList={{ on: n.id === curNote()?.id }} onPointerDown={() => setCur(n.id)}><NoteItem n={n} /></div>}</For>
+        <For each={notes()}>{(n) => <div class="sn-item" classList={{ on: n.id === curNote()?.id }} onPointerDown={() => setCur(n.id)} onContextMenu={(e) => { e.preventDefault(); setCur(n.id); pinPop(p.inst.id); noteMenu(n, e.clientX, e.clientY); }}><NoteItem n={n} /></div>}</For>
       </div>
       <div class="sn-acts">
         <button class="tbtn" onClick={() => { const n = notes()[0]; if (n) { closePop(p.inst.id); A.openAddNote(n.at); } }}>+ Add</button>
@@ -115,6 +117,9 @@ function NotesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "notes" }> }) {
           <button class="tbtn" classList={{ on: !!(curNote() as any)?.alwaysShow }} onClick={() => A.updateSidenote(curNote()!.id, (n) => { if (n.kind === "text") n.alwaysShow = !n.alwaysShow || undefined; })}>Always Show</button>
         </Show>
         <Show when={curNote() && curNote()!.kind !== "card"}><button class="tbtn" onClick={() => A.placeSidenote(curNote()!.id)}>Place on Board</button></Show>
+        <Show when={curNote() && curNote()!.kind !== "card" && sharedOn(curNote()!.at.card) > 1}>
+          <button class="tbtn" classList={{ on: !!curNote()!.boardOnly }} data-tip="Keep this sidenote on this board only; otherwise it shows on every board with the card" onClick={() => A.toggleBoardOnly(curNote()!.id)}>Board-only</button>
+        </Show>
         <span class="grow" />
         <button class="ib" aria-label="Delete Sidenote" data-tip="Delete Sidenote" onClick={() => A.deleteSidenote(curNote()!.id)}><Icon name="trash" size={13} /></button>
       </div>
@@ -162,8 +167,22 @@ function NoteItem(p: { n: Sidenote }) {
       </Switch>
       <Show when={n().why}><div class="sn-why">{n().why}</div></Show>
       <Show when={n().lineRemoved}><div class="sn-why warn">Line removed in the new version · attached to the whole card</div></Show>
+      <Show when={n().review}><div class="sn-why review"><span>Line changed in {n().review}, check it</span><button class="tbtn" onClick={() => A.markReviewed(n().id)}>Mark Reviewed</button></div></Show>
+      <Show when={n().boardOnly && sharedOn(n().at.card) > 1}><div class="sn-tag">Board-only · not shown on the other boards</div></Show>
     </>
   );
+}
+/** Sidenote 右键：Board-only（共享卡上才有）、Place on Board、看过了、删除 */
+function noteMenu(n: Sidenote, x: number, y: number) {
+  const linked = n.kind !== "card" && sharedOn(n.at.card) > 1;
+  openMenu([
+    ...(n.kind === "text" ? [{ label: "Edit", run: () => editText(n) } as Item] : []),
+    ...(n.kind !== "card" ? [{ label: "Place on Board", run: () => A.placeSidenote(n.id) } as Item] : []),
+    ...(linked ? [{ label: "Board-only", checked: !!n.boardOnly, hint: "Keep this sidenote on this board only; otherwise every board with the card shows it", run: () => A.toggleBoardOnly(n.id) } as Item] : []),
+    ...(n.review ? [{ label: "Mark Reviewed", run: () => A.markReviewed(n.id) } as Item] : []),
+    null,
+    { label: "Delete Sidenote", danger: true, run: () => A.deleteSidenote(n.id) },
+  ], x, y);
 }
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 // 旁注原地编辑（#37）：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。⌘↵ 保存，Esc 取消
@@ -417,6 +436,28 @@ function DiffPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "diff" }> }) {
         </div>
       </Show>
     </div>
+  );
+}
+
+// ---------- 共享卡：在哪几块白板上 ----------
+
+function BoardsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "boards" }> }) {
+  const bs = () => shared[p.pop.card]?.boards ?? [];
+  createEffect(() => { if (bs().length < 2) closePop(p.inst.id); });
+  return (
+    <>
+      <div class="picker-h">Also on</div>
+      <For each={bs()}>{(b) => {
+        const here = () => b.id === state.board.id;
+        return (
+          <button class="cand sb" classList={{ here: here() }} onClick={() => { closePop(p.inst.id); A.openOnBoard(b.id, p.pop.card); }}>
+            <span class="lb">{b.name}</span>
+            <Show when={b.mark || b.icon}><span class="step sm">{b.icon ? <Glyph icon={{ pack: "builtin", name: b.icon }} size={11} /> : b.mark}</span></Show>
+            <small>{here() ? "This board" : "Open ↗"}</small>
+          </button>
+        );
+      }}</For>
+    </>
   );
 }
 

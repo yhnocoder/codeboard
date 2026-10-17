@@ -4,8 +4,8 @@ import { Icon } from "./icons";
 import { place, virtual } from "./place";
 
 export type Item =
-  | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string }
-  | null; // 分隔线
+  | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string; head?: true }
+  | null; // 分隔线。head = 不能点的小标题（共享卡：「… · on 2 boards」）
 
 type MenuState = { items: Item[]; x: number; y: number; n: number; up?: boolean };
 const [menu, setMenu] = createSignal<MenuState | null>(null);
@@ -45,7 +45,7 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
       onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
       <For each={p.items}>
         {(it, i) =>
-          it ? (
+          it?.head ? <div class="mh">{it.label}</div> : it ? (
             <button role="menuitem" class={it.danger ? "danger" : ""} disabled={!!it.disabled} title={typeof it.disabled === "string" ? it.disabled : it.hint}
               onPointerEnter={(e) => {
                 if (it.sub && !it.disabled) { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); if (subOf()?.i !== i()) setSubOf({ i: i(), x: r.right, y: r.top - 5, el: e.currentTarget }); }
@@ -83,11 +83,12 @@ export function MenuLayer() {
 
 // ---------- 对话框：问一次，粗框按钮 = 默认（↵） ----------
 
-type DialogState = { title: string; text?: string; options: string[]; def: number; done: (i: number | null) => void; input?: { value: string; placeholder?: string } };
+type DialogState = { title: string; text?: string; warn?: string; note?: string; options: string[]; def: number; done: (i: number | null) => void; input?: { value: string; placeholder?: string } };
 const [dialog, setDialog] = createSignal<DialogState | null>(null);
 
-export function choose(title: string, options: string[], opts: { text?: string; def?: number } = {}): Promise<number | null> {
-  return new Promise((done) => setDialog({ title, text: opts.text, options, def: opts.def ?? 0, done }));
+/** warn = 琥珀色的一行提醒；note = 按钮下面的小字说明 */
+export function choose(title: string, options: string[], opts: { text?: string; def?: number; warn?: string; note?: string } = {}): Promise<number | null> {
+  return new Promise((done) => setDialog({ title, text: opts.text, warn: opts.warn, note: opts.note, options, def: opts.def ?? 0, done }));
 }
 export function promptText(title: string, value = "", placeholder = "", ok = "OK"): Promise<string | null> {
   return new Promise((done) => {
@@ -118,13 +119,15 @@ export function DialogLayer() {
     <Show when={dialog()}>
       {(d) => (
         <div class="scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) finish(null); }}>
-          <div class="dialog" role="dialog" aria-label={d().title}>
+          <div class="dialog" classList={{ wide: d().options.length > 2 }} role="dialog" aria-label={d().title}>
             <div class="dt">{d().title}</div>
             <Show when={d().text}><div class="dx">{d().text}</div></Show>
+            <Show when={d().warn}><div class="dw">{d().warn}</div></Show>
             <Show when={d().input}><input type="text" value={d().input!.value} placeholder={d().input!.placeholder} spellcheck={false} /></Show>
             <div class="db">
               <For each={d().options}>{(o, i) => <button class={i() === d().def ? "def" : ""} onClick={() => finish(i())}>{o}</button>}</For>
             </div>
+            <Show when={d().note}><div class="dn">{d().note}</div></Show>
           </div>
         </div>
       )}

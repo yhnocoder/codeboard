@@ -15,6 +15,8 @@ export type Pop =
   | { kind: "commits"; card: string; seg: Segment; list?: Commit[] }
   | { kind: "vars"; link: string }
   | { kind: "mark"; card: string }
+  /** 共享卡在哪几块白板上（卡头的「⧉ N boards」） */
+  | { kind: "boards"; card: string }
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 

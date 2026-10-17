@@ -5,7 +5,7 @@ import {
   cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type Graph, type LinkSide,
 } from "@codeboard/core";
-import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf } from "../state/store";
+import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
@@ -119,7 +119,10 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const node = createMemo(() => flows().byId.get(c().id));
   // 折叠后因为它藏起来的卡（别的路径还能走到的不算）
   const hiddenKids = createMemo(() => (placeOf(c().id).collapsed && node() ? descendants(flows(), c().id).filter((k) => collapsedSet().has(k)).length : 0));
-  const linkedIn = createMemo(() => act.linksInto(c().id).length);
+  // 连进来的箭头：这块白板上的 + 别的白板上连到这张共享卡的（宿主算好的 shared）
+  const linkedIn = createMemo(() => act.linksInto(c().id).length + (shared[c().id]?.ins.length ?? 0));
+  const onBoards = () => sharedOn(c().id);
+  const review = createMemo(() => act.sidenotesOf(c().id).some((n) => n.review));
   const s0 = () => c().segments[0];
   const stale = createMemo(() => act.cardStale(c()));
   const mixed = () => mixedVersions(c());
@@ -145,6 +148,8 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <span class="grow" />
       {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
       <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
+      <Show when={review()}><span class="rvdot" data-tip="A sidenote's line changed in the new version: check it" /></Show>
+      <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
       <Show when={linkedIn()}><button class="linkedin" data-tip="Linked here: show where the arrows come from" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}>← {linkedIn()}</button></Show>
       <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
       <Show when={!free()}>

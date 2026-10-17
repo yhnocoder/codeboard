@@ -595,12 +595,21 @@ export function installKeys() {
       if (s && !s.isCollapsed) return; // 原生复制（CodeBody 的 copy 事件处理）
       const ls = lineSel();
       if (ls) { e.preventDefault(); return A.copyLines(ls); }
-      const c = A.selCards().find(isCode);
-      if (c) { e.preventDefault(); A.copyCard(c); }
+      // 卡：文字照旧进剪贴板，宿主记下是哪几张卡（贴到别的白板 = 共享卡）
+      if (A.copyCardsSel()) e.preventDefault();
       return;
     }
     if (e.altKey && (e.code === "KeyZ")) { e.preventDefault(); return A.toggleWrap(sel.cards.length ? sel.cards : []); }
     if (e.altKey && e.code === "KeyF" && sel.cards.length) { e.preventDefault(); return A.fitContent(sel.cards); }
+    // ⌥⌘V：别的白板上复制的卡贴成另一种（默认是独立副本）。浏览器不一定为它发 paste 事件，这里直接要
+    if (mod && e.altKey && e.code === "KeyV") {
+      e.preventDefault();
+      const p = A.lastPointer();
+      void A.pasteFromBoard(undefined, worldOf({ clientX: p.x, clientY: p.y }), true).then((ok) => { if (!ok) toast("Copy cards on another board first"); });
+      return;
+    }
+    // ⌘⌫：共享卡 Delete Everywhere（要确认）；⌫ 只从这块白板移除
+    if (mod && (k === "Delete" || k === "Backspace") && sel.cards.length && !lineSel()) { e.preventDefault(); return void A.deleteEverywhere(); }
     if (mod || e.altKey) return;
     if ((k === "Delete" || k === "Backspace") && A.selSticker()) { e.preventDefault(); return A.removeSticker(A.selSticker()!); }
     if (k === "Delete" || k === "Backspace") { e.preventDefault(); if (lineSel() && !sel.cards.length) return; return A.deleteSel(); }
@@ -649,7 +658,11 @@ export function installKeys() {
       return;
     }
     const text = e.clipboardData?.getData("text/plain");
-    if (text) { e.preventDefault(); const near = A.pasteNear(text); A.pasteText(text, near ?? w, !!near); }
+    if (text) {
+      e.preventDefault();
+      // 先问宿主：是别的白板上复制的卡就贴卡（共享卡），否则照旧按文字粘贴
+      void A.pasteFromBoard(text, w).then((done) => { if (done) return; const near = A.pasteNear(text); A.pasteText(text, near ?? w, !!near); });
+    }
   });
   // 拖文件进来：图片
   window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault(); });

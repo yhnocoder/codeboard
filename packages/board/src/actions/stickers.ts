@@ -1,6 +1,6 @@
 // 贴纸（#44 #45）：工具栏 Sticker → 选图标 → 点一下放下。贴在代码行（进行号栏，随 Update 跟行走）、卡片角上、或画布任意位置。
 import { createSignal } from "solid-js";
-import { uid, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
+import { uid, removeStickers, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
 import { state, mutate, live, beginGesture, toast, rectOf } from "../state/store";
 import { linkCurve, curveAt, nearestT } from "../canvas/Links";
 import { cam } from "../state/camera";
@@ -140,7 +140,7 @@ function rowLine(cardEl: HTMLElement, el: HTMLElement): { card: string; seg: str
 }
 
 export function removeSticker(id: string) {
-  mutate((b) => { b.stickers = b.stickers.filter((s) => s.id !== id); });
+  mutate((b) => removeStickers(b, [id]));
   if (selSticker() === id) setSelSticker(null);
 }
 function setStickerColorOf(id: string, color: string | undefined) {

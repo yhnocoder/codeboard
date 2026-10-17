@@ -293,18 +293,19 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
 
   // Sidenote 标记：按行（范围的第一行）计数
   const marks = createMemo(() => {
-    const out: { row: number; n: number; ids: string[]; span?: number }[] = [];
+    const out: { row: number; n: number; ids: string[]; span?: number; review?: boolean }[] = [];
     const notes = act.sidenotesOf(c().id).filter((n) => n.at.lines);
-    const by = new Map<number, { n: number; ids: string[]; end: number }>();
+    const by = new Map<number, { n: number; ids: string[]; end: number; review?: boolean }>();
     for (const n of notes) {
       const i = rows().findIndex((r) => (r.t === "line" && r.seg === n.at.seg && r.line >= n.at.lines![0] && r.line <= n.at.lines![1]) || (r.t === "gap" && r.seg === n.at.seg && r.from <= n.at.lines![0] && n.at.lines![0] <= r.to));
       if (i < 0) continue;
       const e = rows().findIndex((r) => r.t === "line" && r.seg === n.at.seg && r.line === n.at.lines![1]);
       const m = by.get(i) ?? { n: 0, ids: [], end: i };
       m.n++; m.ids.push(n.id); m.end = Math.max(m.end, e);
+      if (n.review) m.review = true;
       by.set(i, m);
     }
-    for (const [row, m] of by) out.push({ row, n: m.n, ids: m.ids, span: m.end > row ? m.end - row : undefined });
+    for (const [row, m] of by) out.push({ row, n: m.n, ids: m.ids, span: m.end > row ? m.end - row : undefined, review: m.review });
     return out;
   });
 
@@ -369,7 +370,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             {(m) => (
               <Show when={ys()[m.row]}>
                 <Show when={m.span}><span class="mkr" style={{ top: `${ys()[m.row].y + 10}px`, height: `${(ys()[m.row + m.span!]?.y ?? ys()[m.row].y) - ys()[m.row].y}px` }} /></Show>
-                <button class="mk" style={{ top: `${ys()[m.row].y}px` }} data-card={c().id} data-notes={m.ids.join(",")}
+                <button class="mk" classList={{ rv: !!m.review }} style={{ top: `${ys()[m.row].y}px` }} data-card={c().id} data-notes={m.ids.join(",")}
                   onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids, e)} onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}>{m.n}</button>
               </Show>
             )}

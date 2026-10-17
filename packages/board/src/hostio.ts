@@ -2,7 +2,7 @@
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, setLineSel, sel } from "./state/store";
+import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, setShared, setLineSel, sel } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner } from "./state/ui";
 import * as A from "./actions";
@@ -23,6 +23,7 @@ export function onHost(m: HostToBoard) {
         setState("views", m.views);
         setState("stale", m.stale);
         setState("board", reconcile(b));
+        setShared(reconcile({}));
         setState("loaded", true);
 
         setBanner(true);
@@ -97,7 +98,14 @@ export function onHost(m: HostToBoard) {
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
     case "toast": toast(m.text); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
-    case "shared": syncShared(m.cards); break;
+    case "shared": syncShared(m.cards, m.views); break;
+    case "sharedInfo": setShared(reconcile(m.cards)); break;
+    case "sharedGone": {
+      const n = m.cards.filter((id) => findCard(state.board, id)).length;
+      syncGone(m.cards);
+      if (n) toast(n > 1 ? `${n} cards were deleted everywhere from another board` : "A card was deleted everywhere from another board");
+      break;
+    }
   }
 }
 

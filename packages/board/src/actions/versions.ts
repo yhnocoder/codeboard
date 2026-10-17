@@ -11,6 +11,10 @@ import { openPop, updatePop } from "../state/pop";
 import { send, ask } from "../host";
 import { addCards } from "./create";
 import { hostRect, lastPointer, revealCard } from "./common";
+import { updateScoped, reviewToast } from "./shared";
+import { choose } from "../ui/Menu";
+import { unlinkCard, versionLabel } from "@codeboard/core";
+import { sharedOn } from "../state/store";
 
 // ---------- 版本 ----------
 
@@ -41,15 +45,17 @@ export async function openDiff(id: string, segId?: string) {
     updatePop(pid, (p) => ({ ...(p as any), data }));
   } catch (e) { updatePop(pid, (p) => ({ ...(p as any), error: (e as Error).message })); }
 }
-/** Update：换成新版本；Sidenote 跟着行走，那一行被删了改挂整卡 */
-export function applyNewVersion(cardId: string, segId: string, data: DiffData) {
+/** Update：换成新版本；Sidenote 跟着行走，那一行被删了改挂整卡，挂着的行变了的标上复查。共享卡先问范围（shared.updateScoped） */
+export async function applyNewVersion(cardId: string, segId: string, data: DiffData) {
   if (!data.newSeg) return;
-  const ns = structuredClone(data.newSeg);
+  await updateScoped(cardId, segId, data, (id) => { updateNow(id, segId, data); toast(`Updated to the new version${reviewToast(id)}`); }, () => keepVersion(cardId, segId));
+}
+function updateNow(cardId: string, segId: string, data: DiffData) {
+  const ns = structuredClone(data.newSeg!);
   ns.id = segId;
-  mutate((b) => rebaseSegment(b, cardId, ns));
+  mutate((b) => rebaseSegment(b, cardId, ns, undefined, { review: versionLabel(ns.version) }));
   if (data.newView) setState("views", segId, data.newView);
   setState("stale", segId, { state: "ok" });
-  toast("Updated to the new version");
 }
 /** Keep：留在钉住的版本，记下这次的 HEAD，同一个新版本不再提醒 */
 export function keepVersion(cardId: string, segId: string) {
@@ -62,11 +68,25 @@ export function keepVersion(cardId: string, segId: string) {
 export async function updateAll() {
   const todo: [string, Segment][] = [];
   for (const c of allCodeCards(state.board)) if (cardStale(c) === "changed") for (const s of c.segments) if (state.stale[s.id]?.state === "changed") todo.push([c.id, s]);
+  // 共享卡：范围按设置；要问的话一批只问一次
+  const linked = [...new Set(todo.map(([c]) => c))].filter((c) => sharedOn(c) > 1);
+  let scope = state.host.settings?.sharedUpdate ?? "ask";
+  if (linked.length && scope === "ask") {
+    const i = await choose(`${linked.length} of these cards ${linked.length > 1 ? "are" : "is"} also on other boards`, ["Update on All Boards", "This Board Only", "Skip Linked Cards"], {
+      note: "This Board Only makes a copy here, so the other boards keep the old version.",
+    });
+    if (i === null) return;
+    scope = i === 0 ? "all" : i === 1 ? "this" : "skip" as any;
+  }
+  const ren = new Map<string, string>();
+  if (scope === "this") mutate((b) => { for (const c of linked) ren.set(c, unlinkCard(b, c)); });
   let n = 0;
-  for (const [cid, s] of todo) {
+  for (const [cid0, s] of todo) {
+    if (linked.includes(cid0) && (scope as string) === "skip") continue;
+    const cid = ren.get(cid0) ?? cid0;
     try {
       const data = await ask("diff", { seg: structuredClone(unwrap(s)) });
-      if (data.canUpdate) { applyNewVersion(cid, s.id, data); n++; }
+      if (data.canUpdate) { updateNow(cid, s.id, data); n++; }
     } catch { /* 这张跳过 */ }
   }
   toast(n === todo.length ? `Updated ${n} card${n === 1 ? "" : "s"}` : `Updated ${n} of ${todo.length}; open the others to review`);
