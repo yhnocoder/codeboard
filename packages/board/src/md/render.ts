@@ -61,7 +61,7 @@ function serializer() {
   const nodes = DOMSerializer.nodesFromSchema(schema), marks = DOMSerializer.marksFromSchema(schema);
   ser = new DOMSerializer({
     ...nodes,
-    inlineMath: (n) => raw(`<span class="math-i" data-latex="${escA(n.attrs.latex)}">${tex(n.attrs.latex, !!n.attrs.display)}</span>`),
+    inlineMath: (n) => raw(tex(n.attrs.latex, !!n.attrs.display)), // 不再包一层 span：静态显示里没人用它，少一个节点
     blockMath: (n) => raw(`<div class="math" data-latex="${escA(n.attrs.latex)}">${tex(n.attrs.latex, true)}</div>`),
     codeBlock: (n) => {
       const lang = n.attrs.language as string | null;
@@ -103,12 +103,20 @@ function render(src: string): string {
   try {
     const s = serializer();
     const doc = PMNode.fromJSON(schema!, parseMd(src));
-    html = (s.serializeFragment(doc.content, { document: fdoc as unknown as Document }) as unknown as FFrag).html();
+    html = slim((s.serializeFragment(doc.content, { document: fdoc as unknown as Document }) as unknown as FFrag).html());
   } catch (e) {
     console.warn("markdown render failed", e);
     html = `<p>${esc(src)}</p>`;
   }
   return untrust(typeof window === "undefined" ? html : purify(html), t);
+}
+// 少画一些节点（一大块白板上的 Note 平移、缩放时都要重画）：外观不变。
+// 列表项、表格格子里只有一段（非空）时去掉那层 <p>（它本来就没有边距）；勾选框后面的空 <span> 不要；
+// 勾选项里只有一段时，文字直接放在那个 div 里（div.t，划掉的样式也认它）
+const SLIM_CELL = /<(li|th|td)><p>((?:(?!<\/?p[\s>]).)+?)<\/p><\/\1>/gs;
+const SLIM_TASK = /<\/label><div><p>((?:(?!<\/?p[\s>]).)+?)<\/p><\/div>/gs;
+function slim(h: string) {
+  return h.replace(SLIM_CELL, "<$1>$2</$1>").replace(SLIM_TASK, '</label><div class="t">$1</div>').replace(/<span><\/span><\/label>/g, "</label>");
 }
 // 生成的 HTML 只来自 schema（原始 HTML 在解析时已经变成节点或纯文字），再过一遍 DOMPurify 兜底
 // 自己一个实例，配置只设一次：每次都传配置，DOMPurify 每次都要重新解析一遍（setConfig 是整个实例的，别影响贴纸那边）

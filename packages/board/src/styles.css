@@ -493,6 +493,7 @@ kbd { font: 10.5px var(--mono); }
 .md :is(p, h1, h2, h3, h4, h5, h6, li, td, th, summary) { white-space: pre-wrap; }
 .md p + p, .md p + :is(ul, ol, pre, table, blockquote, details, .math), .md :is(ul, ol, pre, table, blockquote, details, .math) + p { margin-top: .5em; }
 .md p:empty::before { content: "\200b"; }
+.md-pend { visibility: hidden; } /* md/lazy.ts：还没渲染的 Note 只占位，不露原文 */
 .md h4, .md h5, .md h6 { margin: 2px 0 2px; font: 600 1em/1.4 var(--note-h); color: var(--ink); }
 .md hr { border: 0; border-top: 1px solid var(--hair); margin: 8px 0; }
 .md li > p { margin: 0; }
@@ -518,7 +519,7 @@ kbd { font: 10.5px var(--mono); }
 .md li[data-type="taskItem"] { display: flex; gap: 6px; align-items: flex-start; }
 .md li[data-type="taskItem"] > label { flex: none; display: flex; align-items: center; height: 1.6em; user-select: none; -webkit-user-select: none; }
 .md li[data-type="taskItem"] > div { flex: 1; min-width: 0; }
-.md li[data-type="taskItem"][data-checked="true"] > div > p { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
+.md li[data-type="taskItem"][data-checked="true"] > div > p, .md li[data-type="taskItem"][data-checked="true"] > div.t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
 .md li[data-type="taskItem"] input { appearance: none; -webkit-appearance: none; margin: 0; width: 13px; height: 13px; border-radius: 3.5px; box-shadow: inset 0 0 0 1.25px var(--ink-3); background: var(--surface); cursor: pointer !important; display: grid; place-items: center; }
 .md li[data-type="taskItem"] input:checked { background: var(--accent); box-shadow: none; }
 .md li[data-type="taskItem"] input:checked::after { content: ""; width: 6px; height: 3px; border: 1.5px solid var(--accent-ink); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
