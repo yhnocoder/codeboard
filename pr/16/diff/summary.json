@@ -11,37 +11,37 @@
  },
  {
   "name": "3-peek.png",
-  "status": "changed",
-  "ratio": 0.045
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "4-sidenote.png",
   "status": "same",
-  "ratio": 0.0004
+  "ratio": 0
  },
  {
   "name": "5-search.png",
   "status": "same",
-  "ratio": 0.0005
+  "ratio": 0
  },
  {
   "name": "6-board.png",
-  "status": "removed",
-  "ratio": 0.9984
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "7-uncommitted.png",
-  "status": "removed",
-  "ratio": 0.9984
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "7a-settings.png",
-  "status": "removed",
-  "ratio": 0.9937
+  "status": "same",
+  "ratio": 0
  },
  {
   "name": "7b-diagnostics.png",
-  "status": "removed",
-  "ratio": 0.9991
+  "status": "same",
+  "ratio": 0
  }
 ]
