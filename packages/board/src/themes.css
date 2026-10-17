@@ -416,8 +416,12 @@
 :root[data-look="soft-light"] .ccard > .cface > .chead .rev.new { color: var(--ink-2); gap: 7px; }
 :root[data-look="soft-light"] .rev.new i { width: 7px; height: 7px; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
 :root[data-look="soft-light"] .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
-:root[data-look="soft-light"] .ccard > .cface > .cbody { margin: 0 10px 10px; border-radius: 12px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
-:root[data-theme="dark"][data-look="soft-light"] .ccard > .cface > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
+:root[data-look="soft-light"] .ccard .carea > .cbody { margin: 0 10px; border-radius: 12px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
+:root[data-theme="dark"][data-look="soft-light"] .ccard .carea > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
+/* 托盘下面的 10px 留白算卡的外框（在内容区 .carea 外面）；有 Source 底栏时留白在托盘和底栏之间，底栏贴底 */
+:root[data-look="soft-light"] .ccard .carea { margin-bottom: 10px; }
+:root[data-look="soft-light"] .ccard .carea > .cbody:not(:last-child) { margin-bottom: 10px; }
+:root[data-look="soft-light"] .ccard .carea > .cfoot { margin-bottom: -10px; }
 :root[data-look="soft-light"] .card.note > .cface > .chead { padding-top: 6px; }
 :root[data-look="soft-light"] .card.note .nbody { font-weight: 300; font-size: 14px; padding: 2px 18px 16px; }
 :root[data-look="soft-light"] .card.note .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
@@ -583,7 +587,7 @@
 :root[data-look="newspaper"] .cband .cname { display: block; font: 700 21px/1.1 var(--serif); color: var(--ink); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :root[data-look="newspaper"] .cband .cmeta, :root[data-look="newspaper"] .cband .big { display: none; }
 :root[data-look="newspaper"] .cdesc { margin-top: -4px; padding: 0 12px 10px; border-bottom: 0; font: italic 400 12.5px/1.45 var(--serif); color: var(--ink-2); }
-:root[data-look="newspaper"] .ccard > .cface > .cbody { border-top: .5px solid var(--hair); }
+:root[data-look="newspaper"] .ccard .carea > .cbody { border-top: .5px solid var(--hair); }
 :root[data-look="newspaper"] .gutter::after { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; border-left: .5px solid var(--hair); }
 :root[data-look="newspaper"] .port { fill: var(--ink); stroke: none; }
 :root[data-look="newspaper"] .ahead.triangle { stroke: none; }
@@ -645,7 +649,7 @@
 :root[data-look="poster"] .cband .cm.v.new { color: var(--k-fn); }
 :root[data-look="poster"] .cband .big { display: none; }
 :root[data-look="poster"] .cdesc { text-align: center; border-bottom: 0; padding: 0 14px 9px; font-size: 11.5px; }
-:root[data-look="poster"] .ccard > .cface > .cbody { border-top: .5px solid var(--rule); }
+:root[data-look="poster"] .ccard .carea > .cbody { border-top: .5px solid var(--rule); }
 :root[data-look="poster"] .cfig { display: block; position: absolute; left: 0; right: 0; top: calc(100% + 12px); text-align: center; font: 400 9px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 :root[data-look="poster"] .ahead { stroke: var(--rule); }
 :root[data-look="poster"] .port { fill: var(--surface); stroke: var(--rule); }
@@ -722,10 +726,3 @@
 /* Poster：饱和色 + 粗墨边 */
 [data-look="poster"] .glyph.bi { --stk-bg: oklch(from var(--c) l calc(c * 1.25) h); --stk-fg: #fff; --stk-ring: var(--ink); --stk-rw: 2; }
 [data-look="poster"] .glyph.bi .fg { stroke-width: 2.4; }
-
-/* 代码卡比 Warm Ink 多出来的卡头 / 底栏高度（v15metrics 量的）：手动定了高度的卡显示时加上，换主题后看到的行数不变 */
-:root[data-look="classic"] { --hx: 2px; }
-:root[data-look="soft-light"] { --hx: 66px; }
-:root[data-look="colorful"] { --hx: 80px; }
-:root[data-look="newspaper"] { --hx: 37px; }
-:root[data-look="poster"] { --hx: 39px; }

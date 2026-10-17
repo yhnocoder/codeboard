@@ -1,6 +1,6 @@
 // 设置页、主题、诊断：设置改了先乐观更新本地 state.host.settings，再让宿主写进 codeboard.*（宿主会再广播回来）。
 import type { Settings } from "@codeboard/core";
-import { setState, state, placed, rectOf, mutate } from "../state/store";
+import { setState, state, placed, rectOf, sync } from "../state/store";
 import { settingsOpen, setSettingsOpen, setKeysOpen } from "../state/ui";
 import { send } from "../host";
 
@@ -26,12 +26,15 @@ export function applyLook(id: string | undefined) {
   const first = !el.dataset.look;
   const before = first ? null : new Map(placed().map((k) => [k.id, rectOf(k)]));
   el.dataset.look = id ?? "warm-ink";
-  // 卡头 / 色带高度跟主题变：等新尺寸量完（两帧），把被压住的卡往下推（设置里可以改成允许重叠）
-  if (before && state.host.settings?.themeReflow !== "overlap") requestAnimationFrame(() => requestAnimationFrame(() => reflowAfterTheme(before)));
+  // 卡头 / 色带高度跟主题变：等新尺寸量完（两帧），把被压住的卡往下推（设置里可以改成允许重叠）。
+  // 代码卡卡头的高度由布局决定：新主题的字体还在加载时量到的是后备字体的高度，等字体到了再量两帧
+  const two = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));
+  if (before && state.host.settings?.themeReflow !== "overlap") two(() => (document.fonts?.status === "loading" ? document.fonts.ready.then(() => two(() => reflowAfterTheme(before))) : reflowAfterTheme(before)));
 }
 
 type R = { x: number; y: number; w: number; h: number };
-/** 换主题后：原来不重叠的上下两张卡，上面那张变高压住了下面那张 → 下面那张（连同更下面的）往下挪，间距保持原样（最多 24） */
+/** 换主题后：原来不重叠的上下两张卡，上面那张变高压住了下面那张 → 下面那张（连同更下面的）往下挪，间距保持原样（最多 24）。
+ *  视图推出来的改动：走 sync，换主题不产生撤销步骤 */
 export function reflowAfterTheme(before: Map<string, R>) {
   const ids = [...before.keys()].filter((id) => state.board.place[id]).sort((a, b) => before.get(a)!.y - before.get(b)!.y);
   const now = new Map(ids.map((id) => [id, rectOf(id)]));
@@ -51,7 +54,9 @@ export function reflowAfterTheme(before: Map<string, R>) {
     if (need > 0.5) dy.set(b, Math.round(need));
   }
   if (!dy.size) return;
-  mutate((bd) => { for (const [id, d] of dy) bd.place[id].y += d; });
+  // 记下挪之前的 y：撤销回更早的白板后重放时，只挪还在原处的卡
+  const moves = [...dy].map(([id, d]) => [id, state.board.place[id].y, d] as const);
+  sync((bd) => { for (const [id, y, d] of moves) { const p = bd.place[id]; if (p && p.y === y) p.y = y + d; } });
 }
 
 /** Copy Diagnostics（⋯ 菜单用）：宿主收集版本、工作区、日志，问要不要附上白板 JSON */

@@ -1,0 +1,493 @@
+{
+ "version": 3,
+ "id": "bmvb1lmygjjgbb",
+ "name": "New Board",
+ "cam": {
+  "x": 262,
+  "y": 37,
+  "z": 0.285
+ },
+ "cards": [
+  {
+   "id": "cmvb1lmyf06mm",
+   "kind": "code",
+   "segments": [
+    {
+     "id": "smvb1lmyf129bs",
+     "src": {
+      "kind": "repo",
+      "repo": ""
+     },
+     "path": "nanovllm/engine/llm_engine.py",
+     "lang": "python",
+     "start": 49,
+     "end": 55,
+     "text": [
+      "    def step(self):",
+      "        seqs, is_prefill = self.scheduler.schedule()",
+      "        num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)",
+      "        token_ids = self.model_runner.call(\"run\", seqs, is_prefill)",
+      "        self.scheduler.postprocess(seqs, token_ids, is_prefill)",
+      "        outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]",
+      "        return outputs, num_tokens"
+     ],
+     "version": {
+      "kind": "git",
+      "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8"
+     },
+     "symbol": {
+      "qual": "LLMEngine.step",
+      "kind": "function"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cmvb1m10c12fe",
+   "kind": "code",
+   "segments": [
+    {
+     "id": "smvb1m10cofi02",
+     "src": {
+      "kind": "repo",
+      "repo": ""
+     },
+     "path": "nanovllm/engine/scheduler.py",
+     "lang": "python",
+     "start": 25,
+     "end": 73,
+     "text": [
+      "    def schedule(self) -> tuple[list[Sequence], bool]:",
+      "        scheduled_seqs = []",
+      "        num_batched_tokens = 0",
+      "",
+      "        # prefill",
+      "        while self.waiting and len(scheduled_seqs) < self.max_num_seqs:",
+      "            seq = self.waiting[0]",
+      "            remaining = self.max_num_batched_tokens - num_batched_tokens",
+      "            if remaining == 0:",
+      "                break",
+      "            if not seq.block_table:",
+      "                num_cached_blocks = self.block_manager.can_allocate(seq)",
+      "                if num_cached_blocks == -1:",
+      "                    break",
+      "                num_tokens = seq.num_tokens - num_cached_blocks * self.block_size",
+      "            else:",
+      "                num_tokens = seq.num_tokens - seq.num_cached_tokens",
+      "            if remaining < num_tokens and scheduled_seqs:  # only allow chunked prefill for the first seq",
+      "                break",
+      "            if not seq.block_table:",
+      "                self.block_manager.allocate(seq, num_cached_blocks)",
+      "            seq.num_scheduled_tokens = min(num_tokens, remaining)",
+      "            num_batched_tokens += seq.num_scheduled_tokens",
+      "            if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens:",
+      "                seq.status = SequenceStatus.RUNNING",
+      "                self.waiting.popleft()",
+      "                self.running.append(seq)",
+      "            scheduled_seqs.append(seq)",
+      "",
+      "        if scheduled_seqs:",
+      "            return scheduled_seqs, True",
+      "",
+      "        # decode",
+      "        while self.running and len(scheduled_seqs) < self.max_num_seqs:",
+      "            seq = self.running.popleft()",
+      "            while not self.block_manager.can_append(seq):",
+      "                if self.running:",
+      "                    self.preempt(self.running.pop())",
+      "                else:",
+      "                    self.preempt(seq)",
+      "                    break",
+      "            else:",
+      "                seq.num_scheduled_tokens = 1",
+      "                seq.is_prefill = False",
+      "                self.block_manager.may_append(seq)",
+      "                scheduled_seqs.append(seq)",
+      "        assert scheduled_seqs",
+      "        self.running.extendleft(reversed(scheduled_seqs))",
+      "        return scheduled_seqs, False"
+     ],
+     "version": {
+      "kind": "git",
+      "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8"
+     },
+     "symbol": {
+      "qual": "Scheduler.schedule",
+      "kind": "function"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cmvb1m2pw2csx",
+   "kind": "code",
+   "segments": [
+    {
+     "id": "smvb1m2pwozhfr",
+     "src": {
+      "kind": "repo",
+      "repo": ""
+     },
+     "path": "nanovllm/engine/scheduler.py",
+     "lang": "python",
+     "start": 81,
+     "end": 92,
+     "text": [
+      "    def postprocess(self, seqs: list[Sequence], token_ids: list[int], is_prefill: bool):",
+      "        for seq, token_id in zip(seqs, token_ids):",
+      "            self.block_manager.hash_blocks(seq)",
+      "            seq.num_cached_tokens += seq.num_scheduled_tokens",
+      "            seq.num_scheduled_tokens = 0",
+      "            if is_prefill and seq.num_cached_tokens < seq.num_tokens:",
+      "                continue",
+      "            seq.append_token(token_id)",
+      "            if (not seq.ignore_eos and token_id == self.eos) or seq.num_completion_tokens == seq.max_tokens:",
+      "                seq.status = SequenceStatus.FINISHED",
+      "                self.block_manager.deallocate(seq)",
+      "                self.running.remove(seq)"
+     ],
+     "version": {
+      "kind": "git",
+      "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8"
+     },
+     "symbol": {
+      "qual": "Scheduler.postprocess",
+      "kind": "function"
+     }
+    }
+   ]
+  },
+  {
+   "id": "cmvb1m4er3c05",
+   "kind": "code",
+   "segments": [
+    {
+     "id": "smvb1m4erapmme",
+     "src": {
+      "kind": "repo",
+      "repo": ""
+     },
+     "path": "nanovllm/engine/block_manager.py",
+     "lang": "python",
+     "start": 58,
+     "end": 73,
+     "text": [
+      "    def can_allocate(self, seq: Sequence) -> int:",
+      "        h = -1",
+      "        num_cached_blocks = 0",
+      "        num_new_blocks = seq.num_blocks",
+      "        for i in range(seq.num_blocks - 1):",
+      "            token_ids = seq.block(i)",
+      "            h = self.compute_hash(token_ids, h)",
+      "            block_id = self.hash_to_block_id.get(h, -1)",
+      "            if block_id == -1 or self.blocks[block_id].token_ids != token_ids:",
+      "                break",
+      "            num_cached_blocks += 1",
+      "            if block_id in self.used_block_ids:",
+      "                num_new_blocks -= 1",
+      "        if len(self.free_block_ids) < num_new_blocks:",
+      "            return -1",
+      "        return num_cached_blocks"
+     ],
+     "version": {
+      "kind": "git",
+      "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8"
+     },
+     "symbol": {
+      "qual": "BlockManager.can_allocate",
+      "kind": "function"
+     }
+    }
+   ]
+  },
+  {
+   "id": "nmvb1nf1y6icj",
+   "kind": "note",
+   "md": "**Takeaway**: schedule → run → postprocess",
+   "bg": true,
+   "size": "body"
+  },
+  {
+   "id": "nmvb1ng10731y",
+   "kind": "note",
+   "md": "free text",
+   "bg": false,
+   "size": "body"
+  },
+  {
+   "id": "wmvb1nhav8lvn",
+   "kind": "web",
+   "url": "https://github.com/GeeeekExplorer/nano-vllm/blob/bb823b3/nanovllm/engine/scheduler.py#L24-L40",
+   "meta": {
+    "failed": true,
+    "at": 1792159765604
+   }
+  },
+  {
+   "id": "wmvb1niux9xo1",
+   "kind": "web",
+   "url": "https://arxiv.org/abs/2309.06180",
+   "meta": {
+    "at": 1792159767614,
+    "title": "Efficient Memory Management for Large Language Model Serving with PagedAttention",
+    "desc": "High throughput serving of large language models (LLMs) requires batching sufficiently many requests at a time. However, existing systems struggle because the key-value cache (KV cache) memory for each request is huge and grows and shrinks dynamically. When managed inefficiently, this memory can be significantly was…",
+    "site": "arXiv.org",
+    "image": "88f5088404c9c50e.png",
+    "icon": "185cd87ea27204d6.png"
+   }
+  },
+  {
+   "id": "cmvb1q0iv5gaa",
+   "kind": "code",
+   "segments": [
+    {
+     "id": "smvb1q0iveytzg",
+     "src": {
+      "kind": "repo",
+      "repo": ""
+     },
+     "path": "nanovllm/engine/block_manager.py",
+     "lang": "python",
+     "start": 75,
+     "end": 92,
+     "text": [
+      "    def allocate(self, seq: Sequence, num_cached_blocks: int):",
+      "        assert not seq.block_table",
+      "        h = -1",
+      "        for i in range(num_cached_blocks):",
+      "            token_ids = seq.block(i)",
+      "            h = self.compute_hash(token_ids, h)",
+      "            block_id = self.hash_to_block_id[h]",
+      "            block = self.blocks[block_id]",
+      "            if block_id in self.used_block_ids:",
+      "                block.ref_count += 1",
+      "            else:",
+      "                block.ref_count = 1",
+      "                self.free_block_ids.remove(block_id)",
+      "                self.used_block_ids.add(block_id)",
+      "            seq.block_table.append(block_id)",
+      "        for i in range(num_cached_blocks, seq.num_blocks):",
+      "            seq.block_table.append(self._allocate_block())",
+      "        seq.num_cached_tokens = num_cached_blocks * self.block_size"
+     ],
+     "version": {
+      "kind": "git",
+      "commit": "bb823b3e06983d71485a8e1f23715ebd87d98ef8"
+     },
+     "symbol": {
+      "qual": "BlockManager.allocate",
+      "kind": "function"
+     }
+    }
+   ]
+  }
+ ],
+ "place": {
+  "cmvb1m10c12fe": {
+   "x": 136,
+   "y": 374,
+   "w": 760,
+   "section": "gmvb1mdss3jc9"
+  },
+  "cmvb1m2pw2csx": {
+   "x": 136,
+   "y": 1866,
+   "w": 760
+  },
+  "cmvb1m4er3c05": {
+   "x": 192,
+   "y": 974,
+   "w": 647,
+   "section": "gmvb1mdss3jc9"
+  },
+  "nmvb1ng10731y": {
+   "x": 1400,
+   "y": 1381,
+   "w": 320
+  },
+  "wmvb1niux9xo1": {
+   "x": 2511,
+   "y": 2113,
+   "w": 420
+  },
+  "cmvb1q0iv5gaa": {
+   "x": 192,
+   "y": 1368,
+   "w": 566,
+   "section": "gmvb1mdss3jc9"
+  },
+  "cmvb1lmyf06mm": {
+   "x": 80,
+   "y": 80,
+   "w": 760
+  },
+  "nmvb1nf1y6icj": {
+   "x": 1397,
+   "y": 1167,
+   "w": 280
+  },
+  "wmvb1nhav8lvn": {
+   "x": 1400,
+   "y": 1461,
+   "w": 420
+  }
+ },
+ "links": [
+  {
+   "id": "lmvb1m10n03yu",
+   "kind": "call",
+   "from": {
+    "card": "cmvb1lmyf06mm",
+    "seg": "smvb1lmyf129bs",
+    "line": 50
+   },
+   "to": {
+    "card": "cmvb1m10c12fe"
+   },
+   "call": {
+    "name": "schedule",
+    "col": 42
+   },
+   "cands": [
+    {
+     "a": "seqs, is_prefill",
+     "ret": true
+    }
+   ]
+  },
+  {
+   "id": "lmvb1m2q511cy",
+   "kind": "call",
+   "from": {
+    "card": "cmvb1lmyf06mm",
+    "seg": "smvb1lmyf129bs",
+    "line": 53
+   },
+   "to": {
+    "card": "cmvb1m2pw2csx"
+   },
+   "call": {
+    "name": "postprocess",
+    "col": 23
+   },
+   "cands": [
+    {
+     "a": "seqs"
+    },
+    {
+     "a": "token_ids"
+    },
+    {
+     "a": "is_prefill"
+    }
+   ]
+  },
+  {
+   "id": "lmvb1m4f42lht",
+   "kind": "call",
+   "from": {
+    "card": "cmvb1m10c12fe",
+    "seg": "smvb1m10cofi02",
+    "line": 36
+   },
+   "to": {
+    "card": "cmvb1m4er3c05"
+   },
+   "call": {
+    "name": "can_allocate",
+    "col": 55
+   },
+   "loop": true,
+   "cands": [
+    {
+     "a": "seq"
+    },
+    {
+     "a": "num_cached_blocks",
+     "ret": true
+    }
+   ]
+  },
+  {
+   "id": "lmvb1q0j60muv",
+   "kind": "call",
+   "from": {
+    "card": "cmvb1m10c12fe",
+    "seg": "smvb1m10cofi02",
+    "line": 45
+   },
+   "to": {
+    "card": "cmvb1q0iv5gaa"
+   },
+   "call": {
+    "name": "allocate",
+    "col": 35
+   },
+   "loop": true,
+   "cands": [
+    {
+     "a": "seq"
+    },
+    {
+     "a": "num_cached_blocks"
+    }
+   ]
+  }
+ ],
+ "sections": [
+  {
+   "id": "gmvb1mdss3jc9",
+   "title": "Scheduling",
+   "x": 114,
+   "y": 264,
+   "w": 804,
+   "h": 950
+  }
+ ],
+ "sidenotes": [
+  {
+   "kind": "text",
+   "md": "Prefill first, then decode.\nCost: $O(n^2)$ per step",
+   "at": {
+    "card": "cmvb1lmyf06mm",
+    "seg": "smvb1lmyf129bs",
+    "lines": [
+     50,
+     51
+    ]
+   },
+   "id": "nmvb1mkm447tm"
+  },
+  {
+   "kind": "text",
+   "md": "Second note on the same lines.",
+   "at": {
+    "card": "cmvb1q0iv5gaa",
+    "seg": "smvb1q0iveytzg",
+    "lines": [
+     76,
+     77
+    ]
+   },
+   "id": "nmvb1qbci240s"
+  }
+ ],
+ "stickers": [
+  {
+   "id": "kmvb1mp6t5b7n",
+   "icon": {
+    "pack": "builtin",
+    "name": "question"
+   },
+   "at": {
+    "kind": "canvas",
+    "x": 67,
+    "y": 110,
+    "size": 32,
+    "on": {
+     "card": "cmvb1lmyf06mm"
+    }
+   }
+  }
+ ]
+}

@@ -1,15 +1,19 @@
 // 屏幕外的卡把内容（.cface）藏起来，卡片本身（底色、阴影、地图档的名字）照常画。
 // 镜头动的时候 Chromium 会把世界层上下左右各多画 4000px，241 张卡的一行行代码全要重新分层（缩到 60% 时每帧 ~14ms）；
 // 藏掉屏幕外的以后每帧 ~3ms。离屏幕一整屏以外才藏，进到半屏以内就显示，所以平移过来时内容早就画好了。
-// 显示一张卡要算它的样式、画它的代码（~1–3ms），所以一帧最多显示 SHOW 张（离屏幕近的先；已经在屏幕里的不限）；藏只在镜头停下以后做。
+// 显示一张卡要算它的样式、画它的代码（~1–3ms），所以一帧最多显示 SHOW 张（离屏幕近的先；已经在屏幕里的不限）；藏只在镜头停下以后做，
+// 也分帧，一帧最多 HIDE 张：缩小后停下时一次藏一两百张，那一帧要 100+ ms（visibility 会继承，藏一张要把里面几百个节点的样式重算一遍）。
+// 卡片一批批换缩放分档的那些帧（lodcards.ts）只显示已经进到屏幕里的，别的等换完：两样挤在一帧里那一帧就超了。
+// 地图档的卡内容整块被 clip-path 藏着（styles.css 的 .lo-map > .cface），显示了也看不见：先不显示，换出地图档的那一帧再显示（lodcards.ts 把它算进那一帧的量）。
 // 用 visibility：布局不变，measure.ts 照常能量到行的位置
 import { createEffect, createMemo, createSignal, mapArray, untrack } from "solid-js";
 import { createStore } from "solid-js/store";
 import { cam, camMoving, viewTracked } from "./camera";
 import { placed, rectOf, sel } from "./store";
 import { editing, dragging } from "./ui";
+import { lodOf, lodBusy } from "./lodcards";
 
-const SHOW = 3;
+const SHOW = 3, HIDE = 4;
 const [off, setOff] = createStore<Record<string, boolean>>({});
 /** 这张卡离屏幕很远，内容不画 */
 export const offscreen = (id: string) => !!off[id];
@@ -23,7 +27,7 @@ export function trackOffscreen() {
   createEffect(() => {
     tick();
     const { w, h } = viewTracked(), z = cam.z, x = cam.x, y = cam.y, moving = camMoving();
-    const ed = editing()?.id, dr = dragging(), keep = new Set(sel.cards);
+    const ed = editing()?.id, dr = dragging(), keep = new Set(sel.cards), busy = lodBusy();
     const show: [string, number][] = [], hide: string[] = [];
     for (const { id, r: rr } of rects()) {
       const r = rr();
@@ -32,15 +36,19 @@ export function trackOffscreen() {
       // 显示：进到屏幕外半屏以内；隐藏：离开一整屏以外（中间这段不变，免得在边上来回切）
       const m = was ? 0.5 : 1;
       const far = R < -w * m || L > w * (1 + m) || B < -h * m || T > h * (1 + m);
-      const hidden = far && !keep.has(id) && ed !== id && !dr.has(id);
+      const free = !keep.has(id) && ed !== id && !dr.has(id);
+      const hidden = far && free;
       // 已经进到屏幕里的（平移极快时会有）不排队，这一帧就显示，不能让人看到空卡
-      if (was && !hidden) show.push([id, R > 0 && L < w && B > 0 && T < h ? -1 : Math.hypot((L + R) / 2 - w / 2, (T + B) / 2 - h / 2)]);
+      if (was && !hidden && !(free && lodOf(id) === "map")) {
+        const d = R > 0 && L < w && B > 0 && T < h ? -1 : Math.hypot((L + R) / 2 - w / 2, (T + B) / 2 - h / 2);
+        if (d < 0 || !busy) show.push([id, d]);
+      }
       else if (!was && hidden && !moving) hide.push(id);
     }
     show.sort((a, b) => a[1] - b[1]);
     let n = 0;
     for (const [id, d] of show) { if (d >= 0 && n >= SHOW) break; setOff(id, false); n++; }
-    for (const id of hide) setOff(id, true);
-    if (show.length > n && !again) { again = true; requestAnimationFrame(() => { again = false; setTick((t) => t + 1); }); }
+    for (const id of hide.slice(0, HIDE)) setOff(id, true);
+    if ((show.length > n || hide.length > HIDE) && !again) { again = true; requestAnimationFrame(() => { again = false; setTick((t) => t + 1); }); }
   });
 }

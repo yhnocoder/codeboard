@@ -251,6 +251,29 @@ const S: Record<string, () => Promise<void>> = {
     console.log(ok && ok2 ? "PASS" : "FAIL", "rebase", JSON.stringify({ aStart: na.start - sa.start, hidden: na.hidden?.[0]?.map((x: number) => x - sa.start), to: L.to.line - sa.start, bAfterUndo: nbs.start - sb.start, from: nb2.links[0].from.line - sb.start, note: nb2.sidenotes[0].at.lines[0] - sb.start }));
     await h.page.context().browser()!.close();
   },
+  // Host sync is not an undo step: a change, then a stale "moved" from the host, then ⌘Z undoes the change and the lines stay where the host put them
+  async syncundo() {
+    const b = boardWith("Scheduler.schedule", "Scheduler.postprocess");
+    const [A, B] = b.cards as any[];
+    const sa = A.segments[0], name0 = b.name;
+    b.links.push({ id: "L", kind: "plain", from: { card: B.id }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
+    b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: A.id, seg: sa.id, lines: [sa.start + 2, sa.start + 2] } } as any);
+    const h = await open({ board: b, light });
+    await h.post({ type: "rename", name: "Renamed" }); await h.page.waitForTimeout(200);
+    await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5 } } } as any);
+    await h.page.waitForTimeout(300);
+    await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300);
+    const at = (x: any) => ({ name: x.name, start: x.cards[0].segments[0].start - sa.start, to: x.links[0].to.line - sa.start, note: x.sidenotes[0].at.lines[0] - sa.start });
+    const u = at(h.board());
+    await h.page.keyboard.press("Meta+Shift+z"); await h.page.waitForTimeout(1300);
+    const r = at(h.board());
+    await h.page.keyboard.press("Meta+z"); await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300); // nothing older to undo: the move stays
+    const u2 = at(h.board());
+    const moved = (x: any) => x.start === 5 && x.to === 8 && x.note === 7;
+    const ok = u.name === name0 && moved(u) && r.name === "Renamed" && moved(r) && u2.name === name0 && moved(u2);
+    console.log(ok ? "PASS" : "FAIL", "sync-undo", JSON.stringify({ u, r, u2 }));
+    await h.page.context().browser()!.close();
+  },
   // Regression: after Update, Sidenotes and highlights follow edited lines instead of being treated as deleted
   async follow() {
     const b = boardWith("Scheduler.schedule");
@@ -390,7 +413,7 @@ const S: Record<string, () => Promise<void>> = {
     const [a] = b.cards;
     const kids = b.links.filter((l) => l.kind === "call").map((l) => l.to.card);
     b.place[a.id] = { x: 80, y: 200, w: 520 };
-    kids.forEach((id, i) => { b.place[id] = { x: 760, y: 60 + i * 420, w: 470, h: i ? 300 : 360 }; });
+    kids.forEach((id, i) => { b.place[id] = { x: 760, y: 60 + i * 420, w: 470, h: i ? 264 : 324 }; }); // code area height (format v4): 300 / 360 tall in Warm Ink
     const vars = [[{ a: "seqs" }, { a: "is_prefill" }], [{ a: "token_ids", ret: true }]];
     b.links.filter((l) => l.kind === "call").forEach((l, i) => { (l as any).vars = vars[i] ?? []; });
     const note = { id: "n1", kind: "note" as const, md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.", bg: true };

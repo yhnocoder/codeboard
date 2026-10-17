@@ -1,6 +1,7 @@
 // 贴纸图标：内置一套（彩色圆底 + 白色线条；各主题在 themes.css 里换成自己的画法），Emoji 直接用系统字体，自定义包（Iconify JSON / SVG 文件夹）由插件读本地目录。
 import { createSignal, Show, type JSX } from "solid-js";
 import type { IconRef, StickerPack } from "@codeboard/core";
+import DOMPurify from "dompurify";
 import { ask } from "../host";
 
 export type Builtin = { name: string; label: string; color: string; d?: string; fill?: string; text?: string };
@@ -29,11 +30,19 @@ const [packs, setPacks] = createSignal<StickerPack[] | null>(null);
 let loading: Promise<void> | null = null;
 export function loadPacks(force = false) {
   if (loading && !force) return loading;
-  loading = ask<StickerPack[]>("stickerPacks", {}).then((p) => void setPacks(p ?? []), () => void setPacks([]));
+  loading = ask("stickerPacks", {}).then((p) => void setPacks(p ?? []), () => void setPacks([]));
   return loading;
 }
 export { packs };
-const svgOf = (i: IconRef) => packs()?.find((p) => p.id === i.pack)?.icons.find((x) => x.name === i.name)?.svg;
+// 包里的 SVG 是用户目录里的文件：画之前用 DOMPurify（svg 配置）清洗，去掉脚本、事件属性、javascript: 链接、foreignObject、<style>；按图标缓存
+const clean = new WeakMap<object, string>();
+const svgOf = (i: IconRef) => {
+  const ic = packs()?.find((p) => p.id === i.pack)?.icons.find((x) => x.name === i.name);
+  if (!ic) return undefined;
+  let s = clean.get(ic);
+  if (s === undefined) clean.set(ic, s = DOMPurify.sanitize(ic.svg, { USE_PROFILES: { svg: true, svgFilters: true }, FORBID_TAGS: ["style"] }));
+  return s;
+};
 
 /** 一个贴纸的样子；size = 像素 */
 export function Glyph(p: { icon: IconRef; color?: string; size: number; class?: string; style?: JSX.CSSProperties }) {

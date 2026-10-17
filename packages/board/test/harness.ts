@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Page } from "playwright-core";
-import { uid, emptyBoard, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
+import { uid, emptyBoard, loadBoard, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
 import { initAnalysis, analyze, symbolAt, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 
 export const REPO = path.resolve(__dirname, "../.."); // bundled into test-out/harness/
@@ -122,7 +122,11 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
         await post({ type: "init", board, boards: [{ id: board.id, name: board.name, cards: board.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS, ...(o.settings ?? {}) } } });
         break;
       }
-      case "save": board = m.board; return reply(m.req, null);
+      case "save": {
+        // 白板写出来的每一版都要能被 loadBoard 读回（schema 校验）
+        try { loadBoard(structuredClone(m.board)); } catch (e) { console.log("FAIL board-schema", (e as Error).message); }
+        board = m.board; return reply(m.req, null);
+      }
       case "expand": {
         const want = m.pick ? allSyms().find((x) => x.f === m.pick!.path && (x.s.defLine === m.pick!.line || x.s.qual === m.pick!.qual)) : undefined;
         let cands = want ? [want] : allSyms().filter((x) => x.s.name === m.name || (m.name === x.s.qual.split(".")[0] && x.s.kind === "class"));

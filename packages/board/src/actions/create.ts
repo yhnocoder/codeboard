@@ -3,7 +3,7 @@ import { createRoot, createEffect } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
+  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, retargetCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
   copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
   type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
@@ -77,12 +77,12 @@ export function newNote(at?: { x: number; y: number }, bg = true, text = "") {
   return id;
 }
 export async function newImage(at?: { x: number; y: number }) {
-  const dataUrl = await ask<string | null>("pickFile", { kind: "image" }).catch(() => null);
+  const dataUrl = await ask("pickFile", { kind: "image" }).catch(() => null);
   if (!dataUrl) return;
   return addImage(dataUrl, "image.png", at);
 }
 export async function addImage(dataUrl: string, name: string, at?: { x: number; y: number }) {
-  const file = await ask<string>("saveAsset", { name, dataUrl }).catch(() => null);
+  const file = await ask("saveAsset", { name, dataUrl }).catch(() => null);
   const src = file ?? dataUrl;
   const img = new Image();
   img.src = dataUrl;
@@ -121,7 +121,7 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
 /** 白板自己生成的段（合并、Free code 改动）找宿主要高亮 */
 export async function requestViews(segs: Segment[]) {
   if (!segs.length) return;
-  const v = await ask<Record<string, SegView>>("views", { segs: unwrap(segs).map((s) => structuredClone(unwrap(s))) }).catch(() => null);
+  const v = await ask("views", { segs: unwrap(segs).map((s) => structuredClone(unwrap(s))) }).catch(() => null);
   if (v) setState("views", (o) => ({ ...o, ...v }));
 }
 
@@ -136,7 +136,7 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   if (k.kind === "note") return newNote(at, true, text);
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";
-  const r = await ask<NewCard | null>("paste", { text }).catch((e) => { err = (e as Error).message; return null; });
+  const r = await ask("paste", { text }).catch((e) => { err = (e as Error).message; return null; });
   if (r) return addCards([r], { at, exact });
   // GitHub 文件拿不到（离线、私有仓库没登录）：先留一张书签，链接不丢
   if (k.kind === "github") { toast(`Could not fetch this GitHub file${err ? `: ${err}` : ""}`); return newWeb(at, text.trim()); }
@@ -174,21 +174,29 @@ export function splitSnippet(id: string, merge: boolean) {
     const a = i === 0 ? s.start : d.line, e = i + 1 < tops.length ? tops[i + 1].line - 1 : s.end;
     return { ...structuredClone(unwrap(s)), id: uid("s"), start: a, end: e, text: s.text.slice(a - s.start, e - s.start + 1), symbol: { qual: d.qual, kind: "function" as const }, scope: d.qual, hidden: undefined, hl: undefined };
   });
+  // 指着原来那段的行（Link、Sidenote、Sticker）跟到包含那一行的新段 / 新卡上；没有行的落在（第一张）卡上
+  const partOf = (line?: number) => Math.max(0, parts.findIndex((p) => line !== undefined && line >= p.start && line <= p.end));
   if (merge) {
-    mutate((b) => { const k = findCard(b, id)?.card; if (isCode(k)) k.segments = parts; });
+    mutate((b) => {
+      const k = findCard(b, id)?.card;
+      if (!isCode(k)) return;
+      retargetCards(b, [id], (at) => ({ card: id, seg: at.seg === s.id && at.line ? parts[partOf(at.line)].id : undefined }));
+      k.segments = parts;
+    });
   } else {
     const r = hostRect(id)!;
     const pl = placeOf(id);
+    const ids = parts.map(() => uid("c"));
     mutate((b) => {
-      b.cards = b.cards.filter((k) => k.id !== id);
-      delete b.place[id];
+      retargetCards(b, [id], (at) => { const i = partOf(at.seg === s.id ? at.line : undefined); return { card: ids[i], seg: at.seg === s.id && at.line ? parts[i].id : undefined }; });
+      removeCards(b, [id]);
       let y = r.y;
-      for (const p of parts) {
-        const k: CodeCard = { id: uid("c"), kind: "code", segments: [p] };
+      parts.forEach((p, i) => {
+        const k: CodeCard = { id: ids[i], kind: "code", segments: [p] };
         b.cards.push(k);
         b.place[k.id] = { x: r.x, y, w: r.w, section: pl.section };
         y += estSize(k, { w: r.w }).h + GAP;
-      }
+      });
     });
   }
   requestViews(parts);

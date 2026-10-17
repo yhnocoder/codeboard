@@ -1,5 +1,4 @@
 // 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、指针位置、打开编辑器 / 链接。
-import { chromeExtra } from "../state/look";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
@@ -174,6 +173,12 @@ function monoW(el: Element) {
   charW = ctx.measureText("0".repeat(100)).width / 100 || 6.6;
   return charW;
 }
+/** 代码卡的卡头 / 色带 / 底栏一共多高：主题决定，直接量布局。代码卡的 Place.h 存的是中间内容区（.carea）的高度，不含这些 */
+export function chromeOf(id: string): number {
+  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
+  const a = el?.querySelector<HTMLElement>(":scope > .cface > .carea");
+  return el && a ? el.offsetHeight - a.offsetHeight : 0;
+}
 /** 卡片内容刚好装下的宽高；minH = 头部 + 一行 */
 export function naturalSize(id: string): { w?: number; h: number; minH: number } | null {
   const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
@@ -207,13 +212,14 @@ export function fitContent(ids: string[]) {
   const sz = new Map<string, { w?: number; h: number }>();
   for (const id of ids) { const h = cardById(id)?.host.id; const n = h && naturalSize(h); if (h && n) sz.set(h, n); }
   if (!sz.size) return;
+  const chrome = new Map([...sz.keys()].map((id) => [id, chromeOf(id)]));
   mutate((b) => {
     for (const [id, n] of sz) {
       const p = b.place[id];
       if (!p) continue;
       if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
       const c = b.cards.find((k) => k.id === id);
-      p.h = c?.kind === "note" || c?.kind === "web" ? undefined : Math.round(n.h - (c?.kind === "code" ? chromeExtra() : 0));
+      p.h = c?.kind === "note" || c?.kind === "web" ? undefined : Math.round(n.h - (c?.kind === "code" ? chrome.get(id)! : 0));
     }
   });
 }

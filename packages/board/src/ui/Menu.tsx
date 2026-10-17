@@ -1,6 +1,7 @@
 // 自定义右键菜单、对话框、提示。浏览器自带的右键菜单全部屏蔽。
 import { createSignal, For, Show, onCleanup, onMount, createEffect } from "solid-js";
 import { Icon } from "./icons";
+import { place, virtual } from "./place";
 
 export type Item =
   | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string }
@@ -22,24 +23,22 @@ export function openMenu(items: Item[], x: number, y: number, o: { up?: boolean 
 export const closeMenu = () => setMenu(null);
 export const menuOpen = () => !!menu();
 
-function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void; sub?: boolean; up?: boolean; alt?: number }) {
+function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void; up?: boolean; anchor?: Element }) {
   let el!: HTMLDivElement;
   const [pos, setPos] = createSignal({ x: p.x, y: p.y, ox: "0px", oy: "0px" });
   const [open, setOpen] = createSignal(false);
-  const [subOf, setSubOf] = createSignal<{ i: number; x: number; y: number; alt: number } | null>(null);
+  const [subOf, setSubOf] = createSignal<{ i: number; x: number; y: number; el: Element } | null>(null);
   onMount(() => {
-    // 用 offset 尺寸：打开动画里 scale < 1，getBoundingClientRect 会量小，贴边时伸出窗口几像素
-    const r = { width: el.offsetWidth, height: el.offsetHeight };
-    const W = window.innerWidth, H = window.innerHeight;
-    // 放不下就往上翻；还放不下就限高滚动（最后一项总能看到）
-    let y = p.up ? p.y - r.height : p.y;
-    if (!p.up && y + r.height > H - 6 && p.y - r.height >= 4) y = p.y - r.height;
-    // 二级菜单右边放不下：翻到一级菜单左边（不压在一级菜单上）
-    const flip = p.sub && p.alt !== undefined && p.x + r.width > W - 6 && p.alt - r.width + 4 >= 4;
-    const x = flip ? p.alt! - r.width + 4 : Math.max(4, Math.min(p.x, W - r.width - 6)), yy = Math.max(4, Math.min(y, H - r.height - 6));
-    // 从点击的那一点展开（翻上去 / 被推到左边时，原点跟着换到那个角）
-    setPos({ x, y: yy, ox: `${Math.max(0, Math.min(r.width, p.x - x))}px`, oy: `${Math.max(0, Math.min(r.height, (p.up ? p.y : p.y) - yy))}px` });
-    requestAnimationFrame(() => setOpen(true));
+    // 右键菜单从点往右下开（up：从工具栏往上开）；二级菜单贴着父项往右开；放不下翻到另一边，太高就限高滚动
+    const at = p.anchor
+      ? place(el, p.anchor, "right-start", { gap: { crossAxis: -5 }, pad: 4 })
+      : place(el, virtual(p), p.up ? "top-start" : "bottom-start", { pad: 4 });
+    void at.then(({ x, y }) => {
+      // 从点击的那一点展开（翻上去 / 被推到左边时，原点跟着换到那个角）
+      const w = el.offsetWidth, h = el.offsetHeight;
+      setPos({ x, y, ox: `${Math.max(0, Math.min(w, p.x - x))}px`, oy: `${Math.max(0, Math.min(h, p.y - y))}px` });
+      requestAnimationFrame(() => setOpen(true));
+    });
   });
   return (
     <><div ref={el} class="ctx" classList={{ open: open() }} role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px`, "max-height": `${window.innerHeight - 8}px`, "transform-origin": `${pos().ox} ${pos().oy}` }}
@@ -49,7 +48,7 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
           it ? (
             <button role="menuitem" class={it.danger ? "danger" : ""} disabled={!!it.disabled} title={typeof it.disabled === "string" ? it.disabled : it.hint}
               onPointerEnter={(e) => {
-                if (it.sub && !it.disabled) { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); if (subOf()?.i !== i()) setSubOf({ i: i(), x: r.right - 4, y: r.top - 5, alt: pos().x }); }
+                if (it.sub && !it.disabled) { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); if (subOf()?.i !== i()) setSubOf({ i: i(), x: r.right, y: r.top - 5, el: e.currentTarget }); }
                 else setSubOf(null);
               }}
               onClick={() => { if (it.sub || it.disabled) return; p.onClose(); it.run?.(); }}>
@@ -63,7 +62,7 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
       </For>
     </div>
     <Show when={subOf()} keyed>
-      {(s) => <MenuList items={(p.items[s.i] as Exclude<Item, null>).sub!} x={s.x} y={s.y} alt={s.alt} onClose={p.onClose} sub />}
+      {(s) => <MenuList items={(p.items[s.i] as Exclude<Item, null>).sub!} x={s.x} y={s.y} anchor={s.el} onClose={p.onClose} />}
     </Show></>
   );
 }
@@ -136,13 +135,16 @@ export function DialogLayer() {
 // ---------- 按钮提示：停 500ms 出现并带快捷键；之后在按钮间滑动立刻切换；按下即消失 ----------
 
 export function TooltipLayer() {
-  const [tip, setTip] = createSignal<{ text: string; kbd?: string; x: number; y: number; below: boolean } | null>(null);
-  let timer: number | undefined, warmUntil = 0;
-  const show = (b: HTMLElement) => {
-    const r = b.getBoundingClientRect();
-    const below = r.top < 60;
-    setTip({ text: b.dataset.tip!, kbd: b.dataset.kbd, x: r.left + r.width / 2, y: below ? r.bottom + 8 : r.top - 8, below });
-  };
+  const [tip, setTip] = createSignal<{ text: string; kbd?: string; at: HTMLElement } | null>(null);
+  const [pos, setPos] = createSignal<{ x: number; y: number } | null>(null);
+  let el: HTMLDivElement | undefined, timer: number | undefined, warmUntil = 0;
+  const show = (b: HTMLElement) => setTip({ text: b.dataset.tip!, kbd: b.dataset.kbd, at: b });
+  // 按钮上方居中，放不下翻到下方
+  createEffect(() => {
+    const t = tip();
+    if (!t || !el) return setPos(null);
+    void place(el, t.at, "top", { gap: 8, pad: 4 }).then(({ x, y }) => { if (tip() === t) setPos({ x, y }); });
+  });
   const hide = () => { clearTimeout(timer); if (tip()) warmUntil = performance.now() + 800; setTip(null); };
   const over = (e: PointerEvent) => {
     const b = (e.target as HTMLElement).closest?.("[data-tip]") as HTMLElement | null;
@@ -163,7 +165,7 @@ export function TooltipLayer() {
   return (
     <Show when={tip()}>
       {(t) => (
-        <div class="tip show" style={{ left: `${t().x}px`, top: `${t().y}px`, transform: `translate(-50%, ${t().below ? "0" : "-100%"})` }}>
+        <div ref={el} class="tip" classList={{ show: !!pos() }} style={{ left: `${pos()?.x ?? 0}px`, top: `${pos()?.y ?? 0}px` }}>
           {t().text}<Show when={t().kbd}><kbd>{t().kbd}</kbd></Show>
         </div>
       )}

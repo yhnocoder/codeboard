@@ -145,7 +145,7 @@ export async function showPeek(el: Element, cardId: string, segId: string, line:
   const pid = openPop({ kind: "peek", card: cardId, seg: segId, line, word }, { el, prefer: "below" });
   if (pin) pinPop(pid);
   try {
-    const r = await ask<PeekResult>("peek", { seg: structuredClone(unwrap(s)), line, col, word, at });
+    const r = await ask("peek", { seg: structuredClone(unwrap(s)), line, col, word, at });
     updatePop(pid, (p) => ({ ...(p as any), data: r ?? { none: "No definition found", word } }));
   } catch { updatePop(pid, (p) => ({ ...(p as any), data: { none: "No definition found", word } })); }
 }

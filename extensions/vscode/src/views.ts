@@ -7,7 +7,7 @@ import cpp from "shiki/langs/cpp.mjs";
 import c from "shiki/langs/c.mjs";
 import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
 import type { FileAnalysis } from "@codeboard/core/analysis";
-import { analysisOf } from "./analysis";
+import { analysisOf, segAnalysis } from "./analysis";
 import { absOf, versionText } from "./source";
 import { callPkgs } from "./scope";
 import { Lru, readText, splitLines } from "./ws";
@@ -89,7 +89,7 @@ export async function segView(seg: Segment): Promise<SegView> {
   if (seg.src.kind === "free") return snippetView(seg);
   const full = await versionText(seg).catch(() => null);
   if (!full || splitLines(full).length > MAX_FULL) return snippetView(seg);
-  const fa = analysisOf(lang, full);
+  const fa = segAnalysis(lang, full, seg.start, seg.end, absOf(seg) ?? undefined); // 只用到段里的调用 / 标记，和整个文件的 import
   // Python 的函数 / 类段从 def / class / 装饰器那行开始，词法状态和文件开头一样：只给段本身分词（大文件里省掉整个文件的 shiki）
   if (shikiLang(lang) === "python" && seg.symbol && seg.symbol.kind !== "module" && fa.symbols.some((s) => s.start === seg.start && s.qual === seg.symbol!.qual)) {
     const toks = await tokensOf(lang, seg.text.join("\n"));
@@ -108,7 +108,7 @@ async function snippetView(seg: Segment): Promise<SegView> {
   // import 在文件开头，段里没有：用当前文件的
   const abs = seg.src.kind === "free" ? null : absOf(seg);
   const cur = abs ? await readText(abs).catch(() => null) : null;
-  const pk = await callPkgs(seg, cur ? analysisOf(seg.lang, cur).imports : fa.imports, abs);
+  const pk = await callPkgs(seg, cur ? segAnalysis(seg.lang, cur, 1, 0, abs ?? undefined).imports : fa.imports, abs);
   const toks = await tokensOf(seg.lang, seg.text.join("\n"));
   return build(seg, fa, (i) => toks[i], cut, seg.start - 1, pk);
 }

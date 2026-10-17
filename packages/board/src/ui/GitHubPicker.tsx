@@ -1,7 +1,7 @@
 // From GitHub…：输入 owner/repo（或贴链接）→ 选分支 / tag / commit（加卡时钉成 commit）→ 浏览文件树 → 打开文件选行 → Add to Board。
 // 数据都由宿主走 GitHub REST API 拿（私有仓库用 VS Code 的 GitHub 登录，被拒时才请用户登录）。
 import { For, Show, createMemo, createSignal, onMount, batch } from "solid-js";
-import { parseRepoInput, type Commit, type GhFile, type GhQuery, type GhRepo, type GhTree, type NewCard, type RepoInput } from "@codeboard/core";
+import { parseRepoInput, type Commit, type GhFile, type GhQuery, type GhReplyOf, type GhRepo, type GhTree, type RepoInput } from "@codeboard/core";
 import { toast } from "../state/store";
 import { ask } from "../host";
 import { Icon } from "./icons";
@@ -10,7 +10,7 @@ import "./github.css";
 
 type Mode = "branch" | "tag" | "commit";
 type Node = { dirs: string[]; files: string[] };
-const gh = <T,>(q: GhQuery) => ask<T>("gh", { q });
+const gh = <Q extends GhQuery>(q: Q) => ask("gh", { q }) as Promise<GhReplyOf<Q["op"]>>;
 const base = (p: string) => p.split("/").pop() ?? p;
 
 export function GitHubPicker() {
@@ -45,7 +45,7 @@ export function GitHubPicker() {
   async function openRepo() {
     const r: RepoInput | null = parseRepoInput(text());
     if (!r) { setErr("Enter owner/repo, or paste a GitHub link."); return; }
-    const info = await run(`Opening ${r.owner}/${r.name}…`, () => gh<GhRepo>({ op: "repo", owner: r.owner, name: r.name }));
+    const info = await run(`Opening ${r.owner}/${r.name}…`, () => gh({ op: "repo", owner: r.owner, name: r.name }));
     if (!info) return;
     batch(() => { setRepo(info); setTree(null); setFile(null); setSel(null); setFilter(""); setOpen(new Set<string>()); });
     // 分支名带 / 时链接里分不清 ref 和路径：按已知分支 / tag 的最长前缀拆
@@ -65,10 +65,10 @@ export function GitHubPicker() {
     const R = repo();
     if (!R || !want.trim()) return;
     setRefOpen(false);
-    const c = await run(`Resolving ${want}…`, () => gh<Commit>({ op: "commit", owner: R.owner, name: R.name, ref: want.trim() }));
+    const c = await run(`Resolving ${want}…`, () => gh({ op: "commit", owner: R.owner, name: R.name, ref: want.trim() }));
     if (!c) return;
     setCommit(c);
-    const t = await run("Loading files…", () => gh<GhTree>({ op: "tree", owner: R.owner, name: R.name, commit: c.commit }));
+    const t = await run("Loading files…", () => gh({ op: "tree", owner: R.owner, name: R.name, commit: c.commit }));
     if (!t) return;
     setTree(t);
     if (!path) { if (file() && t.paths.some((p) => p.path === file()!.path)) await openFile(file()!.path, sel() ?? undefined); else setFile(null); return; }
@@ -87,7 +87,7 @@ export function GitHubPicker() {
   async function openFile(path: string, lines?: [number, number]) {
     const R = repo(), c = commit();
     if (!R || !c) return;
-    const f = await run(`Opening ${base(path)}…`, () => gh<GhFile>({ op: "file", owner: R.owner, name: R.name, commit: c.commit, ref: refLabel(), path }));
+    const f = await run(`Opening ${base(path)}…`, () => gh({ op: "file", owner: R.owner, name: R.name, commit: c.commit, ref: refLabel(), path }));
     if (!f) return;
     batch(() => { setFile(f); setSel(lines ? [Math.min(...lines), Math.min(f.text.length, Math.max(...lines))] : null); });
     requestAnimationFrame(() => {
@@ -102,7 +102,7 @@ export function GitHubPicker() {
     const R = repo(), c = commit(), f = file();
     if (!R || !c || !f) return;
     const [s, e] = sel() ?? [1, Math.min(f.text.length, 60)];
-    const card = await run("Adding…", () => gh<NewCard>({ op: "card", owner: R.owner, name: R.name, commit: c.commit, ref: refLabel(), path: f.path, start: s, end: e }));
+    const card = await run("Adding…", () => gh({ op: "card", owner: R.owner, name: R.name, commit: c.commit, ref: refLabel(), path: f.path, start: s, end: e }));
     if (!card) return;
     close();
     A.addCards([card], { besideSel: false });
