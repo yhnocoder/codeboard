@@ -22,17 +22,17 @@
  {
   "name": "5-search.png",
   "status": "changed",
-  "ratio": 0.0331
+  "ratio": 0.016
  },
  {
   "name": "6-board.png",
   "status": "changed",
-  "ratio": 0.0079
+  "ratio": 0.0226
  },
  {
   "name": "7-uncommitted.png",
   "status": "changed",
-  "ratio": 0.0092
+  "ratio": 0.0235
  },
  {
   "name": "7a-settings.png",
@@ -42,6 +42,6 @@
  {
   "name": "7b-diagnostics.png",
   "status": "changed",
-  "ratio": 0.0079
+  "ratio": 0.0222
  }
 ]
