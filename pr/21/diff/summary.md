@@ -8,7 +8,7 @@
 
 ![2-flow.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/21/diff/2-flow.png?raw=true)
 
-**3-peek** · changed · 7.4% of pixels
+**3-peek** · changed · 5.4% of pixels
 
 ![3-peek.png](https://github.com/yhnocoder/codeboard/blob/ci-screenshots/pr/21/diff/3-peek.png?raw=true)
 
