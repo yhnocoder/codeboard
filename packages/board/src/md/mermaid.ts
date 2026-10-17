@@ -35,8 +35,30 @@ async function svgOf(src: string): Promise<string> {
   return p;
 }
 
+// 换主题（html 的 data-look / data-theme）后，已经画好的图按新颜色重画（缓存里没有的才真去画）
+let watching = false;
+function watchTheme() {
+  if (watching) return;
+  watching = true;
+  let t: number | undefined;
+  new MutationObserver(() => {
+    clearTimeout(t);
+    t = window.setTimeout(() => {
+      const hosts = new Set<HTMLElement>();
+      for (const box of document.querySelectorAll<HTMLElement>(".mmd[data-done]")) {
+        delete box.dataset.done;
+        box.classList.remove("ok");
+        box.querySelector(".mmd-err")?.remove();
+        if (box.parentElement) hosts.add(box.parentElement);
+      }
+      for (const h of hosts) void renderAll(h);
+    }, 50); // 等主题的样式落定再取颜色
+  }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-look", "data-theme"] });
+}
+
 /** 把 el 里的 .mmd 占位换成图 */
 export async function renderAll(el: HTMLElement) {
+  watchTheme();
   for (const box of el.querySelectorAll<HTMLElement>(".mmd:not([data-done])")) {
     box.dataset.done = "1";
     const src = box.dataset.src ?? "";
