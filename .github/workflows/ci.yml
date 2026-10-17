@@ -1,6 +1,6 @@
 # T0: runs on every push and PR. Jobs run in parallel:
 #   unit     build, typecheck, unit tests, host tests
-#   harness  browser harness scenarios, split into 3 shards
+#   harness  browser harness scenarios, split into 2 shards
 #   e2e      real VS Code (with Pylance) e2e + generic UI audit
 #   perf     board + host perf benchmarks on base and head in one job; fails on a regression
 #   report   publishes e2e screenshots to the ci-screenshots branch and updates the marked section of the PR description
@@ -38,14 +38,14 @@ jobs:
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix: { shard: [1, 2, 3] }
-    name: harness (${{ matrix.shard }}/3)
+      matrix: { shard: [1, 2] }
+    name: harness (${{ matrix.shard }}/2)
     steps:
       - uses: actions/checkout@v4
         with: { submodules: true }
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
-      - run: node packages/board/test/run-harness.mjs --shard=${{ matrix.shard }}/3
+      - run: node packages/board/test/run-harness.mjs --shard=${{ matrix.shard }}/2
 
   e2e:
     runs-on: ubuntu-24.04
