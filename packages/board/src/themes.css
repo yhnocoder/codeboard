@@ -424,7 +424,7 @@
 :root.look-city, [data-look="city"] {
   color-scheme: light;
   --ui: "Archivo", "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif;
-  --street: #fbfaf6; --blockc: rgba(0,0,0,.03); --asphalt: #7c828c; --casing: #ffffff; --lane: #f6c93b;
+  --street: #fbfaf6; --blockc: rgba(0,0,0,.03); --asphalt: #7c828c; --casing: #ffffff; --lane: #f6c93b; --shoulder: #646a74; --kerb: #ffffff; --zebra: #ffffff;
   --sign: #1f5fbf; --sign-ink: #ffffff; --gsign: #13804a; --shield: #c7281f; --car: #e5533d;
   --bg: #ece8de; --surface: #ffffff; --head: #ffffff;
   --ink: #23272e; --ink-2: #5a606b; --ink-3: #9aa0a8;
@@ -448,7 +448,7 @@
 }
 :root.look-city[data-theme="dark"], :root[data-theme="dark"] [data-look="city"] {
   color-scheme: dark;
-  --street: #222833; --blockc: rgba(255,255,255,.02); --asphalt: #3d4451; --casing: #5d6576; --lane: #e8b84a;
+  --street: #222833; --blockc: rgba(255,255,255,.02); --asphalt: #3d4451; --casing: #5d6576; --lane: #e8b84a; --shoulder: #2c323c; --kerb: #9aa2b0; --zebra: #b9c0cb;
   --sign: #2d5ea8; --sign-ink: #ffffff; --gsign: #1d6c43; --shield: #c7281f; --car: #e5533d;
   --bg: #161a22; --surface: #1d222c; --head: #1d222c;
   --ink: #e6e9ef; --ink-2: #a8afbb; --ink-3: #69707c;
@@ -849,7 +849,8 @@
 .dock) .sep { display: none; }
 /* ---------- City（城市道路） ---------- */
 /* 街区、河、公园、楼是白板背景（固定在窗口上，镜头动时不重画）。
-   调用是马路：路沿（.casings 里一层，在所有线下面）+ 路面（.edge）+ 黄色虚中线（.lane），横平竖直；被调用那头停一辆车（三条 path，见 route.ts carPaths）代替箭头；
+   调用是大路：路肩（.casings 里一层，在所有线下面）+ 白边线（.kerbs 里一层，也在所有路面下面，路口里就没有边线）+ 路面（.edge）+ 双黄线（.lane，一个 path 两条线），横平竖直；
+   普通箭头是小街：白路沿 + 路面 + 一道白中线（.cline）；被调用那头停一辆车（三条 path，见 route.ts carPaths）代替箭头，车前是人行横道（画进车灯那条 path）；
    几条路进同一张卡时在合并点（路口）汇成一段（.merge 的 .stub），只停一辆车。红绿灯打开时 .movers 里的小车沿路开（只动 offset-distance / opacity）。
    这些额外的节点只在 City 里才有（canvas/Links.tsx） */
 :root.look-city { --no-link: var(--ink); --no-link-w: 700; --call-deco: underline 2px color-mix(in srgb, var(--lane) 80%, transparent); --ico-w: 2; --port-ring: 2px; --port-ring-c: var(--casing); --port-bg: var(--asphalt);
@@ -878,24 +879,26 @@
 :root.look-city .chead .rev.new i { display: none; }
 :root.look-city .cdesc { border-bottom: 0; padding-top: 8px; }
 :root.look-city .rowbg.hl { background: color-mix(in srgb, var(--lane) 26%, transparent); }
-/* 马路：路沿 + 路面 + 中线。调用是大路，普通箭头是小街（没有中线） */
-:root.look-city .edge:not(.rubber) { stroke: var(--asphalt); stroke-width: calc(12px * var(--lw, 1)); stroke-linecap: butt; stroke-linejoin: round; }
+/* 马路：路肩 + 白边线 + 路面 + 双黄线。调用是大路，普通箭头是小街（白路沿、白中线） */
+:root.look-city .edge:not(.rubber) { stroke: var(--asphalt); stroke-width: calc(13px * var(--lw, 1)); stroke-linecap: butt; stroke-linejoin: round; }
 :root.look-city .edge.plain:not(.rubber) { stroke-width: calc(6px * var(--lw, 1)); }
 :root.look-city .edge.plain.dashed { stroke-dasharray: 8 6; }
 :root.look-city .edge.on { stroke: var(--sign); }
 :root.look-city .edge.lost { stroke: color-mix(in srgb, var(--lk-lost, #d64545) 70%, var(--asphalt)); }
-:root.look-city .casing { fill: none; stroke: var(--casing); stroke-width: calc(16px * var(--lw, 1)); stroke-linejoin: round; }
-:root.look-city .casing.plain { stroke-width: calc(9px * var(--lw, 1)); }
-:root.look-city .casing.w1 { --lw: .6; } :root.look-city .casing.w3 { --lw: 1.6; }
+:root.look-city .casing { fill: none; stroke: var(--shoulder); stroke-width: calc(18px * var(--lw, 1)); stroke-linejoin: round; }
+:root.look-city .casing.plain { stroke: var(--casing); stroke-width: calc(9px * var(--lw, 1)); }
+:root.look-city .kerb { fill: none; stroke: var(--kerb); stroke-width: calc(15.6px * var(--lw, 1)); stroke-linejoin: round; }
+:root.look-city :is(.casing, .kerb).w1 { --lw: .6; } :root.look-city :is(.casing, .kerb).w3 { --lw: 1.6; }
 /* 中线是一道实线：虚线（stroke-dasharray）每次栅格化都要把整条线切成几十段，缩放时最长的一帧翻倍（run-perf --theme city 实测），所以不用 */
-:root.look-city .lane { fill: none; stroke: var(--lane); stroke-width: 1.2; stroke-linejoin: round; }
+:root.look-city .lane { fill: none; stroke: var(--lane); stroke-width: 1; stroke-linejoin: miter; }
+:root.look-city .cline { fill: none; stroke: var(--kerb); stroke-width: .8; stroke-linejoin: miter; }
 /* 停着的车：车头朝被调用的卡片；选中 / 悬停时变成路牌蓝，那头的行没了时变红 */
 :root.look-city .ahead.car { --car-c: var(--car); stroke: none; fill: none; }
 :root.look-city .ahead.car.on { --car-c: var(--sign); stroke: none; }
 :root.look-city .ahead.car.lost { --car-c: var(--lk-lost, #d64545); }
 :root.look-city .ahead.car .cbody { fill: var(--car-c); stroke: rgba(0,0,0,.35); stroke-width: .7; }
 :root.look-city .ahead.car .croof { fill: rgba(255,255,255,.6); }
-:root.look-city .ahead.car .clamp { fill: #fff3b0; }
+:root.look-city .ahead.car .clamp { fill: var(--zebra); } /* 车灯和人行横道是一条 path */
 :root.look-city .port { fill: var(--asphalt); stroke: var(--casing); stroke-width: 2; }
 /* 车流：小车沿路开（关键帧由 Links.tsx 用 Web Animations 加上），靠右行驶；只有 transform 和 opacity 在变，合成器自己跑 */
 :root.look-city .movers { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 2; pointer-events: none; }

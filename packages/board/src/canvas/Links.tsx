@@ -14,7 +14,7 @@ import { shape, fileHue, look, traffic } from "../state/look";
 import { tune } from "../state/tune";
 import { isDbl } from "../interact";
 import * as A from "../actions";
-import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, carAt, carPaths, driveFrames, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
+import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, carAt, carPaths, laneOf, zebraBack, driveFrames, type Road, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
@@ -121,12 +121,23 @@ const headOrCar = (k: Shape0["head"], tx: number, ty: number, ux: number, uy: nu
   k === "car" ? carAt(tx, ty, ux, uy, s) : headPath(k, tx, ty, ux, uy, s);
 type Shape0 = ReturnType<typeof shape>;
 /** 箭头（或 City 的车）：同一份几何画成 path，或车的三条 path */
-function Car(p: { cls: string; at: string }) {
-  const c = createMemo(() => carPaths(p.at));
+function Car(p: { cls: string; at: string; road?: Road }) {
+  const c = createMemo(() => carPaths(p.at, p.road));
   return <g class={p.cls} data-at={p.at}><path class="cbody" d={c().body} /><path class="croof" d={c().roof} /><path class="clamp" d={c().lamp} /></g>;
 }
-function Head(p: { cls: string; d: string }) {
-  return <>{shape().head === "car" ? <Car cls={p.cls} at={p.d} /> : <path class={p.cls} d={p.d} />}</>;
+function Head(p: { cls: string; d: string; road?: Road }) {
+  return <>{shape().head === "car" ? <Car cls={p.cls} at={p.d} road={p.road} /> : <path class={p.cls} d={p.d} />}</>;
+}
+/**
+ * City 的路面标线（一个 path）：大路是双黄线，小街是一道白中线；停车和人行横道那头剪掉（车停在横道前，见 carPaths）。
+ * 实线不用 stroke-dasharray（见 themes.css 里 .lane 的注释）
+ */
+function Lane(p: { d: string; road: Road; s: number; start: boolean; end: boolean }) {
+  const d = createMemo(() => {
+    const t = (zebraBack(p.road) + 1) * p.s;
+    return laneOf(p.d, p.road === "main" ? 1.1 : 0, p.start ? t : 0, p.end ? t : 0);
+  });
+  return <path class={p.road === "main" ? "lane" : "cline"} d={d()} />;
 }
 
 function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean): Geo {
@@ -394,6 +405,8 @@ export function LinksSvg() {
   const mergeKeys = () => (merges() ? merges().split("\n") : []);
   setRoads(() => list);
   const city = () => look() === "city";
+  // City 的路沿层、白边线层共用的合并段
+  const stubs = createMemo(mapArray(() => (city() ? mergeKeys() : []), (key) => stubOf(key, groups, byId)));
   return (
     <svg class="edges" classList={{ "lod-map": lod() === "map" }} width="1" height="1">
       {/* City：所有路的路沿画在最底下一层，几条路交叉、汇合时路面连成一片 */}
@@ -402,7 +415,14 @@ export function LinksSvg() {
           <For each={list()}>
             {(r) => <Show when={r.base()?.kind !== "gutter" && r.shown()?.()}>{(g) => <path class={`casing${r.L.call ? "" : " plain"}${widthCls(r.L)}`} d={g().d} />}</Show>}
           </For>
-          <For each={mergeKeys()}>{(key) => { const st = stubOf(key, groups, byId); return <Show when={st.g()}><path class={`casing${st.members().every((L) => !L.call) ? " plain" : ""}`} d={st.g()!.d} /></Show>; }}</For>
+          <For each={stubs()}>{(st) => <Show when={st.g()}><path class={`casing${st.members().every((L) => !L.call) ? " plain" : ""}`} d={st.g()!.d} /></Show>}</For>
+        </g>
+        {/* 大路两边的白边线：在所有路面下面，几条路交叉、汇合时路口里没有边线 */}
+        <g class="kerbs">
+          <For each={list()}>
+            {(r) => <Show when={r.L.call && r.base()?.kind !== "gutter" && r.shown()?.()}>{(g) => <path class={`kerb${widthCls(r.L)}`} d={g().d} />}</Show>}
+          </For>
+          <For each={stubs()}>{(st) => <Show when={st.g() && st.members().some((L) => L.call)}><path class="kerb" d={st.g()!.d} /></Show>}</For>
         </g>
       </Show>
       <For each={list()}>
@@ -418,14 +438,15 @@ export function LinksSvg() {
           const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
           const style = () => `${colorCls(L)}${widthCls(L)}`;
           const gutter = () => r.base()?.kind === "gutter";
+          const road: Road = L.call ? "main" : "street";
           const cls = () => `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`;
           return (
             <Show when={g()}>
               <g class="link" data-lk={L.id} data-from={L.from.card} data-to={L.to.card} data-call={L.call ? "" : undefined} data-merged={merged() ? "" : undefined} data-sides={r.sides()}>
                 <path class={cls()} d={g()!.d} />
-                <Show when={city() && L.call && !gutter()}><path class="lane" d={g()!.d} /></Show>
-                <Show when={g()!.head}><Head cls={`ahead end ${shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} /></Show>
-                <Show when={g()!.tail}><Head cls={`ahead start ${shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.tail!} /></Show>
+                <Show when={city() && !gutter()}><Lane d={g()!.d} road={road} s={headScale(L)} start={!!g()!.tail} end={!!g()!.head} /></Show>
+                <Show when={g()!.head}><Head cls={`ahead end ${shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} road={road} /></Show>
+                <Show when={g()!.tail}><Head cls={`ahead start ${shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.tail!} road={road} /></Show>
                 <Show when={g()!.port}><path class={`port fc-${toHue()}${L.lost?.from ? " lost" : ""}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
                   <Show when={on() && L.from.line !== undefined && r.base()?.kind === "normal"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
                 <Show when={g()!.port2}><path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} /></Show>
@@ -492,12 +513,13 @@ function Merge(p: { key: string; groups: Accessor<Map<string, Link[]>>; byId: Ac
     return `${ms.every((x) => x.style?.color === L.style?.color) ? colorCls(L) : ""}${widthCls(L)}`;
   };
   const lost = () => members().every((L) => L.lost?.to);
+  const road = (): Road => (members().some((L) => L.call) ? "main" : "street");
   return (
     <Show when={g()}>
       <g class="merge" data-card={card} data-line={line || undefined} data-side={side} data-n={members().length}>
         <path class={`edge stub${members().every((L) => L.style?.dash) ? " dashed" : ""}${style()}${lost() ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.d} />
-        <Show when={look() === "city" && members().some((L) => L.call)}><path class="lane" d={g()!.d} /></Show>
-        <Show when={g()!.head}><Head cls={`ahead end ${shape().head}${style()}${lost() ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} /></Show>
+        <Show when={look() === "city"}><Lane d={g()!.d} road={road()} s={members()[0] ? headScale(members()[0]) : 1} start={false} end={!!g()!.head} /></Show>
+        <Show when={g()!.head}><Head cls={`ahead end ${shape().head}${style()}${lost() ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} road={road()} /></Show>
       </g>
     </Show>
   );

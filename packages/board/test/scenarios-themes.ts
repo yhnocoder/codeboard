@@ -20,7 +20,8 @@ function board(): Board {
 const STROKE: Record<string, string> = { "ink-wash": "1px", city: "2px" };
 
 export const THEMES_V17: Record<string, () => Promise<void>> = {
-  /** City: every arrow end is a parked car (merged ends: one car per junction), roads have a casing and a centre line,
+  /** City: every arrow end is a parked car (merged ends: one car per junction) waiting at a zebra crossing, main roads have a shoulder,
+   *  white edge lines and a double yellow centre line, small streets a white centre line,
    *  traffic off = no animation at all; on = cars driving (transform / opacity only, compositor); reduced motion = off. Screenshots to SHOTS */
   async v17city() {
     const SHOTS = process.env.CITY_SHOTS ?? "/mnt/project-files/v017/themes";
@@ -45,6 +46,9 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
           rot: document.querySelector('g.link[data-lk="L1"] .ahead.end')?.getAttribute("data-at") ?? "",
           casings: document.querySelectorAll(".casings .casing").length,
           lanes: document.querySelectorAll("g.link .lane").length,
+          kerbs: document.querySelectorAll(".kerbs .kerb").length,
+          clines: document.querySelectorAll("g.link .cline").length,
+          zebra: [...document.querySelectorAll(".ahead.end.car .clamp")].map((p) => (p.getAttribute("d")!.match(/Z/g) ?? []).length - 2),
           carColor: (() => { const u = document.querySelector(".ahead.end.car"); return u ? getComputedStyle(u).getPropertyValue("--car-c").trim() : ""; })(),
           movers: document.querySelectorAll(".movers .mover").length,
           running: running.length,
@@ -65,12 +69,19 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
       const reduced = await probe();
       const ok = off.cars.L1 === 1 && off.cars.L2 === 0 && off.cars.L3 === 0 && off.cars.P1 === 1 && off.merged.sort().join() === "L2,L3"
         && off.merges.length === 1 && off.merges[0].n === "2" && off.merges[0].cars === 1 && off.merges[0].lanes === 1
-        && /rotate\(0\)/.test(off.rot) && off.casings === 5 && off.lanes === 3 && !!off.carColor
+        && /rotate\(0\)/.test(off.rot) && off.casings === 5 && off.lanes === 3 && off.kerbs === 4 && off.clines === 1 && off.zebra.sort().join() === "3,4,4" && !!off.carColor
         && off.movers === 0 && off.running === 0
         && on.movers >= 4 && on.running === 2 * on.movers && on.compOnly
         && back.movers === 0 && back.running === 0 && reduced.movers === 0 && reduced.running === 0;
       console.log(ok ? "PASS" : "FAIL", "v17city", light ? "light" : "dark", JSON.stringify({ off, on: { movers: on.movers, running: on.running, compOnly: on.compOnly }, back: back.running, reduced: reduced.running }));
       await h.page.context().browser()!.close();
+      // Close-up of the junction and the parked cars (road markings, zebra crossings): screenshot only
+      b.cam = { x: -1050, y: -1200, z: 2.5 };
+      const z = await open({ board: b, light, w: 1300, h: 900, settings: { theme: "city" } as any });
+      await z.page.waitForTimeout(800);
+      await shot(z, `v17-city-${light ? "light" : "dark"}-zoom`);
+      try { await z.page.screenshot({ path: `${SHOTS}/city-${light ? "light" : "dark"}-zoom.png` }); } catch { /* ignore */ }
+      await z.page.context().browser()!.close();
     }
   },
   /** Each new look in light and dark: per-file hue on code cards, icon stroke 1 or 2 px, scene backgrounds,
