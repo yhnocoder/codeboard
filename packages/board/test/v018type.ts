@@ -17,8 +17,8 @@ async function keys(pg: Page, seq: string) {
   for (const part of seq.split(/(\{(?:Enter|Tab|Home|End|Backspace|Escape|Arrow\w+|Control\+[^}]+|Shift\+[^}]+)\})/)) {
     if (!part) continue;
     if (part.startsWith("{") && part.endsWith("}")) {
-      // Home / End 是浏览器自己移光标，ProseMirror 要等异步的 selectionchange 才知道；脚本按键比人快得多，前后各等一下
-      const nav = /Home|End/.test(part);
+      // Home / End / 方向键是浏览器自己移光标，ProseMirror 要等异步的 selectionchange 才知道；脚本按键比人快得多，前后各等一下
+      const nav = /Home|End|Arrow/.test(part);
       if (nav) await pg.waitForTimeout(300);
       await pg.keyboard.press(part.slice(1, -1));
       if (nav) await pg.waitForTimeout(100);
@@ -125,6 +125,7 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       // 标题行首退格：变回段落
       // （刚在空 Note 里打完字马上按 Home，headless Chromium 里偶尔落回行尾：先停一下）
       { name: "heading backspace", seq: "## h", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "h" },
+      { name: "task toggle", seq: "- [ ] t", after: async (pg) => { await pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first().click(); await pg.waitForTimeout(100); }, md: "- [x] t" },
       { name: "quote backspace", seq: "> q", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "q" },
       { name: "list backspace", seq: "- a{Enter}b", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "- a\n\nb" },
       { name: "task backspace", seq: "- [ ] t", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "t" },
