@@ -1,4 +1,5 @@
 // 浮层：Sidenote、定义预览、加 Sidenote、版本 diff、多个定义选择、commit 列表、变量、只读源码。
+import { keepKey } from "./editkeys";
 import { For, Show, Switch, Match, createSignal, createMemo, createEffect, onCleanup } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
@@ -180,7 +181,7 @@ function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
     <div class="sn-edit" onPointerDown={(e) => e.stopPropagation()}>
       <textarea spellcheck={false} value={v()} ref={(el) => queueMicrotask(() => { el.focus(); el.setSelectionRange(el.value.length, el.value.length); grow(el); })}
         onInput={(e) => { setV(e.currentTarget.value); grow(e.currentTarget); }}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") { e.preventDefault(); setSnEditing(null); } if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); } }} />
+        onKeyDown={(e) => { keepKey(e); if (e.key === "Escape") { e.preventDefault(); setSnEditing(null); } if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); } }} />
       <Show when={v().trim()}><MdStatic class="sn-text sn-prev" src={v()} /></Show>
       <div class="sn-eacts"><span>Markdown and $math$ · {A.K.mod}↵ to save</span><span class="grow" /><button class="tbtn" onClick={() => setSnEditing(null)}>Cancel</button><button class="tbtn pri" onClick={save}>Save</button></div>
     </div>
@@ -318,7 +319,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
     A.pickCardThen((id) => { A.addSidenote({ at: at(), kind: "card", card: id, why: why().trim() || undefined } as any); toast("Sidenote added"); });
   };
   const onKey = (e: KeyboardEvent) => {
-    e.stopPropagation();
+    keepKey(e);
     if (e.key === "Escape") { e.preventDefault(); closePop(p.inst.id); }
     if (tab() === "code" && e.key === "ArrowDown") { e.preventDefault(); setI((x) => Math.min(res().length - 1, x + 1)); }
     if (tab() === "code" && e.key === "ArrowUp") { e.preventDefault(); setI((x) => Math.max(0, x - 1)); }
@@ -454,7 +455,7 @@ function CommitsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "commits" }> }
           <Show when={!p.pop.list!.length}><div class="empty">No history (not in git).</div></Show>
         </div>
       </Show>
-      <div class="an-body"><input class="fld" placeholder="Enter commit, branch or tag" value={ref()} onInput={(e) => setRef(e.currentTarget.value)} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") go(); if (e.key === "Escape") closePop(p.inst.id); }} /></div>
+      <div class="an-body"><input class="fld" placeholder="Enter commit, branch or tag" value={ref()} onInput={(e) => setRef(e.currentTarget.value)} onKeyDown={(e) => { keepKey(e); if (e.key === "Enter") go(); if (e.key === "Escape") closePop(p.inst.id); }} /></div>
       <Show when={A.uncommitted(cardById(p.pop.card)?.card as any) || state.stale[p.pop.seg.id]?.state === "uncommitted"}>
         <button class="cand" onClick={() => { closePop(p.inst.id); A.openWorktreeDiff(p.pop.card); }}><span class="lb">Show Uncommitted Changes</span><small>HEAD vs Working Tree</small></button>
       </Show>
@@ -475,7 +476,7 @@ function VarsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vars" }> }) {
         <Show when={!all().length}><div class="empty">No arguments or return value found.</div></Show>
       </div>
       <div class="an-body"><input class="fld" placeholder="Add your own (e.g. seqs[0].block_table)" value={custom()} onInput={(e) => setCustom(e.currentTarget.value)}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && custom().trim()) { A.toggleVar(p.pop.link, { a: custom().trim(), custom: true }); setCustom(""); } if (e.key === "Escape") closePop(p.inst.id); }} /></div>
+        onKeyDown={(e) => { keepKey(e); if (e.key === "Enter" && custom().trim()) { A.toggleVar(p.pop.link, { a: custom().trim(), custom: true }); setCustom(""); } if (e.key === "Escape") closePop(p.inst.id); }} /></div>
     </>
   );
 }

@@ -1,5 +1,6 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框（md 的是所见即所得的 Markdown 编辑器）。
 // ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
+import { keepKey } from "./editkeys";
 import { Show, batch, createEffect, onCleanup, onMount } from "solid-js";
 import { editing, setEditing, type Editing } from "../state/ui";
 import { MdStatic } from "./Md";
@@ -60,7 +61,6 @@ function PlainEdit(p: P) {
     <div ref={el} class={`${p.class ?? ""} editing`} style={p.style} contentEditable="plaintext-only" spellcheck={false} data-ph={p.placeholder}
       onPointerDown={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
-        e.stopPropagation();
         if (e.key === "Escape") { e.preventDefault(); finish(!!p.multiline); } // 多行正文：Esc 保留写好的字；单行名字：Esc 撤销
         // ⌘A 自己选中这一块的字：VS Code 的 webview 会把 ⌘A 交给宿主，回来时不一定落在编辑框里
         else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "a") {
@@ -69,6 +69,7 @@ function PlainEdit(p: P) {
           const s = window.getSelection(); s?.removeAllRanges(); s?.addRange(r);
         }
         else if (e.key === "Enter" && !e.isComposing && (!p.multiline || e.metaKey || e.ctrlKey)) { e.preventDefault(); finish(true); }
+        keepKey(e);
       }}
       onBlur={() => finish(true)} />
   );
@@ -107,7 +108,7 @@ function MdEdit(p: P) {
   });
   return (
     <div ref={el} class={`${p.class ?? ""} md editing`} style={p.style} data-ph={p.placeholder}
-      onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} onKeyUp={(e) => e.stopPropagation()}>
+      onPointerDown={(e) => e.stopPropagation()} onKeyDown={keepKey} onKeyUp={(e) => e.stopPropagation()}>
       {now ? null : <MdStatic src={p.value} class="md-loading" />}
     </div>
   );
