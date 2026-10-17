@@ -323,10 +323,17 @@ const [slotTick, setSlotTick] = createSignal(0);
 let plan: Accessor<Plan> = () => NO_PLAN;
 
 const same = <T,>(a: readonly T[], b: readonly T[]) => a.length === b.length && a.every((x, i) => x === b[i]);
-/** 让 p 的子节点从头开始依次是 ns（已经在位置上的不动；后面剩下的是要搬走的） */
+/**
+ * 让 p 里 ns 的这些子节点依次排好：已经在位置上的不动，只搬真要动的那几个。不在 ns 里的节点（要搬去别的层的）先跳过，留给那一层的 order 搬走；
+ * 不跳过的话，一条线浮上去时它后面的每条线都要搬一遍（线全在一层里时就是整层，悬停一张卡要重算一百多条线的样式）
+ */
 function order(p: Element, ns: Element[]) {
+  const want = new Set<Element>(ns);
   let at = p.firstElementChild;
-  for (const n of ns) { if (n === at) at = at.nextElementSibling; else p.insertBefore(n, at); }
+  for (const n of ns) {
+    while (at && at !== n && !want.has(at)) at = at.nextElementSibling;
+    if (n === at) at = at.nextElementSibling; else p.insertBefore(n, at);
+  }
 }
 
 // 指针下的卡：离开后过 linkLeave 才算离开，鼠标从卡移到它的线上时线不掉下去。镜头动的时候不换（内容从指针下滑过也会进出卡），停下再按最后的那张算
