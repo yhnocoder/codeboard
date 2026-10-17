@@ -1,9 +1,11 @@
-// 白板的持久化数据模型（第 5 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
+// 白板的持久化数据模型（第 6 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
 // 卡片内容（Card）和它在这块白板上的摆放（Place）分开存：v0.2 的共享卡片、子白板会让同一张卡出现在几块白板上，
 // 内容只有一份，摆放每块白板各一份。Compare 只引用两张卡的 id，那两张卡在 cards 里但没有 Place（不单独出现在画布上）。
 // 基本元素：Card、Place、Link、Section、Sidenote、Sticker。流程、讲解、Compare 都由它们派生。
+// 第 6 版起有共享卡：内容存在卡库 <存储目录>/cards/<id>.json（卡 + 跟着它走的 Sidenote），白板文件里只留引用（SharedRef）；
+// 宿主读白板时把引用换成内容（inflate），界面拿到的永远是完整的 Board。
 
-export const BOARD_VERSION = 5;
+export const BOARD_VERSION = 6;
 
 // ---------- 版本 ----------
 
@@ -186,6 +188,7 @@ export type Sidenote = {
   at: Anchor;
   why?: string; // 「为什么相关」，可选
   lineRemoved?: boolean; // 更新版本时原来的行被删了，改挂整卡
+  boardOnly?: true; // 挂在共享卡上、但只属于这块白板（不跟着卡去别的白板）
 } & (
   | { kind: "code"; code: Segment } // 仓库里或仓库外的代码，钉版本
   | { kind: "paste"; text: string; lang: string; url?: string }
@@ -217,7 +220,7 @@ export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt
 export type Camera = { x: number; y: number; z: number };
 
 export type Board = {
-  version: 5;
+  version: 6;
   id: string;
   name: string;
   cam: Camera;
@@ -240,6 +243,17 @@ export type Board = {
   /** 用户改过的调用图标记：键是那张调用图里最早建的卡 */
   marks?: Record<string, GraphMark>;
 };
+
+// ---------- 共享卡（第 6 版） ----------
+
+/** 白板文件里共享卡的位置：只有 id，内容在卡库里。在 cards 里占着叠放顺序 */
+export type SharedRef = { id: string; kind: "shared" };
+/** 白板文件：cards 里可以有共享卡的引用。读进来后由宿主换成内容 */
+export type BoardFile = Omit<Board, "cards"> & { cards: (Card | SharedRef)[] };
+/** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
+export type SharedCard = { card: Card; sidenotes: Sidenote[] };
+/** 卡库里的文件 cards/<id>.json。rev：每一项（卡、每条 Sidenote，按 id）被改过几次 */
+export type SharedCardFile = SharedCard & { version: 6; rev: Record<string, number> };
 
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number };
 
@@ -387,21 +401,31 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
 
 // ---------- 迁移 ----------
 
-/** 读进来的白板文件（第 1–5 版）→ 第 5 版 */
+/**
+ * 读进来的白板文件（第 1–6 版）→ 第 6 版。第 6 版的文件里可以有共享卡的引用（SharedRef）：
+ * 返回类型写成 Board 是为了旧代码好用，宿主读文件时按 BoardFile 看（schema.ts 的 loadBoardFile），换成内容后才是真正的 Board
+ */
 export function migrateBoard(raw: any): Board {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
-  if (raw?.version >= 3 && raw?.version <= 5) {
+  if (raw?.version >= 3 && raw?.version <= 6) {
     const b = raw as Board;
     b.place ??= {};
     b.links ??= [];
     b.sections ??= [];
     b.sidenotes ??= [];
     b.stickers ??= [];
-    if (raw.version === 5) return b;
-    return v4to5(raw.version === 3 ? v3to4(b) : b);
+    if (raw.version === 6) return b;
+    if (raw.version === 5) return v5to6(b);
+    return v5to6(v4to5(raw.version === 3 ? v3to4(b) : b));
   }
-  return v4to5(v3to4(v2to3(raw?.version === 2 ? raw : v1to2(raw))));
+  return v5to6(v4to5(v3to4(v2to3(raw?.version === 2 ? raw : v1to2(raw)))));
+}
+
+/** 第 5 版 → 第 6 版：多了共享卡的引用和 Sidenote 的 boardOnly，旧文件里都没有，只改版本号 */
+function v5to6(b: Board): Board {
+  b.version = 6;
+  return b;
 }
 
 /**
@@ -459,7 +483,7 @@ function v4to5(b: Board): Board {
   b.born = {};
   order.forEach((x, i) => { b.born![x.id] = i; });
   b.seq = order.length;
-  b.version = BOARD_VERSION;
+  (b as any).version = 5;
   return b;
 }
 
