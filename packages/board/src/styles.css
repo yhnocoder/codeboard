@@ -1242,3 +1242,60 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .rrow .radd:disabled { opacity: .4; cursor: default; }
 .cpanel .empty.sm { padding: 6px 8px; color: var(--ink-3); font-size: 11.5px; white-space: normal; }
 .dock .ib[aria-pressed="true"] { color: var(--accent); background: var(--row); }
+
+/* ---------- 疑问（线框 06） ---------- */
+.chead .qcount { font: 600 10.5px/16px var(--sys); color: #7a4d00; background: #fdf0d5; border: 0; border-radius: 8px; padding: 0 7px; cursor: pointer; white-space: nowrap; flex: none; }
+:root[data-theme="dark"] .chead .qcount, .vscode-dark .chead .qcount { color: #f3c46b; background: color-mix(in srgb, #d08a12 24%, transparent); }
+.stk.q { cursor: pointer; }
+.pop.k-question { width: 380px; }
+.k-question .qbody { padding: 8px 12px 4px; min-height: 40px; max-height: 50vh; overflow: auto; }
+.k-question .qtext { font-size: 12.5px; line-height: 1.6; min-height: 22px; }
+.k-question .qtext:empty::before, .k-question .qtext[data-ph]:not(.editing):empty::before { content: attr(data-ph); color: var(--ink-3); }
+.k-question .qtext.editing { outline: none; border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--accent); padding: 4px 8px; margin: -4px -8px; }
+.k-question .qans { padding: 2px 12px 4px; font-size: 11.5px; color: var(--ink-3); }
+.k-question .qacts { display: flex; align-items: center; gap: 6px; padding: 6px 8px 8px 12px; border-top: 1px solid var(--line); }
+.k-question .qacts .tbtn { height: 24px; font-size: 11.5px; padding: 0 8px; box-shadow: inset 0 0 0 1px var(--hair); }
+.k-question .qacts .tbtn.pri { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
+.k-question .qhint { font-size: 11px; color: var(--ink-3); }
+.cpanel.qpanel { right: 12px; top: 12px; width: 340px; max-height: min(70vh, 640px); }
+.cpanel.ctree ~ .cpanel.qpanel { right: 324px; }
+.qtabs { display: inline-flex; gap: 3px; margin-left: 4px; }
+.qtabs button { font: 10.5px/18px var(--sys); color: var(--ink-2); border-radius: 4px; padding: 0 6px; box-shadow: inset 0 0 0 1px var(--hair); background: none; }
+.qtabs button.on { background: var(--ink-2); color: var(--surface); box-shadow: none; }
+.qrows { overflow: auto; display: flex; flex-direction: column; padding-bottom: 2px; }
+.qg { padding: 6px 8px 2px; font: 600 11px var(--sys); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.qg small { font-weight: 400; color: var(--ink-3); }
+.qrow { display: grid; grid-template-columns: 14px 1fr; column-gap: 6px; align-items: baseline; border: 0; background: none; text-align: left; padding: 3px 8px 3px 14px; border-radius: 5px; font-size: 12px; line-height: 1.45; color: var(--ink); cursor: pointer; }
+.qrow .glyph { align-self: start; margin-top: 2px; }
+.qrow:hover { background: var(--row); }
+.qrow.done .qt { color: var(--ink-3); }
+.qrow .qt { overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.qrow .qw { grid-column: 2; font: 10.5px var(--mono); color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qfoot { display: flex; gap: 4px; padding: 4px 4px 0; border-top: 1px solid var(--line); margin-top: 2px; }
+.qfoot .tbtn { height: 24px; font-size: 11.5px; padding: 0 8px; }
+.welcome { position: absolute; top: 12px; left: 50%; translate: -50% 0; z-index: 21; padding: 3px 3px 3px 12px; gap: 8px; font-size: 12.5px; animation: popin calc(var(--t) * 200ms) var(--out); }
+.crumbs ~ .welcome { top: 52px; }
+
+/* ---------- 导出（线框 08） ---------- */
+.dialog.xdlg { width: min(560px, calc(100vw - 24px)); }
+.xdlg .xf { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; flex-wrap: wrap; }
+.xdlg .xf.last { border-bottom: 0; }
+.xdlg .xf.dim > :not(.xl) { opacity: .45; }
+.xdlg .xf.xsecs { border-bottom: 0; padding-top: 0; }
+.xdlg .xl { width: 58px; flex: none; color: var(--ink-3); font-size: 11.5px; }
+.xdlg .seg { display: inline-flex; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--hair); overflow: hidden; }
+.xdlg .seg button { height: 26px; padding: 0 11px; font-size: 12px; color: var(--ink-2); background: none; border: 0; border-left: 1px solid var(--hair); }
+.xdlg .seg button:first-child { border-left: 0; }
+.xdlg .seg button.on { background: var(--accent); color: var(--accent-ink); }
+.xdlg .seg button:disabled { opacity: .45; cursor: default; }
+.xdlg .xnote { color: var(--ink-2); font-size: 12px; }
+.xdlg .xchips { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.xdlg .st-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ink); white-space: nowrap; }
+.dialog.xdlg input[type="checkbox"] { width: auto; margin: 0; padding: 0; box-shadow: none; background: none; accent-color: var(--accent); }
+
+/* 子白板只画标题（设置 Sub-board Preview） */
+.card.board .sbonly { position: absolute; inset: 34px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--ink-2); font-size: 15px; }
+.card.board .sbonly small { font: 11px var(--mono); color: var(--ink-3); }
+/* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock。先靠左，还放不下就把 dock 抬到底栏上面 */
+@media (max-width: 900px) { .bbar { left: 12px; right: auto; margin-inline: 0; } }
+@media (max-width: 640px) { .dock { bottom: 58px; } }

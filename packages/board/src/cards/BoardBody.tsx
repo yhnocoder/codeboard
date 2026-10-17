@@ -3,7 +3,7 @@
 // 只有子白板存盘（宿主推来新骨架）、框改大小、连进来的箭头变了才重新拼。地图档只剩灰块和 Section 色（styles.css）。
 import { createMemo, Show } from "solid-js";
 import type { BoardCard, Skeleton } from "@codeboard/core";
-import { flows, placeOf } from "../state/store";
+import { flows, placeOf, state } from "../state/store";
 import { dropTarget } from "../state/ui";
 import { skels, fitSkel, skelBox, LABEL_H } from "../state/subboards";
 import { linksInto } from "../actions/nav";
@@ -35,9 +35,11 @@ export function BoardBody(p: { card: BoardCard }) {
     return out;
   }, undefined, { equals: (a, b) => !!a && !!b && key(a) === key(b) });
   const hot = createMemo(() => { const d = dropTarget(); return d?.card === p.card.id ? d.sub : undefined; });
+  // 设置 Sub-board Preview = Title Only：框里只有名字和卡数
+  const titleOnly = () => state.host.settings?.subPreview === "title";
   const svg = createMemo(() => {
     const s = sk();
-    if (!s) return "";
+    if (!s || titleOnly()) return "";
     const w = pl().w, h = pl().h ?? 320;
     return skelSvg(s, p.card.id, w, h, joined(), node()?.label ?? "", hot());
   });
@@ -53,7 +55,9 @@ export function BoardBody(p: { card: BoardCard }) {
       <Show when={sk() === null}><div class="sbgone" data-drag>This board was deleted or can’t be read.</div></Show>
       {/* 地图档时浮在框上面的名字（字号按 --iz 放大） */}
       <div class="sbfar">{p.card.title || sk()?.name || ""}</div>
-      <svg class="skel" data-drag width={pl().w} height={pl().h ?? 320} innerHTML={svg()} />
+      <Show when={titleOnly() && sk()} fallback={<svg class="skel" data-drag width={pl().w} height={pl().h ?? 320} innerHTML={svg()} />}>
+        <div class="sbonly" data-drag><b>{p.card.title || sk()!.name}</b><small>{meta()}</small></div>
+      </Show>
     </>
   );
 }

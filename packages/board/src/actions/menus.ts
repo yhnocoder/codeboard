@@ -23,6 +23,7 @@ import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, setLegendOpen, toggleBack, toggleStart } from "./calls";
+import { askQuestion, askQuestionOnCard } from "./questions";
 import { LEGEND, legendName, type Link } from "@codeboard/core";
 
 /**
@@ -85,6 +86,8 @@ function lineItems(ls: LineSel): Item[] {
     { label: "Hide Lines", kbd: "H", run: () => hideLines(ls) },
     { label: hlAll ? "Remove Highlight" : "Highlight Lines", run: () => toggleHl(ls) },
     { label: "Add Sidenote", kbd: "S", run: () => openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) },
+    // 疑问（线框 06）：在第一行贴「?」并直接写问题
+    { label: "Ask a Question", run: () => askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) },
     { label: "New Card from Lines", run: () => cardFromLines(ls) },
     // 生成的代码 / 编译产物：钉在一次运行上，点线连回这一行（线框 02 三）
     { label: "Add Generated Code", sub: genItems({ card: ls.card, seg: ls.seg, line: ls.start }) },
@@ -206,6 +209,7 @@ export function cardMenu(id: string, x: number, y: number) {
   const edit: Item[] = [
     { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
     { label: "Add Sidenote", kbd: "S", run: () => (ls?.card === c.id ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) : openAddNote({ card: c.id })) },
+    { label: "Ask a Question", run: () => (ls?.card === c.id ? askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) : askQuestionOnCard(c.id)) },
     { label: "Add Generated Code", sub: genItems(ls?.card === c.id ? { card: c.id, seg: ls.seg, line: ls.start } : { card: c.id }) },
     ...(col ? [] : [lockItem]),
     ...(!col && (c.segments.length > 1 || c.mergedFrom) ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),

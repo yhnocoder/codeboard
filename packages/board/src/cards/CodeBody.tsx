@@ -9,6 +9,8 @@ import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, t
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
+import { shownIcon, stickerClick } from "../actions/questions";
+import { questionLine } from "@codeboard/core";
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -381,9 +383,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                 <span class="lstks" classList={{ dot: markRows().has(k.row) }} style={{ top: `${ys()[k.row].y}px` }}>
                   <For each={k.ids}>{(id) => (
                     <Show when={stickerById(id)}>{(st) => (
-                      <span class="stk" classList={{ sel: selSticker() === id }} data-sticker={id} data-tip={stickerLabel(st().icon)}
-                        onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, id); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); }}>
-                        <Glyph icon={st().icon} color={st().color} size={14} />
+                      <span class="stk" classList={{ sel: selSticker() === id, q: !!st().q, done: !!st().q?.done }} data-sticker={id} data-tip={st().q?.md ? questionLine(st().q!.md) : stickerLabel(st().icon)}
+                        onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, id); }} onClick={(e) => { e.stopPropagation(); stickerClick(id, e.currentTarget); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); }}>
+                        <Glyph icon={shownIcon(st()).icon} color={shownIcon(st()).color} size={14} />
                       </span>
                     )}</Show>
                   )}</For>

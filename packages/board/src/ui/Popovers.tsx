@@ -19,6 +19,8 @@ import { place, virtual } from "./place";
 import { ask, send } from "../host";
 import * as A from "../actions";
 import { MdStatic } from "./Md";
+import { Editable } from "./Editable";
+import { editing, setEditing } from "../state/ui";
 import { openMenu, type Item } from "./Menu";
 
 export function Popovers() {
@@ -77,6 +79,7 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "vals"}><ValsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vals" }>} /></Match>
         <Match when={k() === "names"}><NamesPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "names" }>} /></Match>
         <Match when={k() === "rpc"}><RpcPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "rpc" }>} /></Match>
+        <Match when={k() === "question"}><QuestionPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "question" }>} /></Match>
       </Switch>
     </div>
   );
@@ -99,6 +102,39 @@ function Code(p: { start: number; html: string[]; hl?: number; rows?: number[] }
     <div class="pcode"><div class="pc-in">
       <For each={p.html}>{(h, i) => <div class="pl" classList={{ hl: p.hl === no(i()), jump: i() > 0 && !!p.rows && no(i()) !== no(i() - 1) + 1 }}><span class="no">{no(i())}</span><span class="t" innerHTML={h || "​"} /></div>}</For>
     </div></div>
+  );
+}
+
+// ---------- 问题（线框 06） ----------
+
+function QuestionPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "question" }> }) {
+  const s = () => state.board.stickers.find((k) => k.id === p.pop.sticker);
+  createEffect(() => { if (!s()) closePop(p.inst.id); });
+  const q = () => s()?.q;
+  const where = () => { const at = s()?.at; return at?.kind === "line" ? ` · line ${at.line}` : ""; };
+  const answer = () => { const id = q()?.answer; const c = id ? cardById(id)?.card : undefined; return c && { id: c.id, title: cardTitle(c, state.board), kind: c.kind }; };
+  const on = () => editing()?.kind === "question" && editing()?.id === p.pop.sticker;
+  return (
+    <Show when={s()}>
+      <Head inst={p.inst} title={<><b>{q()?.done ? "Answered" : "Question"}</b>{where()}</>} />
+      <div class="qbody" onDblClick={() => setEditing({ kind: "question", id: p.pop.sticker })}>
+        <Editable class="qtext" kind="question" id={p.pop.sticker} value={q()?.md ?? ""} multiline md placeholder="What don't you understand here? Markdown and $math$ work"
+          onCommit={(v) => A.setQuestionText(p.pop.sticker, v)} />
+      </div>
+      <Show when={answer()}>{(a) => (
+        <div class="qans">Answered by {a().kind === "note" ? "Note" : "card"} <button class="tlink" onClick={() => { A.selectCard(a().id); A.revealCard(a().id); }}>“{a().title}”</button></div>
+      )}</Show>
+      <div class="qacts">
+        <Show when={!on()} fallback={<span class="qhint">{A.K.mod}↵ or click outside to save</span>}>
+          <button class="tbtn" onClick={() => setEditing({ kind: "question", id: p.pop.sticker })}>Edit</button>
+        </Show>
+        <span class="grow" />
+        <Show when={q()?.done} fallback={<button class="tbtn pri" onClick={() => A.setAnswered(p.pop.sticker, true)}>Mark Answered</button>}>
+          <button class="tbtn" onClick={() => A.setAnswered(p.pop.sticker, false)}>Reopen</button>
+        </Show>
+        <button class="tbtn" onClick={() => A.linkAnswer(p.pop.sticker)}>Link Answer…</button>
+      </div>
+    </Show>
   );
 }
 

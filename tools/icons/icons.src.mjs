@@ -66,6 +66,10 @@ export const ICONS = {
   sticker: [poly([[10, 2], [14, 6], [14, 14, R], [2, 14, R], [2, 2, R]], true) + poly([[10, 2], [10, 6, R], [14, 6]]) + "M6 11c1.2 1 2.8 1 4 0", "M5 7h2v2H5zM9 7h2v2H9z", "sticker"],
   clock: [circle(8, 8, 6) + "M8 5v3l2.5 1.5", "", "clock"],
   arrowR: ["M3 8h10M9 4l4 4-4 4", "", "arrow-right"],
+  // 疑问面板（线框 06）：圆圈里一个问号（circle-help），点是填色的小方块
+  question: [circle(8, 8, 6) + "M6.5 6.5a1.5 1.5 0 0 1 3 0c0 1-1.5 1.5-1.5 2.5", "M7 11h2v2H7z", "circle-help"],
+  // 导出（线框 08）：托盘上一个向上的箭头（share）
+  export: ["M8 2v8M5 5l3-3 3 3" + poly([[3, 8], [3, 14, R], [13, 14, R], [13, 8]]), "", "share"],
 };
 
 // Sticker built-ins (stickers/glyphs.tsx): white marks on a coloured disc, drawn on the same 16 grid and placed in the

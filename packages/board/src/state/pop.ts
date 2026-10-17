@@ -26,6 +26,8 @@ export type Pop =
   | { kind: "names"; data: NamesPop }
   /** RPC 箭头的属性：机制、消息名、一对多、消息卡、↩ back to（线框 03） */
   | { kind: "rpc"; link: string }
+  /** 「?」贴纸上的问题（线框 06） */
+  | { kind: "question"; sticker: string }
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 

@@ -47,7 +47,7 @@ let pingN = 0;
 export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 
 // 正在编辑的东西
-export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen"; id: string } | null;
+export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen" | "question"; id: string } | null;
 export const [editing, setEditing] = createSignal<Editing>(null);
 
 // 拖动中：吸附参考线、合并目标、落点行……

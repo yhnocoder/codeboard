@@ -22,6 +22,8 @@ import { MarkView } from "./cards/Card";
 import { look, traffic, setTraffic } from "./state/look";
 import { crumbs } from "./state/subboards";
 import { LegendPanel, CallTreePanel, RunPanel } from "./ui/CallPanels";
+import { QuestionsPanel, WelcomeHint } from "./ui/QuestionsPanel";
+import { ExportDialog } from "./ui/ExportDialog";
 
 export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
@@ -54,6 +56,9 @@ export function App() {
       <Show when={A.treeOpen()}><CallTreePanel /></Show>
       <Show when={A.legendOpen()}><LegendPanel /></Show>
       <Show when={A.runState()}><RunPanel /></Show>
+      {/* 疑问（线框 06）：Questions 面板、隔几天回来的提示 */}
+      <Show when={A.questionsOpen()}><QuestionsPanel /></Show>
+      <Show when={A.welcome() && !walk()}><WelcomeHint /></Show>
       <Show when={walk()}><WalkBar /></Show>
       <Show when={keysOpen()}><Keys /></Show>
       <Popovers />
@@ -62,6 +67,7 @@ export function App() {
       <Show when={paletteOpen()}><Palette /></Show>
       <SettingsLayer />
       <Show when={A.ghPicker()}><GitHubPicker /></Show>
+      <Show when={A.exportOpen()}><ExportDialog /></Show>
       <Toast />
       <MenuLayer />
       <DialogLayer />
@@ -123,7 +129,8 @@ function Toolbar() {
       { label: "Redo", kbd: `${A.K.shift}${A.K.mod}Z`, disabled: !canRedo(), run: () => redo() },
       null,
       { label: "Rename Board…", run: () => promptText("Rename Board", state.board.name).then((v) => v && mutate((b) => { b.name = v; })) },
-      { label: "Export as PNG…", run: () => A.exportPng() },
+      { label: "Export…", hint: "HTML snapshot, Markdown or PNG", run: () => A.openExport() },
+      { label: "Questions", checked: A.questionsOpen(), run: () => A.toggleQuestions() },
       null,
       // 运行时（线框 13）：跑一次入口，给 Call 箭头挂上 observed 证据和实参
       { label: "Capture Run…", hint: "Run a Python entry once and mark the calls it makes", run: () => A.captureRun() },
@@ -153,6 +160,7 @@ function Dock() {
         <span class="sep" />
       </Show>
       <button class="ib" aria-label="Call Tree" aria-pressed={A.treeOpen()} data-tip="Call Tree" onClick={() => A.setTreeOpen(!A.treeOpen())}><Icon name="layout" /></button>
+      <button class="ib" aria-label="Questions" aria-pressed={A.questionsOpen()} data-tip="Questions on All Boards" onClick={() => A.toggleQuestions()}><Icon name="question" /></button>
       <button class="ib" aria-label="Arrow Legend" aria-pressed={A.legendOpen()} data-tip="Arrow Legend" onClick={() => A.setLegendOpen(!A.legendOpen())}><Icon name="compact" /></button>
       <span class="sep" />
       <button class="ib" aria-label="Zoom Out" data-tip="Zoom Out" data-kbd={`${A.K.mod}−`} onClick={() => zoomAt(0.8)}><Icon name="minus" /></button>

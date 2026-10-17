@@ -28,7 +28,10 @@ export function onHost(m: HostToBoard) {
         setState("loaded", true);
 
         setBanner(true);
+        A.setWelcome(m.welcome ?? null);
+        A.setOtherQuestions(null);
       });
+      if (A.questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
       resetHistory();
       markSaved();
@@ -96,6 +99,7 @@ export function onHost(m: HostToBoard) {
       select({ cards: [f.host.id] });
       if (m.lines && m.seg) setLineSel({ card: m.card, seg: m.seg, start: m.lines[0], end: m.lines[1] });
       A.revealCard(m.card);
+      if (m.sticker) A.revealQuestion(m.sticker);
       break;
     }
     case "key": A.keyAction(m.action); break;
