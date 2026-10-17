@@ -11,18 +11,18 @@
  },
  {
   "name": "3-peek.png",
-  "status": "same",
-  "ratio": 0
+  "status": "changed",
+  "ratio": 0.0172
  },
  {
   "name": "4-sidenote.png",
-  "status": "same",
-  "ratio": 0
+  "status": "changed",
+  "ratio": 0.0332
  },
  {
   "name": "5-search.png",
-  "status": "same",
-  "ratio": 0
+  "status": "changed",
+  "ratio": 0.0203
  },
  {
   "name": "6-board.png",
@@ -42,6 +42,6 @@
  {
   "name": "7b-diagnostics.png",
   "status": "same",
-  "ratio": 0
+  "ratio": 0.0042
  }
 ]
