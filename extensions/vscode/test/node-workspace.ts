@@ -14,7 +14,7 @@ export type TestWorkspace = Workspace & {
   finds: number;
 };
 
-const CODE = /\.(py|pyi|cu|cuh|cc|cpp|cxx|c|h|hpp)$/;
+const CODE = /\.(py|pyi|cu|cuh|cc|cpp|cxx|c|h|hpp|rs)$/;
 const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "build", "dist", "__pycache__", ".mypy_cache", ".tox"]);
 
 export function nodeWorkspace(root = WS): TestWorkspace {
@@ -56,12 +56,12 @@ export function nodeWorkspace(root = WS): TestWorkspace {
       onDidChangeGit: quiet.event,
     },
     storage: { dir: () => "/tmp/codeboard-perf/storage", globalDir: () => "/tmp/codeboard-perf/global", get: () => undefined, set: async () => {} },
-    language: { definitions: async () => [], hover: async () => [] },
+    language: { definitions: async () => [], hover: async () => [], implementations: async () => [] },
     settings: { get: () => undefined, set: async () => {}, onDidChange: quiet.event },
     editor: { active: () => undefined, open: async () => {}, openVersion: async () => {} },
     ui: {
       info: async () => undefined, warn: async () => undefined, error: () => {}, pick: async () => undefined, input: async () => undefined,
-      openDialog: async () => undefined, saveDialog: async () => undefined, openUrl: async () => {}, openFolder: async () => {}, revealInOS: async () => {}, copy: async () => {},
+      openDialog: async () => undefined, saveDialog: async () => undefined, openUrl: async () => {}, openFolder: async () => {}, revealInOS: async () => {}, copy: async () => {}, clipboard: async () => "",
     },
     githubToken: async () => undefined,
     log: () => {},

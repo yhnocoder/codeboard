@@ -134,18 +134,8 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       set: async (k, v) => { await ctx.workspaceState.update(k, v); },
     },
     language: {
-      definitions: async (abs, line, col) => {
-        const r = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
-          "vscode.executeDefinitionProvider", vscode.Uri.file(abs), new vscode.Position(line - 1, col),
-        );
-        const out: { abs: string; line: number; col: number }[] = [];
-        for (const d of r ?? []) {
-          const uri = "targetUri" in d ? d.targetUri : d.uri;
-          const range = "targetUri" in d ? (d.targetSelectionRange ?? d.targetRange) : d.range;
-          if (uri.scheme === "file") out.push({ abs: uri.fsPath, line: range.start.line + 1, col: range.start.character });
-        }
-        return out;
-      },
+      definitions: (abs, line, col) => locations("vscode.executeDefinitionProvider", abs, line, col),
+      implementations: (abs, line, col) => locations("vscode.executeImplementationProvider", abs, line, col),
       hover: async (abs, line, col) => {
         const hs = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", vscode.Uri.file(abs), new vscode.Position(line - 1, col));
         const parts: string[] = [];
@@ -195,6 +185,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       openFolder: async (abs) => void (await vscode.env.openExternal(vscode.Uri.file(abs))),
       revealInOS: async (abs) => void (await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs))),
       copy: async (text) => vscode.env.clipboard.writeText(text),
+      clipboard: async () => vscode.env.clipboard.readText(),
     },
     ai: {
       ask: copilotAsk,
@@ -219,4 +210,16 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       hasExtension: (id) => !!vscode.extensions.getExtension(id),
     },
   };
+}
+
+/** 定义 / 实现：只要磁盘文件里的位置 */
+async function locations(cmd: string, abs: string, line: number, col: number): Promise<{ abs: string; line: number; col: number }[]> {
+  const r = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(cmd, vscode.Uri.file(abs), new vscode.Position(line - 1, col));
+  const out: { abs: string; line: number; col: number }[] = [];
+  for (const d of r ?? []) {
+    const uri = "targetUri" in d ? d.targetUri : d.uri;
+    const range = "targetUri" in d ? (d.targetSelectionRange ?? d.targetRange) : d.range;
+    if (uri.scheme === "file") out.push({ abs: uri.fsPath, line: range.start.line + 1, col: range.start.character });
+  }
+  return out;
 }

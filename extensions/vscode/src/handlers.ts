@@ -13,7 +13,7 @@ import { log } from "./log";
 import { copyDiagnostics, openStickerDir } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, expand, peek } from "./resolve";
-import { search, searchPick, entryPoints } from "./search";
+import { search, searchPick, entryPoints, searchName, genSource } from "./search";
 import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
@@ -101,6 +101,8 @@ export function makeHandler(panels: BoardHost): Handler {
     deleteEverywhere: async (p, m) => (await store.deleteEverywhere(m.card, p.id)).length,
     confirm: async (_p, m) => (await workspace().ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
     pickFile: () => pickImage(),
+    searchName: (_p, m) => searchName(m.name),
+    genSource: (_p, m) => genSource(m.from),
     complete: (p, m) => complete(p, m.before, m.after),
     // ---------- 子白板 ----------
     skeletons: async (_p, m) => {

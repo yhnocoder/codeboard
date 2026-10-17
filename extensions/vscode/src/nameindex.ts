@@ -13,7 +13,7 @@ export type IndexEntry = { name: string; qual: string; kind: Sym["kind"]; abs: s
 const MAX_FILES = 500_000; // 只防意外（几十万个代码文件的仓库）
 const MAX_TEXT = 2_000_000; // 更大的文件（生成的代码）不分析
 const PARALLEL = 16; // 按名字查时同时读几个文件
-const CODE = /\.(py|pyi|cu|cuh|cc|cpp|cxx|c|h|hpp)$/i;
+const CODE = /\.(py|pyi|cu|cuh|cc|cpp|cxx|c|h|hpp|rs)$/i;
 const SKIP = /[\\/](node_modules|\.git|\.venv|venv|build|dist|__pycache__|\.mypy_cache|\.tox)[\\/]/;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -94,7 +94,8 @@ async function indexFile(abs: string, text?: string | null) {
   }
   drop(abs);
   todo.delete(abs);
-  sigs.delete(abs);
+  // 分析过的文件也留着单词位图：按词找文件（grepWord）时不用再读一遍
+  if (text !== null && text.length < MAX_TEXT) sigs.set(abs, wordSig(text)); else sigs.delete(abs);
   if (!order.has(abs)) order.set(abs, seq++);
   byFile.set(abs, ents);
   for (const e of ents) (byName.get(e.name) ?? byName.set(e.name, []).get(e.name)!).push(e);
@@ -153,6 +154,27 @@ export async function lookupName(name: string): Promise<IndexEntry[]> {
   }
   if (!wanted) startNameIndex(1000); // 用到了：剩下的也在后台建上
   return sorted(byName.get(name) ?? []);
+}
+
+/**
+ * 文本里有这个词的代码文件和它们的文本（跨语言找注册、宏定义、按名字搜用）。先看单词位图（会误报、不会漏报），再读文件确认；
+ * 没读过的文件读一次、记下位图。ext = 只要这些扩展名
+ */
+export async function grepWord(word: string, ext?: RegExp): Promise<{ abs: string; text: string }[]> {
+  await list();
+  const g = gen;
+  const ident = IDENT.test(word);
+  const files = [...order.keys()].filter((f) => (!ext || ext.test(f)) && (!ident || !sigs.has(f) || hasWord(sigs.get(f)!, word)));
+  const out: { abs: string; text: string }[] = [];
+  for (let i = 0; i < files.length && g === gen; i += PARALLEL) {
+    const texts = await Promise.all(files.slice(i, i + PARALLEL).map(async (f) => [f, await readText(f, false)] as const));
+    for (const [f, t] of texts) {
+      if (t === null || t.length >= MAX_TEXT) continue;
+      if (!sigs.has(f)) sigs.set(f, wordSig(t));
+      if (t.includes(word)) out.push({ abs: f, text: t });
+    }
+  }
+  return out;
 }
 
 /** 所有条目（⌘K）：等整个索引建完。名字按第一次出现的位置排（文件列表顺序 + 文件里的顺序） */

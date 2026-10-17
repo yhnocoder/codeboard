@@ -3,7 +3,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";
-import type { CodeCard, ExpandResult, PeekDef, Segment } from "@codeboard/core";
+import type { CodeCard, ExpandPick, ExpandResult, PeekDef, Segment } from "@codeboard/core";
 import { startAnalysis, analysisOf, segAnalysis } from "../src/analysis";
 import { clipAnalysis } from "@codeboard/core/analysis";
 import { cardForFileSym } from "../src/cards";
@@ -11,7 +11,8 @@ import { callVars, expand, forgetLspSeen, peek } from "../src/resolve";
 import { viewsFor } from "../src/views";
 import { forgetDefs } from "../src/defcache";
 import { prefetchCall, warmBoard } from "../src/prefetch";
-import { useWorkspace } from "../src/ws";
+import { langOf, useWorkspace } from "../src/ws";
+import { searchName } from "../src/search";
 import { allNames, lookupName, nameIndexReady, resetIndex, startNameIndex, watchNameIndex, type IndexEntry } from "../src/nameindex";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { emptyBoard, skeletonOf, type BoardToHost, type Camera, type Crumb, type HostToBoard, type WalkHop } from "@codeboard/core";
@@ -285,6 +286,97 @@ void (async () => {
     const ox = treeChildren(m2, ["g1"]).find((n) => n.kind === "board" && n.id === "bX")!;
     check(treeChildren(m2, [], ox).some((n) => n.kind === "board" && n.id === "bS"), "Sidebar: a board can appear under several parents");
     fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  // 接上断掉的调用链、跨语言（线框 01、02）：test/fixtures/crosslang 里的小仓库（DeepEP v1 / 新版 JIT、torch.ops、Triton、TileLang、PyO3、动态分发）
+  {
+    const FIX = fs.mkdtempSync("/tmp/codeboard-cross-");
+    fs.cpSync(path.join(REPO, "extensions/vscode/test/fixtures/crosslang"), FIX, { recursive: true });
+    const W2 = nodeWorkspace(FIX);
+    useWorkspace(W2);
+    resetIndex();
+    const at = async (rel: string, qual: string) => {
+      const abs = path.join(FIX, rel);
+      const sym = analysisOf(langOf(abs), fs.readFileSync(abs, "utf8")).symbols.find((s) => s.qual === qual)!;
+      const c = (await cardForFileSym(abs, sym))!.card as CodeCard;
+      return c.segments[0];
+    };
+    const click = async (seg: Segment, re: RegExp, name: string, pick?: ExpandPick) => {
+      const line = lineOf(seg, re);
+      return expand({ seg, line, col: seg.text[line - seg.start].indexOf(name), name, pick });
+    };
+    const qualOf = (r: ExpandResult) => ("card" in r ? r.card.segments[0].symbol?.qual : undefined);
+    const vals = (r: ExpandResult) => ("card" in r ? (r.mark?.vals ?? []).map((v) => `${v.name}=${v.value}`).join(" ") : "");
+
+    // pybind：Buffer.dispatch → Buffer::intranode_dispatch
+    const buf = await at("deep_ep/buffer.py", "Buffer.dispatch");
+    const r1 = await click(buf, /intranode_dispatch\(/, "intranode_dispatch");
+    check(qualOf(r1) === "deep_ep::Buffer::intranode_dispatch" && "card" in r1 && r1.mark?.bound === "pybind · deep_ep.cpp .def", "pybind: Python call into the C++ method registered with .def", "card" in r1 ? r1.mark : r1);
+    // launch macro：SWITCH_RANKS(DISPATCH_LAUNCH_CASE) → dispatch<8, 768, 8192>
+    const host = await at("csrc/kernels/intranode.cu", "deep_ep::intranode::dispatch");
+    const hostSeg = host.text.some((l) => /SWITCH_RANKS\(DISPATCH/.test(l)) ? host : await (async () => {
+      const abs = path.join(FIX, "csrc/kernels/intranode.cu");
+      const syms = analysisOf("cuda-cpp", fs.readFileSync(abs, "utf8")).symbols.filter((s) => s.qual === "deep_ep::intranode::dispatch");
+      return ((await cardForFileSym(abs, syms[syms.length - 1]))!.card as CodeCard).segments[0];
+    })();
+    const r2 = await click(hostSeg, /SWITCH_RANKS\(DISPATCH/, "SWITCH_RANKS");
+    const k2 = "card" in r2 ? r2.mark?.vals?.[0] : undefined;
+    check("card" in r2 && r2.card.segments[0].text.some((l) => /__global__/.test(l)) && r2.mark?.bound === "launch macro · SWITCH_RANKS" && vals(r2) === "kNumRanks=8 kNumThreads=768 kNumTMABytesPerWarp=8192"
+      && JSON.stringify(k2?.opts) === '["2","4","8"]' && k2?.from === "SWITCH_RANKS(num_ranks)" && r2.title === "dispatch<8, 768, 8192>", "Launch macro: SWITCH_RANKS(CASE) → __global__ kernel with template values and the rank picker", "card" in r2 ? { mark: r2.mark, title: r2.title } : r2);
+    // CUDA <<<>>>
+    const add = await at("csrc/kernels/intranode.cu", "deep_ep::intranode::add");
+    const r3 = await click(add, /add_kernel<kThreads><<</, "add_kernel");
+    check(qualOf(r3) === "deep_ep::intranode::add_kernel" && "card" in r3 && r3.mark?.bound === "kernel<<<…>>>" && vals(r3) === "kBlock=256", "CUDA <<<>>> launch: kernel card with its template value", "card" in r3 ? r3.mark : r3);
+    // JIT 编译（DeepEP 新版）：两个分支，第一个选中，另一个是备选
+    const jit = await at("csrc/jit/dispatch.hpp", "deep_ep::launch_dispatch");
+    const r4 = await click(jit, /jit->compile/, "compile");
+    check(qualOf(r4) === "deep_ep::ep::dispatch_impl" && "card" in r4 && r4.mark?.bound === "JIT compile · dispatch.cuh" && vals(r4) === "kNumSMs=num_sms kNumTokens=num_tokens"
+      && r4.mark?.alts?.length === 1 && r4.mark.alts[0].qual === "deep_ep::ep::hybrid_dispatch_impl", "JIT compile: the kernel the format string names, the other branch as an alternative", "card" in r4 ? r4.mark : r4);
+    // torch.ops → TORCH_LIBRARY 的 m.impl
+    const norm = await at("ops/norm.py", "rms_norm");
+    const r5 = await click(norm, /torch\.ops\.my_ext/, "rms_norm");
+    check(qualOf(r5) === "rms_norm_cuda" && "card" in r5 && r5.mark?.bound === "torch.ops · ext.cc m.impl", "torch.ops: the C++ function registered with TORCH_LIBRARY m.impl", "card" in r5 ? r5.mark : r5);
+    // Triton：kernel[grid] → @triton.jit，constexpr、autotune 的 config
+    const inv = await at("ops/kern.py", "invoke_fused_moe_kernel");
+    const r6 = await click(inv, /fused_moe_kernel\[grid\]/, "fused_moe_kernel");
+    check(qualOf(r6) === "fused_moe_kernel" && "card" in r6 && r6.mark?.bound === "kernel[grid]" && vals(r6) === "BLOCK_K=32 BLOCK_M=64 BLOCK_N=128 stages=3 warps=4" && r6.mark?.alts?.length === 2
+      && r6.mark.alts[0].label === "config 2 · BLOCK_M=128 BLOCK_N=64 stages=4 warps=8", "Triton: kernel[grid] → @triton.jit kernel, constexpr values, other autotune configs as alternatives", "card" in r6 ? r6.mark : r6);
+    // TileLang：工厂 → prim_func
+    const mla = await at("ops/mla.py", "run_mla_decode");
+    const r7 = await click(mla, /flashmla_decode\(heads/, "flashmla_decode");
+    check(qualOf(r7) === "flashmla_decode.main" && "card" in r7 && r7.mark?.bound === "tilelang.jit factory" && vals(r7) === "heads=heads block_N=64 num_stages=2" && r7.title === "flashmla_decode → main", "TileLang: the factory call goes straight to the prim_func; factory arguments as values", "card" in r7 ? { mark: r7.mark, title: r7.title } : r7);
+    // PyO3
+    const tok = await at("ops/tok.py", "count");
+    const r8 = await click(tok, /fasttok\.tokenize/, "tokenize");
+    check(qualOf(r8) === "tokenize" && "card" in r8 && r8.card.segments[0].lang === "rust" && r8.mark?.bound === "PyO3 · lib.rs #[pyfunction]", "PyO3: Python call into the #[pyfunction] in Rust", "card" in r8 ? r8.mark : r8);
+    // 解析不到：回 none 带名字（白板给 Search in All Languages / Draw Manually）
+    const lay = await at("vllm/layer.py", "Attention.forward");
+    const r9 = await expand({ seg: { ...lay, text: lay.text.map((l) => l.replace("unified_attention", "missing_op")) }, line: lineOf(lay, /unified_attention/), col: lay.text[lineOf(lay, /unified_attention/) - lay.start].indexOf("unified_attention"), name: "missing_op" });
+    check("none" in r9 && r9.name === "missing_op", "Unresolvable call: none with the name to search", r9);
+    const hits = await searchName("unified_attention");
+    check(hits.length === 2 && hits[0].def && hits[0].lang === "py" && hits[0].qual === "unified_attention" && !hits[1].def && /direct_register_custom_op\("unified_attention"/.test(hits[1].label), "Search in all languages: the def and the string registration", hits);
+    const hits2 = await searchName("rms_norm");
+    check(hits2.some((h) => h.lang === "py" && h.def) && hits2.some((h) => h.lang === "cpp" && !h.def && /m\.impl\("rms_norm"/.test(h.label)), "Search in all languages: grouped py before cpp, registrations included", hits2.map((h) => [h.lang, h.def, h.label]));
+
+    // 动态分发：定义 = 基类的方法，实现 = 两个子类（语言服务用桩代替 Pylance）
+    const baseAbs = path.join(FIX, "vllm/base.py"), implAbs = path.join(FIX, "vllm/impls.py");
+    W2.language.definitions = async () => [{ abs: baseAbs, line: 2, col: 8 }];
+    W2.language.implementations = async (abs, line) => (abs === baseAbs && line === 2 ? [{ abs: implAbs, line: 5, col: 8 }, { abs: implAbs, line: 10, col: 8 }] : []);
+    forgetDefs();
+    const r10 = await click(lay, /self\.impl\.forward/, "forward");
+    check("impls" in r10 && r10.base === "AttentionImpl.forward" && r10.impls.map((i) => i.qual).join(",") === "FlashAttentionImpl.forward,TritonAttentionImpl.forward", "Dynamic dispatch: all implementations (abstract base left out)", r10);
+    const pk = await click(lay, /self\.impl\.forward/, "forward", "impls" in r10 ? { path: r10.impls[1].path, line: r10.impls[1].line, qual: r10.impls[1].qual } : undefined);
+    check(qualOf(pk) === "TritonAttentionImpl.forward", "Dynamic dispatch: picking one expands it", pk);
+    const pv = await peek({ seg: lay, line: lineOf(lay, /self\.impl\.forward/), col: lay.text[lineOf(lay, /self\.impl\.forward/) - lay.start].indexOf("forward"), word: "self.impl.forward" }) as PeekDef;
+    check(pv?.dispatch?.n === 2 && pv.dispatch.base === "AttentionImpl" && pv.dispatch.abstract, "Hover: Dynamic dispatch · 2 implementations", pv?.dispatch);
+    // 没有覆盖的普通方法：照常展开
+    W2.language.implementations = async () => [];
+    forgetDefs();
+    const r11 = await click(lay, /self\.impl\.forward/, "forward");
+    check(qualOf(r11) === "AttentionImpl.forward", "No overrides: a plain method expands as before", r11);
+    W2.language.definitions = async () => []; W2.language.implementations = async () => [];
+    forgetDefs();
+    fs.rmSync(FIX, { recursive: true, force: true });
   }
 
   console.log(failed ? `${failed} failed` : "All passed");
