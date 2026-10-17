@@ -15,3 +15,4 @@ export * from "./settings";
 export * from "./web";
 export * from "../interact";
 export * from "./stickers";
+export * from "./subboards";

@@ -6,6 +6,7 @@ import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
 import { cam, setViewport, lod, camMoving } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";
+import { trackSkeletons } from "../state/subboards";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
 import { CanvasStickers } from "../stickers/Picker";
@@ -25,6 +26,7 @@ export function Canvas() {
   trackOffscreen();
   trackCardLod();
   trackLinks();
+  trackSkeletons();
   // 停下以后一两帧去掉 will-change 的提示（styles.css 的 .world.settle）：位图缩放过的内容按新比例重新清晰栅格化
   const [settle, setSettle] = createSignal(false);
   createEffect(on(camMoving, (m) => {

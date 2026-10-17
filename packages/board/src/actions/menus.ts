@@ -20,6 +20,7 @@ import { openAddNote, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel } from "./shared";
+import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
 
 /**
  * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
@@ -103,8 +104,19 @@ export function cardMenu(id: string, x: number, y: number) {
     arrangeItem(() => [host.id]),
     null,
     { label: "Move to New Section", run: () => moveToNewSection() },
+    turnItem(),
     ...deleteItems(host.id),
   ];
+  // 子白板框：打开、移除框（白板还在侧栏里）、删掉那块白板
+  if (c.kind === "board") return openMenu([
+    { label: "Open", kbd: `${K.mod}↵`, run: () => enterFrame(id) },
+    { label: "Edit", sub: [lockItem] },
+    arrangeItem(() => [host.id]),
+    null,
+    { label: "Move to New Section", run: () => moveToNewSection() },
+    { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
+    { label: "Delete Board…", danger: true, run: () => void deleteFrameBoard(id) },
+  ], x, y);
   if (c.kind === "note") return openMenu([
     { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
     { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
@@ -193,11 +205,14 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Call Graph", sub: flow, disabled: node || canWalk ? false : "Not in a call graph" },
     ...(col ? [] : [arrangeItem(() => [host.id])]),
     null,
-    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item]),
+    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, turnItem()]),
     ...deleteItems(host.id),
   ];
   openMenu(items, x, y);
 }
+
+/** 选中的卡变成一块子白板（线框 05 ④） */
+const turnItem = (): Item => ({ label: "Turn into Board…", kbd: `${K.mod}${K.shift}B`, run: () => void turnIntoBoard() });
 
 function multiItems(): Item[] {
   const cs = selCards();
@@ -211,6 +226,7 @@ function multiItems(): Item[] {
     ...(canLinkList(cs) ? [{ label: "Merge into Link List", run: () => mergeIntoLinkList(sel.cards) } as Item] : []),
     { label: "Connect with Arrow", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addLink({ card: a.id }, { card: b.id }); } },
     { label: "Move to New Section", run: () => moveToNewSection() },
+    turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock(sel.cards, sel.sections) },
     arrangeItem(() => [...sel.cards]),
     null,
@@ -234,6 +250,7 @@ export function canvasMenu(x: number, y: number) {
     ] as Item[] : [
       { label: "Paste", kbd: `${K.mod}V`, run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) } as Item,
     ]),
+    { label: "Insert Board", sub: insertable().length ? insertable().map((m) => ({ label: m.name, hint: m.why ? `Can’t: ${m.why}` : undefined, run: () => insertBoard(m.id, w) })) : [{ label: "No other boards yet", disabled: "Create another board first" }] },
     null,
     { label: "Select All", kbd: `${K.mod}A`, run: selectAll },
     { label: "Fit to Window", kbd: `${K.shift}1`, run: fitAll },

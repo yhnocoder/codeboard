@@ -3,7 +3,7 @@ import { send } from "../host";
 import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
   cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
-  type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type Graph, type LinkSide,
+  type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type BoardCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
@@ -17,6 +17,7 @@ import { fileHue } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
+import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
 import * as act from "../actions";
 import { offscreen } from "../state/cull";
@@ -91,6 +92,7 @@ export function CardView(p: { card: Card }) {
           <Match when={c().kind === "image"}><ImageView card={c() as ImageCard} /></Match>
           <Match when={c().kind === "web" || c().kind === "links"}>{c().kind === "web" ? <WebBody card={c() as WebCard} /> : <LinksBody card={c() as any} />}</Match>
           <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
+          <Match when={c().kind === "board"}><BoardBody card={c() as BoardCard} /></Match>
         </Switch>
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
@@ -106,7 +108,7 @@ export function CardView(p: { card: Card }) {
         {/* 地图档只留下面这些：.cface 整块藏起来 */}
         <BoundStickers card={c().id} />
         {/* 地图档的名字空闲时就建好、藏着（styles.css），切到地图档只是显示出来 */}
-        <Show when={labelReady() || lodOf(c().id) === "map"}><MapLabel card={c()} /></Show>
+        <Show when={(labelReady() || lodOf(c().id) === "map") && c().kind !== "board"}><MapLabel card={c()} /></Show>
       </div>
     </Show>
   );

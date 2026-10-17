@@ -1050,3 +1050,51 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card:hover .chead .ib.cpy, .card.sel .chead .ib.cpy, .chead .ib.cpy:focus-visible { opacity: 1; }
 .cbody.wrap .src.ded .l { text-indent: 0; } /* 自动换行时不藏缩进：换行的续行会对不齐 */
 .cbody.wrap .dedm { display: none; }
+
+/* 子白板框（线框 05，风格 C：带名字的骨架）。骨架是一张 SVG（cards/BoardBody.tsx），颜色都在这里按主题取 */
+.card.board { border-radius: calc(var(--r-card) + 4px); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 45%, transparent), var(--sh-card); }
+.card.board.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
+.card.board.drop-hot { box-shadow: 0 0 0 2px var(--k-fn), var(--sh-card); }
+.sbhead { position: relative; z-index: 2; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; flex: none; font: 700 12.5px/1 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; cursor: grab; }
+.sbhead svg { flex: none; color: var(--ink-2); }
+.sbname { overflow: hidden; text-overflow: ellipsis; }
+.sbmeta { font: 400 11px/1 var(--sys); color: var(--ink-2); border: 1px solid var(--hair); border-radius: 4px; padding: 2px 5px; flex: none; }
+.sbgone { position: relative; z-index: 2; padding: 6px 12px; font: 12px/1.4 var(--sys); color: var(--ink-3); }
+.skel { position: absolute; left: 0; top: 0; overflow: visible; cursor: grab; }
+.skel .sk-sec { fill: color-mix(in srgb, var(--ink) 4%, transparent); stroke: color-mix(in srgb, var(--ink-3) 50%, transparent); stroke-width: .8; stroke-dasharray: 3 2; }
+.skel .sk-sec.c-sand { fill: var(--s-sand); } .skel .sk-sec.c-blue { fill: var(--s-blue); } .skel .sk-sec.c-green { fill: var(--s-green); } .skel .sk-sec.c-pink { fill: var(--s-pink); }
+.skel .sk-box { fill: var(--surface); stroke: color-mix(in srgb, var(--ink) 30%, transparent); stroke-width: 1; }
+.skel .k-note .sk-box { fill: color-mix(in srgb, var(--surface) 82%, #e9c75a); }
+.skel .k-board .sk-box { stroke-width: 1.6; }
+.skel .k-more .sk-box { fill: var(--surface); stroke-dasharray: 3 2; }
+.skel .sk-bar { fill: var(--bar); }
+.skel .sk-t { font: 500 10.5px/1 var(--mono); fill: var(--ink); pointer-events: none; }
+.skel .sk-more { font-family: var(--sys); fill: var(--ink-2); }
+.skel .sk-st { font: 600 9px/1 var(--sys); fill: var(--ink-2); }
+.skel .sk-mk { fill: var(--row); } .skel .sk-mk.joined { fill: var(--accent); }
+.skel .sk-mt { font: 700 9px/1 var(--mono); fill: var(--ink-2); text-anchor: middle; }
+.skel .sk-mk.joined + .sk-mt { fill: var(--accent-ink); }
+.skel .sk-l { fill: none; stroke: color-mix(in srgb, var(--ink-3) 80%, transparent); stroke-width: 1; stroke-dasharray: 3 2; }
+.skel .sk-l.call { stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-dasharray: none; stroke-width: 1.2; }
+.skel .sk-c.hot .sk-box { stroke: var(--k-fn); stroke-width: 2.2; }
+.board.connecting .skel .sk-c:hover .sk-box, .board .skel .sk-c:hover .sk-box { stroke: color-mix(in srgb, var(--accent) 80%, transparent); }
+.sbentry { fill: var(--surface); stroke: var(--edge, var(--ink-2)); stroke-width: 1.6; }
+.sbentry.lost { stroke: var(--lk-lost, #d64545); }
+/* 地图档（拉远）：只剩灰块、形状和 Section 色；名字浮在框上面，字号按 --iz 放大 */
+/* 地图档的名字：框里左上角一块底色（卡本身裁掉框外的东西，放框上面看不见） */
+.sbfar { position: absolute; left: 0; top: 0; max-width: 100%; box-sizing: border-box; visibility: hidden; padding: calc(2px * var(--iz, 1)) calc(6px * var(--iz, 1)); border-radius: 0 0 calc(4px * var(--iz, 1)) 0;
+  background: color-mix(in srgb, var(--surface) 88%, transparent); font: 700 calc(12px * var(--iz, 1))/1.25 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 1; --iz: inherit; }
+.card.board.lo-map > .cface { clip-path: none; --iz: inherit; }
+.card.board.lo-map .sbfar { visibility: visible; }
+.card.board.lo-map .sbhead > :not(.step), .card.board.lo-map .sbgone { visibility: hidden; }
+.card.board.lo-map .skel .sk-t, .card.board.lo-map .skel .sk-l, .card.board.lo-map .skel .sk-mk, .card.board.lo-map .skel .sk-bars { display: none; }
+.card.board.lo-map .skel .sk-box { fill: color-mix(in srgb, var(--ink) 18%, transparent); stroke: none; }
+.card.board.lo-map .skel .sk-sec { stroke: none; }
+.card.board.lo-map .skel .s-sand .sk-box { fill: color-mix(in srgb, #ceaa6e 55%, transparent); } .card.board.lo-map .skel .s-blue .sk-box { fill: color-mix(in srgb, #6091cd 45%, transparent); }
+.card.board.lo-map .skel .s-green .sk-box { fill: color-mix(in srgb, #6ea55f 45%, transparent); } .card.board.lo-map .skel .s-pink .sk-box { fill: color-mix(in srgb, #d77891 45%, transparent); }
+/* 面包屑：进入子白板后在左上角，点上一级回去 */
+.crumbs { position: absolute; top: 12px; left: 16px; z-index: 21; display: flex; align-items: center; gap: 2px; padding: 3px 6px; font: 12.5px/1 var(--sys); animation: popin calc(var(--t) * 200ms) var(--out); }
+.crumbs .crumb { border: 0; background: none; color: var(--ink-2); padding: 4px 6px; border-radius: 5px; font: inherit; cursor: pointer; }
+.crumbs .crumb:hover { background: var(--row); color: var(--ink); }
+.crumbs .crumb.cur { color: var(--ink); font-weight: 600; cursor: default; }
+.crumbs .csep { color: var(--ink-3); }

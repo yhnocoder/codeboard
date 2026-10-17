@@ -53,7 +53,7 @@ export const [editing, setEditing] = createSignal<Editing>(null);
 // 拖动中：吸附参考线、合并目标、落点行……
 export const [guides, setGuides] = createSignal<Guide[]>([]);
 export const [sizeHint, setSizeHint] = createSignal<{ x: number; y: number; text: string } | null>(null);
-export const [dropTarget, setDropTarget] = createSignal<{ kind: "merge" | "line" | "card" | "cand"; card: string; seg?: string; line?: number; armed?: boolean; cands?: string[] } | null>(null);
+export const [dropTarget, setDropTarget] = createSignal<{ kind: "merge" | "line" | "card" | "cand"; card: string; seg?: string; line?: number; sub?: string; armed?: boolean; cands?: string[] } | null>(null);
 export const [dragging, setDragging] = createSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = createSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = createSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);

@@ -14,6 +14,7 @@ import { openPop } from "../state/pop";
 import { send, ask } from "../host";
 import { headPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
 import { jumpTo } from "./nav";
+import { walkBack, setWalkBack, walkIntoFrame, walkOut } from "./subboards";
 
 // ---------- 点调用展开 ----------
 
@@ -273,24 +274,30 @@ export function openMarkPicker(cardId: string, el?: Element) {
 
 // ---------- 讲解（Walkthrough）：从选中的卡出发，先沿 Call 箭头走到底，再走普通箭头 ----------
 
-export function startWalk(id?: string) {
+export function startWalk(id?: string, o: { at?: number; single?: boolean } = {}) {
   const start = id ?? sel.cards[0] ?? flows().graphs[0]?.roots[0];
   if (!start) return toast("No call graph on this board yet. Click a call in a code card to start one.");
   const order = walkOrder(state.board, start);
-  if (order.length < 2) return toast("Nothing to walk through from this card. Link it to other cards first.");
+  // 从父白板讲进来的（single）：只有一张卡也讲，讲完回去
+  if (order.length < 2 && !o.single) return toast("Nothing to walk through from this card. Link it to other cards first.");
   const before = { ...camTarget() };
   // 折叠的卡讲解时临时展开（只是显示状态）
   const expanded = order.filter((cid) => placeOf(cid).collapsed);
   setShowCollapsed(true);
-  setWalk({ root: start, order, i: 0, before, expanded });
+  const i = Math.max(0, Math.min(order.length - 1, o.at ?? 0));
+  setWalk({ root: start, order, i, before, expanded });
   clearSel();
-  requestAnimationFrame(() => walkTo(0));
+  requestAnimationFrame(() => walkTo(i));
 }
 export function walkTo(i: number) {
   const w = walk();
   if (!w) return;
+  // 子白板里的讲解（从父白板讲进来的）走出两头：回父白板接着讲
+  if (walkBack() && (i >= w.order.length || i < 0)) return walkOut(i < 0 ? -1 : 1);
   i = Math.max(0, Math.min(w.order.length - 1, i));
   setWalk({ ...w, i });
+  // 走到子白板框：镜头推进去，在子白板里接着讲，讲完回来
+  if (cardById(w.order[i])?.card.kind === "board") return walkIntoFrame(w.order[i], i);
   const r = hostRect(w.order[i]);
   if (!r) return;
   const f = fitTop({ x: r.x - 40, y: r.y - 40, w: r.w + 80, h: r.h + 80 }, 1.15);
@@ -300,6 +307,7 @@ export function exitWalk() {
   const w = walk();
   if (!w) return;
   setWalk(null);
+  setWalkBack(null);
   setShowCollapsed(false);
   camTo(w.before.x, w.before.y, w.before.z, true);
 }

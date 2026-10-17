@@ -15,6 +15,7 @@ export const currentLineSel = () => lineSel();
 
 
 /** 宿主转来的快捷键（VS Code 会先拦下这些键） */
+import { turnIntoBoard } from "./subboards";
 export function keyAction(a: KeyAction) {
   switch (a) {
     case "search": return setPaletteOpen({ mode: "all" });
@@ -26,6 +27,7 @@ export function keyAction(a: KeyAction) {
     case "lock": return toggleLock(sel.cards.slice(), sel.sections.slice());
     case "settings": return toggleSettings();
     case "openSettings": return openSettings();
+    case "turnIntoBoard": return void turnIntoBoard();
   }
 }
 

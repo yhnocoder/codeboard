@@ -1,10 +1,11 @@
 // 宿主发来的消息。
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
-import { loadBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, setShared, setLineSel, sel } from "./state/store";
+import { loadBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, walkOrder, type HostToBoard } from "@codeboard/core";
+import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, setShared, setLineSel, sel, setShowCollapsed, flows } from "./state/store";
 import { setCam } from "./state/camera";
-import { setBanner } from "./state/ui";
+import { setBanner, setWalk } from "./state/ui";
+import { resetSubboards, putSkels } from "./state/subboards";
 import * as A from "./actions";
 import { choose } from "./ui/Menu";
 import { setAssetBase } from "./md/render";
@@ -33,8 +34,12 @@ export function onHost(m: HostToBoard) {
       markSaved();
       A.resetNav();
       select({});
+      // 换了一块白板（进入 / 离开子白板）：讲解、骨架、面包屑都是上一块白板的
+      batch(() => { setWalk(null); setShowCollapsed(false); A.setWalkBack(null); resetSubboards(m.crumbs); });
+      if (m.walk) hopWalk(m.walk);
       break;
     }
+    case "skeletons": putSkels(m.boards); break;
     case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
     case "stale": {
       // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移）。
@@ -108,6 +113,27 @@ export function onHost(m: HostToBoard) {
     }
   }
 }
+
+/** 跨白板的讲解：进了子白板就从 start 讲起（讲完回去），回到父白板就接着讲 */
+function hopWalk(w: NonNullable<Extract<HostToBoard, { type: "init" }>["walk"]>) {
+  // 等卡片量好尺寸再动镜头
+  setTimeout(() => {
+    if (w.into) {
+      const start = w.start ?? flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
+      if (!start) { A.leaveBoard(undefined, { resume: { root: w.into.root, i: w.into.i + 1 } }); return; }
+      A.setWalkBack(w.into);
+      A.startWalk(start, { single: true });
+    } else if (w.resume) {
+      const r = w.resume;
+      if (!state.board.cards.some((c) => c.id === r.root) || r.i < 0) return;
+      // 讲到头了（子白板是最后一步）：停在框上
+      const n = walkOrderLen(r.root);
+      if (r.i >= n) return;
+      A.startWalk(r.root, { at: r.i });
+    }
+  }, 120);
+}
+const walkOrderLen = (root: string) => walkOrder(state.board, root).length;
 
 /** 选中的代码里有 ≥2 个顶层函数：问一次 */
 async function askSplit(id: string) {

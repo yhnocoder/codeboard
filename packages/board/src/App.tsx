@@ -20,6 +20,7 @@ import * as A from "./actions";
 import { flows, cardById } from "./state/store";
 import { MarkView } from "./cards/Card";
 import { look, traffic, setTraffic } from "./state/look";
+import { crumbs } from "./state/subboards";
 
 export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
@@ -44,6 +45,7 @@ export function App() {
       <Canvas />
       {/* 报头 / 海报标题：只有 Newspaper、Poster、Soft Light、Drafting 显示（themes.css），默认 display: none */}
       <div class="mast" aria-hidden="true"><span class="mn">{state.board.name}</span></div>
+      <Show when={crumbs().length}><Crumbs /></Show>
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
       <Show when={!walk()}><Toolbar /></Show>
       <Dock />
@@ -60,6 +62,16 @@ export function App() {
       <DialogLayer />
       <TooltipLayer />
     </div>
+  );
+}
+
+/** 子白板的面包屑：Engine › Scheduler。点上一级回去（Esc 也行） */
+function Crumbs() {
+  return (
+    <nav class="crumbs pill" aria-label="Parent boards">
+      <For each={crumbs()}>{(c, i) => <><button class="crumb" data-tip={i() === crumbs().length - 1 ? "Back to the parent board" : undefined} data-kbd={i() === crumbs().length - 1 ? "Esc" : undefined} onClick={() => A.leaveBoard(i())}>{c.name}</button><span class="csep">›</span></>}</For>
+      <span class="crumb cur">{state.board.name}</span>
+    </nav>
   );
 }
 
@@ -151,8 +163,8 @@ function WalkBar() {
       <Show when={node()}><span class="pn"><MarkView g={node()!} /></span></Show>
       <span class="ptitle">{title()}</span>
       <span class="cnt">{w().i + 1} / {w().order.length}</span>
-      <button class="ib" aria-label="Previous Step" data-tip="Previous Step" data-kbd="←" disabled={w().i === 0} onClick={() => A.walkTo(w().i - 1)}><Icon name="left" /></button>
-      <button class="ib" aria-label="Next Step" data-tip="Next Step" data-kbd="→" disabled={w().i === w().order.length - 1} onClick={() => A.walkTo(w().i + 1)}><Icon name="right" /></button>
+      <button class="ib" aria-label="Previous Step" data-tip="Previous Step" data-kbd="←" disabled={w().i === 0 && !A.walkBack()} onClick={() => A.walkTo(w().i - 1)}><Icon name="left" /></button>
+      <button class="ib" aria-label="Next Step" data-tip={A.walkBack() && w().i === w().order.length - 1 ? "Back to the Parent Board" : "Next Step"} data-kbd="→" disabled={w().i === w().order.length - 1 && !A.walkBack()} onClick={() => A.walkTo(w().i + 1)}><Icon name="right" /></button>
       <button class="ib" aria-label="Exit Walkthrough" data-tip="Exit Walkthrough" data-kbd="Esc" onClick={() => A.exitWalk()}><Icon name="close" /></button>
       <Show when={desc()}><div class="pdesc" innerHTML={A.mdBlock(desc()!)} /></Show>
     </div></div>

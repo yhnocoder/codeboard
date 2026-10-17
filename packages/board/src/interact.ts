@@ -85,6 +85,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   (document.activeElement as HTMLElement | null)?.blur?.();
   window.getSelection()?.removeAllRanges();
   if (c.kind === "web" && inHead && isDbl(`w${id}`)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
+  if (c.kind === "board" && isDbl(`b${id}`)) return A.enterFrame(id); // 双击子白板框 = 进去
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`)) return setEditing({ kind: "title", id: target });
@@ -336,7 +337,7 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
-  let to: { card: string; seg?: string; line?: number } | null = null;
+  let to: { card: string; seg?: string; line?: number; sub?: string } | null = null;
   track(e, (ev) => {
     const a = local({ clientX: sx, clientY: sy }), b = local(ev);
     setRubber({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, plain: true } as any);
@@ -348,10 +349,12 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
       const row = under?.closest(".src > .l, .gutter .no") as HTMLElement | null;
       const at = row ? rowAnchor(row, ce.dataset.id!) : null;
       const colEl = under?.closest("[data-col]") as HTMLElement | null;
-      to = at ? { card: at.card, seg: at.seg, line: at.lines![0] } : { card: colEl?.dataset.col ?? ce.dataset.id! };
+      // 子白板框：松在骨架里的一张卡上 → 连到那张卡（线穿过框边的入口点）；松在框的别处 → 连到整个框
+      const sub = (under?.closest("[data-sub]") as HTMLElement | SVGElement | null)?.dataset.sub;
+      to = at ? { card: at.card, seg: at.seg, line: at.lines![0] } : sub && !sub.startsWith("more:") && cardById(ce.dataset.id!)?.card.kind === "board" ? { card: ce.dataset.id!, sub } : { card: colEl?.dataset.col ?? ce.dataset.id! };
       if (cardById(to.card)?.host.id === cardById(from.card)?.host.id && !to.line) to = null;
     }
-    setDropTarget(to ? { kind: to.line ? "line" : "card", card: cardById(to.card)!.host.id, seg: to.seg, line: to.line } : null);
+    setDropTarget(to ? { kind: to.line ? "line" : "card", card: cardById(to.card)!.host.id, seg: to.seg, line: to.line, sub: to.sub } : null);
   }, (_ev, moved) => {
     setRubber(null);
     setDropTarget(null);
@@ -367,7 +370,8 @@ function finishConnect(e: PointerEvent, id: string) {
   const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
   const to = colEl?.dataset.col ?? id;
   if (cardById(to)?.host.id === cardById(from.card)?.host.id) return toast("Connect cancelled");
-  A.addLink(from, { card: to });
+  const sub = ((e.target as Element).closest("[data-sub]") as HTMLElement | SVGElement | null)?.dataset.sub;
+  A.addLink(from, sub && !sub.startsWith("more:") && cardById(to)?.card.kind === "board" ? { card: to, sub } : { card: to });
 }
 
 // ---------- 画布 ----------
@@ -553,7 +557,7 @@ export function installKeys() {
     }
     if (typing(e) || dialogOpen() || paletteOpen()) return;
     const mod = e.metaKey || e.ctrlKey, k = e.key, kl = k.toLowerCase();
-    if (mod && state.host.forwardedKeys?.includes(e.shiftKey && kl === "l" ? "shift+l" : kl)) { e.preventDefault(); return; } // 宿主会转回来
+    if (mod && state.host.forwardedKeys?.includes(e.shiftKey && (kl === "l" || kl === "b") ? `shift+${kl}` : kl)) { e.preventDefault(); return; } // 宿主会转回来
     if (settingsOpen()) { if (k === "Escape" || (mod && k === ",")) { e.preventDefault(); A.closeSettings(); } return; } // 设置页盖住白板：白板快捷键都不响应
     if (mod && k === ",") { e.preventDefault(); return A.openSettings(); }
     if (k === " " && !mod) { setSpaceDown(true); boardEl().classList.add("space"); e.preventDefault(); return; }
@@ -567,6 +571,7 @@ export function installKeys() {
       if (walk()) return A.exitWalk();
       if (tool) return setTool(null);
       if (A.picking()) { A.takePick(); return toast("Cancelled"); }
+      if (A.canLeave()) return A.leaveBoard(); // 子白板里：什么都没选时回上一级
       clearSel(); window.getSelection()?.removeAllRanges();
       return;
     }
@@ -575,6 +580,8 @@ export function installKeys() {
       if (k === "ArrowLeft" || k === "ArrowUp") { e.preventDefault(); return A.walkTo(walk()!.i - 1); }
     }
     if (mod && e.shiftKey && kl === "l") { e.preventDefault(); return A.toggleLock(sel.cards, sel.sections); }
+    if (mod && e.shiftKey && kl === "b") { e.preventDefault(); return void A.turnIntoBoard(); }
+    if (mod && k === "Enter" && A.selCards()[0]?.kind === "board") { e.preventDefault(); return A.enterFrame(A.selCards()[0].id); }
     if (mod && kl === "z") { e.preventDefault(); return void (e.shiftKey ? redo() : undo()); }
     if (mod && kl === "y") { e.preventDefault(); return void redo(); }
     if (mod && kl === "a") { e.preventDefault(); return A.selectAll(); }
@@ -629,6 +636,7 @@ export function installKeys() {
       if (c.kind === "code") A.openCode(c.id);
       else if (c.kind === "note") setEditing({ kind: "note", id: c.id });
       else if (c.kind === "web") A.openLink(c.url);
+      else if (c.kind === "board") A.enterFrame(c.id);
     }
     if (k.startsWith("Arrow") && sel.cards.length) {
       e.preventDefault();
