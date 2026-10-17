@@ -107,45 +107,6 @@ jobs:
         if: always()
         with: { name: perf, path: test-out/perf, retention-days: 14 }
 
-  # TEMPORARY experiment (to be removed): the same work as several jobs, run as parallel processes in one job
-  experiment:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - uses: actions/checkout@v4
-        with: { submodules: true }
-      - uses: ./.github/actions/setup
-      - uses: ./.github/actions/chromium
-      - uses: ./.github/actions/vscode
-      - run: nproc; free -g
-      - name: Harness, 3 shards as parallel processes
-        run: |
-          mkdir -p test-out/exp; t=$(date +%s)
-          for i in 1 2 3; do node packages/board/test/run-harness.mjs --shard=$i/3 >test-out/exp/harness-$i.log 2>&1 & done
-          rc=0; for j in $(jobs -p); do wait $j || rc=1; done
-          echo "harness parallel: $(( $(date +%s) - t )) s, rc=$rc"; tail -n 3 test-out/exp/harness-*.log
-      - name: Perf A/A, machine otherwise idle
-        run: |
-          t=$(date +%s); tools/review/perf-ab.sh . test-out/exp/perf-quiet || true; echo "perf quiet: $(( $(date +%s) - t )) s"
-      - name: Perf A/A, while the harness runs alongside
-        run: |
-          (for k in 1 2 3; do for i in 1 2 3; do node packages/board/test/run-harness.mjs --shard=$i/3 >/dev/null 2>&1 & done; wait; done) & L=$!
-          t=$(date +%s); tools/review/perf-ab.sh . test-out/exp/perf-loaded || true; echo "perf loaded: $(( $(date +%s) - t )) s"
-          kill $L 2>/dev/null; pkill -f run-harness.mjs || true
-      - name: Replay head, 3 VS Code instances side by side
-        run: |
-          # warm the extension cache once so the parallel runs don't install into it at the same time
-          for e in $E2E_EXTENSIONS; do "$(dirname "$VSCODE_BIN")/bin/code" --install-extension "$e" --extensions-dir /tmp/codeboard-ext-cache --user-data-dir /tmp/exp-ud >/dev/null; done
-          t=$(date +%s)
-          for p in 1 2 3; do PART=$p CDP_PORT=$((9230+p)) E2E_TMP=/tmp/exp-$p DRIVER=replay.cjs E2E_OUT=$PWD/test-out/exp/replay-$p \
-            bash extensions/vscode/test/run.sh >test-out/exp/replay-$p.log 2>&1 & done
-          for j in $(jobs -p); do wait $j; done
-          echo "replay parallel: $(( $(date +%s) - t )) s"
-          node tools/review/replaydiff.mjs test-out/exp/replay.md test-out/exp/replay-1 test-out/exp/replay-2 test-out/exp/replay-3 || true
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with: { name: experiment, path: test-out/exp, retention-days: 7 }
-
   report:
     needs: [e2e, replay, perf]
     if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
