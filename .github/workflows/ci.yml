@@ -2,10 +2,9 @@
 #   unit     build, typecheck, unit tests, host tests
 #   harness  browser harness scenarios, split into 3 shards
 #   e2e      real VS Code (with Pylance) e2e + generic UI audit
-#   replay   scripted study-task replay in real VS Code, on base and on head (3 parallel parts each), for before/after screenshots
 #   perf     board + host perf benchmarks on base and head in one job; fails on a regression
-#   report   fails on replay checks that fail on head but not on base; publishes screenshots to the ci-screenshots branch
-#            and updates the marked section of the PR description
+#   report   publishes e2e screenshots to the ci-screenshots branch and updates the marked section of the PR description
+# The study-task replay is not run on every push: see replay.yml (add the "replay" label to a PR).
 name: CI
 on:
   push:
@@ -62,34 +61,6 @@ jobs:
         if: ${{ !cancelled() }}
         with: { name: e2e, path: test-out/default-dark-modern, retention-days: 14 }
 
-  replay:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix: { side: [head, base], part: [1, 2, 3] }
-    name: replay (${{ matrix.side }}, ${{ matrix.part }}/3)
-    steps:
-      - uses: actions/checkout@v4
-        with: { submodules: true, fetch-depth: 0 }
-      - uses: ./.github/actions/setup
-        if: matrix.side == 'head'
-      - name: Check out and build base, with head's replay scripts
-        if: matrix.side == 'base' && env.BASE_SHA != ''
-        run: tools/review/checkout-base.sh "$BASE_SHA" base --test-drivers
-      - uses: ./.github/actions/vscode
-        if: matrix.side == 'head' || env.BASE_SHA != ''
-      - name: Study-task replay
-        if: matrix.side == 'head' || env.BASE_SHA != ''
-        # Pass or fail is decided in the report job, by comparing head's failed checks with base's
-        continue-on-error: true
-        run: |
-          DIR=.; [ "${{ matrix.side }}" = base ] && DIR=base
-          PART=${{ matrix.part }} DRIVER=replay.cjs E2E_OUT=$PWD/test-out/replay bash $DIR/extensions/vscode/test/run.sh
-      - uses: actions/upload-artifact@v4
-        if: ${{ !cancelled() }}
-        with: { name: "replay-${{ matrix.side }}-${{ matrix.part }}", path: test-out/replay, retention-days: 14, if-no-files-found: ignore }
-
   perf:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -108,7 +79,7 @@ jobs:
         with: { name: perf, path: test-out/perf, retention-days: 14 }
 
   report:
-    needs: [e2e, replay, perf]
+    needs: [e2e, perf]
     # !cancelled(), not always(): a run superseded by a newer push must stop at once, since the newer run waits for it (concurrency group)
     if: ${{ !cancelled() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-24.04
@@ -121,14 +92,6 @@ jobs:
       - uses: ./.github/actions/chromium
       - uses: actions/download-artifact@v4
         with: { path: test-out/artifacts }
-      - name: Replay, head vs base
-        id: replay
-        run: |
-          A=test-out/artifacts
-          # one folder per side: parts 3 and 2 first, so part 1's screenshots of the shared setup steps win
-          for s in head base; do mkdir -p $A/replay-$s; for p in 3 2 1; do [ -d $A/replay-$s-$p ] && cp -r $A/replay-$s-$p/. $A/replay-$s/; done; done
-          BASE=""; [ -n "$BASE_SHA" ] && BASE="--base $A/replay-base-1 $A/replay-base-2 $A/replay-base-3"
-          node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $A/replay-head-3 $BASE
       - name: Diff and publish screenshots
         if: ${{ !cancelled() }}
         run: |
@@ -137,8 +100,6 @@ jobs:
           else KEY="branches/${{ github.ref_name }}"; BASEKEY="$KEY"; fi
           # e2e: compared with the last screenshots stored for the target branch
           if ls $A/e2e/*.png >/dev/null 2>&1; then tools/review/publish-shots.sh $A/e2e "$KEY" "$BASEKEY" test-out/e2e-summary.md; fi
-          # replay: compared with the base commit replayed in this same run
-          if ls $A/replay-head/*.png >/dev/null 2>&1; then tools/review/publish-shots.sh $A/replay-head "$KEY/replay" $A/replay-base test-out/replay-summary.md; fi
       - name: Update the CI section in the PR description
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v7
@@ -150,7 +111,7 @@ jobs:
             const A = "test-out/artifacts";
             const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
             const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
-            const audit = [...json(`${A}/e2e/audit.json`), ...json(`${A}/replay-head-1/audit.json`), ...json(`${A}/replay-head-2/audit.json`), ...json(`${A}/replay-head-3/audit.json`)];
+            const audit = json(`${A}/e2e/audit.json`);
             const issues = [...new Set(audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`)))];
             const jobs = JSON.parse(process.env.JOBS);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
@@ -159,8 +120,6 @@ jobs:
               `Commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [Run log](${run}) · ` + Object.entries(jobs).map(([k, v]) => `${k} ${v.result === "success" ? "✅" : v.result === "skipped" ? "–" : "❌"}`).join(" · "), "",
               read(`${A}/perf/summary.md`) || "**Performance**: no results.", "",
               `**UI audit**: ${issues.length ? `${issues.length} warning${issues.length > 1 ? "s" : ""}` : "no issues"}`, ...issues.slice(0, 30), "",
-              read("test-out/replay-result.md") || "**Study-task replay**: no results.", "",
-              "<details><summary>Replay screenshots, base → head</summary>", "", read("test-out/replay-summary.md") || "No screenshots.", "</details>", "",
               "<details><summary>e2e screenshots, vs target branch</summary>", "", read("test-out/e2e-summary.md") || "No screenshots.", "</details>",
               "<!-- ci-screenshots:end -->",
             ].join("\n");

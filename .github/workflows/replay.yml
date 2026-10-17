@@ -1,0 +1,98 @@
+# Study-task replay, on demand rather than on every push: add the label "replay" to a PR (remove it and add it again to re-run).
+# Replays the scripted study task in real VS Code on base and on head (3 parallel parts each, each in its own job), fails on checks
+# that fail on head but not on base, publishes before/after screenshots to the ci-screenshots branch and updates the replay
+# section of the PR description.
+name: Replay
+on:
+  pull_request:
+    types: [labeled]
+permissions:
+  contents: write
+  pull-requests: write
+concurrency:
+  # per label, so adding some other label doesn't cancel a replay in progress
+  group: replay-${{ github.event.pull_request.number }}-${{ github.event.label.name }}
+  cancel-in-progress: true
+env:
+  VSCODE_VERSION: "1.142.0"
+  E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
+  BASE_SHA: ${{ github.event.pull_request.base.sha }}
+jobs:
+  replay:
+    if: github.event.label.name == 'replay'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: { side: [head, base], part: [1, 2, 3] }
+    name: replay (${{ matrix.side }}, ${{ matrix.part }}/3)
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true, fetch-depth: 0 }
+      - uses: ./.github/actions/setup
+        if: matrix.side == 'head'
+      - name: Check out and build base, with head's replay scripts
+        if: matrix.side == 'base' && env.BASE_SHA != ''
+        run: tools/review/checkout-base.sh "$BASE_SHA" base --test-drivers
+      - uses: ./.github/actions/vscode
+        if: matrix.side == 'head' || env.BASE_SHA != ''
+      - name: Study-task replay
+        if: matrix.side == 'head' || env.BASE_SHA != ''
+        # Pass or fail is decided in the report job, by comparing head's failed checks with base's
+        continue-on-error: true
+        run: |
+          DIR=.; [ "${{ matrix.side }}" = base ] && DIR=base
+          PART=${{ matrix.part }} DRIVER=replay.cjs E2E_OUT=$PWD/test-out/replay bash $DIR/extensions/vscode/test/run.sh
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: "replay-${{ matrix.side }}-${{ matrix.part }}", path: test-out/replay, retention-days: 14, if-no-files-found: ignore }
+
+  report:
+    needs: [replay]
+    if: ${{ !cancelled() && github.event.label.name == 'replay' && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - uses: ./.github/actions/chromium
+      - uses: actions/download-artifact@v4
+        with: { path: test-out/artifacts, pattern: "replay-*" }
+      - name: Replay, head vs base
+        run: |
+          A=test-out/artifacts
+          # one folder per side: parts 3 and 2 first, so part 1's screenshots of the shared setup steps win
+          for s in head base; do mkdir -p $A/replay-$s; for p in 3 2 1; do [ -d $A/replay-$s-$p ] && cp -r $A/replay-$s-$p/. $A/replay-$s/; done; done
+          node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $A/replay-head-3 --base $A/replay-base-1 $A/replay-base-2 $A/replay-base-3
+      - name: Diff and publish screenshots
+        if: ${{ !cancelled() }}
+        run: |
+          A=test-out/artifacts
+          if ls $A/replay-head/*.png >/dev/null 2>&1; then tools/review/publish-shots.sh $A/replay-head "pr/${{ github.event.pull_request.number }}/replay" $A/replay-base test-out/replay-summary.md; fi
+      - name: Update the replay section in the PR description
+        if: ${{ !cancelled() }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            const A = "test-out/artifacts";
+            const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
+            const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
+            const audit = [1, 2, 3].flatMap((p) => json(`${A}/replay-head-${p}/audit.json`));
+            const issues = [...new Set(audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`)))];
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const section = [
+              "<!-- ci-replay:start -->", "## Study-task replay", "",
+              `Commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [Run log](${run}) · re-run by removing and adding the \`replay\` label`, "",
+              read("test-out/replay-result.md") || "**Study-task replay**: no results.", "",
+              `**UI audit during the replay**: ${issues.length ? `${issues.length} warning${issues.length > 1 ? "s" : ""}` : "no issues"}`, ...issues.slice(0, 30), "",
+              "<details><summary>Replay screenshots, base → head</summary>", "", read("test-out/replay-summary.md") || "No screenshots.", "</details>",
+              "<!-- ci-replay:end -->",
+            ].join("\n");
+            const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });
+            const body = pr.body || "";
+            const re = /<!-- ci-replay:start -->[\s\S]*<!-- ci-replay:end -->/;
+            const next = re.test(body) ? body.replace(re, section) : `${body}\n\n${section}`;
+            await github.rest.pulls.update({ ...context.repo, pull_number: context.issue.number, body: next });
