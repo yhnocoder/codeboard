@@ -15,5 +15,6 @@ export * from "./track";
 export * from "./render";
 export * from "./rank";
 export * from "./diagnostics";
+export * from "./complete";
 export * from "./emitter";
 export * from "./workspace";

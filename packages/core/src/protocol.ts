@@ -53,6 +53,8 @@ export type HostInfo = {
   settings: Settings;
   /** 这些快捷键（⌘ + 键）被宿主拦下后以 {type:"key"} 转回来，白板自己不再处理（免得做两次） */
   forwardedKeys?: string[];
+  /** 宿主能做 AI 续写（VS Code 的语言模型）：Note 编辑时的灰字补全 */
+  complete?: boolean;
 };
 
 /** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
@@ -177,7 +179,9 @@ export type BoardToHost =
   | { type: "log"; level: "info" | "warn" | "error"; text: string }
   | { type: "openBoard"; id: string; card?: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
-  | { type: "pickFile"; req: number; kind: "image" };
+  | { type: "pickFile"; req: number; kind: "image" }
+  /** Note 编辑时的灰字补全：光标前后的文字，回接在光标处的一段（没有可用模型时回 null） */
+  | { type: "complete"; req: number; before: string; after: string };
 
 /** 指定展开哪个定义。rel = path 相对 seg 自己的来源根（类卡点成员；工作区外的文件也对），qual = 按符号找（钉的版本行号可能挪了） */
 export type ExpandPick = { path: string; line: number; rel?: true; qual?: string };
@@ -216,6 +220,7 @@ type Replies = {
   stickerPacks: StickerPack[];
   confirm: boolean;
   pickFile: string | null; // data URL
+  complete: string | null;
 };
 export type ReplyOf<T extends AskType> = Replies[T];
 /** From GitHub… 的回答：按 GhQuery 的 op */

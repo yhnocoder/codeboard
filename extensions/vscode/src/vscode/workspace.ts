@@ -173,6 +173,27 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       revealInOS: async (abs) => void (await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs))),
       copy: async (text) => vscode.env.clipboard.writeText(text),
     },
+    ai: {
+      // 用户装了 Copilot 之类提供模型的扩展才有；第一次用时 VS Code 会问用户同不同意。任何失败都静默回 undefined
+      ask: async (system, prompt, o) => {
+        const lm = (vscode as any).lm as typeof vscode.lm | undefined;
+        if (!lm?.selectChatModels) return undefined;
+        try {
+          const all = await lm.selectChatModels();
+          if (!all.length) return undefined;
+          // 补全要快：优先小模型
+          const fast = /mini|haiku|flash|nano|small|fast/i;
+          const m = all.find((x) => fast.test(x.family) || fast.test(x.id)) ?? all[0];
+          const cts = new vscode.CancellationTokenSource();
+          o?.signal?.addEventListener("abort", () => cts.cancel());
+          if (o?.signal?.aborted) return undefined;
+          const r = await m.sendRequest([vscode.LanguageModelChatMessage.User(`${system}\n\n${prompt}`)], { justification: "CodeBoard suggests gray inline completions while you write a Note." }, cts.token);
+          let out = "";
+          for await (const t of r.text) { out += t; if (o?.maxChars && out.length > o.maxChars) { cts.cancel(); break; } }
+          return out;
+        } catch { return undefined; }
+      },
+    },
     githubToken: async (ask) => (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))?.accessToken,
     log: (level, text) => { (ch ??= vscode.window.createOutputChannel("CodeBoard", { log: true }))[level](text); },
     about: {

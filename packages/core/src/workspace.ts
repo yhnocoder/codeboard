@@ -112,6 +112,12 @@ export interface WorkspaceUi {
   copy(text: string): Promise<void>;
 }
 
+/** 语言模型（VS Code 的 Language Model API 之类）：可选，宿主没有就不给 */
+export interface WorkspaceAi {
+  /** 发一次提示，回模型的文字；没有可用模型、用户没同意或被取消时回 undefined（不抛出） */
+  ask(system: string, prompt: string, opts?: { signal?: AbortSignal; maxChars?: number }): Promise<string | undefined>;
+}
+
 export interface Workspace {
   files: WorkspaceFiles;
   storage: WorkspaceStorage;
@@ -119,6 +125,8 @@ export interface Workspace {
   settings: WorkspaceSettings;
   editor: WorkspaceEditor;
   ui: WorkspaceUi;
+  /** 语言模型；没有这个能力的宿主不给 */
+  ai?: WorkspaceAi;
   /** GitHub 登录的 token：ask = 没登录时请用户登录（取消时抛出）；否则只静默拿已有的 */
   githubToken(ask: boolean): Promise<string | undefined>;
   /** 写到输出面板 */
