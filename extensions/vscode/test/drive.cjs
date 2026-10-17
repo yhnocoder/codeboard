@@ -117,8 +117,10 @@ const boardJson = () => {
   const w = await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().boundingBox();
   const y = w ? w.y + w.height + 40 : 500;
   if (w) await page.mouse.move(w.x + w.width / 2, y, { steps: 4 });
-  await page.mouse.move(5, y, { steps: 12 }); await sleep(800);
-  check(await f.locator(".pop.k-peek").count() === 0, "Definition Peek closes after the mouse moves away");
+  await page.mouse.move(5, y, { steps: 12 });
+  // 关闭有一段延迟（还要等离开事件）：CI 机器慢时 800ms 不一定够，最多等 3s
+  let open = 1; for (let t = 0; t < 15 && (open = await f.locator(".pop.k-peek").count()); t++) await sleep(200);
+  check(open === 0, "Definition Peek closes after the mouse moves away");
 
   // 5. Sidenote: select two lines, press S, write a sentence
   await sch.locator(".no").nth(5).click(); await sch.locator(".no").nth(6).click({ modifiers: ["Shift"] });
