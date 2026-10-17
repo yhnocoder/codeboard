@@ -176,4 +176,32 @@ export const V018MD: Record<string, () => Promise<void>> = {
     check("v18mdedit", ok, r);
     await close(h);
   },
+
+  /** Paste: HTML becomes clean markdown, VS Code code keeps its indentation, markdown text is parsed */
+  async v18mdpaste() {
+    const { b } = mdBoard();
+    const h = await open({ board: b, light, w: 1400, h: 950 });
+    const pg = h.page;
+    await pg.locator('.card[data-id="t1"] .tx').dblclick();
+    await pg.waitForSelector('.card[data-id="t1"] .md-pm', { timeout: 5000 });
+    const paste = (data: Record<string, string>) => pg.evaluate((d) => {
+      const dt = new DataTransfer();
+      for (const [k, v] of Object.entries(d)) dt.setData(k, v);
+      document.activeElement!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, data);
+    await pg.keyboard.press("Enter"); await pg.keyboard.press("Enter"); // 文末是列表：两下回车跳出列表
+    await paste({ "text/html": '<h3 style="color:red">From web</h3><p>a <b>bold</b> <span style="font-size:20px">word</span> and <a href="https://x.y/a_b">link</a></p><ul><li>one</li><li>two</li></ul>', "text/plain": "From web" });
+    await pg.keyboard.press("Enter"); await pg.keyboard.press("Enter");
+    await paste({ "text/plain": "    def f(x):\n        return x * 2\n", "vscode-editor-data": JSON.stringify({ mode: "python" }) });
+    await paste({ "text/plain": "seq_len", "vscode-editor-data": JSON.stringify({ mode: "python" }) });
+    await pg.keyboard.press("Enter");
+    await paste({ "text/plain": "- [ ] pasted task\n- [x] done **too**" });
+    await pg.keyboard.press("Escape");
+    await pg.waitForTimeout(1500);
+    const md = (h.board().cards.find((c) => c.id === "t1") as NoteCard).md;
+    const r = { html: /### From web\n\na \*\*bold\*\* word and \[link\]\(https:\/\/x\.y\/a_b\)\n\n- one\n- two/.test(md), noStyle: !/style=|<span/.test(md),
+      code: md.includes("```python\ndef f(x):\n    return x * 2\n```"), inline: md.includes("`seq_len`"), tasks: md.includes("- [ ] pasted task\n- [x] done **too**") };
+    check("v18mdpaste", Object.values(r).every(Boolean), { ...r, md: md.slice(-260) });
+    await close(h);
+  },
 };

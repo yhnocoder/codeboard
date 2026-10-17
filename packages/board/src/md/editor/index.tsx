@@ -287,13 +287,15 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       };
     },
   });
-  // Esc（多行正文：保存退出）、⌘↵：优先级最低，菜单、灰字、公式框先拿
+  // Esc 保存退出：优先级最低，菜单、灰字、公式框先拿
   const Exit = Extension.create({
     name: "cbExit",
     priority: 1,
-    addKeyboardShortcuts() { return { Escape: () => { exit(); return true; }, "Mod-Enter": () => { exit(); return true; } }; },
+    addKeyboardShortcuts() { return { Escape: () => { exit(); return true; } }; },
   });
   return [
+    // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
+    Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
     ...base, Slash, Ref, Rules, Exit,
     Placeholder.configure({ placeholder: o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),
@@ -324,11 +326,21 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
     let lang = "";
     try { lang = JSON.parse(vs).mode ?? ""; } catch { /* ignore */ }
     if (!text.includes("\n")) { e.chain().focus().insertContent({ type: "text", text, marks: [{ type: "code" }] }).insertContent(" ").run(); return true; }
-    e.chain().focus().insertContent({ type: "codeBlock", attrs: { language: lang && lang !== "plaintext" ? lang : null }, content: [{ type: "text", text: dedent(text.replace(/\r\n?/g, "\n").replace(/\n$/, "")) }] }).run();
+    e.chain().focus().insertContent({ type: "codeBlock", attrs: { language: lang && lang !== "plaintext" ? lang : null }, content: [{ type: "text", text: dedent(text.replace(/\r\n?/g, "\n").replace(/\n$/, "")) }] })
+      // 光标落到代码块后面（后面没有段落就补一个），接着打字不会进代码里
+      .command(({ tr, state }) => {
+        const $p = tr.selection.$from;
+        if (!$p.parent.type.spec.code) return true;
+        const after = $p.after();
+        const next = tr.doc.resolve(after).nodeAfter;
+        if (!next?.isTextblock) tr.insert(after, state.schema.nodes.paragraph.create());
+        tr.setSelection(TextSelection.create(tr.doc, after + 1));
+        return true;
+      }).run();
     return true;
   }
   // 纯文字里有 Markdown 的样子：按 Markdown 解析（HTML 的交给 ProseMirror 按 schema 解析，写回时自然是干净的 Markdown）
-  if (text && !cd.getData("text/html") && (text.includes("\n") || MD_HINT.test(text)) && MD_HINT.test(text)) {
+  if (text && !cd.getData("text/html") && MD_HINT.test(text)) {
     const doc = parseMd(text);
     e.chain().focus().insertContent(doc.content as JSONContent[]).run();
     return true;

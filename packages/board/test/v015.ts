@@ -301,7 +301,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await shot(h, "v15-cardmenu-edit");
     await h.page.locator(".ctx button", { hasText: "Add Description" }).click(); await h.page.waitForTimeout(300);
     const editing = await h.page.locator(".cdesc.editing").count();
-    const focused = await h.page.evaluate(() => document.activeElement?.classList.contains("cdesc") ?? false);
+    const focused = await h.page.evaluate(() => !!document.activeElement?.closest(".cdesc"));
     await h.page.keyboard.type("Picks prefill first."); await h.page.keyboard.press("Meta+Enter"); await h.page.keyboard.press("Control+Enter"); await h.page.waitForTimeout(1400);
     const desc = (h.board().cards[0] as any).desc;
     await hd.hover(); await h.page.waitForTimeout(200);
@@ -463,7 +463,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "note-delete-stays", JSON.stringify({ p0, p1 }));
     await close(h);
   },
-  /** # headings in Notes have levels; ⌘A in the editor selects only that block's text */
+  /** # headings in Notes have levels; ⌘A in the editor selects only that note's text */
   async v15notehead() {
     const b = emptyBoard("b1", "v0.1.5");
     b.cards.push({ id: "t1", kind: "note", md: "# Head\n\n## Sub\n\nBody text here." } as any); b.place.t1 = { x: 60, y: 60, w: 320 };
@@ -476,7 +476,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await h.page.keyboard.press("Control+a"); await h.page.waitForTimeout(200);
     const selTxt = await h.page.evaluate(() => String(window.getSelection()));
     const h1 = fs.find((x) => x[0] === "H1")?.[1] as number, p = fs.find((x) => x[0] === "P")?.[1] as number;
-    const ok = h1 >= p * 1.6 && selTxt.includes("# Head") && selTxt.includes("Body text here.");
+    const ok = h1 >= p * 1.6 && selTxt.includes("Head") && selTxt.includes("Body text here.") && !selTxt.includes("Sub"); // 所见即所得：选中的是渲染后的字，只限这一块
     console.log(ok ? "PASS" : "FAIL", "note-head", JSON.stringify({ fs, selTxt }));
     await close(h);
   },
