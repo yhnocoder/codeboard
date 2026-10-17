@@ -82,9 +82,6 @@ jobs:
           else
             node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $A/replay-head-3 || true
           fi
-      - name: TEMPORARY fake failure to test the issue comment
-        if: github.event_name == 'push'
-        run: node -e 'const f="test-out/artifacts/replay-head-1/steps.json",fs=require("fs"),s=JSON.parse(fs.readFileSync(f));s.push({name:"test",checks:[{what:"fake failure to test the issue comment",ok:false}]});fs.writeFileSync(f,JSON.stringify(s))'
       - name: Diff and publish screenshots
         if: ${{ !cancelled() }}
         run: |
