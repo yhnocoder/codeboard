@@ -384,6 +384,30 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       }
       await close(h);
     }
+    // Note 里的代码块：编辑时和显示时字的位置一样
+    for (const light of [true, false]) {
+      const nb = board(1, ["intro\n\n```python\ndef f(x):\n    return x + 1\n```\n\nend"]);
+      const h = await open({ board: nb, light, w: 1200, h: 800 });
+      const pg = h.page;
+      await h.post({ type: "reveal", card: "n0" } as any);
+      await pg.waitForTimeout(500);
+      const pos = () => pg.evaluate(() => {
+        const pre = document.querySelector('.card[data-id="n0"] pre')!;
+        const out: number[][] = [];
+        const w = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
+        for (let t = w.nextNode(); t; t = w.nextNode()) for (let i = 0; i < t.textContent!.length; i++) { if (!/\S/.test(t.textContent![i])) continue; const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1); const b = r.getBoundingClientRect(); out.push([Math.round(b.x * 2) / 2, Math.round(b.y * 2) / 2]); }
+        const cs = getComputedStyle(pre);
+        return { out, font: cs.font, pad: cs.padding, bg: cs.backgroundColor, cls: [...pre.querySelectorAll("span")].map((x) => x.className).join(" ") };
+      });
+      const a = await pos();
+      await pg.locator('.card[data-id="n0"] .nbody').dblclick({ position: { x: 10, y: 8 } });
+      await pg.waitForSelector('.card[data-id="n0"] .md-pm');
+      await pg.waitForTimeout(200);
+      const b = await pos();
+      const ok = JSON.stringify(a.out) === JSON.stringify(b.out) && a.font === b.font && a.bg === b.bg && a.cls === b.cls;
+      check(`v18codeedit Markdown code block ${light ? "light" : "dark"} looks the same`, ok, ok ? {} : { a, b });
+      await close(h);
+    }
     if (failed) throw new Error(`v18codeedit: ${failed} failed`);
   },
 };
