@@ -1,6 +1,6 @@
 // 箭头走线规则（W03）：摆法、缓冲、端点、错位时的斜角
 import { describe, expect, it } from "vitest";
-import { chooseMode, sidesOf, anchorOn, tiltAngle, connect, slide, driveFrames, carAt, carPaths, type Box } from "../../src/canvas/route";
+import { chooseMode, sidesOf, anchorOn, tiltAngle, connect, slide, driveFrames, carAt, carPaths, laneOf, zebraBack, type Box } from "../../src/canvas/route";
 
 const S: Box = { x: 0, y: 0, w: 300, h: 200 };
 const at = (x: number, y: number, w = 300, h = 160): Box => ({ x, y, w, h });
@@ -78,6 +78,21 @@ describe("City cars", () => {
     // Turned 90°: the body runs up from the nose, its corners keep their radius
     expect(carPaths("translate(100 49) rotate(90)").body.startsWith("M105 29.5L105 45.5A3.5 3.5 0 0 1 101.5 49")).toBe(true);
     expect(carPaths("translate(0 0) rotate(0) scale(2)").roof.startsWith("M-27.8 -7.6")).toBe(true);
+  });
+  it("zebra crossing: baked into the lamp path in front of the car, the car parks behind it", () => {
+    const c = carPaths("translate(99 50) rotate(0)", "main");
+    expect(zebraBack("main")).toBe(9.5);
+    expect(c.body.startsWith("M70 45L86 45")).toBe(true);
+    expect(c.lamp).toContain("M91.5 44.4L98.5 44.4L98.5 46.1L91.5 46.1Z");
+    expect(c.lamp.match(/Z/g)!.length).toBe(2 + 4);
+    expect(carPaths("translate(99 50) rotate(0)", "street").lamp.match(/Z/g)!.length).toBe(2 + 3);
+    // Turns with the road
+    expect(carPaths("translate(100 49) rotate(90)", "main").lamp).toContain("M105.6 41.5L105.6 48.5");
+  });
+  it("road markings: double centre line offset on both sides of an elbow road, trimmed where the car parks", () => {
+    expect(laneOf("M0 0 L100 0 L100 50", 1.1, 0, 10)).toBe("M0 1.1L98.9 1.1L98.9 40M0 -1.1L101.1 -1.1L101.1 40");
+    expect(laneOf("M0 0 L100 0 L100 50", 0, 5)).toBe("M5 0L100 0L100 50");
+    expect(laneOf("M0 0 L10 0", 0, 6, 6)).toBe("");
   });
   it("driving car: transform keyframes along an elbow road, turning at each corner the short way", () => {
     const f = driveFrames("M0 0 L100 0 L100 -50 L200 -50")!;
