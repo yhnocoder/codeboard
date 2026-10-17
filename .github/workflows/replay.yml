@@ -10,7 +10,6 @@ on:
   schedule:
     - cron: "0 19 * * *" # 03:00 Beijing time
   workflow_dispatch:
-  push: { branches: [claude/project-thread-l66vsw] } # TEMPORARY: test the nightly path before merge
   pull_request:
     types: [labeled]
 permissions:
