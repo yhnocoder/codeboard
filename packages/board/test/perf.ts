@@ -125,7 +125,7 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
   if (name && name === arg("long", "")) {
     // What each dropped frame spent its time on (events inside the task, >1.5 ms)
     for (const t of events.filter((e) => e.ph === "X" && e.name === "RunTask" && main && e.pid === main.pid && e.tid === main.tid && e.dur > 16700))
-      console.log(`  long ${(t.dur / 1000).toFixed(0)}ms:`, events.filter((e) => e.ph === "X" && e.pid === main.pid && e.tid === main.tid && e.ts >= t.ts && e.ts + e.dur <= t.ts + t.dur && e.dur > 1500 && e.name !== "RunTask")
+      console.log(`  long ${(t.dur / 1000).toFixed(0)}ms:`, events.filter((e) => e.ph === "X" && e.pid === main.pid && e.tid === main.tid && e.ts >= t.ts && e.ts + e.dur <= t.ts + t.dur && e.dur > +(process.env.LONG_MIN ?? 1500) && e.name !== "RunTask")
         .map((e) => `${e.name}${e.args?.data?.functionName ? "(" + e.args.data.functionName + ")" : ""} ${(e.dur / 1000).toFixed(1)}`).join(" > "));
   }
   if (name && name === arg("selstats", "")) {
@@ -454,7 +454,7 @@ async function traceStart(cdp: CDPSession) {
       console.log(`  task ${(t.dur / 1000).toFixed(1)}ms:`, events.filter((e) => e.ph === "X" && on(e) && e.ts >= t.ts && e.ts + e.dur <= t.ts + t.dur && e.dur > 800 && e.name !== "RunTask")
         .map((e) => `${e.name}${e.args?.data?.functionName ? "(" + e.args.data.functionName + ")" : e.args?.data?.type ? "(" + e.args.data.type + ")" : ""} ${(e.dur / 1000).toFixed(1)}`).join(" > "));
     if (process.env.LAYOUT_STACKS) for (const e of events.filter((e) => on(e) && (e.name === "Layout" || e.name === "UpdateLayoutTree") && e.dur > 800 && (e.args?.beginData?.stackTrace || e.args?.data?.stackTrace)))
-      console.log(`  forced ${e.name} ${(e.dur / 1000).toFixed(1)}:`, (e.args?.beginData?.stackTrace ?? e.args?.data?.stackTrace).slice(0, 6).map((f: any) => `${f.functionName}@${f.lineNumber}`).join(" < "));
+      console.log(`  forced ${e.name} ${(e.dur / 1000).toFixed(1)}`, e.name === "Layout" ? `objs ${e.args?.beginData?.dirtyObjects}/${e.args?.beginData?.totalObjects} root depth ${JSON.stringify(e.args?.endData?.layoutRoots?.map((r: any) => r.depth))}` : `els ${e.args?.elementCount ?? ""}`, ":", (e.args?.beginData?.stackTrace ?? e.args?.data?.stackTrace).slice(0, 6).map((f: any) => `${f.functionName}@${f.lineNumber}`).join(" < "));
     console.log("  --");
   };
 }
