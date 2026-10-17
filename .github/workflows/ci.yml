@@ -59,7 +59,7 @@ jobs:
       - name: VS Code e2e (Pylance + UI audit)
         run: npm run e2e
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() }}
         with: { name: e2e, path: test-out/default-dark-modern, retention-days: 14 }
 
   replay:
@@ -87,7 +87,7 @@ jobs:
           DIR=.; [ "${{ matrix.side }}" = base ] && DIR=base
           PART=${{ matrix.part }} DRIVER=replay.cjs E2E_OUT=$PWD/test-out/replay bash $DIR/extensions/vscode/test/run.sh
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() }}
         with: { name: "replay-${{ matrix.side }}-${{ matrix.part }}", path: test-out/replay, retention-days: 14, if-no-files-found: ignore }
 
   perf:
@@ -104,12 +104,13 @@ jobs:
       - name: Perf, base vs head
         run: tools/review/perf-ab.sh "${{ env.BASE_SHA != '' && 'base' || '' }}" test-out/perf
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: ${{ !cancelled() }}
         with: { name: perf, path: test-out/perf, retention-days: 14 }
 
   report:
     needs: [e2e, replay, perf]
-    if: always() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
+    # !cancelled(), not always(): a run superseded by a newer push must stop at once, since the newer run waits for it (concurrency group)
+    if: ${{ !cancelled() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -129,7 +130,7 @@ jobs:
           BASE=""; [ -n "$BASE_SHA" ] && BASE="--base $A/replay-base-1 $A/replay-base-2 $A/replay-base-3"
           node tools/review/replaydiff.mjs test-out/replay-result.md $A/replay-head-1 $A/replay-head-2 $A/replay-head-3 $BASE
       - name: Diff and publish screenshots
-        if: always()
+        if: ${{ !cancelled() }}
         run: |
           A=test-out/artifacts
           if [ "${{ github.event_name }}" = pull_request ]; then KEY="pr/${{ github.event.pull_request.number }}"; BASEKEY="branches/${{ github.base_ref }}"
@@ -139,7 +140,7 @@ jobs:
           # replay: compared with the base commit replayed in this same run
           if ls $A/replay-head/*.png >/dev/null 2>&1; then tools/review/publish-shots.sh $A/replay-head "$KEY/replay" $A/replay-base test-out/replay-summary.md; fi
       - name: Update the CI section in the PR description
-        if: always() && github.event_name == 'pull_request'
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
         uses: actions/github-script@v7
         env:
           JOBS: ${{ toJSON(needs) }}
