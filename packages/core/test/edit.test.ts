@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, removeLinks, replaceCards, retargetCards, shiftBy, stampBorn,
+  placeCards, unlinkCard, mergeCodeCards, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines,
   type Board, type Card, type CodeCard, type Link, type Segment,
 } from "../src";
 
@@ -278,16 +279,114 @@ describe("reference upkeep in board actions", () => {
 });
 
 describe("guard: the board never drops cards or links by hand", () => {
-  // 引用维护只在 core/edit.ts：删卡 removeCards、换卡 replaceCards / retargetCards、删线 removeLinks
-  it("no direct b.cards / b.links filter or splice in packages/board/src", () => {
+  // 引用维护只在 core/edit.ts：删卡 removeCards、换卡 replaceCards / retargetCards、删线 removeLinks、删 Sidenote / Sticker removeSidenotes / removeStickers；
+  // 拷卡 placeCards、拆成副本 unlinkCard、合并 / 拆开 mergeCodeCards / unmergeCard（v0.1.7 架构审查 D2）
+  it("no direct b.cards / b.links / b.sidenotes / b.stickers filter or splice in packages/board/src", () => {
     const root = fileURLToPath(new URL("../../board/src", import.meta.url));
     const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
     const bad: string[] = [];
     for (const f of walk(root)) {
       fs.readFileSync(f, "utf8").split("\n").forEach((t, i) => {
-        if (/\.(cards|links)\s*=\s*[^;=]*\.filter\(|\.(cards|links)\.splice\(/.test(t)) bad.push(`${path.relative(root, f)}:${i + 1}: ${t.trim()}`);
+        if (/\.(cards|links|sidenotes|stickers)\s*=\s*[^;=]*\.filter\(|\.(cards|links|sidenotes|stickers)\.splice\(/.test(t)) bad.push(`${path.relative(root, f)}:${i + 1}: ${t.trim()}`);
       });
     }
     expect(bad).toEqual([]);
+  });
+  it("no hand-made card copies or merges in packages/board/src: new ids for a copied card come from placeCards / unlinkCard", () => {
+    const root = fileURLToPath(new URL("../../board/src", import.meta.url));
+    const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
+    const bad: string[] = [];
+    for (const f of walk(root)) {
+      fs.readFileSync(f, "utf8").split("\n").forEach((t, i) => {
+        if (/mergedFrom:\s*orig|mergeOverlapping\(|\bd\.segments\.forEach\(\(s\) => \(s\.id = uid/.test(t)) bad.push(`${path.relative(root, f)}:${i + 1}: ${t.trim()}`);
+      });
+    }
+    expect(bad).toEqual([]);
+  });
+});
+
+// v0.2 共享卡 / D2：拷卡、拆成副本、合并 / 拆开、删 Sidenote / Sticker、Update 后的复查标记
+describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
+  const two = (): Board => ({
+    ...emptyBoard("b", "B"),
+    cards: [code("a", seg("sa", 1, ["def f():", "    g()"])), code("z")],
+    place: { a: { x: 10, y: 20, w: 300, section: "g1", locked: true }, z: { x: 0, y: 0, w: 1 } },
+    sections: [{ id: "g1", title: "S", x: 0, y: 0, w: 900, h: 900 }],
+    links: [call("a", "z", 2)],
+    sidenotes: [{ id: "n1", at: { card: "a", seg: "sa", lines: [2, 2] }, kind: "text", md: "why" }],
+  });
+  it("placeCards copy: new ids for card, segments and sidenotes; drops section and lock; links stay behind", () => {
+    const src = two(), b = emptyBoard("t", "T");
+    const r = placeCards(b, [{ card: src.cards[0], place: src.place.a, sidenotes: src.sidenotes }], { copy: true, at: (p) => ({ ...p, x: p.x + 5 }) });
+    const id = r.cards.a, c = b.cards[0] as CodeCard;
+    expect(id).not.toBe("a");
+    expect(c.id).toBe(id);
+    expect(c.segments[0].id).toBe(r.segs.sa);
+    expect(r.segs.sa).not.toBe("sa");
+    expect(b.place[id]).toEqual({ x: 15, y: 20, w: 300 });
+    expect(b.sidenotes.map((n) => [n.id !== "n1", n.at])).toEqual([[true, { card: id, seg: r.segs.sa, lines: [2, 2] }]]);
+    expect(b.links).toEqual([]);
+    expect(danglingRefs(b)).toEqual([]);
+    expect((src.cards[0] as CodeCard).segments[0].id).toBe("sa"); // the source is not touched
+  });
+  it("placeCards linked: same ids, skips cards already on the board", () => {
+    const src = two(), b = emptyBoard("t", "T");
+    const it = [{ card: src.cards[0], place: src.place.a, sidenotes: src.sidenotes }];
+    expect(placeCards(b, it, { copy: false }).cards).toEqual({ a: "a" });
+    expect(b.sidenotes.map((n) => n.id)).toEqual(["n1"]);
+    expect(placeCards(b, it, { copy: false }).cards).toEqual({});
+    expect(b.cards.length).toBe(1);
+  });
+  it("placeCards keeps a Compare with its columns", () => {
+    const b = emptyBoard("t", "T");
+    const r = placeCards(b, [{ card: code("p") }, { card: code("q") }, { card: compare("k", "p", "q"), place: { x: 0, y: 0, w: 1 } }], { copy: true });
+    expect((b.cards[2] as any).cols).toEqual([r.cards.p, r.cards.q]);
+    expect(Object.keys(b.place)).toEqual([r.cards.k]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+  it("unlinkCard gives the card a new id and carries every reference on this board", () => {
+    const b = two();
+    b.stickers = [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "a", seg: "sa", line: 2 } }];
+    b.born = { a: 0, z: 1 }; b.marks = { a: { letter: "Q" } };
+    const to = unlinkCard(b, "a");
+    expect(b.cards[0].id).toBe(to);
+    expect(b.links[0].from.card).toBe(to);
+    expect(b.sidenotes[0].at.card).toBe(to);
+    expect(b.stickers[0].at).toMatchObject({ card: to });
+    expect([b.born[to], b.marks[to]]).toEqual([0, { letter: "Q" }]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+  it("mergeCodeCards merges into one card, links follow the lines; linked cards are unlinked first so mergedFrom holds the copy", () => {
+    const b = two();
+    b.cards.push(code("c", seg("sc", 10, ["def h():", "    pass"])));
+    b.place.c = { x: 400, y: 0, w: 200 };
+    b.links.push({ id: "l2", from: { card: "z" }, to: { card: "c", seg: "sc", line: 11 } });
+    const r = mergeCodeCards(b, ["a", "c"], "a", { id: "m", unlink: (id) => id === "c" })!;
+    expect(r.id).toBe("m");
+    const m = b.cards.find((x) => x.id === "m") as CodeCard;
+    expect(m.segments.map((s) => [s.start, s.end])).toEqual([[1, 2], [10, 11]]);
+    expect(m.mergedFrom!.map((o) => o.card.id)).toEqual(["a", expect.not.stringMatching(/^c$/)]);
+    expect(b.links.map((l) => [l.from.card, l.to.card])).toEqual([["m", "z"], ["z", "m"]]);
+    expect(b.cards.some((x) => x.id === "c" || x.id === "a")).toBe(false);
+    expect(danglingRefs(b)).toEqual([]);
+    // Unmerge brings the originals back, links go back to their cards
+    const u = unmergeCard(b, "m")!;
+    expect(u.made.length).toBe(2);
+    expect(b.links.map((l) => [l.from.card === u.made[0], l.to.card === u.made[1]])).toEqual([[true, false], [false, true]]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+  it("removeSidenotes / removeStickers", () => {
+    const b = two();
+    b.stickers = [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0 } }];
+    removeSidenotes(b, ["n1"]); removeStickers(b, ["k"]);
+    expect([b.sidenotes, b.stickers]).toEqual([[], []]);
+  });
+  it("rebaseSegment with review marks sidenotes on changed lines; notesOnChangedLines counts them beforehand", () => {
+    const b = two();
+    b.sidenotes.push({ id: "n2", at: { card: "a", seg: "sa", lines: [1, 1] }, kind: "text", md: "same line" });
+    const ns = { ...seg("sa", 1, ["def f():", "    g(1)"]), version: { kind: "git" as const, commit: "y" } };
+    expect(notesOnChangedLines(b, "a", ns).map((n) => n.id)).toEqual(["n1"]);
+    rebaseSegment(b, "a", ns, undefined, { review: "y" });
+    expect(b.sidenotes.map((n) => [n.id, n.review])).toEqual([["n1", "y"], ["n2", undefined]]);
   });
 });

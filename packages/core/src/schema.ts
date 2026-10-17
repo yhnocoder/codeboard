@@ -62,7 +62,7 @@ const GraphMark = v.union([obj({ letter: str }), obj({ icon: str })]);
 
 const Section = obj({ id: str, title: opt(str), x: num, y: num, w: num, h: num, parent: opt(str), color: opt(str), collapsed: opt(bool), locked: opt(bool), desc: opt(str) });
 
-const noteBase = { id: str, at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }), why: opt(str), lineRemoved: opt(bool), boardOnly: opt(bool) };
+const noteBase = { id: str, at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }), why: opt(str), lineRemoved: opt(bool), boardOnly: opt(bool), review: opt(str) };
 const Sidenote = v.variant("kind", [
   obj({ ...noteBase, kind: v.literal("code"), code: Segment }),
   obj({ ...noteBase, kind: v.literal("paste"), text: str, lang: str, url: opt(str) }),

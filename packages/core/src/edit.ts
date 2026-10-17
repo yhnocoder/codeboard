@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { sameVersion, type Board, type End, type Link, type Segment, type Sticker } from "./model";
+import { sameVersion, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -191,11 +191,12 @@ export function mapRange(map: LineMap, a: number, e: number): [number, number] |
 
 /**
  * 把卡里的一段换成新的（同一个段 id）：新版本 Update、HEAD 下只是挪了位置、Relocate 都走这里。
- * 段上的隐藏 / 高亮，Link 两端、Sidenote、Sticker 的行号都按 map 搬过去；
+ * 段上的隐藏 / 高亮，Link 两端、Sidenote、Sticker 的行号都按 map 搬过去（moveLineRefs）；
  * 行没了的：Link 端点退到卡头并标上 lost（画成红色，等用户重连或删掉），Sidenote 改挂整卡并标上 lineRemoved，Sticker 挪到卡片角上。
  * 合并卡的 mergedFrom（拆开时用的原卡快照）里落在这段上的段也一起换版本、挪行，Unmerge 时行锚还对得上。
+ * review：挂在内容变了的行上的 Sidenote 标上 review（新版本的标签），提醒复查（Update 时传）
  */
-export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns)): void {
+export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns), o: { review?: string } = {}): void {
   const owner = findOwner(b, cardId);
   const i = owner?.segments.findIndex((s) => s.id === ns.id) ?? -1;
   if (!owner || i < 0) return;
@@ -213,6 +214,15 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
       return { ...s, start: r[0], end: r[1], text: ns.text.slice(r[0] - ns.start, r[1] - ns.start + 1), version: ns.version, hidden: sh.length ? sh : undefined, hl: sl.length ? sl : undefined };
     });
   }
+  moveLineRefs(b, cardId, old, ns, map, { review: o.review });
+}
+
+/**
+ * 一段换了内容之后，白板上指着这段的行号跟过去：Link 两端、Sidenote、Sticker（rebaseSegment 的后半段）。
+ * notes：哪些 Sidenote 要挪（缺省全部；别的白板改了共享卡时，跟着卡来的 Sidenote 那边已经挪好了，这边只挪自己的）。
+ * review：挂着的行内容变了的 Sidenote 标上 review
+ */
+export function moveLineRefs(b: Board, cardId: string, old: Segment, ns: Segment, map: LineMap, o: { notes?: (n: Sidenote) => boolean; review?: string } = {}): void {
   const moveEnd = (l: Link, k: "from" | "to") => {
     const e = l[k];
     if (e.card !== cardId || e.seg !== ns.id || !e.line) return;
@@ -224,7 +234,10 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
   for (const l of b.links) { moveEnd(l, "from"); moveEnd(l, "to"); }
   for (const n of b.sidenotes) {
     if (n.at.card !== cardId || n.at.seg !== ns.id || !n.at.lines) continue;
-    const r = mapRange(map, n.at.lines[0], n.at.lines[1]);
+    if (o.notes && !o.notes(n)) continue;
+    const [a, e] = n.at.lines;
+    if (o.review && linesChanged(old, ns, map, a, e)) n.review = o.review;
+    const r = mapRange(map, a, e);
     if (r) n.at.lines = r; else { n.at = { card: cardId }; n.lineRemoved = true; }
   }
   for (const k of b.stickers) {
@@ -232,6 +245,23 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
     const m = map(k.at.line);
     if (m) k.at.line = m; else k.at = { kind: "card", card: cardId };
   }
+}
+
+/** 旧段的 a..e 行在新段里变了没有（没了，或那一行的内容不一样） */
+export function linesChanged(old: Pick<Segment, "text" | "start">, ns: Pick<Segment, "text" | "start">, map: LineMap, a: number, e: number): boolean {
+  for (let l = a; l <= e; l++) {
+    const m = map(l);
+    if (!m || (old.text[l - old.start] ?? "") !== (ns.text[m - ns.start] ?? "")) return true;
+  }
+  return false;
+}
+
+/** 换成新段之前数一下：挂在这段内容会变的行上的 Sidenote（Update 对话框里提醒） */
+export function notesOnChangedLines(b: Pick<Board, "cards" | "sidenotes">, cardId: string, ns: Segment): Sidenote[] {
+  const old = (b.cards.find((c) => c.id === cardId) as CodeCard | undefined)?.segments?.find((s) => s.id === ns.id);
+  if (!old) return [];
+  const map = lineMapOf(old, ns);
+  return b.sidenotes.filter((n) => n.at.card === cardId && n.at.seg === ns.id && n.at.lines && linesChanged(old, ns, map, n.at.lines[0], n.at.lines[1]));
 }
 
 /** 段只是整体挪了几行（内容没变） */
@@ -242,3 +272,147 @@ function findOwner(b: Board, cardId: string) {
   return c?.kind === "code" ? c : undefined;
 }
 const findSeg = (b: Board, cardId: string, segId: string) => findOwner(b, cardId)?.segments.find((s) => s.id === segId);
+
+// ---------- 共享卡、拷贝、合并 / 拆开（白板动作里的领域改动都在这里，白板只管选中、动画、提示） ----------
+
+/** 深拷贝：在 Solid 的 produce 里拿到的是代理对象，structuredClone 拷不了 */
+const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+
+/** 删掉这些 Sidenote */
+export function removeSidenotes(b: Board, ids: Iterable<string>): void {
+  const gone = new Set(ids);
+  b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.id));
+}
+
+/** 删掉这些 Sticker */
+export function removeStickers(b: Board, ids: Iterable<string>): void {
+  const gone = new Set(ids);
+  b.stickers = b.stickers.filter((k) => !gone.has(k.id));
+}
+
+/** 放到白板上的一张卡：内容、摆放（Compare 的栏没有）、跟着它来的 Sidenote */
+export type CardCopy = { card: Card; place?: Place; sidenotes?: Sidenote[] };
+
+/**
+ * 把卡放到白板上（⌘D、粘贴、从别的白板来的卡）。copy = 独立副本：卡、段、Sidenote 都换新 id，Sidenote 的锚点跟着换；
+ * 否则原样放（共享卡：同一个 id），白板上已经有的跳过。Compare 的栏要一起给。
+ * 摆放：Section、折叠、锁定是原来那块白板的，不带过来；at 可以再挪。返回 旧 id → 新 id（卡和段，放了的才有）
+ */
+export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?: (p: Place) => Place }): { cards: Record<string, string>; segs: Record<string, string> } {
+  const cards: Record<string, string> = {}, segs: Record<string, string> = {};
+  const have = new Set(b.cards.map((c) => c.id));
+  const todo = items.filter((it) => o.copy || !have.has(it.card.id));
+  for (const it of todo) cards[it.card.id] = o.copy ? uid(it.card.kind === "code" ? "c" : it.card.kind[0]) : it.card.id;
+  for (const it of todo) {
+    const c = copy(it.card);
+    c.id = cards[it.card.id];
+    if (c.kind === "code") for (const s of c.segments) { const n = o.copy ? uid("s") : s.id; segs[s.id] = n; s.id = n; }
+    if (c.kind === "compare") c.cols = [cards[c.cols[0]] ?? c.cols[0], cards[c.cols[1]] ?? c.cols[1]];
+    b.cards.push(c);
+    if (it.place) {
+      const p: Place = { x: it.place.x, y: it.place.y, w: it.place.w };
+      if (it.place.h !== undefined) p.h = it.place.h;
+      b.place[c.id] = o.at ? o.at(p) : p;
+    }
+    const nids = new Set(b.sidenotes.map((n) => n.id));
+    for (const n of it.sidenotes ?? []) {
+      if (n.kind === "card" || n.at.card !== it.card.id) continue; // 指着别的卡的 Sidenote 不带（那张卡不在这块白板上）
+      const m = copy(n);
+      if (o.copy) m.id = uid("n"); else if (nids.has(m.id)) continue;
+      m.at = { ...m.at, card: c.id, seg: m.at.seg && segs[m.at.seg] };
+      if (!m.at.seg) delete m.at.seg;
+      b.sidenotes.push(m);
+    }
+  }
+  return { cards, segs };
+}
+
+/**
+ * 共享卡在这块白板上变成独立副本（Unlink、只在这块白板 Update、合并前）：换一个新 id，这块白板上的引用都跟着换（renameCard）；
+ * Compare 连同两栏。卡库和别的白板不动：宿主看到这块白板上没有原来的 id 了，就不再把它当共享卡。返回新 id
+ */
+export function unlinkCard(b: Board, id: string, to = uid("c")): string {
+  const c = b.cards.find((k) => k.id === id);
+  if (!c) return id;
+  if (c.kind === "compare") for (const k of [...c.cols]) renameCard(b, k, uid("c"));
+  renameCard(b, id, to);
+  return to;
+}
+
+/**
+ * 合并代码卡：段按文件、行号排好，重叠的并起来；连着它们的 Link、Sidenote、Sticker 按文件 + 行搬到新卡上（replaceCards）。
+ * target = 被拖到的那张卡（标题、说明、文件顺序以它为准），别的卡的说明转成挂在整张卡上的 Text sidenote。
+ * unlink：共享卡先在这块白板上变成副本（别的白板不受影响；mergedFrom 里记的是副本，Unmerge 不会把旧内容写回卡库）
+ */
+export function mergeCodeCards(b: Board, ids: string[], target: string, o: { id?: string; unlink?: (id: string) => boolean } = {}): { id: string; segments: Segment[] } | null {
+  const mid = o.id ?? uid("c");
+  const re = new Map<string, string>();
+  for (const id of ids) re.set(id, o.unlink?.(id) ? unlinkCard(b, id) : id);
+  const now = ids.map((id) => re.get(id)!);
+  const orig = now.map((id) => b.cards.find((c) => c.id === id)).filter((c): c is CodeCard => c?.kind === "code").map(copy);
+  if (orig.length < 2) return null;
+  const T = orig.find((c) => c.id === re.get(target)) ?? orig[0];
+  const segs = mergeOverlapping(sortSegments(orig.flatMap((c) => c.segments), T.segments[0]?.path));
+  // 合并后段 id 变了的，Link / Sidenote 要跟着换：旧段 id → 新段（按文件 + 行找）
+  const segFor = (old: Segment, line?: number) => segs.find((s) => s.path === old.path && s.src.kind === old.src.kind && sameVersion(s.version, old.version) && (line === undefined || (line >= s.start && line <= s.end))) ?? segs[0];
+  const oldSegs = new Map(orig.flatMap((c) => c.segments.map((s) => [s.id, s] as const)));
+  const TP = b.place[T.id];
+  const M: CodeCard = {
+    id: mid, kind: "code", segments: segs, title: T.title, desc: T.desc, hide: T.hide,
+    mergedFrom: orig.flatMap((c) => c.mergedFrom ?? [{ card: c, place: copy(b.place[c.id]) }]),
+  };
+  for (const c of orig) if (c !== T && c.desc) b.sidenotes.push({ id: uid("n"), at: { card: mid }, kind: "text", md: c.desc });
+  const w = Math.max(560, ...orig.map((c) => b.place[c.id]?.w ?? 560)); // 先量宽度，再删原来的摆放
+  replaceCards(b, orig.map((c) => c.id), (at) => {
+    const os = at.seg ? oldSegs.get(at.seg) : undefined;
+    return { card: mid, seg: os ? segFor(os, at.line).id : undefined };
+  });
+  b.cards.push(M);
+  b.place[mid] = { x: TP?.x ?? 0, y: TP?.y ?? 0, w, section: TP?.section };
+  if (b.place[mid].section === undefined) delete b.place[mid].section;
+  return { id: mid, segments: copy(segs) };
+}
+
+/** 拆开：有合并记录就拆回原来的卡（放回原位、Link 回到各自的卡）；没有就按段拆。返回新卡和它们的段 */
+export function unmergeCard(b: Board, id: string): { made: string[]; segments: Segment[] } | null {
+  const m = b.cards.find((c) => c.id === id);
+  const mp = b.place[id];
+  if (m?.kind !== "code" || !mp || (!m.mergedFrom && m.segments.length < 2)) return null;
+  const f0 = m.mergedFrom?.[0].place;
+  const dx = f0 ? mp.x - f0.x : 0, dy = f0 ? mp.y - f0.y : 0;
+  const pp: Place[] = [];
+  const have = new Set(b.cards.map((c) => c.id));
+  const parts: CodeCard[] = m.mergedFrom
+    ? m.mergedFrom.map((o) => {
+      pp.push({ ...copy(o.place), x: o.place.x + dx, y: o.place.y + dy, section: mp.section });
+      const k = copy(o.card);
+      if (have.has(k.id)) k.id = uid("c"); // 复制过的合并卡再拆：原卡的 id 已经被另一份占了
+      return k;
+    })
+    : m.segments.map((s, i) => { pp.push({ x: mp.x + i * 40, y: mp.y + i * 40, w: mp.w, section: mp.section }); return { id: uid("c"), kind: "code", segments: [copy(s)], hide: m.hide }; });
+  // 段的高亮 / 隐藏跟着行走
+  for (const p of parts) for (const s of p.segments) {
+    const src = m.segments.filter((q) => q.path === s.path && sameVersion(q.version, s.version) && q.start <= s.end && q.end >= s.start);
+    s.hl = [...new Set(src.flatMap((q) => q.hl ?? []).filter((l) => l >= s.start && l <= s.end))];
+    s.hidden = src.flatMap((q) => q.hidden ?? []).map(([a, c]) => [Math.max(a, s.start), Math.min(c, s.end)] as [number, number]).filter(([a, c]) => a <= c);
+    if (!s.hl.length) s.hl = undefined;
+    if (!s.hidden.length) s.hidden = undefined;
+  }
+  const owner = (seg?: string, line?: number) => {
+    const ms = m.segments.find((q) => q.id === seg);
+    if (!ms) return { card: parts[0].id, seg: undefined as string | undefined };
+    for (const p of parts) for (const s of p.segments) if (s.path === ms.path && sameVersion(s.version, ms.version) && (line === undefined ? s.start <= ms.end && s.end >= ms.start : line >= s.start && line <= s.end)) return { card: p.id, seg: s.id };
+    return { card: parts[0].id, seg: undefined };
+  };
+  replaceCards(b, [id], (at) => (at.seg ? owner(at.seg, at.line) : { card: parts[0].id }));
+  const made: string[] = [], segments: Segment[] = [];
+  parts.forEach((p, i) => {
+    b.cards.push(p);
+    const q = pp[i];
+    if (q.section === undefined) delete q.section;
+    b.place[p.id] = q;
+    made.push(p.id);
+    segments.push(...copy(p.segments));
+  });
+  return { made, segments };
+}

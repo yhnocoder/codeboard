@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
 import { emptyBoard } from "../src";
-import { Storage, type DirEnt, type Fs } from "../src/storage";
+import { Storage, pasteClip, type DirEnt, type Fs } from "../src/storage";
 
 /** In-memory Fs: files and directories keyed by "/"-joined paths; every write bumps a clock used as mtime */
 class MemFs implements Fs {
@@ -317,20 +317,96 @@ describe("card library (shared cards)", () => {
     expect(card(fs, "s").sidenotes.map((n: any) => n.md)).toEqual(["B's"]);
   });
 
-  it("unshare leaves this board an own copy; sharing again with a taken id renames the card", async () => {
+  it("unshare leaves this board an own copy under a new id; the library and the other board keep the shared card", async () => {
     const { fs, store, B } = await two();
-    expect(await store.unshare(B, "s")).toBe(true);
-    expect(file(fs, B).cards[0]).toEqual(note("s"));
-    expect(file(fs, B).sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
-    expect(await store.boardsWith("s")).toEqual(["A"]);
-    await store.patch(B, { cards: { set: [note("s", "B only")] } });
-    expect(card(fs, "s").card.md).toBe("s");
-    const r = await store.share(B, ["s"]);
-    const n = r.s;
+    const n = (await store.unshare(B, "s"))!;
     expect(n).toMatch(/^c/);
-    expect(card(fs, n).card.md).toBe("B only");
-    expect(store.peek(B)!.place[n]).toBeTruthy();
+    expect(file(fs, B).cards[0]).toEqual({ ...note("s"), id: n });
+    expect(file(fs, B).sidenotes.map((x: any) => [x.id, x.at.card])).toEqual([["n1", n]]);
     expect(await store.boardsWith("s")).toEqual(["A"]);
+    await store.patch(B, { cards: { set: [note(n, "B only")] } });
+    expect(card(fs, "s").card.md).toBe("s");
+    expect(await store.share(B, [n])).toEqual({});
+    expect(card(fs, n).card.md).toBe("B only");
+    expect(await store.unshare(B, "la")).toBe(null);
+  });
+
+  it("a card id that is in the library is shared: pasting it onto a board, or undoing Remove from Board, links it again", async () => {
+    const { fs, store, B } = await two();
+    const C = (await store.create("C")).id;
+    // Paste as linked card: the board sends the card with the same id
+    await store.patch(C, { cards: { set: [note("s", "s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } });
+    expect(file(fs, C).cards).toEqual([{ id: "s", kind: "shared" }]);
+    expect(await store.boardsWith("s")).toEqual(["A", B, C]);
+    // Remove from Board, then undo
+    await store.patch(B, { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1"] } });
+    expect(await store.boardsWith("s")).toEqual(["A", C]);
+    await store.patch(B, { cards: { set: [note("s", "s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } }, { undo: true });
+    expect(await store.boardsWith("s")).toEqual(["A", B, C]);
+    expect(file(fs, B).cards.at(-1)).toEqual({ id: "s", kind: "shared" });
+  });
+
+  it("Delete Everywhere removes the card, its links and sidenotes from every board and moves the library file to .trash", async () => {
+    const { fs, store, B } = await two();
+    await store.patch(B, { cards: { set: [note("x")] }, place: { set: { x: { x: 0, y: 0, w: 1 } } }, links: { set: [{ id: "l", from: { card: "x" }, to: { card: "s" } }] } });
+    const gone: unknown[] = [];
+    store.onDidRemoveShared((e) => gone.push(e));
+    expect(await store.deleteEverywhere("s", "A")).toEqual(["A", B]);
+    expect(file(fs, "A").cards).toEqual([note("la")]);
+    expect(file(fs, "A").sidenotes).toEqual([]);
+    expect(file(fs, B).cards).toEqual([note("la"), note("x")]);
+    expect(file(fs, B).links).toEqual([]);
+    expect(fs.files.has(`${ROOT}/cards/s.json`)).toBe(false);
+    expect([...fs.files.keys()].some((f) => f.startsWith(`${ROOT}/.trash/card-s.`))).toBe(true);
+    expect(gone).toEqual([{ from: "A", card: "s", boards: ["A", B] }]);
+    // Undoing on A brings back an own copy (the library no longer has it)
+    await store.patch("A", { cards: { set: [note("s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } }, { undo: true });
+    expect(file(fs, "A").cards[1]).toEqual(note("s"));
+  });
+
+  it("copyOut gives a card with its place and travelling sidenotes; cached() lists the boards with their refs", async () => {
+    const { store, B } = await two();
+    const out = store.copyOut("A", ["s", "missing"]);
+    expect(out.map((x) => [x.card.id, !!x.place, x.sidenotes!.map((n) => n.id)])).toEqual([["s", true, ["n1"]]]);
+    expect(store.cached().map((e) => [e.id, [...e.refs]])).toEqual([["A", ["s"]], [B, ["s"]]]);
+  });
+
+  it("a new version of a shared code card moves the other board's own line references and writes that board", async () => {
+    const t = new MemFs();
+    const store = new Storage(t, { dir: () => ROOT });
+    const seg = (start: number, text: string[], commit: string) => ({ id: "g", src: { kind: "repo" as const, repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git" as const, commit } });
+    const code = (sg: ReturnType<typeof seg>) => ({ id: "s", kind: "code" as const, segments: [sg] });
+    const old = seg(10, ["def f():", "    x = 1", "    return x"], "a");
+    const a = { ...emptyBoard("A", "A"), cards: [code(old), note("z")], place: { s: { x: 0, y: 0, w: 1 }, z: { x: 0, y: 0, w: 1 } } };
+    await store.save(a);
+    await store.share("A", ["s"]);
+    const B = (await store.duplicate("A"))!.id;
+    await store.patch(B, {
+      links: { set: [{ id: "l", from: { card: "z" }, to: { card: "s", seg: "g", line: 12 } }] },
+      sidenotes: { set: [{ id: "bo", kind: "text", md: "mine", at: { card: "s", seg: "g", lines: [11, 11] }, boardOnly: true }] },
+    });
+    // A updates: two lines added on top, line 11 edited
+    const now = seg(10, ["# a", "# b", "def f():", "    x = 2", "    return x"], "b");
+    await store.patch("A", { cards: { set: [code(now)] } });
+    const fb = file(t, B);
+    expect(fb.links[0].to).toEqual({ card: "s", seg: "g", line: 14 });
+    expect(fb.sidenotes[0]).toMatchObject({ id: "bo", at: { lines: [13, 13] }, review: "b" });
+    expect(store.peek(B)!.links[0].to.line).toBe(14);
+  });
+
+  it("pasteClip: cards copied on one board paste onto another as linked cards (shared first), or as a copy; the same board and other text do not match", async () => {
+    const { fs, store } = await two();
+    const C = (await store.create("C")).id;
+    const clip = { board: "A", cards: ["la"], text: "la" };
+    expect(await pasteClip(store, clip, "A", { copy: false })).toBe(null);
+    expect(await pasteClip(store, clip, C, { text: "something else", copy: false })).toBe(null);
+    const copy = (await pasteClip(store, clip, C, { text: "la\n", copy: true }))!;
+    expect([copy.from, copy.shared, copy.cards.map((x) => x.card.id)]).toEqual(["A", false, ["la"]]);
+    expect(fs.files.has(`${ROOT}/cards/la.json`)).toBe(false);
+    const linked = (await pasteClip(store, clip, C, { text: "la", copy: false }))!;
+    expect(linked.shared).toBe(true);
+    expect(card(fs, "la").card.md).toBe("la");
+    expect([...store.refsOf("A")].sort()).toEqual(["la", "s"]);
   });
 
   it("picks up a shared card edited outside the app", async () => {

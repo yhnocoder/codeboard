@@ -6,7 +6,7 @@ import { allCodeCards, BOARD_VERSION, emptyBoard, uid, type Board, type BoardMet
 import { Emitter } from "../emitter";
 import { loadBoardFile, loadSharedCard } from "../schema";
 import { applyPatch, deflate, inflate, putShared, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
-import { renameCard } from "../edit";
+import { removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
 import { baseName, extName, type Fs } from "./fs";
 
 /** refs = 这块白板上的共享卡；used = 换进来的是卡库里的哪一版（卡文件在外面被改了时重新换） */
@@ -46,6 +46,9 @@ export class Storage {
   private sharedEmitter = new Emitter<SharedChange>();
   /** 共享卡变了（写进了卡库）：开着同一张卡的别的白板要跟着换 */
   readonly onDidShare = this.sharedEmitter.event;
+  private removedEmitter = new Emitter<{ from?: string; card: string; boards: string[] }>();
+  /** Delete Everywhere 删掉了一张共享卡：开着的白板跟着删 */
+  readonly onDidRemoveShared = this.removedEmitter.event;
   /** 卡库的缓存（按修改时间） */
   private lib = new Map<string, { mtime: number; sc: SharedCardFile }>();
   /** 共享的每一项（卡、Sidenote）最后是哪块白板写的：撤销时别的白板后来改过的项不撤（只在内存里，重启后撤销栈也没了） */
@@ -207,6 +210,8 @@ export class Storage {
       applyPatch(e.board, p);
       const ids = new Set(e.board.cards.map((c) => c.id));
       for (const r of [...e.refs]) if (!ids.has(r)) e.refs.delete(r); // Remove from Board：卡库里的卡不动
+      // 卡库里有的 id 就是共享卡：粘贴过来的共享卡、撤销 Remove from Board 回来的卡（独立副本都换过 id，见 edit.unlinkCard）
+      for (const c of p.cards?.set ?? []) if (!e.refs.has(c.id) && (await this.readShared(c.id))) e.refs.add(c.id);
       await this.commit(e, prev);
       const out: SharedUpdate[] = [];
       for (const [c, items] of skipped) { const sc = sharedOf(e.board, c); if (sc) out.push({ ...structuredClone(sc), items }); }
@@ -260,20 +265,82 @@ export class Storage {
     e.file = file;
     e.mtime = (await fs.stat(file)).mtimeMs;
     this.cache.set(e.id, e);
+    const moved = new Set<Entry>();
     for (const sc of changed) {
       const id = sc.card.id;
       for (const o of this.cache.values()) {
         if (o === e || !o.refs.has(id)) continue;
-        putShared(o.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }));
+        const r: { moved?: boolean } = {};
+        putShared(o.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), r);
         o.used.set(id, this.lib.get(id)!.sc);
+        if (r.moved) moved.add(o);
       }
     }
+    // 别的白板自己指着这张卡的行号跟着挪了（新版本）：那块白板的文件也要写
+    for (const o of moved) await this.writeBoard(o);
     this.saved.fire(e.board);
     if (changed.length) this.sharedEmitter.fire({ from: e.id, cards: structuredClone(changed) });
     if (!prev || prev.outline !== outline(e.board) || prev.group !== e.group) this.changed.fire();
   }
 
+  /** 只写白板文件（卡库不动）：别的白板改了共享卡、这块白板跟着挪了行号时 */
+  private async writeBoard(e: Entry) {
+    const fs = this.fs;
+    const { file: data } = deflate(e.board, e.refs);
+    const tmp = `${e.file}.tmp`;
+    await fs.writeFile(tmp, JSON.stringify(data, null, 1));
+    await fs.rename(tmp, e.file);
+    e.mtime = (await fs.stat(e.file)).mtimeMs;
+  }
+
   // ---------- 卡库 ----------
+
+  /** 缓存里的所有白板（只读，不扫描目录）：算共享卡在哪些白板上、谁连到它 */
+  cached(): { id: string; board: Board; refs: ReadonlySet<string> }[] {
+    return [...this.cache.values()].map((e) => ({ id: e.id, board: e.board, refs: e.refs }));
+  }
+
+  /** 拷出白板上的这些卡（Compare 带上两栏）：内容、摆放、跟着它们走的 Sidenote。剪贴板、粘贴到别的白板用 */
+  copyOut(id: string, cards: string[]): CardCopy[] {
+    const b = this.cache.get(id)?.board;
+    if (!b) return [];
+    const want = new Set<string>();
+    for (const c of cards) {
+      const card = b.cards.find((k) => k.id === c);
+      if (!card) continue;
+      if (card.kind === "compare") card.cols.forEach((k) => want.add(k));
+      want.add(c);
+    }
+    return b.cards.filter((c) => want.has(c.id)).map((c) => structuredClone({ card: c, place: b.place[c.id], sidenotes: b.sidenotes.filter((n) => travels(n, c.id)) }));
+  }
+
+  /**
+   * Delete Everywhere：把这张共享卡从所有白板上删掉（连着它的 Link、挂在上面的 Sidenote 一起，removeCards），卡库里的文件放进 .trash。
+   * 返回删了它的白板；发 onDidRemoveShared，开着的白板跟着删
+   */
+  async deleteEverywhere(card: string, from?: string): Promise<string[]> {
+    await this.scan();
+    return this.serial(async () => {
+      const out: string[] = [];
+      for (const e of [...this.cache.values()]) {
+        if (!e.refs.has(card) && !(e.id === from && e.board.cards.some((c) => c.id === card))) continue;
+        const prev = { file: e.file, outline: outline(e.board), group: e.group };
+        removeCards(e.board, [card]);
+        e.refs.delete(card);
+        await this.commit(e, prev);
+        out.push(e.id);
+      }
+      const file = this.fs.join(this.cardsDir(), `${card}.json`);
+      if (SAFE_ID.test(card)) {
+        const trash = this.fs.join(this.dir(), ".trash");
+        await this.fs.mkdir(trash);
+        await this.fs.rename(file, this.fs.join(trash, `card-${card}.${Date.now()}.json`)).catch(() => undefined);
+      }
+      this.lib.delete(card);
+      this.removedEmitter.fire({ from, card, boards: out });
+      return out;
+    });
+  }
 
   /** 白板上哪些卡是共享卡 */
   refsOf(id: string): ReadonlySet<string> { return this.cache.get(id)?.refs ?? new Set(); }
@@ -314,16 +381,28 @@ export class Storage {
     });
   }
 
-  /** 这块白板不再共享这张卡：留一份独立的拷贝（同一个 id，跟着它的 Sidenote 也留下），别的白板和卡库里的不动 */
-  async unshare(id: string, card: string): Promise<boolean> {
+  /** share() 会不会给这块白板上的卡换 id（卡库里已经有同 id 的卡，而这块白板上它还不是共享卡）。开着的白板不知道换了 id，粘贴时会换就改成拷贝 */
+  async wouldRename(id: string, cards: string[]): Promise<boolean> {
+    const e = await this.entry(id);
+    for (const c of cards) if (!e.refs.has(c) && ((await this.readShared(c)) || [...this.cache.values()].some((o) => o.refs.has(c)))) return true;
+    return false;
+  }
+
+  /**
+   * 这块白板不再共享这张卡：留一份独立的拷贝（换一个新 id，edit.unlinkCard；跟着它的 Sidenote 也留下），别的白板和卡库里的不动。
+   * 卡库里有的 id 一律当共享卡（见 patch），所以副本一定换 id。返回新 id；不是共享卡返回 null。开着这块白板的面板要重新载入
+   */
+  async unshare(id: string, card: string): Promise<string | null> {
     return this.serial(async () => {
       const e = await this.entry(id);
-      if (!e.refs.has(card)) return false;
+      if (!e.refs.has(card)) return null;
       const c = e.board.cards.find((k) => k.id === card);
       e.refs.delete(card);
       if (c?.kind === "compare") c.cols.forEach((k) => e.refs.delete(k));
-      await this.commit(e, { file: e.file, outline: outline(e.board), group: e.group });
-      return true;
+      const prev = { file: e.file, outline: outline(e.board), group: e.group };
+      const to = unlinkCard(e.board, card);
+      await this.commit(e, prev);
+      return to;
     });
   }
 

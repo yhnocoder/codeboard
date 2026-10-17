@@ -4,6 +4,8 @@
 import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta } from "./model";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
+import type { CardCopy } from "./edit";
+import type { SharedInfo } from "./shared";
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
@@ -38,6 +40,8 @@ export type Settings = {
   themeReflow?: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
   debug?: boolean; // 打开后设置页多一节 Debug（调常量）
   tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
+  pasteOther?: "linked" | "copy"; // 卡贴到另一块白板上：共享卡（默认）/ 独立副本；⌥ 粘贴是另一种
+  sharedUpdate?: "ask" | "all" | "this"; // 共享卡 Update 新版本：每次问（默认）/ 所有白板 / 只这块白板（拆成副本）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
@@ -57,6 +61,8 @@ export type HostInfo = {
   forwardedKeys?: string[];
   /** 宿主能做 AI 续写（VS Code 的语言模型）：Note 编辑时的灰字补全 */
   complete?: boolean;
+  /** ⌘C 复制的卡在哪块白板上、几张（画布菜单的 Paste as Linked Card / Paste as Copy 用） */
+  clip?: { board: string; n: number };
 };
 
 /** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
@@ -138,7 +144,11 @@ export type HostToBoard =
   /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
   | { type: "githubPicker"; repo?: string }
   /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
-  | { type: "shared"; cards: SharedUpdate[] }
+  | { type: "shared"; cards: SharedUpdate[]; views?: Record<string, SegView> }
+  /** 这块白板上的共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算，整个换掉） */
+  | { type: "sharedInfo"; cards: Record<string, SharedInfo> }
+  /** 别的白板 Delete Everywhere 删掉了这些共享卡：白板用 sync 删掉（不进撤销栈） */
+  | { type: "sharedGone"; cards: string[] }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
@@ -182,11 +192,20 @@ export type BoardToHost =
   | { type: "copyDiagnostics"; board?: boolean }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
   | { type: "log"; level: "info" | "warn" | "error"; text: string }
-  | { type: "openBoard"; id: string; card?: string }
+  | { type: "openBoard"; id: string; card?: string; line?: number }
+  /** ⌘C 复制了这些卡（text = 写进剪贴板的文字）：宿主记下来，贴到别的白板时用 */
+  | { type: "copyCards"; cards: string[]; text: string }
+  /** 粘贴：剪贴板里是别的白板上复制的卡就回 PastedCards（text 对不上、同一块白板回 null）；copy = 独立副本 */
+  | { type: "pasteCards"; req: number; text?: string; copy?: boolean }
+  /** 共享卡 Delete Everywhere：从所有白板上删掉（回删了它的白板数） */
+  | { type: "deleteEverywhere"; req: number; card: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
   | { type: "pickFile"; req: number; kind: "image" }
   /** Note 编辑时的灰字补全：光标前后的文字，回接在光标处的一段（没有可用模型时回 null） */
   | { type: "complete"; req: number; before: string; after: string };
+
+/** 贴过来的别的白板上的卡（views = 各段的展示数据） */
+export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; views: Record<string, SegView> };
 
 /** 指定展开哪个定义。rel = path 相对 seg 自己的来源根（类卡点成员；工作区外的文件也对），qual = 按符号找（钉的版本行号可能挪了） */
 export type ExpandPick = { path: string; line: number; rel?: true; qual?: string };
@@ -226,6 +245,8 @@ type Replies = {
   confirm: boolean;
   pickFile: string | null; // data URL
   complete: string | null;
+  pasteCards: PastedCards | null;
+  deleteEverywhere: number;
 };
 export type ReplyOf<T extends AskType> = Replies[T];
 /** From GitHub… 的回答：按 GhQuery 的 op */

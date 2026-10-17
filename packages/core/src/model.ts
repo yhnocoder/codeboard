@@ -189,6 +189,7 @@ export type Sidenote = {
   why?: string; // 「为什么相关」，可选
   lineRemoved?: boolean; // 更新版本时原来的行被删了，改挂整卡
   boardOnly?: true; // 挂在共享卡上、但只属于这块白板（不跟着卡去别的白板）
+  review?: string; // Update 时挂着的行变了：新版本的标签（如 9f3e2a1），琥珀色提醒复查；用户看过就去掉
 } & (
   | { kind: "code"; code: Segment } // 仓库里或仓库外的代码，钉版本
   | { kind: "paste"; text: string; lang: string; url?: string }

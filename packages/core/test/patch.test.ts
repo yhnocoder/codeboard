@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyPatch, deflate, emptyBoard, inflate, loadBoard, loadBoardFile, loadSharedCard, putShared, renameCard, sharedOf, travels,
+  applyPatch, deflate, emptyBoard, inflate, loadBoard, loadBoardFile, loadSharedCard, putShared, renameCard, sharedOf, travels, applySharedUpdate, followShared,
   type Board, type Card, type Sidenote,
 } from "../src";
 
@@ -124,5 +124,44 @@ describe("board format v6", () => {
     const c = board();
     c.sidenotes[0].boardOnly = true;
     expect(loadBoard(structuredClone(c)).sidenotes[0].boardOnly).toBe(true);
+  });
+});
+
+describe("shared card updates on a board (followShared / applySharedUpdate)", () => {
+  const seg = (start: number, text: string[], commit: string) => ({ id: "g", src: { kind: "repo" as const, repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git" as const, commit } });
+  const code = (s: ReturnType<typeof seg>): Card => ({ id: "s", kind: "code", segments: [s] });
+  function withCode(): Board {
+    const b = board();
+    b.cards.push(code(seg(10, ["def f():", "    x = 1", "    return x"], "a")));
+    b.links.push({ id: "l2", from: { card: "a" }, to: { card: "s", seg: "g", line: 12 } });
+    b.sidenotes.push(text("own", "s", { at: { card: "s", seg: "g", lines: [11, 11] }, boardOnly: true }), text("tr", "s", { at: { card: "s", seg: "g", lines: [11, 11] } }));
+    return b;
+  }
+  const now = seg(10, ["# new", "def f():", "    x = 2", "    return x"], "b");
+  it("moves this board's own line references and marks its own sidenotes on changed lines; travelling sidenotes come from the update", () => {
+    const b = withCode();
+    const tr = text("tr", "s", { at: { card: "s", seg: "g", lines: [12, 12] }, review: "b" });
+    applySharedUpdate(b, { card: code(now), sidenotes: [tr], items: ["s", "tr"] });
+    expect(b.links[1].to).toEqual({ card: "s", seg: "g", line: 13 });
+    expect(b.sidenotes.find((n) => n.id === "own")).toMatchObject({ at: { lines: [12, 12] }, review: "b" });
+    expect(b.sidenotes.find((n) => n.id === "tr")).toEqual(tr);
+    // Replaying on the updated board changes nothing (undo replays syncs)
+    const again = structuredClone(b);
+    applySharedUpdate(again, { card: code(now), sidenotes: [tr], items: ["s", "tr"] });
+    expect(again).toEqual(b);
+  });
+  it("putShared reports whether this board's own references moved", () => {
+    const b = withCode();
+    const o: { moved?: boolean } = {};
+    expect(putShared(b, { card: code(now), sidenotes: [] }, o)).toBe(true);
+    expect(o.moved).toBe(true);
+    const o2: { moved?: boolean } = {};
+    putShared(b, { card: code(now), sidenotes: [] }, o2);
+    expect(o2.moved).toBe(false);
+  });
+  it("followShared ignores non-code cards and unchanged segments", () => {
+    const b = withCode();
+    expect(followShared(b, note("a"), note("a", "x"))).toBe(false);
+    expect(followShared(b, b.cards[3], structuredClone(b.cards[3]))).toBe(false);
   });
 });
