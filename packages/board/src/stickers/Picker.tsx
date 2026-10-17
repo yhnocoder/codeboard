@@ -1,5 +1,5 @@
 // 选贴纸的面板：Built-in / 自定义包 / Emoji，搜索，颜色。开在工具栏 Sticker 按钮上面。
-import { createMemo, createSignal, For, Show, onCleanup, onMount } from "solid-js";
+import { createMemo, createRoot, createSignal, For, Show, onCleanup, onMount } from "solid-js";
 import type { IconRef, Sticker } from "@codeboard/core";
 import { linkCurve, curveAt } from "../canvas/Links";
 import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, packs } from "./glyphs";
@@ -92,9 +92,17 @@ export function BoundStickers(p: { card: string }) {
   return <For each={list()}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} />}</For>;
 }
 
-/** 绑在箭头上的贴纸：沿线位置 t + 偏移；选中时画一条虚线连到线上那一点 */
-export function LinkStickers() {
-  const list = createMemo(() => state.board.stickers.filter((s) => s.at.kind === "canvas" && s.at.on && "link" in s.at.on));
+// 绑在箭头上的贴纸，按线分好组（每条线的 LinkStickers 都要问）
+const NO_STK: Sticker[] = [];
+const byLink = createRoot(() => createMemo(() => {
+  const m = new Map<string, Sticker[]>();
+  for (const s of state.board.stickers) if (s.at.kind === "canvas" && s.at.on && "link" in s.at.on) { const k = s.at.on.link, a = m.get(k); a ? a.push(s) : m.set(k, [s]); }
+  return m;
+}));
+
+/** 绑在一条箭头上的贴纸：沿线位置 t + 偏移；选中时画一条虚线连到线上那一点。跟这条线在同一层（canvas/Links.tsx） */
+export function LinkStickers(p: { link: string }) {
+  const list = createMemo(() => byLink().get(p.link) ?? NO_STK, NO_STK, { equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) });
   return (
     <For each={list()}>
       {(s) => {

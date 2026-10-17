@@ -5,6 +5,7 @@ import { V015 } from "./v015";
 import { WEB } from "./scenarios-web";
 import { V017 } from "./v017";
 import { V017LABELS } from "./v017labels";
+import { V017STACK } from "./v017stack";
 import { THEMES_V17 } from "./scenarios-themes";
 
 const light = process.argv.includes("--light");
@@ -23,6 +24,7 @@ const S: Record<string, () => Promise<void>> = {
   ...WEB,
   ...V017,
   ...V017LABELS,
+  ...V017STACK,
   ...THEMES_V17,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });

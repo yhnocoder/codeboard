@@ -134,7 +134,7 @@ export const V017LABELS: Record<string, () => Promise<void>> = {
 
     // zoomed out: arguments collapse, ↺ and own text stay
     {
-      const lb = h.page.locator(".labels").first();
+      const lb = h.page.locator(".lyr").first();
       await h.page.mouse.move(700, 500);
       await h.page.keyboard.down("Control"); for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, 20); await h.page.keyboard.up("Control");
       await h.page.waitForTimeout(500);

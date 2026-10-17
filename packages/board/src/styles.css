@@ -79,6 +79,7 @@ input, textarea { font: inherit; color: var(--ink); }
    只在动的时候才升层的话，每段手势的第一帧都要把整层重画一遍（~25ms，掉一帧） */
 .world { will-change: transform; rotate: x 0deg; }
 .world.settle { will-change: auto; }
+.wext { position: absolute; pointer-events: none; } /* 见 Canvas.tsx：只占一块范围，不画东西，把线那个合成层撑到整块白板 */
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; pointer-events: none; }
 /* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
 .edge { fill: none; stroke: var(--edge); stroke-width: calc(var(--edge-w) * var(--lw, 1)); stroke-linecap: round; transition: opacity .2s; }
@@ -102,7 +103,14 @@ input, textarea { font: inherit; color: var(--ink); }
 .ahead.hot { stroke: var(--accent); }
 .port { fill: var(--surface); stroke: var(--edge); stroke-width: var(--edge-w); transition: opacity calc(var(--t) * 120ms); }
 .hidden-o { opacity: 0; }
-.labels { position: absolute; left: 0; top: 0; z-index: 5; pointer-events: none; }
+/* 线的图层（canvas/Links.tsx 的「图层」）：线都在 .bottom 这一层（所有卡下面），放线、City 的路、线的标签框和贴纸（开着的车全在一层 .movers，见 Links.tsx 的 Traffic）。
+   标签框、贴纸原来的 z-index 在层里清掉，不然会跑到所有卡上面。线头的圆点在 .ports 这一层（在所有卡上面，跟以前的 .edges 一样）。
+   浮上来的线（选中、拖着、指针下那张卡的）在 .top 这一层，在所有卡和画布贴纸上面 */
+.lyr { position: absolute; left: 0; top: 0; pointer-events: none; }
+.lyr.top { z-index: 5; }
+.lyr.ports { z-index: 2; }
+.lw { display: contents; }
+.lyr > .lw > .lw > * { z-index: auto; }
 .elabel { position: absolute; transform: translate(-50%, -50%); font: 11px/1 var(--mono); white-space: nowrap; color: var(--ink-2); background: var(--surface);
   box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); border-radius: 5px; padding: 4px 7px; pointer-events: auto;
   transition: opacity calc(var(--t) * 160ms) var(--out); }
@@ -573,12 +581,11 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 
 /* links */
 .lhit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: pointer; }
-.edges { z-index: 2; }
 .edge.on, .ahead.on { stroke: var(--accent); stroke-width: calc(var(--edge-w) * var(--lw, 1) + .45); }
 .port.lost { stroke: var(--lk-lost, #d64545); }
 .port { pointer-events: none; }
 .porthit { fill: transparent; pointer-events: all; cursor: ew-resize !important; }
-.board.dragging .porthit, .edges.lod-map .porthit { display: none; }
+.board.dragging .porthit, .lyr.lod-map .porthit { display: none; }
 .vchips { z-index: 6; }
 .vchips.on .vlabel, .vchips.on .vchip { box-shadow: 0 0 0 1.5px var(--accent); }
 .vlabel.editing { min-width: 60px; }
@@ -776,7 +783,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 绑定：拖到卡 / 箭头上时那张卡亮一圈；选中绑在卡上的贴纸时，那张卡画一圈虚线，绑在箭头上的画一条虚线连到线上 */
 .card.bind-hot { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent), var(--sh-card); }
 .card.bind-anchor::after { content: ""; position: absolute; inset: -5px; border: 1px dashed color-mix(in srgb, var(--accent) 70%, transparent); border-radius: calc(var(--r-card) + 5px); pointer-events: none; }
-.labels .stk { pointer-events: auto; z-index: 6; }
+.lyr .stk { pointer-events: auto; z-index: auto; }
 .tether { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
 .tether line { stroke: var(--accent); stroke-dasharray: 3 3; }
 .tether circle { fill: var(--accent); }
@@ -821,8 +828,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card.lo-ov .crows .cmpl, .card.lo-ov .cno,
 .card.lo-ov .cpath, .card.lo-ov .rev, .card.lo-ov .chead .ib, .card.lo-ov .lport { visibility: hidden; }
 /* 缩小看全局：参数收起，留 ↺ 和自己写的字；只有参数的框整个不画（W01 C） */
-.labels.lod-overview .vbox, .labels.lod-overview .vchips.argsonly, .labels.lod-overview .vplus, .labels.lod-overview .mkcall { display: none; }
-.labels.lod-overview .vcard.split .vhead { border-bottom: 0; }
+.lyr.lod-overview .vbox, .lyr.lod-overview .vchips.argsonly, .lyr.lod-overview .vplus, .lyr.lod-overview .mkcall { display: none; }
+.lyr.lod-overview .vcard.split .vhead { border-bottom: 0; }
 /* 代码和行号节点多（241 张卡 ≈ 3 万个）：用 opacity 藏，不用 visibility。visibility 会继承，切档时里面每个节点都要重算样式（一次 0.3–0.5 秒）；
    opacity 不继承，只算这两个元素。指针由盖住整个代码区的 .ovm 接住，跟以前点到被藏起来的行号和代码一样交给卡片 */
 .card.lo-ov .gutter, .card.lo-ov .src, .card.lo-ov .rowbgs { opacity: 0; }
@@ -848,7 +855,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card.lo-map.note { background: color-mix(in srgb, var(--surface) 70%, var(--mark)); }
 .card.lo-map.text { background: transparent; }
 .card.lo-map.sel { box-shadow: 0 0 0 calc(2px * var(--iz, 1)) var(--accent); }
-.labels.lod-map .vchips, .stk.canvas.lod-map .sgrip { display: none; } /* 分档类名写在这几个小容器上，不写成 .board.lod-* 的后代规则：那样换档时浏览器要把整块白板 3 万个节点走一遍找它们（~15ms） */
+.lyr.lod-map .vchips, .stk.canvas.lod-map .sgrip { display: none; } /* 分档类名写在这几个小容器上，不写成 .board.lod-* 的后代规则：那样换档时浏览器要把整块白板 3 万个节点走一遍找它们（~15ms） */
 /* 地图档：图标记 + 名字靠左、上下居中；字号由卡片大小和名字长度算出（--fit，世界坐标），再按屏幕上 11–22px 夹住 */
 .maplabel { position: absolute; inset: 0; display: flex; align-items: center; align-content: center; flex-wrap: wrap; gap: calc(4px * var(--iz, 1)); padding: 0 calc(8px * var(--iz, 1)); overflow: hidden;
   font: 600 clamp(calc(11px * var(--iz, 1)), var(--fit, 10px), calc(22px * var(--iz, 1)))/1.15 var(--sys); color: var(--ink); pointer-events: none; overflow-wrap: normal; word-break: normal; }

@@ -22,7 +22,7 @@ import * as act from "../actions";
 import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
-import { landed } from "../canvas/Links";
+import { landed, enterCard, leaveCard } from "../canvas/Links";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
@@ -81,6 +81,7 @@ export function CardView(p: { card: Card }) {
           "bind-hot": (act.bindHot() as { card?: string } | null)?.card === c().id,
           "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
         }}
+        onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => act.cardPointerDown(e, c().id)} onContextMenu={(e) => act.cardContextMenu(e, c().id)} onDblClick={(e) => act.cardDblClick(e, c().id)}>
         <div class="cface">
         <Switch>
