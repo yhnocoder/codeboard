@@ -1,5 +1,5 @@
 // 指针交互：拖卡（吸附、合并、⌥ 拖成 Sidenote、进出 Section）、改大小、框选、平移、缩放、
-// 拖 Section 标签、从调用拖出 Call link、从行尾 / 卡边拖出 Plain link，以及键盘快捷键。
+// 拖 Section 标签、从调用拖出带 Call 标记的箭头、从行尾 / 卡边拖出箭头，以及键盘快捷键。
 import {
   findCard, isCode, snapMove, snapResize, bounds, center, contains,
   type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
@@ -329,7 +329,7 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
   }, 6);
 }
 
-// ---------- Plain link：从行尾圆点 / 卡边圆点拖出 ----------
+// ---------- 箭头：从行尾圆点 / 卡边圆点拖出 ----------
 
 /** side：用户从哪个圆点拖出来，起点就固定在那一侧（不再按位置自动推） */
 export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string; line?: number }, sx: number, sy: number, side?: LinkSide) {
@@ -355,7 +355,7 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
   }, (_ev, moved) => {
     setRubber(null);
     setDropTarget(null);
-    if (moved && to) A.addPlain(from, to, side);
+    if (moved && to) A.addLink(from, to, side);
   }, 4);
 }
 
@@ -367,7 +367,7 @@ function finishConnect(e: PointerEvent, id: string) {
   const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
   const to = colEl?.dataset.col ?? id;
   if (cardById(to)?.host.id === cardById(from.card)?.host.id) return toast("Connect cancelled");
-  A.addPlain(from, { card: to });
+  A.addLink(from, { card: to });
 }
 
 // ---------- 画布 ----------

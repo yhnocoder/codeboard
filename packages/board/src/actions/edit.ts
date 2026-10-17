@@ -155,7 +155,7 @@ export function duplicateSel() {
   });
   select({ cards: made });
   made.forEach((id) => popCard(id));
-  toast(made.length > 1 ? `Duplicated ${made.length} cards (no links, no number)` : "Duplicated. The copy has no links and no number.");
+  toast(made.length > 1 ? `Duplicated ${made.length} cards (no arrows)` : "Duplicated. The copy has no arrows.");
 }
 export function copyCard(c: CodeCard) {
   const rows = cardRows(c, { views: state.views });

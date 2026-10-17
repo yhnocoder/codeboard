@@ -71,7 +71,7 @@ export function updateSidenote(id: string, f: (n: Sidenote) => void) {
 export function deleteSidenote(id: string) {
   mutate((b) => { b.sidenotes = b.sidenotes.filter((n) => n.id !== id); });
 }
-/** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条 Plain link（从原来挂的那一行连出） */
+/** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条箭头（从原来挂的那一行连出） */
 export function placeSidenote(id: string) {
   const n = state.board.sidenotes.find((k) => k.id === id);
   if (!n) return;

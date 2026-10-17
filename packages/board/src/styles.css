@@ -87,7 +87,7 @@ input, textarea { font: inherit; color: var(--ink); }
 /* Compare 两栏之间行对行的对照线（W01 B 11）：不带箭头 */
 .edge.cmpline { stroke-dasharray: 2 3; }
 .edge.retract { transition-duration: calc(var(--t) * 140ms); transition-timing-function: var(--in); }
-/* Plain 和 Call 默认一样：实线 + 箭头；虚线要在菜单里选 */
+/* 带不带 Call 标记默认一样：实线 + 箭头；虚线要在菜单里选 */
 .edge.dashed { stroke-dasharray: 4 4; stroke-dashoffset: 0; }
 /* 连着的行在代码更新后没了：端点退到卡头，线标红，等用户重连或删掉（WS2 细化画法） */
 .edge.lost, .ahead.lost { stroke: var(--lk-lost, #d64545); }
@@ -284,7 +284,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .slabel.free { position: absolute; }
 
 
-/* plain link styles, labels */
+/* arrow styles, labels */
 .edge.lc-orange, .ahead.lc-orange { stroke: var(--lk-orange); }
 .edge.lc-blue, .ahead.lc-blue { stroke: var(--lk-blue); }
 .edge.lc-green, .ahead.lc-green { stroke: var(--lk-green); }
@@ -557,7 +557,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .webb .wt { font: 500 13px/1.45 var(--sys); color: var(--ink); }
 .webb .wd { font: 11px var(--mono); color: var(--ink-3); }
 
-/* edge ports (drag out a plain link) */
+/* edge ports (drag out an arrow) */
 .eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair !important; }
 .card:hover > .cface > .eport { opacity: 1; }
 .card.text > .cface > .eport { display: none; }
@@ -813,7 +813,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .lstks.dot .glyph.tag { font-size: 0 !important; padding: 0; }
 .stkpick { align-items: stretch; text-align: left; }
 
-/* 缩放分档（#11）：概览 = 名字 + 编号 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量）。
+/* 缩放分档（#11）：概览 = 名字 + 图标记 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量）。
    卡上的样子跟着卡自己的 .lo-ov / .lo-map 走（state/lodcards.ts 每帧换一批，屏幕中间的先换），不跟着 .board 一次全换：241 张卡一起换要 100+ ms，掉好几帧 */
 .board { --bar: color-mix(in srgb, var(--ink) 13%, transparent); }
 .card.lo-ov .crows .cmpl, .card.lo-ov .cno,
@@ -847,7 +847,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card.lo-map.text { background: transparent; }
 .card.lo-map.sel { box-shadow: 0 0 0 calc(2px * var(--iz, 1)) var(--accent); }
 .labels.lod-map .vchips, .stk.canvas.lod-map .sgrip { display: none; } /* 分档类名写在这几个小容器上，不写成 .board.lod-* 的后代规则：那样换档时浏览器要把整块白板 3 万个节点走一遍找它们（~15ms） */
-/* 地图档：编号 + 名字靠左、上下居中；字号由卡片大小和名字长度算出（--fit，世界坐标），再按屏幕上 11–22px 夹住 */
+/* 地图档：图标记 + 名字靠左、上下居中；字号由卡片大小和名字长度算出（--fit，世界坐标），再按屏幕上 11–22px 夹住 */
 .maplabel { position: absolute; inset: 0; display: flex; align-items: center; align-content: center; flex-wrap: wrap; gap: calc(4px * var(--iz, 1)); padding: 0 calc(8px * var(--iz, 1)); overflow: hidden;
   font: 600 clamp(calc(11px * var(--iz, 1)), var(--fit, 10px), calc(22px * var(--iz, 1)))/1.15 var(--sys); color: var(--ink); pointer-events: none; overflow-wrap: normal; word-break: normal; }
 .maplabel > .mt { min-width: 0; max-width: 100%; }

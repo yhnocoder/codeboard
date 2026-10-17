@@ -214,7 +214,7 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
     const seg = { ...structuredClone(x.seg) };
     A.addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: 480 }], { at: { x: r.x + r.w + 48, y: r.y } });
     A.requestViews([seg]);
-    A.addPlain({ card: p.pop.card, seg: p.pop.seg, line: p.pop.line }, { card: id });
+    A.addLink({ card: p.pop.card, seg: p.pop.seg, line: p.pop.line }, { card: id });
     closePop(p.inst.id);
   };
   return (

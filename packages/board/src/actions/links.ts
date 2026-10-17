@@ -6,7 +6,7 @@ import { openPop } from "../state/pop";
 import { lastPointer } from "./common";
 import { askCands, attachCall, calleeMatches, callMark } from "./flow";
 
-// ---------- Plain link ----------
+// ---------- 箭头 ----------
 
 type EndRef = { card: string; seg?: string; line?: number };
 
@@ -36,7 +36,7 @@ export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
  * 新箭头。从代码行连到「这一行调用的函数」所在的卡时自动带上 Call 标记（W01 B：手画的线连到被调函数），
  * 连到别的（Note、某一行）就是普通箭头。两端可以是整张卡或某一行，数量不限；只有同一张卡的同一处连自己不行
  */
-export function addPlain(from: EndRef, to: EndRef, side?: LinkSide) {
+export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
   if (cardById(from.card)?.host.id === cardById(to.card)?.host.id && from.line === to.line) return;
   const sides = side ? { from: side } : undefined;
   const call = callOn(from, to);

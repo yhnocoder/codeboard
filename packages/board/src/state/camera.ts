@@ -142,7 +142,7 @@ export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smoo
 export const toWorld = (px: number, py: number) => ({ x: (px - cam.x) / cam.z, y: (py - cam.y) / cam.z });
 export const viewportCenter = () => toWorld(viewport.w / 2, viewport.h / 2);
 
-// ---------- 缩放分档（#11）：100% 正常；概览只剩卡片名、编号和灰条；地图只剩名字和色块 ----------
+// ---------- 缩放分档（#11）：100% 正常；概览只剩卡片名、图标记和灰条；地图只剩名字和色块 ----------
 
 import { createMemo } from "solid-js";
 let heldZ = 1;

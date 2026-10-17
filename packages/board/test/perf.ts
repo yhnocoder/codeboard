@@ -31,7 +31,7 @@ export function bigBoard(n: number): Board {
       b.links.push(L);
     }
   });
-  // Add Plain links until there are about as many as cards
+  // Add arrows without a Call mark until there are about as many as cards
   for (let i = 1; b.links.length < n && i + 7 < cards.length; i += 3) b.links.push({ id: uid("l"), from: { card: cards[i].c.id }, to: { card: cards[i + 7].c.id } });
   const rows = Math.ceil(cards.length / COLS);
   for (let r = 0; r < rows; r++) {

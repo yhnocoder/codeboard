@@ -1,4 +1,4 @@
-// 流程：点调用展开、接到已有的卡、Tidy Layout、折叠子树、讲解（Walkthrough）、类卡成员。
+// 流程：点调用展开、接到已有的卡、折叠子树、讲解（Walkthrough）、类卡成员。
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, allCodeCards,
@@ -20,7 +20,7 @@ import { jumpTo } from "./nav";
 const pending = new Set<string>();
 
 /**
- * 点调用 = 新建一张卡（永远新建，不复用已有的），连一条 Call link。
+ * 点调用 = 新建一张卡（永远新建，不复用已有的），连一条带 Call 标记的箭头。
  * at：拖出来松在画布上时的位置。
  */
 
@@ -305,7 +305,7 @@ export function exitWalk() {
 }
 
 
-/** 类卡里点一个成员：展开成函数卡，从类卡那一行连 Call link */
+/** 类卡里点一个成员：展开成函数卡，从类卡那一行连一条带 Call 标记的箭头 */
 export function expandMember(cardId: string, d: { line: number; name: string; qual: string }) {
   const c = cardById(cardId)?.card;
   if (!isCode(c)) return;

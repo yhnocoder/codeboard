@@ -28,7 +28,7 @@ export type Settings = {
   studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
   stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）
-  zoomMap: number; // 低于这个比例：地图（只剩编号和名字）
+  zoomMap: number; // 低于这个比例：地图（只剩图标记和名字）
   dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
   hideNumbers?: boolean; // 卡片上不显示调用图标记（A / B 或图标）；设置里叫 Hide Call Graph Marks
   themeReflow?: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠

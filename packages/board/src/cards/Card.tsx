@@ -162,8 +162,8 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
 }
 
 /** 材质用的卡片部件（默认 display: none，由 themes.css 按主题打开）：
- *  cband = 色带 / 大标题（函数名 + 行号区间和版本 + 大号编号），cxfoot = 底栏（行号区间 · 打开 / 看差异），cfig = 卡片下方的图注。
- *  只用卡片已有的数据：标题、flows() 编号、第一段的行号和版本。 */
+ *  cband = 色带 / 大标题（函数名 + 行号区间和版本 + 大号图标记），cxfoot = 底栏（行号区间 · 打开 / 看差异），cfig = 卡片下方的图注。
+ *  只用卡片已有的数据：标题、flows() 的图标记、第一段的行号和版本。 */
 function CodeBand(p: { card: CodeCard }) {
   const c = () => p.card;
   const s0 = () => c().segments[0];
@@ -241,7 +241,7 @@ function CodeCardView(p: { card: CodeCard }) {
   );
 }
 
-/** 类卡：只列成员签名，点成员 → 展开成函数卡并连 Call link */
+/** 类卡：只列成员签名，点成员 → 展开成函数卡并连一条带 Call 标记的箭头 */
 function ClassBody(p: { card: CodeCard }) {
   const s = () => p.card.segments[0];
   const defs = () => (state.views[s().id]?.defs ?? []).filter((d) => d.qual.split(".").length === (s().symbol?.qual.split(".").length ?? 0) + 1);
@@ -286,7 +286,7 @@ function ImageView(p: { card: ImageCard }) {
   );
 }
 
-/** 地图档：卡片只剩编号 + 名字，字号按缩放反向放大，始终看得清 */
+/** 地图档：卡片只剩图标记 + 名字，字号按缩放反向放大，始终看得清 */
 function MapLabel(p: { card: Card }) {
   const g = () => { const c = p.card; return c.kind === "compare" ? flows().byId.get(c.cols[0]) ?? flows().byId.get(c.cols[1]) : flows().byId.get(c.id); };
   const n = () => g()?.label || (g() ? "•" : "");

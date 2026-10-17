@@ -93,7 +93,7 @@ function Toolbar() {
     { icon: "web", label: "Web", tip: "New Web Card", run: () => A.newWeb() },
     { icon: "section", label: "Section", tip: "Draw a Section", run: () => setTool("section") },
     { icon: "link", label: "Arrow", tip: "Select two cards, or pick a card then click another", run: () => {
-      if (sel.cards.length === 2) A.addPlain({ card: sel.cards[0] }, { card: sel.cards[1] });
+      if (sel.cards.length === 2) A.addLink({ card: sel.cards[0] }, { card: sel.cards[1] });
       else if (sel.cards.length === 1) A.startConnect(sel.cards[0]);
       else toast("Select a card first, then click another card");
     } },
