@@ -359,7 +359,7 @@ function dedent(s: string) {
 // 编辑器只建一次（空闲时预热好），每次编辑把它挪进这张卡、换一个新的 EditorState（文档、撤销、各插件状态都是新的）：
 // 不用每次重建 schema、扩展、插件和视图，进入编辑只剩把这份文档画出来
 type Sess = { o: MdEditorOpts; onTx: (tr: Transaction) => void; onFocus: () => void; onBlur: (ev: FocusEvent) => void; finish: () => void };
-type Inst = { editor: Editor; box: HTMLElement; handle: HTMLElement; sess: Sess | null };
+type Inst = { editor: Editor; box: HTMLElement; handle: HTMLElement; sess: Sess | null; prepared?: string };
 let pool: Inst | undefined;
 
 function makeInst(): Inst {
@@ -409,6 +409,37 @@ function freshState(prev: EditorState, doc: PMNode): EditorState {
   for (const f of cfg.fields) (st as unknown as Record<string, unknown>)[f.name] = f.init({ doc }, st);
   return st;
 }
+/**
+ * 一次编辑的初始状态：文档、撤销栈、各插件都从头来。光标放到正文末尾（脚注列表前面）；正文最后是代码、表格、折叠块这类时，
+ * 后面先垫一个空段落（不算改动，没打字就不保存）
+ */
+function stateFor(editor: Editor, value: string): EditorState {
+  let st = freshState(editor.state, editor.schema.nodeFromJSON(parseMd(value)));
+  let d = st.doc;
+  let end = d.content.size;
+  if (d.lastChild?.type.name === "footnotes") end -= d.lastChild.nodeSize;
+  const last = d.resolve(end).nodeBefore;
+  const tr = st.tr;
+  if (last && !/^(paragraph|heading|bulletList|orderedList|taskList)$/.test(last.type.name)) {
+    tr.insert(end, editor.schema.nodes.paragraph.create()).setMeta("addToHistory", false);
+    d = tr.doc; end += 2;
+  }
+  tr.setSelection(Selection.near(d.resolve(end), -1));
+  return st.apply(tr);
+}
+/**
+ * 预备：鼠标停在一张 Note 上（多半接着要双击）时，在页面外把它的文档画进那一个编辑器（先拿下来再换：挂在页面上换的话，
+ * ProseMirror 读 DOM 选区会强制整页排版一次）。双击时只剩挂上去、拿焦点。编辑器正在用时不做
+ */
+export function prepare(value: string) {
+  const inst = pool;
+  if (!inst || inst.sess || inst.prepared === value) return;
+  try {
+    inst.box.remove();
+    inst.editor.view.updateState(stateFor(inst.editor, value));
+    inst.prepared = value;
+  } catch { inst.prepared = undefined; }
+}
 const SAMPLE = "## a\n\ntext **b** `c` $x$ [[d]][^1]\n\n- [ ] t\n\n```python\ndef f(): pass\n```\n\n$$\nx\n$$\n\n| a | b |\n| - | - |\n| 1 | 2 |\n\n<details>\n<summary>s</summary>\n\nb\n\n</details>\n\n[^1]: n";
 /** 预热：空闲时建好那一个编辑器，屏幕外画一遍各种节点（编译、各插件第一次初始化） */
 export function warmUp(extra?: string) {
@@ -453,25 +484,14 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   };
   inst.sess = sess;
   editor.view.dom.style.display = "";
-  // 新的状态：文档、撤销栈、各插件都从头来。光标放到正文末尾（脚注列表前面）；正文最后是代码、表格、折叠块这类时，
-  // 后面先垫一个空段落（不算改动，没打字就不保存）
-  {
-    let st = freshState(editor.state, editor.schema.nodeFromJSON(parseMd(o.value)));
-    let d = st.doc;
-    let end = d.content.size;
-    if (d.lastChild?.type.name === "footnotes") end -= d.lastChild.nodeSize;
-    const last = d.resolve(end).nodeBefore;
-    const tr = st.tr;
-    if (last && !/^(paragraph|heading|bulletList|orderedList|taskList)$/.test(last.type.name)) {
-      tr.insert(end, editor.schema.nodes.paragraph.create()).setMeta("addToHistory", false);
-      d = tr.doc; end += 2;
-    }
-    tr.setSelection(Selection.near(d.resolve(end), -1));
-    st = st.apply(tr);
-    // 先在页面外换好文档再挂上：挂在页面上换的话，ProseMirror 读 DOM 选区会强制整页排版一次（帧里还要再排一次）
+  // 新的状态（见 stateFor）。鼠标停在这张 Note 上时多半已经在页面外准备好了（prepare），这里只剩挂上去
+  if (!pooled || inst.prepared !== o.value) {
     inst.box.remove();
-    editor.view.updateState(st);
-    host.append(inst.box);
+    inst.editor.view.updateState(stateFor(editor, o.value));
+  }
+  inst.prepared = undefined;
+  host.append(inst.box);
+  {
     // 这一个任务里就拿焦点（不等 TipTap 的下一帧），光标和编辑器同一帧出现。放进微任务：双击是在 pointerdown 里进来的，
     // 同一个事件冒泡到画布时会把焦点 blur 掉；从菜单进来时菜单关掉会把焦点放回 body，下一帧再补一次
     queueMicrotask(() => { if (inst.sess === sess && !editor.view.hasFocus()) editor.view.focus(); });
@@ -544,14 +564,18 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   // 原文模式里 ⌘/ 也要能切回来
   const destroy = () => {
     host.removeEventListener("keydown", onKey);
-    disposeUi();
-    layer.remove();
-    raw?.remove();
-    // 先让编辑器失焦再拿走（拿走正有焦点的元素不会触发 blur，ProseMirror 会以为自己还有焦点）
     inst.sess = null;
-    if (editor.view.hasFocus()) (editor.view.dom as HTMLElement).blur();
-    inst.box.remove();
-    if (!pooled && !editor.isDestroyed) editor.destroy();
+    // 收尾放到这一帧画完以后：退出那一帧只做换回静态内容（卡片那边会把整个编辑框连同编辑器一起拿掉）
+    requestAnimationFrame(() => setTimeout(() => {
+      disposeUi();
+      layer.remove();
+      raw?.remove();
+      if (inst.sess) return; // 已经被下一次编辑拿去用了
+      inst.box.remove();
+      // 有焦点的元素被拿掉时不会触发 blur，ProseMirror 会以为自己还有焦点：补一个
+      if ((editor.view as unknown as { focused: boolean }).focused) editor.view.dom.dispatchEvent(new FocusEvent("blur"));
+      if (!pooled && !editor.isDestroyed) editor.destroy();
+    }));
   };
   return { value, editor: () => editor, destroy: () => { if (!done) { done = true; destroy(); } } };
 }

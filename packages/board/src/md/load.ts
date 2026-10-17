@@ -2,7 +2,7 @@
 import { cardTitle, isCode } from "@codeboard/core";
 import { state, placed } from "../state/store";
 import { ask } from "../host";
-import { editing } from "../state/ui";
+import { editing, dragging } from "../state/ui";
 import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
 import type { MdEditorOpts, MdEditorHandle } from "./editor";
@@ -18,6 +18,25 @@ export const editorNow = () => ready;
 export function preloadEditor() {
   setTimeout(() => whenIdle(() => void loadEditor().then((m) => whenIdle(() => m.warmUp(sampleNote()))).catch(() => { mod = undefined; })), 2500);
 }
+// 鼠标停在一张能编辑的 Markdown 上 120ms（或按下第一下），或者只选中了一张 Note：在页面外把它画进编辑器，
+// 双击时只剩挂上去（见 editor 的 prepare）。鼠标下面的优先，其次是选中的；镜头在动、在拖时等停下，正在编辑时不做
+let prepT: number | undefined, hovSrc: string | undefined, selSrc: string | undefined;
+function schedule(now = false) {
+  clearTimeout(prepT);
+  let tries = 0;
+  const run = () => {
+    const src = hovSrc ?? selSrc;
+    if (!ready || editing() || src === undefined) return;
+    if (camMoving() || dragging().size) { if (++tries < 16) prepT = window.setTimeout(run, 120); return; }
+    ready.prepare(src);
+  };
+  prepT = window.setTimeout(run, now ? 0 : 120);
+}
+export function prepareHover(src: string | undefined, now = false) { hovSrc = src; schedule(now); }
+/** 鼠标离开这一张（别的卡在它之后进来的不动） */
+export function prepareLeave(src: string) { if (hovSrc === src) { hovSrc = undefined; schedule(); } }
+export function prepareSelected(src: string | undefined) { selSrc = src; schedule(); }
+
 /** 白板上最长的一张 Note 的原文（预热用） */
 function sampleNote() {
   let best = "";

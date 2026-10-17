@@ -1,19 +1,24 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框（md 的是所见即所得的 Markdown 编辑器）。
 // ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
-import { Show, createEffect, onCleanup, onMount } from "solid-js";
+import { Show, batch, createEffect, onCleanup, onMount } from "solid-js";
 import { editing, setEditing, type Editing } from "../state/ui";
 import { MdStatic } from "./Md";
-import { loadEditor, editorNow, editorOpts, type MdEditorHandle } from "../md/load";
+import { loadEditor, editorNow, editorOpts, prepareSelected, type MdEditorHandle } from "../md/load";
+import { sel } from "../state/store";
 
 export function Editable(p: {
   class?: string; kind: NonNullable<Editing>["kind"]; id: string; value: string; multiline?: boolean; md?: boolean; placeholder?: string;
   onCommit: (v: string) => void; style?: any;
 }) {
   const on = () => editing()?.kind === p.kind && editing()?.id === p.id;
+  // 只选中了这一张 Note、镜头停下：先在页面外准备好编辑器（双击多半跟着来）
+  if (p.md && p.kind === "note") createEffect(() => {
+    if (sel.cards.length === 1 && sel.cards[0] === p.id && !on()) prepareSelected(p.value);
+  });
   return (
     <Show when={on()} fallback={
       p.md
-        ? <MdStatic class={p.class} style={p.style} ph={p.placeholder} src={p.value} onToggle={(v) => p.onCommit(v)} />
+        ? <MdStatic class={p.class} style={p.style} ph={p.placeholder} src={p.value} onToggle={(v) => p.onCommit(v)} prep />
         : <div class={p.class} style={p.style} data-ph={p.placeholder}>{p.value}</div>
     }>
       {p.md ? <MdEdit {...p} /> : <PlainEdit {...p} />}
@@ -78,8 +83,11 @@ function MdEdit(p: P) {
   const finish = (v: string | null) => {
     if (done) return;
     done = true;
-    if (editing()?.kind === p.kind && editing()?.id === p.id) setEditing(null);
-    if (v !== null && v !== p.value) p.onCommit(v);
+    // 先存再退出、一批更新：静态内容直接按新原文画一次（先退出的话会先按旧原文画一遍，存了再画一遍）
+    batch(() => {
+      if (v !== null && v !== p.value) p.onCommit(v);
+      if (editing()?.kind === p.kind && editing()?.id === p.id) setEditing(null);
+    });
   };
   const start = p.value;
   const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
