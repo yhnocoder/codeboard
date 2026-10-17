@@ -1,5 +1,4 @@
-// 摆放：新卡放哪、展开出来的子卡放哪、Tidy Layout。只做几何，尺寸由调用方给（白板里是实测尺寸）。
-import type { FlowNode } from "./flow";
+// 摆放：新卡放哪、展开出来的子卡放哪。只做几何，尺寸由调用方给（白板里是实测尺寸）。
 import { V3_CODE_CHROME, type Card, type Place } from "./model";
 
 export type Rect = { x: number; y: number; w: number; h: number };
@@ -80,13 +79,12 @@ export function besideFree(sel: Rect, size: { w: number; h: number }, others: Re
 }
 
 /**
- * 展开出来的子卡：down = 缩进放在父卡下方；right = 放在父卡右边、和出发行齐平。按出发行号从上到下。
+ * 展开出来的子卡：缩进放在父卡下方，按出发行号从上到下。
  * before = 出发行在它前面的兄弟（及其子树）的矩形；新卡放在它们下面。
  */
-export function placeChild(parent: Rect, size: { w: number; h: number }, before: Rect[], others: Rect[], dir: TidyDir = "down", lineY?: number): { x: number; y: number } {
-  let x = parent.x + INDENT;
+export function placeChild(parent: Rect, size: { w: number; h: number }, before: Rect[], others: Rect[]): { x: number; y: number } {
+  const x = parent.x + INDENT;
   let y = parent.y + parent.h + GAP;
-  if (dir === "right") { x = parent.x + parent.w + GAP * 2; y = Math.max(parent.y, (lineY ?? parent.y + 20) - 20); }
   for (const s of before) y = Math.max(y, s.y + s.h + SIB_GAP);
   return findFreeDown({ x, y, ...size }, others);
 }
@@ -117,8 +115,6 @@ export function freeInView(want: Rect, others: Rect[], view: Rect, minVis = 200,
   }
   return best;
 }
-
-export type TidyDir = "down" | "right";
 
 
 // ---------- 吸附 ----------

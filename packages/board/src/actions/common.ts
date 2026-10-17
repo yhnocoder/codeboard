@@ -1,23 +1,11 @@
 // 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、指针位置、打开编辑器 / 链接。
-import { unwrap } from "solid-js/store";
-import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
-} from "@codeboard/core";
-import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
-import { send, ask } from "../host";
+import { isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
+import { state, mutate, sel, select, isSel, cardById, rectOf, placeOf, placed } from "../state/store";
+import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
+import { notesOf, ping, setPopIn, popIn } from "../state/ui";
+import { openPop } from "../state/pop";
+import { send } from "../host";
 import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
 
 const isMac = () => state.host.isMac;
 export const K = {
@@ -47,9 +35,8 @@ export const mdInline = (s: string) => inline(s);
 export const mdBlock = (s: string) => md(s);
 export const sidenotesOf = notesOf;
 export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
-export const allRects = (skip?: Set<string>) => placed().filter((c) => !skip?.has(c.id)).map((c) => rectOf(c));
 
-export function sectionOf(id: string): Section | undefined {
+function sectionOf(id: string): Section | undefined {
   const f = cardById(id);
   const sid = f && placeOf(f.host.id).section;
   return sid ? state.board.sections.find((s) => s.id === sid) : undefined;
@@ -128,12 +115,10 @@ export function slideFrom(list: { id: string; ox: number; oy: number }[]) {
   });
 }
 
-/** 一行在世界坐标里的左端点（Call link 出发处） */
-export function anchorPoint(cardId: string, seg?: string, line?: number) {
-  const el = document.querySelector(`.card[data-id="${cardById(cardId)?.host.id}"]`);
+/** 卡（所在宿主卡）卡头左端在世界坐标里的位置：展开出来的新卡从这里弹出 */
+export function headPoint(cardId: string) {
   const r = hostRect(cardId);
-  if (!el || !r) return null;
-  return { x: r.x, y: r.y + 20 };
+  return r ? { x: r.x, y: r.y + 20 } : null;
 }
 
 

@@ -2,23 +2,17 @@
 import { createRoot, createEffect } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, retargetCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
+  uid, findCard, isCode, segOf,
+  besideFree, findFree, bounds, removeCards, retargetCards, GAP,
+  classifyPaste, guessLang, estSize, defaultWidth,
+  type Board, type Card, type CodeCard, type Segment, type Place,
+  type NewCard, type Rect,
 } from "@codeboard/core";
-import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { editing, notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
-import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
+import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf, type LineSel } from "../state/store";
+import { camTo, camTarget, fitTop, isVisible, viewportCenter } from "../state/camera";
+import { editing, setEditing } from "../state/ui";
+import { promptText } from "../ui/Menu";
+import { ask } from "../host";
 import { lineY } from "../state/geo";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";

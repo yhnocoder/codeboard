@@ -2,18 +2,22 @@
    照着 explore/ui-feel/material.html（styles/*.css）做：每种材质不只是换颜色，还换字体、线（发丝线 / 2px 墨线 / 双线）、
    阴影（多层柔影 / 硬投影 / 没有）、卡片头的排法、连线和箭头、浮条、提示条、选中的样子。
    - 变量在前半（亮色块、暗色块各写全，否则暗色下会漏出亮色的值）；[data-look] 也挂在设置页的小样上，所以变量块也匹配元素。
-   - 结构规则在后半，只挂在 :root[data-look] 下面。
+   - 结构规则在后半，只挂在 :root.look-<id> 下面（applyLook 和 data-look 一起挂的类）。不用 :root[data-look="…"]：属性值进不了
+     浏览器的祖先过滤（bloom filter），每个元素重算样式时，别的主题的规则都要沿祖先一路比到根；类名能直接排除。
+     同理，规则最右边不要单独写 :is(…) / :not(…)（会落进「每个元素都要试」的那一桶），拆成几条带类名的选择器。
    - 要 JS 配合的只有连线走法、箭头 / 端口形状（state/look.ts）和几个默认隐藏的部件：
      .cband（色带 / 大标题）、.cxfoot（卡片底栏）、.cfig（图注）、.mast（报头）。
    Warm Ink 是 styles.css 里的默认值，不在这里。
-   - 代码区的字号、字宽、行高、上下留白所有主题都一样（11px / 20px 行，字宽 6.6px）：换主题时卡片装得下同样的内容。 */
+   - 代码区的字号、字宽、行高、上下留白所有主题都一样（11px / 20px 行，字宽 6.6px）：换主题时卡片装得下同样的内容。
+   - 背景画（Ink Wash 的远山、City 的街区）是 .board 的背景：固定在窗口上，不跟着画布平移缩放，镜头动时不重画；
+     画里的滤镜只在换主题、改窗口大小时栅格化一次。没有常驻动画。 */
 
 /* ======================================================================
    Tokens
    ====================================================================== */
 
 /* ---------- Classic：v1 原样（实线边框、同一种阴影、陶土色强调） ---------- */
-:root[data-look="classic"], [data-look="classic"] {
+:root.look-classic, [data-look="classic"] {
   color-scheme: light;
   --bg: #f4f2ec; --surface: #ffffff; --head: #ffffff;
   --ink: #1f1e1b; --ink-2: #5d5a53; --ink-3: #8f8a80;
@@ -35,7 +39,7 @@
   --r-card: 10px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
   --sect-border: 1px solid #d6d1c4;
 }
-:root[data-theme="dark"][data-look="classic"], :root[data-theme="dark"] [data-look="classic"] {
+:root.look-classic[data-theme="dark"], :root[data-theme="dark"] [data-look="classic"] {
   color-scheme: dark;
   --bg: #1b1a18; --surface: #2a2926; --head: #2a2926;
   --ink: #ece9e1; --ink-2: #b4afa5; --ink-3: #868177;
@@ -59,7 +63,7 @@
 }
 
 /* ---------- Graphite：中性灰，蓝色强调，最像原生 macOS ---------- */
-:root[data-look="graphite"], [data-look="graphite"] {
+:root.look-graphite, [data-look="graphite"] {
   color-scheme: light;
   --bg: #ebebed; --surface: #ffffff; --head: #fbfbfc;
   --ink: #1d1d1f; --ink-2: #6e6e73; --ink-3: #a0a0a6;
@@ -81,7 +85,7 @@
   --r-card: 9px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
   --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
 }
-:root[data-theme="dark"][data-look="graphite"], :root[data-theme="dark"] [data-look="graphite"] {
+:root.look-graphite[data-theme="dark"], :root[data-theme="dark"] [data-look="graphite"] {
   color-scheme: dark;
   --bg: #1b1b1d; --surface: #28282b; --head: #2d2d30;
   --ink: #f2f2f4; --ink-2: #a1a1a6; --ink-3: #6c6c72;
@@ -105,7 +109,7 @@
 }
 
 /* ---------- Soft Light：大留白、细字重、柔和大投影；代码在下沉的凹槽里，珊瑚色只点几处 ---------- */
-:root[data-look="soft-light"], [data-look="soft-light"] {
+:root.look-soft-light, [data-look="soft-light"] {
   color-scheme: light;
   --sys: "Jost", "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif;
   --bg: #efedea; --surface: #fffdfa; --head: #fffdfa; --well: #f6f3ee;
@@ -130,7 +134,7 @@
   --r-card: 18px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
   --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 55%, transparent);
 }
-:root[data-theme="dark"][data-look="soft-light"], :root[data-theme="dark"] [data-look="soft-light"] {
+:root.look-soft-light[data-theme="dark"], :root[data-theme="dark"] [data-look="soft-light"] {
   color-scheme: dark;
   --bg: #1e1c1a; --surface: #2a2724; --head: #2a2724; --well: #221f1c;
   --ink: #efebe5; --ink-2: #b1a99d; --ink-3: #6f675c;
@@ -156,7 +160,7 @@
 }
 
 /* ---------- Drafting：工程图纸。只有墨和线，没有颜色、阴影和圆角（中性灰，暗色也是中性的） ---------- */
-:root[data-look="drafting"], [data-look="drafting"] {
+:root.look-drafting, [data-look="drafting"] {
   color-scheme: light;
   --sys: "DM Mono", ui-monospace, Menlo, "PingFang SC", "Noto Sans SC", monospace;
   --mono: "DM Mono", ui-monospace, Menlo, monospace;
@@ -183,7 +187,7 @@
   --r-card: 0px; --display: var(--head-font); --label-font: var(--mono); --note-h: var(--head-font); --edge-w: 1;
   --sect-border: 1px dashed var(--ink-3);
 }
-:root[data-theme="dark"][data-look="drafting"], :root[data-theme="dark"] [data-look="drafting"] {
+:root.look-drafting[data-theme="dark"], :root[data-theme="dark"] [data-look="drafting"] {
   color-scheme: dark;
   --bg: #141414; --surface: #141414; --head: transparent;
   --ink: #e9e8e4; --ink-2: #a6a5a0; --ink-3: #5f5e5a;
@@ -209,7 +213,7 @@
 }
 
 /* ---------- Colorful：奶油底、2px 墨线、直角；每个源文件一种颜色（暗色降饱和） ---------- */
-:root[data-look="colorful"], [data-look="colorful"] {
+:root.look-colorful, [data-look="colorful"] {
   color-scheme: light;
   --sys: "Jost", "Futura", "Avenir Next", "PingFang SC", "Noto Sans SC", sans-serif;
   --italic: "Fraunces", "Songti SC", "Noto Serif SC", Georgia, serif;
@@ -235,7 +239,7 @@
   --r-card: 0px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 2;
   --sect-border: 2px solid var(--rule);
 }
-:root[data-theme="dark"][data-look="colorful"], :root[data-theme="dark"] [data-look="colorful"] {
+:root.look-colorful[data-theme="dark"], :root[data-theme="dark"] [data-look="colorful"] {
   color-scheme: dark;
   --bg: #1c1813; --surface: #262019; --head: #262019;
   --ink: #f0e6d0; --ink-2: #c5b9a4; --ink-3: #8a7f6e;
@@ -261,7 +265,7 @@
 }
 
 /* ---------- Newspaper：新闻纸、黑色油墨；卡片是一篇报道（眉题 No. x.y、粗体标题、斜体导语），代码像打字机排的引文 ---------- */
-:root[data-look="newspaper"], [data-look="newspaper"] {
+:root.look-newspaper, [data-look="newspaper"] {
   color-scheme: light;
   --sys: "Old Standard TT", "Songti SC", "Noto Serif SC", Georgia, serif;
   --serif: "Old Standard TT", "Songti SC", "Noto Serif SC", Georgia, serif;
@@ -289,7 +293,7 @@
   --r-card: 0px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 1;
   --sect-border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
 }
-:root[data-theme="dark"][data-look="newspaper"], :root[data-theme="dark"] [data-look="newspaper"] {
+:root.look-newspaper[data-theme="dark"], :root[data-theme="dark"] [data-look="newspaper"] {
   color-scheme: dark;
   --bg: #1a1916; --surface: #201f1b; --head: transparent;
   --ink: #ece7dc; --ink-2: #b8b2a6; --ink-3: #77726a;
@@ -315,7 +319,7 @@
 }
 
 /* ---------- Poster（艺术）：深绿油墨印在薄荷纸上；双线框、居中排版、字距拉开、方格纸、卡片下面有图注 ---------- */
-:root[data-look="poster"], [data-look="poster"] {
+:root.look-poster, [data-look="poster"] {
   color-scheme: light;
   --sys: "IBM Plex Mono", ui-monospace, Menlo, "PingFang SC", "Noto Sans SC", monospace;
   --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
@@ -341,7 +345,7 @@
   --r-card: 0px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 1;
   --sect-border: 1px solid var(--rule);
 }
-:root[data-theme="dark"][data-look="poster"], :root[data-theme="dark"] [data-look="poster"] {
+:root.look-poster[data-theme="dark"], :root[data-theme="dark"] [data-look="poster"] {
   color-scheme: dark;
   --bg: #0f1f19; --surface: #142821; --head: transparent;
   --ink: #dfe9df; --ink-2: #a8bdb0; --ink-3: #62806f;
@@ -365,320 +369,578 @@
   --sect-border: 1px solid var(--rule);
 }
 
+/* ---------- Ink Wash（水墨）：宣纸底、几层淡墨远山（静止，没有太阳、没有飘动的雾）；编号是朱印，连线是墨线。深色是拓片：黑底白字 ---------- */
+:root.look-ink-wash, [data-look="ink-wash"] {
+  color-scheme: light;
+  --sys: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif;
+  --zhu: #b8321f; --wash: rgba(29,28,26,.06); --paper: #faf7f0;
+  --bg: #f2ede2; --surface: #faf7f0; --head: transparent;
+  --ink: #1d1c1a; --ink-2: #4c4943; --ink-3: #9a958b;
+  --line: rgba(29,28,26,.08); --hair: rgba(29,28,26,.16);
+  --accent: #b8321f; --accent-ink: #faf7f0; --warn: #b8321f;
+  --row: rgba(184,50,31,.08);
+  --k-kw: #1d1c1a; --k-fn: #2d5b70; --k-str: #9a5a2c; --k-com: #9a958b; --k-num: #9a5a2c; --k-self: #4c4943; --k-p: #9a958b;
+  --hi: rgba(45,91,112,.14);
+  --chg: rgba(154,90,44,.1); --chg-strong: rgba(154,90,44,.26); --del: rgba(184,50,31,.08); --add: rgba(45,91,112,.08);
+  --mark: #1d1c1a; --mark-ink: #faf7f0;
+  --inote: rgba(29,28,26,.04); --hlrow: rgba(29,28,26,.06); --hlbar: #1d1c1a; --hatch: rgba(29,28,26,.07);
+  --edge: rgba(29,28,26,.8);
+  --s-sand: rgba(154,90,44,.07); --s-blue: rgba(45,91,112,.07); --s-green: rgba(80,110,80,.07); --s-pink: rgba(184,50,31,.06);
+  --lk-orange: #9a5a2c; --lk-blue: #2d5b70; --lk-green: #4d6b48; --guide: #b8321f;
+  --glass: #faf7f0;
+  --tip-bg: #1d1c1a; --tip-ink: #faf7f0;
+  --sh-card: 0 0 0 .5px var(--hair), 0 18px 34px -22px rgba(30,25,15,.35);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 30px 50px -24px rgba(30,25,15,.45);
+  --sh-float: 0 0 0 .5px var(--hair), 0 1px 2px rgba(60,40,10,.12), 0 12px 22px -12px rgba(0,0,0,.35);
+  --r-card: 2px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 2;
+  --sect-border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+}
+:root.look-ink-wash[data-theme="dark"], :root[data-theme="dark"] [data-look="ink-wash"] {
+  color-scheme: dark;
+  --zhu: #d6533a; --wash: rgba(233,229,218,.07); --paper: #1c1b19;
+  --bg: #131312; --surface: #1c1b19; --head: transparent;
+  --ink: #e9e5da; --ink-2: #b9b4a8; --ink-3: #6e6a62;
+  --line: rgba(233,229,218,.07); --hair: rgba(233,229,218,.14);
+  --accent: #d6533a; --accent-ink: #131312; --warn: #d6533a;
+  --row: rgba(214,83,58,.12);
+  --k-kw: #e9e5da; --k-fn: #8fb7c9; --k-str: #d39a6c; --k-com: #6e6a62; --k-num: #d39a6c; --k-self: #b9b4a8; --k-p: #8a857c;
+  --hi: rgba(143,183,201,.18);
+  --chg: rgba(211,154,108,.1); --chg-strong: rgba(211,154,108,.26); --del: rgba(214,83,58,.12); --add: rgba(143,183,201,.08);
+  --mark: #e9e5da; --mark-ink: #131312;
+  --inote: rgba(233,229,218,.04); --hlrow: rgba(233,229,218,.07); --hlbar: #e9e5da; --hatch: rgba(233,229,218,.06);
+  --edge: rgba(233,229,218,.78);
+  --s-sand: rgba(211,154,108,.06); --s-blue: rgba(143,183,201,.06); --s-green: rgba(140,170,130,.06); --s-pink: rgba(214,83,58,.06);
+  --lk-orange: #d39a6c; --lk-blue: #8fb7c9; --lk-green: #9cbf92; --guide: #d6533a;
+  --glass: #1c1b19;
+  --tip-bg: #e9e5da; --tip-ink: #131312;
+  --sh-card: 0 0 0 .5px var(--hair), 0 18px 34px -22px rgba(0,0,0,.8);
+  --sh-lift: 0 0 0 .5px var(--hair), 0 30px 50px -24px rgba(0,0,0,.9);
+  --sh-float: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.5), 0 12px 22px -12px rgba(0,0,0,.6);
+  --r-card: 2px; --display: var(--serif); --label-font: var(--serif); --note-h: var(--serif); --edge-w: 2;
+  --sect-border: 1px solid color-mix(in srgb, var(--ink) 18%, transparent);
+}
+
+/* ---------- City（城市道路）：平面城市地图（街区、河、公园、楼）；卡片标题是蓝底白字路牌，编号是红色国道牌，箭头上的数据是绿色指路牌，有新版本是施工牌 ---------- */
+:root.look-city, [data-look="city"] {
+  color-scheme: light;
+  --ui: "Archivo", "Helvetica Neue", "PingFang SC", "Noto Sans SC", sans-serif;
+  --street: #fbfaf6; --blockc: rgba(0,0,0,.03); --asphalt: #7c828c; --casing: #ffffff; --lane: #f6c93b; --shoulder: #646a74; --kerb: #ffffff; --zebra: #ffffff;
+  --sign: #1f5fbf; --sign-ink: #ffffff; --gsign: #13804a; --shield: #c7281f; --car: #e5533d;
+  --bg: #ece8de; --surface: #ffffff; --head: #ffffff;
+  --ink: #23272e; --ink-2: #5a606b; --ink-3: #9aa0a8;
+  --line: rgba(0,0,0,.08); --hair: rgba(0,0,0,.14);
+  --accent: #1f5fbf; --accent-ink: #ffffff; --warn: #f28a1c;
+  --row: rgba(246,201,59,.24);
+  --k-kw: #1f5fbf; --k-fn: #13804a; --k-str: #b0521c; --k-com: #9aa0a8; --k-num: #b0521c; --k-self: #a3367a; --k-p: #7f858f;
+  --hi: rgba(31,95,191,.14);
+  --mark: #1f5fbf; --mark-ink: #ffffff;
+  --inote: rgba(31,95,191,.05); --hlrow: rgba(0,0,0,.05); --hlbar: #1f5fbf; --hatch: rgba(0,0,0,.06);
+  --edge: #7c828c;
+  --s-sand: rgba(224,200,140,.18); --s-blue: rgba(184,214,236,.4); --s-green: rgba(160,205,140,.3); --s-pink: rgba(230,150,150,.16);
+  --lk-orange: #e5533d; --lk-blue: #1f5fbf; --lk-green: #13804a; --guide: #1f5fbf;
+  --glass: #ffffff;
+  --tip-bg: #23272e; --tip-ink: #ffffff;
+  --sh-card: 0 0 0 1px rgba(0,0,0,.08), 0 6px 14px -6px rgba(30,40,60,.3);
+  --sh-lift: 0 0 0 1px rgba(0,0,0,.08), 0 20px 34px -14px rgba(30,40,60,.4);
+  --sh-float: 0 0 0 1px rgba(0,0,0,.08), 0 8px 18px -8px rgba(0,0,0,.4);
+  --r-card: 6px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 2;
+  --sect-border: 2px solid rgba(255,255,255,.9);
+}
+:root.look-city[data-theme="dark"], :root[data-theme="dark"] [data-look="city"] {
+  color-scheme: dark;
+  --street: #222833; --blockc: rgba(255,255,255,.02); --asphalt: #3d4451; --casing: #5d6576; --lane: #e8b84a; --shoulder: #2c323c; --kerb: #9aa2b0; --zebra: #b9c0cb;
+  --sign: #2d5ea8; --sign-ink: #ffffff; --gsign: #1d6c43; --shield: #c7281f; --car: #e5533d;
+  --bg: #161a22; --surface: #1d222c; --head: #1d222c;
+  --ink: #e6e9ef; --ink-2: #a8afbb; --ink-3: #69707c;
+  --line: rgba(255,255,255,.07); --hair: rgba(255,255,255,.13);
+  --accent: #6ea0f0; --accent-ink: #161a22; --warn: #f2a03c;
+  --row: rgba(232,184,74,.16);
+  --k-kw: #8cb6ff; --k-fn: #7fd3a3; --k-str: #f0a370; --k-com: #646b77; --k-num: #f0a370; --k-self: #e892c4; --k-p: #848b98;
+  --hi: rgba(110,160,240,.2);
+  --mark: #6ea0f0; --mark-ink: #161a22;
+  --inote: rgba(110,160,240,.06); --hlrow: rgba(255,255,255,.06); --hlbar: #6ea0f0; --hatch: rgba(255,255,255,.05);
+  --edge: #4a5260;
+  --s-sand: rgba(200,175,120,.07); --s-blue: rgba(20,37,56,.6); --s-green: rgba(27,42,34,.7); --s-pink: rgba(200,120,120,.07);
+  --lk-orange: #f07a5e; --lk-blue: #6ea0f0; --lk-green: #5fbf86; --guide: #6ea0f0;
+  --glass: #1d222c;
+  --tip-bg: #e6e9ef; --tip-ink: #161a22;
+  --sh-card: 0 0 0 1px rgba(255,255,255,.06), 0 6px 14px -6px rgba(0,0,0,.6);
+  --sh-lift: 0 0 0 1px rgba(255,255,255,.06), 0 20px 34px -14px rgba(0,0,0,.75);
+  --sh-float: 0 0 0 1px rgba(255,255,255,.06), 0 8px 18px -8px rgba(0,0,0,.6);
+  --r-card: 6px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 2;
+  --sect-border: 2px solid rgba(255,255,255,.07);
+}
+
 /* ======================================================================
    Structure
    ====================================================================== */
 
 /* ---------- Classic ---------- */
 /* 代码行里成千上万的小元素（关键字、行号、调用、图标、端口）只换变量、不加规则：缩放时整板样式重算不变慢 */
-:root[data-look="classic"] { --no-o: .8; --call-deco: none; --ico-w: 2; }
-:root[data-look="classic"] .card:not(.text):not(.nobg) { box-shadow: 0 0 0 1px var(--line), var(--sh-card); }
-:root[data-look="classic"] .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent), var(--sh-card); }
-:root[data-look="classic"] .card.lift { box-shadow: 0 0 0 1px var(--line), var(--sh-lift); }
-:root[data-look="classic"] .chead { height: 38px; padding: 0 8px 0 12px; gap: 8px; }
-:root[data-look="classic"] .chead .step { border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
-:root[data-look="classic"] .ctitle { font-size: 12.5px; letter-spacing: 0; }
-:root[data-look="classic"] .cpath { font: 11.5px var(--sys); }
-:root[data-look="classic"] .chead .rev:not(.lang):not(.unc) { border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; gap: 5px; }
-:root[data-look="classic"] .chead .rev:not(.new):not(.lang):not(.unc):not(.lost)::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
-:root[data-look="classic"] .chead .rev.new { border-color: var(--warn); color: var(--ink-2); background: color-mix(in srgb, var(--warn) 13%, transparent); }
-:root[data-look="classic"] .port { display: none; }
-:root[data-look="classic"] .vcard, :root[data-look="classic"] .vbox, :root[data-look="classic"] .vlabel, :root[data-look="classic"] .vchip { background: var(--bg); box-shadow: 0 0 0 1px var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; }
-:root[data-look="classic"] .pill, :root[data-look="classic"] .ctx, :root[data-look="classic"] .pop, :root[data-look="classic"] .dialog, :root[data-look="classic"] .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 9px; }
-:root[data-look="classic"] .toast { background: var(--toast); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--sh-float); }
-:root[data-look="classic"] .toast .tlink { font-weight: 500; }
-:root[data-look="classic"] .bbar .pill { gap: 6px; }
+:root.look-classic { --no-o: .8; --call-deco: none; --ico-w: 2; }
+:root.look-classic .card:not(.text):not(.nobg) { box-shadow: 0 0 0 1px var(--line), var(--sh-card); }
+:root.look-classic .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent), var(--sh-card); }
+:root.look-classic .card.lift { box-shadow: 0 0 0 1px var(--line), var(--sh-lift); }
+:root.look-classic .chead { height: 38px; padding: 0 8px 0 12px; gap: 8px; }
+:root.look-classic .chead .step { border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+:root.look-classic .ctitle { font-size: 12.5px; letter-spacing: 0; }
+:root.look-classic .cpath { font: 11.5px var(--sys); }
+:root.look-classic .chead .rev:not(.lang):not(.unc) { border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; gap: 5px; }
+:root.look-classic .chead .rev:not(.new):not(.lang):not(.unc):not(.lost)::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+:root.look-classic .chead .rev.new { border-color: var(--warn); color: var(--ink-2); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+:root.look-classic .port { display: none; }
+:root.look-classic .vcard, :root.look-classic .vbox, :root.look-classic .vlabel, :root.look-classic .vchip { background: var(--bg); box-shadow: 0 0 0 1px var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; }
+:root.look-classic .pill, :root.look-classic .ctx, :root.look-classic .pop, :root.look-classic .dialog, :root.look-classic .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 9px; }
+:root.look-classic .toast { background: var(--toast); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--sh-float); }
+:root.look-classic .toast .tlink { font-weight: 500; }
+:root.look-classic .bbar .pill { gap: 6px; }
 
 /* ---------- Graphite ---------- */
-:root[data-look="graphite"] .chead .step { background: none; color: var(--ink-3); padding: 0; min-width: 0; font-weight: 500; }
-:root[data-look="graphite"] .chead .step:hover { background: none; color: var(--accent); }
-:root[data-look="graphite"] .rev.new i { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
-:root[data-look="graphite"] .chead .rev.new { background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: 999px; }
-:root[data-look="graphite"] .tdot { background: var(--accent); }
+:root.look-graphite .chead .step { background: none; color: var(--ink-3); padding: 0; min-width: 0; font-weight: 500; }
+:root.look-graphite .chead .step:hover { background: none; color: var(--accent); }
+:root.look-graphite .rev.new i { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
+:root.look-graphite .chead .rev.new { background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: 999px; }
+:root.look-graphite .tdot { background: var(--accent); }
 
 /* ---------- Soft Light ---------- */
-:root[data-look="soft-light"] { --call-deco: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); }
-:root[data-look="soft-light"] .card.sel:not(.text) { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
-:root[data-look="soft-light"] .card.sel.lift { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), var(--sh-lift); }
-:root[data-look="soft-light"] .chead { background: none; border-bottom: 0; }
-:root[data-look="soft-light"] .ccard > .cface > .chead { height: auto; flex-wrap: wrap; row-gap: 1px; column-gap: 8px; padding: 14px 10px 10px 18px; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .kind, :root[data-look="soft-light"] .ccard > .cface > .chead .grow, :root[data-look="soft-light"] .ccard > .cface > .chead .plusn { display: none; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .step { order: 0; height: 16px; padding: 0; min-width: 0; gap: 10px; display: inline-flex; background: none; color: var(--ink-3); font: 500 9.5px var(--sys); letter-spacing: .32em; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .step::before { content: "STEP\00a0"; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .step::after { content: ""; width: 26px; height: 1px; background: var(--coral); }
-:root[data-look="soft-light"] .ccard > .cface > .chead .step:hover { color: var(--coral); background: none; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .subc, :root[data-look="soft-light"] .ccard > .cface > .chead .lockb, :root[data-look="soft-light"] .ccard > .cface > .chead .mk { order: 1; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .rev { order: 2; margin-left: auto; color: var(--ink-3); }
-:root[data-look="soft-light"] .ccard > .cface > .chead .rev ~ .rev { margin-left: 0; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .ib { order: 3; border-radius: 9px; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .ctitle { order: 5; flex: 1 0 100%; font: 300 18px/1.35 var(--sys); color: var(--ink); letter-spacing: -.005em; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .cpath { order: 6; flex: 1 0 100%; font: 400 11px var(--sys); color: var(--ink-3); letter-spacing: .02em; padding: 0; }
-:root[data-look="soft-light"] .ccard > .cface > .chead .rev.new { color: var(--ink-2); gap: 7px; }
-:root[data-look="soft-light"] .rev.new i { width: 7px; height: 7px; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
-:root[data-look="soft-light"] .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
-:root[data-look="soft-light"] .ccard .carea > .cbody { margin: 0 10px; border-radius: 12px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
-:root[data-theme="dark"][data-look="soft-light"] .ccard .carea > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
+:root.look-soft-light { --call-deco: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); }
+:root.look-soft-light .card.sel:not(.text) { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
+:root.look-soft-light .card.sel.lift { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), var(--sh-lift); }
+:root.look-soft-light .chead { background: none; border-bottom: 0; }
+:root.look-soft-light .ccard > .cface > .chead { height: auto; flex-wrap: wrap; row-gap: 1px; column-gap: 8px; padding: 14px 10px 10px 18px; }
+:root.look-soft-light .ccard > .cface > .chead .kind, :root.look-soft-light .ccard > .cface > .chead .grow, :root.look-soft-light .ccard > .cface > .chead .plusn { display: none; }
+:root.look-soft-light .ccard > .cface > .chead .step { order: 0; height: 16px; padding: 0; min-width: 0; gap: 10px; display: inline-flex; background: none; color: var(--ink-3); font: 500 9.5px var(--sys); letter-spacing: .32em; }
+:root.look-soft-light .ccard > .cface > .chead .step::before { content: "STEP\00a0"; }
+:root.look-soft-light .ccard > .cface > .chead .step::after { content: ""; width: 26px; height: 1px; background: var(--coral); }
+:root.look-soft-light .ccard > .cface > .chead .step:hover { color: var(--coral); background: none; }
+:root.look-soft-light .ccard > .cface > .chead .subc, :root.look-soft-light .ccard > .cface > .chead .lockb, :root.look-soft-light .ccard > .cface > .chead .mk { order: 1; }
+:root.look-soft-light .ccard > .cface > .chead .rev { order: 2; margin-left: auto; color: var(--ink-3); }
+:root.look-soft-light .ccard > .cface > .chead .rev ~ .rev { margin-left: 0; }
+:root.look-soft-light .ccard > .cface > .chead .ib { order: 3; border-radius: 9px; }
+:root.look-soft-light .ccard > .cface > .chead .ctitle { order: 5; flex: 1 0 100%; font: 300 18px/1.35 var(--sys); color: var(--ink); letter-spacing: -.005em; }
+:root.look-soft-light .ccard > .cface > .chead .cpath { order: 6; flex: 1 0 100%; font: 400 11px var(--sys); color: var(--ink-3); letter-spacing: .02em; padding: 0; }
+:root.look-soft-light .ccard > .cface > .chead .rev.new { color: var(--ink-2); gap: 7px; }
+:root.look-soft-light .rev.new i { width: 7px; height: 7px; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
+:root.look-soft-light .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
+:root.look-soft-light .ccard .carea > .cbody { margin: 0 10px; border-radius: 12px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
+:root.look-soft-light[data-theme="dark"] .ccard .carea > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
 /* 托盘下面的 10px 留白算卡的外框（在内容区 .carea 外面）；有 Source 底栏时留白在托盘和底栏之间，底栏贴底 */
-:root[data-look="soft-light"] .ccard .carea { margin-bottom: 10px; }
-:root[data-look="soft-light"] .ccard .carea > .cbody:not(:last-child) { margin-bottom: 10px; }
-:root[data-look="soft-light"] .ccard .carea > .cfoot { margin-bottom: -10px; }
-:root[data-look="soft-light"] .card.note > .cface > .chead { padding-top: 6px; }
-:root[data-look="soft-light"] .card.note .nbody { font-weight: 300; font-size: 14px; padding: 2px 18px 16px; }
-:root[data-look="soft-light"] .card.note .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
-:root[data-look="soft-light"] .tx.st-title { font-weight: 300; font-size: 30px; }
-:root[data-look="soft-light"] .edge { stroke: color-mix(in srgb, var(--edge) 85%, transparent); }
-:root[data-look="soft-light"] .ahead.dot { stroke: none; }
-:root[data-look="soft-light"] .port { stroke: var(--coral); fill: var(--surface); }
-:root[data-look="soft-light"] .vcard, :root[data-look="soft-light"] .vbox, :root[data-look="soft-light"] .vlabel, :root[data-look="soft-light"] .vchip { background: var(--surface); border-radius: 999px; padding: 5px 10px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); font-size: 10.5px; }
-:root[data-look="soft-light"] .vbox, :root[data-look="soft-light"] .vcard { border-radius: 12px; }
-:root[data-look="soft-light"] .pill, :root[data-look="soft-light"] .ctx, :root[data-look="soft-light"] .pop, :root[data-look="soft-light"] .dialog, :root[data-look="soft-light"] .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
-:root[data-look="soft-light"] .pill { padding: 5px; }
-:root[data-look="soft-light"] .ib, :root[data-look="soft-light"] .tbtn { border-radius: 9px; }
-:root[data-look="soft-light"] .pill .ib { width: 30px; height: 30px; }
-:root[data-look="soft-light"] .ctx button { border-radius: 8px; }
-:root[data-look="soft-light"] .ctx button:not([disabled]):hover { background: var(--well); color: var(--ink); }
-:root[data-look="soft-light"] .ctx button:not([disabled]):hover .ck, :root[data-look="soft-light"] .ctx button:not([disabled]):hover small { color: var(--ink-3); }
-:root[data-look="soft-light"] .sep { width: 1px; background: var(--hair); }
-:root[data-look="soft-light"] .toast { left: auto; right: 20px; top: 20px; bottom: auto; translate: 0 -8px; background: var(--surface); color: var(--ink); border-radius: 12px; padding: 9px 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
-:root[data-look="soft-light"] .toast.show { translate: 0 0; }
-:root[data-look="soft-light"] .toast .tlink { color: var(--coral); font-weight: 500; }
-:root[data-look="soft-light"] .sect { border-radius: 24px; }
-:root[data-look="soft-light"] .slabel { font-weight: 400; letter-spacing: .02em; }
-:root[data-look="soft-light"] .mk { border-radius: 50%; }
-:root[data-look="soft-light"] .mast { display: flex; position: absolute; left: 24px; top: 16px; z-index: 3; pointer-events: none; flex-direction: column; gap: 4px; max-width: 46%; }
-:root[data-look="soft-light"] .mast::before { content: ""; width: 26px; height: 1px; background: var(--coral); }
-:root[data-look="soft-light"] .mast .mn { font: 300 24px/1.15 var(--sys); color: var(--ink); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root.look-soft-light .ccard .carea { margin-bottom: 10px; }
+:root.look-soft-light .ccard .carea > .cbody:not(:last-child) { margin-bottom: 10px; }
+:root.look-soft-light .ccard .carea > .cfoot { margin-bottom: -10px; }
+:root.look-soft-light .card.note > .cface > .chead { padding-top: 6px; }
+:root.look-soft-light .card.note .nbody { font-weight: 300; font-size: 14px; padding: 2px 18px 16px; }
+:root.look-soft-light .card.note .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
+:root.look-soft-light .tx.st-title { font-weight: 300; font-size: 30px; }
+:root.look-soft-light .edge { stroke: color-mix(in srgb, var(--edge) 85%, transparent); }
+:root.look-soft-light .ahead.dot { stroke: none; }
+:root.look-soft-light .port { stroke: var(--coral); fill: var(--surface); }
+:root.look-soft-light .vcard, :root.look-soft-light .vbox, :root.look-soft-light .vlabel, :root.look-soft-light .vchip { background: var(--surface); border-radius: 999px; padding: 5px 10px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); font-size: 10.5px; }
+:root.look-soft-light .vbox, :root.look-soft-light .vcard { border-radius: 12px; }
+:root.look-soft-light .pill, :root.look-soft-light .ctx, :root.look-soft-light .pop, :root.look-soft-light .dialog, :root.look-soft-light .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
+:root.look-soft-light .pill { padding: 5px; }
+:root.look-soft-light .ib, :root.look-soft-light .tbtn { border-radius: 9px; }
+:root.look-soft-light .pill .ib { width: 30px; height: 30px; }
+:root.look-soft-light .ctx button { border-radius: 8px; }
+:root.look-soft-light .ctx button:not([disabled]):hover { background: var(--well); color: var(--ink); }
+:root.look-soft-light .ctx button:not([disabled]):hover .ck, :root.look-soft-light .ctx button:not([disabled]):hover small { color: var(--ink-3); }
+:root.look-soft-light .sep { width: 1px; background: var(--hair); }
+:root.look-soft-light .toast { left: auto; right: 20px; top: 20px; bottom: auto; translate: 0 -8px; background: var(--surface); color: var(--ink); border-radius: 12px; padding: 9px 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
+:root.look-soft-light .toast.show { translate: 0 0; }
+:root.look-soft-light .toast .tlink { color: var(--coral); font-weight: 500; }
+:root.look-soft-light .sect { border-radius: 24px; }
+:root.look-soft-light .slabel { font-weight: 400; letter-spacing: .02em; }
+:root.look-soft-light .mk { border-radius: 50%; }
+:root.look-soft-light .mast { display: flex; position: absolute; left: 24px; top: 16px; z-index: 3; pointer-events: none; flex-direction: column; gap: 4px; max-width: 46%; }
+:root.look-soft-light .mast::before { content: ""; width: 26px; height: 1px; background: var(--coral); }
+:root.look-soft-light .mast .mn { font: 300 24px/1.15 var(--sys); color: var(--ink); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Drafting ---------- */
-:root[data-look="drafting"] { --no-o: 1; --kw-w: 500; --com-i: normal; --call-deco: underline 1px var(--ink-3); --ico-w: 1; --port-r: 0; }
-:root[data-look="drafting"] .card:not(.text):not(.nobg) { background: var(--bg); box-shadow: 0 0 0 1px var(--rule); }
-:root[data-look="drafting"] .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--ink); }
-:root[data-look="drafting"] .card.sel:not(.text)::after { content: ""; position: absolute; inset: -9px; border: 1px dashed var(--ink-2); pointer-events: none; }
-:root[data-look="drafting"] .card.sel:not(.text)::before { content: "SELECTED"; position: absolute; top: -26px; left: -9px; font: 10px var(--mono); letter-spacing: .12em; color: var(--ink-2); pointer-events: none; }
-:root[data-look="drafting"] .card.lift { box-shadow: var(--sh-lift); }
-:root[data-look="drafting"] .chead { padding: 0 6px 0 12px; gap: 10px; border-bottom: 1px solid var(--rule); }
-:root[data-look="drafting"] .chead .kind { display: none; }
-:root[data-look="drafting"] .chead .step { background: none; color: var(--ink-3); font: 400 10.5px var(--mono); padding: 0; min-width: 0; }
-:root[data-look="drafting"] .chead .step:hover { background: none; color: var(--ink); text-decoration: underline; }
-:root[data-look="drafting"] .ctitle { font: 600 12px var(--head-font); text-transform: uppercase; letter-spacing: .07em; color: var(--ink); }
-:root[data-look="drafting"] .cpath { font: 10.5px var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
-:root[data-look="drafting"] .rev { font: 10.5px var(--mono); color: var(--ink-3); gap: 6px; border-radius: 0; }
-:root[data-look="drafting"] .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; box-sizing: border-box; border: 1px solid currentColor; }
-:root[data-look="drafting"] .rev.new { color: var(--ink); }
-:root[data-look="drafting"] .rev i { width: 7px; height: 7px; border-radius: 0; background: currentColor; box-shadow: none; }
-:root[data-look="drafting"] .rev.hollow i { background: none; box-shadow: inset 0 0 0 1px currentColor; }
-:root[data-look="drafting"] .cdesc { border-bottom: 1px solid var(--rule); font: 11px/1.6 var(--mono); }
-:root[data-look="drafting"] .edge:not(.dashed) { stroke-dasharray: 3 3; stroke-linecap: butt; }
-:root[data-look="drafting"] .ahead.triangle { fill: var(--ink); stroke: none; }
-:root[data-look="drafting"] .ahead.triangle.on { fill: var(--accent); }
-:root[data-look="drafting"] .port { fill: var(--bg); stroke: var(--ink); }
-:root[data-look="drafting"] .vcard, :root[data-look="drafting"] .vbox, :root[data-look="drafting"] .vlabel, :root[data-look="drafting"] .vchip { font: 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: var(--bg); box-shadow: none; border-radius: 0; padding: 2px 5px; }
-:root[data-look="drafting"] .mk, :root[data-look="drafting"] .addn { border-radius: 0; }
-:root[data-look="drafting"] .card.note .nbody { font: 11px/1.7 var(--mono); color: var(--ink-2); }
-:root[data-look="drafting"] .card.note .nbody h1, :root[data-look="drafting"] .card.note .nbody h2, :root[data-look="drafting"] .card.note .nbody h3, :root[data-look="drafting"] .card.note .nbody strong, :root[data-look="drafting"] .card.note .nbody b { font-family: var(--head-font); color: var(--ink); letter-spacing: .06em; }
-:root[data-look="drafting"] .card.note .ctitle { font-size: 11px; }
-:root[data-look="drafting"] .tx.st-title { font: 600 24px/1.25 var(--head-font); text-transform: uppercase; letter-spacing: .08em; }
-:root[data-look="drafting"] .tx.st-heading { font: 600 15px/1.4 var(--head-font); text-transform: uppercase; letter-spacing: .06em; }
-:root[data-look="drafting"] .sect { border-radius: 0; }
-:root[data-look="drafting"] .slabel { font: 10.5px/20px var(--mono); text-transform: uppercase; letter-spacing: .12em; border-radius: 0; }
-:root[data-look="drafting"] .pill, :root[data-look="drafting"] .ctx, :root[data-look="drafting"] .pop, :root[data-look="drafting"] .dialog, :root[data-look="drafting"] .keys, :root[data-look="drafting"] .palette, :root[data-look="drafting"] .stkpick { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--rule); border-radius: 0; }
-:root[data-look="drafting"] .pill { padding: 3px; }
-:root[data-look="drafting"] .ib, :root[data-look="drafting"] .tbtn, :root[data-look="drafting"] .btn, :root[data-look="drafting"] .ctx button, :root[data-look="drafting"] .cand, :root[data-look="drafting"] .segc, :root[data-look="drafting"] .segc button, :root[data-look="drafting"] .fld, :root[data-look="drafting"] .db button, :root[data-look="drafting"] .zoom, :root[data-look="drafting"] .chk { border-radius: 0; }
-:root[data-look="drafting"] .tbtn, :root[data-look="drafting"] .ib { color: var(--ink-2); }
-:root[data-look="drafting"] .tbtn { font: 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
-:root[data-look="drafting"] .tbtn:hover, :root[data-look="drafting"] .ib:hover { color: var(--ink); background: var(--tint); }
-:root[data-look="drafting"] .sep { width: 1px; background: var(--rule); }
-:root[data-look="drafting"] .zoom { font: 10.5px var(--mono); color: var(--ink); }
-:root[data-look="drafting"] .ctx button:not([disabled]):hover { background: var(--ink); color: var(--bg); }
-:root[data-look="drafting"] .toast { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--ink); border-radius: 0; font: 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 7px 12px; }
-:root[data-look="drafting"] .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
-:root[data-look="drafting"] .tip { border-radius: 0; }
-:root[data-look="drafting"] .mast { display: block; position: absolute; left: 18px; top: 14px; z-index: 3; pointer-events: none; max-width: 46%; }
-:root[data-look="drafting"] .mast::before { content: "CODEBOARD · SHEET 1"; display: block; font: 10px var(--mono); letter-spacing: .14em; color: var(--ink-3); }
-:root[data-look="drafting"] .mast .mn { display: block; font: 600 12px var(--head-font); text-transform: uppercase; letter-spacing: .12em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root.look-drafting { --no-o: 1; --kw-w: 500; --com-i: normal; --call-deco: underline 1px var(--ink-3); --ico-w: 1; --port-r: 0; }
+:root.look-drafting .card:not(.text):not(.nobg) { background: var(--bg); box-shadow: 0 0 0 1px var(--rule); }
+:root.look-drafting .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--ink); }
+:root.look-drafting .card.sel:not(.text)::after { content: ""; position: absolute; inset: -9px; border: 1px dashed var(--ink-2); pointer-events: none; }
+:root.look-drafting .card.sel:not(.text)::before { content: "SELECTED"; position: absolute; top: -26px; left: -9px; font: 10px var(--mono); letter-spacing: .12em; color: var(--ink-2); pointer-events: none; }
+:root.look-drafting .card.lift { box-shadow: var(--sh-lift); }
+:root.look-drafting .chead { padding: 0 6px 0 12px; gap: 10px; border-bottom: 1px solid var(--rule); }
+:root.look-drafting .chead .kind { display: none; }
+:root.look-drafting .chead .step { background: none; color: var(--ink-3); font: 400 10.5px var(--mono); padding: 0; min-width: 0; }
+:root.look-drafting .chead .step:hover { background: none; color: var(--ink); text-decoration: underline; }
+:root.look-drafting .ctitle { font: 600 12px var(--head-font); text-transform: uppercase; letter-spacing: .07em; color: var(--ink); }
+:root.look-drafting .cpath { font: 10.5px var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
+:root.look-drafting .rev { font: 10.5px var(--mono); color: var(--ink-3); gap: 6px; border-radius: 0; }
+:root.look-drafting .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; box-sizing: border-box; border: 1px solid currentColor; }
+:root.look-drafting .rev.new { color: var(--ink); }
+:root.look-drafting .rev i { width: 7px; height: 7px; border-radius: 0; background: currentColor; box-shadow: none; }
+:root.look-drafting .rev.hollow i { background: none; box-shadow: inset 0 0 0 1px currentColor; }
+:root.look-drafting .cdesc { border-bottom: 1px solid var(--rule); font: 11px/1.6 var(--mono); }
+:root.look-drafting .edge:not(.dashed) { stroke-dasharray: 3 3; stroke-linecap: butt; }
+:root.look-drafting .ahead.triangle { fill: var(--ink); stroke: none; }
+:root.look-drafting .ahead.triangle.on { fill: var(--accent); }
+:root.look-drafting .port { fill: var(--bg); stroke: var(--ink); }
+:root.look-drafting .vcard, :root.look-drafting .vbox, :root.look-drafting .vlabel, :root.look-drafting .vchip { font: 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: var(--bg); box-shadow: none; border-radius: 0; padding: 2px 5px; }
+:root.look-drafting .mk, :root.look-drafting .addn { border-radius: 0; }
+:root.look-drafting .card.note .nbody { font: 11px/1.7 var(--mono); color: var(--ink-2); }
+:root.look-drafting .card.note .nbody h1, :root.look-drafting .card.note .nbody h2, :root.look-drafting .card.note .nbody h3, :root.look-drafting .card.note .nbody strong, :root.look-drafting .card.note .nbody b { font-family: var(--head-font); color: var(--ink); letter-spacing: .06em; }
+:root.look-drafting .card.note .ctitle { font-size: 11px; }
+:root.look-drafting .tx.st-title { font: 600 24px/1.25 var(--head-font); text-transform: uppercase; letter-spacing: .08em; }
+:root.look-drafting .tx.st-heading { font: 600 15px/1.4 var(--head-font); text-transform: uppercase; letter-spacing: .06em; }
+:root.look-drafting .sect { border-radius: 0; }
+:root.look-drafting .slabel { font: 10.5px/20px var(--mono); text-transform: uppercase; letter-spacing: .12em; border-radius: 0; }
+:root.look-drafting .pill, :root.look-drafting .ctx, :root.look-drafting .pop, :root.look-drafting .dialog, :root.look-drafting .keys, :root.look-drafting .palette, :root.look-drafting .stkpick { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--rule); border-radius: 0; }
+:root.look-drafting .pill { padding: 3px; }
+:root.look-drafting .ib, :root.look-drafting .tbtn, :root.look-drafting .btn, :root.look-drafting .ctx button, :root.look-drafting .cand, :root.look-drafting .segc, :root.look-drafting .segc button, :root.look-drafting .fld, :root.look-drafting .db button, :root.look-drafting .zoom, :root.look-drafting .chk { border-radius: 0; }
+:root.look-drafting .tbtn, :root.look-drafting .ib { color: var(--ink-2); }
+:root.look-drafting .tbtn { font: 10.5px var(--mono); letter-spacing: .1em; text-transform: uppercase; }
+:root.look-drafting .tbtn:hover, :root.look-drafting .ib:hover { color: var(--ink); background: var(--tint); }
+:root.look-drafting .sep { width: 1px; background: var(--rule); }
+:root.look-drafting .zoom { font: 10.5px var(--mono); color: var(--ink); }
+:root.look-drafting .ctx button:not([disabled]):hover { background: var(--ink); color: var(--bg); }
+:root.look-drafting .toast { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--ink); border-radius: 0; font: 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 7px 12px; }
+:root.look-drafting .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
+:root.look-drafting .tip { border-radius: 0; }
+:root.look-drafting .mast { display: block; position: absolute; left: 18px; top: 14px; z-index: 3; pointer-events: none; max-width: 46%; }
+:root.look-drafting .mast::before { content: "CODEBOARD · SHEET 1"; display: block; font: 10px var(--mono); letter-spacing: .14em; color: var(--ink-3); }
+:root.look-drafting .mast .mn { display: block; font: 600 12px var(--head-font); text-transform: uppercase; letter-spacing: .12em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Colorful ---------- */
-:root[data-look="colorful"] { --no-link: var(--ink); --no-link-w: 600; --call-deco: underline 1.5px color-mix(in srgb, var(--k-fn) 45%, transparent); --ico-w: 2; --port-ring: 2px; --port-ring-c: var(--rule); --port-bg: var(--f2); }
-:root[data-look="colorful"] .card { --fc: var(--f1); --bink: var(--paper-ink); }
-:root[data-look="colorful"] .card[data-fc="1"] { --fc: var(--f2); --bink: #2a231c; }
-:root[data-look="colorful"] .card[data-fc="2"] { --fc: var(--f3); }
-:root[data-look="colorful"] .card[data-fc="3"] { --fc: var(--f4); }
-:root[data-look="colorful"] .card[data-fc="4"] { --fc: var(--f5); }
-:root[data-look="colorful"] .card[data-fc="5"] { --fc: var(--f6); }
-:root[data-look="colorful"] .card.sel:not(.text) { box-shadow: 0 0 0 2px var(--rule), 6px 6px 0 2px var(--rule); }
-:root[data-look="colorful"] .card.lift { box-shadow: var(--sh-lift); }
-:root[data-look="colorful"] .chead { height: 30px; gap: 0; padding: 0; border-bottom: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
-:root[data-look="colorful"] .chead > .step, :root[data-look="colorful"] .chead > .subc, :root[data-look="colorful"] .chead > .lockb, :root[data-look="colorful"] .chead > .kind, :root[data-look="colorful"] .chead > .ctitle, :root[data-look="colorful"] .chead > .plusn, :root[data-look="colorful"] .chead > .cpath, :root[data-look="colorful"] .chead > .rev, :root[data-look="colorful"] .chead > .mk, :root[data-look="colorful"] .chead > .ib, :root[data-look="colorful"] .chead > .seg2, :root[data-look="colorful"] .chead > .tools, :root[data-look="colorful"] .chead > .lcount { height: 100%; display: flex; align-items: center; padding: 0 10px; border-radius: 0; }
-:root[data-look="colorful"] .chead .kind, :root[data-look="colorful"] .chead .grow { display: none; }
-:root[data-look="colorful"] .ccard > .cface > .chead .ctitle { display: none; }
-:root[data-look="colorful"] .card:not(.ccard) > .cface > .chead .ctitle { font: 600 9.5px var(--sys); letter-spacing: .2em; flex: 1 1 auto; }
-:root[data-look="colorful"] .chead .step { white-space: nowrap; background: var(--rule); color: var(--paper-ink); font: 600 9.5px var(--sys); letter-spacing: .2em; min-width: 0; }
-:root[data-look="colorful"] .chead .step::before { content: "STEP\00a0"; }
-:root[data-look="colorful"] .chead .step:hover { background: var(--fc); color: var(--bink); }
-:root[data-look="colorful"] .chead .cpath { flex: 1 1 auto; color: var(--ink-2); font: inherit; border-right: 2px solid var(--rule); }
-:root[data-look="colorful"] .chead .rev { font: inherit; color: var(--ink-2); gap: 7px; }
-:root[data-look="colorful"] .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--f3); }
-:root[data-look="colorful"] .chead .rev.new { color: var(--ink); }
-:root[data-look="colorful"] .rev.new i { width: 7px; height: 7px; background: var(--f1); }
-:root[data-look="colorful"] .chead .ib { width: 32px; border-left: 2px solid var(--rule); color: var(--ink); }
-:root[data-look="colorful"] .chead .ib:hover, :root[data-look="colorful"] .chead .rev:hover, :root[data-look="colorful"] .chead .cpath:hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
-:root[data-look="colorful"] .cband { display: flex; position: relative; flex: none; height: 54px; align-items: center; padding: 0 64px 0 14px; background: var(--fc); border-bottom: 2px solid var(--rule); }
-:root[data-look="colorful"] .cband .cname { font: 600 16px var(--sys); letter-spacing: .03em; color: var(--bink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:root[data-look="colorful"] .cband .cmeta { display: none; }
-:root[data-look="colorful"] .cband .big { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font: 600 30px/1 var(--sys); color: rgba(30,20,10,.24); letter-spacing: .02em; }
-:root[data-look="colorful"] .cdesc { padding: 9px 14px 8px; border-bottom: 0; font: italic 400 12.5px/1.5 var(--italic); color: color-mix(in srgb, var(--fc) 70%, var(--ink)); }
-:root[data-look="colorful"] .cxfoot { display: flex; flex: none; height: 32px; border-top: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
-:root[data-look="colorful"] .cxfoot > .fl, :root[data-look="colorful"] .cxfoot > .act { display: flex; align-items: center; gap: 6px; padding: 0 12px; color: var(--ink-2); white-space: nowrap; }
-:root[data-look="colorful"] .cxfoot .fl { flex: 1; border-right: 2px solid var(--rule); }
-:root[data-look="colorful"] .cxfoot .ico { width: 13px; height: 13px; stroke-width: 1.6; }
-:root[data-look="colorful"] .cxfoot .act:hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
-:root[data-look="colorful"] .cxfoot.new .act { background: var(--f3); color: var(--paper-ink); }
-:root[data-look="colorful"] .card.note .nbody { font-size: 13.5px; }
-:root[data-look="colorful"] .card.note .nbody h1, :root[data-look="colorful"] .card.note .nbody h2, :root[data-look="colorful"] .card.note .nbody h3 { font-weight: 600; letter-spacing: .02em; }
-:root[data-look="colorful"] .tx.st-title { font-weight: 600; letter-spacing: .02em; }
-:root[data-look="colorful"] .edge:not([class*="lc-"]), :root[data-look="colorful"] .ahead:not([class*="lc-"]) { stroke: var(--rule); }
-:root[data-look="colorful"] .ahead.triangle:not([class*="lc-"]) { fill: var(--rule); }
-:root[data-look="colorful"] .ahead.on { stroke: var(--accent); fill: var(--accent); }
-:root[data-look="colorful"] .port { stroke: var(--rule); stroke-width: 2; fill: var(--f1); }
-:root[data-look="colorful"] .port.fc-1 { fill: var(--f2); } :root[data-look="colorful"] .port.fc-2 { fill: var(--f3); } :root[data-look="colorful"] .port.fc-3 { fill: var(--f4); }
-:root[data-look="colorful"] .port.fc-4 { fill: var(--f5); } :root[data-look="colorful"] .port.fc-5 { fill: var(--f6); }
-:root[data-look="colorful"] .vcard, :root[data-look="colorful"] .vbox, :root[data-look="colorful"] .vlabel, :root[data-look="colorful"] .vchip { font: 10.5px/15px var(--mono); color: var(--ink); background: var(--surface); box-shadow: 0 0 0 2px var(--rule); border-radius: 0; padding: 3px 8px; }
-:root[data-look="colorful"] .vlabel { font-family: var(--sys); font-weight: 500; letter-spacing: .12em; text-transform: uppercase; }
-:root[data-look="colorful"] .mk { border-radius: 0; }
-:root[data-look="colorful"] .sect { border-radius: 0; }
-:root[data-look="colorful"] .slabel { background: var(--rule); color: var(--paper-ink); border-radius: 0; font: 600 10px/20px var(--sys); letter-spacing: .2em; text-transform: uppercase; padding: 2px 10px 2px 4px; }
-:root[data-look="colorful"] .slabel .dots, :root[data-look="colorful"] .slabel .chev2 { color: color-mix(in srgb, var(--paper-ink) 70%, transparent); }
-:root[data-look="colorful"] .slabel.collapsed { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 2px var(--rule); }
-:root[data-look="colorful"] .pill, :root[data-look="colorful"] .ctx, :root[data-look="colorful"] .pop, :root[data-look="colorful"] .dialog, :root[data-look="colorful"] .keys, :root[data-look="colorful"] .palette, :root[data-look="colorful"] .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; box-shadow: 0 0 0 2px var(--rule); }
-:root[data-look="colorful"] .ctx, :root[data-look="colorful"] .pop, :root[data-look="colorful"] .dialog, :root[data-look="colorful"] .keys, :root[data-look="colorful"] .palette, :root[data-look="colorful"] .stkpick { box-shadow: 0 0 0 2px var(--rule), 4px 4px 0 2px var(--rule); }
-:root[data-look="colorful"] .pill { padding: 0; gap: 0; }
-:root[data-look="colorful"] .pill > .tbtn:not(:first-child), :root[data-look="colorful"] .pill > .ib:not(:first-child), :root[data-look="colorful"] .pill > .zoom:not(:first-child), :root[data-look="colorful"] .pill > .pn:not(:first-child), :root[data-look="colorful"] .pill > .ptitle:not(:first-child), :root[data-look="colorful"] .pill > .cnt:not(:first-child) { border-left: 2px solid var(--rule); }
-:root[data-look="colorful"] .pill > .sep { display: none; }
-:root[data-look="colorful"] .ib, :root[data-look="colorful"] .tbtn, :root[data-look="colorful"] .btn, :root[data-look="colorful"] .ctx button, :root[data-look="colorful"] .cand, :root[data-look="colorful"] .segc button, :root[data-look="colorful"] .db button, :root[data-look="colorful"] .fld, :root[data-look="colorful"] .zoom { border-radius: 0; }
-:root[data-look="colorful"] .pill .tbtn { height: 30px; font: 600 10.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); }
-:root[data-look="colorful"] .pill .ib { height: 30px; width: 32px; color: var(--ink); }
-:root[data-look="colorful"] .pill .tbtn:hover, :root[data-look="colorful"] .pill .ib:hover, :root[data-look="colorful"] .ctx button:not([disabled]):hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
-:root[data-look="colorful"] .ctx button:not([disabled]):hover .ck, :root[data-look="colorful"] .ctx button:not([disabled]):hover small { color: var(--ink-2); }
-:root[data-look="colorful"] .zoom { height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; font: 600 10.5px var(--sys); letter-spacing: .12em; color: var(--ink); }
-:root[data-look="colorful"] .toast { background: var(--toast); color: var(--paper-ink); border-radius: 0; box-shadow: none; font: 500 10.5px var(--sys); letter-spacing: .16em; text-transform: uppercase; padding: 8px 12px; }
-:root[data-look="colorful"] .toast::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--f1); flex: none; }
-:root[data-look="colorful"] .toast .tlink { color: var(--f2); font-weight: 600; }
-:root[data-look="colorful"] .tip { border-radius: 0; }
-:root[data-look="colorful"] .mast { display: flex; position: absolute; left: 14px; top: 12px; z-index: 3; pointer-events: none; height: 30px; align-items: center; padding: 0 12px; max-width: 40%;
+:root.look-colorful { --no-link: var(--ink); --no-link-w: 600; --call-deco: underline 1.5px color-mix(in srgb, var(--k-fn) 45%, transparent); --ico-w: 2; --port-ring: 2px; --port-ring-c: var(--rule); --port-bg: var(--f2); }
+:root.look-colorful .card { --fc: var(--f1); --bink: var(--paper-ink); }
+:root.look-colorful .card[data-fc="1"] { --fc: var(--f2); --bink: #2a231c; }
+:root.look-colorful .card[data-fc="2"] { --fc: var(--f3); }
+:root.look-colorful .card[data-fc="3"] { --fc: var(--f4); }
+:root.look-colorful .card[data-fc="4"] { --fc: var(--f5); }
+:root.look-colorful .card[data-fc="5"] { --fc: var(--f6); }
+:root.look-colorful .card.sel:not(.text) { box-shadow: 0 0 0 2px var(--rule), 6px 6px 0 2px var(--rule); }
+:root.look-colorful .card.lift { box-shadow: var(--sh-lift); }
+:root.look-colorful .chead { height: 30px; gap: 0; padding: 0; border-bottom: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
+:root.look-colorful .chead > .step, :root.look-colorful .chead > .subc, :root.look-colorful .chead > .lockb, :root.look-colorful .chead > .kind, :root.look-colorful .chead > .ctitle, :root.look-colorful .chead > .plusn, :root.look-colorful .chead > .cpath, :root.look-colorful .chead > .rev, :root.look-colorful .chead > .mk, :root.look-colorful .chead > .ib, :root.look-colorful .chead > .seg2, :root.look-colorful .chead > .tools, :root.look-colorful .chead > .lcount { height: 100%; display: flex; align-items: center; padding: 0 10px; border-radius: 0; }
+:root.look-colorful .chead .kind, :root.look-colorful .chead .grow { display: none; }
+:root.look-colorful .ccard > .cface > .chead .ctitle { display: none; }
+:root.look-colorful .card:not(.ccard) > .cface > .chead .ctitle { font: 600 9.5px var(--sys); letter-spacing: .2em; flex: 1 1 auto; }
+:root.look-colorful .chead .step { white-space: nowrap; background: var(--rule); color: var(--paper-ink); font: 600 9.5px var(--sys); letter-spacing: .2em; min-width: 0; }
+:root.look-colorful .chead .step::before { content: "STEP\00a0"; }
+:root.look-colorful .chead .step:hover { background: var(--fc); color: var(--bink); }
+:root.look-colorful .chead .cpath { flex: 1 1 auto; color: var(--ink-2); font: inherit; border-right: 2px solid var(--rule); }
+:root.look-colorful .chead .rev { font: inherit; color: var(--ink-2); gap: 7px; }
+:root.look-colorful .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--f3); }
+:root.look-colorful .chead .rev.new { color: var(--ink); }
+:root.look-colorful .rev.new i { width: 7px; height: 7px; background: var(--f1); }
+:root.look-colorful .chead .ib { width: 32px; border-left: 2px solid var(--rule); color: var(--ink); }
+:root.look-colorful .chead .ib:hover, :root.look-colorful .chead .rev:hover, :root.look-colorful .chead .cpath:hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
+:root.look-colorful .cband { display: flex; position: relative; flex: none; height: 54px; align-items: center; padding: 0 64px 0 14px; background: var(--fc); border-bottom: 2px solid var(--rule); }
+:root.look-colorful .cband .cname { font: 600 16px var(--sys); letter-spacing: .03em; color: var(--bink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root.look-colorful .cband .cmeta { display: none; }
+:root.look-colorful .cband .big { position: absolute; right: 12px; top: 50%; translate: 0 -50%; font: 600 30px/1 var(--sys); color: rgba(30,20,10,.24); letter-spacing: .02em; }
+:root.look-colorful .cdesc { padding: 9px 14px 8px; border-bottom: 0; font: italic 400 12.5px/1.5 var(--italic); color: color-mix(in srgb, var(--fc) 70%, var(--ink)); }
+:root.look-colorful .cxfoot { display: flex; flex: none; height: 32px; border-top: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
+:root.look-colorful .cxfoot > .fl, :root.look-colorful .cxfoot > .act { display: flex; align-items: center; gap: 6px; padding: 0 12px; color: var(--ink-2); white-space: nowrap; }
+:root.look-colorful .cxfoot .fl { flex: 1; border-right: 2px solid var(--rule); }
+:root.look-colorful .cxfoot .ico { width: 13px; height: 13px; stroke-width: 1.6; }
+:root.look-colorful .cxfoot .act:hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
+:root.look-colorful .cxfoot.new .act { background: var(--f3); color: var(--paper-ink); }
+:root.look-colorful .card.note .nbody { font-size: 13.5px; }
+:root.look-colorful .card.note .nbody h1, :root.look-colorful .card.note .nbody h2, :root.look-colorful .card.note .nbody h3 { font-weight: 600; letter-spacing: .02em; }
+:root.look-colorful .tx.st-title { font-weight: 600; letter-spacing: .02em; }
+:root.look-colorful .edge:not([class*="lc-"]), :root.look-colorful .ahead:not([class*="lc-"]) { stroke: var(--rule); }
+:root.look-colorful .ahead.triangle:not([class*="lc-"]) { fill: var(--rule); }
+:root.look-colorful .ahead.on { stroke: var(--accent); fill: var(--accent); }
+:root.look-colorful .port { stroke: var(--rule); stroke-width: 2; fill: var(--f1); }
+:root.look-colorful .port.fc-1 { fill: var(--f2); } :root.look-colorful .port.fc-2 { fill: var(--f3); } :root.look-colorful .port.fc-3 { fill: var(--f4); }
+:root.look-colorful .port.fc-4 { fill: var(--f5); } :root.look-colorful .port.fc-5 { fill: var(--f6); }
+:root.look-colorful .vcard, :root.look-colorful .vbox, :root.look-colorful .vlabel, :root.look-colorful .vchip { font: 10.5px/15px var(--mono); color: var(--ink); background: var(--surface); box-shadow: 0 0 0 2px var(--rule); border-radius: 0; padding: 3px 8px; }
+:root.look-colorful .vlabel { font-family: var(--sys); font-weight: 500; letter-spacing: .12em; text-transform: uppercase; }
+:root.look-colorful .mk { border-radius: 0; }
+:root.look-colorful .sect { border-radius: 0; }
+:root.look-colorful .slabel { background: var(--rule); color: var(--paper-ink); border-radius: 0; font: 600 10px/20px var(--sys); letter-spacing: .2em; text-transform: uppercase; padding: 2px 10px 2px 4px; }
+:root.look-colorful .slabel .dots, :root.look-colorful .slabel .chev2 { color: color-mix(in srgb, var(--paper-ink) 70%, transparent); }
+:root.look-colorful .slabel.collapsed { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 2px var(--rule); }
+:root.look-colorful .pill, :root.look-colorful .ctx, :root.look-colorful .pop, :root.look-colorful .dialog, :root.look-colorful .keys, :root.look-colorful .palette, :root.look-colorful .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; box-shadow: 0 0 0 2px var(--rule); }
+:root.look-colorful .ctx, :root.look-colorful .pop, :root.look-colorful .dialog, :root.look-colorful .keys, :root.look-colorful .palette, :root.look-colorful .stkpick { box-shadow: 0 0 0 2px var(--rule), 4px 4px 0 2px var(--rule); }
+:root.look-colorful .pill { padding: 0; gap: 0; }
+:root.look-colorful .pill > .tbtn:not(:first-child), :root.look-colorful .pill > .ib:not(:first-child), :root.look-colorful .pill > .zoom:not(:first-child), :root.look-colorful .pill > .pn:not(:first-child), :root.look-colorful .pill > .ptitle:not(:first-child), :root.look-colorful .pill > .cnt:not(:first-child) { border-left: 2px solid var(--rule); }
+:root.look-colorful .pill > .sep { display: none; }
+:root.look-colorful .ib, :root.look-colorful .tbtn, :root.look-colorful .btn, :root.look-colorful .ctx button, :root.look-colorful .cand, :root.look-colorful .segc button, :root.look-colorful .db button, :root.look-colorful .fld, :root.look-colorful .zoom { border-radius: 0; }
+:root.look-colorful .pill .tbtn { height: 30px; font: 600 10.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); }
+:root.look-colorful .pill .ib { height: 30px; width: 32px; color: var(--ink); }
+:root.look-colorful .pill .tbtn:hover, :root.look-colorful .pill .ib:hover, :root.look-colorful .ctx button:not([disabled]):hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
+:root.look-colorful .ctx button:not([disabled]):hover .ck, :root.look-colorful .ctx button:not([disabled]):hover small { color: var(--ink-2); }
+:root.look-colorful .zoom { height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; font: 600 10.5px var(--sys); letter-spacing: .12em; color: var(--ink); }
+:root.look-colorful .toast { background: var(--toast); color: var(--paper-ink); border-radius: 0; box-shadow: none; font: 500 10.5px var(--sys); letter-spacing: .16em; text-transform: uppercase; padding: 8px 12px; }
+:root.look-colorful .toast::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--f1); flex: none; }
+:root.look-colorful .toast .tlink { color: var(--f2); font-weight: 600; }
+:root.look-colorful .tip { border-radius: 0; }
+:root.look-colorful .mast { display: flex; position: absolute; left: 14px; top: 12px; z-index: 3; pointer-events: none; height: 30px; align-items: center; padding: 0 12px; max-width: 40%;
   background: var(--surface); box-shadow: 0 0 0 2px var(--rule); }
-:root[data-look="colorful"] .mast .mn { font: 600 11.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root.look-colorful .mast .mn { font: 600 11.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ---------- Newspaper ---------- */
-:root[data-look="newspaper"] { --no-o: 1; --no-link: var(--ink); --no-link-w: 700; --kw-w: 700; --str-i: italic; --call-deco: underline 1px currentColor; --ico-w: 2; }
-:root[data-look="newspaper"] .card:not(.text):not(.nobg) { border-top: 3px solid var(--rule); }
-:root[data-look="newspaper"] .card.sel:not(.text) { box-shadow: var(--sh-card); outline: 1.5px solid var(--ink); outline-offset: 5px; }
-:root[data-look="newspaper"] .chead { height: 28px; padding: 0 6px 0 12px; gap: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
-:root[data-look="newspaper"] .chead .kind { display: none; }
-:root[data-look="newspaper"] .ccard > .cface > .chead .ctitle { display: none; }
-:root[data-look="newspaper"] .card:not(.ccard) > .cface > .chead .ctitle { font: inherit; letter-spacing: inherit; }
-:root[data-look="newspaper"] .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink); font: 700 9.5px var(--serif); letter-spacing: .1em; text-transform: none; padding: 0; min-width: 0; height: auto; }
-:root[data-look="newspaper"] .chead .step::before { content: "No.\00a0"; }
-:root[data-look="newspaper"] .chead .step:hover { background: none; color: var(--stamp); }
-:root[data-look="newspaper"] .chead .cpath { font: inherit; color: var(--ink-3); padding: 0; }
-:root[data-look="newspaper"] .rev { font: 400 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink-3); border-radius: 0; }
-:root[data-look="newspaper"] .chead .rev.new { font: 700 9px var(--serif); letter-spacing: .2em; text-transform: uppercase; color: var(--surface); background: var(--stamp); padding: 2px 6px; }
-:root[data-look="newspaper"] .rev.new i { display: none; }
-:root[data-look="newspaper"] .cband { display: block; flex: none; padding: 10px 12px 8px; }
-:root[data-look="newspaper"] .cband .cname { display: block; font: 700 21px/1.1 var(--serif); color: var(--ink); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-:root[data-look="newspaper"] .cband .cmeta, :root[data-look="newspaper"] .cband .big { display: none; }
-:root[data-look="newspaper"] .cdesc { margin-top: -4px; padding: 0 12px 10px; border-bottom: 0; font: italic 400 12.5px/1.45 var(--serif); color: var(--ink-2); }
-:root[data-look="newspaper"] .ccard .carea > .cbody { border-top: .5px solid var(--hair); }
-:root[data-look="newspaper"] .gutter::after { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; border-left: .5px solid var(--hair); }
-:root[data-look="newspaper"] .port { fill: var(--ink); stroke: none; }
-:root[data-look="newspaper"] .ahead.triangle { stroke: none; }
-:root[data-look="newspaper"] .vcard, :root[data-look="newspaper"] .vbox, :root[data-look="newspaper"] .vlabel, :root[data-look="newspaper"] .vchip { font: italic 400 12px/16px var(--serif); color: var(--ink); background: none; box-shadow: none; border-radius: 0; padding: 1px 2px; }
-:root[data-look="newspaper"] .vchips { font: italic 400 12px var(--serif); color: var(--ink); background: var(--bg); padding: 0 4px; }
-:root[data-look="newspaper"] .vchips::before { content: "— "; white-space: pre; }
-:root[data-look="newspaper"] .vchips::after { content: " —"; white-space: pre; }
-:root[data-look="newspaper"] .mk, :root[data-look="newspaper"] .addn { border-radius: 0; }
-:root[data-look="newspaper"] .card.note .nbody { font: 13.5px/1.55 var(--serif); }
-:root[data-look="newspaper"] .card.note .nbody h1, :root[data-look="newspaper"] .card.note .nbody h2, :root[data-look="newspaper"] .card.note .nbody h3 { font: 700 19px/1.15 var(--serif); letter-spacing: -.01em; margin-bottom: 6px; }
-:root[data-look="newspaper"] .tx.st-title { font: 700 30px/1.15 var(--serif); }
-:root[data-look="newspaper"] .tx.st-body { font-family: var(--serif); }
-:root[data-look="newspaper"] .sect { border-radius: 0; }
-:root[data-look="newspaper"] .slabel { font: 700 10px/20px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink); border-radius: 0; }
-:root[data-look="newspaper"] .pill, :root[data-look="newspaper"] .ctx, :root[data-look="newspaper"] .pop, :root[data-look="newspaper"] .dialog, :root[data-look="newspaper"] .keys, :root[data-look="newspaper"] .palette, :root[data-look="newspaper"] .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; box-shadow: inset 0 2px 0 var(--rule), 0 0 0 .5px var(--hair), 0 8px 20px -12px rgba(0,0,0,.3); }
-:root[data-look="newspaper"] .ib, :root[data-look="newspaper"] .tbtn, :root[data-look="newspaper"] .btn, :root[data-look="newspaper"] .ctx button, :root[data-look="newspaper"] .cand, :root[data-look="newspaper"] .segc button, :root[data-look="newspaper"] .db button, :root[data-look="newspaper"] .fld, :root[data-look="newspaper"] .zoom { border-radius: 0; }
-:root[data-look="newspaper"] .bbar .pill, :root[data-look="newspaper"] .dock .pill { height: 34px; padding: 2px 4px 0; gap: 0; box-shadow: inset 0 2px 0 var(--rule), inset 0 -.5px 0 var(--rule); }
-:root[data-look="newspaper"] .pill .tbtn { font: 700 10.5px var(--serif); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); padding: 0 10px; }
-:root[data-look="newspaper"] .pill .tbtn + .tbtn { box-shadow: inset .5px 0 0 var(--hair); }
-:root[data-look="newspaper"] .pill .ib { color: var(--ink); }
-:root[data-look="newspaper"] .pill .tbtn:hover, :root[data-look="newspaper"] .pill .ib:hover { background: var(--bg); }
-:root[data-look="newspaper"] .ctx button:not([disabled]):hover { background: var(--ink); color: var(--surface); }
-:root[data-look="newspaper"] .sep { width: .5px; background: var(--rule); }
-:root[data-look="newspaper"] .zoom { font: 400 11px var(--mono); color: var(--ink); }
-:root[data-look="newspaper"] .toast { background: var(--ink); color: var(--surface); border-radius: 0; box-shadow: none; font: 400 12.5px var(--serif); padding: 6px 12px 6px 6px; }
-:root[data-look="newspaper"] .toast::before { content: "Bulletin"; flex: none; font: 700 10px/1.5 var(--serif); letter-spacing: .2em; text-transform: uppercase; background: var(--stamp); color: #fff; padding: 1px 6px; }
-:root[data-look="newspaper"] .toast .tlink { color: var(--surface); font-weight: 700; font-style: italic; }
-:root[data-look="newspaper"] .tip { border-radius: 0; }
-:root[data-look="newspaper"] .mast { display: flex; position: absolute; left: 50%; translate: -50% 0; top: 8px; z-index: 3; pointer-events: none; flex-direction: column; align-items: center; gap: 3px;
+:root.look-newspaper { --no-o: 1; --no-link: var(--ink); --no-link-w: 700; --kw-w: 700; --str-i: italic; --call-deco: underline 1px currentColor; --ico-w: 2; }
+:root.look-newspaper .card:not(.text):not(.nobg) { border-top: 3px solid var(--rule); }
+:root.look-newspaper .card.sel:not(.text) { box-shadow: var(--sh-card); outline: 1.5px solid var(--ink); outline-offset: 5px; }
+:root.look-newspaper .chead { height: 28px; padding: 0 6px 0 12px; gap: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
+:root.look-newspaper .chead .kind { display: none; }
+:root.look-newspaper .ccard > .cface > .chead .ctitle { display: none; }
+:root.look-newspaper .card:not(.ccard) > .cface > .chead .ctitle { font: inherit; letter-spacing: inherit; }
+:root.look-newspaper .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink); font: 700 9.5px var(--serif); letter-spacing: .1em; text-transform: none; padding: 0; min-width: 0; height: auto; }
+:root.look-newspaper .chead .step::before { content: "No.\00a0"; }
+:root.look-newspaper .chead .step:hover { background: none; color: var(--stamp); }
+:root.look-newspaper .chead .cpath { font: inherit; color: var(--ink-3); padding: 0; }
+:root.look-newspaper .rev { font: 400 10px var(--mono); letter-spacing: 0; text-transform: none; color: var(--ink-3); border-radius: 0; }
+:root.look-newspaper .chead .rev.new { font: 700 9px var(--serif); letter-spacing: .2em; text-transform: uppercase; color: var(--surface); background: var(--stamp); padding: 2px 6px; }
+:root.look-newspaper .rev.new i { display: none; }
+:root.look-newspaper .cband { display: block; flex: none; padding: 10px 12px 8px; }
+:root.look-newspaper .cband .cname { display: block; font: 700 21px/1.1 var(--serif); color: var(--ink); letter-spacing: -.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root.look-newspaper .cband .cmeta, :root.look-newspaper .cband .big { display: none; }
+:root.look-newspaper .cdesc { margin-top: -4px; padding: 0 12px 10px; border-bottom: 0; font: italic 400 12.5px/1.45 var(--serif); color: var(--ink-2); }
+:root.look-newspaper .ccard .carea > .cbody { border-top: .5px solid var(--hair); }
+:root.look-newspaper .gutter::after { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; border-left: .5px solid var(--hair); }
+:root.look-newspaper .port { fill: var(--ink); stroke: none; }
+:root.look-newspaper .ahead.triangle { stroke: none; }
+:root.look-newspaper .vcard, :root.look-newspaper .vbox, :root.look-newspaper .vlabel, :root.look-newspaper .vchip { font: italic 400 12px/16px var(--serif); color: var(--ink); background: none; box-shadow: none; border-radius: 0; padding: 1px 2px; }
+:root.look-newspaper .vchips { font: italic 400 12px var(--serif); color: var(--ink); background: var(--bg); padding: 0 4px; }
+:root.look-newspaper .vchips::before { content: "— "; white-space: pre; }
+:root.look-newspaper .vchips::after { content: " —"; white-space: pre; }
+:root.look-newspaper .mk, :root.look-newspaper .addn { border-radius: 0; }
+:root.look-newspaper .card.note .nbody { font: 13.5px/1.55 var(--serif); }
+:root.look-newspaper .card.note .nbody h1, :root.look-newspaper .card.note .nbody h2, :root.look-newspaper .card.note .nbody h3 { font: 700 19px/1.15 var(--serif); letter-spacing: -.01em; margin-bottom: 6px; }
+:root.look-newspaper .tx.st-title { font: 700 30px/1.15 var(--serif); }
+:root.look-newspaper .tx.st-body { font-family: var(--serif); }
+:root.look-newspaper .sect { border-radius: 0; }
+:root.look-newspaper .slabel { font: 700 10px/20px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink); border-radius: 0; }
+:root.look-newspaper .pill, :root.look-newspaper .ctx, :root.look-newspaper .pop, :root.look-newspaper .dialog, :root.look-newspaper .keys, :root.look-newspaper .palette, :root.look-newspaper .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; box-shadow: inset 0 2px 0 var(--rule), 0 0 0 .5px var(--hair), 0 8px 20px -12px rgba(0,0,0,.3); }
+:root.look-newspaper .ib, :root.look-newspaper .tbtn, :root.look-newspaper .btn, :root.look-newspaper .ctx button, :root.look-newspaper .cand, :root.look-newspaper .segc button, :root.look-newspaper .db button, :root.look-newspaper .fld, :root.look-newspaper .zoom { border-radius: 0; }
+:root.look-newspaper .bbar .pill, :root.look-newspaper .dock .pill { height: 34px; padding: 2px 4px 0; gap: 0; box-shadow: inset 0 2px 0 var(--rule), inset 0 -.5px 0 var(--rule); }
+:root.look-newspaper .pill .tbtn { font: 700 10.5px var(--serif); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); padding: 0 10px; }
+:root.look-newspaper .pill .tbtn + .tbtn { box-shadow: inset .5px 0 0 var(--hair); }
+:root.look-newspaper .pill .ib { color: var(--ink); }
+:root.look-newspaper .pill .tbtn:hover, :root.look-newspaper .pill .ib:hover { background: var(--bg); }
+:root.look-newspaper .ctx button:not([disabled]):hover { background: var(--ink); color: var(--surface); }
+:root.look-newspaper .sep { width: .5px; background: var(--rule); }
+:root.look-newspaper .zoom { font: 400 11px var(--mono); color: var(--ink); }
+:root.look-newspaper .toast { background: var(--ink); color: var(--surface); border-radius: 0; box-shadow: none; font: 400 12.5px var(--serif); padding: 6px 12px 6px 6px; }
+:root.look-newspaper .toast::before { content: "Bulletin"; flex: none; font: 700 10px/1.5 var(--serif); letter-spacing: .2em; text-transform: uppercase; background: var(--stamp); color: #fff; padding: 1px 6px; }
+:root.look-newspaper .toast .tlink { color: var(--surface); font-weight: 700; font-style: italic; }
+:root.look-newspaper .tip { border-radius: 0; }
+:root.look-newspaper .mast { display: flex; position: absolute; left: 50%; translate: -50% 0; top: 8px; z-index: 3; pointer-events: none; flex-direction: column; align-items: center; gap: 3px;
   width: min(720px, calc(100% - 300px)); border-bottom: 3px double var(--rule); padding-bottom: 5px; }
-:root[data-look="newspaper"] .mast .mn { font: 400 26px/1.1 var(--mast-font); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-:root[data-look="newspaper"] .mast::after { content: "Vol. I · CodeBoard Edition"; font: 400 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); border-top: .5px solid var(--rule); padding-top: 3px; width: 100%; text-align: center; }
+:root.look-newspaper .mast .mn { font: 400 26px/1.1 var(--mast-font); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+:root.look-newspaper .mast::after { content: "Vol. I · CodeBoard Edition"; font: 400 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); border-top: .5px solid var(--rule); padding-top: 3px; width: 100%; text-align: center; }
 
 /* ---------- Poster（艺术） ---------- */
-:root[data-look="poster"] { --no-link: var(--ink); --kw-w: 600; --call-deco: underline .5px var(--k-fn); --ico-w: 2; --port-r: 0; --port-rot: 45deg; }
-:root[data-look="poster"] .board { background-image: linear-gradient(var(--gridc) 1px, transparent 1px), linear-gradient(90deg, var(--gridc) 1px, transparent 1px); background-size: 44px 44px; }
-:root[data-look="poster"] .board::before, :root[data-look="poster"] .board::after { content: ""; position: absolute; pointer-events: none; z-index: 3; }
-:root[data-look="poster"] .board::before { inset: 8px; border: 1px solid var(--rule); }
-:root[data-look="poster"] .board::after { inset: 12px; border: .5px solid var(--rule); }
-:root[data-look="poster"] .card:not(.text):not(.nobg) { outline: .5px solid var(--rule); outline-offset: 3px; }
-:root[data-look="poster"] .card.sel:not(.text) { box-shadow: 0 0 0 1.5px var(--rule); outline: 1px solid var(--ink); outline-offset: 5px; }
-:root[data-look="poster"] .ccard > .cface > .chead { position: relative; justify-content: center; height: auto; padding: 10px 32px 0; gap: 10px; border-bottom: 0; font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-2); }
-:root[data-look="poster"] .ccard > .cface > .chead .kind, :root[data-look="poster"] .ccard > .cface > .chead .grow, :root[data-look="poster"] .ccard > .cface > .chead .ctitle, :root[data-look="poster"] .ccard > .cface > .chead .rev:not(.unc) { display: none; }
-:root[data-look="poster"] .ccard > .cface > .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink-2); font: inherit; letter-spacing: inherit; padding: 0; min-width: 0; height: auto; }
-:root[data-look="poster"] .ccard > .cface > .chead .step::before { content: "NO.\00a0"; }
-:root[data-look="poster"] .ccard > .cface > .chead .step:hover { background: none; color: var(--ink); }
-:root[data-look="poster"] .ccard > .cface > .chead .cpath { flex: none; font: inherit; color: var(--ink-2); padding: 0; }
-:root[data-look="poster"] .ccard > .cface > .chead .ib { position: absolute; right: 4px; top: 4px; }
-:root[data-look="poster"] .card:not(.ccard) > .cface > .chead { border-bottom: .5px solid var(--rule); font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; justify-content: center; position: relative; }
-:root[data-look="poster"] .card:not(.ccard) > .cface > .chead .kind, :root[data-look="poster"] .card:not(.ccard) > .cface > .chead .grow { display: none; }
-:root[data-look="poster"] .card:not(.ccard) > .cface > .chead .ctitle { font: inherit; letter-spacing: inherit; flex: none; }
-:root[data-look="poster"] .card:not(.ccard) > .cface > .chead .ib { position: absolute; right: 4px; top: 5px; }
-:root[data-look="poster"] .cband { display: block; flex: none; text-align: center; padding: 3px 14px 9px; }
-:root[data-look="poster"] .cband .cname { display: block; font: 400 17px/1.25 var(--serif); color: var(--ink); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-:root[data-look="poster"] .cband .cmeta { display: flex; justify-content: center; gap: 16px; padding-top: 4px; font: 500 10.5px var(--mono); color: var(--ink); letter-spacing: .06em; }
-:root[data-look="poster"] .cband .cm { display: inline-flex; align-items: baseline; white-space: nowrap; }
-:root[data-look="poster"] .cband .cm small { font: 400 8.5px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink-3); margin-right: 6px; }
-:root[data-look="poster"] .cband .cm.v:hover { text-decoration: underline .5px; text-underline-offset: 3px; }
-:root[data-look="poster"] .cband .cm.v.new { color: var(--k-fn); }
-:root[data-look="poster"] .cband .big { display: none; }
-:root[data-look="poster"] .cdesc { text-align: center; border-bottom: 0; padding: 0 14px 9px; font-size: 11.5px; }
-:root[data-look="poster"] .ccard .carea > .cbody { border-top: .5px solid var(--rule); }
-:root[data-look="poster"] .cfig { display: block; position: absolute; left: 0; right: 0; top: calc(100% + 12px); text-align: center; font: 400 9px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
-:root[data-look="poster"] .ahead { stroke: var(--rule); }
-:root[data-look="poster"] .port { fill: var(--surface); stroke: var(--rule); }
-:root[data-look="poster"] .vcard, :root[data-look="poster"] .vbox, :root[data-look="poster"] .vlabel, :root[data-look="poster"] .vchip { font: 9.5px/14px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink); background: var(--surface); box-shadow: 0 0 0 .5px var(--rule); border-radius: 0; padding: 4px 9px; }
-:root[data-look="poster"] .mk, :root[data-look="poster"] .addn { border-radius: 0; }
-:root[data-look="poster"] .card.note .nbody { font-size: 12px; line-height: 1.7; }
-:root[data-look="poster"] .card.note .nbody h1, :root[data-look="poster"] .card.note .nbody h2, :root[data-look="poster"] .card.note .nbody h3 { font: 400 17px/1.3 var(--serif); letter-spacing: .02em; text-align: center; margin-bottom: 6px; }
-:root[data-look="poster"] .tx.st-title { font: 400 28px/1.2 var(--serif); letter-spacing: .08em; }
-:root[data-look="poster"] .sect { border-radius: 0; outline: .5px solid var(--rule); outline-offset: 3px; }
-:root[data-look="poster"] .slabel { font: 400 13px/20px var(--serif); letter-spacing: .06em; border-radius: 0; }
-:root[data-look="poster"] .ctx, :root[data-look="poster"] .pop, :root[data-look="poster"] .dialog, :root[data-look="poster"] .keys, :root[data-look="poster"] .palette, :root[data-look="poster"] .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; box-shadow: 0 0 0 1px var(--rule), 0 0 0 4px var(--surface), 0 0 0 4.5px var(--rule); }
-:root[data-look="poster"] .pill { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; box-shadow: 0 0 0 .5px var(--rule); }
-:root[data-look="poster"] .ib, :root[data-look="poster"] .tbtn, :root[data-look="poster"] .btn, :root[data-look="poster"] .ctx button, :root[data-look="poster"] .cand, :root[data-look="poster"] .segc button, :root[data-look="poster"] .db button, :root[data-look="poster"] .fld, :root[data-look="poster"] .zoom { border-radius: 0; }
-:root[data-look="poster"] .bbar .pill, :root[data-look="poster"] .dock .pill { background: var(--band); box-shadow: none; height: 34px; padding: 0 8px; gap: 0; }
-:root[data-look="poster"] .bbar .tbtn, :root[data-look="poster"] .bbar .ib, :root[data-look="poster"] .dock .tbtn, :root[data-look="poster"] .dock .ib { color: var(--band-ink); }
-:root[data-look="poster"] .bbar .tbtn:hover, :root[data-look="poster"] .bbar .ib:hover, :root[data-look="poster"] .dock .tbtn:hover, :root[data-look="poster"] .dock .ib:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); color: var(--band-ink); }
-:root[data-look="poster"] .tbtn { font: 400 9.5px var(--mono); letter-spacing: .3em; text-transform: uppercase; }
-:root[data-look="poster"] .bbar kbd { color: color-mix(in srgb, var(--band-ink) 60%, transparent); }
-:root[data-look="poster"] .bbar .sep, :root[data-look="poster"] .dock .sep { width: .5px; height: 14px; background: var(--band-ink); opacity: .4; margin: 0 6px; }
-:root[data-look="poster"] .dock .zoom { color: var(--band-ink); font: 400 10px var(--mono); letter-spacing: .1em; }
-:root[data-look="poster"] .dock .zoom:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); }
-:root[data-look="poster"] .ctx button:not([disabled]):hover { background: var(--band); color: var(--band-ink); }
-:root[data-look="poster"] .toast { bottom: 66px; background: var(--surface); color: var(--ink); border-radius: 0; box-shadow: 0 0 0 .5px var(--rule), 0 0 0 2.5px var(--surface), 0 0 0 3px var(--rule); font: 400 10px var(--mono); letter-spacing: .2em; padding: 7px 14px; }
-:root[data-look="poster"] .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline .5px; text-underline-offset: 3px; }
-:root[data-look="poster"] .tip { border-radius: 0; }
-:root[data-look="poster"] .mast { display: flex; position: absolute; left: 50%; translate: -50% 0; top: 22px; z-index: 3; pointer-events: none; flex-direction: column; align-items: center; gap: 6px; max-width: calc(100% - 320px); }
-:root[data-look="poster"] .mast::before { content: "CODEBOARD"; font: 400 9px var(--mono); letter-spacing: .4em; color: var(--ink-2); padding: 0 6px 6px; border-bottom: .5px solid var(--rule); }
-:root[data-look="poster"] .mast .mn { font: 400 24px/1.1 var(--serif); letter-spacing: .08em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+:root.look-poster { --no-link: var(--ink); --kw-w: 600; --call-deco: underline .5px var(--k-fn); --ico-w: 2; --port-r: 0; --port-rot: 45deg; }
+:root.look-poster .board { background-image: linear-gradient(var(--gridc) 1px, transparent 1px), linear-gradient(90deg, var(--gridc) 1px, transparent 1px); background-size: 44px 44px; }
+:root.look-poster .board::before, :root.look-poster .board::after { content: ""; position: absolute; pointer-events: none; z-index: 3; }
+:root.look-poster .board::before { inset: 8px; border: 1px solid var(--rule); }
+:root.look-poster .board::after { inset: 12px; border: .5px solid var(--rule); }
+:root.look-poster .card:not(.text):not(.nobg) { outline: .5px solid var(--rule); outline-offset: 3px; }
+:root.look-poster .card.sel:not(.text) { box-shadow: 0 0 0 1.5px var(--rule); outline: 1px solid var(--ink); outline-offset: 5px; }
+:root.look-poster .ccard > .cface > .chead { position: relative; justify-content: center; height: auto; padding: 10px 32px 0; gap: 10px; border-bottom: 0; font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-2); }
+:root.look-poster .ccard > .cface > .chead .kind, :root.look-poster .ccard > .cface > .chead .grow, :root.look-poster .ccard > .cface > .chead .ctitle, :root.look-poster .ccard > .cface > .chead .rev:not(.unc) { display: none; }
+:root.look-poster .ccard > .cface > .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink-2); font: inherit; letter-spacing: inherit; padding: 0; min-width: 0; height: auto; }
+:root.look-poster .ccard > .cface > .chead .step::before { content: "NO.\00a0"; }
+:root.look-poster .ccard > .cface > .chead .step:hover { background: none; color: var(--ink); }
+:root.look-poster .ccard > .cface > .chead .cpath { flex: none; font: inherit; color: var(--ink-2); padding: 0; }
+:root.look-poster .ccard > .cface > .chead .ib { position: absolute; right: 4px; top: 4px; }
+:root.look-poster .card:not(.ccard) > .cface > .chead { border-bottom: .5px solid var(--rule); font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; justify-content: center; position: relative; }
+:root.look-poster .card:not(.ccard) > .cface > .chead .kind, :root.look-poster .card:not(.ccard) > .cface > .chead .grow { display: none; }
+:root.look-poster .card:not(.ccard) > .cface > .chead .ctitle { font: inherit; letter-spacing: inherit; flex: none; }
+:root.look-poster .card:not(.ccard) > .cface > .chead .ib { position: absolute; right: 4px; top: 5px; }
+:root.look-poster .cband { display: block; flex: none; text-align: center; padding: 3px 14px 9px; }
+:root.look-poster .cband .cname { display: block; font: 400 17px/1.25 var(--serif); color: var(--ink); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root.look-poster .cband .cmeta { display: flex; justify-content: center; gap: 16px; padding-top: 4px; font: 500 10.5px var(--mono); color: var(--ink); letter-spacing: .06em; }
+:root.look-poster .cband .cm { display: inline-flex; align-items: baseline; white-space: nowrap; }
+:root.look-poster .cband .cm small { font: 400 8.5px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink-3); margin-right: 6px; }
+:root.look-poster .cband .cm.v:hover { text-decoration: underline .5px; text-underline-offset: 3px; }
+:root.look-poster .cband .cm.v.new { color: var(--k-fn); }
+:root.look-poster .cband .big { display: none; }
+:root.look-poster .cdesc { text-align: center; border-bottom: 0; padding: 0 14px 9px; font-size: 11.5px; }
+:root.look-poster .ccard .carea > .cbody { border-top: .5px solid var(--rule); }
+:root.look-poster .cfig { display: block; position: absolute; left: 0; right: 0; top: calc(100% + 12px); text-align: center; font: 400 9px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+:root.look-poster .ahead { stroke: var(--rule); }
+:root.look-poster .port { fill: var(--surface); stroke: var(--rule); }
+:root.look-poster .vcard, :root.look-poster .vbox, :root.look-poster .vlabel, :root.look-poster .vchip { font: 9.5px/14px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink); background: var(--surface); box-shadow: 0 0 0 .5px var(--rule); border-radius: 0; padding: 4px 9px; }
+:root.look-poster .mk, :root.look-poster .addn { border-radius: 0; }
+:root.look-poster .card.note .nbody { font-size: 12px; line-height: 1.7; }
+:root.look-poster .card.note .nbody h1, :root.look-poster .card.note .nbody h2, :root.look-poster .card.note .nbody h3 { font: 400 17px/1.3 var(--serif); letter-spacing: .02em; text-align: center; margin-bottom: 6px; }
+:root.look-poster .tx.st-title { font: 400 28px/1.2 var(--serif); letter-spacing: .08em; }
+:root.look-poster .sect { border-radius: 0; outline: .5px solid var(--rule); outline-offset: 3px; }
+:root.look-poster .slabel { font: 400 13px/20px var(--serif); letter-spacing: .06em; border-radius: 0; }
+:root.look-poster .ctx, :root.look-poster .pop, :root.look-poster .dialog, :root.look-poster .keys, :root.look-poster .palette, :root.look-poster .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; box-shadow: 0 0 0 1px var(--rule), 0 0 0 4px var(--surface), 0 0 0 4.5px var(--rule); }
+:root.look-poster .pill { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; box-shadow: 0 0 0 .5px var(--rule); }
+:root.look-poster .ib, :root.look-poster .tbtn, :root.look-poster .btn, :root.look-poster .ctx button, :root.look-poster .cand, :root.look-poster .segc button, :root.look-poster .db button, :root.look-poster .fld, :root.look-poster .zoom { border-radius: 0; }
+:root.look-poster .bbar .pill, :root.look-poster .dock .pill { background: var(--band); box-shadow: none; height: 34px; padding: 0 8px; gap: 0; }
+:root.look-poster .bbar .tbtn, :root.look-poster .bbar .ib, :root.look-poster .dock .tbtn, :root.look-poster .dock .ib { color: var(--band-ink); }
+:root.look-poster .bbar .tbtn:hover, :root.look-poster .bbar .ib:hover, :root.look-poster .dock .tbtn:hover, :root.look-poster .dock .ib:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); color: var(--band-ink); }
+:root.look-poster .tbtn { font: 400 9.5px var(--mono); letter-spacing: .3em; text-transform: uppercase; }
+:root.look-poster .bbar kbd { color: color-mix(in srgb, var(--band-ink) 60%, transparent); }
+:root.look-poster .bbar .sep, :root.look-poster .dock .sep { width: .5px; height: 14px; background: var(--band-ink); opacity: .4; margin: 0 6px; }
+:root.look-poster .dock .zoom { color: var(--band-ink); font: 400 10px var(--mono); letter-spacing: .1em; }
+:root.look-poster .dock .zoom:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); }
+:root.look-poster .ctx button:not([disabled]):hover { background: var(--band); color: var(--band-ink); }
+:root.look-poster .toast { bottom: 66px; background: var(--surface); color: var(--ink); border-radius: 0; box-shadow: 0 0 0 .5px var(--rule), 0 0 0 2.5px var(--surface), 0 0 0 3px var(--rule); font: 400 10px var(--mono); letter-spacing: .2em; padding: 7px 14px; }
+:root.look-poster .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline .5px; text-underline-offset: 3px; }
+:root.look-poster .tip { border-radius: 0; }
+:root.look-poster .mast { display: flex; position: absolute; left: 50%; translate: -50% 0; top: 22px; z-index: 3; pointer-events: none; flex-direction: column; align-items: center; gap: 6px; max-width: calc(100% - 320px); }
+:root.look-poster .mast::before { content: "CODEBOARD"; font: 400 9px var(--mono); letter-spacing: .4em; color: var(--ink-2); padding: 0 6px 6px; border-bottom: .5px solid var(--rule); }
+:root.look-poster .mast .mn { font: 400 24px/1.1 var(--serif); letter-spacing: .08em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
+
+/* ---------- Ink Wash（水墨） ---------- */
+/* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
+:root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1; }
+:root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--bg); }
+:root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--bg); }
+:root.look-ink-wash .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), var(--sh-card); }
+:root.look-ink-wash .card.sel.lift { box-shadow: 0 0 0 1px var(--ink), var(--sh-lift); }
+/* 卡头下面不画分隔线，换成一笔干笔墨痕 */
+:root.look-ink-wash .card:not(.nobg) > .cface > .chead { position: relative; height: 38px; padding: 0 8px 0 14px; gap: 9px; border-bottom: 0; }
+:root.look-ink-wash .card:not(.nobg) > .cface > .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 1px; height: 3.5px; background: var(--ink); opacity: .55; pointer-events: none;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat; }
+:root.look-ink-wash .chead .kind { display: none; }
+/* 编号是一枚朱印，盖在卡头右边 */
+/* 印的底色留 1% 透明：卡头整块不透明时，Chromium 会在缩放分档切换时把每张卡的行号栏单独提成合成层（几百层，捏合缩放每帧多 20–30ms） */
+:root.look-ink-wash .chead > .step { order: 9; height: 20px; padding: 0 5px; border-radius: 2px; background: color-mix(in srgb, var(--zhu) 99%, transparent); color: var(--paper); font: 600 10.5px var(--serif); letter-spacing: .04em; rotate: 2deg; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--paper) 35%, transparent); }
+:root.look-ink-wash .chead > .step:hover { background: color-mix(in srgb, var(--zhu) 82%, var(--ink)); color: var(--paper); }
+:root.look-ink-wash .chead > .ib:not(.cpy) { order: 10; }
+:root.look-ink-wash .ctitle { font: 600 13px var(--serif); color: var(--ink); letter-spacing: .01em; }
+:root.look-ink-wash .cpath { color: var(--ink-3); }
+/* 有新版本：朱文印，红框红字 */
+:root.look-ink-wash .chead .rev.new { color: var(--zhu); box-shadow: inset 0 0 0 1px var(--zhu); border-radius: 2px; rotate: -3deg; font: 600 10px var(--serif); letter-spacing: .04em; }
+:root.look-ink-wash .chead .rev.new i { display: none; }
+:root.look-ink-wash .cdesc { border-bottom: 0; padding-top: 8px; font: 12.5px/1.55 var(--serif); color: var(--ink-2); }
+:root.look-ink-wash .rowbg.hl { background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent); box-shadow: none; }
+:root.look-ink-wash .port { fill: var(--ink); stroke: none; }
+:root.look-ink-wash .ahead.dot { opacity: .9; }
+:root.look-ink-wash .vcard, :root.look-ink-wash .vbox, :root.look-ink-wash .vlabel, :root.look-ink-wash .vchip { font: italic 400 12px/16px var(--serif); color: var(--ink-2); background: radial-gradient(closest-side, var(--bg) 62%, transparent); box-shadow: none; border-radius: 0; padding: 2px 10px; }
+:root.look-ink-wash .card.note .nbody { font: 13.5px/1.65 var(--serif); }
+:root.look-ink-wash .tx.st-title { font: 400 30px/1.2 var(--serif); letter-spacing: .02em; }
+:root.look-ink-wash .sect { border-radius: 2px; }
+:root.look-ink-wash .slabel { font: italic 400 13px/20px var(--serif); border-radius: 2px; }
+:root.look-ink-wash .pill, :root.look-ink-wash .ctx, :root.look-ink-wash .pop, :root.look-ink-wash .dialog, :root.look-ink-wash .keys, :root.look-ink-wash .palette, :root.look-ink-wash .stkpick { background: var(--paper); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 2px; box-shadow: var(--sh-float); }
+/* 底部工具条：一条素宣纸，右边斜搁一支毛笔 */
+:root.look-ink-wash .bbar .pill { position: relative; padding: 5px 30px 5px 12px; border-radius: 1px; background: linear-gradient(180deg, color-mix(in srgb, var(--paper) 96%, #fff), var(--paper));
+  box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); } /* 像装裱：纸面 + 里面一道细框线（原来的纤维噪点底纹在 1x 屏上发糊） */
+:root.look-ink-wash .bbar .pill::after { content: ""; position: absolute; right: 3px; top: -12px; width: 13px; height: 62px; rotate: 24deg; pointer-events: none; filter: drop-shadow(2px 3px 2px rgba(0,0,0,.3));
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 84'%3E%3Cdefs%3E%3ClinearGradient id='h' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%236b4a26'/%3E%3Cstop offset='.45' stop-color='%23c79a5c'/%3E%3Cstop offset='1' stop-color='%235a3c1c'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23111'/%3E%3Cstop offset='.45' stop-color='%23444'/%3E%3Cstop offset='1' stop-color='%230b0b0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.5a1.6 1.6 0 0 1 0 3.2' fill='none' stroke='%23b0322a' stroke-width='1'/%3E%3Crect x='5' y='4' width='6' height='50' rx='2.6' fill='url(%23h)'/%3E%3Cpath d='M5.4 22h5.2M5.4 40h5.2' stroke='%235a3c1c' stroke-width='.7' opacity='.7'/%3E%3Crect x='4.6' y='52' width='6.8' height='5' rx='1.2' fill='%23222'/%3E%3Cpath d='M4.8 57c0 8 1.6 16 3.2 25 1.6-9 3.2-17 3.2-25z' fill='url(%23t)'/%3E%3C/svg%3E") center / contain no-repeat; }
+:root.look-ink-wash .dock .pill { border-radius: 1px; box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); }
+:root.look-ink-wash .ib, :root.look-ink-wash .tbtn, :root.look-ink-wash .btn, :root.look-ink-wash .ctx button, :root.look-ink-wash .cand, :root.look-ink-wash .segc button, :root.look-ink-wash .db button, :root.look-ink-wash .fld, :root.look-ink-wash .zoom { border-radius: 2px; }
+:root.look-ink-wash .pill .tbtn, :root.look-ink-wash .pill .ib { color: var(--ink); }
+:root.look-ink-wash .pill .tbtn:hover, :root.look-ink-wash .pill .ib:hover, :root.look-ink-wash .ctx button:not([disabled]):hover { background: var(--wash); color: var(--ink); }
+:root.look-ink-wash .ctx button:not([disabled]):hover .ck, :root.look-ink-wash .ctx button:not([disabled]):hover small { color: var(--ink-3); }
+:root.look-ink-wash .sep { width: .5px; background: var(--hair); }
+:root.look-ink-wash .zoom { font: 13px var(--serif); color: var(--ink-2); }
+:root.look-ink-wash .toast { background: var(--paper); color: var(--ink); border-radius: 2px; box-shadow: var(--sh-float); font: 12.5px var(--serif); padding-left: 8px; }
+:root.look-ink-wash .toast::before { content: ""; width: 12px; height: 12px; border-radius: 2px; background: var(--zhu); flex: none; }
+:root.look-ink-wash .toast .tlink { color: var(--zhu); }
+:root.look-ink-wash .tip { border-radius: 2px; }
+/* 白板名：左上角一行大字，后面一枚小朱印 */
+:root.look-ink-wash .mast { display: flex; position: absolute; left: 20px; top: 14px; z-index: 3; pointer-events: none; align-items: center; gap: 10px; max-width: 46%; }
+:root.look-ink-wash .mast .mn { font: 400 24px/1.15 var(--serif); color: var(--ink); letter-spacing: .02em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+:root.look-ink-wash .mast::after { content: ""; flex: none; width: 11px; height: 20px; border-radius: 2px; background: var(--zhu); box-shadow: inset 0 0 0 2px var(--zhu), inset 0 0 0 3px color-mix(in srgb, var(--paper) 55%, transparent); rotate: 3deg; }
+
+/* 界面字体只给浮在白板上的部件和卡头用（--ui），不换 --sys：白板里大量文字换成网页字体后，Chromium 在缩放分档切换时会把每张卡的行号栏提成合成层 */
+:root.look-city .app { font-family: var(--ui); }
+:root.look-city .app > .board { font-family: var(--sys); }
+/* 99%：见 Ink Wash 卡头编号印章的注释 */
+/* 工具条没有底板：每个按钮是一块积木键，按下去往右下沉，厚度消失 */
+.dock) .pill { gap: 9px; padding: 2px 6px 6px 2px; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
+.dock) .sep { display: none; }
+/* ---------- City（城市道路） ---------- */
+/* 街区、河、公园、楼是白板背景（固定在窗口上，镜头动时不重画）。
+   调用是大路：路肩（.casings 里一层，在所有线下面）+ 白边线（.kerbs 里一层，也在所有路面下面，路口里就没有边线）+ 路面（.edge）+ 双黄线（.lane，一个 path 两条线），横平竖直；
+   普通箭头是小街：白路沿 + 路面 + 一道白中线（.cline）；被调用那头停一辆车（三条 path，见 route.ts carPaths）代替箭头，车前是人行横道（画进车灯那条 path）；
+   几条路进同一张卡时在合并点（路口）汇成一段（.merge 的 .stub），只停一辆车。红绿灯打开时 .movers 里的小车沿路开（只动 offset-distance / opacity）。
+   这些额外的节点只在 City 里才有（canvas/Links.tsx） */
+:root.look-city { --no-link: var(--ink); --no-link-w: 700; --call-deco: underline 2px color-mix(in srgb, var(--lane) 80%, transparent); --ico-w: 2; --port-ring: 2px; --port-ring-c: var(--casing); --port-bg: var(--asphalt);
+  --signbox: inset 0 0 0 2px var(--sign), inset 0 0 0 3px rgba(255,255,255,.85); }
+:root.look-city .board { background: url("./scenes/city-light.svg") center / cover no-repeat,
+  linear-gradient(var(--street) 0 7px, transparent 7px) 0 50px / 120px 120px, linear-gradient(90deg, var(--street) 0 7px, transparent 7px) 40px 0 / 120px 120px,
+  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--bg); }
+:root.look-city[data-theme="dark"] .board { background: url("./scenes/city-dark.svg") center / cover no-repeat,
+  linear-gradient(var(--street) 0 7px, transparent 7px) 0 50px / 120px 120px, linear-gradient(90deg, var(--street) 0 7px, transparent 7px) 40px 0 / 120px 120px,
+  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--bg); }
+:root.look-city .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-card); }
+:root.look-city .card.sel.lift { box-shadow: 0 0 0 2px var(--sign), var(--sh-lift); }
+/* 卡头是一块蓝底白字的路牌（内圈一道白线）；Note 是绿色指路牌 */
+:root.look-city .card:not(.nobg) > .cface > .chead { margin: 5px 5px 0; padding: 0 6px 0 9px; gap: 8px; border: 0; border-bottom: 1px solid rgba(0,0,0,.01); border-radius: 4px; /* 透明的下沿：见 Ink Wash 卡头编号印章的注释 */ background: var(--sign); color: var(--sign-ink); box-shadow: var(--signbox); }
+:root.look-city .card.note > .cface > .chead { background: var(--gsign); box-shadow: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85); }
+:root.look-city .chead .ctitle { font: 600 13px var(--ui); letter-spacing: 0; }
+:root.look-city .card:not(.nobg) > .cface > .chead .cpath.cpath, :root.look-city .card:not(.nobg) > .cface > .chead .rev:not(.new), :root.look-city .card:not(.nobg) > .cface > .chead .kind.kind, :root.look-city .card:not(.nobg) > .cface > .chead .plusn.plusn { color: rgba(255,255,255,.75); }
+:root.look-city .card:not(.nobg) > .cface > .chead .ib, :root.look-city .card:not(.nobg) > .cface > .chead .lockb, :root.look-city .card:not(.nobg) > .cface > .chead .subc { color: #fff; }
+:root.look-city .card:not(.nobg) > .cface > .chead .ib.ib:hover, :root.look-city .card:not(.nobg) > .cface > .chead .cpath.cpath:hover, :root.look-city .card:not(.nobg) > .cface > .chead .rev:not(.new):hover, :root.look-city .card:not(.nobg) > .cface > .chead .subc.subc:hover { background: rgba(255,255,255,.16); color: #fff; }
+:root.look-city .chead .cpath { font: 400 11px var(--ui); }
+/* 编号：红色国道牌 */
+:root.look-city .chead .step { height: 19px; padding: 0 5px; border-radius: 3px 3px 8px 8px; background: var(--shield); color: #fff; font: 700 10.5px var(--ui); box-shadow: inset 0 0 0 1px rgba(255,255,255,.75); }
+:root.look-city .chead .step:hover { background: color-mix(in srgb, var(--shield) 80%, #000); color: #fff; }
+/* 有新版本：施工牌 */
+:root.look-city .chead .rev.new { color: #2b2b2b; border-radius: 2px; font: 700 10px var(--ui); text-shadow: 0 0 2px #fff, 0 0 2px #fff; background: repeating-linear-gradient(-45deg, #ffffff 0 5px, #f28a1c 5px 10px); }
+:root.look-city .chead .rev.new i { display: none; }
+:root.look-city .cdesc { border-bottom: 0; padding-top: 8px; }
+:root.look-city .rowbg.hl { background: color-mix(in srgb, var(--lane) 26%, transparent); }
+/* 马路：路肩 + 白边线 + 路面 + 双黄线。调用是大路，普通箭头是小街（白路沿、白中线） */
+:root.look-city .edge:not(.rubber) { stroke: var(--asphalt); stroke-width: calc(13px * var(--lw, 1)); stroke-linecap: butt; stroke-linejoin: round; }
+:root.look-city .edge.plain:not(.rubber) { stroke-width: calc(6px * var(--lw, 1)); }
+:root.look-city .edge.plain.dashed { stroke-dasharray: 8 6; }
+:root.look-city .edge.on { stroke: var(--sign); }
+:root.look-city .edge.lost { stroke: color-mix(in srgb, var(--lk-lost, #d64545) 70%, var(--asphalt)); }
+:root.look-city .casing { fill: none; stroke: var(--shoulder); stroke-width: calc(18px * var(--lw, 1)); stroke-linejoin: round; }
+:root.look-city .casing.plain { stroke: var(--casing); stroke-width: calc(9px * var(--lw, 1)); }
+:root.look-city .kerb { fill: none; stroke: var(--kerb); stroke-width: calc(15.6px * var(--lw, 1)); stroke-linejoin: round; }
+:root.look-city :is(.casing, .kerb).w1 { --lw: .6; } :root.look-city :is(.casing, .kerb).w3 { --lw: 1.6; }
+/* 中线是一道实线：虚线（stroke-dasharray）每次栅格化都要把整条线切成几十段，缩放时最长的一帧翻倍（run-perf --theme city 实测），所以不用 */
+:root.look-city .lane { fill: none; stroke: var(--lane); stroke-width: 1; stroke-linejoin: miter; }
+:root.look-city .cline { fill: none; stroke: var(--kerb); stroke-width: .8; stroke-linejoin: miter; }
+/* 停着的车：车头朝被调用的卡片；选中 / 悬停时变成路牌蓝，那头的行没了时变红 */
+:root.look-city .ahead.car { --car-c: var(--car); stroke: none; fill: none; }
+:root.look-city .ahead.car.on { --car-c: var(--sign); stroke: none; }
+:root.look-city .ahead.car.lost { --car-c: var(--lk-lost, #d64545); }
+:root.look-city .ahead.car .cbody { fill: var(--car-c); stroke: rgba(0,0,0,.35); stroke-width: .7; }
+:root.look-city .ahead.car .croof { fill: rgba(255,255,255,.6); }
+:root.look-city .ahead.car .clamp { fill: var(--zebra); } /* 车灯和人行横道是一条 path */
+:root.look-city .port { fill: var(--asphalt); stroke: var(--casing); stroke-width: 2; }
+/* 车流：小车沿路开（关键帧由 Links.tsx 用 Web Animations 加上），靠右行驶；只有 transform 和 opacity 在变，合成器自己跑 */
+:root.look-city .movers { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 2; pointer-events: none; }
+:root.look-city .mover { position: absolute; left: 0; top: 0; width: 22px; height: 10px; border-radius: 3px; background: #2f7de1; box-shadow: inset 0 0 0 .6px rgba(0,0,0,.3);
+  opacity: 0; will-change: transform, opacity; }
+:root.look-city .mover::before { content: ""; position: absolute; left: 6px; top: 1.6px; width: 9px; height: 6.8px; border-radius: 1.5px; background: rgba(255,255,255,.55); }
+:root.look-city .mover.k1 { background: #f2c230; }
+:root.look-city .mover.k2 { background: #f4f4f4; }
+:root.look-city .mover.k2::before { background: rgba(0,0,0,.18); }
+/* 夜里车灯亮着 */
+:root.look-city[data-theme="dark"] .mover::after { content: ""; position: absolute; left: 21px; top: 1px; width: 16px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,214,120,.45), rgba(255,214,120,0)); }
+/* 箭头上的数据写在绿色指路牌上 */
+:root.look-city .vcard, :root.look-city .vbox, :root.look-city .vlabel, :root.look-city .vchip { font: 600 10.5px/15px var(--mono); color: #fff; background: var(--gsign); border-radius: 4px; padding: 4px 10px; box-shadow: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85), 0 3px 6px -3px rgba(0,0,0,.4); }
+:root.look-city .vlabel { font-family: var(--ui); }
+:root.look-city .vchip.loop { color: rgba(255,255,255,.8); }
+:root.look-city .sect { border-radius: 14px; }
+:root.look-city .slabel { color: #fff; background: var(--sign); border-radius: 4px; box-shadow: var(--signbox); padding: 2px 10px 2px 6px; }
+:root.look-city .slabel .dots, :root.look-city .slabel .chev2, :root.look-city .slabel .scount { color: rgba(255,255,255,.7); }
+:root.look-city .ctx, :root.look-city .pop, :root.look-city .dialog, :root.look-city .keys, :root.look-city .palette, :root.look-city .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 8px; box-shadow: var(--sh-float); }
+/* 工具条：一整块蓝色标识牌，按钮是牌上的白色图标；缩放比例只是一行小字 */
+:root.look-city :is(.bbar, .dock) .pill { gap: 2px; padding: 5px 8px; border-radius: 6px; background: var(--sign); -webkit-backdrop-filter: none; backdrop-filter: none;
+  box-shadow: inset 0 0 0 2px var(--sign), inset 0 0 0 4px rgba(255,255,255,.9), 0 4px 10px -4px rgba(0,0,0,.45); }
+:root.look-city :is(.bbar, .dock) .tbtn, :root.look-city :is(.bbar, .dock) .ib { height: 30px; color: #fff; border-radius: 4px; }
+:root.look-city :is(.bbar, .dock) .ib { width: 32px; }
+:root.look-city :is(.bbar, .dock) .tbtn:hover, :root.look-city :is(.bbar, .dock) .ib:hover, :root.look-city :is(.bbar, .dock) .zoom:hover { background: rgba(255,255,255,.16); color: #fff; }
+:root.look-city :is(.bbar, .dock) .sep { width: 2px; height: 18px; background: rgba(255,255,255,.55); margin: 0 6px; }
+:root.look-city .dock .zoom { min-width: 40px; color: rgba(255,255,255,.8); font: 600 10.5px var(--mono); }
+/* 红绿灯（车流开关）：红灯 = 车停着（默认），绿灯 = 车在开 */
+:root.look-city .dock .ib.traffic { width: 16px; height: 30px; margin: 0 4px; border-radius: 4px; background: #2a2e35; box-shadow: 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.1); --r: #ff3b2f; --y: #4a4122; --g: #1f4a30; }
+:root.look-city .dock .ib.traffic[aria-pressed="true"] { --r: #4a2522; --g: #22d36b; }
+:root.look-city .dock .ib.traffic:hover { background: #363b44; }
+:root.look-city .dock .ib.traffic::before { content: ""; width: 8px; height: 26px;
+  background: radial-gradient(circle at 50% 4px, var(--r) 0 3px, transparent 3.5px), radial-gradient(circle at 50% 13px, var(--y) 0 3px, transparent 3.5px), radial-gradient(circle at 50% 22px, var(--g) 0 3px, transparent 3.5px); }
+:root.look-city .ib, :root.look-city .tbtn, :root.look-city .btn, :root.look-city .ctx button, :root.look-city .cand, :root.look-city .segc button, :root.look-city .db button, :root.look-city .fld { border-radius: 4px; }
+:root.look-city .toast { background: var(--surface); color: var(--ink); border-radius: 8px; box-shadow: var(--sh-float); font: 500 12.5px var(--ui); padding-left: 10px; }
+:root.look-city .toast::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--shield); flex: none; }
+:root.look-city .toast .tlink { color: var(--sign); font-weight: 700; }
+:root.look-city[data-theme="dark"] .toast .tlink { color: var(--accent); }
+/* 白板名：左上角一块路牌 */
+:root.look-city .mast { display: flex; position: absolute; left: 14px; top: 12px; z-index: 3; pointer-events: none; flex-direction: column; padding: 5px 12px 6px; max-width: 40%; border-radius: 5px; background: var(--sign); box-shadow: var(--signbox), 0 6px 12px -6px rgba(0,0,0,.4); }
+:root.look-city .mast::before { content: "CODEBOARD"; font: 600 8.5px var(--ui); letter-spacing: .2em; color: rgba(255,255,255,.75); }
+:root.look-city .mast .mn { font: 700 14px var(--ui); color: #fff; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 /* ======================================================================
    Settings 小样：每种材质最显眼的那一点
@@ -702,6 +964,16 @@
 .st-prev[data-look="poster"] .sp-card { outline: .5px solid var(--rule); outline-offset: 1.5px; }
 .st-prev[data-look="poster"] .sp-h { justify-content: center; background: none; }
 .st-prev[data-look="poster"] .sp-step { display: none; }
+.st-prev[data-look="ink-wash"] { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--bg); }
+:root[data-theme="dark"] .st-prev[data-look="ink-wash"] { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--bg); }
+.st-prev[data-look="ink-wash"] .sp-h { background: none; border-bottom: 0; }
+.st-prev[data-look="ink-wash"] .sp-step { order: 2; margin-left: auto; width: 4px; height: 5px; background: var(--zhu); }
+.st-prev[data-look="ink-wash"] .sp-edge path { stroke-width: 1.4; }
+.st-prev[data-look="city"] { background: linear-gradient(var(--street) 0 3px, transparent 3px) 0 12px / 40px 40px, linear-gradient(90deg, var(--street) 0 3px, transparent 3px) 14px 0 / 40px 40px, var(--bg); }
+.st-prev[data-look="city"] .sp-h { height: 10px; margin: 2px 2px 1px; border-radius: 2px; border: 0; background: var(--sign); }
+.st-prev[data-look="city"] .sp-step { background: var(--shield); }
+.st-prev[data-look="city"] .sp-t { background: #fff; }
+.st-prev[data-look="city"] .sp-edge path { stroke: var(--asphalt); stroke-width: 4; }
 /* 标签框里的变量 / 标签不再各自带框（框在 .vcard 上） */
 :root .vcard .vbox, :root .vcard .vlabel { background: none !important; box-shadow: none !important; border-radius: 0 !important; }
 :root .vcard { padding: 0 !important; }
@@ -715,7 +987,7 @@
 [data-look="graphite"] .glyph.bi { --stk-bg: color-mix(in oklab, var(--c) 55%, #59606a); --stk-fg: #f4f6f8; }
 /* Soft Light：浅色底 + 同色线条 + 细边 */
 [data-look="soft-light"] .glyph.bi { --stk-bg: color-mix(in oklab, var(--c) 20%, #fff); --stk-fg: color-mix(in oklab, var(--c) 82%, #000); --stk-ring: color-mix(in oklab, var(--c) 40%, #fff); --stk-rw: 1; }
-:root[data-theme="dark"][data-look="soft-light"] .glyph.bi, :root[data-theme="dark"] [data-look="soft-light"] .glyph.bi { --stk-bg: color-mix(in oklab, var(--c) 28%, #1d1d20); --stk-fg: color-mix(in oklab, var(--c) 70%, #fff); --stk-ring: color-mix(in oklab, var(--c) 45%, #1d1d20); }
+:root.look-soft-light[data-theme="dark"] .glyph.bi, :root[data-theme="dark"] [data-look="soft-light"] .glyph.bi { --stk-bg: color-mix(in oklab, var(--c) 28%, #1d1d20); --stk-fg: color-mix(in oklab, var(--c) 70%, #fff); --stk-ring: color-mix(in oklab, var(--c) 45%, #1d1d20); }
 /* Drafting：只描线，像图纸上的符号 */
 [data-look="drafting"] .glyph.bi { --stk-bg: var(--surface); --stk-fg: var(--c); --stk-ring: var(--c); --stk-rw: 1.5; }
 [data-look="drafting"] .glyph.bi .fg { stroke-width: 1.6; }
@@ -726,3 +998,7 @@
 /* Poster：饱和色 + 粗墨边 */
 [data-look="poster"] .glyph.bi { --stk-bg: oklch(from var(--c) l calc(c * 1.25) h); --stk-fg: #fff; --stk-ring: var(--ink); --stk-rw: 2; }
 [data-look="poster"] .glyph.bi .fg { stroke-width: 2.4; }
+/* Ink Wash：淡墨里留一点颜色 */
+[data-look="ink-wash"] .glyph.bi { --stk-bg: color-mix(in oklab, var(--c) 30%, var(--ink)); --stk-fg: var(--paper); }
+/* City：交通标志，白边 */
+[data-look="city"] .glyph.bi { --stk-bg: var(--c); --stk-fg: #fff; --stk-ring: #fff; --stk-rw: 1.6; }

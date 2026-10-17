@@ -1,28 +1,20 @@
 // 右键 / ⋯ 菜单：卡片、多选、画布、连线、Section、调用、选中的行。
-import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type PlainLink, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
+  findCard, isCode, cardTitle, segOf, allCodeCards,
+  walkOrder,
+  headOf,
+  type CodeCard, type CompareCard, type LinkSide, type Section,
+  type CallSpan,
 } from "@codeboard/core";
-import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
-import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
+import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, placeOf, type LineSel } from "../state/store";
+import { toWorld } from "../state/camera";
+import { setEditing, setPaletteOpen } from "../state/ui";
+import { openMenu, type Item } from "../ui/Menu";
 import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
-import { addPlain, callOn, makeCall, openVars, startConnect } from "./links";
-import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, selectFlow, startWalk } from "./flow";
-import { commitMenu } from "./versions";
-import { compareCheck, copyCard, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
+import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
+import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
+import { jumpTo } from "./nav";
+import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
@@ -33,16 +25,19 @@ export function callMenu(cardId: string, segId: string, call: CallSpan, x: numbe
   const cands = allCodeCards(state.board).filter((k) => k.id !== cardId && calleeMatches(k, call));
   const lib = isLibCall(call);
   const el = document.elementFromPoint(x, y)?.closest(".call");
+  const had = expandedTo(cardId, segId, call);
   const items: Item[] = [
     ...(el ? [{ label: "Peek Definition", run: () => showPeek(el, cardId, segId, call.line, call.col, call.name, true) }] : []),
-    lib ? { label: "Expand Anyway", kbd: K.alt.endsWith("+") ? `${K.alt}Click` : `${K.alt} Click`, run: () => expandCall(cardId, segId, call) } : { label: "Expand", kbd: "Click", run: () => expandCall(cardId, segId, call) },
-    ...(expandedTo(cardId, segId, call) ? [{ label: "Expand Again", hint: "Clicking jumps to the card already expanded", run: () => expandCall(cardId, segId, call, undefined, undefined, true) } as Item] : []),
+    // 已经展开过：点 = 跳到那张卡（Go to），要再建一张用 Expand Again（W01 B 7）
+    ...(had ? [
+      { label: `Go to ${cardTitle(cardById(had)!.card, state.board)}`, kbd: "Click", run: () => jumpTo(had) },
+      { label: "Expand Again", hint: "Makes a second card for this call", run: () => expandCall(cardId, segId, call, undefined, undefined, true) },
+    ] as Item[] : [lib ? { label: "Expand Anyway", kbd: K.alt.endsWith("+") ? `${K.alt}Click` : `${K.alt} Click`, run: () => expandCall(cardId, segId, call) } : { label: "Expand", kbd: "Click", run: () => expandCall(cardId, segId, call) }]),
     ...(lib ? [{ label: `Add "${call.pkg}" to Study Scope`, run: () => addToStudyScope(call.pkg!) }] : []),
     {
       label: "Link to Existing Card", kbd: "Drag", sub: cands.length ? cands.map((k) => {
         const n = flows().byId.get(k.id);
-        const ok = canAttach(state.board, flows(), cardId, k.id);
-        return { label: `${n ? n.label + "  " : ""}${cardTitle(k)}`, disabled: ok.ok ? false : ok.reason, run: () => attachCall(cardId, segId, call, k.id) };
+        return { label: `${n?.label ? n.label + "  " : ""}${cardTitle(k)}`, run: () => attachCall(cardId, segId, call, k.id) };
       }) : [{ label: "No card for this function on the board", disabled: "Drag the call onto any code card to link it" }],
     },
     null,
@@ -127,14 +122,14 @@ export function cardMenu(id: string, x: number, y: number) {
     ...tail,
   ], x, y);
   if (c.kind === "compare") {
-    const inFlow = c.cols.some((k) => flows().byId.has(k));
+    const canWalk = walkOrder(state.board, id).length > 1;
     return openMenu([
       { label: "Swap", run: () => mutate((b) => { const k = findCard(b, id)!.card as CompareCard; k.swap = !k.swap; }) },
       { label: "Unified", checked: !!c.unified, run: () => mutate((b) => { const k = findCard(b, id)!.card as CompareCard; k.unified = !k.unified; }) },
       { label: "Hide Same Lines", checked: !!c.hideSame, run: () => mutate((b) => { const k = findCard(b, id)!.card as CompareCard; k.hideSame = !k.hideSame; }) },
       null,
       { label: "Separate", run: () => separate(id) },
-      { label: "Walk Through Flow", kbd: "P", disabled: inFlow ? false : "Not in a call flow", run: () => startWalk(c.cols.find((k) => flows().byId.has(k))!) },
+      { label: "Walk Through", kbd: "P", disabled: canWalk ? false : "No arrows go out of this card", run: () => startWalk(id) },
       { label: "Move to New Section", run: () => moveToNewSection() },
       lockItem, arrangeItem(() => [host.id]), null,
       { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
@@ -144,7 +139,8 @@ export function cardMenu(id: string, x: number, y: number) {
   // 代码卡（也可能是 Compare 里的一栏）。分组短一点，Hide*/Wrap 收进 View ▸（#24）
   const col = f.host.id !== c.id;
   const node = flows().byId.get(c.id);
-  const hasKids = !!node?.kids.length;
+  const hasKids = flows().kids.has(c.id);
+  const canWalk = walkOrder(state.board, c.id).length > 1;
   const ls = lineSel();
   const free = c.segments[0]?.src.kind === "free";
   const anyHidden = c.segments.some((s) => s.hidden?.length);
@@ -165,16 +161,17 @@ export function cardMenu(id: string, x: number, y: number) {
     ...(!col && (c.segments.length > 1 || c.mergedFrom) ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
   ];
   const flow: Item[] = [
-    { label: "Select", run: () => selectFlow(c.id) },
-    { label: "Walk Through", kbd: "P", run: () => startWalk(c.id) },
-    { label: placeOf(c.id).collapsed ? "Expand" : "Collapse", disabled: hasKids ? false : "No calls below this card", run: () => toggleCollapse(c.id) },
+    { label: "Select", disabled: node ? false : "Not in a call graph", run: () => selectFlow(c.id) },
+    { label: "Walk Through", kbd: "P", disabled: canWalk ? false : "No arrows go out of this card", run: () => startWalk(c.id) },
+    { label: placeOf(c.id).collapsed ? "Expand" : "Collapse", disabled: hasKids || placeOf(c.id).collapsed ? false : "No calls below this card", run: () => toggleCollapse(c.id) },
+    { label: "Change Mark…", disabled: node ? false : "Not in a call graph", run: () => openMarkPicker(c.id) },
   ];
   const items: Item[] = [
     ...(free ? [] : [{ label: "Open in Editor", kbd: "↵", run: () => openCode(c.id) } as Item]),
     ...(col ? [] : [{ label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
     { label: "Edit", sub: edit },
     { label: "View", sub: view },
-    { label: "Flow", sub: flow, disabled: node ? false : "Not in a call flow" },
+    { label: "Call Graph", sub: flow, disabled: node || canWalk ? false : "Not in a call graph" },
     ...(col ? [] : [arrangeItem(() => [host.id])]),
     null,
     ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item]),
@@ -193,7 +190,7 @@ function multiItems(): Item[] {
     ...(cs.length === 2 && codes.length === 2 ? [{ label: "Compare", disabled: cmp.ok ? false : cmp.why, run: doCompare } as Item] : []),
     ...(codes.length >= 2 ? [{ label: "Merge into One Card", disabled: mc.ok ? false : mc.why, run: () => mergeCards(sel.cards) } as Item] : []),
     ...(canLinkList(cs) ? [{ label: "Merge into Link List", run: () => mergeIntoLinkList(sel.cards) } as Item] : []),
-    { label: "Connect with Plain Link", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addPlain({ card: a.id }, { card: b.id }); } },
+    { label: "Connect with Arrow", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addLink({ card: a.id }, { card: b.id }); } },
     { label: "Move to New Section", run: () => moveToNewSection() },
     { label: lockAll ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock(sel.cards, sel.sections) },
     arrangeItem(() => [...sel.cards]),
@@ -218,30 +215,66 @@ export function canvasMenu(x: number, y: number) {
 }
 
 
+/** 箭头右键（W01 D 22、24、25）：Call 标记、线的样子、两端进出边、标签、删除 */
 export function linkMenu(id: string, x: number, y: number) {
   const L = state.board.links.find((l) => l.id === id);
   if (!L) return;
   select({ links: [id] });
-  const set = (f: (l: Link) => void) => mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) f(l); });
-  const edit: Item = { label: L.label ? "Edit Label" : "Add Label", kbd: "Double-click", run: () => setEditing({ kind: "label", id }) };
-  const del: Item = { label: "Delete Arrow", kbd: "⌫", run: () => deleteLinks([id]) };
-  const start: Item = { label: "Start From", sub: ([[undefined, "Auto"], ["left", "Left End"], ["right", "Right End"]] as const).map(([v, lb]) => ({ label: lb, checked: L.side === v, run: () => set((l) => { l.side = v; }) })) };
-  if (L.kind === "call") return openMenu([edit, { label: "Variables…", run: () => openVars(id) }, start, null, del], x, y);
-  if (L.kind !== "plain") return;
-  const P = L;
-  const setP = (f: (l: PlainLink) => void) => set((l) => { if (l.kind === "plain") f(l); });
+  const hd = headOf(L);
+  const width = L.style?.width ?? 2;
+  const color = L.style?.color ?? "grey";
+  const head = (end: "start" | "end"): Item[] => [
+    { label: "Arrowhead", checked: hd[end], run: () => setLinkStyle(id, (s) => { s.head = { ...s.head, [end]: true }; }) },
+    { label: "None", checked: !hd[end], run: () => setLinkStyle(id, (s) => { s.head = { ...s.head, [end]: false }; }) },
+  ];
+  const sides = (end: "from" | "to"): Item[] => {
+    const cur = L.sides?.[end];
+    const whole = L[end].line === undefined;
+    const opts = [[undefined, "Auto"], ["left", "Left"], ["right", "Right"], ...(whole ? [["top", "Top"], ["bottom", "Bottom"]] : [])] as [LinkSide | undefined, string][];
+    return opts.map(([v, lb]) => ({ label: lb, checked: cur === v, run: () => setLinkSide(id, end, v) }));
+  };
+  // Call Mark：出发行确实调用了目标卡时自动认出；认不出时代码卡之间也能手动标（已经有的总能关掉）
+  const found = !L.call && !!callOn(L.from, L.to);
+  const canCall = !!L.call || found || !!manualCall(L.from, L.to);
   openMenu([
-    edit,
-    ...(callOn(P.from, P.to) ? [{ label: "Make Call", hint: "This line calls the target function", run: () => makeCall(id) } as Item, null] : []),
-    { label: "Head", sub: ([["none", "None"], ["end", "One-way  →"], ["both", "Both  ↔"]] as const).map(([v, lb]) => ({ label: lb, checked: (P.arrow ?? "end") === v, run: () => setP((l) => { l.arrow = v; }) })) },
-    { label: "Style", sub: [{ label: "Solid", checked: P.solid !== false, run: () => setP((l) => { l.solid = undefined; }) }, { label: "Dashed", checked: P.solid === false, run: () => setP((l) => { l.solid = false; }) }] },
-    ...(P.from.line !== undefined ? [start] : []),
-    { label: "Color", sub: LINK_COLORS.map(([v, lb]) => ({ label: lb, checked: (P.color ?? "grey") === v, run: () => setP((l) => { l.color = v === "grey" ? undefined : v; }) })) },
-    null, del,
+    ...(canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item, null] : []),
+    { label: "Line", sub: [
+      { label: "Solid", checked: !L.style?.dash, run: () => setLinkStyle(id, (s) => { delete s.dash; }) },
+      { label: "Dashed", checked: !!L.style?.dash, run: () => setLinkStyle(id, (s) => { s.dash = true; }) },
+    ] },
+    { label: "Width", sub: ([[1, "Thin 1px"], [2, "Regular 2px"], [3, "Bold 3px"]] as const).map(([v, lb]) => ({ label: lb, checked: width === v, run: () => setLinkStyle(id, (s) => { s.width = v; }) })) },
+    { label: "Start", sub: head("start") },
+    { label: "End", sub: head("end") },
+    { label: "Color", sub: LINK_COLORS.map(([v, lb]) => ({ label: lb, checked: color === v, run: () => setLinkStyle(id, (s) => { s.color = v === "grey" ? undefined : v; }) })) },
+    null,
+    { label: "Start Side", sub: sides("from") },
+    { label: "End Side", sub: sides("to") },
+    { label: "Reset Sides", disabled: L.sides ? false : "Both ends pick their side automatically", run: () => clearLinkSides(id) },
+    null,
+    { label: L.label ? "Edit Label" : "Add Label", kbd: "Double-click", run: () => setLinkEditing(id) },
+    null,
+    { label: "Delete", kbd: "⌫", danger: true, run: () => deleteLinks([id]) },
   ], x, y);
 }
-export const LINK_COLORS = [["grey", "Grey"], ["orange", "Orange"], ["blue", "Blue"], ["green", "Green"]] as const;
-export const SECTION_COLORS = [["none", "None"], ["sand", "Warm Sand"], ["blue", "Light Blue"], ["green", "Light Green"], ["pink", "Light Pink"]] as const;
+
+/** 标签框右键（W01 D 23）：编辑、选参数和 ↺（只在 Call 上）、回到中间、删掉自己写的字 */
+export function labelMenu(id: string, x: number, y: number) {
+  const L = state.board.links.find((l) => l.id === id);
+  if (!L) return;
+  select({ links: [id] });
+  openMenu([
+    { label: "Edit Label", kbd: "Enter", run: () => setLinkEditing(id) },
+    ...(L.call ? [
+      { label: "Arguments…", run: () => openVars(id) },
+      { label: "Loop Mark", checked: !!L.call.loop, run: () => toggleLoopMark(id) },
+    ] as Item[] : []),
+    null,
+    { label: "Reset Label Position", disabled: L.at === undefined ? "The label is already in the middle" : false, run: () => resetLabelPos(id) },
+    { label: "Delete Label", danger: true, disabled: L.label ? false : "No text written on this arrow", run: () => deleteLabel(id) },
+  ], x, y);
+}
+const LINK_COLORS = [["grey", "Grey"], ["orange", "Orange"], ["blue", "Blue"], ["green", "Green"]] as const;
+const SECTION_COLORS = [["none", "None"], ["sand", "Warm Sand"], ["blue", "Light Blue"], ["green", "Light Green"], ["pink", "Light Pink"]] as const;
 
 export function sectionMenu(id: string, x: number, y: number) {
   const s = sectionById(id);

@@ -3,7 +3,7 @@
 // 没输入时列出入口（pyproject scripts、__init__ 导出、__main__、examples）。
 import { Icon } from "./icons";
 import { For, Show, createSignal, createEffect, onMount, createMemo } from "solid-js";
-import type { SearchItem, NewCard } from "@codeboard/core";
+import type { SearchItem } from "@codeboard/core";
 import { state, select, toast } from "../state/store";
 import { paletteOpen, setPaletteOpen } from "../state/ui";
 import { ask, send } from "../host";

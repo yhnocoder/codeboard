@@ -53,8 +53,8 @@ function SettingsPage(p: { section?: string }) {
             )}</For>
           </div>
         </Sec>
-        <Sec id="numbers" title="Flow letters" hint="The A, B… on cards that shows which flow they belong to.">
-          <label class="st-check"><input type="checkbox" checked={!!cur().hideNumbers} onChange={(e) => A.setSetting("hideNumbers", e.currentTarget.checked || undefined)} />Hide Flow Letters</label>
+        <Sec id="numbers" title="Call graph marks" hint="The letter or icon on cards that shows which call graph they belong to.">
+          <label class="st-check"><input type="checkbox" checked={!!cur().hideNumbers} onChange={(e) => A.setSetting("hideNumbers", e.currentTarget.checked || undefined)} />Hide Call Graph Marks</label>
         </Sec>
         <Sec id="hide" title="New cards hide" hint="What new code cards start with hidden. Each card can still toggle them.">
           <div class="st-checks">

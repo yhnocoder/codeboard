@@ -13,10 +13,11 @@ export type Stale =
   | { state: "uncommitted" } // 钉在 HEAD，但工作区有未提交改动
   | { state: "missing" }; // 仓库 / 文件不在：只读快照
 
-/** 8 种材质主题；明暗跟随 VS Code */
+/** 12 种材质主题；明暗跟随 VS Code */
 export const THEMES = [
   ["warm-ink", "Warm Ink"], ["graphite", "Graphite"], ["soft-light", "Soft Light"], ["drafting", "Drafting"],
   ["colorful", "Colorful"], ["newspaper", "Newspaper"], ["poster", "Poster"], ["classic", "Classic"],
+  ["ink-wash", "Ink Wash"], ["city", "City"],
 ] as const;
 export type ThemeId = (typeof THEMES)[number][0];
 
@@ -27,9 +28,9 @@ export type Settings = {
   studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
   stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）
-  zoomMap: number; // 低于这个比例：地图（只剩编号和名字）
+  zoomMap: number; // 低于这个比例：地图（只剩图标记和名字）
   dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
-  hideNumbers?: boolean; // 卡片上不显示流程字母（A / B）
+  hideNumbers?: boolean; // 卡片上不显示调用图标记（A / B 或图标）；设置里叫 Hide Call Graph Marks
   themeReflow?: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
   debug?: boolean; // 打开后设置页多一节 Debug（调常量）
   tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值

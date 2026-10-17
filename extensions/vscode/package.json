@@ -426,7 +426,9 @@
             "colorful",
             "newspaper",
             "poster",
-            "classic"
+            "classic",
+            "ink-wash",
+            "city"
           ],
           "description": "Board theme. Each theme has a light and a dark variant that follows VS Code."
         },
@@ -481,7 +483,7 @@
         "codeboard.flowNumbers.hide": {
           "type": "boolean",
           "default": false,
-          "description": "Hide the flow letters (A, B…) on cards."
+          "description": "Hide the call graph marks (A, B… or an icon) on cards."
         },
         "codeboard.themeReflow": {
           "type": "string",

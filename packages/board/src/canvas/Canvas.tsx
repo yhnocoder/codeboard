@@ -1,4 +1,4 @@
-// 画布：镜头变换后的世界层（Section 框 → Link → 卡片 → Section 标签 → Link 标签 → 参考线），
+// 画布：镜头变换后的世界层（Section 框 → 线 → 卡片 → 车流、线头圆点 → 画布贴纸、Section 标签 → 临时浮上来的线 → 参考线），
 // 加上屏幕坐标的框选框、对齐工具条。
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
@@ -8,18 +8,22 @@ import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";
 import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
-import { CanvasStickers, LinkStickers } from "../stickers/Picker";
-import { LinksSvg, LinkLabels } from "./Links";
+import { CanvasStickers } from "../stickers/Picker";
+import { trackLinks, LinkLayer, Traffic } from "./Links";
 import { SectionFrames, SectionLabels } from "./Sections";
+import { frames } from "../state/sections";
 import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";
 import { align } from "@codeboard/core";
 
+const EXT = 2048;
+
 export function Canvas() {
   let el!: HTMLDivElement, world!: HTMLDivElement;
   trackOffscreen();
   trackCardLod();
+  trackLinks();
   // 停下以后一两帧去掉 will-change 的提示（styles.css 的 .world.settle）：位图缩放过的内容按新比例重新清晰栅格化
   const [settle, setSettle] = createSignal(false);
   createEffect(on(camMoving, (m) => {
@@ -35,6 +39,20 @@ export function Canvas() {
       requestAnimationFrame(() => { world.style.translate = ""; });
     }));
   }));
+  // 线的 SVG 后面紧跟一块空的、盖住整块白板的方框（.wext，不画东西）。线在所有卡下面，卡都压在线那个合成层上面，只能并进它（或者更上面的层）；
+  // Chromium 合并时看两块范围拼起来空不空（稀疏就另起一层），线那层的范围只是线画到的地方，卡并不进去，相隔很远的卡彼此也并不了，
+  // 结果几乎每张卡一个合成层（实测 74 层，CDP 的原因都是 Overlap；SVG 自己没有 will-change、动画、滤镜之类的原因）。
+  // 这一块先并进线那层、把范围撑到整块白板，后面的卡就都并得进去：层数跟以前一样（25 层，Section 框还是各自一层）。
+  // 放在最前面（Section 框前面）也行，但那样 Section 框、线、卡全挤进一个层，缩放、捏合的慢帧多。范围按卡和 Section 的外框往外留 EXT、对齐到 EXT 的整数倍，拖动中不重算
+  const extent = createMemo<string>((prev) => {
+    if (prev && dragging().size) return prev;
+    let x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    const add = (r: { x: number; y: number; w: number; h: number }) => { x0 = Math.min(x0, r.x); y0 = Math.min(y0, r.y); x1 = Math.max(x1, r.x + r.w); y1 = Math.max(y1, r.y + r.h); };
+    for (const c of placed()) add(rectOf(c));
+    for (const r of frames().values()) add(r);
+    x0 = Math.floor(x0 / EXT - 1) * EXT; y0 = Math.floor(y0 / EXT - 1) * EXT; x1 = Math.ceil(x1 / EXT + 1) * EXT; y1 = Math.ceil(y1 / EXT + 1) * EXT;
+    return `${x0} ${y0} ${x1 - x0} ${y1 - y0}`;
+  });
   onMount(() => {
     const ro = new ResizeObserver(() => setViewport(el.clientWidth, el.clientHeight));
     ro.observe(el);
@@ -47,11 +65,14 @@ export function Canvas() {
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
       <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
-        <LinksSvg />
+        <LinkLayer bottom />
+        <div class="wext" style={(() => { const [x, y, w, h] = extent().split(" "); return { left: `${x}px`, top: `${y}px`, width: `${w}px`, height: `${h}px` }; })()} />
         <For each={placed()}>{(c) => <CardView card={c} />}</For>
+        <Traffic />
+        <LinkLayer ports />
         <CanvasStickers />
         <SectionLabels />
-        <div class="labels" classList={{ "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}><LinkLabels /><LinkStickers /></div>
+        <LinkLayer top />
         <div class="guides">
           <For each={guides()}>
             {(g) => g.axis === "x"

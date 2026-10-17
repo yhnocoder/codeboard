@@ -14,6 +14,7 @@ export type Pop =
   | { kind: "pick"; title: string; items: { label: string; detail: string; run: () => void }[] }
   | { kind: "commits"; card: string; seg: Segment; list?: Commit[] }
   | { kind: "vars"; link: string }
+  | { kind: "mark"; card: string }
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 
@@ -36,5 +37,3 @@ export function closePop(id?: number) {
   setPops((ps) => (id === undefined ? ps.filter((p) => p.pinned) : ps.filter((p) => p.id !== id)));
 }
 export const closeAllPops = () => setPops([]);
-export const popOf = (kind: Pop["kind"]) => pops().find((p) => !p.pinned && p.pop.kind === kind);
-export const anyPopOpen = () => pops().length > 0;

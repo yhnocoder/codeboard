@@ -1,14 +1,14 @@
 // Performance benchmark: builds a large board from nano-vllm and measures camera, drag, mutate, expand, undo and load times in the browser.
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--runs 3] [--json out.json] [--quick] [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] (--long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] (--inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16: main-thread task durations; the 60 fps budget is 16.7 ms).
 import * as fs from "node:fs";
 import { ready, open, symCard, files, type Host } from "./harness";
-import { emptyBoard, uid, type Board, type CodeCard, type Link, type Section, type Sidenote } from "@codeboard/core";
+import { emptyBoard, stampBorn, uid, type Board, type CodeCard, type Link, type Section, type Sidenote } from "@codeboard/core";
 import type { CDPSession } from "playwright-core";
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
-const NCARDS = +arg("cards", "240"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", "");
+const NCARDS = +arg("cards", "240"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", ""), THEME = arg("theme", "");
 
 /** A large board: nano-vllm functions (repeated if too few), linked into trees by calls, a Section every 12 cards (two levels nested), some Sidenotes */
 export function bigBoard(n: number): Board {
@@ -27,12 +27,12 @@ export function bigBoard(n: number): Board {
       const j = cards.findIndex((t, k) => k > i && !hasIn.has(t.c.id) && t.d.s.name === call.name);
       if (j < 0) continue;
       hasIn.add(cards[j].c.id);
-      const L: Link = { id: uid("l"), kind: "call", from: { card: c.id, seg: c.segments[0].id, line: call.line }, to: { card: cards[j].c.id }, call: { name: call.name, col: call.col }, loop: call.loop || undefined };
+      const L: Link = { id: uid("l"), from: { card: c.id, seg: c.segments[0].id, line: call.line }, to: { card: cards[j].c.id }, call: { name: call.name, col: call.col, ...(call.loop ? { loop: true } : {}) } };
       b.links.push(L);
     }
   });
-  // Add Plain links until there are about as many as cards
-  for (let i = 1; b.links.length < n && i + 7 < cards.length; i += 3) b.links.push({ id: uid("l"), kind: "plain", from: { card: cards[i].c.id }, to: { card: cards[i + 7].c.id }, arrow: "end" });
+  // Add arrows without a Call mark until there are about as many as cards
+  for (let i = 1; b.links.length < n && i + 7 < cards.length; i += 3) b.links.push({ id: uid("l"), from: { card: cards[i].c.id }, to: { card: cards[i + 7].c.id } });
   const rows = Math.ceil(cards.length / COLS);
   for (let r = 0; r < rows; r++) {
     const outer: Section = { id: uid("x"), title: `Row ${r}`, x: -40, y: r * 700 - 60, w: COLS * 620 + 40, h: 640 };
@@ -47,6 +47,8 @@ export function bigBoard(n: number): Board {
     b.sidenotes.push(n);
   });
   b.cam = { x: 80, y: 80, z: 1 };
+  // Creation order, like every board the app has saved (v0.1.7+) or migrated: without it the first edit numbers all 241 cards at once
+  stampBorn(b);
   return b;
 }
 
@@ -70,16 +72,20 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
   const events: any[] = [];
   const onData = (e: any) => events.push(...e.value);
   cdp.on("Tracing.dataCollected", onData);
-  await cdp.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline", transferMode: "ReportEvents" } as any);
+  const inval = name && name === arg("inval", "");
+  await cdp.send("Tracing.start", { categories: "devtools.timeline,disabled-by-default-devtools.timeline" + (inval ? ",disabled-by-default-devtools.timeline.invalidationTracking" : "") + (name && name === arg("selstats", "") ? ",disabled-by-default-blink.debug" : ""), transferMode: "ReportEvents" } as any);
   if (prof) { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }
   const b0 = await busy(cdp);
   const m0 = await metrics(cdp);
+  let bPrev = b0;
   for (let i = 0; i < n; i++) {
     const t = performance.now();
     await step(i);
     await raf(h);
     wall.push(performance.now() - t);
-    if (name && name === arg("steps", "")) console.log(`  ${name} #${i} ${wall[i].toFixed(0)}ms`, await h.page.evaluate(() => `${document.querySelector(".board")?.className} ${(document.querySelector(".world") as HTMLElement)?.style.transform}`));
+    let bs = "";
+    if (name && name === arg("steps", "")) { const bn = await busy(cdp); bs = `busy ${(bn - bPrev).toFixed(0)}`; bPrev = bn; }
+    if (name && name === arg("steps", "")) console.log(`  ${name} #${i} ${wall[i].toFixed(0)}ms ${bs}`, await h.page.evaluate(() => `${document.querySelector(".board")?.className} ${(document.querySelector(".world") as HTMLElement)?.style.transform}`));
   }
   const bz = (await busy(cdp)) - b0;
   const m1 = await metrics(cdp);
@@ -95,6 +101,28 @@ async function steps(h: Host, cdp: CDPSession, n: number, step: (i: number) => P
     for (const t of events.filter((e) => e.ph === "X" && e.name === "RunTask" && main && e.pid === main.pid && e.tid === main.tid && e.dur > 16700))
       console.log(`  long ${(t.dur / 1000).toFixed(0)}ms:`, events.filter((e) => e.ph === "X" && e.pid === main.pid && e.tid === main.tid && e.ts >= t.ts && e.ts + e.dur <= t.ts + t.dur && e.dur > 1500 && e.name !== "RunTask")
         .map((e) => `${e.name}${e.args?.data?.functionName ? "(" + e.args.data.functionName + ")" : ""} ${(e.dur / 1000).toFixed(1)}`).join(" > "));
+  }
+  if (name && name === arg("selstats", "")) {
+    // CSS selector stats (DevTools "Enable CSS selector stats"): the selectors that cost the most in this step
+    const by = new Map<string, { t: number; att: number; m: number }>();
+    for (const e of events) for (const x of e.args?.selector_stats?.selector_timings ?? []) {
+      const o = by.get(x.selector) ?? { t: 0, att: 0, m: 0 };
+      o.t += x.elapsed ?? x["elapsed (us)"] ?? 0; o.att += x.match_attempts; o.m += x.match_count; by.set(x.selector, o);
+    }
+    const tot = [...by.values()].reduce((s, o) => s + o.t, 0);
+    console.log(`-- selector stats: ${by.size} selectors, ${(tot / 1000).toFixed(0)} ms`);
+    for (const [k, o] of [...by].sort((a, b) => b[1].t - a[1].t).slice(0, 50)) console.log(`${(o.t / 1000).toFixed(1).padStart(7)}ms ${String(o.att).padStart(8)} ${String(o.m).padStart(7)}  ${k.slice(0, 140)}`);
+  }
+  if (inval) {
+    // What invalidated style / layout: count by event, reason and node (--inval <step>)
+    const by = new Map<string, number>();
+    for (const e of events) if (e.name.includes("Invalidat") && e.args?.data) {
+      const d = e.args.data;
+      const k = `${e.name.replace("InvalidationTracking", "")} ${d.reason ?? d.invalidationList?.[0]?.classes?.join(".") ?? ""} ${d.nodeName ?? ""}`;
+      by.set(k, (by.get(k) ?? 0) + 1);
+    }
+    console.log("-- invalidations");
+    for (const [k, v] of [...by].sort((a, b) => b[1] - a[1]).slice(0, 60)) console.log(`${String(v).padStart(8)}  ${k}`);
   }
   if (tr) {
     const by = new Map<string, number>();
@@ -143,7 +171,7 @@ async function once() {
   const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length };
   const t0 = performance.now();
   let cdp!: CDPSession;
-  const h = await open({ board, beforeLoad: async (page) => {
+  const h = await open({ board, settings: THEME ? { theme: THEME } as any : undefined, beforeLoad: async (page) => {
     cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
     if (PROFILE === "load") { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }
@@ -154,9 +182,75 @@ async function once() {
   res.openTotal = +(performance.now() - t0).toFixed(0);
   if (PROFILE === "load") top((await cdp.send("Profiler.stop")).profile as any);
   if (arg("css", "")) await h.page.addStyleTag({ content: arg("css", "") });
+  if (process.argv.includes("--traffic")) { await h.page.locator(".dock .traffic").click(); res.movers = await h.page.locator(".movers .mover").count(); }
   await h.page.waitForTimeout(1500);
   if (arg("shot", "")) {
     for (const z of [1, 2.5]) { await h.post({ type: "reveal", card: board.links[0].to.card }); await h.page.waitForTimeout(1000); if (z > 1) { await h.page.keyboard.down("Control"); for (let i = 0; i < 12; i++) await h.page.mouse.wheel(0, -40); await h.page.keyboard.up("Control"); await h.page.waitForTimeout(800); } await h.page.screenshot({ path: `${arg("shot", "")}-${z}.png` }); }
+    await h.page.context().browser()!.close(); return res;
+  }
+  if (arg("stop", "") === "lod") {
+    const sstats = process.argv.includes("--selstats");
+    const evs: any[] = [];
+    if (sstats) { cdp.on("Tracing.dataCollected", (e: any) => evs.push(...e.value)); await cdp.send("Tracing.start", { categories: "disabled-by-default-blink.debug", transferMode: "ReportEvents" } as any); }
+    // Style + layout cost of switching every card's LOD class at once (no script): full → overview → map → full, 5 rounds
+    if (process.argv.includes("--nohue")) await h.page.evaluate(() => { (window as any).__nohue = true; });
+    res.lodSwitch = await h.page.evaluate(async (strip) => {
+      if (strip) {
+        const re = new RegExp(strip);
+        let n = 0;
+        for (const sh of [...document.styleSheets]) { const walk = (list: CSSRuleList, del: (i: number) => void) => { for (let i = list.length - 1; i >= 0; i--) { const r = list[i] as any; if (r.selectorText && re.test(r.selectorText)) { del(i); n++; } else if (r.cssRules) walk(r.cssRules, (j) => r.deleteRule(j)); } }; walk(sh.cssRules, (i) => sh.deleteRule(i)); }
+        console.log("stripped", n);
+      }
+      const cards = [...document.querySelectorAll(".card")] as HTMLElement[];
+      if ((window as any).__nohue) for (const c of cards) c.style.removeProperty("--file-hue");
+      const set = (ov: boolean, map: boolean) => { for (const c of cards) { c.classList.toggle("lo-ov", ov); c.classList.toggle("lo-map", map); } };
+      const out: Record<string, number[]> = { ov: [], map: [], full: [] };
+      for (let k = 0; k < 7; k++) for (const [n, ov, map] of [["ov", true, false], ["map", false, true], ["full", false, false]] as const) {
+        await new Promise((r) => requestAnimationFrame(() => r(0)));
+        const t = performance.now(); set(ov, map); document.body.getBoundingClientRect(); (document.querySelector(".world") as HTMLElement).offsetHeight; out[n].push(performance.now() - t);
+      }
+      const med = (a: number[]) => [...a].sort((x, y) => x - y)[a.length >> 1];
+      return Object.fromEntries(Object.entries(out).map(([k, v]) => [k, +med(v.slice(1)).toFixed(1)]));
+    }, arg("strip", ""));
+    if (sstats) {
+      // Selector stats (DevTools "Enable CSS selector stats"): which selectors cost the most during the LOD switches
+      const done = new Promise((r) => cdp.once("Tracing.tracingComplete", r));
+      await cdp.send("Tracing.end"); await done;
+      const by = new Map<string, { t: number; att: number; m: number }>();
+      for (const e of evs) for (const x of e.args?.selector_stats?.selector_timings ?? []) {
+        const k = x.selector, o = by.get(k) ?? { t: 0, att: 0, m: 0 };
+        o.t += x.elapsed ?? x["elapsed (us)"] ?? 0; o.att += x.match_attempts; o.m += x.match_count; by.set(k, o);
+      }
+      const tot = [...by.values()].reduce((s, o) => s + o.t, 0);
+      console.log(`-- selector stats: ${by.size} selectors, ${(tot / 1000).toFixed(0)} ms`);
+      for (const [k, o] of [...by].sort((a, b) => b[1].t - a[1].t).filter(([k, o]) => o.att > 50000 || by.size < 0).slice(0, 200)) console.log(`${(o.t / 1000).toFixed(1).padStart(7)}ms ${String(o.att).padStart(8)} ${String(o.m).padStart(7)}  ${k.slice(0, 140)}`);
+    }
+    await h.page.context().browser()!.close(); return res;
+  }
+  if (arg("stop", "") === "dom") {
+    res.dom = await h.page.evaluate(() => { const by: Record<string, number> = {}; for (const e of document.querySelectorAll(".world *")) { const k = e.tagName + "." + (typeof e.className === "string" ? e.className.split(" ")[0] : ""); by[k] = (by[k] ?? 0) + 1; } return { total: document.querySelectorAll("*").length, top: Object.entries(by).sort((a, b) => b[1] - a[1]).slice(0, 45) }; });
+    await h.page.context().browser()!.close(); return res;
+  }
+  if (arg("stop", "") === "switch") {
+    // Cross LOD thresholds in one wheel step and wait until every card has switched and the camera has stopped: full ↔ overview, full ↔ map
+    const spot = await h.page.evaluate(() => { for (let y = 120; y < 860; y += 20) for (let x = 80; x < 1350; x += 20) { const e = document.elementFromPoint(x, y); if (e && (e.classList.contains("board") || e.classList.contains("world"))) return [x, y]; } return [700, 450]; });
+    await h.page.mouse.move(spot[0], spot[1]);
+    const wheel = async (d: number) => { await h.page.keyboard.down("Control"); await h.page.mouse.wheel(0, d); await h.page.keyboard.up("Control"); };
+    for (const [lvl, d] of [["Ov", 90], ["Map", 150]] as const) {
+      res["switch" + lvl] = sum(await steps(h, cdp, 6, async (i) => { await wheel(i % 2 ? -d : d); await h.page.waitForTimeout(1500); }, "switch" + lvl));
+    }
+    await h.page.context().browser()!.close(); return res;
+  }
+  if (arg("stop", "") === "settle") {
+    // One small zoom step, then wait until the camera has stopped and the world is redrawn at the new scale: what one stop costs, per LOD level
+    const spot = await h.page.evaluate(() => { for (let y = 120; y < 860; y += 20) for (let x = 80; x < 1350; x += 20) { const e = document.elementFromPoint(x, y); if (e && (e.classList.contains("board") || e.classList.contains("world"))) return [x, y]; } return [700, 450]; });
+    await h.page.mouse.move(spot[0], spot[1]);
+    const wheel = async (d: number) => { await h.page.keyboard.down("Control"); await h.page.mouse.wheel(0, d); await h.page.keyboard.up("Control"); };
+    for (const [lvl, n] of [["Full", 0], ["Ov", 3], ["Map", 2]] as const) {
+      for (let i = 0; i < n; i++) { await wheel(30); await h.page.waitForTimeout(150); }
+      await h.page.waitForTimeout(1500);
+      res["settle" + lvl] = sum(await steps(h, cdp, 12, async (i) => { await wheel(i % 2 ? 4 : -4); await h.page.waitForTimeout(500); }, "settle" + lvl));
+    }
     await h.page.context().browser()!.close(); return res;
   }
   res.idleBusy1s = +(await idle(h, cdp, 1000)).toFixed(1);
@@ -173,6 +267,7 @@ async function once() {
   // Trackpad pinch: many small steps from 100% down to the map level and back (passes every level and every switch)
   res.pinch = sum(await steps(h, cdp, 100, async (i) => { await h.page.keyboard.down("Control"); await h.page.mouse.wheel(0, i < 50 ? 5 : -5); await h.page.keyboard.up("Control"); }, "pinch"));
   await h.page.waitForTimeout(800);
+  if (arg("stop", "") === "pinch") { await h.page.context().browser()!.close(); return res; }
 
   // Drag: the card with the most links (endpoints follow every frame)
   const deg = new Map<string, number>();
@@ -180,8 +275,27 @@ async function once() {
   const hub = [...deg.entries()].sort((a, b) => b[1] - a[1])[0][0];
   res.hubLinks = deg.get(hub);
   await focusCard(h, hub);
-  const head = h.page.locator(`.card[data-id="${hub}"] .chead .kind`);
-  const bx = (await head.boundingBox())!;
+  // Grab the header at a point that really is the header: arrows are drawn above the cards, and a long arrow between two other
+  // cards of the same row runs along the heading row (card ends attach there), so the kind glyph (the spot v0.1.6 grabbed) can be
+  // under its hit area (City). Take the glyph when it is free, so drag numbers stay comparable with v0.1.6; otherwise scan
+  // the header for a draggable point that is not a button and not covered
+  const bx = await h.page.evaluate((id) => {
+    const free = (x: number, y: number) => {
+      const e = document.elementFromPoint(x, y);
+      return e?.closest(".card")?.getAttribute("data-id") === id && !!e.closest("[data-drag]") && !e.closest("button, .step, [contenteditable]");
+    };
+    const k = document.querySelector(`.card[data-id="${id}"] .chead .kind`)?.getBoundingClientRect();
+    if (k && free(k.left + 4, k.top + 4)) return { x: k.left, y: k.top, at: "kind" };
+    const head = document.querySelector(`.card[data-id="${id}"] [data-drag]`)!.getBoundingClientRect();
+    for (const fy of [0.5, 0.3, 0.7]) for (let x = head.left + 6; x < head.right - 6; x += 6) {
+      const y = head.top + head.height * fy;
+      if (free(x, y)) return { x: x - 4, y: y - 4, at: `${(document.elementFromPoint(x, y) as Element).tagName}` };
+    }
+    throw new Error("no free spot on the header to grab");
+  }, hub);
+  if (process.argv.includes("--steps")) console.log("  drag grab", JSON.stringify(bx));
+  const hubX = () => h.page.evaluate((id) => parseFloat((document.querySelector(`.card[data-id="${id}"]`) as HTMLElement).style.left), hub);
+  const x0 = await hubX();
   await h.page.mouse.move(bx.x + 4, bx.y + 4);
   await h.page.mouse.down();
   res.drag = sum(await steps(h, cdp, 60, async (i) => { await h.page.mouse.move(bx.x + 4 + i * 4, bx.y + 4 + i * 2, { steps: 1 }); }, "drag"));
@@ -190,6 +304,12 @@ async function once() {
   await profiled(cdp, "dragEnd", async () => { await h.page.mouse.up(); await raf(h); });
   res.dragEndBusy = +((await busy(cdp)) - bUp).toFixed(1);
   res.dragEnd = +(performance.now() - tUp).toFixed(1);
+  // The drag must have moved the card (60 steps × 4 px on screen), or drag / nudge / undo numbers measure nothing
+  res.dragMoved = Math.round((await hubX()) - x0);
+  if (!((res.dragMoved as number) > 20)) {
+    const hit = await h.page.evaluate(([x, y]) => { const out: string[] = []; for (let e = document.elementFromPoint(x, y); e; e = e.parentElement) out.push(`${e.tagName}.${typeof e.className === "string" ? e.className : ""}`); const g = document.elementFromPoint(x, y)?.closest("g.link") as SVGGElement | null; return out.slice(0, 6).join(" < ") + (g ? ` link ${g.dataset.from}→${g.dataset.to} sides ${g.dataset.sides} ${g.querySelector(".edge")?.getAttribute("d")}` : ""); }, [bx.x + 4, bx.y + 4]);
+    throw new Error(`drag did not move the card ${hub} (moved ${res.dragMoved}px; grabbed ${JSON.stringify(bx)} → ${hit}; card ${JSON.stringify(board.place[hub])})`);
+  }
   await h.page.waitForTimeout(1200);
 
   // Mutate: move the selected card with arrow keys (one mutate each: undo snapshot + invariants + autosave dependencies)

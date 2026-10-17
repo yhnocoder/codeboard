@@ -2,17 +2,17 @@
 import { send } from "../host";
 import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
-  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, LANGS, domainOf,
-  type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard,
+  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
+  type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type Graph, type LinkSide,
 } from "@codeboard/core";
-import { state, setSizes, isSel, flows, collapsedAway, sel, placeOf, rectOf } from "../state/store";
+import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf } from "../state/store";
+import { Glyph } from "../stickers/glyphs";
 import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { CardStickers, BoundStickers } from "../stickers/Picker";
-import { lod } from "../state/camera";
 import { fileHue } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
@@ -22,6 +22,9 @@ import * as act from "../actions";
 import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
+import { landed, enterCard, leaveCard } from "../canvas/Links";
+
+const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
 export function CardView(p: { card: Card }) {
   let el!: HTMLDivElement;
@@ -78,6 +81,7 @@ export function CardView(p: { card: Card }) {
           "bind-hot": (act.bindHot() as { card?: string } | null)?.card === c().id,
           "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
         }}
+        onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => act.cardPointerDown(e, c().id)} onContextMenu={(e) => act.cardContextMenu(e, c().id)} onDblClick={(e) => act.cardDblClick(e, c().id)}>
         <div class="cface">
         <Switch>
@@ -88,7 +92,7 @@ export function CardView(p: { card: Card }) {
           <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
         </Switch>
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
-        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2); }} />}</For>
+        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <CardStickers card={c().id} />
         <Show when={!pl().locked}>
@@ -112,7 +116,9 @@ export function CardView(p: { card: Card }) {
 export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const c = () => p.card;
   const node = createMemo(() => flows().byId.get(c().id));
-  const hiddenKids = createMemo(() => (placeOf(c().id).collapsed && node() ? countDesc(node()!) : 0));
+  // 折叠后因为它藏起来的卡（别的路径还能走到的不算）
+  const hiddenKids = createMemo(() => (placeOf(c().id).collapsed && node() ? descendants(flows(), c().id).filter((k) => collapsedSet().has(k)).length : 0));
+  const linkedIn = createMemo(() => act.linksInto(c().id).length);
   const s0 = () => c().segments[0];
   const stale = createMemo(() => act.cardStale(c()));
   const mixed = () => mixedVersions(c());
@@ -121,7 +127,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const notes = () => act.sidenotesOf(c().id).filter((n) => !n.at.lines);
   return (
     <div class="chead" data-drag>
-      <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: select subtree · Drag: move subtree">{node()!.label}</span></Show>
+      <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
@@ -130,19 +136,20 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       </Show>
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
       <Show when={free()} fallback={
-        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openCode(c().id)}>
+        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !act.justDragged() && act.openCode(c().id)}>
           {multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
       </Show>
       <span class="grow" />
-      {/* 悬停才出现的按钮放在空白一侧：没悬停时版本号紧挨着 ⋯，中间不空一块 */}
+      {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
       <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
+      <Show when={linkedIn()}><button class="linkedin" data-tip="Linked here: show where the arrows come from" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}>← {linkedIn()}</button></Show>
       <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
       <Show when={!free()}>
-        <button class="rev" classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
+        <button class="rev" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}
-          onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
+          onClick={(e) => act.justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
           <Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>
           {mixed() ? "Mixed" : versionLabel(s0()?.version, true)}
           <Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show>
@@ -157,8 +164,8 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
 }
 
 /** 材质用的卡片部件（默认 display: none，由 themes.css 按主题打开）：
- *  cband = 色带 / 大标题（函数名 + 行号区间和版本 + 大号编号），cxfoot = 底栏（行号区间 · 打开 / 看差异），cfig = 卡片下方的图注。
- *  只用卡片已有的数据：标题、flows() 编号、第一段的行号和版本。 */
+ *  cband = 色带 / 大标题（函数名 + 行号区间和版本 + 大号图标记），cxfoot = 底栏（行号区间 · 打开 / 看差异），cfig = 卡片下方的图注。
+ *  只用卡片已有的数据：标题、flows() 的图标记、第一段的行号和版本。 */
 function CodeBand(p: { card: CodeCard }) {
   const c = () => p.card;
   const s0 = () => c().segments[0];
@@ -191,17 +198,20 @@ function CodeFoot(p: { card: CodeCard }) {
   return (
     <Show when={s0() && s0()!.src.kind !== "free"}>
       <div class="cxfoot" classList={{ new: isNew() }} data-drag>
-        <span class="fl"><svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="M8 5v3l2 1.5" /></svg>L{s0()!.start}–{s0()!.end}</span>
+        <span class="fl"><Icon name="clock" />L{s0()!.start}–{s0()!.end}</span>
         <button class="act" onPointerDown={(e) => e.stopPropagation()} onClick={() => (isNew() ? act.openDiff(c().id) : act.openCode(c().id))}>
-          {isNew() ? "View Diff" : "Open in Editor"}<svg class="ico" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8h9M9 4.5 12.5 8 9 11.5" /></svg>
+          {isNew() ? "View Diff" : "Open in Editor"}<Icon name="arrowR" />
         </button>
       </div>
     </Show>
   );
 }
 
-const countDesc = (n: { kids: any[] }): number => n.kids.reduce((s, k) => s + 1 + countDesc(k), 0);
-export const shortPath = (p: string) => p.split("/").slice(-1)[0];
+/** 调用图标记：字母，或用户选的图标（内置贴纸） */
+export function MarkView(p: { g: Graph }) {
+  return <Show when={"icon" in p.g.mark} fallback={<>{p.g.label}</>}><Glyph icon={{ pack: "builtin", name: (p.g.mark as { icon: string }).icon }} size={13} /></Show>;
+}
+const shortPath = (p: string) => p.split("/").slice(-1)[0];
 
 function CodeCardView(p: { card: CodeCard }) {
   const c = () => p.card;
@@ -233,7 +243,7 @@ function CodeCardView(p: { card: CodeCard }) {
   );
 }
 
-/** 类卡：只列成员签名，点成员 → 展开成函数卡并连 Call link */
+/** 类卡：只列成员签名，点成员 → 展开成函数卡并连一条带 Call 标记的箭头 */
 function ClassBody(p: { card: CodeCard }) {
   const s = () => p.card.segments[0];
   const defs = () => (state.views[s().id]?.defs ?? []).filter((d) => d.qual.split(".").length === (s().symbol?.qual.split(".").length ?? 0) + 1);
@@ -257,7 +267,7 @@ function ClassBody(p: { card: CodeCard }) {
   );
 }
 
-export function Desc(p: { id: string; desc?: string }) {
+function Desc(p: { id: string; desc?: string }) {
   return (
     <Show when={p.desc || editing()?.kind === "desc" && editing()?.id === p.id}>
       <Editable class="cdesc" kind="desc" id={p.id} value={p.desc ?? ""} multiline md onCommit={(v) => act.setDesc(p.id, v)} />
@@ -278,9 +288,10 @@ function ImageView(p: { card: ImageCard }) {
   );
 }
 
-/** 地图档：卡片只剩编号 + 名字，字号按缩放反向放大，始终看得清 */
+/** 地图档：卡片只剩图标记 + 名字，字号按缩放反向放大，始终看得清 */
 function MapLabel(p: { card: Card }) {
-  const n = () => flows().byId.get(p.card.kind === "compare" ? p.card.cols[0] : p.card.id)?.label;
+  const g = () => { const c = p.card; return c.kind === "compare" ? flows().byId.get(c.cols[0]) ?? flows().byId.get(c.cols[1]) : flows().byId.get(c.id); };
+  const n = () => g()?.label || (g() ? "•" : "");
   const t = () => (p.card.kind === "note" ? p.card.md.split("\n")[0].replace(/^#+\s*/, "").slice(0, 60) : cardTitle(p.card, state.board));
   // 名字只在 . 和 _ 后面换行，不在单词中间断开
   const parts = () => t().split(/(?<=[._])/);
@@ -292,10 +303,8 @@ function MapLabel(p: { card: Card }) {
   };
   return (
     <div class="maplabel" style={{ "--fit": fit() }}>
-      <Show when={n() && !state.host.settings?.hideNumbers}><span class="step">{n()}</span></Show>
+      <Show when={g() && !state.host.settings?.hideNumbers}><span class="step"><MarkView g={g()!} /></span></Show>
       <span class="mt"><For each={parts()}>{(x) => <>{x}<wbr /></>}</For></span>
     </div>
   );
 }
-
-export { LANGS };

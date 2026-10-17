@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { sameVersion, type Board, type End, type Segment, type Sticker } from "./model";
+import { sameVersion, type Board, type End, type Link, type Segment, type Sticker } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -13,7 +13,33 @@ export function removeCards(b: Board, ids: Iterable<string>): void {
   b.links = b.links.filter((l) => !gone.has(l.from.card) && !gone.has(l.to.card));
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card) && !(n.kind === "card" && gone.has(n.card)));
   b.stickers = b.stickers.filter((k) => k.at.kind === "canvas" || !gone.has(k.at.card));
+  forget(b, gone);
   pruneStickers(b);
+}
+
+/** 删掉的卡的创建顺序和调用图标记 */
+function forget(b: Board, gone: Set<string>) {
+  for (const id of gone) {
+    if (b.born) delete b.born[id];
+    if (b.marks) delete b.marks[id];
+  }
+  if (b.marks && !Object.keys(b.marks).length) delete b.marks;
+}
+
+/**
+ * 还没编号的卡按 cards 里的先后编上创建顺序（store 每次修改后调用；迁移时整块白板编过）。
+ * 编号只增不改：Arrange 改叠放顺序、重命名都不动它
+ */
+export function stampBorn(b: Board): void {
+  let born = b.born;
+  for (const c of b.cards) {
+    if (born && born[c.id] !== undefined) continue;
+    if (!born) born = b.born = {};
+    let n = b.seq ?? 0;
+    if (!b.seq) for (const v of Object.values(born)) n = Math.max(n, v + 1); // 宿主写的白板没有 seq：接着最大的号往下编
+    born[c.id] = n;
+    b.seq = n + 1;
+  }
 }
 
 /** 删掉这些 Link，绑在它们上面的 Sticker 一起删 */
@@ -75,9 +101,19 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
 /** 换卡：引用按 to 搬走（retargetCards），再删掉旧卡和它们的摆放。只删这几张：拆 Compare 时它的栏留下 */
 export function replaceCards(b: Board, ids: Iterable<string>, to: Retarget): void {
   const gone = new Set(ids);
+  // 接手的卡沿用被换掉的卡里最早的创建顺序和调用图标记：合并、拆开之后调用图的字母不变
+  for (const id of gone) {
+    const t = to({ card: id }).card;
+    if (gone.has(t)) continue;
+    const n = b.born?.[id];
+    if (n !== undefined && b.born && !(b.born[t] <= n)) b.born[t] = n;
+    const m = b.marks?.[id];
+    if (m && b.marks && !b.marks[t]) b.marks[t] = m;
+  }
   retargetCards(b, gone, to);
   b.cards = b.cards.filter((c) => !gone.has(c.id));
   for (const id of gone) delete b.place[id];
+  forget(b, gone);
 }
 
 /**
@@ -111,6 +147,8 @@ export function danglingRefs(b: Board): string[] {
   for (const c of b.cards) if (c.kind === "compare") for (const k of c.cols) if (!cards.has(k)) out.push(`compare ${c.id} column missing ${k}`);
   for (const id of Object.keys(b.place)) if (!cards.has(id)) out.push(`place for missing card ${id}`);
   for (const s of b.sections) if (s.parent && !sections.has(s.parent)) out.push(`section ${s.id} parent missing ${s.parent}`);
+  for (const id of Object.keys(b.marks ?? {})) if (!cards.has(id)) out.push(`graph mark for missing card ${id}`);
+  for (const id of Object.keys(b.born ?? {})) if (!cards.has(id)) out.push(`creation order for missing card ${id}`);
   return out;
 }
 
@@ -133,7 +171,7 @@ export function mapRange(map: LineMap, a: number, e: number): [number, number] |
 /**
  * 把卡里的一段换成新的（同一个段 id）：新版本 Update、HEAD 下只是挪了位置、Relocate 都走这里。
  * 段上的隐藏 / 高亮，Link 两端、Sidenote、Sticker 的行号都按 map 搬过去；
- * 行没了的：Link 端点退回整张卡，Sidenote 改挂整卡并标上 lineRemoved，Sticker 挪到卡片角上。
+ * 行没了的：Link 端点退到卡头并标上 lost（画成红色，等用户重连或删掉），Sidenote 改挂整卡并标上 lineRemoved，Sticker 挪到卡片角上。
  * 合并卡的 mergedFrom（拆开时用的原卡快照）里落在这段上的段也一起换版本、挪行，Unmerge 时行锚还对得上。
  */
 export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMap = lineMapOf(findSeg(b, cardId, ns.id) ?? ns, ns)): void {
@@ -154,12 +192,15 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
       return { ...s, start: r[0], end: r[1], text: ns.text.slice(r[0] - ns.start, r[1] - ns.start + 1), version: ns.version, hidden: sh.length ? sh : undefined, hl: sl.length ? sl : undefined };
     });
   }
-  const moveEnd = (e: End) => {
+  const moveEnd = (l: Link, k: "from" | "to") => {
+    const e = l[k];
     if (e.card !== cardId || e.seg !== ns.id || !e.line) return;
     const m = map(e.line);
-    if (m) e.line = m; else { e.seg = undefined; e.line = undefined; }
+    if (m) { e.line = m; return; }
+    e.seg = undefined; e.line = undefined;
+    l.lost = { ...l.lost, [k]: true };
   };
-  for (const l of b.links) { moveEnd(l.from); moveEnd(l.to); }
+  for (const l of b.links) { moveEnd(l, "from"); moveEnd(l, "to"); }
   for (const n of b.sidenotes) {
     if (n.at.card !== cardId || n.at.seg !== ns.id || !n.at.lines) continue;
     const r = mapRange(map, n.at.lines[0], n.at.lines[1]);

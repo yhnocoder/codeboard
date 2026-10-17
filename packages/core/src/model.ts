@@ -1,9 +1,9 @@
-// 白板的持久化数据模型（第 4 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
+// 白板的持久化数据模型（第 5 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
 // 卡片内容（Card）和它在这块白板上的摆放（Place）分开存：v0.2 的共享卡片、子白板会让同一张卡出现在几块白板上，
 // 内容只有一份，摆放每块白板各一份。Compare 只引用两张卡的 id，那两张卡在 cards 里但没有 Place（不单独出现在画布上）。
 // 基本元素：Card、Place、Link、Section、Sidenote、Sticker。流程、讲解、Compare 都由它们派生。
 
-export const BOARD_VERSION = 4;
+export const BOARD_VERSION = 5;
 
 // ---------- 版本 ----------
 
@@ -126,30 +126,39 @@ export type End = { card: string; seg?: string; line?: number };
 /** Call 上的变量：a = 调用处，b = 被调函数里的名字（名字不同才有）；ret = 返回值被谁接住 */
 export type Var = { a: string; b?: string; ret?: boolean; custom?: boolean };
 
-type LinkBase = {
+/** 箭头的一端从卡的哪一边进出（没有 = 自动） */
+export type LinkSide = "left" | "right" | "top" | "bottom";
+
+/**
+ * Call 标记：这条箭头是「这一行调用了那个函数」。有 Call 标记的箭头连成调用图（Walkthrough、折叠、调用图标记、变量都看它）。
+ * name / col：点的是出发行的哪个调用；vars = 勾选了的变量（默认一个都不加）；cands = 语法推出来的候选；loop = 出发行在 for / while 里（↺）
+ */
+export type CallMark = { name: string; col: number; vars?: Var[]; cands?: Var[]; loop?: boolean };
+
+/** 箭头的样子：dash = 虚线；width 默认 2；head 默认只有终点有箭头；color 默认灰 */
+export type LinkStyle = { dash?: true; width?: 1 | 2 | 3; head?: { start?: boolean; end?: boolean }; color?: string };
+
+/**
+ * 箭头：只有这一种（第 5 版起）。两端各是整张卡或某一行，一行 / 一张卡可以连出、连进任意多条。
+ * 调用是箭头上的 Call 标记（call），不是另一种线。
+ */
+export type Link = {
   id: string;
   from: End;
   to: End;
-  label?: string; // 用户写的话，浮在线中间
+  label?: string; // 用户写的话，浮在线上
   at?: number; // 标签框沿线的位置 0..1（用户拖过才有；默认在中间）
-  side?: "left" | "right"; // 用户选过起点：从这一行（卡）的哪一端出（没有 = 自动）
+  call?: CallMark;
+  style?: LinkStyle;
+  sides?: { from?: LinkSide; to?: LinkSide }; // 用户选过的进出边
+  lost?: { from?: true; to?: true }; // 这一端连着的行在代码更新后没了：端点退到卡头，画成红色，等用户重连或删掉
 };
-/** 调用：从代码行到被调函数的卡。参与编号、Walkthrough、Tidy、变量 */
-export type CallLink = LinkBase & {
-  kind: "call";
-  vars?: Var[]; // 勾选了的变量；默认一个都不加
-  cands?: Var[]; // 语法推出来的候选变量（点 + 时列出来）
-  loop?: boolean; // 出发行在 for / while 里（↺）
-  call?: { name: string; col: number }; // 点的是这一行的哪个调用
-};
-/** 普通箭头：不编号；可设箭头、虚实、颜色、文字 */
-export type PlainLink = LinkBase & {
-  kind: "plain";
-  arrow?: "none" | "end" | "both"; // 默认 end
-  solid?: boolean; // false = 虚线；默认实线（和 Call link 一样）
-  color?: string; // 默认灰
-};
-export type Link = CallLink | PlainLink;
+
+/** 默认只有终点有箭头 */
+export const headOf = (l: Pick<Link, "style">) => ({ start: !!l.style?.head?.start, end: l.style?.head?.end !== false });
+
+/** 调用图的标记：字母，或一个内置贴纸图标的名字 */
+export type GraphMark = { letter: string } | { icon: string };
 
 // ---------- Section ----------
 
@@ -208,7 +217,7 @@ export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt
 export type Camera = { x: number; y: number; z: number };
 
 export type Board = {
-  version: 4;
+  version: 5;
   id: string;
   name: string;
   cam: Camera;
@@ -222,12 +231,20 @@ export type Board = {
   stickers: Sticker[];
   hideAllComments?: boolean;
   hideNumbers?: boolean;
+  /**
+   * 卡片 id → 在这块白板上的创建顺序（调用图标记的字母按它分配；不跟 cards 的叠放顺序走，Arrange 不会改字母）。
+   * 新卡在下一次修改时由 stampBorn 编号；seq = 下一个号
+   */
+  born?: Record<string, number>;
+  seq?: number;
+  /** 用户改过的调用图标记：键是那张调用图里最早建的卡 */
+  marks?: Record<string, GraphMark>;
 };
 
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number };
 
 export function emptyBoard(id: string, name: string): Board {
-  return { version: BOARD_VERSION, id, name, cam: { x: 80, y: 80, z: 1 }, cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [] };
+  return { version: BOARD_VERSION, id, name, cam: { x: 80, y: 80, z: 1 }, cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0 };
 }
 
 // ---------- 小工具 ----------
@@ -370,20 +387,80 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
 
 // ---------- 迁移 ----------
 
-/** 读进来的白板文件（第 1–4 版）→ 第 4 版 */
+/** 读进来的白板文件（第 1–5 版）→ 第 5 版 */
 export function migrateBoard(raw: any): Board {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
-  if (raw?.version === 4 || raw?.version === 3) {
+  if (raw?.version >= 3 && raw?.version <= 5) {
     const b = raw as Board;
     b.place ??= {};
     b.links ??= [];
     b.sections ??= [];
     b.sidenotes ??= [];
     b.stickers ??= [];
-    return raw.version === 3 ? v3to4(b) : b;
+    if (raw.version === 5) return b;
+    return v4to5(raw.version === 3 ? v3to4(b) : b);
   }
-  return v3to4(v2to3(raw?.version === 2 ? raw : v1to2(raw)));
+  return v4to5(v3to4(v2to3(raw?.version === 2 ? raw : v1to2(raw))));
+}
+
+/**
+ * 第 4 版 → 第 5 版：Call link / Plain link 合成一种箭头。
+ * Call link → 箭头 + Call 标记（调用行、变量、↺ 都留着）；Plain link → 箭头（arrow none/end/both → 两端箭头开关，solid:false → 虚线，颜色留着，粗细按默认 2px）；
+ * 旧的 side（起点从行的哪一端出）→ sides.from。
+ * 创建顺序（born）按旧的叠放顺序编号，但每棵旧 Call 树的卡都排到它的根那里：每张调用图里最早的卡就是旧树的根，
+ * 图之间的先后跟旧字母（按根在 cards 里的先后）一样，迁移后字母不变。
+ */
+function v4to5(b: Board): Board {
+  const old = b.links as any[];
+  const byId = new Map(b.cards.map((c) => [c.id, c]));
+  b.links = old.map((l): Link => {
+    const o: Link = { id: l.id, from: l.from, to: l.to };
+    if (l.label !== undefined) o.label = l.label;
+    if (l.at !== undefined) o.at = l.at;
+    if (l.side) o.sides = { from: l.side };
+    if (l.kind === "call") {
+      const t = byId.get(l.to?.card);
+      const name = l.call?.name ?? (isCode(t) ? t.segments.find((s) => s.symbol)?.symbol?.qual.split(".").pop() ?? "" : "");
+      o.call = { name, col: l.call?.col ?? 0 };
+      if (l.vars?.length) o.call.vars = l.vars;
+      if (l.cands?.length) o.call.cands = l.cands;
+      if (l.loop) o.call.loop = true;
+    } else {
+      const style: LinkStyle = {};
+      if (l.solid === false) style.dash = true;
+      if (l.arrow === "none") style.head = { end: false };
+      else if (l.arrow === "both") style.head = { start: true };
+      if (l.color) style.color = l.color;
+      if (Object.keys(style).length) o.style = style;
+    }
+    return o;
+  });
+  // 旧树：每张卡只认第一条进来的 Call link；根 = 有出去、没有进来的卡
+  const index = new Map(b.cards.map((c, i) => [c.id, i]));
+  const calls = old.filter((l) => l.kind === "call" && index.has(l.from?.card) && index.has(l.to?.card));
+  const parent = new Map<string, string>();
+  const kids = new Map<string, string[]>();
+  for (const l of calls) {
+    if (parent.has(l.to.card) || l.to.card === l.from.card) continue;
+    parent.set(l.to.card, l.from.card);
+    kids.set(l.from.card, [...(kids.get(l.from.card) ?? []), l.to.card]);
+  }
+  const key = new Map<string, [number, number]>(); // 卡 → [排在谁的位置, 树里的先后]
+  for (const r of kids.keys()) {
+    if (parent.has(r)) continue;
+    const at = index.get(r)!;
+    let k = 0;
+    const go = (id: string) => { if (key.has(id)) return; key.set(id, [at, k++]); (kids.get(id) ?? []).forEach(go); };
+    go(r);
+  }
+  const order = b.cards.map((c, i) => ({ id: c.id, k: key.get(c.id) ?? [i, -1] }));
+  order.sort((x, y) => x.k[0] - y.k[0] || x.k[1] - y.k[1]);
+  b.born = {};
+  order.forEach((x, i) => { b.born![x.id] = i; });
+  b.seq = order.length;
+  b.version = BOARD_VERSION;
+  return b;
 }
 
 /**
@@ -398,7 +475,7 @@ function v3to4(b: Board): Board {
     fix(c, b.place[c.id]);
     if (c.kind === "code") for (const m of c.mergedFrom ?? []) fix(m.card, m.place);
   }
-  b.version = BOARD_VERSION;
+  (b as any).version = 4;
   return b;
 }
 
@@ -481,4 +558,4 @@ function v1to2(raw: any): any {
 
 export const varKey = (v: Var) => `${v.ret ? "→" : ""}${v.a}|${v.b ?? ""}`;
 /** 线上显示的文字：名字相同只显示一个；不同显示 a → b；返回值 → logits */
-export const varText = (v: Var) => (v.ret ? `→ ${v.a}` : v.b ? `${v.a} → ${v.b}` : v.a);
+export const varText = (v: Var) => (v.ret ? `return → ${v.a}` : v.b ? `${v.a} → ${v.b}` : v.a);

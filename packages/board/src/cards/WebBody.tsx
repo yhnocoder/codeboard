@@ -24,7 +24,7 @@ function Fav(p: { meta?: WebMeta; url: string; big?: boolean }) {
 }
 
 /** 一张书签：Web 卡的正文，也是 Link List 的 Rich 行 / 悬停预览 */
-export function Bookmark(p: {
+function Bookmark(p: {
   url: string; meta?: WebMeta; title?: string; desc?: string; editId?: string; small?: boolean; drag?: boolean; style?: WebStyle;
   onTitle?: (v: string) => void; onDesc?: (v: string) => void; onRetry?: () => void; busy?: boolean;
 }) {

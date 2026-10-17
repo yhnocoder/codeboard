@@ -3,9 +3,9 @@
 // --iz（地图档 = 1/z，让名字和描边在屏幕上大小不变）：镜头动的时候定住，名字跟着整层一起缩放；停下再一批批换成准确的值。
 // 每一步都改的话，每一步都要把所有名字重新排版（241 张卡每步 ~60ms）
 import { batch, createEffect, createMemo, createSignal } from "solid-js";
-import { createStore } from "solid-js/store";
+import { createStore, unwrap } from "solid-js/store";
 import { cam, camMoving, lod, view, type Lod } from "./camera";
-import { placed, rectOf, state } from "./store";
+import { placed, rectOf, sizes, state } from "./store";
 import { offscreen } from "./cull";
 
 const PER = 12;
@@ -41,10 +41,13 @@ export function trackCardLod() {
     const want = lod(), iz = izWant();
     const { w, h } = view(), z = cam.z;
     const todo: [string, number, boolean][] = [];
+    // 每帧都要给还没换的卡排一次序（换一次档 ~20 帧 × 241 张）：直接读原始对象，不走 store 代理（rAF 里本来就不追踪依赖）
+    const P = unwrap(state.board.place), Z = unwrap(sizes), CL = unwrap(cardLod), CI = unwrap(cardIz), st = settled();
     for (const c of placed()) {
-      const was = lodOf(c.id);
-      if (was === want && (want !== "map" || cardIz[c.id] === iz)) continue;
-      const r = rectOf(c);
+      const was = CL[c.id] ?? st;
+      if (was === want && (want !== "map" || CI[c.id] === iz)) continue;
+      const p = P[c.id], sz = Z[c.id];
+      const r = p ? { x: p.x, y: p.y, w: sz && sz.w > 0 ? sz.w : p.w, h: sz && sz.h > 0 ? sz.h : p.h ?? 120 } : rectOf(c);
       const L = r.x * z + cam.x, T = r.y * z + cam.y, R = L + r.w * z, B = T + r.h * z;
       todo.push([c.id, Math.hypot((L + R) / 2 - w / 2, (T + B) / 2 - h / 2), was === "map" && want !== "map" && offscreen(c.id) && R > 0 && L < w && B > 0 && T < h]);
     }

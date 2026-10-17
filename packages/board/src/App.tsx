@@ -13,13 +13,13 @@ import { SettingsLayer } from "./ui/Settings";
 import { SHORTCUTS, keyText } from "./ui/shortcuts";
 import { GitHubPicker } from "./ui/GitHubPicker";
 import { MenuLayer, DialogLayer, TooltipLayer, openMenu, promptText } from "./ui/Menu";
-import { Editable } from "./ui/Editable";
 import { Icon } from "./ui/icons";
 import { setTool } from "./interact";
-import { send } from "./host";
 import { cardTitle } from "@codeboard/core";
 import * as A from "./actions";
 import { flows, cardById } from "./state/store";
+import { MarkView } from "./cards/Card";
+import { look, traffic, setTraffic } from "./state/look";
 
 export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
@@ -93,7 +93,7 @@ function Toolbar() {
     { icon: "web", label: "Web", tip: "New Web Card", run: () => A.newWeb() },
     { icon: "section", label: "Section", tip: "Draw a Section", run: () => setTool("section") },
     { icon: "link", label: "Arrow", tip: "Select two cards, or pick a card then click another", run: () => {
-      if (sel.cards.length === 2) A.addPlain({ card: sel.cards[0] }, { card: sel.cards[1] });
+      if (sel.cards.length === 2) A.addLink({ card: sel.cards[0] }, { card: sel.cards[1] });
       else if (sel.cards.length === 1) A.startConnect(sel.cards[0]);
       else toast("Select a card first, then click another card");
     } },
@@ -126,6 +126,11 @@ function Toolbar() {
 function Dock() {
   return (
     <div class="over dock"><div class="pill">
+      {/* City 的红绿灯：车流开关，默认红灯（车不动）；绿灯时车沿路开（canvas/Links.tsx 的 Traffic） */}
+      <Show when={look() === "city"}>
+        <button class="ib traffic" aria-label="Moving Cars" aria-pressed={traffic()} data-tip={traffic() ? "Stop Cars" : "Start Cars"} onClick={() => setTraffic(!traffic())} />
+        <span class="sep" />
+      </Show>
       <button class="ib" aria-label="Zoom Out" data-tip="Zoom Out" data-kbd={`${A.K.mod}−`} onClick={() => zoomAt(0.8)}><Icon name="minus" /></button>
       <span class="zoom" onClick={() => zoomAt(1 / camTarget().z)} data-tip="Zoom to 100%" data-kbd={`${A.K.mod}1`}>{Math.round(cam.z * 100)}%</span>
       <button class="ib" aria-label="Zoom In" data-tip="Zoom In" data-kbd={`${A.K.mod}+`} onClick={() => zoomAt(1.25)}><Icon name="plus" /></button>
@@ -143,7 +148,7 @@ function WalkBar() {
   const desc = () => cardById(cur())?.card.desc;
   return (
     <div class="present on"><div class="pill">
-      <span class="pn">{node()?.label}</span>
+      <Show when={node()}><span class="pn"><MarkView g={node()!} /></span></Show>
       <span class="ptitle">{title()}</span>
       <span class="cnt">{w().i + 1} / {w().order.length}</span>
       <button class="ib" aria-label="Previous Step" data-tip="Previous Step" data-kbd="←" disabled={w().i === 0} onClick={() => A.walkTo(w().i - 1)}><Icon name="left" /></button>

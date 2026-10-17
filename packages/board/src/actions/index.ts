@@ -6,6 +6,7 @@ export * from "./flow";
 export * from "./menus";
 export * from "./edit";
 export * from "./links";
+export * from "./nav";
 export * from "./versions";
 export * from "./notes";
 export * from "./misc";

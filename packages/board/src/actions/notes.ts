@@ -1,23 +1,11 @@
 // Sidenote（弹窗、添加、Place on Board、卡变成 Sidenote）和定义预览。
 import { unwrap } from "solid-js/store";
-import {
-  uid, findCard, isCode, cardTitle, segOf, sortSegments, mergeOverlapping, sameVersion, allCodeCards, colsOf,
-  placeChild, besideFree, findFree, bounds, center, contains, canAttach, canExpand, canCompare, removeCards, rebaseSegment, walkOrder, treeOf, descendants, SIB_GAP, GAP,
-  copyText, cardRows, versionLabel, varKey, LANGS, classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type NoteCard, type CompareCard, type Link, type Section, type Sidenote, type Segment, type Place,
-  type WebMeta, type CallSpan, type NewCard, type ExpandResult, type Var, type Rect, type DiffData, type Commit, type SegView, type Anchor, type PeekResult, type KeyAction,
-} from "@codeboard/core";
-import {
-  state, setState, mutate, live, createFresh, isFresh, settleFresh, sel, select, clearSel, lineSel, setLineSel, isSel, flows, cardById, rectOf, sizes, toast, allIds, setShowCollapsed, placeOf, placed,
-  type LineSel,
-} from "../state/store";
-import { camTo, camTarget, ensureVisible, fitRect, fitTop, isVisible, union, viewportCenter, view, toWorld, zoomAt, animate, Spring, reduceMotion, quietHover } from "../state/camera";
-import { notesOf, flash, ping, setEditing, setPopIn, popIn, setWalk, walk, setConnectFrom, setPaletteOpen, toggleShown, setKeysOpen, setHoverVar } from "../state/ui";
-import { openMenu, choose, promptText, type Item } from "../ui/Menu";
-import { openPop, closePop, pops, updatePop, pinPop, type At } from "../state/pop";
-import { send, ask } from "../host";
-import { md, inline } from "../md";
-import { frameOf } from "../state/sections";
+import { uid, findCard, isCode, cardTitle, segOf, removeCards, type Card, type Sidenote, type SegView, type Anchor } from "@codeboard/core";
+import { state, setState, mutate, sel, clearSel, lineSel, cardById, toast } from "../state/store";
+import { quietHover } from "../state/camera";
+import { choose } from "../ui/Menu";
+import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
+import { ask } from "../host";
 import { addCards, requestViews } from "./create";
 import { tune } from "../state/tune";
 import { hostRect, lastPointer, revealCard } from "./common";
@@ -83,7 +71,7 @@ export function updateSidenote(id: string, f: (n: Sidenote) => void) {
 export function deleteSidenote(id: string) {
   mutate((b) => { b.sidenotes = b.sidenotes.filter((n) => n.id !== id); });
 }
-/** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条 Plain link（从原来挂的那一行连出） */
+/** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条箭头（从原来挂的那一行连出） */
 export function placeSidenote(id: string) {
   const n = state.board.sidenotes.find((k) => k.id === id);
   if (!n) return;
@@ -102,7 +90,7 @@ export function placeSidenote(id: string) {
   if (isCode(card) && card.segments[0].src.kind === "free") requestViews(card.segments);
   mutate((b) => {
     b.sidenotes = b.sidenotes.filter((k) => k.id !== id);
-    b.links.push({ id: uid("l"), kind: "plain", from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card: nid } });
+    b.links.push({ id: uid("l"), from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card: nid } });
   });
   closePop();
 }

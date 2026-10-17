@@ -6,7 +6,7 @@ import * as v from "valibot";
 const seg = (id: string): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start: 1, end: 3, text: ["a", "b", "c"], version: { kind: "git", commit: "x" } });
 const e2e = () => JSON.parse(readFileSync(new URL("./fixtures/board-e2e.json", import.meta.url), "utf8"));
 
-/** 每种卡、连线、Section、Sidenote、Sticker 都有的第 3 版白板 */
+/** 每种卡、连线、Section、Sidenote、Sticker 都有的当前版本白板 */
 function full() {
   const b = emptyBoard("b", "All");
   const code = { id: "c", kind: "code" as const, segments: [{ ...seg("s1"), hidden: [[2, 2]] as [number, number][], hl: [1], symbol: { qual: "f", kind: "function" as const } }], hide: { comments: true }, wrap: true, members: { shown: ["A.f"] } };
@@ -21,8 +21,10 @@ function full() {
     { id: "k", kind: "compare", cols: ["p", "q"], swap: true },
   );
   b.place = { c: { x: 1, y: 2, w: 400, h: 90, section: "g", locked: true, collapsed: true }, n: { x: 0, y: 0, w: 200 }, k: { x: 0, y: 0, w: 900 } };
-  b.links.push({ id: "L1", kind: "call", from: { card: "c", seg: "s1", line: 2 }, to: { card: "n" }, vars: [{ a: "x", b: "y" }, { a: "r", ret: true }], loop: true, call: { name: "f", col: 4 } });
-  b.links.push({ id: "L2", kind: "plain", from: { card: "n" }, to: { card: "w" }, arrow: "both", solid: false, color: "#f00", label: "hi", at: 0.3, side: "left" });
+  b.links.push({ id: "L1", from: { card: "c", seg: "s1", line: 2 }, to: { card: "n" }, call: { name: "f", col: 4, vars: [{ a: "x", b: "y" }, { a: "r", ret: true }], loop: true }, lost: { to: true } });
+  b.links.push({ id: "L2", from: { card: "n" }, to: { card: "w" }, style: { dash: true, width: 3, head: { start: true, end: false }, color: "#f00" }, label: "hi", at: 0.3, sides: { from: "left", to: "top" } });
+  b.born = { c: 0, n: 1 }; b.seq = 2;
+  b.marks = { c: { letter: "Q" }, n: { icon: "star" } };
   b.sections.push({ id: "g", title: "G", x: 0, y: 0, w: 10, h: 10, color: "blue", parent: undefined });
   b.sidenotes.push(
     { id: "s1", kind: "code", at: { card: "c", seg: "s1", lines: [1, 2] }, code: { ...seg("x"), src: { kind: "external", root: "/usr/lib" }, version: { kind: "hash", hash: "abcd" } } },
@@ -40,7 +42,7 @@ function full() {
 }
 
 describe("loadBoard", () => {
-  it("accepts every kind of content a v3 board holds, unchanged", () => {
+  it("accepts every kind of content a v5 board holds, unchanged", () => {
     const b = full();
     expect(loadBoard(structuredClone(b))).toEqual(b);
     expect(v.is(BoardSchema, emptyBoard("e", "E"))).toBe(true);
@@ -53,7 +55,7 @@ describe("loadBoard", () => {
     const v1 = loadBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }, { id: "g", type: "group", x: 0, y: 0, w: 9, h: 9, label: "G" }],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
-    expect(v1.version).toBe(4);
+    expect(v1.version).toBe(5);
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });
     const v2 = loadBoard({ version: 2, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, sidenotes: [],
       cards: [{ id: "k", kind: "compare", x: 10, y: 20, w: 900, cols: [col("p"), col("q")] }, { id: "w", kind: "web", x: 0, y: 0, w: 300, url: "https://x.org", pageTitle: "X" }],
@@ -74,6 +76,10 @@ describe("loadBoard", () => {
     expect(() => loadBoard(d)).toThrow(/cards\.1\.kind/);
     const e: any = full(); e.stickers[2].at.on = { link: 3 };
     expect(() => loadBoard(e)).toThrow(/stickers\.2\.at\.on/);
+    const f: any = full(); f.links[1].style.width = 5;
+    expect(() => loadBoard(f)).toThrow(/links\.1\.style\.width/);
+    const g: any = full(); g.links[0].call = { col: 1 };
+    expect(() => loadBoard(g)).toThrow(/links\.0\.call\.name/);
   });
   it("rejects non-boards and newer versions", () => {
     expect(() => loadBoard(null)).toThrow(/Not a board file/);

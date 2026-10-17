@@ -226,6 +226,7 @@ export const WEB: Record<string, () => Promise<void>> = {
     await h.page.locator(".ctx button", { hasText: "View" }).hover(); await h.page.waitForTimeout(250);
     await shot(h, "ll-06b-view");
     // Submenus are currently drawn in the parent menu's coordinate space (old Menu.tsx issue, to be fixed in the menu rewrite); click directly here
+    await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().waitFor({ state: "attached" });
     await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().dispatchEvent("click"); await h.page.waitForTimeout(300);
     await h.page.mouse.move(1300, 860);
     await shot(h, "ll-07-all-rich");

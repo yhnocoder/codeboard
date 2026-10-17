@@ -158,7 +158,7 @@ function callSite(seg: Segment, full: string | null, m: ExpandReq): CallSite | u
   return on.find((c) => c.col + colOff === m.col) ?? on.find((c) => c.name === m.name || c.dispatch === m.name);
 }
 
-/** Call link 的变量候选：类的话用 __init__ 的参数 */
+/** 带 Call 标记的箭头的变量候选：类的话用 __init__ 的参数 */
 async function varsFor(site: CallSite, t: { abs: string; sym: Sym }): Promise<Var[]> {
   const text = t.sym.kind === "class" || !t.sym.params.length ? await readText(t.abs) : null;
   return varCandidates(site, calleeOf(t.sym, text ? analysisOf(langOf(t.abs), text).symbols : []));

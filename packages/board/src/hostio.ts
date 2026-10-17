@@ -25,6 +25,7 @@ export function onHost(m: HostToBoard) {
       setCam(b.cam.x, b.cam.y, b.cam.z);
       markSaved();
       resetHistory();
+      A.resetNav();
       select({});
       break;
     }
