@@ -30,12 +30,15 @@ const Place = obj({ x: num, y: num, w: num, h: opt(num), section: opt(str), lock
 
 const base = { id: str, title: opt(str), desc: opt(str) };
 const WebMeta = obj({ title: opt(str), desc: opt(str), site: opt(str), image: opt(str), icon: opt(str), at: opt(num), failed: opt(bool) });
-const CodeCard: v.GenericSchema = obj({
+const codeEntries = {
   ...base, kind: v.literal("code"), segments: v.array(Segment),
   hide: opt(obj({ comments: opt(bool), docstrings: opt(bool), blank: opt(bool) })), wrap: opt(bool), nobg: opt(bool),
   members: opt(obj({ shown: v.array(str) })),
   mergedFrom: opt(v.array(obj({ card: v.lazy(() => CodeCard), place: Place }))), keepOld: opt(bool),
-});
+};
+const CodeCard: v.GenericSchema = obj(codeEntries);
+/** 代码卡是递归的（mergedFrom），上面只能标成 GenericSchema；它的字段名单独导出给 test/schema-types.ts 和 model.ts 的 CodeCard 对照 */
+export type CodeCardSchemaKeys = keyof typeof codeEntries;
 const Card = v.variant("kind", [
   CodeCard as v.LooseObjectSchema<{ kind: v.LiteralSchema<"code", undefined> }, undefined>,
   obj({ ...base, kind: v.literal("note"), md: str, bg: opt(bool), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool) }),
