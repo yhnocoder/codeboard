@@ -75,8 +75,12 @@ export const V018MD: Record<string, () => Promise<void>> = {
   async v18md() {
     for (const theme of ["warm-ink", "ink-wash", "city"]) {
       const { b } = mdBoard();
+      // 视野外很远的一张：先放纯文字，空闲时补渲染
+      put(b, { id: "far", kind: "note", md: "far **away** $y^2$", bg: true } as NoteCard, 9000, 6000, 300);
       const h = await open({ board: b, light, w: 1400, h: 950, settings: { theme } as any });
       await h.page.waitForTimeout(500);
+      const far = await h.page.evaluate(() => !!document.querySelector('.card[data-id="far"] .nbody strong') && !!document.querySelector('.card[data-id="far"] .katex'));
+      check(`v18md-offview ${theme}`, far, { far });
       const r = await h.page.evaluate(() => {
         const n = document.querySelector('.card[data-id="n1"] .nbody')!;
         const cs = (e: Element | null) => (e ? getComputedStyle(e) : null);

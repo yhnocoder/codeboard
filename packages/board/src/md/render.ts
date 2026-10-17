@@ -39,8 +39,13 @@ const fdoc = {
 /** 一段现成的 HTML 当一个元素插进去 */
 const raw = (html: string) => new FEl("", html) as unknown as HTMLElement;
 
+// KaTeX 和高亮自己生成的 HTML 很大，又是可信的（字都转义过）：先换成占位符，只让 DOMPurify 过其余部分，最后再填回去
+let trusted: string[] = [];
+const trust = (html: string) => `<span data-cbr="${trusted.push(html) - 1}"></span>`;
+const untrust = (html: string, t: string[]) => html.replace(/<span data-cbr="(\d+)"><\/span>/g, (_, i) => t[+i] ?? "");
+
 function tex(src: string, display: boolean) {
-  try { return katex.renderToString(src, { displayMode: display, throwOnError: false, output: "html" }); }
+  try { return trust(katex.renderToString(src, { displayMode: display, throwOnError: false, output: "html" })); }
   catch { return `<code>${esc(src)}</code>`; }
 }
 
@@ -62,7 +67,7 @@ function serializer() {
       const lang = n.attrs.language as string | null;
       // Mermaid：先放源码，挂到页面上以后再换成图（mermaid 用到时才加载）
       if (lang === "mermaid") return raw(`<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>`);
-      return raw(`<pre class="md-code"${lang ? ` data-lang="${escA(lang)}"` : ""}><code>${highlight(n.textContent, lang)}</code></pre>`);
+      return raw(`<pre class="md-code"${lang ? ` data-lang="${escA(lang)}"` : ""}><code>${trust(highlight(n.textContent, lang))}</code></pre>`);
     },
     cardRef: (n) => raw(`<span class="cref" data-cardref="${escA(n.attrs.label)}">${esc(n.attrs.label)}</span>`),
     footnoteReference: (n) => raw(`<sup class="fnref">${esc(String(n.attrs.referenceNumber ?? "?"))}</sup>`),
@@ -89,10 +94,12 @@ export function renderMd(src: string): string {
   return h;
 }
 export const clearMdCache = () => cache.clear();
+export const mdCached = (src: string) => cache.has(src);
 
 function render(src: string): string {
   if (!src.trim()) return "";
   let html: string;
+  const t = (trusted = []);
   try {
     const s = serializer();
     const doc = PMNode.fromJSON(schema!, parseMd(src));
@@ -101,11 +108,17 @@ function render(src: string): string {
     console.warn("markdown render failed", e);
     html = `<p>${esc(src)}</p>`;
   }
-  return typeof window === "undefined" ? html : purify(html);
+  return untrust(typeof window === "undefined" ? html : purify(html), t);
 }
 // 生成的 HTML 只来自 schema（原始 HTML 在解析时已经变成节点或纯文字），再过一遍 DOMPurify 兜底
+// 自己一个实例，配置只设一次：每次都传配置，DOMPurify 每次都要重新解析一遍（setConfig 是整个实例的，别影响贴纸那边）
+let purifier: ReturnType<typeof DOMPurify> | undefined;
 function purify(html: string) {
-  return DOMPurify.sanitize(html, { ADD_ATTR: ["data-href", "data-latex", "data-src", "data-cardref", "data-lang", "data-type", "data-checked", "data-display"] });
+  if (!purifier) {
+    purifier = DOMPurify(window);
+    purifier.setConfig({ ADD_ATTR: ["data-href", "data-latex", "data-src", "data-cardref", "data-lang", "data-type", "data-checked", "data-display", "data-cbr"] });
+  }
+  return purifier.sanitize(html);
 }
 
 /** 单行的说明（代码里的行内备注）：只要行内格式，整段放在一个 span 里 */
