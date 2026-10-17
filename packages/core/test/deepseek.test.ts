@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { cleanCompletion, COMPLETE_SYSTEM, deepseekChatRequest, deepseekComplete, deepseekFimRequest, resetDeepseekFim } from "../src";
+import { cleanCompletion, spaceChatReply, COMPLETE_SYSTEM, deepseekChatRequest, deepseekComplete, deepseekFimRequest, resetDeepseekFim } from "../src";
 
 type Call = { url: string; body: any; headers: Record<string, string>; signal?: AbortSignal };
 // 假的 fetch：按顺序回给定的回答，记下每次请求（不连网）
@@ -51,21 +51,33 @@ describe("DeepSeek completion", () => {
 
   it("falls back to chat when FIM fails", async () => {
     const { f, calls } = fakeFetch([{ status: 400, json: { error: "x" } }, { status: 200, json: { choices: [{ message: { content: "hello" } }] } }]);
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a", "b")).toBe("hello");
+    expect(await deepseekComplete({ key: KEY, fetch: f }, "a ", "b")).toBe("hello");
     expect(calls.map((c) => c.url)).toEqual(["https://api.deepseek.com/beta/completions", "https://api.deepseek.com/chat/completions"]);
+  });
+
+  it("adds the missing space before a chat reply after a word, but not after a space or CJK", async () => {
+    const { f } = fakeFetch([{ status: 400 }, { status: 200, json: { choices: [{ message: { content: "fixed-size blocks." } }] } }]);
+    resetDeepseekFim();
+    const before = "the block manager allocates";
+    const raw = await deepseekComplete({ key: KEY, fetch: f }, before, "");
+    expect(cleanCompletion(raw!, before, "")).toBe(" fixed-size blocks.");
+    expect(spaceChatReply("x", "a ")).toBe("x");
+    expect(spaceChatReply("分配块", "管理器")).toBe("分配块");
+    expect(spaceChatReply("and more", "done.")).toBe(" and more");
+    expect(spaceChatReply(", then", "word")).toBe(", then");
   });
 
   it("remembers a FIM rejection for the session and goes straight to chat", async () => {
     const { f, calls } = fakeFetch([{ status: 400 }, { status: 200, json: { choices: [{ message: { content: "one" } }] } }, { status: 200, json: { choices: [{ message: { content: "two" } }] } }]);
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a", "b")).toBe("one");
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a", "b")).toBe("two");
+    expect(await deepseekComplete({ key: KEY, fetch: f }, "a ", "b")).toBe("one");
+    expect(await deepseekComplete({ key: KEY, fetch: f }, "a ", "b")).toBe("two");
     expect(calls.map((c) => c.url.replace(/^.*\.com/, ""))).toEqual(["/beta/completions", "/chat/completions", "/chat/completions"]);
   });
 
   it("keeps trying FIM after a server error", async () => {
     const { f, calls } = fakeFetch([{ status: 503 }, { status: 503 }, { status: 200, json: { choices: [{ text: "x" }] } }]);
     expect(await deepseekComplete({ key: KEY, fetch: f }, "a", "b")).toBeUndefined();
-    expect(await deepseekComplete({ key: KEY, fetch: f }, "a", "b")).toBe("x");
+    expect(await deepseekComplete({ key: KEY, fetch: f }, "a ", "b")).toBe("x");
     expect(calls[2].url).toMatch(/beta\/completions$/);
   });
 

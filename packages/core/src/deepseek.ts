@@ -1,6 +1,6 @@
 // DeepSeek 的灰字补全（宿主用；密钥只在宿主里，不进白板）。先用 FIM（光标前 + 光标后，直接续写），出错再退回对话接口。
 // fetch 由调用方给（VS Code 里是 Node 自带的；测试里是假的）
-import { COMPLETE_SYSTEM, completePrompt } from "./complete";
+import { COMPLETE_SYSTEM, completePrompt, spaceChatReply } from "./complete";
 
 export interface DeepseekOpts {
   key: string;
@@ -77,7 +77,7 @@ export async function deepseekComplete(o: DeepseekOpts, before: string, after: s
     }
     const chat = await send(deepseekChatRequest(o, before, after));
     const c = chat?.choices?.[0]?.message?.content;
-    return typeof c === "string" ? c : undefined;
+    return typeof c === "string" ? spaceChatReply(c, before) : undefined;
   } catch {
     return undefined;
   } finally {

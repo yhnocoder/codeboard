@@ -1,7 +1,7 @@
 // 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { COMPLETE_SYSTEM, cleanCompletion, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
 import { githubCard, ghQuery } from "./github";
@@ -312,7 +312,7 @@ async function complete(p: BoardPanel, before: string, after: string): Promise<s
   inflight.set(p, ac);
   const raw = ai.complete
     ? await ai.complete(before, after, { signal: ac.signal })
-    : await ai.ask(COMPLETE_SYSTEM, completePrompt(before, after), { signal: ac.signal, maxChars: 600 });
+    : await ai.ask(COMPLETE_SYSTEM, completePrompt(before, after), { signal: ac.signal, maxChars: 600 }).then((r) => r === undefined ? r : spaceChatReply(r, before));
   if (ac.signal.aborted || raw === undefined) return null;
   return cleanCompletion(raw, before, after) || null;
 }

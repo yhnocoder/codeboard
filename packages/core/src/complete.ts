@@ -13,6 +13,11 @@ export function completePrompt(before: string, after: string): string {
   return `<note_before_cursor>\n${b}\n</note_before_cursor>\n<note_after_cursor>\n${a}\n</note_after_cursor>\nText to insert at the cursor:`;
 }
 
+/** 对话模型的回答不带开头的空格：光标前是英文单词或标点结尾、回答以单词开头时补一个（FIM 会接半个单词，不走这里） */
+export function spaceChatReply(raw: string, before: string): string {
+  return /[A-Za-z0-9.,;:!?)\]]$/.test(before) && /^[A-Za-z0-9(`*$[]/.test(raw) ? " " + raw : raw;
+}
+
 /** 清理模型的回答：去掉围栏 / 引号、只留一行、去掉重复光标前已有的字；没用的回 "" */
 export function cleanCompletion(raw: string, before: string, after: string): string {
   let s = raw.replace(/\r/g, "");
