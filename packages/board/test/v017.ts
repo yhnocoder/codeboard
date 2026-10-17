@@ -36,13 +36,13 @@ export const V017: Record<string, () => Promise<void>> = {
     await shot(h, "v17-linked-1");
     await h.page.locator(".pop .cand", { hasText: "LLMEngine.step" }).click(); await h.page.waitForTimeout(500);
     const s1 = await selected(h);
-    const bar = await h.page.locator(".present.navbar.on").count();
+    const bar = await h.page.locator(".navbar").count();
     await h.page.keyboard.press("Control+Alt+Minus"); await h.page.waitForTimeout(400);
     const s2 = await selected(h);
     await h.page.keyboard.press("Control+Alt+Shift+Minus"); await h.page.waitForTimeout(400);
     const s3 = await selected(h);
     const ok = marks.length === 3 && marks.every((m) => m === "A") && badge?.trim() === "← 2" && items.length === 2
-      && s1.join() === step.id && s2.join() === sch.id && s3.join() === step.id && bar === 1;
+      && s1.join() === step.id && s2.join() === sch.id && s3.join() === step.id && bar === 0;
     console.log(ok ? "PASS" : "FAIL", "linked-here", JSON.stringify({ marks, badge, items, s1: s1.join() === step.id, s2: s2.join() === sch.id, s3: s3.join() === step.id, bar }));
     await close(h);
   },
@@ -274,6 +274,73 @@ export const V017: Record<string, () => Promise<void>> = {
     await shot(h, "v17-dragside");
     const ok = onHead && links.length === 2 && links.every((l) => l.sides?.from === "left") && sides.every((x) => x?.startsWith("left|"));
     console.log(ok ? "PASS" : "FAIL", "drag-side", JSON.stringify({ onHead, dot: dot.y, head: [head.y, head.height], sides: links.map((l) => l.sides), drawn: sides }));
+    await close(h);
+  },
+  /** Deep snippet: common indentation hidden, code starts near the left edge, fold lines show the hidden levels (Linda 10-17 03:03) */
+  async v17dedent() {
+    const b = emptyBoard("b1", "dedent");
+    const lm = card("load_model"), s = lm.segments[0];
+    const k = s.text.findIndex((t) => /if k in weight_name/.test(t));
+    s.text = s.text.slice(k, k + 7); s.start += k; s.end = s.start + 6;
+    const plain = card("load_model");
+    put(b, lm, 80, 80, 560); put(b, plain, 80, 360, 560);
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 900, h: 640 });
+    await h.page.waitForTimeout(400);
+    const left = (id: string) => h.page.evaluate((id) => { const c = document.querySelector(`.card[data-id="${id}"]`)!; const l = c.querySelector(".src .l")!; const r = document.createRange(); r.selectNodeContents(l); const tx = [...r.getClientRects()].find((q) => q.width > 0)!; const t = l.textContent!; const ind = t.length - t.trimStart().length; const sp = document.createRange(); sp.setStart(l.firstChild ?? l, 0); return { codeX: Math.round(c.querySelector(".src")!.getBoundingClientRect().left), firstX: Math.round(tx.left), ind, marks: c.querySelectorAll(".dedm").length }; }, id);
+    const a = await left(lm.id), p = await left(plain.id);
+    await shot(h, "v17-dedent");
+    const cw = await h.page.evaluate(() => { const s = document.createElement("span"); s.textContent = "x".repeat(100); document.querySelector(".src")!.appendChild(s); const w = s.getBoundingClientRect().width / 100; s.remove(); return w; });
+    // 第一行 "if k in…" 的字落在离代码左边 ~16px 的地方，而不是 16 个空格之后
+    const firstText = await h.page.evaluate((id) => { const l = document.querySelector(`.card[data-id="${id}"] .src .l`)!; const w = document.createTreeWalker(l, NodeFilter.SHOW_TEXT); let n: Node | null; while ((n = w.nextNode())) { const i = n.textContent!.search(/\S/); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1); return Math.round(r.getBoundingClientRect().left); } } return -1; }, lm.id);
+    const ok = a.marks === 1 && p.marks === 0 && firstText - a.codeX <= 18 && firstText - a.codeX >= 14;
+    console.log(ok ? "PASS" : "FAIL", "dedent", JSON.stringify({ a, p, firstText, cw }));
+    await close(h);
+  },
+  /** ModelRunner(...) links to ModelRunner.__init__ as a call: hand-drawn arrow gets the Call mark, both cards share a graph mark */
+  async v17ctor() {
+    const b = emptyBoard("b1", "ctor");
+    const eng = card("LLMEngine.__init__"), mr = card("ModelRunner.__init__");
+    put(b, eng, 80, 80, 640); put(b, mr, 820, 300, 560);
+    b.cam = { x: 0, y: 0, z: 0.8 };
+    const h = await open({ board: b, light, w: 1500, h: 900 });
+    const ce = h.page.locator(`.card[data-id="${eng.id}"]`);
+    const row = ce.locator(".src .l", { hasText: "self.model_runner = ModelRunner(" });
+    const rb = (await row.boundingBox())!;
+    await h.page.mouse.move(rb.x + 100, rb.y + rb.height / 2); await h.page.waitForTimeout(150);
+    const p = (await ce.locator(".lport.r").boundingBox())!;
+    const tb = (await h.page.locator(`.card[data-id="${mr.id}"]`).boundingBox())!;
+    await h.page.mouse.move(p.x + p.width / 2, p.y + p.height / 2); await h.page.mouse.down();
+    await h.page.mouse.move(tb.x + 300, tb.y + 12, { steps: 10 }); await h.page.mouse.up(); await h.page.waitForTimeout(1300);
+    const l = h.board().links[0] as Link | undefined;
+    const marks = await h.page.locator(".card .chead .step").allTextContents();
+    await shot(h, "v17-ctor");
+    const ok = !!l?.call && l.call.name === "ModelRunner" && marks.length === 2;
+    console.log(ok ? "PASS" : "FAIL", "ctor-call", JSON.stringify({ call: l?.call, marks }));
+    await close(h);
+  },
+  /** File path and version in the heading: drag moves the card, a plain click still opens (Linda 10-17 03:05) */
+  async v17headdrag() {
+    const b = emptyBoard("b1", "headdrag");
+    const a = card("load_model");
+    put(b, a, 120, 120, 560);
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 1100, h: 700 });
+    const ca = h.page.locator(`.card[data-id="${a.id}"]`);
+    const moved: Record<string, number> = {};
+    for (const sel of [".cpath", ".rev"]) {
+      const x0 = h.board().place[a.id].x;
+      const r = (await ca.locator(`.chead ${sel}`).first().boundingBox())!;
+      await h.page.mouse.move(r.x + r.width / 2, r.y + r.height / 2); await h.page.mouse.down();
+      await h.page.mouse.move(r.x + r.width / 2 + 80, r.y + r.height / 2 + 40, { steps: 8 }); await h.page.mouse.up(); await h.page.waitForTimeout(900);
+      moved[sel] = h.board().place[a.id].x - x0;
+    }
+    const menuAfterDrag = await h.page.locator(".pop").count();
+    const r = (await ca.locator(".chead .rev").first().boundingBox())!;
+    await h.page.mouse.click(r.x + r.width / 2, r.y + r.height / 2); await h.page.waitForTimeout(400);
+    const menuOnClick = await h.page.locator(".pop").count();
+    const ok = moved[".cpath"] === 80 && moved[".rev"] === 80 && menuAfterDrag === 0 && menuOnClick > 0;
+    console.log(ok ? "PASS" : "FAIL", "head-drag", JSON.stringify({ moved, menuAfterDrag, menuOnClick }));
     await close(h);
   },
 };

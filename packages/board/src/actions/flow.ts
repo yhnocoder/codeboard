@@ -238,7 +238,8 @@ export function libCallCss() {
 /** 这张卡是不是这个调用的被调函数（拖动时高亮候选） */
 export function calleeMatches(c: Card, call: CallSpan) {
   if (!isCode(c)) return false;
-  return c.segments.some((s) => s.symbol && s.symbol.qual.split(".").pop() === call.name);
+  // ModelRunner(...) 是构造：连到 ModelRunner.__init__ 也算调用
+  return c.segments.some((s) => { if (!s.symbol) return false; const q = s.symbol.qual.split("."); return q[q.length - 1] === call.name || (q[q.length - 1] === "__init__" && q[q.length - 2] === call.name); });
 }
 
 export const allCodeCandidates = (call: CallSpan) => allCodeCards(state.board).filter((k) => calleeMatches(k, call)).map((k) => k.id);

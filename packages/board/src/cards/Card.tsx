@@ -138,20 +138,20 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       </Show>
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
       <Show when={free()} fallback={
-        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openCode(c().id)}>
+        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !act.justDragged() && act.openCode(c().id)}>
           {multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
       </Show>
       <span class="grow" />
-      <Show when={linkedIn()}><button class="linkedin" data-tip="Linked here: show where the arrows come from" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}>← {linkedIn()}</button></Show>
-      {/* 悬停才出现的按钮放在空白一侧：没悬停时版本号紧挨着 ⋯，中间不空一块 */}
+      {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
       <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
+      <Show when={linkedIn()}><button class="linkedin" data-tip="Linked here: show where the arrows come from" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}>← {linkedIn()}</button></Show>
       <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
       <Show when={!free()}>
-        <button class="rev" classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
+        <button class="rev" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}
-          onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
+          onClick={(e) => act.justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
           <Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>
           {mixed() ? "Mixed" : versionLabel(s0()?.version, true)}
           <Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show>

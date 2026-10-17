@@ -35,6 +35,8 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 /** 等宽字体一个字的宽度（概览档画轮廓用；量一次） */
 let cw0 = 0;
+/** 藏了缩进时，代码离左边留的空（画竖线） */
+const DED_PAD = 16;
 function charWidth(el: Element) {
   if (cw0) return cw0;
   const ctx = document.createElement("canvas").getContext("2d")!;
@@ -89,6 +91,22 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   // 241 张卡的灰条在切档那一帧里一起建要好几十 ms
   const [warm, setWarm] = createSignal(false);
   onMount(() => whenIdle(() => setWarm(true)));
+  /**
+   * 片段整体缩得很深（方法里一段 for 循环）：把所有行共有的缩进藏起来，代码靠左；左边留几根细竖线表示藏了几层。
+   * 只用 text-indent 往左挪，文字本身不动：列号、调用、变量高亮照旧
+   */
+  const ded = createMemo(() => {
+    let m = Infinity;
+    for (const r of rows()) {
+      if (r.t !== "line") continue;
+      const s = segById(r.seg);
+      const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ");
+      if (!t.trim()) continue;
+      m = Math.min(m, t.length - t.trimStart().length);
+      if (m < 2) return 0;
+    }
+    return m === Infinity ? 0 : m;
+  });
   const overviewMask = createMemo(() => {
     if ((!warm() && lod() !== "overview") || !srcEl) return undefined;
     // 只用已经量好的行位置（ys，相对 .code），不在这里读 DOM：切到概览档时 241 张卡挨个读会让浏览器每张卡排一次版
@@ -101,9 +119,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ").trimEnd();
       const ind = t.length - t.trimStart().length;
       if (t.length === ind) return;
+      const sh = ded() ? DED_PAD - ded() * cw : 0;
       img.push(cmtLine(r) ? "linear-gradient(var(--bar-c), var(--bar-c))" : "linear-gradient(var(--bar), var(--bar))");
       size.push(`${((t.length - ind) * cw).toFixed(1)}px 10px`);
-      pos.push(`${(54 + ind * cw).toFixed(1)}px ${y[i].y + 5}px`);
+      pos.push(`${(54 + sh + ind * cw).toFixed(1)}px ${y[i].y + 5}px`);
     });
     return img.length ? { img: img.join(","), size: size.join(","), pos: pos.join(",") } : { img: undefined, size: undefined, pos: undefined };
   });
@@ -397,7 +416,8 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         </For>
         </div>
         <Show when={overviewMask()}>{(m) => <i class="ovm" style={{ "background-image": m().img, "background-size": m().size, "background-position": m().pos }} />}</Show>
-        <div ref={srcEl} class="src" onPointerDown={(e) => { clearTimeout(peekTimer); onCodeDown(e); }} onContextMenu={onCtx} onPointerMove={onMove}>
+        <Show when={ded()}><i class="dedm" style={{ "--lv": Math.min(4, Math.max(1, Math.round(ded() / 4))) }} data-tip={`${ded()} spaces of indentation hidden`} /></Show>
+        <div ref={srcEl} class="src" classList={{ ded: !!ded() }} style={{ "--ded": ded() }} onPointerDown={(e) => { clearTimeout(peekTimer); onCodeDown(e); }} onContextMenu={onCtx} onPointerMove={onMove}>
           <For each={rows()}>
             {(r, i) => (
               <Switch>

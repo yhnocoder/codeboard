@@ -50,7 +50,6 @@ export function App() {
       <Show when={!walk()}><Toolbar /></Show>
       <Dock />
       <Show when={walk()}><WalkBar /></Show>
-      <Show when={!walk()}><NavBar /></Show>
       <Show when={keysOpen()}><Keys /></Show>
       <Popovers />
       <Show when={A.stickerPick()}><StickerPicker /></Show>
@@ -158,26 +157,6 @@ function WalkBar() {
       <button class="ib" aria-label="Next Step" data-tip="Next Step" data-kbd="→" disabled={w().i === w().order.length - 1} onClick={() => A.walkTo(w().i + 1)}><Icon name="right" /></button>
       <button class="ib" aria-label="Exit Walkthrough" data-tip="Exit Walkthrough" data-kbd="Esc" onClick={() => A.exitWalk()}><Icon name="close" /></button>
       <Show when={desc()}><div class="pdesc" innerHTML={A.mdBlock(desc()!)} /></Show>
-    </div></div>
-  );
-}
-
-/** 跳转（Go to、Linked here）之后在顶上显示一会儿：◀ Back · Forward ▶（⌃- / ⌃⇧-） */
-function NavBar() {
-  const [show, setShow] = createSignal(false);
-  let t: number | undefined;
-  createEffect(on(A.navState, (n) => {
-    clearTimeout(t);
-    const any = n.back > 0 || n.fwd > 0;
-    setShow(any && n.at > 0);
-    if (any) t = window.setTimeout(() => setShow(false), 6000);
-  }, { defer: true }));
-  onCleanup(() => clearTimeout(t));
-  const mac = () => state.host.isMac;
-  return (
-    <div class="present navbar" classList={{ on: show() }}><div class="pill">
-      <button class="tlink" disabled={!A.navState().back} data-tip="Back" data-kbd={mac() ? "⌃-" : "Ctrl+Alt+-"} onClick={() => A.navBack()}>◀ Back</button>
-      <button class="tlink" disabled={!A.navState().fwd} data-tip="Forward" data-kbd={mac() ? "⌃⇧-" : "Ctrl+Alt+Shift+-"} onClick={() => A.navForward()}>Forward ▶</button>
     </div></div>
   );
 }

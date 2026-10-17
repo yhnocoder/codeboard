@@ -184,6 +184,13 @@ input, textarea { font: inherit; color: var(--ink); }
 .rowbg.dropline { background: var(--hi); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 28%, transparent); } 100% { background: var(--row); } }
 .src { margin: 0 0 0 54px; padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
+.src { tab-size: 4; }
+/* 藏起来的公共缩进：代码往左挪，留 16px 画几根细竖线（一根 = 一层，最多 4 根） */
+.src.ded .l { text-indent: calc(16px - var(--ded) * 1ch); }
+.dedm { position: absolute; left: 55px; top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; background: repeating-linear-gradient(90deg, var(--hair) 0 1px, transparent 1px 3px); border-radius: 1px; }
+.dedm::before { content: ""; position: absolute; inset: 0 -4px; } /* 悬停热区宽一点，好看到提示 */
+.dedm:hover { background: repeating-linear-gradient(90deg, var(--ink-3) 0 1px, transparent 1px 3px); }
+.card.lo-ov .dedm { visibility: hidden; }
 .chrome .src, .chrome .src * { user-select: text; -webkit-user-select: text; cursor: text; }
 .src .l { height: 20px; box-shadow: var(--l-sh, none); } /* --l-sh：Bamboo 每根竹简下面的缝（主题只换变量，不加匹配代码行的规则） */
 .src .l.drop { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
@@ -885,3 +892,5 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* Copy Code：只有图标，悬停 / 选中卡时出现 */
 .chead .ib.cpy { opacity: 0; transition: opacity calc(var(--t) * 120ms); }
 .card:hover .chead .ib.cpy, .card.sel .chead .ib.cpy, .chead .ib.cpy:focus-visible { opacity: 1; }
+.cbody.wrap .src.ded .l { text-indent: 0; } /* 自动换行时不藏缩进：换行的续行会对不齐 */
+.cbody.wrap .dedm { display: none; }

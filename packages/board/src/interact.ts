@@ -66,7 +66,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const t = e.target as HTMLElement;
   if (e.button === 1 || (e.button === 0 && spaceDown())) return startPan(e);
   if (e.button !== 0) return;
-  if (t.closest("[contenteditable], input, textarea, button, .call:not([data-p]), .no, .grip, .hw, a.lnk, .lport, .eport")) return; // library 调用（data-p）当普通文字
+  if (t.closest("[contenteditable], input, textarea, button:not([data-dragclick]), .call:not([data-p]), .no, .grip, .hw, a.lnk, .lport, .eport")) return; // library 调用（data-p）当普通文字
   if (connectFrom()) return finishConnect(e, id);
   if (A.picking()) { e.preventDefault(); e.stopPropagation(); const cb = A.takePick(); const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null; cb?.(colEl?.dataset.col ?? id); return; }
   const f = cardById(id);
@@ -108,6 +108,9 @@ export function cardPointerDown(e: PointerEvent, id: string) {
 const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };
 
 /** onClick：按下去没拖动就松手时调用 */
+/** 卡头上能点也能拖的东西（文件路径、版本号）：刚拖完松手时浏览器还会补一个 click，这时不算点 */
+let dragEndAt = -1e9;
+export const justDragged = () => performance.now() - dragEndAt < 250;
 function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
   if (!ids.length) return onClick?.();
@@ -179,6 +182,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     const drop = dropTarget();
     setDropTarget(null);
     if (!moved) { end(); onClick?.(); return; }
+    dragEndAt = performance.now();
     if (drop?.kind === "merge" && drop.armed) {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
       end();
