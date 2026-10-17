@@ -24,6 +24,7 @@ export function onHost(m: HostToBoard) {
         setState("views", m.views);
         setState("stale", m.stale);
         setState("board", reconcile(b));
+        A.resetShownViews();
         setShared(reconcile({}));
         setState("loaded", true);
 
@@ -110,7 +111,7 @@ export function onHost(m: HostToBoard) {
     case "run": A.applyRunMsg(m.apply); break;
     case "variants": A.applyVariantSync(m.cards); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
-    case "shared": syncShared(m.cards, m.views); break;
+    case "shared": if (m.views) A.sharedShown(m.cards.map((sc) => sc.card)); syncShared(m.cards, m.views); break;
     case "sharedInfo": setShared(reconcile(m.cards)); break;
     case "sharedGone": {
       const n = m.cards.filter((id) => findCard(state.board, id)).length;

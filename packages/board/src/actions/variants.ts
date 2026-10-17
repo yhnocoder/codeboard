@@ -1,11 +1,11 @@
 // 我的改动（线框 07）：卡上的 Variant 标签页、Add Variant 菜单、对比基准、三方对照、合进上游后转回普通卡、「只在这个 Variant」的 Sidenote。
 // 切换只在白板里换段和展示数据（宿主事先把每个 Variant 的代码和高亮都给了），一帧之内完成。
-import { batch, createSignal } from "solid-js";
+import { batch, createEffect, createRoot, createSignal, untrack } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import {
   activeOf, addVariant as addV, dropVariants, findCard, isCode, isMine, removeVariant as removeV, segsOf, setVariantSegs, switchVariant as switchV,
   upstreamSegs, variantMarks, variantTitle, viewKey, UPSTREAM,
-  type AddVariantFrom, type VariantSources, type CodeCard, type Segment, type SegView, type VariantMarks, type VariantSync,
+  type AddVariantFrom, type VariantSources, type Card, type CodeCard, type Segment, type SegView, type VariantMarks, type VariantSync,
 } from "@codeboard/core";
 import { state, setState, mutate, sync, cardById, toast } from "../state/store";
 import { ask } from "../host";
@@ -23,27 +23,63 @@ const code = (id: string) => { const c = cardById(id)?.card; return isCode(c) ? 
 
 // ---------- 切换 ----------
 
-/** 切到一个 Variant：展示数据先换（当前的存到 viewKey 下，目标的拿出来），再换段（Link、Sidenote 行号跟过去） */
+/**
+ * 段 id → views[段 id] 里现在放的是哪个 Variant 的展示数据。卡上显示的 Variant 变了（切换、撤销 / 重做、别的白板改了共享卡）
+ * 就按它把展示数据换过来：现在的存到 viewKey(段, 原来的) 下，目标的从 viewKey(段, 目标) 拿出来
+ */
+const shownView = new Map<string, string>();
+/** 白板刚读进来：views[段] 就是各卡显示着的那个 Variant 的 */
+export function resetShownViews() {
+  shownView.clear();
+  for (const c of state.board.cards) if (c.kind === "code" && c.variants?.length) for (const s of c.segments) shownView.set(s.id, activeOf(c));
+}
+/** 别的白板改了共享卡：宿主按那张卡显示的 Variant 算好了展示数据 */
+export function sharedShown(cards: Card[]) {
+  for (const c of cards) if (c.kind === "code") for (const s of c.segments) { if (c.variants?.length) shownView.set(s.id, activeOf(c)); else shownView.delete(s.id); }
+}
+/** 让 views[段] 对上卡上显示的 Variant（同一帧里换，不等宿主）；没有存着的就先显示纯文本，再问宿主 */
+export function ensureViews(c: CodeCard) {
+  const act = activeOf(c);
+  const put: Record<string, SegView | undefined> = {};
+  const missing: Segment[] = [];
+  for (const s of c.segments) {
+    const had = shownView.get(s.id);
+    if (had === undefined) { shownView.set(s.id, act); continue; }
+    if (had === act) continue;
+    // 整个对象换掉（setState 给路径赋对象是合并：两个键指着同一个对象时会把另一个也改了）
+    const now = state.views[s.id], next = state.views[viewKey(s.id, act)];
+    if (now) put[viewKey(s.id, had)] = unwrap(now);
+    if (next) { put[s.id] = unwrap(next); put[viewKey(s.id, act)] = undefined; }
+    else { put[s.id] = undefined; missing.push({ ...unwrap(s), id: viewKey(s.id, act) }); }
+    shownView.set(s.id, act);
+  }
+  if (Object.keys(put).length) setState("views", put as Record<string, SegView>);
+  if (missing.length) void ask("views", { segs: structuredClone(missing) }).then(absorbViews).catch(() => {});
+}
+/** 宿主给的 Variant 展示数据（键 viewKey(段, Variant)）：那个 Variant 正显示着就直接放到 views[段] */
+export function absorbViews(v: Record<string, SegView>) {
+  const put: Record<string, SegView | undefined> = {};
+  for (const [k, view] of Object.entries(v)) {
+    const at = k.lastIndexOf("@");
+    const sid = at > 0 ? k.slice(0, at) : k, vid = at > 0 ? k.slice(at + 1) : "";
+    if (vid && shownView.get(sid) === vid) put[sid] = view; else put[k] = view;
+  }
+  setState("views", put as Record<string, SegView>);
+}
+// 撤销 / 重做、同步都可能换掉显示的 Variant：盯着每张有 Variant 的卡的 active
+createRoot(() => createEffect(() => {
+  for (const c of state.board.cards) if (c.kind === "code" && c.variants?.length) { void c.active; untrack(() => ensureViews(c)); }
+}));
+
+/** 切到一个 Variant：换段（Link、Sidenote 行号跟过去），同一批里换展示数据 */
 export function switchVariant(id: string, vid: string) {
   const c = code(id);
   if (!c?.variants || activeOf(c) === vid) return;
-  const cur = activeOf(c);
-  const target = segsOf(c, vid) ?? [];
-  const missing: Segment[] = [];
-  // 整个对象换掉（setState 给路径赋对象是合并：两个键指着同一个对象时会把另一个也改了）
-  const put: Record<string, SegView | undefined> = {};
-  for (const s of c.segments) {
-    const now = state.views[s.id], next = state.views[viewKey(s.id, vid)];
-    if (now) put[viewKey(s.id, cur)] = unwrap(now);
-    if (next) { put[s.id] = unwrap(next); put[viewKey(s.id, vid)] = undefined; }
-    else { const t = target.find((x) => x.id === s.id); if (t) missing.push(t); }
-  }
   batch(() => {
-    setState("views", put as Record<string, SegView>);
     mutate((b) => { switchV(b, id, vid); });
+    const k = code(id);
+    if (k) ensureViews(k);
   });
-  // 宿主还没给过（复制来的卡、刚同步来的）：先显示纯文本，展示数据到了再换
-  if (missing.length) void ask("views", { segs: structuredClone(unwrap(missing)) }).then((v) => setState("views", v)).catch(() => {});
 }
 
 // ---------- 添加 ----------
@@ -83,6 +119,8 @@ export async function addVariant(id: string, from: AddVariantFrom) {
   catch (e) { return void toast((e as Error).message); }
   if (!nv || !code(id)) return;
   const vid = `v${Date.now().toString(36)}`;
+  const cur = code(id)!;
+  for (const s of cur.segments) shownView.set(s.id, activeOf(cur));
   batch(() => {
     setState("views", Object.fromEntries(nv.segs.flatMap((s) => (nv.views[s.id] ? [[viewKey(s.id, vid), nv.views[s.id]]] : []))));
     mutate((b) => addV(b, id, { id: vid, name: nv.name, from: nv.from, segs: nv.segs }));
@@ -112,6 +150,7 @@ export function removeVariant(id: string, vid: string) {
   const c = code(id);
   if (!c) return;
   if (activeOf(c) === vid) switchVariant(id, UPSTREAM);
+  if ((c.variants?.length ?? 0) <= 2) for (const s of c.segments) shownView.delete(s.id); // 只剩上游：变回普通卡
   mutate((b) => removeV(b, id, vid));
   if (vbase[id] === vid) setVbase(id, undefined as any);
 }
@@ -119,6 +158,7 @@ async function removeAll(id: string) {
   const i = await choose("Remove all variants?", ["Remove", "Cancel"], { text: "The card goes back to the upstream code. Variant notes are removed too." });
   if (i !== 0) return;
   if (code(id) && activeOf(code(id)!) !== UPSTREAM) switchVariant(id, UPSTREAM);
+  for (const s of code(id)?.segments ?? []) shownView.delete(s.id);
   mutate((b) => dropVariants(b, id));
 }
 
@@ -182,7 +222,7 @@ export function applyVariantSync(cards: Record<string, VariantSync>) {
       const c = code(id);
       if (!c?.variants) continue;
       if (r.latest || r.behind) setVlive(id, { latest: r.latest, behind: r.behind });
-      if (r.views) setState("views", r.views);
+      if (r.views) absorbViews(r.views);
       const segs = r.segs;
       if (segs && Object.keys(segs).length) sync((b) => { for (const [vid, ss] of Object.entries(segs)) setVariantSegs(b, id, vid, ss); });
     }
@@ -191,23 +231,20 @@ export function applyVariantSync(cards: Record<string, VariantSync>) {
     const c = code(id);
     if (!c?.variants) continue;
     for (const vid of r.rebased ?? []) { const v = c.variants.find((x) => x.id === vid); if (v) toast(`${v.name} was rebased. Variant re-anchored by function name.`); }
-    for (const [vid, at] of Object.entries(r.merged ?? {})) {
+    for (const [vid, m] of Object.entries(r.merged ?? {})) {
       const v = c.variants.find((x) => x.id === vid);
-      const k = `${id}:${vid}:${at}`;
+      const k = `${id}:${vid}:${m.tip}`;
       if (!v || asked.has(k)) continue;
       asked.add(k);
-      setMerged(id, vid, at);
-      toast(`${v.name} was merged into ${at.split(" ")[0]}. Turn this card back into a regular upstream card?`, [
-        { label: "Convert", run: () => convertMerged(id) },
-        { label: "Keep Variants", run: () => keepMerged(id, vid, at) },
-      ], 12000);
+      setMerged(id, vid, m.into, m.tip);
+      mergedPrompt(id);
     }
   }
 }
 
 /** 合进上游的 Variant（卡头的提示点，Convert / Keep Variants） */
-export const [merged, setMergedSig] = createSignal<Record<string, { vid: string; at: string }>>({});
-const setMerged = (id: string, vid: string, at: string) => setMergedSig((m) => ({ ...m, [id]: { vid, at } }));
+export const [merged, setMergedSig] = createSignal<Record<string, { vid: string; into: string; tip: string }>>({});
+const setMerged = (id: string, vid: string, into: string, tip: string) => setMergedSig((m) => ({ ...m, [id]: { vid, into, tip } }));
 
 /** Convert：变回普通卡，钉在上游最新（合进去的改动就在里面） */
 export function convertMerged(id: string) {
@@ -217,23 +254,24 @@ export function convertMerged(id: string) {
   batch(() => {
     if (activeOf(c) !== UPSTREAM) switchVariant(id, UPSTREAM);
     if (latest) setState("views", Object.fromEntries(latest.segs.flatMap((s) => (latest.views[s.id] ? [[s.id, structuredClone(unwrap(latest.views[s.id]))]] : []))));
+    for (const s of c.segments) shownView.delete(s.id);
     mutate((b) => dropVariants(b, id, latest ? structuredClone(unwrap(latest.segs)) : undefined));
     setMergedSig((m) => { const n = { ...m }; delete n[id]; return n; });
   });
   for (const s of latest?.segs ?? []) setState("stale", s.id, { state: "ok" });
   toast(latest ? `Now a regular card pinned to ${latest.label}` : "Now a regular card");
 }
-export function keepMerged(id: string, vid: string, at: string) {
-  mutate((b) => { const c = findCard(b, id)?.card as CodeCard | undefined; const v = c?.variants?.find((x) => x.id === vid); if (v) v.merged = at; });
+export function keepMerged(id: string, vid: string, tip: string) {
+  mutate((b) => { const c = findCard(b, id)?.card as CodeCard | undefined; const v = c?.variants?.find((x) => x.id === vid); if (v) v.merged = tip; });
   setMergedSig((m) => { const n = { ...m }; delete n[id]; return n; });
 }
 export function mergedPrompt(id: string) {
   const m = merged()[id];
   const v = m && code(id)?.variants?.find((x) => x.id === m.vid);
   if (!m || !v) return;
-  toast(`${v.name} was merged into ${m.at.split(" ")[0]}. Turn this card back into a regular upstream card?`, [
+  toast(`${v.name} was merged into ${m.into.split(" ")[0]}. Turn this card back into a regular upstream card?`, [
     { label: "Convert", run: () => convertMerged(id) },
-    { label: "Keep Variants", run: () => keepMerged(id, m.vid, m.at) },
+    { label: "Keep Variants", run: () => keepMerged(id, m.vid, m.tip) },
   ], 12000);
 }
 

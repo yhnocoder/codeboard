@@ -120,6 +120,11 @@ async function variants(res: Record<string, unknown>) {
   const back = h.board().links.find((l) => l.id === "l1")!.from.line === callLine && h.board().sidenotes.find((n) => n.id === "n1")!.at.lines?.[0] === ret;
   res.back = { back, link: h.board().links.find((l) => l.id === "l1")!.from.line, note: h.board().sidenotes.find((n) => n.id === "n1")!.at.lines, callLine, ret };
 
+  // 撤销切换：段和高亮一起回去（展示数据跟着显示的 Variant 走）
+  await card.locator(".vtab", { hasText: "vllm-exp" }).click(); await wait(h, 400);
+  await page.locator("#board").click({ position: { x: 20, y: 880 } }); await page.keyboard.press("Meta+z"); await wait(h, 500);
+  const undo = { tab: await card.locator(".vtab.on").textContent(), src: /keep order/.test((await card.locator(".src").textContent()) ?? "") };
+  res.undo = undo;
   // 4. 回到 worktree 那个；宿主送来上游最新：对比基准选 Upstream Latest
   await card.locator(".vtab", { hasText: "vllm-exp" }).click(); await wait(h, 1100);
   latest = edit(s0, "latest");
@@ -158,7 +163,7 @@ async function variants(res: Record<string, unknown>) {
   res.vOnly = { vOnly, hidden, shownAgain };
 
   // 7. 合进上游：提示转回普通卡，Convert
-  await h.post({ type: "variants", cards: { [sch.id]: { merged: { [sc().active!]: "main 4c1d0e9" }, latest: { label: "main 4c1d0e9", segs: [latest], views: { [latest.id]: plainView(latest) } } } } }); await wait(h, 500);
+  await h.post({ type: "variants", cards: { [sch.id]: { merged: { [sc().active!]: { into: "main 4c1d0e9", tip: "77aa12bcd" } }, latest: { label: "main 4c1d0e9", segs: [latest], views: { [latest.id]: plainView(latest) } } } } }); await wait(h, 500);
   const toast = await page.locator(".toast").textContent().catch(() => "");
   res.toast = toast;
   await shotPr(h, "variants-5-merged");
@@ -170,7 +175,7 @@ async function variants(res: Record<string, unknown>) {
 
   const ok = listed && tabs.length === 2 && /Upstream · bb823b3/.test(tabs[0]) && /vllm-exp · worktree · exp-overlap/.test(tabs[1]) && mine === 1 && vmk.includes("~") && vmk.includes("+") && followed
     && /1 changed · 1 added/.test(summary ?? "") && note === "block_N=64 · num_stages=3 → 131 TFLOPS"
-    && nTabs === 3 && t.ok && t.ms < 40 && back
+    && nTabs === 3 && /Upstream/.test(undo.tab ?? "") && !undo.src && t.ok && t.ms < 40 && back
     && baseItems.some((x) => /Upstream Latest · main 4c1d0e9/.test(x)) && /Upstream latest main 4c1d0e9/.test(baseLabel ?? "") && behind === "3 behind"
     && cols.length === 3 && /Base/.test(cols[0]) && /Mine/.test(cols[1]) && /Upstream latest/.test(cols[2]) && changedRows >= 1 && theirs >= 1 && both === 3 && /^1 line changed on both sides/.test(head3 ?? "") && /scheduled_seqs = \[\]/.test(baseRow ?? "")
     && vOnly && hidden && shownAgain

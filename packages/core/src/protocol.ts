@@ -264,18 +264,18 @@ export type BoardToHost =
 export type AddVariantFrom = Exclude<VariantFrom, { kind: "upstream" | "file" | "pr" }> | { kind: "file"; abs?: string } | { kind: "pr"; num: number };
 /** 同一仓库的其他 worktree（git worktree list，不含这段代码所在的那个）；branches = 本地分支；pr = 能不能加 GitHub PR（origin 在 GitHub 上） */
 export type VariantSources = { worktrees: { dir: string; branch?: string; label: string; dirty?: boolean }[]; branches: string[]; current?: string; pr?: string };
-/** 宿主建好的 Variant（段 id 和请求里的一一对应；views 按段 id） */
+/** 宿主建好的 Variant（段 id 和请求里的一一对应；views 按段 id）。refresh 时的 VariantSync.views 一律按 viewKey(段, Variant) */
 export type NewVariant = { name: string; from: VariantFrom; segs: Segment[]; views: Record<string, SegView> };
 /**
  * 一张卡的 Variant 状态。segs：变了的 Variant 的新段（Variant id → 段）；views：它们的展示数据（键 viewKey(段, Variant)）；
- * rebased：分支 / worktree 不是快进（rebase、force push），按函数名重新定位了；merged：合进了上游（Variant id → 合进的版本，如 main 4c1d0e9）；
+ * rebased：分支 / worktree 不是快进（rebase、force push），按函数名重新定位了；merged：合进了上游（Variant id → 合进的版本 into，如 main 4c1d0e9，和合进去的 commit tip）；
  * behind：分支落后上游几个 commit；latest：上游最新的代码（对比基准、三方对照用；label 如 main 4c1d0e9）
  */
 export type VariantSync = {
   segs?: Record<string, Segment[]>;
   views?: Record<string, SegView>;
   rebased?: string[];
-  merged?: Record<string, string>;
+  merged?: Record<string, { into: string; tip: string }>;
   behind?: Record<string, number>;
   latest?: { label: string; segs: Segment[]; views: Record<string, SegView> };
 };

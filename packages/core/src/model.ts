@@ -90,7 +90,7 @@ export type VariantFrom =
   | { kind: "pr"; owner: string; name: string; num: number; branch?: string }; // GitHub Pull Request（跟着 PR 的 head）
 /**
  * 一个 Variant：name = 标签上的名字；note = 一行说明（参数、性能数字）；segs = 不是当前显示的时候它的段；
- * merged = 已经提示过「合进上游」、用户选了 Keep Variants：合进的那个版本的标签，同一次合入不再提示
+ * merged = 已经提示过「合进上游」、用户选了 Keep Variants：合进去的 commit（分支 / PR 的 head），同一次合入不再提示
  */
 export type Variant = { id: string; name: string; from: VariantFrom; note?: string; segs?: Segment[]; merged?: string };
 

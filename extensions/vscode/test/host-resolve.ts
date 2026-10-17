@@ -469,7 +469,7 @@ void (async () => {
     // 在另一个 worktree 里保存（不提交）
     fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n").replace("return out", "return out  # tuned"));
     r = (await syncVariants(b, sent))[c.id];
-    check(r?.segs?.vw?.[0].text.some((l) => l.includes("# tuned")) && (r.segs.vw[0].version as { uncommitted?: boolean }).uncommitted === true && !!r.views?.[seg.id], "Saving in the other worktree refreshes that variant (shown → views by segment id)", r);
+    check(r?.segs?.vw?.[0].text.some((l) => l.includes("# tuned")) && (r.segs.vw[0].version as { uncommitted?: boolean }).uncommitted === true && !!r.views?.[`${seg.id}@vw`], "Saving in the other worktree refreshes that variant (views keyed by variant)", r);
     fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n"));
     await syncVariants(b, sent);
     // main 加了一个 commit（函数前面多了几行），分支 rebase 上去：按函数名重新定位，提示 rebase；落后 0
@@ -490,7 +490,7 @@ void (async () => {
     forgetHeads();
     r = (await syncVariants(b, sent))[c.id];
     const tip = git(R, "rev-parse", "HEAD");
-    check(r?.merged?.vb === `main ${tip.slice(0, 7)}` && r.merged.vw === `main ${tip.slice(0, 7)}` && tip !== main2, "Merged into main: prompt to turn back into a normal card", r);
+    check(r?.merged?.vb?.into === `main ${tip.slice(0, 7)}` && r.merged.vw?.tip === tip && tip !== main2, "Merged into main: prompt to turn back into a normal card", r);
     // 上游 main 上这段变了：有 Variant 的卡的新版本提示（HEAD 是什么无所谓）
     const st2 = await staleFor(ss.segs, ss.up);
     check(st2[seg.id]?.state === "changed" && (st2[seg.id] as { head: string }).head === `main ${tip.slice(0, 7)}`, "Upstream new version: changed on main", st2[seg.id]);

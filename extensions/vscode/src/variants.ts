@@ -2,7 +2,7 @@
 // 按函数名在那里重新找到这段（不靠行号：rebase、改了上面的代码都找得到），以及刷新：代码变了、rebase 了、合进上游了、上游最新。
 import * as path from "node:path";
 import {
-  activeOf, fingerprint, isCode, locateSeg, sameLines, segsOf, upstreamSegs, viewKey, UPSTREAM,
+  fingerprint, isCode, locateSeg, sameLines, segsOf, upstreamSegs, viewKey, UPSTREAM,
   type AddVariantFrom, type Board, type CodeCard, type NewVariant, type Segment, type Source, type VariantFrom, type VariantSources, type VariantSync, type Version,
 } from "@codeboard/core";
 import { analysisOf } from "./analysis";
@@ -180,8 +180,8 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
     }
     if (changed) {
       (r.segs ??= {})[v.id] = fresh;
-      if (v.id !== activeOf(c)) views.push(...fresh.map((s) => ({ ...s, id: viewKey(s.id, v.id) })));
-      else views.push(...fresh);
+      // 一律按 viewKey 给：白板那边哪个 Variant 在显示由白板自己定（这边的白板副本可能还没收到切换）
+      views.push(...fresh.map((s) => ({ ...s, id: viewKey(s.id, v.id) })));
       // 分支 / worktree 的 commit 换了、又不是快进：rebase 过（force push），上面已经按函数名重新找过了
       const old = tipOf(cur[0]), now = tipOf(fresh[0]);
       if (repo && old && now && old !== now && (v.from.kind === "ref" || v.from.kind === "wt") && !(await isAncestor(repo.root, old, now))) (r.rebased ??= []).push(v.id);
@@ -190,7 +190,7 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
     if (repo && upSha && pinned && (v.from.kind === "ref" && !/^[0-9a-f]{7,40}$/.test(v.from.ref) || v.from.kind === "wt")) {
       tip ??= tipOf(fresh[0]);
       if (tip && tip !== pinned && !(await isAncestor(repo.root, tip, pinned))) {
-        if (await isAncestor(repo.root, tip, upSha)) { if (v.merged !== upLabel) (r.merged ??= {})[v.id] = upLabel; }
+        if (await isAncestor(repo.root, tip, upSha)) { if (v.merged !== tip) (r.merged ??= {})[v.id] = { into: upLabel, tip }; }
         else {
           const n = Number((await git(repo.root, ["rev-list", "--count", `${tip}..${upSha}`]))?.trim());
           if (n > 0) (r.behind ??= {})[v.id] = n;
@@ -199,7 +199,7 @@ async function syncCard(c: CodeCard, net: boolean): Promise<VariantSync> {
     }
     if (v.from.kind === "pr" && net) {
       const pr = await pullRequest(v.from.owner, v.from.name, v.from.num).catch(() => null);
-      if (pr?.merged && v.merged !== upLabel) (r.merged ??= {})[v.id] = upLabel || pr.base;
+      if (pr?.merged && v.merged !== pr.head) (r.merged ??= {})[v.id] = { into: upLabel || pr.base, tip: pr.head };
     }
   }
   if (views.length) r.views = await viewsFor(views);
