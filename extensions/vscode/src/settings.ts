@@ -16,6 +16,8 @@ const KEY: Record<keyof Settings, string> = {
   hideNumbers: "flowNumbers.hide",
   debug: "debug.enabled",
   tune: "debug.tune",
+  pasteOther: "sharedCards.paste",
+  sharedUpdate: "sharedCards.update",
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -33,6 +35,8 @@ const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   themeReflow: (v) => v === undefined || v === "push" || v === "overlap",
   debug: (v) => v === undefined || typeof v === "boolean",
   tune: (v) => v === undefined || (isObj(v) && Object.values(v).every(num)),
+  pasteOther: (v) => v === undefined || v === "linked" || v === "copy",
+  sharedUpdate: (v) => v === undefined || v === "ask" || v === "all" || v === "this",
 };
 
 export const validSetting = (k: string, v: unknown): k is keyof Settings => k in KEY && VALID[k as keyof Settings](v);

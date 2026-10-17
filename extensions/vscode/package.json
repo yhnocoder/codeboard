@@ -536,6 +536,20 @@
           "default": "push",
           "description": "When switching themes makes cards taller: push the cards below them down, or let them overlap."
         },
+        "codeboard.sharedCards.paste": {
+          "type": "string",
+          "enum": ["linked", "copy"],
+          "enumDescriptions": ["Linked card: the same card on both boards, content stays in sync", "Copy: a new card that changes on its own"],
+          "default": "linked",
+          "description": "What pasting a card onto another board makes. Holding Alt (Option) while pasting makes the other one."
+        },
+        "codeboard.sharedCards.update": {
+          "type": "string",
+          "enum": ["ask", "all", "this"],
+          "enumDescriptions": ["Ask every time", "Update on all boards", "Update this board only (makes a copy here)"],
+          "default": "ask",
+          "description": "When updating a card that is on several boards to a new version."
+        },
         "codeboard.zoom.overview": {
           "type": "number",
           "default": 0.6,

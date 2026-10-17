@@ -1,7 +1,7 @@
 // 一块打开的白板（与 VS Code 无关的部分）：读白板、算段的展示数据和版本状态、发 init；宿主信息；版本状态重算。
 // 白板状态由 webview 持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。webview 本身（BoardView）和面板管理（BoardHost）由 VS Code 适配层实现。
 import type { Board, BoardMeta, BoardToHost, HostInfo, HostToBoard, Stale } from "@codeboard/core";
-import type { Storage } from "@codeboard/core/storage";
+import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor } from "./versions";
 import { viewsFor } from "./views";
 import { present, srcLabel } from "./source";
@@ -40,6 +40,10 @@ export interface BoardHost {
   pushBoards(): Promise<void>;
   staleChanged(id: string, n: number): void;
   refreshStale(): Promise<void>;
+  /** ⌘C 复制的卡（贴到别的白板时用） */
+  clip: CardClip | undefined;
+  /** 共享卡的情况（在几块白板上、谁连到它）重新推给白板；now = 不等防抖 */
+  refreshShared(now?: boolean, fresh?: string): void;
 }
 
 const INDEX_DELAY = 4000;
@@ -78,6 +82,7 @@ export class BoardPanel {
     const q = this.queue;
     this.queue = [];
     for (const m of q) this.view.postMessage(m);
+    this.mgr.refreshShared(true, this.id);
     this.mgr.staleChanged(this.id, countStale(b, stale));
     // 白板已经出来了：后台让语言服务先热起来
     warmBoard(segs, () => this.mgr.get(this.id) === this);
@@ -95,6 +100,7 @@ export class BoardPanel {
       settings: readSettings(),
       target: this.mgr.target === this.id,
       complete: !!workspace().ai,
+      clip: this.mgr.clip && { board: this.mgr.clip.board, n: this.mgr.clip.cards.length },
     };
   }
 

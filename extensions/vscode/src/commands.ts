@@ -25,7 +25,11 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
     if (Object.keys(renamed).length) await panels.get(board)?.init();
     return renamed;
   });
-  cmd("codeboard._unshareCard", (board: string, card: string) => store.unshare(board, card));
+  cmd("codeboard._unshareCard", async (board: string, card: string) => {
+    const to = await store.unshare(board, card);
+    if (to) await panels.get(board)?.init(); // 卡换了 id：白板重新载入
+    return to;
+  });
   // GITHUB FILES 里点文件：只读打开（不在白板旁边那一栏，也不闪行）
   cmd("codeboard.openGithubFile", async (abs: string) => {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));

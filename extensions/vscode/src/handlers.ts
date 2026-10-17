@@ -14,6 +14,7 @@ import { copyDiagnostics, openStickerDir } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints } from "./search";
+import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
@@ -53,7 +54,7 @@ export function makeHandler(panels: BoardHost): Handler {
     peek: (_p, m) => peek(m),
     prefetch: (_p, m) => prefetchCall(m),
     callVars: (_p, m) => callVars(m),
-    search: (_p, m) => search(store, m.q, m.scope),
+    search: (p, m) => search(store, m.q, m.scope, p.id),
     searchPick: (_p, m) => searchPick(m.item),
     entryPoints: () => entryPoints(),
     diff: (_p, m) => diff(m.seg, m.against),
@@ -77,8 +78,25 @@ export function makeHandler(panels: BoardHost): Handler {
     log: (_p, m) => log(m.level, m.text),
     openBoard: async (_p, m) => {
       const np = await panels.show(m.id);
-      if (np && m.card) np.post({ type: "reveal", card: m.card });
+      if (!np || !m.card) return;
+      // 行（别的白板上连进来的箭头从哪一行出发）：选中那一行
+      const c = np.board && findCard(np.board, m.card)?.card;
+      const seg = m.line !== undefined && c && isCode(c) ? c.segments.find((s) => m.line! >= s.start && m.line! <= s.end) : undefined;
+      np.post(seg ? { type: "reveal", card: m.card, seg: seg.id, lines: [m.line!, m.line!] } : { type: "reveal", card: m.card });
     },
+    copyCards: (p, m) => {
+      panels.clip = { board: p.id, cards: m.cards, text: m.text };
+      panels.broadcast({ type: "host", host: { clip: { board: p.id, n: m.cards.length } } });
+      // 白板里写剪贴板可能被 webview 拦下：宿主再写一次，⌘V 收到的文字和记下的一样
+      if (m.text) void workspace().ui.copy(m.text);
+    },
+    pasteCards: async (p, m) => {
+      const r = await pasteClip(store, panels.clip, p.id, { text: m.text, copy: !!m.copy });
+      if (!r) return null;
+      const segs: Segment[] = r.cards.flatMap((x) => [...(x.card.kind === "code" ? x.card.segments : []), ...(x.sidenotes ?? []).flatMap((n) => (n.kind === "code" ? [n.code] : []))]);
+      return { ...r, views: await viewsFor(segs) };
+    },
+    deleteEverywhere: async (p, m) => (await store.deleteEverywhere(m.card, p.id)).length,
     confirm: async (_p, m) => (await workspace().ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
     pickFile: () => pickImage(),
     complete: (p, m) => complete(p, m.before, m.after),

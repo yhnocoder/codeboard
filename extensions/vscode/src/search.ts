@@ -1,6 +1,6 @@
 // ⌘K 面板：白板上的卡和 Sidenote、工作区的符号和文件；Start from Entry Point…
 import * as path from "node:path";
-import { allCodeCards, cardTitle, type NewCard, type SearchItem } from "@codeboard/core";
+import { allCodeCards, cardTitle, computeFlows, type NewCard, type SearchItem } from "@codeboard/core";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
@@ -27,17 +27,36 @@ export function fuzzy(q: string, s: string): number {
   return i === ql.length ? score - s.length * 0.1 : -1;
 }
 
-export async function search(store: Storage, q: string, scope: "all" | "code" | "symbols" = "all"): Promise<SearchItem[]> {
+/**
+ * ⌘K：所有白板上的卡和 Sidenote（here = 发起搜索的白板，排在前面），工作区的符号和文件。
+ * 共享卡在几块白板上只列一次：在这块白板上就跳这里，否则跳第一块；detail 写出它在哪几块白板上。跟着共享卡走的 Sidenote 也只列一次
+ */
+export async function search(store: Storage, q: string, scope: "all" | "code" | "symbols" = "all", here?: string): Promise<SearchItem[]> {
   const scored: { s: number; item: SearchItem }[] = [];
   if (scope === "all") {
-    for (const { board } of await store.all()) {
+    const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
+    const seen = new Map<string, Extract<SearchItem, { kind: "card" }>>();
+    const seenNotes = new Set<string>();
+    for (const board of boards) {
+      const refs = store.refsOf(board.id);
+      let flows: ReturnType<typeof computeFlows> | undefined;
       board.cards.forEach((c) => {
+        if (!board.place[c.id] && c.kind === "code" && board.cards.some((k) => k.kind === "compare" && k.cols.includes(c.id))) return; // Compare 的栏
+        const shared = refs.has(c.id);
+        const prev = shared ? seen.get(c.id) : undefined;
+        if (prev) { prev.detail = `${prev.detail} · ${board.name}`; return; }
         const t = cardTitle(c);
         const body = c.kind === "note" ? c.md : c.kind === "code" ? c.segments.map((s) => s.path).join(" ") : "";
         const s = Math.max(fuzzy(q, t), body.toLowerCase().includes(q.toLowerCase()) ? 20 : -1);
-        if (s >= 0) scored.push({ s: s + 30, item: { kind: "card", label: t, detail: board.name, board: board.id, card: c.id } });
+        if (s < 0) return;
+        flows ??= computeFlows(board);
+        const num = flows.byId.get(c.id)?.label || undefined;
+        const item: Extract<SearchItem, { kind: "card" }> = { kind: "card", label: t, detail: `${shared ? "⧉ " : ""}${board.id === here ? "This board" : board.name}`, board: board.id, card: c.id, num };
+        if (shared) seen.set(c.id, item);
+        scored.push({ s: s + 30 + (board.id === here ? 5 : 0), item });
       });
       for (const n of board.sidenotes ?? []) {
+        if (refs.has(n.at.card) && !n.boardOnly && n.kind !== "card") { if (seenNotes.has(n.id)) continue; seenNotes.add(n.id); }
         const t = n.kind === "text" ? n.md : n.kind === "code" ? n.code.text.join("\n") : n.kind === "paste" ? n.text : n.kind === "link" ? `${n.title ?? ""} ${n.url}` : "";
         if (!t || !t.toLowerCase().includes(q.toLowerCase())) continue;
         const host = allCodeCards(board).find((c) => c.id === n.at.card) ?? board.cards.find((c) => c.id === n.at.card);
