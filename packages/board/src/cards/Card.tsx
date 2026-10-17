@@ -2,7 +2,7 @@
 import { send } from "../host";
 import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
-  cardTitle, cardChip, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
+  cardTitle, cardChip, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type BoardCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
@@ -134,6 +134,10 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const multi = () => c().segments.length > 1;
   const free = () => s0()?.src.kind === "free";
   const notes = () => act.sidenotesOf(c().id).filter((n) => !n.at.lines);
+  // 有 Variant 时版本按钮说的是上游（显示的可能是我的分支）
+  const onVar = () => onVariant(c());
+  const up0 = () => (onVar() ? upstreamSegs(c())[0] : s0());
+  const mine = createMemo(() => isMine(c()));
   return (
     <div class="chead" data-drag>
       <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
@@ -170,16 +174,18 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
           <Editable class="grun" kind="gen" id={c().id} value={c().gen!.run ?? ""} placeholder="Run / params" onCommit={(v) => act.setGenRun(c().id, v)} />
         </span>
       </Show>
+      <Show when={act.merged()[c().id]}><button class="vmdot" data-tip="Merged upstream · turn back into a normal card?" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.mergedPrompt(c().id)} /></Show>
+      <Show when={mine()}><span class="mine" data-tip="This card shows your changes, not upstream">MINE</span></Show>
       <Show when={!free()}>
         <button class="rev" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}
-          onClick={(e) => act.justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
+          onClick={(e) => act.justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : onVar() ? act.switchVariant(c().id, UPSTREAM) : act.commitMenu(c().id, e.currentTarget))}>
           <Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>
-          {mixed() ? "Mixed" : versionLabel(s0()?.version, true)}
+          {mixed() ? "Mixed" : versionLabel(up0()?.version, true)}
           <Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show>
         </button>
       </Show>
-      <Show when={act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted")}>
+      <Show when={!c().variants?.length && (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))}>
         <button class="rev unc" data-tip="HEAD vs Working Tree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openWorktreeDiff(c().id)}>+ uncommitted</button>
       </Show>
       <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
@@ -268,6 +274,7 @@ function CodeCardView(p: { card: CodeCard }) {
     <>
       <CodeHead card={c()} />
       <CodeBand card={c()} />
+      <Show when={c().variants?.length}><VariantBar card={c()} /></Show>
       <div class="carea" style={placeOf(c().id).h ? { height: `${placeOf(c().id).h}px` } : undefined}>
       <Desc id={c().id} desc={c().desc} />
       <Show when={act.missingNote(c())}>
@@ -288,6 +295,53 @@ function CodeCardView(p: { card: CodeCard }) {
       </Show>
       </div>
       <CodeFoot card={c()} />
+    </>
+  );
+}
+
+/** Variant 标签页（线框 07）：点了换代码；右键改名、删除、写说明。下面一行是对比基准和改了几行，再下面是这个 Variant 的一行说明 */
+function VariantBar(p: { card: CodeCard }) {
+  const c = () => p.card;
+  const cur = () => activeOf(c());
+  const marks = createMemo(() => act.marksOf(c()));
+  const curV = () => c().variants?.find((v) => v.id === cur());
+  const behind = () => act.vlive[c().id]?.behind?.[cur()];
+  const summary = () => {
+    const m = marks();
+    if (!m) return "Same as base";
+    return [m.changed && `${m.changed} changed`, m.added && `${m.added} added`, m.removed && `${m.removed} removed`].filter(Boolean).join(" · ") || "Same as base";
+  };
+  const noteEditing = () => editing()?.kind === "vnote" && editing()?.id === c().id;
+  const stop = (e: Event) => e.stopPropagation();
+  return (
+    <>
+      <div class="vtabs" onPointerDown={stop}>
+        <For each={c().variants}>{(v) => (
+          <button class="vtab" classList={{ on: v.id === cur(), up: v.id === UPSTREAM }} data-vid={v.id} data-tip={v.note || (v.id === UPSTREAM ? "Upstream: the pinned version" : "Click to show · Right-click for more")}
+            onClick={() => act.switchVariant(c().id, v.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); act.variantMenu(c().id, v.id, e.clientX, e.clientY); }}>
+            {variantTitle(c(), v)}
+            <Show when={act.merged()[c().id]?.vid === v.id}><i class="vmdot" /></Show>
+          </button>
+        )}</For>
+        <button class="vtab vadd" aria-label="Add Variant" data-tip="Add Variant" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); void act.addVariantMenu(c().id, r.left, r.bottom + 4); }}>+</button>
+      </div>
+      <Show when={cur() !== UPSTREAM}>
+        <div class="vcmp" onPointerDown={stop}>
+          <span class="lbl">Compare to</span>
+          <button class="vsel" onClick={(e) => act.baseMenu(c().id, e.currentTarget)}>{act.baseOf(c()).label} ▾</button>
+          <span class="lbl vsum">{summary()}</span>
+          <Show when={behind()}><span class="lbl vbeh" data-tip="Commits on upstream that this branch doesn't have">{behind()} behind</span></Show>
+          <span class="grow" />
+          <button class="vbtn" data-tip="Original · mine · upstream latest" onClick={(e) => act.openThreeWay(c().id, e.currentTarget)}>Three-way</button>
+          <Show when={!curV()?.note && !noteEditing()}><button class="vbtn" data-tip="A line about this variant: params, perf numbers" onClick={() => setEditing({ kind: "vnote", id: c().id })}>Note</button></Show>
+        </div>
+      </Show>
+      <Show when={curV()?.note || noteEditing()}>
+        <div class="vnote" onPointerDown={stop} onDblClick={(e) => { e.stopPropagation(); setEditing({ kind: "vnote", id: c().id }); }}>
+          <span class="vnl">{curV()?.name}</span>
+          <Editable class="vnt" kind="vnote" id={c().id} value={curV()?.note ?? ""} placeholder="params, perf numbers…" onCommit={(v) => act.setVariantNote(c().id, v)} />
+        </div>
+      </Show>
     </>
   );
 }

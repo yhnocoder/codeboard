@@ -1299,3 +1299,45 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock。先靠左，还放不下就把 dock 抬到底栏上面 */
 @media (max-width: 900px) { .bbar { left: 12px; right: auto; margin-inline: 0; } }
 @media (max-width: 640px) { .dock { bottom: 58px; } }
+
+/* ---------- 我的改动（线框 07）：Variant 标签页、MINE、对比基准、改过的行、三方对照 ---------- */
+.vtabs { display: flex; align-items: stretch; flex: none; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--head); font: 10.5px/1 var(--sys); }
+.vtab { padding: 5px 10px; color: var(--ink-2); white-space: nowrap; border-right: 1px solid var(--line); display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
+.vtab:hover { color: var(--ink); background: var(--hlrow); }
+.vtab.on { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--accent); }
+.vtab.vadd { flex: none; font: 13px/1 var(--sys); padding: 3px 9px; color: var(--ink-3); border-right: 0; }
+.vtab.vadd:hover { color: var(--accent); }
+.chead .mine { font: 700 9.5px/1 var(--sys); letter-spacing: .04em; color: var(--lk-green); border: 1px solid currentColor; border-radius: 3px; padding: 2px 4px; flex: none; background: var(--surface); }
+.vmdot { width: 7px; height: 7px; border-radius: 50%; background: var(--lk-green); flex: none; display: inline-block; padding: 0; }
+.chead .vmdot { cursor: pointer; box-shadow: 0 0 0 3px color-mix(in srgb, var(--lk-green) 22%, transparent); }
+.vcmp { display: flex; align-items: center; gap: 8px; padding: 3px 8px 3px 10px; border-bottom: 1px solid var(--line); font-size: 11px; flex: none; white-space: nowrap; overflow: hidden; }
+.vcmp .lbl { color: var(--ink-3); }
+.vcmp .vsum { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.vcmp .vbeh { color: var(--warn); }
+.vsel { font: 10.5px var(--mono); color: var(--ink); border: 1px solid var(--hair); border-radius: 4px; padding: 1px 6px; background: var(--surface); min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.vsel:hover { border-color: var(--accent); }
+.vbtn { font-size: 10.5px; color: var(--ink-2); padding: 2px 6px; border-radius: 4px; flex: none; }
+.vbtn:hover { color: var(--ink); background: var(--hlrow); }
+.vnote { display: flex; align-items: baseline; gap: 8px; padding: 4px 10px 5px; border-bottom: 1px solid var(--line); font-size: 11.5px; line-height: 1.5; background: color-mix(in srgb, var(--warn) 6%, var(--surface)); flex: none; }
+.vnote .vnl { font: 600 10px var(--sys); color: var(--ink-3); flex: none; text-transform: uppercase; letter-spacing: .03em; }
+.vnote .vnt { color: var(--ink-2); min-width: 0; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vnote .vnt[contenteditable] { outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 3px; background: var(--surface); user-select: text; -webkit-user-select: text; cursor: text; text-overflow: clip; }
+.vnote .vnt:empty::before { content: attr(data-ph); color: var(--ink-3); }
+.vbg { position: absolute; left: 0; right: 0; pointer-events: none; z-index: 0; }
+.vbg.add { background: var(--add); }
+.vbg.chg { background: var(--chg); }
+.vmk { position: absolute; left: 34px; width: 10px; height: 20px; font: 700 10px/20px var(--mono); color: var(--warn); text-align: center; pointer-events: none; }
+.vmk.add { color: var(--lk-green); }
+.pop.k-three { max-width: 96vw; }
+.threepop { width: min(1180px, 94vw); display: flex; flex-direction: column; max-height: 80vh; }
+.three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); overflow: auto; min-height: 0; border-top: 1px solid var(--line); }
+.three .tcol { min-width: 0; display: flex; flex-direction: column; }
+.three .tcol + .tcol { border-left: 1px solid var(--line); }
+.three .th { padding: 5px 10px; font-size: 11.5px; background: var(--head); border-bottom: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; position: sticky; top: 0; z-index: 1; }
+.three .tb { font: 11px/20px var(--mono); padding: 4px 0 8px; overflow-x: auto; }
+.three .tl { display: flex; min-width: max-content; }
+.three .tl .cno { flex: none; width: 36px; text-align: right; padding-right: 8px; color: var(--ink-3); opacity: .65; user-select: none; -webkit-user-select: none; }
+.three .tl .l { white-space: pre; padding-right: 12px; }
+.three .tl.k-mine, .three .tl.k-theirs { background: var(--chg); }
+.three .tl.k-add { background: var(--add); }
+.three .tl.k-both { background: color-mix(in srgb, var(--accent) 20%, transparent); box-shadow: inset 2px 0 0 var(--accent); }

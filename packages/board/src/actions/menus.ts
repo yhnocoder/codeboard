@@ -24,6 +24,7 @@ import { deleteEverywhere, pasteFromBoard, copyCardsSel } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, setLegendOpen, toggleBack, toggleStart } from "./calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
+import { addVariantMenu } from "./variants";
 import { LEGEND, legendName, type Link } from "@codeboard/core";
 
 /**
@@ -232,6 +233,8 @@ export function cardMenu(id: string, x: number, y: number) {
     ...(col ? [] : [{ label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
     { label: "Edit", sub: edit },
     { label: "View", sub: view },
+    // 我的改动（线框 07）：同一段代码的分支 / 工作区 / 另一个 worktree / 复制的文件 / PR
+    ...(free || col || c.gen ? [] : [{ label: c.variants?.length ? "Add Another Variant…" : "Add Variant…", run: () => void addVariantMenu(c.id, x, y) } as Item]),
     { label: "Call Graph", sub: flow },
     ...(col ? [] : [arrangeItem(() => [host.id])]),
     null,

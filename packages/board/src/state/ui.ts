@@ -1,7 +1,7 @@
 // 界面状态（不持久化、不进撤销栈）
 import { createSignal, createMemo } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
-import type { CallSpan, Guide, Link, Sidenote } from "@codeboard/core";
+import { noteShown, type CallSpan, type CodeCard, type Guide, type Link, type Sidenote } from "@codeboard/core";
 import { state } from "./store";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
@@ -30,7 +30,11 @@ export const notesOn = (id: string) => notesOf(id).filter((n) => n.kind === "tex
 // 卡片 id → 挂在它上面的 Sidenote（每行都要问，按卡分好组）
 const notesIndex = createMemo(() => {
   const m = new Map<string, Sidenote[]>();
-  for (const n of state.board.sidenotes) { const a = m.get(n.at.card); a ? a.push(n) : m.set(n.at.card, [n]); }
+  for (const n of state.board.sidenotes) {
+    // 「只在某个 Variant」：卡显示着那个 Variant 才算（线框 07）
+    if (n.variant && !noteShown(n, state.board.cards.find((c) => c.id === n.at.card) as CodeCard | undefined)) continue;
+    const a = m.get(n.at.card); a ? a.push(n) : m.set(n.at.card, [n]);
+  }
   return m;
 });
 export const notesOf = (id: string): Sidenote[] => notesIndex().get(id) ?? [];
@@ -47,7 +51,7 @@ let pingN = 0;
 export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 
 // 正在编辑的东西
-export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen" | "question"; id: string } | null;
+export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen" | "question" | "vnote"; id: string } | null;
 export const [editing, setEditing] = createSignal<Editing>(null);
 
 // 拖动中：吸附参考线、合并目标、落点行……

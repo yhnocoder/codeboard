@@ -28,6 +28,8 @@ export type Pop =
   | { kind: "rpc"; link: string }
   /** 「?」贴纸上的问题（线框 06） */
   | { kind: "question"; sticker: string }
+  /** 三方对照：原版 / 我的 / 上游最新（线框 07） */
+  | { kind: "three"; card: string }
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 

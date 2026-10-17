@@ -4,8 +4,8 @@ import { For, Show, Switch, Match, createSignal, createMemo, createEffect, onCle
 import { unwrap } from "solid-js/store";
 import {
   alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang,
-  RPC_MECHS,
-  type GraphMark, type Sidenote, type PeekDef, type SearchItem, type Var, type Anchor,
+  RPC_MECHS, threeWay, upstreamSegs, activeOf, viewKey, UPSTREAM,
+  type GraphMark, type Sidenote, type Segment, type PeekDef, type SearchItem, type Var, type Anchor,
 } from "@codeboard/core";
 import { state, cardById, toast, mutate, select, flows, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
@@ -79,6 +79,7 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "vals"}><ValsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vals" }>} /></Match>
         <Match when={k() === "names"}><NamesPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "names" }>} /></Match>
         <Match when={k() === "rpc"}><RpcPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "rpc" }>} /></Match>
+        <Match when={k() === "three"}><ThreePop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "three" }>} /></Match>
         <Match when={k() === "question"}><QuestionPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "question" }>} /></Match>
       </Switch>
     </div>
@@ -161,6 +162,9 @@ function NotesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "notes" }> }) {
         <Show when={curNote() && curNote()!.kind !== "card" && sharedOn(curNote()!.at.card) > 1}>
           <button class="tbtn" classList={{ on: !!curNote()!.boardOnly }} data-tip="Keep this sidenote on this board only; otherwise it shows on every board with the card" onClick={() => A.toggleBoardOnly(curNote()!.id)}>Board-only</button>
         </Show>
+        <Show when={curNote() && hasVariants(curNote()!.at.card)}>
+          <button class="tbtn" classList={{ on: !!curNote()!.variant }} data-tip="Show this sidenote only on this variant of the card" onClick={() => A.toggleVariantOnly(curNote()!.id)}>Only in This Variant</button>
+        </Show>
         <span class="grow" />
         <button class="ib" aria-label="Delete Sidenote" data-tip="Delete Sidenote" onClick={() => A.deleteSidenote(curNote()!.id)}><Icon name="trash" size={13} /></button>
       </div>
@@ -210,10 +214,12 @@ function NoteItem(p: { n: Sidenote }) {
       <Show when={n().lineRemoved}><div class="sn-why warn">Line removed in the new version · attached to the whole card</div></Show>
       <Show when={n().review}><div class="sn-why review"><span>Line changed in {n().review}, check it</span><button class="tbtn" onClick={() => A.markReviewed(n().id)}>Mark Reviewed</button></div></Show>
       <Show when={n().boardOnly && sharedOn(n().at.card) > 1}><div class="sn-tag">Board-only · not shown on the other boards</div></Show>
+      <Show when={n().variant}><div class="sn-tag">Only in variant {A.variantName(n().at.card, n().variant!) ?? ""}</div></Show>
     </>
   );
 }
 /** Sidenote 右键：Board-only（共享卡上才有）、Place on Board、看过了、删除 */
+const hasVariants = (id: string) => { const c = cardById(id)?.card; return isCode(c) && !!c.variants?.length; };
 function noteMenu(n: Sidenote, x: number, y: number) {
   const linked = n.kind !== "card" && sharedOn(n.at.card) > 1;
   openMenu([
@@ -221,6 +227,7 @@ function noteMenu(n: Sidenote, x: number, y: number) {
     ...(n.kind !== "card" ? [{ label: "Place on Board", run: () => A.placeSidenote(n.id) } as Item] : []),
     ...(linked ? [{ label: "Board-only", checked: !!n.boardOnly, hint: "Keep this sidenote on this board only; otherwise every board with the card shows it", run: () => A.toggleBoardOnly(n.id) } as Item] : []),
     ...(n.review ? [{ label: "Mark Reviewed", run: () => A.markReviewed(n.id) } as Item] : []),
+    ...(hasVariants(n.at.card) ? [{ label: "Only in This Variant", checked: !!n.variant, hint: n.variant ? `Only on ${A.variantName(n.at.card, n.variant) ?? "one variant"}` : "Show this sidenote only on the variant shown now", run: () => A.toggleVariantOnly(n.id) } as Item] : []),
     null,
     { label: "Delete Sidenote", danger: true, run: () => A.deleteSidenote(n.id) },
   ], x, y);
@@ -479,6 +486,49 @@ function DiffPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "diff" }> }) {
           <button class="def" disabled={!d()!.canUpdate} onClick={() => { A.applyNewVersion(p.pop.card, p.pop.seg, d()!); closePop(p.inst.id); }}>Update to {d()!.right.label.replace(/^HEAD /, "")}</button>
         </div>
       </Show>
+    </div>
+  );
+}
+
+// ---------- 三方对照（线框 07）：原版 / 我的 / 上游最新，两边都改了的行高亮 ----------
+
+function ThreePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "three" }> }) {
+  const c = () => { const k = cardById(p.pop.card)?.card; return isCode(k) ? k : undefined; };
+  const cols = createMemo(() => {
+    const k = c(), l = A.vlive[p.pop.card]?.latest;
+    if (!k || !l) return [];
+    const ups = upstreamSegs(k), cur = activeOf(k);
+    const html = (s: Segment, key: string) => state.views[key]?.html ?? s.text.map(escH);
+    return k.segments.map((s) => {
+      const b = ups.find((x) => x.id === s.id) ?? s, t = l.segs.find((x) => x.id === s.id) ?? b;
+      const tw = threeWay(b.text, s.text, t.text);
+      return {
+        id: s.id, conflicts: tw.conflicts,
+        cols: [
+          { label: `Base ${versionLabel(b.version, true)}`, start: b.start, html: html(b, cur === UPSTREAM ? b.id : viewKey(b.id, UPSTREAM)), kinds: tw.base },
+          { label: `Mine ${k.variants?.find((v) => v.id === cur)?.name ?? ""}`, start: s.start, html: html(s, s.id), kinds: tw.mine },
+          { label: `Upstream latest ${l.label}`, start: t.start, html: l.views[t.id]?.html ?? t.text.map(escH), kinds: tw.latest },
+        ],
+      };
+    });
+  });
+  const total = () => cols().reduce((n, x) => n + x.conflicts, 0);
+  return (
+    <div class="threepop">
+      <Head title={`Three-way view · ${c() ? cardTitle(c()!) : ""}`} inst={p.inst} />
+      <div class="lastc">{total() ? `${total()} line${total() > 1 ? "s" : ""} changed on both sides (highlighted)` : "No conflicting lines: your changes and upstream's don't touch the same lines"}</div>
+      <For each={cols()}>{(sg) => (
+        <div class="three">
+          <For each={sg.cols}>{(col) => (
+            <div class="tcol">
+              <div class="th"><b>{col.label}</b></div>
+              <div class="tb">
+                <For each={col.html}>{(h, i) => <div class={`tl k-${col.kinds[i()] ?? "same"}`}><span class="cno">{col.start + i()}</span><span class="l" innerHTML={h || "​"} /></div>}</For>
+              </div>
+            </div>
+          )}</For>
+        </div>
+      )}</For>
     </div>
   );
 }

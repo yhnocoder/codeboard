@@ -81,6 +81,15 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   createEffect(() => { rows(); notesOn(c().id); look(); later(); }); // 换材质主题：标题区高度变了，行的位置要重量
 
   const fromLines = createMemo(() => new Set(linksFrom(c().id).map((l) => `${l.from.seg}:${l.from.line}`)));
+  // 我的改动（线框 07）：和对比基准比新加 / 改过的行（只有显示着别的 Variant 的卡才有，其余卡不多建任何节点）
+  const vrows = createMemo(() => {
+    if (!c().variants?.length) return [];
+    const m = act.marksOf(c());
+    if (!m) return [];
+    const out: { i: number; k: "+" | "~" }[] = [];
+    rows().forEach((r, i) => { if (r.t === "line") { const k = m.marks.get(`${r.seg}:${r.line}`); if (k) out.push({ i, k }); } });
+    return out;
+  });
   const isHl = (s: Segment | undefined, l: number) => !!s?.hl?.includes(l);
   const inSel = (seg: string, l: number) => { const ls = lineSel(); return !!ls && ls.card === c().id && ls.seg === seg && l >= ls.start && l <= ls.end; };
 
@@ -377,6 +386,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               </Show>
             )}
           </For>
+          <For each={vrows()}>{(x) => <Show when={ys()[x.i]}><span class="vmk" classList={{ add: x.k === "+" }} style={{ top: `${ys()[x.i].y}px` }}>{x.k}</span></Show>}</For>
           <For each={lineStk()}>
             {(k) => (
               <Show when={ys()[k.row]}>
@@ -395,6 +405,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           </For>
         </div>
         <div class="rowbgs">
+        <For each={vrows()}>{(x) => <Show when={ys()[x.i]}><div class={`vbg ${x.k === "+" ? "add" : "chg"}`} style={{ top: `${ys()[x.i].y}px`, height: `${ys()[x.i].h}px` }} /></Show>}</For>
         <For each={rows()}>
           {(r, i) => (
             <Show when={ys()[i()] && r.t === "line"}>

@@ -1,7 +1,7 @@
 // 宿主发来的消息。
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
-import { loadBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, walkOrder, type HostToBoard } from "@codeboard/core";
+import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, type HostToBoard } from "@codeboard/core";
 import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, setShared, setLineSel, sel, setShowCollapsed, flows } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner, setWalk } from "./state/ui";
@@ -53,8 +53,9 @@ export function onHost(m: HostToBoard) {
           for (const [sid, s] of moved) {
             if (s.state !== "moved") continue;
             for (const k of allCodeCards(b)) {
-              const seg = k.segments.find((q) => q.id === sid);
-              if (seg) rebaseSegment(b, k.id, { ...seg, start: s.start, end: s.end, version: s.version ?? seg.version }, shiftBy(s.start - seg.start));
+              // 有 Variant 的卡：版本状态说的是上游的段（显示的可能是我的分支）
+              const seg = upstreamSegs(k).find((q) => q.id === sid);
+              if (seg) rebaseUpstream(b, k.id, { ...seg, start: s.start, end: s.end, version: s.version ?? seg.version }, shiftBy(s.start - seg.start));
             }
             for (const n of b.sidenotes) if (n.kind === "code" && n.code.id === sid) n.code = { ...n.code, start: s.start, end: s.end, version: s.version ?? n.code.version };
           }
@@ -107,6 +108,7 @@ export function onHost(m: HostToBoard) {
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
     case "toast": toast(m.text); break;
     case "run": A.applyRunMsg(m.apply); break;
+    case "variants": A.applyVariantSync(m.cards); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
     case "shared": syncShared(m.cards, m.views); break;
     case "sharedInfo": setShared(reconcile(m.cards)); break;
