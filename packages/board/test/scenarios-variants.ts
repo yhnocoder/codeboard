@@ -34,7 +34,7 @@ function edit(s: Segment, how: "wt" | "branch" | "latest"): Segment {
   const i = t.findIndex((l) => /scheduled_seqs = \[\]/.test(l));
   if (how === "wt") { t[i] = t[i].replace("[]", "list()  # keep order"); t.splice(i + 1, 0, t[i].replace(/\S.*/, "budget = self.max_num_batched_tokens  # 8192 → 131 TFLOPS")); }
   if (how === "branch") t.splice(1, 0, t[1].replace(/\S.*/, "# fix-spec-bug: all-accepted rows"));
-  if (how === "latest") t[i + 1] = t[i + 1] + "  # upstream tweak";
+  if (how === "latest") { t[i] = t[i].replace("[]", "deque()"); t[i + 1] = t[i + 1] + "  # upstream tweak"; } // 一行和我的冲突，一行只有上游改了
   const start = s.start + (how === "wt" ? 7 : how === "latest" ? 3 : 0);
   return { ...s, start, end: start + t.length - 1, text: t, version: { kind: "git", commit: how === "latest" ? "4c1d0e9aa" : how === "wt" ? "77aa12bcd" : "e1f2a3b4c" }, ...(how === "wt" ? { src: { kind: "external" as const, root: "/work/vllm-exp" } } : {}) };
 }
@@ -138,9 +138,11 @@ async function variants(res: Record<string, unknown>) {
   const cols = await page.locator(".pop.k-three .tcol .th").allTextContents();
   const changedRows = await page.locator(".pop.k-three .tl.k-mine, .pop.k-three .tl.k-add").count();
   const theirs = await page.locator(".pop.k-three .tl.k-theirs").count();
+  const both = await page.locator(".pop.k-three .tl.k-both").count();
+  const head3 = await page.locator(".pop.k-three .lastc").textContent();
   // 原版那一栏是上游的代码（不是我的）
   const baseRow = await page.locator(".pop.k-three .tcol").first().locator(".tl").nth(1).textContent();
-  res.three = { cols, changedRows, theirs, baseRow };
+  res.three = { cols, changedRows, theirs, both, head3, baseRow };
   await shotPr(h, "variants-4-three-way");
   await page.keyboard.press("Escape"); await page.locator(".pop.k-three .ph .ib").click().catch(() => {}); await wait(h, 300);
 
@@ -170,7 +172,7 @@ async function variants(res: Record<string, unknown>) {
     && /1 changed · 1 added/.test(summary ?? "") && note === "block_N=64 · num_stages=3 → 131 TFLOPS"
     && nTabs === 3 && t.ok && t.ms < 40 && back
     && baseItems.some((x) => /Upstream Latest · main 4c1d0e9/.test(x)) && /Upstream latest main 4c1d0e9/.test(baseLabel ?? "") && behind === "3 behind"
-    && cols.length === 3 && /Base/.test(cols[0]) && /Mine/.test(cols[1]) && /Upstream latest/.test(cols[2]) && changedRows >= 2 && theirs >= 1 && /scheduled_seqs = \[\]/.test(baseRow ?? "")
+    && cols.length === 3 && /Base/.test(cols[0]) && /Mine/.test(cols[1]) && /Upstream latest/.test(cols[2]) && changedRows >= 1 && theirs >= 1 && both === 3 && /^1 line changed on both sides/.test(head3 ?? "") && /scheduled_seqs = \[\]/.test(baseRow ?? "")
     && vOnly && hidden && shownAgain
     && /merged into main/.test(toast ?? "") && converted && convLink === callLine + 3 && res.converted && (res.converted as { tabs: number }).tabs === 0;
   await page.context().browser()!.close();
