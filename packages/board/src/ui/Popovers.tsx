@@ -16,6 +16,7 @@ import { autoUpdate } from "@floating-ui/dom";
 import { place, virtual } from "./place";
 import { ask, send } from "../host";
 import * as A from "../actions";
+import { MdStatic } from "./Md";
 
 export function Popovers() {
   return <>
@@ -141,7 +142,8 @@ function NoteItem(p: { n: Sidenote }) {
           </>;
         })()}</Match>
         <Match when={n().kind === "text"}>
-          <Show when={snEditing() === n().id} fallback={<div class="sn-text md" data-tip="Double-click to edit" innerHTML={A.mdBlock((n() as any).md)} onDblClick={() => editText(n())} />}>
+          <Show when={snEditing() === n().id} fallback={<MdStatic class="sn-text" tip="Double-click to edit" src={(n() as any).md} onDblClick={() => editText(n())}
+            onToggle={(v) => A.updateSidenote(n().id, (k) => { if (k.kind === "text") k.md = v; })} />}>
             <SidenoteEditor n={n() as Extract<Sidenote, { kind: "text" }>} />
           </Show>
         </Match>
@@ -179,7 +181,7 @@ function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
       <textarea spellcheck={false} value={v()} ref={(el) => queueMicrotask(() => { el.focus(); el.setSelectionRange(el.value.length, el.value.length); grow(el); })}
         onInput={(e) => { setV(e.currentTarget.value); grow(e.currentTarget); }}
         onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") { e.preventDefault(); setSnEditing(null); } if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); } }} />
-      <Show when={v().trim()}><div class="sn-text md sn-prev" innerHTML={A.mdBlock(v())} /></Show>
+      <Show when={v().trim()}><MdStatic class="sn-text sn-prev" src={v()} /></Show>
       <div class="sn-eacts"><span>Markdown and $math$ · {A.K.mod}↵ to save</span><span class="grow" /><button class="tbtn" onClick={() => setSnEditing(null)}>Cancel</button><button class="tbtn pri" onClick={save}>Save</button></div>
     </div>
   );
@@ -237,7 +239,7 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
         <Show when={def()!.sig || def()!.doc}>
           <div class="pk-top">
             <Show when={def()!.sig}><div class="pk-sig" innerHTML={def()!.sigHtml ?? escH(def()!.sig!)} /></Show>
-            <Show when={def()!.doc}><div class="pk-doc md" innerHTML={docHtml(def()!.doc!)} onClick={onDocClick} /></Show>
+            <Show when={def()!.doc}><MdStatic class="pk-doc" src={def()!.doc!} /></Show>
           </div>
         </Show>
         <Show when={def()!.kind !== "module" && def()!.html.length}>
@@ -266,18 +268,6 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
     </>
   );
 }
-
-/** hover 文档：Markdown，代码块顺手着色 */
-function docHtml(src: string) {
-  return A.mdBlock(src).replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/g, (_, c: string) => `<pre><code>${hlPy(c)}</code></pre>`);
-}
-// 极简 Python 着色（在转义过的 HTML 上做）：注释、字符串、数字、关键字
-const PY_RE = /(#[^\n]*)|(&quot;(?:(?!&quot;)[^\n])*&quot;|'[^'\n]*')|(\b\d+(?:\.\d+)?\b)|\b(def|class|return|if|else|elif|for|while|in|not|and|or|is|None|True|False|import|from|as|with|lambda|yield|raise|try|except|finally|pass|async|await)\b/g;
-const hlPy = (h: string) => h.replace(PY_RE, (m, com, str, num) => `<span class="${com ? "com" : str ? "str" : num ? "num" : "kw"}">${m}</span>`);
-const onDocClick = (e: MouseEvent) => {
-  const a = (e.target as HTMLElement).closest?.("a.lnk") as HTMLElement | null;
-  if (a?.dataset.href) { e.preventDefault(); A.openLink(a.dataset.href); }
-};
 
 // ---------- 加 Sidenote ----------
 

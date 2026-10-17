@@ -7,6 +7,7 @@ import { V017 } from "./v017";
 import { V017LABELS } from "./v017labels";
 import { V017STACK } from "./v017stack";
 import { THEMES_V17 } from "./scenarios-themes";
+import { V018MD } from "./v018md";
 
 const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -26,6 +27,7 @@ const S: Record<string, () => Promise<void>> = {
   ...V017LABELS,
   ...V017STACK,
   ...THEMES_V17,
+  ...V018MD,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");

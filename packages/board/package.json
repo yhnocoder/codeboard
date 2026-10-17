@@ -18,8 +18,27 @@
   "dependencies": {
     "@codeboard/core": "^0.1.0",
     "@floating-ui/dom": "1.8.0",
+    "@tiptap/core": "~3.32.0",
+    "@tiptap/extension-code-block-lowlight": "~3.32.0",
+    "@tiptap/extension-details": "~3.32.0",
+    "@tiptap/extension-document": "~3.32.0",
+    "@tiptap/extension-drag-handle": "~3.32.0",
+    "@tiptap/extension-image": "~3.32.0",
+    "@tiptap/extension-list": "~3.32.0",
+    "@tiptap/extension-mathematics": "~3.32.0",
+    "@tiptap/extension-table": "~3.32.0",
+    "@tiptap/extensions": "~3.32.0",
+    "@tiptap/markdown": "~3.32.0",
+    "@tiptap/pm": "~3.32.0",
+    "@tiptap/starter-kit": "~3.32.0",
+    "@tiptap/suggestion": "~3.32.0",
     "dompurify": "3.4.16",
+    "highlight.js": "^11.12.0",
     "katex": "^0.16.11",
-    "solid-js": "^1.9.17"
+    "lowlight": "^3.3.0",
+    "marked": "^17.0.6",
+    "mermaid": "^12.2.0",
+    "solid-js": "^1.9.17",
+    "tiptap-footnotes": "^3.0.1"
   }
 }

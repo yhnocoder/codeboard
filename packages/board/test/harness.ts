@@ -97,7 +97,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
 <body class="${o.light ? "vscode-light" : "vscode-dark"}"><div id="root"></div>
 <script>addEventListener("message", (e) => { if (e.data?.type === "init") window.__tInit = performance.now(); }, true); addEventListener("pointerdown", () => { window.__tDown = performance.now(); }, true);</script>
 <script>window.acquireVsCodeApi = () => ({ postMessage: (m) => window.__host(JSON.stringify(m)) });</script>
-<script src="file://${MEDIA}/board.js"></script></body></html>`);
+<script type="module" src="file://${MEDIA}/board.js"></script></body></html>`);
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
   const page = await browser.newPage({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
   let board = o.board ?? emptyBoard("b1", "nano-vllm · generate");

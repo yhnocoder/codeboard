@@ -170,7 +170,24 @@ export function copyCard(c: CodeCard) {
 
 export const compareTitle = (c: CompareCard) => cardTitle(c, state.board);
 export function renameCard(id: string, v: string) {
-  mutate((b) => { const c = findCard(b, id)?.card; if (c) c.title = v.trim() && v.trim() !== cardTitle({ ...c, title: undefined } as Card) ? v.trim() : undefined; });
+  mutate((b) => {
+    const c = findCard(b, id)?.card;
+    if (!c) return;
+    const old = cardTitle(c, b).trim();
+    c.title = v.trim() && v.trim() !== cardTitle({ ...c, title: undefined } as Card) ? v.trim() : undefined;
+    renameRefs(b, old, cardTitle(c, b).trim());
+  });
+}
+/** 改了卡名：白板上写着 [[旧名]] 的引用跟着改 */
+function renameRefs(b: Board, from: string, to: string) {
+  if (!from || from === to || /[\[\]\n]/.test(to)) return;
+  const re = new RegExp(`\\[\\[\\s*${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\]\\]`, "gi");
+  const fix = (s?: string) => (s && s.includes("[[") ? s.replace(re, `[[${to}]]`) : s);
+  for (const k of b.cards) {
+    if (k.kind === "note") { const m = fix(k.md); if (m !== k.md) k.md = m!; }
+    if (k.desc) { const d = fix(k.desc); if (d !== k.desc) k.desc = d; }
+  }
+  for (const n of b.sidenotes) if (n.kind === "text") { const m = fix(n.md); if (m !== n.md) n.md = m!; }
 }
 export function setDesc(id: string, v: string) {
   mutate((b) => { const c = findCard(b, id)?.card; if (c) c.desc = v.trim() || undefined; });

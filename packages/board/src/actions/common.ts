@@ -1,11 +1,11 @@
 // 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、指针位置、打开编辑器 / 链接。
-import { isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
+import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
 import { state, mutate, sel, select, isSel, cardById, rectOf, placeOf, placed } from "../state/store";
 import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
 import { notesOf, ping, setPopIn, popIn } from "../state/ui";
 import { openPop } from "../state/pop";
 import { send } from "../host";
-import { md, inline } from "../md";
+import { renderMd, renderMdInline } from "../md/render";
 
 const isMac = () => state.host.isMac;
 export const K = {
@@ -31,9 +31,19 @@ export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(B
 
 // ---------- 小工具 ----------
 
-export const mdInline = (s: string) => inline(s);
-export const mdBlock = (s: string) => md(s);
+export const mdInline = (s: string) => renderMdInline(s);
+export const mdBlock = (s: string) => renderMd(s);
 export const sidenotesOf = notesOf;
+/** [[引用]] 找卡：先当 id，再按标题（不分大小写，重名时取第一张） */
+export function resolveCardRef(label: string): { id: string; title: string } | null {
+  const l = label.trim();
+  if (!l) return null;
+  const byId = cardById(l);
+  if (byId) return { id: byId.card.id, title: cardTitle(byId.card, state.board) };
+  const low = l.toLowerCase();
+  for (const c of placed()) { const t = cardTitle(c, state.board); if (t.trim().toLowerCase() === low) return { id: c.id, title: t.trim() }; }
+  return null;
+}
 export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
 
 function sectionOf(id: string): Section | undefined {

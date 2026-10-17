@@ -7,6 +7,7 @@ import { setCam } from "./state/camera";
 import { setBanner } from "./state/ui";
 import * as A from "./actions";
 import { choose } from "./ui/Menu";
+import { setAssetBase } from "./md/render";
 
 export function onHost(m: HostToBoard) {
   switch (m.type) {
@@ -14,6 +15,7 @@ export function onHost(m: HostToBoard) {
       const b = loadBoard(m.board);
       batch(() => {
         setState("host", m.host);
+        setAssetBase(m.host.assetBase);
         setState("boards", m.boards);
         setState("views", m.views);
         setState("stale", m.stale);
@@ -54,7 +56,7 @@ export function onHost(m: HostToBoard) {
       break;
     }
     case "boards": setState("boards", m.boards); break;
-    case "host": setState("host", (h) => ({ ...h, ...m.host })); break;
+    case "host": setState("host", (h) => ({ ...h, ...m.host })); if (m.host.assetBase !== undefined) setAssetBase(m.host.assetBase); break;
     case "add": {
       const ids = A.addCards(m.cards);
       if (m.ask === "split" && ids.length === 1) askSplit(ids[0]);
