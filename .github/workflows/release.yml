@@ -1,6 +1,6 @@
 # Release: push a tag v<version> (or run it by hand with a version) and this builds a draft GitHub Release with
 #   codeboard-vscode-<version>.vsix   the VS Code extension (Extensions view → ⋯ → Install from VSIX…)
-#   7 screenshots at 2x               5 features in VS Code light, then every board theme in light and in dark (tools/release/shots.sh)
+#   6 screenshots at 2x               4 features in VS Code light, then every board theme in light and in dark (tools/release/shots.sh)
 # The version comes from the tag and is written into the extension's package.json only for the package (not committed).
 # The release stays a draft until someone publishes it on GitHub. Nothing is published to the Marketplace.
 name: Release

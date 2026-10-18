@@ -1,7 +1,7 @@
 // Release screenshots: build a small showcase board in a real VS Code and capture the feature shots, then one shot per board theme.
 // Run through tools/release/shots.sh, which runs this twice (VS Code light, then dark) through test/run.sh at 2x and composes the theme pictures
-//   SHOTS=features  1-overview … 5-notes
-//   SHOTS=themes    themes/<theme>.png, one per board theme; tools/release/compose-themes.mjs stacks them into one picture
+//   SHOTS=features  1-overview, 2-peek, 3-new-version, 4-notes
+//   SHOTS=themes    themes/<theme>.png (+ .json with the Scheduler.schedule card's box), one per board theme; tools/release/compose-themes.mjs stacks them into one picture
 const { chromium } = require("playwright-core");
 const fs = require("fs");
 const path = require("path");
@@ -60,8 +60,15 @@ const fit = async (f) => {
 };
 // Move the mouse off the board so no hover state (card toolbar, tooltips) is captured
 const park = async (page) => { await page.mouse.move(2, 400); await sleep(400); }; // one jump: a path across the board could open a Peek on the way
+// Clipped to the board below VS Code's tab bar: the webview's box starts a few pixels under the tabs, which would show as a strip along the top edge
 const boardShot = async (page, f, file) => {
-  const box = await (await f.frameElement()).boundingBox();
+  const box = await f.locator("#board").boundingBox();
+  for (const t of await page.locator(".editor-group-container .title").all()) {
+    const b = await t.boundingBox();
+    if (box && b && b.x < box.x + box.width && b.x + b.width > box.x && b.y <= box.y && b.y + b.height > box.y) {
+      const cut = Math.ceil(b.y + b.height - box.y); box.y += cut; box.height -= cut;
+    }
+  }
   await page.screenshot({ path: path.join(OUT, file), clip: box ?? undefined });
   console.log(`  📷 ${file}`);
 };
@@ -107,6 +114,10 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
   // Name the board (the name shows on the editor tab and in some themes' board header)
   await command(page, "CodeBoard: Rename Board"); await sleep(600);
   await page.keyboard.press("Control+a"); await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await sleep(1200);
+  // A dummy DeepSeek key: shots.sh points codeboard.ai.deepseekBaseUrl at a local mock that answers with a fixed completion
+  await command(page, "CodeBoard: Set DeepSeek API Key"); await sleep(600);
+  await page.keyboard.type("sk-release-shots-mock"); await page.keyboard.press("Enter"); await sleep(1000);
+  console.log(`  … after setting the key: ${(await page.locator(".notification-list-item-message").allInnerTexts()).join(" | ")}`);
   // The board fills the window while it is built (children are placed in the room the view has) and for the board shots
   await command(page, "View: Focus Second Editor Group");
   await command(page, "View: Toggle Maximize Editor Group");
@@ -147,33 +158,45 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
   const [alloc, post] = [await card(f, "BlockManager.allocate").boundingBox(), await card(f, "Scheduler.postprocess").boundingBox()];
   await blank(f); await page.mouse.move(Math.max(alloc.x + alloc.width + 40, post.x), post.y + post.height + 30); await sleep(300);
   await page.keyboard.press("n"); await sleep(700);
-  for (const line of ["## One engine step", "- **schedule** picks prefill or decode", "**run** executes the model on the batch", ""]) {
-    await page.keyboard.type(line); await page.keyboard.press("Enter"); await sleep(150);
-  }
-  await page.keyboard.type("Tokens per step: $\\sum_i n_i \\le B$ "); await page.keyboard.press("Enter"); await sleep(150);
-  await page.keyboard.type("```python"); await page.keyboard.press("Enter"); await sleep(200);
-  await page.keyboard.type("seqs, is_prefill = schedule()"); await sleep(200);
+  // Markdown as you type: a heading, a list with a [[card reference]] (picked from the [[ menu), inline and display math, a link.
+  // The last sentence is where the Notes shot puts the caret to show the gray completion
+  const type = async (text, enter = true) => { await page.keyboard.type(text); await sleep(150); if (enter) { await page.keyboard.press("Enter"); await sleep(150); } };
+  await type("## One engine step");
+  await type("- **schedule** picks prefill or decode: [[Scheduler.sch", false); await sleep(600);
+  await page.keyboard.press("Enter"); await sleep(300); await page.keyboard.press("Enter"); await sleep(150);
+  await type("**run** executes the model on the batch");
+  await page.keyboard.press("Enter"); await sleep(150);
+  await type("Tokens per step: $\\sum_i n_i \\le B$ ");
+  await type("KV blocks per sequence:");
+  await type("$$\\left\\lceil \\frac{\\text{tokens}}{\\text{block size}} \\right\\rceil$$");
+  await type("From [nano-vllm](https://github.com/GeeeekExplorer/nano-vllm) by GeeeekExplorer.");
+  await type("Decode adds one token per sequence each step.", false);
   await page.keyboard.press("Escape"); await sleep(800);
   await page.keyboard.press("Escape"); await sleep(400);
   check(await f.locator(".card.note").count() === 1, "Note created");
+  check(await f.locator(".card.note .cref").count() >= 1, "Note links to Scheduler.schedule");
+  // Size the Note to its content
+  await blank(f); await f.locator(".card.note .chead").first().click(); await sleep(200);
+  await page.keyboard.press("Alt+f"); await sleep(800);
   await blank(f); await fit(f); await park(page);
 
   if (SHOTS.includes("features")) {
-    // 2. Expanding calls, layer by layer: the whole tree with its arrows and marks
-    await boardShot(page, f, "2-expand.png");
+    // 1. Overview: the whole tree of expanded calls with its arrows, marks and the Note
+    await boardShot(page, f, "1-overview.png");
 
-    // 3. Definition Peek on can_allocate, zoomed to Scheduler.schedule
+    // 2. Definition Peek on can_allocate, zoomed to Scheduler.schedule
     await (await reveal(page, f, "Scheduler.schedule")).click(); await sleep(300);
     await page.keyboard.press("Shift+Digit2"); await sleep(1500); await settle(f);
     await f.locator('button[aria-label="Zoom Out"]').first().click(); await settle(f);
     const call = card(f, "Scheduler.schedule").locator(".src .call", { hasText: /^can_allocate$/ }).first();
     await call.hover(); await sleep(2500);
     check(await f.locator(".pop.k-peek").count() === 1, "Definition Peek opens");
-    await boardShot(page, f, "3-peek.png");
+    await boardShot(page, f, "2-peek.png");
     const cb = await card(f, "Scheduler.schedule").boundingBox();
     await page.mouse.move(cb.x + cb.width + 40, cb.y + 20, { steps: 6 }); await page.mouse.move(5, 300, { steps: 12 }); await sleep(1500);
 
-    // 5. Note and Sidenote: zoomed to the Note and Scheduler.schedule, the Sidenote always shown beside its lines
+    // 4. Notes: zoomed to the Note and Scheduler.schedule, the Sidenote always shown beside its lines,
+    // the Note open for editing with the caret after its last sentence and the gray completion (from the mock) behind it
     await blank(f); await fit(f);
     await card(f, "Scheduler.schedule").locator(".mk").first().click(); await sleep(900);
     await f.locator(".pop button", { hasText: /^Always Show$/ }).click().catch(() => console.log("  ! no Always Show")); await sleep(800);
@@ -181,26 +204,18 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
     await f.locator(".card.note .chead").first().click(); await sleep(200);
     await card(f, "Scheduler.schedule").locator(".chead .ctitle").click({ modifiers: ["Shift"], timeout: 5000 }).catch(() => console.log("  ! could not add Scheduler.schedule to the selection")); await sleep(200);
     await page.keyboard.press("Shift+Digit2"); await sleep(1500); await blank(f); await settle(f);
+    await f.locator(".card.note .nbody").first().dblclick(); await sleep(600);
+    await page.keyboard.press("Control+End"); await sleep(200);
+    console.log(`  … Note editor focused: ${await f.locator(".card.note .ProseMirror-focused").count()}`);
+    let ghost = 0;
+    for (let i = 0; i < 20 && !(ghost = await f.locator(".md-ghost").count()); i++) await sleep(500);
+    check(ghost > 0, "gray completion shown in the Note");
     await park(page);
-    await boardShot(page, f, "5-notes.png");
-    await page.keyboard.press("Escape"); await blank(f); await sleep(300);
+    await boardShot(page, f, "4-notes.png");
+    await page.keyboard.press("Escape"); await sleep(300); await page.keyboard.press("Escape"); await sleep(400);
+    await blank(f); await fit(f);
 
-    // 1. Overview: code on the left, the board on the right, the board given the larger share
-    await command(page, "View: Toggle Maximize Editor Group");
-    await openFile(page, "llm_engine.py", 49);
-    const bx = await (await f.frameElement()).boundingBox();
-    await page.mouse.move(bx.x - 2, bx.y + 300); await sleep(300); await page.mouse.down();
-    await page.mouse.move(bx.x - 2 - bx.width * 0.35, bx.y + 300, { steps: 15 }); await page.mouse.up(); await sleep(800);
-    await blank(f); await fit(f); await park(page);
-    await command(page, "Notifications: Clear All Notifications"); await park(page);
-    if (await page.locator(".statusbar-item", { hasText: "Tab Moves Focus" }).count()) await command(page, "Toggle Tab Key Moves Focus");
-    await park(page);
-    await page.screenshot({ path: path.join(OUT, "1-overview.png") }); console.log("  📷 1-overview.png");
-    await command(page, "View: Focus Second Editor Group");
-    await command(page, "View: Toggle Maximize Editor Group");
-    await fit(f);
-
-    // 4. New version: commit a change to Scheduler.schedule; the card stays pinned to its commit and offers the diff
+    // 3. New version: commit a change to Scheduler.schedule; the card stays pinned to its commit and offers the diff
     const file = path.join(WS, "nanovllm/engine/scheduler.py");
     const src = fs.readFileSync(file, "utf8");
     const changed = src.replace(/(\n(\s+)def schedule\(self\)[^\n]*\n)/, "$1$2    # admit waiting sequences first, then fall back to decoding\n");
@@ -213,7 +228,7 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
     await f.locator('.banner button[aria-label="Dismiss"]').click().catch(() => {}); await sleep(300);
     await card(f, "Scheduler.schedule").locator(".rev.new").first().click(); await sleep(2000); await settle(f);
     await park(page);
-    await boardShot(page, f, "4-new-version.png");
+    await boardShot(page, f, "3-new-version.png");
     // Keep the pinned version so the theme shots that follow show a plain board
     await f.locator(".pop button", { hasText: /^Keep / }).first().click().catch(() => page.keyboard.press("Escape")); await sleep(800);
   }
@@ -227,7 +242,11 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
       await f.locator(".st-sw", { hasText: t }).first().click(); await sleep(1200);
       await page.keyboard.press("Control+,"); await sleep(800);
       await fit(f); await park(page);
-      await boardShot(page, f, `themes/${t.toLowerCase().replace(/ /g, "-")}.png`);
+      const name = t.toLowerCase().replace(/ /g, "-");
+      await boardShot(page, f, `themes/${name}.png`);
+      // Where Scheduler.schedule sits in the shot (CSS px): compose-themes.mjs crops each theme's slice to that card's left edge
+      const [fb, cb] = [await f.locator("#board").boundingBox(), await card(f, "Scheduler.schedule").boundingBox()];
+      fs.writeFileSync(path.join(OUT, "themes", `${name}.json`), JSON.stringify({ frame: { w: fb.width, h: fb.height }, card: { x: cb.x - fb.x, y: cb.y - fb.y, w: cb.width, h: cb.height } }));
     }
   }
   console.log(failed ? `${failed} checks failed` : "all passed");
