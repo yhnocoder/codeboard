@@ -426,15 +426,17 @@ export function allIds(): string[] {
 
 // 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接把改动发给宿主，不用盯着整块白板的 JSON 看它变没变。
 // 宿主马上换上、稍后写盘，面板关掉时把没写的写完：白板这边不用赶在页面卸载前发什么。
-// 一步改动（mutate、撤销重做、拖动结束、宿主同步来的）在这一轮事件结束时发（同一轮里的几次合成一次）；
-// 拖动中的 live、镜头停下的 liveCam 停一会儿才发（不在每一帧拍整块白板的快照），拖动结束时那一步会马上发。
+// 一步改动（mutate、撤销重做、拖动结束、宿主同步来的）稍后（SEND_DELAY）发，之间的几次合成一次；
+// 拖动中的 live、镜头停下的 liveCam 停一会儿才发（不在每一帧拍整块白板的快照），拖动结束时那一步和别的改动一样发。
 // 发给宿主的是增量（BoardPatch）：拿现在的快照和上次发出去的那份按 id 比，只发变了的项、删掉的 id、白板本身的字段（变了才发）和镜头。
 // 快照的每一段本来就有（mutate 拍过的直接用），这里只比字符串、解析变了的那几段
 let queued = false;
+const SEND_DELAY = 50;
 function changed() {
   if (queued) return;
   queued = true;
-  queueMicrotask(() => { queued = false; flushSave(); });
+  // 稍等一下再发：比较快照、发消息不挤进用户操作的那一帧（关标签页总在这之后）。不用 requestAnimationFrame：后台的白板不出帧，宿主同步来的改动会一直发不出去
+  setTimeout(() => { queued = false; flushSave(); }, SEND_DELAY);
 }
 let saveTimer: number | undefined;
 const LIVE_DELAY = 800;
