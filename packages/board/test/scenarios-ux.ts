@@ -28,6 +28,7 @@ export const UX: Record<string, () => Promise<void>> = {
   "expand-keeps-call-line-in-view": () => run("expand-keeps-call-line-in-view", expandFollow),
   "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
   "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
+  "editing-tiny-note-zooms-to-readable": () => run("editing-tiny-note-zooms-to-readable", readableNote),
 };
 
 /** 底部工具条：每个宽度都是一行，彼此不重叠，也不出窗口 */
@@ -184,4 +185,35 @@ async function lineMenu(res: Record<string, unknown>) {
   const c = res.code as { sel: string[]; hide: boolean; ask: boolean; card: boolean }, g = res.gutter as { sel: string[]; hide: boolean };
   return c.sel.join() === "51" && c.hide && c.ask && c.card && res.cardSub === true && g.sel.join() === "50" && g.hide
     && (res.kept as string[]).join() === "50,51,52" && res.open === 50 && res.call === true;
+}
+
+/** 缩到 48% 按 N 新建 Note：镜头放大到字至少 11px（不超过 100%），Note 在视野里；退出编辑不缩回去。双击一段很小的 Text 也一样 */
+async function readableNote(res: Record<string, unknown>) {
+  const b = emptyBoard("bR", "read");
+  const step = nv("LLMEngine.step"); put(b, step, 80, 80, 560);
+  b.cards.push({ id: "t1", kind: "note", md: "far away text", bg: false, size: "body" }); b.place.t1 = { x: 1400, y: 900, w: 320 };
+  b.cam = { x: 40, y: 40, z: 0.48 };
+  const h = await open({ board: b, w: 1200, h: 800 }), page = h.page;
+  await wait(h, 500);
+  const px = (sel: string) => page.evaluate((q) => { const el = document.querySelector(q) as HTMLElement | null; return el ? parseFloat(getComputedStyle(el).fontSize) * el.getBoundingClientRect().height / el.offsetHeight : 0; }, sel);
+  await page.mouse.move(700, 600);
+  await page.keyboard.press("n"); await wait(h, 1400);
+  const nid = await page.evaluate(() => document.querySelector(".card.sel")?.getAttribute("data-id"));
+  const z1 = await zoomOf(h);
+  const font1 = await px(`.card[data-id="${nid}"] .nbody`);
+  const box = await page.locator(`.card[data-id="${nid}"]`).boundingBox();
+  await page.keyboard.type("hello"); await page.keyboard.press("Escape"); await wait(h, 700);
+  const z2 = await zoomOf(h);
+  res.note = { z1, z2, font: +font1.toFixed(1), inView: inView(box, 1200, 800) };
+  // 缩到 64%（还不是概览），双击远处的 Text 进入编辑
+  for (let i = 0; i < 2; i++) { await page.locator('button[aria-label="Zoom Out"]').click(); await wait(h, 500); }
+  const z3 = await zoomOf(h);
+  const tb = (await page.locator('.card[data-id="t1"] .tx').boundingBox())!;
+  await page.mouse.dblclick(tb.x + 10, tb.y + tb.height / 2); await wait(h, 1400);
+  const editingT = await page.evaluate(() => !!document.activeElement?.closest('.card[data-id="t1"]'));
+  const font2 = await px('.card[data-id="t1"] .tx');
+  res.text = { z3, z4: await zoomOf(h), font: +font2.toFixed(1), editing: editingT };
+  await shot(h, "ux-readable");
+  await page.context().browser()!.close();
+  return z1 > 0.48 && z1 <= 1 && font1 >= 10.9 && inView(box, 1200, 800) && z2 === z1 && z3 >= 0.6 && z3 < 0.8 && editingT && font2 >= 10.9;
 }
