@@ -1,5 +1,5 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
-// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit notePasteIntoTableCell editorKeysReachVsCode
+// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves
 import { open, put, findSym, symCard, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -172,6 +172,43 @@ export const NOTE_EDITING: Record<string, () => Promise<void>> = {
     check("editorKeysReachVsCode code card", JSON.stringify(inCode) === JSON.stringify(want), { inCode });
     await close(h);
     done("editorKeysReachVsCode");
+  },
+
+  /** Sidenote 的字：Esc、点到外面都保存（和 Note、问题一样）；字删光了保存就删掉这条；Add Sidenote 的 Text 页 Esc 也加上 */
+  async sidenoteTextEditSaves() {
+    const b = board();
+    const C = b.cards[0] as CodeCard, s = C.segments[0];
+    b.place[C.id] = { x: 300, y: 60, w: 520 };
+    b.sidenotes.push({ id: "sn1", kind: "text", md: "original", at: { card: C.id, seg: s.id, lines: [s.start + 2, s.start + 2] } });
+    const h = await open({ board: b });
+    await h.page.waitForTimeout(1500);
+    const texts = () => h.board().sidenotes.map((n) => (n.kind === "text" ? n.md : n.kind));
+    const openEdit = async () => {
+      await h.page.locator(".mk").first().click(); await h.page.waitForTimeout(500);
+      await h.page.locator("button.tbtn", { hasText: /^Edit$/ }).click(); await h.page.waitForTimeout(400);
+    };
+    await openEdit(); await keys(h.page, " +esc{Escape}"); await h.page.waitForTimeout(1500);
+    const afterEsc = texts();
+    await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
+    await openEdit(); await keys(h.page, " +click"); await h.page.mouse.click(1200, 800); await h.page.waitForTimeout(1500);
+    const afterClick = texts();
+    await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
+    await openEdit(); await keys(h.page, " +cancel"); await h.page.locator(".sn-edit button", { hasText: "Cancel" }).click(); await h.page.waitForTimeout(1500);
+    const afterCancel = texts();
+    // Add Sidenote → Text：写了字按 Esc
+    await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
+    await h.page.locator(".mk").first().click(); await h.page.waitForTimeout(500);
+    await h.page.locator("button.tbtn", { hasText: "+ Add" }).click(); await h.page.waitForTimeout(400);
+    await h.page.locator(".addnote .tab", { hasText: "Text" }).click(); await h.page.waitForTimeout(200);
+    await keys(h.page, "added by esc{Escape}"); await h.page.waitForTimeout(1500);
+    const afterAdd = texts();
+    await openEdit(); await keys(h.page, "{Control+a}{Backspace}{Control+Enter}"); await h.page.waitForTimeout(1500);
+    const afterClear = texts();
+    const ok = JSON.stringify(afterEsc) === '["original +esc"]' && JSON.stringify(afterClick) === '["original +esc +click"]' && JSON.stringify(afterCancel) === '["original +esc +click"]'
+      && JSON.stringify(afterAdd) === '["original +esc +click","added by esc"]' && JSON.stringify(afterClear) === '["added by esc"]';
+    check("sidenoteTextEditSaves", ok, { afterEsc, afterClick, afterCancel, afterAdd, afterClear });
+    await close(h);
+    done("sidenoteTextEditSaves");
   },
 
 };
