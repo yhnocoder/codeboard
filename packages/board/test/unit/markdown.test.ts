@@ -123,9 +123,9 @@ describe("static render", () => {
   it("keeps soft line breaks as written (old notes were one line per paragraph)", () => {
     expect(renderMd("line one\nline two")).toBe("<p>line one\nline two</p>");
   });
-  it("highlights code, renders chips, tasks, footnotes", () => {
+  it("renders code for the host highlighter, chips, tasks, footnotes", () => {
     const h = renderMd("```python\ndef f(): return 1\n```\n\n- [x] done\n\nsee [[Card]][^1]\n\n[^1]: n");
-    expect(h).toContain('<span class="hljs-keyword">def</span>');
+    expect(h).toContain('<pre class="md-code" data-lang="python"><code>def f(): return 1</code></pre>');
     expect(h).toContain('data-type="taskItem"');
     expect(h).toContain('checked="checked"');
     expect(h).toContain('<span class="cref" data-cardref="Card">Card</span>');
