@@ -5,11 +5,11 @@ import {
   cardTitle, cardChip, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
   type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type BoardCard, type Graph, type LinkSide,
 } from "@codeboard/core";
-import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
+import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { editing, setEditing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
-import { collapsedHome } from "../state/sections";
+import { isHidden } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { CardStickers, BoundStickers } from "../stickers/Picker";
@@ -36,7 +36,8 @@ export function CardView(p: { card: Card }) {
     const id = c().id, w = el.offsetWidth, h = el.offsetHeight;
     return () => setSizes(id, { w, h });
   };
-  onMount(() => onCleanup(observeResize(el, () => queueMeasure(read, read))));
+  // 藏起来再显示（折叠、展开）时卡的元素是新建的：在 ref 里接上尺寸监听，随这个元素一起拆掉
+  const mount = (e: HTMLDivElement) => { el = e; onCleanup(observeResize(e, () => queueMeasure(read, read))); };
   createEffect(() => {
     const pg = pingCard();
     if (pg?.id === c().id && el) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
@@ -74,8 +75,8 @@ export function CardView(p: { card: Card }) {
     return (m && d.armed ? 1 : 0) | (m && !d.armed ? 2 : 0) | (d.kind === "card" && d.card === id ? 4 : 0) | (d.cands?.includes(id) ? 8 : 0);
   });
   return (
-    <Show when={!collapsedAway().has(c().id) && !collapsedHome(pl().section)}>
-      <div ref={el} class={`card ${kindClass()}`} data-id={c().id} data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined} style={style()}
+    <Show when={!isHidden(c().id)}>
+      <div ref={mount} class={`card ${kindClass()}`} data-id={c().id} data-fc={c().kind === "code" ? fileHue((c() as CodeCard).segments[0]?.path) : undefined} style={style()}
         classList={{
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: lift(), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
           editing: ed(), off: offscreen(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",

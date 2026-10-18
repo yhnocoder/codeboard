@@ -2,7 +2,7 @@
 // 成员关系：卡片中心点落在哪个最深的框里（拖动结束时更新）。
 import { createMemo, mapArray } from "solid-js";
 import { union, type Rect } from "@codeboard/core";
-import { state, rectOf, placed } from "./store";
+import { state, rectOf, placed, cardById, collapsedAway } from "./store";
 import type { Section } from "@codeboard/core";
 
 const PAD = { l: 22, r: 22, t: 34, b: 22 };
@@ -99,6 +99,17 @@ export function deepestAt(fr: Map<string, Rect>, x: number, y: number, skip?: Se
   }
   return best;
 }
+
+/**
+ * 这张卡（Compare 的栏按它的 Compare 算）现在藏着吗：在折叠的调用子树里，或在折叠的 Section 里。
+ * 用户看不见的卡不能被框选、全选、吸附、删除，适应窗口也不算它
+ */
+export function isHidden(id: string): boolean {
+  const h = cardById(id)?.host.id ?? id;
+  return collapsedAway().has(h) || !!collapsedHome(state.board.place[h]?.section);
+}
+/** 画布上看得见的卡，按叠放顺序 */
+export const visibleCards = createMemo(() => placed().filter((c) => !isHidden(c.id)));
 
 /** 卡片被藏起来了吗（在折叠的 Section 里）；返回最外层折叠的那个 */
 export function collapsedHome(cardSection?: string): Section | undefined {

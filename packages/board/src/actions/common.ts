@@ -1,6 +1,7 @@
 // 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、指针位置、打开编辑器 / 链接。
 import { cardTitle, isCode, segOf, bounds, cardRows, shownText, commonIndent, type Card, type Section, type Rect } from "@codeboard/core";
-import { state, mutate, sel, select, isSel, cardById, rectOf, placeOf, placed } from "../state/store";
+import { state, mutate, sel, select, isSel, cardById, rectOf, placeOf, placed, flows } from "../state/store";
+import { frames, isHidden, visibleCards } from "../state/sections";
 import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
 import { notesOf, ping, setPopIn, popIn, shown } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -25,7 +26,7 @@ export function selectCard(id: string, add = false) {
   if (!(sel.cards.length === 1 && sel.cards[0] === top && !sel.links.length && !sel.sections.length)) select({ cards: [top] });
 }
 export function selectAll() {
-  select({ cards: placed().filter((c) => !isLocked(c.id)).map((c) => c.id) });
+  select({ cards: visibleCards().filter((c) => !isLocked(c.id)).map((c) => c.id) });
 }
 export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(Boolean) as Card[];
 
@@ -64,14 +65,36 @@ export function isLocked(id: string) {
 
 // ---------- 镜头 ----------
 
+/** 带到眼前：藏在折叠的调用子树、折叠的 Section 里的卡先展开（展开了要等它画出来、量好大小再挪镜头） */
 export function revealCard(id: string, doPing = true) {
-  const r = hostRect(id);
-  if (!r) return;
-  ensureVisible(r);
-  if (doPing) ping(cardById(id)!.host.id);
+  const f = cardById(id);
+  if (!f) return;
+  const show = () => {
+    const r = hostRect(id);
+    if (!r) return;
+    ensureVisible(r);
+    if (doPing) ping(f.host.id);
+  };
+  if (unhide(id)) requestAnimationFrame(show); else show();
 }
+/** 展开藏着这张卡的：调用图里它上面折叠着的卡、它所在的折叠的 Section（一层层往外）。返回有没有展开什么 */
+function unhide(id: string): boolean {
+  if (!isHidden(id)) return false;
+  const host = (k: string) => cardById(k)?.host.id ?? k;
+  const h = host(id), up = new Set<string>(), todo = [id];
+  while (todo.length) for (const l of flows().parents.get(todo.pop()!) ?? []) {
+    const p = host(l.from.card);
+    if (!up.has(p)) { up.add(p); todo.push(l.from.card); }
+  }
+  return mutate((b) => {
+    for (const k of up) if (b.place[k]?.collapsed) b.place[k].collapsed = undefined;
+    const seen = new Set<string>();
+    for (let s = b.sections.find((q) => q.id === b.place[h]?.section); s && !seen.has(s.id); s = b.sections.find((q) => q.id === s!.parent)) { seen.add(s.id); if (s.collapsed) s.collapsed = undefined; }
+  });
+}
+/** 适应窗口：只框看得见的（折叠的调用子树里的卡不算，折叠的 Section 只算它的标题条） */
 export function fitAll() {
-  const rs = [...placed().map((c) => rectOf(c)), ...state.board.sections.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h }))];
+  const rs = [...visibleCards().map((c) => rectOf(c)), ...frames().values()];
   const b = bounds(rs);
   if (!b) return camTo(80, 80, 1);
   const f = fitRect(b, 1);
