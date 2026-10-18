@@ -1,4 +1,5 @@
-// 什么时候重查新版本：git HEAD 变了（.git/HEAD、refs 的文件监听 + VS Code 自带 git 插件的事件）、保存文件。
+// 什么时候重查新版本：git HEAD 变了（.git/HEAD、refs 的文件监听 + VS Code 自带 git 插件的事件）、保存文件、
+// 编辑器里改了白板上用到的文件（版本状态按编辑器里的内容算，没保存的改动、Revert File 也算）。
 // 关着的白板也算一下有几张卡有新版本（侧栏圆点、状态栏）。
 import * as path from "node:path";
 import type { Disposable } from "@codeboard/core";
@@ -69,8 +70,8 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
   void start();
 
   // 保存文件：只影响 uncommitted 和仓库外文件，重算开着的白板
-  const onSave = debounce(() => void panels.refreshStale(), 500);
-  subs.push(files.onDidSave(() => onSave()));
+  const recheck = debounce(() => void panels.refreshStale(), 500);
+  subs.push(files.onDidSave(() => recheck()));
   // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
   // Variant 的文件也算（另一个 worktree、复制出来的文件：在别处保存后卡上跟着刷新）
   const watchedFiles = new Set<string>();
@@ -80,10 +81,12 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
       const a = absOf(s);
       if (!a || watchedFiles.has(a)) continue;
       watchedFiles.add(a);
-      subs.push(files.watch(path.dirname(a), path.basename(a), () => onSave()));
+      subs.push(files.watch(path.dirname(a), path.basename(a), () => recheck()));
     }
   };
   void watchFiles();
+  // 编辑器里改了（打字、撤销、Revert File）：版本状态读的是编辑器里的内容（readText），不等保存。只看白板上用到的文件
+  subs.push(files.onDidEdit((abs) => { if (abs && watchedFiles.has(abs)) recheck(); }));
   // 白板上加了新仓库 / 新文件的代码：也监听它
   subs.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); await watchFiles(); })()));
   return { dispose: () => { for (const d of subs) d.dispose(); } };
