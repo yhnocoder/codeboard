@@ -164,6 +164,11 @@ export function danglingRefs(b: Board): string[] {
     return !seg || (c.kind === "code" && c.segments.some((s) => s.id === seg));
   };
   for (const l of b.links) for (const e of [l.from, l.to]) if (!segOk(e.card, e.seg)) out.push(`link ${l.id} → missing ${e.card}${e.seg ? `/${e.seg}` : ""}`);
+  // 标记的组合（LinkMarks）：类型挡住了写法，这里挡住从别处来的数据
+  for (const l of b.links as { id: string; gen?: true; call?: unknown; rpc?: unknown; back?: true }[]) {
+    const extra = (["call", "rpc", "back"] as const).filter((k) => l[k]);
+    if (l.gen && extra.length) out.push(`generated-from link ${l.id} also has ${extra.join(", ")}`);
+  }
   for (const n of b.sidenotes) {
     if (!segOk(n.at.card, n.at.seg)) out.push(`sidenote ${n.id} on missing ${n.at.card}`);
     if (n.kind === "card" && !cards.has(n.card)) out.push(`sidenote ${n.id} points to missing ${n.card}`);

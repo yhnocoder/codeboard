@@ -11,7 +11,7 @@ import {
 
 const seg = (id: string, start: number, text: string[]): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git", commit: "x" } });
 const code = (id: string, s = seg(`s${id}`, 1, ["pass"])): CodeCard => ({ id, kind: "code", segments: [s] });
-const call = (from: string, to: string, line = 1): Link => ({ id: `${from}-${to}`, call: { name: "f", col: 0 }, from: { card: from, seg: `s${from}`, line }, to: { card: to } });
+const call = (from: string, to: string, line = 1): Extract<Link, { gen?: undefined }> => ({ id: `${from}-${to}`, call: { name: "f", col: 0 }, from: { card: from, seg: `s${from}`, line }, to: { card: to } });
 const compare = (id: string, a: string, b: string): Card => ({ id, kind: "compare", cols: [a, b] });
 
 describe("removeCards", () => {
@@ -544,5 +544,18 @@ describe("board action edits (core edit)", () => {
     expect((b.cards[0] as { md: string }).md).toBe("see [[Baz]] and [[foo.bar]]");
     expect(b.cards[1].desc).toBe("[[Baz]]");
     expect((b.sidenotes[0] as { md: string }).md).toBe("[[Baz]]");
+  });
+});
+
+describe("link marks (LinkMarks)", () => {
+  it("danglingRefs flags a generated-from link that also has call, rpc or back; migrate keeps the user's mark and drops gen", () => {
+    const b: Board = { ...emptyBoard("b", "B"), cards: [code("a"), code("g")], place: {} };
+    b.links = [{ id: "l", from: { card: "g" }, to: { card: "a" }, gen: true }];
+    expect(danglingRefs(b)).toEqual([]);
+    (b.links[0] as { back?: true }).back = true;
+    expect(danglingRefs(b)).toEqual(["generated-from link l also has back"]);
+    const m = migrateBoard(JSON.parse(JSON.stringify({ ...b, version: 6 })));
+    expect(m.links[0]).toMatchObject({ id: "l", back: true });
+    expect(m.links[0].gen).toBeUndefined();
   });
 });

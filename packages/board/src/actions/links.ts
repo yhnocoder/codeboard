@@ -1,5 +1,5 @@
 // 箭头（Link）：普通箭头、连接模式、标签、调用上的变量。
-import { uid, isCode, cardTitle, varKey, callName, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
+import { uid, isCode, cardTitle, varKey, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
 import { state, mutate, select, cardById, toast } from "../state/store";
 import { setEditing, setConnectFrom, setHoverVar } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -68,13 +68,13 @@ export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
 /** 普通箭头能认出是调用（出发行调用了目标卡的函数）：加上 Call 标记（右键 Call Mark，或悬停时的 Call 按钮），再去问参数候选 */
 export function makeCall(id: string) {
   const L = state.board.links.find((l) => l.id === id);
-  if (!L || L.call) return;
+  if (!L || L.call || !canMark(L)) return;
   const found = callOn(L.from, L.to);
   const call = found ?? manualCall(L.from, L.to);
   if (!call) return;
   mutate((b) => {
     const l = b.links.find((k) => k.id === id);
-    if (l) l.call = callMark(call);
+    if (l && canMark(l)) l.call = callMark(call);
   });
   if (found && L.to.sub === undefined) askCands(id, L.from.card, L.from.seg!, call, L.to.card);
 }

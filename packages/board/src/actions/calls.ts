@@ -1,7 +1,7 @@
 // v0.2 调用（线框 03、12、13）：RPC 标记、进程标签、消息卡、↩ back to；起点卡；Arrow 图例；调用树；运行记录（observed 证据和实参）。
 import { createMemo, createSignal } from "solid-js";
 import {
-  uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, LEGEND, sameSource, baseName, joinLinks, splitLink, placeCards, type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
+  uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, LEGEND, sameSource, baseName, joinLinks, splitLink, placeCards, canMark, type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
 } from "@codeboard/core";
 import { state, mutate, select, flows, cardById, rectOf, toast, placeOf, placed, sel } from "../state/store";
 import { openPop } from "../state/pop";
@@ -18,8 +18,8 @@ const linkById = (id: string) => state.board.links.find((l) => l.id === id);
 /** Arrow 菜单 Mark as RPC…：先标上（默认 shm），再开属性浮层改机制、消息名、一对多 */
 export function markRpc(id: string, el?: Element) {
   const L = linkById(id);
-  if (!L) return;
-  if (!L.rpc) mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) l.rpc = { mech: "shm" }; });
+  if (!L || !canMark(L)) return;
+  if (!L.rpc) mutate((b) => { const l = b.links.find((k) => k.id === id); if (l && canMark(l)) l.rpc = { mech: "shm" }; });
   select({ links: [id] });
   const lab = el ?? document.querySelector(`.vchips[data-link="${id}"]`);
   openPop({ kind: "rpc", link: id }, lab ? { el: lab, prefer: "below" } : lastPointer());
@@ -37,7 +37,7 @@ export function clearRpc(id: string) {
 }
 /** ↩ back to：回到起点的线，Walkthrough 走到这里停 */
 export function toggleBack(id: string) {
-  mutate((b) => { const l = b.links.find((k) => k.id === id); if (!l) return; if (l.back) delete l.back; else l.back = true; });
+  mutate((b) => { const l = b.links.find((k) => k.id === id); if (!l || !canMark(l)) return; if (l.back) delete l.back; else l.back = true; });
 }
 
 export const isMsg = (id: string) => { const c = cardById(id)?.card; return c?.kind === "note" && !!c.msg; };

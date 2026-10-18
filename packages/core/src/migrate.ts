@@ -65,6 +65,8 @@ function normNote(n: Sidenote) {
 
 function normLink(l: Link) {
   dropFalse(l, ["gen", "back"]);
+  // Generated from 独占（LinkMarks）：旧版能给它再加 Call / RPC / back，用户后加的标记留下，gen 去掉
+  if (l.gen && (l.call || l.rpc || l.back)) delete (l as { gen?: true }).gen;
   dropFalse(l.style, ["dash"]);
   dropFalse(l.lost, ["from", "to"]);
 }

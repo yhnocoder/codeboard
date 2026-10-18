@@ -89,6 +89,8 @@ const Link = obj({
   rpc: opt(obj({ mech: str, custom: opt(str), msg: opt(str), fan: opt(v.picklist(["one", "all"])) })),
   back: opt(yes),
 });
+/** LinkMarks：Generated from 不带 call / rpc / back */
+const LinkMarked = v.pipe(Link, v.check((l) => !l.gen || (!l.call && !l.rpc && !l.back), "A generated-from link has no call, RPC or back mark"));
 const GraphMark = v.union([obj({ letter: str }), obj({ icon: str })]);
 
 const Section = obj({ id: str, title: str, x: num, y: num, w: num, h: num, parent: opt(str), color: opt(str), collapsed: opt(bool), locked: opt(bool), desc: opt(str) });
@@ -113,7 +115,7 @@ const Sticker = obj({
 
 const boardEntries = {
   version: v.literal(BOARD_VERSION), id: opt(str), name: str, cam: obj({ x: num, y: num, z: num }),
-  cards: v.array(Card), place: v.record(str, Place), links: v.array(Link), sections: v.array(Section), sidenotes: v.array(Sidenote), stickers: v.array(Sticker),
+  cards: v.array(Card), place: v.record(str, Place), links: v.array(LinkMarked), sections: v.array(Section), sidenotes: v.array(Sidenote), stickers: v.array(Sticker),
   hideAllComments: opt(bool), hideNumbers: opt(bool),
   born: opt(v.record(str, num)), seq: opt(num), marks: opt(v.record(str, GraphMark)),
   legend: opt(v.record(str, str)),

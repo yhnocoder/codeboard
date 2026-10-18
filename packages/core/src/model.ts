@@ -224,24 +224,37 @@ export type LinkStyle = { dash?: true; width?: 1 | 2 | 3; head?: { start?: boole
 
 /**
  * 箭头：只有这一种（第 5 版起）。两端各是整张卡或某一行，一行 / 一张卡可以连出、连进任意多条。
- * 调用是箭头上的 Call 标记（call），不是另一种线。
+ * 调用是箭头上的 Call 标记（call），不是另一种线。标记怎么组合见 LinkMarks
  */
-export type Link = {
+export type Link = LinkBase & LinkMarks;
+
+/**
+ * 箭头上的标记能怎么组合（其余字段都是样式，随便配）：
+ * - gen（Generated from）独占：只连 Generated 卡和生成它的那一行，不带 call / rpc / back。它不是调用，也不是讲解的返回线
+ * - call、rpc、back 各自可有可无，能同时有：call = 这一行调用了目标（参数、备选、↺）；rpc = 跨进程发过去（图例按 RPC 画）；
+ *   back = 回到起点的线（Walkthrough 走到这里停；带 call / rpc 时也不进调用图，见 flow.isCall）
+ * 每次修改后 danglingRefs 也查一遍（旧文件由 migrate 规整）
+ */
+export type LinkMarks =
+  | { gen?: undefined; call?: CallMark; rpc?: RpcMark; back?: true }
+  | { gen: true; call?: undefined; rpc?: undefined; back?: undefined };
+
+type LinkBase = {
   id: string;
   from: End;
   to: End;
   label?: string; // 用户写的话，浮在线上
   at?: number; // 标签框沿线的位置 0..1（用户拖过才有；默认在中间）
-  call?: CallMark;
   style?: LinkStyle;
   sides?: { from?: LinkSide; to?: LinkSide }; // 用户选过的进出边
   lost?: { from?: true; to?: true }; // 这一端连着的行在代码更新后没了：端点退到卡头，画成红色，等用户重连或删掉
-  gen?: true; // Generated from：从 Generated 卡连回生成它的那一行（点线）
-  /** RPC 标记（线框 03）：不是直接调用，而是发消息让另一个进程去做（点划线）。和 Call 一样连进调用图，标记字母跨过去 */
-  rpc?: RpcMark;
-  /** 「↩ back to」：回到起点的线（结果送回去），Walkthrough 走到这里停，不沿它走 */
-  back?: true;
+  // 标记（LinkMarks）：
+  //   gen = Generated from：从 Generated 卡连回生成它的那一行（点线）
+  //   rpc = RPC 标记（线框 03）：不是直接调用，而是发消息让另一个进程去做（点划线）。和 Call 一样连进调用图，标记字母跨过去
+  //   back = 「↩ back to」：回到起点的线（结果送回去），Walkthrough 走到这里停，不沿它走
 };
+/** 这条箭头能不能加 call / rpc / back（Generated from 不能，见 LinkMarks） */
+export const canMark = (l: Link): l is LinkBase & Extract<LinkMarks, { gen?: undefined }> => !l.gen;
 
 /** 跨进程的机制 */
 export const RPC_MECHS = ["shm", "zmq", "HTTP", "gRPC", "torch.distributed", "queue", "ray", "custom"] as const;
