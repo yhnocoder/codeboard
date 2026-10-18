@@ -238,7 +238,8 @@ describe("card library (shared cards)", () => {
     expect(file(fs, "A").cards).toEqual([{ id: "s", kind: "shared" }, note("la")]);
     expect(file(fs, "A").sidenotes.map((n: any) => n.id)).toEqual(["n2"]);
     const c = card(fs, "s");
-    expect(c).toMatchObject({ version: 6, card: note("s"), rev: { s: 1, n1: 1 } });
+    expect(c).toMatchObject({ version: 6, card: note("s") });
+    expect(c.rev).toBeUndefined();
     expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
     // Loading inflates
     const a = (await store.load("A"))!;
@@ -252,21 +253,23 @@ describe("card library (shared cards)", () => {
     expect(sorted(await again.load("A"))).toEqual(sorted(a));
   });
 
-  it("a patch to a shared card writes the card file, bumps the item's rev, updates the other board and reports it once", async () => {
+  it("a patch to a shared card writes the card file, updates the other board and reports it once", async () => {
     const { fs, store, B, shared } = await two();
     const before = file(fs, B);
     const back = await store.patch("A", { cards: { set: [note("s", "edited")] }, sidenotes: { set: [{ id: "n3", kind: "text", md: "new", at: { card: "s" } }] } });
     expect(back).toEqual([]);
-    expect(card(fs, "s")).toMatchObject({ card: { md: "edited" }, rev: { s: 2, n1: 1, n3: 1 } });
+    expect(card(fs, "s")).toMatchObject({ card: { md: "edited" } });
+    expect(card(fs, "s").sidenotes.map((n: any) => n.id).sort()).toEqual(["n1", "n3"]);
     expect(file(fs, B)).toEqual(before); // only the card file changes for the other board
     expect(shared).toEqual([{ from: "A", ids: ["s"], items: ["s", "n3"] }]);
     const b = store.peek(B)!;
     expect((b.cards[0] as any).md).toBe("edited");
     expect(b.sidenotes.map((n) => n.id)).toContain("n3");
     expect(b.sidenotes.map((n) => n.id)).not.toContain("n2"); // A's board-only sidenote stays on A
-    // A no-op write (e.g. the same content again) does not bump or broadcast
+    // A no-op write (e.g. the same content again) does not rewrite or broadcast
+    const writes = fs.files.get(`${ROOT}/cards/s.json`)!.mtime;
     await store.patch("A", { cards: { set: [note("s", "edited")] } });
-    expect(card(fs, "s").rev.s).toBe(2);
+    expect(fs.files.get(`${ROOT}/cards/s.json`)!.mtime).toBe(writes);
     expect(shared.length).toBe(1);
     // Local cards never touch the library
     await store.patch("A", { cards: { set: [note("la", "x")] } });
@@ -286,10 +289,31 @@ describe("card library (shared cards)", () => {
     const { fs, store, B, shared } = await two();
     await store.patch(B, { sidenotes: { set: [{ id: "n1", kind: "text", md: "travels", at: { card: "s" }, boardOnly: true }] } });
     expect(card(fs, "s").sidenotes).toEqual([]);
-    expect(card(fs, "s").rev.n1).toBeUndefined();
     expect(shared.at(-1)).toEqual({ from: B, ids: ["s"], items: ["n1"] });
     expect(store.peek("A")!.sidenotes.map((n) => n.id)).toEqual(["n2"]); // gone from A, stays on B as its own
     expect(file(fs, B).sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
+  });
+
+  it("merges a shared card item by item when another window changed the card file", async () => {
+    const { fs, store, shared } = await two();
+    const backs: unknown[] = [];
+    store.onDidShare((e) => backs.push(e.back));
+    // Another VS Code window on the same storage folder adds a sidenote and edits n1
+    const disk = card(fs, "s");
+    disk.sidenotes = [{ ...disk.sidenotes[0], md: "edited elsewhere" }, { id: "nx", kind: "text", md: "from the other window", at: { card: "s" } }];
+    fs.put(`${ROOT}/cards/s.json`, disk);
+    // This window edits only the card: the other window's sidenotes survive
+    await store.patch("A", { cards: { set: [note("s", "edited here")] } });
+    const c = card(fs, "s");
+    expect(c.card.md).toBe("edited here");
+    expect(c.sidenotes.map((n: any) => [n.id, n.md]).sort()).toEqual([["n1", "edited elsewhere"], ["nx", "from the other window"]]);
+    // The writing board takes the merged items back; its cache already has them
+    expect(backs.at(-1)).toEqual([expect.objectContaining({ items: ["n1", "nx"] })]);
+    expect(store.peek("A")!.sidenotes.map((n) => n.id).sort()).toEqual(["n1", "n2", "nx"]);
+    expect(shared.at(-1)!.items.sort()).toEqual(["n1", "nx", "s"]);
+    // Deleting a sidenote this board saw still deletes it; one it never saw stays
+    await store.patch("A", { sidenotes: { del: ["n1"] } });
+    expect(card(fs, "s").sidenotes.map((n: any) => n.id)).toEqual(["nx"]);
   });
 
   it("undo skips shared items another board changed since this board wrote them", async () => {

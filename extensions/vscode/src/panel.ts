@@ -49,9 +49,11 @@ export class Panels implements BoardHost {
     ctx.subscriptions.push(store.onDidShare((e) => {
       this.shareQ = this.shareQ.then(async () => {
         for (const p of this.all()) {
-          if (p.id === e.from) continue;
+          // 写的那块白板只换上 back（卡文件被另一个窗口改过，合并进来的项）
+          const from = p.id === e.from;
+          if (from && !e.back) continue;
           const refs = store.refsOf(p.id);
-          const cards = e.cards.filter((sc) => refs.has(sc.card.id));
+          const cards = (from ? e.back! : e.cards).filter((sc) => refs.has(sc.card.id));
           if (!cards.length) continue;
           // Variant 的段（不在显示的）也要展示数据：切换时直接换上
           const segs: Segment[] = cards.flatMap((sc) => (sc.items.includes(sc.card.id) && sc.card.kind === "code" ? [...sc.card.segments, ...variantSegments({ cards: [sc.card] })] : []));
