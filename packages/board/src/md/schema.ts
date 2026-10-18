@@ -299,7 +299,9 @@ if (linkSpec) {
 
 /** Markdown → 文档 JSON（脚注定义收到文末一个 footnotes 里，按引用顺序编号） */
 export function parseMd(src: string): JSONContent {
-  const doc = mm.parse(src.replace(/\r\n?/g, "\n"));
+  // 转义的 \$ 先换成占位字（解析器会把 \$ 和普通 $ 解成同一个字，后面就分不出哪个是转义过的），见 mathify / unDollar。
+  // 链接地址 ](…) 和 <自动链接> 里不换（地址里的占位字会被当成非法字符丢掉）
+  const doc = mm.parse(src.replace(/\r\n?/g, "\n").replace(/(\]\([^)\n]*\)|<[^>\s]*>)|\\([\\$])/g, (m, url, c) => (!url && c === "$" ? ESC_DOLLAR : m)));
   const defs = new Map<string, JSONContent>();
   const rest: JSONContent[] = [];
   for (const n of doc.content ?? []) if (n.type === "footnote") defs.set(n.attrs?.["data-id"], n); else rest.push(n);
@@ -310,7 +312,7 @@ export function parseMd(src: string): JSONContent {
     rest.push({ type: "footnotes", content: refs.map((id, i) => ({ type: "footnote", content: defs.get(id)?.content ?? [{ type: "paragraph" }], attrs: { "data-id": id, id: `fn:${i + 1}` } })) });
   }
   if (!rest.length) rest.push({ type: "paragraph" });
-  return { type: "doc", content: mathify(rest)! };
+  return { type: "doc", content: unDollar(mathify(rest)!) };
 }
 function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }
@@ -338,22 +340,37 @@ export function blockSource(n: JSONContent): string {
   try { return mm.serialize({ type: "doc", content: [n] }).replace(/^\n+/, "").replace(/\s+$/, ""); } finally { rawText = false; }
 }
 
-// 字里看着像 $公式$ 的（Pandoc 规则）变成公式：旧版编辑器里打的 $\frac{a}{b}$ 没转成公式，写回成了 \$…\$，再读进来时转过来
-const TEXT_MATH = /(^|[^$\\])\$([^$\s](?:[^$]*[^$\s\\])?)\$(?![\d$])/g;
+// 字里看着像 $公式$ 的（Pandoc 规则）变成公式：旧版编辑器里打的 $\frac{a}{b}$ 没转成公式，写回成了 \$…\$，再读进来时转过来。
+// 两头要是同一种 $：都没转义，或者都转义了（旧版的 \$…\$）。只转义了开头的 \$x$ 是现在的编辑器写下的普通文字（打 $x$ 变成公式后
+// ⌘Z 撤回的就是这样存的），Typora 里也是字面的 $，不当公式
+const ESC_DOLLAR = "\uE024";
+const TEXT_MATH = /(^|[^$\\\uE024])([$\uE024])([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\2(?![\d$\uE024])/g;
+/** 占位字换回去：正文、链接地址里是 $；代码、公式源码里原样是 \$ */
+function unDollar(ns: JSONContent[], raw = false): JSONContent[] {
+  const fix = (t: string, r: boolean) => (t.includes(ESC_DOLLAR) ? t.replaceAll(ESC_DOLLAR, r ? "\\$" : "$") : t);
+  return ns.map((n) => {
+    const r = raw || n.type === "codeBlock";
+    const out: JSONContent = { ...n };
+    if (n.text !== undefined) out.text = fix(n.text, r || (n.marks ?? []).some((m) => m.type === "code"));
+    if (n.attrs) out.attrs = Object.fromEntries(Object.entries(n.attrs).map(([k, v]) => [k, typeof v === "string" ? fix(v, r || k === "latex") : v]));
+    if (n.content) out.content = unDollar(n.content, r);
+    return out;
+  });
+}
 function mathify(ns: JSONContent[] | undefined): JSONContent[] | undefined {
   if (!ns) return ns;
   const out: JSONContent[] = [];
   for (const n of ns) {
     if (n.type === "codeBlock") { out.push(n); continue; }
-    if (n.type === "text" && n.text?.includes("$") && !(n.marks ?? []).some((m) => m.type === "code")) {
+    if (n.type === "text" && /[$\uE024]/.test(n.text ?? "") && !(n.marks ?? []).some((m) => m.type === "code")) {
       let last = 0, m: RegExpExecArray | null;
-      const t = n.text;
+      const t = n.text!;
       TEXT_MATH.lastIndex = 0;
       while ((m = TEXT_MATH.exec(t))) {
         const at = m.index + m[1].length;
         if (at > last) out.push({ ...n, text: t.slice(last, at) });
-        out.push({ type: "inlineMath", attrs: { latex: m[2], display: false } });
-        last = at + m[2].length + 2;
+        out.push({ type: "inlineMath", attrs: { latex: m[3], display: false } });
+        last = at + m[3].length + 2;
         TEXT_MATH.lastIndex = last;
       }
       if (last === 0) out.push(n);

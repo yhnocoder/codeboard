@@ -168,6 +168,21 @@ describe("typed math and block source (v0.1.8 review)", () => {
     expect(JSON.stringify(d)).toContain('"inlineMath"');
     expect(rt("a \\$\\frac{a}{b}\\$ b")).toBe("a $\\frac{a}{b}$ b");
   });
+  // N1：打 $x$ 变成公式后 ⌘Z 撤回，存下的是 \$x$；显示和再次编辑都要是字面的 $x$（Typora 一样），不能又变回公式
+  it("an escaped \\$ stays a literal dollar, shown and re-parsed", () => {
+    const has = (s: string) => JSON.stringify(parseMd(s)).includes('"inlineMath"');
+    expect(has("a \\$x$ b")).toBe(false);
+    same("a \\$x$ b");
+    expect(renderMd("a \\$x$ b")).toBe("<p>a $x$ b</p>");
+    // 同一段里别的公式照常
+    expect(has("a \\$x$ b $y$")).toBe(true);
+    same("a \\$x$ b $y$");
+    // 公式源码、代码里的 \$ 原样留着；链接地址里的 \$ 是 $
+    expect(rt("$a\\$b$")).toBe("$a\\$b$");
+    same("`\\$x$`");
+    same("```\n\\$a$\n```");
+    expect(rt("[t](http://x/\\$y)")).toBe("[t](http://x/$y)");
+  });
   it("leaves money and $ followed by a digit alone", () => {
     same("pay $5 and $6 today");
     expect(JSON.stringify(parseMd("from $1 to $2"))).not.toContain("inlineMath");

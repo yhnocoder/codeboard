@@ -132,6 +132,8 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "undo heading rule", seq: "# {Control+z}x", md: "\\# x" },
       // 写回成 \$a$；再读进来时字里的 $a$ 会变成公式（旧版存下来的 \$…\$ 也这样转过来）
       { name: "undo math rule", seq: "$a${Control+z}", md: "\\$a$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
+      // N1：⌘Z 撤回公式转换后存下的 \$x$，再打开编辑还是字面的 $x$（不变回公式），写回不变
+      { name: "escaped dollar reopens as text", init: "a \\$x$ b", seq: "{End} c", md: "a \\$x$ b c", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
       { name: "undo fence rule", seq: "```js{Enter}{Control+z}", md: /^```js$|^\\`\\`\\`js$/, dom: count(".md-pm pre"), domOk: (n) => n === 0 },
       // 标题行首退格：变回段落
       // （刚在空 Note 里打完字马上按 Home，headless Chromium 里偶尔落回行尾：先停一下）
