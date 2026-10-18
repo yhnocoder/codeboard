@@ -1,7 +1,17 @@
 // 真机试用（nano-vllm、白板放在编辑器旁边）后的体验修正
 // Usage: node packages/board/test/run-harness.mjs <scenario>   screenshots: test-out/harness/ux-*.png
-import { emptyBoard, type CodeCard } from "@codeboard/core";
-import { open, shot, put, symCard, findSym, type Host } from "./harness";
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { emptyBoard, DEFAULT_SETTINGS, type CodeCard, type SegView, type HostToBoard, type NameHit } from "@codeboard/core";
+import { open, shot, put, symCard, findSym, REPO, type Host } from "./harness";
+import { startAnalysis, analysisOf } from "../../../extensions/vscode/src/analysis";
+import { cardForFileSym } from "../../../extensions/vscode/src/cards";
+import { callVars, expand, peek } from "../../../extensions/vscode/src/resolve";
+import { viewsFor } from "../../../extensions/vscode/src/views";
+import { searchName, searchPick } from "../../../extensions/vscode/src/search";
+import { resetIndex, startNameIndex, nameIndexReady } from "../../../extensions/vscode/src/nameindex";
+import { langOf, useWorkspace } from "../../../extensions/vscode/src/ws";
+import { nodeWorkspace } from "../../../extensions/vscode/test/node-workspace";
 
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
@@ -16,6 +26,7 @@ const run = async (name: string, f: (res: Record<string, unknown>) => Promise<bo
 export const UX: Record<string, () => Promise<void>> = {
   "dock-fits-narrow-board": () => run("dock-fits-narrow-board", dockFits),
   "expand-keeps-call-line-in-view": () => run("expand-keeps-call-line-in-view", expandFollow),
+  "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
 };
 
 /** 底部工具条：每个宽度都是一行，彼此不重叠，也不出窗口 */
@@ -78,4 +89,61 @@ async function expandFollow(res: Record<string, unknown>) {
   await shot(h, "ux-expand-follow");
   await h.page.context().browser()!.close();
   return ok;
+}
+
+/** 真的宿主（resolve.ts、名字索引）读 examples/nano-vllm */
+async function nanoHost(cards: { rel: string; qual: string; x: number; y: number }[], o: { w?: number; h?: number; names?: (hs: NameHit[]) => NameHit[] } = {}) {
+  const NV = path.join(REPO, "examples/nano-vllm");
+  useWorkspace(nodeWorkspace(NV));
+  await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+  resetIndex(); startNameIndex(); await nameIndexReady();
+  const B = emptyBoard("bNv", "nano-vllm");
+  const ids: string[] = [];
+  for (const c of cards) {
+    const abs = path.join(NV, c.rel);
+    const sym = analysisOf(langOf(abs), fs.readFileSync(abs, "utf8")).symbols.find((s) => s.qual === c.qual)!;
+    const card = (await cardForFileSym(abs, sym))!.card as CodeCard;
+    put(B, card, c.x, c.y, 560); ids.push(card.id);
+  }
+  const views: Record<string, SegView> = await viewsFor(B.cards.flatMap((c) => (c.kind === "code" ? c.segments : [])));
+  const h = await open({
+    board: B, w: o.w ?? 1400, h: o.h ?? 900,
+    on: async (m, reply) => {
+      switch (m.type) {
+        case "ready": return true;
+        case "expand": await reply(m.req, await expand(m)); return true;
+        case "peek": await reply(m.req, await peek(m)); return true;
+        case "views": await reply(m.req, await viewsFor(m.segs)); return true;
+        case "callVars": await reply(m.req, await callVars(m)); return true;
+        case "searchName": { const hs = await searchName(m.name); await reply(m.req, o.names ? o.names(hs) : hs); return true; }
+        case "searchPick": await reply(m.req, await searchPick(m.item)); return true;
+        case "prefetch": return true;
+        default: return false;
+      }
+    },
+  });
+  const init: HostToBoard = { type: "init", board: B, boards: [{ id: B.id, name: B.name, cards: B.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } } };
+  await h.post(init); await wait(h, 900);
+  return { h, ids };
+}
+
+/** model_runner.call("run", …)：点 call 列出按名字 run 搜到的定义，ModelRunner.run 排第一；选它建卡，箭头从那一行出发 */
+async function dispatchByName(res: Record<string, unknown>) {
+  // 另一个类里也有 run（排在前面）：接收者 self.model_runner 的类 ModelRunner 要排到它前面
+  const decoy: NameHit = { lang: "py", label: "def run(self)", detail: "nanovllm/engine/sequence.py:1", path: "nanovllm/engine/sequence.py", line: 1, def: true, qual: "Sequence.run" };
+  const { h, ids: [step] } = await nanoHost([{ rel: "nanovllm/engine/llm_engine.py", qual: "LLMEngine.step", x: 80, y: 80 }], { names: (hs) => [decoy, ...hs] });
+  await callEl(h, step, "call").click(); await wait(h, 1500);
+  res.title = await h.page.locator(".pop .ph, .pop h3, .pop .head").first().textContent().catch(() => "");
+  const first = h.page.locator(".pop .sres.names .cand").first();
+  res.first = await first.textContent();
+  res.n = await h.page.locator(".pop .sres.names .cand").count();
+  await first.click(); await wait(h, 1800);
+  const run = h.board().cards.find((c) => c.kind === "code" && c.segments[0]?.symbol?.qual === "ModelRunner.run");
+  const stepCard = h.board().cards.find((c) => c.id === step) as CodeCard;
+  const callLine = stepCard.segments[0].start + stepCard.segments[0].text.findIndex((t) => /model_runner\.call\(/.test(t));
+  const link = run && h.board().links.find((l) => l.to.card === run.id);
+  res.card = !!run; res.link = link ? { line: link.from.line, call: link.call?.name, via: link.call?.ev?.via } : null;
+  await shot(h, "ux-dispatch");
+  await h.page.context().browser()!.close();
+  return /model_runner\.py/.test(String(res.first)) && /\brun\b/.test(String(res.first)) && !!run && link?.from.line === callLine && link?.call?.name === "call" && link?.call?.ev?.via === 'call("run")';
 }

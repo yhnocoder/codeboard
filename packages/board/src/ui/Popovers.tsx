@@ -707,7 +707,7 @@ function NamesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "names" }> }) {
   });
   return (
     <>
-      <Head title={<>Search <code>{d().call.name}</code> in all languages</>} inst={p.inst} />
+      <Head title={<>Search <code>{A.searchedName(d().call)}</code> in all languages</>} inst={p.inst} />
       <Show when={d().hits} fallback={<div class="empty">Searching…</div>}>
         <div class="sres names">
           <For each={groups()}>{(g) => (

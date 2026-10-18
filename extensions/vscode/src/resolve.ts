@@ -87,7 +87,6 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   const full = await versionText(seg);
   const site = callSite(seg, full, m);
   if (!site) log("warn", `vars ${m.name} → callSite miss path=${seg.path}:${m.line}:${m.col}${full ? "" : " (file text unavailable, used saved lines)"}`);
-  if (site?.dispatch && site.dispatch === m.name) { log("info", `expand ${m.name} → dynamic dispatch path=${seg.path}:${m.line}`); return { ...none("Dispatched by name: not resolved"), name: m.name }; }
   let resolved: string | undefined, lspN = 0, dispatching = false;
   const here = full ? { abs: absOf(seg) ?? seg.path, text: full } : null;
   const caller = full ? callerOf(seg.lang, full, m.line) : undefined;

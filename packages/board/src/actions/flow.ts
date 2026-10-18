@@ -16,7 +16,7 @@ import { send, ask } from "../host";
 import { headPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
 import { jumpTo } from "./nav";
 import { walkBack, setWalkBack, walkIntoFrame, walkOut } from "./subboards";
-import { lateDispatch, openImplPicker, unresolvedMenu } from "./chains";
+import { lateDispatch, openImplPicker, unresolvedMenu, searchAllLangs } from "./chains";
 
 // ---------- 点调用展开 ----------
 
@@ -52,7 +52,8 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   if (had) { flash(cardId, segId, [call.line]); jumpTo(had); return; }
   const key = `${cardId}:${segId}:${call.line}:${call.col}`;
   if (pending.has(key)) return;
-  if (call.dispatch) { toast(`${call.name}("${call.dispatch}") is dispatched by name. Not resolved; drag the call onto a card to link it.`); return; }
+  // call("run", …)：按字符串转发，静态解析不到，直接按名字 run 搜（接收者的类排前面），选一个建卡连线
+  if (call.dispatch) return searchAllLangs(cardId, segId, call);
   pending.add(key);
   let r: ExpandResult;
   try {

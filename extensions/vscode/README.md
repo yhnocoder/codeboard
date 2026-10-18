@@ -12,7 +12,7 @@ The board opens beside your editor: code on one side, the flow on the other. Boa
 
 ### Expand calls, layer by layer
 
-Calls in a card are underlined. Click one and the function it calls is placed on the board and connected with an arrow; each call graph gets a mark (A, B, …) so you can follow it. String-dispatched calls such as `self.model_runner.call("run")` expand too. CodeBoard asks the language server (Pylance, clangd, …) for definitions and falls back to a workspace search by name and receiver, letting you pick when the match is ambiguous.
+Calls in a card are underlined. Click one and the function it calls is placed on the board and connected with an arrow; each call graph gets a mark (A, B, …) so you can follow it. A string-dispatched call such as `self.model_runner.call("run")` cannot be resolved statically: clicking it searches for `run` by name and lists the candidates, the receiver's class first (`ModelRunner.run`); pick the target and it is placed with an arrow. CodeBoard asks the language server (Pylance, clangd, …) for definitions and falls back to a workspace search by name and receiver, letting you pick when the match is ambiguous.
 
 ### Definition Peek
 
