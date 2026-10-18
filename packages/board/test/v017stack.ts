@@ -81,13 +81,36 @@ export const V017STACK: Record<string, () => Promise<void>> = {
     await snap(h, "2-lower-card-covers");
     check(p.portUp, "line-port-above-its-card", p);
 
+    // Lifting / dropping is a cross-fade, not a cut: a copy stays in the old layer while the arrow fades in on top (or the copy fades out
+    // on top). Samples every frame for 800 ms (the drop comes linkLeave = 300 ms after the pointer leaves): the arrow's own opacity, and where the copies are
+    const watch = () => h.page.evaluate(() => { (window as any).__fade = new Promise((done) => {
+      const out: { op: number; ghostTop: number; ghostBottom: number }[] = [], t0 = performance.now();
+      const tick = () => {
+        const g = document.querySelector('g.link[data-lk="AB"]')!.parentElement!;
+        out.push({ op: +getComputedStyle(g).opacity, ghostTop: document.querySelectorAll(".lyr.top .ghost").length, ghostBottom: document.querySelectorAll(".lyr.bottom .ghost").length });
+        if (performance.now() - t0 < 800) requestAnimationFrame(tick); else done(out);
+      };
+      requestAnimationFrame(tick);
+    }); });
+    const fade = async () => {
+      const f = (await h.page.evaluate(() => (window as any).__fade)) as { op: number; ghostTop: number; ghostBottom: number }[];
+      const last = f[f.length - 1];
+      return { mid: f.some((x) => x.op > 0.05 && x.op < 0.95), up: f.some((x) => x.ghostBottom > 0), down: f.some((x) => x.ghostTop > 0), clean: !last.ghostTop && !last.ghostBottom && last.op === 1, frames: f.length };
+    };
+
     // hover an endpoint card: its arrows float to the top, and go back when the pointer leaves
     const ab = (await h.page.locator(`.card[data-id="${A.id}"]`).boundingBox())!;
-    await h.page.mouse.move(ab.x + ab.width / 2, ab.y + ab.height / 2); await h.page.waitForTimeout(150);
+    await watch();
+    await h.page.mouse.move(ab.x + ab.width / 2, ab.y + ab.height / 2);
+    let fd = await fade();
+    check(fd.mid && fd.up && !fd.down && fd.clean, "lift-fades-in", fd);
     p = await look();
     check(p.onC === "arrow" && p.onD === "arrow" && p.top, "hover-card-lifts-its-arrows", p);
     await snap(h, "3-hover-lifts");
+    await watch();
     await away();
+    fd = await fade();
+    check(fd.down && !fd.up && fd.clean, "drop-fades-out", fd);
     p = await look();
     check(p.onC === "C" && !p.top, "hover-ends-arrow-back", p);
 

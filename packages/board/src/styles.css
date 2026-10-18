@@ -111,6 +111,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .lyr.ports { z-index: 2; }
 .lw { display: contents; }
 .lyr > .lw > .lw > * { z-index: auto; }
+.lyr .ghost, .lyr .ghost * { pointer-events: none !important; }
 .elabel { position: absolute; transform: translate(-50%, -50%); font: 11px/1 var(--mono); white-space: nowrap; color: var(--ink-2); background: var(--surface);
   box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); border-radius: 5px; padding: 4px 7px; pointer-events: auto;
   transition: opacity calc(var(--t) * 160ms) var(--out); }
@@ -586,6 +587,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .port { pointer-events: none; }
 .porthit { fill: transparent; pointer-events: all; cursor: ew-resize !important; }
 .board.dragging .porthit, .lyr.lod-map .porthit { display: none; }
+.board.dragging .lyr .ghost { display: none; } /* 拖着卡的时候影子不跟着动，直接不画 */
 .vchips { z-index: 6; }
 .vchips.on .vlabel, .vchips.on .vchip { box-shadow: 0 0 0 1.5px var(--accent); }
 .vlabel.editing { min-width: 60px; }
