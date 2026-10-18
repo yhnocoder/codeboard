@@ -105,8 +105,11 @@ export function rectOf(c: { id: string } | string) {
 // epoch = 拍快照时 sync 记到第几次：撤销 / 重做回到这份快照后，把它之后的 sync 重放一遍。
 // ids = 每类东西的 id（和那几段一一对应；自动保存按 id 比出变了哪些）。和上一份快照一样时沿用同一个数组。
 // step = 进撤销栈的快照：从它到下一步改了哪些卡 / Sidenote（"c" / "n" + id；撤销时看共享卡是不是被别的白板后来改过）
+// fx = 从它到下一步在白板外面做了什么（宿主那边建了一块白板）：撤销 / 重做这一步时跟着撤 / 重做
 type Ids = Record<(typeof KEYS)[number], string[]>;
-type Snap = { epoch: number; head: string; cards: string[]; place: string[]; links: string[]; sections: string[]; sidenotes: string[]; stickers: string[]; ids: Ids; step?: string[] };
+type Snap = { epoch: number; head: string; cards: string[]; place: string[]; links: string[]; sections: string[]; sidenotes: string[]; stickers: string[]; ids: Ids; step?: string[]; fx?: Effect };
+/** 一步修改在白板外面的效果 */
+export type Effect = { undo: () => void; redo: () => void };
 const undoStack: Snap[] = [];
 const redoStack: Snap[] = [];
 export const [canUndo, setCanUndo] = createSignal(false);
@@ -177,9 +180,9 @@ function stamp(b: Board) {
 /**
  * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
  * fn 抛错就整次撤回、提示一下，返回 false；什么都没改不进撤销栈。
- * merge：和上一步的 merge 一样（中间没有别的修改、撤销）就并进上一步，比如连续按方向键挪同一批卡算一步
+ * opts.fx = 这一步在白板外面做的事，撤销 / 重做时跟着撤 / 重做；opts.merge：和上一步的 merge 一样（中间没有别的修改、撤销）就并进上一步，比如连续按方向键挪同一批卡算一步
  */
-export function mutate(fn: (b: Board) => void, merge?: string): boolean {
+export function mutate(fn: (b: Board) => void, opts: { merge?: string; fx?: Effect } = {}): boolean {
   const before = snap();
   cur = null;
   try { setState("board", produce((b: Board) => { fn(b); stamp(b); })); }
@@ -196,13 +199,13 @@ export function mutate(fn: (b: Board) => void, merge?: string): boolean {
   if (same(after, before)) { cur = before; return true; }
   cur = after;
   changed();
-  pushUndo(before, after, merge);
+  pushUndo(before, after, opts);
   return true;
 }
 
 /** 栈顶那一步的 merge（见 mutate）：别的修改、撤销 / 重做之后清掉 */
 let topMerge: string | undefined;
-function pushUndo(before: Snap, after: Snap, merge?: string) {
+function pushUndo(before: Snap, after: Snap, { merge, fx }: { merge?: string; fx?: Effect } = {}) {
   const top = undoStack[undoStack.length - 1];
   if (merge && merge === topMerge && top) {
     top.step = touched(top, after);
@@ -212,6 +215,7 @@ function pushUndo(before: Snap, after: Snap, merge?: string) {
   }
   topMerge = merge;
   before.step = touched(before, after);
+  before.fx = fx;
   undoStack.push(before);
   if (undoStack.length > 300) undoStack.shift();
   redoStack.length = 0;
@@ -350,7 +354,7 @@ function restore(s: Snap, now?: Snap) {
   }
   // 快照之后宿主同步来的改动再做一遍（不然 ⌘Z 会把行号退回去）；重放过的白板和快照不一样了，快照缓存作废
   const r = replaySync(s);
-  cur = r.any ? null : { ...s, epoch: syncN, step: undefined };
+  cur = r.any ? null : { ...s, epoch: syncN, step: undefined, fx: undefined };
   changed();
   // 撤销的这一步改过的共享项，之后被别的白板改了：重放了别人的版本，等于没撤
   if (s.step && r.shared.size && s.step.some((k) => r.shared.has(k))) toast(NOT_UNDONE);
@@ -381,9 +385,10 @@ export function undo() {
   if (!s) return false;
   topMerge = undefined;
   const now = snap();
-  redoStack.push(now);
+  redoStack.push({ ...now, fx: s.fx });
   undone = true;
   restore(s, now);
+  s.fx?.undo();
   updUndo();
   return true;
 }
@@ -392,9 +397,10 @@ export function redo() {
   if (!s) return false;
   topMerge = undefined;
   const now = snap();
-  undoStack.push(now);
+  undoStack.push({ ...now, fx: s.fx });
   undone = true;
   restore(s, now);
+  s.fx?.redo();
   updUndo();
   return true;
 }

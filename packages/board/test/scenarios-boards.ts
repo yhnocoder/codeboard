@@ -19,7 +19,34 @@ export const BOARDS: Record<string, () => Promise<void>> = {
   changesreachhost: () => run("changes-reach-host-at-once", changesReachHost),
   emptyquestion: () => run("empty-new-question-is-dropped", emptyQuestion),
   undoafterpeek: () => run("undo-history-survives-a-visit-to-a-sub-board", undoAfterPeek),
+  undoturnintoboard: () => run("undoing-turn-into-board-removes-the-new-board", undoTurnIntoBoard),
 };
+
+/** Undo of Turn into Board puts the cards back and the new board goes away; redo makes it again */
+async function undoTurnIntoBoard(res: Record<string, unknown>) {
+  const P: Board = emptyBoard("bParent", "Parent");
+  const step = nv("LLMEngine.step"), post = nv("Scheduler.postprocess");
+  put(P, step, 60, 80, 600); put(P, post, 760, 80, 600);
+  const t = await subHost(P, []), h = t.h, page = h.page;
+  await wait(h, 800);
+  const boards = async () => (await t.store.list()).map((m) => m.id).filter((id) => id !== "bParent");
+  await page.locator(`.card[data-id="${post.id}"] .chead`).click({ position: { x: 120, y: 10 } });
+  await page.keyboard.press("Meta+Shift+b"); await wait(h, 400);
+  await page.locator(".dialog input").fill("Post");
+  await page.locator(".dialog button", { hasText: "Create Board" }).click(); await wait(h, 1800);
+  const made = await boards();
+  res.made = made.length;
+  await page.mouse.click(1000, 700); await wait(h, 200);
+  await page.keyboard.press("Meta+z"); await wait(h, 1600);
+  res.afterUndo = { boards: (await boards()).length, cardBack: t.store.peek("bParent")!.cards.map((c) => c.kind).join(",") };
+  await page.keyboard.press("Meta+Shift+z"); await wait(h, 1600);
+  const frame = t.store.peek("bParent")!.cards.find((c) => c.kind === "board");
+  res.afterRedo = { boards: await boards(), frameTo: frame?.kind === "board" ? frame.board : null, childCards: made[0] ? t.store.peek(made[0])?.cards.length : null };
+  res.skel = await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub]`).count();
+  await page.context().browser()!.close();
+  const a = res.afterUndo as { boards: number; cardBack: string }, r = res.afterRedo as { boards: string[]; frameTo: string | null; childCards: number | null };
+  return res.made === 1 && a.boards === 0 && a.cardBack === "code,code" && r.boards.length === 1 && r.frameTo === made[0] && r.childCards === 1 && (res.skel as number) >= 1;
+}
 
 /** A parent board with a frame of a one-card child board */
 function parentAndChild() {
