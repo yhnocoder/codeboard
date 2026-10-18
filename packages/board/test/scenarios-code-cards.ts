@@ -6,6 +6,7 @@
 //  nudgeIsOneUndoStep         — a run of arrow-key nudges of the same selection is one undo step
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 //  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
+//  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Enter Board
 // Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { open, put, symCard, findSym, viewOf, type Host } from "./harness";
@@ -51,6 +52,7 @@ export const CODE_CARDS: Record<string, () => Promise<void>> = {
   nudgeIsOneUndoStep: () => run("nudgeIsOneUndoStep", nudgeIsOneUndoStep),
   farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
   implPickerKeyboard: () => run("implPickerKeyboard", implPickerKeyboard),
+  shortcutHelpComplete: () => run("shortcutHelpComplete", shortcutHelpComplete),
 };
 
 async function tabKeepsCanvasStill(res: Record<string, unknown>) {
@@ -202,4 +204,15 @@ async function implPickerKeyboard(res: Record<string, unknown>) {
   await close(h);
   return res.open === 1 && res.on === "Scheduler.postprocess" && !!res.closed && (res.cards as string[]).includes("Scheduler.postprocess")
     && JSON.stringify(res.stepAt) === "[80,80]" && !res.opened;
+}
+
+async function shortcutHelpComplete(res: Record<string, unknown>) {
+  const h = await open({ board: emptyBoard("bKeys", "keys") });
+  await clickCanvas(h);
+  await h.page.keyboard.press("Shift+Slash"); await wait(h, 400);
+  const rows = await h.page.locator(".keys tr").allTextContents();
+  await close(h);
+  const has = (k: string) => rows.some((r) => r.startsWith(k));
+  res.missing = ["⌥F", "⌘⇧B", "⌘↵"].filter((k) => !has(k));
+  return rows.length > 10 && !(res.missing as string[]).length;
 }

@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import { FORWARDED_KEYS } from "../../../../extensions/vscode/src/boards";
+import { SHORTCUTS } from "../../src/ui/shortcuts";
 
 const ROOT = path.resolve(__dirname, "../../../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "extensions/vscode/package.json"), "utf8"));
@@ -23,6 +24,15 @@ describe("hand-synced lists", () => {
     const bound = keys.map((k: any) => k.key.replace(/^ctrl\+/, ""));
     // "+" 是 "=" 那个键按着 Shift 时的 e.key，没有单独的绑定
     expect([...FORWARDED_KEYS].filter((k) => k !== "+").sort()).toEqual([...bound].sort());
+  });
+
+  it("every key the host forwards to the board is in the shortcut help", () => {
+    const help = SHORTCUTS.flatMap(([, rows]) => rows.map(([k]) => k)).join(" ");
+    const sym: Record<string, string> = { "=": "+", "+": "+", "-": "−" };
+    for (const k of FORWARDED_KEYS) {
+      const [shift, key] = k.startsWith("shift+") ? ["⇧", k.slice(6)] : ["", k];
+      expect(help).toContain(`⌘${shift}${sym[key] ?? key.toUpperCase()}`);
+    }
   });
 
   it("icon tables are what tools/icons/gen.mjs writes", () => {
