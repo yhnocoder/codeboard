@@ -1,5 +1,5 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
-// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
+// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit notePasteIntoTableCell
 import { open, put, findSym, symCard, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -117,6 +117,34 @@ export const NOTE_EDITING: Record<string, () => Promise<void>> = {
       { name: "existing code", init: "```\nz\n```", seq: "{Control+End}{ArrowUp}{ArrowDown}after", md: "```\nz\n```\n\nafter" },
     ]);
     done("noteTrailingBlockExit");
+  },
+
+  /** 往表格格子里粘贴多行（VS Code 的代码、普通的字）：表格不拆开，几行用硬换行连起来 */
+  async notePasteIntoTableCell() {
+    const T = "| a | b |\n| - | - |\n| 1 | 2 |";
+    const h = await open({ board: board([T, T]) });
+    await h.page.waitForTimeout(1500);
+    const paste = (vs: boolean) => h.page.evaluate((vs) => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", "x = 1\nif x:\n    y()\n");
+      if (vs) dt.setData("vscode-editor-data", JSON.stringify({ mode: "python" }));
+      document.querySelector(".md-pm")!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, vs);
+    for (const [i, vs] of [[0, true], [1, false]] as const) {
+      await editNote(h, `n${i}`);
+      await h.page.locator(`.card[data-id="n${i}"] .md-pm td`).first().click();
+      await keys(h.page, "{End}");
+      await paste(vs);
+      await h.page.waitForTimeout(200);
+      await exitEdit(h);
+    }
+    await h.page.waitForTimeout(1200);
+    for (const i of [0, 1]) {
+      const got = md(h, `n${i}`), rows = got.split("\n");
+      check(`notePasteIntoTableCell ${i ? "plain text" : "VS Code"}`, rows.length === 3 && /^\| 1x = 1<br>if x:<br>\s*y\(\)\s*\| 2\s*\|$/.test(rows[2]), { got });
+    }
+    await close(h);
+    done("notePasteIntoTableCell");
   },
 
 };
