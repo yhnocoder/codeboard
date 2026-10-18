@@ -1,0 +1,80 @@
+# Release: push a tag v<version> (or run it by hand with a version) and this builds a draft GitHub Release with
+#   codeboard-vscode-<version>.vsix   the VS Code extension (Extensions view → ⋯ → Install from VSIX…)
+#   7 screenshots at 2x               5 features in VS Code light, then every board theme in light and in dark (tools/release/shots.sh)
+# The version comes from the tag and is written into the extension's package.json only for the package (not committed).
+# The release stays a draft until someone publishes it on GitHub. Nothing is published to the Marketplace.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without the v, e.g. 0.2.0 (the draft release is tagged v<version> on this commit when published)"
+        required: true
+permissions:
+  contents: write
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  VERSION: ${{ inputs.version || github.ref_name }}
+  VSCODE_VERSION: "1.142.0"
+  E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
+jobs:
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          V="${VERSION#v}"
+          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then echo "::error::'$VERSION' is not a version like 0.2.0"; exit 1; fi
+          echo "version=$V" >> $GITHUB_OUTPUT
+      - uses: ./.github/actions/setup
+      - name: Package the extension
+        working-directory: extensions/vscode
+        run: |
+          npm pkg set version=${{ steps.v.outputs.version }}
+          npm run package
+      - uses: actions/upload-artifact@v4
+        with: { name: vsix, path: extensions/vscode/*.vsix, retention-days: 30 }
+
+  shots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: true }
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/vscode
+      - uses: ./.github/actions/chromium
+      - name: Screenshots (2x, light and dark)
+        run: tools/release/shots.sh test-out/release-shots
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: shots, path: test-out/release-shots, retention-days: 30 }
+
+  release:
+    needs: [package, shots]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out }
+      - name: Create the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.package.outputs.version }}
+        run: |
+          FILES=(out/vsix/*.vsix out/shots/*.png)
+          # Re-running for the same version refreshes the files of the existing draft
+          if [ "$(gh release view "v$V" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft 2>/dev/null)" = true ]; then
+            gh release upload "v$V" --repo "$GITHUB_REPOSITORY" --clobber "${FILES[@]}"
+          else
+            TARGET=(); [ "${{ github.event_name }}" = workflow_dispatch ] && TARGET=(--target "$GITHUB_SHA")
+            gh release create "v$V" --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "CodeBoard $V" "${TARGET[@]}" "${FILES[@]}"
+          fi

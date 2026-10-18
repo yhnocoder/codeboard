@@ -1,0 +1,9 @@
+# Only the bundle (dist/), the board webview (media/), README and LICENSE go into the .vsix
+src/**
+test/**
+node_modules/**
+**/*.map
+**/*.ts
+tsconfig.json
+esbuild.mjs
+.vscode-test/**
