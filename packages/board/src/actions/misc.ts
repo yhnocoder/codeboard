@@ -8,6 +8,7 @@ import { openPop, updatePop } from "../state/pop";
 import { send, ask } from "../host";
 import { duplicateSel, toggleLock } from "./edit";
 import { fitAll, lastPointer } from "./common";
+import { flushMd } from "../md/lazy";
 import { toggleSettings, openSettings } from "./settings";
 
 export const currentLineSel = () => lineSel();
@@ -38,6 +39,7 @@ export async function exportPng() {
   if (!b) return toast("Nothing to export");
   const pad = 40, scale = 2;
   const W = Math.ceil(b.w + pad * 2), H = Math.ceil(b.h + pad * 2);
+  flushMd(); // 视野外还没渲染完的 Note 先补上
   const clone = world.cloneNode(true) as HTMLElement;
   clone.style.transform = `translate(${-b.x + pad}px, ${-b.y + pad}px)`;
   clone.querySelectorAll(".sel, .lift").forEach((n) => n.classList.remove("sel", "lift"));

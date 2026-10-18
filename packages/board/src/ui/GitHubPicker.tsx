@@ -1,5 +1,6 @@
 // From GitHub…：输入 owner/repo（或贴链接）→ 选分支 / tag / commit（加卡时钉成 commit）→ 浏览文件树 → 打开文件选行 → Add to Board。
 // 数据都由宿主走 GitHub REST API 拿（私有仓库用 VS Code 的 GitHub 登录，被拒时才请用户登录）。
+import { keepKey } from "./editkeys";
 import { For, Show, createMemo, createSignal, onMount, batch } from "solid-js";
 import { parseRepoInput, type Commit, type GhFile, type GhQuery, type GhReplyOf, type GhRepo, type GhTree, type RepoInput } from "@codeboard/core";
 import { toast } from "../state/store";
@@ -179,7 +180,7 @@ export function GitHubPicker() {
   };
 
   const onKey = (e: KeyboardEvent) => {
-    e.stopPropagation();
+    keepKey(e);
     if (e.key === "Escape") { e.preventDefault(); if (refOpen()) setRefOpen(false); else close(); }
     else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && file()) { e.preventDefault(); void add(); }
   };
