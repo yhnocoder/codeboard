@@ -1,6 +1,6 @@
 // ⌘K 面板：白板上的卡和 Sidenote、工作区的符号和文件；Start from Entry Point…
 import * as path from "node:path";
-import { allCodeCards, cardTitle, computeFlows, guessLang, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
+import { allCodeCards, cardTitle, computeFlows, fuzzy, guessLang, substr, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
@@ -9,23 +9,6 @@ import { allNames, grepWord, lookupName } from "./nameindex";
 import type { Storage } from "./storage";
 import { makeSegment } from "./versions";
 import { CODE_EXCLUDE, exists, fromHostPath, hostPath, langOf, readText, splitLines, workspace, wsRoots } from "./ws";
-
-/** 简单的子序列模糊匹配打分：连续、开头、词首加分；不匹配返回 -1 */
-export function fuzzy(q: string, s: string): number {
-  if (!q) return 0;
-  const ql = q.toLowerCase(), sl = s.toLowerCase();
-  const sub = sl.indexOf(ql);
-  if (sub >= 0) return 100 - sub + (sub === 0 || /[._/\s]/.test(sl[sub - 1]) ? 50 : 0) - s.length * 0.1;
-  let i = 0, score = 0, last = -2;
-  for (let k = 0; k < sl.length && i < ql.length; k++) {
-    if (sl[k] !== ql[i]) continue;
-    score += last === k - 1 ? 3 : 1;
-    if (k === 0 || /[._/\s]/.test(sl[k - 1]) || (s[k] >= "A" && s[k] <= "Z")) score += 2;
-    last = k;
-    i++;
-  }
-  return i === ql.length ? score - s.length * 0.1 : -1;
-}
 
 /**
  * ⌘K：所有白板上的卡和 Sidenote（here = 发起搜索的白板，排在前面），工作区的符号和文件。
@@ -66,7 +49,8 @@ export async function search(store: Storage, q: string, scope: "all" | "code" | 
   }
   if (q.trim()) {
     for (const ents of await allNames()) for (const e of ents) {
-      const s = Math.max(fuzzy(q, e.name) + 5, fuzzy(q, e.qual));
+      // 子串（名字或带类名的全名里）排前面；子序列只配名字本身，而且要配得紧（fuzzy）
+      const n = fuzzy(q, e.name), s = Math.max(n < 0 ? -1 : n + 5, substr(q, e.qual));
       if (s < 0) continue;
       scored.push({ s, item: { kind: "symbol", label: e.qual, detail: `${hostPath(e.abs)}:${e.defLine}`, path: hostPath(e.abs), line: e.defLine, sym: e.qual, glyph: e.kind === "class" ? "C" : "ƒ" } });
     }

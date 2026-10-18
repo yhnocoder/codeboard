@@ -8,7 +8,8 @@ import { startAnalysis, analysisOf } from "../../../extensions/vscode/src/analys
 import { cardForFileSym } from "../../../extensions/vscode/src/cards";
 import { callVars, expand, peek } from "../../../extensions/vscode/src/resolve";
 import { viewsFor } from "../../../extensions/vscode/src/views";
-import { searchName, searchPick } from "../../../extensions/vscode/src/search";
+import { search, searchName, searchPick } from "../../../extensions/vscode/src/search";
+import type { Storage } from "../../../extensions/vscode/src/storage";
 import { resetIndex, startNameIndex, nameIndexReady } from "../../../extensions/vscode/src/nameindex";
 import { langOf, useWorkspace } from "../../../extensions/vscode/src/ws";
 import { nodeWorkspace } from "../../../extensions/vscode/test/node-workspace";
@@ -29,6 +30,7 @@ export const UX: Record<string, () => Promise<void>> = {
   "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
   "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
   "editing-tiny-note-zooms-to-readable": () => run("editing-tiny-note-zooms-to-readable", readableNote),
+  "search-lists-symbols-containing-the-query": () => run("search-lists-symbols-containing-the-query", searchStep),
 };
 
 /** 底部工具条：每个宽度都是一行，彼此不重叠，也不出窗口 */
@@ -216,4 +218,14 @@ async function readableNote(res: Record<string, unknown>) {
   await shot(h, "ux-readable");
   await page.context().browser()!.close();
   return z1 > 0.48 && z1 <= 1 && font1 >= 10.9 && inView(box, 1200, 800) && z2 === z1 && z3 >= 0.6 && z3 < 0.8 && editingT && font2 >= 10.9;
+}
+
+/** ⌘K 在 nano-vllm 里搜 step：只列名字 / 全名里有 step 的符号（不再列 main、Context、get_context、…__init__） */
+async function searchStep(res: Record<string, unknown>) {
+  useWorkspace(nodeWorkspace(path.join(REPO, "examples/nano-vllm")));
+  await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+  resetIndex(); startNameIndex(); await nameIndexReady();
+  const items = await search(null as unknown as Storage, "step", "symbols");
+  res.labels = items.map((i) => i.label);
+  return items.length > 0 && items.every((i) => i.label.toLowerCase().includes("step")) && items[0].label.endsWith(".step");
 }
