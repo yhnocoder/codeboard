@@ -286,6 +286,40 @@ void (async () => {
     fs.rmSync(R, { recursive: true, force: true });
   }
 
+  // Relocate… after the file was renamed (git mv + commit): offers the function in the renamed file, not the deleted one, and re-pins the card there
+  {
+    const R = fs.mkdtempSync("/tmp/codeboard-mv-");
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: R, stdio: "pipe" }).toString().trim();
+    fs.mkdirSync(path.join(R, "engine"));
+    fs.writeFileSync(path.join(R, "engine/scheduler.py"), ["class Scheduler:", "    def schedule(self):", "        return 1", "", "    def other(self):", "        return 2", ""].join("\n"));
+    git("init", "-q", "-b", "main"); git("add", "-A"); git("commit", "-qm", "base");
+    const offered: string[][] = [];
+    const W3 = nodeWorkspace(R);
+    W3.ui = { ...W3.ui, pick: (async (items: { description?: string }[]) => { offered.push(items.map((i) => i.description ?? "")); return items.find((i) => i.description?.startsWith("engine/sched.py")); }) as typeof W3.ui.pick };
+    useWorkspace(W3);
+    resetIndex();
+    forgetHeads();
+    const { card: c } = await card(path.join(R, "engine/scheduler.py"), "Scheduler.schedule");
+    git("mv", "engine/scheduler.py", "engine/sched.py"); git("commit", "-qm", "rename");
+    forgetHeads();
+    const head = git("rev-parse", "HEAD");
+    const posted: HostToBoard[] = [];
+    const view: BoardView = { postMessage: (m: HostToBoard) => { posted.push(m); }, title: "", visible: true, active: true, reveal: () => undefined, dispose: () => undefined, resourceUrl: () => "" };
+    const host = { store: new Storage(nodeFs, { dir: () => path.join(R, ".boards") }) } as unknown as BoardHost;
+    const p = new BoardPanel("b", view, host);
+    p.ready = true;
+    p.board = { ...emptyBoard("b", "B"), cards: [c], place: { [c.id]: { x: 0, y: 0, w: 500 } } };
+    await makeHandler(host)(p, { type: "relocate", card: c.id });
+    const opts = offered[0] ?? [];
+    check(opts.some((d) => d.startsWith("engine/sched.py")) && !opts.some((d) => d.startsWith("engine/scheduler.py")), "Relocate after a rename offers the function in the renamed file, not the deleted one", opts);
+    const rs = posted.find((m) => m.type === "replaceSegment") as Extract<HostToBoard, { type: "replaceSegment" }> | undefined;
+    check(rs?.seg.path === "engine/sched.py" && rs.seg.symbol?.qual === "Scheduler.schedule" && rs.seg.version.kind === "git" && rs.seg.version.commit === head && !rs.seg.version.uncommitted, "…and re-pins the card to it at HEAD", rs?.seg && { path: rs.seg.path, version: rs.seg.version });
+    useWorkspace(W);
+    resetIndex();
+    forgetHeads();
+    fs.rmSync(R, { recursive: true, force: true });
+  }
+
   // 子白板（线框 05）：进入 / 返回换的是同一个面板（面包屑、镜头、讲解带过去）、不能套成环、Turn into Board 存到父白板的组、侧栏的树
   {
     const dir = fs.mkdtempSync("/tmp/codeboard-sub-");

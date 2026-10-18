@@ -27,7 +27,7 @@ export function nodeWorkspace(root = WS): TestWorkspace {
     files: {
       roots: () => [root],
       rootOf: (abs) => (inRoot(abs) ? root : undefined),
-      openText: (abs) => open.get(abs),
+      unsavedText: (abs) => open.get(abs),
       openLanguage: () => undefined,
       openFiles: () => [...open].map(([abs, t]) => ({ abs, text: () => t })),
       /** Code files under the root ("**\/*.{ext,…}" filters by extension, anything else = .py files), sorted, up to max */

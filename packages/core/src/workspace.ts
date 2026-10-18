@@ -10,8 +10,8 @@ export interface WorkspaceFiles {
   roots(): string[];
   /** 文件所在的工作区根（不在任何根下返回 undefined） */
   rootOf(abs: string): string | undefined;
-  /** 编辑器里打开着的磁盘文件：内容含未保存的改动；没打开返回 undefined */
-  openText(abs: string): string | undefined;
+  /** 编辑器里有未保存改动的磁盘文件：未保存的内容；没打开或没改过返回 undefined（读磁盘上的） */
+  unsavedText(abs: string): string | undefined;
   /** 打开着的文件的语言（VS Code languageId）；没打开返回 undefined */
   openLanguage(abs: string): string | undefined;
   /** 所有打开着的磁盘文件 */

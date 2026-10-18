@@ -33,11 +33,11 @@ export const inWorkspace = (abs: string) => wsRoots().some((f) => {
   return !r.startsWith("..") && !path.isAbsolute(r);
 });
 
-/** 文件当前内容：编辑器里打开着就用编辑器的（含未保存的改动），否则读磁盘。track = 记进最近读过的文件 */
+/** 文件当前内容：编辑器里有未保存的改动就用编辑器的，否则读磁盘（文件删了 = null，哪怕编辑器里还开着）。track = 记进最近读过的文件 */
 export async function readText(abs: string, track = true): Promise<string | null> {
   if (track) recent.set(abs, true);
-  const open = workspace().files.openText(abs);
-  if (open !== undefined) return open;
+  const unsaved = workspace().files.unsavedText(abs);
+  if (unsaved !== undefined) return unsaved;
   try { return await fs.readFile(abs, "utf8"); } catch { return null; }
 }
 /** 最近读过的文件（不扫工作区的兜底查找用）。Lru 在本文件后面定义，用到时才建 */
