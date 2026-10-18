@@ -659,7 +659,9 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
       inst.box.remove();
       // 有焦点的元素被拿掉时不会触发 blur，ProseMirror 会以为自己还有焦点：补一个
       if ((editor.view as unknown as { focused: boolean }).focused) editor.view.dom.dispatchEvent(new FocusEvent("blur"));
-      if (!pooled && !editor.isDestroyed) editor.destroy();
+      if (!pooled) { if (!editor.isDestroyed) editor.destroy(); return; }
+      // 留着的那一个也不留这次的文档：节点视图跟着拆掉（代码块关掉宿主那边的语言服务文档，也就是那个 .codeboard-note-code-* 隐藏文件）
+      editor.view.updateState(stateFor(editor, ""));
     }));
   };
   return { value, editor: () => editor, destroy: () => { if (!done) { done = true; destroy(); } } };
