@@ -16,7 +16,7 @@ import { animate, Spring, reduceMotion } from "../state/camera";
 import { setEditing, setPopIn } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
-import { frameOf, allMembers } from "../state/sections";
+import { frameOf, allMembers, isHidden } from "../state/sections";
 import { K, popCard, revealCard, sectionById, selCards } from "./common";
 import { requestViews } from "./create";
 
@@ -72,7 +72,7 @@ export function toggleHl(ls: LineSel) {
 
 export function deleteSel() {
   const ids = new Set<string>();
-  for (const id of sel.cards) { const f = cardById(id); if (f) ids.add(f.host.id); }
+  for (const id of sel.cards) { const f = cardById(id); if (f && !isHidden(f.host.id)) ids.add(f.host.id); } // 拖调用图标记时连着选上的折叠起来的卡：看不见的不删
   const links = new Set(sel.links);
   const secs = new Set(sel.sections);
   if (!ids.size && !links.size && !secs.size) return;

@@ -1,5 +1,8 @@
 // Code cards on the canvas: what the user can see is what selection, Delete, Fit and Reveal act on; keyboard and pointer details.
 //  tabKeepsCanvasStill        — Tab walking focus to a button of a card past the edge does not scroll the canvas (Fit and box select stay right)
+//  hiddenCardsNotSelectable   — cards hidden in a collapsed call subtree: box select and Select All skip them, Delete never removes them
+//  revealShowsHiddenCard      — Reveal on Board / clicking the already-expanded call on a card in a collapsed subtree expands it
+//  fitFramesVisibleContent    — Fit to Window frames what is shown: no hidden call-tree cards, a collapsed section counts as its title pill
 //  nudgeIsOneUndoStep         — a run of arrow-key nudges of the same selection is one undo step
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 // Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
@@ -41,6 +44,9 @@ function callTree(collapsed: boolean) {
 
 export const CODE_CARDS: Record<string, () => Promise<void>> = {
   tabKeepsCanvasStill: () => run("tabKeepsCanvasStill", tabKeepsCanvasStill),
+  hiddenCardsNotSelectable: () => run("hiddenCardsNotSelectable", hiddenCardsNotSelectable),
+  revealShowsHiddenCard: () => run("revealShowsHiddenCard", revealShowsHiddenCard),
+  fitFramesVisibleContent: () => run("fitFramesVisibleContent", fitFramesVisibleContent),
   nudgeIsOneUndoStep: () => run("nudgeIsOneUndoStep", nudgeIsOneUndoStep),
   farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
 };
@@ -66,6 +72,67 @@ async function tabKeepsCanvasStill(res: Record<string, unknown>) {
   res.boxed = lastSel(h)?.cards;
   await close(h);
   return worst === 0 && JSON.stringify(res.boxed) === JSON.stringify([cs[0].id]);
+}
+
+async function hiddenCardsNotSelectable(res: Record<string, unknown>) {
+  const { b, step, sch, post } = callTree(true);
+  const names = (h: Host) => h.board().cards.map((c) => c.id === sch.id ? "schedule" : c.id === post.id ? "postprocess" : c.id === step.id ? "step" : c.id);
+  let h = await open({ board: structuredClone(b) });
+  res.shown = (await shownIds(h)).length;
+  // a box over the empty space where the hidden callees are, then Delete
+  await h.page.mouse.move(60, 480); await h.page.mouse.down();
+  await h.page.mouse.move(1380, 880, { steps: 8 }); await h.page.mouse.up(); await wait(h, 300);
+  res.boxed = lastSel(h)?.cards;
+  await h.page.keyboard.press("Delete"); await wait(h, 1200);
+  res.afterBoxDelete = names(h);
+  // Select All
+  await clickCanvas(h);
+  await h.page.keyboard.press("Meta+a"); await wait(h, 300);
+  res.all = lastSel(h)?.cards;
+  await close(h);
+  // dragging the call graph mark moves the whole subtree, hidden callees too (they stay selected); Delete only removes what is shown
+  h = await open({ board: structuredClone(b) });
+  const mk = (await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).first().boundingBox())!;
+  await h.page.mouse.move(mk.x + mk.width / 2, mk.y + mk.height / 2); await h.page.mouse.down();
+  await h.page.mouse.move(mk.x + 60, mk.y + 40, { steps: 6 }); await h.page.mouse.up(); await wait(h, 400);
+  res.dragSel = lastSel(h)?.cards.length;
+  await h.page.keyboard.press("Delete"); await wait(h, 1200);
+  res.afterDragDelete = names(h);
+  await close(h);
+  return res.shown === 1 && (res.boxed as string[]).length === 0 && JSON.stringify(res.afterBoxDelete) === JSON.stringify(["step", "schedule", "postprocess"])
+    && JSON.stringify(res.all) === JSON.stringify([step.id]) && res.dragSel === 3 && JSON.stringify(res.afterDragDelete) === JSON.stringify(["schedule", "postprocess"]);
+}
+
+async function revealShowsHiddenCard(res: Record<string, unknown>) {
+  const { b, step, sch } = callTree(true);
+  const h = await open({ board: b });
+  // Reveal on Board (editor command / CodeLens) on the hidden callee
+  await h.post({ type: "reveal", card: sch.id }); await wait(h, 700);
+  res.revealShown = (await shownIds(h)).includes(sch.id);
+  res.revealSel = await h.page.locator(`.card.sel[data-id="${sch.id}"]`).count();
+  // collapse again, then click the already-expanded call in the caller
+  await h.page.keyboard.press("Meta+z"); await wait(h, 500);
+  res.collapsedAgain = !(await shownIds(h)).includes(sch.id);
+  await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click(); await wait(h, 700);
+  res.clickShown = (await shownIds(h)).includes(sch.id);
+  res.clickSel = await h.page.locator(`.card.sel[data-id="${sch.id}"]`).count();
+  await close(h);
+  return !!res.revealShown && res.revealSel === 1 && !!res.collapsedAgain && !!res.clickShown && res.clickSel === 1;
+}
+
+async function fitFramesVisibleContent(res: Record<string, unknown>) {
+  const { b } = callTree(true);
+  // the hidden callees far away; a collapsed section with a big stored frame and a member far away
+  b.place[b.cards[1].id] = { x: 4000, y: 3000, w: 560 };
+  b.place[b.cards[2].id] = { x: 5000, y: 3600, w: 560 };
+  b.sections.push({ id: "sec", title: "Later", x: 700, y: 80, w: 6000, h: 5000, collapsed: true });
+  const m = nv("BlockManager.allocate"); put(b, m, 6000, 4500, 560); b.place[m.id].section = "sec";
+  const h = await open({ board: b });
+  await clickCanvas(h);
+  await h.page.keyboard.press("Shift+Digit1"); await wait(h, 900);
+  res.zoom = await zoom(h);
+  await close(h);
+  return (res.zoom as number) > 0.6;
 }
 
 async function nudgeIsOneUndoStep(res: Record<string, unknown>) {
