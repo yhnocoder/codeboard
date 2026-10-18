@@ -7,6 +7,7 @@
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 //  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
 //  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Enter Board
+//  undoAddKeepsLaterWork      — the editor's undo of an add removes only those cards, even after the board changed
 //  secondCallBelowCaller      — in a short panel the second expanded call still goes below its caller, not above it
 // Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
@@ -54,6 +55,7 @@ export const CODE_CARDS: Record<string, () => Promise<void>> = {
   farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
   implPickerKeyboard: () => run("implPickerKeyboard", implPickerKeyboard),
   shortcutHelpComplete: () => run("shortcutHelpComplete", shortcutHelpComplete),
+  undoAddKeepsLaterWork: () => run("undoAddKeepsLaterWork", undoAddKeepsLaterWork),
   secondCallBelowCaller: () => run("secondCallBelowCaller", secondCallBelowCaller),
 };
 
@@ -217,6 +219,24 @@ async function shortcutHelpComplete(res: Record<string, unknown>) {
   const has = (k: string) => rows.some((r) => r.startsWith(k));
   res.missing = ["⌥F", "⌘⇧B", "⌘↵"].filter((k) => !has(k));
   return rows.length > 10 && !(res.missing as string[]).length;
+}
+
+async function undoAddKeepsLaterWork(res: Record<string, unknown>) {
+  const b = emptyBoard("bAdd", "add");
+  const old = nv("LLMEngine.step");
+  put(b, old, 80, 80, 560);
+  const h = await open({ board: b });
+  // the editor adds a card, then the user keeps working on the board (moves the old card)
+  const add = nv("Scheduler.schedule");
+  await h.post({ type: "add", cards: [{ card: add, views: { [add.segments[0].id]: viewOf(add.segments[0]) }, w: 560 }] }); await wait(h, 500);
+  await clickHead(h, old.id);
+  await h.page.keyboard.press("Shift+ArrowRight"); await wait(h, 300);
+  // the notification's Undo (or ⌘Z in the editor) for that add
+  await h.post({ type: "undoAdd", cards: [add.id] }); await wait(h, 1200);
+  res.cards = h.board().cards.map((c) => c.id === old.id ? "old" : c.id === add.id ? "added" : c.id);
+  res.oldX = h.board().place[old.id].x;
+  await close(h);
+  return JSON.stringify(res.cards) === JSON.stringify(["old"]) && res.oldX === 90;
 }
 
 async function secondCallBelowCaller(res: Record<string, unknown>) {
