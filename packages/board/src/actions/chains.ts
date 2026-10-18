@@ -2,7 +2,7 @@
 import { createMemo } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, segOf, cardTitle, removeCards, instName, genWhat, cardChip, rankByReceiver, sameCallSite, baseName,
+  uid, isCode, segOf, cardTitle, instName, genWhat, cardChip, rankByReceiver, sameCallSite, baseName, placeCards, replaceCards,
   type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
 } from "@codeboard/core";
 import { state, setState, mutate, cardById, toast, placeOf, select } from "../state/store";
@@ -167,15 +167,16 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
     const p = b.place[oldId];
     const nc = structuredClone(r.card) as CodeCard;
     if (r.title) nc.title = r.title;
-    b.cards.push(nc);
-    b.place[newId] = p ? { x: p.x, y: keep ? p.y + 40 : p.y, w: p.w, ...(p.section ? { section: p.section } : {}) } : { x: 0, y: 0, w: r.w ?? 560 };
-    l.to = { card: newId };
+    const section = p?.section;
+    placeCards(b, [{ card: nc, place: p ? { x: p.x, y: keep ? p.y + 40 : p.y, w: p.w } : { x: 0, y: 0, w: r.w ?? 560 } }], { copy: false, at: (q) => (section ? { ...q, section } : q) });
     const alts = [...(l.call.alts ?? [])];
     alts.splice(item.i!, 1, ...(oldAlt && !keep && !o.dropOld ? [oldAlt] : []));
     if (o.label) l.label = o.label;
     if (alts.length) l.call.alts = alts; else delete l.call.alts;
     if (a.vals) l.call.vals = a.vals; else if (r.mark?.vals) l.call.vals = r.mark.vals;
-    if (!keep) removeCards(b, [oldId]);
+    // 旧卡只有这条箭头：整张换成新卡（贴纸、调用图字母跟过去）；还有别的箭头 / Sidenote 就留着，只把这条改连新卡
+    if (keep) l.to = { card: newId };
+    else replaceCards(b, [oldId], () => ({ card: newId }));
   });
   if (keep) toast(`Kept ${old ? cardTitle(old) : "the previous card"}: it has its own arrows`);
   select({ cards: [newId] });

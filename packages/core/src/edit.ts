@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { activeOf, clone, cornerAt, findCard, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { activeOf, clone, cornerAt, escapeRegExp, findCard, hostOf, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -495,4 +495,115 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
     segments.push(...clone(p.segments));
   });
   return { made, segments };
+}
+
+// ---------- Section、叠放、Compare、箭头中转、Sidenote ↔ 卡、改名引用、子白板框 ----------
+
+/**
+ * Turn into Board 的父白板一侧：这些卡（含 Compare 的栏）换成子白板框 frame（叠放在它们里最早那张的位置，摆在 place），sections 一起删掉。
+ * 外面连进来的箭头改连框里的那张卡（End.sub；连到 Compare 的栏的算那张 Compare），从里面连出去的改成从整个框出发（去掉行和出发边）；
+ * 其余跟删卡一样（removeCards）：里面的箭头、挂在这些卡上的 Sidenote、贴纸、问题的解答
+ */
+export function cardsToFrame(b: Board, ids: Iterable<string>, frame: Card, place: Place, sections: Iterable<string>): void {
+  const want = new Set(withCols(b, ids));
+  const host = hostOf(b);
+  for (const l of b.links) {
+    const a = want.has(l.from.card), t = want.has(l.to.card);
+    if (a === t) continue;
+    if (t) { l.to = { card: frame.id, sub: host(l.to.card) }; if (l.lost) delete l.lost.to; }
+    else { l.from = { card: frame.id }; if (l.lost) delete l.lost.from; if (l.sides) delete l.sides.from; }
+    if (l.lost && !l.lost.from && !l.lost.to) delete l.lost;
+    if (l.sides && !l.sides.from && !l.sides.to) delete l.sides;
+  }
+  const at = b.cards.findIndex((c) => want.has(c.id));
+  removeCards(b, want);
+  removeSections(b, sections);
+  b.cards.splice(Math.max(0, at), 0, frame);
+  b.place[frame.id] = place;
+}
+
+/** 删掉这些 Section：子 Section 和成员卡归到被删的那个的父 Section（父也删了就再往上找；都没有就不在 Section 里） */
+export function removeSections(b: Board, ids: Iterable<string>): void {
+  const gone = new Set(ids);
+  const up = (id?: string) => { let s = id; for (let i = 0; s && gone.has(s) && i < 50; i++) s = b.sections.find((x) => x.id === s)?.parent; return s && !gone.has(s) ? s : undefined; };
+  for (const s of b.sections) if (!gone.has(s.id) && s.parent && gone.has(s.parent)) { const p = up(s.parent); if (p) s.parent = p; else delete s.parent; }
+  for (const p of Object.values(b.place)) if (p.section && gone.has(p.section)) { const s = up(p.section); if (s) p.section = s; else delete p.section; }
+  b.sections = b.sections.filter((s) => !gone.has(s.id));
+}
+
+/** 改叠放顺序（b.cards 的顺序就是叠放顺序）。front / back = 最上 / 最下；forward / backward = 越过一张 overlaps 说跟它们重叠的卡 */
+export type Arrange = "front" | "forward" | "backward" | "back";
+export function arrangeCards(b: Board, ids: Iterable<string>, how: Arrange, overlaps: (id: string) => boolean): void {
+  const set = new Set(ids);
+  const moving = b.cards.filter((c) => set.has(c.id)), rest = b.cards.filter((c) => !set.has(c.id));
+  if (!moving.length) return;
+  const idx = b.cards.map((c) => c.id);
+  const hit = (i: number) => !set.has(idx[i]) && !!b.place[idx[i]] && overlaps(idx[i]);
+  let at: number; // moving 插在 rest 的哪个位置
+  if (how === "front") at = rest.length;
+  else if (how === "back") at = 0;
+  else if (how === "forward") {
+    const top = Math.max(...moving.map((c) => idx.indexOf(c.id)));
+    let next = -1;
+    for (let i = top + 1; i < idx.length; i++) if (hit(i)) { next = i; break; }
+    at = next < 0 ? rest.length : rest.findIndex((c) => c.id === idx[next]) + 1;
+  } else {
+    const bot = Math.min(...moving.map((c) => idx.indexOf(c.id)));
+    let prev = -1;
+    for (let i = bot - 1; i >= 0; i--) if (hit(i)) { prev = i; break; }
+    at = prev < 0 ? 0 : rest.findIndex((c) => c.id === idx[prev]);
+  }
+  b.cards = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
+}
+
+/**
+ * 两张代码卡原地并成 Compare（id，摆在 place）：两栏还在 cards 里，只是不再单独摆放；
+ * 绑在两栏上的贴纸改绑到 Compare 上
+ */
+export function makeCompare(b: Board, id: string, cols: [string, string], place: Place): void {
+  b.cards.push({ id, kind: "compare", cols: [...cols] });
+  b.place[id] = place;
+  for (const k of cols) delete b.place[k];
+  for (const s of b.stickers) if (s.at.kind === "canvas" && s.at.on && "card" in s.at.on && cols.includes(s.at.on.card)) s.at.on = { card: id };
+}
+
+/**
+ * 在箭头中间插一张卡：A → B 变成 A → mid → B。第二段（id = second）接着原来的终点、带着原来的 RPC 标记；
+ * 第一段改连到 mid，终点不画箭头。mid 由调用方先放到白板上
+ */
+export function splitLink(b: Board, id: string, mid: string, second: string): void {
+  const l = b.links.find((k) => k.id === id);
+  if (!l) return;
+  b.links.push({ id: second, from: { card: mid }, to: { ...l.to }, ...(l.rpc ? { rpc: { ...l.rpc } } : {}) });
+  l.to = { card: mid };
+  l.style = { ...l.style, head: { ...l.style?.head, end: false } };
+  delete l.at;
+}
+
+/** splitLink 反过来：first 接上 second 的终点（终点的箭头恢复），second 和夹在中间的卡 mid 删掉 */
+export function joinLinks(b: Board, first: string, second: string, mid: string): void {
+  const la = b.links.find((k) => k.id === first), lb = b.links.find((k) => k.id === second);
+  if (!la || !lb) return;
+  la.to = { ...lb.to };
+  if (la.style?.head?.end === false) { delete la.style.head; if (!Object.keys(la.style).length) delete la.style; }
+  removeLinks(b, [second]);
+  removeCards(b, [mid]);
+}
+
+/** 卡变成 Sidenote n：卡连同它的箭头一起删掉；n 是 kind card（指着这张卡）时卡留着 */
+export function cardIntoSidenote(b: Board, cardId: string, n: Sidenote): void {
+  b.sidenotes.push(n);
+  if (n.kind !== "card") removeCards(b, [cardId]);
+}
+
+/** 卡改了名：Note、卡片说明、Text sidenote 里写着 [[旧名]] 的引用跟着改 */
+export function renameTitleRefs(b: Board, from: string, to: string): void {
+  if (!from || from === to || /[\[\]\n]/.test(to)) return;
+  const re = new RegExp(`\\[\\[\\s*${escapeRegExp(from)}\\s*\\]\\]`, "gi");
+  const fix = (s: string) => (s.includes("[[") ? s.replace(re, `[[${to}]]`) : s);
+  for (const k of b.cards) {
+    if (k.kind === "note") { const m = fix(k.md); if (m !== k.md) k.md = m; }
+    if (k.desc) { const d = fix(k.desc); if (d !== k.desc) k.desc = d; }
+  }
+  for (const n of b.sidenotes) if (n.kind === "text") { const m = fix(n.md); if (m !== n.md) n.md = m; }
 }

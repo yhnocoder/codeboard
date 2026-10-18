@@ -474,19 +474,20 @@ export function markSaved() { const s = snap(); cur = s; sent = { snap: s, cam: 
 /** 上次发出去的 a → 现在的 b：变了的项；什么都没变返回 null。a 为 null 时整块发 */
 function diff(a: { snap: Snap; cam: string } | null, b: Snap, cam: string): BoardPatch | null {
   const p: BoardPatch = {};
+  const put = p as Record<string, unknown>;
   let any = false;
+  // place 按 [id, Place] 存在快照里，发出去是 id → Place
+  const places = (xs: unknown[]) => Object.fromEntries(xs as [string, Place][]);
   if (!a) {
     p.full = true;
-    for (const k of KEYS) if (k !== "place") (p as Record<string, unknown>)[k] = { set: b[k].map((x) => JSON.parse(x)) };
-    p.place = { set: Object.fromEntries(b.place.map((x) => JSON.parse(x))) };
+    for (const k of KEYS) { const set = b[k].map((x) => JSON.parse(x)); put[k] = k === "place" ? { set: places(set) } : { set }; }
     any = true;
   } else {
     for (const k of KEYS) {
       const d = diffList(a.snap.ids[k], a.snap[k], b.ids[k], b[k], k !== "place");
       if (!d) continue;
       any = true;
-      if (k === "place") p.place = { set: d.set && Object.fromEntries(d.set.map((x) => x as [string, Place])), del: d.del };
-      else (p as Record<string, unknown>)[k] = d;
+      put[k] = k === "place" ? { set: d.set && places(d.set), del: d.del } : d;
     }
   }
   if (!a || a.snap.head !== b.head) {

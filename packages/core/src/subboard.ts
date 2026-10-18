@@ -1,6 +1,7 @@
 // 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（卡片的框和名字、调用图标记、连线、Section 色）发给父白板，
 // 父白板只画骨架，不拿子白板的完整内容。纯函数：骨架、子白板关系（侧栏的树、不能套成环）、把选中的卡拆成一块新白板（Turn into Board）。
-import { cardTitle, clone, firstLine, hostOf, isCode, uid, versionLabel, type Board, type BoardCard, type Card, type Link, type Place } from "./model";
+import { cardTitle, clone, emptyBoard, firstLine, hostOf, isCode, uid, versionLabel, withCols, type Board, type BoardCard, type Card, type Link, type Place } from "./model";
+import { cardsToFrame, removeCards, removeSections, removeStickers } from "./edit";
 import { computeFlows } from "./flow";
 import { bounds, estSize, sectionFrames, type Rect } from "./layout";
 import type { Crumb } from "./protocol";
@@ -160,20 +161,14 @@ export const FRAME_HEAD = 30, FRAME_PAD = 12;
 
 /**
  * 把父白板上选中的卡（Compare 带上两栏）拆成一块新白板：新白板拿走这些卡、它们之间的箭头、跟着它们的 Sidenote 和贴纸、
- * 整个落在选区里的 Section（卡的位置挪到从 (80, 80) 开始）。父白板上这些卡换成一个子白板框（frame = 框的卡 id），
- * 外面连进来的箭头改成连到框里的那张卡（End.sub），从里面连出去的改成从整个框出发（去掉行）。
+ * 整个落在选区里的 Section（卡的位置挪到从 (80, 80) 开始）。父白板上这些卡换成一个子白板框（frame = 框的卡 id，edit.cardsToFrame）。
+ * 新白板是父白板的拷贝删掉其余的卡和 Section（removeCards / removeSections），引用的清理和父白板删卡一样。
  * rects：卡的实测矩形（白板界面量的）。直接改 parent，返回新白板（还没存）
  */
 export function extractBoard(parent: Board, ids: string[], rects: (id: string) => Rect, o: { id: string; name: string; frame?: string }): { child: Board; frame: string } | null {
-  const want = new Set<string>();
-  for (const id of ids) {
-    const c = parent.cards.find((k) => k.id === id);
-    if (!c || !parent.place[id]) continue;
-    want.add(id);
-    if (c.kind === "compare") c.cols.forEach((k) => want.add(k));
-  }
-  const top = ids.filter((id) => want.has(id));
+  const top = ids.filter((id) => parent.place[id] && parent.cards.some((c) => c.id === id));
   if (!top.length) return null;
+  const want = new Set(withCols(parent, top));
   const box = bounds(top.map(rects))!;
   const dx = 80 - box.x, dy = 80 - box.y;
   // 成员全在选区里的 Section（和它下面的子 Section）一起搬走
@@ -181,72 +176,26 @@ export function extractBoard(parent: Board, ids: string[], rects: (id: string) =
   const members = (sid: string) => parent.cards.filter((c) => parent.place[c.id]?.section === sid).map((c) => c.id);
   for (const s of parent.sections) { const m = members(s.id); if (m.length && m.every((id) => want.has(id))) secs.add(s.id); }
   for (let grew = true; grew;) { grew = false; for (const s of parent.sections) if (!secs.has(s.id) && s.parent && secs.has(s.parent) && members(s.id).every((id) => want.has(id))) { secs.add(s.id); grew = true; } }
-  const child: Board = {
-    version: parent.version, id: o.id, name: o.name, cam: { x: 40, y: 40, z: 1 },
-    cards: parent.cards.filter((c) => want.has(c.id)).map((c) => clone(c)),
-    place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0,
-  };
-  for (const id of top) {
-    const p = clone(parent.place[id]);
-    p.x += dx; p.y += dy;
-    if (p.section && !secs.has(p.section)) delete p.section;
-    child.place[id] = p;
-  }
-  child.sections = parent.sections.filter((s) => secs.has(s.id)).map((s) => {
-    const n = { ...clone(s), x: s.x + dx, y: s.y + dy };
-    if (n.parent && !secs.has(n.parent)) delete n.parent;
-    return n;
-  });
-  const isIn = (id: string) => want.has(id);
-  child.links = parent.links.filter((l) => isIn(l.from.card) && isIn(l.to.card)).map((l) => clone(l));
-  child.sidenotes = parent.sidenotes.filter((n) => isIn(n.at.card) && (n.kind !== "card" || isIn(n.card))).map((n) => clone(n));
-  child.stickers = parent.stickers.filter((k) => {
-    if (k.at.kind === "line") return isIn(k.at.card);
-    const on = k.at.on;
-    if (on && "card" in on) return isIn(on.card);
-    if (on && "link" in on) return child.links.some((l) => l.id === on.link);
-    return false;
-  }).map((k) => clone(k));
-  // 创建顺序和调用图标记按原来的先后带过去
-  const born = Object.entries(parent.born ?? {}).filter(([id]) => want.has(id)).sort((a, b) => a[1] - b[1]);
-  born.forEach(([id], i) => { child.born![id] = i; });
-  child.seq = born.length;
-  for (const [k, m] of Object.entries(parent.marks ?? {})) if (want.has(k)) (child.marks ??= {})[k] = clone(m);
 
-  // 父白板：卡换成框
+  const { cards, place, links, sections, sidenotes, stickers, born, marks } = clone(parent);
+  const child: Board = { ...emptyBoard(o.id, o.name), cam: { x: 40, y: 40, z: 1 }, cards, place, links, sections, sidenotes, stickers, born, marks };
+  removeCards(child, child.cards.filter((c) => !want.has(c.id)).map((c) => c.id));
+  removeSections(child, child.sections.filter((s) => !secs.has(s.id)).map((s) => s.id));
+  removeStickers(child, child.stickers.filter((k) => k.at.kind === "canvas" && !k.at.on).map((k) => k.id)); // 画布上没绑东西的留在父白板
+  for (const p of Object.values(child.place)) { p.x += dx; p.y += dy; }
+  for (const s of child.sections) { s.x += dx; s.y += dy; }
+  // 创建顺序按原来的先后重新从 0 编
+  const order = Object.entries(child.born ?? {}).sort((a, b) => a[1] - b[1]);
+  child.born = Object.fromEntries(order.map(([id], i) => [id, i]));
+  child.seq = order.length;
+
+  // 父白板：卡换成框。框比原来那片小（骨架是缩略的）：宽取一半左右，高按原来的长宽比，加标题栏
   const frame = o.frame ?? uid("c");
-  // 框比原来那片小（骨架是缩略的）：宽取一半左右，高按原来的长宽比，加标题栏
   const fw = Math.round(Math.max(360, Math.min(640, box.w * 0.45)));
   const fh = Math.round(Math.max(220, Math.min(560, (fw - FRAME_PAD * 2) * (box.h / Math.max(1, box.w)) + FRAME_HEAD + FRAME_PAD + 4)));
   const fr: Place = { x: Math.round(box.x), y: Math.round(box.y), w: fw, h: fh };
   const sec0 = parent.place[top[0]].section;
   if (sec0 && !secs.has(sec0)) fr.section = sec0;
-  const moved = new Set(child.links.map((l) => l.id));
-  parent.links = parent.links.filter((l) => !moved.has(l.id)).map((l) => {
-    const a = isIn(l.from.card), t = isIn(l.to.card);
-    if (!a && !t) return l;
-    const n: Link = clone(l);
-    if (t) { n.to = { card: frame, sub: hostIn(parent, l.to.card, want) }; if (n.lost) delete n.lost.to; }
-    if (a) { n.from = { card: frame }; if (n.lost) delete n.lost.from; if (n.sides) delete n.sides.from; }
-    if (n.lost && !n.lost.from && !n.lost.to) delete n.lost;
-    if (n.sides && !n.sides.from && !n.sides.to) delete n.sides;
-    return n;
-  });
-  const keepNote = new Set(child.sidenotes.map((n) => n.id));
-  parent.sidenotes = parent.sidenotes.filter((n) => !keepNote.has(n.id) && !isIn(n.at.card) && !(n.kind === "card" && isIn(n.card)));
-  const keepStk = new Set(child.stickers.map((k) => k.id));
-  parent.stickers = parent.stickers.filter((k) => !keepStk.has(k.id));
-  parent.sections = parent.sections.filter((s) => !secs.has(s.id)).map((s) => (s.parent && secs.has(s.parent) ? { ...s, parent: undefined } : s));
-  const at = parent.cards.findIndex((c) => want.has(c.id));
-  parent.cards = parent.cards.filter((c) => !want.has(c.id));
-  parent.cards.splice(Math.max(0, Math.min(at, parent.cards.length)), 0, { id: frame, kind: "board", board: o.id });
-  for (const id of want) { delete parent.place[id]; if (parent.born) delete parent.born[id]; if (parent.marks) delete parent.marks[id]; }
-  parent.place[frame] = fr;
+  cardsToFrame(parent, want, { id: frame, kind: "board", board: o.id }, fr, secs);
   return { child, frame };
-}
-
-/** 父白板上连到 Compare 的一栏：骨架里只有那张 Compare */
-function hostIn(b: Board, id: string, want: Set<string>): string {
-  const h = b.cards.find((c) => c.kind === "compare" && c.cols.includes(id));
-  return h && want.has(h.id) ? h.id : id;
 }

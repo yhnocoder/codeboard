@@ -1,11 +1,11 @@
 // 改白板：行（隐藏、高亮、复制）、删除 / 复制卡、卡片属性、Compare、合并 / 拆开、Section。
 import { unwrap } from "solid-js/store";
 import {
-  escapeRegExp, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
+  arrangeCards, makeCompare, overlaps, removeSections as removeSectionsIn, renameTitleRefs, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
   uid, findCard, isCode, cardTitle, segOf,
   bounds, removeCards,
   copyText, cardRows, LANGS, defaultWidth,
-  type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment,
+  type Arrange, type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment,
   type Rect,
 } from "@codeboard/core";
 import {
@@ -80,7 +80,7 @@ export function deleteSel() {
   const ok = mutate((b) => {
     removeCards(b, ids);
     removeLinks(b, links);
-    if (secs.size) dropSections(b, secs);
+    removeSectionsIn(b, secs);
   });
   if (ok) clearSel();
 }
@@ -88,43 +88,14 @@ export function deleteLinks(ids: string[]) {
   const s = new Set(ids);
   if (mutate((b) => removeLinks(b, s))) select({});
 }
-function dropSections(b: Board, secs: Set<string>) {
-  for (const s of b.sections) if (secs.has(s.id)) {
-    for (const ch of b.sections) if (ch.parent === s.id && !secs.has(ch.id)) ch.parent = s.parent;
-    for (const p of Object.values(b.place)) if (p.section === s.id) p.section = s.parent;
-  }
-  b.sections = b.sections.filter((s) => !secs.has(s.id));
-}
-export function removeSections(ids: string[]) { mutate((b) => dropSections(b, new Set(ids))); select({}); }
+export function removeSections(ids: string[]) { mutate((b) => removeSectionsIn(b, ids)); select({}); }
 
-/** 图层：卡的叠放顺序就是 b.cards 的顺序。上移 / 下移一层只越过跟它重叠的卡（不重叠的换了也看不出来） */
-export type Arrange = "front" | "forward" | "backward" | "back";
+/** 图层：卡的叠放顺序就是 b.cards 的顺序（core arrangeCards）。上移 / 下移一层只越过跟它重叠的卡（不重叠的换了也看不出来） */
 export function arrange(ids: string[], how: Arrange) {
   const set = new Set(ids.map((id) => cardById(id)?.host.id ?? id));
   if (!set.size) return;
-  const hit = (a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-  mutate((b) => {
-    const moving = b.cards.filter((c) => set.has(c.id)), rest = b.cards.filter((c) => !set.has(c.id));
-    if (how === "front") { b.cards = [...rest, ...moving]; return; }
-    if (how === "back") { b.cards = [...moving, ...rest]; return; }
-    const rs = moving.filter((c) => b.place[c.id]).map((c) => rectOf(c.id));
-    const idx = b.cards.map((c) => c.id);
-    const overl = (id: string) => !!b.place[id] && rs.some((r) => hit(r, rectOf(id)));
-    if (how === "forward") {
-      const top = Math.max(...moving.map((c) => idx.indexOf(c.id)));
-      const next = b.cards.findIndex((c, i) => i > top && !set.has(c.id) && overl(c.id));
-      if (next < 0) { b.cards = [...rest, ...moving]; return; }
-      const at = rest.findIndex((c) => c.id === idx[next]);
-      b.cards = [...rest.slice(0, at + 1), ...moving, ...rest.slice(at + 1)];
-    } else {
-      const bot = Math.min(...moving.map((c) => idx.indexOf(c.id)));
-      let prev = -1;
-      for (let i = bot - 1; i >= 0; i--) if (!set.has(b.cards[i].id) && overl(b.cards[i].id)) { prev = i; break; }
-      if (prev < 0) { b.cards = [...moving, ...rest]; return; }
-      const at = rest.findIndex((c) => c.id === idx[prev]);
-      b.cards = [...rest.slice(0, at), ...moving, ...rest.slice(at)];
-    }
-  });
+  const rs = [...set].filter((id) => state.board.place[id]).map((id) => rectOf(id));
+  mutate((b) => arrangeCards(b, set, how, (id) => { const r = rectOf(id); return rs.some((m) => overlaps(m, r)); }));
 }
 export const arrangeItem = (ids: () => string[]): Item => ({
   label: "Arrange",
@@ -174,19 +145,8 @@ export function renameCard(id: string, v: string) {
     if (!c) return;
     const old = cardTitle(c, b).trim();
     c.title = v.trim() && v.trim() !== cardTitle({ ...c, title: undefined } as Card) ? v.trim() : undefined;
-    renameRefs(b, old, cardTitle(c, b).trim());
+    renameTitleRefs(b, old, cardTitle(c, b).trim()); // 白板上写着 [[旧名]] 的引用跟着改
   });
-}
-/** 改了卡名：白板上写着 [[旧名]] 的引用跟着改 */
-function renameRefs(b: Board, from: string, to: string) {
-  if (!from || from === to || /[\[\]\n]/.test(to)) return;
-  const re = new RegExp(`\\[\\[\\s*${escapeRegExp(from)}\\s*\\]\\]`, "gi");
-  const fix = (s?: string) => (s && s.includes("[[") ? s.replace(re, `[[${to}]]`) : s);
-  for (const k of b.cards) {
-    if (k.kind === "note") { const m = fix(k.md); if (m !== k.md) k.md = m!; }
-    if (k.desc) { const d = fix(k.desc); if (d !== k.desc) k.desc = d; }
-  }
-  for (const n of b.sidenotes) if (n.kind === "text") { const m = fix(n.md); if (m !== n.md) n.md = m!; }
 }
 export function setDesc(id: string, v: string) {
   mutate((b) => { const c = findCard(b, id)?.card; if (c) c.desc = v.trim() || undefined; });
@@ -275,11 +235,8 @@ export function doCompare() {
   const id = uid("k");
   mutate((b) => {
     const pa = b.place[p.id], pc = b.place[q.id];
-    // 两栏的卡还在 cards 里，只是不再单独摆放
-    const k: CompareCard = { id, kind: "compare", cols: [p.id, q.id] };
-    b.cards.push(k);
-    b.place[id] = { x: pa.x, y: pa.y, w: Math.min(1280, Math.max(760, pa.w + pc.w)), section: pa.section ?? pc.section };
-    delete b.place[p.id]; delete b.place[q.id];
+    const section = pa.section ?? pc.section;
+    makeCompare(b, id, [p.id, q.id], { x: pa.x, y: pa.y, w: Math.min(1280, Math.max(760, pa.w + pc.w)), ...(section ? { section } : {}) });
   });
   select({ cards: [id] });
   requestAnimationFrame(() => revealCard(id));
