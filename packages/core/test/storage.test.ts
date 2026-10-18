@@ -414,10 +414,14 @@ describe("card library (shared cards)", () => {
     expect(file(fs, "A").cards[1]).toEqual(note("s"));
   });
 
-  it("copyOut gives a card with its place and travelling sidenotes; cached() lists the boards with their refs", async () => {
+  it("copyOut gives a card with its place and travelling sidenotes, and the links between the copied cards; cached() lists the boards with their refs", async () => {
     const { store, B } = await two();
     const out = store.copyOut("A", ["s", "missing"]);
-    expect(out.map((x) => [x.card.id, !!x.place, x.sidenotes!.map((n) => n.id)])).toEqual([["s", true, ["n1"]]]);
+    expect(out.cards.map((x) => [x.card.id, !!x.place, x.sidenotes!.map((n) => n.id)])).toEqual([["s", true, ["n1"]]]);
+    expect(out.links).toEqual([]);
+    await patchNow(store, "A", { links: { set: [{ id: "l", from: { card: "s" }, to: { card: "la" } }, { id: "self", from: { card: "la" }, to: { card: "la", line: 1 } }] } });
+    expect(store.copyOut("A", ["s", "la"]).links.map((l) => l.id)).toEqual(["l", "self"]);
+    expect(store.copyOut("A", ["s"]).links).toEqual([]);
     expect(store.cached().map((e) => [e.id, [...e.refs]])).toEqual([["A", ["s"]], [B, ["s"]]]);
   });
 
