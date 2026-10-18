@@ -21,6 +21,7 @@ import { VARIANTS } from "./scenarios-variants";
 import { FIXQ } from "./scenarios-fixq";
 import { HEADER } from "./scenarios-header";
 import { NOTE_EDITING } from "./scenarios-note-editing";
+import { CODE_CARDS } from "./scenarios-code-cards";
 import { UX } from "./scenarios-ux";
 
 const light = process.argv.includes("--light");
@@ -41,7 +42,7 @@ const GROUPS: Record<string, Record<string, () => Promise<void>>> = {
   "scenarios-typing.ts": TYPING, "scenarios-mdreview.ts": MDREVIEW, "scenarios-shared.ts": SHARED, "scenarios-subboards.ts": SUBBOARDS,
   "scenarios-chains.ts": CHAINS, "scenarios-calls.ts": CALLS, "scenarios-questions.ts": QUESTIONS, "scenarios-variants.ts": VARIANTS,
   "scenarios-fixq.ts": FIXQ, "scenarios-header.ts": HEADER,
-  "scenarios-note-editing.ts": NOTE_EDITING,
+  "scenarios-note-editing.ts": NOTE_EDITING, "scenarios-code-cards.ts": CODE_CARDS,
   // 最后：这些场景换了宿主的工作区（读 nano-vllm），要排在 CHAINS 之后
   "scenarios-ux.ts": UX,
 };
@@ -318,7 +319,8 @@ const LOCAL: Record<string, () => Promise<void>> = {
     const nudge = patches.at(-1); // the first change also numbers the cards (head.born)
     await h.page.keyboard.press("Meta+Shift+BracketRight"); await h.page.waitForTimeout(1200); // bring to front: order only
     const front = patches.at(-1);
-    await head(1).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Backspace"); await h.page.waitForTimeout(1200);
+    // the card that is on screen (the third one sticks out past the right edge, and the canvas does not scroll to it)
+    await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Backspace"); await h.page.waitForTimeout(1200);
     const del = patches.at(-1);
     await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1200);
     await h.post({ type: "rename", name: "Renamed" }); await h.page.waitForTimeout(1200);
