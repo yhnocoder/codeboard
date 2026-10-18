@@ -13,7 +13,7 @@ import { readPacks } from "./stickers";
 import { log } from "./log";
 import { copyDiagnostics, openStickerDir } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
-import { callVars, expand, peek } from "./resolve";
+import { callVars, dispatchAt, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints, searchName, genSource } from "./search";
 import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
@@ -58,6 +58,7 @@ export function makeHandler(panels: BoardHost): Handler {
     },
     expand: (_p, m) => expand(m),
     peek: (_p, m) => peek(m),
+    dispatch: (_p, m) => dispatchAt(m),
     prefetch: (_p, m) => prefetchCall(m),
     callVars: (_p, m) => callVars(m),
     search: (p, m) => search(store, m.q, m.scope, p.id),

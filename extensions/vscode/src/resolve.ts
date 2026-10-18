@@ -1,7 +1,7 @@
 // 点调用展开（expand）、标识符悬停看定义（peek）、全工作区的符号名字索引。
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as path from "node:path";
-import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
+import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
 import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 import { crossBefore, decorate, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
@@ -88,7 +88,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   const site = callSite(seg, full, m);
   if (!site) log("warn", `vars ${m.name} → callSite miss path=${seg.path}:${m.line}:${m.col}${full ? "" : " (file text unavailable, used saved lines)"}`);
   if (site?.dispatch && site.dispatch === m.name) { log("info", `expand ${m.name} → dynamic dispatch path=${seg.path}:${m.line}`); return { ...none("Dispatched by name: not resolved"), name: m.name }; }
-  let resolved: string | undefined, lspN = 0;
+  let resolved: string | undefined, lspN = 0, dispatching = false;
   const here = full ? { abs: absOf(seg) ?? seg.path, text: full } : null;
   const caller = full ? callerOf(seg.lang, full, m.line) : undefined;
 
@@ -108,9 +108,13 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
       const defs = await clickDefs(wp.abs, line, m.col);
       lspN = defs.length;
       // 动态分发：定义处是基类的方法、有子类覆盖它 → 列出全部实现让人选（线框 01 一）
+      // 转到实现在 Pylance 那边要在整个工作区里找子类（冷的时候、慢机器上要好几秒）：点击只等一小会儿（预取过的话已经在缓存里），
+      // 等不到就先按定义建卡，回 dispatching，白板再单独问（dispatchAt），有覆盖再给选
       if (defs.length === 1) {
-        const dsp = await dispatchOf(defs[0], m.name);
-        if (dsp) return dsp.result;
+        const dsp = dispatchOf(defs[0], m.name);
+        const quick = await within(dsp, DISPATCH_WAIT);
+        if (quick === LATE) { dsp.catch(() => null); dispatching = await mayDispatch(defs[0], m.name); }
+        else if (quick) return quick.result;
       }
       for (const d of defs) {
         const t = await symAtDef(d, m.name);
@@ -149,7 +153,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   const nc = await cardForFileSym(t.abs, t.sym);
   if (!nc) { log("error", `expand ${m.name} → cannot read ${hostPath(t.abs)}`); return none(`Cannot read ${hostPath(t.abs)}.`); }
   const mark = Object.keys(x.mark).length ? x.mark : undefined;
-  return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site && !t.sym.name.startsWith("<") ? await varsFor(site, t) : [], ...(mark ? { mark } : {}), ...(x.title ? { title: x.title } : {}) };
+  return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site && !t.sym.name.startsWith("<") ? await varsFor(site, t) : [], ...(mark ? { mark } : {}), ...(x.title ? { title: x.title } : {}), ...(dispatching && !crossed.length ? { dispatching: true as const } : {}) };
 }
 
 /**
@@ -172,6 +176,31 @@ function callerOf(lang: string, full: string, line: number): { lang: string; lin
 }
 
 // ---------- 动态分发 ----------
+
+/** 点击时最多等转到实现多久（ms）：缓存里有、或者语言服务热着时够用；再久就先建卡 */
+const DISPATCH_WAIT = 200;
+const LATE = Symbol("late");
+const within = <T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> => {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<typeof LATE>((r) => { t = setTimeout(() => r(LATE), ms); })]).finally(() => clearTimeout(t));
+};
+/** dispatchOf 会去问转到实现的那种定义：Python 类里的方法 */
+async function mayDispatch(d: Def, name: string): Promise<boolean> {
+  if (langOf(d.abs) !== "python") return false;
+  const b = await symAtDef(d, name);
+  return !!b && !!b.sym.parent && b.sym.kind === "def";
+}
+
+/** expand 回了 dispatching 之后白板来问：同一个调用点的定义处有没有被覆盖（定义、转到实现都走缓存，和 expand 发出去的是同一个请求） */
+export async function dispatchAt(m: { seg: Segment; line: number; col: number; name: string }): Promise<DispatchResult> {
+  if (m.seg.src.kind === "free" || m.seg.src.kind === "github") return null;
+  const wp = await workingPlace(m.seg);
+  if (!wp?.exact) return null;
+  const defs = await clickDefs(wp.abs, wp.start + (m.line - m.seg.start), m.col);
+  if (defs.length !== 1) return null;
+  const d = await dispatchOf(defs[0], m.name);
+  return d ? { ...d.result, ...(d.abstract ? { abstract: true as const } : {}) } : null;
+}
 
 /**
  * 定义处是类里的方法：在它上面问「转到实现」（Pylance 回所有覆盖它的子类方法）。有覆盖就是动态分发：
@@ -298,7 +327,11 @@ export async function peek(m: PeekReq): Promise<PeekResult> {
   if (defs.length) {
     // hover 在使用处问（Pylance 给的类型更具体），没有再问定义处
     const hov = (use && (await hoverAt(use.abs, use.line, use.col))) || (await hoverAt(defs[0].abs, defs[0].line, defs[0].col));
-    const [out, dsp] = await Promise.all([peekAt(defs[0], m.word, hov), defs.length === 1 ? dispatchOf(defs[0], m.word.split(".").pop()!) : null]);
+    // 动态分发的提示也不让 peek 等转到实现：等不到这次就不显示（请求还在跑，进了缓存下次就有）
+    const dp = defs.length === 1 ? dispatchOf(defs[0], m.word.split(".").pop()!) : null;
+    const [out, q] = await Promise.all([peekAt(defs[0], m.word, hov), dp ? within(dp, DISPATCH_WAIT) : null]);
+    if (q === LATE) dp!.catch(() => null);
+    const dsp = q === LATE ? null : q;
     if (out && dsp) out.dispatch = { n: dsp.n, base: dsp.base, ...(dsp.abstract ? { abstract: true } : {}) };
     return out;
   }

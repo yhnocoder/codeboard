@@ -15,7 +15,7 @@ import { send, ask } from "../host";
 import { headPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
 import { jumpTo } from "./nav";
 import { walkBack, setWalkBack, walkIntoFrame, walkOut } from "./subboards";
-import { openImplPicker, unresolvedMenu } from "./chains";
+import { lateDispatch, openImplPicker, unresolvedMenu } from "./chains";
 
 // ---------- 点调用展开 ----------
 
@@ -69,6 +69,8 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
   // 动态分发：列出全部实现，选一个（线框 01 一）
   if ("impls" in r) return openImplPicker(cardId, segId, call, r, at, again);
   placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w, { mark: { ...r.mark, ...extra?.mark }, label: extra?.label, title: r.title });
+  // 宿主没等转到实现就建了卡：有没有子类覆盖在后台问，回来了再给选（不让点击等语言服务在整个工作区里找子类）
+  if (r.dispatching && !pick) void lateDispatch(cardId, segId, call, r.card.id);
 }
 
 /** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>） */

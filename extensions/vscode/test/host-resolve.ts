@@ -7,7 +7,7 @@ import type { CodeCard, ExpandPick, ExpandResult, PeekDef, Segment } from "@code
 import { startAnalysis, analysisOf, segAnalysis } from "../src/analysis";
 import { clipAnalysis } from "@codeboard/core/analysis";
 import { cardForFileSym } from "../src/cards";
-import { callVars, expand, forgetLspSeen, peek } from "../src/resolve";
+import { callVars, dispatchAt, expand, forgetLspSeen, peek } from "../src/resolve";
 import { viewsFor } from "../src/views";
 import { forgetDefs } from "../src/defcache";
 import { prefetchCall, warmBoard } from "../src/prefetch";
@@ -374,6 +374,15 @@ void (async () => {
     check(qualOf(pk) === "TritonAttentionImpl.forward", "Dynamic dispatch: picking one expands it", pk);
     const pv = await peek({ seg: lay, line: lineOf(lay, /self\.impl\.forward/), col: lay.text[lineOf(lay, /self\.impl\.forward/) - lay.start].indexOf("forward"), word: "self.impl.forward" }) as PeekDef;
     check(pv?.dispatch?.n === 2 && pv.dispatch.base === "AttentionImpl" && pv.dispatch.abstract, "Hover: Dynamic dispatch · 2 implementations", pv?.dispatch);
+    // 转到实现慢（Pylance 冷着在整个工作区里找子类）：点击不等它，先按定义建卡、回 dispatching；白板再问 dispatch，等到了就是两个实现
+    W2.language.implementations = async (abs, line) => { await new Promise((r) => setTimeout(r, 800)); return abs === baseAbs && line === 2 ? [{ abs: implAbs, line: 5, col: 8 }, { abs: implAbs, line: 10, col: 8 }] : []; };
+    forgetDefs();
+    const t0 = Date.now();
+    const r12 = await click(lay, /self\.impl\.forward/, "forward");
+    const took = Date.now() - t0;
+    check(qualOf(r12) === "AttentionImpl.forward" && "card" in r12 && r12.dispatching === true && took < 600, "Slow Go to Implementation: the click expands the definition at once, marked dispatching", { took, r12: "card" in r12 ? r12.dispatching : r12 });
+    const da = await dispatchAt({ seg: lay, line: lineOf(lay, /self\.impl\.forward/), col: lay.text[lineOf(lay, /self\.impl\.forward/) - lay.start].indexOf("forward"), name: "forward" });
+    check(da?.base === "AttentionImpl.forward" && da.abstract === true && da.impls.map((i) => i.qual).join(",") === "FlashAttentionImpl.forward,TritonAttentionImpl.forward", "dispatch: the implementations once they arrive", da);
     // 没有覆盖的普通方法：照常展开
     W2.language.implementations = async () => [];
     forgetDefs();

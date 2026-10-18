@@ -3,7 +3,7 @@ import { createMemo } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   uid, isCode, segOf, cardTitle, removeCards, instName, genWhat, cardChip,
-  type CallAlt, type CallSpan, type CodeCard, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
+  type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
 } from "@codeboard/core";
 import { state, setState, mutate, cardById, toast, placeOf, select } from "../state/store";
 import { setConnectFrom } from "../state/ui";
@@ -16,7 +16,8 @@ import { linksInto } from "./nav";
 
 // ---------- 动态分发：列出全部实现，选一个 ----------
 
-export type ImplPop = { card: string; seg: string; call: CallSpan; impls: ImplPick[]; base: string; at?: { x: number; y: number }; again: boolean };
+/** link：卡已经按定义建好了（转到实现后回来的）：选一个就换掉那条箭头连着的卡；abstract = 基类的方法是抽象的，换掉后不留成备选 */
+export type ImplPop = { card: string; seg: string; call: CallSpan; impls: ImplPick[]; base: string; at?: { x: number; y: number }; again: boolean; link?: string; abstract?: boolean };
 
 /** 调用处那个名字的元素（浮层挂在它下面） */
 function callEl(cardId: string, segId: string, call: CallSpan): Element | null {
@@ -26,9 +27,34 @@ function callEl(cardId: string, segId: string, call: CallSpan): Element | null {
   return i < 0 ? null : document.querySelector(`.card[data-id="${host}"] [data-seg="${segId}"] .call[data-c="${i}"]`) ?? document.querySelector(`.card[data-id="${host}"] .call[data-c="${i}"]`);
 }
 
-export function openImplPicker(cardId: string, segId: string, call: CallSpan, r: { impls: ImplPick[]; base: string }, at?: { x: number; y: number }, again = false) {
+export function openImplPicker(cardId: string, segId: string, call: CallSpan, r: { impls: ImplPick[]; base: string }, at?: { x: number; y: number }, again = false, late?: { link: string; abstract?: boolean }) {
   const el = callEl(cardId, segId, call);
-  openPop({ kind: "impls", data: { card: cardId, seg: segId, call, impls: r.impls, base: r.base, at, again } }, el ? { el, prefer: "below" } : lastPointer());
+  openPop({ kind: "impls", data: { card: cardId, seg: segId, call, impls: r.impls, base: r.base, at, again, ...late } }, el ? { el, prefer: "below" } : lastPointer());
+}
+
+/**
+ * expand 没等转到实现、先按定义建了卡（placed）：在后台问覆盖实现。有覆盖 → 箭头记上实现数、其余实现挂成灰色备选，
+ * 再打开选实现的浮层（选了就换掉这张卡）。卡或箭头已经没了（撤销、删掉）就不管
+ */
+export async function lateDispatch(cardId: string, segId: string, call: CallSpan, placed: string) {
+  const f = cardById(cardId);
+  const seg = f && isCode(f.card) ? segOf(f.card, segId) : undefined;
+  if (!seg) return;
+  let r: DispatchResult;
+  try { r = await ask("dispatch", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name }); } catch { return; }
+  if (!r) return;
+  const L = state.board.links.find((l) => l.call && l.from.card === cardId && l.from.seg === segId && l.from.line === call.line && l.call.name === call.name && l.to.card === placed);
+  if (!L) return;
+  const alts: CallAlt[] = r.impls.filter((x) => !x.base).map((x) => ({ label: x.label, detail: x.detail, path: x.path, line: x.line, qual: x.qual, ...(x.lib ? { lib: x.lib } : {}) }));
+  mutate((b) => {
+    const l = b.links.find((x) => x.id === L.id);
+    if (!l?.call) return;
+    const have = new Set((l.call.alts ?? []).map((a) => a.qual));
+    l.call.impls = r!.impls.length;
+    const add = alts.filter((a) => !have.has(a.qual));
+    if (add.length) l.call.alts = [...(l.call.alts ?? []), ...add];
+  });
+  openImplPicker(cardId, segId, call, r, undefined, false, { link: L.id, ...(r.abstract ? { abstract: true } : {}) });
 }
 
 /** library 包在不在 Study Scope 里：不在的要 ⌥ 才展开（v0.1.5 的规则） */
@@ -39,6 +65,15 @@ export function pickImpl(p: ImplPop, i: number, why: string, alt: boolean): bool
   const it = p.impls[i];
   if (!it) return false;
   if (libBlocked(it.lib) && !alt) { toast(`${it.label} is library code (${it.lib}). ${K.alt}-click to expand it anyway.`); return false; }
+  if (p.link) {
+    // 卡已经按定义建好了：选的就是它（基类自己的实现）不用动；别的实现换进来，原来那张变灰（抽象的不留）
+    const L = state.board.links.find((l) => l.id === p.link);
+    if (!L) return false;
+    if (it.base) return true;
+    const k = altsOf(L).findIndex((a) => a.alt.qual === it.qual && !!a.alt.path);
+    if (k >= 0) { void swapAlt(p.link, k, { label: why.trim() || undefined, dropOld: p.abstract }); return true; }
+    // 这个实现从同一个调用点已经展开过（另一条分支）：照常再建一张
+  }
   const alts: CallAlt[] = p.impls.filter((_, k) => k !== i).map((x) => ({ label: x.label, detail: x.detail, path: x.path, line: x.line, qual: x.qual, ...(x.lib ? { lib: x.lib } : {}) }));
   void expandCall(p.card, p.seg, p.call, p.at, { path: it.path, line: it.line, qual: it.qual }, p.again, { mark: { impls: p.impls.length, ...(alts.length ? { alts } : {}) }, label: why.trim() || undefined });
   return true;
@@ -86,7 +121,7 @@ function retitle(c: CodeCard, before: BoundVal[] | undefined, after: BoundVal[])
 }
 
 /** 点灰色备选：换成它，原来的变灰。取值的备选只改箭头；别的实现要宿主建卡，原来的卡没有别的箭头就拿掉，有就留着（成了第二条分支） */
-export async function swapAlt(linkId: string, k: number) {
+export async function swapAlt(linkId: string, k: number, o: { label?: string; dropOld?: boolean } = {}) {
   const L = state.board.links.find((l) => l.id === linkId);
   const item = L ? altsOf(L)[k] : undefined;
   if (!L?.call || !item) return;
@@ -136,7 +171,8 @@ export async function swapAlt(linkId: string, k: number) {
     b.place[newId] = p ? { x: p.x, y: keep ? p.y + 40 : p.y, w: p.w, ...(p.section ? { section: p.section } : {}) } : { x: 0, y: 0, w: r.w ?? 560 };
     l.to = { card: newId };
     const alts = [...(l.call.alts ?? [])];
-    alts.splice(item.i!, 1, ...(oldAlt && !keep ? [oldAlt] : []));
+    alts.splice(item.i!, 1, ...(oldAlt && !keep && !o.dropOld ? [oldAlt] : []));
+    if (o.label) l.label = o.label;
     if (alts.length) l.call.alts = alts; else delete l.call.alts;
     if (a.vals) l.call.vals = a.vals; else if (r.mark?.vals) l.call.vals = r.mark.vals;
     if (!keep) removeCards(b, [oldId]);

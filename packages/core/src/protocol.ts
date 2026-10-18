@@ -190,6 +190,8 @@ export type BoardToHost =
   | { type: "openLink"; url: string }
   /** 点调用展开：回 ExpandResult */
   | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick }
+  /** expand 回了 dispatching：这个调用的覆盖实现（转到实现回来了才答；回 DispatchResult） */
+  | { type: "dispatch"; req: number; seg: Segment; line: number; col: number; name: string }
   /** 鼠标停在调用上：宿主先在后台问定义、读好目标文件（不回答；点下去的 expand 复用） */
   | { type: "prefetch"; seg: Segment; line: number; col: number; name: string }
   /** 调用接到已有的卡上：算变量候选（回 Var[]） */
@@ -300,14 +302,18 @@ export type ExpandPick = { path: string; line: number; rel?: true; qual?: string
 export type PeekResult = PeekDef | null;
 
 /**
- * expand 的回答。card：建卡连线；mark = 跨边界时要并进 Call 标记的（边界、取值、备选），title = 模板实例名（dispatch<8, 768>）。
+ * expand 的回答。card：建卡连线；mark = 跨边界时要并进 Call 标记的（边界、取值、备选），title = 模板实例名（dispatch<8, 768>）；
+ * dispatching = 卡是类里的方法，有没有子类覆盖（转到实现）还没问出来：先按定义建卡，白板再用 dispatch 问，有覆盖再给选。
  * impls：动态分发，列出全部实现让人选（base = 静态类型的方法）。none：解析不到（name = 可以按名字跨语言搜）
  */
 export type ExpandResult =
-  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number; mark?: CrossMark; title?: string }
+  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number; mark?: CrossMark; title?: string; dispatching?: true }
   | { pick: { label: string; detail: string; path: string; line: number }[] }
   | { impls: ImplPick[]; base: string }
   | { none: true; reason: string; name?: string };
+
+/** dispatch 的回答：有覆盖时的全部实现（abstract = 基类的方法是抽象的，不在 impls 里）；没有覆盖是 null */
+export type DispatchResult = { impls: ImplPick[]; base: string; abstract?: true } | null;
 
 /** 跨边界时宿主给的 Call 标记部分 */
 export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev">;
@@ -326,6 +332,7 @@ export type AskType = Extract<BoardToHost, { req: number }>["type"];
 type Replies = {
   patch: { skipped: number };
   expand: ExpandResult;
+  dispatch: DispatchResult;
   callVars: Var[];
   peek: PeekResult;
   search: SearchItem[];

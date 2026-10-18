@@ -8,7 +8,7 @@ import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type SegView, 
 import { open, shot, put, OUT, REPO, type Host } from "./harness";
 import { startAnalysis, analysisOf } from "../../../extensions/vscode/src/analysis";
 import { cardForFileSym } from "../../../extensions/vscode/src/cards";
-import { callVars, expand, peek } from "../../../extensions/vscode/src/resolve";
+import { callVars, dispatchAt, expand, peek } from "../../../extensions/vscode/src/resolve";
 import { viewsFor } from "../../../extensions/vscode/src/views";
 import { forgetDefs } from "../../../extensions/vscode/src/defcache";
 import { searchName, searchPick, genSource } from "../../../extensions/vscode/src/search";
@@ -54,6 +54,7 @@ async function chainsHost(b: Board): Promise<Host> {
       switch (m.type) {
         case "ready": return true; // init below, once open() has returned the page
         case "expand": await reply(m.req, await expand(m)); return true;
+        case "dispatch": await reply(m.req, await dispatchAt(m)); return true;
         case "peek": await reply(m.req, await peek(m)); return true;
         case "views": await reply(m.req, await viewsFor(m.segs)); return true;
         case "callVars": await reply(m.req, await callVars(m)); return true;
@@ -182,13 +183,37 @@ async function pickimpl(res: Record<string, unknown>) {
   await page.keyboard.press("Shift+Digit1"); await wait(h, 900);
   await shotPr(h, "pickimpl-3-manual");
 
+  // 8. Go to Implementation is slow (a cold Pylance searching the whole workspace): the click doesn't wait for it.
+  // The definition's card comes first; when the implementations arrive the picker opens, and picking one swaps it in (the abstract base is not kept)
+  await page.keyboard.press("Escape");
+  W.language.implementations = async (abs, line) => { await new Promise((r) => setTimeout(r, 1500)); return abs === baseAbs && line === 2 ? [{ abs: implAbs, line: 5, col: 8 }, { abs: implAbs, line: 10, col: 8 }] : []; };
+  forgetDefs();
+  await h.page.context().browser()!.close();
+  const B8 = emptyBoard("bPickLate", "vLLM · attention (cold language server)");
+  const lay8 = await symCard("vllm/layer.py", "Attention.forward");
+  put(B8, lay8, 80, 160, 620);
+  const h8 = await chainsHost(B8);
+  const n8 = h8.board().cards.length;
+  await callIn(h8, lay8.id, "forward").click(); await wait(h8, 300);
+  res.lateCard = await h8.page.locator(".card .ctitle", { hasText: /^AttentionImpl\.forward$/ }).count(); // on the board before the implementations come back
+  await until(h8, () => cardByQual(h8, "AttentionImpl.forward"), 1000);
+  res.lateFirst = res.lateCard === 1 && !!cardByQual(h8, "AttentionImpl.forward") && h8.board().cards.length === n8 + 1 && !(await h8.page.locator(".pop.k-impls").count());
+  await h8.page.locator(".pop.k-impls .cand").first().waitFor({ timeout: 5000 }).catch(() => {});
+  res.lateItems = await h8.page.locator(".pop.k-impls .cand").count();
+  await h8.page.locator(".pop.k-impls input.fld").fill("late pick");
+  await h8.page.locator(".pop.k-impls .cand", { hasText: "TritonAttentionImpl" }).click(); await wait(h8, 1500);
+  const L8 = linksOf(h8).find((l) => l.label === "late pick");
+  const t8 = L8 && h8.board().cards.find((c) => c.id === L8.to.card);
+  res.lateSwap = !!t8 && t8.kind === "code" && t8.segments[0]?.symbol?.qual === "TritonAttentionImpl.forward" && !cardByQual(h8, "AttentionImpl.forward")
+    && L8?.call?.impls === 2 && (L8?.call?.alts ?? []).map((a) => a.qual).join(",") === "FlashAttentionImpl.forward";
+
   const ok = /Dynamic dispatch.*2 implementations.*AttentionImpl.*abstract/.test(String(res.hover)) && /2 implementations of/.test(String(res.title)) && res.items === 2
     && res.picked && res.altBoxes === 1 && res.oneOf === "1 of 2" && res.swapped && /TritonAttentionImpl/.test(String(res.altAfter)) && res.jump && res.two && res.altsWhenBoth === 0
-    && res.menu && (res.hits as number) >= 2 && res.manual && res.drawn;
+    && res.menu && (res.hits as number) >= 2 && res.manual && res.drawn && res.lateFirst && res.lateItems === 2 && res.lateSwap;
   console.log(ok ? "PASS" : "FAIL", "pickimpl", JSON.stringify(res));
   W.language.definitions = async () => []; W.language.implementations = async () => [];
   forgetDefs();
-  await h.page.context().browser()!.close();
+  await h8.page.context().browser()!.close();
 }
 
 async function crosslang(res: Record<string, unknown>) {
