@@ -7,6 +7,9 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # A PR that changes the release flow runs package + shots as a check; no release is made
+  pull_request:
+    paths: [".github/workflows/release.yml", "tools/release/**", "extensions/vscode/test/release-shots.cjs", "extensions/vscode/.vscodeignore"]
   workflow_dispatch:
     inputs:
       version:
@@ -15,10 +18,10 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 env:
-  VERSION: ${{ inputs.version || github.ref_name }}
+  VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && '0.0.0-pr') || github.ref_name }}
   VSCODE_VERSION: "1.142.0"
   E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
 jobs:
@@ -60,6 +63,7 @@ jobs:
 
   release:
     needs: [package, shots]
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:

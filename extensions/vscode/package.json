@@ -15,15 +15,7 @@
   "bugs": {
     "url": "https://github.com/yhnocoder/codeboard/issues"
   },
-  "keywords": [
-    "whiteboard",
-    "code reading",
-    "call graph",
-    "canvas",
-    "notes",
-    "python",
-    "diagram"
-  ],
+  "keywords": ["whiteboard", "code reading", "call graph", "canvas", "notes", "python", "diagram"],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -441,12 +433,7 @@
         "codeboard.ai.provider": {
           "type": "string",
           "default": "auto",
-          "enum": [
-            "auto",
-            "copilot",
-            "deepseek",
-            "off"
-          ],
+          "enum": ["auto", "copilot", "deepseek", "off"],
           "enumDescriptions": [
             "DeepSeek if an API key is set, otherwise a VS Code language model such as Copilot.",
             "A VS Code language model (for example GitHub Copilot).",
@@ -542,18 +529,8 @@
         },
         "codeboard.doubleClick": {
           "type": "string",
-          "enum": [
-            "text",
-            "note",
-            "code",
-            "none"
-          ],
-          "enumDescriptions": [
-            "Text",
-            "Note",
-            "Free Code card",
-            "Nothing"
-          ],
+          "enum": ["text", "note", "code", "none"],
+          "enumDescriptions": ["Text", "Note", "Free Code card", "Nothing"],
           "default": "text",
           "description": "What double-clicking empty board space creates."
         },
@@ -564,14 +541,8 @@
         },
         "codeboard.themeReflow": {
           "type": "string",
-          "enum": [
-            "push",
-            "overlap"
-          ],
-          "enumDescriptions": [
-            "Push cards below down",
-            "Allow overlap"
-          ],
+          "enum": ["push", "overlap"],
+          "enumDescriptions": ["Push cards below down", "Allow overlap"],
           "default": "push",
           "description": "When switching themes makes cards taller: push the cards below them down, or let them overlap."
         },
