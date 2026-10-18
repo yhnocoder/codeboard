@@ -4,7 +4,7 @@ import { parseMd, serializeMd } from "../../src/md/schema";
 import { renderMd } from "../../src/md/render";
 import { toggleTask } from "../../src/md/view";
 import { cleanCompletion, completePrompt } from "@codeboard/core";
-import { getSchema } from "@tiptap/core";
+import { getSchema, type JSONContent } from "@tiptap/core";
 import { Node as PMNode } from "@tiptap/pm/model";
 import { baseExtensions } from "../../src/md/schema";
 
@@ -316,5 +316,35 @@ describe("a paragraph that is only an image", () => {
       expect(() => PMNode.fromJSON(schema, d).check()).not.toThrow();
       same(s);
     }
+  });
+});
+
+describe("text at the start of a line that reads as a block", () => {
+  const para = (...cs: JSONContent[]): JSONContent => ({ type: "doc", content: [{ type: "paragraph", content: cs }] });
+  const text = (t: string): JSONContent => ({ type: "text", text: t });
+  const br: JSONContent = { type: "hardBreak" };
+  /** 写出再读回来还是这一段（同样的字、同样的硬换行） */
+  const keeps = (d: JSONContent) => {
+    const md = serializeMd(d);
+    expect(parseMd(md), md).toEqual(d);
+  };
+  const MARKERS = ["- milk", "+ x", "* x", "-", "# x", "###### x", "> x", "1. x", "1) x", "12. x", "---", "***", "___", "_ _ _", "- - -", "===", "--", "[toc]", "[^1]: x"];
+  it("is escaped at the start of a paragraph", () => {
+    for (const m of MARKERS) keeps(para(text(m)));
+  });
+  it("is escaped after a hard break", () => {
+    for (const m of MARKERS) keeps(para(text("before"), br, text(m)));
+  });
+  it("is escaped after a newline inside the text", () => {
+    for (const m of MARKERS) expect(parseMd(serializeMd(para(text(`before\n${m}`)))).content, m).toHaveLength(1);
+  });
+  it("an ordered-list marker escapes its dot, which reads back as the same text", () => {
+    expect(serializeMd(para(text("1. x")))).toBe("1\\. x");
+    same("1\\. x");
+    same("2\\) y");
+  });
+  it("is left alone in the middle of a line", () => {
+    same("a - b and 1. c and # d");
+    same("**b** - x");
   });
 });

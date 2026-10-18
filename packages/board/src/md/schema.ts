@@ -46,13 +46,17 @@ const Math1 = InlineMath.extend({
 });
 // 块公式：$$ 单独起一行（或 $$…$$ 占满一行）
 const BLOCK_MATH = /^ {0,3}\$\$([^$]+?)\$\$[ \t]*(?:\n|$)/;
-const lineStart = (re: RegExp) => (src: string) => { const m = re.exec(src); return m ? m.index + (m[0].startsWith("\n") ? 1 : 0) : -1; };
+/**
+ * 块的 start：marked 拿它找一段字在哪断开，传的是 src.slice(1)，^ 会落在行中间（\[^1]: 的 \ 后面）。
+ * 只认换行后面的那一处（re 以 \n 开头）；在行首的由 tokenize 直接认
+ */
+const lineStart = (re: RegExp) => (src: string) => { const m = re.exec(src); return m ? m.index + 1 : -1; };
 const Math2 = BlockMath.extend({
   addInputRules: () => [],
   renderMarkdown: (n) => `$$\n${n.attrs?.latex ?? ""}\n$$`,
   markdownTokenizer: {
     name: "blockMath", level: "block",
-    start: lineStart(/(^|\n) {0,3}\$\$/),
+    start: lineStart(/\n {0,3}\$\$/),
     tokenize: (src) => {
       const m = BLOCK_MATH.exec(src);
       if (!m) return;
@@ -110,7 +114,7 @@ const Det = Details.extend({
   },
   markdownTokenizer: {
     name: "details", level: "block",
-    start: lineStart(/(^|\n) {0,3}<details/i),
+    start: lineStart(/\n {0,3}<details/i),
     tokenize: (src, _t, lx) => {
       const d = detailsAt(src);
       if (!d) return;
@@ -152,8 +156,7 @@ const Toc = Node.create({
   renderMarkdown: () => "[toc]",
   markdownTokenizer: {
     name: "toc", level: "block",
-    // marked 拿 start 找段落在哪断开时传的是 src.slice(1)，^ 会落在行中间（\[toc] 的 \ 后面）：只认换行后面的；行首的由 tokenize 直接认
-    start: (src: string) => { const m = /\n {0,3}\[toc\][ \t]*(?:\n|$)/i.exec(src); return m ? m.index + 1 : -1; },
+    start: lineStart(/\n {0,3}\[toc\][ \t]*(?:\n|$)/i),
     tokenize: (src) => { const m = TOC_RE.exec(src); return m ? { type: "toc", raw: m[0] } : undefined; },
   },
 });
@@ -249,7 +252,7 @@ const FnDef = Footnote.extend({
   renderMarkdown: undefined,
   markdownTokenizer: {
     name: "footnoteDef", level: "block",
-    start: lineStart(/(^|\n)\[\^[^\]\s]+\]:/),
+    start: lineStart(/\n\[\^[^\]\s]+\]:/),
     tokenize: (src, _t, lx) => {
       // 第一行冒号后面的字，加上后面缩进的续行
       const m = /^\[\^([^\]\s]+)\]:[ \t]*([^\n]*(?:\n(?:(?: {2,}|\t)[^\n]*|[ \t]*(?=\n(?: {2,}|\t))))*)(?:\n|$)/.exec(src);
@@ -352,8 +355,13 @@ export const baseExtensions: AnyExtension[] = [
 // ---------- 写回：少转义 ----------
 // 原版把 \ ` * _ [ ] ~ 全部转义，还把 < & 变成实体：block_manager 会写成 block\_manager。这里只在重新解析会变样时才转义
 const PUNCT = /[!-/:-@[-`{-~]/;
-const LINE_START = /(^|\n)( {0,3})(?=#{1,6}(?:\s|$)|>|[-+*]\s|\d{1,9}[.)]\s)/g;
-const ESC = "\u0001"; // 段首要转义的位置先放个记号，escText 换成 \
+/**
+ * 一行开头会被读成块的写法：# 标题、> 引用、- + * 列表、1. 1) 有序列表、--- *** ___ 分隔线、=== --- setext 标题的下划线、[toc]。
+ * 匹配到的末尾就是要放 \ 的地方：有序列表转义的是数字后面的 . )（\1. 不是转义），别的是第一个记号。
+ * 一行到这段字的末尾就算完（后面可能还有别的行内内容）：多转义一个 \ 不改意思，少转义会变结构
+ */
+const LINE_START = /^ {0,3}(?:\d{1,9}(?=[.)](?:[ \t]|$))|(?=#{1,6}(?:[ \t]|$)|>|[-+*](?:[ \t]|$)|([-*_])[ \t]*(?:\1[ \t]*){2,}$|[-=]+[ \t]*$|\[toc\][ \t]*$))/gim;
+const ESC = "\u0001"; // 行首要转义的位置先放个记号，escText 把它和后面那个字写成 \X
 function escText(s: string): string {
   // * ~ ` 一段里只有一个时配不成对，不用转义；两边都是空白的 * ~ 也不会成强调（a * b）。_ 不当强调（解析时关掉了），不转义
   // 只数可能成对的（不是两边都空白的）
@@ -363,11 +371,11 @@ function escText(s: string): string {
   for (let i = 0; i < s.length; i++) {
     const c = s[i], next = s[i + 1] ?? "", prev = s[i - 1] ?? "";
     switch (c) {
-      case ESC: out += "\\"; break;
+      case ESC: out += `\\${next}`; i++; break;
       case "\\": out += !next || PUNCT.test(next) ? "\\\\" : c; break;
       case "`": out += tick ? "\\`" : c; break;
       case "*": case "~": out += (c === "*" ? star : tilde) && !(/\s/.test(prev || " ") && /\s/.test(next || " ")) ? `\\${c}` : c; break;
-      case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) || (i === 0 && /^\[toc\]\s*$/i.test(s)) ? "\\[" : c; break;
+      case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) ? "\\[" : c; break;
       case "$": out += INLINE_MATH.test(s.slice(i)) ? "\\$" : c; break;
       case "<": out += /[A-Za-z/!?]/.test(next) ? "\\<" : c; break;
       // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
@@ -577,13 +585,19 @@ function dropEmpty(ns: JSONContent[], holder = true): JSONContent[] {
   return (kept.length ? kept : ns.slice(0, 1)).map((n) => (n.content && n.type !== "paragraph" ? { ...n, content: dropEmpty(n.content, HOLDS.has(n.type!)) } : n));
 }
 
-// 段落里行首的 # > - + * 1. 会被当成块语法：前面加 \（只看没有格式的开头文字）
+// 段落里每一行的开头（段首、硬换行后面、字里的换行后面）会被读成块的写法：转义（只看没有格式的字，有格式的前面有记号）
 function markStarts(ns: JSONContent[]): JSONContent[] {
   return ns.map((n): JSONContent => {
-    if (n.type === "paragraph" || n.type === "heading") {
-      if (!n.content?.length) return n;
-      return { ...n, content: n.content.map((t, k) => (t.type === "text" && t.text && (k === 0 || t.text.includes("\n")) ? { ...t, text: t.text.replace(LINE_START, (m0, nl, sp, off) => (k > 0 && off === 0 && !nl ? m0 : `${nl}${sp}${ESC}`)) } : t)) };
-    }
-    return n.content ? { ...n, content: markStarts(n.content) } : n;
+    if (n.type !== "paragraph") return n.content ? { ...n, content: markStarts(n.content) } : n;
+    let atLine = true;
+    return {
+      ...n,
+      content: n.content?.map((t) => {
+        const start = atLine;
+        atLine = t.type === "hardBreak" || (t.type === "text" && !!t.text?.endsWith("\n"));
+        if (t.type !== "text" || !t.text || t.marks?.length) return t;
+        return { ...t, text: t.text.replace(LINE_START, (m0: string, _c: string, off: number) => (off === 0 && !start ? m0 : m0 + ESC)) };
+      }),
+    };
   });
 }
