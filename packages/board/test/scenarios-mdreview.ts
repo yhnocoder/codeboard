@@ -1,6 +1,6 @@
-// v0.1.8 编辑器 Review：一条条模拟 Typora 的输入，记下编辑器里长成什么样、存回的 Markdown 是什么。
-// node packages/board/test/run-harness.mjs v18review [--only=a,b]   只记录（不进 CI），结果写到 test-out/harness/v18review.json
-// node packages/board/test/run-harness.mjs v18issues [--only=a,b]   Review 列出的问题（#编号）逐条判对错，进 CI
+// Markdown 编辑器 Review：一条条模拟 Typora 的输入，记下编辑器里长成什么样、存回的 Markdown 是什么。
+// node packages/board/test/run-harness.mjs markdownRecord [--only=a,b]   只记录（不进 CI），结果写到 test-out/harness/markdownRecord.json
+// node packages/board/test/run-harness.mjs markdownReviewIssues [--only=a,b]   Review 列出的问题（#编号）逐条判对错，进 CI
 import * as fs from "node:fs";
 import { open, OUT, type Host } from "./harness";
 import { emptyBoard, cleanCompletion, deepseekComplete, DEFAULT_SETTINGS, type NoteCard } from "@codeboard/core";
@@ -312,8 +312,8 @@ const ISSUES: Record<string, [string, (i: I) => boolean][]> = {
   "no empty-paragraph junk": [["code-tab", (i) => !/&nbsp;|\n\n\n/.test(i.md)], ["code-auto-indent", (i) => !/&nbsp;|\n\n\n/.test(i.md)]],
 };
 
-export const V018REVIEW: Record<string, () => Promise<void>> = {
-  async v18review() {
+export const MDREVIEW: Record<string, () => Promise<void>> = {
+  async markdownRecord() {
     const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7).split(",");
     const results: unknown[] = [];
     for (const pr of PROBES.filter((p) => !only || only.some((o) => p.name.startsWith(o)))) {
@@ -321,10 +321,10 @@ export const V018REVIEW: Record<string, () => Promise<void>> = {
       results.push({ name: pr.name, ...info });
       console.log(pr.name, JSON.stringify(info).slice(0, 400));
     }
-    fs.writeFileSync(`${OUT}/v18review${only ? "-" + only.join("_") : ""}.json`, JSON.stringify(results, null, 1));
+    fs.writeFileSync(`${OUT}/markdownRecord${only ? "-" + only.join("_") : ""}.json`, JSON.stringify(results, null, 1));
   },
   /** Review 的每个问题一条检查 */
-  async v18issues() {
+  async markdownReviewIssues() {
     const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7).split(",");
     let failed = 0;
     for (const [issue, checks] of Object.entries(ISSUES)) {
@@ -336,10 +336,10 @@ export const V018REVIEW: Record<string, () => Promise<void>> = {
         if (!ok(info) && info.err) info = await runProbe(pr);
         const pass = ok(info);
         if (!pass) failed++;
-        console.log(`${pass ? "PASS" : "FAIL"} v18issues ${issue} · ${name} ${JSON.stringify({ md: info.md, dom: info.dom, err: info.err, sel: info.sel, ask: info.ask }).slice(0, 400)}`);
+        console.log(`${pass ? "PASS" : "FAIL"} markdownReviewIssues ${issue} · ${name} ${JSON.stringify({ md: info.md, dom: info.dom, err: info.err, sel: info.sel, ask: info.ask }).slice(0, 400)}`);
       }
     }
-    if (failed) throw new Error(`v18issues: ${failed} failed`);
+    if (failed) throw new Error(`markdownReviewIssues: ${failed} failed`);
   },
 };
 /** 退出编辑后的静态显示 */

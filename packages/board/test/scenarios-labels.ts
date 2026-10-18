@@ -1,4 +1,4 @@
-// v0.1.7 WS3: one label box per arrow (↺ + own text, then arguments), drag along the arrow, Arrow / Label right-click menus (node run-harness.mjs v17labels)
+// one label box per arrow (↺ + own text, then arguments), drag along the arrow, Arrow / Label right-click menus (node run-harness.mjs arrowLabelsMenus)
 import * as fs from "node:fs";
 import { open, symCard, findSym, put, OUT, type Host } from "./harness";
 import * as path from "node:path";
@@ -87,8 +87,8 @@ async function arrowMenu(h: Host, id: string, f = 0.2) {
 }
 async function labelMenu(h: Host, id: string) { await box(h, id).click({ button: "right", position: { x: 8, y: 6 } }); await h.page.waitForTimeout(250); }
 
-export const V017LABELS: Record<string, () => Promise<void>> = {
-  async v17labels() {
+export const LABELS: Record<string, () => Promise<void>> = {
+  async arrowLabelsMenus() {
     fails = 0;
     const { b, sch, alloc, can, lines } = labelBoard();
     const h = await open({ board: b, light, w: 1500, h: 950 });
@@ -205,7 +205,8 @@ export const V017LABELS: Record<string, () => Promise<void>> = {
     // ---- Arrow menu (W01 D 22, 24, 25) ----
     await arrowMenu(h, "LA");
     const am = await menuLabels(h);
-    check(am.join("|") === "Call Mark|Line|Width|Start|End|Color|Start Side|End Side|Reset Sides|Edit Label|Delete", "arrow-menu-items", am);
+    // v0.2 added Mark as RPC…, ↩ Back to Start (call chains) and the Style presets
+    check(am.join("|") === "Call Mark|Mark as RPC…|↩ Back to Start|Style|Line|Width|Start|End|Color|Start Side|End Side|Reset Sides|Edit Label|Delete", "arrow-menu-items", am);
     await h.page.locator(".ctx").first().locator("button", { hasText: "End Side" }).hover(); await h.page.waitForTimeout(200);
     const endSides = await menuLabels(h, 1);
     await snap(h, "labels-6-arrow-menu");
@@ -257,7 +258,7 @@ export const V017LABELS: Record<string, () => Promise<void>> = {
     check(!linkOf(h, "LB"), "delete-arrow", { left: h.board().links.map((l) => l.id) });
     void can; void lines;
 
-    console.log(fails ? `FAIL v17labels ${fails} failed` : "PASS v17labels all");
+    console.log(fails ? `FAIL arrowLabelsMenus ${fails} failed` : "PASS arrowLabelsMenus all");
     await close(h);
   },
 };

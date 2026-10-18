@@ -1,14 +1,11 @@
 {
   "_doc": "Test tiers, see TESTING.md. smoke: always run by npm run check and PR CI (one quick scenario per main feature). manual: left out of every default run, run them by name. known: checks failing on main that are tracked elsewhere; their FAIL lines are reported but don't fail a run (remove the entry with the fix).",
   "smoke": [
-    "basic", "flow", "peek", "notes", "sections", "v18md", "v18mdedit", "export", "patchsave", "versions", "compare",
-    "web", "v15menus", "calltree", "questions", "runtime", "syncundo", "sharedsync", "v17walk", "v15zoom", "palette",
-    "v02settings", "misc", "linklist"
+    "expandCall", "expandAndWalk", "peek", "notes", "sections", "markdownRender", "markdownEdit", "export", "patchsave", "versions", "compare",
+    "web", "menusFitWindow", "calltree", "questions", "runtime", "syncundo", "sharedsync", "walkthroughOrder", "zoomLevels", "palette",
+    "settingsPage", "linkMergeSection", "linklist"
   ],
-  "manual": ["v18review", "v18codeedit"],
-  "known": {
-    "free-lang-keeps-card": "failing on main since v0.2 (seen 2026-10-18), not yet looked at",
-    "arrow-menu-items": "failing on main since v0.2 (seen 2026-10-18), not yet looked at",
-    "v17labels": "the summary line of the arrow-menu-items failure above"
-  }
+  "manual": ["markdownRecord"],
+  "solo": ["markdownLazyRender"],
+  "known": {}
 }

@@ -24,15 +24,17 @@
 
 harness 场景里打印出以 `FAIL` 开头的一行、抛异常、或者退出码不是 0，都算失败，CI 会变红。
 
+几个进程一起跑时挂了的场景会单独再跑一次，单独跑过了就算过（报告里标"alone"）。对 CPU 负载敏感、并行时必挂的场景登记在 `tiers.json` 的 `solo`，等别的都跑完再单独跑（和 perf 一样）。
+
 `tiers.json` 的 `known` 里登记的是已知、另有地方跟进的失败。它们照样会出现在报告里，但不让 CI 变红。修好时把那一条删掉。
 
 ## 常用命令
 
 ```bash
 npm run check                         # 本地第 1 层，约 3 分钟
-npm run check -- v18md notes          # 加上点名的场景
+npm run check -- markdownRender notes          # 加上点名的场景
 npm run check -- --all                # 所有场景，不限时间
-node packages/board/test/run-harness.mjs v18md            # 只跑一个场景（输出直接打出来）
+node packages/board/test/run-harness.mjs markdownRender            # 只跑一个场景（输出直接打出来）
 node packages/board/test/run-harness.mjs --workers=4      # 所有场景，4 个进程一起跑
 npm run e2e                                               # 整套 e2e（E2E_PART=1|2|3 或 E2E_ONLY=capture,addsel 只跑一部分）
 ```

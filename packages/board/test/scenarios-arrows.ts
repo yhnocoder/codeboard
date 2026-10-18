@@ -1,4 +1,4 @@
-// v0.1.7 scenarios for links-core: call graph marks, several callers, Linked here + Back / Forward, Walkthrough order (node run-harness.mjs v17linked …)
+// scenarios for links-core: call graph marks, several callers, Linked here + Back / Forward, Walkthrough order (node run-harness.mjs graphMarksLinked …)
 import { open, shot, symCard, findSym, put, OUT, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard, type Link } from "@codeboard/core";
 import * as fs from "node:fs";
@@ -23,9 +23,9 @@ function graphBoard(): { b: Board; step: CodeCard; sch: CodeCard; post: CodeCard
   return { b, step, sch, post };
 }
 
-export const V017: Record<string, () => Promise<void>> = {
+export const ARROWS: Record<string, () => Promise<void>> = {
   /** One mark per graph on every card; "← 2" on a card with two incoming arrows; jump from the list, then ⌃- / ⌃⇧- */
-  async v17linked() {
+  async graphMarksLinked() {
     const { b, step, sch } = graphBoard();
     const h = await open({ board: b, light, w: 1500, h: 950 });
     const marks = await h.page.locator(".card .chead .step").allTextContents();
@@ -47,7 +47,7 @@ export const V017: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Click the mark → picker; a letter is stored on the board under the graph's oldest card and shown on every card; Auto puts it back */
-  async v17mark() {
+  async graphMarkPicker() {
     const { b, step } = graphBoard();
     const h = await open({ board: b, light, w: 1500, h: 950 });
     await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click(); await h.page.waitForTimeout(300);
@@ -68,7 +68,7 @@ export const V017: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Walkthrough from the selected card: Call arrows depth-first, then plain arrows (W01 F) */
-  async v17walk() {
+  async walkthroughOrder() {
     const b = emptyBoard("b1", "walk");
     const step = card("LLMEngine.step"), sch = card("Scheduler.schedule"), alloc = card("BlockManager.allocate");
     put(b, step, 80, 80, 600); put(b, sch, 780, 60, 560); put(b, alloc, 1420, 60, 520);
@@ -94,7 +94,7 @@ export const V017: Record<string, () => Promise<void>> = {
    * W03 arrow sides: the 4×4 grid of A (line/card ends × target right / left / below-right / below-left), hysteresis while dragging (B),
    * converging arrows merged into one head (C), Compare column sides and the gutter line (E, W01 B 10–12), plus review screenshots
    */
-  async v17sides() {
+  async arrowSides() {
     const out = process.env.ROUTING_OUT ?? path.join(OUT, "v017-routing");
     fs.mkdirSync(out, { recursive: true });
     const save = async (h: Host, name: string, clip?: { x: number; y: number; width: number; height: number }) => { await h.page.waitForTimeout(450); await h.page.screenshot({ path: path.join(out, `${name}.png`), clip }); };
@@ -244,10 +244,10 @@ export const V017: Record<string, () => Promise<void>> = {
       await close(h);
     }
     const ok = Object.values(results).every(Boolean);
-    console.log(ok ? "PASS" : "FAIL", "v17sides", JSON.stringify(results), "screenshots in", out);
+    console.log(ok ? "PASS" : "FAIL", "arrowSides", JSON.stringify(results), "screenshots in", out);
   },
   /** Dots on a card's left / right edge sit on the heading row; a hand-dragged link starts on the dot it was dragged from (Linda 10-17 02:57) */
-  async v17dragside() {
+  async dragLinkSide() {
     const b = emptyBoard("b1", "dragside");
     const a = card("Sequence.append_token"), t = card("Block.update");
     put(b, a, 120, 120, 320); put(b, t, 760, 160, 300);
@@ -277,7 +277,7 @@ export const V017: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Deep snippet: common indentation hidden, code starts near the left edge, fold lines show the hidden levels (Linda 10-17 03:03) */
-  async v17dedent() {
+  async commonIndentHidden() {
     const b = emptyBoard("b1", "dedent");
     const lm = card("load_model"), s = lm.segments[0];
     const k = s.text.findIndex((t) => /if k in weight_name/.test(t));
@@ -298,7 +298,7 @@ export const V017: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** ModelRunner(...) links to ModelRunner.__init__ as a call: hand-drawn arrow gets the Call mark, both cards share a graph mark */
-  async v17ctor() {
+  async constructorCall() {
     const b = emptyBoard("b1", "ctor");
     const eng = card("LLMEngine.__init__"), mr = card("ModelRunner.__init__");
     put(b, eng, 80, 80, 640); put(b, mr, 820, 300, 560);
@@ -320,7 +320,7 @@ export const V017: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** File path and version in the heading: drag moves the card, a plain click still opens (Linda 10-17 03:05) */
-  async v17headdrag() {
+  async headingDrag() {
     const b = emptyBoard("b1", "headdrag");
     const a = card("load_model");
     put(b, a, 120, 120, 560);
@@ -344,7 +344,7 @@ export const V017: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** An arrow the code doesn't show as a call (Process(target=…), cross-language, string dispatch): right-click → Call Mark still marks it (Linda 10-17 03:11) */
-  async v17manualcall() {
+  async manualCallMark() {
     const b = emptyBoard("b1", "manualcall");
     const eng = card("LLMEngine.__init__"), sch = card("Scheduler.schedule");
     put(b, eng, 80, 80, 640); put(b, sch, 860, 120, 560);
@@ -367,7 +367,7 @@ export const V017: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** 悬停一行、鼠标往右移到这一行的圆点：圆点一直在、行不变，邻行右边圆点上已经有箭头（owner 10-17 截图） */
-  async v17lporthold() {
+  async linePortHover() {
     const b = emptyBoard("b1", "lporthold");
     const eng = card("LLMEngine.__init__"), mr = card("ModelRunner.__init__");
     put(b, eng, 80, 80, 640); put(b, mr, 900, 60, 520);
@@ -404,7 +404,7 @@ export const V017: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** 卡头那一行：有线头落在右边那个点上 → 右边圆点不画（不盖在箭头上），自己悬停时还亮；没有线头的一边照常 */
-  async v17eportland() {
+  async headPortHidden() {
     const b = emptyBoard("b1", "eportland");
     const eng = card("LLMEngine.__init__"), mr = card("ModelRunner.__init__");
     put(b, eng, 80, 80, 640); put(b, mr, 900, 60, 520);

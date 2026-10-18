@@ -2,16 +2,16 @@
 import { open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
 import { main } from "./runner";
 import { emptyBoard, putShared, type Board } from "@codeboard/core";
-import { V015 } from "./v015";
+import { BOARD } from "./scenarios-board";
 import { WEB } from "./scenarios-web";
-import { V017 } from "./v017";
-import { V017LABELS } from "./v017labels";
-import { V017STACK } from "./v017stack";
-import { THEMES_V17 } from "./scenarios-themes";
-import { V018MD } from "./v018md";
+import { ARROWS } from "./scenarios-arrows";
+import { LABELS } from "./scenarios-labels";
+import { LAYERS } from "./scenarios-layers";
+import { THEMES } from "./scenarios-themes";
+import { MARKDOWN } from "./scenarios-markdown";
 import { CODEEDIT } from "./scenarios-codeedit";
-import { V018TYPE } from "./v018type";
-import { V018REVIEW } from "./v018review";
+import { TYPING } from "./scenarios-typing";
+import { MDREVIEW } from "./scenarios-mdreview";
 import { SHARED } from "./scenarios-shared";
 import { SUBBOARDS } from "./scenarios-subboards";
 import { CHAINS } from "./scenarios-chains";
@@ -32,16 +32,16 @@ const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .c
 
 // Scenarios from the other test files, by file (the runner uses the file to pick the scenarios a change to it needs)
 const GROUPS: Record<string, Record<string, () => Promise<void>>> = {
-  "v015.ts": V015, "scenarios-web.ts": WEB, "v017.ts": V017, "v017labels.ts": V017LABELS, "v017stack.ts": V017STACK,
-  "scenarios-themes.ts": THEMES_V17, "v018md.ts": V018MD,
-  "scenarios-codeedit.ts": { ...CODEEDIT, /** 旧名字：v0.1.8 的 textarea 编辑换成 CodeMirror 后由 codeedit 接着查 */ v18codeedit: () => CODEEDIT.codeedit() },
-  "v018type.ts": V018TYPE, "v018review.ts": V018REVIEW, "scenarios-shared.ts": SHARED, "scenarios-subboards.ts": SUBBOARDS,
+  "scenarios-board.ts": BOARD, "scenarios-web.ts": WEB, "scenarios-arrows.ts": ARROWS, "scenarios-labels.ts": LABELS, "scenarios-layers.ts": LAYERS,
+  "scenarios-themes.ts": THEMES, "scenarios-markdown.ts": MARKDOWN,
+  "scenarios-codeedit.ts": CODEEDIT,
+  "scenarios-typing.ts": TYPING, "scenarios-mdreview.ts": MDREVIEW, "scenarios-shared.ts": SHARED, "scenarios-subboards.ts": SUBBOARDS,
   "scenarios-chains.ts": CHAINS, "scenarios-calls.ts": CALLS, "scenarios-questions.ts": QUESTIONS, "scenarios-variants.ts": VARIANTS,
   "scenarios-fixq.ts": FIXQ,
 };
 
 const LOCAL: Record<string, () => Promise<void>> = {
-  async basic() {
+  async expandCall() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");
     await callEl(h, "schedule").click();
@@ -53,7 +53,7 @@ const LOCAL: Record<string, () => Promise<void>> = {
     console.log("cards:", h.board().cards.length, "links:", h.board().links.length);
     await h.page.context().browser()!.close();
   },
-  async flow() {
+  async expandAndWalk() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await callEl(h, "schedule").click(); await h.page.waitForTimeout(700);
     await shot(h, "flow-00");
@@ -165,7 +165,7 @@ const LOCAL: Record<string, () => Promise<void>> = {
     console.log("banner:", await h.page.locator(".banner").count(), "cmiss:", await h.page.locator(".cmiss").count(), JSON.stringify(h.board().cards.map((c: any) => [c.keepOld ?? null, c.segments[0].version.commit])));
     await h.page.context().browser()!.close();
   },
-  async misc() {
+  async linkMergeSection() {
     const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
     // Arrow: select two cards, click Link

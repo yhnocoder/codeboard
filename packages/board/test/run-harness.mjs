@@ -55,7 +55,9 @@ workersNow = workers;
 console.log(`running ${list.length} scenarios (${counts || "none"}) on ${workers} worker${workers > 1 ? "s" : ""}${plan?.deferred.length ? `; ${plan.deferred.length} deferred to the nightly run` : ""}`);
 
 // Longest first, so the slow ones don't end up alone at the end
-const queue = list.map((x) => x.name).sort((a, b) => msOf(b) - msOf(a));
+// "solo" scenarios (tiers.json) measure timing (frames, render lag) and run alone after the others, like the perf benchmark
+const solo = list.map((x) => x.name).filter((n) => (tiers.solo ?? []).includes(n));
+const queue = list.map((x) => x.name).filter((n) => !solo.includes(n)).sort((a, b) => msOf(b) - msOf(a));
 const results = [];
 const TIMEOUT = 6 * 60e3;
 const known = (line) => Object.keys(tiers.known ?? {}).find((k) => new RegExp(`^FAIL\\s+${k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(line));
@@ -104,10 +106,16 @@ async function runWorker() {
   }
 }
 await Promise.all(Array.from({ length: workers }, runWorker));
+if (solo.length) {
+  if (workers > 1) console.log(`\nalone (tiers.json solo): ${solo.join(", ")}`);
+  queue.push(...solo);
+  workersNow = 1;
+  await runWorker();
+}
 
 // A scenario that failed while others ran beside it gets one more run alone: some measure timing (reveal lag, frame times)
 // and lose to the CPU load of the other scenarios. Passing alone counts as passing, and the report says so.
-const retry = workers > 1 ? results.filter((r) => !r.ok) : [];
+const retry = workers > 1 ? results.filter((r) => !r.ok && !solo.includes(r.name)) : [];
 if (retry.length) {
   console.log(`\nre-running alone: ${retry.map((r) => r.name).join(", ")}`);
   for (const r of retry) { results.splice(results.indexOf(r), 1); queue.push(r.name); }
