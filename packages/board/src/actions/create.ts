@@ -198,8 +198,8 @@ export function splitSnippet(id: string, merge: boolean) {
 }
 
 
-// 新建的 Note / Text / Code 第一次编辑结束时还是空的：直接消失，不进撤销（#26）。
-// 写了内容的在 setNoteText / setFreeCode 里结算；这里兜住“什么都没改”（Editable 不提交）的情况。
+// 新建的 Note / Text / Code / 问题第一次编辑结束时还是空的：直接消失，不进撤销（#26）。
+// 写了内容的在 setNoteText / setFreeCode / setQuestionText 里结算；这里兜住“什么都没改”（Editable 不提交）的情况。
 createRoot(() => {
   let prev: string | undefined;
   createEffect(() => {
@@ -207,8 +207,8 @@ createRoot(() => {
     const p = prev;
     prev = cur;
     if (!p || p === cur || !isFresh(p)) return;
-    const c = cardById(p)?.card;
-    const empty = !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
+    const c = cardById(p)?.card, q = state.board.stickers.find((s) => s.id === p)?.q;
+    const empty = q ? !q.md.trim() : !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
     queueMicrotask(() => { if (isFresh(p)) settleFresh(p, !empty); });
   });
 });

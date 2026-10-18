@@ -2,8 +2,8 @@
 // 卡头显示没解决的个数、Questions 面板（所有白板，宿主算）、复制 / 导出成 Markdown 清单、隔几天回来时的提示。
 // 面板只在开着时算；卡头的个数是一张按卡分好的表，贴纸变了才重算（不进每帧的工作）
 import { createMemo, createRoot, createSignal } from "solid-js";
-import { boardQuestions, isQuestion, questionsMarkdown, uid, type IconRef, type QuestionItem, type Sticker } from "@codeboard/core";
-import { state, mutate, toast, cardById, select, setLineSel, rectOf } from "../state/store";
+import { boardQuestions, isQuestion, questionsMarkdown, removeStickers, uid, type Board, type IconRef, type QuestionItem, type Sticker } from "@codeboard/core";
+import { state, mutate, createFresh, isFresh, settleFresh, toast, cardById, select, setLineSel, rectOf } from "../state/store";
 import { openPop, closePop, pops } from "../state/pop";
 import { setEditing } from "../state/ui";
 import { ask, send } from "../host";
@@ -59,20 +59,26 @@ export function stickerClick(id: string, el: Element) {
 /** 右键一行 → Ask a Question：在那一行贴「?」，直接写问题 */
 export function askQuestion(at: { card: string; seg: string; line: number }) {
   const id = uid("k");
-  mutate((b) => { b.stickers.push({ id, icon: QICON, at: { kind: "line", ...at }, q: { md: "", at: Date.now() } }); });
-  requestAnimationFrame(() => openQuestion(id, undefined, true));
+  newQuestion({ id, icon: QICON, at: { kind: "line", ...at }, q: { md: "", at: Date.now() } });
 }
 
 /** 问整张卡：「?」绑在卡的右上角外面 */
 export function askQuestionOnCard(card: string) {
   const id = uid("k");
   const w = rectOf(card).w;
-  mutate((b) => { b.stickers.push({ id, icon: QICON, at: { kind: "canvas", x: Math.round(w - 14), y: -14, size: 28, on: { card } }, q: { md: "", at: Date.now() } }); });
-  requestAnimationFrame(() => openQuestion(id, undefined, true));
+  newQuestion({ id, icon: QICON, at: { kind: "canvas", x: Math.round(w - 14), y: -14, size: 28, on: { card } }, q: { md: "", at: Date.now() } });
+}
+
+/** 新问题和新卡一样：写了问题才进撤销栈，什么都没写就关掉 = 没提过 */
+function newQuestion(s: Sticker) {
+  createFresh(s.id, (b) => { b.stickers.push(s); }, (b) => removeStickers(b, [s.id]));
+  requestAnimationFrame(() => openQuestion(s.id, undefined, true));
 }
 
 export function setQuestionText(id: string, md: string) {
-  mutate((b) => { const s = b.stickers.find((k) => k.id === id); if (s) s.q = { ...(s.q ?? { at: Date.now() }), md: md.trim() }; });
+  const set = (b: Board) => { const s = b.stickers.find((k) => k.id === id); if (s) s.q = { ...(s.q ?? { at: Date.now() }), md: md.trim() }; };
+  if (isFresh(id)) settleFresh(id, !!md.trim(), set);
+  else mutate(set);
 }
 export function setAnswered(id: string, done: boolean) {
   mutate((b) => {
