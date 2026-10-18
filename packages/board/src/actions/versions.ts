@@ -1,10 +1,7 @@
 // 版本：新版本提示、diff、Update / Keep、commit 列表、切换 commit。
 import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, allCodeCards,
-  rebaseSegment, rebaseUpstream, upstreamSegs,
-  type CodeCard, type Segment,
-  type DiffData, type Commit, type SegView,
+  uid, findCard, isCode, allCodeCards, rebaseSegment, rebaseUpstream, upstreamSegs, viewKeyOf, UPSTREAM, type CodeCard, type Segment, type DiffData, type Commit, type SegView,
 } from "@codeboard/core";
 import { state, setState, mutate, select, cardById, toast } from "../state/store";
 import { openPop, updatePop } from "../state/pop";
@@ -56,10 +53,9 @@ function updateNow(cardId: string, segId: string, data: DiffData) {
   const ns = structuredClone(data.newSeg!);
   ns.id = segId;
   const c = cardById(cardId)?.card;
-  const off = isCode(c) && !!c.variants?.length && (c.active ?? "up") !== "up";
   mutate((b) => rebaseUpstream(b, cardId, ns, undefined, { review: versionLabel(ns.version) }));
   // 上游不在显示：展示数据存在它的 viewKey 下
-  if (data.newView) setState("views", { [off ? `${segId}@up` : segId]: data.newView });
+  if (data.newView && isCode(c)) setState("views", { [viewKeyOf(c, segId, UPSTREAM)]: data.newView });
   setState("stale", segId, { state: "ok" });
 }
 /** Keep：留在钉住的版本，记下这次的 HEAD，同一个新版本不再提醒 */
@@ -145,8 +141,7 @@ export async function switchCommit(id: string, commit: string) {
 /** Relocate 之后宿主送来新段（同一个 id）：换掉旧段，行号跟过去，状态回到正常 */
 export function replaceSegment(cardId: string, seg: Segment, view: SegView) {
   const c = cardById(cardId)?.card;
-  const off = isCode(c) && !!c.variants?.length && (c.active ?? "up") !== "up";
-  setState("views", { [off ? `${seg.id}@up` : seg.id]: view });
+  if (isCode(c)) setState("views", { [viewKeyOf(c, seg.id, UPSTREAM)]: view });
   setState("stale", seg.id, { state: "ok" });
   mutate((b) => rebaseUpstream(b, cardId, seg));
 }

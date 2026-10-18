@@ -1,17 +1,9 @@
 // 我的改动（线框 07）：一张代码卡的几个 Variant（上游、分支、工作区、另一个 worktree、复制出来的文件、PR）。
 // 当前显示的 Variant 的段在 card.segments，其余的存在 variant.segs，段 id 一一对应：Link、Sticker 的行号切换时按内容跟过去（rebaseSegment），
 // 「只在这个 Variant」的 Sidenote 行号按那个 Variant 的代码算，切换时不动。纯函数，读文件、跑 git 由宿主做。
-import type { Board, CodeCard, Segment, Sidenote, Variant, VariantFrom } from "./model";
-import { clone, versionLabel } from "./model";
+import { activeOf, clone, onVariant, UPSTREAM, versionLabel, type Board, type CodeCard, type Segment, type Sidenote, type Variant, type VariantFrom } from "./model";
 import { alignRows, mapLines, sameLines } from "./diff";
-import { lineMapOf, mapRange, rebaseSegment, type LineMap } from "./edit";
-
-export const UPSTREAM = "up";
-
-/** 当前显示的 Variant（没有 Variant 的卡 = 上游） */
-export const activeOf = (c: Pick<CodeCard, "active">) => c.active ?? UPSTREAM;
-/** 卡上显示的是不是上游以外的 Variant */
-export const onVariant = (c: Pick<CodeCard, "variants" | "active">) => !!c.variants?.length && activeOf(c) !== UPSTREAM;
+import { lineMapOf, moveNoteLines, rebaseSegment, remapSegMarks, type LineMap } from "./edit";
 
 /** 某个 Variant 的段：当前显示的在 card.segments，其余在 variant.segs */
 export function segsOf(c: Pick<CodeCard, "segments" | "variants" | "active">, vid: string): Segment[] | undefined {
@@ -28,8 +20,7 @@ export function isMine(c: Pick<CodeCard, "segments" | "variants" | "active">): b
   return c.segments.some((s) => { const u = up.find((x) => x.id === s.id); return !u || !sameLines(u.text, s.text); });
 }
 
-/** 不是当前显示的 Variant 的段，展示数据存在 views[viewKey(段, Variant)] */
-export const viewKey = (sid: string, vid: string) => `${sid}@${vid}`;
+/** 不是当前显示的 Variant 的段（展示数据在 views[viewKey(段, Variant)]） */
 export function storedSegs(c: Pick<CodeCard, "variants" | "active">): { vid: string; seg: Segment }[] {
   const out: { vid: string; seg: Segment }[] = [];
   for (const v of c.variants ?? []) if (v.id !== activeOf(c)) for (const s of v.segs ?? []) out.push({ vid: v.id, seg: s });
@@ -63,7 +54,7 @@ export function addVariant(b: Board, cardId: string, v: Variant & { segs: Segmen
   if (!c) return;
   if (!c.variants?.length) c.variants = [{ id: UPSTREAM, name: "Upstream", from: { kind: "upstream" } }];
   // 隐藏 / 高亮从现在显示的代码映射过来（之后每个 Variant 各管各的）
-  const segs = v.segs.map((s) => { const o = c.segments.find((x) => x.id === s.id); return o ? keepMarks(o, s) : clone(s); });
+  const segs = v.segs.map((s) => { const o = c.segments.find((x) => x.id === s.id); return o ? remapSegMarks(s, o, lineMapOf(o, s)) : clone(s); });
   c.variants.push({ ...clone(v), segs });
 }
 
@@ -101,8 +92,13 @@ export function setVariantSegs(b: Board, cardId: string, vid: string, segs: Segm
   if (!c || !v) return;
   if (activeOf(c) === vid) { for (const s of segs) if (c.segments.some((x) => x.id === s.id)) rebaseSegment(b, cardId, clone(s)); return; }
   const old = v.segs ?? [];
-  v.segs = segs.map((s) => { const o = old.find((x) => x.id === s.id); return o ? keepMarks(o, s) : clone(s); });
-  for (const s of v.segs) { const o = old.find((x) => x.id === s.id); if (o) moveOwnNotes(b, cardId, vid, s.id, lineMapOf(o, s)); }
+  v.segs = segs.map((s) => {
+    const o = old.find((x) => x.id === s.id);
+    if (!o) return clone(s);
+    const map = lineMapOf(o, s);
+    moveNoteLines(b, cardId, s.id, map, (n) => n.variant === vid);
+    return remapSegMarks(s, o, map);
+  });
 }
 
 /** 上游的段换成新的（新版本 Update、只是挪了位置、Relocate）：上游在显示就是 rebaseSegment，不在显示就换掉存着的那份 */
@@ -115,27 +111,8 @@ export function rebaseUpstream(b: Board, cardId: string, ns: Segment, map?: Line
   const i = up.segs.findIndex((s) => s.id === ns.id);
   if (i < 0) return;
   const m = map ?? lineMapOf(up.segs[i], ns);
-  moveOwnNotes(b, cardId, UPSTREAM, ns.id, m);
-  up.segs[i] = keepMarks(up.segs[i], clone(ns), m);
-}
-
-/** 新段带上旧段的隐藏 / 高亮（按行号映射） */
-function keepMarks(old: Segment, ns: Segment, map: LineMap = lineMapOf(old, ns)): Segment {
-  const hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter(Boolean) as [number, number][];
-  const hl = (old.hl ?? []).map(map).filter(Boolean);
-  const out = clone(ns);
-  if (hidden.length) out.hidden = hidden; else delete out.hidden;
-  if (hl.length) out.hl = hl; else delete out.hl;
-  return out;
-}
-
-/** 「只在这个 Variant」的 Sidenote（不在显示时）跟着它的代码挪 */
-function moveOwnNotes(b: Board, cardId: string, vid: string, sid: string, map: LineMap) {
-  for (const n of b.sidenotes) {
-    if (n.variant !== vid || n.at.card !== cardId || n.at.seg !== sid || !n.at.lines) continue;
-    const r = mapRange(map, n.at.lines[0], n.at.lines[1]);
-    if (r) n.at.lines = r; else { n.at = { card: cardId }; n.lineRemoved = true; }
-  }
+  moveNoteLines(b, cardId, ns.id, m, (n) => n.variant === UPSTREAM);
+  up.segs[i] = remapSegMarks(ns, up.segs[i], m);
 }
 
 /** 删掉一个 Variant（上游删不掉）。在显示的话先切回上游；只剩上游时卡变回普通卡 */
@@ -162,17 +139,17 @@ export function dropVariants(b: Board, cardId: string, segs?: Segment[]): void {
   for (const s of segs ?? []) if (c.segments.some((x) => x.id === s.id)) rebaseSegment(b, cardId, clone(s));
 }
 
-/** Variant 要没了：「只在它」的 Sidenote 变成跟着卡，行号从它的代码映射到卡上显示的代码 */
+/** Variant 要没了：「只在它」的 Sidenote 变成跟着卡，行号从它的代码映射到卡上显示的代码（段对不上的改挂整卡） */
 function releaseNotes(b: Board, c: CodeCard, vid: string) {
-  const own = segsOf(c, vid) ?? [];
-  for (const n of b.sidenotes) {
-    if (n.at.card !== c.id || n.variant !== vid) continue;
-    delete n.variant;
-    if (!n.at.lines || activeOf(c) === vid) continue;
-    const from = own.find((s) => s.id === n.at.seg), to = c.segments.find((s) => s.id === n.at.seg);
-    const r = from && to ? mapRange(lineMapOf(from, to), n.at.lines[0], n.at.lines[1]) : null;
-    if (r) n.at.lines = r; else { n.at = { card: c.id }; n.lineRemoved = true; }
+  const mine = b.sidenotes.filter((n) => n.at.card === c.id && n.variant === vid);
+  if (activeOf(c) !== vid) {
+    const own = segsOf(c, vid) ?? [];
+    for (const sid of new Set(mine.map((n) => n.at.seg ?? ""))) {
+      const from = own.find((s) => s.id === sid), to = c.segments.find((s) => s.id === sid);
+      moveNoteLines(b, c.id, sid, from && to ? lineMapOf(from, to) : () => 0, (n) => n.variant === vid);
+    }
   }
+  for (const n of mine) delete n.variant;
 }
 
 /** Sidenote 在这张卡现在显示的 Variant 上看不看得见 */

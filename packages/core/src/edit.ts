@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { clone, cornerAt, findCard, sameVersion, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { activeOf, clone, cornerAt, findCard, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -180,6 +180,23 @@ export function danglingRefs(b: Board): string[] {
   for (const s of b.sections) if (s.parent && !sections.has(s.parent)) out.push(`section ${s.id} parent missing ${s.parent}`);
   for (const id of Object.keys(b.marks ?? {})) if (!cards.has(id)) out.push(`graph mark for missing card ${id}`);
   for (const id of Object.keys(b.born ?? {})) if (!cards.has(id)) out.push(`creation order for missing card ${id}`);
+  for (const c of b.cards) if (c.kind === "code" && c.variants) out.push(...variantProblems(c));
+  return out;
+}
+
+/** Variant 的不变式：第一个是上游；正显示的那个没有 segs（它的段就是卡上的段），其余每个都有 segs，段 id 和卡上的一一对应 */
+function variantProblems(c: CodeCard): string[] {
+  const vs = c.variants ?? [];
+  const act = activeOf(c);
+  const ids = c.segments.map((s) => s.id).sort().join();
+  const out: string[] = [];
+  if (vs[0]?.id !== UPSTREAM) out.push(`card ${c.id}: first variant is not upstream`);
+  if (!vs.some((v) => v.id === act)) out.push(`card ${c.id} shows missing variant ${act}`);
+  for (const v of vs) {
+    if (v.id === act) { if (v.segs) out.push(`card ${c.id}: shown variant ${v.id} keeps its own segments`); }
+    else if (!v.segs) out.push(`card ${c.id}: variant ${v.id} has no segments`);
+    else if (v.segs.map((s) => s.id).sort().join() !== ids) out.push(`card ${c.id}: variant ${v.id} segments do not match the card's`);
+  }
   return out;
 }
 
@@ -211,22 +228,41 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
   const i = owner?.segments.findIndex((s) => s.id === ns.id) ?? -1;
   if (!owner || i < 0) return;
   const old = owner.segments[i];
-  const hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter(Boolean) as [number, number][];
-  const hl = (old.hl ?? []).map(map).filter(Boolean);
-  owner.segments[i] = { ...ns, hidden: hidden.length ? hidden : undefined, hl: hl.length ? hl : undefined };
+  owner.segments[i] = remapSegMarks(ns, old, map);
   for (const o of owner.mergedFrom ?? []) {
     o.card.segments = o.card.segments.map((s) => {
       if (s.path !== old.path || s.src.kind !== old.src.kind || !sameVersion(s.version, old.version) || s.start > old.end || s.end < old.start) return s;
       const r = mapRange(map, Math.max(s.start, old.start), Math.min(s.end, old.end));
       if (!r) return s;
-      const sh = (s.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter(Boolean) as [number, number][];
-      const sl = (s.hl ?? []).map(map).filter(Boolean);
-      return { ...s, start: r[0], end: r[1], text: ns.text.slice(r[0] - ns.start, r[1] - ns.start + 1), version: ns.version, hidden: sh.length ? sh : undefined, hl: sl.length ? sl : undefined };
+      return { ...remapSegMarks(s, s, map), start: r[0], end: r[1], text: ns.text.slice(r[0] - ns.start, r[1] - ns.start + 1), version: ns.version };
     });
   }
   // 有 Variant 的卡：「只在某个 Variant」的 Sidenote 行号按那个 Variant 的代码算，只跟着当前显示的那个挪
-  const notes = o.notes ?? (owner.variants ? (n: Sidenote) => !n.variant || n.variant === (owner.active ?? "up") : undefined);
+  const notes = o.notes ?? (owner.variants ? (n: Sidenote) => !n.variant || n.variant === activeOf(owner) : undefined);
   moveLineRefs(b, cardId, old, ns, map, { review: o.review, notes });
+}
+
+/** 新段 ns 带上旧段的隐藏 / 高亮（按 map 映射过去，没了的行去掉）。返回一份拷贝 */
+export function remapSegMarks(ns: Segment, old: Pick<Segment, "hidden" | "hl">, map: LineMap): Segment {
+  const hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter((r): r is [number, number] => !!r);
+  const hl = (old.hl ?? []).map(map).filter(Boolean);
+  const out = clone(ns);
+  if (hidden.length) out.hidden = hidden; else delete out.hidden;
+  if (hl.length) out.hl = hl; else delete out.hl;
+  return out;
+}
+
+/**
+ * 挂在这张卡这一段上的 Sidenote（which 选的）行号按 map 挪；行没了改挂整卡并标上 lineRemoved。
+ * mark：挪之前看一眼（Update 时标 review）
+ */
+export function moveNoteLines(b: Board, cardId: string, segId: string, map: LineMap, which: (n: Sidenote) => boolean = () => true, mark?: (n: Sidenote, lines: [number, number]) => void): void {
+  for (const n of b.sidenotes) {
+    if (n.at.card !== cardId || n.at.seg !== segId || !n.at.lines || !which(n)) continue;
+    mark?.(n, n.at.lines);
+    const r = mapRange(map, n.at.lines[0], n.at.lines[1]);
+    if (r) n.at.lines = r; else { n.at = { card: cardId }; n.lineRemoved = true; }
+  }
 }
 
 /**
@@ -244,14 +280,8 @@ export function moveLineRefs(b: Board, cardId: string, old: Segment, ns: Segment
     l.lost = { ...l.lost, [k]: true };
   };
   for (const l of b.links) { moveEnd(l, "from"); moveEnd(l, "to"); }
-  for (const n of b.sidenotes) {
-    if (n.at.card !== cardId || n.at.seg !== ns.id || !n.at.lines) continue;
-    if (o.notes && !o.notes(n)) continue;
-    const [a, e] = n.at.lines;
-    if (o.review && linesChanged(old, ns, map, a, e)) n.review = o.review;
-    const r = mapRange(map, a, e);
-    if (r) n.at.lines = r; else { n.at = { card: cardId }; n.lineRemoved = true; }
-  }
+  const review = o.review;
+  moveNoteLines(b, cardId, ns.id, map, o.notes, review ? (n, [a, e]) => { if (linesChanged(old, ns, map, a, e)) n.review = review; } : undefined);
   for (const k of b.stickers) {
     if (k.at.kind !== "line" || k.at.card !== cardId || k.at.seg !== ns.id) continue;
     const m = map(k.at.line);

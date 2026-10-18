@@ -93,6 +93,22 @@ export type VariantFrom =
  */
 export type Variant = { id: string; name: string; from: VariantFrom; note?: string; segs?: Segment[]; merged?: string };
 
+/** 上游 Variant 的 id（卡上第一个标签：钉住的版本） */
+export const UPSTREAM = "up";
+/** 当前显示的 Variant（没有 Variant 的卡 = 上游） */
+export const activeOf = (c: Pick<CodeCard, "active">) => c.active ?? UPSTREAM;
+/** 卡上显示的是不是上游以外的 Variant */
+export const onVariant = (c: Pick<CodeCard, "variants" | "active">) => !!c.variants?.length && activeOf(c) !== UPSTREAM;
+/** 不是当前显示的 Variant 的段，展示数据存在 views[viewKey(段, Variant)] */
+export const viewKey = (sid: string, vid: string) => `${sid}@${vid}`;
+/** viewKey 拆回段 id 和 Variant id（普通的段 id 没有 vid） */
+export function parseViewKey(k: string): { sid: string; vid?: string } {
+  const at = k.lastIndexOf("@");
+  return at > 0 ? { sid: k.slice(0, at), vid: k.slice(at + 1) } : { sid: k };
+}
+/** 这张卡某个 Variant 的段的展示数据存在哪：正显示着 = 段 id，否则 viewKey */
+export const viewKeyOf = (c: Pick<CodeCard, "active">, sid: string, vid: string) => (activeOf(c) === vid ? sid : viewKey(sid, vid));
+
 export type NoteCard = CardBase & {
   kind: "note";
   md: string;
