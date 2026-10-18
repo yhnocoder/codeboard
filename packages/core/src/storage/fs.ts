@@ -23,6 +23,8 @@ export interface Fs {
 
 /** 文件名（不带目录） */
 export const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+/** 所在的目录（去掉最后一段） */
+export const dirName = (p: string) => p.slice(0, Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")));
 /** 扩展名（含点；没有返回 ""），同 node path.extname */
 export function extName(p: string) {
   const b = baseName(p);

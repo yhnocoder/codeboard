@@ -224,6 +224,35 @@ async function addselStep(page) {
   await shot(page, "16-addsel-one-card");
 }
 
+// Closing the board tab right after a change keeps the change (the board sends each change at once, the host finishes the write when
+// the panel closes): Wrap Lines, then a typed Text card, each followed by closing the tab within 0.1 s. E2E_ONLY=close runs only this step
+async function closeStep(page) {
+  if (process.env.E2E_ONLY === "close") { await openFile(page, "llm_engine.py", 51); await page.keyboard.press("Alt+b"); await sleep(2500); }
+  const dir = () => execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards 2>/dev/null || true`).toString().trim().split("\n")[0];
+  const named = (name) => fs.readdirSync(dir()).filter((n) => n.endsWith(".json")).map((n) => JSON.parse(fs.readFileSync(path.join(dir(), n), "utf8"))).find((b) => b.name === name);
+  const closeTab = (name) => page.locator(".tabs-container .tab", { hasText: name }).first().click({ button: "middle", force: true });
+  await command(page, "CodeBoard: Open Board");
+  let f = await boardFrame(page); await sleep(1500);
+  const name = (await page.locator(".editor-group-container.active .tab.active").first().textContent()).trim();
+  const code = named(name)?.cards.find((c) => c.kind === "code");
+  check(!!code, "closeStep: the open board has a code card", name);
+  if (!code) return;
+  await f.locator(`.card[data-id="${code.id}"] .chead`).click({ position: { x: 120, y: 10 } }); await sleep(500);
+  await page.keyboard.press("Alt+z"); await sleep(100);
+  await closeTab(name); await sleep(2000);
+  const wrapped = named(name)?.cards.find((c) => c.id === code.id)?.wrap;
+  check(!!wrapped !== !!code.wrap, "closing the board tab right after Wrap Lines keeps the change", { before: !!code.wrap, after: !!wrapped });
+  await command(page, "CodeBoard: Open Board");
+  f = await boardFrame(page); await sleep(1500);
+  await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
+  await page.keyboard.press("t"); await sleep(400);
+  await page.keyboard.type("typed then closed"); await page.keyboard.press("Escape"); await sleep(100);
+  await closeTab(name); await sleep(2000);
+  const notes = (named(name)?.cards ?? []).filter((c) => c.kind === "note").map((c) => c.md);
+  check(notes.includes("typed then closed"), "closing the board tab right after typing a Text card keeps the text", notes);
+  await command(page, "CodeBoard: Open Board"); await sleep(1500);
+}
+
 // Clicking a card takes keyboard focus from a file editor: select text in context.py, click a card (its header, then its code),
 // press Backspace. The card is deleted and the file is untouched. E2E_ONLY=cardfocus runs only this step
 async function cardfocusStep(page) {
@@ -378,6 +407,7 @@ const finish = async (browser, errors) => {
   if (process.env.E2E_ONLY === "codeedit") { await codeeditStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "addsel") { await addselStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "cardfocus") { await cardfocusStep(page); return finish(browser, errors); }
+  if (process.env.E2E_ONLY === "close") { await closeStep(page); return finish(browser, errors); }
 
   // 1. Alt+B inside a function: the board opens and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
@@ -635,5 +665,6 @@ const finish = async (browser, errors) => {
   await captureStep(page);
   await addselStep(page);
   await cardfocusStep(page);
+  await closeStep(page);
   await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });

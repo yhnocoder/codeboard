@@ -14,12 +14,15 @@ import { questionsMarkdown } from "@codeboard/core";
 import { openOnBoard } from "./handlers";
 import { setMediaDir } from "./exports";
 import { initSource } from "./source";
-import { githubDir, openStorage } from "./storage";
+import { githubDir, openStorage, type Storage } from "./storage";
 import { watchVersions } from "./watch";
 import { debounce, useWorkspace } from "./ws";
 import { forgetDefs } from "./defcache";
 import { registerVersionDocs, vscodeWorkspace } from "./vscode/workspace";
 import { disposeScratch } from "./vscode/scratch";
+
+/** 退出时要把没写盘的白板改动写完 */
+let storage: Storage | undefined;
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const sub = (d: vscode.Disposable) => ctx.subscriptions.push(d);
@@ -27,7 +30,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   useWorkspace(ws);
   // tree-sitter 的 wasm 由 esbuild 脚本拷进 dist/
   const ready = startAnalysis(path.join(ctx.extensionUri.fsPath, "dist"));
-  const store = openStorage();
+  const store = (storage = openStorage());
   initSource(githubDir());
   const panels = new Panels(ctx, store);
   panels.handler = makeHandler(panels);
@@ -90,7 +93,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 名字索引跟着文件的保存、新建、删除、外面的改动增量更新
   sub(watchNameIndex());
   sub(ws.settings.onDidChange((e) => {
-    if (e.affects("codeboard.storageDir")) { store.reset(); marks.rebuild(); }
+    if (e.affects("codeboard.storageDir")) void store.reset().then(() => marks.rebuild());
     if (affectsSettings(e)) panels.broadcast({ type: "host", host: { settings: readSettings() } });
     if (e.affects("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
   }));
@@ -103,4 +106,4 @@ export async function activate(ctx: vscode.ExtensionContext) {
   updateStatus();
 }
 
-export function deactivate() { disposeScratch(); }
+export async function deactivate() { disposeScratch(); await storage?.flush(); }

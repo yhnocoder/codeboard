@@ -235,6 +235,7 @@ export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) 
   if (!keep) { ghostOut([id]); live((b) => removeCards(b, [id])); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
   live((b) => { fn?.(b); stamp(b); });
   pushUndo(before, (cur = snap()));
+  changed();
 }
 
 /** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈 */
@@ -242,7 +243,7 @@ export function beginGesture(): () => void {
   const before = snap();
   held.add(before);
   // 拍的这份就是现在的白板：留作快照缓存，800ms 后的自动保存不用再拍一遍
-  return () => { held.delete(before); const after = (cur = snap()); if (!same(after, before)) pushUndo(before, after); };
+  return () => { held.delete(before); const after = (cur = snap()); if (!same(after, before)) { pushUndo(before, after); changed(); } };
 }
 /** 还没进撤销栈、但以后会进的快照（拖动开始时拍的）：它们之后的 sync 记录不能丢 */
 const held = new Set<Snap>();
@@ -250,12 +251,12 @@ const held = new Set<Snap>();
 export function live(fn: (b: Board) => void) {
   cur = null;
   setState("board", produce(fn));
-  changed();
+  changedLive();
 }
 /** 镜头停下来时记进白板（不进撤销栈）。快照里没有镜头，所以快照缓存还能用，自动保存只发镜头 */
 export function liveCam(c: Camera) {
   setState("board", "cam", c);
-  changed();
+  changedLive();
 }
 
 // sync 的记录：撤销 / 重做后要重放。只留撤销 / 重做栈里最老的快照之后的那些，再多也不超过 SYNC_MAX 条。
@@ -403,24 +404,33 @@ export function allIds(): string[] {
   return state.board.cards.map((c) => c.id);
 }
 
-// ---------- 自动保存：改动后约 1 秒写盘，没有保存按钮 ----------
+// ---------- 自动保存：没有保存按钮 ----------
 
-// 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接排一次保存，不用盯着整块白板的 JSON 看它变没变。
+// 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接把改动发给宿主，不用盯着整块白板的 JSON 看它变没变。
+// 宿主马上换上、稍后写盘，面板关掉时把没写的写完：白板这边不用赶在页面卸载前发什么。
+// 一步改动（mutate、撤销重做、拖动结束、宿主同步来的）在这一轮事件结束时发（同一轮里的几次合成一次）；
+// 拖动中的 live、镜头停下的 liveCam 停一会儿才发（不在每一帧拍整块白板的快照），拖动结束时那一步会马上发。
 // 发给宿主的是增量（BoardPatch）：拿现在的快照和上次发出去的那份按 id 比，只发变了的项、删掉的 id、白板本身的字段（变了才发）和镜头。
 // 快照的每一段本来就有（mutate 拍过的直接用），这里只比字符串、解析变了的那几段
-const changed = () => scheduleSave();
+let queued = false;
+function changed() {
+  if (queued) return;
+  queued = true;
+  queueMicrotask(() => { queued = false; flushSave(); });
+}
 let saveTimer: number | undefined;
-/** 上次发出去的快照和镜头；null = 不知道宿主那边存到了哪一步（刚失败过），下次整块发 */
+const LIVE_DELAY = 800;
+function changedLive() {
+  if (!state.loaded) return;
+  clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(flushSave, LIVE_DELAY);
+}
+/** 上次发出去的快照和镜头；null = 不知道宿主那边是什么样子（上次没收下），下次整块发 */
 let sent: { snap: Snap; cam: string } | null = null;
 /** 上次发出去之后有没有撤销 / 重做（宿主据此跳过别的白板后来改过的共享项） */
 let undone = false;
 const NOT_UNDONE = "Changed on another board; not undone.";
 const camKey = (c: Camera) => `${c.x},${c.y},${c.z}`;
-function scheduleSave() {
-  if (!state.loaded) return;
-  clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(flushSave, 800);
-}
 export function flushSave() {
   clearTimeout(saveTimer);
   if (!state.loaded) return;
@@ -432,12 +442,10 @@ export function flushSave() {
   sent = { snap: s, cam };
   const undo = undone;
   undone = false;
-  // 宿主写盘成功才算存上；失败（磁盘满、没权限）就记成不知道存到了哪，过几秒整块重发，关窗前的 flush 也会再发
+  // 宿主没收下（白板被删了之类）：不知道它那边是什么样子了，下一次整块发
   ask("patch", undo ? { patch: p, undo: true } : { patch: p }).then((r) => { if (r?.skipped) toast(NOT_UNDONE); }, (e: Error) => {
     sent = null;
-    toast(`Couldn't save the board: ${e.message}. Retrying…`);
-    clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(flushSave, 5000);
+    toast(`Couldn't save the board: ${e.message}`);
   });
 }
 /** 宿主刚发来的白板就是存着的那一份 */

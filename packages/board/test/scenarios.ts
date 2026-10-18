@@ -21,6 +21,7 @@ import { FIXQ } from "./scenarios-fixq";
 import { HEADER } from "./scenarios-header";
 import { NOTE_EDITING } from "./scenarios-note-editing";
 import { CODE_CARDS } from "./scenarios-code-cards";
+import { BOARDS } from "./scenarios-boards";
 import { UX } from "./scenarios-ux";
 
 const light = process.argv.includes("--light");
@@ -49,6 +50,7 @@ const S: Record<string, () => Promise<void>> = {
   ...V018REVIEW,
   ...SHARED,
   ...SUBBOARDS,
+  ...BOARDS,
   ...CHAINS,
   ...CALLS,
   ...QUESTIONS,
@@ -308,7 +310,7 @@ const S: Record<string, () => Promise<void>> = {
     await h.page.context().browser()!.close();
   },
   // Autosave sends item-level patches: the host copy built from patches must equal the board the page holds.
-  // A failed save makes the page resend the whole board (full patch) after 5 s; that full board must equal the incremental copy.
+  // A patch the host turned down makes the page send the whole board (full patch) with the next change.
   async patchsave() {
     const b = boardWith("Scheduler.schedule", "Scheduler.postprocess", "LLMEngine.step");
     const [A, B] = b.cards;
@@ -340,15 +342,18 @@ const S: Record<string, () => Promise<void>> = {
     await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("ArrowDown"); await h.page.waitForTimeout(1200);
     const failed = patches.at(-1);
     const toast = await h.page.locator(".toast").textContent().catch(() => "");
-    await h.page.waitForTimeout(5500);
+    await h.page.keyboard.press("ArrowDown"); await h.page.waitForTimeout(1200);
     const full = patches.at(-1);
     const { applyPatch } = await import("@codeboard/core");
+    const moved = Object.keys(failed?.place?.set ?? {})[0];
+    const y = (x: any) => x.place[moved].y;
+    const y0 = y(inc);
     applyPatch(inc, failed);
-    const strip = (x: any) => JSON.stringify({ ...x, cam: null });
+    const twice = y(h.board()) - y0 === 2 * (y(inc) - y0) && y(inc) !== y0;
     const ok = idle === 0 && nudge?.place && !nudge.cards && Object.keys(nudge.place.set).length === 1
       && front?.cards?.order && !front.cards.set && del?.cards?.del?.length === 1
-      && ren?.head?.name === "Renamed" && !ren.cards && /Retrying/.test(toast ?? "") && full?.full === true && strip(inc) === strip(h.board());
-    console.log(ok ? "PASS" : "FAIL", "patch-save", JSON.stringify({ idle, nudge: nudge && Object.keys(nudge), front: front && Object.keys(front.cards ?? {}), del: del && Object.keys(del), ren: ren && Object.keys(ren), toast, full: !!full?.full, same: strip(inc) === strip(h.board()) }));
+      && ren?.head?.name === "Renamed" && !ren.cards && /Couldn't save the board: disk full/.test(toast ?? "") && full?.full === true && twice;
+    console.log(ok ? "PASS" : "FAIL", "patch-save", JSON.stringify({ idle, nudge: nudge && Object.keys(nudge), front: front && Object.keys(front.cards ?? {}), del: del && Object.keys(del), ren: ren && Object.keys(ren), toast, full: !!full?.full, twice }));
     await h.page.context().browser()!.close();
   },
   // A shared card changed on another board (host "shared" message): applied as a sync (no patch back, not undoable).
