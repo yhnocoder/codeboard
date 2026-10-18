@@ -1,7 +1,7 @@
 // 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -19,7 +19,7 @@ import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
 import { allQuestions, exportFile, permalinks } from "./exports";
-import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
+import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
@@ -223,7 +223,7 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
     text = await readText(abs);
     label = seg.version.kind === "git" ? "Working Tree" : `Installed ${await currentVersionLabel(abs, seg.version)}`;
     if (seg.version.kind === "git") newVersion = { kind: "git", commit: (root && (await headOf(root))) || seg.version.commit, uncommitted: true };
-    else if (text !== null) newVersion = seg.version.kind === "pkg" ? { kind: "pkg", ...(splitPkg(await currentVersionLabel(abs, seg.version)) ?? seg.version) } : { kind: "hash", hash: fingerprint(text) };
+    else if (text !== null) newVersion = await currentVersion(abs, seg.version, text);
   } else if (root) {
     // upstream：有 Variant 的卡跟上游分支比（HEAD 可能是我的分支）
     const ref = against === "upstream" ? await upstreamRef(root) : against;
@@ -249,8 +249,6 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
     lastChange, canUpdate: true, newSeg, newView: await segView(newSeg),
   };
 }
-
-const splitPkg = (s: string) => { const m = /^(\S+) (\S+)$/.exec(s); return m ? { name: m[1], version: m[2] } : null; };
 
 /** commit 下拉：改过这个符号的 commit（git log -L） */
 async function commits(seg: Segment): Promise<Commit[]> {

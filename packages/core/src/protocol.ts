@@ -22,7 +22,7 @@ export type WalkHop = { into?: { root: string; i: number }; start?: string; resu
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
   | { state: "ok" }
-  | { state: "moved"; start: number; end: number; version?: Version } // 只是挪了位置：白板静默跟上
+  | { state: "moved"; start: number; end: number; version: Version } // 只是挪了位置：白板静默跟上，行号和钉的版本一起换（version = 找到它的那个版本）
   | { state: "changed"; hiddenOnly: boolean; head: string } // 黄点；hiddenOnly = 只有隐藏的行变了（空心点）
   | { state: "lost" } // 符号找不到（删了或改名）
   | { state: "many" } // 片段按内容找到多处

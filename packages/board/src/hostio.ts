@@ -47,7 +47,7 @@ export function onHost(m: HostToBoard) {
     case "skeletons": putSkels(m.boards); break;
     case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
     case "stale": {
-      // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移）。
+      // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移，钉的版本换成找到它的那个版本）。
       // 这是跟宿主同步，不是用户的操作，所以走 sync：不进撤销栈，⌘Z 回到更早的快照后会再平移一次（按段现在的位置算到目标行，不会平移两遍）
       const moved = Object.entries(m.stale).filter(([, s]) => s.state === "moved");
       if (moved.length) {
@@ -57,9 +57,9 @@ export function onHost(m: HostToBoard) {
             for (const k of allCodeCards(b)) {
               // 有 Variant 的卡：版本状态说的是上游的段（显示的可能是我的分支）
               const seg = upstreamSegs(k).find((q) => q.id === sid);
-              if (seg) rebaseUpstream(b, k.id, { ...seg, start: s.start, end: s.end, version: s.version ?? seg.version }, shiftBy(s.start - seg.start));
+              if (seg) rebaseUpstream(b, k.id, { ...seg, start: s.start, end: s.end, version: s.version }, shiftBy(s.start - seg.start));
             }
-            for (const n of b.sidenotes) if (n.kind === "code" && n.code.id === sid) n.code = { ...n.code, start: s.start, end: s.end, version: s.version ?? n.code.version };
+            for (const n of b.sidenotes) if (n.kind === "code" && n.code.id === sid) n.code = { ...n.code, start: s.start, end: s.end, version: s.version };
           }
         });
       }

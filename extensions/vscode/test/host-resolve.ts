@@ -604,6 +604,30 @@ void (async () => {
     useWorkspace(W);
   }
 
+  // A commit moves a carded function without changing it (lines above deleted): the card follows to the new lines and is pinned to that
+  // commit too, so its header and permalinks name the code it shows. It used to keep the old pin with the new commit's line numbers
+  {
+    const R = fs.mkdtempSync("/tmp/codeboard-moved-");
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: R, stdio: "pipe" }).toString().trim();
+    const F = ["def can_allocate(x):", "    return x > 0", "", "", "def allocate(x):", "    y = x + 1", "    return y", ""];
+    fs.writeFileSync(path.join(R, "blocks.py"), F.join("\n"));
+    git("init", "-q", "-b", "main"); git("add", "-A"); git("commit", "-qm", "base");
+    const base = git("rev-parse", "HEAD");
+    useWorkspace(nodeWorkspace(R));
+    forgetHeads();
+    const { seg } = await card(path.join(R, "blocks.py"), "allocate");
+    check(seg.start === 5 && seg.version.kind === "git" && seg.version.commit === base, "Moved: the card starts pinned to the base commit at line 5", seg);
+    fs.writeFileSync(path.join(R, "blocks.py"), F.slice(4).join("\n"));
+    git("commit", "-qam", "drop can_allocate");
+    const head = git("rev-parse", "HEAD");
+    forgetHeads();
+    const st = (await staleFor([seg]))[seg.id];
+    check(st?.state === "moved" && st.start === 1 && st.end === 3 && st.version.kind === "git" && st.version.commit === head, "Moved by a commit: the new lines come with the new commit as the pin", st);
+    useWorkspace(W);
+    forgetHeads();
+    fs.rmSync(R, { recursive: true, force: true });
+  }
+
   // Undo on an "Added to board" notice: removes only the cards that add put there, whether the board was opened (and changed) in between
   // or not. It used to write back the whole board as it was before the add, losing everything done since
   {
