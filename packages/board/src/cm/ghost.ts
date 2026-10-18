@@ -1,13 +1,13 @@
-// 代码里的灰字补全：和 Note 的一样问宿主的 complete（DeepSeek FIM / Copilot…），停笔一会儿后在光标后显示灰字。
-// Tab 接受（补全菜单开着时 Tab 归菜单），⌘→ 接受一个词，Esc / 继续打字清掉（打的正好是灰字开头就只吃掉那几个字）
+// 代码里的灰字补全：规则在 ui/ghost.ts（和 Note 同一套），这里是 CodeMirror 那一层：状态、装饰、接受。
+// 补全菜单开着时不显示灰字，Tab 归菜单
 import { StateField, StateEffect, type Extension } from "@codemirror/state";
 import { EditorView, Decoration, WidgetType, ViewPlugin, type ViewUpdate } from "@codemirror/view";
 import { completionStatus } from "@codemirror/autocomplete";
+import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost } from "../ui/ghost";
 
-export type GhostHost = { complete(before: string, after: string): Promise<string | null>; delay?: number };
+export type GhostHost = { complete: Complete };
 
-type G = { text: string; pos: number } | null;
-const setGhost = StateEffect.define<G>();
+const setGhost = StateEffect.define<Ghost>();
 
 class GhostWidget extends WidgetType {
   constructor(readonly text: string) { super(); }
@@ -16,7 +16,7 @@ class GhostWidget extends WidgetType {
   ignoreEvent() { return true; }
 }
 
-export const ghostField = StateField.define<G>({
+const ghostField = StateField.define<Ghost>({
   create: () => null,
   update(g, tr) {
     for (const e of tr.effects) if (e.is(setGhost)) return e.value;
@@ -24,8 +24,7 @@ export const ghostField = StateField.define<G>({
     if (tr.docChanged) {
       let typed = "", ok = true;
       tr.changes.iterChanges((a, b, _c, _d, ins) => { if (a !== g.pos || b !== a) ok = false; else typed += ins.toString(); });
-      if (ok && typed && g.text.startsWith(typed)) { const rest = g.text.slice(typed.length); return rest ? { text: rest, pos: g.pos + typed.length } : null; }
-      return null;
+      return ok ? eatGhost(g, typed, g.pos + typed.length) : null;
     }
     if (tr.selection && tr.selection.main.head !== g.pos) return null;
     return g;
@@ -37,7 +36,7 @@ export const ghostField = StateField.define<G>({
 export function acceptGhost(v: EditorView, all = true): boolean {
   const g = v.state.field(ghostField, false);
   if (!g) return false;
-  const w = all ? g.text : (/^\s*[^\s]+/.exec(g.text)?.[0] ?? g.text);
+  const w = all ? g.text : nextWord(g.text);
   v.dispatch({ changes: { from: g.pos, insert: w }, selection: { anchor: g.pos + w.length }, userEvent: "input.complete" });
   return true;
 }
@@ -48,36 +47,27 @@ export function dropGhost(v: EditorView): boolean {
 }
 
 export function ghostExtension(host: GhostHost): Extension {
-  const delay = host.delay ?? 700;
   const plugin = ViewPlugin.fromClass(class {
-    timer: number | undefined;
-    n = 0;
+    asker = new GhostAsker(host.complete);
     constructor(readonly view: EditorView) {}
     update(u: ViewUpdate) {
       if (!u.docChanged && !u.selectionSet && !u.focusChanged) return;
-      if (u.state.field(ghostField, false)) { clearTimeout(this.timer); this.n++; return; }
-      this.schedule();
+      // 灰字还在（打的字吃掉了一部分）就不再问
+      if (u.state.field(ghostField, false)) this.asker.cancel();
+      else this.asker.schedule(() => this.probe());
     }
-    schedule() {
-      clearTimeout(this.timer);
-      const id = ++this.n, v = this.view;
-      if (!v.hasFocus || !this.want()) return;
-      this.timer = window.setTimeout(async () => {
-        if (id !== this.n || !this.want() || completionStatus(v.state)) return;
-        const s = v.state, pos = s.selection.main.head;
-        const text = await host.complete(s.sliceDoc(0, pos), s.sliceDoc(pos)).catch(() => null);
-        if (id !== this.n || !text || !v.dom.isConnected || v.state.doc !== s.doc || v.state.selection.main.head !== pos || completionStatus(v.state)) return;
-        v.dispatch({ effects: setGhost.of({ text, pos }) });
-      }, delay);
+    probe() {
+      const v = this.view, s = v.state, sel = s.selection;
+      if (!v.hasFocus || !sel.main.empty || sel.ranges.length > 1) return null;
+      const pos = sel.main.head, l = s.doc.lineAt(pos);
+      if (!wantGhost(l.text, pos - l.from)) return null;
+      return {
+        context: (): [string, string] => [s.sliceDoc(0, pos), s.sliceDoc(pos)],
+        still: () => v.dom.isConnected && v.state.doc === s.doc && v.state.selection.main.head === pos && !completionStatus(v.state),
+        show: (text: string) => v.dispatch({ effects: setGhost.of({ text, pos }) }),
+      };
     }
-    /** 光标在行尾（或后面只有空白、收尾的括号），这一行有字 */
-    want() {
-      const s = this.view.state, sel = s.selection.main;
-      if (!sel.empty || s.selection.ranges.length > 1) return false;
-      const l = s.doc.lineAt(sel.head), after = l.text.slice(sel.head - l.from);
-      return /^[\s)\]}]*$/.test(after) && l.text.trim().length >= 2;
-    }
-    destroy() { clearTimeout(this.timer); this.n++; }
+    destroy() { this.asker.cancel(); }
   });
   return [ghostField, plugin];
 }

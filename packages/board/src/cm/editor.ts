@@ -4,7 +4,7 @@
 // 补全、悬停、签名提示问宿主的语言服务（cm/lsp.ts）；灰字补全复用 Note 的那一套（宿主的 complete）。
 import { EditorState, EditorSelection, StateEffect, StateField, Prec, type Extension, type Range, type Text, type ChangeSpec } from "@codemirror/state";
 import { EditorView, Decoration, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, tooltips, type DecorationSet, type KeyBinding } from "@codemirror/view";
-import { history, historyKeymap, defaultKeymap, indentLess, insertNewlineAndIndent } from "@codemirror/commands";
+import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
 import { indentUnit } from "@codemirror/language";
 import { autocompletion, completionKeymap, completionStatus, acceptCompletion, closeCompletion } from "@codemirror/autocomplete";
 import { lspExtensions, dismissSig, type LspHost } from "./lsp";
@@ -262,7 +262,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
     tooltips({ parent: document.body, position: "fixed" }),
     autocompletion({ activateOnTyping: true, activateOnTypingDelay: 60, icons: false, closeOnBlur: true, maxRenderedOptions: 80, tooltipClass: () => "cbcm-tip cbcm-ac", optionClass: (c) => `cbcm-opt${c.type ? ` k-${c.type}` : ""}` }),
     Prec.highest(keymap.of([...(o.keys ?? []), ...keys(() => lang, exit)])),
-    keymap.of([...completionKeymap, ...(o.history === false ? [] : historyKeymap), { key: "Shift-Tab", run: indentLess }, { key: "Enter", run: insertNewlineAndIndent }, ...defaultKeymap]),
+    keymap.of([...completionKeymap, ...(o.history === false ? [] : historyKeymap), ...defaultKeymap]),
     EditorView.updateListener.of((u) => {
       if (u.docChanged) { o.onChange?.(u.state.doc.toString()); queueHl(); }
       o.onUpdate?.(u);
