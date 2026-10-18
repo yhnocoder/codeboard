@@ -666,11 +666,11 @@ function MarkPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "mark" }> }) {
 
 // ---------- 接上断掉的调用链（线框 01、02） ----------
 
-/** 动态分发：N 个实现选一个。library 的要 ⌥；Why this one? 写进箭头的标签框 */
+/** 动态分发：N 个实现选一个。library 的要 ⌥；Why this one? 写进箭头的标签框。键盘在输入框里：↑ / ↓ 选、↵ 定、Esc 关 */
 function ImplsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "impls" }> }) {
   const d = () => p.pop.data;
   const [why, setWhy] = createSignal("");
-  const [i, setI] = createSignal(-1);
+  const [i, setI] = createSignal(0);
   const go = (k: number, alt: boolean) => { if (A.pickImpl(d(), k, why(), alt)) closePop(p.inst.id); };
   const short = (q: string) => q.split(".").slice(-2).join(".");
   return (
@@ -691,7 +691,15 @@ function ImplsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "impls" }> }) {
         }}</For>
       </div>
       <div class="an-body"><input class="fld" placeholder="Why this one? (optional)" value={why()} onInput={(e) => setWhy(e.currentTarget.value)}
-        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") closePop(p.inst.id); if (e.key === "Enter" && i() >= 0) go(i(), e.altKey); }} /></div>
+        ref={(el) => queueMicrotask(() => el.focus())}
+        onKeyDown={(e) => {
+          keepKey(e);
+          const n = d().impls.length;
+          if (e.key === "Escape") { e.preventDefault(); closePop(p.inst.id); }
+          else if (e.key === "ArrowDown") { e.preventDefault(); setI((x) => (x + 1) % n); }
+          else if (e.key === "ArrowUp") { e.preventDefault(); setI((x) => (x - 1 + n) % n); }
+          else if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); go(i(), e.altKey); }
+        }} /></div>
       <div class="pk-more">The others stay as grey branches next to the card you pick.</div>
     </>
   );
@@ -764,9 +772,9 @@ function RpcPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "rpc" }> }) {
           </select>
         </label>
         <Show when={r()!.mech === "custom"}>
-          <label>Name<input class="fld" value={r()!.custom ?? ""} placeholder="e.g. NCCL p2p" onKeyDown={(e) => e.stopPropagation()} onChange={(e) => commit((x) => { x.custom = e.currentTarget.value.trim() || undefined; })} /></label>
+          <label>Name<input class="fld" value={r()!.custom ?? ""} placeholder="e.g. NCCL p2p" onKeyDown={keepKey} onChange={(e) => commit((x) => { x.custom = e.currentTarget.value.trim() || undefined; })} /></label>
         </Show>
-        <label>Message / method<input class="fld mono" value={r()!.msg ?? ""} placeholder={`"run"  ·  TokenizedGenerateReqInput`} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); }} onChange={(e) => commit((x) => { x.msg = e.currentTarget.value.trim() || undefined; })} /></label>
+        <label>Message / method<input class="fld mono" value={r()!.msg ?? ""} placeholder={`"run"  ·  TokenizedGenerateReqInput`} onKeyDown={(e) => { keepKey(e); if (e.key === "Enter") e.currentTarget.blur(); }} onChange={(e) => commit((x) => { x.msg = e.currentTarget.value.trim() || undefined; })} /></label>
         <label>Fan-out
           <select class="fld sel" value={r()!.fan ?? "one"} onChange={(e) => commit((x) => { x.fan = e.currentTarget.value === "all" ? "all" : undefined; })}>
             <option value="one">One to one</option>
