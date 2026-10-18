@@ -6,6 +6,17 @@
   "private": true,
   "version": "0.1.0",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yhnocoder/codeboard",
+    "directory": "extensions/vscode"
+  },
+  "homepage": "https://github.com/yhnocoder/codeboard#readme",
+  "bugs": {
+    "url": "https://github.com/yhnocoder/codeboard/issues"
+  },
+  "icon": "media/icon.png",
+  "keywords": ["whiteboard", "code reading", "call graph", "canvas", "notes", "python", "diagram"],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -708,7 +719,8 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "e2e": "bash test/run.sh",
-    "test:host": "node test/check-vscode-imports.mjs && node test/run-scratch-names.mjs && node test/run-host-resolve.mjs"
+    "test:host": "node test/check-vscode-imports.mjs && node test/run-scratch-names.mjs && node test/run-host-resolve.mjs",
+    "package": "cp ../../LICENSE LICENSE && npx -y @vscode/vsce@3.9.2 package --no-dependencies -o codeboard-vscode-$npm_package_version.vsix"
   },
   "dependencies": {
     "@codeboard/core": "^0.1.0",
