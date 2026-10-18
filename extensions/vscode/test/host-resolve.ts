@@ -27,6 +27,7 @@ import { staleFor, staleSegments } from "../src/versions";
 import { forgetHeads } from "../src/git";
 import { addVariant as addV, switchVariant, type Board } from "@codeboard/core";
 import { makeActions } from "../src/actions";
+import { watchVersions } from "../src/watch";
 
 const W = nodeWorkspace();
 useWorkspace(W);
@@ -626,6 +627,36 @@ void (async () => {
     useWorkspace(W);
     forgetHeads();
     fs.rmSync(R, { recursive: true, force: true });
+  }
+
+  // An unsaved edit is carded ("+ uncommitted"), then reverted without saving: editing a file on a board rechecks the versions, so the card
+  // learns its code is gone. It used to wait for some file to be saved
+  {
+    const W2 = nodeWorkspace();
+    useWorkspace(W2);
+    const dir = fs.mkdtempSync("/tmp/codeboard-edit-");
+    const store = new Storage(nodeFs, { dir: () => dir });
+    const abs = path.join(WS, "nanovllm/engine/sequence.py");
+    const typed = fs.readFileSync(abs, "utf8") + "\n\ndef added_here():\n    return 1\n";
+    W2.open.set(abs, typed);
+    const c = (await cardForFileSym(abs, analysisOf("python", typed).symbols.find((x) => x.qual === "added_here")!))!.card as CodeCard, seg = c.segments[0];
+    check(seg.version.kind === "git" && seg.version.uncommitted === true, "Revert: a function typed but not saved is pinned uncommitted", seg.version);
+    const b = emptyBoard("bE2", "Edit"); b.cards.push(c); b.place[c.id] = { x: 0, y: 0, w: 500 };
+    await store.save(b);
+    let checks = 0;
+    const panels = { refreshStale: async () => { checks++; }, get: () => undefined, staleChanged: () => undefined } as unknown as BoardHost;
+    const off = watchVersions(panels, store);
+    await new Promise((r) => setTimeout(r, 800));
+    const before = checks;
+    W2.open.set(abs, fs.readFileSync(abs, "utf8")); // File: Revert File
+    W2.fire.edit.fire(abs);
+    await new Promise((r) => setTimeout(r, 900));
+    W2.fire.edit.fire(path.join(WS, "nanovllm/llm.py")); // a file no board uses
+    await new Promise((r) => setTimeout(r, 900));
+    check(checks === before + 1 && (await staleFor([seg]))[seg.id]?.state === "lost", "Revert: editing a file on a board rechecks versions once (the card's code is gone); other files do not", { before, checks });
+    off.dispose();
+    useWorkspace(W);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 
   // Undo on an "Added to board" notice: removes only the cards that add put there, whether the board was opened (and changed) in between
