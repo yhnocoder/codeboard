@@ -1,11 +1,8 @@
 // 宿主发来的消息。
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
-import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows, undo, undoTop } from "./state/store";
-
-/** 宿主最近一次 add 的卡和那时的撤销栈顶（undoAdd 用） */
-let lastAdd: { ids: string[]; top: object | undefined } | null = null;
+import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard } from "@codeboard/core";
+import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner, setWalk } from "./state/ui";
 import { resetSubboards, putSkels } from "./state/subboards";
@@ -77,17 +74,16 @@ export function onHost(m: HostToBoard) {
     case "host": setState("host", (h) => ({ ...h, ...m.host })); if (m.host.assetBase !== undefined) setAssetBase(m.host.assetBase); break;
     case "add": {
       const ids = A.addCards(m.cards);
-      lastAdd = { ids, top: undoTop() };
       if (m.ask === "split" && ids.length === 1) askSplit(ids[0]);
       break;
     }
     case "undoAdd": {
-      // 只在“最后一步还是这次添加”时撤：白板上之后又改过，撤销会连别的改动一起撤掉
-      const n = m.cards.length;
-      if (lastAdd && lastAdd.top && lastAdd.top === undoTop() && m.cards.every((id) => lastAdd!.ids.includes(id))) {
-        undo(); lastAdd = null;
-        toast(`Removed the ${n > 1 ? `${n} cards` : "card"} just added`);
-      } else toast("The board changed after that; undo on the board instead");
+      // 只拿掉那次加的卡（还在的），是白板上可以撤销的一步；之后在白板上做的别的改动都留着
+      const gone = new Set(m.cards.filter((id) => state.board.cards.some((c) => c.id === id)));
+      if (!gone.size) { toast("Those cards are no longer on the board"); break; }
+      mutate((b) => removeCards(b, gone));
+      if (sel.cards.some((id) => gone.has(id))) select({ cards: sel.cards.filter((id) => !gone.has(id)) });
+      toast(`Removed the ${gone.size > 1 ? `${gone.size} cards` : "card"} just added`);
       break;
     }
     case "appendSegment": {

@@ -26,6 +26,7 @@ import { addVariant, syncVariants, variantSources } from "../src/variants";
 import { staleFor, staleSegments } from "../src/versions";
 import { forgetHeads } from "../src/git";
 import { addVariant as addV, switchVariant, type Board } from "@codeboard/core";
+import { makeActions } from "../src/actions";
 
 const W = nodeWorkspace();
 useWorkspace(W);
@@ -601,6 +602,43 @@ void (async () => {
     const src2 = await variantSources(seg);
     check(src2.worktrees.length === 1 && src2.worktrees[0].dir === EXP && src2.worktrees[0].label === "exp · ../lib-exp", "Submodule: a real extra worktree is listed once, branch first, short path", src2.worktrees);
     useWorkspace(W);
+  }
+
+  // Undo on an "Added to board" notice: removes only the cards that add put there, whether the board was opened (and changed) in between
+  // or not. It used to write back the whole board as it was before the add, losing everything done since
+  {
+    useWorkspace(W);
+    const dir = fs.mkdtempSync("/tmp/codeboard-undoadd-");
+    const store = new Storage(nodeFs, { dir: () => dir });
+    await store.save(emptyBoard("bU", "Undo Add"));
+    const posted: HostToBoard[] = [];
+    let open: BoardPanel | undefined;
+    const panels = { store, target: "bU", get: (id: string) => (id === "bU" ? open : undefined), all: () => (open ? [open] : []), setTarget: () => undefined, show: async () => open } as unknown as BoardHost;
+    const view: BoardView = { postMessage: (m: HostToBoard) => { posted.push(m); }, title: "", visible: false, active: false, reveal: () => undefined, dispose: () => undefined, resourceUrl: () => "" };
+    // each notice waits until the user clicks: hold them and click Undo later
+    const notices: ((r: string | undefined) => void)[] = [];
+    const info0 = W.ui.info;
+    W.ui.info = ((msg: string) => (msg.startsWith("Added") ? new Promise((r) => notices.push(r as (r: string | undefined) => void)) : Promise.resolve(undefined))) as typeof W.ui.info;
+    const acts = makeActions(panels, store);
+    const sched = path.join(WS, "nanovllm/engine/scheduler.py");
+    const quals = async () => ((await store.load("bU"))?.cards ?? []).map((c) => (c.kind === "code" ? c.segments[0].symbol?.qual : c.id));
+    await acts["codeboard.addSymbol"](sched, "Scheduler.postprocess"); // board closed: written to the file
+    await acts["codeboard.addSymbol"](sched, "Scheduler.schedule");
+    // later work on the board (saved while it was open), then the first notice's Undo with the board closed again
+    const later = (await store.load("bU"))!;
+    later.cards.push({ id: "nLater", kind: "note", md: "later work", bg: true }); later.place.nLater = { x: 0, y: 900, w: 200 };
+    await store.save(later);
+    const n0 = notices.length;
+    notices[0]("Undo"); await new Promise((r) => setTimeout(r, 200));
+    check(n0 === 2 && JSON.stringify(await quals()) === JSON.stringify(["Scheduler.schedule", "nLater"]), "Undo on an add notice (board closed) removes only that card, later work stays", await quals());
+    // the board is open now: Undo goes to the board (its own undoable step), the host does not rewrite the file
+    open = new BoardPanel("bU", view, panels); open.ready = true; open.board = store.peek("bU");
+    const id = (await store.load("bU"))!.cards[0].id;
+    notices[1]("Undo"); await new Promise((r) => setTimeout(r, 200));
+    const um = posted.find((m) => m.type === "undoAdd");
+    check(um?.type === "undoAdd" && JSON.stringify(um.cards) === JSON.stringify([id]) && (await store.load("bU"))!.cards.length === 2, "Undo on an add notice (board open) asks the board to remove that card", { posted, cards: await quals() });
+    W.ui.info = info0;
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 
   console.log(failed ? `${failed} failed` : "All passed");
