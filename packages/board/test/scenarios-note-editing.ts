@@ -1,5 +1,5 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
-// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit notePasteIntoTableCell
+// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit notePasteIntoTableCell editorKeysReachVsCode
 import { open, put, findSym, symCard, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -145,6 +145,33 @@ export const NOTE_EDITING: Record<string, () => Promise<void>> = {
     }
     await close(h);
     done("notePasteIntoTableCell");
+  },
+
+  /** 编辑 Note、代码卡时，VS Code 的命令面板、快速打开（F1、⌃⇧P、⌃P）的按键照样交给 VS Code（webview 在 window 上收） */
+  async editorKeysReachVsCode() {
+    const b = board([""]);
+    b.cards.push({ id: "c1", kind: "code", segments: [{ id: "s1", src: { kind: "free" }, path: "", lang: "python", start: 1, end: 1, text: ["x = 1"], version: { kind: "none" } }] } as CodeCard);
+    b.place.c1 = { x: 700, y: 400, w: 400 };
+    const h = await open({ board: b });
+    await h.page.waitForTimeout(1500);
+    await h.page.evaluate(() => { (window as any).__keys = []; window.addEventListener("keydown", (e) => (window as any).__keys.push(`${e.ctrlKey ? "C+" : ""}${e.shiftKey ? "S+" : ""}${e.key}`)); });
+    const KEYS = ["F1", "Control+Shift+P", "Control+P"];
+    const got = async () => { const k = await h.page.evaluate(() => (window as any).__keys.splice(0)); return k as string[]; };
+    await editNote(h, "n0");
+    await got();
+    for (const k of KEYS) await h.page.keyboard.press(k);
+    const inNote = await got();
+    await exitEdit(h);
+    await h.page.locator('.card[data-id="c1"] .src .l').first().dblclick();
+    await h.page.waitForSelector('.card[data-id="c1"] .cm-content', { timeout: 8000 });
+    await got();
+    for (const k of KEYS) await h.page.keyboard.press(k);
+    const inCode = await got();
+    const want = ["F1", "C+S+P", "C+P"];
+    check("editorKeysReachVsCode note", JSON.stringify(inNote) === JSON.stringify(want), { inNote });
+    check("editorKeysReachVsCode code card", JSON.stringify(inCode) === JSON.stringify(want), { inCode });
+    await close(h);
+    done("editorKeysReachVsCode");
   },
 
 };
