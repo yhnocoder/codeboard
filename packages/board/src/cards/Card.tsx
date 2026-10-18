@@ -138,6 +138,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const onVar = () => onVariant(c());
   const up0 = () => (onVar() ? upstreamSegs(c())[0] : s0());
   const mine = createMemo(() => isMine(c()));
+  const revLabel = () => (mixed() ? "Mixed" : versionLabel(up0()?.version, true));
   return (
     <div class="chead" data-drag>
       <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
@@ -155,7 +156,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
       <Show when={free()} fallback={
         <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !act.justDragged() && act.openCode(c().id)}>
-          {multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}
+          <span class="rw"><span class="rl">{multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}</span></span>
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
       </Show>
@@ -163,11 +164,13 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <span class="grow" />
       <Procs card={c().id} procs={c().procs} />
       {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
-      <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
+      {/* 窄卡卡头的取舍（styles.css「卡头优先级」）：版本 / + uncommitted 先缩成小记号，再收起 ← N 和复制，然后路径省略，标题最后；
+          .rw 里的 .rl 放不下时整个折到看不见的第二行。完整文字在 data-tip 里 */}
+      <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><span class="rw"><Icon name="copy" /></span></button>
       <Show when={review()}><span class="rvdot" data-tip="A sidenote's line changed in the new version: check it" /></Show>
       <Show when={act.openQuestionsOn(c().id)}>{(n) => <button class="qcount" data-tip="Open questions on this card" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openQuestionsOf(c().id)}>? {n()}</button>}</Show>
       <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
-      <Show when={linkedIn()}><button class="linkedin" data-tip="Linked here: show where the arrows come from" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}>← {linkedIn()}</button></Show>
+      <Show when={linkedIn()}><button class="linkedin fold" data-tip={`← ${linkedIn()} · Linked here: show where the arrows come from`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}><span class="rw"><span class="rl">← {linkedIn()}</span></span></button></Show>
       <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
       <Show when={c().gen}>
         <span class="genrun" data-tip="The run or params this was generated from · click to edit" onPointerDown={(e) => e.stopPropagation()} onClick={() => setEditing({ kind: "gen", id: c().id })}>
@@ -177,16 +180,14 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={act.merged()[c().id]}><button class="vmdot" data-tip="Merged upstream · turn back into a normal card?" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.mergedPrompt(c().id)} /></Show>
       <Show when={mine()}><span class="mine" data-tip="This card shows your changes, not upstream">MINE</span></Show>
       <Show when={!free()}>
-        <button class="rev" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
-          data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}
+        <button class="rev fold" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
+          data-tip={`${revLabel()} · ${stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}`}
           onClick={(e) => act.justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : onVar() ? act.switchVariant(c().id, UPSTREAM) : act.commitMenu(c().id, e.currentTarget))}>
-          <Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>
-          {mixed() ? "Mixed" : versionLabel(up0()?.version, true)}
-          <Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show>
+          <span class="rw"><span class="rl"><Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>{revLabel()}<Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show></span></span>
         </button>
       </Show>
       <Show when={!c().variants?.length && (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))}>
-        <button class="rev unc" data-tip="HEAD vs Working Tree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openWorktreeDiff(c().id)}>+ uncommitted</button>
+        <button class="rev unc fold" data-tip="+ uncommitted · HEAD vs Working Tree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openWorktreeDiff(c().id)}><span class="rw"><span class="rl">+ uncommitted</span></span></button>
       </Show>
       <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
     </div>

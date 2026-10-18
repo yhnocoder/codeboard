@@ -18,6 +18,7 @@ import { CALLS } from "./scenarios-calls";
 import { QUESTIONS } from "./scenarios-questions";
 import { VARIANTS } from "./scenarios-variants";
 import { FIXQ } from "./scenarios-fixq";
+import { HEADER } from "./scenarios-header";
 
 const light = process.argv.includes("--light");
 const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
@@ -50,6 +51,7 @@ const S: Record<string, () => Promise<void>> = {
   ...QUESTIONS,
   ...VARIANTS,
   ...FIXQ,
+  ...HEADER,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");
