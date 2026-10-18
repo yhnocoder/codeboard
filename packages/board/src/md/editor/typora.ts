@@ -1,7 +1,7 @@
 // 照 Typora 的“边写边变”：
 // - 块：行首 ``` / $$ / *** / ___ / |表|头| 加回车，[ ] 加空格（# > - 1. --- 用 TipTap 自带的）
 // - 行内：结尾记号一打完就变（**b** *i* ~~s~~ `c` 用 TipTap 自带的；这里加 $m$ $$m$$ [t](url) <url>）
-// - 光标所在处显示 Markdown 记号（只是装饰，不进文档）：标题的 ##、粗体斜体代码链接两头的记号、选中的行内公式的源码
+// - 光标移进格式文字、标题、行内公式时展开成能改的 Markdown 原文（source.ts）；还没展开时（刚打完）照旧把记号画在两头（装饰）
 // - ⌘Z 紧跟在自动转换后面：撤回成打的字；标题行首退格：变回普通段落
 // - 一次进来一大段字（接受补全、粘贴）时打字规则不会触发：把这一段当 Markdown 重新解析一遍（reconvert）
 import { Extension, InputRule, wrappingInputRule, type Editor } from "@tiptap/core";
@@ -10,6 +10,7 @@ import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Fragment, type Mark, type Node as PMNode } from "@tiptap/pm/model";
 import { closeHistory } from "@tiptap/pm/history";
 import { blockSource, parseMd } from "../schema";
+import { SourceMark, headPrefix, sourcePlugin, srcRuns } from "./source";
 
 /**
  * 光标所在的这一段（段落或标题）当 Markdown 源码重新解析，变了就换掉；光标留在原来那些字后面（后面剩下的字数不变）。
@@ -23,6 +24,7 @@ export function reconvert(tr: Transaction): Transaction {
   let fn = false;
   block.descendants((n) => { if (n.type.name === "footnoteReference") fn = true; });
   if (fn) return tr; // 脚注编号和文末的脚注列表连在一起，不单独重解析
+  if (srcRuns(block).length) return tr; // 展开着的原文：光标离开时会整段重新解析
   const src = blockSource(block.toJSON());
   if (!src.trim()) return tr;
   const schema = tr.doc.type.schema;
@@ -98,8 +100,14 @@ function markerDecos(state: import("@tiptap/pm/state").EditorState): DecorationS
   if (!p.isTextblock || p.type.spec.code) return null;
   const start = $h.start(), off = $h.parentOffset;
   const ds: Decoration[] = [];
+  // 展开着的原文：里面的记号淡一点
+  for (const r of srcRuns(p)) {
+    for (const m of r.text.matchAll(/^#{1,6}[ \t]+|\*+|_+|~~|`+|\$+|\\(?=[!-/:-@[-`{-~])|!?\[|\]\([^)]*\)|\]/g)) {
+      ds.push(Decoration.inline(start + r.from + m.index!, start + r.from + m.index! + m[0].length, { class: "md-mkc" }));
+    }
+  }
   // 记号用 CSS 的 ::before / ::after 画（attr(data-mk…)）：插一个不可编辑的小部件的话，Home / End、上下键会卡在它上面
-  if (p.type.name === "heading") ds.push(Decoration.node($h.before(), $h.after(), { class: "md-mkh", "data-mka": `${"#".repeat(p.attrs.level)} ` }));
+  if (p.type.name === "heading" && !srcRuns(p).some((r) => r.from === 0)) ds.push(Decoration.node($h.before(), $h.after(), { class: "md-mkh", "data-mka": `${"#".repeat(p.attrs.level)} ` }));
   const near = [...($h.nodeBefore?.marks ?? []), ...($h.nodeAfter?.marks ?? [])];
   const seen = new Set<string>();
   for (const m of near) {
@@ -174,6 +182,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
   // 规则要排在 TipTap 自带的（代码块、任务）前面；Tab / Esc 还是灰字先拿（1000）
   priority: 900,
   addOptions() { return { openMath: () => {}, openLink: () => {} }; },
+  addExtensions() { return [SourceMark]; },
 
   addInputRules() {
     const s = this.editor.schema;
@@ -358,6 +367,13 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
           e.view.dispatch(e.state.tr.replaceWith(from, $h.pos, e.schema.text(src, $h.marks())));
           return true;
         }
+        // 展开着的标题，光标紧跟在 "## " 后面：变回普通段落（和没展开时在行首退格一样）
+        const pre = headPrefix($h.parent);
+        if (pre && $h.parentOffset === pre) {
+          const st = $h.start();
+          e.view.dispatch(e.state.tr.delete(st, st + pre).setNodeMarkup($h.before(), e.schema.nodes.paragraph));
+          return true;
+        }
         if ($h.parentOffset !== 0) return false;
         if (e.commands.undoInputRule()) return true;
         // 标题行首：变回普通段落
@@ -417,6 +433,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
   },
 
   addProseMirrorPlugins() {
-    return [new Plugin({ key: markerKey, props: { decorations: markerDecos } })];
+    return [sourcePlugin(), new Plugin({ key: markerKey, props: { decorations: markerDecos } })];
   },
 });

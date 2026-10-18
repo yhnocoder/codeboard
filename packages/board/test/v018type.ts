@@ -79,9 +79,10 @@ async function runCases(h: Host, prefix: string, all: Case[]) {
 }
 
 const count = (sel: string) => async (pg: Page) => pg.locator(sel).count();
-/** 编辑器里显示出来的记号（CSS 伪元素的字） */
+/** 编辑器里显示出来的记号：还没展开时是 CSS 伪元素的字；展开成原文后是真的字（.md-src，能改） */
 const marks = async (pg: Page) => pg.evaluate(() => {
   const out: string[] = [];
+  for (const e of document.querySelectorAll(".md-pm .md-src")) out.push(`src:${e.textContent}`);
   for (const e of document.querySelectorAll(".md-pm .md-mka, .md-pm .md-mkb, .md-pm .md-mkh")) {
     const b = getComputedStyle(e, "::before").content, a = getComputedStyle(e, "::after").content;
     for (const c of [b, a]) if (c && c !== "none" && c !== "normal") out.push(JSON.parse(c));
@@ -145,9 +146,16 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "task backspace", seq: "- [ ] t", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "t" },
       { name: "home in text", init: "hello", seq: " ab{Home}x", md: "xhello ab" },
       // 光标在格式里：显示记号
-      { name: "markers bold", seq: "x **bo**{ArrowLeft}", md: "x **bo**", dom: marks, domOk: (v) => JSON.stringify(v) === '["**","**"]' },
+      // #11：光标移进去（方向键、Home）就展开成真的原文，能改记号；离开时重新解析
+      { name: "markers bold", seq: "x **bo**{ArrowLeft}", md: "x **bo**", dom: marks, domOk: (v) => JSON.stringify(v) === '["src:**bo**"]' },
       { name: "markers heading", seq: "## hd", md: "## hd", dom: marks, domOk: (v) => JSON.stringify(v) === '["## "]' },
-      { name: "markers link", seq: "[t](https://q.r){ArrowLeft}", md: "[t](https://q.r)", dom: marks, domOk: (v) => JSON.stringify(v) === '["[","](https://q.r)"]' },
+      { name: "markers link", seq: "[t](https://q.r){ArrowLeft}", md: "[t](https://q.r)", dom: marks, domOk: (v) => JSON.stringify(v) === '["src:[t](https://q.r)"]' },
+      { name: "source bold to italic", seq: "x **bo** y{Home}{ArrowRight}{ArrowRight}{Delete}{ArrowRight}{ArrowRight}{ArrowRight}{Delete}{End}!", md: "x *bo* y!", dom: count(".md-pm em"), domOk: (n) => n === 1 },
+      { name: "source heading level", seq: "## hd{Home}{ArrowLeft}#{End}", md: "### hd", dom: count(".md-pm h3"), domOk: (n) => n === 1 },
+      { name: "source link url", seq: "[t](https://q.r) z{Home}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}{ArrowRight}s{End}", md: "[t](https://qs.r) z" },
+      // 原文里改了一下又离开（收回去了）：一次 ⌘Z 回到改之前，格式照旧
+      { name: "source undo", seq: "x **bo** y{Home}{ArrowRight}{ArrowRight}{Delete}{End}{Control+z}", md: "x **bo** y" },
+      { name: "source math by arrows", seq: "a $x$ b{ArrowLeft}{ArrowLeft}{ArrowLeft}y{End}", md: "a $xy$ b", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 1 },
       { name: "markers leave", seq: "x **bo** y", md: "x **bo** y", dom: marks, domOk: (v) => JSON.stringify(v) === "[]" },
       { name: "home in heading", seq: "## hd{Home}x", md: "## xhd" },
       // 输入法提交（不经过按键）

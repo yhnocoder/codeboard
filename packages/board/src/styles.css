@@ -612,6 +612,8 @@ kbd { font: 10.5px var(--mono); }
 .md-pm .md-mka::before { content: attr(data-mka); }
 .md-pm .md-mkb::after { content: attr(data-mkb); }
 .md-pm .md-mkh::before { content: attr(data-mka); }
+/* 光标处展开的 Markdown 原文（真的字，能改，md/editor/source.ts）：记号淡色 */
+.md-pm .md-mkc { color: var(--ink-3); }
 .md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab !important; user-select: none; -webkit-user-select: none; }
 .md-handle:hover { color: var(--ink); background: var(--hlrow); }
 .md-raw { display: block; width: 100%; min-height: 3em; margin: 0; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow: hidden; }

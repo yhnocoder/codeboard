@@ -321,7 +321,7 @@ function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
 let fnNum = new Map<string, number>();
 /** 文档 JSON → Markdown */
 export function serializeMd(doc: JSONContent): string {
-  const content = [...(doc.content ?? [])];
+  const content = unsource(doc.content ?? []);
   const fi = content.findIndex((n) => n.type === "footnotes");
   const fns = fi >= 0 ? content.splice(fi, 1)[0] : undefined;
   fnNum = new Map();
@@ -337,7 +337,57 @@ export function serializeMd(doc: JSONContent): string {
 /** 一个块当成 Markdown 源码：字原样写出（不转义），重新解析时字里的 **b**、$m$、# 之类就生效（接受补全、粘贴之后用） */
 export function blockSource(n: JSONContent): string {
   rawText = true;
-  try { return mm.serialize({ type: "doc", content: [n] }).replace(/^\n+/, "").replace(/\s+$/, ""); } finally { rawText = false; }
+  try { return mm.serialize({ type: "doc", content: unsource([n]) }).replace(/^\n+/, "").replace(/\s+$/, ""); } finally { rawText = false; }
+}
+
+// ---------- 光标处展开的 Markdown 原文（#11，编辑器里的 mdSrc 标记，见 editor/source.ts） ----------
+// 光标走进 **粗体**、链接、标题、行内公式时，那一段换成带 mdSrc 标记的原文（真的字，能改）；光标离开时把原文重新解析回去。
+// 写出 Markdown 之前（保存、复制、原文模式）先在这里把还展开着的原文收回去，所以 mdSrc 永远不会写进文件
+export const SRC_MARK = "mdSrc";
+const INLINE_HEAD = "\uE026";
+const isSrc = (n: JSONContent) => n.type === "text" && !!n.marks?.some((m) => m.type === SRC_MARK);
+/** 一段行内原文解析回行内内容；两头的空白照留（解析会去掉）。前面垫一个字，# - 1. > 之类不会被当成块 */
+export function parseInlineSrc(src: string): JSONContent[] {
+  const lead = /^\s*/.exec(src)![0], trail = src.slice(lead.length).match(/\s*$/)![0], core = src.slice(lead.length, src.length - trail.length);
+  const plain = (t: string): JSONContent[] => (t ? [{ type: "text", text: t }] : []);
+  if (!core) return plain(src);
+  const blocks = parseMd(INLINE_HEAD + core).content ?? [];
+  const p = blocks[0], first = p?.content?.[0];
+  if (blocks.length !== 1 || p.type !== "paragraph" || first?.type !== "text" || !first.text?.startsWith(INLINE_HEAD)) return plain(src);
+  const rest = first.text.slice(INLINE_HEAD.length);
+  return [...plain(lead), ...(rest ? [{ ...first, text: rest }] : []), ...p.content!.slice(1), ...plain(trail)];
+}
+/**
+ * 一个文字块里的原文收回去。keep(from, to, prefix)：这一段（块里的字偏移，行内节点算 1）留着不收（光标在里面）。
+ * 标题开头的原文是它的 "## "：合法的就定级别（留着时也跟着改级别），收的时候不合法就变回普通段落、原文当正文
+ */
+export function unsourceBlock(b: JSONContent, keep: (from: number, to: number, prefix: boolean) => boolean = () => false): JSONContent {
+  const cs = b.content ?? [];
+  if (!cs.some(isSrc)) return b;
+  let attrs = b.attrs, type = b.type;
+  const out: JSONContent[] = [];
+  let at = 0;
+  for (let i = 0; i < cs.length;) {
+    if (!isSrc(cs[i])) { out.push(cs[i]); at += cs[i].text?.length ?? 1; i++; continue; }
+    let j = i, text = "";
+    while (j < cs.length && isSrc(cs[j])) text += cs[j++].text ?? "";
+    const from = at, to = at + text.length, prefix = from === 0 && type === "heading";
+    // 标题的 "## "（后面紧跟着的字是正文）
+    const head = prefix ? /^(#{1,6})[ \t]+/.exec(text) : null;
+    if (head) attrs = { ...attrs, level: head[1].length };
+    if (keep(from, to, prefix)) out.push(...cs.slice(i, j));
+    else if (head) out.push(...parseInlineSrc(text.slice(head[0].length)));
+    else {
+      if (prefix) type = "paragraph";
+      out.push(...parseInlineSrc(text));
+    }
+    at = to; i = j;
+  }
+  if (type !== b.type) attrs = undefined;
+  return { ...b, type, ...(attrs ? { attrs } : { attrs: undefined }), content: out };
+}
+function unsource(ns: JSONContent[]): JSONContent[] {
+  return ns.map((n) => (n.content?.some(isSrc) ? unsourceBlock(n) : n.content ? { ...n, content: unsource(n.content) } : n));
 }
 
 // 字里看着像 $公式$ 的（Pandoc 规则）变成公式：旧版编辑器里打的 $\frac{a}{b}$ 没转成公式，写回成了 \$…\$，再读进来时转过来。

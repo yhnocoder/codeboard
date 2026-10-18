@@ -183,6 +183,21 @@ describe("typed math and block source (v0.1.8 review)", () => {
     same("```\n\\$a$\n```");
     expect(rt("[t](http://x/\\$y)")).toBe("[t](http://x/$y)");
   });
+  // #11：编辑器里光标处展开的原文（mdSrc 标记）写出来时先收回去，不会被当成字转义，也不会把 "## " 写两遍
+  it("open source at the caret is written back as Markdown, not as escaped text", () => {
+    const src = (text: string) => ({ type: "text", text, marks: [{ type: "mdSrc" }] });
+    const p = (...content: object[]) => ({ type: "doc", content: [{ type: "paragraph", content }] });
+    expect(serializeMd(p({ type: "text", text: "x " }, src("**bo**"), { type: "text", text: " y" }))).toBe("x **bo** y");
+    expect(serializeMd(p(src("*bo**")))).not.toContain("mdSrc");
+    expect(serializeMd(p({ type: "text", text: "a " }, src("$x$")))).toBe("a $x$");
+    const h = (level: number, ...content: object[]) => ({ type: "doc", content: [{ type: "heading", attrs: { level }, content }] });
+    expect(serializeMd(h(2, src("### "), { type: "text", text: "hd" }))).toBe("### hd");
+    expect(serializeMd(h(2, src("## x"), { type: "text", text: "hd" }))).toBe("## xhd");
+    // ## 改坏了：变回普通段落，字照留
+    const bad = parseMd(serializeMd(h(2, src("##"), { type: "text", text: "hd" }))).content![0];
+    expect(bad.type).toBe("paragraph");
+    expect(bad.content?.map((c) => c.text).join("")).toBe("##hd");
+  });
   it("leaves money and $ followed by a digit alone", () => {
     same("pay $5 and $6 today");
     expect(JSON.stringify(parseMd("from $1 to $2"))).not.toContain("inlineMath");
