@@ -74,7 +74,8 @@ function serializer() {
     },
     cardRef: (n) => raw(`<span class="cref" data-cardref="${escA(n.attrs.label)}">${esc(n.attrs.label)}</span>`),
     footnoteReference: (n) => raw(`<sup class="fnref">${esc(String(n.attrs.referenceNumber ?? "?"))}</sup>`),
-    footnotes: () => ["ol", { class: "footnotes" }, 0],
+    // 一条定义都还没写（只有正文里的 [^1]）：不画空的脚注列表
+    footnotes: (n) => (n.content.content.some((f) => f.childCount > 1 || f.firstChild!.content.size > 0) ? ["ol", { class: "footnotes" }, 0] : raw("")),
     footnote: () => ["li", 0],
     image: (n) => ["img", { src: assetUrl(n.attrs.src ?? ""), alt: n.attrs.alt ?? "", title: n.attrs.title ?? null, draggable: "false" }],
     htmlInline: (n) => raw(userHtml(n.attrs.raw)),
