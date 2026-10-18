@@ -201,18 +201,26 @@ async function addselStep(page) {
   const body = (await one.locator(".src").textContent().catch(() => "")) ?? "";
   check(/@dataclass\(slots=True\)/.test(body) && /block_tables: torch\.Tensor/.test(body) && /_CONTEXT = Context\(\)/.test(body) && /def reset_context/.test(body), "…with the decorator, the fields and the module line between", body.slice(0, 200));
   check(await one.locator(".src .gap").count() === 4, "…and a separator at every segment boundary", await one.locator(".src .gap").allTextContents());
-  await shot(page, "16-addsel-one-card");
+  // No screenshot here: shot() clicks the board's Fit to Window button, which moves keyboard focus into the board,
+  // and then Ctrl+Z would be the board's own undo instead of the editor's codeboard.undoAdd we want to test
   // focus is still in the editor: Ctrl+Z (⌘Z) undoes the add on the board, the editor text is untouched
+  check(await page.locator(".editor-group-container .monaco-editor.focused").count() === 1, "focus stays in the editor after Alt+B");
   const textBefore = await page.locator(".editor-group-container .monaco-editor .view-lines").first().textContent();
   await page.keyboard.press("Control+z"); await sleep(1500);
   f = await boardFrame(page);
   check(await f.locator(".card").count() === n0, "Ctrl+Z right after Alt+B (focus in the editor) removes the card from the board", await f.locator(".card").count());
+  // the board's toast says it came from the editor's undoAdd (the board's own Ctrl+Z shows no toast)
+  check(/Removed the card just added/.test(await f.locator(".toast").textContent().catch(() => "")), "…through the editor's undo-add (the board says so)", await f.locator(".toast").textContent().catch(() => ""));
   check(await page.locator(".editor-group-container .monaco-editor .view-lines").first().textContent() === textBefore, "…and does not undo anything in the editor");
   await page.keyboard.press("Shift+Alt+b"); await sleep(2500);
   f = await boardFrame(page);
   check(await f.locator(".card").count() === n0 + 5 && await card(f, "Context").count() === 1 && await card(f, "reset_context").count() === 1, "Shift+Alt+B makes one card per definition (and one for the module line)", await f.locator(".card .ctitle").allTextContents());
   check(/is_prefill: bool = False/.test(await card(f, "Context").locator(".src").textContent().catch(() => "")), "the Context card shows its fields");
   await shot(page, "17-addsel-separate");
+  // a screenshot of the one-card result too: Alt+B again from the editor (the selection is unchanged)
+  await command(page, "View: Focus First Editor Group");
+  await page.keyboard.press("Alt+b"); await sleep(2500);
+  await shot(page, "16-addsel-one-card");
 }
 
 // PR9 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
