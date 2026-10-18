@@ -15,35 +15,35 @@ if (!shots.length) { console.error(`no theme shots in ${dir}`); process.exit(1);
 const b64 = (f) => "data:image/png;base64," + fs.readFileSync(path.join(dir, `${f}.png`)).toString("base64");
 const meta = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, `${f}.json`), "utf8")); } catch { return null; } };
 
-// Layout in CSS px (rendered at 2x): the front shot W wide, then one SLICE-wide strip per other theme
-const W = 760, SLICE = 120, PAD = 40, R = 14, ZOOM = 1.15;
-const [w0, h0] = (() => { const b = fs.readFileSync(path.join(dir, `${shots[0][0]}.png`)); return [b.readUInt32BE(16), b.readUInt32BE(20)]; })();
-const H = Math.round((W * h0) / w0);
+// Layout in CSS px (rendered at 2x). Every shot is drawn at its own size (2 device px per CSS px, as taken), never scaled, so code is
+// the same size in every panel: the front shot in full, then one SLICE-wide strip per other theme with its card's top edge at the
+// same height as the front card's
+const SLICE = 120, PAD = 40, R = 14;
+const front = meta(shots[0][0]);
+const [w0, h0] = (() => { const b = fs.readFileSync(path.join(dir, `${shots[0][0]}.png`)); return [b.readUInt32BE(16) / 2, b.readUInt32BE(20) / 2]; })();
+const W = Math.round(w0), H = Math.round(h0);
 const dark = mode === "dark";
+// Theme names sit in one row under the panels: under the front shot, and under the visible part of each slice
+const LABEL = 40;
 const css = `
-  body { margin: 0; background: ${dark ? "#161618" : "#ecebe7"}; font: 600 15px/1 -apple-system, "Segoe UI", Inter, system-ui, sans-serif; }
-  .stage { position: relative; width: ${W + SLICE * (shots.length - 1)}px; height: ${H}px; padding: ${PAD}px; }
-  .shot { position: absolute; top: ${PAD}px; height: ${H}px; border-radius: ${R}px; overflow: hidden; background-repeat: no-repeat; background-size: ${W}px ${H}px;
-          box-shadow: 0 0 0 1px ${dark ? "rgba(255,255,255,.08)" : "rgba(0,0,0,.08)"}, -14px 0 28px -10px rgba(0,0,0,${dark ? 0.6 : 0.28}); }
-  .label { position: absolute; left: 18px; top: 18px; color: #fff; letter-spacing: .02em; }
-  .label span { display: inline-block; padding: 7px 12px; border-radius: 999px; background: rgba(20,20,22,.78); box-shadow: 0 0 0 1px rgba(255,255,255,.14); }
-  .slice .label { top: auto; bottom: 24px; left: ${R}px; right: 0; display: flex; justify-content: center; }
-  .slice .label span { writing-mode: vertical-rl; rotate: 180deg; padding: 12px 7px; white-space: nowrap; }`;
-// Slices sit behind the front shot and each other. A slice shows its theme's card from just left of the card's edge, zoomed in,
-// with the heading row a little below the top of the strip
-const slice = (f, x0) => {
+  body { margin: 0; background: ${dark ? "#161618" : "#ecebe7"}; font: 600 14px/1 -apple-system, "Segoe UI", Inter, system-ui, sans-serif; }
+  .stage { position: relative; width: ${W + SLICE * (shots.length - 1)}px; height: ${H + LABEL}px; padding: ${PAD}px; }
+  .shot { position: absolute; top: ${PAD}px; height: ${H}px; border-radius: ${R}px; overflow: hidden; background-repeat: no-repeat; background-size: ${W}px ${H}px; background-color: ${dark ? "#1e1e1e" : "#f3f2ee"};
+          box-shadow: 0 0 0 1px ${dark ? "rgba(255,255,255,.07)" : "rgba(0,0,0,.06)"}, ${dark ? "-10px 6px 22px rgba(0,0,0,.55)" : "-8px 6px 20px rgba(0,0,0,.13)"}; }
+  .label { position: absolute; top: ${PAD + H + 18}px; text-align: center; white-space: nowrap; color: ${dark ? "#c9c8c4" : "#4a4844"}; letter-spacing: .01em; }`;
+// Slices sit behind the front shot and each other. A slice shows its theme's card from just left of the card's edge
+const slice = (f) => {
   const m = meta(f);
-  if (!m) return `background-size:${W}px ${H}px;background-position:${-Math.round(W * 0.33)}px 0`;
-  const k = (W / m.frame.w) * ZOOM, bw = m.frame.w * k, bh = m.frame.h * k;
-  const x = R - (m.card.x - 10) * k, y = Math.min(0, Math.max(H - bh, -(m.card.y * k - 12)));
-  return `background-size:${bw}px ${bh}px;background-position:${Math.round(x)}px ${Math.round(y)}px`;
+  const [w, h] = (() => { const b = fs.readFileSync(path.join(dir, `${f}.png`)); return [b.readUInt32BE(16) / 2, b.readUInt32BE(20) / 2]; })();
+  if (!m || !front) return `background-size:${w}px ${h}px;background-position:${-Math.round(w * 0.1)}px 0`;
+  return `background-size:${w}px ${h}px;background-position:${R - (m.card.x - 10)}px ${front.card.y - m.card.y}px`;
 };
 const html = shots.map(([f, name], i) => i === 0
-  ? `<div class="shot" style="left:${PAD}px;width:${W}px;z-index:${shots.length};background-image:url(${b64(f)})"><div class="label"><span>${name}</span></div></div>`
-  : `<div class="shot slice" style="left:${PAD + W + SLICE * (i - 1) - R}px;width:${SLICE + R}px;z-index:${shots.length - i};background-image:url(${b64(f)});${slice(f)}"><div class="label"><span>${name}</span></div></div>`).join("");
+  ? `<div class="shot" style="left:${PAD}px;width:${W}px;z-index:${shots.length};background-image:url(${b64(f)})"></div><div class="label" style="left:${PAD}px;width:${W}px">${name}</div>`
+  : `<div class="shot slice" style="left:${PAD + W + SLICE * (i - 1) - R}px;width:${SLICE + R}px;z-index:${shots.length - i};background-image:url(${b64(f)});${slice(f)}"></div><div class="label" style="left:${PAD + W + SLICE * (i - 1)}px;width:${SLICE}px">${name}</div>`).join("");
 const exe = process.env.CHROMIUM ?? (fs.existsSync("/opt/pw-browsers/chromium-1194/chrome-linux/chrome") ? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" : undefined);
 const browser = await chromium.launch({ executablePath: exe });
-const page = await browser.newPage({ deviceScaleFactor: 2, viewport: { width: W + SLICE * (shots.length - 1) + PAD * 2, height: H + PAD * 2 } });
+const page = await browser.newPage({ deviceScaleFactor: 2, viewport: { width: W + SLICE * (shots.length - 1) + PAD * 2, height: H + LABEL + PAD * 2 } });
 await page.setContent(`<style>${css}</style><div class="stage">${html}</div>`);
 await page.evaluate(() => document.fonts.ready);
 fs.mkdirSync(path.dirname(out), { recursive: true });

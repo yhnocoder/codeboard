@@ -239,7 +239,7 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
 
   if (SHOTS.includes("themes")) {
     // One shot per board theme of Scheduler.schedule alone (with its Sidenote shown), picked on the board's own Settings page.
-    // Everything else on the board is hidden while the shot is taken; the card fills 80% of the shot's width
+    // Everything else on the board is hidden while the shot is taken; in Warm Ink the card fills 80% of the shot's width
     fs.mkdirSync(path.join(OUT, "themes"), { recursive: true });
     await blank(f); await fit(f);
     await card(f, "Scheduler.schedule").locator(".mk").first().click(); await sleep(900);
@@ -252,22 +252,37 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
         for (const sib of e.parentElement?.children ?? []) if (sib !== e && sib.style.visibility !== "hidden") { hidden.push(sib); sib.style.visibility = "hidden"; }
       window.__unsolo = () => { for (const h of hidden) h.style.visibility = ""; };
     });
+    const CARD_W = 640;
+    let zoom;
     for (const t of THEMES) {
       await blank(f); await sleep(200);
       await page.keyboard.press("Control+,"); await sleep(900);
       await f.locator(".st-sw", { hasText: t }).first().click(); await sleep(1200);
       await page.keyboard.press("Control+,"); await sleep(800);
-      // Select the card by its header (some themes draw the title in their own element), then zoom to it
+      // One board zoom for every theme, so code is the same size in every panel: the zoom at which Warm Ink's card is CARD_W px wide.
+      // Zoom with Ctrl+wheel by the exact factor, then pan the card to the middle. (Zooming to the selection gave each theme its own
+      // zoom, and some themes were shot at the fit-to-window zoom; the composition then scaled those up into blurry slices)
       const sch = card(f, "Scheduler.schedule");
-      await fit(f); await sch.locator(".chead").first().click(); await sleep(300);
-      await page.keyboard.press("Shift+Digit2"); await sleep(1500); await settle(f);
-      await f.locator('button[aria-label="Zoom Out"]').first().click(); await settle(f);
-      await blank(f); await park(page); await sleep(300);
-      const [fb, cb] = [await f.locator("#board").boundingBox(), await sch.boundingBox()];
-      const pad = cb.width / 8;
+      await fit(f); await park(page);
+      await solo(await sch.elementHandle()); await sleep(200);
+      const fb = await f.locator("#board").boundingBox();
+      const zoomOf = async () => (await sch.boundingBox()).width / await sch.evaluate((e) => e.offsetWidth);
+      zoom ??= CARD_W / await sch.evaluate((e) => e.offsetWidth);
+      let cb;
+      for (let i = 0; i < 4; i++) {
+        cb = await sch.boundingBox();
+        const dz = -100 * Math.log(zoom / await zoomOf()), dx = cb.x + cb.width / 2 - (fb.x + fb.width / 2), dy = cb.y + cb.height / 2 - (fb.y + fb.height / 2);
+        if (Math.abs(dz) < 0.3 && Math.abs(dx) < 2 && Math.abs(dy) < 2) break;
+        await page.mouse.move(fb.x + 4, fb.y + 4);
+        if (Math.abs(dz) >= 0.3) { await page.keyboard.down("Control"); await page.mouse.wheel(0, dz); await page.keyboard.up("Control"); await sleep(400); await settle(f); continue; }
+        await page.mouse.wheel(dx, dy); await sleep(400); await settle(f);
+      }
+      await park(page); cb = await sch.boundingBox();
+      const z = await zoomOf();
+      check(Math.abs(z / zoom - 1) < 0.004, `${t}: board zoom ${(z * 100).toFixed(1)}% (card ${cb.width | 0}×${cb.height | 0})`);
+      const pad = CARD_W / 8;
       const x0 = Math.max(fb.x, cb.x - pad), y0 = Math.max(fb.y, cb.y - pad), x1 = Math.min(fb.x + fb.width, cb.x + cb.width + pad), y1 = Math.min(fb.y + fb.height, cb.y + cb.height + pad);
       const name = t.toLowerCase().replace(/ /g, "-");
-      await solo(await sch.elementHandle()); await sleep(200);
       await page.screenshot({ path: path.join(OUT, "themes", `${name}.png`), clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } });
       console.log(`  📷 themes/${name}.png`);
       await f.evaluate(() => window.__unsolo?.());
