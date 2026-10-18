@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, removeLinks, replaceCards, retargetCards, shiftBy, stampBorn,
-  placeCards, unlinkCard, mergeCodeCards, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines, sidenoteCard, sidenoteToCard,
+  placeCards, unlinkCard, mergeCodeCards, removeLostCalls, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines, sidenoteCard, sidenoteToCard,
   type Board, type Card, type CodeCard, type Link, type Segment,
 } from "../src";
 
@@ -352,6 +352,17 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
     placeCards(s, items, { copy: false, links: src.links });
     expect(s.links.length).toBe(1);
     expect(src.links.map((l) => l.id)).toEqual(["a-z", "out"]); // the source is not touched
+  });
+  it("removeLostCalls removes only the call arrows of that call and line whose target is gone", () => {
+    const b = two();
+    b.links = [
+      { ...call("a", "z", 2), id: "gone", lost: { to: true } },
+      { ...call("a", "z", 2), id: "live" },
+      { ...call("a", "z", 3), id: "otherLine", lost: { to: true } },
+      { ...call("a", "z", 2), id: "otherCall", call: { name: "g", col: 0 }, lost: { to: true } },
+    ];
+    removeLostCalls(b, { card: "a", seg: "sa", line: 2 }, "f");
+    expect(b.links.map((l) => l.id)).toEqual(["live", "otherLine", "otherCall"]);
   });
   it("placeCards keeps a Compare with its columns", () => {
     const b = emptyBoard("t", "T");

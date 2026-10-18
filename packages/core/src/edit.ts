@@ -65,6 +65,11 @@ export function renameCard(b: Board, from: string, to: string): void {
   for (const m of [b.born, b.marks] as (Record<string, unknown> | undefined)[]) if (m && from in m) { m[to] = m[from]; delete m[from]; }
 }
 
+/** 这一行的这个调用连到的卡没了（lost.to，比如子白板里删了那张卡）的 Call 箭头删掉：重新展开出来的箭头替它 */
+export function removeLostCalls(b: Board, from: End, name: string): void {
+  removeLinks(b, b.links.filter((l) => l.lost?.to && l.call?.name === name && l.from.card === from.card && l.from.seg === from.seg && l.from.line === from.line).map((l) => l.id));
+}
+
 /** 删掉这些 Link，绑在它们上面的 Sticker 一起删 */
 export function removeLinks(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);

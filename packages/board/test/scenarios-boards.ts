@@ -20,7 +20,28 @@ export const BOARDS: Record<string, () => Promise<void>> = {
   emptyquestion: () => run("empty-new-question-is-dropped", emptyQuestion),
   undoafterpeek: () => run("undo-history-survives-a-visit-to-a-sub-board", undoAfterPeek),
   undoturnintoboard: () => run("undoing-turn-into-board-removes-the-new-board", undoTurnIntoBoard),
+  expandlostcall: () => run("a-call-whose-sub-board-card-was-deleted-expands-again", expandLostCall),
 };
+
+/** The call's arrow goes into a sub-board card that was deleted there: clicking the call expands it again and the broken arrow goes */
+async function expandLostCall(res: Record<string, unknown>) {
+  const P: Board = emptyBoard("bParent", "Parent"), C: Board = emptyBoard("bChild", "Child");
+  const step = nv("LLMEngine.step"), post = nv("Scheduler.postprocess");
+  put(P, step, 60, 80, 600);
+  put(C, post, 60, 80, 600);
+  P.cards.push({ id: "fC", kind: "board", board: C.id }); P.place.fC = { x: 760, y: 80, w: 520, h: 360 };
+  const s = step.segments[0], line = s.start + s.text.findIndex((x) => /schedule\(\)/.test(x));
+  P.links.push({ id: "lGone", from: { card: step.id, seg: s.id, line }, to: { card: "fC", sub: "cDeletedThere" }, call: { name: "schedule", col: 0 } });
+  const t = await subHost(P, [C]), h = t.h, page = h.page;
+  await wait(h, 1500);
+  res.lost = !!t.store.peek("bParent")!.links.find((l) => l.id === "lGone")?.lost?.to;
+  await page.locator(`.card[data-id="${step.id}"] .src .call`, { hasText: /^schedule$/ }).first().click(); await wait(h, 1800);
+  const b = t.store.peek("bParent")!;
+  const calls = b.links.filter((l) => l.call?.name === "schedule");
+  res.calls = calls.map((l) => ({ to: b.cards.find((c) => c.id === l.to.card)?.kind, lost: !!l.lost }));
+  await page.context().browser()!.close();
+  return res.lost === true && JSON.stringify(res.calls) === '[{"to":"code","lost":false}]';
+}
 
 /** Undo of Turn into Board puts the cards back and the new board goes away; redo makes it again */
 async function undoTurnIntoBoard(res: Record<string, unknown>) {
