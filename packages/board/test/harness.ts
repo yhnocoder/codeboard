@@ -100,6 +100,8 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
 <script type="module" src="file://${MEDIA}/board.js"></script></body></html>`);
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
   const page = await browser.newPage({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
+  // CPU_THROTTLE=4：把页面的 CPU 放慢几倍（CDP），在本机复现 CI 慢机器上才出现的时序问题
+  if (+(process.env.CPU_THROTTLE ?? 0) > 1) await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: +process.env.CPU_THROTTLE! });
   let board = o.board ?? emptyBoard("b1", "nano-vllm · generate");
   const sent: BoardToHost[] = [];
   const post = (m: HostToBoard) => page.evaluate((s) => window.postMessage(JSON.parse(s), "*"), JSON.stringify(m));

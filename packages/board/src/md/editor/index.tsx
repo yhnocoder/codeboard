@@ -543,7 +543,12 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     // 这一个任务里就拿焦点（不等 TipTap 的下一帧），光标和编辑器同一帧出现。放进微任务：双击是在 pointerdown 里进来的，
     // 同一个事件冒泡到画布时会把焦点 blur 掉；从菜单进来时菜单关掉会把焦点放回 body，下一帧再补一次
     queueMicrotask(() => { if (inst.sess === sess && !editor.view.hasFocus()) editor.view.focus(); });
-    editor.commands.focus(undefined, { scrollIntoView: false });
+    // 下一帧那次只补"焦点掉到了 body"的情况：慢机器上第一帧可能来得很晚，那时已经打了 $$⏎ / ⌘K，焦点在公式框、链接框里，
+    // 不能抢回编辑器（公式框失焦就关掉，空公式块被删掉，接着打的字落进正文）。TipTap 的 focus() 是无条件在下一帧抢
+    requestAnimationFrame(() => {
+      const a = document.activeElement;
+      if (inst.sess === sess && !editor.isDestroyed && !editor.view.hasFocus() && (!a || a === document.body)) editor.view.focus();
+    });
   }
   const [link, setLink] = createSignal<string | null>(null);
   const ui: Ui = { menu, setMenu, math, setMath, link, setLink, opts: o };

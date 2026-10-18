@@ -27,7 +27,15 @@ async function keys(pg: Page, seq: string) {
   }
 }
 
-type Case = { name: string; init?: string; seq: string; md: string | RegExp; dom?: (pg: Page) => Promise<unknown>; domOk?: (v: any) => boolean; after?: (pg: Page) => Promise<void> };
+type Case = { name: string; init?: string; seq: string; md: string | RegExp; dom?: (pg: Page) => Promise<unknown>; domOk?: (v: any) => boolean; after?: (pg: Page) => Promise<void>; pre?: (pg: Page) => Promise<void> };
+
+// 慢机器上（CI）打开编辑器后的第一帧可能来得很晚，脚本的按键全都赶在它前面：pre 里让每一帧晚 ms 毫秒，after 里放回去
+const slowFrames = (ms: number) => (pg: Page) => pg.evaluate((ms) => {
+  const w = window as any, raf = window.requestAnimationFrame.bind(window);
+  w.__raf = raf;
+  window.requestAnimationFrame = (cb) => window.setTimeout(() => raf(cb), ms);
+}, ms);
+const fastFrames = (pg: Page) => pg.evaluate(() => { const w = window as any; if (w.__raf) window.requestAnimationFrame = w.__raf; });
 
 function board(n: number, init: (string | undefined)[] = []): Board {
   const b = emptyBoard("b1", "typora");
@@ -52,6 +60,7 @@ async function runCases(h: Host, prefix: string, all: Case[]) {
   const doms: unknown[] = [];
   for (let i = 0; i < cases.length; i++) {
     const c = cases[i], id = `n${i}`;
+    if (c.pre) await c.pre(h.page);
     await editNote(h, id);
     await keys(h.page, c.seq);
     await h.page.waitForTimeout(60);
@@ -99,6 +108,8 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "code fence", seq: "```python{Enter}x = 1", md: "```python\nx = 1\n```" },
       { name: "code fence c++", seq: "```c++{Enter}int a;", md: "```c++\nint a;\n```" },
       { name: "math block", seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-mathpop textarea"); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); }, md: "$$\nx^2\n$$" },
+      // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
+      { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-mathpop textarea"); await pg.waitForTimeout(600); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
       { name: "math block one line", seq: "$$a+b$${Enter}", md: "$$\na+b\n$$", dom: count(".md-pm [data-type=block-math]"), domOk: (n) => n === 1 },
       { name: "hr dashes", seq: "---", md: "---" },
       { name: "hr stars", seq: "***{Enter}", md: "---" },
@@ -164,6 +175,7 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "strike ⇧X", seq: "{Control+Shift+x}s{Control+Shift+x} x", md: "~~s~~ x" },
       { name: "code", seq: "{Control+e}c{Control+e} x", md: "`c` x" },
       { name: "link ⌘K on selection", seq: "word{Shift+Home}{Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.keyboard.type("x.y/z"); await pg.keyboard.press("Enter"); }, md: "[word](https://x.y/z)" },
+      { name: "link ⌘K slow frame", pre: slowFrames(400), seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.waitForTimeout(600); await pg.keyboard.type("https://c.d"); await pg.keyboard.press("Enter"); await fastFrames(pg); }, md: "see https://c.d" },
       { name: "link ⌘K at caret", seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.keyboard.type("https://a.b"); await pg.keyboard.press("Enter"); }, md: "see https://a.b" },
       { name: "undo redo", seq: "one{Control+z}two{Control+z}{Control+Shift+z}", md: "two" },
       { name: "redo ⌘Y", seq: "abc{Control+z}{Control+y}", md: "abc" },
