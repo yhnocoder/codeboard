@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { danglingRefs, emptyBoard, extractBoard, loadBoard, skeletonOf, skelHas, subBoardsOf, wouldCycle, FAN_KEEP, type Board, type Card } from "../src";
+import { cutCrumbs, danglingRefs, emptyBoard, extractBoard, loadBoard, skeletonOf, skelHas, subBoardsOf, wouldCycle, FAN_KEEP, type Board, type Card } from "../src";
 
 const note = (id: string): Card => ({ id, kind: "note", md: `# ${id}\nbody`, bg: true });
 const code = (id: string, qual = id): Card => ({ id, kind: "code", segments: [{ id: `s${id}`, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start: 1, end: 10, text: Array(10).fill("x"), version: { kind: "git", commit: "bb823b3c0ffee" }, symbol: { qual, kind: "function" } }] });
@@ -93,5 +93,14 @@ describe("Turn into Board", () => {
     // both load back through the schema (board card, End.sub)
     expect(() => loadBoard(structuredClone(p))).not.toThrow();
     expect(() => loadBoard(structuredClone(r.child))).not.toThrow();
+  });
+});
+
+describe("breadcrumbs", () => {
+  it("cutCrumbs drops a deleted board and the levels above it, keeping the ones below with their cameras", () => {
+    const crumbs = [{ id: "A", name: "A", frame: "fa" }, { id: "B", name: "B", frame: "fb" }, { id: "C", name: "C", frame: "fc" }];
+    expect(cutCrumbs(crumbs, [1, 2, 3], "B")).toEqual({ crumbs: [crumbs[2]], cams: [3] });
+    expect(cutCrumbs(crumbs, [1, 2, 3], "C")).toEqual({ crumbs: [], cams: [] });
+    expect(cutCrumbs(crumbs, [1, 2, 3], "X")).toBeNull();
   });
 });

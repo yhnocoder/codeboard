@@ -21,7 +21,26 @@ export const BOARDS: Record<string, () => Promise<void>> = {
   undoafterpeek: () => run("undo-history-survives-a-visit-to-a-sub-board", undoAfterPeek),
   undoturnintoboard: () => run("undoing-turn-into-board-removes-the-new-board", undoTurnIntoBoard),
   expandlostcall: () => run("a-call-whose-sub-board-card-was-deleted-expands-again", expandLostCall),
+  deletedparentcrumb: () => run("a-deleted-parent-board-leaves-the-breadcrumbs", deletedParentCrumb),
 };
+
+/** Inside a sub-board, its parent board is deleted (from the sidebar): the breadcrumb to it goes, Esc doesn't try to go back there */
+async function deletedParentCrumb(res: Record<string, unknown>) {
+  const { P, C } = parentAndChild();
+  const t = await subHost(P, [C]), h = t.h, page = h.page;
+  await wait(h, 800);
+  await enter(h, "fC");
+  res.crumbsIn = await page.locator(".crumbs .crumb").allTextContents();
+  await t.store.remove("bParent"); await wait(h, 600);
+  res.crumbsAfter = await page.locator(".crumbs .crumb").count();
+  const errors: string[] = [];
+  page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
+  await page.mouse.click(1000, 700); await page.keyboard.press("Escape"); await wait(h, 1000);
+  res.stillOn = t.cur();
+  res.errors = errors.length;
+  await page.context().browser()!.close();
+  return JSON.stringify(res.crumbsIn) === '["Parent","Child"]' && res.crumbsAfter === 0 && res.stillOn === "bChild" && res.errors === 0;
+}
 
 /** The call's arrow goes into a sub-board card that was deleted there: clicking the call expands it again and the broken arrow goes */
 async function expandLostCall(res: Record<string, unknown>) {
