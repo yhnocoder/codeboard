@@ -9,15 +9,15 @@ import { indentUnit } from "@codemirror/language";
 import { autocompletion, completionKeymap, completionStatus, acceptCompletion, closeCompletion } from "@codemirror/autocomplete";
 import { lspExtensions, dismissSig, type LspHost } from "./lsp";
 import { ghostExtension, acceptGhost, dropGhost, type GhostHost } from "./ghost";
+import { langInfo } from "@codeboard/core";
 import { keepKey } from "../ui/editkeys";
 
 export type { LspHost, GhostHost };
 
 const IND = "    ";
-const COMMENT: Record<string, string> = { python: "#", shell: "#", shellscript: "#", bash: "#", ruby: "#", yaml: "#", toml: "#", r: "#", perl: "#", sql: "--", lua: "--", haskell: "--" };
-const commentOf = (lang?: string) => COMMENT[lang ?? ""] ?? "//";
+const commentOf = (lang?: string) => langInfo(lang)?.comment ?? "//";
 
-// ---------- 着色：显示时的 HTML（宿主的 kw / fn / str…，或 Note 里 lowlight 的 hljs-*）→ 装饰 ----------
+// ---------- 着色：显示时的 HTML（宿主的 kw / fn / str…，Note 里的代码块也是宿主给的）→ 装饰 ----------
 
 /** 一段着色：[from, to) 是解码后文字的下标，cls = 那一层 span 的 class */
 type Tok = { from: number; to: number; cls: string };

@@ -328,6 +328,7 @@ export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev
 /** 动态分发的一个实现：qual / 路径 / 行；lib = 在 library 里（包名）；base = 基类自己的实现（不是抽象的） */
 export type ImplPick = { label: string; detail: string; path: string; line: number; qual: string; lib?: string; base?: true };
 /** 跨语言按名字搜到的一处：lang = py / cpp / cuda / rust；def = 定义，否则是字符串注册（"name"） */
+/** lang：语言表（langs.ts）的 id */
 export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
 /** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
 export type GenSource = { text: string; lang: string; name: string };

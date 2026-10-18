@@ -2,7 +2,7 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import type { Workspace } from "@codeboard/core";
+import { langOfExt, type Workspace } from "@codeboard/core";
 
 let current: Workspace | undefined;
 /** 激活时（测试里是 Node 实现）接上 Workspace */
@@ -54,13 +54,7 @@ export async function exists(p: string) {
 export function langOf(file: string): string {
   const open = workspace().files.openLanguage(file);
   if (open && open !== "plaintext") return open;
-  const ext = path.extname(file).toLowerCase();
-  if (ext === ".py" || ext === ".pyi") return "python";
-  if ([".cu", ".cuh"].includes(ext)) return "cuda-cpp";
-  if ([".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".h", ".inl"].includes(ext)) return "cpp";
-  if (ext === ".c") return "c";
-  if (ext === ".rs") return "rust";
-  return "plaintext";
+  return langOfExt(file)?.id ?? "plaintext";
 }
 
 /** 代码文件（建名字索引、找工作区代码用） */

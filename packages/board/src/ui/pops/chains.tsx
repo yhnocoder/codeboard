@@ -1,7 +1,7 @@
 // 调用链：变量、调用图标记、动态分发选实现、跨边界取值、按名字搜、RPC 箭头的属性。
 import { keepKey } from "../editkeys";
 import { For, Show, createSignal, createMemo, createEffect } from "solid-js";
-import { varKey, varText, RPC_MECHS, type GraphMark, type Var } from "@codeboard/core";
+import { varKey, varText, langLabel, RPC_MECHS, type GraphMark, type Var } from "@codeboard/core";
 import { state, flows } from "../../state/store";
 import { closePop } from "../../state/pop";
 import { Glyph } from "../../stickers/glyphs";
@@ -111,14 +111,12 @@ export function ValsPop(p: PopProps<"vals">) {
   );
 }
 
-const LANG_NAMES: Record<string, string> = { py: "Python", cpp: "C++", cuda: "CUDA", rust: "Rust" };
-
 /** 解析不到的调用：按名字在所有语言里搜，按语言分组；点一处建卡 + 虚线 Call 箭头（via registry · manual） */
 export function NamesPop(p: PopProps<"names">) {
   const d = () => p.pop.data;
   const groups = createMemo(() => {
     const hs = d().hits ?? [];
-    const keys = [...new Set(["py", "cpp", ...hs.map((h) => h.lang)])];
+    const keys = [...new Set(["python", "cpp", ...hs.map((h) => h.lang)])];
     return keys.map((k) => ({ lang: k, hits: hs.filter((h) => h.lang === k) }));
   });
   return (
@@ -128,7 +126,7 @@ export function NamesPop(p: PopProps<"names">) {
         <div class="sres names">
           <For each={groups()}>{(g) => (
             <>
-              <div class="grp-h">{LANG_NAMES[g.lang] ?? g.lang}</div>
+              <div class="grp-h">{langLabel(g.lang)}</div>
               <For each={g.hits} fallback={<div class="empty sm">no matches</div>}>{(h) => (
                 <button class="cand" onClick={() => { closePop(p.inst.id); void A.placeNameHit(d(), h); }}>
                   <span class="kind">{h.def ? "ƒ" : "“”"}</span><span class="lb">{h.label}</span><small>{h.detail}</small>

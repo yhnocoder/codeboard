@@ -439,9 +439,9 @@ void (async () => {
     const r9 = await expand({ seg: { ...lay, text: lay.text.map((l) => l.replace("unified_attention", "missing_op")) }, line: lineOf(lay, /unified_attention/), col: lay.text[lineOf(lay, /unified_attention/) - lay.start].indexOf("unified_attention"), name: "missing_op" });
     check("none" in r9 && r9.name === "missing_op", "Unresolvable call: none with the name to search", r9);
     const hits = await searchName("unified_attention");
-    check(hits.length === 2 && hits[0].def && hits[0].lang === "py" && hits[0].qual === "unified_attention" && !hits[1].def && /direct_register_custom_op\("unified_attention"/.test(hits[1].label), "Search in all languages: the def and the string registration", hits);
+    check(hits.length === 2 && hits[0].def && hits[0].lang === "python" && hits[0].qual === "unified_attention" && !hits[1].def && /direct_register_custom_op\("unified_attention"/.test(hits[1].label), "Search in all languages: the def and the string registration", hits);
     const hits2 = await searchName("rms_norm");
-    check(hits2.some((h) => h.lang === "py" && h.def) && hits2.some((h) => h.lang === "cpp" && !h.def && /m\.impl\("rms_norm"/.test(h.label)), "Search in all languages: grouped py before cpp, registrations included", hits2.map((h) => [h.lang, h.def, h.label]));
+    check(hits2.some((h) => h.lang === "python" && h.def) && hits2.some((h) => h.lang === "cpp" && !h.def && /m\.impl\("rms_norm"/.test(h.label)), "Search in all languages: grouped py before cpp, registrations included", hits2.map((h) => [h.lang, h.def, h.label]));
 
     // 动态分发：定义 = 基类的方法，实现 = 两个子类（语言服务用桩代替 Pylance）
     const baseAbs = path.join(FIX, "vllm/base.py"), implAbs = path.join(FIX, "vllm/impls.py");

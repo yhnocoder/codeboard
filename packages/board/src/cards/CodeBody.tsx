@@ -5,7 +5,7 @@ import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, commonIndent, escapeRegExp, shownText, copyText, escHtml, F_COMMENT, type CodeCard, type Row, type Segment, type SegView, type Sticker } from "@codeboard/core";
+import { cardRows, commonIndent, escapeRegExp, shownText, copyText, escHtml, langInfo, F_COMMENT, type CodeCard, type Row, type Segment, type SegView, type Sticker } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
 import { lineStickers, stickerList } from "../state/stickers";
 import { StickerChip } from "../stickers/Picker";
@@ -232,7 +232,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   // ---------- 悬停：标识符 → 定义预览；行尾圆点 → 拉箭头 ----------
   const [hoverRow, setHoverRow] = createSignal(-1);
   let peekKey = "", peekTimer: number | undefined, peekPt = { x: 0, y: 0 };
-  const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set const auto void return struct template typename".split(" "));
   const onMove = (e: PointerEvent) => {
     if (e.buttons || dragging().size) return;
     const rowE = rowEl(e.target as Node);
@@ -256,7 +255,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const word = text.slice(a, b);
     // 鼠标确实在这个词上（不是行尾空白）
     const tr = (rng.startContainer as Text).length !== undefined ? rng : null;
-    if (!word || !/^[A-Za-z_]/.test(word) || KW.has(word) || !tr || /#/.test(text.slice(0, a))) return clearPeek();
+    if (!word || !/^[A-Za-z_]/.test(word) || langInfo(s.lang)?.keywords?.has(word) || !tr || /#/.test(text.slice(0, a))) return clearPeek();
     // 字符串、注释里的字不是代码里的名字：不弹 Peek（看高亮的 class；没高亮时数引号）
     const tok = (rng.startContainer.parentElement as HTMLElement | null)?.closest?.(".str, .com");
     if (tok || inQuotes(text, a)) return clearPeek();

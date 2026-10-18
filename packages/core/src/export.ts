@@ -3,6 +3,7 @@
 // Markdown 原样写出用户的文字和标识符：不做转义（block_manager 不会变成 block\_manager）
 import { cardAndCols, cardTitle, colsOf, hostOf, stickerWhere, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
 import { computeFlows, isCall, startCards, walkOrder } from "./flow";
+import { langInfo } from "./langs";
 
 export type ExportScope = { kind: "board" } | { kind: "sections"; ids: string[] } | { kind: "walk"; start: string };
 export type ExportFormat = "html" | "md" | "png";
@@ -60,8 +61,7 @@ function fence(text: string) {
   for (const m of text.matchAll(/`{3,}/g)) n = Math.max(n, m[0].length + 1);
   return "`".repeat(n);
 }
-const LANG: Record<string, string> = { "cuda-cpp": "cuda", "objective-cpp": "cpp", triton: "python", tilelang: "python", plaintext: "" };
-const mdLang = (l: string) => LANG[l] ?? l;
+const mdLang = (l: string) => langInfo(l)?.md ?? l;
 
 /** 一段代码：路径#行 · commit · 永久链接，再是代码（手动隐藏的行写成 ⋯） */
 function segMd(s: Segment, link?: string): string[] {

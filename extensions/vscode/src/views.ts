@@ -1,30 +1,40 @@
 // 段的展示数据（SegView）：shiki 高亮成每行 HTML，调用名字套 .call，加上注释 / docstring / 空行标记和段里的函数。
 // 分析尽量在「那个版本」的整个文件上做（片段在函数中间时语法才对），拿不到整个文件就分析段文本本身。
-import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore } from "shiki/core";
+import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore, type LanguageInput } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
-import python from "shiki/langs/python.mjs";
-import cpp from "shiki/langs/cpp.mjs";
-import c from "shiki/langs/c.mjs";
-import rust from "shiki/langs/rust.mjs";
-import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
+import { escHtml, fingerprint, langInfo, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
 import type { FileAnalysis } from "@codeboard/core/analysis";
 import { analysisOf, segAnalysis } from "./analysis";
 import { absOf, versionText } from "./source";
 import { callPkgs } from "./scope";
 import { Lru, readText, splitLines } from "./ws";
 
+// 语法按语言表（core 的 langs.ts）的 shiki 名字，第一次用到时才加载
+const GRAMMAR: Record<string, LanguageInput> = {
+  python: () => import("shiki/langs/python.mjs"), cpp: () => import("shiki/langs/cpp.mjs"), c: () => import("shiki/langs/c.mjs"),
+  rust: () => import("shiki/langs/rust.mjs"), typescript: () => import("shiki/langs/typescript.mjs"), javascript: () => import("shiki/langs/javascript.mjs"),
+  go: () => import("shiki/langs/go.mjs"), java: () => import("shiki/langs/java.mjs"), shellscript: () => import("shiki/langs/shellscript.mjs"),
+  json: () => import("shiki/langs/json.mjs"), yaml: () => import("shiki/langs/yaml.mjs"), toml: () => import("shiki/langs/toml.mjs"),
+  ini: () => import("shiki/langs/ini.mjs"), sql: () => import("shiki/langs/sql.mjs"), lua: () => import("shiki/langs/lua.mjs"),
+  ruby: () => import("shiki/langs/ruby.mjs"), r: () => import("shiki/langs/r.mjs"), perl: () => import("shiki/langs/perl.mjs"),
+  haskell: () => import("shiki/langs/haskell.mjs"), diff: () => import("shiki/langs/diff.mjs"), css: () => import("shiki/langs/css.mjs"),
+  html: () => import("shiki/langs/html.mjs"),
+};
 const theme = createCssVariablesTheme({ name: "codeboard", variablePrefix: "--shiki-", fontStyle: true });
 let hl: Promise<HighlighterCore> | undefined;
-const highlighter = () =>
-  (hl ??= createHighlighterCore({ themes: [theme], langs: [python, cpp, c, rust], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
+const loaded = new Map<string, Promise<void>>();
+async function highlighter(sl: string): Promise<HighlighterCore> {
+  const h = await (hl ??= createHighlighterCore({ themes: [theme], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
+  let p = loaded.get(sl);
+  if (!p) { p = h.loadLanguage(GRAMMAR[sl]); loaded.set(sl, p); }
+  await p;
+  return h;
+}
 
-/** VS Code languageId → shiki 语言；Triton、TileLang 都是 Python */
+/** 段的 lang → shiki 语法；没有语法的不着色 */
 function shikiLang(lang: string): string | null {
-  if (/^(python|triton|tilelang)$/.test(lang)) return "python";
-  if (/^(cpp|cuda-cpp|cuda|objective-cpp)$/.test(lang)) return "cpp";
-  if (lang === "c") return "c";
-  if (lang === "rust") return "rust";
-  return null;
+  const s = langInfo(lang)?.shiki;
+  return s && s in GRAMMAR ? s : null;
 }
 
 const tokCache = new Lru<Promise<Tok[][]>>(60);
@@ -41,9 +51,9 @@ export function tokensOf(lang: string, text: string): Promise<Tok[][]> {
 
 async function tokenize(sl: string, text: string): Promise<Tok[][]> {
   const lines = splitLines(text);
-  const h = await highlighter();
   let res: Tok[][];
   try {
+    const h = await highlighter(sl);
     res = h.codeToTokens(text, { lang: sl, theme: "codeboard" }).tokens.map((line) => line.map((t) => ({ text: t.content, cls: tokenClass(t.color, t.content) })));
   } catch {
     res = lines.map((l) => [{ text: l }]);
