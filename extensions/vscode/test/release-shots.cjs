@@ -48,12 +48,28 @@ const settle = (fr) => fr.evaluate(async () => {
 }).catch(() => {});
 const fit = async (f) => { await settle(f); await f.locator('button[aria-label="Fit to Window"]').first().click({ timeout: 3000 }).catch(() => {}); await settle(f); };
 // Move the mouse off the board so no hover state (card toolbar, tooltips) is captured
-const park = async (page) => { await page.mouse.move(2, 400, { steps: 4 }); await sleep(400); };
+const park = async (page) => { await page.mouse.move(2, 400); await sleep(400); }; // one jump: a path across the board could open a Peek on the way
 const boardShot = async (page, f, file) => {
   const box = await (await f.frameElement()).boundingBox();
   await page.screenshot({ path: path.join(OUT, file), clip: box ?? undefined });
   console.log(`  📷 ${file}`);
 };
+// Bring a card's heading well inside the board view before clicking it: fit, then pan with the wheel if it still sits outside
+// (window sizes differ between machines; a heading under VS Code's title bar or the board toolbar can't be clicked)
+async function reveal(page, f, title, refit = true) {
+  if (refit) await fit(f);
+  const loc = card(f, title).locator(".chead .ctitle");
+  for (let i = 0; i < 4; i++) {
+    const [b, t] = [await (await f.frameElement()).boundingBox(), await loc.boundingBox()];
+    if (!b || !t) break;
+    const cx = t.x + Math.min(t.width, 120) / 2, cy = t.y + t.height / 2;
+    if (cx > b.x + 40 && cx < b.x + b.width - 40 && cy > b.y + 40 && cy < b.y + b.height - 90) return loc;
+    console.log(`  … panning to ${title} (heading at ${cx | 0},${cy | 0}, board ${b.x | 0},${b.y | 0} ${b.width | 0}×${b.height | 0})`);
+    await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
+    await page.mouse.wheel(cx - (b.x + b.width / 2), cy - (b.y + b.height / 2)); await sleep(500); await settle(f);
+  }
+  return loc;
+}
 const card = (f, title) => f.locator(".card", { has: f.locator(".chead .ctitle", { hasText: new RegExp(`^${title.replace(/\./g, "\\.")}$`) }) });
 // Click empty board space and clear the selection (no selection outline or align toolbar in the shots)
 const blank = async (f) => { await f.locator("#board").click({ position: { x: 30, y: 300 } }); await f.page().keyboard.press("Escape"); };
@@ -76,6 +92,9 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
   await page.keyboard.press("Alt+b"); await sleep(2500);
   await command(page, "CodeBoard: Open Board");
   const f = await boardFrame(page); await sleep(1500);
+  // Name the board (the name shows on the editor tab and in some themes' board header)
+  await command(page, "CodeBoard: Rename Board"); await sleep(600);
+  await page.keyboard.press("Control+a"); await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await sleep(1200);
   // The board fills the window while it is built (children are placed in the room the view has) and for the board shots
   await command(page, "View: Focus Second Editor Group");
   await command(page, "View: Toggle Maximize Editor Group");
@@ -90,7 +109,7 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
   await expand("Scheduler.schedule", "allocate");
   check(await card(f, "BlockManager.allocate").count() === 1, "calls expanded two levels deep");
   // Sidenote (zoomed to the card: line numbers are not clickable in the zoomed-out overview)
-  await fit(f); await card(f, "Scheduler.schedule").locator(".chead .ctitle").click(); await sleep(300);
+  await (await reveal(page, f, "Scheduler.schedule")).click(); await sleep(300);
   await page.keyboard.press("Shift+Digit2"); await sleep(1500); await settle(f);
   const sch = card(f, "Scheduler.schedule");
   await sch.locator(".no").nth(5).click(); await sch.locator(".no").nth(6).click({ modifiers: ["Shift"] });
@@ -102,19 +121,19 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
   check(await sch.locator(".mk").count() >= 1, "Sidenote added");
 
   // Arrange: Scheduler.postprocess beside Scheduler.schedule, so the tree uses the width of the window
-  const drag = async (title, to) => {
-    const h = await card(f, title).locator(".chead").boundingBox();
+  const drag = async (title, target) => {
+    await reveal(page, f, title, false);
+    const h = await card(f, title).locator(".chead").boundingBox(), to = await target();
     await page.mouse.move(h.x + 40, h.y + h.height / 2); await page.mouse.down();
     await page.mouse.move(to.x + 40, to.y + h.height / 2, { steps: 20 }); await page.mouse.up(); await sleep(600);
   };
   await blank(f); await fit(f);
   for (let i = 0; i < 2; i++) { await f.locator('button[aria-label="Zoom Out"]').first().click().catch(() => {}); await sleep(400); }
   await settle(f);
-  const schBox = await card(f, "Scheduler.schedule").boundingBox();
-  await drag("Scheduler.postprocess", { x: schBox.x + schBox.width + 30, y: schBox.y });
-  // Note to the left of the root card, created under the mouse
-  const root = await card(f, "LLMEngine.step").boundingBox();
-  await blank(f); await page.mouse.move(Math.max(root.x - 140, 20), root.y + 4); await sleep(300);
+  await drag("Scheduler.postprocess", async () => { const b = await card(f, "Scheduler.schedule").boundingBox(); return { x: b.x + b.width + 30, y: b.y }; });
+  // Note in the free corner under Scheduler.postprocess, beside BlockManager.allocate (keeps the board compact), created under the mouse
+  const [alloc, post] = [await card(f, "BlockManager.allocate").boundingBox(), await card(f, "Scheduler.postprocess").boundingBox()];
+  await blank(f); await page.mouse.move(Math.max(alloc.x + alloc.width + 40, post.x), post.y + post.height + 30); await sleep(300);
   await page.keyboard.press("n"); await sleep(700);
   for (const line of ["## One engine step", "- **schedule** picks prefill or decode", "**run** executes the model on the batch", ""]) {
     await page.keyboard.type(line); await page.keyboard.press("Enter"); await sleep(150);
@@ -132,7 +151,7 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
     await boardShot(page, f, "2-expand.png");
 
     // 3. Definition Peek on can_allocate, zoomed to Scheduler.schedule
-    await card(f, "Scheduler.schedule").locator(".chead .ctitle").click(); await sleep(300);
+    await (await reveal(page, f, "Scheduler.schedule")).click(); await sleep(300);
     await page.keyboard.press("Shift+Digit2"); await sleep(1500); await settle(f);
     await f.locator('button[aria-label="Zoom Out"]').first().click(); await settle(f);
     const call = card(f, "Scheduler.schedule").locator(".src .call", { hasText: /^can_allocate$/ }).first();
@@ -148,7 +167,7 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
     await f.locator(".pop button", { hasText: /^Always Show$/ }).click().catch(() => console.log("  ! no Always Show")); await sleep(800);
     await page.keyboard.press("Escape"); await blank(f); await sleep(300);
     await f.locator(".card.note .chead").first().click(); await sleep(200);
-    await card(f, "Scheduler.schedule").locator(".chead .ctitle").click({ modifiers: ["Shift"] }); await sleep(200);
+    await card(f, "Scheduler.schedule").locator(".chead .ctitle").click({ modifiers: ["Shift"], timeout: 5000 }).catch(() => console.log("  ! could not add Scheduler.schedule to the selection")); await sleep(200);
     await page.keyboard.press("Shift+Digit2"); await sleep(1500); await blank(f); await settle(f);
     await park(page);
     await boardShot(page, f, "5-notes.png");
@@ -160,9 +179,7 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
     const bx = await (await f.frameElement()).boundingBox();
     await page.mouse.move(bx.x - 2, bx.y + 300); await sleep(300); await page.mouse.down();
     await page.mouse.move(bx.x - 2 - bx.width * 0.35, bx.y + 300, { steps: 15 }); await page.mouse.up(); await sleep(800);
-    await blank(f); await fit(f);
-    for (const t of ["LLMEngine.step", "Scheduler.schedule", "Scheduler.postprocess"]) { await card(f, t).locator(".chead .ctitle").click({ modifiers: t === "LLMEngine.step" ? [] : ["Shift"] }); await sleep(200); }
-    await page.keyboard.press("Shift+Digit2"); await sleep(1500); await blank(f); await settle(f); await park(page);
+    await blank(f); await fit(f); await park(page);
     if (await page.locator(".statusbar-item", { hasText: "Tab Moves Focus" }).count()) await command(page, "Toggle Tab Key Moves Focus");
     await park(page);
     await page.screenshot({ path: path.join(OUT, "1-overview.png") }); console.log("  📷 1-overview.png");
