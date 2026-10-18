@@ -64,6 +64,17 @@ export class Panels implements BoardHost {
         }
       }).catch((err) => log("error", `shared: ${err instanceof Error ? err.message : err}`));
     }));
+    // 写盘时合并进了另一个窗口的改动：开着这块白板的面板跟着换上（新来的代码卡带上段的展示数据）
+    ctx.subscriptions.push(store.onDidMerge((e) => {
+      this.shareQ = this.shareQ.then(async () => {
+        const p = this.get(e.id);
+        if (!p) return;
+        const segs = (e.patch.cards?.set ?? []).flatMap((c) => (c.kind === "code" ? [...c.segments, ...variantSegments({ cards: [c] })] : []));
+        const views = segs.length ? await viewsFor(segs) : undefined;
+        p.board = store.peek(p.id);
+        p.post({ type: "merged", patch: e.patch, views });
+      }).catch((err) => log("error", `merged: ${err instanceof Error ? err.message : err}`));
+    }));
     // Delete Everywhere：开着的别的白板跟着删
     ctx.subscriptions.push(store.onDidRemoveShared((e) => {
       for (const p of this.all()) {
