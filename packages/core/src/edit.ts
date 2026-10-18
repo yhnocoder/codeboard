@@ -288,6 +288,30 @@ export function removeSidenotes(b: Board, ids: Iterable<string>): void {
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.id));
 }
 
+/**
+ * Place on Board 的那张卡：Code / Paste → 代码卡，Text → Note，Link → 网页卡（「为什么相关」变成卡的说明）。
+ * Card sidenote 指着的是白板上已有的卡，没有新卡
+ */
+export function sidenoteCard(n: Sidenote, id = uid("c")): Card | null {
+  switch (n.kind) {
+    case "code": return { id, kind: "code", segments: [{ ...copy(n.code), id: uid("s") }], desc: n.why };
+    case "paste": {
+      const text = n.text.split("\n");
+      return { id, kind: "code", segments: [{ id: uid("s"), src: { kind: "free", url: n.url }, path: "", lang: n.lang, start: 1, end: text.length, text, version: { kind: "none" } }], desc: n.why };
+    }
+    case "text": return { id, kind: "note", md: n.md, bg: true };
+    case "link": return { id, kind: "web", url: n.url, meta: n.title ? { title: n.title } : undefined, desc: n.why };
+    case "card": return null;
+  }
+}
+/** Place on Board 在白板上的改动（新卡 card 已经放上白板）：Sidenote 去掉，从它挂的那一行连一条箭头到新卡 */
+export function sidenoteToCard(b: Board, id: string, card: string): void {
+  const n = b.sidenotes.find((k) => k.id === id);
+  if (!n) return;
+  removeSidenotes(b, [id]);
+  b.links.push({ id: uid("l"), from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card } });
+}
+
 /** 删掉这些 Sticker */
 export function removeStickers(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);

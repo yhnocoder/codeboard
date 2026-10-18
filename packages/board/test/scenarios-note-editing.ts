@@ -1,5 +1,6 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
-// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed
+// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
+//          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
 import { open, put, findSym, symCard, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -228,4 +229,29 @@ export const NOTE_EDITING: Record<string, () => Promise<void>> = {
     done("noteCodeScratchClosed");
   },
 
+  /** 一个动作一次撤销：Sidenote → Place on Board；Note 的字删光（Note 跟着删掉） */
+  async undoIsOneStep() {
+    const b = board(["hello world"]);
+    const C = b.cards[0] as CodeCard, s = C.segments[0];
+    b.place[C.id] = { x: 700, y: 60, w: 520 };
+    b.sidenotes.push({ id: "sn1", kind: "text", md: "side text", at: { card: C.id, seg: s.id, lines: [s.start + 2, s.start + 2] } });
+    const h = await open({ board: b });
+    await h.page.waitForTimeout(1500);
+    const st = () => { const B = h.board(); return `${B.cards.map((c) => c.kind).sort().join(",")} sn${B.sidenotes.length} l${B.links.length}`; };
+    const undo = async () => { await h.page.locator("#board").click({ position: { x: 600, y: 760 } }); await h.page.waitForTimeout(200); await h.page.keyboard.press("Control+z"); await h.page.waitForTimeout(1500); };
+    const start = st();
+    await h.page.locator(".mk").first().click(); await h.page.waitForTimeout(600);
+    await h.page.locator("button.tbtn", { hasText: "Place on Board" }).click(); await h.page.waitForTimeout(1200);
+    const placed = st();
+    await undo();
+    const placeUndone = st();
+    await editNote(h, "n0"); await keys(h.page, "{Control+a}{Backspace}"); await exitEdit(h); await h.page.waitForTimeout(1200);
+    const cleared = st();
+    await undo();
+    const clearUndone = st(), text = md(h, "n0");
+    check("undoIsOneStep place sidenote", placed === "code,note,note sn0 l1" && placeUndone === start, { start, placed, placeUndone });
+    check("undoIsOneStep clear note", cleared === "code sn1 l0" && clearUndone === start && text === "hello world", { cleared, clearUndone, text });
+    await close(h);
+    done("undoIsOneStep");
+  },
 };

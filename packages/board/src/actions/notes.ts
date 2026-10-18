@@ -1,6 +1,6 @@
 // Sidenote（弹窗、添加、Place on Board、卡变成 Sidenote）和定义预览。
 import { unwrap } from "solid-js/store";
-import { uid, findCard, isCode, cardTitle, segOf, removeCards, removeSidenotes, type Card, type Sidenote, type SegView, type Anchor } from "@codeboard/core";
+import { uid, findCard, isCode, cardTitle, segOf, removeCards, removeSidenotes, sidenoteCard, sidenoteToCard, type Sidenote, type SegView, type Anchor } from "@codeboard/core";
 import { state, setState, mutate, sel, clearSel, lineSel, cardById, toast } from "../state/store";
 import { quietHover } from "../state/camera";
 import { choose } from "../ui/Menu";
@@ -75,23 +75,15 @@ export function deleteSidenote(id: string) {
 export function placeSidenote(id: string) {
   const n = state.board.sidenotes.find((k) => k.id === id);
   if (!n) return;
+  if (n.kind === "card") return revealCard(n.card);
   const r = hostRect(n.at.card);
-  if (!r) return;
-  let card: Card | null = null, w = 480;
+  const card = sidenoteCard(unwrap(n));
+  if (!r || !card) return;
   const views: Record<string, SegView> = {};
-  const nid = uid("c");
-  if (n.kind === "code") { const sid = uid("s"); card = { id: nid, kind: "code", segments: [{ ...structuredClone(unwrap(n.code)), id: sid }], desc: n.why }; const v = state.views[n.code.id]; if (v) views[sid] = v; }
-  else if (n.kind === "paste") { const sid = uid("s"); const t = n.text.split("\n"); card = { id: nid, kind: "code", segments: [{ id: sid, src: { kind: "free", url: n.url }, path: "", lang: n.lang, start: 1, end: t.length, text: t, version: { kind: "none" } }], desc: n.why }; }
-  else if (n.kind === "text") { card = { id: nid, kind: "note", md: n.md, bg: true }; w = 280; }
-  else if (n.kind === "link") { card = { id: nid, kind: "web", url: n.url, meta: n.title ? { title: n.title } : undefined, desc: n.why }; w = 300; }
-  else if (n.kind === "card") { revealCard(n.card); return; }
-  if (!card) return;
-  addCards([{ card, views, w }], { at: { x: r.x + r.w + 48, y: r.y + 20 } });
+  if (n.kind === "code" && isCode(card) && state.views[n.code.id]) views[card.segments[0].id] = state.views[n.code.id];
+  // 放卡、去掉 Sidenote、连箭头是同一步（一次撤销）
+  addCards([{ card, views, w: card.kind === "note" ? 280 : card.kind === "web" ? 300 : 480 }], { at: { x: r.x + r.w + 48, y: r.y + 20 }, also: (b) => sidenoteToCard(b, id, card.id) });
   if (isCode(card) && card.segments[0].src.kind === "free") requestViews(card.segments);
-  mutate((b) => {
-    removeSidenotes(b, [id]);
-    b.links.push({ id: uid("l"), from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card: nid } });
-  });
   closePop();
 }
 /** Note 拖到某一行 → Text sidenote；⌥ 拖代码卡到某一行 → Code sidenote */

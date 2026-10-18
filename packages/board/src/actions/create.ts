@@ -24,8 +24,8 @@ function withDefaults(c: Card): Card {
   return c;
 }
 
-/** 把宿主建好的卡放到白板上：有选中的卡就放旁边，没有就放视口中央 */
-export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; exact?: boolean; besideSel?: boolean; section?: string } = {}) {
+/** 把宿主建好的卡放到白板上：有选中的卡就放旁边，没有就放视口中央。also：同一步里（一次撤销）跟着要做的别的改动 */
+export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; exact?: boolean; besideSel?: boolean; section?: string; also?: (b: Board) => void } = {}) {
   if (!list.length) return [];
   setState("views", (v) => ({ ...v, ...Object.assign({}, ...list.map((n) => n.views)) }));
   const ids: string[] = [];
@@ -49,6 +49,7 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; ex
       ids.push(c.id);
       prev = { x: pl.x, y: pl.y, ...size };
     }
+    o.also?.(b);
   });
   select({ cards: ids });
   requestAnimationFrame(() => {
