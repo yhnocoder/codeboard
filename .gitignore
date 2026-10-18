@@ -6,3 +6,5 @@ test-out/
 .claude/worktrees/
 .vscode-test/
 .ci-shots/
+*.vsix
+extensions/vscode/LICENSE
