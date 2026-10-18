@@ -54,7 +54,7 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
               onClick={() => { if (it.sub || it.disabled) return; p.onClose(); it.run?.(); }}>
               <span class="ck">{it.checked ? <Icon name="check" size={12} /> : null}</span>
               <span class="lb">{it.label}</span>
-              <Show when={it.kbd}><small>{it.kbd}</small></Show>
+              <Show when={it.kbd}><small title={it.kbd}>{it.kbd}</small></Show>
               <Show when={it.sub}><Icon name="chevR" size={12} /></Show>
             </button>
           ) : <hr />

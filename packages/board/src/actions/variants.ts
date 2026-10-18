@@ -102,7 +102,7 @@ export async function addVariantMenu(id: string, x: number, y: number) {
     ] },
     { label: "Working Tree (uncommitted)", disabled: have.has(JSON.stringify({ kind: "worktree" })) ? "Already a variant" : false, run: add({ kind: "worktree" }) },
     ...(src.worktrees.length
-      ? src.worktrees.map((w): Item => ({ label: "Other Worktree", kbd: w.label, disabled: c.variants?.some((v) => v.from.kind === "wt" && v.from.dir === w.dir) ? "Already a variant" : false, run: add({ kind: "wt", dir: w.dir, branch: w.branch }) }))
+      ? src.worktrees.map((w): Item => ({ label: "Other Worktree", kbd: w.label, hint: w.dir, disabled: c.variants?.some((v) => v.from.kind === "wt" && v.from.dir === w.dir) ? "Already a variant" : false, run: add({ kind: "wt", dir: w.dir, branch: w.branch }) }))
       : [{ label: "Other Worktree", disabled: "No other worktree of this repo (git worktree add)" } as Item]),
     { label: "Another File…", hint: "A copy of this file you changed, inside or outside the repo", run: add({ kind: "file" }) },
     { label: "GitHub Pull Request…", disabled: src.pr ? false : "origin is not on GitHub", run: () => void promptText(`Add Variant from a Pull Request on ${src.pr}`, "", "Number, e.g. 1234", "Add").then((r) => { const n = Number(r?.replace(/^#/, "")); if (r && n > 0) void addVariant(id, { kind: "pr", num: n }); else if (r) toast("Type the pull request number"); }) },

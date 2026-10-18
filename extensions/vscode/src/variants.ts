@@ -1,5 +1,6 @@
 // 我的改动（线框 07）：卡上的 Variant 从哪读代码（分支、工作区、另一个 worktree、复制出来的文件、GitHub PR），
 // 按函数名在那里重新找到这段（不靠行号：rebase、改了上面的代码都找得到），以及刷新：代码变了、rebase 了、合进上游了、上游最新。
+import * as os from "node:os";
 import * as path from "node:path";
 import {
   fingerprint, isCode, locateSeg, sameLines, segsOf, upstreamSegs, viewKey, UPSTREAM,
@@ -27,11 +28,16 @@ export async function variantSources(seg: Segment): Promise<VariantSources> {
   const [wts, bs, gh, cur] = await Promise.all([worktrees(r.root), branches(r.root), githubRemote(r.root), git(r.root, ["rev-parse", "--abbrev-ref", "HEAD"])]);
   const here = path.normalize(r.root);
   return {
-    worktrees: wts.filter((w) => w.dir !== here).map((w) => ({ dir: w.dir, branch: w.branch, label: [rel(here, w.dir), w.branch ?? w.head?.slice(0, 7)].filter(Boolean).join(" · ") })),
+    worktrees: wts.filter((w) => w.dir !== here).map((w) => ({ dir: w.dir, branch: w.branch, label: [w.branch ?? w.head?.slice(0, 7), shortDir(here, w.dir)].filter(Boolean).join(" · ") })),
     branches: bs, current: cur?.trim() || undefined, pr: gh ? `${gh.owner}/${gh.name}` : undefined,
   };
 }
-const rel = (from: string, to: string) => { const r = path.relative(path.dirname(from), to); return r.startsWith("..") ? r : `../${r}`; };
+/** worktree 目录的短写法：仓库旁边 / 里面的写相对路径（../vllm-exp），远的用 ~ 缩写的绝对路径 */
+export function shortDir(here: string, dir: string, home = os.homedir()) {
+  const r = path.relative(path.dirname(here), dir);
+  if (!path.isAbsolute(r) && !r.startsWith("..")) return `../${r.split(path.sep).join("/")}`;
+  return home && (dir === home || dir.startsWith(home + path.sep)) ? `~${dir.slice(home.length).split(path.sep).join("/")}` : dir;
+}
 
 /** 一个来源里这个文件的内容和那个版本 */
 type Read = { text: string; src: Source; path: string; version: Version; tip?: string };

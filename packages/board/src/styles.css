@@ -360,11 +360,11 @@ math { font-size: 1.05em; }
   transition: opacity calc(var(--t) * 70ms) linear, scale calc(var(--t) * var(--menu-ms, 300ms)) linear(0, .42 6%, .74 13%, .93 21%, 1.03 30%, 1.05 37%, 1.035 46%, 1.01 58%, .998 72%, 1), visibility 0s; }
 @media (prefers-reduced-motion: reduce) { .ctx.open { transition-duration: 0s; } }
 .ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 5px; font-size: 12.5px; color: var(--ink); text-align: left; }
-.ctx button .lb { flex: 1 1 auto; }
+.ctx button .lb { flex: 1 0 auto; max-width: calc(100% - 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx button .ck { width: 12px; flex: none; color: var(--accent); font-size: 11px; }
 .ctx button:not([disabled]):hover { background: var(--accent); color: var(--accent-ink); }
 .ctx button:not([disabled]):hover .ck { color: var(--accent-ink); }
-.ctx button small { margin-left: auto; font: 10.5px var(--mono); color: var(--ink-3); padding-left: 12px; white-space: nowrap; }
+.ctx button small { margin-left: auto; font: 10.5px var(--mono); color: var(--ink-3); padding-left: 12px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ctx button:not([disabled]):hover small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
 .ctx button.danger { color: #d6453d; }
 .ctx button.danger:not([disabled]):hover { background: #d6453d; color: #fff; }
@@ -577,7 +577,9 @@ kbd { font: 10.5px var(--mono); }
 .md-pm.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
 .md-pm.ProseMirror-hideselection *::selection { background: transparent; }
 .md-pm.ProseMirror-hideselection * { caret-color: transparent; }
-.md-pm p.is-empty:first-child:last-child::before, .md-pm .is-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; height: 0; pointer-events: none; }
+/* 占位字可能折成几行：浮动占满一整行宽、右边距抵掉（不挤光标），段落 flow-root 把浮动的高度算进来，几行都露得出来 */
+.md-pm p.is-empty:first-child:last-child::before, .md-pm .is-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
+.md-pm :is(p, h1, h2, h3, h4, h5, h6).is-empty { display: flow-root; }
 .md-pm .ProseMirror-selectednode { outline: 1.5px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 .md-pm ::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .md-pm pre { white-space: pre; tab-size: 4; }
@@ -1272,15 +1274,18 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 :root[data-theme="dark"] .chead .qcount, .vscode-dark .chead .qcount { color: #f3c46b; background: color-mix(in srgb, #d08a12 24%, transparent); }
 .stk.q { cursor: pointer; }
 .pop.k-question { width: 380px; }
-.k-question .qbody { padding: 8px 12px 4px; min-height: 40px; max-height: 50vh; overflow: auto; }
-.k-question .qtext { font-size: 12.5px; line-height: 1.6; min-height: 22px; }
+.k-question .qbody { padding: 10px 12px 8px; max-height: 50vh; overflow: auto; }
+.k-question .qtext { font-size: 12.5px; line-height: 1.6; min-height: 1.6em; }
 .k-question .qtext:empty::before, .k-question .qtext[data-ph]:not(.editing):empty::before { content: attr(data-ph); color: var(--ink-3); }
-.k-question .qtext.editing { outline: none; border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--accent); padding: 4px 8px; margin: -4px -8px; }
-.k-question .qans { padding: 2px 12px 4px; font-size: 11.5px; color: var(--ink-3); }
-.k-question .qacts { display: flex; align-items: center; gap: 6px; padding: 6px 8px 8px 12px; border-top: 1px solid var(--line); }
-.k-question .qacts .tbtn { height: 24px; font-size: 11.5px; padding: 0 8px; box-shadow: inset 0 0 0 1px var(--hair); }
+/* 编辑框：内边距画在框里（负外边距抵掉，字不跳），至少两行高，随内容长 */
+.k-question .qtext.editing { outline: none; border-radius: 6px; box-shadow: inset 0 0 0 1.5px var(--accent); padding: 6px 8px; margin: -6px -8px; min-height: calc(3.2em + 12px); }
+.k-question .qans { padding: 2px 12px 6px; font-size: 11.5px; color: var(--ink-3); }
+/* 脚注一行放不下时提示换到按钮上面，按钮成组靠右，自己从不折行 */
+.k-question .qacts { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 8px; padding: 8px 10px 10px 12px; border-top: 1px solid var(--line); }
+.k-question .qbtns { display: flex; gap: 6px; margin-left: auto; }
+.k-question .qacts .tbtn { height: 24px; font-size: 11.5px; padding: 0 8px; white-space: nowrap; flex: none; box-shadow: inset 0 0 0 1px var(--hair); }
 .k-question .qacts .tbtn.pri { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
-.k-question .qhint { font-size: 11px; color: var(--ink-3); }
+.k-question .qhint { font-size: 11px; color: var(--ink-3); white-space: nowrap; }
 .cpanel.qpanel { right: 12px; top: 12px; width: 340px; max-height: min(70vh, 640px); }
 .cpanel.ctree ~ .cpanel.qpanel { right: 324px; }
 .qtabs { display: inline-flex; gap: 3px; margin-left: 4px; }

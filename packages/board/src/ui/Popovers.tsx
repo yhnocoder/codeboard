@@ -129,11 +129,12 @@ function QuestionPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "question" }>
         <Show when={!on()} fallback={<span class="qhint">{A.K.mod}↵ or click outside to save</span>}>
           <button class="tbtn" onClick={() => setEditing({ kind: "question", id: p.pop.sticker })}>Edit</button>
         </Show>
-        <span class="grow" />
-        <Show when={q()?.done} fallback={<button class="tbtn pri" onClick={() => A.setAnswered(p.pop.sticker, true)}>Mark Answered</button>}>
-          <button class="tbtn" onClick={() => A.setAnswered(p.pop.sticker, false)}>Reopen</button>
-        </Show>
-        <button class="tbtn" onClick={() => A.linkAnswer(p.pop.sticker)}>Link Answer…</button>
+        <span class="qbtns">
+          <Show when={q()?.done} fallback={<button class="tbtn pri" onClick={() => A.setAnswered(p.pop.sticker, true)}>Mark Answered</button>}>
+            <button class="tbtn" onClick={() => A.setAnswered(p.pop.sticker, false)}>Reopen</button>
+          </Show>
+          <button class="tbtn" onClick={() => A.linkAnswer(p.pop.sticker)}>Link Answer…</button>
+        </span>
       </div>
     </Show>
   );

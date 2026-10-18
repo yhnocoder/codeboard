@@ -94,17 +94,30 @@ export function upstreamRef(root: string): Promise<string> {
 }
 
 export type Worktree = { dir: string; head?: string; branch?: string };
-/** git worktree list：同一仓库的所有 worktree（含 root 自己） */
+/** git worktree list：同一仓库的所有 worktree（含 root 自己）。bare / 已删掉目录（prunable）的不算；
+ *  子模块的主 worktree 被报成它的 git 目录（.git/modules/…）：换成 core.worktree 指的真正的目录，找不到就不算 */
 export async function worktrees(root: string): Promise<Worktree[]> {
-  const out = await git(root, ["worktree", "list", "--porcelain"]);
-  const list: Worktree[] = [];
-  let cur: Worktree | null = null;
+  const [out, common] = await Promise.all([git(root, ["worktree", "list", "--porcelain"]), git(root, ["rev-parse", "--path-format=absolute", "--git-common-dir"])]);
+  const list: (Worktree & { skip?: boolean })[] = [];
+  let cur: (Worktree & { skip?: boolean }) | null = null;
   for (const l of (out ?? "").split("\n")) {
     if (l.startsWith("worktree ")) { cur = { dir: path.normalize(l.slice(9)) }; list.push(cur); }
     else if (cur && l.startsWith("HEAD ")) cur.head = l.slice(5).trim();
     else if (cur && l.startsWith("branch ")) cur.branch = l.slice(7).trim().replace(/^refs\/heads\//, "");
+    else if (cur && (l === "bare" || l.startsWith("prunable"))) cur.skip = true;
   }
-  return list;
+  const gd = common?.trim() ? path.normalize(common.trim()) : null;
+  const res: Worktree[] = [];
+  for (const w of list) {
+    if (w.skip) continue;
+    if (gd && w.dir === gd) {
+      const wt = (await git(root, ["config", "--file", path.join(gd, "config"), "core.worktree"]))?.trim();
+      if (!wt) continue;
+      w.dir = path.resolve(gd, wt);
+    }
+    if (!res.some((o) => o.dir === w.dir)) res.push({ dir: w.dir, head: w.head, branch: w.branch });
+  }
+  return res;
 }
 
 /** 本地分支（Add Variant 的 Branch or Commit… 列表），最近提交的在前 */
