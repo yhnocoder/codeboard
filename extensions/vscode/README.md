@@ -1,5 +1,7 @@
 # CodeBoard
 
+*Reading code can be elegant and joyful.*
+
 **A whiteboard for reading code.** Put a function on the board, click its calls to expand them layer by layer, and lay out how the code really flows, with every card pinned to its source and commit.
 
 ![CodeBoard: a call tree from nano-vllm laid out on the board](https://github.com/yhnocoder/codeboard/releases/latest/download/1-overview.png)
