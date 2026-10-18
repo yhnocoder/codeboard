@@ -375,11 +375,13 @@ function watchHover() {
   const move = (e: PointerEvent) => { ptr = { x: e.clientX, y: e.clientY }; checkHover(e.target); };
   window.addEventListener("pointermove", move, { capture: true, passive: true });
   onCleanup(() => window.removeEventListener("pointermove", move, { capture: true }));
+  // 只在有悬停的卡、而且是这张卡在 b.cards 里的位置变了（重排）时才看：撤销 / 重做 / 同步换掉 b.cards 不会每次都去读指针下面是什么（会强制排版）
   let raf = 0;
-  createEffect(on(() => state.board.cards.map((c) => c.id).join(" "), () => {
+  createEffect(on(() => { const id = hoverCard(); return id ? `${id} ${state.board.cards.findIndex((c) => c.id === id)}` : ""; }, (k, prev) => {
+    if (!k || !prev || k === prev || k.split(" ")[0] !== prev.split(" ")[0]) return;
     cancelAnimationFrame(raf);
     raf = requestAnimationFrame(() => { if (hovNow && ptr) checkHover(document.elementFromPoint(ptr.x, ptr.y)); });
-  }, { defer: true }));
+  }));
   onCleanup(() => cancelAnimationFrame(raf));
 }
 
