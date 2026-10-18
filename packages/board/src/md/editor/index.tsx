@@ -344,16 +344,16 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       };
     },
   });
-  // Esc 保存退出：优先级最低，菜单、灰字、公式框先拿
-  const Exit = Extension.create({
-    name: "cbExit",
+  // 优先级最低，菜单、灰字、公式框、列表、表格先拿：Esc 保存退出；Tab 在别处没用时什么都不做（不能让浏览器把焦点移出编辑器）
+  const Last = Extension.create({
+    name: "cbLast",
     priority: 1,
-    addKeyboardShortcuts() { return { Escape: () => { exit(); return true; } }; },
+    addKeyboardShortcuts() { return { Escape: () => { exit(); return true; }, Tab: () => true, "Shift-Tab": () => true }; },
   });
   return [
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
-    ...base, Slash, Ref, Emo, Rules, Exit,
+    ...base, Slash, Ref, Emo, Rules, Last,
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),

@@ -1,5 +1,5 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
-// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype
+// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor
 import { open, put, findSym, symCard, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -89,6 +89,24 @@ export const NOTE_EDITING: Record<string, () => Promise<void>> = {
       ...S.map((s) => ({ name: `slow ${s}`, seq: s, md: s, delay: 60 })),
     ]);
     done("noteAutoPairOvertype");
+  },
+
+  /** 段落、标题里按 Tab 不离开编辑器（后面打的字照样进来）；列表里照样缩进 */
+  async noteTabStaysInEditor() {
+    const h = await open({ board: board(["", "", ""]) });
+    await h.page.waitForTimeout(1500);
+    const runs: { seq: string; want: string }[] = [{ seq: "x{Tab}y", want: "xy" }, { seq: "# h{Tab}{Shift+Tab}i", want: "# hi" }, { seq: "- a{Enter}{Tab}b", want: "- a\n  - b" }];
+    const still: number[] = [];
+    for (let i = 0; i < runs.length; i++) {
+      await editNote(h, `n${i}`);
+      await keys(h.page, runs[i].seq);
+      still.push(await h.page.evaluate((id) => (document.activeElement?.closest(`.card[data-id="${id}"] .md-pm`) ? 1 : 0), `n${i}`));
+      await exitEdit(h);
+    }
+    await h.page.waitForTimeout(1200);
+    runs.forEach((r, i) => check(`noteTabStaysInEditor ${r.seq}`, still[i] === 1 && md(h, `n${i}`) === r.want, { focused: still[i], got: md(h, `n${i}`) }));
+    await close(h);
+    done("noteTabStaysInEditor");
   },
 
 };
