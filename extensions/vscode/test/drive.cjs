@@ -293,7 +293,7 @@ async function cardfocusStep(page) {
 }
 
 // PR9 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
-// 旁边的隐藏文件（这里是 nanovllm/engine/.codeboard-<卡>.py），import 按那个目录找；git status 里看不到，编辑完就删掉，
+// 旁边的隐藏文件（这里是 nanovllm/engine/.codeboard-scratch-<卡>.py），import 按那个目录找；git status 里看不到，编辑完就删掉，
 // 也不会冒出未保存的标签页（重新加载窗口后也没有）。要 E2E_EXTENSIONS 里有 Pylance。E2E_ONLY=codeedit 只跑这一步
 async function codeeditStep(page) {
   await openFile(page, "llm_engine.py", 51);
