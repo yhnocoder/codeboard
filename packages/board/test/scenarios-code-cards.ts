@@ -7,6 +7,7 @@
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 //  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
 //  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Enter Board
+//  secondCallBelowCaller      — in a short panel the second expanded call still goes below its caller, not above it
 // Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { open, put, symCard, findSym, viewOf, type Host } from "./harness";
@@ -53,6 +54,7 @@ export const CODE_CARDS: Record<string, () => Promise<void>> = {
   farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
   implPickerKeyboard: () => run("implPickerKeyboard", implPickerKeyboard),
   shortcutHelpComplete: () => run("shortcutHelpComplete", shortcutHelpComplete),
+  secondCallBelowCaller: () => run("secondCallBelowCaller", secondCallBelowCaller),
 };
 
 async function tabKeepsCanvasStill(res: Record<string, unknown>) {
@@ -215,4 +217,20 @@ async function shortcutHelpComplete(res: Record<string, unknown>) {
   const has = (k: string) => rows.some((r) => r.startsWith(k));
   res.missing = ["⌥F", "⌘⇧B", "⌘↵"].filter((k) => !has(k));
   return rows.length > 10 && !(res.missing as string[]).length;
+}
+
+async function secondCallBelowCaller(res: Record<string, unknown>) {
+  const b: Board = emptyBoard("bNarrow", "narrow");
+  const step = nv("LLMEngine.step");
+  put(b, step, 40, 560, 520);
+  const h = await open({ board: b, w: 600, h: 1000 });
+  await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click(); await wait(h, 1200);
+  await clickCanvas(h, 10, 990);
+  await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("postprocess")`).first().click({ force: true }); await wait(h, 1500);
+  const cards = h.board().cards as CodeCard[];
+  const at = (q: string) => { const c = cards.find((k) => k.segments?.[0]?.symbol?.qual === q); return c && h.board().place[c.id]; };
+  res.step = at("LLMEngine.step"); res.schedule = at("Scheduler.schedule"); res.postprocess = at("Scheduler.postprocess");
+  await close(h);
+  const s = res.step as { y: number } | undefined, p = res.postprocess as { y: number } | undefined;
+  return !!s && !!p && p.y > s.y;
 }

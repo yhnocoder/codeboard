@@ -108,13 +108,14 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
       const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hid));
       const outside = placed().filter((k) => !tree.has(k.id)).map((k) => rectOf(k));
       const hb = rectOf(host);
+      const slot = placeChild(hb, size, before, []);
       let p = placeChild(hb, size, before, outside);
-      // 树下面被别的卡占满时，空位可能被推到屏幕外很远：改在视野里、靠近默认位置找空位；视野里也没有就放默认位置（压住别的卡，新卡在最上层）
+      // 树下面被别的卡占满时，空位可能被推到屏幕外很远：改在视野里、靠近默认位置找空位；视野里也没有就放默认位置（压住别的卡，新卡在最上层）。
+      // 默认位置没被占、只是在屏幕外（白板窄、矮）不算：照样放在树里，镜头跟过去
       let inTree = true;
       const vr = worldView();
       const offscreen = p.y < vr.y || p.y + Math.min(size.h, 200) > vr.y + vr.h || p.x + Math.min(size.w, vr.w) > vr.x + vr.w;
-      if (offscreen) {
-        const slot = placeChild(hb, size, before, []);
+      if (offscreen && p.y !== slot.y) {
         const all = placed().map((k) => rectOf(k));
         const f = freeInView({ ...slot, ...size }, all, vr);
         if (f && isVisible(hb)) { p = f; inTree = false; }
