@@ -107,6 +107,10 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "task after bullet", seq: "- a{Enter}[ ] t", md: "- a\n\n- [ ] t" },
       { name: "task bare", seq: "[ ] t2", md: "- [ ] t2" },
       { name: "code fence", seq: "```python{Enter}x = 1", md: "```python\nx = 1\n```" },
+      // N2：Note 代码块里回车保留缩进（和 Free code 卡一样，按语言缩进；没语言时照上一行）
+      { name: "code indent typed", seq: "```python{Enter}    x = 1{Enter}y", md: "```python\n    x = 1\n    y\n```" },
+      { name: "code indent plain", seq: "```{Enter}  x = 1{Enter}y", md: "```\n  x = 1\n  y\n```" },
+      { name: "code indent block", init: "```python\nif a:\n    x = 1\n```", seq: "{ArrowUp}{End}{Enter}y", md: "```python\nif a:\n    x = 1\n    y\n```" },
       { name: "code fence c++", seq: "```c++{Enter}int a;", md: "```c++\nint a;\n```" },
       { name: "math block", seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-mathpop textarea"); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); }, md: "$$\nx^2\n$$" },
       // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
