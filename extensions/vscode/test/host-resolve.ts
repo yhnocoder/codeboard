@@ -25,6 +25,7 @@ import { captureRun, listRuns, runApply, saveRun } from "../src/runs";
 import { addVariant, syncVariants, variantSources } from "../src/variants";
 import { staleFor, staleSegments } from "../src/versions";
 import { forgetHeads } from "../src/git";
+import { openStickerDir, readPacks } from "../src/stickers";
 import { addVariant as addV, switchVariant, type Board } from "@codeboard/core";
 import { makeActions } from "../src/actions";
 import { watchVersions } from "../src/watch";
@@ -240,6 +241,23 @@ void (async () => {
     check(s1.calls.length > 0 && JSON.stringify(s1) === JSON.stringify(clipAnalysis(full, 20, 45)), "segAnalysis = whole-file analysis clipped to the segment");
     check(JSON.stringify(segAnalysis("python", t, 20, 45)) === JSON.stringify(s1), "segAnalysis after the whole file was analyzed: same result");
     check(JSON.stringify(segAnalysis("python", t, 1, 0).imports) === JSON.stringify(full.imports), "segAnalysis with no lines still has the file's imports");
+  }
+
+  // A relative Sticker Folder setting is under the workspace root: Open Folder and the pack loader use the same folder
+  {
+    const rel = "e2e-stickers-rel";
+    const dir = path.join(WS, rel);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "mypack.json"), JSON.stringify({ prefix: "mypack", info: { name: "MyPack" }, icons: { star: { body: "<path d='M0 0h16v16z'/>" } } }));
+    const opened: string[] = [];
+    useWorkspace({ ...W, settings: { ...W.settings, get: <T>(k: string) => (k === "codeboard.stickerFolder" ? rel : undefined) as T }, ui: { ...W.ui, openFolder: async (d: string) => { opened.push(d); } } });
+    await openStickerDir();
+    const packs = await readPacks();
+    check(opened[0] === dir, "Sticker Folder relative to the workspace root: Open Folder opens <workspace>/<folder>", opened);
+    check(packs.some((p) => p.name === "MyPack"), "…and the packs in that folder are loaded", packs.map((p) => p.name));
+    useWorkspace(W);
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 
   // 子白板（线框 05）：进入 / 返回换的是同一个面板（面包屑、镜头、讲解带过去）、不能套成环、Turn into Board 存到父白板的组、侧栏的树

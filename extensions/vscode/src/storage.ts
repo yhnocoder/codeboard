@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "./nodefs";
 import { log } from "./log";
-import { workspace, ws0 } from "./ws";
+import { settingDir, workspace } from "./ws";
 
 export type { Storage };
 
@@ -12,12 +12,7 @@ export const openStorage = () => new Storage(nodeFs, { dir: boardDir, log });
 
 function boardDir(): string {
   const set = workspace().settings.get<string>("codeboard.storageDir")?.trim();
-  const root = ws0();
-  if (set) {
-    const p = set.replace(/^~(?=$|\/)/, process.env.HOME ?? "~");
-    return path.isAbsolute(p) || !root ? p : path.join(root, p);
-  }
-  return path.join(workspace().storage.dir(), "boards");
+  return set ? settingDir(set) : path.join(workspace().storage.dir(), "boards");
 }
 
 /** GitHub 文件缓存：按 commit 存，不会变，所有工作区共用 */

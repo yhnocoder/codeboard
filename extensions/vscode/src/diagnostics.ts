@@ -1,12 +1,8 @@
 // Copy Diagnostics：版本、Python / Pylance、工作区 git 状态、白板规模、最近的日志 → 剪贴板（home 换成 ~）。
-// 另外：Sticker Packs 目录的 Open Folder。
 import * as os from "node:os";
-import * as path from "node:path";
-import * as fs from "node:fs/promises";
 import { formatDiagnostics, type Board, type DiagInfo } from "@codeboard/core";
 import { git } from "./git";
-import { log, recentLog } from "./log";
-import { readSettings } from "./settings";
+import { recentLog } from "./log";
 import { workspace, wsRoots } from "./ws";
 
 async function folderInfo(p: string): Promise<DiagInfo["folders"][number]> {
@@ -42,21 +38,3 @@ export async function copyDiagnostics(board?: Board, attach?: boolean) {
   void w.ui.info("Diagnostics copied to clipboard");
 }
 
-/** Sticker Packs 目录：设置为空 = ~/.codeboard/stickers；没有就建，然后在系统文件管理器里打开 */
-export function stickerDir(): string {
-  const s = readSettings().stickerDir.trim();
-  if (!s) return path.join(os.homedir(), ".codeboard", "stickers");
-  if (s === "~" || s.startsWith("~/") || s.startsWith("~\\")) return path.join(os.homedir(), s.slice(1));
-  return path.isAbsolute(s) ? s : path.resolve(wsRoots()[0] ?? os.homedir(), s);
-}
-
-export async function openStickerDir() {
-  const dir = stickerDir();
-  try {
-    await fs.mkdir(dir, { recursive: true });
-    await workspace().ui.openFolder(dir);
-  } catch (e) {
-    log("error", `sticker folder ${dir}: ${e instanceof Error ? e.message : e}`);
-    workspace().ui.error(`Cannot open the sticker folder ${dir}`);
-  }
-}
