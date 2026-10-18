@@ -133,6 +133,8 @@ export interface WorkspaceUi {
   copy(text: string): Promise<void>;
   /** 读剪贴板的文字 */
   clipboard(): Promise<string>;
+  /** 编辑器里接着按 ⌘Z 撤销刚加到白板上的卡（codeboard.undoAdd）：打开后，编辑器里一改字、动光标、换编辑器就自己关掉 */
+  undoAddKey?(on: boolean): void;
 }
 
 /** 语言模型（VS Code 的 Language Model API 之类）：可选，宿主没有就不给 */

@@ -355,6 +355,8 @@ function patch(now: Snap, s: Snap): boolean {
   batch(() => { for (const [k, at, v] of ops) setState("board", k as any, at as any, reconcile(v as any)); });
   return true;
 }
+/** 撤销栈顶（认出“最后一步还是某次改动”用） */
+export const undoTop = (): object | undefined => undoStack[undoStack.length - 1];
 export function undo() {
   const s = undoStack.pop();
   if (!s) return false;

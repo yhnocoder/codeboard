@@ -164,7 +164,7 @@ async function variantsStep(page) {
   await sch.locator(".chead").click({ button: "right", position: { x: 140, y: 12 } }); await sleep(500);
   await f.locator(".ctx button", { hasText: /^Add Variant…/ }).click(); await sleep(1500);
   const items = await f.locator(".ctx button").allTextContents();
-  check(items.some((t) => /Other Worktree.*ws-exp · exp-overlap/.test(t)), "Add Variant lists the other worktree", items);
+  check(items.some((t) => /Other Worktree.*exp-overlap · \.\.\/ws-exp/.test(t)), "Add Variant lists the other worktree", items);
   await shot(page, "14-add-variant-menu");
   await f.locator(".ctx button", { hasText: /Other Worktree/ }).click(); await sleep(2500);
   const tabs = await sch.locator(".vtab:not(.vadd)").allTextContents();
@@ -185,6 +185,36 @@ async function variantsStep(page) {
   await card(f, "Scheduler.schedule").locator(".vtab.up").click(); await sleep(600);
   check(await card(f, "Scheduler.schedule").locator(".chead .mine").count() === 0 && !/keep order/.test(await card(f, "Scheduler.schedule").locator(".src").textContent()), "switching back to Upstream shows the upstream code");
 }
+// ⌥B 选中跨几个定义的代码（context.py 5–27：dataclass、_CONTEXT = Context()、三个函数）：默认一张多段卡，一行不丢；
+// 焦点留在编辑器，紧接着 ⌘Z / Ctrl+Z 撤销这次添加（编辑器里没改过字时）；⇧⌥B 一个定义一张卡。E2E_ONLY=addsel 只跑这一步
+async function addselStep(page) {
+  await command(page, "CodeBoard: Open Board");
+  let f = await boardFrame(page); await sleep(1000);
+  const n0 = await f.locator(".card").count();
+  await openFile(page, "context.py", 5);
+  for (let i = 0; i < 22; i++) await page.keyboard.press("Shift+ArrowDown");
+  await page.keyboard.press("Shift+End"); await sleep(300);
+  await page.keyboard.press("Alt+b"); await sleep(2500);
+  f = await boardFrame(page);
+  const one = f.locator(".card", { hasText: "5 segments" });
+  check(await f.locator(".card").count() === n0 + 1 && await one.count() === 1, "Alt+B over five definitions makes one card with five segments", { n0, n: await f.locator(".card").count() });
+  const body = (await one.locator(".src").textContent().catch(() => "")) ?? "";
+  check(/@dataclass\(slots=True\)/.test(body) && /block_tables: torch\.Tensor/.test(body) && /_CONTEXT = Context\(\)/.test(body) && /def reset_context/.test(body), "…with the decorator, the fields and the module line between", body.slice(0, 200));
+  check(await one.locator(".src .gap").count() === 4, "…and a separator at every segment boundary", await one.locator(".src .gap").allTextContents());
+  await shot(page, "16-addsel-one-card");
+  // focus is still in the editor: Ctrl+Z (⌘Z) undoes the add on the board, the editor text is untouched
+  const textBefore = await page.locator(".editor-group-container .monaco-editor .view-lines").first().textContent();
+  await page.keyboard.press("Control+z"); await sleep(1500);
+  f = await boardFrame(page);
+  check(await f.locator(".card").count() === n0, "Ctrl+Z right after Alt+B (focus in the editor) removes the card from the board", await f.locator(".card").count());
+  check(await page.locator(".editor-group-container .monaco-editor .view-lines").first().textContent() === textBefore, "…and does not undo anything in the editor");
+  await page.keyboard.press("Shift+Alt+b"); await sleep(2500);
+  f = await boardFrame(page);
+  check(await f.locator(".card").count() === n0 + 5 && await card(f, "Context").count() === 1 && await card(f, "reset_context").count() === 1, "Shift+Alt+B makes one card per definition (and one for the module line)", await f.locator(".card .ctitle").allTextContents());
+  check(/is_prefill: bool = False/.test(await card(f, "Context").locator(".src").textContent().catch(() => "")), "the Context card shows its fields");
+  await shot(page, "17-addsel-separate");
+}
+
 // PR9 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
 // 旁边的隐藏文件（这里是 nanovllm/engine/.codeboard-<卡>.py），import 按那个目录找；git status 里看不到，编辑完就删掉，
 // 也不会冒出未保存的标签页（重新加载窗口后也没有）。要 E2E_EXTENSIONS 里有 Pylance。E2E_ONLY=codeedit 只跑这一步
@@ -267,6 +297,7 @@ const finish = async (browser, errors) => {
   if (process.env.E2E_ONLY === "export") { await exportStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "variants") { await variantsStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "codeedit") { await codeeditStep(page); return finish(browser, errors); }
+  if (process.env.E2E_ONLY === "addsel") { await addselStep(page); return finish(browser, errors); }
 
   // 1. Alt+B inside a function: the board opens and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
@@ -514,5 +545,6 @@ const finish = async (browser, errors) => {
   } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
 
   await captureStep(page);
+  await addselStep(page);
   await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });

@@ -150,6 +150,8 @@ export type HostToBoard =
   | { type: "host"; host: Partial<HostInfo> }
   /** 从编辑器加进来的卡：放在选中卡旁边，没选中放视口中央 */
   | { type: "add"; cards: NewCard[]; ask?: "split"; sel?: { card: string } }
+  /** 编辑器里 ⌥B 之后接着按 ⌘Z：撤销刚加的这几张卡（白板上之后又改过就不撤，提示一下） */
+  | { type: "undoAdd"; cards: string[] }
   /** 给选中的卡追加一段 */
   | { type: "appendSegment"; card: string; seg: Segment; view: SegView }
   /** 编辑器 ⌥S：作为 Sidenote 挂到白板上选中的行 */

@@ -188,6 +188,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       revealInOS: async (abs) => void (await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs))),
       copy: async (text) => vscode.env.clipboard.writeText(text),
       clipboard: async () => vscode.env.clipboard.readText(),
+      undoAddKey: (on) => undoAddKey(on),
     },
     ai: {
       ask: copilotAsk,
@@ -224,4 +225,20 @@ async function locations(cmd: string, abs: string, line: number, col: number): P
     if (uri.scheme === "file") out.push({ abs: uri.fsPath, line: range.start.line + 1, col: range.start.character });
   }
   return out;
+}
+
+/** codeboard.canUndoAdd：⌥B 之后编辑器里的 ⌘Z 撤销那次添加（package.json 的 codeboard.undoAdd 键）。
+ *  编辑器里一改字、动光标、换编辑器就关掉，⌘Z 回到编辑器自己的撤销 */
+let undoAddOff: vscode.Disposable[] = [];
+function undoAddKey(on: boolean) {
+  for (const d of undoAddOff) d.dispose();
+  undoAddOff = [];
+  void vscode.commands.executeCommand("setContext", "codeboard.canUndoAdd", on);
+  if (!on) return;
+  const off = () => undoAddKey(false);
+  undoAddOff = [
+    vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length) off(); }),
+    vscode.window.onDidChangeTextEditorSelection(off),
+    vscode.window.onDidChangeActiveTextEditor(off),
+  ];
 }

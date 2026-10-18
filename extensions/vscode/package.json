@@ -98,6 +98,17 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.addSeparateCards",
+        "title": "Add Selection as Separate Cards",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.undoAdd",
+        "title": "Undo Add to Board",
+        "category": "CodeBoard",
+        "enablement": "codeboard.canUndoAdd"
+      },
+      {
         "command": "codeboard.addToAnotherBoard",
         "title": "Add to Another Board…",
         "category": "CodeBoard"
@@ -201,6 +212,11 @@
       "editor/context": [
         {
           "command": "codeboard.addToBoard",
+          "group": "9_codeboard@1"
+        },
+        {
+          "command": "codeboard.addSeparateCards",
+          "when": "editorHasSelection",
           "group": "9_codeboard@1"
         },
         {
@@ -375,6 +391,17 @@
         "command": "codeboard.addToBoard",
         "key": "alt+b",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "codeboard.undoAdd",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "when": "editorTextFocus && codeboard.canUndoAdd"
+      },
+      {
+        "command": "codeboard.addSeparateCards",
+        "key": "shift+alt+b",
+        "when": "editorTextFocus && editorHasSelection"
       },
       {
         "command": "codeboard.addSidenote",

@@ -36,6 +36,10 @@ export function makeActions(panels: BoardHost, store: Storage) {
     else if (r === "Undo" && undo) await undo();
   };
 
+  /** 编辑器里 ⌥B 之后接着按 ⌘Z 撤销的那次添加（焦点留在编辑器：⌥B 是边读边收集，不抢焦点） */
+  let lastAdd: (() => Promise<void>) | null = null;
+  const armUndo = (f: () => Promise<void>) => { lastAdd = f; ui().undoAddKey?.(true); };
+
   /** 把卡送到白板：开着就发给白板（它决定位置）；没开就直接写进 JSON */
   const deliver = async (boardId: string, built: Built) => {
     const cards = await withViews(built.cards);
@@ -43,6 +47,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     if (p) {
       const sel = p.selection?.cards[0];
       p.post({ type: "add", cards, ask: built.ask, sel: sel ? { card: sel } : undefined });
+      armUndo(async () => { panels.get(boardId)?.post({ type: "undoAdd", cards: built.cards.map((c) => c.id) }); });
       if (!p.visible) void notify({ id: boardId, name: p.board?.name ?? "board" }, cards.length);
       return;
     }
@@ -51,10 +56,12 @@ export function makeActions(panels: BoardHost, store: Storage) {
     const before = structuredClone(b);
     placeCards(b, built.cards);
     await store.save(b);
-    void notify(b, cards.length, async () => { await store.save(before); });
+    const undo = async () => { await store.save(before); };
+    armUndo(async () => { await undo(); void ui().info(`Removed from “${b.name}”`); });
+    void notify(b, cards.length, undo);
   };
 
-  const fromEditor = async (mode: "auto" | "function" = "auto"): Promise<Built | undefined> => {
+  const fromEditor = async (mode: "auto" | "function" | "separate" = "auto"): Promise<Built | undefined> => {
     const ed = workspace().editor.active();
     if (!ed) { void ui().info("Open a file in the editor first."); return; }
     const r = await cardsFromEditor(ed, mode);
@@ -95,6 +102,16 @@ export function makeActions(panels: BoardHost, store: Storage) {
 
     "codeboard.addToBoard": async () => {
       const b = await fromEditor();
+      if (b) await deliver(await targetId(), b);
+    },
+    "codeboard.undoAdd": async () => {
+      const f = lastAdd;
+      lastAdd = null;
+      ui().undoAddKey?.(false);
+      await f?.();
+    },
+    "codeboard.addSeparateCards": async () => {
+      const b = await fromEditor("separate");
       if (b) await deliver(await targetId(), b);
     },
     "codeboard.addFunction": async () => {
