@@ -59,6 +59,15 @@ const shot = async (page, n) => {
   for (const i of r.issues) console.log(`  ⚠ ${n}: ${i.rule} — ${i.what}`);
   if (process.env.AUDIT_STRICT === "1") check(!r.issues.length, `${n} passes the UI audit`);
 };
+// A spot on empty canvas inside the board frame (frame coordinates): where cards land depends on the layout, so pick it rather than hard-code it
+const emptySpot = (f) => f.evaluate(() => {
+  const b = document.querySelector("#board").getBoundingClientRect();
+  for (let y = b.top + 60; y < b.bottom - 120; y += 20) for (let x = b.left + 40; x < b.right - 40; x += 20) {
+    const t = document.elementFromPoint(x, y);
+    if (t && !t.closest(".card, .pop, .ctx, .dock, .bbar, .pill, .sec, .crumbs, svg [data-link]")) return { x: x - b.left, y: y - b.top };
+  }
+  return { x: 30, y: 300 };
+});
 const card = (f, title) => f.locator(".card", { has: f.locator(".chead .ctitle", { hasText: new RegExp(`^${title.replace(/\./g, "\\.")}$`) }) });
 const boardJson = () => {
   const d = execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards 2>/dev/null || true`).toString().trim().split("\n")[0];
@@ -234,10 +243,13 @@ async function closeStep(page) {
   await command(page, "CodeBoard: Open Board");
   let f = await boardFrame(page); await sleep(1500);
   const name = (await page.locator(".editor-group-container.active .tab.active").first().textContent()).trim();
-  const code = named(name)?.cards.find((c) => c.kind === "code");
+  // a code card that is drawn (not hidden in a collapsed call tree) and on screen
+  const shown = await f.evaluate(() => { const b = document.querySelector("#board").getBoundingClientRect(); return [...document.querySelectorAll(".card[data-id]")].filter((e) => { const r = e.getBoundingClientRect(); return r.top >= b.top && r.top + 20 < b.bottom && r.left >= b.left && r.left + 140 < b.right; }).map((e) => e.dataset.id); });
+  const code = named(name)?.cards.find((c) => c.kind === "code" && shown.includes(c.id));
   check(!!code, "closeStep: the open board has a code card", name);
   if (!code) return;
-  await f.locator(`.card[data-id="${code.id}"] .chead`).click({ position: { x: 120, y: 10 } }); await sleep(500);
+  // select it by its title: the file path next to it opens the code in the editor (and the keys would go there)
+  await f.locator(`.card[data-id="${code.id}"] .chead .ctitle`).first().click(); await sleep(500);
   await page.keyboard.press("Alt+z"); await sleep(100);
   await closeTab(name); await sleep(2000);
   const wrapped = named(name)?.cards.find((c) => c.id === code.id)?.wrap;
@@ -445,10 +457,11 @@ const finish = async (browser, errors) => {
   // Synthetic CDP moves that leave the iframe deliver no leave events to it, so the path must not leave the webview straight from the peek:
   // the peek would keep :hover and stay open, which is a test artefact rather than what a real mouse does
   const w = await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().boundingBox();
-  // 停在卡下面的空白画布上：停在代码行上可能正好落在另一个调用上，又打开一个 Peek
-  const cb = await sch.boundingBox();
-  const y = cb ? cb.y + cb.height + 30 : w ? w.y + w.height + 40 : 500;
-  if (w) await page.mouse.move(w.x + w.width / 2, y, { steps: 4 });
+  // 停在空白画布上：停在代码行上可能正好落在另一个调用上，又打开一个 Peek
+  const fb = await (await f.frameElement()).boundingBox(), sp = await emptySpot(f);
+  const y = fb.y + sp.y;
+  if (w) await page.mouse.move(w.x + w.width / 2, w.y + w.height + 6, { steps: 2 });
+  await page.mouse.move(fb.x + sp.x, y, { steps: 6 });
   await page.mouse.move(5, y, { steps: 12 });
   // 关闭有一段延迟（还要等离开事件）：CI 机器慢时 800ms 不一定够，最多等 3s
   let open = 1; for (let t = 0; t < 15 && (open = await f.locator(".pop.k-peek").count()); t++) await sleep(200);
@@ -595,15 +608,7 @@ const finish = async (browser, errors) => {
     await page.locator(".tabs-container .tab", { hasText: "New Board" }).first().click(); await sleep(2000);
     f = await boardFrame(page); await sleep(1500);
     await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
-    // 空白处右键：镜头会跟着卡走，固定坐标可能落在卡上，找一块没有东西的地方
-    const empty = await f.evaluate(() => {
-      for (let y = 120; y < innerHeight - 120; y += 40) for (let x = 40; x < innerWidth - 40; x += 40) {
-        const e = document.elementFromPoint(x, y);
-        if (e && e.closest("#board") && !e.closest(".card, .pill, .dock, .ctx, svg [data-link], .crumbs")) return { x, y };
-      }
-      return { x: 260, y: 520 };
-    });
-    await f.locator("#board").click({ button: "right", position: empty }); await sleep(500);
+    await f.locator("#board").click({ button: "right", position: await emptySpot(f) }); await sleep(500);
     await f.locator(".ctx button", { hasText: /^Insert Board/ }).first().hover(); await sleep(500);
     await f.locator(".ctx button", { hasText: /^Shared E2E/ }).first().click({ timeout: 3000 }).catch(() => {}); await sleep(1500);
     const fr = f.locator(".card.board");
