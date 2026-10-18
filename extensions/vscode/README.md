@@ -47,7 +47,7 @@ Nine board themes (plus an experimental one), each with a light and a dark varia
 - Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.
 - Turn cards into a sub-board, and share a card between boards so it stays the same everywhere.
 - Compare a card across branches, worktrees or pull requests as variants, with change marks and a three-way view.
-- Pin questions to code with `?` stickers and find them in the Questions view; export a board to Markdown or an HTML snapshot.
+- Pin questions to code with `?` stickers and find them in the Questions view; export a board as Markdown, an HTML snapshot or a PNG.
 - The CodeBoard view in the activity bar lists your boards, in groups.
 
 ## Getting started

@@ -203,9 +203,13 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
     await page.keyboard.press("Escape"); await blank(f); await sleep(300);
     await f.locator(".card.note .chead").first().click(); await sleep(200);
     await card(f, "Scheduler.schedule").locator(".chead .ctitle").click({ modifiers: ["Shift"], timeout: 5000 }).catch(() => console.log("  ! could not add Scheduler.schedule to the selection")); await sleep(200);
+    // One step out, so the Note keeps clear of the zoom controls once the gray text adds a line
     await page.keyboard.press("Shift+Digit2"); await sleep(1500); await blank(f); await settle(f);
+    await f.locator('button[aria-label="Zoom Out"]').first().click(); await settle(f);
     await f.locator(".card.note .nbody").first().dblclick(); await sleep(600);
+    // Retype the closing period: the completion is asked for after an edit, once typing pauses
     await page.keyboard.press("Control+End"); await sleep(200);
+    await page.keyboard.press("Backspace"); await sleep(150); await page.keyboard.type("."); await sleep(200);
     console.log(`  … Note editor focused: ${await f.locator(".card.note .ProseMirror-focused").count()}`);
     let ghost = 0;
     for (let i = 0; i < 20 && !(ghost = await f.locator(".md-ghost").count()); i++) await sleep(500);

@@ -14,6 +14,8 @@ node "$REPO/tools/release/mock-deepseek.mjs" "$MOCK_PORT" & MOCK=$!
 trap 'kill $MOCK 2>/dev/null' EXIT
 # Code stays readable when the board is fitted to the window (the default switches to the outline view below 60%)
 export E2E_SCALE=2 DRIVER=release-shots.cjs
+# Secret storage (the dummy DeepSeek key) without an OS keyring under Xvfb
+export E2E_ARGS=--password-store=basic
 # Window chrome kept out of the shots (and Pylance's warnings about nano-vllm's uninstalled imports): no custom title bar (no title, Sign In or layout buttons; Xvfb has no window manager to draw one), no AI / chat items
 export E2E_SETTINGS='"codeboard.zoom.overview": 0.3, "codeboard.zoom.map": 0.12, "editor.stickyScroll.enabled": false,
   "window.titleBarStyle": "native", "window.menuBarVisibility": "hidden", "window.commandCenter": false, "workbench.layoutControl.enabled": false,

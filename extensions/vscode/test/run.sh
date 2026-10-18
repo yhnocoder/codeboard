@@ -35,13 +35,14 @@ cat > "$UD/User/settings.json" <<JSON
   "editor.minimap.enabled": false, "telemetry.telemetryLevel": "off", "update.mode": "none", "extensions.ignoreRecommendations": true,
   "files.simpleDialog.enable": true, "python.analysis.enableTypeCheckingRecommendation": false${E2E_SETTINGS:+, $E2E_SETTINGS} }
 JSON
+# E2E_ARGS adds VS Code command-line flags (e.g. --password-store=basic, so secret storage works without an OS keyring)
 # E2E_SCALE=2 renders at 2x device pixels (sharper screenshots, used for release shots); the X screen grows to match
 SCALE=${E2E_SCALE:-1}
 SCALE_ARG=""; [ "$SCALE" != 1 ] && SCALE_ARG="--force-device-scale-factor=$SCALE"
 RUN=""; [ -z "$DISPLAY" ] && RUN="xvfb-run -a -s '-screen 0 $((1700 * SCALE))x$((1100 * SCALE))x24'"
 eval $RUN "$CODE" "$WS" --extensionDevelopmentPath="$EXT" --user-data-dir="$UD" --extensions-dir="$UD/ext" \
   --disable-workspace-trust --skip-welcome --skip-release-notes --disable-gpu --no-sandbox \
-  --remote-debugging-port=$CDP_PORT --window-size=1600,1000 $SCALE_ARG >"$OUT/code.log" 2>&1 &
+  --remote-debugging-port=$CDP_PORT --window-size=1600,1000 $SCALE_ARG $E2E_ARGS >"$OUT/code.log" 2>&1 &
 PID=$!
 set +e
 node "$HERE/$DRIVER" "$OUT" "$WS" "$UD"
