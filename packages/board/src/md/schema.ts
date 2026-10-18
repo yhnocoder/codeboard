@@ -321,7 +321,7 @@ function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
 let fnNum = new Map<string, number>();
 /** 文档 JSON → Markdown */
 export function serializeMd(doc: JSONContent): string {
-  const content = unsource(doc.content ?? []);
+  const content = escPairs(unsource(doc.content ?? []));
   const fi = content.findIndex((n) => n.type === "footnotes");
   const fns = fi >= 0 ? content.splice(fi, 1)[0] : undefined;
   fnNum = new Map();
@@ -332,12 +332,12 @@ export function serializeMd(doc: JSONContent): string {
     .map((f) => [fnNum.get(f.attrs!["data-id"]), mm.serialize({ type: "doc", content: markStarts(f.content ?? []) }).trim()] as const)
     .filter(([, body]) => body).map(([k, body]) => `[^${k}]: ${body.replace(/\n/g, "\n    ")}`);
   if (defs.length) out = `${out.trimEnd()}\n\n${defs.join("\n")}`;
-  return out.replace(/^\n+/, "").replace(/\s+$/, "");
+  return unPair(out.replace(/^\n+/, "").replace(/\s+$/, ""));
 }
 /** 一个块当成 Markdown 源码：字原样写出（不转义），重新解析时字里的 **b**、$m$、# 之类就生效（接受补全、粘贴之后用） */
 export function blockSource(n: JSONContent): string {
   rawText = true;
-  try { return mm.serialize({ type: "doc", content: unsource([n]) }).replace(/^\n+/, "").replace(/\s+$/, ""); } finally { rawText = false; }
+  try { return unPair(mm.serialize({ type: "doc", content: escPairs(unsource([n])) }).replace(/^\n+/, "").replace(/\s+$/, "")); } finally { rawText = false; }
 }
 
 // ---------- 光标处展开的 Markdown 原文（#11，编辑器里的 mdSrc 标记，见 editor/source.ts） ----------
@@ -386,6 +386,31 @@ export function unsourceBlock(b: JSONContent, keep: (from: number, to: number, p
   if (type !== b.type) attrs = undefined;
   return { ...b, type, ...(attrs ? { attrs } : { attrs: undefined }), content: out };
 }
+// ---------- 打字时的反斜杠转义（#27，编辑器里的 mdEsc 标记） ----------
+// 在编辑器里打 \* 时那个 \ 带 mdEsc 标记（光标不在旁边时不显示，Typora 一样）；写出时这一对原样写 \*，不再把 \ 当字转义成 \\\*。
+// 先换成一个私用区的字（写出时不会被转义、不影响旁边的记号），写完再换回 \X
+export const ESC_MARK = "mdEsc";
+const PAIR0 = 0xe100;
+function escPairs(ns: JSONContent[]): JSONContent[] {
+  return ns.map((n) => {
+    const cs = n.content;
+    if (!cs?.some((c) => c.marks?.some((m) => m.type === ESC_MARK))) return cs ? { ...n, content: escPairs(cs) } : n;
+    const out: JSONContent[] = [];
+    for (let i = 0; i < cs.length; i++) {
+      const c = cs[i], esc = c.type === "text" && c.marks?.some((m) => m.type === ESC_MARK);
+      if (!esc) { out.push(c); continue; }
+      const marks = c.marks!.filter((m) => m.type !== ESC_MARK), rest = { ...c, marks: marks.length ? marks : undefined };
+      const next = cs[i + 1], ch = next?.type === "text" ? next.text?.[0] : undefined;
+      if (c.text === "\\" && ch && /[!-/:-@[-`{-~]/.test(ch)) {
+        out.push({ ...next, text: String.fromCharCode(PAIR0 + ch.charCodeAt(0)) + next.text!.slice(1) });
+        i++;
+      } else out.push(rest);
+    }
+    return { ...n, content: out };
+  });
+}
+const unPair = (s: string) => s.replace(/[\uE100-\uE17F]/g, (c) => `\\${String.fromCharCode(c.charCodeAt(0) - PAIR0)}`);
+
 function unsource(ns: JSONContent[]): JSONContent[] {
   return ns.map((n) => (n.content?.some(isSrc) ? unsourceBlock(n) : n.content ? { ...n, content: unsource(n.content) } : n));
 }

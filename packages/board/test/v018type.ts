@@ -122,6 +122,9 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "strike", seq: "~~s~~ t", md: "~~s~~ t" },
       { name: "code span", seq: "`c` t", md: "`c` t" },
       { name: "inline math", seq: "$\\frac{a}{b}$ and $a$, $b$", md: "$\\frac{a}{b}$ and $a$, $b$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 3 },
+      // #27：打的 \* 照 Typora：存成 \*，光标不在旁边时 \ 不显示，在旁边时显示（能删）
+      { name: "escape hidden", seq: "a \\*not\\* b", md: "a \\*not\\* b", dom: (pg) => pg.evaluate(() => [(document.querySelector(".md-pm p") as HTMLElement).innerText, document.querySelectorAll(".md-pm em").length]), domOk: (v) => JSON.stringify(v) === '["a *not* b",0]' },
+      { name: "escape shown at caret", seq: "x \\# y{ArrowLeft}{ArrowLeft}", md: "x \\# y", dom: (pg) => pg.evaluate(() => (document.querySelector(".md-pm p") as HTMLElement).innerText), domOk: (v) => v === "x \\# y" },
       { name: "dollars stay text", seq: "$5 and $10", md: "$5 and $10" },
       { name: "display inline", seq: "x $$y$$ z", md: "x $$y$$ z" },
       { name: "link", seq: "[t](https://x.y/a) z", md: "[t](https://x.y/a) z" },

@@ -198,6 +198,18 @@ describe("typed math and block source (v0.1.8 review)", () => {
     expect(bad.type).toBe("paragraph");
     expect(bad.content?.map((c) => c.text).join("")).toBe("##hd");
   });
+  // #27：编辑器里打的 \*（\ 带 mdEsc 标记）写出来就是 \*，不会变成 \\\*；读回来是字面的 *
+  it("a typed backslash escape is written as typed", () => {
+    const esc = { type: "text", text: "\\", marks: [{ type: "mdEsc" }] };
+    const doc = (...content: object[]) => ({ type: "doc", content: [{ type: "paragraph", content }] });
+    const md = serializeMd(doc({ type: "text", text: "a " }, esc, { type: "text", text: "*not" }, esc, { type: "text", text: "* b" }));
+    expect(md).toBe("a \\*not\\* b");
+    same(md);
+    expect(JSON.stringify(parseMd(md))).not.toContain('"italic"');
+    expect(serializeMd(doc({ type: "text", text: "x " }, esc, { type: "text", text: "# y" }))).toBe("x \\# y");
+    // 后面没有字的 \：就是一个 \
+    expect(serializeMd(doc({ type: "text", text: "end " }, esc))).toBe(serializeMd(doc({ type: "text", text: "end \\" })));
+  });
   it("leaves money and $ followed by a digit alone", () => {
     same("pay $5 and $6 today");
     expect(JSON.stringify(parseMd("from $1 to $2"))).not.toContain("inlineMath");

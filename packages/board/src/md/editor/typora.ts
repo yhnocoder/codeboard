@@ -9,7 +9,8 @@ import { NodeSelection, Plugin, PluginKey, TextSelection, type Transaction } fro
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Fragment, type Mark, type Node as PMNode } from "@tiptap/pm/model";
 import { closeHistory } from "@tiptap/pm/history";
-import { blockSource, parseMd } from "../schema";
+import { ESC_MARK, blockSource, parseMd } from "../schema";
+import { Mark as TMark } from "@tiptap/core";
 import { SourceMark, headPrefix, sourcePlugin, srcRuns } from "./source";
 
 /**
@@ -177,12 +178,26 @@ function selectWord(e: Editor) {
   return true;
 }
 
+/** 打字时的转义 \X 里的那个 \（#27）：光标不在旁边时不显示；写出时原样是 \X（schema.ts 的 escPairs） */
+const EscMark = TMark.create({ name: ESC_MARK, inclusive: false, parseHTML: () => [], renderHTML: () => ["span", { class: "md-esc" }, 0] });
+const escKey = new PluginKey("cbEsc");
+/** 光标不在旁边（\ 前、\ 和字之间、字后面）的转义 \：藏起来 */
+function escDecos(state: import("@tiptap/pm/state").EditorState): DecorationSet | null {
+  const type = state.schema.marks[ESC_MARK], h = state.selection.head, ds: Decoration[] = [];
+  state.doc.descendants((n, pos) => {
+    if (!n.isText) return true;
+    if (type.isInSet(n.marks) && !(state.selection.empty && h >= pos && h <= pos + n.nodeSize + 1)) ds.push(Decoration.inline(pos, pos + n.nodeSize, { class: "md-esch" }));
+    return false;
+  });
+  return ds.length ? DecorationSet.create(state.doc, ds) : null;
+}
+
 export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => void; openLink: (e: Editor) => void }>({
   name: "cbTypora",
   // 规则要排在 TipTap 自带的（代码块、任务）前面；Tab / Esc 还是灰字先拿（1000）
   priority: 900,
   addOptions() { return { openMath: () => {}, openLink: () => {} }; },
-  addExtensions() { return [SourceMark]; },
+  addExtensions() { return [SourceMark, EscMark]; },
 
   addInputRules() {
     const s = this.editor.schema;
@@ -213,6 +228,13 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
         },
       });
     return [
+      // 反斜杠后面打标点：这一对是转义（#27）。\ 带 mdEsc 标记（平时不显示，写出时原样 \X）；\ 自己是被转义的那个字时不算
+      // （这一版 TipTap 先把打的字插进去了，range 已经包含它）
+      new InputRule({ find: /\\[!-/:-@[-`{-~]$/, handler: ({ state, range }) => {
+        const esc = s.marks[ESC_MARK], at = range.from;
+        if (at > 0 && state.doc.rangeHasMark(at - 1, at, esc)) return null;
+        state.tr.addMark(at, at + 1, esc.create());
+      } }),
       // 行内公式：$$m$$ 是行内的大号公式（单独一行时回车变公式块）；$m$ 照 Pandoc：$ 后、结尾 $ 前都不是空白
       new InputRule({ find: /(?:^|[^$\\])(\$\$([^$\n]+?)\$\$)$/, handler: ({ range, match, chain }) => {
         const from = range.from + (match[0].length - match[1].length);
@@ -433,6 +455,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
   },
 
   addProseMirrorPlugins() {
-    return [sourcePlugin(), new Plugin({ key: markerKey, props: { decorations: markerDecos } })];
+    return [sourcePlugin(), new Plugin({ key: markerKey, props: { decorations: markerDecos } }), new Plugin({ key: escKey, props: { decorations: escDecos } })];
   },
 });
