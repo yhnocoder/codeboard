@@ -10,6 +10,7 @@ import { THEMES_V17 } from "./scenarios-themes";
 import { V018MD } from "./v018md";
 import { CODEEDIT } from "./scenarios-codeedit";
 import { V018TYPE } from "./v018type";
+import { V018TYPESEQ } from "./v018typeseq";
 import { V018REVIEW } from "./v018review";
 import { SHARED } from "./scenarios-shared";
 import { SUBBOARDS } from "./scenarios-subboards";
@@ -47,6 +48,7 @@ const S: Record<string, () => Promise<void>> = {
   /** 旧名字：v0.1.8 的 textarea 编辑换成 CodeMirror 后由 codeedit 接着查 */
   v18codeedit: () => CODEEDIT.codeedit(),
   ...V018TYPE,
+  ...V018TYPESEQ,
   ...V018REVIEW,
   ...SHARED,
   ...SUBBOARDS,

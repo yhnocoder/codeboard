@@ -87,7 +87,10 @@ describe("typing rule: re-parse what is before the caret (retype)", () => {
     }
   });
   it("leaves text the parser keeps literal", () => {
-    for (const [md, ch] of [["$5 and ", "$"], ["a ~ b ", "~"], ["$$x", "$"], ["x :nosuch", ":"]] as const) expect(type(md, ch).changed, md).toBe(false);
+    for (const [md, ch] of [["$5 and ", "$"], ["a ~ b ", "~"], ["$$x", "$"], ["x :nosuch", ":"], ["a 1:100", ":"]] as const) expect(type(md, ch).changed, md).toBe(false);
+  });
+  it("waits while a longer run of the same marker is still being typed", () => {
+    for (const [md, ch] of [["**b", "*"], ["~~ab", "~"], ["***bi*", "*"], ["***bi", "*"]] as const) expect(type(md, ch).changed, md).toBe(false);
   });
   it("keeps text after the caret and typed escapes", () => {
     const a = type("x ==a= tail", "=", 5);
@@ -101,6 +104,15 @@ describe("typing rule: re-parse what is before the caret (retype)", () => {
     const after = s.apply(tr);
     expect(mdOf(after)).toBe("a\\*b ==c==");
     expect(after.doc.rangeHasMark(0, after.doc.content.size, schema.marks.mdEsc)).toBe(true);
+  });
+  it("only converts the span ending at the caret (text undone to plain stays plain)", () => {
+    const a = type("$a$ and $b", "$");
+    expect(a.changed).toBe(true);
+    expect(mdOf(a.s)).toBe("\\$a$ and $b$");
+    expect(type("==a== x ==b=", "=").s.doc.firstChild!.firstChild!.text).toBe("==a== x ");
+  });
+  it("leaves bold, italic and strike to TipTap's own rules", () => {
+    for (const [md, ch] of [["x **b*", "*"], ["x *i", "*"], ["x ~~s~", "~"], ["x ~a b", "~"]] as const) expect(type(md, ch).changed, md).toBe(false);
   });
   it("does not create footnotes", () => {
     expect(type("see [[x]] and [^1", "]").changed).toBe(false);

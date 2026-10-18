@@ -1,6 +1,6 @@
 // 照 Typora 的“边写边变”：
-// - 行内：打完收尾的记号就变。解析器（schema.ts）能判断的都不另写规则，这一段光标前面的内容重解析一遍（retype）；
-//   *i* _i_ ~~s~~ 用 TipTap 自带的（_ 在解析时不当强调），`c` 按反引号的长度配对（codeSpanAtEnd）
+// - 行内：打完收尾的记号就变。解析器（schema.ts）能判断的不另写规则：刚收尾、到光标为止的那一段按解析器解析（retype）；
+//   **b** *i* _i_ ~~s~~ 用 TipTap 自带的，`c` 按反引号的长度配对（codeSpanAtEnd）
 // - 块：# > - 1. [ ] 加空格用 TipTap 自带的；回车时整段解析出来是代码块、分隔线、目录、公式块的就换成它（enterBlock）；
 //   $$ / === / <details> / |表|头| 加回车另有规则（解析器认不出来）
 // - 光标移进格式文字、标题、行内公式时展开成能改的 Markdown 原文（source.ts）；还没展开时（刚打完）照旧把记号画在两头（装饰）
@@ -9,7 +9,7 @@
 import { Extension, InputRule, Mark as TMark, wrappingInputRule, type Editor } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
+import { Fragment, type Mark, type Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { closeHistory } from "@tiptap/pm/history";
 import { ESC_MARK, MARK_MD, blockSource, parseSource } from "../schema";
 import { SourceMark, headPrefix, sourcePlugin, srcRuns } from "./source";
@@ -55,32 +55,61 @@ export function reconvert(tr: Transaction): Transaction {
   return tr;
 }
 
-/** 能收尾一段行内语法的字 → 它前面一定有的开头（没有就不用重解析） */
-const CLOSERS: Record<string, string> = { "*": "*", "~": "~", "=": "==", "^": "^", "$": "$", ")": "](", ">": "<", ":": ":", "]": "[[" };
+/** 能收尾一段行内语法的字 → 那段语法开头可能的字 */
+const OPENERS: Record<string, string> = { "*": "*", "~": "~", "=": "=", "^": "^", "$": "$", ")": "[!", ">": "<", ":": ":", "]": "[" };
+/** 这几种格式打字时用 TipTap 自带的规则（**b** *i* _i_ ~~s~~）；***粗斜体*** 这里变 */
+const NATIVE = new Set(["bold", "italic", "strike"]);
 const hasFootnote = (f: Fragment) => { let y = false; f.descendants((n) => { if (n.type.name === "footnoteReference") y = true; }); return y; };
 
 /**
- * 打字时的行内转换：光标所在这一段、光标前面的内容当 Markdown 重解析，变了就换掉（同一个 transaction，⌘Z 撤回成打的字）。
- * 光标后面的不动（自动补的右括号还在那里）；打字时转义的 \X 照旧（blockSource / parseSource）；
- * 最后一个脚注引用之前的不动，解析出新的脚注引用也不要（编号和文末的脚注列表连在一起，脚注有自己的规则）
+ * cut（开头字前面一个字 + 从开头字到光标）解析出来，前面那个字照旧、后面正好是一整段新格式时给这一段：
+ * 一个原子节点（公式、图片、表情、引用），或者都带着同一个新的格式。前面那个字只是给解析器看左边（1:100: 不是表情）
  */
-export function retype(tr: Transaction): boolean {
-  const sel = tr.selection, $c = sel.$head, block = $c.parent;
-  if (!sel.empty || !block.isTextblock || block.type.spec.code || srcRuns(block).length) return false;
-  let from = 0;
-  block.forEach((n, off) => { if (n.type.name === "footnoteReference" && off < $c.parentOffset) from = off + n.nodeSize; });
-  const before = block.content.cut(from, $c.parentOffset);
-  if (!before.size) return false;
-  const ns = parseSource(blockSource({ type: "paragraph", content: before.toJSON() }), true);
-  if (!ns) return false;
-  let frag: Fragment;
-  try { frag = Fragment.fromArray(ns.map((j) => tr.doc.type.schema.nodeFromJSON(j))); } catch { return false; }
-  if (frag.eq(before) || hasFootnote(frag)) return false;
-  const start = $c.start() + from, marks = $c.marks();
-  tr.replaceWith(start, $c.pos, frag);
-  tr.setSelection(TextSelection.create(tr.doc, start + frag.size));
-  tr.setStoredMarks(marks); // 接着打的字不带刚变出来的格式
-  return true;
+function spanOf(ctx: Fragment, cut: Fragment, schema: Schema): Fragment | null {
+  const ns = parseSource(blockSource({ type: "paragraph", content: ctx.append(cut).toJSON() }), true);
+  if (!ns?.length) return null;
+  let all: Fragment;
+  try { all = Fragment.fromArray(ns.map((j) => schema.nodeFromJSON(j))); } catch { return null; }
+  if (!all.cut(0, ctx.size).eq(ctx)) return null;
+  const f = all.cut(ctx.size);
+  if (!f.size || f.eq(cut) || hasFootnote(f)) return null;
+  if (f.childCount === 1 && !f.firstChild!.isText) return f;
+  let common: readonly Mark[] | null = null;
+  f.forEach((n) => { common = n.isText ? (common ?? n.marks).filter((m) => m.isInSet(n.marks)) : []; });
+  const fresh = (common as readonly Mark[] | null ?? []).filter((m) => !m.isInSet(cut.firstChild!.marks)).map((m) => m.type.name);
+  if (!fresh.length) return null;
+  if (fresh.every((n) => NATIVE.has(n)) && !(fresh.includes("bold") && fresh.includes("italic"))) return null;
+  return f;
+}
+
+/**
+ * 打字时的行内转换（==hl== H~2~ x^2^ $m$ [t](u) ![a](u) <u>u</u> :e: [[R]] ***bi***）：只看刚打完收尾记号、到光标为止的那一段，
+ * 和以前一条条的规则一样——从左往右找一个开头字，从它到光标解析出来正好是一整段新格式就换掉（同一个 transaction，⌘Z 撤回成打的字）。
+ * 开头字前面紧挨着同样的字或 \ 时不算（**b* 里的 *b*、~~s~ 里的 ~s~、\$）；前面撤回成字的不会再变；
+ * 光标后面的不动（自动补的右括号）；最后一个脚注引用之前的不动，解析出脚注引用也不要。
+ * pos：刚打的字后面（打字规则给的 range.to）；盖过自动补的右括号时光标还在那个字前面，不能看光标
+ */
+export function retype(tr: Transaction, pos = tr.selection.head): boolean {
+  const sel = tr.selection, $c = tr.doc.resolve(pos), block = $c.parent, end = $c.parentOffset;
+  if (!sel.empty || !block.isTextblock || block.type.spec.code || srcRuns(block).length || end < 2) return false;
+  const at = (i: number) => block.textBetween(i, i + 1, undefined, "\ufffc");
+  const typed = at(end - 1), opens = OPENERS[typed];
+  if (!opens) return false;
+  let lo = 0;
+  block.forEach((n, off) => { if (n.type.name === "footnoteReference" && off < end) lo = off + n.nodeSize; });
+  for (let i = lo; i < end - 1; i++) {
+    if (!opens.includes(at(i))) continue;
+    const prev = i > lo ? at(i - 1) : "";
+    if (prev === typed || prev === "\\") continue;
+    const span = spanOf(block.content.cut(Math.max(lo, i - 1), i), block.content.cut(i, end), tr.doc.type.schema);
+    if (!span) continue;
+    const start = $c.start() + i, marks = $c.marks();
+    tr.replaceWith(start, $c.pos, span);
+    tr.setSelection(TextSelection.create(tr.doc, start + span.size));
+    tr.setStoredMarks(marks); // 接着打的字不带刚变出来的格式
+    return true;
+  }
+  return false;
 }
 
 /** 回车：整段（光标在段尾）解析出来是一个不是字的块（代码块、分隔线、目录、公式块）时换成它。缩进的代码块打字时不变（Typora 一样） */
@@ -281,8 +310,8 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       } }),
       // 行内格式、公式、链接、图片、表情、[[引用]]：打完收尾的字就重解析（retype）
       new InputRule({
-        find: (text) => { const c = text.slice(-1), o = CLOSERS[c]; return o && text.slice(0, -1).includes(o) ? { index: text.length - 1, text: c } : null; },
-        handler: ({ state }) => (retype(state.tr) ? undefined : null),
+        find: (text) => { const c = text.slice(-1), o = OPENERS[c]; return o && [...o].some((x) => text.slice(0, -1).includes(x)) ? { index: text.length - 1, text: c } : null; },
+        handler: ({ state, range }) => (retype(state.tr, range.to) ? undefined : null),
       }),
       // 行内代码：反引号一串配一串一样长的（``a ` b`` 里的单个 ` 是字）。TipTap 自带的会把 `` 里的 ` y` 先转掉，关掉了
       new InputRule({ find: codeSpanAtEnd, handler: ({ state, range, match }) => {
