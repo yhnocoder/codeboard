@@ -560,6 +560,19 @@ describe("two windows on one storage folder", () => {
   });
 });
 
+describe("removing boards", () => {
+  it("removing a board moves it to the trash and says which board went", async () => {
+    const { fs, store } = setup();
+    const b = await store.create("Gone");
+    const gone: string[] = [];
+    store.onDidRemoveBoard((id) => gone.push(id));
+    await store.remove(b.id);
+    expect(gone).toEqual([b.id]);
+    expect(fs.files.has(`${ROOT}/${b.id}.json`)).toBe(false);
+    expect([...fs.files.keys()].some((k) => k.startsWith(`${ROOT}/.trash/${b.id}.`))).toBe(true);
+  });
+});
+
 describe("writing boards to disk", () => {
   const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
   const at = { x: 0, y: 0, w: 1 };

@@ -3,7 +3,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
+import { cutCrumbs, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
 import type { CardClip } from "@codeboard/core/storage";
 import type { Storage } from "./storage";
 import { BoardPanel, type BoardHost, type BoardView } from "./boards";
@@ -81,6 +81,15 @@ export class Panels implements BoardHost {
         if (p.id === e.from || !e.boards.includes(p.id)) continue;
         p.board = store.peek(p.id);
         p.post({ type: "sharedGone", cards: [e.card] });
+      }
+    }));
+    // 删掉的白板在面包屑上：那几层回不去了，剪掉
+    ctx.subscriptions.push(store.onDidRemoveBoard((id) => {
+      for (const p of this.all()) {
+        const c = cutCrumbs(p.crumbs, p.cams, id);
+        if (!c) continue;
+        p.crumbs = c.crumbs; p.cams = c.cams;
+        p.post({ type: "crumbs", crumbs: c.crumbs });
       }
     }));
     // 白板的改动写不下去：存储过一会儿自己重试，开着它的面板说一声

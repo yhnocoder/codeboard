@@ -177,6 +177,8 @@ export type HostToBoard =
   | { type: "merged"; patch: BoardPatch; views?: Record<string, SegView> }
   /** 这块白板上的子白板的骨架（变了的那几块；null = 那块白板没了）。子白板存盘后宿主重算，防抖 */
   | { type: "skeletons"; boards: Record<string, Skeleton | null> }
+  /** 面包屑变了（上面的一块白板删掉了，回不去了）：整个换掉 */
+  | { type: "crumbs"; crumbs: Crumb[] }
   /** 一次运行（Capture Run 跑完，或 Apply Run… 选的）：白板给对上的 Call 箭头挂 observed 证据和实参，没对上的列出来 */
   | { type: "run"; apply: RunApply }
   /** 有 Variant 的卡（线框 07）：Variant 的代码变了（保存、分支 rebase、PR 更新）、合进了上游、上游最新的代码。只发有变化的卡 */

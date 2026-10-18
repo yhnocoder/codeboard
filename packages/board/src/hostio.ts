@@ -5,7 +5,7 @@ import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs
 import { state, setState, markSaved, setBoard, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner, setWalk } from "./state/ui";
-import { resetSubboards, putSkels } from "./state/subboards";
+import { resetSubboards, putSkels, setCrumbs } from "./state/subboards";
 import * as A from "./actions";
 import { choose } from "./ui/Menu";
 import { setAssetBase } from "./md/render";
@@ -44,6 +44,7 @@ export function onHost(m: HostToBoard) {
       break;
     }
     case "skeletons": putSkels(m.boards); break;
+    case "crumbs": setCrumbs(m.crumbs); break;
     case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
     case "stale": {
       // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移，钉的版本换成找到它的那个版本）。

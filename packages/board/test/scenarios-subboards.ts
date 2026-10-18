@@ -3,7 +3,7 @@
 // Usage: node packages/board/test/run-harness.mjs subboards [--light]   screenshots: test-out/harness/subboards-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
+import { cutCrumbs, emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "../../../extensions/vscode/src/nodefs";
 import { open, shot, symCard, findSym, viewOf, put, OUT, type Host } from "./harness";
@@ -49,6 +49,8 @@ export async function subHost(start: Board, others: Board[]) {
     }, 120);
   };
   store.onDidSave((b) => { dirty.add(b.id); push(); });
+  // like Panels: a deleted board on the breadcrumbs can't be gone back to
+  store.onDidRemoveBoard((id) => { const c = cutCrumbs(crumbs, cams, id); if (c) { crumbs = c.crumbs; cams = c.cams; void h.post({ type: "crumbs", crumbs }); } });
   store.onDidChange(() => { all = true; push(); });
   const init = async (walk?: unknown, cam?: Camera) => {
     const b = (await store.load(cur))!;

@@ -67,6 +67,9 @@ export class Storage {
   private mergedEmitter = new Emitter<{ id: string; patch: BoardPatch }>();
   /** 写盘时合并进了另一个窗口对这块白板文件的改动：开着它的面板跟着换上（patch = 从它发来的样子到合并后的样子） */
   readonly onDidMerge = this.mergedEmitter.event;
+  private removedBoard = new Emitter<string>();
+  /** 一块白板删掉了（放进了 .trash）：面包屑里有它的面板回不去了 */
+  readonly onDidRemoveBoard = this.removedBoard.event;
   /** 卡库的缓存（按修改时间） */
   private lib = new Map<string, { mtime: number; sc: SharedCardFile }>();
   /** 共享的每一项（卡、Sidenote）最后是哪块白板写的：撤销时别的白板后来改过的项不撤（只在内存里，重启后撤销栈也没了） */
@@ -522,6 +525,7 @@ export class Storage {
       await fs.rename(e.file, fs.join(trash, `${id}.${Date.now()}.json`)).catch(() => fs.rm(e.file));
       this.cache.delete(id);
       this.changed.fire();
+      this.removedBoard.fire(id);
     });
   }
 
