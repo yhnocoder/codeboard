@@ -124,11 +124,12 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "undo fence rule", seq: "```js{Enter}{Control+z}", md: /^```js$|^\\`\\`\\`js$/, dom: count(".md-pm pre"), domOk: (n) => n === 0 },
       // 标题行首退格：变回段落
       // （刚在空 Note 里打完字马上按 Home，headless Chromium 里偶尔落回行尾：先停一下）
-      { name: "heading backspace", seq: "## h", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "h" },
+      // Home 之后要等 ProseMirror 收到 selectionchange 再按 Backspace（keys 里等），不然 Backspace 按的还是行尾的光标
+      { name: "heading backspace", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "h" },
       { name: "task toggle", seq: "- [ ] t", after: async (pg) => { await pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first().click(); await pg.waitForTimeout(100); }, md: "- [x] t" },
-      { name: "quote backspace", seq: "> q", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "q" },
-      { name: "list backspace", seq: "- a{Enter}b", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "- a\n\nb" },
-      { name: "task backspace", seq: "- [ ] t", after: async (pg) => { await pg.waitForTimeout(300); await pg.keyboard.press("Home"); await pg.keyboard.press("Backspace"); }, md: "t" },
+      { name: "quote backspace", seq: "> q", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "q" },
+      { name: "list backspace", seq: "- a{Enter}b", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "- a\n\nb" },
+      { name: "task backspace", seq: "- [ ] t", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "t" },
       { name: "home in text", init: "hello", seq: " ab{Home}x", md: "xhello ab" },
       // 光标在格式里：显示记号
       { name: "markers bold", seq: "x **bo**{ArrowLeft}", md: "x **bo**", dom: marks, domOk: (v) => JSON.stringify(v) === '["**","**"]' },
