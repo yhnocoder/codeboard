@@ -98,10 +98,10 @@ export const viewTracked = viewSig;
 export const view = () => viewport;
 const SAFE = { l: 24, r: 24, t: 60, b: 64 };
 
-/** 能放下 r 的镜头（不超过 maxZ） */
-export function fitRect(r: Rect, maxZ = 1) {
+/** 能放下 r 的镜头（不超过 maxZ，不小于 minZ：再小放不下就居中、四边各裁一点） */
+export function fitRect(r: Rect, maxZ = 1, minZ = ZMIN) {
   const { w, h } = viewport;
-  const z = Math.max(ZMIN, Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w, (h - SAFE.t - SAFE.b) / r.h));
+  const z = Math.max(minZ, Math.min(maxZ, (w - SAFE.l - SAFE.r) / r.w, (h - SAFE.t - SAFE.b) / r.h));
   return { z, x: SAFE.l + (w - SAFE.l - SAFE.r - r.w * z) / 2 - r.x * z, y: SAFE.t + (h - SAFE.t - SAFE.b - r.h * z) / 2 - r.y * z };
 }
 /** 很高的东西：保证宽度放得下，顶部对齐 */
@@ -153,9 +153,8 @@ let heldZ = 1;
 export const stillZ = createMemo(() => (camMoving() ? heldZ : (heldZ = cam.z)));
 import { state } from "./store";
 export type Lod = "full" | "overview" | "map";
-export const lod = createMemo<Lod>(() => {
-  const s = state.host.settings;
-  return cam.z >= (s?.zoomOverview ?? 0.6) ? "full" : cam.z >= (s?.zoomMap ?? 0.25) ? "overview" : "map";
-});
+/** 低于这个比例就是概览（代码变灰条）：自动缩小镜头不缩过它 */
+export const overviewZ = () => state.host.settings?.zoomOverview ?? 0.6;
+export const lod = createMemo<Lod>(() => cam.z >= overviewZ() ? "full" : cam.z >= (state.host.settings?.zoomMap ?? 0.25) ? "overview" : "map");
 /** 缩得很小时不弹定义预览、旁注（#12） */
 export const quietHover = () => lod() !== "full";

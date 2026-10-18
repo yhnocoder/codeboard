@@ -15,6 +15,7 @@ const run = async (name: string, f: (res: Record<string, unknown>) => Promise<bo
 
 export const UX: Record<string, () => Promise<void>> = {
   "dock-fits-narrow-board": () => run("dock-fits-narrow-board", dockFits),
+  "expand-keeps-call-line-in-view": () => run("expand-keeps-call-line-in-view", expandFollow),
 };
 
 /** 底部工具条：每个宽度都是一行，彼此不重叠，也不出窗口 */
@@ -46,5 +47,35 @@ async function dockFits(res: Record<string, unknown>) {
     await shot(h, `ux-dock-${w}`);
     await h.page.context().browser()!.close();
   }
+  return ok;
+}
+
+const callEl = (h: Host, card: string, name: string) => h.page.locator(`.card[data-id="${card}"] .src .call`, { hasText: new RegExp(`^${name}$`) }).first();
+const zoomOf = (h: Host) => h.page.evaluate(() => parseInt(document.querySelector(".zoom")!.textContent!) / 100);
+/** 屏幕上的矩形在不在视口里（ys：只看顶部这么高） */
+const inView = (b: { x: number; y: number; width: number; height: number } | null, vw: number, vh: number, top = Infinity) =>
+  !!b && b.x >= 0 && b.y >= 0 && b.x + b.width <= vw && b.y + Math.min(b.height, top) <= vh;
+
+/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，出发的那一行和新卡都在视野里，缩放不低于概览 */
+async function expandFollow(res: Record<string, unknown>) {
+  const b = emptyBoard("bE", "expand");
+  const step = nv("LLMEngine.step"); put(b, step, 40, 80, 480);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const W = 560, H = 800;
+  const h = await open({ board: b, w: W, h: H });
+  await wait(h, 500);
+  let ok = true;
+  for (const name of ["schedule", "postprocess"]) {
+    const n0 = h.board().cards.length;
+    await callEl(h, step.id, name).click(); await wait(h, 1400);
+    const nid = h.board().cards[n0]?.id;
+    const line = await callEl(h, step.id, name).boundingBox();
+    const card = await h.page.locator(`.card[data-id="${nid}"]`).boundingBox();
+    const z = await zoomOf(h);
+    res[name] = { line: inView(line, W, H), card: inView(card, W, H, 120), z };
+    if (!nid || !inView(line, W, H) || !inView(card, W, H, 120) || z < 0.6) ok = false;
+  }
+  await shot(h, "ux-expand-follow");
+  await h.page.context().browser()!.close();
   return ok;
 }

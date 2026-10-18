@@ -8,7 +8,8 @@ import {
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
 import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
-import { camTo, camTarget, worldView, fitRect, fitTop, isVisible, union } from "../state/camera";
+import { camTo, camTarget, worldView, fitRect, fitTop, isVisible, union, overviewZ } from "../state/camera";
+import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
 import { send, ask } from "../host";
@@ -140,20 +141,29 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);
   requestAnimationFrame(() => {
-    const r = hostRect(id)!;
-    if (!isVisible(r)) {
-      const p = rectOf(host);
-      const pr = { x: p.x, y: Math.max(p.y, r.y - 260), w: p.w, h: 60 };
-      const u = union(pr, { ...r, h: Math.min(r.h, 420) });
-      const f = fitRect(u, camTarget().z);
-      camTo(f.x, f.y, f.z);
-    }
+    followExpanded(cardId, segId, call.line, id);
     const from = headPoint(cardId);
     popCard(id, from ?? undefined);
   });
   if (pushed.length) slideFrom(pushed.map((q) => ({ id: q.id, ox: 0, oy: -q.dy })));
 }
 
+/**
+ * 展开后镜头跟过去：出发的那一行和新卡都要看得见。放不下就缩小，但不缩到概览以下（代码还能读）；
+ * 概览比例下还放不下，先保证那一行和新卡的顶部
+ */
+function followExpanded(cardId: string, segId: string, line: number, id: string) {
+  const r = hostRect(id), p = hostRect(cardId);
+  if (!r || !p) return;
+  const y = lineY(cardId, segId, line)?.y ?? p.y + 20;
+  const from = { x: p.x, y: y - 14, w: p.w, h: 28 };
+  const c = camTarget();
+  if (isVisible(from, c) && isVisible(r, c)) return;
+  const floor = Math.min(c.z, overviewZ());
+  let f = fitRect(union(from, r), c.z);
+  if (f.z < floor) f = fitRect(union(from, { ...r, h: Math.min(r.h, 160) }), c.z, floor);
+  camTo(f.x, f.y, f.z);
+}
 
 /** Call 标记：点的是这一行的哪个调用、在不在循环里、变量候选 */
 export function callMark(call: CallSpan, cands?: Var[]): NonNullable<Link["call"]> {
