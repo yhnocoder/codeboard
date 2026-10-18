@@ -5,7 +5,7 @@ import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
+import { cardRows, commonIndent, shownText, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
@@ -107,18 +107,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
    * 片段整体缩得很深（方法里一段 for 循环）：把所有行共有的缩进藏起来，代码靠左；左边留几根细竖线表示藏了几层。
    * 只用 text-indent 往左挪，文字本身不动：列号、调用、变量高亮照旧
    */
-  const ded = createMemo(() => {
-    let m = Infinity;
-    for (const r of rows()) {
-      if (r.t !== "line") continue;
-      const s = segById(r.seg);
-      const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ");
-      if (!t.trim()) continue;
-      m = Math.min(m, t.length - t.trimStart().length);
-      if (m < 2) return 0;
-    }
-    return m === Infinity ? 0 : m;
-  });
+  const ded = createMemo(() => commonIndent(rows().flatMap((r) => {
+    const s = r.t === "line" ? segById(r.seg) : undefined;
+    return s && r.t === "line" ? [shownText(s, r.line, undefined)] : [];
+  })));
   const overviewMask = createMemo(() => {
     if ((!warm() && lod() !== "overview") || !srcEl) return undefined;
     // 只用已经量好的行位置（ys，相对 .code），不在这里读 DOM：切到概览档时 241 张卡挨个读会让浏览器每张卡排一次版

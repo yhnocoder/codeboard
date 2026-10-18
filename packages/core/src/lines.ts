@@ -79,6 +79,28 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
 
 const shortFn = (q: string) => `def ${q.split(".").pop()}`;
 
+const unesc = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+/**
+ * 一行显示出来的文字（tab 展开成 4 格）：Hide Comments 时去掉行尾注释（和渲染用的 bare 一样长）。
+ * Fit Content 按它量宽，所以藏掉的东西不算
+ */
+export function shownText(s: Pick<Segment, "start" | "text">, line: number, v: SegView | undefined, hideComments?: boolean): string {
+  let t = s.text[line - s.start] ?? "";
+  const bare = hideComments ? v?.bare?.[line] : undefined;
+  if (bare !== undefined) t = t.slice(0, unesc(bare).length);
+  return t.replace(/\t/g, "    ");
+}
+/** 所有非空行共有的缩进（不到 2 格算 0）：缩得很深的片段把它藏起来，代码靠左 */
+export function commonIndent(texts: Iterable<string>): number {
+  let m = Infinity;
+  for (const t of texts) {
+    if (!t.trim()) continue;
+    m = Math.min(m, t.length - t.trimStart().length);
+    if (m < 2) return 0;
+  }
+  return m === Infinity ? 0 : m;
+}
+
 /**
  * 一行在渲染结果里落在哪一行：显示着就是它自己；被手动隐藏就落在省略条上；
  * 被开关藏掉就落在下一条可见行（没有就上一条）。

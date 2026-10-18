@@ -3,11 +3,14 @@
 //  dataclass — nano-vllm utils/context.py: a fields-only @dataclass class card shows its code (decorator + fields), not an empty member list
 //  segsep   — multi-segment cards show every segment boundary (⋯ N lines / a divider); a class card merges into one, segments by line
 //  varmenu  — Add Variant menu: a long worktree path does not wrap "Other Worktree", it is cut with an ellipsis
-// Usage: node packages/board/test/run-harness.mjs qpop dataclass segsep varmenu   screenshots: test-out/harness/fixq-*.png (SHOTS_DIR=… copies them)
+//  fithide  — Fit Content on a card with Hide Docstrings / Comments / Blank Lines on: the width follows only the lines shown
+//             (torch Module.get_parameter: the long docstring line and a long trailing comment must not count)
+// Usage: node packages/board/test/run-harness.mjs qpop dataclass segsep varmenu fithide   screenshots: test-out/harness/fixq-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, THEMES, emptyBoard, type CodeCard } from "@codeboard/core";
-import { open, shot, put, symCard, findSym, OUT, REPO, type Host } from "./harness";
+import { open, shot, put, symCard, findSym, files, ready, OUT, REPO, type Host } from "./harness";
+import { analyze } from "@codeboard/core/analysis";
 import { uid, type Segment } from "@codeboard/core";
 
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
@@ -31,6 +34,7 @@ export const FIXQ: Record<string, () => Promise<void>> = {
   dataclass: () => run("dataclass", dataclass),
   varmenu: () => run("varmenu", varmenu),
   segsep: () => run("segsep", segsep),
+  fithide: () => run("fithide", fithide),
 };
 
 const setTheme = async (h: Host, theme: string, light: boolean) => {
@@ -189,4 +193,68 @@ async function segsep(res: Record<string, unknown>) {
     && eq(res.touch, ["set_context"])
     && res.mergeDisabled === false && eq(res.merged, ["Context:5-14", "get_context:18-19", "set_context:21-23", "reset_context:25-27"])
     && eq(res.mergedSep, ["⋯ 3 lines hidden (15–17)", "⋯ 1 line hidden (20)", "⋯ 1 line hidden (24)"]) && res.mergedMembers === 0;
+}
+
+// torch/nn/modules/module.py, Module.get_parameter (trimmed): the docstring's first line is the longest line of the method,
+// one code line has a long trailing comment, and the body sits 8 spaces deep (the card hides 4 of them)
+const GET_PARAMETER = `class Module:
+    def get_parameter(self, target: str) -> "Parameter":
+        """Return the parameter given by \`\`target\`\` if it exists, otherwise throw an error.
+
+        See the docstring for \`\`get_submodule\`\` for a more detailed
+        explanation of this method's functionality as well as how to
+        correctly specify \`\`target\`\`.
+        """
+        module_path, _, param_name = target.rpartition(".")
+
+        # look up the module that owns the parameter; get_submodule raises if any part of the path is missing
+        mod = self.get_submodule(module_path)
+
+        if not hasattr(mod, param_name):
+            raise AttributeError(param_name)  # the trailing comment is long enough to be the widest line if it counted
+
+        param = getattr(mod, param_name)
+
+        if not isinstance(param, torch.nn.Parameter):
+            raise AttributeError("not an nn.Parameter")
+
+        return param
+`;
+
+async function fithide(res: Record<string, unknown>) {
+  await ready();
+  const file = "torch/nn/modules/module.py";
+  const text = GET_PARAMETER;
+  const a = analyze("python", text);
+  files.set(file, { text: text.split("\n"), a });
+  const sym = a.symbols.find((s) => s.qual === "Module.get_parameter")!;
+  const c = symCard(file, sym);
+  c.hide = { docstrings: true, comments: true, blank: true };
+  const b = emptyBoard("bF", "torch · module");
+  put(b, c, 60, 60, 500);
+  const h = await open({ board: b, light: true, w: 1400, h: 900 }), page = h.page;
+  await wait(h, 900);
+  const card = page.locator(`.card[data-id="${c.id}"]`);
+  await card.locator(".chead").click({ position: { x: 200, y: 10 }, button: "right" }); await wait(h, 400);
+  await page.locator(".ctx button", { hasText: "Fit Content" }).click(); await wait(h, 700);
+  res.w = await card.evaluate((el) => (el as HTMLElement).offsetWidth); // the board's copy reaches the host later (patches are batched)
+  // where the shown text really ends: the right edge of the rendered text of every code row, in board units, plus .src's right padding
+  const m = await card.evaluate((el) => {
+    const r0 = el.getBoundingClientRect(), z = r0.width / (el as HTMLElement).offsetWidth;
+    const src = el.querySelector(".src") as HTMLElement;
+    let right = 0;
+    for (const l of src.querySelectorAll(":scope > .l")) {
+      const r = document.createRange(); r.selectNodeContents(l);
+      for (const x of r.getClientRects()) right = Math.max(right, (x.right - r0.left) / z);
+    }
+    const sc = el.querySelector(".cbody") as HTMLElement;
+    return { rows: src.querySelectorAll(":scope > .l").length, textRight: Math.round(right), pad: parseFloat(getComputedStyle(src).paddingRight), overflow: sc.scrollWidth - sc.clientWidth };
+  });
+  Object.assign(res, m);
+  const want = m.textRight + m.pad;
+  res.want = Math.round(want);
+  await shotTo(h, "fixq-fithide");
+  await page.context().browser()!.close();
+  // fits the shown lines: no wider than the longest shown line plus padding (a few px of slack), and nothing cut off
+  return m.rows === 9 && typeof res.w === "number" && Math.abs((res.w as number) - want) <= 12 && m.overflow <= 1;
 }
