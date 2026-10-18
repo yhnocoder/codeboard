@@ -552,6 +552,10 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
 
 export function installKeys() {
+  // 点白板任何地方都要拿到键盘焦点。卡片标题、画布、连线等的 pointerdown 调了 preventDefault（拖动时不选字），这也取消了
+  // mousedown 的默认动作（给这个 iframe 焦点）：VS Code 里焦点就留在旁边的代码编辑器，按 Backspace 删的是那里选中的字。
+  // 捕获阶段先把焦点要过来（白板已经有焦点时什么都不做，不影响输入框、编辑器里的焦点）
+  window.addEventListener("pointerdown", () => { if (!document.hasFocus()) window.focus(); }, true);
   window.addEventListener("keydown", (e) => {
     if ((e.key === "Meta" || e.key === "Control")) {
       // 按住 ⌘：正在显示的弹窗固定下来

@@ -223,6 +223,42 @@ async function addselStep(page) {
   await shot(page, "16-addsel-one-card");
 }
 
+// Clicking a card takes keyboard focus from a file editor: select text in context.py, click a card (its header, then its code),
+// press Backspace. The card is deleted and the file is untouched. E2E_ONLY=cardfocus runs only this step
+async function cardfocusStep(page) {
+  // context.py on the left, the board on the right (run alone, the board opens in the file's group: move it)
+  await openFile(page, "context.py", 18);
+  await command(page, "CodeBoard: Open Board");
+  if (await page.locator(".editor-group-container").count() < 2) await command(page, "View: Move Editor into Right Group");
+  let f = await boardFrame(page); await sleep(1000);
+  if (!(await card(f, "get_context").count())) {
+    await openFile(page, "context.py", 18);
+    await page.keyboard.press("Alt+b"); await sleep(2500);
+    f = await boardFrame(page);
+  }
+  const editorText = () => page.locator(".editor-group-container .monaco-editor .view-lines").first().textContent();
+  const dirty = () => page.locator(".tabs-container .tab.dirty").count();
+  for (const [where, sel] of [["header", ".chead .ctitle"], ["code", ".src"]]) {
+    f = await boardFrame(page);
+    const n0 = await f.locator(".card").count();
+    check(await card(f, "get_context").count() === 1, `get_context is on the board before the ${where} click`);
+    await shot(page, `18-cardfocus-${where}`); // also fits the board to the window so the card is in view
+    await openFile(page, "context.py", 21);
+    await page.keyboard.press("Shift+ArrowDown"); await page.keyboard.press("Shift+ArrowDown"); await sleep(300);
+    const before = await editorText();
+    await card(f, "get_context").locator(sel).first().click({ position: { x: 10, y: 6 } }); await sleep(600);
+    check(await page.locator(".editor-group-container .monaco-editor.focused").count() === 0, `clicking the card's ${where} takes focus from the file editor`);
+    await page.keyboard.press("Backspace"); await sleep(1200);
+    f = await boardFrame(page);
+    check(await editorText() === before && !(await dirty()), `…Backspace leaves the selected text in context.py alone (${where})`);
+    check(await f.locator(".card").count() === n0 - 1 && await card(f, "get_context").count() === 0, `…and deletes the card (${where})`, await f.locator(".card").count());
+    // the board has focus, so Ctrl+Z is the board's own undo: the card comes back
+    await page.keyboard.press("Control+z"); await sleep(1200);
+    f = await boardFrame(page);
+    check(await card(f, "get_context").count() === 1, `…and Ctrl+Z on the board brings it back (${where})`);
+  }
+}
+
 // PR9 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
 // 旁边的隐藏文件（这里是 nanovllm/engine/.codeboard-<卡>.py），import 按那个目录找；git status 里看不到，编辑完就删掉，
 // 也不会冒出未保存的标签页（重新加载窗口后也没有）。要 E2E_EXTENSIONS 里有 Pylance。E2E_ONLY=codeedit 只跑这一步
@@ -306,6 +342,7 @@ const finish = async (browser, errors) => {
   if (process.env.E2E_ONLY === "variants") { await variantsStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "codeedit") { await codeeditStep(page); return finish(browser, errors); }
   if (process.env.E2E_ONLY === "addsel") { await addselStep(page); return finish(browser, errors); }
+  if (process.env.E2E_ONLY === "cardfocus") { await cardfocusStep(page); return finish(browser, errors); }
 
   // 1. Alt+B inside a function: the board opens and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
@@ -554,5 +591,6 @@ const finish = async (browser, errors) => {
 
   await captureStep(page);
   await addselStep(page);
+  await cardfocusStep(page);
   await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });
