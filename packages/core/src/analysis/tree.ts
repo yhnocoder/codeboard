@@ -3,7 +3,7 @@
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Language as TSLanguage, Tree, Edit, Query } from "@vscode/tree-sitter-wasm";
 
-export type Grammar = "python" | "cpp";
+export type Grammar = "python" | "cpp" | "rust";
 export type { Edit };
 
 let ready: Promise<void> | undefined;
@@ -16,7 +16,7 @@ export function initAnalysis(dir?: string): Promise<void> {
   return (ready ??= (async () => {
     const base = wasmDir ?? defaultDir();
     await TS.Parser.init({ locateFile: (f: string) => join(base, f) });
-    for (const g of ["python", "cpp"] as Grammar[]) langs.set(g, await TS.Language.load(join(base, `tree-sitter-${g}.wasm`)));
+    for (const g of ["python", "cpp", "rust"] as Grammar[]) langs.set(g, await TS.Language.load(join(base, `tree-sitter-${g}.wasm`)));
   })());
 }
 
@@ -34,6 +34,7 @@ export const languageOf = (g: Grammar): TSLanguage | undefined => langs.get(g);
 export function grammarOf(lang: string): Grammar | null {
   if (/^(python|triton|tilelang)$/.test(lang)) return "python";
   if (/^(c|cpp|cuda|cuda-cpp|objective-c|objective-cpp)$/.test(lang)) return "cpp";
+  if (lang === "rust") return "rust";
   return null;
 }
 

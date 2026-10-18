@@ -4,7 +4,7 @@ import { getSchema } from "@tiptap/core";
 import { DOMSerializer, Node as PMNode, type Schema } from "@tiptap/pm/model";
 import katex from "katex";
 import DOMPurify from "dompurify";
-import { baseExtensions, parseMd } from "./schema";
+import { baseExtensions, parseMd, tocEntries, tocHtml } from "./schema";
 import { highlight } from "./hl";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -104,6 +104,8 @@ function render(src: string): string {
     const s = serializer();
     const doc = PMNode.fromJSON(schema!, parseMd(src));
     html = slim((s.serializeFragment(doc.content, { document: fdoc as unknown as Document }) as unknown as FFrag).html());
+    // [toc]：填上这篇的标题
+    if (html.includes('data-type="toc"')) { const t = tocHtml(tocEntries(doc)); html = html.replace(/(<nav[^>]*data-type="toc"[^>]*>)<\/nav>/g, (_m, open: string) => `${open}${t}</nav>`); } // 函数替换：标题里的 $1、$& 不能当替换记号
   } catch (e) {
     console.warn("markdown render failed", e);
     html = `<p>${esc(src)}</p>`;

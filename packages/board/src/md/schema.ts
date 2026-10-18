@@ -18,6 +18,7 @@ import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import { lowlight } from "./hl";
+import { EMOJI } from "./emoji";
 
 // ---------- 公式：照旧版的 Pandoc 规则 ----------
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式。行内的 $$…$$ 是行内的大号公式
@@ -120,6 +121,81 @@ const Det = Details.extend({
 const DetSum = DetailsSummary.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 const DetBody = DetailsContent.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 
+// ---------- [toc]：目录（Typora #30） ----------
+// 单独一行的 [toc]（不分大小写）。目录里是这篇的所有标题，跟着标题变：显示时 render.ts 填，编辑时节点视图自己填
+const TOC_RE = /^ {0,3}\[toc\][ \t]*(?:\n|$)/i;
+export const tocEntries = (doc: { descendants: (f: (n: any) => boolean | void) => void }) => {
+  const out: { level: number; text: string }[] = [];
+  doc.descendants((n) => { if (n.type.name === "heading") { out.push({ level: n.attrs.level, text: n.textContent }); return false; } return n.type.name !== "toc"; });
+  return out;
+};
+export const tocHtml = (es: { level: number; text: string }[]) =>
+  es.length ? es.map((e) => `<div class="l${e.level}">${escHtml(e.text) || "&nbsp;"}</div>`).join("") : `<div class="none">No headings yet</div>`;
+const Toc = Node.create({
+  name: "toc",
+  group: "block", atom: true, selectable: true, draggable: true,
+  parseHTML: () => [{ tag: "nav[data-type=toc]" }],
+  renderHTML: () => ["nav", { "data-type": "toc", class: "md-toc" }],
+  addNodeView: () => ({ editor }) => {
+    const dom = document.createElement("nav");
+    dom.className = "md-toc";
+    dom.dataset.type = "toc";
+    dom.contentEditable = "false";
+    let last = "";
+    const fill = () => { const h = tocHtml(tocEntries(editor.state.doc)); if (h !== last) dom.innerHTML = last = h; };
+    fill();
+    editor.on("update", fill);
+    return { dom, destroy: () => editor.off("update", fill), ignoreMutation: () => true };
+  },
+  parseMarkdown: () => ({ type: "toc" }),
+  renderMarkdown: () => "[toc]",
+  markdownTokenizer: {
+    name: "toc", level: "block",
+    // marked 拿 start 找段落在哪断开时传的是 src.slice(1)，^ 会落在行中间（\[toc] 的 \ 后面）：只认换行后面的；行首的由 tokenize 直接认
+    start: (src: string) => { const m = /\n {0,3}\[toc\][ \t]*(?:\n|$)/i.exec(src); return m ? m.index + 1 : -1; },
+    tokenize: (src) => { const m = TOC_RE.exec(src); return m ? { type: "toc", raw: m[0] } : undefined; },
+  },
+});
+
+// ---------- :smile: 表情（Typora #31） ----------
+// 存成 :名字:（和 Typora、GitHub 一样），显示成表情字。只认 emoji.ts 里有的名字；前面紧挨着字母数字的不算（1:100: 是比例）
+const EMOJI_AT = /^:([a-z0-9_+-]+):/;
+const isEmoji = (name: string) => Object.prototype.hasOwnProperty.call(EMOJI, name);
+const emojiStart = (src: string) => {
+  const re = /(?<![\p{L}\p{N}_]):([a-z0-9_+-]+):/gu;
+  for (let m = re.exec(src); m; m = re.exec(src)) { if (isEmoji(m[1])) return m.index; re.lastIndex = m.index + 1; }
+  return -1;
+};
+const Emoji = Node.create({
+  name: "emoji",
+  group: "inline", inline: true, atom: true, selectable: false,
+  addAttributes() { return { name: { default: "" } }; },
+  parseHTML() { return [{ tag: "span[data-emoji]", getAttrs: (e) => ({ name: (e as HTMLElement).getAttribute("data-emoji") ?? "" }) }]; },
+  renderHTML({ node }) { return ["span", { class: "md-emoji", "data-emoji": node.attrs.name, title: `:${node.attrs.name}:` }, EMOJI[node.attrs.name] ?? `:${node.attrs.name}:`]; },
+  renderText: ({ node }) => EMOJI[node.attrs.name] ?? `:${node.attrs.name}:`,
+  parseMarkdown: (t) => ({ type: "emoji", attrs: { name: t.name } }),
+  renderMarkdown: (n) => `:${n.attrs?.name ?? ""}:`,
+  markdownTokenizer: {
+    name: "emoji", level: "inline",
+    start: emojiStart,
+    tokenize: (src) => {
+      const m = EMOJI_AT.exec(src);
+      if (!m || !isEmoji(m[1])) return;
+      return { type: "emoji", raw: m[0], name: m[1] };
+    },
+  },
+  // 打完右边的冒号就变
+  addInputRules() {
+    return [new InputRule({
+      find: /(?<![\p{L}\p{N}_]):([a-z0-9_+-]+):$/u,
+      handler: ({ range, match, chain }) => {
+        if (!isEmoji(match[1])) return null;
+        chain().insertContentAt(range, { type: "emoji", attrs: { name: match[1] } }).run();
+      },
+    })];
+  },
+});
+
 // ---------- [[卡片引用]] ----------
 // 存成 [[标题]]：可读，复制到别的白板也能按标题找；渲染时先按 id、再按标题找卡（Card 改名时 actions 顺手改写引用）
 export const CardRef = Node.create({
@@ -214,6 +290,33 @@ const Kbd = Mark.create({
   renderMarkdown: (n: JSONContent, h: any) => `<kbd>${h.renderChildren(n)}</kbd>`,
   markdownTokenizer: htmlTok("kbd"),
 });
+// ---------- ==高亮==、H~2~O、x^2^（Typora 的扩展语法，#32） ----------
+// 下标、上标照 Pandoc：中间不能有空白（要空白写 \ ），~ 只有一个（~~ 是删除线）；高亮 == 里两头不是空白
+const inlineTok = (name: string, open: string, re: RegExp) => ({
+  name, level: "inline" as const,
+  start: (src: string) => src.indexOf(open),
+  tokenize: (src: string, _t: unknown, lx: any) => {
+    const m = re.exec(src);
+    if (!m) return;
+    return { type: name, raw: m[0], tokens: lx.inlineTokens(m[1]) };
+  },
+});
+const SUB_RE = /^~(?!~)((?:\\.|[^~\s\\])+)~(?!~)/, SUP_RE = /^\^((?:\\.|[^\^\s\\])+)\^/, HL_RE = /^==(?=[^\s=])((?:\\.|[^\n\\])*?[^\s\\])==/;
+const wrapMark = (name: string, tag: string, md: string, re: RegExp, typed: RegExp) => Mark.create({
+  name,
+  parseHTML: () => [{ tag }],
+  renderHTML: ({ HTMLAttributes }) => [tag, HTMLAttributes, 0],
+  addInputRules() { return [markInputRule({ find: typed, type: this.type })]; },
+  markdownTokenName: `x_${name}`,
+  parseMarkdown: (t: any, h: any) => h.applyMark(name, h.parseInline(t.tokens ?? [])),
+  renderMarkdown: (n: JSONContent, h: any) => `${md}${h.renderChildren(n)}${md}`,
+  markdownTokenizer: inlineTok(`x_${name}`, md, re),
+});
+// 打字规则：结尾记号一打完就变；前面紧挨着同样的记号或 \ 时不算（~~ 是删除线、\~ 是字）
+const Highlight = wrapMark("highlight", "mark", "==", HL_RE, /(?<![=\\])(==([^=\s](?:[^=]*[^=\s])?)==)$/);
+const Sub = wrapMark("subscript", "sub", "~", SUB_RE, /(?<![~\\])(~([^~\s]+)~)$/);
+const Sup = wrapMark("superscript", "sup", "^", SUP_RE, /(?<![\^\\])(\^([^\^\s]+)\^)$/);
+
 // 分隔线只在回车时变（--- 打完就变会和 YAML 头、setext 标题冲突；见 editor/typora.ts）
 const Hr = HorizontalRule.extend({ addInputRules: () => [] });
 // 行内代码的打字规则在 editor/typora.ts（反引号按长度配对）
@@ -235,10 +338,10 @@ export const baseExtensions: AnyExtension[] = [
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
-  U, Kbd, Hr, InlineCode,
+  U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
   Doc, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
-  CardRef, FnList, FnDef, FnRef,
+  CardRef, Emoji, FnList, FnDef, FnRef,
 ];
 
 // ---------- 写回：少转义 ----------
@@ -259,9 +362,14 @@ function escText(s: string): string {
       case "\\": out += !next || PUNCT.test(next) ? "\\\\" : c; break;
       case "`": out += tick ? "\\`" : c; break;
       case "*": case "~": out += (c === "*" ? star : tilde) && !(/\s/.test(prev || " ") && /\s/.test(next || " ")) ? `\\${c}` : c; break;
-      case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) ? "\\[" : c; break;
+      case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) || (i === 0 && /^\[toc\]\s*$/i.test(s)) ? "\\[" : c; break;
       case "$": out += INLINE_MATH.test(s.slice(i)) ? "\\$" : c; break;
       case "<": out += /[A-Za-z/!?]/.test(next) ? "\\<" : c; break;
+      // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
+      case "^": out += SUP_RE.test(s.slice(i)) && prev !== "^" ? "\\^" : c; break;
+      case "=": out += HL_RE.test(s.slice(i)) && prev !== "=" ? "\\=" : c; break;
+      // 字面的 :smile:（会被读成表情的）：转义前一个冒号
+      case ":": { const m = EMOJI_AT.exec(s.slice(i)); out += m && isEmoji(m[1]) && !/[\p{L}\p{N}_]/u.test(prev) ? "\\:" : c; break; }
       case "&": out += /^&(?:#\d+|#x[\da-f]+|\w+);/i.test(s.slice(i)) ? "&amp;" : c; break;
       default: out += c;
     }
@@ -299,7 +407,9 @@ if (linkSpec) {
 
 /** Markdown → 文档 JSON（脚注定义收到文末一个 footnotes 里，按引用顺序编号） */
 export function parseMd(src: string): JSONContent {
-  const doc = mm.parse(src.replace(/\r\n?/g, "\n"));
+  // 转义的 \$ 先换成占位字（解析器会把 \$ 和普通 $ 解成同一个字，后面就分不出哪个是转义过的），见 mathify / unDollar。
+  // 链接地址 ](…) 和 <自动链接> 里不换（地址里的占位字会被当成非法字符丢掉）
+  const doc = mm.parse(src.replace(/\r\n?/g, "\n").replace(/(\]\([^)\n]*\)|<[^>\s]*>)|\\([\\$])/g, (m, url, c) => (!url && c === "$" ? ESC_DOLLAR : m)));
   const defs = new Map<string, JSONContent>();
   const rest: JSONContent[] = [];
   for (const n of doc.content ?? []) if (n.type === "footnote") defs.set(n.attrs?.["data-id"], n); else rest.push(n);
@@ -310,7 +420,7 @@ export function parseMd(src: string): JSONContent {
     rest.push({ type: "footnotes", content: refs.map((id, i) => ({ type: "footnote", content: defs.get(id)?.content ?? [{ type: "paragraph" }], attrs: { "data-id": id, id: `fn:${i + 1}` } })) });
   }
   if (!rest.length) rest.push({ type: "paragraph" });
-  return { type: "doc", content: mathify(rest)! };
+  return { type: "doc", content: unDollar(mathify(rest)!) };
 }
 function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }
@@ -319,7 +429,7 @@ function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
 let fnNum = new Map<string, number>();
 /** 文档 JSON → Markdown */
 export function serializeMd(doc: JSONContent): string {
-  const content = [...(doc.content ?? [])];
+  const content = escPairs(unsource(doc.content ?? []));
   const fi = content.findIndex((n) => n.type === "footnotes");
   const fns = fi >= 0 ? content.splice(fi, 1)[0] : undefined;
   fnNum = new Map();
@@ -330,30 +440,120 @@ export function serializeMd(doc: JSONContent): string {
     .map((f) => [fnNum.get(f.attrs!["data-id"]), mm.serialize({ type: "doc", content: markStarts(f.content ?? []) }).trim()] as const)
     .filter(([, body]) => body).map(([k, body]) => `[^${k}]: ${body.replace(/\n/g, "\n    ")}`);
   if (defs.length) out = `${out.trimEnd()}\n\n${defs.join("\n")}`;
-  return out.replace(/^\n+/, "").replace(/\s+$/, "");
+  return unPair(out.replace(/^\n+/, "").replace(/\s+$/, ""));
 }
 /** 一个块当成 Markdown 源码：字原样写出（不转义），重新解析时字里的 **b**、$m$、# 之类就生效（接受补全、粘贴之后用） */
 export function blockSource(n: JSONContent): string {
   rawText = true;
-  try { return mm.serialize({ type: "doc", content: [n] }).replace(/^\n+/, "").replace(/\s+$/, ""); } finally { rawText = false; }
+  try { return unPair(mm.serialize({ type: "doc", content: escPairs(unsource([n])) }).replace(/^\n+/, "").replace(/\s+$/, "")); } finally { rawText = false; }
 }
 
-// 字里看着像 $公式$ 的（Pandoc 规则）变成公式：旧版编辑器里打的 $\frac{a}{b}$ 没转成公式，写回成了 \$…\$，再读进来时转过来
-const TEXT_MATH = /(^|[^$\\])\$([^$\s](?:[^$]*[^$\s\\])?)\$(?![\d$])/g;
+// ---------- 光标处展开的 Markdown 原文（#11，编辑器里的 mdSrc 标记，见 editor/source.ts） ----------
+// 光标走进 **粗体**、链接、标题、行内公式时，那一段换成带 mdSrc 标记的原文（真的字，能改）；光标离开时把原文重新解析回去。
+// 写出 Markdown 之前（保存、复制、原文模式）先在这里把还展开着的原文收回去，所以 mdSrc 永远不会写进文件
+export const SRC_MARK = "mdSrc";
+const INLINE_HEAD = "\uE026";
+const isSrc = (n: JSONContent) => n.type === "text" && !!n.marks?.some((m) => m.type === SRC_MARK);
+/** 一段行内原文解析回行内内容；两头的空白照留（解析会去掉）。前面垫一个字，# - 1. > 之类不会被当成块 */
+export function parseInlineSrc(src: string): JSONContent[] {
+  const lead = /^\s*/.exec(src)![0], trail = src.slice(lead.length).match(/\s*$/)![0], core = src.slice(lead.length, src.length - trail.length);
+  const plain = (t: string): JSONContent[] => (t ? [{ type: "text", text: t }] : []);
+  if (!core) return plain(src);
+  const blocks = parseMd(INLINE_HEAD + core).content ?? [];
+  const p = blocks[0], first = p?.content?.[0];
+  if (blocks.length !== 1 || p.type !== "paragraph" || first?.type !== "text" || !first.text?.startsWith(INLINE_HEAD)) return plain(src);
+  const rest = first.text.slice(INLINE_HEAD.length);
+  return [...plain(lead), ...(rest ? [{ ...first, text: rest }] : []), ...p.content!.slice(1), ...plain(trail)];
+}
+/**
+ * 一个文字块里的原文收回去。keep(from, to, prefix)：这一段（块里的字偏移，行内节点算 1）留着不收（光标在里面）。
+ * 标题开头的原文是它的 "## "：合法的就定级别（留着时也跟着改级别），收的时候不合法就变回普通段落、原文当正文
+ */
+export function unsourceBlock(b: JSONContent, keep: (from: number, to: number, prefix: boolean) => boolean = () => false): JSONContent {
+  const cs = b.content ?? [];
+  if (!cs.some(isSrc)) return b;
+  let attrs = b.attrs, type = b.type;
+  const out: JSONContent[] = [];
+  let at = 0;
+  for (let i = 0; i < cs.length;) {
+    if (!isSrc(cs[i])) { out.push(cs[i]); at += cs[i].text?.length ?? 1; i++; continue; }
+    let j = i, text = "";
+    while (j < cs.length && isSrc(cs[j])) text += cs[j++].text ?? "";
+    const from = at, to = at + text.length, prefix = from === 0 && type === "heading";
+    // 标题的 "## "（后面紧跟着的字是正文）
+    const head = prefix ? /^(#{1,6})[ \t]+/.exec(text) : null;
+    if (head) attrs = { ...attrs, level: head[1].length };
+    if (keep(from, to, prefix)) out.push(...cs.slice(i, j));
+    else if (head) out.push(...parseInlineSrc(text.slice(head[0].length)));
+    else {
+      if (prefix) type = "paragraph";
+      out.push(...parseInlineSrc(text));
+    }
+    at = to; i = j;
+  }
+  if (type !== b.type) attrs = undefined;
+  return { ...b, type, ...(attrs ? { attrs } : { attrs: undefined }), content: out };
+}
+// ---------- 打字时的反斜杠转义（#27，编辑器里的 mdEsc 标记） ----------
+// 在编辑器里打 \* 时那个 \ 带 mdEsc 标记（光标不在旁边时不显示，Typora 一样）；写出时这一对原样写 \*，不再把 \ 当字转义成 \\\*。
+// 先换成一个私用区的字（写出时不会被转义、不影响旁边的记号），写完再换回 \X
+export const ESC_MARK = "mdEsc";
+const PAIR0 = 0xe100;
+function escPairs(ns: JSONContent[]): JSONContent[] {
+  return ns.map((n) => {
+    const cs = n.content;
+    if (!cs?.some((c) => c.marks?.some((m) => m.type === ESC_MARK))) return cs ? { ...n, content: escPairs(cs) } : n;
+    const out: JSONContent[] = [];
+    for (let i = 0; i < cs.length; i++) {
+      const c = cs[i], esc = c.type === "text" && c.marks?.some((m) => m.type === ESC_MARK);
+      if (!esc) { out.push(c); continue; }
+      const marks = c.marks!.filter((m) => m.type !== ESC_MARK), rest = { ...c, marks: marks.length ? marks : undefined };
+      const next = cs[i + 1], ch = next?.type === "text" ? next.text?.[0] : undefined;
+      if (c.text === "\\" && ch && /[!-/:-@[-`{-~]/.test(ch)) {
+        out.push({ ...next, text: String.fromCharCode(PAIR0 + ch.charCodeAt(0)) + next.text!.slice(1) });
+        i++;
+      } else out.push(rest);
+    }
+    return { ...n, content: out };
+  });
+}
+const unPair = (s: string) => s.replace(/[\uE100-\uE17F]/g, (c) => `\\${String.fromCharCode(c.charCodeAt(0) - PAIR0)}`);
+
+function unsource(ns: JSONContent[]): JSONContent[] {
+  return ns.map((n) => (n.content?.some(isSrc) ? unsourceBlock(n) : n.content ? { ...n, content: unsource(n.content) } : n));
+}
+
+// 字里看着像 $公式$ 的（Pandoc 规则）变成公式：旧版编辑器里打的 $\frac{a}{b}$ 没转成公式，写回成了 \$…\$，再读进来时转过来。
+// 两头要是同一种 $：都没转义，或者都转义了（旧版的 \$…\$）。只转义了开头的 \$x$ 是现在的编辑器写下的普通文字（打 $x$ 变成公式后
+// ⌘Z 撤回的就是这样存的），Typora 里也是字面的 $，不当公式
+const ESC_DOLLAR = "\uE024";
+const TEXT_MATH = /(^|[^$\\\uE024])([$\uE024])([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\2(?![\d$\uE024])/g;
+/** 占位字换回去：正文、链接地址里是 $；代码、公式源码里原样是 \$ */
+function unDollar(ns: JSONContent[], raw = false): JSONContent[] {
+  const fix = (t: string, r: boolean) => (t.includes(ESC_DOLLAR) ? t.replaceAll(ESC_DOLLAR, r ? "\\$" : "$") : t);
+  return ns.map((n) => {
+    const r = raw || n.type === "codeBlock";
+    const out: JSONContent = { ...n };
+    if (n.text !== undefined) out.text = fix(n.text, r || (n.marks ?? []).some((m) => m.type === "code"));
+    if (n.attrs) out.attrs = Object.fromEntries(Object.entries(n.attrs).map(([k, v]) => [k, typeof v === "string" ? fix(v, r || k === "latex") : v]));
+    if (n.content) out.content = unDollar(n.content, r);
+    return out;
+  });
+}
 function mathify(ns: JSONContent[] | undefined): JSONContent[] | undefined {
   if (!ns) return ns;
   const out: JSONContent[] = [];
   for (const n of ns) {
     if (n.type === "codeBlock") { out.push(n); continue; }
-    if (n.type === "text" && n.text?.includes("$") && !(n.marks ?? []).some((m) => m.type === "code")) {
+    if (n.type === "text" && /[$\uE024]/.test(n.text ?? "") && !(n.marks ?? []).some((m) => m.type === "code")) {
       let last = 0, m: RegExpExecArray | null;
-      const t = n.text;
+      const t = n.text!;
       TEXT_MATH.lastIndex = 0;
       while ((m = TEXT_MATH.exec(t))) {
         const at = m.index + m[1].length;
         if (at > last) out.push({ ...n, text: t.slice(last, at) });
-        out.push({ type: "inlineMath", attrs: { latex: m[2], display: false } });
-        last = at + m[2].length + 2;
+        out.push({ type: "inlineMath", attrs: { latex: m[3], display: false } });
+        last = at + m[3].length + 2;
         TEXT_MATH.lastIndex = last;
       }
       if (last === 0) out.push(n);

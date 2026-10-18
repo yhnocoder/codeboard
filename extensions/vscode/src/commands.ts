@@ -19,6 +19,17 @@ export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, s
     await ctx.secrets.delete(DEEPSEEK_SECRET);
     void vscode.window.showInformationMessage("DeepSeek API key cleared.");
   });
+  // 共享卡还没有界面（下一步做）：测试用的入口。把白板上的卡变成共享卡 / 拆回独立的拷贝；卡换了 id 时开着的白板重新加载
+  cmd("codeboard._shareCards", async (board: string, cards: string[]) => {
+    const renamed = await store.share(board, cards);
+    if (Object.keys(renamed).length) await panels.get(board)?.init();
+    return renamed;
+  });
+  cmd("codeboard._unshareCard", async (board: string, card: string) => {
+    const to = await store.unshare(board, card);
+    if (to) await panels.get(board)?.init(); // 卡换了 id：白板重新载入
+    return to;
+  });
   // GITHUB FILES 里点文件：只读打开（不在白板旁边那一栏，也不闪行）
   cmd("codeboard.openGithubFile", async (abs: string) => {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(abs));

@@ -168,6 +168,86 @@ describe("typed math and block source (v0.1.8 review)", () => {
     expect(JSON.stringify(d)).toContain('"inlineMath"');
     expect(rt("a \\$\\frac{a}{b}\\$ b")).toBe("a $\\frac{a}{b}$ b");
   });
+  // N1：打 $x$ 变成公式后 ⌘Z 撤回，存下的是 \$x$；显示和再次编辑都要是字面的 $x$（Typora 一样），不能又变回公式
+  it("an escaped \\$ stays a literal dollar, shown and re-parsed", () => {
+    const has = (s: string) => JSON.stringify(parseMd(s)).includes('"inlineMath"');
+    expect(has("a \\$x$ b")).toBe(false);
+    same("a \\$x$ b");
+    expect(renderMd("a \\$x$ b")).toBe("<p>a $x$ b</p>");
+    // 同一段里别的公式照常
+    expect(has("a \\$x$ b $y$")).toBe(true);
+    same("a \\$x$ b $y$");
+    // 公式源码、代码里的 \$ 原样留着；链接地址里的 \$ 是 $
+    expect(rt("$a\\$b$")).toBe("$a\\$b$");
+    same("`\\$x$`");
+    same("```\n\\$a$\n```");
+    expect(rt("[t](http://x/\\$y)")).toBe("[t](http://x/$y)");
+  });
+  // #11：编辑器里光标处展开的原文（mdSrc 标记）写出来时先收回去，不会被当成字转义，也不会把 "## " 写两遍
+  it("open source at the caret is written back as Markdown, not as escaped text", () => {
+    const src = (text: string) => ({ type: "text", text, marks: [{ type: "mdSrc" }] });
+    const p = (...content: object[]) => ({ type: "doc", content: [{ type: "paragraph", content }] });
+    expect(serializeMd(p({ type: "text", text: "x " }, src("**bo**"), { type: "text", text: " y" }))).toBe("x **bo** y");
+    expect(serializeMd(p(src("*bo**")))).not.toContain("mdSrc");
+    expect(serializeMd(p({ type: "text", text: "a " }, src("$x$")))).toBe("a $x$");
+    const h = (level: number, ...content: object[]) => ({ type: "doc", content: [{ type: "heading", attrs: { level }, content }] });
+    expect(serializeMd(h(2, src("### "), { type: "text", text: "hd" }))).toBe("### hd");
+    expect(serializeMd(h(2, src("## x"), { type: "text", text: "hd" }))).toBe("## xhd");
+    // ## 改坏了：变回普通段落，字照留
+    const bad = parseMd(serializeMd(h(2, src("##"), { type: "text", text: "hd" }))).content![0];
+    expect(bad.type).toBe("paragraph");
+    expect(bad.content?.map((c) => c.text).join("")).toBe("##hd");
+  });
+  // #27：编辑器里打的 \*（\ 带 mdEsc 标记）写出来就是 \*，不会变成 \\\*；读回来是字面的 *
+  it("a typed backslash escape is written as typed", () => {
+    const esc = { type: "text", text: "\\", marks: [{ type: "mdEsc" }] };
+    const doc = (...content: object[]) => ({ type: "doc", content: [{ type: "paragraph", content }] });
+    const md = serializeMd(doc({ type: "text", text: "a " }, esc, { type: "text", text: "*not" }, esc, { type: "text", text: "* b" }));
+    expect(md).toBe("a \\*not\\* b");
+    same(md);
+    expect(JSON.stringify(parseMd(md))).not.toContain('"italic"');
+    expect(serializeMd(doc({ type: "text", text: "x " }, esc, { type: "text", text: "# y" }))).toBe("x \\# y");
+    // 后面没有字的 \：就是一个 \
+    expect(serializeMd(doc({ type: "text", text: "end " }, esc))).toBe(serializeMd(doc({ type: "text", text: "end \\" })));
+  });
+  // #32：==高亮==、H~2~O、x^2^；~~删除线~~ 照旧；读不成这些的 ~ ^ == 不转义（以前 H~2~O 会存成 H\~2\~O）
+  it("highlight, subscript and superscript", () => {
+    same("==hi== and H~2~O and x^2^");
+    const j = JSON.stringify(parseMd("==hi== and H~2~O and x^2^"));
+    for (const m of ["highlight", "subscript", "superscript"]) expect(j).toContain(`"${m}"`);
+    same("~~s~~ t");
+    expect(JSON.stringify(parseMd("~~s~~"))).toContain('"strike"');
+    same("a ~ b and ~/path, a ^ b, x == y");
+    // 字面的：写回稳定，读回来还是字
+    const lit = stable("H\\~2\\~O and x\\^2\\^ and \\==no==");
+    expect(JSON.stringify(parseMd(lit))).not.toMatch(/subscript|superscript|highlight/);
+    expect(renderMd("==a== b~2~ c^3^")).toBe("<p><mark>a</mark> b<sub>2</sub> c<sup>3</sup></p>");
+  });
+  // #30：单独一行的 [toc] 是目录，显示时列出所有标题；段落里的 [toc] 字照留
+  it("[toc] is a table of contents", () => {
+    same("[toc]\n\n# A\n\n## B");
+    expect(JSON.stringify(parseMd("[TOC]\n\n# A"))).toContain('"toc"');
+    const h = renderMd("[toc]\n\n# A\n\n## B <i>\n\ntext");
+    expect(h).toContain('<div class="l1">A</div><div class="l2">B &lt;i&gt;</div>');
+    expect(renderMd("[toc]")).toContain("No headings yet");
+    expect(renderMd("[toc]\n\n# Cost $1 and $& x")).toContain('<div class="l1">Cost $1 and $&amp; x</div>');
+    same("see [toc] here");
+    const lit = stable("\\[toc]");
+    expect(JSON.stringify(parseMd(lit))).not.toContain('"toc"');
+  });
+  // #31：:smile: 存成短名，显示成表情字；不认识的名字、紧跟在字母数字后面的（1:100:）、代码里的照留；字面的 :smile: 转义冒号
+  it(":name: is an emoji", () => {
+    same("hi :smile: and :+1:");
+    expect(JSON.stringify(parseMd("hi :smile:"))).toContain('"emoji"');
+    expect(renderMd("hi :tada:")).toBe('<p>hi <span class="md-emoji" data-emoji="tada" title=":tada:">🎉</span></p>');
+    for (const t of ["a :nosuchname: b", "ratio 1:100: x", "`:smile:`", "at 10:30:00"]) {
+      same(t);
+      expect(JSON.stringify(parseMd(t))).not.toContain('"emoji"');
+    }
+    const lit = stable("\\:smile:");
+    expect(JSON.stringify(parseMd(lit))).not.toContain('"emoji"');
+    expect(JSON.stringify(parseMd(lit))).toContain(":smile:");
+  });
   it("leaves money and $ followed by a digit alone", () => {
     same("pay $5 and $6 today");
     expect(JSON.stringify(parseMd("from $1 to $2"))).not.toContain("inlineMath");

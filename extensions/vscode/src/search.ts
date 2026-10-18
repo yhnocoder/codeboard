@@ -1,11 +1,11 @@
 // ⌘K 面板：白板上的卡和 Sidenote、工作区的符号和文件；Start from Entry Point…
 import * as path from "node:path";
-import { allCodeCards, cardTitle, type NewCard, type SearchItem } from "@codeboard/core";
+import { allCodeCards, cardTitle, computeFlows, guessLang, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
 import { locOfFile } from "./source";
-import { allNames } from "./nameindex";
+import { allNames, grepWord, lookupName } from "./nameindex";
 import type { Storage } from "./storage";
 import { makeSegment } from "./versions";
 import { CODE_EXCLUDE, exists, fromHostPath, hostPath, langOf, readText, splitLines, workspace, wsRoots } from "./ws";
@@ -27,17 +27,36 @@ export function fuzzy(q: string, s: string): number {
   return i === ql.length ? score - s.length * 0.1 : -1;
 }
 
-export async function search(store: Storage, q: string, scope: "all" | "code" | "symbols" = "all"): Promise<SearchItem[]> {
+/**
+ * ⌘K：所有白板上的卡和 Sidenote（here = 发起搜索的白板，排在前面），工作区的符号和文件。
+ * 共享卡在几块白板上只列一次：在这块白板上就跳这里，否则跳第一块；detail 写出它在哪几块白板上。跟着共享卡走的 Sidenote 也只列一次
+ */
+export async function search(store: Storage, q: string, scope: "all" | "code" | "symbols" = "all", here?: string): Promise<SearchItem[]> {
   const scored: { s: number; item: SearchItem }[] = [];
   if (scope === "all") {
-    for (const { board } of await store.all()) {
+    const boards = (await store.all()).map((x) => x.board).sort((a, b) => (a.id === here ? -1 : b.id === here ? 1 : 0));
+    const seen = new Map<string, Extract<SearchItem, { kind: "card" }>>();
+    const seenNotes = new Set<string>();
+    for (const board of boards) {
+      const refs = store.refsOf(board.id);
+      let flows: ReturnType<typeof computeFlows> | undefined;
       board.cards.forEach((c) => {
+        if (!board.place[c.id] && c.kind === "code" && board.cards.some((k) => k.kind === "compare" && k.cols.includes(c.id))) return; // Compare 的栏
+        const shared = refs.has(c.id);
+        const prev = shared ? seen.get(c.id) : undefined;
+        if (prev) { prev.detail = `${prev.detail} · ${board.name}`; return; }
         const t = cardTitle(c);
         const body = c.kind === "note" ? c.md : c.kind === "code" ? c.segments.map((s) => s.path).join(" ") : "";
         const s = Math.max(fuzzy(q, t), body.toLowerCase().includes(q.toLowerCase()) ? 20 : -1);
-        if (s >= 0) scored.push({ s: s + 30, item: { kind: "card", label: t, detail: board.name, board: board.id, card: c.id } });
+        if (s < 0) return;
+        flows ??= computeFlows(board);
+        const num = flows.byId.get(c.id)?.label || undefined;
+        const item: Extract<SearchItem, { kind: "card" }> = { kind: "card", label: t, detail: `${shared ? "⧉ " : ""}${board.id === here ? "This board" : board.name}`, board: board.id, card: c.id, num };
+        if (shared) seen.set(c.id, item);
+        scored.push({ s: s + 30 + (board.id === here ? 5 : 0), item });
       });
       for (const n of board.sidenotes ?? []) {
+        if (refs.has(n.at.card) && !n.boardOnly && n.kind !== "card") { if (seenNotes.has(n.id)) continue; seenNotes.add(n.id); }
         const t = n.kind === "text" ? n.md : n.kind === "code" ? n.code.text.join("\n") : n.kind === "paste" ? n.text : n.kind === "link" ? `${n.title ?? ""} ${n.url}` : "";
         if (!t || !t.toLowerCase().includes(q.toLowerCase())) continue;
         const host = allCodeCards(board).find((c) => c.id === n.at.card) ?? board.cards.find((c) => c.id === n.at.card);
@@ -166,3 +185,47 @@ export async function entryPoints(): Promise<SearchItem[]> {
   return out;
 }
 
+
+// ---------- 解析不到的调用：按名字在所有语言里找（线框 01 二） ----------
+
+const LANG_KEY: Record<string, string> = { python: "py", cpp: "cpp", c: "cpp", "cuda-cpp": "cuda", rust: "rust" };
+const LANG_ORDER = ["py", "cpp", "cuda", "rust"];
+
+/** 叫这个名字的定义（名字索引，所有语言）+ 字符串里的这个名字（"unified_attention"：注册表、绑定），按语言排 */
+export async function searchName(name: string): Promise<NameHit[]> {
+  const out: NameHit[] = [];
+  for (const e of await lookupName(name)) {
+    out.push({ lang: LANG_KEY[langOf(e.abs)] ?? "other", label: e.sig, detail: `${hostPath(e.abs)}:${e.defLine}`, path: hostPath(e.abs), line: e.defLine, def: true, qual: e.qual });
+  }
+  const re = new RegExp(`["']${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["(.']`);
+  let refs = 0;
+  for (const { abs, text } of await grepWord(name)) {
+    const lines = splitLines(text);
+    for (let i = 0; i < lines.length && refs < 40; i++) {
+      if (!re.test(lines[i])) continue;
+      refs++;
+      out.push({ lang: LANG_KEY[langOf(abs)] ?? "other", label: lines[i].trim().slice(0, 120), detail: `${hostPath(abs)}:${i + 1}`, path: hostPath(abs), line: i + 1, def: false });
+    }
+  }
+  const k = (h: NameHit) => (LANG_ORDER.indexOf(h.lang) + 5) % 5;
+  return out.map((h, i) => [h, i] as const).sort((a, b) => k(a[0]) - k(b[0]) || Number(b[0].def) - Number(a[0].def) || a[1] - b[1]).map(([h]) => h);
+}
+
+// ---------- Generated 卡的内容 ----------
+
+const GEN_EXT = ["py", "cu", "cuh", "cpp", "cc", "h", "hpp", "c", "ptx", "ll", "mlir", "txt", "log", "rs"];
+
+/** 剪贴板或选一个文件：文本、语言（按扩展名，认不出按内容猜）、文件名 */
+export async function genSource(from: "clipboard" | "file"): Promise<GenSource | null> {
+  const ui = workspace().ui;
+  if (from === "clipboard") {
+    const text = await ui.clipboard();
+    return text.trim() ? { text, lang: guessLang(text) ?? "plaintext", name: "" } : null;
+  }
+  const f = await ui.openDialog({ filters: { "Generated code": GEN_EXT, "All files": ["*"] }, label: "Add Generated Card", title: "Choose generated code (Inductor output, CUDA source, PTX…)" });
+  if (!f) return null;
+  const text = await readText(f, false);
+  if (text === null) return null;
+  const l = langOf(f);
+  return { text, lang: l === "plaintext" ? guessLang(text) ?? "plaintext" : l, name: f };
+}

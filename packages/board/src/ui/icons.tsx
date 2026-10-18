@@ -46,18 +46,22 @@ const P: Record<string, string> = {
   sameW: "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V5.5A.5 .5 0 0 1 13.5 6H2.5A.5 .5 0 0 1 2 5.5V2.5A.5 .5 0 0 1 2.5 2zM2.5 10H13.5A.5 .5 0 0 1 14 10.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V10.5A.5 .5 0 0 1 2.5 10z", // stretch-horizontal
   external: "M10 2h4v4M14 2 7 9M12 9V13.5A.5 .5 0 0 1 11.5 14H2.5A.5 .5 0 0 1 2 13.5V4.5A.5 .5 0 0 1 2.5 4H7", // external-link
   copy: "M6.5 6H13.5A.5 .5 0 0 1 14 6.5V13.5A.5 .5 0 0 1 13.5 14H6.5A.5 .5 0 0 1 6 13.5V6.5A.5 .5 0 0 1 6.5 6zM3 10H2.5A.5 .5 0 0 1 2 9.5V2.5A.5 .5 0 0 1 2.5 2H9.5A.5 .5 0 0 1 10 2.5V3", // copy
+  boards: "M2 7V2.5A.5 .5 0 0 1 2.5 2H7M5 10V5.5A.5 .5 0 0 1 5.5 5H10M8.5 8H13.5A.5 .5 0 0 1 14 8.5V13.5A.5 .5 0 0 1 13.5 14H8.5A.5 .5 0 0 1 8 13.5V8.5A.5 .5 0 0 1 8.5 8z", // square-stack
   trash: "M2 4h12M6 7v4M10 7v4M13 4V13.5A.5 .5 0 0 1 12.5 14H3.5A.5 .5 0 0 1 3 13.5V4M6 4V2.5A.5 .5 0 0 1 6.5 2H9.5A.5 .5 0 0 1 10 2.5V4", // trash-2
   compact: "M2 4h12M2 8h12M2 12h12", // menu
   rich: "M2.5 2H5.5A.5 .5 0 0 1 6 2.5V5.5A.5 .5 0 0 1 5.5 6H2.5A.5 .5 0 0 1 2 5.5V2.5A.5 .5 0 0 1 2.5 2zM2.5 10H5.5A.5 .5 0 0 1 6 10.5V13.5A.5 .5 0 0 1 5.5 14H2.5A.5 .5 0 0 1 2 13.5V10.5A.5 .5 0 0 1 2.5 10zM9 3h5M9 6h5M9 11h5M9 14h5", // layout-list
   sticker: "M10 2L14 6V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2H10zM10 2V5.5A.5 .5 0 0 0 10.5 6H14M6 11c1.2 1 2.8 1 4 0", // sticker
   clock: "M14 8A6 6 0 1 1 2 8A6 6 0 1 1 14 8ZM8 5v3l2.5 1.5", // clock
   arrowR: "M3 8h10M9 4l4 4-4 4", // arrow-right
+  question: "M14 8A6 6 0 1 1 2 8A6 6 0 1 1 14 8ZM6.5 6.5a1.5 1.5 0 0 1 3 0c0 1-1.5 1.5-1.5 2.5", // circle-help
+  export: "M8 2v8M5 5l3-3 3 3M3 8V13.5A.5 .5 0 0 0 3.5 14H12.5A.5 .5 0 0 0 13 13.5V8", // share
 };
 /** 填色：整像素上的小方块，1px / 2px 主题都一样 */
 const F: Record<string, string> = {
   more: "M2 7h2v2H2zM7 7h2v2H7zM12 7h2v2h-2z", // ellipsis
   dot: "M7 7h2v2H7z", // dot
   sticker: "M5 7h2v2H5zM9 7h2v2H9z", // sticker
+  question: "M7 11h2v2H7z", // circle-help
 };
 
 export function Icon(p: { name: keyof typeof P | string; size?: number; class?: string; style?: JSX.CSSProperties }) {

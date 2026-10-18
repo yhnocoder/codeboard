@@ -8,6 +8,7 @@ import { stickerPick, setStickerPick, pickSticker, stickerColor, setStickerColor
 import { state } from "../state/store";
 import { send } from "../host";
 import { cam, lod } from "../state/camera";
+import { shownIcon, stickerClick } from "../actions/questions";
 
 const MAX = 240; // 大图标包只画前这么多个（搜索缩小范围）
 
@@ -72,10 +73,10 @@ function FreeSticker(p: { s: Sticker; x: number; y: number }) {
   const at = () => p.s.at as FreeAt;
   const size = () => at().size ?? 32;
   return (
-    <div class="stk canvas" classList={{ sel: selSticker() === p.s.id, bound: !!at().on, "lod-map": lod() === "map" }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
+    <div class="stk canvas" classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: selSticker() === p.s.id, bound: !!at().on, "lod-map": lod() === "map" }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
       style={{ left: `${p.x}px`, top: `${p.y}px`, "min-width": `${size()}px`, height: `${size()}px`, "--s": `${size()}px` }}
-      onPointerDown={(e) => stickerDown(e, p.s.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(p.s.id, e.clientX, e.clientY); }}>
-      <Glyph icon={p.s.icon} color={p.s.color} size={size()} />
+      onPointerDown={(e) => stickerDown(e, p.s.id)} onClick={(e) => stickerClick(p.s.id, e.currentTarget)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(p.s.id, e.clientX, e.clientY); }}>
+      <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={size()} />
       <Show when={selSticker() === p.s.id}><span class="sgrip" style={{ scale: `${1 / cam.z}` }} onPointerDown={(e) => stickerDown(e, p.s.id, true)} /></Show>
     </div>
   );
@@ -133,8 +134,8 @@ export function CardStickers(p: { card: string }) {
       <div class="cstks">
         <For each={list()}>{(s) => (
           <span class="stk" classList={{ sel: selSticker() === s.id }} data-sticker={s.id} data-tip={stickerLabel(s.icon)}
-            onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, s.id); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(s.id, e.clientX, e.clientY); }}>
-            <Glyph icon={s.icon} color={s.color} size={22} />
+            onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, s.id); }} onClick={(e) => stickerClick(s.id, e.currentTarget)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(s.id, e.clientX, e.clientY); }}>
+            <Glyph icon={shownIcon(s).icon} color={shownIcon(s).color} size={22} />
           </span>
         )}</For>
       </div>

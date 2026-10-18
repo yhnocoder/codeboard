@@ -2,7 +2,7 @@
 // 校验的是迁移之后的结果，所以加新版本只要改迁移和这里的当前结构；旧文件的样子由迁移负责。
 // 只拦会让白板读坏的东西（类型不对、缺必填字段、kind 不认得），可选字段允许缺或 null，不认得的字段原样保留。
 import * as v from "valibot";
-import { BOARD_VERSION, migrateBoard, type Board } from "./model";
+import { BOARD_VERSION, migrateBoard, type Board, type BoardFile, type SharedCardFile } from "./model";
 
 const str = v.string(), num = v.number(), bool = v.boolean();
 const opt = <T extends v.GenericSchema>(s: T) => v.nullish(s);
@@ -26,43 +26,73 @@ const Segment = obj({
   hidden: opt(v.array(v.tuple([num, num]))), hl: opt(v.array(num)), keep: opt(str),
 });
 
-const Place = obj({ x: num, y: num, w: num, h: opt(num), section: opt(str), locked: opt(bool), collapsed: opt(bool) });
+/** 代码卡的 Variant（线框 07）；单独导出给 test/schema-types.ts 对照 model.ts */
+export const VariantSchema = obj({
+  id: str, name: str, note: opt(str), segs: opt(v.array(Segment)), merged: opt(str),
+  from: v.variant("kind", [
+    obj({ kind: v.literal("upstream") }),
+    obj({ kind: v.literal("ref"), ref: str }),
+    obj({ kind: v.literal("worktree") }),
+    obj({ kind: v.literal("wt"), dir: str, branch: opt(str) }),
+    obj({ kind: v.literal("file"), abs: str }),
+    obj({ kind: v.literal("pr"), owner: str, name: str, num: num, branch: opt(str) }),
+  ]),
+});
 
-const base = { id: str, title: opt(str), desc: opt(str) };
+const Place = obj({ x: num, y: num, w: num, h: opt(num), section: opt(str), locked: opt(bool), collapsed: opt(bool), start: opt(bool) });
+
+const base = { id: str, title: opt(str), desc: opt(str), procs: opt(v.array(obj({ text: str, light: opt(bool) }))) };
 const WebMeta = obj({ title: opt(str), desc: opt(str), site: opt(str), image: opt(str), icon: opt(str), at: opt(num), failed: opt(bool) });
 const codeEntries = {
   ...base, kind: v.literal("code"), segments: v.array(Segment),
   hide: opt(obj({ comments: opt(bool), docstrings: opt(bool), blank: opt(bool) })), wrap: opt(bool), nobg: opt(bool),
   members: opt(obj({ shown: v.array(str) })),
   mergedFrom: opt(v.array(obj({ card: v.lazy(() => CodeCard), place: Place }))), keepOld: opt(bool),
+  gen: opt(obj({ what: str, run: opt(str) })),
+  variants: opt(v.array(VariantSchema)),
+  active: opt(str),
 };
 const CodeCard: v.GenericSchema = obj(codeEntries);
 /** 代码卡是递归的（mergedFrom），上面只能标成 GenericSchema；它的字段名单独导出给 test/schema-types.ts 和 model.ts 的 CodeCard 对照 */
 export type CodeCardSchemaKeys = keyof typeof codeEntries;
 const Card = v.variant("kind", [
   CodeCard as v.LooseObjectSchema<{ kind: v.LiteralSchema<"code", undefined> }, undefined>,
-  obj({ ...base, kind: v.literal("note"), md: str, bg: opt(bool), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool) }),
+  obj({ ...base, kind: v.literal("note"), md: str, bg: opt(bool), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), msg: opt(obj({ where: opt(str) })) }),
   obj({ ...base, kind: v.literal("image"), src: str, alt: opt(str), bg: opt(bool) }),
   obj({ ...base, kind: v.literal("web"), url: str, meta: opt(WebMeta), style: opt(v.picklist(["banner", "side", "text", "compact"])) }),
   obj({ ...base, kind: v.literal("links"), items: v.array(obj({ id: str, url: str, title: opt(str), meta: opt(WebMeta), rich: opt(bool) })), rich: opt(bool) }),
   obj({ ...base, kind: v.literal("compare"), cols: v.tuple([str, str]), swap: opt(bool), unified: opt(bool), hideSame: opt(bool) }),
+  obj({ ...base, kind: v.literal("board"), board: str }),
 ]);
 
-const End = obj({ card: str, seg: opt(str), line: opt(num) });
+const End = obj({ card: str, seg: opt(str), line: opt(num), sub: opt(str) });
 const Var = obj({ a: str, b: opt(str), ret: opt(bool), custom: opt(bool) });
 const Side = v.picklist(["left", "right", "top", "bottom"]);
+const BoundVal = obj({ name: str, value: str, opts: opt(v.array(str)), from: opt(str) });
+const callEntries = {
+  name: str, col: num, vars: opt(v.array(Var)), cands: opt(v.array(Var)), loop: opt(bool),
+  ev: opt(obj({ kind: v.picklist(["manual", "observed"]), via: opt(str), cmd: opt(str), log: opt(v.array(str)), at: opt(num), commit: opt(str), count: opt(num), run: opt(str), base: opt(v.literal("manual")) })),
+  bound: opt(str), vals: opt(v.array(BoundVal)),
+  alts: opt(v.array(obj({ label: str, detail: opt(str), path: opt(str), line: opt(num), qual: opt(str), lib: opt(str), vals: opt(v.array(BoundVal)) }))),
+  impls: opt(num),
+  seen: opt(v.array(obj({ n: num, args: v.array(v.tuple([str, str])) }))),
+};
+const CallMark = obj(callEntries);
 const Link = obj({
   id: str, from: End, to: End, label: opt(str), at: opt(num),
-  call: opt(obj({ name: str, col: num, vars: opt(v.array(Var)), cands: opt(v.array(Var)), loop: opt(bool) })),
+  call: opt(CallMark),
   style: opt(obj({ dash: opt(bool), width: opt(v.picklist([1, 2, 3])), head: opt(obj({ start: opt(bool), end: opt(bool) })), color: opt(str) })),
   sides: opt(obj({ from: opt(Side), to: opt(Side) })),
   lost: opt(obj({ from: opt(bool), to: opt(bool) })),
+  gen: opt(bool),
+  rpc: opt(obj({ mech: str, custom: opt(str), msg: opt(str), fan: opt(v.picklist(["one", "all"])) })),
+  back: opt(bool),
 });
 const GraphMark = v.union([obj({ letter: str }), obj({ icon: str })]);
 
 const Section = obj({ id: str, title: opt(str), x: num, y: num, w: num, h: num, parent: opt(str), color: opt(str), collapsed: opt(bool), locked: opt(bool), desc: opt(str) });
 
-const noteBase = { id: str, at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }), why: opt(str), lineRemoved: opt(bool) };
+const noteBase = { id: str, at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }), why: opt(str), lineRemoved: opt(bool), boardOnly: opt(bool), review: opt(str), variant: opt(str) };
 const Sidenote = v.variant("kind", [
   obj({ ...noteBase, kind: v.literal("code"), code: Segment }),
   obj({ ...noteBase, kind: v.literal("paste"), text: str, lang: str, url: opt(str) }),
@@ -78,15 +108,23 @@ const Sticker = obj({
     obj({ kind: v.literal("card"), card: str }),
     obj({ kind: v.literal("canvas"), x: num, y: num, size: opt(num), on: opt(v.union([obj({ card: str }), obj({ link: str, t: num })])) }),
   ]),
+  q: opt(obj({ md: str, done: opt(bool), answer: opt(str), at: opt(num) })),
 });
 
-/** 当前版本（迁移之后）的白板。id 可以缺：宿主扫描时按文件名补 */
-export const BoardSchema = obj({
+const boardEntries = {
   version: v.literal(BOARD_VERSION), id: opt(str), name: str, cam: obj({ x: num, y: num, z: num }),
   cards: v.array(Card), place: v.record(str, Place), links: v.array(Link), sections: v.array(Section), sidenotes: v.array(Sidenote), stickers: v.array(Sticker),
   hideAllComments: opt(bool), hideNumbers: opt(bool),
   born: opt(v.record(str, num)), seq: opt(num), marks: opt(v.record(str, GraphMark)),
-});
+  legend: opt(v.record(str, opt(str))),
+};
+/** 当前版本（迁移之后）、共享卡已经换成内容的白板（界面拿到的）。id 可以缺：宿主扫描时按文件名补 */
+export const BoardSchema = obj(boardEntries);
+/** 白板文件：cards 里还可以有共享卡的引用 */
+const SharedRef = obj({ id: str, kind: v.literal("shared") });
+export const BoardFileSchema = obj({ ...boardEntries, cards: v.array(v.union([Card, SharedRef])) });
+/** 卡库里的一张共享卡 */
+export const SharedCardSchema = obj({ version: v.literal(BOARD_VERSION), card: Card, sidenotes: v.array(Sidenote), rev: v.record(str, num) });
 
 /** 迁移前只要求是个对象、版本号（有的话）是数字；认不认得这个版本由 migrateBoard 判断 */
 const RawBoard = v.pipe(v.custom((x) => !!x && typeof x === "object" && !Array.isArray(x), "Expected a board object"), obj({ version: opt(num) }));
@@ -101,10 +139,24 @@ function check(schema: v.GenericSchema, x: unknown, what: string) {
   throw new BoardError(`${what}: ${lines.join("; ")}${r.issues.length > 3 ? ` (+${r.issues.length - 3} more)` : ""}`);
 }
 
-/** 读进来的白板 JSON（任何版本）→ 校验过的当前版本白板 */
+/** 读进来的白板 JSON（任何版本）→ 校验过的当前版本白板（不能有共享卡的引用：宿主发给界面的、测试里的白板） */
 export function loadBoard(raw: unknown): Board {
   check(RawBoard, raw, "Not a board file");
   const b = migrateBoard(raw);
   check(BoardSchema, b, "Invalid board");
   return b;
+}
+
+/** 白板文件（任何版本）→ 校验过的第 6 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+export function loadBoardFile(raw: unknown): BoardFile {
+  check(RawBoard, raw, "Not a board file");
+  const b = migrateBoard(raw) as BoardFile;
+  check(BoardFileSchema, b, "Invalid board");
+  return b;
+}
+
+/** 卡库里的文件 cards/<id>.json → 校验过的共享卡 */
+export function loadSharedCard(raw: unknown): SharedCardFile {
+  check(SharedCardSchema, raw, "Invalid shared card");
+  return raw as SharedCardFile;
 }

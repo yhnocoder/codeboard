@@ -1,9 +1,11 @@
 // 调用图：有 Call 标记的箭头连成的图（连通分量）。标记（字母 / 图标）、讲解顺序、折叠都从 Link 算出来，不另外存。
 // 一张卡可以有好几条进来的 Call 箭头，图里可以有环；没有编号。
+// RPC 箭头（跨进程）也算图里的边：另一端的卡沿用同一个标记（线框 03）。「↩ back to」的线不算（它是回到起点的）
 import { colHosts, type Board, type Card, type GraphMark, type Link } from "./model";
 
-export type CallLink = Link & { call: NonNullable<Link["call"]> };
-export const isCall = (l: Link): l is CallLink => !!l.call;
+/** 调用图里的边：Call 或 RPC 标记的箭头（不是 ↩ back to） */
+export type CallLink = Link;
+export const isCall = (l: Link): boolean => (!!l.call || !!l.rpc) && !l.back;
 
 /** 一张调用图 */
 export type Graph = {
@@ -62,7 +64,7 @@ function push<K, V>(m: Map<K, V[]>, k: K, v: V) {
  */
 export function computeFlows(b: G): Flows {
   const cardsById = new Map(b.cards.map((c) => [c.id, c]));
-  const calls = b.links.filter((l): l is CallLink => isCall(l) && cardsById.has(l.from.card) && cardsById.has(l.to.card) && l.from.card !== l.to.card);
+  const calls = b.links.filter((l) => isCall(l) && cardsById.has(l.from.card) && cardsById.has(l.to.card) && l.from.card !== l.to.card);
   const up = new Map<string, string>();
   const find = (x: string): string => {
     let r = x;
@@ -124,8 +126,9 @@ function outLinks(b: Pick<Board, "links">, byId: Map<string, Card>, id: string):
 }
 
 /**
- * 讲解顺序：从 start 出发，先沿 Call 箭头深度优先走到底（按出发行的先后），
+ * 讲解顺序：从 start 出发，先沿 Call / RPC 箭头深度优先走到底（按出发行的先后），
  * 再从走过的卡依次走普通箭头（到了新卡又先走它的 Call 箭头）。走过的卡不再走（有环也不怕；Compare 和它的栏算一张）。
+ * 「↩ back to」的线不走（讲到这里停）
  */
 export function walkOrder(b: Pick<Board, "cards" | "links">, start: string): string[] {
   const byId = new Map(b.cards.map((c) => [c.id, c]));
@@ -137,10 +140,38 @@ export function walkOrder(b: Pick<Board, "cards" | "links">, start: string): str
     if (seen.has(k)) return;
     seen.add(k);
     out.push(id);
-    for (const l of outLinks(b, byId, id)) if (l.call) calls(l.to.card);
+    for (const l of outLinks(b, byId, id)) if (isCall(l)) calls(l.to.card);
   };
   calls(start);
-  for (let i = 0; i < out.length; i++) for (const l of outLinks(b, byId, out[i])) if (!l.call) calls(l.to.card);
+  for (let i = 0; i < out.length; i++) for (const l of outLinks(b, byId, out[i])) if (!isCall(l) && !l.back) calls(l.to.card);
+  return out;
+}
+
+/** 起点卡（Place.start），按创建顺序 */
+export function startCards(b: Pick<Board, "cards" | "place"> & Partial<Pick<Board, "born">>): string[] {
+  const rank = bornRank(b);
+  return b.cards.filter((c) => b.place[c.id]?.start).map((c) => c.id).sort((x, y) => rank(x) - rank(y));
+}
+
+/** 调用树的一行（线框 13 A）：缩进 depth；again = 这张卡在上面已经展开过（递归、被多处调用），不再往下 */
+export type TreeRow = { card: string; depth: number; link?: string; again?: boolean; rpc?: boolean };
+
+/**
+ * 调用树：从 roots 出发沿 Call / RPC 箭头深度优先（按出发行的先后）。同一张卡被几处调用就在每处出现一次，
+ * 第二次起标 again、不再往下；只读，不改白板。max = 最多多少行（很大的图也不会卡住）
+ */
+export function callTree(f: Flows, roots: string[], max = 2000): TreeRow[] {
+  const out: TreeRow[] = [];
+  const done = new Set<string>();
+  const go = (id: string, depth: number, via?: Link) => {
+    if (out.length >= max) return;
+    const again = done.has(id);
+    out.push({ card: id, depth, link: via?.id, again: again || undefined, rpc: via?.rpc ? true : undefined });
+    if (again) return;
+    done.add(id);
+    for (const l of f.kids.get(id) ?? []) go(l.to.card, depth + 1, l);
+  };
+  for (const r of roots) go(r, 0);
   return out;
 }
 

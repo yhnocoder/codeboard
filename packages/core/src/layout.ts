@@ -28,6 +28,7 @@ export function defaultWidth(c: Card): number {
     case "web": return 420;
     case "links": return 380;
     case "compare": return 900;
+    case "board": return 560;
   }
 }
 

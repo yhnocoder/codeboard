@@ -6,6 +6,7 @@ import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
 import { closeHistory } from "@tiptap/pm/history";
 import { reconvert } from "./typora";
 import { serializeMd } from "../schema";
+import { autoClosersAt } from "./pairs";
 
 const CARET = "\uE000";
 /** 光标前后的 Markdown 原文（模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown） */
@@ -91,7 +92,13 @@ export const Ghost = Extension.create<{ complete?: (before: string, after: strin
           if (!g || e.isComposing) return false;
           if (e.key === "Tab" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
             // 一次进来一整段：打字规则不会触发，这一段当 Markdown 重新解析（$a$、**b**、补完前面打了一半的 $\frac{…）。单独一步撤销
-            view.dispatch(reconvert(closeHistory(view.state.tr).insertText(g.text, g.pos).setMeta(ghostKey, null)));
+            // 光标后面是自动补的右括号（打 $\frac{ 时补的 }），补全里按顺序也写了它们：先删掉，不然多出一个
+            const auto = autoClosersAt(view.state, g.pos);
+            let n = 0;
+            for (let i = 0; n < auto.length && i < g.text.length; i++) if (g.text[i] === auto[n]) n++;
+            const tr = closeHistory(view.state.tr);
+            if (n) tr.delete(g.pos, g.pos + n);
+            view.dispatch(reconvert(tr.insertText(g.text, g.pos).setMeta(ghostKey, null)));
             return true;
           }
           // ⌘→（Windows / Linux 上 Ctrl+→）：只接受下一个词

@@ -1,14 +1,19 @@
 // 宿主发来的消息。
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
-import { loadBoard, findCard, isCode, allCodeCards, rebaseSegment, shiftBy, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, setLineSel, sel } from "./state/store";
+import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, type HostToBoard } from "@codeboard/core";
+import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, setShared, setLineSel, sel, setShowCollapsed, flows, undo, undoTop } from "./state/store";
+
+/** 宿主最近一次 add 的卡和那时的撤销栈顶（undoAdd 用） */
+let lastAdd: { ids: string[]; top: object | undefined } | null = null;
 import { setCam } from "./state/camera";
-import { setBanner } from "./state/ui";
+import { setBanner, setWalk } from "./state/ui";
+import { resetSubboards, putSkels } from "./state/subboards";
 import * as A from "./actions";
 import { choose } from "./ui/Menu";
 import { setAssetBase } from "./md/render";
 import { preloadEditor } from "./md/load";
+import { preloadCm } from "./cm/load";
 
 let preloaded = false;
 export function onHost(m: HostToBoard) {
@@ -18,22 +23,31 @@ export function onHost(m: HostToBoard) {
       batch(() => {
         setState("host", m.host);
         setAssetBase(m.host.assetBase);
-        if (!preloaded) { preloaded = true; preloadEditor(); }
+        if (!preloaded) { preloaded = true; preloadEditor(); preloadCm(); }
         setState("boards", m.boards);
         setState("views", m.views);
         setState("stale", m.stale);
         setState("board", reconcile(b));
+        A.resetShownViews();
+        setShared(reconcile({}));
         setState("loaded", true);
 
         setBanner(true);
+        A.setWelcome(m.welcome ?? null);
+        A.setOtherQuestions(null);
       });
+      if (A.questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
-      markSaved();
       resetHistory();
+      markSaved();
       A.resetNav();
       select({});
+      // 换了一块白板（进入 / 离开子白板）：讲解、骨架、面包屑都是上一块白板的
+      batch(() => { setWalk(null); setShowCollapsed(false); A.setWalkBack(null); resetSubboards(m.crumbs); A.setRunState(null); });
+      if (m.walk) hopWalk(m.walk);
       break;
     }
+    case "skeletons": putSkels(m.boards); break;
     case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
     case "stale": {
       // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移）。
@@ -44,8 +58,9 @@ export function onHost(m: HostToBoard) {
           for (const [sid, s] of moved) {
             if (s.state !== "moved") continue;
             for (const k of allCodeCards(b)) {
-              const seg = k.segments.find((q) => q.id === sid);
-              if (seg) rebaseSegment(b, k.id, { ...seg, start: s.start, end: s.end, version: s.version ?? seg.version }, shiftBy(s.start - seg.start));
+              // 有 Variant 的卡：版本状态说的是上游的段（显示的可能是我的分支）
+              const seg = upstreamSegs(k).find((q) => q.id === sid);
+              if (seg) rebaseUpstream(b, k.id, { ...seg, start: s.start, end: s.end, version: s.version ?? seg.version }, shiftBy(s.start - seg.start));
             }
             for (const n of b.sidenotes) if (n.kind === "code" && n.code.id === sid) n.code = { ...n.code, start: s.start, end: s.end, version: s.version ?? n.code.version };
           }
@@ -62,7 +77,17 @@ export function onHost(m: HostToBoard) {
     case "host": setState("host", (h) => ({ ...h, ...m.host })); if (m.host.assetBase !== undefined) setAssetBase(m.host.assetBase); break;
     case "add": {
       const ids = A.addCards(m.cards);
+      lastAdd = { ids, top: undoTop() };
       if (m.ask === "split" && ids.length === 1) askSplit(ids[0]);
+      break;
+    }
+    case "undoAdd": {
+      // 只在“最后一步还是这次添加”时撤：白板上之后又改过，撤销会连别的改动一起撤掉
+      const n = m.cards.length;
+      if (lastAdd && lastAdd.top && lastAdd.top === undoTop() && m.cards.every((id) => lastAdd!.ids.includes(id))) {
+        undo(); lastAdd = null;
+        toast(`Removed the ${n > 1 ? `${n} cards` : "card"} just added`);
+      } else toast("The board changed after that; undo on the board instead");
       break;
     }
     case "appendSegment": {
@@ -90,15 +115,47 @@ export function onHost(m: HostToBoard) {
       select({ cards: [f.host.id] });
       if (m.lines && m.seg) setLineSel({ card: m.card, seg: m.seg, start: m.lines[0], end: m.lines[1] });
       A.revealCard(m.card);
+      if (m.sticker) A.revealQuestion(m.sticker);
       break;
     }
     case "key": A.keyAction(m.action); break;
     case "rename": if (m.name.trim()) mutate((b) => { b.name = m.name.trim(); }); break;
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
     case "toast": toast(m.text); break;
+    case "run": A.applyRunMsg(m.apply); break;
+    case "variants": A.applyVariantSync(m.cards); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
+    case "shared": if (m.views) A.sharedShown(m.cards.map((sc) => sc.card)); syncShared(m.cards, m.views); break;
+    case "sharedInfo": setShared(reconcile(m.cards)); break;
+    case "sharedGone": {
+      const n = m.cards.filter((id) => findCard(state.board, id)).length;
+      syncGone(m.cards);
+      if (n) toast(n > 1 ? `${n} cards were deleted everywhere from another board` : "A card was deleted everywhere from another board");
+      break;
+    }
   }
 }
+
+/** 跨白板的讲解：进了子白板就从 start 讲起（讲完回去），回到父白板就接着讲 */
+function hopWalk(w: NonNullable<Extract<HostToBoard, { type: "init" }>["walk"]>) {
+  // 等卡片量好尺寸再动镜头
+  setTimeout(() => {
+    if (w.into) {
+      const start = w.start ?? flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
+      if (!start) { A.leaveBoard(undefined, { resume: { root: w.into.root, i: w.into.i + 1 } }); return; }
+      A.setWalkBack(w.into);
+      A.startWalk(start, { single: true });
+    } else if (w.resume) {
+      const r = w.resume;
+      if (!state.board.cards.some((c) => c.id === r.root) || r.i < 0) return;
+      // 讲到头了（子白板是最后一步）：停在框上
+      const n = walkOrderLen(r.root);
+      if (r.i >= n) return;
+      A.startWalk(r.root, { at: r.i });
+    }
+  }, 120);
+}
+const walkOrderLen = (root: string) => walkOrder(state.board, root).length;
 
 /** 选中的代码里有 ≥2 个顶层函数：问一次 */
 async function askSplit(id: string) {

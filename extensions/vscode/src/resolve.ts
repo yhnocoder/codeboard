@@ -1,8 +1,9 @@
 // 点调用展开（expand）、标识符悬停看定义（peek）、全工作区的符号名字索引。
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as path from "node:path";
-import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
-import { isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
+import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
+import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
+import { crossBefore, decorate, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
 import { sharedDefs, type Def } from "./defcache";
 import { cardForFileSym, symCard } from "./cards";
@@ -22,6 +23,13 @@ export { nameIndexReady, resetIndex, startNameIndex } from "./nameindex";
 
 /** 问语言服务（同一个文件、位置、内容的请求共用：悬停时可能已经在问了） */
 export const lspDefs = (abs: string, line: number, col: number): Promise<Def[]> => sharedDefs(abs, line, col, () => askDefs(abs, line, col));
+/** 定义处的「转到实现」（Pylance 要在整个工作区里找子类，冷的时候要好几秒）：悬停预取、打开白板的预热、点击、peek 共用一个请求 */
+const lspImpls = (d: Def): Promise<Def[]> => sharedDefs(d.abs, d.line, d.col, async () => {
+  const t0 = performance.now();
+  const r = await workspace().language.implementations(d.abs, d.line, d.col);
+  log("info", `implementations at ${hostPath(d.abs)}:${d.line} → ${r.length}, ${Math.round(performance.now() - t0)} ms`);
+  return r;
+}, "impl");
 
 // Pylance 刚启动时会先回空：还没见它答过话时，空的回答隔一会儿再问几次，再退到名字索引
 const RETRY = 3, RETRY_GAP = 600, RETRY_CLICKS = 3;
@@ -79,30 +87,48 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   const full = await versionText(seg);
   const site = callSite(seg, full, m);
   if (!site) log("warn", `vars ${m.name} → callSite miss path=${seg.path}:${m.line}:${m.col}${full ? "" : " (file text unavailable, used saved lines)"}`);
-  if (site?.dispatch && site.dispatch === m.name) { log("info", `expand ${m.name} → dynamic dispatch path=${seg.path}:${m.line}`); return none("Dynamic dispatch: not resolved"); }
-  let resolved: string | undefined, lspN = 0;
+  if (site?.dispatch && site.dispatch === m.name) { log("info", `expand ${m.name} → dynamic dispatch path=${seg.path}:${m.line}`); return { ...none("Dispatched by name: not resolved"), name: m.name }; }
+  let resolved: string | undefined, lspN = 0, dispatching = false;
+  const here = full ? { abs: absOf(seg) ?? seg.path, text: full } : null;
+  const caller = full ? callerOf(seg.lang, full, m.line) : undefined;
 
-  let targets: { abs: string; sym: Sym }[] = [];
+  let targets: Target[] = [];
+  let crossed: Crossed[] = [];
   if (m.pick) {
     const abs = pickAbs(seg, m.pick);
     const t = abs && (await symAtDef({ abs, line: m.pick.line, col: 0 }, m.pick.rel ? m.name : undefined, m.pick.qual));
     if (t) targets = [t];
   } else {
-    const wp = await workingPlace(seg);
+    // 跨语言：torch.ops、launch macro、JIT 编译点下去之前就认得出（语言服务答不了）
+    crossed = await crossBefore(site, seg.lang, here);
+    const wp = crossed.length ? null : await workingPlace(seg);
     resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
       const defs = await clickDefs(wp.abs, line, m.col);
       lspN = defs.length;
+      // 动态分发：定义处是基类的方法、有子类覆盖它 → 列出全部实现让人选（线框 01 一）
+      // 转到实现在 Pylance 那边要在整个工作区里找子类（冷的时候、慢机器上要好几秒）：点击只等一小会儿（预取过的话已经在缓存里），
+      // 等不到就先按定义建卡，回 dispatching，白板再单独问（dispatchAt），有覆盖再给选
+      if (defs.length === 1) {
+        const dsp = dispatchOf(defs[0], m.name);
+        const quick = await within(dsp, DISPATCH_WAIT);
+        if (quick === LATE) { dsp.catch(() => null); dispatching = await mayDispatch(defs[0], m.name); }
+        else if (quick) return quick.result;
+      }
       for (const d of defs) {
         const t = await symAtDef(d, m.name);
         if (t && !targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
       }
     }
+    // Python 调到 C / C++ / Rust 扩展：语言服务找不到定义，先看 pybind / PyO3 的注册（再退到名字索引）
+    // 名字索引里有同名的 Python 定义就不算（self.model.forward 不去找 C++ 的 .def("forward")）
+    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && !(await lookupName(m.name)).some((e) => /\.pyi?$/.test(e.abs))) crossed = await viaRegistry(m.name);
     // 语言服务给了定义、只是那里不是函数 / 类（变量、属性、参数）：不再去建全工作区的名字索引（大仓库要几十秒）
     // 语言服务说了话就不扫工作区：只在当前文件和已经分析过的文件里按名字找
-    if (!targets.length) {
-      const ents = lspN ? await nearbyEntries(m.name, wp?.abs) : await lookupName(m.name);
+    if (!crossed.length && !targets.length) {
+      let ents = lspN ? await nearbyEntries(m.name, wp?.abs) : await lookupName(m.name);
+      if (/^(c|cpp|cuda|cuda-cpp)$/.test(seg.lang)) ents = await cppCands(ents, site);
       const cands = ents.map((e) => ({ ...e, path: hostPath(e.abs), line: e.defLine }));
       if (cands.length) {
         const selfClass = (seg.symbol?.kind === "class" ? seg.symbol.qual : seg.symbol?.qual.split(".").slice(0, -1).join(".")) || seg.scope?.split(".").slice(0, -1).join(".");
@@ -113,17 +139,95 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
       }
     }
   }
-  if (!targets.length) {
+  if (!crossed.length && !targets.length) {
     const why = site?.dispatch ? "Dynamic dispatch: not resolved" : `No definition found for “${m.name}”.`;
     log("warn", `expand ${m.name} → ${why} path=${seg.path}:${m.line}:${m.col} resolved=${resolved ?? "none"} lsp=${lspN}${m.pick ? ` pick=${m.pick.path}:${m.pick.line}` : ""}`);
-    return none(why);
+    return { ...none(why), name: m.name };
   }
   if (targets.length > 1) return { pick: targets.map((t) => ({ label: t.sym.qual, detail: `${hostPath(t.abs)}:${t.sym.defLine}`, path: hostPath(t.abs), line: t.sym.defLine })) };
 
-  const t = targets[0];
+  // 目标找到了：Triton 的 [grid]、CUDA 的 <<<>>>、TileLang 工厂补上边界和取值
+  const x = crossed.length ? await withAlts(crossed) : await decorate(site, targets[0], caller);
+  const t = x.t;
+  if (crossed.length) log("info", `expand ${m.name} → ${x.mark.bound} → ${t.sym.qual} (${hostPath(t.abs)}:${t.sym.defLine})${crossed.length > 1 ? ` +${crossed.length - 1} alternatives` : ""}`);
   const nc = await cardForFileSym(t.abs, t.sym);
   if (!nc) { log("error", `expand ${m.name} → cannot read ${hostPath(t.abs)}`); return none(`Cannot read ${hostPath(t.abs)}.`); }
-  return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site ? await varsFor(site, t) : [] };
+  const mark = Object.keys(x.mark).length ? x.mark : undefined;
+  return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site && !t.sym.name.startsWith("<") ? await varsFor(site, t) : [], ...(mark ? { mark } : {}), ...(x.title ? { title: x.title } : {}), ...(dispatching && !crossed.length ? { dispatching: true as const } : {}) };
+}
+
+/**
+ * C++ 里按名字找到的候选：只要 C / C++ / CUDA 的；ns::f(…) 要 qual 以 ns::f 结尾的；普通调用不会是 __global__ kernel（那要 <<<>>> 或 launch）。
+ * 筛完一个都不剩就照原样
+ */
+async function cppCands(ents: IndexEntry[], site: CallSite | undefined): Promise<IndexEntry[]> {
+  const keep = (xs: IndexEntry[], f: (e: IndexEntry) => boolean | Promise<boolean>) => Promise.all(xs.map(async (e) => [e, await f(e)] as const)).then((r) => { const k = r.filter(([, ok]) => ok).map(([e]) => e); return k.length ? k : xs; });
+  let out = await keep(ents, (e) => /\.(cu|cuh|cc|cpp|cxx|c|h|hpp|hh|inl)$/i.test(e.abs));
+  if (site?.recv && /^[A-Za-z_][\w:]*$/.test(site.recv) && !site.recv.includes(".")) out = await keep(out, (e) => e.qual.endsWith(`${site.recv}::${e.name}`));
+  if (!site?.launch) out = await keep(out, async (e) => { const t = await readText(e.abs); return !t || !/__global__/.test(splitLines(t).slice(e.start - 1, e.defLine).join("\n")); });
+  return out;
+}
+
+/** 调用所在的那一行和函数的文本（CUDA 的 <<<>>> 要读模板实参、constexpr） */
+function callerOf(lang: string, full: string, line: number): { lang: string; line: string; fnText: string } {
+  const lines = splitLines(full);
+  const fn = symbolAt(analysisOf(lang, full).symbols.filter((s) => s.kind === "def"), line);
+  return { lang, line: lines[line - 1] ?? "", fnText: fn ? lines.slice(fn.start - 1, fn.end).join("\n") : "" };
+}
+
+// ---------- 动态分发 ----------
+
+/** 点击时最多等转到实现多久（ms）：缓存里有、或者语言服务热着时够用；再久就先建卡 */
+const DISPATCH_WAIT = 200;
+const LATE = Symbol("late");
+const within = <T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> => {
+  let t: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([p, new Promise<typeof LATE>((r) => { t = setTimeout(() => r(LATE), ms); })]).finally(() => clearTimeout(t));
+};
+/** dispatchOf 会去问转到实现的那种定义：Python 类里的方法 */
+async function mayDispatch(d: Def, name: string): Promise<boolean> {
+  if (langOf(d.abs) !== "python") return false;
+  const b = await symAtDef(d, name);
+  return !!b && !!b.sym.parent && b.sym.kind === "def";
+}
+
+/** expand 回了 dispatching 之后白板来问：同一个调用点的定义处有没有被覆盖（定义、转到实现都走缓存，和 expand 发出去的是同一个请求） */
+export async function dispatchAt(m: { seg: Segment; line: number; col: number; name: string }): Promise<DispatchResult> {
+  if (m.seg.src.kind === "free" || m.seg.src.kind === "github") return null;
+  const wp = await workingPlace(m.seg);
+  if (!wp?.exact) return null;
+  const defs = await clickDefs(wp.abs, wp.start + (m.line - m.seg.start), m.col);
+  if (defs.length !== 1) return null;
+  const d = await dispatchOf(defs[0], m.name);
+  return d ? { ...d.result, ...(d.abstract ? { abstract: true as const } : {}) } : null;
+}
+
+/**
+ * 定义处是类里的方法：在它上面问「转到实现」（Pylance 回所有覆盖它的子类方法）。有覆盖就是动态分发：
+ * 列出全部实现（基类自己不是抽象的也算一个），library 里的标上包名（⌥ 才展开）
+ */
+export async function dispatchOf(d: Def, name: string): Promise<{ result: Extract<ExpandResult, { impls: unknown }>; n: number; base: string; abstract: boolean } | null> {
+  if (langOf(d.abs) !== "python") return null;
+  const b = await symAtDef(d, name);
+  if (!b || !b.sym.parent || b.sym.kind !== "def") return null;
+  let locs: Def[] = [];
+  try { locs = await lspImpls(d); } catch { return null; }
+  const impls: Target[] = [];
+  for (const l of locs) {
+    if (l.abs === d.abs && l.line === d.line) continue;
+    const t = await symAtDef(l, name);
+    if (t && !(t.abs === b.abs && t.sym.qual === b.sym.qual) && !impls.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) impls.push(t);
+  }
+  if (!impls.length) return null;
+  const text = await readText(b.abs);
+  const abstract = text !== null && isAbstractBody(splitLines(text), b.sym);
+  const pick = async (t: Target, base?: true): Promise<ImplPick> => {
+    const lib = await libOf(t.abs);
+    return { label: t.sym.qual, detail: `${hostPath(t.abs)}:${t.sym.defLine}`, path: hostPath(t.abs), line: t.sym.defLine, qual: t.sym.qual, ...(lib ? { lib } : {}), ...(base ? { base } : {}) };
+  };
+  const list = [...(abstract ? [] : [await pick(b, true)]), ...(await Promise.all(impls.map((t) => pick(t))))];
+  log("info", `dynamic dispatch ${b.sym.qual} → ${list.length} implementations`);
+  return { result: { impls: list, base: b.sym.qual }, n: list.length, base: b.sym.parent, abstract };
 }
 
 /** 不扫工作区的名字查找：当前文件 + 最近读过、分析还在缓存里的文件 */
@@ -223,7 +327,13 @@ export async function peek(m: PeekReq): Promise<PeekResult> {
   if (defs.length) {
     // hover 在使用处问（Pylance 给的类型更具体），没有再问定义处
     const hov = (use && (await hoverAt(use.abs, use.line, use.col))) || (await hoverAt(defs[0].abs, defs[0].line, defs[0].col));
-    return peekAt(defs[0], m.word, hov);
+    // 动态分发的提示也不让 peek 等转到实现：等不到这次就不显示（请求还在跑，进了缓存下次就有）
+    const dp = defs.length === 1 ? dispatchOf(defs[0], m.word.split(".").pop()!) : null;
+    const [out, q] = await Promise.all([peekAt(defs[0], m.word, hov), dp ? within(dp, DISPATCH_WAIT) : null]);
+    if (q === LATE) dp!.catch(() => null);
+    const dsp = q === LATE ? null : q;
+    if (out && dsp) out.dispatch = { n: dsp.n, base: dsp.base, ...(dsp.abstract ? { abstract: true } : {}) };
+    return out;
   }
   // 兜底 1：import 进来的模块（mp → torch.multiprocessing）
   const mod = await importedModule(m);

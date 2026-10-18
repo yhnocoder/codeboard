@@ -63,5 +63,6 @@ export function trackCardLod() {
     });
     if (i < todo.length) later();
   }
-  createEffect(() => { lod(); izWant(); later(); });
+  // 卡片增减时也看一遍：换了白板（进出子白板）后，同 id 的卡可能还留着上一块白板上的档
+  createEffect(() => { lod(); izWant(); placed(); later(); });
 }

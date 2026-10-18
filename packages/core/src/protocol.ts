@@ -1,7 +1,23 @@
-// 宿主 ↔ 白板的消息。白板持有白板状态，改动后整板发回来保存；宿主负责读代码、高亮、版本、跳转。
+// 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
+// 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta } from "./model";
+import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt, VariantFrom } from "./model";
 import type { SegView } from "./lines";
+import type { BoardPatch, SharedUpdate } from "./patch";
+import type { CardCopy } from "./edit";
+import type { SharedInfo } from "./shared";
+import type { Skeleton } from "./subboard";
+import type { RunApply } from "./run";
+import type { QuestionItem } from "./questions";
+import type { LspItem, LspSignature } from "./workspace";
+
+/** 子白板的面包屑：从最外层到当前白板的上一级（进入子白板时宿主记着；frame = 在那块白板上是哪个框） */
+export type Crumb = { id: string; name: string; frame: string };
+/**
+ * 跨白板的讲解。进入子白板：into = 父白板的讲解走到了第几步（root 出发），start = 从子白板的这张卡讲起（没有 = 从第一张图的根）；
+ * 回到父白板：resume = 从 root 出发的讲解接着讲第 i 步。宿主只是转一下
+ */
+export type WalkHop = { into?: { root: string; i: number }; start?: string; resume?: { root: string; i: number } };
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
@@ -36,6 +52,13 @@ export type Settings = {
   themeReflow?: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
   debug?: boolean; // 打开后设置页多一节 Debug（调常量）
   tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
+  pasteOther?: "linked" | "copy"; // 卡贴到另一块白板上：共享卡（默认）/ 独立副本；⌥ 粘贴是另一种
+  sharedUpdate?: "ask" | "all" | "this"; // 共享卡 Update 新版本：每次问（默认）/ 所有白板 / 只这块白板（拆成副本）
+  subPreview?: "skeleton" | "title"; // 子白板框里画什么：带名字的骨架（默认）/ 只有标题
+  welcomeBack?: "2d" | "always" | "off"; // 回到一块白板时提示还有几个问题：隔 2 天以上（默认）/ 每次 / 不提示
+  exportQuestions?: boolean; // 导出时带上问题（默认不带）
+  exportBoardOnly?: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
+  exportScope?: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
@@ -55,10 +78,12 @@ export type HostInfo = {
   forwardedKeys?: string[];
   /** 宿主能做 AI 续写（VS Code 的语言模型）：Note 编辑时的灰字补全 */
   complete?: boolean;
+  /** ⌘C 复制的卡在哪块白板上、几张（画布菜单的 Paste as Linked Card / Paste as Copy 用） */
+  clip?: { board: string; n: number };
 };
 
-/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
-export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock" | "settings" | "openSettings";
+/** 宿主替白板拦下的快捷键对应的动作（VS Code 会先吃掉 ⌘K ⌘D ⌘0 ⌘1 ⌘± ⌘⇧L ⌘⇧B ⌘,）；settings = ⌘, 开关设置页，openSettings = 命令 Open Settings（只开） */
+export type KeyAction = "search" | "duplicate" | "fitAll" | "zoom100" | "zoomIn" | "zoomOut" | "lock" | "settings" | "openSettings" | "turnIntoBoard";
 
 export type PeekDef = {
   path: string; // 显示用的路径
@@ -78,6 +103,8 @@ export type PeekDef = {
   doc?: string; // hover 的文档（Markdown）
   lib?: string; // 定义在 library code 里：包名（在 Study Scope 里时白板不标 library）
   title?: string; // 标题里代替 文件:行（模块：torch/multiprocessing）
+  /** 动态分发：定义处是基类的方法，有 n 个实现（悬停显示「Dynamic dispatch · n implementations」） */
+  dispatch?: { n: number; base: string; abstract?: boolean };
 };
 
 export type SearchItem =
@@ -114,18 +141,23 @@ export type GhTree = { commit: string; paths: { path: string; dir?: boolean }[];
 export type GhFile = { path: string; lang: string; text: string[]; html: string[] };
 
 export type HostToBoard =
-  | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo }
+  /** crumbs：这块白板是从哪几块父白板一路进来的（没有 = 顶层）；walk：进来 / 回来时接着讲解 */
+  /** welcome：隔了一阵再打开（设置 welcomeBack）、这块白板还有没解决的问题：days = 上次打开是几天前，open = 几个问题 */
+  | { type: "init"; board: Board; boards: BoardMeta[]; views: Record<string, SegView>; stale: Record<string, Stale>; host: HostInfo; crumbs?: Crumb[]; walk?: WalkHop; welcome?: { days: number; open: number } }
   | { type: "views"; views: Record<string, SegView> }
   | { type: "stale"; stale: Record<string, Stale> }
   | { type: "boards"; boards: BoardMeta[] }
   | { type: "host"; host: Partial<HostInfo> }
   /** 从编辑器加进来的卡：放在选中卡旁边，没选中放视口中央 */
   | { type: "add"; cards: NewCard[]; ask?: "split"; sel?: { card: string } }
+  /** 编辑器里 ⌥B 之后接着按 ⌘Z：撤销刚加的这几张卡（白板上之后又改过就不撤，提示一下） */
+  | { type: "undoAdd"; cards: string[] }
   /** 给选中的卡追加一段 */
   | { type: "appendSegment"; card: string; seg: Segment; view: SegView }
   /** 编辑器 ⌥S：作为 Sidenote 挂到白板上选中的行 */
   | { type: "addSidenote"; seg: Segment; view?: SegView }
-  | { type: "reveal"; card: string; seg?: string; lines?: [number, number] }
+  /** sticker：顺带打开这个问题（Questions 面板点进来的） */
+  | { type: "reveal"; card: string; seg?: string; lines?: [number, number]; sticker?: string }
   /** 宿主拦下的快捷键转给白板 */
   | { type: "key"; action: KeyAction }
   /** 侧栏 / 命令面板改了白板名 */
@@ -135,11 +167,24 @@ export type HostToBoard =
   | { type: "toast"; text: string }
   /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
   | { type: "githubPicker"; repo?: string }
+  /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
+  | { type: "shared"; cards: SharedUpdate[]; views?: Record<string, SegView> }
+  /** 这块白板上的共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算，整个换掉） */
+  | { type: "sharedInfo"; cards: Record<string, SharedInfo> }
+  /** 别的白板 Delete Everywhere 删掉了这些共享卡：白板用 sync 删掉（不进撤销栈） */
+  | { type: "sharedGone"; cards: string[] }
+  /** 这块白板上的子白板的骨架（变了的那几块；null = 那块白板没了）。子白板存盘后宿主重算，防抖 */
+  | { type: "skeletons"; boards: Record<string, Skeleton | null> }
+  /** 一次运行（Capture Run 跑完，或 Apply Run… 选的）：白板给对上的 Call 箭头挂 observed 证据和实参，没对上的列出来 */
+  | { type: "run"; apply: RunApply }
+  /** 有 Variant 的卡（线框 07）：Variant 的代码变了（保存、分支 rebase、PR 更新）、合进了上游、上游最新的代码。只发有变化的卡 */
+  | { type: "variants"; cards: Record<string, VariantSync> }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
 export type BoardToHost =
   | { type: "ready" }
-  | { type: "save"; req: number; board: Board } // 回 null；写盘失败回 error，白板过一会儿重试
+  /** 自动保存：变了的项（undo = 这批改动里有撤销 / 重做）。回跳过的共享项数；写盘失败回 error，白板过一会儿整块重发 */
+  | { type: "patch"; req: number; patch: BoardPatch; undo?: true }
   | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
   /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
   | { type: "open"; card: string; seg?: string; line?: number }
@@ -147,6 +192,8 @@ export type BoardToHost =
   | { type: "openLink"; url: string }
   /** 点调用展开：回 ExpandResult */
   | { type: "expand"; req: number; seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick }
+  /** expand 回了 dispatching：这个调用的覆盖实现（转到实现回来了才答；回 DispatchResult） */
+  | { type: "dispatch"; req: number; seg: Segment; line: number; col: number; name: string }
   /** 鼠标停在调用上：宿主先在后台问定义、读好目标文件（不回答；点下去的 expand 复用） */
   | { type: "prefetch"; seg: Segment; line: number; col: number; name: string }
   /** 调用接到已有的卡上：算变量候选（回 Var[]） */
@@ -155,7 +202,7 @@ export type BoardToHost =
   | { type: "search"; req: number; q: string; scope?: "all" | "code" | "symbols" }
   | { type: "searchPick"; req: number; item: SearchItem; alt?: boolean }
   | { type: "entryPoints"; req: number }
-  | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD
+  | { type: "diff"; req: number; seg: Segment; against?: string } // against 缺省 = HEAD；"upstream" = 上游最新（有 Variant 的卡）
   | { type: "commits"; req: number; seg: Segment }
   | { type: "switchCommit"; req: number; seg: Segment; commit: string } // 回 { seg, view }
   | { type: "resolveRef"; req: number; text: string } // 手输 commit / branch / tag
@@ -177,11 +224,78 @@ export type BoardToHost =
   | { type: "copyDiagnostics"; board?: boolean }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
   | { type: "log"; level: "info" | "warn" | "error"; text: string }
-  | { type: "openBoard"; id: string; card?: string }
+  | { type: "openBoard"; id: string; card?: string; line?: number; sticker?: string }
+  /** ⌘C 复制了这些卡（text = 写进剪贴板的文字）：宿主记下来，贴到别的白板时用 */
+  | { type: "copyCards"; cards: string[]; text: string }
+  /** 粘贴：剪贴板里是别的白板上复制的卡就回 PastedCards（text 对不上、同一块白板回 null）；copy = 独立副本 */
+  | { type: "pasteCards"; req: number; text?: string; copy?: boolean }
+  /** 共享卡 Delete Everywhere：从所有白板上删掉（回删了它的白板数） */
+  | { type: "deleteEverywhere"; req: number; card: string }
   | { type: "confirm"; req: number; text: string; detail?: string; ok: string }
+  /** 子白板的骨架（白板上出现了还没有骨架的框时要；null = 那块白板没了） */
+  | { type: "skeletons"; req: number; ids: string[] }
+  /** Turn into Board：选中的卡拆出来的新白板（id 白板定），存到父白板所在的组；共享卡还是共享卡。回 ok */
+  | { type: "newBoard"; req: number; board: Board }
+  /** 双击子白板框：在这个面板里打开子白板（frame = 框的卡 id，cam = 父白板回来时的镜头）；walk.start = 接着讲解 */
+  | { type: "enterBoard"; id: string; frame: string; cam: Camera; walk?: WalkHop }
+  /** 面包屑 / Esc：回到第 depth 层父白板（0 = 最外层；缺省 = 上一级）；walk.back = 父白板接着讲解 */
+  | { type: "leaveBoard"; depth?: number; walk?: WalkHop }
+  /** 子白板框的 Delete Board…：删掉那块白板（放进 .trash；先问）。回删没删 */
+  | { type: "deleteBoard"; req: number; id: string }
   | { type: "pickFile"; req: number; kind: "image" }
+  /** 解析不到的调用：按名字在所有语言里找（定义 + 字符串注册），回 NameHit[] */
+  | { type: "searchName"; req: number; name: string }
+  /** Generated 卡的内容：剪贴板或选一个文件（回 GenSource；取消回 null） */
+  | { type: "genSource"; req: number; from: "clipboard" | "file" }
+  /** 编辑中的代码（Free code 卡、Note 里的代码块）：宿主给它留一个隐藏的虚拟文档（语言 lang、内容 text），语言服务（Pylance…）照它回答。
+   *  near = 放在哪段代码旁边（Python 的 import 才找得到）；打字时防抖地发，补全 / 悬停 / 签名请求也都带着全文 */
+  | { type: "codeDoc"; id: string; lang: string; text: string; near?: Pick<Segment, "src" | "path" | "version"> }
+  /** 编辑结束：清掉那个虚拟文档 */
+  | { type: "codeDocClose"; id: string }
+  /** 编辑中的代码：line / col 处的补全、悬停、签名（行列都从 0 开始；trigger = 触发的字符，如 "." "("）。同一个 id 来了新的请求就作废旧的 */
+  | { type: "lspComplete"; req: number; id: string; text: string; line: number; col: number; trigger?: string }
+  | { type: "lspHover"; req: number; id: string; text: string; line: number; col: number }
+  | { type: "lspSignature"; req: number; id: string; text: string; line: number; col: number; trigger?: string }
   /** Note 编辑时的灰字补全：光标前后的文字，回接在光标处的一段（没有可用模型时回 null） */
-  | { type: "complete"; req: number; before: string; after: string };
+  | { type: "complete"; req: number; before: string; after: string }
+  /** 白板的 ⋯ 菜单：Capture Run…（问命令、跑一次、发回 run）/ Apply Run…（从存着的运行记录里选一次） */
+  | { type: "captureRun" }
+  | { type: "applyRun" }
+  /** Questions 面板（线框 06）：所有白板上的问题（宿主按存好的白板算；这块白板白板自己按当前状态换掉） */
+  | { type: "questions"; req: number }
+  /** 导出 Markdown 前：段的 GitHub 永久链接（段 id → URL；算不出的不给） */
+  | { type: "permalinks"; req: number; segs: Segment[] }
+  /** 导出（线框 08）：存成文件（先问存到哪）。html 里的 cbres: 引用由宿主换成 data: URL（单个文件、离线能开）。回存了没有 */
+  | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
+  /** 写剪贴板（webview 里写可能被拦下） */
+  | { type: "copyText"; text: string }
+  /** Add Variant 菜单（线框 07）：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
+  | { type: "variantSources"; req: number; seg: Segment }
+  /** 加一个 Variant：segs = 上游的段，宿主在那个来源里按函数名重新找（file 没给 abs 时先让用户选文件）。回 NewVariant；取消回 null */
+  | { type: "addVariant"; req: number; segs: Segment[]; from: AddVariantFrom };
+
+/** Add Variant 的来源：file 不给 abs = 让用户选；PR 只给编号（仓库从 origin 推出来） */
+export type AddVariantFrom = Exclude<VariantFrom, { kind: "upstream" | "file" | "pr" }> | { kind: "file"; abs?: string } | { kind: "pr"; num: number };
+/** 同一仓库的其他 worktree（git worktree list，不含这段代码所在的那个）；branches = 本地分支；pr = 能不能加 GitHub PR（origin 在 GitHub 上） */
+export type VariantSources = { worktrees: { dir: string; branch?: string; label: string; dirty?: boolean }[]; branches: string[]; current?: string; pr?: string };
+/** 宿主建好的 Variant（段 id 和请求里的一一对应；views 按段 id）。refresh 时的 VariantSync.views 一律按 viewKey(段, Variant) */
+export type NewVariant = { name: string; from: VariantFrom; segs: Segment[]; views: Record<string, SegView> };
+/**
+ * 一张卡的 Variant 状态。segs：变了的 Variant 的新段（Variant id → 段）；views：它们的展示数据（键 viewKey(段, Variant)）；
+ * rebased：分支 / worktree 不是快进（rebase、force push），按函数名重新定位了；merged：合进了上游（Variant id → 合进的版本 into，如 main 4c1d0e9，和合进去的 commit tip）；
+ * behind：分支落后上游几个 commit；latest：上游最新的代码（对比基准、三方对照用；label 如 main 4c1d0e9）
+ */
+export type VariantSync = {
+  segs?: Record<string, Segment[]>;
+  views?: Record<string, SegView>;
+  rebased?: string[];
+  merged?: Record<string, { into: string; tip: string }>;
+  behind?: Record<string, number>;
+  latest?: { label: string; segs: Segment[]; views: Record<string, SegView> };
+};
+
+/** 贴过来的别的白板上的卡（views = 各段的展示数据） */
+export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; views: Record<string, SegView> };
 
 /** 指定展开哪个定义。rel = path 相对 seg 自己的来源根（类卡点成员；工作区外的文件也对），qual = 按符号找（钉的版本行号可能挪了） */
 export type ExpandPick = { path: string; line: number; rel?: true; qual?: string };
@@ -189,19 +303,38 @@ export type ExpandPick = { path: string; line: number; rel?: true; qual?: string
 /** peek 的回答：找不到是 null */
 export type PeekResult = PeekDef | null;
 
-/** expand 的回答 */
+/**
+ * expand 的回答。card：建卡连线；mark = 跨边界时要并进 Call 标记的（边界、取值、备选），title = 模板实例名（dispatch<8, 768>）；
+ * dispatching = 卡是类里的方法，有没有子类覆盖（转到实现）还没问出来：先按定义建卡，白板再用 dispatch 问，有覆盖再给选。
+ * impls：动态分发，列出全部实现让人选（base = 静态类型的方法）。none：解析不到（name = 可以按名字跨语言搜）
+ */
 export type ExpandResult =
-  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number }
+  | { card: CodeCard; views: Record<string, SegView>; vars: Var[]; w?: number; mark?: CrossMark; title?: string; dispatching?: true }
   | { pick: { label: string; detail: string; path: string; line: number }[] }
-  | { none: true; reason: string };
+  | { impls: ImplPick[]; base: string }
+  | { none: true; reason: string; name?: string };
+
+/** dispatch 的回答：有覆盖时的全部实现（abstract = 基类的方法是抽象的，不在 impls 里）；没有覆盖是 null */
+export type DispatchResult = { impls: ImplPick[]; base: string; abstract?: true } | null;
+
+/** 跨边界时宿主给的 Call 标记部分 */
+export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev">;
+/** 动态分发的一个实现：qual / 路径 / 行；lib = 在 library 里（包名）；base = 基类自己的实现（不是抽象的） */
+export type ImplPick = { label: string; detail: string; path: string; line: number; qual: string; lib?: string; base?: true };
+/** 跨语言按名字搜到的一处：lang = py / cpp / cuda / rust；def = 定义，否则是字符串注册（"name"） */
+export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
+/** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
+export type GenSource = { text: string; lang: string; name: string };
+export type { BoundVal, CallAlt };
 
 /** 要回答的请求（带 req）：白板用 ask 发，宿主用 { type: "reply", req, data } 回 */
 export type AskType = Extract<BoardToHost, { req: number }>["type"];
 
 /** 请求 → 回答的类型表：白板的 ask 和宿主的回答两边都按它检查 */
 type Replies = {
-  save: null;
+  patch: { skipped: number };
   expand: ExpandResult;
+  dispatch: DispatchResult;
   callVars: Var[];
   peek: PeekResult;
   search: SearchItem[];
@@ -220,7 +353,22 @@ type Replies = {
   stickerPacks: StickerPack[];
   confirm: boolean;
   pickFile: string | null; // data URL
+  searchName: NameHit[];
+  genSource: GenSource | null;
   complete: string | null;
+  lspComplete: LspItem[];
+  lspHover: string[];
+  lspSignature: LspSignature | null;
+  pasteCards: PastedCards | null;
+  deleteEverywhere: number;
+  skeletons: Record<string, Skeleton | null>;
+  newBoard: boolean;
+  deleteBoard: boolean;
+  questions: QuestionItem[];
+  permalinks: Record<string, string>;
+  exportFile: boolean;
+  variantSources: VariantSources;
+  addVariant: NewVariant | null;
 };
 export type ReplyOf<T extends AskType> = Replies[T];
 /** From GitHub… 的回答：按 GhQuery 的 op */

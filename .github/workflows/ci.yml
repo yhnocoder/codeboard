@@ -27,7 +27,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: true, fetch-depth: 0 } # unit tests need nano-vllm commit history
+        with: { fetch-depth: 0 } # unit tests need nano-vllm commit history
+      - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
       - run: npm run typecheck
       - run: npm test
@@ -42,7 +43,7 @@ jobs:
     name: harness (${{ matrix.shard }}/2)
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: true }
+      - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
       - run: node packages/board/test/run-harness.mjs --shard=${{ matrix.shard }}/2
@@ -52,7 +53,7 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: true }
+      - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/vscode
       - name: VS Code e2e (Pylance + UI audit)
@@ -66,7 +67,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-        with: { submodules: true, fetch-depth: 0 }
+        with: { fetch-depth: 0 }
+      - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
       - name: Check out and build base

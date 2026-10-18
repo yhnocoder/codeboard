@@ -2,6 +2,7 @@
 // 不固定的同时只开一个；⌘ + 悬停 / Pin 固定后变成独立的一个，可以开好几个对照着看。
 import { createSignal } from "solid-js";
 import type { Anchor, DiffData, PeekDef, Commit, Segment } from "@codeboard/core";
+import type { ImplPop, NamesPop } from "../actions/chains";
 
 /** 浮层挂在哪：一个元素（跟着它走，镜头动也跟），或一个屏幕坐标 */
 export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" };
@@ -15,6 +16,20 @@ export type Pop =
   | { kind: "commits"; card: string; seg: Segment; list?: Commit[] }
   | { kind: "vars"; link: string }
   | { kind: "mark"; card: string }
+  /** 共享卡在哪几块白板上（卡头的「⧉ N boards」） */
+  | { kind: "boards"; card: string }
+  /** 动态分发：N 个实现选一个（线框 01） */
+  | { kind: "impls"; data: ImplPop }
+  /** 跨边界的取值（kNumRanks 取几） */
+  | { kind: "vals"; link: string; val: number }
+  /** 解析不到：按名字在所有语言里搜 */
+  | { kind: "names"; data: NamesPop }
+  /** RPC 箭头的属性：机制、消息名、一对多、消息卡、↩ back to（线框 03） */
+  | { kind: "rpc"; link: string }
+  /** 「?」贴纸上的问题（线框 06） */
+  | { kind: "question"; sticker: string }
+  /** 三方对照：原版 / 我的 / 上游最新（线框 07） */
+  | { kind: "three"; card: string }
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 

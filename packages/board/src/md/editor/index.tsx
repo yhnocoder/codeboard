@@ -2,7 +2,7 @@
 // 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选卡、
 // 公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。
 import { keepKey } from "../../ui/editkeys";
-import { Editor, Extension, InputRule, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
+import { Editor, Extension, InputRule, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -12,6 +12,8 @@ import { render } from "solid-js/web";
 import { createSignal, For, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
+import { EMOJI, EMOJI_NAMES } from "../emoji";
+import { CodeBlockView } from "./codeblock";
 import { Typora, reconvert } from "./typora";
 import { place, virtual } from "../../ui/place";
 
@@ -56,8 +58,8 @@ const SLASH: MenuItem[] = [
 
 // 每个编辑器自己的一份界面状态（同一时间只有一个编辑器，但不靠这一点）
 type Ui = {
-  menu: Accessor<{ kind: "slash" | "ref"; items: MenuItem[]; i: number } | null>;
-  setMenu: (v: { kind: "slash" | "ref"; items: MenuItem[]; i: number } | null) => void;
+  menu: Accessor<{ kind: "slash" | "ref" | "emoji"; items: MenuItem[]; i: number } | null>;
+  setMenu: (v: { kind: "slash" | "ref" | "emoji"; items: MenuItem[]; i: number } | null) => void;
   math: Accessor<{ pos: number; latex: string; block: boolean } | null>;
   setMath: (v: { pos: number; latex: string; block: boolean } | null) => void;
   /** 工具条里的链接输入框（null = 没打开） */
@@ -89,7 +91,7 @@ async function insertPickedImage(e: Editor) {
 }
 
 /** 一个 suggestion 菜单（/ 和 [[ 共用）：键盘上下选、↵ 选中、Esc 关 */
-function menuSuggestion(editor: Editor, kind: "slash" | "ref", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[] }) {
+function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[] }) {
   return Suggestion<MenuItem, MenuItem>({
     editor,
     pluginKey: new PluginKey(`cb-${kind}`),
@@ -282,7 +284,10 @@ function MathPop(p: { editor: Editor; ui: Ui }) {
 // ---------- 编辑器专用的扩展 ----------
 function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement, exit: () => void, complete: (b: string, a: string) => Promise<string | null>): AnyExtension[] {
   const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
-  const base = baseExtensions.map((x) => (x.name === "inlineMath" || x.name === "blockMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false, displayMode: x.name === "blockMath" } }) : x));
+  const base = baseExtensions.map((x) => (x.name === "inlineMath" || x.name === "blockMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false, displayMode: x.name === "blockMath" } })
+    // 代码块：编辑时用 CodeMirror（和 Free code 卡同一个编辑器）
+    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete }) })
+    : x));
   const Slash = Extension.create({
     name: "cbSlash",
     addProseMirrorPlugins() {
@@ -299,7 +304,27 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
           const all = o.cards();
           const hit = (t: string) => { const l = t.toLowerCase(); return !s ? 1 : l.startsWith(s) ? 3 : l.includes(s) ? 2 : 0; };
           return all.map((c) => ({ c, w: hit(c.title) })).filter((x) => x.w).sort((a, b) => b.w - a.w).slice(0, 30)
-            .map(({ c }) => ({ title: c.title, hint: c.kind, key: c.id, run: (e: Editor, r: Range) => e.chain().focus().insertContentAt(r, [{ type: "cardRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run() }));
+            .map(({ c }) => ({ title: c.title, hint: c.kind, key: c.id, run: (e: Editor, r: Range) => {
+              // 自动配对补上的 ]] 也一起换掉（pairs.ts）
+              const to = e.state.doc.textBetween(r.to, Math.min(r.to + 2, e.state.doc.content.size), "", "\ufffc") === "]]" ? r.to + 2 : r.to;
+              e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "cardRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run();
+            } }));
+        },
+      })];
+    },
+  });
+  // : 加两个以上的字母：表情菜单（Typora #31）；打完 :名字: 直接变（schema.ts 的输入规则）
+  const Emo = Extension.create({
+    name: "cbEmoji",
+    addProseMirrorPlugins() {
+      return [menuSuggestion(this.editor, "emoji", {
+        char: ":",
+        items: (q) => {
+          const s = q.toLowerCase();
+          if (s.length < 2 || !/^[a-z0-9_+-]+$/.test(s)) return [];
+          const w = (n: string) => (n.startsWith(s) ? 3 : n.includes(`_${s}`) ? 2 : n.includes(s) ? 1 : 0);
+          return EMOJI_NAMES.map((n) => ({ n, w: w(n) })).filter((x) => x.w).sort((a, b) => b.w - a.w || a.n.length - b.n.length).slice(0, 30)
+            .map(({ n }) => ({ title: `${EMOJI[n]}  ${n}`, key: n, run: (e: Editor, r: Range) => { e.chain().focus().insertContentAt(r, { type: "emoji", attrs: { name: n } }).run(); } }));
         },
       })];
     },
@@ -328,7 +353,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   return [
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
-    ...base, Slash, Ref, Rules, Exit,
+    ...base, Slash, Ref, Emo, Rules, Exit,
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),
@@ -539,7 +564,12 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     // 这一个任务里就拿焦点（不等 TipTap 的下一帧），光标和编辑器同一帧出现。放进微任务：双击是在 pointerdown 里进来的，
     // 同一个事件冒泡到画布时会把焦点 blur 掉；从菜单进来时菜单关掉会把焦点放回 body，下一帧再补一次
     queueMicrotask(() => { if (inst.sess === sess && !editor.view.hasFocus()) editor.view.focus(); });
-    editor.commands.focus(undefined, { scrollIntoView: false });
+    // 下一帧那次只补"焦点掉到了 body"的情况：慢机器上第一帧可能来得很晚，那时已经打了 $$⏎ / ⌘K，焦点在公式框、链接框里，
+    // 不能抢回编辑器（公式框失焦就关掉，空公式块被删掉，接着打的字落进正文）。TipTap 的 focus() 是无条件在下一帧抢
+    requestAnimationFrame(() => {
+      const a = document.activeElement;
+      if (inst.sess === sess && !editor.isDestroyed && !editor.view.hasFocus() && (!a || a === document.body)) editor.view.focus();
+    });
   }
   const [link, setLink] = createSignal<string | null>(null);
   const ui: Ui = { menu, setMenu, math, setMath, link, setLink, opts: o };

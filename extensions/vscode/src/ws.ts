@@ -56,11 +56,12 @@ export function langOf(file: string): string {
   if ([".cu", ".cuh"].includes(ext)) return "cuda-cpp";
   if ([".cc", ".cpp", ".cxx", ".hpp", ".hh", ".hxx", ".h", ".inl"].includes(ext)) return "cpp";
   if (ext === ".c") return "c";
+  if (ext === ".rs") return "rust";
   return "plaintext";
 }
 
 /** 代码文件（建名字索引、找工作区代码用） */
-export const CODE_GLOB = "**/*.{py,pyi,cu,cuh,cc,cpp,cxx,c,h,hpp}";
+export const CODE_GLOB = "**/*.{py,pyi,cu,cuh,cc,cpp,cxx,c,h,hpp,rs}";
 export const CODE_EXCLUDE = "**/{node_modules,.git,.venv,venv,build,dist,__pycache__,.mypy_cache,.tox}/**";
 
 export function mkUid(p: string) {

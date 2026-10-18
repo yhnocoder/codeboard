@@ -90,6 +90,54 @@ function SettingsPage(p: { section?: string }) {
             )}</For>
           </div>
         </Sec>
+        <Sec id="shared" title="Boards" hint="A card pasted onto another board can be the same card on both boards (linked: code, version and sidenotes stay in sync) or a copy.">
+          <div class="st-sub">Paste onto another board</div>
+          <div class="st-chips">
+            <For each={[["linked", "Linked"], ["copy", "Copy"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().pasteOther ?? "linked") === v }} onClick={() => A.setSetting("pasteOther", v)}>{lb}</button>
+            )}</For>
+          </div>
+          <div class="st-sub">Update a linked card</div>
+          <div class="st-chips">
+            <For each={[["ask", "Ask Every Time"], ["all", "All Boards"], ["this", "This Board Only"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().sharedUpdate ?? "ask") === v }} onClick={() => A.setSetting("sharedUpdate", v)}>{lb}</button>
+            )}</For>
+          </div>
+          <div class="st-sub">Sub-board preview</div>
+          <div class="st-chips">
+            <For each={[["skeleton", "Named Skeleton"], ["title", "Title Only"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().subPreview ?? "skeleton") === v }} onClick={() => A.setSetting("subPreview", v)}>{lb}</button>
+            )}</For>
+          </div>
+        </Sec>
+        <Sec id="questions" title="Questions" hint="When you come back to a board, a hint says how many of its questions are still open.">
+          <div class="st-sub">Welcome-back hint</div>
+          <div class="st-chips">
+            <For each={[["2d", "After 2 Days"], ["always", "Always"], ["off", "Off"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().welcomeBack ?? "2d") === v }} onClick={() => A.setSetting("welcomeBack", v)}>{lb}</button>
+            )}</For>
+          </div>
+        </Sec>
+        <Sec id="export" title="Export" hint="Defaults for the Export dialog (HTML snapshot and Markdown). Questions and Board-only notes stay out unless you turn them on.">
+          <div class="st-sub">Export by default</div>
+          <div class="st-chips">
+            <For each={[["board", "Whole Board"], ["sections", "Selected Sections"], ["walk", "Walkthrough"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: (cur().exportScope ?? "board") === v }} onClick={() => A.setSetting("exportScope", v)}>{lb}</button>
+            )}</For>
+          </div>
+          <div class="st-sub">Include open questions</div>
+          <div class="st-chips">
+            <For each={[[true, "On"], [false, "Off"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: !!cur().exportQuestions === v }} onClick={() => A.setSetting("exportQuestions", v)}>{lb}</button>
+            )}</For>
+          </div>
+          <div class="st-sub">Include Board-only notes</div>
+          <div class="st-chips">
+            <For each={[[true, "On"], [false, "Off"]] as const}>{([v, lb]) => (
+              <button class="st-chip pick" classList={{ on: !!cur().exportBoardOnly === v }} onClick={() => A.setSetting("exportBoardOnly", v)}>{lb}</button>
+            )}</For>
+          </div>
+        </Sec>
         <Sec id="zoom" title="Zoom levels" hint="Below Overview, code turns into outlines. Below Map, cards show only numbers and titles.">
           <div class="st-row">
             <Pct label="Overview below" k="zoomOverview" min={20} max={100} />
