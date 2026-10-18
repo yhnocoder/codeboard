@@ -346,12 +346,27 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
     await card(f, "Scheduler.schedule").locator(".mk").first().click();
     await alwaysShowIn(f); await settle(f);
     await page.keyboard.press("Escape"); await blank(f); await settle(f);
-    // Hide every element but the card, its ancestors and its contents (the board background stays); returns an undo
+    // Hide every element but the card, its ancestors and its contents (the board background stays); window.__unsolo() undoes it.
+    // Can run again: what the board mounted since (e.g. the arrowhead of the incoming link, redrawn after a camera move) is hidden too
     const solo = (el) => el.evaluate((c) => {
       const hidden = [];
       for (let e = c; e && e !== document.body; e = e.parentElement)
         for (const sib of e.parentElement?.children ?? []) if (sib !== e && sib.style.visibility !== "hidden") { hidden.push(sib); sib.style.visibility = "hidden"; }
-      window.__unsolo = () => { for (const h of hidden) h.style.visibility = ""; };
+      const prev = window.__unsolo;
+      window.__unsolo = () => { for (const h of hidden) h.style.visibility = ""; prev?.(); window.__unsolo = undefined; };
+    });
+    // What shows besides the card itself: hover or selection on it, a link port, other elements around it (up to 4). Should be nothing
+    const strays = (el) => el.evaluate((c) => {
+      const r = c.getBoundingClientRect(), m = r.width / 8;
+      const state = [c.matches(":hover") && "card hovered", c.classList.contains("sel") && "card selected",
+        ...[...c.querySelectorAll(".eport")].filter((e) => +getComputedStyle(e).opacity > 0).map((e) => `port ${e.className}`)].filter(Boolean);
+      return state.concat([...document.querySelectorAll("#board *")].filter((e) => {
+        if (c.contains(e) || e.contains(c)) return false;
+        const cs = getComputedStyle(e);
+        if (cs.visibility !== "visible" || cs.display === "none" || +cs.opacity === 0) return false;
+        const b = e.getBoundingClientRect();
+        return b.width > 0 && b.height > 0 && b.right > r.left - m && b.left < r.right + m && b.bottom > r.top - m && b.top < r.bottom + m;
+      }).slice(0, 4).map((e) => `${e.tagName.toLowerCase()}.${String(e.className?.baseVal ?? e.className).trim().replace(/\s+/g, ".")}`));
     });
     // Pick a theme on the board's Settings page and wait until the board wears it (data-look) with its fonts loaded
     const setLook = async (t) => {
@@ -399,7 +414,15 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
           if (done) break;
           await settle(f, 200);
         }
-        await park(page, f); const cb = await sch.boundingBox();
+        // Park the mouse on the board beside the card (empty: the rest is hidden), so the card loses :hover. Parking outside the
+        // webview left the card hovered in some themes, showing its left link port (a dot, ring or diamond at the heading)
+        await page.mouse.move(fb.x + 4, fb.y + fb.height / 2);
+        await until(() => sch.evaluate((c) => !c.matches(":hover")), 3000, 30); await settle(f, 200);
+        // Hide again what appeared since (the camera moved), then make sure only the card shows, neither hovered nor selected
+        await solo(await sch.elementHandle());
+        const left = await strays(sch);
+        check(!left.length, `${t}: nothing but the card shows${left.length ? ` (${left.join(", ")})` : ""}`);
+        const cb = await sch.boundingBox();
         const z = await zoomOf();
         check(Math.abs(z / zoom - 1) < 0.004, `${t}: board zoom ${(z * 100).toFixed(1)}% (card ${cb.width | 0}×${cb.height | 0})`);
         const pad = CARD_W / 8;
