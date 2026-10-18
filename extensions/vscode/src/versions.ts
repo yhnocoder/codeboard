@@ -2,7 +2,7 @@
 // 检查时机：打开白板、git HEAD 变化、保存文件（只影响 uncommitted 和仓库外文件）。
 import * as path from "node:path";
 import { allCodeCards, locateSeg, sameLines, storedSegs, trackSeg, upstreamSegs, versionLabel, viewKey, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
-import { headOf, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
+import { headOf, isAncestor, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { analysisOf } from "./analysis";
 import { currentVersion, currentVersionLabel, rootOf, versionFor, type Loc } from "./source";
 import { exists, langOf, mkUid, readText, splitLines } from "./ws";
@@ -76,10 +76,9 @@ export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Pro
       const { at: _w, ...t } = trackSeg(seg, splitLines(work), symsOf(seg.lang, work), { label: "Working Tree", version: v });
       return t;
     }
-    if (headText === null) return { state: "lost" };
-    const headLines = splitLines(headText);
     if (head.startsWith(v.commit) || v.commit.startsWith(head)) {
       // 钉的就是 HEAD：只看工作区有没有未提交改动
+      if (headText === null) return { state: "lost" };
       if (work !== null && work !== headText) {
         const wl = splitLines(work);
         const at = locateSeg(seg, wl, symsOf(seg.lang, work));
@@ -87,7 +86,10 @@ export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Pro
       }
       return { state: "ok" };
     }
-    const { at: _at, ...t } = trackSeg(seg, headLines, symsOf(seg.lang, headText), { label: head.slice(0, 7), version: { kind: "git", commit: head } });
+    // 新版本 = 钉的 commit 之后的代码。检出的是更早的 commit（HEAD 在钉的 commit 之前）：没有新版本
+    if (await isAncestor(root, head, v.commit)) return { state: "ok" };
+    if (headText === null) return { state: "lost" };
+    const { at: _at, ...t } = trackSeg(seg, splitLines(headText), symsOf(seg.lang, headText), { label: head.slice(0, 7), version: { kind: "git", commit: head } });
     return t;
   }
   // 仓库外：包版本 / 内容指纹，拿现在的文件比
