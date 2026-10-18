@@ -1,23 +1,16 @@
 // 贴纸（#44 #45）：工具栏 Sticker → 选图标 → 点一下放下。贴在代码行（进行号栏，随 Update 跟行走）、卡片角上、或画布任意位置。
-import { createSignal } from "solid-js";
 import { uid, removeStickers, isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
 import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
 import { state, mutate, live, beginGesture, toast, rectOf } from "../state/store";
-import { linkCurve, curveAt, nearestT } from "../canvas/Links";
-import { cam } from "../state/camera";
+import { linkCurve } from "../canvas/Links";
+import { bezAt, nearestT } from "../canvas/geom";
+import { cam, toWorld } from "../state/camera";
+import { boardOffset } from "../state/measure";
 import { openMenu, type Item } from "../ui/Menu";
 import { STICKER_COLORS, BUILTIN, defaultColor, loadPacks } from "../stickers/glyphs";
-import { boardOffset } from "./common";
-import { toWorld } from "../state/camera";
 import { geo } from "../state/geo";
-
-/** 选图标面板：开在哪个按钮上面 */
-export const [stickerPick, setStickerPick] = createSignal<{ x: number; y: number } | null>(null);
-/** 正在放的贴纸（跟着指针走，点一下放下） */
-export const [placing, setPlacing] = createSignal<{ icon: IconRef; color?: string } | null>(null);
-export const [selSticker, setSelSticker] = createSignal<string | null>(null);
-/** 选图标面板里上次选的颜色 */
-export const [stickerColor, setStickerColor] = createSignal<string | undefined>(undefined);
+import { stickerPick, setStickerPick, stickerColor, selSticker, setSelSticker, setBindHot, type BindTarget } from "../state/stickers";
+import { setMode, placing, idle } from "../state/mode";
 
 export function stickerPicker(el: HTMLElement) {
   if (stickerPick()) return setStickerPick(null);
@@ -27,7 +20,7 @@ export function stickerPicker(el: HTMLElement) {
 }
 export function pickSticker(icon: IconRef) {
   setStickerPick(null);
-  setPlacing({ icon, color: stickerColor() });
+  setMode({ kind: "place", icon, color: stickerColor() });
   toast("Click a code line, a card or empty canvas to place it · Esc to cancel");
 }
 
@@ -36,7 +29,7 @@ export function placeStickerAt(e: PointerEvent): boolean {
   const p = placing();
   if (!p) return false;
   e.preventDefault(); e.stopPropagation();
-  setPlacing(null);
+  idle();
   const t = e.target as HTMLElement;
   const ce = t.closest?.(".card") as HTMLElement | null;
   let at: StickerAt;
@@ -58,14 +51,6 @@ export function placeStickerAt(e: PointerEvent): boolean {
   return true;
 }
 
-type Target = { card: string } | { link: string };
-/** 拖贴纸时指针下面能绑的东西（亮起来） */
-export const [bindHot, setBindHot] = createSignal<Target | null>(null);
-/** 选中的贴纸绑在哪张卡上（那张卡画一圈虚线） */
-export const boundCardOf = (id: string | null) => {
-  const s = id ? state.board.stickers.find((k) => k.id === id) : undefined;
-  return s?.at.kind === "canvas" && s.at.on && "card" in s.at.on ? s.at.on.card : null;
-};
 
 /**
  * 指针下面的卡或箭头（跳过贴纸自己）；不在任何东西上时吸附最近的：
@@ -74,7 +59,7 @@ export const boundCardOf = (id: string | null) => {
 const MAG_CARD = 40, MAG_LINK = 24;
 /** 画布上看得见的卡（折叠起来的不在 DOM 里）。一次拖动里不会变：拖之前量一次，不要每次 pointermove 对每张卡各查一次 DOM */
 const shownCards = () => new Set([...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((e) => e.dataset.id!));
-function targetAt(cx: number, cy: number, shown = shownCards()): Target | null {
+function targetAt(cx: number, cy: number, shown = shownCards()): BindTarget | null {
   for (const el of document.elementsFromPoint(cx, cy) as HTMLElement[]) {
     if (el.closest?.(".stk, .ctx, .toolbar, .bbar")) continue;
     const l = (el as HTMLElement).dataset?.link ?? el.closest?.("[data-link]")?.getAttribute("data-link");
@@ -83,7 +68,7 @@ function targetAt(cx: number, cy: number, shown = shownCards()): Target | null {
     if (c && state.board.place[c.dataset.id!]) return { card: c.dataset.id! };
   }
   const o = boardOffset(), w = toWorld(cx - o.x, cy - o.y), z = cam.z;
-  let best: Target | null = null, bd = Infinity;
+  let best: BindTarget | null = null, bd = Infinity;
   for (const id of Object.keys(state.board.place)) {
     if (!shown.has(id)) continue; // 折叠起来、看不见的不算
     const r = rectOf(id);
@@ -97,7 +82,7 @@ function targetAt(cx: number, cy: number, shown = shownCards()): Target | null {
     // 贝塞尔曲线在四个控制点的包围盒里：离包围盒都超过吸附距离的线不用逐点找最近点
     const m = MAG_LINK / z;
     if (w.x < Math.min(c[0], c[2], c[4], c[6]) - m || w.x > Math.max(c[0], c[2], c[4], c[6]) + m || w.y < Math.min(c[1], c[3], c[5], c[7]) - m || w.y > Math.max(c[1], c[3], c[5], c[7]) + m) continue;
-    const q = curveAt(c, nearestT(c, w.x, w.y)), d = Math.hypot(q.x - w.x, q.y - w.y) * z;
+    const q = bezAt(c, nearestT(c, w.x, w.y)), d = Math.hypot(q.x - w.x, q.y - w.y) * z;
     if (d <= MAG_LINK && d < bd) { bd = d; best = { link: l.id }; }
   }
   return best;
@@ -111,17 +96,17 @@ function stickerWorld(s: Sticker): { x: number; y: number } | null {
   if ("card" in on) { const r = rectOf({ id: on.card } as any); return { x: r.x + s.at.x, y: r.y + s.at.y }; }
   const c = linkCurve(on.link);
   if (!c) return null;
-  const q = curveAt(c, on.t);
+  const q = bezAt(c, on.t);
   return { x: q.x + s.at.x, y: q.y + s.at.y };
 }
 
 /** 世界坐标 + 绑定目标 → StickerAt */
-function bindAt(w: { x: number; y: number }, size: number, t: Target | null): StickerAt {
+function bindAt(w: { x: number; y: number }, size: number, t: BindTarget | null): StickerAt {
   if (t && "card" in t) { const r = rectOf({ id: t.card } as any); return { kind: "canvas", x: Math.round(w.x - r.x), y: Math.round(w.y - r.y), size, on: { card: t.card } }; }
   if (t && "link" in t) {
     const c = linkCurve(t.link);
     if (c) {
-      const tt = nearestT(c, w.x + size / 2, w.y + size / 2), q = curveAt(c, tt);
+      const tt = nearestT(c, w.x + size / 2, w.y + size / 2), q = bezAt(c, tt);
       return { kind: "canvas", x: Math.round(w.x - q.x), y: Math.round(w.y - q.y), size, on: { link: t.link, t: tt } };
     }
   }
@@ -194,9 +179,15 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
       return;
     }
     if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < 3) return;
+    // 拖的时候先放到最上层（画布层），松手再决定绑到哪。只在第一下换 at（解绑），之后只改 x、y：
+    // 换掉 at 会通知所有按卡分组的贴纸列表，只改坐标只通知这一枚贴纸自己
+    const x = Math.round(w0.x + dx), y = Math.round(w0.y + dy);
+    live((b) => {
+      const k = b.stickers.find((q) => q.id === id);
+      if (!k) return;
+      if (moved && k.at.kind === "canvas" && !k.at.on) { k.at.x = x; k.at.y = y; } else k.at = { kind: "canvas", x, y, size: a0.size };
+    });
     moved = true;
-    // 拖的时候先放到最上层（画布层），松手再决定绑到哪
-    live((b) => { const k = b.stickers.find((q) => q.id === id); if (k) k.at = { kind: "canvas", x: Math.round(w0.x + dx), y: Math.round(w0.y + dy), size: a0.size }; });
     setBindHot(ev.altKey ? null : targetAt(ev.clientX, ev.clientY, (shown ??= shownCards())));
   };
   const up = (ev: PointerEvent) => {

@@ -13,9 +13,11 @@ import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
 import { send, ask } from "../host";
-import { headPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
+import { headPoint, hostRect, popCard, showPicker, slideFrom } from "./common";
+import { lastPointer } from "../state/measure";
 import { jumpTo } from "./nav";
-import { walkBack, setWalkBack, walkIntoFrame, walkOut } from "./subboards";
+import { walkIntoFrame, walkOut } from "./subboards";
+import { walkBack, setWalkBack } from "../state/subboards";
 import { lateDispatch, openImplPicker, unresolvedMenu, searchAllLangs } from "./chains";
 
 // ---------- 点调用展开 ----------

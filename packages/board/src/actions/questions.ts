@@ -1,15 +1,18 @@
 // 疑问（线框 06）：「?」贴纸上写问题（共用 Note 的 Markdown 编辑器）、标已解决（贴纸换成 ✓，可以挂上解答它的卡）、
 // 卡头显示没解决的个数、Questions 面板（所有白板，宿主算）、复制 / 导出成 Markdown 清单、隔几天回来时的提示。
 // 面板只在开着时算；卡头的个数是一张按卡分好的表，贴纸变了才重算（不进每帧的工作）
-import { createMemo, createRoot, createSignal } from "solid-js";
+import { createMemo } from "solid-js";
 import { boardQuestions, isQuestion, questionsMarkdown, removeStickers, uid, type Board, type IconRef, type QuestionItem, type Sticker } from "@codeboard/core";
 import { state, mutate, createFresh, isFresh, settleFresh, toast, cardById, select, setLineSel, rectOf } from "../state/store";
 import { openPop, closePop, pops } from "../state/pop";
 import { setEditing } from "../state/ui";
+import { rooted } from "../state/root";
+import { lastPointer } from "../state/measure";
+import { pickCardThen } from "../state/mode";
+import { setSelSticker } from "../state/stickers";
+import { questionsOpen, setQuestionsOpen, setQTab, otherQuestions, setOtherQuestions, setWelcome } from "../state/questions";
 import { ask, send } from "../host";
-import { revealCard, lastPointer } from "./common";
-import { pickCardThen } from "./misc";
-import { setSelSticker } from "./stickers";
+import { revealCard } from "./common";
 
 const QICON: IconRef = { pack: "builtin", name: "question" };
 const DONE: IconRef = { pack: "builtin", name: "check" };
@@ -18,7 +21,7 @@ const DONE: IconRef = { pack: "builtin", name: "check" };
 export const shownIcon = (s: Sticker): { icon: IconRef; color?: string } => (s.q?.done ? { icon: DONE } : { icon: s.icon, color: s.color });
 
 /** 卡 id → 没解决的问题个数（卡头的「? 2」） */
-const openByCard = createRoot(() => createMemo(() => {
+const openByCard = rooted(() => createMemo(() => {
   const m = new Map<string, number>();
   for (const s of state.board.stickers) {
     if (!isQuestion(s) || s.q?.done) continue;
@@ -101,10 +104,6 @@ export function linkAnswer(id: string) {
 
 // ---------- Questions 面板 ----------
 
-export const [questionsOpen, setQuestionsOpen] = createSignal(false);
-export const [qTab, setQTab] = createSignal<"open" | "all">("open");
-/** 宿主给的所有白板的问题（开面板时要一次；这块白板的用自己当前的状态） */
-export const [otherQuestions, setOtherQuestions] = createSignal<QuestionItem[] | null>(null);
 
 export function toggleQuestions(v = !questionsOpen()) {
   setQuestionsOpen(v);
@@ -150,8 +149,6 @@ export function exportQuestions(items: QuestionItem[]) {
 
 // ---------- 回来接上 ----------
 
-/** 隔几天再打开、还有没解决的问题（宿主在 init 里给） */
-export const [welcome, setWelcome] = createSignal<{ days: number; open: number } | null>(null);
 export function showWelcomeQuestions() {
   setWelcome(null);
   setQTab("open");

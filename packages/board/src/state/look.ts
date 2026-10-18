@@ -1,8 +1,9 @@
 // 材质主题（Settings → Theme）里少数要 JS 配合的东西：连线的走法、箭头和端口的形状，源文件的颜色。
 // 其余全在 themes.css。切主题时这里只重算一次连线几何，不加每帧的工作。
-import { createMemo, createRoot, createSignal } from "solid-js";
+import { createMemo, createSignal } from "solid-js";
 import type { ThemeId } from "@codeboard/core";
 import { state } from "./store";
+import { rooted } from "./root";
 
 export const look = () => state.host.settings?.theme ?? "warm-ink";
 
@@ -23,7 +24,7 @@ const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
 export const shape = (): Shape => ({ route: "curve", head: "chevron", port: "circle", ...SHAPES[look()] });
 
 /** 源文件 → 6 种颜色之一（Colorful 的色带、端口用）。按文件在白板上第一次出现的顺序分，不存进白板；超过 6 个文件就轮回 */
-const order = createRoot(() => createMemo(() => {
+const order = rooted(() => createMemo(() => {
   const m = new Map<string, number>();
   for (const c of state.board.cards) {
     const p = c.kind === "code" ? c.segments[0]?.path : undefined;

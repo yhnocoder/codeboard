@@ -1,8 +1,9 @@
 // 界面状态（不持久化、不进撤销栈）
 import { createSignal, createMemo } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
-import { noteShown, type CallSpan, type CodeCard, type Guide, type Link, type Sidenote } from "@codeboard/core";
+import { noteShown, type CodeCard, type Guide, type Link, type Sidenote } from "@codeboard/core";
 import { state } from "./store";
+import { rooted, onBoardSwitch } from "./root";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
 export const [shown, setShown] = createSignal<Set<string>>(new Set());
@@ -13,7 +14,7 @@ export function toggleShown(k: string) {
 }
 
 // 卡片 id → 从它出发的 Link
-const fromIndex = createMemo(() => {
+const fromIndex = rooted(() => createMemo(() => {
   const m = new Map<string, Link[]>();
   for (const l of state.board.links) {
     const a = m.get(l.from.card) ?? [];
@@ -21,14 +22,14 @@ const fromIndex = createMemo(() => {
     m.set(l.from.card, a);
   }
   return m;
-});
+}));
 export const linksFrom = (id: string) => fromIndex().get(id) ?? [];
 
 // Always Show 的 Sidenote 变化时要重新量行位置
 export const notesOn = (id: string) => notesOf(id).filter((n) => n.kind === "text" && n.alwaysShow).length;
 
 // 卡片 id → 挂在它上面的 Sidenote（每行都要问，按卡分好组）
-const notesIndex = createMemo(() => {
+const notesIndex = rooted(() => createMemo(() => {
   const m = new Map<string, Sidenote[]>();
   for (const n of state.board.sidenotes) {
     // 「只在某个 Variant」：卡显示着那个 Variant 才算（线框 07）
@@ -36,7 +37,7 @@ const notesIndex = createMemo(() => {
     const a = m.get(n.at.card); a ? a.push(n) : m.set(n.at.card, [n]);
   }
   return m;
-});
+}));
 export const notesOf = (id: string): Sidenote[] => notesIndex().get(id) ?? [];
 
 // 闪一下的行："card:seg:line"
@@ -61,8 +62,6 @@ export const [dropTarget, setDropTarget] = createSignal<{ kind: "merge" | "line"
 export const [dragging, setDragging] = createSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = createSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = createSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);
-export const [spaceDown, setSpaceDown] = createSignal(false);
-export const [connectFrom, setConnectFrom] = createSignal<{ card: string; seg?: string; line?: number; call?: CallSpan } | null>(null);
 export const [hoverLink, setHoverLink] = createSignal<string | null>(null);
 // 指针下的卡（它的线临时浮到最上面一层，见 canvas/Links.tsx 的 enterCard）、正在拖的线（拖起点圆点、拖标签框）
 export const [hoverCard, setHoverCard] = createSignal<string | null>(null);
@@ -85,3 +84,5 @@ export const [keysOpen, setKeysOpen] = createSignal(false);
 // Settings 页（整窗）；section = 打开时滚到哪一节
 export const [settingsOpen, setSettingsOpen] = createSignal<false | { section?: string }>(false);
 export const [banner, setBanner] = createSignal(true);
+
+onBoardSwitch(() => { setWalk(null); setBanner(true); setEditing(null); });

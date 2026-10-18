@@ -7,7 +7,8 @@ import { state, setState, mutate, select, cardById, toast } from "../state/store
 import { openPop, updatePop } from "../state/pop";
 import { send, ask } from "../host";
 import { addCards } from "./create";
-import { hostRect, lastPointer, revealCard } from "./common";
+import { hostRect, revealCard } from "./common";
+import { lastPointer } from "../state/measure";
 import { updateScoped, reviewToast } from "./shared";
 import { choose } from "../ui/Menu";
 import { unlinkCard, versionLabel } from "@codeboard/core";

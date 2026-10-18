@@ -1,32 +1,29 @@
 // 指针交互：拖卡（吸附、合并、⌥ 拖成 Sidenote、进出 Section）、改大小、框选、平移、缩放、
-// 拖 Section 标签、从调用拖出带 Call 标记的箭头、从行尾 / 卡边拖出箭头，以及键盘快捷键。
+// 拖 Section 标签、从调用拖出带 Call 标记的箭头、从行尾 / 卡边拖出箭头。installKeys 装窗口级的监听（按键分发在 keymap.ts）。
 import {
   findCard, isCode, snapMove, snapResize, bounds, center, contains,
   type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
-  state, sel, select, toggleSel, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, mutate, live, beginGesture,
-  undo, redo, toast, placeOf, toastMsg, setToastMsg,
+  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, rectOf, live, beginGesture, toast, placeOf,
 } from "./state/store";
 import { tune } from "./state/tune";
-import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
-import {
-  setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, spaceDown, setSpaceDown,
-  connectFrom, setConnectFrom, walk, setEditing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen, settingsOpen,
-} from "./state/ui";
+import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
+import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing } from "./state/ui";
 import { frames, deepestAt, frameOf, sec, descSections, allMembers, visibleCards } from "./state/sections";
 import { geo } from "./state/geo";
-import { closeMenu, menuOpen, dialogOpen } from "./ui/Menu";
 import { pops, closeAllPops, pinPop } from "./state/pop";
+import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
+import { selSticker, setSelSticker } from "./state/stickers";
+import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
+import { installOverlays, modalOpen, isTyping } from "./ui/overlay";
+import { NODRAG, CARD_CONTROL, OWNS_POINTER } from "./ui/guard";
+import { dispatch } from "./keymap";
 import * as A from "./actions";
 
-const boardEl = () => document.getElementById("board")!;
-// 白板是 position: fixed 铺满窗口，左上角只在窗口变大小时可能变：记下来，不在每个滚轮 / 指针事件里读布局
-// （读 getBoundingClientRect 会让浏览器在事件里先把上一批改动的样式、排版做掉，同一帧里再做一遍）
-let boardAt: { left: number; top: number } | null = null;
-window.addEventListener("resize", () => { boardAt = null; });
-const local = (e: { clientX: number; clientY: number }) => { const r = (boardAt ??= boardEl().getBoundingClientRect()); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
-const worldOf = (e: { clientX: number; clientY: number }) => { const p = local(e); return toWorld(p.x, p.y); };
+const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
+const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
+const worldOf = (e: { clientX: number; clientY: number }) => worldAt(pt(e));
 
 /** 通用拖动：按下后跟踪移动，松手收尾。返回 false 的 move 不算移动。 */
 function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = 3) {
@@ -66,9 +63,9 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const t = e.target as HTMLElement;
   if (e.button === 1 || (e.button === 0 && spaceDown())) return startPan(e);
   if (e.button !== 0) return;
-  if (t.closest("[contenteditable], input, textarea, button:not([data-dragclick]), .call:not([data-p]), .no, .grip, .hw, a.lnk, .lport, .eport")) return; // library 调用（data-p）当普通文字
+  if (t.closest(CARD_CONTROL)) return;
   if (connectFrom()) return finishConnect(e, id);
-  if (A.picking()) { e.preventDefault(); e.stopPropagation(); const cb = A.takePick(); const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null; cb?.(colEl?.dataset.col ?? id); return; }
+  if (modeIs("pick")) { e.preventDefault(); e.stopPropagation(); const cb = takePick(); const colEl = t.closest("[data-col]") as HTMLElement | null; cb?.(colEl?.dataset.col ?? id); return; }
   const f = cardById(id);
   if (!f) return;
   const colEl = t.closest("[data-col]") as HTMLElement | null;
@@ -250,9 +247,9 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   const sx = e.clientX, sy = e.clientY;
   const text = c.kind === "note" && !c.bg;
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（#2：单行卡拉高后能缩回去）
-  const nat = A.naturalSize(c.id);
+  const nat = naturalSize(c.id);
   const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
-  const hx = c.kind === "code" ? A.chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
+  const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
   track(e, (ev) => {
     const z = cam.z, dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     let w = r0.w, h = r0.h, x = r0.x;
@@ -342,7 +339,7 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
   let to: { card: string; seg?: string; line?: number; sub?: string } | null = null;
   track(e, (ev) => {
     const a = local({ clientX: sx, clientY: sy }), b = local(ev);
-    setRubber({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, plain: true } as any);
+    setRubber({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, plain: true });
     const under = document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null;
     const ce = under?.closest(".card") as HTMLElement | null;
     to = null;
@@ -368,7 +365,7 @@ function finishConnect(e: PointerEvent, id: string) {
   e.preventDefault();
   e.stopPropagation();
   const from = connectFrom()!;
-  setConnectFrom(null);
+  idle();
   const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
   const to = colEl?.dataset.col ?? id;
   if (cardById(to)?.host.id === cardById(from.card)?.host.id) return toast("Connect cancelled");
@@ -382,11 +379,11 @@ function finishConnect(e: PointerEvent, id: string) {
 
 export function canvasPointerDown(e: PointerEvent) {
   const t = e.target as HTMLElement;
-  if (t.closest(".card, .slabel, .lhit, .lmid, .vchips, .alignbar, .pop, .ctx, .dock, .tbar, .bbar, .walkbar")) return;
+  if (t.closest(OWNS_POINTER)) return;
   (document.activeElement as HTMLElement | null)?.blur?.();
   if (e.button === 1 || (e.button === 0 && spaceDown())) return startPan(e);
   if (e.button !== 0) return;
-  if (connectFrom()) { setConnectFrom(null); toast("Connect cancelled"); return; }
+  if (modeIs("connect")) return void cancelMode();
   e.preventDefault();
   closeAllPops();
   if (isDbl("canvas", e)) {
@@ -396,7 +393,7 @@ export function canvasPointerDown(e: PointerEvent) {
     else if (k === "code") A.newFreeCode({ x: w.x, y: w.y - 18 });
     return;
   }
-  if (tool === "section") return drawSection(e);
+  if (modeIs("draw")) return drawSection(e);
   const base = e.shiftKey ? [...sel.cards] : [];
   if (!e.shiftKey) clearSel();
   window.getSelection()?.removeAllRanges();
@@ -415,9 +412,7 @@ export function canvasPointerDown(e: PointerEvent) {
   }, () => setMarquee(null));
 }
 
-/** 工具栏 Section：在画布上拖出一个框 */
-let tool: "section" | null = null;
-export const setTool = (t: "section" | null) => { tool = t; boardEl().classList.toggle("drawing", !!t); if (t) toast("Drag on the canvas to draw a section · Esc to cancel"); else if (toastMsg()?.text.startsWith("Drag on the canvas")) setToastMsg(null); };
+/** 工具栏 Section（draw 模式）：在画布上拖出一个框 */
 function drawSection(e: PointerEvent) {
   const a = worldOf(e);
   const la = local(e);
@@ -426,7 +421,7 @@ function drawSection(e: PointerEvent) {
     setMarquee({ x: Math.min(la.x, b.x), y: Math.min(la.y, b.y), w: Math.abs(b.x - la.x), h: Math.abs(b.y - la.y) });
   }, (ev, moved) => {
     setMarquee(null);
-    setTool(null);
+    endDraw();
     const b = worldOf(ev);
     const r = moved ? { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(120, Math.abs(b.x - a.x)), h: Math.max(80, Math.abs(b.y - a.y)) } : { x: a.x, y: a.y, w: 360, h: 240 };
     clearSel();
@@ -453,14 +448,14 @@ function startPan(e: PointerEvent) {
   const o = { x: cam.x, y: cam.y };
   const sx = e.clientX, sy = e.clientY;
   let vx = 0, vy = 0, lt = performance.now(), lx = sx, ly = sy;
-  boardEl().classList.add("panning");
+  setPanning(true);
   track(e, (ev) => {
     const now = performance.now(), dt = Math.max(1, now - lt);
     vx = vx * 0.5 + (0.5 * (ev.clientX - lx)) / dt; vy = vy * 0.5 + (0.5 * (ev.clientY - ly)) / dt;
     lt = now; lx = ev.clientX; ly = ev.clientY;
     setCam(o.x + ev.clientX - sx, o.y + ev.clientY - sy, cam.z);
   }, () => {
-    boardEl().classList.remove("panning");
+    setPanning(false);
     if (performance.now() - lt < 60) fling(vx * 1000, vy * 1000);
   }, 0);
 }
@@ -468,7 +463,7 @@ function startPan(e: PointerEvent) {
 /** 滚轮：两指平移；⌘ / 捏合 缩放 */
 export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
-  if (t.closest(".pop, .ctx, .palette, .keys, .stkpick")) return;
+  if (t.closest(NODRAG)) return;
   e.preventDefault();
   if (!t.closest(".cbody")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
   stopCam();
@@ -485,7 +480,7 @@ export function canvasWheel(e: WheelEvent) {
 export function canvasContextMenu(e: MouseEvent) {
   e.preventDefault();
   const t = e.target as HTMLElement;
-  if (t.closest(".card, .pop, .ctx, .dock, .tbar, .bbar")) return;
+  if (t.closest(`.card, ${NODRAG}`)) return;
   const lk = t.closest("[data-link]") as HTMLElement | null;
   if (lk) return A.linkMenu(lk.dataset.link!, e.clientX, e.clientY);
   const sl = t.closest("[data-sect]") as HTMLElement | null;
@@ -549,125 +544,38 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
   }, () => end());
 }
 
-// ---------- 键盘 ----------
-
-const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
+// ---------- 窗口级的监听（只在这里装一次） ----------
 
 export function installKeys() {
+  installOverlays();
+  trackPointer();
   // 点白板任何地方都要拿到键盘焦点。卡片标题、画布、连线等的 pointerdown 调了 preventDefault（拖动时不选字），这也取消了
   // mousedown 的默认动作（给这个 iframe 焦点）：VS Code 里焦点就留在旁边的代码编辑器，按 Backspace 删的是那里选中的字。
   // 捕获阶段先把焦点要过来（白板已经有焦点时什么都不做，不影响输入框、编辑器里的焦点）
-  window.addEventListener("pointerdown", () => { if (!document.hasFocus()) window.focus(); }, true);
+  window.addEventListener("pointerdown", (e) => {
+    if (!document.hasFocus()) window.focus();
+    // 放贴纸：在卡片和画布自己的处理之前接住这一下；点到贴纸以外的地方就取消贴纸选中
+    const t = e.target as HTMLElement;
+    if (placing() && e.button === 0 && t.closest?.("#board") && !t.closest(NODRAG)) return void A.placeStickerAt(e);
+    if (selSticker() && !t.closest?.("[data-sticker], .ctx")) setSelSticker(null);
+  }, true);
   window.addEventListener("keydown", (e) => {
-    if ((e.key === "Meta" || e.key === "Control")) {
-      // 按住 ⌘：正在显示的弹窗固定下来
-      for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
-    }
-    if (typing(e) || dialogOpen() || paletteOpen()) return;
-    const mod = e.metaKey || e.ctrlKey, k = e.key, kl = k.toLowerCase();
-    if (mod && state.host.forwardedKeys?.includes(e.shiftKey && (kl === "l" || kl === "b") ? `shift+${kl}` : kl)) { e.preventDefault(); return; } // 宿主会转回来
-    if (settingsOpen()) { if (k === "Escape" || (mod && k === ",")) { e.preventDefault(); A.closeSettings(); } return; } // 设置页盖住白板：白板快捷键都不响应
-    if (mod && k === ",") { e.preventDefault(); return A.openSettings(); }
-    if (k === " " && !mod) { setSpaceDown(true); boardEl().classList.add("space"); e.preventDefault(); return; }
-    if (k === "Escape") {
-      if (menuOpen()) return closeMenu();
-      if (pops().length) return closeAllPops();
-      if (keysOpen()) return setKeysOpen(false);
-      if (A.placing()) { A.setPlacing(null); return toast("Cancelled"); }
-      if (A.selSticker()) return A.setSelSticker(null);
-      if (connectFrom()) { setConnectFrom(null); return toast("Connect cancelled"); }
-      if (walk()) return A.exitWalk();
-      if (tool) return setTool(null);
-      if (A.picking()) { A.takePick(); return toast("Cancelled"); }
-      if (A.canLeave()) return A.leaveBoard(); // 子白板里：什么都没选时回上一级
-      clearSel(); window.getSelection()?.removeAllRanges();
-      return;
-    }
-    if (walk()) {
-      if (k === "ArrowRight" || k === "ArrowDown" || k === " ") { e.preventDefault(); return A.walkTo(walk()!.i + 1); }
-      if (k === "ArrowLeft" || k === "ArrowUp") { e.preventDefault(); return A.walkTo(walk()!.i - 1); }
-    }
-    if (mod && e.shiftKey && kl === "l") { e.preventDefault(); return A.toggleLock(sel.cards, sel.sections); }
-    if (mod && e.shiftKey && kl === "b") { e.preventDefault(); return void A.turnIntoBoard(); }
-    if (mod && k === "Enter" && A.selCards()[0]?.kind === "board") { e.preventDefault(); return A.enterFrame(A.selCards()[0].id); }
-    if (mod && kl === "z") { e.preventDefault(); return void (e.shiftKey ? redo() : undo()); }
-    if (mod && kl === "y") { e.preventDefault(); return void redo(); }
-    if (mod && kl === "a") { e.preventDefault(); return A.selectAll(); }
-    if (mod && kl === "d") { e.preventDefault(); return A.duplicateSel(); }
-    if (mod && (e.code === "BracketRight" || e.code === "BracketLeft") && sel.cards.length) {
-      e.preventDefault();
-      return A.arrange([...sel.cards], e.code === "BracketRight" ? (e.shiftKey ? "front" : "forward") : e.shiftKey ? "back" : "backward");
-    }
-    if (mod && kl === "k") { e.preventDefault(); return setPaletteOpen({ mode: "all" }); }
-    if (mod && k === "0") { e.preventDefault(); return A.fitAll(); }
-    if (mod && k === "1") { e.preventDefault(); return zoomAt(1 / camTarget().z); }
-    // 跳转后的后退 / 前进：⌃- / ⌃⇧-（Windows / Linux 上 Ctrl+- 是缩小，用 Ctrl+Alt+-，和 VS Code 一样）
-    if (e.ctrlKey && !e.metaKey && e.code === "Minus" && (state.host.isMac || e.altKey)) { e.preventDefault(); return e.shiftKey ? A.navForward() : A.navBack(); }
-    if (mod && (k === "=" || k === "+")) { e.preventDefault(); return zoomAt(1.25); }
-    if (mod && k === "-") { e.preventDefault(); return zoomAt(0.8); }
-    if (mod && kl === "c") {
-      const s = window.getSelection();
-      if (s && !s.isCollapsed) return; // 原生复制（CodeBody 的 copy 事件处理）
-      const ls = lineSel();
-      if (ls) { e.preventDefault(); return A.copyLines(ls); }
-      // 卡：文字照旧进剪贴板，宿主记下是哪几张卡（贴到别的白板 = 共享卡）
-      if (A.copyCardsSel()) e.preventDefault();
-      return;
-    }
-    if (e.altKey && (e.code === "KeyZ")) { e.preventDefault(); return A.toggleWrap(sel.cards.length ? sel.cards : []); }
-    if (e.altKey && e.code === "KeyF" && sel.cards.length) { e.preventDefault(); return A.fitContent(sel.cards); }
-    // ⌥⌘V：别的白板上复制的卡贴成另一种（默认是独立副本）。浏览器不一定为它发 paste 事件，这里直接要
-    if (mod && e.altKey && e.code === "KeyV") {
-      e.preventDefault();
-      const p = A.lastPointer();
-      void A.pasteFromBoard(undefined, worldOf({ clientX: p.x, clientY: p.y }), true).then((ok) => { if (!ok) toast("Copy cards on another board first"); });
-      return;
-    }
-    // ⌘⌫：共享卡 Delete Everywhere（要确认）；⌫ 只从这块白板移除
-    if (mod && (k === "Delete" || k === "Backspace") && sel.cards.length && !lineSel()) { e.preventDefault(); return void A.deleteEverywhere(); }
-    if (mod || e.altKey) return;
-    if ((k === "Delete" || k === "Backspace") && A.selSticker()) { e.preventDefault(); return A.removeSticker(A.selSticker()!); }
-    if (k === "Delete" || k === "Backspace") { e.preventDefault(); if (lineSel() && !sel.cards.length) return; return A.deleteSel(); }
-    if (k === "!" || (e.shiftKey && e.code === "Digit1")) return A.fitAll();
-    if (e.shiftKey && e.code === "Digit2") return A.fitSelection();
-    if (k === "?") return setKeysOpen(!keysOpen());
-    if (kl === "s") { e.preventDefault(); return A.addSidenoteUI(); }
-    if (kl === "h" && lineSel()) { e.preventDefault(); return A.hideLines(lineSel()!); }
-    if (kl === "t" || kl === "n") { e.preventDefault(); const p = A.lastPointer(); const w = worldOf({ clientX: p.x, clientY: p.y }); return void A.newNote(w, kl === "n"); }
-    if (kl === "p") return A.startWalk();
-    if (k === "Enter") {
-      // 只选了一条箭头：Enter 编辑它的标签（Label 菜单的 Edit Label）
-      if (sel.links.length === 1 && !sel.cards.length && !sel.sections.length) { e.preventDefault(); return A.setLinkEditing(sel.links[0]); }
-      const c = A.selCards()[0];
-      if (!c) return;
-      e.preventDefault();
-      // 选了这张卡的几行：在编辑器里打开到第一行
-      const ls = lineSel();
-      if (ls && cardById(ls.card)?.host.id === c.id) A.openCode(ls.card, ls.seg, ls.start);
-      else if (c.kind === "code") A.openCode(c.id);
-      else if (c.kind === "note") setEditing({ kind: "note", id: c.id });
-      else if (c.kind === "web") A.openLink(c.url);
-      else if (c.kind === "board") A.enterFrame(c.id);
-    }
-    if (k.startsWith("Arrow") && sel.cards.length) {
-      e.preventDefault();
-      const d = e.shiftKey ? 10 : 1;
-      const dx = k === "ArrowLeft" ? -d : k === "ArrowRight" ? d : 0, dy = k === "ArrowUp" ? -d : k === "ArrowDown" ? d : 0;
-      // 连着按（或按住）方向键挪同一批卡是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了
-      mutate((b) => { for (const id of sel.cards) { const c = hostPlace(b, id); if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } }, { merge: `nudge:${sel.cards.join(",")}` });
-    }
+    // 按住 ⌘：正在显示的弹窗固定下来
+    if (e.key === "Meta" || e.key === "Control") for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
+    if (isTyping(e.target) || modalOpen()) return;
+    const kl = e.key.toLowerCase();
+    if ((e.metaKey || e.ctrlKey) && state.host.forwardedKeys?.includes(e.shiftKey && (kl === "l" || kl === "b") ? `shift+${kl}` : kl)) { e.preventDefault(); return; } // 宿主会转回来
+    dispatch(A, e);
   });
-  window.addEventListener("keyup", (e) => {
-    if (e.key === " ") { setSpaceDown(false); boardEl()?.classList.remove("space"); }
-  });
-  window.addEventListener("blur", () => { setSpaceDown(false); boardEl()?.classList.remove("space"); });
+  const spaceUp = () => setSpaceDown(false);
+  window.addEventListener("keyup", (e) => { if (e.key === " ") spaceUp(); });
+  window.addEventListener("blur", spaceUp);
   // 粘贴：图片 → Image 卡；文字 → 按内容判断
   window.addEventListener("paste", (e) => {
-    if (typing(e as any)) return;
+    if (isTyping(e.target)) return;
     const items = [...(e.clipboardData?.items ?? [])];
     const img = items.find((i) => i.type.startsWith("image/"));
-    const p = A.lastPointer();
-    const w = worldOf({ clientX: p.x, clientY: p.y });
+    const w = worldAt(lastPointer());
     if (img) {
       e.preventDefault();
       const f = img.getAsFile();
@@ -694,10 +602,3 @@ export function installKeys() {
     files.forEach((f, i) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name, { x: w.x + i * 24, y: w.y + i * 24 }); rd.readAsDataURL(f); });
   });
 }
-
-// 放贴纸：在卡片和画布自己的处理之前接住这一下；点到贴纸以外的地方就取消贴纸选中
-window.addEventListener("pointerdown", (e) => {
-  const t = e.target as HTMLElement;
-  if (A.placing() && e.button === 0 && t.closest?.("#board") && !t.closest(".bbar, .dock, .pop, .ctx, .alignbar")) return void A.placeStickerAt(e);
-  if (A.selSticker() && !t.closest?.("[data-sticker], .ctx")) A.setSelSticker(null);
-}, true);

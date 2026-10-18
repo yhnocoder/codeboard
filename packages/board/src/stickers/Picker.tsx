@@ -1,14 +1,19 @@
 // 选贴纸的面板：Built-in / 自定义包 / Emoji，搜索，颜色。开在工具栏 Sticker 按钮上面。
+// 下面是画在白板上的贴纸：画布上的、绑在卡 / 线上的、卡角上的、代码行上的（每张卡、每条线只读 state/stickers 里自己那一组）
 import { keepKey } from "../ui/editkeys";
-import { createMemo, createRoot, createSignal, For, Show, onCleanup, onMount } from "solid-js";
-import type { IconRef, Sticker } from "@codeboard/core";
-import { linkCurve, curveAt } from "../canvas/Links";
+import { createMemo, createSignal, For, Show, onCleanup } from "solid-js";
+import { firstLine, type IconRef, type Sticker } from "@codeboard/core";
+import { linkCurve } from "../canvas/Links";
+import { bezAt } from "../canvas/geom";
 import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, packs } from "./glyphs";
-import { stickerPick, setStickerPick, pickSticker, stickerColor, setStickerColor, placing, selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
+import { pickSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
+import { stickerPick, setStickerPick, stickerColor, setStickerColor, isSelSticker, stickerList, freeStickers, boundStickers, linkStickers } from "../state/stickers";
+import { placing } from "../state/mode";
 import { state } from "../state/store";
 import { send } from "../host";
 import { cam, lod } from "../state/camera";
 import { shownIcon, stickerClick } from "../actions/questions";
+import { useOverlay } from "../ui/overlay";
 
 const MAX = 240; // 大图标包只画前这么多个（搜索缩小范围）
 
@@ -16,10 +21,8 @@ export function StickerPicker() {
   const [tab, setTab] = createSignal("builtin");
   const [q, setQ] = createSignal("");
   let el!: HTMLDivElement;
-  const onDown = (e: PointerEvent) => { if (!el.contains(e.target as Node) && !(e.target as HTMLElement).closest?.('[aria-label="Sticker"]')) setStickerPick(null); };
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setStickerPick(null); } };
-  onMount(() => { window.addEventListener("pointerdown", onDown, true); window.addEventListener("keydown", onKey, true); });
-  onCleanup(() => { window.removeEventListener("pointerdown", onDown, true); window.removeEventListener("keydown", onKey, true); });
+  // 工具栏的 Sticker 按钮自己会开关面板：点它不算点外面
+  useOverlay({ close: () => setStickerPick(null), inside: (t) => el.contains(t) || !!t.closest('[aria-label="Sticker"]'), outside: true, grab: true });
   const items = createMemo<{ icon: IconRef; label: string }[]>(() => {
     const s = q().trim().toLowerCase();
     const t = tab();
@@ -31,7 +34,7 @@ export function StickerPicker() {
   });
   const p = () => stickerPick()!;
   return (
-    <div ref={el} class="pill stkpick" style={{ left: `${p().x}px`, top: `${p().y}px` }} onPointerDown={(e) => e.stopPropagation()}>
+    <div ref={el} class="pill stkpick" data-nodrag style={{ left: `${p().x}px`, top: `${p().y}px` }}>
       <div class="stabs">
         <button classList={{ on: tab() === "builtin" }} onClick={() => setTab("builtin")}>Built-in</button>
         <For each={packs() ?? []}>{(pk) => <button classList={{ on: tab() === pk.id }} onClick={() => setTab(pk.id)}>{pk.name}</button>}</For>
@@ -57,65 +60,73 @@ export function StickerPicker() {
   );
 }
 
-/** 放贴纸时跟着指针走的影子 */
+/** 放贴纸时跟着指针走的影子（只在放的时候听指针） */
 export function PlacingGhost() {
-  const [pt, setPt] = createSignal({ x: -100, y: -100 });
-  const mv = (e: PointerEvent) => setPt({ x: e.clientX, y: e.clientY });
-  onMount(() => window.addEventListener("pointermove", mv, true));
-  onCleanup(() => window.removeEventListener("pointermove", mv, true));
-  return <Show when={placing()}>{(p) => <div class="stkghost" style={{ left: `${pt().x}px`, top: `${pt().y}px` }}><Glyph icon={p().icon} color={p().color} size={28} /></div>}</Show>;
+  return <Show when={placing()}>{(p) => {
+    const [pt, setPt] = createSignal({ x: -100, y: -100 });
+    const mv = (e: PointerEvent) => setPt({ x: e.clientX, y: e.clientY });
+    window.addEventListener("pointermove", mv, true);
+    onCleanup(() => window.removeEventListener("pointermove", mv, true));
+    return <div class="stkghost" style={{ left: `${pt().x}px`, top: `${pt().y}px` }}><Glyph icon={p().icon} color={p().color} size={28} /></div>;
+  }}</Show>;
 }
 
 type FreeAt = Extract<Sticker["at"], { kind: "canvas" }>;
+const menuAt = (id: string) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); };
 
 /** 一枚可拖、可改大小的贴纸；x、y 是它所在那一层的坐标（画布 = 世界坐标，卡里 = 相对卡左上角） */
 function FreeSticker(p: { s: Sticker; x: number; y: number }) {
   const at = () => p.s.at as FreeAt;
   const size = () => at().size ?? 32;
+  const sel = () => isSelSticker(p.s.id);
   return (
-    <div class="stk canvas" classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: selSticker() === p.s.id, bound: !!at().on, "lod-map": lod() === "map" }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
+    <div class="stk canvas" classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: sel(), bound: !!at().on, "lod-map": lod() === "map" }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
       style={{ left: `${p.x}px`, top: `${p.y}px`, "min-width": `${size()}px`, height: `${size()}px`, "--s": `${size()}px` }}
-      onPointerDown={(e) => stickerDown(e, p.s.id)} onClick={(e) => stickerClick(p.s.id, e.currentTarget)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(p.s.id, e.clientX, e.clientY); }}>
+      onPointerDown={(e) => stickerDown(e, p.s.id)} onClick={(e) => stickerClick(p.s.id, e.currentTarget)} onContextMenu={menuAt(p.s.id)}>
       <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={size()} />
-      <Show when={selSticker() === p.s.id}><span class="sgrip" style={{ scale: `${1 / cam.z}` }} onPointerDown={(e) => stickerDown(e, p.s.id, true)} /></Show>
+      <Show when={sel()}><span class="sgrip" data-nodrag data-export="strip" style={{ scale: `${1 / cam.z}` }} onPointerDown={(e) => stickerDown(e, p.s.id, true)} /></Show>
     </div>
   );
 }
 
+/** 卡角上、代码行上的小贴纸（不能改大小） */
+export function StickerChip(p: { s: Sticker; size: number }) {
+  return (
+    <span class="stk" classList={{ sel: isSelSticker(p.s.id), q: !!p.s.q, done: !!p.s.q?.done }} data-sticker={p.s.id} data-tip={p.s.q?.md ? firstLine(p.s.q.md) : stickerLabel(p.s.icon)}
+      onPointerDown={(e) => stickerDown(e, p.s.id)} onClick={(e) => { e.stopPropagation(); stickerClick(p.s.id, e.currentTarget); }} onContextMenu={menuAt(p.s.id)}>
+      <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={p.size} />
+    </span>
+  );
+}
+
+const FreeList = (p: { list: Sticker[] }) => <For each={p.list}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} />}</For>;
+
 /** 画布上没绑东西的贴纸（世界坐标层，在所有卡上面） */
 export function CanvasStickers() {
-  const list = createMemo(() => state.board.stickers.filter((s) => s.at.kind === "canvas" && !s.at.on));
-  return <For each={list()}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} />}</For>;
+  const list = stickerList(freeStickers);
+  return <FreeList list={list()} />;
 }
 
 /** 绑在卡上的贴纸：放在卡里面，跟卡同一图层、一起走 */
 export function BoundStickers(p: { card: string }) {
-  const list = createMemo(() => state.board.stickers.filter((s) => s.at.kind === "canvas" && s.at.on && "card" in s.at.on && s.at.on.card === p.card));
-  return <For each={list()}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} />}</For>;
+  const list = stickerList(() => boundStickers(p.card));
+  return <FreeList list={list()} />;
 }
-
-// 绑在箭头上的贴纸，按线分好组（每条线的 LinkStickers 都要问）
-const NO_STK: Sticker[] = [];
-const byLink = createRoot(() => createMemo(() => {
-  const m = new Map<string, Sticker[]>();
-  for (const s of state.board.stickers) if (s.at.kind === "canvas" && s.at.on && "link" in s.at.on) { const k = s.at.on.link, a = m.get(k); a ? a.push(s) : m.set(k, [s]); }
-  return m;
-}));
 
 /** 绑在一条箭头上的贴纸：沿线位置 t + 偏移；选中时画一条虚线连到线上那一点。跟这条线在同一层（canvas/Links.tsx） */
 export function LinkStickers(p: { link: string }) {
-  const list = createMemo(() => byLink().get(p.link) ?? NO_STK, NO_STK, { equals: (a, b) => a.length === b.length && a.every((x, i) => x === b[i]) });
+  const list = stickerList(() => linkStickers(p.link));
   return (
     <For each={list()}>
       {(s) => {
         const at = () => s.at as FreeAt;
-        const anchor = createMemo(() => { const on = at().on as { link: string; t: number }; const c = linkCurve(on.link); return c ? curveAt(c, on.t) : null; });
+        const anchor = createMemo(() => { const on = at().on as { link: string; t: number }; const c = linkCurve(on.link); return c ? bezAt(c, on.t) : null; });
         const half = () => (at().size ?? 32) / 2;
         return (
           <Show when={anchor()}>
             {(q) => <>
-              <Show when={selSticker() === s.id}>
-                <svg class="tether" width="1" height="1"><line x1={q().x} y1={q().y} x2={q().x + at().x + half()} y2={q().y + at().y + half()} style={{ "stroke-width": `${1 / cam.z}px` }} /><circle cx={q().x} cy={q().y} r={3 / Math.max(cam.z, 0.5)} /></svg>
+              <Show when={isSelSticker(s.id)}>
+                <svg class="tether" data-export="strip" width="1" height="1"><line x1={q().x} y1={q().y} x2={q().x + at().x + half()} y2={q().y + at().y + half()} style={{ "stroke-width": `${1 / cam.z}px` }} /><circle cx={q().x} cy={q().y} r={3 / Math.max(cam.z, 0.5)} /></svg>
               </Show>
               <FreeSticker s={s} x={q().x + at().x} y={q().y + at().y} />
             </>}

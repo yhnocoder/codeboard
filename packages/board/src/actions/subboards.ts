@@ -1,10 +1,10 @@
 // 子白板（线框 05）：进入 / 返回（面包屑）、Turn into Board、插入已有的白板、移除框、删掉那块白板；讲解走到子白板时进去再回来。
-import { batch, createSignal } from "solid-js";
+import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
 import { cardTitle, descendants, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
 import { state, mutate, sel, select, clearSel, cardById, rectOf, toast, flushSave, flows } from "../state/store";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
-import { crumbs, frameOf, skelOf, subRect } from "../state/subboards";
+import { crumbs, frameOf, skelOf, subRect, walkBack, setWalkBack } from "../state/subboards";
 import { walk, setWalk } from "../state/ui";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
@@ -42,8 +42,6 @@ export function leaveBoard(depth?: number, walkHop?: WalkHop) {
 
 // ---------- 讲解跨白板 ----------
 
-/** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
-export const [walkBack, setWalkBack] = createSignal<{ root: string; i: number } | null>(null);
 
 /** 讲解走到子白板框：镜头推进那张卡（箭头连到的）所在的框，进去从那张卡讲起，讲完回来 */
 export function walkIntoFrame(frame: string, i: number) {

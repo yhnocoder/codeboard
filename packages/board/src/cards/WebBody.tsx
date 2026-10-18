@@ -9,6 +9,7 @@ import { Icon } from "../ui/icons";
 import { place, virtual } from "../ui/place";
 import * as A from "../actions";
 import "./web.css";
+import { fetching, rowDrag } from "../state/web";
 
 const stop = (e: Event) => e.stopPropagation();
 
@@ -88,11 +89,11 @@ export function WebBody(p: { card: WebCard }) {
   const menu = (e: MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); A.cardMenu(c().id, r.left, r.bottom + 4); };
   return (
     <>
-      <Bookmark url={c().url} meta={c().meta} title={c().title} desc={c().desc} editId={c().id} drag busy={A.fetching(c().id)} style={c().style}
+      <Bookmark url={c().url} meta={c().meta} title={c().title} desc={c().desc} editId={c().id} drag busy={fetching(c().id)} style={c().style}
         onTitle={(v) => A.renameCard(c().id, v)} onDesc={(v) => A.setDesc(c().id, v)} onRetry={() => A.retryMeta(c().id)} />
       <div class="wacts" onPointerDown={stop}>
         <button class="ib" aria-label="Open in Browser" data-tip="Open in Browser" data-kbd="Double-click" onClick={() => A.openLink(c().url)}><Icon name="external" size={13} /></button>
-        <button class="ib more" aria-label="Card Menu" data-tip="More Actions" onClick={menu}><Icon name="more" size={14} /></button>
+        <button class="ib more" aria-label="Card Menu" data-export="strip" data-tip="More Actions" onClick={menu}><Icon name="more" size={14} /></button>
       </div>
     </>
   );
@@ -103,7 +104,7 @@ export function WebBody(p: { card: WebCard }) {
 export function LinksBody(p: { card: LinksCard }) {
   const c = () => p.card;
   const menu = (e: MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); A.cardMenu(c().id, r.left, r.bottom + 4); };
-  const drag = () => { const d = A.rowDrag(); return d?.card === c().id ? d : null; };
+  const drag = () => { const d = rowDrag(); return d?.card === c().id ? d : null; };
   return (
     <>
       <div class="chead" data-drag>
@@ -111,7 +112,7 @@ export function LinksBody(p: { card: LinksCard }) {
         <Editable class="ctitle sys" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => A.renameCard(c().id, v)} />
         <span class="lcount">{c().items.length}</span>
         <span class="grow" />
-        <button class="ib" aria-label="Card Menu" data-tip="More Actions" onPointerDown={stop} onClick={menu}><Icon name="more" /></button>
+        <button class="ib" aria-label="Card Menu" data-tip="More Actions" data-nodrag data-export="strip" onClick={menu}><Icon name="more" /></button>
       </div>
       <div class="lrows" classList={{ dragging: !!drag() }}>
         <For each={c().items}>{(it, i) => (
@@ -130,15 +131,15 @@ function LinkRow(p: { card: LinksCard; item: LinkItem; dropBefore: boolean; drop
   const rich = () => A.isRich(p.card, it());
   const key = () => `${p.card.id}/${it().id}`;
   const title = () => it().title || it().meta?.title || domainOf(it().url);
-  const dragged = () => A.rowDrag()?.item === it().id;
+  const dragged = () => rowDrag()?.item === it().id;
   // 悬停 Compact 行一会儿：旁边浮出完整书签
   const [peek, setPeek] = createSignal(false);
   const [peekPos, setPeekPos] = createSignal<{ x: number; y: number } | null>(null);
   let el!: HTMLDivElement, t: number | undefined;
   const enter = () => {
-    if (rich() || A.rowDrag()) return;
+    if (rich() || rowDrag()) return;
     clearTimeout(t);
-    t = window.setTimeout(() => { if (el?.isConnected && !A.rowDrag() && !editing()) setPeek(true); }, 550);
+    t = window.setTimeout(() => { if (el?.isConnected && !rowDrag() && !editing()) setPeek(true); }, 550);
   };
   // 卡片右边、和这一行齐平（右边放不下翻到左边）：锚点是卡片在这一行高度上的那一条
   const placePeek = (pe: HTMLElement) => {
@@ -161,7 +162,7 @@ function LinkRow(p: { card: LinksCard; item: LinkItem; dropBefore: boolean; drop
           <span class="ld" data-tip={it().url}>{domainOf(it().url)}</span>
         </div>
       }>
-        <Bookmark url={it().url} meta={it().meta} title={it().title} editId={key()} small busy={A.fetching(key())}
+        <Bookmark url={it().url} meta={it().meta} title={it().title} editId={key()} small busy={fetching(key())}
           onTitle={(v) => A.renameItem(p.card.id, it().id, v)} onRetry={() => A.retryMeta(p.card.id, it().id)} />
       </Show>
       <div class="ltools" onPointerDown={stop}>

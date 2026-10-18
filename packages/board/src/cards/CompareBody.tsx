@@ -8,6 +8,7 @@ import { queueMeasure, observeResize } from "../state/measure";
 import { Icon } from "../ui/icons";
 import { CodeHead } from "./Card";
 import * as A from "../actions";
+import { callPointerDown, cardWheel } from "../interact";
 
 type L = { seg: string; line: number; text: string; html: string };
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -118,7 +119,7 @@ export function CompareBody(p: { card: CompareCard }) {
     const h = callAt(e.target as HTMLElement);
     if (!h || (A.isLibCall(h.call) && !e.altKey)) return;
     e.preventDefault(); e.stopPropagation();
-    A.callPointerDown(e, h.col, h.seg, h.call, h.x);
+    callPointerDown(e, h.col, h.seg, h.call, h.x);
   };
   const onCtx = (e: MouseEvent) => {
     const h = callAt(e.target as HTMLElement);
@@ -145,7 +146,7 @@ export function CompareBody(p: { card: CompareCard }) {
       <div class="colh">
         <For each={cols()}>{(c) => <div data-col={c.id}><CodeHead card={c} col /></div>}</For>
       </div>
-      <div ref={scrollEl} class="cbody" onScroll={measure} onWheel={(e) => A.cardWheel(e, scrollEl)}>
+      <div ref={scrollEl} class="cbody" onScroll={measure} onWheel={(e) => cardWheel(e, scrollEl)}>
         <div ref={rowsEl} class="crows" onPointerDown={onDown} onContextMenu={onCtx} style={{ "--cw": `${Math.round((placeOf(k().id).w - 2) / 2)}px` }}>
           <For each={items()}>
             {(it) => {

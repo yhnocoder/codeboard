@@ -7,6 +7,7 @@ import {
 } from "@codeboard/core";
 import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
+import { rooted, onBoardSwitch } from "./root";
 
 export const [state, setState] = createStore({
   loaded: false,
@@ -62,23 +63,24 @@ export function reportSelection() {
 // ---------- 派生 ----------
 
 /** 调用图（标记、Call 箭头的父子）。只读卡的 id / 段、线的两端和 Call 标记、born / marks：拖动卡片不会让它重算 */
-export const flows = createMemo(() => computeFlows(state.board));
+export const flows = rooted(() => createMemo(() => computeFlows(state.board)));
 /** 因为折叠藏起来的卡（不管 Walkthrough 有没有临时展开） */
-export const collapsedSet = createMemo(() => hiddenByCollapse(state.board, flows()));
+export const collapsedSet = rooted(() => createMemo(() => hiddenByCollapse(state.board, flows())));
 /** Walkthrough 时临时展开所有折叠的卡：只影响显示，不写进白板（不进撤销、不存盘） */
 export const [showCollapsed, setShowCollapsed] = createSignal(false);
-export const collapsedAway = createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet()));
+onBoardSwitch(() => setShowCollapsed(false));
+export const collapsedAway = rooted(() => createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet())));
 
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
-const cardIndex = createMemo(() => {
+const cardIndex = rooted(() => createMemo(() => {
   const m = new Map<string, { card: Card; host: Card }>();
   for (const c of state.board.cards) if (!m.has(c.id)) m.set(c.id, { card: c, host: c });
   for (const c of state.board.cards) if (c.kind === "compare") for (const k of c.cols) { const f = m.get(k); if (f) m.set(k, { card: f.card, host: c }); }
   return m;
-});
+}));
 export const cardById = (id: string) => cardIndex().get(id);
 /** 画布上摆着的卡（有 Place 的），按叠放顺序 */
-export const placed = createMemo(() => state.board.cards.filter((c) => state.board.place[c.id]));
+export const placed = rooted(() => createMemo(() => state.board.cards.filter((c) => state.board.place[c.id])));
 
 const NOWHERE: Place = { x: 0, y: 0, w: 320 };
 /** 卡（或 Compare 的栏 → 它的 Compare）的摆放 */

@@ -8,7 +8,8 @@ import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
 import { ask } from "../host";
 import { addCards, requestViews } from "./create";
 import { tune } from "../state/tune";
-import { hostRect, lastPointer, revealCard } from "./common";
+import { hostRect, revealCard } from "./common";
+import { lastPointer } from "../state/measure";
 
 // ---------- Sidenote ----------
 

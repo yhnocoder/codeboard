@@ -6,7 +6,7 @@
 //  nudgeIsOneUndoStep         — a run of arrow-key nudges of the same selection is one undo step
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 //  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
-//  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Enter Board
+//  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Open board frame (Mac order: ⇧⌘B)
 //  undoAddKeepsLaterWork      — the editor's undo of an add removes only those cards, even after the board changed
 //  secondCallBelowCaller      — in a short panel the second expanded call still goes below its caller, not above it
 // Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
@@ -217,7 +217,7 @@ async function shortcutHelpComplete(res: Record<string, unknown>) {
   const rows = await h.page.locator(".keys tr").allTextContents();
   await close(h);
   const has = (k: string) => rows.some((r) => r.startsWith(k));
-  res.missing = ["⌥F", "⌘⇧B", "⌘↵"].filter((k) => !has(k));
+  res.missing = ["⌥F", "⇧⌘B", "⌘↵"].filter((k) => !has(k));
   return rows.length > 10 && !(res.missing as string[]).length;
 }
 

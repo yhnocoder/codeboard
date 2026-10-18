@@ -7,7 +7,7 @@ import { cam, setViewport, lod, camMoving, stillZ } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";
 import { trackSkeletons } from "../state/subboards";
-import { guides, sizeHint, marquee, dragging, dropTarget, connectFrom, walk } from "../state/ui";
+import { guides, sizeHint, marquee, dragging, dropTarget, walk } from "../state/ui";
 import { CardView } from "../cards/Card";
 import { CanvasStickers } from "../stickers/Picker";
 import { trackLinks, LinkLayer } from "./Links";
@@ -19,6 +19,7 @@ import { canvasPointerDown, canvasWheel, canvasContextMenu } from "../interact";
 import { Icon } from "../ui/icons";
 import * as A from "../actions";
 import { align } from "@codeboard/core";
+import { boardMode } from "../state/mode";
 
 const EXT = 2048;
 
@@ -65,7 +66,7 @@ export function Canvas() {
     onCleanup(() => { ro.disconnect(); el.removeEventListener("wheel", canvasWheel); });
   });
   return (
-    <div ref={el} id="board" class="board" classList={{ connecting: !!connectFrom(), walking: !!walk(), dragging: dragging().size > 0, placing: !!A.placing(), "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
+    <div ref={el} id="board" class="board" data-mode={boardMode()} classList={{ walking: !!walk(), dragging: dragging().size > 0, "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
       <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
@@ -81,7 +82,7 @@ export function Canvas() {
         <LinkLayer top />
         {/* Walkthrough 的步数：卡上方的小号码（算出来的，不存；走过的卡不再走），在卡外面一层，变暗的卡也看得清 */}
         <Show when={walk()}><WalkSteps /></Show>
-        <div class="guides">
+        <div class="guides" data-export="strip">
           <For each={guides()}>
             {(g) => g.axis === "x"
               ? <div class="guide v" style={{ left: `${g.at}px`, top: `${g.from - 8}px`, height: `${g.to - g.from + 16}px`, "border-left-width": `${1 / cam.z}px` }} />
@@ -104,7 +105,7 @@ function WalkSteps() {
   // 字号跟着镜头停下后的缩放反向放大一点（镜头动的时候不重算）
   const k = () => Math.max(1, 0.9 / stillZ());
   return (
-    <div class="wsteps">
+    <div class="wsteps" data-export="strip">
       <For each={items()}>{([id, n]) => {
         const r = () => rectOf(id);
         return <span class="wstep" classList={{ cur: cur() === id }} data-card={id} style={{ left: `${r().x}px`, top: `${r().y - 6}px`, transform: `translateY(-100%) scale(${k()})` }}>{n}</span>;
@@ -119,7 +120,7 @@ function DropHint() {
   const r = createMemo(() => { const t = d(); return t && t.card ? rectOf(cardById(t.card)!.host) : null; });
   return (
     <Show when={d() && r() && (d()!.kind === "merge" ? d()!.armed : d()!.kind === "line" && dragging().size > 0)}>
-      <div class="drophint" style={{ left: `${r()!.x + r()!.w / 2}px`, top: `${r()!.y - 8}px`, transform: `translate(-50%, -100%) scale(${1 / cam.z})` }}>
+      <div class="drophint" data-export="strip" style={{ left: `${r()!.x + r()!.w / 2}px`, top: `${r()!.y - 8}px`, transform: `translate(-50%, -100%) scale(${1 / cam.z})` }}>
         {d()!.kind === "merge" ? "Release to merge" : [...dragging()].some((id) => cardById(id)?.card.kind === "note") ? "Release to add as Sidenote" : "Release to add as Code Sidenote"}
       </div>
     </Show>
@@ -143,7 +144,7 @@ function AlignBar() {
   };
   return (
     <Show when={rs().length >= 2 && dragging().size === 0 && !walk()}>
-      <div class="alignbar pill show" style={{ left: `${pos().x}px`, top: `${Math.max(56, pos().y)}px` }} onPointerDown={(e) => e.stopPropagation()}>
+      <div class="alignbar pill show" data-nodrag style={{ left: `${pos().x}px`, top: `${Math.max(56, pos().y)}px` }}>
         <For each={AL}>{(a, i) => <>
           <Show when={i() === 3 || i() === 5}><span class="sep" /></Show>
           <button class="ib" aria-label={a.tip} data-tip={a.tip} onClick={() => run(a.op)}><Icon name={a.icon} /></button>

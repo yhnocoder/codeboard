@@ -1,6 +1,6 @@
 // 浮层：Sidenote、定义预览、加 Sidenote、版本 diff、多个定义选择、commit 列表、变量、只读源码。
 import { keepKey } from "./editkeys";
-import { For, Show, Switch, Match, createSignal, createMemo, createEffect, onCleanup } from "solid-js";
+import { For, Show, Switch, Match, createSignal, createMemo, createEffect, onCleanup, on } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang, RPC_MECHS, threeWay, upstreamSegs, activeOf, UPSTREAM, viewKeyOf, type GraphMark, type Sidenote, type Segment, type PeekDef, type SearchItem, type Var, type Anchor,
@@ -8,8 +8,8 @@ import {
 import { state, cardById, toast, mutate, select, flows, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { cam } from "../state/camera";
-import { pops, closePop, pinPop, updatePop, type PopInst, type Pop } from "../state/pop";
-import { setConnectFrom } from "../state/ui";
+import { pops, closePop, closeAllPops, pinPop, updatePop, type PopInst, type Pop } from "../state/pop";
+import { pushLayer } from "./overlay";
 import { markHtml } from "../cards/CompareBody";
 import { Icon } from "./icons";
 import { autoUpdate } from "@floating-ui/dom";
@@ -20,8 +20,12 @@ import { MdStatic } from "./Md";
 import { Editable } from "./Editable";
 import { editing, setEditing } from "../state/ui";
 import { openMenu, type Item } from "./Menu";
+import { vlive } from "../state/variants";
+import { pickCardThen, setConnectFrom } from "../state/mode";
 
 export function Popovers() {
+  // 开着弹窗时是一层：Esc 全关（点画布关掉在 interact.ts，拖卡时也关）
+  createEffect(on(() => pops().length > 0, (has) => { if (has) onCleanup(pushLayer({ close: closeAllPops })); }));
   return <>
     {/* library 调用的样式跟着 Study Scope 变（这里顺带挂上，免得改 App） */}
     <style>{A.libCallCss()}</style>
@@ -60,7 +64,7 @@ function PopFrame(p: { inst: PopInst }) {
   const k = () => p.inst.pop.kind;
   return (
     <div ref={el} class={`pop open k-${k()}`} classList={{ pinned: p.inst.pinned }} data-pop={p.inst.id} style={{ left: `${pos().x}px`, top: `${pos().y}px` }}
-      onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}
+      data-nodrag onContextMenu={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}
       onPointerEnter={() => { A.cancelHideNotes(); A.cancelHidePeek(); }}
       onPointerLeave={() => { if (p.inst.pinned) return; if (k() === "notes") A.scheduleHideNotes(); if (k() === "peek") A.scheduleHidePeek(); }}>
       <Switch>
@@ -405,7 +409,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
     settled = true;
     closePop(p.inst.id);
     toast("Click a card on the board · Esc to cancel");
-    A.pickCardThen((id) => { A.addSidenote({ at: at(), kind: "card", card: id, why: why().trim() || undefined } as any); toast("Sidenote added"); });
+    pickCardThen((id) => { A.addSidenote({ at: at(), kind: "card", card: id, why: why().trim() || undefined } as any); toast("Sidenote added"); });
   };
   const onKey = (e: KeyboardEvent) => {
     keepKey(e);
@@ -514,7 +518,7 @@ function DiffPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "diff" }> }) {
 function ThreePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "three" }> }) {
   const c = () => { const k = cardById(p.pop.card)?.card; return isCode(k) ? k : undefined; };
   const cols = createMemo(() => {
-    const k = c(), l = A.vlive[p.pop.card]?.latest;
+    const k = c(), l = vlive[p.pop.card]?.latest;
     if (!k || !l) return [];
     const ups = upstreamSegs(k), cur = activeOf(k);
     const html = (s: Segment, key: string) => state.views[key]?.html ?? s.text.map(escH);

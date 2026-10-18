@@ -7,6 +7,7 @@ import { createStore, unwrap } from "solid-js/store";
 import { cam, camMoving, lod, view, type Lod } from "./camera";
 import { placed, rectOf, sizes, state } from "./store";
 import { offscreen } from "./cull";
+import { rooted } from "./root";
 
 const PER = 12;
 // 正在一批批换档（还没换完）：cull.ts 这时先不显示屏幕外的卡
@@ -17,13 +18,13 @@ const [cardIz, setCardIz] = createStore<Record<string, number>>({});
 /** 进地图档那一刻的 --iz（地图档门槛的倒数）：提前建好的名字按它排版 */
 export const izMap = () => 1 / (state.host.settings?.zoomMap ?? 0.25);
 let held: number | undefined;
-const izWant = createMemo(() => {
+const izWant = rooted(() => createMemo(() => {
   if (lod() !== "map") return (held = undefined, 1);
   // 动着进地图档：先用门槛那一档的值，和提前建好的名字一样，切档那一帧名字不用重新排版
   if (held === undefined) held = camMoving() ? izMap() : 1 / cam.z;
   else if (!camMoving()) held = 1 / cam.z;
   return +held.toFixed(4);
-});
+}));
 /** 这张卡的 --iz（只在地图档用） */
 export const izOf = (id: string) => cardIz[id] ?? izWant();
 // 换完了的档：新出现的卡直接用它

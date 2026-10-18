@@ -13,6 +13,7 @@ import { isHidden } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { BoundStickers } from "../stickers/Picker";
+import { isBindHot, isBindAnchor } from "../state/stickers";
 import { fileHue } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
@@ -25,6 +26,9 @@ import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
 import { landed, enterCard, leaveCard } from "../canvas/Links";
+import { merged, vlive } from "../state/variants";
+import { cardContextMenu, cardDblClick, cardPointerDown, justDragged, linkPortDown, resizeDown } from "../interact";
+import { kbd } from "../keymap";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
@@ -83,11 +87,11 @@ export function CardView(p: { card: Card }) {
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8),
-          "bind-hot": (act.bindHot() as { card?: string } | null)?.card === c().id,
-          "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
+          "bind-hot": isBindHot(`card:${c().id}`),
+          "bind-anchor": isBindAnchor(c().id),
         }}
         onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
-        onPointerDown={(e) => act.cardPointerDown(e, c().id)} onContextMenu={(e) => act.cardContextMenu(e, c().id)} onDblClick={(e) => act.cardDblClick(e, c().id)}>
+        onPointerDown={(e) => cardPointerDown(e, c().id)} onContextMenu={(e) => cardContextMenu(e, c().id)} onDblClick={(e) => cardDblClick(e, c().id)}>
         <div class="cface">
         <Switch>
           <Match when={c().kind === "code"}><CodeCardView card={c() as CodeCard} /></Match>
@@ -99,12 +103,12 @@ export function CardView(p: { card: Card }) {
           <Match when={c().kind === "board"}><BoardBody card={c() as BoardCard} /></Match>
         </Switch>
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
-        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
+        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <Show when={!pl().locked}>
-          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>
-            <span class="hw l" onPointerDown={(e) => act.resizeDown(e, c().id, { left: true })} />
-            <span class="hw r" onPointerDown={(e) => act.resizeDown(e, c().id, { right: true })} />
+          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>
+            <span class="hw l" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { left: true })} />
+            <span class="hw r" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { right: true })} />
           </Show>
         </Show>
         </div>
@@ -144,7 +148,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
       <Show when={!p.col && placeOf(c().id).start}><span class="startt" data-tip="Start card: Walkthrough and the call tree start here">START</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
-      <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
+      <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={kbd("lock")} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
       <Show when={!free() && act.mixedLangs() && cardChip(c())}>{(k) => <span class="lchip" data-l={k()}>{k()}</span>}</Show>
       <Show when={c().gen}>
@@ -155,7 +159,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       </Show>
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
       <Show when={free()} fallback={
-        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !act.justDragged() && act.openCode(c().id)}>
+        <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !justDragged() && act.openCode(c().id)}>
           <span class="rw"><span class="rl">{multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}</span></span>
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
@@ -177,19 +181,19 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
           <Editable class="grun" kind="gen" id={c().id} value={c().gen!.run ?? ""} placeholder="Run / params" onCommit={(v) => act.setGenRun(c().id, v)} />
         </span>
       </Show>
-      <Show when={act.merged()[c().id]}><button class="vmdot" data-tip="Merged upstream · turn back into a normal card?" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.mergedPrompt(c().id)} /></Show>
+      <Show when={merged()[c().id]}><button class="vmdot" data-tip="Merged upstream · turn back into a normal card?" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.mergedPrompt(c().id)} /></Show>
       <Show when={mine()}><span class="mine" data-tip="This card shows your changes, not upstream">MINE</span></Show>
       <Show when={!free()}>
         <button class="rev fold" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={`${revLabel()} · ${stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}`}
-          onClick={(e) => act.justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : onVar() ? act.switchVariant(c().id, UPSTREAM) : act.commitMenu(c().id, e.currentTarget))}>
+          onClick={(e) => justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : onVar() ? act.switchVariant(c().id, UPSTREAM) : act.commitMenu(c().id, e.currentTarget))}>
           <span class="rw"><span class="rl"><Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>{revLabel()}<Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show></span></span>
         </button>
       </Show>
       <Show when={!c().variants?.length && (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))}>
         <button class="rev unc fold" data-tip="+ uncommitted · HEAD vs Working Tree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openWorktreeDiff(c().id)}><span class="rw"><span class="rl">+ uncommitted</span></span></button>
       </Show>
-      <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
+      <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" data-nodrag data-export="strip" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
     </div>
   );
 }
@@ -306,7 +310,7 @@ function VariantBar(p: { card: CodeCard }) {
   const cur = () => activeOf(c());
   const marks = createMemo(() => act.marksOf(c()));
   const curV = () => c().variants?.find((v) => v.id === cur());
-  const behind = () => act.vlive[c().id]?.behind?.[cur()];
+  const behind = () => vlive[c().id]?.behind?.[cur()];
   const summary = () => {
     const m = marks();
     if (!m) return "Same as base";
@@ -321,7 +325,7 @@ function VariantBar(p: { card: CodeCard }) {
           <button class="vtab" classList={{ on: v.id === cur(), up: v.id === UPSTREAM }} data-vid={v.id} data-tip={v.note || (v.id === UPSTREAM ? "Upstream: the pinned version" : "Click to show · Right-click for more")}
             onClick={() => act.switchVariant(c().id, v.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); act.variantMenu(c().id, v.id, e.clientX, e.clientY); }}>
             {variantTitle(c(), v)}
-            <Show when={act.merged()[c().id]?.vid === v.id}><i class="vmdot" /></Show>
+            <Show when={merged()[c().id]?.vid === v.id}><i class="vmdot" /></Show>
           </button>
         )}</For>
         <button class="vtab vadd" aria-label="Add Variant" data-tip="Add Variant" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); void act.addVariantMenu(c().id, r.left, r.bottom + 4); }}>+</button>

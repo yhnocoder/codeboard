@@ -4,12 +4,13 @@ import { varKey, callText, varGone, loopLine, segOf, isCode, type Link, type Rec
 import { state, sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
 import { hoverLink, editing, setDragLink } from "../state/ui";
 import { toWorld } from "../state/camera";
-import { boardOffset } from "../actions/common";
+import { boardOffset } from "../state/measure";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
 import { enterLink, leaveLink, visible, type Geo } from "./Links";
-import { bezAt, dragT, placeT, type Box } from "./labelpos";
+import { dragT, placeT, type Box } from "./labelpos";
+import { bezAt } from "./geom";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
 const sizeCbs = new WeakMap<Element, (b: Box) => void>();

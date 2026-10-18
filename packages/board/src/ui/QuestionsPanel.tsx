@@ -6,11 +6,12 @@ import { state } from "../state/store";
 import { Icon } from "./icons";
 import { Glyph } from "../stickers/glyphs";
 import * as A from "../actions";
+import { otherQuestions, qTab, setQTab, setWelcome, welcome } from "../state/questions";
 
 export function QuestionsPanel() {
   const all = createMemo(() => A.questionList());
   const open = createMemo(() => all().filter((q) => !q.done));
-  const shown = () => (A.qTab() === "open" ? open() : all());
+  const shown = () => (qTab() === "open" ? open() : all());
   const groups = createMemo(() => {
     const m = new Map<string, { name: string; here: boolean; items: QuestionItem[] }>();
     for (const q of shown()) {
@@ -25,15 +26,15 @@ export function QuestionsPanel() {
       <div class="cph">
         <b>Questions</b>
         <span class="qtabs">
-          <button classList={{ on: A.qTab() === "open" }} onClick={() => A.setQTab("open")}>Open {open().length}</button>
-          <button classList={{ on: A.qTab() === "all" }} onClick={() => A.setQTab("all")}>All {all().length}</button>
+          <button classList={{ on: qTab() === "open" }} onClick={() => setQTab("open")}>Open {open().length}</button>
+          <button classList={{ on: qTab() === "all" }} onClick={() => setQTab("all")}>All {all().length}</button>
         </span>
         <span class="grow" />
         <button class="ib" aria-label="Close Questions" onClick={() => A.toggleQuestions(false)}><Icon name="close" size={13} /></button>
       </div>
       <div class="qrows">
-        <Show when={A.otherQuestions() !== null || all().length} fallback={<div class="empty sm">Loading…</div>}>
-          <For each={groups()} fallback={<div class="empty sm">{A.qTab() === "open" && all().length ? "Every question is answered." : "No questions yet. Put a ? sticker on a code line, or right-click a line → Ask a Question."}</div>}>{(g) => (
+        <Show when={otherQuestions() !== null || all().length} fallback={<div class="empty sm">Loading…</div>}>
+          <For each={groups()} fallback={<div class="empty sm">{qTab() === "open" && all().length ? "Every question is answered." : "No questions yet. Put a ? sticker on a code line, or right-click a line → Ask a Question."}</div>}>{(g) => (
             <>
               <div class="qg">{g.name}<Show when={g.here}><small> · this board</small></Show></div>
               <For each={g.items}>{(q) => (
@@ -56,13 +57,13 @@ export function QuestionsPanel() {
 }
 
 export function WelcomeHint() {
-  const w = () => A.welcome()!;
+  const w = () => welcome()!;
   const ago = () => (w().days <= 0 ? "today" : w().days === 1 ? "yesterday" : `${w().days} days ago`);
   return (
     <div class="welcome pill" role="status">
       <span>Welcome back · last opened {ago()} · {w().open} open question{w().open > 1 ? "s" : ""} on this board</span>
       <button class="tbtn" onClick={() => A.showWelcomeQuestions()}>Show</button>
-      <button class="ib" aria-label="Dismiss" onClick={() => A.setWelcome(null)}><Icon name="close" size={13} /></button>
+      <button class="ib" aria-label="Dismiss" onClick={() => setWelcome(null)}><Icon name="close" size={13} /></button>
     </div>
   );
 }

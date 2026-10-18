@@ -2,6 +2,7 @@
 import { createSignal, For, Show, onCleanup, onMount, createEffect } from "solid-js";
 import { Icon } from "./icons";
 import { place, virtual } from "./place";
+import { useOverlay } from "./overlay";
 
 export type Item =
   | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string; head?: true }
@@ -42,7 +43,7 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
   });
   return (
     <><div ref={el} class="ctx" classList={{ open: open() }} role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px`, "max-height": `${window.innerHeight - 8}px`, "transform-origin": `${pos().ox} ${pos().oy}` }}
-      onPointerDown={(e) => e.stopPropagation()} onContextMenu={(e) => e.preventDefault()}>
+      data-nodrag onContextMenu={(e) => e.preventDefault()}>
       <For each={p.items}>
         {(it, i) =>
           it?.head ? <div class="mh">{it.label}</div> : it ? (
@@ -67,18 +68,12 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
   );
 }
 
+function RootMenu(p: { m: MenuState }) {
+  useOverlay({ close: closeMenu, inside: (t) => !!t.closest(".ctx"), grab: true, outside: true, blur: true });
+  return <MenuList items={p.m.items} x={p.m.x} y={p.m.y} up={p.m.up} onClose={closeMenu} />;
+}
 export function MenuLayer() {
-  const onDown = (e: PointerEvent) => { if (!(e.target as HTMLElement).closest?.(".ctx")) closeMenu(); };
-  const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && menu()) { e.stopPropagation(); closeMenu(); } };
-  window.addEventListener("pointerdown", onDown, true);
-  window.addEventListener("keydown", onKey, true);
-  window.addEventListener("blur", closeMenu);
-  onCleanup(() => { window.removeEventListener("pointerdown", onDown, true); window.removeEventListener("keydown", onKey, true); });
-  return (
-    <Show when={menu()} keyed>
-      {(m) => <MenuList items={m.items} x={m.x} y={m.y} up={m.up} onClose={closeMenu} />}
-    </Show>
-  );
+  return <Show when={menu()} keyed>{(m) => <RootMenu m={m} />}</Show>;
 }
 
 // ---------- 对话框：问一次，粗框按钮 = 默认（↵） ----------
@@ -100,24 +95,14 @@ export function promptText(title: string, value = "", placeholder = "", ok = "OK
     });
   });
 }
-export const dialogOpen = () => !!dialog();
 
-export function DialogLayer() {
-  const finish = (i: number | null) => { const d = dialog(); setDialog(null); d?.done(i); };
-  createEffect(() => {
-    const d = dialog();
-    if (!d) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(null); }
-      else if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); e.stopPropagation(); finish(d.def); }
-    };
-    window.addEventListener("keydown", onKey, true);
-    onCleanup(() => window.removeEventListener("keydown", onKey, true));
-    if (!d.input) queueMicrotask(() => document.querySelector<HTMLButtonElement>(".dialog .def")?.focus({ preventScroll: true }));
-  });
+const finish = (i: number | null) => { const d = dialog(); setDialog(null); d?.done(i); };
+function Dialog(p: { d: DialogState }) {
+  // Esc = 取消，↵ = 默认按钮（焦点在输入框里也一样）
+  useOverlay({ close: () => finish(null), grab: true, modal: true, keys: (e) => e.key === "Enter" && !e.isComposing && (finish(p.d.def), true) });
+  if (!p.d.input) queueMicrotask(() => document.querySelector<HTMLButtonElement>(".dialog .def")?.focus({ preventScroll: true }));
+  const d = () => p.d;
   return (
-    <Show when={dialog()}>
-      {(d) => (
         <div class="scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) finish(null); }}>
           <div class="dialog" classList={{ wide: d().options.length > 2 }} role="dialog" aria-label={d().title}>
             <div class="dt">{d().title}</div>
@@ -130,9 +115,10 @@ export function DialogLayer() {
             <Show when={d().note}><div class="dn">{d().note}</div></Show>
           </div>
         </div>
-      )}
-    </Show>
   );
+}
+export function DialogLayer() {
+  return <Show when={dialog()} keyed>{(d) => <Dialog d={d} />}</Show>;
 }
 
 // ---------- 按钮提示：停 500ms 出现并带快捷键；之后在按钮间滑动立刻切换；按下即消失 ----------

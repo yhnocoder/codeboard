@@ -18,7 +18,7 @@ export function SectionFrames() {
           <Show when={r()}>
             <div class="sect" classList={{ [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), locked: A.sectionLocked(s) }} data-sect={s.id}
               style={{ left: `${r()!.x}px`, top: `${r()!.y}px`, width: `${r()!.w}px`, height: `${r()!.h}px` }}>
-              <span class="sgrip" onPointerDown={(e) => sectionEdgeDown(e, s.id)} />
+              <span class="sgrip" data-nodrag data-export="strip" onPointerDown={(e) => sectionEdgeDown(e, s.id)} />
             </div>
           </Show>
         );

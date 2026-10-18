@@ -1,21 +1,19 @@
 // 导出（线框 08）：对话框选格式（HTML 快照 / Markdown / PNG）、范围（整块 / 选中的 Section / 一条讲解路径）、带不带问题和 Board-only 笔记。
 // HTML 快照：把画布克隆一份（和 webview 里画的一样，当前主题），去掉范围外的卡和不带出去的东西，CSS 收进来，
-// 字体和图片写成 cbres: 引用，宿主换成 data: URL（webview 的 CSP 不让 fetch）；配一小段只读的平移缩放脚本（viewer）。
+// 字体和图片写成 cbres: 引用，宿主换成 data: URL（webview 的 CSP 不让 fetch）；配一小段只读的平移缩放脚本（export/viewer.ts）。
+// PNG 用同一份克隆画到 canvas 上。交互用的部件在组件里标 data-export="strip"，克隆时一起删。
 // 都是点了 Export 才做、异步做，不进每帧的工作
-import { createSignal } from "solid-js";
 import { unwrap } from "solid-js/store";
-import { boardMarkdown, cardTitle, exportOrder, findCard, isQuestion, startCards, walkOrder, bounds, THEMES, type Board, type ExportFormat, type ExportScope, type Segment, type Sidenote } from "@codeboard/core";
+import { boardMarkdown, cardTitle, exportOrder, findCard, isQuestion, startCards, walkOrder, bounds, escHtml, THEMES, type Board, type ExportFormat, type ExportScope, type Segment, type Sidenote } from "@codeboard/core";
 import { state, sel, select, lineSel, setLineSel, rectOf, cardById, toast, flows } from "../state/store";
-import { cam, camTarget, setCam, lod, view } from "../state/camera";
+import { lod, holdFullDetail } from "../state/camera";
 import { lodBusy, lodOf } from "../state/lodcards";
-import { ask } from "../host";
+import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";
+import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
 import { renderMd } from "../md/render";
-import { exportPng } from "./misc";
-
-export type ExportOpts = { format: ExportFormat; scope: ExportScope["kind"]; sections: string[]; questions: boolean; boardOnly: boolean };
-export const [exportOpen, setExportOpen] = createSignal<ExportOpts | null>(null);
-export const [exportBusy, setExportBusy] = createSignal(false);
+import type { ViewerData } from "../export/viewer";
+import VIEWER_JS from "../export/viewer.ts?script";
 
 /** 讲解路径从哪张卡开始：选中的卡，否则第一张 Start 卡，否则第一张调用图的根 */
 export function walkStart(): string | undefined {
@@ -81,18 +79,72 @@ function segsOf(b: Board, id: string): Segment[] {
 
 const frames = (n = 2) => new Promise<void>((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
 
-/** 卡片都换成完整的样子（缩小时卡片是概览 / 地图）：镜头临时放到 100%，量完再放回去 */
+/** 卡片都换成完整的样子（缩小时卡片是概览 / 地图）：分档临时定在 full（镜头不动），等卡一批批换完，做完再放开 */
 async function withFullDetail<T>(fn: () => T | Promise<T>): Promise<T> {
-  const was = camTarget();
-  const need = lod() !== "full" || state.board.cards.some((c) => state.board.place[c.id] && lodOf(c.id) !== "full");
+  const notFull = () => state.board.cards.some((c) => state.board.place[c.id] && lodOf(c.id) !== "full");
+  const need = lod() !== "full" || notFull();
   if (need) {
-    const viewport = view();
-    const c = { x: (viewport.w / 2 - was.x) / was.z, y: (viewport.h / 2 - was.y) / was.z };
-    setCam(viewport.w / 2 - c.x, viewport.h / 2 - c.y, 1);
-    for (let i = 0; i < 180 && (lodBusy() || state.board.cards.some((k) => state.board.place[k.id] && lodOf(k.id) !== "full")); i++) await frames(1);
+    holdFullDetail(true);
+    for (let i = 0; i < 180 && (lodBusy() || notFull()); i++) await frames(1);
     await frames(2);
   }
-  try { return await fn(); } finally { if (need) setCam(was.x, was.y, was.z); }
+  try { return await fn(); } finally { if (need) holdFullDetail(false); }
+}
+
+// 交互状态的 class（选中、悬停、分档、离屏、镜头在动）：导出的是静止、没选中的样子
+const LIVE_CLASSES = ["off", "sel", "lift", "hov", "editing", "lo-ov", "lo-map", "moving", "settle", "bind-hot", "bind-anchor", "pinged"];
+
+/** 导出用的画布克隆：完整细节、没有选中；范围外的卡、两端不都在范围里的箭头、范围外的 Section 去掉，
+ *  标了 data-export="strip" 的部件和交互状态也去掉。HTML 快照、PNG 共用 */
+export async function cloneForExport(b: Board, scope: ExportScope, order: string[]): Promise<HTMLElement> {
+  const prevSel = { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] }, prevLine = lineSel();
+  select({}); setLineSel(null);
+  flushMd(); // 视野外还没渲染完的 Note 先补上
+  await frames(2);
+  const world = await withFullDetail(async () => { flushMd(); await frames(1); return (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement; });
+  select(prevSel); setLineSel(prevLine);
+  const keep = new Set(order);
+  const host = (id: string) => cardById(id)?.host.id ?? id;
+  const linkOk = new Set(b.links.filter((l) => keep.has(host(l.from.card)) && keep.has(host(l.to.card))).map((l) => l.id));
+  world.querySelectorAll<HTMLElement>(".card[data-id]").forEach((el) => { if (!keep.has(el.dataset.id!) && !el.parentElement?.closest(".card")) el.remove(); });
+  world.querySelectorAll<HTMLElement>("[data-lk]").forEach((el) => { if (!linkOk.has(el.dataset.lk!)) el.remove(); });
+  world.querySelectorAll<HTMLElement>("[data-link]").forEach((el) => { if (!linkOk.has(el.dataset.link!)) el.remove(); });
+  if (scope.kind !== "board") {
+    const secs = new Set(scope.kind === "sections" ? scope.ids : []);
+    for (let grew = true; grew;) { grew = false; for (const s of b.sections) if (s.parent && secs.has(s.parent) && !secs.has(s.id)) { secs.add(s.id); grew = true; } }
+    world.querySelectorAll<HTMLElement>("[data-sect]").forEach((el) => { if (!secs.has(el.dataset.sect!)) el.remove(); });
+  }
+  world.querySelectorAll('[data-export="strip"]').forEach((el) => el.remove());
+  for (const c of LIVE_CLASSES) world.querySelectorAll(`.${c}`).forEach((el) => el.classList.remove(c));
+  world.classList.remove("moving", "settle");
+  world.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));
+  return world;
+}
+
+/** 导出 PNG：整块白板的克隆用 SVG foreignObject 画到 canvas 上 */
+async function exportPng() {
+  const b = structuredClone(unwrap(state.board)) as Board;
+  const box = bounds([...b.cards.filter((c) => b.place[c.id]).map((c) => rectOf(c)), ...b.sections.map((s) => ({ x: s.x, y: s.y, w: s.w, h: s.h }))]);
+  if (!box) return toast("Nothing to export");
+  const pad = 40, scale = 2;
+  const W = Math.ceil(box.w + pad * 2), H = Math.ceil(box.h + pad * 2);
+  const world = await cloneForExport(b, { kind: "board" }, exportOrder(b, { kind: "board" }));
+  world.style.transform = `translate(${-box.x + pad}px, ${-box.y + pad}px)`;
+  const css = [...document.styleSheets].map((s) => { try { return [...s.cssRules].map((r) => r.cssText).join("\n"); } catch { return ""; } }).join("\n");
+  const bg = getComputedStyle(document.body).getPropertyValue("--canvas") || getComputedStyle(document.body).backgroundColor;
+  const rootStyle = document.body.getAttribute("style") ?? "";
+  const xml = new XMLSerializer().serializeToString(world);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${W * scale}" height="${H * scale}" viewBox="0 0 ${W} ${H}"><foreignObject width="${W}" height="${H}"><div xmlns="http://www.w3.org/1999/xhtml" class="${document.body.className}" style="${rootStyle};position:relative;width:${W}px;height:${H}px;overflow:hidden;background:${bg}"><style>${css.replace(/</g, "\\3c ")}</style>${xml}</div></foreignObject></svg>`;
+  const img = new Image();
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  try { await img.decode(); } catch { return toast("Export failed"); }
+  const cv = document.createElement("canvas");
+  cv.width = W * scale; cv.height = H * scale;
+  const g = cv.getContext("2d")!;
+  g.fillStyle = bg; g.fillRect(0, 0, cv.width, cv.height);
+  g.drawImage(img, 0, 0);
+  try { send({ type: "exportPng", dataUrl: cv.toDataURL("image/png"), name: `${fileName()}.png` }); }
+  catch { toast("Export failed: an image on the board blocks export"); }
 }
 
 /** 页面上的地址 → cbres: 引用（插件的 media/board、存储目录的 assets/），宿主换成 data: URL */
@@ -142,7 +194,7 @@ function collectCss(): string {
 
 /** Sidenote 的悬停内容（HTML） */
 function noteHtml(n: Sidenote): string {
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const esc = escHtml;
   const where = n.at.lines ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${esc(n.why)}` : ""}</div>` : "";
   switch (n.kind) {
     case "text": return `${where}<div class="md">${renderMd(n.md)}</div>`;
@@ -157,24 +209,8 @@ function noteHtml(n: Sidenote): string {
 async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Record<string, string>): Promise<string> {
   const keep = new Set(order);
   const whole = o.scope === "board";
-  const prevSel = { cards: [...sel.cards], links: [...sel.links], sections: [...sel.sections] }, prevLine = lineSel();
-  select({}); setLineSel(null);
-  flushMd(); // 视野外还没渲染完的 Note 先补上
-  await frames(2);
-  const world = await withFullDetail(async () => { flushMd(); await frames(1); return (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement; });
-  select(prevSel); setLineSel(prevLine);
-
-  // 范围外的卡、两端不都在范围里的箭头、不在范围里的 Section
+  const world = await cloneForExport(b, scopeOf(o), order);
   const host = (id: string) => cardById(id)?.host.id ?? id;
-  const linkOk = new Set(b.links.filter((l) => keep.has(host(l.from.card)) && keep.has(host(l.to.card))).map((l) => l.id));
-  world.querySelectorAll<HTMLElement>(".card[data-id]").forEach((el) => { if (!keep.has(el.dataset.id!) && !el.parentElement?.closest(".card")) el.remove(); });
-  world.querySelectorAll<HTMLElement>("[data-lk]").forEach((el) => { if (!linkOk.has(el.dataset.lk!)) el.remove(); });
-  world.querySelectorAll<HTMLElement>("[data-link]").forEach((el) => { if (!linkOk.has(el.dataset.link!)) el.remove(); });
-  if (!whole) {
-    const secs = new Set(o.scope === "sections" ? o.sections : []);
-    for (let grew = true; grew;) { grew = false; for (const s of b.sections) if (s.parent && secs.has(s.parent) && !secs.has(s.id)) { secs.add(s.id); grew = true; } }
-    world.querySelectorAll<HTMLElement>("[data-sect]").forEach((el) => { if (!secs.has(el.dataset.sect!)) el.remove(); });
-  }
   // 贴纸：问题不带出去时删掉；画布上没绑东西的只在整块导出时留
   const qs = new Set(b.stickers.filter((s) => isQuestion(s)).map((s) => s.id));
   world.querySelectorAll<HTMLElement>("[data-sticker]").forEach((el) => {
@@ -192,11 +228,6 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
     if (/^\d+$/.test(el.textContent ?? "")) el.textContent = String(ids.length);
   });
   world.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => { if (hidden.has(el.dataset.note!)) el.remove(); });
-  // 交互用的部件、选中 / 悬停 / 分档 / 离屏的状态
-  world.querySelectorAll('.guides, .wsteps, .lport, .eport, .grip, .hw, .porthit, .sgrip, .tether, .drophint, .ghost, [aria-label="Card Menu"]').forEach((el) => el.remove());
-  for (const c of ["off", "sel", "lift", "hov", "editing", "lo-ov", "lo-map", "moving", "settle", "bindhot", "pinged"]) world.querySelectorAll(`.${c}`).forEach((el) => el.classList.remove(c));
-  world.classList.remove("moving", "settle");
-  world.querySelectorAll("[contenteditable]").forEach((el) => el.removeAttribute("contenteditable"));
   world.querySelectorAll<HTMLImageElement>("img[src]").forEach((im) => { im.setAttribute("src", resRef(im.getAttribute("src")!, location.href)); });
   world.querySelectorAll<HTMLElement>("[style*='url(']").forEach((el) => el.setAttribute("style", el.getAttribute("style")!.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (_m, _q, u) => `url("${resRef(u, location.href)}")`)));
 
@@ -211,15 +242,15 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   for (const id of order) { const c = b.cards.find((k) => k.id === id); const s = c?.kind === "code" ? c.segments[0] : undefined; if (s && links[s.id]) cardLinks[id] = links[s.id]; }
   const walkIds = o.scope === "walk" ? order : (() => { const s = startCards(b)[0]; return s ? walkOrder(b, s).map(host).filter((id) => keep.has(id)) : []; })();
   const commit = (() => { for (const id of order) { const c = b.cards.find((k) => k.id === id); const v = c?.kind === "code" ? c.segments[0]?.version : undefined; if (v?.kind === "git") return v.commit.slice(0, 7); } return ""; })();
-  const data = {
-    name: b.name, box, z0: cam.z, walk: walkIds.map((id) => ({ id, title: cardTitle(findCard(b, id)!.card, b), mark: flows().byId.get(id)?.label ?? "", r: rectOf(id) })),
+  const data: ViewerData = {
+    name: b.name, box, walk: walkIds.map((id) => ({ id, title: cardTitle(findCard(b, id)!.card, b), mark: flows().byId.get(id)?.label ?? "", r: rectOf(id) })),
     notes, questions, links: cardLinks, info: `Read-only${commit ? ` · ${commit}` : ""} · exported ${new Date().toISOString().slice(0, 10)}`,
   };
 
   const html = document.documentElement, body = document.body;
-  const attrs = (el: Element, skip: string[] = []) => [...el.attributes].filter((a) => !skip.includes(a.name)).map((a) => ` ${a.name}="${a.value.replace(/&/g, "&amp;").replace(/"/g, "&quot;")}"`).join("");
+  const attrs = (el: Element) => [...el.attributes].map((a) => ` ${a.name}="${escHtml(a.value)}"`).join("");
   const app = document.querySelector(".app") as HTMLElement | null;
-  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;");
+  const esc = escHtml;
   const json = JSON.stringify(data).replace(/</g, "\\u003c");
   return `<!doctype html>
 <html${attrs(html)}>
@@ -228,14 +259,15 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
 <style>${VIEWER_CSS}</style>
 </head>
 <body${attrs(body)}>
-<div class="app chrome xv"${app?.getAttribute("style") ? ` style="${app.getAttribute("style")!.replace(/"/g, "&quot;")}"` : ""}>
+<div class="app chrome xv"${app?.getAttribute("style") ? ` style="${escHtml(app.getAttribute("style")!)}"` : ""}>
 <div id="board" class="board">${world.outerHTML}</div>
 <div class="xv-top pill"><b>${esc(b.name)}</b><span class="xv-info"></span></div>
 <div class="xv-dock pill"><button class="ib" data-z="out" aria-label="Zoom Out">−</button><span class="xv-zoom">100%</span><button class="ib" data-z="in" aria-label="Zoom In">+</button><span class="sep"></span><button class="ib" data-z="fit" aria-label="Fit to Window">Fit</button></div>
 <div class="xv-walk pill" hidden><button class="ib" data-w="prev" aria-label="Previous Step">‹</button><span class="xv-wt"></span><span class="cnt"></span><button class="ib" data-w="next" aria-label="Next Step">›</button></div>
 <div class="xv-tip pop open" hidden></div>
 </div>
-<script>(${viewer.toString()})(${json});</script>
+<script type="application/json" id="xv-data">${json}</script>
+<script>${VIEWER_JS.replace(/<\/script/gi, "<\\/script")}</script>
 </body></html>`;
 }
 
@@ -262,94 +294,3 @@ html,body{margin:0;height:100%;overflow:hidden}
 .xv-tip pre{white-space:pre-wrap;margin:4px 0;font:11px/1.5 var(--mono,monospace)}
 .xv-tip hr{border:0;border-top:1px solid rgba(127,127,127,.25);margin:8px 0}
 `;
-
-/** 导出的 HTML 里跑的查看脚本：只读，平移（拖、滚轮）、缩放（⌘ / Ctrl + 滚轮、按钮）、适应窗口、讲解路径一步步走、悬停看 Sidenote 和问题、复制代码、打开永久链接。
- *  toString 进页面：不能引用外面的东西 */
-function viewer(d: { name: string; box: { x: number; y: number; w: number; h: number }; walk: { id: string; title: string; mark: string; r: { x: number; y: number; w: number; h: number } }[]; notes: Record<string, string>; questions: Record<string, string>; links: Record<string, string>; info: string }) {
-  const board = document.getElementById("board")!, world = board.querySelector(".world") as HTMLElement;
-  const q = <T extends Element>(s: string) => document.querySelector(s) as T;
-  q<HTMLElement>(".xv-info").textContent = d.info;
-  let x = 0, y = 0, z = 1;
-  const apply = () => { world.style.transform = `translate(${x}px, ${y}px) scale(${z})`; q<HTMLElement>(".xv-zoom").textContent = `${Math.round(z * 100)}%`; };
-  const fit = (r: { x: number; y: number; w: number; h: number }, maxZ = 1) => {
-    const W = board.clientWidth, H = board.clientHeight, pad = 60;
-    z = Math.max(0.05, Math.min(maxZ, (W - pad * 2) / r.w, (H - pad * 2) / r.h));
-    x = W / 2 - (r.x + r.w / 2) * z; y = H / 2 - (r.y + r.h / 2) * z; apply();
-  };
-  const zoomAt = (f: number, px = board.clientWidth / 2, py = board.clientHeight / 2) => {
-    const nz = Math.max(0.05, Math.min(4, z * f));
-    x = px - ((px - x) * nz) / z; y = py - ((py - y) * nz) / z; z = nz; apply();
-  };
-  fit(d.box);
-  board.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    if (e.ctrlKey || e.metaKey) zoomAt(Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
-    else { x -= e.deltaX; y -= e.deltaY; apply(); }
-  }, { passive: false });
-  // 拖空白处、卡头平移；代码和文字里拖是选字（复制）
-  let drag: { sx: number; sy: number; x: number; y: number } | null = null;
-  board.addEventListener("pointerdown", (e) => {
-    const t = e.target as HTMLElement;
-    if (e.button !== 0 || t.closest(".src, .md, a, button, .mk, .stk, pre, input")) return;
-    drag = { sx: e.clientX, sy: e.clientY, x, y }; board.classList.add("grab"); board.setPointerCapture(e.pointerId);
-  });
-  board.addEventListener("pointermove", (e) => { if (!drag) return; x = drag.x + e.clientX - drag.sx; y = drag.y + e.clientY - drag.sy; apply(); });
-  board.addEventListener("pointerup", () => { drag = null; board.classList.remove("grab"); });
-  document.querySelectorAll<HTMLElement>("[data-z]").forEach((b) => b.addEventListener("click", () => { const k = b.dataset.z; if (k === "in") zoomAt(1.25); else if (k === "out") zoomAt(0.8); else fit(d.box); }));
-  window.addEventListener("keydown", (e) => {
-    if ((e.metaKey || e.ctrlKey) && (e.key === "=" || e.key === "+")) { e.preventDefault(); zoomAt(1.25); }
-    else if ((e.metaKey || e.ctrlKey) && e.key === "-") { e.preventDefault(); zoomAt(0.8); }
-    else if (e.key === "!" || (e.shiftKey && e.key === "1")) fit(d.box);
-    else if (e.key === "ArrowRight") step(1);
-    else if (e.key === "ArrowLeft") step(-1);
-  });
-  // 讲解路径
-  let wi = -1;
-  const wbar = q<HTMLElement>(".xv-walk");
-  const step = (k: number) => {
-    if (!d.walk.length) return;
-    wi = Math.max(0, Math.min(d.walk.length - 1, wi + k));
-    const s = d.walk[wi];
-    document.querySelectorAll(".xv-cur").forEach((e) => e.classList.remove("xv-cur"));
-    document.querySelector(`.card[data-id="${s.id}"]`)?.classList.add("xv-cur");
-    q<HTMLElement>(".xv-wt").textContent = `${s.mark ? `${s.mark} · ` : ""}${s.title}`;
-    q<HTMLElement>(".xv-walk .cnt").textContent = `${wi + 1} / ${d.walk.length}`;
-    fit(s.r);
-  };
-  if (d.walk.length > 1) {
-    wbar.hidden = false;
-    q<HTMLElement>(".xv-wt").textContent = `▶ Walk Through${d.walk[0].mark ? ` ${d.walk[0].mark}` : ""}`;
-    q<HTMLElement>(".xv-walk .cnt").textContent = `${d.walk.length} steps`;
-    wbar.querySelectorAll<HTMLElement>("[data-w]").forEach((b) => b.addEventListener("click", () => step(b.dataset.w === "next" ? 1 : -1)));
-    q<HTMLElement>(".xv-wt").addEventListener("click", () => { if (wi < 0) step(1); });
-  }
-  // 悬停：Sidenote 标记、问题贴纸
-  const tip = q<HTMLElement>(".xv-tip");
-  let hideT: number | undefined;
-  const show = (el: HTMLElement, html: string) => {
-    clearTimeout(hideT);
-    tip.innerHTML = html; tip.hidden = false;
-    const r = el.getBoundingClientRect();
-    tip.style.left = `${Math.min(r.right + 8, window.innerWidth - 400)}px`; tip.style.top = `${Math.max(8, Math.min(r.top, window.innerHeight - tip.offsetHeight - 8))}px`;
-  };
-  board.addEventListener("pointerover", (e) => {
-    const t = e.target as HTMLElement;
-    const mk = t.closest("[data-notes]") as HTMLElement | null, st = t.closest("[data-sticker]") as HTMLElement | null;
-    if (mk) { const h = mk.dataset.notes!.split(",").map((id) => d.notes[id]).filter(Boolean).join("<hr>"); if (h) show(mk, h); }
-    else if (st && d.questions[st.dataset.sticker!]) show(st, d.questions[st.dataset.sticker!]);
-  });
-  board.addEventListener("pointerout", (e) => { if ((e.target as HTMLElement).closest("[data-notes], [data-sticker]")) hideT = window.setTimeout(() => { tip.hidden = true; }, 200); });
-  tip.addEventListener("pointerenter", () => clearTimeout(hideT));
-  tip.addEventListener("pointerleave", () => { tip.hidden = true; });
-  // 复制代码、打开永久链接
-  board.addEventListener("click", (e) => {
-    const t = e.target as HTMLElement;
-    const card = t.closest(".card[data-id]") as HTMLElement | null;
-    if (!card) return;
-    if (t.closest(".cpy")) {
-      const text = [...card.querySelectorAll(".src .l")].map((l) => l.textContent ?? "").join("\n");
-      void navigator.clipboard?.writeText(text);
-    } else if (t.closest(".cpath") && d.links[card.dataset.id!]) window.open(d.links[card.dataset.id!], "_blank", "noopener");
-  });
-  window.addEventListener("resize", () => apply());
-}

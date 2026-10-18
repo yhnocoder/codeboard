@@ -5,17 +5,17 @@ import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, commonIndent, escapeRegExp, firstLine, shownText, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
+import { cardRows, commonIndent, escapeRegExp, shownText, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView, type Sticker } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
-import { Glyph } from "../stickers/glyphs";
-import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
-import { shownIcon, stickerClick } from "../actions/questions";
+import { lineStickers, stickerList } from "../state/stickers";
+import { StickerChip } from "../stickers/Picker";
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize } from "../state/measure";
 import { whenIdle } from "../state/idle";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
 import * as act from "../actions";
+import { callPointerDown, cardWheel, linkPortDown } from "../interact";
 
 /** 第 i 个字符前面有没有没配对的引号（单行内；三引号字符串的中间行靠高亮 class 判断） */
 function inQuotes(t: string, i: number) {
@@ -215,7 +215,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     if (!call || (act.isLibCall(call) && !e.altKey)) return; // library 调用：⌥ 点击才展开
     e.preventDefault();
     e.stopPropagation();
-    act.callPointerDown(e, c().id, r.seg, call, x);
+    callPointerDown(e, c().id, r.seg, call, x);
   };
   const onCtx = (e: MouseEvent) => {
     const x = (e.target as HTMLElement).closest?.(".call") as HTMLElement | null;
@@ -322,36 +322,33 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   });
 
   // 贴在行上的贴纸（进行号栏）；同一行已有旁注标记时缩成标记左上角一个小点，悬停展开
+  const myStk = stickerList(() => lineStickers(c().id));
   const lineStk = createMemo(() => {
-    const out: { row: number; ids: string[] }[] = [];
-    const by = new Map<number, string[]>();
-    for (const k of state.board.stickers) {
-      if (k.at.kind !== "line" || k.at.card !== c().id) continue;
-      const at = k.at;
+    const by = new Map<number, Sticker[]>();
+    for (const k of myStk()) {
+      const at = k.at as Extract<Sticker["at"], { kind: "line" }>;
       const i = rows().findIndex((r) => (r.t === "line" && r.seg === at.seg && r.line === at.line) || (r.t === "gap" && r.seg === at.seg && r.from <= at.line && at.line <= r.to));
       if (i < 0) continue;
-      const a = by.get(i) ?? [];
-      a.push(k.id);
-      by.set(i, a);
+      const a = by.get(i);
+      a ? a.push(k) : by.set(i, [k]);
     }
-    for (const [row, ids] of by) out.push({ row, ids });
-    return out;
+    return [...by].map(([row, list]) => ({ row, list }));
   });
   const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
-  const stickerById = (id: string) => state.board.stickers.find((k) => k.id === id);
+
 
   const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n) => n.kind === "text" && n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
   const cmtLine = (r: Row) => r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;
 
   // 行的连线端点：在卡片左右边框上（不占行号栏，供带 Call 标记的箭头自动选边）
   const portTop = () => { const l = lportY(); return l && scrollEl ? scrollEl.offsetTop + codeEl.offsetTop + l.y + 10 - scrollY() : null; };
-  const portDown = (e: PointerEvent, side: "left" | "right") => { const r = lportY()!.r as Extract<Row, { t: "line" }>; const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); act.linkPortDown(e, { card: c().id, seg: r.seg, line: r.line }, b.left + b.width / 2, b.top + b.height / 2, side); };
+  const portDown = (e: PointerEvent, side: "left" | "right") => { const r = lportY()!.r as Extract<Row, { t: "line" }>; const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); linkPortDown(e, { card: c().id, seg: r.seg, line: r.line }, b.left + b.width / 2, b.top + b.height / 2, side); };
   return (
     <>
     <Show when={portTop() !== null && !p.dim?.() && !freeEditing()}>
-      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} style={{ top: `${portTop()}px` }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={(e) => portDown(e, side === "l" ? "left" : "right")} />}</For>
+      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} data-nodrag data-export="strip" style={{ top: `${portTop()}px` }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={(e) => portDown(e, side === "l" ? "left" : "right")} />}</For>
     </Show>
-    <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => act.cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
+    <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
       <Show when={freeEditing()}>
         <FreeEdit card={c} wrap={() => !!c().wrap} onExit={(v) => { act.setFreeCode(c().id, v.replace(/\s+$/, "")); setEditing(null); }} onBlur={(e, ed) => {
             const el = ed.el;
@@ -394,14 +391,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             {(k) => (
               <Show when={ys()[k.row]}>
                 <span class="lstks" classList={{ dot: markRows().has(k.row) }} style={{ top: `${ys()[k.row].y}px` }}>
-                  <For each={k.ids}>{(id) => (
-                    <Show when={stickerById(id)}>{(st) => (
-                      <span class="stk" classList={{ sel: selSticker() === id, q: !!st().q, done: !!st().q?.done }} data-sticker={id} data-tip={st().q?.md ? firstLine(st().q!.md) : stickerLabel(st().icon)}
-                        onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, id); }} onClick={(e) => { e.stopPropagation(); stickerClick(id, e.currentTarget); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); }}>
-                        <Glyph icon={shownIcon(st()).icon} color={shownIcon(st()).color} size={14} />
-                      </span>
-                    )}</Show>
-                  )}</For>
+                  <For each={k.list}>{(st) => <StickerChip s={st} size={14} />}</For>
                 </span>
               </Show>
             )}

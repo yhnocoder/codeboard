@@ -5,6 +5,7 @@ import { cardTitle, LEGEND, legendName, type LegendKey } from "@codeboard/core";
 import { state, flows, cardById, sel } from "../state/store";
 import { Icon } from "./icons";
 import * as A from "../actions";
+import { runState, setLegendOpen, setRunState, setTreeOpen } from "../state/calls";
 
 /** 图例里每种样式的示意线：和画布上的线同一套 class */
 const SAMPLE: Record<LegendKey, string> = { call: "edge", rpc: "edge rpc", observed: "edge ev-observed", gen: "edge gen", see: "edge plain dashed" };
@@ -15,7 +16,7 @@ const NOTE: Record<LegendKey, string> = {
 export function LegendPanel() {
   return (
     <div class="cpanel legend pill" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-      <div class="cph"><b>Arrows</b><span class="grow" /><button class="ib" aria-label="Close Legend" onClick={() => A.setLegendOpen(false)}><Icon name="close" size={13} /></button></div>
+      <div class="cph"><b>Arrows</b><span class="grow" /><button class="ib" aria-label="Close Legend" onClick={() => setLegendOpen(false)}><Icon name="close" size={13} /></button></div>
       <For each={LEGEND}>{([k]) => (
         <div class="lgrow" data-k={k} data-tip="Double-click to rename" onDblClick={() => void A.renameLegend(k)}>
           <svg class="lgline" width="44" height="12" viewBox="0 0 44 12"><path class={SAMPLE[k]} d="M2 6H40" /><path class={`ahead end triangle${k === "observed" ? " ev-observed" : ""}`} d="M36 2.5L42 6L36 9.5Z" /></svg>
@@ -33,7 +34,7 @@ export function CallTreePanel() {
   const title = (id: string) => { const c = cardById(id)?.card; return c ? cardTitle(c, state.board) : id; };
   return (
     <div class="cpanel ctree pill" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-      <div class="cph"><b>Call Tree</b><small>{from()} · Call and RPC marks only</small><span class="grow" /><button class="ib" aria-label="Close Call Tree" onClick={() => A.setTreeOpen(false)}><Icon name="close" size={13} /></button></div>
+      <div class="cph"><b>Call Tree</b><small>{from()} · Call and RPC marks only</small><span class="grow" /><button class="ib" aria-label="Close Call Tree" onClick={() => setTreeOpen(false)}><Icon name="close" size={13} /></button></div>
       <div class="ctrows">
         <For each={A.treeRows()} fallback={<div class="empty sm">No Call arrows yet. Click a call in a code card, or mark a card as Start.</div>}>{(r) => {
           const g = () => flows().byId.get(r.card);
@@ -53,12 +54,12 @@ export function CallTreePanel() {
 }
 
 export function RunPanel() {
-  const rs = () => A.runState()!;
+  const rs = () => runState()!;
   const run = () => rs().apply.run;
   const when = () => new Date(run().at).toLocaleString();
   return (
     <div class="cpanel runp pill" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
-      <div class="cph"><b>Run</b><code class="rentry">{run().entry}</code><span class="grow" /><button class="ib" aria-label="Close Run Panel" onClick={() => A.setRunState(null)}><Icon name="close" size={13} /></button></div>
+      <div class="cph"><b>Run</b><code class="rentry">{run().entry}</code><span class="grow" /><button class="ib" aria-label="Close Run Panel" onClick={() => setRunState(null)}><Icon name="close" size={13} /></button></div>
       <div class="rmeta">{when()}{run().commit ? ` · ${run().commit!.slice(0, 7)}` : ""} · {rs().hits} arrow{rs().hits === 1 ? "" : "s"} marked Observed{run().exit ? ` · exit ${run().exit}` : ""}</div>
       <div class="rsub">Calls seen at runtime with no arrow ({rs().misses.length})</div>
       <div class="rrows">

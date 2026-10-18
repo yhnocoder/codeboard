@@ -1,16 +1,18 @@
-// 宿主发来的消息。
+// 宿主发来的消息。换白板（init）时各处的界面状态由 onBoardSwitch 登记的重置一起清掉（state/root.ts）
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
-import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, setBoard, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows } from "./state/store";
+import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard, type Sidenote } from "@codeboard/core";
+import { state, setState, markSaved, setBoard, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, lineSel, sel, flows } from "./state/store";
 import { setCam } from "./state/camera";
-import { setBanner, setWalk } from "./state/ui";
-import { resetSubboards, putSkels, setCrumbs } from "./state/subboards";
+import { resetSubboards, putSkels, setCrumbs, setWalkBack } from "./state/subboards";
+import { boardSwitched } from "./state/root";
 import * as A from "./actions";
+import { runKey } from "./keymap";
 import { choose } from "./ui/Menu";
 import { setAssetBase } from "./md/render";
 import { preloadEditor } from "./md/load";
 import { preloadCm } from "./cm/load";
+import { questionsOpen, setWelcome } from "./state/questions";
 
 let preloaded = false;
 export function onHost(m: HostToBoard) {
@@ -28,18 +30,15 @@ export function onHost(m: HostToBoard) {
         A.resetShownViews();
         setShared(reconcile({}));
         setState("loaded", true);
-
-        setBanner(true);
-        A.setWelcome(m.welcome ?? null);
-        A.setOtherQuestions(null);
+        // 换了一块白板（进入 / 离开子白板）：讲解、模式、弹出的面板、骨架、面包屑都是上一块白板的
+        boardSwitched();
+        resetSubboards(m.crumbs);
+        setWelcome(m.welcome ?? null);
+        select({});
       });
-      if (A.questionsOpen()) A.refreshQuestions();
+      if (questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
       markSaved();
-      A.resetNav();
-      select({});
-      // 换了一块白板（进入 / 离开子白板）：讲解、骨架、面包屑都是上一块白板的
-      batch(() => { setWalk(null); setShowCollapsed(false); A.setWalkBack(null); resetSubboards(m.crumbs); A.setRunState(null); });
       if (m.walk) hopWalk(m.walk);
       break;
     }
@@ -98,10 +97,11 @@ export function onHost(m: HostToBoard) {
       break;
     }
     case "addSidenote": {
-      const ls = A.currentLineSel();
+      const ls = lineSel();
       const at = ls ? { card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] as [number, number] } : sel.cards.length === 1 ? { card: sel.cards[0] } : null;
       if (!at) { toast("Select lines on the board first, then press ⌥S in the editor"); break; }
-      A.addSidenote({ at, kind: "code", code: m.seg } as any, m.view);
+      const n: Omit<Extract<Sidenote, { kind: "code" }>, "id"> = { at, kind: "code", code: m.seg };
+      A.addSidenote(n, m.view);
       toast("Added as Sidenote");
       break;
     }
@@ -114,7 +114,7 @@ export function onHost(m: HostToBoard) {
       if (m.sticker) A.revealQuestion(m.sticker);
       break;
     }
-    case "key": A.keyAction(m.action); break;
+    case "key": runKey(A, m.action); break;
     case "rename": if (m.name.trim()) mutate((b) => { b.name = m.name.trim(); }); break;
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
     case "toast": toast(m.text); break;
@@ -140,7 +140,7 @@ function hopWalk(w: NonNullable<Extract<HostToBoard, { type: "init" }>["walk"]>)
     if (w.into) {
       const start = w.start ?? flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
       if (!start) { A.leaveBoard(undefined, { resume: { root: w.into.root, i: w.into.i + 1 } }); return; }
-      A.setWalkBack(w.into);
+      setWalkBack(w.into);
       A.startWalk(start, { single: true });
     } else if (w.resume) {
       const r = w.resume;

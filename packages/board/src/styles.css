@@ -70,9 +70,9 @@ input, textarea { font: inherit; color: var(--ink); }
 /* clip 而不是 hidden：hidden 的盒子还能被程序滚动，Tab 把焦点移到画面外的卡上的按钮时浏览器会把整块白板滚过去，镜头的换算（适应窗口、框选、放卡）就全偏了 */
 .board { position: fixed; inset: 0; overflow: clip; background: var(--bg); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
 .board:focus { outline: none; }
-.board.panning, .board.space { cursor: grab; }
-.board.panning * , .board.space * { cursor: grab !important; }
-.board.connecting, .board.connecting * { cursor: crosshair !important; }
+.board:is([data-mode="pan"], [data-mode="space"]) { cursor: grab; }
+.board:is([data-mode="pan"], [data-mode="space"]) * { cursor: grab !important; }
+.board:is([data-mode="connect"], [data-mode="pick"]), .board:is([data-mode="connect"], [data-mode="pick"]) * { cursor: crosshair !important; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 /* 世界层一直单独成层，镜头一动就按位图缩放、不重画（#15）。停下时 Canvas 给 .settle 一两帧：去掉 will-change 的提示，让浏览器按新比例重新清晰栅格化。
    一直带着一个看不出来的 3D 变换（绕 x 轴转 0°），去掉 will-change 时它还是单独一层：退回普通层的话要把整层重画一遍（概览档 ~60ms）。
@@ -821,7 +821,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .slabel.collapsed.sel { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
 .slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
 .slabel .scount { color: var(--ink-3); font-weight: 400; }
-.board.drawing, .board.drawing * { cursor: crosshair !important; }
+.board[data-mode="draw"], .board[data-mode="draw"] * { cursor: crosshair !important; }
 
 /* chrome */
 .tb-left .pill { padding: 3px; }
@@ -1023,7 +1023,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .stkpick .sfoot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 7px; }
 .stkpick .sfoot span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
 .stkghost { position: fixed; z-index: 60; pointer-events: none; transform: translate(-50%, -50%); opacity: .85; }
-.board.placing, .board.placing * { cursor: copy !important; }
+.board[data-mode="place"], .board[data-mode="place"] * { cursor: copy !important; }
 .stkpick .tlink { color: var(--accent); font-weight: 600; font-size: 11.5px; }
 
 /* 行号栏：行号 | 标记列（旁注、"+"、贴纸都是 14px）| 代码（#13 #14 #16） */
@@ -1145,7 +1145,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .skel .sk-l { fill: none; stroke: color-mix(in srgb, var(--ink-3) 80%, transparent); stroke-width: 1; stroke-dasharray: 3 2; }
 .skel .sk-l.call { stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-dasharray: none; stroke-width: 1.2; }
 .skel .sk-c.hot .sk-box { stroke: var(--k-fn); stroke-width: 2.2; }
-.board.connecting .skel .sk-c:hover .sk-box, .board .skel .sk-c:hover .sk-box { stroke: color-mix(in srgb, var(--accent) 80%, transparent); }
+.board[data-mode="connect"] .skel .sk-c:hover .sk-box, .board .skel .sk-c:hover .sk-box { stroke: color-mix(in srgb, var(--accent) 80%, transparent); }
 .sbentry { fill: var(--surface); stroke: var(--edge, var(--ink-2)); stroke-width: 1.6; }
 .sbentry.lost { stroke: var(--lk-lost, #d64545); }
 /* 地图档（拉远）：只剩灰块、形状和 Section 色；名字浮在框上面，字号按 --iz 放大 */

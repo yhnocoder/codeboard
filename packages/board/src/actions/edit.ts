@@ -17,8 +17,9 @@ import { setEditing, setPopIn } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
 import { frameOf, allMembers, isHidden } from "../state/sections";
-import { K, popCard, revealCard, sectionById, selCards } from "./common";
+import { popCard, revealCard, sectionById, selCards } from "./common";
 import { requestViews } from "./create";
+import { kbd } from "../keymap";
 
 /** 最近一次 ⌘C 复制的是哪张卡的哪段字：⌘V 粘回来时放在那张卡旁边（错开一点，允许重叠），不去找空地 */
 let lastCopy: { card: string; text: string; n: number } | null = null;
@@ -100,10 +101,10 @@ export function arrange(ids: string[], how: Arrange) {
 export const arrangeItem = (ids: () => string[]): Item => ({
   label: "Arrange",
   sub: [
-    { label: "Bring to Front", kbd: `${K.mod}⇧]`, run: () => arrange(ids(), "front") },
-    { label: "Bring Forward", kbd: `${K.mod}]`, run: () => arrange(ids(), "forward") },
-    { label: "Send Backward", kbd: `${K.mod}[`, run: () => arrange(ids(), "backward") },
-    { label: "Send to Back", kbd: `${K.mod}⇧[`, run: () => arrange(ids(), "back") },
+    { label: "Bring to Front", kbd: kbd("front"), run: () => arrange(ids(), "front") },
+    { label: "Bring Forward", kbd: kbd("forward"), run: () => arrange(ids(), "forward") },
+    { label: "Send Backward", kbd: kbd("backward"), run: () => arrange(ids(), "backward") },
+    { label: "Send to Back", kbd: kbd("back"), run: () => arrange(ids(), "back") },
   ],
 });
 

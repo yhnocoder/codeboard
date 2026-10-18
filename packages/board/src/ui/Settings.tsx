@@ -1,5 +1,5 @@
 // Settings 页：白板里的整窗页面（⌘, / ⋯ → Settings… / 命令 CodeBoard: Open Settings）。
-// 改动乐观更新 state.host.settings，宿主写进 codeboard.*；快捷键清单和 ? 浮层共用 shortcuts.ts。
+// 改动乐观更新 state.host.settings，宿主写进 codeboard.*；快捷键清单和 ? 浮层都从 keymap.ts 的表生成。
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import { THEMES, EXPERIMENTAL_THEMES, DEFAULT_SETTINGS, type HideFlags, type Settings as S } from "@codeboard/core";
 import { state } from "../state/store";
@@ -8,7 +8,8 @@ import { send } from "../host";
 import * as A from "../actions";
 import { Icon } from "./icons";
 import { promptText } from "./Menu";
-import { filterShortcuts, keyText } from "./shortcuts";
+import { helpRows, matches } from "../keymap";
+import { useOverlay } from "./overlay";
 import { TUNE, tune, type TuneKey } from "../state/tune";
 
 const cur = (): S => ({ ...DEFAULT_SETTINGS, ...state.host.settings });
@@ -21,6 +22,8 @@ export function SettingsLayer() {
 
 function SettingsPage(p: { section?: string }) {
   let el!: HTMLDivElement;
+  // 盖住白板：白板快捷键都不响应；Esc、⌘, 关
+  useOverlay({ close: () => A.closeSettings(), grab: true, modal: true, keys: (e) => matches(e, "settings") && (A.closeSettings(), true) });
   onMount(() => {
     const t = p.section && el.querySelector<HTMLElement>(`[data-sec="${p.section}"]`);
     if (t) t.scrollIntoView({ block: "start" });
@@ -28,8 +31,7 @@ function SettingsPage(p: { section?: string }) {
   });
   return (
     <div class="settings" ref={el} tabIndex={-1} role="dialog" aria-label="CodeBoard Settings"
-      onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}
-      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); A.closeSettings(); } }}>
+      data-nodrag onWheel={(e) => e.stopPropagation()}>
       <div class="st-top">
         <h2>CodeBoard Settings</h2>
         <span class="st-sync">Synced to VS Code settings <code>codeboard.*</code></span>
@@ -202,7 +204,7 @@ function Pct(p: { label: string; k: "zoomOverview" | "zoomMap"; min: number; max
 function Shortcuts() {
   const [q, setQ] = createSignal("");
   const mac = () => state.host.isMac;
-  const groups = () => filterShortcuts(q(), mac());
+  const groups = () => helpRows(mac(), q());
   return (
     <section class="st-sec wide" data-sec="shortcuts">
       <div class="st-h row"><h3>Keyboard Shortcuts</h3><span class="st-ro">Read-only</span><span class="grow" />
@@ -212,7 +214,7 @@ function Shortcuts() {
         <For each={groups()} fallback={<div class="empty">No shortcut matches “{q()}”.</div>}>{([g, rows]) => (
           <div class="st-kg">
             <h4>{g}</h4>
-            <For each={rows}>{([k, a]) => <div class="st-kr"><span>{a}</span><kbd>{keyText(k, mac())}</kbd></div>}</For>
+            <For each={rows}>{([k, a]) => <div class="st-kr"><span>{a}</span><kbd>{k}</kbd></div>}</For>
           </div>
         )}</For>
       </div>

@@ -1,9 +1,10 @@
 // 箭头（Link）：普通箭头、连接模式、标签、调用上的变量。
 import { uid, isCode, cardTitle, varKey, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
 import { state, mutate, select, cardById, toast } from "../state/store";
-import { setEditing, setConnectFrom, setHoverVar } from "../state/ui";
+import { setEditing, setHoverVar } from "../state/ui";
+import { setConnectFrom } from "../state/mode";
 import { openPop } from "../state/pop";
-import { lastPointer } from "./common";
+import { lastPointer } from "../state/measure";
 import { askCands, attachCall, calleeMatches, callMark } from "./flow";
 import { skelOf } from "../state/subboards";
 

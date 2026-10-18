@@ -2,7 +2,7 @@
 // 线都画在所有卡下面那一层（见下面的「图层」），选中的、正拖着的、指针下那张卡的线临时浮到所有卡上面。
 // 每条线：base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：各自画到合并点，合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
-import { Show, batch, createEffect, createMemo, createRenderEffect, createRoot, createSelector, createSignal, mapArray, on, onCleanup, untrack, type Accessor } from "solid-js";
+import { Show, batch, createEffect, createMemo, createRenderEffect, createSelector, createSignal, mapArray, on, onCleanup, untrack, type Accessor } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
 import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
 import { geo, lineY } from "../state/geo";
@@ -10,20 +10,22 @@ import { frames, collapsedHome } from "../state/sections";
 import { hoverLink, setHoverLink, hoverCard, setHoverCard, dragLink, setDragLink, rubber, popIn } from "../state/ui";
 import { cam, toWorld, stillZ, lod, reduceMotion, camMoving } from "../state/camera";
 import { lodOf } from "../state/lodcards";
-import { boardOffset } from "../actions/common";
+import { boardOffset } from "../state/measure";
 import { shape, fileHue, look } from "../state/look";
 import { tune } from "../state/tune";
 import { isDbl } from "../interact";
 import * as A from "../actions";
 import { LinkLabel } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
+import { isBindHot } from "../state/stickers";
 import { subRect, frameOf } from "../state/subboards";
 import { FRAME_HEAD } from "@codeboard/core";
 import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
 import { carAt, type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
+import { rooted } from "../state/root";
 
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
+import { clamp } from "./geom";
 
 /** 卡（或 Compare 的一栏）的矩形；在折叠的 Section 里时是那个标题条 */
 function endRect(id: string): { r: Rect; pill: boolean } | null {
@@ -255,16 +257,7 @@ export function geoOf(L: Link): Geo | null {
   const [p, q] = anchorsFor(bs, sidesFor(L, bs, false), [mapHides(L.from), mapHides(L.to)]);
   return geoFrom(L, bs, p, q, false);
 }
-export function curveAt(p: number[], t: number) {
-  const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
-  return { x: a * p[0] + b * p[2] + c * p[4] + d * p[6], y: a * p[1] + b * p[3] + c * p[5] + d * p[7] };
-}
-/** 离 (x, y) 最近的那一点的 t */
-export function nearestT(p: number[], x: number, y: number) {
-  let best = 0.5, bd = Infinity;
-  for (let i = 0; i <= 100; i++) { const q = curveAt(p, i / 100), d = (q.x - x) ** 2 + (q.y - y) ** 2; if (d < bd) { bd = d; best = i / 100; } }
-  return best;
-}
+
 
 function portPath(x: number, y: number) {
   const k = shape().port;
@@ -311,7 +304,7 @@ const [roads, setRoads] = createSignal<Accessor<Route[]>>(() => []);
  * 卡端（不连行）落在哪张卡的哪一边：「卡 id|边」。那一边的圆点（.eport）就不画了，线头已经标出那个位置（圆点盖在箭头上很难看），
  * 鼠标移上去照样能拖。只读每条线的 sides memo：拖卡片时不重算，只在换边、增删线时变；createSelector 只通知结果变了的那几个圆点
  */
-export const landed = createRoot(() => {
+export const landed = rooted(() => {
   const keys = createMemo(() => {
     const out = new Set<string>();
     for (const r of roads()()) {
@@ -511,12 +504,12 @@ const fading = new Map<object, () => void>();
 function crossfade(key: object, els: Element[], up: boolean) {
   fading.get(key)?.();
   const ms = tune("liftFade") * (100 / tune("animSpeed"));
-  if (ms <= 0 || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (ms <= 0 || reduceMotion()) return;
   els = els.filter((el) => el.firstElementChild);
   const ghosts = els.map((el) => {
     const c = el.cloneNode(true) as Element;
     for (const x of [c, ...c.querySelectorAll("[data-lk],[data-link],[id]")]) { x.removeAttribute("data-lk"); x.removeAttribute("data-link"); x.removeAttribute("id"); }
-    c.classList.add("ghost");
+    c.classList.add("ghost"); c.setAttribute("data-export", "strip");
     el.before(c);
     return c;
   });
@@ -584,7 +577,7 @@ const hitWidth = (el: SVGPathElement) => createRenderEffect(() => el.style.setPr
 
 const colorCls = (L: Link) => (L.style?.color ? ` lc-${L.style.color}` : "");
 const widthCls = (L: Link) => (L.style?.width === 1 ? " w1" : L.style?.width === 3 ? " w3" : "");
-const isOn = (id: string) => sel.links.includes(id) || hoverLink() === id || (A.bindHot() as { link?: string } | null)?.link === id;
+const isOn = (id: string) => sel.links.includes(id) || hoverLink() === id || isBindHot(`link:${id}`);
 
 /** 一条线的节点：线本身、City 的路沿和白边线、标签框和贴纸。外面各包一层不变的节点，换层时整块搬 */
 function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, city: () => boolean): Dom {
@@ -617,7 +610,7 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
     <g data-lk={L.id}>
       <Show when={g()}>
         <Show when={g()!.port}><path class={`port fc-${toHue()}${L.lost?.from ? " lost" : ""}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
-          <Show when={on() && L.from.line !== undefined && r.base()?.kind === "normal"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
+          <Show when={on() && L.from.line !== undefined && r.base()?.kind === "normal"}><circle class="porthit" data-export="strip" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
         <Show when={g()!.port2}><path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} /></Show>
         <Show when={g()!.entry}><circle class={`sbentry${L.lost?.to ? " lost" : ""}`} r="4" cx={g()!.entry!.x} cy={g()!.entry!.y} /></Show>
       </Show>

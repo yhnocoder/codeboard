@@ -1,6 +1,8 @@
 // 箭头走线的纯计算（不碰 DOM、不读 store）：两端走哪一侧（W03 1–4，带缓冲）、端点和朝向、曲线 / 直角折线、错位时斜着进（W03 11）。
 // Links.tsx 每条线一个 memo 调这里；单元测试在 test/unit/route.test.ts。
 
+import { clamp } from "./geom";
+
 export type Side = "left" | "right" | "top" | "bottom";
 export type Box = { x: number; y: number; w: number; h: number };
 /**
@@ -19,7 +21,6 @@ export type Anchor = { x: number; y: number; nx: number; ny: number };
 const CLEAR = 24;
 
 const cx = (b: Box) => b.x + b.w / 2, cy = (b: Box) => b.y + b.h / 2;
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
 /**
  * W03 1–4 + 5：按两张卡的左右关系定摆法。H = 换边缓冲：从「上下」换成「左右分开」要拉开 H，分开以后要重叠才换回来；
