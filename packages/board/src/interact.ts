@@ -50,11 +50,13 @@ function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: Point
 
 const ev0x = (e: PointerEvent) => e.clientX, ev0y = (e: PointerEvent) => e.clientY;
 
-// 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）
-const dbl: { key?: string; t: number } = { t: 0 };
-export function isDbl(key: string) {
-  const now = performance.now(), r = dbl.key === key && now - dbl.t < tune("dblClick");
-  dbl.key = r ? undefined : key; dbl.t = now;
+// 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）：同一个东西上、够快、两下点在差不多同一个地方
+const DBL_SLOP = 6;
+const dbl: { key?: string; t: number; x: number; y: number } = { t: 0, x: 0, y: 0 };
+export function isDbl(key: string, e: { clientX: number; clientY: number }) {
+  const now = performance.now();
+  const r = dbl.key === key && now - dbl.t < tune("dblClick") && Math.hypot(e.clientX - dbl.x, e.clientY - dbl.y) <= DBL_SLOP;
+  dbl.key = r ? undefined : key; dbl.t = now; dbl.x = e.clientX; dbl.y = e.clientY;
   return r;
 }
 
@@ -84,11 +86,11 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   e.preventDefault();
   (document.activeElement as HTMLElement | null)?.blur?.();
   window.getSelection()?.removeAllRanges();
-  if (c.kind === "web" && inHead && isDbl(`w${id}`)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
-  if (c.kind === "board" && isDbl(`b${id}`)) return A.enterFrame(id); // 双击子白板框 = 进去
+  if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
+  if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id); // 双击子白板框 = 进去
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
-  if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`)) return setEditing({ kind: "title", id: target });
+  if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`, e)) return setEditing({ kind: "title", id: target });
   // 调用图标记：点 = 改标记（字母 / 图标），拖 = 连同它往下调用的卡一起走（#29）
   if (t.closest(".step")) {
     const el = t.closest(".step")!;
@@ -96,7 +98,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     A.selectSubtree(target, e.shiftKey); closeAllPops();
     return startCardDrag(e, f.host.id, () => { select({ cards: was.length ? was : [f.host.id] }); A.openMarkPicker(target, el); });
   }
-  if (isText && isDbl(`x${id}`)) return setEditing({ kind: "note", id });
+  if (isText && isDbl(`x${id}`, e)) return setEditing({ kind: "note", id });
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
   closeAllPops();
@@ -387,7 +389,7 @@ export function canvasPointerDown(e: PointerEvent) {
   if (connectFrom()) { setConnectFrom(null); toast("Connect cancelled"); return; }
   e.preventDefault();
   closeAllPops();
-  if (isDbl("canvas")) {
+  if (isDbl("canvas", e)) {
     const w = worldOf(e), k = state.host.settings.dblClick ?? "text";
     if (k === "text") A.newNote({ x: w.x, y: w.y - 12 }, false);
     else if (k === "note") A.newNote({ x: w.x, y: w.y - 18 }, true);
@@ -500,7 +502,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
   closeAllPops();
   const s = sec(id);
   if (!s) return;
-  if (isDbl(`s${id}`)) return setEditing({ kind: "section", id });
+  if (isDbl(`s${id}`, e)) return setEditing({ kind: "section", id });
   if (e.shiftKey) { toggleSel("sections", id); return; }
   select({ sections: [id] });
   if (A.sectionLocked(s)) return;

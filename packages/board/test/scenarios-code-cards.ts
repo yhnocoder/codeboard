@@ -1,5 +1,6 @@
 // Code cards on the canvas: what the user can see is what selection, Delete, Fit and Reveal act on; keyboard and pointer details.
 //  tabKeepsCanvasStill        — Tab walking focus to a button of a card past the edge does not scroll the canvas (Fit and box select stay right)
+//  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 // Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { open, put, symCard, findSym, viewOf, type Host } from "./harness";
@@ -39,6 +40,7 @@ function callTree(collapsed: boolean) {
 
 export const CODE_CARDS: Record<string, () => Promise<void>> = {
   tabKeepsCanvasStill: () => run("tabKeepsCanvasStill", tabKeepsCanvasStill),
+  farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
 };
 
 async function tabKeepsCanvasStill(res: Record<string, unknown>) {
@@ -62,4 +64,22 @@ async function tabKeepsCanvasStill(res: Record<string, unknown>) {
   res.boxed = lastSel(h)?.cards;
   await close(h);
   return worst === 0 && JSON.stringify(res.boxed) === JSON.stringify([cs[0].id]);
+}
+
+async function farClicksNotDoubleClick(res: Record<string, unknown>) {
+  const b = emptyBoard("bDbl", "dbl");
+  put(b, nv("LLMEngine.step"), 80, 80, 560);
+  const h = await open({ board: b });
+  const notes = () => h.page.locator(".card.text, .card.note").count();
+  // click, then quickly start a selection box far away
+  await h.page.mouse.click(900, 700);
+  await h.page.mouse.move(200, 500); await h.page.mouse.down(); await h.page.mouse.move(400, 650, { steps: 4 }); await h.page.mouse.up();
+  await wait(h, 400);
+  res.far = await notes();
+  // a real double-click still makes a Text note
+  await h.page.keyboard.press("Escape");
+  await h.page.mouse.dblclick(900, 400); await wait(h, 400);
+  res.near = await notes();
+  await close(h);
+  return res.far === 0 && res.near === 1;
 }
