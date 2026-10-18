@@ -242,11 +242,33 @@ async function cardfocusStep(page) {
     f = await boardFrame(page);
     const n0 = await f.locator(".card").count();
     check(await card(f, "get_context").count() === 1, `get_context is on the board before the ${where} click`);
-    await shot(page, `18-cardfocus-${where}`); // also fits the board to the window so the card is in view
+    await shot(page, `18-cardfocus-${where}`);
+    // shot() fits the whole board, which after the earlier steps is the map zoom: card faces are hidden there and the enlarged
+    // map labels can cover neighbouring cards. Go to 100% (the board's zoom button), then Reveal on Board from get_context
+    // pans the board to that card
+    await f.locator(".zoom").first().click(); await sleep(800);
+    await openFile(page, "context.py", 18);
+    await command(page, "CodeBoard: Reveal on Board"); await sleep(1500);
+    f = await boardFrame(page);
+    check(!/lo-map|lo-ov/.test(await card(f, "get_context").getAttribute("class")), `get_context is shown at full detail before the ${where} click`, await card(f, "get_context").getAttribute("class"));
     await openFile(page, "context.py", 21);
     await page.keyboard.press("Shift+ArrowDown"); await page.keyboard.press("Shift+ArrowDown"); await sleep(300);
     const before = await editorText();
-    await card(f, "get_context").locator(sel).first().click({ position: { x: 10, y: 6 } }); await sleep(600);
+    // click a point of the header / code that is really this card's (another card may still overlap part of it)
+    const target = card(f, "get_context").locator(sel).first();
+    const pt = await target.evaluate((el) => {
+      const r = el.getBoundingClientRect(), me = el.closest(".card");
+      const others = [...document.querySelectorAll(".card")].filter((c) => c !== me && !c.contains(me)).map((c) => c.getBoundingClientRect())
+        .filter((o) => o.left < r.right && o.right > r.left && o.top < r.bottom && o.bottom > r.top).length;
+      for (let y = 6; y < Math.min(r.height, 60); y += 4) for (let x = 10; x < Math.min(r.width, 300); x += 10) {
+        const t = document.elementFromPoint(r.left + x, r.top + y);
+        if (t && el.contains(t) && t.closest(".card") === me) return { x, y, others };
+      }
+      return { x: -1, y: -1, others, lod: me.className };
+    });
+    check(pt.x >= 0, `part of get_context's ${where} is exposed after Reveal on Board`, pt);
+    if (pt.others) console.log(`  (get_context's ${where} overlaps ${pt.others} other card(s) on screen)`);
+    await target.click({ position: { x: pt.x, y: pt.y }, timeout: 5000 }).catch((e) => console.log("  click failed:", e.message.split("\n")[0])); await sleep(600);
     check(await page.locator(".editor-group-container .monaco-editor.focused").count() === 0, `clicking the card's ${where} takes focus from the file editor`);
     await page.keyboard.press("Backspace"); await sleep(1200);
     f = await boardFrame(page);
