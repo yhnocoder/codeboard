@@ -218,23 +218,23 @@ function pushUndo(before: Snap, after: Snap, merge?: string) {
   updUndo();
 }
 
-// 新建、还没写内容的 Note / Text / Code：建卡这一步先不进撤销栈。
-// 写了内容 → 「建卡 + 内容」算撤销栈里的一步；什么都没写就失焦 → 卡自动消失，就像没建过。
-const fresh = new Map<string, Snap>();
-export function createFresh(id: string, fn: (b: Board) => void) {
+// 新建、还没写内容的 Note / Text / Code / 问题：建这一步先不进撤销栈。
+// 写了内容 → 「新建 + 内容」算撤销栈里的一步；什么都没写就失焦 → 自动消失（drop），就像没建过。
+const fresh = new Map<string, { before: Snap; drop: (b: Board) => void }>();
+export function createFresh(id: string, fn: (b: Board) => void, drop = (b: Board) => removeCards(b, [id])) {
   const before = snap();
   live(fn);
-  fresh.set(id, before);
+  fresh.set(id, { before, drop });
 }
 export const isFresh = (id: string) => fresh.has(id);
 /** 结束新卡的第一次编辑：keep = 写了内容（fn 是写内容的修改） */
 export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) {
-  const before = fresh.get(id);
-  if (!before) return;
+  const f = fresh.get(id);
+  if (!f) return;
   fresh.delete(id);
-  if (!keep) { ghostOut([id]); live((b) => removeCards(b, [id])); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
+  if (!keep) { ghostOut([id]); live(f.drop); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
   live((b) => { fn?.(b); stamp(b); });
-  pushUndo(before, (cur = snap()));
+  pushUndo(f.before, (cur = snap()));
   changed();
 }
 
@@ -312,7 +312,7 @@ function trimSync() {
   let min = syncN;
   for (const s of undoStack) min = Math.min(min, s.epoch);
   for (const s of redoStack) min = Math.min(min, s.epoch);
-  for (const s of fresh.values()) min = Math.min(min, s.epoch);
+  for (const f of fresh.values()) min = Math.min(min, f.before.epoch);
   for (const s of held) min = Math.min(min, s.epoch);
   let i = 0;
   while (i < syncLog.length && (syncLog[i].n <= min || syncLog.length - i > SYNC_MAX)) i++;
