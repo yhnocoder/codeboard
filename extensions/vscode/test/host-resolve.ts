@@ -260,6 +260,32 @@ void (async () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 
+  // New versions are code after the pinned commit: checking out an older commit shows no new version; a newer one does
+  {
+    const R = fs.mkdtempSync("/tmp/codeboard-older-");
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: R, stdio: "pipe" }).toString().trim();
+    const src = (body: string) => ["def g(x):", `    return ${body}`, ""].join("\n");
+    fs.writeFileSync(path.join(R, "f.py"), src("x"));
+    git("init", "-q", "-b", "main"); git("add", "-A"); git("commit", "-qm", "old");
+    const old = git("rev-parse", "HEAD");
+    fs.writeFileSync(path.join(R, "f.py"), src("x + 1"));
+    git("commit", "-qam", "pinned");
+    useWorkspace(nodeWorkspace(R));
+    forgetHeads();
+    const { card: c } = await card(path.join(R, "f.py"), "g");
+    const stale = async () => { forgetHeads(); const ss = staleSegments({ cards: [c], sidenotes: [] }); return (await staleFor(ss.segs, ss.up))[c.segments[0].id]?.state; };
+    check(await stale() === "ok", "Pinned at HEAD: no new version");
+    git("checkout", "-q", old);
+    check(await stale() === "ok", "Older commit checked out: the card has no new version", await stale());
+    git("checkout", "-q", "main");
+    fs.writeFileSync(path.join(R, "f.py"), src("x + 2"));
+    git("commit", "-qam", "newer");
+    check(await stale() === "changed", "Newer commit checked out: the card has a new version", await stale());
+    useWorkspace(W);
+    forgetHeads();
+    fs.rmSync(R, { recursive: true, force: true });
+  }
+
   // 子白板（线框 05）：进入 / 返回换的是同一个面板（面包屑、镜头、讲解带过去）、不能套成环、Turn into Board 存到父白板的组、侧栏的树
   {
     const dir = fs.mkdtempSync("/tmp/codeboard-sub-");
