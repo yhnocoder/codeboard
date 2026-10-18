@@ -232,7 +232,7 @@ describe("typed math and block source (v0.1.8 review)", () => {
   it("[toc] is a table of contents", () => {
     same("[toc]\n\n# A\n\n## B");
     expect(JSON.stringify(parseMd("[TOC]\n\n# A"))).toContain('"toc"');
-    const h = renderMd("[toc]\n\n# A\n\n## B <i>\n\ntext");
+    const h = renderMd("[toc]\n\n# A\n\n## B \\<i>\n\ntext");
     expect(h).toContain('<div class="l1">A</div><div class="l2">B &lt;i&gt;</div>');
     expect(renderMd("[toc]")).toContain("No headings yet");
     expect(renderMd("[toc]\n\n# Cost $1 and $& x")).toContain('<div class="l1">Cost $1 and $&amp; x</div>');
@@ -305,6 +305,31 @@ describe("empty paragraphs", () => {
 describe("tables", () => {
   it("no extra blank lines around a table", () => {
     same("word here\n\n| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\nafter");
+  });
+});
+
+describe("HTML written in a note", () => {
+  it("inline tags and comments are written back unchanged", () => {
+    same('a <span style="color:red">red</span> b');
+    same("a <!-- note to self --> b");
+    same('x <abbr title="Hyper Text">HTML</abbr> and <sup>2</sup> y');
+    same("costs <span>\\$5</span> each");
+  });
+  it("<br> is a hard break", () => {
+    expect(parseMd("line<br>next").content![0].content!.map((n) => n.type)).toEqual(["text", "hardBreak", "text"]);
+  });
+  it("block HTML and comments are written back unchanged", () => {
+    same("<!-- hidden -->\n\npara");
+    same('<div align="center">\n<b>centered</b>\n</div>\n\nafter');
+    same("before\n\n<!--\nmulti\nline\n-->");
+  });
+  it("is kept as its own node, so the editor can show it", () => {
+    expect(parseMd("a <span>x</span> b").content![0].content!.map((n) => n.type)).toEqual(["text", "htmlInline", "text"]);
+    expect(parseMd("<!-- c -->").content!.map((n) => n.type)).toEqual(["htmlBlock"]);
+    expect(() => PMNode.fromJSON(schema, parseMd("<div>x</div>\n\na <i>b</i> <!-- c -->")).check()).not.toThrow();
+  });
+  it("comments are not shown in the static view", () => {
+    expect(renderMd("a <!-- secret --> b\n\n<!-- block secret -->")).not.toContain("secret");
   });
 });
 

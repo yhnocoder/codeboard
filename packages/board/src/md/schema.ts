@@ -18,6 +18,7 @@ import { InlineMath, BlockMath } from "@tiptap/extension-mathematics";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
+import DOMPurify from "dompurify";
 import { lowlight } from "./hl";
 import { EMOJI } from "./emoji";
 
@@ -272,7 +273,30 @@ const Img = Image.configure({ inline: true, allowBase64: true });
 const Para = Paragraph.extend({
   parseMarkdown: (t: any, h: any) => (t.tokens?.length === 1 && t.tokens[0].type === "image" ? h.createNode("paragraph", undefined, h.parseInline(t.tokens)) : (Paragraph.config as any).parseMarkdown(t, h)),
 });
-// ---------- 行内 HTML：<u>、<kbd> 是格式；别的标签按字原样留着（写回时 < 转义成 \<，不写实体） ----------
+// ---------- 原样的 HTML：<u>、<kbd> 是格式，<br> 是硬换行；别的标签和注释一字不改地留着 ----------
+// 行内的（<span style=…>字</span>：开头标签到配对的结尾标签算一个）是 htmlInline，单独成块的（<div>…</div>、<!-- … -->）是 htmlBlock。
+// 显示的是清洗过的 HTML；注释不显示，编辑时显示成淡色的源码（看得见、删得掉）。打的字里的 < 照旧转义成 \<（是字，不是 HTML）
+export const isHtmlComment = (raw: string) => /^\s*<!--[\s\S]*-->\s*$/.test(raw);
+const htmlNode = (name: "htmlInline" | "htmlBlock", tag: "span" | "div") => Node.create({
+  name,
+  ...(tag === "span" ? { group: "inline", inline: true } : { group: "block" }),
+  atom: true, selectable: true,
+  addAttributes: () => ({ raw: { default: "" } }),
+  parseHTML: () => [{ tag: `${tag}[data-html]`, getAttrs: (e) => ({ raw: (e as HTMLElement).dataset.html ?? "" }) }],
+  renderHTML: ({ node }) => [tag, { class: "md-html", "data-html": node.attrs.raw }],
+  renderText: ({ node }) => node.attrs.raw,
+  renderMarkdown: (n) => n.attrs?.raw ?? "",
+  addNodeView: () => ({ node }) => {
+    const dom = document.createElement(tag);
+    dom.className = "md-html";
+    dom.contentEditable = "false";
+    const html = isHtmlComment(node.attrs.raw) ? "" : DOMPurify.sanitize(node.attrs.raw);
+    dom.innerHTML = html;
+    if (!dom.textContent?.trim() && !dom.querySelector("img, svg, video, iframe")) { dom.textContent = node.attrs.raw; dom.classList.add("src"); }
+    return { dom, ignoreMutation: () => true };
+  },
+});
+const HtmlInline = htmlNode("htmlInline", "span"), HtmlBlock = htmlNode("htmlBlock", "div");
 const htmlTok = (tag: string) => ({
   name: `html_${tag}`, level: "inline" as const,
   start: (src: string) => src.indexOf(`<${tag}>`),
@@ -349,7 +373,7 @@ export const baseExtensions: AnyExtension[] = [
   U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
   Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
-  CardRef, Emoji, FnList, FnDef, FnRef,
+  CardRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
 ];
 
 // ---------- 写回：少转义 ----------
@@ -406,6 +430,13 @@ let rawText = false;
   const codeTypes: Set<string> = (this as any).codeTypes;
   if ((parent?.type && codeTypes.has(parent.type)) || (node.marks ?? []).some((m) => codeTypes.has(typeof m === "string" ? m : (m as any).type))) return text;
   return escText(text);
+};
+// 原样的 HTML（见 htmlNode）：TipTap 默认按 schema 解析 HTML，认不出的标签、注释都丢掉了，第一次保存时就从文件里删掉了
+(mm as any).parseHTMLToken = (t: { raw?: string; text?: string; block?: boolean }): JSONContent | null => {
+  const raw = t.block ? (t.text || t.raw || "").replace(/\s+$/, "") : t.text || t.raw || "";
+  if (!raw.trim()) return null;
+  if (/^<br\s*\/?>$/i.test(raw)) return { type: "hardBreak" };
+  return { type: t.block ? "htmlBlock" : "htmlInline", attrs: { raw } };
 };
 // 链接：文字就是网址的写回裸网址（自动链接），不写成 [url](url)
 const linkSpec = (mm as any).getHandlersForNodeType("link")[0];
@@ -541,11 +572,11 @@ function unsource(ns: JSONContent[]): JSONContent[] {
 // ⌘Z 撤回的就是这样存的），Typora 里也是字面的 $，不当公式
 const ESC_DOLLAR = "\uE024";
 const TEXT_MATH = /(^|[^$\\\uE024])([$\uE024])([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\2(?![\d$\uE024])/g;
-/** 占位字换回去：正文、链接地址里是 $；代码、公式源码里原样是 \$ */
+/** 占位字换回去：正文、链接地址里是 $；代码、公式源码、原样的 HTML 里原样是 \$ */
 function unDollar(ns: JSONContent[], raw = false): JSONContent[] {
   const fix = (t: string, r: boolean) => (t.includes(ESC_DOLLAR) ? t.replaceAll(ESC_DOLLAR, r ? "\\$" : "$") : t);
   return ns.map((n) => {
-    const r = raw || n.type === "codeBlock";
+    const r = raw || n.type === "codeBlock" || n.type === "htmlInline" || n.type === "htmlBlock";
     const out: JSONContent = { ...n };
     if (n.text !== undefined) out.text = fix(n.text, r || (n.marks ?? []).some((m) => m.type === "code"));
     if (n.attrs) out.attrs = Object.fromEntries(Object.entries(n.attrs).map(([k, v]) => [k, typeof v === "string" ? fix(v, r || k === "latex") : v]));
