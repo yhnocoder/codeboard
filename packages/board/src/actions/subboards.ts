@@ -103,7 +103,12 @@ export async function turnIntoBoard() {
   } catch (e) {
     return toast(`Couldn't create the board: ${(e as Error).message}`);
   }
-  const ok = mutate((b) => { extractBoard(b, ids, rects, { id, name, frame }); });
+  // 撤销 = 新白板也不要了（宿主放进 .trash；别的白板也放着它的框就留着），重做 = 再建一次
+  let dropped = false;
+  const ok = mutate((b) => { extractBoard(b, ids, rects, { id, name, frame }); }, { fx: {
+    undo: () => { void ask("dropBoard", { id }).then((d) => { dropped = d; }, () => {}); },
+    redo: () => { if (dropped) void ask("newBoard", { board: r.child }).then(() => { dropped = false; }, (e: Error) => toast(`Couldn't create the board: ${e.message}`)); },
+  } });
   if (ok) {
     batch(() => select({ cards: [frame] }));
     toast(`Made “${name}” · double-click to open it`);

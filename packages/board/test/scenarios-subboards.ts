@@ -69,6 +69,11 @@ export async function subHost(start: Board, others: Board[]) {
         case "skeletons": await store.list(); await reply(m.req, Object.fromEntries(m.ids.map((id) => [id, sk(id)]))); return true;
         case "newBoard": await store.save(m.board, { group: null }); await reply(m.req, true); return true;
         case "deleteBoard": await store.remove(m.id); await reply(m.req, true); return true;
+        case "dropBoard": {
+          const kept = !store.peek(m.id) || (await store.list()).some((x) => x.id !== cur && x.subs?.includes(m.id));
+          if (!kept) await store.remove(m.id);
+          await reply(m.req, !kept); return true;
+        }
         case "confirm": await reply(m.req, true); return true;
         case "enterBoard": {
           const metas = await store.list();

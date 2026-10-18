@@ -149,19 +149,28 @@ export function makeHandler(panels: BoardHost): Handler {
       const ok = await panels.switchBoard(p, to.id, { crumbs: p.crumbs.slice(0, depth), cams: p.cams.slice(0, depth), walk: m.walk, cam: p.cams[depth] });
       if (!ok) p.toast("That board is already open in another tab.");
     },
+    dropBoard: async (p, m) => {
+      if (!(await store.load(m.id)) || (await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
+      await removeBoard(p, m.id);
+      return true;
+    },
     deleteBoard: async (p, m) => {
       const b = await store.load(m.id);
       if (!b) return false;
       const ok = await workspace().ui.warn(`Delete board “${b.name}”?`, { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` }, "Delete");
       if (ok !== "Delete") return false;
-      const open = panels.get(m.id);
-      if (open && open !== p) open.view.dispose();
-      await store.remove(m.id);
-      if (panels.target === m.id) panels.setTarget(undefined);
-      await panels.pushBoards();
+      await removeBoard(p, m.id);
       return true;
     },
   };
+  /** 删掉一块白板（放进 .trash）：开着它的别的面板关掉 */
+  async function removeBoard(p: BoardPanel, id: string) {
+    const open = panels.get(id);
+    if (open && open !== p) open.view.dispose();
+    await store.remove(id);
+    if (panels.target === id) panels.setTarget(undefined);
+    await panels.pushBoards();
+  }
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
 
