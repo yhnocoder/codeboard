@@ -563,7 +563,15 @@ const finish = async (browser, errors) => {
     await page.locator(".tabs-container .tab", { hasText: "New Board" }).first().click(); await sleep(2000);
     f = await boardFrame(page); await sleep(1500);
     await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
-    await f.locator("#board").click({ button: "right", position: { x: 260, y: 520 } }); await sleep(500);
+    // 空白处右键：镜头会跟着卡走，固定坐标可能落在卡上，找一块没有东西的地方
+    const empty = await f.evaluate(() => {
+      for (let y = 120; y < innerHeight - 120; y += 40) for (let x = 40; x < innerWidth - 40; x += 40) {
+        const e = document.elementFromPoint(x, y);
+        if (e && e.closest("#board") && !e.closest(".card, .pill, .dock, .ctx, svg [data-link], .crumbs")) return { x, y };
+      }
+      return { x: 260, y: 520 };
+    });
+    await f.locator("#board").click({ button: "right", position: empty }); await sleep(500);
     await f.locator(".ctx button", { hasText: /^Insert Board/ }).first().hover(); await sleep(500);
     await f.locator(".ctx button", { hasText: /^Shared E2E/ }).first().click({ timeout: 3000 }).catch(() => {}); await sleep(1500);
     const fr = f.locator(".card.board");
