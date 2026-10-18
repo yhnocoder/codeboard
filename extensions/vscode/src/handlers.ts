@@ -23,7 +23,8 @@ import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
-import { fromHostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
+import { fromHostPath, hostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
+import { lookupName } from "./nameindex";
 
 const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
@@ -343,23 +344,40 @@ async function pickImage(): Promise<string | null> {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
-/** 符号找不到：在当前文件的符号里选新位置，段换成 HEAD 里的新符号 */
+/** 一个文件里的函数 / 类（Relocate 的候选） */
+type Spot = { abs: string; qual: string; kind: string; start: number; end: number; defLine: number };
+async function spotsIn(abs: string): Promise<Spot[]> {
+  const text = await readText(abs);
+  return text === null ? [] : analysisOf(langOf(abs), text).symbols.map((s) => ({ abs, qual: s.qual, kind: s.kind, start: s.start, end: s.end, defLine: s.defLine }));
+}
+
+/**
+ * 符号找不到（删了、改了名、挪到了别的文件）：选它现在在哪，段换成那里的代码。候选：工作区里同名的函数 / 类、原来那个文件（还在的话）里的，
+ * 都不是就另选一个文件
+ */
 async function relocate(p: BoardPanel, cardId: string) {
   const f = p.board && findCard(p.board, cardId);
   if (!f || !isCode(f.card)) throw new Error("Card not found.");
   const seg = f.card.segments.find((s) => s.symbol) ?? f.card.segments[0];
-  const abs = absOf(seg);
-  const text = abs && (await readText(abs));
-  if (!abs || text === null || text === undefined) throw new Error(`${seg.path} not found.`);
-  const lang = langOf(abs);
-  const syms = analysisOf(lang, text).symbols;
-  const pick = await workspace().ui.pick(
-    syms.map((s) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${path.basename(abs)}:${s.defLine}`, s })),
-    { placeHolder: `Where is ${seg.symbol?.qual ?? "this code"} now?`, matchOnDescription: true },
-  );
+  const ui = workspace().ui;
+  const name = seg.symbol?.qual.split(".").pop();
+  const old = absOf(seg);
+  const spots = [...(name ? await lookupName(name) : []), ...(old ? await spotsIn(old) : [])]
+    .filter((s, i, all) => all.findIndex((o) => o.abs === s.abs && o.start === s.start) === i);
+  const item = (s: Spot) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${hostPath(s.abs)}:${s.defLine}`, s });
+  const where = `Where is ${seg.symbol?.qual ?? "this code"} now?`;
+  const pick = await ui.pick([...spots.map(item), { label: "$(folder-opened) Choose File…", description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
   if (!pick) return;
-  const lines = splitLines(text);
-  const ns = await makeSegment(await locOfFile(abs), lines, pick.s.start, pick.s.end, { lang, symbol: { qual: pick.s.qual, kind: pick.s.kind === "class" ? "class" : "function" } });
+  let to = pick.s;
+  if (!to) {
+    const abs = await ui.openDialog({ label: "Look in This File", title: where });
+    if (!abs) return;
+    to = (await ui.pick((await spotsIn(abs)).map(item), { placeHolder: where }))?.s;
+    if (!to) return;
+  }
+  const text = await readText(to.abs);
+  if (text === null) throw new Error(`${hostPath(to.abs)} not found.`);
+  const ns = await makeSegment(await locOfFile(to.abs), splitLines(text), to.start, to.end, { lang: langOf(to.abs), symbol: { qual: to.qual, kind: to.kind === "class" ? "class" : "function" } });
   ns.id = seg.id;
   p.post({ type: "replaceSegment", card: cardId, seg: ns, view: await segView(ns) });
   p.post({ type: "stale", stale: { ...p.stale, [seg.id]: { state: "ok" } } });
