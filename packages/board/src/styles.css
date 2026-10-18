@@ -67,7 +67,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; bo
 input, textarea { font: inherit; color: var(--ink); }
 
 /* ---------- board ---------- */
-.board { position: fixed; inset: 0; overflow: hidden; background: var(--bg); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
+/* clip 而不是 hidden：hidden 的盒子还能被程序滚动，Tab 把焦点移到画面外的卡上的按钮时浏览器会把整块白板滚过去，镜头的换算（适应窗口、框选、放卡）就全偏了 */
+.board { position: fixed; inset: 0; overflow: clip; background: var(--bg); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
 .board:focus { outline: none; }
 .board.panning, .board.space { cursor: grab; }
 .board.panning * , .board.space * { cursor: grab !important; }
