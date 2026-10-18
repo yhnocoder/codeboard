@@ -365,6 +365,23 @@ const hostOf = (id: string) => cardById(id)?.host.id;
 const settleHover = () => { clearTimeout(cardT); cardT = window.setTimeout(() => { if (!camMoving()) setHoverCard(hovNow); }, tune("linkLeave")); };
 export const enterCard = (id: string) => { hovNow = id; clearTimeout(cardT); if (!camMoving()) setHoverCard(id); };
 export const leaveCard = (id: string) => { if (hovNow === id) hovNow = null; settleHover(); };
+// 不只靠 pointerleave：它会丢（卡在指针下被挪位置 / 重排、指针捕获刚释放、慢机器上事件挤在一起），丢了那张卡就一直算悬停，它的线一直浮在所有卡上面。
+// 所以指针每动一下都核对一次：落点已经不在悬停的那张卡里 → 当它离开了；卡重排之后指针不动也在下一帧按指针下面是什么核对一次。
+// 走的还是 leaveCard → settleHover，落回去照样过 linkLeave、照样淡出
+let ptr: { x: number; y: number } | null = null;
+const inHovered = (el: EventTarget | Element | null) => !!hovNow && el instanceof Element && !!el.closest(`.card[data-id="${CSS.escape(hovNow)}"]`);
+const checkHover = (el: EventTarget | Element | null) => { if (hovNow && !inHovered(el)) leaveCard(hovNow); };
+function watchHover() {
+  const move = (e: PointerEvent) => { ptr = { x: e.clientX, y: e.clientY }; checkHover(e.target); };
+  window.addEventListener("pointermove", move, { capture: true, passive: true });
+  onCleanup(() => window.removeEventListener("pointermove", move, { capture: true }));
+  let raf = 0;
+  createEffect(on(() => state.board.cards.map((c) => c.id).join(" "), () => {
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => { if (hovNow && ptr) checkHover(document.elementFromPoint(ptr.x, ptr.y)); });
+  }, { defer: true }));
+  onCleanup(() => cancelAnimationFrame(raf));
+}
 
 // 离开连线后过 300ms 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停（#30）。移到指针下那张卡的线上时，那张卡也还算悬停着
 let leaveT: number | undefined;
@@ -481,6 +498,7 @@ export function trackLinks() {
     }
   });
   createEffect(on(camMoving, (mv) => { if (!mv) setHoverCard(hovNow); }, { defer: true }));
+  watchHover();
   // City 的车流：挑哪几条路只在镜头停下时算一次（Traffic.tsx）
   trackTraffic(views);
 }
