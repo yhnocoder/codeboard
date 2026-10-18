@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  applyPatch, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, DEFAULT_SETTINGS, V3_CODE_CHROME,
+  applyPatch, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, DEFAULT_SETTINGS, CODE_HEAD,
   type Board, type BoardMeta, type BoardPatch, type Camera, type Card, type HostInfo, type ListPatch, type Place, type SegView, type SharedInfo, type SharedUpdate, type Stale,
 } from "@codeboard/core";
 import { ask, send } from "../host";
@@ -94,7 +94,7 @@ export function rectOf(c: { id: string } | string) {
   const p = placeOf(id);
   const s = sizes[cardById(id)?.host.id ?? id];
   // 还没量到：代码卡的 h 只是内容区，按 Warm Ink 的卡头加回去
-  return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? V3_CODE_CHROME : 0) : 120 };
+  return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? CODE_HEAD : 0) : 120 };
 }
 
 // ---------- 撤销 / 重做 ----------

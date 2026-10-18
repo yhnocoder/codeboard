@@ -68,7 +68,7 @@ describe("Turn into Board", () => {
     p.sections.push({ id: "sec", title: "Scheduling", x: 780, y: -30, w: 1100, h: 500, color: "sand" });
     p.place.sch.section = "sec"; p.place.can.section = "sec";
     p.sidenotes.push({ id: "sn", kind: "text", md: "why", at: { card: "sch" } });
-    p.stickers.push({ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "card", card: "can" } });
+    p.stickers.push({ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "can" } } });
     p.born = { step: 0, sch: 1, can: 2, out: 3 }; p.seq = 4;
     const rects = (id: string) => ({ ...p.place[id], h: 300 });
     const r = extractBoard(p, ["sch", "can"], rects, { id: "S", name: "Scheduler", frame: "fr" })!;

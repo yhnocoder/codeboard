@@ -155,9 +155,6 @@ export class Storage {
           if (!SAFE_ID.test(board.id ?? "")) board.id = SAFE_ID.test(base) ? base : boardUid();
           else if (board.id !== base && files.some((g) => idOf(g.file) === board.id)) board.id = boardUid();
           if (seen.has(board.id)) board.id = boardUid();
-          board.sidenotes ??= [];
-          board.sections ??= [];
-          board.links ??= [];
           // 共享卡：引用换成卡库里的内容
           const used = new Map<string, SharedCardFile>();
           for (const c of board.cards) if (c.kind === "shared") { const sc = await this.readShared(c.id); if (sc) used.set(c.id, sc); }

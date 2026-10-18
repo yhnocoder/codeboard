@@ -1,6 +1,6 @@
 // v0.1.5 scenarios for the shell, cards, arrows and stickers (node run-harness.mjs v15board v15menus v15fresh …)
 import { open, shot, symCard, findSym, put, type Host } from "./harness";
-import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
+import { cornerAt, emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 
 const light = process.argv.includes("--light");
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
@@ -19,7 +19,7 @@ function richBoard(): Board {
   b.sidenotes.push({ id: "n1", kind: "text", md: "Prefill first, then decode.", at: { card: step.id, seg: s0.id, lines: [l1, l1] } });
   b.stickers.push({ id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: step.id, seg: s0.id, line: l1 } });
   b.stickers.push({ id: "k2", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: step.id, seg: s0.id, line: l1 + 2 } });
-  b.stickers.push({ id: "k3", icon: { pack: "builtin", name: "bug" }, at: { kind: "card", card: sch.id } });
+  b.stickers.push({ id: "k3", icon: { pack: "builtin", name: "bug" }, at: { kind: "canvas", ...cornerAt(560), on: { card: sch.id } } });
   b.stickers.push({ id: "k4", icon: { pack: "builtin", name: "todo-text" }, at: { kind: "canvas", x: 900, y: 600, size: 32 } });
   b.stickers.push({ id: "k5", icon: { pack: "emoji", name: "🔥" }, at: { kind: "canvas", x: 980, y: 600, size: 40 } });
   b.cam = { x: 0, y: 0, z: 1 };

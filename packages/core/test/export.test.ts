@@ -20,7 +20,7 @@ describe("questions", () => {
     b.stickers.push(
       { id: "q1", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: "BlockManager.allocate", seg: "sBlockManager.allocate", line: 61 }, q: { md: "为什么 hash 要把前一块的 h 也算进去？" } },
       { id: "q2", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: "BlockManager.allocate", seg: "sBlockManager.allocate", line: 60 }, q: { md: "cache_miss?", done: true, answer: "n" } },
-      { id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "card", card: "n" } },
+      { id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "n" } } },
       { id: "q3", icon: { pack: "builtin", name: "question" }, at: { kind: "canvas", x: 0, y: 0 } },
     );
     const qs = boardQuestions(loadBoard(structuredClone(b)));

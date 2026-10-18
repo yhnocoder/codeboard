@@ -182,7 +182,7 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
     if ((!o.questions && qs.has(id)) || (!whole && s?.at.kind === "canvas" && !s.at.on)) el.remove();
   });
   if (!o.questions) world.querySelectorAll(".qcount").forEach((el) => el.remove());
-  world.querySelectorAll(".lstks:empty, .cstks:empty").forEach((el) => el.remove());
+  world.querySelectorAll(".lstks:empty").forEach((el) => el.remove());
   // Board-only 的 Sidenote：标记里去掉，全去掉了就删标记；一直显示的那种整条删
   const hidden = new Set(o.boardOnly ? [] : b.sidenotes.filter((n) => n.boardOnly).map((n) => n.id));
   world.querySelectorAll<HTMLElement>("[data-notes]").forEach((el) => {

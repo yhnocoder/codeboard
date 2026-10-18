@@ -6,7 +6,7 @@ import { baseName, cardTitle, isCode, isQuestion, findCard, type Board, type Sti
 export type QuestionItem = {
   board: string; boardName: string; group?: string;
   sticker: string;
-  /** 贴在哪张卡上（行、卡角、绑在卡上；绑在箭头上的算箭头出发的卡）；画布上的没有 */
+  /** 贴在哪张卡上（行、绑在卡上；绑在箭头上的算箭头出发的卡）；画布上的没有 */
   card?: string; title?: string;
   seg?: string; line?: number; file?: string;
   md: string; done: boolean;
@@ -18,7 +18,6 @@ export type QuestionItem = {
 function whereOf(b: Board, s: Sticker): { card?: string; seg?: string; line?: number } {
   const at = s.at;
   if (at.kind === "line") return { card: at.card, seg: at.seg, line: at.line };
-  if (at.kind === "card") return { card: at.card };
   if (!at.on) return {};
   if ("card" in at.on) return { card: at.on.card };
   const id = at.on.link;

@@ -287,13 +287,12 @@ export type SidenoteKind = Sidenote["kind"];
 export type IconRef = { pack: string; name: string };
 
 /**
- * 贴在哪：代码行（进行号栏，随 Update 跟行走）、卡片角上（旧）、画布任意位置，
+ * 贴在哪：代码行（进行号栏，随 Update 跟行走）、画布任意位置，
  * 或绑在卡 / 箭头上（跟着走，同一图层）：on.card 时 x、y 是相对卡左上角的偏移；on.link 时 t 是沿线的位置 0..1，x、y 是相对那一点的偏移
  */
 export type StickerOn = { card: string } | { link: string; t: number };
 export type StickerAt =
   | { kind: "line"; card: string; seg: string; line: number }
-  | { kind: "card"; card: string }
   | { kind: "canvas"; x: number; y: number; size?: number; on?: StickerOn };
 
 /**
@@ -301,6 +300,8 @@ export type StickerAt =
  */
 export type Question = { md: string; done?: true; answer?: string; at?: number };
 export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt; q?: Question };
+/** 卡右上角的贴纸位置（相对卡左上角，i = 那一排里的第几个）：Update 后行没了的贴纸挪到这里 */
+export const cornerAt = (w: number, i = 0) => ({ x: w - 56 - i * 25, y: -11, size: 22 });
 /** 内置的「?」贴纸，或写了问题的贴纸 */
 export const isQuestion = (s: Pick<Sticker, "icon" | "q">) => !!s.q || (s.icon.pack === "builtin" && s.icon.name === "question");
 
@@ -495,187 +496,6 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
     out.push({ ...s, text: [...s.text], hidden: s.hidden ? [...s.hidden] : undefined, hl: s.hl ? [...s.hl] : undefined });
   }
   return out;
-}
-
-// ---------- 迁移 ----------
-
-/**
- * 读进来的白板文件（第 1–6 版）→ 第 6 版。第 6 版的文件里可以有共享卡的引用（SharedRef）：
- * 返回类型写成 Board 是为了旧代码好用，宿主读文件时按 BoardFile 看（schema.ts 的 loadBoardFile），换成内容后才是真正的 Board
- */
-export function migrateBoard(raw: any): Board {
-  // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
-  if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
-  if (raw?.version >= 3 && raw?.version <= 6) {
-    const b = raw as Board;
-    b.place ??= {};
-    b.links ??= [];
-    b.sections ??= [];
-    b.sidenotes ??= [];
-    b.stickers ??= [];
-    if (raw.version === 6) return b;
-    if (raw.version === 5) return v5to6(b);
-    return v5to6(v4to5(raw.version === 3 ? v3to4(b) : b));
-  }
-  return v5to6(v4to5(v3to4(v2to3(raw?.version === 2 ? raw : v1to2(raw)))));
-}
-
-/** 第 5 版 → 第 6 版：多了共享卡的引用和 Sidenote 的 boardOnly，旧文件里都没有，只改版本号 */
-function v5to6(b: Board): Board {
-  b.version = 6;
-  return b;
-}
-
-/**
- * 第 4 版 → 第 5 版：Call link / Plain link 合成一种箭头。
- * Call link → 箭头 + Call 标记（调用行、变量、↺ 都留着）；Plain link → 箭头（arrow none/end/both → 两端箭头开关，solid:false → 虚线，颜色留着，粗细按默认 2px）；
- * 旧的 side（起点从行的哪一端出）→ sides.from。
- * 创建顺序（born）按旧的叠放顺序编号，但每棵旧 Call 树的卡都排到它的根那里：每张调用图里最早的卡就是旧树的根，
- * 图之间的先后跟旧字母（按根在 cards 里的先后）一样，迁移后字母不变。
- */
-function v4to5(b: Board): Board {
-  const old = b.links as any[];
-  const byId = new Map(b.cards.map((c) => [c.id, c]));
-  b.links = old.map((l): Link => {
-    const o: Link = { id: l.id, from: l.from, to: l.to };
-    if (l.label !== undefined) o.label = l.label;
-    if (l.at !== undefined) o.at = l.at;
-    if (l.side) o.sides = { from: l.side };
-    if (l.kind === "call") {
-      const t = byId.get(l.to?.card);
-      const name = l.call?.name ?? (isCode(t) ? t.segments.find((s) => s.symbol)?.symbol?.qual.split(".").pop() ?? "" : "");
-      o.call = { name, col: l.call?.col ?? 0 };
-      if (l.vars?.length) o.call.vars = l.vars;
-      if (l.cands?.length) o.call.cands = l.cands;
-      if (l.loop) o.call.loop = true;
-    } else {
-      const style: LinkStyle = {};
-      if (l.solid === false) style.dash = true;
-      if (l.arrow === "none") style.head = { end: false };
-      else if (l.arrow === "both") style.head = { start: true };
-      if (l.color) style.color = l.color;
-      if (Object.keys(style).length) o.style = style;
-    }
-    return o;
-  });
-  // 旧树：每张卡只认第一条进来的 Call link；根 = 有出去、没有进来的卡
-  const index = new Map(b.cards.map((c, i) => [c.id, i]));
-  const calls = old.filter((l) => l.kind === "call" && index.has(l.from?.card) && index.has(l.to?.card));
-  const parent = new Map<string, string>();
-  const kids = new Map<string, string[]>();
-  for (const l of calls) {
-    if (parent.has(l.to.card) || l.to.card === l.from.card) continue;
-    parent.set(l.to.card, l.from.card);
-    kids.set(l.from.card, [...(kids.get(l.from.card) ?? []), l.to.card]);
-  }
-  const key = new Map<string, [number, number]>(); // 卡 → [排在谁的位置, 树里的先后]
-  for (const r of kids.keys()) {
-    if (parent.has(r)) continue;
-    const at = index.get(r)!;
-    let k = 0;
-    const go = (id: string) => { if (key.has(id)) return; key.set(id, [at, k++]); (kids.get(id) ?? []).forEach(go); };
-    go(r);
-  }
-  const order = b.cards.map((c, i) => ({ id: c.id, k: key.get(c.id) ?? [i, -1] }));
-  order.sort((x, y) => x.k[0] - y.k[0] || x.k[1] - y.k[1]);
-  b.born = {};
-  order.forEach((x, i) => { b.born![x.id] = i; });
-  b.seq = order.length;
-  (b as any).version = 5;
-  return b;
-}
-
-/**
- * 第 3 版代码卡的 Place.h 是整张卡的高度（按 Warm Ink 量；别的主题显示时再加 CSS 的 --hx）。
- * 第 4 版只存内容区（.carea）的高度，卡头 / 底栏由各主题的布局撑开。Warm Ink 的代码卡卡头是 36px（35 + 1px 下边线，没有色带和底栏；
- * harness 里实测：定高 300 的卡 .cbody 264，自动高的卡 = 36 + 内容）。
- */
-export const V3_CODE_CHROME = 36;
-function v3to4(b: Board): Board {
-  const fix = (c: Card | undefined, p: Place | undefined) => { if (c?.kind === "code" && p?.h) p.h = Math.max(1, p.h - V3_CODE_CHROME); };
-  for (const c of b.cards) {
-    fix(c, b.place[c.id]);
-    if (c.kind === "code") for (const m of c.mergedFrom ?? []) fix(m.card, m.place);
-  }
-  (b as any).version = 4;
-  return b;
-}
-
-const GEO = ["x", "y", "w", "h", "section", "locked", "collapsed"] as const;
-/** 第 2 版的卡（几何、状态混在卡里）拆成内容 + 摆放 */
-function splitV2(c: any): { card: any; place: Place } {
-  const place: any = {};
-  const card: any = {};
-  for (const [k, v] of Object.entries(c)) {
-    if ((GEO as readonly string[]).includes(k)) { if (v !== undefined) place[k] = v; }
-    else card[k] = v;
-  }
-  place.x ??= 0; place.y ??= 0; place.w ??= 320;
-  return { card, place };
-}
-function contentV2(c: any, out: Card[], place: Record<string, Place> | null): Card {
-  const { card, place: p } = splitV2(c);
-  if (card.kind === "web") {
-    if (card.pageTitle) card.meta = { title: card.pageTitle };
-    delete card.pageTitle;
-  }
-  if (card.kind === "image") card.bg = true; // 旧图片保持原来的样子（有外框）
-  if (card.kind === "code" && card.mergedFrom) card.mergedFrom = card.mergedFrom.map((o: any) => { const s = splitV2(o); return { card: s.card, place: s.place }; });
-  if (card.kind === "compare") {
-    const cols = card.cols as any[];
-    card.cols = cols.map((k) => { const col = contentV2(k, out, null); return col.id; });
-  }
-  out.push(card as Card);
-  if (place) place[card.id] = p;
-  return card as Card;
-}
-
-function v2to3(o: any): Board {
-  const b = emptyBoard(o.id, o.name ?? "Board");
-  b.cam = o.cam ?? b.cam;
-  b.hideAllComments = o.hideAllComments;
-  b.hideNumbers = o.hideNumbers;
-  const cards: Card[] = [];
-  // Compare 的栏排在 Compare 前面（contentV2 先放栏再放自己）；栏没有 Place，叠放顺序不受影响
-  for (const c of o.cards ?? []) contentV2(c, cards, b.place);
-  b.cards = cards;
-  b.links = (o.links ?? []).map((l: any) => (l.kind === "plain" ? { ...l, arrow: l.arrow ?? "none" } : l)); // 旧的 Plain link 默认没有箭头
-  b.sections = o.sections ?? [];
-  b.sidenotes = o.sidenotes ?? [];
-  b.stickers = [];
-  return b;
-}
-
-/** 第 1 版白板（v1 插件）迁移到第 2 版的结构 */
-function v1to2(raw: any): any {
-  const b: any = { version: 2, id: raw.id, name: raw.name ?? "Board", cam: raw.cam ?? { x: 80, y: 80, z: 1 }, cards: [], links: [], sections: [], sidenotes: [] };
-  for (const c of raw.cards ?? []) {
-    const base = { id: c.id, x: c.x, y: c.y, w: c.w };
-    if (c.type === "code") {
-      b.cards.push({
-        ...base, kind: "code", title: c.title,
-        segments: [{
-          id: uid("s"), src: { kind: "repo", repo: "" }, path: c.path, lang: c.lang, start: c.start, end: c.end, text: c.snapshot,
-          version: c.commit ? { kind: "git", commit: c.commit, uncommitted: c.dirty } : { kind: "none" },
-          symbol: c.symbol ? { qual: c.symbol, kind: "function" } : undefined, hl: c.hl,
-        }],
-      });
-    } else if (c.type === "note") b.cards.push({ ...base, kind: "note", md: c.text, bg: true });
-    else if (c.type === "image") b.cards.push({ ...base, kind: "image", src: c.src, alt: c.caption });
-    else if (c.type === "link") b.cards.push({ ...base, kind: "web", url: c.url, pageTitle: c.title });
-    else if (c.type === "group") b.sections.push({ id: c.id, title: c.label, x: c.x, y: c.y, w: c.w, h: c.h });
-  }
-  for (const e of raw.edges ?? []) {
-    const call = e.kind === "call";
-    b.links.push({ id: e.id, kind: call ? "call" : "plain", from: { card: e.from.card, line: e.from.line, seg: undefined }, to: { card: e.to.card }, label: e.label, arrow: call ? undefined : "end" });
-  }
-  // 行级 Link 要挂到段上
-  for (const l of b.links) {
-    const c = b.cards.find((k: any) => k.id === l.from.card);
-    if (c?.kind === "code" && l.from.line) l.from.seg = c.segments[0].id;
-    else delete l.from.line;
-  }
-  return b;
 }
 
 export const varKey = (v: Var) => `${v.ret ? "→" : ""}${v.a}|${v.b ?? ""}`;

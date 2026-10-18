@@ -227,7 +227,7 @@ export function extractBoard(parent: Board, ids: string[], rects: (id: string) =
   child.links = parent.links.filter((l) => isIn(l.from.card) && isIn(l.to.card)).map((l) => clone(l));
   child.sidenotes = parent.sidenotes.filter((n) => isIn(n.at.card) && (n.kind !== "card" || isIn(n.card))).map((n) => clone(n));
   child.stickers = parent.stickers.filter((k) => {
-    if (k.at.kind === "line" || k.at.kind === "card") return isIn(k.at.card);
+    if (k.at.kind === "line") return isIn(k.at.card);
     const on = k.at.on;
     if (on && "card" in on) return isIn(on.card);
     if (on && "link" in on) return child.links.some((l) => l.id === on.link);

@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { sameVersion, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker } from "./model";
+import { cornerAt, findCard, sameVersion, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -12,7 +12,7 @@ export function removeCards(b: Board, ids: Iterable<string>): void {
   for (const id of gone) delete b.place[id];
   b.links = b.links.filter((l) => !gone.has(l.from.card) && !gone.has(l.to.card));
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.at.card) && !(n.kind === "card" && gone.has(n.card)));
-  b.stickers = b.stickers.filter((k) => k.at.kind === "canvas" || !gone.has(k.at.card));
+  b.stickers = b.stickers.filter((k) => k.at.kind !== "line" || !gone.has(k.at.card));
   for (const k of b.stickers) if (k.q?.answer && gone.has(k.q.answer)) delete k.q.answer; // 解答它的卡删了：问题还在
   forget(b, gone);
   pruneStickers(b);
@@ -58,7 +58,7 @@ export function renameCard(b: Board, from: string, to: string): void {
   }
   for (const k of b.stickers) {
     const at = k.at;
-    if (at.kind !== "canvas") at.card = r(at.card);
+    if (at.kind === "line") at.card = r(at.card);
     else if (at.on && "card" in at.on) at.on.card = r(at.on.card);
     if (k.q?.answer) k.q.answer = r(k.q.answer);
   }
@@ -68,6 +68,12 @@ export function renameCard(b: Board, from: string, to: string): void {
 /** 这一行的这个调用连到的卡没了（lost.to，比如子白板里删了那张卡）的 Call 箭头删掉：重新展开出来的箭头替它 */
 export function removeLostCalls(b: Board, from: End, name: string): void {
   removeLinks(b, b.links.filter((l) => l.lost?.to && l.call?.name === name && l.from.card === from.card && l.from.seg === from.seg && l.from.line === from.line).map((l) => l.id));
+}
+
+/** 卡右上角、绑在卡上的贴纸位置（Compare 的栏 → 那张 Compare） */
+function cornerOf(b: Board, card: string): StickerAt {
+  const host = findCard(b, card)?.host.id ?? card;
+  return { kind: "canvas", ...cornerAt(b.place[host]?.w ?? 320), on: { card: host } };
 }
 
 /** 删掉这些 Link，绑在它们上面的 Sticker 一起删 */
@@ -91,7 +97,7 @@ export type Retarget = (at: { card: string; seg?: string; line?: number }) => { 
 
 /**
  * 一批卡被别的卡替换（合并、拆开、拆 Compare）：指着它们的 Link 两端、Sidenote（挂在上面的和 kind card 指向它的）、
- * Sticker（行上、卡角、绑在卡上的）都按 to 搬过去。搬完两端落在同一张卡上的 Link 删掉，绑着它的 Sticker 一起删。
+ * Sticker（行上的、绑在卡上的）都按 to 搬过去。搬完两端落在同一张卡上的 Link 删掉，绑着它的 Sticker 一起删。
  * 删卡本身由调用方做（replaceCards / removeCards）；这里只管引用，任何换卡的操作都应该走这里，而不是各自改一遍。
  */
 export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): void {
@@ -119,9 +125,8 @@ export function retargetCards(b: Board, ids: Iterable<string>, to: Retarget): vo
     const at = k.at;
     if (at.kind === "line" && gone.has(at.card)) {
       const o = to({ card: at.card, seg: at.seg, line: at.line });
-      k.at = o.seg ? { kind: "line", card: o.card, seg: o.seg, line: at.line } : { kind: "card", card: o.card };
-    } else if (at.kind === "card" && gone.has(at.card)) k.at = { kind: "card", card: to({ card: at.card }).card };
-    else if (at.kind === "canvas" && at.on && "card" in at.on && gone.has(at.on.card)) at.on = { card: to({ card: at.on.card }).card };
+      k.at = o.seg ? { kind: "line", card: o.card, seg: o.seg, line: at.line } : cornerOf(b, o.card);
+    } else if (at.kind === "canvas" && at.on && "card" in at.on && gone.has(at.on.card)) at.on = { card: to({ card: at.on.card }).card };
   }
   pruneStickers(b);
 }
@@ -167,7 +172,6 @@ export function danglingRefs(b: Board): string[] {
   const stickerRef = (k: Sticker): string | null => {
     const at = k.at;
     if (at.kind === "line") return segOk(at.card, at.seg) ? null : at.card;
-    if (at.kind === "card") return cards.has(at.card) ? null : at.card;
     if (!at.on) return null;
     return "card" in at.on ? (cards.has(at.on.card) ? null : at.on.card) : links.has(at.on.link) ? null : at.on.link;
   };
@@ -199,7 +203,7 @@ export function mapRange(map: LineMap, a: number, e: number): [number, number] |
 /**
  * 把卡里的一段换成新的（同一个段 id）：新版本 Update、HEAD 下只是挪了位置、Relocate 都走这里。
  * 段上的隐藏 / 高亮，Link 两端、Sidenote、Sticker 的行号都按 map 搬过去（moveLineRefs）；
- * 行没了的：Link 端点退到卡头并标上 lost（画成红色，等用户重连或删掉），Sidenote 改挂整卡并标上 lineRemoved，Sticker 挪到卡片角上。
+ * 行没了的：Link 端点退到卡头并标上 lost（画成红色，等用户重连或删掉），Sidenote 改挂整卡并标上 lineRemoved，Sticker 挪到卡的右上角。
  * 合并卡的 mergedFrom（拆开时用的原卡快照）里落在这段上的段也一起换版本、挪行，Unmerge 时行锚还对得上。
  * review：挂在内容变了的行上的 Sidenote 标上 review（新版本的标签），提醒复查（Update 时传）
  */
@@ -252,7 +256,7 @@ export function moveLineRefs(b: Board, cardId: string, old: Segment, ns: Segment
   for (const k of b.stickers) {
     if (k.at.kind !== "line" || k.at.card !== cardId || k.at.seg !== ns.id) continue;
     const m = map(k.at.line);
-    if (m) k.at.line = m; else k.at = { kind: "card", card: cardId };
+    if (m) k.at.line = m; else k.at = cornerOf(b, cardId);
   }
 }
 

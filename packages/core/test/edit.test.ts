@@ -27,7 +27,7 @@ describe("removeCards", () => {
         { id: "n4", at: { card: "q" }, kind: "text", md: "on a Compare column" },
       ],
       stickers: [
-        { id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "card", card: "b" } },
+        { id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "b" } } },
         { id: "k2", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0 } },
       ],
     };
@@ -74,7 +74,7 @@ describe("rebaseSegment", () => {
     expect(b.sidenotes[1].at).toEqual({ card: "a" });
     expect(b.sidenotes[1].lineRemoved).toBe(true);
     expect(b.stickers[0].at).toEqual({ kind: "line", card: "a", seg: "s1", line: 24 });
-    expect(b.stickers[1].at).toEqual({ kind: "card", card: "a" });
+    expect(b.stickers[1].at).toMatchObject({ kind: "canvas", y: -11, on: { card: "a" } }); // 行没了：挪到卡的右上角
   });
 
   it("shifts everything when only the position changed", () => {
@@ -158,7 +158,7 @@ describe("retargetCards", () => {
     ],
     stickers: [
       { id: "k1", icon: star, at: { kind: "line", card: "a", seg: "sa", line: 1 } },
-      { id: "k2", icon: star, at: { kind: "card", card: "b" } },
+      { id: "k2", icon: star, at: { kind: "canvas", x: 0, y: 0, on: { card: "b" } } },
       { id: "k3", icon: star, at: { kind: "canvas", x: 0, y: 0, on: { card: "a" } } },
       { id: "k4", icon: star, at: { kind: "canvas", x: 0, y: 0, on: { link: "a-b", t: 0.5 } } },
     ],
@@ -175,7 +175,7 @@ describe("retargetCards", () => {
     expect(b.sidenotes[1]).toMatchObject({ kind: "card", card: "m" });
     expect(b.stickers.map((k) => k.at)).toEqual([
       { kind: "line", card: "m", seg: "sm", line: 1 },
-      { kind: "card", card: "m" },
+      { kind: "canvas", x: 0, y: 0, on: { card: "m" } },
       { kind: "canvas", x: 0, y: 0, on: { card: "m" } },
     ]);
     delete b.place.a; delete b.place.b; b.place.m = { x: 0, y: 0, w: 1 };
@@ -185,7 +185,7 @@ describe("retargetCards", () => {
   it("falls back to the whole card when the line has no new home", () => {
     const b = board();
     retargetCards(b, ["a"], () => ({ card: "c" }));
-    expect(b.stickers[0].at).toEqual({ kind: "card", card: "c" });
+    expect(b.stickers[0].at).toMatchObject({ kind: "canvas", on: { card: "c" } });
     expect(b.sidenotes[0].at).toEqual({ card: "c", seg: undefined, lines: undefined });
   });
 });

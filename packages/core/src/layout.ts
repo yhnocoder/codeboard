@@ -1,15 +1,17 @@
 // 摆放：新卡放哪、展开出来的子卡放哪。只做几何，尺寸由调用方给（白板里是实测尺寸）。
-import { V3_CODE_CHROME, type Card, type Place } from "./model";
+import type { Card, Place } from "./model";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
 export const GAP = 28; // 卡片之间留的空
 export const INDENT = 56; // 子卡相对父卡的缩进
 export const SIB_GAP = 24;
+/** 代码卡卡头的估计高度（Warm Ink：35 + 1px 下边线）。Place.h 只存内容区，量不到实测尺寸时按它加回去 */
+export const CODE_HEAD = 36;
 
 /** 还没渲染、量不到实测尺寸时的估计（白板放新卡、宿主在白板没开时直接写卡都用它） */
 export function estSize(c: Card, p: Pick<Place, "w" | "h"> = { w: defaultWidth(c) }): { w: number; h: number } {
-  if (p.h) return { w: p.w, h: p.h + (c.kind === "code" ? V3_CODE_CHROME : 0) }; // 代码卡的 h 不含卡头：按 Warm Ink 的卡头加回去
+  if (p.h) return { w: p.w, h: p.h + (c.kind === "code" ? CODE_HEAD : 0) };
   if (c.kind === "links") return { w: p.w, h: 52 + c.items.length * (c.rich ? 72 : 30) };
   if (c.kind !== "code") return { w: p.w, h: c.kind === "web" ? 112 : 160 };
   const lines = c.segments.reduce((n, s) => n + s.end - s.start + 1, 0);
