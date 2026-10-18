@@ -3,7 +3,7 @@
 // 第 6 版起还是卡库（Library）：共享卡放 cards/<id>.json，白板文件里只留引用。这里缓存的、交出去的都是换上了内容的完整白板；
 // 写盘时再拆开（deflate），共享卡按项和磁盘上的合并后写卡文件，再通知开着同一张卡的别的白板（onDidShare）。
 // 白板发来的改动（patch）马上改缓存里的那份，稍后写盘（WRITE_DELAY 里的改动合成一次写）；关面板、退出时 flush() 把没写的写下去。
-import { allCodeCards, BOARD_VERSION, emptyBoard, uid, type Board, type BoardFile, type BoardMeta, type SharedCard, type SharedCardFile } from "../model";
+import { allCodeCards, BOARD_VERSION, emptyBoard, uid, type Board, type BoardFile, type BoardMeta, type Link, type SharedCard, type SharedCardFile } from "../model";
 import { Emitter } from "../emitter";
 import { loadBoardFile, loadSharedCard } from "../schema";
 import { applyPatch, deflate, diffBoards, inflate, mergeFile, putShared, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
@@ -381,10 +381,10 @@ export class Storage {
     return [...this.cache.values()].map((e) => ({ id: e.id, board: e.board, refs: e.refs }));
   }
 
-  /** 拷出白板上的这些卡（Compare 带上两栏）：内容、摆放、跟着它们走的 Sidenote。剪贴板、粘贴到别的白板用 */
-  copyOut(id: string, cards: string[]): CardCopy[] {
+  /** 拷出白板上的这些卡（Compare 带上两栏）：内容、摆放、跟着它们走的 Sidenote，和两端都在这些卡上的 Link。剪贴板、粘贴到别的白板用 */
+  copyOut(id: string, cards: string[]): { cards: CardCopy[]; links: Link[] } {
     const b = this.cache.get(id)?.board;
-    if (!b) return [];
+    if (!b) return { cards: [], links: [] };
     const want = new Set<string>();
     for (const c of cards) {
       const card = b.cards.find((k) => k.id === c);
@@ -392,7 +392,10 @@ export class Storage {
       if (card.kind === "compare") card.cols.forEach((k) => want.add(k));
       want.add(c);
     }
-    return b.cards.filter((c) => want.has(c.id)).map((c) => structuredClone({ card: c, place: b.place[c.id], sidenotes: b.sidenotes.filter((n) => travels(n, c.id)) }));
+    return {
+      cards: b.cards.filter((c) => want.has(c.id)).map((c) => structuredClone({ card: c, place: b.place[c.id], sidenotes: b.sidenotes.filter((n) => travels(n, c.id)) })),
+      links: structuredClone(b.links.filter((l) => want.has(l.from.card) && want.has(l.to.card))),
+    };
   }
 
   /**

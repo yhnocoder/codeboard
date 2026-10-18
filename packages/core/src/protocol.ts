@@ -1,7 +1,7 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt, VariantFrom } from "./model";
+import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt, VariantFrom, Link } from "./model";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
@@ -296,8 +296,8 @@ export type VariantSync = {
   latest?: { label: string; segs: Segment[]; views: Record<string, SegView> };
 };
 
-/** 贴过来的别的白板上的卡（views = 各段的展示数据） */
-export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; views: Record<string, SegView> };
+/** 贴过来的别的白板上的卡和它们之间的 Link（views = 各段的展示数据） */
+export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; links: Link[]; views: Record<string, SegView> };
 
 /** 指定展开哪个定义。rel = path 相对 seg 自己的来源根（类卡点成员；工作区外的文件也对），qual = 按符号找（钉的版本行号可能挪了） */
 export type ExpandPick = { path: string; line: number; rel?: true; qual?: string };

@@ -324,9 +324,10 @@ export type CardCopy = { card: Card; place?: Place; sidenotes?: Sidenote[] };
 /**
  * 把卡放到白板上（⌘D、粘贴、从别的白板来的卡）。copy = 独立副本：卡、段、Sidenote 都换新 id，Sidenote 的锚点跟着换；
  * 否则原样放（共享卡：同一个 id），白板上已经有的跳过。Compare 的栏要一起给。
- * 摆放：Section、折叠、锁定是原来那块白板的，不带过来；at 可以再挪。返回 旧 id → 新 id（卡和段，放了的才有）
+ * 摆放：Section、折叠、锁定是原来那块白板的，不带过来；at 可以再挪。links = 原来那块白板上的 Link：两端都是这次放的卡（或白板上已有的
+ * 同一张共享卡）的跟着来，换新 id、两端换成放下的卡和段，已经有一样的就不加。返回 旧 id → 新 id（卡和段，放了的才有）
  */
-export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?: (p: Place) => Place }): { cards: Record<string, string>; segs: Record<string, string> } {
+export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?: (p: Place) => Place; links?: Link[] }): { cards: Record<string, string>; segs: Record<string, string> } {
   const cards: Record<string, string> = {}, segs: Record<string, string> = {};
   const have = new Set(b.cards.map((c) => c.id));
   const todo = items.filter((it) => o.copy || !have.has(it.card.id));
@@ -354,6 +355,19 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
       if (!m.at.seg) delete m.at.seg;
       b.sidenotes.push(m);
     }
+  }
+  const on = (id: string) => cards[id] ?? (!o.copy && have.has(id) ? id : undefined);
+  const end = (e: End, card: string): End => ({ ...e, card, ...(e.seg ? { seg: segs[e.seg] ?? e.seg } : {}) });
+  const key = (l: Link) => JSON.stringify([l.from.card, l.from.seg, l.from.line, l.to.card, l.to.seg, l.to.line, l.to.sub]);
+  const there = new Set(b.links.map(key));
+  for (const l of o.links ?? []) {
+    const from = on(l.from.card), to = on(l.to.card);
+    if (!from || !to) continue;
+    const c = copy(l);
+    const n: Link = { ...c, id: uid("l"), from: end(c.from, from), to: end(c.to, to) };
+    if (there.has(key(n))) continue;
+    there.add(key(n));
+    b.links.push(n);
   }
   return { cards, segs };
 }

@@ -337,6 +337,22 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
     expect(placeCards(b, it, { copy: false }).cards).toEqual({});
     expect(b.cards.length).toBe(1);
   });
+  it("placeCards brings the links between the placed cards: copies get new link ids and ends, linked cards keep their ids", () => {
+    const src = two();
+    src.links.push({ id: "out", from: { card: "a" }, to: { card: "elsewhere" } });
+    const items = [{ card: src.cards[0], place: src.place.a }, { card: src.cards[1], place: src.place.z }];
+    const c = emptyBoard("t", "T");
+    const r = placeCards(c, items, { copy: true, links: src.links });
+    expect(c.links.map((l) => [l.id !== "a-z", l.from, l.to, l.call?.name])).toEqual([[true, { card: r.cards.a, seg: r.segs.sa, line: 2 }, { card: r.cards.z }, "f"]]);
+    expect(danglingRefs(c)).toEqual([]);
+    const s = emptyBoard("t", "T");
+    placeCards(s, items, { copy: false, links: src.links });
+    expect(s.links.map((l) => [l.from, l.to])).toEqual([[{ card: "a", seg: "sa", line: 2 }, { card: "z" }]]);
+    // pasting the same linked cards again adds no second arrow
+    placeCards(s, items, { copy: false, links: src.links });
+    expect(s.links.length).toBe(1);
+    expect(src.links.map((l) => l.id)).toEqual(["a-z", "out"]); // the source is not touched
+  });
   it("placeCards keeps a Compare with its columns", () => {
     const b = emptyBoard("t", "T");
     const r = placeCards(b, [{ card: code("p") }, { card: code("q") }, { card: compare("k", "p", "q"), place: { x: 0, y: 0, w: 1 } }], { copy: true });
