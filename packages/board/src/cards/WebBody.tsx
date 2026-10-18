@@ -7,11 +7,11 @@ import { editing, setEditing } from "../state/ui";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import { place, virtual } from "../ui/place";
+import { below } from "../ui/Menu";
 import * as A from "../actions";
 import "./web.css";
 import { fetching, rowDrag } from "../state/web";
 
-const stop = (e: Event) => e.stopPropagation();
 
 /** favicon；拿不到用域名首字母方块 */
 function Fav(p: { meta?: WebMeta; url: string; big?: boolean }) {
@@ -54,7 +54,7 @@ function Bookmark(p: {
             <Show when={urlPath(p.url)}><div class="wpath" data-tip={p.url}>{urlPath(p.url)}</div></Show>
             <Show when={editingDesc()}><Editable class="wdesc" kind="desc" id={eid()} value="" multiline onCommit={(v) => p.onDesc?.(v)} /></Show>
             <Show when={!p.small}>
-              <div class="wacts2" onPointerDown={stop}>
+              <div class="wacts2" data-nodrag>
                 <Show when={loading()} fallback={<>
                   <button class="wlink" onClick={() => p.onRetry?.()}>↻ Retry</button><span class="wsep">·</span>
                   <button class="wlink" onClick={() => setEditing({ kind: "title", id: eid() })}>✎ Edit Title</button>
@@ -86,12 +86,12 @@ function Bookmark(p: {
 
 export function WebBody(p: { card: WebCard }) {
   const c = () => p.card;
-  const menu = (e: MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); A.cardMenu(c().id, r.left, r.bottom + 4); };
+  const menu = (e: MouseEvent) => A.cardMenu(c().id, ...below(e.currentTarget as Element));
   return (
     <>
       <Bookmark url={c().url} meta={c().meta} title={c().title} desc={c().desc} editId={c().id} drag busy={fetching(c().id)} style={c().style}
         onTitle={(v) => A.renameCard(c().id, v)} onDesc={(v) => A.setDesc(c().id, v)} onRetry={() => A.retryMeta(c().id)} />
-      <div class="wacts" onPointerDown={stop}>
+      <div class="wacts" data-nodrag>
         <button class="ib" aria-label="Open in Browser" data-tip="Open in Browser" data-kbd="Double-click" onClick={() => A.openLink(c().url)}><Icon name="external" size={13} /></button>
         <button class="ib more" aria-label="Card Menu" data-export="strip" data-tip="More Actions" onClick={menu}><Icon name="more" size={14} /></button>
       </div>
@@ -103,7 +103,7 @@ export function WebBody(p: { card: WebCard }) {
 
 export function LinksBody(p: { card: LinksCard }) {
   const c = () => p.card;
-  const menu = (e: MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); A.cardMenu(c().id, r.left, r.bottom + 4); };
+  const menu = (e: MouseEvent) => A.cardMenu(c().id, ...below(e.currentTarget as Element));
   const drag = () => { const d = rowDrag(); return d?.card === c().id ? d : null; };
   return (
     <>
@@ -165,7 +165,7 @@ function LinkRow(p: { card: LinksCard; item: LinkItem; dropBefore: boolean; drop
         <Bookmark url={it().url} meta={it().meta} title={it().title} editId={key()} small busy={fetching(key())}
           onTitle={(v) => A.renameItem(p.card.id, it().id, v)} onRetry={() => A.retryMeta(p.card.id, it().id)} />
       </Show>
-      <div class="ltools" onPointerDown={stop}>
+      <div class="ltools" data-nodrag>
         <button class="lb" aria-label={rich() ? "Show as Compact" : "Show as Rich"} data-tip={rich() ? "Show as Compact" : "Show as Rich"} onClick={() => A.toggleItemRich(p.card.id, it().id)}><Icon name={rich() ? "compact" : "rich"} size={12} /></button>
         <button class="lb" aria-label="Open in Browser" data-tip="Open in Browser" onClick={() => A.openLink(it().url)}><Icon name="external" size={12} /></button>
         <button class="lb" aria-label="Remove from List" data-tip="Remove from List" onClick={() => A.removeItem(p.card.id, it().id)}><Icon name="close" size={12} /></button>

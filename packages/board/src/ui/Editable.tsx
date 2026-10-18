@@ -59,7 +59,7 @@ function PlainEdit(p: P) {
   onCleanup(() => finish(true));
   return (
     <div ref={el} class={`${p.class ?? ""} editing`} style={p.style} contentEditable="plaintext-only" spellcheck={false} data-ph={p.placeholder}
-      onPointerDown={(e) => e.stopPropagation()}
+      data-nodrag
       onKeyDown={(e) => {
         if (e.key === "Escape") { e.preventDefault(); finish(!!p.multiline); } // 多行正文：Esc 保留写好的字；单行名字：Esc 撤销
         // ⌘A 自己选中这一块的字：VS Code 的 webview 会把 ⌘A 交给宿主，回来时不一定落在编辑框里
@@ -108,7 +108,7 @@ function MdEdit(p: P) {
   });
   return (
     <div ref={el} class={`${p.class ?? ""} md editing`} style={p.style} data-ph={p.placeholder}
-      onPointerDown={(e) => e.stopPropagation()} onKeyDown={keepKey} onKeyUp={(e) => e.stopPropagation()}>
+      data-nodrag onKeyDown={keepKey} onKeyUp={(e) => e.stopPropagation()}>
       {now ? null : <MdStatic src={p.value} class="md-loading" />}
     </div>
   );

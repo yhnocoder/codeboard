@@ -1,9 +1,10 @@
 // 卡片外壳：位置、选中、拖动抬起、弹出动画、讲解变暗；按种类渲染内容。
 import { send } from "../host";
-import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
+import { createMemo, createSignal, Show, onMount, onCleanup, createEffect, For, type JSX, type Component } from "solid-js";
+import { Dynamic } from "solid-js/web";
 import {
   cardTitle, cardChip, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
-  type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type BoardCard, type Graph, type LinkSide,
+  type Card, type CodeCard, type NoteCard, type ImageCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
@@ -14,23 +15,35 @@ import { queueMeasure, observeResize } from "../state/measure";
 import { CodeBody } from "./CodeBody";
 import { BoundStickers } from "../stickers/Picker";
 import { isBindHot, isBindAnchor } from "../state/stickers";
-import { fileHue } from "../state/look";
+import { fileHue, shape } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
 import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
-import { openMenu } from "../ui/Menu";
+import { openMenuAt, below } from "../ui/Menu";
 import * as act from "../actions";
 import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
-import { landed, enterCard, leaveCard } from "../canvas/Links";
+import { landed } from "../canvas/Links";
+import { enterCard, leaveCard } from "../state/hover";
 import { merged, vlive } from "../state/variants";
 import { cardContextMenu, cardDblClick, cardPointerDown, justDragged, linkPortDown, resizeDown } from "../interact";
 import { kbd } from "../keymap";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
+
+/** 卡的内容按种类：kind → 组件（漏了一种类型检查会报） */
+const BODIES: { [K in Card["kind"]]: Component<{ card: Extract<Card, { kind: K }> }> } = {
+  code: (p) => <CodeCardView card={p.card} />,
+  note: (p) => <Show when={p.card.msg} fallback={<NoteBody card={p.card} />}><MsgBody card={p.card} /></Show>,
+  image: (p) => <ImageView card={p.card} />,
+  web: (p) => <WebBody card={p.card} />,
+  links: (p) => <LinksBody card={p.card} />,
+  compare: (p) => <CompareBody card={p.card} />,
+  board: (p) => <BoardBody card={p.card} />,
+};
 
 export function CardView(p: { card: Card }) {
   let el!: HTMLDivElement;
@@ -93,15 +106,7 @@ export function CardView(p: { card: Card }) {
         onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => cardPointerDown(e, c().id)} onContextMenu={(e) => cardContextMenu(e, c().id)} onDblClick={(e) => cardDblClick(e, c().id)}>
         <div class="cface">
-        <Switch>
-          <Match when={c().kind === "code"}><CodeCardView card={c() as CodeCard} /></Match>
-          <Match when={c().kind === "note" && (c() as NoteCard).msg}><MsgBody card={c() as NoteCard} /></Match>
-          <Match when={c().kind === "note"}><NoteBody card={c() as NoteCard} /></Match>
-          <Match when={c().kind === "image"}><ImageView card={c() as ImageCard} /></Match>
-          <Match when={c().kind === "web" || c().kind === "links"}>{c().kind === "web" ? <WebBody card={c() as WebCard} /> : <LinksBody card={c() as any} />}</Match>
-          <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
-          <Match when={c().kind === "board"}><BoardBody card={c() as BoardCard} /></Match>
-        </Switch>
+        <Dynamic component={BODIES[c().kind] as Component<{ card: Card }>} card={c()} />
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
@@ -147,8 +152,8 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
     <div class="chead" data-drag>
       <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
       <Show when={!p.col && placeOf(c().id).start}><span class="startt" data-tip="Start card: Walkthrough and the call tree start here">START</span></Show>
-      <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
-      <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={kbd("lock")} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
+      <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" data-nodrag onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
+      <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={kbd("lock")} data-nodrag onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
       <Show when={!free() && act.mixedLangs() && cardChip(c())}>{(k) => <span class="lchip" data-l={k()}>{k()}</span>}</Show>
       <Show when={c().gen}>
@@ -162,7 +167,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
         <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !justDragged() && act.openCode(c().id)}>
           <span class="rw"><span class="rl">{multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}</span></span>
         </span>}>
-        <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
+        <button class="rev lang" data-nodrag onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
       </Show>
       <Show when={act.dispatchOf(c().id)}>{(n) => <span class="disp1" data-tip="Picked from a dynamic dispatch: the others are the grey boxes beside it">1 of {n()}</span>}</Show>
       <span class="grow" />
@@ -170,18 +175,18 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
       {/* 窄卡卡头的取舍（styles.css「卡头优先级」）：版本 / + uncommitted 先缩成小记号，再收起 ← N 和复制，然后路径省略，标题最后；
           .rw 里的 .rl 放不下时整个折到看不见的第二行。完整文字在 data-tip 里 */}
-      <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><span class="rw"><Icon name="copy" /></span></button>
+      <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" data-nodrag onClick={() => act.copyCard(c())}><span class="rw"><Icon name="copy" /></span></button>
       <Show when={review()}><span class="rvdot" data-tip="A sidenote's line changed in the new version: check it" /></Show>
-      <Show when={act.openQuestionsOn(c().id)}>{(n) => <button class="qcount" data-tip="Open questions on this card" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openQuestionsOf(c().id)}>? {n()}</button>}</Show>
-      <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
-      <Show when={linkedIn()}><button class="linkedin fold" data-tip={`← ${linkedIn()} · Linked here: show where the arrows come from`} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}><span class="rw"><span class="rl">← {linkedIn()}</span></span></button></Show>
-      <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
+      <Show when={act.openQuestionsOn(c().id)}>{(n) => <button class="qcount" data-tip="Open questions on this card" data-nodrag onClick={() => act.openQuestionsOf(c().id)}>? {n()}</button>}</Show>
+      <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" data-nodrag onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
+      <Show when={linkedIn()}><button class="linkedin fold" data-tip={`← ${linkedIn()} · Linked here: show where the arrows come from`} data-nodrag onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}><span class="rw"><span class="rl">← {linkedIn()}</span></span></button></Show>
+      <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
       <Show when={c().gen}>
-        <span class="genrun" data-tip="The run or params this was generated from · click to edit" onPointerDown={(e) => e.stopPropagation()} onClick={() => setEditing({ kind: "gen", id: c().id })}>
+        <span class="genrun" data-tip="The run or params this was generated from · click to edit" data-nodrag onClick={() => setEditing({ kind: "gen", id: c().id })}>
           <Editable class="grun" kind="gen" id={c().id} value={c().gen!.run ?? ""} placeholder="Run / params" onCommit={(v) => act.setGenRun(c().id, v)} />
         </span>
       </Show>
-      <Show when={merged()[c().id]}><button class="vmdot" data-tip="Merged upstream · turn back into a normal card?" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.mergedPrompt(c().id)} /></Show>
+      <Show when={merged()[c().id]}><button class="vmdot" data-tip="Merged upstream · turn back into a normal card?" data-nodrag onClick={() => act.mergedPrompt(c().id)} /></Show>
       <Show when={mine()}><span class="mine" data-tip="This card shows your changes, not upstream">MINE</span></Show>
       <Show when={!free()}>
         <button class="rev fold" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
@@ -191,9 +196,9 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
         </button>
       </Show>
       <Show when={!c().variants?.length && (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))}>
-        <button class="rev unc fold" data-tip="+ uncommitted · HEAD vs Working Tree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openWorktreeDiff(c().id)}><span class="rw"><span class="rl">+ uncommitted</span></span></button>
+        <button class="rev unc fold" data-tip="+ uncommitted · HEAD vs Working Tree" data-nodrag onClick={() => act.openWorktreeDiff(c().id)}><span class="rw"><span class="rl">+ uncommitted</span></span></button>
       </Show>
-      <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" data-nodrag data-export="strip" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
+      <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" data-nodrag data-export="strip" onClick={(e) => act.cardMenu(c().id, ...below(e.currentTarget))}><Icon name="more" /></button></Show>
     </div>
   );
 }
@@ -215,7 +220,7 @@ function CodeBand(p: { card: CodeCard }) {
         <Show when={s0() && s0()!.src.kind !== "free"}>
           <span class="cmeta">
             <span class="cm"><small>Lines</small>{s0()!.start}–{s0()!.end}</span>
-            <button class="cm v" classList={{ new: isNew() }} onPointerDown={(e) => e.stopPropagation()}
+            <button class="cm v" classList={{ new: isNew() }} data-nodrag
               onClick={(e) => (isNew() ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}><small>Commit</small>{isNew() ? "New version" : mixedVersions(c()) ? "Mixed" : versionLabel(s0()?.version)}</button>
           </span>
         </Show>
@@ -234,7 +239,7 @@ function CodeFoot(p: { card: CodeCard }) {
     <Show when={s0() && s0()!.src.kind !== "free"}>
       <div class="cxfoot" classList={{ new: isNew() }} data-drag>
         <span class="fl"><Icon name="clock" />L{s0()!.start}–{s0()!.end}</span>
-        <button class="act" onPointerDown={(e) => e.stopPropagation()} onClick={() => (isNew() ? act.openDiff(c().id) : act.openCode(c().id))}>
+        <button class="act" data-nodrag onClick={() => (isNew() ? act.openDiff(c().id) : act.openCode(c().id))}>
           {isNew() ? "View Diff" : "Open in Editor"}<Icon name="arrowR" />
         </button>
       </div>
@@ -246,8 +251,8 @@ function CodeFoot(p: { card: CodeCard }) {
 export function Procs(p: { card: string; procs?: { text: string; light?: boolean }[] }) {
   return (
     <For each={p.procs ?? []}>{(t, i) => (
-      <button class={act.procCls(t)} data-tip={t.light ? "Thread / stream · click to edit" : "Process · click to edit"} onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu([{ label: "Edit…", run: () => void act.editProc(p.card, i()) }, { label: "Remove", danger: true, run: () => act.removeProc(p.card, i()) }], r.left, r.bottom + 4); }}>{t.text}</button>
+      <button class={act.procCls(t)} data-tip={t.light ? "Thread / stream · click to edit" : "Process · click to edit"} data-nodrag
+        onClick={(e) => openMenuAt([{ label: "Edit…", run: () => void act.editProc(p.card, i()) }, { label: "Remove", danger: true, run: () => act.removeProc(p.card, i()) }], e.currentTarget)}>{t.text}</button>
     )}</For>
   );
 }
@@ -275,15 +280,18 @@ const shortPath = (p: string) => p.split("/").slice(-1)[0];
 
 function CodeCardView(p: { card: CodeCard }) {
   const c = () => p.card;
+  /** 粘贴来的代码记下的来源地址 */
+  const freeUrl = () => { const s = c().segments[0]?.src; return s?.kind === "free" ? s.url : undefined; };
   return (
     <>
       <CodeHead card={c()} />
-      <CodeBand card={c()} />
+      {/* 色带、底栏只有几个材质主题显示（look.ts 的 shape） */}
+      <Show when={shape().band}><CodeBand card={c()} /></Show>
       <Show when={c().variants?.length}><VariantBar card={c()} /></Show>
       <div class="carea" style={placeOf(c().id).h ? { height: `${placeOf(c().id).h}px` } : undefined}>
       <Desc id={c().id} desc={c().desc} />
       <Show when={act.missingNote(c())}>
-        <div class="cmiss" onPointerDown={(e) => e.stopPropagation()}>
+        <div class="cmiss" data-nodrag>
           <span>{act.missingNote(c())}</span>
           <Show when={act.cardStale(c()) === "lost"}>
             <button onClick={() => send({ type: "relocate", card: c().id })}>Relocate…</button>
@@ -295,11 +303,11 @@ function CodeCardView(p: { card: CodeCard }) {
       <Show when={c().members && !classWithoutMembers(c())} fallback={<CodeBody card={c()} hostId={c().id} />}>
         <ClassBody card={c()} />
       </Show>
-      <Show when={c().segments[0]?.src.kind === "free" && c().segments[0]?.src.kind === "free" && (c().segments[0].src as any).url}>
-        <div class="cfoot"><span>Source</span><a class="lnk" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openLink((c().segments[0].src as any).url)}>{(c().segments[0].src as any).url}</a></div>
-      </Show>
+      <Show when={freeUrl()}>{(u) => (
+        <div class="cfoot"><span>Source</span><a class="lnk" onClick={() => act.openLink(u())}>{u()}</a></div>
+      )}</Show>
       </div>
-      <CodeFoot card={c()} />
+      <Show when={shape().foot}><CodeFoot card={c()} /></Show>
     </>
   );
 }
@@ -317,10 +325,9 @@ function VariantBar(p: { card: CodeCard }) {
     return [m.changed && `${m.changed} changed`, m.added && `${m.added} added`, m.removed && `${m.removed} removed`].filter(Boolean).join(" · ") || "Same as base";
   };
   const noteEditing = () => editing()?.kind === "vnote" && editing()?.id === c().id;
-  const stop = (e: Event) => e.stopPropagation();
   return (
     <>
-      <div class="vtabs" onPointerDown={stop}>
+      <div class="vtabs" data-nodrag>
         <For each={c().variants}>{(v) => (
           <button class="vtab" classList={{ on: v.id === cur(), up: v.id === UPSTREAM }} data-vid={v.id} data-tip={v.note || (v.id === UPSTREAM ? "Upstream: the pinned version" : "Click to show · Right-click for more")}
             onClick={() => act.switchVariant(c().id, v.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); act.variantMenu(c().id, v.id, e.clientX, e.clientY); }}>
@@ -328,10 +335,10 @@ function VariantBar(p: { card: CodeCard }) {
             <Show when={merged()[c().id]?.vid === v.id}><i class="vmdot" /></Show>
           </button>
         )}</For>
-        <button class="vtab vadd" aria-label="Add Variant" data-tip="Add Variant" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); void act.addVariantMenu(c().id, r.left, r.bottom + 4); }}>+</button>
+        <button class="vtab vadd" aria-label="Add Variant" data-tip="Add Variant" onClick={(e) => void act.addVariantMenu(c().id, ...below(e.currentTarget))}>+</button>
       </div>
       <Show when={cur() !== UPSTREAM}>
-        <div class="vcmp" onPointerDown={stop}>
+        <div class="vcmp" data-nodrag>
           <span class="lbl">Compare to</span>
           <button class="vsel" onClick={(e) => act.baseMenu(c().id, e.currentTarget)}>{act.baseOf(c()).label} ▾</button>
           <span class="lbl vsum">{summary()}</span>
@@ -342,7 +349,7 @@ function VariantBar(p: { card: CodeCard }) {
         </div>
       </Show>
       <Show when={curV()?.note || noteEditing()}>
-        <div class="vnote" onPointerDown={stop} onDblClick={(e) => { e.stopPropagation(); setEditing({ kind: "vnote", id: c().id }); }}>
+        <div class="vnote" data-nodrag onDblClick={(e) => { e.stopPropagation(); setEditing({ kind: "vnote", id: c().id }); }}>
           <span class="vnl">{curV()?.name}</span>
           <Editable class="vnt" kind="vnote" id={c().id} value={curV()?.note ?? ""} placeholder="params, perf numbers…" onCommit={(v) => act.setVariantNote(c().id, v)} />
         </div>
@@ -379,7 +386,7 @@ function ClassBody(p: { card: CodeCard }) {
             </div>
           )}
         </For>
-        <Show when={more() > 0}><button class="more" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.showAllMembers(p.card.id)}>+ {more()} more method{more() > 1 ? "s" : ""}</button></Show>
+        <Show when={more() > 0}><button class="more" data-nodrag onClick={() => act.showAllMembers(p.card.id)}>+ {more()} more method{more() > 1 ? "s" : ""}</button></Show>
       </div>
     </div>
   );

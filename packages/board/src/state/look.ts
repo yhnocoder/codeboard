@@ -8,14 +8,15 @@ import { rooted } from "./root";
 export const look = () => state.host.settings?.theme ?? "warm-ink";
 
 /** clear：直角折线绕到卡外时离卡边多远（route.ts 的 CLEAR），只有路面宽的材质要加大 */
-type Shape = { route: "curve" | "elbow"; head: "chevron" | "triangle" | "dot" | "car"; port: "circle" | "square" | "diamond" | "plaza"; clear?: number };
+/** band / foot：代码卡显示色带（大标题）/ 底栏（Card.tsx 只在这些主题里建这两块） */
+type Shape = { route: "curve" | "elbow"; head: "chevron" | "triangle" | "dot" | "car"; port: "circle" | "square" | "diamond" | "plaza"; clear?: number; band?: boolean; foot?: boolean };
 const SHAPES: Partial<Record<ThemeId, Partial<Shape>>> = {
   classic: { head: "triangle" },
   drafting: { route: "elbow", head: "triangle", port: "square" },
   "soft-light": { head: "dot" },
-  colorful: { head: "triangle" },
-  newspaper: { head: "triangle" },
-  poster: { port: "diamond" },
+  colorful: { head: "triangle", band: true, foot: true },
+  newspaper: { head: "triangle", band: true },
+  poster: { port: "diamond", band: true },
   "ink-wash": { head: "dot" },
   // City：路横平竖直；被调用那头停一辆车代替箭头；起点是一块圆形小广场。路沿、路口见 canvas/Links.tsx，车、标线和车流见 canvas/Traffic.tsx
   // clear 40：路面中线离卡边 40，路沿（16px）外还空出 32，约两条路宽

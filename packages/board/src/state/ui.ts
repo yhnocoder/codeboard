@@ -62,9 +62,7 @@ export const [dropTarget, setDropTarget] = createSignal<{ kind: "merge" | "line"
 export const [dragging, setDragging] = createSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = createSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = createSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);
-export const [hoverLink, setHoverLink] = createSignal<string | null>(null);
-// 指针下的卡（它的线临时浮到最上面一层，见 canvas/Links.tsx 的 enterCard）、正在拖的线（拖起点圆点、拖标签框）
-export const [hoverCard, setHoverCard] = createSignal<string | null>(null);
+// 正在拖的线（拖起点圆点、拖标签框）；指针下的卡和线在 state/hover.ts
 export const [dragLink, setDragLink] = createSignal<string | null>(null);
 export const [hoverVar, setHoverVar] = createSignal<{ link: string; names: string[]; from: string; to: string } | null>(null);
 // 新卡弹出动画：id → 起点偏移

@@ -22,7 +22,7 @@ export function QuestionsPanel() {
     return [...m.values()];
   });
   return (
-    <div class="cpanel qpanel pill" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+    <div class="cpanel qpanel pill" data-nodrag onWheel={(e) => e.stopPropagation()}>
       <div class="cph">
         <b>Questions</b>
         <span class="qtabs">

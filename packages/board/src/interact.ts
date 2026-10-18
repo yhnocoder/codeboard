@@ -17,7 +17,7 @@ import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spac
 import { selSticker, setSelSticker } from "./state/stickers";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
 import { installOverlays, modalOpen, isTyping } from "./ui/overlay";
-import { NODRAG, CARD_CONTROL, OWNS_POINTER } from "./ui/guard";
+import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch } from "./keymap";
 import * as A from "./actions";
 
@@ -491,7 +491,7 @@ export function canvasContextMenu(e: MouseEvent) {
 // ---------- Section 标签：拖动整体移动（卡片、子 Section 一起走） ----------
 
 export function sectionLabelDown(e: PointerEvent, id: string) {
-  if (e.button !== 0) return;
+  if (e.button !== 0 || (e.target as Element).closest(NODRAG)) return;
   e.preventDefault();
   e.stopPropagation();
   closeAllPops();
@@ -556,7 +556,7 @@ export function installKeys() {
     if (!document.hasFocus()) window.focus();
     // 放贴纸：在卡片和画布自己的处理之前接住这一下；点到贴纸以外的地方就取消贴纸选中
     const t = e.target as HTMLElement;
-    if (placing() && e.button === 0 && t.closest?.("#board") && !t.closest(NODRAG)) return void A.placeStickerAt(e);
+    if (placing() && e.button === 0 && t.closest?.("#board") && !t.closest(BOARD_CHROME)) return void A.placeStickerAt(e);
     if (selSticker() && !t.closest?.("[data-sticker], .ctx")) setSelSticker(null);
   }, true);
   window.addEventListener("keydown", (e) => {

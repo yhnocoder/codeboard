@@ -3,7 +3,7 @@
 import { keepKey } from "../ui/editkeys";
 import { createMemo, createSignal, For, Show, onCleanup } from "solid-js";
 import { firstLine, type IconRef, type Sticker } from "@codeboard/core";
-import { linkCurve } from "../canvas/Links";
+import { linkCurve } from "../state/geo";
 import { bezAt } from "../canvas/geom";
 import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, packs } from "./glyphs";
 import { pickSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";

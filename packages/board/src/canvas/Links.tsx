@@ -2,13 +2,14 @@
 // 线都画在所有卡下面那一层（见下面的「图层」），选中的、正拖着的、指针下那张卡的线临时浮到所有卡上面。
 // 每条线：base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：各自画到合并点，合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
-import { Show, batch, createEffect, createMemo, createRenderEffect, createSelector, createSignal, mapArray, on, onCleanup, untrack, type Accessor } from "solid-js";
+import { Show, batch, createEffect, createMemo, createRenderEffect, createSelector, createSignal, mapArray, on, onCleanup, type Accessor } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
 import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
-import { geo, lineY } from "../state/geo";
+import { geo, lineY, setCurveSource, HEAD_H } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
-import { hoverLink, setHoverLink, hoverCard, setHoverCard, dragLink, setDragLink, rubber, popIn } from "../state/ui";
-import { cam, toWorld, stillZ, lod, reduceMotion, camMoving } from "../state/camera";
+import { dragLink, setDragLink, rubber, popIn } from "../state/ui";
+import { hoverLink, hoverCard, enterLink, leaveLink, watchHover } from "../state/hover";
+import { cam, toWorld, stillZ, lod, reduceMotion } from "../state/camera";
 import { lodOf } from "../state/lodcards";
 import { boardOffset } from "../state/measure";
 import { shape, fileHue, look } from "../state/look";
@@ -45,7 +46,7 @@ function headY(id: string, r: Rect) {
   const f = cardById(id);
   const g = geo[id];
   if (f && f.host.id !== id && g) return r.y + g.head - 14; // Compare 栏头
-  return r.y + 17;
+  return r.y + (g?.head ?? HEAD_H) / 2;
 }
 
 /** 一端：矩形、是不是行端、行的 y（看不到那一行时 = 卡头）、Compare 的哪一栏 */
@@ -242,12 +243,12 @@ function makeRoute(L: Link): Route {
 /** 终点是同一处的几条线（同一张卡的卡头，或同一行）：终点的 key */
 const toKey = (L: Link) => `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? ""}${L.to.sub !== undefined ? `|${L.to.sub}` : ""}`;
 
-/** 线的三次贝塞尔控制点 [x1 y1 c1x c1y c2x c2y x2 y2]（贴纸、标签沿线走时用） */
-export function linkCurve(id: string): number[] | null {
+// 线的三次贝塞尔控制点（贴纸、标签沿线走时用）：登记给 state/geo 的 linkCurve
+setCurveSource((id) => {
   const L = state.board.links.find((l) => l.id === id);
   if (!L || !visible(L)) return null;
   return geoOf(L)?.pts ?? null;
-}
+});
 /** 一条线的几何：画着的就用画着的那份（含合并、滑动）；没画的现算一份（不合并） */
 export function geoOf(L: Link): Geo | null {
   const r = routes.get(L.id);
@@ -352,40 +353,7 @@ function order(p: Element, ns: Element[]) {
   }
 }
 
-// 指针下的卡：离开后过 linkLeave 才算离开，鼠标从卡移到它的线上时线不掉下去。镜头动的时候不换（内容从指针下滑过也会进出卡），停下再按最后的那张算
-let hovNow: string | null = null, cardT: number | undefined;
 const hostOf = (id: string) => cardById(id)?.host.id;
-const settleHover = () => { clearTimeout(cardT); cardT = window.setTimeout(() => { if (!camMoving()) setHoverCard(hovNow); }, tune("linkLeave")); };
-export const enterCard = (id: string) => { hovNow = id; clearTimeout(cardT); if (!camMoving()) setHoverCard(id); };
-export const leaveCard = (id: string) => { if (hovNow === id) hovNow = null; settleHover(); };
-// 不只靠 pointerleave：它会丢（卡在指针下被挪位置 / 重排、指针捕获刚释放、慢机器上事件挤在一起），丢了那张卡就一直算悬停，它的线一直浮在所有卡上面。
-// 所以指针每动一下都核对一次：落点已经不在悬停的那张卡里 → 当它离开了；卡重排之后指针不动也在下一帧按指针下面是什么核对一次。
-// 走的还是 leaveCard → settleHover，落回去照样过 linkLeave、照样淡出
-let ptr: { x: number; y: number } | null = null;
-const inHovered = (el: EventTarget | Element | null) => !!hovNow && el instanceof Element && !!el.closest(`.card[data-id="${CSS.escape(hovNow)}"]`);
-const checkHover = (el: EventTarget | Element | null) => { if (hovNow && !inHovered(el)) leaveCard(hovNow); };
-function watchHover() {
-  const move = (e: PointerEvent) => { ptr = { x: e.clientX, y: e.clientY }; checkHover(e.target); };
-  window.addEventListener("pointermove", move, { capture: true, passive: true });
-  onCleanup(() => window.removeEventListener("pointermove", move, { capture: true }));
-  // 只在有悬停的卡、而且是这张卡在 b.cards 里的位置变了（重排）时才看：撤销 / 重做 / 同步换掉 b.cards 不会每次都去读指针下面是什么（会强制排版）
-  let raf = 0;
-  createEffect(on(() => { const id = hoverCard(); return id ? `${id} ${state.board.cards.findIndex((c) => c.id === id)}` : ""; }, (k, prev) => {
-    if (!k || !prev || k === prev || k.split(" ")[0] !== prev.split(" ")[0]) return;
-    cancelAnimationFrame(raf);
-    raf = requestAnimationFrame(() => { if (hovNow && ptr) checkHover(document.elementFromPoint(ptr.x, ptr.y)); });
-  }));
-  onCleanup(() => cancelAnimationFrame(raf));
-}
-
-// 离开连线后过 300ms 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停（#30）。移到指针下那张卡的线上时，那张卡也还算悬停着
-let leaveT: number | undefined;
-export const enterLink = (id: string) => {
-  clearTimeout(leaveT); setHoverLink(id);
-  const L = routes.get(id)?.L, hc = untrack(hoverCard);
-  if (L && hc && (hostOf(L.from.card) === hc || hostOf(L.to.card) === hc)) clearTimeout(cardT);
-};
-export const leaveLink = () => { clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverLink(null), tune("linkLeave")); if (untrack(hoverCard) !== hovNow) settleHover(); };
 
 /** Canvas 里调用一次：每条线的走线、几何、节点，和它画在哪一层 */
 export function trackLinks() {
@@ -492,7 +460,6 @@ export function trackLinks() {
       s.rs = want.rs; s.ms = want.ms;
     }
   });
-  createEffect(on(camMoving, (mv) => { if (!mv) setHoverCard(hovNow); }, { defer: true }));
   watchHover();
   // City 的车流：挑哪几条路只在镜头停下时算一次（Traffic.tsx）
   trackTraffic(views);

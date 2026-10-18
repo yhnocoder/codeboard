@@ -21,6 +21,9 @@ export function openMenu(items: Item[], x: number, y: number, o: { up?: boolean 
   if (!clean.length) return;
   setMenu({ items: clean, x, y, n: ++menuN, up: o.up });
 }
+/** 元素正下方、左对齐：卡头的 ⋯、版本号之类的按钮弹菜单的位置 */
+export const below = (el: Element) => { const r = el.getBoundingClientRect(); return [r.left, r.bottom + 4] as const; };
+export const openMenuAt = (items: Item[], el: Element) => openMenu(items, ...below(el));
 export const closeMenu = () => setMenu(null);
 export const menuOpen = () => !!menu();
 

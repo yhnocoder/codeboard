@@ -1,7 +1,7 @@
 // Compare：两张代码卡原地并成两栏。相同的行对齐在同一水平线，改了的行标词级差异，
 // 只有一边有的行另一边留斜纹空位。两栏还是原来的卡（编号、Link 都在）。
 import { createMemo, For, Show, onMount, onCleanup, createEffect } from "solid-js";
-import { alignRows, wordDiff, findCard, cardTitle, type CompareCard, type CodeCard, type Row } from "@codeboard/core";
+import { alignRows, wordDiff, findCard, cardTitle, escHtml, type CompareCard, type CodeCard, type Row } from "@codeboard/core";
 import { state, mutate, cardById, placeOf } from "../state/store";
 import { setGeo } from "../state/geo";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -9,16 +9,16 @@ import { Icon } from "../ui/icons";
 import { CodeHead } from "./Card";
 import * as A from "../actions";
 import { callPointerDown, cardWheel } from "../interact";
+import { below } from "../ui/Menu";
 
 type L = { seg: string; line: number; text: string; html: string };
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const norm = (s: string) => s.trim().replace(/\s+/g, " ");
 
 function linesOf(c: CodeCard): L[] {
   const out: L[] = [];
   for (const s of c.segments) {
     const v = state.views[s.id];
-    s.text.forEach((t, i) => out.push({ seg: s.id, line: s.start + i, text: t, html: v?.html[i] ?? esc(t) }));
+    s.text.forEach((t, i) => out.push({ seg: s.id, line: s.start + i, text: t, html: v?.html[i] ?? escHtml(t) }));
   }
   return out;
 }
@@ -134,14 +134,14 @@ export function CompareBody(p: { card: CompareCard }) {
   return (
     <div ref={rootEl} class="cmpwrap" classList={{ unified: !!k().unified, difffn: cols().length === 2 && cardTitle(cols()[0]) !== cardTitle(cols()[1]) }}>
       <div class="chead" data-drag>
-        <Show when={placeOf(k().id).locked}><button class="lockb" data-tip="Unlock" onPointerDown={(e) => e.stopPropagation()} onClick={() => A.toggleLock([k().id])}><Icon name="lock" /></button></Show>
+        <Show when={placeOf(k().id).locked}><button class="lockb" data-tip="Unlock" data-nodrag onClick={() => A.toggleLock([k().id])}><Icon name="lock" /></button></Show>
         <span class="kind">⇆</span><span class="ctitle">{A.compareTitle(k())}</span><span class="grow" />
-        <span class="tools" onPointerDown={(e) => e.stopPropagation()}>
+        <span class="tools" data-nodrag>
           <button class="seg2" onClick={() => set((c) => { c.swap = !c.swap; })}>Swap</button>
           <button class="seg2" classList={{ on: !!k().unified }} onClick={() => set((c) => { c.unified = !c.unified; })}>Unified</button>
           <button class="seg2" classList={{ on: !!k().hideSame }} onClick={() => set((c) => { c.hideSame = !c.hideSame; })}>Hide Same Lines</button>
         </span>
-        <button class="ib" aria-label="Compare Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); A.cardMenu(k().id, r.left, r.bottom + 4); }}><Icon name="more" /></button>
+        <button class="ib" aria-label="Compare Menu" data-tip="More Actions" data-nodrag onClick={(e) => A.cardMenu(k().id, ...below(e.currentTarget))}><Icon name="more" /></button>
       </div>
       <div class="colh">
         <For each={cols()}>{(c) => <div data-col={c.id}><CodeHead card={c} col /></div>}</For>

@@ -15,7 +15,7 @@ const NOTE: Record<LegendKey, string> = {
 
 export function LegendPanel() {
   return (
-    <div class="cpanel legend pill" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+    <div class="cpanel legend pill" data-nodrag onWheel={(e) => e.stopPropagation()}>
       <div class="cph"><b>Arrows</b><span class="grow" /><button class="ib" aria-label="Close Legend" onClick={() => setLegendOpen(false)}><Icon name="close" size={13} /></button></div>
       <For each={LEGEND}>{([k]) => (
         <div class="lgrow" data-k={k} data-tip="Double-click to rename" onDblClick={() => void A.renameLegend(k)}>
@@ -33,7 +33,7 @@ export function CallTreePanel() {
   const from = () => ({ selection: "from the selected card", start: "from Start", roots: "from each call graph's root" })[A.treeFrom()];
   const title = (id: string) => { const c = cardById(id)?.card; return c ? cardTitle(c, state.board) : id; };
   return (
-    <div class="cpanel ctree pill" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+    <div class="cpanel ctree pill" data-nodrag onWheel={(e) => e.stopPropagation()}>
       <div class="cph"><b>Call Tree</b><small>{from()} · Call and RPC marks only</small><span class="grow" /><button class="ib" aria-label="Close Call Tree" onClick={() => setTreeOpen(false)}><Icon name="close" size={13} /></button></div>
       <div class="ctrows">
         <For each={A.treeRows()} fallback={<div class="empty sm">No Call arrows yet. Click a call in a code card, or mark a card as Start.</div>}>{(r) => {
@@ -58,7 +58,7 @@ export function RunPanel() {
   const run = () => rs().apply.run;
   const when = () => new Date(run().at).toLocaleString();
   return (
-    <div class="cpanel runp pill" onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}>
+    <div class="cpanel runp pill" data-nodrag onWheel={(e) => e.stopPropagation()}>
       <div class="cph"><b>Run</b><code class="rentry">{run().entry}</code><span class="grow" /><button class="ib" aria-label="Close Run Panel" onClick={() => setRunState(null)}><Icon name="close" size={13} /></button></div>
       <div class="rmeta">{when()}{run().commit ? ` · ${run().commit!.slice(0, 7)}` : ""} · {rs().hits} arrow{rs().hits === 1 ? "" : "s"} marked Observed{run().exit ? ` · exit ${run().exit}` : ""}</div>
       <div class="rsub">Calls seen at runtime with no arrow ({rs().misses.length})</div>

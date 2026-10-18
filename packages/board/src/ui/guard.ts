@@ -7,3 +7,5 @@ export const NODRAG = "[data-nodrag]";
 export const CARD_CONTROL = `${NODRAG}, [contenteditable], input, textarea, select, button:not([data-dragclick]), .call:not([data-p]), a.lnk`;
 /** 画布上自己处理指针的东西：按在这些上面不框选、不平移 */
 export const OWNS_POINTER = `.card, .slabel, .lhit, .lmid, .vchips, ${NODRAG}`;
+/** 浮在画布上的工具条（不是白板内容）：放贴纸时点在这上面不算 */
+export const BOARD_CHROME = ".alignbar";
