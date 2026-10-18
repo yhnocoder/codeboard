@@ -19,7 +19,8 @@ const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 /** first line of a card whose text matches re */
 const lineOf = (c: ReturnType<typeof card>, re: RegExp) => { const s = c.segments[0]; return s.start + Math.max(0, s.text.findIndex((t) => re.test(t))); };
 
-async function subHost(start: Board, others: Board[]) {
+/** A host for one board panel that switches between boards (exported for the other board scenarios) */
+export async function subHost(start: Board, others: Board[]) {
   const dir = path.join(OUT, "subboards-store");
   fs.rmSync(dir, { recursive: true, force: true });
   const store = new Storage(nodeFs, { dir: () => dir });
