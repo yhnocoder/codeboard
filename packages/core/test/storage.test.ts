@@ -44,10 +44,11 @@ class MemFs implements Fs {
     for (const d of [...this.dirs]) if (d === a || d.startsWith(a + "/")) { this.dirs.delete(d); this.dirs.add(b + d.slice(a.length)); }
     for (const [k, v] of [...this.files]) if (k.startsWith(a + "/")) { this.files.delete(k); this.files.set(b + k.slice(a.length), v); }
   }
-  async rm(p: string) {
-    this.files.delete(p);
-    for (const d of [...this.dirs]) if (d === p || d.startsWith(p + "/")) this.dirs.delete(d);
-    for (const k of [...this.files.keys()]) if (k.startsWith(p + "/")) this.files.delete(k);
+  async rm(p: string) { this.files.delete(p); }
+  async rmdir(p: string) {
+    this.need(p);
+    if ((await this.readdir(p)).length) throw new Error(`ENOTEMPTY ${p}`);
+    this.dirs.delete(p);
   }
   async mkdir(p: string) { for (let d = p; d !== "/" && !this.dirs.has(d); d = this.parent(d)) this.dirs.add(d); }
   fromBase64 = (s: string) => new Uint8Array(Buffer.from(s, "base64"));
@@ -97,6 +98,26 @@ describe("core storage", () => {
     fs.put(`${ROOT}/a.json`, { ...emptyBoard("a", "A2") });
     expect((await store.list())[0].name).toBe("A2");
     expect(fs.reads).toBe(n + 1);
+  });
+
+  it("deleting a group moves its boards out and keeps the folder with any file that isn't a readable board", async () => {
+    const { fs, store } = setup();
+    const b = await store.create("B");
+    await store.newGroup("G");
+    await store.move(b.id, "G");
+    fs.put(`${ROOT}/G/handedit.json`, "{ \"cards\": [ oops");
+    fs.put(`${ROOT}/G/notes.txt`, "my notes");
+    expect((await store.removeGroup("G")).sort()).toEqual(["handedit.json", "notes.txt"]);
+    expect(store.groupOf(b.id)).toBe(undefined);
+    expect(fs.files.has(`${ROOT}/${b.id}.json`)).toBe(true);
+    expect(fs.files.get(`${ROOT}/G/handedit.json`)?.data).toBe("{ \"cards\": [ oops");
+    expect(fs.files.get(`${ROOT}/G/notes.txt`)?.data).toBe("my notes");
+    expect(await store.groups()).toEqual(["G"]);
+    // once only boards were in it, the folder goes
+    await fs.rm(`${ROOT}/G/handedit.json`); await fs.rm(`${ROOT}/G/notes.txt`);
+    expect(await store.removeGroup("G")).toEqual([]);
+    expect(fs.dirs.has(`${ROOT}/G`)).toBe(false);
+    expect(await store.groups()).toEqual([]);
   });
 
   it("groups are one level of subfolders; empty groups are listed; reserved names are not groups", async () => {

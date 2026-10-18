@@ -1,5 +1,6 @@
 // 编辑器和侧栏的命令做什么：Add to Board（⌥B）、Add to Another Board…、Add to Selected Card、Add Function at Cursor、
 // Add as Sidenote（⌥S）、Reveal on Board，以及白板的新建 / 改名 / 删除 / 分组。命令注册在 commands.ts（VS Code 适配层）。
+import * as path from "node:path";
 import { allCodeCards, estSize, removeCards, type Board, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { cardsFromEditor, symCard, widthFor, withViews, type Built } from "./cards";
@@ -263,7 +264,13 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.deleteGroup": async (a?: Node) => {
       if (a?.kind !== "group") return;
       const ok = await ui().warn(`Delete group “${a.name}”?`, { modal: true, detail: "Boards in it are kept and moved out of the group." }, "Delete Group");
-      if (ok === "Delete Group") { await store.removeGroup(a.name); await panels.pushBoards(); }
+      if (ok !== "Delete Group") return;
+      const left = await store.removeGroup(a.name);
+      await panels.pushBoards();
+      if (!left.length) return;
+      // 读不了的白板、不是白板的文件：不删，文件夹留着
+      const reveal = await ui().warn(`Group “${a.name}” was kept: it still has files CodeBoard can't open as boards (${left.join(", ")}).`, {}, "Reveal in Folder");
+      if (reveal) await ui().revealInOS(path.join(store.dir(), a.name));
     },
     "codeboard.revealInFolder": async (a?: unknown) => {
       const id = boardArg(a);

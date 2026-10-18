@@ -571,13 +571,21 @@ export class Storage {
     });
   }
 
-  /** 删组：白板移回顶层，再删文件夹 */
-  async removeGroup(name: string) {
-    if (!groupName(name)) return; // ".." 之类会删到存储目录外面去
+  /**
+   * 删组：白板移回顶层，再删空了的文件夹。文件夹里还有别的东西（读不了的白板、不是白板的文件）时不删、不动它们，
+   * 文件夹留着（还是一个组）；返回留下的文件名
+   */
+  async removeGroup(name: string): Promise<string[]> {
+    if (!groupName(name)) return []; // ".." 之类会跑到存储目录外面去
     for (const e of await this.scan()) if (e.group === name) await this.move(e.id, undefined);
-    await this.fs.rm(this.fs.join(this.dir(), name));
-    this.emptyGroups.delete(name);
+    const dir = this.fs.join(this.dir(), name);
+    const left = (await this.fs.readdir(dir).catch(() => [])).map((d) => d.name);
+    if (!left.length) {
+      await this.fs.rmdir(dir).catch(() => undefined); // 已经没有这个文件夹了
+      this.emptyGroups.delete(name);
+    }
     this.changed.fire();
+    return left;
   }
 
   /** 设置里换了目录：没写的改动先写回原来的文件 */
