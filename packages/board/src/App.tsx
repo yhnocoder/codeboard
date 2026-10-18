@@ -3,7 +3,7 @@ import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { tune } from "./state/tune";
 import { unwrap } from "solid-js/store";
 import { state, mutate, liveCam, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
-import { cam, camTarget, zoomAt } from "./state/camera";
+import { cam, camTarget, zoomAt, viewTracked } from "./state/camera";
 import { banner, setBanner, walk, keysOpen, setKeysOpen, editing, setEditing, paletteOpen, setPaletteOpen } from "./state/ui";
 import { Canvas } from "./canvas/Canvas";
 import { Popovers } from "./ui/Popovers";
@@ -51,7 +51,7 @@ export function App() {
       <Show when={crumbs().length}><Crumbs /></Show>
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
       <Show when={!walk()}><Toolbar /></Show>
-      <Dock />
+      <Show when={!narrow() || walk()}><Dock /></Show>
       {/* 调用树侧栏、Arrow 图例、运行面板（线框 12、13）：开着才有 */}
       <Show when={A.treeOpen()}><CallTreePanel /></Show>
       <Show when={A.legendOpen()}><LegendPanel /></Show>
@@ -99,32 +99,46 @@ function Banner() {
   );
 }
 
-/** 唯一的工具栏：新建（Note、Text、Code ▾、Image、Web、Section、Arrow、Sticker）· Search · ⋯ */
+/** 白板放在编辑器旁边（窄）：工具栏和缩放并成一行，少用的按钮收进 ⋯ */
+const NARROW = 700;
+const narrow = () => viewTracked().w < NARROW;
+
+/** 唯一的工具栏：新建（Note、Text、Code ▾、Image、Web、Section、Arrow、Sticker）· Search · ⋯；窄时右端接上缩放 */
 function Toolbar() {
-  const at = (e: MouseEvent) => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); return [r.left, r.top - 6] as const; };
-  const up = (items: Parameters<typeof openMenu>[0], e: MouseEvent) => { const [x, y] = at(e); openMenu(items, x, y, { up: true }); };
-  const codeMenu = (e: MouseEvent) => up([
+  const at = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return [r.left, r.top - 6] as const; };
+  const codeMenu = (el: HTMLElement) => { const [x, y] = at(el); openMenu([
     { label: "New Code", run: () => A.newFreeCode() },
     { label: "From GitHub…", run: () => A.openGitHubPicker() },
     { label: "Add Function…", kbd: `${A.K.mod}K`, run: () => setPaletteOpen({ mode: "code" }) },
-  ], e);
-  const tools: { icon: string; label: string; run: (e: MouseEvent) => void; tip?: string; kbd?: string; more?: boolean }[] = [
+  ], x, y, { up: true }); };
+  // fold：窄时收进 ⋯ 时的菜单名
+  const tools: { icon: string; label: string; run: (el: HTMLElement) => void; tip?: string; kbd?: string; more?: boolean; fold?: string }[] = [
     { icon: "note", label: "Note", kbd: "N", run: () => A.newNote() },
     { icon: "text", label: "Text", kbd: "T", run: () => A.newNote(undefined, false) },
     { icon: "code", label: "Code", tip: "New Code, From GitHub, Add Function", more: true, run: codeMenu },
-    { icon: "image", label: "Image", run: () => A.newImage() },
-    { icon: "web", label: "Web", tip: "New Web Card", run: () => A.newWeb() },
-    { icon: "section", label: "Section", tip: "Draw a Section", run: () => setTool("section") },
-    { icon: "link", label: "Arrow", tip: "Select two cards, or pick a card then click another", run: () => {
+    { icon: "image", label: "Image", fold: "New Image", run: () => A.newImage() },
+    { icon: "web", label: "Web", fold: "New Web Card", tip: "New Web Card", run: () => A.newWeb() },
+    { icon: "section", label: "Section", fold: "Draw a Section", tip: "Draw a Section", run: () => setTool("section") },
+    { icon: "link", label: "Arrow", fold: "New Arrow", tip: "Select two cards, or pick a card then click another", run: () => {
       if (sel.cards.length === 2) A.addLink({ card: sel.cards[0] }, { card: sel.cards[1] });
       else if (sel.cards.length === 1) A.startConnect(sel.cards[0]);
       else toast("Select a card first, then click another card");
     } },
-    { icon: "sticker", label: "Sticker", tip: "Add a Sticker", run: (e) => A.stickerPicker(e.currentTarget as HTMLElement) },
+    { icon: "sticker", label: "Sticker", fold: "Add a Sticker", tip: "Add a Sticker", run: (el) => A.stickerPicker(el) },
   ];
   const more = (e: MouseEvent) => {
-    const [x, y] = at(e);
+    const el = e.currentTarget as HTMLElement, [x, y] = at(el);
+    // 窄时收起来的新建按钮和侧栏开关
+    const folded: Parameters<typeof openMenu>[0] = narrow() ? [
+      ...tools.filter((t) => t.fold).map((t) => ({ label: t.fold!, run: () => t.run(el) })),
+      null,
+      { label: "Call Tree", checked: A.treeOpen(), run: () => A.setTreeOpen(!A.treeOpen()) },
+      { label: "Arrow Legend", checked: A.legendOpen(), run: () => A.setLegendOpen(!A.legendOpen()) },
+      ...(look() === "city" ? [{ label: "Moving Cars", checked: traffic(), run: () => setTraffic(!traffic()) }] : []),
+      null,
+    ] : [];
     openMenu([
+      ...folded,
       { label: "Undo", kbd: `${A.K.mod}Z`, disabled: !canUndo(), run: () => undo() },
       { label: "Redo", kbd: `${A.K.shift}${A.K.mod}Z`, disabled: !canRedo(), run: () => redo() },
       null,
@@ -143,12 +157,23 @@ function Toolbar() {
   };
   return (
     <div class="over bbar"><div class="pill">
-      <For each={tools}>{(t) => <button class="tbtn" aria-label={t.label} data-tip={t.tip ?? `New ${t.label}`} data-kbd={t.kbd} onClick={t.run}><Icon name={t.icon} /><Show when={t.more}><Icon name="chev" size={10} /></Show></button>}</For>
+      <For each={narrow() ? tools.filter((t) => !t.fold) : tools}>{(t) => <button class="tbtn" aria-label={t.label} data-tip={t.tip ?? `New ${t.label}`} data-kbd={t.kbd} onClick={(e) => t.run(e.currentTarget)}><Icon name={t.icon} /><Show when={t.more}><Icon name="chev" size={10} /></Show></button>}</For>
       <span class="sep" />
       <button class="tbtn" aria-label="Search" data-tip="Search Functions, Files, Cards · ? Shortcuts" data-kbd={`${A.K.mod}K`} onClick={() => setPaletteOpen({ mode: "all" })}><Icon name="search" /></button>
       <button class="ib" aria-label="More" data-tip="More" onClick={more}><Icon name="more" /></button>
+      <Show when={narrow()}><span class="sep" /><Zoom /></Show>
     </div></div>
   );
+}
+
+function Zoom() {
+  return <>
+    <button class="ib" aria-label="Zoom Out" data-tip="Zoom Out" data-kbd={`${A.K.mod}−`} onClick={() => zoomAt(0.8)}><Icon name="minus" /></button>
+    <span class="zoom" onClick={() => zoomAt(1 / camTarget().z)} data-tip="Zoom to 100%" data-kbd={`${A.K.mod}1`}>{Math.round(cam.z * 100)}%</span>
+    <button class="ib" aria-label="Zoom In" data-tip="Zoom In" data-kbd={`${A.K.mod}+`} onClick={() => zoomAt(1.25)}><Icon name="plus" /></button>
+    <span class="sep" />
+    <button class="ib" aria-label="Fit to Window" data-tip="Fit to Window" data-kbd={`${A.K.shift}1`} onClick={() => A.fitAll()}><Icon name="fit" /></button>
+  </>;
 }
 
 function Dock() {
@@ -163,11 +188,7 @@ function Dock() {
       <button class="ib" aria-label="Questions" aria-pressed={A.questionsOpen()} data-tip="Questions on All Boards" onClick={() => A.toggleQuestions()}><Icon name="question" /></button>
       <button class="ib" aria-label="Arrow Legend" aria-pressed={A.legendOpen()} data-tip="Arrow Legend" onClick={() => A.setLegendOpen(!A.legendOpen())}><Icon name="compact" /></button>
       <span class="sep" />
-      <button class="ib" aria-label="Zoom Out" data-tip="Zoom Out" data-kbd={`${A.K.mod}−`} onClick={() => zoomAt(0.8)}><Icon name="minus" /></button>
-      <span class="zoom" onClick={() => zoomAt(1 / camTarget().z)} data-tip="Zoom to 100%" data-kbd={`${A.K.mod}1`}>{Math.round(cam.z * 100)}%</span>
-      <button class="ib" aria-label="Zoom In" data-tip="Zoom In" data-kbd={`${A.K.mod}+`} onClick={() => zoomAt(1.25)}><Icon name="plus" /></button>
-      <span class="sep" />
-      <button class="ib" aria-label="Fit to Window" data-tip="Fit to Window" data-kbd={`${A.K.shift}1`} onClick={() => A.fitAll()}><Icon name="fit" /></button>
+      <Zoom />
     </div></div>
   );
 }

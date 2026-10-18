@@ -112,9 +112,10 @@ async function exportStep(page) {
   let f = await boardFrame(page); await sleep(1500);
   check(await f.locator(".card").count() >= 1, "Alt+B puts a card on the board");
   await command(page, "Notifications: Clear All Notifications");
-  // 白板在右边一栏、比较窄：底栏和 dock 不能叠在一起（叠了就点不到 More）
-  const [bb, dk] = await f.evaluate(() => [".bbar .pill", ".dock .pill"].map((q) => { const r = document.querySelector(q).getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom]; }));
-  check(bb[1] <= dk[0] || bb[2] >= dk[3] || dk[2] >= bb[3], "the bottom bar and the dock do not overlap in a narrow pane", { bb, dk });
+  // 白板在右边一栏、比较窄：底栏和 dock 在同一行、不叠在一起（叠了就点不到 More；很窄时 dock 并进底栏）
+  const pills = await f.evaluate(() => [...document.querySelectorAll(".bbar .pill, .dock .pill")].map((e) => { const r = e.getBoundingClientRect(); return [r.left, r.right, r.top, r.bottom]; }));
+  const [bb, dk] = pills;
+  check(!dk || ((bb[1] <= dk[0] || dk[1] <= bb[0]) && bb[2] < dk[3] && dk[2] < bb[3]), "the bottom bar and the dock sit in one row without overlapping in a narrow pane", { pills });
   await f.locator('button[aria-label="More"]').first().click(); await sleep(400);
   await f.locator(".ctx :is(button,div,li)", { hasText: /^Export…/ }).first().click(); await sleep(600);
   check(await f.locator(".dialog.xdlg").count() === 1, "Export… opens the export dialog");
