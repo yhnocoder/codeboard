@@ -20,6 +20,7 @@ import { QUESTIONS } from "./scenarios-questions";
 import { VARIANTS } from "./scenarios-variants";
 import { FIXQ } from "./scenarios-fixq";
 import { HEADER } from "./scenarios-header";
+import { NOTE_EDITING } from "./scenarios-note-editing";
 import { UX } from "./scenarios-ux";
 
 const light = process.argv.includes("--light");
@@ -40,6 +41,7 @@ const GROUPS: Record<string, Record<string, () => Promise<void>>> = {
   "scenarios-typing.ts": TYPING, "scenarios-mdreview.ts": MDREVIEW, "scenarios-shared.ts": SHARED, "scenarios-subboards.ts": SUBBOARDS,
   "scenarios-chains.ts": CHAINS, "scenarios-calls.ts": CALLS, "scenarios-questions.ts": QUESTIONS, "scenarios-variants.ts": VARIANTS,
   "scenarios-fixq.ts": FIXQ, "scenarios-header.ts": HEADER,
+  "scenarios-note-editing.ts": NOTE_EDITING,
   // 最后：这些场景换了宿主的工作区（读 nano-vllm），要排在 CHAINS 之后
   "scenarios-ux.ts": UX,
 };
