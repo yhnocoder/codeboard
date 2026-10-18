@@ -32,7 +32,7 @@ async function openFile(page, name, line) {
   if (line) { await page.keyboard.press("Control+g"); await sleep(300); await page.keyboard.type(String(line)); await page.keyboard.press("Enter"); await sleep(400); }
 }
 // Each screenshot also runs the generic UI audit (tools/review/audit.cjs), collected in audit.json; with AUDIT_STRICT=1 issues count as failures
-const { audit } = require("../../../tools/review/audit.cjs");
+const { audit, report } = require("../../../tools/review/audit.cjs");
 const audits = [];
 // Before a screenshot wait for the board to settle (animations done, canvas still) and capture only the board, so unrelated changes like the VS Code status bar don't disturb the diff
 const settle = (fr) => fr.evaluate(async () => {
@@ -352,6 +352,7 @@ async function codeeditStep(page) {
 const finish = async (browser, errors) => {
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
+  console.log(report(audits).join("\n"));
   console.log(failed ? `${failed} checks failed` : "all passed");
   await browser.close().catch(() => {});
   process.exit(failed ? 1 : 0);

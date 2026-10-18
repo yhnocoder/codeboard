@@ -101,7 +101,8 @@ jobs:
             const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
             const steps = [1, 2, 3].flatMap((p) => json(`${A}/replay-head-${p}/steps.json`));
             const audit = [1, 2, 3].flatMap((p) => json(`${A}/replay-head-${p}/audit.json`));
-            const issues = [...new Set(audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`)))];
+            // one line per unique warning (rule + element) with the steps it appears in
+            const { report } = require(`${process.env.GITHUB_WORKSPACE}/tools/review/audit.cjs`);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const sha = (context.payload.pull_request?.head.sha || context.sha).slice(0, 7);
             const shots = ["<details><summary>Replay screenshots</summary>", "", read("test-out/replay-summary.md") || "No screenshots.", "</details>"];
@@ -111,7 +112,7 @@ jobs:
                 "<!-- ci-replay:start -->", "## Study-task replay", "",
                 `Commit ${sha} · [Run log](${run}) · re-run by removing and adding the \`replay\` label`, "",
                 read("test-out/replay-result.md") || "**Study-task replay**: no results.", "",
-                `**UI audit during the replay**: ${issues.length ? `${issues.length} warning${issues.length > 1 ? "s" : ""}` : "no issues"}`, ...issues.slice(0, 30), "",
+                ...report(audit, "UI audit during the replay"), "",
                 ...shots, "<!-- ci-replay:end -->",
               ].join("\n");
               const { data: pr } = await github.rest.pulls.get({ ...context.repo, pull_number: context.issue.number });

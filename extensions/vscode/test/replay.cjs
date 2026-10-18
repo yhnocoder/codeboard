@@ -6,7 +6,7 @@ const { chromium } = require("playwright-core");
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
-const { audit } = require("../../../tools/review/audit.cjs");
+const { audit, report } = require("../../../tools/review/audit.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -510,6 +510,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
 
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
+  console.log(report(audits).join("\n"));
   fs.writeFileSync(`${OUT}/steps.json`, JSON.stringify(steps, null, 1));
   console.log(failed ? `${failed} checks failed` : "all passed");
   await browser.close().catch(() => {});
