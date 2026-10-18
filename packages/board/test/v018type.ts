@@ -223,7 +223,7 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     await pg.locator(`.card[data-id="${n}"] .md-pm`).waitFor();
     const blocked = await fwd();
     // 选中 bold 那段复制：text/plain 是 Markdown
-    await pg.evaluate((sel) => {
+    const selectBoldY = () => pg.evaluate((sel) => {
       // 用 DOM Range 选中 "bold y"（键盘选区在无头浏览器里不稳）
       const p = document.querySelector(sel)!;
       const w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
@@ -237,7 +237,16 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       s.removeAllRanges();
       s.addRange(r);
     }, inNote(n, "p"));
-    await pg.waitForTimeout(100);
+    // 等 ProseMirror 真的拿到这个选区再复制：它是在异步的 selectionchange 里才读 DOM 选区的；刚拿到焦点时它还会在 20ms 后把自己的
+    // （收起的）选区写回 DOM，慢机器上这一下可能落在脚本设好选区之后，选区就没了（CI 上复制、剪切到的都是空的）。
+    // 选中工具条只在 ProseMirror 的选区不空时出现；DOM 上的选区也还得是 "bold y"，不是就重新选
+    const settled = () => pg.evaluate(() => !!document.querySelector(".md-bubble") && getSelection()!.toString() === "bold y");
+    for (let k = 0; k < 10; k++) {
+      await selectBoldY();
+      const t0 = Date.now();
+      while (!(await settled()) && Date.now() - t0 < 500) await pg.waitForTimeout(50);
+      if (await settled()) break;
+    }
     await pg.keyboard.press("Control+c");
     // 收起选区再剪（按 End 在 CI 上偶尔赶在选区同步前，选区没收起来）
     await pg.evaluate(() => getSelection()!.collapseToEnd());
