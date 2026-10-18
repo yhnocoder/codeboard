@@ -27,6 +27,7 @@ export const UX: Record<string, () => Promise<void>> = {
   "dock-fits-narrow-board": () => run("dock-fits-narrow-board", dockFits),
   "expand-keeps-call-line-in-view": () => run("expand-keeps-call-line-in-view", expandFollow),
   "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
+  "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
 };
 
 /** 底部工具条：每个宽度都是一行，彼此不重叠，也不出窗口 */
@@ -146,4 +147,41 @@ async function dispatchByName(res: Record<string, unknown>) {
   await shot(h, "ux-dispatch");
   await h.page.context().browser()!.close();
   return /model_runner\.py/.test(String(res.first)) && /\brun\b/.test(String(res.first)) && !!run && link?.from.line === callLine && link?.call?.name === "call" && link?.call?.ev?.via === 'call("run")';
+}
+
+const menuTexts = (h: Host) => h.page.locator(".ctx.open button").allInnerTexts();
+const selNos = (h: Host) => h.page.locator(".card .gutter .no.sel").allInnerTexts();
+
+/** 右键代码行 / 行号 = 选中这一行 + 行菜单（卡片菜单在 Card ▸ 里）；已选的几行里右键保留选择；↵ 在编辑器里打开到第一行；右键调用还是调用菜单 */
+async function lineMenu(res: Record<string, unknown>) {
+  const b = emptyBoard("bL", "lines");
+  const step = nv("LLMEngine.step"); put(b, step, 80, 80, 620);
+  const h = await open({ board: b }), page = h.page;
+  await wait(h, 500);
+  const row = page.locator(`.card[data-id="${step.id}"] .src > [data-r]`, { hasText: "num_tokens = sum" }).first();
+  const rb = (await row.boundingBox())!;
+  await page.mouse.click(rb.x + 6, rb.y + rb.height / 2, { button: "right" }); await wait(h, 400);
+  const m1 = await menuTexts(h);
+  res.code = { sel: await selNos(h), hide: m1.some((t) => /Hide Lines/.test(t)), ask: m1.some((t) => /Ask a Question/.test(t)), card: m1.some((t) => /^Card/.test(t)) };
+  await page.locator(".ctx.open button", { hasText: /^Card/ }).hover(); await wait(h, 400);
+  res.cardSub = (await menuTexts(h)).some((t) => /Open in Editor/.test(t));
+  await page.keyboard.press("Escape"); await wait(h, 300);
+  const no = (n: number) => page.locator(`.card[data-id="${step.id}"] .gutter .no`, { hasText: new RegExp(`^${n}$`) }).first();
+  await no(50).click({ button: "right" }); await wait(h, 400);
+  res.gutter = { sel: await selNos(h), hide: (await menuTexts(h)).some((t) => /Hide Lines/.test(t)) };
+  await page.keyboard.press("Escape"); await wait(h, 300);
+  await no(52).click({ modifiers: ["Shift"] }); await wait(h, 300);
+  await no(51).click({ button: "right" }); await wait(h, 400);
+  res.kept = await selNos(h);
+  await page.keyboard.press("Escape"); await wait(h, 300);
+  await page.keyboard.press("Enter"); await wait(h, 400);
+  const o = h.sent.filter((m) => m.type === "open").at(-1) as { line?: number } | undefined;
+  res.open = o?.line;
+  await callEl(h, step.id, "schedule").click({ button: "right" }); await wait(h, 400);
+  res.call = (await menuTexts(h)).some((t) => /^Expand/.test(t));
+  await shot(h, "ux-linemenu");
+  await page.context().browser()!.close();
+  const c = res.code as { sel: string[]; hide: boolean; ask: boolean; card: boolean }, g = res.gutter as { sel: string[]; hide: boolean };
+  return c.sel.join() === "51" && c.hide && c.ask && c.card && res.cardSub === true && g.sel.join() === "50" && g.hide
+    && (res.kept as string[]).join() === "50,51,52" && res.open === 50 && res.call === true;
 }

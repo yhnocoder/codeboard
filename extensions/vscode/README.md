@@ -42,8 +42,8 @@ Nine board themes (plus an experimental one), each with a light and a dark varia
 
 ### And more
 
-- Click any line of a card to jump to it in the editor; in the editor, a CodeLens takes you back to the card.
-- Click line numbers to highlight lines.
+- Click a card's file name or press `↵` to open it in the editor; with lines selected it opens at the first of them. In the editor, a CodeLens takes you back to the card.
+- Click line numbers to select lines; right-click a line or its number to hide, highlight, add a sidenote or ask a question.
 - Press `P` to walk through the cards in order, with `←` `→` to move and `Esc` to leave.
 - Draw arrows between cards, label them and change their type; drop in images and web pages.
 - Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.

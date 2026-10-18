@@ -226,8 +226,18 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       const call = viewOf(r.seg)?.calls[+x.dataset.c!];
       if (call) { e.preventDefault(); e.stopPropagation(); act.callMenu(c().id, r.seg, call, e.clientX, e.clientY); return; }
     }
+    if (r?.t === "line") lineCtx(r, e);
+  };
+  // 右键代码行或行号：选中这一行（已在选中的几行里就保留），打开行菜单
+  const lineCtx = (r: Extract<Row, { t: "line" }>, e: MouseEvent) => {
+    e.preventDefault(); e.stopPropagation();
     const ls = lineSel();
-    if (ls && ls.card === c().id) { e.preventDefault(); e.stopPropagation(); act.lineMenu(ls, e.clientX, e.clientY); }
+    if (ls && ls.card === c().id && ls.seg === r.seg && r.line >= ls.start && r.line <= ls.end) return act.lineMenu(ls, e.clientX, e.clientY);
+    const one = { card: c().id, seg: r.seg, start: r.line, end: r.line };
+    window.getSelection()?.removeAllRanges();
+    setLineSel(one);
+    reportSelection();
+    act.lineMenu(one, e.clientX, e.clientY);
   };
 
   const [scrollY, setScrollY] = createSignal(0);
@@ -367,7 +377,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             {(r, i) => (
               <Show when={r.t === "line" && ys()[i()]}>
                 <span class="no" data-r={i()} classList={{ link: fromLines().has(`${r.seg}:${(r as any).line}`), jump: (r as any).skipped, sel: inSel(r.seg, (r as any).line), drop: dropAt(r.seg, (r as any).line) }}
-                  style={{ top: `${ys()[i()].y}px` }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => clickNo(r as any, e)}>{(r as any).line}</span>
+                  style={{ top: `${ys()[i()].y}px` }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => clickNo(r as any, e)} onContextMenu={(e) => lineCtx(r as any, e)}>{(r as any).line}</span>
               </Show>
             )}
           </For>

@@ -99,18 +99,24 @@ const genItems = (at: { card: string; seg?: string; line?: number }): Item[] => 
   { label: "Paste from Clipboard", run: () => addGenerated(at, "clipboard") },
   { label: "Choose File…", run: () => addGenerated(at, "file") },
 ];
+/** 右键代码行 / 行号：行的操作，整张卡的菜单在最后的 Card ▸ 里 */
 export function lineMenu(ls: LineSel, x: number, y: number) {
   selectCard(ls.card);
-  openMenu(lineItems(ls), x, y);
+  openMenu([...lineItems(ls), null, { label: "Card", sub: cardItems(ls.card, x, y) }], x, y);
 }
 
 // ---------- 卡片菜单 ----------
 
 export function cardMenu(id: string, x: number, y: number) {
+  const items = cardItems(id, x, y);
+  if (items.length) openMenu(items, x, y);
+}
+/** 卡片菜单的项（行菜单里的 Card ▸ 也用它）；x、y：再弹出的子菜单（Add Variant…）的位置 */
+function cardItems(id: string, x: number, y: number): Item[] {
   const f = cardById(id);
-  if (!f) return;
+  if (!f) return [];
   if (!isSel(f.host.id)) selectCard(id);
-  if (sel.cards.length + sel.sections.length > 1) return openMenu(multiItems(), x, y);
+  if (sel.cards.length + sel.sections.length > 1) return multiItems();
   const c = f.card;
   const host = f.host;
   const lockItem: Item = { label: placeOf(host.id).locked ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock([host.id]) };
@@ -124,7 +130,7 @@ export function cardMenu(id: string, x: number, y: number) {
     ...deleteItems(host.id),
   ];
   // 子白板框：打开、移除框（白板还在侧栏里）、删掉那块白板
-  if (c.kind === "board") return openMenu([
+  if (c.kind === "board") return [
     { label: "Open", kbd: `${K.mod}↵`, run: () => enterFrame(id) },
     { label: "Edit", sub: [lockItem] },
     arrangeItem(() => [host.id]),
@@ -132,19 +138,19 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "Move to New Section", run: () => moveToNewSection() },
     { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
     { label: "Delete Board…", danger: true, run: () => void deleteFrameBoard(id) },
-  ], x, y);
-  if (c.kind === "note" && c.msg) return openMenu([
+  ];
+  if (c.kind === "note" && c.msg) return [
     { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "title", id }) },
     { label: "Process Tag…", run: () => void addProc(id) },
     { label: "Start Card", checked: !!placeOf(id).start, run: () => toggleStart(id) },
     ...tail,
-  ], x, y);
-  if (c.kind === "note") return openMenu([
+  ];
+  if (c.kind === "note") return [
     { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
     { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
     ...tail,
-  ], x, y);
-  if (c.kind === "web") return openMenu([
+  ];
+  if (c.kind === "web") return [
     { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },
     { label: "Refresh Preview", run: () => retryMeta(c.id) },
     { label: "Edit", sub: [
@@ -155,8 +161,8 @@ export function cardMenu(id: string, x: number, y: number) {
     { label: "View", sub: ([[undefined, "Auto"], ["banner", "Image on Top"], ["side", "Image on Side"], ["text", "No Image"], ["compact", "Compact"]] as const).map(([s, label]) =>
       ({ label, checked: c.style === s, run: () => setWebStyle(c.id, s) })) },
     ...tail,
-  ], x, y);
-  if (c.kind === "links") return openMenu([
+  ];
+  if (c.kind === "links") return [
     { label: "Open All in Browser", run: () => c.items.forEach((it) => openLink(it.url)) },
     { label: "View", sub: [
       { label: "Compact", checked: !c.rich, run: () => setListRich(c.id, false) },
@@ -164,8 +170,8 @@ export function cardMenu(id: string, x: number, y: number) {
     ] },
     { label: "Edit", sub: [{ label: "Title", kbd: "Double-click Title", run: () => setEditing({ kind: "title", id: c.id }) }, lockItem] },
     ...tail,
-  ], x, y);
-  if (c.kind === "image") return openMenu([
+  ];
+  if (c.kind === "image") return [
     { label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent([id]) },
     { label: "Background", checked: !!c.bg, run: () => toggleNoBg(id) },
     { label: "Edit", sub: [
@@ -173,10 +179,10 @@ export function cardMenu(id: string, x: number, y: number) {
       lockItem,
     ] },
     ...tail,
-  ], x, y);
+  ];
   if (c.kind === "compare") {
     const canWalk = walkOrder(state.board, id).length > 1;
-    return openMenu([
+    return [
       { label: "Swap", run: () => mutate((b) => { const k = findCard(b, id)!.card as CompareCard; k.swap = !k.swap; }) },
       { label: "Unified", checked: !!c.unified, run: () => mutate((b) => { const k = findCard(b, id)!.card as CompareCard; k.unified = !k.unified; }) },
       { label: "Hide Same Lines", checked: !!c.hideSame, run: () => mutate((b) => { const k = findCard(b, id)!.card as CompareCard; k.hideSame = !k.hideSame; }) },
@@ -186,9 +192,9 @@ export function cardMenu(id: string, x: number, y: number) {
       { label: "Move to New Section", run: () => moveToNewSection() },
       lockItem, arrangeItem(() => [host.id]), null,
       ...deleteItems(host.id),
-    ], x, y);
+    ];
   }
-  if (!isCode(c)) return;
+  if (!isCode(c)) return [];
   // 代码卡（也可能是 Compare 里的一栏）。分组短一点，Hide*/Wrap 收进 View ▸（#24）
   const col = f.host.id !== c.id;
   const node = flows().byId.get(c.id);
@@ -241,7 +247,7 @@ export function cardMenu(id: string, x: number, y: number) {
     ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, turnItem()]),
     ...deleteItems(host.id),
   ];
-  openMenu(items, x, y);
+  return items;
 }
 
 /** 选中的卡变成一块子白板（线框 05 ④） */
