@@ -134,6 +134,12 @@ export async function versionFor(loc: Loc, seg: Pick<Segment, "start" | "end" | 
   return { version: text === null ? { kind: "none" } : { kind: "hash", hash: fingerprint(text) }, ...keep };
 }
 
+/** 仓库外的文件现在是哪个版本（pkg：装着的包版本；其他：内容指纹）。text = 文件现在的内容 */
+export async function currentVersion(abs: string, v: Version, text: string): Promise<Version> {
+  const pkg = v.kind === "pkg" ? await pkgVersion(abs) : null;
+  return pkg ? { kind: "pkg", ...pkg } : { kind: "hash", hash: fingerprint(text) };
+}
+
 /** 现在装着的版本的显示名（pkg / hash 的「新版本」用） */
 export async function currentVersionLabel(abs: string, v: Version): Promise<string> {
   if (v.kind === "pkg") {

@@ -266,7 +266,7 @@ const S: Record<string, () => Promise<void>> = {
     b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: B.id, seg: sb.id, lines: [sb.start + 2, sb.start + 2] } } as any);
     const h = await open({ board: b, light });
     // A moves down 5 lines as a whole (HEAD changed, content didn't)
-    await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5 } } } as any);
+    await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5, version: sa.version } } });
     await h.page.waitForTimeout(300);
     // B is Relocated 7 lines down (same content)
     await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
@@ -293,7 +293,7 @@ const S: Record<string, () => Promise<void>> = {
     b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: A.id, seg: sa.id, lines: [sa.start + 2, sa.start + 2] } } as any);
     const h = await open({ board: b, light });
     await h.post({ type: "rename", name: "Renamed" }); await h.page.waitForTimeout(200);
-    await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5 } } } as any);
+    await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5, version: sa.version } } });
     await h.page.waitForTimeout(300);
     await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300);
     const at = (x: any) => ({ name: x.name, start: x.cards[0].segments[0].start - sa.start, to: x.links[0].to.line - sa.start, note: x.sidenotes[0].at.lines[0] - sa.start });

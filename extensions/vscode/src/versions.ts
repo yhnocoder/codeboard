@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { allCodeCards, locateSeg, sameLines, storedSegs, trackSeg, upstreamSegs, versionLabel, viewKey, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
 import { headOf, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { analysisOf } from "./analysis";
-import { currentVersionLabel, rootOf, versionFor, type Loc } from "./source";
+import { currentVersion, currentVersionLabel, rootOf, versionFor, type Loc } from "./source";
 import { exists, langOf, mkUid, readText, splitLines } from "./ws";
 
 /** 白板上所有的段：代码卡（含 Compare 的两栏）和 Code sidenote */
@@ -61,7 +61,7 @@ export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Pro
       if (sha.startsWith(v.commit) || v.commit.startsWith(sha)) return { state: "ok" };
       const t = await showFile(gr, sha, path.relative(gr, abs).split(path.sep).join("/"));
       if (t === null) return { state: "lost" };
-      const { at: _a, ...r } = trackSeg(seg, splitLines(t), symsOf(seg.lang, t), `${ref.replace(/^origin\//, "")} ${sha.slice(0, 7)}`);
+      const { at: _a, ...r } = trackSeg(seg, splitLines(t), symsOf(seg.lang, t), { label: `${ref.replace(/^origin\//, "")} ${sha.slice(0, 7)}`, version: { kind: "git", commit: sha } });
       return r;
     }
   }
@@ -73,7 +73,7 @@ export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Pro
     if (v.uncommitted) {
       // 钉的是工作区内容（用户自己的改动）：跟工作区比，一样 = ok，不一样 = 新版本
       if (work === null) return { state: "lost" };
-      const { at: _w, ...t } = trackSeg(seg, splitLines(work), symsOf(seg.lang, work), "Working Tree");
+      const { at: _w, ...t } = trackSeg(seg, splitLines(work), symsOf(seg.lang, work), { label: "Working Tree", version: v });
       return t;
     }
     if (headText === null) return { state: "lost" };
@@ -87,14 +87,13 @@ export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Pro
       }
       return { state: "ok" };
     }
-    const { at: _at, ...t } = trackSeg(seg, headLines, symsOf(seg.lang, headText), head.slice(0, 7));
+    const { at: _at, ...t } = trackSeg(seg, headLines, symsOf(seg.lang, headText), { label: head.slice(0, 7), version: { kind: "git", commit: head } });
     return t;
   }
   // 仓库外：包版本 / 内容指纹，拿现在的文件比
   const work = await readText(abs);
   if (work === null) return { state: "missing" };
-  const label = await currentVersionLabel(abs, v);
-  const { at: _at, ...t } = trackSeg(seg, splitLines(work), symsOf(seg.lang, work), label);
+  const { at: _at, ...t } = trackSeg(seg, splitLines(work), symsOf(seg.lang, work), { label: await currentVersionLabel(abs, v), version: await currentVersion(abs, v, work) });
   return t;
 }
 

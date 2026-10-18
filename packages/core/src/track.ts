@@ -1,6 +1,6 @@
 // 宿主用：在另一个版本的文件里重新找到一段代码，并判断它和钉住的内容比起来变没变（「新版本」黄点）。
 // 纯函数，读文件、跑 git 由宿主做。
-import type { Segment } from "./model";
+import type { Segment, Version } from "./model";
 import type { Stale } from "./protocol";
 import { diffLines, findBlock, sameLines } from "./diff";
 
@@ -51,18 +51,19 @@ export function onlyHiddenChanged(oldText: string[], oldStart: number, newText: 
 
 /**
  * 一段代码在另一个版本（HEAD、装的新版本包、改过的文件）里的状态。
- * head = 新版本的显示名（短 commit / 包版本），放进 changed 里给白板显示。
+ * against = 拿来比的那个版本和它的显示名（短 commit / 包版本，放进 changed 里给白板显示）。
+ * 只是挪了位置（moved）时段就钉到这个版本上：行号是哪个版本的，钉的就是哪个版本
  */
-export function trackSeg(seg: Segment, lines: string[], syms: SymLoc[], head: string): Stale & { at?: Located } {
+export function trackSeg(seg: Segment, lines: string[], syms: SymLoc[], against: { label: string; version: Version }): Stale & { at?: Located } {
   const loc = locateSeg(seg, lines, syms);
   if (loc === null) return { state: "lost" };
   if (loc === "many") return { state: "many" };
   const now = lines.slice(loc.start - 1, loc.end);
   if (sameLines(now, seg.text)) {
     if (loc.start === seg.start && loc.end === seg.end) return { state: "ok", at: loc };
-    return { state: "moved", start: loc.start, end: loc.end, at: loc };
+    return { state: "moved", start: loc.start, end: loc.end, version: against.version, at: loc };
   }
-  return { state: "changed", hiddenOnly: onlyHiddenChanged(seg.text, seg.start, now, seg.hidden), head, at: loc };
+  return { state: "changed", hiddenOnly: onlyHiddenChanged(seg.text, seg.start, now, seg.hidden), head: against.label, at: loc };
 }
 
 /** 卡片上的某一行在新版本里是第几行（按内容映射；这一行被删了就落在它前面最近一条还在的行上） */
