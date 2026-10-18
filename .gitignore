@@ -7,3 +7,5 @@ test-out/
 .vscode-test/
 .ci-shots/
 .ci-impact/
+*.vsix
+extensions/vscode/LICENSE
