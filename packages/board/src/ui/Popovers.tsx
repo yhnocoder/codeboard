@@ -234,7 +234,8 @@ function noteMenu(n: Sidenote, x: number, y: number) {
   ], x, y);
 }
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-// 旁注原地编辑（#37）：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。⌘↵ 保存，Esc 取消
+// 旁注原地编辑（#37）：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。
+// 和 Note、问题的编辑一样，Esc、⌘↵、点到外面都是保存（Cancel 才是放弃）。字删光了保存就是删掉这条：Text sidenote 就是那段字，加的时候也不让加空的
 const [snEditing, setSnEditing] = createSignal<string | null>(null);
 function editText(n: Sidenote) {
   if (n.kind !== "text") return;
@@ -242,16 +243,29 @@ function editText(n: Sidenote) {
   setSnEditing(n.id);
 }
 function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
+  let box!: HTMLDivElement;
   const [v, setV] = createSignal(p.n.md);
   const grow = (el: HTMLTextAreaElement) => { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
-  const save = () => { const t = v().trim(); setSnEditing(null); if (t && t !== p.n.md) A.updateSidenote(p.n.id, (k) => { if (k.kind === "text") k.md = t; }); };
+  let done = false;
+  const finish = (save: boolean) => {
+    if (done) return;
+    done = true;
+    setSnEditing(null);
+    const t = v().trim();
+    if (!save || t === p.n.md) return;
+    if (t) A.updateSidenote(p.n.id, (k) => { if (k.kind === "text") k.md = t; });
+    else A.deleteSidenote(p.n.id);
+  };
+  onCleanup(() => finish(true)); // 弹窗被关掉了（点了白板）
   return (
-    <div class="sn-edit" onPointerDown={(e) => e.stopPropagation()}>
+    <div ref={box} class="sn-edit" onPointerDown={(e) => e.stopPropagation()}>
       <textarea spellcheck={false} value={v()} ref={(el) => queueMicrotask(() => { el.focus(); el.setSelectionRange(el.value.length, el.value.length); grow(el); })}
         onInput={(e) => { setV(e.currentTarget.value); grow(e.currentTarget); }}
-        onKeyDown={(e) => { keepKey(e); if (e.key === "Escape") { e.preventDefault(); setSnEditing(null); } if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save(); } }} />
+        onBlur={(e) => { if (!(e.relatedTarget instanceof Node && box.contains(e.relatedTarget))) finish(true); }}
+        onKeyDown={(e) => { keepKey(e); if (e.key === "Escape" || (e.key === "Enter" && (e.metaKey || e.ctrlKey))) { e.preventDefault(); finish(true); } }} />
       <Show when={v().trim()}><MdStatic class="sn-text sn-prev" src={v()} /></Show>
-      <div class="sn-eacts"><span>Markdown and $math$ · {A.K.mod}↵ to save</span><span class="grow" /><button class="tbtn" onClick={() => setSnEditing(null)}>Cancel</button><button class="tbtn pri" onClick={save}>Save</button></div>
+      {/* 按钮不拿焦点：点的时候字框不失焦 */}
+      <div class="sn-eacts" onMouseDown={(e) => e.preventDefault()}><span>Markdown and $math$ · {A.K.mod}↵ or click outside to save</span><span class="grow" /><button class="tbtn" onClick={() => finish(false)}>Cancel</button><button class="tbtn pri" onClick={() => finish(true)}>Save</button></div>
     </div>
   );
 }
@@ -363,7 +377,12 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
     if (tab() !== "code" || !s.trim()) { setRes([]); return; }
     t = window.setTimeout(() => ask("search", { q: s, scope: "code" }).then((r) => { setRes(r.filter((x) => x.kind === "symbol" || x.kind === "file").slice(0, 8)); setI(0); }).catch(() => setRes([])), 120);
   });
+  // 加好了、按了 Cancel 或去白板上选卡了。没有的话弹窗关掉时（Esc、点到外面）Text / Paste 里写了的照样加上，和编辑 Note 一样
+  let settled = false;
+  onCleanup(() => { if (!settled && (tab() === "text" || tab() === "paste")) void add(); });
+  const cancel = () => { settled = true; closePop(p.inst.id); };
   const done = (n: Omit<Sidenote, "id" | "at">, view?: any) => {
+    settled = true;
     A.addSidenote({ ...n, at: at(), why: why().trim() || undefined } as any, view);
     closePop(p.inst.id);
     toast("Sidenote added");
@@ -385,6 +404,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
     }
   };
   const pickCard = () => {
+    settled = true;
     closePop(p.inst.id);
     toast("Click a card on the board · Esc to cancel");
     A.pickCardThen((id) => { A.addSidenote({ at: at(), kind: "card", card: id, why: why().trim() || undefined } as any); toast("Sidenote added"); });
@@ -425,7 +445,7 @@ function AddNotePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "addNote" }> }
         </Switch>
         <Show when={tab() !== "text"}><input class="fld" placeholder="Why is it related? (optional)" value={why()} onInput={(e) => setWhy(e.currentTarget.value)} /></Show>
       </div>
-      <div class="db"><button onClick={() => closePop(p.inst.id)}>Cancel</button><button class="def" onClick={add}>Add</button></div>
+      <div class="db"><button onClick={cancel}>Cancel</button><button class="def" onClick={add}>Add</button></div>
     </div>
   );
 }
