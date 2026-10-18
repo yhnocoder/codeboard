@@ -2,7 +2,7 @@
 // 当前显示的 Variant 的段在 card.segments，其余的存在 variant.segs，段 id 一一对应：Link、Sticker 的行号切换时按内容跟过去（rebaseSegment），
 // 「只在这个 Variant」的 Sidenote 行号按那个 Variant 的代码算，切换时不动。纯函数，读文件、跑 git 由宿主做。
 import type { Board, CodeCard, Segment, Sidenote, Variant, VariantFrom } from "./model";
-import { versionLabel } from "./model";
+import { clone, versionLabel } from "./model";
 import { alignRows, mapLines, sameLines } from "./diff";
 import { lineMapOf, mapRange, rebaseSegment, type LineMap } from "./edit";
 
@@ -56,7 +56,6 @@ export function variantTitle(c: Pick<CodeCard, "segments" | "variants" | "active
 }
 
 const findCode = (b: Board, id: string): CodeCard | undefined => { const c = b.cards.find((k) => k.id === id); return c?.kind === "code" ? c : undefined; };
-const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
 /** 加一个 Variant（segs = 它的段，id 和卡上的段一一对应）。卡还没有 Variant 时先把现在的代码记成上游。不切换 */
 export function addVariant(b: Board, cardId: string, v: Variant & { segs: Segment[] }): void {

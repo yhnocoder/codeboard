@@ -1,9 +1,8 @@
 // 箭头上的标签框要用到的纯文本小工具：调用处的文字、参数在新代码里还在不在、↺ 是哪一行的循环。
-import type { Segment, Var } from "./model";
+import { escapeRegExp, type Segment, type Var } from "./model";
 
 const lineText = (s: Segment, line: number) => s.text[line - s.start];
-const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-const hasWord = (text: string, w: string) => new RegExp(`(^|[^\\w$])${esc(w)}(?![\\w$])`).test(text);
+const hasWord = (text: string, w: string) => new RegExp(`(^|[^\\w$])${escapeRegExp(w)}(?![\\w$])`).test(text);
 const words = (t: string) => t.match(/[A-Za-z_$][\w$]*/g) ?? [];
 
 /**

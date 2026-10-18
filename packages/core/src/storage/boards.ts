@@ -3,13 +3,13 @@
 // 第 6 版起还是卡库（Library）：共享卡放 cards/<id>.json，白板文件里只留引用。这里缓存的、交出去的都是换上了内容的完整白板；
 // 写盘时再拆开（deflate），共享卡按项和磁盘上的合并后写卡文件，再通知开着同一张卡的别的白板（onDidShare）。
 // 白板发来的改动（patch）马上改缓存里的那份，稍后写盘（WRITE_DELAY 里的改动合成一次写）；关面板、退出时 flush() 把没写的写下去。
-import { allCodeCards, BOARD_VERSION, emptyBoard, uid, type Board, type BoardFile, type BoardMeta, type Link, type SharedCard, type SharedCardFile } from "../model";
+import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, uid, withCols, type Board, type BoardFile, type BoardMeta, type Link, type SharedCard, type SharedCardFile } from "../model";
 import { Emitter } from "../emitter";
 import { loadBoardFile, loadSharedCard } from "../schema";
 import { applyPatch, deflate, diffBoards, inflate, mergeFile, putShared, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
 import { removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
 import { subBoardsOf } from "../subboard";
-import { baseName, dirName, extName, type Fs } from "./fs";
+import { dirName, extName, type Fs } from "./fs";
 
 /** 写之前的样子（文件在哪、侧栏关心的部分、组）：写完比一比，侧栏要不要刷新、旧文件要不要删 */
 type Prev = { file: string; outline: string; group?: string };
@@ -43,8 +43,6 @@ export const SAFE_ID = /^[\w-]{1,80}$/;
 
 /** 白板的改动攒多久写一次盘（ms）；写失败了隔多久再试 */
 const WRITE_DELAY = 400, RETRY_DELAY = 5000;
-
-export const boardUid = (p = "b") => `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 
 export class Storage {
   private changed = new Emitter<void>();
@@ -152,9 +150,9 @@ export class Storage {
           const board = loadBoardFile(raw);
           // id 决定存盘的文件名：只认安全的 id；和别的文件重了（Finder 里复制出来的）就换一个新的，免得两份互相覆盖
           const base = idOf(f.file);
-          if (!SAFE_ID.test(board.id ?? "")) board.id = SAFE_ID.test(base) ? base : boardUid();
-          else if (board.id !== base && files.some((g) => idOf(g.file) === board.id)) board.id = boardUid();
-          if (seen.has(board.id)) board.id = boardUid();
+          if (!SAFE_ID.test(board.id ?? "")) board.id = SAFE_ID.test(base) ? base : uid("b");
+          else if (board.id !== base && files.some((g) => idOf(g.file) === board.id)) board.id = uid("b");
+          if (seen.has(board.id)) board.id = uid("b");
           // 共享卡：引用换成卡库里的内容
           const used = new Map<string, SharedCardFile>();
           for (const c of board.cards) if (c.kind === "shared") { const sc = await this.readShared(c.id); if (sc) used.set(c.id, sc); }
@@ -385,13 +383,7 @@ export class Storage {
   copyOut(id: string, cards: string[]): { cards: CardCopy[]; links: Link[] } {
     const b = this.cache.get(id)?.board;
     if (!b) return { cards: [], links: [] };
-    const want = new Set<string>();
-    for (const c of cards) {
-      const card = b.cards.find((k) => k.id === c);
-      if (!card) continue;
-      if (card.kind === "compare") card.cols.forEach((k) => want.add(k));
-      want.add(c);
-    }
+    const want = new Set(withCols(b, cards));
     return {
       cards: b.cards.filter((c) => want.has(c.id)).map((c) => structuredClone({ card: c, place: b.place[c.id], sidenotes: b.sidenotes.filter((n) => travels(n, c.id)) })),
       links: structuredClone(b.links.filter((l) => want.has(l.from.card) && want.has(l.to.card))),
@@ -448,13 +440,7 @@ export class Storage {
   async share(id: string, cards: string[]): Promise<Record<string, string>> {
     return this.serial(async () => {
       const e = await this.entry(id);
-      const want = new Set<string>();
-      for (const c of cards) {
-        const card = e.board.cards.find((k) => k.id === c);
-        if (!card) continue;
-        want.add(c);
-        if (card.kind === "compare") card.cols.forEach((k) => want.add(k));
-      }
+      const want = withCols(e.board, cards);
       const prev = prevOf(e);
       const renamed: Record<string, string> = {};
       for (let c of want) {
@@ -488,8 +474,7 @@ export class Storage {
     return this.serial(async () => {
       const e = await this.entry(id);
       if (!e.refs.has(card)) return null;
-      const c = e.board.cards.find((k) => k.id === card);
-      for (const k of c?.kind === "compare" ? [card, ...c.cols] : [card]) { e.refs.delete(k); e.held.delete(k); }
+      for (const k of withCols(e.board, [card])) { e.refs.delete(k); e.held.delete(k); }
       const prev = prevOf(e);
       const to = unlinkCard(e.board, card);
       await this.commit(e, prev);
@@ -505,7 +490,7 @@ export class Storage {
   }
 
   async create(name: string, group?: string): Promise<Board> {
-    const b = emptyBoard(boardUid(), name);
+    const b = emptyBoard(uid("b"), name);
     await this.save(b, { group: group ?? null });
     return b;
   }
@@ -536,7 +521,7 @@ export class Storage {
   async duplicate(id: string): Promise<Board | null> {
     const b = await this.load(id);
     if (!b) return null;
-    const nb: Board = { ...structuredClone(b), id: boardUid(), name: `${b.name} copy` };
+    const nb: Board = { ...structuredClone(b), id: uid("b"), name: `${b.name} copy` };
     // 本白板自己的卡换新 id：副本上的卡和原来的是两张卡（以后原来的那张变成共享卡时，副本上的不会被认成它）；共享卡还是同一张
     const refs = this.cache.get(id)?.refs ?? new Set<string>();
     for (const c of [...nb.cards]) if (!refs.has(c.id)) renameCard(nb, c.id, uid("c"));

@@ -1,5 +1,5 @@
 // 摆放：新卡放哪、展开出来的子卡放哪。只做几何，尺寸由调用方给（白板里是实测尺寸）。
-import type { Card, Place } from "./model";
+import type { Board, Card, Place, Section } from "./model";
 
 export type Rect = { x: number; y: number; w: number; h: number };
 
@@ -210,4 +210,38 @@ export function align(rs: (Rect & { id: string })[], op: AlignOp): Map<string, P
     }
   }
   return out;
+}
+
+// ---------- Section 的框 ----------
+
+/** Section 的框给成员卡、子 Section 留的边距；折叠后的标题条大小 */
+export const SECTION_PAD = { l: 22, r: 22, t: 34, b: 22 };
+export const SECTION_PILL = { w: 220, h: 32 };
+
+/** 折叠的 Section：只剩左上角的标题条 */
+export const sectionPill = (s: Pick<Section, "x" | "y">): Rect => ({ x: s.x, y: s.y, w: SECTION_PILL.w, h: SECTION_PILL.h });
+
+/** 展开的 Section 的框：自己存的框 ∪ 里面的东西（成员卡、子 Section 的框，各加边距） */
+export function sectionFrame(s: Rect, inner: Iterable<Rect>): Rect {
+  let r: Rect = { x: s.x, y: s.y, w: s.w, h: s.h };
+  for (const k of inner) r = union(r, { x: k.x - SECTION_PAD.l, y: k.y - SECTION_PAD.t, w: k.w + SECTION_PAD.l + SECTION_PAD.r, h: k.h + SECTION_PAD.t + SECTION_PAD.b });
+  return r;
+}
+
+/** 整块白板每个 Section 的框（折叠的是标题条；子 Section 折叠时按标题条算进父框）。rects = 摆着的卡的矩形 */
+export function sectionFrames(b: Pick<Board, "sections" | "place">, rects: Map<string, Rect>): Map<string, Rect> {
+  const kids = new Map<string, Section[]>();
+  for (const s of b.sections) if (s.parent) kids.set(s.parent, [...(kids.get(s.parent) ?? []), s]);
+  const members = new Map<string, Rect[]>();
+  for (const [id, r] of rects) { const s = b.place[id]?.section; if (s) members.set(s, [...(members.get(s) ?? []), r]); }
+  const open = new Map<string, Rect>();
+  const frame = (s: Section, depth: number): Rect => {
+    const had = open.get(s.id);
+    if (had) return had;
+    const inner = depth < 50 ? [...(members.get(s.id) ?? []), ...(kids.get(s.id) ?? []).map((k) => (k.collapsed ? sectionPill(k) : frame(k, depth + 1)))] : [];
+    const r = sectionFrame(s, inner);
+    open.set(s.id, r);
+    return r;
+  };
+  return new Map(b.sections.map((s) => [s.id, s.collapsed ? sectionPill(s) : frame(s, 0)]));
 }

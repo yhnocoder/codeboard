@@ -2,7 +2,7 @@
 import { createMemo } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, segOf, cardTitle, removeCards, instName, genWhat, cardChip, rankByReceiver,
+  uid, isCode, segOf, cardTitle, removeCards, instName, genWhat, cardChip, rankByReceiver, sameCallSite, baseName,
   type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
 } from "@codeboard/core";
 import { state, setState, mutate, cardById, toast, placeOf, select } from "../state/store";
@@ -43,7 +43,7 @@ export async function lateDispatch(cardId: string, segId: string, call: CallSpan
   let r: DispatchResult;
   try { r = await ask("dispatch", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name }); } catch { return; }
   if (!r) return;
-  const L = state.board.links.find((l) => l.call && l.from.card === cardId && l.from.seg === segId && l.from.line === call.line && l.call.name === call.name && l.to.card === placed);
+  const L = state.board.links.find((l) => sameCallSite(l, { card: cardId, seg: segId, line: call.line, name: call.name }) && l.to.card === placed);
   if (!L) return;
   const alts: CallAlt[] = r.impls.filter((x) => !x.base).map((x) => ({ label: x.label, detail: x.detail, path: x.path, line: x.line, qual: x.qual, ...(x.lib ? { lib: x.lib } : {}) }));
   mutate((b) => {
@@ -103,7 +103,7 @@ export function altsOf(L: Link): AltItem[] {
 }
 /** 同一个调用点出去的 Call 箭头（含自己） */
 function siblings(L: Link): Link[] {
-  return state.board.links.filter((l) => l.call && l.from.card === L.from.card && l.from.seg === L.from.seg && l.from.line === L.from.line && l.call.name === L.call!.name);
+  return state.board.links.filter((l) => sameCallSite(l, { ...L.from, name: L.call!.name }));
 }
 
 /** 段在宿主那边的路径（ExpandPick 用）：工作区仓库里的拼上仓库路径，工作区外的是绝对路径；GitHub、Free 没有 */
@@ -276,7 +276,7 @@ export async function addGenerated(at: { card: string; seg?: string; line?: numb
   if (!src) return toast(from === "clipboard" ? "The clipboard has no text." : "No file chosen.");
   const lines = src.text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
   const seg: Segment = { id: uid("s"), src: { kind: "free" }, path: "", lang: src.lang, start: 1, end: lines.length, text: lines, version: { kind: "none" } };
-  const name = src.name.split(/[\\/]/).pop() ?? "";
+  const name = baseName(src.name);
   const card: CodeCard = { id: uid("c"), kind: "code", segments: [seg], gen: { what: genWhat(src.lang, src.name, src.text), run: `${name ? `${name} · ` : "run "}${hhmm()}` } };
   const views = await ask("views", { segs: [seg] }).catch(() => ({}));
   setState("views", (v) => ({ ...v, ...views }));

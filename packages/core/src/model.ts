@@ -362,6 +362,7 @@ export function emptyBoard(id: string, name: string): Board {
 // ---------- 小工具 ----------
 
 let seq = 0;
+/** 新 id：前缀 + 时间 + 序号 + 随机（卡、段、Link、白板都用它） */
 export const uid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 export const isCode = (c: Card | undefined): c is CodeCard => c?.kind === "code";
@@ -413,8 +414,14 @@ export function codeGlyph(c: CodeCard): string {
   return "⋮";
 }
 
-export const baseName = (p: string) => p.split("/").pop() ?? p;
-const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*(.+?)\*\*/g, "$1").replace(/\*\*$/, "").trim()).find(Boolean) ?? "";
+/** 路径的最后一段（/ 和 \ 都认） */
+export const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+/** Markdown 的第一句（去掉标题、引用、列表标记和 ** `；__init__ 这种名字不动）：Note 的默认名、问题列表、骨架里的名字 */
+export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
+/** 当正则里的字面文字 */
+export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+/** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */
+export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 export function domainOf(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }
@@ -430,6 +437,18 @@ export function versionLabel(v: Version | undefined, short = false): string {
     case "none": return "No commit";
   }
 }
+
+export function sameSource(a: Source, b: Source) {
+  switch (a.kind) {
+    case "repo": return b.kind === "repo" && a.repo === b.repo;
+    case "external": return b.kind === "external" && a.root === b.root;
+    case "github": return b.kind === "github" && a.owner === b.owner && a.name === b.name && a.ref === b.ref;
+    case "free": return b.kind === "free" && a.url === b.url;
+  }
+}
+
+/** 第 l 行落在哪个区间里（隐藏的行范围） */
+export const inRanges = (rs: [number, number][] | undefined, l: number) => rs?.find(([a, b]) => a <= l && l <= b);
 
 export function sameVersion(a: Version, b: Version) {
   if (a.kind !== b.kind) return false;
@@ -460,11 +479,32 @@ export function findCard(b: Pick<Board, "cards">, id: string): { card: Card; hos
   return { card, host };
 }
 
-/** Compare 的栏 id → 那张 Compare 的 id */
-export function colHosts(b: Pick<Board, "cards">): Map<string, string> {
+/** 卡 id → 画布上摆着它的卡的 id（Compare 的栏 → 那张 Compare，其余是自己）。一次建好，按 id 查 */
+export function hostOf(b: Pick<Board, "cards">): (id: string) => string {
   const m = new Map<string, string>();
   for (const c of b.cards) if (c.kind === "compare") for (const k of c.cols) m.set(k, c.id);
-  return m;
+  return (id) => m.get(id) ?? id;
+}
+
+/** 这张卡连同它的两栏（Compare），其余就是自己 */
+export const cardAndCols = (c: Card): string[] => (c.kind === "compare" ? [c.id, ...c.cols] : [c.id]);
+
+/** 这些卡连同 Compare 的两栏（按 cards 里的先后；白板上没有的 id 不要） */
+export function withCols(b: Pick<Board, "cards">, ids: Iterable<string>): string[] {
+  const want = new Set(ids);
+  for (const c of b.cards) if (want.has(c.id)) cardAndCols(c).forEach((k) => want.add(k));
+  return b.cards.filter((c) => want.has(c.id)).map((c) => c.id);
+}
+
+/** 贴纸贴在哪张卡、哪一行（绑在箭头上的算箭头出发的那一处；画布上没绑东西的没有） */
+export function stickerWhere(b: Pick<Board, "links">, s: Sticker): { card?: string; seg?: string; line?: number } {
+  const at = s.at;
+  if (at.kind === "line") return { card: at.card, seg: at.seg, line: at.line };
+  if (!at.on) return {};
+  if ("card" in at.on) return { card: at.on.card };
+  const id = at.on.link;
+  const l = b.links.find((k) => k.id === id);
+  return l ? { card: l.from.card, seg: l.from.seg, line: l.from.line } : {};
 }
 
 /** 画布上摆着的卡（有 Place 的），按叠放顺序 */
@@ -483,7 +523,7 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
   const out: Segment[] = [];
   for (const s of segs) {
     const p = out[out.length - 1];
-    if (p && p.src.kind !== "free" && s.src.kind !== "free" && p.path === s.path && JSON.stringify(p.src) === JSON.stringify(s.src) && sameVersion(p.version, s.version) && s.start <= p.end + 1) {
+    if (p && p.src.kind !== "free" && s.src.kind !== "free" && p.path === s.path && sameSource(p.src, s.src) && sameVersion(p.version, s.version) && s.start <= p.end + 1) {
       if (s.end > p.end) {
         p.text = [...p.text, ...s.text.slice(p.end - s.start + 1)];
         p.end = s.end;
@@ -497,6 +537,17 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
   }
   return out;
 }
+
+/** 调用的显示名：Scheduler.schedule → schedule；__init__ → 类名 */
+export function callName(qual: string): string {
+  const q = qual.split(".");
+  const last = q[q.length - 1];
+  return last === "__init__" && q.length > 1 ? q[q.length - 2] : last;
+}
+
+/** Call 箭头是不是从这个调用点出发（同一张卡、同一段、同一行，调用的是同一个名字） */
+export const sameCallSite = (l: Pick<Link, "from" | "call">, at: { card: string; seg?: string; line?: number; name: string }) =>
+  !!l.call && l.from.card === at.card && l.from.seg === at.seg && l.from.line === at.line && l.call.name === at.name;
 
 export const varKey = (v: Var) => `${v.ret ? "→" : ""}${v.a}|${v.b ?? ""}`;
 /** 线上显示的文字：名字相同只显示一个；不同显示 a → b；返回值 → logits */

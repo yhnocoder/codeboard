@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { cleanCompletion, spaceChatReply, COMPLETE_SYSTEM, deepseekChatRequest, deepseekComplete, deepseekFimRequest, resetDeepseekFim } from "../src";
+import { cleanCompletion, spaceChatReply, COMPLETE_SYSTEM } from "@codeboard/core";
+import { deepseekChatRequest, deepseekComplete, deepseekFimRequest, resetDeepseekFim } from "../src/deepseek";
 
 type Call = { url: string; body: any; headers: Record<string, string>; signal?: AbortSignal };
 // 假的 fetch：按顺序回给定的回答，记下每次请求（不连网）

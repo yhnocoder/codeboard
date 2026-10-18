@@ -19,7 +19,7 @@ import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
 import { allQuestions, exportFile, permalinks } from "./exports";
-import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
+import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText, hasLocalFile } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
@@ -225,7 +225,7 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
   const left = { label: wt ? versionLabel(seg.version) : `Pinned ${versionLabel(seg.version)}`, path: seg.path, start: seg.start, text: seg.text, html: await highlight(seg.text, seg.lang, (await versionText(seg)) ?? undefined) };
   const abs = absOf(seg);
   const empty = (label: string): DiffData => ({ title, left, right: { label, path: seg.path, start: seg.start, text: [], html: [] }, canUpdate: false });
-  if (!abs || seg.src.kind === "free" || seg.src.kind === "github") return empty("No newer version");
+  if (!abs || !hasLocalFile(seg.src)) return empty("No newer version");
   let text: string | null = null, label = "", newVersion = seg.version, lastChange: string | undefined;
   const root = seg.version.kind === "git" ? await repoRootOf(abs) : null;
   const rel = root ? path.relative(root, abs).split(path.sep).join("/") : seg.path;
@@ -262,7 +262,7 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
 
 /** commit 下拉：改过这个符号的 commit（git log -L） */
 async function commits(seg: Segment): Promise<Commit[]> {
-  if (seg.version.kind !== "git" || seg.src.kind === "free" || seg.src.kind === "github") return [];
+  if (seg.version.kind !== "git" || !hasLocalFile(seg.src)) return [];
   const abs = absOf(seg);
   const root = abs && (await repoRootOf(abs));
   if (!abs || !root) return [];

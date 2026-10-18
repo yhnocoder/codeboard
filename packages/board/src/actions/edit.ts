@@ -1,7 +1,7 @@
 // 改白板：行（隐藏、高亮、复制）、删除 / 复制卡、卡片属性、Compare、合并 / 拆开、Section。
 import { unwrap } from "solid-js/store";
 import {
-  replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
+  escapeRegExp, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
   uid, findCard, isCode, cardTitle, segOf,
   bounds, removeCards,
   copyText, cardRows, LANGS, defaultWidth,
@@ -180,7 +180,7 @@ export function renameCard(id: string, v: string) {
 /** 改了卡名：白板上写着 [[旧名]] 的引用跟着改 */
 function renameRefs(b: Board, from: string, to: string) {
   if (!from || from === to || /[\[\]\n]/.test(to)) return;
-  const re = new RegExp(`\\[\\[\\s*${from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*\\]\\]`, "gi");
+  const re = new RegExp(`\\[\\[\\s*${escapeRegExp(from)}\\s*\\]\\]`, "gi");
   const fix = (s?: string) => (s && s.includes("[[") ? s.replace(re, `[[${to}]]`) : s);
   for (const k of b.cards) {
     if (k.kind === "note") { const m = fix(k.md); if (m !== k.md) k.md = m!; }

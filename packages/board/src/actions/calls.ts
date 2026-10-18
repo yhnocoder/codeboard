@@ -1,9 +1,7 @@
 // v0.2 调用（线框 03、12、13）：RPC 标记、进程标签、消息卡、↩ back to；起点卡；Arrow 图例；调用树；运行记录（observed 证据和实参）。
 import { createMemo, createSignal } from "solid-js";
-import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, removeCards, removeLinks, LEGEND,
-  type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
+  uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, removeCards, removeLinks, LEGEND, sameSource, baseName, type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
 } from "@codeboard/core";
 import { state, mutate, select, flows, cardById, rectOf, toast, placeOf, placed, sel } from "../state/store";
 import { openPop } from "../state/pop";
@@ -223,7 +221,7 @@ export async function addRunCall(i: number) {
   const call: CallSpan = state.views[seg.id]?.calls.find((k) => k.line === c.from.line && k.name === name)
     ?? state.views[seg.id]?.calls.find((k) => k.line === c.from.line)
     ?? { line: c.from.line, col: 0, end: 0, name, loop: false };
-  const same = JSON.stringify(unwrap(seg.src)) === JSON.stringify(tl.src);
+  const same = sameSource(seg.src, tl.src);
   await expandCall(at.card, at.seg, call, undefined, same ? { path: tl.path, line: c.to.line, rel: true, qual: c.to.qual } : { path: tl.hp, line: c.to.line, qual: c.to.qual }, true);
   applyRunMsg(rs.apply, true);
 }
@@ -233,7 +231,7 @@ export function runCallText(i: number): { from: string; to: string; n: number } 
   const rs = runState()!;
   const c = rs.apply.run.calls[i];
   const fl = rs.apply.locs[c.from.file];
-  const base = (fl?.path ?? c.from.file).split("/").pop();
+  const base = baseName(fl?.path ?? c.from.file);
   return { from: `${base}:${c.from.line}`, to: c.to.qual, n: c.count };
 }
 

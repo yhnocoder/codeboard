@@ -2,12 +2,11 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { cornerAt, findCard, sameVersion, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { clone, cornerAt, findCard, sameVersion, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
-  const gone = new Set(ids);
-  for (const c of b.cards) if (c.kind === "compare" && gone.has(c.id)) c.cols.forEach((k) => gone.add(k));
+  const gone = new Set(withCols(b, ids));
   b.cards = b.cards.filter((c) => !gone.has(c.id));
   for (const id of gone) delete b.place[id];
   b.links = b.links.filter((l) => !gone.has(l.from.card) && !gone.has(l.to.card));
@@ -288,9 +287,6 @@ const findSeg = (b: Board, cardId: string, segId: string) => findOwner(b, cardId
 
 // ---------- 共享卡、拷贝、合并 / 拆开（白板动作里的领域改动都在这里，白板只管选中、动画、提示） ----------
 
-/** 深拷贝：在 Solid 的 produce 里拿到的是代理对象，structuredClone 拷不了 */
-const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x));
-
 /** 删掉这些 Sidenote */
 export function removeSidenotes(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
@@ -303,7 +299,7 @@ export function removeSidenotes(b: Board, ids: Iterable<string>): void {
  */
 export function sidenoteCard(n: Sidenote, id = uid("c")): Card | null {
   switch (n.kind) {
-    case "code": return { id, kind: "code", segments: [{ ...copy(n.code), id: uid("s") }], desc: n.why };
+    case "code": return { id, kind: "code", segments: [{ ...clone(n.code), id: uid("s") }], desc: n.why };
     case "paste": {
       const text = n.text.split("\n");
       return { id, kind: "code", segments: [{ id: uid("s"), src: { kind: "free", url: n.url }, path: "", lang: n.lang, start: 1, end: text.length, text, version: { kind: "none" } }], desc: n.why };
@@ -342,7 +338,7 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
   const todo = items.filter((it) => o.copy || !have.has(it.card.id));
   for (const it of todo) cards[it.card.id] = o.copy ? uid(it.card.kind === "code" ? "c" : it.card.kind[0]) : it.card.id;
   for (const it of todo) {
-    const c = copy(it.card);
+    const c = clone(it.card);
     c.id = cards[it.card.id];
     if (c.kind === "code") {
       for (const s of c.segments) { const n = o.copy ? uid("s") : s.id; segs[s.id] = n; s.id = n; }
@@ -358,7 +354,7 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
     const nids = new Set(b.sidenotes.map((n) => n.id));
     for (const n of it.sidenotes ?? []) {
       if (n.kind === "card" || n.at.card !== it.card.id) continue; // 指着别的卡的 Sidenote 不带（那张卡不在这块白板上）
-      const m = copy(n);
+      const m = clone(n);
       if (o.copy) m.id = uid("n"); else if (nids.has(m.id)) continue;
       m.at = { ...m.at, card: c.id, seg: m.at.seg && segs[m.at.seg] };
       if (!m.at.seg) delete m.at.seg;
@@ -372,7 +368,7 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
   for (const l of o.links ?? []) {
     const from = on(l.from.card), to = on(l.to.card);
     if (!from || !to) continue;
-    const c = copy(l);
+    const c = clone(l);
     const n: Link = { ...c, id: uid("l"), from: end(c.from, from), to: end(c.to, to) };
     if (there.has(key(n))) continue;
     there.add(key(n));
@@ -403,7 +399,7 @@ export function mergeCodeCards(b: Board, ids: string[], target: string, o: { id?
   const re = new Map<string, string>();
   for (const id of ids) re.set(id, o.unlink?.(id) ? unlinkCard(b, id) : id);
   const now = ids.map((id) => re.get(id)!);
-  const orig = now.map((id) => b.cards.find((c) => c.id === id)).filter((c): c is CodeCard => c?.kind === "code").map(copy);
+  const orig = now.map((id) => b.cards.find((c) => c.id === id)).filter((c): c is CodeCard => c?.kind === "code").map(clone);
   if (orig.length < 2) return null;
   const T = orig.find((c) => c.id === re.get(target)) ?? orig[0];
   const segs = mergeOverlapping(sortSegments(orig.flatMap((c) => c.segments), T.segments[0]?.path));
@@ -413,7 +409,7 @@ export function mergeCodeCards(b: Board, ids: string[], target: string, o: { id?
   const TP = b.place[T.id];
   const M: CodeCard = {
     id: mid, kind: "code", segments: segs, title: T.title, desc: T.desc, hide: T.hide,
-    mergedFrom: orig.flatMap((c) => c.mergedFrom ?? [{ card: c, place: copy(b.place[c.id]) }]),
+    mergedFrom: orig.flatMap((c) => c.mergedFrom ?? [{ card: c, place: clone(b.place[c.id]) }]),
   };
   for (const c of orig) if (c !== T && c.desc) b.sidenotes.push({ id: uid("n"), at: { card: mid }, kind: "text", md: c.desc });
   const w = Math.max(560, ...orig.map((c) => b.place[c.id]?.w ?? 560)); // 先量宽度，再删原来的摆放
@@ -424,7 +420,7 @@ export function mergeCodeCards(b: Board, ids: string[], target: string, o: { id?
   b.cards.push(M);
   b.place[mid] = { x: TP?.x ?? 0, y: TP?.y ?? 0, w, section: TP?.section };
   if (b.place[mid].section === undefined) delete b.place[mid].section;
-  return { id: mid, segments: copy(segs) };
+  return { id: mid, segments: clone(segs) };
 }
 
 /** 拆开：有合并记录就拆回原来的卡（放回原位、Link 回到各自的卡）；没有就按段拆。返回新卡和它们的段 */
@@ -438,12 +434,12 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
   const have = new Set(b.cards.map((c) => c.id));
   const parts: CodeCard[] = m.mergedFrom
     ? m.mergedFrom.map((o) => {
-      pp.push({ ...copy(o.place), x: o.place.x + dx, y: o.place.y + dy, section: mp.section });
-      const k = copy(o.card);
+      pp.push({ ...clone(o.place), x: o.place.x + dx, y: o.place.y + dy, section: mp.section });
+      const k = clone(o.card);
       if (have.has(k.id)) k.id = uid("c"); // 复制过的合并卡再拆：原卡的 id 已经被另一份占了
       return k;
     })
-    : m.segments.map((s, i) => { pp.push({ x: mp.x + i * 40, y: mp.y + i * 40, w: mp.w, section: mp.section }); return { id: uid("c"), kind: "code", segments: [copy(s)], hide: m.hide }; });
+    : m.segments.map((s, i) => { pp.push({ x: mp.x + i * 40, y: mp.y + i * 40, w: mp.w, section: mp.section }); return { id: uid("c"), kind: "code", segments: [clone(s)], hide: m.hide }; });
   // 段的高亮 / 隐藏跟着行走
   for (const p of parts) for (const s of p.segments) {
     const src = m.segments.filter((q) => q.path === s.path && sameVersion(q.version, s.version) && q.start <= s.end && q.end >= s.start);
@@ -466,7 +462,7 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
     if (q.section === undefined) delete q.section;
     b.place[p.id] = q;
     made.push(p.id);
-    segments.push(...copy(p.segments));
+    segments.push(...clone(p.segments));
   });
   return { made, segments };
 }

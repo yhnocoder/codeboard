@@ -4,6 +4,7 @@ import * as path from "node:path";
 import { importPkg, type FileAnalysis } from "@codeboard/core/analysis";
 import type { Segment } from "@codeboard/core";
 import { exists, inWorkspace, wsRoots } from "./ws";
+import { hasLocalFile } from "./source";
 
 const wsPkg = new Map<string, Promise<boolean>>();
 export const resetScope = () => wsPkg.clear();
@@ -45,7 +46,7 @@ export async function libOf(abs: string): Promise<string | undefined> {
  * imports 取自段那个版本的整个文件（拿不到就用当前文件）。
  */
 export async function callPkgs(seg: Segment, imports: FileAnalysis["imports"], abs: string | null): Promise<(c: { name: string; recv?: string }) => string | undefined> {
-  if (seg.src.kind === "free" || seg.src.kind === "github") return () => undefined;
+  if (!hasLocalFile(seg.src)) return () => undefined;
   const own = seg.src.kind === "external" && abs ? await topPkgOf(abs) : undefined;
   const lib = new Map<string, boolean>();
   for (const im of imports) {

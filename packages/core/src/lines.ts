@@ -1,6 +1,6 @@
 // 代码卡的「行」：哪些行显示、哪里画省略条 / 函数边界线 / 文件分隔条。
 // 白板按它渲染，Link 端点、Sidenote 标记按它找位置。
-import type { CodeCard, HideFlags, Segment } from "./model";
+import { inRanges, type CodeCard, type HideFlags, type Segment } from "./model";
 
 export const F_BLANK = 1, F_COMMENT = 2, F_DOCSTRING = 4;
 
@@ -28,8 +28,6 @@ export type RowOpts = {
   views?: Record<string, SegView | undefined>; // 段 id → 展示数据
   versionOf?: (s: Segment) => string | undefined; // 和其他段版本不同时，文件条上显示
 };
-
-const inRanges = (rs: [number, number][] | undefined, l: number) => rs?.find(([a, b]) => a <= l && l <= b);
 
 /** 一张代码卡要渲染的行 */
 export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}): Row[] {

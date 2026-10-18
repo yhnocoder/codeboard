@@ -1,25 +1,23 @@
 // Copy Diagnostics 的文本：宿主收集事实，这里排版（纯函数，好测）。home 目录一律换成 ~。
+import { escapeRegExp } from "./model";
 
 export type DiagInfo = {
-  ext: string; // 插件版本
-  vscode: string;
+  ext: string; // CodeBoard 的版本
+  app: string; // 宿主和它的版本：VS Code 1.105.0
   os: string; // darwin 24.1.0 arm64
-  python: boolean;
-  pylance: boolean;
+  env: string[]; // 宿主自己关心的几行（VS Code：Python / Pylance 装没装）
   folders: { path: string; head?: string; dirty?: boolean; git: boolean }[];
   board?: { name: string; cards: number; arrows: number; sections: number };
   log: string[]; // 最近的日志行：`2026-10-16T03:35:00.000Z [error] …`
   boardJson?: string;
 };
 
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
 /** 把 home 路径换成 ~（含 file:// 和 Windows 反斜杠写法） */
 export function tildify(text: string, home: string): string {
   if (!home || home === "/") return text;
   const h = home.replace(/[\\/]+$/, "");
   const forms = new Set([h, h.replace(/\\/g, "/"), h.replace(/\//g, "\\")]);
-  for (const f of [...forms].sort((a, b) => b.length - a.length)) text = text.replace(new RegExp(`${esc(f)}(?=[\\\\/]|$|[\\s"'\`:)\\]])`, "g"), "~");
+  for (const f of [...forms].sort((a, b) => b.length - a.length)) text = text.replace(new RegExp(`${escapeRegExp(f)}(?=[\\\\/]|$|[\\s"'\`:)\\]])`, "g"), "~");
   return text;
 }
 
@@ -31,10 +29,7 @@ export function recentErrors(log: string[], n = 20): string[] {
 }
 
 export function formatDiagnostics(d: DiagInfo, home: string): string {
-  const yes = (b: boolean) => (b ? "yes" : "no");
-  const out: string[] = [];
-  out.push(`CodeBoard ${d.ext} · VS Code ${d.vscode} · ${d.os}`);
-  out.push(`Python ext: ${yes(d.python)} · Pylance: ${yes(d.pylance)}`);
+  const out: string[] = [`CodeBoard ${d.ext} · ${d.app} · ${d.os}`, ...d.env];
   if (!d.folders.length) out.push("Workspace: (no folder open)");
   for (const f of d.folders) out.push(`Workspace: ${f.path}${f.git ? ` @ ${f.head ? f.head.slice(0, 7) : "?"} (${f.dirty ? "dirty" : "clean"})` : " (not a git repo)"}`);
   if (d.board) out.push(`Board: “${d.board.name}” · ${d.board.cards} cards · ${d.board.arrows} arrows · ${d.board.sections} sections`);

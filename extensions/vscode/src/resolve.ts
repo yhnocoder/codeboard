@@ -1,13 +1,13 @@
 // 点调用展开（expand）、标识符悬停看定义（peek）、全工作区的符号名字索引。
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as path from "node:path";
-import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
+import { escapeRegExp, rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
 import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 import { crossBefore, decorate, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
 import { sharedDefs, type Def } from "./defcache";
 import { cardForFileSym, symCard } from "./cards";
-import { absOf, locOfFile, versionText } from "./source";
+import { absOf, locOfFile, versionText, hasLocalFile } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
 import { libOf } from "./scope";
@@ -192,7 +192,7 @@ async function mayDispatch(d: Def, name: string): Promise<boolean> {
 
 /** expand 回了 dispatching 之后白板来问：同一个调用点的定义处有没有被覆盖（定义、转到实现都走缓存，和 expand 发出去的是同一个请求） */
 export async function dispatchAt(m: { seg: Segment; line: number; col: number; name: string }): Promise<DispatchResult> {
-  if (m.seg.src.kind === "free" || m.seg.src.kind === "github") return null;
+  if (!hasLocalFile(m.seg.src)) return null;
   const wp = await workingPlace(m.seg);
   if (!wp?.exact) return null;
   const defs = await clickDefs(wp.abs, wp.start + (m.line - m.seg.start), m.col);
@@ -455,7 +455,7 @@ async function localDef(m: PeekReq): Promise<PeekDef | null> {
   if (!full) return null;
   const lines = splitLines(full);
   const name = m.word.replace(/^self\./, "");
-  const esc = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const esc = escapeRegExp(name);
   const isSelf = m.word.startsWith("self.");
   const re = new RegExp(isSelf ? `^\\s*self\\.${esc}\\s*(:[^=]*)?=(?!=)` : `^\\s*${esc}\\s*(:[^=]*)?=(?!=)|^\\s*(?:async\\s+)?def\\s+\\w+\\(.*\\b${esc}\\b`);
   const a = analysisOf(seg.lang, full, absOf(seg) ?? undefined);

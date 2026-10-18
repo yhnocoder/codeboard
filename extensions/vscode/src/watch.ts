@@ -5,7 +5,7 @@ import * as path from "node:path";
 import type { Disposable } from "@codeboard/core";
 import { forgetHeads, gitDirOf, headOf, repoRootOf } from "./git";
 import type { BoardHost } from "./boards";
-import { absOf } from "./source";
+import { absOf, hasLocalFile } from "./source";
 import type { Storage } from "./storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
 import { debounce, workspace, wsRoots } from "./ws";
@@ -22,7 +22,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
     const out = new Set<string>();
     for (const f of wsRoots()) { const r = await repoRootOf(path.join(f, "x")); if (r) out.add(r); }
     for (const { board } of await store.all()) for (const s of boardSegments(board)) {
-      if (s.version.kind !== "git" || s.src.kind === "free" || s.src.kind === "github") continue;
+      if (s.version.kind !== "git" || !hasLocalFile(s.src)) continue;
       const a = absOf(s);
       const r = a && (await repoRootOf(a));
       if (r) out.add(r);
@@ -77,7 +77,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
   const watchedFiles = new Set<string>();
   const watchFiles = async () => {
     for (const { board } of await store.all()) for (const s of [...boardSegments(board), ...variantSegments(board)]) {
-      if (s.src.kind === "free" || s.src.kind === "github") continue;
+      if (!hasLocalFile(s.src)) continue;
       const a = absOf(s);
       if (!a || watchedFiles.has(a)) continue;
       watchedFiles.add(a);

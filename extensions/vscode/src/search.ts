@@ -1,6 +1,6 @@
 // ⌘K 面板：白板上的卡和 Sidenote、工作区的符号和文件；Start from Entry Point…
 import * as path from "node:path";
-import { allCodeCards, cardTitle, computeFlows, fuzzy, guessLang, substr, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
+import { allCodeCards, cardTitle, computeFlows, escapeRegExp, fuzzy, guessLang, substr, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
@@ -181,7 +181,7 @@ export async function searchName(name: string): Promise<NameHit[]> {
   for (const e of await lookupName(name)) {
     out.push({ lang: LANG_KEY[langOf(e.abs)] ?? "other", label: e.sig, detail: `${hostPath(e.abs)}:${e.defLine}`, path: hostPath(e.abs), line: e.defLine, def: true, qual: e.qual });
   }
-  const re = new RegExp(`["']${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["(.']`);
+  const re = new RegExp(`["']${escapeRegExp(name)}["(.']`);
   let refs = 0;
   for (const { abs, text } of await grepWord(name)) {
     const lines = splitLines(text);

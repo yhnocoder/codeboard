@@ -1,8 +1,8 @@
 // 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（卡片的框和名字、调用图标记、连线、Section 色）发给父白板，
 // 父白板只画骨架，不拿子白板的完整内容。纯函数：骨架、子白板关系（侧栏的树、不能套成环）、把选中的卡拆成一块新白板（Turn into Board）。
-import { cardTitle, isCode, uid, versionLabel, type Board, type BoardCard, type Card, type Link, type Place, type Section } from "./model";
+import { cardTitle, clone, firstLine, hostOf, isCode, uid, versionLabel, type Board, type BoardCard, type Card, type Link, type Place } from "./model";
 import { computeFlows } from "./flow";
-import { bounds, estSize, union, type Rect } from "./layout";
+import { bounds, estSize, sectionFrames, type Rect } from "./layout";
 import type { Crumb } from "./protocol";
 
 /**
@@ -19,7 +19,6 @@ export type Skeleton = { id: string; name: string; n: number; commit?: string; w
 
 /** 同一个出发点（同一张卡的同一行）的 Call 分支超过 FAN 条时，只留前 FAN_KEEP 条，其余折成「+N」 */
 export const FAN = 5, FAN_KEEP = 3;
-const SEC_PAD = { l: 22, r: 22, t: 34, b: 22 };
 
 /** 这块白板上嵌着的子白板（去重，按出现的先后） */
 export function subBoardsOf(b: Pick<Board, "cards">): string[] {
@@ -55,29 +54,6 @@ function rectOf(c: Card, p: Place): Rect {
   return { x: p.x, y: p.y, w: s.w, h: c.kind === "board" ? p.h ?? 320 : s.h };
 }
 
-/** 跟白板界面 state/sections.ts 的 frameOf 一样：自己存的框 ∪ 成员卡（加边距）∪ 子 Section */
-function sectionFrames(b: Board, rects: Map<string, Rect>): Map<string, Rect> {
-  const out = new Map<string, Rect>();
-  const kids = new Map<string, Section[]>();
-  for (const s of b.sections) if (s.parent) kids.set(s.parent, [...(kids.get(s.parent) ?? []), s]);
-  const members = new Map<string, Rect[]>();
-  for (const [id, r] of rects) { const s = b.place[id]?.section; if (s) members.set(s, [...(members.get(s) ?? []), r]); }
-  const pad = (k: Rect): Rect => ({ x: k.x - SEC_PAD.l, y: k.y - SEC_PAD.t, w: k.w + SEC_PAD.l + SEC_PAD.r, h: k.h + SEC_PAD.t + SEC_PAD.b });
-  const frame = (s: Section, depth: number): Rect => {
-    const had = out.get(s.id);
-    if (had) return had;
-    let r: Rect = { x: s.x, y: s.y, w: s.w, h: s.h };
-    if (depth < 50) {
-      for (const k of members.get(s.id) ?? []) r = union(r, pad(k));
-      for (const ch of kids.get(s.id) ?? []) r = union(r, pad(frame(ch, depth + 1)));
-    }
-    out.set(s.id, r);
-    return r;
-  };
-  for (const s of b.sections) frame(s, 0);
-  return out;
-}
-
 /**
  * 算一块白板的骨架。nameOf：子白板里又嵌着的子白板叫什么（画成一块带名字的框）。
  * 坐标整体挪到从 (0, 0) 开始、取整，发给白板的东西尽量小
@@ -89,22 +65,20 @@ export function skeletonOf(b: Board, nameOf: (id: string) => string | undefined 
   const rects = new Map(placed.map((c) => [c.id, rectOf(c, b.place[c.id])]));
   const frames = sectionFrames(b, rects);
   const secColor = new Map(b.sections.map((s) => [s.id, s.color]));
-  const host = new Map<string, string>();
-  for (const c of b.cards) if (c.kind === "compare") for (const k of c.cols) host.set(k, c.id);
-  const hostOf = (id: string) => host.get(id) ?? id;
+  const host = hostOf(b);
 
   // 分支太多的出发点：留前 FAN_KEEP 条，其余目标折成「+N」（只折别处没有连进来的卡）
   const inCount = new Map<string, number>();
-  for (const l of b.links) if (rects.has(hostOf(l.to.card)) && hostOf(l.from.card) !== hostOf(l.to.card)) inCount.set(hostOf(l.to.card), (inCount.get(hostOf(l.to.card)) ?? 0) + 1);
+  for (const l of b.links) if (rects.has(host(l.to.card)) && host(l.from.card) !== host(l.to.card)) inCount.set(host(l.to.card), (inCount.get(host(l.to.card)) ?? 0) + 1);
   const fold = new Map<string, string>(); // 卡 → 折进的那个「+N」的 id
   const mores: SkelCard[] = [];
   const points = new Map<string, Link[]>();
   for (const ls of flows.kids.values()) for (const l of ls) {
-    const k = `${hostOf(l.from.card)}|${l.from.seg ?? ""}|${l.from.line ?? ""}`;
+    const k = `${host(l.from.card)}|${l.from.seg ?? ""}|${l.from.line ?? ""}`;
     points.set(k, [...(points.get(k) ?? []), l]);
   }
   for (const [k, ls] of points) {
-    const tos = [...new Set(ls.map((l) => hostOf(l.to.card)))].filter((id) => rects.has(id));
+    const tos = [...new Set(ls.map((l) => host(l.to.card)))].filter((id) => rects.has(id));
     if (tos.length <= FAN) continue;
     const away = tos.slice(FAN_KEEP).filter((id) => (inCount.get(id) ?? 0) <= 1 && !fold.has(id));
     if (away.length < 2) continue;
@@ -137,7 +111,7 @@ export function skeletonOf(b: Board, nameOf: (id: string) => string | undefined 
   });
 
   const at = new Map(cards.map((c, i) => [c.id, i]));
-  const idx = (id: string) => at.get(fold.get(hostOf(id)) ?? hostOf(id));
+  const idx = (id: string) => at.get(fold.get(host(id)) ?? host(id));
   const links: number[] = [];
   const seen = new Set<string>();
   for (const l of b.links) {
@@ -161,7 +135,7 @@ export function skeletonOf(b: Board, nameOf: (id: string) => string | undefined 
 
 function titleOf(c: Card, b: Board, nameOf: (id: string) => string | undefined): string {
   if (c.kind === "board") return c.title || nameOf(c.board) || "Board";
-  if (c.kind === "note") return (c.md.split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").trim()).find(Boolean) ?? "Note").slice(0, 80);
+  if (c.kind === "note") return (firstLine(c.md) || "Note").slice(0, 80);
   return cardTitle(c, b).slice(0, 120);
 }
 
@@ -270,9 +244,6 @@ export function extractBoard(parent: Board, ids: string[], rects: (id: string) =
   parent.place[frame] = fr;
   return { child, frame };
 }
-
-/** 深拷贝（白板界面传进来的可能是 store 的代理，structuredClone 拷不了） */
-const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
 /** 父白板上连到 Compare 的一栏：骨架里只有那张 Compare */
 function hostIn(b: Board, id: string, want: Set<string>): string {

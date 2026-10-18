@@ -17,7 +17,7 @@
 // }
 // 纯函数，白板和宿主都用。
 import * as v from "valibot";
-import type { Board, CallSample, CodeCard, Link, Source } from "./model";
+import { sameSource, type Board, type CallSample, type CodeCard, type Link, type Source } from "./model";
 
 export type RunSite = { file: string; line: number };
 export type RunDef = { file: string; line: number; qual: string };
@@ -52,11 +52,9 @@ export type RunLoc = { src: Source; path: string; hp: string };
 /** 发给白板的一次运行：记录 + 路径 → 位置 */
 export type RunApply = { run: RunRecord; locs: Record<string, RunLoc> };
 
-const srcEq = (a: Source, b: Source) => JSON.stringify(a) === JSON.stringify(b);
-
 /** 代码卡里含 (loc, line) 的段 */
 function segAt(c: CodeCard, loc: RunLoc, line: number) {
-  return c.segments.find((s) => s.src.kind !== "free" && s.path === loc.path && srcEq(s.src, loc.src) && s.start <= line && line <= s.end);
+  return c.segments.find((s) => s.src.kind !== "free" && s.path === loc.path && sameSource(s.src, loc.src) && s.start <= line && line <= s.end);
 }
 
 /** 箭头的终点卡是不是这次调用的被调函数：同一个文件里、def 那一行在段里；有符号时 qualname 也要对（__init__ 也认类卡） */
@@ -86,7 +84,7 @@ export function matchRun(b: Pick<Board, "cards" | "links">, a: RunApply): RunMat
     if (!fs || fs.src.kind === "free") continue;
     a.run.calls.forEach((c, i) => {
       const fl = a.locs[c.from.file], tl = a.locs[c.to.file];
-      if (!fl || !tl || c.from.line !== l.from.line || fl.path !== fs.path || !srcEq(fl.src, fs.src)) return;
+      if (!fl || !tl || c.from.line !== l.from.line || fl.path !== fs.path || !sameSource(fl.src, fs.src)) return;
       if (!calleeIs(t, tl, c.to)) return;
       hits.push({ link: l.id, call: i });
       used.add(i);
@@ -133,11 +131,4 @@ export function applyRun(b: Pick<Board, "links">, a: RunApply, m: RunMatch): num
     n++;
   }
   return n;
-}
-
-/** 调用的显示名：Scheduler.schedule → schedule（建卡时找调用行上的那个调用用）；__init__ → 类名 */
-export function callName(qual: string): string {
-  const q = qual.split(".");
-  const last = q[q.length - 1];
-  return last === "__init__" && q.length > 1 ? q[q.length - 2] : last;
 }

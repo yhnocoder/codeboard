@@ -29,7 +29,7 @@ export type Stale =
   | { state: "uncommitted" } // 钉在 HEAD，但工作区有未提交改动
   | { state: "missing" }; // 仓库 / 文件不在：只读快照
 
-/** 12 种材质主题；明暗跟随 VS Code */
+/** 材质主题（10 种）；明暗跟随 VS Code */
 export const THEMES = [
   ["warm-ink", "Warm Ink"], ["graphite", "Graphite"], ["soft-light", "Soft Light"], ["drafting", "Drafting"],
   ["colorful", "Colorful"], ["newspaper", "Newspaper"], ["poster", "Poster"], ["classic", "Classic"],
