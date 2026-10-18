@@ -46,7 +46,18 @@ const settle = (fr) => fr.evaluate(async () => {
     const s = sig(); same = !busy && s === last ? same + 1 : 0; last = s;
   }
 }).catch(() => {});
-const fit = async (f) => { await settle(f); await f.locator('button[aria-label="Fit to Window"]').first().click({ timeout: 3000 }).catch(() => {}); await settle(f); };
+// Fit with the board's own button. A VS Code notification toast (e.g. from Pylance) can sit over it in the bottom-right corner:
+// then clear the notifications and try again, and fail loudly rather than carry on with an unfitted camera
+const fit = async (f) => {
+  await settle(f);
+  const btn = f.locator('button[aria-label="Fit to Window"]').first();
+  for (let i = 0; i < 3; i++) {
+    if (await btn.click({ timeout: 3000 }).then(() => true, () => false)) return settle(f);
+    console.log("  … Fit to Window is covered, clearing notifications");
+    await command(f.page(), "Notifications: Clear All Notifications");
+  }
+  throw new Error("cannot click Fit to Window");
+};
 // Move the mouse off the board so no hover state (card toolbar, tooltips) is captured
 const park = async (page) => { await page.mouse.move(2, 400); await sleep(400); }; // one jump: a path across the board could open a Peek on the way
 const boardShot = async (page, f, file) => {
@@ -64,7 +75,8 @@ async function reveal(page, f, title, refit = true) {
     if (!b || !t) break;
     const cx = t.x + Math.min(t.width, 120) / 2, cy = t.y + t.height / 2;
     if (cx > b.x + 40 && cx < b.x + b.width - 40 && cy > b.y + 40 && cy < b.y + b.height - 90) return loc;
-    console.log(`  … panning to ${title} (heading at ${cx | 0},${cy | 0}, board ${b.x | 0},${b.y | 0} ${b.width | 0}×${b.height | 0})`);
+    const why = await f.evaluate(() => ({ scroll: [...document.querySelectorAll("*")].filter((e) => e.scrollTop || e.scrollLeft).map((e) => `${e.tagName}.${e.className}`.slice(0, 40) + `@${e.scrollLeft},${e.scrollTop}`).slice(0, 4), world: getComputedStyle(document.querySelector(".world") ?? document.body).transform, h: innerHeight }));
+    console.log(`  … panning to ${title} (heading at ${cx | 0},${cy | 0}, board ${b.x | 0},${b.y | 0} ${b.width | 0}×${b.height | 0}) ${JSON.stringify(why)}`);
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
     await page.mouse.wheel(cx - (b.x + b.width / 2), cy - (b.y + b.height / 2)); await sleep(500); await settle(f);
   }
@@ -180,6 +192,7 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
     await page.mouse.move(bx.x - 2, bx.y + 300); await sleep(300); await page.mouse.down();
     await page.mouse.move(bx.x - 2 - bx.width * 0.35, bx.y + 300, { steps: 15 }); await page.mouse.up(); await sleep(800);
     await blank(f); await fit(f); await park(page);
+    await command(page, "Notifications: Clear All Notifications"); await park(page);
     if (await page.locator(".statusbar-item", { hasText: "Tab Moves Focus" }).count()) await command(page, "Toggle Tab Key Moves Focus");
     await park(page);
     await page.screenshot({ path: path.join(OUT, "1-overview.png") }); console.log("  📷 1-overview.png");
