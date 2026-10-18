@@ -1,5 +1,6 @@
 // Board interaction scenarios: each one opens a board, performs a series of actions, and takes screenshots.
-import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
+import { open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
+import { main } from "./runner";
 import { emptyBoard, putShared, type Board } from "@codeboard/core";
 import { V015 } from "./v015";
 import { WEB } from "./scenarios-web";
@@ -20,7 +21,6 @@ import { VARIANTS } from "./scenarios-variants";
 import { FIXQ } from "./scenarios-fixq";
 
 const light = process.argv.includes("--light");
-const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
 function boardWith(...quals: string[]): Board {
   const b = emptyBoard("b1", "nano-vllm · generate main flow");
@@ -30,26 +30,17 @@ function boardWith(...quals: string[]): Board {
 }
 const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .call:text-is("${name}")`).nth(nth);
 
-const S: Record<string, () => Promise<void>> = {
-  ...V015,
-  ...WEB,
-  ...V017,
-  ...V017LABELS,
-  ...V017STACK,
-  ...THEMES_V17,
-  ...V018MD,
-  ...CODEEDIT,
-  /** 旧名字：v0.1.8 的 textarea 编辑换成 CodeMirror 后由 codeedit 接着查 */
-  v18codeedit: () => CODEEDIT.codeedit(),
-  ...V018TYPE,
-  ...V018REVIEW,
-  ...SHARED,
-  ...SUBBOARDS,
-  ...CHAINS,
-  ...CALLS,
-  ...QUESTIONS,
-  ...VARIANTS,
-  ...FIXQ,
+// Scenarios from the other test files, by file (the runner uses the file to pick the scenarios a change to it needs)
+const GROUPS: Record<string, Record<string, () => Promise<void>>> = {
+  "v015.ts": V015, "scenarios-web.ts": WEB, "v017.ts": V017, "v017labels.ts": V017LABELS, "v017stack.ts": V017STACK,
+  "scenarios-themes.ts": THEMES_V17, "v018md.ts": V018MD,
+  "scenarios-codeedit.ts": { ...CODEEDIT, /** 旧名字：v0.1.8 的 textarea 编辑换成 CodeMirror 后由 codeedit 接着查 */ v18codeedit: () => CODEEDIT.codeedit() },
+  "v018type.ts": V018TYPE, "v018review.ts": V018REVIEW, "scenarios-shared.ts": SHARED, "scenarios-subboards.ts": SUBBOARDS,
+  "scenarios-chains.ts": CHAINS, "scenarios-calls.ts": CALLS, "scenarios-questions.ts": QUESTIONS, "scenarios-variants.ts": VARIANTS,
+  "scenarios-fixq.ts": FIXQ,
+};
+
+const LOCAL: Record<string, () => Promise<void>> = {
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");
@@ -613,11 +604,7 @@ async function hoverWord(h: Host, card: string, line: string, word: string) {
   await h.page.mouse.move(pt.x - 3, pt.y); await h.page.mouse.move(pt.x, pt.y, { steps: 2 });
 }
 
-(async () => {
-  await ready();
-  // --shard i/n runs every n-th scenario starting at i (CI splits the harness across parallel jobs)
-  const shard = process.argv.find((a) => a.startsWith("--shard="))?.slice(8).split("/").map(Number);
-  // 只记录、不判对错的（v18review）不进默认那一轮，要跑就点名
-  const all = names.length ? names : Object.keys(S).filter((n) => n !== "v18review");
-  for (const n of shard ? all.filter((_, k) => k % shard[1] === shard[0] - 1) : all) { console.log("▶", n); await S[n](); }
-})().catch((e) => { console.error(e); process.exit(1); });
+const S: Record<string, () => Promise<void>> = {};
+const ORIGIN: Record<string, string> = {};
+for (const [file, group] of [...Object.entries(GROUPS), ["scenarios.ts", LOCAL] as const]) for (const [n, f] of Object.entries(group)) { S[n] = f; ORIGIN[n] = `packages/board/test/${file}`; }
+main(S, ORIGIN);

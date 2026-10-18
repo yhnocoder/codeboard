@@ -40,7 +40,7 @@ eval $RUN "$CODE" "$WS" --extensionDevelopmentPath="$EXT" --user-data-dir="$UD" 
   --remote-debugging-port=$CDP_PORT --window-size=1600,1000 >"$OUT/code.log" 2>&1 &
 PID=$!
 set +e
-node "$HERE/$DRIVER" "$OUT" "$WS" "$UD"
-RC=$?
+node "$HERE/$DRIVER" "$OUT" "$WS" "$UD" 2>&1 | tee "$OUT/e2e.log"
+RC=${PIPESTATUS[0]}
 kill $PID 2>/dev/null; pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true
 exit $RC
