@@ -4,7 +4,7 @@
 import { keepKey } from "../../ui/editkeys";
 import { Editor, Extension, InputRule, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
-import { EditorState, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { EditorState, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
@@ -350,10 +350,15 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     priority: 1,
     addKeyboardShortcuts() { return { Escape: () => { exit(); return true; }, Tab: () => true, "Shift-Tab": () => true }; },
   });
+  // 正文最后总有一个能打字的地方（Typora 一样）：最后一块是代码、公式、表格这类时，后面垫一个空段落，方向键、点击走得出去
+  const Tail = Extension.create({
+    name: "cbTail",
+    addProseMirrorPlugins: () => [new Plugin({ appendTransaction: (trs, _old, st) => { const tr = st.tr; return trs.some((t) => t.docChanged) && padEnd(tr) ? tr : null; } })],
+  });
   return [
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
-    ...base, Slash, Ref, Emo, Rules, Last,
+    ...base, Slash, Ref, Emo, Rules, Last, Tail,
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),
@@ -478,22 +483,21 @@ function freshState(prev: EditorState, doc: PMNode): EditorState {
   for (const f of cfg.fields) (st as unknown as Record<string, unknown>)[f.name] = f.init({ doc }, st);
   return st;
 }
-/**
- * 一次编辑的初始状态：文档、撤销栈、各插件都从头来。光标放到正文末尾（脚注列表前面）；正文最后是代码、表格、折叠块这类时，
- * 后面先垫一个空段落（不算改动，没打字就不保存）
- */
+/** 正文的末尾（脚注列表前面） */
+const bodyEnd = (d: PMNode) => d.content.size - (d.lastChild?.type.name === "footnotes" ? d.lastChild.nodeSize : 0);
+/** 正文最后一块后面接着打字的地方：最后一块是代码、公式、表格、折叠块这类时补一个空段落（不写进文件）。补了返回 true */
+function padEnd(tr: Transaction): boolean {
+  const end = bodyEnd(tr.doc), last = tr.doc.resolve(end).nodeBefore;
+  if (!last || /^(paragraph|heading|bulletList|orderedList|taskList)$/.test(last.type.name)) return false;
+  tr.insert(end, tr.doc.type.schema.nodes.paragraph.create());
+  return true;
+}
+/** 一次编辑的初始状态：文档、撤销栈、各插件都从头来。光标放到正文末尾；垫的空段落不算改动（没打字就不保存） */
 function stateFor(editor: Editor, value: string): EditorState {
-  let st = freshState(editor.state, editor.schema.nodeFromJSON(parseMd(value)));
-  let d = st.doc;
-  let end = d.content.size;
-  if (d.lastChild?.type.name === "footnotes") end -= d.lastChild.nodeSize;
-  const last = d.resolve(end).nodeBefore;
+  const st = freshState(editor.state, editor.schema.nodeFromJSON(parseMd(value)));
   const tr = st.tr;
-  if (last && !/^(paragraph|heading|bulletList|orderedList|taskList)$/.test(last.type.name)) {
-    tr.insert(end, editor.schema.nodes.paragraph.create()).setMeta("addToHistory", false);
-    d = tr.doc; end += 2;
-  }
-  tr.setSelection(Selection.near(d.resolve(end), -1));
+  if (padEnd(tr)) tr.setMeta("addToHistory", false);
+  tr.setSelection(Selection.near(tr.doc.resolve(bodyEnd(tr.doc)), -1));
   return st.apply(tr);
 }
 /**

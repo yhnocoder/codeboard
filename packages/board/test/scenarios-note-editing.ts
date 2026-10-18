@@ -1,5 +1,5 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
-// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor
+// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 import { open, put, findSym, symCard, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -107,6 +107,16 @@ export const NOTE_EDITING: Record<string, () => Promise<void>> = {
     runs.forEach((r, i) => check(`noteTabStaysInEditor ${r.seq}`, still[i] === 1 && md(h, `n${i}`) === r.want, { focused: still[i], got: md(h, `n${i}`) }));
     await close(h);
     done("noteTabStaysInEditor");
+  },
+
+  /** 最后一块是代码块、公式块时，方向键能走到它后面接着写（后面总有一个空段落） */
+  async noteTrailingBlockExit() {
+    await typeCases("noteTrailingBlockExit", [
+      { name: "typed fence", seq: "```{Enter}x{ArrowDown}after", md: "```\nx\n```\n\nafter" },
+      { name: "slash menu", seq: "/code{Enter}y{ArrowDown}after", md: "```\ny\n```\n\nafter" },
+      { name: "existing code", init: "```\nz\n```", seq: "{Control+End}{ArrowUp}{ArrowDown}after", md: "```\nz\n```\n\nafter" },
+    ]);
+    done("noteTrailingBlockExit");
   },
 
 };

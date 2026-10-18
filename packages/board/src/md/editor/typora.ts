@@ -160,8 +160,6 @@ function blockAfter(e: Editor, node: PMNode, caret?: (start: number) => number, 
   const $f = e.state.doc.resolve(from);
   if (!$f.parent.canReplaceWith($f.index(), $f.indexAfter(), node.type)) return false;
   const tr = closeHistory(e.state.tr).replaceWith(from, to, node);
-  const end = from + node.nodeSize;
-  if (!tr.doc.resolve(end).nodeAfter) tr.insert(end, e.schema.nodes.paragraph.create());
   tr.setSelection(caret ? TextSelection.near(tr.doc.resolve(caret(from))) : NodeSelection.create(tr.doc, from));
   e.view.dispatch(tr.scrollIntoView());
   if (then) then(from);
