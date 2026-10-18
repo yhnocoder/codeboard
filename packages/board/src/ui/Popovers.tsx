@@ -4,9 +4,10 @@ import { For, Show, Switch, Match, createSignal, createMemo, createEffect, onCle
 import { unwrap } from "solid-js/store";
 import {
   alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang,
-  type GraphMark, type Sidenote, type PeekDef, type SearchItem, type Var, type Anchor,
+  RPC_MECHS, threeWay, upstreamSegs, activeOf, viewKey, UPSTREAM,
+  type GraphMark, type Sidenote, type Segment, type PeekDef, type SearchItem, type Var, type Anchor,
 } from "@codeboard/core";
-import { state, cardById, toast, mutate, select, flows } from "../state/store";
+import { state, cardById, toast, mutate, select, flows, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { cam } from "../state/camera";
 import { pops, closePop, pinPop, updatePop, type PopInst, type Pop } from "../state/pop";
@@ -18,6 +19,9 @@ import { place, virtual } from "./place";
 import { ask, send } from "../host";
 import * as A from "../actions";
 import { MdStatic } from "./Md";
+import { Editable } from "./Editable";
+import { editing, setEditing } from "../state/ui";
+import { openMenu, type Item } from "./Menu";
 
 export function Popovers() {
   return <>
@@ -70,6 +74,13 @@ function PopFrame(p: { inst: PopInst }) {
         <Match when={k() === "commits"}><CommitsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "commits" }>} /></Match>
         <Match when={k() === "vars"}><VarsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vars" }>} /></Match>
         <Match when={k() === "mark"}><MarkPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "mark" }>} /></Match>
+        <Match when={k() === "boards"}><BoardsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "boards" }>} /></Match>
+        <Match when={k() === "impls"}><ImplsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "impls" }>} /></Match>
+        <Match when={k() === "vals"}><ValsPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "vals" }>} /></Match>
+        <Match when={k() === "names"}><NamesPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "names" }>} /></Match>
+        <Match when={k() === "rpc"}><RpcPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "rpc" }>} /></Match>
+        <Match when={k() === "three"}><ThreePop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "three" }>} /></Match>
+        <Match when={k() === "question"}><QuestionPop inst={p.inst} pop={p.inst.pop as Extract<Pop, { kind: "question" }>} /></Match>
       </Switch>
     </div>
   );
@@ -95,6 +106,40 @@ function Code(p: { start: number; html: string[]; hl?: number; rows?: number[] }
   );
 }
 
+// ---------- 问题（线框 06） ----------
+
+function QuestionPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "question" }> }) {
+  const s = () => state.board.stickers.find((k) => k.id === p.pop.sticker);
+  createEffect(() => { if (!s()) closePop(p.inst.id); });
+  const q = () => s()?.q;
+  const where = () => { const at = s()?.at; return at?.kind === "line" ? ` · line ${at.line}` : ""; };
+  const answer = () => { const id = q()?.answer; const c = id ? cardById(id)?.card : undefined; return c && { id: c.id, title: cardTitle(c, state.board), kind: c.kind }; };
+  const on = () => editing()?.kind === "question" && editing()?.id === p.pop.sticker;
+  return (
+    <Show when={s()}>
+      <Head inst={p.inst} title={<><b>{q()?.done ? "Answered" : "Question"}</b>{where()}</>} />
+      <div class="qbody" onDblClick={() => setEditing({ kind: "question", id: p.pop.sticker })}>
+        <Editable class="qtext" kind="question" id={p.pop.sticker} value={q()?.md ?? ""} multiline md placeholder="What don't you understand here? Markdown and $math$ work"
+          onCommit={(v) => A.setQuestionText(p.pop.sticker, v)} />
+      </div>
+      <Show when={answer()}>{(a) => (
+        <div class="qans">Answered by {a().kind === "note" ? "Note" : "card"} <button class="tlink" onClick={() => { A.selectCard(a().id); A.revealCard(a().id); }}>“{a().title}”</button></div>
+      )}</Show>
+      <div class="qacts">
+        <Show when={!on()} fallback={<span class="qhint">{A.K.mod}↵ or click outside to save</span>}>
+          <button class="tbtn" onClick={() => setEditing({ kind: "question", id: p.pop.sticker })}>Edit</button>
+        </Show>
+        <span class="qbtns">
+          <Show when={q()?.done} fallback={<button class="tbtn pri" onClick={() => A.setAnswered(p.pop.sticker, true)}>Mark Answered</button>}>
+            <button class="tbtn" onClick={() => A.setAnswered(p.pop.sticker, false)}>Reopen</button>
+          </Show>
+          <button class="tbtn" onClick={() => A.linkAnswer(p.pop.sticker)}>Link Answer…</button>
+        </span>
+      </div>
+    </Show>
+  );
+}
+
 // ---------- Sidenote 弹窗 ----------
 
 function NotesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "notes" }> }) {
@@ -106,7 +151,7 @@ function NotesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "notes" }> }) {
     <>
       <Head title={`${p.pop.title} (${notes().length})`} inst={p.inst} />
       <div class="sn-list">
-        <For each={notes()}>{(n) => <div class="sn-item" classList={{ on: n.id === curNote()?.id }} onPointerDown={() => setCur(n.id)}><NoteItem n={n} /></div>}</For>
+        <For each={notes()}>{(n) => <div class="sn-item" classList={{ on: n.id === curNote()?.id }} onPointerDown={() => setCur(n.id)} onContextMenu={(e) => { e.preventDefault(); setCur(n.id); pinPop(p.inst.id); noteMenu(n, e.clientX, e.clientY); }}><NoteItem n={n} /></div>}</For>
       </div>
       <div class="sn-acts">
         <button class="tbtn" onClick={() => { const n = notes()[0]; if (n) { closePop(p.inst.id); A.openAddNote(n.at); } }}>+ Add</button>
@@ -115,6 +160,12 @@ function NotesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "notes" }> }) {
           <button class="tbtn" classList={{ on: !!(curNote() as any)?.alwaysShow }} onClick={() => A.updateSidenote(curNote()!.id, (n) => { if (n.kind === "text") n.alwaysShow = !n.alwaysShow || undefined; })}>Always Show</button>
         </Show>
         <Show when={curNote() && curNote()!.kind !== "card"}><button class="tbtn" onClick={() => A.placeSidenote(curNote()!.id)}>Place on Board</button></Show>
+        <Show when={curNote() && curNote()!.kind !== "card" && sharedOn(curNote()!.at.card) > 1}>
+          <button class="tbtn" classList={{ on: !!curNote()!.boardOnly }} data-tip="Keep this sidenote on this board only; otherwise it shows on every board with the card" onClick={() => A.toggleBoardOnly(curNote()!.id)}>Board-only</button>
+        </Show>
+        <Show when={curNote() && hasVariants(curNote()!.at.card)}>
+          <button class="tbtn" classList={{ on: !!curNote()!.variant }} data-tip="Show this sidenote only on this variant of the card" onClick={() => A.toggleVariantOnly(curNote()!.id)}>Only in This Variant</button>
+        </Show>
         <span class="grow" />
         <button class="ib" aria-label="Delete Sidenote" data-tip="Delete Sidenote" onClick={() => A.deleteSidenote(curNote()!.id)}><Icon name="trash" size={13} /></button>
       </div>
@@ -162,8 +213,25 @@ function NoteItem(p: { n: Sidenote }) {
       </Switch>
       <Show when={n().why}><div class="sn-why">{n().why}</div></Show>
       <Show when={n().lineRemoved}><div class="sn-why warn">Line removed in the new version · attached to the whole card</div></Show>
+      <Show when={n().review}><div class="sn-why review"><span>Line changed in {n().review}, check it</span><button class="tbtn" onClick={() => A.markReviewed(n().id)}>Mark Reviewed</button></div></Show>
+      <Show when={n().boardOnly && sharedOn(n().at.card) > 1}><div class="sn-tag">Board-only · not shown on the other boards</div></Show>
+      <Show when={n().variant}><div class="sn-tag">Only in variant {A.variantName(n().at.card, n().variant!) ?? ""}</div></Show>
     </>
   );
+}
+/** Sidenote 右键：Board-only（共享卡上才有）、Place on Board、看过了、删除 */
+const hasVariants = (id: string) => { const c = cardById(id)?.card; return isCode(c) && !!c.variants?.length; };
+function noteMenu(n: Sidenote, x: number, y: number) {
+  const linked = n.kind !== "card" && sharedOn(n.at.card) > 1;
+  openMenu([
+    ...(n.kind === "text" ? [{ label: "Edit", run: () => editText(n) } as Item] : []),
+    ...(n.kind !== "card" ? [{ label: "Place on Board", run: () => A.placeSidenote(n.id) } as Item] : []),
+    ...(linked ? [{ label: "Board-only", checked: !!n.boardOnly, hint: "Keep this sidenote on this board only; otherwise every board with the card shows it", run: () => A.toggleBoardOnly(n.id) } as Item] : []),
+    ...(n.review ? [{ label: "Mark Reviewed", run: () => A.markReviewed(n.id) } as Item] : []),
+    ...(hasVariants(n.at.card) ? [{ label: "Only in This Variant", checked: !!n.variant, hint: n.variant ? `Only on ${A.variantName(n.at.card, n.variant) ?? "one variant"}` : "Show this sidenote only on the variant shown now", run: () => A.toggleVariantOnly(n.id) } as Item] : []),
+    null,
+    { label: "Delete Sidenote", danger: true, run: () => A.deleteSidenote(n.id) },
+  ], x, y);
 }
 const escH = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 // 旁注原地编辑（#37）：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。⌘↵ 保存，Esc 取消
@@ -237,6 +305,9 @@ function PeekPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "peek" }> }) {
       }>
         <Head title={<>Definition · {def()!.title ?? `${baseName(def()!.path)}:${def()!.line}`}</>} inst={p.inst}
           right={lib() ? <span class="lib-tag" data-tip={`Library code · ${lib()}`}>library</span> : <span class="src-tag">{def()!.seg.version.kind === "git" && def()!.kind !== "module" ? "at HEAD" : ""}</span>} />
+        <Show when={def()!.dispatch}>{(dp) => (
+          <div class="pk-disp"><span class="disp-tag">Dynamic dispatch</span> {dp().n} implementation{dp().n > 1 ? "s" : ""} · Static type: <code>{dp().base}</code>{dp().abstract ? " (abstract)" : ""}<span class="grow" /><small>Click the call to choose</small></div>
+        )}</Show>
         <Show when={def()!.sig || def()!.doc}>
           <div class="pk-top">
             <Show when={def()!.sig}><div class="pk-sig" innerHTML={def()!.sigHtml ?? escH(def()!.sig!)} /></Show>
@@ -420,6 +491,71 @@ function DiffPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "diff" }> }) {
   );
 }
 
+// ---------- 三方对照（线框 07）：原版 / 我的 / 上游最新，两边都改了的行高亮 ----------
+
+function ThreePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "three" }> }) {
+  const c = () => { const k = cardById(p.pop.card)?.card; return isCode(k) ? k : undefined; };
+  const cols = createMemo(() => {
+    const k = c(), l = A.vlive[p.pop.card]?.latest;
+    if (!k || !l) return [];
+    const ups = upstreamSegs(k), cur = activeOf(k);
+    const html = (s: Segment, key: string) => state.views[key]?.html ?? s.text.map(escH);
+    return k.segments.map((s) => {
+      const b = ups.find((x) => x.id === s.id) ?? s, t = l.segs.find((x) => x.id === s.id) ?? b;
+      const tw = threeWay(b.text, s.text, t.text);
+      return {
+        id: s.id, conflicts: tw.conflicts,
+        cols: [
+          { label: `Base ${versionLabel(b.version, true)}`, start: b.start, html: html(b, cur === UPSTREAM ? b.id : viewKey(b.id, UPSTREAM)), kinds: tw.base },
+          { label: `Mine ${k.variants?.find((v) => v.id === cur)?.name ?? ""}`, start: s.start, html: html(s, s.id), kinds: tw.mine },
+          { label: `Upstream latest ${l.label}`, start: t.start, html: l.views[t.id]?.html ?? t.text.map(escH), kinds: tw.latest },
+        ],
+      };
+    });
+  });
+  const total = () => cols().reduce((n, x) => n + x.conflicts, 0);
+  return (
+    <div class="threepop">
+      <Head title={`Three-way view · ${c() ? cardTitle(c()!) : ""}`} inst={p.inst} />
+      <div class="lastc">{total() ? `${total()} line${total() > 1 ? "s" : ""} changed on both sides (highlighted)` : "No conflicting lines: your changes and upstream's don't touch the same lines"}</div>
+      <For each={cols()}>{(sg) => (
+        <div class="three">
+          <For each={sg.cols}>{(col) => (
+            <div class="tcol">
+              <div class="th"><b>{col.label}</b></div>
+              <div class="tb">
+                <For each={col.html}>{(h, i) => <div class={`tl k-${col.kinds[i()] ?? "same"}`}><span class="cno">{col.start + i()}</span><span class="l" innerHTML={h || "​"} /></div>}</For>
+              </div>
+            </div>
+          )}</For>
+        </div>
+      )}</For>
+    </div>
+  );
+}
+
+// ---------- 共享卡：在哪几块白板上 ----------
+
+function BoardsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "boards" }> }) {
+  const bs = () => shared[p.pop.card]?.boards ?? [];
+  createEffect(() => { if (bs().length < 2) closePop(p.inst.id); });
+  return (
+    <>
+      <div class="picker-h">Also on</div>
+      <For each={bs()}>{(b) => {
+        const here = () => b.id === state.board.id;
+        return (
+          <button class="cand sb" classList={{ here: here() }} onClick={() => { closePop(p.inst.id); A.openOnBoard(b.id, p.pop.card); }}>
+            <span class="lb">{b.name}</span>
+            <Show when={b.mark || b.icon}><span class="step sm">{b.icon ? <Glyph icon={{ pack: "builtin", name: b.icon }} size={11} /> : b.mark}</span></Show>
+            <small>{here() ? "This board" : "Open ↗"}</small>
+          </button>
+        );
+      }}</For>
+    </>
+  );
+}
+
 // ---------- 选择 / commit / 变量 / 源码 ----------
 
 function PickPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "pick" }> }) {
@@ -504,6 +640,123 @@ function MarkPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "mark" }> }) {
         <For each={MARK_ICONS}>{(n) => <button class="mk-i" classList={{ on: isIcon(n) }} aria-label={n} onClick={() => pick({ icon: n })}><Glyph icon={{ pack: "builtin", name: n }} size={16} /></button>}</For>
       </div>
       <button class="cand" disabled={!g()!.custom} onClick={() => pick(null)}><span class="lb">Auto</span><small>Letter by creation order</small></button>
+    </Show>
+  );
+}
+
+// ---------- 接上断掉的调用链（线框 01、02） ----------
+
+/** 动态分发：N 个实现选一个。library 的要 ⌥；Why this one? 写进箭头的标签框 */
+function ImplsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "impls" }> }) {
+  const d = () => p.pop.data;
+  const [why, setWhy] = createSignal("");
+  const [i, setI] = createSignal(-1);
+  const go = (k: number, alt: boolean) => { if (A.pickImpl(d(), k, why(), alt)) closePop(p.inst.id); };
+  const short = (q: string) => q.split(".").slice(-2).join(".");
+  return (
+    <>
+      <Head title={<>{d().impls.length} implementations of <code>{short(d().base)}</code></>} inst={p.inst} right={<span class="disp-tag">Dynamic dispatch</span>} />
+      <div class="sres impls">
+        <For each={d().impls}>{(it, k) => {
+          const lib = () => !!it.lib && !state.host.settings.studyScope.includes(it.lib);
+          return (
+            <button class="cand impl" classList={{ on: k() === i(), lib: lib() }} onPointerMove={() => setI(k())}
+              onClick={(e) => go(k(), e.altKey)} data-tip={lib() ? `Library code (${it.lib}) · ${A.K.alt}-click to expand` : undefined}>
+              <span class="kind">ƒ</span><span class="lb">{it.label}</span>
+              <Show when={it.base}><span class="src-tag">base</span></Show>
+              <Show when={lib()}><span class="lib-tag">library</span></Show>
+              <small>{it.detail}</small>
+            </button>
+          );
+        }}</For>
+      </div>
+      <div class="an-body"><input class="fld" placeholder="Why this one? (optional)" value={why()} onInput={(e) => setWhy(e.currentTarget.value)}
+        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Escape") closePop(p.inst.id); if (e.key === "Enter" && i() >= 0) go(i(), e.altKey); }} /></div>
+      <div class="pk-more">The others stay as grey branches next to the card you pick.</div>
+    </>
+  );
+}
+
+/** 跨边界的取值：kNumRanks 取几，其余的留成灰色分支 */
+function ValsPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "vals" }> }) {
+  const v = () => state.board.links.find((l) => l.id === p.pop.link)?.call?.vals?.[p.pop.val];
+  createEffect(() => { if (!v()) closePop(p.inst.id); });
+  return (
+    <Show when={v()}>
+      <div class="picker-h"><code>{v()!.name}</code>: pick a value</div>
+      <Show when={v()!.from}><div class="pk-more">Comes from <code>{v()!.from}</code></div></Show>
+      <For each={v()!.opts ?? [v()!.value]}>{(o) => (
+        <button class="cand" classList={{ on: o === v()!.value }} onClick={() => { closePop(p.inst.id); A.setVal(p.pop.link, p.pop.val, o); }}>
+          <span class="lb"><code>{v()!.name} → {o}</code></span><small>{o === v()!.value ? "✓ Current" : ""}</small>
+        </button>
+      )}</For>
+      <div class="pk-more">Other values stay as grey branches.</div>
+    </Show>
+  );
+}
+
+const LANG_NAMES: Record<string, string> = { py: "Python", cpp: "C++", cuda: "CUDA", rust: "Rust" };
+
+/** 解析不到的调用：按名字在所有语言里搜，按语言分组；点一处建卡 + 虚线 Call 箭头（via registry · manual） */
+function NamesPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "names" }> }) {
+  const d = () => p.pop.data;
+  const groups = createMemo(() => {
+    const hs = d().hits ?? [];
+    const keys = [...new Set(["py", "cpp", ...hs.map((h) => h.lang)])];
+    return keys.map((k) => ({ lang: k, hits: hs.filter((h) => h.lang === k) }));
+  });
+  return (
+    <>
+      <Head title={<>Search <code>{d().call.name}</code> in all languages</>} inst={p.inst} />
+      <Show when={d().hits} fallback={<div class="empty">Searching…</div>}>
+        <div class="sres names">
+          <For each={groups()}>{(g) => (
+            <>
+              <div class="grp-h">{LANG_NAMES[g.lang] ?? g.lang}</div>
+              <For each={g.hits} fallback={<div class="empty sm">no matches</div>}>{(h) => (
+                <button class="cand" onClick={() => { closePop(p.inst.id); void A.placeNameHit(d(), h); }}>
+                  <span class="kind">{h.def ? "ƒ" : "“”"}</span><span class="lb">{h.label}</span><small>{h.detail}</small>
+                </button>
+              )}</For>
+            </>
+          )}</For>
+        </div>
+      </Show>
+      <div class="sn-acts"><button class="tbtn" onClick={() => { closePop(p.inst.id); A.drawManual(d().card, d().seg, d().call); }}>Draw Call Arrow Manually…</button></div>
+    </>
+  );
+}
+
+/** RPC 箭头的属性（线框 03 三）：机制、消息 / 方法名、一对多、插一张消息卡、↩ back to。改了马上生效，都能以后再改 */
+function RpcPop(p: { inst: PopInst; pop: Extract<Pop, { kind: "rpc" }> }) {
+  const L = () => state.board.links.find((l) => l.id === p.pop.link);
+  const r = () => L()?.rpc;
+  createEffect(() => { if (!r()) closePop(p.inst.id); });
+  const msg = () => A.msgOf(p.pop.link);
+  const commit = (f: (x: NonNullable<ReturnType<typeof r>>) => void) => A.setRpc(p.pop.link, f);
+  return (
+    <Show when={r()}>
+      <Head title={<b>RPC Arrow</b>} inst={p.inst} />
+      <div class="rpcf">
+        <label>Mechanism
+          <select class="fld sel" value={r()!.mech} onChange={(e) => commit((x) => { x.mech = e.currentTarget.value; })}>
+            <For each={RPC_MECHS}>{(m) => <option value={m}>{m}</option>}</For>
+          </select>
+        </label>
+        <Show when={r()!.mech === "custom"}>
+          <label>Name<input class="fld" value={r()!.custom ?? ""} placeholder="e.g. NCCL p2p" onKeyDown={(e) => e.stopPropagation()} onChange={(e) => commit((x) => { x.custom = e.currentTarget.value.trim() || undefined; })} /></label>
+        </Show>
+        <label>Message / method<input class="fld mono" value={r()!.msg ?? ""} placeholder={`"run"  ·  TokenizedGenerateReqInput`} onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") e.currentTarget.blur(); }} onChange={(e) => commit((x) => { x.msg = e.currentTarget.value.trim() || undefined; })} /></label>
+        <label>Fan-out
+          <select class="fld sel" value={r()!.fan ?? "one"} onChange={(e) => commit((x) => { x.fan = e.currentTarget.value === "all" ? "all" : undefined; })}>
+            <option value="one">One to one</option>
+            <option value="all">One to all ranks</option>
+          </select>
+        </label>
+        <label class="chk"><input type="checkbox" checked={!!msg()} onChange={() => A.toggleMsgCard(p.pop.link)} />Insert message card<small>sender → message → receiver</small></label>
+        <label class="chk"><input type="checkbox" checked={!!L()?.back} onChange={() => A.toggleBack(p.pop.link)} />↩ Back to start<small>Walkthrough stops here</small></label>
+      </div>
+      <div class="sn-acts"><span class="grow" /><button class="tbtn" onClick={() => { closePop(p.inst.id); A.clearRpc(p.pop.link); }}>Remove RPC Mark</button></div>
     </Show>
   );
 }

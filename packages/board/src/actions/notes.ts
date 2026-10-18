@@ -1,6 +1,6 @@
 // Sidenote（弹窗、添加、Place on Board、卡变成 Sidenote）和定义预览。
 import { unwrap } from "solid-js/store";
-import { uid, findCard, isCode, cardTitle, segOf, removeCards, type Card, type Sidenote, type SegView, type Anchor } from "@codeboard/core";
+import { uid, findCard, isCode, cardTitle, segOf, removeCards, removeSidenotes, type Card, type Sidenote, type SegView, type Anchor } from "@codeboard/core";
 import { state, setState, mutate, sel, clearSel, lineSel, cardById, toast } from "../state/store";
 import { quietHover } from "../state/camera";
 import { choose } from "../ui/Menu";
@@ -69,7 +69,7 @@ export function updateSidenote(id: string, f: (n: Sidenote) => void) {
   mutate((b) => { const n = b.sidenotes.find((k) => k.id === id); if (n) f(n); });
 }
 export function deleteSidenote(id: string) {
-  mutate((b) => { b.sidenotes = b.sidenotes.filter((n) => n.id !== id); });
+  mutate((b) => removeSidenotes(b, [id]));
 }
 /** Place on Board：Sidenote 变成卡，放在源卡旁边，自动连一条箭头（从原来挂的那一行连出） */
 export function placeSidenote(id: string) {
@@ -89,7 +89,7 @@ export function placeSidenote(id: string) {
   addCards([{ card, views, w }], { at: { x: r.x + r.w + 48, y: r.y + 20 } });
   if (isCode(card) && card.segments[0].src.kind === "free") requestViews(card.segments);
   mutate((b) => {
-    b.sidenotes = b.sidenotes.filter((k) => k.id !== id);
+    removeSidenotes(b, [id]);
     b.links.push({ id: uid("l"), from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card: nid } });
   });
   closePop();

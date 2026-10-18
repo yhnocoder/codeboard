@@ -9,13 +9,17 @@ import { makeHandler } from "./handlers";
 import { EditorMarks } from "./lens";
 import { Panels } from "./panel";
 import { watchNameIndex } from "./nameindex";
-import { BoardsTree, GithubTree } from "./sidebar";
+import { BoardsTree, GithubTree, QuestionsTree } from "./sidebar";
+import { questionsMarkdown } from "@codeboard/core";
+import { openOnBoard } from "./handlers";
+import { setMediaDir } from "./exports";
 import { initSource } from "./source";
 import { githubDir, openStorage } from "./storage";
 import { watchVersions } from "./watch";
 import { debounce, useWorkspace } from "./ws";
 import { forgetDefs } from "./defcache";
 import { registerVersionDocs, vscodeWorkspace } from "./vscode/workspace";
+import { disposeScratch } from "./vscode/scratch";
 
 export async function activate(ctx: vscode.ExtensionContext) {
   const sub = (d: vscode.Disposable) => ctx.subscriptions.push(d);
@@ -36,6 +40,21 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const gh = new GithubTree(store);
   sub(vscode.window.registerTreeDataProvider("codeboard.boards", tree));
   sub(vscode.window.registerTreeDataProvider("codeboard.github", gh));
+  // QUESTIONS：白板一存盘就重算（防抖）
+  setMediaDir(path.join(ctx.extensionUri.fsPath, "media", "board"));
+  const qtree = new QuestionsTree(store);
+  sub(vscode.window.registerTreeDataProvider("codeboard.questions", qtree));
+  sub(store.onDidSave(() => qtree.refresh()));
+  sub(store.onDidChange(() => qtree.refresh()));
+  sub(vscode.commands.registerCommand("codeboard.questions.showAll", () => qtree.setAll(true)));
+  sub(vscode.commands.registerCommand("codeboard.questions.showOpen", () => qtree.setAll(false)));
+  sub(vscode.commands.registerCommand("codeboard.copyQuestions", async () => {
+    const qs = await qtree.shown();
+    if (!qs.length) return void vscode.window.showInformationMessage("No questions to copy.");
+    await vscode.env.clipboard.writeText(questionsMarkdown(qs));
+    void vscode.window.showInformationMessage(`Copied ${qs.length} question${qs.length > 1 ? "s" : ""} as a Markdown list.`);
+  }));
+  sub(vscode.commands.registerCommand("codeboard.openQuestion", (board: string, card?: string, line?: number, sticker?: string) => openOnBoard(panels, board, card, line, sticker)));
 
   const marks = new EditorMarks(ctx, store, panels);
   sub(vscode.languages.registerCodeLensProvider([{ scheme: "file", language: "python" }, { scheme: "file", language: "cpp" }, { scheme: "file", language: "cuda-cpp" }, { scheme: "file", language: "c" }], marks));
@@ -84,4 +103,4 @@ export async function activate(ctx: vscode.ExtensionContext) {
   updateStatus();
 }
 
-export function deactivate() {}
+export function deactivate() { disposeScratch(); }

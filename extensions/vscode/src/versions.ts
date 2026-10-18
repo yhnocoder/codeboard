@@ -1,8 +1,8 @@
 // 版本：建段（钉 HEAD / 包版本 / 指纹）和「新版本」检查。
 // 检查时机：打开白板、git HEAD 变化、保存文件（只影响 uncommitted 和仓库外文件）。
 import * as path from "node:path";
-import { allCodeCards, locateSeg, sameLines, trackSeg, versionLabel, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
-import { headOf, showFile } from "./git";
+import { allCodeCards, locateSeg, sameLines, storedSegs, trackSeg, upstreamSegs, versionLabel, viewKey, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
+import { headOf, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { analysisOf } from "./analysis";
 import { currentVersionLabel, rootOf, versionFor, type Loc } from "./source";
 import { exists, langOf, mkUid, readText, splitLines } from "./ws";
@@ -12,6 +12,24 @@ export function boardSegments(b: Pick<Board, "cards" | "sidenotes">): Segment[] 
   const out = allCodeCards(b).flatMap((c) => c.segments);
   for (const s of b.sidenotes ?? []) if (s.kind === "code") out.push(s.code);
   return out;
+}
+
+/**
+ * 版本状态要看的段：代码卡按上游的段（有 Variant 的卡显示的可能是我的分支，新版本提示和它无关），加上 Code sidenote。
+ * up = 有 Variant 的卡的段：跟上游分支（upstreamRef）比，不跟 HEAD 比（HEAD 可能就是我的分支）
+ */
+export function staleSegments(b: Pick<Board, "cards" | "sidenotes">): { segs: Segment[]; up: Set<string> } {
+  const segs: Segment[] = [], up = new Set<string>();
+  for (const c of allCodeCards(b)) {
+    const ss = c.variants?.length ? upstreamSegs(c) : c.segments;
+    for (const s of ss) { segs.push(s); if (c.variants?.length) up.add(s.id); }
+  }
+  for (const s of b.sidenotes ?? []) if (s.kind === "code") segs.push(s.code);
+  return { segs, up };
+}
+/** 不在显示的 Variant 的段，id 换成 viewKey（展示数据、文件监听用） */
+export function variantSegments(b: Pick<Board, "cards">): Segment[] {
+  return allCodeCards(b).flatMap((c) => storedSegs(c).map(({ vid, seg }) => ({ ...seg, id: viewKey(seg.id, vid) })));
 }
 
 /** 从文件的几行建一个段 */
@@ -28,12 +46,25 @@ export async function makeSegment(loc: Loc, lines: string[], start: number, end:
 const symsOf = (lang: string, text: string) => analysisOf(lang, text).symbols;
 
 /** 一个段和当前代码的关系 */
-export async function staleOf(seg: Segment): Promise<Stale> {
+export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Promise<Stale> {
   if (seg.src.kind === "free" || seg.src.kind === "github") return { state: "ok" };
   const root = rootOf(seg.src, seg.version);
   if (!root || !(await exists(root))) return { state: "missing" };
   const abs = path.join(root, seg.path);
   const v = seg.version;
+  if (v.kind === "git" && o.upstream && !v.uncommitted) {
+    // 有 Variant 的卡：上游新版本 = 上游分支上的这段变了（我的分支、工作区的改动不算）
+    const gr = await repoRootOf(abs);
+    const ref = gr && (await upstreamRef(gr));
+    const sha = gr && ref && (await resolveRef(gr, ref));
+    if (gr && sha) {
+      if (sha.startsWith(v.commit) || v.commit.startsWith(sha)) return { state: "ok" };
+      const t = await showFile(gr, sha, path.relative(gr, abs).split(path.sep).join("/"));
+      if (t === null) return { state: "lost" };
+      const { at: _a, ...r } = trackSeg(seg, splitLines(t), symsOf(seg.lang, t), `${ref.replace(/^origin\//, "")} ${sha.slice(0, 7)}`);
+      return r;
+    }
+  }
   if (v.kind === "git") {
     const head = await headOf(root);
     if (!head) return { state: "missing" };
@@ -67,10 +98,10 @@ export async function staleOf(seg: Segment): Promise<Stale> {
   return t;
 }
 
-export async function staleFor(segs: Segment[]): Promise<Record<string, Stale>> {
+export async function staleFor(segs: Segment[], up?: Set<string>): Promise<Record<string, Stale>> {
   const out: Record<string, Stale> = {};
   await Promise.all(segs.map(async (s) => {
-    try { out[s.id] = await staleOf(s); } catch { out[s.id] = { state: "ok" }; }
+    try { out[s.id] = await staleOf(s, { upstream: up?.has(s.id) }); } catch { out[s.id] = { state: "ok" }; }
   }));
   return out;
 }
@@ -78,7 +109,7 @@ export async function staleFor(segs: Segment[]): Promise<Record<string, Stale>> 
 /** 一张白板里有新版本的卡片数（侧栏圆点、状态栏计数） */
 export function countStale(b: Board, st: Record<string, Stale>): number {
   let n = 0;
-  for (const c of allCodeCards(b)) if (c.segments.some((s) => st[s.id]?.state === "changed")) n++;
+  for (const c of allCodeCards(b)) if (upstreamSegs(c).some((s) => st[s.id]?.state === "changed")) n++;
   return n;
 }
 

@@ -114,6 +114,21 @@ export const V017STACK: Record<string, () => Promise<void>> = {
     p = await look();
     check(p.onC === "C" && !p.top, "hover-ends-arrow-back", p);
 
+    // The browser does not always deliver pointerleave (card moved / re-ordered under the pointer, pointer capture just released, a busy
+    // machine): the hover must still end once the pointer moves somewhere outside the card. Swallow every pointerleave before it reaches
+    // the card (window, capture phase), hover A, move away: the arrows still drop, with the same fade
+    await h.page.evaluate(() => { (window as any).__eat = (e: Event) => e.stopPropagation(); window.addEventListener("pointerleave", (window as any).__eat, true); });
+    await h.page.mouse.move(ab.x + ab.width / 2, ab.y + ab.height / 2); await h.page.waitForTimeout(500);
+    p = await look();
+    check(p.top, "lost-leave-hover-lifts", p);
+    await watch();
+    await h.page.mouse.move(6, 790);
+    fd = await fade();
+    await h.page.waitForTimeout(300);
+    p = await look();
+    check(p.onC === "C" && !p.top && fd.down && !fd.up && fd.clean, "lost-leave-hover-still-ends", { ...p, ...fd });
+    await h.page.evaluate(() => window.removeEventListener("pointerleave", (window as any).__eat, true));
+
     // hover the unrelated card C: nothing changes
     const cb = (await h.page.locator(`.card[data-id="${C.id}"]`).boundingBox())!;
     await h.page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height - 20); await h.page.waitForTimeout(150);

@@ -6,7 +6,7 @@ import {
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize,
   type Board, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
-import { initAnalysis, analyze, planSelection, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
+import { initAnalysis, analyze, planSelection, listsMembers, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
 
 // Uses the repo's nano-vllm submodule as test data
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
@@ -125,6 +125,25 @@ describe("planSelection", () => {
   it("turns multiple selections into one multi-segment card", () => {
     const p = planSelection([sel(31, 32), sel(44, 45)], a());
     expect(p).toMatchObject({ kind: "segments", ranges: [{ start: 31, end: 32 }, { start: 44, end: 45 }] });
+  });
+  it("a fields-only dataclass is a code card, not an empty member list", () => {
+    // nano-vllm utils/context.py: @dataclass(slots=True) class Context with only annotated fields
+    const an = analyze("python", show(NEW, "nanovllm/utils/context.py"));
+    const ctx = sym(an, "Context");
+    expect(ctx).toMatchObject({ kind: "class", start: 5, defLine: 6, end: 14 });
+    expect(listsMembers(an, ctx)).toBe(false);
+    expect(listsMembers(a(), sym(a(), "Scheduler"))).toBe(true);
+  });
+  it("splits a selection of several definitions without losing a line", () => {
+    // context.py lines 5–27: the dataclass (decorator + fields), _CONTEXT = Context() at line 16, then three functions
+    const an = analyze("python", show(NEW, "nanovllm/utils/context.py"));
+    const p = planSelection([sel(5, 27)], an);
+    expect(p).toMatchObject({ kind: "split" });
+    const parts = (p as Extract<typeof p, { kind: "split" }>).parts.map((x) => "sym" in x ? `${x.sym.qual}:${x.sym.start}-${x.sym.end}` : `${x.range.module ? "<module>" : x.range.scope}:${x.range.start}-${x.range.end}`);
+    expect(parts).toEqual(["Context:5-14", "<module>:16-16", "get_context:18-19", "set_context:21-23", "reset_context:25-27"]);
+    // a selection that starts mid-function keeps the partial lines too
+    const q = planSelection([sel(19, 27)], an) as Extract<ReturnType<typeof planSelection>, { kind: "split" }>;
+    expect(q.parts.map((x) => "sym" in x ? x.sym.qual : `${x.range.scope}:${x.range.start}-${x.range.end}`)).toEqual(["get_context:19-19", "set_context", "reset_context"]);
   });
 });
 
@@ -293,6 +312,18 @@ describe("cardRows", () => {
     const rows = cardRows({ segments: [a, b, c, d] });
     expect(rows.filter((r) => r.t !== "line").map((r) => r.t)).toEqual(["gap", "fn", "file"]);
   });
+  it("marks every segment boundary, also where a segment starts with a definition", () => {
+    // a card merged from get_context 18–19, set_context 21–23 and a set_context copy right after it
+    const dv = (id: string, line: number, name: string): SegView => ({ html: [], flags: [], calls: [], defs: [{ line, name, qual: name }] });
+    const g = seg("g", 18, 19), st = seg("st", 21, 23), t2 = seg("t2", 24, 25);
+    const rows = cardRows({ segments: [g, st, t2] }, { views: { g: dv("g", 18, "get_context"), st: dv("st", 21, "set_context"), t2: dv("t2", 24, "reset_context") } });
+    expect(rows.filter((r) => r.t !== "line")).toEqual([{ t: "gap", seg: "st", from: 20, to: 20, manual: false }, { t: "fn", seg: "t2", name: "reset_context" }]);
+  });
+  it("draws a function divider above a decorator, not between it and the def", () => {
+    const d: Segment = { ...seg("d", 1, 6), text: ["x = 1", "", "@dataclass(slots=True)", "class Context:", "    a: int = 0", "    b: int = 0"] };
+    const rows = cardRows({ segments: [d] }, { views: { d: { html: [], flags: [], calls: [], defs: [{ line: 4, name: "Context", qual: "Context" }] } } });
+    expect(rows.map((r) => r.t === "line" ? r.line : r.t)).toEqual([1, 2, "fn", 3, 4, 5, 6]);
+  });
   it("copies code without line numbers and keeps relative indent", () => {
     expect(copyText(["        while x:", "            y()"])).toBe("while x:\n    y()");
   });
@@ -331,11 +362,11 @@ describe("entry points", () => {
 });
 
 describe("migrateBoard", () => {
-  it("turns a v1 board into v5", () => {
+  it("turns a v1 board into v6", () => {
     const b = migrateBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
-    expect(b.version).toBe(5);
+    expect(b.version).toBe(6);
     expect(b.links[0].call).toEqual({ name: "f", col: 0 });
     const c = b.cards[0] as CodeCard;
     expect(c.segments[0]).toMatchObject({ path: "a.py", start: 1, end: 2, hl: [2], symbol: { qual: "f" } });
@@ -374,12 +405,12 @@ describe("migrateBoard", () => {
       place: { a: { x: 0, y: 0, w: 400, h: 300 }, z: { x: 0, y: 0, w: 400 }, n: { x: 0, y: 0, w: 300, h: 120 } },
     };
     const b = migrateBoard(structuredClone(raw));
-    expect(b.version).toBe(5);
+    expect(b.version).toBe(6);
     expect(b.place.a.h).toBe(264);
     expect(b.place.z.h).toBeUndefined();
     expect(b.place.n.h).toBe(120);
     expect((b.cards[0] as CodeCard).mergedFrom![0].place.h).toBe(164);
-    expect(migrateBoard(structuredClone(b))).toEqual(b); // v5 is read as is
+    expect(migrateBoard(structuredClone(b))).toEqual(b); // v6 is read as is
     expect(estSize(b.cards[0], b.place.a).h).toBe(300); // estimates still count the header
   });
   it("v4 → v5: call links become Call-marked arrows, plain links keep their look", () => {
@@ -395,7 +426,7 @@ describe("migrateBoard", () => {
       ],
     };
     const b = loadBoard(structuredClone(raw));
-    expect(b.version).toBe(5);
+    expect(b.version).toBe(6);
     expect(b.links).toEqual([
       { id: "c", from: { card: "a", seg: "sa", line: 3 }, to: { card: "b" }, label: "hot", at: 0.3, sides: { from: "left" }, call: { name: "g", col: 8, vars: [{ a: "x", b: "y" }], cands: [{ a: "x", b: "y" }, { a: "r", ret: true }], loop: true } },
       { id: "p1", from: { card: "n" }, to: { card: "a", seg: "sa", line: 2 }, style: { dash: true, head: { start: true }, color: "blue" } },
@@ -426,7 +457,7 @@ describe("migrateBoard", () => {
     expect(b.born!.z).toBe(6);
   });
   it("refuses a board written by a newer CodeBoard", () => {
-    expect(() => migrateBoard({ version: 6, id: "b", name: "x", cards: [] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 7, id: "b", name: "x", cards: [] })).toThrow(/newer/);
   });
 });
 

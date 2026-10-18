@@ -1,9 +1,10 @@
 // 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
+import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
+import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { githubCard, ghQuery } from "./github";
 import { webMeta } from "./web";
 import { pasteCard } from "./paste";
@@ -12,13 +13,19 @@ import { readPacks } from "./stickers";
 import { log } from "./log";
 import { copyDiagnostics, openStickerDir } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
-import { callVars, expand, peek } from "./resolve";
-import { search, searchPick, entryPoints } from "./search";
+import { callVars, dispatchAt, expand, peek } from "./resolve";
+import { search, searchPick, entryPoints, searchName, genSource } from "./search";
+import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
+import { applyFlow, captureFlow } from "./runs";
+import { allQuestions, exportFile, permalinks } from "./exports";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
+import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
 import { fromHostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
+
+const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
 /** 处理函数的返回值：要回答的请求是它的回答，其他的不管 */
@@ -30,13 +37,15 @@ export function makeHandler(panels: BoardHost): Handler {
   const store = panels.store;
   const h: Handlers = {
     ready: () => undefined, // Panels 自己处理
-    save: async (p, m) => {
-      if (p.board) m.board.id = p.board.id; // 存到这块面板打开的那个文件，不信白板发来的 id
-      const renamed = p.board?.name !== m.board.name;
-      p.board = m.board;
-      await store.save(m.board);
-      if (renamed) { p.view.title = m.board.name; void panels.pushBoards(); }
-      return null;
+    patch: async (p, m) => {
+      // 存到这块面板打开的那个文件（p.id），不信白板发来的东西里的 id
+      const name = p.board?.name;
+      const skipped = await store.patch(p.id, m.patch, { undo: m.undo });
+      p.board = store.peek(p.id);
+      // 撤销时跳过的共享项：宿主这边留着别的白板的版本，白板换回来
+      if (skipped.length) p.post({ type: "shared", cards: skipped });
+      if (p.board && p.board.name !== name) { p.view.title = p.board.name; void panels.pushBoards(); }
+      return { skipped: skipped.length };
     },
     selection: (p, m) => { p.selection = m; },
     open: (p, m) => openCard(p, m),
@@ -49,9 +58,10 @@ export function makeHandler(panels: BoardHost): Handler {
     },
     expand: (_p, m) => expand(m),
     peek: (_p, m) => peek(m),
+    dispatch: (_p, m) => dispatchAt(m),
     prefetch: (_p, m) => prefetchCall(m),
     callVars: (_p, m) => callVars(m),
-    search: (_p, m) => search(store, m.q, m.scope),
+    search: (p, m) => search(store, m.q, m.scope, p.id),
     searchPick: (_p, m) => searchPick(m.item),
     entryPoints: () => entryPoints(),
     diff: (_p, m) => diff(m.seg, m.against),
@@ -73,13 +83,83 @@ export function makeHandler(panels: BoardHost): Handler {
     openStickerDir: () => openStickerDir(),
     copyDiagnostics: (p, m) => copyDiagnostics(p.board, m.board),
     log: (_p, m) => log(m.level, m.text),
-    openBoard: async (_p, m) => {
-      const np = await panels.show(m.id);
-      if (np && m.card) np.post({ type: "reveal", card: m.card });
+    openBoard: (_p, m) => openOnBoard(panels, m.id, m.card, m.line, m.sticker),
+    copyCards: (p, m) => {
+      panels.clip = { board: p.id, cards: m.cards, text: m.text };
+      panels.broadcast({ type: "host", host: { clip: { board: p.id, n: m.cards.length } } });
+      // 白板里写剪贴板可能被 webview 拦下：宿主再写一次，⌘V 收到的文字和记下的一样
+      if (m.text) void workspace().ui.copy(m.text);
     },
+    pasteCards: async (p, m) => {
+      const r = await pasteClip(store, panels.clip, p.id, { text: m.text, copy: !!m.copy });
+      if (!r) return null;
+      const segs: Segment[] = r.cards.flatMap((x) => [...(x.card.kind === "code" ? x.card.segments : []), ...(x.sidenotes ?? []).flatMap((n) => (n.kind === "code" ? [n.code] : []))]);
+      return { ...r, views: await viewsFor(segs) };
+    },
+    deleteEverywhere: async (p, m) => (await store.deleteEverywhere(m.card, p.id)).length,
     confirm: async (_p, m) => (await workspace().ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
     pickFile: () => pickImage(),
+    searchName: (_p, m) => searchName(m.name),
+    genSource: (_p, m) => genSource(m.from),
     complete: (p, m) => complete(p, m.before, m.after),
+    // ---------- 编辑中的代码：虚拟文档、补全、悬停、签名（codeedit.ts） ----------
+    codeDoc: (_p, m) => codeDoc(m.id, m.lang, m.text, m.near),
+    codeDocClose: (_p, m) => codeDocClose(m.id),
+    lspComplete: (_p, m) => lspComplete(m.id, m.text, m.line, m.col, m.trigger),
+    lspHover: (_p, m) => lspHover(m.id, m.text, m.line, m.col),
+    lspSignature: (_p, m) => lspSignature(m.id, m.text, m.line, m.col, m.trigger),
+    // ---------- 运行时（线框 13） ----------
+    captureRun: (p) => void captureFlow(store.dir(), p),
+    applyRun: (p) => void applyFlow(store.dir(), p),
+    // ---------- 问题、导出（线框 06、08） ----------
+    questions: () => allQuestions(store),
+    permalinks: (_p, m) => permalinks(m.segs),
+    exportFile: (_p, m) => exportFile(store, m.kind, m.name, m.text),
+    copyText: (_p, m) => workspace().ui.copy(m.text),
+    // ---------- 我的改动（线框 07） ----------
+    variantSources: (_p, m) => variantSources(m.seg),
+    addVariant: (_p, m) => addVariant(m.segs, m.from),
+    // ---------- 子白板 ----------
+    skeletons: async (_p, m) => {
+      await store.list(); // 缓存里还没有的白板先扫进来
+      return Object.fromEntries(m.ids.map((id) => [id, panels.skeleton(id)]));
+    },
+    newBoard: async (p, m) => {
+      // Turn into Board：白板拆好的新白板（schema 校验一遍）。共享卡在新白板上还是共享卡；放在父白板的组里
+      const b = loadBoard(structuredClone({ ...m.board, version: BOARD_VERSION }));
+      if (!SAFE_BOARD_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
+      const refs = [...store.refsOf(p.id)].filter((id) => b.cards.some((c) => c.id === id));
+      await store.save(b, { group: store.groupOf(p.id) ?? null, refs });
+      return true;
+    },
+    enterBoard: async (p, m) => {
+      // 不能套成环：子白板里（一路往下）有这块白板
+      const metas = await store.list();
+      const subs = (id: string) => metas.find((x) => x.id === id)?.subs;
+      if (m.id === p.id || wouldCycle(subs, p.id, m.id)) { p.toast("Can't open a board inside itself."); return; }
+      const name = p.board?.name ?? metas.find((x) => x.id === p.id)?.name ?? "";
+      const ok = await panels.switchBoard(p, m.id, { crumbs: [...p.crumbs, { id: p.id, name, frame: m.frame }], cams: [...p.cams, m.cam], walk: m.walk });
+      if (!ok) p.toast("That board is already open in another tab.");
+    },
+    leaveBoard: async (p, m) => {
+      if (!p.crumbs.length) return;
+      const depth = Math.max(0, Math.min(p.crumbs.length - 1, m.depth ?? p.crumbs.length - 1));
+      const to = p.crumbs[depth];
+      const ok = await panels.switchBoard(p, to.id, { crumbs: p.crumbs.slice(0, depth), cams: p.cams.slice(0, depth), walk: m.walk, cam: p.cams[depth] });
+      if (!ok) p.toast("That board is already open in another tab.");
+    },
+    deleteBoard: async (p, m) => {
+      const b = await store.load(m.id);
+      if (!b) return false;
+      const ok = await workspace().ui.warn(`Delete board “${b.name}”?`, { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` }, "Delete");
+      if (ok !== "Delete") return false;
+      const open = panels.get(m.id);
+      if (open && open !== p) open.view.dispose();
+      await store.remove(m.id);
+      if (panels.target === m.id) panels.setTarget(undefined);
+      await panels.pushBoards();
+      return true;
+    },
   };
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
@@ -145,10 +225,12 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
     if (seg.version.kind === "git") newVersion = { kind: "git", commit: (root && (await headOf(root))) || seg.version.commit, uncommitted: true };
     else if (text !== null) newVersion = seg.version.kind === "pkg" ? { kind: "pkg", ...(splitPkg(await currentVersionLabel(abs, seg.version)) ?? seg.version) } : { kind: "hash", hash: fingerprint(text) };
   } else if (root) {
-    const sha = against ? await resolveRef(root, against) : await headOf(root);
+    // upstream：有 Variant 的卡跟上游分支比（HEAD 可能是我的分支）
+    const ref = against === "upstream" ? await upstreamRef(root) : against;
+    const sha = ref ? await resolveRef(root, ref) : await headOf(root);
     if (!sha) throw new Error(`Unknown commit “${against}”.`);
     text = await showFile(root, sha, rel);
-    label = `${against && against !== "HEAD" ? against : "HEAD"} ${sha.slice(0, 7)}`;
+    label = `${ref && ref !== "HEAD" ? ref.replace(/^origin\//, "") : "HEAD"} ${sha.slice(0, 7)}`;
     newVersion = { kind: "git", commit: sha };
   }
   if (text === null) return empty(label || "Not found");
@@ -236,6 +318,15 @@ async function resolveTyped(p: BoardPanel, text: string): Promise<Commit | null>
 /** Focus 模式的只读源码浮窗：整个文件（那个版本） */
 
 // ---------- 其他 ----------
+
+/** 打开一块白板，选中那张卡（和那一行：别的白板上连进来的箭头从哪一行出发、问题贴在哪一行）；sticker = 再打开那个问题 */
+export async function openOnBoard(panels: BoardHost, id: string, card?: string, line?: number, sticker?: string) {
+  const np = await panels.show(id);
+  if (!np || !card) return;
+  const c = np.board && findCard(np.board, card)?.card;
+  const seg = line !== undefined && c && isCode(c) ? c.segments.find((s) => line >= s.start && line <= s.end) : undefined;
+  np.post({ type: "reveal", card, ...(seg ? { seg: seg.id, lines: [line!, line!] as [number, number] } : {}), ...(sticker ? { sticker } : {}) });
+}
 
 async function exportPng(dataUrl: string, name: string) {
   const ui = workspace().ui;

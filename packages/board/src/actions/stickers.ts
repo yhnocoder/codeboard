@@ -1,6 +1,7 @@
 // 贴纸（#44 #45）：工具栏 Sticker → 选图标 → 点一下放下。贴在代码行（进行号栏，随 Update 跟行走）、卡片角上、或画布任意位置。
 import { createSignal } from "solid-js";
-import { uid, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
+import { uid, removeStickers, isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
+import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
 import { state, mutate, live, beginGesture, toast, rectOf } from "../state/store";
 import { linkCurve, curveAt, nearestT } from "../canvas/Links";
 import { cam } from "../state/camera";
@@ -48,8 +49,12 @@ export function placeStickerAt(e: PointerEvent): boolean {
   }
   const id = uid("k");
   const st: Sticker = { id, icon: p.icon, color: p.color && p.color !== defaultColor(p.icon) ? p.color : undefined, at };
+  // 「?」贴纸：放下就写问题（线框 06）
+  const q = isQuestion(st);
+  if (q) st.q = { md: "", at: Date.now() };
   mutate((b) => { b.stickers.push(st); });
   setSelSticker(id);
+  if (q) requestAnimationFrame(() => openQuestion(id, undefined, true));
   return true;
 }
 
@@ -140,7 +145,7 @@ function rowLine(cardEl: HTMLElement, el: HTMLElement): { card: string; seg: str
 }
 
 export function removeSticker(id: string) {
-  mutate((b) => { b.stickers = b.stickers.filter((s) => s.id !== id); });
+  mutate((b) => removeStickers(b, [id]));
   if (selSticker() === id) setSelSticker(null);
 }
 function setStickerColorOf(id: string, color: string | undefined) {
@@ -151,7 +156,14 @@ export function stickerMenu(id: string, x: number, y: number) {
   if (!s) return;
   setSelSticker(id);
   const names = ["Gold", "Orange", "Red", "Pink", "Purple", "Blue", "Green", "Grey"];
+  const qi: Item[] = isQuestion(s) ? [
+    { label: s.q?.md ? "Edit Question" : "Write Question", kbd: "Click", run: () => openQuestion(id, undefined, true) },
+    s.q?.done ? { label: "Reopen", run: () => setAnswered(id, false) } : { label: "Mark Answered", run: () => setAnswered(id, true) },
+    { label: "Link Answer…", hint: "The card or Note that answers it", run: () => linkAnswer(id) },
+    null,
+  ] : [];
   const items: Item[] = [
+    ...qi,
     ...(s.icon.pack === "emoji" ? [] : [{ label: "Color", sub: [{ label: "Default", checked: !s.color, run: () => setStickerColorOf(id, undefined) } as Item, ...STICKER_COLORS.map((c, i) => ({ label: names[i], checked: s.color === c, run: () => setStickerColorOf(id, c) }))] } as Item]),
     ...(s.at.kind === "canvas" ? [{ label: "Size", sub: [24, 32, 48, 72].map((n) => ({ label: `${n}px`, checked: (s.at as any).size === n, run: () => mutate((b) => { const k = b.stickers.find((q) => q.id === id); if (k?.at.kind === "canvas") k.at.size = n; }) })) } as Item] : []),
     ...(s.at.kind === "canvas" && s.at.on ? [{ label: "card" in s.at.on ? "Detach from Card" : "Detach from Arrow", hint: "Keep it here on the canvas", run: () => detachSticker(id) } as Item] : []),
@@ -174,6 +186,7 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
   const a0 = { ...s.at }, size = a0.size ?? 32, sx = e.clientX, sy = e.clientY;
   const end = beginGesture();
   let moved = false, shown: Set<string> | undefined;
+  setStickerDragged(false);
   const move = (ev: PointerEvent) => {
     const dx = (ev.clientX - sx) / cam.z, dy = (ev.clientY - sy) / cam.z;
     if (resize) {
@@ -195,6 +208,7 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
       if (a0.size === undefined) delete (at as any).size;
       live((b) => { const k = b.stickers.find((q) => q.id === id); if (k) k.at = at; });
     }
+    setStickerDragged(moved); // 拖过的不算点一下（不打开问题）
     setBindHot(null);
     end();
   };

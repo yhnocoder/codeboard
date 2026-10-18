@@ -5,6 +5,7 @@ import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import python from "shiki/langs/python.mjs";
 import cpp from "shiki/langs/cpp.mjs";
 import c from "shiki/langs/c.mjs";
+import rust from "shiki/langs/rust.mjs";
 import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
 import type { FileAnalysis } from "@codeboard/core/analysis";
 import { analysisOf, segAnalysis } from "./analysis";
@@ -15,13 +16,14 @@ import { Lru, readText, splitLines } from "./ws";
 const theme = createCssVariablesTheme({ name: "codeboard", variablePrefix: "--shiki-", fontStyle: true });
 let hl: Promise<HighlighterCore> | undefined;
 const highlighter = () =>
-  (hl ??= createHighlighterCore({ themes: [theme], langs: [python, cpp, c], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
+  (hl ??= createHighlighterCore({ themes: [theme], langs: [python, cpp, c, rust], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
 
 /** VS Code languageId → shiki 语言；Triton、TileLang 都是 Python */
 function shikiLang(lang: string): string | null {
   if (/^(python|triton|tilelang)$/.test(lang)) return "python";
   if (/^(cpp|cuda-cpp|cuda|objective-cpp)$/.test(lang)) return "cpp";
   if (lang === "c") return "c";
+  if (lang === "rust") return "rust";
   return null;
 }
 

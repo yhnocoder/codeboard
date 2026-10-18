@@ -6,7 +6,7 @@ import {
   type CodeCard, type CompareCard, type LinkSide, type Section,
   type CallSpan,
 } from "@codeboard/core";
-import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, placeOf, type LineSel } from "../state/store";
+import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, placeOf, sharedOn, type LineSel } from "../state/store";
 import { toWorld } from "../state/camera";
 import { setEditing, setPaletteOpen } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
@@ -14,10 +14,35 @@ import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, se
 import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
+import { searchAllLangs, drawManual, addGenerated } from "./chains";
 import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
+import { unlinkShared } from "./edit";
+import { deleteEverywhere, pasteFromBoard, copyCardsSel } from "./shared";
+import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
+import { addProc, clearRpc, legendOf, markRpc, setLegendOpen, toggleBack, toggleStart } from "./calls";
+import { askQuestion, askQuestionOnCard } from "./questions";
+import { addVariantMenu } from "./variants";
+import { LEGEND, legendName, type Link } from "@codeboard/core";
+
+/**
+ * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
+ * 普通卡就是 Delete
+ */
+function deleteItems(id: string): Item[] {
+  const n = sharedOn(id);
+  if (n < 2) return [{ label: "Delete", kbd: "⌫", danger: true, run: deleteSel }];
+  const c = cardById(id)?.card;
+  return [
+    { label: `${c ? cardTitle(c, state.board) : "Card"} · on ${n} boards`, head: true },
+    { label: "Remove from This Board", kbd: "⌫", run: deleteSel },
+    { label: "Delete Everywhere…", kbd: `${K.mod}⌫`, danger: true, run: () => void deleteEverywhere([id]) },
+    null,
+    { label: "Unlink (Make This a Copy)", run: () => unlinkShared(id) },
+  ];
+}
 
 export function callMenu(cardId: string, segId: string, call: CallSpan, x: number, y: number) {
   selectCard(cardId);
@@ -40,6 +65,9 @@ export function callMenu(cardId: string, segId: string, call: CallSpan, x: numbe
         return { label: `${n?.label ? n.label + "  " : ""}${cardTitle(k)}`, run: () => attachCall(cardId, segId, call, k.id) };
       }) : [{ label: "No card for this function on the board", disabled: "Drag the call onto any code card to link it" }],
     },
+    // 解析不到的调用（字符串注册、跨语言）：按名字搜，或手动补一条 Call 箭头（线框 01 二）
+    { label: `Search “${call.name}” in All Languages`, run: () => searchAllLangs(cardId, segId, call) },
+    { label: "Draw Call Arrow Manually…", run: () => drawManual(cardId, segId, call) },
     null,
     ...lineItems({ card: f.card.id, seg: segId, start: call.line, end: call.line }),
   ];
@@ -59,10 +87,18 @@ function lineItems(ls: LineSel): Item[] {
     { label: "Hide Lines", kbd: "H", run: () => hideLines(ls) },
     { label: hlAll ? "Remove Highlight" : "Highlight Lines", run: () => toggleHl(ls) },
     { label: "Add Sidenote", kbd: "S", run: () => openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) },
+    // 疑问（线框 06）：在第一行贴「?」并直接写问题
+    { label: "Ask a Question", run: () => askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) },
     { label: "New Card from Lines", run: () => cardFromLines(ls) },
+    // 生成的代码 / 编译产物：钉在一次运行上，点线连回这一行（线框 02 三）
+    { label: "Add Generated Code", sub: genItems({ card: ls.card, seg: ls.seg, line: ls.start }) },
     { label: "Copy", kbd: `${K.mod}C`, run: () => copyLines(ls) },
   ];
 }
+const genItems = (at: { card: string; seg?: string; line?: number }): Item[] => [
+  { label: "Paste from Clipboard", run: () => addGenerated(at, "clipboard") },
+  { label: "Choose File…", run: () => addGenerated(at, "file") },
+];
 export function lineMenu(ls: LineSel, x: number, y: number) {
   selectCard(ls.card);
   openMenu(lineItems(ls), x, y);
@@ -84,8 +120,25 @@ export function cardMenu(id: string, x: number, y: number) {
     arrangeItem(() => [host.id]),
     null,
     { label: "Move to New Section", run: () => moveToNewSection() },
-    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+    turnItem(),
+    ...deleteItems(host.id),
   ];
+  // 子白板框：打开、移除框（白板还在侧栏里）、删掉那块白板
+  if (c.kind === "board") return openMenu([
+    { label: "Open", kbd: `${K.mod}↵`, run: () => enterFrame(id) },
+    { label: "Edit", sub: [lockItem] },
+    arrangeItem(() => [host.id]),
+    null,
+    { label: "Move to New Section", run: () => moveToNewSection() },
+    { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
+    { label: "Delete Board…", danger: true, run: () => void deleteFrameBoard(id) },
+  ], x, y);
+  if (c.kind === "note" && c.msg) return openMenu([
+    { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "title", id }) },
+    { label: "Process Tag…", run: () => void addProc(id) },
+    { label: "Start Card", checked: !!placeOf(id).start, run: () => toggleStart(id) },
+    ...tail,
+  ], x, y);
   if (c.kind === "note") return openMenu([
     { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
     { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
@@ -132,7 +185,7 @@ export function cardMenu(id: string, x: number, y: number) {
       { label: "Walk Through", kbd: "P", disabled: canWalk ? false : "No arrows go out of this card", run: () => startWalk(id) },
       { label: "Move to New Section", run: () => moveToNewSection() },
       lockItem, arrangeItem(() => [host.id]), null,
-      { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+      ...deleteItems(host.id),
     ], x, y);
   }
   if (!isCode(c)) return;
@@ -157,10 +210,19 @@ export function cardMenu(id: string, x: number, y: number) {
   const edit: Item[] = [
     { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
     { label: "Add Sidenote", kbd: "S", run: () => (ls?.card === c.id ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) : openAddNote({ card: c.id })) },
+    { label: "Ask a Question", run: () => (ls?.card === c.id ? askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) : askQuestionOnCard(c.id)) },
+    { label: "Add Generated Code", sub: genItems(ls?.card === c.id ? { card: c.id, seg: ls.seg, line: ls.start } : { card: c.id }) },
     ...(col ? [] : [lockItem]),
     ...(!col && (c.segments.length > 1 || c.mergedFrom) ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
+    null,
+    // 进程标签（线框 03）：自由文字；线程 / CUDA stream 用浅一点的标签
+    { label: "Process Tag…", hint: "rank 0, rank 1…N, Scheduler × TP", run: () => void addProc(c.id) },
+    { label: "Thread / Stream Tag…", run: () => void addProc(c.id, true) },
   ];
   const flow: Item[] = [
+    // 起点卡（线框 12）：不选卡直接 Walkthrough、调用树从这里开始
+    { label: "Start Card", checked: !!placeOf(host.id).start, hint: "Walkthrough with nothing selected starts here", run: () => toggleStart(c.id) },
+    null,
     { label: "Select", disabled: node ? false : "Not in a call graph", run: () => selectFlow(c.id) },
     { label: "Walk Through", kbd: "P", disabled: canWalk ? false : "No arrows go out of this card", run: () => startWalk(c.id) },
     { label: placeOf(c.id).collapsed ? "Expand" : "Collapse", disabled: hasKids || placeOf(c.id).collapsed ? false : "No calls below this card", run: () => toggleCollapse(c.id) },
@@ -171,14 +233,19 @@ export function cardMenu(id: string, x: number, y: number) {
     ...(col ? [] : [{ label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
     { label: "Edit", sub: edit },
     { label: "View", sub: view },
-    { label: "Call Graph", sub: flow, disabled: node || canWalk ? false : "Not in a call graph" },
+    // 我的改动（线框 07）：同一段代码的分支 / 工作区 / 另一个 worktree / 复制的文件 / PR
+    ...(free || col || c.gen ? [] : [{ label: c.variants?.length ? "Add Another Variant…" : "Add Variant…", run: () => void addVariantMenu(c.id, x, y) } as Item]),
+    { label: "Call Graph", sub: flow },
     ...(col ? [] : [arrangeItem(() => [host.id])]),
     null,
-    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item]),
-    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, turnItem()]),
+    ...deleteItems(host.id),
   ];
   openMenu(items, x, y);
 }
+
+/** 选中的卡变成一块子白板（线框 05 ④） */
+const turnItem = (): Item => ({ label: "Turn into Board…", kbd: `${K.mod}${K.shift}B`, run: () => void turnIntoBoard() });
 
 function multiItems(): Item[] {
   const cs = selCards();
@@ -192,11 +259,13 @@ function multiItems(): Item[] {
     ...(canLinkList(cs) ? [{ label: "Merge into Link List", run: () => mergeIntoLinkList(sel.cards) } as Item] : []),
     { label: "Connect with Arrow", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addLink({ card: a.id }, { card: b.id }); } },
     { label: "Move to New Section", run: () => moveToNewSection() },
+    turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock(sel.cards, sel.sections) },
     arrangeItem(() => [...sel.cards]),
     null,
+    { label: "Copy", kbd: `${K.mod}C`, run: () => copyCardsSel() },
     { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
-    { label: "Delete", kbd: "⌫", danger: true, run: deleteSel },
+    { label: cs.some((c) => sharedOn(c.id) > 1) ? "Remove from This Board" : "Delete", kbd: "⌫", danger: !cs.some((c) => sharedOn(c.id) > 1), run: deleteSel },
   ];
 }
 
@@ -207,7 +276,14 @@ export function canvasMenu(x: number, y: number) {
     { label: "New Note", kbd: "N", run: () => newNote(w, true) },
     { label: "New Code", run: () => newFreeCode(w) },
     { label: "Add Function…", kbd: `${K.mod}K`, run: () => setPaletteOpen({ mode: "code" }) },
-    { label: "Paste", kbd: `${K.mod}V`, run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) },
+    // 复制的是别的白板上的卡：默认贴成共享卡（设置里可以换），⌥ 是另一种
+    ...(state.host.clip && state.host.clip.board !== state.board.id ? [
+      { label: state.host.settings?.pasteOther === "copy" ? "Paste as Copy" : "Paste as Linked Card", kbd: `${K.mod}V`, run: () => void pasteFromBoard(undefined, w) },
+      { label: state.host.settings?.pasteOther === "copy" ? "Paste as Linked Card" : "Paste as Copy", kbd: `${K.alt}${K.mod}V`, run: () => void pasteFromBoard(undefined, w, true) },
+    ] as Item[] : [
+      { label: "Paste", kbd: `${K.mod}V`, run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) } as Item,
+    ]),
+    { label: "Insert Board", sub: insertable().length ? insertable().map((m) => ({ label: m.name, hint: m.why ? `Can’t: ${m.why}` : undefined, run: () => insertBoard(m.id, w) })) : [{ label: "No other boards yet", disabled: "Create another board first" }] },
     null,
     { label: "Select All", kbd: `${K.mod}A`, run: selectAll },
     { label: "Fit to Window", kbd: `${K.shift}1`, run: fitAll },
@@ -237,7 +313,13 @@ export function linkMenu(id: string, x: number, y: number) {
   const found = !L.call && !!callOn(L.from, L.to);
   const canCall = !!L.call || found || !!manualCall(L.from, L.to);
   openMenu([
-    ...(canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item, null] : []),
+    ...(canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item] : []),
+    // 跨进程（线框 03）：RPC 也是线上的标记；↩ back to = 回到起点的线
+    { label: L.rpc ? "Edit RPC…" : "Mark as RPC…", run: () => markRpc(id) },
+    ...(L.rpc ? [{ label: "Remove RPC Mark", run: () => clearRpc(id) } as Item] : []),
+    { label: "↩ Back to Start", checked: !!L.back, hint: "A return path: Walkthrough stops here", run: () => toggleBack(id) },
+    null,
+    { label: "Style", sub: styleItems(L) },
     { label: "Line", sub: [
       { label: "Solid", checked: !L.style?.dash, run: () => setLinkStyle(id, (s) => { delete s.dash; }) },
       { label: "Dashed", checked: !!L.style?.dash, run: () => setLinkStyle(id, (s) => { s.dash = true; }) },
@@ -257,6 +339,24 @@ export function linkMenu(id: string, x: number, y: number) {
   ], x, y);
 }
 
+/**
+ * Style ▸（线框 12 三）：图例里的几种样式，名字是这块白板的图例。只是挑个样式，不加规则：
+ * Call / See also / RPC 能直接换；Observed 来自一次运行，Generated from 来自 Add Generated Code，只显示
+ */
+function styleItems(L: Link): Item[] {
+  const cur = legendOf(L);
+  const id = L.id;
+  const canCall = !!L.call || !!callOn(L.from, L.to) || !!manualCall(L.from, L.to);
+  const run: Record<string, Item> = {
+    call: { label: legendName(state.board, "call"), checked: cur === "call", disabled: canCall ? false : "Only between code cards", run: () => { if (L.rpc) clearRpc(id); if (!L.call) toggleCallMark(id); setLinkStyle(id, (s) => { delete s.dash; }); } },
+    rpc: { label: legendName(state.board, "rpc"), checked: cur === "rpc", run: () => markRpc(id) },
+    observed: { label: legendName(state.board, "observed"), checked: cur === "observed", disabled: "Comes from a run: CodeBoard: Capture Run…" },
+    gen: { label: legendName(state.board, "gen"), checked: cur === "gen", disabled: "Comes from Add Generated Code" },
+    see: { label: legendName(state.board, "see"), checked: cur === "see", run: () => { if (L.rpc) clearRpc(id); if (L.call) toggleCallMark(id); setLinkStyle(id, (s) => { s.dash = true; }); } },
+  };
+  return [...LEGEND.map(([k]) => run[k]), null, { label: "Edit Legend…", run: () => setLegendOpen(true) }];
+}
+
 /** 标签框右键（W01 D 23）：编辑、选参数和 ↺（只在 Call 上）、回到中间、删掉自己写的字 */
 export function labelMenu(id: string, x: number, y: number) {
   const L = state.board.links.find((l) => l.id === id);
@@ -264,6 +364,7 @@ export function labelMenu(id: string, x: number, y: number) {
   select({ links: [id] });
   openMenu([
     { label: "Edit Label", kbd: "Enter", run: () => setLinkEditing(id) },
+    ...(L.rpc ? [{ label: "Edit RPC…", run: () => markRpc(id) } as Item] : []),
     ...(L.call ? [
       { label: "Arguments…", run: () => openVars(id) },
       { label: "Loop Mark", checked: !!L.call.loop, run: () => toggleLoopMark(id) },

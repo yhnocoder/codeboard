@@ -1,8 +1,8 @@
 // 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、指针位置、打开编辑器 / 链接。
-import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
+import { cardTitle, isCode, segOf, bounds, cardRows, shownText, commonIndent, type Card, type Section, type Rect } from "@codeboard/core";
 import { state, mutate, sel, select, isSel, cardById, rectOf, placeOf, placed } from "../state/store";
 import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, ping, setPopIn, popIn } from "../state/ui";
+import { notesOf, ping, setPopIn, popIn, shown } from "../state/ui";
 import { openPop } from "../state/pop";
 import { send } from "../host";
 import { renderMd, renderMdInline } from "../md/render";
@@ -160,6 +160,8 @@ export function openLink(url: string) { send({ type: "openLink", url }); }
 // ---------- 内容本来的大小（Fit Content、改大小时用；直接量 DOM） ----------
 
 let charW = 0;
+/** 藏了公共缩进时代码离左边留的空（styles.css .src.ded .l 的 16px，和 CodeBody 的 DED_PAD 一样） */
+const DED_PAD = 16;
 /** 等宽字体一个字的宽度 */
 function monoW(el: Element) {
   if (charW) return charW;
@@ -189,8 +191,16 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number }
     let w: number | undefined;
     if (src && !f.card.wrap) {
       const cs = getComputedStyle(src);
-      const longest = Math.max(12, ...f.card.segments.flatMap((s) => s.text.map((t) => t.replace(/\t/g, "    ").length)));
-      w = Math.ceil(longest * monoW(src) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4);
+      // 只量显示着的行（#25 Linda：藏了 Docstring / 注释 / 空行后，藏掉的长行不该把卡撑宽）：
+      // 和 CodeBody 同一套 cardRows；Hide Comments 去掉行尾注释；藏了公共缩进时减掉那几格、加上左边留的 16px
+      const card = f.card;
+      const texts = cardRows(card, { views: state.views, shown: shown() }).flatMap((r) => {
+        const s = r.t === "line" ? card.segments.find((q) => q.id === r.seg) : undefined;
+        return s && r.t === "line" ? [shownText(s, r.line, state.views[s.id], card.hide?.comments)] : [];
+      });
+      const ded = commonIndent(texts);
+      const longest = Math.max(12, ...texts.map((t) => t.trimEnd().length - ded));
+      w = Math.ceil(longest * monoW(src) + (ded ? DED_PAD : 0) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4);
     }
     return { w, h, minH: top + 6 + 20 + 8 + 2 };
   }

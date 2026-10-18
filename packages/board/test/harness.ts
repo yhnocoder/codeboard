@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Page } from "playwright-core";
-import { uid, emptyBoard, loadBoard, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
+import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
 import { initAnalysis, analyze, symbolAt, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 
 export const REPO = path.resolve(__dirname, "../.."); // bundled into test-out/harness/
@@ -100,6 +100,8 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
 <script type="module" src="file://${MEDIA}/board.js"></script></body></html>`);
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
   const page = await browser.newPage({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
+  // CPU_THROTTLE=4：把页面的 CPU 放慢几倍（CDP），在本机复现 CI 慢机器上才出现的时序问题
+  if (+(process.env.CPU_THROTTLE ?? 0) > 1) await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: +process.env.CPU_THROTTLE! });
   let board = o.board ?? emptyBoard("b1", "nano-vllm · generate");
   const sent: BoardToHost[] = [];
   const post = (m: HostToBoard) => page.evaluate((s) => window.postMessage(JSON.parse(s), "*"), JSON.stringify(m));
@@ -122,10 +124,12 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
         await post({ type: "init", board, boards: [{ id: board.id, name: board.name, cards: board.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS, ...(o.settings ?? {}) }, ...(o.host ?? {}) } as any });
         break;
       }
-      case "save": {
-        // 白板写出来的每一版都要能被 loadBoard 读回（schema 校验）
-        try { loadBoard(structuredClone(m.board)); } catch (e) { console.log("FAIL board-schema", (e as Error).message); }
-        board = m.board; return reply(m.req, null);
+      case "patch": {
+        // The host's copy follows the patches; every version must load back through loadBoard (schema check)
+        const next = structuredClone(board);
+        applyPatch(next, m.patch);
+        try { loadBoard(structuredClone(next)); } catch (e) { console.log("FAIL board-schema", (e as Error).message); }
+        board = next; return reply(m.req, { skipped: 0 });
       }
       case "expand": {
         const want = m.pick ? allSyms().find((x) => x.f === m.pick!.path && (x.s.defLine === m.pick!.line || x.s.qual === m.pick!.qual)) : undefined;
@@ -170,6 +174,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
       }
       case "commits": return reply(m.req, [{ commit: "f64d8210aa", msg: "fix chunked prefill bugs", date: "2026-04-26", head: true }, { commit: "bb823b3c0ffee", msg: "support chunked prefill", date: "2026-04-20" }]);
       case "paste": return reply(m.req, null);
+      case "searchName": return reply(m.req, []);
       default: if (m.req) return reply(m.req, null);
     }
   });

@@ -17,6 +17,8 @@ import { isDbl } from "../interact";
 import * as A from "../actions";
 import { LinkLabel } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
+import { subRect, frameOf } from "../state/subboards";
+import { FRAME_HEAD } from "@codeboard/core";
 import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
 import { carAt, type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
@@ -45,7 +47,11 @@ function headY(id: string, r: Rect) {
 }
 
 /** 一端：矩形、是不是行端、行的 y（看不到那一行时 = 卡头）、Compare 的哪一栏 */
-type End = { box: Box; /** 整张卡（Compare 栏 → 整张 Compare）：绕路时要避开的 */ outer: Box; line: boolean; y: number; /** 卡头那一行的 y（行端的卡在地图档时用） */ hy: number; col?: "left" | "right"; host: string; card: string; pill: boolean };
+type End = {
+  box: Box; /** 整张卡（Compare 栏 → 整张 Compare）：绕路时要避开的 */ outer: Box; line: boolean; y: number; /** 卡头那一行的 y（行端的卡在地图档时用） */ hy: number; col?: "left" | "right"; host: string; card: string; pill: boolean;
+  /** 连到子白板骨架里的一张卡（End.sub）：那张卡在画布上的矩形。线先走到框边上的入口点（box 左右两边、对着那张卡的高度），再进去落到它上面 */
+  inner?: Box;
+};
 type Base = { a: End; b: End; kind: "normal" | "self" | "gutter"; gx?: number };
 
 /** 行端的那张卡在地图档（看不到行）：端点落到卡头 */
@@ -68,6 +74,11 @@ function endOf(e: Link["from"]): End | null {
   let col: End["col"];
   const g = geo[e.card];
   if (!er.pill && f.host.id !== e.card && g?.colX !== undefined && (g.colW ?? 0) < rectOf(f.host).w - 1) col = g.colX > 1 ? "right" : "left";
+  // 子白板骨架里的一张卡：像行端一样只走左右两边，入口点在框边上、对着那张卡（夹在标题栏下面）
+  if (e.sub !== undefined && !er.pill && frameOf(e.card)) {
+    const ir = subRect(e.card, e.sub);
+    if (ir) return { box: r, outer: r, line: true, y: Math.max(r.y + FRAME_HEAD + 4, Math.min(r.y + r.h - 6, ir.y + ir.h / 2)), hy, host: f.host.id, card: e.card, pill: false, inner: ir };
+  }
   let outer = r;
   if (col) { const h = rectOf(f.host), pi = popIn()[f.host.id]; outer = pi ? { ...h, x: h.x + (1 - pi.v) * pi.ox, y: h.y + (1 - pi.v) * pi.oy } : h; }
   return { box: r, outer, line, y, hy, col, host: f.host.id, card: e.card, pill: er.pill };
@@ -109,7 +120,7 @@ function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
 const anchorsFor = (bs: Base, s: [Side, Side], atMap: readonly [boolean, boolean]): [Anchor, Anchor] =>
   [anchorOn(bs.a.box, s[0], atMap[0] ? bs.a.hy : bs.a.y), anchorOn(bs.b.box, s[1], atMap[1] ? bs.b.hy : bs.b.y)];
 
-export type Geo = { d: string; mx: number; my: number; head?: string | CarPose; tail?: string | CarPose; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[] };
+export type Geo = { d: string; mx: number; my: number; head?: string | CarPose; tail?: string | CarPose; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[]; /** 子白板框上的入口点 */ entry?: { x: number; y: number } };
 
 /** 粗细档 → 箭头放大多少 */
 const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);
@@ -137,6 +148,18 @@ function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean): Geo 
   else {
     const boxes = { a: bs.a.pill ? undefined : bs.a.outer, b: bs.b.pill ? undefined : bs.b.outer };
     sh = merged ? connect(p, { ...q, x: q.x + q.nx * STUB, y: q.y + q.ny * STUB }, route, { start: true, end: false }, boxes, clear) : connect(p, q, route, undefined, boxes, clear);
+    // 子白板：线到框边上的入口点，再直着进去落到骨架里那张卡的名字上（箭头画在那里）
+    const inn = bs.b.inner;
+    if (inn && !merged) {
+      const left = q.nx < 0, tx = left ? inn.x : inn.x + inn.w, ty = inn.y + inn.h / 2;
+      const ux = Math.sign(tx - q.x) || (left ? 1 : -1);
+      return {
+        d: `${sh.d} L${tx} ${ty}`, mx: sh.mx, my: sh.my, pts: sh.pts,
+        head: hd.end ? headOrCar(hk, tx, ty, ux, 0, s) : undefined,
+        tail: hd.start ? headOrCar(hk, sh.pts[0], sh.pts[1], sh.outDir.x, sh.outDir.y, s) : undefined,
+        port: { x: p.x, y: p.y }, entry: { x: q.x, y: q.y },
+      };
+    }
   }
   return {
     d: sh.d, mx: sh.mx, my: sh.my, pts: sh.pts,
@@ -208,14 +231,14 @@ function makeRoute(L: Link): Route {
   });
   const sig = createMemo(() => {
     const bs = base(), s = sides();
-    if (!bs || !s || bs.kind !== "normal") return "";
+    if (!bs || !s || bs.kind !== "normal" || bs.b.inner) return ""; // 连进子白板骨架的不合并（各自落到骨架里的卡上）
     return `${s.split("|")[1]}|${headOf(L).end ? 1 : 0}`;
   });
   return { L, base, sides, ends, sig };
 }
 
 /** 终点是同一处的几条线（同一张卡的卡头，或同一行）：终点的 key */
-const toKey = (L: Link) => `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? ""}`;
+const toKey = (L: Link) => `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? ""}${L.to.sub !== undefined ? `|${L.to.sub}` : ""}`;
 
 /** 线的三次贝塞尔控制点 [x1 y1 c1x c1y c2x c2y x2 y2]（贴纸、标签沿线走时用） */
 export function linkCurve(id: string): number[] | null {
@@ -296,7 +319,7 @@ export const landed = createRoot(() => {
       if (!s) continue;
       const [a, b] = s.split("|");
       if (r.L.from.line === undefined) out.add(`${r.L.from.card}|${a}`);
-      if (r.L.to.line === undefined) out.add(`${r.L.to.card}|${b}`);
+      if (r.L.to.line === undefined && r.L.to.sub === undefined) out.add(`${r.L.to.card}|${b}`);
     }
     return out;
   }, new Set<string>(), { equals: (x, y) => x.size === y.size && [...x].every((k) => y.has(k)) });
@@ -342,6 +365,25 @@ const hostOf = (id: string) => cardById(id)?.host.id;
 const settleHover = () => { clearTimeout(cardT); cardT = window.setTimeout(() => { if (!camMoving()) setHoverCard(hovNow); }, tune("linkLeave")); };
 export const enterCard = (id: string) => { hovNow = id; clearTimeout(cardT); if (!camMoving()) setHoverCard(id); };
 export const leaveCard = (id: string) => { if (hovNow === id) hovNow = null; settleHover(); };
+// 不只靠 pointerleave：它会丢（卡在指针下被挪位置 / 重排、指针捕获刚释放、慢机器上事件挤在一起），丢了那张卡就一直算悬停，它的线一直浮在所有卡上面。
+// 所以指针每动一下都核对一次：落点已经不在悬停的那张卡里 → 当它离开了；卡重排之后指针不动也在下一帧按指针下面是什么核对一次。
+// 走的还是 leaveCard → settleHover，落回去照样过 linkLeave、照样淡出
+let ptr: { x: number; y: number } | null = null;
+const inHovered = (el: EventTarget | Element | null) => !!hovNow && el instanceof Element && !!el.closest(`.card[data-id="${CSS.escape(hovNow)}"]`);
+const checkHover = (el: EventTarget | Element | null) => { if (hovNow && !inHovered(el)) leaveCard(hovNow); };
+function watchHover() {
+  const move = (e: PointerEvent) => { ptr = { x: e.clientX, y: e.clientY }; checkHover(e.target); };
+  window.addEventListener("pointermove", move, { capture: true, passive: true });
+  onCleanup(() => window.removeEventListener("pointermove", move, { capture: true }));
+  // 只在有悬停的卡、而且是这张卡在 b.cards 里的位置变了（重排）时才看：撤销 / 重做 / 同步换掉 b.cards 不会每次都去读指针下面是什么（会强制排版）
+  let raf = 0;
+  createEffect(on(() => { const id = hoverCard(); return id ? `${id} ${state.board.cards.findIndex((c) => c.id === id)}` : ""; }, (k, prev) => {
+    if (!k || !prev || k === prev || k.split(" ")[0] !== prev.split(" ")[0]) return;
+    cancelAnimationFrame(raf);
+    raf = requestAnimationFrame(() => { if (hovNow && ptr) checkHover(document.elementFromPoint(ptr.x, ptr.y)); });
+  }));
+  onCleanup(() => cancelAnimationFrame(raf));
+}
 
 // 离开连线后过 300ms 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停（#30）。移到指针下那张卡的线上时，那张卡也还算悬停着
 let leaveT: number | undefined;
@@ -458,6 +500,7 @@ export function trackLinks() {
     }
   });
   createEffect(on(camMoving, (mv) => { if (!mv) setHoverCard(hovNow); }, { defer: true }));
+  watchHover();
   // City 的车流：挑哪几条路只在镜头停下时算一次（Traffic.tsx）
   trackTraffic(views);
 }
@@ -548,7 +591,9 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
   const L = r.L;
   const on = () => isOn(L.id);
   const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
-  const style = () => `${colorCls(L)}${widthCls(L)}`;
+  // 证据（manual 虚线、observed 绿）、Generated from（点线）：同一层，只换样式
+  // RPC（跨进程）：点划线；↩ back to：淡一点
+  const style = () => `${colorCls(L)}${widthCls(L)}${L.call?.ev ? ` ev-${L.call.ev.kind}` : ""}${L.gen ? " gen" : ""}${L.rpc ? " rpc" : ""}${L.back ? " back" : ""}`;
   const gutter = () => r.base()?.kind === "gutter";
   const road: Road = L.call ? "main" : "street";
   const cls = () => `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`;
@@ -574,6 +619,7 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
         <Show when={g()!.port}><path class={`port fc-${toHue()}${L.lost?.from ? " lost" : ""}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
           <Show when={on() && L.from.line !== undefined && r.base()?.kind === "normal"}><circle class="porthit" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
         <Show when={g()!.port2}><path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} /></Show>
+        <Show when={g()!.entry}><circle class={`sbentry${L.lost?.to ? " lost" : ""}`} r="4" cx={g()!.entry!.x} cy={g()!.entry!.y} /></Show>
       </Show>
     </g>
   ) as SVGGElement;

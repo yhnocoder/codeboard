@@ -45,12 +45,15 @@ Nine board themes (plus an experimental one), each with a light and a dark varia
 - Press `P` to walk through the cards in order, with `←` `→` to move and `Esc` to leave.
 - Draw arrows between cards, label them and change their type; drop in images and web pages.
 - Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.
+- Turn cards into a sub-board, and share a card between boards so it stays the same everywhere.
+- Compare a card across branches, worktrees or pull requests as variants, with change marks and a three-way view.
+- Pin questions to code with `?` stickers and find them in the Questions view; export a board to Markdown or an HTML snapshot.
 - The CodeBoard view in the activity bar lists your boards, in groups.
 
 ## Getting started
 
 1. Install CodeBoard: download the `.vsix` from the [latest release](https://github.com/yhnocoder/codeboard/releases/latest) and run **Extensions: Install from VSIX…**. (A Marketplace listing is planned.)
-2. Open a repository, put the cursor inside a function and press `Alt+B` (or right-click and choose **Add to Board**). The board opens beside the editor with the function as a card.
+2. Open a repository, put the cursor inside a function and press `Alt+B` (or right-click and choose **Add to Board**). The board opens beside the editor with the function as a card. With several lines selected across definitions, `Alt+B` makes one card with several parts and `Shift+Alt+B` one card per definition.
 3. Click the underlined calls in the card to expand them. `Shift+1` fits the whole board, `Shift+2` the selection, and `?` lists every shortcut.
 
 ## Settings

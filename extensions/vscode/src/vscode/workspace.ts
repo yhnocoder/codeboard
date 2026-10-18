@@ -1,6 +1,7 @@
 // Workspace 的 VS Code 实现：功能代码只经过它访问编辑器和工作区（见 core/workspace.ts）。
 import * as vscode from "vscode";
 import * as path from "node:path";
+import { vscodeScratch, isScratch } from "./scratch";
 import { COMPLETE_SYSTEM, Emitter, completePrompt, deepseekComplete, type Workspace } from "@codeboard/core";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
@@ -112,12 +113,12 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       findFiles: async (include, exclude, max) => (await vscode.workspace.findFiles(include, exclude, max)).map((u) => u.fsPath),
       watch: (base, glob, fn) => {
         const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(base), glob));
-        const f = (u: vscode.Uri) => fn(u.fsPath);
+        const f = (u: vscode.Uri) => { if (!isScratch(u)) fn(u.fsPath); };
         w.onDidChange(f); w.onDidCreate(f); w.onDidDelete(f);
         return w;
       },
-      onDidSave: (fn) => vscode.workspace.onDidSaveTextDocument((d) => fn(fileOrUndef(d.uri))),
-      onDidEdit: (fn) => vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length) fn(fileOrUndef(e.document.uri)); }),
+      onDidSave: (fn) => vscode.workspace.onDidSaveTextDocument((d) => { if (!isScratch(d.uri)) fn(fileOrUndef(d.uri)); }),
+      onDidEdit: (fn) => vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length && !isScratch(e.document.uri)) fn(fileOrUndef(e.document.uri)); }),
       onDidCreate: (fn) => vscode.workspace.onDidCreateFiles((e) => fn(e.files.map((u) => u.fsPath))),
       onDidDelete: (fn) => vscode.workspace.onDidDeleteFiles((e) => fn(e.files.map((u) => u.fsPath))),
       onDidRename: (fn) => vscode.workspace.onDidRenameFiles((e) => fn(e.files.map((f) => ({ from: f.oldUri.fsPath, to: f.newUri.fsPath })))),
@@ -134,18 +135,8 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       set: async (k, v) => { await ctx.workspaceState.update(k, v); },
     },
     language: {
-      definitions: async (abs, line, col) => {
-        const r = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(
-          "vscode.executeDefinitionProvider", vscode.Uri.file(abs), new vscode.Position(line - 1, col),
-        );
-        const out: { abs: string; line: number; col: number }[] = [];
-        for (const d of r ?? []) {
-          const uri = "targetUri" in d ? d.targetUri : d.uri;
-          const range = "targetUri" in d ? (d.targetSelectionRange ?? d.targetRange) : d.range;
-          if (uri.scheme === "file") out.push({ abs: uri.fsPath, line: range.start.line + 1, col: range.start.character });
-        }
-        return out;
-      },
+      definitions: (abs, line, col) => locations("vscode.executeDefinitionProvider", abs, line, col),
+      implementations: (abs, line, col) => locations("vscode.executeImplementationProvider", abs, line, col),
       hover: async (abs, line, col) => {
         const hs = await vscode.commands.executeCommand<vscode.Hover[]>("vscode.executeHoverProvider", vscode.Uri.file(abs), new vscode.Position(line - 1, col));
         const parts: string[] = [];
@@ -156,6 +147,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
         }
         return parts;
       },
+      scratch: vscodeScratch(() => ctx.globalStorageUri.fsPath),
     },
     settings: {
       get: (key) => { const [s, k] = splitKey(key); return vscode.workspace.getConfiguration(s).get(k); },
@@ -195,6 +187,8 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       openFolder: async (abs) => void (await vscode.env.openExternal(vscode.Uri.file(abs))),
       revealInOS: async (abs) => void (await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs))),
       copy: async (text) => vscode.env.clipboard.writeText(text),
+      clipboard: async () => vscode.env.clipboard.readText(),
+      undoAddKey: (on) => undoAddKey(on),
     },
     ai: {
       ask: copilotAsk,
@@ -219,4 +213,32 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       hasExtension: (id) => !!vscode.extensions.getExtension(id),
     },
   };
+}
+
+/** 定义 / 实现：只要磁盘文件里的位置 */
+async function locations(cmd: string, abs: string, line: number, col: number): Promise<{ abs: string; line: number; col: number }[]> {
+  const r = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(cmd, vscode.Uri.file(abs), new vscode.Position(line - 1, col));
+  const out: { abs: string; line: number; col: number }[] = [];
+  for (const d of r ?? []) {
+    const uri = "targetUri" in d ? d.targetUri : d.uri;
+    const range = "targetUri" in d ? (d.targetSelectionRange ?? d.targetRange) : d.range;
+    if (uri.scheme === "file") out.push({ abs: uri.fsPath, line: range.start.line + 1, col: range.start.character });
+  }
+  return out;
+}
+
+/** codeboard.canUndoAdd：⌥B 之后编辑器里的 ⌘Z 撤销那次添加（package.json 的 codeboard.undoAdd 键）。
+ *  编辑器里一改字、动光标、换编辑器就关掉，⌘Z 回到编辑器自己的撤销 */
+let undoAddOff: vscode.Disposable[] = [];
+function undoAddKey(on: boolean) {
+  for (const d of undoAddOff) d.dispose();
+  undoAddOff = [];
+  void vscode.commands.executeCommand("setContext", "codeboard.canUndoAdd", on);
+  if (!on) return;
+  const off = () => undoAddKey(false);
+  undoAddOff = [
+    vscode.workspace.onDidChangeTextDocument((e) => { if (e.contentChanges.length) off(); }),
+    vscode.window.onDidChangeTextEditorSelection(off),
+    vscode.window.onDidChangeActiveTextEditor(off),
+  ];
 }

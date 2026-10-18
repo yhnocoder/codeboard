@@ -1,7 +1,8 @@
 // 回去的路：谁连到这里（卡头的「← N」）、跳转后的后退 / 前进（⌃- / ⌃⇧-）。
 import { createMemo, createSignal } from "solid-js";
 import { cardTitle, isCode, segOf, type Link } from "@codeboard/core";
-import { state, sel, select, clearSel, cardById, toast } from "../state/store";
+import { state, sel, select, clearSel, cardById, toast, shared } from "../state/store";
+import { send } from "../host";
 import { camTo, camTarget } from "../state/camera";
 import { flash } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -33,13 +34,21 @@ function sourceLabel(l: Link): string {
   return `${cardTitle(c, state.board)}${l.from.line !== undefined ? ` · L${l.from.line}` : ""}`;
 }
 
-/** 点卡头的「← N」：列出连进来的箭头从哪来，点一个跳过去 */
+/** 点卡头的「← N」：列出连进来的箭头从哪来，点一个跳过去。共享卡还列出别的白板上连到它的（点了打开那块白板） */
 export function showLinkedHere(id: string, el: Element) {
   const ls = linksInto(id);
-  if (!ls.length) return;
+  const far = shared[id]?.ins ?? [];
+  if (!ls.length && !far.length) return;
   openPop({
-    kind: "pick", title: `Linked here · ${ls.length}`,
-    items: ls.map((l) => ({ label: sourceLabel(l), detail: l.call ? `calls ${l.call.name}()` : l.label ?? "", run: () => jumpTo(l.from.card, l.from) })),
+    kind: "pick", title: `Linked here · ${ls.length + far.length}`,
+    items: [
+      ...ls.map((l) => ({ label: sourceLabel(l), detail: l.call ? `calls ${l.call.name}()` : l.label ?? "", run: () => jumpTo(l.from.card, l.from) })),
+      ...far.map((x) => ({
+        label: `${x.title}${x.line !== undefined ? ` · L${x.line}` : ""}`,
+        detail: `${x.boardName} ↗${x.call ? ` · calls ${x.call}()` : x.label ? ` · ${x.label}` : ""}`,
+        run: () => send({ type: "openBoard", id: x.board, card: x.card, line: x.line }),
+      })),
+    ],
   }, { el, prefer: "below" });
 }
 

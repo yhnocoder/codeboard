@@ -2,10 +2,10 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, allCodeCards,
-  placeChild, freeInView, walkOrder, descendants, SIB_GAP,
+  placeChild, freeInView, walkOrder, descendants, startCards, SIB_GAP,
   estSize, defaultWidth,
   type Card, type CodeCard, type Link, type Place,
-  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView,
+  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
 import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
 import { camTo, camTarget, worldView, fitRect, fitTop, isVisible, union } from "../state/camera";
@@ -14,6 +14,8 @@ import { openPop } from "../state/pop";
 import { send, ask } from "../host";
 import { headPoint, hostRect, lastPointer, popCard, showPicker, slideFrom } from "./common";
 import { jumpTo } from "./nav";
+import { walkBack, setWalkBack, walkIntoFrame, walkOut } from "./subboards";
+import { lateDispatch, openImplPicker, unresolvedMenu } from "./chains";
 
 // ---------- 点调用展开 ----------
 
@@ -36,8 +38,11 @@ export function expandedTo(cardId: string, segId: string, call: CallSpan): strin
   }
 }
 
+/** 展开时一起带上的：并进 Call 标记的（动态分发的备选、跨边界的取值）、箭头上的字（Why this one?） */
+export type ExpandExtra = { mark?: CrossMark; label?: string };
+
 /** again：已经展开过也再建一张（右键 Expand Again）；默认再点只是跳到已有的那张 */
-export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: ExpandPick, again = false) {
+export async function expandCall(cardId: string, segId: string, call: CallSpan, at?: { x: number; y: number }, pick?: ExpandPick, again = false, extra?: ExpandExtra) {
   const f = cardById(cardId);
   if (!f || !isCode(f.card)) return;
   const seg = segOf(f.card, segId);
@@ -55,15 +60,21 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
     toast(`Could not expand ${call.name}(): ${(e as Error).message}`);
     return;
   } finally { pending.delete(key); }
-  if ("none" in r) { toast(r.reason || `No definition found for ${call.name}()`); return; }
+  // 解析不到（字符串注册表等）：给两条路，按名字跨语言搜或手动补边（线框 01 二）
+  if ("none" in r) { if (r.name) unresolvedMenu(cardId, segId, call, r.reason); else toast(r.reason || `No definition found for ${call.name}()`); return; }
   if ("pick" in r) {
-    showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again) })));
+    showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again, extra) })));
     return;
   }
-  placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w);
+  // 动态分发：列出全部实现，选一个（线框 01 一）
+  if ("impls" in r) return openImplPicker(cardId, segId, call, r, at, again);
+  placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w, { mark: { ...r.mark, ...extra?.mark }, label: extra?.label, title: r.title });
+  // 宿主没等转到实现就建了卡：有没有子类覆盖在后台问，回来了再给选（不让点击等语言服务在整个工作区里找子类）
+  if (r.dispatching && !pick) void lateDispatch(cardId, segId, call, r.card.id);
 }
 
-function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number) {
+/** ex：并进 Call 标记的、箭头上的字、卡的名字（模板实例 dispatch<8, 768>） */
+export function placeExpanded(cardId: string, segId: string, call: CallSpan, card: CodeCard, views: Record<string, SegView>, vars: Var[], at?: { x: number; y: number }, w?: number, ex?: ExpandExtra & { title?: string }) {
   setState("views", (v) => ({ ...v, ...views }));
   const host = cardById(cardId)!.host;
   const id = card.id;
@@ -119,9 +130,12 @@ function placeExpanded(cardId: string, segId: string, call: CallSpan, card: Code
     const hp = b.place[host.id];
     if (hp?.section) np.section = hp.section;
     if (hp?.collapsed) hp.collapsed = undefined;
+    if (ex?.title) nc.title = ex.title;
     b.cards.push(nc);
     b.place[id] = np;
-    b.links.push({ id: uid("l"), from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: callMark(call, vars) });
+    const mk = { ...callMark(call, vars), ...ex?.mark };
+    for (const k of Object.keys(mk) as (keyof typeof mk)[]) if (mk[k] === undefined) delete mk[k];
+    b.links.push({ id: uid("l"), from: { card: cardId, seg: segId, line: call.line }, to: { card: id }, call: mk, ...(ex?.label ? { label: ex.label } : {}) });
   });
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);
@@ -271,26 +285,32 @@ export function openMarkPicker(cardId: string, el?: Element) {
   openPop({ kind: "mark", card: cardId }, at ? { el: at, prefer: "below" } : lastPointer());
 }
 
-// ---------- 讲解（Walkthrough）：从选中的卡出发，先沿 Call 箭头走到底，再走普通箭头 ----------
+// ---------- 讲解（Walkthrough）：从选中的卡出发（没选就从起点卡），先沿 Call 箭头走到底，再走普通箭头 ----------
 
-export function startWalk(id?: string) {
-  const start = id ?? sel.cards[0] ?? flows().graphs[0]?.roots[0];
+export function startWalk(id?: string, o: { at?: number; single?: boolean } = {}) {
+  const start = id ?? sel.cards[0] ?? startCards(state.board)[0] ?? flows().graphs[0]?.roots[0];
   if (!start) return toast("No call graph on this board yet. Click a call in a code card to start one.");
   const order = walkOrder(state.board, start);
-  if (order.length < 2) return toast("Nothing to walk through from this card. Link it to other cards first.");
+  // 从父白板讲进来的（single）：只有一张卡也讲，讲完回去
+  if (order.length < 2 && !o.single) return toast("Nothing to walk through from this card. Link it to other cards first.");
   const before = { ...camTarget() };
   // 折叠的卡讲解时临时展开（只是显示状态）
   const expanded = order.filter((cid) => placeOf(cid).collapsed);
   setShowCollapsed(true);
-  setWalk({ root: start, order, i: 0, before, expanded });
+  const i = Math.max(0, Math.min(order.length - 1, o.at ?? 0));
+  setWalk({ root: start, order, i, before, expanded });
   clearSel();
-  requestAnimationFrame(() => walkTo(0));
+  requestAnimationFrame(() => walkTo(i));
 }
 export function walkTo(i: number) {
   const w = walk();
   if (!w) return;
+  // 子白板里的讲解（从父白板讲进来的）走出两头：回父白板接着讲
+  if (walkBack() && (i >= w.order.length || i < 0)) return walkOut(i < 0 ? -1 : 1);
   i = Math.max(0, Math.min(w.order.length - 1, i));
   setWalk({ ...w, i });
+  // 走到子白板框：镜头推进去，在子白板里接着讲，讲完回来
+  if (cardById(w.order[i])?.card.kind === "board") return walkIntoFrame(w.order[i], i);
   const r = hostRect(w.order[i]);
   if (!r) return;
   const f = fitTop({ x: r.x - 40, y: r.y - 40, w: r.w + 80, h: r.h + 80 }, 1.15);
@@ -300,6 +320,7 @@ export function exitWalk() {
   const w = walk();
   if (!w) return;
   setWalk(null);
+  setWalkBack(null);
   setShowCollapsed(false);
   camTo(w.before.x, w.before.y, w.before.z, true);
 }

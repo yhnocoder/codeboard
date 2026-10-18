@@ -6,7 +6,7 @@ import { forgetHeads, gitDirOf, headOf, repoRootOf } from "./git";
 import type { BoardHost } from "./boards";
 import { absOf } from "./source";
 import type { Storage } from "./storage";
-import { boardSegments, countStale, staleFor } from "./versions";
+import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
 import { debounce, workspace, wsRoots } from "./ws";
 import { forgetDefs } from "./defcache";
 
@@ -42,7 +42,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
   const countClosed = async () => {
     for (const { board } of await store.all()) {
       if (panels.get(board.id)?.ready) continue;
-      try { panels.staleChanged(board.id, countStale(board, await staleFor(boardSegments(board)))); } catch { /* */ }
+      try { const ss = staleSegments(board); panels.staleChanged(board.id, countStale(board, await staleFor(ss.segs, ss.up))); } catch { /* */ }
     }
   };
 
@@ -71,10 +71,11 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
   // 保存文件：只影响 uncommitted 和仓库外文件，重算开着的白板
   const onSave = debounce(() => void panels.refreshStale(), 500);
   subs.push(files.onDidSave(() => onSave()));
-  // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听
+  // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
+  // Variant 的文件也算（另一个 worktree、复制出来的文件：在别处保存后卡上跟着刷新）
   const watchedFiles = new Set<string>();
   const watchFiles = async () => {
-    for (const { board } of await store.all()) for (const s of boardSegments(board)) {
+    for (const { board } of await store.all()) for (const s of [...boardSegments(board), ...variantSegments(board)]) {
       if (s.src.kind === "free" || s.src.kind === "github") continue;
       const a = absOf(s);
       if (!a || watchedFiles.has(a)) continue;

@@ -2,12 +2,12 @@
 import { send } from "../host";
 import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX } from "solid-js";
 import {
-  cardTitle, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants,
-  type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type Graph, type LinkSide,
+  cardTitle, cardChip, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
+  type Card, type CodeCard, type NoteCard, type ImageCard, type WebCard, type BoardCard, type Graph, type LinkSide,
 } from "@codeboard/core";
-import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf } from "../state/store";
+import { state, setSizes, isSel, flows, collapsedAway, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
-import { editing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
+import { editing, setEditing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { collapsedHome } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -17,7 +17,9 @@ import { fileHue } from "../state/look";
 import { CompareBody } from "./CompareBody";
 import { NoteBody, TextToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
+import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
+import { openMenu } from "../ui/Menu";
 import * as act from "../actions";
 import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
@@ -60,7 +62,7 @@ export function CardView(p: { card: Card }) {
     if (h.kind === "compare") return !h.cols.includes(cur);
     return c().id !== cur;
   };
-  const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
+  const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).msg ? "note msg" : (c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
   const lift = createMemo(() => dragging().has(c().id));
@@ -78,6 +80,7 @@ export function CardView(p: { card: Card }) {
           sel: isSel(c().id), solo: sel.cards.length === 1, lift: lift(), dim: dim(), locked: !!pl().locked, autoh: !pl().h, nobg: act.noBg(c()),
           editing: ed(), off: offscreen(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
+          gen: c().kind === "code" && !!(c() as CodeCard).gen,
           "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8),
           "bind-hot": (act.bindHot() as { card?: string } | null)?.card === c().id,
           "bind-anchor": act.boundCardOf(act.selSticker()) === c().id,
@@ -87,10 +90,12 @@ export function CardView(p: { card: Card }) {
         <div class="cface">
         <Switch>
           <Match when={c().kind === "code"}><CodeCardView card={c() as CodeCard} /></Match>
+          <Match when={c().kind === "note" && (c() as NoteCard).msg}><MsgBody card={c() as NoteCard} /></Match>
           <Match when={c().kind === "note"}><NoteBody card={c() as NoteCard} /></Match>
           <Match when={c().kind === "image"}><ImageView card={c() as ImageCard} /></Match>
           <Match when={c().kind === "web" || c().kind === "links"}>{c().kind === "web" ? <WebBody card={c() as WebCard} /> : <LinksBody card={c() as any} />}</Match>
           <Match when={c().kind === "compare"}><CompareBody card={c() as any} /></Match>
+          <Match when={c().kind === "board"}><BoardBody card={c() as BoardCard} /></Match>
         </Switch>
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
@@ -106,7 +111,7 @@ export function CardView(p: { card: Card }) {
         {/* 地图档只留下面这些：.cface 整块藏起来 */}
         <BoundStickers card={c().id} />
         {/* 地图档的名字空闲时就建好、藏着（styles.css），切到地图档只是显示出来 */}
-        <Show when={labelReady() || lodOf(c().id) === "map"}><MapLabel card={c()} /></Show>
+        <Show when={(labelReady() || lodOf(c().id) === "map") && c().kind !== "board"}><MapLabel card={c()} /></Show>
       </div>
     </Show>
   );
@@ -119,19 +124,31 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const node = createMemo(() => flows().byId.get(c().id));
   // 折叠后因为它藏起来的卡（别的路径还能走到的不算）
   const hiddenKids = createMemo(() => (placeOf(c().id).collapsed && node() ? descendants(flows(), c().id).filter((k) => collapsedSet().has(k)).length : 0));
-  const linkedIn = createMemo(() => act.linksInto(c().id).length);
+  // 连进来的箭头：这块白板上的 + 别的白板上连到这张共享卡的（宿主算好的 shared）
+  const linkedIn = createMemo(() => act.linksInto(c().id).length + (shared[c().id]?.ins.length ?? 0));
+  const onBoards = () => sharedOn(c().id);
+  const review = createMemo(() => act.sidenotesOf(c().id).some((n) => n.review));
   const s0 = () => c().segments[0];
   const stale = createMemo(() => act.cardStale(c()));
   const mixed = () => mixedVersions(c());
   const multi = () => c().segments.length > 1;
   const free = () => s0()?.src.kind === "free";
   const notes = () => act.sidenotesOf(c().id).filter((n) => !n.at.lines);
+  // 有 Variant 时版本按钮说的是上游（显示的可能是我的分支）
+  const onVar = () => onVariant(c());
+  const up0 = () => (onVar() ? upstreamSegs(c())[0] : s0());
+  const mine = createMemo(() => isMine(c()));
   return (
     <div class="chead" data-drag>
       <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
+      <Show when={!p.col && placeOf(c().id).start}><span class="startt" data-tip="Start card: Walkthrough and the call tree start here">START</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={act.K.lock} onPointerDown={(e) => e.stopPropagation()} onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
+      <Show when={!free() && act.mixedLangs() && cardChip(c())}>{(k) => <span class="lchip" data-l={k()}>{k()}</span>}</Show>
+      <Show when={c().gen}>
+        <span class="gentag" data-tip="Generated code: pinned to a run, not a commit">Generated · {c().gen!.what}</span>
+      </Show>
       <Show when={!free() || c().title || (editing()?.kind === "title" && editing()?.id === c().id)}>
         <Editable class="ctitle" kind="title" id={c().id} value={free() ? c().title ?? "" : cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
       </Show>
@@ -142,21 +159,33 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
         </span>}>
         <button class="rev lang" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
       </Show>
+      <Show when={act.dispatchOf(c().id)}>{(n) => <span class="disp1" data-tip="Picked from a dynamic dispatch: the others are the grey boxes beside it">1 of {n()}</span>}</Show>
       <span class="grow" />
+      <Procs card={c().id} procs={c().procs} />
       {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
       <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
+      <Show when={review()}><span class="rvdot" data-tip="A sidenote's line changed in the new version: check it" /></Show>
+      <Show when={act.openQuestionsOn(c().id)}>{(n) => <button class="qcount" data-tip="Open questions on this card" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openQuestionsOf(c().id)}>? {n()}</button>}</Show>
+      <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
       <Show when={linkedIn()}><button class="linkedin" data-tip="Linked here: show where the arrows come from" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}>← {linkedIn()}</button></Show>
       <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
+      <Show when={c().gen}>
+        <span class="genrun" data-tip="The run or params this was generated from · click to edit" onPointerDown={(e) => e.stopPropagation()} onClick={() => setEditing({ kind: "gen", id: c().id })}>
+          <Editable class="grun" kind="gen" id={c().id} value={c().gen!.run ?? ""} placeholder="Run / params" onCommit={(v) => act.setGenRun(c().id, v)} />
+        </span>
+      </Show>
+      <Show when={act.merged()[c().id]}><button class="vmdot" data-tip="Merged upstream · turn back into a normal card?" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.mergedPrompt(c().id)} /></Show>
+      <Show when={mine()}><span class="mine" data-tip="This card shows your changes, not upstream">MINE</span></Show>
       <Show when={!free()}>
         <button class="rev" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}
-          onClick={(e) => act.justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : act.commitMenu(c().id, e.currentTarget))}>
+          onClick={(e) => act.justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : onVar() ? act.switchVariant(c().id, UPSTREAM) : act.commitMenu(c().id, e.currentTarget))}>
           <Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>
-          {mixed() ? "Mixed" : versionLabel(s0()?.version, true)}
+          {mixed() ? "Mixed" : versionLabel(up0()?.version, true)}
           <Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show>
         </button>
       </Show>
-      <Show when={act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted")}>
+      <Show when={!c().variants?.length && (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))}>
         <button class="rev unc" data-tip="HEAD vs Working Tree" onPointerDown={(e) => e.stopPropagation()} onClick={() => act.openWorktreeDiff(c().id)}>+ uncommitted</button>
       </Show>
       <Show when={!p.col}><button class="ib" aria-label="Card Menu" data-tip="More Actions" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); act.cardMenu(c().id, r.left, r.bottom + 4); }}><Icon name="more" /></button></Show>
@@ -208,6 +237,31 @@ function CodeFoot(p: { card: CodeCard }) {
   );
 }
 
+/** 进程标签（线框 03）：rank 0、Scheduler × TP；浅的是线程 / CUDA stream。点一下改或删 */
+export function Procs(p: { card: string; procs?: { text: string; light?: boolean }[] }) {
+  return (
+    <For each={p.procs ?? []}>{(t, i) => (
+      <button class={act.procCls(t)} data-tip={t.light ? "Thread / stream · click to edit" : "Process · click to edit"} onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); openMenu([{ label: "Edit…", run: () => void act.editProc(p.card, i()) }, { label: "Remove", danger: true, run: () => act.removeProc(p.card, i()) }], r.left, r.bottom + 4); }}>{t.text}</button>
+    )}</For>
+  );
+}
+
+/** 消息卡（线框 03）：跨进程时夹在发送点和接收处之间，圆角小卡：类型名 + 「message」 */
+function MsgBody(p: { card: NoteCard }) {
+  const c = () => p.card;
+  return (
+    <div class="msgb" data-drag onDblClick={(e) => { e.stopPropagation(); setEditing({ kind: "title", id: c().id }); }}>
+      <div class="mrow1">
+        <Show when={flows().byId.get(c().id) && !state.host.settings?.hideNumbers}><span class="step"><MarkView g={flows().byId.get(c().id)!} /></span></Show>
+        <Show when={placeOf(c().id).start}><span class="startt">START</span></Show>
+        <Editable class="mname" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
+      </div>
+      <div class="mrow2"><span class="mk2">message{c().msg?.where ? ` · ${c().msg!.where}` : ""}</span><span class="grow" /><Procs card={c().id} procs={c().procs} /></div>
+    </div>
+  );
+}
+
 /** 调用图标记：字母，或用户选的图标（内置贴纸） */
 export function MarkView(p: { g: Graph }) {
   return <Show when={"icon" in p.g.mark} fallback={<>{p.g.label}</>}><Glyph icon={{ pack: "builtin", name: (p.g.mark as { icon: string }).icon }} size={13} /></Show>;
@@ -220,6 +274,7 @@ function CodeCardView(p: { card: CodeCard }) {
     <>
       <CodeHead card={c()} />
       <CodeBand card={c()} />
+      <Show when={c().variants?.length}><VariantBar card={c()} /></Show>
       <div class="carea" style={placeOf(c().id).h ? { height: `${placeOf(c().id).h}px` } : undefined}>
       <Desc id={c().id} desc={c().desc} />
       <Show when={act.missingNote(c())}>
@@ -232,7 +287,7 @@ function CodeCardView(p: { card: CodeCard }) {
           <Show when={act.cardStale(c()) === "missing"}><button onClick={() => send({ type: "locateRepo" })}>Locate Repo…</button></Show>
         </div>
       </Show>
-      <Show when={c().members} fallback={<CodeBody card={c()} hostId={c().id} />}>
+      <Show when={c().members && !classWithoutMembers(c())} fallback={<CodeBody card={c()} hostId={c().id} />}>
         <ClassBody card={c()} />
       </Show>
       <Show when={c().segments[0]?.src.kind === "free" && c().segments[0]?.src.kind === "free" && (c().segments[0].src as any).url}>
@@ -244,10 +299,67 @@ function CodeCardView(p: { card: CodeCard }) {
   );
 }
 
+/** Variant 标签页（线框 07）：点了换代码；右键改名、删除、写说明。下面一行是对比基准和改了几行，再下面是这个 Variant 的一行说明 */
+function VariantBar(p: { card: CodeCard }) {
+  const c = () => p.card;
+  const cur = () => activeOf(c());
+  const marks = createMemo(() => act.marksOf(c()));
+  const curV = () => c().variants?.find((v) => v.id === cur());
+  const behind = () => act.vlive[c().id]?.behind?.[cur()];
+  const summary = () => {
+    const m = marks();
+    if (!m) return "Same as base";
+    return [m.changed && `${m.changed} changed`, m.added && `${m.added} added`, m.removed && `${m.removed} removed`].filter(Boolean).join(" · ") || "Same as base";
+  };
+  const noteEditing = () => editing()?.kind === "vnote" && editing()?.id === c().id;
+  const stop = (e: Event) => e.stopPropagation();
+  return (
+    <>
+      <div class="vtabs" onPointerDown={stop}>
+        <For each={c().variants}>{(v) => (
+          <button class="vtab" classList={{ on: v.id === cur(), up: v.id === UPSTREAM }} data-vid={v.id} data-tip={v.note || (v.id === UPSTREAM ? "Upstream: the pinned version" : "Click to show · Right-click for more")}
+            onClick={() => act.switchVariant(c().id, v.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); act.variantMenu(c().id, v.id, e.clientX, e.clientY); }}>
+            {variantTitle(c(), v)}
+            <Show when={act.merged()[c().id]?.vid === v.id}><i class="vmdot" /></Show>
+          </button>
+        )}</For>
+        <button class="vtab vadd" aria-label="Add Variant" data-tip="Add Variant" onClick={(e) => { const r = e.currentTarget.getBoundingClientRect(); void act.addVariantMenu(c().id, r.left, r.bottom + 4); }}>+</button>
+      </div>
+      <Show when={cur() !== UPSTREAM}>
+        <div class="vcmp" onPointerDown={stop}>
+          <span class="lbl">Compare to</span>
+          <button class="vsel" onClick={(e) => act.baseMenu(c().id, e.currentTarget)}>{act.baseOf(c()).label} ▾</button>
+          <span class="lbl vsum">{summary()}</span>
+          <Show when={behind()}><span class="lbl vbeh" data-tip="Commits on upstream that this branch doesn't have">{behind()} behind</span></Show>
+          <span class="grow" />
+          <button class="vbtn" data-tip="Original · mine · upstream latest" onClick={(e) => act.openThreeWay(c().id, e.currentTarget)}>Three-way</button>
+          <Show when={!curV()?.note && !noteEditing()}><button class="vbtn" data-tip="A line about this variant: params, perf numbers" onClick={() => setEditing({ kind: "vnote", id: c().id })}>Note</button></Show>
+        </div>
+      </Show>
+      <Show when={curV()?.note || noteEditing()}>
+        <div class="vnote" onPointerDown={stop} onDblClick={(e) => { e.stopPropagation(); setEditing({ kind: "vnote", id: c().id }); }}>
+          <span class="vnl">{curV()?.name}</span>
+          <Editable class="vnt" kind="vnote" id={c().id} value={curV()?.note ?? ""} placeholder="params, perf numbers…" onCommit={(v) => act.setVariantNote(c().id, v)} />
+        </div>
+      </Show>
+    </>
+  );
+}
+
+/** 类的直接成员（方法 / 嵌套类）；段的展示数据还没到 → undefined */
+function classDefs(card: CodeCard) {
+  const s = card.segments[0], v = s && state.views[s.id];
+  if (!v) return undefined;
+  const depth = (s.symbol?.qual.split(".").length ?? 0) + 1;
+  return (v.defs ?? []).filter((d) => d.qual.split(".").length === depth);
+}
+/** 没有方法的类（只有字段的 dataclass 等）：成员列表会是空的，照普通代码卡显示源码 */
+const classWithoutMembers = (card: CodeCard) => classDefs(card)?.length === 0;
+
 /** 类卡：只列成员签名，点成员 → 展开成函数卡并连一条带 Call 标记的箭头 */
 function ClassBody(p: { card: CodeCard }) {
   const s = () => p.card.segments[0];
-  const defs = () => (state.views[s().id]?.defs ?? []).filter((d) => d.qual.split(".").length === (s().symbol?.qual.split(".").length ?? 0) + 1);
+  const defs = () => classDefs(p.card) ?? [];
   const shown = () => defs().filter((d) => p.card.members!.shown.length === 0 || p.card.members!.shown.includes(d.qual));
   const more = () => defs().length - shown().length;
   const sig = (line: number) => (s().text[line - s().start] ?? "").trim().replace(/:\s*$/, "");

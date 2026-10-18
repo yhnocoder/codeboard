@@ -5,10 +5,12 @@ import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
+import { cardRows, commonIndent, shownText, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
+import { shownIcon, stickerClick } from "../actions/questions";
+import { questionLine } from "@codeboard/core";
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -79,6 +81,15 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   createEffect(() => { rows(); notesOn(c().id); look(); later(); }); // 换材质主题：标题区高度变了，行的位置要重量
 
   const fromLines = createMemo(() => new Set(linksFrom(c().id).map((l) => `${l.from.seg}:${l.from.line}`)));
+  // 我的改动（线框 07）：和对比基准比新加 / 改过的行（只有显示着别的 Variant 的卡才有，其余卡不多建任何节点）
+  const vrows = createMemo(() => {
+    if (!c().variants?.length) return [];
+    const m = act.marksOf(c());
+    if (!m) return [];
+    const out: { i: number; k: "+" | "~" }[] = [];
+    rows().forEach((r, i) => { if (r.t === "line") { const k = m.marks.get(`${r.seg}:${r.line}`); if (k) out.push({ i, k }); } });
+    return out;
+  });
   const isHl = (s: Segment | undefined, l: number) => !!s?.hl?.includes(l);
   const inSel = (seg: string, l: number) => { const ls = lineSel(); return !!ls && ls.card === c().id && ls.seg === seg && l >= ls.start && l <= ls.end; };
 
@@ -96,18 +107,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
    * 片段整体缩得很深（方法里一段 for 循环）：把所有行共有的缩进藏起来，代码靠左；左边留几根细竖线表示藏了几层。
    * 只用 text-indent 往左挪，文字本身不动：列号、调用、变量高亮照旧
    */
-  const ded = createMemo(() => {
-    let m = Infinity;
-    for (const r of rows()) {
-      if (r.t !== "line") continue;
-      const s = segById(r.seg);
-      const t = (s?.text[r.line - s.start] ?? "").replace(/\t/g, "    ");
-      if (!t.trim()) continue;
-      m = Math.min(m, t.length - t.trimStart().length);
-      if (m < 2) return 0;
-    }
-    return m === Infinity ? 0 : m;
-  });
+  const ded = createMemo(() => commonIndent(rows().flatMap((r) => {
+    const s = r.t === "line" ? segById(r.seg) : undefined;
+    return s && r.t === "line" ? [shownText(s, r.line, undefined)] : [];
+  })));
   const overviewMask = createMemo(() => {
     if ((!warm() && lod() !== "overview") || !srcEl) return undefined;
     // 只用已经量好的行位置（ys，相对 .code），不在这里读 DOM：切到概览档时 241 张卡挨个读会让浏览器每张卡排一次版
@@ -293,18 +296,19 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
 
   // Sidenote 标记：按行（范围的第一行）计数
   const marks = createMemo(() => {
-    const out: { row: number; n: number; ids: string[]; span?: number }[] = [];
+    const out: { row: number; n: number; ids: string[]; span?: number; review?: boolean }[] = [];
     const notes = act.sidenotesOf(c().id).filter((n) => n.at.lines);
-    const by = new Map<number, { n: number; ids: string[]; end: number }>();
+    const by = new Map<number, { n: number; ids: string[]; end: number; review?: boolean }>();
     for (const n of notes) {
       const i = rows().findIndex((r) => (r.t === "line" && r.seg === n.at.seg && r.line >= n.at.lines![0] && r.line <= n.at.lines![1]) || (r.t === "gap" && r.seg === n.at.seg && r.from <= n.at.lines![0] && n.at.lines![0] <= r.to));
       if (i < 0) continue;
       const e = rows().findIndex((r) => r.t === "line" && r.seg === n.at.seg && r.line === n.at.lines![1]);
       const m = by.get(i) ?? { n: 0, ids: [], end: i };
       m.n++; m.ids.push(n.id); m.end = Math.max(m.end, e);
+      if (n.review) m.review = true;
       by.set(i, m);
     }
-    for (const [row, m] of by) out.push({ row, n: m.n, ids: m.ids, span: m.end > row ? m.end - row : undefined });
+    for (const [row, m] of by) out.push({ row, n: m.n, ids: m.ids, span: m.end > row ? m.end - row : undefined, review: m.review });
     return out;
   });
 
@@ -340,18 +344,20 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     </Show>
     <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => act.cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
       <Show when={freeEditing()}>
-        <FreeEdit card={c} wrap={() => !!c().wrap} onExit={(v) => { act.setFreeCode(c().id, v.replace(/\s+$/, "")); setEditing(null); }} onBlur={(e) => {
-            const el = e.currentTarget;
+        <FreeEdit card={c} wrap={() => !!c().wrap} onExit={(v) => { act.setFreeCode(c().id, v.replace(/\s+$/, "")); setEditing(null); }} onBlur={(e, ed) => {
+            const el = ed.el;
             // 点的是这张卡自己的东西（语言下拉、标题栏按钮）或它弹出的菜单：还在编辑，菜单关掉后把光标放回来；不算"点了别处"
             const t = (e.relatedTarget as HTMLElement | null) ?? lastDown;
-            if (t && t !== el && (el.closest(".card")?.contains(t) || t.closest?.(".ctx"))) {
+            if (t && !el.contains(t) && (el.closest(".card")?.contains(t) || t.closest?.(".ctx"))) {
               const back = () => { if (!el.isConnected || editing()?.id !== c().id) return; if (menuOpen()) return void setTimeout(back, 80);
                 const d = lastDown, mine = !!d && (el.closest(".card")?.contains(d) || !!d.closest?.(".ctx"));
-                if (mine) el.focus({ preventScroll: true }); else { act.setFreeCode(c().id, el.value.replace(/\s+$/, "")); setEditing(null); } };
+                if (mine) ed.focus(); else { act.setFreeCode(c().id, ed.text().replace(/\s+$/, "")); setEditing(null); } };
               setTimeout(back, 0);
               return;
             }
-            act.setFreeCode(c().id, el.value.replace(/\s+$/, "")); setEditing(null);
+            // 补全菜单、提示框（挂在 body 上）里点的：还在编辑
+            if (t?.closest?.(".cbcm-tip, .cm-tooltip")) { setTimeout(() => ed.focus(), 0); return; }
+            act.setFreeCode(c().id, ed.text().replace(/\s+$/, "")); setEditing(null);
           }} />
       </Show>
       <Show when={!freeEditing()}>
@@ -369,20 +375,21 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             {(m) => (
               <Show when={ys()[m.row]}>
                 <Show when={m.span}><span class="mkr" style={{ top: `${ys()[m.row].y + 10}px`, height: `${(ys()[m.row + m.span!]?.y ?? ys()[m.row].y) - ys()[m.row].y}px` }} /></Show>
-                <button class="mk" style={{ top: `${ys()[m.row].y}px` }} data-card={c().id} data-notes={m.ids.join(",")}
+                <button class="mk" classList={{ rv: !!m.review }} style={{ top: `${ys()[m.row].y}px` }} data-card={c().id} data-notes={m.ids.join(",")}
                   onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids, e)} onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}>{m.n}</button>
               </Show>
             )}
           </For>
+          <For each={vrows()}>{(x) => <Show when={ys()[x.i]}><span class="vmk" classList={{ add: x.k === "+" }} style={{ top: `${ys()[x.i].y}px` }}>{x.k}</span></Show>}</For>
           <For each={lineStk()}>
             {(k) => (
               <Show when={ys()[k.row]}>
                 <span class="lstks" classList={{ dot: markRows().has(k.row) }} style={{ top: `${ys()[k.row].y}px` }}>
                   <For each={k.ids}>{(id) => (
                     <Show when={stickerById(id)}>{(st) => (
-                      <span class="stk" classList={{ sel: selSticker() === id }} data-sticker={id} data-tip={stickerLabel(st().icon)}
-                        onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, id); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); }}>
-                        <Glyph icon={st().icon} color={st().color} size={14} />
+                      <span class="stk" classList={{ sel: selSticker() === id, q: !!st().q, done: !!st().q?.done }} data-sticker={id} data-tip={st().q?.md ? questionLine(st().q!.md) : stickerLabel(st().icon)}
+                        onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, id); }} onClick={(e) => { e.stopPropagation(); stickerClick(id, e.currentTarget); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); }}>
+                        <Glyph icon={shownIcon(st()).icon} color={shownIcon(st()).color} size={14} />
                       </span>
                     )}</Show>
                   )}</For>
@@ -392,6 +399,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           </For>
         </div>
         <div class="rowbgs">
+        <For each={vrows()}>{(x) => <Show when={ys()[x.i]}><div class={`vbg ${x.k === "+" ? "add" : "chg"}`} style={{ top: `${ys()[x.i].y}px`, height: `${ys()[x.i].h}px` }} /></Show>}</For>
         <For each={rows()}>
           {(r, i) => (
             <Show when={ys()[i()] && r.t === "line"}>
