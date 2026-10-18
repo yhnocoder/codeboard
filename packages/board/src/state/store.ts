@@ -177,8 +177,9 @@ function stamp(b: Board) {
 /**
  * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
  * fn 抛错就整次撤回、提示一下，返回 false；什么都没改不进撤销栈。
+ * merge：和上一步的 merge 一样（中间没有别的修改、撤销）就并进上一步，比如连续按方向键挪同一批卡算一步
  */
-export function mutate(fn: (b: Board) => void): boolean {
+export function mutate(fn: (b: Board) => void, merge?: string): boolean {
   const before = snap();
   cur = null;
   try { setState("board", produce((b: Board) => { fn(b); stamp(b); })); }
@@ -195,11 +196,21 @@ export function mutate(fn: (b: Board) => void): boolean {
   if (same(after, before)) { cur = before; return true; }
   cur = after;
   changed();
-  pushUndo(before, after);
+  pushUndo(before, after, merge);
   return true;
 }
 
-function pushUndo(before: Snap, after: Snap) {
+/** 栈顶那一步的 merge（见 mutate）：别的修改、撤销 / 重做之后清掉 */
+let topMerge: string | undefined;
+function pushUndo(before: Snap, after: Snap, merge?: string) {
+  const top = undoStack[undoStack.length - 1];
+  if (merge && merge === topMerge && top) {
+    top.step = touched(top, after);
+    redoStack.length = 0;
+    updUndo();
+    return;
+  }
+  topMerge = merge;
   before.step = touched(before, after);
   undoStack.push(before);
   if (undoStack.length > 300) undoStack.shift();
@@ -369,6 +380,7 @@ export const undoTop = (): object | undefined => undoStack[undoStack.length - 1]
 export function undo() {
   const s = undoStack.pop();
   if (!s) return false;
+  topMerge = undefined;
   const now = snap();
   redoStack.push(now);
   undone = true;
@@ -379,6 +391,7 @@ export function undo() {
 export function redo() {
   const s = redoStack.pop();
   if (!s) return false;
+  topMerge = undefined;
   const now = snap();
   undoStack.push(now);
   undone = true;
@@ -386,7 +399,7 @@ export function redo() {
   updUndo();
   return true;
 }
-export function resetHistory() { cur = null; lastIds = null; undoStack.length = 0; redoStack.length = 0; syncLog.length = 0; last.clear(); updUndo(); }
+export function resetHistory() { cur = null; lastIds = null; topMerge = undefined; undoStack.length = 0; redoStack.length = 0; syncLog.length = 0; last.clear(); updUndo(); }
 
 export function allIds(): string[] {
   return state.board.cards.map((c) => c.id);

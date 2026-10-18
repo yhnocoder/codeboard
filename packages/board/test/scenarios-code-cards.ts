@@ -1,5 +1,6 @@
 // Code cards on the canvas: what the user can see is what selection, Delete, Fit and Reveal act on; keyboard and pointer details.
 //  tabKeepsCanvasStill        — Tab walking focus to a button of a card past the edge does not scroll the canvas (Fit and box select stay right)
+//  nudgeIsOneUndoStep         — a run of arrow-key nudges of the same selection is one undo step
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 // Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
@@ -40,6 +41,7 @@ function callTree(collapsed: boolean) {
 
 export const CODE_CARDS: Record<string, () => Promise<void>> = {
   tabKeepsCanvasStill: () => run("tabKeepsCanvasStill", tabKeepsCanvasStill),
+  nudgeIsOneUndoStep: () => run("nudgeIsOneUndoStep", nudgeIsOneUndoStep),
   farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
 };
 
@@ -64,6 +66,27 @@ async function tabKeepsCanvasStill(res: Record<string, unknown>) {
   res.boxed = lastSel(h)?.cards;
   await close(h);
   return worst === 0 && JSON.stringify(res.boxed) === JSON.stringify([cs[0].id]);
+}
+
+async function nudgeIsOneUndoStep(res: Record<string, unknown>) {
+  const b = emptyBoard("bNudge", "nudge");
+  const a = nv("LLMEngine.step"), c = nv("Scheduler.schedule");
+  put(b, a, 80, 80, 560); put(b, c, 700, 80, 560);
+  const h = await open({ board: b });
+  // an earlier step: delete the second card
+  await clickHead(h, c.id);
+  await h.page.keyboard.press("Delete"); await wait(h, 300);
+  await clickHead(h, a.id);
+  for (let i = 0; i < 5; i++) await h.page.keyboard.press("ArrowRight");
+  for (let i = 0; i < 3; i++) await h.page.keyboard.press("Shift+ArrowDown");
+  await wait(h, 1000);
+  res.moved = [h.board().place[a.id].x, h.board().place[a.id].y];
+  await h.page.keyboard.press("Meta+z"); await wait(h, 1000);
+  res.afterUndo = [h.board().place[a.id].x, h.board().place[a.id].y];
+  await h.page.keyboard.press("Meta+z"); await wait(h, 1000);
+  res.deletedBack = h.board().cards.some((k) => k.id === c.id);
+  await close(h);
+  return JSON.stringify(res.moved) === "[85,110]" && JSON.stringify(res.afterUndo) === "[80,80]" && !!res.deletedBack;
 }
 
 async function farClicksNotDoubleClick(res: Record<string, unknown>) {

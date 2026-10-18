@@ -653,7 +653,8 @@ export function installKeys() {
       e.preventDefault();
       const d = e.shiftKey ? 10 : 1;
       const dx = k === "ArrowLeft" ? -d : k === "ArrowRight" ? d : 0, dy = k === "ArrowUp" ? -d : k === "ArrowDown" ? d : 0;
-      mutate((b) => { for (const id of sel.cards) { const c = hostPlace(b, id); if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } });
+      // 连着按（或按住）方向键挪同一批卡是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了
+      mutate((b) => { for (const id of sel.cards) { const c = hostPlace(b, id); if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } }, `nudge:${sel.cards.join(",")}`);
     }
   });
   window.addEventListener("keyup", (e) => {
