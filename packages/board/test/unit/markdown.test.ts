@@ -4,6 +4,11 @@ import { parseMd, serializeMd } from "../../src/md/schema";
 import { renderMd } from "../../src/md/render";
 import { toggleTask } from "../../src/md/view";
 import { cleanCompletion, completePrompt } from "@codeboard/core";
+import { getSchema } from "@tiptap/core";
+import { Node as PMNode } from "@tiptap/pm/model";
+import { baseExtensions } from "../../src/md/schema";
+
+const schema = getSchema(baseExtensions);
 
 const rt = (s: string) => serializeMd(parseMd(s));
 /** 写回一次后再往返，必须一字不变 */
@@ -300,5 +305,16 @@ describe("empty paragraphs", () => {
 describe("tables", () => {
   it("no extra blank lines around a table", () => {
     same("word here\n\n| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\nafter");
+  });
+});
+
+describe("a paragraph that is only an image", () => {
+  it("is still a paragraph, so the document fits the schema", () => {
+    for (const s of ["![i](a.png)", "a\n\n![i](a.png)", "![i](a.png)\n\nb"]) {
+      const d = parseMd(s);
+      expect(d.content!.map((n) => n.type)).toEqual(s.split("\n\n").map(() => "paragraph"));
+      expect(() => PMNode.fromJSON(schema, d).check()).not.toThrow();
+      same(s);
+    }
   });
 });

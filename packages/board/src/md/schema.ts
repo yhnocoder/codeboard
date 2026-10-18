@@ -8,6 +8,7 @@ import Underline from "@tiptap/extension-underline";
 import HorizontalRule from "@tiptap/extension-horizontal-rule";
 import CodeMark from "@tiptap/extension-code";
 import Document from "@tiptap/extension-document";
+import Paragraph from "@tiptap/extension-paragraph";
 import { MarkdownManager } from "@tiptap/markdown";
 import { Marked } from "marked";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
@@ -264,6 +265,10 @@ const Doc = Document.extend({ content: "block+ footnotes?" });
 // ---------- 其他 ----------
 // 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）
 const Img = Image.configure({ inline: true, allowBase64: true });
+// TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
+const Para = Paragraph.extend({
+  parseMarkdown: (t: any, h: any) => (t.tokens?.length === 1 && t.tokens[0].type === "image" ? h.createNode("paragraph", undefined, h.parseInline(t.tokens)) : (Paragraph.config as any).parseMarkdown(t, h)),
+});
 // ---------- 行内 HTML：<u>、<kbd> 是格式；别的标签按字原样留着（写回时 < 转义成 \<，不写实体） ----------
 const htmlTok = (tag: string) => ({
   name: `html_${tag}`, level: "inline" as const,
@@ -332,14 +337,14 @@ const Head = TableHeader.extend({ content: "paragraph" });
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
   StarterKit.configure({
-    document: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false,
+    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false,
     link: { openOnClick: false, autolink: true, linkOnPaste: true, HTMLAttributes: { class: "lnk", rel: null, target: null } },
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
   U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
-  Doc, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
+  Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
   CardRef, Emoji, FnList, FnDef, FnRef,
 ];
