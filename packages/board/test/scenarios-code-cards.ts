@@ -5,6 +5,7 @@
 //  fitFramesVisibleContent    — Fit to Window frames what is shown: no hidden call-tree cards, a collapsed section counts as its title pill
 //  nudgeIsOneUndoStep         — a run of arrow-key nudges of the same selection is one undo step
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
+//  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
 // Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { open, put, symCard, findSym, viewOf, type Host } from "./harness";
@@ -49,6 +50,7 @@ export const CODE_CARDS: Record<string, () => Promise<void>> = {
   fitFramesVisibleContent: () => run("fitFramesVisibleContent", fitFramesVisibleContent),
   nudgeIsOneUndoStep: () => run("nudgeIsOneUndoStep", nudgeIsOneUndoStep),
   farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
+  implPickerKeyboard: () => run("implPickerKeyboard", implPickerKeyboard),
 };
 
 async function tabKeepsCanvasStill(res: Record<string, unknown>) {
@@ -172,4 +174,32 @@ async function farClicksNotDoubleClick(res: Record<string, unknown>) {
   res.near = await notes();
   await close(h);
   return res.far === 0 && res.near === 1;
+}
+
+async function implPickerKeyboard(res: Record<string, unknown>) {
+  const b = emptyBoard("bImpl", "impl");
+  const step = nv("LLMEngine.step");
+  put(b, step, 80, 80, 560);
+  const impl = (q: string) => { const s = findSym(q); return { label: s.s.qual, detail: `${s.f}:${s.s.defLine}`, path: s.f, line: s.s.defLine, qual: s.s.qual }; };
+  const h = await open({
+    board: b,
+    on: async (m, reply) => {
+      if (m.type !== "expand" || m.pick || m.name !== "schedule") return false;
+      await reply(m.req!, { impls: [impl("Scheduler.schedule"), impl("Scheduler.postprocess")], base: "Scheduler.schedule" });
+      return true;
+    },
+  });
+  await clickHead(h, step.id);
+  await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click(); await wait(h, 600);
+  res.open = await h.page.locator(".pop.k-impls").count();
+  await h.page.keyboard.press("ArrowDown"); await wait(h, 100);
+  res.on = await h.page.locator(".pop.k-impls .cand.on .lb").textContent().catch(() => null);
+  await h.page.keyboard.press("Enter"); await wait(h, 1200);
+  res.closed = (await h.page.locator(".pop.k-impls").count()) === 0;
+  res.cards = h.board().cards.map((c) => (c as CodeCard).segments?.[0]?.symbol?.qual);
+  res.stepAt = [h.board().place[step.id].x, h.board().place[step.id].y];
+  res.opened = h.sent.some((m) => m.type === "open");
+  await close(h);
+  return res.open === 1 && res.on === "Scheduler.postprocess" && !!res.closed && (res.cards as string[]).includes("Scheduler.postprocess")
+    && JSON.stringify(res.stepAt) === "[80,80]" && !res.opened;
 }
