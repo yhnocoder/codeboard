@@ -122,7 +122,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const sx = e.clientX, sy = e.clientY;
   let mergeT: number | undefined, mergeTgt: string | undefined;
   const g = cardById(grabbed)!.host;
-  const mergeOk = ids.every((i) => { const c = cardById(i)!.card; return c.kind === "code" && !c.members; });
+  const mergeOk = ids.every((i) => cardById(i)!.card.kind === "code");
   const webOk = ids.every((i) => { const k = cardById(i)!.card.kind; return k === "web" || k === "links"; }); // Web 卡拖到另一张的标题上 → Link List
   const noteOk = ids.length === 1 && g.kind === "note" && g.bg;
   setDragging(new Set(ids));
@@ -148,7 +148,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     const ucard = uid ? cardById(uid) : undefined;
     let drop = dropTarget();
     const webHead = webOk && uid && ucard && (ucard.host.kind === "web" || ucard.host.kind === "links") && under?.closest(".chead, .wtitle");
-    if (webHead || (mergeOk && uid && head && ucard && isCode(ucard.card) && !ucard.card.members && ucard.host.kind === "code")) {
+    if (webHead || (mergeOk && uid && head && ucard && isCode(ucard.card) && ucard.host.kind === "code")) {
       if (ev.altKey) { drop = { kind: "merge", card: uid, armed: true }; clearTimeout(mergeT); }
       else if (mergeTgt !== uid) {
         clearTimeout(mergeT);

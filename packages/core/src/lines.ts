@@ -41,7 +41,14 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
     if (prev) {
       if (prev.path !== s.path || prev.src.kind !== s.src.kind) rows.push({ t: "file", seg: s.id, path: s.src.kind === "free" ? "Free code" : s.path, version: o.versionOf?.(s) });
       else if (s.scope && prev.scope !== s.scope && !v?.defs.some((d) => d.line === s.start)) rows.push({ t: "fn", seg: s.id, name: shortFn(s.scope) });
-      else if (s.start > prev.end + 1 && !v?.defs.some((d) => d.line === s.start)) rows.push({ t: "gap", seg: s.id, from: prev.end + 1, to: s.start - 1, manual: false });
+      // 段与段之间总要看得出边界：中间隔着行 → 「⋯ N lines」；紧挨着、新段从一个定义开始 → 细线 + 定义名（同段里换函数也是这样）
+      else if (s.start > prev.end + 1) rows.push({ t: "gap", seg: s.id, from: prev.end + 1, to: s.start - 1, manual: false });
+      else {
+        let dl = s.start;
+        while (dl < s.end && /^\s*@/.test(s.text[dl - s.start] ?? "")) dl++;
+        const d = v?.defs.find((x) => x.line === dl);
+        if (d) rows.push({ t: "fn", seg: s.id, name: d.name });
+      }
     }
     let skipped = false;
     let l = s.start;
@@ -56,7 +63,11 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
       const f = v?.flags[l - s.start] ?? 0;
       const off = (hide.blank && f & F_BLANK) || (hide.comments && f & F_COMMENT) || (hide.docstrings && f & F_DOCSTRING);
       if (off) { skipped = true; l++; continue; }
-      const d = l > s.start ? v?.defs.find((x) => x.line === l) : undefined;
+      // 装饰器是定义的一部分：线画在装饰器上面，不画在装饰器和 def 之间
+      const isDec = (k: number) => /^\s*@/.test(s.text[k - s.start] ?? "");
+      let dl = l;
+      while (dl < s.end && isDec(dl)) dl++;
+      const d = l > s.start && !isDec(l - 1) ? v?.defs.find((x) => x.line === dl) : undefined;
       if (d && rows.length && rows[rows.length - 1].t === "line") rows.push({ t: "fn", seg: s.id, name: d.name });
       rows.push({ t: "line", seg: s.id, line: l, skipped });
       skipped = false;

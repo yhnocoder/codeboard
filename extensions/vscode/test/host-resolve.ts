@@ -6,7 +6,7 @@ import { execFileSync } from "node:child_process";
 import type { CodeCard, ExpandPick, ExpandResult, PeekDef, Segment } from "@codeboard/core";
 import { startAnalysis, analysisOf, segAnalysis } from "../src/analysis";
 import { clipAnalysis } from "@codeboard/core/analysis";
-import { cardForFileSym } from "../src/cards";
+import { cardForFileSym, cardsFromEditor } from "../src/cards";
 import { callVars, dispatchAt, expand, forgetLspSeen, peek } from "../src/resolve";
 import { viewsFor } from "../src/views";
 import { forgetDefs } from "../src/defcache";
@@ -446,7 +446,7 @@ void (async () => {
     const { card: c, seg } = await card(path.join(R, "sampler.py"), "RejectionSampler.forward");
     check(seg.version.kind === "git" && seg.version.commit === base, "Variants: card pinned to main", seg.version);
     const src = await variantSources(seg);
-    check(src.worktrees.length === 1 && src.worktrees[0].dir === WT && src.worktrees[0].branch === "exp-overlap" && /vllm-exp · exp-overlap/.test(src.worktrees[0].label), "Add Variant lists the other worktree (git worktree list)", src);
+    check(src.worktrees.length === 1 && src.worktrees[0].dir === WT && src.worktrees[0].branch === "exp-overlap" && src.worktrees[0].label === "exp-overlap · ../vllm-exp", "Add Variant lists the other worktree (git worktree list)", src);
     check(src.branches.includes("exp-overlap") && src.current === "main", "…and local branches", src);
     const wt = await addVariant([seg], { kind: "wt", dir: WT, branch: "exp-overlap" });
     check(wt?.name === "vllm-exp" && wt.segs[0].src.kind === "external" && wt.segs[0].text.includes("        first[accepted.all(-1)] = k") && !(wt.segs[0].version as { uncommitted?: boolean }).uncommitted, "Worktree variant reads the other worktree's file", wt?.segs[0]);
@@ -558,6 +558,49 @@ void (async () => {
     await send({ type: "codeDocClose", id: "free-b" });
     check(log.at(-1) === "close free-b", "Closing the editor closes the virtual document", log.at(-1));
     delete W.language.scratch;
+  }
+
+  // ⌥B over several definitions (Linda: nano-vllm utils/context.py lines 5–27): one multi-segment card by default, ⇧⌥B one card
+  // per definition; neither drops a line (the dataclass's decorator and fields, _CONTEXT = Context() at line 16)
+  {
+    useWorkspace(W);
+    const abs = path.join(WS, "nanovllm/utils/context.py"), text = fs.readFileSync(abs, "utf8");
+    const ed = { path: abs, file: true, lang: "python", text, selections: [{ startLine: 5, startCol: 0, endLine: 27, endCol: 24 }], cursorLine: 27, selectionText: "" };
+    const ranges = (c: CodeCard) => c.segments.map((sg) => `${sg.symbol?.qual ?? sg.scope ?? "?"}:${sg.start}-${sg.end}`);
+    const one = await cardsFromEditor(ed);
+    const want = ["Context:5-14", "<module>:16-16", "get_context:18-19", "set_context:21-23", "reset_context:25-27"];
+    check("cards" in one && one.cards.length === 1 && JSON.stringify(ranges(one.cards[0])) === JSON.stringify(want) && !one.cards[0].members && !one.ask, "⌥B over several definitions: one card, a segment per definition plus the module line between", "cards" in one ? one.cards.map(ranges) : one);
+    const sep = await cardsFromEditor(ed, "separate");
+    check("cards" in sep && JSON.stringify(sep.cards.map((c) => ranges(c)[0])) === JSON.stringify(want), "⇧⌥B: one card per definition, the module line as its own card", "cards" in sep ? sep.cards.map(ranges) : sep);
+    const ctxCard = "cards" in sep ? sep.cards[0] : undefined;
+    check(ctxCard && !ctxCard.members && ctxCard.segments[0].text[0].startsWith("@dataclass") && ctxCard.segments[0].text.length === 10, "The fields-only dataclass is a plain code card with its decorator and fields", ctxCard);
+    const viaSym = await card(abs, "Context");
+    check(!viaSym.card.members, "Context from a symbol (search / Add Function at Cursor): no empty member list");
+    const sched = await card(path.join(WS, "nanovllm/engine/scheduler.py"), "Scheduler");
+    check(!!sched.card.members, "A class with methods is still a member-list class card");
+  }
+
+  // Add Variant in a submodule: git worktree list reports the submodule's main worktree as its git dir (.git/modules/…);
+  // that is the current checkout, not another worktree. A real extra worktree of the submodule is listed with a short path
+  {
+    const FIX = fs.mkdtempSync("/tmp/codeboard-sub-");
+    const git = (cwd: string, ...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "-c", "protocol.file.allow=always", ...a], { cwd, stdio: "pipe" }).toString().trim();
+    const LIB = path.join(FIX, "lib-src"), SUP = path.join(FIX, "super");
+    fs.mkdirSync(LIB); fs.mkdirSync(SUP);
+    fs.writeFileSync(path.join(LIB, "m.py"), "def f():\n    return 1\n");
+    git(LIB, "init", "-q", "-b", "main"); git(LIB, "add", "-A"); git(LIB, "commit", "-qm", "lib");
+    git(SUP, "init", "-q", "-b", "main"); git(SUP, "submodule", "add", "-q", LIB, "examples/lib"); git(SUP, "commit", "-qm", "sub");
+    const SUB = path.join(SUP, "examples/lib");
+    useWorkspace(nodeWorkspace(SUP));
+    forgetHeads();
+    const { seg } = await card(path.join(SUB, "m.py"), "f");
+    const src = await variantSources(seg);
+    check(src.worktrees.length === 0, "Submodule: its own checkout (reported as .git/modules/…) is not an Other Worktree", src.worktrees);
+    const EXP = path.join(SUP, "examples/lib-exp");
+    git(SUB, "worktree", "add", "-q", EXP, "-b", "exp");
+    const src2 = await variantSources(seg);
+    check(src2.worktrees.length === 1 && src2.worktrees[0].dir === EXP && src2.worktrees[0].label === "exp · ../lib-exp", "Submodule: a real extra worktree is listed once, branch first, short path", src2.worktrees);
+    useWorkspace(W);
   }
 
   console.log(failed ? `${failed} failed` : "All passed");

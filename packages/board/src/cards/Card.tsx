@@ -287,7 +287,7 @@ function CodeCardView(p: { card: CodeCard }) {
           <Show when={act.cardStale(c()) === "missing"}><button onClick={() => send({ type: "locateRepo" })}>Locate Repo…</button></Show>
         </div>
       </Show>
-      <Show when={c().members} fallback={<CodeBody card={c()} hostId={c().id} />}>
+      <Show when={c().members && !classWithoutMembers(c())} fallback={<CodeBody card={c()} hostId={c().id} />}>
         <ClassBody card={c()} />
       </Show>
       <Show when={c().segments[0]?.src.kind === "free" && c().segments[0]?.src.kind === "free" && (c().segments[0].src as any).url}>
@@ -346,10 +346,20 @@ function VariantBar(p: { card: CodeCard }) {
   );
 }
 
+/** 类的直接成员（方法 / 嵌套类）；段的展示数据还没到 → undefined */
+function classDefs(card: CodeCard) {
+  const s = card.segments[0], v = s && state.views[s.id];
+  if (!v) return undefined;
+  const depth = (s.symbol?.qual.split(".").length ?? 0) + 1;
+  return (v.defs ?? []).filter((d) => d.qual.split(".").length === depth);
+}
+/** 没有方法的类（只有字段的 dataclass 等）：成员列表会是空的，照普通代码卡显示源码 */
+const classWithoutMembers = (card: CodeCard) => classDefs(card)?.length === 0;
+
 /** 类卡：只列成员签名，点成员 → 展开成函数卡并连一条带 Call 标记的箭头 */
 function ClassBody(p: { card: CodeCard }) {
   const s = () => p.card.segments[0];
-  const defs = () => (state.views[s().id]?.defs ?? []).filter((d) => d.qual.split(".").length === (s().symbol?.qual.split(".").length ?? 0) + 1);
+  const defs = () => classDefs(p.card) ?? [];
   const shown = () => defs().filter((d) => p.card.members!.shown.length === 0 || p.card.members!.shown.includes(d.qual));
   const more = () => defs().length - shown().length;
   const sig = (line: number) => (s().text[line - s().start] ?? "").trim().replace(/:\s*$/, "");

@@ -306,7 +306,8 @@ export function separate(id: string) {
 
 export function mergeCheck(cs: Card[]): { ok: true } | { ok: false; why: string } {
   if (cs.length < 2) return { ok: false, why: "Select two or more code cards" };
-  if (!cs.every((c) => c.kind === "code" && !c.members)) return { ok: false, why: "Only code cards can be merged (not Note, Image, Web, Compare or class cards)" };
+  // 类卡也能合：合出来的卡按行号排段、显示源码（不再只列成员），拆开时还原成类卡
+  if (!cs.every((c) => c.kind === "code")) return { ok: false, why: "Only code cards can be merged (not Note, Image, Web or Compare cards)" };
   return { ok: true };
 }
 /** 合并：target 是被拖到的那张卡（标题、说明、文件顺序以它为准）。共享卡先在这块白板上拆成副本，别的白板不受影响（core mergeCodeCards） */

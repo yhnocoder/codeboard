@@ -6,7 +6,7 @@ import {
   cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize,
   type Board, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
-import { initAnalysis, analyze, planSelection, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
+import { initAnalysis, analyze, planSelection, listsMembers, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
 
 // Uses the repo's nano-vllm submodule as test data
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
@@ -125,6 +125,25 @@ describe("planSelection", () => {
   it("turns multiple selections into one multi-segment card", () => {
     const p = planSelection([sel(31, 32), sel(44, 45)], a());
     expect(p).toMatchObject({ kind: "segments", ranges: [{ start: 31, end: 32 }, { start: 44, end: 45 }] });
+  });
+  it("a fields-only dataclass is a code card, not an empty member list", () => {
+    // nano-vllm utils/context.py: @dataclass(slots=True) class Context with only annotated fields
+    const an = analyze("python", show(NEW, "nanovllm/utils/context.py"));
+    const ctx = sym(an, "Context");
+    expect(ctx).toMatchObject({ kind: "class", start: 5, defLine: 6, end: 14 });
+    expect(listsMembers(an, ctx)).toBe(false);
+    expect(listsMembers(a(), sym(a(), "Scheduler"))).toBe(true);
+  });
+  it("splits a selection of several definitions without losing a line", () => {
+    // context.py lines 5–27: the dataclass (decorator + fields), _CONTEXT = Context() at line 16, then three functions
+    const an = analyze("python", show(NEW, "nanovllm/utils/context.py"));
+    const p = planSelection([sel(5, 27)], an);
+    expect(p).toMatchObject({ kind: "split" });
+    const parts = (p as Extract<typeof p, { kind: "split" }>).parts.map((x) => "sym" in x ? `${x.sym.qual}:${x.sym.start}-${x.sym.end}` : `${x.range.module ? "<module>" : x.range.scope}:${x.range.start}-${x.range.end}`);
+    expect(parts).toEqual(["Context:5-14", "<module>:16-16", "get_context:18-19", "set_context:21-23", "reset_context:25-27"]);
+    // a selection that starts mid-function keeps the partial lines too
+    const q = planSelection([sel(19, 27)], an) as Extract<ReturnType<typeof planSelection>, { kind: "split" }>;
+    expect(q.parts.map((x) => "sym" in x ? x.sym.qual : `${x.range.scope}:${x.range.start}-${x.range.end}`)).toEqual(["get_context:19-19", "set_context", "reset_context"]);
   });
 });
 
@@ -292,6 +311,18 @@ describe("cardRows", () => {
     const a = { ...seg("a", 1, 2), scope: "A.f" }, b = { ...seg("b", 5, 6), scope: "A.f" }, c = { ...seg("c", 9, 9), scope: "A.g" }, d = { ...seg("d", 1, 1), path: "b.py" };
     const rows = cardRows({ segments: [a, b, c, d] });
     expect(rows.filter((r) => r.t !== "line").map((r) => r.t)).toEqual(["gap", "fn", "file"]);
+  });
+  it("marks every segment boundary, also where a segment starts with a definition", () => {
+    // a card merged from get_context 18–19, set_context 21–23 and a set_context copy right after it
+    const dv = (id: string, line: number, name: string): SegView => ({ html: [], flags: [], calls: [], defs: [{ line, name, qual: name }] });
+    const g = seg("g", 18, 19), st = seg("st", 21, 23), t2 = seg("t2", 24, 25);
+    const rows = cardRows({ segments: [g, st, t2] }, { views: { g: dv("g", 18, "get_context"), st: dv("st", 21, "set_context"), t2: dv("t2", 24, "reset_context") } });
+    expect(rows.filter((r) => r.t !== "line")).toEqual([{ t: "gap", seg: "st", from: 20, to: 20, manual: false }, { t: "fn", seg: "t2", name: "reset_context" }]);
+  });
+  it("draws a function divider above a decorator, not between it and the def", () => {
+    const d: Segment = { ...seg("d", 1, 6), text: ["x = 1", "", "@dataclass(slots=True)", "class Context:", "    a: int = 0", "    b: int = 0"] };
+    const rows = cardRows({ segments: [d] }, { views: { d: { html: [], flags: [], calls: [], defs: [{ line: 4, name: "Context", qual: "Context" }] } } });
+    expect(rows.map((r) => r.t === "line" ? r.line : r.t)).toEqual([1, 2, "fn", 3, 4, 5, 6]);
   });
   it("copies code without line numbers and keeps relative indent", () => {
     expect(copyText(["        while x:", "            y()"])).toBe("while x:\n    y()");
