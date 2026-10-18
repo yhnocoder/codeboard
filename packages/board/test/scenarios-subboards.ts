@@ -27,7 +27,7 @@ export async function subHost(start: Board, others: Board[]) {
   for (const b of [start, ...others]) await store.save(b);
   let cur = start.id, crumbs: Crumb[] = [], cams: Camera[] = [];
   const inits: { id: string; crumbs: number; walk?: unknown }[] = [];
-  let h!: Host;
+  let h!: Host; // a patch can come in before open() returns (the first skeletons mark lost arrows): h?.post there
   const sent = new Map<string, string>();
   const sk = (id: string): Skeleton | null => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)?.name) : null; };
   const dirty = new Set<string>();
@@ -65,7 +65,7 @@ export async function subHost(start: Board, others: Board[]) {
     board: (await store.load(cur))!, light, w: 1400, h: 900,
     on: async (m, reply) => {
       switch (m.type) {
-        case "patch": await store.patch(cur, m.patch, { undo: m.undo }); await h.post({ type: "boards", boards: await store.list() }); await reply(m.req, { skipped: 0 }); return true;
+        case "patch": await store.patch(cur, m.patch, { undo: m.undo }); await h?.post({ type: "boards", boards: await store.list() }); await reply(m.req, { skipped: 0 }); return true;
         case "skeletons": await store.list(); await reply(m.req, Object.fromEntries(m.ids.map((id) => [id, sk(id)]))); return true;
         case "newBoard": await store.save(m.board, { group: null }); await reply(m.req, true); return true;
         case "deleteBoard": await store.remove(m.id); await reply(m.req, true); return true;
