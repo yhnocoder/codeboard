@@ -75,7 +75,14 @@ export function gitDirOf(root: string) {
 }
 
 /** a 是不是 b 的祖先（含相等） */
-export const isAncestor = async (root: string, a: string, b: string) => (await git(root, ["merge-base", "--is-ancestor", a, b])) !== null;
+const anc = new Map<string, Promise<boolean>>();
+/** commit a 是不是 commit b 的祖先（a、b 都是 sha）。两个 commit 之间的关系不会变：记下来，一次检查里每张卡问同一对 commit 只跑一次 git */
+export function isAncestor(root: string, a: string, b: string): Promise<boolean> {
+  const k = `${root}\0${a}\0${b}`;
+  let p = anc.get(k);
+  if (!p) { p = git(root, ["merge-base", "--is-ancestor", a, b]).then((r) => r !== null); anc.set(k, p); }
+  return p;
+}
 
 const ups = new Map<string, Promise<string>>();
 /** 上游分支（线框 07 的「上游最新」）：origin/HEAD 指的分支，没有就本地 main / master，都没有 = HEAD */
