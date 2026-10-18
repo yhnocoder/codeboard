@@ -116,6 +116,8 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
       { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-mathpop textarea"); await pg.waitForTimeout(600); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
       { name: "math block one line", seq: "$$a+b$${Enter}", md: "$$\na+b\n$$", dom: count(".md-pm [data-type=block-math]"), domOk: (n) => n === 1 },
+      // #30：[toc] 回车出目录，跟着后面打的标题变
+      { name: "toc", seq: "[toc]{Enter}# A{Enter}## B", md: "[toc]\n\n# A\n\n## B", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`)), domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]' },
       { name: "hr dashes", seq: "---", md: "---" },
       { name: "hr stars", seq: "***{Enter}", md: "---" },
       { name: "table", seq: "|a|b|{Enter}c", md: /^\| a +\| b +\|\n\| -+ \| -+ \|\n\| c +\| +\|$/ },

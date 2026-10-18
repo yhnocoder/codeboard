@@ -223,6 +223,18 @@ describe("typed math and block source (v0.1.8 review)", () => {
     expect(JSON.stringify(parseMd(lit))).not.toMatch(/subscript|superscript|highlight/);
     expect(renderMd("==a== b~2~ c^3^")).toBe("<p><mark>a</mark> b<sub>2</sub> c<sup>3</sup></p>");
   });
+  // #30：单独一行的 [toc] 是目录，显示时列出所有标题；段落里的 [toc] 字照留
+  it("[toc] is a table of contents", () => {
+    same("[toc]\n\n# A\n\n## B");
+    expect(JSON.stringify(parseMd("[TOC]\n\n# A"))).toContain('"toc"');
+    const h = renderMd("[toc]\n\n# A\n\n## B <i>\n\ntext");
+    expect(h).toContain('<div class="l1">A</div><div class="l2">B &lt;i&gt;</div>');
+    expect(renderMd("[toc]")).toContain("No headings yet");
+    expect(renderMd("[toc]\n\n# Cost $1 and $& x")).toContain('<div class="l1">Cost $1 and $&amp; x</div>');
+    same("see [toc] here");
+    const lit = stable("\\[toc]");
+    expect(JSON.stringify(parseMd(lit))).not.toContain('"toc"');
+  });
   it("leaves money and $ followed by a digit alone", () => {
     same("pay $5 and $6 today");
     expect(JSON.stringify(parseMd("from $1 to $2"))).not.toContain("inlineMath");

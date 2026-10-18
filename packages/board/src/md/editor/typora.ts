@@ -322,6 +322,8 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       enterRule(/^```([\w+#.-]*)\n$/, (m) => ({ nodes: [s.nodes.codeBlock.create({ language: m[1] || null })], caret: (st) => st + 1 })),
       // $$ 加回车：空的公式块，打开源码框
       enterRule(/^\$\$\n$/, () => ({ nodes: [s.nodes.blockMath.create({ latex: "" })], then: (st) => openMath(ed, st) })),
+      // [toc] 加回车：目录（Typora #30）
+      enterRule(/^\[toc\]\n$/i, () => ({ nodes: [s.nodes.toc.create()] })),
       // *** / ___ / --- 加回车：分隔线
       enterRule(/^(?:\*\*\*|___|---)\n$/, () => ({ nodes: [s.nodes.horizontalRule.create()] })),
       // 上一段下面一行 === 加回车：上一段变一级标题（setext）

@@ -120,6 +120,42 @@ const Det = Details.extend({
 const DetSum = DetailsSummary.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 const DetBody = DetailsContent.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 
+// ---------- [toc]：目录（Typora #30） ----------
+// 单独一行的 [toc]（不分大小写）。目录里是这篇的所有标题，跟着标题变：显示时 render.ts 填，编辑时节点视图自己填
+const TOC_RE = /^ {0,3}\[toc\][ \t]*(?:\n|$)/i;
+export const tocEntries = (doc: { descendants: (f: (n: any) => boolean | void) => void }) => {
+  const out: { level: number; text: string }[] = [];
+  doc.descendants((n) => { if (n.type.name === "heading") { out.push({ level: n.attrs.level, text: n.textContent }); return false; } return n.type.name !== "toc"; });
+  return out;
+};
+export const tocHtml = (es: { level: number; text: string }[]) =>
+  es.length ? es.map((e) => `<div class="l${e.level}">${escHtml(e.text) || "&nbsp;"}</div>`).join("") : `<div class="none">No headings yet</div>`;
+const Toc = Node.create({
+  name: "toc",
+  group: "block", atom: true, selectable: true, draggable: true,
+  parseHTML: () => [{ tag: "nav[data-type=toc]" }],
+  renderHTML: () => ["nav", { "data-type": "toc", class: "md-toc" }],
+  addNodeView: () => ({ editor }) => {
+    const dom = document.createElement("nav");
+    dom.className = "md-toc";
+    dom.dataset.type = "toc";
+    dom.contentEditable = "false";
+    let last = "";
+    const fill = () => { const h = tocHtml(tocEntries(editor.state.doc)); if (h !== last) dom.innerHTML = last = h; };
+    fill();
+    editor.on("update", fill);
+    return { dom, destroy: () => editor.off("update", fill), ignoreMutation: () => true };
+  },
+  parseMarkdown: () => ({ type: "toc" }),
+  renderMarkdown: () => "[toc]",
+  markdownTokenizer: {
+    name: "toc", level: "block",
+    // marked 拿 start 找段落在哪断开时传的是 src.slice(1)，^ 会落在行中间（\[toc] 的 \ 后面）：只认换行后面的；行首的由 tokenize 直接认
+    start: (src: string) => { const m = /\n {0,3}\[toc\][ \t]*(?:\n|$)/i.exec(src); return m ? m.index + 1 : -1; },
+    tokenize: (src) => { const m = TOC_RE.exec(src); return m ? { type: "toc", raw: m[0] } : undefined; },
+  },
+});
+
 // ---------- [[卡片引用]] ----------
 // 存成 [[标题]]：可读，复制到别的白板也能按标题找；渲染时先按 id、再按标题找卡（Card 改名时 actions 顺手改写引用）
 export const CardRef = Node.create({
@@ -262,7 +298,7 @@ export const baseExtensions: AnyExtension[] = [
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
-  U, Kbd, Hr, InlineCode, Highlight, Sub, Sup,
+  U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
   Doc, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
   CardRef, FnList, FnDef, FnRef,
@@ -286,7 +322,7 @@ function escText(s: string): string {
       case "\\": out += !next || PUNCT.test(next) ? "\\\\" : c; break;
       case "`": out += tick ? "\\`" : c; break;
       case "*": case "~": out += (c === "*" ? star : tilde) && !(/\s/.test(prev || " ") && /\s/.test(next || " ")) ? `\\${c}` : c; break;
-      case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) ? "\\[" : c; break;
+      case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) || (i === 0 && /^\[toc\]\s*$/i.test(s)) ? "\\[" : c; break;
       case "$": out += INLINE_MATH.test(s.slice(i)) ? "\\$" : c; break;
       case "<": out += /[A-Za-z/!?]/.test(next) ? "\\<" : c; break;
       // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
