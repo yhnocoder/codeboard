@@ -380,16 +380,22 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
     rd.readAsDataURL(f);
     return true;
   }
-  const text = cd.getData("text/plain");
-  const inCode = !!e.state.selection.$from.parent.type.spec.code;
-  if (inCode) return false; // 代码块里原样粘贴
+  const text = cd.getData("text/plain").replace(/\r\n?/g, "\n");
+  const $f = e.state.selection.$from;
+  if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴
+  // 表格格子里只能有一段（GFM 存不下别的）：几行字用硬换行连起来（写回成 <br>），不变成代码块、列表
+  if (/cell/.test($f.node(-1).type.spec.tableRole ?? "") && text.includes("\n")) {
+    const lines = text.replace(/\n$/, "").split("\n");
+    e.chain().focus().insertContent(lines.flatMap((l, i): JSONContent[] => [...(i ? [{ type: "hardBreak" }] : []), ...(l ? [{ type: "text", text: l }] : [])])).run();
+    return true;
+  }
   // 从 VS Code 复制的代码：保留缩进，多行的变成代码块（语言用 VS Code 给的）
   const vs = cd.getData("vscode-editor-data");
   if (vs && text) {
     let lang = "";
     try { lang = JSON.parse(vs).mode ?? ""; } catch { /* ignore */ }
     if (!text.includes("\n")) { e.chain().focus().insertContent({ type: "text", text, marks: [{ type: "code" }] }).insertContent(" ").run(); return true; }
-    e.chain().focus().insertContent({ type: "codeBlock", attrs: { language: lang && lang !== "plaintext" ? lang : null }, content: [{ type: "text", text: dedent(text.replace(/\r\n?/g, "\n").replace(/\n$/, "")) }] })
+    e.chain().focus().insertContent({ type: "codeBlock", attrs: { language: lang && lang !== "plaintext" ? lang : null }, content: [{ type: "text", text: dedent(text.replace(/\n$/, "")) }] })
       // 光标落到代码块后面（后面没有段落就补一个），接着打字不会进代码里
       .command(({ tr, state }) => {
         const $p = tr.selection.$from;
