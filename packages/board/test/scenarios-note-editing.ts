@@ -1,5 +1,5 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
-// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves
+// Usage: node packages/board/test/run-harness.mjs noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed
 import { open, put, findSym, symCard, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -209,6 +209,23 @@ export const NOTE_EDITING: Record<string, () => Promise<void>> = {
     check("sidenoteTextEditSaves", ok, { afterEsc, afterClick, afterCancel, afterAdd, afterClear });
     await close(h);
     done("sidenoteTextEditSaves");
+  },
+
+  /** Note 里的代码块编辑完：退出编辑时它在宿主那边的语言服务文档（.codeboard-note-code-* 隐藏文件）关掉 */
+  async noteCodeScratchClosed() {
+    const h = await open({ board: board(["```python\nx = 1\n```"]) });
+    await h.page.waitForTimeout(1500);
+    await editNote(h, "n0");
+    await h.page.locator('.card[data-id="n0"] .md-pm pre .cm-content').click();
+    await keys(h.page, "{End}{Enter}y = x");
+    await h.page.waitForTimeout(1500); // 改动停一下才同步给宿主（开文档）
+    await exitEdit(h);
+    await h.page.waitForTimeout(800);
+    const opened = [...new Set(h.sent.filter((m) => m.type === "codeDoc").map((m: any) => m.id as string))];
+    const closed = h.sent.filter((m) => m.type === "codeDocClose").map((m: any) => m.id as string);
+    check("noteCodeScratchClosed", opened.length === 1 && opened.every((id) => closed.includes(id)), { opened, closed });
+    await close(h);
+    done("noteCodeScratchClosed");
   },
 
 };
