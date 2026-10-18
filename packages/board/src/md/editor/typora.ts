@@ -57,6 +57,7 @@ export function reconvert(tr: Transaction): Transaction {
 const MK: Record<string, (m: Mark) => [string, string]> = {
   bold: () => ["**", "**"], italic: () => ["*", "*"], strike: () => ["~~", "~~"], code: () => ["`", "`"],
   link: (m) => ["[", `](${m.attrs.href ?? ""})`], underline: () => ["<u>", "</u>"], kbd: () => ["<kbd>", "</kbd>"],
+  highlight: () => ["==", "=="], subscript: () => ["~", "~"], superscript: () => ["^", "^"],
 };
 const mkEl = (text: string) => {
   const s = document.createElement("span");
@@ -103,7 +104,7 @@ function markerDecos(state: import("@tiptap/pm/state").EditorState): DecorationS
   const ds: Decoration[] = [];
   // 展开着的原文：里面的记号淡一点
   for (const r of srcRuns(p)) {
-    for (const m of r.text.matchAll(/^#{1,6}[ \t]+|\*+|_+|~~|`+|\$+|\\(?=[!-/:-@[-`{-~])|!?\[|\]\([^)]*\)|\]/g)) {
+    for (const m of r.text.matchAll(/^#{1,6}[ \t]+|\*+|_+|~+|==|\^|`+|\$+|\\(?=[!-/:-@[-`{-~])|!?\[|\]\([^)]*\)|\]/g)) {
       ds.push(Decoration.inline(start + r.from + m.index!, start + r.from + m.index! + m[0].length, { class: "md-mkc" }));
     }
   }

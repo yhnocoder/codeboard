@@ -124,6 +124,12 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "italic underscore", seq: "x _i_ y", md: "x *i* y" },
       { name: "underscore names", seq: "block_manager and __init__", md: "block_manager and __init__" },
       { name: "strike", seq: "~~s~~ t", md: "~~s~~ t" },
+      // #32：Typora 的 ==高亮==、H~2~O、x^2^；~~删除线~~ 和单个 ~ 照旧
+      { name: "highlight", seq: "x ==hi== y", md: "x ==hi== y", dom: count(".md-pm mark"), domOk: (n) => n === 1 },
+      { name: "subscript", seq: "H~2~O", md: "H~2~O", dom: count(".md-pm sub"), domOk: (n) => n === 1 },
+      { name: "superscript", seq: "x^2^ y", md: "x^2^ y", dom: count(".md-pm sup"), domOk: (n) => n === 1 },
+      { name: "strike not subscript", seq: "~~ab~~ c", md: "~~ab~~ c", dom: count(".md-pm sub"), domOk: (n) => n === 0 },
+      { name: "lone tilde", seq: "a ~ b ~/x", md: "a ~ b ~/x" },
       { name: "code span", seq: "`c` t", md: "`c` t" },
       { name: "inline math", seq: "$\\frac{a}{b}$ and $a$, $b$", md: "$\\frac{a}{b}$ and $a$, $b$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 3 },
       // #27：打的 \* 照 Typora：存成 \*，光标不在旁边时 \ 不显示，在旁边时显示（能删）

@@ -11,7 +11,7 @@ import type { EditorView } from "@tiptap/pm/view";
 import { SRC_MARK, parseInlineSrc, serializeMd } from "../schema";
 
 /** 展开成原文的格式 */
-const FORMATS = new Set(["bold", "italic", "strike", "code", "link", "underline", "kbd"]);
+const FORMATS = new Set(["bold", "italic", "strike", "code", "link", "underline", "kbd", "highlight", "subscript", "superscript"]);
 const CARET = "";
 // 标题开头的 "## "；紧跟着打的字会带上原文标记（标记是 inclusive 的），那些字是标题的正文，不算记号
 const HEAD = /^(#{1,6})[ \t]+/;

@@ -210,6 +210,19 @@ describe("typed math and block source (v0.1.8 review)", () => {
     // 后面没有字的 \：就是一个 \
     expect(serializeMd(doc({ type: "text", text: "end " }, esc))).toBe(serializeMd(doc({ type: "text", text: "end \\" })));
   });
+  // #32：==高亮==、H~2~O、x^2^；~~删除线~~ 照旧；读不成这些的 ~ ^ == 不转义（以前 H~2~O 会存成 H\~2\~O）
+  it("highlight, subscript and superscript", () => {
+    same("==hi== and H~2~O and x^2^");
+    const j = JSON.stringify(parseMd("==hi== and H~2~O and x^2^"));
+    for (const m of ["highlight", "subscript", "superscript"]) expect(j).toContain(`"${m}"`);
+    same("~~s~~ t");
+    expect(JSON.stringify(parseMd("~~s~~"))).toContain('"strike"');
+    same("a ~ b and ~/path, a ^ b, x == y");
+    // 字面的：写回稳定，读回来还是字
+    const lit = stable("H\\~2\\~O and x\\^2\\^ and \\==no==");
+    expect(JSON.stringify(parseMd(lit))).not.toMatch(/subscript|superscript|highlight/);
+    expect(renderMd("==a== b~2~ c^3^")).toBe("<p><mark>a</mark> b<sub>2</sub> c<sup>3</sup></p>");
+  });
   it("leaves money and $ followed by a digit alone", () => {
     same("pay $5 and $6 today");
     expect(JSON.stringify(parseMd("from $1 to $2"))).not.toContain("inlineMath");

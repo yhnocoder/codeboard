@@ -214,6 +214,33 @@ const Kbd = Mark.create({
   renderMarkdown: (n: JSONContent, h: any) => `<kbd>${h.renderChildren(n)}</kbd>`,
   markdownTokenizer: htmlTok("kbd"),
 });
+// ---------- ==高亮==、H~2~O、x^2^（Typora 的扩展语法，#32） ----------
+// 下标、上标照 Pandoc：中间不能有空白（要空白写 \ ），~ 只有一个（~~ 是删除线）；高亮 == 里两头不是空白
+const inlineTok = (name: string, open: string, re: RegExp) => ({
+  name, level: "inline" as const,
+  start: (src: string) => src.indexOf(open),
+  tokenize: (src: string, _t: unknown, lx: any) => {
+    const m = re.exec(src);
+    if (!m) return;
+    return { type: name, raw: m[0], tokens: lx.inlineTokens(m[1]) };
+  },
+});
+const SUB_RE = /^~(?!~)((?:\\.|[^~\s\\])+)~(?!~)/, SUP_RE = /^\^((?:\\.|[^\^\s\\])+)\^/, HL_RE = /^==(?=[^\s=])((?:\\.|[^\n\\])*?[^\s\\])==/;
+const wrapMark = (name: string, tag: string, md: string, re: RegExp, typed: RegExp) => Mark.create({
+  name,
+  parseHTML: () => [{ tag }],
+  renderHTML: ({ HTMLAttributes }) => [tag, HTMLAttributes, 0],
+  addInputRules() { return [markInputRule({ find: typed, type: this.type })]; },
+  markdownTokenName: `x_${name}`,
+  parseMarkdown: (t: any, h: any) => h.applyMark(name, h.parseInline(t.tokens ?? [])),
+  renderMarkdown: (n: JSONContent, h: any) => `${md}${h.renderChildren(n)}${md}`,
+  markdownTokenizer: inlineTok(`x_${name}`, md, re),
+});
+// 打字规则：结尾记号一打完就变；前面紧挨着同样的记号或 \ 时不算（~~ 是删除线、\~ 是字）
+const Highlight = wrapMark("highlight", "mark", "==", HL_RE, /(?<![=\\])(==([^=\s](?:[^=]*[^=\s])?)==)$/);
+const Sub = wrapMark("subscript", "sub", "~", SUB_RE, /(?<![~\\])(~([^~\s]+)~)$/);
+const Sup = wrapMark("superscript", "sup", "^", SUP_RE, /(?<![\^\\])(\^([^\^\s]+)\^)$/);
+
 // 分隔线只在回车时变（--- 打完就变会和 YAML 头、setext 标题冲突；见 editor/typora.ts）
 const Hr = HorizontalRule.extend({ addInputRules: () => [] });
 // 行内代码的打字规则在 editor/typora.ts（反引号按长度配对）
@@ -235,7 +262,7 @@ export const baseExtensions: AnyExtension[] = [
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
-  U, Kbd, Hr, InlineCode,
+  U, Kbd, Hr, InlineCode, Highlight, Sub, Sup,
   Doc, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
   CardRef, FnList, FnDef, FnRef,
@@ -262,6 +289,9 @@ function escText(s: string): string {
       case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) ? "\\[" : c; break;
       case "$": out += INLINE_MATH.test(s.slice(i)) ? "\\$" : c; break;
       case "<": out += /[A-Za-z/!?]/.test(next) ? "\\<" : c; break;
+      // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
+      case "^": out += SUP_RE.test(s.slice(i)) && prev !== "^" ? "\\^" : c; break;
+      case "=": out += HL_RE.test(s.slice(i)) && prev !== "=" ? "\\=" : c; break;
       case "&": out += /^&(?:#\d+|#x[\da-f]+|\w+);/i.test(s.slice(i)) ? "&amp;" : c; break;
       default: out += c;
     }
