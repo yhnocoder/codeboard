@@ -174,6 +174,14 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       // 输入法提交（不经过按键）
       { name: "ime insert", seq: "", after: async (pg) => { await pg.keyboard.insertText("看 $x^2$"); await pg.keyboard.insertText(" 完"); }, md: "看 $x^2$ 完" },
       // / 菜单
+      // #34：括号、引号自动配对（Typora 默认）；盖过补上的右括号；空的一对里退格两个都删；撇号不配；Markdown 记号不配
+      { name: "pair paren", seq: "f(x", md: "f(x)" },
+      { name: "pair overtype", seq: "f(x) and [a] {b}", md: "f(x) and [a] {b}" },
+      { name: "pair quotes", seq: 'say "hi" and \'yo\' ok', md: 'say "hi" and \'yo\' ok' },
+      { name: "pair apostrophe", seq: "don't stop", md: "don't stop" },
+      { name: "pair wrap", seq: "word{Shift+Home}(", md: "(word)" },
+      { name: "pair backspace", seq: "a ({Backspace}b", md: "a b" },
+      { name: "pair not markdown", seq: "*a and `b", md: "*a and `b" },
       { name: "slash quote", seq: "/quote{Enter}q", md: "> q" },
       { name: "slash code", seq: "/code{Enter}k", md: "```\nk\n```" },
       { name: "slash divider", seq: "/divider{Enter}", md: "---" },
@@ -269,9 +277,14 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       if (await settled()) break;
     }
     await pg.keyboard.press("Control+c");
-    // 收起选区再剪（按 End 在 CI 上偶尔赶在选区同步前，选区没收起来）
-    await pg.evaluate(() => getSelection()!.collapseToEnd());
-    await pg.waitForTimeout(100);
+    // 收起选区再剪（按 End 在 CI 上偶尔赶在选区同步前，选区没收起来）。等 ProseMirror 也收起来了（选中工具条消失）再剪：
+    // 它同样是在异步的 selectionchange 里才读到，固定等 100ms 在忙的机器上不够（剪到的还是 "**bold** y"）
+    for (let k = 0; k < 10; k++) {
+      await pg.evaluate(() => getSelection()!.collapseToEnd());
+      const t0 = Date.now();
+      while (await pg.evaluate(() => !!document.querySelector(".md-bubble")) && Date.now() - t0 < 500) await pg.waitForTimeout(50);
+      if (!(await pg.evaluate(() => !!document.querySelector(".md-bubble")))) break;
+    }
     await pg.keyboard.press("Control+x"); // 没选中：什么都不剪
     await pg.keyboard.press("Control+a");
     await pg.keyboard.press("Control+x");
@@ -329,10 +342,10 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     const d1 = { math: await pg.locator(inNote("n0", "[data-type=inline-math]")).count(), strong: await pg.locator(inNote("n0", "strong")).count(), code: await pg.locator(inNote("n0", "code")).count() };
     await keys(pg, " end");
     await pg.keyboard.press("Escape");
-    // 2：用户打了 $\frac{，补全补上 a}{b}$
+    // 2：用户打了 $\frac{（自动配对补了 }，光标在它前面），补全补上 a}{b}$：补全里写了 }，自动补的那个就不再留（不能多出一个）
     await accept("n1", "x $\\frac{");
     const d2 = await pg.locator(inNote("n1", "[data-type=inline-math]")).count();
-    // 一次 ⌘Z：整个接受撤回（回到打了一半的）
+    // 一次 ⌘Z：整个接受撤回（回到打了一半的，连同自动补的 }）
     await pg.keyboard.press("Control+z");
     const undone = (await pg.locator(inNote("n1", "p")).first().textContent())?.trim();
     await pg.waitForTimeout(1000); // 灰字又出来了也一样能重做
@@ -348,7 +361,7 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     await pg.keyboard.press("Escape");
     await pg.waitForTimeout(1500);
     const r = { d1, d2, undone, redone, d3, md: [0, 1, 2, 3].map((i) => md(h, `n${i}`)) };
-    const ok = d1.math === 1 && d1.strong === 1 && d1.code === 1 && d2 === 1 && undone === "x $\\frac{" && redone === 1
+    const ok = d1.math === 1 && d1.strong === 1 && d1.code === 1 && d2 === 1 && undone === "x $\\frac{}" && redone === 1
       && r.md[0] === "see $a$ and **b** with `c` end" && r.md[1] === "x $\\frac{a}{b}$ done" && d3.h1 === 1 && d3.strong === 1 && r.md[2] === "# Title **x**"
       && r.md[3] === "Sum $$y$$";
     check("v18accept", ok, r);

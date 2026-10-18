@@ -12,6 +12,7 @@ import { closeHistory } from "@tiptap/pm/history";
 import { ESC_MARK, blockSource, parseMd } from "../schema";
 import { Mark as TMark } from "@tiptap/core";
 import { SourceMark, headPrefix, sourcePlugin, srcRuns } from "./source";
+import { pairsPlugin } from "./pairs";
 
 /**
  * 光标所在的这一段（段落或标题）当 Markdown 源码重新解析，变了就换掉；光标留在原来那些字后面（后面剩下的字数不变）。
@@ -456,6 +457,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
   },
 
   addProseMirrorPlugins() {
-    return [sourcePlugin(), new Plugin({ key: markerKey, props: { decorations: markerDecos } }), new Plugin({ key: escKey, props: { decorations: escDecos } })];
+    return [pairsPlugin(), sourcePlugin(), new Plugin({ key: markerKey, props: { decorations: markerDecos } }), new Plugin({ key: escKey, props: { decorations: escDecos } })];
   },
 });
