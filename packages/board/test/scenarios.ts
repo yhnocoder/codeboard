@@ -19,6 +19,7 @@ import { QUESTIONS } from "./scenarios-questions";
 import { VARIANTS } from "./scenarios-variants";
 import { FIXQ } from "./scenarios-fixq";
 import { HEADER } from "./scenarios-header";
+import { NOTE_EDITING } from "./scenarios-note-editing";
 import { UX } from "./scenarios-ux";
 
 const light = process.argv.includes("--light");
@@ -53,6 +54,7 @@ const S: Record<string, () => Promise<void>> = {
   ...VARIANTS,
   ...FIXQ,
   ...HEADER,
+  ...NOTE_EDITING,
   ...UX,
   async basic() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
