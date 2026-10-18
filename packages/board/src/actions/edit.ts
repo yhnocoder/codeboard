@@ -191,12 +191,11 @@ function renameRefs(b: Board, from: string, to: string) {
 export function setDesc(id: string, v: string) {
   mutate((b) => { const c = findCard(b, id)?.card; if (c) c.desc = v.trim() || undefined; });
 }
+/** 改 Note 的字；字删光了这张 Note 就删掉（同一步，一次撤销就回来） */
 export function setNoteText(id: string, v: string) {
-  const set = (b: Board) => { const c = findCard(b, id)?.card; if (c?.kind === "note") c.md = v; };
-  if (isFresh(id)) return settleFresh(id, !!v.trim(), set);
-  mutate(set);
-  const c = cardById(id)?.card;
-  if (c?.kind === "note" && !c.md.trim()) mutate((b) => removeCards(b, [id]));
+  const keep = !!v.trim();
+  if (isFresh(id)) return settleFresh(id, keep, (b) => { const c = findCard(b, id)?.card; if (c?.kind === "note") c.md = v; });
+  mutate((b) => { const c = findCard(b, id)?.card; if (c?.kind !== "note") return; if (keep) c.md = v; else removeCards(b, [id]); });
 }
 export function setFreeCode(id: string, text: string) {
   let seg: Segment | undefined;
