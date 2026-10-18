@@ -1,7 +1,7 @@
-// Stack the per-theme board shots into one picture: the first theme in full, every other theme as a narrow slice behind it, like a fanned deck.
+// Stack the per-theme card shots into one picture: the first theme in full, every other theme as a narrow slice behind it, like a fanned deck.
 // Usage: node tools/release/compose-themes.mjs <dir with <theme>.png> <out.png> <light|dark>
-// Each slice is zoomed in on the left edge of one card (heading, line numbers, start of the code), taken from <theme>.json
-// written next to the shot (the card's box in CSS px); without it the slice shows a fixed strip of the board.
+// Each shot is one card on the board's background; each slice is zoomed in on the card's left edge (heading, line numbers, start of the code),
+// taken from <theme>.json written next to the shot (the card's box in CSS px); without it the slice shows a fixed strip of the shot.
 // Theme order and labels follow THEMES below (the order of the board's Settings page); missing shots are skipped.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -16,7 +16,7 @@ const b64 = (f) => "data:image/png;base64," + fs.readFileSync(path.join(dir, `${
 const meta = (f) => { try { return JSON.parse(fs.readFileSync(path.join(dir, `${f}.json`), "utf8")); } catch { return null; } };
 
 // Layout in CSS px (rendered at 2x): the front shot W wide, then one SLICE-wide strip per other theme
-const W = 1040, SLICE = 150, PAD = 48, R = 14, ZOOM = 2.2;
+const W = 760, SLICE = 120, PAD = 40, R = 14, ZOOM = 1.15;
 const [w0, h0] = (() => { const b = fs.readFileSync(path.join(dir, `${shots[0][0]}.png`)); return [b.readUInt32BE(16), b.readUInt32BE(20)]; })();
 const H = Math.round((W * h0) / w0);
 const dark = mode === "dark";
@@ -35,7 +35,7 @@ const slice = (f, x0) => {
   const m = meta(f);
   if (!m) return `background-size:${W}px ${H}px;background-position:${-Math.round(W * 0.33)}px 0`;
   const k = (W / m.frame.w) * ZOOM, bw = m.frame.w * k, bh = m.frame.h * k;
-  const x = R - (m.card.x - 10) * k, y = Math.min(0, Math.max(H - bh, -(m.card.y * k - H * 0.05)));
+  const x = R - (m.card.x - 10) * k, y = Math.min(0, Math.max(H - bh, -(m.card.y * k - 12)));
   return `background-size:${bw}px ${bh}px;background-position:${Math.round(x)}px ${Math.round(y)}px`;
 };
 const html = shots.map(([f, name], i) => i === 0

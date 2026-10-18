@@ -15,6 +15,7 @@
   "bugs": {
     "url": "https://github.com/yhnocoder/codeboard/issues"
   },
+  "icon": "media/icon.png",
   "keywords": ["whiteboard", "code reading", "call graph", "canvas", "notes", "python", "diagram"],
   "engines": {
     "vscode": "^1.90.0"

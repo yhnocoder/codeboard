@@ -238,19 +238,41 @@ const blank = async (f) => { await f.locator("#board").click({ position: { x: 30
   }
 
   if (SHOTS.includes("themes")) {
-    // One shot per board theme of the same board, picked on the board's own Settings page
+    // One shot per board theme of Scheduler.schedule alone (with its Sidenote shown), picked on the board's own Settings page.
+    // Everything else on the board is hidden while the shot is taken; the card fills 80% of the shot's width
     fs.mkdirSync(path.join(OUT, "themes"), { recursive: true });
+    await blank(f); await fit(f);
+    await card(f, "Scheduler.schedule").locator(".mk").first().click(); await sleep(900);
+    await f.locator(".pop button", { hasText: /^Always Show$/ }).click({ timeout: 2000 }).catch(() => {}); await sleep(600);
+    await page.keyboard.press("Escape"); await blank(f); await sleep(300);
+    // Hide every element but the card, its ancestors and its contents (the board background stays); returns an undo
+    const solo = (el) => el.evaluate((c) => {
+      const hidden = [];
+      for (let e = c; e && e !== document.body; e = e.parentElement)
+        for (const sib of e.parentElement?.children ?? []) if (sib !== e && sib.style.visibility !== "hidden") { hidden.push(sib); sib.style.visibility = "hidden"; }
+      window.__unsolo = () => { for (const h of hidden) h.style.visibility = ""; };
+    });
     for (const t of THEMES) {
       await blank(f); await sleep(200);
       await page.keyboard.press("Control+,"); await sleep(900);
       await f.locator(".st-sw", { hasText: t }).first().click(); await sleep(1200);
       await page.keyboard.press("Control+,"); await sleep(800);
-      await fit(f); await park(page);
+      // Select the card by its header (some themes draw the title in their own element), then zoom to it
+      const sch = card(f, "Scheduler.schedule");
+      await fit(f); await sch.locator(".chead").first().click(); await sleep(300);
+      await page.keyboard.press("Shift+Digit2"); await sleep(1500); await settle(f);
+      await f.locator('button[aria-label="Zoom Out"]').first().click(); await settle(f);
+      await blank(f); await park(page); await sleep(300);
+      const [fb, cb] = [await f.locator("#board").boundingBox(), await sch.boundingBox()];
+      const pad = cb.width / 8;
+      const x0 = Math.max(fb.x, cb.x - pad), y0 = Math.max(fb.y, cb.y - pad), x1 = Math.min(fb.x + fb.width, cb.x + cb.width + pad), y1 = Math.min(fb.y + fb.height, cb.y + cb.height + pad);
       const name = t.toLowerCase().replace(/ /g, "-");
-      await boardShot(page, f, `themes/${name}.png`);
-      // Where Scheduler.schedule sits in the shot (CSS px): compose-themes.mjs crops each theme's slice to that card's left edge
-      const [fb, cb] = [await f.locator("#board").boundingBox(), await card(f, "Scheduler.schedule").boundingBox()];
-      fs.writeFileSync(path.join(OUT, "themes", `${name}.json`), JSON.stringify({ frame: { w: fb.width, h: fb.height }, card: { x: cb.x - fb.x, y: cb.y - fb.y, w: cb.width, h: cb.height } }));
+      await solo(await sch.elementHandle()); await sleep(200);
+      await page.screenshot({ path: path.join(OUT, "themes", `${name}.png`), clip: { x: x0, y: y0, width: x1 - x0, height: y1 - y0 } });
+      console.log(`  📷 themes/${name}.png`);
+      await f.evaluate(() => window.__unsolo?.());
+      // Where the card sits in the shot (CSS px): compose-themes.mjs crops each theme's slice to the card's left edge
+      fs.writeFileSync(path.join(OUT, "themes", `${name}.json`), JSON.stringify({ frame: { w: x1 - x0, h: y1 - y0 }, card: { x: cb.x - x0, y: cb.y - y0, w: cb.width, h: cb.height } }));
     }
   }
   console.log(failed ? `${failed} checks failed` : "all passed");
