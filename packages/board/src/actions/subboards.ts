@@ -1,8 +1,8 @@
 // 子白板（线框 05）：进入 / 返回（面包屑）、Turn into Board、插入已有的白板、移除框、删掉那块白板；讲解走到子白板时进去再回来。
 import { batch, createSignal } from "solid-js";
 import { unwrap } from "solid-js/store";
-import { cardTitle, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
-import { state, mutate, sel, select, clearSel, cardById, rectOf, toast, flushSave } from "../state/store";
+import { cardTitle, descendants, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
+import { state, mutate, sel, select, clearSel, cardById, rectOf, toast, flushSave, flows } from "../state/store";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
 import { crumbs, frameOf, skelOf, subRect } from "../state/subboards";
 import { walk, setWalk } from "../state/ui";
@@ -71,11 +71,24 @@ export function walkOut(dir: 1 | -1) {
 // ---------- Turn into Board / 插入 / 移除 ----------
 
 /** 选中的卡变成一块新白板，原地留下骨架框；外面连进来的箭头改连到框里那张卡（⌘⇧B） */
+/**
+ * 新白板默认用哪张卡的名字：调用图里最上面的那张（调用它的卡都不在这些卡里），这样的有几张就取往下调用到的选中卡最多的；
+ * 再一样就按阅读顺序（先上后左）
+ */
+function topCard(ids: string[]): string {
+  const f = flows(), inSel = new Set(ids);
+  const hostOf = (k: string) => cardById(k)?.host.id ?? k;
+  const reading = [...ids].sort((a, b) => { const ra = rectOf(a), rb = rectOf(b); return ra.y - rb.y || ra.x - rb.x; });
+  const roots = reading.filter((id) => !(f.parents.get(id) ?? []).some((l) => hostOf(l.from.card) !== id && inSel.has(hostOf(l.from.card))));
+  const below = (id: string) => new Set(descendants(f, id).map(hostOf).filter((k) => k !== id && inSel.has(k))).size;
+  return (roots.length ? roots : reading).map((id, i) => ({ id, i, n: below(id) })).sort((a, b) => b.n - a.n || a.i - b.i)[0].id;
+}
+
 export async function turnIntoBoard() {
   const ids = [...new Set(sel.cards.map((id) => cardById(id)?.host.id).filter((x): x is string => !!x))];
   if (!ids.length) return toast("Select the cards to turn into a board first");
   const secs = sel.sections.map((id) => state.board.sections.find((s) => s.id === id)?.title).filter(Boolean);
-  const first = cardById(ids[0])?.card;
+  const first = cardById(topCard(ids))?.card;
   const def = secs[0] || (first ? cardTitle(first, state.board).split(/[ (]/)[0] : "") || "New Board";
   const name = (await promptText("Turn into Board", def, "Name of the new board", "Create Board"))?.trim();
   if (!name) return;

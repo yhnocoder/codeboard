@@ -31,6 +31,7 @@ export const UX: Record<string, () => Promise<void>> = {
   "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
   "editing-tiny-note-zooms-to-readable": () => run("editing-tiny-note-zooms-to-readable", readableNote),
   "search-lists-symbols-containing-the-query": () => run("search-lists-symbols-containing-the-query", searchStep),
+  "turn-into-board-names-after-the-calling-card": () => run("turn-into-board-names-after-the-calling-card", turnName),
 };
 
 /** 底部工具条：每个宽度都是一行，彼此不重叠，也不出窗口 */
@@ -228,4 +229,27 @@ async function searchStep(res: Record<string, unknown>) {
   const items = await search(null as unknown as Storage, "step", "symbols");
   res.labels = items.map((i) => i.label);
   return items.length > 0 && items.every((i) => i.label.toLowerCase().includes("step")) && items[0].label.endsWith(".step");
+}
+
+/** Turn into Board 的默认名字：选中的卡里调用图最上面的那张（Scheduler.schedule），不是最后点的、也不是位置最靠上的被调卡 */
+async function turnName(res: Record<string, unknown>) {
+  const b = emptyBoard("bT", "turn");
+  const sch = nv("Scheduler.schedule"), can = nv("BlockManager.can_allocate"), note = "nT";
+  put(b, can, 80, 60, 480); put(b, sch, 700, 300, 560);
+  b.cards.push({ id: note, kind: "note", md: "aside", bg: true, size: "body" }); b.place[note] = { x: 700, y: 10, w: 200 };
+  b.links.push({ id: "lT", from: { card: sch.id, seg: sch.segments[0].id, line: sch.segments[0].start + sch.segments[0].text.findIndex((t) => /can_allocate\(/.test(t)) }, to: { card: can.id }, call: { name: "can_allocate", col: 0 } });
+  const h = await open({ board: b }), page = h.page;
+  await page.keyboard.press("Shift+Digit1"); await wait(h, 900);
+  const name = async (ids: string[]) => {
+    for (const [i, id] of ids.entries()) await page.locator(`.card[data-id="${id}"] .chead`).click({ position: { x: 60, y: 10 }, modifiers: i ? ["Shift"] : [] });
+    await page.keyboard.press("Meta+Shift+b"); await wait(h, 400);
+    const v = await page.locator(".dialog input").inputValue();
+    await page.keyboard.press("Escape"); await page.mouse.click(1380, 20); await wait(h, 300);
+    return v;
+  };
+  res.called = await name([sch.id, can.id]);
+  res.withNote = await name([note, can.id, sch.id]);
+  res.unlinked = await name([sch.id, note]);
+  await page.context().browser()!.close();
+  return res.called === "Scheduler.schedule" && res.withNote === "Scheduler.schedule" && res.unlinked === "aside";
 }
