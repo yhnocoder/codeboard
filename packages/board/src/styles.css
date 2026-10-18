@@ -210,7 +210,7 @@ input, textarea { font: inherit; color: var(--ink); }
 
 /* code */
 .code { position: relative; padding: 6px 0 8px; font: 11px/20px var(--mono); min-width: max-content; }
-.gutter { position: absolute; left: 0; top: 0; bottom: 0; width: 54px; z-index: 2; pointer-events: none; }
+.gutter { position: absolute; left: 0; top: 0; bottom: 0; width: var(--gutter); z-index: 2; pointer-events: none; }
 .gutter > * { pointer-events: auto; }
 .no { position: absolute; left: 2px; width: 30px; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: var(--no-o, .65); }
 .no:hover { opacity: 1; color: var(--ink-2); }
@@ -228,10 +228,10 @@ input, textarea { font: inherit; color: var(--ink); }
 .rowbg.flash { animation: flash calc(var(--t) * 600ms) var(--out); }
 .rowbg.dropline { background: var(--hi); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 28%, transparent); } 100% { background: var(--row); } }
-.src { margin: 0 0 0 54px; padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
+.src { margin: 0 0 0 var(--gutter); padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
 .src { tab-size: 4; }
 /* 藏起来的公共缩进：代码往左挪，留 16px 画几根细竖线（一根 = 一层，最多 4 根） */
-.src.ded .l { text-indent: calc(16px - var(--ded) * 1ch); }
+.src.ded .l { text-indent: calc(var(--ded-pad) - var(--ded) * 1ch); }
 .dedm { position: absolute; left: 55px; top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; opacity: .7;
   background: repeating-linear-gradient(90deg, var(--hair) 0 .5px, transparent .5px 3px);
   -webkit-mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); } /* 很淡的细虚线，不抢代码的眼 */
@@ -245,7 +245,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .chrome .src .gap, .chrome .src .gap *, .chrome .src .inote, .chrome .src .inote * { user-select: none; -webkit-user-select: none; cursor: default; }
 /* 隐藏行的条和行高亮一样撑满整张卡宽（左边盖住行号栏，右边到卡边） */
-.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: -54px; margin-right: -24px; padding-left: 62px; border-radius: 0; }
+.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: calc(-1 * var(--gutter)); margin-right: -24px; padding-left: calc(var(--gutter) + 8px); border-radius: 0; }
 .gap b { font-weight: 500; color: var(--ink-2); padding: 1px 5px; border-radius: 4px; }
 .gap b:hover { color: var(--accent); background: var(--row); }
 .inote { white-space: normal; font: 12px/1.55 var(--sys); color: var(--ink-2); background: var(--inote); box-shadow: inset 2px 0 0 var(--ink-3); margin: 2px 12px 4px -2px; padding: 5px 10px; border-radius: 0 5px 5px 0; max-width: 520px; }
@@ -1047,7 +1047,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
    opacity 不继承，只算这两个元素。指针由盖住整个代码区的 .ovm 接住，跟以前点到被藏起来的行号和代码一样交给卡片 */
 .card.lo-ov .gutter, .card.lo-ov .src, .card.lo-ov .rowbgs { opacity: 0; }
 /* 概览档：每行按真实缩进和长度画一根直角灰条（注释行淡一些），轮廓就是这段代码本身的样子 */
-.card .code > .ovm { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; --bar-c: color-mix(in srgb, var(--ink) 6%, transparent); } /* 色块的 x 从 54px（行号区宽，跟 .src 的 margin-left 一致）算起 */
+.card .code > .ovm { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; --bar-c: color-mix(in srgb, var(--ink) 6%, transparent); } /* 色块的 x 从 --gutter（行号区宽，跟 .src 的 margin-left 一致）算起 */
 .card .code > .ovm { visibility: hidden; } .card.lo-ov .code > .ovm { visibility: visible; } /* 提前做好、不在概览档时藏着（CodeBody） */
 .card.lo-ov .ctitle { font-size: 15px; font-weight: 600; }
 /* --iz（地图档 = 1/z）：注册成不继承，只有卡和名字用到，卡里的几千个代码节点就不用跟着重算样式 */

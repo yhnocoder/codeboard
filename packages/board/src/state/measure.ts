@@ -46,13 +46,16 @@ export function observeResize(el: Element, f: () => void): () => void {
 let lastPtr = { x: 0, y: 0 };
 /** 指针最后在哪（屏幕坐标）：installKeys 里开始记 */
 export const lastPointer = () => lastPtr;
+let down: { x: number; y: number; target: HTMLElement | null } | null = null;
+/** 最近一次按下：位置（双击进编辑时光标放在那里）和元素（blur 时判断焦点是不是被同一张卡上的东西拿走的；不可聚焦的地方 relatedTarget 是空的） */
+export const lastDown = () => down;
 // 白板是 position: fixed 铺满窗口，左上角只在窗口变大小时可能变：记下来，不在每个滚轮 / 指针事件里读布局
 // （读 getBoundingClientRect 会让浏览器在事件里先把上一批改动的样式、排版做掉，同一帧里再做一遍）
 let boardAt: { x: number; y: number } | null = null;
 export function trackPointer() {
   const at = (e: PointerEvent) => { lastPtr = { x: e.clientX, y: e.clientY }; };
   window.addEventListener("pointermove", at, { capture: true, passive: true });
-  window.addEventListener("pointerdown", at, { capture: true, passive: true });
+  window.addEventListener("pointerdown", (e) => { at(e); down = { ...lastPtr, target: e.target as HTMLElement | null }; }, { capture: true, passive: true });
   window.addEventListener("resize", () => { boardAt = null; });
 }
 /** 白板左上角（屏幕坐标） */
@@ -67,7 +70,7 @@ export function boardOffset() {
 export const boardPoint = (p: { x: number; y: number }) => { const o = boardOffset(); return { x: p.x - o.x, y: p.y - o.y }; };
 export const worldAt = (p: { x: number; y: number }) => { const b = boardPoint(p); return toWorld(b.x, b.y); };
 
-// ---------- 代码卡的固定尺寸（CSS 里用同一份：App 挂成 --gutter、--ded-pad） ----------
+// ---------- 代码卡的固定尺寸（CSS 里用同一份：App 挂到 body 上的 --gutter、--ded-pad） ----------
 
 /** 行号栏宽 = .src 的左边距 */
 export const GUTTER = 54;

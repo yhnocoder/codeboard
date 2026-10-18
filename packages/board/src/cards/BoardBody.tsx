@@ -2,6 +2,7 @@
 // 整个骨架是一张 SVG，按骨架和框的大小拼成一段字符串一次放进去（不是每张卡一个组件）：拖别的卡、平移缩放都不碰它，
 // 只有子白板存盘（宿主推来新骨架）、框改大小、连进来的箭头变了才重新拼。地图档只剩灰块和 Section 色（styles.css）。
 import { createMemo, Show } from "solid-js";
+import { escHtml } from "@codeboard/core";
 import type { BoardCard, Skeleton } from "@codeboard/core";
 import { flows, placeOf, state } from "../state/store";
 import { dropTarget } from "../state/ui";
@@ -12,7 +13,6 @@ import { MarkView } from "./Card";
 
 type Joined = { g: Set<number>; cards: Set<string> };
 const key = (j: Joined) => `${[...j.g].join(",")}|${[...j.cards].join(",")}`;
-const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 /** 名字按宽度截断（11px 系统字体大约 6.2px 一个字） */
 const clip = (t: string, w: number) => { const n = Math.max(1, Math.floor(w / 6.2)); return t.length <= n ? t : `${t.slice(0, Math.max(1, n - 1))}…`; };
 
@@ -73,8 +73,8 @@ function skelSvg(s: Skeleton, frame: string, w: number, h: number, joined: Joine
   out.push(`<defs><pattern id="${pid}" width="8" height="7" patternUnits="userSpaceOnUse"><rect class="sk-bar" x="0" y="1" width="8" height="3"/></pattern></defs>`);
   for (const sc of s.secs) {
     const x = f.ox + sc.x * f.s, y = f.oy + sc.y * f.s;
-    out.push(`<rect class="sk-sec${sc.color ? ` c-${esc(sc.color)}` : ""}" x="${x}" y="${y}" width="${sc.w * f.s}" height="${sc.h * f.s}" rx="4"/>`);
-    if (sc.t && sc.w * f.s > 40) out.push(`<text class="sk-t sk-st" x="${x + 5}" y="${y + 10}">${esc(clip(sc.t, sc.w * f.s - 10))}</text>`);
+    out.push(`<rect class="sk-sec${sc.color ? ` c-${escHtml(sc.color)}` : ""}" x="${x}" y="${y}" width="${sc.w * f.s}" height="${sc.h * f.s}" rx="4"/>`);
+    if (sc.t && sc.w * f.s > 40) out.push(`<text class="sk-t sk-st" x="${x + 5}" y="${y + 10}">${escHtml(clip(sc.t, sc.w * f.s - 10))}</text>`);
   }
   // 连线（Call 一条 path、普通箭头一条 path）：从名字那一行的右边出、进目标名字那一行的左边
   const boxes = s.cards.map((c) => skelBox(c, f));
@@ -99,8 +99,8 @@ function skelSvg(s: Skeleton, frame: string, w: number, h: number, joined: Joine
   s.cards.forEach((c, i) => {
     const b = boxes[i];
     const more = c.k === "more";
-    const cls = `sk-c k-${c.k}${c.sec ? ` s-${esc(c.sec)}` : ""}${hot && (c.id === hot || c.ids?.includes(hot)) ? " hot" : ""}`;
-    out.push(`<g class="${cls}" data-sub="${esc(c.id)}">`);
+    const cls = `sk-c k-${c.k}${c.sec ? ` s-${escHtml(c.sec)}` : ""}${hot && (c.id === hot || c.ids?.includes(hot)) ? " hot" : ""}`;
+    out.push(`<g class="${cls}" data-sub="${escHtml(c.id)}">`);
     out.push(`<rect class="sk-box" x="${b.x}" y="${b.y}" width="${b.w}" height="${b.h}" rx="${more ? 3 : 2.5}"/>`);
     if (!more && c.k === "code" && b.h > LABEL_H + 8) out.push(`<rect class="sk-bars" x="${b.x + 5}" y="${b.y + LABEL_H + 2}" width="${Math.max(0, b.w - 10)}" height="${b.h - LABEL_H - 6}" fill="url(#${pid})"/>`);
     let tx = b.x + 4;
@@ -109,10 +109,10 @@ function skelSvg(s: Skeleton, frame: string, w: number, h: number, joined: Joine
     if (m && !more) {
       const mw = 6 + m.length * 6.5;
       out.push(`<rect class="sk-mk${isJoined ? " joined" : ""}" x="${tx}" y="${b.y + 2.5}" width="${mw}" height="${LABEL_H - 5}" rx="3"/>`);
-      out.push(`<text class="sk-t sk-mt" x="${tx + mw / 2}" y="${b.y + LABEL_H / 2 + 3.5}">${esc(m)}</text>`);
+      out.push(`<text class="sk-t sk-mt" x="${tx + mw / 2}" y="${b.y + LABEL_H / 2 + 3.5}">${escHtml(m)}</text>`);
       tx += mw + 4;
     }
-    out.push(`<text class="sk-t${more ? " sk-more" : ""}" x="${tx}" y="${b.y + LABEL_H / 2 + 4}">${esc(clip(c.t, b.x + b.w - tx - 3))}</text>`);
+    out.push(`<text class="sk-t${more ? " sk-more" : ""}" x="${tx}" y="${b.y + LABEL_H / 2 + 4}">${escHtml(clip(c.t, b.x + b.w - tx - 3))}</text>`);
     out.push(`</g>`);
   });
   return out.join("");

@@ -4,16 +4,15 @@
 // 补全菜单、悬停、签名提示问宿主的语言服务（VS Code 里是 Pylance 之类），灰字补全和 Note 一样。
 // CodeMirror 还没加载好时（一般空闲时早就预加载了）先照原样显示，加载好了再换上
 import { createEffect, For, onCleanup, onMount, Show, createSignal } from "solid-js";
+import { escHtml } from "@codeboard/core";
 import { unwrap } from "solid-js/store";
 import type { CodeCard, SegView } from "@codeboard/core";
 import { state } from "../state/store";
 import { ask } from "../host";
 import { loadCm, cmNow, lspHost, closeLsp, ghostHost, nearSeg } from "../cm/load";
 import type { CodeEditor } from "../cm/editor";
+import { lastDown } from "../state/measure";
 
-/** 最近一次按下的位置：双击进编辑时光标放在双击的地方 */
-let lastXY: { x: number; y: number } | null = null;
-window.addEventListener("pointerdown", (e) => { lastXY = { x: e.clientX, y: e.clientY }; }, true);
 
 export type FreeEditCtl = { text(): string; focus(): void; el: HTMLElement };
 
@@ -57,7 +56,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
     // 光标放在双击的地方（新建的空卡在开头）；拿焦点：菜单关掉、卡片刚放上去的那几帧焦点可能被别处拿走，拿到为止（最多 20 帧）
     queueMicrotask(() => {
       if (gone) return;
-      const at = lastXY && v.posAtCoords(lastXY);
+      const d = lastDown(), at = d && v.posAtCoords(d);
       v.dispatch({ selection: { anchor: at ?? 0 } });
       let n = 0;
       const grab = () => { if (gone || v.hasFocus || ++n > 20) return; v.focus(); requestAnimationFrame(grab); };
@@ -75,7 +74,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
       <div ref={box} style={{ display: "contents" }} />
       <Show when={!ed()}>
         <div class="gutter"><For each={seg().text}>{(_, i) => <span class="no" style={{ top: `${6 + i() * 20}px` }}>{seg().start + i()}</span>}</For></div>
-        <div class="src"><For each={seg().text}>{(t, i) => <div class="l" innerHTML={v0?.html[i()] ?? t.replace(/&/g, "&amp;").replace(/</g, "&lt;") ?? "​"} />}</For></div>
+        <div class="src"><For each={seg().text}>{(t, i) => <div class="l" innerHTML={v0?.html[i()] ?? escHtml(t) ?? "​"} />}</For></div>
       </Show>
     </div>
   );

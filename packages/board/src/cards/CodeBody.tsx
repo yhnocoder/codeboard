@@ -5,13 +5,13 @@ import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, commonIndent, escapeRegExp, shownText, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView, type Sticker } from "@codeboard/core";
+import { cardRows, commonIndent, escapeRegExp, shownText, copyText, escHtml, F_COMMENT, type CodeCard, type Row, type Segment, type SegView, type Sticker } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
 import { lineStickers, stickerList } from "../state/stickers";
 import { StickerChip } from "../stickers/Picker";
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
-import { queueMeasure, observeResize } from "../state/measure";
+import { queueMeasure, observeResize, GUTTER, DED_PAD, monoWidth, lastDown } from "../state/measure";
 import { whenIdle } from "../state/idle";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
 import * as act from "../actions";
@@ -29,22 +29,8 @@ function inQuotes(t: string, i: number) {
   return !!q;
 }
 
-// 最近一次按下的元素（blur 时判断焦点是不是被同一张卡上的东西拿走的；不可聚焦的地方 relatedTarget 是空的）
-let lastDown: HTMLElement | null = null;
-window.addEventListener("pointerdown", (e) => { lastDown = e.target as HTMLElement; }, true);
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** 等宽字体一个字的宽度（概览档画轮廓用；量一次） */
-let cw0 = 0;
-/** 藏了缩进时，代码离左边留的空（画竖线） */
-const DED_PAD = 16;
-function charWidth(el: Element) {
-  if (cw0) return cw0;
-  const ctx = document.createElement("canvas").getContext("2d")!;
-  ctx.font = getComputedStyle(el).font;
-  return (cw0 = ctx.measureText("0".repeat(100)).width / 100 || 7.2);
-}
 
 export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; dim?: () => boolean }) {
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
@@ -63,9 +49,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const kids = srcEl.querySelectorAll<HTMLElement>(":scope > [data-r]");
     kids.forEach((k) => (out[+k.dataset.r!] = { y: srcEl.offsetTop + k.offsetTop, h: k.offsetHeight }));
     const top = scrollEl.offsetTop; // 代码区相对卡片顶部
+    const hd = scrollEl.closest(".card")?.querySelector<HTMLElement>(":scope > .cface > .chead");
     const g = {
       rows: rows(), ys: out.map((o) => (o ? o.y + top + codeEl.offsetTop : 0)), hs: out.map((o) => o?.h ?? 0),
-      top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: top,
+      top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: hd ? hd.offsetTop + hd.offsetHeight : top,
     };
     const id = p.card.id;
     return () => { setYs(out); setGeo(id, g); };
@@ -113,7 +100,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const overviewMask = createMemo(() => {
     if ((!warm() && lod() !== "overview") || !srcEl) return undefined;
     // 只用已经量好的行位置（ys，相对 .code），不在这里读 DOM：切到概览档时 241 张卡挨个读会让浏览器每张卡排一次版
-    const rs = rows(), y = ys(), cw = charWidth(srcEl);
+    const rs = rows(), y = ys(), cw = monoWidth(srcEl);
     // 每行一个直角色块：CSS 背景层（纯色渐变），不用图片，浏览器不用为每张卡解析、栅格化一张 SVG
     const img: string[] = [], size: string[] = [], pos: string[] = [];
     rs.forEach((r, i) => {
@@ -125,7 +112,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       const sh = ded() ? DED_PAD - ded() * cw : 0;
       img.push(cmtLine(r) ? "linear-gradient(var(--bar-c), var(--bar-c))" : "linear-gradient(var(--bar), var(--bar))");
       size.push(`${((t.length - ind) * cw).toFixed(1)}px 10px`);
-      pos.push(`${(54 + sh + ind * cw).toFixed(1)}px ${y[i].y + 5}px`);
+      pos.push(`${(GUTTER + sh + ind * cw).toFixed(1)}px ${y[i].y + 5}px`);
     });
     return img.length ? { img: img.join(","), size: size.join(","), pos: pos.join(",") } : { img: undefined, size: undefined, pos: undefined };
   });
@@ -135,7 +122,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const i = r.line - (s?.start ?? 0);
     const hideTail = c().hide?.comments && v?.bare?.[r.line] !== undefined;
     if (hideTail) return v!.bare![r.line];
-    return v?.html[i] ?? esc(s?.text[i] ?? "");
+    return v?.html[i] ?? escHtml(s?.text[i] ?? "");
   };
 
   // ---------- 行选择：拖选代码或点行号（⇧ 扩展） ----------
@@ -353,10 +340,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         <FreeEdit card={c} wrap={() => !!c().wrap} onExit={(v) => { act.setFreeCode(c().id, v.replace(/\s+$/, "")); setEditing(null); }} onBlur={(e, ed) => {
             const el = ed.el;
             // 点的是这张卡自己的东西（语言下拉、标题栏按钮）或它弹出的菜单：还在编辑，菜单关掉后把光标放回来；不算"点了别处"
-            const t = (e.relatedTarget as HTMLElement | null) ?? lastDown;
+            const t = (e.relatedTarget as HTMLElement | null) ?? lastDown()?.target;
             if (t && !el.contains(t) && (el.closest(".card")?.contains(t) || t.closest?.(".ctx"))) {
               const back = () => { if (!el.isConnected || editing()?.id !== c().id) return; if (menuOpen()) return void setTimeout(back, 80);
-                const d = lastDown, mine = !!d && (el.closest(".card")?.contains(d) || !!d.closest?.(".ctx"));
+                const d = lastDown()?.target, mine = !!d && (el.closest(".card")?.contains(d) || !!d.closest?.(".ctx"));
                 if (mine) ed.focus(); else { act.setFreeCode(c().id, ed.text().replace(/\s+$/, "")); setEditing(null); } };
               setTimeout(back, 0);
               return;
@@ -373,7 +360,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             {(r, i) => (
               <Show when={r.t === "line" && ys()[i()]}>
                 <span class="no" data-r={i()} classList={{ link: fromLines().has(`${r.seg}:${(r as any).line}`), jump: (r as any).skipped, sel: inSel(r.seg, (r as any).line), drop: dropAt(r.seg, (r as any).line) }}
-                  style={{ top: `${ys()[i()].y}px` }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => clickNo(r as any, e)} onContextMenu={(e) => lineCtx(r as any, e)}>{(r as any).line}</span>
+                  style={{ top: `${ys()[i()].y}px` }} data-nodrag onClick={(e) => clickNo(r as any, e)} onContextMenu={(e) => lineCtx(r as any, e)}>{(r as any).line}</span>
               </Show>
             )}
           </For>
@@ -382,7 +369,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               <Show when={ys()[m.row]}>
                 <Show when={m.span}><span class="mkr" style={{ top: `${ys()[m.row].y + 10}px`, height: `${(ys()[m.row + m.span!]?.y ?? ys()[m.row].y) - ys()[m.row].y}px` }} /></Show>
                 <button class="mk" classList={{ rv: !!m.review }} style={{ top: `${ys()[m.row].y}px` }} data-card={c().id} data-notes={m.ids.join(",")}
-                  onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids, e)} onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}>{m.n}</button>
+                  data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids, e)} onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}>{m.n}</button>
               </Show>
             )}
           </For>
@@ -445,7 +432,7 @@ function GapRow(p: { r: Extract<Row, { t: "gap" }>; i: number; card: CodeCard })
   return (
     <div class="gap" classList={{ mgap: !p.r.manual }} data-r={p.i}>
       ⋯ {n()} line{n() > 1 ? "s" : ""} hidden ({p.r.from === p.r.to ? p.r.from : `${p.r.from}–${p.r.to}`})
-      <Show when={p.r.manual}> · <b onPointerDown={(e) => e.stopPropagation()} onClick={() => toggleShown(`${p.r.seg}:${p.r.from}`)}>Show</b></Show>
+      <Show when={p.r.manual}> · <b data-nodrag onClick={() => toggleShown(`${p.r.seg}:${p.r.from}`)}>Show</b></Show>
       <Show when={links()}> · {links()} link{links() > 1 ? "s" : ""}</Show>
       <Show when={changed()}> · <span class="chgd">Changed</span></Show>
     </div>

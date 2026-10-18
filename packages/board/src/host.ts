@@ -1,4 +1,5 @@
 import type { AskType, BoardToHost, HostToBoard, ReplyOf } from "@codeboard/core";
+import { onBoardSwitch } from "./state/root";
 
 // 宿主桥：VS Code webview 用 acquireVsCodeApi；以后 macOS app 换一个实现即可
 type Api = { postMessage(m: unknown): void };
@@ -13,7 +14,21 @@ export function send(m: BoardToHost) {
 }
 
 let req = 0;
-const pending = new Map<number, { ok: (v: any) => void; fail: (e: Error) => void }>();
+type Pending = { ok: (v: any) => void; fail: (e: Error) => void; timer?: number };
+const pending = new Map<number, Pending>();
+/** 宿主一直不回（出错、重载了）时多久算失败；等用户操作的请求（确认框、选文件、保存对话框、GitHub 登录）不限时 */
+const TIMEOUT = 60_000;
+const WAITS_ON_USER = new Set<AskType>(["confirm", "pickFile", "exportFile", "deleteEverywhere", "deleteBoard", "newBoard", "gh", "github"]);
+
+function settle(id: number): Pending | undefined {
+  const p = pending.get(id);
+  if (!p) return;
+  pending.delete(id);
+  clearTimeout(p.timer);
+  return p;
+}
+// 换了白板：上一块白板的请求都作废（回答到了也对不上现在的卡）
+onBoardSwitch(() => { for (const id of [...pending.keys()]) settle(id)?.fail(new Error("The board changed")); });
 
 type Req<T extends AskType> = Omit<Extract<BoardToHost, { type: T }>, "req" | "type">;
 
@@ -21,7 +36,8 @@ type Req<T extends AskType> = Omit<Extract<BoardToHost, { type: T }>, "req" | "t
 export function ask<T extends AskType>(type: T, body: Req<T>): Promise<ReplyOf<T>> {
   const id = ++req;
   return new Promise<ReplyOf<T>>((ok, fail) => {
-    pending.set(id, { ok, fail });
+    const timer = WAITS_ON_USER.has(type) ? undefined : window.setTimeout(() => settle(id)?.fail(new Error(`No reply from the editor (${type})`)), TIMEOUT);
+    pending.set(id, { ok, fail, timer });
     api.postMessage({ type, req: id, ...body });
   });
 }
@@ -54,9 +70,8 @@ export function listen(fn: (m: HostToBoard) => void) {
     const m = e.data as HostToBoard;
     if (!m || typeof m !== "object" || !("type" in m)) return;
     if (m.type === "reply") {
-      const p = pending.get(m.req);
+      const p = settle(m.req);
       if (!p) return;
-      pending.delete(m.req);
       if (m.error) p.fail(new Error(m.error));
       else p.ok(m.data);
       return;
