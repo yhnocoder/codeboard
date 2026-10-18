@@ -398,7 +398,19 @@ export function redo() {
   updUndo();
   return true;
 }
-export function resetHistory() { cur = null; lastIds = null; topMerge = undefined; undoStack.length = 0; redoStack.length = 0; syncLog.length = 0; last.clear(); updUndo(); }
+
+// 每块白板各有一份撤销历史：进子白板再回来时宿主重新发来这块白板，内容和离开时一样就接着用
+const histories = new Map<string, { undo: Snap[]; redo: Snap[]; sync: typeof syncLog; at: Snap }>();
+/** 换上宿主发来的白板：现在这块白板的撤销历史收起来；新白板收起过、内容也和那时一样就接着用，不然从头开始 */
+export function setBoard(b: Board) {
+  if (state.loaded) histories.set(state.board.id, { undo: undoStack.splice(0), redo: redoStack.splice(0), sync: syncLog.splice(0), at: snapNow() });
+  setState("board", reconcile(b));
+  cur = null; lastIds = null; topMerge = undefined; last.clear();
+  const h = histories.get(b.id);
+  histories.delete(b.id);
+  if (h && same(h.at, snapNow())) { undoStack.push(...h.undo); redoStack.push(...h.redo); syncLog.push(...h.sync); }
+  updUndo();
+}
 
 export function allIds(): string[] {
   return state.board.cards.map((c) => c.id);

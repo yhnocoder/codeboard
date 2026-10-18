@@ -2,7 +2,7 @@
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows } from "./state/store";
+import { state, setState, markSaved, setBoard, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner, setWalk } from "./state/ui";
 import { resetSubboards, putSkels } from "./state/subboards";
@@ -24,7 +24,7 @@ export function onHost(m: HostToBoard) {
         setState("boards", m.boards);
         setState("views", m.views);
         setState("stale", m.stale);
-        setState("board", reconcile(b));
+        setBoard(b);
         A.resetShownViews();
         setShared(reconcile({}));
         setState("loaded", true);
@@ -35,7 +35,6 @@ export function onHost(m: HostToBoard) {
       });
       if (A.questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
-      resetHistory();
       markSaved();
       A.resetNav();
       select({});

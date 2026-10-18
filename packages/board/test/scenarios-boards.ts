@@ -3,6 +3,7 @@
 // Usage: node packages/board/test/run-harness.mjs <scenario…>   (names in BOARDS below)
 import { emptyBoard, type Board } from "@codeboard/core";
 import { open, put, symCard, findSym, type Host } from "./harness";
+import { subHost } from "./scenarios-subboards";
 
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
@@ -17,7 +18,43 @@ const run = async (name: string, f: (res: Record<string, unknown>) => Promise<bo
 export const BOARDS: Record<string, () => Promise<void>> = {
   changesreachhost: () => run("changes-reach-host-at-once", changesReachHost),
   emptyquestion: () => run("empty-new-question-is-dropped", emptyQuestion),
+  undoafterpeek: () => run("undo-history-survives-a-visit-to-a-sub-board", undoAfterPeek),
 };
+
+/** A parent board with a frame of a one-card child board */
+function parentAndChild() {
+  const P: Board = emptyBoard("bParent", "Parent"), C: Board = emptyBoard("bChild", "Child");
+  const step = nv("LLMEngine.step");
+  put(C, step, 60, 80, 600);
+  P.cards.push({ id: "fC", kind: "board", board: C.id }); P.place.fC = { x: 60, y: 80, w: 520, h: 360 };
+  return { P, C, step };
+}
+const enter = async (h: Host, frame: string) => { await h.page.locator(`.card[data-id="${frame}"] .sbhead`).dblclick({ position: { x: 200, y: 12 } }); await wait(h, 1600); };
+const leave = async (h: Host) => { await h.page.locator(".crumbs .crumb", { hasText: "Parent" }).click(); await wait(h, 1600); };
+
+/** Undo on a board still undoes its own last change after entering a sub-board and coming back */
+async function undoAfterPeek(res: Record<string, unknown>) {
+  const { P, C } = parentAndChild();
+  const t = await subHost(P, [C]), h = t.h, page = h.page;
+  await wait(h, 800);
+  await page.mouse.click(1000, 600); await wait(h, 200);
+  await page.keyboard.press("t"); await wait(h, 400);
+  await page.keyboard.type("hello text"); await page.keyboard.press("Escape"); await wait(h, 300);
+  await page.keyboard.press("Escape"); await wait(h, 800);
+  const hasText = () => t.store.peek("bParent")!.cards.some((c) => c.kind === "note" && c.md === "hello text");
+  res.typed = hasText();
+  await enter(h, "fC");
+  res.inChild = t.cur() === "bChild";
+  await leave(h);
+  res.back = t.cur() === "bParent";
+  await page.mouse.click(1000, 600); await wait(h, 200);
+  await page.keyboard.press("Meta+z"); await wait(h, 1400);
+  res.undone = !hasText();
+  await page.keyboard.press("Meta+Shift+z"); await wait(h, 1400);
+  res.redone = hasText();
+  await page.context().browser()!.close();
+  return res.typed === true && res.inChild === true && res.back === true && res.undone === true && res.redone === true;
+}
 
 /** Right-click a code line and pick a line-menu item (under Edit when it isn't on the first level) */
 async function lineMenu(h: Host, card: string, line: number, label: string) {
