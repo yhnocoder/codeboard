@@ -1,5 +1,5 @@
 #!/bin/bash
-# Release screenshots at 2x: the four feature shots in VS Code light, one board per theme in light and in dark, stacked into one picture each.
+# Release screenshots at 2x: the four feature shots in VS Code light, one board per theme in light and in dark, stacked into one picture each (about a minute and a half).
 # Usage: tools/release/shots.sh [out dir]   (default test-out/release-shots)
 # Needs what npm run e2e needs (VS Code, xvfb-run, a build of the extension) plus Chromium for the composition (CHROMIUM or Playwright's).
 # Output: 1-overview.png 2-peek.png 3-new-version.png 4-notes.png 5-themes-light.png 6-themes-dark.png
@@ -22,10 +22,11 @@ export E2E_SETTINGS='"codeboard.zoom.overview": 0.3, "codeboard.zoom.map": 0.12,
   "chat.disableAIFeatures": true, "workbench.activityBar.location": "hidden",
   "python.analysis.ignore": ["**"], "problems.decorations.enabled": false,
   "codeboard.ai.provider": "deepseek", "codeboard.ai.deepseekBaseUrl": "http://127.0.0.1:'$MOCK_PORT'"'
-THEME="Default Light Modern" SHOTS=features,themes E2E_OUT=$RAW/light bash "$REPO/extensions/vscode/test/run.sh"
-THEME="Default Dark Modern" SHOTS=themes E2E_OUT=$RAW/dark bash "$REPO/extensions/vscode/test/run.sh"
+# One VS Code window: built once in light, the feature shots and the light theme shots, then VS Code switches to dark for the dark theme shots
+THEME="Default Light Modern" THEMES_DARK="Default Dark Modern" SHOTS=features,themes E2E_OUT=$RAW/light bash "$REPO/extensions/vscode/test/run.sh"
 rm -f "$OUT"/*.png
 cp "$RAW"/light/[1-4]-*.png "$OUT/"
-node "$REPO/tools/release/compose-themes.mjs" "$RAW/light/themes" "$OUT/5-themes-light.png" light
-node "$REPO/tools/release/compose-themes.mjs" "$RAW/dark/themes" "$OUT/6-themes-dark.png" dark
+node "$REPO/tools/release/compose-themes.mjs" "$RAW/light/themes" "$OUT/5-themes-light.png" light & L=$!
+node "$REPO/tools/release/compose-themes.mjs" "$RAW/light/themes-dark" "$OUT/6-themes-dark.png" dark & D=$!
+wait $L; wait $D
 ls "$OUT"/*.png

@@ -18,7 +18,7 @@ TMP=${E2E_TMP:-/tmp/codeboard-e2e}
 export CDP_PORT=${CDP_PORT:-9223}
 WS=$TMP/ws
 UD=$TMP/user
-pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true; sleep 1
+pkill -f -- "--user-data-dir=$UD" 2>/dev/null && sleep 1   # wait only when an earlier run was still there
 rm -rf "$TMP" "$OUT"; mkdir -p "$OUT" "$UD/User"
 git clone -q "$REPO/examples/nano-vllm" "$WS"
 # E2E_EXTENSIONS="ms-python.python ms-python.vscode-pylance": install into a cache dir first (skipped if already there), then copy into this run's extensions dir
