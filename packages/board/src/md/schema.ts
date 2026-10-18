@@ -18,6 +18,7 @@ import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import { lowlight } from "./hl";
+import { EMOJI } from "./emoji";
 
 // ---------- 公式：照旧版的 Pandoc 规则 ----------
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式。行内的 $$…$$ 是行内的大号公式
@@ -153,6 +154,45 @@ const Toc = Node.create({
     // marked 拿 start 找段落在哪断开时传的是 src.slice(1)，^ 会落在行中间（\[toc] 的 \ 后面）：只认换行后面的；行首的由 tokenize 直接认
     start: (src: string) => { const m = /\n {0,3}\[toc\][ \t]*(?:\n|$)/i.exec(src); return m ? m.index + 1 : -1; },
     tokenize: (src) => { const m = TOC_RE.exec(src); return m ? { type: "toc", raw: m[0] } : undefined; },
+  },
+});
+
+// ---------- :smile: 表情（Typora #31） ----------
+// 存成 :名字:（和 Typora、GitHub 一样），显示成表情字。只认 emoji.ts 里有的名字；前面紧挨着字母数字的不算（1:100: 是比例）
+const EMOJI_AT = /^:([a-z0-9_+-]+):/;
+const isEmoji = (name: string) => Object.prototype.hasOwnProperty.call(EMOJI, name);
+const emojiStart = (src: string) => {
+  const re = /(?<![\p{L}\p{N}_]):([a-z0-9_+-]+):/gu;
+  for (let m = re.exec(src); m; m = re.exec(src)) { if (isEmoji(m[1])) return m.index; re.lastIndex = m.index + 1; }
+  return -1;
+};
+const Emoji = Node.create({
+  name: "emoji",
+  group: "inline", inline: true, atom: true, selectable: false,
+  addAttributes() { return { name: { default: "" } }; },
+  parseHTML() { return [{ tag: "span[data-emoji]", getAttrs: (e) => ({ name: (e as HTMLElement).getAttribute("data-emoji") ?? "" }) }]; },
+  renderHTML({ node }) { return ["span", { class: "md-emoji", "data-emoji": node.attrs.name, title: `:${node.attrs.name}:` }, EMOJI[node.attrs.name] ?? `:${node.attrs.name}:`]; },
+  renderText: ({ node }) => EMOJI[node.attrs.name] ?? `:${node.attrs.name}:`,
+  parseMarkdown: (t) => ({ type: "emoji", attrs: { name: t.name } }),
+  renderMarkdown: (n) => `:${n.attrs?.name ?? ""}:`,
+  markdownTokenizer: {
+    name: "emoji", level: "inline",
+    start: emojiStart,
+    tokenize: (src) => {
+      const m = EMOJI_AT.exec(src);
+      if (!m || !isEmoji(m[1])) return;
+      return { type: "emoji", raw: m[0], name: m[1] };
+    },
+  },
+  // 打完右边的冒号就变
+  addInputRules() {
+    return [new InputRule({
+      find: /(?<![\p{L}\p{N}_]):([a-z0-9_+-]+):$/u,
+      handler: ({ range, match, chain }) => {
+        if (!isEmoji(match[1])) return null;
+        chain().insertContentAt(range, { type: "emoji", attrs: { name: match[1] } }).run();
+      },
+    })];
   },
 });
 
@@ -301,7 +341,7 @@ export const baseExtensions: AnyExtension[] = [
   U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
   Doc, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
-  CardRef, FnList, FnDef, FnRef,
+  CardRef, Emoji, FnList, FnDef, FnRef,
 ];
 
 // ---------- 写回：少转义 ----------
@@ -328,6 +368,8 @@ function escText(s: string): string {
       // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
       case "^": out += SUP_RE.test(s.slice(i)) && prev !== "^" ? "\\^" : c; break;
       case "=": out += HL_RE.test(s.slice(i)) && prev !== "=" ? "\\=" : c; break;
+      // 字面的 :smile:（会被读成表情的）：转义前一个冒号
+      case ":": { const m = EMOJI_AT.exec(s.slice(i)); out += m && isEmoji(m[1]) && !/[\p{L}\p{N}_]/u.test(prev) ? "\\:" : c; break; }
       case "&": out += /^&(?:#\d+|#x[\da-f]+|\w+);/i.test(s.slice(i)) ? "&amp;" : c; break;
       default: out += c;
     }

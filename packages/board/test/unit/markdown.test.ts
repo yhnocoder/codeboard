@@ -235,6 +235,19 @@ describe("typed math and block source (v0.1.8 review)", () => {
     const lit = stable("\\[toc]");
     expect(JSON.stringify(parseMd(lit))).not.toContain('"toc"');
   });
+  // #31：:smile: 存成短名，显示成表情字；不认识的名字、紧跟在字母数字后面的（1:100:）、代码里的照留；字面的 :smile: 转义冒号
+  it(":name: is an emoji", () => {
+    same("hi :smile: and :+1:");
+    expect(JSON.stringify(parseMd("hi :smile:"))).toContain('"emoji"');
+    expect(renderMd("hi :tada:")).toBe('<p>hi <span class="md-emoji" data-emoji="tada" title=":tada:">🎉</span></p>');
+    for (const t of ["a :nosuchname: b", "ratio 1:100: x", "`:smile:`", "at 10:30:00"]) {
+      same(t);
+      expect(JSON.stringify(parseMd(t))).not.toContain('"emoji"');
+    }
+    const lit = stable("\\:smile:");
+    expect(JSON.stringify(parseMd(lit))).not.toContain('"emoji"');
+    expect(JSON.stringify(parseMd(lit))).toContain(":smile:");
+  });
   it("leaves money and $ followed by a digit alone", () => {
     same("pay $5 and $6 today");
     expect(JSON.stringify(parseMd("from $1 to $2"))).not.toContain("inlineMath");

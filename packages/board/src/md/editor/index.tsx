@@ -12,6 +12,7 @@ import { render } from "solid-js/web";
 import { createSignal, For, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
+import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView } from "./codeblock";
 import { Typora, reconvert } from "./typora";
 import { place, virtual } from "../../ui/place";
@@ -57,8 +58,8 @@ const SLASH: MenuItem[] = [
 
 // 每个编辑器自己的一份界面状态（同一时间只有一个编辑器，但不靠这一点）
 type Ui = {
-  menu: Accessor<{ kind: "slash" | "ref"; items: MenuItem[]; i: number } | null>;
-  setMenu: (v: { kind: "slash" | "ref"; items: MenuItem[]; i: number } | null) => void;
+  menu: Accessor<{ kind: "slash" | "ref" | "emoji"; items: MenuItem[]; i: number } | null>;
+  setMenu: (v: { kind: "slash" | "ref" | "emoji"; items: MenuItem[]; i: number } | null) => void;
   math: Accessor<{ pos: number; latex: string; block: boolean } | null>;
   setMath: (v: { pos: number; latex: string; block: boolean } | null) => void;
   /** 工具条里的链接输入框（null = 没打开） */
@@ -90,7 +91,7 @@ async function insertPickedImage(e: Editor) {
 }
 
 /** 一个 suggestion 菜单（/ 和 [[ 共用）：键盘上下选、↵ 选中、Esc 关 */
-function menuSuggestion(editor: Editor, kind: "slash" | "ref", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[] }) {
+function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[] }) {
   return Suggestion<MenuItem, MenuItem>({
     editor,
     pluginKey: new PluginKey(`cb-${kind}`),
@@ -312,6 +313,22 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       })];
     },
   });
+  // : 加两个以上的字母：表情菜单（Typora #31）；打完 :名字: 直接变（schema.ts 的输入规则）
+  const Emo = Extension.create({
+    name: "cbEmoji",
+    addProseMirrorPlugins() {
+      return [menuSuggestion(this.editor, "emoji", {
+        char: ":",
+        items: (q) => {
+          const s = q.toLowerCase();
+          if (s.length < 2 || !/^[a-z0-9_+-]+$/.test(s)) return [];
+          const w = (n: string) => (n.startsWith(s) ? 3 : n.includes(`_${s}`) ? 2 : n.includes(s) ? 1 : 0);
+          return EMOJI_NAMES.map((n) => ({ n, w: w(n) })).filter((x) => x.w).sort((a, b) => b.w - a.w || a.n.length - b.n.length).slice(0, 30)
+            .map(({ n }) => ({ title: `${EMOJI[n]}  ${n}`, key: n, run: (e: Editor, r: Range) => { e.chain().focus().insertContentAt(r, { type: "emoji", attrs: { name: n } }).run(); } }));
+        },
+      })];
+    },
+  });
   // 打字时的转换：[[标题]] → 引用（其余的见 typora.ts）
   const Rules = Extension.create({
     name: "cbRules",
@@ -336,7 +353,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   return [
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
-    ...base, Slash, Ref, Rules, Exit,
+    ...base, Slash, Ref, Emo, Rules, Exit,
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),

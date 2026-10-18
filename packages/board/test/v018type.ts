@@ -184,6 +184,10 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       { name: "pair wrap", seq: "word{Shift+Home}(", md: "(word)" },
       { name: "pair backspace", seq: "a ({Backspace}b", md: "a b" },
       { name: "pair not markdown", seq: "*a and `b", md: "*a and `b" },
+      // #31：打完 :名字: 变表情（存回短名）；: 加两个字出菜单，↵ 选；不认识的、跟在数字后面的不变
+      { name: "emoji typed", seq: "hi :tada: x", md: "hi :tada: x", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm .md-emoji")].map((e) => e.textContent)), domOk: (v) => JSON.stringify(v) === '["🎉"]' },
+      { name: "emoji menu", seq: ":smi{Enter} ok", md: ":smile: ok", dom: count(".md-pm .md-emoji"), domOk: (n) => n === 1 },
+      { name: "emoji literal", seq: "a :nosuch: 1:100: b", md: "a :nosuch: 1:100: b", dom: count(".md-pm .md-emoji"), domOk: (n) => n === 0 },
       { name: "slash quote", seq: "/quote{Enter}q", md: "> q" },
       { name: "slash code", seq: "/code{Enter}k", md: "```\nk\n```" },
       { name: "slash divider", seq: "/divider{Enter}", md: "---" },
