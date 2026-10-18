@@ -12,6 +12,7 @@ THEME=${THEME:-Default Dark Modern}
 TAG=$(echo "$THEME" | tr 'A-Z ' 'a-z-')
 DRIVER=${DRIVER:-drive.cjs}   # DRIVER=replay.cjs runs the scripted study-task replay
 OUT=${E2E_OUT:-$REPO/test-out/$TAG}
+# E2E_SETTINGS adds entries to the user settings (a JSON fragment without braces)
 # E2E_TMP and CDP_PORT let several instances run side by side on one machine
 TMP=${E2E_TMP:-/tmp/codeboard-e2e}
 export CDP_PORT=${CDP_PORT:-9223}
@@ -29,12 +30,15 @@ fi
 cat > "$UD/User/settings.json" <<JSON
 { "workbench.colorTheme": "$THEME", "workbench.startupEditor": "none", "window.restoreWindows": "none",
   "workbench.tips.enabled": false, "chat.commandCenter.enabled": false, "workbench.secondarySideBar.defaultVisibility": "hidden",
-  "editor.minimap.enabled": false, "telemetry.telemetryLevel": "off", "update.mode": "none", "extensions.ignoreRecommendations": true }
+  "editor.minimap.enabled": false, "telemetry.telemetryLevel": "off", "update.mode": "none", "extensions.ignoreRecommendations": true${E2E_SETTINGS:+, $E2E_SETTINGS} }
 JSON
-RUN=""; [ -z "$DISPLAY" ] && RUN="xvfb-run -a -s '-screen 0 1700x1100x24'"
+# E2E_SCALE=2 renders at 2x device pixels (sharper screenshots, used for release shots); the X screen grows to match
+SCALE=${E2E_SCALE:-1}
+SCALE_ARG=""; [ "$SCALE" != 1 ] && SCALE_ARG="--force-device-scale-factor=$SCALE"
+RUN=""; [ -z "$DISPLAY" ] && RUN="xvfb-run -a -s '-screen 0 $((1700 * SCALE))x$((1100 * SCALE))x24'"
 eval $RUN "$CODE" "$WS" --extensionDevelopmentPath="$EXT" --user-data-dir="$UD" --extensions-dir="$UD/ext" \
   --disable-workspace-trust --skip-welcome --skip-release-notes --disable-gpu --no-sandbox \
-  --remote-debugging-port=$CDP_PORT --window-size=1600,1000 >"$OUT/code.log" 2>&1 &
+  --remote-debugging-port=$CDP_PORT --window-size=1600,1000 $SCALE_ARG >"$OUT/code.log" 2>&1 &
 PID=$!
 set +e
 node "$HERE/$DRIVER" "$OUT" "$WS" "$UD"
