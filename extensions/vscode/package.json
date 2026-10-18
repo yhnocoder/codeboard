@@ -536,6 +536,17 @@
           "default": "https://api.deepseek.com",
           "description": "DeepSeek API base URL."
         },
+        "codeboard.editorMarks": {
+          "type": "string",
+          "default": "all",
+          "enum": ["all", "lens", "off"],
+          "enumDescriptions": [
+            "The \"on N boards\" / \"+ Card\" CodeLens above functions and classes, plus the orange bar next to the line numbers and its mark in the overview ruler for lines on the target board.",
+            "Only the CodeLens: no bar next to the line numbers and no overview ruler mark.",
+            "No CodeBoard marks in file editors."
+          ],
+          "description": "What CodeBoard shows in file editors for code that is on a board. Applies right away."
+        },
         "codeboard.storageDir": {
           "type": "string",
           "default": "",

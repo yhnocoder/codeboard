@@ -257,6 +257,17 @@ async function cardfocusStep(page) {
     f = await boardFrame(page);
     check(await card(f, "get_context").count() === 1, `…and Ctrl+Z on the board brings it back (${where})`);
   }
+  // codeboard.editorMarks applies right away: "lens" drops the bar next to the line numbers, "off" also the CodeLens
+  await openFile(page, "context.py", 18);
+  const UDS = path.join(UD, "User/settings.json");
+  const settings0 = fs.readFileSync(UDS, "utf8");
+  const marksNow = async () => { await sleep(2000); return { bar: await page.locator(".editor-group-container .monaco-editor .margin [class*='ced-']").count(), lens: await page.locator(".editor-group-container .codelens-decoration").count() }; };
+  const setMarks = (v) => fs.writeFileSync(UDS, settings0.replace(/\}\s*$/, `, "codeboard.editorMarks": "${v}" }`));
+  const all = await marksNow();
+  setMarks("lens"); const lens = await marksNow();
+  setMarks("off"); const off = await marksNow();
+  fs.writeFileSync(UDS, settings0); const back = await marksNow();
+  check(all.bar > 0 && all.lens > 0 && lens.bar === 0 && lens.lens > 0 && off.bar === 0 && off.lens === 0 && back.bar > 0 && back.lens > 0, "codeboard.editorMarks all / lens / off switches the bar and the CodeLens live", { all, lens, off, back });
 }
 
 // PR9 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
