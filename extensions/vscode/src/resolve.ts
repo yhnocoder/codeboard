@@ -23,6 +23,13 @@ export { nameIndexReady, resetIndex, startNameIndex } from "./nameindex";
 
 /** 问语言服务（同一个文件、位置、内容的请求共用：悬停时可能已经在问了） */
 export const lspDefs = (abs: string, line: number, col: number): Promise<Def[]> => sharedDefs(abs, line, col, () => askDefs(abs, line, col));
+/** 定义处的「转到实现」（Pylance 要在整个工作区里找子类，冷的时候要好几秒）：悬停预取、打开白板的预热、点击、peek 共用一个请求 */
+const lspImpls = (d: Def): Promise<Def[]> => sharedDefs(d.abs, d.line, d.col, async () => {
+  const t0 = performance.now();
+  const r = await workspace().language.implementations(d.abs, d.line, d.col);
+  log("info", `implementations at ${hostPath(d.abs)}:${d.line} → ${r.length}, ${Math.round(performance.now() - t0)} ms`);
+  return r;
+}, "impl");
 
 // Pylance 刚启动时会先回空：还没见它答过话时，空的回答隔一会儿再问几次，再退到名字索引
 const RETRY = 3, RETRY_GAP = 600, RETRY_CLICKS = 3;
@@ -175,7 +182,7 @@ export async function dispatchOf(d: Def, name: string): Promise<{ result: Extrac
   const b = await symAtDef(d, name);
   if (!b || !b.sym.parent || b.sym.kind !== "def") return null;
   let locs: Def[] = [];
-  try { locs = await workspace().language.implementations(d.abs, d.line, d.col); } catch { return null; }
+  try { locs = await lspImpls(d); } catch { return null; }
   const impls: Target[] = [];
   for (const l of locs) {
     if (l.abs === d.abs && l.line === d.line) continue;

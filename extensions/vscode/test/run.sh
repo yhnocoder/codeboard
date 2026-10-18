@@ -26,11 +26,13 @@ if [ -n "$E2E_EXTENSIONS" ]; then
   for e in $E2E_EXTENSIONS; do "$(dirname "$CODE")/bin/code" --install-extension "$e" --extensions-dir "$CACHE" --user-data-dir "$UD" >/dev/null; done
   cp -r "$CACHE" "$UD/ext"
 fi
+# Pylance's "enable type checking?" prompt pops up after its first workspace-wide analysis (CodeBoard's Go to Implementation warm-up)
+# and sits over the board's dock in this narrow window, swallowing the Fit to Window clicks: turn the prompt off
 cat > "$UD/User/settings.json" <<JSON
 { "workbench.colorTheme": "$THEME", "workbench.startupEditor": "none", "window.restoreWindows": "none",
   "workbench.tips.enabled": false, "chat.commandCenter.enabled": false, "workbench.secondarySideBar.defaultVisibility": "hidden",
   "editor.minimap.enabled": false, "telemetry.telemetryLevel": "off", "update.mode": "none", "extensions.ignoreRecommendations": true,
-  "files.simpleDialog.enable": true }
+  "files.simpleDialog.enable": true, "python.analysis.enableTypeCheckingRecommendation": false }
 JSON
 RUN=""; [ -z "$DISPLAY" ] && RUN="xvfb-run -a -s '-screen 0 1700x1100x24'"
 eval $RUN "$CODE" "$WS" --extensionDevelopmentPath="$EXT" --user-data-dir="$UD" --extensions-dir="$UD/ext" \

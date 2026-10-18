@@ -491,10 +491,12 @@ const finish = async (browser, errors) => {
     f = await boardFrame(page); await sleep(1000);
     const pt = card(f, "pick_tokens");
     check(await pt.count() === 1, "Alt+B puts pick_tokens on the board");
-    // 白板窄、卡多，适应窗口后在概览档（代码是灰条，点不到调用）：用白板自己的按钮放大一档
-    // （不按键：焦点可能还在编辑器里，Shift+2 会把 @ 打进代码）
+    // 白板窄、卡多，适应窗口后在概览档（代码是灰条，点不到调用）：照用户的做法双击这张卡，放大到它 100%
+    // （适应窗口在 ~28%，Zoom In 一次 ×1.25、以画面中心放大，到 60% 的完整档之前卡就出了右边；
+    // 不按键：焦点可能还在编辑器里，Shift+2 会把 @ 打进代码）
     await f.locator('button[aria-label="Fit to Window"]').first().click(); await sleep(1200);
-    for (let i = 0; i < 3 && await pt.locator(".ovm").isVisible().catch(() => false); i++) { await f.locator('button[aria-label="Zoom In"]').first().click(); await sleep(900); }
+    if (await pt.locator(".ovm").isVisible().catch(() => false)) { await pt.locator(".ovm").dblclick(); await sleep(900); }
+    check(!(await pt.locator(".ovm").isVisible().catch(() => false)), "double-clicking a card in the overview zooms to it");
     await sleep(1200); // 镜头动画停下
     let impls = 0;
     for (let i = 0; i < 6 && !impls; i++) {

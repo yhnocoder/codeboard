@@ -3,7 +3,7 @@
 import type { Segment } from "@codeboard/core";
 import { segAnalysis } from "./analysis";
 import { cardForFileSym } from "./cards";
-import { lspDefs, symAtDef } from "./resolve";
+import { dispatchOf, lspDefs, symAtDef } from "./resolve";
 import { workingPlace } from "./versions";
 import { log } from "./log";
 import { readText } from "./ws";
@@ -37,7 +37,8 @@ async function warmCall(seg: Segment, line: number, col: number, name: string) {
   const defs = await lspDefs(wp.abs, wp.start + (line - seg.start), col);
   if (defs.length !== 1) return; // 几个定义要用户挑：不预先建
   const t = await symAtDef(defs[0], name);
-  if (t) await cardForFileSym(t.abs, t.sym); // 只为把 token / 分析 / 版本缓存热起来，卡本身丢掉
+  // 只为把 token / 分析 / 版本缓存热起来，卡本身丢掉；类里的方法 expand 还要问一次转到实现（动态分发），一起问好
+  await Promise.all([t && cardForFileSym(t.abs, t.sym), dispatchOf(defs[0], name)]);
 }
 
 // ---------- 打开白板：后台预热语言服务 ----------
@@ -73,6 +74,8 @@ export function warmBoard(segs: Segment[], alive: () => boolean) {
         let d = await lspDefs(wp.abs, c.line, c.col);
         for (let k = 0; n === 1 && !d.length && k < WARM_RETRY && alive(); k++) { await sleep(1500); d = await lspDefs(wp.abs, c.line, c.col); }
         log("info", `warm ${seg.path}:${c.line} ${c.name} → ${d.length} def(s), ${Math.round(performance.now() - t0)} ms`);
+        // 定义是类里的方法：点它时 expand 还要问转到实现（Pylance 第一次要在整个工作区里找子类），也先问掉
+        if (d.length === 1) await dispatchOf(d[0], c.name);
         await sleep(WARM_GAP);
       } catch { /* 预热失败不影响什么 */ }
     }
