@@ -9,10 +9,13 @@ export const isClipKey = (e: KeyboardEvent) => {
   return (mod && !e.altKey && [67, 86, 88].includes(e.keyCode)) || (e.shiftKey && e.keyCode === 45);
 };
 
+/** VS Code 自己的命令面板、快速打开（F1、⌘⇧P、⌘P）：编辑时也要打得开 */
+const isWorkbenchKey = (e: KeyboardEvent) => (e.key === "F1" && !e.metaKey && !e.ctrlKey && !e.altKey) || ((e.metaKey || e.ctrlKey) && !e.altKey && e.keyCode === 80);
+
 /** 输入框里收到按键时调用（代替 e.stopPropagation()）。自己已经处理了的（preventDefault 过，比如 ProseMirror 的撤销、全选，
- *  编辑器的 ⌘⇧V）不再交出去；没处理的剪切 / 复制 / 粘贴、撤销 / 重做 / 全选交给 VS Code */
+ *  编辑器的 ⌘⇧V）不再交出去；没处理的剪切 / 复制 / 粘贴、撤销 / 重做 / 全选和命令面板、快速打开交给 VS Code */
 export function keepKey(e: KeyboardEvent) {
   const mod = e.metaKey || e.ctrlKey;
-  if (!e.defaultPrevented && (isClipKey(e) || (mod && !e.altKey && [65, 89, 90].includes(e.keyCode)))) return;
+  if (!e.defaultPrevented && (isClipKey(e) || isWorkbenchKey(e) || (mod && !e.altKey && [65, 89, 90].includes(e.keyCode)))) return;
   e.stopPropagation();
 }
