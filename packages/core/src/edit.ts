@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { activeOf, clone, cornerAt, escapeRegExp, findCard, hostOf, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { activeOf, clone, cornerAt, escapeRegExp, findCard, hostOf, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type BoundVal, type CallAlt, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {
@@ -171,7 +171,38 @@ export function replaceCards(b: Board, ids: Iterable<string>, to: Retarget): voi
 }
 
 /**
- * 白板里指向不存在的东西的引用（应该永远是空的）：Link 两端、Sidenote、Sticker、Compare 的栏、Place、Section 父子，以及重复的 id。
+ * 点灰色备选换实现：Call 箭头 linkId 改连新卡 card（摆在旧卡的位置和 Section 里；旧卡没有摆放时摆在 (0, 0)、宽 w）。
+ * 旧卡只连着这一条箭头（没有别的箭头、没有挂在它上面的 Sidenote）：整张换成新卡（replaceCards：贴纸、调用图标记跟过去），
+ * 原来的实现 oldAlt 放回被点的备选（第 alt 个）的位置；否则旧卡留着（新卡往下挪 40，成了第二条分支），只把这条箭头改连新卡，被点的备选拿掉。
+ * label / vals：箭头的新标签、新取值（不给就不改）。返回旧卡留没留着；箭头不在或不是 Call 时什么都不改，返回 null
+ */
+export function swapCallTarget(b: Board, linkId: string, card: Card, o: { alt: number; oldAlt?: CallAlt; w: number; label?: string; vals?: BoundVal[] }): { kept: boolean } | null {
+  const l = b.links.find((x) => x.id === linkId);
+  if (!l?.call) return null;
+  const oldId = l.to.card;
+  const kept = b.links.some((x) => x.id !== linkId && (x.from.card === oldId || x.to.card === oldId)) || b.sidenotes.some((n) => n.at.card === oldId);
+  const p = b.place[oldId];
+  const section = p?.section;
+  placeCards(b, [{ card, place: p ? { x: p.x, y: kept ? p.y + 40 : p.y, w: p.w } : { x: 0, y: 0, w: o.w } }], { copy: false, at: (q) => (section ? { ...q, section } : q) });
+  const alts = [...(l.call.alts ?? [])];
+  alts.splice(o.alt, 1, ...(o.oldAlt && !kept ? [o.oldAlt] : []));
+  if (o.label) l.label = o.label;
+  if (alts.length) l.call.alts = alts; else delete l.call.alts;
+  if (o.vals) l.call.vals = o.vals;
+  if (kept) l.to = { card: card.id };
+  else replaceCards(b, [oldId], () => ({ card: card.id }));
+  return { kept };
+}
+
+/** 创建顺序按原来的先后重新从 0 编（拆出来的新白板：删掉别的卡之后号不连续），seq 接着编 */
+export function renumberBorn(b: Board): void {
+  const order = Object.entries(b.born ?? {}).sort((x, y) => x[1] - y[1]);
+  b.born = Object.fromEntries(order.map(([id], i) => [id, i]));
+  b.seq = order.length;
+}
+
+/**
+ * 白板里指向不存在的东西的引用（应该永远是空的）：Link 两端、Sidenote、Sticker、问题的解答、Compare 的栏、Place、Section 父子，以及重复的 id。
  * 给测试和 mutate 的自检用；返回每一处问题的说明。
  */
 export function danglingRefs(b: Board): string[] {
@@ -202,6 +233,7 @@ export function danglingRefs(b: Board): string[] {
     return "card" in at.on ? (cards.has(at.on.card) ? null : at.on.card) : links.has(at.on.link) ? null : at.on.link;
   };
   for (const k of b.stickers) { const m = stickerRef(k); if (m) out.push(`sticker ${k.id} on missing ${m}`); }
+  for (const k of b.stickers) if (k.q?.answer && !cards.has(k.q.answer)) out.push(`question ${k.id} answered by missing ${k.q.answer}`);
   for (const c of b.cards) if (c.kind === "compare") for (const k of c.cols) if (!cards.has(k)) out.push(`compare ${c.id} column missing ${k}`);
   for (const id of Object.keys(b.place)) if (!cards.has(id)) out.push(`place for missing card ${id}`);
   for (const s of b.sections) if (s.parent && !sections.has(s.parent)) out.push(`section ${s.id} parent missing ${s.parent}`);

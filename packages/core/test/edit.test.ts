@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, removeLinks, replaceCards, retargetCards, shiftBy, stampBorn,
   placeCards, unlinkCard, mergeCodeCards, removeLostCalls, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines, sidenoteCard, sidenoteToCard,
-  arrangeCards, cardIntoSidenote, joinLinks, makeCompare, removeSections, renameTitleRefs, splitLink,
+  arrangeCards, cardIntoSidenote, joinLinks, makeCompare, removeSections, renameTitleRefs, splitLink, swapCallTarget, renumberBorn,
   type Board, type Card, type CodeCard, type Link, type Segment,
 } from "../src";
 
@@ -276,6 +276,75 @@ describe("reference upkeep in board actions", () => {
     expect(c.cards.map((x) => x.id)).toEqual(["a", "p", "q"]);
     expect(c.links[0].to).toEqual({ card: "p", seg: undefined, line: undefined });
     expect(c.place.k).toBeUndefined();
+  });
+});
+
+describe("swapCallTarget", () => {
+  const alts = [{ label: "Impl.a", path: "a.py", line: 1 }, { label: "Impl.b", path: "b.py", line: 5 }];
+  const setup = (): Board => ({
+    ...emptyBoard("b", "B"),
+    cards: [code("a"), code("old")],
+    place: { a: { x: 0, y: 0, w: 1 }, old: { x: 100, y: 200, w: 500, section: "sec" } },
+    sections: [{ id: "sec", title: "S", x: 0, y: 0, w: 1, h: 1 }],
+    links: [{ ...call("a", "old"), call: { name: "f", col: 0, alts } }],
+    stickers: [{ id: "k", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "old" } } }],
+    marks: { old: { letter: "B" } },
+    born: { a: 0, old: 1 }, seq: 2,
+  });
+  const oldAlt = { label: "Old.f", path: "old.py", line: 1 };
+
+  it("replaces a card only this arrow uses: the new card takes its place, section, stickers, mark and creation order; the old one becomes the alternative", () => {
+    const b = setup();
+    const r = swapCallTarget(b, "a-old", code("new"), { alt: 1, oldAlt, w: 560, label: "picked", vals: [{ name: "k", value: "2" }] });
+    expect(r).toEqual({ kept: false });
+    expect(b.cards.map((c) => c.id)).toEqual(["a", "new"]);
+    expect(b.place.new).toEqual({ x: 100, y: 200, w: 500, section: "sec" });
+    expect(b.links[0]).toMatchObject({ label: "picked", to: { card: "new" }, call: { alts: [alts[0], oldAlt], vals: [{ name: "k", value: "2" }] } });
+    expect(b.stickers[0].at).toMatchObject({ on: { card: "new" } });
+    expect([b.marks, b.born]).toEqual([{ new: { letter: "B" } }, { a: 0, new: 1 }]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("keeps a card with other arrows or sidenotes: the new card goes 40 below, only this arrow moves, and no alternative is added", () => {
+    for (const extra of ["link", "sidenote"] as const) {
+      const b = setup();
+      if (extra === "link") b.links.push({ id: "other", from: { card: "old" }, to: { card: "a" } });
+      else b.sidenotes.push({ id: "n", at: { card: "old" }, kind: "text", md: "" });
+      const r = swapCallTarget(b, "a-old", code("new"), { alt: 0, oldAlt, w: 560 });
+      expect(r).toEqual({ kept: true });
+      expect(b.cards.map((c) => c.id)).toEqual(["a", "old", "new"]);
+      expect(b.place.new).toEqual({ x: 100, y: 240, w: 500, section: "sec" });
+      expect(b.links[0].to).toEqual({ card: "new" });
+      expect(b.links[0].call).toEqual({ name: "f", col: 0, alts: [alts[1]] });
+      expect(b.stickers[0].at).toMatchObject({ on: { card: "old" } });
+      expect(danglingRefs(b)).toEqual([]);
+    }
+  });
+
+  it("without an old alternative (dropOld) the picked one is just removed; the last one removes alts; an unplaced old card puts the new one at the origin with width w", () => {
+    const b = setup();
+    b.links[0].call!.alts = [alts[0]];
+    delete b.place.old;
+    swapCallTarget(b, "a-old", code("new"), { alt: 0, w: 560 });
+    expect(b.links[0].call).toEqual({ name: "f", col: 0 });
+    expect(b.place.new).toEqual({ x: 0, y: 0, w: 560 });
+  });
+
+  it("does nothing for a missing or non-call arrow", () => {
+    const b = setup();
+    b.links.push({ id: "plain", from: { card: "a" }, to: { card: "old" } });
+    const before = structuredClone(b);
+    expect(swapCallTarget(b, "plain", code("new"), { alt: 0, w: 1 })).toBeNull();
+    expect(swapCallTarget(b, "nope", code("new"), { alt: 0, w: 1 })).toBeNull();
+    expect(b).toEqual(before);
+  });
+});
+
+describe("renumberBorn", () => {
+  it("renumbers creation order from 0 in the old order and continues seq after it", () => {
+    const b: Board = { ...emptyBoard("b", "B"), born: { x: 7, y: 2, z: 5 }, seq: 9 };
+    renumberBorn(b);
+    expect([b.born, b.seq]).toEqual([{ y: 0, z: 1, x: 2 }, 3]);
   });
 });
 
