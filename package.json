@@ -1,6 +1,7 @@
 {
   "name": "codeboard",
   "private": true,
+  "packageManager": "npm@11.21.1",
   "workspaces": ["packages/*", "extensions/*"],
   "scripts": {
     "build": "npm run build -w @codeboard/board && npm run build -w codeboard-vscode",
@@ -8,5 +9,9 @@
     "typecheck": "npm run typecheck --workspaces --if-present",
     "e2e": "npm run e2e -w codeboard-vscode",
     "check": "node tools/test/check.mjs"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "fsevents": false
   }
 }

@@ -113,6 +113,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: 22, cache: npm }
+      - run: npm i -g npm@11.21.1
       - run: npm ci --no-audit --no-fund
       - uses: ./.github/actions/chromium
       - uses: actions/download-artifact@v4
