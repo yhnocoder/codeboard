@@ -307,7 +307,8 @@ const DIAGRAMS: [string, string][] = [
 ];
 const LOOKS = ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "ink-wash", "city"];
 
-/** Mermaid blocks in Notes, per theme: every diagram renders, light ↔ dark recolours the drawn SVG in place (no redraw),
+/** Mermaid blocks in Notes, per theme: every diagram renders at its own size (too wide → laid out top-down), light ↔ dark
+ *  recolours the drawn SVG in place (no redraw),
  *  a theme with another font draws again. MMD_LOOKS=all (or a list) for every theme's screenshots */
 test("mermaidThemes", async () => {
   const want = process.env.MMD_LOOKS;
@@ -322,7 +323,10 @@ test("mermaidThemes", async () => {
     const look = () => pg.evaluate(() => {
       const svgs = [...document.querySelectorAll<SVGElement>(".mmd.ok svg")];
       const txt = svgs[0]?.querySelector("text");
-      return { ok: svgs.length, err: [...document.querySelectorAll(".mmd-err")].map((e) => e.textContent), ink: getComputedStyle(document.documentElement).getPropertyValue("--ink").trim(), text: txt ? getComputedStyle(txt).fill : null };
+      // 宽图改竖排，不缩小：排得进 Note 的图显示宽度 = SVG 自己的宽度（竖排了还是太宽的，比如宽的类图，才缩小）
+      const z = 0.72, shrunk = svgs.filter((s) => +s.getAttribute("width")! <= s.parentElement!.clientWidth && s.getBoundingClientRect().width / (+s.getAttribute("width")! * z) < 0.97).length;
+      const m = document.querySelector<SVGElement>('.card[data-id="m5"] .mmd svg'), mind = !!m && +m.getAttribute("width")! <= m.parentElement!.clientWidth; // mindmap 本来 600 多宽
+      return { ok: svgs.length, shrunk, mind, err: [...document.querySelectorAll(".mmd-err")].map((e) => e.textContent), ink: getComputedStyle(document.documentElement).getPropertyValue("--ink").trim(), text: txt ? getComputedStyle(txt).fill : null };
     });
     const lt = await look();
     await saveShot(h, `mermaid-${theme}-light`);
@@ -331,7 +335,7 @@ test("mermaidThemes", async () => {
     const dk = await look();
     const same = await pg.evaluate(() => (window as any).__svg0 === document.querySelector(".mmd.ok svg"));
     await saveShot(h, `mermaid-${theme}-dark`);
-    check(`mermaidThemes ${theme}`, lt.ok === DIAGRAMS.length && !lt.err.length && dk.ok === DIAGRAMS.length && same && lt.text !== dk.text, { lt, dk, same });
+    check(`mermaidThemes ${theme}`, lt.ok === DIAGRAMS.length && !lt.shrunk && lt.mind && !lt.err.length && dk.ok === DIAGRAMS.length && same && lt.text !== dk.text, { lt, dk, same });
     await close(h);
   }
   // 换到字体不一样的主题：图按新字体重画
@@ -345,4 +349,16 @@ test("mermaidThemes", async () => {
   const r = await pg.evaluate(() => { const s = document.querySelector(".mmd.ok svg"); return { redrawn: !!s && s !== (window as any).__svg0, font: s ? getComputedStyle(s.querySelector("text")!).fontFamily.split(",")[0] : null }; });
   check("mermaidThemes font switch redraws", r.redrawn && /Old Standard/.test(r.font ?? ""), r);
   await close(h);
+  // Note 变宽：放得下了，mindmap 换回横着排
+  const b2 = emptyBoard("b1", "mermaid");
+  put(b2, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[5][1]}\n\`\`\``, bg: true } as NoteCard, 40, 40, 300);
+  const h2 = await open({ board: b2, light: true, w: 1100, h: 600 });
+  await h2.page.waitForSelector(".mmd.ok svg", { timeout: 5000 });
+  const size = () => h2.page.evaluate(() => { const s = document.querySelector(".mmd.ok svg")!; return [+s.getAttribute("width")!, +s.getAttribute("height")!]; });
+  const narrow = await size();
+  await h2.page.evaluate(() => { (document.querySelector('.card[data-id="m0"]') as HTMLElement).style.width = "800px"; });
+  await h2.page.waitForTimeout(300);
+  const wide = await size();
+  check("mermaidThemes wider Note lays out left to right", narrow[1] > narrow[0] && wide[0] > wide[1], { narrow, wide });
+  await close(h2);
 });
