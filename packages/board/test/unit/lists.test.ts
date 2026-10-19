@@ -2,10 +2,18 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import { FORWARDED_KEYS } from "../../../../extensions/vscode/src/boards";
-import { SHORTCUTS } from "../../src/ui/shortcuts";
+import { helpRows, keyText } from "../../src/keymap";
+
+// keymap 的表里动作要用白板的状态（DOM、宿主桥）；这里只读表和清单文字，状态模块换成空的
+vi.mock("../../src/state/store", () => ({}));
+vi.mock("../../src/state/camera", () => ({}));
+vi.mock("../../src/state/ui", () => ({}));
+vi.mock("../../src/state/mode", () => ({}));
+vi.mock("../../src/state/stickers", () => ({}));
+vi.mock("../../src/state/measure", () => ({}));
 
 const ROOT = path.resolve(__dirname, "../../../..");
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "extensions/vscode/package.json"), "utf8"));
@@ -27,12 +35,19 @@ describe("hand-synced lists", () => {
   });
 
   it("every key the host forwards to the board is in the shortcut help", () => {
-    const help = SHORTCUTS.flatMap(([, rows]) => rows.map(([k]) => k)).join(" ");
+    const help = helpRows(true).flatMap(([, rows]) => rows.map(([k]) => k)).join(" ");
     const sym: Record<string, string> = { "=": "+", "+": "+", "-": "−" };
     for (const k of FORWARDED_KEYS) {
       const [shift, key] = k.startsWith("shift+") ? ["⇧", k.slice(6)] : ["", k];
-      expect(help).toContain(`⌘${shift}${sym[key] ?? key.toUpperCase()}`);
+      expect(help).toContain(`${shift}⌘${sym[key] ?? key.toUpperCase()}`); // Mac 的修饰键顺序：⌃⌥⇧⌘
     }
+  });
+
+  it("shortcut text off the Mac puts Ctrl, Alt, Shift in that order", () => {
+    expect(keyText("⇧⌘L", false)).toBe("Ctrl+Shift+L");
+    expect(keyText("⌥⌘V", false)).toBe("Ctrl+Alt+V");
+    expect(keyText("⌃⇧-", false)).toBe("Ctrl+Alt+Shift+-");
+    expect(keyText("⌘ + scroll / pinch", false)).toBe("Ctrl + scroll / pinch");
   });
 
   it("icon tables are what tools/icons/gen.mjs writes", () => {

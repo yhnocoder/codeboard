@@ -160,7 +160,7 @@ async function emptyQuestion(res: Record<string, unknown>) {
   return res.editor === 1 && res.emptyLeft === 0 && res.emptyShown === 0 && JSON.stringify(res.written) === '["why?"]' && res.afterUndo === 0 && res.afterSecondUndo === 0;
 }
 
-/** Each change goes to the host right away (the host writes it to disk and finishes the write when the panel closes), so closing the tab can't lose it */
+/** Each change goes to the host right away (the host writes it to disk and finishes the write when the panel closes), so closing the tab can't lose it; pagehide sends what is still waiting */
 async function changesReachHost(res: Record<string, unknown>) {
   const b: Board = emptyBoard("bSave", "Save");
   const step = nv("LLMEngine.step");
@@ -186,6 +186,16 @@ async function changesReachHost(res: Record<string, unknown>) {
   const typed = () => got.find((g) => g.patch.cards?.set?.some((c: any) => c.kind === "note" && c.md === "typed then closed"));
   for (let i = 0; i < 40 && !typed(); i++) await page.waitForTimeout(25);
   res.textMs = typed() ? typed()!.t - t0 : null;
+  // A settled camera (600 ms after panning) is sent 800 ms later; closing the panel (pagehide) in between sends it at once
+  await page.mouse.move(700, 500); await wait(h, 300);
+  got.length = 0;
+  await page.mouse.wheel(0, 200); await page.waitForTimeout(750);
+  res.camBefore = got.some((g) => g.patch.cam);
+  t0 = Date.now();
+  await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent("pagehide")));
+  for (let i = 0; i < 20 && !got.some((g) => g.patch.cam); i++) await page.waitForTimeout(10);
+  const cam = got.find((g) => g.patch.cam);
+  res.pagehideMs = cam ? cam.t - t0 : null;
   await page.context().browser()!.close();
-  return res.wrapSent === true && (res.wrapMs as number) < 300 && res.textMs !== null && (res.textMs as number) < 300;
+  return res.wrapSent === true && (res.wrapMs as number) < 300 && res.textMs !== null && (res.textMs as number) < 300 && res.camBefore === false && res.pagehideMs !== null && (res.pagehideMs as number) < 150;
 }

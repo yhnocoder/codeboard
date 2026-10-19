@@ -6,7 +6,8 @@ import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, pla
 import { toWorld } from "../state/camera";
 import { setEditing, setPaletteOpen } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
-import { K, boardOffset, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
+import { K, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
+import { boardOffset } from "../state/measure";
 import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
@@ -18,10 +19,12 @@ import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } f
 import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
-import { addProc, clearRpc, legendOf, markRpc, setLegendOpen, toggleBack, toggleStart } from "./calls";
+import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from "./calls";
+import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
 import { LEGEND, legendName, type Link } from "@codeboard/core";
+import { kbd } from "../keymap";
 
 /**
  * 删除那一组：共享卡（在别的白板上也有）分成「从这块白板移除」（⌫）和「全部删掉」（⌘⌫，要确认），再加 Unlink；
@@ -34,7 +37,7 @@ function deleteItems(id: string): Item[] {
   return [
     { label: `${c ? cardTitle(c, state.board) : "Card"} · on ${n} boards`, head: true },
     { label: "Remove from This Board", kbd: "⌫", run: deleteSel },
-    { label: "Delete Everywhere…", kbd: `${K.mod}⌫`, danger: true, run: () => void deleteEverywhere([id]) },
+    { label: "Delete Everywhere…", kbd: kbd("deleteEverywhere"), danger: true, run: () => void deleteEverywhere([id]) },
     null,
     { label: "Unlink (Make This a Copy)", run: () => unlinkShared(id) },
   ];
@@ -88,7 +91,7 @@ function lineItems(ls: LineSel): Item[] {
     { label: "New Card from Lines", run: () => cardFromLines(ls) },
     // 生成的代码 / 编译产物：钉在一次运行上，点线连回这一行（线框 02 三）
     { label: "Add Generated Code", sub: genItems({ card: ls.card, seg: ls.seg, line: ls.start }) },
-    { label: "Copy", kbd: `${K.mod}C`, run: () => copyLines(ls) },
+    { label: "Copy", kbd: kbd("copy"), run: () => copyLines(ls) },
   ];
 }
 const genItems = (at: { card: string; seg?: string; line?: number }): Item[] => [
@@ -115,7 +118,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
   if (sel.cards.length + sel.sections.length > 1) return multiItems();
   const c = f.card;
   const host = f.host;
-  const lockItem: Item = { label: placeOf(host.id).locked ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock([host.id]) };
+  const lockItem: Item = { label: placeOf(host.id).locked ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock([host.id]) };
   // 每种卡同一个结构：常用操作 → Edit ▸ → Arrange ▸ → 分隔线 → Move to New Section、Delete（红）。
   // 界面上已经有的（双击改名、⌘D、拖圆点连线）不进菜单
   const tail: Item[] = [
@@ -127,7 +130,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
   ];
   // 子白板框：打开、移除框（白板还在侧栏里）、删掉那块白板
   if (c.kind === "board") return [
-    { label: "Open", kbd: `${K.mod}↵`, run: () => enterFrame(id) },
+    { label: "Open", kbd: kbd("enterBoard"), run: () => enterFrame(id) },
     { label: "Edit", sub: [lockItem] },
     arrangeItem(() => [host.id]),
     null,
@@ -168,7 +171,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ...tail,
   ];
   if (c.kind === "image") return [
-    { label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent([id]) },
+    { label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent([id]) },
     { label: "Background", checked: !!c.bg, run: () => toggleNoBg(id) },
     { label: "Edit", sub: [
       { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id }) },
@@ -205,7 +208,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     { label: "Hide Docstrings", checked: !!c.hide?.docstrings, run: () => toggleHide(c.id, "docstrings") },
     { label: "Show All Hidden Lines", disabled: !anyHidden, run: () => mutate((b) => { const k = findCard(b, c.id)!.card as CodeCard; k.segments.forEach((s) => (s.hidden = undefined)); }) },
     null,
-    { label: "Wrap Lines", kbd: `${K.alt}Z`, checked: !!c.wrap, run: () => toggleWrap([c.id]) },
+    { label: "Wrap Lines", kbd: kbd("wrap"), checked: !!c.wrap, run: () => toggleWrap([c.id]) },
     ...(col ? [] : [{ label: "No Background", checked: !!c.nobg, run: () => toggleNoBg(c.id) } as Item]),
   ];
   // 界面上已经有的（双击标题改名、标题栏的 commit 按钮、Copy Code 图标、⌘D）不进菜单。先这样分组，用一阵看哪些高频再拿出来
@@ -232,7 +235,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
   ];
   const items: Item[] = [
     ...(free ? [] : [{ label: "Open in Editor", kbd: "↵", run: () => openCode(c.id) } as Item]),
-    ...(col ? [] : [{ label: "Fit Content", kbd: `${K.alt}F`, run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
+    ...(col ? [] : [{ label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
     { label: "Edit", sub: edit },
     { label: "View", sub: view },
     // 我的改动（线框 07）：同一段代码的分支 / 工作区 / 另一个 worktree / 复制的文件 / PR
@@ -247,7 +250,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
 }
 
 /** 选中的卡变成一块子白板（线框 05 ④） */
-const turnItem = (): Item => ({ label: "Turn into Board…", kbd: `${K.mod}${K.shift}B`, run: () => void turnIntoBoard() });
+const turnItem = (): Item => ({ label: "Turn into Board…", kbd: kbd("turnIntoBoard"), run: () => void turnIntoBoard() });
 
 function multiItems(): Item[] {
   const cs = selCards();
@@ -262,11 +265,11 @@ function multiItems(): Item[] {
     { label: "Connect with Arrow", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addLink({ card: a.id }, { card: b.id }); } },
     { label: "Move to New Section", run: () => moveToNewSection() },
     turnItem(),
-    { label: lockAll ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock(sel.cards, sel.sections) },
+    { label: lockAll ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock(sel.cards, sel.sections) },
     arrangeItem(() => [...sel.cards]),
     null,
-    { label: "Copy", kbd: `${K.mod}C`, run: () => copyCardsSel() },
-    { label: "Duplicate", kbd: `${K.mod}D`, run: duplicateSel },
+    { label: "Copy", kbd: kbd("copy"), run: () => copyCardsSel() },
+    { label: "Duplicate", kbd: kbd("duplicate"), run: duplicateSel },
     { label: cs.some((c) => sharedOn(c.id) > 1) ? "Remove from This Board" : "Delete", kbd: "⌫", danger: !cs.some((c) => sharedOn(c.id) > 1), run: deleteSel },
   ];
 }
@@ -277,18 +280,18 @@ export function canvasMenu(x: number, y: number) {
     { label: "New Text", kbd: "T", run: () => newNote(w, false) },
     { label: "New Note", kbd: "N", run: () => newNote(w, true) },
     { label: "New Code", run: () => newFreeCode(w) },
-    { label: "Add Function…", kbd: `${K.mod}K`, run: () => setPaletteOpen({ mode: "code" }) },
+    { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },
     // 复制的是别的白板上的卡：默认贴成共享卡（设置里可以换），⌥ 是另一种
     ...(state.host.clip && state.host.clip.board !== state.board.id ? [
-      { label: state.host.settings?.pasteOther === "copy" ? "Paste as Copy" : "Paste as Linked Card", kbd: `${K.mod}V`, run: () => void pasteFromBoard(undefined, w) },
-      { label: state.host.settings?.pasteOther === "copy" ? "Paste as Linked Card" : "Paste as Copy", kbd: `${K.alt}${K.mod}V`, run: () => void pasteFromBoard(undefined, w, true) },
+      { label: state.host.settings.pasteOther === "copy" ? "Paste as Copy" : "Paste as Linked Card", kbd: kbd("paste"), run: () => void pasteFromBoard(undefined, w) },
+      { label: state.host.settings.pasteOther === "copy" ? "Paste as Linked Card" : "Paste as Copy", kbd: kbd("pasteOther"), run: () => void pasteFromBoard(undefined, w, true) },
     ] as Item[] : [
-      { label: "Paste", kbd: `${K.mod}V`, run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) } as Item,
+      { label: "Paste", kbd: kbd("paste"), run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) } as Item,
     ]),
     { label: "Insert Board", sub: insertable().length ? insertable().map((m) => ({ label: m.name, hint: m.why ? `Can’t: ${m.why}` : undefined, run: () => insertBoard(m.id, w) })) : [{ label: "No other boards yet", disabled: "Create another board first" }] },
     null,
-    { label: "Select All", kbd: `${K.mod}A`, run: selectAll },
-    { label: "Fit to Window", kbd: `${K.shift}1`, run: fitAll },
+    { label: "Select All", kbd: kbd("selectAll"), run: selectAll },
+    { label: "Fit to Window", kbd: kbd("fitWindow"), run: fitAll },
   ], x, y);
 }
 
@@ -391,7 +394,7 @@ export function sectionMenu(id: string, x: number, y: number) {
   openMenu([
     { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "section", id }) },
     { label: s.collapsed ? "Expand" : "Collapse", run: () => toggleSection(id) },
-    { label: s.locked ? "Unlock" : "Lock", kbd: K.lock, run: () => toggleLock([], [id]) },
+    { label: s.locked ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock([], [id]) },
     ...(s.parent ? [{ label: "Move Out of Parent Section", run: () => set((q) => { q.parent = sectionById(q.parent)?.parent; }) } as Item] : []),
     { label: "Color", sub: SECTION_COLORS.map(([v, lb]) => ({ label: lb, checked: (s.color ?? "none") === v, run: () => set((q) => { q.color = v === "none" ? undefined : v; }) })) },
     null,

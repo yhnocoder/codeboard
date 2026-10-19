@@ -6,15 +6,17 @@ import { baseName, parseRepoInput, type Commit, type GhFile, type GhQuery, type 
 import { toast } from "../state/store";
 import { ask } from "../host";
 import { Icon } from "./icons";
+import { useOverlay, Overlay } from "./overlay";
 import * as A from "../actions";
 import "./github.css";
+import { ghPicker, setGhPicker } from "../state/web";
 
 type Mode = "branch" | "tag" | "commit";
 type Node = { dirs: string[]; files: string[] };
 const gh = <Q extends GhQuery>(q: Q) => ask("gh", { q }) as Promise<GhReplyOf<Q["op"]>>;
 
 export function GitHubPicker() {
-  const init = A.ghPicker() || {};
+  const init = ghPicker() || {};
   const [text, setText] = createSignal(init.repo ?? "");
   const [repo, setRepo] = createSignal<GhRepo | null>(null);
   const [mode, setMode] = createSignal<Mode>("branch");
@@ -30,7 +32,7 @@ export function GitHubPicker() {
   const [err, setErr] = createSignal("");
   let inp!: HTMLInputElement, codeEl!: HTMLDivElement;
   let n = 0; // 只认最后一次请求
-  const close = () => A.setGhPicker(false);
+  const close = () => setGhPicker(false);
   const run = async <T,>(what: string, f: () => Promise<T>): Promise<T | undefined> => {
     const my = ++n;
     setBusy(what); setErr("");
@@ -180,13 +182,13 @@ export function GitHubPicker() {
 
   const onKey = (e: KeyboardEvent) => {
     keepKey(e);
-    if (e.key === "Escape") { e.preventDefault(); if (refOpen()) setRefOpen(false); else close(); }
-    else if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && file()) { e.preventDefault(); void add(); }
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && file()) { e.preventDefault(); void add(); }
   };
+  useOverlay({ close, inside: (t) => !!t.closest(".ghp"), grab: true, modal: true, outside: true });
 
   return (
-    <div class="scrim light" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div class="ghp" onKeyDown={onKey} onPointerDown={() => setRefOpen(false)} onContextMenu={(e) => e.preventDefault()}>
+    <div class="scrim light">
+      <div class="ghp" data-nodrag onKeyDown={onKey} onContextMenu={(e) => e.preventDefault()}>
         <div class="ghp-top">
           <span class="ghp-ic">GH</span>
           <input ref={inp} class="ghp-in" placeholder="owner/repo, or paste a GitHub link" value={text()} spellcheck={false}
@@ -203,14 +205,16 @@ export function GitHubPicker() {
                 <button classList={{ on: mode() === m }} disabled={m === "tag" && !repo()!.tags.length} onClick={() => setModeTo(m)}>{lb}</button>
               )}</For>
             </div>
-            <div class="ghp-refbox" onPointerDown={(e) => e.stopPropagation()}>
+            <div class="ghp-refbox">
               <input class="ghp-refin" value={ref()} spellcheck={false} placeholder={mode() === "commit" ? "Commit SHA" : mode() === "tag" ? "Tag" : "Branch"}
                 onFocus={(e) => { if (mode() !== "commit") setRefOpen(true); e.currentTarget.select(); }} onInput={(e) => { setRef(e.currentTarget.value); if (mode() !== "commit") setRefOpen(true); }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); e.stopPropagation(); const pick = refOpen() && !refCands().includes(ref()) ? refCands()[0] : undefined; if (pick) setRef(pick); void loadRef(pick ?? ref()); } }} />
               <Show when={refOpen() && refCands().length}>
+                <Overlay close={() => setRefOpen(false)} inside={(t) => !!t.closest(".ghp-refbox")} grab outside>
                 <div class="ghp-refs">
                   <For each={refCands()}>{(x) => <button class="cand" classList={{ on: x === ref() }} onClick={() => { setRef(x); void loadRef(x); }}><span class="lb">{x}</span><Show when={x === repo()!.branch && mode() === "branch"}><small>default</small></Show></button>}</For>
                 </div>
+                </Overlay>
               </Show>
             </div>
             <Show when={commit()}><span class="ghp-pin" data-tip={commit()!.msg}>{mode() === "commit" ? "" : `${ref()} · `}<code>{commit()!.commit.slice(0, 7)}</code> <span>(pinned on add)</span></span></Show>

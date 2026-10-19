@@ -1,14 +1,15 @@
 // Sidenote（弹窗、添加、Place on Board、卡变成 Sidenote）和定义预览。
 import { unwrap } from "solid-js/store";
 import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, removeSidenotes, sidenoteCard, sidenoteToCard, type Sidenote, type SegView, type Anchor } from "@codeboard/core";
-import { state, setState, mutate, sel, clearSel, lineSel, cardById, toast } from "../state/store";
+import { state, setState, mutate, sel, clearSel, lineSel, cardById, hostOf, toast } from "../state/store";
 import { quietHover } from "../state/camera";
 import { choose } from "../ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
 import { ask } from "../host";
 import { addCards, requestViews } from "./create";
 import { tune } from "../state/tune";
-import { hostRect, lastPointer, revealCard } from "./common";
+import { hostRect, revealCard } from "./common";
+import { lastPointer } from "../state/measure";
 
 // ---------- Sidenote ----------
 
@@ -42,7 +43,7 @@ function showNotes(el: Element, ids: string[], pin: boolean) {
 }
 
 export function openAddNote(at: Anchor, tab: "code" | "paste" | "text" | "link" | "card" = "code") {
-  const host = cardById(at.card)?.host.id;
+  const host = hostOf(at.card);
   const el = (at.lines && document.querySelector(`.card[data-id="${host}"] .addn`)) || document.querySelector(`.card[data-id="${host}"]`);
   openPop({ kind: "addNote", at, tab }, el ? { el, prefer: "right" } : lastPointer());
 }

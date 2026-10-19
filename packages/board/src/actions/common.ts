@@ -1,19 +1,20 @@
-// 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、指针位置、打开编辑器 / 链接。
-import { cardTitle, isCode, segOf, bounds, cardRows, shownText, commonIndent, type Card, type Section, type Rect } from "@codeboard/core";
-import { state, mutate, sel, select, isSel, cardById, rectOf, placeOf, placed, flows } from "../state/store";
+// 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、打开编辑器 / 链接 / diff、Fit Content。
+import { unwrap } from "solid-js/store";
+import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
+import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, ping, setPopIn, popIn, shown } from "../state/ui";
-import { openPop } from "../state/pop";
-import { send } from "../host";
+import { notesOf, ping, setPopIn, popIn, setPaletteOpen } from "../state/ui";
+import { openPop, updatePop } from "../state/pop";
+import { lastPointer, naturalSize, chromeOf } from "../state/measure";
+import { send, ask } from "../host";
 import { renderMd, renderMdInline } from "../md/render";
 
 const isMac = () => state.host.isMac;
+/** 说明文字里的修饰键（「⌥-click」「⌘↵ to save」）；有绑定的快捷键用 keymap 的 kbd(id) */
 export const K = {
   get mod() { return isMac() ? "⌘" : "Ctrl+"; },
-  get shift() { return isMac() ? "⇧" : "Shift+"; },
   get alt() { return isMac() ? "⌥" : "Alt+"; },
-  get lock() { return `${K.mod}${K.shift}L`; },
 };
 
 // ---------- 选择 ----------
@@ -80,10 +81,9 @@ export function revealCard(id: string, doPing = true) {
 /** 展开藏着这张卡的：调用图里它上面折叠着的卡、它所在的折叠的 Section（一层层往外）。返回有没有展开什么 */
 function unhide(id: string): boolean {
   if (!isHidden(id)) return false;
-  const host = (k: string) => cardById(k)?.host.id ?? k;
-  const h = host(id), up = new Set<string>(), todo = [id];
+  const h = hostOf(id), up = new Set<string>(), todo = [id];
   while (todo.length) for (const l of flows().parents.get(todo.pop()!) ?? []) {
-    const p = host(l.from.card);
+    const p = hostOf(l.from.card);
     if (!up.has(p)) { up.add(p); todo.push(l.from.card); }
   }
   return mutate((b) => {
@@ -160,14 +160,6 @@ export function showPicker(title: string, items: { label: string; detail: string
   openPop({ kind: "pick", title, items }, { x: p.x, y: p.y + 12 });
 }
 
-let lastPtr = { x: 0, y: 0 };
-window.addEventListener("pointermove", (e) => { lastPtr = { x: e.clientX, y: e.clientY }; }, { capture: true, passive: true });
-window.addEventListener("pointerdown", (e) => { lastPtr = { x: e.clientX, y: e.clientY }; }, { capture: true, passive: true });
-export const lastPointer = () => lastPtr;
-
-
-export const boardOffset = () => { const r = document.getElementById("board")?.getBoundingClientRect(); return { x: r?.left ?? 0, y: r?.top ?? 0 }; };
-
 // ---------- 打开 ----------
 
 export function openCode(id: string, seg?: string, line?: number) {
@@ -178,61 +170,18 @@ export function openCode(id: string, seg?: string, line?: number) {
   send({ type: "open", card: id, seg: s.id, line: line ?? s.start });
 }
 export function openLink(url: string) { send({ type: "openLink", url }); }
+export function searchWorkspace(word: string) { setPaletteOpen({ mode: "code", q: word }); }
 
-
-// ---------- 内容本来的大小（Fit Content、改大小时用；直接量 DOM） ----------
-
-let charW = 0;
-/** 藏了公共缩进时代码离左边留的空（styles.css .src.ded .l 的 16px，和 CodeBody 的 DED_PAD 一样） */
-const DED_PAD = 16;
-/** 等宽字体一个字的宽度 */
-function monoW(el: Element) {
-  if (charW) return charW;
-  const ctx = document.createElement("canvas").getContext("2d")!;
-  ctx.font = getComputedStyle(el).font;
-  charW = ctx.measureText("0".repeat(100)).width / 100 || 6.6;
-  return charW;
-}
-/** 代码卡的卡头 / 色带 / 底栏一共多高：主题决定，直接量布局。代码卡的 Place.h 存的是中间内容区（.carea）的高度，不含这些 */
-export function chromeOf(id: string): number {
-  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
-  const a = el?.querySelector<HTMLElement>(":scope > .cface > .carea");
-  return el && a ? el.offsetHeight - a.offsetHeight : 0;
-}
-/** 卡片内容刚好装下的宽高；minH = 头部 + 一行 */
-export function naturalSize(id: string): { w?: number; h: number; minH: number } | null {
-  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
-  if (!el) return null;
-  const f = cardById(id);
-  const body = el.querySelector<HTMLElement>(".cbody");
-  const code = body?.querySelector<HTMLElement>(":scope > .code");
-  const head = el.querySelector<HTMLElement>(":scope > .cface > .chead")?.offsetHeight ?? 0;
-  if (f && isCode(f.card) && body && code) {
-    const src = code.querySelector<HTMLElement>(".src");
-    const top = body.offsetTop;
-    const h = top + code.offsetHeight + 2;
-    let w: number | undefined;
-    if (src && !f.card.wrap) {
-      const cs = getComputedStyle(src);
-      // 只量显示着的行（#25 Linda：藏了 Docstring / 注释 / 空行后，藏掉的长行不该把卡撑宽）：
-      // 和 CodeBody 同一套 cardRows；Hide Comments 去掉行尾注释；藏了公共缩进时减掉那几格、加上左边留的 16px
-      const card = f.card;
-      const texts = cardRows(card, { views: state.views, shown: shown() }).flatMap((r) => {
-        const s = r.t === "line" ? card.segments.find((q) => q.id === r.seg) : undefined;
-        return s && r.t === "line" ? [shownText(s, r.line, state.views[s.id], card.hide?.comments)] : [];
-      });
-      const ded = commonIndent(texts);
-      const longest = Math.max(12, ...texts.map((t) => t.trimEnd().length - ded));
-      w = Math.ceil(longest * monoW(src) + (ded ? DED_PAD : 0) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4);
-    }
-    return { w, h, minH: top + 6 + 20 + 8 + 2 };
-  }
-  if (f?.card.kind === "image") {
-    const img = el.querySelector("img");
-    const w = el.offsetWidth;
-    return img?.naturalWidth ? { h: Math.round(head + (w * img.naturalHeight) / img.naturalWidth), minH: head + 40 } : null;
-  }
-  return { h: el.scrollHeight, minH: head + 30 };
+/** HEAD 和工作区的 diff（卡头的「+ uncommitted」） */
+export function openWorktreeDiff(id: string) {
+  const c = cardById(id)?.card;
+  if (!isCode(c)) return;
+  const s = c.segments[0];
+  const el = document.querySelector(`.card[data-id="${hostOf(id)}"] .rev`) ?? undefined;
+  const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
+  ask("diff", { seg: structuredClone(unwrap(s)), against: "worktree" })
+    .then((data) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, data } : p)))
+    .catch((e) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, error: (e as Error).message } : p)));
 }
 
 /** Fit Content（#25）：宽 = 最长行，高 = 所有可见行；多选时各自适配 */

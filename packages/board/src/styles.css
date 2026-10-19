@@ -70,9 +70,9 @@ input, textarea { font: inherit; color: var(--ink); }
 /* clip 而不是 hidden：hidden 的盒子还能被程序滚动，Tab 把焦点移到画面外的卡上的按钮时浏览器会把整块白板滚过去，镜头的换算（适应窗口、框选、放卡）就全偏了 */
 .board { position: fixed; inset: 0; overflow: clip; background: var(--bg); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
 .board:focus { outline: none; }
-.board.panning, .board.space { cursor: grab; }
-.board.panning * , .board.space * { cursor: grab !important; }
-.board.connecting, .board.connecting * { cursor: crosshair !important; }
+.board:is([data-mode="pan"], [data-mode="space"]) { cursor: grab; }
+.board:is([data-mode="pan"], [data-mode="space"]) * { cursor: grab !important; }
+.board:is([data-mode="connect"], [data-mode="pick"]), .board:is([data-mode="connect"], [data-mode="pick"]) * { cursor: crosshair !important; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 /* 世界层一直单独成层，镜头一动就按位图缩放、不重画（#15）。停下时 Canvas 给 .settle 一两帧：去掉 will-change 的提示，让浏览器按新比例重新清晰栅格化。
    一直带着一个看不出来的 3D 变换（绕 x 轴转 0°），去掉 will-change 时它还是单独一层：退回普通层的话要把整层重画一遍（概览档 ~60ms）。
@@ -210,7 +210,7 @@ input, textarea { font: inherit; color: var(--ink); }
 
 /* code */
 .code { position: relative; padding: 6px 0 8px; font: 11px/20px var(--mono); min-width: max-content; }
-.gutter { position: absolute; left: 0; top: 0; bottom: 0; width: 54px; z-index: 2; pointer-events: none; }
+.gutter { position: absolute; left: 0; top: 0; bottom: 0; width: var(--gutter); z-index: 2; pointer-events: none; }
 .gutter > * { pointer-events: auto; }
 .no { position: absolute; left: 2px; width: 30px; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: var(--no-o, .65); }
 .no:hover { opacity: 1; color: var(--ink-2); }
@@ -228,10 +228,10 @@ input, textarea { font: inherit; color: var(--ink); }
 .rowbg.flash { animation: flash calc(var(--t) * 600ms) var(--out); }
 .rowbg.dropline { background: var(--hi); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 28%, transparent); } 100% { background: var(--row); } }
-.src { margin: 0 0 0 54px; padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
+.src { margin: 0 0 0 var(--gutter); padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
 .src { tab-size: 4; }
 /* 藏起来的公共缩进：代码往左挪，留 16px 画几根细竖线（一根 = 一层，最多 4 根） */
-.src.ded .l { text-indent: calc(16px - var(--ded) * 1ch); }
+.src.ded .l { text-indent: calc(var(--ded-pad) - var(--ded) * 1ch); }
 .dedm { position: absolute; left: 55px; top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; opacity: .7;
   background: repeating-linear-gradient(90deg, var(--hair) 0 .5px, transparent .5px 3px);
   -webkit-mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); } /* 很淡的细虚线，不抢代码的眼 */
@@ -245,7 +245,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .chrome .src .gap, .chrome .src .gap *, .chrome .src .inote, .chrome .src .inote * { user-select: none; -webkit-user-select: none; cursor: default; }
 /* 隐藏行的条和行高亮一样撑满整张卡宽（左边盖住行号栏，右边到卡边） */
-.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: -54px; margin-right: -24px; padding-left: 62px; border-radius: 0; }
+.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: calc(-1 * var(--gutter)); margin-right: -24px; padding-left: calc(var(--gutter) + 8px); border-radius: 0; }
 .gap b { font-weight: 500; color: var(--ink-2); padding: 1px 5px; border-radius: 4px; }
 .gap b:hover { color: var(--accent); background: var(--row); }
 .inote { white-space: normal; font: 12px/1.55 var(--sys); color: var(--ink-2); background: var(--inote); box-shadow: inset 2px 0 0 var(--ink-3); margin: 2px 12px 4px -2px; padding: 5px 10px; border-radius: 0 5px 5px 0; max-width: 520px; }
@@ -562,22 +562,15 @@ kbd { font: 10.5px var(--mono); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
 .md .math .katex-display { margin: 2px 0; }
-/* 代码块着色：颜色和代码卡一样（--k-*） */
-.hljs-keyword, .hljs-built_in.hljs-keyword, .hljs-literal, .hljs-type { color: var(--k-kw); font-weight: var(--kw-w, inherit); }
-.hljs-title.function_, .hljs-title, .hljs-built_in, .hljs-section { color: var(--k-fn); }
-.hljs-string, .hljs-regexp, .hljs-addition, .hljs-symbol { color: var(--k-str); font-style: var(--str-i, inherit); }
-.hljs-comment, .hljs-quote { color: var(--k-com); font-style: var(--com-i, italic); }
-.hljs-number, .hljs-meta, .hljs-attr, .hljs-attribute { color: var(--k-num); }
-.hljs-variable.language_, .hljs-params .hljs-variable, .hljs-title.class_ { color: var(--k-self); }
-.hljs-punctuation, .hljs-operator, .hljs-tag { color: var(--k-p); }
-.hljs-deletion { color: var(--k-kw); background: var(--del); }
-.hljs-addition { background: var(--add); }
+/* 代码块着色是宿主给的（和代码卡同一套 .kw .fn …）；Note 里的调用点不能点，不画成链接 */
+.md pre.md-code .call { text-decoration: none; cursor: inherit !important; }
+.md pre.md-code .call:hover { background: none; }
 /* 任务 */
 .md ul[data-type="taskList"] { list-style: none; padding-left: 2px; }
 .md li[data-type="taskItem"] { display: flex; gap: 6px; align-items: flex-start; }
 .md li[data-type="taskItem"] > label { flex: none; display: flex; align-items: center; height: 1.6em; user-select: none; -webkit-user-select: none; }
 .md li[data-type="taskItem"] > div { flex: 1; min-width: 0; }
-.md li[data-type="taskItem"][data-checked="true"] > div > p, .md li[data-type="taskItem"][data-checked="true"] > div.t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
+.md li[data-type="taskItem"][data-checked="true"] > div > p { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
 .md li[data-type="taskItem"] input { appearance: none; -webkit-appearance: none; margin: 0; width: 13px; height: 13px; border-radius: 3.5px; box-shadow: inset 0 0 0 1.25px var(--ink-3); background: var(--surface); cursor: pointer !important; display: grid; place-items: center; }
 .md li[data-type="taskItem"] input:checked { background: var(--accent); box-shadow: none; }
 .md li[data-type="taskItem"] input:checked::after { content: ""; width: 6px; height: 3px; border: 1.5px solid var(--accent-ink); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
@@ -643,7 +636,6 @@ kbd { font: 10.5px var(--mono); }
 .md-pm .tableWrapper { overflow-x: auto; margin: 4px 0; }
 .md-pm .tableWrapper table { display: table; margin: 0; }
 .md-pm .selectedCell { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.md-pm sup a.footnote-ref, .md-pm sup a { color: var(--k-fn); text-decoration: none; font-size: .8em; }
 .md-pm ol.footnotes li::marker { color: var(--ink-3); }
 .md-pm a { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; }
 .md-pm img { cursor: default; }
@@ -821,7 +813,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .slabel.collapsed.sel { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
 .slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
 .slabel .scount { color: var(--ink-3); font-weight: 400; }
-.board.drawing, .board.drawing * { cursor: crosshair !important; }
+.board[data-mode="draw"], .board[data-mode="draw"] * { cursor: crosshair !important; }
 
 /* chrome */
 .tb-left .pill { padding: 3px; }
@@ -1023,7 +1015,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .stkpick .sfoot { display: flex; align-items: center; gap: 8px; font-size: 11px; color: var(--ink-3); border-top: 1px solid var(--line); padding-top: 7px; }
 .stkpick .sfoot span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--mono); }
 .stkghost { position: fixed; z-index: 60; pointer-events: none; transform: translate(-50%, -50%); opacity: .85; }
-.board.placing, .board.placing * { cursor: copy !important; }
+.board[data-mode="place"], .board[data-mode="place"] * { cursor: copy !important; }
 .stkpick .tlink { color: var(--accent); font-weight: 600; font-size: 11.5px; }
 
 /* 行号栏：行号 | 标记列（旁注、"+"、贴纸都是 14px）| 代码（#13 #14 #16） */
@@ -1047,7 +1039,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
    opacity 不继承，只算这两个元素。指针由盖住整个代码区的 .ovm 接住，跟以前点到被藏起来的行号和代码一样交给卡片 */
 .card.lo-ov .gutter, .card.lo-ov .src, .card.lo-ov .rowbgs { opacity: 0; }
 /* 概览档：每行按真实缩进和长度画一根直角灰条（注释行淡一些），轮廓就是这段代码本身的样子 */
-.card .code > .ovm { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; --bar-c: color-mix(in srgb, var(--ink) 6%, transparent); } /* 色块的 x 从 54px（行号区宽，跟 .src 的 margin-left 一致）算起 */
+.card .code > .ovm { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; --bar-c: color-mix(in srgb, var(--ink) 6%, transparent); } /* 色块的 x 从 --gutter（行号区宽，跟 .src 的 margin-left 一致）算起 */
 .card .code > .ovm { visibility: hidden; } .card.lo-ov .code > .ovm { visibility: visible; } /* 提前做好、不在概览档时藏着（CodeBody） */
 .card.lo-ov .ctitle { font-size: 15px; font-weight: 600; }
 /* --iz（地图档 = 1/z）：注册成不继承，只有卡和名字用到，卡里的几千个代码节点就不用跟着重算样式 */
@@ -1145,7 +1137,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .skel .sk-l { fill: none; stroke: color-mix(in srgb, var(--ink-3) 80%, transparent); stroke-width: 1; stroke-dasharray: 3 2; }
 .skel .sk-l.call { stroke: color-mix(in srgb, var(--accent) 70%, transparent); stroke-dasharray: none; stroke-width: 1.2; }
 .skel .sk-c.hot .sk-box { stroke: var(--k-fn); stroke-width: 2.2; }
-.board.connecting .skel .sk-c:hover .sk-box, .board .skel .sk-c:hover .sk-box { stroke: color-mix(in srgb, var(--accent) 80%, transparent); }
+.board[data-mode="connect"] .skel .sk-c:hover .sk-box, .board .skel .sk-c:hover .sk-box { stroke: color-mix(in srgb, var(--accent) 80%, transparent); }
 .sbentry { fill: var(--surface); stroke: var(--edge, var(--ink-2)); stroke-width: 1.6; }
 .sbentry.lost { stroke: var(--lk-lost, #d64545); }
 /* 地图档（拉远）：只剩灰块、形状和 Section 色；名字浮在框上面，字号按 --iz 放大 */

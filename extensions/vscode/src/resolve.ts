@@ -1,7 +1,7 @@
 // 点调用展开（expand）、标识符悬停看定义（peek）、全工作区的符号名字索引。
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as path from "node:path";
-import { escapeRegExp, rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
+import { escapeRegExp, grammarOf, grammarOfFile, rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
 import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 import { crossBefore, decorate, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
@@ -127,7 +127,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
     // 语言服务说了话就不扫工作区：只在当前文件和已经分析过的文件里按名字找
     if (!crossed.length && !targets.length) {
       let ents = lspN ? await nearbyEntries(m.name, wp?.abs) : await lookupName(m.name);
-      if (/^(c|cpp|cuda|cuda-cpp)$/.test(seg.lang)) ents = await cppCands(ents, site);
+      if (grammarOf(seg.lang) === "cpp") ents = await cppCands(ents, site);
       const cands = ents.map((e) => ({ ...e, path: hostPath(e.abs), line: e.defLine }));
       if (cands.length) {
         const selfClass = (seg.symbol?.kind === "class" ? seg.symbol.qual : seg.symbol?.qual.split(".").slice(0, -1).join(".")) || seg.scope?.split(".").slice(0, -1).join(".");
@@ -161,7 +161,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
  */
 async function cppCands(ents: IndexEntry[], site: CallSite | undefined): Promise<IndexEntry[]> {
   const keep = (xs: IndexEntry[], f: (e: IndexEntry) => boolean | Promise<boolean>) => Promise.all(xs.map(async (e) => [e, await f(e)] as const)).then((r) => { const k = r.filter(([, ok]) => ok).map(([e]) => e); return k.length ? k : xs; });
-  let out = await keep(ents, (e) => /\.(cu|cuh|cc|cpp|cxx|c|h|hpp|hh|inl)$/i.test(e.abs));
+  let out = await keep(ents, (e) => grammarOfFile(e.abs) === "cpp");
   if (site?.recv && /^[A-Za-z_][\w:]*$/.test(site.recv) && !site.recv.includes(".")) out = await keep(out, (e) => e.qual.endsWith(`${site.recv}::${e.name}`));
   if (!site?.launch) out = await keep(out, async (e) => { const t = await readText(e.abs); return !t || !/__global__/.test(splitLines(t).slice(e.start - 1, e.defLine).join("\n")); });
   return out;

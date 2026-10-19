@@ -1,9 +1,10 @@
 // 箭头（Link）：普通箭头、连接模式、标签、调用上的变量。
 import { uid, isCode, cardTitle, varKey, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
-import { state, mutate, select, cardById, toast } from "../state/store";
-import { setEditing, setConnectFrom, setHoverVar } from "../state/ui";
+import { state, mutate, select, cardById, hostOf, toast } from "../state/store";
+import { setEditing, setHoverVar } from "../state/ui";
+import { setConnectFrom } from "../state/mode";
 import { openPop } from "../state/pop";
-import { lastPointer } from "./common";
+import { lastPointer } from "../state/measure";
 import { askCands, attachCall, calleeMatches, callMark } from "./flow";
 import { skelOf } from "../state/subboards";
 
@@ -38,7 +39,7 @@ export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
   const f = cardById(from.card)?.card, t = cardById(to.card)?.card;
   const sn = subName(to);
   if (isCode(f) && sn) return { line: from.line ?? 0, col: 0, end: 0, name: sn, loop: false };
-  if (!isCode(f) || !isCode(t) || cardById(from.card)?.host.id === cardById(to.card)?.host.id) return;
+  if (!isCode(f) || !isCode(t) || hostOf(from.card) === hostOf(to.card)) return;
   const q = t.segments.find((s) => s.symbol)?.symbol?.qual;
   // 没有函数的卡（跨语言片段、自由代码）用卡名
   const name = q ? callName(q) : cardTitle(t);
@@ -51,7 +52,7 @@ export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
  * 连到别的（Note、某一行）就是普通箭头。两端可以是整张卡或某一行，数量不限；只有同一张卡的同一处连自己不行
  */
 export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
-  if (cardById(from.card)?.host.id === cardById(to.card)?.host.id && from.line === to.line) return;
+  if (hostOf(from.card) === hostOf(to.card) && from.line === to.line) return;
   const sides = side ? { from: side } : undefined;
   const call = callOn(from, to);
   if (call && to.sub !== undefined) {

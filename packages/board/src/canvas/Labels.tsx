@@ -2,14 +2,17 @@
 import { For, Show, createMemo, createSignal, onCleanup, type Accessor } from "solid-js";
 import { varKey, callText, varGone, loopLine, segOf, isCode, type Link, type Rect } from "@codeboard/core";
 import { state, sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
-import { hoverLink, editing, setDragLink } from "../state/ui";
+import { editing, setDragLink } from "../state/ui";
+import { hoverLink, enterLink, leaveLink } from "../state/hover";
 import { toWorld } from "../state/camera";
-import { boardOffset } from "../actions/common";
+import { boardOffset } from "../state/measure";
 import { Editable } from "../ui/Editable";
 import { isDbl } from "../interact";
 import * as A from "../actions";
-import { enterLink, leaveLink, visible, type Geo } from "./Links";
-import { bezAt, dragT, placeT, type Box } from "./labelpos";
+import { visible, type Geo } from "./Links";
+import { dragT, placeT, type Box } from "./labelpos";
+import { bezAt } from "./geom";
+import { NODRAG } from "../ui/guard";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
 const sizeCbs = new WeakMap<Element, (b: Box) => void>();
@@ -75,7 +78,7 @@ function AltsOf(p: { L: Link }) {
         <div class="alt-h">{p.L.call!.impls ? `${items().length} other implementation${items().length > 1 ? "s" : ""}` : "Other branches"}</div>
         <For each={items()}>{(it, k) => (
           <button class="altbox" classList={{ lib: !!it.alt.lib }} data-tip={it.alt.lib ? `Library code (${it.alt.lib}) · ${A.K.alt}-click to swap in` : "Click to swap in · the current one turns grey"}
-            onPointerDown={(e) => e.stopPropagation()}
+            data-nodrag
             onClick={(e) => { A.setAltDown(e.altKey); void A.swapAlt(p.L.id, k()); }}>
             <span class="lb">{it.alt.label}</span>
             <Show when={it.alt.lib}><span class="lib-tag">library</span></Show>
@@ -155,11 +158,11 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
   const style = () => { const q = pos()!; return { left: `${q.x}px`, top: `${q.y}px` }; };
   const plusBtn = (inside: boolean) => (
     <button class="vplus" classList={{ in: inside }} data-link={inside ? undefined : L.id} style={inside ? undefined : style()} data-tip="Arguments" aria-label="Arguments"
-      onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} onPointerDown={(e) => e.stopPropagation()} onClick={() => A.openVars(L.id)}>+</button>
+      onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-nodrag onClick={() => A.openVars(L.id)}>+</button>
   );
   const callBtn = (inside: boolean) => (
     <button class="mkcall" classList={{ solo: !inside }} data-link={inside ? undefined : L.id} style={inside ? undefined : style()} data-tip="This line calls the target. Add the Call mark."
-      onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} onPointerDown={(e) => e.stopPropagation()} onClick={() => A.makeCall(L.id)}>+ Call</button>
+      onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-nodrag onClick={() => A.makeCall(L.id)}>+ Call</button>
   );
 
   return (
@@ -172,7 +175,7 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             e.stopPropagation();
-            if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus, .vval.opt, .vmore, .vsb, .rpcl")) return;
+            if ((e.target as HTMLElement).closest(`${NODRAG}, .editing, .mkcall, .vplus, .vval.opt, .rpcl`)) return;
             e.preventDefault();
             if (isDbl(`l${L.id}`, e)) return A.setLinkEditing(L.id);
             select({ links: [L.id] }, e.shiftKey);
@@ -203,7 +206,7 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
                       </span>
                     )}</For>
                     <Show when={shownVals().length < bvals().length}>
-                      <span class="vmore" onPointerDown={(e) => e.stopPropagation()} onClick={() => setAllVals(true)}>+{bvals().length - shownVals().length} more</span>
+                      <span class="vmore" data-nodrag onClick={() => setAllVals(true)}>+{bvals().length - shownVals().length} more</span>
                     </Show>
                   </div>
                 </Show>
@@ -238,9 +241,9 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
                   <For each={sample()?.args ?? []}>{(a) => <div class="vrow"><span class="va">{a[0]}</span><span class="vv">{a[1]}</span></div>}</For>
                 </Show>
                 <div class="vstep">
-                  <button class="vsb" aria-label="Previous call" disabled={si() <= 0} onPointerDown={(e) => e.stopPropagation()} onClick={() => setSi((i) => Math.max(0, i - 1))}>◀</button>
+                  <button class="vsb" aria-label="Previous call" disabled={si() <= 0} data-nodrag onClick={() => setSi((i) => Math.max(0, i - 1))}>◀</button>
                   <span>call {sample()?.n} / {ev()?.count ?? seen().length}</span>
-                  <button class="vsb" aria-label="Next call" disabled={si() >= seen().length - 1} onPointerDown={(e) => e.stopPropagation()} onClick={() => setSi((i) => Math.min(seen().length - 1, i + 1))}>▶</button>
+                  <button class="vsb" aria-label="Next call" disabled={si() >= seen().length - 1} data-nodrag onClick={() => setSi((i) => Math.min(seen().length - 1, i + 1))}>▶</button>
                 </div>
               </div>
             </Show>

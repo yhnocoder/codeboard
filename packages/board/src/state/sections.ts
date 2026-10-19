@@ -2,9 +2,10 @@
 // 成员关系：卡片中心点落在哪个最深的框里（拖动结束时更新）。
 import { createMemo, mapArray } from "solid-js";
 import { sectionFrame, sectionPill, type Rect, type Section } from "@codeboard/core";
-import { state, rectOf, placed, cardById, collapsedAway } from "./store";
+import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
+import { rooted } from "./root";
 
-const byId = createMemo(() => new Map(state.board.sections.map((s) => [s.id, s])));
+const byId = rooted(() => createMemo(() => new Map(state.board.sections.map((s) => [s.id, s]))));
 export const sec = (id?: string) => (id ? byId().get(id) : undefined);
 
 export function depthOf(s: Section): number {
@@ -17,8 +18,8 @@ export function hiddenByAncestor(s: Section): boolean {
   return false;
 }
 // 父 → 子 Section、Section → 直属卡：一次分好组，算框时不用每个 Section 都扫一遍所有卡
-const kids = createMemo(() => groupBy(state.board.sections, (s) => s.parent));
-const members = createMemo(() => groupBy(placed(), (c) => state.board.place[c.id]?.section));
+const kids = rooted(() => createMemo(() => groupBy(state.board.sections, (s) => s.parent)));
+const members = rooted(() => createMemo(() => groupBy(placed(), (c) => state.board.place[c.id]?.section)));
 function groupBy<T>(xs: T[], key: (x: T) => string | undefined) {
   const m = new Map<string, T[]>();
   for (const x of xs) { const k = key(x); if (k === undefined) continue; const a = m.get(k); a ? a.push(x) : m.set(k, [x]); }
@@ -46,13 +47,13 @@ export function frameOf(s: Section, skip?: Set<string>, seen = new Set<string>()
 }
 // 渲染用：每个 Section 一个 memo（子 Section 用它自己的 memo）：拖一张卡时只重算它所在的 Section 和上面几层，不是 42 个全算。
 // 子 Section 的 memo 还没建好（或者父子关系成了环，不该发生）时退回它自己存的框
-const frameMemos = mapArray(() => state.board.sections, (s) => [s.id, createMemo<Rect | undefined>(() => sectionFrame(s, [
+const frameMemos = rooted(() => mapArray(() => state.board.sections, (s) => [s.id, createMemo<Rect | undefined>(() => sectionFrame(s, [
   ...directMembers(s.id).map(rectOf),
   ...childrenOf(s.id).map((ch): Rect => (ch.collapsed ? sectionPill(ch) : memoById().get(ch.id)?.() ?? ch)),
-]), undefined, { equals: (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h })] as const);
-const memoById = createMemo((): Map<string, () => Rect | undefined> => new Map(frameMemos()));
+]), undefined, { equals: (a, b) => !!a && !!b && a.x === b.x && a.y === b.y && a.w === b.w && a.h === b.h })] as const));
+const memoById = rooted(() => createMemo((): Map<string, () => Rect | undefined> => new Map(frameMemos())));
 /** 渲染用：每个可见的 Section 的框（折叠的是标题条）。没变的框还是上一次的对象，全都没变就还是上一次的 Map */
-export const frames = createMemo<Map<string, Rect>>((prev) => {
+export const frames = rooted(() => createMemo<Map<string, Rect>>((prev) => {
   const m = new Map<string, Rect>(), ms = memoById();
   let same = true;
   for (const s of state.board.sections) {
@@ -62,7 +63,7 @@ export const frames = createMemo<Map<string, Rect>>((prev) => {
     if (p && p.x === r.x && p.y === r.y && p.w === r.w && p.h === r.h) m.set(s.id, p); else { m.set(s.id, r); same = false; }
   }
   return same && m.size === prev.size ? prev : m;
-}, new Map());
+}, new Map()));
 
 /** 世界坐标 (x, y) 落在哪个最深的展开 Section 里 */
 export function deepestAt(fr: Map<string, Rect>, x: number, y: number, skip?: Set<string>): Section | undefined {
@@ -82,11 +83,11 @@ export function deepestAt(fr: Map<string, Rect>, x: number, y: number, skip?: Se
  * 用户看不见的卡不能被框选、全选、吸附、删除，适应窗口也不算它
  */
 export function isHidden(id: string): boolean {
-  const h = cardById(id)?.host.id ?? id;
+  const h = hostOf(id);
   return collapsedAway().has(h) || !!collapsedHome(state.board.place[h]?.section);
 }
 /** 画布上看得见的卡，按叠放顺序 */
-export const visibleCards = createMemo(() => placed().filter((c) => !isHidden(c.id)));
+export const visibleCards = rooted(() => createMemo(() => placed().filter((c) => !isHidden(c.id))));
 
 /** 卡片被藏起来了吗（在折叠的 Section 里）；返回最外层折叠的那个 */
 export function collapsedHome(cardSection?: string): Section | undefined {

@@ -1,13 +1,15 @@
 // 导出对话框（线框 08 一）：格式 · 范围 · 带不带问题和 Board-only 笔记 · 当前主题 · 文件名
-import { For, Show, createEffect, onCleanup } from "solid-js";
+import { For, Show } from "solid-js";
 import { cardTitle } from "@codeboard/core";
 import { state, flows, cardById } from "../state/store";
 import * as A from "../actions";
-import type { ExportOpts } from "../actions/export";
+import type { ExportOpts } from "../state/export";
+import { exportBusy, exportOpen, setExportOpen } from "../state/export";
+import { useOverlay } from "./overlay";
 
 export function ExportDialog() {
-  const o = () => A.exportOpen()!;
-  const set = (p: Partial<ExportOpts>) => A.setExportOpen({ ...o(), ...p });
+  const o = () => exportOpen()!;
+  const set = (p: Partial<ExportOpts>) => setExportOpen({ ...o(), ...p });
   const start = () => A.walkStart();
   const walkLabel = () => {
     const s = start();
@@ -18,18 +20,15 @@ export function ExportDialog() {
   const startTitle = () => { const s = start(); const c = s ? cardById(s)?.card : undefined; return c ? cardTitle(c, state.board) : ""; };
   const png = () => o().format === "png";
   const ext = () => (o().format === "md" ? "md" : o().format);
-  createEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); A.setExportOpen(null); }
-      else if (e.key === "Enter" && !e.isComposing && !(e.target as HTMLElement).closest?.("button")) { e.preventDefault(); e.stopPropagation(); void A.runExport(o()); }
-    };
-    window.addEventListener("keydown", onKey, true);
-    onCleanup(() => window.removeEventListener("keydown", onKey, true));
+  // Esc 关；↵ 导出（焦点在按钮上时 ↵ 是按那个按钮）
+  useOverlay({
+    close: () => setExportOpen(null), grab: true, modal: true,
+    keys: (e) => e.key === "Enter" && !e.isComposing && !(e.target as HTMLElement).closest?.("button") && (void A.runExport(o()), true),
   });
   const fmts = [["html", "HTML Snapshot"], ["md", "Markdown"], ["png", "PNG"]] as const;
   return (
-    <div class="scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) A.setExportOpen(null); }}>
-      <div class="dialog xdlg" role="dialog" aria-label="Export Board" onPointerDown={(e) => e.stopPropagation()}>
+    <div class="scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) setExportOpen(null); }}>
+      <div class="dialog xdlg" role="dialog" aria-label="Export Board" data-nodrag>
         <div class="dt">Export Board · {state.board.name}</div>
         <div class="xf"><span class="xl">Format</span>
           <span class="seg"><For each={fmts}>{([v, lb]) => <button classList={{ on: o().format === v }} onClick={() => set({ format: v })}>{lb}</button>}</For></span>
@@ -62,8 +61,8 @@ export function ExportDialog() {
           <span class="xnote">{(state.board.name || "board").trim()}.{ext()}{o().format === "html" ? " · 1 file · opens offline · read-only" : o().format === "md" ? " · cards in walkthrough order · GitHub permalinks" : " · whole board as an image"}</span>
         </div>
         <div class="db">
-          <button onClick={() => A.setExportOpen(null)}>Cancel</button>
-          <button class="def" disabled={A.exportBusy() || (!png() && o().scope === "sections" && !o().sections.length)} onClick={() => void A.runExport(o())}>{A.exportBusy() ? "Exporting…" : "Export"}</button>
+          <button onClick={() => setExportOpen(null)}>Cancel</button>
+          <button class="def" disabled={exportBusy() || (!png() && o().scope === "sections" && !o().sections.length)} onClick={() => void A.runExport(o())}>{exportBusy() ? "Exporting…" : "Export"}</button>
         </div>
       </div>
     </div>

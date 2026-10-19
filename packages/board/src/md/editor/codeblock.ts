@@ -1,5 +1,5 @@
 // Note 里的代码块：编辑时用和 Free code 卡同一个 CodeMirror（cm/editor.ts），看上去和显示时一样（同一个 pre.md-code、字体、
-// lowlight 着色），字的位置不动。ProseMirror 的文档还是唯一的来源：CodeMirror 里的改动转成 ProseMirror 的改动，反过来也一样
+// 宿主给的着色，见 ../code.ts），字的位置不动。ProseMirror 的文档还是唯一的来源：CodeMirror 里的改动转成 ProseMirror 的改动，反过来也一样
 // （照 CodeMirror 官网 “CodeMirror in ProseMirror” 的做法）。撤销走 ProseMirror；方向键在开头 / 结尾时走出代码块；
 // Esc / ⌘↵ 结束整张 Note 的编辑；空代码块里退格变回段落。语言服务、灰字补全和 Free code 卡一样
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -8,14 +8,12 @@ import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/core";
 import type { ViewUpdate, KeyBinding } from "@codemirror/view";
 import { completionStatus } from "@codemirror/autocomplete";
+import { langInfo } from "@codeboard/core";
 import { codeEditor, type CodeEditor } from "../../cm/editor";
 import { lspHost, closeLsp } from "../../cm/load";
-import { highlight } from "../hl";
+import { cachedCode, highlightCode } from "../code";
 
 let seq = 0;
-/** 有语言服务的语言（别的语言问了也是空，不白发） */
-const LSP_LANGS = /^(python|py|typescript|ts|javascript|js|cpp|c|cuda|cu|rust|go|java)$/;
-const LANG_ID: Record<string, string> = { py: "python", ts: "typescript", js: "javascript", cu: "cuda-cpp", cuda: "cuda-cpp", "c++": "cpp" };
 
 export type CodeBlockHost = { editor: () => Editor; exit: () => void; complete: (before: string, after: string) => Promise<string | null> };
 
@@ -44,12 +42,12 @@ export class CodeBlockView implements NodeView {
       parent: this.dom,
       text: node.textContent,
       lang: l,
-      html: highlight(node.textContent, l || null),
-      highlight: (t) => highlight(t, lang() || null),
+      html: cachedCode(node.textContent, l),
+      highlight: (t) => highlightCode(t, lang()),
       history: false,
       activeLine: false,
       keys,
-      lsp: LSP_LANGS.test(l) ? lspHost(this.id, () => LANG_ID[lang()] ?? lang()) : undefined,
+      lsp: langInfo(l)?.lsp ? lspHost(this.id, () => langInfo(lang())?.vscodeId ?? lang()) : undefined,
       ghost: { complete: host.complete },
       onExit: () => host.exit(),
       onUpdate: (u) => this.forward(u),

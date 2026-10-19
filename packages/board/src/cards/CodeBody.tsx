@@ -5,17 +5,17 @@ import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, commonIndent, escapeRegExp, firstLine, shownText, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
+import { cardRows, commonIndent, escapeRegExp, shownText, copyText, escHtml, langInfo, F_COMMENT, type CodeCard, type Row, type Segment, type SegView, type Sidenote, type Sticker } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
-import { Glyph } from "../stickers/glyphs";
-import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
-import { shownIcon, stickerClick } from "../actions/questions";
+import { lineStickers, stickerList } from "../state/stickers";
+import { StickerChip } from "../stickers/Picker";
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
-import { queueMeasure, observeResize } from "../state/measure";
+import { queueMeasure, observeResize, GUTTER, DED_PAD, monoWidth, lastDown } from "../state/measure";
 import { whenIdle } from "../state/idle";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
 import * as act from "../actions";
+import { callPointerDown, cardWheel, linkPortDown } from "../interact";
 
 /** 第 i 个字符前面有没有没配对的引号（单行内；三引号字符串的中间行靠高亮 class 判断） */
 function inQuotes(t: string, i: number) {
@@ -29,22 +29,8 @@ function inQuotes(t: string, i: number) {
   return !!q;
 }
 
-// 最近一次按下的元素（blur 时判断焦点是不是被同一张卡上的东西拿走的；不可聚焦的地方 relatedTarget 是空的）
-let lastDown: HTMLElement | null = null;
-window.addEventListener("pointerdown", (e) => { lastDown = e.target as HTMLElement; }, true);
 
-const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
-/** 等宽字体一个字的宽度（概览档画轮廓用；量一次） */
-let cw0 = 0;
-/** 藏了缩进时，代码离左边留的空（画竖线） */
-const DED_PAD = 16;
-function charWidth(el: Element) {
-  if (cw0) return cw0;
-  const ctx = document.createElement("canvas").getContext("2d")!;
-  ctx.font = getComputedStyle(el).font;
-  return (cw0 = ctx.measureText("0".repeat(100)).width / 100 || 7.2);
-}
 
 export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; dim?: () => boolean }) {
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
@@ -63,9 +49,10 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const kids = srcEl.querySelectorAll<HTMLElement>(":scope > [data-r]");
     kids.forEach((k) => (out[+k.dataset.r!] = { y: srcEl.offsetTop + k.offsetTop, h: k.offsetHeight }));
     const top = scrollEl.offsetTop; // 代码区相对卡片顶部
+    const hd = scrollEl.closest(".card")?.querySelector<HTMLElement>(":scope > .cface > .chead");
     const g = {
       rows: rows(), ys: out.map((o) => (o ? o.y + top + codeEl.offsetTop : 0)), hs: out.map((o) => o?.h ?? 0),
-      top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: top,
+      top, bottom: top + scrollEl.clientHeight, scroll: scrollEl.scrollTop, head: hd ? hd.offsetTop + hd.offsetHeight : top,
     };
     const id = p.card.id;
     return () => { setYs(out); setGeo(id, g); };
@@ -113,7 +100,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const overviewMask = createMemo(() => {
     if ((!warm() && lod() !== "overview") || !srcEl) return undefined;
     // 只用已经量好的行位置（ys，相对 .code），不在这里读 DOM：切到概览档时 241 张卡挨个读会让浏览器每张卡排一次版
-    const rs = rows(), y = ys(), cw = charWidth(srcEl);
+    const rs = rows(), y = ys(), cw = monoWidth(srcEl);
     // 每行一个直角色块：CSS 背景层（纯色渐变），不用图片，浏览器不用为每张卡解析、栅格化一张 SVG
     const img: string[] = [], size: string[] = [], pos: string[] = [];
     rs.forEach((r, i) => {
@@ -125,17 +112,18 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       const sh = ded() ? DED_PAD - ded() * cw : 0;
       img.push(cmtLine(r) ? "linear-gradient(var(--bar-c), var(--bar-c))" : "linear-gradient(var(--bar), var(--bar))");
       size.push(`${((t.length - ind) * cw).toFixed(1)}px 10px`);
-      pos.push(`${(54 + sh + ind * cw).toFixed(1)}px ${y[i].y + 5}px`);
+      pos.push(`${(GUTTER + sh + ind * cw).toFixed(1)}px ${y[i].y + 5}px`);
     });
     return img.length ? { img: img.join(","), size: size.join(","), pos: pos.join(",") } : { img: undefined, size: undefined, pos: undefined };
   });
+  const lineRow = (r: Row) => (r.t === "line" ? r : undefined);
   const lineHtml = (r: Extract<Row, { t: "line" }>) => {
     const s = segById(r.seg);
     const v = viewOf(r.seg);
     const i = r.line - (s?.start ?? 0);
     const hideTail = c().hide?.comments && v?.bare?.[r.line] !== undefined;
     if (hideTail) return v!.bare![r.line];
-    return v?.html[i] ?? esc(s?.text[i] ?? "");
+    return v?.html[i] ?? escHtml(s?.text[i] ?? "");
   };
 
   // ---------- 行选择：拖选代码或点行号（⇧ 扩展） ----------
@@ -215,7 +203,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     if (!call || (act.isLibCall(call) && !e.altKey)) return; // library 调用：⌥ 点击才展开
     e.preventDefault();
     e.stopPropagation();
-    act.callPointerDown(e, c().id, r.seg, call, x);
+    callPointerDown(e, c().id, r.seg, call, x);
   };
   const onCtx = (e: MouseEvent) => {
     const x = (e.target as HTMLElement).closest?.(".call") as HTMLElement | null;
@@ -245,7 +233,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   // ---------- 悬停：标识符 → 定义预览；行尾圆点 → 拉箭头 ----------
   const [hoverRow, setHoverRow] = createSignal(-1);
   let peekKey = "", peekTimer: number | undefined, peekPt = { x: 0, y: 0 };
-  const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set const auto void return struct template typename".split(" "));
   const onMove = (e: PointerEvent) => {
     if (e.buttons || dragging().size) return;
     const rowE = rowEl(e.target as Node);
@@ -269,7 +256,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     const word = text.slice(a, b);
     // 鼠标确实在这个词上（不是行尾空白）
     const tr = (rng.startContainer as Text).length !== undefined ? rng : null;
-    if (!word || !/^[A-Za-z_]/.test(word) || KW.has(word) || !tr || /#/.test(text.slice(0, a))) return clearPeek();
+    if (!word || !/^[A-Za-z_]/.test(word) || langInfo(s.lang)?.keywords?.has(word) || !tr || /#/.test(text.slice(0, a))) return clearPeek();
     // 字符串、注释里的字不是代码里的名字：不弹 Peek（看高亮的 class；没高亮时数引号）
     const tok = (rng.startContainer.parentElement as HTMLElement | null)?.closest?.(".str, .com");
     if (tok || inQuotes(text, a)) return clearPeek();
@@ -322,44 +309,41 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   });
 
   // 贴在行上的贴纸（进行号栏）；同一行已有旁注标记时缩成标记左上角一个小点，悬停展开
+  const myStk = stickerList(() => lineStickers(c().id));
   const lineStk = createMemo(() => {
-    const out: { row: number; ids: string[] }[] = [];
-    const by = new Map<number, string[]>();
-    for (const k of state.board.stickers) {
-      if (k.at.kind !== "line" || k.at.card !== c().id) continue;
-      const at = k.at;
+    const by = new Map<number, Sticker[]>();
+    for (const k of myStk()) {
+      const at = k.at as Extract<Sticker["at"], { kind: "line" }>;
       const i = rows().findIndex((r) => (r.t === "line" && r.seg === at.seg && r.line === at.line) || (r.t === "gap" && r.seg === at.seg && r.from <= at.line && at.line <= r.to));
       if (i < 0) continue;
-      const a = by.get(i) ?? [];
-      a.push(k.id);
-      by.set(i, a);
+      const a = by.get(i);
+      a ? a.push(k) : by.set(i, [k]);
     }
-    for (const [row, ids] of by) out.push({ row, ids });
-    return out;
+    return [...by].map(([row, list]) => ({ row, list }));
   });
   const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
-  const stickerById = (id: string) => state.board.stickers.find((k) => k.id === id);
 
-  const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n) => n.kind === "text" && n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
+
+  const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n): n is Extract<Sidenote, { kind: "text" }> => n.kind === "text" && !!n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
   const cmtLine = (r: Row) => r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;
 
   // 行的连线端点：在卡片左右边框上（不占行号栏，供带 Call 标记的箭头自动选边）
   const portTop = () => { const l = lportY(); return l && scrollEl ? scrollEl.offsetTop + codeEl.offsetTop + l.y + 10 - scrollY() : null; };
-  const portDown = (e: PointerEvent, side: "left" | "right") => { const r = lportY()!.r as Extract<Row, { t: "line" }>; const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); act.linkPortDown(e, { card: c().id, seg: r.seg, line: r.line }, b.left + b.width / 2, b.top + b.height / 2, side); };
+  const portDown = (e: PointerEvent, side: "left" | "right") => { const r = lportY()!.r as Extract<Row, { t: "line" }>; const b = (e.currentTarget as HTMLElement).getBoundingClientRect(); linkPortDown(e, { card: c().id, seg: r.seg, line: r.line }, b.left + b.width / 2, b.top + b.height / 2, side); };
   return (
     <>
     <Show when={portTop() !== null && !p.dim?.() && !freeEditing()}>
-      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} style={{ top: `${portTop()}px` }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={(e) => portDown(e, side === "l" ? "left" : "right")} />}</For>
+      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} data-nodrag data-export="strip" style={{ top: `${portTop()}px` }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={(e) => portDown(e, side === "l" ? "left" : "right")} />}</For>
     </Show>
-    <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => act.cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
+    <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
       <Show when={freeEditing()}>
         <FreeEdit card={c} wrap={() => !!c().wrap} onExit={(v) => { act.setFreeCode(c().id, v.replace(/\s+$/, "")); setEditing(null); }} onBlur={(e, ed) => {
             const el = ed.el;
             // 点的是这张卡自己的东西（语言下拉、标题栏按钮）或它弹出的菜单：还在编辑，菜单关掉后把光标放回来；不算"点了别处"
-            const t = (e.relatedTarget as HTMLElement | null) ?? lastDown;
+            const t = (e.relatedTarget as HTMLElement | null) ?? lastDown()?.target;
             if (t && !el.contains(t) && (el.closest(".card")?.contains(t) || t.closest?.(".ctx"))) {
               const back = () => { if (!el.isConnected || editing()?.id !== c().id) return; if (menuOpen()) return void setTimeout(back, 80);
-                const d = lastDown, mine = !!d && (el.closest(".card")?.contains(d) || !!d.closest?.(".ctx"));
+                const d = lastDown()?.target, mine = !!d && (el.closest(".card")?.contains(d) || !!d.closest?.(".ctx"));
                 if (mine) ed.focus(); else { act.setFreeCode(c().id, ed.text().replace(/\s+$/, "")); setEditing(null); } };
               setTimeout(back, 0);
               return;
@@ -374,9 +358,11 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         <div class="gutter">
           <For each={rows()}>
             {(r, i) => (
-              <Show when={r.t === "line" && ys()[i()]}>
-                <span class="no" data-r={i()} classList={{ link: fromLines().has(`${r.seg}:${(r as any).line}`), jump: (r as any).skipped, sel: inSel(r.seg, (r as any).line), drop: dropAt(r.seg, (r as any).line) }}
-                  style={{ top: `${ys()[i()].y}px` }} onPointerDown={(e) => e.stopPropagation()} onClick={(e) => clickNo(r as any, e)} onContextMenu={(e) => lineCtx(r as any, e)}>{(r as any).line}</span>
+              <Show when={ys()[i()] && lineRow(r)}>
+                {(l) => (
+                  <span class="no" data-r={i()} classList={{ link: fromLines().has(`${l().seg}:${l().line}`), jump: l().skipped, sel: inSel(l().seg, l().line), drop: dropAt(l().seg, l().line) }}
+                    style={{ top: `${ys()[i()].y}px` }} data-nodrag onClick={(e) => clickNo(l(), e)} onContextMenu={(e) => lineCtx(l(), e)}>{l().line}</span>
+                )}
               </Show>
             )}
           </For>
@@ -385,7 +371,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               <Show when={ys()[m.row]}>
                 <Show when={m.span}><span class="mkr" style={{ top: `${ys()[m.row].y + 10}px`, height: `${(ys()[m.row + m.span!]?.y ?? ys()[m.row].y) - ys()[m.row].y}px` }} /></Show>
                 <button class="mk" classList={{ rv: !!m.review }} style={{ top: `${ys()[m.row].y}px` }} data-card={c().id} data-notes={m.ids.join(",")}
-                  onPointerDown={(e) => e.stopPropagation()} onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids, e)} onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}>{m.n}</button>
+                  data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids, e)} onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}>{m.n}</button>
               </Show>
             )}
           </For>
@@ -394,14 +380,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
             {(k) => (
               <Show when={ys()[k.row]}>
                 <span class="lstks" classList={{ dot: markRows().has(k.row) }} style={{ top: `${ys()[k.row].y}px` }}>
-                  <For each={k.ids}>{(id) => (
-                    <Show when={stickerById(id)}>{(st) => (
-                      <span class="stk" classList={{ sel: selSticker() === id, q: !!st().q, done: !!st().q?.done }} data-sticker={id} data-tip={st().q?.md ? firstLine(st().q!.md) : stickerLabel(st().icon)}
-                        onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, id); }} onClick={(e) => { e.stopPropagation(); stickerClick(id, e.currentTarget); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); }}>
-                        <Glyph icon={shownIcon(st()).icon} color={shownIcon(st()).color} size={14} />
-                      </span>
-                    )}</Show>
-                  )}</For>
+                  <For each={k.list}>{(st) => <StickerChip s={st} size={14} />}</For>
                 </span>
               </Show>
             )}
@@ -411,9 +390,11 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         <For each={vrows()}>{(x) => <Show when={ys()[x.i]}><div class={`vbg ${x.k === "+" ? "add" : "chg"}`} style={{ top: `${ys()[x.i].y}px`, height: `${ys()[x.i].h}px` }} /></Show>}</For>
         <For each={rows()}>
           {(r, i) => (
-            <Show when={ys()[i()] && r.t === "line"}>
-              <div class="rowbg" classList={{ hl: isHl(segById(r.seg), (r as any).line), origin: fromLines().has(`${r.seg}:${(r as any).line}`), lsel: inSel(r.seg, (r as any).line), flash: flashRows().has(`${c().id}:${r.seg}:${(r as any).line}`), vhi: vhi(r) }}
-                style={{ top: `${ys()[i()].y}px`, height: `${ys()[i()].h}px` }} />
+            <Show when={ys()[i()] && lineRow(r)}>
+              {(l) => (
+                <div class="rowbg" classList={{ hl: isHl(segById(l().seg), l().line), origin: fromLines().has(`${l().seg}:${l().line}`), lsel: inSel(l().seg, l().line), flash: flashRows().has(`${c().id}:${l().seg}:${l().line}`), vhi: vhi(l()) }}
+                  style={{ top: `${ys()[i()].y}px`, height: `${ys()[i()].h}px` }} />
+              )}
             </Show>
           )}
         </For>
@@ -424,18 +405,18 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           <For each={rows()}>
             {(r, i) => (
               <Switch>
-                <Match when={r.t === "line"}>
-                  <div class="l" classList={{ cmt: !!cmtLine(r), drop: dropAt(r.seg, (r as any).line) }} data-r={i()} innerHTML={lineHtml(r as any) || "​"} />
-                  <For each={alwaysNotes(r.seg, (r as any).line)}>{(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline((n as any).md)} />}</For>
+                <Match when={lineRow(r)}>
+                  {(l) => (
+                    <>
+                      <div class="l" classList={{ cmt: !!cmtLine(l()), drop: dropAt(l().seg, l().line) }} data-r={i()} innerHTML={lineHtml(l()) || "​"} />
+                      <For each={alwaysNotes(l().seg, l().line)}>{(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline(n.md)} />}</For>
+                    </>
+                  )}
                 </Match>
-                <Match when={r.t === "gap"}>
-                  <GapRow r={r as Extract<Row, { t: "gap" }>} i={i()} card={c()} />
-                </Match>
-                <Match when={r.t === "fn"}>
-                  <div class="fnbar" data-r={i()}><span>{(r as any).name}</span></div>
-                </Match>
-                <Match when={r.t === "file"}>
-                  <div class="fbar" data-r={i()}><span class="fp">{(r as any).path}</span><Show when={(r as any).version}><span class="fv">{(r as any).version}</span></Show></div>
+                <Match when={r.t === "gap" && r}>{(g) => <GapRow r={g()} i={i()} card={c()} />}</Match>
+                <Match when={r.t === "fn" && r}>{(f) => <div class="fnbar" data-r={i()}><span>{f().name}</span></div>}</Match>
+                <Match when={r.t === "file" && r}>
+                  {(f) => <div class="fbar" data-r={i()}><span class="fp">{f().path}</span><Show when={f().version}><span class="fv">{f().version}</span></Show></div>}
                 </Match>
               </Switch>
             )}
@@ -455,7 +436,7 @@ function GapRow(p: { r: Extract<Row, { t: "gap" }>; i: number; card: CodeCard })
   return (
     <div class="gap" classList={{ mgap: !p.r.manual }} data-r={p.i}>
       ⋯ {n()} line{n() > 1 ? "s" : ""} hidden ({p.r.from === p.r.to ? p.r.from : `${p.r.from}–${p.r.to}`})
-      <Show when={p.r.manual}> · <b onPointerDown={(e) => e.stopPropagation()} onClick={() => toggleShown(`${p.r.seg}:${p.r.from}`)}>Show</b></Show>
+      <Show when={p.r.manual}> · <b data-nodrag onClick={() => toggleShown(`${p.r.seg}:${p.r.from}`)}>Show</b></Show>
       <Show when={links()}> · {links()} link{links() > 1 ? "s" : ""}</Show>
       <Show when={changed()}> · <span class="chgd">Changed</span></Show>
     </div>

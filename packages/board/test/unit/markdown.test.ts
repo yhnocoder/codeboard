@@ -1,4 +1,5 @@
-// Markdown 往返：解析成文档再写回，要稳定，不乱转义；旧版（v0.1.7 手写渲染器）写的 Note 照样显示得合理
+// @vitest-environment jsdom
+// Markdown 往返（jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素）：解析成文档再写回，要稳定，不乱转义；旧版（v0.1.7 手写渲染器）写的 Note 照样显示得合理
 import { describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../../src/md/schema";
 import { renderMd } from "../../src/md/render";
@@ -123,9 +124,9 @@ describe("static render", () => {
   it("keeps soft line breaks as written (old notes were one line per paragraph)", () => {
     expect(renderMd("line one\nline two")).toBe("<p>line one\nline two</p>");
   });
-  it("highlights code, renders chips, tasks, footnotes", () => {
+  it("renders code for the host highlighter, chips, tasks, footnotes", () => {
     const h = renderMd("```python\ndef f(): return 1\n```\n\n- [x] done\n\nsee [[Card]][^1]\n\n[^1]: n");
-    expect(h).toContain('<span class="hljs-keyword">def</span>');
+    expect(h).toContain('<pre class="md-code" data-lang="python"><code>def f(): return 1</code></pre>');
     expect(h).toContain('data-type="taskItem"');
     expect(h).toContain('checked="checked"');
     expect(h).toContain('<span class="cref" data-cardref="Card">Card</span>');
@@ -139,9 +140,11 @@ describe("static render", () => {
   it("leaves mermaid source for the lazy renderer", () => {
     expect(renderMd("```mermaid\ngraph TD; A-->B\n```")).toContain('<div class="mmd" data-src="graph TD; A-->B">');
   });
-  it("does not let raw HTML through", () => {
+  it("shows raw HTML through DOMPurify: harmless tags stay, scripts and handlers go", () => {
     const h = renderMd("<script>alert(1)</script>\n\n<img src=x onerror=alert(1)>");
-    expect(h).not.toMatch(/<script|<img[^>]*onerror/);
+    expect(h).not.toMatch(/<script|onerror/);
+    expect(h).toContain('<img src="x">');
+    expect(renderMd("a <u>b</u> <kbd>K</kbd> <!-- hidden --> c")).toBe("<p>a <u>b</u> <kbd>K</kbd>  c</p>");
   });
   it("caches by content", () => {
     expect(renderMd("cache **me**")).toBe(renderMd("cache **me**"));

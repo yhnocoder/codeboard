@@ -3,8 +3,8 @@
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Language as TSLanguage, Tree, Edit, Query } from "@vscode/tree-sitter-wasm";
 
-export type Grammar = "python" | "cpp" | "rust";
-export type { Edit };
+import type { Grammar } from "../langs";
+export type { Edit, Grammar };
 
 let ready: Promise<void> | undefined;
 const langs = new Map<Grammar, TSLanguage>();
@@ -30,13 +30,6 @@ function defaultDir() {
 const join = (a: string, b: string) => (a.endsWith("/") ? a + b : `${a}/${b}`);
 
 export const languageOf = (g: Grammar): TSLanguage | undefined => langs.get(g);
-
-export function grammarOf(lang: string): Grammar | null {
-  if (/^(python|triton|tilelang)$/.test(lang)) return "python";
-  if (/^(c|cpp|cuda|cuda-cpp|objective-c|objective-cpp)$/.test(lang)) return "cpp";
-  if (lang === "rust") return "rust";
-  return null;
-}
 
 const parsers = new Map<Grammar, TSParser>();
 function parser(g: Grammar) {

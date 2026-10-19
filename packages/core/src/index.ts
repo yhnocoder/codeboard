@@ -15,6 +15,7 @@ export * from "./web";
 export * from "./lines";
 export * from "./linklabel";
 export * from "./chip";
+export * from "./langs";
 export * from "./run";
 export * from "./questions";
 export * from "./export";

@@ -1,16 +1,17 @@
 // 照 Typora 的“边写边变”：
-// - 块：行首 ``` / $$ / *** / ___ / |表|头| 加回车，[ ] 加空格（# > - 1. --- 用 TipTap 自带的）
-// - 行内：结尾记号一打完就变（**b** *i* ~~s~~ `c` 用 TipTap 自带的；这里加 $m$ $$m$$ [t](url) <url>）
+// - 行内：打完收尾的记号就变。解析器（schema.ts）能判断的不另写规则：刚收尾、到光标为止的那一段按解析器解析（retype）；
+//   **b** *i* _i_ ~~s~~ 用 TipTap 自带的，`c` 按反引号的长度配对（codeSpanAtEnd）
+// - 块：# > - 1. [ ] 加空格用 TipTap 自带的；回车时整段解析出来是代码块、分隔线、目录、公式块的就换成它（enterBlock）；
+//   $$ / === / <details> / |表|头| 加回车另有规则（解析器认不出来）
 // - 光标移进格式文字、标题、行内公式时展开成能改的 Markdown 原文（source.ts）；还没展开时（刚打完）照旧把记号画在两头（装饰）
 // - ⌘Z 紧跟在自动转换后面：撤回成打的字；标题行首退格：变回普通段落
 // - 一次进来一大段字（接受补全、粘贴）时打字规则不会触发：把这一段当 Markdown 重新解析一遍（reconvert）
-import { Extension, InputRule, wrappingInputRule, type Editor } from "@tiptap/core";
-import { NodeSelection, Plugin, PluginKey, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { Extension, InputRule, Mark as TMark, wrappingInputRule, type Editor } from "@tiptap/core";
+import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { Fragment, type Mark, type Node as PMNode } from "@tiptap/pm/model";
+import { Fragment, type Mark, type Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { closeHistory } from "@tiptap/pm/history";
-import { ESC_MARK, blockSource, parseMd } from "../schema";
-import { Mark as TMark } from "@tiptap/core";
+import { ESC_MARK, MARK_MD, blockSource, parseSource } from "../schema";
 import { SourceMark, headPrefix, sourcePlugin, srcRuns } from "./source";
 import { pairsPlugin } from "./pairs";
 
@@ -31,7 +32,7 @@ export function reconvert(tr: Transaction): Transaction {
   if (!src.trim()) return tr;
   const schema = tr.doc.type.schema;
   let nodes: PMNode[];
-  try { nodes = (parseMd(src).content ?? []).filter((n) => n.type !== "footnotes").map((n) => schema.nodeFromJSON(n)); } catch { return tr; }
+  try { nodes = parseSource(src, false)!.map((n) => schema.nodeFromJSON(n)); } catch { return tr; }
   if (!nodes.length || (nodes.length === 1 && nodes[0].eq(block))) return tr;
   const frag = Fragment.from(nodes);
   const parent = $p.node(-1), idx = $p.index(-1);
@@ -54,12 +55,84 @@ export function reconvert(tr: Transaction): Transaction {
   return tr;
 }
 
-// 光标处显示的记号
-const MK: Record<string, (m: Mark) => [string, string]> = {
-  bold: () => ["**", "**"], italic: () => ["*", "*"], strike: () => ["~~", "~~"], code: () => ["`", "`"],
-  link: (m) => ["[", `](${m.attrs.href ?? ""})`], underline: () => ["<u>", "</u>"], kbd: () => ["<kbd>", "</kbd>"],
-  highlight: () => ["==", "=="], subscript: () => ["~", "~"], superscript: () => ["^", "^"],
-};
+/** 能收尾一段行内语法的字 → 那段语法开头可能的字 */
+const OPENERS: Record<string, string> = { "*": "*", "~": "~", "=": "=", "^": "^", "$": "$", ")": "[!", ">": "<", ":": ":", "]": "[" };
+/** 这几种格式打字时用 TipTap 自带的规则（**b** *i* _i_ ~~s~~）；***粗斜体*** 这里变 */
+const NATIVE = new Set(["bold", "italic", "strike"]);
+const hasFootnote = (f: Fragment) => { let y = false; f.descendants((n) => { if (n.type.name === "footnoteReference") y = true; }); return y; };
+
+/**
+ * cut（开头字前面一个字 + 从开头字到光标）解析出来，前面那个字照旧、后面正好是一整段新格式时给这一段：
+ * 一个原子节点（公式、图片、表情、引用），或者都带着同一个新的格式。前面那个字只是给解析器看左边（1:100: 不是表情）
+ */
+function spanOf(ctx: Fragment, cut: Fragment, schema: Schema): Fragment | null {
+  const ns = parseSource(blockSource({ type: "paragraph", content: ctx.append(cut).toJSON() }), true);
+  if (!ns?.length) return null;
+  let all: Fragment;
+  try { all = Fragment.fromArray(ns.map((j) => schema.nodeFromJSON(j))); } catch { return null; }
+  if (!all.cut(0, ctx.size).eq(ctx)) return null;
+  const f = all.cut(ctx.size);
+  if (!f.size || f.eq(cut) || hasFootnote(f)) return null;
+  if (f.childCount === 1 && !f.firstChild!.isText) return f;
+  let common: readonly Mark[] | null = null;
+  f.forEach((n) => { common = n.isText ? (common ?? n.marks).filter((m) => m.isInSet(n.marks)) : []; });
+  const fresh = (common as readonly Mark[] | null ?? []).filter((m) => !m.isInSet(cut.firstChild!.marks)).map((m) => m.type.name);
+  if (!fresh.length) return null;
+  if (fresh.every((n) => NATIVE.has(n)) && !(fresh.includes("bold") && fresh.includes("italic"))) return null;
+  return f;
+}
+
+/**
+ * 打字时的行内转换（==hl== H~2~ x^2^ $m$ [t](u) ![a](u) <u>u</u> :e: [[R]] ***bi***）：只看刚打完收尾记号、到光标为止的那一段，
+ * 和以前一条条的规则一样——从左往右找一个开头字，从它到光标解析出来正好是一整段新格式就换掉（同一个 transaction，⌘Z 撤回成打的字）。
+ * 开头字前面紧挨着同样的字或 \ 时不算（**b* 里的 *b*、~~s~ 里的 ~s~、\$）；前面撤回成字的不会再变；
+ * 光标后面的不动（自动补的右括号）；最后一个脚注引用之前的不动，解析出脚注引用也不要。
+ * pos：刚打的字后面（打字规则给的 range.to）；盖过自动补的右括号时光标还在那个字前面，不能看光标
+ */
+export function retype(tr: Transaction, pos = tr.selection.head): boolean {
+  const sel = tr.selection, $c = tr.doc.resolve(pos), block = $c.parent, end = $c.parentOffset;
+  if (!sel.empty || !block.isTextblock || block.type.spec.code || srcRuns(block).length || end < 2) return false;
+  const at = (i: number) => block.textBetween(i, i + 1, undefined, "\ufffc");
+  const typed = at(end - 1), opens = OPENERS[typed];
+  if (!opens) return false;
+  let lo = 0;
+  block.forEach((n, off) => { if (n.type.name === "footnoteReference" && off < end) lo = off + n.nodeSize; });
+  for (let i = lo; i < end - 1; i++) {
+    if (!opens.includes(at(i))) continue;
+    const prev = i > lo ? at(i - 1) : "";
+    if (prev === typed || prev === "\\") continue;
+    const span = spanOf(block.content.cut(Math.max(lo, i - 1), i), block.content.cut(i, end), tr.doc.type.schema);
+    if (!span) continue;
+    const start = $c.start() + i, marks = $c.marks();
+    tr.replaceWith(start, $c.pos, span);
+    tr.setSelection(TextSelection.create(tr.doc, start + span.size));
+    tr.setStoredMarks(marks); // 接着打的字不带刚变出来的格式
+    return true;
+  }
+  return false;
+}
+
+/** 回车：整段（光标在段尾）解析出来是一个不是字的块（代码块、分隔线、目录、公式块）时换成它。缩进的代码块打字时不变（Typora 一样） */
+function enterBlock(state: EditorState): boolean {
+  const tr = state.tr, $c = tr.selection.$head, p = $c.parent;
+  if (!tr.selection.empty || p.type.name !== "paragraph" || !p.content.size || $c.parentOffset !== p.content.size) return false;
+  const src = blockSource(p.toJSON());
+  if (/^(?: {4}|\t)/.test(src)) return false;
+  let ns: PMNode[];
+  try { ns = parseSource(src, false)!.map((j) => state.schema.nodeFromJSON(j)); } catch { return false; }
+  const n = ns.length === 1 ? ns[0] : null;
+  if (!n || !(n.isAtom || n.type.spec.code)) return false;
+  const start = $c.before(), $s = tr.doc.resolve(start);
+  if (!$s.parent.canReplace($s.index(), $s.index() + 1, Fragment.from(n))) return false;
+  tr.replaceWith(start, $c.after(), n);
+  const end = start + n.nodeSize;
+  if (n.type.spec.code) tr.setSelection(TextSelection.create(tr.doc, end - 1));
+  else {
+    if (!tr.doc.resolve(end).nodeAfter?.isTextblock) tr.insert(end, state.schema.nodes.paragraph.create());
+    tr.setSelection(TextSelection.near(tr.doc.resolve(end + 1)));
+  }
+  return true;
+}
 const mkEl = (text: string) => {
   const s = document.createElement("span");
   s.className = "md-mk";
@@ -92,7 +165,7 @@ export function codeSpanAtEnd(text: string) {
 }
 
 /** 只看光标所在的那一段：标题的 ##，光标两边带的格式各自那一段的头尾 */
-function markerDecos(state: import("@tiptap/pm/state").EditorState): DecorationSet | null {
+function markerDecos(state: EditorState): DecorationSet | null {
   const sel = state.selection;
   if (sel instanceof NodeSelection && sel.node.type.name === "inlineMath") {
     const d = sel.node.attrs.display ? "$$" : "$";
@@ -114,7 +187,7 @@ function markerDecos(state: import("@tiptap/pm/state").EditorState): DecorationS
   const near = [...($h.nodeBefore?.marks ?? []), ...($h.nodeAfter?.marks ?? [])];
   const seen = new Set<string>();
   for (const m of near) {
-    const f = MK[m.type.name];
+    const f = MARK_MD[m.type.name];
     if (!f || seen.has(m.type.name)) continue;
     seen.add(m.type.name);
     // 这个格式连着的那一段（包含光标）
@@ -126,7 +199,7 @@ function markerDecos(state: import("@tiptap/pm/state").EditorState): DecorationS
     });
     if (s >= 0 && s <= off && off <= e) hit = [s, e];
     if (!hit) continue;
-    const [a, b] = f(m);
+    const [a, b] = f(m.attrs);
     if (hit[1] <= hit[0]) continue;
     // 头一个字前面、最后一个字后面（只有一个字时两个都在它身上）
     if (hit[1] - hit[0] === 1) ds.push(Decoration.inline(start + hit[0], start + hit[1], { class: "md-mka md-mkb", "data-mka": a, "data-mkb": b }));
@@ -182,7 +255,7 @@ function selectWord(e: Editor) {
 const EscMark = TMark.create({ name: ESC_MARK, inclusive: false, parseHTML: () => [], renderHTML: () => ["span", { class: "md-esc" }, 0] });
 const escKey = new PluginKey("cbEsc");
 /** 光标不在旁边（\ 前、\ 和字之间、字后面）的转义 \：藏起来 */
-function escDecos(state: import("@tiptap/pm/state").EditorState): DecorationSet | null {
+function escDecos(state: EditorState): DecorationSet | null {
   const type = state.schema.marks[ESC_MARK], h = state.selection.head, ds: Decoration[] = [];
   state.doc.descendants((n, pos) => {
     if (!n.isText) return true;
@@ -235,44 +308,14 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
         if (at > 0 && state.doc.rangeHasMark(at - 1, at, esc)) return null;
         state.tr.addMark(at, at + 1, esc.create());
       } }),
-      // 行内公式：$$m$$ 是行内的大号公式（单独一行时回车变公式块）；$m$ 照 Pandoc：$ 后、结尾 $ 前都不是空白
-      new InputRule({ find: /(?:^|[^$\\])(\$\$([^$\n]+?)\$\$)$/, handler: ({ range, match, chain }) => {
-        const from = range.from + (match[0].length - match[1].length);
-        chain().insertContentAt({ from, to: range.to }, { type: "inlineMath", attrs: { latex: match[2].trim(), display: true } }).run();
-      } }),
-      new InputRule({ find: /(?:^|[^$\\])(\$([^$\s](?:[^$]*[^$\s\\])?)\$)$/, handler: ({ range, match, chain }) => {
-        const from = range.from + (match[0].length - match[1].length);
-        chain().insertContentAt({ from, to: range.to }, { type: "inlineMath", attrs: { latex: match[2] } }).run();
-      } }),
-      // [字](网址)、<网址>
-      new InputRule({ find: /(?:^|[^!\\\]])(\[([^[\]\n]+)\]\(([^()\s]+)\))$/, handler: ({ state, range, match }) => {
-        const from = range.from + (match[0].length - match[1].length);
-        state.tr.replaceWith(from, range.to, s.text(match[2], [...state.doc.resolve(from).marks(), s.marks.link.create({ href: match[3] })]));
-      } }),
-      new InputRule({ find: /(<((?:https?:\/\/|mailto:)[^<>\s]+)>)$/, handler: ({ state, range, match }) => {
-        const from = range.from + (match[0].length - match[1].length);
-        state.tr.replaceWith(from, range.to, s.text(match[2], [s.marks.link.create({ href: match[2] })]));
-      } }),
-      // ![说明](地址)：行内图片
-      new InputRule({ find: /(?:^|[^\\])(!\[([^\]\n]*)\]\(([^()\s]+)\))$/, handler: ({ state, range, match }) => {
-        const from = range.from + (match[0].length - match[1].length);
-        state.tr.replaceWith(from, range.to, s.nodes.image.create({ src: match[3], alt: match[2] }));
-      } }),
-      // ***粗斜体***
-      new InputRule({ find: /(?:^|[^*\\])(\*\*\*([^*\s](?:[^*]*[^*\s])?)\*\*\*)$/, handler: ({ state, range, match }) => {
-        const from = range.from + (match[0].length - match[1].length);
-        state.tr.replaceWith(from, range.to, s.text(match[2], [...state.doc.resolve(from).marks(), s.marks.bold.create(), s.marks.italic.create()]));
-        state.tr.setStoredMarks([]);
-      } }),
+      // 行内格式、公式、链接、图片、表情、[[引用]]：打完收尾的字就重解析（retype）
+      new InputRule({
+        find: (text) => { const c = text.slice(-1), o = OPENERS[c]; return o && [...o].some((x) => text.slice(0, -1).includes(x)) ? { index: text.length - 1, text: c } : null; },
+        handler: ({ state, range }) => (retype(state.tr, range.to) ? undefined : null),
+      }),
       // 行内代码：反引号一串配一串一样长的（``a ` b`` 里的单个 ` 是字）。TipTap 自带的会把 `` 里的 ` y` 先转掉，关掉了
       new InputRule({ find: codeSpanAtEnd, handler: ({ state, range, match }) => {
         state.tr.replaceWith(range.from, range.to, s.text(match[1], [...state.doc.resolve(range.from).marks(), s.marks.code.create()]));
-        state.tr.setStoredMarks([]);
-      } }),
-      // <u>下划线</u>、<kbd>键</kbd>
-      new InputRule({ find: /<(u|kbd)>([^<>\n]+)<\/\1>$/, handler: ({ state, range, match }) => {
-        const mark = match[1] === "u" ? s.marks.underline : s.marks.kbd;
-        state.tr.replaceWith(range.from, range.to, s.text(match[2], [...state.doc.resolve(range.from).marks(), mark.create()]));
         state.tr.setStoredMarks([]);
       } }),
       // 1) 也是有序列表（CommonMark）；写回成 1.
@@ -316,14 +359,10 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
         tr.setSelection(TextSelection.near(tr.doc.resolve(itemStart + 2)));
         return undefined;
       } }),
-      // ```语言 加回车：代码块（TipTap 自带的只认小写字母的语言名）
-      enterRule(/^```([\w+#.-]*)\n$/, (m) => ({ nodes: [s.nodes.codeBlock.create({ language: m[1] || null })], caret: (st) => st + 1 })),
+      // ```语言 / *** / --- / ___ / [toc] / 一整行的 $$m$$ 加回车：解析出来的块（enterBlock）
+      new InputRule({ find: (text) => (text.endsWith("\n") ? { index: text.length - 1, text: "\n" } : null), undoable: false, handler: ({ state }) => (enterBlock(state) ? undefined : null) }),
       // $$ 加回车：空的公式块，打开源码框
       enterRule(/^\$\$\n$/, () => ({ nodes: [s.nodes.blockMath.create({ latex: "" })], then: (st) => openMath(ed, st) })),
-      // [toc] 加回车：目录（Typora #30）
-      enterRule(/^\[toc\]\n$/i, () => ({ nodes: [s.nodes.toc.create()] })),
-      // *** / ___ / --- 加回车：分隔线
-      enterRule(/^(?:\*\*\*|___|---)\n$/, () => ({ nodes: [s.nodes.horizontalRule.create()] })),
       // 上一段下面一行 === 加回车：上一段变一级标题（setext）
       new InputRule({ find: /^=+\n$/, undoable: false, handler: ({ state, range }) => {
         const $f = state.doc.resolve(range.from);
@@ -366,16 +405,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
         const sel = e.state.selection;
         // 选中的公式：打开源码框
         if (sel instanceof NodeSelection && /^(inlineMath|blockMath)$/.test(sel.node.type.name)) { this.options.openMath(e, sel.from); return true; }
-        // 一段里只有一个 $$m$$：变成公式块
-        const $h = sel.$head, p = $h.parent;
-        if (sel.empty && p.type.name === "paragraph" && p.childCount === 1 && p.firstChild!.type.name === "inlineMath" && p.firstChild!.attrs.display) {
-          const start = $h.before();
-          const tr = closeHistory(e.state.tr).replaceWith(start, $h.after(), e.schema.nodes.blockMath.create({ latex: p.firstChild!.attrs.latex }));
-          const end = start + tr.doc.nodeAt(start)!.nodeSize;
-          if (!tr.doc.resolve(end).nodeAfter?.isTextblock) tr.insert(end, e.schema.nodes.paragraph.create());
-          e.view.dispatch(tr.setSelection(TextSelection.near(tr.doc.resolve(end + 1))));
-          return true;
-        }
         return false;
       },
       Backspace: () => {

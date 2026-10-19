@@ -86,8 +86,8 @@ export const MARKDOWN: Record<string, () => Promise<void>> = {
         const cs = (e: Element | null) => (e ? getComputedStyle(e) : null);
         return {
           katex: n.querySelectorAll(".katex").length,
-          hl: n.querySelectorAll("pre.md-code .hljs-keyword").length,
-          kwColor: cs(n.querySelector(".hljs-keyword"))?.color, tasks: n.querySelectorAll("li[data-type=taskItem] input").length,
+          hl: n.querySelectorAll("pre.md-code .kw").length,
+          kwColor: cs(n.querySelector("pre.md-code .kw"))?.color, tasks: n.querySelectorAll("li[data-type=taskItem] input").length,
           table: n.querySelectorAll("table td").length, chips: n.querySelectorAll(".cref").length, chipMissing: n.querySelectorAll(".cref.missing").length,
           fn: n.querySelectorAll("sup.fnref").length, details: n.querySelectorAll("details summary").length,
           raw: /\*\*|block\\_/.test((n as HTMLElement).innerText), under: (n as HTMLElement).innerText.includes("__init__"),

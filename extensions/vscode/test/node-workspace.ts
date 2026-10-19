@@ -14,7 +14,6 @@ export type TestWorkspace = Workspace & {
   finds: number;
 };
 
-const CODE = /\.(py|pyi|cu|cuh|cc|cpp|cxx|c|h|hpp|rs)$/;
 const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "build", "dist", "__pycache__", ".mypy_cache", ".tox"]);
 
 export function nodeWorkspace(root = WS): TestWorkspace {
@@ -40,7 +39,7 @@ export function nodeWorkspace(root = WS): TestWorkspace {
           for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
             if (e.name.startsWith(".") || SKIP.has(e.name)) continue;
             const p = path.join(d, e.name);
-            if (e.isDirectory()) walk(p); else if (CODE.test(p) && want(p)) out.push(p);
+            if (e.isDirectory()) walk(p); else if (want(p)) out.push(p);
           }
         };
         walk(root);

@@ -1,14 +1,17 @@
 // v0.2 调用（线框 03、12、13）：RPC 标记、进程标签、消息卡、↩ back to；起点卡；Arrow 图例；调用树；运行记录（observed 证据和实参）。
-import { createMemo, createSignal } from "solid-js";
+import { createMemo } from "solid-js";
+import { rooted } from "../state/root";
 import {
   uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, LEGEND, sameSource, baseName, joinLinks, splitLink, placeCards, canMark, type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
 } from "@codeboard/core";
-import { state, mutate, select, flows, cardById, rectOf, toast, placeOf, placed, sel } from "../state/store";
+import { state, mutate, select, flows, cardById, hostOf, rectOf, toast, placeOf, placed, sel } from "../state/store";
 import { openPop } from "../state/pop";
 import { walk } from "../state/ui";
+import { treeOpen, setRunState, runState } from "../state/calls";
 import { send } from "../host";
 import { promptText } from "../ui/Menu";
-import { lastPointer, popCard, hostRect } from "./common";
+import { popCard, hostRect } from "./common";
+import { lastPointer } from "../state/measure";
 import { expandCall } from "./flow";
 
 const linkById = (id: string) => state.board.links.find((l) => l.id === id);
@@ -83,7 +86,7 @@ export function toggleMsgCard(id: string) {
   const at = findFree({ x: cx - w / 2, y: cy - 20, w, h: 56 }, others);
   const mid = uid("n"), l2 = uid("l");
   const card: NoteCard = { id: mid, kind: "note", md: name, bg: true, msg: {} };
-  const sec = placeOf(cardById(L.from.card)?.host.id ?? L.from.card).section;
+  const sec = placeOf(hostOf(L.from.card)).section;
   mutate((b) => {
     if (!b.links.some((k) => k.id === id && k.rpc)) return;
     placeCards(b, [{ card, place: { x: Math.round(at.x), y: Math.round(at.y), w } }], { copy: false, at: (q) => (sec ? { ...q, section: sec } : q) });
@@ -121,24 +124,23 @@ export const procCls = (p: ProcTag) => `proc${p.light ? " light" : ""}`;
 // ---------- 起点卡（线框 12） ----------
 
 export function toggleStart(cardId: string) {
-  const host = cardById(cardId)?.host.id ?? cardId;
+  const host = hostOf(cardId);
   mutate((b) => { const p = b.place[host]; if (!p) return; if (p.start) delete p.start; else p.start = true; });
 }
 /** 起点卡（按创建顺序）：只读 Place.start，拖动不重算 */
-export const starts = createMemo(() => startCards(state.board));
+export const starts = rooted(() => createMemo(() => startCards(state.board)));
 
 /** Walkthrough 时每张卡是第几步（算出来的，不存；走过的卡不再走） */
-export const walkSteps = createMemo(() => {
+export const walkSteps = rooted(() => createMemo(() => {
   const w = walk();
   if (!w) return null;
   const m = new Map<string, number>();
-  w.order.forEach((id, i) => { const h = cardById(id)?.host.id ?? id; if (!m.has(h)) m.set(h, i + 1); });
+  w.order.forEach((id, i) => { const h = hostOf(id); if (!m.has(h)) m.set(h, i + 1); });
   return m;
-});
+}));
 
 // ---------- Arrow 图例（线框 12） ----------
 
-export const [legendOpen, setLegendOpen] = createSignal(false);
 export async function renameLegend(k: LegendKey) {
   const v = await promptText("Rename in the Legend", legendName(state.board, k), LEGEND.find((x) => x[0] === k)![1], "Save");
   if (v === null) return;
@@ -159,25 +161,21 @@ export function legendOf(L: Link): LegendKey {
 
 // ---------- 调用树（线框 13 A）：侧栏，从起点卡（或选中的卡）沿 Call / RPC 箭头算，只读 ----------
 
-export const [treeOpen, setTreeOpen] = createSignal(false);
 /** 树根和它从哪来：选中一张在调用图里的卡 → 它；否则起点卡；都没有 → 每张调用图的根 */
-const treeRoots = createMemo((): { ids: string[]; from: "selection" | "start" | "roots" } => {
+const treeRoots = rooted(() => createMemo((): { ids: string[]; from: "selection" | "start" | "roots" } => {
   const f = flows();
   const s = sel.cards.length === 1 ? sel.cards[0] : undefined;
   if (s && f.byId.has(s)) return { ids: [s], from: "selection" };
   const st = starts().filter((id) => f.byId.has(id) || state.board.links.some((l) => l.from.card === id));
   if (st.length) return { ids: st, from: "start" };
   return { ids: f.graphs.flatMap((g) => g.roots), from: "roots" };
-}, undefined, { equals: (a, b) => a.from === b.from && a.ids.length === b.ids.length && a.ids.every((x, i) => x === b.ids[i]) });
+}, undefined, { equals: (a, b) => a.from === b.from && a.ids.length === b.ids.length && a.ids.every((x, i) => x === b.ids[i]) }));
 export const treeFrom = () => treeRoots().from;
 /** 只在侧栏开着时算（关着不读 flows） */
-export const treeRows = createMemo((): TreeRow[] => (treeOpen() ? callTree(flows(), treeRoots().ids) : []));
+export const treeRows = rooted(() => createMemo((): TreeRow[] => (treeOpen() ? callTree(flows(), treeRoots().ids) : [])));
 
 // ---------- 运行记录（线框 13 三） ----------
 
-/** 最近一次挂到这块白板上的运行：没对上箭头的调用（列在面板里让人挑着建） */
-export type RunState = { apply: RunApply; misses: number[]; callers: Record<number, { card: string; seg: string }>; hits: number };
-export const [runState, setRunState] = createSignal<RunState | null>(null);
 
 export function captureRun() { send({ type: "captureRun" }); }
 export function pickRun() { send({ type: "applyRun" }); }

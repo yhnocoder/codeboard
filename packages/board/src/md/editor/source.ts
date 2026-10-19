@@ -8,10 +8,8 @@ import { Mark } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
-import { SRC_MARK, parseInlineSrc, serializeMd } from "../schema";
+import { MARK_MD, SRC_MARK, parseInlineSrc, serializeMd } from "../schema";
 
-/** 展开成原文的格式 */
-const FORMATS = new Set(["bold", "italic", "strike", "code", "link", "underline", "kbd", "highlight", "subscript", "superscript"]);
 const CARET = "";
 // 标题开头的 "## "；紧跟着打的字会带上原文标记（标记是 inclusive 的），那些字是标题的正文，不算记号
 const HEAD = /^(#{1,6})[ \t]+/;
@@ -27,7 +25,8 @@ export const SourceMark = Mark.create({
 });
 
 const isSrc = (n: PMNode | null | undefined) => !!n?.isText && n.marks.some((m) => m.type.name === SRC_MARK);
-const formatted = (n: PMNode) => n.isText && !isSrc(n) && n.marks.some((m) => FORMATS.has(m.type.name));
+/** 带着有 Markdown 记号的格式（展开成原文的就是它们） */
+const formatted = (n: PMNode) => n.isText && !isSrc(n) && n.marks.some((m) => m.type.name in MARK_MD);
 
 /** 文字块里带原文标记的几段：[from, to)（块里的偏移）和字 */
 export function srcRuns(block: PMNode) {

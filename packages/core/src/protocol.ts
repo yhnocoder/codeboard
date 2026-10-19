@@ -39,7 +39,7 @@ export type ThemeId = (typeof THEMES)[number][0];
 /** 实验性的主题：主题选择里和 VS Code 设置说明里标 Experimental；性能测试和 CI 的性能门槛不管它们（City 太复杂，容易超时） */
 export const EXPERIMENTAL_THEMES: readonly ThemeId[] = ["city"];
 
-/** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用 */
+/** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用。宿主发来的总是和 DEFAULT_SETTINGS 合并好的完整设置 */
 export type Settings = {
   theme: ThemeId;
   hideOnNew: HideFlags; // 新卡默认隐藏什么（替代卡片上的 Hide 浮条）
@@ -48,20 +48,22 @@ export type Settings = {
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）
   zoomMap: number; // 低于这个比例：地图（只剩图标记和名字）
   dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
-  hideNumbers?: boolean; // 卡片上不显示调用图标记（A / B 或图标）；设置里叫 Hide Call Graph Marks
-  themeReflow?: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
-  debug?: boolean; // 打开后设置页多一节 Debug（调常量）
-  tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
-  pasteOther?: "linked" | "copy"; // 卡贴到另一块白板上：共享卡（默认）/ 独立副本；⌥ 粘贴是另一种
-  sharedUpdate?: "ask" | "all" | "this"; // 共享卡 Update 新版本：每次问（默认）/ 所有白板 / 只这块白板（拆成副本）
-  subPreview?: "skeleton" | "title"; // 子白板框里画什么：带名字的骨架（默认）/ 只有标题
-  welcomeBack?: "2d" | "always" | "off"; // 回到一块白板时提示还有几个问题：隔 2 天以上（默认）/ 每次 / 不提示
-  exportQuestions?: boolean; // 导出时带上问题（默认不带）
-  exportBoardOnly?: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
-  exportScope?: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
+  hideNumbers: boolean; // 卡片上不显示调用图标记（A / B 或图标）；设置里叫 Hide Call Graph Marks
+  themeReflow: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
+  debug: boolean; // 打开后设置页多一节 Debug（调常量）
+  tune: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
+  pasteOther: "linked" | "copy"; // 卡贴到另一块白板上：共享卡（默认）/ 独立副本；⌥ 粘贴是另一种
+  sharedUpdate: "ask" | "all" | "this"; // 共享卡 Update 新版本：每次问（默认）/ 所有白板 / 只这块白板（拆成副本）
+  subPreview: "skeleton" | "title"; // 子白板框里画什么：带名字的骨架（默认）/ 只有标题
+  welcomeBack: "2d" | "always" | "off"; // 回到一块白板时提示还有几个问题：隔 2 天以上（默认）/ 每次 / 不提示
+  exportQuestions: boolean; // 导出时带上问题（默认不带）
+  exportBoardOnly: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
+  exportScope: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
+  hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
+  welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board",
 };
 
 /** 贴纸图标包：Iconify JSON 一个文件一套，或一个装 .svg 的文件夹（文件夹名 = 包名） */
@@ -332,6 +334,7 @@ export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev
 /** 动态分发的一个实现：qual / 路径 / 行；lib = 在 library 里（包名）；base = 基类自己的实现（不是抽象的） */
 export type ImplPick = { label: string; detail: string; path: string; line: number; qual: string; lib?: string; base?: true };
 /** 跨语言按名字搜到的一处：lang = py / cpp / cuda / rust；def = 定义，否则是字符串注册（"name"） */
+/** lang：语言表（langs.ts）的 id */
 export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
 /** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
 export type GenSource = { text: string; lang: string; name: string };

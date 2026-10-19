@@ -12,6 +12,7 @@ import { MARKDOWN } from "./scenarios-markdown";
 import { CODEEDIT } from "./scenarios-codeedit";
 import { TYPING } from "./scenarios-typing";
 import { MDREVIEW } from "./scenarios-mdreview";
+import { TYPING_SEQUENCE } from "./scenarios-typing-sequence";
 import { SHARED } from "./scenarios-shared";
 import { SUBBOARDS } from "./scenarios-subboards";
 import { CHAINS } from "./scenarios-chains";
@@ -40,7 +41,7 @@ const GROUPS: Record<string, Record<string, () => Promise<void>>> = {
   "scenarios-board.ts": BOARD, "scenarios-web.ts": WEB, "scenarios-arrows.ts": ARROWS, "scenarios-labels.ts": LABELS, "scenarios-layers.ts": LAYERS,
   "scenarios-themes.ts": THEMES, "scenarios-markdown.ts": MARKDOWN,
   "scenarios-codeedit.ts": CODEEDIT,
-  "scenarios-typing.ts": TYPING, "scenarios-mdreview.ts": MDREVIEW, "scenarios-shared.ts": SHARED, "scenarios-subboards.ts": SUBBOARDS,
+  "scenarios-typing.ts": TYPING, "scenarios-typing-sequence.ts": TYPING_SEQUENCE, "scenarios-mdreview.ts": MDREVIEW, "scenarios-shared.ts": SHARED, "scenarios-subboards.ts": SUBBOARDS,
   "scenarios-chains.ts": CHAINS, "scenarios-calls.ts": CALLS, "scenarios-questions.ts": QUESTIONS, "scenarios-variants.ts": VARIANTS,
   "scenarios-fixq.ts": FIXQ, "scenarios-header.ts": HEADER,
   "scenarios-note-editing.ts": NOTE_EDITING, "scenarios-code-cards.ts": CODE_CARDS, "scenarios-boards.ts": BOARDS,

@@ -7,11 +7,12 @@ import { camTo, camTarget } from "../state/camera";
 import { flash } from "../state/ui";
 import { openPop } from "../state/pop";
 import { revealCard } from "./common";
+import { rooted, onBoardSwitch } from "../state/root";
 
 // ---------- 连进来的箭头 ----------
 
 // 卡片 id → 连进来的箭头（Compare：连到它和它两栏的都算）。只在线的两端变时重算，拖动卡片不碰它
-const inIndex = createMemo(() => {
+const inIndex = rooted(() => createMemo(() => {
   const m = new Map<string, Link[]>();
   const host = new Map<string, string>();
   for (const c of state.board.cards) if (c.kind === "compare") for (const k of c.cols) host.set(k, c.id);
@@ -24,7 +25,7 @@ const inIndex = createMemo(() => {
     if (h) add(h, l);
   }
   return m;
-});
+}));
 export const linksInto = (id: string): Link[] => inIndex().get(id) ?? [];
 
 /** 箭头出发处的说明：卡名 · L52 */
@@ -95,3 +96,4 @@ export function navForward() {
 }
 /** 换白板时清空 */
 export function resetNav() { back.length = 0; fwd.length = 0; bump(); }
+onBoardSwitch(resetNav);

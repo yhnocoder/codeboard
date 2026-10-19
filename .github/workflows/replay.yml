@@ -51,6 +51,8 @@ jobs:
         if: matrix.side == 'head' || env.BASE_SHA != ''
         # Pass or fail is decided in the report job
         continue-on-error: true
+        # Pasting a GitHub link calls the GitHub API: without a token the runners share 60 requests an hour per IP
+        env: { CODEBOARD_GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}" }
         run: |
           DIR=.; [ "${{ matrix.side }}" = base ] && DIR=base
           PART=${{ matrix.part }} DRIVER=replay.cjs E2E_OUT=$PWD/test-out/replay bash $DIR/extensions/vscode/test/run.sh

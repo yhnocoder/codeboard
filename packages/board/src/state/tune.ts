@@ -18,6 +18,6 @@ export const TUNE = {
 export type TuneKey = keyof typeof TUNE;
 
 export function tune(k: TuneKey): number {
-  const v = state.host?.settings?.tune?.[k];
+  const v = state.host.settings.tune[k];
   return typeof v === "number" && isFinite(v) ? v : TUNE[k].def;
 }

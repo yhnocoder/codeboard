@@ -206,7 +206,8 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
         return copilotAsk(COMPLETE_SYSTEM, completePrompt(before, after), { signal: o?.signal, maxChars: 600 });
       },
     },
-    githubToken: async (ask) => (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))?.accessToken,
+    // CODEBOARD_GITHUB_TOKEN（CI、无界面环境）优先于 VS Code 的 GitHub 登录
+    githubToken: async (ask) => process.env.CODEBOARD_GITHUB_TOKEN || (await vscode.authentication.getSession("github", ["repo"], ask ? { createIfNone: true } : { silent: true }))?.accessToken,
     log: (level, text) => { (ch ??= vscode.window.createOutputChannel("CodeBoard", { log: true }))[level](text); },
     about: {
       app: vscode.version,

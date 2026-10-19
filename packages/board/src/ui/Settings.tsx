@@ -1,26 +1,29 @@
 // Settings 页：白板里的整窗页面（⌘, / ⋯ → Settings… / 命令 CodeBoard: Open Settings）。
-// 改动乐观更新 state.host.settings，宿主写进 codeboard.*；快捷键清单和 ? 浮层共用 shortcuts.ts。
+// 改动乐观更新 state.host.settings，宿主写进 codeboard.*；快捷键清单和 ? 浮层都从 keymap.ts 的表生成。
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
-import { THEMES, EXPERIMENTAL_THEMES, DEFAULT_SETTINGS, type HideFlags, type Settings as S } from "@codeboard/core";
+import { THEMES, EXPERIMENTAL_THEMES, type HideFlags, type Settings as S } from "@codeboard/core";
 import { state } from "../state/store";
 import { settingsOpen } from "../state/ui";
 import { send } from "../host";
 import * as A from "../actions";
 import { Icon } from "./icons";
 import { promptText } from "./Menu";
-import { filterShortcuts, keyText } from "./shortcuts";
+import { helpRows, matches } from "../keymap";
+import { useOverlay } from "./overlay";
 import { TUNE, tune, type TuneKey } from "../state/tune";
 
-const cur = (): S => ({ ...DEFAULT_SETTINGS, ...state.host.settings });
+const cur = (): S => state.host.settings;
 
 /** 主题同步 + 设置页本身；App 里挂一次 */
 export function SettingsLayer() {
-  createEffect(() => A.applyLook(state.host.settings?.theme));
+  createEffect(() => A.applyLook(state.host.settings.theme));
   return <Show when={settingsOpen()} keyed>{(o) => <SettingsPage section={o.section} />}</Show>;
 }
 
 function SettingsPage(p: { section?: string }) {
   let el!: HTMLDivElement;
+  // 盖住白板：白板快捷键都不响应；Esc、⌘, 关
+  useOverlay({ close: () => A.closeSettings(), grab: true, modal: true, keys: (e) => matches(e, "settings") && (A.closeSettings(), true) });
   onMount(() => {
     const t = p.section && el.querySelector<HTMLElement>(`[data-sec="${p.section}"]`);
     if (t) t.scrollIntoView({ block: "start" });
@@ -28,8 +31,7 @@ function SettingsPage(p: { section?: string }) {
   });
   return (
     <div class="settings" ref={el} tabIndex={-1} role="dialog" aria-label="CodeBoard Settings"
-      onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}
-      onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); A.closeSettings(); } }}>
+      data-nodrag onWheel={(e) => e.stopPropagation()}>
       <div class="st-top">
         <h2>CodeBoard Settings</h2>
         <span class="st-sync">Synced to VS Code settings <code>codeboard.*</code></span>
@@ -50,17 +52,17 @@ function SettingsPage(p: { section?: string }) {
           <div class="st-sub">When a theme makes cards taller</div>
           <div class="st-chips">
             <For each={[["push", "Push Cards Below Down"], ["overlap", "Allow Overlap"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: (cur().themeReflow ?? "push") === v }} onClick={() => A.setSetting("themeReflow", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().themeReflow === v }} onClick={() => A.setSetting("themeReflow", v)}>{lb}</button>
             )}</For>
           </div>
         </Sec>
         <Sec id="numbers" title="Call graph marks" hint="The letter or icon on cards that shows which call graph they belong to.">
-          <label class="st-check"><input type="checkbox" checked={!!cur().hideNumbers} onChange={(e) => A.setSetting("hideNumbers", e.currentTarget.checked || undefined)} />Hide Call Graph Marks</label>
+          <label class="st-check"><input type="checkbox" checked={cur().hideNumbers} onChange={(e) => A.setSetting("hideNumbers", e.currentTarget.checked)} />Hide Call Graph Marks</label>
         </Sec>
         <Sec id="hide" title="New cards hide" hint="What new code cards start with hidden. Each card can still toggle them.">
           <div class="st-checks">
             <For each={[["comments", "Comments"], ["docstrings", "Docstrings"], ["blank", "Blank Lines"]] as [keyof HideFlags, string][]}>{([k, lb]) => (
-              <label class="st-check"><input type="checkbox" checked={!!cur().hideOnNew?.[k]} onChange={(e) => A.setSetting("hideOnNew", { ...cur().hideOnNew, [k]: e.currentTarget.checked })} />{lb}</label>
+              <label class="st-check"><input type="checkbox" checked={!!cur().hideOnNew[k]} onChange={(e) => A.setSetting("hideOnNew", { ...cur().hideOnNew, [k]: e.currentTarget.checked })} />{lb}</label>
             )}</For>
           </div>
         </Sec>
@@ -86,7 +88,7 @@ function SettingsPage(p: { section?: string }) {
         <Sec id="dblclick" title="Double-click on the board" hint="What double-clicking empty space creates.">
           <div class="st-chips">
             <For each={[["text", "Text"], ["note", "Note"], ["code", "Code"], ["none", "Nothing"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: (cur().dblClick ?? "text") === v }} onClick={() => A.setSetting("dblClick", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().dblClick === v }} onClick={() => A.setSetting("dblClick", v)}>{lb}</button>
             )}</For>
           </div>
         </Sec>
@@ -94,19 +96,19 @@ function SettingsPage(p: { section?: string }) {
           <div class="st-sub">Paste onto another board</div>
           <div class="st-chips">
             <For each={[["linked", "Linked"], ["copy", "Copy"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: (cur().pasteOther ?? "linked") === v }} onClick={() => A.setSetting("pasteOther", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().pasteOther === v }} onClick={() => A.setSetting("pasteOther", v)}>{lb}</button>
             )}</For>
           </div>
           <div class="st-sub">Update a linked card</div>
           <div class="st-chips">
             <For each={[["ask", "Ask Every Time"], ["all", "All Boards"], ["this", "This Board Only"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: (cur().sharedUpdate ?? "ask") === v }} onClick={() => A.setSetting("sharedUpdate", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().sharedUpdate === v }} onClick={() => A.setSetting("sharedUpdate", v)}>{lb}</button>
             )}</For>
           </div>
           <div class="st-sub">Sub-board preview</div>
           <div class="st-chips">
             <For each={[["skeleton", "Named Skeleton"], ["title", "Title Only"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: (cur().subPreview ?? "skeleton") === v }} onClick={() => A.setSetting("subPreview", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().subPreview === v }} onClick={() => A.setSetting("subPreview", v)}>{lb}</button>
             )}</For>
           </div>
         </Sec>
@@ -114,7 +116,7 @@ function SettingsPage(p: { section?: string }) {
           <div class="st-sub">Welcome-back hint</div>
           <div class="st-chips">
             <For each={[["2d", "After 2 Days"], ["always", "Always"], ["off", "Off"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: (cur().welcomeBack ?? "2d") === v }} onClick={() => A.setSetting("welcomeBack", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().welcomeBack === v }} onClick={() => A.setSetting("welcomeBack", v)}>{lb}</button>
             )}</For>
           </div>
         </Sec>
@@ -122,19 +124,19 @@ function SettingsPage(p: { section?: string }) {
           <div class="st-sub">Export by default</div>
           <div class="st-chips">
             <For each={[["board", "Whole Board"], ["sections", "Selected Sections"], ["walk", "Walkthrough"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: (cur().exportScope ?? "board") === v }} onClick={() => A.setSetting("exportScope", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().exportScope === v }} onClick={() => A.setSetting("exportScope", v)}>{lb}</button>
             )}</For>
           </div>
           <div class="st-sub">Include open questions</div>
           <div class="st-chips">
             <For each={[[true, "On"], [false, "Off"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: !!cur().exportQuestions === v }} onClick={() => A.setSetting("exportQuestions", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().exportQuestions === v }} onClick={() => A.setSetting("exportQuestions", v)}>{lb}</button>
             )}</For>
           </div>
           <div class="st-sub">Include Board-only notes</div>
           <div class="st-chips">
             <For each={[[true, "On"], [false, "Off"]] as const}>{([v, lb]) => (
-              <button class="st-chip pick" classList={{ on: !!cur().exportBoardOnly === v }} onClick={() => A.setSetting("exportBoardOnly", v)}>{lb}</button>
+              <button class="st-chip pick" classList={{ on: cur().exportBoardOnly === v }} onClick={() => A.setSetting("exportBoardOnly", v)}>{lb}</button>
             )}</For>
           </div>
         </Sec>
@@ -202,7 +204,7 @@ function Pct(p: { label: string; k: "zoomOverview" | "zoomMap"; min: number; max
 function Shortcuts() {
   const [q, setQ] = createSignal("");
   const mac = () => state.host.isMac;
-  const groups = () => filterShortcuts(q(), mac());
+  const groups = () => helpRows(mac(), q());
   return (
     <section class="st-sec wide" data-sec="shortcuts">
       <div class="st-h row"><h3>Keyboard Shortcuts</h3><span class="st-ro">Read-only</span><span class="grow" />
@@ -212,7 +214,7 @@ function Shortcuts() {
         <For each={groups()} fallback={<div class="empty">No shortcut matches “{q()}”.</div>}>{([g, rows]) => (
           <div class="st-kg">
             <h4>{g}</h4>
-            <For each={rows}>{([k, a]) => <div class="st-kr"><span>{a}</span><kbd>{keyText(k, mac())}</kbd></div>}</For>
+            <For each={rows}>{([k, a]) => <div class="st-kr"><span>{a}</span><kbd>{k}</kbd></div>}</For>
           </div>
         )}</For>
       </div>
@@ -223,7 +225,7 @@ function Shortcuts() {
 /** Debug：现调时间、距离这些常量（codeboard.debug.enabled 打开时才有）。改了立刻生效，Reset 回默认 */
 function DebugTune() {
   const set = (k: TuneKey, v: number | undefined) => {
-    const t = { ...(cur().tune ?? {}) };
+    const t = { ...cur().tune };
     t[k] = v ?? TUNE[k].def; // Solid 的 store 合并对象，删 key 删不掉：Reset 就写回默认值
     A.setSetting("tune", t);
   };

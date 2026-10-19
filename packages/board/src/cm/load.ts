@@ -1,6 +1,6 @@
 // 代码编辑器（CodeMirror，cm/editor.ts）单独打包，第一次编辑代码前才要；白板打开后空闲时先悄悄加载好。
 // 这里还有编辑器要的宿主能力：语言服务（补全、悬停、签名）、灰字补全、着色。
-import type { Segment } from "@codeboard/core";
+import type { Segment, SegView } from "@codeboard/core";
 import { unwrap } from "solid-js/store";
 import { state } from "../state/store";
 import { ask, send } from "../host";
@@ -48,3 +48,14 @@ export const closeLsp = (id: string) => send({ type: "codeDocClose", id });
 
 /** 灰字补全（宿主能做 AI 续写时） */
 export const ghostHost = (): GhostHost | undefined => (state.host.complete ? { complete: (before, after) => ask("complete", { before, after }).catch(() => null) } : undefined);
+
+/** 着色问宿主（和代码卡同一套 views）：seg 换成这段文字，给整段的 HTML（每行之间一个 \n） */
+export async function hostHighlight(seg: Segment, text: string): Promise<string | null> {
+  const ls = text.split("\n");
+  const s: Segment = { ...structuredClone(unwrap(seg)), text: ls, end: seg.start + ls.length - 1 };
+  const v = (await ask("views", { segs: [s] }).catch(() => null)) as Record<string, SegView> | null;
+  return v?.[s.id]?.html.join("\n") ?? null;
+}
+/** Note 里的代码块当一段手写代码问着色 */
+export const noteHighlight = (text: string, lang: string) =>
+  hostHighlight({ id: "note-code", src: { kind: "free" }, path: "", lang, start: 1, end: 1, text: [], version: { kind: "none" } }, text);
