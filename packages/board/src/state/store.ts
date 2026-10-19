@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  applyPatch, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, DEFAULT_SETTINGS, V3_CODE_CHROME,
+  applyPatch, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, DEFAULT_SETTINGS, CODE_HEAD,
   type Board, type BoardMeta, type BoardPatch, type Camera, type Card, type HostInfo, type ListPatch, type Place, type SegView, type SharedInfo, type SharedUpdate, type Stale,
 } from "@codeboard/core";
 import { ask, send } from "../host";
@@ -94,7 +94,7 @@ export function rectOf(c: { id: string } | string) {
   const p = placeOf(id);
   const s = sizes[cardById(id)?.host.id ?? id];
   // 还没量到：代码卡的 h 只是内容区，按 Warm Ink 的卡头加回去
-  return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? V3_CODE_CHROME : 0) : 120 };
+  return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? CODE_HEAD : 0) : 120 };
 }
 
 // ---------- 撤销 / 重做 ----------
@@ -443,7 +443,7 @@ const LIVE_DELAY = 800;
 function changedLive() {
   if (!state.loaded) return;
   clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(flushSave, LIVE_DELAY);
+  saveTimer = window.setTimeout(() => flushSave(), LIVE_DELAY);
 }
 /** 上次发出去的快照和镜头；null = 不知道宿主那边是什么样子（上次没收下），下次整块发 */
 let sent: { snap: Snap; cam: string } | null = null;
@@ -451,7 +451,11 @@ let sent: { snap: Snap; cam: string } | null = null;
 let undone = false;
 const NOT_UNDONE = "Changed on another board; not undone.";
 const camKey = (c: Camera) => `${c.x},${c.y},${c.z}`;
-export function flushSave() {
+/** 宿主没收下之后多久整块再发一次（只发一次：再不收下就等下一次修改） */
+const RESEND_DELAY = 2000;
+let resend: number | undefined;
+export function flushSave(retry = false) {
+  clearTimeout(resend);
   clearTimeout(saveTimer);
   if (!state.loaded) return;
   const s = snap();
@@ -465,7 +469,9 @@ export function flushSave() {
   // 宿主没收下（白板被删了之类）：不知道它那边是什么样子了，下一次整块发
   ask("patch", undo ? { patch: p, undo: true } : { patch: p }).then((r) => { if (r?.skipped) toast(NOT_UNDONE); }, (e: Error) => {
     sent = null;
+    if (retry) return;
     toast(`Couldn't save the board: ${e.message}`);
+    resend = window.setTimeout(() => flushSave(true), RESEND_DELAY);
   });
 }
 /** 宿主刚发来的白板就是存着的那一份 */
@@ -474,19 +480,20 @@ export function markSaved() { const s = snap(); cur = s; sent = { snap: s, cam: 
 /** 上次发出去的 a → 现在的 b：变了的项；什么都没变返回 null。a 为 null 时整块发 */
 function diff(a: { snap: Snap; cam: string } | null, b: Snap, cam: string): BoardPatch | null {
   const p: BoardPatch = {};
+  const put = p as Record<string, unknown>;
   let any = false;
+  // place 按 [id, Place] 存在快照里，发出去是 id → Place
+  const places = (xs: unknown[]) => Object.fromEntries(xs as [string, Place][]);
   if (!a) {
     p.full = true;
-    for (const k of KEYS) if (k !== "place") (p as Record<string, unknown>)[k] = { set: b[k].map((x) => JSON.parse(x)) };
-    p.place = { set: Object.fromEntries(b.place.map((x) => JSON.parse(x))) };
+    for (const k of KEYS) { const set = b[k].map((x) => JSON.parse(x)); put[k] = k === "place" ? { set: places(set) } : { set }; }
     any = true;
   } else {
     for (const k of KEYS) {
       const d = diffList(a.snap.ids[k], a.snap[k], b.ids[k], b[k], k !== "place");
       if (!d) continue;
       any = true;
-      if (k === "place") p.place = { set: d.set && Object.fromEntries(d.set.map((x) => x as [string, Place])), del: d.del };
-      else (p as Record<string, unknown>)[k] = d;
+      put[k] = k === "place" ? { set: d.set && places(d.set), del: d.del } : d;
     }
   }
   if (!a || a.snap.head !== b.head) {

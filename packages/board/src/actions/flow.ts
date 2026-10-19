@@ -3,7 +3,7 @@ import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, allCodeCards,
   placeChild, walkOrder, descendants, startCards, SIB_GAP,
-  estSize, defaultWidth, removeLostCalls,
+  estSize, defaultWidth, removeLostCalls, callName, sameCallSite,
   type Card, type CodeCard, type Link, type Place,
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
@@ -184,7 +184,7 @@ export function attachCall(cardId: string, segId: string, call: CallSpan, target
   const t = cardById(target);
   if (!t || !isCode(t.card)) return toast("Only code cards can be the target of a call.");
   if (t.host.id === cardById(cardId)?.host.id) return toast("A card cannot call itself.");
-  const dup = state.board.links.some((l) => l.call && l.from.card === cardId && l.from.seg === segId && l.from.line === call.line && l.call.name === call.name && l.to.card === target);
+  const dup = state.board.links.some((l) => sameCallSite(l, { card: cardId, seg: segId, line: call.line, name: call.name }) && l.to.card === target);
   if (dup) { ping(t.host.id); return toast(`Already linked to ${cardTitle(t.card)}`); }
   const lid = uid("l");
   mutate((b) => { b.links.push({ id: lid, from: { card: cardId, seg: segId, line: call.line }, to: { card: target }, call: callMark(call), ...(sides ? { sides } : {}) }); });
@@ -260,7 +260,7 @@ export function libCallCss() {
 export function calleeMatches(c: Card, call: CallSpan) {
   if (!isCode(c)) return false;
   // ModelRunner(...) 是构造：连到 ModelRunner.__init__ 也算调用
-  return c.segments.some((s) => { if (!s.symbol) return false; const q = s.symbol.qual.split("."); return q[q.length - 1] === call.name || (q[q.length - 1] === "__init__" && q[q.length - 2] === call.name); });
+  return c.segments.some((s) => !!s.symbol && (s.symbol.qual.split(".").pop() === call.name || callName(s.symbol.qual) === call.name));
 }
 
 export const allCodeCandidates = (call: CallSpan) => allCodeCards(state.board).filter((k) => calleeMatches(k, call)).map((k) => k.id);

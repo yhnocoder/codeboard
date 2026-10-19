@@ -35,7 +35,7 @@ function full() {
   );
   b.stickers.push(
     { id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: "c", seg: "s1", line: 2 } },
-    { id: "k2", icon: { pack: "emoji", name: "🔥" }, at: { kind: "card", card: "c" } },
+    { id: "k2", icon: { pack: "emoji", name: "🔥" }, at: { kind: "canvas", x: 0, y: 0, on: { card: "c" } } },
     { id: "k3", icon: { pack: "p", name: "x" }, color: "#fff", at: { kind: "canvas", x: 1, y: 2, size: 30, on: { link: "L1", t: 0.5 } } },
   );
   return b;

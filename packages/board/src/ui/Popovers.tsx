@@ -3,9 +3,7 @@ import { keepKey } from "./editkeys";
 import { For, Show, Switch, Match, createSignal, createMemo, createEffect, onCleanup } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
-  alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang,
-  RPC_MECHS, threeWay, upstreamSegs, activeOf, viewKey, UPSTREAM,
-  type GraphMark, type Sidenote, type Segment, type PeekDef, type SearchItem, type Var, type Anchor,
+  alignRows, wordDiff, cardTitle, varKey, varText, versionLabel, baseName, isCode, segOf, findCard, langLabel, LANGS, guessLang, RPC_MECHS, threeWay, upstreamSegs, activeOf, UPSTREAM, viewKeyOf, type GraphMark, type Sidenote, type Segment, type PeekDef, type SearchItem, type Var, type Anchor,
 } from "@codeboard/core";
 import { state, cardById, toast, mutate, select, flows, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
@@ -526,7 +524,7 @@ function ThreePop(p: { inst: PopInst; pop: Extract<Pop, { kind: "three" }> }) {
       return {
         id: s.id, conflicts: tw.conflicts,
         cols: [
-          { label: `Base ${versionLabel(b.version, true)}`, start: b.start, html: html(b, cur === UPSTREAM ? b.id : viewKey(b.id, UPSTREAM)), kinds: tw.base },
+          { label: `Base ${versionLabel(b.version, true)}`, start: b.start, html: html(b, viewKeyOf(k, b.id, UPSTREAM)), kinds: tw.base },
           { label: `Mine ${k.variants?.find((v) => v.id === cur)?.name ?? ""}`, start: s.start, html: html(s, s.id), kinds: tw.mine },
           { label: `Upstream latest ${l.label}`, start: t.start, html: l.views[t.id]?.html ?? t.text.map(escH), kinds: tw.latest },
         ],

@@ -1005,9 +1005,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .tether circle { fill: var(--accent); }
 .stk.canvas .glyph { filter: drop-shadow(0 1px 2px rgba(0,0,0,.18)); }
 .stk .sgrip { position: absolute; right: -5px; bottom: -5px; width: 10px; height: 10px; border-radius: 50%; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); cursor: nwse-resize !important; }
-.cstks { position: absolute; right: 34px; top: -11px; display: flex; gap: 3px; z-index: 5; }
-.cstks .stk { position: static; }
-.cstks .glyph { filter: drop-shadow(0 1px 2px rgba(0,0,0,.2)); }
 .stkpick { position: fixed; transform: translate(-50%, -100%); z-index: 45; width: 336px; padding: 8px; display: flex; flex-direction: column; gap: 8px; }
 .stkpick .stabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
 .stkpick .stabs button { font-size: 12px; padding: 3px 8px; border-radius: 6px; color: var(--ink-2); white-space: nowrap; }

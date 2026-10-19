@@ -1,8 +1,8 @@
 // 白板 → 宿主的增量保存（第 6 版起）：每类东西只发变了的项和删掉的 id，白板本身的字段整个发。宿主按它改自己那份白板再写盘。
 // 共享卡：白板文件里是引用，内容在卡库；inflate / deflate 在两种样子之间换，putShared 把卡库里的新内容放进一块白板。
 // 纯函数，直接改传进来的对象。
-import { sameVersion, versionLabel, type Board, type BoardFile, type Camera, type Card, type Link, type Place, type Section, type SharedCard, type Sidenote, type Sticker } from "./model";
-import { lineMapOf, moveLineRefs } from "./edit";
+import { clone, sameVersion, versionLabel, withCols, type Board, type BoardFile, type Camera, type Card, type Link, type Place, type Section, type SharedCard, type Sidenote, type Sticker } from "./model";
+import { lineMapOf, moveLineRefs, type CardCopy } from "./edit";
 
 /** 一类有 id 的东西的改动。order = 改完之后的完整 id 顺序（只在顺序变了时发：叠放顺序、Bring to Front） */
 export type ListPatch<T> = { set?: T[]; del?: string[]; order?: string[] };
@@ -69,6 +69,11 @@ export function sharedOf(b: Pick<Board, "cards" | "sidenotes">, id: string): Sha
   return card && { card, sidenotes: b.sidenotes.filter((n) => travels(n, id)) };
 }
 
+/** 白板上的这些卡（Compare 带上两栏）各自的内容、摆放和跟着它走的 Sidenote（不拷贝）：拷出去、粘贴到别的白板用 */
+export function cardCopies(b: Pick<Board, "cards" | "sidenotes" | "place">, ids: Iterable<string>): CardCopy[] {
+  return withCols(b, ids).map((id) => ({ ...sharedOf(b, id)!, place: b.place[id] }));
+}
+
 /**
  * 共享卡换成新内容之前：这块白板自己指着它的行号（Link、Sticker、不跟着卡走的 Sidenote）按段的新内容挪过去。
  * 跟着卡来的 Sidenote 改它的那块白板已经挪好了。段换了版本时，挂在变了的行上的 Sidenote 标 review。返回挪没挪东西
@@ -131,7 +136,6 @@ export function applySharedUpdate(b: Board, sc: SharedUpdate): void {
     else if (j >= 0 && travels(b.sidenotes[j], id)) b.sidenotes.splice(j, 1);
   }
 }
-const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
 /**
  * 白板文件 → 白板：共享卡的引用换成卡库里的内容（get 找不到的换成一张说明的 Note，免得连着它的 Link 和摆放悬空）。
@@ -158,7 +162,7 @@ export function deflate(b: Board, refs: ReadonlySet<string>): { file: BoardFile;
   const shared: SharedCard[] = [];
   const cards = b.cards.map((c) => {
     if (!refs.has(c.id)) return c;
-    shared.push({ card: c, sidenotes: b.sidenotes.filter((n) => travels(n, c.id)) });
+    shared.push(sharedOf(b, c.id)!);
     return { id: c.id, kind: "shared" as const };
   });
   const gone = new Set(shared.flatMap((s) => s.sidenotes.map((n) => n.id)));
@@ -178,27 +182,37 @@ export function mergeFile(base: BoardFile, disk: BoardFile, mine: BoardFile): Bo
     if (OWN.has(k)) continue;
     if (JSON.stringify(bh[k]) === JSON.stringify(mh[k])) { if (k in dh) oh[k] = dh[k]; else delete oh[k]; }
   }
-  for (const k of LISTS) (out as Record<string, unknown>)[k] = mergeItems(base[k] as { id: string }[], disk[k] as { id: string }[], mine[k] as { id: string }[]);
+  for (const k of LISTS) (out as Record<string, unknown>)[k] = mergeById(base[k] as { id: string }[], disk[k] as { id: string }[], mine[k] as { id: string }[]).items;
   const ids = (p: Record<string, Place>) => Object.keys(p).map((id) => ({ id, p: p[id] }));
-  out.place = Object.fromEntries(mergeItems(ids(base.place), ids(disk.place), ids(mine.place)).map((x) => [x.id, x.p]));
+  out.place = Object.fromEntries(mergeById(ids(base.place), ids(disk.place), ids(mine.place)).items.map((x) => [x.id, x.p]));
   return out;
 }
 
-function mergeItems<T extends { id: string }>(base: T[], disk: T[], mine: T[]): T[] {
-  const b = new Map(base.map((x) => [x.id, x])), d = new Map(disk.map((x) => [x.id, x]));
-  const out: T[] = [];
+/**
+ * 按 id 的三方合并（白板文件的每类东西、共享卡的卡和 Sidenote 都用它）：mine 里和 base 比变了的 / 新加的用 mine 的；没变的用 disk 的
+ * （disk 删了就删）；base 有、mine 没有的是 mine 删的，删掉；只在 disk 上有的（另一边加的）留下，接在后面。
+ * 没有 base（这边第一次写，比如刚贴过来的共享卡）：mine 的项都算它改的，但从不删任何项。
+ * changed = mine 这边改了、加了、删了（磁盘上原来有）的项
+ */
+export function mergeById<T extends { id: string }>(base: readonly T[] | undefined, disk: readonly T[], mine: readonly T[]): { items: T[]; changed: string[] } {
+  const b = new Map((base ?? []).map((x) => [x.id, x])), d = new Map(disk.map((x) => [x.id, x]));
+  const items: T[] = [], changed: string[] = [];
   for (const x of mine) {
-    const was = b.get(x.id);
-    if (!same(was, x)) out.push(x); // 这个窗口改的 / 加的
-    else if (d.has(x.id)) out.push(d.get(x.id)!); // 没改：用磁盘上的
+    if (!same(b.get(x.id), x)) { items.push(x); changed.push(x.id); } // 这边改的 / 加的
+    else if (d.has(x.id)) items.push(d.get(x.id)!); // 没改：用磁盘上的
     // 没改、磁盘上删了：删
   }
   const kept = new Set(mine.map((x) => x.id));
-  for (const x of disk) if (!kept.has(x.id) && !b.has(x.id)) out.push(x); // 另一个窗口加的
-  return out;
+  for (const x of disk) {
+    if (kept.has(x.id)) continue;
+    if (base && b.has(x.id)) changed.push(x.id); // 这边删的
+    else items.push(x); // 另一边加的
+  }
+  return { items, changed };
 }
 
-const same = (a: unknown, b: unknown) => a !== undefined && JSON.stringify(a) === JSON.stringify(b);
+/** 两份东西一样（a 没有算不一样） */
+export const same = (a: unknown, b: unknown) => a !== undefined && JSON.stringify(a) === JSON.stringify(b);
 
 /** a → b 的改动（宿主把合并进来的别的窗口的改动发给白板用）；一样返回 null */
 export function diffBoards(a: Board, b: Board): BoardPatch | null {

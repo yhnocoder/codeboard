@@ -94,6 +94,7 @@ export class Panels implements BoardHost {
     }));
     // 白板的改动写不下去：存储过一会儿自己重试，开着它的面板说一声
     ctx.subscriptions.push(store.onDidFailSave((e) => this.panels.get(e.board)?.toast(`Couldn't save the board: ${e.error}. Retrying…`)));
+    ctx.subscriptions.push(store.onDidRecoverSave((id) => this.panels.get(id)?.toast("The board is saved again.")));
     // 共享卡的「⧉ N boards」「← N」：任何白板存盘、改名后重算（只发变了的面板）
     ctx.subscriptions.push(store.onDidSave(() => this.refreshShared()), store.onDidChange(() => this.refreshShared()));
     // 子白板的骨架：子白板存盘后重算（只算存了的那块），白板列表变了（改名、删白板）全部重算；都防抖

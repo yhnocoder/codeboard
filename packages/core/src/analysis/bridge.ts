@@ -1,10 +1,9 @@
 // 跨语言的边界：从调用处认出它跨了什么（pybind、torch.ops、TORCH_LIBRARY、PyO3、kernel[grid]、launch macro、JIT 编译、TileLang 工厂），
 // 以及跨过去之后「实际跑哪个函数、参数取几」。纯文本 / 语法判断，不读文件；找文件、找符号由宿主做。
 // 宏和模板只展开到「实际跑哪个 kernel、参数取几」，不做完整的预处理。
-import type { BoundVal, CallAlt } from "../model";
+import { escapeRegExp, type BoundVal, type CallAlt } from "../model";
 import type { Arg, CallSite, Sym } from "./index";
 
-const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const lineAt = (text: string, i: number) => text.slice(0, i).split("\n").length;
 const short = (s: string, n = 24) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
@@ -64,7 +63,7 @@ function targetOf(arg: string): string | undefined {
 export function pybindDefs(text: string, name: string): Registration[] {
   if (!/pybind11|PYBIND11_MODULE|nanobind|NB_MODULE/.test(text)) return [];
   const out: Registration[] = [];
-  const re = new RegExp(`\\.def(?:_static)?\\s*\\(\\s*"${esc(name)}"\\s*,`, "g");
+  const re = new RegExp(`\\.def(?:_static)?\\s*\\(\\s*"${escapeRegExp(name)}"\\s*,`, "g");
   for (let m; (m = re.exec(text)); ) {
     const open = text.indexOf("(", m.index);
     const close = matchClose(text, open);
@@ -84,7 +83,7 @@ export function pybindDefs(text: string, name: string): Registration[] {
 export function torchLibDefs(text: string, name: string): Registration[] {
   if (!/TORCH_LIBRARY/.test(text)) return [];
   const out: Registration[] = [];
-  const re = new RegExp(`\\.(def|impl)\\s*\\(\\s*"${esc(name)}(?:\\.\\w+)?\\s*["(]`, "g");
+  const re = new RegExp(`\\.(def|impl)\\s*\\(\\s*"${escapeRegExp(name)}(?:\\.\\w+)?\\s*["(]`, "g");
   for (let m; (m = re.exec(text)); ) {
     const open = text.indexOf("(", m.index);
     const close = matchClose(text, open);
@@ -124,7 +123,7 @@ export function pyo3Defs(text: string, syms: Sym[], name: string): Sym[] {
     // 方法：所在的 impl 前面有 #[pymethods]
     if (s.parent) {
       const ty = s.parent.split("::").pop()!;
-      if (new RegExp(`#\\[pymethods\\][\\s\\S]{0,200}?impl\\s+(?:<[^>]*>\\s*)?${esc(ty)}\\b`).test(text)) out.push(s);
+      if (new RegExp(`#\\[pymethods\\][\\s\\S]{0,200}?impl\\s+(?:<[^>]*>\\s*)?${escapeRegExp(ty)}\\b`).test(text)) out.push(s);
     }
   }
   return out;
@@ -233,7 +232,7 @@ export function launchMacro(call: Pick<CallSite, "name" | "args">, defs: Map<str
   if (sw) {
     const on = /switch\s*\(\s*([^)]*?)\s*\)/.exec(sw.body)?.[1];
     const cp = sw.params[sw.params.length - 1];
-    const cases = [...sw.body.matchAll(new RegExp(`case\\s+([^:]+?)\\s*:\\s*${esc(cp ?? "case_macro")}\\s*\\(([^)]*)\\)`, "g"))].map((m) => splitArgs(m[2]).pop() ?? m[1]);
+    const cases = [...sw.body.matchAll(new RegExp(`case\\s+([^:]+?)\\s*:\\s*${escapeRegExp(cp ?? "case_macro")}\\s*\\(([^)]*)\\)`, "g"))].map((m) => splitArgs(m[2]).pop() ?? m[1]);
     if (cases.length) { out.cases = cases; out.on = on; }
   }
   return out;
@@ -272,8 +271,8 @@ export function jitKernels(callText: string, fnText: string): JitKernel[] {
   if (!inc || !ref) return [];
   const fmtArgs = /\)"\s*,\s*([A-Za-z_]\w*)\s*,\s*([A-Za-z_]\w*)\s*\)/.exec(callText);
   const hv = fmtArgs?.[1] ?? "header_name", fv = fmtArgs?.[2] ?? "func_name";
-  const headers = [...fnText.matchAll(new RegExp(`\\b${esc(hv)}\\s*=\\s*"([^"]+)"`, "g"))].map((m) => ({ at: m.index!, v: m[1] }));
-  const funcs = [...fnText.matchAll(new RegExp(`\\b${esc(fv)}\\s*=\\s*std::format\\(\\s*"([A-Za-z_]\\w*)<([^"]*)>"\\s*,`, "g"))].map((m) => {
+  const headers = [...fnText.matchAll(new RegExp(`\\b${escapeRegExp(hv)}\\s*=\\s*"([^"]+)"`, "g"))].map((m) => ({ at: m.index!, v: m[1] }));
+  const funcs = [...fnText.matchAll(new RegExp(`\\b${escapeRegExp(fv)}\\s*=\\s*std::format\\(\\s*"([A-Za-z_]\\w*)<([^"]*)>"\\s*,`, "g"))].map((m) => {
     const open = fnText.indexOf("(", m.index!);
     const close = matchClose(fnText, open);
     const args = splitArgs(fnText.slice(open + 1, close < 0 ? undefined : close)).slice(1);

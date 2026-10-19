@@ -2,7 +2,7 @@
 // 数据都由宿主走 GitHub REST API 拿（私有仓库用 VS Code 的 GitHub 登录，被拒时才请用户登录）。
 import { keepKey } from "./editkeys";
 import { For, Show, createMemo, createSignal, onMount, batch } from "solid-js";
-import { parseRepoInput, type Commit, type GhFile, type GhQuery, type GhReplyOf, type GhRepo, type GhTree, type RepoInput } from "@codeboard/core";
+import { baseName, parseRepoInput, type Commit, type GhFile, type GhQuery, type GhReplyOf, type GhRepo, type GhTree, type RepoInput } from "@codeboard/core";
 import { toast } from "../state/store";
 import { ask } from "../host";
 import { Icon } from "./icons";
@@ -12,7 +12,6 @@ import "./github.css";
 type Mode = "branch" | "tag" | "commit";
 type Node = { dirs: string[]; files: string[] };
 const gh = <Q extends GhQuery>(q: Q) => ask("gh", { q }) as Promise<GhReplyOf<Q["op"]>>;
-const base = (p: string) => p.split("/").pop() ?? p;
 
 export function GitHubPicker() {
   const init = A.ghPicker() || {};
@@ -88,7 +87,7 @@ export function GitHubPicker() {
   async function openFile(path: string, lines?: [number, number]) {
     const R = repo(), c = commit();
     if (!R || !c) return;
-    const f = await run(`Opening ${base(path)}…`, () => gh({ op: "file", owner: R.owner, name: R.name, commit: c.commit, ref: refLabel(), path }));
+    const f = await run(`Opening ${baseName(path)}…`, () => gh({ op: "file", owner: R.owner, name: R.name, commit: c.commit, ref: refLabel(), path }));
     if (!f) return;
     batch(() => { setFile(f); setSel(lines ? [Math.min(...lines), Math.min(f.text.length, Math.max(...lines))] : null); });
     requestAnimationFrame(() => {
@@ -107,7 +106,7 @@ export function GitHubPicker() {
     if (!card) return;
     close();
     A.addCards([card], { besideSel: false });
-    toast(`Added ${base(f.path)} ${s}–${e} · pinned to ${c.commit.slice(0, 7)}`);
+    toast(`Added ${baseName(f.path)} ${s}–${e} · pinned to ${c.commit.slice(0, 7)}`);
   }
 
   // ---------- 文件树 ----------
@@ -136,13 +135,13 @@ export function GitHubPicker() {
       <For each={nodes().get(p.dir)?.dirs ?? []}>{(d) => (
         <>
           <button class="gt dir" style={{ "padding-left": `${8 + p.depth * 14}px` }} onClick={() => toggle(d)}>
-            <span class="tw">{open().has(d) ? "▾" : "▸"}</span>{base(d)}
+            <span class="tw">{open().has(d) ? "▾" : "▸"}</span>{baseName(d)}
           </button>
           <Show when={open().has(d)}><Dir dir={d} depth={p.depth + 1} /></Show>
         </>
       )}</For>
       <For each={nodes().get(p.dir)?.files ?? []}>{(f) => (
-        <button class="gt" classList={{ on: file()?.path === f }} style={{ "padding-left": `${22 + p.depth * 14}px` }} onClick={() => openFile(f)}>{base(f)}</button>
+        <button class="gt" classList={{ on: file()?.path === f }} style={{ "padding-left": `${22 + p.depth * 14}px` }} onClick={() => openFile(f)}>{baseName(f)}</button>
       )}</For>
     </>
   );
@@ -250,7 +249,7 @@ export function GitHubPicker() {
             </div>
           </div>
           <div class="ghp-foot">
-            <span class="dim">{file() ? (sel() ? `Lines ${sel()![0]}–${sel()![1]} · ${base(file()!.path)}` : "Drag over lines to select · Shift-click to extend") : "Files are cached locally and listed under GitHub Files"}</span>
+            <span class="dim">{file() ? (sel() ? `Lines ${sel()![0]}–${sel()![1]} · ${baseName(file()!.path)}` : "Drag over lines to select · Shift-click to extend") : "Files are cached locally and listed under GitHub Files"}</span>
             <span class="grow" />
             <button class="btn" onClick={close}>Cancel</button>
             <button class="btn pri" disabled={!file() || !!busy()} data-tip={sel() ? undefined : "No lines selected: adds the top of the file"} onClick={() => add()}>Add to Board</button>

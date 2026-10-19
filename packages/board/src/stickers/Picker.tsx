@@ -125,20 +125,3 @@ export function LinkStickers(p: { link: string }) {
     </For>
   );
 }
-
-/** 贴在卡片角上的贴纸：右上角一排，跟卡片一起走 */
-export function CardStickers(p: { card: string }) {
-  const list = createMemo(() => state.board.stickers.filter((s) => s.at.kind === "card" && s.at.card === p.card));
-  return (
-    <Show when={list().length}>
-      <div class="cstks">
-        <For each={list()}>{(s) => (
-          <span class="stk" classList={{ sel: selSticker() === s.id }} data-sticker={s.id} data-tip={stickerLabel(s.icon)}
-            onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, s.id); }} onClick={(e) => stickerClick(s.id, e.currentTarget)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(s.id, e.clientX, e.clientY); }}>
-            <Glyph icon={shownIcon(s).icon} color={shownIcon(s).color} size={22} />
-          </span>
-        )}</For>
-      </div>
-    </Show>
-  );
-}

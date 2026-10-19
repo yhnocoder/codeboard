@@ -17,7 +17,7 @@ describe("diagnostics", () => {
 
   it("formats the report and hides the home folder", () => {
     const t = formatDiagnostics({
-      ext: "0.1.5", vscode: "1.105.0", os: "darwin 24.1.0 arm64", python: true, pylance: false,
+      ext: "0.1.5", app: "VS Code 1.105.0", os: "darwin 24.1.0 arm64", env: ["Python ext: yes · Pylance: no"],
       folders: [{ path: "/Users/bo/code/nano-vllm", git: true, head: "bb823b3c0ffee", dirty: false }, { path: "/tmp/x", git: false }],
       board: { name: "flow", cards: 14, arrows: 11, sections: 2 },
       log: ["2026-10-16T03:35:00.000Z [warn] expand __init__ → No definition path=/Users/bo/code/a.py"],

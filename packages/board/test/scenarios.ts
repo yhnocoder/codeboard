@@ -331,18 +331,19 @@ const LOCAL: Record<string, () => Promise<void>> = {
     await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("ArrowDown"); await h.page.waitForTimeout(1200);
     const failed = patches.at(-1);
     const toast = await h.page.locator(".toast").textContent().catch(() => "");
-    await h.page.keyboard.press("ArrowDown"); await h.page.waitForTimeout(1200);
-    const full = patches.at(-1);
+    // no further edit: the board sends itself whole once, a moment later
+    await h.page.waitForTimeout(2400);
+    const full = patches.at(-1), resends = patches.length - patches.indexOf(failed) - 1;
     const { applyPatch } = await import("@codeboard/core");
     const moved = Object.keys(failed?.place?.set ?? {})[0];
     const y = (x: any) => x.place[moved].y;
     const y0 = y(inc);
     applyPatch(inc, failed);
-    const twice = y(h.board()) - y0 === 2 * (y(inc) - y0) && y(inc) !== y0;
+    const twice = y(h.board()) === y(inc) && full?.place?.set?.[moved]?.y === y(inc) && y(inc) !== y0 && resends === 1;
     const ok = idle === 0 && nudge?.place && !nudge.cards && Object.keys(nudge.place.set).length === 1
       && front?.cards?.order && !front.cards.set && del?.cards?.del?.length === 1
       && ren?.head?.name === "Renamed" && !ren.cards && /Couldn't save the board: disk full/.test(toast ?? "") && full?.full === true && twice;
-    console.log(ok ? "PASS" : "FAIL", "patch-save", JSON.stringify({ idle, nudge: nudge && Object.keys(nudge), front: front && Object.keys(front.cards ?? {}), del: del && Object.keys(del), ren: ren && Object.keys(ren), toast, full: !!full?.full, twice }));
+    console.log(ok ? "PASS" : "FAIL", "patch-save", JSON.stringify({ idle, nudge: nudge && Object.keys(nudge), front: front && Object.keys(front.cards ?? {}), del: del && Object.keys(del), ren: ren && Object.keys(ren), toast, full: !!full?.full, resends, twice }));
     await h.page.context().browser()!.close();
   },
   // A shared card changed on another board (host "shared" message): applied as a sync (no patch back, not undoable).

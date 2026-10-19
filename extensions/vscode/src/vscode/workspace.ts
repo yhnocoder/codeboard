@@ -2,7 +2,8 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { vscodeScratch, isScratch } from "./scratch";
-import { COMPLETE_SYSTEM, Emitter, completePrompt, deepseekComplete, type Workspace } from "@codeboard/core";
+import { COMPLETE_SYSTEM, Emitter, completePrompt, type Workspace } from "@codeboard/core";
+import { deepseekComplete } from "../deepseek";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
 

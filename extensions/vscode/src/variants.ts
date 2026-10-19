@@ -9,13 +9,13 @@ import {
 import { analysisOf } from "./analysis";
 import { branches, git, githubRemote, headOf, isAncestor, repoRootOf, resolveRef, showFile, upstreamRef, worktrees } from "./git";
 import { fetchFile, pullRequest } from "./github";
-import { absOf, locOfFile } from "./source";
+import { absOf, locOfFile, hasLocalFile } from "./source";
 import { viewsFor } from "./views";
 import { posix, readText, splitLines, workspace } from "./ws";
 
 /** 段所在的 git 仓库根和相对路径（不在 git 里返回 null） */
 async function repoOf(seg: Segment): Promise<{ root: string; rel: string; abs: string } | null> {
-  if (seg.src.kind === "free" || seg.src.kind === "github") return null;
+  if (!hasLocalFile(seg.src)) return null;
   const abs = absOf(seg);
   const root = abs && (await repoRootOf(abs));
   return abs && root ? { root, rel: posix(path.relative(root, abs)), abs } : null;
@@ -109,7 +109,7 @@ export async function addVariant(segs: Segment[], f: AddVariantFrom): Promise<Ne
   const out: Segment[] = [];
   let found = 0;
   for (const s of segs) {
-    const rd = s.src.kind === "free" || s.src.kind === "github" ? null : await readFrom(s, from);
+    const rd = hasLocalFile(s.src) ? await readFrom(s, from) : null;
     const ns = rd && locateIn(s, rd);
     if (ns) found++;
     out.push(ns ?? s); // 没找到的段留着上游的代码

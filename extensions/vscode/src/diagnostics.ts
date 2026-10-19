@@ -23,12 +23,12 @@ export async function copyDiagnostics(board?: Board, attach?: boolean) {
     attach = pick.attach;
   }
   const w = workspace();
+  const yes = (id: string) => (w.about.hasExtension(id) ? "yes" : "no");
   const info: DiagInfo = {
     ext: w.about.ext,
-    vscode: w.about.app,
+    app: `VS Code ${w.about.app}`,
     os: `${process.platform} ${os.release()} ${process.arch}`,
-    python: w.about.hasExtension("ms-python.python"),
-    pylance: w.about.hasExtension("ms-python.vscode-pylance"),
+    env: [`Python ext: ${yes("ms-python.python")} · Pylance: ${yes("ms-python.vscode-pylance")}`],
     folders: await Promise.all(wsRoots().map(folderInfo)),
     board: board && { name: board.name, cards: board.cards.length, arrows: board.links.length, sections: board.sections.length },
     log: recentLog(),
