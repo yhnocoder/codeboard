@@ -4,6 +4,11 @@ import { parseMd, serializeMd } from "../../src/md/schema";
 import { renderMd } from "../../src/md/render";
 import { toggleTask } from "../../src/md/view";
 import { cleanCompletion, completePrompt } from "@codeboard/core";
+import { getSchema, type JSONContent } from "@tiptap/core";
+import { Node as PMNode } from "@tiptap/pm/model";
+import { baseExtensions } from "../../src/md/schema";
+
+const schema = getSchema(baseExtensions);
 
 const rt = (s: string) => serializeMd(parseMd(s));
 /** 写回一次后再往返，必须一字不变 */
@@ -127,6 +132,10 @@ describe("static render", () => {
     expect(h).toContain('<sup class="fnref">1</sup>');
     expect(h).toContain('<ol class="footnotes">');
   });
+  it("draws no footnote list while no footnote has a definition", () => {
+    expect(renderMd("claim[^1] and more[^2]")).not.toContain("footnotes");
+    expect(renderMd("claim[^1] and more[^2]\n\n[^2]: only this")).toContain('<ol class="footnotes">');
+  });
   it("leaves mermaid source for the lazy renderer", () => {
     expect(renderMd("```mermaid\ngraph TD; A-->B\n```")).toContain('<div class="mmd" data-src="graph TD; A-->B">');
   });
@@ -227,7 +236,7 @@ describe("typed math and block source (v0.1.8 review)", () => {
   it("[toc] is a table of contents", () => {
     same("[toc]\n\n# A\n\n## B");
     expect(JSON.stringify(parseMd("[TOC]\n\n# A"))).toContain('"toc"');
-    const h = renderMd("[toc]\n\n# A\n\n## B <i>\n\ntext");
+    const h = renderMd("[toc]\n\n# A\n\n## B \\<i>\n\ntext");
     expect(h).toContain('<div class="l1">A</div><div class="l2">B &lt;i&gt;</div>');
     expect(renderMd("[toc]")).toContain("No headings yet");
     expect(renderMd("[toc]\n\n# Cost $1 and $& x")).toContain('<div class="l1">Cost $1 and $&amp; x</div>');
@@ -300,5 +309,71 @@ describe("empty paragraphs", () => {
 describe("tables", () => {
   it("no extra blank lines around a table", () => {
     same("word here\n\n| a   | b   |\n| --- | --- |\n| 1   | 2   |\n\nafter");
+  });
+});
+
+describe("HTML written in a note", () => {
+  it("inline tags and comments are written back unchanged", () => {
+    same('a <span style="color:red">red</span> b');
+    same("a <!-- note to self --> b");
+    same('x <abbr title="Hyper Text">HTML</abbr> and <sup>2</sup> y');
+    same("costs <span>\\$5</span> each");
+  });
+  it("<br> is a hard break", () => {
+    expect(parseMd("line<br>next").content![0].content!.map((n) => n.type)).toEqual(["text", "hardBreak", "text"]);
+  });
+  it("block HTML and comments are written back unchanged", () => {
+    same("<!-- hidden -->\n\npara");
+    same('<div align="center">\n<b>centered</b>\n</div>\n\nafter');
+    same("before\n\n<!--\nmulti\nline\n-->");
+  });
+  it("is kept as its own node, so the editor can show it", () => {
+    expect(parseMd("a <span>x</span> b").content![0].content!.map((n) => n.type)).toEqual(["text", "htmlInline", "text"]);
+    expect(parseMd("<!-- c -->").content!.map((n) => n.type)).toEqual(["htmlBlock"]);
+    expect(() => PMNode.fromJSON(schema, parseMd("<div>x</div>\n\na <i>b</i> <!-- c -->")).check()).not.toThrow();
+  });
+  it("comments are not shown in the static view", () => {
+    expect(renderMd("a <!-- secret --> b\n\n<!-- block secret -->")).not.toContain("secret");
+  });
+});
+
+describe("a paragraph that is only an image", () => {
+  it("is still a paragraph, so the document fits the schema", () => {
+    for (const s of ["![i](a.png)", "a\n\n![i](a.png)", "![i](a.png)\n\nb"]) {
+      const d = parseMd(s);
+      expect(d.content!.map((n) => n.type)).toEqual(s.split("\n\n").map(() => "paragraph"));
+      expect(() => PMNode.fromJSON(schema, d).check()).not.toThrow();
+      same(s);
+    }
+  });
+});
+
+describe("text at the start of a line that reads as a block", () => {
+  const para = (...cs: JSONContent[]): JSONContent => ({ type: "doc", content: [{ type: "paragraph", content: cs }] });
+  const text = (t: string): JSONContent => ({ type: "text", text: t });
+  const br: JSONContent = { type: "hardBreak" };
+  /** 写出再读回来还是这一段（同样的字、同样的硬换行） */
+  const keeps = (d: JSONContent) => {
+    const md = serializeMd(d);
+    expect(parseMd(md), md).toEqual(d);
+  };
+  const MARKERS = ["- milk", "+ x", "* x", "-", "# x", "###### x", "> x", "1. x", "1) x", "12. x", "---", "***", "___", "_ _ _", "- - -", "===", "--", "[toc]", "[^1]: x"];
+  it("is escaped at the start of a paragraph", () => {
+    for (const m of MARKERS) keeps(para(text(m)));
+  });
+  it("is escaped after a hard break", () => {
+    for (const m of MARKERS) keeps(para(text("before"), br, text(m)));
+  });
+  it("is escaped after a newline inside the text", () => {
+    for (const m of MARKERS) expect(parseMd(serializeMd(para(text(`before\n${m}`)))).content, m).toHaveLength(1);
+  });
+  it("an ordered-list marker escapes its dot, which reads back as the same text", () => {
+    expect(serializeMd(para(text("1. x")))).toBe("1\\. x");
+    same("1\\. x");
+    same("2\\) y");
+  });
+  it("is left alone in the middle of a line", () => {
+    same("a - b and 1. c and # d");
+    same("**b** - x");
   });
 });

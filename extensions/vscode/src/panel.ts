@@ -3,7 +3,7 @@
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import { sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
+import { cutCrumbs, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
 import type { CardClip } from "@codeboard/core/storage";
 import type { Storage } from "./storage";
 import { BoardPanel, type BoardHost, type BoardView } from "./boards";
@@ -83,6 +83,17 @@ export class Panels implements BoardHost {
         p.post({ type: "sharedGone", cards: [e.card] });
       }
     }));
+    // 删掉的白板在面包屑上：那几层回不去了，剪掉
+    ctx.subscriptions.push(store.onDidRemoveBoard((id) => {
+      for (const p of this.all()) {
+        const c = cutCrumbs(p.crumbs, p.cams, id);
+        if (!c) continue;
+        p.crumbs = c.crumbs; p.cams = c.cams;
+        p.post({ type: "crumbs", crumbs: c.crumbs });
+      }
+    }));
+    // 白板的改动写不下去：存储过一会儿自己重试，开着它的面板说一声
+    ctx.subscriptions.push(store.onDidFailSave((e) => this.panels.get(e.board)?.toast(`Couldn't save the board: ${e.error}. Retrying…`)));
     // 共享卡的「⧉ N boards」「← N」：任何白板存盘、改名后重算（只发变了的面板）
     ctx.subscriptions.push(store.onDidSave(() => this.refreshShared()), store.onDidChange(() => this.refreshShared()));
     // 子白板的骨架：子白板存盘后重算（只算存了的那块），白板列表变了（改名、删白板）全部重算；都防抖
@@ -227,7 +238,8 @@ export class Panels implements BoardHost {
     panel.webview.onDidReceiveMessage((m: BoardToHost) => this.onMessage(p, m));
     // p.id 会变（进入子白板），这里都按 p.id 取
     panel.onDidChangeViewState((e) => { if (e.webviewPanel.active) this.setTarget(p.id); });
-    panel.onDidDispose(() => { if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.webviews.delete(p); this.sharedSent.delete(p.id); this.skelSent.delete(p); this.saveOpen(); });
+    // 关面板：它最后的改动宿主已经收下了，马上写盘（不等定时器，窗口可能正在关）
+    panel.onDidDispose(() => { void this.store.flush(p.id); if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.webviews.delete(p); this.sharedSent.delete(p.id); this.skelSent.delete(p); this.saveOpen(); });
     this.saveOpen();
     return p;
   }

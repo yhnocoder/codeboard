@@ -79,17 +79,12 @@ export class CodeBlockView implements NodeView {
 
   /** 方向键在开头 / 结尾：光标走出代码块 */
   escape(unit: "line" | "char", dir: -1 | 1): boolean {
-    const s = this.cm.view.state;
-    if (completionStatus(s) === "active") return false;
-    let r: { from: number; to: number } = s.selection.main;
-    if (!s.selection.main.empty) return false;
-    if (unit === "line") {
-      // 折行时按屏幕上的行：还能往上 / 下走就交给 CodeMirror
-      const moved = this.cm.view.moveVertically(s.selection.main, dir > 0);
-      if (moved.head !== s.selection.main.head) return false;
-      r = s.doc.lineAt(s.selection.main.head);
-    }
-    if (dir < 0 ? r.from > 0 : r.to < s.doc.length) return false;
+    const v = this.cm.view, s = v.state, main = s.selection.main;
+    if (completionStatus(s) === "active" || !main.empty) return false;
+    // ↑ ↓：在屏幕上的第一 / 最后一行（折行也算）就走出去，光标在行里哪儿都一样（CodeMirror 在最后一行按 ↓ 只是挪到行尾）
+    const row = (p: number) => v.coordsAtPos(p, dir)?.top;
+    const edge = unit === "line" ? row(v.moveVertically(main, dir > 0).head) === row(main.head) : main.head === (dir < 0 ? 0 : s.doc.length);
+    if (!edge) return false;
     const pos = this.getPos();
     if (pos === undefined) return false;
     const target = pos + (dir < 0 ? 0 : this.node.nodeSize);

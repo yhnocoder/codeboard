@@ -4,7 +4,7 @@ import { getSchema } from "@tiptap/core";
 import { DOMSerializer, Node as PMNode, type Schema } from "@tiptap/pm/model";
 import katex from "katex";
 import DOMPurify from "dompurify";
-import { baseExtensions, parseMd, tocEntries, tocHtml } from "./schema";
+import { baseExtensions, isHtmlComment, parseMd, tocEntries, tocHtml } from "./schema";
 import { highlight } from "./hl";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -54,6 +54,9 @@ let assetBase = "";
 export const setAssetBase = (b: string) => { if (b !== assetBase) { assetBase = b; cache.clear(); } };
 const assetUrl = (src: string) => (/^assets\//.test(src) && assetBase ? `${assetBase}/${src.slice(7)}` : src);
 
+/** Note 里原样写着的 HTML：注释不显示；其余照放，整篇最后过 DOMPurify（没有 DOM 时清洗不了，当字显示） */
+const userHtml = (h: string) => (isHtmlComment(h) ? "" : typeof window === "undefined" ? esc(h) : h);
+
 let schema: Schema | undefined, ser: DOMSerializer | undefined;
 function serializer() {
   if (ser) return ser;
@@ -71,9 +74,12 @@ function serializer() {
     },
     cardRef: (n) => raw(`<span class="cref" data-cardref="${escA(n.attrs.label)}">${esc(n.attrs.label)}</span>`),
     footnoteReference: (n) => raw(`<sup class="fnref">${esc(String(n.attrs.referenceNumber ?? "?"))}</sup>`),
-    footnotes: () => ["ol", { class: "footnotes" }, 0],
+    // 一条定义都还没写（只有正文里的 [^1]）：不画空的脚注列表
+    footnotes: (n) => (n.content.content.some((f) => f.childCount > 1 || f.firstChild!.content.size > 0) ? ["ol", { class: "footnotes" }, 0] : raw("")),
     footnote: () => ["li", 0],
     image: (n) => ["img", { src: assetUrl(n.attrs.src ?? ""), alt: n.attrs.alt ?? "", title: n.attrs.title ?? null, draggable: "false" }],
+    htmlInline: (n) => raw(userHtml(n.attrs.raw)),
+    htmlBlock: (n) => { const h = userHtml(n.attrs.raw); return raw(h && `<div class="md-html">${h}</div>`); },
   }, {
     ...marks,
     // 链接不放 href：点了由白板交给宿主打开（A.openLink），webview 自己不跳转
@@ -120,7 +126,7 @@ const SLIM_TASK = /<\/label><div><p>((?:(?!<\/?p[\s>]).)+?)<\/p><\/div>/gs;
 function slim(h: string) {
   return h.replace(SLIM_CELL, "<$1>$2</$1>").replace(SLIM_TASK, '</label><div class="t">$1</div>').replace(/<span><\/span><\/label>/g, "</label>");
 }
-// 生成的 HTML 只来自 schema（原始 HTML 在解析时已经变成节点或纯文字），再过一遍 DOMPurify 兜底
+// 生成的 HTML 来自 schema 和 Note 里原样写着的 HTML（htmlInline / htmlBlock）：整篇过一遍 DOMPurify
 // 自己一个实例，配置只设一次：每次都传配置，DOMPurify 每次都要重新解析一遍（setConfig 是整个实例的，别影响贴纸那边）
 let purifier: ReturnType<typeof DOMPurify> | undefined;
 function purify(html: string) {

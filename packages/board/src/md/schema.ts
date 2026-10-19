@@ -8,6 +8,7 @@ import Underline from "@tiptap/extension-underline";
 import HorizontalRule from "@tiptap/extension-horizontal-rule";
 import CodeMark from "@tiptap/extension-code";
 import Document from "@tiptap/extension-document";
+import Paragraph from "@tiptap/extension-paragraph";
 import { MarkdownManager } from "@tiptap/markdown";
 import { Marked } from "marked";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
@@ -17,6 +18,7 @@ import { InlineMath, BlockMath } from "@tiptap/extension-mathematics";
 import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
+import DOMPurify from "dompurify";
 import { lowlight } from "./hl";
 import { EMOJI } from "./emoji";
 
@@ -45,13 +47,17 @@ const Math1 = InlineMath.extend({
 });
 // 块公式：$$ 单独起一行（或 $$…$$ 占满一行）
 const BLOCK_MATH = /^ {0,3}\$\$([^$]+?)\$\$[ \t]*(?:\n|$)/;
-const lineStart = (re: RegExp) => (src: string) => { const m = re.exec(src); return m ? m.index + (m[0].startsWith("\n") ? 1 : 0) : -1; };
+/**
+ * 块的 start：marked 拿它找一段字在哪断开，传的是 src.slice(1)，^ 会落在行中间（\[^1]: 的 \ 后面）。
+ * 只认换行后面的那一处（re 以 \n 开头）；在行首的由 tokenize 直接认
+ */
+const lineStart = (re: RegExp) => (src: string) => { const m = re.exec(src); return m ? m.index + 1 : -1; };
 const Math2 = BlockMath.extend({
   addInputRules: () => [],
   renderMarkdown: (n) => `$$\n${n.attrs?.latex ?? ""}\n$$`,
   markdownTokenizer: {
     name: "blockMath", level: "block",
-    start: lineStart(/(^|\n) {0,3}\$\$/),
+    start: lineStart(/\n {0,3}\$\$/),
     tokenize: (src) => {
       const m = BLOCK_MATH.exec(src);
       if (!m) return;
@@ -109,7 +115,7 @@ const Det = Details.extend({
   },
   markdownTokenizer: {
     name: "details", level: "block",
-    start: lineStart(/(^|\n) {0,3}<details/i),
+    start: lineStart(/\n {0,3}<details/i),
     tokenize: (src, _t, lx) => {
       const d = detailsAt(src);
       if (!d) return;
@@ -151,8 +157,7 @@ const Toc = Node.create({
   renderMarkdown: () => "[toc]",
   markdownTokenizer: {
     name: "toc", level: "block",
-    // marked 拿 start 找段落在哪断开时传的是 src.slice(1)，^ 会落在行中间（\[toc] 的 \ 后面）：只认换行后面的；行首的由 tokenize 直接认
-    start: (src: string) => { const m = /\n {0,3}\[toc\][ \t]*(?:\n|$)/i.exec(src); return m ? m.index + 1 : -1; },
+    start: lineStart(/\n {0,3}\[toc\][ \t]*(?:\n|$)/i),
     tokenize: (src) => { const m = TOC_RE.exec(src); return m ? { type: "toc", raw: m[0] } : undefined; },
   },
 });
@@ -248,7 +253,7 @@ const FnDef = Footnote.extend({
   renderMarkdown: undefined,
   markdownTokenizer: {
     name: "footnoteDef", level: "block",
-    start: lineStart(/(^|\n)\[\^[^\]\s]+\]:/),
+    start: lineStart(/\n\[\^[^\]\s]+\]:/),
     tokenize: (src, _t, lx) => {
       // 第一行冒号后面的字，加上后面缩进的续行
       const m = /^\[\^([^\]\s]+)\]:[ \t]*([^\n]*(?:\n(?:(?: {2,}|\t)[^\n]*|[ \t]*(?=\n(?: {2,}|\t))))*)(?:\n|$)/.exec(src);
@@ -264,7 +269,34 @@ const Doc = Document.extend({ content: "block+ footnotes?" });
 // ---------- 其他 ----------
 // 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）
 const Img = Image.configure({ inline: true, allowBase64: true });
-// ---------- 行内 HTML：<u>、<kbd> 是格式；别的标签按字原样留着（写回时 < 转义成 \<，不写实体） ----------
+// TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
+const Para = Paragraph.extend({
+  parseMarkdown: (t: any, h: any) => (t.tokens?.length === 1 && t.tokens[0].type === "image" ? h.createNode("paragraph", undefined, h.parseInline(t.tokens)) : (Paragraph.config as any).parseMarkdown(t, h)),
+});
+// ---------- 原样的 HTML：<u>、<kbd> 是格式，<br> 是硬换行；别的标签和注释一字不改地留着 ----------
+// 行内的（<span style=…>字</span>：开头标签到配对的结尾标签算一个）是 htmlInline，单独成块的（<div>…</div>、<!-- … -->）是 htmlBlock。
+// 显示的是清洗过的 HTML；注释不显示，编辑时显示成淡色的源码（看得见、删得掉）。打的字里的 < 照旧转义成 \<（是字，不是 HTML）
+export const isHtmlComment = (raw: string) => /^\s*<!--[\s\S]*-->\s*$/.test(raw);
+const htmlNode = (name: "htmlInline" | "htmlBlock", tag: "span" | "div") => Node.create({
+  name,
+  ...(tag === "span" ? { group: "inline", inline: true } : { group: "block" }),
+  atom: true, selectable: true,
+  addAttributes: () => ({ raw: { default: "" } }),
+  parseHTML: () => [{ tag: `${tag}[data-html]`, getAttrs: (e) => ({ raw: (e as HTMLElement).dataset.html ?? "" }) }],
+  renderHTML: ({ node }) => [tag, { class: "md-html", "data-html": node.attrs.raw }],
+  renderText: ({ node }) => node.attrs.raw,
+  renderMarkdown: (n) => n.attrs?.raw ?? "",
+  addNodeView: () => ({ node }) => {
+    const dom = document.createElement(tag);
+    dom.className = "md-html";
+    dom.contentEditable = "false";
+    const html = isHtmlComment(node.attrs.raw) ? "" : DOMPurify.sanitize(node.attrs.raw);
+    dom.innerHTML = html;
+    if (!dom.textContent?.trim() && !dom.querySelector("img, svg, video, iframe")) { dom.textContent = node.attrs.raw; dom.classList.add("src"); }
+    return { dom, ignoreMutation: () => true };
+  },
+});
+const HtmlInline = htmlNode("htmlInline", "span"), HtmlBlock = htmlNode("htmlBlock", "div");
 const htmlTok = (tag: string) => ({
   name: `html_${tag}`, level: "inline" as const,
   start: (src: string) => src.indexOf(`<${tag}>`),
@@ -332,23 +364,28 @@ const Head = TableHeader.extend({ content: "paragraph" });
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
   StarterKit.configure({
-    document: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false,
+    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false,
     link: { openOnClick: false, autolink: true, linkOnPaste: true, HTMLAttributes: { class: "lnk", rel: null, target: null } },
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
   U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
-  Doc, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
+  Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
-  CardRef, Emoji, FnList, FnDef, FnRef,
+  CardRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
 ];
 
 // ---------- 写回：少转义 ----------
 // 原版把 \ ` * _ [ ] ~ 全部转义，还把 < & 变成实体：block_manager 会写成 block\_manager。这里只在重新解析会变样时才转义
 const PUNCT = /[!-/:-@[-`{-~]/;
-const LINE_START = /(^|\n)( {0,3})(?=#{1,6}(?:\s|$)|>|[-+*]\s|\d{1,9}[.)]\s)/g;
-const ESC = "\u0001"; // 段首要转义的位置先放个记号，escText 换成 \
+/**
+ * 一行开头会被读成块的写法：# 标题、> 引用、- + * 列表、1. 1) 有序列表、--- *** ___ 分隔线、=== --- setext 标题的下划线、[toc]。
+ * 匹配到的末尾就是要放 \ 的地方：有序列表转义的是数字后面的 . )（\1. 不是转义），别的是第一个记号。
+ * 一行到这段字的末尾就算完（后面可能还有别的行内内容）：多转义一个 \ 不改意思，少转义会变结构
+ */
+const LINE_START = /^ {0,3}(?:\d{1,9}(?=[.)](?:[ \t]|$))|(?=#{1,6}(?:[ \t]|$)|>|[-+*](?:[ \t]|$)|([-*_])[ \t]*(?:\1[ \t]*){2,}$|[-=]+[ \t]*$|\[toc\][ \t]*$))/gim;
+const ESC = "\u0001"; // 行首要转义的位置先放个记号，escText 把它和后面那个字写成 \X
 function escText(s: string): string {
   // * ~ ` 一段里只有一个时配不成对，不用转义；两边都是空白的 * ~ 也不会成强调（a * b）。_ 不当强调（解析时关掉了），不转义
   // 只数可能成对的（不是两边都空白的）
@@ -358,11 +395,11 @@ function escText(s: string): string {
   for (let i = 0; i < s.length; i++) {
     const c = s[i], next = s[i + 1] ?? "", prev = s[i - 1] ?? "";
     switch (c) {
-      case ESC: out += "\\"; break;
+      case ESC: out += `\\${next}`; i++; break;
       case "\\": out += !next || PUNCT.test(next) ? "\\\\" : c; break;
       case "`": out += tick ? "\\`" : c; break;
       case "*": case "~": out += (c === "*" ? star : tilde) && !(/\s/.test(prev || " ") && /\s/.test(next || " ")) ? `\\${c}` : c; break;
-      case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) || (i === 0 && /^\[toc\]\s*$/i.test(s)) ? "\\[" : c; break;
+      case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) ? "\\[" : c; break;
       case "$": out += INLINE_MATH.test(s.slice(i)) ? "\\$" : c; break;
       case "<": out += /[A-Za-z/!?]/.test(next) ? "\\<" : c; break;
       // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
@@ -393,6 +430,13 @@ let rawText = false;
   const codeTypes: Set<string> = (this as any).codeTypes;
   if ((parent?.type && codeTypes.has(parent.type)) || (node.marks ?? []).some((m) => codeTypes.has(typeof m === "string" ? m : (m as any).type))) return text;
   return escText(text);
+};
+// 原样的 HTML（见 htmlNode）：TipTap 默认按 schema 解析 HTML，认不出的标签、注释都丢掉了，第一次保存时就从文件里删掉了
+(mm as any).parseHTMLToken = (t: { raw?: string; text?: string; block?: boolean }): JSONContent | null => {
+  const raw = t.block ? (t.text || t.raw || "").replace(/\s+$/, "") : t.text || t.raw || "";
+  if (!raw.trim()) return null;
+  if (/^<br\s*\/?>$/i.test(raw)) return { type: "hardBreak" };
+  return { type: t.block ? "htmlBlock" : "htmlInline", attrs: { raw } };
 };
 // 链接：文字就是网址的写回裸网址（自动链接），不写成 [url](url)
 const linkSpec = (mm as any).getHandlersForNodeType("link")[0];
@@ -528,11 +572,11 @@ function unsource(ns: JSONContent[]): JSONContent[] {
 // ⌘Z 撤回的就是这样存的），Typora 里也是字面的 $，不当公式
 const ESC_DOLLAR = "\uE024";
 const TEXT_MATH = /(^|[^$\\\uE024])([$\uE024])([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\2(?![\d$\uE024])/g;
-/** 占位字换回去：正文、链接地址里是 $；代码、公式源码里原样是 \$ */
+/** 占位字换回去：正文、链接地址里是 $；代码、公式源码、原样的 HTML 里原样是 \$ */
 function unDollar(ns: JSONContent[], raw = false): JSONContent[] {
   const fix = (t: string, r: boolean) => (t.includes(ESC_DOLLAR) ? t.replaceAll(ESC_DOLLAR, r ? "\\$" : "$") : t);
   return ns.map((n) => {
-    const r = raw || n.type === "codeBlock";
+    const r = raw || n.type === "codeBlock" || n.type === "htmlInline" || n.type === "htmlBlock";
     const out: JSONContent = { ...n };
     if (n.text !== undefined) out.text = fix(n.text, r || (n.marks ?? []).some((m) => m.type === "code"));
     if (n.attrs) out.attrs = Object.fromEntries(Object.entries(n.attrs).map(([k, v]) => [k, typeof v === "string" ? fix(v, r || k === "latex") : v]));
@@ -572,13 +616,19 @@ function dropEmpty(ns: JSONContent[], holder = true): JSONContent[] {
   return (kept.length ? kept : ns.slice(0, 1)).map((n) => (n.content && n.type !== "paragraph" ? { ...n, content: dropEmpty(n.content, HOLDS.has(n.type!)) } : n));
 }
 
-// 段落里行首的 # > - + * 1. 会被当成块语法：前面加 \（只看没有格式的开头文字）
+// 段落里每一行的开头（段首、硬换行后面、字里的换行后面）会被读成块的写法：转义（只看没有格式的字，有格式的前面有记号）
 function markStarts(ns: JSONContent[]): JSONContent[] {
   return ns.map((n): JSONContent => {
-    if (n.type === "paragraph" || n.type === "heading") {
-      if (!n.content?.length) return n;
-      return { ...n, content: n.content.map((t, k) => (t.type === "text" && t.text && (k === 0 || t.text.includes("\n")) ? { ...t, text: t.text.replace(LINE_START, (m0, nl, sp, off) => (k > 0 && off === 0 && !nl ? m0 : `${nl}${sp}${ESC}`)) } : t)) };
-    }
-    return n.content ? { ...n, content: markStarts(n.content) } : n;
+    if (n.type !== "paragraph") return n.content ? { ...n, content: markStarts(n.content) } : n;
+    let atLine = true;
+    return {
+      ...n,
+      content: n.content?.map((t) => {
+        const start = atLine;
+        atLine = t.type === "hardBreak" || (t.type === "text" && !!t.text?.endsWith("\n"));
+        if (t.type !== "text" || !t.text || t.marks?.length) return t;
+        return { ...t, text: t.text.replace(LINE_START, (m0: string, _c: string, off: number) => (off === 0 && !start ? m0 : m0 + ESC)) };
+      }),
+    };
   });
 }

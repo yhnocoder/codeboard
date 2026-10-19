@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, removeLinks, replaceCards, retargetCards, shiftBy, stampBorn,
-  placeCards, unlinkCard, mergeCodeCards, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines,
+  placeCards, unlinkCard, mergeCodeCards, removeLostCalls, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines, sidenoteCard, sidenoteToCard,
   type Board, type Card, type CodeCard, type Link, type Segment,
 } from "../src";
 
@@ -337,6 +337,33 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
     expect(placeCards(b, it, { copy: false }).cards).toEqual({});
     expect(b.cards.length).toBe(1);
   });
+  it("placeCards brings the links between the placed cards: copies get new link ids and ends, linked cards keep their ids", () => {
+    const src = two();
+    src.links.push({ id: "out", from: { card: "a" }, to: { card: "elsewhere" } });
+    const items = [{ card: src.cards[0], place: src.place.a }, { card: src.cards[1], place: src.place.z }];
+    const c = emptyBoard("t", "T");
+    const r = placeCards(c, items, { copy: true, links: src.links });
+    expect(c.links.map((l) => [l.id !== "a-z", l.from, l.to, l.call?.name])).toEqual([[true, { card: r.cards.a, seg: r.segs.sa, line: 2 }, { card: r.cards.z }, "f"]]);
+    expect(danglingRefs(c)).toEqual([]);
+    const s = emptyBoard("t", "T");
+    placeCards(s, items, { copy: false, links: src.links });
+    expect(s.links.map((l) => [l.from, l.to])).toEqual([[{ card: "a", seg: "sa", line: 2 }, { card: "z" }]]);
+    // pasting the same linked cards again adds no second arrow
+    placeCards(s, items, { copy: false, links: src.links });
+    expect(s.links.length).toBe(1);
+    expect(src.links.map((l) => l.id)).toEqual(["a-z", "out"]); // the source is not touched
+  });
+  it("removeLostCalls removes only the call arrows of that call and line whose target is gone", () => {
+    const b = two();
+    b.links = [
+      { ...call("a", "z", 2), id: "gone", lost: { to: true } },
+      { ...call("a", "z", 2), id: "live" },
+      { ...call("a", "z", 3), id: "otherLine", lost: { to: true } },
+      { ...call("a", "z", 2), id: "otherCall", call: { name: "g", col: 0 }, lost: { to: true } },
+    ];
+    removeLostCalls(b, { card: "a", seg: "sa", line: 2 }, "f");
+    expect(b.links.map((l) => l.id)).toEqual(["live", "otherLine", "otherCall"]);
+  });
   it("placeCards keeps a Compare with its columns", () => {
     const b = emptyBoard("t", "T");
     const r = placeCards(b, [{ card: code("p") }, { card: code("q") }, { card: compare("k", "p", "q"), place: { x: 0, y: 0, w: 1 } }], { copy: true });
@@ -388,5 +415,25 @@ describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
     expect(notesOnChangedLines(b, "a", ns).map((n) => n.id)).toEqual(["n1"]);
     rebaseSegment(b, "a", ns, undefined, { review: "y" });
     expect(b.sidenotes.map((n) => [n.id, n.review])).toEqual([["n1", "y"], ["n2", undefined]]);
+  });
+});
+
+describe("placing a sidenote on the board", () => {
+  const at = { card: "a", seg: "sa", lines: [2, 2] as [number, number] };
+  it("makes the matching card: code, paste, text, link; a Card sidenote has none", () => {
+    const c = sidenoteCard({ id: "n", at, kind: "code", code: seg("s1", 5, ["x = 1"]), why: "because" }, "c1") as CodeCard;
+    expect([c.id, c.kind, c.desc, c.segments[0].text, c.segments[0].id === "s1"]).toEqual(["c1", "code", "because", ["x = 1"], false]);
+    const p = sidenoteCard({ id: "n", at, kind: "paste", text: "a\nb", lang: "python", url: "https://x.y" }) as CodeCard;
+    expect([p.segments[0].src, p.segments[0].start, p.segments[0].end, p.segments[0].text]).toEqual([{ kind: "free", url: "https://x.y" }, 1, 2, ["a", "b"]]);
+    expect(sidenoteCard({ id: "n", at, kind: "text", md: "hi" }, "c2")).toEqual({ id: "c2", kind: "note", md: "hi", bg: true });
+    expect(sidenoteCard({ id: "n", at, kind: "link", url: "https://x.y", title: "T" })).toMatchObject({ kind: "web", url: "https://x.y", meta: { title: "T" } });
+    expect(sidenoteCard({ id: "n", at, kind: "card", card: "b" })).toBeNull();
+  });
+  it("swaps the sidenote for an arrow from its line to the new card", () => {
+    const b: Board = { ...emptyBoard("b", "B"), cards: [code("a", seg("sa", 1, ["def f():", "    g()"])), code("b")], sidenotes: [{ id: "n9", at, kind: "text", md: "hi" }] };
+    sidenoteToCard(b, "n9", "b");
+    expect(b.sidenotes).toEqual([]);
+    expect(b.links.at(-1)).toMatchObject({ from: { card: "a", seg: "sa", line: 2 }, to: { card: "b" } });
+    expect(danglingRefs(b)).toEqual([]);
   });
 });

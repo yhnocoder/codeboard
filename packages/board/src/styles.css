@@ -67,7 +67,8 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; bo
 input, textarea { font: inherit; color: var(--ink); }
 
 /* ---------- board ---------- */
-.board { position: fixed; inset: 0; overflow: hidden; background: var(--bg); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
+/* clip 而不是 hidden：hidden 的盒子还能被程序滚动，Tab 把焦点移到画面外的卡上的按钮时浏览器会把整块白板滚过去，镜头的换算（适应窗口、框选、放卡）就全偏了 */
+.board { position: fixed; inset: 0; overflow: clip; background: var(--bg); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
 .board:focus { outline: none; }
 .board.panning, .board.space { cursor: grab; }
 .board.panning * , .board.space * { cursor: grab !important; }
@@ -551,7 +552,8 @@ kbd { font: 10.5px var(--mono); }
 .md .md-toc > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.6; }
 .md .md-toc .l2 { padding-left: 1em; } .md .md-toc .l3 { padding-left: 2em; } .md .md-toc .l4, .md .md-toc .l5, .md .md-toc .l6 { padding-left: 3em; }
 .md .md-toc .none { color: var(--ink-3); font-style: italic; }
-.md li > p { margin: 0; }
+/* 原样的 HTML：编辑时显示不出东西的（注释、空标签）显示成淡色的源码 */
+.md .md-html.src { color: var(--ink-3); font-family: var(--mono); font-size: .85em; white-space: pre-wrap; }.md li > p { margin: 0; }
 .md li::marker { color: var(--ink-3); }
 .md strong { font-weight: 650; }
 .md s { color: var(--ink-2); }

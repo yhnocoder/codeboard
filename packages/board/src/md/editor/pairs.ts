@@ -50,8 +50,9 @@ export function pairsPlugin() {
         if (!(sel instanceof TextSelection)) return false;
         const $f = sel.$from;
         if (!$f.parent.inlineContent || $f.parent.type.spec.code) return false;
-        // 行内代码里不配（代码里的引号、括号是字）；展开着的 Markdown 原文（也是 code 标记）里照配
-        if ($f.marks().some((m) => m.type.spec.code && m.type.name !== "mdSrc")) return false;
+        // 行内代码里不配（代码里的引号、括号是字）；展开着的 Markdown 原文（也是 code 标记）里照配。看的是打的字会带的格式：
+        // 刚打完 `c` 的光标紧跟在代码后面，但接着打的字不再是代码
+        if ((state.storedMarks ?? $f.marks()).some((m) => m.type.spec.code && m.type.name !== "mdSrc")) return false;
         const k = ev.key, list = pairsKey.getState(state) ?? [];
         // 一对空的中间退格：两个都删
         if (k === "Backspace" && sel.empty) {
@@ -62,10 +63,15 @@ export function pairsPlugin() {
           }
           return false;
         }
-        // 盖过自己补的右括号：把它删掉，打的字照常进来
+        // 盖过自己补的右括号：打的字换掉它，和打字一样先过打字规则（[t](url)、`c` 之类要在这时候变）；没有规则接手就只是光标走过去。
+        // 不能删了它再让浏览器把字插进来：紧挨着一样的字（)) ""）时 ProseMirror 从 DOM 读改动分不清插在哪一边
         if (CLOSE.has(k) && sel.empty && list.some((a) => a.pos === sel.from && a.ch === k)) {
-          view.dispatch(state.tr.delete(sel.from, sel.from + 1).setMeta(pairsKey, { drop: sel.from }));
-          return false;
+          const at = sel.from;
+          view.dispatch(state.tr.setMeta(pairsKey, { drop: at }));
+          const ruled = view.someProp("handleTextInput", (f) => f(view, at, at + 1, k, () => view.state.tr.insertText(k, at, at + 1)));
+          if (!ruled) view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, at + 1)).scrollIntoView());
+          ev.preventDefault();
+          return true;
         }
         const close = PAIRS[k];
         if (!close) return false;

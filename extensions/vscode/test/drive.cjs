@@ -59,6 +59,15 @@ const shot = async (page, n) => {
   for (const i of r.issues) console.log(`  ⚠ ${n}: ${i.rule} — ${i.what}`);
   if (process.env.AUDIT_STRICT === "1") check(!r.issues.length, `${n} passes the UI audit`);
 };
+// A spot on empty canvas inside the board frame (frame coordinates): where cards land depends on the layout, so pick it rather than hard-code it
+const emptySpot = (f) => f.evaluate(() => {
+  const b = document.querySelector("#board").getBoundingClientRect();
+  for (let y = b.top + 60; y < b.bottom - 120; y += 20) for (let x = b.left + 40; x < b.right - 40; x += 20) {
+    const t = document.elementFromPoint(x, y);
+    if (t && !t.closest(".card, .pop, .ctx, .dock, .bbar, .pill, .sec, .crumbs, svg [data-link]")) return { x: x - b.left, y: y - b.top };
+  }
+  return { x: 30, y: 300 };
+});
 const card = (f, title) => f.locator(".card", { has: f.locator(".chead .ctitle", { hasText: new RegExp(`^${title.replace(/\./g, "\\.")}$`) }) });
 const boardJson = () => {
   const d = execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards 2>/dev/null || true`).toString().trim().split("\n")[0];
@@ -224,6 +233,38 @@ async function addselStep(page) {
   await shot(page, "16-addsel-one-card");
 }
 
+// Closing the board tab right after a change keeps the change (the board sends each change at once, the host finishes the write when
+// the panel closes): Wrap Lines, then a typed Text card, each followed by closing the tab within 0.1 s. E2E_ONLY=close runs only this step
+async function closeStep(page) {
+  if (process.env.E2E_ONLY === "close") { await openFile(page, "llm_engine.py", 51); await page.keyboard.press("Alt+b"); await sleep(2500); }
+  const dir = () => execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards 2>/dev/null || true`).toString().trim().split("\n")[0];
+  const named = (name) => fs.readdirSync(dir()).filter((n) => n.endsWith(".json")).map((n) => JSON.parse(fs.readFileSync(path.join(dir(), n), "utf8"))).find((b) => b.name === name);
+  const closeTab = (name) => page.locator(".tabs-container .tab", { hasText: name }).first().click({ button: "middle", force: true });
+  await command(page, "CodeBoard: Open Board");
+  let f = await boardFrame(page); await sleep(1500);
+  const name = (await page.locator(".editor-group-container.active .tab.active").first().textContent()).trim();
+  // a code card that is drawn (not hidden in a collapsed call tree) and on screen
+  const shown = await f.evaluate(() => { const b = document.querySelector("#board").getBoundingClientRect(); return [...document.querySelectorAll(".card[data-id]")].filter((e) => { const r = e.getBoundingClientRect(); return r.top >= b.top && r.top + 20 < b.bottom && r.left >= b.left && r.left + 140 < b.right; }).map((e) => e.dataset.id); });
+  const code = named(name)?.cards.find((c) => c.kind === "code" && shown.includes(c.id));
+  check(!!code, "closeStep: the open board has a code card", name);
+  if (!code) return;
+  // select it by its title: the file path next to it opens the code in the editor (and the keys would go there)
+  await f.locator(`.card[data-id="${code.id}"] .chead .ctitle`).first().click(); await sleep(500);
+  await page.keyboard.press("Alt+z"); await sleep(100);
+  await closeTab(name); await sleep(2000);
+  const wrapped = named(name)?.cards.find((c) => c.id === code.id)?.wrap;
+  check(!!wrapped !== !!code.wrap, "closing the board tab right after Wrap Lines keeps the change", { before: !!code.wrap, after: !!wrapped });
+  await command(page, "CodeBoard: Open Board");
+  f = await boardFrame(page); await sleep(1500);
+  await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
+  await page.keyboard.press("t"); await sleep(400);
+  await page.keyboard.type("typed then closed"); await page.keyboard.press("Escape"); await sleep(100);
+  await closeTab(name); await sleep(2000);
+  const notes = (named(name)?.cards ?? []).filter((c) => c.kind === "note").map((c) => c.md);
+  check(notes.includes("typed then closed"), "closing the board tab right after typing a Text card keeps the text", notes);
+  await command(page, "CodeBoard: Open Board"); await sleep(1500);
+}
+
 // Clicking a card takes keyboard focus from a file editor: select text in context.py, click a card (its header, then its code),
 // press Backspace. The card is deleted and the file is untouched. E2E_ONLY=cardfocus runs only this step
 async function cardfocusStep(page) {
@@ -374,8 +415,8 @@ const finish = async (browser, errors) => {
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
   // E2E_ONLY=capture,addsel runs only those steps, in that order. E2E_PART splits the run for parallel CI jobs:
   // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (nightly)
-  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep };
-  const PARTS = { 2: "capture,addsel,cardfocus", 3: "export,variants,codeedit" };
+  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep };
+  const PARTS = { 2: "capture,addsel,cardfocus,close", 3: "export,variants,codeedit" };
   const only = process.env.E2E_ONLY || PARTS[process.env.E2E_PART];
   if (only) {
     for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); await STEPS[k](page); }
@@ -416,10 +457,11 @@ const finish = async (browser, errors) => {
   // Synthetic CDP moves that leave the iframe deliver no leave events to it, so the path must not leave the webview straight from the peek:
   // the peek would keep :hover and stay open, which is a test artefact rather than what a real mouse does
   const w = await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().boundingBox();
-  // 停在卡下面的空白画布上：停在代码行上可能正好落在另一个调用上，又打开一个 Peek
-  const cb = await sch.boundingBox();
-  const y = cb ? cb.y + cb.height + 30 : w ? w.y + w.height + 40 : 500;
-  if (w) await page.mouse.move(w.x + w.width / 2, y, { steps: 4 });
+  // 停在空白画布上：停在代码行上可能正好落在另一个调用上，又打开一个 Peek
+  const fb = await (await f.frameElement()).boundingBox(), sp = await emptySpot(f);
+  const y = fb.y + sp.y;
+  if (w) await page.mouse.move(w.x + w.width / 2, w.y + w.height + 6, { steps: 2 });
+  await page.mouse.move(fb.x + sp.x, y, { steps: 6 });
   await page.mouse.move(5, y, { steps: 12 });
   // 关闭有一段延迟（还要等离开事件）：CI 机器慢时 800ms 不一定够，最多等 3s
   let open = 1; for (let t = 0; t < 15 && (open = await f.locator(".pop.k-peek").count()); t++) await sleep(200);
@@ -566,15 +608,7 @@ const finish = async (browser, errors) => {
     await page.locator(".tabs-container .tab", { hasText: "New Board" }).first().click(); await sleep(2000);
     f = await boardFrame(page); await sleep(1500);
     await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
-    // 空白处右键：镜头会跟着卡走，固定坐标可能落在卡上，找一块没有东西的地方
-    const empty = await f.evaluate(() => {
-      for (let y = 120; y < innerHeight - 120; y += 40) for (let x = 40; x < innerWidth - 40; x += 40) {
-        const e = document.elementFromPoint(x, y);
-        if (e && e.closest("#board") && !e.closest(".card, .pill, .dock, .ctx, svg [data-link], .crumbs")) return { x, y };
-      }
-      return { x: 260, y: 520 };
-    });
-    await f.locator("#board").click({ button: "right", position: empty }); await sleep(500);
+    await f.locator("#board").click({ button: "right", position: await emptySpot(f) }); await sleep(500);
     await f.locator(".ctx button", { hasText: /^Insert Board/ }).first().hover(); await sleep(500);
     await f.locator(".ctx button", { hasText: /^Shared E2E/ }).first().click({ timeout: 3000 }).catch(() => {}); await sleep(1500);
     const fr = f.locator(".card.board");
@@ -635,6 +669,6 @@ const finish = async (browser, errors) => {
     await shot(page, "10-pick-impl");
   } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
 
-  if (process.env.E2E_PART !== "1") { await captureStep(page); await addselStep(page); await cardfocusStep(page); }
+  if (process.env.E2E_PART !== "1") { await captureStep(page); await addselStep(page); await cardfocusStep(page); await closeStep(page); }
   await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });

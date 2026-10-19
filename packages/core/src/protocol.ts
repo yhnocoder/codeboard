@@ -1,7 +1,7 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt, VariantFrom } from "./model";
+import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt, VariantFrom, Link } from "./model";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
@@ -22,7 +22,7 @@ export type WalkHop = { into?: { root: string; i: number }; start?: string; resu
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
   | { state: "ok" }
-  | { state: "moved"; start: number; end: number; version?: Version } // 只是挪了位置：白板静默跟上
+  | { state: "moved"; start: number; end: number; version: Version } // 只是挪了位置：白板静默跟上，行号和钉的版本一起换（version = 找到它的那个版本）
   | { state: "changed"; hiddenOnly: boolean; head: string } // 黄点；hiddenOnly = 只有隐藏的行变了（空心点）
   | { state: "lost" } // 符号找不到（删了或改名）
   | { state: "many" } // 片段按内容找到多处
@@ -150,7 +150,7 @@ export type HostToBoard =
   | { type: "host"; host: Partial<HostInfo> }
   /** 从编辑器加进来的卡：放在选中卡旁边，没选中放视口中央 */
   | { type: "add"; cards: NewCard[]; ask?: "split"; sel?: { card: string } }
-  /** 编辑器里 ⌥B 之后接着按 ⌘Z：撤销刚加的这几张卡（白板上之后又改过就不撤，提示一下） */
+  /** 撤销编辑器里的一次添加（⌥B 之后接着按 ⌘Z、通知里的 Undo）：只拿掉这几张卡 */
   | { type: "undoAdd"; cards: string[] }
   /** 给选中的卡追加一段 */
   | { type: "appendSegment"; card: string; seg: Segment; view: SegView }
@@ -177,6 +177,8 @@ export type HostToBoard =
   | { type: "merged"; patch: BoardPatch; views?: Record<string, SegView> }
   /** 这块白板上的子白板的骨架（变了的那几块；null = 那块白板没了）。子白板存盘后宿主重算，防抖 */
   | { type: "skeletons"; boards: Record<string, Skeleton | null> }
+  /** 面包屑变了（上面的一块白板删掉了，回不去了）：整个换掉 */
+  | { type: "crumbs"; crumbs: Crumb[] }
   /** 一次运行（Capture Run 跑完，或 Apply Run… 选的）：白板给对上的 Call 箭头挂 observed 证据和实参，没对上的列出来 */
   | { type: "run"; apply: RunApply }
   /** 有 Variant 的卡（线框 07）：Variant 的代码变了（保存、分支 rebase、PR 更新）、合进了上游、上游最新的代码。只发有变化的卡 */
@@ -238,6 +240,8 @@ export type BoardToHost =
   | { type: "skeletons"; req: number; ids: string[] }
   /** Turn into Board：选中的卡拆出来的新白板（id 白板定），存到父白板所在的组；共享卡还是共享卡。回 ok */
   | { type: "newBoard"; req: number; board: Board }
+  /** 撤销 Turn into Board：拆出来的那块白板不要了（放进 .trash，不问；别的白板也放着它的框就留着）。回删没删 */
+  | { type: "dropBoard"; req: number; id: string }
   /** 双击子白板框：在这个面板里打开子白板（frame = 框的卡 id，cam = 父白板回来时的镜头）；walk.start = 接着讲解 */
   | { type: "enterBoard"; id: string; frame: string; cam: Camera; walk?: WalkHop }
   /** 面包屑 / Esc：回到第 depth 层父白板（0 = 最外层；缺省 = 上一级）；walk.back = 父白板接着讲解 */
@@ -296,8 +300,8 @@ export type VariantSync = {
   latest?: { label: string; segs: Segment[]; views: Record<string, SegView> };
 };
 
-/** 贴过来的别的白板上的卡（views = 各段的展示数据） */
-export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; views: Record<string, SegView> };
+/** 贴过来的别的白板上的卡和它们之间的 Link（views = 各段的展示数据） */
+export type PastedCards = { from: string; shared: boolean; cards: CardCopy[]; links: Link[]; views: Record<string, SegView> };
 
 /** 指定展开哪个定义。rel = path 相对 seg 自己的来源根（类卡点成员；工作区外的文件也对），qual = 按符号找（钉的版本行号可能挪了） */
 export type ExpandPick = { path: string; line: number; rel?: true; qual?: string };
@@ -365,6 +369,7 @@ type Replies = {
   deleteEverywhere: number;
   skeletons: Record<string, Skeleton | null>;
   newBoard: boolean;
+  dropBoard: boolean;
   deleteBoard: boolean;
   questions: QuestionItem[];
   permalinks: Record<string, string>;

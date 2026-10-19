@@ -107,7 +107,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
     files: {
       roots: () => (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath),
       rootOf: (abs) => vscode.workspace.getWorkspaceFolder(vscode.Uri.file(abs))?.uri.fsPath,
-      openText: (abs) => vscode.workspace.textDocuments.find((d) => d.uri.scheme === "file" && d.uri.fsPath === abs)?.getText(),
+      unsavedText: (abs) => vscode.workspace.textDocuments.find((d) => d.uri.scheme === "file" && d.uri.fsPath === abs && d.isDirty)?.getText(),
       openLanguage: (abs) => vscode.workspace.textDocuments.find((d) => d.uri.fsPath === abs)?.languageId,
       openFiles: () => vscode.workspace.textDocuments.filter((d) => d.uri.scheme === "file").map((d) => ({ abs: d.uri.fsPath, text: () => d.getText() })),
       findFiles: async (include, exclude, max) => (await vscode.workspace.findFiles(include, exclude, max)).map((u) => u.fsPath),

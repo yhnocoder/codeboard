@@ -105,8 +105,11 @@ export function rectOf(c: { id: string } | string) {
 // epoch = 拍快照时 sync 记到第几次：撤销 / 重做回到这份快照后，把它之后的 sync 重放一遍。
 // ids = 每类东西的 id（和那几段一一对应；自动保存按 id 比出变了哪些）。和上一份快照一样时沿用同一个数组。
 // step = 进撤销栈的快照：从它到下一步改了哪些卡 / Sidenote（"c" / "n" + id；撤销时看共享卡是不是被别的白板后来改过）
+// fx = 从它到下一步在白板外面做了什么（宿主那边建了一块白板）：撤销 / 重做这一步时跟着撤 / 重做
 type Ids = Record<(typeof KEYS)[number], string[]>;
-type Snap = { epoch: number; head: string; cards: string[]; place: string[]; links: string[]; sections: string[]; sidenotes: string[]; stickers: string[]; ids: Ids; step?: string[] };
+type Snap = { epoch: number; head: string; cards: string[]; place: string[]; links: string[]; sections: string[]; sidenotes: string[]; stickers: string[]; ids: Ids; step?: string[]; fx?: Effect };
+/** 一步修改在白板外面的效果 */
+export type Effect = { undo: () => void; redo: () => void };
 const undoStack: Snap[] = [];
 const redoStack: Snap[] = [];
 export const [canUndo, setCanUndo] = createSignal(false);
@@ -177,8 +180,9 @@ function stamp(b: Board) {
 /**
  * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
  * fn 抛错就整次撤回、提示一下，返回 false；什么都没改不进撤销栈。
+ * opts.fx = 这一步在白板外面做的事，撤销 / 重做时跟着撤 / 重做；opts.merge：和上一步的 merge 一样（中间没有别的修改、撤销）就并进上一步，比如连续按方向键挪同一批卡算一步
  */
-export function mutate(fn: (b: Board) => void): boolean {
+export function mutate(fn: (b: Board) => void, opts: { merge?: string; fx?: Effect } = {}): boolean {
   const before = snap();
   cur = null;
   try { setState("board", produce((b: Board) => { fn(b); stamp(b); })); }
@@ -195,35 +199,47 @@ export function mutate(fn: (b: Board) => void): boolean {
   if (same(after, before)) { cur = before; return true; }
   cur = after;
   changed();
-  pushUndo(before, after);
+  pushUndo(before, after, opts);
   return true;
 }
 
-function pushUndo(before: Snap, after: Snap) {
+/** 栈顶那一步的 merge（见 mutate）：别的修改、撤销 / 重做之后清掉 */
+let topMerge: string | undefined;
+function pushUndo(before: Snap, after: Snap, { merge, fx }: { merge?: string; fx?: Effect } = {}) {
+  const top = undoStack[undoStack.length - 1];
+  if (merge && merge === topMerge && top) {
+    top.step = touched(top, after);
+    redoStack.length = 0;
+    updUndo();
+    return;
+  }
+  topMerge = merge;
   before.step = touched(before, after);
+  before.fx = fx;
   undoStack.push(before);
   if (undoStack.length > 300) undoStack.shift();
   redoStack.length = 0;
   updUndo();
 }
 
-// 新建、还没写内容的 Note / Text / Code：建卡这一步先不进撤销栈。
-// 写了内容 → 「建卡 + 内容」算撤销栈里的一步；什么都没写就失焦 → 卡自动消失，就像没建过。
-const fresh = new Map<string, Snap>();
-export function createFresh(id: string, fn: (b: Board) => void) {
+// 新建、还没写内容的 Note / Text / Code / 问题：建这一步先不进撤销栈。
+// 写了内容 → 「新建 + 内容」算撤销栈里的一步；什么都没写就失焦 → 自动消失（drop），就像没建过。
+const fresh = new Map<string, { before: Snap; drop: (b: Board) => void }>();
+export function createFresh(id: string, fn: (b: Board) => void, drop = (b: Board) => removeCards(b, [id])) {
   const before = snap();
   live(fn);
-  fresh.set(id, before);
+  fresh.set(id, { before, drop });
 }
 export const isFresh = (id: string) => fresh.has(id);
 /** 结束新卡的第一次编辑：keep = 写了内容（fn 是写内容的修改） */
 export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) {
-  const before = fresh.get(id);
-  if (!before) return;
+  const f = fresh.get(id);
+  if (!f) return;
   fresh.delete(id);
-  if (!keep) { ghostOut([id]); live((b) => removeCards(b, [id])); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
+  if (!keep) { ghostOut([id]); live(f.drop); setSel("cards", (c) => c.filter((x) => x !== id)); return; }
   live((b) => { fn?.(b); stamp(b); });
-  pushUndo(before, (cur = snap()));
+  pushUndo(f.before, (cur = snap()));
+  changed();
 }
 
 /** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈 */
@@ -231,7 +247,7 @@ export function beginGesture(): () => void {
   const before = snap();
   held.add(before);
   // 拍的这份就是现在的白板：留作快照缓存，800ms 后的自动保存不用再拍一遍
-  return () => { held.delete(before); const after = (cur = snap()); if (!same(after, before)) pushUndo(before, after); };
+  return () => { held.delete(before); const after = (cur = snap()); if (!same(after, before)) { pushUndo(before, after); changed(); } };
 }
 /** 还没进撤销栈、但以后会进的快照（拖动开始时拍的）：它们之后的 sync 记录不能丢 */
 const held = new Set<Snap>();
@@ -239,12 +255,12 @@ const held = new Set<Snap>();
 export function live(fn: (b: Board) => void) {
   cur = null;
   setState("board", produce(fn));
-  changed();
+  changedLive();
 }
 /** 镜头停下来时记进白板（不进撤销栈）。快照里没有镜头，所以快照缓存还能用，自动保存只发镜头 */
 export function liveCam(c: Camera) {
   setState("board", "cam", c);
-  changed();
+  changedLive();
 }
 
 // sync 的记录：撤销 / 重做后要重放。只留撤销 / 重做栈里最老的快照之后的那些，再多也不超过 SYNC_MAX 条。
@@ -300,7 +316,7 @@ function trimSync() {
   let min = syncN;
   for (const s of undoStack) min = Math.min(min, s.epoch);
   for (const s of redoStack) min = Math.min(min, s.epoch);
-  for (const s of fresh.values()) min = Math.min(min, s.epoch);
+  for (const f of fresh.values()) min = Math.min(min, f.before.epoch);
   for (const s of held) min = Math.min(min, s.epoch);
   let i = 0;
   while (i < syncLog.length && (syncLog[i].n <= min || syncLog.length - i > SYNC_MAX)) i++;
@@ -338,7 +354,7 @@ function restore(s: Snap, now?: Snap) {
   }
   // 快照之后宿主同步来的改动再做一遍（不然 ⌘Z 会把行号退回去）；重放过的白板和快照不一样了，快照缓存作废
   const r = replaySync(s);
-  cur = r.any ? null : { ...s, epoch: syncN, step: undefined };
+  cur = r.any ? null : { ...s, epoch: syncN, step: undefined, fx: undefined };
   changed();
   // 撤销的这一步改过的共享项，之后被别的白板改了：重放了别人的版本，等于没撤
   if (s.step && r.shared.size && s.step.some((k) => r.shared.has(k))) toast(NOT_UNDONE);
@@ -364,52 +380,77 @@ function patch(now: Snap, s: Snap): boolean {
   batch(() => { for (const [k, at, v] of ops) setState("board", k as any, at as any, reconcile(v as any)); });
   return true;
 }
-/** 撤销栈顶（认出“最后一步还是某次改动”用） */
-export const undoTop = (): object | undefined => undoStack[undoStack.length - 1];
 export function undo() {
   const s = undoStack.pop();
   if (!s) return false;
+  topMerge = undefined;
   const now = snap();
-  redoStack.push(now);
+  redoStack.push({ ...now, fx: s.fx });
   undone = true;
   restore(s, now);
+  s.fx?.undo();
   updUndo();
   return true;
 }
 export function redo() {
   const s = redoStack.pop();
   if (!s) return false;
+  topMerge = undefined;
   const now = snap();
-  undoStack.push(now);
+  undoStack.push({ ...now, fx: s.fx });
   undone = true;
   restore(s, now);
+  s.fx?.redo();
   updUndo();
   return true;
 }
-export function resetHistory() { cur = null; lastIds = null; undoStack.length = 0; redoStack.length = 0; syncLog.length = 0; last.clear(); updUndo(); }
+
+// 每块白板各有一份撤销历史：进子白板再回来时宿主重新发来这块白板，内容和离开时一样就接着用
+const histories = new Map<string, { undo: Snap[]; redo: Snap[]; sync: typeof syncLog; at: Snap }>();
+/** 换上宿主发来的白板：现在这块白板的撤销历史收起来；新白板收起过、内容也和那时一样就接着用，不然从头开始 */
+export function setBoard(b: Board) {
+  if (state.loaded) histories.set(state.board.id, { undo: undoStack.splice(0), redo: redoStack.splice(0), sync: syncLog.splice(0), at: snapNow() });
+  setState("board", reconcile(b));
+  cur = null; lastIds = null; topMerge = undefined; last.clear();
+  const h = histories.get(b.id);
+  histories.delete(b.id);
+  if (h && same(h.at, snapNow())) { undoStack.push(...h.undo); redoStack.push(...h.redo); syncLog.push(...h.sync); }
+  updUndo();
+}
 
 export function allIds(): string[] {
   return state.board.cards.map((c) => c.id);
 }
 
-// ---------- 自动保存：改动后约 1 秒写盘，没有保存按钮 ----------
+// ---------- 自动保存：没有保存按钮 ----------
 
-// 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接排一次保存，不用盯着整块白板的 JSON 看它变没变。
+// 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接把改动发给宿主，不用盯着整块白板的 JSON 看它变没变。
+// 宿主马上换上、稍后写盘，面板关掉时把没写的写完：白板这边不用赶在页面卸载前发什么。
+// 一步改动（mutate、撤销重做、拖动结束、宿主同步来的）稍后（SEND_DELAY）发，之间的几次合成一次；
+// 拖动中的 live、镜头停下的 liveCam 停一会儿才发（不在每一帧拍整块白板的快照），拖动结束时那一步和别的改动一样发。
 // 发给宿主的是增量（BoardPatch）：拿现在的快照和上次发出去的那份按 id 比，只发变了的项、删掉的 id、白板本身的字段（变了才发）和镜头。
 // 快照的每一段本来就有（mutate 拍过的直接用），这里只比字符串、解析变了的那几段
-const changed = () => scheduleSave();
+let queued = false;
+const SEND_DELAY = 50;
+function changed() {
+  if (queued) return;
+  queued = true;
+  // 稍等一下再发：比较快照、发消息不挤进用户操作的那一帧（关标签页总在这之后）。不用 requestAnimationFrame：后台的白板不出帧，宿主同步来的改动会一直发不出去
+  setTimeout(() => { queued = false; flushSave(); }, SEND_DELAY);
+}
 let saveTimer: number | undefined;
-/** 上次发出去的快照和镜头；null = 不知道宿主那边存到了哪一步（刚失败过），下次整块发 */
+const LIVE_DELAY = 800;
+function changedLive() {
+  if (!state.loaded) return;
+  clearTimeout(saveTimer);
+  saveTimer = window.setTimeout(flushSave, LIVE_DELAY);
+}
+/** 上次发出去的快照和镜头；null = 不知道宿主那边是什么样子（上次没收下），下次整块发 */
 let sent: { snap: Snap; cam: string } | null = null;
 /** 上次发出去之后有没有撤销 / 重做（宿主据此跳过别的白板后来改过的共享项） */
 let undone = false;
 const NOT_UNDONE = "Changed on another board; not undone.";
 const camKey = (c: Camera) => `${c.x},${c.y},${c.z}`;
-function scheduleSave() {
-  if (!state.loaded) return;
-  clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(flushSave, 800);
-}
 export function flushSave() {
   clearTimeout(saveTimer);
   if (!state.loaded) return;
@@ -421,12 +462,10 @@ export function flushSave() {
   sent = { snap: s, cam };
   const undo = undone;
   undone = false;
-  // 宿主写盘成功才算存上；失败（磁盘满、没权限）就记成不知道存到了哪，过几秒整块重发，关窗前的 flush 也会再发
+  // 宿主没收下（白板被删了之类）：不知道它那边是什么样子了，下一次整块发
   ask("patch", undo ? { patch: p, undo: true } : { patch: p }).then((r) => { if (r?.skipped) toast(NOT_UNDONE); }, (e: Error) => {
     sent = null;
-    toast(`Couldn't save the board: ${e.message}. Retrying…`);
-    clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(flushSave, 5000);
+    toast(`Couldn't save the board: ${e.message}`);
   });
 }
 /** 宿主刚发来的白板就是存着的那一份 */

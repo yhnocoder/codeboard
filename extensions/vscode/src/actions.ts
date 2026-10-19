@@ -1,6 +1,7 @@
 // 编辑器和侧栏的命令做什么：Add to Board（⌥B）、Add to Another Board…、Add to Selected Card、Add Function at Cursor、
 // Add as Sidenote（⌥S）、Reveal on Board，以及白板的新建 / 改名 / 删除 / 分组。命令注册在 commands.ts（VS Code 适配层）。
-import { allCodeCards, estSize, type Board, type CodeCard, type KeyAction } from "@codeboard/core";
+import * as path from "node:path";
+import { allCodeCards, estSize, removeCards, type Board, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { cardsFromEditor, symCard, widthFor, withViews, type Built } from "./cards";
 import type { BoardHost } from "./boards";
@@ -30,35 +31,49 @@ export function makeActions(panels: BoardHost, store: Storage) {
     return id;
   };
 
-  const notify = async (b: { id: string; name: string }, n: number, undo?: () => Promise<void>) => {
-    const r = await ui().info(`Added ${n > 1 ? `${n} cards` : "to"} “${b.name}”`, "Open", ...(undo ? ["Undo"] : []));
+  const notify = async (b: { id: string; name: string }, n: number, undo: () => Promise<void>) => {
+    const r = await ui().info(`Added ${n > 1 ? `${n} cards` : "to"} “${b.name}”`, "Open", "Undo");
     if (r === "Open") await panels.show(b.id);
-    else if (r === "Undo" && undo) await undo();
+    else if (r === "Undo") await undo();
   };
 
   /** 编辑器里 ⌥B 之后接着按 ⌘Z 撤销的那次添加（焦点留在编辑器：⌥B 是边读边收集，不抢焦点） */
   let lastAdd: (() => Promise<void>) | null = null;
   const armUndo = (f: () => Promise<void>) => { lastAdd = f; ui().undoAddKey?.(true); };
 
+  /**
+   * 撤销一次添加：只拿掉那几张卡（还在的）。白板开着（可能是加完以后才打开的）就交给白板做，是它撤销栈里的一步；
+   * 关着就改存着的白板。之后在白板上做的别的改动都不动
+   */
+  const undoAdd = async (boardId: string, ids: string[]) => {
+    const p = panels.get(boardId);
+    if (p) { p.post({ type: "undoAdd", cards: ids }); return; }
+    const b = await store.load(boardId);
+    const gone = ids.filter((id) => b?.cards.some((c) => c.id === id));
+    if (!b || !gone.length) return;
+    removeCards(b, gone);
+    await store.save(b);
+    void ui().info(`Removed from “${b.name}”`);
+  };
+
   /** 把卡送到白板：开着就发给白板（它决定位置）；没开就直接写进 JSON */
   const deliver = async (boardId: string, built: Built) => {
     const cards = await withViews(built.cards);
     const p = panels.get(boardId);
+    let name = p?.board?.name ?? "board";
     if (p) {
       const sel = p.selection?.cards[0];
       p.post({ type: "add", cards, ask: built.ask, sel: sel ? { card: sel } : undefined });
-      armUndo(async () => { panels.get(boardId)?.post({ type: "undoAdd", cards: built.cards.map((c) => c.id) }); });
-      if (!p.visible) void notify({ id: boardId, name: p.board?.name ?? "board" }, cards.length);
-      return;
+    } else {
+      const b = await store.load(boardId);
+      if (!b) return;
+      placeCards(b, built.cards);
+      await store.save(b);
+      name = b.name;
     }
-    const b = await store.load(boardId);
-    if (!b) return;
-    const before = structuredClone(b);
-    placeCards(b, built.cards);
-    await store.save(b);
-    const undo = async () => { await store.save(before); };
-    armUndo(async () => { await undo(); void ui().info(`Removed from “${b.name}”`); });
-    void notify(b, cards.length, undo);
+    const undo = () => undoAdd(boardId, built.cards.map((c) => c.id));
+    armUndo(undo);
+    if (!p?.visible) void notify({ id: boardId, name }, cards.length, undo);
   };
 
   const fromEditor = async (mode: "auto" | "function" | "separate" = "auto"): Promise<Built | undefined> => {
@@ -249,7 +264,13 @@ export function makeActions(panels: BoardHost, store: Storage) {
     "codeboard.deleteGroup": async (a?: Node) => {
       if (a?.kind !== "group") return;
       const ok = await ui().warn(`Delete group “${a.name}”?`, { modal: true, detail: "Boards in it are kept and moved out of the group." }, "Delete Group");
-      if (ok === "Delete Group") { await store.removeGroup(a.name); await panels.pushBoards(); }
+      if (ok !== "Delete Group") return;
+      const left = await store.removeGroup(a.name);
+      await panels.pushBoards();
+      if (!left.length) return;
+      // 读不了的白板、不是白板的文件：不删，文件夹留着
+      const reveal = await ui().warn(`Group “${a.name}” was kept: it still has files CodeBoard can't open as boards (${left.join(", ")}).`, {}, "Reveal in Folder");
+      if (reveal) await ui().revealInOS(path.join(store.dir(), a.name));
     },
     "codeboard.revealInFolder": async (a?: unknown) => {
       const id = boardArg(a);

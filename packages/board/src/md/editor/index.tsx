@@ -4,7 +4,7 @@
 import { keepKey } from "../../ui/editkeys";
 import { Editor, Extension, InputRule, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
-import { EditorState, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { EditorState, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
@@ -344,16 +344,21 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       };
     },
   });
-  // Esc 保存退出：优先级最低，菜单、灰字、公式框先拿
-  const Exit = Extension.create({
-    name: "cbExit",
+  // 优先级最低，菜单、灰字、公式框、列表、表格先拿：Esc 保存退出；Tab 在别处没用时什么都不做（不能让浏览器把焦点移出编辑器）
+  const Last = Extension.create({
+    name: "cbLast",
     priority: 1,
-    addKeyboardShortcuts() { return { Escape: () => { exit(); return true; } }; },
+    addKeyboardShortcuts() { return { Escape: () => { exit(); return true; }, Tab: () => true, "Shift-Tab": () => true }; },
+  });
+  // 正文最后总有一个能打字的地方（Typora 一样）：最后一块是代码、公式、表格这类时，后面垫一个空段落，方向键、点击走得出去
+  const Tail = Extension.create({
+    name: "cbTail",
+    addProseMirrorPlugins: () => [new Plugin({ appendTransaction: (trs, _old, st) => { const tr = st.tr; return trs.some((t) => t.docChanged) && padEnd(tr) ? tr : null; } })],
   });
   return [
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
-    ...base, Slash, Ref, Emo, Rules, Exit,
+    ...base, Slash, Ref, Emo, Rules, Last, Tail,
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),
@@ -375,16 +380,22 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
     rd.readAsDataURL(f);
     return true;
   }
-  const text = cd.getData("text/plain");
-  const inCode = !!e.state.selection.$from.parent.type.spec.code;
-  if (inCode) return false; // 代码块里原样粘贴
+  const text = cd.getData("text/plain").replace(/\r\n?/g, "\n");
+  const $f = e.state.selection.$from;
+  if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴
+  // 表格格子里只能有一段（GFM 存不下别的）：几行字用硬换行连起来（写回成 <br>），不变成代码块、列表
+  if (/cell/.test($f.node(-1).type.spec.tableRole ?? "") && text.includes("\n")) {
+    const lines = text.replace(/\n$/, "").split("\n");
+    e.chain().focus().insertContent(lines.flatMap((l, i): JSONContent[] => [...(i ? [{ type: "hardBreak" }] : []), ...(l ? [{ type: "text", text: l }] : [])])).run();
+    return true;
+  }
   // 从 VS Code 复制的代码：保留缩进，多行的变成代码块（语言用 VS Code 给的）
   const vs = cd.getData("vscode-editor-data");
   if (vs && text) {
     let lang = "";
     try { lang = JSON.parse(vs).mode ?? ""; } catch { /* ignore */ }
     if (!text.includes("\n")) { e.chain().focus().insertContent({ type: "text", text, marks: [{ type: "code" }] }).insertContent(" ").run(); return true; }
-    e.chain().focus().insertContent({ type: "codeBlock", attrs: { language: lang && lang !== "plaintext" ? lang : null }, content: [{ type: "text", text: dedent(text.replace(/\r\n?/g, "\n").replace(/\n$/, "")) }] })
+    e.chain().focus().insertContent({ type: "codeBlock", attrs: { language: lang && lang !== "plaintext" ? lang : null }, content: [{ type: "text", text: dedent(text.replace(/\n$/, "")) }] })
       // 光标落到代码块后面（后面没有段落就补一个），接着打字不会进代码里
       .command(({ tr, state }) => {
         const $p = tr.selection.$from;
@@ -478,22 +489,21 @@ function freshState(prev: EditorState, doc: PMNode): EditorState {
   for (const f of cfg.fields) (st as unknown as Record<string, unknown>)[f.name] = f.init({ doc }, st);
   return st;
 }
-/**
- * 一次编辑的初始状态：文档、撤销栈、各插件都从头来。光标放到正文末尾（脚注列表前面）；正文最后是代码、表格、折叠块这类时，
- * 后面先垫一个空段落（不算改动，没打字就不保存）
- */
+/** 正文的末尾（脚注列表前面） */
+const bodyEnd = (d: PMNode) => d.content.size - (d.lastChild?.type.name === "footnotes" ? d.lastChild.nodeSize : 0);
+/** 正文最后一块后面接着打字的地方：最后一块是代码、公式、表格、折叠块这类时补一个空段落（不写进文件）。补了返回 true */
+function padEnd(tr: Transaction): boolean {
+  const end = bodyEnd(tr.doc), last = tr.doc.resolve(end).nodeBefore;
+  if (!last || /^(paragraph|heading|bulletList|orderedList|taskList)$/.test(last.type.name)) return false;
+  tr.insert(end, tr.doc.type.schema.nodes.paragraph.create());
+  return true;
+}
+/** 一次编辑的初始状态：文档、撤销栈、各插件都从头来。光标放到正文末尾；垫的空段落不算改动（没打字就不保存） */
 function stateFor(editor: Editor, value: string): EditorState {
-  let st = freshState(editor.state, editor.schema.nodeFromJSON(parseMd(value)));
-  let d = st.doc;
-  let end = d.content.size;
-  if (d.lastChild?.type.name === "footnotes") end -= d.lastChild.nodeSize;
-  const last = d.resolve(end).nodeBefore;
+  const st = freshState(editor.state, editor.schema.nodeFromJSON(parseMd(value)));
   const tr = st.tr;
-  if (last && !/^(paragraph|heading|bulletList|orderedList|taskList)$/.test(last.type.name)) {
-    tr.insert(end, editor.schema.nodes.paragraph.create()).setMeta("addToHistory", false);
-    d = tr.doc; end += 2;
-  }
-  tr.setSelection(Selection.near(d.resolve(end), -1));
+  if (padEnd(tr)) tr.setMeta("addToHistory", false);
+  tr.setSelection(Selection.near(tr.doc.resolve(bodyEnd(tr.doc)), -1));
   return st.apply(tr);
 }
 /**
@@ -649,7 +659,9 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
       inst.box.remove();
       // 有焦点的元素被拿掉时不会触发 blur，ProseMirror 会以为自己还有焦点：补一个
       if ((editor.view as unknown as { focused: boolean }).focused) editor.view.dom.dispatchEvent(new FocusEvent("blur"));
-      if (!pooled && !editor.isDestroyed) editor.destroy();
+      if (!pooled) { if (!editor.isDestroyed) editor.destroy(); return; }
+      // 留着的那一个也不留这次的文档：节点视图跟着拆掉（代码块关掉宿主那边的语言服务文档，也就是那个 .codeboard-note-code-* 隐藏文件）
+      editor.view.updateState(stateFor(editor, ""));
     }));
   };
   return { value, editor: () => editor, destroy: () => { if (!done) { done = true; destroy(); } } };

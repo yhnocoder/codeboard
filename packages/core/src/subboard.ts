@@ -3,6 +3,7 @@
 import { cardTitle, isCode, uid, versionLabel, type Board, type BoardCard, type Card, type Link, type Place, type Section } from "./model";
 import { computeFlows } from "./flow";
 import { bounds, estSize, union, type Rect } from "./layout";
+import type { Crumb } from "./protocol";
 
 /**
  * 骨架里的一张卡：框（相对骨架左上角，子白板的坐标）、名字、种类；g = 在子白板的第几张调用图里，m / i = 那张图的字母 / 图标；
@@ -23,6 +24,15 @@ const SEC_PAD = { l: 22, r: 22, t: 34, b: 22 };
 /** 这块白板上嵌着的子白板（去重，按出现的先后） */
 export function subBoardsOf(b: Pick<Board, "cards">): string[] {
   return [...new Set(b.cards.filter((c): c is BoardCard => c.kind === "board").map((c) => c.board))];
+}
+
+/**
+ * 面包屑上的一块白板删掉了：它和它上面的几层都回不去了，只留它下面的几层（cams[i] 是回到 crumbs[i] 时的镜头，跟着一起剪）。
+ * 面包屑上没有它返回 null
+ */
+export function cutCrumbs<T>(crumbs: readonly Crumb[], cams: readonly T[], gone: string): { crumbs: Crumb[]; cams: T[] } | null {
+  const i = crumbs.findIndex((c) => c.id === gone);
+  return i < 0 ? null : { crumbs: crumbs.slice(i + 1), cams: cams.slice(i + 1) };
 }
 
 /** child 放进 parent 会不会套成环：child 就是 parent，或者从 child 往下能走到 parent。subs(id) = 那块白板的子白板 */

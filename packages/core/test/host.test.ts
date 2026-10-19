@@ -19,30 +19,33 @@ const segAt = (rev: string, path: string, qual: string | undefined, start: numbe
   };
 };
 
+/** 拿来比的版本：commit c */
+const at = (c: string) => ({ label: c, version: { kind: "git" as const, commit: c } });
+
 describe("trackSeg", () => {
   it("is ok when nothing changed and reports changes in a symbol between commits", () => {
     const a = analyze("python", show(OLD, SCHED));
     const s = a.symbols.find((x) => x.qual === "Scheduler.schedule")!;
     const seg = segAt(OLD, SCHED, "Scheduler.schedule", s.start, s.end);
-    expect(trackSeg(seg, show(OLD, SCHED).split("\n"), a.symbols, "x").state).toBe("ok");
+    expect(trackSeg(seg, show(OLD, SCHED).split("\n"), a.symbols, at("x")).state).toBe("ok");
     const head = show(NEW, SCHED).split("\n");
-    const r = trackSeg(seg, head, analyze("python", head.join("\n")).symbols, "bb823b3");
+    const r = trackSeg(seg, head, analyze("python", head.join("\n")).symbols, at("bb823b3"));
     expect(r).toMatchObject({ state: "changed", hiddenOnly: false, head: "bb823b3" });
   });
-  it("reports moved when only the position changed", () => {
+  it("reports moved, pinned to the version it was found in, when only the position changed", () => {
     const text = show(NEW, SCHED).split("\n");
     const a = analyze("python", text.join("\n"));
     const s = a.symbols.find((x) => x.qual === "Scheduler.postprocess")!;
     const seg = segAt(NEW, SCHED, "Scheduler.postprocess", s.start, s.end);
     const moved = ["# one", "# two", ...text];
-    expect(trackSeg(seg, moved, analyze("python", moved.join("\n")).symbols, "h")).toMatchObject({ state: "moved", start: s.start + 2, end: s.end + 2 });
+    expect(trackSeg(seg, moved, analyze("python", moved.join("\n")).symbols, at("h"))).toMatchObject({ state: "moved", start: s.start + 2, end: s.end + 2, version: { kind: "git", commit: "h" } });
   });
   it("tracks snippets by content and reports lost symbols", () => {
     const text = show(NEW, SCHED).split("\n");
     const seg = segAt(NEW, SCHED, undefined, 30, 33);
     expect(locateSeg(seg, ["x", ...text], [])).toEqual({ start: 31, end: 34 });
     const fn = segAt(NEW, SCHED, "Scheduler.nope", 30, 33);
-    expect(trackSeg(fn, text, [], "h").state).toBe("lost");
+    expect(trackSeg(fn, text, [], at("h")).state).toBe("lost");
   });
   it("notices when only hidden lines changed", () => {
     const old = ["a", "b", "c", "d"];

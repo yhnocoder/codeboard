@@ -70,7 +70,7 @@ export function placePasted(r: PastedCards, at: { x: number; y: number }) {
     return toast("Already on this board");
   }
   mutate((b) => {
-    const m = placeCards(b, r.cards, { copy: !r.shared, at: (p) => ({ ...p, x: p.x + dx, y: p.y + dy }) });
+    const m = placeCards(b, r.cards, { copy: !r.shared, links: r.links, at: (p) => ({ ...p, x: p.x + dx, y: p.y + dy }) });
     ids = tops.map((x) => m.cards[x.card.id]).filter(Boolean);
     segs = m.segs;
   });

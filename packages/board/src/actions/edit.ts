@@ -16,7 +16,7 @@ import { animate, Spring, reduceMotion } from "../state/camera";
 import { setEditing, setPopIn } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
-import { frameOf, allMembers } from "../state/sections";
+import { frameOf, allMembers, isHidden } from "../state/sections";
 import { K, popCard, revealCard, sectionById, selCards } from "./common";
 import { requestViews } from "./create";
 
@@ -72,7 +72,7 @@ export function toggleHl(ls: LineSel) {
 
 export function deleteSel() {
   const ids = new Set<string>();
-  for (const id of sel.cards) { const f = cardById(id); if (f) ids.add(f.host.id); }
+  for (const id of sel.cards) { const f = cardById(id); if (f && !isHidden(f.host.id)) ids.add(f.host.id); } // 拖调用图标记时连着选上的折叠起来的卡：看不见的不删
   const links = new Set(sel.links);
   const secs = new Set(sel.sections);
   if (!ids.size && !links.size && !secs.size) return;
@@ -191,12 +191,11 @@ function renameRefs(b: Board, from: string, to: string) {
 export function setDesc(id: string, v: string) {
   mutate((b) => { const c = findCard(b, id)?.card; if (c) c.desc = v.trim() || undefined; });
 }
+/** 改 Note 的字；字删光了这张 Note 就删掉（同一步，一次撤销就回来） */
 export function setNoteText(id: string, v: string) {
-  const set = (b: Board) => { const c = findCard(b, id)?.card; if (c?.kind === "note") c.md = v; };
-  if (isFresh(id)) return settleFresh(id, !!v.trim(), set);
-  mutate(set);
-  const c = cardById(id)?.card;
-  if (c?.kind === "note" && !c.md.trim()) mutate((b) => removeCards(b, [id]));
+  const keep = !!v.trim();
+  if (isFresh(id)) return settleFresh(id, keep, (b) => { const c = findCard(b, id)?.card; if (c?.kind === "note") c.md = v; });
+  mutate((b) => { const c = findCard(b, id)?.card; if (c?.kind !== "note") return; if (keep) c.md = v; else removeCards(b, [id]); });
 }
 export function setFreeCode(id: string, text: string) {
   let seg: Segment | undefined;

@@ -1,4 +1,5 @@
 // 工作区路径、文件内容、语言：所有模块共用的小工具。编辑器和工作区只经过 Workspace（激活时 useWorkspace 接上）。
+import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import type { Workspace } from "@codeboard/core";
@@ -16,6 +17,8 @@ export const hasWorkspace = () => !!current;
 export const wsRoots = () => workspace().files.roots();
 /** 第一个工作区根：Source.repo 相对它 */
 export const ws0 = () => wsRoots()[0] ?? "";
+/** 设置里写的文件夹：~ 开头的在主目录下，相对路径相对第一个工作区根（没有工作区时相对主目录） */
+export const settingDir = (p: string) => path.resolve(ws0() || os.homedir(), p.replace(/^~(?=$|[\\/])/, os.homedir()));
 export const posix = (p: string) => p.split(path.sep).join("/");
 
 /** 显示 / 往返用的路径：在第一个根下面就写相对路径，否则写绝对路径 */
@@ -30,11 +33,11 @@ export const inWorkspace = (abs: string) => wsRoots().some((f) => {
   return !r.startsWith("..") && !path.isAbsolute(r);
 });
 
-/** 文件当前内容：编辑器里打开着就用编辑器的（含未保存的改动），否则读磁盘。track = 记进最近读过的文件 */
+/** 文件当前内容：编辑器里有未保存的改动就用编辑器的，否则读磁盘（文件删了 = null，哪怕编辑器里还开着）。track = 记进最近读过的文件 */
 export async function readText(abs: string, track = true): Promise<string | null> {
   if (track) recent.set(abs, true);
-  const open = workspace().files.openText(abs);
-  if (open !== undefined) return open;
+  const unsaved = workspace().files.unsavedText(abs);
+  if (unsaved !== undefined) return unsaved;
   try { return await fs.readFile(abs, "utf8"); } catch { return null; }
 }
 /** 最近读过的文件（不扫工作区的兜底查找用）。Lru 在本文件后面定义，用到时才建 */

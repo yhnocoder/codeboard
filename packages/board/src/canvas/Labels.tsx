@@ -174,7 +174,7 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
             e.stopPropagation();
             if ((e.target as HTMLElement).closest(".editing, .mkcall, .vplus, .vval.opt, .vmore, .vsb, .rpcl")) return;
             e.preventDefault();
-            if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id);
+            if (isDbl(`l${L.id}`, e)) return A.setLinkEditing(L.id);
             select({ links: [L.id] }, e.shiftKey);
             labelDrag(e, L.id, e.currentTarget, () => g()?.pts, pos, ends);
           }}>

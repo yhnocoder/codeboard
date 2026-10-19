@@ -1,15 +1,29 @@
 // 自定义贴纸包（#45）：Sticker Packs 目录里的 Iconify JSON（一套一个文件）和 SVG 文件夹（文件夹名 = 包名）。纯本地，不联网。
+// 目录：设置 Sticker Folder（相对路径相对工作区根），空 = ~/.codeboard/stickers；Open Folder 打开的也是它。
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import type { StickerPack } from "@codeboard/core";
 import { readSettings } from "./settings";
 import { log } from "./log";
+import { settingDir, workspace } from "./ws";
 
 export const stickerDir = () => {
   const d = readSettings().stickerDir.trim();
-  return d ? d.replace(/^~(?=$|\/)/, os.homedir()) : path.join(os.homedir(), ".codeboard", "stickers");
+  return d ? settingDir(d) : path.join(os.homedir(), ".codeboard", "stickers");
 };
+
+/** Open Folder：没有就建，然后在系统文件管理器里打开 */
+export async function openStickerDir() {
+  const dir = stickerDir();
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    await workspace().ui.openFolder(dir);
+  } catch (e) {
+    log("error", `sticker folder ${dir}: ${e instanceof Error ? e.message : e}`);
+    workspace().ui.error(`Cannot open the sticker folder ${dir}`);
+  }
+}
 
 /** 单个 SVG 的大小上限：更大的跳过（清洗在白板里用 DOMPurify 做，宿主只读文件） */
 export const MAX_SVG = 256 * 1024;

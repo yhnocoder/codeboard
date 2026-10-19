@@ -44,10 +44,11 @@ class MemFs implements Fs {
     for (const d of [...this.dirs]) if (d === a || d.startsWith(a + "/")) { this.dirs.delete(d); this.dirs.add(b + d.slice(a.length)); }
     for (const [k, v] of [...this.files]) if (k.startsWith(a + "/")) { this.files.delete(k); this.files.set(b + k.slice(a.length), v); }
   }
-  async rm(p: string) {
-    this.files.delete(p);
-    for (const d of [...this.dirs]) if (d === p || d.startsWith(p + "/")) this.dirs.delete(d);
-    for (const k of [...this.files.keys()]) if (k.startsWith(p + "/")) this.files.delete(k);
+  async rm(p: string) { this.files.delete(p); }
+  async rmdir(p: string) {
+    this.need(p);
+    if ((await this.readdir(p)).length) throw new Error(`ENOTEMPTY ${p}`);
+    this.dirs.delete(p);
   }
   async mkdir(p: string) { for (let d = p; d !== "/" && !this.dirs.has(d); d = this.parent(d)) this.dirs.add(d); }
   fromBase64 = (s: string) => new Uint8Array(Buffer.from(s, "base64"));
@@ -56,6 +57,8 @@ class MemFs implements Fs {
 }
 
 const ROOT = "/data/boards";
+/** A patch written to disk right away (the storage otherwise writes it after a short delay) */
+async function patchNow(store: Storage, ...a: Parameters<Storage["patch"]>) { const r = await store.patch(...a); await store.flush(); return r; }
 function setup() {
   const fs = new MemFs();
   const logs: string[] = [];
@@ -95,6 +98,26 @@ describe("core storage", () => {
     fs.put(`${ROOT}/a.json`, { ...emptyBoard("a", "A2") });
     expect((await store.list())[0].name).toBe("A2");
     expect(fs.reads).toBe(n + 1);
+  });
+
+  it("deleting a group moves its boards out and keeps the folder with any file that isn't a readable board", async () => {
+    const { fs, store } = setup();
+    const b = await store.create("B");
+    await store.newGroup("G");
+    await store.move(b.id, "G");
+    fs.put(`${ROOT}/G/handedit.json`, "{ \"cards\": [ oops");
+    fs.put(`${ROOT}/G/notes.txt`, "my notes");
+    expect((await store.removeGroup("G")).sort()).toEqual(["handedit.json", "notes.txt"]);
+    expect(store.groupOf(b.id)).toBe(undefined);
+    expect(fs.files.has(`${ROOT}/${b.id}.json`)).toBe(true);
+    expect(fs.files.get(`${ROOT}/G/handedit.json`)?.data).toBe("{ \"cards\": [ oops");
+    expect(fs.files.get(`${ROOT}/G/notes.txt`)?.data).toBe("my notes");
+    expect(await store.groups()).toEqual(["G"]);
+    // once only boards were in it, the folder goes
+    await fs.rm(`${ROOT}/G/handedit.json`); await fs.rm(`${ROOT}/G/notes.txt`);
+    expect(await store.removeGroup("G")).toEqual([]);
+    expect(fs.dirs.has(`${ROOT}/G`)).toBe(false);
+    expect(await store.groups()).toEqual([]);
   });
 
   it("groups are one level of subfolders; empty groups are listed; reserved names are not groups", async () => {
@@ -227,7 +250,7 @@ describe("card library (shared cards)", () => {
     expect(await t.store.share("A", ["s"])).toEqual({});
     // B gets the shared card the way a duplicate of A would: same refs
     const d = (await t.store.duplicate("A"))!;
-    await t.store.patch(d.id, { sidenotes: { del: ["n2"] } }); // the copy drops A's board-only sidenote
+    await patchNow(t.store, d.id, { sidenotes: { del: ["n2"] } }); // the copy drops A's board-only sidenote
     const shared: { from: string; ids: string[]; items: string[] }[] = [];
     t.store.onDidShare((e) => shared.push({ from: e.from, ids: e.cards.map((c) => c.card.id), items: e.cards.flatMap((c) => c.items) }));
     return { ...t, a, B: d.id, shared };
@@ -258,7 +281,7 @@ describe("card library (shared cards)", () => {
   it("a patch to a shared card writes the card file, updates the other board and reports it once", async () => {
     const { fs, store, B, shared } = await two();
     const before = file(fs, B);
-    const back = await store.patch("A", { cards: { set: [note("s", "edited")] }, sidenotes: { set: [{ id: "n3", kind: "text", md: "new", at: { card: "s" } }] } });
+    const back = await patchNow(store, "A", { cards: { set: [note("s", "edited")] }, sidenotes: { set: [{ id: "n3", kind: "text", md: "new", at: { card: "s" } }] } });
     expect(back).toEqual([]);
     expect(card(fs, "s")).toMatchObject({ card: { md: "edited" } });
     expect(card(fs, "s").sidenotes.map((n: any) => n.id).sort()).toEqual(["n1", "n3"]);
@@ -270,17 +293,17 @@ describe("card library (shared cards)", () => {
     expect(b.sidenotes.map((n) => n.id)).not.toContain("n2"); // A's board-only sidenote stays on A
     // A no-op write (e.g. the same content again) does not rewrite or broadcast
     const writes = fs.files.get(`${ROOT}/cards/s.json`)!.mtime;
-    await store.patch("A", { cards: { set: [note("s", "edited")] } });
+    await patchNow(store, "A", { cards: { set: [note("s", "edited")] } });
     expect(fs.files.get(`${ROOT}/cards/s.json`)!.mtime).toBe(writes);
     expect(shared.length).toBe(1);
     // Local cards never touch the library
-    await store.patch("A", { cards: { set: [note("la", "x")] } });
+    await patchNow(store, "A", { cards: { set: [note("la", "x")] } });
     expect(shared.length).toBe(1);
   });
 
   it("removing a shared card from one board keeps it in the library and on the other board", async () => {
     const { fs, store, B } = await two();
-    await store.patch("A", { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1", "n2"] } });
+    await patchNow(store, "A", { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1", "n2"] } });
     expect(file(fs, "A").cards).toEqual([note("la")]);
     expect(card(fs, "s").sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
     expect(await store.boardsWith("s")).toEqual([B]);
@@ -289,7 +312,7 @@ describe("card library (shared cards)", () => {
 
   it("deleting or board-only-ing a travelling sidenote removes it from the library", async () => {
     const { fs, store, B, shared } = await two();
-    await store.patch(B, { sidenotes: { set: [{ id: "n1", kind: "text", md: "travels", at: { card: "s" }, boardOnly: true }] } });
+    await patchNow(store, B, { sidenotes: { set: [{ id: "n1", kind: "text", md: "travels", at: { card: "s" }, boardOnly: true }] } });
     expect(card(fs, "s").sidenotes).toEqual([]);
     expect(shared.at(-1)).toEqual({ from: B, ids: ["s"], items: ["n1"] });
     expect(store.peek("A")!.sidenotes.map((n) => n.id)).toEqual(["n2"]); // gone from A, stays on B as its own
@@ -305,7 +328,7 @@ describe("card library (shared cards)", () => {
     disk.sidenotes = [{ ...disk.sidenotes[0], md: "edited elsewhere" }, { id: "nx", kind: "text", md: "from the other window", at: { card: "s" } }];
     fs.put(`${ROOT}/cards/s.json`, disk);
     // This window edits only the card: the other window's sidenotes survive
-    await store.patch("A", { cards: { set: [note("s", "edited here")] } });
+    await patchNow(store, "A", { cards: { set: [note("s", "edited here")] } });
     const c = card(fs, "s");
     expect(c.card.md).toBe("edited here");
     expect(c.sidenotes.map((n: any) => [n.id, n.md]).sort()).toEqual([["n1", "edited elsewhere"], ["nx", "from the other window"]]);
@@ -314,31 +337,31 @@ describe("card library (shared cards)", () => {
     expect(store.peek("A")!.sidenotes.map((n) => n.id).sort()).toEqual(["n1", "n2", "nx"]);
     expect(shared.at(-1)!.items.sort()).toEqual(["n1", "nx", "s"]);
     // Deleting a sidenote this board saw still deletes it; one it never saw stays
-    await store.patch("A", { sidenotes: { del: ["n1"] } });
+    await patchNow(store, "A", { sidenotes: { del: ["n1"] } });
     expect(card(fs, "s").sidenotes.map((n: any) => n.id)).toEqual(["nx"]);
   });
 
   it("undo skips shared items another board changed since this board wrote them", async () => {
     const { fs, store, B } = await two();
-    await store.patch("A", { cards: { set: [note("s", "by A")] } });
-    await store.patch(B, { cards: { set: [note("s", "by B")] } });
+    await patchNow(store, "A", { cards: { set: [note("s", "by A")] } });
+    await patchNow(store, B, { cards: { set: [note("s", "by B")] } });
     // A undoes its edit: B wrote the card after A, so A's undo is skipped and A gets B's version back
-    const back = await store.patch("A", { cards: { set: [note("s", "s"), note("la", "undone too")] } }, { undo: true });
+    const back = await patchNow(store, "A", { cards: { set: [note("s", "s"), note("la", "undone too")] } }, { undo: true });
     expect(back).toEqual([{ card: note("s", "by B"), sidenotes: [expect.objectContaining({ id: "n1" })], items: ["s"] }]);
     expect(card(fs, "s").card.md).toBe("by B");
     expect((store.peek("A")!.cards[1] as any).md).toBe("undone too"); // local items in the same patch still apply
     // B undoes its own last write: allowed
-    expect(await store.patch(B, { cards: { set: [note("s", "by A")] } }, { undo: true })).toEqual([]);
+    expect(await patchNow(store, B, { cards: { set: [note("s", "by A")] } }, { undo: true })).toEqual([]);
     expect(card(fs, "s").card.md).toBe("by A");
     // Without undo it is last writer wins
-    expect(await store.patch("A", { cards: { set: [note("s", "A again")] } })).toEqual([]);
+    expect(await patchNow(store, "A", { cards: { set: [note("s", "A again")] } })).toEqual([]);
     expect(card(fs, "s").card.md).toBe("A again");
   });
 
   it("undo of a shared sidenote follows the same rule per item", async () => {
     const { fs, store, B } = await two();
-    await store.patch(B, { sidenotes: { set: [{ id: "n1", kind: "text", md: "B's", at: { card: "s" } }] } });
-    const back = await store.patch("A", { sidenotes: { del: ["n1"] } }, { undo: true });
+    await patchNow(store, B, { sidenotes: { set: [{ id: "n1", kind: "text", md: "B's", at: { card: "s" } }] } });
+    const back = await patchNow(store, "A", { sidenotes: { del: ["n1"] } }, { undo: true });
     expect(back.map((x) => x.items)).toEqual([["n1"]]);
     expect(card(fs, "s").sidenotes.map((n: any) => n.md)).toEqual(["B's"]);
   });
@@ -350,7 +373,7 @@ describe("card library (shared cards)", () => {
     expect(file(fs, B).cards[0]).toEqual({ ...note("s"), id: n });
     expect(file(fs, B).sidenotes.map((x: any) => [x.id, x.at.card])).toEqual([["n1", n]]);
     expect(await store.boardsWith("s")).toEqual(["A"]);
-    await store.patch(B, { cards: { set: [note(n, "B only")] } });
+    await patchNow(store, B, { cards: { set: [note(n, "B only")] } });
     expect(card(fs, "s").card.md).toBe("s");
     expect(await store.share(B, [n])).toEqual({});
     expect(card(fs, n).card.md).toBe("B only");
@@ -362,20 +385,20 @@ describe("card library (shared cards)", () => {
     const C = (await store.create("C")).id;
     // Paste as linked card: pasteClip offers it, then the board sends the card with the same id
     await store.offer(C, ["s"]);
-    await store.patch(C, { cards: { set: [note("s", "s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } });
+    await patchNow(store, C, { cards: { set: [note("s", "s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } });
     expect(file(fs, C).cards).toEqual([{ id: "s", kind: "shared" }]);
     expect(await store.boardsWith("s")).toEqual(["A", B, C]);
     // Remove from Board, then undo
-    await store.patch(B, { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1"] } });
+    await patchNow(store, B, { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1"] } });
     expect(await store.boardsWith("s")).toEqual(["A", C]);
-    await store.patch(B, { cards: { set: [note("s", "s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } }, { undo: true });
+    await patchNow(store, B, { cards: { set: [note("s", "s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } }, { undo: true });
     expect(await store.boardsWith("s")).toEqual(["A", B, C]);
     expect(file(fs, B).cards.at(-1)).toEqual({ id: "s", kind: "shared" });
   });
 
   it("Delete Everywhere removes the card, its links and sidenotes from every board and moves the library file to .trash", async () => {
     const { fs, store, B } = await two();
-    await store.patch(B, { cards: { set: [note("x")] }, place: { set: { x: { x: 0, y: 0, w: 1 } } }, links: { set: [{ id: "l", from: { card: "x" }, to: { card: "s" } }] } });
+    await patchNow(store, B, { cards: { set: [note("x")] }, place: { set: { x: { x: 0, y: 0, w: 1 } } }, links: { set: [{ id: "l", from: { card: "x" }, to: { card: "s" } }] } });
     const gone: unknown[] = [];
     store.onDidRemoveShared((e) => gone.push(e));
     expect(await store.deleteEverywhere("s", "A")).toEqual(["A", B]);
@@ -387,14 +410,18 @@ describe("card library (shared cards)", () => {
     expect([...fs.files.keys()].some((f) => f.startsWith(`${ROOT}/.trash/card-s.`))).toBe(true);
     expect(gone).toEqual([{ from: "A", card: "s", boards: ["A", B] }]);
     // Undoing on A brings back an own copy (the library no longer has it)
-    await store.patch("A", { cards: { set: [note("s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } }, { undo: true });
+    await patchNow(store, "A", { cards: { set: [note("s")] }, place: { set: { s: { x: 0, y: 0, w: 1 } } } }, { undo: true });
     expect(file(fs, "A").cards[1]).toEqual(note("s"));
   });
 
-  it("copyOut gives a card with its place and travelling sidenotes; cached() lists the boards with their refs", async () => {
+  it("copyOut gives a card with its place and travelling sidenotes, and the links between the copied cards; cached() lists the boards with their refs", async () => {
     const { store, B } = await two();
     const out = store.copyOut("A", ["s", "missing"]);
-    expect(out.map((x) => [x.card.id, !!x.place, x.sidenotes!.map((n) => n.id)])).toEqual([["s", true, ["n1"]]]);
+    expect(out.cards.map((x) => [x.card.id, !!x.place, x.sidenotes!.map((n) => n.id)])).toEqual([["s", true, ["n1"]]]);
+    expect(out.links).toEqual([]);
+    await patchNow(store, "A", { links: { set: [{ id: "l", from: { card: "s" }, to: { card: "la" } }, { id: "self", from: { card: "la" }, to: { card: "la", line: 1 } }] } });
+    expect(store.copyOut("A", ["s", "la"]).links.map((l) => l.id)).toEqual(["l", "self"]);
+    expect(store.copyOut("A", ["s"]).links).toEqual([]);
     expect(store.cached().map((e) => [e.id, [...e.refs]])).toEqual([["A", ["s"]], [B, ["s"]]]);
   });
 
@@ -408,13 +435,13 @@ describe("card library (shared cards)", () => {
     await store.save(a);
     await store.share("A", ["s"]);
     const B = (await store.duplicate("A"))!.id;
-    await store.patch(B, {
+    await patchNow(store, B, {
       links: { set: [{ id: "l", from: { card: "z" }, to: { card: "s", seg: "g", line: 12 } }] },
       sidenotes: { set: [{ id: "bo", kind: "text", md: "mine", at: { card: "s", seg: "g", lines: [11, 11] }, boardOnly: true }] },
     });
     // A updates: two lines added on top, line 11 edited
     const now = seg(10, ["# a", "# b", "def f():", "    x = 2", "    return x"], "b");
-    await store.patch("A", { cards: { set: [code(now)] } });
+    await patchNow(store, "A", { cards: { set: [code(now)] } });
     const fb = file(t, B);
     expect(fb.links[0].to).toEqual({ card: "s", seg: "g", line: 14 });
     expect(fb.sidenotes[0]).toMatchObject({ id: "bo", at: { lines: [13, 13] }, review: "b" });
@@ -439,14 +466,14 @@ describe("card library (shared cards)", () => {
   it("only cards the board held or was offered come back as shared cards; other library ids stay plain cards", async () => {
     const { store } = await two();
     const C = (await store.create("C")).id;
-    await store.patch("A", { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1", "n2"] } });
+    await patchNow(store, "A", { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1", "n2"] } });
     expect(store.refsOf("A").has("s")).toBe(false);
-    await store.patch("A", { cards: { set: [note("s")] }, place: { set: { s: { x: 0, y: 0, w: 100 } } } }, { undo: true });
+    await patchNow(store, "A", { cards: { set: [note("s")] }, place: { set: { s: { x: 0, y: 0, w: 100 } } } }, { undo: true });
     expect(store.refsOf("A").has("s")).toBe(true); // Remove from Board 撤销回来
-    await store.patch(C, { cards: { set: [note("s")] }, place: { set: { s: { x: 0, y: 0, w: 100 } } } });
+    await patchNow(store, C, { cards: { set: [note("s")] }, place: { set: { s: { x: 0, y: 0, w: 100 } } } });
     expect(store.refsOf(C).has("s")).toBe(false); // 没贴过来，同 id 也不认
     const linked = (await pasteClip(store, { board: "A", cards: ["la"], text: "la" }, C, { copy: false }))!;
-    await store.patch(C, { cards: { set: linked.cards.map((x) => x.card) }, place: { set: { la: linked.cards[0].place! } } });
+    await patchNow(store, C, { cards: { set: linked.cards.map((x) => x.card) }, place: { set: { la: linked.cards[0].place! } } });
     expect(store.refsOf(C).has("la")).toBe(true);
   });
 
@@ -458,13 +485,13 @@ describe("card library (shared cards)", () => {
     const d = (await store.duplicate("A"))!;
     const dk = d.cards[0].id;
     expect(dk).not.toBe("k"); // the duplicate's own card is a different card
-    await store.patch("A", { sidenotes: { set: [{ id: "na", kind: "text", md: "on the original", at: { card: "k" } }] } });
+    await patchNow(store, "A", { sidenotes: { set: [{ id: "na", kind: "text", md: "on the original", at: { card: "k" } }] } });
     const C = (await store.create("C")).id;
     const linked = (await pasteClip(store, { board: "A", cards: ["k"], text: "k" }, C, { copy: false }))!;
-    await store.patch(C, { cards: { set: linked.cards.map((x) => x.card) }, place: { set: { k: linked.cards[0].place! } } });
+    await patchNow(store, C, { cards: { set: linked.cards.map((x) => x.card) }, place: { set: { k: linked.cards[0].place! } } });
     // Edit the card on the duplicate, sending it under the old id too (a webview that still had it)
-    await store.patch(d.id, { cards: { set: [note(dk, "edited on the copy")] } });
-    await store.patch(d.id, { cards: { set: [note("k", "stray id")] } });
+    await patchNow(store, d.id, { cards: { set: [note(dk, "edited on the copy")] } });
+    await patchNow(store, d.id, { cards: { set: [note("k", "stray id")] } });
     expect(store.refsOf(d.id).has("k")).toBe(false);
     expect(card(fs, "k").card.md).toBe("k");
     expect(card(fs, "k").sidenotes.map((n: any) => n.id)).toEqual(["na"]);
@@ -481,7 +508,7 @@ describe("card library (shared cards)", () => {
 
   it("a full patch (after a failed save) replaces the board", async () => {
     const { store } = await two();
-    await store.patch("A", { full: true, head: { name: "Full" } as any, cards: { set: [note("s"), note("x")] }, place: { set: { s: { x: 1, y: 1, w: 1 }, x: { x: 1, y: 1, w: 1 } } } });
+    await patchNow(store, "A", { full: true, head: { name: "Full" } as any, cards: { set: [note("s"), note("x")] }, place: { set: { s: { x: 1, y: 1, w: 1 }, x: { x: 1, y: 1, w: 1 } } } });
     const a = (await store.load("A"))!;
     expect(a.name).toBe("Full");
     expect(a.cards.map((c) => c.id)).toEqual(["s", "x"]);
@@ -502,8 +529,8 @@ describe("two windows on one storage folder", () => {
     const merges: unknown[] = [];
     w1.onDidMerge((e) => merges.push(e.patch));
     // Window 2 adds a card and renames the board; window 1 then edits x without having seen either
-    await w2.patch("A", { cards: { set: [note("y")] }, place: { set: { y: { x: 200, y: 0, w: 100 } } }, head: { ...headOf(a), name: "Renamed elsewhere" } });
-    await w1.patch("A", { cards: { set: [note("x", "edited here")] } });
+    await patchNow(w2, "A", { cards: { set: [note("y")] }, place: { set: { y: { x: 200, y: 0, w: 100 } } }, head: { ...headOf(a), name: "Renamed elsewhere" } });
+    await patchNow(w1, "A", { cards: { set: [note("x", "edited here")] } });
     const f = JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string);
     expect(f.cards).toEqual([note("x", "edited here"), note("y")]);
     expect(Object.keys(f.place).sort()).toEqual(["x", "y"]);
@@ -512,9 +539,120 @@ describe("two windows on one storage folder", () => {
     expect(merges).toEqual([expect.objectContaining({ cards: { set: [note("y")] }, place: { set: { y: { x: 200, y: 0, w: 100 } } } })]);
     expect(w1.peek("A")!.cards.map((c) => c.id)).toEqual(["x", "y"]);
     // Deletes still go through: window 1 deletes x, which window 2 never changed
-    await w1.patch("A", { cards: { del: ["x"] }, place: { del: ["x"] } });
-    await w2.patch("A", { cards: { set: [note("y", "y2")] } });
+    await patchNow(w1, "A", { cards: { del: ["x"] }, place: { del: ["x"] } });
+    await patchNow(w2, "A", { cards: { set: [note("y", "y2")] } });
     expect(JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string).cards).toEqual([note("y", "y2")]);
+  });
+
+  it("changes not yet written survive the sidebar reading a board file another window just wrote", async () => {
+    const fs = new MemFs();
+    const w1 = new Storage(fs, { dir: () => ROOT }), w2 = new Storage(fs, { dir: () => ROOT });
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("x")); a.place.x = { x: 0, y: 0, w: 100 };
+    await w1.save(a);
+    await w2.load("A");
+    await w1.patch("A", { cards: { set: [note("x", "edited here")] } });
+    await patchNow(w2, "A", { cards: { set: [note("y")] }, place: { set: { y: { x: 200, y: 0, w: 100 } } } });
+    await w1.list();
+    expect((w1.peek("A")!.cards[0] as any).md).toBe("edited here");
+    await w1.flush();
+    expect(JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string).cards).toEqual([note("x", "edited here"), note("y")]);
+  });
+});
+
+describe("removing boards", () => {
+  it("removing a board moves it to the trash and says which board went", async () => {
+    const { fs, store } = setup();
+    const b = await store.create("Gone");
+    const gone: string[] = [];
+    store.onDidRemoveBoard((id) => gone.push(id));
+    await store.remove(b.id);
+    expect(gone).toEqual([b.id]);
+    expect(fs.files.has(`${ROOT}/${b.id}.json`)).toBe(false);
+    expect([...fs.files.keys()].some((k) => k.startsWith(`${ROOT}/.trash/${b.id}.`))).toBe(true);
+  });
+});
+
+describe("writing boards to disk", () => {
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  const at = { x: 0, y: 0, w: 1 };
+  const onDisk = (fs: MemFs, f: string) => JSON.parse(fs.files.get(f)!.data as string);
+
+  it("a board's changes are in the storage at once and written together a moment later or on flush", async () => {
+    const { fs, store } = setup();
+    const b = await store.create("B");
+    const file = `${ROOT}/${b.id}.json`;
+    const writes = fs.clock;
+    await store.patch(b.id, { cards: { set: [note("x")] }, place: { set: { x: at } } });
+    await store.patch(b.id, { cards: { set: [note("x", "edited")] } });
+    expect((store.peek(b.id)!.cards[0] as any).md).toBe("edited");
+    expect((await store.load(b.id))!.cards.map((c) => c.id)).toEqual(["x"]);
+    expect(onDisk(fs, file).cards).toEqual([]);
+    await store.flush(b.id);
+    expect(onDisk(fs, file).cards).toEqual([note("x", "edited")]);
+    expect(fs.clock - writes).toBe(1); // one board file write for both patches
+    await store.patch(b.id, { cards: { set: [note("x", "later")] } });
+    await new Promise((r) => setTimeout(r, 600));
+    expect(onDisk(fs, file).cards).toEqual([note("x", "later")]);
+  });
+
+  it("a failed write is reported and retried; the changes stay in the storage", async () => {
+    const { fs, store } = setup();
+    const b = await store.create("B");
+    const failed: unknown[] = [];
+    store.onDidFailSave((e) => failed.push(e));
+    const write = fs.writeFile.bind(fs);
+    fs.writeFile = async () => { throw new Error("disk full"); };
+    await store.patch(b.id, { cards: { set: [note("x")] }, place: { set: { x: at } } });
+    await store.flush();
+    expect(failed).toEqual([{ board: b.id, error: "disk full" }]);
+    fs.writeFile = write;
+    await store.flush();
+    expect(onDisk(fs, `${ROOT}/${b.id}.json`).cards).toEqual([note("x")]);
+  });
+
+  it("a board deleted while its last changes are being written stays deleted", async () => {
+    const { fs, store } = setup();
+    const b = await store.create("B");
+    const p = store.patch(b.id, { cards: { set: [note("x")] }, place: { set: { x: at } } });
+    const flushed = store.flush(b.id);
+    await store.remove(b.id);
+    await Promise.all([p, flushed, store.flush()]);
+    expect(await store.list()).toEqual([]);
+    expect(fs.files.has(`${ROOT}/${b.id}.json`)).toBe(false);
+    // pending changes of a deleted board are dropped, not written back
+    const c = await store.create("C");
+    await store.patch(c.id, { cards: { set: [note("y")] }, place: { set: { y: at } } });
+    await store.remove(c.id);
+    await store.flush();
+    expect(await store.list()).toEqual([]);
+  });
+
+  it("renaming a group while a board in it is being saved leaves one copy, in the renamed folder", async () => {
+    const { fs, store } = setup();
+    const b = await store.create("B");
+    await store.newGroup("G");
+    await store.move(b.id, "G");
+    const p = store.patch(b.id, { cards: { set: [note("x")] }, place: { set: { x: at } } });
+    const flushed = store.flush(b.id);
+    await store.renameGroup("G", "H");
+    await Promise.all([p, flushed, store.flush()]);
+    const copies = [...fs.files.keys()].filter((f) => f.endsWith(`/${b.id}.json`));
+    expect(copies).toEqual([`${ROOT}/H/${b.id}.json`]);
+    expect(onDisk(fs, copies[0]).cards).toEqual([note("x")]);
+    expect(fs.dirs.has(`${ROOT}/G`)).toBe(false);
+  });
+
+  it("changing the storage folder first writes pending changes to the board's own file", async () => {
+    const fs = new MemFs();
+    let root = ROOT;
+    const store = new Storage(fs, { dir: () => root });
+    const b = await store.create("B");
+    await store.patch(b.id, { cards: { set: [note("x")] }, place: { set: { x: at } } });
+    root = "/elsewhere";
+    await store.reset();
+    expect(onDisk(fs, `${ROOT}/${b.id}.json`).cards).toEqual([note("x")]);
+    expect([...fs.files.keys()].some((f) => f.startsWith("/elsewhere"))).toBe(false);
   });
 });
 
@@ -525,13 +663,13 @@ describe("sub-boards in the library", () => {
     const child = await store.create("Scheduler");
     let changed = 0;
     store.onDidChange(() => changed++);
-    await store.patch(parent.id, { cards: { set: [{ id: "f", kind: "board", board: child.id }] }, place: { set: { f: { x: 0, y: 0, w: 560, h: 360 } } } });
+    await patchNow(store, parent.id, { cards: { set: [{ id: "f", kind: "board", board: child.id }] }, place: { set: { f: { x: 0, y: 0, w: 560, h: 360 } } } });
     expect(changed).toBe(1);
     expect((await store.list()).find((m) => m.id === parent.id)?.subs).toEqual([child.id]);
     expect((await store.list()).find((m) => m.id === child.id)?.subs).toBeUndefined();
-    await store.patch(parent.id, { place: { set: { f: { x: 50, y: 0, w: 560, h: 360 } } } });
+    await patchNow(store, parent.id, { place: { set: { f: { x: 50, y: 0, w: 560, h: 360 } } } });
     expect(changed).toBe(1); // moving the frame is not a sidebar change
-    await store.patch(parent.id, { cards: { del: ["f"] }, place: { del: ["f"] } });
+    await patchNow(store, parent.id, { cards: { del: ["f"] }, place: { del: ["f"] } });
     expect(changed).toBe(2);
     expect((await store.list()).find((m) => m.id === parent.id)?.subs).toBeUndefined();
   });

@@ -118,7 +118,9 @@ export const TYPING: Record<string, () => Promise<void>> = {
       { name: "math block one line", seq: "$$a+b$${Enter}", md: "$$\na+b\n$$", dom: count(".md-pm [data-type=block-math]"), domOk: (n) => n === 1 },
       // #30：[toc] 回车出目录，跟着后面打的标题变
       { name: "toc", seq: "[toc]{Enter}# A{Enter}## B", md: "[toc]\n\n# A\n\n## B", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`)), domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]' },
-      { name: "hr dashes", seq: "---", md: "---" },
+      { name: "hr dashes", seq: "---{Enter}", md: "---" },
+      // 没按回车就还是字（编辑时看到的也是字）：写回时转义，读回来不会变成分隔线
+      { name: "dashes without enter stay text", seq: "---", md: "\\---" },
       { name: "hr stars", seq: "***{Enter}", md: "---" },
       { name: "table", seq: "|a|b|{Enter}c", md: /^\| a +\| b +\|\n\| -+ \| -+ \|\n\| c +\| +\|$/ },
       { name: "bold", seq: "x **b** y", md: "x **b** y" },

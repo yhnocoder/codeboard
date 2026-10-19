@@ -65,6 +65,11 @@ export function renameCard(b: Board, from: string, to: string): void {
   for (const m of [b.born, b.marks] as (Record<string, unknown> | undefined)[]) if (m && from in m) { m[to] = m[from]; delete m[from]; }
 }
 
+/** 这一行的这个调用连到的卡没了（lost.to，比如子白板里删了那张卡）的 Call 箭头删掉：重新展开出来的箭头替它 */
+export function removeLostCalls(b: Board, from: End, name: string): void {
+  removeLinks(b, b.links.filter((l) => l.lost?.to && l.call?.name === name && l.from.card === from.card && l.from.seg === from.seg && l.from.line === from.line).map((l) => l.id));
+}
+
 /** 删掉这些 Link，绑在它们上面的 Sticker 一起删 */
 export function removeLinks(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
@@ -288,6 +293,30 @@ export function removeSidenotes(b: Board, ids: Iterable<string>): void {
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.id));
 }
 
+/**
+ * Place on Board 的那张卡：Code / Paste → 代码卡，Text → Note，Link → 网页卡（「为什么相关」变成卡的说明）。
+ * Card sidenote 指着的是白板上已有的卡，没有新卡
+ */
+export function sidenoteCard(n: Sidenote, id = uid("c")): Card | null {
+  switch (n.kind) {
+    case "code": return { id, kind: "code", segments: [{ ...copy(n.code), id: uid("s") }], desc: n.why };
+    case "paste": {
+      const text = n.text.split("\n");
+      return { id, kind: "code", segments: [{ id: uid("s"), src: { kind: "free", url: n.url }, path: "", lang: n.lang, start: 1, end: text.length, text, version: { kind: "none" } }], desc: n.why };
+    }
+    case "text": return { id, kind: "note", md: n.md, bg: true };
+    case "link": return { id, kind: "web", url: n.url, meta: n.title ? { title: n.title } : undefined, desc: n.why };
+    case "card": return null;
+  }
+}
+/** Place on Board 在白板上的改动（新卡 card 已经放上白板）：Sidenote 去掉，从它挂的那一行连一条箭头到新卡 */
+export function sidenoteToCard(b: Board, id: string, card: string): void {
+  const n = b.sidenotes.find((k) => k.id === id);
+  if (!n) return;
+  removeSidenotes(b, [id]);
+  b.links.push({ id: uid("l"), from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card } });
+}
+
 /** 删掉这些 Sticker */
 export function removeStickers(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
@@ -300,9 +329,10 @@ export type CardCopy = { card: Card; place?: Place; sidenotes?: Sidenote[] };
 /**
  * 把卡放到白板上（⌘D、粘贴、从别的白板来的卡）。copy = 独立副本：卡、段、Sidenote 都换新 id，Sidenote 的锚点跟着换；
  * 否则原样放（共享卡：同一个 id），白板上已经有的跳过。Compare 的栏要一起给。
- * 摆放：Section、折叠、锁定是原来那块白板的，不带过来；at 可以再挪。返回 旧 id → 新 id（卡和段，放了的才有）
+ * 摆放：Section、折叠、锁定是原来那块白板的，不带过来；at 可以再挪。links = 原来那块白板上的 Link：两端都是这次放的卡（或白板上已有的
+ * 同一张共享卡）的跟着来，换新 id、两端换成放下的卡和段，已经有一样的就不加。返回 旧 id → 新 id（卡和段，放了的才有）
  */
-export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?: (p: Place) => Place }): { cards: Record<string, string>; segs: Record<string, string> } {
+export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?: (p: Place) => Place; links?: Link[] }): { cards: Record<string, string>; segs: Record<string, string> } {
   const cards: Record<string, string> = {}, segs: Record<string, string> = {};
   const have = new Set(b.cards.map((c) => c.id));
   const todo = items.filter((it) => o.copy || !have.has(it.card.id));
@@ -330,6 +360,19 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
       if (!m.at.seg) delete m.at.seg;
       b.sidenotes.push(m);
     }
+  }
+  const on = (id: string) => cards[id] ?? (!o.copy && have.has(id) ? id : undefined);
+  const end = (e: End, card: string): End => ({ ...e, card, ...(e.seg ? { seg: segs[e.seg] ?? e.seg } : {}) });
+  const key = (l: Link) => JSON.stringify([l.from.card, l.from.seg, l.from.line, l.to.card, l.to.seg, l.to.line, l.to.sub]);
+  const there = new Set(b.links.map(key));
+  for (const l of o.links ?? []) {
+    const from = on(l.from.card), to = on(l.to.card);
+    if (!from || !to) continue;
+    const c = copy(l);
+    const n: Link = { ...c, id: uid("l"), from: end(c.from, from), to: end(c.to, to) };
+    if (there.has(key(n))) continue;
+    there.add(key(n));
+    b.links.push(n);
   }
   return { cards, segs };
 }

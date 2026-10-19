@@ -1,7 +1,7 @@
 // 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -9,9 +9,9 @@ import { githubCard, ghQuery } from "./github";
 import { webMeta } from "./web";
 import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
-import { readPacks } from "./stickers";
+import { openStickerDir, readPacks } from "./stickers";
 import { log } from "./log";
-import { copyDiagnostics, openStickerDir } from "./diagnostics";
+import { copyDiagnostics } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, dispatchAt, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints, searchName, genSource } from "./search";
@@ -19,11 +19,12 @@ import { pasteClip } from "@codeboard/core/storage";
 import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
 import { allQuestions, exportFile, permalinks } from "./exports";
-import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
+import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
 import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
-import { fromHostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
+import { fromHostPath, hostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
+import { lookupName } from "./nameindex";
 
 const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
@@ -148,19 +149,28 @@ export function makeHandler(panels: BoardHost): Handler {
       const ok = await panels.switchBoard(p, to.id, { crumbs: p.crumbs.slice(0, depth), cams: p.cams.slice(0, depth), walk: m.walk, cam: p.cams[depth] });
       if (!ok) p.toast("That board is already open in another tab.");
     },
+    dropBoard: async (p, m) => {
+      if (!(await store.load(m.id)) || (await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
+      await removeBoard(p, m.id);
+      return true;
+    },
     deleteBoard: async (p, m) => {
       const b = await store.load(m.id);
       if (!b) return false;
       const ok = await workspace().ui.warn(`Delete board “${b.name}”?`, { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` }, "Delete");
       if (ok !== "Delete") return false;
-      const open = panels.get(m.id);
-      if (open && open !== p) open.view.dispose();
-      await store.remove(m.id);
-      if (panels.target === m.id) panels.setTarget(undefined);
-      await panels.pushBoards();
+      await removeBoard(p, m.id);
       return true;
     },
   };
+  /** 删掉一块白板（放进 .trash）：开着它的别的面板关掉 */
+  async function removeBoard(p: BoardPanel, id: string) {
+    const open = panels.get(id);
+    if (open && open !== p) open.view.dispose();
+    await store.remove(id);
+    if (panels.target === id) panels.setTarget(undefined);
+    await panels.pushBoards();
+  }
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
 
@@ -223,7 +233,7 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
     text = await readText(abs);
     label = seg.version.kind === "git" ? "Working Tree" : `Installed ${await currentVersionLabel(abs, seg.version)}`;
     if (seg.version.kind === "git") newVersion = { kind: "git", commit: (root && (await headOf(root))) || seg.version.commit, uncommitted: true };
-    else if (text !== null) newVersion = seg.version.kind === "pkg" ? { kind: "pkg", ...(splitPkg(await currentVersionLabel(abs, seg.version)) ?? seg.version) } : { kind: "hash", hash: fingerprint(text) };
+    else if (text !== null) newVersion = await currentVersion(abs, seg.version, text);
   } else if (root) {
     // upstream：有 Variant 的卡跟上游分支比（HEAD 可能是我的分支）
     const ref = against === "upstream" ? await upstreamRef(root) : against;
@@ -249,8 +259,6 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
     lastChange, canUpdate: true, newSeg, newView: await segView(newSeg),
   };
 }
-
-const splitPkg = (s: string) => { const m = /^(\S+) (\S+)$/.exec(s); return m ? { name: m[1], version: m[2] } : null; };
 
 /** commit 下拉：改过这个符号的 commit（git log -L） */
 async function commits(seg: Segment): Promise<Commit[]> {
@@ -345,23 +353,40 @@ async function pickImage(): Promise<string | null> {
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 
-/** 符号找不到：在当前文件的符号里选新位置，段换成 HEAD 里的新符号 */
+/** 一个文件里的函数 / 类（Relocate 的候选） */
+type Spot = { abs: string; qual: string; kind: string; start: number; end: number; defLine: number };
+async function spotsIn(abs: string): Promise<Spot[]> {
+  const text = await readText(abs);
+  return text === null ? [] : analysisOf(langOf(abs), text).symbols.map((s) => ({ abs, qual: s.qual, kind: s.kind, start: s.start, end: s.end, defLine: s.defLine }));
+}
+
+/**
+ * 符号找不到（删了、改了名、挪到了别的文件）：选它现在在哪，段换成那里的代码。候选：工作区里同名的函数 / 类、原来那个文件（还在的话）里的，
+ * 都不是就另选一个文件
+ */
 async function relocate(p: BoardPanel, cardId: string) {
   const f = p.board && findCard(p.board, cardId);
   if (!f || !isCode(f.card)) throw new Error("Card not found.");
   const seg = f.card.segments.find((s) => s.symbol) ?? f.card.segments[0];
-  const abs = absOf(seg);
-  const text = abs && (await readText(abs));
-  if (!abs || text === null || text === undefined) throw new Error(`${seg.path} not found.`);
-  const lang = langOf(abs);
-  const syms = analysisOf(lang, text).symbols;
-  const pick = await workspace().ui.pick(
-    syms.map((s) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${path.basename(abs)}:${s.defLine}`, s })),
-    { placeHolder: `Where is ${seg.symbol?.qual ?? "this code"} now?`, matchOnDescription: true },
-  );
+  const ui = workspace().ui;
+  const name = seg.symbol?.qual.split(".").pop();
+  const old = absOf(seg);
+  const spots = [...(name ? await lookupName(name) : []), ...(old ? await spotsIn(old) : [])]
+    .filter((s, i, all) => all.findIndex((o) => o.abs === s.abs && o.start === s.start) === i);
+  const item = (s: Spot) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${hostPath(s.abs)}:${s.defLine}`, s });
+  const where = `Where is ${seg.symbol?.qual ?? "this code"} now?`;
+  const pick = await ui.pick([...spots.map(item), { label: "$(folder-opened) Choose File…", description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
   if (!pick) return;
-  const lines = splitLines(text);
-  const ns = await makeSegment(await locOfFile(abs), lines, pick.s.start, pick.s.end, { lang, symbol: { qual: pick.s.qual, kind: pick.s.kind === "class" ? "class" : "function" } });
+  let to = pick.s;
+  if (!to) {
+    const abs = await ui.openDialog({ label: "Look in This File", title: where });
+    if (!abs) return;
+    to = (await ui.pick((await spotsIn(abs)).map(item), { placeHolder: where }))?.s;
+    if (!to) return;
+  }
+  const text = await readText(to.abs);
+  if (text === null) throw new Error(`${hostPath(to.abs)} not found.`);
+  const ns = await makeSegment(await locOfFile(to.abs), splitLines(text), to.start, to.end, { lang: langOf(to.abs), symbol: { qual: to.qual, kind: to.kind === "class" ? "class" : "function" } });
   ns.id = seg.id;
   p.post({ type: "replaceSegment", card: cardId, seg: ns, view: await segView(ns) });
   p.post({ type: "stale", stale: { ...p.stale, [seg.id]: { state: "ok" } } });

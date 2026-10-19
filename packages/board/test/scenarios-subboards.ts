@@ -3,7 +3,7 @@
 // Usage: node packages/board/test/run-harness.mjs subboards [--light]   screenshots: test-out/harness/subboards-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
+import { cutCrumbs, emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "../../../extensions/vscode/src/nodefs";
 import { open, shot, symCard, findSym, viewOf, put, OUT, type Host } from "./harness";
@@ -19,14 +19,15 @@ const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 /** first line of a card whose text matches re */
 const lineOf = (c: ReturnType<typeof card>, re: RegExp) => { const s = c.segments[0]; return s.start + Math.max(0, s.text.findIndex((t) => re.test(t))); };
 
-async function subHost(start: Board, others: Board[]) {
+/** A host for one board panel that switches between boards (exported for the other board scenarios) */
+export async function subHost(start: Board, others: Board[]) {
   const dir = path.join(OUT, "subboards-store");
   fs.rmSync(dir, { recursive: true, force: true });
   const store = new Storage(nodeFs, { dir: () => dir });
   for (const b of [start, ...others]) await store.save(b);
   let cur = start.id, crumbs: Crumb[] = [], cams: Camera[] = [];
   const inits: { id: string; crumbs: number; walk?: unknown }[] = [];
-  let h!: Host;
+  let h!: Host; // a patch can come in before open() returns (the first skeletons mark lost arrows): h?.post there
   const sent = new Map<string, string>();
   const sk = (id: string): Skeleton | null => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)?.name) : null; };
   const dirty = new Set<string>();
@@ -48,6 +49,8 @@ async function subHost(start: Board, others: Board[]) {
     }, 120);
   };
   store.onDidSave((b) => { dirty.add(b.id); push(); });
+  // like Panels: a deleted board on the breadcrumbs can't be gone back to
+  store.onDidRemoveBoard((id) => { const c = cutCrumbs(crumbs, cams, id); if (c) { crumbs = c.crumbs; cams = c.cams; void h.post({ type: "crumbs", crumbs }); } });
   store.onDidChange(() => { all = true; push(); });
   const init = async (walk?: unknown, cam?: Camera) => {
     const b = (await store.load(cur))!;
@@ -64,10 +67,15 @@ async function subHost(start: Board, others: Board[]) {
     board: (await store.load(cur))!, light, w: 1400, h: 900,
     on: async (m, reply) => {
       switch (m.type) {
-        case "patch": await store.patch(cur, m.patch, { undo: m.undo }); await h.post({ type: "boards", boards: await store.list() }); await reply(m.req, { skipped: 0 }); return true;
+        case "patch": await store.patch(cur, m.patch, { undo: m.undo }); await h?.post({ type: "boards", boards: await store.list() }); await reply(m.req, { skipped: 0 }); return true;
         case "skeletons": await store.list(); await reply(m.req, Object.fromEntries(m.ids.map((id) => [id, sk(id)]))); return true;
         case "newBoard": await store.save(m.board, { group: null }); await reply(m.req, true); return true;
         case "deleteBoard": await store.remove(m.id); await reply(m.req, true); return true;
+        case "dropBoard": {
+          const kept = !store.peek(m.id) || (await store.list()).some((x) => x.id !== cur && x.subs?.includes(m.id));
+          if (!kept) await store.remove(m.id);
+          await reply(m.req, !kept); return true;
+        }
         case "confirm": await reply(m.req, true); return true;
         case "enterBoard": {
           const metas = await store.list();

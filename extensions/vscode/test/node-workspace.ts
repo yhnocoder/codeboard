@@ -9,7 +9,7 @@ export const WS = "/tmp/codeboard-perf/ws";
 export type TestWorkspace = Workspace & {
   /** Unsaved editor buffers */
   open: Map<string, string>;
-  fire: { save: Emitter<string | undefined>; create: Emitter<string[]>; delete: Emitter<string[]>; change: Emitter<string> };
+  fire: { save: Emitter<string | undefined>; edit: Emitter<string | undefined>; create: Emitter<string[]>; delete: Emitter<string[]>; change: Emitter<string> };
   /** Number of findFiles calls (the name index must not walk the workspace on every click) */
   finds: number;
 };
@@ -20,14 +20,14 @@ const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "build", "dist", 
 export function nodeWorkspace(root = WS): TestWorkspace {
   const inRoot = (p: string) => p === root || p.startsWith(root + "/");
   const quiet = new Emitter<never>();
-  const fire = { save: new Emitter<string | undefined>(), create: new Emitter<string[]>(), delete: new Emitter<string[]>(), change: new Emitter<string>() };
+  const fire = { save: new Emitter<string | undefined>(), edit: new Emitter<string | undefined>(), create: new Emitter<string[]>(), delete: new Emitter<string[]>(), change: new Emitter<string>() };
   const open = new Map<string, string>();
   const w: TestWorkspace = {
     open, fire, finds: 0,
     files: {
       roots: () => [root],
       rootOf: (abs) => (inRoot(abs) ? root : undefined),
-      openText: (abs) => open.get(abs),
+      unsavedText: (abs) => open.get(abs),
       openLanguage: () => undefined,
       openFiles: () => [...open].map(([abs, t]) => ({ abs, text: () => t })),
       /** Code files under the root ("**\/*.{ext,…}" filters by extension, anything else = .py files), sorted, up to max */
@@ -48,7 +48,7 @@ export function nodeWorkspace(root = WS): TestWorkspace {
       },
       watch: (_base, _glob, fn) => fire.change.event(fn),
       onDidSave: fire.save.event,
-      onDidEdit: quiet.event,
+      onDidEdit: fire.edit.event,
       onDidCreate: fire.create.event,
       onDidDelete: fire.delete.event,
       onDidRename: quiet.event,

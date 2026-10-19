@@ -607,7 +607,7 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
           <Show when={g()!.tail}><Head cls={`ahead start ${shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.tail!} road={road} /></Show>
           <path class="lhit" data-link={L.id} d={g()!.d} ref={hitWidth}
             onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
-            onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
+            onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`, e)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
         </g>
       </Show>
     </g>

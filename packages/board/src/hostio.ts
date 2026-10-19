@@ -1,14 +1,11 @@
 // 宿主发来的消息。
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
-import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows, undo, undoTop } from "./state/store";
-
-/** 宿主最近一次 add 的卡和那时的撤销栈顶（undoAdd 用） */
-let lastAdd: { ids: string[]; top: object | undefined } | null = null;
+import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard } from "@codeboard/core";
+import { state, setState, markSaved, setBoard, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows } from "./state/store";
 import { setCam } from "./state/camera";
 import { setBanner, setWalk } from "./state/ui";
-import { resetSubboards, putSkels } from "./state/subboards";
+import { resetSubboards, putSkels, setCrumbs } from "./state/subboards";
 import * as A from "./actions";
 import { choose } from "./ui/Menu";
 import { setAssetBase } from "./md/render";
@@ -27,7 +24,7 @@ export function onHost(m: HostToBoard) {
         setState("boards", m.boards);
         setState("views", m.views);
         setState("stale", m.stale);
-        setState("board", reconcile(b));
+        setBoard(b);
         A.resetShownViews();
         setShared(reconcile({}));
         setState("loaded", true);
@@ -38,7 +35,6 @@ export function onHost(m: HostToBoard) {
       });
       if (A.questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
-      resetHistory();
       markSaved();
       A.resetNav();
       select({});
@@ -48,9 +44,10 @@ export function onHost(m: HostToBoard) {
       break;
     }
     case "skeletons": putSkels(m.boards); break;
+    case "crumbs": setCrumbs(m.crumbs); break;
     case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
     case "stale": {
-      // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移）。
+      // moved：只是挪了位置，白板静默跟上（行号、Link、Sidenote 一起平移，钉的版本换成找到它的那个版本）。
       // 这是跟宿主同步，不是用户的操作，所以走 sync：不进撤销栈，⌘Z 回到更早的快照后会再平移一次（按段现在的位置算到目标行，不会平移两遍）
       const moved = Object.entries(m.stale).filter(([, s]) => s.state === "moved");
       if (moved.length) {
@@ -60,9 +57,9 @@ export function onHost(m: HostToBoard) {
             for (const k of allCodeCards(b)) {
               // 有 Variant 的卡：版本状态说的是上游的段（显示的可能是我的分支）
               const seg = upstreamSegs(k).find((q) => q.id === sid);
-              if (seg) rebaseUpstream(b, k.id, { ...seg, start: s.start, end: s.end, version: s.version ?? seg.version }, shiftBy(s.start - seg.start));
+              if (seg) rebaseUpstream(b, k.id, { ...seg, start: s.start, end: s.end, version: s.version }, shiftBy(s.start - seg.start));
             }
-            for (const n of b.sidenotes) if (n.kind === "code" && n.code.id === sid) n.code = { ...n.code, start: s.start, end: s.end, version: s.version ?? n.code.version };
+            for (const n of b.sidenotes) if (n.kind === "code" && n.code.id === sid) n.code = { ...n.code, start: s.start, end: s.end, version: s.version };
           }
         });
       }
@@ -77,17 +74,16 @@ export function onHost(m: HostToBoard) {
     case "host": setState("host", (h) => ({ ...h, ...m.host })); if (m.host.assetBase !== undefined) setAssetBase(m.host.assetBase); break;
     case "add": {
       const ids = A.addCards(m.cards);
-      lastAdd = { ids, top: undoTop() };
       if (m.ask === "split" && ids.length === 1) askSplit(ids[0]);
       break;
     }
     case "undoAdd": {
-      // 只在“最后一步还是这次添加”时撤：白板上之后又改过，撤销会连别的改动一起撤掉
-      const n = m.cards.length;
-      if (lastAdd && lastAdd.top && lastAdd.top === undoTop() && m.cards.every((id) => lastAdd!.ids.includes(id))) {
-        undo(); lastAdd = null;
-        toast(`Removed the ${n > 1 ? `${n} cards` : "card"} just added`);
-      } else toast("The board changed after that; undo on the board instead");
+      // 只拿掉那次加的卡（还在的），是白板上可以撤销的一步；之后在白板上做的别的改动都留着
+      const gone = new Set(m.cards.filter((id) => state.board.cards.some((c) => c.id === id)));
+      if (!gone.size) { toast("Those cards are no longer on the board"); break; }
+      mutate((b) => removeCards(b, gone));
+      if (sel.cards.some((id) => gone.has(id))) select({ cards: sel.cards.filter((id) => !gone.has(id)) });
+      toast(`Removed the ${gone.size > 1 ? `${gone.size} cards` : "card"} just added`);
       break;
     }
     case "appendSegment": {

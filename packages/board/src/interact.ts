@@ -6,7 +6,7 @@ import {
 } from "@codeboard/core";
 import {
   state, sel, select, toggleSel, clearSel, lineSel, setLineSel, isSel, cardById, rectOf, mutate, live, beginGesture,
-  undo, redo, toast, placeOf, placed, toastMsg, setToastMsg,
+  undo, redo, toast, placeOf, toastMsg, setToastMsg,
 } from "./state/store";
 import { tune } from "./state/tune";
 import { cam, setCam, stopCam, camTo, camTarget, fling, zoomAt, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
@@ -14,7 +14,7 @@ import {
   setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, spaceDown, setSpaceDown,
   connectFrom, setConnectFrom, walk, setEditing, setPaletteOpen, paletteOpen, keysOpen, setKeysOpen, settingsOpen,
 } from "./state/ui";
-import { frames, deepestAt, frameOf, sec, descSections, allMembers, collapsedHome } from "./state/sections";
+import { frames, deepestAt, frameOf, sec, descSections, allMembers, visibleCards } from "./state/sections";
 import { geo } from "./state/geo";
 import { closeMenu, menuOpen, dialogOpen } from "./ui/Menu";
 import { pops, closeAllPops, pinPop } from "./state/pop";
@@ -50,11 +50,13 @@ function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: Point
 
 const ev0x = (e: PointerEvent) => e.clientX, ev0y = (e: PointerEvent) => e.clientY;
 
-// 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）
-const dbl: { key?: string; t: number } = { t: 0 };
-export function isDbl(key: string) {
-  const now = performance.now(), r = dbl.key === key && now - dbl.t < tune("dblClick");
-  dbl.key = r ? undefined : key; dbl.t = now;
+// 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）：同一个东西上、够快、两下点在差不多同一个地方
+const DBL_SLOP = 6;
+const dbl: { key?: string; t: number; x: number; y: number } = { t: 0, x: 0, y: 0 };
+export function isDbl(key: string, e: { clientX: number; clientY: number }) {
+  const now = performance.now();
+  const r = dbl.key === key && now - dbl.t < tune("dblClick") && Math.hypot(e.clientX - dbl.x, e.clientY - dbl.y) <= DBL_SLOP;
+  dbl.key = r ? undefined : key; dbl.t = now; dbl.x = e.clientX; dbl.y = e.clientY;
   return r;
 }
 
@@ -84,11 +86,11 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   e.preventDefault();
   (document.activeElement as HTMLElement | null)?.blur?.();
   window.getSelection()?.removeAllRanges();
-  if (c.kind === "web" && inHead && isDbl(`w${id}`)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
-  if (c.kind === "board" && isDbl(`b${id}`)) return A.enterFrame(id); // 双击子白板框 = 进去
+  if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
+  if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id); // 双击子白板框 = 进去
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
-  if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`)) return setEditing({ kind: "title", id: target });
+  if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`, e)) return setEditing({ kind: "title", id: target });
   // 调用图标记：点 = 改标记（字母 / 图标），拖 = 连同它往下调用的卡一起走（#29）
   if (t.closest(".step")) {
     const el = t.closest(".step")!;
@@ -96,7 +98,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     A.selectSubtree(target, e.shiftKey); closeAllPops();
     return startCardDrag(e, f.host.id, () => { select({ cards: was.length ? was : [f.host.id] }); A.openMarkPicker(target, el); });
   }
-  if (isText && isDbl(`x${id}`)) return setEditing({ kind: "note", id });
+  if (isText && isDbl(`x${id}`, e)) return setEditing({ kind: "note", id });
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
   closeAllPops();
@@ -116,7 +118,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const skip = new Set(ids);
   const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y }; });
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
-  const targets = [...placed().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
+  const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
   const end = beginGesture();
   const sx = e.clientX, sy = e.clientY;
@@ -243,7 +245,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   if (!c || A.isLocked(id)) return;
   A.selectCard(id);
   const r0 = rectOf(c);
-  const targets = placed().filter((k) => k.id !== id).map((k) => rectOf(k));
+  const targets = visibleCards().filter((k) => k.id !== id).map((k) => rectOf(k));
   const end = beginGesture();
   const sx = e.clientX, sy = e.clientY;
   const text = c.kind === "note" && !c.bg;
@@ -387,7 +389,7 @@ export function canvasPointerDown(e: PointerEvent) {
   if (connectFrom()) { setConnectFrom(null); toast("Connect cancelled"); return; }
   e.preventDefault();
   closeAllPops();
-  if (isDbl("canvas")) {
+  if (isDbl("canvas", e)) {
     const w = worldOf(e), k = state.host.settings.dblClick ?? "text";
     if (k === "text") A.newNote({ x: w.x, y: w.y - 12 }, false);
     else if (k === "note") A.newNote({ x: w.x, y: w.y - 18 }, true);
@@ -404,8 +406,8 @@ export function canvasPointerDown(e: PointerEvent) {
     const m = { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) };
     setMarquee(m);
     const w0 = toWorld(m.x, m.y), w1 = toWorld(m.x + m.w, m.y + m.h);
-    const hit = placed().filter((c) => {
-      if (A.isLocked(c.id) || collapsedHome(placeOf(c.id).section)) return false;
+    const hit = visibleCards().filter((c) => {
+      if (A.isLocked(c.id)) return false;
       const r = rectOf(c);
       return r.x < w1.x && r.x + r.w > w0.x && r.y < w1.y && r.y + r.h > w0.y;
     }).map((c) => c.id);
@@ -438,7 +440,7 @@ function drawSection(e: PointerEvent) {
     const parent = deepestAt(fr, c0.x, c0.y, enclosed)?.id;
     const outer = new Set<string | undefined>([undefined]);
     for (let p = parent ? sec(parent) : undefined; p; p = p.parent ? sec(p.parent) : undefined) outer.add(p.id);
-    const inside = placed().filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y) && outer.has(placeOf(c.id).section); }).map((c) => c.id);
+    const inside = visibleCards().filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y) && outer.has(placeOf(c.id).section); }).map((c) => c.id);
     const subs = state.board.sections.filter((s) => enclosed.has(s.id) && s.parent === parent).map((s) => s.id);
     select({ cards: inside, sections: subs });
     A.moveToNewSection(r, parent);
@@ -500,7 +502,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
   closeAllPops();
   const s = sec(id);
   if (!s) return;
-  if (isDbl(`s${id}`)) return setEditing({ kind: "section", id });
+  if (isDbl(`s${id}`, e)) return setEditing({ kind: "section", id });
   if (e.shiftKey) { toggleSel("sections", id); return; }
   select({ sections: [id] });
   if (A.sectionLocked(s)) return;
@@ -551,6 +553,8 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
 
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
 
+/** 第几次按下方向键（自动重复不算）：同一次按住的微移并成一步撤销 */
+let nudgeRun = 0;
 export function installKeys() {
   // 点白板任何地方都要拿到键盘焦点。卡片标题、画布、连线等的 pointerdown 调了 preventDefault（拖动时不选字），这也取消了
   // mousedown 的默认动作（给这个 iframe 焦点）：VS Code 里焦点就留在旁边的代码编辑器，按 Backspace 删的是那里选中的字。
@@ -651,7 +655,9 @@ export function installKeys() {
       e.preventDefault();
       const d = e.shiftKey ? 10 : 1;
       const dx = k === "ArrowLeft" ? -d : k === "ArrowRight" ? d : 0, dy = k === "ArrowUp" ? -d : k === "ArrowDown" ? d : 0;
-      mutate((b) => { for (const id of sel.cards) { const c = hostPlace(b, id); if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } });
+      // 按住方向键（自动重复）是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了；每按一下是一步
+      if (!e.repeat) nudgeRun++;
+      mutate((b) => { for (const id of sel.cards) { const c = hostPlace(b, id); if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } }, { merge: `nudge:${nudgeRun}` });
     }
   });
   window.addEventListener("keyup", (e) => {

@@ -25,7 +25,10 @@ import { captureRun, listRuns, runApply, saveRun } from "../src/runs";
 import { addVariant, syncVariants, variantSources } from "../src/variants";
 import { staleFor, staleSegments } from "../src/versions";
 import { forgetHeads } from "../src/git";
+import { openStickerDir, readPacks } from "../src/stickers";
 import { addVariant as addV, switchVariant, type Board } from "@codeboard/core";
+import { makeActions } from "../src/actions";
+import { watchVersions } from "../src/watch";
 
 const W = nodeWorkspace();
 useWorkspace(W);
@@ -238,6 +241,83 @@ void (async () => {
     check(s1.calls.length > 0 && JSON.stringify(s1) === JSON.stringify(clipAnalysis(full, 20, 45)), "segAnalysis = whole-file analysis clipped to the segment");
     check(JSON.stringify(segAnalysis("python", t, 20, 45)) === JSON.stringify(s1), "segAnalysis after the whole file was analyzed: same result");
     check(JSON.stringify(segAnalysis("python", t, 1, 0).imports) === JSON.stringify(full.imports), "segAnalysis with no lines still has the file's imports");
+  }
+
+  // A relative Sticker Folder setting is under the workspace root: Open Folder and the pack loader use the same folder
+  {
+    const rel = "e2e-stickers-rel";
+    const dir = path.join(WS, rel);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, "mypack.json"), JSON.stringify({ prefix: "mypack", info: { name: "MyPack" }, icons: { star: { body: "<path d='M0 0h16v16z'/>" } } }));
+    const opened: string[] = [];
+    useWorkspace({ ...W, settings: { ...W.settings, get: <T>(k: string) => (k === "codeboard.stickerFolder" ? rel : undefined) as T }, ui: { ...W.ui, openFolder: async (d: string) => { opened.push(d); } } });
+    await openStickerDir();
+    const packs = await readPacks();
+    check(opened[0] === dir, "Sticker Folder relative to the workspace root: Open Folder opens <workspace>/<folder>", opened);
+    check(packs.some((p) => p.name === "MyPack"), "…and the packs in that folder are loaded", packs.map((p) => p.name));
+    useWorkspace(W);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  // New versions are code after the pinned commit: checking out an older commit shows no new version; a newer one does
+  {
+    const R = fs.mkdtempSync("/tmp/codeboard-older-");
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: R, stdio: "pipe" }).toString().trim();
+    const src = (body: string) => ["def g(x):", `    return ${body}`, ""].join("\n");
+    fs.writeFileSync(path.join(R, "f.py"), src("x"));
+    git("init", "-q", "-b", "main"); git("add", "-A"); git("commit", "-qm", "old");
+    const old = git("rev-parse", "HEAD");
+    fs.writeFileSync(path.join(R, "f.py"), src("x + 1"));
+    git("commit", "-qam", "pinned");
+    useWorkspace(nodeWorkspace(R));
+    forgetHeads();
+    const { card: c } = await card(path.join(R, "f.py"), "g");
+    const stale = async () => { forgetHeads(); const ss = staleSegments({ cards: [c], sidenotes: [] }); return (await staleFor(ss.segs, ss.up))[c.segments[0].id]?.state; };
+    check(await stale() === "ok", "Pinned at HEAD: no new version");
+    git("checkout", "-q", old);
+    check(await stale() === "ok", "Older commit checked out: the card has no new version", await stale());
+    git("checkout", "-q", "main");
+    fs.writeFileSync(path.join(R, "f.py"), src("x + 2"));
+    git("commit", "-qam", "newer");
+    check(await stale() === "changed", "Newer commit checked out: the card has a new version", await stale());
+    useWorkspace(W);
+    forgetHeads();
+    fs.rmSync(R, { recursive: true, force: true });
+  }
+
+  // Relocate… after the file was renamed (git mv + commit): offers the function in the renamed file, not the deleted one, and re-pins the card there
+  {
+    const R = fs.mkdtempSync("/tmp/codeboard-mv-");
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: R, stdio: "pipe" }).toString().trim();
+    fs.mkdirSync(path.join(R, "engine"));
+    fs.writeFileSync(path.join(R, "engine/scheduler.py"), ["class Scheduler:", "    def schedule(self):", "        return 1", "", "    def other(self):", "        return 2", ""].join("\n"));
+    git("init", "-q", "-b", "main"); git("add", "-A"); git("commit", "-qm", "base");
+    const offered: string[][] = [];
+    const W3 = nodeWorkspace(R);
+    W3.ui = { ...W3.ui, pick: (async (items: { description?: string }[]) => { offered.push(items.map((i) => i.description ?? "")); return items.find((i) => i.description?.startsWith("engine/sched.py")); }) as typeof W3.ui.pick };
+    useWorkspace(W3);
+    resetIndex();
+    forgetHeads();
+    const { card: c } = await card(path.join(R, "engine/scheduler.py"), "Scheduler.schedule");
+    git("mv", "engine/scheduler.py", "engine/sched.py"); git("commit", "-qm", "rename");
+    forgetHeads();
+    const head = git("rev-parse", "HEAD");
+    const posted: HostToBoard[] = [];
+    const view: BoardView = { postMessage: (m: HostToBoard) => { posted.push(m); }, title: "", visible: true, active: true, reveal: () => undefined, dispose: () => undefined, resourceUrl: () => "" };
+    const host = { store: new Storage(nodeFs, { dir: () => path.join(R, ".boards") }) } as unknown as BoardHost;
+    const p = new BoardPanel("b", view, host);
+    p.ready = true;
+    p.board = { ...emptyBoard("b", "B"), cards: [c], place: { [c.id]: { x: 0, y: 0, w: 500 } } };
+    await makeHandler(host)(p, { type: "relocate", card: c.id });
+    const opts = offered[0] ?? [];
+    check(opts.some((d) => d.startsWith("engine/sched.py")) && !opts.some((d) => d.startsWith("engine/scheduler.py")), "Relocate after a rename offers the function in the renamed file, not the deleted one", opts);
+    const rs = posted.find((m) => m.type === "replaceSegment") as Extract<HostToBoard, { type: "replaceSegment" }> | undefined;
+    check(rs?.seg.path === "engine/sched.py" && rs.seg.symbol?.qual === "Scheduler.schedule" && rs.seg.version.kind === "git" && rs.seg.version.commit === head && !rs.seg.version.uncommitted, "…and re-pins the card to it at HEAD", rs?.seg && { path: rs.seg.path, version: rs.seg.version });
+    useWorkspace(W);
+    resetIndex();
+    forgetHeads();
+    fs.rmSync(R, { recursive: true, force: true });
   }
 
   // 子白板（线框 05）：进入 / 返回换的是同一个面板（面包屑、镜头、讲解带过去）、不能套成环、Turn into Board 存到父白板的组、侧栏的树
@@ -601,6 +681,97 @@ void (async () => {
     const src2 = await variantSources(seg);
     check(src2.worktrees.length === 1 && src2.worktrees[0].dir === EXP && src2.worktrees[0].label === "exp · ../lib-exp", "Submodule: a real extra worktree is listed once, branch first, short path", src2.worktrees);
     useWorkspace(W);
+  }
+
+  // A commit moves a carded function without changing it (lines above deleted): the card follows to the new lines and is pinned to that
+  // commit too, so its header and permalinks name the code it shows. It used to keep the old pin with the new commit's line numbers
+  {
+    const R = fs.mkdtempSync("/tmp/codeboard-moved-");
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: R, stdio: "pipe" }).toString().trim();
+    const F = ["def can_allocate(x):", "    return x > 0", "", "", "def allocate(x):", "    y = x + 1", "    return y", ""];
+    fs.writeFileSync(path.join(R, "blocks.py"), F.join("\n"));
+    git("init", "-q", "-b", "main"); git("add", "-A"); git("commit", "-qm", "base");
+    const base = git("rev-parse", "HEAD");
+    useWorkspace(nodeWorkspace(R));
+    forgetHeads();
+    const { seg } = await card(path.join(R, "blocks.py"), "allocate");
+    check(seg.start === 5 && seg.version.kind === "git" && seg.version.commit === base, "Moved: the card starts pinned to the base commit at line 5", seg);
+    fs.writeFileSync(path.join(R, "blocks.py"), F.slice(4).join("\n"));
+    git("commit", "-qam", "drop can_allocate");
+    const head = git("rev-parse", "HEAD");
+    forgetHeads();
+    const st = (await staleFor([seg]))[seg.id];
+    check(st?.state === "moved" && st.start === 1 && st.end === 3 && st.version.kind === "git" && st.version.commit === head, "Moved by a commit: the new lines come with the new commit as the pin", st);
+    useWorkspace(W);
+    forgetHeads();
+    fs.rmSync(R, { recursive: true, force: true });
+  }
+
+  // An unsaved edit is carded ("+ uncommitted"), then reverted without saving: editing a file on a board rechecks the versions, so the card
+  // learns its code is gone. It used to wait for some file to be saved
+  {
+    const W2 = nodeWorkspace();
+    useWorkspace(W2);
+    const dir = fs.mkdtempSync("/tmp/codeboard-edit-");
+    const store = new Storage(nodeFs, { dir: () => dir });
+    const abs = path.join(WS, "nanovllm/engine/sequence.py");
+    const typed = fs.readFileSync(abs, "utf8") + "\n\ndef added_here():\n    return 1\n";
+    W2.open.set(abs, typed);
+    const c = (await cardForFileSym(abs, analysisOf("python", typed).symbols.find((x) => x.qual === "added_here")!))!.card as CodeCard, seg = c.segments[0];
+    check(seg.version.kind === "git" && seg.version.uncommitted === true, "Revert: a function typed but not saved is pinned uncommitted", seg.version);
+    const b = emptyBoard("bE2", "Edit"); b.cards.push(c); b.place[c.id] = { x: 0, y: 0, w: 500 };
+    await store.save(b);
+    let checks = 0;
+    const panels = { refreshStale: async () => { checks++; }, get: () => undefined, staleChanged: () => undefined } as unknown as BoardHost;
+    const off = watchVersions(panels, store);
+    await new Promise((r) => setTimeout(r, 800));
+    const before = checks;
+    W2.open.set(abs, fs.readFileSync(abs, "utf8")); // File: Revert File
+    W2.fire.edit.fire(abs);
+    await new Promise((r) => setTimeout(r, 900));
+    W2.fire.edit.fire(path.join(WS, "nanovllm/llm.py")); // a file no board uses
+    await new Promise((r) => setTimeout(r, 900));
+    check(checks === before + 1 && (await staleFor([seg]))[seg.id]?.state === "lost", "Revert: editing a file on a board rechecks versions once (the card's code is gone); other files do not", { before, checks });
+    off.dispose();
+    useWorkspace(W);
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  // Undo on an "Added to board" notice: removes only the cards that add put there, whether the board was opened (and changed) in between
+  // or not. It used to write back the whole board as it was before the add, losing everything done since
+  {
+    useWorkspace(W);
+    const dir = fs.mkdtempSync("/tmp/codeboard-undoadd-");
+    const store = new Storage(nodeFs, { dir: () => dir });
+    await store.save(emptyBoard("bU", "Undo Add"));
+    const posted: HostToBoard[] = [];
+    let open: BoardPanel | undefined;
+    const panels = { store, target: "bU", get: (id: string) => (id === "bU" ? open : undefined), all: () => (open ? [open] : []), setTarget: () => undefined, show: async () => open } as unknown as BoardHost;
+    const view: BoardView = { postMessage: (m: HostToBoard) => { posted.push(m); }, title: "", visible: false, active: false, reveal: () => undefined, dispose: () => undefined, resourceUrl: () => "" };
+    // each notice waits until the user clicks: hold them and click Undo later
+    const notices: ((r: string | undefined) => void)[] = [];
+    const info0 = W.ui.info;
+    W.ui.info = ((msg: string) => (msg.startsWith("Added") ? new Promise((r) => notices.push(r as (r: string | undefined) => void)) : Promise.resolve(undefined))) as typeof W.ui.info;
+    const acts = makeActions(panels, store);
+    const sched = path.join(WS, "nanovllm/engine/scheduler.py");
+    const quals = async () => ((await store.load("bU"))?.cards ?? []).map((c) => (c.kind === "code" ? c.segments[0].symbol?.qual : c.id));
+    await acts["codeboard.addSymbol"](sched, "Scheduler.postprocess"); // board closed: written to the file
+    await acts["codeboard.addSymbol"](sched, "Scheduler.schedule");
+    // later work on the board (saved while it was open), then the first notice's Undo with the board closed again
+    const later = (await store.load("bU"))!;
+    later.cards.push({ id: "nLater", kind: "note", md: "later work", bg: true }); later.place.nLater = { x: 0, y: 900, w: 200 };
+    await store.save(later);
+    const n0 = notices.length;
+    notices[0]("Undo"); await new Promise((r) => setTimeout(r, 200));
+    check(n0 === 2 && JSON.stringify(await quals()) === JSON.stringify(["Scheduler.schedule", "nLater"]), "Undo on an add notice (board closed) removes only that card, later work stays", await quals());
+    // the board is open now: Undo goes to the board (its own undoable step), the host does not rewrite the file
+    open = new BoardPanel("bU", view, panels); open.ready = true; open.board = store.peek("bU");
+    const id = (await store.load("bU"))!.cards[0].id;
+    notices[1]("Undo"); await new Promise((r) => setTimeout(r, 200));
+    const um = posted.find((m) => m.type === "undoAdd");
+    check(um?.type === "undoAdd" && JSON.stringify(um.cards) === JSON.stringify([id]) && (await store.load("bU"))!.cards.length === 2, "Undo on an add notice (board open) asks the board to remove that card", { posted, cards: await quals() });
+    W.ui.info = info0;
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 
   console.log(failed ? `${failed} failed` : "All passed");
