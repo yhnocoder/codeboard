@@ -158,11 +158,15 @@ const opened = new Emitter<void>();
 /** 这个工作区打开了一个以前没打开过的 GitHub 文件 */
 export const onDidOpenGithubFile = opened.event;
 
-async function remember(owner: string, name: string, commit: string, rel: string) {
-  const st = workspace().storage, keys = st.get<string[]>(OPENED) ?? [], k = fileKey(owner, name, commit, rel);
-  if (keys.includes(k)) return;
-  await st.set(OPENED, [...keys, k]);
-  opened.fire();
+let remembering = Promise.resolve();
+/** 一个接一个记：几个文件同时打开时，后写的不会盖掉先写的 */
+function remember(owner: string, name: string, commit: string, rel: string) {
+  return (remembering = remembering.then(async () => {
+    const st = workspace().storage, keys = st.get<string[]>(OPENED) ?? [], k = fileKey(owner, name, commit, rel);
+    if (keys.includes(k)) return;
+    await st.set(OPENED, [...keys, k]);
+    opened.fire();
+  }));
 }
 
 /** 侧栏 GITHUB FILES：这个工作区用过的 owner/name/commit 和下面的文件 */
@@ -170,11 +174,14 @@ export async function workspaceGithubFiles(store: Storage): Promise<{ owner: str
   const cards = new Map<string, number>(), refs = new Map<string, string>();
   for (const { board } of await store.all()) for (const c of board.cards) {
     if (c.kind !== "code") continue;
-    const s = c.segments.find((x) => x.src.kind === "github");
-    if (s?.src.kind !== "github" || s.version.kind !== "git") continue;
-    const k = fileKey(s.src.owner, s.src.name, s.version.commit, s.path);
-    cards.set(k, (cards.get(k) ?? 0) + 1);
-    refs.set(fileKey(s.src.owner, s.src.name, s.version.commit, ""), s.src.ref);
+    // 卡上所有的段，包括没在显示的 Variant 的段；一张卡在一个文件上只算一次
+    const keys = new Set<string>();
+    for (const s of [...c.segments, ...(c.variants ?? []).flatMap((v) => v.segs ?? [])]) {
+      if (s.src.kind !== "github" || s.version.kind !== "git") continue;
+      keys.add(fileKey(s.src.owner, s.src.name, s.version.commit, s.path));
+      refs.set(fileKey(s.src.owner, s.src.name, s.version.commit, ""), s.src.ref);
+    }
+    for (const k of keys) cards.set(k, (cards.get(k) ?? 0) + 1);
   }
   const repos = new Map<string, { owner: string; name: string; commit: string; ref: string; files: { abs: string; rel: string; cards: number }[] }>();
   for (const k of new Set([...(workspace().storage.get<string[]>(OPENED) ?? []), ...cards.keys()])) {
