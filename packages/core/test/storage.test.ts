@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createHash } from "node:crypto";
-import { emptyBoard, type Board } from "../src";
+import { danglingRefs, emptyBoard, type Board } from "../src";
 
 const headOf = (b: Board) => { const { version: _v, id: _i, cam: _c, cards: _a, place: _p, links: _l, sections: _s, sidenotes: _n, stickers: _k, ...h } = b; return h; };
 import { Storage, pasteClip, type DirEnt, type Fs } from "../src/storage";
@@ -42,7 +42,10 @@ class MemFs implements Fs {
     this.reads++;
     return typeof f.data === "string" ? f.data : Buffer.from(f.data).toString("utf8");
   }
+  /** While set, writes wait for it (to line up a slow write against other calls) */
+  hold: Promise<void> | null = null;
   async writeFile(p: string, data: string | Uint8Array) {
+    if (this.hold) await this.hold;
     this.need(this.parent(p));
     const t = ++this.clock;
     this.files.set(p, { data, mtime: t, birth: this.files.get(p)?.birth ?? t });
@@ -615,6 +618,60 @@ describe("two windows on one storage folder", () => {
     expect(w1.peek("A")!.cards).toEqual([note("s", "edited in window 2")]);
   });
 
+  it("a card one window deleted takes along the link another window drew to it when the edits merge", async () => {
+    const fs = new MemFs();
+    const w1 = new Storage(fs, { dir: () => ROOT }), w2 = new Storage(fs, { dir: () => ROOT });
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("x"), note("y")); a.place.x = { x: 0, y: 0, w: 100 }; a.place.y = { x: 200, y: 0, w: 100 };
+    await w1.save(a);
+    await w2.load("A");
+    await patchNow(w1, "A", { cards: { del: ["x"] }, place: { del: ["x"] } });
+    // Window 2 has not seen the delete and links y to x
+    await patchNow(w2, "A", { links: { set: [{ id: "l", from: { card: "y" }, to: { card: "x" } }] } });
+    const f = JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string);
+    expect(f.cards).toEqual([note("y")]);
+    expect(f.links).toEqual([]);
+    expect(danglingRefs(f)).toEqual([]);
+    expect(w2.peek("A")!.links).toEqual([]);
+  });
+
+  it("a card another window deleted takes along the sidenote this window put on it while still unsaved", async () => {
+    const { fs, w1, w2, settled } = watching();
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("x"), note("y")); a.place.x = { x: 0, y: 0, w: 100 }; a.place.y = { x: 200, y: 0, w: 100 };
+    await w1.save(a);
+    await w2.load("A");
+    await settled();
+    await w2.patch("A", { sidenotes: { set: [{ id: "n", kind: "text", md: "on x", at: { card: "x" } }] } }); // not written yet
+    await patchNow(w1, "A", { cards: { del: ["x"] }, place: { del: ["x"] } });
+    await settled();
+    expect(w2.peek("A")!.cards).toEqual([note("y")]);
+    expect(w2.peek("A")!.sidenotes).toEqual([]);
+    const f = JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string);
+    expect([f.cards, f.sidenotes, danglingRefs(f)]).toEqual([[note("y")], [], []]);
+  });
+
+  it("lines a shared card update moves on another board are written through the merge, keeping that window's edits to the board", async () => {
+    const fs = new MemFs();
+    const w1 = new Storage(fs, { dir: () => ROOT }), w2 = new Storage(fs, { dir: () => ROOT });
+    const seg = (start: number, text: string[], commit: string) => ({ id: "g", src: { kind: "repo" as const, repo: "" }, path: "a.py", lang: "python", start, end: start + text.length - 1, text, version: { kind: "git" as const, commit } });
+    const code = (sg: ReturnType<typeof seg>) => ({ id: "s", kind: "code" as const, segments: [sg] });
+    const a = { ...emptyBoard("A", "A"), cards: [code(seg(10, ["def f():", "    x = 1", "    return x"], "a")), note("z")], place: { s: { x: 0, y: 0, w: 1 }, z: { x: 0, y: 0, w: 1 } } };
+    await w1.save(a);
+    await w1.share("A", ["s"]);
+    const B = (await w1.duplicate("A"))!.id;
+    const z = w1.peek(B)!.cards.find((c) => c.id !== "s")!.id;
+    await patchNow(w1, B, { links: { set: [{ id: "l", from: { card: z }, to: { card: "s", seg: "g", line: 12 } }] } });
+    // Window 2 adds a card to B; window 1 has not read it
+    await w2.load(B);
+    await patchNow(w2, B, { cards: { set: [note("w")] }, place: { set: { w: { x: 0, y: 300, w: 1 } } } });
+    // Window 1 updates the shared card on A: B's link moves two lines down
+    await patchNow(w1, "A", { cards: { set: [code(seg(10, ["# a", "# b", "def f():", "    x = 2", "    return x"], "b"))] } });
+    const fb = JSON.parse(fs.files.get(`${ROOT}/${B}.json`)!.data as string);
+    expect(fb.links[0].to).toEqual({ card: "s", seg: "g", line: 14 });
+    expect(fb.cards.map((c: { id: string }) => c.id)).toEqual(["s", z, "w"]);
+  });
+
   it("changes not yet written survive the sidebar reading a board file another window just wrote", async () => {
     const fs = new MemFs();
     const w1 = new Storage(fs, { dir: () => ROOT }), w2 = new Storage(fs, { dir: () => ROOT });
@@ -628,6 +685,31 @@ describe("two windows on one storage folder", () => {
     expect((w1.peek("A")!.cards[0] as any).md).toBe("edited here");
     await w1.flush();
     expect(JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string).cards).toEqual([note("x", "edited here"), note("y")]);
+  });
+});
+
+describe("read-modify-write in the write queue", () => {
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  it("rename, move and update never overwrite a patch that arrived before them with an older copy", async () => {
+    const { fs, store } = setup();
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("x")); a.place.x = { x: 0, y: 0, w: 100 };
+    await store.save(a);
+    let release!: () => void;
+    fs.hold = new Promise((r) => { release = r; });
+    // A slow write keeps the queue busy; a patch, a rename, a move and an update line up behind it
+    const slow = store.save(emptyBoard("Other", "Other"));
+    const patched = store.patch("A", { cards: { set: [note("y")] }, place: { set: { y: { x: 200, y: 0, w: 100 } } } });
+    const renamed = store.rename("A", "Renamed");
+    const moved = store.move("A", "G");
+    const updated = store.update("A", (b) => { b.cards.push(note("z")); b.place.z = { x: 400, y: 0, w: 100 }; });
+    fs.hold = null; release();
+    await Promise.all([slow, patched, renamed, moved, updated]);
+    await store.flush();
+    const f = JSON.parse(fs.files.get(`${ROOT}/G/A.json`)!.data as string);
+    expect([f.name, f.cards.map((c: { id: string }) => c.id)]).toEqual(["Renamed", ["x", "y", "z"]]);
+    expect(fs.files.has(`${ROOT}/A.json`)).toBe(false);
+    expect(await store.update("missing", () => {})).toBe(null);
   });
 });
 

@@ -17,6 +17,28 @@ export function removeCards(b: Board, ids: Iterable<string>): void {
   pruneStickers(b);
 }
 
+/**
+ * 合并之后（另一个窗口的改动按项合进来，比如那边删了卡、这边往它上面连了线）：指着没了的卡、段、箭头、Section 的东西，
+ * 按删卡的同一套规矩带走（removeCards 的级联）。缺了栏的 Compare 整张删；之后 danglingRefs 不该再报引用问题
+ */
+export function pruneRefs(b: Board): void {
+  const ids = () => new Map(b.cards.map((c) => [c.id, c]));
+  let cards = ids();
+  const broken = b.cards.filter((c) => c.kind === "compare" && c.cols.some((k) => !cards.has(k))).map((c) => c.id);
+  if (broken.length) { removeCards(b, broken); cards = ids(); }
+  const segOk = (card: string, seg?: string) => { const c = cards.get(card); return !!c && (!seg || (c.kind === "code" && c.segments.some((s) => s.id === seg))); };
+  removeLinks(b, b.links.filter((l) => !segOk(l.from.card, l.from.seg) || !segOk(l.to.card, l.to.seg)).map((l) => l.id));
+  removeSidenotes(b, b.sidenotes.filter((n) => !segOk(n.at.card, n.at.seg) || (n.kind === "card" && !cards.has(n.card))).map((n) => n.id));
+  removeStickers(b, b.stickers.filter((k) => k.at.kind === "line" && !segOk(k.at.card, k.at.seg)).map((k) => k.id));
+  for (const k of b.stickers) if (k.q?.answer && !cards.has(k.q.answer)) delete k.q.answer;
+  const gone = new Set([...Object.keys(b.place), ...Object.keys(b.marks ?? {}), ...Object.keys(b.born ?? {})].filter((id) => !cards.has(id)));
+  for (const id of gone) delete b.place[id];
+  forget(b, gone);
+  const secs = new Set(b.sections.map((s) => s.id));
+  for (const s of b.sections) if (s.parent && !secs.has(s.parent)) delete s.parent;
+  for (const p of Object.values(b.place)) if (p.section && !secs.has(p.section)) delete p.section;
+}
+
 /** 删掉的卡的创建顺序和调用图标记 */
 function forget(b: Board, gone: Set<string>) {
   for (const id of gone) {

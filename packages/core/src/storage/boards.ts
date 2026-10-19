@@ -9,7 +9,7 @@ import { Emitter, type Disposable } from "../emitter";
 import type { WorkspaceFiles } from "../workspace";
 import { loadBoardFile, loadSharedCard } from "../schema";
 import { applyPatch, deflate, diffBoards, inflate, mergeFile, putShared, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
-import { removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
+import { pruneRefs, removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
 import { subBoardsOf } from "../subboard";
 import { dirName, extName, type Fs } from "./fs";
 
@@ -259,18 +259,24 @@ export class Storage {
   async patch(id: string, p: BoardPatch, o: { undo?: boolean } = {}): Promise<SharedUpdate[]> {
     return this.serial(async () => {
       const e = await this.entry(id);
-      e.pending ??= prevOf(e);
+      const was = prevOf(e);
       const skipped = o.undo && !p.full ? this.dropStale(e, p) : new Map<string, string[]>();
       applyPatch(e.board, p);
       const ids = new Set(e.board.cards.map((c) => c.id));
       for (const r of [...e.refs]) if (!ids.has(r)) e.refs.delete(r); // Remove from Board：卡库里的卡不动
       // 认回共享卡：贴过来的共享卡（offer）、撤销 Remove from Board 回来的卡
       for (const c of p.cards?.set ?? []) if (e.held.has(c.id)) e.refs.add(c.id);
-      this.writeLater(e.id, WRITE_DELAY);
+      this.dirty(e, was);
       const out: SharedUpdate[] = [];
       for (const [c, items] of skipped) { const sc = sharedOf(e.board, c); if (sc) out.push({ ...structuredClone(sc), items }); }
       return out;
     });
+  }
+
+  /** 缓存里的这块白板有了没写盘的改动（was = 改之前的样子）：稍后写 */
+  private dirty(e: Entry, was: Prev) {
+    e.pending ??= was;
+    this.writeLater(e.id, WRITE_DELAY);
   }
 
   private writeLater(id: string, ms: number) {
@@ -350,19 +356,18 @@ export class Storage {
     e.pending = undefined;
     clearTimeout(this.timers.get(e.id));
     this.cache.set(e.id, e);
-    const moved = new Set<Entry>();
     for (const sc of changed) {
       const id = sc.card.id;
       for (const o of this.cache.values()) {
         if (o === e || !o.refs.has(id)) continue;
+        // 别的白板自己指着这张卡的行号跟着挪了（新版本）：那块白板也有了没写盘的改动，照常稍后写（写时和磁盘三方合并）
+        const was = prevOf(o);
         const r: { moved?: boolean } = {};
         putShared(o.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), r);
         o.used.set(id, this.lib.get(id)!.sc);
-        if (r.moved) moved.add(o);
+        if (r.moved) this.dirty(o, was);
       }
     }
-    // 别的白板自己指着这张卡的行号跟着挪了（新版本）：那块白板的文件也要写
-    for (const o of moved) await this.writeBoard(o);
     this.saved.fire(e.board);
     if (fromDisk?.patch) this.mergedEmitter.fire({ id: e.id, patch: structuredClone(fromDisk.patch) });
     if (changed.length) this.sharedEmitter.fire({ from: e.id, cards: structuredClone(changed), back: back.length ? back : undefined });
@@ -383,9 +388,12 @@ export class Storage {
     try { text = await this.fs.readFile(e.file); disk = loadBoardFile(JSON.parse(text)); } catch { return undefined; }
     if (text === e.text) { e.mtime = st.mtimeMs; return undefined; }
     const base = loadBoardFile(JSON.parse(e.text));
-    const file = mergeFile(base, disk, mine ?? base);
-    for (const c of file.cards) if (c.kind === "shared") await this.readShared(c.id);
-    const r = inflate(file, (id) => { const sc = this.lib.get(id)?.sc; return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
+    const both = mergeFile(base, disk, mine ?? base);
+    for (const c of both.cards) if (c.kind === "shared") await this.readShared(c.id);
+    const r = inflate(both, (id) => { const sc = this.lib.get(id)?.sc; return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
+    // 按项合并不管引用（那边删了卡、这边往它上面连了线）：按删卡的规矩带走悬空的
+    pruneRefs(r.board);
+    const file = deflate(r.board, new Set(r.refs)).file;
     const patch = diffBoards(e.board, r.board);
     e.board = r.board;
     e.refs = new Set(r.refs);
@@ -422,23 +430,13 @@ export class Storage {
       const was = e.used.get(id);
       if (!e.refs.has(id) || was === sc) continue;
       itemsChanged(was, sc).forEach((k) => items.add(k));
+      const before = prevOf(e);
       const r: { moved?: boolean } = {};
       putShared(e.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), r);
       e.used.set(id, sc);
-      if (r.moved) { e.pending ??= prevOf(e); this.writeLater(e.id, WRITE_DELAY); }
+      if (r.moved) this.dirty(e, before);
     }
     if (items.size) this.sharedEmitter.fire({ cards: [{ ...structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), items: [...items] }] });
-  }
-
-  /** 只写白板文件（卡库不动）：别的白板改了共享卡、这块白板跟着挪了行号时 */
-  private async writeBoard(e: Entry) {
-    const fs = this.fs;
-    const { file: data } = deflate(e.board, e.refs);
-    const tmp = `${e.file}.tmp`;
-    e.text = JSON.stringify(data, null, 1);
-    await fs.writeFile(tmp, e.text);
-    await fs.rename(tmp, e.file);
-    e.mtime = (await fs.stat(e.file)).mtimeMs;
   }
 
   // ---------- 卡库 ----------
@@ -580,11 +578,27 @@ export class Storage {
     });
   }
 
+  /**
+   * 读-改-写一块白板，排在写盘队列里（中间来的 patch 不会被一份旧拷贝盖掉）：fn 直接改缓存里的那份，返回 false = 不用改。
+   * group：同时换组（null = 顶层）。返回改完的白板（拷贝）；没有这块白板或没改返回 null
+   */
+  async update(id: string, fn: (b: Board) => boolean | void, o: { group?: string | null } = {}): Promise<Board | null> {
+    return this.serial(async () => {
+      let e = this.cache.get(id);
+      if (!e) { await this.scan(); e = this.cache.get(id); }
+      if (!e) return null;
+      const prev = prevOf(e);
+      if (fn(e.board) === false) return null;
+      if (o.group !== undefined) e.group = o.group ?? undefined;
+      const ids = new Set(e.board.cards.map((c) => c.id));
+      for (const r of [...e.refs]) if (!ids.has(r)) e.refs.delete(r);
+      await this.commit(e, prev);
+      return structuredClone(e.board);
+    });
+  }
+
   async rename(id: string, name: string) {
-    const b = await this.load(id);
-    if (!b) return;
-    b.name = name;
-    await this.save(b);
+    await this.update(id, (b) => { b.name = name; });
   }
 
   async duplicate(id: string): Promise<Board | null> {
@@ -599,10 +613,9 @@ export class Storage {
   }
 
   async move(id: string, group: string | undefined) {
-    const b = await this.load(id);
     const g = group === undefined ? null : groupName(group);
     if (group !== undefined && !g) return;
-    if (b) await this.save(b, { group: g });
+    await this.update(id, () => {}, { group: g });
   }
 
   groupOf(id: string) { return this.cache.get(id)?.group; }
