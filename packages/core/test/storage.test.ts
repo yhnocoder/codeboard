@@ -515,16 +515,19 @@ describe("card library (shared cards)", () => {
     const { fs, store, B, shared } = await two();
     // B edits the body (not written yet); A adds a sidenote and is written first
     await store.patch(B, { cards: { set: [note("s", "body from B")] } });
-    await store.patch("A", { sidenotes: { set: [{ id: "n3", kind: "text", md: "note from A", at: { card: "s" } }] } });
+    await store.patch("A", { sidenotes: { set: [{ id: "n1", kind: "text", md: "edited on A", at: { card: "s" } }, { id: "n3", kind: "text", md: "note from A", at: { card: "s" } }] } });
     await store.flush("A");
-    expect(shared).toEqual([{ from: "A", ids: ["s"], items: ["n3"] }]);
+    expect(shared).toEqual([{ from: "A", ids: ["s"], items: ["n1", "n3"] }]);
     const b = store.peek(B)!;
     expect((b.cards[0] as any).md).toBe("body from B");
+    expect((b.sidenotes.find((n) => n.id === "n1") as any).md).toBe("edited on A");
     expect(b.sidenotes.map((n) => n.id)).toContain("n3");
     await store.flush(B);
     expect(card(fs, "s").card.md).toBe("body from B");
-    expect(card(fs, "s").sidenotes.map((n: any) => n.id).sort()).toEqual(["n1", "n3"]);
+    expect(card(fs, "s").sidenotes.map((n: any) => [n.id, n.md]).sort()).toEqual([["n1", "edited on A"], ["n3", "note from A"]]);
     expect((store.peek("A")!.cards[0] as any).md).toBe("body from B");
+    // A hears about the body, once
+    expect(shared).toEqual([{ from: "A", ids: ["s"], items: ["n1", "n3"] }, { from: B, ids: ["s"], items: ["s"] }]);
   });
 
   it("the same item of a shared card edited on two boards: the board written last wins on both", async () => {
