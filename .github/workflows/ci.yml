@@ -77,7 +77,7 @@ jobs:
 
   perf:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -98,6 +98,8 @@ jobs:
         run: tools/review/checkout-base.sh "$BASE_SHA" base
       - name: Perf, base vs head
         if: steps.need.outputs.run == 'true'
+        # takes about 4 minutes; a stuck runner shows no output, so fail it instead of waiting out the job
+        timeout-minutes: 10
         run: tools/review/perf-ab.sh "${{ env.BASE_SHA != '' && 'base' || '' }}" test-out/perf quick
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.need.outputs.run == 'true' }}
@@ -120,9 +122,13 @@ jobs:
         with: { path: test-out/artifacts }
       - name: Diff and publish screenshots
         if: ${{ !cancelled() }}
+        env: { GH_TOKEN: "${{ github.token }}" }
         run: |
           A=test-out/artifacts
-          if [ "${{ github.event_name }}" = pull_request ]; then KEY="pr/${{ github.event.pull_request.number }}"; BASEKEY="branches/${{ github.base_ref }}"
+          # A PR stacked on another PR's branch: that PR's shots are its baseline (no push run stores the branch); main as the last resort
+          if [ "${{ github.event_name }}" = pull_request ]; then KEY="pr/${{ github.event.pull_request.number }}"
+            BASEPR=$(gh pr list --head "${{ github.base_ref }}" --state all --json number -q '.[0].number' || true)
+            BASEKEY="branches/${{ github.base_ref }} ${BASEPR:+pr/$BASEPR} branches/main"
           else KEY="branches/${{ github.ref_name }}"; BASEKEY="$KEY"; fi
           # the e2e parts into one folder; their audit.json files into one list
           mkdir -p $A/e2e; for p in 1 2; do if [ -d $A/e2e-$p ]; then cp -r $A/e2e-$p/. $A/e2e/; mv $A/e2e/audit.json $A/e2e/audit-$p.json 2>/dev/null || true; fi; done
