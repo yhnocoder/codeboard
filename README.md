@@ -61,6 +61,8 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 - Export a board as Markdown, a standalone HTML snapshot, or a PNG.
 - Nine board themes, each with a light and a dark variant that follows VS Code.
 
+![Board themes in VS Code light](docs/images/5-themes-light.png)
+
 ![Board themes in VS Code dark](docs/images/6-themes-dark.png)
 
 ## Getting started
