@@ -4,7 +4,7 @@
 # Usage: tools/test/publish-impact.sh <dir with harness-*/result.json>
 # Needs: run from the repo root with a pushable origin. Keeps the old map when a shard has no results.
 set -e
-DIR=$1; ROOT=$(pwd); WT=$ROOT/.ci-impact; NEW=$ROOT/test-out/impact-new
+DIR=$1; NEW=$(pwd)/test-out/impact-new
 mkdir -p "$NEW"
 node - "$DIR" "$NEW" <<'JS'
 const fs = require("fs"), path = require("path");
@@ -21,15 +21,4 @@ fs.writeFileSync(path.join(out, "failing.json"), JSON.stringify(results.filter((
 console.log(`impact map: ${results.length} scenarios, ${files.size} source files, ${results.filter((r) => !r.ok).length} failing`);
 JS
 [ -f "$NEW/harness.json" ] || exit 0
-git config user.name "codeboard-ci"; git config user.email "ci@users.noreply.github.com"
-rm -rf "$WT"
-if git fetch -q --depth 1 origin ci-screenshots; then git worktree add -q "$WT" FETCH_HEAD
-else git worktree add -q --detach "$WT"; (cd "$WT" && git checkout -q --orphan ci-screenshots && git rm -rqf . ); fi
-mkdir -p "$WT/impact"; cp "$NEW"/*.json "$WT/impact/"
-cd "$WT"; git add -A impact
-if ! git diff --cached --quiet; then
-  git commit -qm "impact map @ ${GITHUB_SHA:0:7}"
-  for i in 1 2 3 4; do git push -q origin HEAD:ci-screenshots && break
-    sleep $((2 ** i)); git fetch -q origin ci-screenshots && git rebase -q FETCH_HEAD || true; done
-fi
-cd "$ROOT"; git worktree remove --force "$WT"
+tools/review/push-ci-branch.sh "$NEW" impact "impact map @ ${GITHUB_SHA:0:7}"
