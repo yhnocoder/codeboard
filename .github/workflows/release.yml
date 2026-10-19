@@ -30,10 +30,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - id: v
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
         run: |
           V=$(node -p 'require("./extensions/vscode/package.json").version')
-          if [ "${{ github.ref_type }}" = tag ] && [ "${{ github.ref_name }}" != "v$V" ]; then
-            echo "::error::Tag ${{ github.ref_name }} does not match extensions/vscode/package.json version $V. Bump the version there first, or tag v$V."; exit 1
+          if [ "$REF_TYPE" = tag ] && [ "$TAG" != "v$V" ]; then
+            echo "::error::Tag $TAG does not match extensions/vscode/package.json version $V. Bump the version there first, or tag v$V."; exit 1
           fi
           echo "version=$V" >> $GITHUB_OUTPUT
       - uses: ./.github/actions/setup
