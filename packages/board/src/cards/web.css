@@ -63,7 +63,7 @@
 .lrow.rich .wbm.none .wpath { flex: 1 1 0; min-width: 0; -webkit-line-clamp: 1; }
 .lrow.rich .wbm.none .wfav.big { width: 14px; height: 14px; border-radius: 3px; font-size: 9px; }
 /* 悬停：左边浮出 ⋮⋮，右上角浮出 Rich/Compact · ↗ · ✕ */
-.lgrip { position: absolute; left: 0; top: 50%; translate: 0 -50%; width: 12px; height: 22px; display: grid; place-items: center; font-size: 10px; letter-spacing: -2px; color: var(--ink-3); opacity: 0; cursor: grab !important; z-index: 2; }
+.lgrip { position: absolute; left: 0; top: 50%; translate: 0 -50%; width: 12px; height: 22px; display: grid; place-items: center; font-size: 10px; letter-spacing: -2px; color: var(--ink-3); opacity: 0; cursor: grab; z-index: 2; }
 .lrow.rich .lgrip { top: 22px; }
 .lrow:hover .lgrip { opacity: 1; }
 .lgrip:hover { color: var(--ink); }
@@ -71,7 +71,7 @@
 .lrow.rich .ltools { top: -12px; }
 .lrow:first-child.rich .ltools { top: 4px; }
 .lrow:hover .ltools { display: flex; }
-.lrows.dragging .ltools { display: none !important; }
+.lrows.dragging .lrow .ltools { display: none; } /* .lrow: outranks .lrow:hover .ltools */
 .ltools .lb { height: 20px; min-width: 20px; padding: 0 5px; border-radius: 5px; font-size: 11px; color: var(--ink-2); display: inline-grid; place-items: center; }
 .ltools .lb:hover { background: var(--hlrow); color: var(--ink); }
 .ltools .lb .ico { width: 12px; height: 12px; }
