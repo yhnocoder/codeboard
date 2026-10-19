@@ -26,7 +26,7 @@ const run = async (name: string, f: (res: Record<string, unknown>) => Promise<bo
 
 export const UX: Record<string, () => Promise<void>> = {
   "dock-fits-narrow-board": () => run("dock-fits-narrow-board", dockFits),
-  "expand-keeps-call-line-in-view": () => run("expand-keeps-call-line-in-view", expandFollow),
+  "expand-on-narrow-board-shows-new-card": () => run("expand-on-narrow-board-shows-new-card", expandFollow),
   "expanded-calls-go-in-columns-to-the-right": () => run("expanded-calls-go-in-columns-to-the-right", expandColumns),
   "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
   "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
@@ -73,7 +73,7 @@ const zoomOf = (h: Host) => h.page.evaluate(() => parseInt(document.querySelecto
 const inView = (b: { x: number; y: number; width: number; height: number } | null, vw: number, vh: number, top = Infinity) =>
   !!b && b.x >= 0 && b.y >= 0 && b.x + b.width <= vw && b.y + Math.min(b.height, top) <= vh;
 
-/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，出发的那一行、新卡的左上角（至少 96 px 宽、120 px 高）都在视野里，step 的下一个调用不用平移就点得到，缩放不低于概览 */
+/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，新卡大半在视野里（和 replay r16 同一个标准），缩放不低于概览 */
 async function expandFollow(res: Record<string, unknown>) {
   const b = emptyBoard("bE", "expand");
   const step = nv("LLMEngine.step"); put(b, step, 40, 80, 480);
@@ -84,17 +84,15 @@ async function expandFollow(res: Record<string, unknown>) {
   let ok = true;
   for (const name of ["schedule", "postprocess"]) {
     const n0 = h.board().cards.length;
-    // 新卡在右边一列：上一次展开后 step 的下一个调用还在视野里，不用平移就点得到
-    const at = await callEl(h, step.id, name).boundingBox();
-    if (!inView(at, W, H)) { res[`${name}Hidden`] = at; ok = false; break; }
+    // 窄白板放不下父卡和右边一列的新卡：上一次展开后 step 可能出了视野，像用户那样往左平移回来
+    if (!inView(await callEl(h, step.id, name).boundingBox(), W, H)) { await h.page.mouse.move(60, 120); await h.page.mouse.wheel(-600, 0); await wait(h, 500); }
     await callEl(h, step.id, name).click(); await wait(h, 1400);
     const nid = h.board().cards[n0]?.id;
-    const line = await callEl(h, step.id, name).boundingBox();
     const card = await h.page.locator(`.card[data-id="${nid}"]`).boundingBox();
     const z = await zoomOf(h);
-    const head = card && { ...card, width: Math.min(card.width, 96) };
-    res[name] = { line: inView(line, W, H), card: inView(head, W, H, 120), z };
-    if (!nid || !inView(line, W, H) || !inView(head, W, H, 120) || z < 0.6) ok = false;
+    const shown = card ? (Math.min(card.x + card.width, W) - Math.max(card.x, 0)) * (Math.min(card.y + card.height, H) - Math.max(card.y, 0)) / (card.width * card.height) : 0;
+    res[name] = { shown: Math.round(shown * 100) / 100, z };
+    if (!nid || shown <= 0.5 || z < 0.6) ok = false;
   }
   await shot(h, "ux-expand-follow");
   await h.page.context().browser()!.close();

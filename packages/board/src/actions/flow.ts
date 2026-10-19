@@ -8,7 +8,7 @@ import {
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
 import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
-import { camTo, camTarget, fitRect, usableW, fitTop, isVisible, union, overviewZ } from "../state/camera";
+import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union, overviewZ } from "../state/camera";
 import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -144,7 +144,7 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
 
 /**
  * 展开后镜头跟过去：出发的那一行和新卡都要看得见。放不下就缩小，但不缩到概览以下（代码还能读）；
- * 概览比例下还放不下：整行和新卡左边一截（新卡在右边一列，父卡别的调用还点得到）；还不行就只保证调用名
+ * 概览比例下还放不下：新卡（太高就上面一截）加调用名；还放不下就只看新卡，往左尽量带上出发的那一行
  */
 function followExpanded(cardId: string, segId: string, call: CallSpan, id: string) {
   const r = hostRect(id), p = hostRect(cardId);
@@ -154,14 +154,15 @@ function followExpanded(cardId: string, segId: string, call: CallSpan, id: strin
   const c = camTarget();
   if (isVisible(from, c) && isVisible(r, c)) return;
   const floor = Math.min(c.z, overviewZ());
-  const top = { ...r, h: Math.min(r.h, 160) };
+  const body = { ...r, h: Math.min(r.h, usableH(floor)) };
+  // 调用名大概在哪（等宽字，按列估）
+  const name = { x: p.x + CODE_LEFT + call.col * CHAR_W - 24, y: from.y, w: call.name.length * CHAR_W + 48, h: from.h };
   let f = fitRect(union(from, r), c.z);
-  for (const w of [r.w, 240, 160]) if (f.z < floor) f = fitRect(union(from, { ...top, w: Math.min(r.w, w) }), c.z);
+  for (const t of [union(from, body), union(name, body)]) if (f.z < floor) f = fitRect(t, c.z);
   if (f.z < floor) {
-    // 右边对齐新卡左边一截，往左尽量多放父卡这一行，至少放到调用名（等宽字，按列估）
-    const right = r.x + Math.min(r.w, 160), name = p.x + CODE_LEFT + call.col * CHAR_W - 24;
-    const left = Math.max(p.x, Math.min(name, right - usableW(floor)));
-    f = fitRect(union({ x: left, y: from.y, w: right - left, h: from.h }, { ...top, w: right - r.x }), c.z, floor);
+    const w = usableW(floor), right = r.x + r.w;
+    const left = r.w >= w ? r.x : Math.max(Math.min(name.x, r.x), right - w);
+    f = fitRect({ x: left, y: body.y, w: Math.min(right - left, w), h: body.h }, c.z, floor);
   }
   camTo(f.x, f.y, f.z);
 }

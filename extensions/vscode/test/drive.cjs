@@ -440,8 +440,12 @@ const finish = async (browser, errors) => {
   check(await card(f, "Scheduler.schedule").count() === 1, "clicking schedule expands Scheduler.schedule");
   check((await card(f, "Scheduler.schedule").locator(".chead .step").textContent().catch(() => "")) === "A", "child card shows its tree letter A");
   check(await f.locator("path.edge").count() >= 1, "call link drawn");
-  // 3. Click postprocess: second child in the same tree
+  // 3. Click postprocess: second child in the same tree. On this narrow board the camera followed schedule into the
+  //    column on the right, so zoom back to LLMEngine.step first (Fit, select it, Fit Selection)
   await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
+  await page.keyboard.press("Shift+!"); await sleep(900);
+  await card(f, "LLMEngine.step").locator(".chead").click({ position: { x: 20, y: 6 } }); await sleep(300);
+  await page.keyboard.press("Shift+@"); await sleep(900);
   await card(f, "LLMEngine.step").locator(".src .call", { hasText: /^postprocess$/ }).first().click(); await sleep(1800);
   check(await card(f, "Scheduler.postprocess").count() === 1, "clicking postprocess expands it");
   await f.locator("#board").click({ position: { x: 30, y: 300 } }); await sleep(300);
