@@ -160,13 +160,15 @@ export const onDidOpenGithubFile = opened.event;
 
 let remembering = Promise.resolve();
 /** 一个接一个记：几个文件同时打开时，后写的不会盖掉先写的 */
-function remember(owner: string, name: string, commit: string, rel: string) {
-  return (remembering = remembering.then(async () => {
+function remember(owner: string, name: string, commit: string, rel: string): Promise<void> {
+  const run = remembering.then(async () => {
     const st = workspace().storage, keys = st.get<string[]>(OPENED) ?? [], k = fileKey(owner, name, commit, rel);
     if (keys.includes(k)) return;
     await st.set(OPENED, [...keys, k]);
     opened.fire();
-  }));
+  });
+  remembering = run.catch(() => {}); // 一次写失败不挡住后面的
+  return run;
 }
 
 /** 侧栏 GITHUB FILES：这个工作区用过的 owner/name/commit 和下面的文件 */

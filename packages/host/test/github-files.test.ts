@@ -60,6 +60,17 @@ describe("GitHub Files per workspace", () => {
     expect(await workspaceGithubFiles(B.store)).toEqual([]);
   });
 
+  it("keeps remembering opened files after one write fails", async () => {
+    const C = workspaceAt("c"), set = C.w.storage.set;
+    let fail = true;
+    C.w.storage = { ...C.w.storage, set: async (k, v) => { if (fail) { fail = false; throw new Error("disk full"); } await set(k, v); } };
+    useWorkspace(C.w);
+    const q = { op: "file", owner: "yhnocoder", name: "tongtu", commit: C1, ref: "main", path: "CLAUDE.md" } as const;
+    await expect(ghQuery(q)).rejects.toThrow("disk full");
+    await ghQuery(q);
+    expect((await workspaceGithubFiles(C.store)).map((r) => r.files.map((f) => f.rel))).toEqual([["CLAUDE.md"]]);
+  });
+
   it("lists files that the workspace's boards have cards for, with the card count", async () => {
     useWorkspace(B.w);
     const b = emptyBoard("b1", "B");
