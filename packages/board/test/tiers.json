@@ -1,0 +1,11 @@
+{
+  "_doc": "Test tiers, see TESTING.md. smoke: always run by npm run check and PR CI (one quick scenario per main feature). manual: left out of every default run, run them by name. known: checks failing on main that are tracked elsewhere; their FAIL lines are reported but don't fail a run (remove the entry with the fix).",
+  "smoke": [
+    "expandCall", "expandAndWalk", "peek", "notes", "sections", "markdownRender", "markdownEdit", "export", "patchsave", "versions", "compare",
+    "web", "menusFitWindow", "calltree", "questions", "runtime", "syncundo", "sharedsync", "walkthroughOrder", "zoomLevels", "palette",
+    "settingsPage", "linkMergeSection", "linklist"
+  ],
+  "manual": ["markdownRecord"],
+  "solo": ["markdownLazyRender"],
+  "known": {}
+}

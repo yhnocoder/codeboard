@@ -1,0 +1,138 @@
+# Nightly, tier 3 of TESTING.md: every test, with no time limit, on main. Jobs run in parallel:
+#   harness  every harness scenario (2 jobs), recording which source files each one runs and how long it takes
+#   e2e      the whole VS Code e2e in 3 parts, including the steps the per-push run leaves out (export, variants, code editing)
+#   perf     the full benchmark (base, head, head, base) against main as it was a day earlier
+#   publish  the impact map for tools/test/pick.mjs (impact/ on the ci-screenshots branch), and a comment on the issue labelled
+#            "replay-nightly" when the set of failures changes, including when everything passes again
+# The study-task replay runs nightly too, in replay.yml.
+name: Nightly
+on:
+  schedule:
+    - cron: "30 18 * * *" # 02:30 Beijing time, before the replay at 03:00
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: write
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  VSCODE_VERSION: "1.142.0"
+  E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
+jobs:
+  harness:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix: { shard: [1, 2] }
+    name: harness (${{ matrix.shard }}/2)
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init examples/nano-vllm
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - name: Rebuild the board with source maps (for coverage)
+        run: BOARD_SOURCEMAP=1 npm run build -w @codeboard/board
+      - name: Every harness scenario, with coverage
+        run: node packages/board/test/run-harness.mjs --coverage --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }
+
+  e2e:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix: { part: [1, 2, 3] }
+    name: e2e (${{ matrix.part }}/3)
+    steps:
+      - uses: actions/checkout@v4
+      - run: git submodule update --init examples/nano-vllm
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/vscode
+      - name: VS Code e2e
+        run: E2E_PART=${{ matrix.part }} E2E_OUT=$PWD/test-out/e2e npm run e2e
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: "e2e-${{ matrix.part }}", path: test-out/e2e, retention-days: 14 }
+
+  perf:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - run: git submodule update --init examples/nano-vllm
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - name: Check out and build main as it was a day earlier
+        run: |
+          BASE=$(git rev-list -1 --before="24 hours ago" HEAD)
+          if [ -n "$BASE" ] && [ "$BASE" != "$(git rev-parse HEAD)" ]; then tools/review/checkout-base.sh "$BASE" base; fi
+      - name: Perf, a day earlier vs now
+        run: tools/review/perf-ab.sh "$([ -d base ] && echo base)" test-out/perf
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: perf, path: test-out/perf, retention-days: 14 }
+
+  publish:
+    needs: [harness, e2e, perf]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { path: test-out/artifacts }
+      - name: Publish the impact map
+        run: tools/test/publish-impact.sh test-out/artifacts
+      - name: Report to the nightly issue
+        uses: actions/github-script@v7
+        env:
+          JOBS: ${{ toJSON(needs) }}
+        with:
+          script: |
+            const fs = require("fs");
+            const A = "test-out/artifacts";
+            const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : null);
+            const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
+            const jobs = JSON.parse(process.env.JOBS);
+            const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const sha = context.sha.slice(0, 7);
+            const fails = [];
+            for (const k of [1, 2]) {
+              const r = json(`${A}/harness-${k}/result.json`);
+              if (!r) { fails.push(`harness ${k}/2: no results`); continue; }
+              for (const x of r.results.filter((x) => !x.ok)) fails.push(`harness ${x.name}: ${(x.fails[0] || x.error || "").split("\n")[0].slice(0, 160)}`);
+            }
+            for (const k of [1, 2, 3]) {
+              const log = read(`${A}/e2e-${k}/e2e.log`);
+              const bad = log.split("\n").filter((l) => /^✗/.test(l));
+              if (bad.length) bad.forEach((l) => fails.push(`e2e ${k}/3: ${l.slice(2, 160)}`));
+              else if (jobs.e2e.result !== "success" && !/all passed/.test(log)) fails.push(`e2e ${k}/3: failed (see the run log)`);
+            }
+            if (jobs.perf.result === "failure") fails.push(`perf: ${read(`${A}/perf/summary.md`).split("\n").find((l) => /❌|regress/i.test(l))?.slice(0, 160) || "regression (see the run log)"}`);
+
+            // Same issue as the nightly replay; this run keeps its own hidden marker
+            const LABEL = "replay-nightly";
+            const open = await github.rest.issues.listForRepo({ ...context.repo, labels: LABEL, state: "open", per_page: 1 });
+            const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Nightly test results", labels: [LABEL],
+              body: "The nightly runs (`.github/workflows/nightly.yml`, `replay.yml`) comment here when their set of failures changes, including when everything passes again." })).data;
+            const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: issue.number, per_page: 100 });
+            const lastMark = comments.reverse().map((c) => /<!-- nightly-failures: (.*) -->/.exec(c.body || "")).find(Boolean);
+            const before = new Set(lastMark ? JSON.parse(lastMark[1]) : []);
+            const key = (f) => f.split(":")[0];
+            const same = fails.length === before.size && fails.every((f) => [...before].some((b) => key(b) === key(f)));
+            core.info(`failing: ${fails.length}, last reported: ${before.size}, changed: ${!same}`);
+            if (same) return;
+            const fixed = [...before].filter((b) => !fails.some((f) => key(f) === key(b)));
+            const body = [
+              fails.length ? `❌ **Nightly: ${fails.length} failing** on main @ ${sha}` : `✅ **Nightly: everything passes again** on main @ ${sha}`,
+              `[Run log](${run}) · harness scenarios failing here are run on every PR until they pass`, "",
+              ...fails.map((f) => `- ${[...before].some((b) => key(b) === key(f)) ? "" : "🆕 "}${f}`),
+              ...(fixed.length ? ["", "Passing again:", ...fixed.map((f) => `- ${key(f)}`)] : []), "",
+              `<!-- nightly-failures: ${JSON.stringify(fails)} -->`,
+            ].join("\n");
+            await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body });
