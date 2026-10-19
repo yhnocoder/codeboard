@@ -12,7 +12,8 @@ export type SegView = {
   calls: CallSpan[]; // 可以点开的调用
   defs: { line: number; name: string; qual: string }[]; // 段里开始的函数（画函数边界线）
 };
-export type CallSpan = { line: number; col: number; end: number; name: string; recv?: string; loop: boolean; dispatch?: string };
+/** pkg = 调用绑到的 library 包（工作区外）；在 Study Scope 里的包白板照 project 处理 */
+export type CallSpan = { line: number; col: number; end: number; name: string; recv?: string; loop: boolean; dispatch?: string; pkg?: string };
 
 export type Row =
   | { t: "line"; seg: string; line: number; skipped: boolean } // skipped = 上面有被开关藏掉的行（行号栏画虚线）
@@ -40,7 +41,14 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
     if (prev) {
       if (prev.path !== s.path || prev.src.kind !== s.src.kind) rows.push({ t: "file", seg: s.id, path: s.src.kind === "free" ? "Free code" : s.path, version: o.versionOf?.(s) });
       else if (s.scope && prev.scope !== s.scope && !v?.defs.some((d) => d.line === s.start)) rows.push({ t: "fn", seg: s.id, name: shortFn(s.scope) });
-      else if (s.start > prev.end + 1 && !v?.defs.some((d) => d.line === s.start)) rows.push({ t: "gap", seg: s.id, from: prev.end + 1, to: s.start - 1, manual: false });
+      // 段与段之间总要看得出边界：中间隔着行 → 「⋯ N lines」；紧挨着、新段从一个定义开始 → 细线 + 定义名（同段里换函数也是这样）
+      else if (s.start > prev.end + 1) rows.push({ t: "gap", seg: s.id, from: prev.end + 1, to: s.start - 1, manual: false });
+      else {
+        let dl = s.start;
+        while (dl < s.end && /^\s*@/.test(s.text[dl - s.start] ?? "")) dl++;
+        const d = v?.defs.find((x) => x.line === dl);
+        if (d) rows.push({ t: "fn", seg: s.id, name: d.name });
+      }
     }
     let skipped = false;
     let l = s.start;
@@ -55,7 +63,11 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
       const f = v?.flags[l - s.start] ?? 0;
       const off = (hide.blank && f & F_BLANK) || (hide.comments && f & F_COMMENT) || (hide.docstrings && f & F_DOCSTRING);
       if (off) { skipped = true; l++; continue; }
-      const d = l > s.start ? v?.defs.find((x) => x.line === l) : undefined;
+      // 装饰器是定义的一部分：线画在装饰器上面，不画在装饰器和 def 之间
+      const isDec = (k: number) => /^\s*@/.test(s.text[k - s.start] ?? "");
+      let dl = l;
+      while (dl < s.end && isDec(dl)) dl++;
+      const d = l > s.start && !isDec(l - 1) ? v?.defs.find((x) => x.line === dl) : undefined;
       if (d && rows.length && rows[rows.length - 1].t === "line") rows.push({ t: "fn", seg: s.id, name: d.name });
       rows.push({ t: "line", seg: s.id, line: l, skipped });
       skipped = false;
@@ -66,6 +78,28 @@ export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}
 }
 
 const shortFn = (q: string) => `def ${q.split(".").pop()}`;
+
+const unesc = (h: string) => h.replace(/<[^>]*>/g, "").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&amp;/g, "&");
+/**
+ * 一行显示出来的文字（tab 展开成 4 格）：Hide Comments 时去掉行尾注释（和渲染用的 bare 一样长）。
+ * Fit Content 按它量宽，所以藏掉的东西不算
+ */
+export function shownText(s: Pick<Segment, "start" | "text">, line: number, v: SegView | undefined, hideComments?: boolean): string {
+  let t = s.text[line - s.start] ?? "";
+  const bare = hideComments ? v?.bare?.[line] : undefined;
+  if (bare !== undefined) t = t.slice(0, unesc(bare).length);
+  return t.replace(/\t/g, "    ");
+}
+/** 所有非空行共有的缩进（不到 2 格算 0）：缩得很深的片段把它藏起来，代码靠左 */
+export function commonIndent(texts: Iterable<string>): number {
+  let m = Infinity;
+  for (const t of texts) {
+    if (!t.trim()) continue;
+    m = Math.min(m, t.length - t.trimStart().length);
+    if (m < 2) return 0;
+  }
+  return m === Infinity ? 0 : m;
+}
 
 /**
  * 一行在渲染结果里落在哪一行：显示着就是它自己；被手动隐藏就落在省略条上；

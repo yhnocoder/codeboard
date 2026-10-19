@@ -1,7 +1,8 @@
 #!/bin/bash
-# 端到端测试：在真的 VS Code 里装上插件，打开 nano-vllm 的一份拷贝，用 CDP 驱动界面并截图。
-# 需要：VS Code（VSCODE_BIN，默认 /opt/vscode/code）、xvfb-run、playwright-core。
-# 用法：npm run e2e    截图和日志在 test-out/<主题>/
+# End-to-end test: install the extension in a real VS Code, open a copy of nano-vllm, drive the UI over CDP and take screenshots.
+# Needs: VS Code (VSCODE_BIN, default /opt/vscode/code), xvfb-run, playwright-core.
+# Optional: E2E_EXTENSIONS lists extensions to install alongside (e.g. Pylance, so Definition Peek uses the real language server).
+# Usage: npm run e2e    Screenshots and logs go to test-out/<theme>/
 set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 EXT=$(dirname "$HERE")
@@ -9,24 +10,42 @@ REPO=$(cd "$EXT/../.." && pwd)
 CODE=${VSCODE_BIN:-${VSCODE_TEST_PATH:-/opt/vscode/code}}
 THEME=${THEME:-Default Dark Modern}
 TAG=$(echo "$THEME" | tr 'A-Z ' 'a-z-')
-OUT=$REPO/test-out/$TAG
-WS=/tmp/codeboard-e2e/ws
-UD=/tmp/codeboard-e2e/user
-pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true; sleep 1
-rm -rf /tmp/codeboard-e2e "$OUT"; mkdir -p "$OUT" "$UD/User"
+DRIVER=${DRIVER:-drive.cjs}   # DRIVER=replay.cjs runs the scripted study-task replay
+OUT=${E2E_OUT:-$REPO/test-out/$TAG}
+# E2E_SETTINGS adds entries to the user settings (a JSON fragment without braces)
+# E2E_TMP and CDP_PORT let several instances run side by side on one machine
+TMP=${E2E_TMP:-/tmp/codeboard-e2e}
+export CDP_PORT=${CDP_PORT:-9223}
+WS=$TMP/ws
+UD=$TMP/user
+pkill -f -- "--user-data-dir=$UD" 2>/dev/null && sleep 1   # wait only when an earlier run was still there
+rm -rf "$TMP" "$OUT"; mkdir -p "$OUT" "$UD/User"
 git clone -q "$REPO/examples/nano-vllm" "$WS"
+# E2E_EXTENSIONS="ms-python.python ms-python.vscode-pylance": install into a cache dir first (skipped if already there), then copy into this run's extensions dir
+if [ -n "$E2E_EXTENSIONS" ]; then
+  CACHE=${E2E_EXT_CACHE:-/tmp/codeboard-ext-cache}
+  for e in $E2E_EXTENSIONS; do "$(dirname "$CODE")/bin/code" --install-extension "$e" --extensions-dir "$CACHE" --user-data-dir "$UD" >/dev/null; done
+  cp -r "$CACHE" "$UD/ext"
+fi
+# Pylance's "enable type checking?" prompt pops up after its first workspace-wide analysis (CodeBoard's Go to Implementation warm-up)
+# and sits over the board's dock in this narrow window, swallowing the Fit to Window clicks: turn the prompt off
 cat > "$UD/User/settings.json" <<JSON
 { "workbench.colorTheme": "$THEME", "workbench.startupEditor": "none", "window.restoreWindows": "none",
   "workbench.tips.enabled": false, "chat.commandCenter.enabled": false, "workbench.secondarySideBar.defaultVisibility": "hidden",
-  "editor.minimap.enabled": false, "telemetry.telemetryLevel": "off", "update.mode": "none", "extensions.ignoreRecommendations": true }
+  "editor.minimap.enabled": false, "telemetry.telemetryLevel": "off", "update.mode": "none", "extensions.ignoreRecommendations": true,
+  "files.simpleDialog.enable": true, "python.analysis.enableTypeCheckingRecommendation": false${E2E_SETTINGS:+, $E2E_SETTINGS} }
 JSON
-RUN=""; [ -z "$DISPLAY" ] && RUN="xvfb-run -a -s '-screen 0 1700x1100x24'"
+# E2E_ARGS adds VS Code command-line flags (e.g. --password-store=basic, so secret storage works without an OS keyring)
+# E2E_SCALE=2 renders at 2x device pixels (sharper screenshots, used for release shots); the X screen grows to match
+SCALE=${E2E_SCALE:-1}
+SCALE_ARG=""; [ "$SCALE" != 1 ] && SCALE_ARG="--force-device-scale-factor=$SCALE"
+RUN=""; [ -z "$DISPLAY" ] && RUN="xvfb-run -a -s '-screen 0 $((1700 * SCALE))x$((1100 * SCALE))x24'"
 eval $RUN "$CODE" "$WS" --extensionDevelopmentPath="$EXT" --user-data-dir="$UD" --extensions-dir="$UD/ext" \
   --disable-workspace-trust --skip-welcome --skip-release-notes --disable-gpu --no-sandbox \
-  --remote-debugging-port=9223 --window-size=1600,1000 >"$OUT/code.log" 2>&1 &
+  --remote-debugging-port=$CDP_PORT --window-size=1600,1000 $SCALE_ARG $E2E_ARGS >"$OUT/code.log" 2>&1 &
 PID=$!
 set +e
-node "$HERE/drive.cjs" "$OUT" "$WS" "$UD"
-RC=$?
+node "$HERE/$DRIVER" "$OUT" "$WS" "$UD" 2>&1 | tee "$OUT/e2e.log"
+RC=${PIPESTATUS[0]}
 kill $PID 2>/dev/null; pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true
 exit $RC

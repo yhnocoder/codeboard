@@ -1,109 +1,172 @@
-// 白板面板：一张白板一个 webview 标签页（可以同时开几张）。白板状态由 webview 持有，每次改动整板发回来保存；
-// 宿主负责读代码、高亮、版本、跳转。最近聚焦的白板是编辑器里 Add to 的目标。
+// 白板面板：一张白板一个 webview 标签页（可以同时开几张）。白板状态由 webview 持有，改动后把变了的项发回来保存（patch）；
+// 宿主负责读代码、高亮、版本、跳转，共享卡改了就转给开着同一张卡的别的白板。最近聚焦的白板是编辑器里 Add to 的目标。
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
-import type { Board, BoardMeta, BoardToHost, HostInfo, HostToBoard, Stale } from "@codeboard/core";
+import { sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
+import type { CardClip } from "@codeboard/core/storage";
 import type { Storage } from "./storage";
-import { boardSegments, countStale, staleFor } from "./versions";
+import { BoardPanel, type BoardHost, type BoardView } from "./boards";
+import type { Handler } from "./handlers";
+import { log } from "./log";
 import { viewsFor } from "./views";
-import { present, srcLabel } from "./source";
+import { variantSegments } from "./versions";
 
-export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown> | unknown;
+export { BoardPanel };
 
-export class BoardPanel {
-  board: Board | undefined;
-  ready = false;
-  private queue: HostToBoard[] = [];
-  /** 白板上选中的卡和行（Add to Selected Card、⌥S 用） */
-  selection: Extract<BoardToHost, { type: "selection" }> | undefined;
-  stale: Record<string, Stale> = {};
-  readonly: string | undefined;
-
-  constructor(readonly id: string, readonly panel: vscode.WebviewPanel, private mgr: Panels) {}
-
-  get visible() { return this.panel.visible; }
-
-  post(m: HostToBoard) {
-    if (this.ready) void this.panel.webview.postMessage(m);
-    else if (m.type !== "init") this.queue.push(m);
-  }
-  toast(text: string) { this.post({ type: "toast", text }); }
-
-  /** webview 说 ready：读白板、算所有段的展示数据和版本状态，发 init */
-  async init() {
-    const b = await this.mgr.store.load(this.id);
-    if (!b) { this.panel.dispose(); return; }
-    this.board = b;
-    this.panel.title = b.name;
-    const segs = boardSegments(b);
-    const [views, stale, boards] = await Promise.all([viewsFor(segs), staleFor(segs), this.mgr.metas()]);
-    this.stale = stale;
-    this.readonly = await this.readonlyNote(b);
-    void this.panel.webview.postMessage({ type: "init", board: b, boards, views, stale, host: this.host() } satisfies HostToBoard);
-    this.ready = true;
-    const q = this.queue;
-    this.queue = [];
-    for (const m of q) void this.panel.webview.postMessage(m);
-    this.mgr.staleChanged(this.id, countStale(b, stale));
-  }
-
-  host(): HostInfo {
-    const ed = vscode.workspace.getConfiguration("editor");
-    return {
-      fontFamily: ed.get<string>("fontFamily"),
-      isMac: process.platform === "darwin",
-      forwardedKeys: ["k", "d", "0", "1", "=", "+", "-", "shift+l"], // 与 package.json 里 codeboard.boardKey 的键一致
-      assetBase: this.panel.webview.asWebviewUri(vscode.Uri.file(this.mgr.store.assetsDir())).toString(),
-      readonly: this.readonly,
-      focus: this.mgr.focusOn,
-      target: this.mgr.target === this.id,
-    };
-  }
-
-  /** 仓库找不到时的提示（只读快照） */
-  private async readonlyNote(b: Board): Promise<string | undefined> {
-    const miss = new Set<string>();
-    for (const s of boardSegments(b)) if (s.src.kind !== "free" && s.src.kind !== "github" && !(await present(s))) miss.add(srcLabel(s.src));
-    if (!miss.size) return undefined;
-    const names = [...miss].map((n) => `“${n}”`).join(", ");
-    return `Repo ${names} not found in this workspace. Showing saved code, read-only.`;
-  }
-
-  /** 重算版本状态并推给白板 */
-  async refreshStale() {
-    if (!this.board || !this.ready) return;
-    const st = await staleFor(boardSegments(this.board));
-    const changed = JSON.stringify(st) !== JSON.stringify(this.stale);
-    this.stale = st;
-    if (changed) this.post({ type: "stale", stale: st });
-    this.mgr.staleChanged(this.id, countStale(this.board, st));
-  }
-
-  /** Locate Repo 之后：重新读代码、只读提示 */
-  async reload() {
-    if (!this.board) return;
-    const segs = boardSegments(this.board);
-    this.readonly = await this.readonlyNote(this.board);
-    this.post({ type: "views", views: await viewsFor(segs) });
-    this.post({ type: "host", host: { readonly: this.readonly } });
-    await this.refreshStale();
-  }
+/** BoardView 的 VS Code 实现：一个 webview 标签页 */
+function webviewView(panel: vscode.WebviewPanel): BoardView {
+  return {
+    postMessage: (m) => void panel.webview.postMessage(m),
+    get title() { return panel.title; },
+    set title(t: string) { panel.title = t; },
+    get visible() { return panel.visible; },
+    get active() { return panel.active; },
+    reveal: (preserveFocus) => panel.reveal(undefined, preserveFocus),
+    dispose: () => panel.dispose(),
+    resourceUrl: (dir) => panel.webview.asWebviewUri(vscode.Uri.file(dir)).toString(),
+  };
 }
 
-export class Panels {
+export class Panels implements BoardHost {
   static readonly viewType = "codeboard.board";
   private panels = new Map<string, BoardPanel>();
+  private webviews = new Map<BoardPanel, vscode.WebviewPanel>();
   target: string | undefined;
-  focusOn = false;
   private targetEmitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTarget = this.targetEmitter.event;
   private staleEmitter = new vscode.EventEmitter<void>();
   readonly onDidChangeStale = this.staleEmitter.event;
-  handler: Handler = () => undefined;
+  handler: Handler = async () => undefined;
+  /** ⌘C 复制的卡（贴到别的白板时用） */
+  clip: CardClip | undefined;
+  /** 共享卡的改动按顺序转发（段的展示数据要先算好） */
+  private shareQ: Promise<unknown> = Promise.resolve();
 
   constructor(private ctx: vscode.ExtensionContext, readonly store: Storage) {
     this.target = ctx.workspaceState.get<string>("codeboard.target");
+    // 共享卡写进了卡库：开着同一张卡的别的白板换上（存储里的那份已经换好了）。卡本身变了（新版本、改段）时带上段的展示数据
+    ctx.subscriptions.push(store.onDidShare((e) => {
+      this.shareQ = this.shareQ.then(async () => {
+        for (const p of this.all()) {
+          if (p.id === e.from) continue;
+          const refs = store.refsOf(p.id);
+          const cards = e.cards.filter((sc) => refs.has(sc.card.id));
+          if (!cards.length) continue;
+          // Variant 的段（不在显示的）也要展示数据：切换时直接换上
+          const segs: Segment[] = cards.flatMap((sc) => (sc.items.includes(sc.card.id) && sc.card.kind === "code" ? [...sc.card.segments, ...variantSegments({ cards: [sc.card] })] : []));
+          const views = segs.length ? await viewsFor(segs) : undefined;
+          p.board = store.peek(p.id);
+          p.post({ type: "shared", cards, views });
+          if (segs.length) void p.refreshStale();
+        }
+      }).catch((err) => log("error", `shared: ${err instanceof Error ? err.message : err}`));
+    }));
+    // Delete Everywhere：开着的别的白板跟着删
+    ctx.subscriptions.push(store.onDidRemoveShared((e) => {
+      for (const p of this.all()) {
+        if (p.id === e.from || !e.boards.includes(p.id)) continue;
+        p.board = store.peek(p.id);
+        p.post({ type: "sharedGone", cards: [e.card] });
+      }
+    }));
+    // 共享卡的「⧉ N boards」「← N」：任何白板存盘、改名后重算（只发变了的面板）
+    ctx.subscriptions.push(store.onDidSave(() => this.refreshShared()), store.onDidChange(() => this.refreshShared()));
+    // 子白板的骨架：子白板存盘后重算（只算存了的那块），白板列表变了（改名、删白板）全部重算；都防抖
+    ctx.subscriptions.push(store.onDidSave((b) => { this.dirtySkels.add(b.id); this.refreshSkeletons(); }), store.onDidChange(() => { this.allSkels = true; this.refreshSkeletons(); }));
+  }
+
+  private skelT: ReturnType<typeof setTimeout> | undefined;
+  /** 每个面板发过的骨架（子白板 id → JSON） */
+  private skelSent = new Map<BoardPanel, Map<string, string>>();
+  private dirtySkels = new Set<string>();
+  private allSkels = false;
+  /** 一块白板的骨架（宿主缓存里的那份；没了 = null） */
+  skeleton(id: string): Skeleton | null {
+    const b = this.store.peek(id);
+    return b ? skeletonOf(b, (x) => this.store.peek(x)?.name) : null;
+  }
+  /**
+   * 子白板的骨架推给开着的白板：每个面板只发它上面的子白板里变了的（还没发过的、存过盘的、白板列表变了时全部比一遍）。
+   * 跟共享卡的情况一样防抖 120ms；fresh = 刚 init 的面板（之前发的不算）
+   */
+  refreshSkeletons(now = false, fresh?: string) {
+    if (fresh) { const p = this.panels.get(fresh); if (p) this.skelSent.delete(p); }
+    clearTimeout(this.skelT);
+    const run = () => {
+      const dirty = this.dirtySkels, all = this.allSkels;
+      this.dirtySkels = new Set();
+      this.allSkels = false;
+      const memo = new Map<string, Skeleton | null>();
+      const sk = (id: string) => { if (!memo.has(id)) memo.set(id, this.skeleton(id)); return memo.get(id)!; };
+      for (const p of this.all()) {
+        const b = this.store.peek(p.id);
+        if (!p.ready || !b) continue;
+        let sent = this.skelSent.get(p);
+        if (!sent) this.skelSent.set(p, (sent = new Map()));
+        const out: Record<string, Skeleton | null> = {};
+        for (const id of subBoardsOf(b)) {
+          if (sent.has(id) && !all && !dirty.has(id)) continue;
+          const s = sk(id), k = JSON.stringify(s);
+          if (sent.get(id) === k) continue;
+          sent.set(id, k);
+          out[id] = s;
+        }
+        if (Object.keys(out).length) p.post({ type: "skeletons", boards: out });
+      }
+    };
+    if (now) run(); else this.skelT = setTimeout(run, 120);
+  }
+
+  /**
+   * 面板换一块白板显示（进入子白板、从面包屑回去）：白板那边已经存好了（发消息前 flush 过）。
+   * 子白板已经在别的面板里开着时切到那个面板（同一块白板不开两份），返回 false
+   */
+  /** 上次打开的时间（globalState，跨工作区；「回来接上」的提示用） */
+  lastOpened(id: string): number | undefined { return this.ctx.globalState.get<Record<string, number>>("codeboard.opened")?.[id]; }
+  opened(id: string) {
+    const m = { ...(this.ctx.globalState.get<Record<string, number>>("codeboard.opened") ?? {}), [id]: Date.now() };
+    void this.ctx.globalState.update("codeboard.opened", m);
+  }
+
+  async switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean> {
+    const other = this.panels.get(to);
+    if (other && other !== p) { other.view.reveal(); return false; }
+    if (!(await this.store.load(to))) throw new Error("Board not found.");
+    const was = p.id;
+    this.panels.delete(was);
+    p.id = to;
+    this.panels.set(to, p);
+    p.crumbs = o.crumbs;
+    p.cams = o.cams;
+    p.next = { walk: o.walk, cam: o.cam };
+    p.ready = false;
+    this.skelSent.delete(p);
+    this.sharedSent.delete(was);
+    this.saveOpen();
+    if (this.target === was) this.setTarget(to);
+    await p.init();
+    return true;
+  }
+
+  private sharedT: ReturnType<typeof setTimeout> | undefined;
+  private sharedSent = new Map<string, string>();
+  /** 共享卡的情况推给开着的白板（防抖，宿主这边算；白板只在收到时更新卡头）。fresh = 刚 init 的白板（之前发过的不算） */
+  refreshShared(now = false, fresh?: string) {
+    if (fresh) this.sharedSent.delete(fresh);
+    clearTimeout(this.sharedT);
+    const run = () => {
+      const all = this.store.cached();
+      for (const p of this.all()) {
+        if (!p.ready) continue;
+        const cards = sharedInfo(all, p.id);
+        const key = JSON.stringify(cards);
+        if (this.sharedSent.get(p.id) === key) continue;
+        this.sharedSent.set(p.id, key);
+        p.post({ type: "sharedInfo", cards });
+      }
+    };
+    if (now) run(); else this.sharedT = setTimeout(run, 120);
   }
 
   get(id: string) { return this.panels.get(id); }
@@ -111,12 +174,13 @@ export class Panels {
   metas(): Promise<BoardMeta[]> { return this.store.list(); }
 
   /** 打开（或切到）一张白板 */
-  async show(id: string, opts: { preserveFocus?: boolean; side?: boolean } = {}): Promise<BoardPanel | undefined> {
+  async show(id: string, opts: { preserveFocus?: boolean; side?: boolean; here?: boolean } = {}): Promise<BoardPanel | undefined> {
     const ex = this.panels.get(id);
-    if (ex) { ex.panel.reveal(undefined, opts.preserveFocus); return ex; }
+    if (ex) { ex.view.reveal(opts.preserveFocus); return ex; }
     const b = await this.store.load(id);
     if (!b) return undefined;
-    const col = opts.side ? vscode.ViewColumn.Beside : this.boardColumn() ?? vscode.ViewColumn.Beside;
+    // here：侧栏里点的，开在当前这一栏（不新开分栏）
+    const col = opts.side ? vscode.ViewColumn.Beside : opts.here ? vscode.ViewColumn.Active : this.boardColumn() ?? vscode.ViewColumn.Beside;
     const panel = vscode.window.createWebviewPanel(Panels.viewType, b.name, { viewColumn: col, preserveFocus: opts.preserveFocus }, { enableScripts: true, retainContextWhenHidden: true });
     const p = this.attach(id, panel);
     if (!opts.preserveFocus) this.setTarget(id);
@@ -125,7 +189,7 @@ export class Panels {
 
   /** 已经有白板开着的那一栏（新白板也开在那里，成为一个新标签） */
   private boardColumn() {
-    return this.all().find((p) => p.panel.viewColumn)?.panel.viewColumn;
+    return this.all().map((p) => this.webviews.get(p)?.viewColumn).find((c) => c);
   }
 
   /** 窗口重新加载后恢复面板：webview 的 state 里记着白板 id */
@@ -143,27 +207,35 @@ export class Panels {
     const media = vscode.Uri.joinPath(this.ctx.extensionUri, "media");
     panel.webview.options = { enableScripts: true, localResourceRoots: [media, vscode.Uri.file(this.store.assetsDir())] };
     panel.iconPath = vscode.Uri.joinPath(media, "icon.svg");
-    const p = new BoardPanel(id, panel, this);
+    const p = new BoardPanel(id, webviewView(panel), this);
     this.panels.set(id, p);
+    this.webviews.set(p, panel);
     panel.webview.html = this.html(panel.webview, id);
     panel.webview.onDidReceiveMessage((m: BoardToHost) => this.onMessage(p, m));
-    panel.onDidChangeViewState((e) => { if (e.webviewPanel.active) this.setTarget(id); });
-    panel.onDidDispose(() => { this.panels.delete(id); this.saveOpen(); });
+    // p.id 会变（进入子白板），这里都按 p.id 取
+    panel.onDidChangeViewState((e) => { if (e.webviewPanel.active) this.setTarget(p.id); });
+    panel.onDidDispose(() => { if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.webviews.delete(p); this.sharedSent.delete(p.id); this.skelSent.delete(p); this.saveOpen(); });
     this.saveOpen();
     return p;
   }
 
   private async onMessage(p: BoardPanel, m: BoardToHost) {
     const req = "req" in m ? (m as { req: number }).req : undefined;
+    const t0 = performance.now();
     try {
       if (m.type === "ready") return void (await p.init());
-      const data = await this.handler(p, m);
+      const data = (await this.handler(p, m)) as ReplyOf<AskType> | undefined; // 类型由 handlers 按 ReplyOf 检查
       if (req !== undefined) p.post({ type: "reply", req, data: data ?? null });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       console.error("[codeboard]", m.type, e);
+      log("error", `${m.type}: ${msg}${e instanceof Error && e.stack ? `\n${e.stack}` : ""}`);
       if (req !== undefined) p.post({ type: "reply", req, error: msg });
       else p.toast(`Error: ${msg}`);
+    } finally {
+      // 慢的请求记一笔（Copy Diagnostics 里能看到），方便对照白板那边的耗时
+      const ms = performance.now() - t0;
+      if (ms > 150 && m.type !== "confirm" && m.type !== "pickFile") log("info", `slow ${m.type}: ${Math.round(ms)} ms`);
     }
   }
 
@@ -200,13 +272,14 @@ export class Panels {
       `img-src ${w.cspSource} data: blob: https: http:`,
       `style-src ${w.cspSource} 'unsafe-inline'`,
       `font-src ${w.cspSource} data:`,
-      `script-src 'nonce-${nonce}'`,
+      // 入口是 ES module：import() 进来的 chunk 也在 media/board 下面
+      `script-src 'nonce-${nonce}' ${w.cspSource}`,
     ].join("; ");
     // 在 state 里记下白板 id，窗口重新加载时据此恢复（不影响白板自己用 setState）
     const keep = `(function(){var a=acquireVsCodeApi(),id=${JSON.stringify(id)};var w={postMessage:function(m){a.postMessage(m)},getState:function(){var s=a.getState();if(s&&typeof s==="object"){s=Object.assign({},s);delete s.__board}return s},setState:function(s){a.setState(Object.assign({},s||{},{__board:id}));return s}};var s0=a.getState();a.setState(Object.assign({},s0||{},{__board:id}));window.acquireVsCodeApi=function(){return w}})();`;
     return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <meta name="viewport" content="width=device-width, initial-scale=1">${css}<title>CodeBoard</title></head>
-<body><div id="root"></div><script nonce="${nonce}">${keep}</script><script nonce="${nonce}" src="${u("board.js")}"></script></body></html>`;
+<body><div id="root"></div><script nonce="${nonce}">${keep}</script><script type="module" nonce="${nonce}" src="${u("board.js")}"></script></body></html>`;
   }
 }

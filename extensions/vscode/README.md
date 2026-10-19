@@ -1,20 +1,81 @@
-# CodeBoard for VS Code
+# CodeBoard
 
-读代码用的白板。白板开在编辑器旁边，代码在左，流程在右。
+*Reading code can be elegant and joyful.*
 
-## 怎么用
+**A whiteboard for reading code.** Put a function on the board, click its calls to expand them layer by layer, and lay out how the code really flows, with every card pinned to its source and commit.
 
-- **放一个函数上来**：光标放在函数里按 `Alt+B`；或者选中几行，右键「添加到 CodeBoard」；或者点白板底部的「代码」搜一个函数。
-- **逐层展开**：卡片里带下划线的是调用，点一下就把被调用的函数放到右边并连上箭头，按调用顺序自动编号（1 → 1.1、1.2…）。`self.model_runner.call("run")` 这种按字符串分发的调用也能展开。装了 Pylance、clangd 时用它们找定义，没装时按名字和接收者在工作区里找，有歧义会让你选。
-- **回到代码**：点卡片里的任意一行，编辑器跳到那一行；编辑器里白板上的代码左边有一道细线，函数上方有「在白板上」，点它回到卡片。
-- **高亮**：点行号。
-- **代码变了**：卡片钉在建卡时的 commit 上。代码只是挪了位置，卡片静默跟上；内容变了，卡片上亮一个黄点「有新版本」，点开看 diff，选「跟进到最新」或留在旧版本。跟进时高亮行和箭头起点按内容迁移。
-- **讲解**：按 `P`，按编号一张张看，`←` `→` 切换，`Esc` 退出。
-- **其他**：双击画布写便签（支持标题、列表、粗体、代码），拖图片或粘贴网址进来，拖卡片右边的小圆点连箭头，点箭头写标签、改类型。`F` 显示全部，`Ctrl`+滚轮缩放，滚轮平移。
-- **侧栏**：活动栏里的 CodeBoard 列出所有白板，展开是按箭头排好的大纲。
+![CodeBoard: a call tree from nano-vllm laid out on the board](https://github.com/yhnocoder/codeboard/releases/latest/download/1-overview.png)
 
-白板存在 VS Code 给每个工作区的存储目录里，不会往你在读的仓库里写东西。想放进自己的笔记仓库，设置 `codeboard.storageDir`。
+The board opens beside your editor: code on one side, the flow on the other. Boards are saved locally and nothing is written into the repository you are reading.
 
-## 还没做
+## Features
 
-运行时追踪（阶段二）：箭头标签、卡片的调用次数、循环次数这几个位置已经留好，到时填数据就行。
+### Expand calls, layer by layer
+
+Calls in a card are underlined. Click one and the function it calls is placed on the board and connected with an arrow; each call graph gets a mark (A, B, …) so you can follow it. String-dispatched calls such as `self.model_runner.call("run")` expand too. CodeBoard asks the language server (Pylance, clangd, …) for definitions and falls back to a workspace search by name and receiver, letting you pick when the match is ambiguous.
+
+### Definition Peek
+
+Hover a call to peek at its definition without adding it to the board.
+
+![Definition Peek on a call inside a card](https://github.com/yhnocoder/codeboard/releases/latest/download/2-peek.png)
+
+### Cards pinned to commits
+
+Every card remembers the commit it was taken from. When the code only moves, the card follows quietly. When the function changes, the card shows **New version**: open it to see the diff, then update to the latest code or keep the pinned version. Highlights and arrows move with the content when you update.
+
+![A card offering a new version with its diff](https://github.com/yhnocoder/codeboard/releases/latest/download/3-new-version.png)
+
+### Notes and Sidenotes
+
+Notes are Markdown that formats as you type: headings, lists, code, inline and display math, links, and `[[card references]]` that link to other cards on the board. Optional gray inline completions (from DeepSeek or a VS Code language model such as GitHub Copilot) suggest how to continue a sentence; press `Tab` to accept. Sidenotes attach a comment to specific lines of a card.
+
+![A Note with math, a link, a card reference and a gray completion, beside its card](https://github.com/yhnocoder/codeboard/releases/latest/download/4-notes.png)
+
+### Themes
+
+Nine board themes (plus an experimental one), each with a light and a dark variant that follows VS Code. Pick one on the board's Settings page (`Ctrl+,` on the board).
+
+![Board themes in VS Code light](https://github.com/yhnocoder/codeboard/releases/latest/download/5-themes-light.png)
+
+![Board themes in VS Code dark](https://github.com/yhnocoder/codeboard/releases/latest/download/6-themes-dark.png)
+
+### And more
+
+- Click any line of a card to jump to it in the editor; in the editor, a CodeLens takes you back to the card.
+- Click line numbers to highlight lines.
+- Press `P` to walk through the cards in order, with `←` `→` to move and `Esc` to leave.
+- Draw arrows between cards, label them and change their type; drop in images and web pages.
+- Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.
+- Turn cards into a sub-board, and share a card between boards so it stays the same everywhere.
+- Compare a card across branches, worktrees or pull requests as variants, with change marks and a three-way view.
+- Pin questions to code with `?` stickers and find them in the Questions view; export a board as Markdown, an HTML snapshot or a PNG.
+- The CodeBoard view in the activity bar lists your boards, in groups.
+
+## Getting started
+
+1. Install CodeBoard: download the `.vsix` from the [latest release](https://github.com/yhnocoder/codeboard/releases/latest) and run **Extensions: Install from VSIX…**. (A Marketplace listing is planned.)
+2. Open a repository, put the cursor inside a function and press `Alt+B` (or right-click and choose **Add to Board**). The board opens beside the editor with the function as a card. With several lines selected across definitions, `Alt+B` makes one card with several parts and `Shift+Alt+B` one card per definition.
+3. Click the underlined calls in the card to expand them. `Shift+1` fits the whole board, `Shift+2` the selection, and `?` lists every shortcut.
+
+## Settings
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `codeboard.theme` | `warm-ink` | Board theme (each has a light and a dark variant). |
+| `codeboard.storageDir` | *(empty)* | Folder for board files. Empty uses VS Code's workspace storage, outside the repository. |
+| `codeboard.ai.provider` | `auto` | Gray inline completions in Notes: `auto`, `copilot`, `deepseek` or `off`. |
+| `codeboard.ai.deepseekModel` | `deepseek-flash` | DeepSeek model for completions. |
+| `codeboard.studyScope` | `[]` | Packages outside the workspace that count as project code (for example `torch`). |
+| `codeboard.zoom.overview` | `0.6` | Below this zoom, cards show an overview instead of code. |
+| `codeboard.doubleClick` | `text` | What double-clicking empty board space creates. |
+
+Set the DeepSeek key with **CodeBoard: Set DeepSeek API Key**; it is kept in VS Code's secret storage.
+
+## Privacy
+
+Boards are stored locally, in VS Code's workspace storage or in `codeboard.storageDir`. Inline completions are the only feature that sends your Note text out: when they are enabled, the text around the caret of the Note you are editing goes to the provider you chose (DeepSeek, or a VS Code language model such as Copilot), and only to that provider.
+
+## License
+
+[MIT](https://github.com/yhnocoder/codeboard/blob/HEAD/LICENSE)

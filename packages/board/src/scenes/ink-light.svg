@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="640" viewBox="0 0 800 640" preserveAspectRatio="xMidYMax slice">
+<defs>
+<filter id="p" x="0" y="0" width="100%" height="100%"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="3"/><feColorMatrix values="0 0 0 0 .5 0 0 0 0 .45 0 0 0 0 .38 0 0 0 .06 0"/></filter>
+<filter id="w" x="-10%" y="-30%" width="120%" height="160%"><feTurbulence type="fractalNoise" baseFrequency=".012 .05" numOctaves="3" seed="7"/><feDisplacementMap in="SourceGraphic" scale="26"/><feGaussianBlur stdDeviation="2.4"/></filter>
+<filter id="f" x="-20%" y="-200%" width="140%" height="500%"><feGaussianBlur stdDeviation="18"/></filter>
+<linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff"/><stop offset=".75" stop-color="#fff" stop-opacity=".25"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+<mask id="m"><rect width="800" height="640" fill="url(#g)"/></mask>
+</defs>
+<rect width="800" height="640" filter="url(#p)"/>
+<g fill="#2a2926" filter="url(#w)" mask="url(#m)">
+<path opacity=".13" d="M-20 470C60 420 110 360 170 380S260 300 330 340 420 280 480 330 560 300 620 260 700 330 820 300V640H-20Z"/>
+<path opacity=".2" d="M-20 520C40 500 90 430 150 455S240 410 300 450 380 470 430 430 520 380 590 420 680 460 820 420V640H-20Z"/>
+<path opacity=".32" d="M420 640C460 590 500 520 560 540S650 480 700 520 760 560 820 540V640Z"/>
+</g>
+<g fill="#f7f3ea" filter="url(#f)"><ellipse cx="300" cy="470" rx="320" ry="26" opacity=".9"/><ellipse cx="620" cy="540" rx="260" ry="20" opacity=".8"/></g>
+</svg>

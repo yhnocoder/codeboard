@@ -1,3 +1,11 @@
 [submodule "examples/nano-vllm"]
 	path = examples/nano-vllm
 	url = https://github.com/GeeeekExplorer/nano-vllm.git
+[submodule "examples/sglang"]
+	path = examples/sglang
+	url = https://github.com/sgl-project/sglang.git
+	shallow = true
+[submodule "examples/DeepEP"]
+	path = examples/DeepEP
+	url = https://github.com/deepseek-ai/DeepEP.git
+	shallow = true

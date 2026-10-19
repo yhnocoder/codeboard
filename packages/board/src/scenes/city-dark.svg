@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="640" viewBox="0 0 800 640" preserveAspectRatio="xMidYMid slice">
+<path fill="#142538" d="M-40 560C120 520 210 600 330 560S520 470 600 520 760 600 860 560L860 620C760 650 640 590 560 580S380 640 300 625 120 590-40 625Z"/>
+<g fill="#1b2a22"><rect x="46" y="70" width="178" height="108" rx="14"/><rect x="596" y="430" width="148" height="78" rx="14"/></g>
+<g fill="#23382b"><circle cx="90" cy="110" r="9"/><circle cx="118" cy="128" r="11"/><circle cx="160" cy="100" r="8"/><circle cx="186" cy="140" r="10"/><circle cx="640" cy="465" r="9"/><circle cx="676" cy="480" r="11"/><circle cx="712" cy="458" r="8"/></g>
+<g fill="#1c212b" stroke="#262c38"><rect x="300" y="60" width="40" height="28" rx="3"/><rect x="350" y="60" width="26" height="40" rx="3"/><rect x="420" y="70" width="52" height="24" rx="3"/><rect x="40" y="420" width="44" height="30" rx="3"/><rect x="96" y="410" width="30" height="44" rx="3"/><rect x="250" y="440" width="60" height="22" rx="3"/><rect x="560" y="70" width="34" height="34" rx="3"/><rect x="690" y="90" width="48" height="26" rx="3"/></g>
+</svg>

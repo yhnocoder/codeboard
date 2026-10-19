@@ -1,4 +1,4 @@
-import type { BoardToHost, HostToBoard } from "@codeboard/core";
+import type { AskType, BoardToHost, HostToBoard, ReplyOf } from "@codeboard/core";
 
 // 宿主桥：VS Code webview 用 acquireVsCodeApi；以后 macOS app 换一个实现即可
 type Api = { postMessage(m: unknown): void };
@@ -15,12 +15,12 @@ export function send(m: BoardToHost) {
 let req = 0;
 const pending = new Map<number, { ok: (v: any) => void; fail: (e: Error) => void }>();
 
-type Req<T extends BoardToHost["type"]> = Omit<Extract<BoardToHost, { type: T }>, "req" | "type">;
+type Req<T extends AskType> = Omit<Extract<BoardToHost, { type: T }>, "req" | "type">;
 
-/** 需要回答的请求：宿主用 { type: "reply", req } 回 */
-export function ask<R = unknown, T extends BoardToHost["type"] = BoardToHost["type"]>(type: T, body: Req<T>): Promise<R> {
+/** 需要回答的请求：宿主用 { type: "reply", req } 回；回答的类型见 core 的 ReplyOf */
+export function ask<T extends AskType>(type: T, body: Req<T>): Promise<ReplyOf<T>> {
   const id = ++req;
-  return new Promise<R>((ok, fail) => {
+  return new Promise<ReplyOf<T>>((ok, fail) => {
     pending.set(id, { ok, fail });
     api.postMessage({ type, req: id, ...body });
   });
@@ -34,6 +34,19 @@ export function followHostTheme() {
   };
   sync();
   new MutationObserver(sync).observe(document.body, { attributes: true, attributeFilter: ["class"] });
+}
+
+/** 白板里的报错转给宿主：写进 Output 的 CodeBoard 频道，Copy Diagnostics 会带上（同一条 5 秒内只发一次） */
+export function forwardErrors() {
+  const seen = new Map<string, number>();
+  const out = (text: string) => {
+    const now = Date.now();
+    if (now - (seen.get(text) ?? 0) < 5000) return;
+    seen.set(text, now);
+    try { send({ type: "log", level: "error", text: `board: ${text}`.slice(0, 2000) }); } catch { /* 宿主不在 */ }
+  };
+  window.addEventListener("error", (e) => out(`${e.message}${e.filename ? ` @ ${e.filename.split("/").pop()}:${e.lineno}:${e.colno}` : ""}${e.error?.stack ? `\n${e.error.stack}` : ""}`));
+  window.addEventListener("unhandledrejection", (e) => { const r = e.reason; out(`unhandled rejection: ${r instanceof Error ? `${r.message}\n${r.stack ?? ""}` : String(r)}`); });
 }
 
 export function listen(fn: (m: HostToBoard) => void) {

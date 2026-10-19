@@ -1,122 +1,194 @@
-// 白板发来的消息。带 req 的请求返回值就是回答（Panels 包成 reply）。
-import * as vscode from "vscode";
+// 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type BoardToHost, type Commit, type DiffData, type Segment } from "@codeboard/core";
+import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, fingerprint, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
-import { gitUri } from "./cards";
-import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile } from "./git";
-import { githubCard } from "./github";
+import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
+import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
+import { githubCard, ghQuery } from "./github";
+import { webMeta } from "./web";
 import { pasteCard } from "./paste";
-import type { BoardPanel, Panels } from "./panel";
-import { expand, peek } from "./resolve";
-import { search, searchPick, entryPoints } from "./search";
+import { writeSetting } from "./settings";
+import { readPacks } from "./stickers";
+import { log } from "./log";
+import { copyDiagnostics, openStickerDir } from "./diagnostics";
+import type { BoardHost, BoardPanel } from "./boards";
+import { callVars, dispatchAt, expand, peek } from "./resolve";
+import { search, searchPick, entryPoints, searchName, genSource } from "./search";
+import { pasteClip } from "@codeboard/core/storage";
+import { prefetchCall } from "./prefetch";
+import { applyFlow, captureFlow } from "./runs";
+import { allQuestions, exportFile, permalinks } from "./exports";
 import { absOf, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
+import { addVariant, variantSources } from "./variants";
 import { highlight, segView, viewsFor } from "./views";
-import { fromHostPath, langOf, readText, splitLines, ws0 } from "./ws";
+import { fromHostPath, langOf, readText, splitLines, workspace, ws0 } from "./ws";
+
+const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
+/** 处理函数的返回值：要回答的请求是它的回答，其他的不管 */
+type Out<T extends BoardToHost["type"]> = T extends AskType ? ReplyOf<T> : unknown;
+type Handlers = { [T in BoardToHost["type"]]: (p: BoardPanel, m: Msg<T>) => Promise<Out<T>> | Out<T> };
+export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown>;
 
-export function makeHandler(panels: Panels) {
+export function makeHandler(panels: BoardHost): Handler {
   const store = panels.store;
-  return async (p: BoardPanel, m: BoardToHost): Promise<unknown> => {
-    switch (m.type) {
-      case "save": {
-        const renamed = p.board?.name !== m.board.name;
-        p.board = m.board;
-        await store.save(m.board);
-        if (renamed) { p.panel.title = m.board.name; void panels.pushBoards(); }
-        return;
-      }
-      case "selection": p.selection = m; return;
-      case "open": return openCard(p, m);
-      case "openPath": return openAt(fromHostPath(m.path), m.line);
-      case "openLink": return void vscode.env.openExternal(vscode.Uri.parse(m.url));
-      case "expand": return expand(m);
-      case "peek": return peek(m);
-      case "search": return search(store, m.q, m.scope);
-      case "searchPick": return searchPick(m.item);
-      case "entryPoints": return entryPoints();
-      case "diff": return diff(m.seg, m.against);
-      case "commits": return commits(m.seg);
-      case "switchCommit": return switchCommit(m.seg, m.commit);
-      case "source": return source(m.seg);
-      case "resolveRef": return resolveTyped(p, m.text);
-      case "paste": return pasteCard(m.text);
-      case "github": return githubCard(m.url);
-      case "saveAsset": return store.saveAsset(m.name, m.dataUrl);
-      case "exportPng": return exportPng(m.dataUrl, m.name);
-      case "views": return viewsFor(m.segs);
-      case "checkVersions": return p.refreshStale();
-      case "relocate": return relocate(p, m.card);
-      case "locateRepo": return locateRepo(p);
-      case "focusMode": return focusMode(panels, p, m.on);
-      case "openBoard": {
-        const np = await panels.show(m.id);
-        if (np && m.card) np.post({ type: "reveal", card: m.card });
-        return;
-      }
-      case "confirm": {
-        const r = await vscode.window.showWarningMessage(m.text, { modal: true, detail: m.detail }, m.ok);
-        return r === m.ok;
-      }
-      case "pickFile": return pickImage();
-      default: return;
-    }
+  const h: Handlers = {
+    ready: () => undefined, // Panels 自己处理
+    patch: async (p, m) => {
+      // 存到这块面板打开的那个文件（p.id），不信白板发来的东西里的 id
+      const name = p.board?.name;
+      const skipped = await store.patch(p.id, m.patch, { undo: m.undo });
+      p.board = store.peek(p.id);
+      // 撤销时跳过的共享项：宿主这边留着别的白板的版本，白板换回来
+      if (skipped.length) p.post({ type: "shared", cards: skipped });
+      if (p.board && p.board.name !== name) { p.view.title = p.board.name; void panels.pushBoards(); }
+      return { skipped: skipped.length };
+    },
+    selection: (p, m) => { p.selection = m; },
+    open: (p, m) => openCard(p, m),
+    openPath: (_p, m) => openAt(fromHostPath(m.path), m.line),
+    openLink: (_p, m) => {
+      // 白板文件里的链接只放行网页和邮件：file:// 之类会直接打开本机的程序
+      const scheme = /^([^:/?#]+?):/.exec(m.url)?.[1] ?? "file";
+      if (!/^(https?|mailto)$/.test(scheme)) { log("info", `openLink: blocked ${scheme}: link`); return; }
+      void workspace().ui.openUrl(m.url);
+    },
+    expand: (_p, m) => expand(m),
+    peek: (_p, m) => peek(m),
+    dispatch: (_p, m) => dispatchAt(m),
+    prefetch: (_p, m) => prefetchCall(m),
+    callVars: (_p, m) => callVars(m),
+    search: (p, m) => search(store, m.q, m.scope, p.id),
+    searchPick: (_p, m) => searchPick(m.item),
+    entryPoints: () => entryPoints(),
+    diff: (_p, m) => diff(m.seg, m.against),
+    commits: (_p, m) => commits(m.seg),
+    switchCommit: (_p, m) => switchCommit(m.seg, m.commit),
+    resolveRef: (p, m) => resolveTyped(p, m.text),
+    paste: (_p, m) => pasteCard(m.text),
+    github: (_p, m) => githubCard(m.url),
+    saveAsset: (_p, m) => store.saveAsset(m.name, m.dataUrl),
+    exportPng: (_p, m) => exportPng(m.dataUrl, m.name),
+    views: (_p, m) => viewsFor(m.segs),
+    checkVersions: (p) => p.refreshStale(),
+    relocate: (p, m) => relocate(p, m.card),
+    locateRepo: (p) => locateRepo(p),
+    setSetting: (_p, m) => writeSetting(m.key, m.value),
+    webMeta: (_p, m) => webMeta(store, m.url),
+    gh: (_p, m) => ghQuery(m.q),
+    stickerPacks: () => readPacks(),
+    openStickerDir: () => openStickerDir(),
+    copyDiagnostics: (p, m) => copyDiagnostics(p.board, m.board),
+    log: (_p, m) => log(m.level, m.text),
+    openBoard: (_p, m) => openOnBoard(panels, m.id, m.card, m.line, m.sticker),
+    copyCards: (p, m) => {
+      panels.clip = { board: p.id, cards: m.cards, text: m.text };
+      panels.broadcast({ type: "host", host: { clip: { board: p.id, n: m.cards.length } } });
+      // 白板里写剪贴板可能被 webview 拦下：宿主再写一次，⌘V 收到的文字和记下的一样
+      if (m.text) void workspace().ui.copy(m.text);
+    },
+    pasteCards: async (p, m) => {
+      const r = await pasteClip(store, panels.clip, p.id, { text: m.text, copy: !!m.copy });
+      if (!r) return null;
+      const segs: Segment[] = r.cards.flatMap((x) => [...(x.card.kind === "code" ? x.card.segments : []), ...(x.sidenotes ?? []).flatMap((n) => (n.kind === "code" ? [n.code] : []))]);
+      return { ...r, views: await viewsFor(segs) };
+    },
+    deleteEverywhere: async (p, m) => (await store.deleteEverywhere(m.card, p.id)).length,
+    confirm: async (_p, m) => (await workspace().ui.warn(m.text, { modal: true, detail: m.detail }, m.ok)) === m.ok,
+    pickFile: () => pickImage(),
+    searchName: (_p, m) => searchName(m.name),
+    genSource: (_p, m) => genSource(m.from),
+    complete: (p, m) => complete(p, m.before, m.after),
+    // ---------- 编辑中的代码：虚拟文档、补全、悬停、签名（codeedit.ts） ----------
+    codeDoc: (_p, m) => codeDoc(m.id, m.lang, m.text, m.near),
+    codeDocClose: (_p, m) => codeDocClose(m.id),
+    lspComplete: (_p, m) => lspComplete(m.id, m.text, m.line, m.col, m.trigger),
+    lspHover: (_p, m) => lspHover(m.id, m.text, m.line, m.col),
+    lspSignature: (_p, m) => lspSignature(m.id, m.text, m.line, m.col, m.trigger),
+    // ---------- 运行时（线框 13） ----------
+    captureRun: (p) => void captureFlow(store.dir(), p),
+    applyRun: (p) => void applyFlow(store.dir(), p),
+    // ---------- 问题、导出（线框 06、08） ----------
+    questions: () => allQuestions(store),
+    permalinks: (_p, m) => permalinks(m.segs),
+    exportFile: (_p, m) => exportFile(store, m.kind, m.name, m.text),
+    copyText: (_p, m) => workspace().ui.copy(m.text),
+    // ---------- 我的改动（线框 07） ----------
+    variantSources: (_p, m) => variantSources(m.seg),
+    addVariant: (_p, m) => addVariant(m.segs, m.from),
+    // ---------- 子白板 ----------
+    skeletons: async (_p, m) => {
+      await store.list(); // 缓存里还没有的白板先扫进来
+      return Object.fromEntries(m.ids.map((id) => [id, panels.skeleton(id)]));
+    },
+    newBoard: async (p, m) => {
+      // Turn into Board：白板拆好的新白板（schema 校验一遍）。共享卡在新白板上还是共享卡；放在父白板的组里
+      const b = loadBoard(structuredClone({ ...m.board, version: BOARD_VERSION }));
+      if (!SAFE_BOARD_ID.test(b.id) || (await store.load(b.id))) throw new Error("Bad board id.");
+      const refs = [...store.refsOf(p.id)].filter((id) => b.cards.some((c) => c.id === id));
+      await store.save(b, { group: store.groupOf(p.id) ?? null, refs });
+      return true;
+    },
+    enterBoard: async (p, m) => {
+      // 不能套成环：子白板里（一路往下）有这块白板
+      const metas = await store.list();
+      const subs = (id: string) => metas.find((x) => x.id === id)?.subs;
+      if (m.id === p.id || wouldCycle(subs, p.id, m.id)) { p.toast("Can't open a board inside itself."); return; }
+      const name = p.board?.name ?? metas.find((x) => x.id === p.id)?.name ?? "";
+      const ok = await panels.switchBoard(p, m.id, { crumbs: [...p.crumbs, { id: p.id, name, frame: m.frame }], cams: [...p.cams, m.cam], walk: m.walk });
+      if (!ok) p.toast("That board is already open in another tab.");
+    },
+    leaveBoard: async (p, m) => {
+      if (!p.crumbs.length) return;
+      const depth = Math.max(0, Math.min(p.crumbs.length - 1, m.depth ?? p.crumbs.length - 1));
+      const to = p.crumbs[depth];
+      const ok = await panels.switchBoard(p, to.id, { crumbs: p.crumbs.slice(0, depth), cams: p.cams.slice(0, depth), walk: m.walk, cam: p.cams[depth] });
+      if (!ok) p.toast("That board is already open in another tab.");
+    },
+    deleteBoard: async (p, m) => {
+      const b = await store.load(m.id);
+      if (!b) return false;
+      const ok = await workspace().ui.warn(`Delete board “${b.name}”?`, { modal: true, detail: `${b.cards.length} cards and their links will be removed. Your code is not affected.` }, "Delete");
+      if (ok !== "Delete") return false;
+      const open = panels.get(m.id);
+      if (open && open !== p) open.view.dispose();
+      await store.remove(m.id);
+      if (panels.target === m.id) panels.setTarget(undefined);
+      await panels.pushBoards();
+      return true;
+    },
   };
+  return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
 
 // ---------- 跳转 ----------
 
-const flashDeco = vscode.window.createTextEditorDecorationType({ backgroundColor: new vscode.ThemeColor("editor.rangeHighlightBackground"), isWholeLine: true });
-
-async function show(uri: vscode.Uri, line: number | undefined, end?: number, readonly = false) {
-  const doc = await vscode.workspace.openTextDocument(uri);
-  const ed = await vscode.window.showTextDocument(doc, { viewColumn: codeColumn(), preserveFocus: false, preview: true });
-  if (readonly && uri.scheme === "file") await vscode.commands.executeCommand("workbench.action.files.setActiveEditorReadonlyInSession").then(undefined, () => {});
-  if (line) {
-    const l = Math.max(0, Math.min(doc.lineCount - 1, line - 1));
-    const pos = new vscode.Position(l, doc.lineAt(l).firstNonWhitespaceCharacterIndex);
-    ed.selection = new vscode.Selection(pos, pos);
-    ed.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
-    const r = new vscode.Range(l, 0, Math.max(l, Math.min(doc.lineCount - 1, (end ?? line) - 1)), 0);
-    ed.setDecorations(flashDeco, [r]);
-    setTimeout(() => ed.setDecorations(flashDeco, []), 1200);
-  }
-}
-
-/** 代码开在白板旁边的那一栏（白板在第一栏时开第二栏） */
-function codeColumn(): vscode.ViewColumn {
-  const tab = vscode.window.tabGroups.activeTabGroup;
-  const boardActive = tab.activeTab?.input instanceof vscode.TabInputWebview;
-  if (!boardActive) return tab.viewColumn;
-  const other = vscode.window.tabGroups.all.find((g) => g !== tab);
-  return other?.viewColumn ?? vscode.ViewColumn.Beside;
-}
-
-export const openAt = (abs: string, line?: number) => show(vscode.Uri.file(abs), line);
+export const openAt = (abs: string, line?: number) => workspace().editor.open(abs, { line });
 
 /** Open in Editor：钉的版本就是当前代码时开工作区文件，否则开那个 commit 的只读版本 */
 export async function openSeg(seg: Segment, line?: number) {
   if (seg.src.kind === "free") throw new Error("Free code has no source file.");
+  const ed = workspace().editor;
   const abs = absOf(seg);
   if (seg.src.kind === "github") {
     if (!abs) throw new Error("GitHub file is not cached.");
-    return show(vscode.Uri.file(abs), line ?? seg.start, undefined, true);
+    return ed.open(abs, { line: line ?? seg.start, readonly: true });
   }
   if (!(await present(seg))) throw new Error(`Repo “${srcLabel(seg.src)}” not found. Use Locate Repo… to point to it.`);
   const wp = await workingPlace(seg);
   if (wp?.exact) {
     const l = line === undefined ? wp.start : wp.start + (line - seg.start);
-    return show(vscode.Uri.file(wp.abs), l, line === undefined ? wp.end : l);
+    return ed.open(wp.abs, { line: l, end: line === undefined ? wp.end : l });
   }
   if (seg.version.kind === "git" && abs) {
     const root = await repoRootOf(abs);
     if (root && (await showFile(root, seg.version.commit, path.relative(root, abs).split(path.sep).join("/"))) !== null)
-      return show(gitUri(root, seg.version.commit, path.relative(root, abs).split(path.sep).join("/")), line ?? seg.start);
+      return ed.openVersion({ root, commit: seg.version.commit, path: path.relative(root, abs).split(path.sep).join("/") }, line ?? seg.start);
   }
-  if (wp) return show(vscode.Uri.file(wp.abs), mapLineTo(seg, line ?? seg.start, wp.lines.slice(wp.start - 1, wp.end), wp.start));
+  if (wp) return ed.open(wp.abs, { line: mapLineTo(seg, line ?? seg.start, wp.lines.slice(wp.start - 1, wp.end), wp.start) });
   throw new Error(`Cannot open ${seg.path}.`);
 }
 
@@ -153,10 +225,12 @@ async function diff(seg: Segment, against?: string): Promise<DiffData> {
     if (seg.version.kind === "git") newVersion = { kind: "git", commit: (root && (await headOf(root))) || seg.version.commit, uncommitted: true };
     else if (text !== null) newVersion = seg.version.kind === "pkg" ? { kind: "pkg", ...(splitPkg(await currentVersionLabel(abs, seg.version)) ?? seg.version) } : { kind: "hash", hash: fingerprint(text) };
   } else if (root) {
-    const sha = against ? await resolveRef(root, against) : await headOf(root);
+    // upstream：有 Variant 的卡跟上游分支比（HEAD 可能是我的分支）
+    const ref = against === "upstream" ? await upstreamRef(root) : against;
+    const sha = ref ? await resolveRef(root, ref) : await headOf(root);
     if (!sha) throw new Error(`Unknown commit “${against}”.`);
     text = await showFile(root, sha, rel);
-    label = `${against && against !== "HEAD" ? against : "HEAD"} ${sha.slice(0, 7)}`;
+    label = `${ref && ref !== "HEAD" ? ref.replace(/^origin\//, "") : "HEAD"} ${sha.slice(0, 7)}`;
     newVersion = { kind: "git", commit: sha };
   }
   if (text === null) return empty(label || "Not found");
@@ -197,11 +271,16 @@ async function commits(seg: Segment): Promise<Commit[]> {
     const info = await commitInfo(root, pinned);
     if (info) log.push(info);
   }
+  // HEAD 没改这个函数（比如是个合并提交）时 git log -L 不列它；总放在最上面，切到旧版本后还能切回来
+  if (head && !log.some((c) => c.commit === head)) {
+    const info = await commitInfo(root, head);
+    if (info) log.unshift(info);
+  }
   return log.map((c) => ({ commit: c.commit, msg: c.msg, date: c.date, head: !!head && c.commit === head }));
 }
 
 /** 段换到另一个 commit：在那个版本里重新找符号 / 内容 */
-async function switchCommit(seg: Segment, commit: string): Promise<{ seg: Segment; view: unknown }> {
+async function switchCommit(seg: Segment, commit: string): Promise<{ seg: Segment; view: SegView }> {
   const abs = absOf(seg);
   const root = abs && (await repoRootOf(abs));
   if (!abs || !root) throw new Error("This code is not in a git repo.");
@@ -237,30 +316,31 @@ async function resolveTyped(p: BoardPanel, text: string): Promise<Commit | null>
 }
 
 /** Focus 模式的只读源码浮窗：整个文件（那个版本） */
-async function source(seg: Segment) {
-  const text = (await versionText(seg)) ?? seg.text.join("\n");
-  const lines = splitLines(text);
-  const whole = lines.length > seg.text.length || seg.start === 1;
-  return {
-    path: seg.path, lang: seg.lang, start: whole ? 1 : seg.start, line: seg.start, end: seg.end,
-    version: versionLabel(seg.version), text: lines, html: await highlight(lines, seg.lang),
-  };
-}
 
 // ---------- 其他 ----------
 
+/** 打开一块白板，选中那张卡（和那一行：别的白板上连进来的箭头从哪一行出发、问题贴在哪一行）；sticker = 再打开那个问题 */
+export async function openOnBoard(panels: BoardHost, id: string, card?: string, line?: number, sticker?: string) {
+  const np = await panels.show(id);
+  if (!np || !card) return;
+  const c = np.board && findCard(np.board, card)?.card;
+  const seg = line !== undefined && c && isCode(c) ? c.segments.find((s) => line >= s.start && line <= s.end) : undefined;
+  np.post({ type: "reveal", card, ...(seg ? { seg: seg.id, lines: [line!, line!] as [number, number] } : {}), ...(sticker ? { sticker } : {}) });
+}
+
 async function exportPng(dataUrl: string, name: string) {
-  const uri = await vscode.window.showSaveDialog({ defaultUri: vscode.Uri.file(path.join(ws0() || process.env.HOME || "", `${name || "board"}.png`)), filters: { "PNG Image": ["png"] } });
-  if (!uri) return;
-  await fs.writeFile(uri.fsPath, Buffer.from(dataUrl.replace(/^data:[^,]*,/, ""), "base64"));
-  void vscode.window.showInformationMessage(`Exported ${path.basename(uri.fsPath)}`, "Reveal").then((r) => r && vscode.commands.executeCommand("revealFileInOS", uri));
+  const ui = workspace().ui;
+  const file = await ui.saveDialog({ defaultPath: path.join(ws0() || process.env.HOME || "", `${name || "board"}.png`), filters: { "PNG Image": ["png"] } });
+  if (!file) return;
+  await fs.writeFile(file, Buffer.from(dataUrl.replace(/^data:[^,]*,/, ""), "base64"));
+  void ui.info(`Exported ${path.basename(file)}`, "Reveal").then((r) => (r ? ui.revealInOS(file) : undefined));
 }
 
 async function pickImage(): Promise<string | null> {
-  const r = await vscode.window.showOpenDialog({ canSelectMany: false, filters: { Images: ["png", "jpg", "jpeg", "gif", "svg", "webp"] }, openLabel: "Add Image" });
-  if (!r?.[0]) return null;
-  const buf = await fs.readFile(r[0].fsPath);
-  const ext = path.extname(r[0].fsPath).slice(1).toLowerCase();
+  const file = await workspace().ui.openDialog({ filters: { Images: ["png", "jpg", "jpeg", "gif", "svg", "webp"] }, label: "Add Image" });
+  if (!file) return null;
+  const buf = await fs.readFile(file);
+  const ext = path.extname(file).slice(1).toLowerCase();
   const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" ? "image/jpeg" : `image/${ext}`;
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
@@ -275,7 +355,7 @@ async function relocate(p: BoardPanel, cardId: string) {
   if (!abs || text === null || text === undefined) throw new Error(`${seg.path} not found.`);
   const lang = langOf(abs);
   const syms = analysisOf(lang, text).symbols;
-  const pick = await vscode.window.showQuickPick(
+  const pick = await workspace().ui.pick(
     syms.map((s) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${path.basename(abs)}:${s.defLine}`, s })),
     { placeHolder: `Where is ${seg.symbol?.qual ?? "this code"} now?`, matchOnDescription: true },
   );
@@ -295,27 +375,35 @@ async function locateRepo(p: BoardPanel) {
   if (!miss.size) { p.toast("All repos are available."); return; }
   let key = [...miss.keys()][0];
   if (miss.size > 1) {
-    const r = await vscode.window.showQuickPick([...miss.entries()].map(([k, s]) => ({ label: srcLabel(s.src), description: k, k })), { placeHolder: "Which repo do you want to locate?" });
+    const r = await workspace().ui.pick([...miss.entries()].map(([k, s]) => ({ label: srcLabel(s.src), description: k, k })), { placeHolder: "Which repo do you want to locate?" });
     if (!r) return;
     key = r.k;
   }
   const seg = miss.get(key)!;
-  const dir = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false, openLabel: "Use This Folder", title: `Locate “${srcLabel(seg.src)}”` });
-  if (!dir?.[0]) return;
-  const exists = await fs.stat(path.join(dir[0].fsPath, seg.path)).then(() => true, () => false);
+  const dir = await workspace().ui.openDialog({ folders: true, label: "Use This Folder", title: `Locate “${srcLabel(seg.src)}”` });
+  if (!dir) return;
+  const exists = await fs.stat(path.join(dir, seg.path)).then(() => true, () => false);
   if (!exists) {
-    const go = await vscode.window.showWarningMessage(`${seg.path} is not in this folder.`, { modal: true }, "Use Anyway");
+    const go = await workspace().ui.warn(`${seg.path} is not in this folder.`, { modal: true }, "Use Anyway");
     if (go !== "Use Anyway") return;
   }
-  await mapRepo(key, dir[0].fsPath);
+  await mapRepo(key, dir);
   await p.reload();
 }
 
-async function focusMode(panels: Panels, p: BoardPanel, on: boolean) {
-  if (panels.focusOn === on) return;
-  panels.focusOn = on;
-  p.panel.reveal(undefined, false);
-  await vscode.commands.executeCommand("workbench.action.toggleMaximizeEditorGroup").then(undefined, () => vscode.commands.executeCommand("workbench.action.maximizeEditor"));
-  panels.broadcast({ type: "host", host: { focus: on } });
-}
 
+
+/** Note 的灰字补全：同一块面板新的请求来了就取消旧的；没有模型回 null */
+const inflight = new WeakMap<BoardPanel, AbortController>();
+async function complete(p: BoardPanel, before: string, after: string): Promise<string | null> {
+  const ai = workspace().ai;
+  if (!ai) return null;
+  inflight.get(p)?.abort();
+  const ac = new AbortController();
+  inflight.set(p, ac);
+  const raw = ai.complete
+    ? await ai.complete(before, after, { signal: ac.signal })
+    : await ai.ask(COMPLETE_SYSTEM, completePrompt(before, after), { signal: ac.signal, maxChars: 600 }).then((r) => r === undefined ? r : spaceChatReply(r, before));
+  if (ac.signal.aborted || raw === undefined) return null;
+  return cleanCompletion(raw, before, after) || null;
+}

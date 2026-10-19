@@ -1,8 +1,10 @@
 // ⌘K：搜函数、类、文件、白板上的卡片、Sidenote。↵ 放到白板 / 跳到卡片；⌥↵ 在编辑器里打开；Esc 关。
 // 鼠标只有真的移动才改高亮项：结果刷新时停在原地的鼠标不该抢走键盘选中的那项。
 // 没输入时列出入口（pyproject scripts、__init__ 导出、__main__、examples）。
+import { keepKey } from "./editkeys";
+import { Icon } from "./icons";
 import { For, Show, createSignal, createEffect, onMount, createMemo } from "solid-js";
-import type { SearchItem, NewCard } from "@codeboard/core";
+import type { SearchItem } from "@codeboard/core";
 import { state, select, toast } from "../state/store";
 import { paletteOpen, setPaletteOpen } from "../state/ui";
 import { ask, send } from "../host";
@@ -25,7 +27,7 @@ export function Palette() {
     const my = ++n;
     t = window.setTimeout(async () => {
       setBusy(true);
-      const r = s ? await ask<SearchItem[]>("search", { q: s, scope: init.mode === "code" ? "code" : "all" }).catch(() => []) : await ask<SearchItem[]>("entryPoints", {}).catch(() => []);
+      const r = s ? await ask("search", { q: s, scope: init.mode === "code" ? "code" : "all" }).catch(() => []) : await ask("entryPoints", {}).catch(() => []);
       if (my !== n) return;
       setRes(r); setI(0); setBusy(false);
     }, s ? 90 : 0);
@@ -44,18 +46,18 @@ export function Palette() {
       else send({ type: "openBoard", id: it.board, card: it.card });
       return;
     }
-    const r = await ask<NewCard | null>("searchPick", { item: it }).catch((e) => { toast((e as Error).message); return null; });
+    const r = await ask("searchPick", { item: it }).catch((e) => { toast((e as Error).message); return null; });
     if (r) A.addCards([r], { besideSel: false });
   };
   const onKey = (e: KeyboardEvent) => {
-    e.stopPropagation();
+    keepKey(e);
     const n2 = ordered().length;
     if (e.key === "Escape") { e.preventDefault(); close(); }
     else if (e.key === "ArrowDown") { e.preventDefault(); setI((x) => (x + 1) % Math.max(1, n2)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setI((x) => (x - 1 + n2) % Math.max(1, n2)); }
     else if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); const it = ordered()[i()]; if (it) run(it, e.altKey); }
   };
-  const icon = (it: SearchItem) => (it.kind === "symbol" ? it.glyph : it.kind === "file" ? "▤" : it.kind === "card" ? "▣" : it.kind === "sidenote" ? "◦" : "▶");
+  const icon = (it: SearchItem) => (it.kind === "symbol" ? it.glyph : it.kind === "file" ? "▤" : it.kind === "card" ? "▣" : it.kind === "sidenote" ? "◦" : <Icon name="entry" size={13} />);
   return (
     <div class="scrim light" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}>
       <div class="palette pill" onKeyDown={onKey}>

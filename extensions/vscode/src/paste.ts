@@ -1,13 +1,12 @@
 // 粘贴到画布：工作区里能一字不差找到的代码 → 带位置和 commit 的代码卡；GitHub 链接 → GitHub Code 卡；
 // 其他像代码的文本 → Free code（猜语言）；网址、普通文字由白板自己建 Web / Note（回 null）。
-import * as vscode from "vscode";
 import { classifyPaste, pythonDialect, type NewCard } from "@codeboard/core";
 import { planSelection } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardsFromPlan, freeCard, withViews } from "./cards";
 import { githubCard } from "./github";
 import { locOfFile } from "./source";
-import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, splitLines } from "./ws";
+import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, splitLines, workspace } from "./ws";
 
 export async function pasteCard(text: string): Promise<NewCard | null> {
   const k = classifyPaste(text);
@@ -50,15 +49,14 @@ export async function findInWorkspace(text: string): Promise<{ abs: string; text
     }
     return null;
   };
-  for (const d of vscode.workspace.textDocuments) {
-    if (d.uri.scheme !== "file") continue;
-    const r = match(d.uri.fsPath, d.getText());
+  for (const d of workspace().files.openFiles()) {
+    const r = match(d.abs, d.text());
     if (r) return r;
   }
-  const files = await vscode.workspace.findFiles(CODE_GLOB, CODE_EXCLUDE, 4000);
+  const files = await workspace().files.findFiles(CODE_GLOB, CODE_EXCLUDE, 4000);
   for (const f of files) {
-    const t = await readText(f.fsPath);
-    const r = t && match(f.fsPath, t);
+    const t = await readText(f);
+    const r = t && match(f, t);
     if (r) return r;
   }
   return null;

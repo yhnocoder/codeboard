@@ -6,6 +6,17 @@
   "private": true,
   "version": "0.1.0",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yhnocoder/codeboard",
+    "directory": "extensions/vscode"
+  },
+  "homepage": "https://github.com/yhnocoder/codeboard#readme",
+  "bugs": {
+    "url": "https://github.com/yhnocoder/codeboard/issues"
+  },
+  "icon": "media/icon.png",
+  "keywords": ["whiteboard", "code reading", "call graph", "canvas", "notes", "python", "diagram"],
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -25,6 +36,16 @@
         "title": "Open Board",
         "category": "CodeBoard",
         "icon": "$(window)"
+      },
+      {
+        "command": "codeboard.setDeepseekKey",
+        "title": "Set DeepSeek API Key",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.clearDeepseekKey",
+        "title": "Clear DeepSeek API Key",
+        "category": "CodeBoard"
       },
       {
         "command": "codeboard.openBoardToSide",
@@ -88,6 +109,17 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.addSeparateCards",
+        "title": "Add Selection as Separate Cards",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.undoAdd",
+        "title": "Undo Add to Board",
+        "category": "CodeBoard",
+        "enablement": "codeboard.canUndoAdd"
+      },
+      {
         "command": "codeboard.addToAnotherBoard",
         "title": "Add to Another Board…",
         "category": "CodeBoard"
@@ -133,8 +165,57 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.addGithubRepo",
+        "title": "Add Repo…",
+        "category": "CodeBoard",
+        "icon": "$(add)"
+      },
+      {
         "command": "codeboard.boardKey",
         "title": "Board Shortcut",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.openSettings",
+        "title": "Open Settings",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.copyDiagnostics",
+        "title": "Copy Diagnostics",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.captureRun",
+        "title": "Capture Run…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.applyRun",
+        "title": "Apply Run…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.questions.showAll",
+        "title": "Show All Questions",
+        "category": "CodeBoard",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "codeboard.questions.showOpen",
+        "title": "Show Open Questions Only",
+        "category": "CodeBoard",
+        "icon": "$(filter-filled)"
+      },
+      {
+        "command": "codeboard.copyQuestions",
+        "title": "Copy Questions as List",
+        "category": "CodeBoard",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "codeboard.openQuestion",
+        "title": "Open Question",
         "category": "CodeBoard"
       }
     ],
@@ -142,6 +223,11 @@
       "editor/context": [
         {
           "command": "codeboard.addToBoard",
+          "group": "9_codeboard@1"
+        },
+        {
+          "command": "codeboard.addSeparateCards",
+          "when": "editorHasSelection",
           "group": "9_codeboard@1"
         },
         {
@@ -175,6 +261,26 @@
         {
           "command": "codeboard.newGroup",
           "when": "view == codeboard.boards",
+          "group": "navigation@2"
+        },
+        {
+          "command": "codeboard.addGithubRepo",
+          "when": "view == codeboard.github",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeboard.questions.showAll",
+          "when": "view == codeboard.questions && !codeboard.questionsAll",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeboard.questions.showOpen",
+          "when": "view == codeboard.questions && codeboard.questionsAll",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codeboard.copyQuestions",
+          "when": "view == codeboard.questions",
           "group": "navigation@2"
         }
       ],
@@ -242,6 +348,10 @@
       ],
       "commandPalette": [
         {
+          "command": "codeboard.openQuestion",
+          "when": "false"
+        },
+        {
           "command": "codeboard.openBoardToSide",
           "when": "false"
         },
@@ -292,6 +402,17 @@
         "command": "codeboard.addToBoard",
         "key": "alt+b",
         "when": "editorTextFocus"
+      },
+      {
+        "command": "codeboard.undoAdd",
+        "key": "ctrl+z",
+        "mac": "cmd+z",
+        "when": "editorTextFocus && codeboard.canUndoAdd"
+      },
+      {
+        "command": "codeboard.addSeparateCards",
+        "key": "shift+alt+b",
+        "when": "editorTextFocus && editorHasSelection"
       },
       {
         "command": "codeboard.addSidenote",
@@ -346,6 +467,20 @@
         "mac": "cmd+shift+l",
         "args": "lock",
         "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+shift+b",
+        "mac": "cmd+shift+b",
+        "args": "turnIntoBoard",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
+      },
+      {
+        "command": "codeboard.boardKey",
+        "key": "ctrl+,",
+        "mac": "cmd+,",
+        "args": "settings",
+        "when": "activeWebviewPanelId == 'codeboard.board'"
       }
     ],
     "viewsContainers": {
@@ -364,6 +499,10 @@
           "name": "Boards"
         },
         {
+          "id": "codeboard.questions",
+          "name": "Questions"
+        },
+        {
           "id": "codeboard.github",
           "name": "GitHub Files"
         }
@@ -375,17 +514,202 @@
         "contents": "No boards yet.\n[New Board](command:codeboard.newBoard)\nPlace the cursor in a function and press Alt+B, or select some lines and choose CodeBoard > Add to Board."
       },
       {
+        "view": "codeboard.questions",
+        "contents": "No open questions. Put a ? sticker on a code line, or right-click a line and choose Ask a Question."
+      },
+      {
         "view": "codeboard.github",
-        "contents": "Paste a GitHub file link (with #L line numbers) onto a board to download the file here."
+        "contents": "Browse a GitHub repo, pick a file and lines, and add them to a board.\n[Add Repo…](command:codeboard.addGithubRepo)\nOr paste a GitHub file link onto a board."
       }
     ],
     "configuration": {
       "title": "CodeBoard",
       "properties": {
+        "codeboard.ai.provider": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "copilot", "deepseek", "off"],
+          "enumDescriptions": [
+            "DeepSeek if an API key is set, otherwise a VS Code language model such as Copilot.",
+            "A VS Code language model (for example GitHub Copilot).",
+            "DeepSeek. Set the key with \"CodeBoard: Set DeepSeek API Key\".",
+            "No gray inline completions."
+          ],
+          "markdownDescription": "Model for the gray inline completions while you write a Note. The DeepSeek API key is kept in VS Code's secret storage: use **CodeBoard: Set DeepSeek API Key**."
+        },
+        "codeboard.ai.deepseekModel": {
+          "type": "string",
+          "default": "deepseek-flash",
+          "description": "DeepSeek model for inline completions."
+        },
+        "codeboard.ai.deepseekBaseUrl": {
+          "type": "string",
+          "default": "https://api.deepseek.com",
+          "description": "DeepSeek API base URL."
+        },
+        "codeboard.editorMarks": {
+          "type": "string",
+          "default": "all",
+          "enum": ["all", "lens", "off"],
+          "enumDescriptions": [
+            "The \"on N boards\" / \"+ Card\" CodeLens above functions and classes, plus the orange bar next to the line numbers and its mark in the overview ruler for lines on the target board.",
+            "Only the CodeLens: no bar next to the line numbers and no overview ruler mark.",
+            "No CodeBoard marks in file editors."
+          ],
+          "description": "What CodeBoard shows in file editors for code that is on a board. Applies right away."
+        },
         "codeboard.storageDir": {
           "type": "string",
           "default": "",
           "markdownDescription": "Folder for board files. Leave empty to use VS Code workspace storage (outside the repo). Absolute, `~/…`, or relative to the first workspace folder, e.g. `~/notes/codeboard`."
+        },
+        "codeboard.theme": {
+          "type": "string",
+          "default": "warm-ink",
+          "enum": [
+            "warm-ink",
+            "graphite",
+            "soft-light",
+            "drafting",
+            "colorful",
+            "newspaper",
+            "poster",
+            "classic",
+            "ink-wash",
+            "city"
+          ],
+          "enumDescriptions": [
+            "Warm Ink",
+            "Graphite",
+            "Soft Light",
+            "Drafting",
+            "Colorful",
+            "Newspaper",
+            "Poster",
+            "Classic",
+            "Ink Wash",
+            "City (Experimental)"
+          ],
+          "description": "Board theme. Each theme has a light and a dark variant that follows VS Code. City is experimental."
+        },
+        "codeboard.newCards.hide": {
+          "type": "object",
+          "default": {
+            "blank": false
+          },
+          "properties": {
+            "comments": {
+              "type": "boolean"
+            },
+            "docstrings": {
+              "type": "boolean"
+            },
+            "blank": {
+              "type": "boolean"
+            }
+          },
+          "description": "What new code cards hide by default."
+        },
+        "codeboard.studyScope": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Packages outside the workspace that count as project code (e.g. torch, vllm)."
+        },
+        "codeboard.stickerFolder": {
+          "type": "string",
+          "default": "",
+          "description": "Folder with sticker packs (Iconify JSON files or folders of SVGs)."
+        },
+        "codeboard.debug.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a Debug section in CodeBoard Settings for tuning timings and distances."
+        },
+        "codeboard.debug.tune": {
+          "type": "object",
+          "default": {},
+          "description": "Tuned constants from the Debug section (empty = defaults)."
+        },
+        "codeboard.doubleClick": {
+          "type": "string",
+          "enum": ["text", "note", "code", "none"],
+          "enumDescriptions": ["Text", "Note", "Free Code card", "Nothing"],
+          "default": "text",
+          "description": "What double-clicking empty board space creates."
+        },
+        "codeboard.flowNumbers.hide": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hide the call graph marks (A, B… or an icon) on cards."
+        },
+        "codeboard.themeReflow": {
+          "type": "string",
+          "enum": ["push", "overlap"],
+          "enumDescriptions": ["Push cards below down", "Allow overlap"],
+          "default": "push",
+          "description": "When switching themes makes cards taller: push the cards below them down, or let them overlap."
+        },
+        "codeboard.sharedCards.paste": {
+          "type": "string",
+          "enum": ["linked", "copy"],
+          "enumDescriptions": ["Linked card: the same card on both boards, content stays in sync", "Copy: a new card that changes on its own"],
+          "default": "linked",
+          "description": "What pasting a card onto another board makes. Holding Alt (Option) while pasting makes the other one."
+        },
+        "codeboard.sharedCards.update": {
+          "type": "string",
+          "enum": ["ask", "all", "this"],
+          "enumDescriptions": ["Ask every time", "Update on all boards", "Update this board only (makes a copy here)"],
+          "default": "ask",
+          "description": "When updating a card that is on several boards to a new version."
+        },
+        "codeboard.subBoards.preview": {
+          "type": "string",
+          "enum": ["skeleton", "title"],
+          "enumDescriptions": ["Named skeleton: card titles, call graph marks and arrows of the board inside", "Title only: the board's name and card count"],
+          "default": "skeleton",
+          "description": "What a sub-board frame shows on its parent board."
+        },
+        "codeboard.questions.welcomeBack": {
+          "type": "string",
+          "enum": ["2d", "always", "off"],
+          "enumDescriptions": ["When the board was last opened more than 2 days ago", "Every time a board with open questions opens", "Never"],
+          "default": "2d",
+          "description": "When reopening a board, show how many questions on it are still open."
+        },
+        "codeboard.export.includeQuestions": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include questions (? stickers) in HTML and Markdown exports by default."
+        },
+        "codeboard.export.includeBoardOnlyNotes": {
+          "type": "boolean",
+          "default": false,
+          "description": "Include Board-only sidenotes (private notes on linked cards) in exports by default."
+        },
+        "codeboard.export.scope": {
+          "type": "string",
+          "enum": ["board", "sections", "walk"],
+          "enumDescriptions": ["Whole board", "Selected sections", "One walkthrough path (from the Start card or the selected card)"],
+          "default": "board",
+          "description": "What the Export dialog exports by default."
+        },
+        "codeboard.zoom.overview": {
+          "type": "number",
+          "default": 0.6,
+          "minimum": 0.2,
+          "maximum": 1,
+          "description": "Below this zoom, cards show an overview (titles and structure)."
+        },
+        "codeboard.zoom.map": {
+          "type": "number",
+          "default": 0.25,
+          "minimum": 0.05,
+          "maximum": 0.6,
+          "description": "Below this zoom, cards show only their titles (map view)."
         }
       }
     }
@@ -394,7 +718,9 @@
     "build": "node esbuild.mjs",
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "e2e": "bash test/run.sh"
+    "e2e": "bash test/run.sh",
+    "test:host": "node test/check-vscode-imports.mjs && node test/run-host-resolve.mjs",
+    "package": "cp ../../LICENSE LICENSE && npx -y @vscode/vsce@3.9.2 package --no-dependencies -o codeboard-vscode-$npm_package_version.vsix"
   },
   "dependencies": {
     "@codeboard/core": "^0.1.0",

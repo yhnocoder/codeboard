@@ -32,12 +32,3 @@ export function lineY(cardId: string, seg: string | undefined, line: number | un
   return { y: r.y + y, clamped, row: i };
 }
 
-/** 卡片（或 Compare 的一栏）在世界坐标里的矩形 */
-export function anchorRect(cardId: string) {
-  const f = cardById(cardId);
-  if (!f) return null;
-  const r = rectOf(f.host);
-  const g = geo[cardId];
-  if (f.host.id !== cardId && g?.colX !== undefined) return { x: r.x + g.colX, y: r.y, w: g.colW ?? r.w / 2, h: r.h };
-  return r;
-}

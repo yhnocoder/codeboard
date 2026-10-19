@@ -1,29 +1,20 @@
 // 行级 / 词级 diff，Compare 卡和「新版本」diff 窗共用的对齐算法，以及按内容迁移行号。
+import { diffArrays } from "diff";
 
 export type DiffLine = { op: " " | "+" | "-"; text: string; a?: number; b?: number };
 
-/** 行级 LCS diff；a、b 是行号（相对各自起点） */
+/** 行级 diff（jsdiff 的 Myers）；a、b 是行号（相对各自起点） */
 export function diffLines(a: string[], b: string[], aStart = 1, bStart = 1): DiffLine[] {
-  // 先剥掉相同的头尾，长文件也快
-  let pre = 0;
-  while (pre < a.length && pre < b.length && a[pre] === b[pre]) pre++;
-  let suf = 0;
-  while (suf < a.length - pre && suf < b.length - pre && a[a.length - 1 - suf] === b[b.length - 1 - suf]) suf++;
-  const A = a.slice(pre, a.length - suf), B = b.slice(pre, b.length - suf);
-  const n = A.length, m = B.length;
-  const dp: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-  for (let i = n - 1; i >= 0; i--)
-    for (let j = m - 1; j >= 0; j--)
-      dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
   const out: DiffLine[] = [];
-  for (let k = 0; k < pre; k++) out.push({ op: " ", text: a[k], a: aStart + k, b: bStart + k });
+  // Myers 是 O((n+m)·D)：改动数封顶，两段差得太多就整段删 + 整段加，长文件也不会卡住
+  const cs = diffArrays(a, b, { maxEditLength: Math.max(1000, Math.floor(4e7 / (a.length + b.length + 1))) });
   let i = 0, j = 0;
-  while (i < n || j < m) {
-    if (i < n && j < m && A[i] === B[j]) { out.push({ op: " ", text: A[i], a: aStart + pre + i, b: bStart + pre + j }); i++; j++; }
-    else if (i < n && (j >= m || dp[i + 1][j] >= dp[i][j + 1])) { out.push({ op: "-", text: A[i], a: aStart + pre + i }); i++; }
-    else { out.push({ op: "+", text: B[j], b: bStart + pre + j }); j++; }
-  }
-  for (let k = 0; k < suf; k++) out.push({ op: " ", text: a[a.length - suf + k], a: aStart + a.length - suf + k, b: bStart + b.length - suf + k });
+  for (const c of cs ?? [{ removed: true, added: false, count: a.length }, { removed: false, added: true, count: b.length }])
+    for (let k = 0; k < c.count; k++) {
+      if (c.removed) out.push({ op: "-", text: a[i], a: aStart + i++ });
+      else if (c.added) out.push({ op: "+", text: b[j], b: bStart + j++ });
+      else out.push({ op: " ", text: a[i], a: aStart + i++, b: bStart + j++ });
+    }
   return out;
 }
 

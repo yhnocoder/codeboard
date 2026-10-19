@@ -1,5 +1,5 @@
-// 宿主性能：打开白板（所有段的高亮 + 版本状态）和 HEAD 变了之后的版本检查，在 nano-vllm 的一份拷贝上量。
-// 用法：node extensions/vscode/test/run-perf-host.mjs [--cards 240] [--runs 3]
+// Host performance: opening a board (highlighting + version status for all snippets) and the version check after HEAD changes, measured on a copy of nano-vllm.
+// Usage: node extensions/vscode/test/run-perf-host.mjs [--cards 240] [--runs 3]
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -9,14 +9,17 @@ import { startAnalysis } from "../src/analysis";
 import { staleFor } from "../src/versions";
 import { viewsFor } from "../src/views";
 import { forgetHeads } from "../src/git";
-import { WS } from "./vscode-stub";
+import { useWorkspace } from "../src/ws";
+import { WS, nodeWorkspace } from "./node-workspace";
+
+useWorkspace(nodeWorkspace());
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const N = +arg("cards", "240"), RUNS = +arg("runs", "3");
-const REPO = path.resolve(__dirname, ".."); // 打包后在 test-out/
+const REPO = path.resolve(__dirname, ".."); // bundled into test-out/
 const git = (...a: string[]) => execFileSync("git", a, { cwd: WS, encoding: "utf8" }).trim();
 
-/** 钉在 commit 上的 n 段：nano-vllm 里所有函数，不够就重复 */
+/** n commit-pinned snippets: every function in nano-vllm, repeated if too few */
 function segments(commit: string, n: number): Segment[] {
   const files = git("ls-tree", "-r", "--name-only", commit, "nanovllm").split("\n").filter((f) => f.endsWith(".py"));
   const all: Segment[] = [];
@@ -38,9 +41,9 @@ void (async () => {
   await initAnalysis(wasm);
   await startAnalysis(wasm);
   const head = git("rev-parse", "HEAD");
-  const old = git("rev-parse", "HEAD~6"); // 早于 chunked prefill 重构：scheduler、block_manager 都改过
+  const old = git("rev-parse", "HEAD~6"); // predates the chunked prefill refactor: scheduler and block_manager both changed
   for (let r = 0; r < RUNS; r++) {
-    // 每轮都是新进程才公平（缓存）；这里用一份新的段（新 id）+ 清 HEAD 缓存近似
+    // A fresh process per run would be fairest (caches); approximated here with fresh snippets (new ids) + clearing the HEAD cache
     forgetHeads();
     const atHead = segments(head, N), atOld = segments(old, N);
     const [coldCheck] = r === 0 ? await time(() => staleFor(atOld)) : [0];

@@ -1,4 +1,4 @@
-// 打包 perf.ts 给 Node 跑。用法：node run-perf.mjs [--cards 240] [--runs 3] [--json out.json]
+// Bundles perf.ts to run under Node. Usage: node run-perf.mjs [--cards 240] [--runs 3] [--json out.json]
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";

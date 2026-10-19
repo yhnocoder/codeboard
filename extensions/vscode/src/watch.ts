@@ -1,22 +1,25 @@
 // 什么时候重查新版本：git HEAD 变了（.git/HEAD、refs 的文件监听 + VS Code 自带 git 插件的事件）、保存文件。
 // 关着的白板也算一下有几张卡有新版本（侧栏圆点、状态栏）。
-import * as vscode from "vscode";
 import * as path from "node:path";
+import type { Disposable } from "@codeboard/core";
 import { forgetHeads, gitDirOf, headOf, repoRootOf } from "./git";
-import type { Panels } from "./panel";
+import type { BoardHost } from "./boards";
 import { absOf } from "./source";
 import type { Storage } from "./storage";
-import { boardSegments, countStale, staleFor } from "./versions";
-import { debounce, wsFolders } from "./ws";
+import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
+import { debounce, workspace, wsRoots } from "./ws";
+import { forgetDefs } from "./defcache";
 
-export function watchVersions(ctx: vscode.ExtensionContext, panels: Panels, store: Storage) {
+export function watchVersions(panels: BoardHost, store: Storage): Disposable {
+  const files = workspace().files;
+  const subs: Disposable[] = [];
   const watched = new Set<string>();
   const lastHead = new Map<string, string | null>();
 
   /** 所有用到的仓库：工作区的根 + 白板上的段 */
   const roots = async () => {
     const out = new Set<string>();
-    for (const f of wsFolders()) { const r = await repoRootOf(path.join(f.uri.fsPath, "x")); if (r) out.add(r); }
+    for (const f of wsRoots()) { const r = await repoRootOf(path.join(f, "x")); if (r) out.add(r); }
     for (const { board } of await store.all()) for (const s of boardSegments(board)) {
       if (s.version.kind !== "git" || s.src.kind === "free" || s.src.kind === "github") continue;
       const a = absOf(s);
@@ -32,16 +35,14 @@ export function watchVersions(ctx: vscode.ExtensionContext, panels: Panels, stor
     lastHead.set(root, await headOf(root));
     const gd = await gitDirOf(root);
     if (!gd) return;
-    const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(gd), "{HEAD,packed-refs,refs/heads/**}"));
-    w.onDidChange(onGit); w.onDidCreate(onGit); w.onDidDelete(onGit);
-    ctx.subscriptions.push(w);
+    subs.push(files.watch(gd, "{HEAD,packed-refs,refs/heads/**}", () => onGit()));
   };
 
   /** 关着的白板：算有几张卡有新版本 */
   const countClosed = async () => {
     for (const { board } of await store.all()) {
       if (panels.get(board.id)?.ready) continue;
-      try { panels.staleChanged(board.id, countStale(board, await staleFor(boardSegments(board)))); } catch { /* */ }
+      try { const ss = staleSegments(board); panels.staleChanged(board.id, countStale(board, await staleFor(ss.segs, ss.up))); } catch { /* */ }
     }
   };
 
@@ -53,22 +54,13 @@ export function watchVersions(ctx: vscode.ExtensionContext, panels: Panels, stor
       if (lastHead.get(r) !== h) { changed = true; lastHead.set(r, h); }
     }
     if (!changed) return;
+    forgetDefs(); // checkout 之类：文件可能整批换了
     await panels.refreshStale();
     await countClosed();
   }, 600);
 
-  // VS Code 自带的 git 插件（有的话）：checkout、commit、pull 都会触发
-  const gitExt = vscode.extensions.getExtension("vscode.git");
-  const hookGit = async () => {
-    try {
-      const api = (gitExt?.isActive ? gitExt.exports : await gitExt?.activate())?.getAPI?.(1);
-      if (!api) return;
-      const hook = (repo: { state: { onDidChange: vscode.Event<void> } }) => ctx.subscriptions.push(repo.state.onDidChange(() => onGit()));
-      api.repositories.forEach(hook);
-      ctx.subscriptions.push(api.onDidOpenRepository(hook));
-    } catch { /* 没有 git 插件 */ }
-  };
-  void hookGit();
+  // 编辑器自带的 git 集成（VS Code 的 git 插件，有的话）：checkout、commit、pull 都会触发
+  subs.push(files.onDidChangeGit(() => onGit()));
 
   const start = async () => {
     for (const r of await roots()) await watchRoot(r);
@@ -78,7 +70,21 @@ export function watchVersions(ctx: vscode.ExtensionContext, panels: Panels, stor
 
   // 保存文件：只影响 uncommitted 和仓库外文件，重算开着的白板
   const onSave = debounce(() => void panels.refreshStale(), 500);
-  ctx.subscriptions.push(vscode.workspace.onDidSaveTextDocument(() => onSave()));
-  // 白板上加了新仓库的代码：也监听它
-  ctx.subscriptions.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); })()));
+  subs.push(files.onDidSave(() => onSave()));
+  // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
+  // Variant 的文件也算（另一个 worktree、复制出来的文件：在别处保存后卡上跟着刷新）
+  const watchedFiles = new Set<string>();
+  const watchFiles = async () => {
+    for (const { board } of await store.all()) for (const s of [...boardSegments(board), ...variantSegments(board)]) {
+      if (s.src.kind === "free" || s.src.kind === "github") continue;
+      const a = absOf(s);
+      if (!a || watchedFiles.has(a)) continue;
+      watchedFiles.add(a);
+      subs.push(files.watch(path.dirname(a), path.basename(a), () => onSave()));
+    }
+  };
+  void watchFiles();
+  // 白板上加了新仓库 / 新文件的代码：也监听它
+  subs.push(store.onDidSave(() => void (async () => { for (const r of await roots()) await watchRoot(r); await watchFiles(); })()));
+  return { dispose: () => { for (const d of subs) d.dispose(); } };
 }

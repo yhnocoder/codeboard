@@ -3,3 +3,9 @@ dist/
 .DS_Store
 extensions/vscode/media/board/
 test-out/
+.claude/worktrees/
+.vscode-test/
+.ci-shots/
+.ci-impact/
+*.vsix
+extensions/vscode/LICENSE
