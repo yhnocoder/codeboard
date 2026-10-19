@@ -11,7 +11,7 @@ npm run check      # local test tier: typecheck, unit, host and affected harness
 npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Code and xvfb)
 ```
 
-To build an installable `.vsix`, run `npm run build`, then `npm run package -w codeboard-vscode`. The package lands in `extensions/vscode/`. Releases do the same in CI (`.github/workflows/release.yml`).
+`npm run package` builds everything and packs an installable `.vsix` into `extensions/vscode/`. Releases do the same in CI (`.github/workflows/release.yml`).
 
 To debug the extension, open this repository in VS Code, press `F5` and pick **CodeBoard：在 nano-vllm 上调试插件**. A new window opens with the extension installed and `examples/nano-vllm` loaded.
 

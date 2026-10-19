@@ -129,7 +129,8 @@ The repository is an npm workspace:
 git clone --recurse-submodules https://github.com/yhnocoder/codeboard.git
 cd codeboard
 npm install
-npm run build    # board UI and extension (npm run package -w codeboard-vscode makes a .vsix)
+npm run build    # board UI and extension
+npm run package  # build, then pack an installable .vsix into extensions/vscode/
 npm test         # unit tests
 ```
 
