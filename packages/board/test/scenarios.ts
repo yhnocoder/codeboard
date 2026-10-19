@@ -1,16 +1,17 @@
 // Board interaction scenarios: each one opens a board, performs a series of actions, and takes screenshots.
-import { ready, open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
+import { open, shot, symCard, findSym, viewOf, put, type Host } from "./harness";
+import { main } from "./runner";
 import { emptyBoard, putShared, type Board } from "@codeboard/core";
-import { V015 } from "./v015";
+import { BOARD } from "./scenarios-board";
 import { WEB } from "./scenarios-web";
-import { V017 } from "./v017";
-import { V017LABELS } from "./v017labels";
-import { V017STACK } from "./v017stack";
-import { THEMES_V17 } from "./scenarios-themes";
-import { V018MD } from "./v018md";
+import { ARROWS } from "./scenarios-arrows";
+import { LABELS } from "./scenarios-labels";
+import { LAYERS } from "./scenarios-layers";
+import { THEMES } from "./scenarios-themes";
+import { MARKDOWN } from "./scenarios-markdown";
 import { CODEEDIT } from "./scenarios-codeedit";
-import { V018TYPE } from "./v018type";
-import { V018REVIEW } from "./v018review";
+import { TYPING } from "./scenarios-typing";
+import { MDREVIEW } from "./scenarios-mdreview";
 import { SHARED } from "./scenarios-shared";
 import { SUBBOARDS } from "./scenarios-subboards";
 import { CHAINS } from "./scenarios-chains";
@@ -22,7 +23,6 @@ import { HEADER } from "./scenarios-header";
 import { UX } from "./scenarios-ux";
 
 const light = process.argv.includes("--light");
-const names = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 
 function boardWith(...quals: string[]): Board {
   const b = emptyBoard("b1", "nano-vllm · generate main flow");
@@ -32,29 +32,20 @@ function boardWith(...quals: string[]): Board {
 }
 const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .call:text-is("${name}")`).nth(nth);
 
-const S: Record<string, () => Promise<void>> = {
-  ...V015,
-  ...WEB,
-  ...V017,
-  ...V017LABELS,
-  ...V017STACK,
-  ...THEMES_V17,
-  ...V018MD,
-  ...CODEEDIT,
-  /** 旧名字：v0.1.8 的 textarea 编辑换成 CodeMirror 后由 codeedit 接着查 */
-  v18codeedit: () => CODEEDIT.codeedit(),
-  ...V018TYPE,
-  ...V018REVIEW,
-  ...SHARED,
-  ...SUBBOARDS,
-  ...CHAINS,
-  ...CALLS,
-  ...QUESTIONS,
-  ...VARIANTS,
-  ...FIXQ,
-  ...HEADER,
-  ...UX,
-  async basic() {
+// Scenarios from the other test files, by file (the runner uses the file to pick the scenarios a change to it needs)
+const GROUPS: Record<string, Record<string, () => Promise<void>>> = {
+  "scenarios-board.ts": BOARD, "scenarios-web.ts": WEB, "scenarios-arrows.ts": ARROWS, "scenarios-labels.ts": LABELS, "scenarios-layers.ts": LAYERS,
+  "scenarios-themes.ts": THEMES, "scenarios-markdown.ts": MARKDOWN,
+  "scenarios-codeedit.ts": CODEEDIT,
+  "scenarios-typing.ts": TYPING, "scenarios-mdreview.ts": MDREVIEW, "scenarios-shared.ts": SHARED, "scenarios-subboards.ts": SUBBOARDS,
+  "scenarios-chains.ts": CHAINS, "scenarios-calls.ts": CALLS, "scenarios-questions.ts": QUESTIONS, "scenarios-variants.ts": VARIANTS,
+  "scenarios-fixq.ts": FIXQ, "scenarios-header.ts": HEADER,
+  // 最后：这些场景换了宿主的工作区（读 nano-vllm），要排在 CHAINS 之后
+  "scenarios-ux.ts": UX,
+};
+
+const LOCAL: Record<string, () => Promise<void>> = {
+  async expandCall() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await shot(h, "01-start");
     await callEl(h, "schedule").click();
@@ -66,7 +57,7 @@ const S: Record<string, () => Promise<void>> = {
     console.log("cards:", h.board().cards.length, "links:", h.board().links.length);
     await h.page.context().browser()!.close();
   },
-  async flow() {
+  async expandAndWalk() {
     const h = await open({ board: boardWith("LLMEngine.step"), light });
     await callEl(h, "schedule").click(); await h.page.waitForTimeout(700);
     await shot(h, "flow-00");
@@ -178,7 +169,7 @@ const S: Record<string, () => Promise<void>> = {
     console.log("banner:", await h.page.locator(".banner").count(), "cmiss:", await h.page.locator(".cmiss").count(), JSON.stringify(h.board().cards.map((c: any) => [c.keepOld ?? null, c.segments[0].version.commit])));
     await h.page.context().browser()!.close();
   },
-  async misc() {
+  async linkMergeSection() {
     const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
     await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
     // Arrow: select two cards, click Link
@@ -617,11 +608,7 @@ async function hoverWord(h: Host, card: string, line: string, word: string) {
   await h.page.mouse.move(pt.x - 3, pt.y); await h.page.mouse.move(pt.x, pt.y, { steps: 2 });
 }
 
-(async () => {
-  await ready();
-  // --shard i/n runs every n-th scenario starting at i (CI splits the harness across parallel jobs)
-  const shard = process.argv.find((a) => a.startsWith("--shard="))?.slice(8).split("/").map(Number);
-  // 只记录、不判对错的（v18review）不进默认那一轮，要跑就点名
-  const all = names.length ? names : Object.keys(S).filter((n) => n !== "v18review");
-  for (const n of shard ? all.filter((_, k) => k % shard[1] === shard[0] - 1) : all) { console.log("▶", n); await S[n](); }
-})().catch((e) => { console.error(e); process.exit(1); });
+const S: Record<string, () => Promise<void>> = {};
+const ORIGIN: Record<string, string> = {};
+for (const [file, group] of [...Object.entries(GROUPS), ["scenarios.ts", LOCAL] as const]) for (const [n, f] of Object.entries(group)) { S[n] = f; ORIGIN[n] = `packages/board/test/${file}`; }
+main(S, ORIGIN);

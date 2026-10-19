@@ -1,4 +1,4 @@
-// Arrows sit under the cards (node run-harness.mjs v17stack [--light] [--city]): every arrow is drawn below all cards, so any card it
+// Arrows sit under the cards (node run-harness.mjs arrowsUnderCards [--light] [--city]): every arrow is drawn below all cards, so any card it
 // crosses covers it, whatever the b.cards order; the line port dots stay visible above their card; the selected arrow, the arrows of the
 // hovered card and the arrow being dragged float above all cards while that lasts. Checks look at what is really on top (hit test).
 import * as fs from "node:fs";
@@ -20,8 +20,8 @@ async function snap(h: Host, name: string) {
   catch (e) { console.log("(no screenshot)", (e as Error).message); }
 }
 
-export const V017STACK: Record<string, () => Promise<void>> = {
-  async v17stack() {
+export const LAYERS: Record<string, () => Promise<void>> = {
+  async arrowsUnderCards() {
     // A → B is one arrow. On its way it crosses D (first in b.cards, below A and B) and then C (last in b.cards, in front)
     const b = emptyBoard("b1", "stacking");
     const A = card("LLMEngine.step"), B = card("Scheduler.schedule"), C = card("ModelRunner.__init__"), D = card("Sequence.__len__");
@@ -153,7 +153,7 @@ export const V017STACK: Record<string, () => Promise<void>> = {
     p = await look();
     check(order() === "CDBA" && p.onC === "C" && p.onD === "D" && p.gap === "arrow", "endpoint-to-front-arrow-stays-under", { order: order(), ...p });
     await snap(h, "5-after-arrange");
-    console.log(fails ? "FAIL" : "PASS", "v17stack", fails ? `${fails} failed` : "all");
+    console.log(fails ? "FAIL" : "PASS", "arrowsUnderCards", fails ? `${fails} failed` : "all");
     await h.page.context().browser()!.close();
   },
 };

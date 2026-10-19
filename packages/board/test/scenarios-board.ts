@@ -1,4 +1,4 @@
-// v0.1.5 scenarios for the shell, cards, arrows and stickers (node run-harness.mjs v15board v15menus v15fresh …)
+// scenarios for the shell, cards, arrows and stickers (node run-harness.mjs linkPlusDelay menusFitWindow emptyCardDiscard …)
 import { open, shot, symCard, findSym, put, type Host } from "./harness";
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 
@@ -26,8 +26,8 @@ function richBoard(): Board {
   return b;
 }
 
-export const V015: Record<string, () => Promise<void>> = {
-  async v15zoom() {
+export const BOARD: Record<string, () => Promise<void>> = {
+  async zoomLevels() {
     const b = richBoard();
     b.sections.push({ id: "g1", title: "Scheduling", x: 740, y: 20, w: 640, h: 560, color: "blue" });
     b.place[b.cards[1].id].section = "g1";
@@ -69,7 +69,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await shot(h, "v15-15-folded");
     await close(h);
   },
-  async v15board() {
+  async linkPlusDelay() {
     const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
     await shot(h, "v15-01-board");
     await h.page.locator('path.lhit[data-link="L2"]').hover({ force: true }); await h.page.waitForTimeout(150);
@@ -82,7 +82,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await shot(h, "v15-02-ports");
     await close(h);
   },
-  async v15menus() {
+  async menusFitWindow() {
     const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
     await h.page.locator(".card.ccard .chead").first().click({ button: "right", position: { x: 300, y: 12 } }); await h.page.waitForTimeout(250);
     await shot(h, "v15-03-cardmenu");
@@ -101,12 +101,12 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(vis ? "PASS" : "FAIL", "menu-fits");
     await close(h);
   },
-  async v15sticker() {
+  async stickerPlace() {
     const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
     await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.waitForTimeout(300);
     await shot(h, "v15-07-picker");
     await h.page.locator(".stkpick .scell").nth(3).click();
-    // Click the gutter → stick to that line (click code body → bind to the card, tested by v15bind)
+    // Click the gutter → stick to that line (click code body → bind to the card, tested by stickerBinding)
     await h.page.locator(".card").first().locator(".gutter .no").nth(5).click(); await h.page.waitForTimeout(200);
     await h.page.mouse.click(1200, 800); await h.page.waitForTimeout(200);
     await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.waitForTimeout(200);
@@ -121,7 +121,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   // 自定义贴纸包的 SVG 由白板用 DOMPurify 清洗：脚本、事件属性、javascript: 链接（包括实体编码的）、foreignObject、<style> 都去掉
-  async stickersvg() {
+  async stickerSvgSanitize() {
     const bad: Record<string, string> = {
       onload: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" onload="window.__pwned=1"><circle cx="8" cy="8" r="6" onclick="window.__pwned=2"/></svg>`,
       script: `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><script>window.__pwned=3</script><rect width="16" height="16"/></svg>`,
@@ -144,7 +144,7 @@ export const V015: Record<string, () => Promise<void>> = {
     if (!ok) console.log(r.html);
     await close(h);
   },
-  async v15fresh() {
+  async emptyCardDiscard() {
     const b = emptyBoard("b1", "fresh");
     const h = await open({ board: b, light });
     await h.page.locator('.bbar button[aria-label="Note"]').click(); await h.page.waitForTimeout(300);
@@ -159,7 +159,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(n === 0 && undo ? "PASS" : "FAIL", "fresh-discard", JSON.stringify({ n, undoDisabled: undo, kinds: h.board().cards.map((c: any) => c.kind + ":" + (c.md ?? c.segments?.[0]?.text)) }));
     await close(h);
   },
-  async v15fit() {
+  async cardResizeFit() {
     const b = emptyBoard("b1", "fit");
     const one = card("Scheduler.is_finished");
     put(b, one, 80, 80, 700);
@@ -179,7 +179,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   // Regression: the empty-space context menu stays fully inside the window at all four corners
-  async v15ctx() {
+  async contextMenuCorners() {
     const b = emptyBoard("b1", "ctx");
     put(b, card("Scheduler.schedule"), 80, 80, 560);
     const h = await open({ board: b, light });
@@ -196,7 +196,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Stickers bound to a card / arrow: follow when the card is dragged; covered along with it by other cards; dashed outline when selected */
-  async v15bind() {
+  async stickerBinding() {
     const b = richBoard();
     const post = b.cards[2].id;
     b.stickers.push({ id: "k6", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 420, y: 70, size: 32, on: { card: post } } });
@@ -234,7 +234,7 @@ export const V015: Record<string, () => Promise<void>> = {
   },
 
   /** Child below-right, horizontally overlapping the parent: start auto-anchors on the right, enters the child from the top; once the user moves it to the left it takes more distance to flip back */
-  async v15side() {
+  async childArrowAnchor() {
     const b = emptyBoard("b1", "side");
     const par = card("ModelRunner.__init__"), kid = card("load_model");
     put(b, par, 20, 20, 1100); put(b, kid, 850, 560, 600);
@@ -255,7 +255,7 @@ export const V015: Record<string, () => Promise<void>> = {
   },
 
   /** Note Show / Hide Background toggle: text position, size and width unchanged */
-  async v15notebg() {
+  async noteBackgroundToggle() {
     const b = emptyBoard("b1", "notebg");
     b.cards.push({ id: "n1", kind: "note", md: "Hello\n$a$\n\n$$aaa$$", bg: true });
     b.place.n1 = { x: 120, y: 120, w: 300 };
@@ -275,7 +275,7 @@ export const V015: Record<string, () => Promise<void>> = {
   },
 
   /** Card menu submenu opened near the right edge: flips left without covering the parent menu */
-  async v15submenu() {
+  async submenuFlip() {
     const b = emptyBoard("b1", "sub");
     put(b, card("Scheduler.schedule"), 700, 80, 560);
     const h = await open({ board: b, light, w: 1300, h: 800 });
@@ -290,7 +290,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Code card menu: Edit ▸ Add Description enters editing, type, ⌘↵ saves; title bar has a Copy Code icon */
-  async v15desc() {
+  async codeDescription() {
     const b = emptyBoard("b1", "desc");
     put(b, card("Scheduler.schedule"), 80, 80, 560);
     const h = await open({ board: b, light, w: 1200, h: 800 });
@@ -311,7 +311,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Link label boxes: ↺ + variables, custom label + variables, ↺ only, label only */
-  async v15vlabel() {
+  async linkLabelBoxes() {
     const b = richBoard();
     const L1 = b.links[0] as any, L2 = b.links[1] as any;
     L1.call.loop = true; L2.label = "my own label"; L2.call.loop = true;
@@ -326,7 +326,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Double-click empty space for new Text: same font and position while editing as when displayed, no white box */
-  async v15dbl() {
+  async dblclickText() {
     const h = await open({ board: emptyBoard("b1", "dbl"), light, w: 900, h: 600 });
     await h.page.mouse.dblclick(300, 200); await h.page.waitForTimeout(300);
     await shot(h, "v15-dbl-1");
@@ -337,7 +337,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Empty New Code: clicking its own language dropdown and picking an item keeps the card; it disappears only after clicking empty space */
-  async v15freelang() {
+  async freeCodeLanguage() {
     const h = await open({ board: emptyBoard("b1", "free"), light, w: 1000, h: 700 });
     await h.page.mouse.click(300, 200, { button: "right" }); await h.page.waitForTimeout(300);
     await h.page.locator(".ctx button", { hasText: "New Code" }).click(); await h.page.waitForTimeout(400);
@@ -345,14 +345,15 @@ export const V015: Record<string, () => Promise<void>> = {
     const afterOpen = await h.page.locator(".card").count();
     await h.page.locator(".ctx button").nth(2).click(); await h.page.waitForTimeout(400);
     const afterPick = await h.page.locator(".card").count();
-    const focused = await h.page.evaluate(() => document.activeElement?.classList.contains("freeedit") ?? false);
+    // the editor is CodeMirror now (v0.2): its contentDOM inside .freecode has the focus
+    const focused = await h.page.evaluate(() => !!document.activeElement?.closest(".freecode"));
     await h.page.mouse.click(800, 500); await h.page.waitForTimeout(600);
     const afterAway = await h.page.locator(".card:not(.ghost-out)").count();
     console.log(afterOpen === 1 && afterPick === 1 && focused && afterAway === 0 ? "PASS" : "FAIL", "free-lang-keeps-card", JSON.stringify({ afterOpen, afterPick, focused, afterAway }));
     await close(h);
   },
   /** Select lines → context menu New Card from Lines: new card has only those lines; no + button in the gutter */
-  async v15fromlines() {
+  async cardFromLines() {
     const b = emptyBoard("b1", "lines");
     put(b, card("Scheduler.schedule"), 80, 80, 560);
     const h = await open({ board: b, light, w: 1400, h: 800 });
@@ -369,7 +370,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** With codeboard.debug.enabled, Settings has a Debug section; drag the slider to change Peek delay */
-  async v15debug() {
+  async debugSettings() {
     const h = await open({ board: emptyBoard("b1", "dbg"), light, w: 1200, h: 900, settings: { debug: true } });
     await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(400);
     await h.page.locator('[data-sec="debug"]').scrollIntoViewIfNeeded();
@@ -379,7 +380,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Fast drag: no snapping; slow drag with a pause: alignment snap (left edge to another card) */
-  async v15snap() {
+  async dragSnap() {
     const b = emptyBoard("b1", "snap");
     b.cards.push({ id: "a", kind: "note", md: "A", bg: true }, { id: "m", kind: "note", md: "moving", bg: true });
     b.place.a = { x: 100, y: 100, w: 260 }; b.place.m = { x: 500, y: 400, w: 260 };
@@ -402,7 +403,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Image cards have no title bar; dragging the image itself moves the card */
-  async v15img() {
+  async imageCardDrag() {
     const b = emptyBoard("b1", "img");
     const svg = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="240"><rect width="400" height="240" fill="#e8a33d"/><text x="40" y="130" font-size="40">diagram</text></svg>');
     b.cards.push({ id: "i1", kind: "image", src: svg, bg: true } as any);
@@ -417,7 +418,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Sticker dropped outside a card within 20px of its edge: still snaps and binds (card gets a highlight ring) */
-  async v15magnet() {
+  async stickerMagnet() {
     const b = richBoard();
     const h = await open({ board: b, light, w: 1500, h: 950 });
     const k5 = (await h.page.locator('[data-sticker="k5"]').boundingBox())!;
@@ -432,7 +433,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Space below the parent is blocked by other cards: the expanded child stays in view, not off-screen */
-  async v15placeview() {
+  async expandStaysInView() {
     const b = emptyBoard("b1", "v0.1.5");
     const step = card("LLMEngine.step");
     put(b, step, 80, 80, 600);
@@ -449,7 +450,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Deleting a sidenote: the popup stays next to the marker instead of jumping to the top-left */
-  async v15notedel() {
+  async sidenoteDelete() {
     const b = richBoard();
     const n1 = b.sidenotes[0];
     b.sidenotes.push({ ...n1, id: "n2", md: "Second note." } as any);
@@ -464,7 +465,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** # headings in Notes have levels; ⌘A in the editor selects only that note's text */
-  async v15notehead() {
+  async noteHeadings() {
     const b = emptyBoard("b1", "v0.1.5");
     b.cards.push({ id: "t1", kind: "note", md: "# Head\n\n## Sub\n\nBody text here." } as any); b.place.t1 = { x: 60, y: 60, w: 320 };
     b.cards.push({ id: "t2", kind: "note", md: "# Head\n\nBody text here.", bg: true } as any); b.place.t2 = { x: 460, y: 60, w: 320 };
@@ -481,7 +482,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Built-in stickers in every theme */
-  async v15stkthemes() {
+  async stickerThemes() {
     for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "ink-wash", "city"]) {
       const b = emptyBoard("b1", "v0.1.5");
       const names = ["star", "question", "exclaim", "check", "flag", "zap", "bug", "todo", "heart", "hourglass", "warning", "todo-text"];
@@ -495,7 +496,7 @@ export const V015: Record<string, () => Promise<void>> = {
     }
   },
   /** Code card metrics per theme: char width, line height, header height, code area vertical padding; cards must fit the same content after a theme switch */
-  async v15metrics() {
+  async themeMetrics() {
     const rows: any[] = [];
     for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "ink-wash", "city"]) {
       const b = richBoard();
@@ -515,7 +516,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.table(rows);
   },
   /** Fixed-height code card: visible code area height unchanged after a theme switch */
-  async v15themefit() {
+  async themeKeepsHeight() {
     const out: Record<string, number> = {};
     for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite", "ink-wash", "city"]) {
       const b = richBoard();
@@ -529,7 +530,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(Math.max(...v) - Math.min(...v) <= 6 ? "PASS" : "FAIL", "theme-fit", JSON.stringify(out));
   },
   /** Definition preview: closes when the mouse leaves (same moves as e2e step 5) */
-  async v15peekleave() {
+  async peekClosesOnLeave() {
     const b = emptyBoard("b1", "v0.1.5");
     const sch = card("Scheduler.schedule"); put(b, sch, 200, 80, 560); b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light, w: 1300, h: 900 });
@@ -542,7 +543,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Warm Ink: arrow shape when the child is up-right and horizontally close (check screenshot) */
-  async v15arrowup() {
+  async arrowShapeUpRight() {
     const b = richBoard();
     b.place[b.cards[0].id] = { ...b.place[b.cards[0].id], x: 80, y: 420 };
     b.place[b.cards[1].id] = { ...b.place[b.cards[1].id], x: 760, y: 40 };
@@ -552,7 +553,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Cards grow taller after a theme switch: overlapped cards get pushed down (one undoable step); left alone when set to overlap */
-  async v15reflow() {
+  async themeReflow() {
     const base = richBoard();
     let h = await open({ board: base, light, w: 1500, h: 950 });
     const r0 = (await h.page.locator(`.card[data-id="${base.cards[0].id}"]`).boundingBox())!;
@@ -577,7 +578,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(ok ? "PASS" : "FAIL", "theme-reflow", JSON.stringify({ y0, res }));
   },
   /** A theme switch is not an undo step: ⌘Z after it undoes the previous change, and the reflow push stays */
-  async v16themeundo() {
+  async themeNotUndoStep() {
     const base = richBoard();
     let h = await open({ board: base, light, w: 1500, h: 950 });
     const r0 = (await h.page.locator(`.card[data-id="${base.cards[0].id}"]`).boundingBox())!;
@@ -601,7 +602,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** ⌘C a card then ⌘V: the copy goes next to the original (offset 36, overlap allowed), no search for free space */
-  async v15pastenear() {
+  async pasteNearOriginal() {
     const b = richBoard();
     const st = b.cards[0] as CodeCard;
     const h = await open({ board: b, light, w: 1500, h: 950 });
@@ -621,7 +622,7 @@ export const V015: Record<string, () => Promise<void>> = {
   },
   /** Variable boxes on links can be dragged along the link; position is stored as t */
   /** Drag from a line onto another card's line number → links to that line (the line highlights before release) */
-  async v15line2line() {
+  async lineToLineLink() {
     const b = richBoard();
     b.links = [];
     const h = await open({ board: b, light, w: 1500, h: 950 });
@@ -641,7 +642,7 @@ export const V015: Record<string, () => Promise<void>> = {
     await close(h);
   },
   /** Same call site a second time: jumps to the already expanded card instead of creating a new one */
-  async v15reexpand() {
+  async reExpandJumps() {
     const b = emptyBoard("b1", "reexpand");
     const step = card("LLMEngine.step");
     put(b, step, 80, 80, 600);
@@ -656,7 +657,7 @@ export const V015: Record<string, () => Promise<void>> = {
     console.log(n1 === 2 && n2 === 2 && selected === 1 ? "PASS" : "FAIL", "reexpand-reuses", JSON.stringify({ n1, n2, selected }));
     await close(h);
   },
-  async v15labeldrag() {
+  async labelDragAlongArrow() {
     const b = richBoard();
     const h = await open({ board: b, light, w: 1500, h: 950 });
     const box = h.page.locator('.vchips[data-link="L2"]');
