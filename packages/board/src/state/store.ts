@@ -443,7 +443,7 @@ const LIVE_DELAY = 800;
 function changedLive() {
   if (!state.loaded) return;
   clearTimeout(saveTimer);
-  saveTimer = window.setTimeout(flushSave, LIVE_DELAY);
+  saveTimer = window.setTimeout(() => flushSave(), LIVE_DELAY);
 }
 /** 上次发出去的快照和镜头；null = 不知道宿主那边是什么样子（上次没收下），下次整块发 */
 let sent: { snap: Snap; cam: string } | null = null;
@@ -451,7 +451,11 @@ let sent: { snap: Snap; cam: string } | null = null;
 let undone = false;
 const NOT_UNDONE = "Changed on another board; not undone.";
 const camKey = (c: Camera) => `${c.x},${c.y},${c.z}`;
-export function flushSave() {
+/** 宿主没收下之后多久整块再发一次（只发一次：再不收下就等下一次修改） */
+const RESEND_DELAY = 2000;
+let resend: number | undefined;
+export function flushSave(retry = false) {
+  clearTimeout(resend);
   clearTimeout(saveTimer);
   if (!state.loaded) return;
   const s = snap();
@@ -465,7 +469,9 @@ export function flushSave() {
   // 宿主没收下（白板被删了之类）：不知道它那边是什么样子了，下一次整块发
   ask("patch", undo ? { patch: p, undo: true } : { patch: p }).then((r) => { if (r?.skipped) toast(NOT_UNDONE); }, (e: Error) => {
     sent = null;
+    if (retry) return;
     toast(`Couldn't save the board: ${e.message}`);
+    resend = window.setTimeout(() => flushSave(true), RESEND_DELAY);
   });
 }
 /** 宿主刚发来的白板就是存着的那一份 */

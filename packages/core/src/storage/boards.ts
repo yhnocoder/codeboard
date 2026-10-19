@@ -8,7 +8,7 @@ import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, uid, withCols, type 
 import { Emitter, type Disposable } from "../emitter";
 import type { WorkspaceFiles } from "../workspace";
 import { loadBoardFile, loadSharedCard } from "../schema";
-import { applyPatch, deflate, diffBoards, inflate, mergeFile, putShared, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
+import { applyPatch, cardCopies, deflate, diffBoards, inflate, mergeById, mergeFile, putShared, same, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
 import { pruneRefs, removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
 import { subBoardsOf } from "../subboard";
 import { dirName, extName, type Fs } from "./fs";
@@ -81,8 +81,13 @@ export class Storage {
   /** 有没写盘改动的白板 → 写盘的定时器 */
   private timers = new Map<string, ReturnType<typeof setTimeout>>();
   private failedEmitter = new Emitter<{ board: string; error: string }>();
-  /** 白板的改动写不下去（磁盘满、没权限）：过一会儿自动重试，开着这块白板的面板要说一声 */
+  /** 白板的改动写不下去（磁盘满、没权限）：过一会儿自动重试，开着这块白板的面板要说一声。一直写不下去时只在第一次说 */
   readonly onDidFailSave = this.failedEmitter.event;
+  private recoveredEmitter = new Emitter<string>();
+  /** 写不下去的白板又写下去了（说过写不下去的才说） */
+  readonly onDidRecoverSave = this.recoveredEmitter.event;
+  /** 正写不下去的白板 */
+  private failing = new Set<string>();
   /** 正在看着的存储目录（设置里换了目录时换一个） */
   private watched?: { dir: string; sub: Disposable };
 
@@ -295,7 +300,7 @@ export class Storage {
       try { await this.commit(e, e.pending); } catch (err) {
         const error = err instanceof Error ? err.message : String(err);
         this.opts.log?.("error", `storage: couldn't save board ${e.id}: ${error}`);
-        this.failedEmitter.fire({ board: e.id, error });
+        if (!this.failing.has(e.id)) { this.failing.add(e.id); this.failedEmitter.fire({ board: e.id, error }); }
         this.writeLater(e.id, RETRY_DELAY);
       }
     }
@@ -356,6 +361,7 @@ export class Storage {
     e.pending = undefined;
     clearTimeout(this.timers.get(e.id));
     this.cache.set(e.id, e);
+    if (this.failing.delete(e.id)) this.recoveredEmitter.fire(e.id);
     for (const sc of changed) {
       const id = sc.card.id;
       for (const o of this.cache.values()) {
@@ -450,11 +456,9 @@ export class Storage {
   copyOut(id: string, cards: string[]): { cards: CardCopy[]; links: Link[] } {
     const b = this.cache.get(id)?.board;
     if (!b) return { cards: [], links: [] };
-    const want = new Set(withCols(b, cards));
-    return {
-      cards: b.cards.filter((c) => want.has(c.id)).map((c) => structuredClone({ card: c, place: b.place[c.id], sidenotes: b.sidenotes.filter((n) => travels(n, c.id)) })),
-      links: structuredClone(b.links.filter((l) => want.has(l.from.card) && want.has(l.to.card))),
-    };
+    const copies = structuredClone(cardCopies(b, cards));
+    const want = new Set(copies.map((c) => c.card.id));
+    return { cards: copies, links: structuredClone(b.links.filter((l) => want.has(l.from.card) && want.has(l.to.card))) };
   }
 
   /**
@@ -725,23 +729,16 @@ export class Storage {
  * Sidenote 的先后不算（每块白板上可能不一样）
  */
 export function merged(base: SharedCard | undefined, disk: SharedCard | undefined, view: SharedCard): { file: SharedCardFile | null; mine: string[]; items: string[]; back: string[] } {
-  const same = (a: unknown, b: unknown) => a !== undefined && JSON.stringify(a) === JSON.stringify(b);
-  const mine: string[] = [];
-  const card = same(base?.card, view.card) && disk ? disk.card : (mine.push(view.card.id), view.card);
-  const out = new Map((disk?.sidenotes ?? []).map((n) => [n.id, n]));
-  const was = new Map((base?.sidenotes ?? []).map((n) => [n.id, n]));
-  for (const n of view.sidenotes) { if (!same(was.get(n.id), n)) { out.set(n.id, n); mine.push(n.id); } was.delete(n.id); }
-  for (const id of was.keys()) { if (out.delete(id)) mine.push(id); }
-  const sidenotes = [...out.values()];
-  const diffs = (x: SharedCard | undefined) => itemsChanged(x, { card, sidenotes });
-  const items = diffs(disk);
-  const file: SharedCardFile | null = items.length || !disk ? structuredClone({ version: BOARD_VERSION, card, sidenotes }) : null;
-  return { file, mine, items: [...new Set([...items, ...diffs(base)])], back: diffs(view) };
+  const c = mergeById(base && [base.card], disk ? [disk.card] : [], [view.card]);
+  const n = mergeById(base?.sidenotes, disk?.sidenotes ?? [], view.sidenotes);
+  const now: SharedCard = { card: c.items[0] ?? view.card, sidenotes: n.items };
+  const items = itemsChanged(disk, now);
+  const file: SharedCardFile | null = items.length || !disk ? structuredClone({ version: BOARD_VERSION, ...now }) : null;
+  return { file, mine: [...c.changed, ...n.changed], items: [...new Set([...items, ...itemsChanged(base, now)])], back: itemsChanged(view, now) };
 }
 
 /** 共享卡从 x 到 y 变了的项（卡 id、Sidenote 的 id：改了、加了、删了的）；Sidenote 的先后不算 */
 function itemsChanged(x: SharedCard | undefined, y: SharedCard): string[] {
-  const same = (a: unknown, b: unknown) => a !== undefined && JSON.stringify(a) === JSON.stringify(b);
   const xs = new Map((x?.sidenotes ?? []).map((n) => [n.id, n]));
   const d = same(x?.card, y.card) ? [] : [y.card.id];
   for (const n of y.sidenotes) { if (!same(xs.get(n.id), n)) d.push(n.id); xs.delete(n.id); }

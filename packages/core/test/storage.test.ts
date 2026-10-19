@@ -776,19 +776,26 @@ describe("writing boards to disk", () => {
     expect(onDisk(fs, file).cards).toEqual([note("x", "later")]);
   });
 
-  it("a failed write is reported and retried; the changes stay in the storage", async () => {
+  it("a failed write is reported once however often the retry fails, and once more when it gets through; the changes stay in the storage", async () => {
     const { fs, store } = setup();
     const b = await store.create("B");
-    const failed: unknown[] = [];
+    const failed: unknown[] = [], recovered: string[] = [];
     store.onDidFailSave((e) => failed.push(e));
+    store.onDidRecoverSave((id) => recovered.push(id));
     const write = fs.writeFile.bind(fs);
     fs.writeFile = async () => { throw new Error("disk full"); };
     await store.patch(b.id, { cards: { set: [note("x")] }, place: { set: { x: at } } });
     await store.flush();
+    await store.flush();
+    await store.flush();
     expect(failed).toEqual([{ board: b.id, error: "disk full" }]);
+    expect(recovered).toEqual([]);
     fs.writeFile = write;
     await store.flush();
     expect(onDisk(fs, `${ROOT}/${b.id}.json`).cards).toEqual([note("x")]);
+    expect(recovered).toEqual([b.id]);
+    await patchNow(store, b.id, { cards: { set: [note("y")] }, place: { set: { y: at } } });
+    expect([failed.length, recovered.length]).toEqual([1, 1]);
   });
 
   it("a board deleted while its last changes are being written stays deleted", async () => {

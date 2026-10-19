@@ -18,7 +18,7 @@ export function migrateBoard(raw: any): BoardFile {
   // 第 5 版 → 第 6 版：多了共享卡的引用和 Sidenote 的 boardOnly，旧文件里都没有
   b.version = BOARD_VERSION;
   normalize(b);
-  return b as BoardFile;
+  return b;
 }
 
 /** 卡库里的文件 cards/<id>.json：和白板文件一样补齐 */
