@@ -511,6 +511,36 @@ describe("card library (shared cards)", () => {
     expect(card(fs, "k").sidenotes.map((n: any) => n.id)).toEqual(["na"]);
   });
 
+  it("side note and body of a shared card edited at the same time on two boards: both edits are kept", async () => {
+    const { fs, store, B, shared } = await two();
+    // B edits the body (not written yet); A adds a sidenote and is written first
+    await store.patch(B, { cards: { set: [note("s", "body from B")] } });
+    await store.patch("A", { sidenotes: { set: [{ id: "n1", kind: "text", md: "edited on A", at: { card: "s" } }, { id: "n3", kind: "text", md: "note from A", at: { card: "s" } }] } });
+    await store.flush("A");
+    expect(shared).toEqual([{ from: "A", ids: ["s"], items: ["n1", "n3"] }]);
+    const b = store.peek(B)!;
+    expect((b.cards[0] as any).md).toBe("body from B");
+    expect((b.sidenotes.find((n) => n.id === "n1") as any).md).toBe("edited on A");
+    expect(b.sidenotes.map((n) => n.id)).toContain("n3");
+    await store.flush(B);
+    expect(card(fs, "s").card.md).toBe("body from B");
+    expect(card(fs, "s").sidenotes.map((n: any) => [n.id, n.md]).sort()).toEqual([["n1", "edited on A"], ["n3", "note from A"]]);
+    expect((store.peek("A")!.cards[0] as any).md).toBe("body from B");
+    // A hears about the body, once
+    expect(shared).toEqual([{ from: "A", ids: ["s"], items: ["n1", "n3"] }, { from: B, ids: ["s"], items: ["s"] }]);
+  });
+
+  it("the same item of a shared card edited on two boards: the board written last wins on both", async () => {
+    const { fs, store, B } = await two();
+    await store.patch(B, { cards: { set: [note("s", "from B")] } });
+    await store.patch("A", { cards: { set: [note("s", "from A")] } });
+    await store.flush("A");
+    // B's board shows what A wrote (the panel gets the same item), and nothing is left for B to write over it
+    expect((store.peek(B)!.cards[0] as any).md).toBe("from A");
+    await store.flush(B);
+    expect(card(fs, "s").card.md).toBe("from A");
+  });
+
   it("picks up a shared card edited outside the app", async () => {
     const { fs, store, B } = await two();
     const c = card(fs, "s");
@@ -616,6 +646,25 @@ describe("two windows on one storage folder", () => {
     expect(shared).toEqual([{ from: undefined, ids: ["s"], items: ["s"] }]);
     expect(w1.peek(C)!.cards).toEqual([note("s", "edited in window 2")]);
     expect(w1.peek("A")!.cards).toEqual([note("s", "edited in window 2")]);
+  });
+
+  it("a body edit not yet written survives a sidenote another window added to the same shared card", async () => {
+    const { fs, w1, w2, settled } = watching();
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("s")); a.place.s = { x: 0, y: 0, w: 100 };
+    await w1.save(a);
+    await w1.share("A", ["s"]);
+    await w2.load("A");
+    await settled();
+    await w1.patch("A", { cards: { set: [note("s", "body in window 1")] } });
+    await patchNow(w2, "A", { sidenotes: { set: [{ id: "n9", kind: "text", md: "note in window 2", at: { card: "s" } }] } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect((w1.peek("A")!.cards[0] as any).md).toBe("body in window 1");
+    expect(w1.peek("A")!.sidenotes.map((n) => n.id)).toEqual(["n9"]);
+    await settled();
+    const c = JSON.parse(fs.files.get(`${ROOT}/cards/s.json`)!.data as string);
+    expect(c.card.md).toBe("body in window 1");
+    expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n9"]);
   });
 
   it("a card one window deleted takes along the link another window drew to it when the edits merge", async () => {

@@ -8,7 +8,7 @@ import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, uid, withCols, type 
 import { Emitter, type Disposable } from "../emitter";
 import type { WorkspaceFiles } from "../workspace";
 import { loadBoardFile, loadSharedCard } from "../schema";
-import { applyPatch, cardCopies, deflate, diffBoards, inflate, mergeById, mergeFile, putShared, same, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
+import { applyPatch, applySharedUpdate, cardCopies, deflate, diffBoards, inflate, mergeById, mergeFile, putShared, same, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
 import { pruneRefs, removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
 import { subBoardsOf } from "../subboard";
 import { dirName, extName, type Fs } from "./fs";
@@ -364,15 +364,7 @@ export class Storage {
     if (this.failing.delete(e.id)) this.recoveredEmitter.fire(e.id);
     for (const sc of changed) {
       const id = sc.card.id;
-      for (const o of this.cache.values()) {
-        if (o === e || !o.refs.has(id)) continue;
-        // 别的白板自己指着这张卡的行号跟着挪了（新版本）：那块白板也有了没写盘的改动，照常稍后写（写时和磁盘三方合并）
-        const was = prevOf(o);
-        const r: { moved?: boolean } = {};
-        putShared(o.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), r);
-        o.used.set(id, this.lib.get(id)!.sc);
-        if (r.moved) this.dirty(o, was);
-      }
+      for (const o of this.cache.values()) if (o !== e && o.refs.has(id)) this.take(o, this.lib.get(id)!.sc);
     }
     this.saved.fire(e.board);
     if (fromDisk?.patch) this.mergedEmitter.fire({ id: e.id, patch: structuredClone(fromDisk.patch) });
@@ -435,14 +427,23 @@ export class Storage {
     for (const e of this.cache.values()) {
       const was = e.used.get(id);
       if (!e.refs.has(id) || was === sc) continue;
-      itemsChanged(was, sc).forEach((k) => items.add(k));
-      const before = prevOf(e);
-      const r: { moved?: boolean } = {};
-      putShared(e.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), r);
-      e.used.set(id, sc);
-      if (r.moved) this.dirty(e, before);
+      this.take(e, sc).forEach((k) => items.add(k));
     }
     if (items.size) this.sharedEmitter.fire({ cards: [{ ...structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), items: [...items] }] });
+  }
+
+  /**
+   * 卡库里这张卡的新一版放进缓存里的另一块白板：只换和它上次看到的那版（used）比变了的项。别的项可能是它还没写盘的改动
+   * （WRITE_DELAY 里正等着写的正文、Sidenote），留着，到它写盘时照常和卡库合并。返回换了的项。
+   * 它自己指着这张卡的行号跟着挪了（新版本）：那块白板也有了没写盘的改动，照常稍后写（写时和磁盘三方合并）
+   */
+  private take(o: Entry, sc: SharedCardFile): string[] {
+    const id = sc.card.id;
+    const items = itemsChanged(o.used.get(id), sc);
+    const was = prevOf(o);
+    if (items.length && applySharedUpdate(o.board, { card: sc.card, sidenotes: sc.sidenotes, items })) this.dirty(o, was);
+    o.used.set(id, sc);
+    return items;
   }
 
   // ---------- 卡库 ----------
