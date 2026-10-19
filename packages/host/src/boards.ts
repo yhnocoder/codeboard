@@ -1,6 +1,7 @@
-// 一块打开的白板（与 VS Code 无关的部分）：读白板、算段的展示数据和版本状态、发 init；宿主信息；版本状态重算。
-// 白板状态由 webview 持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。webview 本身（BoardView）和面板管理（BoardHost）由 VS Code 适配层实现。
-import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostInfo, type HostToBoard, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
+// 一块打开的白板：读白板、算段的展示数据和版本状态、发 init；宿主信息；版本状态重算。
+// 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。界面本身（BoardView）由编辑器适配层实现
+//（VS Code 里是 webview，见 env.ts 的 openView），所有打开的白板由 hub.ts 的 BoardHub 管（BoardHost）。
+import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
 import { syncVariants } from "./variants";
@@ -10,6 +11,7 @@ import { readSettings } from "./settings";
 import { warmBoard } from "./prefetch";
 import { startNameIndex } from "./nameindex";
 import { workspace } from "./ws";
+import type { ViewPlace } from "./env";
 
 /** 宿主转发的 ⌘ / Ctrl 键（webview 里不自己处理）：与 package.json 里 codeboard.boardKey 的键一致（"+" 是 "=" 那个键按了 Shift）；board 的 lists.test.ts 会核对 */
 export const FORWARDED_KEYS = ["k", "d", "0", "1", "=", "+", "-", "shift+l", "shift+b", ","];
@@ -25,6 +27,12 @@ export interface BoardView {
   dispose(): void;
   /** 本机目录在界面里的地址（图片卡的 assets/） */
   resourceUrl(dir: string): string;
+  /** 界面发来的消息 */
+  onMessage: Event<BoardToHost>;
+  /** 成了当前的标签页 */
+  onDidActivate: Event<void>;
+  /** 关掉了 */
+  onDidDispose: Event<void>;
 }
 
 /** 所有打开的白板（面板管理器） */
@@ -35,7 +43,7 @@ export interface BoardHost {
   get(id: string): BoardPanel | undefined;
   all(): BoardPanel[];
   metas(): Promise<BoardMeta[]>;
-  show(id: string, opts?: { preserveFocus?: boolean; side?: boolean; here?: boolean }): Promise<BoardPanel | undefined>;
+  show(id: string, opts?: ViewPlace): Promise<BoardPanel | undefined>;
   setTarget(id: string | undefined): void;
   broadcast(m: HostToBoard): void;
   pushBoards(): Promise<void>;
@@ -82,7 +90,7 @@ export class BoardPanel {
   /** 下一次 init 要带上的：接着讲解、换掉存着的镜头（回到父白板时） */
   next: { walk?: WalkHop; cam?: Camera } = {};
 
-  /** id 会变：进入子白板时同一个面板换成那块白板（Panels.switchBoard） */
+  /** id 会变：进入子白板时同一个面板换成那块白板（BoardHub.switchBoard） */
   constructor(public id: string, readonly view: BoardView, private mgr: BoardHost) {}
 
   get visible() { return this.view.visible; }

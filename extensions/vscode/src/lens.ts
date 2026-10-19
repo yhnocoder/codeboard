@@ -2,7 +2,7 @@
 // 目标白板上有的行在行号旁画一道细竖条。画什么由 marks.ts 算。设置 codeboard.editorMarks：all（都画）、lens（只要 CodeLens）、off（都不画），改了立即生效
 import * as vscode from "vscode";
 import { BoardMarks } from "@codeboard/host/marks";
-import type { Panels } from "./panel";
+import type { BoardHub } from "@codeboard/host/hub";
 import type { Storage } from "@codeboard/host/storage";
 import { debounce } from "@codeboard/host/ws";
 
@@ -15,7 +15,7 @@ export class EditorMarks implements vscode.CodeLensProvider {
   readonly onDidChangeCodeLenses = this.emitter.event;
   private bar: vscode.TextEditorDecorationType;
 
-  constructor(ctx: vscode.ExtensionContext, private store: Storage, private panels: Panels) {
+  constructor(ctx: vscode.ExtensionContext, private store: Storage, private panels: BoardHub) {
     this.bar = vscode.window.createTextEditorDecorationType({
       gutterIconPath: vscode.Uri.joinPath(ctx.extensionUri, "media", "gutter.svg"),
       gutterIconSize: "contain",

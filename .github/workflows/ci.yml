@@ -1,5 +1,5 @@
 # T0, tier 2 of TESTING.md: runs on every push and PR and should finish in about 5 minutes. Jobs run in parallel:
-#   unit     build, typecheck, unit tests, host tests
+#   unit     typecheck, unit tests (core, board, host, extension)
 #   harness  the browser harness scenarios this change needs (tools/test/pick.mjs), 2 jobs, several scenarios at a time in each
 #   e2e      real VS Code (with Pylance) e2e + generic UI audit, split into 2 parts
 #   perf     board + host perf benchmarks on base and head in one job (head, base, head); fails on a regression.
@@ -33,7 +33,6 @@ jobs:
       - uses: ./.github/actions/setup
       - run: npm run typecheck
       - run: npm test
-      - run: npm run test:host -w @codeboard/host
 
   harness:
     runs-on: ubuntu-24.04

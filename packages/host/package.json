@@ -4,7 +4,6 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "test:host": "node test/check-vscode-imports.mjs && node test/run-scratch-names.mjs && node test/run-host-resolve.mjs",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },

@@ -1,5 +1,5 @@
 // v0.2 shared cards (wireframe 04): two boards in two browsers, a host built on the real core Storage (temp dir) relaying
-// patches, shared updates, the card clipboard, Delete Everywhere and the "⧉ N boards" / "← N" info, like extensions/vscode/src/panel.ts.
+// patches, shared updates, the card clipboard, Delete Everywhere and the "⧉ N boards" / "← N" info, like packages/host/src/hub.ts.
 // Usage: node packages/board/test/run-harness.mjs sharedcards [--light]   screenshots: test-out/harness/shared-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -11,7 +11,7 @@ import { open, shot, symCard, findSym, viewOf, put, OUT, type Host } from "./har
 const light = process.argv.includes("--light");
 const views = (segs: Segment[]): Record<string, SegView> => Object.fromEntries(segs.map((s) => [s.id, viewOf(s)]));
 
-/** One browser per board; the host side is core Storage on a temp dir, routed like Panels / handlers in the extension */
+/** One browser per board; the host side is core Storage on a temp dir, routed like BoardHub / handlers in packages/host */
 async function sharedHost(boards: Board[]) {
   const dir = path.join(OUT, "shared-store");
   fs.rmSync(dir, { recursive: true, force: true });

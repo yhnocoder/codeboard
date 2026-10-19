@@ -7,7 +7,8 @@ import { registerCommands } from "./commands";
 import { showFile } from "@codeboard/host/git";
 import { makeHandler } from "@codeboard/host/handlers";
 import { EditorMarks } from "./lens";
-import { Panels } from "./panel";
+import { BoardWebviews, VIEW_TYPE } from "./panel";
+import { BoardHub } from "@codeboard/host/hub";
 import { watchNameIndex } from "@codeboard/host/nameindex";
 import { BoardsTree, GithubTree, QuestionsTree } from "./sidebar";
 import { questionsMarkdown } from "@codeboard/core";
@@ -33,11 +34,13 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const store = (storage = openStorage());
   sub({ dispose: () => store.dispose() });
   initSource(githubDir());
-  const panels = new Panels(ctx, store);
+  const webviews = new BoardWebviews(ctx, store);
+  const panels = new BoardHub(webviews.env(), store);
+  sub(panels);
   panels.handler = makeHandler(panels);
 
   // 先注册恢复面板，再等 tree-sitter（恢复时的 ready 消息会等 init 里的分析）
-  sub(vscode.window.registerWebviewPanelSerializer(Panels.viewType, { deserializeWebviewPanel: async (p, state) => { await ready; await panels.restore(p, state); } }));
+  sub(vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, { deserializeWebviewPanel: async (p, state) => { await ready; await webviews.restore(panels, p, state); } }));
   registerCommands(ctx, panels, store);
 
   const tree = new BoardsTree(store, panels);
