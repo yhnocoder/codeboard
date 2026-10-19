@@ -3,15 +3,15 @@
 // 平时只静默拿已有的登录；请求被拒（401 / 403 / 404）时才弹窗请用户登录一次。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { parseGithubUrl, renderLine, type ReplyOf, type Commit, type GhFile, type GhQuery, type GhRepo, type GhTree, type GithubRef, type NewCard } from "@codeboard/core";
+import { Emitter, parseGithubUrl, renderLine, type ReplyOf, type Commit, type GhFile, type GhQuery, type GhRepo, type GhTree, type GithubRef, type NewCard } from "@codeboard/core";
 import { planSelection } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardsFromPlan, newCodeCard, withViews } from "./cards";
 import { log } from "./log";
-import { githubFileDir, githubRoot, type Loc } from "./source";
+import { githubFileDir, type Loc } from "./source";
 import { makeSegment } from "./versions";
 import { highlight } from "./views";
-import { langOf, posix, splitLines, workspace } from "./ws";
+import { langOf, splitLines, workspace } from "./ws";
 import type { Storage } from "./storage";
 
 const API = "https://api.github.com";
@@ -94,6 +94,7 @@ export async function pullRequest(owner: string, name: string, num: number): Pro
 /** 某个 commit 的文件 → 卡（有行范围就按选区规则建卡，没有就文件开头 60 行） */
 async function cardAt(owner: string, name: string, commit: string, ref: string, rel: string, s?: number, e?: number): Promise<NewCard> {
   const text = await fetchFile(owner, name, commit, rel, ref);
+  await remember(owner, name, commit, rel);
   const lines = splitLines(text);
   const root = githubFileDir(owner, name, commit);
   const abs = path.join(root, rel);
@@ -137,6 +138,7 @@ export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
     case "file": {
       const text = await fetchFile(q.owner, q.name, q.commit, q.path, q.ref);
       if (text.includes("\u0000")) throw new Error(`${path.basename(q.path)} is a binary file.`);
+      await remember(q.owner, q.name, q.commit, q.path);
       const lines = splitLines(text);
       const lang = langOf(path.join(githubFileDir(q.owner, q.name, q.commit), q.path));
       const html = lines.length > 8000 ? lines.map((l) => renderLine([{ text: l }])) : await highlight(lines, lang);
@@ -146,40 +148,46 @@ export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
   }
 }
 
-/** 侧栏 GITHUB FILES：缓存里的 owner/name/commit/文件 */
-export async function cachedFiles(): Promise<{ owner: string; name: string; commit: string; ref: string; files: string[] }[]> {
-  const out: { owner: string; name: string; commit: string; ref: string; files: string[] }[] = [];
-  const root = githubRoot();
-  const ls = async (p: string) => { try { return await fs.readdir(p, { withFileTypes: true }); } catch { return []; } };
-  for (const o of await ls(root)) if (o.isDirectory()) for (const n of await ls(path.join(root, o.name))) if (n.isDirectory()) {
-    for (const c of await ls(path.join(root, o.name, n.name))) {
-      if (!c.isDirectory()) continue;
-      const dir = path.join(root, o.name, n.name, c.name);
-      const files: string[] = [];
-      const walk = async (d: string) => {
-        for (const e of await ls(d)) {
-          if (e.name === ".codeboard-ref") continue;
-          const p = path.join(d, e.name);
-          if (e.isDirectory()) await walk(p); else files.push(posix(path.relative(dir, p)));
-        }
-      };
-      await walk(dir);
-      let ref = c.name;
-      try { ref = (await fs.readFile(path.join(dir, ".codeboard-ref"), "utf8")).trim() || ref; } catch { /* */ }
-      out.push({ owner: o.name, name: n.name, commit: c.name, ref, files: files.sort() });
-    }
-  }
-  return out;
+// ---------- 侧栏 GITHUB FILES ----------
+// 下载的文件按 commit 缓存在全局目录里，所有工作区共用；侧栏只列这个工作区用过的：
+// 这个工作区里打开或加成卡的文件（记在工作区状态里），加上这个工作区的白板上 GitHub Code 卡引用的文件
+
+const OPENED = "codeboard.githubFiles";
+const fileKey = (owner: string, name: string, commit: string, rel: string) => `${owner}/${name}/${commit}/${rel}`;
+const opened = new Emitter<void>();
+/** 这个工作区打开了一个以前没打开过的 GitHub 文件 */
+export const onDidOpenGithubFile = opened.event;
+
+async function remember(owner: string, name: string, commit: string, rel: string) {
+  const st = workspace().storage, keys = st.get<string[]>(OPENED) ?? [], k = fileKey(owner, name, commit, rel);
+  if (keys.includes(k)) return;
+  await st.set(OPENED, [...keys, k]);
+  opened.fire();
 }
 
-/** 侧栏 GITHUB FILES 里一个仓库 commit 下的文件，和每个文件上有几张卡 */
-export async function githubFiles(store: Storage, r: { owner: string; name: string; commit: string; files: string[] }): Promise<{ abs: string; rel: string; cards: number }[]> {
-  const count = new Map<string, number>();
+/** 侧栏 GITHUB FILES：这个工作区用过的 owner/name/commit 和下面的文件 */
+export async function workspaceGithubFiles(store: Storage): Promise<{ owner: string; name: string; commit: string; ref: string; files: { abs: string; rel: string; cards: number }[] }[]> {
+  const cards = new Map<string, number>(), refs = new Map<string, string>();
   for (const { board } of await store.all()) for (const c of board.cards) {
     if (c.kind !== "code") continue;
-    const s = c.segments.find((x) => x.src.kind === "github" && x.src.owner === r.owner && x.src.name === r.name && x.version.kind === "git" && x.version.commit === r.commit);
-    if (s) count.set(s.path, (count.get(s.path) ?? 0) + 1);
+    const s = c.segments.find((x) => x.src.kind === "github");
+    if (s?.src.kind !== "github" || s.version.kind !== "git") continue;
+    const k = fileKey(s.src.owner, s.src.name, s.version.commit, s.path);
+    cards.set(k, (cards.get(k) ?? 0) + 1);
+    refs.set(fileKey(s.src.owner, s.src.name, s.version.commit, ""), s.src.ref);
   }
-  const dir = githubFileDir(r.owner, r.name, r.commit);
-  return r.files.map((rel) => ({ abs: path.join(dir, rel), rel, cards: count.get(rel) ?? 0 }));
+  const repos = new Map<string, { owner: string; name: string; commit: string; ref: string; files: { abs: string; rel: string; cards: number }[] }>();
+  for (const k of new Set([...(workspace().storage.get<string[]>(OPENED) ?? []), ...cards.keys()])) {
+    const [owner, name, commit, ...p] = k.split("/"), rel = p.join("/"), at = fileKey(owner, name, commit, "");
+    const abs = path.join(githubFileDir(owner, name, commit), rel);
+    if (!(await fs.stat(abs).then(() => true, () => false))) continue; // 缓存被清掉了
+    let r = repos.get(at);
+    if (!r) {
+      const ref = refs.get(at) ?? (await fs.readFile(path.join(githubFileDir(owner, name, commit), ".codeboard-ref"), "utf8").then((t) => t.trim(), () => ""));
+      repos.set(at, (r = { owner, name, commit, ref: ref || commit, files: [] }));
+    }
+    r.files.push({ abs, rel, cards: cards.get(k) ?? 0 });
+  }
+  for (const r of repos.values()) r.files.sort((a, b) => a.rel.localeCompare(b.rel));
+  return [...repos.values()];
 }
