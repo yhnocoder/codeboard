@@ -3,8 +3,10 @@
 // 第 6 版起还是卡库（Library）：共享卡放 cards/<id>.json，白板文件里只留引用。这里缓存的、交出去的都是换上了内容的完整白板；
 // 写盘时再拆开（deflate），共享卡按项和磁盘上的合并后写卡文件，再通知开着同一张卡的别的白板（onDidShare）。
 // 白板发来的改动（patch）马上改缓存里的那份，稍后写盘（WRITE_DELAY 里的改动合成一次写）；关面板、退出时 flush() 把没写的写下去。
+// 存储目录有人在外面（另一个窗口）写了：白板文件三方合并进缓存（onDidMerge），卡库里的卡换进有它的白板（onDidShare），不等这边存盘。
 import { allCodeCards, baseName, BOARD_VERSION, emptyBoard, uid, withCols, type Board, type BoardFile, type BoardMeta, type Link, type SharedCard, type SharedCardFile } from "../model";
-import { Emitter } from "../emitter";
+import { Emitter, type Disposable } from "../emitter";
+import type { WorkspaceFiles } from "../workspace";
 import { loadBoardFile, loadSharedCard } from "../schema";
 import { applyPatch, deflate, diffBoards, inflate, mergeFile, putShared, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
 import { removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
@@ -21,15 +23,17 @@ type Prev = { file: string; outline: string; group?: string };
  */
 type Entry = { id: string; file: string; group?: string; mtime: number; birth: number; board: Board; refs: Set<string>; held: Set<string>; used: Map<string, SharedCardFile>; text?: string; pending?: Prev };
 /**
- * 一次写盘改了的共享卡（from = 哪块白板改的；别的开着这张卡的白板要跟着换）。
+ * 改了的共享卡（from = 这个窗口里哪块白板改的；没有 = 另一个窗口写的卡文件。别的开着这张卡的白板要跟着换）。
  * back = 写的这块白板自己也要换上的（卡文件被另一个窗口改过，合并进来了别人的项）
  */
-export type SharedChange = { from: string; cards: SharedUpdate[]; back?: SharedUpdate[] };
+export type SharedChange = { from?: string; cards: SharedUpdate[]; back?: SharedUpdate[] };
 
 export type StorageOpts = {
   /** 存储目录（设置可能变，每次用时问） */
   dir: () => string;
   log?: (level: "info" | "warn" | "error", text: string) => void;
+  /** 看着存储目录里的文件（宿主的 Workspace files.watch）：另一个窗口写了白板或共享卡，开着的白板马上换上。不给就只在读目录时发现 */
+  watch?: WorkspaceFiles["watch"];
 };
 
 export const RESERVED = new Set(["assets", "github", "cards", "runs", ".trash"]);
@@ -49,7 +53,7 @@ export class Storage {
   /** 白板列表变了（增删、改名、分组、卡片数） */
   readonly onDidChange = this.changed.event;
   private saved = new Emitter<Board>();
-  /** 任何一次保存（CodeLens、行号旁标记要跟着变） */
+  /** 任何一次保存，和读进了另一个窗口写的白板文件（CodeLens、行号旁标记要跟着变） */
   readonly onDidSave = this.saved.event;
   private cache = new Map<string, Entry>();
   /** 每张白板有新版本的卡片数（版本模块算好填进来） */
@@ -79,8 +83,36 @@ export class Storage {
   private failedEmitter = new Emitter<{ board: string; error: string }>();
   /** 白板的改动写不下去（磁盘满、没权限）：过一会儿自动重试，开着这块白板的面板要说一声 */
   readonly onDidFailSave = this.failedEmitter.event;
+  /** 正在看着的存储目录（设置里换了目录时换一个） */
+  private watched?: { dir: string; sub: Disposable };
 
-  constructor(private fs: Fs, private opts: StorageOpts) {}
+  constructor(private fs: Fs, private opts: StorageOpts) { this.watchDir(); }
+
+  /** 不再看着存储目录 */
+  dispose() { this.watched?.sub.dispose(); this.watched = undefined; }
+
+  /** 看着现在的存储目录（建好时；设置里换了目录时 reset 换过去） */
+  private watchDir() {
+    const dir = this.dir();
+    if (!this.opts.watch) return;
+    this.dispose();
+    this.watched = { dir, sub: this.opts.watch(dir, "**/*.json", (abs) => void this.serial(() => this.changedOnDisk(abs)).catch((e) => this.opts.log?.("error", `storage: ${abs}: ${e instanceof Error ? e.message : e}`))) };
+  }
+
+  /**
+   * 存储目录里的一个 .json 变了（新建、改、删）。自己写的（mtime、内容和上次写下的一样）不算：
+   * 开着的白板的文件 → 三方合并进来（pull）；卡库里的卡 → 换进有它的白板（pullShared）；别的白板文件（新的、删掉的）→ 侧栏重新列
+   */
+  private async changedOnDisk(abs: string) {
+    const root = this.dir(), dir = dirName(abs), name = baseName(abs);
+    if (dir === this.cardsDir()) return this.pullShared(name.slice(0, -".json".length));
+    const group = dir === root ? "" : dirName(dir) === root ? baseName(dir) : null;
+    if (group === null || RESERVED.has(group) || group.startsWith(".")) return;
+    const e = [...this.cache.values()].find((x) => x.file === abs);
+    const there = await this.fs.stat(abs).then(() => true, () => false);
+    if (e && there) await this.pull(e);
+    else this.changed.fire();
+  }
 
   dir(): string { return this.opts.dir(); }
   assetsDir() { return this.fs.join(this.dir(), "assets"); }
@@ -143,8 +175,9 @@ export class Storage {
       try {
         const st = await fs.stat(f.file);
         let e = [...this.cache.values()].find((x) => x.file === f.file);
-        // 另一个窗口改了文件：重新读。这块白板还有没写盘的改动时不读，写盘时三方合并（mergeDisk）
-        if (!e || (e.mtime !== st.mtimeMs && !e.pending)) {
+        // 另一个窗口改了文件：三方合并进缓存（没写盘的改动留着），开着的面板跟着换上
+        if (e && e.mtime !== st.mtimeMs) await this.pull(e);
+        if (!e) {
           const text = await fs.readFile(f.file);
           const raw = JSON.parse(text);
           const board = loadBoardFile(raw);
@@ -158,14 +191,11 @@ export class Storage {
           for (const c of board.cards) if (c.kind === "shared") { const sc = await this.readShared(c.id); if (sc) used.set(c.id, sc); }
           const r = inflate(board, (id) => { const sc = used.get(id); return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
           if (r.missing.length) this.opts.log?.("warn", `storage: board ${f.file} refers to missing shared cards ${r.missing.join(", ")}`);
-          e = { id: board.id, file: f.file, group: f.group, mtime: st.mtimeMs, birth: st.birthtimeMs || st.ctimeMs, board: r.board, refs: new Set(r.refs), held: new Set([...r.refs, ...(e?.held ?? [])]), used, text };
+          e = { id: board.id, file: f.file, group: f.group, mtime: st.mtimeMs, birth: st.birthtimeMs || st.ctimeMs, board: r.board, refs: new Set(r.refs), held: new Set(r.refs), used, text };
           this.cache.set(board.id, e);
         } else {
-          // 白板文件没变，卡库里的卡可能在外面改了
-          for (const id of e.refs) {
-            const sc = await this.readShared(id);
-            if (sc && sc !== e.used.get(id)) { putShared(e.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes })); e.used.set(id, sc); }
-          }
+          // 卡库里的卡可能在外面改了
+          for (const id of [...e.refs]) await this.pullShared(id);
         }
         e.group = f.group;
         seen.add(e.id);
@@ -340,17 +370,20 @@ export class Storage {
   }
 
   /**
-   * 白板文件在这块白板上次读 / 写之后被另一个窗口改过：按项三方合并（mergeFile），合并后的样子换进缓存。
-   * 返回要写的文件和给开着的面板的改动；文件没被别人改过返回 undefined
+   * 白板文件在这块白板上次读 / 写之后被另一个窗口改过：按项三方合并（mergeFile；base = 上次读到 / 写下的那份，
+   * mine = 这边要写的，没给 = 这边没有改动，就是 base），合并后的样子换进缓存。
+   * 返回合并后的文件、给开着的面板的改动、磁盘上的内容和 mtime；文件没被别人改过（mtime 或内容和上次一样）返回 undefined
    */
-  private async mergeDisk(e: Entry, mine: BoardFile): Promise<{ file: BoardFile; patch: BoardPatch | null } | undefined> {
+  private async mergeDisk(e: Entry, mine?: BoardFile): Promise<{ file: BoardFile; patch: BoardPatch | null; text: string; mtime: number } | undefined> {
     if (!e.file || !e.text) return undefined;
     let st: { mtimeMs: number };
     try { st = await this.fs.stat(e.file); } catch { return undefined; }
     if (st.mtimeMs === e.mtime) return undefined;
-    let disk: BoardFile;
-    try { disk = loadBoardFile(JSON.parse(await this.fs.readFile(e.file))); } catch { return undefined; }
-    const file = mergeFile(JSON.parse(e.text) as BoardFile, disk, mine);
+    let text: string, disk: BoardFile;
+    try { text = await this.fs.readFile(e.file); disk = loadBoardFile(JSON.parse(text)); } catch { return undefined; }
+    if (text === e.text) { e.mtime = st.mtimeMs; return undefined; }
+    const base = loadBoardFile(JSON.parse(e.text));
+    const file = mergeFile(base, disk, mine ?? base);
     for (const c of file.cards) if (c.kind === "shared") await this.readShared(c.id);
     const r = inflate(file, (id) => { const sc = this.lib.get(id)?.sc; return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
     const patch = diffBoards(e.board, r.board);
@@ -358,7 +391,43 @@ export class Storage {
     e.refs = new Set(r.refs);
     for (const id of r.refs) { e.held.add(id); const sc = this.lib.get(id)?.sc; if (sc) e.used.set(id, sc); }
     this.opts.log?.("info", `storage: merged changes another window made to ${e.file}`);
-    return { file, patch };
+    return { file, patch, text, mtime: st.mtimeMs };
+  }
+
+  /**
+   * 另一个窗口写了这块白板的文件：合并进缓存（mergeDisk；这边没写盘的改动留着，到时照常写下去），
+   * 开着的面板跟着换上（onDidMerge），侧栏、骨架、CodeLens 跟着刷新
+   */
+  private async pull(e: Entry) {
+    const before = outline(e.board);
+    const r = await this.mergeDisk(e, e.pending && deflate(e.board, e.refs).file);
+    if (!r) return;
+    e.text = r.text;
+    e.mtime = r.mtime;
+    this.saved.fire(e.board);
+    if (r.patch) this.mergedEmitter.fire({ id: e.id, patch: structuredClone(r.patch) });
+    if (before !== outline(e.board)) this.changed.fire();
+  }
+
+  /**
+   * 卡库里的这张卡在外面（另一个窗口）改了：缓存里有它的白板换上（自己指着它的行号跟着挪了的稍后写盘），
+   * 开着的面板跟着换（onDidShare，没有 from）。卡文件是这边写的（mtime 没变）时什么都不做
+   */
+  private async pullShared(id: string) {
+    if (![...this.cache.values()].some((e) => e.refs.has(id))) return;
+    const sc = await this.readShared(id);
+    if (!sc) return;
+    const items = new Set<string>();
+    for (const e of this.cache.values()) {
+      const was = e.used.get(id);
+      if (!e.refs.has(id) || was === sc) continue;
+      itemsChanged(was, sc).forEach((k) => items.add(k));
+      const r: { moved?: boolean } = {};
+      putShared(e.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), r);
+      e.used.set(id, sc);
+      if (r.moved) { e.pending ??= prevOf(e); this.writeLater(e.id, WRITE_DELAY); }
+    }
+    if (items.size) this.sharedEmitter.fire({ cards: [{ ...structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), items: [...items] }] });
   }
 
   /** 只写白板文件（卡库不动）：别的白板改了共享卡、这块白板跟着挪了行号时 */
@@ -582,6 +651,7 @@ export class Storage {
     return this.serial(async () => {
       await this.writePending();
       this.cache.clear(); this.lib.clear(); this.emptyGroups.clear();
+      this.watchDir();
       this.changed.fire();
     });
   }
@@ -617,15 +687,19 @@ export function merged(base: SharedCard | undefined, disk: SharedCard | undefine
   for (const n of view.sidenotes) { if (!same(was.get(n.id), n)) { out.set(n.id, n); mine.push(n.id); } was.delete(n.id); }
   for (const id of was.keys()) { if (out.delete(id)) mine.push(id); }
   const sidenotes = [...out.values()];
-  const diffs = (x: SharedCard | undefined) => {
-    const xs = new Map((x?.sidenotes ?? []).map((n) => [n.id, n]));
-    const d = same(x?.card, card) ? [] : [card.id];
-    for (const n of sidenotes) { if (!same(xs.get(n.id), n)) d.push(n.id); xs.delete(n.id); }
-    return [...d, ...xs.keys()];
-  };
+  const diffs = (x: SharedCard | undefined) => itemsChanged(x, { card, sidenotes });
   const items = diffs(disk);
   const file: SharedCardFile | null = items.length || !disk ? structuredClone({ version: BOARD_VERSION, card, sidenotes }) : null;
   return { file, mine, items: [...new Set([...items, ...diffs(base)])], back: diffs(view) };
+}
+
+/** 共享卡从 x 到 y 变了的项（卡 id、Sidenote 的 id：改了、加了、删了的）；Sidenote 的先后不算 */
+function itemsChanged(x: SharedCard | undefined, y: SharedCard): string[] {
+  const same = (a: unknown, b: unknown) => a !== undefined && JSON.stringify(a) === JSON.stringify(b);
+  const xs = new Map((x?.sidenotes ?? []).map((n) => [n.id, n]));
+  const d = same(x?.card, y.card) ? [] : [y.card.id];
+  for (const n of y.sidenotes) { if (!same(xs.get(n.id), n)) d.push(n.id); xs.delete(n.id); }
+  return [...d, ...xs.keys()];
 }
 
 /** 侧栏关心的部分：名字、卡片数、子白板 */

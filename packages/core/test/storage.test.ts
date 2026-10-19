@@ -8,6 +8,16 @@ import { Storage, pasteClip, type DirEnt, type Fs } from "../src/storage";
 /** In-memory Fs: files and directories keyed by "/"-joined paths; every write bumps a clock used as mtime */
 class MemFs implements Fs {
   files = new Map<string, { data: string | Uint8Array; mtime: number; birth: number }>();
+  /** Watchers (StorageOpts.watch) told about every .json created, changed or deleted under their folder, a tick later like a file watcher */
+  private watchers = new Set<{ base: string; fn: (abs: string) => void }>();
+  watch = (base: string, _glob: string, fn: (abs: string) => void) => {
+    const w = { base, fn };
+    this.watchers.add(w);
+    return { dispose: () => void this.watchers.delete(w) };
+  };
+  private touched(p: string) {
+    if (p.endsWith(".json")) for (const w of this.watchers) if (p.startsWith(w.base + "/")) setTimeout(() => w.fn(p), 0);
+  }
   dirs = new Set<string>(["/"]);
   reads = 0;
   clock = 1;
@@ -36,15 +46,16 @@ class MemFs implements Fs {
     this.need(this.parent(p));
     const t = ++this.clock;
     this.files.set(p, { data, mtime: t, birth: this.files.get(p)?.birth ?? t });
+    this.touched(p);
   }
   async rename(a: string, b: string) {
     const f = this.files.get(a);
-    if (f) { this.need(this.parent(b)); this.files.delete(a); this.files.set(b, f); return; }
+    if (f) { this.need(this.parent(b)); this.files.delete(a); this.files.set(b, f); this.touched(a); this.touched(b); return; }
     this.need(a);
     for (const d of [...this.dirs]) if (d === a || d.startsWith(a + "/")) { this.dirs.delete(d); this.dirs.add(b + d.slice(a.length)); }
     for (const [k, v] of [...this.files]) if (k.startsWith(a + "/")) { this.files.delete(k); this.files.set(b + k.slice(a.length), v); }
   }
-  async rm(p: string) { this.files.delete(p); }
+  async rm(p: string) { this.files.delete(p); this.touched(p); }
   async rmdir(p: string) {
     this.need(p);
     if ((await this.readdir(p)).length) throw new Error(`ENOTEMPTY ${p}`);
@@ -251,7 +262,7 @@ describe("card library (shared cards)", () => {
     // B gets the shared card the way a duplicate of A would: same refs
     const d = (await t.store.duplicate("A"))!;
     await patchNow(t.store, d.id, { sidenotes: { del: ["n2"] } }); // the copy drops A's board-only sidenote
-    const shared: { from: string; ids: string[]; items: string[] }[] = [];
+    const shared: { from?: string; ids: string[]; items: string[] }[] = [];
     t.store.onDidShare((e) => shared.push({ from: e.from, ids: e.cards.map((c) => c.card.id), items: e.cards.flatMap((c) => c.items) }));
     return { ...t, a, B: d.id, shared };
   }
@@ -542,6 +553,66 @@ describe("two windows on one storage folder", () => {
     await patchNow(w1, "A", { cards: { del: ["x"] }, place: { del: ["x"] } });
     await patchNow(w2, "A", { cards: { set: [note("y", "y2")] } });
     expect(JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string).cards).toEqual([note("y", "y2")]);
+  });
+
+  /** Two windows whose storages watch the shared folder; settled() lets the watchers run and window 1 handle what they saw */
+  function watching() {
+    const fs = new MemFs();
+    const w1 = new Storage(fs, { dir: () => ROOT, watch: fs.watch }), w2 = new Storage(fs, { dir: () => ROOT, watch: fs.watch });
+    const settled = async () => { await new Promise((r) => setTimeout(r, 0)); await w1.flush(); await w2.flush(); };
+    return { fs, w1, w2, settled };
+  }
+
+  it("an open board shows what another window wrote to its file without saving itself", async () => {
+    const { fs, w1, w2, settled } = watching();
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("x")); a.place.x = { x: 0, y: 0, w: 100 };
+    await w1.save(a);
+    await w2.load("A");
+    await settled();
+    const merges: unknown[] = [], writes = () => fs.files.get(`${ROOT}/A.json`)!.mtime;
+    let changed = 0;
+    w1.onDidMerge((e) => merges.push(e));
+    w1.onDidChange(() => changed++);
+    // Window 1's own write is not news to it
+    await patchNow(w1, "A", { cards: { set: [note("x", "mine")] } });
+    await settled();
+    expect(merges).toEqual([]);
+    // Window 2 adds a card and renames the board; window 1 never saves
+    await patchNow(w2, "A", { cards: { set: [note("y")] }, place: { set: { y: { x: 200, y: 0, w: 100 } } }, head: { ...headOf(a), name: "Renamed elsewhere" } });
+    const written = writes();
+    await settled();
+    expect(merges).toEqual([{ id: "A", patch: expect.objectContaining({ cards: { set: [note("y")] }, place: { set: { y: { x: 200, y: 0, w: 100 } } } }) }]);
+    expect(w1.peek("A")!.cards).toEqual([note("x", "mine"), note("y")]);
+    expect(w1.peek("A")!.name).toBe("Renamed elsewhere");
+    expect(changed).toBe(1); // the sidebar shows the new name
+    expect(writes()).toBe(written); // window 1 wrote nothing back
+    // Window 1's unsaved edit and window 2's next edit both survive
+    await w1.patch("A", { cards: { set: [note("x", "mine again")] } });
+    await patchNow(w2, "A", { cards: { set: [note("y", "y2")] } });
+    await settled();
+    expect(w1.peek("A")!.cards).toEqual([note("x", "mine again"), note("y", "y2")]);
+    expect(JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string).cards).toEqual([note("x", "mine again"), note("y", "y2")]);
+  });
+
+  it("an open board shows a shared card another window edited on a different board", async () => {
+    const { w1, w2, settled } = watching();
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("s")); a.place.s = { x: 0, y: 0, w: 100 };
+    await w1.save(a);
+    await w1.share("A", ["s"]);
+    const C = (await w1.create("C")).id;
+    await w1.offer(C, ["s"]);
+    await patchNow(w1, C, { cards: { set: [note("s")] }, place: { set: { s: { x: 0, y: 0, w: 100 } } } });
+    await w2.load("A");
+    await settled();
+    const shared: { from?: string; ids: string[]; items: string[] }[] = [];
+    w1.onDidShare((e) => shared.push({ from: e.from, ids: e.cards.map((c) => c.card.id), items: e.cards.flatMap((c) => c.items) }));
+    await patchNow(w2, "A", { cards: { set: [note("s", "edited in window 2")] } });
+    await settled();
+    expect(shared).toEqual([{ from: undefined, ids: ["s"], items: ["s"] }]);
+    expect(w1.peek(C)!.cards).toEqual([note("s", "edited in window 2")]);
+    expect(w1.peek("A")!.cards).toEqual([note("s", "edited in window 2")]);
   });
 
   it("changes not yet written survive the sidebar reading a board file another window just wrote", async () => {
