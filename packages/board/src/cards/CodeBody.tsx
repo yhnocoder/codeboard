@@ -5,7 +5,7 @@ import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, commonIndent, escapeRegExp, shownText, copyText, escHtml, F_COMMENT, type CodeCard, type Row, type Segment, type SegView, type Sticker } from "@codeboard/core";
+import { cardRows, commonIndent, escapeRegExp, shownText, copyText, escHtml, F_COMMENT, type CodeCard, type Row, type Segment, type SegView, type Sidenote, type Sticker } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
 import { lineStickers, stickerList } from "../state/stickers";
 import { StickerChip } from "../stickers/Picker";
@@ -116,6 +116,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     });
     return img.length ? { img: img.join(","), size: size.join(","), pos: pos.join(",") } : { img: undefined, size: undefined, pos: undefined };
   });
+  const lineRow = (r: Row) => (r.t === "line" ? r : undefined);
   const lineHtml = (r: Extract<Row, { t: "line" }>) => {
     const s = segById(r.seg);
     const v = viewOf(r.seg);
@@ -324,7 +325,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
 
 
-  const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n) => n.kind === "text" && n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
+  const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n): n is Extract<Sidenote, { kind: "text" }> => n.kind === "text" && !!n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
   const cmtLine = (r: Row) => r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;
 
   // 行的连线端点：在卡片左右边框上（不占行号栏，供带 Call 标记的箭头自动选边）
@@ -358,9 +359,11 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         <div class="gutter">
           <For each={rows()}>
             {(r, i) => (
-              <Show when={r.t === "line" && ys()[i()]}>
-                <span class="no" data-r={i()} classList={{ link: fromLines().has(`${r.seg}:${(r as any).line}`), jump: (r as any).skipped, sel: inSel(r.seg, (r as any).line), drop: dropAt(r.seg, (r as any).line) }}
-                  style={{ top: `${ys()[i()].y}px` }} data-nodrag onClick={(e) => clickNo(r as any, e)} onContextMenu={(e) => lineCtx(r as any, e)}>{(r as any).line}</span>
+              <Show when={ys()[i()] && lineRow(r)}>
+                {(l) => (
+                  <span class="no" data-r={i()} classList={{ link: fromLines().has(`${l().seg}:${l().line}`), jump: l().skipped, sel: inSel(l().seg, l().line), drop: dropAt(l().seg, l().line) }}
+                    style={{ top: `${ys()[i()].y}px` }} data-nodrag onClick={(e) => clickNo(l(), e)} onContextMenu={(e) => lineCtx(l(), e)}>{l().line}</span>
+                )}
               </Show>
             )}
           </For>
@@ -388,9 +391,11 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         <For each={vrows()}>{(x) => <Show when={ys()[x.i]}><div class={`vbg ${x.k === "+" ? "add" : "chg"}`} style={{ top: `${ys()[x.i].y}px`, height: `${ys()[x.i].h}px` }} /></Show>}</For>
         <For each={rows()}>
           {(r, i) => (
-            <Show when={ys()[i()] && r.t === "line"}>
-              <div class="rowbg" classList={{ hl: isHl(segById(r.seg), (r as any).line), origin: fromLines().has(`${r.seg}:${(r as any).line}`), lsel: inSel(r.seg, (r as any).line), flash: flashRows().has(`${c().id}:${r.seg}:${(r as any).line}`), vhi: vhi(r) }}
-                style={{ top: `${ys()[i()].y}px`, height: `${ys()[i()].h}px` }} />
+            <Show when={ys()[i()] && lineRow(r)}>
+              {(l) => (
+                <div class="rowbg" classList={{ hl: isHl(segById(l().seg), l().line), origin: fromLines().has(`${l().seg}:${l().line}`), lsel: inSel(l().seg, l().line), flash: flashRows().has(`${c().id}:${l().seg}:${l().line}`), vhi: vhi(l()) }}
+                  style={{ top: `${ys()[i()].y}px`, height: `${ys()[i()].h}px` }} />
+              )}
             </Show>
           )}
         </For>
@@ -401,18 +406,18 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           <For each={rows()}>
             {(r, i) => (
               <Switch>
-                <Match when={r.t === "line"}>
-                  <div class="l" classList={{ cmt: !!cmtLine(r), drop: dropAt(r.seg, (r as any).line) }} data-r={i()} innerHTML={lineHtml(r as any) || "​"} />
-                  <For each={alwaysNotes(r.seg, (r as any).line)}>{(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline((n as any).md)} />}</For>
+                <Match when={lineRow(r)}>
+                  {(l) => (
+                    <>
+                      <div class="l" classList={{ cmt: !!cmtLine(l()), drop: dropAt(l().seg, l().line) }} data-r={i()} innerHTML={lineHtml(l()) || "​"} />
+                      <For each={alwaysNotes(l().seg, l().line)}>{(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline(n.md)} />}</For>
+                    </>
+                  )}
                 </Match>
-                <Match when={r.t === "gap"}>
-                  <GapRow r={r as Extract<Row, { t: "gap" }>} i={i()} card={c()} />
-                </Match>
-                <Match when={r.t === "fn"}>
-                  <div class="fnbar" data-r={i()}><span>{(r as any).name}</span></div>
-                </Match>
-                <Match when={r.t === "file"}>
-                  <div class="fbar" data-r={i()}><span class="fp">{(r as any).path}</span><Show when={(r as any).version}><span class="fv">{(r as any).version}</span></Show></div>
+                <Match when={r.t === "gap" && r}>{(g) => <GapRow r={g()} i={i()} card={c()} />}</Match>
+                <Match when={r.t === "fn" && r}>{(f) => <div class="fnbar" data-r={i()}><span>{f().name}</span></div>}</Match>
+                <Match when={r.t === "file" && r}>
+                  {(f) => <div class="fbar" data-r={i()}><span class="fp">{f().path}</span><Show when={f().version}><span class="fv">{f().version}</span></Show></div>}
                 </Match>
               </Switch>
             )}
