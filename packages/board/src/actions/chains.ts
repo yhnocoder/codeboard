@@ -3,7 +3,7 @@ import { createMemo } from "solid-js";
 import { rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, segOf, cardTitle, instName, genWhat, cardChip, rankByReceiver, sameCallSite, baseName, placeCards, replaceCards,
+  uid, isCode, segOf, cardTitle, instName, genWhat, cardChip, rankByReceiver, sameCallSite, baseName, swapCallTarget,
   type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
 } from "@codeboard/core";
 import { state, setState, mutate, cardById, hostOf, toast, placeOf, select } from "../state/store";
@@ -158,27 +158,15 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
   const old = cardById(L.to.card)?.card;
   const os = isCode(old) ? old.segments[0] : undefined;
   const oldAlt: CallAlt | undefined = os && hostPathOf(os) ? { label: os.symbol?.qual ?? cardTitle(old!), detail: `${hostPathOf(os)}:${os.start}`, path: hostPathOf(os), line: os.start, qual: os.symbol?.qual, ...(L.call.vals ? { vals: L.call.vals } : {}) } : undefined;
-  const oldId = L.to.card, newId = r.card.id;
-  const keep = state.board.links.some((l) => l.id !== linkId && (l.from.card === oldId || l.to.card === oldId)) || state.board.sidenotes.some((n) => n.at.card === oldId);
+  const newId = r.card.id;
   setState("views", (v) => ({ ...v, ...r.views }));
+  let kept = false;
   mutate((b) => {
-    const l = b.links.find((x) => x.id === linkId);
-    if (!l?.call) return;
-    const p = b.place[oldId];
     const nc = structuredClone(r.card) as CodeCard;
     if (r.title) nc.title = r.title;
-    const section = p?.section;
-    placeCards(b, [{ card: nc, place: p ? { x: p.x, y: keep ? p.y + 40 : p.y, w: p.w } : { x: 0, y: 0, w: r.w ?? 560 } }], { copy: false, at: (q) => (section ? { ...q, section } : q) });
-    const alts = [...(l.call.alts ?? [])];
-    alts.splice(item.i!, 1, ...(oldAlt && !keep && !o.dropOld ? [oldAlt] : []));
-    if (o.label) l.label = o.label;
-    if (alts.length) l.call.alts = alts; else delete l.call.alts;
-    if (a.vals) l.call.vals = a.vals; else if (r.mark?.vals) l.call.vals = r.mark.vals;
-    // 旧卡只有这条箭头：整张换成新卡（贴纸、调用图字母跟过去）；还有别的箭头 / Sidenote 就留着，只把这条改连新卡
-    if (keep) l.to = { card: newId };
-    else replaceCards(b, [oldId], () => ({ card: newId }));
+    kept = swapCallTarget(b, linkId, nc, { alt: item.i!, oldAlt: o.dropOld ? undefined : oldAlt, w: r.w ?? 560, label: o.label, vals: a.vals ?? r.mark?.vals })?.kept ?? false;
   });
-  if (keep) toast(`Kept ${old ? cardTitle(old) : "the previous card"}: it has its own arrows`);
+  if (kept) toast(`Kept ${old ? cardTitle(old) : "the previous card"}: it has its own arrows`);
   select({ cards: [newId] });
   requestAnimationFrame(() => popCard(newId));
 }

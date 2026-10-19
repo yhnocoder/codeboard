@@ -1,7 +1,7 @@
 // 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（卡片的框和名字、调用图标记、连线、Section 色）发给父白板，
 // 父白板只画骨架，不拿子白板的完整内容。纯函数：骨架、子白板关系（侧栏的树、不能套成环）、把选中的卡拆成一块新白板（Turn into Board）。
 import { cardTitle, clone, emptyBoard, firstLine, hostOf, isCode, uid, versionLabel, withCols, type Board, type BoardCard, type Card, type Link, type Place } from "./model";
-import { cardsToFrame, removeCards, removeSections, removeStickers } from "./edit";
+import { cardsToFrame, removeCards, removeSections, removeStickers, renumberBorn } from "./edit";
 import { computeFlows } from "./flow";
 import { bounds, estSize, sectionFrames, type Rect } from "./layout";
 import type { Crumb } from "./protocol";
@@ -184,10 +184,7 @@ export function extractBoard(parent: Board, ids: string[], rects: (id: string) =
   removeStickers(child, child.stickers.filter((k) => k.at.kind === "canvas" && !k.at.on).map((k) => k.id)); // 画布上没绑东西的留在父白板
   for (const p of Object.values(child.place)) { p.x += dx; p.y += dy; }
   for (const s of child.sections) { s.x += dx; s.y += dy; }
-  // 创建顺序按原来的先后重新从 0 编
-  const order = Object.entries(child.born ?? {}).sort((a, b) => a[1] - b[1]);
-  child.born = Object.fromEntries(order.map(([id], i) => [id, i]));
-  child.seq = order.length;
+  renumberBorn(child);
 
   // 父白板：卡换成框。框比原来那片小（骨架是缩略的）：宽取一半左右，高按原来的长宽比，加标题栏
   const frame = o.frame ?? uid("c");
