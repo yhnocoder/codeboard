@@ -296,3 +296,69 @@ test("markdownPaste", async () => {
   check("markdownPaste", Object.values(r).every(Boolean), { ...r, md: md.slice(-260) });
   await close(h);
 });
+
+const DIAGRAMS: [string, string][] = [
+  ["flowchart", "graph TD\n  A[Scheduler.schedule] --> B{waiting?}\n  B -- yes --> C[allocate blocks]\n  B -- no --> D[decode running]\n  C --> E[prefill batch]\n  D --> F[append slot]\n  E --> G[ModelRunner.run]\n  F --> G\n  subgraph KV[Block manager]\n    C\n    F\n  end"],
+  ["sequence", "sequenceDiagram\n  participant E as LLMEngine\n  participant S as Scheduler\n  participant M as ModelRunner\n  loop until finished\n    E->>S: schedule()\n    S-->>E: seqs, is_prefill\n    E->>M: run(seqs)\n    M-->>E: token_ids\n  end\n  Note over E,M: one step"],
+  ["class", "classDiagram\n  class Scheduler { +schedule() +postprocess() }\n  class BlockManager { +allocate() +can_append() }\n  class Sequence { +token_ids +block_table }\n  Scheduler --> BlockManager\n  Scheduler o-- Sequence"],
+  ["state", "stateDiagram-v2\n  [*] --> WAITING\n  WAITING --> RUNNING: scheduled\n  RUNNING --> WAITING: preempted\n  RUNNING --> FINISHED: eos\n  FINISHED --> [*]"],
+  ["pie", "pie title Time per step\n  \"prefill\" : 42\n  \"decode\" : 51\n  \"sampling\" : 7"],
+  ["mindmap", "mindmap\n  root((nano-vllm))\n    engine\n      scheduler\n      block manager\n    layers\n      attention\n      linear"],
+];
+const LOOKS = ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "ink-wash", "city"];
+
+/** Mermaid blocks in Notes, per theme: every diagram renders at its own size (too wide → laid out top-down), light ↔ dark
+ *  recolours the drawn SVG in place (no redraw),
+ *  a theme with another font draws again. MMD_LOOKS=all (or a list) for every theme's screenshots */
+test("mermaidThemes", async () => {
+  const want = process.env.MMD_LOOKS;
+  const looks = want === "all" ? LOOKS : want ? want.split(",") : ["warm-ink", "newspaper"];
+  for (const theme of looks) {
+    const b = emptyBoard("b1", "mermaid");
+    DIAGRAMS.forEach(([k, src], i) => put(b, { id: `m${i}`, kind: "note", md: `**${k}**\n\n\`\`\`mermaid\n${src}\n\`\`\``, bg: true } as NoteCard, 40 + (i % 3) * 470, 40 + Math.floor(i / 3) * 880, 440));
+    b.cam = { x: 0, y: 0, z: 0.72 };
+    const h = await open({ board: b, light: true, w: 1400, h: 1260, settings: { theme } as any });
+    const pg = h.page;
+    await pg.waitForFunction((n) => document.querySelectorAll(".mmd.ok svg, .mmd-err").length >= n, DIAGRAMS.length, { timeout: 5000 }).catch(() => {});
+    const look = () => pg.evaluate(() => {
+      const svgs = [...document.querySelectorAll<SVGElement>(".mmd.ok svg")];
+      const txt = svgs[0]?.querySelector("text");
+      // 宽图改竖排，不缩小：排得进 Note 的图显示宽度 = SVG 自己的宽度（竖排了还是太宽的，比如宽的类图，才缩小）
+      const z = 0.72, shrunk = svgs.filter((s) => +s.getAttribute("width")! <= s.parentElement!.clientWidth && s.getBoundingClientRect().width / (+s.getAttribute("width")! * z) < 0.97).length;
+      const m = document.querySelector<SVGElement>('.card[data-id="m5"] .mmd svg'), mind = !!m && +m.getAttribute("width")! <= m.parentElement!.clientWidth; // mindmap 本来 600 多宽
+      return { ok: svgs.length, shrunk, mind, err: [...document.querySelectorAll(".mmd-err")].map((e) => e.textContent), ink: getComputedStyle(document.documentElement).getPropertyValue("--ink").trim(), text: txt ? getComputedStyle(txt).fill : null };
+    });
+    const lt = await look();
+    await saveShot(h, `mermaid-${theme}-light`);
+    await pg.evaluate(() => { (window as any).__svg0 = document.querySelector(".mmd.ok svg"); document.body.className = "vscode-dark"; });
+    await pg.waitForTimeout(300);
+    const dk = await look();
+    const same = await pg.evaluate(() => (window as any).__svg0 === document.querySelector(".mmd.ok svg"));
+    await saveShot(h, `mermaid-${theme}-dark`);
+    check(`mermaidThemes ${theme}`, lt.ok === DIAGRAMS.length && !lt.shrunk && lt.mind && !lt.err.length && dk.ok === DIAGRAMS.length && same && lt.text !== dk.text, { lt, dk, same });
+    await close(h);
+  }
+  // 换到字体不一样的主题：图按新字体重画
+  const b = emptyBoard("b1", "mermaid");
+  put(b, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[0][1]}\n\`\`\``, bg: true } as NoteCard, 40, 40, 440);
+  const h = await open({ board: b, light: true, w: 900, h: 700, settings: { theme: "warm-ink" } as any });
+  const pg = h.page;
+  await pg.waitForSelector(".mmd.ok svg", { timeout: 5000 });
+  await pg.evaluate(() => { (window as any).__svg0 = document.querySelector(".mmd.ok svg"); const el = document.documentElement; el.classList.replace("look-warm-ink", "look-newspaper"); el.dataset.look = "newspaper"; });
+  await pg.waitForTimeout(400);
+  const r = await pg.evaluate(() => { const s = document.querySelector(".mmd.ok svg"); return { redrawn: !!s && s !== (window as any).__svg0, font: s ? getComputedStyle(s.querySelector("text")!).fontFamily.split(",")[0] : null }; });
+  check("mermaidThemes font switch redraws", r.redrawn && /Old Standard/.test(r.font ?? ""), r);
+  await close(h);
+  // Note 变宽：放得下了，mindmap 换回横着排
+  const b2 = emptyBoard("b1", "mermaid");
+  put(b2, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[5][1]}\n\`\`\``, bg: true } as NoteCard, 40, 40, 300);
+  const h2 = await open({ board: b2, light: true, w: 1100, h: 600 });
+  await h2.page.waitForSelector(".mmd.ok svg", { timeout: 5000 });
+  const size = () => h2.page.evaluate(() => { const s = document.querySelector(".mmd.ok svg")!; return [+s.getAttribute("width")!, +s.getAttribute("height")!]; });
+  const narrow = await size();
+  await h2.page.evaluate(() => { (document.querySelector('.card[data-id="m0"]') as HTMLElement).style.width = "800px"; });
+  await h2.page.waitForTimeout(300);
+  const wide = await size();
+  check("mermaidThemes wider Note lays out left to right", narrow[1] > narrow[0] && wide[0] > wide[1], { narrow, wide });
+  await close(h2);
+});

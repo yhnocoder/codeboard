@@ -580,8 +580,17 @@ kbd { font: 10.5px var(--mono); }
 /* 脚注 */
 .md sup.fnref { color: var(--k-fn); font-size: .75em; padding: 0 1px; }
 .md ol.footnotes { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); font-size: .9em; color: var(--ink-2); }
-/* Mermaid */
-.mmd { margin: 4px 0; }
+/* Mermaid（md/diagram.ts，pele 画的 SVG）：颜色和字体都是 CSS 变量，接到主题变量上，换明暗 / 主题配色不用重画 */
+.mmd {
+  margin: 4px 0;
+  --pele-bg: var(--surface); --pele-fg: var(--ink); --pele-muted: var(--ink-2); --pele-line: var(--ink-2); --pele-accent: var(--accent);
+  --pele-surface: color-mix(in srgb, var(--ink) 5%, var(--surface)); --pele-surface-alt: color-mix(in srgb, var(--ink) 10%, var(--surface));
+  --pele-border: color-mix(in srgb, var(--ink) 20%, var(--surface)); --pele-critical: var(--accent); --pele-error: var(--warn);
+  --pele-font: var(--sys); --pele-font-mono: var(--mono); --pele-radius: calc(var(--r-card) * .5);
+  --pele-series-1: var(--lk-blue); --pele-series-2: var(--lk-orange); --pele-series-3: var(--lk-green); --pele-series-4: var(--k-kw);
+  --pele-series-5: var(--k-fn); --pele-series-6: var(--k-num); --pele-series-7: var(--k-self); --pele-series-8: var(--k-str);
+}
+.card.nobg .mmd { --pele-bg: var(--bg); }
 .mmd.ok { display: flex; justify-content: center; overflow: hidden; }
 .mmd.ok svg { max-width: 100%; height: auto; }
 .mmd-err { font: 11px/1.45 var(--mono); color: var(--warn); margin-bottom: 2px; }

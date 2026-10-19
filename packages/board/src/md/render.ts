@@ -49,7 +49,7 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   // 公式：静态的 KaTeX（行内的不再包一层 span，少一个节点）
   inlineMath: (n, cx) => tex(cx, n.attrs.latex, !!n.attrs.display),
   blockMath: (n, cx) => `<div class="math" data-latex="${escA(n.attrs.latex)}">${tex(cx, n.attrs.latex, true)}</div>`,
-  // Mermaid：先放源码，挂到页面上以后换成图（mermaid.ts）。源码里常有 -->，DOMPurify 会删掉带它的属性：自己转义过，不过 DOMPurify
+  // Mermaid：先放源码，挂到页面上以后换成图（diagram.ts）。源码里常有 -->，DOMPurify 会删掉带它的属性：自己转义过，不过 DOMPurify
   codeBlock: (n, cx) => (n.attrs.language === "mermaid" ? trust(cx, `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>`) : undefined),
   // 目录：填上这篇的标题
   toc: (_n, cx) => `<nav data-type="toc" class="md-toc">${tocHtml(tocEntries(cx.doc))}</nav>`,

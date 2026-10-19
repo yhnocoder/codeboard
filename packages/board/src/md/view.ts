@@ -19,7 +19,7 @@ export function hydrate(el: HTMLElement, html: string) {
     }
   }
   if (html.includes('class="md-code" data-lang')) colorCode(el);
-  if (html.includes('class="mmd"')) void import("./mermaid").then((m) => m.renderAll(el));
+  if (html.includes('class="mmd"')) void import("./diagram").then((m) => m.renderAll(el));
 }
 
 /**
