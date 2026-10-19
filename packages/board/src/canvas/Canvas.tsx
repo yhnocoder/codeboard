@@ -2,7 +2,7 @@
 // 加上屏幕坐标的框选框、对齐工具条。
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
-import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
+import { state, sel, rectOf, cardById, hostOf, mutate, placed } from "../state/store";
 import { cam, setViewport, lod, camMoving, stillZ } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";
@@ -101,7 +101,7 @@ export function Canvas() {
 
 function WalkSteps() {
   const items = createMemo(() => [...(A.walkSteps() ?? new Map<string, number>()).entries()]);
-  const cur = () => { const w = walk(); return w ? cardById(w.order[w.i])?.host.id : undefined; };
+  const cur = () => { const w = walk(); return w ? hostOf(w.order[w.i]) : undefined; };
   // 字号跟着镜头停下后的缩放反向放大一点（镜头动的时候不重算）
   const k = () => Math.max(1, 0.9 / stillZ());
   return (

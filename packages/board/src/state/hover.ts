@@ -1,6 +1,6 @@
 // 指针下的卡和线：它们的线临时浮到所有卡上面（canvas/Links.tsx 的图层）。卡片、标签、贴纸都从这里读写，不从组件 import
 import { createEffect, createSignal, on, onCleanup, untrack } from "solid-js";
-import { state, cardById } from "./store";
+import { state, hostOf } from "./store";
 import { camMoving } from "./camera";
 import { tune } from "./tune";
 
@@ -9,7 +9,6 @@ export const [hoverCard, setHoverCard] = createSignal<string | null>(null);
 
 // 指针下的卡：离开后过 linkLeave 才算离开，鼠标从卡移到它的线上时线不掉下去。镜头动的时候不换（内容从指针下滑过也会进出卡），停下再按最后的那张算
 let hovNow: string | null = null, cardT: number | undefined;
-const hostOf = (id: string) => cardById(id)?.host.id;
 const settleHover = () => { clearTimeout(cardT); cardT = window.setTimeout(() => { if (!camMoving()) setHoverCard(hovNow); }, tune("linkLeave")); };
 export const enterCard = (id: string) => { hovNow = id; clearTimeout(cardT); if (!camMoving()) setHoverCard(id); };
 export const leaveCard = (id: string) => { if (hovNow === id) hovNow = null; settleHover(); };

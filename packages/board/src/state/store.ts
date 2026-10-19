@@ -79,13 +79,15 @@ const cardIndex = rooted(() => createMemo(() => {
   return m;
 }));
 export const cardById = (id: string) => cardIndex().get(id);
+/** 卡所在的顶层卡（Compare 的栏 → 它的 Compare）；不认识的 id 原样返回 */
+export const hostOf = (id: string) => cardById(id)?.host.id ?? id;
 /** 画布上摆着的卡（有 Place 的），按叠放顺序 */
 export const placed = rooted(() => createMemo(() => state.board.cards.filter((c) => state.board.place[c.id])));
 
 const NOWHERE: Place = { x: 0, y: 0, w: 320 };
 /** 卡（或 Compare 的栏 → 它的 Compare）的摆放 */
 export function placeOf(id: string): Place {
-  return state.board.place[id] ?? state.board.place[cardById(id)?.host.id ?? ""] ?? NOWHERE;
+  return state.board.place[id] ?? state.board.place[hostOf(id)] ?? NOWHERE;
 }
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
@@ -94,7 +96,7 @@ export const [sizes, setSizes] = createStore<Record<string, { w: number; h: numb
 export function rectOf(c: { id: string } | string) {
   const id = typeof c === "string" ? c : c.id;
   const p = placeOf(id);
-  const s = sizes[cardById(id)?.host.id ?? id];
+  const s = sizes[hostOf(id)];
   // 还没量到：代码卡的 h 只是内容区，按 Warm Ink 的卡头加回去
   return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? CODE_HEAD : 0) : 120 };
 }

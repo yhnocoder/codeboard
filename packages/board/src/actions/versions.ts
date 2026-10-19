@@ -3,7 +3,7 @@ import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, allCodeCards, rebaseSegment, rebaseUpstream, upstreamSegs, viewKeyOf, UPSTREAM, type CodeCard, type Segment, type DiffData, type Commit, type SegView,
 } from "@codeboard/core";
-import { state, setState, mutate, select, cardById, toast } from "../state/store";
+import { state, setState, mutate, select, cardById, hostOf, toast } from "../state/store";
 import { openPop, updatePop } from "../state/pop";
 import { send, ask } from "../host";
 import { addCards } from "./create";
@@ -38,7 +38,7 @@ export async function openDiff(id: string, segId?: string) {
   const ups = upstreamSegs(c);
   const s = segId ? ups.find((q) => q.id === segId) : ups.find((q) => state.stale[q.id]?.state === "changed") ?? ups[0];
   if (!s) return;
-  const el = document.querySelector(`.card[data-id="${cardById(id)!.host.id}"] .rev`) ?? undefined;
+  const el = document.querySelector(`.card[data-id="${hostOf(id)}"] .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
   try {
     const data = await ask("diff", { seg: structuredClone(unwrap(s)), against: c.variants?.length ? "upstream" : undefined });
@@ -151,7 +151,7 @@ export function replaceSegment(cardId: string, seg: Segment, view: SegView) {
 export function reviewNext() {
   for (const c of allCodeCards(state.board)) {
     const st = cardStale(c);
-    if (st === "changed" || st === "hidden") { select({ cards: [cardById(c.id)!.host.id] }); revealCard(c.id, false); setTimeout(() => openDiff(c.id), 350); return; }
+    if (st === "changed" || st === "hidden") { select({ cards: [hostOf(c.id)] }); revealCard(c.id, false); setTimeout(() => openDiff(c.id), 350); return; }
   }
   toast("All cards are up to date");
 }

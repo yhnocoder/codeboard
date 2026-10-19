@@ -1,7 +1,7 @@
 // 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、打开编辑器 / 链接 / diff、Fit Content。
 import { unwrap } from "solid-js/store";
 import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
-import { state, mutate, sel, select, isSel, cardById, rectOf, placeOf, placed, flows } from "../state/store";
+import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
 import { notesOf, ping, setPopIn, popIn, setPaletteOpen } from "../state/ui";
@@ -81,10 +81,9 @@ export function revealCard(id: string, doPing = true) {
 /** 展开藏着这张卡的：调用图里它上面折叠着的卡、它所在的折叠的 Section（一层层往外）。返回有没有展开什么 */
 function unhide(id: string): boolean {
   if (!isHidden(id)) return false;
-  const host = (k: string) => cardById(k)?.host.id ?? k;
-  const h = host(id), up = new Set<string>(), todo = [id];
+  const h = hostOf(id), up = new Set<string>(), todo = [id];
   while (todo.length) for (const l of flows().parents.get(todo.pop()!) ?? []) {
-    const p = host(l.from.card);
+    const p = hostOf(l.from.card);
     if (!up.has(p)) { up.add(p); todo.push(l.from.card); }
   }
   return mutate((b) => {
@@ -178,7 +177,7 @@ export function openWorktreeDiff(id: string) {
   const c = cardById(id)?.card;
   if (!isCode(c)) return;
   const s = c.segments[0];
-  const el = document.querySelector(`.card[data-id="${cardById(id)!.host.id}"] .rev`) ?? undefined;
+  const el = document.querySelector(`.card[data-id="${hostOf(id)}"] .rev`) ?? undefined;
   const pid = openPop({ kind: "diff", card: id, seg: s.id }, el ? { el, prefer: "below" } : lastPointer());
   ask("diff", { seg: structuredClone(unwrap(s)), against: "worktree" })
     .then((data) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, data } : p)))

@@ -4,7 +4,7 @@
 // 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：各自画到合并点，合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
 import { Show, batch, createEffect, createMemo, createRenderEffect, createSelector, createSignal, mapArray, on, onCleanup, type Accessor } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
-import { state, sel, select, rectOf, cardById, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
+import { state, sel, select, rectOf, cardById, hostOf, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
 import { geo, lineY, setCurveSource, HEAD_H } from "../state/geo";
 import { frames, collapsedHome } from "../state/sections";
 import { dragLink, setDragLink, rubber, popIn } from "../state/ui";
@@ -353,7 +353,6 @@ function order(p: Element, ns: Element[]) {
   }
 }
 
-const hostOf = (id: string) => cardById(id)?.host.id;
 
 /** Canvas 里调用一次：每条线的走线、几何、节点，和它画在哪一层 */
 export function trackLinks() {

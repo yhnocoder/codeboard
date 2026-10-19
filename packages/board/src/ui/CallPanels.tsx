@@ -2,7 +2,7 @@
 // 都是开着才算（关着的面板不读 flows、不进每帧的工作）
 import { For, Show } from "solid-js";
 import { cardTitle, LEGEND, legendName, type LegendKey } from "@codeboard/core";
-import { state, flows, cardById, sel } from "../state/store";
+import { state, flows, cardById, hostOf, sel } from "../state/store";
 import { Icon } from "./icons";
 import * as A from "../actions";
 import { runState, setLegendOpen, setRunState, setTreeOpen } from "../state/calls";
@@ -39,7 +39,7 @@ export function CallTreePanel() {
         <For each={A.treeRows()} fallback={<div class="empty sm">No Call arrows yet. Click a call in a code card, or mark a card as Start.</div>}>{(r) => {
           const g = () => flows().byId.get(r.card);
           return (
-            <button class="ctrow" classList={{ again: !!r.again, on: sel.cards.includes(cardById(r.card)?.host.id ?? r.card) }} style={{ "padding-left": `${8 + r.depth * 14}px` }}
+            <button class="ctrow" classList={{ again: !!r.again, on: sel.cards.includes(hostOf(r.card)) }} style={{ "padding-left": `${8 + r.depth * 14}px` }}
               data-card={r.card} data-tip={r.again ? "Already expanded above" : undefined} onClick={() => A.jumpTo(r.card)}>
               <Show when={g()?.label}><span class="ctm">{g()!.label}</span></Show>
               <Show when={r.rpc}><span class="ctrpc">RPC</span></Show>

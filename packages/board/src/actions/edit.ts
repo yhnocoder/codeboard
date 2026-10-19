@@ -9,7 +9,7 @@ import {
   type Rect,
 } from "@codeboard/core";
 import {
-  state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, rectOf, toast, placeOf, sharedOn,
+  state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, hostOf, rectOf, toast, placeOf, sharedOn,
   type LineSel,
 } from "../state/store";
 import { animate, Spring, reduceMotion } from "../state/camera";
@@ -93,7 +93,7 @@ export function removeSections(ids: string[]) { mutate((b) => removeSectionsIn(b
 
 /** 图层：卡的叠放顺序就是 b.cards 的顺序（core arrangeCards）。上移 / 下移一层只越过跟它重叠的卡（不重叠的换了也看不出来） */
 export function arrange(ids: string[], how: Arrange) {
-  const set = new Set(ids.map((id) => cardById(id)?.host.id ?? id));
+  const set = new Set(ids.map(hostOf));
   if (!set.size) return;
   const rs = [...set].filter((id) => state.board.place[id]).map((id) => rectOf(id));
   mutate((b) => arrangeCards(b, set, how, (id) => { const r = rectOf(id); return rs.some((m) => overlaps(m, r)); }));
@@ -303,7 +303,7 @@ export function unmerge(id: string) {
 
 /** 共享卡在这块白板上变成独立副本（Unlink）：换新 id，别的白板和卡库不动 */
 export function unlinkShared(id: string) {
-  const h = cardById(id)?.host.id ?? id;
+  const h = hostOf(id);
   let to = "";
   if (!mutate((b) => { to = unlinkCard(b, h); })) return;
   select({ cards: [to] });

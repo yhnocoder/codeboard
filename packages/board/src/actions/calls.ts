@@ -4,7 +4,7 @@ import { rooted } from "../state/root";
 import {
   uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, LEGEND, sameSource, baseName, joinLinks, splitLink, placeCards, canMark, type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
 } from "@codeboard/core";
-import { state, mutate, select, flows, cardById, rectOf, toast, placeOf, placed, sel } from "../state/store";
+import { state, mutate, select, flows, cardById, hostOf, rectOf, toast, placeOf, placed, sel } from "../state/store";
 import { openPop } from "../state/pop";
 import { walk } from "../state/ui";
 import { treeOpen, setRunState, runState } from "../state/calls";
@@ -86,7 +86,7 @@ export function toggleMsgCard(id: string) {
   const at = findFree({ x: cx - w / 2, y: cy - 20, w, h: 56 }, others);
   const mid = uid("n"), l2 = uid("l");
   const card: NoteCard = { id: mid, kind: "note", md: name, bg: true, msg: {} };
-  const sec = placeOf(cardById(L.from.card)?.host.id ?? L.from.card).section;
+  const sec = placeOf(hostOf(L.from.card)).section;
   mutate((b) => {
     if (!b.links.some((k) => k.id === id && k.rpc)) return;
     placeCards(b, [{ card, place: { x: Math.round(at.x), y: Math.round(at.y), w } }], { copy: false, at: (q) => (sec ? { ...q, section: sec } : q) });
@@ -124,7 +124,7 @@ export const procCls = (p: ProcTag) => `proc${p.light ? " light" : ""}`;
 // ---------- 起点卡（线框 12） ----------
 
 export function toggleStart(cardId: string) {
-  const host = cardById(cardId)?.host.id ?? cardId;
+  const host = hostOf(cardId);
   mutate((b) => { const p = b.place[host]; if (!p) return; if (p.start) delete p.start; else p.start = true; });
 }
 /** 起点卡（按创建顺序）：只读 Place.start，拖动不重算 */
@@ -135,7 +135,7 @@ export const walkSteps = rooted(() => createMemo(() => {
   const w = walk();
   if (!w) return null;
   const m = new Map<string, number>();
-  w.order.forEach((id, i) => { const h = cardById(id)?.host.id ?? id; if (!m.has(h)) m.set(h, i + 1); });
+  w.order.forEach((id, i) => { const h = hostOf(id); if (!m.has(h)) m.set(h, i + 1); });
   return m;
 }));
 
