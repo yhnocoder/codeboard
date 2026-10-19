@@ -141,8 +141,9 @@ jobs:
             const A = "test-out/artifacts";
             const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
             const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : []);
+            // one line per unique warning (rule + element) with the steps it appears in
+            const { report } = require(`${process.env.GITHUB_WORKSPACE}/tools/review/audit.cjs`);
             const audit = json(`${A}/e2e/audit.json`);
-            const issues = [...new Set(audit.flatMap((a) => a.issues.map((i) => `- ${a.step}: ${i.rule} — ${i.what}`)))];
             const jobs = JSON.parse(process.env.JOBS);
             // Harness: what ran, why, what failed, what was left to the nightly run
             const hr = [1, 2].map((k) => json(`${A}/harness-${k}/result.json`)).filter((x) => x.results);
@@ -161,7 +162,7 @@ jobs:
               `Commit ${context.payload.pull_request.head.sha.slice(0, 7)} · [Run log](${run}) · ` + Object.entries(jobs).map(([k, v]) => `${k} ${v.result === "success" ? "✅" : v.result === "skipped" ? "–" : "❌"}`).join(" · "), "",
               ...harness, "",
               read(`${A}/perf/summary.md`) || (jobs.perf?.result === "success" ? "**Performance**: skipped, no change to code the benchmarks run." : "**Performance**: no results."), "",
-              `**UI audit**: ${issues.length ? `${issues.length} warning${issues.length > 1 ? "s" : ""}` : "no issues"}`, ...issues.slice(0, 30), "",
+              ...report(audit, "UI audit"), "",
               "<details><summary>e2e screenshots, vs target branch</summary>", "", read("test-out/e2e-summary.md") || "No screenshots.", "</details>",
               "<!-- ci-screenshots:end -->",
             ].join("\n");

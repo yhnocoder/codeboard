@@ -488,6 +488,16 @@
 :root.look-classic .chead .rev:not(.lang):not(.unc) { border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; gap: 5px; }
 :root.look-classic .chead .rev:not(.new):not(.lang):not(.unc):not(.lost)::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
 :root.look-classic .chead .rev.new { border-color: var(--warn); color: var(--ink-2); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+/* Folding header chips (styles.css, card header priority): the pill and its dot are drawn on the label, so a chip that is folding
+   shows only its mark, never an empty pill */
+:root.look-classic .chead .rev.fold:not(.unc) { border: 0; padding: 0; background: none; --rwh: calc(1lh + 4px); }
+:root.look-classic .chead .rev.fold:not(.unc)::before { display: none; }
+:root.look-classic .chead .rev.fold:not(.unc) .rl { display: flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
+:root.look-classic .chead .rev.fold:not(.unc) .rl > i { margin: 0; }
+:root.look-classic .chead .rev.fold:not(.new):not(.unc):not(.lost) .rl::after { content: ""; order: -1; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+:root.look-classic .chead .rev.fold:not(.new):not(.unc):not(.lost) .rl::before { background: var(--ok); opacity: 1; }
+:root.look-classic .chead .rev.fold.new .rl { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
+:root.look-classic .chead .rev.fold:not(.unc):hover .rl { background: var(--hlrow); }
 :root.look-classic .port { display: none; }
 :root.look-classic .vcard, :root.look-classic .vbox, :root.look-classic .vlabel, :root.look-classic .vchip { background: var(--bg); box-shadow: 0 0 0 1px var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; }
 :root.look-classic .pill, :root.look-classic .ctx, :root.look-classic .pop, :root.look-classic .dialog, :root.look-classic .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 9px; }
@@ -570,6 +580,11 @@
 :root.look-drafting .cpath { font: 10.5px var(--mono); color: var(--ink-3); text-transform: uppercase; letter-spacing: .04em; }
 :root.look-drafting .rev { font: 10.5px var(--mono); color: var(--ink-3); gap: 6px; border-radius: 0; }
 :root.look-drafting .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; box-sizing: border-box; border: 1px solid currentColor; }
+:root.look-drafting .chead .rev.fold:not(.new):not(.unc)::before { display: none; } /* drawn on the label instead, so it folds with it */
+:root.look-drafting .chead .rev.fold:not(.new):not(.unc) .rl { display: flex; align-items: center; gap: 6px; }
+:root.look-drafting .chead .rev.fold:not(.new):not(.unc) .rl::after { content: ""; order: -1; width: 7px; height: 7px; box-sizing: border-box; border: 1px solid currentColor; flex: none; }
+:root.look-drafting .chead .rev.fold:not(.unc) .rl::before { border-radius: 0; width: 7px; height: 7px; top: calc(var(--rwh, 1lh) * -0.5 - 3.5px); }
+:root.look-drafting .chead .rev.fold:not(.new):not(.unc) .rl::before { background: none; box-shadow: inset 0 0 0 1px currentColor; opacity: 1; }
 :root.look-drafting .rev.new { color: var(--ink); }
 :root.look-drafting .rev i { width: 7px; height: 7px; border-radius: 0; background: currentColor; box-shadow: none; }
 :root.look-drafting .rev.hollow i { background: none; box-shadow: inset 0 0 0 1px currentColor; }
@@ -624,9 +639,15 @@
 :root.look-colorful .chead .cpath { flex: 1 1 auto; color: var(--ink-2); font: inherit; border-right: 2px solid var(--rule); }
 :root.look-colorful .chead .rev { font: inherit; color: var(--ink-2); gap: 7px; }
 :root.look-colorful .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--f3); }
+:root.look-colorful .chead .rev.fold:not(.new):not(.unc)::before { display: none; } /* drawn on the label instead, so it folds with it */
+:root.look-colorful .chead .rev.fold:not(.new):not(.unc) .rl { display: flex; align-items: center; gap: 7px; }
+:root.look-colorful .chead .rev.fold:not(.new):not(.unc) .rl::after { content: ""; order: -1; width: 7px; height: 7px; border-radius: 50%; background: var(--f3); flex: none; }
+:root.look-colorful .chead .rev.fold:not(.new):not(.unc) .rl::before { width: 7px; height: 7px; background: var(--f3); opacity: 1; top: calc(var(--rwh, 1lh) * -0.5 - 3.5px); }
 :root.look-colorful .chead .rev.new { color: var(--ink); }
 :root.look-colorful .rev.new i { width: 7px; height: 7px; background: var(--f1); }
 :root.look-colorful .chead .ib { width: 32px; border-left: 2px solid var(--rule); color: var(--ink); }
+:root.look-colorful .chead > .ib.cpy { width: auto; padding: 0; } /* the 32px cell is its .rw, so it can fold (styles.css: card header priority) */
+:root.look-colorful .chead .ib.cpy .rw { width: 32px; }
 :root.look-colorful .chead .ib:hover, :root.look-colorful .chead .rev:hover, :root.look-colorful .chead .cpath:hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
 :root.look-colorful .cband { display: flex; position: relative; flex: none; height: 54px; align-items: center; padding: 0 64px 0 14px; background: var(--fc); border-bottom: 2px solid var(--rule); }
 :root.look-colorful .cband .cname { font: 600 16px var(--sys); letter-spacing: .03em; color: var(--bink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

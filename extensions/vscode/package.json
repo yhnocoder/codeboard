@@ -719,7 +719,7 @@
     "watch": "node esbuild.mjs --watch",
     "typecheck": "tsc --noEmit",
     "e2e": "bash test/run.sh",
-    "test:host": "node test/check-vscode-imports.mjs && node test/run-host-resolve.mjs",
+    "test:host": "node test/check-vscode-imports.mjs && node test/run-scratch-names.mjs && node test/run-host-resolve.mjs",
     "package": "cp ../../LICENSE LICENSE && npx -y @vscode/vsce@3.9.2 package --no-dependencies -o codeboard-vscode-$npm_package_version.vsix"
   },
   "dependencies": {

@@ -32,7 +32,7 @@ async function openFile(page, name, line) {
   if (line) { await page.keyboard.press("Control+g"); await sleep(300); await page.keyboard.type(String(line)); await page.keyboard.press("Enter"); await sleep(400); }
 }
 // Each screenshot also runs the generic UI audit (tools/review/audit.cjs), collected in audit.json; with AUDIT_STRICT=1 issues count as failures
-const { audit } = require("../../../tools/review/audit.cjs");
+const { audit, report } = require("../../../tools/review/audit.cjs");
 const audits = [];
 // Before a screenshot wait for the board to settle (animations done, canvas still) and capture only the board, so unrelated changes like the VS Code status bar don't disturb the diff
 const settle = (fr) => fr.evaluate(async () => {
@@ -293,7 +293,7 @@ async function cardfocusStep(page) {
 }
 
 // PR9 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
-// 旁边的隐藏文件（这里是 nanovllm/engine/.codeboard-<卡>.py），import 按那个目录找；git status 里看不到，编辑完就删掉，
+// 旁边的隐藏文件（这里是 nanovllm/engine/.codeboard-scratch-<卡>.py），import 按那个目录找；git status 里看不到，编辑完就删掉，
 // 也不会冒出未保存的标签页（重新加载窗口后也没有）。要 E2E_EXTENSIONS 里有 Pylance。E2E_ONLY=codeedit 只跑这一步
 async function codeeditStep(page) {
   await openFile(page, "llm_engine.py", 51);
@@ -352,6 +352,7 @@ async function codeeditStep(page) {
 const finish = async (browser, errors) => {
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
+  console.log(report(audits).join("\n"));
   console.log(failed ? `${failed} checks failed` : "all passed");
   await browser.close().catch(() => {});
   process.exit(failed ? 1 : 0);

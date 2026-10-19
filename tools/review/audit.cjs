@@ -3,6 +3,8 @@
 // L10 popup lost its anchor and jumped to the top-left (C4), L11 submenu covers its parent menu (C5).
 // Usage: const { audit } = require("tools/review/audit.cjs"); const r = await audit(frameOrPage, "step name");
 // Returns { step, issues: [{ rule, what }] }; with AUDIT_STRICT=1 the caller should fail any step with issues.
+// Report: report(audits, "UI audit") gives Markdown lines for the PR description, one per unique warning (rule + element)
+// with the steps it shows up in, so an element that stays on screen for ten steps is one warning, not ten.
 
 const SEL = {
   hit: "button, [role=button], [role=menuitem], a[href], input, select, textarea, .call, .mk, .step, .handle, [data-hit]",
@@ -24,6 +26,17 @@ function inPage(SEL) {
     const cs = getComputedStyle(el);
     if (cs.visibility === "hidden" || cs.display === "none" || +cs.opacity < 0.05 || cs.pointerEvents === "none") return null;
     return r;
+  };
+  // Wholly clipped away by an ancestor (e.g. a header chip's label folded onto a hidden second line): not on screen, so not truncated text
+  const clippedOut = (el, r) => {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.overflowX === "visible" && cs.overflowY === "visible") continue;
+      const pr = p.getBoundingClientRect();
+      const x = cs.overflowX !== "visible" && (r.right <= pr.left || r.left >= pr.right), y = cs.overflowY !== "visible" && (r.bottom <= pr.top || r.top >= pr.bottom);
+      if (x || y) return true;
+    }
+    return false;
   };
   const area = (a, b) => Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top));
   const issues = [];
@@ -68,7 +81,7 @@ function inPage(SEL) {
   for (const el of document.querySelectorAll(SEL.text)) {
     if (seen.has(el) || !el.childNodes.length || ![...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim())) continue;
     seen.add(el);
-    const r = shown(el); if (!r) continue;
+    const r = shown(el); if (!r || clippedOut(el, r)) continue;
     const cs = getComputedStyle(el);
     if ((cs.textOverflow === "ellipsis" || cs.overflow !== "visible") && el.scrollWidth > el.clientWidth + 1)
       issues.push({ rule: "L2 truncated text", what: label(el) });
@@ -102,4 +115,27 @@ async function audit(target, step) {
   const issues = await target.evaluate(inPage, SEL);
   return { step, issues };
 }
-module.exports = { audit, SEL };
+
+/** Unique warnings across steps, in the order they first appear: [{ rule, what, steps }] */
+function dedupe(audits) {
+  const m = new Map();
+  for (const a of audits) for (const i of a.issues) {
+    const k = `${i.rule}\u0000${i.what}`;
+    const u = m.get(k) ?? m.set(k, { rule: i.rule, what: i.what, steps: [] }).get(k);
+    if (!u.steps.includes(a.step)) u.steps.push(a.step);
+  }
+  return [...m.values()];
+}
+
+/** Markdown for the PR description: "**UI audit**: N warnings" (N unique), then one line per warning with its steps:
+ *  - L2 truncated text — div.ctitle "pick_tokens" (10-pick-impl, 11-capture-run, +3 more) */
+function report(audits, title = "UI audit", max = 30) {
+  const u = dedupe(audits);
+  const steps = (s) => `${s.slice(0, 2).join(", ")}${s.length > 2 ? `, +${s.length - 2} more` : ""}`;
+  return [
+    `**${title}**: ${u.length ? `${u.length} warning${u.length > 1 ? "s" : ""}` : "no issues"}`,
+    ...u.slice(0, max).map((i) => `- ${i.rule} — ${i.what} (${steps(i.steps)})`),
+    ...(u.length > max ? [`- …and ${u.length - max} more (audit.json in the run's artifacts)`] : []),
+  ];
+}
+module.exports = { audit, dedupe, report, SEL };
