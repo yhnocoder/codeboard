@@ -5,11 +5,13 @@
 ```bash
 git submodule update --init
 npm install
-npm run build      # board UI + extension
+npm run build      # board UI + extension, compiled into extensions/vscode/dist (no .vsix)
 npm test           # unit tests (core and board)
 npm run check      # local test tier: typecheck, unit, host and affected harness scenarios (~3 min)
 npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Code and xvfb)
 ```
+
+To build an installable `.vsix`, run `npm run build`, then `npm run package -w codeboard-vscode`. The package lands in `extensions/vscode/`. Releases do the same in CI (`.github/workflows/release.yml`).
 
 To debug the extension, open this repository in VS Code, press `F5` and pick **CodeBoard：在 nano-vllm 上调试插件**. A new window opens with the extension installed and `examples/nano-vllm` loaded.
 
