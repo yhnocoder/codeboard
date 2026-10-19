@@ -107,6 +107,8 @@ function signaturePlugin(host: LspHost) {
         const s = await host.signature(v.state.doc.toString(), line, col, trig).catch(() => null);
         if (id !== this.n || !v.dom.isConnected) return;
         const cur = v.state.field(sigField, false);
+        // 开着时跟着再问的：问的路上被关掉了（Esc、失焦）就不再打开
+        if (!trig && !cur) return;
         if (!s) { if (cur) v.dispatch({ effects: setSig.of(null) }); return; }
         // 提示框钉在左括号那里：开着的时候不跟着光标跑
         v.dispatch({ effects: setSig.of({ sig: s, pos: cur ? cur.pos : pos }) });

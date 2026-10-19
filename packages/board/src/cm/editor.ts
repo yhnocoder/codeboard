@@ -6,7 +6,7 @@ import { EditorState, EditorSelection, StateEffect, StateField, Prec, type Exten
 import { EditorView, Decoration, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, tooltips, type DecorationSet, type KeyBinding } from "@codemirror/view";
 import { history, historyKeymap, defaultKeymap, indentLess, insertNewlineAndIndent } from "@codemirror/commands";
 import { indentUnit } from "@codemirror/language";
-import { autocompletion, completionKeymap, completionStatus, acceptCompletion, closeCompletion } from "@codemirror/autocomplete";
+import { autocompletion, completionKeymap, completionStatus, currentCompletions, acceptCompletion, closeCompletion } from "@codemirror/autocomplete";
 import { lspExtensions, dismissSig, type LspHost } from "./lsp";
 import { ghostExtension, acceptGhost, dropGhost, type GhostHost } from "./ghost";
 import { keepKey } from "../ui/editkeys";
@@ -114,16 +114,33 @@ function editLines(view: EditorView, fn: (ls: string[]) => string[]) {
   return true;
 }
 
+/** 补全菜单看得见（还在问宿主、或问回来一个都对不上时看不见） */
+const menuShown = (s: EditorState) => currentCompletions(s).length > 0;
+
+/** Esc：先关看得见的补全菜单、签名提示、灰字，都没有才退出。
+ *  打完字补全要等一会儿才去问宿主（还在问时看不见）：Esc 顺手把它作废，但不算关了什么，照样往下走——
+ *  不然这一下 Esc 什么也看不到，退出要按几下取决于宿主回得快慢 */
+function escKey(exit: () => void): KeyBinding {
+  return {
+    key: "Escape",
+    run: (v) => {
+      if (menuShown(v.state)) return closeCompletion(v);
+      if (completionStatus(v.state)) closeCompletion(v);
+      if (dismissSig(v) || dropGhost(v)) return true;
+      exit();
+      return true;
+    },
+  };
+}
+
 function keys(lang: () => string | undefined, exit: () => void): KeyBinding[] {
   return [
-    // Esc：先关补全菜单、签名提示、灰字，都没有才退出
-    { key: "Escape", run: (v) => { if (completionStatus(v.state) === "active") return closeCompletion(v); if (dismissSig(v) || dropGhost(v)) return true; exit(); return true; } },
     { key: "Mod-ArrowRight", run: (v) => acceptGhost(v, false) },
     { key: "Mod-Enter", run: () => { exit(); return true; } },
     {
       key: "Tab",
       run: (v) => {
-        if (completionStatus(v.state) === "active") return acceptCompletion(v);
+        if (menuShown(v.state)) return acceptCompletion(v);
         if (acceptGhost(v)) return true;
         const multi = v.state.selection.ranges.some((r) => v.state.doc.lineAt(r.from).number !== v.state.doc.lineAt(r.to).number);
         if (multi) return editLines(v, (ls) => ls.map((l) => (l ? IND + l : l)));
@@ -135,7 +152,7 @@ function keys(lang: () => string | undefined, exit: () => void): KeyBinding[] {
     {
       key: "Enter",
       run: (v) => {
-        if (completionStatus(v.state) === "active") return acceptCompletion(v);
+        if (menuShown(v.state)) return acceptCompletion(v);
         const { state } = v;
         const changes = state.changeByRange((r) => {
           const line = state.doc.lineAt(r.from);
@@ -260,6 +277,8 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
     hlField,
     ...(o.activeLine === false ? [] : [highlightActiveLine()]),
     tooltips({ parent: document.body, position: "fixed" }),
+    // Esc 排在补全自带的按键（也是 Prec.highest）前面：它的 Esc 连看不见的、还在问的补全也算一次
+    Prec.highest(keymap.of([escKey(exit)])),
     autocompletion({ activateOnTyping: true, activateOnTypingDelay: 60, icons: false, closeOnBlur: true, maxRenderedOptions: 80, tooltipClass: () => "cbcm-tip cbcm-ac", optionClass: (c) => `cbcm-opt${c.type ? ` k-${c.type}` : ""}` }),
     Prec.highest(keymap.of([...(o.keys ?? []), ...keys(() => lang, exit)])),
     keymap.of([...completionKeymap, ...(o.history === false ? [] : historyKeymap), { key: "Shift-Tab", run: indentLess }, { key: "Enter", run: insertNewlineAndIndent }, ...defaultKeymap]),
