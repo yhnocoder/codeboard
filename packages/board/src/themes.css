@@ -499,7 +499,8 @@
 :root.look-classic .chead .rev.fold.new .rl { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
 :root.look-classic .chead .rev.fold:not(.unc):hover .rl { background: var(--hlrow); }
 :root.look-classic .port { display: none; }
-:root.look-classic .vcard, :root.look-classic .vbox, :root.look-classic .vlabel { background: var(--bg); box-shadow: 0 0 0 1px var(--line); border-radius: 6px; color: var(--ink); font-size: 11px; }
+:root.look-classic .vcard { --vc-bg: var(--bg); --vc-sh: 0 0 0 1px var(--line); --vc-r: 6px; }
+:root.look-classic .vcard, :root.look-classic .vbox, :root.look-classic .vlabel { color: var(--ink); font-size: 11px; }
 :root.look-classic .pill, :root.look-classic .ctx, :root.look-classic .pop, :root.look-classic .dialog, :root.look-classic .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 9px; }
 :root.look-classic .toast { background: var(--toast); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--sh-float); }
 :root.look-classic .toast .tlink { font-weight: 500; }
@@ -544,8 +545,8 @@
 :root.look-soft-light .edge { stroke: color-mix(in srgb, var(--edge) 85%, transparent); }
 :root.look-soft-light .ahead.dot { stroke: none; }
 :root.look-soft-light .port { stroke: var(--coral); fill: var(--surface); }
-:root.look-soft-light .vcard, :root.look-soft-light .vbox, :root.look-soft-light .vlabel { background: var(--surface); border-radius: 999px; padding: 5px 10px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); font-size: 10.5px; }
-:root.look-soft-light .vbox, :root.look-soft-light .vcard { border-radius: 12px; }
+:root.look-soft-light .vcard { --vc-bg: var(--surface); --vc-sh: var(--sh-soft), 0 0 0 .5px var(--hair); --vc-r: 12px; --vl-pad: 5px 10px; }
+:root.look-soft-light .vcard, :root.look-soft-light .vbox, :root.look-soft-light .vlabel { font-size: 10.5px; }
 :root.look-soft-light .pill, :root.look-soft-light .ctx, :root.look-soft-light .pop, :root.look-soft-light .dialog, :root.look-soft-light .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
 :root.look-soft-light .pill { padding: 5px; }
 :root.look-soft-light .ib, :root.look-soft-light .tbtn { border-radius: 9px; }
@@ -592,7 +593,8 @@
 :root.look-drafting .ahead.triangle { fill: var(--ink); stroke: none; }
 :root.look-drafting .ahead.triangle.on { fill: var(--accent); }
 :root.look-drafting .port { fill: var(--bg); stroke: var(--ink); }
-:root.look-drafting .vcard, :root.look-drafting .vbox, :root.look-drafting .vlabel { font: 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); background: var(--bg); box-shadow: none; border-radius: 0; padding: 2px 5px; }
+:root.look-drafting .vcard { --vc-bg: var(--bg); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 5px; }
+:root.look-drafting .vcard, :root.look-drafting .vbox, :root.look-drafting .vlabel { font: 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-drafting .mk, :root.look-drafting .addn { border-radius: 0; }
 :root.look-drafting .card.note .nbody { font: 11px/1.7 var(--mono); color: var(--ink-2); }
 :root.look-drafting .card.note .nbody h1, :root.look-drafting .card.note .nbody h2, :root.look-drafting .card.note .nbody h3, :root.look-drafting .card.note .nbody strong, :root.look-drafting .card.note .nbody b { font-family: var(--head-font); color: var(--ink); letter-spacing: .06em; }
@@ -668,7 +670,8 @@
 :root.look-colorful .port { stroke: var(--rule); stroke-width: 2; fill: var(--f1); }
 :root.look-colorful .port.fc-1 { fill: var(--f2); } :root.look-colorful .port.fc-2 { fill: var(--f3); } :root.look-colorful .port.fc-3 { fill: var(--f4); }
 :root.look-colorful .port.fc-4 { fill: var(--f5); } :root.look-colorful .port.fc-5 { fill: var(--f6); }
-:root.look-colorful .vcard, :root.look-colorful .vbox, :root.look-colorful .vlabel { font: 10.5px/15px var(--mono); color: var(--ink); background: var(--surface); box-shadow: 0 0 0 2px var(--rule); border-radius: 0; padding: 3px 8px; }
+:root.look-colorful .vcard { --vc-bg: var(--surface); --vc-sh: 0 0 0 2px var(--rule); --vc-r: 0; --vl-pad: 3px 8px; }
+:root.look-colorful .vcard, :root.look-colorful .vbox, :root.look-colorful .vlabel { font: 10.5px/15px var(--mono); color: var(--ink); }
 :root.look-colorful .vlabel { font-family: var(--sys); font-weight: 500; letter-spacing: .12em; text-transform: uppercase; }
 :root.look-colorful .mk { border-radius: 0; }
 :root.look-colorful .sect { border-radius: 0; }
@@ -717,7 +720,8 @@
 :root.look-newspaper .gutter::after { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; border-left: .5px solid var(--hair); }
 :root.look-newspaper .port { fill: var(--ink); stroke: none; }
 :root.look-newspaper .ahead.triangle { stroke: none; }
-:root.look-newspaper .vcard, :root.look-newspaper .vbox, :root.look-newspaper .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink); background: none; box-shadow: none; border-radius: 0; padding: 1px 2px; }
+:root.look-newspaper .vcard { --vc-bg: none; --vc-sh: none; --vc-r: 0; --vl-pad: 1px 2px; }
+:root.look-newspaper .vcard, :root.look-newspaper .vbox, :root.look-newspaper .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink); }
 :root.look-newspaper .vchips { font: italic 400 12px var(--serif); color: var(--ink); background: var(--bg); padding: 0 4px; }
 :root.look-newspaper .vchips::before { content: "— "; white-space: pre; }
 :root.look-newspaper .vchips::after { content: " —"; white-space: pre; }
@@ -779,7 +783,8 @@
 :root.look-poster .cfig { display: block; position: absolute; left: 0; right: 0; top: calc(100% + 12px); text-align: center; font: 400 9px var(--mono); letter-spacing: .3em; text-transform: uppercase; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 :root.look-poster .ahead { stroke: var(--rule); }
 :root.look-poster .port { fill: var(--surface); stroke: var(--rule); }
-:root.look-poster .vcard, :root.look-poster .vbox, :root.look-poster .vlabel { font: 9.5px/14px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink); background: var(--surface); box-shadow: 0 0 0 .5px var(--rule); border-radius: 0; padding: 4px 9px; }
+:root.look-poster .vcard { --vc-bg: var(--surface); --vc-sh: 0 0 0 .5px var(--rule); --vc-r: 0; --vl-pad: 4px 9px; }
+:root.look-poster .vcard, :root.look-poster .vbox, :root.look-poster .vlabel { font: 9.5px/14px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink); }
 :root.look-poster .mk, :root.look-poster .addn { border-radius: 0; }
 :root.look-poster .card.note .nbody { font-size: 12px; line-height: 1.7; }
 :root.look-poster .card.note .nbody h1, :root.look-poster .card.note .nbody h2, :root.look-poster .card.note .nbody h3 { font: 400 17px/1.3 var(--serif); letter-spacing: .02em; text-align: center; margin-bottom: 6px; }
@@ -833,7 +838,8 @@
 :root.look-ink-wash .rowbg.hl { background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent); box-shadow: none; }
 :root.look-ink-wash .port { fill: var(--ink); stroke: none; }
 :root.look-ink-wash .ahead.dot { opacity: .9; }
-:root.look-ink-wash .vcard, :root.look-ink-wash .vbox, :root.look-ink-wash .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink-2); background: radial-gradient(closest-side, var(--bg) 62%, transparent); box-shadow: none; border-radius: 0; padding: 2px 10px; }
+:root.look-ink-wash .vcard { --vc-bg: radial-gradient(closest-side, var(--bg) 62%, transparent); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 10px; }
+:root.look-ink-wash .vcard, :root.look-ink-wash .vbox, :root.look-ink-wash .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink-2); }
 :root.look-ink-wash .card.note .nbody { font: 13.5px/1.65 var(--serif); }
 :root.look-ink-wash .tx.st-title { font: 400 30px/1.2 var(--serif); letter-spacing: .02em; }
 :root.look-ink-wash .sect { border-radius: 2px; }
@@ -928,7 +934,8 @@
 /* 夜里车灯亮着 */
 :root.look-city[data-theme="dark"] .mover::after { content: ""; position: absolute; left: 21px; top: 1px; width: 16px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,214,120,.45), rgba(255,214,120,0)); }
 /* 箭头上的数据写在绿色指路牌上 */
-:root.look-city .vcard, :root.look-city .vbox, :root.look-city .vlabel { font: 600 10.5px/15px var(--mono); color: #fff; background: var(--gsign); border-radius: 4px; padding: 4px 10px; box-shadow: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85), 0 3px 6px -3px rgba(0,0,0,.4); }
+:root.look-city .vcard { --vc-bg: var(--gsign); --vc-sh: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85), 0 3px 6px -3px rgba(0,0,0,.4); --vc-r: 4px; --vl-pad: 4px 10px; }
+:root.look-city .vcard, :root.look-city .vbox, :root.look-city .vlabel { font: 600 10.5px/15px var(--mono); color: #fff; }
 :root.look-city .vlabel { font-family: var(--ui); }
 :root.look-city .sect { border-radius: 14px; }
 :root.look-city .slabel { color: #fff; background: var(--sign); border-radius: 4px; box-shadow: var(--signbox); padding: 2px 10px 2px 6px; }
@@ -990,9 +997,6 @@
 .st-prev[data-look="city"] .sp-step { background: var(--shield); }
 .st-prev[data-look="city"] .sp-t { background: #fff; }
 .st-prev[data-look="city"] .sp-edge path { stroke: var(--asphalt); stroke-width: 4; }
-/* 标签框里的变量 / 标签不再各自带框（框在 .vcard 上） */
-:root .vcard .vbox, :root .vcard .vlabel { background: none !important; box-shadow: none !important; border-radius: 0 !important; }
-:root .vcard { padding: 0 !important; }
 
 /* ======================================================================
    内置贴纸：每种材质自己的画法（变量见 styles.css 的 .glyph.bi）
