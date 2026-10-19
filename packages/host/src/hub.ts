@@ -11,7 +11,7 @@ import { viewsFor } from "./views";
 import { variantSegments } from "./versions";
 import { workspace } from "./ws";
 
-const TARGET = "codeboard.target", OPEN = "codeboard.open", OPENED = "codeboard.opened";
+const TARGET = "codeboard.target", OPEN = "codeboard.open", OPENED = "codeboard.opened", ADDED = "codeboard.added";
 
 export class BoardHub implements BoardHost, Disposable {
   private panels = new Map<string, BoardPanel>();
@@ -140,6 +140,12 @@ export class BoardHub implements BoardHost, Disposable {
   opened(id: string) {
     const m = { ...(this.env.globalState.get<Record<string, number>>(OPENED) ?? {}), [id]: Date.now() };
     void this.env.globalState.set(OPENED, m);
+  }
+
+  firstAdd(): boolean {
+    if (workspace().storage.get<boolean>(ADDED)) return false;
+    void workspace().storage.set(ADDED, true);
+    return true;
   }
 
   /**
