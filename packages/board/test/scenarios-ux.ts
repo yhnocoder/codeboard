@@ -26,7 +26,8 @@ const run = async (name: string, f: (res: Record<string, unknown>) => Promise<bo
 
 export const UX: Record<string, () => Promise<void>> = {
   "dock-fits-narrow-board": () => run("dock-fits-narrow-board", dockFits),
-  "expand-keeps-call-line-in-view": () => run("expand-keeps-call-line-in-view", expandFollow),
+  "narrow-board-expands-below-and-stays-readable": () => run("narrow-board-expands-below-and-stays-readable", expandFollow),
+  "expanded-calls-go-in-columns-to-the-right": () => run("expanded-calls-go-in-columns-to-the-right", expandColumns),
   "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
   "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
   "editing-tiny-note-zooms-to-readable": () => run("editing-tiny-note-zooms-to-readable", readableNote),
@@ -72,7 +73,7 @@ const zoomOf = (h: Host) => h.page.evaluate(() => parseInt(document.querySelecto
 const inView = (b: { x: number; y: number; width: number; height: number } | null, vw: number, vh: number, top = Infinity) =>
   !!b && b.x >= 0 && b.y >= 0 && b.x + b.width <= vw && b.y + Math.min(b.height, top) <= vh;
 
-/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，出发的那一行和新卡都在视野里，缩放不低于概览 */
+/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，子卡放在下面，新卡大半在视野里（和 replay r16 同一个标准）；之后 Fit 不低于概览 */
 async function expandFollow(res: Record<string, unknown>) {
   const b = emptyBoard("bE", "expand");
   const step = nv("LLMEngine.step"); put(b, step, 40, 80, 480);
@@ -83,17 +84,52 @@ async function expandFollow(res: Record<string, unknown>) {
   let ok = true;
   for (const name of ["schedule", "postprocess"]) {
     const n0 = h.board().cards.length;
+    // 窄白板放不下父卡和右边一列的新卡：上一次展开后 step 可能出了视野，像用户那样往左平移回来
+    if (!inView(await callEl(h, step.id, name).boundingBox(), W, H)) { await h.page.mouse.move(60, 120); await h.page.mouse.wheel(-600, 0); await wait(h, 500); }
     await callEl(h, step.id, name).click(); await wait(h, 1400);
     const nid = h.board().cards[n0]?.id;
-    const line = await callEl(h, step.id, name).boundingBox();
     const card = await h.page.locator(`.card[data-id="${nid}"]`).boundingBox();
     const z = await zoomOf(h);
-    res[name] = { line: inView(line, W, H), card: inView(card, W, H, 120), z };
-    if (!nid || !inView(line, W, H) || !inView(card, W, H, 120) || z < 0.6) ok = false;
+    const shown = card ? (Math.min(card.x + card.width, W) - Math.max(card.x, 0)) * (Math.min(card.y + card.height, H) - Math.max(card.y, 0)) / (card.width * card.height) : 0;
+    res[name] = { shown: Math.round(shown * 100) / 100, z };
+    if (!nid || shown <= 0.5 || z < 0.6) ok = false;
   }
+  // 窄白板放不下并排：子卡缩进放在 step 下面，Fit 时代码还能读
+  const P = h.board().place, ids = h.board().cards.map((c) => c.id);
+  res.below = ids.slice(1).every((id) => P[id].x === P[step.id].x + 56 && P[id].y > P[step.id].y);
+  await h.page.keyboard.press("Shift+Digit1"); await wait(h, 900);
+  res.fitZ = await zoomOf(h);
   await shot(h, "ux-expand-follow");
   await h.page.context().browser()!.close();
-  return ok;
+  return ok && !!res.below && (res.fitZ as number) >= 0.6;
+}
+
+/** 每深一层调用放右边一列，同一层按出发行从上到下；Fit 后缩放不低于概览，代码还能读 */
+async function expandColumns(res: Record<string, unknown>) {
+  const b = emptyBoard("bC", "columns");
+  const step = nv("LLMEngine.step"); put(b, step, 40, 80, 480);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, w: 1400, h: 900 });
+  await wait(h, 500);
+  const expandOn = async (card: string, name: string) => {
+    const n0 = h.board().cards.length;
+    await callEl(h, card, name).click(); await wait(h, 1200);
+    return h.board().cards[n0]?.id;
+  };
+  const sched = await expandOn(step.id, "schedule");
+  const post = await expandOn(step.id, "postprocess");
+  const alloc = await expandOn(sched, "can_allocate");
+  const P = h.board().place;
+  const r = (id: string) => P[id];
+  res.place = { step: r(step.id), sched: r(sched), post: r(post), alloc: r(alloc) };
+  await h.page.keyboard.press("Shift+Digit1"); await wait(h, 900);
+  const z = await zoomOf(h);
+  res.z = z;
+  await shot(h, "ux-expand-columns");
+  await h.page.context().browser()!.close();
+  if (!sched || !post || !alloc) return false;
+  const right = (a: string, c: string) => r(c).x >= r(a).x + r(a).w;
+  return right(step.id, sched) && right(sched, alloc) && r(post).x === r(sched).x && r(post).y > r(sched).y && z >= 0.6;
 }
 
 /** 真的宿主（resolve.ts、名字索引）读 examples/nano-vllm */

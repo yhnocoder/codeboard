@@ -63,6 +63,8 @@ export interface BoardHost {
   /** 每块白板上次打开的时间（「回来接上」的提示用）；opened 记下这一次 */
   lastOpened?(id: string): number | undefined;
   opened?(id: string): void;
+  /** 这个工作区第一次 Add to Board：返回 true 并记下，之后都是 false */
+  firstAdd?(): boolean;
 }
 
 const DAY = 864e5;

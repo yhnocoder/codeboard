@@ -99,6 +99,9 @@ export const setViewport = (w: number, h: number) => { viewport = { w, h }; setV
 export const viewTracked = viewSig;
 export const view = () => viewport;
 const SAFE = { l: 24, r: 24, t: 60, b: 64 };
+/** 缩放 z 下视野里能放下多宽 / 多高的世界坐标（去掉四边留的空） */
+export const usableW = (z: number) => (viewport.w - SAFE.l - SAFE.r) / z;
+export const usableH = (z: number) => (viewport.h - SAFE.t - SAFE.b) / z;
 
 /** 能放下 r 的镜头（不超过 maxZ，不小于 minZ：再小放不下就居中、四边各裁一点） */
 export function fitRect(r: Rect, maxZ = 1, minZ = ZMIN) {
