@@ -77,7 +77,7 @@ jobs:
 
   perf:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -98,6 +98,8 @@ jobs:
         run: tools/review/checkout-base.sh "$BASE_SHA" base
       - name: Perf, base vs head
         if: steps.need.outputs.run == 'true'
+        # takes about 4 minutes; a stuck runner shows no output, so fail it instead of waiting out the job
+        timeout-minutes: 10
         run: tools/review/perf-ab.sh "${{ env.BASE_SHA != '' && 'base' || '' }}" test-out/perf quick
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() && steps.need.outputs.run == 'true' }}
