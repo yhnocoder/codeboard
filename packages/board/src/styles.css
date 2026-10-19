@@ -562,22 +562,15 @@ kbd { font: 10.5px var(--mono); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
 .md .math .katex-display { margin: 2px 0; }
-/* 代码块着色：颜色和代码卡一样（--k-*） */
-.hljs-keyword, .hljs-built_in.hljs-keyword, .hljs-literal, .hljs-type { color: var(--k-kw); font-weight: var(--kw-w, inherit); }
-.hljs-title.function_, .hljs-title, .hljs-built_in, .hljs-section { color: var(--k-fn); }
-.hljs-string, .hljs-regexp, .hljs-addition, .hljs-symbol { color: var(--k-str); font-style: var(--str-i, inherit); }
-.hljs-comment, .hljs-quote { color: var(--k-com); font-style: var(--com-i, italic); }
-.hljs-number, .hljs-meta, .hljs-attr, .hljs-attribute { color: var(--k-num); }
-.hljs-variable.language_, .hljs-params .hljs-variable, .hljs-title.class_ { color: var(--k-self); }
-.hljs-punctuation, .hljs-operator, .hljs-tag { color: var(--k-p); }
-.hljs-deletion { color: var(--k-kw); background: var(--del); }
-.hljs-addition { background: var(--add); }
+/* 代码块着色是宿主给的（和代码卡同一套 .kw .fn …）；Note 里的调用点不能点，不画成链接 */
+.md pre.md-code .call { text-decoration: none; cursor: inherit !important; }
+.md pre.md-code .call:hover { background: none; }
 /* 任务 */
 .md ul[data-type="taskList"] { list-style: none; padding-left: 2px; }
 .md li[data-type="taskItem"] { display: flex; gap: 6px; align-items: flex-start; }
 .md li[data-type="taskItem"] > label { flex: none; display: flex; align-items: center; height: 1.6em; user-select: none; -webkit-user-select: none; }
 .md li[data-type="taskItem"] > div { flex: 1; min-width: 0; }
-.md li[data-type="taskItem"][data-checked="true"] > div > p, .md li[data-type="taskItem"][data-checked="true"] > div.t { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
+.md li[data-type="taskItem"][data-checked="true"] > div > p { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
 .md li[data-type="taskItem"] input { appearance: none; -webkit-appearance: none; margin: 0; width: 13px; height: 13px; border-radius: 3.5px; box-shadow: inset 0 0 0 1.25px var(--ink-3); background: var(--surface); cursor: pointer !important; display: grid; place-items: center; }
 .md li[data-type="taskItem"] input:checked { background: var(--accent); box-shadow: none; }
 .md li[data-type="taskItem"] input:checked::after { content: ""; width: 6px; height: 3px; border: 1.5px solid var(--accent-ink); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
@@ -643,7 +636,6 @@ kbd { font: 10.5px var(--mono); }
 .md-pm .tableWrapper { overflow-x: auto; margin: 4px 0; }
 .md-pm .tableWrapper table { display: table; margin: 0; }
 .md-pm .selectedCell { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.md-pm sup a.footnote-ref, .md-pm sup a { color: var(--k-fn); text-decoration: none; font-size: .8em; }
 .md-pm ol.footnotes li::marker { color: var(--ink-3); }
 .md-pm a { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; }
 .md-pm img { cursor: default; }

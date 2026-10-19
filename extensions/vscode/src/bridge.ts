@@ -2,7 +2,7 @@
 // 认边界用 core 的纯文本函数（analysis/bridge.ts），这里负责找文件、找符号、读取值。结果是「目标符号 + 要并进 Call 标记的边界和取值」。
 // 都是宿主上的异步工作：读文件、查名字索引，白板不等。
 import * as path from "node:path";
-import type { CallAlt, CrossMark } from "@codeboard/core";
+import { grammarOf, grammarOfFile, type CallAlt, type CrossMark, type Grammar } from "@codeboard/core";
 import {
   bindLaunch, factoryVals, instName, jitKernels, launchMacro, launchTemplateArgs, launchVals, macroDefs, pybindDefs, pyo3Defs, templateParams,
   tilelangInner, torchLibDefs, torchOpOf, tritonInfo, tritonVals, matchClose, symbolAt, type CallSite, type Sym,
@@ -17,17 +17,15 @@ export type Target = { abs: string; sym: Sym };
 /** 跨过去的结果：目标、边界和取值（title = 模板实例名，dispatch<8, 768>） */
 export type Crossed = { t: Target; mark: CrossMark; title?: string };
 
-const CPP = /\.(cu|cuh|cc|cpp|cxx|c|h|hpp|hh|inl)$/i;
-const RS = /\.rs$/i;
-const isCpp = (lang: string) => /^(c|cpp|cuda|cuda-cpp)$/.test(lang);
+const isCpp = (lang: string) => grammarOf(lang) === "cpp";
 
 const toSym = (e: IndexEntry): Sym => ({ name: e.name, qual: e.qual, kind: e.kind, start: e.start, end: e.end, defLine: e.defLine, sig: e.sig, params: [] });
 
 /** 按 qual 找 C++ / Rust 的定义：名字索引里同名的，qual 的后缀对上（deep_ep::Buffer::f 对 Buffer::f）；带上完整分析的参数 */
-async function symByQual(qual: string, ext: RegExp, prefer?: (e: IndexEntry, text: string) => boolean): Promise<Target | null> {
+async function symByQual(qual: string, grammar: Grammar, prefer?: (e: IndexEntry, text: string) => boolean): Promise<Target | null> {
   const parts = qual.split("::").filter(Boolean);
   const name = parts[parts.length - 1];
-  const ents = (await lookupName(name)).filter((e) => ext.test(e.abs) && e.kind === "def");
+  const ents = (await lookupName(name)).filter((e) => grammarOfFile(e.abs) === grammar && e.kind === "def");
   const tail = (q: string) => q.split("::");
   const score = (e: IndexEntry) => {
     const t = tail(e.qual);
@@ -61,13 +59,13 @@ async function lambdaTarget(abs: string, line: number): Promise<Target | null> {
 /** Python 调用 obj.name(…)：语言服务说不出来（C 扩展），在 pybind / PyO3 的注册里找 name */
 export async function viaRegistry(name: string): Promise<Crossed[]> {
   const out: Crossed[] = [];
-  for (const { abs, text } of await grepWord(name, CPP)) {
+  for (const { abs, text } of await grepWord(name, "cpp")) {
     for (const r of pybindDefs(text, name)) {
-      const t = r.lambda ? await lambdaTarget(abs, r.line) : r.target ? await symByQual(r.target, CPP) : null;
+      const t = r.lambda ? await lambdaTarget(abs, r.line) : r.target ? await symByQual(r.target, "cpp") : null;
       if (t) out.push({ t, mark: { bound: `pybind · ${path.basename(abs)} ${r.how}` } });
     }
   }
-  for (const { abs, text } of await grepWord(name, RS)) {
+  for (const { abs, text } of await grepWord(name, "rust")) {
     for (const s of pyo3Defs(text, analysisOf("rust", text).symbols, name)) out.push({ t: { abs, sym: s }, mark: { bound: `PyO3 · ${path.basename(abs)} #[${/#\[pymethods\]/.test(text) && s.parent ? "pymethods" : "pyfunction"}]` } });
   }
   return out;
@@ -80,9 +78,9 @@ async function viaTorchOps(site: CallSite): Promise<Crossed[]> {
   const op = torchOpOf(site);
   if (!op) return [];
   const out: Crossed[] = [];
-  for (const { abs, text } of await grepWord(op.op, CPP)) {
+  for (const { abs, text } of await grepWord(op.op, "cpp")) {
     for (const r of torchLibDefs(text, op.op)) {
-      const t = r.lambda ? await lambdaTarget(abs, r.line) : r.target ? await symByQual(r.target, CPP) : null;
+      const t = r.lambda ? await lambdaTarget(abs, r.line) : r.target ? await symByQual(r.target, "cpp") : null;
       if (t && !out.some((x) => x.t.abs === t.abs && x.t.sym.qual === t.sym.qual)) out.push({ t, mark: { bound: `torch.ops · ${path.basename(abs)} ${r.how}` } });
     }
   }
@@ -91,7 +89,7 @@ async function viaTorchOps(site: CallSite): Promise<Crossed[]> {
 
 /** kernel 的定义：同名、__global__ 的那个（同一个文件的优先） */
 async function kernelSym(name: string, near?: string, file?: (abs: string) => boolean): Promise<{ t: Target; head: string } | null> {
-  const ents = (await lookupName(name)).filter((e) => CPP.test(e.abs) && e.kind === "def" && (!file || file(e.abs)));
+  const ents = (await lookupName(name)).filter((e) => grammarOfFile(e.abs) === "cpp" && e.kind === "def" && (!file || file(e.abs)));
   ents.sort((a, b) => (a.abs === near ? -1 : 0) - (b.abs === near ? -1 : 0));
   let fallback: { t: Target; head: string } | null = null;
   for (const e of ents) {
@@ -114,7 +112,7 @@ async function viaLaunchMacro(site: CallSite, abs: string, text: string): Promis
   if (!argMacro && !defs.has(site.name) && !/LAUNCH/.test(site.name)) return [];
   // SWITCH_X 的定义可能在别的头文件里
   let switches = new Map<string, { params: string[]; body: string }>();
-  if (argMacro && !defs.has(site.name)) for (const f of await grepWord(site.name, CPP)) { const m = macroDefs(f.text); if (m.has(site.name)) { switches = m; break; } }
+  if (argMacro && !defs.has(site.name)) for (const f of await grepWord(site.name, "cpp")) { const m = macroDefs(f.text); if (m.has(site.name)) { switches = m; break; } }
   const lm = launchMacro(site, defs, switches);
   if (!lm) return [];
   const k = await kernelSym(lm.kernel, abs);

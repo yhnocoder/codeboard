@@ -1,9 +1,8 @@
 // 编辑中的代码的语言功能：补全菜单、悬停、签名提示，都问宿主（VS Code 里是 Pylance 之类）。菜单和提示框由 CodeMirror 画，样式跟白板走。
 // 请求都是异步的，打字不等它：补全用 CodeMirror 的 context.aborted（又打了字就作废），悬停、签名按请求号只认最新的。
-import { StateField, StateEffect, type Extension } from "@codemirror/state";
+import { EditorState, StateField, StateEffect, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, hoverTooltip, showTooltip, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
-import { autocompletion } from "@codemirror/autocomplete";
 import type { LspItem, LspSignature } from "@codeboard/core";
 
 export type LspHost = {
@@ -140,8 +139,10 @@ export function dismissSig(v: EditorView): boolean {
 }
 
 export function lspExtensions(host: LspHost): Extension[] {
+  const data = [{ autocomplete: completionSource(host) }];
   return [
-    autocompletion({ override: [completionSource(host)] }),
+    // 补全菜单在 editor.ts 里配一次；这里只给来源
+    EditorState.languageData.of(() => data),
     sigField,
     signaturePlugin(host),
     hover(host),

@@ -1,5 +1,6 @@
-// 静态 Markdown 挂到页面上以后的事：[[卡片引用]] 认卡、Mermaid 换成图、点链接 / 引用 / 勾选框。
+// 静态 Markdown 挂到页面上以后的事：[[卡片引用]] 认卡、代码块着色、Mermaid 换成图、点链接 / 引用 / 勾选框。
 import { renderMd } from "./render";
+import { colorCode } from "./code";
 
 /** [[标题]] 找卡：白板那边注册（这里不直接依赖白板状态，单元测试能跑） */
 type Ref = { id: string; title: string } | null;
@@ -7,7 +8,7 @@ let resolve: (label: string) => Ref = () => null;
 export const setRefResolver = (f: (label: string) => Ref) => { resolve = f; };
 export const resolveRef = (label: string) => resolve(label);
 
-/** innerHTML 放进去以后调用：只在真的有引用 / 图表时才去查 DOM */
+/** innerHTML 放进去以后调用：只在真的有引用 / 代码 / 图表时才去查 DOM */
 export function hydrate(el: HTMLElement, html: string) {
   if (html.includes('class="cref"')) {
     for (const r of el.querySelectorAll<HTMLElement>(".cref")) {
@@ -17,6 +18,7 @@ export function hydrate(el: HTMLElement, html: string) {
       if (!hit) r.title = "No card with this title on the board";
     }
   }
+  if (html.includes('class="md-code" data-lang')) colorCode(el);
   if (html.includes('class="mmd"')) void import("./mermaid").then((m) => m.renderAll(el));
 }
 

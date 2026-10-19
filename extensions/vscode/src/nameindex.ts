@@ -2,6 +2,7 @@
 // 不在点击时建：打开白板后在后台一个文件一个文件地建（每个文件之间让出事件循环），文件保存 / 新建 / 删除 / 在外面改了时只重做那个文件。
 // 还没建完时按名字查：没分析过的文件先看文本里有没有这个名字，有才分析，所以点击不用等整个索引。没有文件数上限。
 import * as path from "node:path";
+import { grammarOfFile, type Grammar } from "@codeboard/core";
 import type { Sym } from "@codeboard/core/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
@@ -13,12 +14,11 @@ export type IndexEntry = { name: string; qual: string; kind: Sym["kind"]; abs: s
 const MAX_FILES = 500_000; // 只防意外（几十万个代码文件的仓库）
 const MAX_TEXT = 2_000_000; // 更大的文件（生成的代码）不分析
 const PARALLEL = 16; // 按名字查时同时读几个文件
-const CODE = /\.(py|pyi|cu|cuh|cc|cpp|cxx|c|h|hpp|rs)$/i;
 const SKIP = /[\\/](node_modules|\.git|\.venv|venv|build|dist|__pycache__|\.mypy_cache|\.tox)[\\/]/;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** 建索引（含后台）的文件：和 CODE_GLOB / CODE_EXCLUDE 一样的规则 */
-const isCode = (abs: string) => CODE.test(abs) && !SKIP.test(abs);
+/** 建索引（含后台）的文件：和 CODE_GLOB / CODE_EXCLUDE 一样的规则（语言表里有语法的扩展名） */
+export const isCode = (abs: string) => !!grammarOfFile(abs) && !SKIP.test(abs);
 
 let order = new Map<string, number>(); // 文件 → 列表里的序号：结果按它排（同一个名字的候选顺序稳定）
 let seq = 0;
@@ -160,11 +160,11 @@ export async function lookupName(name: string): Promise<IndexEntry[]> {
  * 文本里有这个词的代码文件和它们的文本（跨语言找注册、宏定义、按名字搜用）。先看单词位图（会误报、不会漏报），再读文件确认；
  * 没读过的文件读一次、记下位图。ext = 只要这些扩展名
  */
-export async function grepWord(word: string, ext?: RegExp): Promise<{ abs: string; text: string }[]> {
+export async function grepWord(word: string, grammar?: Grammar): Promise<{ abs: string; text: string }[]> {
   await list();
   const g = gen;
   const ident = IDENT.test(word);
-  const files = [...order.keys()].filter((f) => (!ext || ext.test(f)) && (!ident || !sigs.has(f) || hasWord(sigs.get(f)!, word)));
+  const files = [...order.keys()].filter((f) => (!grammar || grammarOfFile(f) === grammar) && (!ident || !sigs.has(f) || hasWord(sigs.get(f)!, word)));
   const out: { abs: string; text: string }[] = [];
   for (let i = 0; i < files.length && g === gen; i += PARALLEL) {
     const texts = await Promise.all(files.slice(i, i + PARALLEL).map(async (f) => [f, await readText(f, false)] as const));

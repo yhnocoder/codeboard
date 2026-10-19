@@ -5,11 +5,9 @@
 // CodeMirror 还没加载好时（一般空闲时早就预加载了）先照原样显示，加载好了再换上
 import { createEffect, For, onCleanup, onMount, Show, createSignal } from "solid-js";
 import { escHtml } from "@codeboard/core";
-import { unwrap } from "solid-js/store";
 import type { CodeCard, SegView } from "@codeboard/core";
 import { state } from "../state/store";
-import { ask } from "../host";
-import { loadCm, cmNow, lspHost, closeLsp, ghostHost, nearSeg } from "../cm/load";
+import { loadCm, cmNow, lspHost, closeLsp, ghostHost, nearSeg, hostHighlight } from "../cm/load";
 import type { CodeEditor } from "../cm/editor";
 import { lastDown } from "../state/measure";
 
@@ -24,15 +22,6 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
   let gone = false;
   const id = `free-${p.card().id}`;
 
-  // 着色问宿主（同一套 views）：给的是每行的 HTML
-  const highlight = async (text: string) => {
-    const s = structuredClone(unwrap(seg()));
-    const ls = text.split("\n");
-    s.text = ls; s.end = s.start + ls.length - 1;
-    const v = (await ask("views", { segs: [s] }).catch(() => null)) as Record<string, SegView> | null;
-    return v?.[s.id]?.html.join("\n") ?? null;
-  };
-
   const make = (m: typeof import("../cm/editor")) => {
     if (gone) return;
     const lsp = lspHost(id, () => seg().lang, () => nearSeg(p.card().id, seg().lang));
@@ -44,7 +33,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
       wrap: p.wrap(),
       gutter: { start: seg().start },
       html: v0?.html.join("\n"),
-      highlight,
+      highlight: (t) => hostHighlight(seg(), t),
       lsp,
       ghost: ghostHost(),
       onExit: () => p.onExit(e.text()),

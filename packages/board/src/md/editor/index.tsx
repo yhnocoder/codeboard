@@ -2,7 +2,7 @@
 // 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选卡、
 // 公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。
 import { keepKey } from "../../ui/editkeys";
-import { Editor, Extension, InputRule, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
+import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
@@ -329,14 +329,9 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       })];
     },
   });
-  // 打字时的转换：[[标题]] → 引用（其余的见 typora.ts）
+  // 打字时的转换都在 typora.ts（[[标题]] 也是重解析变成引用）
   const Rules = Extension.create({
     name: "cbRules",
-    addInputRules() {
-      return [
-        new InputRule({ find: /\[\[([^\[\]\n]+)\]\]$/, handler: ({ range, match, chain }) => { chain().insertContentAt(range, { type: "cardRef", attrs: { label: match[1].trim() } }).run(); } }),
-      ];
-    },
     addKeyboardShortcuts() {
       return {
         // ⌘↵ 保存退出在外层处理；Shift+↵ 段内换行（写回成 Markdown 的硬换行）
@@ -478,17 +473,8 @@ function makeInst(): Inst {
   });
   return inst;
 }
-/**
- * 同一套插件、全新的状态（文档、撤销栈、各插件的状态都从头来）。跟 EditorState.create 一样，只是沿用原来那份插件配置：
- * 配置是同一个对象，视图就不会以为换了插件（那样要拆了重建所有插件视图，还要 scrollTop = 0，强制整页排版一次）
- */
-function freshState(prev: EditorState, doc: PMNode): EditorState {
-  const cfg = (prev as unknown as { config?: { fields?: { name: string; init: (c: object, s: EditorState) => unknown }[] } }).config;
-  if (!cfg?.fields) return EditorState.create({ doc, plugins: prev.plugins });
-  const st = new (EditorState as unknown as new (c: unknown) => EditorState)(cfg);
-  for (const f of cfg.fields) (st as unknown as Record<string, unknown>)[f.name] = f.init({ doc }, st);
-  return st;
-}
+/** 同一套插件、全新的状态（文档、撤销栈、各插件的状态都从头来） */
+const freshState = (prev: EditorState, doc: PMNode) => EditorState.create({ doc, plugins: prev.plugins });
 /** 正文的末尾（脚注列表前面） */
 const bodyEnd = (d: PMNode) => d.content.size - (d.lastChild?.type.name === "footnotes" ? d.lastChild.nodeSize : 0);
 /** 正文最后一块后面接着打字的地方：最后一块是代码、公式、表格、折叠块这类时补一个空段落（不写进文件）。补了返回 true */
@@ -656,9 +642,10 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
       layer.remove();
       raw?.remove();
       if (inst.sess) return; // 已经被下一次编辑拿去用了
-      inst.box.remove();
       // 有焦点的元素被拿掉时不会触发 blur，ProseMirror 会以为自己还有焦点：补一个
-      if ((editor.view as unknown as { focused: boolean }).focused) editor.view.dom.dispatchEvent(new FocusEvent("blur"));
+      const focused = editor.view.hasFocus();
+      inst.box.remove();
+      if (focused) editor.view.dom.dispatchEvent(new FocusEvent("blur"));
       if (!pooled) { if (!editor.isDestroyed) editor.destroy(); return; }
       // 留着的那一个也不留这次的文档：节点视图跟着拆掉（代码块关掉宿主那边的语言服务文档，也就是那个 .codeboard-note-code-* 隐藏文件）
       editor.view.updateState(stateFor(editor, ""));

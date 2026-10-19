@@ -87,12 +87,3 @@ export function pythonDialect(text: string): "triton" | "tilelang" | "python" {
   return "python";
 }
 
-/** 语言下拉：显示名 ↔ VS Code languageId */
-export const LANGS: { id: string; label: string }[] = [
-  { id: "python", label: "Python" },
-  { id: "triton", label: "Triton" },
-  { id: "tilelang", label: "TileLang" },
-  { id: "cuda-cpp", label: "CUDA" },
-  { id: "cpp", label: "C++" },
-];
-export const langLabel = (id: string) => LANGS.find((l) => l.id === id)?.label ?? (id === "c" ? "C" : id);

@@ -2,9 +2,11 @@
 // 纯语法判断，不依赖语言服务；「转到定义」由宿主问 VS Code。
 // Python 系（含 Triton、TileLang）用 python 语法；C / C++ / CUDA 用 cpp 语法（CUDA 的 <<<>>> 会被当成错误节点跳过）。
 import type { Node, QueryCapture } from "@vscode/tree-sitter-wasm";
-import { grammarOf, languageOf, query, treeOf, type Edit, type Grammar } from "./tree";
+import { languageOf, query, treeOf, type Edit, type Grammar } from "./tree";
+import { grammarOf } from "../langs";
 import { F_BLANK, F_COMMENT, F_DOCSTRING } from "../lines";
-export { initAnalysis, grammarOf, languageOf, diffEdit, forgetTree, setTreeCacheSize, type Edit } from "./tree";
+export { grammarOf } from "../langs";
+export { initAnalysis, languageOf, diffEdit, forgetTree, setTreeCacheSize, type Edit } from "./tree";
 
 
 export type Param = { name: string; kind: "self" | "pos" | "kw" | "star" | "dstar" };

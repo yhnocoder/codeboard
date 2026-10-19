@@ -1,9 +1,11 @@
 // Markdown 的唯一一套 schema + 解析 / 写回：编辑器（懒加载）和其他卡片的静态显示都用它，所以编辑和显示长得一样。
 // MarkdownManager 全应用只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
-import { Mark, Node, mergeAttributes, type AnyExtension, type JSONContent } from "@tiptap/core";
+import { Mark, Node, getSchema, mergeAttributes, markInputRule, markPasteRule, InputRule, type AnyExtension, type JSONContent } from "@tiptap/core";
+import type { Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Bold, { starInputRegex, starPasteRegex } from "@tiptap/extension-bold";
-import { InputRule, markInputRule, markPasteRule } from "@tiptap/core";
+import Link from "@tiptap/extension-link";
+import CodeBlock from "@tiptap/extension-code-block";
 import Underline from "@tiptap/extension-underline";
 import HorizontalRule from "@tiptap/extension-horizontal-rule";
 import CodeMark from "@tiptap/extension-code";
@@ -15,21 +17,20 @@ import { TaskList, TaskItem } from "@tiptap/extension-list";
 import Image from "@tiptap/extension-image";
 import { Details, DetailsSummary, DetailsContent } from "@tiptap/extension-details";
 import { InlineMath, BlockMath } from "@tiptap/extension-mathematics";
-import CodeBlockLowlight from "@tiptap/extension-code-block-lowlight";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import DOMPurify from "dompurify";
-import { lowlight } from "./hl";
 import { EMOJI } from "./emoji";
 
 // ---------- 公式：照旧版的 Pandoc 规则 ----------
-// 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式。行内的 $$…$$ 是行内的大号公式
+// 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
+// 行内的 $$…$$ 是行内的大号公式
 const INLINE_MATH = /^\$\$([^$]+?)\$\$|^\$([^$\s](?:[^$]*[^$\s\\])?)\$(?!\d)/;
 const Math1 = InlineMath.extend({
   addAttributes() {
     return { ...this.parent?.(), display: { default: false, parseHTML: (e) => e.getAttribute("data-display") === "yes", renderHTML: (a) => (a.display ? { "data-display": "yes" } : {}) } };
   },
-  // 打字时的转换在编辑器里（editor/typora.ts，照 Pandoc 规则；TipTap 自带的把 $$x$$ 当行内小公式）
+  // 打字时由编辑器按这里的解析规则重解析（editor/typora.ts；TipTap 自带的把 $$x$$ 当行内小公式）
   addInputRules: () => [],
   parseMarkdown: (t) => ({ type: "inlineMath", attrs: { latex: t.latex, display: !!t.display } }),
   renderMarkdown: (n) => (n.attrs?.display ? `$$${n.attrs.latex}$$` : `$${n.attrs?.latex ?? ""}$`),
@@ -38,7 +39,7 @@ const Math1 = InlineMath.extend({
     start: (src) => src.indexOf("$"),
     tokenize: (src, tokens) => {
       const prev = tokens[tokens.length - 1]?.raw;
-      if (prev && /\\$/.test(prev)) return;
+      if (prev && /[\\$]$/.test(prev)) return;
       const m = INLINE_MATH.exec(src);
       if (!m) return;
       return { type: "inlineMath", raw: m[0], latex: (m[1] ?? m[2]).trim(), display: m[1] !== undefined };
@@ -66,15 +67,24 @@ const Math2 = BlockMath.extend({
   },
 });
 
-// ---------- 代码块：内容里有 ``` 时用更长的围栏 ----------
-const Code = CodeBlockLowlight.extend({
+// ---------- 代码块：pre.md-code[data-lang]（着色是宿主给的，见 code.ts）；内容里有 ``` 时用更长的围栏 ----------
+const Code = CodeBlock.extend({
+  addAttributes() {
+    return {
+      language: {
+        default: null, rendered: false,
+        parseHTML: (e) => e.getAttribute("data-lang") ?? /\blanguage-(\S+)/.exec(e.firstElementChild?.className ?? "")?.[1] ?? null,
+      },
+    };
+  },
+  renderHTML: ({ node }) => ["pre", { class: "md-code", "data-lang": node.attrs.language || null }, ["code", 0]],
   renderMarkdown: (n, h) => {
     const body = n.content ? h.renderChildren(n.content) : "";
     const run = Math.max(2, ...[...body.matchAll(/^ {0,3}(`{3,})/gm)].map((m) => m[1].length));
     const f = "`".repeat(run + 1);
     return `${f}${n.attrs?.language ?? ""}\n${body}\n${f}`;
   },
-}).configure({ lowlight, defaultLanguage: null, enableTabIndentation: true });
+}).configure({ defaultLanguage: null, enableTabIndentation: true });
 
 // ---------- 折叠块：<details><summary>标题</summary> … </details>（GitHub 也认这个写法） ----------
 const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -174,7 +184,7 @@ const emojiStart = (src: string) => {
 const Emoji = Node.create({
   name: "emoji",
   group: "inline", inline: true, atom: true, selectable: false,
-  addAttributes() { return { name: { default: "" } }; },
+  addAttributes() { return { name: { default: "", rendered: false } }; },
   parseHTML() { return [{ tag: "span[data-emoji]", getAttrs: (e) => ({ name: (e as HTMLElement).getAttribute("data-emoji") ?? "" }) }]; },
   renderHTML({ node }) { return ["span", { class: "md-emoji", "data-emoji": node.attrs.name, title: `:${node.attrs.name}:` }, EMOJI[node.attrs.name] ?? `:${node.attrs.name}:`]; },
   renderText: ({ node }) => EMOJI[node.attrs.name] ?? `:${node.attrs.name}:`,
@@ -189,16 +199,6 @@ const Emoji = Node.create({
       return { type: "emoji", raw: m[0], name: m[1] };
     },
   },
-  // 打完右边的冒号就变
-  addInputRules() {
-    return [new InputRule({
-      find: /(?<![\p{L}\p{N}_]):([a-z0-9_+-]+):$/u,
-      handler: ({ range, match, chain }) => {
-        if (!isEmoji(match[1])) return null;
-        chain().insertContentAt(range, { type: "emoji", attrs: { name: match[1] } }).run();
-      },
-    })];
-  },
 });
 
 // ---------- [[卡片引用]] ----------
@@ -206,7 +206,7 @@ const Emoji = Node.create({
 export const CardRef = Node.create({
   name: "cardRef",
   group: "inline", inline: true, atom: true, selectable: true,
-  addAttributes() { return { label: { default: "" } }; },
+  addAttributes() { return { label: { default: "", rendered: false } }; },
   parseHTML() { return [{ tag: "span[data-cardref]", getAttrs: (e) => ({ label: (e as HTMLElement).getAttribute("data-cardref") ?? "" }) }]; },
   renderHTML({ node, HTMLAttributes }) { return ["span", mergeAttributes(HTMLAttributes, { class: "cref", "data-cardref": node.attrs.label }), node.attrs.label]; },
   renderText: ({ node }) => `[[${node.attrs.label}]]`,
@@ -235,8 +235,12 @@ const FnRef = FootnoteReference.extend({
       },
     })];
   },
+  // 显示和编辑一样：上标的编号（点击、双击跳到脚注由扩展自己按节点处理，不看 DOM）
+  parseHTML: () => [{ tag: "sup.fnref", getAttrs: (e) => ({ "data-id": `fn-${e.textContent}`, referenceNumber: e.textContent }) }],
+  renderHTML: ({ node }) => ["sup", { class: "fnref" }, String(node.attrs.referenceNumber ?? "?")],
   parseMarkdown: (t) => ({ type: "footnoteReference", attrs: { "data-id": `fn-${t.label}`, referenceNumber: t.label } }),
-  renderMarkdown: (n) => `[^${fnNum.get(n.attrs?.["data-id"]) ?? n.attrs?.referenceNumber ?? "?"}]`,
+  // 编号在写回前按出现顺序重排好了（serializeMd）
+  renderMarkdown: (n) => `[^${n.attrs?.referenceNumber ?? "?"}]`,
   markdownTokenizer: {
     name: "footnoteReference", level: "inline",
     start: (src) => src.indexOf("[^"),
@@ -248,6 +252,8 @@ const FnRef = FootnoteReference.extend({
   },
 });
 const FnDef = Footnote.extend({
+  // 定义的 id 只给原版的锚点链接用（引用不再是链接）：不画
+  renderHTML: () => ["li", 0],
   markdownTokenName: "footnoteDef",
   parseMarkdown: (t, h) => h.createNode("footnote", { "data-id": `fn-${t.label}`, id: `fn:${t.label}` }, t.tokens?.length ? h.parseChildren(t.tokens) : [h.createNode("paragraph", {}, [])]),
   renderMarkdown: undefined,
@@ -263,7 +269,7 @@ const FnDef = Footnote.extend({
     },
   },
 });
-const FnList = Footnotes.extend({ markdownTokenName: "footnotes", parseMarkdown: undefined, renderMarkdown: undefined });
+const FnList = Footnotes.extend({ markdownTokenName: "footnotes", parseMarkdown: undefined, renderMarkdown: undefined, renderHTML: () => ["ol", { class: "footnotes" }, 0] });
 const Doc = Document.extend({ content: "block+ footnotes?" });
 
 // ---------- 其他 ----------
@@ -271,7 +277,7 @@ const Doc = Document.extend({ content: "block+ footnotes?" });
 const Img = Image.configure({ inline: true, allowBase64: true });
 // TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
 const Para = Paragraph.extend({
-  parseMarkdown: (t: any, h: any) => (t.tokens?.length === 1 && t.tokens[0].type === "image" ? h.createNode("paragraph", undefined, h.parseInline(t.tokens)) : (Paragraph.config as any).parseMarkdown(t, h)),
+  parseMarkdown(t, h) { return t.tokens?.length === 1 && t.tokens[0].type === "image" ? h.createNode("paragraph", undefined, h.parseInline(t.tokens)) : this.parent?.(t, h) ?? []; },
 });
 // ---------- 原样的 HTML：<u>、<kbd> 是格式，<br> 是硬换行；别的标签和注释一字不改地留着 ----------
 // 行内的（<span style=…>字</span>：开头标签到配对的结尾标签算一个）是 htmlInline，单独成块的（<div>…</div>、<!-- … -->）是 htmlBlock。
@@ -296,81 +302,119 @@ const htmlNode = (name: "htmlInline" | "htmlBlock", tag: "span" | "div") => Node
     return { dom, ignoreMutation: () => true };
   },
 });
-const HtmlInline = htmlNode("htmlInline", "span"), HtmlBlock = htmlNode("htmlBlock", "div");
-const htmlTok = (tag: string) => ({
-  name: `html_${tag}`, level: "inline" as const,
-  start: (src: string) => src.indexOf(`<${tag}>`),
-  tokenize: (src: string, _t: unknown, lx: any) => {
-    const m = new RegExp(`^<${tag}>([\\s\\S]+?)</${tag}>`).exec(src);
-    if (!m) return;
-    return { type: `html_${tag}`, raw: m[0], tokens: lx.inlineTokens(m[1]) };
+// 一个标签（属性照 CommonMark 的写法）、一段注释
+const TAG = /^(?:<!--[\s\S]*?-->|<\/?([A-Za-z][\w-]*)(?:\s+[^\s"'>/=]+(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s"'=<>`]+))?)*\s*\/?>)/;
+/** 行内的 HTML 从开头认一段：开头标签连同配对的结尾标签（中间同名的嵌套也算上）是一段，别的一个标签、一段注释自己是一段。配好对的 <u>…</u>、<kbd>…</kbd> 是格式，不归这里 */
+function htmlInlineAt(src: string): string | undefined {
+  const m = TAG.exec(src);
+  if (!m) return;
+  const name = m[1]?.toLowerCase();
+  if ((name === "u" || name === "kbd") && new RegExp(`^<${name}>[\\s\\S]+?</${name}>`).test(src)) return;
+  if (!name || m[0].startsWith("</") || m[0].endsWith("/>")) return m[0];
+  const re = new RegExp(`<(/?)${name}\\b[^>]*>`, "gi");
+  re.lastIndex = m[0].length;
+  for (let depth = 1, t: RegExpExecArray | null; (t = re.exec(src));) if ((depth += t[1] ? -1 : 1) === 0) return src.slice(0, re.lastIndex);
+  return m[0];
+}
+const HtmlInline = htmlNode("htmlInline", "span").extend({
+  markdownTokenName: "htmlInline",
+  parseMarkdown: (t) => { const raw = t.raw ?? ""; return /^<br\s*\/?>$/i.test(raw) ? { type: "hardBreak" } : { type: "htmlInline", attrs: { raw } }; },
+  markdownTokenizer: {
+    name: "htmlInline", level: "inline",
+    start: (src) => src.indexOf("<"),
+    tokenize: (src) => { const raw = htmlInlineAt(src); return raw ? { type: "htmlInline", raw } : undefined; },
   },
 });
-const U = Underline.extend({
-  markdownTokenName: "html_u",
-  parseMarkdown: (t: any, h: any) => h.applyMark("underline", h.parseInline(t.tokens ?? [])),
-  renderMarkdown: (n: JSONContent, h: any) => `<u>${h.renderChildren(n)}</u>`,
-  markdownTokenizer: htmlTok("u"),
+// 单独成块的 HTML：marked 的 html 块，原样留着
+const HtmlBlock = htmlNode("htmlBlock", "div").extend({
+  markdownTokenName: "html",
+  parseMarkdown: (t) => { const raw = (t.text || t.raw || "").replace(/\s+$/, ""); return raw.trim() ? { type: "htmlBlock", attrs: { raw } } : []; },
 });
+// ---------- 行内格式的 Markdown 记号：唯一的一份（写回、光标处显示的记号、展开成原文都按它） ----------
+// bold / italic / strike / code / link 的写回是 TipTap 自带的（和这里的记号一样），其余的写回用这张表
+export const MARK_MD: Record<string, (attrs: Record<string, any>) => readonly [string, string]> = {
+  bold: () => ["**", "**"], italic: () => ["*", "*"], strike: () => ["~~", "~~"], code: () => ["`", "`"],
+  link: (a) => ["[", `](${a.href ?? ""})`],
+  underline: () => ["<u>", "</u>"], kbd: () => ["<kbd>", "</kbd>"],
+  highlight: () => ["==", "=="], subscript: () => ["~", "~"], superscript: () => ["^", "^"],
+};
+/**
+ * 自己定义的格式的 Markdown 规则：re 从开头认一段（第 1 组是里面的字），记号来自 MARK_MD。
+ * 打字时的转换不另写规则：编辑器照这里的解析重解析（editor/typora.ts）
+ */
+function mdSyntax(name: string, re: RegExp) {
+  const [open, close] = MARK_MD[name]({}), tok = `x_${name}`;
+  return {
+    markdownTokenName: tok,
+    parseMarkdown: (t: any, h: any) => h.applyMark(name, h.parseInline(t.tokens ?? [])),
+    renderMarkdown: (n: JSONContent, h: any) => `${open}${h.renderChildren(n)}${close}`,
+    markdownTokenizer: {
+      name: tok, level: "inline" as const,
+      start: (src: string) => src.indexOf(open),
+      tokenize: (src: string, prev: { raw?: string }[], lx: any) => {
+        // 紧跟在同样的记号后面的不开头（~~ 是删除线；==、^ 同理）
+        if (prev[prev.length - 1]?.raw?.endsWith(open[0])) return;
+        const m = re.exec(src);
+        return m ? { type: tok, raw: m[0], tokens: lx.inlineTokens(m[1]) } : undefined;
+      },
+    },
+  };
+}
+// ---------- 行内 HTML：<u>、<kbd> 是格式；别的标签按字原样留着（写回时 < 转义成 \<，不写实体） ----------
+const U = Underline.extend(mdSyntax("underline", /^<u>([\s\S]+?)<\/u>/));
 const Kbd = Mark.create({
   name: "kbd",
   excludes: "_",
   parseHTML: () => [{ tag: "kbd" }],
   renderHTML: ({ HTMLAttributes }) => ["kbd", HTMLAttributes, 0],
-  markdownTokenName: "html_kbd",
-  parseMarkdown: (t: any, h: any) => h.applyMark("kbd", h.parseInline(t.tokens ?? [])),
-  renderMarkdown: (n: JSONContent, h: any) => `<kbd>${h.renderChildren(n)}</kbd>`,
-  markdownTokenizer: htmlTok("kbd"),
+  ...mdSyntax("kbd", /^<kbd>([\s\S]+?)<\/kbd>/),
 });
 // ---------- ==高亮==、H~2~O、x^2^（Typora 的扩展语法，#32） ----------
 // 下标、上标照 Pandoc：中间不能有空白（要空白写 \ ），~ 只有一个（~~ 是删除线）；高亮 == 里两头不是空白
-const inlineTok = (name: string, open: string, re: RegExp) => ({
-  name, level: "inline" as const,
-  start: (src: string) => src.indexOf(open),
-  tokenize: (src: string, _t: unknown, lx: any) => {
-    const m = re.exec(src);
-    if (!m) return;
-    return { type: name, raw: m[0], tokens: lx.inlineTokens(m[1]) };
-  },
-});
 const SUB_RE = /^~(?!~)((?:\\.|[^~\s\\])+)~(?!~)/, SUP_RE = /^\^((?:\\.|[^\^\s\\])+)\^/, HL_RE = /^==(?=[^\s=])((?:\\.|[^\n\\])*?[^\s\\])==/;
-const wrapMark = (name: string, tag: string, md: string, re: RegExp, typed: RegExp) => Mark.create({
+const tagMark = (name: string, tag: string, re: RegExp) => Mark.create({
   name,
   parseHTML: () => [{ tag }],
   renderHTML: ({ HTMLAttributes }) => [tag, HTMLAttributes, 0],
-  addInputRules() { return [markInputRule({ find: typed, type: this.type })]; },
-  markdownTokenName: `x_${name}`,
-  parseMarkdown: (t: any, h: any) => h.applyMark(name, h.parseInline(t.tokens ?? [])),
-  renderMarkdown: (n: JSONContent, h: any) => `${md}${h.renderChildren(n)}${md}`,
-  markdownTokenizer: inlineTok(`x_${name}`, md, re),
+  ...mdSyntax(name, re),
 });
-// 打字规则：结尾记号一打完就变；前面紧挨着同样的记号或 \ 时不算（~~ 是删除线、\~ 是字）
-const Highlight = wrapMark("highlight", "mark", "==", HL_RE, /(?<![=\\])(==([^=\s](?:[^=]*[^=\s])?)==)$/);
-const Sub = wrapMark("subscript", "sub", "~", SUB_RE, /(?<![~\\])(~([^~\s]+)~)$/);
-const Sup = wrapMark("superscript", "sup", "^", SUP_RE, /(?<![\^\\])(\^([^\^\s]+)\^)$/);
+const Highlight = tagMark("highlight", "mark", HL_RE);
+const Sub = tagMark("subscript", "sub", SUB_RE);
+const Sup = tagMark("superscript", "sup", SUP_RE);
 
 // 分隔线只在回车时变（--- 打完就变会和 YAML 头、setext 标题冲突；见 editor/typora.ts）
 const Hr = HorizontalRule.extend({ addInputRules: () => [] });
 // 行内代码的打字规则在 editor/typora.ts（反引号按长度配对）
 const InlineCode = CodeMark.extend({ addInputRules: () => [] });
-// 编辑器里的勾选框节点视图不带 data-type：样式靠这个属性，补上
-const Task = TaskItem.configure({ nested: true, HTMLAttributes: { "data-type": "taskItem" } });
+// 勾选项：编辑器里是 TipTap 的节点视图（不带 data-type，样式靠这个属性，补上）；静态显示照 renderHTML，勾选框后面不要空的 span
+const Task = TaskItem.extend({
+  renderHTML: ({ node, HTMLAttributes }) => ["li", mergeAttributes(HTMLAttributes, { "data-type": "taskItem" }), ["label", ["input", { type: "checkbox", checked: node.attrs.checked ? "checked" : null }]], ["div", 0]],
+}).configure({ nested: true, HTMLAttributes: { "data-type": "taskItem" } });
 // 表格：GFM 存不下合并单元格和一格多段，所以一格只放一段
 const Cell = TableCell.extend({ content: "paragraph" });
 // 表格前后不多写空行
-const Tbl = Table.extend({ renderMarkdown: (n: JSONContent, h: any, c: any) => String((Table.config as any).renderMarkdown(n, h, c)).replace(/^\n+|\n+$/g, "") }).configure({ resizable: false });
+const Tbl = Table.extend({
+  renderMarkdown(n, h, c) { return String(this.parent?.(n, h, c) ?? "").replace(/^\n+|\n+$/g, ""); },
+}).configure({ resizable: false });
 const Head = TableHeader.extend({ content: "paragraph" });
+// 链接：文字就是网址的写回裸网址（自动链接），不写成 [url](url)
+const Lnk = Link.extend({
+  renderMarkdown(n, h, c) {
+    const href = n.attrs?.href ?? "";
+    if (unshield(c.meta?.markText ?? "") === href && /^https?:\/\/\S+$/.test(href)) return h.renderChildren(n);
+    return this.parent?.(n, h, c) ?? "";
+  },
+}).configure({ openOnClick: false, autolink: true, linkOnPaste: true, HTMLAttributes: { class: "lnk", rel: null, target: null } });
 
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
   StarterKit.configure({
-    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false,
-    link: { openOnClick: false, autolink: true, linkOnPaste: true, HTMLAttributes: { class: "lnk", rel: null, target: null } },
+    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false, link: false,
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
-  U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
+  Lnk, U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
   Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
   CardRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
@@ -423,30 +467,23 @@ const mm = new MarkdownManager({
   })(),
   extensions: baseExtensions,
 });
-// 原样写出字（不转义）：把一段当 Markdown 源码重新解析时用（见 blockSource）
-let rawText = false;
-(mm as any).encodeTextForMarkdown = function (text: string, node: JSONContent, parent?: JSONContent) {
-  if (rawText) return text;
-  const codeTypes: Set<string> = (this as any).codeTypes;
-  if ((parent?.type && codeTypes.has(parent.type)) || (node.marks ?? []).some((m) => codeTypes.has(typeof m === "string" ? m : (m as any).type))) return text;
-  return escText(text);
-};
-// 原样的 HTML（见 htmlNode）：TipTap 默认按 schema 解析 HTML，认不出的标签、注释都丢掉了，第一次保存时就从文件里删掉了
-(mm as any).parseHTMLToken = (t: { raw?: string; text?: string; block?: boolean }): JSONContent | null => {
-  const raw = t.block ? (t.text || t.raw || "").replace(/\s+$/, "") : t.text || t.raw || "";
-  if (!raw.trim()) return null;
-  if (/^<br\s*\/?>$/i.test(raw)) return { type: "hardBreak" };
-  return { type: t.block ? "htmlBlock" : "htmlInline", attrs: { raw } };
-};
-// 链接：文字就是网址的写回裸网址（自动链接），不写成 [url](url)
-const linkSpec = (mm as any).getHandlersForNodeType("link")[0];
-if (linkSpec) {
-  const orig = linkSpec.renderMarkdown;
-  linkSpec.renderMarkdown = (n: JSONContent, h: any, ctx: any) => {
-    const href = n.attrs?.href ?? "";
-    if (ctx?.meta?.markText === href && /^https?:\/\/\S+$/.test(href)) return h.renderChildren(n);
-    return orig(n, h, ctx);
-  };
+/** 这套扩展的 schema（静态显示、写回时认代码节点用） */
+let schema: Schema | undefined;
+export const mdSchema = () => (schema ??= getSchema(baseExtensions));
+
+// 字的转义由 escText 决定：交给 MarkdownManager 之前，把它会转义、变实体的字符换成私用区的字，写完再换回来，它就原样写出
+const SHIELD = 0xe200;
+const shield = (s: string) => s.replace(/[&<>\\`*_[\]~]/g, (c) => String.fromCharCode(SHIELD + c.charCodeAt(0)));
+const unshield = (s: string) => s.replace(/[-]/g, (c) => String.fromCharCode(c.charCodeAt(0) - SHIELD));
+/** 文档内容 → Markdown。raw：字原样写出（不转义），把一段当 Markdown 源码重新解析时用（见 blockSource） */
+function toMd(content: JSONContent[], raw: boolean): string {
+  const { nodes, marks } = mdSchema();
+  const prep = (ns: JSONContent[], code: boolean): JSONContent[] => ns.map((n) => {
+    if (n.type === "text") return code || n.marks?.some((m) => marks[m.type]?.spec.code) ? n : { ...n, text: shield(raw ? n.text! : escText(n.text!)) };
+    // 折叠块的标题由 details 自己写成 HTML 的字，不经过这里
+    return n.content ? { ...n, content: prep(n.content, code || !!nodes[n.type!]?.spec.code || n.type === "detailsSummary") } : n;
+  });
+  return unshield(mm.serialize({ type: "doc", content: prep(content, false) }));
 }
 
 /** Markdown → 文档 JSON（脚注定义收到文末一个 footnotes 里，按引用顺序编号） */
@@ -470,26 +507,38 @@ function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }
 }
 
-let fnNum = new Map<string, number>();
 /** 文档 JSON → Markdown */
 export function serializeMd(doc: JSONContent): string {
   const content = escPairs(unsource(doc.content ?? []));
   const fi = content.findIndex((n) => n.type === "footnotes");
   const fns = fi >= 0 ? content.splice(fi, 1)[0] : undefined;
-  fnNum = new Map();
-  walk(content, (n) => { if (n.type === "footnoteReference" && !fnNum.has(n.attrs?.["data-id"])) fnNum.set(n.attrs?.["data-id"], fnNum.size + 1); });
-  let out = mm.serialize({ type: "doc", content: markStarts(dropEmpty(content)) });
+  // 脚注按引用出现的顺序重新编号
+  const num = new Map<string, number>();
+  walk(content, (n) => { const id = n.attrs?.["data-id"]; if (n.type === "footnoteReference" && !num.has(id)) num.set(id, num.size + 1); });
+  const renumber = (ns: JSONContent[]): JSONContent[] => ns.map((n) => {
+    const k = n.type === "footnoteReference" ? num.get(n.attrs?.["data-id"]) : undefined;
+    const m = k === undefined ? n : { ...n, attrs: { ...n.attrs, referenceNumber: String(k) } };
+    return m.content ? { ...m, content: renumber(m.content) } : m;
+  });
+  let out = toMd(markStarts(dropEmpty(renumber(content))), false);
   // 还没写内容的脚注不写空定义（[^1] 读回来照样是脚注）
-  const defs = (fns?.content ?? []).filter((f) => fnNum.has(f.attrs?.["data-id"])).sort((a, b) => fnNum.get(a.attrs!["data-id"])! - fnNum.get(b.attrs!["data-id"])!)
-    .map((f) => [fnNum.get(f.attrs!["data-id"]), mm.serialize({ type: "doc", content: markStarts(f.content ?? []) }).trim()] as const)
+  const defs = (fns?.content ?? []).filter((f) => num.has(f.attrs?.["data-id"])).sort((a, b) => num.get(a.attrs!["data-id"])! - num.get(b.attrs!["data-id"])!)
+    .map((f) => [num.get(f.attrs!["data-id"]), toMd(markStarts(renumber(f.content ?? [])), false).trim()] as const)
     .filter(([, body]) => body).map(([k, body]) => `[^${k}]: ${body.replace(/\n/g, "\n    ")}`);
   if (defs.length) out = `${out.trimEnd()}\n\n${defs.join("\n")}`;
   return unPair(out.replace(/^\n+/, "").replace(/\s+$/, ""));
 }
-/** 一个块当成 Markdown 源码：字原样写出（不转义），重新解析时字里的 **b**、$m$、# 之类就生效（接受补全、粘贴之后用） */
+/**
+ * 一个块当成 Markdown 源码：字原样写出（不转义），重新解析时字里的 **b**、$m$、# 之类就生效（打字、接受补全、粘贴之后用）。
+ * 打字时转义过的 \X 写成私用区的一个字：解析器当普通字，重新解析也不会变；parseSource 再变回带 mdEsc 标记的那一对
+ */
 export function blockSource(n: JSONContent): string {
-  rawText = true;
-  try { return unPair(mm.serialize({ type: "doc", content: escPairs(unsource([n])) }).replace(/^\n+/, "").replace(/\s+$/, "")); } finally { rawText = false; }
+  return toMd(escPairs(unsource([n])), true).replace(/^\n+/, "").replace(/\s+$/, "");
+}
+/** blockSource 的原文解析回来；inline：只要行内内容（# - 1. > 之类不当成块），解析出来不是一段行内内容时给 null */
+export function parseSource(src: string, inline: boolean): JSONContent[] | null {
+  const ns = inline ? inlineParse(src) : (parseMd(src).content ?? []).filter((n) => n.type !== "footnotes");
+  return ns && restorePairs(ns);
 }
 
 // ---------- 光标处展开的 Markdown 原文（#11，编辑器里的 mdSrc 标记，见 editor/source.ts） ----------
@@ -499,13 +548,15 @@ export const SRC_MARK = "mdSrc";
 const INLINE_HEAD = "\uE026";
 const isSrc = (n: JSONContent) => n.type === "text" && !!n.marks?.some((m) => m.type === SRC_MARK);
 /** 一段行内原文解析回行内内容；两头的空白照留（解析会去掉）。前面垫一个字，# - 1. > 之类不会被当成块 */
-export function parseInlineSrc(src: string): JSONContent[] {
+export const parseInlineSrc = (src: string): JSONContent[] => inlineParse(src) ?? plain(src);
+const plain = (t: string): JSONContent[] => (t ? [{ type: "text", text: t }] : []);
+/** 同上；解析出来不是一段行内内容时给 null */
+function inlineParse(src: string): JSONContent[] | null {
   const lead = /^\s*/.exec(src)![0], trail = src.slice(lead.length).match(/\s*$/)![0], core = src.slice(lead.length, src.length - trail.length);
-  const plain = (t: string): JSONContent[] => (t ? [{ type: "text", text: t }] : []);
   if (!core) return plain(src);
-  const blocks = parseMd(INLINE_HEAD + core).content ?? [];
+  const blocks = (parseMd(INLINE_HEAD + core).content ?? []).filter((n) => n.type !== "footnotes");
   const p = blocks[0], first = p?.content?.[0];
-  if (blocks.length !== 1 || p.type !== "paragraph" || first?.type !== "text" || !first.text?.startsWith(INLINE_HEAD)) return plain(src);
+  if (blocks.length !== 1 || p.type !== "paragraph" || first?.type !== "text" || !first.text?.startsWith(INLINE_HEAD)) return null;
   const rest = first.text.slice(INLINE_HEAD.length);
   return [...plain(lead), ...(rest ? [{ ...first, text: rest }] : []), ...p.content!.slice(1), ...plain(trail)];
 }
@@ -562,6 +613,29 @@ function escPairs(ns: JSONContent[]): JSONContent[] {
   });
 }
 const unPair = (s: string) => s.replace(/[\uE100-\uE17F]/g, (c) => `\\${String.fromCharCode(c.charCodeAt(0) - PAIR0)}`);
+/** 私用区的 \X 变回带 mdEsc 标记的 \ 加那个字；代码、属性里的变回字面的 \X */
+function restorePairs(ns: JSONContent[], code = false): JSONContent[] {
+  const { nodes, marks } = mdSchema();
+  return ns.flatMap((n): JSONContent[] => {
+    const attrs = n.attrs && Object.fromEntries(Object.entries(n.attrs).map(([k, v]) => [k, typeof v === "string" ? unPair(v) : v]));
+    const m: JSONContent = attrs ? { ...n, attrs } : n;
+    if (m.content) return [{ ...m, content: restorePairs(m.content, code || !!nodes[m.type!]?.spec.code) }];
+    const t = m.text;
+    if (m.type !== "text" || !t || !/[\uE100-\uE17F]/.test(t)) return [m];
+    if (code || m.marks?.some((k) => marks[k.type]?.spec.code)) return [{ ...m, text: unPair(t) }];
+    const out: JSONContent[] = [];
+    let acc = "";
+    for (const c of t) {
+      const k = c.charCodeAt(0) - PAIR0;
+      if (k < 0 || k > 0x7f) { acc += c; continue; }
+      if (acc) out.push({ ...m, text: acc });
+      out.push({ ...m, text: "\\", marks: [...(m.marks ?? []), { type: ESC_MARK }] });
+      acc = String.fromCharCode(k);
+    }
+    if (acc) out.push({ ...m, text: acc });
+    return out;
+  });
+}
 
 function unsource(ns: JSONContent[]): JSONContent[] {
   return ns.map((n) => (n.content?.some(isSrc) ? unsourceBlock(n) : n.content ? { ...n, content: unsource(n.content) } : n));

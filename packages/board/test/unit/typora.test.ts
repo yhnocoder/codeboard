@@ -4,9 +4,9 @@ import { getSchema } from "@tiptap/core";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { history, undo, redo, closeHistory } from "@tiptap/pm/history";
 import { baseExtensions, parseMd, serializeMd } from "../../src/md/schema";
-import { codeSpanAtEnd, reconvert } from "../../src/md/editor/typora";
+import { Typora, codeSpanAtEnd, reconvert, retype } from "../../src/md/editor/typora";
 
-const schema = getSchema(baseExtensions);
+const schema = getSchema([...baseExtensions, Typora]);
 function state(md: string) {
   const doc = schema.nodeFromJSON(parseMd(md));
   let s = EditorState.create({ doc, schema, plugins: [history()] });
@@ -60,5 +60,61 @@ describe("code span typing rule", () => {
     expect(codeSpanAtEnd("a ``x ` y`")).toBeNull();
     expect(codeSpanAtEnd("a `")).toBeNull();
     expect(codeSpanAtEnd("a \\`x`")).toBeNull();
+  });
+});
+
+describe("typing rule: re-parse what is before the caret (retype)", () => {
+  /** 一段打好的字（还没转换过），光标往回挪 back 个字（默认段尾），再打一个字 */
+  function type(text: string, ch: string, back = 0) {
+    const doc = schema.node("doc", null, [schema.node("paragraph", null, [schema.text(text)])]);
+    let s = EditorState.create({ doc, schema });
+    s = s.apply(s.tr.setSelection(TextSelection.atEnd(s.doc)));
+    s = s.apply(s.tr.setSelection(TextSelection.create(s.doc, s.selection.head - back)));
+    const tr = s.tr.insertText(ch);
+    const changed = retype(tr);
+    return { changed, s: s.apply(tr) };
+  }
+  it("turns finished syntax into marks, math, links, refs", () => {
+    for (const [md, ch, want] of [
+      ["x ==hi=", "=", "x ==hi=="], ["H~2", "~", "H~2~"], ["x^2", "^", "x^2^"], ["a $x", "$", "a $x$"], ["a $$y$", "$", "a $$y$$"],
+      ["[t](https://x.y/a", ")", "[t](https://x.y/a)"], ["***bi**", "*", "***bi***"], ["<u>u</u", ">", "<u>u</u>"], ["hi :tada", ":", "hi :tada:"], ["see [[C]", "]", "see [[C]]"],
+    ] as const) {
+      const { changed, s } = type(md, ch);
+      expect(changed, md).toBe(true);
+      expect(mdOf(s)).toBe(want);
+      expect(s.doc.textBetween(s.selection.head, s.doc.content.size)).toBe("");
+      expect(s.storedMarks).toEqual([]);
+    }
+  });
+  it("leaves text the parser keeps literal", () => {
+    for (const [md, ch] of [["$5 and ", "$"], ["a ~ b ", "~"], ["$$x", "$"], ["x :nosuch", ":"], ["a 1:100", ":"]] as const) expect(type(md, ch).changed, md).toBe(false);
+  });
+  it("waits while a longer run of the same marker is still being typed", () => {
+    for (const [md, ch] of [["**b", "*"], ["~~ab", "~"], ["***bi*", "*"], ["***bi", "*"]] as const) expect(type(md, ch).changed, md).toBe(false);
+  });
+  it("keeps text after the caret and typed escapes", () => {
+    const a = type("x ==a= tail", "=", 5);
+    expect(mdOf(a.s)).toBe("x ==a== tail");
+    expect(a.s.doc.textBetween(a.s.selection.head, a.s.doc.content.size)).toBe(" tail");
+    // 打字时的 \* 是转义：重解析以后还是那一对
+    let s = state("a");
+    s = s.apply(s.tr.insert(s.selection.head, [schema.text("\\", [schema.marks.mdEsc.create()]), schema.text("*b ==c=")]));
+    const tr = s.tr.insertText("=");
+    expect(retype(tr)).toBe(true);
+    const after = s.apply(tr);
+    expect(mdOf(after)).toBe("a\\*b ==c==");
+    expect(after.doc.rangeHasMark(0, after.doc.content.size, schema.marks.mdEsc)).toBe(true);
+  });
+  it("only converts the span ending at the caret (text undone to plain stays plain)", () => {
+    const a = type("$a$ and $b", "$");
+    expect(a.changed).toBe(true);
+    expect(mdOf(a.s)).toBe("\\$a$ and $b$");
+    expect(type("==a== x ==b=", "=").s.doc.firstChild!.firstChild!.text).toBe("==a== x ");
+  });
+  it("leaves bold, italic and strike to TipTap's own rules", () => {
+    for (const [md, ch] of [["x **b*", "*"], ["x *i", "*"], ["x ~~s~", "~"], ["x ~a b", "~"]] as const) expect(type(md, ch).changed, md).toBe(false);
+  });
+  it("does not create footnotes", () => {
+    expect(type("see [[x]] and [^1", "]").changed).toBe(false);
   });
 });
