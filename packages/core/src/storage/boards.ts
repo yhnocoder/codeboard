@@ -388,7 +388,7 @@ export class Storage {
     const base = loadBoardFile(JSON.parse(e.text));
     const both = mergeFile(base, disk, mine ?? base);
     for (const c of both.cards) if (c.kind === "shared") await this.readShared(c.id);
-    const r = inflate(both, (id) => { const sc = this.lib.get(id)?.sc; return sc && structuredClone({ card: sc.card, sidenotes: sc.sidenotes }); });
+    const r = inflate(both, (id) => { const sc = this.lib.get(id)?.sc; return sc && withPending(e, sc); });
     // 按项合并不管引用（那边删了卡、这边往它上面连了线）：按删卡的规矩带走悬空的
     pruneRefs(r.board);
     const file = deflate(r.board, new Set(r.refs)).file;
@@ -736,6 +736,17 @@ export function merged(base: SharedCard | undefined, disk: SharedCard | undefine
   const items = itemsChanged(disk, now);
   const file: SharedCardFile | null = items.length || !disk ? structuredClone({ version: BOARD_VERSION, ...now }) : null;
   return { file, mine: [...c.changed, ...n.changed], items: [...new Set([...items, ...itemsChanged(base, now)])], back: itemsChanged(view, now) };
+}
+
+/**
+ * 卡库里的一张卡换进重建的白板 e（mergeDisk）：e 上还没写盘的、改了这张卡的项（和 e.used 比变了的）留着，别的项用卡库的。
+ * 白板文件里只有共享卡的引用，另一个窗口只挪了卡时，卡库里还是 e 改之前的内容
+ */
+function withPending(e: Entry, sc: SharedCard): SharedCard {
+  const id = sc.card.id, base = e.used.get(id), view = e.refs.has(id) ? sharedOf(e.board, id) : undefined;
+  if (!base || !view) return structuredClone({ card: sc.card, sidenotes: sc.sidenotes });
+  const c = mergeById([base.card], [sc.card], [view.card]), n = mergeById(base.sidenotes, sc.sidenotes, view.sidenotes);
+  return structuredClone({ card: c.items[0] ?? sc.card, sidenotes: n.items });
 }
 
 /** 共享卡从 x 到 y 变了的项（卡 id、Sidenote 的 id：改了、加了、删了的）；Sidenote 的先后不算 */
