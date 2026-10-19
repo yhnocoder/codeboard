@@ -1,5 +1,5 @@
 // Host performance: opening a board (highlighting + version status for all snippets) and the version check after HEAD changes, measured on a copy of nano-vllm.
-// Usage: node extensions/vscode/test/run-perf-host.mjs [--cards 240] [--runs 3]
+// Usage: node packages/host/test/run-perf-host.mjs [--cards 240] [--runs 3]
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";

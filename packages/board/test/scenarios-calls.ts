@@ -7,15 +7,15 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type SegView, type HostToBoard } from "@codeboard/core";
 import { open, shot, put, symCard as nvCard, findSym, OUT, REPO, type Host } from "./harness";
-import { startAnalysis, analysisOf } from "../../../extensions/vscode/src/analysis";
-import { cardForFileSym } from "../../../extensions/vscode/src/cards";
-import { callVars, expand, peek } from "../../../extensions/vscode/src/resolve";
-import { viewsFor } from "../../../extensions/vscode/src/views";
-import { searchPick } from "../../../extensions/vscode/src/search";
-import { resetIndex, startNameIndex, nameIndexReady } from "../../../extensions/vscode/src/nameindex";
-import { captureRun, runApply } from "../../../extensions/vscode/src/runs";
-import { langOf, useWorkspace } from "../../../extensions/vscode/src/ws";
-import { nodeWorkspace } from "../../../extensions/vscode/test/node-workspace";
+import { startAnalysis, analysisOf } from "@codeboard/host/analysis";
+import { cardForFileSym } from "@codeboard/host/cards";
+import { callVars, expand, peek } from "@codeboard/host/resolve";
+import { viewsFor } from "@codeboard/host/views";
+import { searchPick } from "@codeboard/host/search";
+import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/nameindex";
+import { captureRun, runApply } from "@codeboard/host/runs";
+import { langOf, useWorkspace } from "@codeboard/host/ws";
+import { nodeWorkspace } from "@codeboard/host/test/node-workspace";
 
 const light = process.argv.includes("--light");
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
@@ -221,7 +221,7 @@ async function calltree(res: Record<string, unknown>) {
 /** Capture Run on test fixtures/runtime (toyllm: no torch, no GPU) with the real host + python3, then apply it to a board */
 async function runtime(res: Record<string, unknown>) {
   const FIX = fs.mkdtempSync("/tmp/codeboard-runtime-");
-  fs.cpSync(path.join(REPO, "extensions/vscode/test/fixtures/runtime"), FIX, { recursive: true });
+  fs.cpSync(path.join(REPO, "packages/host/test/fixtures/runtime"), FIX, { recursive: true });
   execFileSync("git", ["init", "-q"], { cwd: FIX });
   execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"], { cwd: FIX });
   execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"], { cwd: FIX });

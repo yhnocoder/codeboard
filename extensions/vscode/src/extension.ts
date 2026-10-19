@@ -1,23 +1,24 @@
 // 插件入口（VS Code 适配层）：接上 Workspace，再注册存储、白板面板、命令、侧栏、编辑器标记、版本监听。
 import * as vscode from "vscode";
 import * as path from "node:path";
-import { affectsSettings, readSettings } from "./settings";
-import { startAnalysis } from "./analysis";
+import { affectsSettings, readSettings } from "@codeboard/host/settings";
+import { startAnalysis } from "@codeboard/host/analysis";
 import { registerCommands } from "./commands";
-import { showFile } from "./git";
-import { makeHandler } from "./handlers";
+import { showFile } from "@codeboard/host/git";
+import { makeHandler } from "@codeboard/host/handlers";
 import { EditorMarks } from "./lens";
-import { Panels } from "./panel";
-import { watchNameIndex } from "./nameindex";
+import { BoardWebviews, VIEW_TYPE } from "./panel";
+import { BoardHub } from "@codeboard/host/hub";
+import { watchNameIndex } from "@codeboard/host/nameindex";
 import { BoardsTree, GithubTree, QuestionsTree } from "./sidebar";
 import { questionsMarkdown } from "@codeboard/core";
-import { openOnBoard } from "./handlers";
-import { setMediaDir } from "./exports";
-import { initSource } from "./source";
-import { githubDir, openStorage, type Storage } from "./storage";
-import { watchVersions } from "./watch";
-import { debounce, useWorkspace } from "./ws";
-import { forgetDefs } from "./defcache";
+import { openOnBoard } from "@codeboard/host/handlers";
+import { setMediaDir } from "@codeboard/host/exports";
+import { initSource } from "@codeboard/host/source";
+import { githubDir, openStorage, type Storage } from "@codeboard/host/storage";
+import { watchVersions } from "@codeboard/host/watch";
+import { debounce, useWorkspace } from "@codeboard/host/ws";
+import { forgetDefs } from "@codeboard/host/defcache";
 import { registerVersionDocs, vscodeWorkspace } from "./vscode/workspace";
 import { disposeScratch } from "./vscode/scratch";
 
@@ -33,11 +34,13 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const store = (storage = openStorage());
   sub({ dispose: () => store.dispose() });
   initSource(githubDir());
-  const panels = new Panels(ctx, store);
+  const webviews = new BoardWebviews(ctx, store);
+  const panels = new BoardHub(webviews.env(), store);
+  sub(panels);
   panels.handler = makeHandler(panels);
 
   // 先注册恢复面板，再等 tree-sitter（恢复时的 ready 消息会等 init 里的分析）
-  sub(vscode.window.registerWebviewPanelSerializer(Panels.viewType, { deserializeWebviewPanel: async (p, state) => { await ready; await panels.restore(p, state); } }));
+  sub(vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, { deserializeWebviewPanel: async (p, state) => { await ready; await webviews.restore(panels, p, state); } }));
   registerCommands(ctx, panels, store);
 
   const tree = new BoardsTree(store, panels);
