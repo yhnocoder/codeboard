@@ -154,6 +154,12 @@ export class Panels implements BoardHost {
     void this.ctx.globalState.update("codeboard.opened", m);
   }
 
+  firstAdd(): boolean {
+    if (this.ctx.workspaceState.get<boolean>("codeboard.added")) return false;
+    void this.ctx.workspaceState.update("codeboard.added", true);
+    return true;
+  }
+
   async switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean> {
     const other = this.panels.get(to);
     if (other && other !== p) { other.view.reveal(); return false; }
