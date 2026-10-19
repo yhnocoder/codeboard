@@ -1,11 +1,11 @@
 // v0.2 sub-boards (wireframe 05): one browser plays a board panel; the host is core Storage on a temp dir and switches the
-// panel between boards like Panels.switchBoard (crumbs, cameras, walkthrough hops), pushes skeletons after saves (120 ms debounce).
+// panel between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops), pushes skeletons after saves (120 ms debounce).
 // Usage: node packages/board/test/run-harness.mjs subboards [--light]   screenshots: test-out/harness/subboards-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, cutCrumbs, emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../../../extensions/vscode/src/nodefs";
+import { nodeFs } from "@codeboard/host/nodefs";
 import { open, shot, symCard, findSym, viewOf, put, OUT, type Host } from "./harness";
 
 const light = process.argv.includes("--light");
@@ -49,7 +49,7 @@ export async function subHost(start: Board, others: Board[]) {
     }, 120);
   };
   store.onDidSave((b) => { dirty.add(b.id); push(); });
-  // like Panels: a deleted board on the breadcrumbs can't be gone back to
+  // like BoardHub: a deleted board on the breadcrumbs can't be gone back to
   store.onDidRemoveBoard((id) => { const c = cutCrumbs(crumbs, cams, id); if (c) { crumbs = c.crumbs; cams = c.cams; void h.post({ type: "crumbs", crumbs }); } });
   store.onDidChange(() => { all = true; push(); });
   const init = async (walk?: unknown, cam?: Camera) => {

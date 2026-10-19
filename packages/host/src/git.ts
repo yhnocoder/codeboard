@@ -8,6 +8,13 @@ export function git(cwd: string, args: string[]): Promise<string | null> {
   return new Promise((res) => execFile("git", args, { cwd, maxBuffer: 64 << 20, encoding: "utf8" }, (err, out) => res(err ? null : out)));
 }
 
+/** git 的退出码；git 没跑起来（没装、目录不在）或被信号杀掉 = null */
+function gitExit(cwd: string, args: string[]): Promise<number | null> {
+  return new Promise((res) => execFile("git", args, { cwd, encoding: "utf8" }, (err) => res(!err ? 0 : typeof err.code === "number" ? err.code : null)));
+}
+
+const SHA = /^[0-9a-f]{40}$/;
+
 const roots = new Map<string, Promise<string | null>>();
 
 /** 文件所在的 git 仓库根（子模块里的文件返回子模块自己的根） */
@@ -41,7 +48,7 @@ export function showFile(root: string, commit: string, rel: string): Promise<str
   let p = shows.get(k);
   if (!p) {
     p = git(root, ["show", `${commit}:${rel}`]);
-    if (/^[0-9a-f]{40}$/.test(commit)) shows.set(k, p);
+    if (SHA.test(commit)) shows.set(k, p);
   }
   return p;
 }
@@ -74,13 +81,22 @@ export function gitDirOf(root: string) {
   return p;
 }
 
-/** a 是不是 b 的祖先（含相等） */
-const anc = new Map<string, Promise<boolean>>();
-/** commit a 是不是 commit b 的祖先（a、b 都是 sha）。两个 commit 之间的关系不会变：记下来，一次检查里每张卡问同一对 commit 只跑一次 git */
+const anc = new Lru<Promise<boolean>>(500);
+/**
+ * commit a 是不是 commit b 的祖先（含相等）。两个完整 sha 之间的关系不会变：git 明确回答了（退出码 0 = 是，1 = 不是）就记下来，
+ * 一次检查里每张卡问同一对 commit 只跑一次 git。git 出错（commit 还没 fetch 下来、仓库不在）当「不是」，但不记，下次再问
+ */
 export function isAncestor(root: string, a: string, b: string): Promise<boolean> {
   const k = `${root}\0${a}\0${b}`;
   let p = anc.get(k);
-  if (!p) { p = git(root, ["merge-base", "--is-ancestor", a, b]).then((r) => r !== null); anc.set(k, p); }
+  if (!p) {
+    const keep = SHA.test(a) && SHA.test(b);
+    p = gitExit(root, ["merge-base", "--is-ancestor", a, b]).then((code) => {
+      if (code !== 0 && code !== 1 && anc.get(k) === p) anc.delete(k);
+      return code === 0;
+    });
+    if (keep) anc.set(k, p);
+  }
   return p;
 }
 

@@ -8,3 +8,5 @@ test-out/
 .ci-shots/
 *.vsix
 extensions/vscode/LICENSE
+__pycache__/
+*.pyc

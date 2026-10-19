@@ -1,11 +1,11 @@
 // 命令注册（VS Code 适配层）：命令做什么在 actions.ts。
 import * as vscode from "vscode";
-import { makeActions } from "./actions";
-import type { Panels } from "./panel";
-import type { Storage } from "./storage";
+import { makeActions } from "@codeboard/host/actions";
+import type { BoardHub } from "@codeboard/host/hub";
+import type { Storage } from "@codeboard/host/storage";
 import { DEEPSEEK_SECRET } from "./vscode/workspace";
 
-export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, store: Storage) {
+export function registerCommands(ctx: vscode.ExtensionContext, panels: BoardHub, store: Storage) {
   const cmd = (id: string, fn: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
   for (const [id, fn] of Object.entries(makeActions(panels, store))) cmd(id, fn as (...a: any[]) => unknown);
   // DeepSeek 灰字补全的密钥：只存在 SecretStorage 里

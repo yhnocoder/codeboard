@@ -1,7 +1,7 @@
 // Host performance of the whole-workspace name index (used when the language service gives no definition):
 // a synthetic big repo (nano-vllm copied many times, like sglang-sized), a click on a call the language service cannot answer.
 // Measures the click latency (cold and warm), the longest event-loop stall while indexing, and whether a definition in a file past
-// the first 8000 files is found. Usage: node extensions/vscode/test/run-perf-host.mjs --index [--files 12000]
+// the first 8000 files is found. Usage: node packages/host/test/run-perf-host.mjs --index [--files 12000]
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";

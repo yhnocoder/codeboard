@@ -1,20 +1,20 @@
 // v0.2 broken chains + cross-language (wireframes 01, 02). One browser plays the board; the host is the real resolver
-// (extensions/vscode/src/resolve.ts) on the crosslang fixture repo through the node workspace, with a stub language
+// (packages/host/src/resolve.ts) on the crosslang fixture repo through the node workspace, with a stub language
 // server for dynamic dispatch (definition = the base method, implementations = the overrides, as Pylance answers).
 // Usage: node packages/board/test/run-harness.mjs pickimpl crosslang [--light]   screenshots: test-out/harness/{pickimpl,crosslang}-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type SegView, type HostToBoard } from "@codeboard/core";
 import { open, shot, put, OUT, REPO, type Host } from "./harness";
-import { startAnalysis, analysisOf } from "../../../extensions/vscode/src/analysis";
-import { cardForFileSym } from "../../../extensions/vscode/src/cards";
-import { callVars, dispatchAt, expand, peek } from "../../../extensions/vscode/src/resolve";
-import { viewsFor } from "../../../extensions/vscode/src/views";
-import { forgetDefs } from "../../../extensions/vscode/src/defcache";
-import { searchName, searchPick, genSource } from "../../../extensions/vscode/src/search";
-import { resetIndex, startNameIndex, nameIndexReady } from "../../../extensions/vscode/src/nameindex";
-import { langOf, useWorkspace } from "../../../extensions/vscode/src/ws";
-import { nodeWorkspace, type TestWorkspace } from "../../../extensions/vscode/test/node-workspace";
+import { startAnalysis, analysisOf } from "@codeboard/host/analysis";
+import { cardForFileSym } from "@codeboard/host/cards";
+import { callVars, dispatchAt, expand, peek } from "@codeboard/host/resolve";
+import { viewsFor } from "@codeboard/host/views";
+import { forgetDefs } from "@codeboard/host/defcache";
+import { searchName, searchPick, genSource } from "@codeboard/host/search";
+import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/nameindex";
+import { langOf, useWorkspace } from "@codeboard/host/ws";
+import { nodeWorkspace, type TestWorkspace } from "@codeboard/host/test/node-workspace";
 
 const light = process.argv.includes("--light");
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
@@ -30,7 +30,7 @@ let FIX = "", W: TestWorkspace;
 async function fixture() {
   if (FIX) return;
   FIX = fs.mkdtempSync("/tmp/codeboard-chains-");
-  fs.cpSync(path.join(REPO, "extensions/vscode/test/fixtures/crosslang"), FIX, { recursive: true });
+  fs.cpSync(path.join(REPO, "packages/host/test/fixtures/crosslang"), FIX, { recursive: true });
   W = nodeWorkspace(FIX);
   useWorkspace(W);
   await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
@@ -270,8 +270,10 @@ async function crosslang(res: Record<string, unknown>) {
   res.genLink = linksOf(h).some((l) => l.gen && l.from.card === gen?.id && l.to.card === kern?.id);
   res.genHead = await page.locator(`.card[data-id="${gen?.id}"] .gentag`).textContent().catch(() => "");
   await page.keyboard.press("Escape");
-  await page.locator(`.card[data-id="${kern?.id}"] .chead`).click({ position: { x: 300, y: 10 } });
-  await page.locator(`.card[data-id="${gen?.id}"] .chead`).click({ position: { x: 300, y: 10 }, modifiers: ["Shift"] });
+  // an empty spot in each header (cards can be small on screen at this zoom)
+  const headSpot = async (id?: string) => ({ x: (await page.locator(`.card[data-id="${id}"] .chead`).boundingBox())!.width * 0.75, y: 6 });
+  await page.locator(`.card[data-id="${kern?.id}"] .chead`).click({ position: await headSpot(kern?.id) });
+  await page.locator(`.card[data-id="${gen?.id}"] .chead`).click({ position: await headSpot(gen?.id), modifiers: ["Shift"] });
   await fitWide(h, true);
   await page.keyboard.press("Escape"); await wait(h, 300);
   await shotPr(h, "crosslang-3-generated");
