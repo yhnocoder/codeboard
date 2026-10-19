@@ -528,7 +528,7 @@
 :root.look-soft-light .ccard > .cface > .chead .rev ~ .rev { margin-left: 0; }
 :root.look-soft-light .ccard > .cface > .chead .ib { order: 3; border-radius: 9px; }
 :root.look-soft-light .ccard > .cface > .chead .ctitle { order: 5; flex: 1 0 100%; font: 300 18px/1.35 var(--sys); color: var(--ink); letter-spacing: -.005em; }
-:root.look-soft-light .ccard > .cface > .chead .cpath { order: 6; flex: 1 0 100%; font: 400 11px var(--sys); color: var(--ink-3); letter-spacing: .02em; padding: 0; }
+:root.look-soft-light .ccard > .cface > .chead .cpath { order: 6; flex: 1 0 100%; max-width: none; font: 400 11px var(--sys); color: var(--ink-3); letter-spacing: .02em; padding: 0; }
 :root.look-soft-light .ccard > .cface > .chead .rev.new { color: var(--ink-2); gap: 7px; }
 :root.look-soft-light .rev.new i { width: 7px; height: 7px; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
 :root.look-soft-light .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
@@ -637,7 +637,7 @@
 :root.look-colorful .chead .step { white-space: nowrap; background: var(--rule); color: var(--paper-ink); font: 600 9.5px var(--sys); letter-spacing: .2em; min-width: 0; }
 :root.look-colorful .chead .step::before { content: "STEP\00a0"; }
 :root.look-colorful .chead .step:hover { background: var(--fc); color: var(--bink); }
-:root.look-colorful .chead .cpath { flex: 1 1 auto; color: var(--ink-2); font: inherit; border-right: 2px solid var(--rule); }
+:root.look-colorful .chead .cpath { max-width: none; flex: 1 1 auto; color: var(--ink-2); font: inherit; border-right: 2px solid var(--rule); }
 :root.look-colorful .chead .rev { font: inherit; color: var(--ink-2); gap: 7px; }
 :root.look-colorful .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--f3); }
 :root.look-colorful .chead .rev.fold:not(.new):not(.unc)::before { display: none; } /* drawn on the label instead, so it folds with it */

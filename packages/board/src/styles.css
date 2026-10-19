@@ -153,30 +153,31 @@ input, textarea { font: inherit; color: var(--ink); }
 .cpath:hover { color: var(--ink); background: var(--hlrow); }
 .rev { display: inline-flex; align-items: center; gap: 3px; font: 10.5px var(--mono); color: var(--ink-3); flex: none; padding: 2px 5px; border-radius: 5px; }
 .rev:hover { color: var(--ink); background: var(--hlrow); }
-/* Card header priority on a narrow card. Only flex-shrink tiers and wrapping, no JS layout reads:
- *  1. the version chip and "+ uncommitted" (.rev.fold) fold to a small mark          flex-shrink 1e13
- *  2. "← N" and Copy Code (.linkedin.fold, .ib.cpy) fold away                      flex-shrink 1e9
- *  3. the path ellipsizes, and below 4em folds away too                            flex-shrink 1e5
- *  4. the title ellipsizes last                                                    flex-shrink 1
- * Shrink is shared in proportion to flex-shrink × width, so with these gaps a tier takes the whole shortfall until it reaches its
- * min-width and only then does the next tier start: nothing is ellipsized while a lower-priority item still has its full width.
+/* Card header priority on a narrow card. Plain flex, no JS layout reads, and it follows the real title and path in every theme:
+ *  1. the version chip and "+ uncommitted" (.rev.fold) fold to a small mark first
+ *  2. then "← N" and Copy Code (.linkedin.fold, .ib.cpy) fold away
+ *  3. then the path ellipsizes, and below 4em folds away too
+ *  4. the title ellipsizes last, down to 4em
+ * The title is the only one with flex-basis auto: it keeps its width until the others have nothing left, then shrinks. The path and
+ * the chips start from flex-basis 0 (a chip from its folded size) and grow back up to their own width (max-width: max-content) out
+ * of the room the title leaves, in proportion to flex-grow: path 1e8, "← N" and Copy 1e4, the version chips 1. With these gaps a
+ * tier gets all of the room until it is whole, and only what is left goes to the next one, so nothing is cut while a lower-priority
+ * item still has its full width. Grow factors of 1e4 keep a whole tier within 1/100px of its width, and 1e8 is far inside
+ * Chromium's flex precision. The .grow spacer is an auto margin, so it only takes what is left after all of them.
  * Folding: .rw is one line high (--rwh) and wraps; its zero-width ::before holds the first line, so when .rl (the label) no longer
  * fits it wraps onto the clipped second line instead of being ellipsized, and its ::before (the compact mark) moves up into view.
- * Folded contents sit at the right end, so room a folding chip cannot use yet reads as part of the gap before it; anything drawn
- * around a chip belongs on .rl, so it folds with the label. The full text is in the button's data-tip; the button and its click
- * stay as they are. The language chip of free cards (.rev.lang) keeps the old behaviour.
- * Precision: a tier still loses shortfall × (its weight / the shrinking tier's weight) to the one below, and 1/128px is enough
- * to ellipsize or fold it. Hence 1e5 between path and title and 1e4 between the folding tiers. More tiers would need larger
- * factors, and Chromium's flex arithmetic loses precision past ~1e13 (at 1e15 the title is mis-sized by pixels), so the version
- * chip and "+ uncommitted" share one tier. */
+ * A chip that is part way back shows its mark at the right end of the room it got, so that room reads as part of the gap before it;
+ * anything drawn around a chip belongs on .rl, so it folds with the label. The full text is in the button's data-tip; the button and
+ * its click stay as they are. The language chip of free cards (.rev.lang) shrinks with the title (flex-shrink 20). */
 .chead .rev { flex-shrink: 20; min-width: 0; overflow: hidden; white-space: nowrap; }
 .chead .fold { overflow: visible; min-width: auto; }
-.chead .rev.fold { flex-shrink: 1e13; }
+.chead .rev.fold { flex: 1 0 0; max-width: max-content; }
 .chead .rev.fold::before { flex-shrink: 0; }
-.chead .linkedin.fold, .chead .ib.cpy { flex-shrink: 1e9; min-width: 0; padding: 0; }
+.chead .linkedin.fold, .chead .ib.cpy { flex: 1e4 0 0; min-width: 0; max-width: max-content; padding: 0; }
 .chead .ib.cpy { width: auto; display: flex; align-items: center; }
-.chead .cpath { flex-shrink: 1e5; }
-.chead .ctitle { flex-shrink: 1; min-width: 4em; }
+.chead .cpath { flex: 1e8 0 0; max-width: max-content; }
+.chead > .grow { flex: none; margin-left: auto; }
+.chead .ctitle { flex: 0 1 auto; min-width: 4em; }
 .chead .rw { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; justify-content: flex-end; height: var(--rwh, 1lh); min-width: 0; overflow: hidden; }
 .chead .rw::before { content: ""; width: 0; height: var(--rwh, 1lh); }
 .chead .rev .rw { min-width: 8px; }
