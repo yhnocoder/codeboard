@@ -369,7 +369,7 @@ export class Storage {
         // 别的白板自己指着这张卡的行号跟着挪了（新版本）：那块白板也有了没写盘的改动，照常稍后写（写时和磁盘三方合并）
         const was = prevOf(o);
         const r: { moved?: boolean } = {};
-        putShared(o.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), r);
+        putShared(o.board, rebased(o, sc), r);
         o.used.set(id, this.lib.get(id)!.sc);
         if (r.moved) this.dirty(o, was);
       }
@@ -438,7 +438,7 @@ export class Storage {
       itemsChanged(was, sc).forEach((k) => items.add(k));
       const before = prevOf(e);
       const r: { moved?: boolean } = {};
-      putShared(e.board, structuredClone({ card: sc.card, sidenotes: sc.sidenotes }), r);
+      putShared(e.board, rebased(e, sc), r);
       e.used.set(id, sc);
       if (r.moved) this.dirty(e, before);
     }
@@ -735,6 +735,17 @@ export function merged(base: SharedCard | undefined, disk: SharedCard | undefine
   const items = itemsChanged(disk, now);
   const file: SharedCardFile | null = items.length || !disk ? structuredClone({ version: BOARD_VERSION, ...now }) : null;
   return { file, mine: [...c.changed, ...n.changed], items: [...new Set([...items, ...itemsChanged(base, now)])], back: itemsChanged(view, now) };
+}
+
+/**
+ * 卡库里新的一份 sc 换进白板 e 之前：e 还没写盘的、改了这张卡的项（和 e.used 比变了的）留着，别的项用 sc 的。
+ * 这样另一块白板先写盘时不会把 e 还没写的改动换掉，e 写盘时照常按项合并进卡库
+ */
+function rebased(e: Entry, sc: SharedCard): SharedCard {
+  const view = e.pending && sharedOf(e.board, sc.card.id), base = e.used.get(sc.card.id);
+  if (!view || !base) return structuredClone({ card: sc.card, sidenotes: sc.sidenotes });
+  const c = mergeById([base.card], [sc.card], [view.card]), n = mergeById(base.sidenotes, sc.sidenotes, view.sidenotes);
+  return structuredClone({ card: c.items[0] ?? sc.card, sidenotes: n.items });
 }
 
 /** 共享卡从 x 到 y 变了的项（卡 id、Sidenote 的 id：改了、加了、删了的）；Sidenote 的先后不算 */

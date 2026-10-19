@@ -315,6 +315,23 @@ describe("card library (shared cards)", () => {
     expect(shared.length).toBe(1);
   });
 
+  it("a shared card's sidenote edited on one board and its body on another before either is written keeps both edits", async () => {
+    const { fs, store, B, shared } = await two();
+    // Both patches land in the storage before the delayed write
+    await store.patch(B, { cards: { set: [note("s", "body from B")] } });
+    await store.patch("A", { sidenotes: { set: [{ id: "n1", kind: "text", md: "sidenote from A", at: { card: "s" } }] } });
+    await store.flush("A");
+    // A's write must not put the old body back into B's unwritten board
+    expect((store.peek(B)!.cards[0] as any).md).toBe("body from B");
+    await store.flush(B);
+    expect(card(fs, "s")).toMatchObject({ card: { md: "body from B" } });
+    expect(card(fs, "s").sidenotes.find((n: any) => n.id === "n1").md).toBe("sidenote from A");
+    expect((store.peek("A")!.cards[0] as any).md).toBe("body from B");
+    expect((store.peek(B)!.sidenotes.find((n) => n.id === "n1") as any).md).toBe("sidenote from A");
+    // A heard about the body, B about the sidenote
+    expect(shared).toEqual([{ from: "A", ids: ["s"], items: ["n1"] }, { from: B, ids: ["s"], items: ["s"] }]);
+  });
+
   it("removing a shared card from one board keeps it in the library and on the other board", async () => {
     const { fs, store, B } = await two();
     await patchNow(store, "A", { cards: { del: ["s"] }, place: { del: ["s"] }, sidenotes: { del: ["n1", "n2"] } });
