@@ -45,7 +45,10 @@ export function nodeWorkspace(root = WS): TestWorkspace {
         walk(root);
         return max ? out.slice(0, max) : out;
       },
-      watch: (_base, _glob, fn) => fire.change.event(fn),
+      /** fire.change(abs) reaches the watchers whose base holds abs (a glob without wildcards must be the file's name) */
+      watch: (base, glob, fn) => fire.change.event((abs) => {
+        if ((abs.startsWith(base + "/") || abs === base) && (/[*?{[]/.test(glob) || path.basename(abs) === glob)) fn(abs);
+      }),
       onDidSave: fire.save.event,
       onDidEdit: fire.edit.event,
       onDidCreate: fire.create.event,

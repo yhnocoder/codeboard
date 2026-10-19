@@ -124,7 +124,8 @@ The repository is an npm workspace:
 | --- | --- |
 | [`packages/core`](packages/core) | Data model, symbol resolution, and keeping cards in sync with the code. Pure TypeScript. |
 | [`packages/board`](packages/board) | The board UI, built with SolidJS. Independent of any editor. |
-| [`extensions/vscode`](extensions/vscode) | The VS Code extension: reads code, highlights, navigates, and stores boards. |
+| [`packages/host`](packages/host) | Reads code, highlights, resolves calls, tracks versions, and stores boards. Independent of any editor. |
+| [`extensions/vscode`](extensions/vscode) | The VS Code extension: connects the host and the board to VS Code. |
 | [`examples`](examples) | Real codebases (git submodules) used for testing and demos. |
 
 ```bash

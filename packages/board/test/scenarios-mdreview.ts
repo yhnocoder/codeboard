@@ -4,7 +4,7 @@
 import * as fs from "node:fs";
 import { open, OUT, type Host } from "./harness";
 import { emptyBoard, cleanCompletion, DEFAULT_SETTINGS, type NoteCard } from "@codeboard/core";
-import { deepseekComplete } from "../../../extensions/vscode/src/deepseek";
+import { deepseekComplete } from "@codeboard/host/deepseek";
 import type { Page } from "playwright-core";
 
 type Ctx = { pg: Page; h: Host; info: Record<string, unknown> };

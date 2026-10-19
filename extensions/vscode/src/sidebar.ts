@@ -1,13 +1,13 @@
 // 侧栏：BOARDS（组 = 文件夹，白板后面是卡片数，有新版本的卡时加圆点）和 GITHUB FILES（下载过的 GitHub 文件）。
 // 子白板缩进在父白板下面（一块白板可以在几块父白板下面各出现一次）；有父白板的不再列在顶层。
 import * as vscode from "vscode";
-import { cachedFiles, githubFiles } from "./github";
-import type { Panels } from "./panel";
-import type { Storage } from "./storage";
-import { debounce } from "./ws";
-import { treeChildren, type TreeNode } from "./boardtree";
+import { cachedFiles, githubFiles } from "@codeboard/host/github";
+import type { BoardHub } from "@codeboard/host/hub";
+import type { Storage } from "@codeboard/host/storage";
+import { debounce } from "@codeboard/host/ws";
+import { treeChildren, type TreeNode } from "@codeboard/host/boardtree";
 import { firstLine, type QuestionItem } from "@codeboard/core";
-import { allQuestions } from "./exports";
+import { allQuestions } from "@codeboard/host/exports";
 
 type BNode = TreeNode;
 
@@ -15,7 +15,7 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode> {
   private emitter = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.emitter.event;
   readonly refresh = debounce(() => this.emitter.fire(), 200);
-  constructor(private store: Storage, private panels: Panels) {}
+  constructor(private store: Storage, private panels: BoardHub) {}
 
   async getChildren(n?: BNode): Promise<BNode[]> {
     return treeChildren(await this.store.list(), n ? [] : await this.store.groups(), n);

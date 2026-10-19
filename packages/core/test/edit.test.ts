@@ -351,7 +351,7 @@ describe("renumberBorn", () => {
 describe("guard: reference upkeep only in core/src/edit.ts", () => {
   // 删卡、删线、换卡、删 Section / Sidenote / Sticker、改叠放顺序都得走 edit.ts 里的操作（removeCards、replaceCards、removeSections、arrangeCards……），
   // 它们一起维护指着这些东西的引用（Link 两端、Sidenote、贴纸、问题的解答、Compare 的栏、创建顺序、调用图标记）。
-  // 规则按「改动的形状」查，不按写法：在 core、白板、插件三处源码里（去掉整行注释后，跨行匹配）找
+  // 规则按「改动的形状」查，不按写法：在 core、白板、宿主、插件四处源码里（去掉整行注释后，跨行匹配）找
   //   1. 整个换掉一类东西：x.cards / links / sections / sidenotes / stickers / place = …（含 filter 之后的临时变量再赋回去、换顺序），x["links"] = …，
   //      Object.assign(x.place, …) / Object.assign(x, { links: … })
   //   2. 原地删、原地换顺序：x.<集合>.splice / pop / shift / sort / reverse / fill / copyWithin(…)，x.<集合>.length = …；删摆放：delete x.place[…]
@@ -399,7 +399,7 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
     /\.(?:born|marks)\s*(?:\[[^\]]*\]\s*)?(?:\?\?)?=(?![=>])/g,
     /\bdelete\s+[\w$.]*\.(?:born|marks)\b/g,
   ];
-  const roots = ["../../core/src", "../../board/src", "../../../extensions/vscode/src"].map((r) => fileURLToPath(new URL(r, import.meta.url)));
+  const roots = ["../../core/src", "../../board/src", "../../host/src", "../../../extensions/vscode/src"].map((r) => fileURLToPath(new URL(r, import.meta.url)));
   const repo = fileURLToPath(new URL("../../", import.meta.url));
   const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
   type Hit = { at: string; line: string; match: string };
