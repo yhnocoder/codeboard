@@ -4,7 +4,7 @@ import { V3_CODE_CHROME, type Card, type Place } from "./model";
 export type Rect = { x: number; y: number; w: number; h: number };
 
 export const GAP = 28; // 卡片之间留的空
-export const INDENT = 56; // 子卡相对父卡的缩进
+export const COL_GAP = 96; // 子卡一列和父卡之间的空（留给箭头）
 export const SIB_GAP = 24;
 
 /** 还没渲染、量不到实测尺寸时的估计（白板放新卡、宿主在白板没开时直接写卡都用它） */
@@ -80,12 +80,12 @@ export function besideFree(sel: Rect, size: { w: number; h: number }, others: Re
 }
 
 /**
- * 展开出来的子卡：缩进放在父卡下方，按出发行号从上到下。
+ * 展开出来的子卡：放在父卡右边一列，顶部对着出发行（top），按出发行号从上到下。
  * before = 出发行在它前面的兄弟（及其子树）的矩形；新卡放在它们下面。
  */
-export function placeChild(parent: Rect, size: { w: number; h: number }, before: Rect[], others: Rect[]): { x: number; y: number } {
-  const x = parent.x + INDENT;
-  let y = parent.y + parent.h + GAP;
+export function placeChild(parent: Rect, size: { w: number; h: number }, before: Rect[], others: Rect[], top = parent.y): { x: number; y: number } {
+  const x = parent.x + parent.w + COL_GAP;
+  let y = Math.max(parent.y, top);
   for (const s of before) y = Math.max(y, s.y + s.h + SIB_GAP);
   return findFreeDown({ x, y, ...size }, others);
 }
@@ -100,23 +100,6 @@ function findFreeDown(want: Rect, others: Rect[]) {
   }
   return { x: want.x, y };
 }
-
-/**
- * 视野里离 want 最近的空位（网格 40 步）。卡太高时只要求上面 minVis 露在视野里。没有就返回 null。
- */
-export function freeInView(want: Rect, others: Rect[], view: Rect, minVis = 200, gap = GAP): { x: number; y: number } | null {
-  const step = 40, vh = Math.min(want.h, minVis);
-  const x1 = view.x + view.w - Math.min(want.w, view.w), y1 = view.y + view.h - vh;
-  let best: { x: number; y: number } | null = null, bd = Infinity;
-  for (let y = view.y; y <= y1; y += step) for (let x = view.x; x <= x1; x += step) {
-    const d = Math.hypot(x - want.x, y - want.y);
-    if (d >= bd) continue;
-    if (others.some((o) => overlaps({ x, y, w: want.w, h: want.h }, o, gap))) continue;
-    best = { x, y }; bd = d;
-  }
-  return best;
-}
-
 
 // ---------- 吸附 ----------
 
