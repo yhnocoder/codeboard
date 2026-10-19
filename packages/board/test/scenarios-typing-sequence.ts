@@ -2,11 +2,11 @@
 // （换掉旧的 Markdown 解析之前在 main 上录的）逐键比。RECORD=1 时重新录
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { open, put } from "./harness";
+import { REPO, open, put } from "./harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 
-const FIXTURE = path.join(process.cwd(), "packages/board/test/typing-sequence.json");
+const FIXTURE = path.join(REPO, "packages/board/test/typing-sequence.json");
 const SEQS: Record<string, string> = {
   bold: "x **bold** y",
   italic: "x *italic* y",
