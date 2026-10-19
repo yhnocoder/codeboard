@@ -150,9 +150,16 @@ export function makeHandler(panels: BoardHost): Handler {
       if (!ok) p.toast("That board is already open in another tab.");
     },
     dropBoard: async (p, m) => {
-      if (!(await store.load(m.id)) || (await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
-      await removeBoard(p, m.id);
+      if ((await store.list()).some((x) => x.id !== p.id && x.subs?.includes(m.id))) return false;
+      // 和存下来时一样校验一遍再比（newBoard 存的是校验过的那份）
+      if (!(await store.dropIfUnchanged(m.id, loadBoard(structuredClone({ ...m.made, version: BOARD_VERSION }))))) return false;
+      closeOthers(p, m.id);
       return true;
+    },
+    restoreBoard: async (p, m) => {
+      const ok = await store.restore(m.id, store.groupOf(p.id));
+      if (ok) await panels.pushBoards();
+      return ok;
     },
     deleteBoard: async (p, m) => {
       const b = await store.load(m.id);
@@ -165,11 +172,15 @@ export function makeHandler(panels: BoardHost): Handler {
   };
   /** 删掉一块白板（放进 .trash）：开着它的别的面板关掉 */
   async function removeBoard(p: BoardPanel, id: string) {
+    await store.remove(id);
+    closeOthers(p, id);
+  }
+  /** 一块白板删掉了（放进了 .trash）：开着它的别的面板关掉，侧栏刷新 */
+  function closeOthers(p: BoardPanel, id: string) {
     const open = panels.get(id);
     if (open && open !== p) open.view.dispose();
-    await store.remove(id);
     if (panels.target === id) panels.setTarget(undefined);
-    await panels.pushBoards();
+    void panels.pushBoards();
   }
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }

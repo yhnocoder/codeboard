@@ -16,7 +16,7 @@ forwardErrors();
 listen(onHost);
 installKeys();
 // 面板关掉、重载时：拖动中、镜头停下后还在等（LIVE_DELAY）没发的改动现在发出去
-window.addEventListener("pagehide", flushSave);
+window.addEventListener("pagehide", () => flushSave());
 setRefResolver(resolveCardRef);
 followHostTheme();
 render(() => <App />, document.getElementById("root")!);
