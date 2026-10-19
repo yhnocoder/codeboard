@@ -251,8 +251,6 @@ async function secondCallUnderFirstCall(res: Record<string, unknown>) {
   const h = await open({ board: b, w: 600, h: 1000 });
   await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click(); await wait(h, 1200);
   await clickCanvas(h, 10, 990);
-  // the camera followed schedule into the column on the right: pan back to step, as a user would
-  await h.page.mouse.move(60, 120); await h.page.mouse.wheel(-600, 0); await wait(h, 500);
   await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("postprocess")`).first().click({ force: true }); await wait(h, 1500);
   const cards = h.board().cards as CodeCard[];
   const at = (q: string) => { const c = cards.find((k) => k.segments?.[0]?.symbol?.qual === q); return c && h.board().place[c.id]; };

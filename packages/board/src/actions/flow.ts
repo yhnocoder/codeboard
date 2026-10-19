@@ -2,7 +2,7 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, allCodeCards,
-  placeChild, walkOrder, descendants, startCards, SIB_GAP,
+  placeChild, walkOrder, descendants, startCards, SIB_GAP, COL_GAP,
   estSize, defaultWidth, removeLostCalls, callName, sameCallSite,
   type Card, type CodeCard, type Link, type Place,
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
@@ -107,11 +107,13 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
       while (up.length) for (const l of f.parents.get(up.pop()!) ?? []) if (!chain.has(hid(l.from.card))) { chain.add(hid(l.from.card)); up.push(l.from.card); }
       const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hid));
       const hb = rectOf(host);
-      // 新卡头对着出发行，箭头基本是平的
-      const top = (lineY(cardId, segId, call.line)?.y ?? hb.y) - 18;
+      // 白板够宽（父卡和新卡并排时缩放不低于概览）就放右边一列，新卡头对着出发行、箭头基本是平的；
+      // 窄（放在编辑器旁边）就缩进放在父卡下面，Fit 时代码还能读
+      const side = hb.w + COL_GAP + size.w <= usableW(overviewZ());
+      const top = side ? (lineY(cardId, segId, call.line)?.y ?? hb.y) - 18 : hb.y + hb.h;
       // 别的子树的卡也可能在这一列：在新卡上方的挡住它，下方的给它让位（下面整体下移）
       const fixed = placed().filter((k) => !tree.has(k.id) || (!chain.has(k.id) && b.place[k.id].y < top)).map((k) => rectOf(k));
-      const p = placeChild(hb, size, before, fixed, top);
+      const p = placeChild(hb, size, before, fixed, { side, top });
       np.x = Math.round(p.x); np.y = Math.round(p.y);
       const want = { x: p.x, y: p.y, w: size.w, h: size.h };
       const below = placed().filter((k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && b.place[k.id].y >= top - 1);

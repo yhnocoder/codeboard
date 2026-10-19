@@ -26,7 +26,7 @@ const run = async (name: string, f: (res: Record<string, unknown>) => Promise<bo
 
 export const UX: Record<string, () => Promise<void>> = {
   "dock-fits-narrow-board": () => run("dock-fits-narrow-board", dockFits),
-  "expand-on-narrow-board-shows-new-card": () => run("expand-on-narrow-board-shows-new-card", expandFollow),
+  "narrow-board-expands-below-and-stays-readable": () => run("narrow-board-expands-below-and-stays-readable", expandFollow),
   "expanded-calls-go-in-columns-to-the-right": () => run("expanded-calls-go-in-columns-to-the-right", expandColumns),
   "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
   "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
@@ -73,7 +73,7 @@ const zoomOf = (h: Host) => h.page.evaluate(() => parseInt(document.querySelecto
 const inView = (b: { x: number; y: number; width: number; height: number } | null, vw: number, vh: number, top = Infinity) =>
   !!b && b.x >= 0 && b.y >= 0 && b.x + b.width <= vw && b.y + Math.min(b.height, top) <= vh;
 
-/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，新卡大半在视野里（和 replay r16 同一个标准），缩放不低于概览 */
+/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，子卡放在下面，新卡大半在视野里（和 replay r16 同一个标准）；之后 Fit 不低于概览 */
 async function expandFollow(res: Record<string, unknown>) {
   const b = emptyBoard("bE", "expand");
   const step = nv("LLMEngine.step"); put(b, step, 40, 80, 480);
@@ -94,9 +94,14 @@ async function expandFollow(res: Record<string, unknown>) {
     res[name] = { shown: Math.round(shown * 100) / 100, z };
     if (!nid || shown <= 0.5 || z < 0.6) ok = false;
   }
+  // 窄白板放不下并排：子卡缩进放在 step 下面，Fit 时代码还能读
+  const P = h.board().place, ids = h.board().cards.map((c) => c.id);
+  res.below = ids.slice(1).every((id) => P[id].x === P[step.id].x + 56 && P[id].y > P[step.id].y);
+  await h.page.keyboard.press("Shift+Digit1"); await wait(h, 900);
+  res.fitZ = await zoomOf(h);
   await shot(h, "ux-expand-follow");
   await h.page.context().browser()!.close();
-  return ok;
+  return ok && !!res.below && (res.fitZ as number) >= 0.6;
 }
 
 /** 每深一层调用放右边一列，同一层按出发行从上到下；Fit 后缩放不低于概览，代码还能读 */
