@@ -25,6 +25,8 @@ export async function mapRepo(key: string, root: string) {
 export const srcKey = (s: Source) => (s.kind === "repo" ? `repo:${s.repo}` : s.kind === "external" ? `ext:${s.root}` : s.kind === "github" ? `gh:${s.owner}/${s.name}` : "free");
 export const srcLabel = (s: Source) => (s.kind === "repo" ? (s.repo ? path.basename(s.repo) : path.basename(ws0()) || "workspace") : s.kind === "external" ? s.root : s.kind === "github" ? `${s.owner}/${s.name}` : "Free code");
 
+/** 代码在本机的工作文件里（工作区仓库、工作区外的文件）；GitHub Code 是钉住的缓存，Free code 没有文件 */
+export const hasLocalFile = (s: Source) => s.kind === "repo" || s.kind === "external";
 export const githubRoot = () => ghRoot;
 export const githubFileDir = (owner: string, name: string, commit: string) => path.join(ghRoot, owner, name, commit);
 

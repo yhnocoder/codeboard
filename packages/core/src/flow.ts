@@ -1,7 +1,7 @@
 // 调用图：有 Call 标记的箭头连成的图（连通分量）。标记（字母 / 图标）、讲解顺序、折叠都从 Link 算出来，不另外存。
 // 一张卡可以有好几条进来的 Call 箭头，图里可以有环；没有编号。
 // RPC 箭头（跨进程）也算图里的边：另一端的卡沿用同一个标记（线框 03）。「↩ back to」的线不算（它是回到起点的）
-import { colHosts, type Board, type Card, type GraphMark, type Link } from "./model";
+import { cardAndCols, hostOf, type Board, type Card, type GraphMark, type Link } from "./model";
 
 /** 调用图里的边：Call 或 RPC 标记的箭头（不是 ↩ back to） */
 export type CallLink = Link;
@@ -119,7 +119,7 @@ export function descendants(f: Flows, id: string): string[] {
 /** 从这张卡（Compare：连同两栏）出去的箭头，按出发位置排 */
 function outLinks(b: Pick<Board, "links">, byId: Map<string, Card>, id: string): Link[] {
   const c = byId.get(id);
-  const from = c?.kind === "compare" ? [id, ...c.cols] : [id];
+  const from = c ? cardAndCols(c) : [id];
   const out: Link[] = [];
   for (const k of from) out.push(...sortFrom(byId, b.links.filter((l) => l.from.card === k && byId.has(l.to.card))));
   return out;
@@ -132,11 +132,11 @@ function outLinks(b: Pick<Board, "links">, byId: Map<string, Card>, id: string):
  */
 export function walkOrder(b: Pick<Board, "cards" | "links">, start: string): string[] {
   const byId = new Map(b.cards.map((c) => [c.id, c]));
-  const host = colHosts(b);
+  const host = hostOf(b);
   const out: string[] = [];
   const seen = new Set<string>();
   const calls = (id: string) => {
-    const k = host.get(id) ?? id;
+    const k = host(id);
     if (seen.has(k)) return;
     seen.add(k);
     out.push(id);
@@ -180,8 +180,8 @@ export function callTree(f: Flows, roots: string[], max = 2000): TreeRow[] {
  * 也就是说，一张卡只有在每条从根进来的 Call 路径都经过折叠的卡时才藏起来。
  */
 export function hiddenByCollapse(b: Pick<Board, "cards" | "place">, f: Flows): Set<string> {
-  const host = colHosts(b);
-  const collapsed = (id: string) => !!b.place[host.get(id) ?? id]?.collapsed;
+  const host = hostOf(b);
+  const collapsed = (id: string) => !!b.place[host(id)]?.collapsed;
   const hidden = new Set<string>();
   for (const g of f.graphs) {
     if (!g.cards.some(collapsed)) continue;

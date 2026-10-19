@@ -1,10 +1,6 @@
 // 右键 / ⋯ 菜单：卡片、多选、画布、连线、Section、调用、选中的行。
 import {
-  findCard, isCode, cardTitle, segOf, allCodeCards,
-  walkOrder,
-  headOf,
-  type CodeCard, type CompareCard, type LinkSide, type Section,
-  type CallSpan,
+  findCard, isCode, cardTitle, segOf, allCodeCards, walkOrder, headOf, canMark, type CodeCard, type CompareCard, type LinkSide, type Section, type CallSpan,
 } from "@codeboard/core";
 import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, placeOf, sharedOn, type LineSel } from "../state/store";
 import { toWorld } from "../state/camera";
@@ -318,13 +314,16 @@ export function linkMenu(id: string, x: number, y: number) {
   // Call Mark：出发行确实调用了目标卡时自动认出；认不出时代码卡之间也能手动标（已经有的总能关掉）
   const found = !L.call && !!callOn(L.from, L.to);
   const canCall = !!L.call || found || !!manualCall(L.from, L.to);
+  const marks = canMark(L); // Generated from 不加别的标记（LinkMarks）
   openMenu([
-    ...(canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item] : []),
+    ...(marks && canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item] : []),
     // 跨进程（线框 03）：RPC 也是线上的标记；↩ back to = 回到起点的线
-    { label: L.rpc ? "Edit RPC…" : "Mark as RPC…", run: () => markRpc(id) },
-    ...(L.rpc ? [{ label: "Remove RPC Mark", run: () => clearRpc(id) } as Item] : []),
-    { label: "↩ Back to Start", checked: !!L.back, hint: "A return path: Walkthrough stops here", run: () => toggleBack(id) },
-    null,
+    ...(marks ? [
+      { label: L.rpc ? "Edit RPC…" : "Mark as RPC…", run: () => markRpc(id) },
+      ...(L.rpc ? [{ label: "Remove RPC Mark", run: () => clearRpc(id) } as Item] : []),
+      { label: "↩ Back to Start", checked: !!L.back, hint: "A return path: Walkthrough stops here", run: () => toggleBack(id) },
+      null,
+    ] as Item[] : []),
     { label: "Style", sub: styleItems(L) },
     { label: "Line", sub: [
       { label: "Solid", checked: !L.style?.dash, run: () => setLinkStyle(id, (s) => { delete s.dash; }) },
@@ -353,12 +352,13 @@ function styleItems(L: Link): Item[] {
   const cur = legendOf(L);
   const id = L.id;
   const canCall = !!L.call || !!callOn(L.from, L.to) || !!manualCall(L.from, L.to);
+  const fixed = canMark(L) ? false : "Generated from arrows keep their style";
   const run: Record<string, Item> = {
-    call: { label: legendName(state.board, "call"), checked: cur === "call", disabled: canCall ? false : "Only between code cards", run: () => { if (L.rpc) clearRpc(id); if (!L.call) toggleCallMark(id); setLinkStyle(id, (s) => { delete s.dash; }); } },
-    rpc: { label: legendName(state.board, "rpc"), checked: cur === "rpc", run: () => markRpc(id) },
+    call: { label: legendName(state.board, "call"), checked: cur === "call", disabled: fixed || (canCall ? false : "Only between code cards"), run: () => { if (L.rpc) clearRpc(id); if (!L.call) toggleCallMark(id); setLinkStyle(id, (s) => { delete s.dash; }); } },
+    rpc: { label: legendName(state.board, "rpc"), checked: cur === "rpc", disabled: fixed, run: () => markRpc(id) },
     observed: { label: legendName(state.board, "observed"), checked: cur === "observed", disabled: "Comes from a run: CodeBoard: Capture Run…" },
     gen: { label: legendName(state.board, "gen"), checked: cur === "gen", disabled: "Comes from Add Generated Code" },
-    see: { label: legendName(state.board, "see"), checked: cur === "see", run: () => { if (L.rpc) clearRpc(id); if (L.call) toggleCallMark(id); setLinkStyle(id, (s) => { s.dash = true; }); } },
+    see: { label: legendName(state.board, "see"), checked: cur === "see", disabled: fixed, run: () => { if (L.rpc) clearRpc(id); if (L.call) toggleCallMark(id); setLinkStyle(id, (s) => { s.dash = true; }); } },
   };
   return [...LEGEND.map(([k]) => run[k]), null, { label: "Edit Legend…", run: () => setLegendOpen(true) }];
 }

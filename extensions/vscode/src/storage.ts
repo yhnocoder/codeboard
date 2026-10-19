@@ -8,7 +8,8 @@ import { settingDir, workspace } from "./ws";
 
 export type { Storage };
 
-export const openStorage = () => new Storage(nodeFs, { dir: boardDir, log });
+/** 存储目录也看着：另一个窗口写了白板或共享卡，开着的白板马上换上 */
+export const openStorage = () => new Storage(nodeFs, { dir: boardDir, log, watch: (base, glob, fn) => workspace().files.watch(base, glob, fn) });
 
 function boardDir(): string {
   const set = workspace().settings.get<string>("codeboard.storageDir")?.trim();

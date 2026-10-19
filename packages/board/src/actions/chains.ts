@@ -2,7 +2,7 @@
 import { createMemo } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, segOf, cardTitle, removeCards, instName, genWhat, cardChip, rankByReceiver,
+  uid, isCode, segOf, cardTitle, instName, genWhat, cardChip, rankByReceiver, sameCallSite, baseName, placeCards, replaceCards,
   type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
 } from "@codeboard/core";
 import { state, setState, mutate, cardById, toast, placeOf, select } from "../state/store";
@@ -43,7 +43,7 @@ export async function lateDispatch(cardId: string, segId: string, call: CallSpan
   let r: DispatchResult;
   try { r = await ask("dispatch", { seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name }); } catch { return; }
   if (!r) return;
-  const L = state.board.links.find((l) => l.call && l.from.card === cardId && l.from.seg === segId && l.from.line === call.line && l.call.name === call.name && l.to.card === placed);
+  const L = state.board.links.find((l) => sameCallSite(l, { card: cardId, seg: segId, line: call.line, name: call.name }) && l.to.card === placed);
   if (!L) return;
   const alts: CallAlt[] = r.impls.filter((x) => !x.base).map((x) => ({ label: x.label, detail: x.detail, path: x.path, line: x.line, qual: x.qual, ...(x.lib ? { lib: x.lib } : {}) }));
   mutate((b) => {
@@ -103,7 +103,7 @@ export function altsOf(L: Link): AltItem[] {
 }
 /** 同一个调用点出去的 Call 箭头（含自己） */
 function siblings(L: Link): Link[] {
-  return state.board.links.filter((l) => l.call && l.from.card === L.from.card && l.from.seg === L.from.seg && l.from.line === L.from.line && l.call.name === L.call!.name);
+  return state.board.links.filter((l) => sameCallSite(l, { ...L.from, name: L.call!.name }));
 }
 
 /** 段在宿主那边的路径（ExpandPick 用）：工作区仓库里的拼上仓库路径，工作区外的是绝对路径；GitHub、Free 没有 */
@@ -167,15 +167,16 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
     const p = b.place[oldId];
     const nc = structuredClone(r.card) as CodeCard;
     if (r.title) nc.title = r.title;
-    b.cards.push(nc);
-    b.place[newId] = p ? { x: p.x, y: keep ? p.y + 40 : p.y, w: p.w, ...(p.section ? { section: p.section } : {}) } : { x: 0, y: 0, w: r.w ?? 560 };
-    l.to = { card: newId };
+    const section = p?.section;
+    placeCards(b, [{ card: nc, place: p ? { x: p.x, y: keep ? p.y + 40 : p.y, w: p.w } : { x: 0, y: 0, w: r.w ?? 560 } }], { copy: false, at: (q) => (section ? { ...q, section } : q) });
     const alts = [...(l.call.alts ?? [])];
     alts.splice(item.i!, 1, ...(oldAlt && !keep && !o.dropOld ? [oldAlt] : []));
     if (o.label) l.label = o.label;
     if (alts.length) l.call.alts = alts; else delete l.call.alts;
     if (a.vals) l.call.vals = a.vals; else if (r.mark?.vals) l.call.vals = r.mark.vals;
-    if (!keep) removeCards(b, [oldId]);
+    // 旧卡只有这条箭头：整张换成新卡（贴纸、调用图字母跟过去）；还有别的箭头 / Sidenote 就留着，只把这条改连新卡
+    if (keep) l.to = { card: newId };
+    else replaceCards(b, [oldId], () => ({ card: newId }));
   });
   if (keep) toast(`Kept ${old ? cardTitle(old) : "the previous card"}: it has its own arrows`);
   select({ cards: [newId] });
@@ -276,7 +277,7 @@ export async function addGenerated(at: { card: string; seg?: string; line?: numb
   if (!src) return toast(from === "clipboard" ? "The clipboard has no text." : "No file chosen.");
   const lines = src.text.replace(/\r\n/g, "\n").replace(/\n$/, "").split("\n");
   const seg: Segment = { id: uid("s"), src: { kind: "free" }, path: "", lang: src.lang, start: 1, end: lines.length, text: lines, version: { kind: "none" } };
-  const name = src.name.split(/[\\/]/).pop() ?? "";
+  const name = baseName(src.name);
   const card: CodeCard = { id: uid("c"), kind: "code", segments: [seg], gen: { what: genWhat(src.lang, src.name, src.text), run: `${name ? `${name} · ` : "run "}${hhmm()}` } };
   const views = await ask("views", { segs: [seg] }).catch(() => ({}));
   setState("views", (v) => ({ ...v, ...views }));

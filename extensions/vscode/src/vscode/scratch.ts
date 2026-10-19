@@ -22,7 +22,7 @@ export const isScratch = (u: vscode.Uri) => u.scheme === "file" && (files.has(u.
 function dirFor(near: string | undefined, store: string): string {
   return near ? path.dirname(near) : path.join(store, "scratch");
 }
-/** 仓库的 .git/info/exclude 里加上 .codeboard-scratch-*（每个仓库一次）；以前版本写的 .codeboard-* 那段换掉（它连用户自己的 .codeboard-xxx 也藏起来） */
+/** 仓库的 .git/info/exclude 里加上 .codeboard-scratch-*（每个仓库一次） */
 const excluded = new Set<string>();
 function exclude(dir: string) {
   for (let d = dir; d && d !== path.dirname(d); d = path.dirname(d)) {
@@ -36,11 +36,9 @@ function exclude(dir: string) {
       const f = path.join(gd, "info", "exclude");
       const t = fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "";
       const NOTE = "# CodeBoard: code being edited on a board (deleted when editing ends)\n";
-      const OLD = `${NOTE}.codeboard-*\n`;
       if (!t.split("\n").includes(SCRATCH_GLOB)) {
         fs.mkdirSync(path.dirname(f), { recursive: true });
-        if (t.includes(OLD)) fs.writeFileSync(f, t.replace(OLD, `${NOTE}${SCRATCH_GLOB}\n`));
-        else fs.appendFileSync(f, `${t && !t.endsWith("\n") ? "\n" : ""}${NOTE}${SCRATCH_GLOB}\n`);
+        fs.appendFileSync(f, `${t && !t.endsWith("\n") ? "\n" : ""}${NOTE}${SCRATCH_GLOB}\n`);
       }
     } catch { /* 写不了就算了 */ }
     return;

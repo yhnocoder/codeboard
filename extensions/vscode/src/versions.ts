@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { allCodeCards, locateSeg, sameLines, storedSegs, trackSeg, upstreamSegs, versionLabel, viewKey, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
 import { headOf, isAncestor, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { analysisOf } from "./analysis";
-import { currentVersion, currentVersionLabel, rootOf, versionFor, type Loc } from "./source";
+import { currentVersion, currentVersionLabel, hasLocalFile, rootOf, versionFor, type Loc } from "./source";
 import { exists, langOf, mkUid, readText, splitLines } from "./ws";
 
 /** 白板上所有的段：代码卡（含 Compare 的两栏）和 Code sidenote */
@@ -47,7 +47,7 @@ const symsOf = (lang: string, text: string) => analysisOf(lang, text).symbols;
 
 /** 一个段和当前代码的关系 */
 export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Promise<Stale> {
-  if (seg.src.kind === "free" || seg.src.kind === "github") return { state: "ok" };
+  if (!hasLocalFile(seg.src)) return { state: "ok" };
   const root = rootOf(seg.src, seg.version);
   if (!root || !(await exists(root))) return { state: "missing" };
   const abs = path.join(root, seg.path);

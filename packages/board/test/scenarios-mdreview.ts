@@ -3,7 +3,8 @@
 // node packages/board/test/run-harness.mjs markdownReviewIssues [--only=a,b]   Review 列出的问题（#编号）逐条判对错，进 CI
 import * as fs from "node:fs";
 import { open, OUT, type Host } from "./harness";
-import { emptyBoard, cleanCompletion, deepseekComplete, DEFAULT_SETTINGS, type NoteCard } from "@codeboard/core";
+import { emptyBoard, cleanCompletion, DEFAULT_SETTINGS, type NoteCard } from "@codeboard/core";
+import { deepseekComplete } from "../../../extensions/vscode/src/deepseek";
 import type { Page } from "playwright-core";
 
 type Ctx = { pg: Page; h: Host; info: Record<string, unknown> };

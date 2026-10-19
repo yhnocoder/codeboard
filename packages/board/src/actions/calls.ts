@@ -1,9 +1,7 @@
 // v0.2 调用（线框 03、12、13）：RPC 标记、进程标签、消息卡、↩ back to；起点卡；Arrow 图例；调用树；运行记录（observed 证据和实参）。
 import { createMemo, createSignal } from "solid-js";
-import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, removeCards, removeLinks, LEGEND,
-  type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
+  uid, isCode, cardTitle, findFree, callTree, startCards, matchRun, applyRun, callName, legendName, rpcText, LEGEND, sameSource, baseName, joinLinks, splitLink, placeCards, canMark, type Link, type LegendKey, type NoteCard, type ProcTag, type RpcMark, type RunApply, type CallSpan, type TreeRow,
 } from "@codeboard/core";
 import { state, mutate, select, flows, cardById, rectOf, toast, placeOf, placed, sel } from "../state/store";
 import { openPop } from "../state/pop";
@@ -20,8 +18,8 @@ const linkById = (id: string) => state.board.links.find((l) => l.id === id);
 /** Arrow 菜单 Mark as RPC…：先标上（默认 shm），再开属性浮层改机制、消息名、一对多 */
 export function markRpc(id: string, el?: Element) {
   const L = linkById(id);
-  if (!L) return;
-  if (!L.rpc) mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) l.rpc = { mech: "shm" }; });
+  if (!L || !canMark(L)) return;
+  if (!L.rpc) mutate((b) => { const l = b.links.find((k) => k.id === id); if (l && canMark(l)) l.rpc = { mech: "shm" }; });
   select({ links: [id] });
   const lab = el ?? document.querySelector(`.vchips[data-link="${id}"]`);
   openPop({ kind: "rpc", link: id }, lab ? { el: lab, prefer: "below" } : lastPointer());
@@ -39,7 +37,7 @@ export function clearRpc(id: string) {
 }
 /** ↩ back to：回到起点的线，Walkthrough 走到这里停 */
 export function toggleBack(id: string) {
-  mutate((b) => { const l = b.links.find((k) => k.id === id); if (!l) return; if (l.back) delete l.back; else l.back = true; });
+  mutate((b) => { const l = b.links.find((k) => k.id === id); if (!l || !canMark(l)) return; if (l.back) delete l.back; else l.back = true; });
 }
 
 export const isMsg = (id: string) => { const c = cardById(id)?.card; return c?.kind === "note" && !!c.msg; };
@@ -70,14 +68,7 @@ export function toggleMsgCard(id: string) {
   if (m) {
     const L = linkById(id)!;
     const [a, b] = m.first ? [L, m.other] : [m.other, L];
-    mutate((bd) => {
-      const la = bd.links.find((k) => k.id === a.id), lb = bd.links.find((k) => k.id === b.id);
-      if (!la || !lb) return;
-      la.to = { ...lb.to };
-      if (la.style?.head?.end === false) { delete la.style.head; if (!Object.keys(la.style).length) delete la.style; }
-      removeLinks(bd, [lb.id]);
-      removeCards(bd, [m.card]);
-    });
+    mutate((bd) => joinLinks(bd, a.id, b.id, m.card));
     return;
   }
   const L = linkById(id);
@@ -91,19 +82,13 @@ export function toggleMsgCard(id: string) {
   const others = placed().map((k) => rectOf(k));
   const at = findFree({ x: cx - w / 2, y: cy - 20, w, h: 56 }, others);
   const mid = uid("n"), l2 = uid("l");
+  const card: NoteCard = { id: mid, kind: "note", md: name, bg: true, msg: {} };
+  const sec = placeOf(cardById(L.from.card)?.host.id ?? L.from.card).section;
   mutate((b) => {
-    const l = b.links.find((k) => k.id === id);
-    if (!l?.rpc) return;
-    const card: NoteCard = { id: mid, kind: "note", md: name, bg: true, msg: {} };
-    b.cards.push(card);
-    b.place[mid] = { x: Math.round(at.x), y: Math.round(at.y), w };
-    const sec = placeOf(cardById(L.from.card)?.host.id ?? L.from.card).section;
-    if (sec) b.place[mid].section = sec;
+    if (!b.links.some((k) => k.id === id && k.rpc)) return;
+    placeCards(b, [{ card, place: { x: Math.round(at.x), y: Math.round(at.y), w } }], { copy: false, at: (q) => (sec ? { ...q, section: sec } : q) });
     // 第一段（发送点 → 消息）没有箭头，第二段（消息 → 接收处）接着原来的终点
-    b.links.push({ id: l2, from: { card: mid }, to: { ...l.to }, rpc: { ...l.rpc } });
-    l.to = { card: mid };
-    l.style = { ...l.style, head: { ...l.style?.head, end: false } };
-    delete l.at;
+    splitLink(b, id, mid, l2);
   });
   requestAnimationFrame(() => popCard(mid));
 }
@@ -223,7 +208,7 @@ export async function addRunCall(i: number) {
   const call: CallSpan = state.views[seg.id]?.calls.find((k) => k.line === c.from.line && k.name === name)
     ?? state.views[seg.id]?.calls.find((k) => k.line === c.from.line)
     ?? { line: c.from.line, col: 0, end: 0, name, loop: false };
-  const same = JSON.stringify(unwrap(seg.src)) === JSON.stringify(tl.src);
+  const same = sameSource(seg.src, tl.src);
   await expandCall(at.card, at.seg, call, undefined, same ? { path: tl.path, line: c.to.line, rel: true, qual: c.to.qual } : { path: tl.hp, line: c.to.line, qual: c.to.qual }, true);
   applyRunMsg(rs.apply, true);
 }
@@ -233,7 +218,7 @@ export function runCallText(i: number): { from: string; to: string; n: number } 
   const rs = runState()!;
   const c = rs.apply.run.calls[i];
   const fl = rs.apply.locs[c.from.file];
-  const base = (fl?.path ?? c.from.file).split("/").pop();
+  const base = baseName(fl?.path ?? c.from.file);
   return { from: `${base}:${c.from.line}`, to: c.to.qual, n: c.count };
 }
 

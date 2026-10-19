@@ -6,7 +6,7 @@ import type { Panels } from "./panel";
 import type { Storage } from "./storage";
 import { debounce } from "./ws";
 import { treeChildren, type TreeNode } from "./boardtree";
-import { questionLine, type QuestionItem } from "@codeboard/core";
+import { firstLine, type QuestionItem } from "@codeboard/core";
 import { allQuestions } from "./exports";
 
 type BNode = TreeNode;
@@ -115,7 +115,7 @@ export class QuestionsTree implements vscode.TreeDataProvider<QNode> {
       return it;
     }
     const q = n.q;
-    const it = new vscode.TreeItem(questionLine(q.md) || "(no text)", vscode.TreeItemCollapsibleState.None);
+    const it = new vscode.TreeItem(firstLine(q.md) || "(no text)", vscode.TreeItemCollapsibleState.None);
     it.id = `q:${q.board}:${q.sticker}`;
     it.description = [q.title, q.file && `${q.file}${q.line !== undefined ? `:${q.line}` : ""}`].filter(Boolean).join(" · ");
     it.iconPath = new vscode.ThemeIcon(q.done ? "pass" : "question", new vscode.ThemeColor(q.done ? "charts.green" : "charts.orange"));

@@ -1,7 +1,7 @@
 // 导出（线框 08）：给没装插件的人看。范围（整块 / 选中的 Section / 一条讲解路径）→ 卡的顺序；Markdown 按这个顺序写；
 // HTML 快照由白板克隆画布、宿主把字体图片内联成一个文件（inlineSnapshot）。纯函数，白板和宿主都能用。
 // Markdown 原样写出用户的文字和标识符：不做转义（block_manager 不会变成 block\_manager）
-import { cardTitle, colHosts, colsOf, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
+import { cardAndCols, cardTitle, colsOf, hostOf, stickerWhere, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
 import { computeFlows, isCall, startCards, walkOrder } from "./flow";
 
 export type ExportScope = { kind: "board" } | { kind: "sections"; ids: string[] } | { kind: "walk"; start: string };
@@ -22,8 +22,8 @@ function sectionTree(b: Pick<Board, "sections">, ids: string[]): Set<string> {
  * 整块 / Section：先从 Start 卡、再从每张调用图的根按讲解顺序走，剩下的卡按位置（从上到下、从左到右）；讲解路径：从 start 走
  */
 export function exportOrder(b: Board, scope: ExportScope): string[] {
-  const host = colHosts(b);
-  const placed = (id: string) => (b.place[host.get(id) ?? id] ? host.get(id) ?? id : undefined);
+  const host = hostOf(b);
+  const placed = (id: string) => (b.place[host(id)] ? host(id) : undefined);
   let keep: (id: string) => boolean = () => true;
   if (scope.kind === "sections") {
     const secs = sectionTree(b, scope.ids);
@@ -153,7 +153,7 @@ export function boardMarkdown(b: Board, o: MdOpts): string {
   for (const id of o.order) {
     const c = b.cards.find((k) => k.id === id);
     if (!c) continue;
-    const ids = c.kind === "compare" ? [c.id, ...c.cols] : [c.id];
+    const ids = cardAndCols(c);
     const mark = flows.byId.get(c.id)?.label;
     out.push(`## ${mark ? `${mark} · ` : ""}${cardTitle(c, b)}`, "");
     if (c.desc?.trim()) out.push(c.desc.trim(), "");
@@ -161,7 +161,7 @@ export function boardMarkdown(b: Board, o: MdOpts): string {
     if (body.length) out.push(...body, "");
     for (const n of b.sidenotes) if (ids.includes(n.at.card) && (o.boardOnly || !n.boardOnly)) out.push(noteMd(b, n, o.links), "");
     if (o.questions) {
-      const qs = b.stickers.filter((s) => isQuestion(s) && stickerCard(b, s) !== undefined && ids.includes(stickerCard(b, s)!));
+      const qs = b.stickers.filter((s) => { const c = stickerWhere(b, s).card; return isQuestion(s) && c !== undefined && ids.includes(c); });
       for (const s of qs) {
         const line = s.at.kind === "line" ? ` (line ${s.at.line})` : "";
         const [first, ...rest] = (s.q?.md.trim() || "(no text)").split("\n");
@@ -173,16 +173,6 @@ export function boardMarkdown(b: Board, o: MdOpts): string {
     if (outs.length) out.push(...outs.map((l) => `- ${arrowMd(b, l)}`), ""); // 列表：每条箭头一行
   }
   return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
-}
-
-/** 贴纸贴在哪张卡上（问题跟着卡导出） */
-function stickerCard(b: Board, s: Board["stickers"][number]): string | undefined {
-  const at = s.at;
-  if (at.kind !== "canvas") return at.card;
-  if (!at.on) return undefined;
-  if ("card" in at.on) return at.on.card;
-  const id = at.on.link;
-  return b.links.find((l) => l.id === id)?.from.card;
 }
 
 /** GitHub 永久链接：remote（git@github.com:o/n.git、https://github.com/o/n）+ commit + 路径 + 行 */

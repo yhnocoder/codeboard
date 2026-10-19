@@ -3,9 +3,7 @@
 import { batch, createEffect, createRoot, createSignal, untrack } from "solid-js";
 import { createStore, unwrap } from "solid-js/store";
 import {
-  activeOf, addVariant as addV, dropVariants, findCard, isCode, isMine, removeVariant as removeV, segsOf, setVariantSegs, switchVariant as switchV,
-  upstreamSegs, variantMarks, variantTitle, viewKey, UPSTREAM,
-  type AddVariantFrom, type VariantSources, type Card, type CodeCard, type Segment, type SegView, type VariantMarks, type VariantSync,
+  activeOf, addVariant as addV, dropVariants, findCard, isCode, isMine, removeVariant as removeV, segsOf, setVariantSegs, switchVariant as switchV, upstreamSegs, variantMarks, variantTitle, viewKey, UPSTREAM, parseViewKey, type AddVariantFrom, type VariantSources, type Card, type CodeCard, type Segment, type SegView, type VariantMarks, type VariantSync,
 } from "@codeboard/core";
 import { state, setState, mutate, sync, cardById, toast } from "../state/store";
 import { ask } from "../host";
@@ -60,8 +58,7 @@ export function ensureViews(c: CodeCard) {
 export function absorbViews(v: Record<string, SegView>) {
   const put: Record<string, SegView | undefined> = {};
   for (const [k, view] of Object.entries(v)) {
-    const at = k.lastIndexOf("@");
-    const sid = at > 0 ? k.slice(0, at) : k, vid = at > 0 ? k.slice(at + 1) : "";
+    const { sid, vid } = parseViewKey(k);
     if (vid && shownView.get(sid) === vid) put[sid] = view; else put[k] = view;
   }
   setState("views", put as Record<string, SegView>);

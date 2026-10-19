@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addVariant, dropVariants, emptyBoard, isMine, loadBoard, placeCards, rebaseUpstream, removeVariant, segsOf, setVariantSegs, switchVariant, threeWay, upstreamSegs, variantMarks, noteShown,
+  addVariant, danglingRefs, dropVariants, emptyBoard, isMine, loadBoard, placeCards, rebaseUpstream, removeVariant, segsOf, setVariantSegs, switchVariant, threeWay, upstreamSegs, variantMarks, noteShown,
   type Board, type CodeCard, type Segment,
 } from "../src";
 
@@ -41,6 +41,15 @@ describe("variants", () => {
     expect(b.sidenotes[0].at.lines).toEqual([12, 12]);
     expect(segsOf(card(b), "v1")![0].text).toEqual(MINE);
     expect(() => loadBoard(JSON.parse(JSON.stringify(b)))).not.toThrow();
+  });
+  it("danglingRefs checks the variant invariant: only the shown variant has no segs, the others mirror the card's segment ids", () => {
+    const b = board();
+    addVariant(b, "c1", { id: "v1", name: "v", from: { kind: "worktree" }, segs: [seg(MINE, 20)] });
+    switchVariant(b, "c1", "v1");
+    expect(danglingRefs(b)).toEqual([]);
+    card(b).variants![1].segs = [seg(MINE)];
+    card(b).variants![0].segs![0].id = "other";
+    expect(danglingRefs(b)).toEqual(["card c1: variant up segments do not match the card's", "card c1: shown variant v1 keeps its own segments"]);
   });
 
   it("Only-in-this-variant sidenotes stay in their variant's line numbers and only show there", () => {

@@ -5,12 +5,11 @@ import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
-import { cardRows, commonIndent, shownText, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
+import { cardRows, commonIndent, escapeRegExp, firstLine, shownText, copyText, F_COMMENT, type CodeCard, type Row, type Segment, type SegView } from "@codeboard/core";
 import { state, lineSel, setLineSel, reportSelection } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { selSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import { shownIcon, stickerClick } from "../actions/questions";
-import { questionLine } from "@codeboard/core";
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -299,7 +298,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     if (!hv || (hv.from !== c().id && hv.to !== c().id) || r.t !== "line") return false;
     const s = segById(r.seg);
     const t = s?.text[r.line - s.start] ?? "";
-    return hv.names.some((n) => new RegExp(`\\b${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(t));
+    return hv.names.some((n) => new RegExp(`\\b${escapeRegExp(n)}\\b`).test(t));
   };
   const freeEditing = () => editing()?.kind === "free" && editing()?.id === c().id;
   createEffect(() => { freeEditing(); queueMicrotask(observe); });
@@ -397,7 +396,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                 <span class="lstks" classList={{ dot: markRows().has(k.row) }} style={{ top: `${ys()[k.row].y}px` }}>
                   <For each={k.ids}>{(id) => (
                     <Show when={stickerById(id)}>{(st) => (
-                      <span class="stk" classList={{ sel: selSticker() === id, q: !!st().q, done: !!st().q?.done }} data-sticker={id} data-tip={st().q?.md ? questionLine(st().q!.md) : stickerLabel(st().icon)}
+                      <span class="stk" classList={{ sel: selSticker() === id, q: !!st().q, done: !!st().q?.done }} data-sticker={id} data-tip={st().q?.md ? firstLine(st().q!.md) : stickerLabel(st().icon)}
                         onPointerDown={(e) => { e.stopPropagation(); stickerDown(e, id); }} onClick={(e) => { e.stopPropagation(); stickerClick(id, e.currentTarget); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); }}>
                         <Glyph icon={shownIcon(st()).icon} color={shownIcon(st()).color} size={14} />
                       </span>

@@ -31,6 +31,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // tree-sitter 的 wasm 由 esbuild 脚本拷进 dist/
   const ready = startAnalysis(path.join(ctx.extensionUri.fsPath, "dist"));
   const store = (storage = openStorage());
+  sub({ dispose: () => store.dispose() });
   initSource(githubDir());
   const panels = new Panels(ctx, store);
   panels.handler = makeHandler(panels);

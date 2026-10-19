@@ -2,7 +2,7 @@
 import { createRoot, createEffect } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, segOf,
+  uid, findCard, isCode, segOf, placeCards,
   besideFree, findFree, bounds, removeCards, retargetCards, GAP,
   classifyPaste, guessLang, estSize, defaultWidth,
   type Board, type Card, type CodeCard, type Segment, type Place,
@@ -32,22 +32,21 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; ex
   const anchor = o.besideSel !== false && sel.cards.length ? hostRect(sel.cards[sel.cards.length - 1]) : null;
   mutate((b) => {
     let prev: Rect | null = anchor;
+    let at = o.at;
     for (const n of list) {
       const c = withDefaults(structuredClone(n.card) as Card);
       const w = n.w ?? defaultWidth(c);
       const size = estSize(c, { w });
       let p: { x: number; y: number };
       const others = b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k));
-      if (o.at && o.exact) { p = o.at; o.at = { x: o.at.x + 36, y: o.at.y + 36 }; }
-      else if (o.at) p = findFree({ ...o.at, ...size }, others);
+      if (at && o.exact) { p = at; at = { x: at.x + 36, y: at.y + 36 }; }
+      else if (at) p = findFree({ ...at, ...size }, others);
       else if (prev) p = besideFree(prev, size, others);
       else { const vc = viewportCenter(); p = findFree({ x: vc.x - size.w / 2, y: vc.y - Math.min(size.h, 300) / 2, ...size }, others); }
-      const pl: Place = { x: Math.round(p.x), y: Math.round(p.y), w };
-      if (o.section) pl.section = o.section;
-      b.cards.push(c);
-      b.place[c.id] = pl;
+      const place: Place = { x: Math.round(p.x), y: Math.round(p.y), w };
+      placeCards(b, [{ card: c, place }], { copy: false, at: (q) => (o.section ? { ...q, section: o.section } : q) });
       ids.push(c.id);
-      prev = { x: pl.x, y: pl.y, ...size };
+      prev = { x: place.x, y: place.y, ...size };
     }
     o.also?.(b);
   });

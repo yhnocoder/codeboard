@@ -1,5 +1,5 @@
 // 箭头（Link）：普通箭头、连接模式、标签、调用上的变量。
-import { uid, isCode, cardTitle, varKey, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
+import { uid, isCode, cardTitle, varKey, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
 import { state, mutate, select, cardById, toast } from "../state/store";
 import { setEditing, setConnectFrom, setHoverVar } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -12,8 +12,7 @@ function subName(to: EndRef): string | undefined {
   if (to.sub === undefined) return;
   const t = skelOf(to.card)?.cards.find((c) => c.id === to.sub);
   if (!t || t.k !== "code") return;
-  const q = t.t.split(/[\s(]/)[0].split(".");
-  return q[q.length - 1] === "__init__" && q.length > 1 ? q[q.length - 2] : q[q.length - 1];
+  return callName(t.t.split(/[\s(]/)[0]);
 }
 
 // ---------- 箭头 ----------
@@ -40,9 +39,9 @@ export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
   const sn = subName(to);
   if (isCode(f) && sn) return { line: from.line ?? 0, col: 0, end: 0, name: sn, loop: false };
   if (!isCode(f) || !isCode(t) || cardById(from.card)?.host.id === cardById(to.card)?.host.id) return;
-  const q = t.segments.find((s) => s.symbol)?.symbol?.qual.split(".");
+  const q = t.segments.find((s) => s.symbol)?.symbol?.qual;
   // 没有函数的卡（跨语言片段、自由代码）用卡名
-  const name = !q ? cardTitle(t) : q[q.length - 1] === "__init__" && q.length > 1 ? q[q.length - 2] : q[q.length - 1];
+  const name = q ? callName(q) : cardTitle(t);
   if (!name) return;
   return { line: from.line ?? 0, col: 0, end: 0, name, loop: false };
 }
@@ -69,13 +68,13 @@ export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
 /** 普通箭头能认出是调用（出发行调用了目标卡的函数）：加上 Call 标记（右键 Call Mark，或悬停时的 Call 按钮），再去问参数候选 */
 export function makeCall(id: string) {
   const L = state.board.links.find((l) => l.id === id);
-  if (!L || L.call) return;
+  if (!L || L.call || !canMark(L)) return;
   const found = callOn(L.from, L.to);
   const call = found ?? manualCall(L.from, L.to);
   if (!call) return;
   mutate((b) => {
     const l = b.links.find((k) => k.id === id);
-    if (l) l.call = callMark(call);
+    if (l && canMark(l)) l.call = callMark(call);
   });
   if (found && L.to.sub === undefined) askCands(id, L.from.card, L.from.seg!, call, L.to.card);
 }

@@ -1,7 +1,7 @@
 // Questions 面板（线框 06 二）：所有白板上的问题，按白板分组，默认只看没解决的；点一条跳到那块白板的那一行。
 // 「回来接上」的提示：隔几天再打开、这块白板还有问题时出现。都是开着才算
 import { For, Show, createMemo } from "solid-js";
-import { questionLine, type QuestionItem } from "@codeboard/core";
+import { firstLine, type QuestionItem } from "@codeboard/core";
 import { state } from "../state/store";
 import { Icon } from "./icons";
 import { Glyph } from "../stickers/glyphs";
@@ -39,7 +39,7 @@ export function QuestionsPanel() {
               <For each={g.items}>{(q) => (
                 <button class="qrow" classList={{ done: q.done }} data-q={q.sticker} onClick={() => A.gotoQuestion(q)}>
                   <Glyph icon={{ pack: "builtin", name: q.done ? "check" : "question" }} size={14} />
-                  <span class="qt">{questionLine(q.md) || <i>(no text)</i>}</span>
+                  <span class="qt">{firstLine(q.md) || <i>(no text)</i>}</span>
                   <small class="qw">{[q.title, q.file && `${q.file}${q.line !== undefined ? `:${q.line}` : ""}`].filter(Boolean).join(" · ")}</small>
                 </button>
               )}</For>

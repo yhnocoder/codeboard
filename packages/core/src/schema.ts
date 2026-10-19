@@ -1,11 +1,12 @@
-// 读白板文件时的校验（valibot）。loadBoard = 先看是不是对象、版本是不是认得 → migrateBoard 迁到当前版本 → 按当前版本的结构校验。
-// 校验的是迁移之后的结果，所以加新版本只要改迁移和这里的当前结构；旧文件的样子由迁移负责。
-// 只拦会让白板读坏的东西（类型不对、缺必填字段、kind 不认得），可选字段允许缺或 null，不认得的字段原样保留。
+// 读白板文件时的校验（valibot）。loadBoard = 先看是不是对象、版本是不是认得 → migrateBoard（migrate.ts）迁到当前版本、补齐 → 按当前版本的结构校验。
+// 校验的是迁移之后的结果，结构和 model.ts 的类型一一对应；旧文件的样子（缺省、null）由迁移负责。
+// 只拦会让白板读坏的东西（类型不对、缺必填字段、kind 不认得），不认得的字段原样保留。
 import * as v from "valibot";
-import { BOARD_VERSION, migrateBoard, type Board, type BoardFile, type SharedCardFile } from "./model";
+import { BOARD_VERSION, type Board, type BoardFile, type SharedCardFile } from "./model";
+import { migrateBoard, migrateSharedCard } from "./migrate";
 
-const str = v.string(), num = v.number(), bool = v.boolean();
-const opt = <T extends v.GenericSchema>(s: T) => v.nullish(s);
+const str = v.string(), num = v.number(), bool = v.boolean(), yes = v.literal(true);
+const opt = <T extends v.GenericSchema>(s: T) => v.optional(s);
 const obj = v.looseObject;
 
 const Version = v.variant("kind", [
@@ -21,7 +22,7 @@ const Source = v.variant("kind", [
   obj({ kind: v.literal("free"), url: opt(str) }),
 ]);
 const Segment = obj({
-  id: str, src: Source, path: str, lang: opt(str), start: num, end: num, text: v.array(str), version: Version,
+  id: str, src: Source, path: str, lang: str, start: num, end: num, text: v.array(str), version: Version,
   symbol: opt(obj({ qual: str, kind: v.picklist(["function", "class", "module"]) })), scope: opt(str),
   hidden: opt(v.array(v.tuple([num, num]))), hl: opt(v.array(num)), keep: opt(str),
 });
@@ -47,7 +48,7 @@ const codeEntries = {
   ...base, kind: v.literal("code"), segments: v.array(Segment),
   hide: opt(obj({ comments: opt(bool), docstrings: opt(bool), blank: opt(bool) })), wrap: opt(bool), nobg: opt(bool),
   members: opt(obj({ shown: v.array(str) })),
-  mergedFrom: opt(v.array(obj({ card: v.lazy(() => CodeCard), place: Place }))), keepOld: opt(bool),
+  mergedFrom: opt(v.array(obj({ card: v.lazy(() => CodeCard), place: Place }))), keepOld: opt(yes),
   gen: opt(obj({ what: str, run: opt(str) })),
   variants: opt(v.array(VariantSchema)),
   active: opt(str),
@@ -57,7 +58,7 @@ const CodeCard: v.GenericSchema = obj(codeEntries);
 export type CodeCardSchemaKeys = keyof typeof codeEntries;
 const Card = v.variant("kind", [
   CodeCard as v.LooseObjectSchema<{ kind: v.LiteralSchema<"code", undefined> }, undefined>,
-  obj({ ...base, kind: v.literal("note"), md: str, bg: opt(bool), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), msg: opt(obj({ where: opt(str) })) }),
+  obj({ ...base, kind: v.literal("note"), md: str, bg: bool, size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), msg: opt(obj({ where: opt(str) })) }),
   obj({ ...base, kind: v.literal("image"), src: str, alt: opt(str), bg: opt(bool) }),
   obj({ ...base, kind: v.literal("web"), url: str, meta: opt(WebMeta), style: opt(v.picklist(["banner", "side", "text", "compact"])) }),
   obj({ ...base, kind: v.literal("links"), items: v.array(obj({ id: str, url: str, title: opt(str), meta: opt(WebMeta), rich: opt(bool) })), rich: opt(bool) }),
@@ -81,18 +82,20 @@ const CallMark = obj(callEntries);
 const Link = obj({
   id: str, from: End, to: End, label: opt(str), at: opt(num),
   call: opt(CallMark),
-  style: opt(obj({ dash: opt(bool), width: opt(v.picklist([1, 2, 3])), head: opt(obj({ start: opt(bool), end: opt(bool) })), color: opt(str) })),
+  style: opt(obj({ dash: opt(yes), width: opt(v.picklist([1, 2, 3])), head: opt(obj({ start: opt(bool), end: opt(bool) })), color: opt(str) })),
   sides: opt(obj({ from: opt(Side), to: opt(Side) })),
-  lost: opt(obj({ from: opt(bool), to: opt(bool) })),
-  gen: opt(bool),
+  lost: opt(obj({ from: opt(yes), to: opt(yes) })),
+  gen: opt(yes),
   rpc: opt(obj({ mech: str, custom: opt(str), msg: opt(str), fan: opt(v.picklist(["one", "all"])) })),
-  back: opt(bool),
+  back: opt(yes),
 });
+/** LinkMarks：Generated from 不带 call / rpc / back */
+const LinkMarked = v.pipe(Link, v.check((l) => !l.gen || (!l.call && !l.rpc && !l.back), "A generated-from link has no call, RPC or back mark"));
 const GraphMark = v.union([obj({ letter: str }), obj({ icon: str })]);
 
-const Section = obj({ id: str, title: opt(str), x: num, y: num, w: num, h: num, parent: opt(str), color: opt(str), collapsed: opt(bool), locked: opt(bool), desc: opt(str) });
+const Section = obj({ id: str, title: str, x: num, y: num, w: num, h: num, parent: opt(str), color: opt(str), collapsed: opt(bool), locked: opt(bool), desc: opt(str) });
 
-const noteBase = { id: str, at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }), why: opt(str), lineRemoved: opt(bool), boardOnly: opt(bool), review: opt(str), variant: opt(str) };
+const noteBase = { id: str, at: obj({ card: str, seg: opt(str), lines: opt(v.tuple([num, num])) }), why: opt(str), lineRemoved: opt(bool), boardOnly: opt(yes), review: opt(str), variant: opt(str) };
 const Sidenote = v.variant("kind", [
   obj({ ...noteBase, kind: v.literal("code"), code: Segment }),
   obj({ ...noteBase, kind: v.literal("paste"), text: str, lang: str, url: opt(str) }),
@@ -105,18 +108,17 @@ const Sticker = obj({
   id: str, icon: obj({ pack: str, name: str }), color: opt(str),
   at: v.variant("kind", [
     obj({ kind: v.literal("line"), card: str, seg: str, line: num }),
-    obj({ kind: v.literal("card"), card: str }),
     obj({ kind: v.literal("canvas"), x: num, y: num, size: opt(num), on: opt(v.union([obj({ card: str }), obj({ link: str, t: num })])) }),
   ]),
-  q: opt(obj({ md: str, done: opt(bool), answer: opt(str), at: opt(num) })),
+  q: opt(obj({ md: str, done: opt(yes), answer: opt(str), at: opt(num) })),
 });
 
 const boardEntries = {
   version: v.literal(BOARD_VERSION), id: opt(str), name: str, cam: obj({ x: num, y: num, z: num }),
-  cards: v.array(Card), place: v.record(str, Place), links: v.array(Link), sections: v.array(Section), sidenotes: v.array(Sidenote), stickers: v.array(Sticker),
+  cards: v.array(Card), place: v.record(str, Place), links: v.array(LinkMarked), sections: v.array(Section), sidenotes: v.array(Sidenote), stickers: v.array(Sticker),
   hideAllComments: opt(bool), hideNumbers: opt(bool),
   born: opt(v.record(str, num)), seq: opt(num), marks: opt(v.record(str, GraphMark)),
-  legend: opt(v.record(str, opt(str))),
+  legend: opt(v.record(str, str)),
 };
 /** 当前版本（迁移之后）、共享卡已经换成内容的白板（界面拿到的）。id 可以缺：宿主扫描时按文件名补 */
 export const BoardSchema = obj(boardEntries);
@@ -144,19 +146,20 @@ export function loadBoard(raw: unknown): Board {
   check(RawBoard, raw, "Not a board file");
   const b = migrateBoard(raw);
   check(BoardSchema, b, "Invalid board");
-  return b;
+  return b as Board;
 }
 
 /** 白板文件（任何版本）→ 校验过的第 6 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function loadBoardFile(raw: unknown): BoardFile {
   check(RawBoard, raw, "Not a board file");
-  const b = migrateBoard(raw) as BoardFile;
+  const b = migrateBoard(raw);
   check(BoardFileSchema, b, "Invalid board");
   return b;
 }
 
 /** 卡库里的文件 cards/<id>.json → 校验过的共享卡 */
 export function loadSharedCard(raw: unknown): SharedCardFile {
-  check(SharedCardSchema, raw, "Invalid shared card");
-  return raw as SharedCardFile;
+  const sc = migrateSharedCard(raw);
+  check(SharedCardSchema, sc, "Invalid shared card");
+  return sc;
 }

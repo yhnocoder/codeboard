@@ -1,6 +1,6 @@
 // Sidenote（弹窗、添加、Place on Board、卡变成 Sidenote）和定义预览。
 import { unwrap } from "solid-js/store";
-import { uid, findCard, isCode, cardTitle, segOf, removeCards, removeSidenotes, sidenoteCard, sidenoteToCard, type Sidenote, type SegView, type Anchor } from "@codeboard/core";
+import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, removeSidenotes, sidenoteCard, sidenoteToCard, type Sidenote, type SegView, type Anchor } from "@codeboard/core";
 import { state, setState, mutate, sel, clearSel, lineSel, cardById, toast } from "../state/store";
 import { quietHover } from "../state/camera";
 import { choose } from "../ui/Menu";
@@ -95,12 +95,14 @@ export async function cardToSidenote(cardId: string, at: Anchor) {
     const ok = await choose(`Turn into a Sidenote?`, ["Turn into Sidenote", "Cancel"], { text: `${links} link${links > 1 ? "s" : ""} on this card will be deleted.` });
     if (ok !== 0) return;
   }
-  const ok = mutate((b) => {
-    if (isCode(c) && c.segments.length > 1) { b.sidenotes.push({ id: uid("n"), at, kind: "card", card: cardId }); return; } // 多段卡：挂成 Card sidenote，卡留着
-    if (c.kind === "note") b.sidenotes.push({ id: uid("n"), at, kind: "text", md: c.md });
-    else if (isCode(c)) b.sidenotes.push({ id: uid("n"), at, kind: "code", code: structuredClone(unwrap(c.segments[0])), why: c.desc });
-    removeCards(b, [cardId]);
-  });
+  // 多段卡：挂成 Card sidenote，卡留着
+  const id = uid("n");
+  const n: Sidenote | null = isCode(c) && c.segments.length > 1 ? { id, at, kind: "card", card: cardId }
+    : c.kind === "note" ? { id, at, kind: "text", md: c.md }
+    : isCode(c) ? { id, at, kind: "code", code: structuredClone(unwrap(c.segments[0])), why: c.desc }
+    : null;
+  if (!n) return;
+  const ok = mutate((b) => cardIntoSidenote(b, cardId, n));
   if (!ok) return;
   clearSel();
   toast("Added as Sidenote");

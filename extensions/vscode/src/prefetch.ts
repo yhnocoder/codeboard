@@ -7,6 +7,7 @@ import { dispatchOf, lspDefs, symAtDef } from "./resolve";
 import { workingPlace } from "./versions";
 import { log } from "./log";
 import { readText } from "./ws";
+import { hasLocalFile } from "./source";
 
 type PrefetchReq = { seg: Segment; line: number; col: number; name: string };
 
@@ -25,7 +26,7 @@ function pump() {
 
 /** 悬停在调用上：问定义 → 读目标、做分析和分词（结果只进缓存，不发给白板） */
 export function prefetchCall(m: PrefetchReq) {
-  if (m.seg.src.kind === "free" || m.seg.src.kind === "github") return;
+  if (!hasLocalFile(m.seg.src)) return;
   queue.unshift(() => warmCall(m.seg, m.line, m.col, m.name));
   if (queue.length > MAX_WAIT) queue.length = MAX_WAIT;
   pump();

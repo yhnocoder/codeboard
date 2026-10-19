@@ -1,6 +1,6 @@
 // 宿主用：在另一个版本的文件里重新找到一段代码，并判断它和钉住的内容比起来变没变（「新版本」黄点）。
 // 纯函数，读文件、跑 git 由宿主做。
-import type { Segment, Version } from "./model";
+import { inRanges, type Segment, type Version } from "./model";
 import type { Stale } from "./protocol";
 import { diffLines, findBlock, sameLines } from "./diff";
 
@@ -25,8 +25,6 @@ export function locateSeg(seg: Pick<Segment, "symbol" | "text" | "start" | "end"
   if (sameLines(lines.slice(seg.start - 1, seg.end), seg.text)) return { start: seg.start, end: seg.end };
   return findBlock(lines, seg.text, seg.start);
 }
-
-const inRanges = (rs: [number, number][] | undefined, l: number) => !!rs?.some(([a, b]) => a <= l && l <= b);
 
 /**
  * 内容变了，变化是不是全在手动隐藏的行里：删掉 / 改掉的旧行都是隐藏行，

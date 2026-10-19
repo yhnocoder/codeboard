@@ -1,7 +1,7 @@
 // 编辑器和侧栏的命令做什么：Add to Board（⌥B）、Add to Another Board…、Add to Selected Card、Add Function at Cursor、
 // Add as Sidenote（⌥S）、Reveal on Board，以及白板的新建 / 改名 / 删除 / 分组。命令注册在 commands.ts（VS Code 适配层）。
 import * as path from "node:path";
-import { allCodeCards, estSize, removeCards, type Board, type CodeCard, type KeyAction } from "@codeboard/core";
+import { allCodeCards, estSize, placeCards, removeCards, type Board, type CardCopy, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { cardsFromEditor, symCard, widthFor, withViews, type Built } from "./cards";
 import type { BoardHost } from "./boards";
@@ -48,12 +48,12 @@ export function makeActions(panels: BoardHost, store: Storage) {
   const undoAdd = async (boardId: string, ids: string[]) => {
     const p = panels.get(boardId);
     if (p) { p.post({ type: "undoAdd", cards: ids }); return; }
-    const b = await store.load(boardId);
-    const gone = ids.filter((id) => b?.cards.some((c) => c.id === id));
-    if (!b || !gone.length) return;
-    removeCards(b, gone);
-    await store.save(b);
-    void ui().info(`Removed from “${b.name}”`);
+    const b = await store.update(boardId, (b) => {
+      const gone = ids.filter((id) => b.cards.some((c) => c.id === id));
+      if (!gone.length) return false;
+      removeCards(b, gone);
+    });
+    if (b) void ui().info(`Removed from “${b.name}”`);
   };
 
   /** 把卡送到白板：开着就发给白板（它决定位置）；没开就直接写进 JSON */
@@ -65,10 +65,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const sel = p.selection?.cards[0];
       p.post({ type: "add", cards, ask: built.ask, sel: sel ? { card: sel } : undefined });
     } else {
-      const b = await store.load(boardId);
+      const b = await store.update(boardId, (b) => { placeCards(b, stackRight(b, built.cards), { copy: false }); });
       if (!b) return;
-      placeCards(b, built.cards);
-      await store.save(b);
       name = b.name;
     }
     const undo = () => undoAdd(boardId, built.cards.map((c) => c.id));
@@ -298,17 +296,16 @@ export async function pickBoard(store: Storage, placeHolder: string, allowNew: b
   return name?.trim() ? (await store.create(name.trim())).id : undefined;
 }
 
-/** 白板关着时：新卡放在已有卡片的右边，一张接一张往下排 */
-export function placeCards(b: Board, cards: CodeCard[]) {
+/** 白板关着时新卡摆在哪：已有卡片的右边，一张接一张往下排（放进白板用 core placeCards） */
+export function stackRight(b: Board, cards: CodeCard[]): CardCopy[] {
   const ps = Object.values(b.place);
   const right = ps.length ? Math.max(...ps.map((p) => p.x + p.w)) + 80 : b.cam.x > 0 ? 80 : -b.cam.x + 80;
   let y = ps.length ? Math.min(...ps.map((p) => p.y)) : 80;
-  for (const c of cards) {
-    const p = { x: right, y, w: widthFor(c.segments) };
-    y += estSize(c, p).h + 40;
-    b.cards.push(c);
-    b.place[c.id] = p;
-  }
+  return cards.map((card) => {
+    const place = { x: right, y, w: widthFor(card.segments) };
+    y += estSize(card, place).h + 40;
+    return { card, place };
+  });
 }
 
 export type Hit = { board: Board; card: CodeCard; seg: string; lines: [number, number] };
