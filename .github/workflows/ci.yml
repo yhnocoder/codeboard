@@ -1,6 +1,6 @@
 # T0, tier 2 of TESTING.md: runs on every push and PR and should finish in about 5 minutes. Jobs run in parallel:
 #   unit     typecheck, unit tests (core, board, host, extension)
-#   harness  the browser harness scenarios this change needs (tools/test/pick.mjs), 2 jobs, several scenarios at a time in each
+#   harness  the browser harness scenarios this change needs (tools/test/pick.mjs), 2 jobs, Playwright Test on several workers in each
 #   e2e      real VS Code (with Pylance) e2e + generic UI audit, split into 2 parts
 #   perf     board + host perf benchmarks on base and head in one job (head, base, head); fails on a regression.
 #            Only when the change touches code the benchmarks run
@@ -51,7 +51,7 @@ jobs:
         # budget: seconds of scenario time for both jobs together (2 jobs × 4 workers × ~170 s)
         env:
           PR_BODY: ${{ github.event.pull_request.body }}
-        run: node packages/board/test/run-harness.mjs --select --base="$BASE_SHA" --budget=1300 --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
+        run: node tools/test/harness.mjs --select --base="$BASE_SHA" --budget=1300 --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }
@@ -154,11 +154,12 @@ jobs:
             const hr = [1, 2].map((k) => json(`${A}/harness-${k}/result.json`)).filter((x) => x.results);
             const res = hr.flatMap((x) => x.results), deferred = hr[0]?.deferred ?? [];
             const by = Object.entries(res.reduce((m, r) => ((m[r.why] = (m[r.why] || 0) + 1), m), {})).map(([w, n]) => `${n} ${w}`).join(", ");
-            const known = [...new Set(res.flatMap((r) => r.known || []))];
+            const known = [...new Set(res.flatMap((r) => r.known || []))], alone = res.filter((r) => r.alone).map((r) => r.name);
             const harness = !hr.length ? ["**Harness**: no results."] : [
               `**Harness**: ${res.length} scenarios (${by}), ${res.filter((r) => !r.ok).length} failed` + (deferred.length ? `, ${deferred.length} deferred to the nightly run` : ""),
               ...res.filter((r) => !r.ok).map((r) => `- ❌ ${r.name}: ${(r.fails[0] || r.error || "").slice(0, 200)}`),
               ...(known.length ? [`- known failures (tiers.json): ${known.length}`] : []),
+              ...(alone.length ? [`- passed only when run alone: ${alone.join(", ")}`] : []),
               ...(deferred.length ? ["", `<details><summary>Deferred</summary>${deferred.join(", ")}</details>`] : []),
             ];
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;

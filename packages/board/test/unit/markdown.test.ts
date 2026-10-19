@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Markdown 往返（jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素）：解析成文档再写回，要稳定，不乱转义；旧版（v0.1.7 手写渲染器）写的 Note 照样显示得合理
+// Markdown 往返（jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素）：解析成文档再写回，要稳定，不乱转义；旧版手写渲染器写的 Note 照样显示得合理
 import { describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../../src/md/schema";
 import { renderMd } from "../../src/md/render";
@@ -106,7 +106,7 @@ describe("markdown round trip", () => {
 });
 
 describe("static render", () => {
-  it("renders an old v0.1.7 note sensibly", () => {
+  it("renders a note written for the old hand-written renderer sensibly", () => {
     const old = "## Scheduler\nprefill first, then decode\n- waiting → running\n- block_manager.can_allocate(seq)\n\n> note\n\n$$\nE = mc^2\n$$\ncost $O(n)$ for $5 and $10, see https://x.y/a_b and **bold** *it*";
     const h = renderMd(old);
     expect(h).toContain("<h2>Scheduler</h2>");
@@ -174,7 +174,7 @@ describe("AI completion text", () => {
   });
 });
 
-describe("typed math and block source (v0.1.8 review)", () => {
+describe("typed math and block source", () => {
   it("re-parses text that is Pandoc inline math", () => {
     const d = parseMd("a \\$\\frac{a}{b}\\$ b");
     expect(JSON.stringify(d)).toContain('"inlineMath"');
@@ -275,7 +275,7 @@ describe("typed math and block source (v0.1.8 review)", () => {
   });
 });
 
-describe("v0.1.8 review: data must not be rewritten", () => {
+describe("data must not be rewritten", () => {
   it("inline images stay in their paragraph (#4)", () => {
     same("pic ![a](https://x.y/a.png) end");
     same("![cat](https://x.y/cat.png)");

@@ -54,7 +54,8 @@ if (!first[2]) { console.log("build failed: no harness run"); process.exit(1); }
 let base = opt("base");
 if (!base) {
   try { execFileSync("git", ["fetch", "-q", "origin", "main"], { cwd: REPO, stdio: "ignore", timeout: 15000 }); } catch { /* offline: the last fetched main */ }
-  try { base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: REPO, encoding: "utf8" }).trim(); } catch { base = "HEAD"; }
+  try { base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); }
+  catch { console.log("no merge base with origin/main (fetch it, or pass --base=<ref>): no harness run"); process.exit(1); }
 }
 const workers = Math.min(4, os.availableParallelism());
 // Harness budget: what is left of the 3 minutes, times the workers, minus a margin for start-up and the slowest scenario finishing last
@@ -62,7 +63,7 @@ const budget = opt("budget") ?? Math.max(30, Math.round((LIMIT - secs() - 25) * 
 const harness = args.includes("--all") ? [...focus] : ["--select", `--base=${base}`, `--budget=${budget}`, ...(focus.length ? [`--focus=${focus.join(",")}`] : [])];
 console.log(`harness: ${args.includes("--all") ? "every scenario" : `changes since ${base.slice(0, 7)}, budget ${budget} s of scenario time`} on ${workers} workers`);
 const ok = await new Promise((resolve) => {
-  const p = spawn("node", ["packages/board/test/run-harness.mjs", ...harness, `--workers=${workers}`, "--json=test-out/check/harness.json"], { cwd: REPO, stdio: "inherit" });
+  const p = spawn("node", ["tools/test/harness.mjs", ...harness, `--workers=${workers}`, "--json=test-out/check/harness.json"], { cwd: REPO, stdio: "inherit" });
   p.on("close", (code) => resolve(code === 0));
 });
 const all = first.every(Boolean) && ok;

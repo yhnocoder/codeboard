@@ -1,9 +1,9 @@
 // 真机试用（nano-vllm、白板放在编辑器旁边）后的体验修正
-// Usage: node packages/board/test/run-harness.mjs <scenario>   screenshots: test-out/harness/ux-*.png
+// Usage: npm run harness -- <scenario>   screenshots: test-out/harness/ux-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, DEFAULT_SETTINGS, type CodeCard, type SegView, type HostToBoard, type NameHit } from "@codeboard/core";
-import { open, shot, put, symCard, findSym, REPO, type Host } from "./harness";
+import { shot, put, symCard, findSym, REPO, type Host } from "../harness";
 import { startAnalysis, analysisOf } from "@codeboard/host/analysis";
 import { cardForFileSym } from "@codeboard/host/cards";
 import { callVars, expand, peek } from "@codeboard/host/resolve";
@@ -13,27 +13,26 @@ import type { Storage } from "@codeboard/host/storage";
 import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/nameindex";
 import { langOf, useWorkspace } from "@codeboard/host/ws";
 import { nodeWorkspace } from "@codeboard/host/test/node-workspace";
+import { test, open, verdict } from "../fixtures";
 
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
-const run = async (name: string, f: (res: Record<string, unknown>) => Promise<boolean>) => {
-  const res: Record<string, unknown> = {};
-  let ok = false;
-  try { ok = await f(res); } catch (e) { console.log("FAIL", name, (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  console.log(ok ? "PASS" : "FAIL", name, JSON.stringify(res));
-  if (!ok) process.exitCode = 1;
-};
 
-export const UX: Record<string, () => Promise<void>> = {
-  "dock-fits-narrow-board": () => run("dock-fits-narrow-board", dockFits),
-  "narrow-board-expands-below-and-stays-readable": () => run("narrow-board-expands-below-and-stays-readable", expandFollow),
-  "expanded-calls-go-in-columns-to-the-right": () => run("expanded-calls-go-in-columns-to-the-right", expandColumns),
-  "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
-  "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
-  "editing-tiny-note-zooms-to-readable": () => run("editing-tiny-note-zooms-to-readable", readableNote),
-  "search-lists-symbols-containing-the-query": () => run("search-lists-symbols-containing-the-query", searchStep),
-  "turn-into-board-names-after-the-calling-card": () => run("turn-into-board-names-after-the-calling-card", turnName),
-};
+test("dock-fits-narrow-board", () => verdict("dock-fits-narrow-board", dockFits));
+
+test("narrow-board-expands-below-and-stays-readable", () => verdict("narrow-board-expands-below-and-stays-readable", expandFollow));
+
+test("expanded-calls-go-in-columns-to-the-right", () => verdict("expanded-calls-go-in-columns-to-the-right", expandColumns));
+
+test("string-dispatch-offers-receiver-method", () => verdict("string-dispatch-offers-receiver-method", dispatchByName));
+
+test("right-click-line-opens-line-menu", () => verdict("right-click-line-opens-line-menu", lineMenu));
+
+test("editing-tiny-note-zooms-to-readable", () => verdict("editing-tiny-note-zooms-to-readable", readableNote));
+
+test("search-lists-symbols-containing-the-query", () => verdict("search-lists-symbols-containing-the-query", searchStep));
+
+test("turn-into-board-names-after-the-calling-card", () => verdict("turn-into-board-names-after-the-calling-card", turnName));
 
 /** 底部工具条：每个宽度都是一行，彼此不重叠，也不出窗口 */
 async function dockFits(res: Record<string, unknown>) {
@@ -62,7 +61,7 @@ async function dockFits(res: Record<string, unknown>) {
       if (res.folded !== 4 || res.tree !== 1) ok = false;
     }
     await shot(h, `ux-dock-${w}`);
-    await h.page.context().browser()!.close();
+    await h.page.context().close();
   }
   return ok;
 }
@@ -100,7 +99,7 @@ async function expandFollow(res: Record<string, unknown>) {
   await h.page.keyboard.press("Shift+Digit1"); await wait(h, 900);
   res.fitZ = await zoomOf(h);
   await shot(h, "ux-expand-follow");
-  await h.page.context().browser()!.close();
+  await h.page.context().close();
   return ok && !!res.below && (res.fitZ as number) >= 0.6;
 }
 
@@ -126,7 +125,7 @@ async function expandColumns(res: Record<string, unknown>) {
   const z = await zoomOf(h);
   res.z = z;
   await shot(h, "ux-expand-columns");
-  await h.page.context().browser()!.close();
+  await h.page.context().close();
   if (!sched || !post || !alloc) return false;
   const right = (a: string, c: string) => r(c).x >= r(a).x + r(a).w;
   return right(step.id, sched) && right(sched, alloc) && r(post).x === r(sched).x && r(post).y > r(sched).y && z >= 0.6;
@@ -185,7 +184,7 @@ async function dispatchByName(res: Record<string, unknown>) {
   const link = run && h.board().links.find((l) => l.to.card === run.id);
   res.card = !!run; res.link = link ? { line: link.from.line, call: link.call?.name, via: link.call?.ev?.via } : null;
   await shot(h, "ux-dispatch");
-  await h.page.context().browser()!.close();
+  await h.page.context().close();
   return /model_runner\.py/.test(String(res.first)) && /\brun\b/.test(String(res.first)) && !!run && link?.from.line === callLine && link?.call?.name === "call" && link?.call?.ev?.via === 'call("run")';
 }
 
@@ -220,7 +219,7 @@ async function lineMenu(res: Record<string, unknown>) {
   await callEl(h, step.id, "schedule").click({ button: "right" }); await wait(h, 400);
   res.call = (await menuTexts(h)).some((t) => /^Expand/.test(t));
   await shot(h, "ux-linemenu");
-  await page.context().browser()!.close();
+  await page.context().close();
   const c = res.code as { sel: string[]; hide: boolean; ask: boolean; card: boolean }, g = res.gutter as { sel: string[]; hide: boolean };
   return c.sel.join() === "51" && c.hide && c.ask && c.card && res.cardSub === true && g.sel.join() === "50" && g.hide
     && (res.kept as string[]).join() === "50,51,52" && res.open === 50 && res.call === true;
@@ -253,7 +252,7 @@ async function readableNote(res: Record<string, unknown>) {
   const font2 = await px('.card[data-id="t1"] .tx');
   res.text = { z3, z4: await zoomOf(h), font: +font2.toFixed(1), editing: editingT };
   await shot(h, "ux-readable");
-  await page.context().browser()!.close();
+  await page.context().close();
   return z1 > 0.48 && z1 <= 1 && font1 >= 10.9 && inView(box, 1200, 800) && z2 === z1 && z3 >= 0.6 && z3 < 0.8 && editingT && font2 >= 10.9;
 }
 
@@ -286,6 +285,6 @@ async function turnName(res: Record<string, unknown>) {
   res.called = await name([sch.id, can.id]);
   res.withNote = await name([note, can.id, sch.id]);
   res.unlinked = await name([sch.id, note]);
-  await page.context().browser()!.close();
+  await page.context().close();
   return res.called === "Scheduler.schedule" && res.withNote === "Scheduler.schedule" && res.unlinked === "aside";
 }

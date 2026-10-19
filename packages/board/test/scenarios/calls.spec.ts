@@ -1,12 +1,12 @@
-// v0.2 calls (wireframes 03, 12, 13): RPC arrows, process tags, message cards, ↩ back to; Start card, step counter, Arrow legend;
+// Calls (wireframes 03, 12, 13): RPC arrows, process tags, message cards, ↩ back to; Start card, step counter, Arrow legend;
 // call tree sidebar; Capture Run on a tiny fixture package (no torch / GPU) through the real host and Python.
-// Usage: node packages/board/test/run-harness.mjs rpc walkstart calltree runtime [--light]   screenshots: test-out/harness/{rpc,walkstart,legend,calltree,runtime}-*.png
+// Usage: npm run harness -- rpc walkstart calltree runtime [--light]   screenshots: test-out/harness/{rpc,walkstart,legend,calltree,runtime}-*.png
 // SHOTS_DIR=… also copies them there.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type SegView, type HostToBoard } from "@codeboard/core";
-import { open, shot, put, symCard as nvCard, findSym, OUT, REPO, type Host } from "./harness";
+import { shot, put, symCard as nvCard, findSym, OUT, REPO, type Host } from "../harness";
 import { startAnalysis, analysisOf } from "@codeboard/host/analysis";
 import { cardForFileSym } from "@codeboard/host/cards";
 import { callVars, expand, peek } from "@codeboard/host/resolve";
@@ -16,8 +16,8 @@ import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/name
 import { captureRun, runApply } from "@codeboard/host/runs";
 import { langOf, useWorkspace } from "@codeboard/host/ws";
 import { nodeWorkspace } from "@codeboard/host/test/node-workspace";
+import { test, open, check, light, verdict } from "../fixtures";
 
-const light = process.argv.includes("--light");
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 async function shotPr(h: Host, name: string) {
   await shot(h, name);
@@ -43,20 +43,14 @@ const head = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"] .ch
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
 const nv = (qual: string) => { const s = findSym(qual); return nvCard(s.f, s.s); };
 const callLink = (id: string, from: CodeCard, line: number, to: string, name: string) => ({ id, from: { card: from.id, seg: from.segments[0].id, line }, to: { card: to }, call: { name, col: 0 } });
-const run = async (name: string, f: (res: Record<string, unknown>) => Promise<boolean>) => {
-  const res: Record<string, unknown> = {};
-  let ok = false;
-  try { ok = await f(res); } catch (e) { console.log("FAIL", name, (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  console.log(ok ? "PASS" : "FAIL", name, JSON.stringify(res));
-  if (!ok) process.exitCode = 1;
-};
 
-export const CALLS: Record<string, () => Promise<void>> = {
-  rpc: () => run("rpc", rpc),
-  walkstart: () => run("walkstart", walkstart),
-  calltree: () => run("calltree", calltree),
-  runtime: () => run("runtime", runtime),
-};
+test("rpc", () => verdict("rpc", rpc));
+
+test("walkstart", () => verdict("walkstart", walkstart));
+
+test("calltree", () => verdict("calltree", calltree));
+
+test("runtime", () => verdict("runtime", runtime));
 
 /** nano-vllm: step → call ⇢ (RPC shm "run", rank 0 → rank 1…N) → loop → run; run ↩ back to step */
 function nanoRpcBoard(): { b: Board; ids: Record<string, string> } {
@@ -134,7 +128,7 @@ async function rpc(res: Record<string, unknown>) {
     && JSON.stringify(res.procs) === JSON.stringify(["rank 0", "rank 1…N", "rank 1…N", "CUDA stream 0"]) && res.lightTag === 1
     && res.back === "↩ back to A" && res.msgCard === "run" && JSON.stringify(res.legs) === JSON.stringify(["call→msg", "msg→loop"]) && res.msgMark === "A"
     && res.walk === "1 / 5";
-  await page.context().browser()!.close();
+  await page.context().close();
   return ok;
 }
 
@@ -186,7 +180,7 @@ async function walkstart(res: Record<string, unknown>) {
   const ok = res.startTag === 1 && /LLMEngine\.step/.test(String(res.first)) && res.cnt === "2 / 4" && JSON.stringify(res.badges) === JSON.stringify(["1", "2", "3", "4"].filter((x) => (res.badges as string[]).includes(x))) && (res.badges as string[]).length === 4
     && res.badgesAfter === 0 && !res.stored
     && JSON.stringify(res.legend) === JSON.stringify(["Call", "RPC", "Observed", "Generated from", "See also"]) && (res.renamed as { see?: string })?.see === "Related" && (res.styleMenu as string[]).some((t) => /Related/.test(t));
-  await page.context().browser()!.close();
+  await page.context().close();
   return ok;
 }
 
@@ -214,7 +208,7 @@ async function calltree(res: Record<string, unknown>) {
   await shotPr(h, "calltree-1-sidebar");
   const want = ["0:LLMEngine.step", "1:Scheduler.schedule", "2:BlockManager.allocate", "1:ModelRunner.call", "2:ModelRunner.loop RPC", "3:ModelRunner.run", "4:BlockManager.allocate ↑"];
   const ok = /from Start/.test(String(res.from)) && JSON.stringify(res.rows) === JSON.stringify(want) && res.sel === "BlockManager.allocate" && /selected/.test(String(res.fromSel));
-  await page.context().browser()!.close();
+  await page.context().close();
   return ok;
 }
 
@@ -299,6 +293,6 @@ async function runtime(res: Record<string, unknown>) {
     && JSON.stringify((res.observed as string[]).sort()) === JSON.stringify(["r1:2", "r2:2", "r3:2:manual"]) && res.tags === 3 && /Manual/.test(String(res.tip)) && /run\.py 2/.test(String(res.tip))
     && (res.vals as string[]).some((v) => /seqs.*list · len 2/.test(v)) && (res.vals as string[]).some((v) => /is_prefill.*True/.test(v)) && res.argVal === "'run'"
     && res.stepped === "call 2 / 2" && (res.misses as number) >= 5 && res.added && (res.missesAfter as number) === (res.misses as number) - 1;
-  await page.context().browser()!.close();
+  await page.context().close();
   return ok;
 }

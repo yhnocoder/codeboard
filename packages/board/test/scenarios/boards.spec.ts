@@ -1,28 +1,25 @@
 // Boards and their storage: changes reach the host as they happen, copying connected cards between boards, empty questions,
 // undo across sub-boards (history per board, Turn into Board), arrows into a deleted sub-board card, crumbs to a deleted board.
-// Usage: node packages/board/test/run-harness.mjs <scenario…>   (names in BOARDS below)
+// Usage: npm run harness -- <scenario…>   (the test names below)
 import { emptyBoard, type Board } from "@codeboard/core";
-import { open, put, symCard, findSym, type Host } from "./harness";
-import { subHost } from "./scenarios-subboards";
+import { put, symCard, findSym, type Host } from "../harness";
+import { subHost } from "../subhost";
+import { test, open, verdict } from "../fixtures";
 
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
-const run = async (name: string, f: (res: Record<string, unknown>) => Promise<boolean>) => {
-  const res: Record<string, unknown> = {};
-  let ok = false;
-  try { ok = await f(res); } catch (e) { console.log("FAIL", name, (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  console.log(ok ? "PASS" : "FAIL", name, JSON.stringify(res));
-  if (!ok) process.exitCode = 1;
-};
 
-export const BOARDS: Record<string, () => Promise<void>> = {
-  changesreachhost: () => run("changes-reach-host-at-once", changesReachHost),
-  emptyquestion: () => run("empty-new-question-is-dropped", emptyQuestion),
-  undoafterpeek: () => run("undo-history-survives-a-visit-to-a-sub-board", undoAfterPeek),
-  undoturnintoboard: () => run("undoing-turn-into-board-removes-the-new-board", undoTurnIntoBoard),
-  expandlostcall: () => run("a-call-whose-sub-board-card-was-deleted-expands-again", expandLostCall),
-  deletedparentcrumb: () => run("a-deleted-parent-board-leaves-the-breadcrumbs", deletedParentCrumb),
-};
+test("changesreachhost", () => verdict("changes-reach-host-at-once", changesReachHost));
+
+test("emptyquestion", () => verdict("empty-new-question-is-dropped", emptyQuestion));
+
+test("undoafterpeek", () => verdict("undo-history-survives-a-visit-to-a-sub-board", undoAfterPeek));
+
+test("undoturnintoboard", () => verdict("undoing-turn-into-board-removes-the-new-board", undoTurnIntoBoard));
+
+test("expandlostcall", () => verdict("a-call-whose-sub-board-card-was-deleted-expands-again", expandLostCall));
+
+test("deletedparentcrumb", () => verdict("a-deleted-parent-board-leaves-the-breadcrumbs", deletedParentCrumb));
 
 /** Inside a sub-board, its parent board is deleted (from the sidebar): the breadcrumb to it goes, Esc doesn't try to go back there */
 async function deletedParentCrumb(res: Record<string, unknown>) {
@@ -38,7 +35,7 @@ async function deletedParentCrumb(res: Record<string, unknown>) {
   await page.mouse.click(1000, 700); await page.keyboard.press("Escape"); await wait(h, 1000);
   res.stillOn = t.cur();
   res.errors = errors.length;
-  await page.context().browser()!.close();
+  await page.context().close();
   return JSON.stringify(res.crumbsIn) === '["Parent","Child"]' && res.crumbsAfter === 0 && res.stillOn === "bChild" && res.errors === 0;
 }
 
@@ -58,7 +55,7 @@ async function expandLostCall(res: Record<string, unknown>) {
   const b = t.store.peek("bParent")!;
   const calls = b.links.filter((l) => l.call?.name === "schedule");
   res.calls = calls.map((l) => ({ to: b.cards.find((c) => c.id === l.to.card)?.kind, lost: !!l.lost }));
-  await page.context().browser()!.close();
+  await page.context().close();
   return res.lost === true && JSON.stringify(res.calls) === '[{"to":"code","lost":false}]';
 }
 
@@ -83,7 +80,7 @@ async function undoTurnIntoBoard(res: Record<string, unknown>) {
   const frame = t.store.peek("bParent")!.cards.find((c) => c.kind === "board");
   res.afterRedo = { boards: await boards(), frameTo: frame?.kind === "board" ? frame.board : null, childCards: made[0] ? t.store.peek(made[0])?.cards.length : null };
   res.skel = await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub]`).count();
-  await page.context().browser()!.close();
+  await page.context().close();
   const a = res.afterUndo as { boards: number; cardBack: string }, r = res.afterRedo as { boards: string[]; frameTo: string | null; childCards: number | null };
   return res.made === 1 && a.boards === 0 && a.cardBack === "code,code" && r.boards.length === 1 && r.frameTo === made[0] && r.childCards === 1 && (res.skel as number) >= 1;
 }
@@ -119,7 +116,7 @@ async function undoAfterPeek(res: Record<string, unknown>) {
   res.undone = !hasText();
   await page.keyboard.press("Meta+Shift+z"); await wait(h, 1400);
   res.redone = hasText();
-  await page.context().browser()!.close();
+  await page.context().close();
   return res.typed === true && res.inChild === true && res.back === true && res.undone === true && res.redone === true;
 }
 
@@ -156,7 +153,7 @@ async function emptyQuestion(res: Record<string, unknown>) {
   res.afterUndo = h.board().stickers.length;
   await page.keyboard.press("Meta+z"); await wait(h, 1400);
   res.afterSecondUndo = h.board().stickers.length;
-  await page.context().browser()!.close();
+  await page.context().close();
   return res.editor === 1 && res.emptyLeft === 0 && res.emptyShown === 0 && JSON.stringify(res.written) === '["why?"]' && res.afterUndo === 0 && res.afterSecondUndo === 0;
 }
 
@@ -196,6 +193,6 @@ async function changesReachHost(res: Record<string, unknown>) {
   for (let i = 0; i < 20 && !got.some((g) => g.patch.cam); i++) await page.waitForTimeout(10);
   const cam = got.find((g) => g.patch.cam);
   res.pagehideMs = cam ? cam.t - t0 : null;
-  await page.context().browser()!.close();
+  await page.context().close();
   return res.wrapSent === true && (res.wrapMs as number) < 300 && res.textMs !== null && (res.textMs as number) < 300 && res.camBefore === false && res.pagehideMs !== null && (res.pagehideMs as number) < 150;
 }

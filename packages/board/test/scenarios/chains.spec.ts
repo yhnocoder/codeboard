@@ -1,11 +1,11 @@
-// v0.2 broken chains + cross-language (wireframes 01, 02). One browser plays the board; the host is the real resolver
+// Broken chains + cross-language (wireframes 01, 02). One browser plays the board; the host is the real resolver
 // (packages/host/src/resolve.ts) on the crosslang fixture repo through the node workspace, with a stub language
 // server for dynamic dispatch (definition = the base method, implementations = the overrides, as Pylance answers).
-// Usage: node packages/board/test/run-harness.mjs pickimpl crosslang [--light]   screenshots: test-out/harness/{pickimpl,crosslang}-*.png
+// Usage: npm run harness -- pickimpl crosslang [--light]   screenshots: test-out/harness/{pickimpl,crosslang}-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type SegView, type HostToBoard } from "@codeboard/core";
-import { open, shot, put, OUT, REPO, type Host } from "./harness";
+import { shot, put, OUT, REPO, type Host } from "../harness";
 import { startAnalysis, analysisOf } from "@codeboard/host/analysis";
 import { cardForFileSym } from "@codeboard/host/cards";
 import { callVars, dispatchAt, expand, peek } from "@codeboard/host/resolve";
@@ -15,8 +15,8 @@ import { searchName, searchPick, genSource } from "@codeboard/host/search";
 import { resetIndex, startNameIndex, nameIndexReady } from "@codeboard/host/nameindex";
 import { langOf, useWorkspace } from "@codeboard/host/ws";
 import { nodeWorkspace, type TestWorkspace } from "@codeboard/host/test/node-workspace";
+import { test, open, check, light, verdict } from "../fixtures";
 
-const light = process.argv.includes("--light");
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 
 /** Screenshot also into the PR shots folder when SHOTS_DIR is set */
@@ -95,16 +95,9 @@ const callIn = (h: Host, card: string, name: string) => h.page.locator(`.card[da
 const linksOf = (h: Host) => h.board().links;
 const cardByQual = (h: Host, qual: string) => h.board().cards.find((c) => c.kind === "code" && c.segments[0]?.symbol?.qual === qual);
 
-export const CHAINS: Record<string, () => Promise<void>> = {
-  async pickimpl() {
-    const res: Record<string, unknown> = {};
-    try { await pickimpl(res); } catch (e) { console.log("FAIL pickimpl", (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  },
-  async crosslang() {
-    const res: Record<string, unknown> = {};
-    try { await crosslang(res); } catch (e) { console.log("FAIL crosslang", (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  },
-};
+test("pickimpl", () => verdict("pickimpl", pickimpl));
+
+test("crosslang", () => verdict("crosslang", crosslang));
 
 async function pickimpl(res: Record<string, unknown>) {
   await fixture();
@@ -188,7 +181,7 @@ async function pickimpl(res: Record<string, unknown>) {
   await page.keyboard.press("Escape");
   W.language.implementations = async (abs, line) => { await new Promise((r) => setTimeout(r, 1500)); return abs === baseAbs && line === 2 ? [{ abs: implAbs, line: 5, col: 8 }, { abs: implAbs, line: 10, col: 8 }] : []; };
   forgetDefs();
-  await h.page.context().browser()!.close();
+  await h.page.context().close();
   const B8 = emptyBoard("bPickLate", "vLLM · attention (cold language server)");
   const lay8 = await symCard("vllm/layer.py", "Attention.forward");
   put(B8, lay8, 80, 160, 620);
@@ -210,10 +203,10 @@ async function pickimpl(res: Record<string, unknown>) {
   const ok = /Dynamic dispatch.*2 implementations.*AttentionImpl.*abstract/.test(String(res.hover)) && /2 implementations of/.test(String(res.title)) && res.items === 2
     && res.picked && res.altBoxes === 1 && res.oneOf === "1 of 2" && res.swapped && /TritonAttentionImpl/.test(String(res.altAfter)) && res.jump && res.two && res.altsWhenBoth === 0
     && res.menu && (res.hits as number) >= 2 && res.manual && res.drawn && res.lateFirst && res.lateItems === 2 && res.lateSwap;
-  console.log(ok ? "PASS" : "FAIL", "pickimpl", JSON.stringify(res));
+  check("pickimpl", ok, JSON.stringify(res));
   W.language.definitions = async () => []; W.language.implementations = async () => [];
   forgetDefs();
-  await h8.page.context().browser()!.close();
+  await h8.page.context().close();
 }
 
 async function crosslang(res: Record<string, unknown>) {
@@ -288,6 +281,6 @@ async function crosslang(res: Record<string, unknown>) {
     && (res.chips as string[]).includes("PY") && (res.chips as string[]).includes("C++") && (res.chips as string[]).includes("CUDA")
     && (res.labels as string[]).includes("launch macro · SWITCH_RANKS") && (res.labels as string[]).includes("pybind · deep_ep.cpp .def")
     && res.greyVals === 2 && res.valOpts === 3 && res.valSet && g?.what === "CUDA source" && !!g?.run && res.genLink && /Generated · CUDA source/.test(String(res.genHead)) && res.triton;
-  console.log(ok ? "PASS" : "FAIL", "crosslang", JSON.stringify(res));
-  await h.page.context().browser()!.close();
+  check("crosslang", ok, JSON.stringify(res));
+  await h.page.context().close();
 }
