@@ -72,7 +72,7 @@ export async function updateAll() {
   for (const c of allCodeCards(state.board)) if (cardStale(c) === "changed") for (const s of upstreamSegs(c)) if (state.stale[s.id]?.state === "changed") todo.push([c.id, s]);
   // 共享卡：范围按设置；要问的话一批只问一次
   const linked = [...new Set(todo.map(([c]) => c))].filter((c) => sharedOn(c) > 1);
-  let scope = state.host.settings?.sharedUpdate ?? "ask";
+  let scope = state.host.settings.sharedUpdate;
   if (linked.length && scope === "ask") {
     const i = await choose(`${linked.length} of these cards ${linked.length > 1 ? "are" : "is"} also on other boards`, ["Update on All Boards", "This Board Only", "Skip Linked Cards"], {
       note: "This Board Only makes a copy here, so the other boards keep the old version.",

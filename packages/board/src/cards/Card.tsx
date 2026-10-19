@@ -150,7 +150,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const revLabel = () => (mixed() ? "Mixed" : versionLabel(up0()?.version, true));
   return (
     <div class="chead" data-drag>
-      <Show when={node() && !state.host.settings?.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
+      <Show when={node() && !state.host.settings.hideNumbers}><span class="step" data-tip="Click: change mark · Drag: move with the cards it calls"><MarkView g={node()!} /></span></Show>
       <Show when={!p.col && placeOf(c().id).start}><span class="startt" data-tip="Start card: Walkthrough and the call tree start here">START</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" data-nodrag onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={kbd("lock")} data-nodrag onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
@@ -209,7 +209,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
 function CodeBand(p: { card: CodeCard }) {
   const c = () => p.card;
   const s0 = () => c().segments[0];
-  const label = () => (state.host.settings?.hideNumbers ? "" : flows().byId.get(c().id)?.label ?? "");
+  const label = () => (state.host.settings.hideNumbers ? "" : flows().byId.get(c().id)?.label ?? "");
   const big = () => (/^\d$/.test(label()) ? `0${label()}` : label());
   const stale = () => act.cardStale(c());
   const isNew = () => stale() === "changed" || stale() === "hidden";
@@ -263,7 +263,7 @@ function MsgBody(p: { card: NoteCard }) {
   return (
     <div class="msgb" data-drag onDblClick={(e) => { e.stopPropagation(); setEditing({ kind: "title", id: c().id }); }}>
       <div class="mrow1">
-        <Show when={flows().byId.get(c().id) && !state.host.settings?.hideNumbers}><span class="step"><MarkView g={flows().byId.get(c().id)!} /></span></Show>
+        <Show when={flows().byId.get(c().id) && !state.host.settings.hideNumbers}><span class="step"><MarkView g={flows().byId.get(c().id)!} /></span></Show>
         <Show when={placeOf(c().id).start}><span class="startt">START</span></Show>
         <Editable class="mname" kind="title" id={c().id} value={cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
       </div>
@@ -428,7 +428,7 @@ function MapLabel(p: { card: Card }) {
   };
   return (
     <div class="maplabel" style={{ "--fit": fit() }}>
-      <Show when={g() && !state.host.settings?.hideNumbers}><span class="step"><MarkView g={g()!} /></span></Show>
+      <Show when={g() && !state.host.settings.hideNumbers}><span class="step"><MarkView g={g()!} /></span></Show>
       <span class="mt"><For each={parts()}>{(x) => <>{x}<wbr /></>}</For></span>
     </div>
   );

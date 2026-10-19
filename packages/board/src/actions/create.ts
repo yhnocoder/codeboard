@@ -20,8 +20,8 @@ import { fetchMeta, newLinkList } from "./web";
 
 /** 新代码卡按设置默认隐藏注释 / 文档字符串 / 空行（卡上已经有设定的不动） */
 function withDefaults(c: Card): Card {
-  const h = state.host.settings?.hideOnNew;
-  if (c.kind === "code" && !c.hide && h && (h.comments || h.docstrings || h.blank)) c.hide = { ...h };
+  const h = state.host.settings.hideOnNew;
+  if (c.kind === "code" && !c.hide && (h.comments || h.docstrings || h.blank)) c.hide = { ...h };
   return c;
 }
 

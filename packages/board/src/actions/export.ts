@@ -25,10 +25,10 @@ export function openExport(format: ExportFormat = "html") {
   const s = state.host.settings;
   // 选中的 Section，或选中的卡所在的 Section
   const secs = sel.sections.length ? [...sel.sections] : [...new Set(sel.cards.map((id) => state.board.place[id]?.section).filter(Boolean) as string[])];
-  let scope = s?.exportScope ?? "board";
+  let scope = s.exportScope;
   if (scope === "sections" && !state.board.sections.length) scope = "board";
   if (scope === "walk" && !walkStart()) scope = "board";
-  setExportOpen({ format, scope, sections: secs.length ? secs : state.board.sections.slice(0, 1).map((x) => x.id), questions: !!s?.exportQuestions, boardOnly: !!s?.exportBoardOnly });
+  setExportOpen({ format, scope, sections: secs.length ? secs : state.board.sections.slice(0, 1).map((x) => x.id), questions: s.exportQuestions, boardOnly: s.exportBoardOnly });
 }
 
 const fileName = () => (state.board.name || "board").trim();

@@ -27,7 +27,7 @@ const KEY: Record<keyof Settings, string> = {
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
-/** 白板发来的值对不对得上 Settings 的类型（可选的项可以是 undefined = 删掉） */
+/** 白板发来的值对不对得上 Settings 的类型 */
 const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   theme: (v) => THEMES.some(([id]) => id === v),
   hideOnNew: (v) => isObj(v) && Object.values(v).every((x) => x === undefined || typeof x === "boolean"),
@@ -36,17 +36,17 @@ const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   zoomOverview: num,
   zoomMap: num,
   dblClick: (v) => v === "text" || v === "note" || v === "code" || v === "none",
-  hideNumbers: (v) => v === undefined || typeof v === "boolean",
-  themeReflow: (v) => v === undefined || v === "push" || v === "overlap",
-  debug: (v) => v === undefined || typeof v === "boolean",
-  tune: (v) => v === undefined || (isObj(v) && Object.values(v).every(num)),
-  pasteOther: (v) => v === undefined || v === "linked" || v === "copy",
-  sharedUpdate: (v) => v === undefined || v === "ask" || v === "all" || v === "this",
-  subPreview: (v) => v === undefined || v === "skeleton" || v === "title",
-  welcomeBack: (v) => v === undefined || v === "2d" || v === "always" || v === "off",
-  exportQuestions: (v) => v === undefined || typeof v === "boolean",
-  exportBoardOnly: (v) => v === undefined || typeof v === "boolean",
-  exportScope: (v) => v === undefined || v === "board" || v === "sections" || v === "walk",
+  hideNumbers: (v) => typeof v === "boolean",
+  themeReflow: (v) => v === "push" || v === "overlap",
+  debug: (v) => typeof v === "boolean",
+  tune: (v) => (isObj(v) && Object.values(v).every(num)),
+  pasteOther: (v) => v === "linked" || v === "copy",
+  sharedUpdate: (v) => v === "ask" || v === "all" || v === "this",
+  subPreview: (v) => v === "skeleton" || v === "title",
+  welcomeBack: (v) => v === "2d" || v === "always" || v === "off",
+  exportQuestions: (v) => typeof v === "boolean",
+  exportBoardOnly: (v) => typeof v === "boolean",
+  exportScope: (v) => v === "board" || v === "sections" || v === "walk",
 };
 
 export const validSetting = (k: string, v: unknown): k is keyof Settings => k in KEY && VALID[k as keyof Settings](v);

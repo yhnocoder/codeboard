@@ -16,7 +16,7 @@ export const lodBusy = busy;
 const [cardLod, setCardLod] = createStore<Record<string, Lod>>({});
 const [cardIz, setCardIz] = createStore<Record<string, number>>({});
 /** 进地图档那一刻的 --iz（地图档门槛的倒数）：提前建好的名字按它排版 */
-export const izMap = () => 1 / (state.host.settings?.zoomMap ?? 0.25);
+export const izMap = () => 1 / state.host.settings.zoomMap;
 let held: number | undefined;
 const izWant = rooted(() => createMemo(() => {
   if (lod() !== "map") return (held = undefined, 1);

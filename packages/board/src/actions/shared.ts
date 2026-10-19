@@ -41,7 +41,7 @@ function textOf(c: Card): string {
 }
 
 /** 粘贴默认做什么：设置里的 Paste onto Another Board；alt = ⌥ 粘贴，换成另一种 */
-const pasteCopy = (alt: boolean) => (state.host.settings?.pasteOther === "copy") !== alt;
+const pasteCopy = (alt: boolean) => (state.host.settings.pasteOther === "copy") !== alt;
 
 /**
  * 粘贴：剪贴板里是别的白板上复制的卡（宿主核对文字）就放到这块白板上，返回 true；不是返回 false（照旧按文字粘贴）。
@@ -135,7 +135,7 @@ export async function deleteEverywhere(ids = selShared()) {
 export async function updateScoped(cardId: string, segId: string, data: DiffData, apply: (card: string) => void, keep: () => void): Promise<boolean> {
   const n = sharedOn(cardId);
   if (n < 2 || !data.newSeg) { apply(cardId); return true; }
-  let scope = state.host.settings?.sharedUpdate ?? "ask";
+  let scope = state.host.settings.sharedUpdate;
   if (scope === "ask") {
     const c = cardById(cardId)?.card;
     const ns = { ...data.newSeg, id: segId };

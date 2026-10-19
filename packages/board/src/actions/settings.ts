@@ -32,7 +32,7 @@ export function applyLook(id: string | undefined) {
   // 卡头 / 色带高度跟主题变：等新尺寸量完（两帧），把被压住的卡往下推（设置里可以改成允许重叠）。
   // 代码卡卡头的高度由布局决定：新主题的字体还在加载时量到的是后备字体的高度，等字体到了再量两帧
   const two = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));
-  if (before && state.host.settings?.themeReflow !== "overlap") two(() => (document.fonts?.status === "loading" ? document.fonts.ready.then(() => two(() => reflowAfterTheme(before))) : reflowAfterTheme(before)));
+  if (before && state.host.settings.themeReflow !== "overlap") two(() => (document.fonts?.status === "loading" ? document.fonts.ready.then(() => two(() => reflowAfterTheme(before))) : reflowAfterTheme(before)));
 }
 
 type R = { x: number; y: number; w: number; h: number };

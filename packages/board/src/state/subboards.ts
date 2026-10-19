@@ -89,7 +89,7 @@ export function skelBox(c: SkelCard, f: { s: number; ox: number; oy: number }): 
 
 /** 骨架里这张卡（或折进去的那个「+N」）在画布上的矩形；骨架还没到 / 卡没了时 null */
 export function subRect(frame: string, sub: string): Rect | null {
-  if (state.host.settings?.subPreview === "title") return null; // 只画标题：箭头落在框上
+  if (state.host.settings.subPreview === "title") return null; // 只画标题：箭头落在框上
   const sk = skelOf(frame);
   if (!sk) return null;
   const c = sk.cards.find((k) => k.id === sub) ?? sk.cards.find((k) => k.ids?.includes(sub));

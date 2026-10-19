@@ -5,7 +5,7 @@ import type { ThemeId } from "@codeboard/core";
 import { state } from "./store";
 import { rooted } from "./root";
 
-export const look = () => state.host.settings?.theme ?? "warm-ink";
+export const look = () => state.host.settings.theme;
 
 /** clear：直角折线绕到卡外时离卡边多远（route.ts 的 CLEAR），只有路面宽的材质要加大 */
 /** band / foot：代码卡显示色带（大标题）/ 底栏（Card.tsx 只在这些主题里建这两块） */

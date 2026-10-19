@@ -387,7 +387,7 @@ export function canvasPointerDown(e: PointerEvent) {
   e.preventDefault();
   closeAllPops();
   if (isDbl("canvas", e)) {
-    const w = worldOf(e), k = state.host.settings.dblClick ?? "text";
+    const w = worldOf(e), k = state.host.settings.dblClick;
     if (k === "text") A.newNote({ x: w.x, y: w.y - 12 }, false);
     else if (k === "note") A.newNote({ x: w.x, y: w.y - 18 }, true);
     else if (k === "code") A.newFreeCode({ x: w.x, y: w.y - 18 });
