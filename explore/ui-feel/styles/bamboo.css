@@ -1,0 +1,70 @@
+/* 竹简：每行代码写在一根竹简上，左边一根宽简竖写编号，两道麻绳穿起来；朱砂做批注色 */
+.s-bamboo {
+  --bg: light-dark(#ebe4d3, #17120d);
+  --tex: light-dark(rgba(90,70,40,.05), rgba(255,220,170,.035));
+  --slip: light-dark(#dcc596, #4b3c27);
+  --slip-hi: light-dark(#e6d3a8, #574631);
+  --gap: light-dark(#9c7d4c, #110c07);
+  --grain: light-dark(rgba(110,80,30,.07), rgba(0,0,0,.18));
+  --ink: light-dark(#21180e, #f0e3c4);
+  --ink-2: light-dark(#5b4630, #c9b48d);
+  --ink-3: light-dark(#977c54, #8d7856);
+  --zhu: light-dark(#ac2f1b, #ec6a4f);
+  --cord: light-dark(#5e3f1d, #b48a52);
+  --cord-2: light-dark(#87612f, #7c5b31);
+  --selbg: light-dark(rgba(172,47,27,.2), rgba(236,106,79,.32));
+  --ui: "Noto Serif SC", "Songti SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --brush: "Ma Shan Zheng", "Kaiti SC", "STKaiti", "KaiTi", serif;
+  background-image: repeating-linear-gradient(0deg, var(--tex) 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, var(--tex) 0 1px, transparent 1px 4px);
+}
+.s-bamboo .card { overflow: visible; display: grid; grid-template-columns: 30px minmax(0, 1fr); background: none;
+  filter: drop-shadow(0 1px 1px light-dark(rgba(60,40,10,.25), rgba(0,0,0,.6))) drop-shadow(0 10px 14px light-dark(rgba(60,40,10,.18), rgba(0,0,0,.5))); }
+.s-bamboo .card.sel { outline: 1.5px solid var(--zhu); outline-offset: 5px; border-radius: 2px; }
+/* 首简：竖写编号 */
+.s-bamboo .cside { display: flex; grid-column: 1; grid-row: 1 / 4; justify-content: center; padding-top: 12px; margin-right: 2px; border-radius: 3px 0 0 3px;
+  background: linear-gradient(90deg, var(--slip-hi), var(--slip)); box-shadow: inset -1px 0 0 var(--gap); }
+.s-bamboo .cside span { writing-mode: vertical-rl; font: 400 15px/1 var(--brush); color: var(--zhu); letter-spacing: .12em; }
+/* 标题简 */
+.s-bamboo .chead { grid-column: 2; grid-row: 1; height: 30px; padding: 0 26px 0 10px; background: var(--slip-hi); border-bottom: 2px solid var(--gap); border-radius: 0 3px 0 0; }
+.s-bamboo .step { display: none; }
+.s-bamboo .ctitle { font: 600 12px var(--mono); color: var(--ink); }
+.s-bamboo .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
+.s-bamboo .rev { font: 10px var(--mono); color: var(--ink-3); }
+.s-bamboo .rev.new { font: 400 12px var(--brush); color: var(--slip-hi); background: var(--zhu); padding: 1px 5px 0; border-radius: 2px; letter-spacing: .1em; }
+.s-bamboo .cnote { display: block; grid-column: 2; grid-row: 2; padding: 3px 26px 2px 10px; font: 400 14px/20px var(--brush); color: var(--ink-2); background: var(--slip); border-bottom: 2px solid var(--gap); letter-spacing: .06em; }
+/* 正文：一行一简，简与简之间留一道缝 */
+.s-bamboo .code { grid-column: 2; grid-row: 3; padding: 0; font: 10.5px/19px var(--mono); color: var(--ink); border-radius: 0 0 3px 0;
+  background: repeating-linear-gradient(90deg, var(--grain) 0 1px, transparent 1px 9px), repeating-linear-gradient(180deg, transparent 0 38px, var(--grain) 38px 57px, transparent 57px 76px, rgba(255,255,255,.06) 76px 95px), repeating-linear-gradient(180deg, var(--slip) 0 17px, var(--gap) 17px 19px); }
+.s-bamboo .code::before, .s-bamboo .code::after { content: ""; position: absolute; top: -52px; bottom: -4px; width: 3px; z-index: 2; border-radius: 2px;
+  background: repeating-linear-gradient(160deg, var(--cord) 0 3px, var(--cord-2) 3px 5px); box-shadow: 1px 0 1px rgba(0,0,0,.25); }
+.s-bamboo .code::before { left: -3px; }
+.s-bamboo .code::after { right: 12px; }
+.s-bamboo .gutter .no { width: 34px; padding-right: 8px; color: var(--ink-3); }
+.s-bamboo .src { padding-left: 10px; line-height: 19px; }
+.s-bamboo .hlrow { background: color-mix(in srgb, var(--zhu) 16%, transparent); }
+.s-bamboo .no.link { color: var(--zhu); font-weight: 600; }
+.s-bamboo .kw { color: var(--zhu); } .s-bamboo .fn { color: var(--ink); font-weight: 600; } .s-bamboo .str { color: var(--ink-2); }
+.s-bamboo .com { color: var(--ink-3); font-style: italic; } .s-bamboo .num { color: var(--zhu); } .s-bamboo .self { color: var(--ink-2); } .s-bamboo .p { color: var(--ink-3); }
+.s-bamboo .call { text-decoration: underline 1px var(--zhu); text-underline-offset: 3px; }
+/* 连线是麻绳，两头打结 */
+.s-bamboo .edge { fill: none; stroke: var(--cord); stroke-width: 2.4; stroke-dasharray: 3 1.2; }
+.s-bamboo .ahead { fill: var(--cord); }
+.s-bamboo .port { fill: var(--cord); stroke: none; }
+.s-bamboo .elabel { font: 10.5px var(--mono); color: var(--ink); background: var(--slip-hi); padding: 3px 9px 3px 16px; border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--gap), 0 4px 8px -4px rgba(40,25,5,.5); }
+.s-bamboo .elabel::before { content: ""; position: absolute; left: 6px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 1px var(--gap); }
+
+/* 题签和工具条 */
+.s-bamboo .tb-left .pill { background: var(--slip-hi); padding: 4px 14px 4px 12px; border-radius: 2px; box-shadow: 0 0 0 1px var(--gap), 0 6px 12px -6px rgba(40,25,5,.5); }
+.s-bamboo .bn { font: 400 18px/1.2 var(--brush); color: var(--ink); letter-spacing: .1em; }
+.s-bamboo .bn::after { content: "壹"; margin-left: 10px; font-size: 12px; color: var(--slip-hi); background: var(--zhu); padding: 1px 4px; border-radius: 2px; vertical-align: 2px; }
+.s-bamboo .chev { color: var(--ink-3); }
+.s-bamboo .tb-right .pill, .s-bamboo .dock .pill { background: var(--slip-hi); border-radius: 3px; padding: 3px 6px; box-shadow: 0 0 0 1px var(--gap), 0 6px 12px -6px rgba(40,25,5,.5); }
+.s-bamboo .tbtn, .s-bamboo .ib { color: var(--ink); border-radius: 2px; font: 400 14px var(--brush); }
+.s-bamboo .ib:hover, .s-bamboo .tbtn:hover { background: var(--slip); }
+.s-bamboo .sep { width: 2px; height: 18px; background: var(--gap); margin: 0 4px; }
+.s-bamboo .zoom { font: 11px var(--mono); color: var(--ink-2); }
+.s-bamboo .toast { background: var(--ink); color: var(--slip-hi); font: 400 14px var(--brush); padding: 6px 14px; border-radius: 2px; letter-spacing: .04em; }
+.s-bamboo .toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--zhu); }
+.s-bamboo .toast b { font-weight: 400; color: var(--zhu); }
