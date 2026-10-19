@@ -81,13 +81,18 @@ export function besideFree(sel: Rect, size: { w: number; h: number }, others: Re
 
 /**
  * 展开出来的子卡：放在父卡右边一列，顶部对着出发行（top），按出发行号从上到下。
+ * others = 不让位的卡（不含父卡）。
  * before = 出发行在它前面的兄弟（及其子树）的矩形；新卡放在它们下面。
  */
 export function placeChild(parent: Rect, size: { w: number; h: number }, before: Rect[], others: Rect[], top = parent.y): { x: number; y: number } {
   const x = parent.x + parent.w + COL_GAP;
   let y = Math.max(parent.y, top);
   for (const s of before) y = Math.max(y, s.y + s.h + SIB_GAP);
-  return findFreeDown({ x, y, ...size }, others);
+  const want = { x, y, ...size };
+  const down = findFreeDown(want, others);
+  // 这一列下面被别的卡占满时不往很远的下面放：就近找空位（也可能往右、往上一点）
+  if (down.y - y <= Math.max(400, size.h)) return down;
+  return findFree(want, [...others, parent]);
 }
 
 function findFreeDown(want: Rect, others: Rect[]) {
