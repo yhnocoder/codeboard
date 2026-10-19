@@ -8,6 +8,7 @@ import {
 import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
 import { rooted, onBoardSwitch } from "./root";
+import { trimLru } from "./lru";
 
 export const [state, setState] = createStore({
   loaded: false,
@@ -409,16 +410,22 @@ export function redo() {
   return true;
 }
 
-// 每块白板各有一份撤销历史：进子白板再回来时宿主重新发来这块白板，内容和离开时一样就接着用
+// 每块白板各有一份撤销历史：进子白板再回来时宿主重新发来这块白板，内容和离开时一样就接着用。
+// 每份都带着整块白板的快照：面包屑上的上级白板都留着（一层层回去要用），别的只留最近离开的 RECENT_HISTORIES 块
 const histories = new Map<string, { undo: Snap[]; redo: Snap[]; sync: typeof syncLog; at: Snap }>();
-/** 换上宿主发来的白板：现在这块白板的撤销历史收起来；新白板收起过、内容也和那时一样就接着用，不然从头开始 */
-export function setBoard(b: Board) {
-  if (state.loaded) histories.set(state.board.id, { undo: undoStack.splice(0), redo: redoStack.splice(0), sync: syncLog.splice(0), at: snapNow() });
+const RECENT_HISTORIES = 4;
+/** 换上宿主发来的白板：现在这块白板的撤销历史收起来；新白板收起过、内容也和那时一样就接着用，不然从头开始。crumbs = 新白板的上级白板 */
+export function setBoard(b: Board, crumbs: readonly string[]) {
+  if (state.loaded) {
+    histories.delete(state.board.id); // 放到最后：最近离开的
+    histories.set(state.board.id, { undo: undoStack.splice(0), redo: redoStack.splice(0), sync: syncLog.splice(0), at: snapNow() });
+  }
   setState("board", reconcile(b));
   cur = null; lastIds = null; topMerge = undefined; last.clear();
   const h = histories.get(b.id);
   histories.delete(b.id);
   if (h && same(h.at, snapNow())) { undoStack.push(...h.undo); redoStack.push(...h.redo); syncLog.push(...h.sync); }
+  trimLru(histories, new Set(crumbs), RECENT_HISTORIES);
   updUndo();
 }
 
