@@ -194,6 +194,8 @@ export const V018MD: Record<string, () => Promise<void>> = {
     await pm("n1").waitFor({ timeout: 5000 });
     await pg.keyboard.press("Enter"); await pg.keyboard.type("first edit AAA");
     await pg.keyboard.press("Escape");
+    // 编辑 n1 时镜头放大到字看得清（退出编辑不缩回去），t1 出了视野：先看全部再双击它
+    await pg.keyboard.press("ControlOrMeta+0"); await pg.waitForTimeout(800);
     await pg.locator('.card[data-id="t1"] .tx').dblclick();
     await pm("t1").waitFor({ timeout: 5000 });
     const t1Text = await pm("t1").innerText();

@@ -205,7 +205,7 @@ export const V017LABELS: Record<string, () => Promise<void>> = {
     // ---- Arrow menu (W01 D 22, 24, 25) ----
     await arrowMenu(h, "LA");
     const am = await menuLabels(h);
-    check(am.join("|") === "Call Mark|Line|Width|Start|End|Color|Start Side|End Side|Reset Sides|Edit Label|Delete", "arrow-menu-items", am);
+    check(am.join("|") === "Call Mark|Mark as RPC…|↩ Back to Start|Style|Line|Width|Start|End|Color|Start Side|End Side|Reset Sides|Edit Label|Delete", "arrow-menu-items", am);
     await h.page.locator(".ctx").first().locator("button", { hasText: "End Side" }).hover(); await h.page.waitForTimeout(200);
     const endSides = await menuLabels(h, 1);
     await snap(h, "labels-6-arrow-menu");
