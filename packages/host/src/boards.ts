@@ -1,12 +1,12 @@
 // 一块打开的白板：读白板、算段的展示数据和版本状态、发 init；宿主信息；版本状态重算。
 // 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。界面本身（BoardView）由编辑器适配层实现
 //（VS Code 里是 webview，见 env.ts 的 openView），所有打开的白板由 hub.ts 的 BoardHub 管（BoardHost）。
-import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
+import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
 import { syncVariants } from "./variants";
 import { viewsFor } from "./views";
-import { present, srcLabel } from "./source";
+import { absOf, present, srcLabel } from "./source";
 import { readSettings } from "./settings";
 import { warmBoard } from "./prefetch";
 import { startNameIndex } from "./nameindex";
@@ -48,7 +48,8 @@ export interface BoardHost {
   broadcast(m: HostToBoard): void;
   pushBoards(): Promise<void>;
   staleChanged(id: string, n: number): void;
-  refreshStale(): Promise<void>;
+  /** 重算开着的白板的版本状态；paths = 只重查这些文件（绝对路径）里的段，只在有这些文件的白板上 */
+  refreshStale(paths?: ReadonlySet<string>): Promise<void>;
   /** ⌘C 复制的卡（贴到别的白板时用） */
   clip: CardClip | undefined;
   /** 共享卡的情况（在几块白板上、谁连到它）重新推给白板；now = 不等防抖 */
@@ -75,6 +76,8 @@ export function welcomeOf(b: Board, last: number | undefined, mode: Settings["we
 }
 
 const INDEX_DELAY = 4000;
+
+const inPaths = (s: Segment, paths: ReadonlySet<string>) => { const a = absOf(s); return !!a && paths.has(a); };
 
 export class BoardPanel {
   board: Board | undefined;
@@ -172,12 +175,22 @@ export class BoardPanel {
     } catch (e) { workspace().log("warn", `variants: ${e instanceof Error ? e.message : e}`); }
   }
 
-  /** 重算版本状态并推给白板 */
-  async refreshStale() {
+  /** 白板上（含不在显示的 Variant）有没有这些文件里的段 */
+  holds(paths: ReadonlySet<string>): boolean {
+    return !!this.board && [...boardSegments(this.board), ...variantSegments(this.board)].some((s) => inPaths(s, paths));
+  }
+
+  /** 重算版本状态并推给白板；paths = 只重查这些文件里的段（别的段留着上次的结果） */
+  async refreshStale(paths?: ReadonlySet<string>) {
     if (!this.board || !this.ready) return;
     void this.refreshVariants();
     const ss = staleSegments(this.board);
-    const st = await staleFor(ss.segs, ss.up);
+    const fresh = await staleFor(paths ? ss.segs.filter((s) => inPaths(s, paths)) : ss.segs, ss.up);
+    let st = fresh;
+    if (paths) {
+      st = {};
+      for (const s of ss.segs) { const v = fresh[s.id] ?? this.stale[s.id]; if (v) st[s.id] = v; }
+    }
     const changed = JSON.stringify(st) !== JSON.stringify(this.stale);
     this.stale = st;
     if (changed) this.post({ type: "stale", stale: st });

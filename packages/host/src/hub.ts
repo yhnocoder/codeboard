@@ -262,5 +262,7 @@ export class BoardHub implements BoardHost, Disposable {
     this.staleEmitter.fire();
   }
 
-  async refreshStale() { await Promise.all(this.all().map((p) => p.refreshStale())); }
+  async refreshStale(paths?: ReadonlySet<string>) {
+    await Promise.all(this.all().filter((p) => !paths || p.holds(paths)).map((p) => p.refreshStale(paths)));
+  }
 }
