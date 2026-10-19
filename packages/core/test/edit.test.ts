@@ -350,39 +350,83 @@ describe("renumberBorn", () => {
 
 describe("guard: reference upkeep only in core/src/edit.ts", () => {
   // 删卡、删线、换卡、删 Section / Sidenote / Sticker、改叠放顺序都得走 edit.ts 里的操作（removeCards、replaceCards、removeSections、arrangeCards……），
-  // 它们一起维护指着这些东西的引用（Link 两端、Sidenote、贴纸、问题的解答、创建顺序、调用图标记）。
+  // 它们一起维护指着这些东西的引用（Link 两端、Sidenote、贴纸、问题的解答、Compare 的栏、创建顺序、调用图标记）。
   // 规则按「改动的形状」查，不按写法：在 core、白板、插件三处源码里（去掉整行注释后，跨行匹配）找
-  //   1. 整个换掉一类东西：x.cards / links / sections / sidenotes / stickers / place = …（含 filter 之后的临时变量再赋回去、换顺序）
-  //   2. 原地删、原地换顺序：x.<集合>.splice / pop / shift / sort / reverse / fill / copyWithin(…)，x.<集合>.length = …
-  //   3. 删摆放：delete x.place[…]；Object.assign 到这些集合上
+  //   1. 整个换掉一类东西：x.cards / links / sections / sidenotes / stickers / place = …（含 filter 之后的临时变量再赋回去、换顺序），x["links"] = …，
+  //      Object.assign(x.place, …) / Object.assign(x, { links: … })
+  //   2. 原地删、原地换顺序：x.<集合>.splice / pop / shift / sort / reverse / fill / copyWithin(…)，x.<集合>.length = …；删摆放：delete x.place[…]
+  //   3. 换 Link 的一端到另一张卡：x.to / x.from = { card … }，x.to.card = …（Sidenote、贴纸的 at.card / on.card 也算）
+  //   4. 问题的解答：x.answer = …，delete x.answer，x.q = { … answer … }
+  //   5. Compare 的栏：x.cols = …，x.cols[i] = …，x.cols.splice(…)
+  //   6. 创建顺序、调用图标记：x.born / x.marks（[…]）= / ??= …，delete x.born / x.marks（[…]）
   // 不拦：push / unshift（加新东西不会让别的引用悬空；新东西自己的引用由每次 mutate 之后的 danglingRefs 自检、harness 守着），
-  // 同一个 id 原地换内容（b.cards[i] = …），以及改单个对象的字段（换 Link 的一端是用户的操作本身）。
-  // 允许的文件：edit.ts（引用维护）、migrate.ts（旧文件）、patch.ts（存盘的传输层：按快照的差应用改动、换共享卡的内容，差本身已经是 edit 算好的）
-  const ALLOW = new Set(["core/src/edit.ts", "core/src/migrate.ts", "core/src/patch.ts"]);
+  // 同一个 id 原地换内容（b.cards[i] = …），以及改单个对象别的字段。
+  // 不查的文件：edit.ts（引用维护）、migrate.ts（旧文件升级）。别处合理的、不是在维护引用的写法逐行列在 ALLOW 里，写明理由
+  const EXEMPT = new Set(["core/src/edit.ts", "core/src/migrate.ts"]);
+  /** [文件, 命中那一行里的一段原文, 为什么可以]：每一条都必须还命中（删了那行代码就删这一条） */
+  const ALLOW: [string, string, string][] = [
+    ["core/src/patch.ts", "if (p.full) b.place = {", "transport: applyPatch replays a diff edit.ts already computed"],
+    ["core/src/patch.ts", "for (const id of p.place.del ?? []) delete b.place[id];", "transport: applyPatch replays a diff"],
+    ["core/src/patch.ts", "Object.assign(b.place, p.place.set);", "transport: applyPatch replays a diff"],
+    ["core/src/patch.ts", "b.sidenotes = out;", "putShared swaps in a shared card's sidenotes from the card library, by id"],
+    ["core/src/patch.ts", "b.sidenotes.splice(j, 1);", "applySharedUpdate drops a shared card's sidenote another board deleted"],
+    ["core/src/patch.ts", "board.sidenotes = [...f.sidenotes", "inflate builds a board from its file plus the card library"],
+    ["core/src/patch.ts", "out.place = Object.fromEntries(mergeById(", "mergeFile: three-way merge of whole files, item by item"],
+    ["core/src/patch.ts", "p.place = {", "diffBoards builds a patch object, not a board"],
+    ["core/src/questions.ts", "it.answer = a.card.id;", "a row of the derived questions list, not a board sticker"],
+    ["board/src/actions/questions.ts", "delete q.answer;", "the user reopens a question: that is the edit itself"],
+    ["board/src/actions/questions.ts", "s.q = { ...(s.q ?? { md: \"\" }), done: true, answer: card }", "the user links the answer card: that is the edit itself"],
+    ["board/src/actions/flow.ts", "delete b.marks[g.id];", "the user clears a call graph's mark: that is the edit itself"],
+    ["board/src/actions/flow.ts", "(b.marks ??= {})[g.id] = mark;", "the user sets a call graph's mark: that is the edit itself"],
+    ["board/src/state/store.ts", "b.born = tmp.born;", "mutate stamps creation order on new cards (core stampBorn on a plain copy)"],
+  ];
   const LISTS = "cards|links|sections|sidenotes|stickers";
+  const SPLICE = "splice|pop|shift|sort|reverse|fill|copyWithin";
   const RULES = [
     new RegExp(`\\.(?:${LISTS}|place)\\s*=(?![=>])`, "g"),
-    new RegExp(`\\.(?:${LISTS})\\s*\\.\\s*(?:splice|pop|shift|sort|reverse|fill|copyWithin)\\s*\\(`, "g"),
+    new RegExp(`\\[\\s*["'](?:${LISTS}|place)["']\\s*\\]\\s*=(?![=>])`, "g"),
+    new RegExp(`\\.(?:${LISTS})\\s*\\.\\s*(?:${SPLICE})\\s*\\(`, "g"),
     new RegExp(`\\.(?:${LISTS})\\s*\\.\\s*length\\s*=(?!=)`, "g"),
     /\bdelete\s+[\w$.]*\.place\s*\[/g,
     new RegExp(`Object\\.assign\\(\\s*[\\w$.]+\\.(?:${LISTS}|place)\\b`, "g"),
+    new RegExp(`Object\\.assign\\(\\s*[\\w$.]+\\s*,\\s*\\{[^}]*\\b(?:${LISTS}|place)\\s*:`, "g"),
+    /\.(?:to|from)\s*=\s*\{(?:[^{}]|\{[^{}]*\})*?\bcard\b/g,
+    /\.(?:to|from|at|on)\s*\.\s*card\s*=(?![=>])/g,
+    /\.answer\s*=(?![=>])/g,
+    /\bdelete\s+[\w$.?]*\.answer\b/g,
+    /\.q\s*=\s*\{(?:[^{}]|\{[^{}]*\})*?\banswer\b/g,
+    new RegExp(`\\.cols\\s*(?:\\[[^\\]]*\\]\\s*)?=(?![=>])|\\.cols\\s*\\.\\s*(?:${SPLICE})\\s*\\(`, "g"),
+    /\.(?:born|marks)\s*(?:\[[^\]]*\]\s*)?(?:\?\?)?=(?![=>])/g,
+    /\bdelete\s+[\w$.]*\.(?:born|marks)\b/g,
   ];
   const roots = ["../../core/src", "../../board/src", "../../../extensions/vscode/src"].map((r) => fileURLToPath(new URL(r, import.meta.url)));
   const repo = fileURLToPath(new URL("../../", import.meta.url));
   const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
-  const scan = (file: string, text: string): string[] => {
-    const src = text.replace(/^\s*(\/\/|\/?\*).*$/gm, (m) => " ".repeat(m.length)); // 整行注释换成空白，行号不变
-    const out: string[] = [];
-    for (const re of RULES) for (const m of src.matchAll(re)) out.push(`${file}:${src.slice(0, m.index).split("\n").length}: ${m[0].trim()}`);
+  type Hit = { at: string; line: string; match: string };
+  const scan = (file: string, text: string): Hit[] => {
+    const src = text.replace(/^[ \t]*(\/\/|\/?\*).*$/gm, (m) => " ".repeat(m.length)); // 整行注释换成空白，行号不变（[ \t]：不吞掉前面的空行）
+    const lines = text.split("\n");
+    const out: Hit[] = [];
+    for (const re of RULES) for (const m of src.matchAll(re)) {
+      const n = src.slice(0, m.index).split("\n").length;
+      out.push({ at: `${file}:${n}`, line: lines[n - 1], match: m[0].replace(/\s+/g, " ").trim() });
+    }
     return out;
   };
-  it("no other file replaces, filters, reorders or deletes from a board's collections", () => {
+  const allowed = (file: string, h: Hit) => ALLOW.findIndex(([f, snip]) => f === file && h.line.includes(snip));
+  it("no other file replaces, filters, reorders or deletes from a board's collections, or rewires links, answers, Compare columns, creation order or call marks", () => {
     const bad: string[] = [];
+    const used = new Set<number>();
     for (const r of roots) for (const f of walk(r)) {
       const rel = path.relative(repo, f).split(path.sep).join("/").replace(/^packages\//, "");
-      if (!ALLOW.has(rel)) bad.push(...scan(rel, fs.readFileSync(f, "utf8")));
+      if (EXEMPT.has(rel)) continue;
+      for (const h of scan(rel, fs.readFileSync(f, "utf8"))) {
+        const i = allowed(rel, h);
+        if (i < 0) bad.push(`${h.at}: ${h.match}`); else used.add(i);
+      }
     }
     expect(bad).toEqual([]);
+    expect(ALLOW.filter((_, i) => !used.has(i)).map(([f, snip]) => `${f}: ${snip}`)).toEqual([]);
   });
   it("catches the shapes it is meant to catch", () => {
     const hits = scan("x.ts", [
@@ -392,8 +436,18 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
       "delete b.place[id]; Object.assign(b.place, more);",
       "// b.cards = [] in a comment",
       "b.cards.push(c); b.cards[i] = next; if (b.cards == x) {}",
+      "child.sections = child.sections",
+      "  .filter((s) => keep.has(s.id));",
+      "b.stickers",
+      "  .splice(i, 1); b[\"links\"] = []; Object.assign(b, { sections: [] });",
+      "l.to = { card: newId }; l.from = {",
+      "  ...l.from, card: x }; n.at.card = y; k.at.on.card = z;",
+      "s.q.answer = id; delete k.q.answer; s.q = { ...(s.q ?? { md: \"\" }), answer: id };",
+      "c.cols = [a, b]; c.cols[0] = a; c.cols.reverse();",
+      "b.born = {}; b.born[id] = 3; delete b.marks[id]; (b.marks ??= {})[g] = m;",
+      "l.to.line = 3; l.from.seg = s; s.from = side; if (k.q.answer === id) {} const x = { answer: 1 };",
     ].join("\n"));
-    expect(hits.map((h) => h.split(": ")[0])).toEqual(["x.ts:1", "x.ts:3", "x.ts:5", "x.ts:5", "x.ts:5", "x.ts:6", "x.ts:6"]);
+    expect(hits.map((h) => h.at.split(":")[1]).sort((a, b) => +a - +b)).toEqual(["1", "3", "5", "5", "5", "6", "6", "9", "11", "12", "12", "13", "13", "14", "14", "15", "15", "15", "16", "16", "16", "17", "17", "17", "17"]);
   });
   it("no hand-made card copies or merges in packages/board/src: new ids for a copied card come from placeCards / unlinkCard", () => {
     const root = fileURLToPath(new URL("../../board/src", import.meta.url));
