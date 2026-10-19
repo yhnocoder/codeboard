@@ -2,7 +2,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, DEFAULT_SETTINGS, V3_CODE_CHROME,
+  applyPatch, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, DEFAULT_SETTINGS, V3_CODE_CHROME,
   type Board, type BoardMeta, type BoardPatch, type Camera, type Card, type HostInfo, type ListPatch, type Place, type SegView, type SharedInfo, type SharedUpdate, type Stale,
 } from "@codeboard/core";
 import { ask, send } from "../host";
@@ -283,6 +283,15 @@ export function syncShared(cards: SharedUpdate[], views?: Record<string, SegView
 export function syncGone(ids: string[]) {
   flushSave();
   sync((b) => removeCards(b, ids.filter((id) => b.cards.some((c) => c.id === id))));
+  alignSent();
+}
+/** 另一个窗口改了这块白板的文件，宿主写盘时合并了进来：按项换上（不进撤销栈、撤销后重放），不再发回宿主 */
+export function syncMerged(p: BoardPatch, views?: Record<string, SegView>) {
+  flushSave();
+  batch(() => {
+    if (views) setState("views", (v) => ({ ...v, ...views }));
+    sync((b) => applyPatch(b, structuredClone(p)));
+  });
   alignSent();
 }
 /** 「已发」对齐到现在：宿主那边已经是这个样子了 */

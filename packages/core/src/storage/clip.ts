@@ -20,5 +20,6 @@ export async function pasteClip(store: Storage, clip: CardClip | undefined, targ
   const shared = !o.copy && !(await store.wouldRename(clip.board, ids));
   if (shared) await store.share(clip.board, ids);
   const cards = store.copyOut(clip.board, ids);
+  if (shared) await store.offer(target, cards.map((c) => c.card.id));
   return cards.length ? { from: src.name, shared, cards } : null;
 }

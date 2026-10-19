@@ -173,6 +173,8 @@ export type HostToBoard =
   | { type: "sharedInfo"; cards: Record<string, SharedInfo> }
   /** 别的白板 Delete Everywhere 删掉了这些共享卡：白板用 sync 删掉（不进撤销栈） */
   | { type: "sharedGone"; cards: string[] }
+  /** 另一个窗口改了这块白板的文件，宿主写盘时按项合并了进来：白板用 sync 换上（不进撤销栈），不再发回来 */
+  | { type: "merged"; patch: BoardPatch; views?: Record<string, SegView> }
   /** 这块白板上的子白板的骨架（变了的那几块；null = 那块白板没了）。子白板存盘后宿主重算，防抖 */
   | { type: "skeletons"; boards: Record<string, Skeleton | null> }
   /** 一次运行（Capture Run 跑完，或 Apply Run… 选的）：白板给对上的 Call 箭头挂 observed 证据和实参，没对上的列出来 */

@@ -49,9 +49,11 @@ export class Panels implements BoardHost {
     ctx.subscriptions.push(store.onDidShare((e) => {
       this.shareQ = this.shareQ.then(async () => {
         for (const p of this.all()) {
-          if (p.id === e.from) continue;
+          // 写的那块白板只换上 back（卡文件被另一个窗口改过，合并进来的项）
+          const from = p.id === e.from;
+          if (from && !e.back) continue;
           const refs = store.refsOf(p.id);
-          const cards = e.cards.filter((sc) => refs.has(sc.card.id));
+          const cards = (from ? e.back! : e.cards).filter((sc) => refs.has(sc.card.id));
           if (!cards.length) continue;
           // Variant 的段（不在显示的）也要展示数据：切换时直接换上
           const segs: Segment[] = cards.flatMap((sc) => (sc.items.includes(sc.card.id) && sc.card.kind === "code" ? [...sc.card.segments, ...variantSegments({ cards: [sc.card] })] : []));
@@ -61,6 +63,17 @@ export class Panels implements BoardHost {
           if (segs.length) void p.refreshStale();
         }
       }).catch((err) => log("error", `shared: ${err instanceof Error ? err.message : err}`));
+    }));
+    // 写盘时合并进了另一个窗口的改动：开着这块白板的面板跟着换上（新来的代码卡带上段的展示数据）
+    ctx.subscriptions.push(store.onDidMerge((e) => {
+      this.shareQ = this.shareQ.then(async () => {
+        const p = this.get(e.id);
+        if (!p) return;
+        const segs = (e.patch.cards?.set ?? []).flatMap((c) => (c.kind === "code" ? [...c.segments, ...variantSegments({ cards: [c] })] : []));
+        const views = segs.length ? await viewsFor(segs) : undefined;
+        p.board = store.peek(p.id);
+        p.post({ type: "merged", patch: e.patch, views });
+      }).catch((err) => log("error", `merged: ${err instanceof Error ? err.message : err}`));
     }));
     // Delete Everywhere：开着的别的白板跟着删
     ctx.subscriptions.push(store.onDidRemoveShared((e) => {

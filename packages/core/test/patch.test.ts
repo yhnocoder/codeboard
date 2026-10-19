@@ -111,7 +111,7 @@ describe("shared cards: inflate / deflate / putShared", () => {
 
   it("validates shared card files", () => {
     expect(loadSharedCard({ version: 6, card: note("a"), sidenotes: [text("n", "a")], rev: { a: 1 } }).card.id).toBe("a");
-    expect(() => loadSharedCard({ version: 6, card: { id: "a", kind: "nope" }, sidenotes: [], rev: {} })).toThrow(/Invalid shared card/);
+    expect(() => loadSharedCard({ version: 6, card: { id: "a", kind: "nope" }, sidenotes: [] })).toThrow(/Invalid shared card/);
   });
 });
 

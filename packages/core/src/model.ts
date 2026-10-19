@@ -74,7 +74,6 @@ export type CodeCard = CardBase & {
   /**
    * 我的改动（线框 07）：同一段代码的几个版本，卡上一排标签页。第一个永远是上游（钉住的版本，from.kind = upstream）。
    * 当前显示的那个（active）的段就是 segments；其余 Variant 的段存在各自的 segs 里，段 id 和 segments 一一对应（Link、Sidenote 的 seg 不用换）。
-   * 第 6 版里加的（还没发布过，不升版本）
    */
   variants?: Variant[];
   active?: string; // 当前显示的 Variant 的 id；没有 = 上游
@@ -136,7 +135,6 @@ export type CompareCard = CardBase & {
 /**
  * 子白板：另一块白板嵌在这块白板上，画成带名字的骨架（卡片标题、调用图标记、连线、Section 色，不画代码）。
  * 只存是哪块白板；骨架由宿主按那块白板算好发来（白板界面里没有子白板的完整内容）。Place 总有 h（框的大小由用户定）。
- * 第 6 版里加的（第 6 版还没发布过，所以不升版本）
  */
 export type BoardCard = CardBase & { kind: "board"; board: string };
 
@@ -300,7 +298,6 @@ export type StickerAt =
 
 /**
  * 疑问（线框 06）：「?」贴纸上写的问题。md = 问题（Markdown）；done = 已解决（贴纸画成 ✓）；answer = 解答它的卡（Note 或别的卡）；at = 提问时间。
- * 第 6 版里加的（还没发布过，不升版本）
  */
 export type Question = { md: string; done?: true; answer?: string; at?: number };
 export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt; q?: Question };
@@ -351,8 +348,8 @@ export type SharedRef = { id: string; kind: "shared" };
 export type BoardFile = Omit<Board, "cards"> & { cards: (Card | SharedRef)[] };
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
-/** 卡库里的文件 cards/<id>.json。rev：每一项（卡、每条 Sidenote，按 id）被改过几次 */
-export type SharedCardFile = SharedCard & { version: 6; rev: Record<string, number> };
+/** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
+export type SharedCardFile = SharedCard & { version: 6 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };

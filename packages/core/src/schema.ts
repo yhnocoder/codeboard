@@ -124,7 +124,7 @@ export const BoardSchema = obj(boardEntries);
 const SharedRef = obj({ id: str, kind: v.literal("shared") });
 export const BoardFileSchema = obj({ ...boardEntries, cards: v.array(v.union([Card, SharedRef])) });
 /** 卡库里的一张共享卡 */
-export const SharedCardSchema = obj({ version: v.literal(BOARD_VERSION), card: Card, sidenotes: v.array(Sidenote), rev: v.record(str, num) });
+export const SharedCardSchema = obj({ version: v.literal(BOARD_VERSION), card: Card, sidenotes: v.array(Sidenote) });
 
 /** 迁移前只要求是个对象、版本号（有的话）是数字；认不认得这个版本由 migrateBoard 判断 */
 const RawBoard = v.pipe(v.custom((x) => !!x && typeof x === "object" && !Array.isArray(x), "Expected a board object"), obj({ version: opt(num) }));

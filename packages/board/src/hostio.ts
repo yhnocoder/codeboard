@@ -2,7 +2,7 @@
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, type HostToBoard } from "@codeboard/core";
-import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, setShared, setLineSel, sel, setShowCollapsed, flows, undo, undoTop } from "./state/store";
+import { state, setState, markSaved, resetHistory, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, sel, setShowCollapsed, flows, undo, undoTop } from "./state/store";
 
 /** 宿主最近一次 add 的卡和那时的撤销栈顶（undoAdd 用） */
 let lastAdd: { ids: string[]; top: object | undefined } | null = null;
@@ -127,6 +127,7 @@ export function onHost(m: HostToBoard) {
     case "githubPicker": A.openGitHubPicker(m.repo); break;
     case "shared": if (m.views) A.sharedShown(m.cards.map((sc) => sc.card)); syncShared(m.cards, m.views); break;
     case "sharedInfo": setShared(reconcile(m.cards)); break;
+    case "merged": syncMerged(m.patch, m.views); break;
     case "sharedGone": {
       const n = m.cards.filter((id) => findCard(state.board, id)).length;
       syncGone(m.cards);

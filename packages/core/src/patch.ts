@@ -164,3 +164,62 @@ export function deflate(b: Board, refs: ReadonlySet<string>): { file: BoardFile;
   const gone = new Set(shared.flatMap((s) => s.sidenotes.map((n) => n.id)));
   return { file: { ...b, cards, sidenotes: b.sidenotes.filter((n) => !gone.has(n.id)) }, shared };
 }
+
+/**
+ * 白板文件的三方合并（另一个窗口在这块白板上次读 / 写之后改过文件时）：base = 上次读到 / 写下的那份，disk = 磁盘上现在的，mine = 要写的。
+ * 每一项（卡、线、Section、Sidenote、Sticker、摆放、白板本身的字段）：mine 和 base 比变了就用 mine 的；没变就用 disk 的（disk 删了就删）；
+ * mine 删了的项删掉；只在 disk 上有的（另一个窗口加的）留下，接在后面。镜头用 mine 的
+ */
+export function mergeFile(base: BoardFile, disk: BoardFile, mine: BoardFile): BoardFile {
+  const out = { ...mine } as BoardFile;
+  const bh = base as unknown as Record<string, unknown>, dh = disk as unknown as Record<string, unknown>, mh = mine as unknown as Record<string, unknown>;
+  const oh = out as unknown as Record<string, unknown>;
+  for (const k of new Set([...Object.keys(bh), ...Object.keys(dh), ...Object.keys(mh)])) {
+    if (OWN.has(k)) continue;
+    if (JSON.stringify(bh[k]) === JSON.stringify(mh[k])) { if (k in dh) oh[k] = dh[k]; else delete oh[k]; }
+  }
+  for (const k of LISTS) (out as Record<string, unknown>)[k] = mergeItems(base[k] as { id: string }[], disk[k] as { id: string }[], mine[k] as { id: string }[]);
+  const ids = (p: Record<string, Place>) => Object.keys(p).map((id) => ({ id, p: p[id] }));
+  out.place = Object.fromEntries(mergeItems(ids(base.place), ids(disk.place), ids(mine.place)).map((x) => [x.id, x.p]));
+  return out;
+}
+
+function mergeItems<T extends { id: string }>(base: T[], disk: T[], mine: T[]): T[] {
+  const b = new Map(base.map((x) => [x.id, x])), d = new Map(disk.map((x) => [x.id, x]));
+  const out: T[] = [];
+  for (const x of mine) {
+    const was = b.get(x.id);
+    if (!same(was, x)) out.push(x); // 这个窗口改的 / 加的
+    else if (d.has(x.id)) out.push(d.get(x.id)!); // 没改：用磁盘上的
+    // 没改、磁盘上删了：删
+  }
+  const kept = new Set(mine.map((x) => x.id));
+  for (const x of disk) if (!kept.has(x.id) && !b.has(x.id)) out.push(x); // 另一个窗口加的
+  return out;
+}
+
+const same = (a: unknown, b: unknown) => a !== undefined && JSON.stringify(a) === JSON.stringify(b);
+
+/** a → b 的改动（宿主把合并进来的别的窗口的改动发给白板用）；一样返回 null */
+export function diffBoards(a: Board, b: Board): BoardPatch | null {
+  const p: BoardPatch = {};
+  let any = false;
+  for (const k of LISTS) {
+    const xs = a[k] as { id: string }[], ys = b[k] as { id: string }[];
+    const old = new Map(xs.map((x) => [x.id, x]));
+    const set = ys.filter((y) => !same(old.get(y.id), y));
+    const now = new Set(ys.map((y) => y.id));
+    const del = xs.filter((x) => !now.has(x.id)).map((x) => x.id);
+    const exp = [...xs.filter((x) => now.has(x.id)).map((x) => x.id), ...ys.filter((y) => !old.has(y.id)).map((y) => y.id)];
+    const order = exp.some((id, i) => id !== ys[i].id) ? ys.map((y) => y.id) : undefined;
+    if (!set.length && !del.length && !order) continue;
+    (p as Record<string, unknown>)[k] = { ...(set.length ? { set } : {}), ...(del.length ? { del } : {}), ...(order ? { order } : {}) };
+    any = true;
+  }
+  const pset = Object.fromEntries(Object.entries(b.place).filter(([id, v]) => !same(a.place[id], v)));
+  const pdel = Object.keys(a.place).filter((id) => !(id in b.place));
+  if (Object.keys(pset).length || pdel.length) { p.place = { ...(Object.keys(pset).length ? { set: pset } : {}), ...(pdel.length ? { del: pdel } : {}) }; any = true; }
+  const head = (x: Board) => Object.fromEntries(Object.entries(x).filter(([k]) => !OWN.has(k)));
+  if (!same(head(a), head(b))) { p.head = head(b) as BoardHead; any = true; }
+  return any ? p : null;
+}
