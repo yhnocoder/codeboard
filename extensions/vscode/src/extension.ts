@@ -15,6 +15,7 @@ import { questionsMarkdown } from "@codeboard/core";
 import { openOnBoard } from "@codeboard/host/handlers";
 import { setMediaDir } from "@codeboard/host/exports";
 import { initSource } from "@codeboard/host/source";
+import { onDidOpenGithubFile } from "@codeboard/host/github";
 import { githubDir, openStorage, type Storage } from "@codeboard/host/storage";
 import { watchVersions } from "@codeboard/host/watch";
 import { debounce, useWorkspace } from "@codeboard/host/ws";
@@ -101,8 +102,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
     if (affectsSettings(e)) panels.broadcast({ type: "host", host: { settings: readSettings() } });
     if (e.affects("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
   }));
-  // GitHub 缓存可能在白板里加了新文件
+  // GITHUB FILES：白板里加了 GitHub 卡，或这个工作区打开了新的 GitHub 文件
   sub(store.onDidSave(() => gh.refresh()));
+  sub(onDidOpenGithubFile(() => gh.refresh()));
 
   await ready;
   sub(watchVersions(panels, store));

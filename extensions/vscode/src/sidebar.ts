@@ -1,7 +1,7 @@
-// 侧栏：BOARDS（组 = 文件夹，白板后面是卡片数，有新版本的卡时加圆点）和 GITHUB FILES（下载过的 GitHub 文件）。
+// 侧栏：BOARDS（组 = 文件夹，白板后面是卡片数，有新版本的卡时加圆点）和 GITHUB FILES（这个工作区用过的 GitHub 文件）。
 // 子白板缩进在父白板下面（一块白板可以在几块父白板下面各出现一次）；有父白板的不再列在顶层。
 import * as vscode from "vscode";
-import { cachedFiles, githubFiles } from "@codeboard/host/github";
+import { workspaceGithubFiles } from "@codeboard/host/github";
 import type { BoardHub } from "@codeboard/host/hub";
 import type { Storage } from "@codeboard/host/storage";
 import { debounce } from "@codeboard/host/ws";
@@ -45,7 +45,8 @@ export class BoardsTree implements vscode.TreeDataProvider<BNode> {
   }
 }
 
-type GNode = { kind: "repo"; owner: string; name: string; commit: string; ref: string; files: string[] } | { kind: "file"; abs: string; rel: string; cards: number };
+type GFile = { abs: string; rel: string; cards: number };
+type GNode = { kind: "repo"; owner: string; name: string; commit: string; ref: string; files: GFile[] } | ({ kind: "file" } & GFile);
 
 export class GithubTree implements vscode.TreeDataProvider<GNode> {
   private emitter = new vscode.EventEmitter<void>();
@@ -54,9 +55,8 @@ export class GithubTree implements vscode.TreeDataProvider<GNode> {
   constructor(private store: Storage) {}
 
   async getChildren(n?: GNode): Promise<GNode[]> {
-    if (!n) return (await cachedFiles()).map((r) => ({ kind: "repo", ...r }));
-    if (n.kind !== "repo") return [];
-    return (await githubFiles(this.store, n)).map((f) => ({ kind: "file", ...f }));
+    if (!n) return (await workspaceGithubFiles(this.store)).map((r) => ({ kind: "repo", ...r }));
+    return n.kind === "repo" ? n.files.map((f) => ({ kind: "file", ...f })) : [];
   }
 
   getTreeItem(n: GNode): vscode.TreeItem {
