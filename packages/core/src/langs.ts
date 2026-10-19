@@ -1,6 +1,9 @@
 // 语言表：全应用（白板、宿主）认语言只看这一张。id 是段的 lang（VS Code languageId；Triton、TileLang 单独一个 id，
 // 在 VS Code 里还是 python），aliases 是 Markdown 围栏、用户输入里的别名。
 
+/** tree-sitter 语法：有它的语言才分析符号、调用（建名字索引、找定义） */
+export type Grammar = "python" | "cpp" | "rust";
+
 export type LangInfo = {
   /** 段的 lang，也是 Markdown 围栏里的正式名字 */
   id: string;
@@ -24,13 +27,15 @@ export type LangInfo = {
   lsp?: boolean;
   /** 关键字和内建类型名（悬停时不查定义） */
   keywords?: ReadonlySet<string>;
+  /** 用哪个 tree-sitter 语法分析；没有 = 不分析 */
+  grammar?: Grammar;
 };
 
 const words = (s: string): ReadonlySet<string> => new Set(s.split(" "));
 const PY_KW = words("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set");
 const C_KW = words("return for if else while do break continue switch case default goto sizeof typedef struct union enum class template typename namespace using public private protected virtual static const constexpr auto void int char bool float double long short unsigned signed inline extern volatile new delete this nullptr true false");
-const py = { comment: "#", vscodeId: "python", md: "python", shiki: "python", lsp: true, keywords: PY_KW };
-const cpp = { comment: "//", shiki: "cpp", lsp: true, keywords: C_KW };
+const py = { comment: "#", vscodeId: "python", md: "python", shiki: "python", lsp: true, keywords: PY_KW, grammar: "python" as const };
+const cpp = { comment: "//", shiki: "cpp", lsp: true, keywords: C_KW, grammar: "cpp" as const };
 
 export const LANG_TABLE: readonly LangInfo[] = [
   { id: "python", label: "Python", pick: true, aliases: ["py", "python3"], ext: ["py", "pyi"], ...py },
@@ -38,8 +43,8 @@ export const LANG_TABLE: readonly LangInfo[] = [
   { id: "tilelang", label: "TileLang", pick: true, aliases: [], ext: [], ...py },
   { id: "cuda-cpp", label: "CUDA", pick: true, aliases: ["cuda", "cu"], ext: ["cu", "cuh"], vscodeId: "cuda-cpp", md: "cuda", ...cpp },
   { id: "cpp", label: "C++", pick: true, aliases: ["c++", "cc", "cxx", "hpp", "objective-cpp"], ext: ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl"], vscodeId: "cpp", md: "cpp", ...cpp },
-  { id: "c", label: "C", aliases: [], ext: ["c"], vscodeId: "c", md: "c", ...cpp, shiki: "c" },
-  { id: "rust", label: "Rust", aliases: ["rs"], ext: ["rs"], comment: "//", vscodeId: "rust", md: "rust", shiki: "rust", lsp: true },
+  { id: "c", label: "C", aliases: ["objective-c"], ext: ["c"], vscodeId: "c", md: "c", ...cpp, shiki: "c" },
+  { id: "rust", label: "Rust", aliases: ["rs"], ext: ["rs"], comment: "//", vscodeId: "rust", md: "rust", shiki: "rust", lsp: true, grammar: "rust" },
   { id: "typescript", label: "TypeScript", aliases: ["ts", "tsx"], ext: ["ts", "tsx"], comment: "//", vscodeId: "typescript", md: "typescript", shiki: "typescript", lsp: true },
   { id: "javascript", label: "JavaScript", aliases: ["js", "jsx", "mjs", "cjs"], ext: ["js", "jsx", "mjs", "cjs"], comment: "//", vscodeId: "javascript", md: "javascript", shiki: "javascript", lsp: true },
   { id: "go", label: "Go", aliases: ["golang"], ext: ["go"], comment: "//", vscodeId: "go", md: "go", shiki: "go", lsp: true },
@@ -78,3 +83,9 @@ export const LANGS: readonly LangInfo[] = LANG_TABLE.filter((l) => l.pick);
 export const langLabel = (name: string) => langInfo(name)?.label ?? name;
 /** 名字 → 正式 id（不认识的照原样） */
 export const langId = (name: string) => langInfo(name)?.id ?? name;
+/** 语言（id 或别名）用哪个语法；不分析的给 null */
+export const grammarOf = (lang: string): Grammar | null => langInfo(lang)?.grammar ?? null;
+/** 文件按扩展名用哪个语法；不分析的给 null */
+export const grammarOfFile = (file: string): Grammar | null => langOfExt(file)?.grammar ?? null;
+/** 有语法的语言的扩展名（只这一个语法的，或全部）：建名字索引、找工作区代码的文件 */
+export const codeExts = (g?: Grammar): string[] => LANG_TABLE.filter((l) => l.grammar && (!g || l.grammar === g)).flatMap((l) => l.ext);

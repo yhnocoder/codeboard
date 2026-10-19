@@ -1,6 +1,6 @@
 // ⌘K 面板：白板上的卡和 Sidenote、工作区的符号和文件；Start from Entry Point…
 import * as path from "node:path";
-import { allCodeCards, cardTitle, computeFlows, escapeRegExp, fuzzy, guessLang, LANG_TABLE, substr, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
+import { allCodeCards, cardTitle, codeExts, computeFlows, escapeRegExp, fuzzy, guessLang, LANG_TABLE, substr, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
@@ -196,7 +196,8 @@ export async function searchName(name: string): Promise<NameHit[]> {
 
 // ---------- Generated 卡的内容 ----------
 
-const GEN_EXT = ["py", "cu", "cuh", "cpp", "cc", "h", "hpp", "c", "ptx", "ll", "mlir", "txt", "log", "rs"];
+/** 选文件的过滤：代码文件，再加上编译器的中间产物和日志 */
+const GEN_EXT = [...codeExts(), "ptx", "ll", "mlir", "txt", "log"];
 
 /** 剪贴板或选一个文件：文本、语言（按扩展名，认不出按内容猜）、文件名 */
 export async function genSource(from: "clipboard" | "file"): Promise<GenSource | null> {
