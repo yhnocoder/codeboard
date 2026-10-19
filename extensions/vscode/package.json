@@ -4,7 +4,7 @@
   "description": "A whiteboard for reading code: put functions on it, click calls to expand them layer by layer, cards pinned to commits.",
   "publisher": "yhnocoder",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "repository": {
     "type": "git",
