@@ -3,7 +3,7 @@
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16: main-thread task durations; the 60 fps budget is 16.7 ms).
 import * as fs from "node:fs";
-import { ready, open, symCard, files, type Host } from "./harness";
+import { ready, openBoard, launch, symCard, files, type Host } from "./harness";
 import { emptyBoard, skeletonOf, stampBorn, uid, type Board, type BoardCard, type CodeCard, type Link, type Section, type Sidenote, type Skeleton } from "@codeboard/core";
 import type { CDPSession } from "playwright-core";
 
@@ -235,7 +235,7 @@ async function once() {
   const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length, ...(sk ? { frames: NFRAMES } : {}) };
   const t0 = performance.now();
   let cdp!: CDPSession;
-  const h = await open({ board, settings: THEME ? { theme: THEME } as any : undefined, on: sk ? (m, reply) => (m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : false) : undefined, beforeLoad: async (page) => {
+  const h = await openBoard(await launch(), { board, settings: THEME ? { theme: THEME } as any : undefined, on: sk ? (m, reply) => (m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : false) : undefined, beforeLoad: async (page) => {
     cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
     if (PROFILE === "load") { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }

@@ -35,7 +35,7 @@ jobs:
       - name: Rebuild the board with source maps (for coverage)
         run: BOARD_SOURCEMAP=1 npm run build -w @codeboard/board
       - name: Every harness scenario, with coverage
-        run: node packages/board/test/run-harness.mjs --coverage --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
+        run: node tools/test/harness.mjs --coverage --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }

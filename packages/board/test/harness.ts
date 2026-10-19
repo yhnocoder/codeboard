@@ -1,13 +1,16 @@
-// In-browser board tests: Chromium opens the board page, Node plays the host (reads nano-vllm, analyzes, replies to messages).
-// No VS Code needed: quickly preview board UI changes, take screenshots and run interaction scripts.
-// Usage: node packages/board/test/run-harness.mjs <scenario> [--light]   screenshots go to test-out/harness/
+// The board page and a host played by Node, for the harness scenarios (scenarios/*.spec.ts, run by Playwright Test) and the
+// perf benchmark: Chromium opens the board page, Node reads nano-vllm, analyzes it and replies to the board's messages.
+// No VS Code needed. Screenshots go to test-out/harness/.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
-import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
-import { initAnalysis, analyze, symbolAt, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
+import { CHROMIUM, CHROMIUM_ARGS } from "./chromium";
+import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, F_BLANK, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
+import { initAnalysis, analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 
-export const REPO = path.resolve(__dirname, "../.."); // bundled into test-out/harness/
+/** The repo's root, defined by the builds that bundle this file (playwright.config.ts, run-perf.mjs) */
+declare const REPO_ROOT: string;
+export const REPO = REPO_ROOT;
 const NV = path.join(REPO, "examples/nano-vllm");
 const MEDIA = path.join(REPO, "extensions/vscode/media/board");
 export const OUT = path.join(REPO, "test-out/harness");
@@ -81,39 +84,46 @@ export function symCard(f: string, s: Sym): CodeCard {
 export function put(b: Board, c: Card, x: number, y: number, w = 560) { b.cards.push(c); b.place[c.id] = { x, y, w }; }
 export const findSym = (qual: string) => allSyms().find((x) => x.s.qual === qual)!;
 
-/** Browsers opened by open() and not closed yet: the runner closes what a failed scenario left open */
-export const browsers = new Set<Browser>();
-/** HARNESS_COV: the page's JS coverage, collected when its browser closes */
-export const covered: Awaited<ReturnType<Page["coverage"]["stopJSCoverage"]>> = [];
+/** V8 coverage of the board page (page.coverage) */
+export type PageCoverage = Awaited<ReturnType<Page["coverage"]["stopJSCoverage"]>>;
 
-export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void> };
+export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void>; close: () => Promise<void> };
 
 export async function ready() { await initAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm")); if (!files.size) load(); }
 
 /** Lets a scenario play part of the host: return true if handled */
 export type OnMsg = (m: BoardToHost & { req?: number }, reply: (req: number, data?: unknown, error?: string) => Promise<void>) => boolean | Promise<boolean>;
 
-export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT_SETTINGS>; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void>; on?: OnMsg; host?: Record<string, unknown> } = {}): Promise<Host> {
+export type OpenOptions = { board?: Board; settings?: Partial<typeof DEFAULT_SETTINGS>; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void>; on?: OnMsg; host?: Record<string, unknown> };
+/** What the caller does with the board's self-checks (a failed one is named by `check`) and, if given, with the page's coverage */
+export type Watch = { fail: (check: string, detail: string) => void; coverage?: (entries: PageCoverage) => void };
+
+export const launch = () => chromium.launch({ executablePath: CHROMIUM, args: CHROMIUM_ARGS });
+
+let pages = 0;
+/** Opens the board in a new context of `browser`; closing the host (or its context) ends it */
+export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Watch = { fail: (check, detail) => console.log("FAIL", check, detail) }): Promise<Host> {
   await ready();
-  if (!files.size) load();
   fs.mkdirSync(OUT, { recursive: true });
-  // one page per process: the runner runs several scenario processes side by side
-  const html = path.join(OUT, `index-${process.pid}.html`);
+  // one page file per board: several Playwright workers run side by side
+  const html = path.join(OUT, `index-${process.pid}-${++pages}.html`);
   fs.writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="file://${MEDIA}/board.css"></head>
 <body class="${o.light ? "vscode-light" : "vscode-dark"}"><div id="root"></div>
 <script>addEventListener("message", (e) => { if (e.data?.type === "init") window.__tInit = performance.now(); }, true); addEventListener("pointerdown", () => { window.__tDown = performance.now(); }, true);</script>
 <script>window.acquireVsCodeApi = () => ({ postMessage: (m) => window.__host(JSON.stringify(m)) });</script>
 <script type="module" src="file://${MEDIA}/board.js"></script></body></html>`);
-  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
-  const page = await browser.newPage({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
-  browsers.add(browser);
-  // HARNESS_COV=1 (nightly): record which board code the scenario runs, for picking scenarios by changed file
-  if (process.env.HARNESS_COV) await page.coverage.startJSCoverage({ resetOnNavigation: false });
-  const close = browser.close.bind(browser);
-  browser.close = async () => {
-    if (!browsers.delete(browser)) return close();
-    if (process.env.HARNESS_COV) covered.push(...(await page.coverage.stopJSCoverage().catch(() => [])));
-    return close();
+  const context = await browser.newContext({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
+  const page = await context.newPage();
+  // coverage (nightly): which board code the scenario runs, for picking scenarios by changed file
+  if (watch.coverage) await page.coverage.startJSCoverage({ resetOnNavigation: false });
+  const closeContext = context.close.bind(context);
+  let closed = false;
+  context.close = async (opts) => {
+    if (closed) return;
+    closed = true;
+    if (watch.coverage) watch.coverage(await page.coverage.stopJSCoverage().catch(() => []));
+    await closeContext(opts);
+    fs.rmSync(html, { force: true });
   };
   // CPU_THROTTLE=4：把页面的 CPU 放慢几倍（CDP），在本机复现 CI 慢机器上才出现的时序问题
   if (+(process.env.CPU_THROTTLE ?? 0) > 1) await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: +process.env.CPU_THROTTLE! });
@@ -123,7 +133,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
   const reply = (req: number, data?: unknown, error?: string) => post({ type: "reply", req, data, error });
   page.on("console", (m) => {
     // mutate's self-check (core danglingRefs): any hit is a failure in every scenario
-    if (m.text().includes("dangling references")) console.log("FAIL dangling-refs", m.text());
+    if (m.text().includes("dangling references")) watch.fail("dangling-refs", m.text());
     else if (m.type() === "error" || m.type() === "warning") console.log(`[page ${m.type()}]`, m.text());
   });
   page.on("pageerror", (e) => console.log("[page error]", e.message));
@@ -143,7 +153,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
         // The host's copy follows the patches; every version must load back through loadBoard (schema check)
         const next = structuredClone(board);
         applyPatch(next, m.patch);
-        try { loadBoard(structuredClone(next)); } catch (e) { console.log("FAIL board-schema", (e as Error).message); }
+        try { loadBoard(structuredClone(next)); } catch (e) { watch.fail("board-schema", (e as Error).message); }
         board = next; return reply(m.req, { skipped: 0 });
       }
       case "expand": {
@@ -197,7 +207,7 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
   await page.goto(`file://${html}`);
   await page.waitForFunction(() => document.querySelector(".board"));
   await page.waitForTimeout(300);
-  return { page, board: () => board, sent, post };
+  return { page, board: () => board, sent, post, close: () => context.close() };
 }
 
 // ---------- Definition preview: lines taken per peekPlan, hover faked with docstrings (libraries use the fake data below) ----------

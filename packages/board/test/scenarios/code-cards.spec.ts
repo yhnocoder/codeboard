@@ -9,21 +9,15 @@
 //  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Open board frame (Mac order: ⇧⌘B)
 //  undoAddKeepsLaterWork      — the editor's undo of an add removes only those cards, even after the board changed
 //  secondCallBelowCaller      — in a short panel the second expanded call still goes below its caller, not above it
-// Usage: node packages/board/test/run-harness.mjs tabKeepsCanvasStill hiddenCardsNotSelectable …
+// Usage: npm run harness -- tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
-import { open, put, symCard, findSym, viewOf, type Host } from "./harness";
+import { put, symCard, findSym, viewOf, type Host } from "../harness";
+import { test, open, verdict } from "../fixtures";
 
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
-const run = async (name: string, f: (res: Record<string, unknown>) => Promise<boolean>) => {
-  const res: Record<string, unknown> = {};
-  let ok = false;
-  try { ok = await f(res); } catch (e) { console.log("FAIL", name, (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  console.log(ok ? "PASS" : "FAIL", name, JSON.stringify(res));
-  if (!ok) process.exitCode = 1;
-};
-const close = (h: Host) => h.page.context().browser()!.close();
+const close = (h: Host) => h.page.context().close();
 /** The last selection the board reported to the host (hidden cards are not in the DOM, so read it from there) */
 const lastSel = (h: Host) => [...h.sent].reverse().find((m) => m.type === "selection") as { cards: string[] } | undefined;
 const shownIds = (h: Host) => h.page.evaluate(() => [...document.querySelectorAll(".card[data-id]")].map((e) => (e as HTMLElement).dataset.id!));
@@ -46,18 +40,25 @@ function callTree(collapsed: boolean) {
   return { b, step, sch, post };
 }
 
-export const CODE_CARDS: Record<string, () => Promise<void>> = {
-  tabKeepsCanvasStill: () => run("tabKeepsCanvasStill", tabKeepsCanvasStill),
-  hiddenCardsNotSelectable: () => run("hiddenCardsNotSelectable", hiddenCardsNotSelectable),
-  revealShowsHiddenCard: () => run("revealShowsHiddenCard", revealShowsHiddenCard),
-  fitFramesVisibleContent: () => run("fitFramesVisibleContent", fitFramesVisibleContent),
-  nudgeHoldIsOneUndoStep: () => run("nudgeHoldIsOneUndoStep", nudgeHoldIsOneUndoStep),
-  farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
-  implPickerKeyboard: () => run("implPickerKeyboard", implPickerKeyboard),
-  shortcutHelpComplete: () => run("shortcutHelpComplete", shortcutHelpComplete),
-  undoAddKeepsLaterWork: () => run("undoAddKeepsLaterWork", undoAddKeepsLaterWork),
-  secondCallBelowCaller: () => run("secondCallBelowCaller", secondCallBelowCaller),
-};
+test("tabKeepsCanvasStill", () => verdict("tabKeepsCanvasStill", tabKeepsCanvasStill));
+
+test("hiddenCardsNotSelectable", () => verdict("hiddenCardsNotSelectable", hiddenCardsNotSelectable));
+
+test("revealShowsHiddenCard", () => verdict("revealShowsHiddenCard", revealShowsHiddenCard));
+
+test("fitFramesVisibleContent", () => verdict("fitFramesVisibleContent", fitFramesVisibleContent));
+
+test("nudgeHoldIsOneUndoStep", () => verdict("nudgeHoldIsOneUndoStep", nudgeHoldIsOneUndoStep));
+
+test("farClicksNotDoubleClick", () => verdict("farClicksNotDoubleClick", farClicksNotDoubleClick));
+
+test("implPickerKeyboard", () => verdict("implPickerKeyboard", implPickerKeyboard));
+
+test("shortcutHelpComplete", () => verdict("shortcutHelpComplete", shortcutHelpComplete));
+
+test("undoAddKeepsLaterWork", () => verdict("undoAddKeepsLaterWork", undoAddKeepsLaterWork));
+
+test("secondCallBelowCaller", () => verdict("secondCallBelowCaller", secondCallBelowCaller));
 
 async function tabKeepsCanvasStill(res: Record<string, unknown>) {
   // three cards in a row, the last one past the right edge of a narrow panel

@@ -1,38 +1,36 @@
 // 真机试用（nano-vllm、白板放在编辑器旁边）后的体验修正
-// Usage: node packages/board/test/run-harness.mjs <scenario>   screenshots: test-out/harness/ux-*.png
+// Usage: npm run harness -- <scenario>   screenshots: test-out/harness/ux-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, DEFAULT_SETTINGS, type CodeCard, type SegView, type HostToBoard, type NameHit } from "@codeboard/core";
-import { open, shot, put, symCard, findSym, REPO, type Host } from "./harness";
-import { startAnalysis, analysisOf } from "../../../extensions/vscode/src/analysis";
-import { cardForFileSym } from "../../../extensions/vscode/src/cards";
-import { callVars, expand, peek } from "../../../extensions/vscode/src/resolve";
-import { viewsFor } from "../../../extensions/vscode/src/views";
-import { search, searchName, searchPick } from "../../../extensions/vscode/src/search";
-import type { Storage } from "../../../extensions/vscode/src/storage";
-import { resetIndex, startNameIndex, nameIndexReady } from "../../../extensions/vscode/src/nameindex";
-import { langOf, useWorkspace } from "../../../extensions/vscode/src/ws";
-import { nodeWorkspace } from "../../../extensions/vscode/test/node-workspace";
+import { shot, put, symCard, findSym, REPO, type Host } from "../harness";
+import { startAnalysis, analysisOf } from "../../../../extensions/vscode/src/analysis";
+import { cardForFileSym } from "../../../../extensions/vscode/src/cards";
+import { callVars, expand, peek } from "../../../../extensions/vscode/src/resolve";
+import { viewsFor } from "../../../../extensions/vscode/src/views";
+import { search, searchName, searchPick } from "../../../../extensions/vscode/src/search";
+import type { Storage } from "../../../../extensions/vscode/src/storage";
+import { resetIndex, startNameIndex, nameIndexReady } from "../../../../extensions/vscode/src/nameindex";
+import { langOf, useWorkspace } from "../../../../extensions/vscode/src/ws";
+import { nodeWorkspace } from "../../../../extensions/vscode/test/node-workspace";
+import { test, open, verdict } from "../fixtures";
 
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
-const run = async (name: string, f: (res: Record<string, unknown>) => Promise<boolean>) => {
-  const res: Record<string, unknown> = {};
-  let ok = false;
-  try { ok = await f(res); } catch (e) { console.log("FAIL", name, (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  console.log(ok ? "PASS" : "FAIL", name, JSON.stringify(res));
-  if (!ok) process.exitCode = 1;
-};
 
-export const UX: Record<string, () => Promise<void>> = {
-  "dock-fits-narrow-board": () => run("dock-fits-narrow-board", dockFits),
-  "expand-keeps-call-line-in-view": () => run("expand-keeps-call-line-in-view", expandFollow),
-  "string-dispatch-offers-receiver-method": () => run("string-dispatch-offers-receiver-method", dispatchByName),
-  "right-click-line-opens-line-menu": () => run("right-click-line-opens-line-menu", lineMenu),
-  "editing-tiny-note-zooms-to-readable": () => run("editing-tiny-note-zooms-to-readable", readableNote),
-  "search-lists-symbols-containing-the-query": () => run("search-lists-symbols-containing-the-query", searchStep),
-  "turn-into-board-names-after-the-calling-card": () => run("turn-into-board-names-after-the-calling-card", turnName),
-};
+test("dock-fits-narrow-board", () => verdict("dock-fits-narrow-board", dockFits));
+
+test("expand-keeps-call-line-in-view", () => verdict("expand-keeps-call-line-in-view", expandFollow));
+
+test("string-dispatch-offers-receiver-method", () => verdict("string-dispatch-offers-receiver-method", dispatchByName));
+
+test("right-click-line-opens-line-menu", () => verdict("right-click-line-opens-line-menu", lineMenu));
+
+test("editing-tiny-note-zooms-to-readable", () => verdict("editing-tiny-note-zooms-to-readable", readableNote));
+
+test("search-lists-symbols-containing-the-query", () => verdict("search-lists-symbols-containing-the-query", searchStep));
+
+test("turn-into-board-names-after-the-calling-card", () => verdict("turn-into-board-names-after-the-calling-card", turnName));
 
 /** 底部工具条：每个宽度都是一行，彼此不重叠，也不出窗口 */
 async function dockFits(res: Record<string, unknown>) {
@@ -61,7 +59,7 @@ async function dockFits(res: Record<string, unknown>) {
       if (res.folded !== 4 || res.tree !== 1) ok = false;
     }
     await shot(h, `ux-dock-${w}`);
-    await h.page.context().browser()!.close();
+    await h.page.context().close();
   }
   return ok;
 }
@@ -92,7 +90,7 @@ async function expandFollow(res: Record<string, unknown>) {
     if (!nid || !inView(line, W, H) || !inView(card, W, H, 120) || z < 0.6) ok = false;
   }
   await shot(h, "ux-expand-follow");
-  await h.page.context().browser()!.close();
+  await h.page.context().close();
   return ok;
 }
 
@@ -149,7 +147,7 @@ async function dispatchByName(res: Record<string, unknown>) {
   const link = run && h.board().links.find((l) => l.to.card === run.id);
   res.card = !!run; res.link = link ? { line: link.from.line, call: link.call?.name, via: link.call?.ev?.via } : null;
   await shot(h, "ux-dispatch");
-  await h.page.context().browser()!.close();
+  await h.page.context().close();
   return /model_runner\.py/.test(String(res.first)) && /\brun\b/.test(String(res.first)) && !!run && link?.from.line === callLine && link?.call?.name === "call" && link?.call?.ev?.via === 'call("run")';
 }
 
@@ -184,7 +182,7 @@ async function lineMenu(res: Record<string, unknown>) {
   await callEl(h, step.id, "schedule").click({ button: "right" }); await wait(h, 400);
   res.call = (await menuTexts(h)).some((t) => /^Expand/.test(t));
   await shot(h, "ux-linemenu");
-  await page.context().browser()!.close();
+  await page.context().close();
   const c = res.code as { sel: string[]; hide: boolean; ask: boolean; card: boolean }, g = res.gutter as { sel: string[]; hide: boolean };
   return c.sel.join() === "51" && c.hide && c.ask && c.card && res.cardSub === true && g.sel.join() === "50" && g.hide
     && (res.kept as string[]).join() === "50,51,52" && res.open === 50 && res.call === true;
@@ -217,7 +215,7 @@ async function readableNote(res: Record<string, unknown>) {
   const font2 = await px('.card[data-id="t1"] .tx');
   res.text = { z3, z4: await zoomOf(h), font: +font2.toFixed(1), editing: editingT };
   await shot(h, "ux-readable");
-  await page.context().browser()!.close();
+  await page.context().close();
   return z1 > 0.48 && z1 <= 1 && font1 >= 10.9 && inView(box, 1200, 800) && z2 === z1 && z3 >= 0.6 && z3 < 0.8 && editingT && font2 >= 10.9;
 }
 
@@ -250,6 +248,6 @@ async function turnName(res: Record<string, unknown>) {
   res.called = await name([sch.id, can.id]);
   res.withNote = await name([note, can.id, sch.id]);
   res.unlinked = await name([sch.id, note]);
-  await page.context().browser()!.close();
+  await page.context().close();
   return res.called === "Scheduler.schedule" && res.withNote === "Scheduler.schedule" && res.unlinked === "aside";
 }

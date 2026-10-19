@@ -1,18 +1,14 @@
-// PR9 编辑代码（CodeMirror）：Free code 卡进出编辑时字、行号、颜色的位置一点不动（所有主题、亮暗）；打字、缩进、注释、保存；
+// 编辑代码（CodeMirror）：Free code 卡进出编辑时字、行号、颜色的位置一点不动（所有主题、亮暗）；打字、缩进、注释、保存；
 // 语言服务（宿主是假的）：补全菜单、签名提示、悬停、虚拟文档的消息；Note 里的代码块编辑时也和显示时一样。
-// Usage: node packages/board/test/run-harness.mjs codeedit [--light]   LOOKS=warm-ink,graphite 只看这几个主题；SHOTS_DIR=… 存截图
+// Usage: npm run harness -- codeedit [--light]   LOOKS=warm-ink,graphite 只看这几个主题；SHOTS_DIR=… 存截图
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { open, put, OUT, type Host, type OnMsg } from "./harness";
+import { put, OUT, type Host, type OnMsg } from "../harness";
+import { test, open, check, light } from "../fixtures";
 
-let failed = 0;
-function check(name: string, ok: boolean, info: unknown) {
-  console.log(`${ok ? "PASS" : "FAIL"} ${name} ${JSON.stringify(info).slice(0, ok ? 300 : 3000)}`);
-  if (!ok) failed++;
-}
-const close = (h: Host) => h.page.context().browser()!.close();
+const close = (h: Host) => h.page.context().close();
 const CODE = ["def f(x):", "    y = x + 1  # one", "    return y", "", "print(f(2))"];
 
 function freeBoard(): Board {
@@ -370,14 +366,10 @@ async function ghost() {
   await close(h);
 }
 
-export const CODEEDIT: Record<string, () => Promise<void>> = {
-  async codeedit() {
-    failed = 0;
-    if (!process.env.ONLY || process.env.ONLY === "looks") { await looks(); await wrapLook(); }
-    if (!process.env.ONLY || process.env.ONLY === "typing") await typing();
-    if (!process.env.ONLY || process.env.ONLY === "note") await note();
-    if (!process.env.ONLY || process.env.ONLY === "new") await newCode();
-    if (!process.env.ONLY || process.env.ONLY === "ghost") await ghost();
-    if (failed) throw new Error(`codeedit: ${failed} failed`);
-  },
-};
+test("codeedit", async () => {
+  if (!process.env.ONLY || process.env.ONLY === "looks") { await looks(); await wrapLook(); }
+  if (!process.env.ONLY || process.env.ONLY === "typing") await typing();
+  if (!process.env.ONLY || process.env.ONLY === "note") await note();
+  if (!process.env.ONLY || process.env.ONLY === "new") await newCode();
+  if (!process.env.ONLY || process.env.ONLY === "ghost") await ghost();
+});

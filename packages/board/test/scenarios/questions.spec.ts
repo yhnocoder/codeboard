@@ -1,15 +1,15 @@
-// v0.2 questions, export and settings (wireframes 06, 08, 09): ? stickers with a written question, Mark Answered / Link Answer (✓),
+// Questions, export and settings (wireframes 06, 08, 09): ? stickers with a written question, Mark Answered / Link Answer (✓),
 // the Questions panel across boards, Copy as List, the welcome-back hint; the Export dialog, an offline HTML snapshot opened in Chromium,
 // a Markdown export; the new settings rows.
-// Usage: node packages/board/test/run-harness.mjs questions export settingsPage [--light]   screenshots: test-out/harness/{questions,export,settings}-*.png
+// Usage: npm run harness -- questions export settingsPage [--light]   screenshots: test-out/harness/{questions,export,settings}-*.png
 // SHOTS_DIR=… also copies them there.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type BoardToHost, type CodeCard, type HostToBoard, type QuestionItem, type SegView } from "@codeboard/core";
-import { open, shot, put, symCard, findSym, viewOf, OUT, REPO, type Host } from "./harness";
-import { inlineFor, setMediaDir } from "../../../extensions/vscode/src/exports";
+import { shot, put, symCard, findSym, viewOf, OUT, REPO, type Host } from "../harness";
+import { inlineFor, setMediaDir } from "../../../../extensions/vscode/src/exports";
+import { test, open, check, light, verdict } from "../fixtures";
 
-const light = process.argv.includes("--light");
 const MEDIA = path.join(REPO, "extensions/vscode/media/board");
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 async function shotPr(h: Host, name: string) {
@@ -22,19 +22,12 @@ async function until(h: Host, f: () => unknown, ms = 6000) {
 }
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
-const run = async (name: string, f: (res: Record<string, unknown>) => Promise<boolean>) => {
-  const res: Record<string, unknown> = {};
-  let ok = false;
-  try { ok = await f(res); } catch (e) { console.log("FAIL", name, (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  console.log(ok ? "PASS" : "FAIL", name, JSON.stringify(res));
-  if (!ok) process.exitCode = 1;
-};
 
-export const QUESTIONS: Record<string, () => Promise<void>> = {
-  questions: () => run("questions", questions),
-  export: () => run("export", exportScenario),
-  settingsPage: () => run("settingsPage", settings),
-};
+test("questions", () => verdict("questions", questions));
+
+test("export", () => verdict("export", exportScenario));
+
+test("settingsPage", () => verdict("settingsPage", settings));
 
 const initOf = (b: Board, extra: Partial<Extract<HostToBoard, { type: "init" }>> = {}): HostToBoard => {
   const views: Record<string, SegView> = {};
@@ -128,7 +121,7 @@ async function questions(res: Record<string, unknown>) {
     && res.openRows === 3 && res.staleShown === 0 && res.allRows === 5 && (res.openBoard as { id?: string; sticker?: string })?.id === "bMR" && (res.openBoard as { sticker?: string }).sticker === "k2"
     && res.popFromPanel === "ref_count 什么时候减到 0？" && copied.includes(`- [ ] [BlockManager.allocate] ref_count 什么时候减到 0？ (block_manager.py:${L2})`) && copied.includes("## DeepEP") === false && copied.includes("## nano-vllm · ModelRunner") && !copied.includes("\\_")
     && String(res.welcome).includes("5 days ago") && String(res.welcome).includes("1 open question") && res.welcomePanel === 1;
-  await page.context().browser()!.close();
+  await page.context().close();
   return !!ok;
 }
 
@@ -254,7 +247,7 @@ async function exportScenario(res: Record<string, unknown>) {
     && res.pan && res.zoom && res.walkStep === "2 / 4" && res.cur === ids.can && String(res.tip).includes("先 prefill 再 decode") && !(res.net as string[]).length && !(res.errs as string[]).length
     && JSON.stringify(m.order) === JSON.stringify(["A · Scheduler.schedule", "A · BlockManager.can_allocate", "A · BlockManager.allocate", "prefix caching"])
     && m.permalink && m.fence && m.arrow && m.sidenote && m.question && !m.escaped && !m.priv;
-  await page.context().browser()!.close();
+  await page.context().close();
   return !!ok;
 }
 
@@ -274,6 +267,6 @@ async function settings(res: Record<string, unknown>) {
   res.set = h.sent.filter((m) => m.type === "setSetting").map((m) => `${(m as { key: string }).key}=${JSON.stringify((m as { value: unknown }).value)}`);
   const ok = ["Boards", "Questions", "Export"].every((t) => (res.secs as string[]).includes(t))
     && JSON.stringify(res.set) === JSON.stringify(['subPreview="title"', 'welcomeBack="always"', 'exportScope="walk"', "exportQuestions=true"]);
-  await page.context().browser()!.close();
+  await page.context().close();
   return ok;
 }

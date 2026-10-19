@@ -1,17 +1,18 @@
-// v0.2 fixes from Linda's first try in VS Code:
+// Fixes from Linda's first try in VS Code:
 //  qpop     — the question popover in every theme, light and dark: the placeholder is not clipped, the buttons never wrap
 //  dataclass — nano-vllm utils/context.py: a fields-only @dataclass class card shows its code (decorator + fields), not an empty member list
 //  segsep   — multi-segment cards show every segment boundary (⋯ N lines / a divider); a class card merges into one, segments by line
 //  varmenu  — Add Variant menu: a long worktree path does not wrap "Other Worktree", it is cut with an ellipsis
 //  fithide  — Fit Content on a card with Hide Docstrings / Comments / Blank Lines on: the width follows only the lines shown
 //             (torch Module.get_parameter: the long docstring line and a long trailing comment must not count)
-// Usage: node packages/board/test/run-harness.mjs qpop dataclass segsep varmenu fithide   screenshots: test-out/harness/fixq-*.png (SHOTS_DIR=… copies them)
+// Usage: npm run harness -- qpop dataclass segsep varmenu fithide   screenshots: test-out/harness/fixq-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, THEMES, emptyBoard, type CodeCard } from "@codeboard/core";
-import { open, shot, put, symCard, findSym, files, ready, OUT, REPO, type Host } from "./harness";
+import { shot, put, symCard, findSym, files, ready, OUT, REPO, type Host } from "../harness";
 import { analyze } from "@codeboard/core/analysis";
 import { uid, type Segment } from "@codeboard/core";
+import { test, open, light, verdict } from "../fixtures";
 
 const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 async function shotTo(h: Host, name: string) {
@@ -21,21 +22,16 @@ async function shotTo(h: Host, name: string) {
 }
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
-const run = async (name: string, f: (res: Record<string, unknown>) => Promise<boolean>) => {
-  const res: Record<string, unknown> = {};
-  let ok = false;
-  try { ok = await f(res); } catch (e) { console.log("FAIL", name, (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  console.log(ok ? "PASS" : "FAIL", name, JSON.stringify(res));
-  if (!ok) process.exitCode = 1;
-};
 
-export const FIXQ: Record<string, () => Promise<void>> = {
-  qpop: () => run("qpop", qpop),
-  dataclass: () => run("dataclass", dataclass),
-  varmenu: () => run("varmenu", varmenu),
-  segsep: () => run("segsep", segsep),
-  fithide: () => run("fithide", fithide),
-};
+test("qpop", () => verdict("qpop", qpop));
+
+test("dataclass", () => verdict("dataclass", dataclass));
+
+test("varmenu", () => verdict("varmenu", varmenu));
+
+test("segsep", () => verdict("segsep", segsep));
+
+test("fithide", () => verdict("fithide", fithide));
 
 const setTheme = async (h: Host, theme: string, light: boolean) => {
   await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, theme } } as never });
@@ -97,7 +93,7 @@ async function qpop(res: Record<string, unknown>) {
   const t = await measure(h);
   res.typed = { bodyClips: t.bodyClips, btns: t.btns.map((x) => x.h) };
   await shotPopover(h, "fixq-qpop-drafting-typed");
-  await page.context().browser()!.close();
+  await page.context().close();
   return res.editing === 1 && bad.length === 0 && !t.bodyClips;
 }
 async function shotPopover(h: Host, name: string) {
@@ -110,7 +106,7 @@ async function shotPopover(h: Host, name: string) {
 }
 
 async function dataclass(res: Record<string, unknown>) {
-  // The class card as v0.2 hosts made it (members set): the board shows its code when the class has no methods
+  // The class card as hosts make it (members set): the board shows its code when the class has no methods
   const b = emptyBoard("bD", "nano-vllm · context");
   const ctx = nv("Context"), sch = nv("Scheduler");
   put(b, ctx, 60, 80, 560); put(b, sch, 700, 80, 560);
@@ -122,7 +118,7 @@ async function dataclass(res: Record<string, unknown>) {
   res.members = await card.locator(".members").count();
   res.schedMembers = await page.locator(`.card[data-id="${sch.id}"] .members .mrow`).count();
   await shotTo(h, "fixq-dataclass");
-  await page.context().browser()!.close();
+  await page.context().close();
   const t = String(res.text);
   return res.members === 0 && t.includes("@dataclass(slots=True)") && t.includes("is_prefill: bool = False") && t.includes("block_tables") && (res.schedMembers as number) > 3;
 }
@@ -146,7 +142,7 @@ async function varmenu(res: Record<string, unknown>) {
     return { h: Math.round(el.getBoundingClientRect().height), lbH: Math.round(lb.getBoundingClientRect().height), cut: sm.scrollWidth > sm.clientWidth, title: sm.title, tip: (el as HTMLElement).title, menuW: Math.round(menu.width) };
   });
   await shotTo(h, "fixq-varmenu");
-  await page.context().browser()!.close();
+  await page.context().close();
   const r = res.item as { h: number; lbH: number; cut: boolean; title: string; tip: string; menuW: number };
   return r.h <= 30 && r.lbH <= 20 && r.cut && r.title.includes("nano-vllm-overlap") && r.tip === long && r.menuW <= 310;
 }
@@ -186,7 +182,7 @@ async function segsep(res: Record<string, unknown>) {
   res.mergedSep = m ? await sepOf(m.id) : null;
   res.mergedMembers = m ? await page.locator(`.card[data-id="${m.id}"] .members`).count() : -1;
   await shotTo(h, "fixq-segsep-merged");
-  await page.context().browser()!.close();
+  await page.context().close();
   const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
   return eq(res.three, ["⋯ 1 line hidden (20)", "⋯ 1 line hidden (24)"])
     && eq(res.one, ["⋯ 1 line hidden (15)", "⋯ 1 line hidden (17)", "⋯ 1 line hidden (20)", "⋯ 1 line hidden (24)"])
@@ -254,7 +250,7 @@ async function fithide(res: Record<string, unknown>) {
   const want = m.textRight + m.pad;
   res.want = Math.round(want);
   await shotTo(h, "fixq-fithide");
-  await page.context().browser()!.close();
+  await page.context().close();
   // fits the shown lines: no wider than the longest shown line plus padding (a few px of slack), and nothing cut off
   return m.rows === 9 && typeof res.w === "number" && Math.abs((res.w as number) - want) <= 12 && m.overflow <= 1;
 }

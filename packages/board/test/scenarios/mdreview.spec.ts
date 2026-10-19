@@ -1,11 +1,12 @@
 // Markdown 编辑器 Review：一条条模拟 Typora 的输入，记下编辑器里长成什么样、存回的 Markdown 是什么。
-// node packages/board/test/run-harness.mjs markdownRecord [--only=a,b]   只记录（不进 CI），结果写到 test-out/harness/markdownRecord.json
-// node packages/board/test/run-harness.mjs markdownReviewIssues [--only=a,b]   Review 列出的问题（#编号）逐条判对错，进 CI
+// npm run harness -- markdownRecord [MDREVIEW_ONLY=a,b]   只记录（不进 CI），结果写到 test-out/harness/markdownRecord.json
+// npm run harness -- markdownReviewIssues [MDREVIEW_ONLY=a,b]   Review 列出的问题（#编号）逐条判对错，进 CI
 import * as fs from "node:fs";
-import { open, OUT, type Host } from "./harness";
+import { OUT, type Host } from "../harness";
 import { emptyBoard, cleanCompletion, DEFAULT_SETTINGS, type NoteCard } from "@codeboard/core";
-import { deepseekComplete } from "../../../extensions/vscode/src/deepseek";
+import { deepseekComplete } from "../../../../extensions/vscode/src/deepseek";
 import type { Page } from "playwright-core";
+import { test, open, check } from "../fixtures";
 
 type Ctx = { pg: Page; h: Host; info: Record<string, unknown> };
 type Probe = { name: string; start?: string; run: (c: Ctx) => Promise<void>; ai?: string | "real"; keepOpen?: boolean };
@@ -265,13 +266,13 @@ async function runProbe(pr: Probe): Promise<Record<string, unknown>> {
     }
   } catch (e) { info.err = (e as Error).message.split("\n")[0]; }
   if (lastAsk) info.ask = lastAsk;
-  await h.page.context().browser()!.close();
+  await h.page.context().close();
   return info;
 }
 
 type I = Record<string, any>;
 const md = (want: string) => (i: I) => i.md === want;
-/** Review 里的问题（#编号，见 /mnt/project-files/v018-review/issues.md）→ 用哪条输入、怎样算对 */
+/** Review 里的问题（#编号是那次 Markdown 编辑器评审的问题编号）→ 用哪条输入、怎样算对 */
 const ISSUES: Record<string, [string, (i: I) => boolean][]> = {
   "#1 AI accept renders Markdown": [
     ["ai-math", md("Use it the command $\\frac{a}{b}$ to create a fraction with numerator $a$")],
@@ -313,36 +314,32 @@ const ISSUES: Record<string, [string, (i: I) => boolean][]> = {
   "no empty-paragraph junk": [["code-tab", (i) => !/&nbsp;|\n\n\n/.test(i.md)], ["code-auto-indent", (i) => !/&nbsp;|\n\n\n/.test(i.md)]],
 };
 
-export const MDREVIEW: Record<string, () => Promise<void>> = {
-  async markdownRecord() {
-    const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7).split(",");
-    const results: unknown[] = [];
-    for (const pr of PROBES.filter((p) => !only || only.some((o) => p.name.startsWith(o)))) {
-      const info = await runProbe(pr);
-      results.push({ name: pr.name, ...info });
-      console.log(pr.name, JSON.stringify(info).slice(0, 400));
+test("markdownRecord", async () => {
+  const only = process.env.MDREVIEW_ONLY?.split(",");
+  const results: unknown[] = [];
+  for (const pr of PROBES.filter((p) => !only || only.some((o) => p.name.startsWith(o)))) {
+    const info = await runProbe(pr);
+    results.push({ name: pr.name, ...info });
+    console.log(pr.name, JSON.stringify(info).slice(0, 400));
+  }
+  fs.writeFileSync(`${OUT}/markdownRecord${only ? "-" + only.join("_") : ""}.json`, JSON.stringify(results, null, 1));
+});
+
+/** Review 的每个问题一条检查 */
+test("markdownReviewIssues", async () => {
+  const only = process.env.MDREVIEW_ONLY?.split(",");
+  for (const [issue, checks] of Object.entries(ISSUES)) {
+    for (const [name, ok] of checks) {
+      if (only && !only.some((o) => name.startsWith(o))) continue;
+      const pr = PROBES.find((p) => p.name === name)!;
+      let info = await runProbe(pr);
+      // 偶尔第一下没点进去（无头浏览器）：再跑一次
+      if (!ok(info) && info.err) info = await runProbe(pr);
+      const pass = ok(info);
+      check(`markdownReviewIssues ${issue} · ${name}`, pass, JSON.stringify({ md: info.md, dom: info.dom, err: info.err, sel: info.sel, ask: info.ask }).slice(0, 400));
     }
-    fs.writeFileSync(`${OUT}/markdownRecord${only ? "-" + only.join("_") : ""}.json`, JSON.stringify(results, null, 1));
-  },
-  /** Review 的每个问题一条检查 */
-  async markdownReviewIssues() {
-    const only = process.argv.find((a) => a.startsWith("--only="))?.slice(7).split(",");
-    let failed = 0;
-    for (const [issue, checks] of Object.entries(ISSUES)) {
-      for (const [name, ok] of checks) {
-        if (only && !only.some((o) => name.startsWith(o))) continue;
-        const pr = PROBES.find((p) => p.name === name)!;
-        let info = await runProbe(pr);
-        // 偶尔第一下没点进去（无头浏览器）：再跑一次
-        if (!ok(info) && info.err) info = await runProbe(pr);
-        const pass = ok(info);
-        if (!pass) failed++;
-        console.log(`${pass ? "PASS" : "FAIL"} markdownReviewIssues ${issue} · ${name} ${JSON.stringify({ md: info.md, dom: info.dom, err: info.err, sel: info.sel, ask: info.ask }).slice(0, 400)}`);
-      }
-    }
-    if (failed) throw new Error(`markdownReviewIssues: ${failed} failed`);
-  },
-};
+  }
+});
 /** 退出编辑后的静态显示 */
 const dom2 = (pg: Page) => pg.evaluate(() => {
   const e = document.querySelector('.card[data-id="n1"] .nbody');

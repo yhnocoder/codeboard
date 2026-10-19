@@ -1,13 +1,13 @@
-// v0.2 my changes (wireframe 07): variant tabs on a code card, MINE, the Add Variant menu listing another worktree,
+// My changes (wireframe 07): variant tabs on a code card, MINE, the Add Variant menu listing another worktree,
 // switching in one frame with the arrow end and sidenote following the code, the variant note, the diff base picker,
 // the three-way view, "Only in This Variant" sidenotes, the merged-upstream prompt and Convert.
-// Usage: node packages/board/test/run-harness.mjs variants [--light]   screenshots: test-out/harness/variants-*.png (SHOTS_DIR=… copies them)
+// Usage: npm run harness -- variants [--light]   screenshots: test-out/harness/variants-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type CodeCard, type Segment, type SegView } from "@codeboard/core";
-import { open, shot, put, symCard, findSym, viewOf, OUT, type Host } from "./harness";
+import { shot, put, symCard, findSym, viewOf, OUT, type Host } from "../harness";
+import { test, open, light, verdict } from "../fixtures";
 
-const light = process.argv.includes("--light");
 const wait = (h: Host, ms = 500) => h.page.waitForTimeout(ms);
 async function shotPr(h: Host, name: string, away = true) {
   if (away) await h.page.mouse.move(1490, 700);
@@ -15,18 +15,9 @@ async function shotPr(h: Host, name: string, away = true) {
   const d = process.env.SHOTS_DIR;
   if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
 }
-const run = async (name: string, f: (res: Record<string, unknown>) => Promise<boolean>) => {
-  const res: Record<string, unknown> = {};
-  let ok = false;
-  try { ok = await f(res); } catch (e) { console.log("FAIL", name, (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
-  console.log(ok ? "PASS" : "FAIL", name, JSON.stringify(res));
-  if (!ok) process.exitCode = 1;
-};
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 
-export const VARIANTS: Record<string, () => Promise<void>> = {
-  variants: () => run("variants", variants),
-};
+test("variants", () => verdict("variants", variants));
 
 /** 宿主的样子：另一个 worktree 上改了两行（一行改、一行加），函数整体下移 7 行 */
 function edit(s: Segment, how: "wt" | "branch" | "latest"): Segment {
@@ -180,6 +171,6 @@ async function variants(res: Record<string, unknown>) {
     && cols.length === 3 && /Base/.test(cols[0]) && /Mine/.test(cols[1]) && /Upstream latest/.test(cols[2]) && changedRows >= 1 && theirs >= 1 && both === 3 && /^1 line changed on both sides/.test(head3 ?? "") && /scheduled_seqs = \[\]/.test(baseRow ?? "")
     && vOnly && hidden && shownAgain
     && /merged into main/.test(toast ?? "") && converted && convLink === callLine + 3 && res.converted && (res.converted as { tabs: number }).tabs === 0;
-  await page.context().browser()!.close();
+  await page.context().close();
   return ok;
 }
