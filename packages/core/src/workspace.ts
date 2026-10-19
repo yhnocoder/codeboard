@@ -1,5 +1,5 @@
 // 宿主功能访问编辑器 / 工作区的唯一入口。只按 VS Code 插件现在真正用到的调用点抽出来（不为以后的 macOS 版预设能力）；
-// VS Code 的实现在 extensions/vscode/src/vscode/。行号从 1 开始，列号从 0 开始。
+// 宿主代码（packages/host）只经过它和 HostEnv（host/src/env.ts）；VS Code 的实现在 extensions/vscode/src/vscode/。行号从 1 开始，列号从 0 开始。
 import type { Disposable, Event } from "./emitter";
 
 export type LogLevel = "info" | "warn" | "error";

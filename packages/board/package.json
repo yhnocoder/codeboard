@@ -9,6 +9,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
+    "@codeboard/host": "^0.1.0",
     "@jridgewell/trace-mapping": "^0.3.31",
     "@playwright/test": "^1.64.1",
     "@types/katex": "^0.16.8",

@@ -2,13 +2,13 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, allCodeCards,
-  placeChild, freeInView, walkOrder, descendants, startCards, SIB_GAP,
+  placeChild, walkOrder, descendants, startCards, SIB_GAP, COL_GAP,
   estSize, defaultWidth, removeLostCalls, callName, sameCallSite,
   type Card, type CodeCard, type Link, type Place,
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
 import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, hostOf, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
-import { camTo, camTarget, worldView, fitRect, fitTop, isVisible, union, overviewZ } from "../state/camera";
+import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union, overviewZ } from "../state/camera";
 import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -107,26 +107,19 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
       const up = [cardId];
       while (up.length) for (const l of f.parents.get(up.pop()!) ?? []) if (!chain.has(hostOf(l.from.card))) { chain.add(hostOf(l.from.card)); up.push(l.from.card); }
       const tree = new Set((f.byId.get(cardId)?.cards ?? []).map(hostOf));
-      const outside = placed().filter((k) => !tree.has(k.id)).map((k) => rectOf(k));
       const hb = rectOf(host);
-      const slot = placeChild(hb, size, before, []);
-      let p = placeChild(hb, size, before, outside);
-      // 树下面被别的卡占满时，空位可能被推到屏幕外很远：改在视野里、靠近默认位置找空位；视野里也没有就放默认位置（压住别的卡，新卡在最上层）。
-      // 默认位置没被占、只是在屏幕外（白板窄、矮）不算：照样放在树里，镜头跟过去
-      let inTree = true;
-      const vr = worldView();
-      const offscreen = p.y < vr.y || p.y + Math.min(size.h, 200) > vr.y + vr.h || p.x + Math.min(size.w, vr.w) > vr.x + vr.w;
-      if (offscreen && p.y !== slot.y) {
-        const all = placed().map((k) => rectOf(k));
-        const f = freeInView({ ...slot, ...size }, all, vr);
-        if (f && isVisible(hb)) { p = f; inTree = false; }
-        else if (isVisible(hb)) p = slot;
-      }
+      // 白板够宽（父卡和新卡并排时缩放不低于概览）就放右边一列，新卡头对着出发行、箭头基本是平的；
+      // 窄（放在编辑器旁边）就缩进放在父卡下面，Fit 时代码还能读
+      const side = hb.w + COL_GAP + size.w <= usableW(overviewZ());
+      const top = side ? (lineY(cardId, segId, call.line)?.y ?? hb.y) - 18 : hb.y + hb.h;
+      // 别的子树的卡也可能在这一列：在新卡上方的挡住它，下方的给它让位（下面整体下移）
+      const fixed = placed().filter((k) => !tree.has(k.id) || (!chain.has(k.id) && b.place[k.id].y < top)).map((k) => rectOf(k));
+      const p = placeChild(hb, size, before, fixed, { side, top });
       np.x = Math.round(p.x); np.y = Math.round(p.y);
       const want = { x: p.x, y: p.y, w: size.w, h: size.h };
-      const below = placed().filter((k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && b.place[k.id].y >= hb.y + hb.h - 1);
+      const below = placed().filter((k) => tree.has(k.id) && !chain.has(k.id) && !beforeIds.has(k.id) && b.place[k.id].y >= top - 1);
       const hit = below.some((k) => { const r = rectOf(k); return r.x < want.x + want.w && want.x < r.x + r.w && r.y < want.y + want.h + SIB_GAP; });
-      if (hit && inTree) {
+      if (hit) {
         const dy = size.h + SIB_GAP;
         for (const k of below) { b.place[k.id].y += dy; pushed.push({ id: k.id, dy }); }
       }
@@ -145,7 +138,7 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
   select({ cards: [id] });
   flash(cardId, segId, [call.line]);
   requestAnimationFrame(() => {
-    followExpanded(cardId, segId, call.line, id);
+    followExpanded(cardId, segId, call, id);
     const from = headPoint(cardId);
     popCard(id, from ?? undefined);
   });
@@ -154,20 +147,29 @@ export function placeExpanded(cardId: string, segId: string, call: CallSpan, car
 
 /**
  * 展开后镜头跟过去：出发的那一行和新卡都要看得见。放不下就缩小，但不缩到概览以下（代码还能读）；
- * 概览比例下还放不下，先保证那一行和新卡的顶部
+ * 概览比例下还放不下：新卡（太高就上面一截）加调用名；还放不下就只看新卡，往左尽量带上出发的那一行
  */
-function followExpanded(cardId: string, segId: string, line: number, id: string) {
+function followExpanded(cardId: string, segId: string, call: CallSpan, id: string) {
   const r = hostRect(id), p = hostRect(cardId);
   if (!r || !p) return;
-  const y = lineY(cardId, segId, line)?.y ?? p.y + 20;
+  const y = lineY(cardId, segId, call.line)?.y ?? p.y + 20;
   const from = { x: p.x, y: y - 14, w: p.w, h: 28 };
   const c = camTarget();
   if (isVisible(from, c) && isVisible(r, c)) return;
   const floor = Math.min(c.z, overviewZ());
+  const body = { ...r, h: Math.min(r.h, usableH(floor)) };
+  // 调用名大概在哪（等宽字，按列估）
+  const name = { x: p.x + CODE_LEFT + call.col * CHAR_W - 24, y: from.y, w: call.name.length * CHAR_W + 48, h: from.h };
   let f = fitRect(union(from, r), c.z);
-  if (f.z < floor) f = fitRect(union(from, { ...r, h: Math.min(r.h, 160) }), c.z, floor);
+  for (const t of [union(from, body), union(name, body)]) if (f.z < floor) f = fitRect(t, c.z);
+  if (f.z < floor) {
+    const w = usableW(floor), right = r.x + r.w;
+    const left = r.w >= w ? r.x : Math.max(Math.min(name.x, r.x), right - w);
+    f = fitRect({ x: left, y: body.y, w: Math.min(right - left, w), h: body.h }, c.z, floor);
+  }
   camTo(f.x, f.y, f.z);
 }
+const CODE_LEFT = 52, CHAR_W = 7.4; // 代码卡里代码左边距、一个字的宽（和 defaultWidth 的估计一致）
 
 /** Call 标记：点的是这一行的哪个调用、在不在循环里、变量候选 */
 export function callMark(call: CallSpan, cands?: Var[]): NonNullable<Link["call"]> {

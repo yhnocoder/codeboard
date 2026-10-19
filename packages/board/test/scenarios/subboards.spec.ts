@@ -1,5 +1,5 @@
 // Sub-boards (wireframe 05): one browser plays a board panel; the host (subhost.ts) is core Storage on a temp dir and switches
-// the panel between boards like Panels.switchBoard (crumbs, cameras, walkthrough hops), pushes skeletons after saves.
+// the panel between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops), pushes skeletons after saves.
 // Usage: npm run harness -- subboards [--light]   screenshots: test-out/harness/subboards-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";

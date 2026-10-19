@@ -8,7 +8,7 @@ set -e
 BASE=$1; OUT=$2; MODE=$3
 mkdir -p "$OUT"
 board() { (cd "$1" && node packages/board/test/run-perf.mjs --quick --runs 1 --json "$OUT/board-$2-$3.json") >"$OUT/board-$2-$3.log" 2>&1; }
-host() { for i in 1 2; do (cd "$1" && node extensions/vscode/test/run-perf-host.mjs --runs 3) 2>&1 | grep '^{' >>"$OUT/host-$2.log" || true; done; }
+host() { for i in 1 2; do (cd "$1" && node packages/host/test/run-perf-host.mjs --runs 3) 2>&1 | grep '^{' >>"$OUT/host-$2.log" || true; done; }
 HAS_BASE=""
 [ -n "$BASE" ] && [ -f "$BASE/packages/board/test/run-perf.mjs" ] && HAS_BASE=1
 OUT=$(cd "$OUT" && pwd)

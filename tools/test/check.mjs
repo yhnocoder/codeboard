@@ -1,5 +1,5 @@
 // npm run check: the local test run, about 3 minutes. See TESTING.md.
-//   1. typecheck, unit tests and host tests side by side; the board is rebuilt only when its sources changed since the last build
+//   1. typecheck and unit tests (core, board, host, extension) side by side; the board is rebuilt only when its sources changed since the last build
 //   2. the harness scenarios this change needs (tools/test/pick.mjs), compared with origin/main, several at a time,
 //      within what is left of the 3 minutes
 // Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness>]
@@ -47,10 +47,9 @@ const build = fresh ? run("build (extension only; board unchanged)", "npm", ["ru
 const first = await Promise.all([
   run("typecheck", "npm", ["run", "typecheck"]),
   run("unit tests", "npm", ["test"]),
-  run("host tests", "npm", ["run", "test:host", "-w", "codeboard-vscode"]),
   build,
 ]);
-if (!first[3]) { console.log("build failed: no harness run"); process.exit(1); }
+if (!first[2]) { console.log("build failed: no harness run"); process.exit(1); }
 
 let base = opt("base");
 if (!base) {

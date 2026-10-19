@@ -96,6 +96,49 @@ describe("Turn into Board", () => {
   });
 });
 
+describe("Turn into Board: references that cross the selection", () => {
+  const star = { pack: "builtin", name: "star" } as const;
+  const q = (id: string, at: Board["stickers"][number]["at"], answer: string): Board["stickers"][number] => ({ id, icon: { pack: "builtin", name: "question" }, at, q: { md: "why?", answer } });
+  const setup = () => {
+    const p = board("E", [[code("a"), 0, 0], [code("b"), 800, 0], [note("out"), 0, 900]]);
+    p.links.push(call("ab", "a", 2, "b"), call("aout", "a", 3, "out"));
+    return p;
+  };
+  const rects = (p: Board) => (id: string) => ({ ...p.place[id], h: 300 });
+
+  it("a question whose answer moved keeps the question and drops the answer on the side that lost the card", () => {
+    const p = setup();
+    p.stickers.push(
+      q("qp", { kind: "canvas", x: 0, y: 0 }, "a"), // stays on the parent; its answer moves
+      q("qc", { kind: "line", card: "b", seg: "sb", line: 1 }, "out"), // moves; its answer stays
+      q("qin", { kind: "line", card: "a", seg: "sa", line: 1 }, "b"), // moves with its answer
+    );
+    const r = extractBoard(p, ["a", "b"], rects(p), { id: "S", name: "S", frame: "fr" })!;
+    expect(p.stickers.map((k) => [k.id, k.q?.answer])).toEqual([["qp", undefined]]);
+    expect(r.child.stickers.map((k) => [k.id, k.q?.answer])).toEqual([["qc", undefined], ["qin", "b"]]);
+    expect(danglingRefs(p)).toEqual([]);
+    expect(danglingRefs(r.child)).toEqual([]);
+  });
+
+  it("stickers bound to moved cards and to links go with what they are bound to", () => {
+    const p = setup();
+    p.stickers.push(
+      { id: "onB", icon: star, at: { kind: "canvas", x: 0, y: 0, on: { card: "b" } } },
+      { id: "onOut", icon: star, at: { kind: "canvas", x: 0, y: 0, on: { card: "out" } } },
+      { id: "onAB", icon: star, at: { kind: "canvas", x: 0, y: 0, on: { link: "ab", t: 0.5 } } }, // link inside the selection
+      { id: "onAOut", icon: star, at: { kind: "canvas", x: 0, y: 0, on: { link: "aout", t: 0.5 } } }, // link leaving it: stays on the parent, from the frame
+      { id: "line", icon: star, at: { kind: "line", card: "a", seg: "sa", line: 2 } },
+      { id: "free", icon: star, at: { kind: "canvas", x: 5, y: 5 } },
+    );
+    const r = extractBoard(p, ["a", "b"], rects(p), { id: "S", name: "S", frame: "fr" })!;
+    expect(r.child.stickers.map((k) => k.id)).toEqual(["onB", "onAB", "line"]);
+    expect(p.stickers.map((k) => k.id)).toEqual(["onOut", "onAOut", "free"]);
+    expect(p.links.map((l) => [l.id, l.from.card])).toEqual([["aout", "fr"]]);
+    expect(danglingRefs(p)).toEqual([]);
+    expect(danglingRefs(r.child)).toEqual([]);
+  });
+});
+
 describe("breadcrumbs", () => {
   it("cutCrumbs drops a deleted board and the levels above it, keeping the ones below with their cameras", () => {
     const crumbs = [{ id: "A", name: "A", frame: "fa" }, { id: "B", name: "B", frame: "fb" }, { id: "C", name: "C", frame: "fc" }];

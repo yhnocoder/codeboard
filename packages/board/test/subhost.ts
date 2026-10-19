@@ -1,10 +1,10 @@
 // A host for sub-board scenarios (subboards.spec.ts, boards.spec.ts): core Storage on a temp dir, switching one board panel
-// between boards like Panels.switchBoard (crumbs, cameras, walkthrough hops) and pushing skeletons after saves (120 ms debounce).
+// between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops) and pushing skeletons after saves (120 ms debounce).
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, cutCrumbs, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../../../extensions/vscode/src/nodefs";
+import { nodeFs } from "@codeboard/host/nodefs";
 import { viewOf, OUT, type Host } from "./harness";
 import { open, light } from "./fixtures";
 
@@ -44,7 +44,7 @@ export async function subHost(start: Board, others: Board[]) {
     }, 120);
   };
   store.onDidSave((b) => { dirty.add(b.id); push(); });
-  // like Panels: a deleted board on the breadcrumbs can't be gone back to
+  // like BoardHub: a deleted board on the breadcrumbs can't be gone back to
   store.onDidRemoveBoard((id) => { const c = cutCrumbs(crumbs, cams, id); if (c) { crumbs = c.crumbs; cams = c.cams; void h.post({ type: "crumbs", crumbs }); } });
   store.onDidChange(() => { all = true; push(); });
   const init = async (walk?: unknown, cam?: Camera) => {

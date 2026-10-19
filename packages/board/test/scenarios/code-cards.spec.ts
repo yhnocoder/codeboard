@@ -8,7 +8,7 @@
 //  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
 //  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Open board frame (Mac order: ⇧⌘B)
 //  undoAddKeepsLaterWork      — the editor's undo of an add removes only those cards, even after the board changed
-//  secondCallBelowCaller      — in a short panel the second expanded call still goes below its caller, not above it
+//  secondCallUnderFirstCall   — in a short panel the second expanded call still goes in the caller's column, under the first call
 // Usage: npm run harness -- tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { put, symCard, findSym, viewOf, type Host } from "../harness";
@@ -58,7 +58,7 @@ test("shortcutHelpComplete", () => verdict("shortcutHelpComplete", shortcutHelpC
 
 test("undoAddKeepsLaterWork", () => verdict("undoAddKeepsLaterWork", undoAddKeepsLaterWork));
 
-test("secondCallBelowCaller", () => verdict("secondCallBelowCaller", secondCallBelowCaller));
+test("secondCallUnderFirstCall", () => verdict("secondCallUnderFirstCall", secondCallUnderFirstCall));
 
 async function tabKeepsCanvasStill(res: Record<string, unknown>) {
   // three cards in a row, the last one past the right edge of a narrow panel
@@ -245,7 +245,7 @@ async function undoAddKeepsLaterWork(res: Record<string, unknown>) {
   return JSON.stringify(res.cards) === JSON.stringify(["old"]) && res.oldX === 90;
 }
 
-async function secondCallBelowCaller(res: Record<string, unknown>) {
+async function secondCallUnderFirstCall(res: Record<string, unknown>) {
   const b: Board = emptyBoard("bNarrow", "narrow");
   const step = nv("LLMEngine.step");
   put(b, step, 40, 560, 520);
@@ -257,6 +257,6 @@ async function secondCallBelowCaller(res: Record<string, unknown>) {
   const at = (q: string) => { const c = cards.find((k) => k.segments?.[0]?.symbol?.qual === q); return c && h.board().place[c.id]; };
   res.step = at("LLMEngine.step"); res.schedule = at("Scheduler.schedule"); res.postprocess = at("Scheduler.postprocess");
   await close(h);
-  const s = res.step as { y: number } | undefined, p = res.postprocess as { y: number } | undefined;
-  return !!s && !!p && p.y > s.y;
+  const s = res.schedule as { x: number; y: number } | undefined, p = res.postprocess as { x: number; y: number } | undefined;
+  return !!s && !!p && p.x === s.x && p.y > s.y;
 }

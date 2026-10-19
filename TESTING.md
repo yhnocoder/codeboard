@@ -4,13 +4,13 @@
 
 | 层 | 什么时候 | 时间上限 | 跑什么 |
 |---|---|---|---|
-| 1 本地 | 每次改完：`npm run check` | 3 分钟 | typecheck、单元测试、host 测试；这次改动需要的 harness 场景 |
+| 1 本地 | 每次改完：`npm run check` | 3 分钟 | typecheck、单元测试（core、board、host、插件）；这次改动需要的 harness 场景 |
 | 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部；harness 两个 job 并行；e2e 拆两段并行；perf（只在改了被测代码时跑） |
 | 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / codeedit）、完整 perf、study-task replay |
 
 ## 一定会测到的
 
-**大问题**：typecheck、单元测试、host 测试、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
+**大问题**：typecheck、单元测试（core、board、host、插件，都是 vitest）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
 
 **正在修的问题**：下面这几类场景不受时间预算限制，每次都跑：
 - 这次改动新增或改过的测试文件里的场景
@@ -44,6 +44,7 @@ npm run e2e                                               # 整套 e2e（E2E_PAR
 
 ## 加新测试时
 
+- 宿主（`packages/host`）的测试写成 `packages/host/test/<功能>.test.ts`（vitest，跑在 nano-vllm 的副本和测试自己建的小 git 仓库上），`npm test` 会跑。
 - 新场景是 `packages/board/test/scenarios/` 里某个 `*.spec.ts` 中的一个 `test("名字", …)`，从 `../fixtures` 引 `test`、`open`、`check`；新文件不用登记。场景名在所有文件里不能重名，也不带空格（`tiers.json`、覆盖率、`Tests:` 行都按名字对）。
 - 一个场景单独跑最好在 20 秒以内；更长的，考虑拆开。
 - 只记录、不判对错的场景放进 `tiers.json` 的 `manual`，默认不跑。
