@@ -1,0 +1,7 @@
+<svg viewBox="0 0 800 640" preserveAspectRatio="xMidYMid slice">
+  <path class="river" d="M-40 560 C120 520 210 600 330 560 S520 470 600 520 760 600 860 560 L860 620 C760 650 640 590 560 580 S380 640 300 625 120 590 -40 625Z"/>
+  <path class="park" d="M60 70 h150 a14 14 0 0 1 14 14 v80 a14 14 0 0 1 -14 14 h-150 a14 14 0 0 1 -14 -14 v-80 a14 14 0 0 1 14 -14z"/>
+  <path class="park" d="M610 430 h120 a14 14 0 0 1 14 14 v50 a14 14 0 0 1 -14 14 h-120 a14 14 0 0 1 -14 -14 v-50 a14 14 0 0 1 14 -14z"/>
+  <g class="trees"><circle cx="90" cy="110" r="9"/><circle cx="118" cy="128" r="11"/><circle cx="160" cy="100" r="8"/><circle cx="186" cy="140" r="10"/><circle cx="640" cy="465" r="9"/><circle cx="676" cy="480" r="11"/><circle cx="712" cy="458" r="8"/></g>
+  <g class="bldg"><rect x="300" y="60" width="40" height="28" rx="3"/><rect x="350" y="60" width="26" height="40" rx="3"/><rect x="420" y="70" width="52" height="24" rx="3"/><rect x="40" y="420" width="44" height="30" rx="3"/><rect x="96" y="410" width="30" height="44" rx="3"/><rect x="250" y="440" width="60" height="22" rx="3"/><rect x="560" y="70" width="34" height="34" rx="3"/><rect x="690" y="90" width="48" height="26" rx="3"/></g>
+</svg>
