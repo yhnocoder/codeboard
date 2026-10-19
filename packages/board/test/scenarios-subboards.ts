@@ -3,7 +3,7 @@
 // Usage: node packages/board/test/run-harness.mjs subboards [--light]   screenshots: test-out/harness/subboards-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { cutCrumbs, emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, cutCrumbs, emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "../../../extensions/vscode/src/nodefs";
 import { open, shot, symCard, findSym, viewOf, put, OUT, type Host } from "./harness";
@@ -57,7 +57,7 @@ export async function subHost(start: Board, others: Board[]) {
     if (cam) b.cam = cam;
     sent.clear();
     inits.push({ id: cur, crumbs: crumbs.length, walk });
-    const m: HostToBoard = { type: "init", board: b, boards: await store.list(), views: viewsOf(b), stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { theme: "warm-ink", hideOnNew: {}, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text" } } };
+    const m: HostToBoard = { type: "init", board: b, boards: await store.list(), views: viewsOf(b), stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } };
     if (crumbs.length) m.crumbs = crumbs;
     if (walk) m.walk = walk as any;
     await h.post(m);
