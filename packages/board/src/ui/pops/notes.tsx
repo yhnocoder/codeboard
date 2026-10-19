@@ -1,13 +1,13 @@
 // Sidenote 弹窗（看、改、右键菜单）和加 Sidenote（Code / Paste / Text / Link / Card）。
 import { keepKey } from "../editkeys";
-import { For, Show, Switch, Match, createSignal, createEffect, onCleanup } from "solid-js";
+import { For, Show, Switch, Match, createSignal, createEffect } from "solid-js";
 import { cardTitle, versionLabel, baseName, isCode, langLabel, LANGS, guessLang, escHtml, type Sidenote, type SearchItem, type SegView } from "@codeboard/core";
 import { state, cardById, toast, sharedOn } from "../../state/store";
 import { pops, closePop, pinPop } from "../../state/pop";
 import { pickCardThen } from "../../state/mode";
 import { ask } from "../../host";
 import * as A from "../../actions";
-import { useListNav, useDebouncedAsk } from "../hooks";
+import { useListNav, useDebouncedAsk, useFinish } from "../hooks";
 import { Icon } from "../icons";
 import { MdStatic } from "../Md";
 import { openMenu, type Item } from "../Menu";
@@ -118,17 +118,13 @@ function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
   let box!: HTMLDivElement;
   const [v, setV] = createSignal(p.n.md);
   const grow = (el: HTMLTextAreaElement) => { el.style.height = "auto"; el.style.height = `${el.scrollHeight}px`; };
-  let done = false;
-  const finish = (save: boolean) => {
-    if (done) return;
-    done = true;
+  const { finish } = useFinish((save: boolean) => {
     setSnEditing(null);
     const t = v().trim();
     if (!save || t === p.n.md) return;
     if (t) A.updateSidenote(p.n.id, (k) => { if (k.kind === "text") k.md = t; });
     else A.deleteSidenote(p.n.id);
-  };
-  onCleanup(() => finish(true)); // 弹窗被关掉了（点了白板）
+  }, (f) => f(true)); // 弹窗被关掉了（点了白板）
   return (
     <div ref={box} class="sn-edit" data-nodrag>
       <textarea spellcheck={false} value={v()} ref={(el) => queueMicrotask(() => { el.focus(); el.setSelectionRange(el.value.length, el.value.length); grow(el); })}
@@ -163,15 +159,14 @@ export function AddNotePop(p: PopProps<"addNote">) {
   const where = () => (at().lines ? (at().lines![0] === at().lines![1] ? `Line ${at().lines![0]}` : `Lines ${at().lines![0]}–${at().lines![1]}`) : "Whole card");
   useDebouncedAsk(() => (tab() === "code" ? q().trim() : ""), (s) => (s ? A.searchCodeForNote(s) : Promise.resolve([])), (r) => { setRes(r); setI(0); }, (s) => (s ? 120 : 0));
   // 加好了、按了 Cancel 或去白板上选卡了。没有的话弹窗关掉时（Esc、点到外面）Text / Paste 里写了的照样加上，和编辑 Note 一样
-  let settled = false;
-  onCleanup(() => { if (!settled && (tab() === "text" || tab() === "paste")) void add(); });
-  const cancel = () => { settled = true; closePop(p.inst.id); };
-  const done = (n: NoteBody, view?: SegView) => {
-    settled = true;
+  const { finish: settle } = useFinish((f: () => void) => f(), () => { if (tab() === "text" || tab() === "paste") void add(); });
+  const cancel = () => settle(() => closePop(p.inst.id));
+  const put = (n: NoteBody, view?: SegView) => {
     A.addSidenote({ ...n, at: at(), why: why().trim() || undefined }, view);
     closePop(p.inst.id);
     toast("Sidenote added");
   };
+  const done = (n: NoteBody, view?: SegView) => settle(() => put(n, view));
   const add = async () => {
     switch (tab()) {
       case "code": {
@@ -188,12 +183,11 @@ export function AddNotePop(p: PopProps<"addNote">) {
       case "link": { let u = url().trim(); if (!u) return; if (!/^https?:/.test(u)) u = `https://${u}`; done({ kind: "link", url: u }); return; }
     }
   };
-  const pickCard = () => {
-    settled = true;
+  const pickCard = () => settle(() => {
     closePop(p.inst.id);
     toast("Click a card on the board · Esc to cancel");
-    pickCardThen((id) => { done({ kind: "card", card: id }); });
-  };
+    pickCardThen((id) => put({ kind: "card", card: id }));
+  });
   const onKey = (e: KeyboardEvent) => {
     keepKey(e);
     if (e.key === "Escape") { e.preventDefault(); closePop(p.inst.id); }
