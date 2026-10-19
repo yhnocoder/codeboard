@@ -10,7 +10,7 @@ import {
   type NewCard, type Rect,
 } from "@codeboard/core";
 import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf, type LineSel } from "../state/store";
-import { camTo, camTarget, fitRect, fitTop, isVisible, viewportCenter } from "../state/camera";
+import { camTo, camTarget, fitTop, isVisible, viewportCenter } from "../state/camera";
 import { editing, setEditing } from "../state/ui";
 import { promptText } from "../ui/Menu";
 import { ask } from "../host";
@@ -212,18 +212,3 @@ rooted(() => {
     queueMicrotask(() => { if (isFresh(p)) settleFresh(p, !empty); });
   });
 });
-
-// 开始写 Note / Text 时字太小（缩得很小时按 N、双击）：镜头放大到看得清（最多 100%），卡放得下就整张放进来。退出编辑不缩回去
-const READ_PX = 11;
-rooted(() => createEffect(() => {
-  const e = editing();
-  if (e?.kind !== "note") return;
-  requestAnimationFrame(() => {
-    const el = document.querySelector(`.card[data-id="${e.id}"] :is(.nbody, .tx)`), r = hostRect(e.id);
-    if (!el || !r) return;
-    const fs = parseFloat(getComputedStyle(el).fontSize), c = camTarget();
-    if (!fs || fs * c.z >= READ_PX) return;
-    const f = fitRect(r, 1, Math.min(1, READ_PX / fs));
-    camTo(f.x, f.y, f.z);
-  });
-}));
