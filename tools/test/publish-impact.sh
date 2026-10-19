@@ -21,4 +21,4 @@ fs.writeFileSync(path.join(out, "failing.json"), JSON.stringify(results.filter((
 console.log(`impact map: ${results.length} scenarios, ${files.size} source files, ${results.filter((r) => !r.ok).length} failing`);
 JS
 [ -f "$NEW/harness.json" ] || exit 0
-tools/review/push-ci-branch.sh "$NEW" impact "impact map @ ${GITHUB_SHA:0:7}"
+tools/review/push-ci-branch.sh "impact map @ ${GITHUB_SHA:0:7}" "$NEW" impact
