@@ -270,8 +270,10 @@ async function crosslang(res: Record<string, unknown>) {
   res.genLink = linksOf(h).some((l) => l.gen && l.from.card === gen?.id && l.to.card === kern?.id);
   res.genHead = await page.locator(`.card[data-id="${gen?.id}"] .gentag`).textContent().catch(() => "");
   await page.keyboard.press("Escape");
-  await page.locator(`.card[data-id="${kern?.id}"] .chead`).click({ position: { x: 300, y: 10 } });
-  await page.locator(`.card[data-id="${gen?.id}"] .chead`).click({ position: { x: 300, y: 10 }, modifiers: ["Shift"] });
+  // an empty spot in each header (cards can be small on screen at this zoom)
+  const headSpot = async (id?: string) => ({ x: (await page.locator(`.card[data-id="${id}"] .chead`).boundingBox())!.width * 0.75, y: 6 });
+  await page.locator(`.card[data-id="${kern?.id}"] .chead`).click({ position: await headSpot(kern?.id) });
+  await page.locator(`.card[data-id="${gen?.id}"] .chead`).click({ position: await headSpot(gen?.id), modifiers: ["Shift"] });
   await fitWide(h, true);
   await page.keyboard.press("Escape"); await wait(h, 300);
   await shotPr(h, "crosslang-3-generated");
