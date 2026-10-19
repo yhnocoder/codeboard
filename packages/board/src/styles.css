@@ -88,7 +88,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .edge.w1, .ahead.w1 { --lw: .6; } .edge.w3, .ahead.w3 { --lw: 1.6; }
 /* Compare 两栏之间行对行的对照线（W01 B 11）：不带箭头 */
 .edge.cmpline { stroke-dasharray: 2 3; }
-.edge.retract { transition-duration: calc(var(--t) * 140ms); transition-timing-function: var(--in); }
 /* 带不带 Call 标记默认一样：实线 + 箭头；虚线要在菜单里选 */
 .edge.dashed { stroke-dasharray: 4 4; stroke-dashoffset: 0; }
 /* 连着的行在代码更新后没了：端点退到卡头，线标红，等用户重连或删掉（WS2 细化画法） */
@@ -96,14 +95,11 @@ input, textarea { font: inherit; color: var(--ink); }
 .ahead.triangle.lost, .ahead.dot.lost { fill: var(--lk-lost, #d64545); }
 .edge.hot { stroke: var(--accent); stroke-width: 1.6; }
 .edge.rubber { stroke: var(--accent); stroke-dasharray: 5 4; stroke-width: 1.5; }
-.board.linking, .board.linking * { cursor: alias !important; }
 .card.drop-cand { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--k-fn) 70%, transparent), var(--sh-card); }
 .card.drop-hot { box-shadow: 0 0 0 2.5px var(--k-fn), 0 0 0 6px var(--hi), var(--sh-card); }
-.ehit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; }
 .ahead { fill: none; stroke: var(--edge); stroke-width: calc(var(--edge-w) * var(--lw, 1)); stroke-linecap: round; stroke-linejoin: round; transition: opacity calc(var(--t) * 120ms) linear; }
 .ahead.hot { stroke: var(--accent); }
 .port { fill: var(--surface); stroke: var(--edge); stroke-width: var(--edge-w); transition: opacity calc(var(--t) * 120ms); }
-.hidden-o { opacity: 0; }
 /* 线的图层（canvas/Links.tsx 的「图层」）：线都在 .bottom 这一层（所有卡下面），放线、City 的路、线的标签框和贴纸（开着的车全在一层 .movers，见 Traffic.tsx）。
    标签框、贴纸原来的 z-index 在层里清掉，不然会跑到所有卡上面。线头的圆点在 .ports 这一层（在所有卡上面，跟以前的 .edges 一样）。
    浮上来的线（选中、拖着、指针下那张卡的）在 .top 这一层，在所有卡和画布贴纸上面 */
@@ -113,14 +109,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .lw { display: contents; }
 .lyr > .lw > .lw > * { z-index: auto; }
 .lyr .ghost, .lyr .ghost * { pointer-events: none !important; }
-.elabel { position: absolute; transform: translate(-50%, -50%); font: 11px/1 var(--mono); white-space: nowrap; color: var(--ink-2); background: var(--surface);
-  box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); border-radius: 5px; padding: 4px 7px; pointer-events: auto;
-  transition: opacity calc(var(--t) * 160ms) var(--out); }
-.elabel.user { font-family: var(--sys); font-size: 11.5px; }
 .vchips { cursor: grab; position: absolute; transform: translate(-50%, -50%); display: flex; gap: 3px; align-items: center; pointer-events: auto; white-space: nowrap; }
-.vchip { font: 10.5px/1 var(--mono); padding: 3px 6px; border-radius: 5px; background: var(--surface); color: var(--ink-2); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.05); }
-.vchip:hover, .vchip.on { color: var(--k-fn); box-shadow: 0 0 0 1px var(--k-fn); background: color-mix(in srgb, var(--surface) 80%, var(--hi)); }
-.vchip.loop { font-family: var(--sys); color: var(--ink-3); }
 .vplus { position: absolute; width: 20px; height: 20px; margin: -10px 0 0 -10px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); color: var(--ink-2);
   box-shadow: 0 0 0 .5px var(--hair), 0 2px 6px rgba(0,0,0,.12); font: 14px/1 var(--sys); pointer-events: auto; opacity: 0; transition: opacity .12s; z-index: 6; }
 .vplus.show { opacity: 1; }
@@ -189,8 +178,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .chead .cpath .rl { flex: 1 1 4em; min-width: 4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: normal; }
 .grow { flex: 1; }
 .ib { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 6px; color: var(--ink-2); transition: background .1s, color .1s, scale .12s; flex: none; }
-.ib:hover, .tbtn:hover, .bname:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
-.ib:active, .tbtn:active, .bname:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
+.ib:hover, .tbtn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.ib:active, .tbtn:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
 .ib[disabled] { opacity: .35; }
 /* 图标（ui/icons.tsx）横竖线画在整数坐标上：2px 描边正好盖满两行像素；1px 描边整组平移 (-.5, -.5) 落到半像素中心上。
    线宽只能是 1px 或 2px（1.4 / 1.5 在 1x 和 2x 屏上都会糊）。轻量主题 1px；繁复主题（Classic、Colorful、Newspaper、Poster、City）
@@ -226,7 +215,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .rowbg.origin { background: var(--row); }
 .rowbg.hl { background: var(--hlrow); box-shadow: inset 2px 0 0 var(--hlbar); }
 .rowbg.flash { animation: flash calc(var(--t) * 600ms) var(--out); }
-.rowbg.dropline { background: var(--hi); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 28%, transparent); } 100% { background: var(--row); } }
 .src { margin: 0 0 0 var(--gutter); padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
 .src { tab-size: 4; }
@@ -254,8 +242,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .call { text-decoration: var(--call-deco, underline dotted color-mix(in srgb, var(--k-fn) 60%, transparent)); text-underline-offset: 3px; cursor: pointer !important; border-radius: 3px; transition: background calc(var(--t) * 100ms); }
 .call:hover { background: color-mix(in srgb, var(--k-fn) 12%, transparent); text-decoration-color: var(--k-fn); }
 .src span.pk:hover { background: var(--hlrow); border-radius: 3px; }
-.vhl { background: var(--hi) !important; box-shadow: 0 0 0 1px color-mix(in srgb, var(--k-fn) 50%, transparent); border-radius: 3px; }
-.wd { background: var(--chg-strong); border-radius: 2px; }
 
 /* text & note */
 .card.text { background: transparent; box-shadow: none; border-radius: 4px; padding: 2px 4px; }
@@ -313,7 +299,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .cgap { font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); padding-left: 50px; margin: 1px 0; }
 .cfoot { flex: none; display: flex; gap: 14px; align-items: center; padding: 5px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-3); }
 .cfoot i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
-.cdimcol { opacity: .3; }
 
 /* sections */
 .sect { position: absolute; border: var(--sect-border); border-radius: calc(var(--r-card) + 3px); pointer-events: none; }
@@ -350,9 +335,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.merge-hot::after { content: "Release to merge"; position: absolute; left: 50%; top: -30px; transform: translateX(-50%); font: 600 11.5px/1 var(--sys); color: #fff; background: var(--k-fn); padding: 6px 10px; border-radius: 6px; white-space: nowrap; box-shadow: var(--sh-float); z-index: 5; }
 /* math */
 .tex { font-family: var(--mono); font-size: .95em; color: var(--ink-2); }
-.mathb { display: block; overflow-x: auto; overflow-y: hidden; padding: 4px 0; text-align: center; }
 .katex { font-size: 1.08em; }
-.cdesc .mathb, .nbody .mathb, .tx .mathb, .inote .mathb { margin: 2px 0; }
 math { font-size: 1.05em; }
 /* lock */
 .lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; color: var(--ink-2); }
@@ -376,12 +359,8 @@ math { font-size: 1.05em; }
 .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; box-shadow: inset 0 0 0 .5px var(--hair); vertical-align: -1px; margin-right: 6px; }
 /* ---------- floating chrome ---------- */
 .over { position: absolute; display: flex; align-items: center; gap: 4px; z-index: 20; }
-.tb-left { left: 12px; top: 10px; }
-.tb-right { right: 12px; top: 10px; }
 .dock { bottom: 12px; }
 .pill { display: inline-flex; align-items: center; gap: 2px; background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); border-radius: 10px; padding: 4px; box-shadow: var(--sh-float); }
-.bname { font: 600 13.5px var(--display); padding: 3px 8px; display: inline-flex; align-items: center; gap: 6px; color: var(--ink); border-radius: 6px; height: 28px; }
-.bname small { font: 11px var(--sys); color: var(--ink-3); font-weight: 400; }
 .tbtn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; gap: 6px; border-radius: 6px; color: var(--ink-2); font-size: 12.5px; }
 .tbtn.on { color: var(--accent); background: var(--row); }
 .tbtn kbd { font: 10.5px var(--mono); color: var(--ink-3); }
@@ -453,9 +432,6 @@ math { font-size: 1.05em; }
 .pcode .r.t .cno { color: var(--accent); opacity: 1; }
 .chrome .pcode, .chrome .pcode * { user-select: text; -webkit-user-select: text; cursor: text; }
 .chrome .pcode .cno { user-select: none; -webkit-user-select: none; }
-.pk-follow { display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
-.pk-follow code { font: 11px var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; }
-.pk-follow .loc { font: 10.5px var(--mono); color: var(--ink-3); }
 .cands { padding: 4px; border-bottom: 1px solid var(--line); }
 .cand { display: flex; width: 100%; gap: 8px; align-items: center; padding: 4px 8px; border-radius: 6px; font-size: 12px; text-align: left; white-space: nowrap; }
 .cand .kind { width: 12px; }
@@ -681,7 +657,6 @@ kbd { font: 10.5px var(--mono); }
 .rev.unc { color: var(--k-num); }
 .rev.unc:hover { color: var(--ink); }
 .rev.sm { padding: 0 4px; }
-.rev.nover { color: var(--ink-3); cursor: default; }
 .rev.lang { color: var(--ink-2); }
 .mk.inline { position: static; margin: 0; flex: none; }
 /* 选中单张代码卡时浮在卡片上方的小工具条：不改变卡片高度，不挤压下面的卡 */
@@ -765,9 +740,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .imgb:has(+ .cdesc) { border-radius: var(--r-card) var(--r-card) 0 0; }
 .card.image .cdesc { border-bottom: 0; border-top: 1px solid var(--line); }
 .imgb img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
-.webb { padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.webb .wt { font: 500 13px/1.45 var(--sys); color: var(--ink); }
-.webb .wd { font: 11px var(--mono); color: var(--ink-3); }
 
 /* edge ports (drag out an arrow) */
 .eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair !important; }
@@ -792,7 +764,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .board.dragging .porthit, .lyr.lod-map .porthit { display: none; }
 .board.dragging .lyr .ghost { display: none; } /* 拖着卡的时候影子不跟着动，直接不画 */
 .vchips { z-index: 6; }
-.vchips.on .vlabel, .vchips.on .vchip { box-shadow: 0 0 0 1.5px var(--accent); }
+.vchips.on .vlabel { box-shadow: 0 0 0 1.5px var(--accent); }
 .vlabel.editing { min-width: 60px; }
 .vplus { opacity: 1; margin: -10px 0 0 -10px; }
 /* + 浮在框左边、不占位：占位会把居中的框挤开，鼠标就滑出框外 → + 消失 → 框回来 → 来回闪 */
@@ -816,13 +788,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .board[data-mode="draw"], .board[data-mode="draw"] * { cursor: crosshair !important; }
 
 /* chrome */
-.tb-left .pill { padding: 3px; }
-.bname { cursor: default; }
-.bname.editing { font: 600 13.5px var(--display); min-width: 80px; }
-.tdot { width: 7px; height: 7px; border-radius: 50%; background: var(--ink-3); opacity: .6; margin: 0 2px 0 6px; flex: none; }
-.segc { display: inline-flex; background: color-mix(in srgb, var(--ink) 6%, transparent); border-radius: 7px; padding: 2px; }
-.segc button { height: 24px; padding: 0 10px; border-radius: 5px; font-size: 12px; color: var(--ink-2); }
-.segc button.on { background: var(--surface); color: var(--ink); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(0,0,0,.08); }
 /* 居中不用 translateX(-50%)：宽度是奇数时会落在半个像素上，图标发糊 */
 .bbar { bottom: 12px; left: 0; right: 0; width: max-content; margin-inline: auto; }
 .dock { right: 12px; }
@@ -924,7 +889,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .k-commits, .k-pick, .k-vars { min-width: 300px; max-width: 460px; }
 .k-commits .sres, .k-pick, .k-vars .sres { padding: 4px; }
 .srcpop { width: min(640px, 90vw); }
-.srcbody .pcode { max-height: 60vh; }
 .pop .sres { margin-top: 0; }
 .card.lost .cbody { filter: grayscale(1); opacity: .62; } /* 符号找不到：显示旧代码，变灰 */
 /* 白板只占半边窗口时，底部工具条只留图标（悬停仍有提示），不被裁掉 */
