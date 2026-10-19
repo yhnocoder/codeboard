@@ -1,4 +1,4 @@
-// v0.1.7 looks (Ink Wash, City): node run-harness.mjs v17looks [--light]; City roads, cars and traffic: v17city
+// v0.1.7 looks (Ink Wash, City): node run-harness.mjs themeLooks [--light]; City roads, cars and traffic: cityTheme
 import * as fs from "node:fs";
 import { open, shot, symCard, findSym, put } from "./harness";
 import { emptyBoard, type Board } from "@codeboard/core";
@@ -19,11 +19,11 @@ function board(): Board {
 
 const STROKE: Record<string, string> = { "ink-wash": "1px", city: "2px" };
 
-export const THEMES_V17: Record<string, () => Promise<void>> = {
+export const THEMES: Record<string, () => Promise<void>> = {
   /** City: every arrow end is a parked car (merged ends: one car per junction) waiting at a zebra crossing, main roads have a shoulder,
    *  white edge lines and a double yellow centre line, small streets a white centre line,
    *  traffic off = no animation at all; on = cars driving (transform / opacity only, compositor); reduced motion = off. Screenshots to SHOTS */
-  async v17city() {
+  async cityTheme() {
     const SHOTS = process.env.CITY_SHOTS ?? "/mnt/project-files/v017/themes";
     try { fs.mkdirSync(SHOTS, { recursive: true }); } catch { /* no project files here: harness output only */ }
     for (const light of [true, false]) {
@@ -73,7 +73,7 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
         && off.movers === 0 && off.running === 0
         && on.movers >= 4 && on.running === 2 * on.movers && on.compOnly
         && back.movers === 0 && back.running === 0 && reduced.movers === 0 && reduced.running === 0;
-      console.log(ok ? "PASS" : "FAIL", "v17city", light ? "light" : "dark", JSON.stringify({ off, on: { movers: on.movers, running: on.running, compOnly: on.compOnly }, back: back.running, reduced: reduced.running }));
+      console.log(ok ? "PASS" : "FAIL", "cityTheme", light ? "light" : "dark", JSON.stringify({ off, on: { movers: on.movers, running: on.running, compOnly: on.compOnly }, back: back.running, reduced: reduced.running }));
       await h.page.context().browser()!.close();
       // Close-up of the junction and the parked cars (road markings, zebra crossings): screenshot only
       b.cam = { x: -1050, y: -1200, z: 2.5 };
@@ -86,7 +86,7 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
   },
   /** Each new look in light and dark: per-file hue on code cards, icon stroke 1 or 2 px, scene backgrounds,
    *  the City traffic light (only in City, red by default), and no endless animation running */
-  async v17looks() {
+  async themeLooks() {
     for (const light of [true, false]) for (const theme of Object.keys(STROKE)) {
       const h = await open({ board: board(), light, w: 1300, h: 820, settings: { theme } as any });
       await h.page.waitForTimeout(800);
@@ -116,7 +116,7 @@ export const THEMES_V17: Record<string, () => Promise<void>> = {
         && r.stroke === STROKE[theme] && r.endless === 0 && (theme === "city" ? endlessOn > 0 : endlessOn === 0)
         && (theme === "ink-wash" || theme === "city" ? r.scene : true)
         && (theme === "city" ? r.traffic === 1 && r.pressed === "false" && toggled === "true" : r.traffic === 0);
-      console.log(ok ? "PASS" : "FAIL", "v17look", theme, light ? "light" : "dark", JSON.stringify(r), toggled ?? "");
+      console.log(ok ? "PASS" : "FAIL", "theme-look", theme, light ? "light" : "dark", JSON.stringify(r), toggled ?? "");
       await h.page.context().browser()!.close();
     }
   },

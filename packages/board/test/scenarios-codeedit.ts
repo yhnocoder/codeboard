@@ -153,15 +153,17 @@ async function typing() {
   // 打字：新的一行很快就着色；回车保持缩进（: 结尾多一级）
   await pg.keyboard.press("Control+End");
   await pg.keyboard.press("Enter");
-  await pg.keyboard.type("for i in range(3):", { delay: 15 });
-  await pg.keyboard.press("Escape"); // 关掉补全菜单 / 签名提示（不退出）
+  await pg.keyboard.type("for i in range(", { delay: 15 });
+  await pg.waitForSelector(".cbcm-sig", { timeout: 4000 }).catch(() => null);
+  // 签名提示开着、刚打的字的补全还在问（看不见）：一次 Esc 关掉看得见的签名提示，不退出，提示也不会被还在路上的回复再打开
+  await pg.keyboard.type("3");
   await pg.keyboard.press("Escape");
   await pg.waitForTimeout(100);
-  const stillEditing = await pg.locator('.card[data-id="c1"] .cm-content').count() === 1;
+  const stillEditing = await pg.locator('.card[data-id="c1"] .cm-content').count() === 1, sigClosed = await pg.locator(".cbcm-sig").count() === 0;
+  await pg.keyboard.type("):");
   await pg.keyboard.press("End");
   await pg.keyboard.press("Enter");
   await pg.keyboard.type("pass");
-  await pg.keyboard.press("Escape");
   await pg.waitForTimeout(300);
   const v1 = await text(pg);
   const colored = await pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].slice(-2).map((l) => l.querySelectorAll("span.kw").length));
@@ -179,9 +181,9 @@ async function typing() {
   await pg.keyboard.press("Control+/");
   const v5 = await text(pg);
   const tail = (v: string) => v.split("\n").slice(-2).join("|");
-  const ok = stillEditing && tail(v1) === "for i in range(3):|    pass" && colored.every((n) => n > 0)
+  const ok = stillEditing && sigClosed && tail(v1) === "for i in range(3):|    pass" && colored.every((n) => n > 0)
     && tail(v2) === "    for i in range(3):|        pass" && tail(v3) === tail(v1) && tail(v4) === "# for i in range(3):|#     pass" && tail(v5) === tail(v1);
-  check("codeedit typing: highlight, indent, Tab, comment, Esc closes popups first", ok, { stillEditing, v1: tail(v1), colored, v2: tail(v2), v3: tail(v3), v4: tail(v4), v5: tail(v5) });
+  check("codeedit typing: highlight, indent, Tab, comment, Esc closes popups first", ok, { stillEditing, sigClosed, v1: tail(v1), colored, v2: tail(v2), v3: tail(v3), v4: tail(v4), v5: tail(v5) });
   const doc = h.sent.filter((m) => m.type === "codeDoc") as any[];
   check("codeedit the host gets a virtual document for the card (python)", doc.length > 0 && doc[doc.length - 1].lang === "python" && doc[doc.length - 1].id === "free-c1", { n: doc.length, last: doc[doc.length - 1] && { id: doc[doc.length - 1].id, lang: doc[doc.length - 1].lang } });
 

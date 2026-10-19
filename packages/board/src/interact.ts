@@ -553,6 +553,8 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
 
 const typing = (e: KeyboardEvent) => { const t = e.target as HTMLElement; return !!t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); };
 
+/** 第几次按下方向键（自动重复不算）：同一次按住的微移并成一步撤销 */
+let nudgeRun = 0;
 export function installKeys() {
   // 点白板任何地方都要拿到键盘焦点。卡片标题、画布、连线等的 pointerdown 调了 preventDefault（拖动时不选字），这也取消了
   // mousedown 的默认动作（给这个 iframe 焦点）：VS Code 里焦点就留在旁边的代码编辑器，按 Backspace 删的是那里选中的字。
@@ -653,8 +655,9 @@ export function installKeys() {
       e.preventDefault();
       const d = e.shiftKey ? 10 : 1;
       const dx = k === "ArrowLeft" ? -d : k === "ArrowRight" ? d : 0, dy = k === "ArrowUp" ? -d : k === "ArrowDown" ? d : 0;
-      // 连着按（或按住）方向键挪同一批卡是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了
-      mutate((b) => { for (const id of sel.cards) { const c = hostPlace(b, id); if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } }, { merge: `nudge:${sel.cards.join(",")}` });
+      // 按住方向键（自动重复）是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了；每按一下是一步
+      if (!e.repeat) nudgeRun++;
+      mutate((b) => { for (const id of sel.cards) { const c = hostPlace(b, id); if (c && !A.isLocked(id)) { c.x += dx; c.y += dy; } } }, { merge: `nudge:${nudgeRun}` });
     }
   });
   window.addEventListener("keyup", (e) => {

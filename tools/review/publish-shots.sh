@@ -5,7 +5,6 @@
 set -e
 SHOTS=$1; KEY=$2; BASE=$3
 ROOT=$(pwd); WT=$ROOT/.ci-shots; OUTMD=${4:-$ROOT/test-out/shots-summary.md}; DIFF=$ROOT/test-out/shots-diff-${KEY//\//-}
-git config user.name "codeboard-ci"; git config user.email "ci@users.noreply.github.com"
 rm -rf "$WT"
 if git fetch -q --depth 1 origin ci-screenshots; then git worktree add -q "$WT" FETCH_HEAD
 else git worktree add -q --detach "$WT"; (cd "$WT" && git checkout -q --orphan ci-screenshots && git rm -rqf . ); fi
@@ -19,10 +18,5 @@ rm -rf "$WT/$KEY"; mkdir -p "$WT/$KEY"
 cp -r "$SHOTS" "$WT/$KEY/shots"; rm -f "$WT/$KEY/shots/"*.log
 cp -r "$DIFF" "$WT/$KEY/diff"
 cp "$DIFF/summary.md" "$OUTMD"
-cd "$WT"; git add -A
-if ! git diff --cached --quiet; then
-  git commit -qm "screenshots: $KEY @ ${GITHUB_SHA:0:7}"
-  for i in 1 2 3 4; do git push -q origin HEAD:ci-screenshots && break
-    sleep $((2 ** i)); git fetch -q origin ci-screenshots && git rebase -q FETCH_HEAD || true; done
-fi
-cd "$ROOT"; git worktree remove --force "$WT"
+"$ROOT/tools/review/push-ci-branch.sh" "$WT/$KEY" "$KEY" "screenshots: $KEY @ ${GITHUB_SHA:0:7}"
+git worktree remove --force "$WT"
