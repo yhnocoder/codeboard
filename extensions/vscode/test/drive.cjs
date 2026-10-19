@@ -423,12 +423,12 @@ const finish = async (browser, errors) => {
     return finish(browser, errors);
   }
 
-  // 1. Alt+B inside a function: the board opens and the function becomes the first card
+  // 1. Alt+B inside a function: the first time in this workspace the board opens beside the editor
+  //    (focus stays in the editor) and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
   await page.keyboard.press("Alt+b"); await sleep(2500);
-  // With no board open Alt+B only saves and shows a notice; open the board to see the result
-  await command(page, "CodeBoard: Open Board");
   let f = await boardFrame(page); await sleep(1500);
+  check(await page.locator(".editor-group-container .monaco-editor.focused").count() === 1, "the first Alt+B opens the board and keeps focus in the editor");
   check(await card(f, "LLMEngine.step").count() === 1, "Alt+B puts LLMEngine.step on the board");
   const nCalls = await f.locator(".card .src .call").count();
   check(nCalls >= 3, "calls in the card are clickable", await f.locator(".card .src .call").allTextContents());
@@ -448,8 +448,10 @@ const finish = async (browser, errors) => {
   await page.keyboard.press("Shift+!"); await sleep(900);
   await shot(page, "2-flow");
 
-  // 4. Definition Peek: hover can_allocate
+  // 4. Definition Peek: hover can_allocate (Fit on this narrow board is an overview; zoom to Scheduler.schedule first)
   const sch = card(f, "Scheduler.schedule");
+  await sch.locator(".chead").click(); await sleep(300);
+  await page.keyboard.press("Shift+@"); await sleep(900);
   await sch.locator(".src .call", { hasText: /^can_allocate$/ }).first().hover(); await sleep(2500);
   check(await f.locator(".pop.k-peek").count() === 1, "hovering a name opens Definition Peek");
   await shot(page, "3-peek");

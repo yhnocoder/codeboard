@@ -8,7 +8,7 @@ import {
   type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
 import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
-import { camTo, camTarget, fitRect, fitTop, isVisible, union, overviewZ } from "../state/camera";
+import { camTo, camTarget, fitRect, usableW, fitTop, isVisible, union, overviewZ } from "../state/camera";
 import { lineY } from "../state/geo";
 import { flash, ping, setWalk, walk } from "../state/ui";
 import { openPop } from "../state/pop";
@@ -158,9 +158,10 @@ function followExpanded(cardId: string, segId: string, call: CallSpan, id: strin
   let f = fitRect(union(from, r), c.z);
   for (const w of [r.w, 240, 160]) if (f.z < floor) f = fitRect(union(from, { ...top, w: Math.min(r.w, w) }), c.z);
   if (f.z < floor) {
-    // 调用名大概在哪（等宽字，按列估）
-    const name = { x: p.x + CODE_LEFT + call.col * CHAR_W - 24, y: from.y, w: call.name.length * CHAR_W + 48, h: from.h };
-    f = fitRect(union(name, { ...top, w: Math.min(r.w, 160) }), c.z, floor);
+    // 右边对齐新卡左边一截，往左尽量多放父卡这一行，至少放到调用名（等宽字，按列估）
+    const right = r.x + Math.min(r.w, 160), name = p.x + CODE_LEFT + call.col * CHAR_W - 24;
+    const left = Math.max(p.x, Math.min(name, right - usableW(floor)));
+    f = fitRect(union({ x: left, y: from.y, w: right - left, h: from.h }, { ...top, w: right - r.x }), c.z, floor);
   }
   camTo(f.x, f.y, f.z);
 }
