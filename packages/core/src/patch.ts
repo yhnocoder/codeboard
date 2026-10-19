@@ -117,14 +117,16 @@ export function putShared(b: Board, sc: SharedCard, o: { moved?: boolean } = {})
 
 /**
  * 别的白板改了共享卡，按项放进这块白板（白板界面用，在 sync 里调用，撤销后会重放）：items 里的卡换掉（自己的行号跟着挪），
- * items 里的 Sidenote 换掉 / 加上，sc 里没有的删掉（只删跟着这张卡走的）。sc 里的东西每次都拷一份放进去
+ * items 里的 Sidenote 换掉 / 加上，sc 里没有的删掉（只删跟着这张卡走的）。sc 里的东西每次都拷一份放进去。
+ * 宿主缓存里的白板也这样换（不在 items 里的项可能是那块白板还没写盘的改动）。返回这块白板自己指着它的行号有没有跟着挪
  */
-export function applySharedUpdate(b: Board, sc: SharedUpdate): void {
+export function applySharedUpdate(b: Board, sc: SharedUpdate): boolean {
   const id = sc.card.id;
   const i = b.cards.findIndex((c) => c.id === id);
-  if (i < 0) return;
+  if (i < 0) return false;
+  let moved = false;
   if (sc.items.includes(id)) {
-    followShared(b, b.cards[i], sc.card);
+    moved = followShared(b, b.cards[i], sc.card);
     b.cards[i] = clone(sc.card);
   }
   for (const nid of sc.items) {
@@ -135,6 +137,7 @@ export function applySharedUpdate(b: Board, sc: SharedUpdate): void {
     else if (n) b.sidenotes.push(clone(n));
     else if (j >= 0 && travels(b.sidenotes[j], id)) b.sidenotes.splice(j, 1);
   }
+  return moved;
 }
 
 /**
