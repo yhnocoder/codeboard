@@ -11,6 +11,8 @@ export default defineConfig({
     emptyOutDir: true,
     cssCodeSplit: false,
     modulePreload: false,
+    // BOARD_SOURCEMAP=1 (nightly CI): source maps let the harness map each scenario's coverage back to source files
+    sourcemap: !!process.env.BOARD_SOURCEMAP,
     rollupOptions: {
       input: "src/index.tsx",
       output: { entryFileNames: "board.js", assetFileNames: (a) => (a.names?.[0] ?? a.name ?? "").endsWith(".css") ? "board.css" : "fonts/[name][extname]", chunkFileNames: "chunks/[name]-[hash].js", format: "es" },
