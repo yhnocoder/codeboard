@@ -667,6 +667,28 @@ describe("two windows on one storage folder", () => {
     expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n9"]);
   });
 
+  it("a local body edit not yet written survives another window only moving the shared card", async () => {
+    const { fs, w1, w2, settled } = watching();
+    const a = emptyBoard("A", "A");
+    a.cards.push(note("s", "original")); a.place.s = { x: 0, y: 0, w: 100 };
+    await w1.save(a);
+    await w1.share("A", ["s"]);
+    await w2.load("A");
+    await settled();
+    const merges: any[] = [];
+    w1.onDidMerge((e) => merges.push(e.patch));
+    await w1.patch("A", { cards: { set: [note("s", "unsaved text")] } });
+    await patchNow(w2, "A", { place: { set: { s: { x: 300, y: 40, w: 100 } } } });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(w1.peek("A")!.cards).toEqual([note("s", "unsaved text")]);
+    expect(w1.peek("A")!.place.s).toEqual({ x: 300, y: 40, w: 100 });
+    // The open panel only gets the move
+    expect(merges.at(-1)).toEqual({ place: { set: { s: { x: 300, y: 40, w: 100 } } } });
+    await settled();
+    expect(JSON.parse(fs.files.get(`${ROOT}/cards/s.json`)!.data as string).card.md).toBe("unsaved text");
+    expect(JSON.parse(fs.files.get(`${ROOT}/A.json`)!.data as string).place.s).toEqual({ x: 300, y: 40, w: 100 });
+  });
+
   it("a card one window deleted takes along the link another window drew to it when the edits merge", async () => {
     const fs = new MemFs();
     const w1 = new Storage(fs, { dir: () => ROOT }), w2 = new Storage(fs, { dir: () => ROOT });
