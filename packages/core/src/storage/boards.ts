@@ -564,17 +564,50 @@ export class Storage {
 
   /** 删白板：放进 .trash，误删还能找回来。排在正在写的之后，没写的改动跟着扔掉（不然写盘又把它写回来） */
   async remove(id: string) {
+    return this.serial(() => this.removeNow(id));
+  }
+  private async removeNow(id: string) {
+    const fs = this.fs;
+    const e = this.cache.get(id);
+    if (!e) return;
+    clearTimeout(this.timers.get(id));
+    const trash = fs.join(this.dir(), ".trash");
+    await fs.mkdir(trash);
+    await fs.rename(e.file, fs.join(trash, `${id}.${Date.now()}.json`)).catch(() => fs.rm(e.file));
+    this.cache.delete(id);
+    this.changed.fire();
+    this.removedBoard.fire(id);
+  }
+
+  /**
+   * 撤销 Turn into Board：拆出来的白板还是刚建好时的样子 made（镜头不算）才放进 .trash，返回 true。
+   * 建好以后又改过（进去编辑过）就留着、返回 false：撤销不能把用户的改动一起扔掉（父白板照样撤回去，这块白板留在列表里）
+   */
+  async dropIfUnchanged(id: string, made: Board): Promise<boolean> {
     return this.serial(async () => {
-      const fs = this.fs;
+      if (!this.cache.has(id)) await this.scan();
       const e = this.cache.get(id);
-      if (!e) return;
-      clearTimeout(this.timers.get(id));
-      const trash = fs.join(this.dir(), ".trash");
-      await fs.mkdir(trash);
-      await fs.rename(e.file, fs.join(trash, `${id}.${Date.now()}.json`)).catch(() => fs.rm(e.file));
-      this.cache.delete(id);
+      if (!e || boardKey(e.board) !== boardKey(made)) return false;
+      await this.removeNow(id);
+      return true;
+    });
+  }
+
+  /** 重做 Turn into Board：.trash 里这块白板最近放进去的那份放回来（放进组 group；没有 = 顶层）。.trash 里没有返回 false */
+  async restore(id: string, group?: string): Promise<boolean> {
+    if (!SAFE_ID.test(id)) return false;
+    return this.serial(async () => {
+      const fs = this.fs, trash = fs.join(this.dir(), ".trash");
+      const re = new RegExp(`^${id}\\.(\\d+)\\.json$`);
+      const names = (await fs.readdir(trash).catch(() => [])).map((d) => re.exec(d.name)).filter((m): m is RegExpExecArray => !!m);
+      if (!names.length || this.cache.has(id)) return false;
+      const last = names.sort((a, b) => Number(b[1]) - Number(a[1]))[0][0];
+      const dir = group ? fs.join(this.dir(), group) : this.dir();
+      await fs.mkdir(dir);
+      await fs.rename(fs.join(trash, last), fs.join(dir, `${id}.json`));
+      await this.scan();
       this.changed.fire();
-      this.removedBoard.fire(id);
+      return true;
     });
   }
 
@@ -714,6 +747,9 @@ function itemsChanged(x: SharedCard | undefined, y: SharedCard): string[] {
   for (const n of y.sidenotes) { if (!same(xs.get(n.id), n)) d.push(n.id); xs.delete(n.id); }
   return [...d, ...xs.keys()];
 }
+
+/** 比较两份白板内容用的键：镜头和版本不算，字段先后不算 */
+const boardKey = (b: Board) => JSON.stringify({ ...b, cam: undefined, version: undefined }, (_k, v) => (v && typeof v === "object" && !Array.isArray(v) ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, v[k]])) : v));
 
 /** 侧栏关心的部分：名字、卡片数、子白板 */
 const outline = (b: Board) => JSON.stringify([b.name, b.cards.length, allCodeCards(b).length, subBoardsOf(b)]);

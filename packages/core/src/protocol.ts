@@ -240,8 +240,12 @@ export type BoardToHost =
   | { type: "skeletons"; req: number; ids: string[] }
   /** Turn into Board：选中的卡拆出来的新白板（id 白板定），存到父白板所在的组；共享卡还是共享卡。回 ok */
   | { type: "newBoard"; req: number; board: Board }
-  /** 撤销 Turn into Board：拆出来的那块白板不要了（放进 .trash，不问；别的白板也放着它的框就留着）。回删没删 */
-  | { type: "dropBoard"; req: number; id: string }
+  /**
+   * 撤销 Turn into Board：拆出来的那块白板不要了（放进 .trash，不问）。还是刚建好时的样子 made 才删：之后改过、或别的白板也放着它的框就留着。回删没删
+   */
+  | { type: "dropBoard"; req: number; id: string; made: Board }
+  /** 重做 Turn into Board：撤销时放进 .trash 的那块白板放回来（放到父白板所在的组）。.trash 里没有回 false */
+  | { type: "restoreBoard"; req: number; id: string }
   /** 双击子白板框：在这个面板里打开子白板（frame = 框的卡 id，cam = 父白板回来时的镜头）；walk.start = 接着讲解 */
   | { type: "enterBoard"; id: string; frame: string; cam: Camera; walk?: WalkHop }
   /** 面包屑 / Esc：回到第 depth 层父白板（0 = 最外层；缺省 = 上一级）；walk.back = 父白板接着讲解 */
@@ -370,6 +374,7 @@ type Replies = {
   skeletons: Record<string, Skeleton | null>;
   newBoard: boolean;
   dropBoard: boolean;
+  restoreBoard: boolean;
   deleteBoard: boolean;
   questions: QuestionItem[];
   permalinks: Record<string, string>;

@@ -713,6 +713,33 @@ describe("read-modify-write in the write queue", () => {
   });
 });
 
+describe("undo and redo of Turn into Board", () => {
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  const made = () => { const b = emptyBoard("child", "Child"); b.cards.push(note("x")); b.place.x = { x: 0, y: 0, w: 100 }; return b; };
+  it("undo keeps a sub-board edited since it was made; redo links to that board", async () => {
+    const { fs, store } = setup();
+    await store.save(made(), { group: null });
+    await patchNow(store, "child", { cards: { set: [note("x", "edited in the sub-board")] } });
+    expect(await store.dropIfUnchanged("child", made())).toBe(false);
+    const f = JSON.parse(fs.files.get(`${ROOT}/child.json`)!.data as string);
+    expect(f.cards).toEqual([note("x", "edited in the sub-board")]);
+    expect(await store.restore("child")).toBe(false); // nothing in the trash: redo keeps the board that is there
+    expect((await store.load("child"))!.cards).toEqual([note("x", "edited in the sub-board")]);
+  });
+  it("undo trashes a sub-board nobody changed (moving the camera is no change); redo brings that file back", async () => {
+    const { fs, store } = setup();
+    await store.save(made(), { group: null });
+    await patchNow(store, "child", { cam: { x: 50, y: 60, z: 2 } });
+    expect(await store.dropIfUnchanged("child", made())).toBe(true);
+    expect(fs.files.has(`${ROOT}/child.json`)).toBe(false);
+    expect(await store.load("child")).toBe(null);
+    expect(await store.restore("child", "G")).toBe(true);
+    expect(fs.files.has(`${ROOT}/G/child.json`)).toBe(true);
+    expect((await store.load("child"))!).toMatchObject({ cards: [note("x")], cam: { x: 50, y: 60, z: 2 } });
+    expect(await store.restore("child")).toBe(false);
+  });
+});
+
 describe("removing boards", () => {
   it("removing a board moves it to the trash and says which board went", async () => {
     const { fs, store } = setup();
