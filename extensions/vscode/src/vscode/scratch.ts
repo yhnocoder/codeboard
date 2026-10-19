@@ -10,7 +10,7 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import type { LspItem, LspKind, LspSignature, WorkspaceScratch } from "@codeboard/core";
-import { HEARTBEAT_MS, SCRATCH_GLOB, isScratchName, scratchName, staleScratch } from "../scratchnames";
+import { HEARTBEAT_MS, SCRATCH_GLOB, isScratchName, scratchName, staleScratch } from "@codeboard/host/scratchnames";
 
 type Doc = { uri: vscode.Uri; lang: string; doc: vscode.TextDocument };
 const docs = new Map<string, Doc>();

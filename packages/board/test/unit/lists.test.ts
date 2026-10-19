@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import { describe, expect, it, vi } from "vitest";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
-import { FORWARDED_KEYS } from "../../../../extensions/vscode/src/boards";
+import { FORWARDED_KEYS } from "@codeboard/host/boards";
 import { helpRows, keyText } from "../../src/keymap";
 
 // keymap 的表里动作要用白板的状态（DOM、宿主桥）；这里只读表和清单文字，状态模块换成空的

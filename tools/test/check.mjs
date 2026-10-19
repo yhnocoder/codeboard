@@ -47,7 +47,7 @@ const build = fresh ? run("build (extension only; board unchanged)", "npm", ["ru
 const first = await Promise.all([
   run("typecheck", "npm", ["run", "typecheck"]),
   run("unit tests", "npm", ["test"]),
-  run("host tests", "npm", ["run", "test:host", "-w", "codeboard-vscode"]),
+  run("host tests", "npm", ["run", "test:host", "-w", "@codeboard/host"]),
   build,
 ]);
 if (!first[3]) { console.log("build failed: no harness run"); process.exit(1); }

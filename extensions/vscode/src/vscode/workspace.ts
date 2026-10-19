@@ -3,7 +3,7 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import { vscodeScratch, isScratch } from "./scratch";
 import { COMPLETE_SYSTEM, Emitter, completePrompt, type Workspace } from "@codeboard/core";
-import { deepseekComplete } from "../deepseek";
+import { deepseekComplete } from "@codeboard/host/deepseek";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
 

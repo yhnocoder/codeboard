@@ -1,8 +1,8 @@
 // 命令注册（VS Code 适配层）：命令做什么在 actions.ts。
 import * as vscode from "vscode";
-import { makeActions } from "./actions";
+import { makeActions } from "@codeboard/host/actions";
 import type { Panels } from "./panel";
-import type { Storage } from "./storage";
+import type { Storage } from "@codeboard/host/storage";
 import { DEEPSEEK_SECRET } from "./vscode/workspace";
 
 export function registerCommands(ctx: vscode.ExtensionContext, panels: Panels, store: Storage) {

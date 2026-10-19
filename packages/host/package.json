@@ -1,0 +1,24 @@
+{
+  "name": "@codeboard/host",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "test:host": "node test/check-vscode-imports.mjs && node test/run-scratch-names.mjs && node test/run-host-resolve.mjs",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@codeboard/core": "^0.1.0",
+    "shiki": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.4"
+  },
+  "exports": {
+    "./*": "./src/*.ts",
+    "./test/*": "./test/*.ts"
+  }
+}

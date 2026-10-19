@@ -1,5 +1,5 @@
 // Scratch file naming and crash cleanup (src/scratchnames.ts): only exact .codeboard-scratch-<id>.<ext> names that are
-// not ours and whose mtime is older than STALE_MS get deleted. Usage: node extensions/vscode/test/run-scratch-names.mjs
+// not ours and whose mtime is older than STALE_MS get deleted. Usage: node packages/host/test/run-scratch-names.mjs
 import { HEARTBEAT_MS, STALE_MS, isScratchName, isStale, scratchName, staleScratch } from "../src/scratchnames";
 
 let failed = 0;

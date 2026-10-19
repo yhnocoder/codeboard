@@ -5,12 +5,12 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import { cutCrumbs, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardToHost, type Camera, type Crumb, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
 import type { CardClip } from "@codeboard/core/storage";
-import type { Storage } from "./storage";
-import { BoardPanel, type BoardHost, type BoardView } from "./boards";
-import type { Handler } from "./handlers";
-import { log } from "./log";
-import { viewsFor } from "./views";
-import { variantSegments } from "./versions";
+import type { Storage } from "@codeboard/host/storage";
+import { BoardPanel, type BoardHost, type BoardView } from "@codeboard/host/boards";
+import type { Handler } from "@codeboard/host/handlers";
+import { log } from "@codeboard/host/log";
+import { viewsFor } from "@codeboard/host/views";
+import { variantSegments } from "@codeboard/host/versions";
 
 export { BoardPanel };
 

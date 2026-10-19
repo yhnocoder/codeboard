@@ -1,5 +1,5 @@
 // Host resolution without a language service (as in the cloud sandbox): #33 members of a class card outside the workspace, #32 Qwen3ForCausalLM variable candidates, #3 #4 preview fallbacks, #34 library calls.
-// Usage: node extensions/vscode/test/run-host-resolve.mjs (runs on a copy of nano-vllm)
+// Usage: node packages/host/test/run-host-resolve.mjs (runs on a copy of nano-vllm)
 import * as path from "node:path";
 import * as fs from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -376,7 +376,7 @@ void (async () => {
   // 接上断掉的调用链、跨语言（线框 01、02）：test/fixtures/crosslang 里的小仓库（DeepEP v1 / 新版 JIT、torch.ops、Triton、TileLang、PyO3、动态分发）
   {
     const FIX = fs.mkdtempSync("/tmp/codeboard-cross-");
-    fs.cpSync(path.join(REPO, "extensions/vscode/test/fixtures/crosslang"), FIX, { recursive: true });
+    fs.cpSync(path.join(REPO, "packages/host/test/fixtures/crosslang"), FIX, { recursive: true });
     const W2 = nodeWorkspace(FIX);
     useWorkspace(W2);
     resetIndex();
@@ -476,7 +476,7 @@ void (async () => {
   // Capture Run（线框 13）：注入的 tracer 只记 Study Scope 里的调用，运行记录存到 <storageDir>/runs/，按工作区路径对回白板
   {
     const FIX = fs.mkdtempSync("/tmp/codeboard-run-");
-    fs.cpSync(path.join(REPO, "extensions/vscode/test/fixtures/runtime"), FIX, { recursive: true });
+    fs.cpSync(path.join(REPO, "packages/host/test/fixtures/runtime"), FIX, { recursive: true });
     const git = (...a: string[]) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...a], { cwd: FIX, stdio: "pipe" }).toString().trim();
     git("init", "-q"); git("add", "-A"); git("commit", "-qm", "fixture");
     const head = git("rev-parse", "HEAD");

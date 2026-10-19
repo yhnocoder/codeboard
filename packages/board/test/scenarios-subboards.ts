@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, cutCrumbs, emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
-import { nodeFs } from "../../../extensions/vscode/src/nodefs";
+import { nodeFs } from "@codeboard/host/nodefs";
 import { open, shot, symCard, findSym, viewOf, put, OUT, type Host } from "./harness";
 
 const light = process.argv.includes("--light");
