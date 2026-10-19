@@ -865,9 +865,6 @@
 :root.look-city .app { font-family: var(--ui); }
 :root.look-city .app > .board { font-family: var(--sys); }
 /* 99%：见 Ink Wash 卡头编号印章的注释 */
-/* 工具条没有底板：每个按钮是一块积木键，按下去往右下沉，厚度消失 */
-.dock) .pill { gap: 9px; padding: 2px 6px 6px 2px; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; }
-.dock) .sep { display: none; }
 /* ---------- City（城市道路） ---------- */
 /* 街区、河、公园、楼是白板背景（固定在窗口上，镜头动时不重画）。
    调用是大路：路肩（.casings 里一层，在所有线下面）+ 白边线（.kerbs 里一层，也在所有路面下面，路口里就没有边线）+ 路面（.edge）+ 双黄线（.lane，一个 path 两条线），横平竖直；
