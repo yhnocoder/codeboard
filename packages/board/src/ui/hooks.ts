@@ -1,4 +1,4 @@
-// 列表浮层共用的两件事：↑↓ 选中（到头绕回来）、边输入边问宿主（等一下再问，旧的回答晚到时丢掉）
+// 浮层、编辑框共用的：↑↓ 选中（到头绕回来）、边输入边问宿主（等一下再问，旧的回答晚到时丢掉）、编辑结束只算一次（关掉时存）
 import { createEffect, createSignal, onCleanup } from "solid-js";
 
 /** ↑↓ 在 count 项里移动选中，到头绕回来。key 处理了返回 true */
@@ -33,4 +33,15 @@ export function useDebouncedAsk<Q, R>(q: () => Q, fetch: (q: Q) => Promise<R>, d
   });
   onCleanup(() => { clearTimeout(t); n++; });
   return busy;
+}
+
+/**
+ * 编辑结束只算一次：finish 第一次调用才生效（↵、Esc、Save、Cancel、失焦可能接连来）。
+ * 组件被卸掉时（弹窗关了、点了白板、换了白板）还没结束：调 dismiss，它一般用 finish 保存。done() = 已经结束了
+ */
+export function useFinish<A extends unknown[]>(fn: (...a: A) => void, dismiss: (finish: (...a: A) => void) => void) {
+  let over = false;
+  const finish = (...a: A) => { if (over) return; over = true; fn(...a); };
+  onCleanup(() => { if (!over) dismiss(finish); });
+  return { finish, done: () => over };
 }

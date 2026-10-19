@@ -2,7 +2,7 @@
 import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
 import { cardTitle, descendants, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
-import { state, mutate, sel, select, clearSel, cardById, rectOf, toast, flushSave, flows } from "../state/store";
+import { state, mutate, sel, select, clearSel, cardById, hostOf, rectOf, toast, flushSave, flows } from "../state/store";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
 import { crumbs, frameOf, skelOf, subRect, walkBack, setWalkBack } from "../state/subboards";
 import { walk, setWalk } from "../state/ui";
@@ -47,8 +47,8 @@ export function leaveBoard(depth?: number, walkHop?: WalkHop) {
 export function walkIntoFrame(frame: string, i: number) {
   const w = walk();
   if (!w) return;
-  const before = new Set(w.order.slice(0, i).map((id) => cardById(id)?.host.id ?? id));
-  const via = state.board.links.find((l) => l.to.card === frame && before.has(cardById(l.from.card)?.host.id ?? l.from.card)) ?? state.board.links.find((l) => l.to.card === frame);
+  const before = new Set(w.order.slice(0, i).map(hostOf));
+  const via = state.board.links.find((l) => l.to.card === frame && before.has(hostOf(l.from.card))) ?? state.board.links.find((l) => l.to.card === frame);
   const sub = via?.to.sub;
   const r = (sub !== undefined && subRect(frame, sub)) || rectOf(frame);
   const t = fitRect({ x: r.x - 20, y: r.y - 20, w: r.w + 40, h: r.h + 40 }, 2.5);
@@ -75,7 +75,6 @@ export function walkOut(dir: 1 | -1) {
  */
 function topCard(ids: string[]): string {
   const f = flows(), inSel = new Set(ids);
-  const hostOf = (k: string) => cardById(k)?.host.id ?? k;
   const reading = [...ids].sort((a, b) => { const ra = rectOf(a), rb = rectOf(b); return ra.y - rb.y || ra.x - rb.x; });
   const roots = reading.filter((id) => !(f.parents.get(id) ?? []).some((l) => hostOf(l.from.card) !== id && inSel.has(hostOf(l.from.card))));
   const below = (id: string) => new Set(descendants(f, id).map(hostOf).filter((k) => k !== id && inSel.has(k))).size;
@@ -101,11 +100,16 @@ export async function turnIntoBoard() {
   } catch (e) {
     return toast(`Couldn't create the board: ${(e as Error).message}`);
   }
-  // 撤销 = 新白板也不要了（宿主放进 .trash；别的白板也放着它的框就留着），重做 = 再建一次
+  // 撤销 = 新白板也不要了（宿主放进 .trash；建好以后改过、别的白板也放着它的框就留着），重做 = 把放进 .trash 的那份放回来
   let dropped = false;
   const ok = mutate((b) => { extractBoard(b, ids, rects, { id, name, frame }); }, { fx: {
-    undo: () => { void ask("dropBoard", { id }).then((d) => { dropped = d; }, () => {}); },
-    redo: () => { if (dropped) void ask("newBoard", { board: r.child }).then(() => { dropped = false; }, (e: Error) => toast(`Couldn't create the board: ${e.message}`)); },
+    undo: () => { void ask("dropBoard", { id, made: r.child }).then((d) => { dropped = d; }, () => {}); },
+    redo: () => {
+      if (!dropped) return;
+      void ask("restoreBoard", { id })
+        .then((back) => (back ? true : ask("newBoard", { board: r.child })))
+        .then(() => { dropped = false; }, (e: Error) => toast(`Couldn't create the board: ${e.message}`));
+    },
   } });
   if (ok) {
     batch(() => select({ cards: [frame] }));

@@ -39,7 +39,7 @@ export type ThemeId = (typeof THEMES)[number][0];
 /** 实验性的主题：主题选择里和 VS Code 设置说明里标 Experimental；性能测试和 CI 的性能门槛不管它们（City 太复杂，容易超时） */
 export const EXPERIMENTAL_THEMES: readonly ThemeId[] = ["city"];
 
-/** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用 */
+/** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用。宿主发来的总是和 DEFAULT_SETTINGS 合并好的完整设置 */
 export type Settings = {
   theme: ThemeId;
   hideOnNew: HideFlags; // 新卡默认隐藏什么（替代卡片上的 Hide 浮条）
@@ -48,20 +48,22 @@ export type Settings = {
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）
   zoomMap: number; // 低于这个比例：地图（只剩图标记和名字）
   dblClick: "text" | "note" | "code" | "none"; // 双击画布空白处新建什么
-  hideNumbers?: boolean; // 卡片上不显示调用图标记（A / B 或图标）；设置里叫 Hide Call Graph Marks
-  themeReflow?: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
-  debug?: boolean; // 打开后设置页多一节 Debug（调常量）
-  tune?: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
-  pasteOther?: "linked" | "copy"; // 卡贴到另一块白板上：共享卡（默认）/ 独立副本；⌥ 粘贴是另一种
-  sharedUpdate?: "ask" | "all" | "this"; // 共享卡 Update 新版本：每次问（默认）/ 所有白板 / 只这块白板（拆成副本）
-  subPreview?: "skeleton" | "title"; // 子白板框里画什么：带名字的骨架（默认）/ 只有标题
-  welcomeBack?: "2d" | "always" | "off"; // 回到一块白板时提示还有几个问题：隔 2 天以上（默认）/ 每次 / 不提示
-  exportQuestions?: boolean; // 导出时带上问题（默认不带）
-  exportBoardOnly?: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
-  exportScope?: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
+  hideNumbers: boolean; // 卡片上不显示调用图标记（A / B 或图标）；设置里叫 Hide Call Graph Marks
+  themeReflow: "push" | "overlap"; // 换主题后卡变高压住下面的卡：往下推（默认）/ 允许重叠
+  debug: boolean; // 打开后设置页多一节 Debug（调常量）
+  tune: Record<string, number>; // Debug 里调过的常量，没有 = 默认值
+  pasteOther: "linked" | "copy"; // 卡贴到另一块白板上：共享卡（默认）/ 独立副本；⌥ 粘贴是另一种
+  sharedUpdate: "ask" | "all" | "this"; // 共享卡 Update 新版本：每次问（默认）/ 所有白板 / 只这块白板（拆成副本）
+  subPreview: "skeleton" | "title"; // 子白板框里画什么：带名字的骨架（默认）/ 只有标题
+  welcomeBack: "2d" | "always" | "off"; // 回到一块白板时提示还有几个问题：隔 2 天以上（默认）/ 每次 / 不提示
+  exportQuestions: boolean; // 导出时带上问题（默认不带）
+  exportBoardOnly: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
+  exportScope: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
+  hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
+  welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board",
 };
 
 /** 贴纸图标包：Iconify JSON 一个文件一套，或一个装 .svg 的文件夹（文件夹名 = 包名） */
@@ -240,8 +242,12 @@ export type BoardToHost =
   | { type: "skeletons"; req: number; ids: string[] }
   /** Turn into Board：选中的卡拆出来的新白板（id 白板定），存到父白板所在的组；共享卡还是共享卡。回 ok */
   | { type: "newBoard"; req: number; board: Board }
-  /** 撤销 Turn into Board：拆出来的那块白板不要了（放进 .trash，不问；别的白板也放着它的框就留着）。回删没删 */
-  | { type: "dropBoard"; req: number; id: string }
+  /**
+   * 撤销 Turn into Board：拆出来的那块白板不要了（放进 .trash，不问）。还是刚建好时的样子 made 才删：之后改过、或别的白板也放着它的框就留着。回删没删
+   */
+  | { type: "dropBoard"; req: number; id: string; made: Board }
+  /** 重做 Turn into Board：撤销时放进 .trash 的那块白板放回来（放到父白板所在的组）。.trash 里没有回 false */
+  | { type: "restoreBoard"; req: number; id: string }
   /** 双击子白板框：在这个面板里打开子白板（frame = 框的卡 id，cam = 父白板回来时的镜头）；walk.start = 接着讲解 */
   | { type: "enterBoard"; id: string; frame: string; cam: Camera; walk?: WalkHop }
   /** 面包屑 / Esc：回到第 depth 层父白板（0 = 最外层；缺省 = 上一级）；walk.back = 父白板接着讲解 */
@@ -371,6 +377,7 @@ type Replies = {
   skeletons: Record<string, Skeleton | null>;
   newBoard: boolean;
   dropBoard: boolean;
+  restoreBoard: boolean;
   deleteBoard: boolean;
   questions: QuestionItem[];
   permalinks: Record<string, string>;

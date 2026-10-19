@@ -39,7 +39,7 @@ header.chrome { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 2
 header h1 { font: 600 17px/1.2 var(--sys); margin: 0; letter-spacing: -0.01em; }
 header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .grow { flex: 1; }
-.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--seg-bg); gap: 2px; }
+.seg { display: inline-flex; flex-wrap: wrap; padding: 2px; border-radius: 8px; background: var(--seg-bg); gap: 2px; }
 .seg button { padding: 3px 11px; border-radius: 6px; font-size: 12.5px; color: var(--page-ink-2); transition: background .15s, color .15s; }
 .seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--page-ink); box-shadow: 0 0 0 .5px var(--page-hair), 0 1px 2px light-dark(rgba(0,0,0,.08), rgba(0,0,0,.4)); }
 .ctl { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--page-ink-2); }
@@ -54,10 +54,14 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 /* ---------- 白板骨架：只管位置，长相交给各风格 ---------- */
 .board { position: relative; height: 640px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--ui); }
 @media (max-width: 600px) { .board { height: 540px; } }
+.tilt { position: absolute; inset: 0; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; }
 .card { position: absolute; overflow: hidden; }
-.cband, .cname, .cmeta, .cnote, .cfoot, .caption, .rail, .dim, .eyebrow, .prog, .lab, .frame-deco { display: none; }
+.board:not([data-v="city"]) .traffic { display: none !important; }
+.cband, .cname, .cmeta, .cnote, .cfoot, .cside, .caption, .rail, .dim, .eyebrow, .prog, .lab, .frame-deco, .scene { display: none; }
+.scene { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.scene svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .chead { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .ctitle, .cpath { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cpath { flex: 1 1 0; }
@@ -115,12 +119,14 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
     <div class="frame chrome">
       <div class="tabs"><div class="tab">llm_engine.py</div><div class="tab on">第一张白板</div></div>
       <div class="board %%BOARDCLASS%%" id="board">
+        <div class="scene" aria-hidden="true"></div>
         <div class="frame-deco"></div>
-        <div class="world" id="world"><svg class="edges" id="edges"></svg></div>
+        <div class="tilt"><div class="world" id="world"><svg class="edges" id="edges"></svg></div></div>
         <nav class="rail"><span class="on">第一张白板</span><span>KV cache</span><span>prefill · decode</span></nav>
         <div class="over tb-left"><div class="pill"><span class="bname"><small class="eyebrow">%%EYEBROW%%</small><span class="bn">第一张白板</span><svg class="ico chev" viewBox="0 0 16 16"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg></span></div></div>
         <div class="over tb-right"><div class="pill">
           <span class="prog"><i class="on"></i><i></i><i></i></span>
+          <button class="tbtn traffic" id="btnTraffic" aria-pressed="true"><svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="5.5" width="11" height="5" rx="1.6"/><path d="M5 5.5 6 3.5h4l1 2"/><circle cx="5.2" cy="11.2" r="1.1"/><circle cx="10.8" cy="11.2" r="1.1"/></svg><span class="tl">车流</span></button>
           <button class="tbtn" id="btnPresent"><svg class="ico" viewBox="0 0 16 16"><path d="M5 3.5v9l7-4.5z"/></svg><span class="tl">讲解</span></button>
           <button class="ib focus-btn" aria-label="专注"><svg class="ico" viewBox="0 0 16 16"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg></button>
         </div></div>
@@ -161,13 +167,20 @@ const CARDS = [
       '    temperatures = self.prepare_sample(seqs) if self.rank == 0 else None', '    logits = self.run_model(input_ids, positions, is_prefill)',
       '    token_ids = self.sampler(logits, temperatures).tolist() if self.rank == 0 else None', '    reset_context()', '    return token_ids'], calls: ['run_model'] },
 ];
-const LABELS = { b: 'seqs, is_prefill', c: 'token_ids' };
+// 第四张卡只在需要演示「多条连线汇入同一张卡」的风格里出现：rank > 0 的进程在 loop 里也会走到 run
+const EXTRA = { id: 'd', file: 'f3', step: '2', title: 'ModelRunner.loop', path: 'nanovllm/engine/model_runner.py', rev: 'bb823b3', start: 61,
+  note: '其他 rank 的进程：从共享内存读命令再执行', fig: 'FIG. 2 — THE OTHER RANKS LISTEN', glyph: 'wave',
+  code: ['def loop(self):', '    while True:', '        method_name, args = self.read_shm()', '        self.call(method_name, *args)', '        if method_name == "exit":', '            break'],
+  links: { 3: 'c' }, calls: ['call'] };
+const BASE_CARDS = CARDS.slice();
+const LABELS = { b: 'seqs, is_prefill', c: 'token_ids', 'd>c': 'method_name, args' };
 const GLYPHS = {
   sun: '<circle cx="24" cy="24" r="4.5" fill="currentColor" stroke="none"/>' + Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6, r1 = 9, r2 = i % 2 ? 15 : 19; return `<path d="M${24 + r1 * Math.cos(a)} ${24 + r1 * Math.sin(a)} L${24 + r2 * Math.cos(a)} ${24 + r2 * Math.sin(a)}"/>`; }).join(''),
   orbit: '<ellipse cx="24" cy="24" rx="19" ry="12"/><ellipse cx="24" cy="24" rx="12" ry="7.5"/><circle cx="24" cy="24" r="3.5" fill="currentColor" stroke="none"/><circle cx="40" cy="15" r="2.2" fill="currentColor" stroke="none"/>',
   wave: '<path d="M4 20c5-7 9-7 14 0s9 7 14 0 9-7 12-2"/><path d="M4 30c5-7 9-7 14 0s9 7 14 0 9-7 12-2"/>',
 };
 
+const cn = s => s.replace(/\d/g, d => '〇一二三四五六七八九'[d]).replace('.', '之');
 const KW = new Set('def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield'.split(' '));
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 function hl(line, calls) {
@@ -193,6 +206,7 @@ function hl(line, calls) {
 const board = document.getElementById('board'), world = document.getElementById('world'), edges = document.getElementById('edges');
 let bounds = { x: 0, y: 0, w: 1, h: 1 };
 function render() {
+  CARDS.length = 0; CARDS.push(...BASE_CARDS, ...(CFG.merge ? [EXTRA] : []));
   world.querySelectorAll('.card, .elabel, .caption, .dim').forEach(n => n.remove());
   for (const c of CARDS) {
     const el = document.createElement('div');
@@ -201,11 +215,12 @@ function render() {
     el.style.width = (c.id === 'a' ? CFG.wA : CFG.wB) + 'px';
     const rev = c.isNew ? '<span class="rev new"><i></i>有新版本</span>' : `<span class="rev"><i></i>${c.rev}</span>`;
     el.innerHTML = `
-      <div class="chead"><span class="step">${c.step}</span><span class="ctitle">${c.title}</span><span class="cpath">${file}</span>${rev}</div>
+      <div class="chead"><span class="step" data-cn="${cn(c.step)}">${c.step}</span><span class="ctitle">${c.title}</span><span class="cpath">${file}</span>${rev}</div>
       <div class="cband"><span class="bt">${c.title}</span><span class="big">${c.step.padStart(2, '0')}</span></div>
       <div class="cname">${c.title}</div>
       <div class="cmeta"><div><small>文件</small>${file}</div><div><small>行</small>${c.start}–${end}</div><div><small>提交</small>${c.isNew ? '有新版本' : c.rev}</div></div>
       <div class="cnote">${c.note}</div>
+      <div class="cside"><span>${cn(c.step)}</span></div>
       <div class="code">${Object.keys(c.links || {}).map(i => `<div class="hlrow" data-i="${i}"></div>`).join('')}<div class="gutter">${c.code.map((l, i) => `<span class="no${c.links && c.links[i] ? ' link' : ''}">${c.start + i}</span>`).join('')}</div><pre class="src">${c.code.map(l => hl(l, c.calls)).join('\n')}</pre></div>
       <div class="cfoot"><span><svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>L${c.start}–${end}</span><span class="act">${c.isNew ? '跟进到最新' : '在编辑器打开'}<svg class="ico" viewBox="0 0 16 16"><path d="M3.5 8h9M9 4.5 12.5 8 9 11.5"/></svg></span></div>`;
     world.appendChild(el); c.el = el;
@@ -218,6 +233,7 @@ function layout() {
   const h = x => x.el.offsetHeight;
   b.x = c.x = CFG.wA + CFG.gap; b.y = 0; c.y = h(b) + CFG.vgap;
   a.x = 0; a.y = Math.max(0, (c.y + h(c)) / 2 - h(a) / 2 - 30);
+  if (CARDS[3]) { a.y = 0; CARDS[3].x = 0; CARDS[3].y = h(a) + CFG.vgap + 40; }
   for (const k of CARDS) {
     k.el.style.left = k.x + 'px'; k.el.style.top = k.y + 'px';
     k.cap.style.left = k.x + 'px'; k.cap.style.top = (k.y + h(k) + 12) + 'px'; k.cap.style.width = k.el.offsetWidth + 'px';
@@ -236,33 +252,49 @@ function lineBox(c, i) {
 }
 function drawEdges() {
   for (const c of CARDS) c.el.querySelectorAll('.hlrow').forEach(r => { const b = lineBox(c, +r.dataset.i); r.style.top = b.rel + 'px'; r.style.height = b.h + 'px'; });
-  let svg = '';
+  let svg = '', heads = '';
+  const layers = (CFG.layers || ['']).map(() => []), into = {};
+  for (const c of CARDS) for (const to of Object.values(c.links || {})) into[to] = (into[to] || 0) + 1;
+  const done = new Set();
   const byId = Object.fromEntries(CARDS.map(c => [c.id, c]));
   for (const c of CARDS) for (const [i, to] of Object.entries(c.links || {})) {
     const t = byId[to];
     const lb = lineBox(c, +i), hd = t.el.querySelector(CFG.entry || '.chead');
-    const x1 = c.x + c.el.offsetWidth, y1 = c.y + lb.top + lb.h / 2;
-    const x2 = t.x - 4, y2 = t.y + hd.offsetTop + hd.offsetHeight / 2;
+    const x1 = c.x + c.el.offsetWidth - (CFG.port === 'pin' ? 14 : 0), y1 = c.y + lb.top + lb.h / 2;
+    const x2 = t.x + (CFG.head === 'pin' ? 16 : -4), y2 = t.y + hd.offsetTop + hd.offsetHeight / 2;
     let d, mx, my;
     if (CFG.route === 'elbow') {
       const xm = x1 + (x2 - x1) * (+i === 1 ? 0.4 : 0.55);
       d = `M${x1} ${y1} H${xm} V${y2} H${x2}`; mx = xm; my = (y1 + y2) / 2;
+    } else if (CFG.route === 'street') { // 像街道：横平竖直，拐角是圆的
+      // 几条路进同一张卡时，在卡片前同一个路口汇合，最后一段共用
+      const merge = into[to] > 1, xm = merge ? x2 - 60 : x1 + (x2 - x1) * (+i === 1 ? 0.32 : 0.68), r = Math.min(16, Math.abs(y2 - y1) / 2), s = y2 > y1 ? 1 : -1;
+      d = `M${x1} ${y1} H${xm - r} Q${xm} ${y1} ${xm} ${y1 + s * r} V${y2 - s * r} Q${xm} ${y2} ${xm + r} ${y2} H${x2}`;
+      if (merge) { mx = (x1 + xm) / 2; my = y1; } else { mx = xm; my = (y1 + y2) / 2; }
+    } else if (CFG.route === 'sag') { // 线是软的，两头钉住，中间往下垂
+      const xm = (x1 + x2) / 2, cy = Math.max(y1, y2) + (CFG.sag || 50);
+      d = `M${x1} ${y1} Q${xm} ${cy} ${x2} ${y2}`; mx = xm; my = (y1 + 2 * cy + y2) / 4;
     } else {
       const dx = Math.max(30, (x2 - x1) * 0.6);
       d = `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
       mx = (x1 + 3 * (x1 + dx) + 3 * (x2 - dx) + x2) / 8; my = (y1 + y2) / 2;
     }
-    svg += `<path class="edge ${t.file}" d="${d}"/>`;
+    (CFG.layers || ['']).forEach((l, k) => layers[k].push(`<path class="edge ${l} ${t.file}" d="${d}"/>`));
     if (CFG.head === 'triangle') svg += `<path class="ahead fill ${t.file}" d="M${x2 + 2} ${y2} l-8 -4 v8 z"/>`;
+    else if (CFG.head === 'pin') svg += `<circle class="ahead pin" cx="${x2}" cy="${y2}" r="5"/>`;
+    else if (CFG.head === 'none') {}
+    else if (CFG.head === 'car') { if (!done.has(to)) { done.add(to); // 路的尽头停一辆车，车头朝卡片，代替箭头
+      heads += `<g class="car ${t.file}" transform="translate(${x2 - 17} ${y2 + 3.5}) scale(1.45)"><rect class="beam" x="7" y="-3.5" width="18" height="7" rx="3.5"/><rect class="body" x="-8" y="-3.5" width="16" height="7" rx="2.5"/><rect class="roof" x="-3.5" y="-2.6" width="6.5" height="5.2" rx="1.2"/><rect class="lamp" x="6.6" y="-3" width="1.4" height="1.8" rx=".5"/><rect class="lamp" x="6.6" y="1.2" width="1.4" height="1.8" rx=".5"/></g>`; } }
     else if (CFG.head === 'dot') svg += `<circle class="ahead fill ${t.file}" cx="${x2}" cy="${y2}" r="3.5"/>`;
     else svg += `<path class="ahead ${t.file}" d="M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}"/>`;
-    if (CFG.port === 'square') svg += `<rect class="port ${t.file}" x="${x1 - 3}" y="${y1 - 3}" width="6" height="6"/>`;
+    if (CFG.port === 'pin') svg += `<circle class="port pin" cx="${x1}" cy="${y1}" r="5"/>`;
+    else if (CFG.port === 'square') svg += `<rect class="port ${t.file}" x="${x1 - 3}" y="${y1 - 3}" width="6" height="6"/>`;
     else if (CFG.port === 'diamond') svg += `<path class="port ${t.file}" d="M${x1} ${y1 - 4} l4 4 -4 4 -4 -4z"/>`;
     else svg += `<circle class="port ${t.file}" cx="${x1}" cy="${y1}" r="3.5"/>`;
-    const lab = document.createElement('div'); lab.className = 'elabel ' + t.file; lab.textContent = LABELS[to];
+    const lab = document.createElement('div'); lab.className = 'elabel ' + t.file; lab.textContent = LABELS[c.id + '>' + to] || LABELS[to];
     lab.style.left = mx + 'px'; lab.style.top = my + 'px'; world.appendChild(lab);
   }
-  edges.innerHTML = svg;
+  edges.innerHTML = (CFG.defs || '') + layers.flat().join('') + svg + heads;
 }
 function fit() {
   const p = CFG.pad, W = board.clientWidth - p.l - p.r, H = board.clientHeight - p.t - p.b;

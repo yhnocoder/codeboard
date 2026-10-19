@@ -3,7 +3,7 @@
 // Usage: node packages/board/test/run-harness.mjs subboards [--light]   screenshots: test-out/harness/subboards-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { cutCrumbs, emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, cutCrumbs, emptyBoard, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "../../../extensions/vscode/src/nodefs";
 import { open, shot, symCard, findSym, viewOf, put, OUT, type Host } from "./harness";
@@ -21,7 +21,7 @@ const lineOf = (c: ReturnType<typeof card>, re: RegExp) => { const s = c.segment
 
 /** A host for one board panel that switches between boards (exported for the other board scenarios) */
 export async function subHost(start: Board, others: Board[]) {
-  const dir = path.join(OUT, "subboards-store");
+  const dir = path.join(OUT, `subboards-store-${start.id}`); // one per start board: scenarios run side by side
   fs.rmSync(dir, { recursive: true, force: true });
   const store = new Storage(nodeFs, { dir: () => dir });
   for (const b of [start, ...others]) await store.save(b);
@@ -57,7 +57,7 @@ export async function subHost(start: Board, others: Board[]) {
     if (cam) b.cam = cam;
     sent.clear();
     inits.push({ id: cur, crumbs: crumbs.length, walk });
-    const m: HostToBoard = { type: "init", board: b, boards: await store.list(), views: viewsOf(b), stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { theme: "warm-ink", hideOnNew: {}, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text" } } };
+    const m: HostToBoard = { type: "init", board: b, boards: await store.list(), views: viewsOf(b), stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } };
     if (crumbs.length) m.crumbs = crumbs;
     if (walk) m.walk = walk as any;
     await h.post(m);
@@ -72,10 +72,10 @@ export async function subHost(start: Board, others: Board[]) {
         case "newBoard": await store.save(m.board, { group: null }); await reply(m.req, true); return true;
         case "deleteBoard": await store.remove(m.id); await reply(m.req, true); return true;
         case "dropBoard": {
-          const kept = !store.peek(m.id) || (await store.list()).some((x) => x.id !== cur && x.subs?.includes(m.id));
-          if (!kept) await store.remove(m.id);
-          await reply(m.req, !kept); return true;
+          const framed = (await store.list()).some((x) => x.id !== cur && x.subs?.includes(m.id));
+          await reply(m.req, !framed && (await store.dropIfUnchanged(m.id, m.made))); return true;
         }
+        case "restoreBoard": await reply(m.req, await store.restore(m.id)); return true;
         case "confirm": await reply(m.req, true); return true;
         case "enterBoard": {
           const metas = await store.list();
@@ -109,6 +109,57 @@ export const SUBBOARDS: Record<string, () => Promise<void>> = {
   async subboards() {
     const res: Record<string, unknown> = {};
     try { await run(res); } catch (e) { console.log("FAIL subboards", (e as Error).message.split("\n")[0], JSON.stringify(res)); process.exit(1); }
+  },
+  /** Turn into Board, edit the new board, go back, ⌘Z: the parent goes back, the sub-board keeps the edit; ⌘⇧Z links to it again. Unedited: ⌘Z trashes it, ⌘⇧Z brings it back */
+  async turnIntoBoardUndo() {
+    const E = emptyBoard("bUndo", "Undo");
+    const a = card("Scheduler.schedule"), c = card("BlockManager.allocate"), d = card("BlockManager.can_allocate");
+    put(E, a, 60, 60, 560); put(E, c, 700, 60, 480); put(E, d, 700, 500, 480);
+    const t = await subHost(E, []);
+    const h = t.h, page = h.page, res: Record<string, unknown> = {};
+    const turn = async (ids: string[], name: string) => {
+      await page.keyboard.press("Shift+Digit1"); await wait(h, 700);
+      for (const [i, id] of ids.entries()) await page.locator(`.card[data-id="${id}"] .chead`).click({ position: { x: 120, y: 10 }, modifiers: i ? ["Shift"] : [] });
+      await page.keyboard.press("Meta+Shift+b"); await wait(h, 400);
+      await page.locator(".dialog input").fill(name);
+      await page.locator(".dialog button", { hasText: "Create Board" }).click(); await wait(h, 1600);
+      const f = t.store.peek("bUndo")!.cards.find((k) => k.kind === "board" && !E.cards.some((x) => x.id === k.id));
+      return f?.kind === "board" ? f : undefined;
+    };
+    const undo = async () => { await page.mouse.click(5, 880); await page.keyboard.press("Meta+z"); await wait(h, 1500); };
+    const redo = async () => { await page.keyboard.press("Meta+Shift+z"); await wait(h, 1500); };
+    try {
+      // edited: enter, delete a card, come back, undo
+      const f1 = (await turn([c.id, d.id], "Alloc"))!;
+      await page.locator(`.card[data-id="${f1.id}"] .sbhead`).dblclick({ position: { x: 200, y: 12 } }); await wait(h, 1600);
+      res.entered = t.cur() === f1.board;
+      await page.keyboard.press("Shift+Digit1"); await wait(h, 700);
+      await page.locator(`.card[data-id="${d.id}"] .chead`).click({ position: { x: 120, y: 10 } });
+      await page.keyboard.press("Backspace"); await wait(h, 1400);
+      await page.keyboard.press("Escape"); await wait(h, 300);
+      await page.keyboard.press("Escape"); await wait(h, 1600);
+      res.back = t.cur() === "bUndo";
+      await undo();
+      res.parentBack = t.store.peek("bUndo")!.cards.map((k) => k.id).sort().join() === [a.id, c.id, d.id].sort().join();
+      res.childKept = t.store.peek(f1.board)?.cards.map((k) => k.id);
+      await redo();
+      const again = t.store.peek("bUndo")!.cards.find((k) => k.id === f1.id);
+      res.relinked = again?.kind === "board" && again.board === f1.board && t.store.peek(f1.board)?.cards.length === 1;
+      // unedited: undo trashes it, redo brings the file back
+      await undo();
+      const kept = t.store.peek(f1.board); // the edited Alloc board stays after a second undo too
+      res.stillKept = kept?.cards.length === 1;
+      await redo();
+      const f2 = (await turn([a.id], "Sched"))!;
+      await undo();
+      res.trashed = !t.store.peek(f2.board);
+      await redo();
+      res.restored = !!t.store.peek(f2.board) && t.store.peek("bUndo")!.cards.some((k) => k.id === f2.id);
+    } catch (e) { res.error = (e as Error).message.split("\n")[0]; }
+    const ok = res.entered && res.back && res.parentBack && JSON.stringify(res.childKept) === JSON.stringify([c.id]) && res.relinked && res.stillKept && res.trashed && res.restored;
+    console.log(ok ? "PASS" : "FAIL", "turnIntoBoardUndo", JSON.stringify(res));
+    await h.page.context().browser()!.close();
+    if (!ok) process.exit(1);
   },
 };
 

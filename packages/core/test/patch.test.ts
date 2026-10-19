@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyPatch, deflate, emptyBoard, inflate, loadBoard, loadBoardFile, loadSharedCard, putShared, renameCard, sharedOf, travels, applySharedUpdate, followShared,
+  applyPatch, deflate, emptyBoard, mergeById, inflate, loadBoard, loadBoardFile, loadSharedCard, putShared, renameCard, sharedOf, travels, applySharedUpdate, followShared,
   type Board, type Card, type Sidenote,
 } from "../src";
 
@@ -163,5 +163,19 @@ describe("shared card updates on a board (followShared / applySharedUpdate)", ()
     const b = withCode();
     expect(followShared(b, note("a"), note("a", "x"))).toBe(false);
     expect(followShared(b, b.cards[3], structuredClone(b.cards[3]))).toBe(false);
+  });
+});
+
+describe("mergeById", () => {
+  const x = (id: string, v = id) => ({ id, v });
+  it("takes this side's changes and deletes, the other side's untouched items and additions", () => {
+    const r = mergeById([x("a"), x("b"), x("c")], [x("a", "a2"), x("b"), x("c"), x("d")], [x("a"), x("b", "b1"), x("e")]);
+    expect(r.items).toEqual([x("a", "a2"), x("b", "b1"), x("e"), x("d")]);
+    expect(r.changed).toEqual(["b", "e", "c"]);
+  });
+  it("without a base it never deletes: every item of this side counts as changed, the other side's stay", () => {
+    const r = mergeById(undefined, [x("a", "disk"), x("z")], [x("a", "mine")]);
+    expect(r.items).toEqual([x("a", "mine"), x("z")]);
+    expect(r.changed).toEqual(["a"]);
   });
 });

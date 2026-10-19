@@ -45,7 +45,7 @@ export function pairsPlugin() {
     },
     props: {
       handleKeyDown(view, ev) {
-        if (ev.isComposing || ev.metaKey || ev.ctrlKey || ev.altKey || ev.keyCode === 229) return false;
+        if (ev.isComposing || ev.metaKey || ev.ctrlKey || ev.altKey || ev.key === "Process") return false;
         const { state } = view, sel = state.selection;
         if (!(sel instanceof TextSelection)) return false;
         const $f = sel.$from;

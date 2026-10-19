@@ -2,7 +2,7 @@
 // 成员关系：卡片中心点落在哪个最深的框里（拖动结束时更新）。
 import { createMemo, mapArray } from "solid-js";
 import { sectionFrame, sectionPill, type Rect, type Section } from "@codeboard/core";
-import { state, rectOf, placed, cardById, collapsedAway } from "./store";
+import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
 import { rooted } from "./root";
 
 const byId = rooted(() => createMemo(() => new Map(state.board.sections.map((s) => [s.id, s]))));
@@ -83,7 +83,7 @@ export function deepestAt(fr: Map<string, Rect>, x: number, y: number, skip?: Se
  * 用户看不见的卡不能被框选、全选、吸附、删除，适应窗口也不算它
  */
 export function isHidden(id: string): boolean {
-  const h = cardById(id)?.host.id ?? id;
+  const h = hostOf(id);
   return collapsedAway().has(h) || !!collapsedHome(state.board.place[h]?.section);
 }
 /** 画布上看得见的卡，按叠放顺序 */

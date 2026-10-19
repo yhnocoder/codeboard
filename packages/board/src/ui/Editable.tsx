@@ -1,7 +1,8 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框（md 的是所见即所得的 Markdown 编辑器）。
 // ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
 import { keepKey } from "./editkeys";
-import { Show, batch, createEffect, onCleanup, onMount } from "solid-js";
+import { Show, batch, createEffect, onMount } from "solid-js";
+import { useFinish } from "./hooks";
 import { editing, setEditing, type Editing } from "../state/ui";
 import { MdStatic } from "./Md";
 import { loadEditor, editorNow, editorOpts, prepareSelected, type MdEditorHandle } from "../md/load";
@@ -48,15 +49,11 @@ function PlainEdit(p: P) {
     queueMicrotask(grab);
     requestAnimationFrame(() => { if (document.activeElement !== el) grab(); });
   });
-  let done = false;
-  const finish = (ok: boolean) => {
-    if (done) return;
-    done = true;
+  const { finish } = useFinish((ok: boolean) => {
     const v = (el.innerText ?? el.textContent ?? "").replace(/ /g, " ").replace(/\n$/, "");
     if (editing()?.kind === p.kind && editing()?.id === p.id) setEditing(null);
     if (ok && v !== p.value) p.onCommit(p.multiline ? v : v.replace(/\n/g, " ").trim());
-  };
-  onCleanup(() => finish(true));
+  }, (f) => f(true));
   return (
     <div ref={el} class={`${p.class ?? ""} editing`} style={p.style} contentEditable="plaintext-only" spellcheck={false} data-ph={p.placeholder}
       data-nodrag
@@ -80,19 +77,20 @@ function PlainEdit(p: P) {
 function MdEdit(p: P) {
   let el!: HTMLDivElement;
   let ed: MdEditorHandle | undefined;
-  let done = false;
-  const finish = (v: string | null) => {
-    if (done) return;
-    done = true;
+  const { finish, done } = useFinish((v: string | null) => {
     // 先存再退出、一批更新：静态内容直接按新原文画一次（先退出的话会先按旧原文画一遍，存了再画一遍）
     batch(() => {
       if (v !== null && v !== p.value) p.onCommit(v);
       if (editing()?.kind === p.kind && editing()?.id === p.id) setEditing(null);
     });
-  };
+  }, (f) => {
+    const v = ed?.value() ?? null;
+    ed?.destroy();
+    f(v);
+  });
   const start = p.value;
   const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
-    if (done || !el.isConnected) return;
+    if (done() || !el.isConnected) return;
     el.textContent = "";
     ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder, onDone: finish });
   };
@@ -100,12 +98,6 @@ function MdEdit(p: P) {
   const now = editorNow();
   if (now) onMount(() => mount(now));
   else void loadEditor().then(mount).catch((e) => { console.error("markdown editor failed to load", e); finish(null); });
-  onCleanup(() => {
-    if (done) return;
-    const v = ed?.value() ?? null;
-    ed?.destroy();
-    finish(v);
-  });
   return (
     <div ref={el} class={`${p.class ?? ""} md editing`} style={p.style} data-ph={p.placeholder}
       data-nodrag onKeyDown={keepKey} onKeyUp={(e) => e.stopPropagation()}>

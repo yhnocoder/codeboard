@@ -154,13 +154,13 @@ let heldZ = 1;
 export const stillZ = rooted(() => createMemo(() => (camMoving() ? heldZ : (heldZ = cam.z))));
 export type Lod = "full" | "overview" | "map";
 /** 低于这个比例就是概览（代码变灰条）：自动缩小镜头不缩过它 */
-export const overviewZ = () => state.host.settings?.zoomOverview ?? 0.6;
+export const overviewZ = () => state.host.settings.zoomOverview;
 const [fullHold, setFullHold] = createSignal(false);
 /** 导出要完整的卡：临时按 100% 的档画（镜头不动，用户看到的位置不变） */
 export const holdFullDetail = setFullHold;
 export const lod = rooted(() => createMemo<Lod>(() => {
   if (fullHold()) return "full";
-  return cam.z >= overviewZ() ? "full" : cam.z >= (state.host.settings?.zoomMap ?? 0.25) ? "overview" : "map";
+  return cam.z >= overviewZ() ? "full" : cam.z >= state.host.settings.zoomMap ? "overview" : "map";
 }));
 /** 缩得很小时不弹定义预览、旁注（#12） */
 export const quietHover = () => lod() !== "full";

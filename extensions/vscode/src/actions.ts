@@ -48,12 +48,12 @@ export function makeActions(panels: BoardHost, store: Storage) {
   const undoAdd = async (boardId: string, ids: string[]) => {
     const p = panels.get(boardId);
     if (p) { p.post({ type: "undoAdd", cards: ids }); return; }
-    const b = await store.load(boardId);
-    const gone = ids.filter((id) => b?.cards.some((c) => c.id === id));
-    if (!b || !gone.length) return;
-    removeCards(b, gone);
-    await store.save(b);
-    void ui().info(`Removed from “${b.name}”`);
+    const b = await store.update(boardId, (b) => {
+      const gone = ids.filter((id) => b.cards.some((c) => c.id === id));
+      if (!gone.length) return false;
+      removeCards(b, gone);
+    });
+    if (b) void ui().info(`Removed from “${b.name}”`);
   };
 
   /** 把卡送到白板：开着就发给白板（它决定位置）；没开就直接写进 JSON */
@@ -65,10 +65,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const sel = p.selection?.cards[0];
       p.post({ type: "add", cards, ask: built.ask, sel: sel ? { card: sel } : undefined });
     } else {
-      const b = await store.load(boardId);
+      const b = await store.update(boardId, (b) => { placeCards(b, stackRight(b, built.cards), { copy: false }); });
       if (!b) return;
-      placeCards(b, stackRight(b, built.cards), { copy: false });
-      await store.save(b);
       name = b.name;
     }
     const undo = () => undoAdd(boardId, built.cards.map((c) => c.id));

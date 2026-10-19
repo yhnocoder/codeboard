@@ -5,7 +5,7 @@ import {
   type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
-  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, rectOf, live, beginGesture, toast, placeOf,
+  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, toast, placeOf,
 } from "./state/store";
 import { tune } from "./state/tune";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
@@ -303,7 +303,7 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
   track(e, (ev) => {
     if (!cands.length) {
       window.getSelection()?.removeAllRanges();
-      cands = A.allCodeCandidates(call).filter((id) => cardById(id)?.host.id !== cardById(cardId)?.host.id);
+      cands = A.allCodeCandidates(call).filter((id) => hostOf(id) !== hostOf(cardId));
     }
     const a = local({ clientX: from.left, clientY: from.top + from.height / 2 });
     const b = local(ev);
@@ -312,8 +312,8 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
     const ce = under?.closest(".card") as HTMLElement | null;
     const colEl = under?.closest("[data-col]") as HTMLElement | null;
     const tid = colEl?.dataset.col ?? ce?.dataset.id;
-    hot = tid && cardById(tid)?.host.id !== cardById(cardId)?.host.id ? tid : undefined;
-    setDropTarget(hot ? { kind: "card", card: cardById(hot)!.host.id, cands } : { kind: "cand", card: "", cands });
+    hot = tid && hostOf(tid) !== hostOf(cardId) ? tid : undefined;
+    setDropTarget(hot ? { kind: "card", card: hostOf(hot), cands } : { kind: "cand", card: "", cands });
   }, (ev, moved) => {
     setRubber(null);
     setDropTarget(null);
@@ -351,9 +351,9 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
       // 子白板框：松在骨架里的一张卡上 → 连到那张卡（线穿过框边的入口点）；松在框的别处 → 连到整个框
       const sub = (under?.closest("[data-sub]") as HTMLElement | SVGElement | null)?.dataset.sub;
       to = at ? { card: at.card, seg: at.seg, line: at.lines![0] } : sub && !sub.startsWith("more:") && cardById(ce.dataset.id!)?.card.kind === "board" ? { card: ce.dataset.id!, sub } : { card: colEl?.dataset.col ?? ce.dataset.id! };
-      if (cardById(to.card)?.host.id === cardById(from.card)?.host.id && !to.line) to = null;
+      if (hostOf(to.card) === hostOf(from.card) && !to.line) to = null;
     }
-    setDropTarget(to ? { kind: to.line ? "line" : "card", card: cardById(to.card)!.host.id, seg: to.seg, line: to.line, sub: to.sub } : null);
+    setDropTarget(to ? { kind: to.line ? "line" : "card", card: hostOf(to.card), seg: to.seg, line: to.line, sub: to.sub } : null);
   }, (_ev, moved) => {
     setRubber(null);
     setDropTarget(null);
@@ -368,7 +368,7 @@ function finishConnect(e: PointerEvent, id: string) {
   idle();
   const colEl = (e.target as HTMLElement).closest("[data-col]") as HTMLElement | null;
   const to = colEl?.dataset.col ?? id;
-  if (cardById(to)?.host.id === cardById(from.card)?.host.id) return toast("Connect cancelled");
+  if (hostOf(to) === hostOf(from.card)) return toast("Connect cancelled");
   // 手动补的 Call 箭头（解析不到的调用）
   if (from.call) return A.manualCallTo({ ...from, call: from.call }, to);
   const sub = ((e.target as Element).closest("[data-sub]") as HTMLElement | SVGElement | null)?.dataset.sub;
@@ -387,7 +387,7 @@ export function canvasPointerDown(e: PointerEvent) {
   e.preventDefault();
   closeAllPops();
   if (isDbl("canvas", e)) {
-    const w = worldOf(e), k = state.host.settings.dblClick ?? "text";
+    const w = worldOf(e), k = state.host.settings.dblClick;
     if (k === "text") A.newNote({ x: w.x, y: w.y - 12 }, false);
     else if (k === "note") A.newNote({ x: w.x, y: w.y - 18 }, true);
     else if (k === "code") A.newFreeCode({ x: w.x, y: w.y - 18 });

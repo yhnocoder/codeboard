@@ -26,7 +26,7 @@ export function onHost(m: HostToBoard) {
         setState("boards", m.boards);
         setState("views", m.views);
         setState("stale", m.stale);
-        setBoard(b);
+        setBoard(b, (m.crumbs ?? []).map((c) => c.id));
         A.resetShownViews();
         setShared(reconcile({}));
         setState("loaded", true);

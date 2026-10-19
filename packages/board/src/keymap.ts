@@ -5,7 +5,7 @@
 // 动作拿到的 A 是 actions 的命名空间（类型 import，运行时不引用 actions：菜单要 import 这里拿快捷键文字）
 import type { KeyAction } from "@codeboard/core";
 import type * as Actions from "./actions";
-import { state, sel, lineSel, undo, redo, mutate, toast, clearSel, cardById } from "./state/store";
+import { state, sel, lineSel, undo, redo, mutate, toast, clearSel, hostOf } from "./state/store";
 import { camTarget, zoomAt } from "./state/camera";
 import { walk, keysOpen, setKeysOpen, setPaletteOpen, setEditing } from "./state/ui";
 import { setSpaceDown, cancelMode } from "./state/mode";
@@ -27,10 +27,13 @@ export type Bind = {
   run?: (a: A, e: KeyboardEvent) => boolean | void;
 };
 
+/** 第几次按下方向键（自动重复不算）：同一次按住的微移并成一步撤销 */
+let nudgeRun = 0;
 const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
   const d = e.shiftKey ? 10 : 1;
-  // 连着按（或按住）方向键挪同一批卡是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了
-  mutate((b) => { for (const id of sel.cards) { const h = cardById(id)?.host.id; const c = h && b.place[h]; if (c && !a.isLocked(id)) { c.x += dx * d; c.y += dy * d; } } }, { merge: `nudge:${sel.cards.join(",")}` });
+  // 按住方向键（自动重复）是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了；每按一下是一步
+  if (!e.repeat) nudgeRun++;
+  mutate((b) => { for (const id of sel.cards) { const c = b.place[hostOf(id)]; if (c && !a.isLocked(id)) { c.x += dx * d; c.y += dy * d; } } }, { merge: `nudge:${nudgeRun}` });
 };
 const atPointer = () => worldAt(lastPointer());
 const hasCards = () => sel.cards.length > 0;
@@ -71,7 +74,7 @@ export const KEYMAP: Bind[] = [
       if (!c) return false;
       // 选了这张卡的几行：在编辑器里打开到第一行
       const ls = lineSel();
-      if (ls && cardById(ls.card)?.host.id === c.id) a.openCode(ls.card, ls.seg, ls.start);
+      if (ls && hostOf(ls.card) === c.id) a.openCode(ls.card, ls.seg, ls.start);
       else if (c.kind === "code") a.openCode(c.id);
       else if (c.kind === "note") setEditing({ kind: "note", id: c.id });
       else if (c.kind === "web") a.openLink(c.url);

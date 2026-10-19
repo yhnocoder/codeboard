@@ -3,7 +3,7 @@
 //  hiddenCardsNotSelectable   — cards hidden in a collapsed call subtree: box select and Select All skip them, Delete never removes them
 //  revealShowsHiddenCard      — Reveal on Board / clicking the already-expanded call on a card in a collapsed subtree expands it
 //  fitFramesVisibleContent    — Fit to Window frames what is shown: no hidden call-tree cards, a collapsed section counts as its title pill
-//  nudgeIsOneUndoStep         — a run of arrow-key nudges of the same selection is one undo step
+//  nudgeHoldIsOneUndoStep     — holding an arrow key is one undo step; each separate press is its own step
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 //  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
 //  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Open board frame (Mac order: ⇧⌘B)
@@ -51,7 +51,7 @@ export const CODE_CARDS: Record<string, () => Promise<void>> = {
   hiddenCardsNotSelectable: () => run("hiddenCardsNotSelectable", hiddenCardsNotSelectable),
   revealShowsHiddenCard: () => run("revealShowsHiddenCard", revealShowsHiddenCard),
   fitFramesVisibleContent: () => run("fitFramesVisibleContent", fitFramesVisibleContent),
-  nudgeIsOneUndoStep: () => run("nudgeIsOneUndoStep", nudgeIsOneUndoStep),
+  nudgeHoldIsOneUndoStep: () => run("nudgeHoldIsOneUndoStep", nudgeHoldIsOneUndoStep),
   farClicksNotDoubleClick: () => run("farClicksNotDoubleClick", farClicksNotDoubleClick),
   implPickerKeyboard: () => run("implPickerKeyboard", implPickerKeyboard),
   shortcutHelpComplete: () => run("shortcutHelpComplete", shortcutHelpComplete),
@@ -143,7 +143,7 @@ async function fitFramesVisibleContent(res: Record<string, unknown>) {
   return (res.zoom as number) > 0.6;
 }
 
-async function nudgeIsOneUndoStep(res: Record<string, unknown>) {
+async function nudgeHoldIsOneUndoStep(res: Record<string, unknown>) {
   const b = emptyBoard("bNudge", "nudge");
   const a = nv("LLMEngine.step"), c = nv("Scheduler.schedule");
   put(b, a, 80, 80, 560); put(b, c, 700, 80, 560);
@@ -152,16 +152,21 @@ async function nudgeIsOneUndoStep(res: Record<string, unknown>) {
   await clickHead(h, c.id);
   await h.page.keyboard.press("Delete"); await wait(h, 300);
   await clickHead(h, a.id);
-  for (let i = 0; i < 5; i++) await h.page.keyboard.press("ArrowRight");
-  for (let i = 0; i < 3; i++) await h.page.keyboard.press("Shift+ArrowDown");
+  // hold → (the browser repeats the key down while it is held: Playwright sends repeats for a key already down)
+  for (let i = 0; i < 5; i++) await h.page.keyboard.down("ArrowRight");
+  await h.page.keyboard.up("ArrowRight");
+  // then two separate presses of ↓
+  for (let i = 0; i < 2; i++) await h.page.keyboard.press("ArrowDown");
   await wait(h, 1000);
-  res.moved = [h.board().place[a.id].x, h.board().place[a.id].y];
-  await h.page.keyboard.press("Meta+z"); await wait(h, 1000);
-  res.afterUndo = [h.board().place[a.id].x, h.board().place[a.id].y];
+  const at = () => [h.board().place[a.id].x, h.board().place[a.id].y];
+  res.moved = at();
+  const undos: number[][] = [];
+  for (let i = 0; i < 3; i++) { await h.page.keyboard.press("Meta+z"); await wait(h, 600); undos.push(at()); }
+  res.undos = undos;
   await h.page.keyboard.press("Meta+z"); await wait(h, 1000);
   res.deletedBack = h.board().cards.some((k) => k.id === c.id);
   await close(h);
-  return JSON.stringify(res.moved) === "[85,110]" && JSON.stringify(res.afterUndo) === "[80,80]" && !!res.deletedBack;
+  return JSON.stringify(res.moved) === "[85,82]" && JSON.stringify(undos) === "[[85,81],[85,80],[80,80]]" && !!res.deletedBack;
 }
 
 async function farClicksNotDoubleClick(res: Record<string, unknown>) {

@@ -625,7 +625,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   };
   const onKey = (ev: KeyboardEvent) => {
     const mod = ev.metaKey || ev.ctrlKey;
-    if (ev.isComposing || ev.keyCode === 229) return;
+    if (ev.isComposing || ev.key === "Process") return;
     if (mod && !ev.shiftKey && !ev.altKey && (ev.key === "/" || ev.code === "Slash")) { ev.preventDefault(); toggleRaw(); return; }
     // 所见即所得模式的 Esc / ⌘↵ 在编辑器的键表里（最后才轮到，菜单、灰字先处理 Esc）；这里只管原文模式
     if (!raw) return;

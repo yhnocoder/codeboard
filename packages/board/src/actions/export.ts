@@ -5,7 +5,7 @@
 // 都是点了 Export 才做、异步做，不进每帧的工作
 import { unwrap } from "solid-js/store";
 import { boardMarkdown, cardTitle, exportOrder, findCard, isQuestion, startCards, walkOrder, bounds, escHtml, THEMES, type Board, type ExportFormat, type ExportScope, type Segment, type Sidenote } from "@codeboard/core";
-import { state, sel, select, lineSel, setLineSel, rectOf, cardById, toast, flows } from "../state/store";
+import { state, sel, select, lineSel, setLineSel, rectOf, hostOf, toast, flows } from "../state/store";
 import { lod, holdFullDetail } from "../state/camera";
 import { lodBusy, lodOf } from "../state/lodcards";
 import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";
@@ -25,10 +25,10 @@ export function openExport(format: ExportFormat = "html") {
   const s = state.host.settings;
   // 选中的 Section，或选中的卡所在的 Section
   const secs = sel.sections.length ? [...sel.sections] : [...new Set(sel.cards.map((id) => state.board.place[id]?.section).filter(Boolean) as string[])];
-  let scope = s?.exportScope ?? "board";
+  let scope = s.exportScope;
   if (scope === "sections" && !state.board.sections.length) scope = "board";
   if (scope === "walk" && !walkStart()) scope = "board";
-  setExportOpen({ format, scope, sections: secs.length ? secs : state.board.sections.slice(0, 1).map((x) => x.id), questions: !!s?.exportQuestions, boardOnly: !!s?.exportBoardOnly });
+  setExportOpen({ format, scope, sections: secs.length ? secs : state.board.sections.slice(0, 1).map((x) => x.id), questions: s.exportQuestions, boardOnly: s.exportBoardOnly });
 }
 
 const fileName = () => (state.board.name || "board").trim();
@@ -104,8 +104,7 @@ export async function cloneForExport(b: Board, scope: ExportScope, order: string
   const world = await withFullDetail(async () => { flushMd(); await frames(1); return (document.querySelector("#board .world") as HTMLElement).cloneNode(true) as HTMLElement; });
   select(prevSel); setLineSel(prevLine);
   const keep = new Set(order);
-  const host = (id: string) => cardById(id)?.host.id ?? id;
-  const linkOk = new Set(b.links.filter((l) => keep.has(host(l.from.card)) && keep.has(host(l.to.card))).map((l) => l.id));
+  const linkOk = new Set(b.links.filter((l) => keep.has(hostOf(l.from.card)) && keep.has(hostOf(l.to.card))).map((l) => l.id));
   world.querySelectorAll<HTMLElement>(".card[data-id]").forEach((el) => { if (!keep.has(el.dataset.id!) && !el.parentElement?.closest(".card")) el.remove(); });
   world.querySelectorAll<HTMLElement>("[data-lk]").forEach((el) => { if (!linkOk.has(el.dataset.lk!)) el.remove(); });
   world.querySelectorAll<HTMLElement>("[data-link]").forEach((el) => { if (!linkOk.has(el.dataset.link!)) el.remove(); });
@@ -210,7 +209,6 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   const keep = new Set(order);
   const whole = o.scope === "board";
   const world = await cloneForExport(b, scopeOf(o), order);
-  const host = (id: string) => cardById(id)?.host.id ?? id;
   // 贴纸：问题不带出去时删掉；画布上没绑东西的只在整块导出时留
   const qs = new Set(b.stickers.filter((s) => isQuestion(s)).map((s) => s.id));
   world.querySelectorAll<HTMLElement>("[data-sticker]").forEach((el) => {
@@ -235,12 +233,12 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   const rs = order.map((id) => ({ id, ...rectOf(id) }));
   const box = bounds(rs) ?? { x: 0, y: 0, w: 800, h: 600 };
   const notes: Record<string, string> = {};
-  for (const n of b.sidenotes) if (keep.has(host(n.at.card)) && !hidden.has(n.id)) notes[n.id] = noteHtml(n);
+  for (const n of b.sidenotes) if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = noteHtml(n);
   const questions: Record<string, string> = {};
   if (o.questions) for (const s of b.stickers) if (qs.has(s.id)) questions[s.id] = `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${renderMd(s.q?.md || "(no text)")}</div>`;
   const cardLinks: Record<string, string> = {};
   for (const id of order) { const c = b.cards.find((k) => k.id === id); const s = c?.kind === "code" ? c.segments[0] : undefined; if (s && links[s.id]) cardLinks[id] = links[s.id]; }
-  const walkIds = o.scope === "walk" ? order : (() => { const s = startCards(b)[0]; return s ? walkOrder(b, s).map(host).filter((id) => keep.has(id)) : []; })();
+  const walkIds = o.scope === "walk" ? order : (() => { const s = startCards(b)[0]; return s ? walkOrder(b, s).map(hostOf).filter((id) => keep.has(id)) : []; })();
   const commit = (() => { for (const id of order) { const c = b.cards.find((k) => k.id === id); const v = c?.kind === "code" ? c.segments[0]?.version : undefined; if (v?.kind === "git") return v.commit.slice(0, 7); } return ""; })();
   const data: ViewerData = {
     name: b.name, box, walk: walkIds.map((id) => ({ id, title: cardTitle(findCard(b, id)!.card, b), mark: flows().byId.get(id)?.label ?? "", r: rectOf(id) })),

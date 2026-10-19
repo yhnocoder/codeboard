@@ -283,8 +283,8 @@ export function canvasMenu(x: number, y: number) {
     { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },
     // 复制的是别的白板上的卡：默认贴成共享卡（设置里可以换），⌥ 是另一种
     ...(state.host.clip && state.host.clip.board !== state.board.id ? [
-      { label: state.host.settings?.pasteOther === "copy" ? "Paste as Copy" : "Paste as Linked Card", kbd: kbd("paste"), run: () => void pasteFromBoard(undefined, w) },
-      { label: state.host.settings?.pasteOther === "copy" ? "Paste as Linked Card" : "Paste as Copy", kbd: kbd("pasteOther"), run: () => void pasteFromBoard(undefined, w, true) },
+      { label: state.host.settings.pasteOther === "copy" ? "Paste as Copy" : "Paste as Linked Card", kbd: kbd("paste"), run: () => void pasteFromBoard(undefined, w) },
+      { label: state.host.settings.pasteOther === "copy" ? "Paste as Linked Card" : "Paste as Copy", kbd: kbd("pasteOther"), run: () => void pasteFromBoard(undefined, w, true) },
     ] as Item[] : [
       { label: "Paste", kbd: kbd("paste"), run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) } as Item,
     ]),

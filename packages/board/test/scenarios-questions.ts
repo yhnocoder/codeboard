@@ -1,11 +1,11 @@
 // v0.2 questions, export and settings (wireframes 06, 08, 09): ? stickers with a written question, Mark Answered / Link Answer (✓),
 // the Questions panel across boards, Copy as List, the welcome-back hint; the Export dialog, an offline HTML snapshot opened in Chromium,
 // a Markdown export; the new settings rows.
-// Usage: node packages/board/test/run-harness.mjs questions export v02settings [--light]   screenshots: test-out/harness/{questions,export,settings}-*.png
+// Usage: node packages/board/test/run-harness.mjs questions export settingsPage [--light]   screenshots: test-out/harness/{questions,export,settings}-*.png
 // SHOTS_DIR=… also copies them there.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type Board, type BoardToHost, type CodeCard, type HostToBoard, type QuestionItem, type SegView } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, type Board, type BoardToHost, type CodeCard, type HostToBoard, type QuestionItem, type SegView } from "@codeboard/core";
 import { open, shot, put, symCard, findSym, viewOf, OUT, REPO, type Host } from "./harness";
 import { inlineFor, setMediaDir } from "../../../extensions/vscode/src/exports";
 
@@ -33,13 +33,13 @@ const run = async (name: string, f: (res: Record<string, unknown>) => Promise<bo
 export const QUESTIONS: Record<string, () => Promise<void>> = {
   questions: () => run("questions", questions),
   export: () => run("export", exportScenario),
-  v02settings: () => run("v02settings", settings),
+  settingsPage: () => run("settingsPage", settings),
 };
 
 const initOf = (b: Board, extra: Partial<Extract<HostToBoard, { type: "init" }>> = {}): HostToBoard => {
   const views: Record<string, SegView> = {};
   for (const k of b.cards) if (k.kind === "code") for (const sg of k.segments) views[sg.id] = viewOf(sg);
-  return { type: "init", board: b, boards: [{ id: b.id, name: b.name, cards: b.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text" } }, ...extra };
+  return { type: "init", board: b, boards: [{ id: b.id, name: b.name, cards: b.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS }, ...extra };
 };
 
 /** Right-click a code line and pick a line-menu item */

@@ -2,12 +2,12 @@
 // 加上屏幕坐标的框选框、对齐工具条。
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
-import { state, sel, rectOf, cardById, mutate, placed } from "../state/store";
-import { cam, setViewport, lod, camMoving, stillZ } from "../state/camera";
+import { state, sel, rectOf, cardById, hostOf, mutate, placed } from "../state/store";
+import { cam, setViewport, lod, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";
 import { trackSkeletons } from "../state/subboards";
-import { guides, sizeHint, marquee, dragging, dropTarget, walk } from "../state/ui";
+import { guides, sizeHint, marquee, dragging, dropTarget, walk, editing } from "../state/ui";
 import { CardView } from "../cards/Card";
 import { CanvasStickers } from "../stickers/Picker";
 import { trackLinks, LinkLayer } from "./Links";
@@ -23,12 +23,27 @@ import { boardMode } from "../state/mode";
 
 const EXT = 2048;
 
+/** 正在写的字在屏幕上至少这么大（px） */
+const READ_PX = 11;
+
 export function Canvas() {
   let el!: HTMLDivElement, world!: HTMLDivElement;
   trackOffscreen();
   trackCardLod();
   trackLinks();
   trackSkeletons();
+  // 开始写 Note / Text 时字太小（缩得很小时按 N、双击）：镜头放大到看得清（最多 100%），卡放得下就整张放进来。退出编辑不缩回去
+  createEffect(on(editing, (e) => {
+    if (e?.kind !== "note") return;
+    requestAnimationFrame(() => {
+      const el = world.querySelector(`.card[data-id="${e.id}"] :is(.nbody, .tx)`), f = cardById(e.id);
+      if (!el || !f) return;
+      const fs = parseFloat(getComputedStyle(el).fontSize), c = camTarget();
+      if (!fs || fs * c.z >= READ_PX) return;
+      const t = fitRect(rectOf(f.host), 1, Math.min(1, READ_PX / fs));
+      camTo(t.x, t.y, t.z);
+    });
+  }));
   // 停下以后一两帧去掉 will-change 的提示（styles.css 的 .world.settle）：位图缩放过的内容按新比例重新清晰栅格化
   const [settle, setSettle] = createSignal(false);
   createEffect(on(camMoving, (m) => {
@@ -101,7 +116,7 @@ export function Canvas() {
 
 function WalkSteps() {
   const items = createMemo(() => [...(A.walkSteps() ?? new Map<string, number>()).entries()]);
-  const cur = () => { const w = walk(); return w ? cardById(w.order[w.i])?.host.id : undefined; };
+  const cur = () => { const w = walk(); return w ? hostOf(w.order[w.i]) : undefined; };
   // 字号跟着镜头停下后的缩放反向放大一点（镜头动的时候不重算）
   const k = () => Math.max(1, 0.9 / stillZ());
   return (

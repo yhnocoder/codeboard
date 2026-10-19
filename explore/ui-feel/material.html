@@ -1,7 +1,7 @@
 <title>CodeBoard 材质</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600;700&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&family=Noto+Serif+SC:wght@400;600&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&display=swap">
 <style>
 /* 页面外框：上方切换条；左边模拟 VS Code 半屏 webview 里的白板，右边是这种风格的取舍 */
 :root {
@@ -39,7 +39,7 @@ header.chrome { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 2
 header h1 { font: 600 17px/1.2 var(--sys); margin: 0; letter-spacing: -0.01em; }
 header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .grow { flex: 1; }
-.seg { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--seg-bg); gap: 2px; }
+.seg { display: inline-flex; flex-wrap: wrap; padding: 2px; border-radius: 8px; background: var(--seg-bg); gap: 2px; }
 .seg button { padding: 3px 11px; border-radius: 6px; font-size: 12.5px; color: var(--page-ink-2); transition: background .15s, color .15s; }
 .seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--page-ink); box-shadow: 0 0 0 .5px var(--page-hair), 0 1px 2px light-dark(rgba(0,0,0,.08), rgba(0,0,0,.4)); }
 .ctl { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--page-ink-2); }
@@ -54,10 +54,14 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 /* ---------- 白板骨架：只管位置，长相交给各风格 ---------- */
 .board { position: relative; height: 640px; overflow: hidden; background: var(--bg); color: var(--ink); font-family: var(--ui); }
 @media (max-width: 600px) { .board { height: 540px; } }
+.tilt { position: absolute; inset: 0; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; }
 .card { position: absolute; overflow: hidden; }
-.cband, .cname, .cmeta, .cnote, .cfoot, .caption, .rail, .dim, .eyebrow, .prog, .lab, .frame-deco { display: none; }
+.board:not([data-v="city"]) .traffic { display: none !important; }
+.cband, .cname, .cmeta, .cnote, .cfoot, .cside, .caption, .rail, .dim, .eyebrow, .prog, .lab, .frame-deco, .scene { display: none; }
+.scene { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.scene svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .chead { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
 .ctitle, .cpath { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cpath { flex: 1 1 0; }
@@ -558,6 +562,341 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
 .board[data-v="art"] .toast { bottom: 66px; background: var(--paper); border: .5px solid var(--rule); outline: .5px solid var(--rule); outline-offset: 2px; color: var(--ink); font: 400 10px var(--mono); letter-spacing: .2em; padding: 7px 14px; }
 .board[data-v="art"] .toast b { font-weight: 500; text-decoration: underline .5px; text-underline-offset: 3px; }
 
+/* 竹简：每行代码写在一根竹简上，左边一根宽简竖写编号，两道麻绳穿起来；朱砂做批注色 */
+.board[data-v="bamboo"] {
+  --bg: light-dark(#ebe4d3, #17120d);
+  --tex: light-dark(rgba(90,70,40,.05), rgba(255,220,170,.035));
+  --slip: light-dark(#dcc596, #4b3c27);
+  --slip-hi: light-dark(#e6d3a8, #574631);
+  --gap: light-dark(#9c7d4c, #110c07);
+  --grain: light-dark(rgba(110,80,30,.07), rgba(0,0,0,.18));
+  --ink: light-dark(#21180e, #f0e3c4);
+  --ink-2: light-dark(#5b4630, #c9b48d);
+  --ink-3: light-dark(#977c54, #8d7856);
+  --zhu: light-dark(#ac2f1b, #ec6a4f);
+  --cord: light-dark(#5e3f1d, #b48a52);
+  --cord-2: light-dark(#87612f, #7c5b31);
+  --selbg: light-dark(rgba(172,47,27,.2), rgba(236,106,79,.32));
+  --ui: "Noto Serif SC", "Songti SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --brush: "Ma Shan Zheng", "Kaiti SC", "STKaiti", "KaiTi", serif;
+  background-image: repeating-linear-gradient(0deg, var(--tex) 0 1px, transparent 1px 4px), repeating-linear-gradient(90deg, var(--tex) 0 1px, transparent 1px 4px);
+}
+.board[data-v="bamboo"] .card { overflow: visible; display: grid; grid-template-columns: 30px minmax(0, 1fr); background: none;
+  filter: drop-shadow(0 1px 1px light-dark(rgba(60,40,10,.25), rgba(0,0,0,.6))) drop-shadow(0 10px 14px light-dark(rgba(60,40,10,.18), rgba(0,0,0,.5))); }
+.board[data-v="bamboo"] .card.sel { outline: 1.5px solid var(--zhu); outline-offset: 5px; border-radius: 2px; }
+/* 首简：竖写编号 */
+.board[data-v="bamboo"] .cside { display: flex; grid-column: 1; grid-row: 1 / 4; justify-content: center; padding-top: 12px; margin-right: 2px; border-radius: 3px 0 0 3px;
+  background: linear-gradient(90deg, var(--slip-hi), var(--slip)); box-shadow: inset -1px 0 0 var(--gap); }
+.board[data-v="bamboo"] .cside span { writing-mode: vertical-rl; font: 400 15px/1 var(--brush); color: var(--zhu); letter-spacing: .12em; }
+/* 标题简 */
+.board[data-v="bamboo"] .chead { grid-column: 2; grid-row: 1; height: 30px; padding: 0 26px 0 10px; background: var(--slip-hi); border-bottom: 2px solid var(--gap); border-radius: 0 3px 0 0; }
+.board[data-v="bamboo"] .step { display: none; }
+.board[data-v="bamboo"] .ctitle { font: 600 12px var(--mono); color: var(--ink); }
+.board[data-v="bamboo"] .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
+.board[data-v="bamboo"] .rev { font: 10px var(--mono); color: var(--ink-3); }
+.board[data-v="bamboo"] .rev.new { font: 400 12px var(--brush); color: var(--slip-hi); background: var(--zhu); padding: 1px 5px 0; border-radius: 2px; letter-spacing: .1em; }
+.board[data-v="bamboo"] .cnote { display: block; grid-column: 2; grid-row: 2; padding: 3px 26px 2px 10px; font: 400 14px/20px var(--brush); color: var(--ink-2); background: var(--slip); border-bottom: 2px solid var(--gap); letter-spacing: .06em; }
+/* 正文：一行一简，简与简之间留一道缝 */
+.board[data-v="bamboo"] .code { grid-column: 2; grid-row: 3; padding: 0; font: 10.5px/19px var(--mono); color: var(--ink); border-radius: 0 0 3px 0;
+  background: repeating-linear-gradient(90deg, var(--grain) 0 1px, transparent 1px 9px), repeating-linear-gradient(180deg, transparent 0 38px, var(--grain) 38px 57px, transparent 57px 76px, rgba(255,255,255,.06) 76px 95px), repeating-linear-gradient(180deg, var(--slip) 0 17px, var(--gap) 17px 19px); }
+.board[data-v="bamboo"] .code::before, .board[data-v="bamboo"] .code::after { content: ""; position: absolute; top: -52px; bottom: -4px; width: 3px; z-index: 2; border-radius: 2px;
+  background: repeating-linear-gradient(160deg, var(--cord) 0 3px, var(--cord-2) 3px 5px); box-shadow: 1px 0 1px rgba(0,0,0,.25); }
+.board[data-v="bamboo"] .code::before { left: -3px; }
+.board[data-v="bamboo"] .code::after { right: 12px; }
+.board[data-v="bamboo"] .gutter .no { width: 34px; padding-right: 8px; color: var(--ink-3); }
+.board[data-v="bamboo"] .src { padding-left: 10px; line-height: 19px; }
+.board[data-v="bamboo"] .hlrow { background: color-mix(in srgb, var(--zhu) 16%, transparent); }
+.board[data-v="bamboo"] .no.link { color: var(--zhu); font-weight: 600; }
+.board[data-v="bamboo"] .kw { color: var(--zhu); } .board[data-v="bamboo"] .fn { color: var(--ink); font-weight: 600; } .board[data-v="bamboo"] .str { color: var(--ink-2); }
+.board[data-v="bamboo"] .com { color: var(--ink-3); font-style: italic; } .board[data-v="bamboo"] .num { color: var(--zhu); } .board[data-v="bamboo"] .self { color: var(--ink-2); } .board[data-v="bamboo"] .p { color: var(--ink-3); }
+.board[data-v="bamboo"] .call { text-decoration: underline 1px var(--zhu); text-underline-offset: 3px; }
+/* 连线是麻绳，两头打结 */
+.board[data-v="bamboo"] .edge { fill: none; stroke: var(--cord); stroke-width: 2.4; stroke-dasharray: 3 1.2; }
+.board[data-v="bamboo"] .ahead { fill: var(--cord); }
+.board[data-v="bamboo"] .port { fill: var(--cord); stroke: none; }
+.board[data-v="bamboo"] .elabel { font: 10.5px var(--mono); color: var(--ink); background: var(--slip-hi); padding: 3px 9px 3px 16px; border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--gap), 0 4px 8px -4px rgba(40,25,5,.5); }
+.board[data-v="bamboo"] .elabel::before { content: ""; position: absolute; left: 6px; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; border-radius: 50%; background: var(--bg); box-shadow: inset 0 0 0 1px var(--gap); }
+
+/* 题签和工具条 */
+.board[data-v="bamboo"] .tb-left .pill { background: var(--slip-hi); padding: 4px 14px 4px 12px; border-radius: 2px; box-shadow: 0 0 0 1px var(--gap), 0 6px 12px -6px rgba(40,25,5,.5); }
+.board[data-v="bamboo"] .bn { font: 400 18px/1.2 var(--brush); color: var(--ink); letter-spacing: .1em; }
+.board[data-v="bamboo"] .bn::after { content: "壹"; margin-left: 10px; font-size: 12px; color: var(--slip-hi); background: var(--zhu); padding: 1px 4px; border-radius: 2px; vertical-align: 2px; }
+.board[data-v="bamboo"] .chev { color: var(--ink-3); }
+.board[data-v="bamboo"] .tb-right .pill, .board[data-v="bamboo"] .dock .pill { background: var(--slip-hi); border-radius: 3px; padding: 3px 6px; box-shadow: 0 0 0 1px var(--gap), 0 6px 12px -6px rgba(40,25,5,.5); }
+.board[data-v="bamboo"] .tbtn, .board[data-v="bamboo"] .ib { color: var(--ink); border-radius: 2px; font: 400 14px var(--brush); }
+.board[data-v="bamboo"] .ib:hover, .board[data-v="bamboo"] .tbtn:hover { background: var(--slip); }
+.board[data-v="bamboo"] .sep { width: 2px; height: 18px; background: var(--gap); margin: 0 4px; }
+.board[data-v="bamboo"] .zoom { font: 11px var(--mono); color: var(--ink-2); }
+.board[data-v="bamboo"] .toast { background: var(--ink); color: var(--slip-hi); font: 400 14px var(--brush); padding: 6px 14px; border-radius: 2px; letter-spacing: .04em; }
+.board[data-v="bamboo"] .toast .tdot { width: 8px; height: 8px; border-radius: 50%; background: var(--zhu); }
+.board[data-v="bamboo"] .toast b { font-weight: 400; color: var(--zhu); }
+
+/* 水墨：宣纸底、远山淡墨、一缕雾慢慢飘；卡片是一页纸，编号是白文朱印，连线是毛笔线。深色是拓片：黑底白字 */
+.board[data-v="ink"] {
+  --bg: light-dark(#f2ede2, #131312);
+  --paper: light-dark(rgba(250,247,240,.93), rgba(28,27,25,.92));
+  --ink: light-dark(#1d1c1a, #e9e5da);
+  --ink-2: light-dark(#4c4943, #b9b4a8);
+  --ink-3: light-dark(#9a958b, #6e6a62);
+  --wash: light-dark(rgba(29,28,26,.06), rgba(233,229,218,.07));
+  --zhu: light-dark(#b8321f, #d6533a);
+  --huaqing: light-dark(#2d5b70, #8fb7c9);  /* 花青 */
+  --zheshi: light-dark(#9a5a2c, #d39a6c);   /* 赭石 */
+  --mtn: light-dark(#2a2926, #d8d3c6);
+  --mist: light-dark(#f7f3ea, #2a2926);
+  --selbg: light-dark(rgba(29,28,26,.14), rgba(233,229,218,.2));
+  --ui: "Noto Serif SC", "Songti SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --brush: "Zhi Mang Xing", "Ma Shan Zheng", "Kaiti SC", serif;
+  --seal: "Ma Shan Zheng", "Kaiti SC", serif;
+  --paper-solid: light-dark(#faf7f0, #1c1b19);
+  --paperfiber: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .4 0 0 0 0 .32 0 0 0 .55 -.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+}
+.board[data-v="ink"] .scene { display: block; }
+.board[data-v="ink"] .card { background: var(--paper); box-shadow: 0 0 0 .5px var(--wash), 0 18px 34px -22px light-dark(rgba(30,25,15,.35), rgba(0,0,0,.8)); display: flex; flex-direction: column; overflow: visible; }
+.board[data-v="ink"] .card.sel { box-shadow: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), 0 18px 34px -22px rgba(0,0,0,.4); }
+.board[data-v="ink"] .chead { order: 0; position: relative; height: 38px; padding: 0 12px 0 14px; gap: 10px; }
+.board[data-v="ink"] .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 0; height: 7px; background: var(--ink); opacity: .75;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat; }
+/* 白文印：朱底留白字 */
+.board[data-v="ink"] .step { order: 9; font-size: 0; }
+.board[data-v="ink"] .step::after { content: attr(data-cn); display: inline-block; font: 400 12px/1 var(--seal); color: var(--paper); background: var(--zhu); padding: 4px 3px 3px; border-radius: 2px; writing-mode: vertical-rl; rotate: 2deg; opacity: .92; }
+.board[data-v="ink"] .ctitle { font: 600 13px var(--ui); color: var(--ink); letter-spacing: .01em; }
+.board[data-v="ink"] .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
+.board[data-v="ink"] .rev { font: 10px var(--mono); color: var(--ink-3); }
+/* 有新版本：朱文印，红框红字 */
+.board[data-v="ink"] .rev.new { font-size: 0; }
+.board[data-v="ink"] .rev.new::after { content: "新"; font: 400 12px/1 var(--seal); color: var(--zhu); border: 1.2px solid var(--zhu); padding: 2px 3px 1px; border-radius: 2px; rotate: -3deg; }
+.board[data-v="ink"] .cnote { display: block; order: 1; padding: 7px 14px 2px; font: 400 12px/1.5 var(--ui); color: var(--ink-2); }
+.board[data-v="ink"] .code { order: 2; padding: 6px 0 12px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.board[data-v="ink"] .gutter .no { width: 38px; padding-right: 10px; color: var(--ink-3); }
+.board[data-v="ink"] .hlrow { background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent); }
+.board[data-v="ink"] .no.link { color: var(--zhu); }
+.board[data-v="ink"] .kw { color: var(--ink); font-weight: 600; } .board[data-v="ink"] .fn { color: var(--huaqing); } .board[data-v="ink"] .str { color: var(--zheshi); }
+.board[data-v="ink"] .com { color: var(--ink-3); font-style: italic; } .board[data-v="ink"] .num { color: var(--zheshi); } .board[data-v="ink"] .self { color: var(--ink-2); } .board[data-v="ink"] .p { color: var(--ink-3); }
+.board[data-v="ink"] .call { text-decoration: underline 1px var(--zhu); text-underline-offset: 3px; }
+/* 毛笔线：纸纹把边缘扰乱一点 */
+.board[data-v="ink"] .edge { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; opacity: .82; filter: url(#brush); }
+.board[data-v="ink"] .ahead { fill: var(--ink); opacity: .85; }
+.board[data-v="ink"] .port { fill: var(--ink); stroke: none; }
+.board[data-v="ink"] .elabel { font: italic 400 12px var(--ui); color: var(--ink-2); padding: 1px 8px; background: radial-gradient(closest-side, var(--bg) 60%, transparent); }
+
+.board[data-v="ink"] .tb-left { top: 14px; left: 18px; }
+.board[data-v="ink"] .tb-left .pill { background: none; gap: 10px; }
+.board[data-v="ink"] .bn { font: 400 26px/1 var(--brush); color: var(--ink); letter-spacing: .04em; }
+.board[data-v="ink"] .bname::after { content: "白板"; font: 400 11px/1 var(--seal); color: var(--paper); background: var(--zhu); padding: 3px 2px 2px; border-radius: 2px; writing-mode: vertical-rl; margin-left: 8px; }
+.board[data-v="ink"] .chev { display: none; }
+.board[data-v="ink"] .tb-right .pill { background: none; gap: 8px; }
+.board[data-v="ink"] .tbtn, .board[data-v="ink"] .ib { color: var(--ink); font: 400 13px var(--ui); border-radius: 2px; }
+.board[data-v="ink"] .ib:hover, .board[data-v="ink"] .tbtn:hover { background: var(--wash); }
+/* 讲解是一枚朱印，按下去像盖章 */
+.board[data-v="ink"] #btnPresent { background: var(--zhu); color: var(--paper); font: 400 15px var(--seal); letter-spacing: .1em; padding: 0 10px; height: 30px; border-radius: 3px;
+  box-shadow: inset 0 0 0 2px var(--zhu), inset 0 0 0 3px light-dark(rgba(250,247,240,.7), rgba(28,27,25,.6)); rotate: -2deg; transition: scale 60ms; }
+.board[data-v="ink"] #btnPresent:active { scale: .94; }
+.board[data-v="ink"] #btnPresent .ico { fill: currentColor; stroke: none; width: 12px; }
+/* 工具条是一条素宣纸，右侧斜搁着一支毛笔 */
+.board[data-v="ink"] .dock { bottom: 18px; }
+.board[data-v="ink"] .dock .pill { position: relative; padding: 4px 26px 4px 12px; gap: 2px; border-radius: 1px;
+  background: var(--paperfiber), var(--paper-solid); background-blend-mode: multiply, normal; box-shadow: 0 0 0 .5px var(--wash), 0 1px 2px light-dark(rgba(60,40,10,.12), rgba(0,0,0,.5)), 0 12px 22px -12px rgba(0,0,0,.4); }
+.board[data-v="ink"] .dock .pill::after { content: ""; position: absolute; right: 0; top: -10px; width: 13px; height: 64px; rotate: 24deg; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 84'%3E%3Cdefs%3E%3ClinearGradient id='h' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%236b4a26'/%3E%3Cstop offset='.45' stop-color='%23c79a5c'/%3E%3Cstop offset='1' stop-color='%235a3c1c'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23111'/%3E%3Cstop offset='.45' stop-color='%23444'/%3E%3Cstop offset='1' stop-color='%230b0b0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.5a1.6 1.6 0 0 1 0 3.2' fill='none' stroke='%23b0322a' stroke-width='1'/%3E%3Crect x='5' y='4' width='6' height='50' rx='2.6' fill='url(%23h)'/%3E%3Cpath d='M5.4 22h5.2M5.4 40h5.2' stroke='%235a3c1c' stroke-width='.7' opacity='.7'/%3E%3Crect x='4.6' y='52' width='6.8' height='5' rx='1.2' fill='%23222'/%3E%3Cpath d='M4.8 57c0 8 1.6 16 3.2 25 1.6-9 3.2-17 3.2-25z' fill='url(%23t)'/%3E%3C/svg%3E") center / contain no-repeat; filter: drop-shadow(2px 3px 2px rgba(0,0,0,.3)); }
+.board[data-v="ink"] .dock .ib { width: 32px; height: 28px; }
+.board[data-v="ink"] .sep { width: 0; margin: 0; }
+.board[data-v="ink"] .zoom { min-width: 50px; font: 400 14px var(--seal); color: var(--ink-2); }
+.board[data-v="ink"] .toast { background: var(--paper); color: var(--ink); font: 400 12.5px var(--ui); padding: 7px 14px 7px 8px; box-shadow: 0 0 0 .5px var(--wash), 0 10px 20px -12px rgba(0,0,0,.4); }
+.board[data-v="ink"] .toast .tdot { width: 14px; height: 14px; background: var(--zhu); border-radius: 2px; }
+.board[data-v="ink"] .toast b { font-weight: 600; color: var(--zhu); }
+/* 远山和雾 */
+.board[data-v="ink"] .mtn { fill: var(--mtn); }
+.board[data-v="ink"] .mist { fill: var(--mist); animation: inkMist calc(var(--t, 1) * 70s) ease-in-out infinite alternate; }
+@keyframes inkMist { from { transform: translateX(-60px); } to { transform: translateX(80px); } }
+@media (prefers-reduced-motion: reduce) { .board[data-v="ink"] .mist { animation: none; } }
+
+/* 3D · 等距积木：白板是一张等距网格纸，卡片是往右下方挤出厚度的彩色积木块，每个源文件一种颜色；
+   连线、标签、按钮都有同方向的厚度，选中或按下就是积木被抬起或压下去 */
+.board[data-v="clay"] {
+  --bg: light-dark(#f2ebdc, #15161f);
+  --grid: light-dark(rgba(120,90,40,.09), rgba(170,180,255,.06));
+  --top: light-dark(#fffaf0, #24263a);
+  --ink: light-dark(#1f1d2b, #eceaf6);
+  --ink-2: light-dark(#5b5768, #b0adc4);
+  --ink-3: light-dark(#a09a8c, #6f6c88);
+  --edge-ink: light-dark(#1f1d2b, #0a0b12);
+  --line: light-dark(#1f1d2b, #c9c6e0);
+  --c1: light-dark(#ef5b3f, #d9563d); --s1: light-dark(#a8361f, #6e2617);
+  --c2: light-dark(#14958f, #1c8a85); --s2: light-dark(#0a5e5a, #0b3f3d);
+  --c3: light-dark(#4a5bd8, #5465d6); --s3: light-dark(#26339a, #222a6b);
+  --hi: light-dark(#ffd23f, #f2c53d);
+  --selbg: light-dark(rgba(255,210,63,.45), rgba(242,197,61,.35));
+  --ui: "Archivo", "Helvetica Neue", "PingFang SC", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --k-kw: light-dark(#c2381f, #ff8a70); --k-fn: light-dark(#3446c4, #9aa8ff); --k-str: light-dark(#0f7a75, #6fd6cf);
+  --k-com: light-dark(#a7a091, #6d6a86); --k-num: light-dark(#c2381f, #ff8a70); --k-self: light-dark(#8a3fa8, #d79af0); --k-p: light-dark(#8a8578, #8d8aa6);
+  background-color: var(--bg);
+  background-image: repeating-linear-gradient(30deg, var(--grid) 0 1px, transparent 1px 26px), repeating-linear-gradient(150deg, var(--grid) 0 1px, transparent 1px 26px);
+}
+.board[data-v="clay"] .card { --c: var(--c1); --s: var(--s1); background: var(--top); border-radius: 4px; overflow: visible;
+  box-shadow: 0 0 0 1.5px var(--edge-ink), 1px 1px 0 var(--s), 2px 2px 0 var(--s), 3px 3px 0 var(--s), 4px 4px 0 var(--s), 5px 5px 0 var(--s), 6px 6px 0 var(--s), 7px 7px 0 var(--s), 8px 8px 0 var(--s), 9px 9px 0 var(--s), 9px 9px 0 1.5px var(--edge-ink), 18px 22px 24px -8px light-dark(rgba(80,50,10,.35), rgba(0,0,0,.7));
+  transition: translate calc(var(--t, 1) * 200ms) cubic-bezier(.2, .8, .2, 1), box-shadow calc(var(--t, 1) * 200ms) cubic-bezier(.2, .8, .2, 1); }
+.board[data-v="clay"] .card.f2 { --c: var(--c2); --s: var(--s2); } .board[data-v="clay"] .card.f3 { --c: var(--c3); --s: var(--s3); }
+.board[data-v="clay"] .card.sel { translate: -4px -4px; box-shadow: 0 0 0 1.5px var(--edge-ink), 0 0 0 5px var(--hi), 1px 1px 0 var(--s), 2px 2px 0 var(--s), 3px 3px 0 var(--s), 4px 4px 0 var(--s), 5px 5px 0 var(--s), 6px 6px 0 var(--s), 7px 7px 0 var(--s), 8px 8px 0 var(--s), 9px 9px 0 var(--s), 10px 10px 0 var(--s), 11px 11px 0 var(--s), 12px 12px 0 var(--s), 13px 13px 0 var(--s), 13px 13px 0 1.5px var(--edge-ink), 26px 30px 28px -8px light-dark(rgba(80,50,10,.4), rgba(0,0,0,.75)); }
+/* 顶面上的彩色标题带 */
+.board[data-v="clay"] .chead { height: 36px; padding: 0 12px; gap: 9px; background: var(--c); color: #fff; border-radius: 3px 3px 0 0; border-bottom: 1.5px solid var(--edge-ink); }
+.board[data-v="clay"] .step { font: 800 11px var(--ui); color: var(--c); background: #fff; border: 1.5px solid var(--edge-ink); padding: 1px 6px; border-radius: 3px; box-shadow: 2px 2px 0 var(--edge-ink); }
+.board[data-v="clay"] .ctitle { font: 700 13px var(--ui); color: #fff; }
+.board[data-v="clay"] .cpath { font: 500 11px var(--ui); color: rgba(255,255,255,.75); }
+.board[data-v="clay"] .rev { font: 10px var(--mono); color: rgba(255,255,255,.75); }
+.board[data-v="clay"] .rev.new { font: 800 10.5px var(--ui); color: var(--edge-ink); background: var(--hi); border: 1.5px solid var(--edge-ink); padding: 1px 6px; border-radius: 3px; box-shadow: 2px 2px 0 var(--edge-ink); }
+.board[data-v="clay"] .rev.new i { display: none; }
+.board[data-v="clay"] .code { padding: 8px 0 10px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.board[data-v="clay"] .gutter .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
+.board[data-v="clay"] .hlrow { background: color-mix(in srgb, var(--hi) 38%, transparent); }
+.board[data-v="clay"] .no.link { color: var(--ink); font-weight: 700; }
+.board[data-v="clay"] .kw { color: var(--k-kw); font-weight: 600; } .board[data-v="clay"] .fn { color: var(--k-fn); } .board[data-v="clay"] .str { color: var(--k-str); } .board[data-v="clay"] .com { color: var(--k-com); font-style: italic; }
+.board[data-v="clay"] .num { color: var(--k-num); } .board[data-v="clay"] .self { color: var(--k-self); } .board[data-v="clay"] .p { color: var(--k-p); }
+.board[data-v="clay"] .call { text-decoration: underline 2px var(--hi); text-underline-offset: 3px; }
+/* 连线：一根有厚度的粗线，影子朝同一个方向 */
+.board[data-v="clay"] .edge { fill: none; stroke: var(--line); stroke-width: 3; stroke-linecap: round; filter: url(#isoShadow); }
+.board[data-v="clay"] .ahead { fill: var(--line); }
+.board[data-v="clay"] .port { fill: var(--hi); stroke: var(--edge-ink); stroke-width: 1.5; }
+/* 积木按键 */
+.board[data-v="clay"] .elabel, .board[data-v="clay"] .ib, .board[data-v="clay"] .tbtn, .board[data-v="clay"] .tb-left .pill { background: var(--top); color: var(--ink); border: 1.5px solid var(--edge-ink); border-radius: 4px; box-shadow: 3px 3px 0 var(--edge-ink); }
+.board[data-v="clay"] .elabel { font: 600 10.5px var(--mono); padding: 3px 9px; }
+.board[data-v="clay"] .elabel.f2 { background: var(--c2); color: #fff; } .board[data-v="clay"] .elabel.f3 { background: var(--c3); color: #fff; }
+.board[data-v="clay"] .ib, .board[data-v="clay"] .tbtn { height: 30px; font: 700 12px var(--ui); transition: translate 50ms, box-shadow 50ms; }
+.board[data-v="clay"] .ib { width: 32px; }
+.board[data-v="clay"] .ib:active, .board[data-v="clay"] .tbtn:active { translate: 3px 3px; box-shadow: 0 0 0 var(--edge-ink); }
+.board[data-v="clay"] .pill { background: none; gap: 8px; }
+.board[data-v="clay"] .tb-left .pill { padding: 5px 12px; background: var(--hi); }
+.board[data-v="clay"] .bn { font: 800 14px var(--ui); color: var(--edge-ink); }
+.board[data-v="clay"] .chev { color: var(--edge-ink); }
+.board[data-v="clay"] #btnPresent { background: var(--c1); color: #fff; }
+.board[data-v="clay"] #btnPresent .ico { fill: currentColor; }
+.board[data-v="clay"] .dock { bottom: 20px; }
+.board[data-v="clay"] .sep { width: 0; margin: 0 2px; }
+.board[data-v="clay"] .zoom { font: 700 11px var(--mono); color: var(--ink); min-width: 46px; }
+.board[data-v="clay"] .toast { bottom: 70px; background: var(--edge-ink); color: #fff; font: 600 12.5px var(--ui); padding: 8px 14px; border-radius: 4px; box-shadow: 3px 3px 0 var(--hi); }
+.board[data-v="clay"] .toast .tdot { width: 10px; height: 10px; background: var(--hi); border-radius: 2px; }
+.board[data-v="clay"] .toast b { color: var(--hi); }
+
+/* 城市道路：一张平面城市地图。调用关系是马路（路沿、路面、黄色中线，圆角拐弯），路上停着小车；
+   卡片标题是蓝底白字路牌，编号是红色国道牌，箭头上的数据写在绿色指路牌上，有新版本是施工牌 */
+.board[data-v="city"] {
+  --land: light-dark(#ece8de, #161a22);
+  --street: light-dark(#fbfaf6, #222833);
+  --block-line: light-dark(rgba(0,0,0,.03), rgba(255,255,255,.02));
+  --park: light-dark(#cfe5bf, #1b2a22);
+  --tree: light-dark(#a9d18f, #23382b);
+  --water: light-dark(#b8d6ec, #142538);
+  --bldg: light-dark(#e0dbcf, #1c212b);
+  --bldg-edge: light-dark(#d2ccbe, #262c38);
+  --casing: light-dark(#ffffff, #3a4150);
+  --asphalt: light-dark(#7c828c, #313844);
+  --lane: light-dark(#f6c93b, #e8b84a);
+  --sign: light-dark(#1f5fbf, #2d5ea8);
+  --sign-ink: #ffffff;
+  --pole: light-dark(#9aa1ab, #4a5260);
+  --guide: light-dark(#13804a, #1d6c43);
+  --shield: #c7281f;
+  --paper: light-dark(#ffffff, #1d222c);
+  --paper-2: light-dark(#f7f6f2, #191d26);
+  --ink: light-dark(#23272e, #e6e9ef);
+  --ink-2: light-dark(#5a606b, #a8afbb);
+  --ink-3: light-dark(#9aa0a8, #69707c);
+  --selbg: light-dark(rgba(31,95,191,.2), rgba(110,160,240,.3));
+  --ui: "Archivo", "Helvetica Neue", "PingFang SC", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --k-kw: light-dark(#1f5fbf, #8cb6ff); --k-fn: light-dark(#13804a, #7fd3a3); --k-str: light-dark(#b0521c, #f0a370);
+  --k-com: light-dark(#9aa0a8, #646b77); --k-num: light-dark(#b0521c, #f0a370); --k-self: light-dark(#a3367a, #e892c4); --k-p: light-dark(#7f858f, #848b98);
+  background-color: var(--land);
+  /* 街区：每 120px 一条白色小街 */
+  background-image: linear-gradient(var(--street) 0 7px, transparent 7px), linear-gradient(90deg, var(--street) 0 7px, transparent 7px),
+    linear-gradient(var(--block-line) 1px, transparent 1px), linear-gradient(90deg, var(--block-line) 1px, transparent 1px);
+  background-size: 120px 120px, 120px 120px, 20px 20px, 20px 20px;
+  background-position: 0 50px, 40px 0, 0 0, 0 0;
+}
+.board[data-v="city"] .scene { display: block; }
+.board[data-v="city"] .river { fill: var(--water); }
+.board[data-v="city"] .park { fill: var(--park); }
+.board[data-v="city"] .trees { fill: var(--tree); }
+.board[data-v="city"] .bldg { fill: var(--bldg); stroke: var(--bldg-edge); stroke-width: 1; }
+
+.board[data-v="city"] .card { background: var(--paper); border-radius: 6px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 6px 14px -6px light-dark(rgba(30,40,60,.3), rgba(0,0,0,.6)); }
+.board[data-v="city"] .card.sel { box-shadow: 0 0 0 2.5px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), 0 6px 14px -6px rgba(30,40,60,.3); }
+/* 路牌：蓝底白字，内圈一道白线 */
+.board[data-v="city"] .chead { height: 38px; margin: 5px 5px 0; padding: 0 10px; gap: 8px; border-radius: 4px; background: var(--sign); color: var(--sign-ink);
+  box-shadow: inset 0 0 0 1.5px var(--sign), inset 0 0 0 2.5px rgba(255,255,255,.85); }
+/* 国道牌 */
+.board[data-v="city"] .step { font: 700 10.5px var(--ui); color: #fff; background: var(--shield); padding: 2px 5px 2px; border-radius: 3px 3px 8px 8px; box-shadow: inset 0 0 0 1px rgba(255,255,255,.75); letter-spacing: .02em; }
+.board[data-v="city"] .step::before { content: "G"; }
+.board[data-v="city"] .ctitle { font: 600 13px var(--ui); color: #fff; }
+.board[data-v="city"] .cpath { font: 400 11px var(--ui); color: rgba(255,255,255,.72); }
+.board[data-v="city"] .rev { font: 10px var(--mono); color: rgba(255,255,255,.72); }
+/* 施工牌 */
+.board[data-v="city"] .rev.new { font: 700 10px var(--ui); color: #2b2b2b; padding: 2px 7px; border-radius: 2px; letter-spacing: .04em;
+  background: repeating-linear-gradient(-45deg, #ffffff 0 5px, #f28a1c 5px 10px); text-shadow: 0 0 2px #fff, 0 0 2px #fff; }
+.board[data-v="city"] .rev.new i { display: none; }
+.board[data-v="city"] .code { padding: 7px 0 9px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.board[data-v="city"] .gutter .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
+.board[data-v="city"] .hlrow { background: color-mix(in srgb, var(--lane) 26%, transparent); }
+.board[data-v="city"] .no.link { color: var(--ink); font-weight: 700; }
+.board[data-v="city"] .kw { color: var(--k-kw); } .board[data-v="city"] .fn { color: var(--k-fn); } .board[data-v="city"] .str { color: var(--k-str); } .board[data-v="city"] .com { color: var(--k-com); }
+.board[data-v="city"] .num { color: var(--k-num); } .board[data-v="city"] .self { color: var(--k-self); } .board[data-v="city"] .p { color: var(--k-p); }
+.board[data-v="city"] .call { text-decoration: underline 2px color-mix(in srgb, var(--lane) 80%, transparent); text-underline-offset: 3px; }
+/* 马路：路沿、路面、中线三层 */
+.board[data-v="city"] .edge { fill: none; stroke-linejoin: round; }
+.board[data-v="city"] .edge.casing { stroke: var(--casing); stroke-width: 18; }
+.board[data-v="city"] .edge.road { stroke: var(--asphalt); stroke-width: 14; }
+.board[data-v="city"] .edge.lane { stroke: var(--lane); stroke-width: 1.3; stroke-dasharray: 7 6; }
+.board[data-v="city"] .port { fill: var(--asphalt); stroke: var(--casing); stroke-width: 2; r: 8px; }
+.board[data-v="city"] .car .body { fill: #e5533d; stroke: rgba(0,0,0,.35); stroke-width: .6; }
+.board[data-v="city"] .car .roof { fill: rgba(255,255,255,.6); }
+.board[data-v="city"] .car .lamp { fill: #fff3b0; }
+.board[data-v="city"] .car .beam { fill: light-dark(transparent, rgba(255,214,120,.35)); }
+/* 指路牌 */
+.board[data-v="city"] .elabel { font: 600 10.5px var(--mono); color: #fff; background: var(--guide); padding: 5px 10px; border-radius: 4px;
+  box-shadow: inset 0 0 0 1.5px var(--guide), inset 0 0 0 2.5px rgba(255,255,255,.85), 0 3px 6px -3px rgba(0,0,0,.4); }
+
+.board[data-v="city"] .tb-left .pill { background: var(--sign); padding: 6px 12px; border-radius: 5px; box-shadow: inset 0 0 0 1.5px var(--sign), inset 0 0 0 2.5px rgba(255,255,255,.85), 0 6px 12px -6px rgba(0,0,0,.4); }
+.board[data-v="city"] .bname { flex-direction: column; align-items: flex-start; gap: 0; }
+.board[data-v="city"] .eyebrow { display: block; order: 2; font: 600 8.5px var(--ui); letter-spacing: .2em; color: rgba(255,255,255,.75); }
+.board[data-v="city"] .bn { font: 700 14px var(--ui); color: #fff; letter-spacing: .06em; }
+.board[data-v="city"] .chev { display: none; }
+/* 工具条是一整块蓝色标识牌：按钮是牌上的白色图标，缩放比例只是一行小字；右上角是红绿灯加一块「讲解」牌 */
+.board[data-v="city"] .dock .pill { background: var(--sign); border-radius: 6px; padding: 5px 8px; gap: 2px;
+  box-shadow: inset 0 0 0 2px var(--sign), inset 0 0 0 3.5px rgba(255,255,255,.9), 0 4px 10px -4px rgba(0,0,0,.45); }
+.board[data-v="city"] .ib, .board[data-v="city"] .tbtn { color: #fff; border-radius: 4px; font: 700 12.5px var(--ui); height: 30px; }
+.board[data-v="city"] .ib { width: 32px; }
+.board[data-v="city"] .ib .ico { stroke-width: 1.7; }
+.board[data-v="city"] .ib:hover, .board[data-v="city"] .tbtn:hover { background: rgba(255,255,255,.14); }
+.board[data-v="city"] .tbtn .ico { fill: currentColor; }
+.board[data-v="city"] .sep { width: 1.5px; height: 18px; background: rgba(255,255,255,.55); margin: 0 6px; }
+.board[data-v="city"] .zoom { font: 600 10.5px var(--mono); color: rgba(255,255,255,.75); min-width: 40px; }
+.board[data-v="city"] .tb-right .pill { position: relative; background: var(--sign); border-radius: 6px; padding: 5px 8px; gap: 2px;
+  box-shadow: inset 0 0 0 2px var(--sign), inset 0 0 0 3.5px rgba(255,255,255,.9), 0 4px 10px -4px rgba(0,0,0,.45); }
+.board[data-v="city"] .tb-right .traffic { position: absolute; right: calc(100% + 10px); top: 50%; margin-top: -20px; }
+.board[data-v="city"] .tb-right .focus-btn { width: 32px; }
+/* 红绿灯：开着是绿灯，关了是红灯 */
+.board[data-v="city"] .traffic { display: inline-flex; width: 18px; min-width: 18px; height: 40px; padding: 0; border-radius: 5px; background: #2a2e35;
+  box-shadow: 0 2px 4px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.08); --r: #4a2522; --y: #4a4122; --g: #ff3b2f; }
+.board[data-v="city"] .traffic[aria-pressed="true"] { --r: #4a2522; --g: #22d36b; background: #2a2e35; }
+.board[data-v="city"] .traffic:not([aria-pressed="true"]) { --r: #ff3b2f; --g: #1f4a30; }
+.board[data-v="city"] .traffic .ico, .board[data-v="city"] .traffic .tl { display: none; }
+.board[data-v="city"] .traffic::before { content: ""; width: 10px; height: 34px; margin: auto;
+  background: radial-gradient(circle at 50% 5px, var(--r) 0 4px, transparent 4.5px), radial-gradient(circle at 50% 17px, var(--y) 0 4px, transparent 4.5px), radial-gradient(circle at 50% 29px, var(--g) 0 4px, transparent 4.5px); }
+.board[data-v="city"] .traffic[aria-pressed="true"]::before { filter: drop-shadow(0 0 3px #22d36b); }
+.board[data-v="city"] .traffic:not([aria-pressed="true"])::before { filter: drop-shadow(0 0 3px #ff3b2f); }
+.board[data-v="city"] .toast { background: var(--paper); color: var(--ink); font: 500 12.5px var(--ui); padding: 8px 14px 8px 10px; border-radius: 8px; box-shadow: 0 0 0 1px light-dark(rgba(0,0,0,.08), rgba(255,255,255,.06)), 0 8px 18px -8px rgba(0,0,0,.4); }
+.board[data-v="city"] .toast .tdot { width: 16px; height: 16px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--shield); }
+.board[data-v="city"] .toast b { font-weight: 700; color: var(--sign); }
+/* 车流开关和行驶中的车 */
+.board[data-v="city"] .mover .body { fill: #2f7de1; stroke: rgba(0,0,0,.3); stroke-width: .6; } .board[data-v="city"] .mover.k1 .body { fill: #f2c230; } .board[data-v="city"] .mover.k2 .body { fill: #f4f4f4; }
+.board[data-v="city"] .mover .roof { fill: rgba(255,255,255,.55); } .board[data-v="city"] .mover.k2 .roof { fill: rgba(0,0,0,.18); }
+.board[data-v="city"] .mover .beam { fill: light-dark(transparent, rgba(255,214,120,.3)); }
+
 .notes .tip { font-size: 12px; border-top: .5px solid var(--page-hair); padding-top: 12px; }
 </style>
 
@@ -567,7 +906,7 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
     <div class="grow"></div>
     <div class="ctl">版本
       <div class="seg" id="segV" role="group" aria-label="版本">
-        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button>
+        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button><button id="v-bamboo" data-v="bamboo">竹简</button><button id="v-ink" data-v="ink">水墨</button><button id="v-clay" data-v="clay">3D</button><button id="v-city" data-v="city">城市</button>
       </div>
     </div>
     <div class="ctl">主题
@@ -583,12 +922,14 @@ header .sub { color: var(--page-ink-2); font-size: 12.5px; }
     <div class="frame chrome">
       <div class="tabs"><div class="tab">llm_engine.py</div><div class="tab on">第一张白板</div></div>
       <div class="board" data-v="warm" id="board">
+        <div class="scene" aria-hidden="true"></div>
         <div class="frame-deco"></div>
-        <div class="world" id="world"><svg class="edges" id="edges"></svg></div>
+        <div class="tilt"><div class="world" id="world"><svg class="edges" id="edges"></svg></div></div>
         <nav class="rail"><span class="on">第一张白板</span><span>KV cache</span><span>prefill · decode</span></nav>
         <div class="over tb-left"><div class="pill"><span class="bname"><small class="eyebrow">NANO-VLLM · ENGINE</small><span class="bn">第一张白板</span><svg class="ico chev" viewBox="0 0 16 16"><path d="M4.5 6.5 8 10l3.5-3.5"/></svg></span></div></div>
         <div class="over tb-right"><div class="pill">
           <span class="prog"><i class="on"></i><i></i><i></i></span>
+          <button class="tbtn traffic" id="btnTraffic" aria-pressed="true"><svg class="ico" viewBox="0 0 16 16"><rect x="2.5" y="5.5" width="11" height="5" rx="1.6"/><path d="M5 5.5 6 3.5h4l1 2"/><circle cx="5.2" cy="11.2" r="1.1"/><circle cx="10.8" cy="11.2" r="1.1"/></svg><span class="tl">车流</span></button>
           <button class="tbtn" id="btnPresent"><svg class="ico" viewBox="0 0 16 16"><path d="M5 3.5v9l7-4.5z"/></svg><span class="tl">讲解</span></button>
           <button class="ib focus-btn" aria-label="专注"><svg class="ico" viewBox="0 0 16 16"><path d="M3 6V3h3M10 3h3v3M13 10v3h-3M6 13H3v-3"/></svg></button>
         </div></div>
@@ -629,13 +970,20 @@ const CARDS = [
       '    temperatures = self.prepare_sample(seqs) if self.rank == 0 else None', '    logits = self.run_model(input_ids, positions, is_prefill)',
       '    token_ids = self.sampler(logits, temperatures).tolist() if self.rank == 0 else None', '    reset_context()', '    return token_ids'], calls: ['run_model'] },
 ];
-const LABELS = { b: 'seqs, is_prefill', c: 'token_ids' };
+// 第四张卡只在需要演示「多条连线汇入同一张卡」的风格里出现：rank > 0 的进程在 loop 里也会走到 run
+const EXTRA = { id: 'd', file: 'f3', step: '2', title: 'ModelRunner.loop', path: 'nanovllm/engine/model_runner.py', rev: 'bb823b3', start: 61,
+  note: '其他 rank 的进程：从共享内存读命令再执行', fig: 'FIG. 2 — THE OTHER RANKS LISTEN', glyph: 'wave',
+  code: ['def loop(self):', '    while True:', '        method_name, args = self.read_shm()', '        self.call(method_name, *args)', '        if method_name == "exit":', '            break'],
+  links: { 3: 'c' }, calls: ['call'] };
+const BASE_CARDS = CARDS.slice();
+const LABELS = { b: 'seqs, is_prefill', c: 'token_ids', 'd>c': 'method_name, args' };
 const GLYPHS = {
   sun: '<circle cx="24" cy="24" r="4.5" fill="currentColor" stroke="none"/>' + Array.from({ length: 12 }, (_, i) => { const a = i * Math.PI / 6, r1 = 9, r2 = i % 2 ? 15 : 19; return `<path d="M${24 + r1 * Math.cos(a)} ${24 + r1 * Math.sin(a)} L${24 + r2 * Math.cos(a)} ${24 + r2 * Math.sin(a)}"/>`; }).join(''),
   orbit: '<ellipse cx="24" cy="24" rx="19" ry="12"/><ellipse cx="24" cy="24" rx="12" ry="7.5"/><circle cx="24" cy="24" r="3.5" fill="currentColor" stroke="none"/><circle cx="40" cy="15" r="2.2" fill="currentColor" stroke="none"/>',
   wave: '<path d="M4 20c5-7 9-7 14 0s9 7 14 0 9-7 12-2"/><path d="M4 30c5-7 9-7 14 0s9 7 14 0 9-7 12-2"/>',
 };
 
+const cn = s => s.replace(/\d/g, d => '〇一二三四五六七八九'[d]).replace('.', '之');
 const KW = new Set('def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield'.split(' '));
 const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 function hl(line, calls) {
@@ -661,6 +1009,7 @@ function hl(line, calls) {
 const board = document.getElementById('board'), world = document.getElementById('world'), edges = document.getElementById('edges');
 let bounds = { x: 0, y: 0, w: 1, h: 1 };
 function render() {
+  CARDS.length = 0; CARDS.push(...BASE_CARDS, ...(CFG.merge ? [EXTRA] : []));
   world.querySelectorAll('.card, .elabel, .caption, .dim').forEach(n => n.remove());
   for (const c of CARDS) {
     const el = document.createElement('div');
@@ -669,11 +1018,12 @@ function render() {
     el.style.width = (c.id === 'a' ? CFG.wA : CFG.wB) + 'px';
     const rev = c.isNew ? '<span class="rev new"><i></i>有新版本</span>' : `<span class="rev"><i></i>${c.rev}</span>`;
     el.innerHTML = `
-      <div class="chead"><span class="step">${c.step}</span><span class="ctitle">${c.title}</span><span class="cpath">${file}</span>${rev}</div>
+      <div class="chead"><span class="step" data-cn="${cn(c.step)}">${c.step}</span><span class="ctitle">${c.title}</span><span class="cpath">${file}</span>${rev}</div>
       <div class="cband"><span class="bt">${c.title}</span><span class="big">${c.step.padStart(2, '0')}</span></div>
       <div class="cname">${c.title}</div>
       <div class="cmeta"><div><small>文件</small>${file}</div><div><small>行</small>${c.start}–${end}</div><div><small>提交</small>${c.isNew ? '有新版本' : c.rev}</div></div>
       <div class="cnote">${c.note}</div>
+      <div class="cside"><span>${cn(c.step)}</span></div>
       <div class="code">${Object.keys(c.links || {}).map(i => `<div class="hlrow" data-i="${i}"></div>`).join('')}<div class="gutter">${c.code.map((l, i) => `<span class="no${c.links && c.links[i] ? ' link' : ''}">${c.start + i}</span>`).join('')}</div><pre class="src">${c.code.map(l => hl(l, c.calls)).join('\n')}</pre></div>
       <div class="cfoot"><span><svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/></svg>L${c.start}–${end}</span><span class="act">${c.isNew ? '跟进到最新' : '在编辑器打开'}<svg class="ico" viewBox="0 0 16 16"><path d="M3.5 8h9M9 4.5 12.5 8 9 11.5"/></svg></span></div>`;
     world.appendChild(el); c.el = el;
@@ -686,6 +1036,7 @@ function layout() {
   const h = x => x.el.offsetHeight;
   b.x = c.x = CFG.wA + CFG.gap; b.y = 0; c.y = h(b) + CFG.vgap;
   a.x = 0; a.y = Math.max(0, (c.y + h(c)) / 2 - h(a) / 2 - 30);
+  if (CARDS[3]) { a.y = 0; CARDS[3].x = 0; CARDS[3].y = h(a) + CFG.vgap + 40; }
   for (const k of CARDS) {
     k.el.style.left = k.x + 'px'; k.el.style.top = k.y + 'px';
     k.cap.style.left = k.x + 'px'; k.cap.style.top = (k.y + h(k) + 12) + 'px'; k.cap.style.width = k.el.offsetWidth + 'px';
@@ -704,33 +1055,49 @@ function lineBox(c, i) {
 }
 function drawEdges() {
   for (const c of CARDS) c.el.querySelectorAll('.hlrow').forEach(r => { const b = lineBox(c, +r.dataset.i); r.style.top = b.rel + 'px'; r.style.height = b.h + 'px'; });
-  let svg = '';
+  let svg = '', heads = '';
+  const layers = (CFG.layers || ['']).map(() => []), into = {};
+  for (const c of CARDS) for (const to of Object.values(c.links || {})) into[to] = (into[to] || 0) + 1;
+  const done = new Set();
   const byId = Object.fromEntries(CARDS.map(c => [c.id, c]));
   for (const c of CARDS) for (const [i, to] of Object.entries(c.links || {})) {
     const t = byId[to];
     const lb = lineBox(c, +i), hd = t.el.querySelector(CFG.entry || '.chead');
-    const x1 = c.x + c.el.offsetWidth, y1 = c.y + lb.top + lb.h / 2;
-    const x2 = t.x - 4, y2 = t.y + hd.offsetTop + hd.offsetHeight / 2;
+    const x1 = c.x + c.el.offsetWidth - (CFG.port === 'pin' ? 14 : 0), y1 = c.y + lb.top + lb.h / 2;
+    const x2 = t.x + (CFG.head === 'pin' ? 16 : -4), y2 = t.y + hd.offsetTop + hd.offsetHeight / 2;
     let d, mx, my;
     if (CFG.route === 'elbow') {
       const xm = x1 + (x2 - x1) * (+i === 1 ? 0.4 : 0.55);
       d = `M${x1} ${y1} H${xm} V${y2} H${x2}`; mx = xm; my = (y1 + y2) / 2;
+    } else if (CFG.route === 'street') { // 像街道：横平竖直，拐角是圆的
+      // 几条路进同一张卡时，在卡片前同一个路口汇合，最后一段共用
+      const merge = into[to] > 1, xm = merge ? x2 - 60 : x1 + (x2 - x1) * (+i === 1 ? 0.32 : 0.68), r = Math.min(16, Math.abs(y2 - y1) / 2), s = y2 > y1 ? 1 : -1;
+      d = `M${x1} ${y1} H${xm - r} Q${xm} ${y1} ${xm} ${y1 + s * r} V${y2 - s * r} Q${xm} ${y2} ${xm + r} ${y2} H${x2}`;
+      if (merge) { mx = (x1 + xm) / 2; my = y1; } else { mx = xm; my = (y1 + y2) / 2; }
+    } else if (CFG.route === 'sag') { // 线是软的，两头钉住，中间往下垂
+      const xm = (x1 + x2) / 2, cy = Math.max(y1, y2) + (CFG.sag || 50);
+      d = `M${x1} ${y1} Q${xm} ${cy} ${x2} ${y2}`; mx = xm; my = (y1 + 2 * cy + y2) / 4;
     } else {
       const dx = Math.max(30, (x2 - x1) * 0.6);
       d = `M${x1} ${y1} C${x1 + dx} ${y1} ${x2 - dx} ${y2} ${x2} ${y2}`;
       mx = (x1 + 3 * (x1 + dx) + 3 * (x2 - dx) + x2) / 8; my = (y1 + y2) / 2;
     }
-    svg += `<path class="edge ${t.file}" d="${d}"/>`;
+    (CFG.layers || ['']).forEach((l, k) => layers[k].push(`<path class="edge ${l} ${t.file}" d="${d}"/>`));
     if (CFG.head === 'triangle') svg += `<path class="ahead fill ${t.file}" d="M${x2 + 2} ${y2} l-8 -4 v8 z"/>`;
+    else if (CFG.head === 'pin') svg += `<circle class="ahead pin" cx="${x2}" cy="${y2}" r="5"/>`;
+    else if (CFG.head === 'none') {}
+    else if (CFG.head === 'car') { if (!done.has(to)) { done.add(to); // 路的尽头停一辆车，车头朝卡片，代替箭头
+      heads += `<g class="car ${t.file}" transform="translate(${x2 - 17} ${y2 + 3.5}) scale(1.45)"><rect class="beam" x="7" y="-3.5" width="18" height="7" rx="3.5"/><rect class="body" x="-8" y="-3.5" width="16" height="7" rx="2.5"/><rect class="roof" x="-3.5" y="-2.6" width="6.5" height="5.2" rx="1.2"/><rect class="lamp" x="6.6" y="-3" width="1.4" height="1.8" rx=".5"/><rect class="lamp" x="6.6" y="1.2" width="1.4" height="1.8" rx=".5"/></g>`; } }
     else if (CFG.head === 'dot') svg += `<circle class="ahead fill ${t.file}" cx="${x2}" cy="${y2}" r="3.5"/>`;
     else svg += `<path class="ahead ${t.file}" d="M${x2 - 5} ${y2 - 4} L${x2} ${y2} L${x2 - 5} ${y2 + 4}"/>`;
-    if (CFG.port === 'square') svg += `<rect class="port ${t.file}" x="${x1 - 3}" y="${y1 - 3}" width="6" height="6"/>`;
+    if (CFG.port === 'pin') svg += `<circle class="port pin" cx="${x1}" cy="${y1}" r="5"/>`;
+    else if (CFG.port === 'square') svg += `<rect class="port ${t.file}" x="${x1 - 3}" y="${y1 - 3}" width="6" height="6"/>`;
     else if (CFG.port === 'diamond') svg += `<path class="port ${t.file}" d="M${x1} ${y1 - 4} l4 4 -4 4 -4 -4z"/>`;
     else svg += `<circle class="port ${t.file}" cx="${x1}" cy="${y1}" r="3.5"/>`;
-    const lab = document.createElement('div'); lab.className = 'elabel ' + t.file; lab.textContent = LABELS[to];
+    const lab = document.createElement('div'); lab.className = 'elabel ' + t.file; lab.textContent = LABELS[c.id + '>' + to] || LABELS[to];
     lab.style.left = mx + 'px'; lab.style.top = my + 'px'; world.appendChild(lab);
   }
-  edges.innerHTML = svg;
+  edges.innerHTML = (CFG.defs || '') + layers.flat().join('') + svg + heads;
 }
 function fit() {
   const p = CFG.pad, W = board.clientWidth - p.l - p.r, H = board.clientHeight - p.t - p.b;
@@ -762,10 +1129,31 @@ function drafting(cards, world) {
   world.append(l1, l2);
 }
 
-function decorate(cards, world) { world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); }
-const BASECFG = Object.assign({}, CFG), VCFG = {"v1": {"head": "triangle"}, "warm": {}, "graphite": {}, "draft": {"route": "elbow", "head": "triangle", "port": "square", "gap": 150}, "soft": {"head": "dot", "gap": 150, "pad": {"l": 84, "r": 28, "t": 96, "b": 84}}, "color": {"head": "triangle", "gap": 150}, "news": {"head": "triangle", "gap": 150, "pad": {"l": 40, "r": 40, "t": 120, "b": 80}}, "art": {"port": "diamond", "gap": 150, "pad": {"l": 44, "r": 44, "t": 100, "b": 84}}}, NOTES = {"v1": "<h2>v1 现状</h2><p>整体干净，但材质偏「网页 div」：实线边框、同一种阴影、强调色用得太多。</p>", "warm": "<h2>暖墨 · 已选定</h2><p>延续 v1 的暖灰和陶土色，把材质做实：0.5px 发丝线加三层阴影，工具条磨砂半透明，强调色只留给「选中」和「箭头出发的那一行」。</p>", "graphite": "<h2>石墨</h2><p>中性灰，强调色跟随 VS Code 的 focus 颜色，和编辑器融为一体，最接近原生 macOS app。</p>", "draft": "<h2>制图</h2><p>参考 Merit 的唇笔图纸。只有墨和线，没有颜色、阴影和圆角。</p><ul>\n<li><b>箭头</b>走直角虚线，像标注引线；起点是代码行右侧的小方块。</li>\n<li><b>便签</b>是细节标注框，用点线引到某一行。</li>\n<li><b>新版本</b>是实心方块，旧版本是空心方块。</li>\n<li><b>选中</b>是外面再套一圈虚线框。</li></ul>\n<h3>取舍</h3><ul><li>最安静，截图放进文档最好看。</li><li>没有颜色，卡片一多，状态不容易一眼看到。</li><li>缩小后 1px 细线会发虚，要按缩放加粗。</li></ul>", "soft": "<h2>柔光</h2><p>参考白色手表商店那张：大留白、细字重、大面积柔和投影，珊瑚色只用在一个圆按钮和几个小点上。底色带一点暖。</p><ul>\n<li><b>代码</b>放在卡片里一块下沉的凹槽中，这是「拟物」的部分。</li>\n<li><b>白板列表</b>做成左侧竖排的标签栏，当前白板下面一条珊瑚短线。</li>\n<li><b>讲解</b>是右下角的珊瑚色圆形按钮。</li>\n<li><b>新版本</b>是一颗珊瑚色小圆点，像购物车角标。</li></ul>\n<h3>取舍</h3><ul><li>最「产品化」，演示时很体面。</li><li>大投影和大圆角很占地方，半宽 webview 里卡片之间要拉得更开。</li><li>深色主题下拟物感会弱很多。</li></ul>", "color": "<h2>多彩卡片</h2><p>参考 Marigold：奶油底、2px 墨线、直角，颜色成块使用。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 橙、scheduler 黄、model_runner 青，卡片顶部是这块颜色加一个小图形和大号编号。</li>\n<li><b>卡片头</b>分成格子：步骤号、文件名、版本状态；底部格子放行号区间和「跟进到最新」。</li>\n<li><b>斜体衬线</b>那一行是卡片的一句话说明，相当于标题下的批注。</li>\n<li><b>讲解进度</b>是右上角的小方格，走到哪一步就填哪一格。</li>\n<li><b>选中</b>是右下方的实心偏移投影。</li></ul>\n<h3>取舍</h3><ul><li>辨识度最高，一眼分清哪张卡来自哪个文件。</li><li>颜色块占高度，卡片一多会很热闹；文件超过 6–8 个时颜色要复用。</li></ul>", "news": "<h2>报纸</h2><p>新闻纸底、黑色油墨，整块白板排成一张报纸的版面。</p><ul>\n<li><b>白板名</b>是报头：哥特体报名，下面一行期号和提交号，再加一道双线。</li>\n<li><b>每张卡片是一篇报道</b>：顶部粗线，眉题写「第 1.1 版 · 文件名」，函数名是粗体大标题，斜体导语是一句话说明。</li>\n<li><b>代码</b>用打字机字体，像报道里的引文。</li>\n<li><b>新版本</b>是一枚红色小印章，提示条是黑底的「快讯」。</li>\n<li><b>箭头上的数据</b>写成斜体，两边加破折号，像图片说明。</li></ul>\n<h3>取舍</h3><ul><li>阅读感最强，适合讲解或导出成长图。</li><li>标题和导语占高度，代码区域比暖墨小。</li><li>几乎没有颜色，状态要靠印章和粗细来区分。</li></ul>", "art": "<h2>艺术</h2><p>参考 Severance 晚宴海报：薄荷纸、深绿油墨、双线框、居中排版、字距拉得很开。</p><ul>\n<li><b>白板</b>四周有双线边框，背景是很淡的方格纸（这是风格的一部分，可以去掉）。</li>\n<li><b>卡片头</b>居中：编号和文件名、衬线大标题、文件 / 行 / 提交三栏信息。</li>\n<li><b>图注</b>写在卡片下方，像插图编号：FIG. 1.1 — THE BATCH IS CHOSEN。</li>\n<li><b>工具条</b>是一条深绿色色带，按钮是字距拉开的文字。</li></ul>\n<h3>取舍</h3><ul><li>最有个性，截图分享最好看。</li><li>头部很高，同样大小的白板能放的代码最少。</li><li>双线和网格缩小后会变成噪点。</li></ul>"};
+function decorate(cards, world) { world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); if (board.dataset.v === 'city') traffic(); }
+// 城市：可开关的车流。小车从调用行出发，沿路开到被调用的卡片前，靠右行驶
+const reduceMo = matchMedia('(prefers-reduced-motion: reduce)'), btnTraffic = document.getElementById('btnTraffic');
+function traffic() {
+  edges.querySelectorAll('.mover').forEach(n => n.remove());
+  if (btnTraffic.getAttribute('aria-pressed') !== 'true' || reduceMo.matches) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  edges.querySelectorAll('path.road').forEach((p, i) => {
+    const len = p.getTotalLength(), dur = len / 46;
+    for (const k of [0, 1, 2]) {
+      const car = document.createElementNS(ns, 'g'); car.setAttribute('class', `mover k${(i + k) % 3}`);
+      car.innerHTML = '<g transform="translate(0 3.5) scale(1.2)"><rect class="beam" x="7" y="-3.5" width="18" height="7" rx="3.5"/><rect class="body" x="-8" y="-3.5" width="16" height="7" rx="2.5"/><rect class="roof" x="-3.5" y="-2.6" width="6.5" height="5.2" rx="1.2"/></g>';
+      const begin = (-dur * (k / 3 + i * .17)).toFixed(2) + 's';
+      const am = document.createElementNS(ns, 'animateMotion');
+      Object.entries({ dur: dur + 's', repeatCount: 'indefinite', rotate: 'auto', path: p.getAttribute('d'), begin, keyPoints: '0;.92', keyTimes: '0;1', calcMode: 'linear' }).forEach(([a, v]) => am.setAttribute(a, v));
+      const op = document.createElementNS(ns, 'animate');
+      Object.entries({ attributeName: 'opacity', dur: dur + 's', repeatCount: 'indefinite', begin, values: '0;1;1;0', keyTimes: '0;.08;.85;1' }).forEach(([a, v]) => op.setAttribute(a, v));
+      car.append(am, op); edges.insertBefore(car, edges.querySelector('.car'));
+    }
+  });
+}
+btnTraffic.addEventListener('click', () => { btnTraffic.setAttribute('aria-pressed', btnTraffic.getAttribute('aria-pressed') !== 'true'); traffic(); });
+const BASECFG = Object.assign({}, CFG), VCFG = {"v1": {"head": "triangle"}, "warm": {}, "graphite": {}, "draft": {"route": "elbow", "head": "triangle", "port": "square", "gap": 150}, "soft": {"head": "dot", "gap": 150, "pad": {"l": 84, "r": 28, "t": 96, "b": 84}}, "color": {"head": "triangle", "gap": 150}, "news": {"head": "triangle", "gap": 150, "pad": {"l": 40, "r": 40, "t": 120, "b": 80}}, "art": {"port": "diamond", "gap": 150, "pad": {"l": 44, "r": 44, "t": 100, "b": 84}}, "bamboo": {"head": "dot", "gap": 140, "pad": {"l": 28, "r": 28, "t": 70, "b": 72}}, "ink": {"head": "dot", "gap": 150, "pad": {"l": 32, "r": 32, "t": 78, "b": 76}, "defs": "<defs><filter id=\"brush\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"2\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"2.4\"/></filter></defs>"}, "clay": {"head": "dot", "gap": 150, "pad": {"l": 40, "r": 40, "t": 80, "b": 84}, "defs": "<defs><filter id=\"isoShadow\" filterUnits=\"userSpaceOnUse\" x=\"-3000\" y=\"-3000\" width=\"8000\" height=\"8000\"><feDropShadow dx=\"3\" dy=\"3\" stdDeviation=\"0\" flood-opacity=\".22\"/></filter></defs>"}, "city": {"route": "street", "head": "car", "merge": true, "port": "circle", "gap": 240, "layers": ["casing", "road", "lane"], "pad": {"l": 32, "r": 32, "t": 74, "b": 76}}}, NOTES = {"v1": "<h2>v1 现状</h2><p>整体干净，但材质偏「网页 div」：实线边框、同一种阴影、强调色用得太多。</p>", "warm": "<h2>暖墨 · 已选定</h2><p>延续 v1 的暖灰和陶土色，把材质做实：0.5px 发丝线加三层阴影，工具条磨砂半透明，强调色只留给「选中」和「箭头出发的那一行」。</p>", "graphite": "<h2>石墨</h2><p>中性灰，强调色跟随 VS Code 的 focus 颜色，和编辑器融为一体，最接近原生 macOS app。</p>", "draft": "<h2>制图</h2><p>参考 Merit 的唇笔图纸。只有墨和线，没有颜色、阴影和圆角。</p><ul>\n<li><b>箭头</b>走直角虚线，像标注引线；起点是代码行右侧的小方块。</li>\n<li><b>便签</b>是细节标注框，用点线引到某一行。</li>\n<li><b>新版本</b>是实心方块，旧版本是空心方块。</li>\n<li><b>选中</b>是外面再套一圈虚线框。</li></ul>\n<h3>取舍</h3><ul><li>最安静，截图放进文档最好看。</li><li>没有颜色，卡片一多，状态不容易一眼看到。</li><li>缩小后 1px 细线会发虚，要按缩放加粗。</li></ul>", "soft": "<h2>柔光</h2><p>参考白色手表商店那张：大留白、细字重、大面积柔和投影，珊瑚色只用在一个圆按钮和几个小点上。底色带一点暖。</p><ul>\n<li><b>代码</b>放在卡片里一块下沉的凹槽中，这是「拟物」的部分。</li>\n<li><b>白板列表</b>做成左侧竖排的标签栏，当前白板下面一条珊瑚短线。</li>\n<li><b>讲解</b>是右下角的珊瑚色圆形按钮。</li>\n<li><b>新版本</b>是一颗珊瑚色小圆点，像购物车角标。</li></ul>\n<h3>取舍</h3><ul><li>最「产品化」，演示时很体面。</li><li>大投影和大圆角很占地方，半宽 webview 里卡片之间要拉得更开。</li><li>深色主题下拟物感会弱很多。</li></ul>", "color": "<h2>多彩卡片</h2><p>参考 Marigold：奶油底、2px 墨线、直角，颜色成块使用。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 橙、scheduler 黄、model_runner 青，卡片顶部是这块颜色加一个小图形和大号编号。</li>\n<li><b>卡片头</b>分成格子：步骤号、文件名、版本状态；底部格子放行号区间和「跟进到最新」。</li>\n<li><b>斜体衬线</b>那一行是卡片的一句话说明，相当于标题下的批注。</li>\n<li><b>讲解进度</b>是右上角的小方格，走到哪一步就填哪一格。</li>\n<li><b>选中</b>是右下方的实心偏移投影。</li></ul>\n<h3>取舍</h3><ul><li>辨识度最高，一眼分清哪张卡来自哪个文件。</li><li>颜色块占高度，卡片一多会很热闹；文件超过 6–8 个时颜色要复用。</li></ul>", "news": "<h2>报纸</h2><p>新闻纸底、黑色油墨，整块白板排成一张报纸的版面。</p><ul>\n<li><b>白板名</b>是报头：哥特体报名，下面一行期号和提交号，再加一道双线。</li>\n<li><b>每张卡片是一篇报道</b>：顶部粗线，眉题写「第 1.1 版 · 文件名」，函数名是粗体大标题，斜体导语是一句话说明。</li>\n<li><b>代码</b>用打字机字体，像报道里的引文。</li>\n<li><b>新版本</b>是一枚红色小印章，提示条是黑底的「快讯」。</li>\n<li><b>箭头上的数据</b>写成斜体，两边加破折号，像图片说明。</li></ul>\n<h3>取舍</h3><ul><li>阅读感最强，适合讲解或导出成长图。</li><li>标题和导语占高度，代码区域比暖墨小。</li><li>几乎没有颜色，状态要靠印章和粗细来区分。</li></ul>", "art": "<h2>艺术</h2><p>参考 Severance 晚宴海报：薄荷纸、深绿油墨、双线框、居中排版、字距拉得很开。</p><ul>\n<li><b>白板</b>四周有双线边框，背景是很淡的方格纸（这是风格的一部分，可以去掉）。</li>\n<li><b>卡片头</b>居中：编号和文件名、衬线大标题、文件 / 行 / 提交三栏信息。</li>\n<li><b>图注</b>写在卡片下方，像插图编号：FIG. 1.1 — THE BATCH IS CHOSEN。</li>\n<li><b>工具条</b>是一条深绿色色带，按钮是字距拉开的文字。</li></ul>\n<h3>取舍</h3><ul><li>最有个性，截图分享最好看。</li><li>头部很高，同样大小的白板能放的代码最少。</li><li>双线和网格缩小后会变成噪点。</li></ul>", "bamboo": "<h2>竹简</h2><p>每张卡片是一卷竹简：一行代码写在一根简上，简与简之间留一道缝，两道麻绳从头穿到尾。</p><ul>\n<li><b>首简</b>是左边一根宽简，竖着写编号「一之一」，用朱砂。</li>\n<li><b>标题简</b>写函数名，下面一根简用毛笔字写这张卡的一句话说明。</li>\n<li><b>朱砂</b>是唯一的颜色，相当于古人的批注：关键字、可展开的调用、箭头出发的那一行。</li>\n<li><b>连线</b>是麻绳，两头打结；箭头上的数据挂在一块小木签上。</li>\n<li><b>有新版本</b>是一枚朱红小印。</li></ul>\n<h3>取舍</h3><ul><li>代码行和竹简一一对应，行感很强，读长函数时眼睛不容易串行。</li><li>行距被竹简锁死在 19px，用户改字号时竹简要跟着变宽。</li><li>首简占掉 30px 宽度，半宽 webview 里代码区更窄。</li></ul>", "ink": "<h2>水墨</h2><p>宣纸底，下方几层淡墨远山，一缕雾慢慢左右飘（70 秒一个来回，几乎感觉不到）。不画太阳。浅色是一幅画；深色换成碑帖拓片，黑底白字。</p><ul>\n<li><b>编号</b>是一枚白文朱印「一之一」，盖在卡片右上角；<b>有新版本</b>是朱文印「新」，红框红字。</li>\n<li><b>标题下</b>是一笔干笔墨痕，代替分隔线。</li>\n<li><b>代码配色</b>用国画颜料：函数是花青，字符串和数字是赭石，关键字是浓墨，朱砂只标可展开的调用。</li>\n<li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>\n<li><b>工具条</b>是一条素宣纸，一侧搁着一支毛笔。</li>\n<li><b>讲解</b>按钮是一枚朱印，按下去像盖章；白板名用行草写，后面盖一枚「白板」小印。</li></ul>\n<h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>", "clay": "<h2>3D · 等距积木</h2><p>白板是一张等距网格纸，卡片是一块块往右下方挤出厚度的彩色积木，像等距视角的小游戏。和柔光的白色软阴影正好相反：实心的厚度、黑色描边、饱和色。</p><ul>\n<li><b>每个源文件一种颜色</b>：llm_engine 是珊瑚红，scheduler 是青绿，model_runner 是靛蓝。标题带和侧面都是这个颜色。</li>\n<li><b>选中</b>就是积木被抬起来：往左上移一点，厚度从 9px 变成 13px，外面一圈黄色。</li>\n<li><b>连线</b>是一根黑色粗线，影子朝同一个方向，看起来也有厚度；起点是黄色小圆钮。</li>\n<li><b>标签、工具条、按钮</b>都是同一套积木按键，按下去会往右下沉，厚度消失。</li>\n<li><b>有新版本</b>和白板名都是黄色积木块。</li></ul>\n<h3>取舍</h3><ul><li>立体感来自固定方向的厚度，没有倾斜和透视，文字始终是正的，也没有常驻动画。</li><li>颜色重、描边粗，卡片很多时会很热闹；文件超过 6 个时颜色要复用。</li><li>右下方的厚度会占掉一点空间，卡片之间要多留 10px。</li></ul>", "city": "<h2>城市道路</h2><p>白板是一张平面城市地图：街区、河流、公园做底，调用关系画成真正的马路。</p><ul>\n<li><b>连线</b>是马路：灰色路面、白色路沿、黄色中线，横平竖直，拐角是圆的。</li>\n<li><b>箭头</b>换成一辆小车：停在路的尽头，车头朝着被调用的卡片。</li>\n<li><b>几张卡同时调用一张卡</b>时，几条路在这张卡前面的同一个路口汇合，最后一段路共用，只停一辆车。演示里多了一张 ModelRunner.loop：其他 rank 的进程在这里收到命令后，也会走到 run。</li>\n<li><b>卡片标题</b>是蓝底白字的路牌；<b>编号</b>是红色的国道牌，比如 G1.1。</li>\n<li><b>箭头上的数据</b>写在绿色的高速指路牌上。</li>\n<li><b>有新版本</b>是橙白相间的施工牌。</li>\n<li><b>工具条</b>是一整块蓝色标识牌，按钮是牌上的白色图标，缩放比例只是牌角的一行小字；右上角是一盏红绿灯（车流开关，绿灯表示车在开）加一块写着「讲解」的标识牌。</li>\n<li><b>车流</b>：右上角的红绿灯可以开关。打开时小车从调用行出发，沿着路开到被调用的卡片前，靠右行驶；系统开了「减少动态效果」时不显示。</li>\n<li><b>深色</b>是夜里的地图：路面暗下来，中线和车灯是暖黄色。</li></ul>\n<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>车流是常驻动画，在 VS Code 里建议默认关掉，由用户自己打开；白板不在前台时暂停。</li><li>汇合后共用的最后一段上放不下各自的数据牌，所以牌子挂在每条路的起点那段。</li></ul>"}, SCENES = {"ink": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMax slice\">\n  <defs>\n    <filter id=\"paper\" x=\"0\" y=\"0\" width=\"100%\" height=\"100%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".9\" numOctaves=\"2\" seed=\"3\"/><feColorMatrix values=\"0 0 0 0 .5  0 0 0 0 .45  0 0 0 0 .38  0 0 0 .06 0\"/></filter>\n    <filter id=\"wash\" x=\"-10%\" y=\"-30%\" width=\"120%\" height=\"160%\"><feTurbulence type=\"fractalNoise\" baseFrequency=\".012 .05\" numOctaves=\"3\" seed=\"7\"/><feDisplacementMap in=\"SourceGraphic\" scale=\"26\"/><feGaussianBlur stdDeviation=\"2.4\"/></filter>\n    <filter id=\"fog\"><feGaussianBlur stdDeviation=\"18\"/></filter>\n    <linearGradient id=\"fade\" x1=\"0\" y1=\"0\" x2=\"0\" y2=\"1\"><stop offset=\"0\" stop-color=\"#fff\"/><stop offset=\".75\" stop-color=\"#fff\" stop-opacity=\".25\"/><stop offset=\"1\" stop-color=\"#fff\" stop-opacity=\"0\"/></linearGradient>\n    <mask id=\"mfade\"><rect x=\"0\" y=\"0\" width=\"800\" height=\"640\" fill=\"url(#fade)\"/></mask>\n  </defs>\n  <rect width=\"800\" height=\"640\" filter=\"url(#paper)\"/>\n  <g mask=\"url(#mfade)\">\n    <path class=\"mtn\" opacity=\".13\" filter=\"url(#wash)\" d=\"M-20 470 C60 420 110 360 170 380 S260 300 330 340 420 280 480 330 560 300 620 260 700 330 820 300 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".2\" filter=\"url(#wash)\" d=\"M-20 520 C40 500 90 430 150 455 S240 410 300 450 380 470 430 430 520 380 590 420 680 460 820 420 V640 H-20Z\"/>\n    <path class=\"mtn\" opacity=\".32\" filter=\"url(#wash)\" d=\"M420 640 C460 590 500 520 560 540 S650 480 700 520 760 560 820 540 V640Z\"/>\n  </g>\n  <ellipse class=\"mist\" cx=\"300\" cy=\"470\" rx=\"320\" ry=\"26\" filter=\"url(#fog)\" opacity=\".9\"/>\n  <ellipse class=\"mist\" cx=\"620\" cy=\"540\" rx=\"260\" ry=\"20\" filter=\"url(#fog)\" opacity=\".8\" style=\"animation-delay:-30s\"/>\n</svg>\n", "city": "<svg viewBox=\"0 0 800 640\" preserveAspectRatio=\"xMidYMid slice\">\n  <path class=\"river\" d=\"M-40 560 C120 520 210 600 330 560 S520 470 600 520 760 600 860 560 L860 620 C760 650 640 590 560 580 S380 640 300 625 120 590 -40 625Z\"/>\n  <path class=\"park\" d=\"M60 70 h150 a14 14 0 0 1 14 14 v80 a14 14 0 0 1 -14 14 h-150 a14 14 0 0 1 -14 -14 v-80 a14 14 0 0 1 14 -14z\"/>\n  <path class=\"park\" d=\"M610 430 h120 a14 14 0 0 1 14 14 v50 a14 14 0 0 1 -14 14 h-120 a14 14 0 0 1 -14 -14 v-50 a14 14 0 0 1 14 -14z\"/>\n  <g class=\"trees\"><circle cx=\"90\" cy=\"110\" r=\"9\"/><circle cx=\"118\" cy=\"128\" r=\"11\"/><circle cx=\"160\" cy=\"100\" r=\"8\"/><circle cx=\"186\" cy=\"140\" r=\"10\"/><circle cx=\"640\" cy=\"465\" r=\"9\"/><circle cx=\"676\" cy=\"480\" r=\"11\"/><circle cx=\"712\" cy=\"458\" r=\"8\"/></g>\n  <g class=\"bldg\"><rect x=\"300\" y=\"60\" width=\"40\" height=\"28\" rx=\"3\"/><rect x=\"350\" y=\"60\" width=\"26\" height=\"40\" rx=\"3\"/><rect x=\"420\" y=\"70\" width=\"52\" height=\"24\" rx=\"3\"/><rect x=\"40\" y=\"420\" width=\"44\" height=\"30\" rx=\"3\"/><rect x=\"96\" y=\"410\" width=\"30\" height=\"44\" rx=\"3\"/><rect x=\"250\" y=\"440\" width=\"60\" height=\"22\" rx=\"3\"/><rect x=\"560\" y=\"70\" width=\"34\" height=\"34\" rx=\"3\"/><rect x=\"690\" y=\"90\" width=\"48\" height=\"26\" rx=\"3\"/></g>\n</svg>\n"};
 function setV(v) {
-  board.dataset.v = v; CFG = Object.assign({}, BASECFG, VCFG[v]);
+  board.dataset.v = v; board.querySelector('.scene').innerHTML = SCENES[v] || ''; CFG = Object.assign({}, BASECFG, VCFG[v]);
   document.querySelectorAll('#segV button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v));
   document.getElementById('notes').innerHTML = NOTES[v] + '<p class="tip">切换深浅主题看两边是否都成立。所有风格用的是同一份白板数据。</p>';
   render();

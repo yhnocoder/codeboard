@@ -36,7 +36,7 @@ export function BoardBody(p: { card: BoardCard }) {
   }, undefined, { equals: (a, b) => !!a && !!b && key(a) === key(b) });
   const hot = createMemo(() => { const d = dropTarget(); return d?.card === p.card.id ? d.sub : undefined; });
   // 设置 Sub-board Preview = Title Only：框里只有名字和卡数
-  const titleOnly = () => state.host.settings?.subPreview === "title";
+  const titleOnly = () => state.host.settings.subPreview === "title";
   const svg = createMemo(() => {
     const s = sk();
     if (!s || titleOnly()) return "";
