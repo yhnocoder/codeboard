@@ -796,8 +796,8 @@
 :root.look-poster .tbtn { font: 400 9.5px var(--mono); letter-spacing: .3em; text-transform: uppercase; }
 :root.look-poster .bbar kbd { color: color-mix(in srgb, var(--band-ink) 60%, transparent); }
 :root.look-poster .bbar .sep, :root.look-poster .dock .sep { width: .5px; height: 14px; background: var(--band-ink); opacity: .4; margin: 0 6px; }
-:root.look-poster .dock .zoom { color: var(--band-ink); font: 400 10px var(--mono); letter-spacing: .1em; }
-:root.look-poster .dock .zoom:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); }
+:root.look-poster :is(.bbar, .dock) .zoom { color: var(--band-ink); font: 400 10px var(--mono); letter-spacing: .1em; }
+:root.look-poster :is(.bbar, .dock) .zoom:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); }
 :root.look-poster .ctx button:not([disabled]):hover { background: var(--band); color: var(--band-ink); }
 :root.look-poster .toast { bottom: 66px; background: var(--surface); color: var(--ink); border-radius: 0; box-shadow: 0 0 0 .5px var(--rule), 0 0 0 2.5px var(--surface), 0 0 0 3px var(--rule); font: 400 10px var(--mono); letter-spacing: .2em; padding: 7px 14px; }
 :root.look-poster .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline .5px; text-underline-offset: 3px; }
@@ -943,7 +943,7 @@
 :root.look-city :is(.bbar, .dock) .ib { width: 32px; }
 :root.look-city :is(.bbar, .dock) .tbtn:hover, :root.look-city :is(.bbar, .dock) .ib:hover, :root.look-city :is(.bbar, .dock) .zoom:hover { background: rgba(255,255,255,.16); color: #fff; }
 :root.look-city :is(.bbar, .dock) .sep { width: 2px; height: 18px; background: rgba(255,255,255,.55); margin: 0 6px; }
-:root.look-city .dock .zoom { min-width: 40px; color: rgba(255,255,255,.8); font: 600 10.5px var(--mono); }
+:root.look-city :is(.bbar, .dock) .zoom { min-width: 40px; color: rgba(255,255,255,.8); font: 600 10.5px var(--mono); }
 /* 红绿灯（车流开关）：红灯 = 车停着（默认），绿灯 = 车在开 */
 :root.look-city .dock .ib.traffic { width: 16px; height: 30px; margin: 0 4px; border-radius: 4px; background: #2a2e35; box-shadow: 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.1); --r: #ff3b2f; --y: #4a4122; --g: #1f4a30; }
 :root.look-city .dock .ib.traffic[aria-pressed="true"] { --r: #4a2522; --g: #22d36b; }

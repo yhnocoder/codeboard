@@ -1368,9 +1368,8 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 子白板只画标题（设置 Sub-board Preview） */
 .card.board .sbonly { position: absolute; inset: 34px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--ink-2); font-size: 15px; }
 .card.board .sbonly small { font: 11px var(--mono); color: var(--ink-3); }
-/* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock。先靠左，还放不下就把 dock 抬到底栏上面 */
+/* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock，先靠左；再窄 dock 并进底栏（App.tsx NARROW） */
 @media (max-width: 900px) { .bbar { left: 12px; right: auto; margin-inline: 0; } }
-@media (max-width: 640px) { .dock { bottom: 58px; } }
 
 /* ---------- 我的改动（线框 07）：Variant 标签页、MINE、对比基准、改过的行、三方对照 ---------- */
 .vtabs { display: flex; align-items: stretch; flex: none; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--head); font: 10.5px/1 var(--sys); }

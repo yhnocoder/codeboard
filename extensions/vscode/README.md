@@ -12,7 +12,7 @@ The board opens beside your editor: code on one side, the flow on the other. Boa
 
 ### Expand calls, layer by layer
 
-Calls in a card are underlined. Click one and the function it calls is placed on the board and connected with an arrow; each call graph gets a mark (A, B, …) so you can follow it. String-dispatched calls such as `self.model_runner.call("run")` expand too. CodeBoard asks the language server (Pylance, clangd, …) for definitions and falls back to a workspace search by name and receiver, letting you pick when the match is ambiguous.
+Calls in a card are underlined. Click one and the function it calls is placed on the board and connected with an arrow; each call graph gets a mark (A, B, …) so you can follow it. A string-dispatched call such as `self.model_runner.call("run")` cannot be resolved statically: clicking it searches for `run` by name and lists the candidates, the receiver's class first (`ModelRunner.run`); pick the target and it is placed with an arrow. CodeBoard asks the language server (Pylance, clangd, …) for definitions and falls back to a workspace search by name and receiver, letting you pick when the match is ambiguous.
 
 ### Definition Peek
 
@@ -42,8 +42,8 @@ Nine board themes (plus an experimental one), each with a light and a dark varia
 
 ### And more
 
-- Click any line of a card to jump to it in the editor; in the editor, a CodeLens takes you back to the card.
-- Click line numbers to highlight lines.
+- Click a card's file name or press `↵` to open it in the editor; with lines selected it opens at the first of them. In the editor, a CodeLens takes you back to the card.
+- Click line numbers to select lines; right-click a line or its number to hide, highlight, add a sidenote or ask a question.
 - Press `P` to walk through the cards in order, with `←` `→` to move and `Esc` to leave.
 - Draw arrows between cards, label them and change their type; drop in images and web pages.
 - Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.

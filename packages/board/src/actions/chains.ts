@@ -2,7 +2,7 @@
 import { createMemo } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, segOf, cardTitle, removeCards, instName, genWhat, cardChip,
+  uid, isCode, segOf, cardTitle, removeCards, instName, genWhat, cardChip, rankByReceiver,
   type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
 } from "@codeboard/core";
 import { state, setState, mutate, cardById, toast, placeOf, select } from "../state/store";
@@ -211,18 +211,31 @@ export function unresolvedMenu(cardId: string, segId: string, call: CallSpan, re
   const p = r ? { x: r.left, y: r.bottom + 4 } : lastPointer();
   openMenu([
     { label: reason || `No definition found for ${call.name}`, head: true },
-    { label: `Search “${call.name}” in All Languages`, run: () => searchAllLangs(cardId, segId, call) },
+    { label: `Search “${searchedName(call)}” in All Languages`, run: () => searchAllLangs(cardId, segId, call) },
     { label: "Draw Call Arrow Manually…", run: () => drawManual(cardId, segId, call) },
   ], p.x, p.y);
 }
 
 export type NamesPop = { card: string; seg: string; call: CallSpan; hits?: NameHit[] };
 
+/** 按名字搜的名字：call("run", …) 这种按字符串转发的搜 run */
+export const searchedName = (call: CallSpan) => call.dispatch ?? call.name;
+
+/** 搜到的定义里，接收者那个类的排前面：self.model_runner.call("run") → ModelRunner.run；self.call("run") → 调用处所在的类 */
+function byReceiver(hits: NameHit[], cardId: string, segId: string, call: CallSpan): NameHit[] {
+  const c = cardById(cardId)?.card;
+  const seg = isCode(c) ? segOf(c, segId) : undefined;
+  const q = seg?.symbol?.qual.split(".");
+  const defs = hits.filter((h): h is NameHit & { qual: string } => h.def && !!h.qual);
+  const { ranked } = rankByReceiver(defs, call.recv, { path: seg?.path ?? "", selfClass: q && q.length > 1 ? q[q.length - 2] : undefined });
+  return [...ranked, ...hits.filter((h) => !ranked.includes(h as NameHit & { qual: string }))];
+}
+
 export function searchAllLangs(cardId: string, segId: string, call: CallSpan) {
   const el = callEl(cardId, segId, call);
   const id = openPop({ kind: "names", data: { card: cardId, seg: segId, call } }, el ? { el, prefer: "below" } : lastPointer());
-  ask("searchName", { name: call.name })
-    .then((hits) => updatePop(id, (q) => (q.kind === "names" ? { ...q, data: { ...q.data, hits } } : q)))
+  ask("searchName", { name: searchedName(call) })
+    .then((hits) => updatePop(id, (q) => (q.kind === "names" ? { ...q, data: { ...q.data, hits: byReceiver(hits, cardId, segId, call) } } : q)))
     .catch(() => updatePop(id, (q) => (q.kind === "names" ? { ...q, data: { ...q.data, hits: [] } } : q)));
 }
 
@@ -233,7 +246,9 @@ export async function placeNameHit(p: NamesPop, h: NameHit) {
     : { kind: "entry", label: h.label, detail: h.detail, path: h.path, line: h.line, end: h.line + 2 };
   const nc = await ask("searchPick", { item }).catch(() => null);
   if (!nc || !isCode(nc.card)) return toast(`Could not open ${h.detail}`);
-  placeExpanded(p.card, p.seg, p.call, nc.card, nc.views, [], undefined, nc.w, { mark: { ev: { kind: "manual", via: "registry" } } });
+  // 按字符串转发的（call("run")）：箭头上写 via call("run")
+  const via = p.call.dispatch ? `${p.call.name}("${p.call.dispatch}")` : "registry";
+  placeExpanded(p.card, p.seg, p.call, nc.card, nc.views, [], undefined, nc.w, { mark: { ev: { kind: "manual", via } } });
 }
 
 /** 手动补边：进入连接模式，点哪张卡就连一条手动的 Call 箭头 */

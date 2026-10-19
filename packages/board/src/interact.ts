@@ -639,7 +639,10 @@ export function installKeys() {
       const c = A.selCards()[0];
       if (!c) return;
       e.preventDefault();
-      if (c.kind === "code") A.openCode(c.id);
+      // 选了这张卡的几行：在编辑器里打开到第一行
+      const ls = lineSel();
+      if (ls && cardById(ls.card)?.host.id === c.id) A.openCode(ls.card, ls.seg, ls.start);
+      else if (c.kind === "code") A.openCode(c.id);
       else if (c.kind === "note") setEditing({ kind: "note", id: c.id });
       else if (c.kind === "web") A.openLink(c.url);
       else if (c.kind === "board") A.enterFrame(c.id);
