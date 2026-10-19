@@ -27,7 +27,7 @@ function specHtml(spec: DOMOutputSpec, hole: string): string {
   return `<${tag}${attrs}>${inner}</${tag}>`;
 }
 
-/** 一次渲染的上下文：文档（目录要它的标题）、不过 DOMPurify 的可信 HTML（KaTeX 生成的，很大，字都转义过） */
+/** 一次渲染的上下文：文档（目录要它的标题）、不过 DOMPurify 的可信 HTML（KaTeX 生成的，很大；Mermaid 的占位。字都转义过） */
 type Cx = { doc: PMNode; trusted: string[] };
 const trust = (cx: Cx, html: string) => `<span data-cbr="${cx.trusted.push(html) - 1}"></span>`;
 const untrust = (html: string, t: string[]) => html.replace(/<span data-cbr="(\d+)"><\/span>/g, (_, i) => t[+i] ?? "");
@@ -41,16 +41,16 @@ let assetBase = "";
 export const setAssetBase = (b: string) => { if (b !== assetBase) { assetBase = b; cache.clear(); } };
 const assetUrl = (src: string) => (/^assets\//.test(src) && assetBase ? `${assetBase}/${src.slice(7)}` : src);
 
-/** Note 里原样写着的 HTML：注释不显示；其余照放，整篇最后过 DOMPurify（没有 DOM 时清洗不了，当字显示） */
-const userHtml = (h: string) => (isHtmlComment(h) ? "" : typeof window === "undefined" ? esc(h) : h);
+/** Note 里原样写着的 HTML：注释不显示；其余照放，整篇最后过 DOMPurify */
+const userHtml = (h: string) => (isHtmlComment(h) ? "" : h);
 
 /** 显示时和 renderHTML 不一样的节点：编辑器里它们是节点视图，或者显示时要交给白板（返回 undefined 照 renderHTML） */
 const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   // 公式：静态的 KaTeX（行内的不再包一层 span，少一个节点）
   inlineMath: (n, cx) => tex(cx, n.attrs.latex, !!n.attrs.display),
   blockMath: (n, cx) => `<div class="math" data-latex="${escA(n.attrs.latex)}">${tex(cx, n.attrs.latex, true)}</div>`,
-  // Mermaid：先放源码，挂到页面上以后换成图（view.ts）
-  codeBlock: (n) => (n.attrs.language === "mermaid" ? `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>` : undefined),
+  // Mermaid：先放源码，挂到页面上以后换成图（mermaid.ts）。源码里常有 -->，DOMPurify 会删掉带它的属性：自己转义过，不过 DOMPurify
+  codeBlock: (n, cx) => (n.attrs.language === "mermaid" ? trust(cx, `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>`) : undefined),
   // 目录：填上这篇的标题
   toc: (_n, cx) => `<nav data-type="toc" class="md-toc">${tocHtml(tocEntries(cx.doc))}</nav>`,
   // 图片：资源换成 webview 地址；不让浏览器拖图（拖的是卡片）
@@ -129,7 +129,7 @@ function render(src: string): string {
     html = `<p>${esc(src)}</p>`;
     trusted = [];
   }
-  return untrust(typeof window === "undefined" ? html : purify(html), trusted);
+  return untrust(purify(html), trusted);
 }
 // 生成的 HTML 来自 schema 和 Note 里原样写着的 HTML（htmlInline / htmlBlock）：整篇过一遍 DOMPurify
 // 自己一个实例，配置只设一次：每次都传配置，DOMPurify 每次都要重新解析一遍（setConfig 是整个实例的，别影响贴纸那边）
