@@ -1,7 +1,7 @@
 // v0.2 questions, export and settings (wireframes 06, 08, 09): ? stickers with a written question, Mark Answered / Link Answer (✓),
 // the Questions panel across boards, Copy as List, the welcome-back hint; the Export dialog, an offline HTML snapshot opened in Chromium,
 // a Markdown export; the new settings rows.
-// Usage: node packages/board/test/run-harness.mjs questions export v02settings [--light]   screenshots: test-out/harness/{questions,export,settings}-*.png
+// Usage: node packages/board/test/run-harness.mjs questions export settingsPage [--light]   screenshots: test-out/harness/{questions,export,settings}-*.png
 // SHOTS_DIR=… also copies them there.
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -33,7 +33,7 @@ const run = async (name: string, f: (res: Record<string, unknown>) => Promise<bo
 export const QUESTIONS: Record<string, () => Promise<void>> = {
   questions: () => run("questions", questions),
   export: () => run("export", exportScenario),
-  v02settings: () => run("v02settings", settings),
+  settingsPage: () => run("settingsPage", settings),
 };
 
 const initOf = (b: Board, extra: Partial<Extract<HostToBoard, { type: "init" }>> = {}): HostToBoard => {

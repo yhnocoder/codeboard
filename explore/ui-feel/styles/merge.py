@@ -16,7 +16,7 @@ for ln in oldcss:
 css = '.board { --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; --serif: "Source Serif 4", "Songti SC", "Noto Serif SC", Georgia, serif; }\n' + '\n'.join(out) + '\n' + OLD + ' .toast { transform: none; }'
 def scope(name, v):
     return open(name).read().replace(f'.s-{ {"draft":"draft","soft":"soft","color":"color","art":"art"}[v] }', f'.board[data-v="{v}"]')
-for f, v in [('drafting.css', 'draft'), ('soft.css', 'soft'), ('color.css', 'color'), ('news.css', 'news'), ('art.css', 'art')]:
+for f, v in [('drafting.css', 'draft'), ('soft.css', 'soft'), ('color.css', 'color'), ('news.css', 'news'), ('art.css', 'art'), ('bamboo.css', 'bamboo'), ('ink.css', 'ink'), ('clay.css', 'clay'), ('city.css', 'city')]:
     css += '\n' + open(f).read().replace(f'.s-{v}', f'.board[data-v="{v}"]')
 
 NOTES = {
@@ -55,6 +55,39 @@ NOTES = {
 <li><b>图注</b>写在卡片下方，像插图编号：FIG. 1.1 — THE BATCH IS CHOSEN。</li>
 <li><b>工具条</b>是一条深绿色色带，按钮是字距拉开的文字。</li></ul>
 <h3>取舍</h3><ul><li>最有个性，截图分享最好看。</li><li>头部很高，同样大小的白板能放的代码最少。</li><li>双线和网格缩小后会变成噪点。</li></ul>''',
+ 'bamboo': '''<h2>竹简</h2><p>每张卡片是一卷竹简：一行代码写在一根简上，简与简之间留一道缝，两道麻绳从头穿到尾。</p><ul>
+<li><b>首简</b>是左边一根宽简，竖着写编号「一之一」，用朱砂。</li>
+<li><b>标题简</b>写函数名，下面一根简用毛笔字写这张卡的一句话说明。</li>
+<li><b>朱砂</b>是唯一的颜色，相当于古人的批注：关键字、可展开的调用、箭头出发的那一行。</li>
+<li><b>连线</b>是麻绳，两头打结；箭头上的数据挂在一块小木签上。</li>
+<li><b>有新版本</b>是一枚朱红小印。</li></ul>
+<h3>取舍</h3><ul><li>代码行和竹简一一对应，行感很强，读长函数时眼睛不容易串行。</li><li>行距被竹简锁死在 19px，用户改字号时竹简要跟着变宽。</li><li>首简占掉 30px 宽度，半宽 webview 里代码区更窄。</li></ul>''',
+ 'ink': '''<h2>水墨</h2><p>宣纸底，下方几层淡墨远山，一缕雾慢慢左右飘（70 秒一个来回，几乎感觉不到）。不画太阳。浅色是一幅画；深色换成碑帖拓片，黑底白字。</p><ul>
+<li><b>编号</b>是一枚白文朱印「一之一」，盖在卡片右上角；<b>有新版本</b>是朱文印「新」，红框红字。</li>
+<li><b>标题下</b>是一笔干笔墨痕，代替分隔线。</li>
+<li><b>代码配色</b>用国画颜料：函数是花青，字符串和数字是赭石，关键字是浓墨，朱砂只标可展开的调用。</li>
+<li><b>连线</b>是毛笔线，边缘有一点纸纹的毛刺；起止都是一个墨点。</li>
+<li><b>工具条</b>是一条素宣纸，一侧搁着一支毛笔。</li>
+<li><b>讲解</b>按钮是一枚朱印，按下去像盖章；白板名用行草写，后面盖一枚「白板」小印。</li></ul>
+<h3>取舍</h3><ul><li>最安静、最有中文气质，适合长时间读代码。</li><li>远山和雾在卡片很多时几乎被挡住，主要在空白处起作用。</li><li>毛笔线用了 SVG 滤镜，连线多时要关掉滤镜保性能。</li></ul>''',
+ 'clay': '''<h2>3D · 等距积木</h2><p>白板是一张等距网格纸，卡片是一块块往右下方挤出厚度的彩色积木，像等距视角的小游戏。和柔光的白色软阴影正好相反：实心的厚度、黑色描边、饱和色。</p><ul>
+<li><b>每个源文件一种颜色</b>：llm_engine 是珊瑚红，scheduler 是青绿，model_runner 是靛蓝。标题带和侧面都是这个颜色。</li>
+<li><b>选中</b>就是积木被抬起来：往左上移一点，厚度从 9px 变成 13px，外面一圈黄色。</li>
+<li><b>连线</b>是一根黑色粗线，影子朝同一个方向，看起来也有厚度；起点是黄色小圆钮。</li>
+<li><b>标签、工具条、按钮</b>都是同一套积木按键，按下去会往右下沉，厚度消失。</li>
+<li><b>有新版本</b>和白板名都是黄色积木块。</li></ul>
+<h3>取舍</h3><ul><li>立体感来自固定方向的厚度，没有倾斜和透视，文字始终是正的，也没有常驻动画。</li><li>颜色重、描边粗，卡片很多时会很热闹；文件超过 6 个时颜色要复用。</li><li>右下方的厚度会占掉一点空间，卡片之间要多留 10px。</li></ul>''',
+ 'city': '''<h2>城市道路</h2><p>白板是一张平面城市地图：街区、河流、公园做底，调用关系画成真正的马路。</p><ul>
+<li><b>连线</b>是马路：灰色路面、白色路沿、黄色中线，横平竖直，拐角是圆的。</li>
+<li><b>箭头</b>换成一辆小车：停在路的尽头，车头朝着被调用的卡片。</li>
+<li><b>几张卡同时调用一张卡</b>时，几条路在这张卡前面的同一个路口汇合，最后一段路共用，只停一辆车。演示里多了一张 ModelRunner.loop：其他 rank 的进程在这里收到命令后，也会走到 run。</li>
+<li><b>卡片标题</b>是蓝底白字的路牌；<b>编号</b>是红色的国道牌，比如 G1.1。</li>
+<li><b>箭头上的数据</b>写在绿色的高速指路牌上。</li>
+<li><b>有新版本</b>是橙白相间的施工牌。</li>
+<li><b>工具条</b>是一整块蓝色标识牌，按钮是牌上的白色图标，缩放比例只是牌角的一行小字；右上角是一盏红绿灯（车流开关，绿灯表示车在开）加一块写着「讲解」的标识牌。</li>
+<li><b>车流</b>：右上角的红绿灯可以开关。打开时小车从调用行出发，沿着路开到被调用的卡片前，靠右行驶；系统开了「减少动态效果」时不显示。</li>
+<li><b>深色</b>是夜里的地图：路面暗下来，中线和车灯是暖黄色。</li></ul>
+<h3>取舍</h3><ul><li>方向感最强：一眼能看出谁调用谁、数据往哪儿流。</li><li>马路比普通连线宽很多，卡片之间要留出路的宽度。</li><li>车流是常驻动画，在 VS Code 里建议默认关掉，由用户自己打开；白板不在前台时暂停。</li><li>汇合后共用的最后一段上放不下各自的数据牌，所以牌子挂在每条路的起点那段。</li></ul>''',
 }
 VCFG = {
  'v1': {'head': 'triangle'}, 'warm': {}, 'graphite': {},
@@ -63,13 +96,40 @@ VCFG = {
  'color': {'head': 'triangle', 'gap': 150},
  'news': {'head': 'triangle', 'gap': 150, 'pad': {'l': 40, 'r': 40, 't': 120, 'b': 80}},
  'art': {'port': 'diamond', 'gap': 150, 'pad': {'l': 44, 'r': 44, 't': 100, 'b': 84}},
+ 'bamboo': {'head': 'dot', 'gap': 140, 'pad': {'l': 28, 'r': 28, 't': 70, 'b': 72}},
+ 'ink': {'head': 'dot', 'gap': 150, 'pad': {'l': 32, 'r': 32, 't': 78, 'b': 76}, 'defs': '<defs><filter id="brush" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="8000" height="8000"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="2" seed="2"/><feDisplacementMap in="SourceGraphic" scale="2.4"/></filter></defs>'},
+ 'clay': {'head': 'dot', 'gap': 150, 'pad': {'l': 40, 'r': 40, 't': 80, 'b': 84},
+   'defs': '<defs><filter id="isoShadow" filterUnits="userSpaceOnUse" x="-3000" y="-3000" width="8000" height="8000"><feDropShadow dx="3" dy="3" stdDeviation="0" flood-opacity=".22"/></filter></defs>'},
+ 'city': {'route': 'street', 'head': 'car', 'merge': True, 'port': 'circle', 'gap': 240, 'layers': ['casing', 'road', 'lane'], 'pad': {'l': 32, 'r': 32, 't': 74, 'b': 76}},
 }
+SCENES = {'ink': open('scene-ink.svg').read(), 'city': open('scene-city.svg').read()}
 draftjs = open('drafting.js').read().replace('function decorate(cards, world) {\n  world.querySelectorAll(\'.dim, .callout\').forEach(n => n.remove());', 'function drafting(cards, world) {')
 js = draftjs + f'''
-function decorate(cards, world) {{ world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); }}
-const BASECFG = Object.assign({{}}, CFG), VCFG = {json.dumps(VCFG)}, NOTES = {json.dumps(NOTES, ensure_ascii=False)};
+function decorate(cards, world) {{ world.querySelectorAll('.dim, .callout').forEach(n => n.remove()); if (board.dataset.v === 'draft') drafting(cards, world); if (board.dataset.v === 'city') traffic(); }}
+// 城市：可开关的车流。小车从调用行出发，沿路开到被调用的卡片前，靠右行驶
+const reduceMo = matchMedia('(prefers-reduced-motion: reduce)'), btnTraffic = document.getElementById('btnTraffic');
+function traffic() {{
+  edges.querySelectorAll('.mover').forEach(n => n.remove());
+  if (btnTraffic.getAttribute('aria-pressed') !== 'true' || reduceMo.matches) return;
+  const ns = 'http://www.w3.org/2000/svg';
+  edges.querySelectorAll('path.road').forEach((p, i) => {{
+    const len = p.getTotalLength(), dur = len / 46;
+    for (const k of [0, 1, 2]) {{
+      const car = document.createElementNS(ns, 'g'); car.setAttribute('class', `mover k${{(i + k) % 3}}`);
+      car.innerHTML = '<g transform="translate(0 3.5) scale(1.2)"><rect class="beam" x="7" y="-3.5" width="18" height="7" rx="3.5"/><rect class="body" x="-8" y="-3.5" width="16" height="7" rx="2.5"/><rect class="roof" x="-3.5" y="-2.6" width="6.5" height="5.2" rx="1.2"/></g>';
+      const begin = (-dur * (k / 3 + i * .17)).toFixed(2) + 's';
+      const am = document.createElementNS(ns, 'animateMotion');
+      Object.entries({{ dur: dur + 's', repeatCount: 'indefinite', rotate: 'auto', path: p.getAttribute('d'), begin, keyPoints: '0;.92', keyTimes: '0;1', calcMode: 'linear' }}).forEach(([a, v]) => am.setAttribute(a, v));
+      const op = document.createElementNS(ns, 'animate');
+      Object.entries({{ attributeName: 'opacity', dur: dur + 's', repeatCount: 'indefinite', begin, values: '0;1;1;0', keyTimes: '0;.08;.85;1' }}).forEach(([a, v]) => op.setAttribute(a, v));
+      car.append(am, op); edges.insertBefore(car, edges.querySelector('.car'));
+    }}
+  }});
+}}
+btnTraffic.addEventListener('click', () => {{ btnTraffic.setAttribute('aria-pressed', btnTraffic.getAttribute('aria-pressed') !== 'true'); traffic(); }});
+const BASECFG = Object.assign({{}}, CFG), VCFG = {json.dumps(VCFG)}, NOTES = {json.dumps(NOTES, ensure_ascii=False)}, SCENES = {json.dumps(SCENES)};
 function setV(v) {{
-  board.dataset.v = v; CFG = Object.assign({{}}, BASECFG, VCFG[v]);
+  board.dataset.v = v; board.querySelector('.scene').innerHTML = SCENES[v] || ''; CFG = Object.assign({{}}, BASECFG, VCFG[v]);
   document.querySelectorAll('#segV button').forEach(x => x.setAttribute('aria-pressed', x.dataset.v === v));
   document.getElementById('notes').innerHTML = NOTES[v] + '<p class="tip">切换深浅主题看两边是否都成立。所有风格用的是同一份白板数据。</p>';
   render();
@@ -79,12 +139,12 @@ setV('warm');
 '''
 seg = '''<div class="ctl">版本
       <div class="seg" id="segV" role="group" aria-label="版本">
-        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button>
+        <button id="v-v1" data-v="v1">v1</button><button id="v-warm" data-v="warm">暖墨</button><button id="v-graphite" data-v="graphite">石墨</button><button id="v-draft" data-v="draft">制图</button><button id="v-soft" data-v="soft">柔光</button><button id="v-color" data-v="color">多彩</button><button id="v-art" data-v="art">艺术</button><button id="v-news" data-v="news">报纸</button><button id="v-bamboo" data-v="bamboo">竹简</button><button id="v-ink" data-v="ink">水墨</button><button id="v-clay" data-v="clay">3D</button><button id="v-city" data-v="city">城市</button>
       </div>
     </div>
     <div class="ctl">主题'''
 o = open('base.html').read()
-fonts = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&display=swap'
+fonts = 'https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Source+Serif+4:opsz,wght@8..60,600&family=DM+Mono:wght@400;500&family=Archivo:wght@500;600;700&family=Jost:wght@300;400;500;600&family=Fraunces:ital,wght@1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Marcellus&family=Old+Standard+TT:ital,wght@0,400;0,700;1,400&family=Courier+Prime:wght@400;700&family=UnifrakturMaguntia&family=Noto+Serif+SC:wght@400;600&family=Ma+Shan+Zheng&family=Zhi+Mang+Xing&display=swap'
 for a, b in [('%%TITLE%%', 'CodeBoard 材质'), ('%%FONTS%%', fonts), ('%%CSS%%', css + '\n.notes .tip { font-size: 12px; border-top: .5px solid var(--page-hair); padding-top: 12px; }'),
              ('%%H1%%', '白板材质对照'), ('%%SUB%%', '同一块白板、同一份数据，只换材质。左边模拟 VS Code 里的 webview。'),
              ('class="board %%BOARDCLASS%%"', 'class="board" data-v="warm"'), ('%%EYEBROW%%', 'NANO-VLLM · ENGINE'), ('%%NOTES%%', ''),

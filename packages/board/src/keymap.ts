@@ -27,10 +27,13 @@ export type Bind = {
   run?: (a: A, e: KeyboardEvent) => boolean | void;
 };
 
+/** 第几次按下方向键（自动重复不算）：同一次按住的微移并成一步撤销 */
+let nudgeRun = 0;
 const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
   const d = e.shiftKey ? 10 : 1;
-  // 连着按（或按住）方向键挪同一批卡是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了
-  mutate((b) => { for (const id of sel.cards) { const h = cardById(id)?.host.id; const c = h && b.place[h]; if (c && !a.isLocked(id)) { c.x += dx * d; c.y += dy * d; } } }, { merge: `nudge:${sel.cards.join(",")}` });
+  // 按住方向键（自动重复）是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了；每按一下是一步
+  if (!e.repeat) nudgeRun++;
+  mutate((b) => { for (const id of sel.cards) { const h = cardById(id)?.host.id; const c = h && b.place[h]; if (c && !a.isLocked(id)) { c.x += dx * d; c.y += dy * d; } } }, { merge: `nudge:${nudgeRun}` });
 };
 const atPointer = () => worldAt(lastPointer());
 const hasCards = () => sel.cards.length > 0;

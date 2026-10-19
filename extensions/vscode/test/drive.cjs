@@ -413,13 +413,15 @@ const finish = async (browser, errors) => {
   await sleep(6000);
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
-  if (process.env.E2E_ONLY === "capture") { await captureStep(page); return finish(browser, errors); }
-  if (process.env.E2E_ONLY === "export") { await exportStep(page); return finish(browser, errors); }
-  if (process.env.E2E_ONLY === "variants") { await variantsStep(page); return finish(browser, errors); }
-  if (process.env.E2E_ONLY === "codeedit") { await codeeditStep(page); return finish(browser, errors); }
-  if (process.env.E2E_ONLY === "addsel") { await addselStep(page); return finish(browser, errors); }
-  if (process.env.E2E_ONLY === "cardfocus") { await cardfocusStep(page); return finish(browser, errors); }
-  if (process.env.E2E_ONLY === "close") { await closeStep(page); return finish(browser, errors); }
+  // E2E_ONLY=capture,addsel runs only those steps, in that order. E2E_PART splits the run for parallel CI jobs:
+  // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (nightly)
+  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep };
+  const PARTS = { 2: "capture,addsel,cardfocus,close", 3: "export,variants,codeedit" };
+  const only = process.env.E2E_ONLY || PARTS[process.env.E2E_PART];
+  if (only) {
+    for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); await STEPS[k](page); }
+    return finish(browser, errors);
+  }
 
   // 1. Alt+B inside a function: the board opens and the function becomes the first card
   await openFile(page, "llm_engine.py", 51);
@@ -667,9 +669,6 @@ const finish = async (browser, errors) => {
     await shot(page, "10-pick-impl");
   } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
 
-  await captureStep(page);
-  await addselStep(page);
-  await cardfocusStep(page);
-  await closeStep(page);
+  if (process.env.E2E_PART !== "1") { await captureStep(page); await addselStep(page); await cardfocusStep(page); await closeStep(page); }
   await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });

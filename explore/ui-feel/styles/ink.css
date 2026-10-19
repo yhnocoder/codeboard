@@ -1,0 +1,81 @@
+/* 水墨：宣纸底、远山淡墨、一缕雾慢慢飘；卡片是一页纸，编号是白文朱印，连线是毛笔线。深色是拓片：黑底白字 */
+.s-ink {
+  --bg: light-dark(#f2ede2, #131312);
+  --paper: light-dark(rgba(250,247,240,.93), rgba(28,27,25,.92));
+  --ink: light-dark(#1d1c1a, #e9e5da);
+  --ink-2: light-dark(#4c4943, #b9b4a8);
+  --ink-3: light-dark(#9a958b, #6e6a62);
+  --wash: light-dark(rgba(29,28,26,.06), rgba(233,229,218,.07));
+  --zhu: light-dark(#b8321f, #d6533a);
+  --huaqing: light-dark(#2d5b70, #8fb7c9);  /* 花青 */
+  --zheshi: light-dark(#9a5a2c, #d39a6c);   /* 赭石 */
+  --mtn: light-dark(#2a2926, #d8d3c6);
+  --mist: light-dark(#f7f3ea, #2a2926);
+  --selbg: light-dark(rgba(29,28,26,.14), rgba(233,229,218,.2));
+  --ui: "Noto Serif SC", "Songti SC", serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --brush: "Zhi Mang Xing", "Ma Shan Zheng", "Kaiti SC", serif;
+  --seal: "Ma Shan Zheng", "Kaiti SC", serif;
+  --paper-solid: light-dark(#faf7f0, #1c1b19);
+  --paperfiber: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.7' numOctaves='3' seed='5'/%3E%3CfeColorMatrix values='0 0 0 0 .45 0 0 0 0 .4 0 0 0 0 .32 0 0 0 .55 -.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23f)'/%3E%3C/svg%3E");
+}
+.s-ink .scene { display: block; }
+.s-ink .card { background: var(--paper); box-shadow: 0 0 0 .5px var(--wash), 0 18px 34px -22px light-dark(rgba(30,25,15,.35), rgba(0,0,0,.8)); display: flex; flex-direction: column; overflow: visible; }
+.s-ink .card.sel { box-shadow: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), 0 18px 34px -22px rgba(0,0,0,.4); }
+.s-ink .chead { order: 0; position: relative; height: 38px; padding: 0 12px 0 14px; gap: 10px; }
+.s-ink .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 0; height: 7px; background: var(--ink); opacity: .75;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
+          mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat; }
+/* 白文印：朱底留白字 */
+.s-ink .step { order: 9; font-size: 0; }
+.s-ink .step::after { content: attr(data-cn); display: inline-block; font: 400 12px/1 var(--seal); color: var(--paper); background: var(--zhu); padding: 4px 3px 3px; border-radius: 2px; writing-mode: vertical-rl; rotate: 2deg; opacity: .92; }
+.s-ink .ctitle { font: 600 13px var(--ui); color: var(--ink); letter-spacing: .01em; }
+.s-ink .cpath { font: 10.5px var(--mono); color: var(--ink-3); }
+.s-ink .rev { font: 10px var(--mono); color: var(--ink-3); }
+/* 有新版本：朱文印，红框红字 */
+.s-ink .rev.new { font-size: 0; }
+.s-ink .rev.new::after { content: "新"; font: 400 12px/1 var(--seal); color: var(--zhu); border: 1.2px solid var(--zhu); padding: 2px 3px 1px; border-radius: 2px; rotate: -3deg; }
+.s-ink .cnote { display: block; order: 1; padding: 7px 14px 2px; font: 400 12px/1.5 var(--ui); color: var(--ink-2); }
+.s-ink .code { order: 2; padding: 6px 0 12px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.s-ink .gutter .no { width: 38px; padding-right: 10px; color: var(--ink-3); }
+.s-ink .hlrow { background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent); }
+.s-ink .no.link { color: var(--zhu); }
+.s-ink .kw { color: var(--ink); font-weight: 600; } .s-ink .fn { color: var(--huaqing); } .s-ink .str { color: var(--zheshi); }
+.s-ink .com { color: var(--ink-3); font-style: italic; } .s-ink .num { color: var(--zheshi); } .s-ink .self { color: var(--ink-2); } .s-ink .p { color: var(--ink-3); }
+.s-ink .call { text-decoration: underline 1px var(--zhu); text-underline-offset: 3px; }
+/* 毛笔线：纸纹把边缘扰乱一点 */
+.s-ink .edge { fill: none; stroke: var(--ink); stroke-width: 2; stroke-linecap: round; opacity: .82; filter: url(#brush); }
+.s-ink .ahead { fill: var(--ink); opacity: .85; }
+.s-ink .port { fill: var(--ink); stroke: none; }
+.s-ink .elabel { font: italic 400 12px var(--ui); color: var(--ink-2); padding: 1px 8px; background: radial-gradient(closest-side, var(--bg) 60%, transparent); }
+
+.s-ink .tb-left { top: 14px; left: 18px; }
+.s-ink .tb-left .pill { background: none; gap: 10px; }
+.s-ink .bn { font: 400 26px/1 var(--brush); color: var(--ink); letter-spacing: .04em; }
+.s-ink .bname::after { content: "白板"; font: 400 11px/1 var(--seal); color: var(--paper); background: var(--zhu); padding: 3px 2px 2px; border-radius: 2px; writing-mode: vertical-rl; margin-left: 8px; }
+.s-ink .chev { display: none; }
+.s-ink .tb-right .pill { background: none; gap: 8px; }
+.s-ink .tbtn, .s-ink .ib { color: var(--ink); font: 400 13px var(--ui); border-radius: 2px; }
+.s-ink .ib:hover, .s-ink .tbtn:hover { background: var(--wash); }
+/* 讲解是一枚朱印，按下去像盖章 */
+.s-ink #btnPresent { background: var(--zhu); color: var(--paper); font: 400 15px var(--seal); letter-spacing: .1em; padding: 0 10px; height: 30px; border-radius: 3px;
+  box-shadow: inset 0 0 0 2px var(--zhu), inset 0 0 0 3px light-dark(rgba(250,247,240,.7), rgba(28,27,25,.6)); rotate: -2deg; transition: scale 60ms; }
+.s-ink #btnPresent:active { scale: .94; }
+.s-ink #btnPresent .ico { fill: currentColor; stroke: none; width: 12px; }
+/* 工具条是一条素宣纸，右侧斜搁着一支毛笔 */
+.s-ink .dock { bottom: 18px; }
+.s-ink .dock .pill { position: relative; padding: 4px 26px 4px 12px; gap: 2px; border-radius: 1px;
+  background: var(--paperfiber), var(--paper-solid); background-blend-mode: multiply, normal; box-shadow: 0 0 0 .5px var(--wash), 0 1px 2px light-dark(rgba(60,40,10,.12), rgba(0,0,0,.5)), 0 12px 22px -12px rgba(0,0,0,.4); }
+.s-ink .dock .pill::after { content: ""; position: absolute; right: 0; top: -10px; width: 13px; height: 64px; rotate: 24deg; pointer-events: none;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 84'%3E%3Cdefs%3E%3ClinearGradient id='h' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%236b4a26'/%3E%3Cstop offset='.45' stop-color='%23c79a5c'/%3E%3Cstop offset='1' stop-color='%235a3c1c'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23111'/%3E%3Cstop offset='.45' stop-color='%23444'/%3E%3Cstop offset='1' stop-color='%230b0b0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.5a1.6 1.6 0 0 1 0 3.2' fill='none' stroke='%23b0322a' stroke-width='1'/%3E%3Crect x='5' y='4' width='6' height='50' rx='2.6' fill='url(%23h)'/%3E%3Cpath d='M5.4 22h5.2M5.4 40h5.2' stroke='%235a3c1c' stroke-width='.7' opacity='.7'/%3E%3Crect x='4.6' y='52' width='6.8' height='5' rx='1.2' fill='%23222'/%3E%3Cpath d='M4.8 57c0 8 1.6 16 3.2 25 1.6-9 3.2-17 3.2-25z' fill='url(%23t)'/%3E%3C/svg%3E") center / contain no-repeat; filter: drop-shadow(2px 3px 2px rgba(0,0,0,.3)); }
+.s-ink .dock .ib { width: 32px; height: 28px; }
+.s-ink .sep { width: 0; margin: 0; }
+.s-ink .zoom { min-width: 50px; font: 400 14px var(--seal); color: var(--ink-2); }
+.s-ink .toast { background: var(--paper); color: var(--ink); font: 400 12.5px var(--ui); padding: 7px 14px 7px 8px; box-shadow: 0 0 0 .5px var(--wash), 0 10px 20px -12px rgba(0,0,0,.4); }
+.s-ink .toast .tdot { width: 14px; height: 14px; background: var(--zhu); border-radius: 2px; }
+.s-ink .toast b { font-weight: 600; color: var(--zhu); }
+/* 远山和雾 */
+.s-ink .mtn { fill: var(--mtn); }
+.s-ink .mist { fill: var(--mist); animation: inkMist calc(var(--t, 1) * 70s) ease-in-out infinite alternate; }
+@keyframes inkMist { from { transform: translateX(-60px); } to { transform: translateX(80px); } }
+@media (prefers-reduced-motion: reduce) { .s-ink .mist { animation: none; } }

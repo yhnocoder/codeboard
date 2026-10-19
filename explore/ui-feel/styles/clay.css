@@ -1,0 +1,66 @@
+/* 3D · 等距积木：白板是一张等距网格纸，卡片是往右下方挤出厚度的彩色积木块，每个源文件一种颜色；
+   连线、标签、按钮都有同方向的厚度，选中或按下就是积木被抬起或压下去 */
+.s-clay {
+  --bg: light-dark(#f2ebdc, #15161f);
+  --grid: light-dark(rgba(120,90,40,.09), rgba(170,180,255,.06));
+  --top: light-dark(#fffaf0, #24263a);
+  --ink: light-dark(#1f1d2b, #eceaf6);
+  --ink-2: light-dark(#5b5768, #b0adc4);
+  --ink-3: light-dark(#a09a8c, #6f6c88);
+  --edge-ink: light-dark(#1f1d2b, #0a0b12);
+  --line: light-dark(#1f1d2b, #c9c6e0);
+  --c1: light-dark(#ef5b3f, #d9563d); --s1: light-dark(#a8361f, #6e2617);
+  --c2: light-dark(#14958f, #1c8a85); --s2: light-dark(#0a5e5a, #0b3f3d);
+  --c3: light-dark(#4a5bd8, #5465d6); --s3: light-dark(#26339a, #222a6b);
+  --hi: light-dark(#ffd23f, #f2c53d);
+  --selbg: light-dark(rgba(255,210,63,.45), rgba(242,197,61,.35));
+  --ui: "Archivo", "Helvetica Neue", "PingFang SC", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --k-kw: light-dark(#c2381f, #ff8a70); --k-fn: light-dark(#3446c4, #9aa8ff); --k-str: light-dark(#0f7a75, #6fd6cf);
+  --k-com: light-dark(#a7a091, #6d6a86); --k-num: light-dark(#c2381f, #ff8a70); --k-self: light-dark(#8a3fa8, #d79af0); --k-p: light-dark(#8a8578, #8d8aa6);
+  background-color: var(--bg);
+  background-image: repeating-linear-gradient(30deg, var(--grid) 0 1px, transparent 1px 26px), repeating-linear-gradient(150deg, var(--grid) 0 1px, transparent 1px 26px);
+}
+.s-clay .card { --c: var(--c1); --s: var(--s1); background: var(--top); border-radius: 4px; overflow: visible;
+  box-shadow: 0 0 0 1.5px var(--edge-ink), 1px 1px 0 var(--s), 2px 2px 0 var(--s), 3px 3px 0 var(--s), 4px 4px 0 var(--s), 5px 5px 0 var(--s), 6px 6px 0 var(--s), 7px 7px 0 var(--s), 8px 8px 0 var(--s), 9px 9px 0 var(--s), 9px 9px 0 1.5px var(--edge-ink), 18px 22px 24px -8px light-dark(rgba(80,50,10,.35), rgba(0,0,0,.7));
+  transition: translate calc(var(--t, 1) * 200ms) cubic-bezier(.2, .8, .2, 1), box-shadow calc(var(--t, 1) * 200ms) cubic-bezier(.2, .8, .2, 1); }
+.s-clay .card.f2 { --c: var(--c2); --s: var(--s2); } .s-clay .card.f3 { --c: var(--c3); --s: var(--s3); }
+.s-clay .card.sel { translate: -4px -4px; box-shadow: 0 0 0 1.5px var(--edge-ink), 0 0 0 5px var(--hi), 1px 1px 0 var(--s), 2px 2px 0 var(--s), 3px 3px 0 var(--s), 4px 4px 0 var(--s), 5px 5px 0 var(--s), 6px 6px 0 var(--s), 7px 7px 0 var(--s), 8px 8px 0 var(--s), 9px 9px 0 var(--s), 10px 10px 0 var(--s), 11px 11px 0 var(--s), 12px 12px 0 var(--s), 13px 13px 0 var(--s), 13px 13px 0 1.5px var(--edge-ink), 26px 30px 28px -8px light-dark(rgba(80,50,10,.4), rgba(0,0,0,.75)); }
+/* 顶面上的彩色标题带 */
+.s-clay .chead { height: 36px; padding: 0 12px; gap: 9px; background: var(--c); color: #fff; border-radius: 3px 3px 0 0; border-bottom: 1.5px solid var(--edge-ink); }
+.s-clay .step { font: 800 11px var(--ui); color: var(--c); background: #fff; border: 1.5px solid var(--edge-ink); padding: 1px 6px; border-radius: 3px; box-shadow: 2px 2px 0 var(--edge-ink); }
+.s-clay .ctitle { font: 700 13px var(--ui); color: #fff; }
+.s-clay .cpath { font: 500 11px var(--ui); color: rgba(255,255,255,.75); }
+.s-clay .rev { font: 10px var(--mono); color: rgba(255,255,255,.75); }
+.s-clay .rev.new { font: 800 10.5px var(--ui); color: var(--edge-ink); background: var(--hi); border: 1.5px solid var(--edge-ink); padding: 1px 6px; border-radius: 3px; box-shadow: 2px 2px 0 var(--edge-ink); }
+.s-clay .rev.new i { display: none; }
+.s-clay .code { padding: 8px 0 10px; font: 10.5px/19px var(--mono); color: var(--ink); }
+.s-clay .gutter .no { width: 36px; padding-right: 10px; color: var(--ink-3); }
+.s-clay .hlrow { background: color-mix(in srgb, var(--hi) 38%, transparent); }
+.s-clay .no.link { color: var(--ink); font-weight: 700; }
+.s-clay .kw { color: var(--k-kw); font-weight: 600; } .s-clay .fn { color: var(--k-fn); } .s-clay .str { color: var(--k-str); } .s-clay .com { color: var(--k-com); font-style: italic; }
+.s-clay .num { color: var(--k-num); } .s-clay .self { color: var(--k-self); } .s-clay .p { color: var(--k-p); }
+.s-clay .call { text-decoration: underline 2px var(--hi); text-underline-offset: 3px; }
+/* 连线：一根有厚度的粗线，影子朝同一个方向 */
+.s-clay .edge { fill: none; stroke: var(--line); stroke-width: 3; stroke-linecap: round; filter: url(#isoShadow); }
+.s-clay .ahead { fill: var(--line); }
+.s-clay .port { fill: var(--hi); stroke: var(--edge-ink); stroke-width: 1.5; }
+/* 积木按键 */
+.s-clay .elabel, .s-clay .ib, .s-clay .tbtn, .s-clay .tb-left .pill { background: var(--top); color: var(--ink); border: 1.5px solid var(--edge-ink); border-radius: 4px; box-shadow: 3px 3px 0 var(--edge-ink); }
+.s-clay .elabel { font: 600 10.5px var(--mono); padding: 3px 9px; }
+.s-clay .elabel.f2 { background: var(--c2); color: #fff; } .s-clay .elabel.f3 { background: var(--c3); color: #fff; }
+.s-clay .ib, .s-clay .tbtn { height: 30px; font: 700 12px var(--ui); transition: translate 50ms, box-shadow 50ms; }
+.s-clay .ib { width: 32px; }
+.s-clay .ib:active, .s-clay .tbtn:active { translate: 3px 3px; box-shadow: 0 0 0 var(--edge-ink); }
+.s-clay .pill { background: none; gap: 8px; }
+.s-clay .tb-left .pill { padding: 5px 12px; background: var(--hi); }
+.s-clay .bn { font: 800 14px var(--ui); color: var(--edge-ink); }
+.s-clay .chev { color: var(--edge-ink); }
+.s-clay #btnPresent { background: var(--c1); color: #fff; }
+.s-clay #btnPresent .ico { fill: currentColor; }
+.s-clay .dock { bottom: 20px; }
+.s-clay .sep { width: 0; margin: 0 2px; }
+.s-clay .zoom { font: 700 11px var(--mono); color: var(--ink); min-width: 46px; }
+.s-clay .toast { bottom: 70px; background: var(--edge-ink); color: #fff; font: 600 12.5px var(--ui); padding: 8px 14px; border-radius: 4px; box-shadow: 3px 3px 0 var(--hi); }
+.s-clay .toast .tdot { width: 10px; height: 10px; background: var(--hi); border-radius: 2px; }
+.s-clay .toast b { color: var(--hi); }
