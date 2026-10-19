@@ -1,7 +1,8 @@
-# Release: push a tag v<version> (or run it by hand with a version) and this builds a draft GitHub Release with
+# Release: bump "version" in extensions/vscode/package.json, merge, then push the tag v<that version> (or run this by hand)
+# and this builds a draft GitHub Release with
 #   codeboard-vscode-<version>.vsix   the VS Code extension (Extensions view → ⋯ → Install from VSIX…)
 #   6 screenshots at 2x               4 features in VS Code light, then every board theme in light and in dark (tools/release/shots.sh)
-# The version comes from the tag and is written into the extension's package.json only for the package (not committed).
+# The version comes from extensions/vscode/package.json; a tag that names a different version fails the release.
 # The release stays a draft until someone publishes it on GitHub. Nothing is published to the Marketplace.
 name: Release
 on:
@@ -10,18 +11,14 @@ on:
   # A PR that changes the release flow runs package + shots as a check; no release is made
   pull_request:
     paths: [".github/workflows/release.yml", "tools/release/**", "extensions/vscode/test/release-shots.cjs", "extensions/vscode/.vscodeignore"]
+  # By hand: the draft release is tagged v<package.json version> on this commit when published
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Version without the v, e.g. 0.2.0 (the draft release is tagged v<version> on this commit when published)"
-        required: true
 permissions:
   contents: write
 concurrency:
   group: release-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 env:
-  VERSION: ${{ inputs.version || (github.event_name == 'pull_request' && '0.0.0-pr') || github.ref_name }}
   VSCODE_VERSION: "1.142.0"
   E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
 jobs:
@@ -34,15 +31,15 @@ jobs:
       - uses: actions/checkout@v4
       - id: v
         run: |
-          V="${VERSION#v}"
-          if ! [[ "$V" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then echo "::error::'$VERSION' is not a version like 0.2.0"; exit 1; fi
+          V=$(node -p 'require("./extensions/vscode/package.json").version')
+          if [ "${{ github.ref_type }}" = tag ] && [ "${{ github.ref_name }}" != "v$V" ]; then
+            echo "::error::Tag ${{ github.ref_name }} does not match extensions/vscode/package.json version $V. Bump the version there first, or tag v$V."; exit 1
+          fi
           echo "version=$V" >> $GITHUB_OUTPUT
       - uses: ./.github/actions/setup
       - name: Package the extension
         working-directory: extensions/vscode
-        run: |
-          npm pkg set version=${{ steps.v.outputs.version }}
-          npm run package
+        run: npm run package
       - uses: actions/upload-artifact@v4
         with: { name: vsix, path: extensions/vscode/*.vsix, retention-days: 30 }
 
