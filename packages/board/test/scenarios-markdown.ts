@@ -1,5 +1,5 @@
-// v0.1.8 Markdown: static rendering on Notes / Text / descriptions / sidenotes, the WYSIWYG editor (lazy chunk), slash menu,
-// bubble toolbar, [[card refs]], raw mode, task toggle on static notes (node run-harness.mjs v18md v18mdedit … [--light])
+// Markdown: static rendering on Notes / Text / descriptions / sidenotes, the WYSIWYG editor (lazy chunk), slash menu,
+// bubble toolbar, [[card refs]], raw mode, task toggle on static notes (node run-harness.mjs markdownRender markdownEdit … [--light])
 // Each scenario prints PASS / FAIL lines and throws when a check fails, so CI catches it.
 import * as fs from "node:fs";
 import { open, shot, symCard, findSym, put, type Host } from "./harness";
@@ -70,9 +70,9 @@ async function saveShot(h: Host, name: string) {
   try { fs.mkdirSync(SHOTS, { recursive: true }); await h.page.screenshot({ path: `${SHOTS}/${name}.png` }); } catch { /* no project files here */ }
 }
 
-export const V018MD: Record<string, () => Promise<void>> = {
+export const MARKDOWN: Record<string, () => Promise<void>> = {
   /** Static render: math, code colours, tasks, table, chips, footnote, details; links go to the host, chips jump to the card */
-  async v18md() {
+  async markdownRender() {
     for (const theme of ["warm-ink", "ink-wash", "city"]) {
       const { b } = mdBoard();
       // 视野外很远的一张：先放纯文字，空闲时补渲染
@@ -80,7 +80,7 @@ export const V018MD: Record<string, () => Promise<void>> = {
       const h = await open({ board: b, light, w: 1400, h: 950, settings: { theme } as any });
       await h.page.waitForTimeout(500);
       const far = await h.page.evaluate(() => !!document.querySelector('.card[data-id="far"] .nbody strong') && !!document.querySelector('.card[data-id="far"] .katex'));
-      check(`v18md-offview ${theme}`, far, { far });
+      check(`markdownRender-offview ${theme}`, far, { far });
       const r = await h.page.evaluate(() => {
         const n = document.querySelector('.card[data-id="n1"] .nbody')!;
         const cs = (e: Element | null) => (e ? getComputedStyle(e) : null);
@@ -96,7 +96,7 @@ export const V018MD: Record<string, () => Promise<void>> = {
       });
       const ok = r.katex >= 2 && r.hl >= 2 && r.tasks === 2 && r.table === 4 && r.chips === 1 && r.chipMissing === 0 && r.fn === 1 && r.details === 1 && !r.raw && r.under && r.desc === "prefill" && r.text2 === "Reading notes";
       await saveShot(h, `v18-md-${theme}-${light ? "light" : "dark"}`);
-      check(`v18md ${theme}`, ok, r);
+      check(`markdownRender ${theme}`, ok, r);
       // 静态勾选框：改原文；点链接：交给宿主；点引用：选中那张卡
       await h.page.locator('.card[data-id="n1"] li[data-type=taskItem] input').first().click();
       await h.page.waitForTimeout(1300);
@@ -107,13 +107,13 @@ export const V018MD: Record<string, () => Promise<void>> = {
       await h.page.locator('.card[data-id="n1"] .cref').first().click();
       await h.page.waitForTimeout(700);
       const selId = await h.page.locator(".card.sel").evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.id));
-      check(`v18md-click ${theme}`, opened && selId.length === 1 && selId[0] !== "n1" && md.includes("- [x] check"), { opened, selId, task: md.split("\n")[4] });
+      check(`markdownRender-click ${theme}`, opened && selId.length === 1 && selId[0] !== "n1" && md.includes("- [x] check"), { opened, selId, task: md.split("\n")[4] });
       await close(h);
     }
   },
 
   /** WYSIWYG editing: lazy chunk loads, typing with input rules, / menu, [[ picker, bubble toolbar, raw mode, ⌘Z stays in the editor, Esc saves */
-  async v18mdedit() {
+  async markdownEdit() {
     const { b } = mdBoard();
     const h = await open({ board: b, light, w: 1400, h: 950 });
     const pg = h.page;
@@ -179,12 +179,12 @@ export const V018MD: Record<string, () => Promise<void>> = {
     const ok = focus && boldNow === 1 && r.cardsNow === cards0 && slash[0]?.startsWith("Table") && table === tables0 + 1 && refItems[0] === "Scheduler.schedule" && chip === 2 && bubble === 1 && italic === 1 && italicAfterUndo === 0 && stillEditing === 1
       && r.rawHas && backWys && focusBack && exited === 0 && Object.values(r.saved).every(Boolean);
     await saveShot(h, "v18-edit-saved");
-    check("v18mdedit", ok, r);
+    check("markdownEdit", ok, r);
     await close(h);
   },
 
   /** One editor is reused across Notes: each edit starts from that Note's text with its own undo history */
-  async v18mdreuse() {
+  async markdownEditorReuse() {
     const { b } = mdBoard();
     const h = await open({ board: b, light, w: 1400, h: 950 });
     const pg = h.page;
@@ -206,12 +206,12 @@ export const V018MD: Record<string, () => Promise<void>> = {
     const n1 = mdOf("n1"), t1 = mdOf("t1");
     const r = { t1Fresh: t1Text.includes("Reading notes") && !t1Text.includes("AAA"), undoKept: afterUndo === t1Text, n1Saved: n1.includes("first edit AAA") && !n1.includes("BBB"),
       t1Saved: t1.includes("second BBB") && !t1.includes("AAA") && t1.startsWith("# Reading notes"), stale: await pg.locator(".md-pm").count() };
-    check("v18mdreuse", r.t1Fresh && r.undoKept && r.n1Saved && r.t1Saved && r.stale === 0, r);
+    check("markdownEditorReuse", r.t1Fresh && r.undoKept && r.n1Saved && r.t1Saved && r.stale === 0, r);
     await close(h);
   },
 
   /** Large board, pan and zoom straight into areas not rendered yet: a Note in view never shows its raw-text placeholder, every frame */
-  async v18mdlazy() {
+  async markdownLazyRender() {
     const b = emptyBoard("b1", "lazy");
     const cols = 16;
     for (let i = 0; i < 320; i++) {
@@ -268,12 +268,12 @@ export const V018MD: Record<string, () => Promise<void>> = {
     });
     await saveShot(h, "v18-md-lazy");
     // pendSeen > 0：确实有过排队的（不然这项没测到什么）；1.5 秒后全部渲染完
-    check("v18mdlazy", r.pendSeen > 0 && r.rawShown === 0 && r.hiddenInView === 0 && r.blankInView === 0 && r.leftAfter === 0 && r.rendered === 320, r);
+    check("markdownLazyRender", r.pendSeen > 0 && r.rawShown === 0 && r.hiddenInView === 0 && r.blankInView === 0 && r.leftAfter === 0 && r.rendered === 320, r);
     await close(h);
   },
 
   /** Paste: HTML becomes clean markdown, VS Code code keeps its indentation, markdown text is parsed */
-  async v18mdpaste() {
+  async markdownPaste() {
     const { b } = mdBoard();
     const h = await open({ board: b, light, w: 1400, h: 950 });
     const pg = h.page;
@@ -296,7 +296,7 @@ export const V018MD: Record<string, () => Promise<void>> = {
     const md = (h.board().cards.find((c) => c.id === "t1") as NoteCard).md;
     const r = { html: /### From web\n\na \*\*bold\*\* word and \[link\]\(https:\/\/x\.y\/a_b\)\n\n- one\n- two/.test(md), noStyle: !/style=|<span/.test(md),
       code: md.includes("```python\ndef f(x):\n    return x * 2\n```"), inline: md.includes("`seq_len`"), tasks: md.includes("- [ ] pasted task\n- [x] done **too**") };
-    check("v18mdpaste", Object.values(r).every(Boolean), { ...r, md: md.slice(-260) });
+    check("markdownPaste", Object.values(r).every(Boolean), { ...r, md: md.slice(-260) });
     await close(h);
   },
 };

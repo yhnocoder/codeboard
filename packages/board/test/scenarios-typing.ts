@@ -1,4 +1,4 @@
-// v0.1.8 编辑器：照 Typora 的边写边变、快捷键、剪贴板、灰字补全接受后的转换（node run-harness.mjs v18typora v18keys v18accept）
+// Markdown 编辑器：照 Typora 的边写边变、快捷键、剪贴板、灰字补全接受后的转换（node run-harness.mjs markdownInputRules editorKeys aiCompletionAccept）
 // 每条规则：在一张空 Note 里打一串键 → 退出 → 看写回的 Markdown（和编辑时的 DOM）
 import { open, put, findSym, symCard, type Host } from "./harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
@@ -90,9 +90,9 @@ const marks = async (pg: Page) => pg.evaluate(() => {
   return out;
 });
 
-export const V018TYPE: Record<string, () => Promise<void>> = {
+export const TYPING: Record<string, () => Promise<void>> = {
   /** Typora 式的块规则和行内规则：打完记号就变，写回干净的 Markdown */
-  async v18typora() {
+  async markdownInputRules() {
     failed = 0;
     const cases: Case[] = [
       { name: "h1", seq: "# Title", md: "# Title" },
@@ -197,13 +197,13 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     const run = process.env.CASES ? cases.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q))) : cases;
     const h = await open({ board: board(run.length, run.map((c) => c.init)), w: 1400, h: 900 });
     // IME：用 CDP 的 composition 打一个 $m$（组字结束时 TipTap 再跑一遍规则）
-    await runCases(h, "v18typora", cases);
+    await runCases(h, "markdownInputRules", cases);
     await close(h);
-    if (failed) throw new Error(`v18typora: ${failed} failed`);
+    if (failed) throw new Error(`markdownInputRules: ${failed} failed`);
   },
 
   /** 编辑时的快捷键；VS Code 要接手的键（剪切 / 复制 / 粘贴 …）要冒泡到 window，别的不冒泡 */
-  async v18keys() {
+  async editorKeys() {
     failed = 0;
     const cases: Case[] = [
       { name: "bold", seq: "{Control+b}b{Control+b} x", md: "**b** x" },
@@ -226,7 +226,7 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     ];
     const h = await open({ board: board(cases.length + 4, cases.map((c) => c.init)), w: 1400, h: 900 });
     const pg = h.page;
-    await runCases(h, "v18keys", cases);
+    await runCases(h, "editorKeys", cases);
     // ⌘↵ / Esc：存好退出
     const base = cases.length;
     await editNote(h, `n${base}`);
@@ -236,7 +236,7 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     await keys(pg, "esc{Escape}");
     const exitedEsc = (await pg.locator(".md-pm").count()) === 0;
     await pg.waitForTimeout(1400);
-    check("v18keys exit", exitedEnter && exitedEsc && md(h, `n${base}`) === "saved" && md(h, `n${base + 1}`) === "esc", { exitedEnter, exitedEsc });
+    check("editorKeys exit", exitedEnter && exitedEsc && md(h, `n${base}`) === "saved" && md(h, `n${base + 1}`) === "esc", { exitedEnter, exitedEsc });
 
     // 冒泡到 window 的按键（VS Code 的 webview 外壳就在 window 上收 keydown）
     await pg.evaluate(() => {
@@ -318,15 +318,15 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
       && clip.some((c: string[]) => c[0] === "cut" && c[1] === "x **bold** y") && emptied === ""
       && pasted.strong === 1 && pasted.math === 1
       && JSON.stringify(paletteFwd) === JSON.stringify(["c", "x", "v", "a", "z"]);
-    check("v18keys forward+clipboard", ok, { blocked, passed, clip, emptied, pasted, paletteFwd });
+    check("editorKeys forward+clipboard", ok, { blocked, passed, clip, emptied, pasted, paletteFwd });
     await pg.waitForTimeout(1300);
-    check("v18keys paste saved", md(h, n) === "pasted **b** and $m$", { got: md(h, n) });
+    check("editorKeys paste saved", md(h, n) === "pasted **b** and $m$", { got: md(h, n) });
     await close(h);
-    if (failed) throw new Error(`v18keys: ${failed} failed`);
+    if (failed) throw new Error(`editorKeys: ${failed} failed`);
   },
 
   /** 接受灰字补全（Tab）：一整段进来，打字规则不触发，要把这一段重新当 Markdown 解析；一次 ⌘Z 撤回整个接受 */
-  async v18accept() {
+  async aiCompletionAccept() {
     failed = 0;
     // 按光标前的字回答（撤销后会再问一次）
     const reply = (before: string) => before.endsWith("see ") ? "$a$ and **b** with `c`" : before.endsWith("\\frac{") ? "a}{b}$ done"
@@ -370,8 +370,8 @@ export const V018TYPE: Record<string, () => Promise<void>> = {
     const ok = d1.math === 1 && d1.strong === 1 && d1.code === 1 && d2 === 1 && undone === "x $\\frac{}" && redone === 1
       && r.md[0] === "see $a$ and **b** with `c` end" && r.md[1] === "x $\\frac{a}{b}$ done" && d3.h1 === 1 && d3.strong === 1 && r.md[2] === "# Title **x**"
       && r.md[3] === "Sum $$y$$";
-    check("v18accept", ok, r);
+    check("aiCompletionAccept", ok, r);
     await close(h);
-    if (failed) throw new Error("v18accept failed");
+    if (failed) throw new Error("aiCompletionAccept failed");
   },
 };

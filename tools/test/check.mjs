@@ -1,0 +1,71 @@
+// npm run check: the local test run, about 3 minutes. See TESTING.md.
+//   1. typecheck, unit tests and host tests side by side; the board is rebuilt only when its sources changed since the last build
+//   2. the harness scenarios this change needs (tools/test/pick.mjs), compared with origin/main, several at a time,
+//      within what is left of the 3 minutes
+// Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness>]
+//   scenario names are always run (the problem being worked on); --all runs every scenario, with no time limit
+import { spawn, execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
+
+const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
+const args = process.argv.slice(2);
+const opt = (k) => args.find((a) => a.startsWith(`--${k}=`))?.slice(k.length + 3);
+const focus = args.filter((a) => !a.startsWith("--"));
+const LIMIT = 180, t0 = Date.now();
+const secs = () => Math.round((Date.now() - t0) / 1000);
+
+function run(name, cmd, a, env = {}) {
+  return new Promise((resolve) => {
+    const t = Date.now();
+    const p = spawn(cmd, a, { cwd: REPO, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+    let out = "";
+    p.stdout.on("data", (d) => (out += d)); p.stderr.on("data", (d) => (out += d));
+    p.on("close", (code) => {
+      console.log(`${code ? "✗" : "✓"} ${name} ${Math.round((Date.now() - t) / 1000)} s`);
+      if (code) process.stdout.write(out.split("\n").slice(-60).join("\n") + "\n");
+      resolve(code === 0);
+    });
+  });
+}
+
+// The board build takes most of a minute: skip it when nothing it is built from changed since the last one
+function buildHash() {
+  const h = createHash("sha1");
+  const files = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "packages/board/src", "packages/board/vite.config.ts", "packages/board/package.json", "packages/core/src", "package-lock.json"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
+  for (const f of files.sort()) { h.update(f); try { h.update(fs.readFileSync(path.join(REPO, f))); } catch { /* deleted */ } }
+  return h.digest("hex");
+}
+const stamp = path.join(REPO, "extensions/vscode/media/board/.build-hash");
+const hash = buildHash();
+const fresh = fs.existsSync(path.join(REPO, "extensions/vscode/media/board/board.js")) && fs.existsSync(stamp) && fs.readFileSync(stamp, "utf8") === hash;
+const build = fresh ? run("build (extension only; board unchanged)", "npm", ["run", "build", "-w", "codeboard-vscode"])
+  : run("build", "npm", ["run", "build"]).then((ok) => { if (ok) fs.writeFileSync(stamp, hash); return ok; });
+
+const first = await Promise.all([
+  run("typecheck", "npm", ["run", "typecheck"]),
+  run("unit tests", "npm", ["test"]),
+  run("host tests", "npm", ["run", "test:host", "-w", "codeboard-vscode"]),
+  build,
+]);
+if (!first[3]) { console.log("build failed: no harness run"); process.exit(1); }
+
+let base = opt("base");
+if (!base) {
+  try { execFileSync("git", ["fetch", "-q", "origin", "main"], { cwd: REPO, stdio: "ignore", timeout: 15000 }); } catch { /* offline: the last fetched main */ }
+  try { base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: REPO, encoding: "utf8" }).trim(); } catch { base = "HEAD"; }
+}
+const workers = Math.min(4, os.availableParallelism());
+// Harness budget: what is left of the 3 minutes, times the workers, minus a margin for start-up and the slowest scenario finishing last
+const budget = opt("budget") ?? Math.max(30, Math.round((LIMIT - secs() - 25) * workers * 0.8));
+const harness = args.includes("--all") ? [...focus] : ["--select", `--base=${base}`, `--budget=${budget}`, ...(focus.length ? [`--focus=${focus.join(",")}`] : [])];
+console.log(`harness: ${args.includes("--all") ? "every scenario" : `changes since ${base.slice(0, 7)}, budget ${budget} s of scenario time`} on ${workers} workers`);
+const ok = await new Promise((resolve) => {
+  const p = spawn("node", ["packages/board/test/run-harness.mjs", ...harness, `--workers=${workers}`, "--json=test-out/check/harness.json"], { cwd: REPO, stdio: "inherit" });
+  p.on("close", (code) => resolve(code === 0));
+});
+const all = first.every(Boolean) && ok;
+console.log(`\n${all ? "✓ all passed" : "✗ failures above"} in ${secs()} s${secs() > LIMIT ? ` (over the ${LIMIT} s target)` : ""}`);
+process.exit(all ? 0 : 1);

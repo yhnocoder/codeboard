@@ -3,7 +3,7 @@
 // Usage: node packages/board/test/run-harness.mjs <scenario> [--light]   screenshots go to test-out/harness/
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { chromium, type Page } from "playwright-core";
+import { chromium, type Browser, type Page } from "playwright-core";
 import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, F_BLANK, F_COMMENT, F_DOCSTRING, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
 import { initAnalysis, analyze, symbolAt, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
 
@@ -81,6 +81,11 @@ export function symCard(f: string, s: Sym): CodeCard {
 export function put(b: Board, c: Card, x: number, y: number, w = 560) { b.cards.push(c); b.place[c.id] = { x, y, w }; }
 export const findSym = (qual: string) => allSyms().find((x) => x.s.qual === qual)!;
 
+/** Browsers opened by open() and not closed yet: the runner closes what a failed scenario left open */
+export const browsers = new Set<Browser>();
+/** HARNESS_COV: the page's JS coverage, collected when its browser closes */
+export const covered: Awaited<ReturnType<Page["coverage"]["stopJSCoverage"]>> = [];
+
 export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void> };
 
 export async function ready() { await initAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm")); if (!files.size) load(); }
@@ -92,7 +97,8 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
   await ready();
   if (!files.size) load();
   fs.mkdirSync(OUT, { recursive: true });
-  const html = path.join(OUT, "index.html");
+  // one page per process: the runner runs several scenario processes side by side
+  const html = path.join(OUT, `index-${process.pid}.html`);
   fs.writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="file://${MEDIA}/board.css"></head>
 <body class="${o.light ? "vscode-light" : "vscode-dark"}"><div id="root"></div>
 <script>addEventListener("message", (e) => { if (e.data?.type === "init") window.__tInit = performance.now(); }, true); addEventListener("pointerdown", () => { window.__tDown = performance.now(); }, true);</script>
@@ -100,6 +106,15 @@ export async function open(o: { board?: Board; settings?: Partial<typeof DEFAULT
 <script type="module" src="file://${MEDIA}/board.js"></script></body></html>`);
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome", args: ["--allow-file-access-from-files"] });
   const page = await browser.newPage({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
+  browsers.add(browser);
+  // HARNESS_COV=1 (nightly): record which board code the scenario runs, for picking scenarios by changed file
+  if (process.env.HARNESS_COV) await page.coverage.startJSCoverage({ resetOnNavigation: false });
+  const close = browser.close.bind(browser);
+  browser.close = async () => {
+    if (!browsers.delete(browser)) return close();
+    if (process.env.HARNESS_COV) covered.push(...(await page.coverage.stopJSCoverage().catch(() => [])));
+    return close();
+  };
   // CPU_THROTTLE=4：把页面的 CPU 放慢几倍（CDP），在本机复现 CI 慢机器上才出现的时序问题
   if (+(process.env.CPU_THROTTLE ?? 0) > 1) await (await page.context().newCDPSession(page)).send("Emulation.setCPUThrottlingRate", { rate: +process.env.CPU_THROTTLE! });
   let board = o.board ?? emptyBoard("b1", "nano-vllm · generate");
