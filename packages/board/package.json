@@ -11,6 +11,8 @@
   "devDependencies": {
     "@types/katex": "^0.16.8",
     "happy-dom": "^20.14.5",
+    "jsdom": "^29.1.1",
+    "playwright-core": "^1.64.1",
     "typescript": "^5.9.3",
     "vite": "^6.4.4",
     "vite-plugin-solid": "^2.11.14",
