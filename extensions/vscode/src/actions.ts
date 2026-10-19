@@ -56,7 +56,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     void ui().info(`Removed from “${b.name}”`);
   };
 
-  /** 把卡送到白板：开着就发给白板（它决定位置）；没开就直接写进 JSON */
+  /** 把卡送到白板：开着就发给白板（它决定位置）；没开就直接写进 JSON，这个工作区第一次时在旁边打开白板（焦点留在编辑器） */
   const deliver = async (boardId: string, built: Built) => {
     const cards = await withViews(built.cards);
     const p = panels.get(boardId);
@@ -73,7 +73,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
     }
     const undo = () => undoAdd(boardId, built.cards.map((c) => c.id));
     armUndo(undo);
-    if (!p?.visible) void notify({ id: boardId, name }, cards.length, undo);
+    if (!p && panels.firstAdd?.()) await panels.show(boardId, { preserveFocus: true });
+    else if (!p?.visible) void notify({ id: boardId, name }, cards.length, undo);
   };
 
   const fromEditor = async (mode: "auto" | "function" | "separate" = "auto"): Promise<Built | undefined> => {
