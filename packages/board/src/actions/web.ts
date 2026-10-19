@@ -1,5 +1,4 @@
 // Web 卡和 Link List：抓网页信息 / Retry、合成 Link List、行的排序 / 拖出 / 切换 Rich、菜单；From GitHub… 面板入口。
-import { createSignal } from "solid-js";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, removeCards, estSize, defaultWidth, findFree,
@@ -10,23 +9,22 @@ import { toWorld, viewportCenter } from "../state/camera";
 import { setEditing } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
 import { ask } from "../host";
-import { boardOffset, openLink, popCard } from "./common";
+import { openLink, popCard } from "./common";
+import { boardOffset } from "../state/measure";
+import { setFetchingKeys, rowDrag, setRowDrag, setGhPicker, type RowDrag } from "../state/web";
 
 /** 图片地址：assets/ 下的文件名 → webview 能读的 URL */
 export const assetSrc = (name?: string) => (!name ? undefined : /^(data:|https?:|blob:)/.test(name) ? name : `${state.host.assetBase}/${name}`);
 
 // ---------- 抓网页信息 ----------
 
-const [busy, setBusy] = createSignal<Set<string>>(new Set());
-/** 正在抓：key = 卡 id，或「卡 id/行 id」 */
-export const fetching = (k: string) => busy().has(k);
 
 /** 抓一次网页信息存进卡（或 Link List 的一行）。宿主同步来的数据，不进撤销栈 */
 export async function fetchMeta(id: string, url: string, item?: string) {
   const k = item ? `${id}/${item}` : id;
-  setBusy((s) => new Set(s).add(k));
+  setFetchingKeys((s) => new Set(s).add(k));
   const meta = (await ask("webMeta", { url }).catch(() => null)) ?? { failed: true, at: Date.now() };
-  setBusy((s) => { const n = new Set(s); n.delete(k); return n; });
+  setFetchingKeys((s) => { const n = new Set(s); n.delete(k); return n; });
   sync((b) => {
     const c = findCard(b, id)?.card;
     if (c?.kind === "web" && !item && c.url === url) c.meta = meta;
@@ -166,8 +164,6 @@ export function rowMenu(id: string, item: string, x: number, y: number) {
 
 // ---------- 行拖动：⋮⋮ 上下排序；拖出卡外 = 拆成 Web 卡 ----------
 
-export type RowDrag = { card: string; item: string; index: number; out: boolean; x: number; y: number; label: string };
-export const [rowDrag, setRowDrag] = createSignal<RowDrag | null>(null);
 
 export function rowGripDown(e: PointerEvent, id: string, item: string) {
   if (e.button !== 0) return;
@@ -216,6 +212,5 @@ export function rowGripDown(e: PointerEvent, id: string, item: string) {
 // ---------- From GitHub… ----------
 
 /** 打开 From GitHub… 面板（工具栏 Code ▾、侧栏 Add Repo… 都走这里）；repo 可以预填 owner/repo 或链接 */
-export const [ghPicker, setGhPicker] = createSignal<false | { repo?: string }>(false);
 export function openGitHubPicker(repo?: string) { setGhPicker({ repo }); }
 

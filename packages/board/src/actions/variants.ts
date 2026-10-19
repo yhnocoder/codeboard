@@ -1,7 +1,8 @@
 // 我的改动（线框 07）：卡上的 Variant 标签页、Add Variant 菜单、对比基准、三方对照、合进上游后转回普通卡、「只在这个 Variant」的 Sidenote。
 // 切换只在白板里换段和展示数据（宿主事先把每个 Variant 的代码和高亮都给了），一帧之内完成。
-import { batch, createEffect, createRoot, createSignal, untrack } from "solid-js";
-import { createStore, unwrap } from "solid-js/store";
+import { batch, createEffect, untrack } from "solid-js";
+import { rooted } from "../state/root";
+import { unwrap } from "solid-js/store";
 import {
   activeOf, addVariant as addV, dropVariants, findCard, isCode, isMine, removeVariant as removeV, segsOf, setVariantSegs, switchVariant as switchV, upstreamSegs, variantMarks, variantTitle, viewKey, UPSTREAM, parseViewKey, type AddVariantFrom, type VariantSources, type Card, type CodeCard, type Segment, type SegView, type VariantMarks, type VariantSync,
 } from "@codeboard/core";
@@ -10,12 +11,7 @@ import { ask } from "../host";
 import { openMenu, promptText, choose, type Item } from "../ui/Menu";
 import { openPop } from "../state/pop";
 import { setEditing } from "../state/ui";
-
-/** 宿主给的、不存盘的：上游最新的代码、落后几个 commit、提示过的合入（卡 id →） */
-export type VLive = { latest?: { label: string; segs: Segment[]; views: Record<string, SegView> }; behind?: Record<string, number> };
-export const [vlive, setVlive] = createStore<Record<string, VLive>>({});
-/** 对比基准（卡 id → "up" | "latest" | Variant id）；默认上游。只是看的方式，不存盘 */
-export const [vbase, setVbase] = createStore<Record<string, string>>({});
+import { vlive, setVlive, vbase, setVbase, merged, setMergedSig } from "../state/variants";
 
 const code = (id: string) => { const c = cardById(id)?.card; return isCode(c) ? c : undefined; };
 
@@ -64,7 +60,7 @@ export function absorbViews(v: Record<string, SegView>) {
   setState("views", put as Record<string, SegView>);
 }
 // 撤销 / 重做、同步都可能换掉显示的 Variant：盯着每张有 Variant 的卡的 active
-createRoot(() => createEffect(() => {
+rooted(() => createEffect(() => {
   for (const c of state.board.cards) if (c.kind === "code" && c.variants?.length) { void c.active; untrack(() => ensureViews(c)); }
 }));
 
@@ -239,8 +235,6 @@ export function applyVariantSync(cards: Record<string, VariantSync>) {
   }
 }
 
-/** 合进上游的 Variant（卡头的提示点，Convert / Keep Variants） */
-export const [merged, setMergedSig] = createSignal<Record<string, { vid: string; into: string; tip: string }>>({});
 const setMerged = (id: string, vid: string, into: string, tip: string) => setMergedSig((m) => ({ ...m, [id]: { vid, into, tip } }));
 
 /** Convert：变回普通卡，钉在上游最新（合进去的改动就在里面） */

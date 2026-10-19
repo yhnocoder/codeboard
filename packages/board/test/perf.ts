@@ -46,6 +46,12 @@ export function bigBoard(n: number): Board {
     const n: Sidenote = { id: uid("n"), at: { card: c.id, seg: s.id, lines: [s.start + 1, s.start + 1] }, kind: "text", md: `Note on ${s.symbol?.qual}` };
     b.sidenotes.push(n);
   });
+  // Stickers like a studied board has: on a code line every 4th card, in the corner every 6th
+  cards.forEach(({ c }, i) => {
+    const s = c.segments[0];
+    if (i % 4 === 1) b.stickers.push({ id: uid("k"), icon: { pack: "builtin", name: "star" }, at: { kind: "line", card: c.id, seg: s.id, line: s.start + 1 } });
+    if (i % 6 === 2) b.stickers.push({ id: uid("k"), icon: { pack: "builtin", name: "flag" }, at: { kind: "card", card: c.id } });
+  });
   b.cam = { x: 80, y: 80, z: 1 };
   // Creation order, like every board the app has saved (v0.1.7+) or migrated: without it the first edit numbers all 241 cards at once
   stampBorn(b);
@@ -223,6 +229,9 @@ async function once() {
   await ready();
   const board = NNOTES ? notesBoard(NNOTES) : bigBoard(NCARDS);
   const sk = NFRAMES ? withFrames(board, NFRAMES) : null;
+  // A sticker bound to the hub card (the card the drag scenario grabs), for the stickerDrag scenario
+  const STK = "kperf";
+  if (!NNOTES) board.stickers.push({ id: STK, icon: { pack: "builtin", name: "zap" }, at: { kind: "canvas", x: 24, y: -48, size: 32, on: { card: hubOf(board) } } });
   const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length, ...(sk ? { frames: NFRAMES } : {}) };
   const t0 = performance.now();
   let cdp!: CDPSession;
@@ -326,10 +335,8 @@ async function once() {
   if (NNOTES) { await notesEdit(h, cdp, board, res); await h.page.context().browser()!.close(); return res; }
 
   // Drag: the card with the most links (endpoints follow every frame)
-  const deg = new Map<string, number>();
-  for (const L of board.links) for (const id of [L.from.card, L.to.card]) deg.set(id, (deg.get(id) ?? 0) + 1);
-  const hub = [...deg.entries()].sort((a, b) => b[1] - a[1])[0][0];
-  res.hubLinks = deg.get(hub);
+  const hub = hubOf(board);
+  res.hubLinks = board.links.filter((L) => L.from.card === hub || L.to.card === hub).length;
   await focusCard(h, hub);
   // Grab the header at a point that really is the header: arrows are drawn above the cards, and a long arrow between two other
   // cards of the same row runs along the heading row (card ends attach there), so the kind glyph (the spot v0.1.6 grabbed) can be
@@ -380,6 +387,18 @@ async function once() {
       if (i % 2) await h.page.mouse.move(off.x, off.y); else await h.page.mouse.move(on.x, on.y);
       await h.page.waitForTimeout(i % 2 ? 500 : 250);
     }, "hover"));
+  }
+
+  // Sticker drag: the sticker bound to the hub, dragged across the cards around it (every card checks whether it lights up)
+  const sb = await h.page.evaluate((id) => { const r = document.querySelector(`[data-sticker="${id}"]`)?.getBoundingClientRect(); return r && r.width ? { x: r.left + r.width / 2, y: r.top + r.height / 2 } : null; }, STK);
+  if (sb) {
+    await h.page.mouse.move(sb.x, sb.y);
+    await h.page.mouse.down();
+    res.stickerDrag = sum(await steps(h, cdp, 60, async (i) => { await h.page.mouse.move(sb.x + 4 + i * 6, sb.y + 4 + i * 3, { steps: 1 }); }, "stickerDrag"));
+    await h.page.mouse.up();
+    await h.page.keyboard.press("Meta+z");
+    await h.page.waitForTimeout(600);
+    await focusCard(h, hub);
   }
 
   // Mutate: move the selected card with arrow keys (one mutate each: undo snapshot + invariants + autosave dependencies)
@@ -498,6 +517,13 @@ async function traceStart(cdp: CDPSession) {
       console.log(`  forced ${e.name} ${(e.dur / 1000).toFixed(1)}`, e.name === "Layout" ? `objs ${e.args?.beginData?.dirtyObjects}/${e.args?.beginData?.totalObjects} root depth ${JSON.stringify(e.args?.endData?.layoutRoots?.map((r: any) => r.depth))}` : `els ${e.args?.elementCount ?? ""}`, ":", (e.args?.beginData?.stackTrace ?? e.args?.data?.stackTrace).slice(0, 6).map((f: any) => `${f.functionName}@${f.lineNumber}`).join(" < "));
     console.log("  --");
   };
+}
+
+/** The card with the most links */
+function hubOf(b: Board): string {
+  const deg = new Map<string, number>();
+  for (const L of b.links) for (const id of [L.from.card, L.to.card]) deg.set(id, (deg.get(id) ?? 0) + 1);
+  return [...deg.entries()].sort((x, y) => y[1] - x[1])[0][0];
 }
 
 async function focusCard(h: Host, id: string) {

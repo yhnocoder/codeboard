@@ -1,0 +1,13 @@
+// 疑问（线框 06）的界面状态：Questions 面板、宿主给的别的白板的问题、隔几天回来时的提示
+import { createSignal } from "solid-js";
+import type { QuestionItem } from "@codeboard/core";
+import { onBoardSwitch } from "./root";
+
+export const [questionsOpen, setQuestionsOpen] = createSignal(false);
+export const [qTab, setQTab] = createSignal<"open" | "all">("open");
+/** 宿主给的所有白板的问题（开面板时要一次；这块白板的用自己当前的状态） */
+export const [otherQuestions, setOtherQuestions] = createSignal<QuestionItem[] | null>(null);
+/** 隔几天再打开、还有没解决的问题（宿主在 init 里给） */
+export const [welcome, setWelcome] = createSignal<{ days: number; open: number } | null>(null);
+
+onBoardSwitch(() => setOtherQuestions(null));

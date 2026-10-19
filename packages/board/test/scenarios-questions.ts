@@ -5,7 +5,7 @@
 // SHOTS_DIR=… also copies them there.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type Board, type BoardToHost, type CodeCard, type HostToBoard, type QuestionItem, type SegView } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, type Board, type BoardToHost, type CodeCard, type HostToBoard, type QuestionItem, type SegView } from "@codeboard/core";
 import { open, shot, put, symCard, findSym, viewOf, OUT, REPO, type Host } from "./harness";
 import { inlineFor, setMediaDir } from "../../../extensions/vscode/src/exports";
 
@@ -39,7 +39,7 @@ export const QUESTIONS: Record<string, () => Promise<void>> = {
 const initOf = (b: Board, extra: Partial<Extract<HostToBoard, { type: "init" }>> = {}): HostToBoard => {
   const views: Record<string, SegView> = {};
   for (const k of b.cards) if (k.kind === "code") for (const sg of k.segments) views[sg.id] = viewOf(sg);
-  return { type: "init", board: b, boards: [{ id: b.id, name: b.name, cards: b.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text" } }, ...extra };
+  return { type: "init", board: b, boards: [{ id: b.id, name: b.name, cards: b.cards.length }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS }, ...extra };
 };
 
 /** Right-click a code line and pick a line-menu item */

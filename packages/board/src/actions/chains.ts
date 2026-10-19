@@ -1,27 +1,27 @@
 // 接上断掉的调用链、跨语言（线框 01、02）：选实现、灰色备选、取值选择、跨语言按名字搜、手动补边、Generated 卡。
 import { createMemo } from "solid-js";
+import { rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
 import {
   uid, isCode, segOf, cardTitle, instName, genWhat, cardChip, rankByReceiver, sameCallSite, baseName, placeCards, replaceCards,
   type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
 } from "@codeboard/core";
-import { state, setState, mutate, cardById, toast, placeOf, select } from "../state/store";
-import { setConnectFrom } from "../state/ui";
-import { openPop, updatePop } from "../state/pop";
+import { state, setState, mutate, cardById, hostOf, toast, placeOf, select } from "../state/store";
+import { setConnectFrom } from "../state/mode";
+import { openPop, updatePop, type ImplPop, type NamesPop } from "../state/pop";
 import { ask } from "../host";
 import { openMenu } from "../ui/Menu";
-import { K, hostRect, lastPointer, popCard } from "./common";
+import { K, hostRect, popCard } from "./common";
+import { lastPointer } from "../state/measure";
 import { callMark, expandCall, placeExpanded, isLibCall } from "./flow";
 import { linksInto } from "./nav";
 
 // ---------- 动态分发：列出全部实现，选一个 ----------
 
 /** link：卡已经按定义建好了（转到实现后回来的）：选一个就换掉那条箭头连着的卡；abstract = 基类的方法是抽象的，换掉后不留成备选 */
-export type ImplPop = { card: string; seg: string; call: CallSpan; impls: ImplPick[]; base: string; at?: { x: number; y: number }; again: boolean; link?: string; abstract?: boolean };
-
 /** 调用处那个名字的元素（浮层挂在它下面） */
 function callEl(cardId: string, segId: string, call: CallSpan): Element | null {
-  const host = cardById(cardId)?.host.id ?? cardId;
+  const host = hostOf(cardId);
   const calls = state.views[segId]?.calls ?? [];
   const i = calls.findIndex((c) => c.line === call.line && c.col === call.col);
   return i < 0 ? null : document.querySelector(`.card[data-id="${host}"] [data-seg="${segId}"] .call[data-c="${i}"]`) ?? document.querySelector(`.card[data-id="${host}"] .call[data-c="${i}"]`);
@@ -217,8 +217,6 @@ export function unresolvedMenu(cardId: string, segId: string, call: CallSpan, re
   ], p.x, p.y);
 }
 
-export type NamesPop = { card: string; seg: string; call: CallSpan; hits?: NameHit[] };
-
 /** 按名字搜的名字：call("run", …) 这种按字符串转发的搜 run */
 export const searchedName = (call: CallSpan) => call.dispatch ?? call.name;
 
@@ -261,7 +259,7 @@ export function drawManual(cardId: string, segId: string, call: CallSpan) {
 export function manualCallTo(from: { card: string; seg?: string; line?: number; call: CallSpan }, to: string) {
   const t = cardById(to);
   if (!t) return;
-  if (t.host.id === cardById(from.card)?.host.id) return toast("A card cannot call itself.");
+  if (t.host.id === hostOf(from.card)) return toast("A card cannot call itself.");
   const id = uid("l");
   mutate((b) => { b.links.push({ id, from: { card: from.card, seg: from.seg, line: from.line }, to: { card: to }, call: { ...callMark(from.call), ev: { kind: "manual" } } }); });
   toast(`Linked to ${cardTitle(t.card)} (manual)`);
@@ -282,7 +280,7 @@ export async function addGenerated(at: { card: string; seg?: string; line?: numb
   const views = await ask("views", { segs: [seg] }).catch(() => ({}));
   setState("views", (v) => ({ ...v, ...views }));
   const r = hostRect(at.card);
-  const pl = placeOf(cardById(at.card)?.host.id ?? at.card);
+  const pl = placeOf(hostOf(at.card));
   mutate((b) => {
     b.cards.push(card);
     // 放在来源卡下面（右边是灰色备选的位置）
@@ -300,11 +298,11 @@ export function setGenRun(id: string, v: string) {
 // ---------- 卡头 ----------
 
 /** 白板上混着几种语言才在卡头出语言标签（全是 Python 的白板不加噪音） */
-export const mixedLangs = createMemo(() => {
+export const mixedLangs = rooted(() => createMemo(() => {
   const s = new Set<string>();
   for (const c of state.board.cards) if (isCode(c)) { const k = cardChip(c); if (k) s.add(k); if (s.size > 1) return true; }
   return false;
-});
+}));
 /** 动态分发选出来的卡：「1 of N」 */
 export function dispatchOf(id: string): number {
   return linksInto(id).find((l) => l.call?.impls)?.call?.impls ?? 0;

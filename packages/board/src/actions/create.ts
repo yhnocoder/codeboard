@@ -1,5 +1,6 @@
 // 建卡：宿主建好的卡放到白板上、Note / Text / Image / Web / Code、粘贴、选区拆成几张卡。
-import { createRoot, createEffect } from "solid-js";
+import { createEffect } from "solid-js";
+import { rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, segOf, placeCards,
@@ -9,7 +10,7 @@ import {
   type NewCard, type Rect,
 } from "@codeboard/core";
 import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf, type LineSel } from "../state/store";
-import { camTo, camTarget, fitRect, fitTop, isVisible, viewportCenter } from "../state/camera";
+import { camTo, camTarget, fitTop, isVisible, viewportCenter } from "../state/camera";
 import { editing, setEditing } from "../state/ui";
 import { promptText } from "../ui/Menu";
 import { ask } from "../host";
@@ -19,8 +20,8 @@ import { fetchMeta, newLinkList } from "./web";
 
 /** 新代码卡按设置默认隐藏注释 / 文档字符串 / 空行（卡上已经有设定的不动） */
 function withDefaults(c: Card): Card {
-  const h = state.host.settings?.hideOnNew;
-  if (c.kind === "code" && !c.hide && h && (h.comments || h.docstrings || h.blank)) c.hide = { ...h };
+  const h = state.host.settings.hideOnNew;
+  if (c.kind === "code" && !c.hide && (h.comments || h.docstrings || h.blank)) c.hide = { ...h };
   return c;
 }
 
@@ -199,7 +200,7 @@ export function splitSnippet(id: string, merge: boolean) {
 
 // 新建的 Note / Text / Code / 问题第一次编辑结束时还是空的：直接消失，不进撤销（#26）。
 // 写了内容的在 setNoteText / setFreeCode / setQuestionText 里结算；这里兜住“什么都没改”（Editable 不提交）的情况。
-createRoot(() => {
+rooted(() => {
   let prev: string | undefined;
   createEffect(() => {
     const cur = editing()?.id;
@@ -209,22 +210,5 @@ createRoot(() => {
     const c = cardById(p)?.card, q = state.board.stickers.find((s) => s.id === p)?.q;
     const empty = q ? !q.md.trim() : !c || (c.kind === "note" ? !c.md.trim() : isCode(c) ? !c.segments[0]?.text.join("").trim() : false);
     queueMicrotask(() => { if (isFresh(p)) settleFresh(p, !empty); });
-  });
-});
-
-// 开始写 Note / Text 时字太小（缩得很小时按 N、双击）：镜头放大到看得清（最多 100%），卡放得下就整张放进来。退出编辑不缩回去
-const READ_PX = 11;
-createRoot(() => {
-  createEffect(() => {
-    const e = editing();
-    if (e?.kind !== "note") return;
-    requestAnimationFrame(() => {
-      const el = document.querySelector(`.card[data-id="${e.id}"] :is(.nbody, .tx)`), r = hostRect(e.id);
-      if (!el || !r) return;
-      const fs = parseFloat(getComputedStyle(el).fontSize), c = camTarget();
-      if (!fs || fs * c.z >= READ_PX) return;
-      const f = fitRect(r, 1, Math.min(1, READ_PX / fs));
-      camTo(f.x, f.y, f.z);
-    });
   });
 });

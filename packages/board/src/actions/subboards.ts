@@ -1,10 +1,10 @@
 // 子白板（线框 05）：进入 / 返回（面包屑）、Turn into Board、插入已有的白板、移除框、删掉那块白板；讲解走到子白板时进去再回来。
-import { batch, createSignal } from "solid-js";
+import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
 import { cardTitle, descendants, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
-import { state, mutate, sel, select, clearSel, cardById, rectOf, toast, flushSave, flows } from "../state/store";
+import { state, mutate, sel, select, clearSel, cardById, hostOf, rectOf, toast, flushSave, flows } from "../state/store";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
-import { crumbs, frameOf, skelOf, subRect } from "../state/subboards";
+import { crumbs, frameOf, skelOf, subRect, walkBack, setWalkBack } from "../state/subboards";
 import { walk, setWalk } from "../state/ui";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
@@ -42,15 +42,13 @@ export function leaveBoard(depth?: number, walkHop?: WalkHop) {
 
 // ---------- 讲解跨白板 ----------
 
-/** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
-export const [walkBack, setWalkBack] = createSignal<{ root: string; i: number } | null>(null);
 
 /** 讲解走到子白板框：镜头推进那张卡（箭头连到的）所在的框，进去从那张卡讲起，讲完回来 */
 export function walkIntoFrame(frame: string, i: number) {
   const w = walk();
   if (!w) return;
-  const before = new Set(w.order.slice(0, i).map((id) => cardById(id)?.host.id ?? id));
-  const via = state.board.links.find((l) => l.to.card === frame && before.has(cardById(l.from.card)?.host.id ?? l.from.card)) ?? state.board.links.find((l) => l.to.card === frame);
+  const before = new Set(w.order.slice(0, i).map(hostOf));
+  const via = state.board.links.find((l) => l.to.card === frame && before.has(hostOf(l.from.card))) ?? state.board.links.find((l) => l.to.card === frame);
   const sub = via?.to.sub;
   const r = (sub !== undefined && subRect(frame, sub)) || rectOf(frame);
   const t = fitRect({ x: r.x - 20, y: r.y - 20, w: r.w + 40, h: r.h + 40 }, 2.5);
@@ -77,7 +75,6 @@ export function walkOut(dir: 1 | -1) {
  */
 function topCard(ids: string[]): string {
   const f = flows(), inSel = new Set(ids);
-  const hostOf = (k: string) => cardById(k)?.host.id ?? k;
   const reading = [...ids].sort((a, b) => { const ra = rectOf(a), rb = rectOf(b); return ra.y - rb.y || ra.x - rb.x; });
   const roots = reading.filter((id) => !(f.parents.get(id) ?? []).some((l) => hostOf(l.from.card) !== id && inSel.has(hostOf(l.from.card))));
   const below = (id: string) => new Set(descendants(f, id).map(hostOf).filter((k) => k !== id && inSel.has(k))).size;

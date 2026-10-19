@@ -7,6 +7,8 @@ import {
 } from "@codeboard/core";
 import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
+import { rooted, onBoardSwitch } from "./root";
+import { trimLru } from "./lru";
 
 export const [state, setState] = createStore({
   loaded: false,
@@ -62,28 +64,31 @@ export function reportSelection() {
 // ---------- 派生 ----------
 
 /** 调用图（标记、Call 箭头的父子）。只读卡的 id / 段、线的两端和 Call 标记、born / marks：拖动卡片不会让它重算 */
-export const flows = createMemo(() => computeFlows(state.board));
+export const flows = rooted(() => createMemo(() => computeFlows(state.board)));
 /** 因为折叠藏起来的卡（不管 Walkthrough 有没有临时展开） */
-export const collapsedSet = createMemo(() => hiddenByCollapse(state.board, flows()));
+export const collapsedSet = rooted(() => createMemo(() => hiddenByCollapse(state.board, flows())));
 /** Walkthrough 时临时展开所有折叠的卡：只影响显示，不写进白板（不进撤销、不存盘） */
 export const [showCollapsed, setShowCollapsed] = createSignal(false);
-export const collapsedAway = createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet()));
+onBoardSwitch(() => setShowCollapsed(false));
+export const collapsedAway = rooted(() => createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet())));
 
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
-const cardIndex = createMemo(() => {
+const cardIndex = rooted(() => createMemo(() => {
   const m = new Map<string, { card: Card; host: Card }>();
   for (const c of state.board.cards) if (!m.has(c.id)) m.set(c.id, { card: c, host: c });
   for (const c of state.board.cards) if (c.kind === "compare") for (const k of c.cols) { const f = m.get(k); if (f) m.set(k, { card: f.card, host: c }); }
   return m;
-});
+}));
 export const cardById = (id: string) => cardIndex().get(id);
+/** 卡所在的顶层卡（Compare 的栏 → 它的 Compare）；不认识的 id 原样返回 */
+export const hostOf = (id: string) => cardById(id)?.host.id ?? id;
 /** 画布上摆着的卡（有 Place 的），按叠放顺序 */
-export const placed = createMemo(() => state.board.cards.filter((c) => state.board.place[c.id]));
+export const placed = rooted(() => createMemo(() => state.board.cards.filter((c) => state.board.place[c.id])));
 
 const NOWHERE: Place = { x: 0, y: 0, w: 320 };
 /** 卡（或 Compare 的栏 → 它的 Compare）的摆放 */
 export function placeOf(id: string): Place {
-  return state.board.place[id] ?? state.board.place[cardById(id)?.host.id ?? ""] ?? NOWHERE;
+  return state.board.place[id] ?? state.board.place[hostOf(id)] ?? NOWHERE;
 }
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
@@ -92,7 +97,7 @@ export const [sizes, setSizes] = createStore<Record<string, { w: number; h: numb
 export function rectOf(c: { id: string } | string) {
   const id = typeof c === "string" ? c : c.id;
   const p = placeOf(id);
-  const s = sizes[cardById(id)?.host.id ?? id];
+  const s = sizes[hostOf(id)];
   // 还没量到：代码卡的 h 只是内容区，按 Warm Ink 的卡头加回去
   return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? CODE_HEAD : 0) : 120 };
 }
@@ -405,16 +410,22 @@ export function redo() {
   return true;
 }
 
-// 每块白板各有一份撤销历史：进子白板再回来时宿主重新发来这块白板，内容和离开时一样就接着用
+// 每块白板各有一份撤销历史：进子白板再回来时宿主重新发来这块白板，内容和离开时一样就接着用。
+// 每份都带着整块白板的快照：面包屑上的上级白板都留着（一层层回去要用），别的只留最近离开的 RECENT_HISTORIES 块
 const histories = new Map<string, { undo: Snap[]; redo: Snap[]; sync: typeof syncLog; at: Snap }>();
-/** 换上宿主发来的白板：现在这块白板的撤销历史收起来；新白板收起过、内容也和那时一样就接着用，不然从头开始 */
-export function setBoard(b: Board) {
-  if (state.loaded) histories.set(state.board.id, { undo: undoStack.splice(0), redo: redoStack.splice(0), sync: syncLog.splice(0), at: snapNow() });
+const RECENT_HISTORIES = 4;
+/** 换上宿主发来的白板：现在这块白板的撤销历史收起来；新白板收起过、内容也和那时一样就接着用，不然从头开始。crumbs = 新白板的上级白板 */
+export function setBoard(b: Board, crumbs: readonly string[]) {
+  if (state.loaded) {
+    histories.delete(state.board.id); // 放到最后：最近离开的
+    histories.set(state.board.id, { undo: undoStack.splice(0), redo: redoStack.splice(0), sync: syncLog.splice(0), at: snapNow() });
+  }
   setState("board", reconcile(b));
   cur = null; lastIds = null; topMerge = undefined; last.clear();
   const h = histories.get(b.id);
   histories.delete(b.id);
   if (h && same(h.at, snapNow())) { undoStack.push(...h.undo); redoStack.push(...h.redo); syncLog.push(...h.sync); }
+  trimLru(histories, new Set(crumbs), RECENT_HISTORIES);
   updUndo();
 }
 
@@ -425,7 +436,7 @@ export function allIds(): string[] {
 // ---------- 自动保存：没有保存按钮 ----------
 
 // 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接把改动发给宿主，不用盯着整块白板的 JSON 看它变没变。
-// 宿主马上换上、稍后写盘，面板关掉时把没写的写完：白板这边不用赶在页面卸载前发什么。
+// 宿主马上换上、稍后写盘，面板关掉时把没写的写完。白板这边页面卸载（pagehide）时把还在等着的改动发掉（index.tsx）。
 // 一步改动（mutate、撤销重做、拖动结束、宿主同步来的）稍后（SEND_DELAY）发，之间的几次合成一次；
 // 拖动中的 live、镜头停下的 liveCam 停一会儿才发（不在每一帧拍整块白板的快照），拖动结束时那一步和别的改动一样发。
 // 发给宿主的是增量（BoardPatch）：拿现在的快照和上次发出去的那份按 id 比，只发变了的项、删掉的 id、白板本身的字段（变了才发）和镜头。

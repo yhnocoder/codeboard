@@ -3,6 +3,8 @@
 // 没输入时列出入口（pyproject scripts、__init__ 导出、__main__、examples）。
 import { keepKey } from "./editkeys";
 import { Icon } from "./icons";
+import { useOverlay } from "./overlay";
+import { useListNav, useDebouncedAsk } from "./hooks";
 import { For, Show, createSignal, createEffect, onMount, createMemo } from "solid-js";
 import type { SearchItem } from "@codeboard/core";
 import { state, select, toast } from "../state/store";
@@ -13,28 +15,19 @@ import * as A from "../actions";
 const GROUPS: [SearchItem["kind"], string][] = [["entry", "Entry Points"], ["symbol", "Functions & Classes"], ["file", "Files"], ["card", "Cards on Boards"], ["sidenote", "Sidenotes"]];
 
 export function Palette() {
-  const init = paletteOpen() || { mode: "all" as const };
-  const [q, setQ] = createSignal((init as any).q ?? "");
+  const init: Exclude<ReturnType<typeof paletteOpen>, false> = paletteOpen() || { mode: "all" };
+  const [q, setQ] = createSignal(init.q ?? "");
   const [res, setRes] = createSignal<SearchItem[]>([]);
-  const [i, setI] = createSignal(0);
-  const [busy, setBusy] = createSignal(false);
   let inp!: HTMLInputElement, list!: HTMLDivElement;
   onMount(() => { inp.focus(); inp.select(); });
-  let t: number | undefined, n = 0;
-  createEffect(() => {
-    const s = q().trim();
-    clearTimeout(t);
-    const my = ++n;
-    t = window.setTimeout(async () => {
-      setBusy(true);
-      const r = s ? await ask("search", { q: s, scope: init.mode === "code" ? "code" : "all" }).catch(() => []) : await ask("entryPoints", {}).catch(() => []);
-      if (my !== n) return;
-      setRes(r); setI(0); setBusy(false);
-    }, s ? 90 : 0);
-  });
   const ordered = createMemo(() => GROUPS.flatMap(([k]) => res().filter((r) => r.kind === k)));
+  const { i, setI, key } = useListNav(() => ordered().length);
+  const busy = useDebouncedAsk(() => q().trim(),
+    (s) => (s ? ask("search", { q: s, scope: init.mode === "code" ? "code" : "all" }) : ask("entryPoints", {})).catch((): SearchItem[] => []),
+    (r) => { setRes(r); setI(0); }, (s) => (s ? 90 : 0));
   createEffect(() => { i(); list?.querySelector(".cand.on")?.scrollIntoView({ block: "nearest" }); });
   const close = () => setPaletteOpen(false);
+  useOverlay({ close, inside: (t) => !!t.closest(".palette"), grab: true, modal: true, outside: true });
   const run = async (it: SearchItem, alt: boolean) => {
     close();
     if (alt) {
@@ -51,16 +44,13 @@ export function Palette() {
   };
   const onKey = (e: KeyboardEvent) => {
     keepKey(e);
-    const n2 = ordered().length;
-    if (e.key === "Escape") { e.preventDefault(); close(); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); setI((x) => (x + 1) % Math.max(1, n2)); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); setI((x) => (x - 1 + n2) % Math.max(1, n2)); }
-    else if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); const it = ordered()[i()]; if (it) run(it, e.altKey); }
+    if (key(e)) return;
+    if (e.key === "Enter" && !e.isComposing) { e.preventDefault(); const it = ordered()[i()]; if (it) run(it, e.altKey); }
   };
   const icon = (it: SearchItem) => (it.kind === "symbol" ? it.glyph : it.kind === "file" ? "▤" : it.kind === "card" ? "▣" : it.kind === "sidenote" ? "◦" : <Icon name="entry" size={13} />);
   return (
-    <div class="scrim light" onPointerDown={(e) => { if (e.target === e.currentTarget) close(); }}>
-      <div class="palette pill" onKeyDown={onKey}>
+    <div class="scrim light">
+      <div class="palette pill" data-nodrag onKeyDown={onKey}>
         <input ref={inp} class="pin" placeholder="Search Functions, Files, Cards, Sidenotes" value={q()} onInput={(e) => setQ(e.currentTarget.value)} spellcheck={false} />
         <div ref={list} class="plist">
           <For each={GROUPS}>{([k, title]) => (

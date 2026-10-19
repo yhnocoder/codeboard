@@ -6,7 +6,7 @@ import {
   bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel,
   type Card, type DiffData, type PastedCards,
 } from "@codeboard/core";
-import { state, setState, mutate, sel, select, cardById, toast, flushSave, shared, sharedOn, rectOf } from "../state/store";
+import { state, setState, mutate, sel, select, cardById, hostOf, toast, flushSave, shared, sharedOn, rectOf } from "../state/store";
 import { camTo, camTarget, fitTop, isVisible } from "../state/camera";
 import { ghostOut } from "../state/ghost";
 import { openPop } from "../state/pop";
@@ -41,7 +41,7 @@ function textOf(c: Card): string {
 }
 
 /** 粘贴默认做什么：设置里的 Paste onto Another Board；alt = ⌥ 粘贴，换成另一种 */
-const pasteCopy = (alt: boolean) => (state.host.settings?.pasteOther === "copy") !== alt;
+const pasteCopy = (alt: boolean) => (state.host.settings.pasteOther === "copy") !== alt;
 
 /**
  * 粘贴：剪贴板里是别的白板上复制的卡（宿主核对文字）就放到这块白板上，返回 true；不是返回 false（照旧按文字粘贴）。
@@ -94,7 +94,7 @@ export function showBoardsOf(id: string, el: Element) {
 }
 /** 去另一块白板上看这张卡（line = 闪那一行） */
 export function openOnBoard(board: string, card: string, line?: number) {
-  if (board === state.board.id) { select({ cards: [cardById(card)?.host.id ?? card] }); revealCard(card); return; }
+  if (board === state.board.id) { select({ cards: [hostOf(card)] }); revealCard(card); return; }
   send({ type: "openBoard", id: board, card, line });
 }
 /** 「This card is on 3 boards: A, B, C.」 */
@@ -106,7 +106,7 @@ export function boardsText(id: string) {
 // ---------- 删除 ----------
 
 /** 选中的卡里有在别的白板上也有的共享卡 */
-export const selShared = () => sel.cards.map((id) => cardById(id)?.host.id ?? id).filter((id) => sharedOn(id) > 1);
+export const selShared = () => sel.cards.map(hostOf).filter((id) => sharedOn(id) > 1);
 
 /** Delete Everywhere…（⌘⌫）：问一下，从所有白板上删掉（这块白板上这一步能撤销，撤销回来是一份独立副本） */
 export async function deleteEverywhere(ids = selShared()) {
@@ -135,7 +135,7 @@ export async function deleteEverywhere(ids = selShared()) {
 export async function updateScoped(cardId: string, segId: string, data: DiffData, apply: (card: string) => void, keep: () => void): Promise<boolean> {
   const n = sharedOn(cardId);
   if (n < 2 || !data.newSeg) { apply(cardId); return true; }
-  let scope = state.host.settings?.sharedUpdate ?? "ask";
+  let scope = state.host.settings.sharedUpdate;
   if (scope === "ask") {
     const c = cardById(cardId)?.card;
     const ns = { ...data.newSeg, id: segId };

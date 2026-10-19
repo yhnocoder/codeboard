@@ -1,8 +1,7 @@
 // 浮层：Sidenote 弹窗、定义预览、加 Sidenote、版本 diff、多个定义的选择、commit 列表、变量。
 // 不固定的同时只开一个；⌘ + 悬停 / Pin 固定后变成独立的一个，可以开好几个对照着看。
 import { createSignal } from "solid-js";
-import type { Anchor, DiffData, PeekDef, Commit, Segment } from "@codeboard/core";
-import type { ImplPop, NamesPop } from "../actions/chains";
+import type { Anchor, DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit } from "@codeboard/core";
 
 /** 浮层挂在哪：一个元素（跟着它走，镜头动也跟），或一个屏幕坐标 */
 export type At = { el?: Element; x?: number; y?: number; prefer?: "below" | "right" | "above" };
@@ -30,6 +29,11 @@ export type Pop =
   | { kind: "question"; sticker: string }
   /** 三方对照：原版 / 我的 / 上游最新（线框 07） */
   | { kind: "three"; card: string }
+
+/** 动态分发的候选（actions/chains 填） */
+export type ImplPop = { card: string; seg: string; call: CallSpan; impls: ImplPick[]; base: string; at?: { x: number; y: number }; again: boolean; link?: string; abstract?: boolean };
+/** 按名字在所有语言里搜的结果 */
+export type NamesPop = { card: string; seg: string; call: CallSpan; hits?: NameHit[] };
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 

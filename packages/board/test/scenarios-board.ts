@@ -1,6 +1,6 @@
 // scenarios for the shell, cards, arrows and stickers (node run-harness.mjs linkPlusDelay menusFitWindow emptyCardDiscard …)
 import { open, shot, symCard, findSym, put, type Host } from "./harness";
-import { cornerAt, emptyBoard, type Board, type CodeCard } from "@codeboard/core";
+import { cornerAt, emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard } from "@codeboard/core";
 
 const light = process.argv.includes("--light");
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
@@ -118,6 +118,17 @@ export const BOARD: Record<string, () => Promise<void>> = {
     await shot(h, "v15-08-placed");
     await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(1400);
     console.log(h.board().stickers.length === 6 ? "PASS" : "FAIL", "sticker-delete");
+    // 选好贴纸（放置模式）后换了白板：模式不能带到新白板上，点画布不放贴纸
+    await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.waitForTimeout(200);
+    await h.page.locator(".stkpick .scell").nth(0).click(); await h.page.waitForTimeout(100);
+    const placing = await h.page.evaluate(() => document.getElementById("board")!.dataset.mode);
+    const b2 = emptyBoard("b2", "other");
+    await h.post({ type: "init", board: b2, boards: [{ id: "b2", name: "other", cards: 0 }], views: {}, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } } });
+    await h.page.waitForTimeout(300);
+    const after = await h.page.evaluate(() => document.getElementById("board")!.dataset.mode ?? null);
+    await h.page.mouse.click(700, 500); await h.page.waitForTimeout(1400);
+    const placed = await h.page.evaluate(() => document.querySelectorAll("[data-sticker]").length);
+    console.log(placing === "place" && after === null && !placed ? "PASS" : "FAIL", "sticker-place-board-switch", JSON.stringify({ placing, after, placed }));
     await close(h);
   },
   // 自定义贴纸包的 SVG 由白板用 DOMPurify 清洗：脚本、事件属性、javascript: 链接（包括实体编码的）、foreignObject、<style> 都去掉

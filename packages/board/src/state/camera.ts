@@ -1,7 +1,9 @@
 // 镜头和动效：弹簧（几乎不过冲）、平滑移动、惯性。系统设了「减少动态效果」时全部直接切换。
 import { createStore } from "solid-js/store";
-import { createSignal, batch } from "solid-js";
+import { createSignal, createMemo, batch } from "solid-js";
 import { tune } from "./tune";
+import { rooted } from "./root";
+import { state } from "./store";
 
 export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -144,17 +146,21 @@ export const viewportCenter = () => toWorld(viewport.w / 2, viewport.h / 2);
 
 // ---------- 缩放分档（#11）：100% 正常；概览只剩卡片名、图标记和灰条；地图只剩名字和色块 ----------
 
-import { createMemo } from "solid-js";
 let heldZ = 1;
 /**
  * 停下来时的缩放比例，镜头动的时候不变。按 1/z 保持屏幕上粗细的东西（箭头的点击区等）用它：
  * 缩放的每一帧都改 196 条线的样式，会让整层重新绘制（每帧 ~25ms）；动的时候整层本来就按位图缩放，停下再按准确比例画
  */
-export const stillZ = createMemo(() => (camMoving() ? heldZ : (heldZ = cam.z)));
-import { state } from "./store";
+export const stillZ = rooted(() => createMemo(() => (camMoving() ? heldZ : (heldZ = cam.z))));
 export type Lod = "full" | "overview" | "map";
 /** 低于这个比例就是概览（代码变灰条）：自动缩小镜头不缩过它 */
-export const overviewZ = () => state.host.settings?.zoomOverview ?? 0.6;
-export const lod = createMemo<Lod>(() => cam.z >= overviewZ() ? "full" : cam.z >= (state.host.settings?.zoomMap ?? 0.25) ? "overview" : "map");
+export const overviewZ = () => state.host.settings.zoomOverview;
+const [fullHold, setFullHold] = createSignal(false);
+/** 导出要完整的卡：临时按 100% 的档画（镜头不动，用户看到的位置不变） */
+export const holdFullDetail = setFullHold;
+export const lod = rooted(() => createMemo<Lod>(() => {
+  if (fullHold()) return "full";
+  return cam.z >= overviewZ() ? "full" : cam.z >= state.host.settings.zoomMap ? "overview" : "map";
+}));
 /** 缩得很小时不弹定义预览、旁注（#12） */
 export const quietHover = () => lod() !== "full";

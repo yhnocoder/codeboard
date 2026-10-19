@@ -5,15 +5,18 @@ import { createStore, reconcile } from "solid-js/store";
 import { FRAME_HEAD, FRAME_PAD, skelHas, type BoardCard, type Crumb, type Rect, type Skeleton, type SkelCard } from "@codeboard/core";
 import { ask } from "../host";
 import { state, sync, rectOf } from "./store";
+import { rooted } from "./root";
 
 /** 子白板 id → 骨架；null = 那块白板没了；没有这一项 = 还没拿到 */
 export const [skels, setSkels] = createStore<Record<string, Skeleton | null>>({});
 /** 面包屑（从最外层到上一级）；顶层白板是空的 */
 export const [crumbs, setCrumbs] = createSignal<Crumb[]>([]);
+/** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
+export const [walkBack, setWalkBack] = createSignal<{ root: string; i: number } | null>(null);
 
 /** 白板上的子白板框 */
-export const frames = createMemo(() => state.board.cards.filter((c): c is BoardCard => c.kind === "board"));
-const frameById = createMemo(() => new Map(frames().map((c) => [c.id, c])));
+export const frames = rooted(() => createMemo(() => state.board.cards.filter((c): c is BoardCard => c.kind === "board")));
+const frameById = rooted(() => createMemo(() => new Map(frames().map((c) => [c.id, c]))));
 export const frameOf = (id: string) => frameById().get(id);
 export const skelOf = (frame: string): Skeleton | null | undefined => { const f = frameOf(frame); return f ? skels[f.board] : undefined; };
 
@@ -21,6 +24,7 @@ export const skelOf = (frame: string): Skeleton | null | undefined => { const f 
 export function resetSubboards(c: Crumb[] | undefined) {
   setSkels(reconcile({}));
   setCrumbs(c ?? []);
+  setWalkBack(null);
   asked.clear();
 }
 
@@ -85,7 +89,7 @@ export function skelBox(c: SkelCard, f: { s: number; ox: number; oy: number }): 
 
 /** 骨架里这张卡（或折进去的那个「+N」）在画布上的矩形；骨架还没到 / 卡没了时 null */
 export function subRect(frame: string, sub: string): Rect | null {
-  if (state.host.settings?.subPreview === "title") return null; // 只画标题：箭头落在框上
+  if (state.host.settings.subPreview === "title") return null; // 只画标题：箭头落在框上
   const sk = skelOf(frame);
   if (!sk) return null;
   const c = sk.cards.find((k) => k.id === sub) ?? sk.cards.find((k) => k.ids?.includes(sub));
