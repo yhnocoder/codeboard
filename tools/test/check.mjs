@@ -1,5 +1,6 @@
 // npm run check: the local test run, about 3 minutes. See TESTING.md.
-//   1. typecheck and unit tests (core, markdown, board, host, extension) side by side; the board is rebuilt only when its sources changed since the last build
+//   1. typecheck, unit tests (core, markdown, board, host, extension) and the Markdown demo (examples/markdown-demo, built and run
+//      in Chromium) side by side; the board is rebuilt only when its sources changed since the last build
 //   2. the harness scenarios this change needs (tools/test/pick.mjs), compared with origin/main, several at a time,
 //      within what is left of the 3 minutes
 // Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness>]
@@ -48,6 +49,7 @@ const first = await Promise.all([
   run("typecheck", "npm", ["run", "typecheck"]),
   run("unit tests", "npm", ["test"]),
   build,
+  run("markdown demo", "npm", ["test", "-w", "@codeboard/markdown-demo"]),
 ]);
 if (!first[2]) { console.log("build failed: no harness run"); process.exit(1); }
 

@@ -2,7 +2,7 @@
   "name": "codeboard",
   "private": true,
   "packageManager": "npm@11.21.1",
-  "workspaces": ["packages/*", "extensions/*"],
+  "workspaces": ["packages/*", "extensions/*", "examples/markdown-demo"],
   "scripts": {
     "build": "npm run build -w @codeboard/board && npm run build -w codeboard-vscode",
     "package": "npm run build && npm run package -w codeboard-vscode",

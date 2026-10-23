@@ -1,5 +1,6 @@
 # Nightly, tier 3 of TESTING.md: every test, with no time limit, on main. Jobs run in parallel:
-#   harness  every harness scenario (2 jobs), recording which source files each one runs and how long it takes
+#   harness  every harness scenario (2 jobs), recording which source files each one runs and how long it takes; the first job
+#            also runs the Markdown demo (examples/markdown-demo)
 #   e2e      the whole VS Code e2e in 3 parts, including the steps the per-push run leaves out (export, variants, code editing)
 #   perf     the full benchmark (base, head, head, base) against main as it was a day earlier
 #   publish  the impact map for tools/test/pick.mjs (impact/ on the ci-screenshots branch), and a comment on the issue labelled
@@ -36,6 +37,9 @@ jobs:
         run: BOARD_SOURCEMAP=1 npm run build -w @codeboard/board
       - name: Every harness scenario, with coverage
         run: node tools/test/harness.mjs --coverage --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
+      - name: Markdown demo
+        if: ${{ !cancelled() && matrix.shard == 1 }}
+        run: npm test -w @codeboard/markdown-demo
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }

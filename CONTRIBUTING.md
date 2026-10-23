@@ -25,6 +25,7 @@ Test tiers, time budgets and how scenarios are selected are described in [TESTIN
 - `packages/host`: the editor-independent host: reads code, highlights, resolves calls, tracks versions, stores and coordinates boards
 - `extensions/vscode`: the VS Code extension: the VS Code adapters around `packages/host` (activation, webview panels, sidebar, CodeLens, commands, the `Workspace` implementation)
 - `examples/`: test repositories as git submodules (nano-vllm, sglang, DeepEP)
+- `examples/markdown-demo`: a small Vite page that uses only `@codeboard/markdown` (static render, click to edit, save, light / dark); its Playwright test (`npm test -w @codeboard/markdown-demo`) runs in `npm run check` and CI
 - `explore/`: requirement explorations and prototypes
 - `tools/`: test runner, release and review scripts
 
