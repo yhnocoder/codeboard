@@ -1,6 +1,5 @@
 // Package boundaries: host code works with any editor (never imports vscode; editor access goes through Workspace and HostEnv), and
-// neither host, the board nor the Markdown package reaches into the VS Code extension's files (packages/markdown/test/boundary.test.ts
-// checks that the Markdown package stands on its own)
+// neither host nor the board reaches into the VS Code extension's files
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -19,7 +18,7 @@ describe("package boundaries", () => {
   it("no host file imports vscode", () => {
     expect(matching(["host/src", "host/test"], IMPORT_VSCODE)).toEqual([]);
   });
-  it("nothing in packages/host, packages/board or packages/markdown imports from extensions/", () => {
-    expect(matching(["host/src", "host/test", "board/src", "board/test", "markdown/src", "markdown/test"], IMPORT_EXTENSION)).toEqual([]);
+  it("nothing in packages/host or packages/board imports from extensions/", () => {
+    expect(matching(["host/src", "host/test", "board/src", "board/test"], IMPORT_EXTENSION)).toEqual([]);
   });
 });

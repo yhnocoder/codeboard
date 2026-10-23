@@ -1,7 +1,8 @@
 // @codeboard/markdown on its own: a static note (read-only entry: renderMd + hydrate), click it to edit (the editor entry, loaded
 // on first use), finishing the edit saves the Markdown back and renders it statically again. Everything a host would add comes in
 // through the package's setters and options: the code highlighter, [[wiki link]] resolution and clicks, the image asset base.
-// AI ghost completion (`complete`) and language services (`code.lsp`) are optional hooks and are left off here.
+// AI ghost completion (`complete`), language services (`code.lsp`) and image storage (`saveImage`; by default pasted and picked
+// images stay inline as data: URLs) are optional hooks and are left off here.
 import { renderMd, hydrate, mdClick, setCodeHighlighter, setRefResolver, setAssetBase } from "@codeboard/markdown";
 import type { MdEditorHandle } from "@codeboard/markdown/editor";
 import "@codeboard/markdown/katex.css";
@@ -48,11 +49,8 @@ async function edit() {
   mode.textContent = "Editing · Esc or ⌘↵ saves";
   editor = mountEditor(note, {
     value: src,
-    isMac: /Mac/.test(navigator.platform),
     onDone: (v) => { editor = undefined; if (v !== null) src = v; show(); },
     refs: { items: () => PAGES, menu: "Link to Page", empty: "No page with that title" },
-    // pasted and picked images stay inline as data: URLs (a host would store them and give back assets/…)
-    saveImage: async (dataUrl) => dataUrl,
     openLink: (url) => { opened.textContent = `Opened link: ${url}`; },
   });
 }
