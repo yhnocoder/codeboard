@@ -56,8 +56,8 @@ export class CodeBlockView implements NodeView {
       ghost: { complete: host.complete },
       onExit: () => host.exit(),
       onUpdate: (u) => this.forward(u),
+      className: "cbcm-md",
     });
-    this.cm.view.dom.classList.add("cbcm-md");
   }
 
   /** CodeMirror → ProseMirror：改动和选区 */

@@ -71,7 +71,8 @@ test("markdownDemo", async ({ page }) => {
   await page.keyboard.type("/code");
   await expect(page.locator(".md-menu button").first()).toContainText("Code Block");
   await page.keyboard.press("Enter");
-  const cm = pm.locator(".cm-editor .cm-content:focus");
+  // the package's classes survive CodeMirror's focus change (it rewrites the editor's class attribute)
+  const cm = pm.locator(".cbcm.cbcm-md.cm-focused .cm-content:focus");
   await expect(cm).toHaveCount(1);
   await expect(cm).toHaveText("");
   await page.keyboard.type("x = 1");

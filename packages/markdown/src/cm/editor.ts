@@ -217,6 +217,8 @@ export type CodeEditorOpts = {
   history?: boolean;
   /** 当前行底色（Note 里的代码块本来就有底色：false） */
   activeLine?: boolean;
+  /** 编辑器根元素再加的 class（比如 Note 里的代码块 cbcm-md）；cbcm 和有行号栏时的 cbcm-card 总会有 */
+  className?: string;
   /** 其余的扩展 */
   extensions?: Extension[];
   /** 改动先给它（Note 里转成 ProseMirror 的改动）；不给就直接改 */
@@ -293,12 +295,12 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
     ...(o.gutter ? [lineNumbers({ formatNumber: (n) => String(o.gutter!.start + n - 1) }), highlightActiveLineGutter()] : []),
     ...(o.lsp ? lspExtensions(o.lsp) : []),
     ...(o.ghost ? [ghostExtension(o.ghost)] : []),
+    // 根元素的 class 走 editorAttributes：CodeMirror 焦点一变就重写整个 class 属性，classList.add 加的会被抹掉
+    EditorView.editorAttributes.of({ class: ["cbcm", o.gutter ? "cbcm-card" : "", o.className ?? ""].filter(Boolean).join(" ") }),
     ...(o.extensions ?? []),
   ];
   const state = EditorState.create({ doc: o.text, extensions: exts });
   const view = new EditorView({ state, parent: o.parent, dispatchTransactions: o.dispatch ? (trs, v) => o.dispatch!(trs, v) : undefined });
-  view.dom.classList.add("cbcm");
-  if (o.gutter) view.dom.classList.add("cbcm-card");
   // 冒泡到这里时 CodeMirror 已经处理过（preventDefault 过的是它做了的）：按键不再往白板冒；按下不让白板当成拖卡片
   view.dom.addEventListener("keydown", keepKey);
   if (o.stopPointerDown) view.dom.addEventListener("pointerdown", (e) => e.stopPropagation());
