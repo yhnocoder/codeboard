@@ -1,4 +1,4 @@
-// 编辑代码用的 CodeMirror 6（白板的 Free code 卡、Note 里的代码块）。单独打包，第一次编辑前空闲时加载（白板的 cm/load.ts）。
+// 编辑代码用的 CodeMirror 6（白板的 Free code 卡、Note 里的代码块）。单独打包（@codeboard/markdown/code-editor），用的一方第一次编辑前再 import()。
 // 样式和显示时一模一样：同一个字体、行高、行号栏、着色（着色不用 CodeMirror 自己的语言包：显示时的 HTML 拿来当装饰，
 // 打字时旧的着色跟着改动挪，新的着色回来就换上）。进出编辑字的位置一点不动。
 // 补全、悬停、签名提示问宿主的语言服务（cm/lsp.ts）；灰字补全复用 Note 的那一套（宿主的 complete）。
@@ -12,7 +12,7 @@ import { ghostExtension, acceptGhost, dropGhost, type GhostHost } from "./ghost"
 import { keepKey } from "../ui/editkeys";
 
 export type { LspHost, GhostHost };
-export type { LspItem, LspSignature } from "./lsp";
+export type { LspItem, LspKind, LspSignature } from "./lsp";
 
 const IND = "    ";
 
@@ -204,6 +204,8 @@ export type CodeEditorOpts = {
   lsp?: LspHost;
   /** 灰字补全 */
   ghost?: GhostHost;
+  /** 按下不往外冒（外面把按下当成拖动、框选时，比如白板的卡片） */
+  stopPointerDown?: boolean;
   /** Esc / ⌘↵ */
   onExit?: () => void;
   /** 文字变了（每次改动） */
@@ -299,7 +301,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
   if (o.gutter) view.dom.classList.add("cbcm-card");
   // 冒泡到这里时 CodeMirror 已经处理过（preventDefault 过的是它做了的）：按键不再往白板冒；按下不让白板当成拖卡片
   view.dom.addEventListener("keydown", keepKey);
-  view.dom.addEventListener("pointerdown", (e) => e.stopPropagation());
+  if (o.stopPointerDown) view.dom.addEventListener("pointerdown", (e) => e.stopPropagation());
   view.contentDOM.addEventListener("blur", (e) => { if (completionStatus(view.state)) closeCompletion(view); if (!exited) o.onBlur?.(e); });
   if (o.html !== undefined) view.dispatch({ effects: setHl.of(parseHl(o.html)) });
   if (o.highlight && (o.html === undefined || parseHl(o.html).text !== o.text)) queueHl();
@@ -308,7 +310,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
     text: () => view.state.doc.toString(),
     setLang: (l) => { if (l !== lang) { lang = l; queueHl(); } },
     focus: () => view.focus(),
-    destroy: () => { hlGone = true; view.destroy(); },
+    destroy: () => { hlGone = true; view.destroy(); o.lsp?.close?.(); },
   };
 }
 

@@ -7,7 +7,7 @@ import { createEffect, For, onCleanup, onMount, Show, createSignal } from "solid
 import { escHtml, langInfo } from "@codeboard/core";
 import type { CodeCard, SegView } from "@codeboard/core";
 import { state } from "../state/store";
-import { loadCm, cmNow, lspHost, closeLsp, ghostHost, nearSeg, hostHighlight } from "../cm/load";
+import { loadCm, cmNow, lspHost, ghostHost, nearSeg, hostHighlight } from "../cm/load";
 import type { CodeEditor } from "@codeboard/markdown/code-editor";
 import { lastDown } from "../state/measure";
 
@@ -36,6 +36,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
       highlight: (t) => hostHighlight(seg(), t),
       comment: (l) => langInfo(l)?.comment,
       lsp,
+      stopPointerDown: true, // 按下不让白板当成拖卡片
       ghost: ghostHost(),
       onExit: () => p.onExit(e.text()),
       onBlur: (ev) => p.onBlur(ev, { text: () => e.text(), focus: () => e.view.focus(), el: e.view.contentDOM }),
@@ -54,7 +55,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
     });
   };
   onMount(() => { const m = cmNow(); if (m) make(m); else void loadCm().then(make).catch((e) => console.error("code editor:", e)); });
-  onCleanup(() => { gone = true; ed()?.destroy(); closeLsp(id); });
+  onCleanup(() => { gone = true; ed()?.destroy(); }); // 编辑器拆掉时关掉语言服务的虚拟文档
   // 换了语言：重新着色（语言服务的虚拟文档下次同步时换语言）
   createEffect(() => { const l = seg().lang; ed()?.setLang(l); });
 

@@ -15,22 +15,22 @@ import { cachedCode, highlightCode } from "../code";
 export type CodeBlockHost = {
   editor: () => Editor; exit: () => void; complete: (before: string, after: string) => Promise<string | null>;
   comment?: (lang: string | undefined) => string | undefined;
-  /** 这一块的语言服务（lang 跟着块的语言变）；这种语言没有就给 undefined。块拆掉时调它的 close */
+  /** 这一块的语言服务（lang 跟着块的语言变）；这种语言没有就给 undefined。块拆掉时代码编辑器调它的 close */
   lsp?: (lang: () => string) => LspHost | undefined;
+  /** 代码编辑器里按下不往外冒（见 CodeEditorOpts.stopPointerDown） */
+  stopPointerDown?: boolean;
 };
 
 export class CodeBlockView implements NodeView {
   dom: HTMLElement;
   cm: CodeEditor;
   updating = false;
-  lsp: LspHost | undefined;
   constructor(public node: PMNode, public view: PMView, public getPos: () => number | undefined, host: CodeBlockHost) {
     const lang = () => (this.node.attrs.language as string | null) ?? "";
     this.dom = document.createElement("pre");
     this.dom.className = "md-code";
     if (lang()) this.dom.dataset.lang = lang();
     const l = lang();
-    this.lsp = host.lsp?.(lang);
     const keys: KeyBinding[] = [
       { key: "ArrowUp", run: () => this.escape("line", -1) },
       { key: "ArrowLeft", run: () => this.escape("char", -1) },
@@ -51,7 +51,8 @@ export class CodeBlockView implements NodeView {
       activeLine: false,
       keys,
       comment: host.comment,
-      lsp: this.lsp,
+      lsp: host.lsp?.(lang),
+      stopPointerDown: host.stopPointerDown,
       ghost: { complete: host.complete },
       onExit: () => host.exit(),
       onUpdate: (u) => this.forward(u),
@@ -138,5 +139,5 @@ export class CodeBlockView implements NodeView {
   selectNode() { this.cm.view.focus(); }
   stopEvent() { return true; }
   ignoreMutation() { return true; }
-  destroy() { this.cm.destroy(); this.lsp?.close?.(); }
+  destroy() { this.cm.destroy(); }
 }

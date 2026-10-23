@@ -1,20 +1,14 @@
-// 输入框、编辑器里的按键：不让它冒泡到白板和 VS Code，只放过要 VS Code 来做的那几个。
-// VS Code 的 webview 外壳在 window 上收 keydown，转给 VS Code，由它的 Cut / Copy / Paste / Undo / Select All 命令回到 webview 里执行
-// （mac 上浏览器自己不做这些，全靠菜单）。在这之前 stopPropagation 掉的话，⌘X / ⌘C / ⌘V 什么都不发生。
-// 白板自己的 window 快捷键看到焦点在输入框里会直接跳过（白板 interact.ts 的 typing）。
+// 输入框、编辑器里的按键：不让它冒泡到外面（白板的快捷键、宿主），只放过用的一方说要交出去的那几个（setKeyPassThrough）。
+// 默认一个都不放：普通网页里剪切、复制、撤销是浏览器自己做的，不靠冒泡。白板在 VS Code 的 webview 里，要把剪贴板、撤销、
+// 命令面板这些交给 VS Code，在启动时接上自己的规则
 
-/** 剪切 / 复制 / 粘贴（含 Shift+Insert）：一定要交给 VS Code */
-export const isClipKey = (e: KeyboardEvent) => modKey(e, "cvx") || (e.shiftKey && e.key === "Insert");
-
-/** ⌘ / Ctrl（不带 ⌥）+ letters 里的某个字母；字母按 e.key（布局里打出来的字），和 keymap 一样 */
-const modKey = (e: KeyboardEvent, letters: string) => (e.metaKey || e.ctrlKey) && !e.altKey && e.key.length === 1 && letters.includes(e.key.toLowerCase());
-
-/** VS Code 自己的命令面板、快速打开（F1、⌘⇧P、⌘P）：编辑时也要打得开 */
-const isWorkbenchKey = (e: KeyboardEvent) => (e.key === "F1" && !e.metaKey && !e.ctrlKey && !e.altKey) || modKey(e, "p");
+/** 这个按键要不要交出去（不 stopPropagation）；只问没被处理过（没 preventDefault）的 */
+let passThrough: (e: KeyboardEvent) => boolean = () => false;
+export const setKeyPassThrough = (f: (e: KeyboardEvent) => boolean) => { passThrough = f; };
 
 /** 输入框里收到按键时调用（代替 e.stopPropagation()）。自己已经处理了的（preventDefault 过，比如 ProseMirror 的撤销、全选，
- *  编辑器的 ⌘⇧V）不再交出去；没处理的剪切 / 复制 / 粘贴、撤销 / 重做 / 全选和命令面板、快速打开交给 VS Code */
+ *  编辑器的 ⌘⇧V）不再交出去；没处理的照 setKeyPassThrough 定 */
 export function keepKey(e: KeyboardEvent) {
-  if (!e.defaultPrevented && (isClipKey(e) || isWorkbenchKey(e) || modKey(e, "ayz"))) return;
+  if (!e.defaultPrevented && passThrough(e)) return;
   e.stopPropagation();
 }

@@ -1,6 +1,5 @@
-// 所见即所得的 Markdown 编辑器（TipTap，白板的 Note 用它）。这是 @codeboard/markdown/editor：单独打包，第一次编辑时才加载
-// （白板见 md/load.ts）。解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、
-// [[ 选引用、公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。用的一方的东西（引用的候选、存图、打开链接、AI 补全、代码的语言服务）都从 MdEditorOpts 进来
+// 所见即所得的 Markdown 编辑器（TipTap，白板的 Note 用它）。这是 @codeboard/markdown/editor：单独打包，第一次编辑时才 import()。
+// 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选引用、公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。用的一方的东西（引用的候选、存图、打开链接、AI 补全、代码的语言服务）都从 MdEditorOpts 进来
 import { keepKey } from "../ui/editkeys";
 import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
@@ -21,19 +20,21 @@ import type { LspHost } from "../cm/editor";
 export type MdEditorOpts = {
   value: string;
   placeholder?: string;
-  isMac: boolean;
+  /** ⌘ 还是 Ctrl+（提示里写的）；不给就看浏览器的平台 */
+  isMac?: boolean;
   /** 结束编辑：改过给新的原文，没改给 null */
   onDone: (v: string | null) => void;
   /** [[ 引用：候选（kind 显示在右边）、/ 菜单里那一项的名字、没有对得上的候选时的提示。不给就没有 [[ 菜单 */
   refs?: { items: () => { id: string; title: string; kind: string }[]; menu: string; empty: string };
-  /** 存图（粘贴、/Image）：回写进 Markdown 的地址 */
-  saveImage: (dataUrl: string, name: string) => Promise<string>;
+  /** 存图（粘贴、/Image）：回写进 Markdown 的地址；不给就把 data: 地址原样写进去 */
+  saveImage?: (dataUrl: string, name: string) => Promise<string>;
   pickImage?: () => Promise<string | null>;
   openLink?: (url: string) => void;
   /** 灰字补全（宿主没有就不给） */
   complete?: (before: string, after: string) => Promise<string | null>;
-  /** 代码块（CodeMirror）：行注释记号（⌘/，默认 //）、语言服务（这种语言没有就给 undefined，块拆掉时调它的 close） */
-  code?: { comment?: (lang: string | undefined) => string | undefined; lsp?: (lang: () => string) => LspHost | undefined };
+  /** 代码块（CodeMirror）：行注释记号（⌘/，默认 //）、语言服务（这种语言没有就给 undefined，块拆掉时调它的 close）、
+   *  按下不往外冒（见 CodeEditorOpts.stopPointerDown） */
+  code?: { comment?: (lang: string | undefined) => string | undefined; lsp?: (lang: () => string) => LspHost | undefined; stopPointerDown?: boolean };
 };
 export type MdEditorHandle = { value(): string | null; destroy(): void; editor(): Editor };
 
@@ -72,6 +73,7 @@ type Ui = {
   opts: MdEditorOpts;
 };
 const uiOf = new WeakMap<Editor, Ui>();
+const saveImage = (o: MdEditorOpts, dataUrl: string, name: string) => (o.saveImage ? o.saveImage(dataUrl, name) : Promise.resolve(dataUrl));
 
 /** 刚插进去的空公式块在哪 */
 function emptyMathNear(e: Editor) {
@@ -90,7 +92,7 @@ async function insertPickedImage(e: Editor) {
   const ui = uiOf.get(e);
   const url = await ui?.opts.pickImage?.();
   if (!url || e.isDestroyed) return;
-  const src = await ui!.opts.saveImage(url, "image.png");
+  const src = await saveImage(ui!.opts, url, "image.png");
   e.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run();
 }
 
@@ -184,7 +186,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   const B = (q: { label: string; tip: string; on: () => boolean; run: () => void; style?: any }) => (
     <button class="tbtn" classList={{ on: (p.tick(), q.on()) }} data-tip={q.tip} style={q.style} onClick={q.run}>{q.label}</button>
   );
-  const mod = p.ui.opts.isMac ? "⌘" : "Ctrl+";
+  const mod = (p.ui.opts.isMac ?? /Mac|iPhone|iPad/.test(navigator.platform)) ? "⌘" : "Ctrl+";
   let busy = false;
   const applyLink = (v: string, stay = true) => {
     if (link() === null || busy) return;
@@ -290,7 +292,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
   const base = baseExtensions.map((x) => (x.name === "inlineMath" || x.name === "blockMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false, displayMode: x.name === "blockMath" } })
     // 代码块：编辑时用 CodeMirror（和 Free code 卡同一个编辑器）
-    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l) }) })
+    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown }) })
     : x));
   const Slash = Extension.create({
     name: "cbSlash",
@@ -379,7 +381,7 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
     const f = img.getAsFile();
     if (!f) return false;
     const rd = new FileReader();
-    rd.onload = async () => { const src = await o.saveImage(String(rd.result), f.name || "pasted.png"); if (!e.isDestroyed) e.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run(); };
+    rd.onload = async () => { const src = await saveImage(o, String(rd.result), f.name || "pasted.png"); if (!e.isDestroyed) e.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run(); };
     rd.readAsDataURL(f);
     return true;
   }

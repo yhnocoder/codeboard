@@ -6,7 +6,7 @@ import { ask } from "../host";
 import { editing, dragging } from "../state/ui";
 import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
-import { lspHost, closeLsp } from "../cm/load";
+import { lspHost } from "../cm/load";
 import type { MdEditorOpts, MdEditorHandle } from "@codeboard/markdown/editor";
 
 export type { MdEditorHandle };
@@ -71,7 +71,7 @@ let seq = 0;
 function codeLsp(lang: () => string) {
   if (!langInfo(lang())?.lsp) return undefined;
   const id = `note-code-${Math.random().toString(36).slice(2, 8)}${++seq}`;
-  return { ...lspHost(id, () => langInfo(lang())?.vscodeId ?? lang()), close: () => closeLsp(id) };
+  return lspHost(id, () => langInfo(lang())?.vscodeId ?? lang());
 }
 
 /** 编辑器要的白板能力：[[ 引用卡片、存图、AI 补全（宿主没有就什么都不做）、代码块的注释记号和语言服务 */
@@ -86,6 +86,6 @@ export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placehold
       return f ? `assets/${f}` : dataUrl;
     },
     complete: state.host.complete ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null) : undefined,
-    code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp },
+    code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true },
   };
 }

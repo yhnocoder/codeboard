@@ -1,11 +1,11 @@
 // 代码编辑器（CodeMirror，@codeboard/markdown/code-editor）单独打包，第一次编辑代码前才要；白板打开后空闲时先悄悄加载好。
 // 这里还有编辑器要的宿主能力：语言服务（补全、悬停、签名）、灰字补全、着色。
-import type { Segment, SegView } from "@codeboard/core";
+import type { Segment, SegView, LspItem, LspSignature } from "@codeboard/core";
 import { unwrap } from "solid-js/store";
 import { state } from "../state/store";
 import { ask, send } from "../host";
 import { renderMd } from "@codeboard/markdown";
-import type { LspHost, GhostHost } from "@codeboard/markdown/code-editor";
+import type { LspHost, GhostHost, LspItem as EditorLspItem, LspSignature as EditorLspSignature } from "@codeboard/markdown/code-editor";
 
 type Mod = typeof import("@codeboard/markdown/code-editor");
 let mod: Promise<Mod> | undefined, ready: Mod | undefined;
@@ -32,7 +32,12 @@ export function nearSeg(card: string, lang: string): Pick<Segment, "src" | "path
   return s && { src: { ...unwrap(s.src) }, path: s.path, version: { ...unwrap(s.version) } };
 }
 
-/** 语言服务：id = 这段编辑中的代码（宿主给它一个虚拟文档） */
+// 宿主发来的补全、签名（core 的类型）原样交给编辑器（@codeboard/markdown 的类型）：两边要能互相赋值，哪边改了这里编译不过
+type Same<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
+type Assert<T extends true> = T;
+export type LspTypesAgree = [Assert<Same<LspItem, EditorLspItem>>, Assert<Same<LspSignature, EditorLspSignature>>];
+
+/** 语言服务：id = 这段编辑中的代码（宿主给它一个虚拟文档）；编辑器拆掉时 close 关掉它 */
 export function lspHost(id: string, lang: () => string, near?: () => Pick<Segment, "src" | "path" | "version"> | undefined): LspHost {
   let opened = false;
   const open = (text: string) => { opened = true; send({ type: "codeDoc", id, lang: lang(), text, near: near?.() }); };
@@ -42,9 +47,9 @@ export function lspHost(id: string, lang: () => string, near?: () => Pick<Segmen
     hover: (text, line, col) => { if (!opened) open(text); return ask("lspHover", { id, text, line, col }); },
     signature: (text, line, col, trigger) => { if (!opened) open(text); return ask("lspSignature", { id, text, line, col, trigger }); },
     md: (src) => renderMd(src),
+    close: () => send({ type: "codeDocClose", id }),
   };
 }
-export const closeLsp = (id: string) => send({ type: "codeDocClose", id });
 
 /** 灰字补全（宿主能做 AI 续写时） */
 export const ghostHost = (): GhostHost | undefined => (state.host.complete ? { complete: (before, after) => ask("complete", { before, after }).catch(() => null) } : undefined);
