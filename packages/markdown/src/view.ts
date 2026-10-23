@@ -1,11 +1,13 @@
-// 静态 Markdown 挂到页面上以后的事：[[卡片引用]] 认卡、代码块着色、Mermaid 换成图、点链接 / 引用 / 勾选框。
+// 静态 Markdown 挂到页面上以后的事：[[引用]] 认目标、代码块着色、Mermaid 换成图、点链接 / 引用 / 勾选框。
 import { renderMd } from "./render";
 import { colorCode } from "./code";
 
-/** [[标题]] 找卡：白板那边注册（这里不直接依赖白板状态，单元测试能跑） */
-type Ref = { id: string; title: string } | null;
+/** [[标题]] 指向的东西（白板上是卡）：用的一方注册怎么找（这里不认识目标，单元测试能跑）。missing：找不到时的提示 */
+export type RefTarget = { id: string; title: string };
+type Ref = RefTarget | null;
 let resolve: (label: string) => Ref = () => null;
-export const setRefResolver = (f: (label: string) => Ref) => { resolve = f; };
+let missing = "Nothing with this title";
+export const setRefResolver = (f: (label: string) => Ref, o: { missing?: string } = {}) => { resolve = f; if (o.missing) missing = o.missing; };
 export const resolveRef = (label: string) => resolve(label);
 
 /** innerHTML 放进去以后调用：只在真的有引用 / 代码 / 图表时才去查 DOM */
@@ -15,7 +17,7 @@ export function hydrate(el: HTMLElement, html: string) {
       const hit = resolve(r.dataset.cardref ?? "");
       r.classList.toggle("missing", !hit);
       if (hit && hit.title !== r.textContent) r.textContent = hit.title;
-      if (!hit) r.title = "No card with this title on the board";
+      if (!hit) r.title = missing;
     }
   }
   if (html.includes('class="md-code" data-lang')) colorCode(el);
@@ -23,7 +25,7 @@ export function hydrate(el: HTMLElement, html: string) {
 }
 
 /**
- * 静态 Markdown 上的点击：链接交给宿主打开，引用跳到卡，勾选框改原文。处理了返回 true。
+ * 静态 Markdown 上的点击：链接交给 openLink（webview 自己不跳转），引用交给 openRef（白板上是跳到卡），勾选框改原文。处理了返回 true。
  * onToggle 给了才能勾（拿到改好的原文）
  */
 export function mdClick(e: MouseEvent, src: string, o: { openLink: (u: string) => void; openRef: (id: string) => void; onToggle?: (next: string) => void }): boolean {

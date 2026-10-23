@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
 import { history, undo, redo, closeHistory } from "@tiptap/pm/history";
-import { baseExtensions, parseMd, serializeMd } from "../../src/md/schema";
-import { Typora, codeSpanAtEnd, reconvert, retype } from "../../src/md/editor/typora";
+import { baseExtensions, parseMd, serializeMd } from "../src/schema";
+import { Typora, codeSpanAtEnd, reconvert, retype } from "../src/editor/typora";
 
 const schema = getSchema([...baseExtensions, Typora]);
 function state(md: string) {

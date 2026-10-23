@@ -201,9 +201,10 @@ const Emoji = Node.create({
   },
 });
 
-// ---------- [[卡片引用]] ----------
-// 存成 [[标题]]：可读，复制到别的白板也能按标题找；渲染时先按 id、再按标题找卡（Card 改名时 actions 顺手改写引用）
-export const CardRef = Node.create({
+// ---------- [[引用]]（wiki 链接） ----------
+// 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（view.ts 的 setRefResolver，编辑器的 refs；白板上是卡，
+// 渲染时先按 id、再按标题找卡，Card 改名时白板顺手改写引用）。节点名、class、data 属性沿用最早的卡片引用，存下的文件和样式都不变
+const WikiRef = Node.create({
   name: "cardRef",
   group: "inline", inline: true, atom: true, selectable: true,
   addAttributes() { return { label: { default: "", rendered: false } }; },
@@ -417,7 +418,7 @@ export const baseExtensions: AnyExtension[] = [
   Lnk, U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
   Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
-  CardRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
+  WikiRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
 ];
 
 // ---------- 写回：少转义 ----------

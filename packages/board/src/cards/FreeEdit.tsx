@@ -1,14 +1,14 @@
-// 自由代码卡的编辑：CodeMirror（cm/editor.ts），排版和显示时一模一样（同一个 .code 字体行高、54px 的行号栏、宿主给的着色），
+// 自由代码卡的编辑：CodeMirror（@codeboard/markdown/code-editor），排版和显示时一模一样（同一个 .code 字体行高、54px 的行号栏、宿主给的着色），
 // 进出编辑字的位置不动。改了的行先留着挪过来的旧着色，宿主的着色回来就换上；当前行有底色。
 // Tab / ⇧Tab 缩进（多行一起），回车保持缩进（: { [ ( 结尾多缩一级），⌘/ 切换注释，Esc / ⌘↵ 结束。
 // 补全菜单、悬停、签名提示问宿主的语言服务（VS Code 里是 Pylance 之类），灰字补全和 Note 一样。
 // CodeMirror 还没加载好时（一般空闲时早就预加载了）先照原样显示，加载好了再换上
 import { createEffect, For, onCleanup, onMount, Show, createSignal } from "solid-js";
-import { escHtml } from "@codeboard/core";
+import { escHtml, langInfo } from "@codeboard/core";
 import type { CodeCard, SegView } from "@codeboard/core";
 import { state } from "../state/store";
 import { loadCm, cmNow, lspHost, closeLsp, ghostHost, nearSeg, hostHighlight } from "../cm/load";
-import type { CodeEditor } from "../cm/editor";
+import type { CodeEditor } from "@codeboard/markdown/code-editor";
 import { lastDown } from "../state/measure";
 
 
@@ -22,7 +22,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
   let gone = false;
   const id = `free-${p.card().id}`;
 
-  const make = (m: typeof import("../cm/editor")) => {
+  const make = (m: typeof import("@codeboard/markdown/code-editor")) => {
     if (gone) return;
     const lsp = lspHost(id, () => seg().lang, () => nearSeg(p.card().id, seg().lang));
     let e!: CodeEditor;
@@ -34,6 +34,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
       gutter: { start: seg().start },
       html: v0?.html.join("\n"),
       highlight: (t) => hostHighlight(seg(), t),
+      comment: (l) => langInfo(l)?.comment,
       lsp,
       ghost: ghostHost(),
       onExit: () => p.onExit(e.text()),

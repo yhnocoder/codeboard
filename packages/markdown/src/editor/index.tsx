@@ -1,7 +1,7 @@
-// Note 的所见即所得 Markdown 编辑器（TipTap）。这一块单独打包，第一次编辑时才加载（见 ../load.ts）。
-// 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选卡、
-// 公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。
-import { keepKey } from "../../ui/editkeys";
+// 所见即所得的 Markdown 编辑器（TipTap，白板的 Note 用它）。这是 @codeboard/markdown/editor：单独打包，第一次编辑时才加载
+// （白板见 md/load.ts）。解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、
+// [[ 选引用、公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。用的一方的东西（引用的候选、存图、打开链接、AI 补全、代码的语言服务）都从 MdEditorOpts 进来
+import { keepKey } from "../ui/editkeys";
 import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
@@ -15,7 +15,8 @@ import { Ghost } from "./ghost";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView } from "./codeblock";
 import { Typora, reconvert } from "./typora";
-import { place, virtual } from "../../ui/place";
+import { place, virtual } from "../ui/place";
+import type { LspHost } from "../cm/editor";
 
 export type MdEditorOpts = {
   value: string;
@@ -23,18 +24,20 @@ export type MdEditorOpts = {
   isMac: boolean;
   /** 结束编辑：改过给新的原文，没改给 null */
   onDone: (v: string | null) => void;
-  /** [[ 的候选 */
-  cards: () => { id: string; title: string; kind: string }[];
+  /** [[ 引用：候选（kind 显示在右边）、/ 菜单里那一项的名字、没有对得上的候选时的提示。不给就没有 [[ 菜单 */
+  refs?: { items: () => { id: string; title: string; kind: string }[]; menu: string; empty: string };
   /** 存图（粘贴、/Image）：回写进 Markdown 的地址 */
   saveImage: (dataUrl: string, name: string) => Promise<string>;
   pickImage?: () => Promise<string | null>;
   openLink?: (url: string) => void;
   /** 灰字补全（宿主没有就不给） */
   complete?: (before: string, after: string) => Promise<string | null>;
+  /** 代码块（CodeMirror）：行注释记号（⌘/，默认 //）、语言服务（这种语言没有就给 undefined，块拆掉时调它的 close） */
+  code?: { comment?: (lang: string | undefined) => string | undefined; lsp?: (lang: () => string) => LspHost | undefined };
 };
 export type MdEditorHandle = { value(): string | null; destroy(): void; editor(): Editor };
 
-type MenuItem = { title: string; hint?: string; key: string; run: (e: Editor, r: Range) => void };
+type MenuItem = { title: string; hint?: string; key: string; run: (e: Editor, r: Range) => void; ref?: true };
 
 // ---------- / 菜单 ----------
 const SLASH: MenuItem[] = [
@@ -51,7 +54,8 @@ const SLASH: MenuItem[] = [
   { title: "Table", key: "grid", run: (e, r) => e.chain().focus().deleteRange(r).insertTable({ rows: 3, cols: 2, withHeaderRow: true }).run() },
   { title: "Image", key: "picture photo", run: (e, r) => { e.chain().focus().deleteRange(r).run(); void insertPickedImage(e); } },
   { title: "Details", key: "collapsible toggle fold", run: (e, r) => e.chain().focus().deleteRange(r).setDetails().run() },
-  { title: "Link to Card", key: "ref reference [[", hint: "[[", run: (e, r) => e.chain().focus().deleteRange(r).insertContent("[[").run() },
+  // 名字是 refs.menu（白板：Link to Card）；没给 refs 时没有这一项
+  { title: "", ref: true, key: "ref reference [[", hint: "[[", run: (e, r) => e.chain().focus().deleteRange(r).insertContent("[[").run() },
   { title: "Footnote", key: "note reference", hint: "[^1]", run: (e, r) => e.chain().focus().deleteRange(r).addFootnote().run() },
   { title: "Divider", key: "hr rule line", hint: "---", run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
 ];
@@ -91,7 +95,7 @@ async function insertPickedImage(e: Editor) {
 }
 
 /** 一个 suggestion 菜单（/ 和 [[ 共用）：键盘上下选、↵ 选中、Esc 关 */
-function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[] }) {
+function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[]; on?: () => boolean }) {
   return Suggestion<MenuItem, MenuItem>({
     editor,
     pluginKey: new PluginKey(`cb-${kind}`),
@@ -99,7 +103,7 @@ function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { ch
     items: ({ query }) => o.items(query),
     command: ({ editor, range, props }) => props.run(editor, range),
     // 代码里不弹
-    allow: ({ state, range }) => !state.doc.resolve(range.from).parent.type.spec.code,
+    allow: ({ state, range }) => (o.on?.() ?? true) && !state.doc.resolve(range.from).parent.type.spec.code,
     render: () => {
       let box: HTMLDivElement | undefined, unmount: (() => void) | undefined;
       let last: SuggestionProps<MenuItem, MenuItem> | undefined;
@@ -143,7 +147,7 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
   return (
     <Show when={p.ui.menu()}>{(m) => (
       <div class="ctx open md-menu" role="listbox" onMouseDown={(e) => e.preventDefault()} onPointerDown={(e) => e.stopPropagation()}>
-        <Show when={m().items.length} fallback={<div class="md-empty">{m().kind === "ref" ? "No card with that title" : "No matching block"}</div>}>
+        <Show when={m().items.length} fallback={<div class="md-empty">{m().kind === "ref" ? p.ui.opts.refs?.empty : "No matching block"}</div>}>
           <For each={m().items}>{(it, i) => (
             <button role="option" classList={{ sel: i() === m().i }} onClick={() => p.pick(it)} onPointerEnter={() => p.ui.setMenu({ ...m(), i: i() })}
               ref={(el) => queueMicrotask(() => { if (i() === m().i) el.scrollIntoView({ block: "nearest" }); })}>
@@ -286,22 +290,26 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
   const base = baseExtensions.map((x) => (x.name === "inlineMath" || x.name === "blockMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false, displayMode: x.name === "blockMath" } })
     // 代码块：编辑时用 CodeMirror（和 Free code 卡同一个编辑器）
-    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete }) })
+    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l) }) })
     : x));
   const Slash = Extension.create({
     name: "cbSlash",
     addProseMirrorPlugins() {
-      return [menuSuggestion(this.editor, "slash", { char: "/", items: (q) => { const s = q.toLowerCase(); return SLASH.filter((it) => !s || it.title.toLowerCase().includes(s) || it.key.includes(s)); } })];
+      return [menuSuggestion(this.editor, "slash", { char: "/", items: (q) => {
+        const s = q.toLowerCase(), refs = o.refs;
+        const all = SLASH.flatMap((it) => (!it.ref ? [it] : refs ? [{ ...it, title: refs.menu }] : []));
+        return all.filter((it) => !s || it.title.toLowerCase().includes(s) || it.key.includes(s));
+      } })];
     },
   });
   const Ref = Extension.create({
     name: "cbRef",
     addProseMirrorPlugins() {
       return [menuSuggestion(this.editor, "ref", {
-        char: "[[", allowSpaces: true, allowedPrefixes: null,
+        char: "[[", allowSpaces: true, allowedPrefixes: null, on: () => !!o.refs,
         items: (q) => {
           const s = q.replace(/\]+$/, "").trim().toLowerCase();
-          const all = o.cards();
+          const all = o.refs?.items() ?? [];
           const hit = (t: string) => { const l = t.toLowerCase(); return !s ? 1 : l.startsWith(s) ? 3 : l.includes(s) ? 2 : 0; };
           return all.map((c) => ({ c, w: hit(c.title) })).filter((x) => x.w).sort((a, b) => b.w - a.w).slice(0, 30)
             .map(({ c }) => ({ title: c.title, hint: c.kind, key: c.id, run: (e: Editor, r: Range) => {
@@ -355,7 +363,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
     ...base, Slash, Ref, Emo, Rules, Last, Tail,
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
-    Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks, [[ to link a card", showOnlyCurrent: true }),
+    Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
     DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),
     Ghost.configure({ complete }),
   ];
@@ -447,7 +455,7 @@ function makeInst(): Inst {
     extensions: editorExtensions(o, () => inst.editor, handle, () => inst.sess?.finish(), complete),
     content: { type: "doc", content: [{ type: "paragraph" }] },
     autofocus: false,
-    injectCSS: false, // 基础样式在 styles.css
+    injectCSS: false, // 基础样式在 markdown.css
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
       handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),

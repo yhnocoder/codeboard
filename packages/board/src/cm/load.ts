@@ -1,15 +1,15 @@
-// 代码编辑器（CodeMirror，cm/editor.ts）单独打包，第一次编辑代码前才要；白板打开后空闲时先悄悄加载好。
+// 代码编辑器（CodeMirror，@codeboard/markdown/code-editor）单独打包，第一次编辑代码前才要；白板打开后空闲时先悄悄加载好。
 // 这里还有编辑器要的宿主能力：语言服务（补全、悬停、签名）、灰字补全、着色。
 import type { Segment, SegView } from "@codeboard/core";
 import { unwrap } from "solid-js/store";
 import { state } from "../state/store";
 import { ask, send } from "../host";
-import { renderMd } from "../md/render";
-import type { LspHost, GhostHost } from "./editor";
+import { renderMd } from "@codeboard/markdown";
+import type { LspHost, GhostHost } from "@codeboard/markdown/code-editor";
 
-type Mod = typeof import("./editor");
+type Mod = typeof import("@codeboard/markdown/code-editor");
 let mod: Promise<Mod> | undefined, ready: Mod | undefined;
-export const loadCm = () => (mod ??= import("./editor").then((m) => (ready = m)).catch((e) => { mod = undefined; throw e; }));
+export const loadCm = () => (mod ??= import("@codeboard/markdown/code-editor").then((m) => (ready = m)).catch((e) => { mod = undefined; throw e; }));
 /** 已经加载好了就直接拿（同一帧里挂上，不等 Promise） */
 export const cmNow = () => ready;
 

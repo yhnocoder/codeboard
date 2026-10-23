@@ -9,7 +9,7 @@ import { boardSwitched } from "./state/root";
 import * as A from "./actions";
 import { runKey } from "./keymap";
 import { choose } from "./ui/Menu";
-import { setAssetBase } from "./md/render";
+import { setAssetBase } from "@codeboard/markdown";
 import { preloadEditor } from "./md/load";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";

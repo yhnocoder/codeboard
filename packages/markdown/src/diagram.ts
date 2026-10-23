@@ -1,8 +1,8 @@
 // Mermaid 图：页面上有 ```mermaid 块时才加载 pele（Mermaid 语法 → SVG，同步、没有依赖）。
-// 颜色是 SVG 里的 CSS 变量（styles.css 的 .mmd 把 --pele-* 接到主题变量上），换明暗、换主题配色都不用重画。
+// 颜色是 SVG 里的 CSS 变量（markdown.css 的 .mmd 把 --pele-* 接到主题变量上），换明暗、换主题配色都不用重画。
 // 布局跟字体和宽度有关：按「字体 + 宽度上限 + 源码」缓存。图比 Note 宽就给 pele 宽度上限（maxWidth），它改成竖着排，
 // 字不缩小；拖宽 Note 放得下了再换回原来的方向。换了字体的主题、Note 宽度跨了档才重画
-import { observeResize, queueMeasure } from "../state/measure";
+import { observeResize, queueMeasure } from "./ui/measure";
 
 type P = typeof import("pele");
 let lib: P | undefined;
@@ -53,7 +53,7 @@ function queueFit(p: P, box: HTMLElement) {
   });
 }
 
-// 换主题（html 的 data-look）后字体可能变了：画好的图都按新字体再对一遍
+// 换主题（html 的 data-look，主题的字体跟着它变）后字体可能变了：画好的图都按新字体再对一遍
 let watching = false;
 function watchLook(p: P) {
   if (watching) return;

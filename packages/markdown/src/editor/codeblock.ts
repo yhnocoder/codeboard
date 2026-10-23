@@ -1,4 +1,4 @@
-// Note 里的代码块：编辑时用和 Free code 卡同一个 CodeMirror（cm/editor.ts），看上去和显示时一样（同一个 pre.md-code、字体、
+// Note 里的代码块：编辑时用和 Free code 卡同一个 CodeMirror（../cm/editor.ts），看上去和显示时一样（同一个 pre.md-code、字体、
 // 宿主给的着色，见 ../code.ts），字的位置不动。ProseMirror 的文档还是唯一的来源：CodeMirror 里的改动转成 ProseMirror 的改动，反过来也一样
 // （照 CodeMirror 官网 “CodeMirror in ProseMirror” 的做法）。撤销走 ProseMirror；方向键在开头 / 结尾时走出代码块；
 // Esc / ⌘↵ 结束整张 Note 的编辑；空代码块里退格变回段落。语言服务、灰字补全和 Free code 卡一样
@@ -8,26 +8,29 @@ import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/core";
 import type { ViewUpdate, KeyBinding } from "@codemirror/view";
 import { completionStatus } from "@codemirror/autocomplete";
-import { langInfo } from "@codeboard/core";
-import { codeEditor, type CodeEditor } from "../../cm/editor";
-import { lspHost, closeLsp } from "../../cm/load";
+import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
 import { cachedCode, highlightCode } from "../code";
 
-let seq = 0;
-
-export type CodeBlockHost = { editor: () => Editor; exit: () => void; complete: (before: string, after: string) => Promise<string | null> };
+/** 代码块要的：所在的编辑器、结束整张 Note 的编辑、灰字补全；行注释记号、语言服务由用的一方给（不给就是 //、没有） */
+export type CodeBlockHost = {
+  editor: () => Editor; exit: () => void; complete: (before: string, after: string) => Promise<string | null>;
+  comment?: (lang: string | undefined) => string | undefined;
+  /** 这一块的语言服务（lang 跟着块的语言变）；这种语言没有就给 undefined。块拆掉时调它的 close */
+  lsp?: (lang: () => string) => LspHost | undefined;
+};
 
 export class CodeBlockView implements NodeView {
   dom: HTMLElement;
   cm: CodeEditor;
   updating = false;
-  id = `note-code-${Math.random().toString(36).slice(2, 8)}${++seq}`;
+  lsp: LspHost | undefined;
   constructor(public node: PMNode, public view: PMView, public getPos: () => number | undefined, host: CodeBlockHost) {
     const lang = () => (this.node.attrs.language as string | null) ?? "";
     this.dom = document.createElement("pre");
     this.dom.className = "md-code";
     if (lang()) this.dom.dataset.lang = lang();
     const l = lang();
+    this.lsp = host.lsp?.(lang);
     const keys: KeyBinding[] = [
       { key: "ArrowUp", run: () => this.escape("line", -1) },
       { key: "ArrowLeft", run: () => this.escape("char", -1) },
@@ -47,7 +50,8 @@ export class CodeBlockView implements NodeView {
       history: false,
       activeLine: false,
       keys,
-      lsp: langInfo(l)?.lsp ? lspHost(this.id, () => langInfo(lang())?.vscodeId ?? lang()) : undefined,
+      comment: host.comment,
+      lsp: this.lsp,
       ghost: { complete: host.complete },
       onExit: () => host.exit(),
       onUpdate: (u) => this.forward(u),
@@ -134,5 +138,5 @@ export class CodeBlockView implements NodeView {
   selectNode() { this.cm.view.focus(); }
   stopEvent() { return true; }
   ignoreMutation() { return true; }
-  destroy() { this.cm.destroy(); closeLsp(this.id); }
+  destroy() { this.cm.destroy(); this.lsp?.close?.(); }
 }

@@ -1,10 +1,12 @@
-// Note 里代码块的着色：和代码卡同一个（宿主的 shiki，白板这边由 setCodeHighlighter 接上，见 cm/load.ts 的 hostHighlight），
-// 按 语言 + 文字 缓存。显示和编辑（CodeMirror）都用它；宿主还没回来时先放纯文字（同样的字，回来后只换颜色，不跳）
-import { langId } from "@codeboard/core";
+// 代码块的着色：由用的一方给（白板是宿主的 shiki，和代码卡同一个，见白板 cm/load.ts 的 hostHighlight），
+// 按 语言 + 文字 缓存。显示和编辑（CodeMirror）都用它；还没回来时先放纯文字（同样的字，回来后只换颜色，不跳）
 
-type Ask = (text: string, lang: string) => Promise<string | null>;
-let ask: Ask | undefined;
-export const setCodeHighlighter = (f: Ask) => { ask = f; };
+/** 文字 + 语言（换成了正式 id，见下面的 id）→ 着好色的 HTML（只有 span 和转义的字，每行之间一个 \n）；不会着色给 null */
+export type CodeHighlighter = (text: string, lang: string) => Promise<string | null>;
+let ask: CodeHighlighter | undefined;
+let langId = (lang: string) => lang;
+/** 接上着色。id：语言名 → 正式 id（py 和 python 是同一份缓存、问的是同一个名字）；不给就照原样 */
+export const setCodeHighlighter = (f: CodeHighlighter, id?: (lang: string) => string) => { ask = f; if (id) langId = id; };
 
 const done = new Map<string, string>();
 const flying = new Map<string, Promise<string | null>>();
