@@ -59,12 +59,12 @@ export const testsLine = (text) => [...(text ?? "").matchAll(/^\s*tests?\s*:\s*(
 
 // Changes that can affect any scenario without showing up in the coverage of one
 const GLOBAL = [
-  /^package(-lock)?\.json$/, /^packages\/(board|core|host)\/(package\.json|tsconfig[^/]*\.json|vite\.config\.\w+|playwright\.config\.\w+)$/,
-  /^packages\/board\/src\/.*\.css$/, /^packages\/board\/src\/fonts\//,
+  /^package(-lock)?\.json$/, /^packages\/(board|core|host|markdown)\/(package\.json|tsconfig[^/]*\.json|vite\.config\.\w+|playwright\.config\.\w+)$/,
+  /^packages\/(board|markdown)\/src\/.*\.css$/, /^packages\/board\/src\/fonts\//,
   /^packages\/board\/test\/(harness|fixtures|coverage|subhost|chromium)\.ts$/, /^packages\/board\/test\/tiers\.json$/,
   /^packages\/host\/test\/(node-workspace\.ts|fixtures\/)/, /^tools\/test\//,
 ];
-const SRC = /^packages\/(board|core|host)\/src\//;
+const SRC = /^packages\/(board|core|host|markdown)\/src\//;
 
 /**
  * all: { name: defining test file }, change: changes(), impact: loadImpact(), tiers: tiers.json, focus: [names], budgetMs: total scenario time

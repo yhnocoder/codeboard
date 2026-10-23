@@ -6,7 +6,7 @@
 git submodule update --init
 npm install
 npm run build      # board UI + extension, compiled into extensions/vscode/dist (no .vsix)
-npm test           # unit tests (core, board, host, extension)
+npm test           # unit tests (core, markdown, board, host, extension)
 npm run check      # local test tier: typecheck, unit tests and affected harness scenarios (~3 min)
 npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Code and xvfb)
 ```
@@ -20,6 +20,7 @@ Test tiers, time budgets and how scenarios are selected are described in [TESTIN
 ## Repository layout
 
 - `packages/core`: data model, symbol resolution, syncing cards with the current code (pure TypeScript, with tests)
+- `packages/markdown`: the Markdown renderer and editor on their own (schema, static render and `hydrate`, the TipTap editor, the CodeMirror code editor and their stylesheet), with everything board-specific passed in as options; `@codeboard/markdown` is the read-only entry and `@codeboard/markdown/editor` the lazily loaded editor
 - `packages/board`: the board UI (SolidJS), bundled into the extension's webview
 - `packages/host`: the editor-independent host: reads code, highlights, resolves calls, tracks versions, stores and coordinates boards
 - `extensions/vscode`: the VS Code extension: the VS Code adapters around `packages/host` (activation, webview panels, sidebar, CodeLens, commands, the `Workspace` implementation)
