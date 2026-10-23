@@ -8,7 +8,11 @@ runs:
       run: echo "v=$(node -p "require('playwright-core/package.json').version")" >> $GITHUB_OUTPUT
     - uses: actions/cache@v4
       with: { path: ~/.cache/ms-playwright, key: "chromium-${{ steps.v.outputs.v }}" }
+    # The runner image already has Chromium's system libraries; install them with apt only when one is missing
+    # (apt mirrors are sometimes very slow: --with-deps on every job once took 8.5 minutes)
     - shell: bash
       run: |
-        npx playwright-core install --with-deps chromium
-        echo "CHROMIUM=$(node -e "console.log(require('playwright-core').chromium.executablePath())")" >> $GITHUB_ENV
+        npx playwright-core install chromium
+        EXE=$(node -e "console.log(require('playwright-core').chromium.executablePath())")
+        if ldd "$EXE" | grep -q "not found"; then ldd "$EXE" | grep "not found"; timeout 600 npx playwright-core install-deps chromium; fi
+        echo "CHROMIUM=$EXE" >> $GITHUB_ENV
