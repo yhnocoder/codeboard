@@ -1,5 +1,5 @@
 // 量 DOM：先把这一轮要量的都读完，再一起写回。一边读一边写会让浏览器每读一次都重新排一次版（打开大白板时几百张卡就是几百次排版）。
-// Mermaid 图跟着宽度重排用它；白板的卡片测量也用这一份（state/measure.ts，写回包在 Solid 的 batch 里），所以同一轮里一起量
+// Mermaid 图跟着宽度重排用它；用的一方自己的测量也可以排进来（白板的卡片测量就是，写回包在 Solid 的 batch 里），同一轮里一起量
 type Read = () => (() => void) | void;
 const queue = new Map<unknown, Read>();
 let pending = false;

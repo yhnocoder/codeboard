@@ -12,6 +12,7 @@
     "@types/node": "^20.19.43",
     "happy-dom": "^20.14.5",
     "jsdom": "^29.1.1",
+    "solid-js": "^1.9.17",
     "typescript": "^5.9.3",
     "vitest": "^5.0.4"
   },
@@ -46,8 +47,10 @@
     "katex": "^0.18.11",
     "marked": "^17.0.6",
     "pele": "^1.6.0",
-    "solid-js": "^1.9.17",
     "tiptap-footnotes": "^3.0.1"
+  },
+  "peerDependencies": {
+    "solid-js": "^1.9.17"
   },
   "exports": {
     ".": "./src/index.ts",

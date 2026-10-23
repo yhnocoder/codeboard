@@ -1,5 +1,5 @@
 /* @codeboard/markdown 的样式：静态显示（.md）、编辑器（.md-pm 和浮层）、代码编辑器（.cbcm，CodeMirror）。
-   颜色、字体都用主题的 CSS 变量（用的一方在 :root 或外层元素上给；白板的在 styles.css / themes.css）：
+   颜色、字体都用主题的 CSS 变量（用的一方在 :root 或外层元素上给）：
      颜色   --ink --ink-2 --ink-3（字，由深到浅）--surface（底）--hlrow（浅底色：表头、代码块、悬停）--hair --line（细线）
             --accent --accent-ink（强调色和压在它上面的字）--warn（出错）--k-fn（链接、引用、脚注）
             --k-kw --k-num --k-self --k-str --lk-blue --lk-orange --lk-green（Mermaid 的系列色）--sh-float（浮层阴影）
@@ -24,7 +24,8 @@ math { font-size: 1.05em; }
 .md .md-toc .l2 { padding-left: 1em; } .md .md-toc .l3 { padding-left: 2em; } .md .md-toc .l4, .md .md-toc .l5, .md .md-toc .l6 { padding-left: 3em; }
 .md .md-toc .none { color: var(--ink-3); font-style: italic; }
 /* 原样的 HTML：编辑时显示不出东西的（注释、空标签）显示成淡色的源码 */
-.md .md-html.src { color: var(--ink-3); font-family: var(--mono); font-size: .85em; white-space: pre-wrap; }.md li > p { margin: 0; }
+.md .md-html.src { color: var(--ink-3); font-family: var(--mono); font-size: .85em; white-space: pre-wrap; }
+.md li > p { margin: 0; }
 .md li::marker { color: var(--ink-3); }
 .md strong { font-weight: 650; }
 .md s { color: var(--ink-2); }
