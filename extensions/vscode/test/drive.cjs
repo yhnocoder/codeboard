@@ -156,6 +156,7 @@ async function exportStep(page) {
   check(!net.length && !errs.length, "no network requests and no errors in the snapshot", { net: net.slice(0, 3), errs: errs.slice(0, 3) });
   await v.screenshot({ path: `${OUT}/13-export-html.png` });
   await vb.close().catch(() => {});
+  fs.rmSync(out, { force: true }); // 后面的步骤要看干净的 git status
 }
 // 07. 我的改动：同一仓库的另一个 worktree（git worktree add，含未提交改动）在 Add Variant 菜单里自动列出；加上后卡上有标签页和 MINE，
 // 在那个 worktree 里改文件（VS Code 外面），卡上的代码跟着刷新。E2E_ONLY=variants 只跑这一步
@@ -166,11 +167,14 @@ async function variantsStep(page) {
   const orig = fs.readFileSync(file, "utf8");
   fs.writeFileSync(file, orig.replace("        scheduled_seqs = []\n", "        scheduled_seqs = list()  # keep order\n        budget = self.max_num_batched_tokens\n"));
   await openFile(page, "scheduler.py", 26);
+  // 同一个 job 里前面的步骤（export）可能已经放过 Scheduler.schedule：这次放上来的是排在最后的那张
+  let had = 0;
+  for (const f0 of page.frames()) { try { if (await f0.$("#board")) had = await card(f0, "Scheduler.schedule").count(); } catch {} }
   await page.keyboard.press("Alt+b"); await sleep(2500);
   await command(page, "CodeBoard: Open Board");
   let f = await boardFrame(page); await sleep(1500);
-  const sch = card(f, "Scheduler.schedule");
-  check(await sch.count() === 1, "Alt+B puts Scheduler.schedule on the board");
+  const sch = card(f, "Scheduler.schedule").last();
+  check(await card(f, "Scheduler.schedule").count() === had + 1, "Alt+B puts Scheduler.schedule on the board", { had });
   await sch.locator(".chead").click({ button: "right", position: { x: 140, y: 12 } }); await sleep(500);
   await f.locator(".ctx button", { hasText: /^Add Variant…/ }).click(); await sleep(1500);
   const items = await f.locator(".ctx button").allTextContents();
@@ -189,11 +193,11 @@ async function variantsStep(page) {
   // 在 worktree 里再改一下（VS Code 外面）：卡跟着刷新
   fs.writeFileSync(file, fs.readFileSync(file, "utf8").replace("        num_batched_tokens = 0\n", "        num_batched_tokens = 0  # tuned\n"));
   let live = false;
-  for (let i = 0; i < 30 && !live; i++) { await sleep(500); f = await boardFrame(page); live = /# tuned/.test(await card(f, "Scheduler.schedule").locator(".src").textContent().catch(() => "")); }
+  for (let i = 0; i < 30 && !live; i++) { await sleep(500); f = await boardFrame(page); live = /# tuned/.test(await card(f, "Scheduler.schedule").last().locator(".src").textContent().catch(() => "")); }
   check(live, "editing the worktree file refreshes the variant on the card");
   // 切回上游：代码换回来、MINE 没了
-  await card(f, "Scheduler.schedule").locator(".vtab.up").click(); await sleep(600);
-  check(await card(f, "Scheduler.schedule").locator(".chead .mine").count() === 0 && !/keep order/.test(await card(f, "Scheduler.schedule").locator(".src").textContent()), "switching back to Upstream shows the upstream code");
+  await card(f, "Scheduler.schedule").last().locator(".vtab.up").click(); await sleep(600);
+  check(await card(f, "Scheduler.schedule").last().locator(".chead .mine").count() === 0 && !/keep order/.test(await card(f, "Scheduler.schedule").last().locator(".src").textContent()), "switching back to Upstream shows the upstream code");
 }
 // ⌥B 选中跨几个定义的代码（context.py 5–27：dataclass、_CONTEXT = Context()、三个函数）：默认一张多段卡，一行不丢；
 // 焦点留在编辑器，紧接着 ⌘Z / Ctrl+Z 撤销这次添加（编辑器里没改过字时）；⇧⌥B 一个定义一张卡。E2E_ONLY=addsel 只跑这一步
@@ -347,13 +351,15 @@ async function codeeditStep(page) {
   check(await f.locator(".card .cm-content").count() === 1, "New Code opens a CodeMirror editor on the card");
   await sleep(4000); // Pylance 先起来
   const type = async (t) => { await page.keyboard.type(t, { delay: 40 }); };
-  const line = async (t) => { await type(t); await page.keyboard.press("Escape"); await page.keyboard.press("Enter"); }; // Esc 先关补全菜单（Enter 会接受补全）
+  // Esc 先关看得见的补全菜单和签名提示，什么都没开时 Esc 退出编辑：所以只在开着时按。等补全问完宿主再看
+  const closePopups = async () => { await sleep(800); for (let i = 0; i < 3 && await f.locator(".cbcm-ac li, .cbcm-sig").count(); i++) { await page.keyboard.press("Escape"); await sleep(200); } };
+  const line = async (t) => { await type(t); await closePopups(); await page.keyboard.press("Enter"); }; // 补全菜单开着时 Enter 会接受补全
   const menu = async () => { await f.locator(".cbcm-ac li").first().waitFor({ timeout: 8000 }).catch(() => {}); await sleep(500); return f.locator(".cbcm-ac li .cm-completionLabel").allTextContents().catch(() => []); };
   /** 打 t，等菜单里出现 want；没有就删掉、等语言服务分析完再试 */
   const ask = async (t, want) => {
     let items = [];
     for (let i = 0; i < 4 && !items.includes(want); i++) {
-      if (i) { await page.keyboard.press("Escape"); for (let k = 0; k < t.length; k++) await page.keyboard.press("Backspace"); await sleep(2500); }
+      if (i) { await closePopups(); for (let k = 0; k < t.length; k++) await page.keyboard.press("Backspace"); await sleep(2500); }
       await type(t); items = await menu();
     }
     return items;
@@ -374,14 +380,14 @@ async function codeeditStep(page) {
   const sig = await f.locator(".cbcm-sig-l").textContent().catch(() => "");
   check(/^\(a: StrPath|join|path/.test(sig), "typing os.path.join( shows signature help", sig);
   await shot(page, "17-codeedit-signature");
-  await page.keyboard.press("Escape"); await line("'a')");
+  await closePopups(); await line("'a')");
   const abs = await ask("BlockManager.", "allocate");
   check(abs.includes("allocate"), "an absolute import from the workspace resolves (BlockManager. lists allocate)", abs.slice(0, 8));
-  await page.keyboard.press("Escape"); await line("allocate");
+  await closePopups(); await line("allocate");
   const rel = await ask("Scheduler.", "schedule");
   check(rel.includes("schedule"), "a relative import next to the source resolves (Scheduler. lists schedule)", rel.slice(0, 8));
-  await page.keyboard.press("Escape"); await type("schedule");
-  await page.keyboard.press("Escape"); await page.keyboard.press("Escape"); await sleep(1500);
+  await closePopups(); await type("schedule");
+  await closePopups(); await page.keyboard.press("Escape"); await sleep(1500); // 退出编辑
   const b = boardJson();
   const fc = b && b.cards.find((k) => k.kind === "code" && k.segments[0].src.kind === "free");
   check(fc && fc.segments[0].text.join("\n").includes("os.path.join('a')"), "the edited code is saved on the card", fc && fc.segments[0].text);

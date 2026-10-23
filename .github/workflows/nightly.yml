@@ -52,6 +52,9 @@ jobs:
       - run: git submodule update --init examples/nano-vllm
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/vscode
+      # part 3's export step opens the exported snapshot offline in Playwright's Chromium
+      - uses: ./.github/actions/chromium
+        if: matrix.part == 3
       - name: VS Code e2e
         run: E2E_PART=${{ matrix.part }} E2E_OUT=$PWD/test-out/e2e npm run e2e
       - uses: actions/upload-artifact@v4
