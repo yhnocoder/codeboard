@@ -229,26 +229,6 @@ async function typing() {
   const saved = (h.board().cards[0] as any).segments[0].text.join("\n");
   check("codeedit saved; the virtual document is closed", saved === `${CODE.join("\n")}\nfor i in range(3):\n    pass\nrange(1, 5)` && h.sent.some((m) => m.type === "codeDocClose"), { saved: saved.split("\n").slice(-3) });
 
-  // 一帧之内：编辑器自己处理一次按键（不算宿主）
-  await pg.locator('.card[data-id="c1"] .src .l').nth(0).dblclick();
-  await editing(pg);
-  await pg.keyboard.press("Control+End");
-  // 每次按键编辑器自己花的时间：插入一个字（含 CodeMirror 读 DOM、更新视图）到排版完，不等宿主
-  const lat = await pg.evaluate(async () => {
-    const el = document.querySelector('.card[data-id="c1"] .cm-content') as HTMLElement;
-    const ts: number[] = [];
-    for (let i = 0; i < 40; i++) {
-      await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
-      const t0 = performance.now();
-      document.execCommand("insertText", false, "x");
-      await Promise.resolve();
-      el.getBoundingClientRect();
-      ts.push(performance.now() - t0);
-    }
-    ts.sort((a, b) => a - b);
-    return { p50: +ts[20].toFixed(2), p90: +ts[36].toFixed(2), max: +ts[39].toFixed(2) };
-  });
-  check("codeedit one keystroke in the editor (insert + layout) well inside a frame", lat.p90 < 8, lat);
   await close(h);
 }
 
@@ -377,4 +357,32 @@ test("codeedit", async () => {
   if (!process.env.ONLY || process.env.ONLY === "note") await note();
   if (!process.env.ONLY || process.env.ONLY === "new") await newCode();
   if (!process.env.ONLY || process.env.ONLY === "ghost") await ghost();
+});
+
+// 一帧之内：编辑器自己处理一次按键（不算宿主）。量时间，单独跑（tiers.json 的 solo）
+test("codeEditKeystrokeLatency", async () => {
+  const h = await open({ board: freeBoard(), light: true, w: 1000, h: 700, settings: { theme: "warm-ink" } as any, on: lspStub });
+  const pg = h.page;
+  await pg.waitForTimeout(400);
+  await pg.locator('.card[data-id="c1"] .src .l').nth(0).dblclick();
+  await editing(pg);
+  await pg.keyboard.press("Control+End");
+  // 每次按键编辑器自己花的时间：插入一个字（含 CodeMirror 读 DOM、更新视图）到排版完，不等宿主
+  const lat = await pg.evaluate(async () => {
+    const el = document.querySelector('.card[data-id="c1"] .cm-content') as HTMLElement;
+    const ts: number[] = [];
+    for (let i = 0; i < 40; i++) {
+      await new Promise((r) => requestAnimationFrame(() => setTimeout(r, 0)));
+      const t0 = performance.now();
+      document.execCommand("insertText", false, "x");
+      await Promise.resolve();
+      el.getBoundingClientRect();
+      ts.push(performance.now() - t0);
+    }
+    ts.sort((a, b) => a - b);
+    return { p50: +ts[20].toFixed(2), p90: +ts[36].toFixed(2), max: +ts[39].toFixed(2) };
+  });
+  const typed = (await text(pg)).endsWith("x".repeat(40));
+  check("codeEditKeystrokeLatency one keystroke in the editor (insert + layout) well inside a frame", typed && lat.p90 < 8, { typed, ...lat });
+  await close(h);
 });
