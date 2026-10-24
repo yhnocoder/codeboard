@@ -34,8 +34,8 @@ async function boardFrame(page) {
 const qi = (page) => page.locator(".quick-input-widget");
 const qiValue = (page) => page.locator(".quick-input-widget .quick-input-box input").inputValue();
 // Type into an open quick pick, then accept the row whose label (before any ", <keybinding>") contains the text: Enter when it is the
-// focused row, a click when it is further down (e.g. under "Browse Color Themes in Marketplace"). Without such a row after ms, Enter
-// accepts whatever is focused. Returns whether the row was found
+// focused row, a click when it is further down (e.g. under "Browse Color Themes in Marketplace"). Without such a row after ms, nothing
+// is accepted (the pick stays open for the caller to close). Returns whether the row was found
 const pick = async (page, text, ms = 5000) => {
   await page.keyboard.type(text);
   const rows = page.locator(".quick-input-widget .monaco-list-row");
@@ -49,7 +49,6 @@ const pick = async (page, text, ms = 5000) => {
     await sleep(50);
   }
   console.log(`  ! quick pick has no row for "${text}": ${JSON.stringify({ value: await qiValue(page).catch(() => "?"), rows: await rows.evaluateAll((rs) => rs.slice(0, 4).map((r) => `${r.className}|${r.getAttribute("aria-label")}`)) })}`);
-  await page.keyboard.press("Enter");
   return false;
 };
 // Run a command from the palette; returns once the palette is gone, or, for a command that asks for input, once its input box
@@ -60,14 +59,27 @@ async function command(page, text, prompt) {
   if (process.env.SHOTS_DEBUG) console.log(`  · ${text} ${Date.now() - t}ms`);
 }
 async function command0(page, text, prompt) {
-  await page.keyboard.press("F1");
-  await qi(page).waitFor({ state: "visible" });
-  // Commands are listed at once; without a match (this VS Code has no "Focus Second Editor Group"), Enter runs the first row as before
-  await pick(page, text, 2000);
+  await openPalette(page);
+  // Commands are listed at once; a command that is not in the palette is a broken step, not something to stand in for with the first row
+  if (!(await pick(page, text, 2000))) { await page.keyboard.press("Escape"); await qiClosed(page); throw new Error(`no command "${text}" in the command palette`); }
   if (!prompt) return qiClosed(page);
   if (!(await until(async () => !(await qiValue(page)).startsWith(">") &&
       (await page.locator(".quick-input-widget .quick-input-title, .quick-input-widget .quick-input-message").allInnerTexts()).some((t) => t.toLowerCase().includes(prompt.toLowerCase())))))
     console.log(`  ! no input box "${prompt}"`);
+}
+// F1, then wait until the command palette is open and has the keyboard. With the board's webview focused, VS Code sometimes hands the
+// focus back to the webview a few ms after the palette opens (the palette's input loses focus, the window blurs), which closes the
+// palette again: whatever is typed next would go to the board. So press F1 again until the palette stays open
+async function openPalette(page) {
+  const focused = () => page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget"));
+  for (let i = 0; i < 5; i++) {
+    await page.keyboard.press("F1");
+    if (!(await qi(page).waitFor({ state: "visible", timeout: 3000 }).then(() => true, () => false))) { console.log("  … command palette did not open, F1 again"); continue; }
+    await sleep(150);
+    if (await qi(page).isVisible() && await focused()) return;
+    console.log("  … command palette closed as it opened (focus went back to the webview), F1 again");
+  }
+  throw new Error("the command palette does not stay open");
 }
 // Wait until the quick input is closed
 const qiClosed = (page) => qi(page).waitFor({ state: "hidden" }).catch(() => {});
@@ -191,10 +203,11 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
   await command(page, "View: Close Primary Side Bar");
   await openFile(page, "llm_engine.py", 51);
   lap("file open");
-  // Alt+B adds the function under the caret to the board, once CodeBoard is active (opening a Python file activates it)
-  // (no board is open yet, so it is saved to the board and VS Code says "Added to …")
+  // Alt+B adds the function under the caret to the board, once CodeBoard is active (opening a Python file activates it).
+  // The first add in a workspace opens the board beside the code, in the second editor group (later adds say "Added to …" instead)
   await page.keyboard.press("Alt+b");
-  if (!(await until(() => page.locator(".notification-list-item-message", { hasText: /^Added/ }).count(), 15000, 100))) console.log("  ! no Added notification");
+  const boardShown = () => page.frames().some((fr) => fr.url().includes("vscode-webview")) || page.locator(".notification-list-item-message", { hasText: /^Added/ }).count();
+  if (!(await until(boardShown, 15000, 100))) console.log("  ! Alt+B neither opened the board nor said Added");
   await command(page, "CodeBoard: Open Board");
   const f = await boardFrame(page);
   lap("board open");
@@ -212,8 +225,12 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
   // The toasts ("Added to …", the key) sit over the board's Fit to Window button: clear them now rather than when a click misses
   await command(page, "Notifications: Clear All Notifications");
   // The board fills the window while it is built (children are placed in the room the view has) and for the board shots
-  await command(page, "View: Focus Second Editor Group");
+  // Make the board's group the active one by clicking its tab (VS Code has "Focus Second Editor Group" only as the Ctrl+2 keybinding,
+  // not in the palette, and a webview having the keyboard does not make its group the one Maximize acts on)
+  await page.locator('.editor-group-container .tab:has-text("nano-vllm: one engine step")').click();
   await command(page, "View: Toggle Maximize Editor Group");
+  const fills = async () => { const [b, e] = [await (await f.frameElement()).boundingBox(), await page.locator(".monaco-workbench .part.editor").boundingBox()]; return b && e && b.width > e.width * 0.9; };
+  check(await until(fills, 5000), "board fills the editor area");
   await fit(f);
   check(await card(f, "LLMEngine.step").count() === 1, "LLMEngine.step on the board");
   const expand = async (from, name, child) => {
