@@ -238,7 +238,8 @@ async function addselStep(page) {
 }
 
 // Closing the board tab right after a change keeps the change (the board sends each change at once, the host finishes the write when
-// the panel closes): Wrap Lines, then a typed Text card, each followed by closing the tab within 0.1 s. E2E_ONLY=close runs only this step
+// the panel closes): Wrap Lines followed by closing the tab within 0.1 s, then a typed Text card whose tab closes as soon as its text
+// is on the board. E2E_ONLY=close runs only this step
 async function closeStep(page) {
   if (process.env.E2E_ONLY === "close") { await openFile(page, "llm_engine.py", 51); await page.keyboard.press("Alt+b"); await sleep(2500); }
   const dir = () => execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards 2>/dev/null || true`).toString().trim().split("\n")[0];
@@ -268,10 +269,9 @@ async function closeStep(page) {
   if (!editing) return;
   await page.keyboard.type("typed then closed"); await page.keyboard.press("Escape");
   const escAt = Date.now();
-  // the board shows the text on the card (editing ended); the tab closes 0.1 s after Escape
+  // the board shows the text on the card (editing ended); the tab closes right then
   const shownText = await f.waitForFunction(() => [...document.querySelectorAll(".card[data-id]")].some((e) => !e.querySelector(".md-pm") && e.textContent.includes("typed then closed")), null, { timeout: 2000, polling: 20 }).then(() => true, () => false);
   check(shownText, "closeStep: the typed text is on the board before closing", await f.evaluate(() => [...document.querySelectorAll(".card[data-id]")].map((e) => e.textContent.slice(0, 40))).catch((e) => String(e)));
-  await sleep(Math.max(0, 100 - (Date.now() - escAt)));
   const closeAfter = Date.now() - escAt;
   await closeTab(name); await sleep(2000);
   const notes = (named(name)?.cards ?? []).filter((c) => c.kind === "note").map((c) => c.md);
