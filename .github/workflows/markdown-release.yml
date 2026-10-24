@@ -5,11 +5,11 @@
 # To release: bump "version" in packages/markdown/package.json in a PR and merge it, then push the tag markdown-v<that version>
 # (or run this workflow by hand on that tag). A tag that names a different version, or a run that is not on a tag, fails.
 # The job builds the package, runs its unit tests (including the check of what the tarball holds) and the Markdown demo, which
-# uses the built package exactly as an npm user would, and then publishes.
+# uses the built package exactly as an npm user would, and then stages the version on npm (npm stage publish). The Trusted
+# Publisher only allows staging: the version goes live when the owner approves it with 2FA, on npmjs.com or with
+# npm stage approve <stage-id> (npm stage list @yhnocoder/markdown shows the id).
 #
-# The first version is published by hand, once (npm publish -w @yhnocoder/markdown --provenance=false, signed in as the owner),
-# because only an existing package can have a Trusted Publisher; then configure it on npmjs.com, package settings, Trusted Publisher,
-# GitHub Actions, repository yhnocoder/codeboard, workflow markdown-release.yml. See CONTRIBUTING.md.
+# The first version was published by hand, because only an existing package can have a Trusted Publisher. See CONTRIBUTING.md.
 name: Markdown release
 on:
   push:
@@ -36,12 +36,12 @@ jobs:
           if [ "$REF_TYPE" != tag ] || [ "$TAG" != "markdown-v$V" ]; then
             echo "::error::$REF_TYPE $TAG does not match packages/markdown/package.json version $V. Bump the version there first, or run this on the tag markdown-v$V."; exit 1
           fi
-      # Node 22, npm 11.21.1 (Trusted Publishing needs npm 11.5.1 or later), npm ci, and only the markdown build
+      # Node 22, npm 11.21.1 (npm stage publish needs npm 11.15.0 or later), npm ci, and only the markdown build
       - uses: ./.github/actions/setup
         with: { build: npm run build -w @yhnocoder/markdown }
       - name: Check the npm version
         run: |
-          node -e 'const [a, b, c] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$(npm --version)" \
+          node -e 'const [a, b] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && b >= 15) ? 0 : 1)' "$(npm --version)" \
             || npm i -g npm@11.21.1
           npm --version
       - name: Unit tests (with the tarball check)
@@ -49,6 +49,7 @@ jobs:
       - uses: ./.github/actions/chromium
       - name: Markdown demo (the built package in Chromium)
         run: npm test -w @codeboard/markdown-demo
-      - name: Publish
-        # prepack builds again and adds the LICENSE; publishConfig sets public access and provenance
-        run: npm publish -w @yhnocoder/markdown
+      - name: Stage the version on npm
+        # prepack builds again and adds the LICENSE; publishConfig sets public access and provenance.
+        # The version is published once the owner approves it with 2FA.
+        run: npm stage publish -w @yhnocoder/markdown
