@@ -6,6 +6,6 @@
     "settingsPage", "linkMergeSection", "linklist"
   ],
   "manual": ["markdownRecord"],
-  "solo": ["markdownLazyRender"],
+  "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime"],
   "known": {}
 }

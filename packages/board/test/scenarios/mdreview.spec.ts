@@ -15,25 +15,45 @@ const K = (pg: Page) => ({
   t: (s: string) => pg.keyboard.type(s, { delay: 15 }),
   p: async (...ks: string[]) => { for (const k of ks) await pg.keyboard.press(k); },
 });
-const caretTo = (pg: Page, text: string, off = 1) => pg.evaluate(([text, off]) => {
-  // 把光标放到编辑器里第一处 text 的第 off 个字后面
-  const root = document.querySelector(".md-pm")!;
-  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let n = w.nextNode(); n; n = w.nextNode()) {
-    const i = n.textContent!.indexOf(text as string);
-    if (i >= 0) { const r = document.createRange(); r.setStart(n, i + (off as number)); r.collapse(true); const s = getSelection()!; s.removeAllRanges(); s.addRange(r); return true; }
-  }
-  return false;
-}, [text, off] as const).then(async (ok) => { await pg.waitForTimeout(80); return ok; });
-const selectText = (pg: Page, text: string) => pg.evaluate((text) => {
-  const root = document.querySelector(".md-pm")!;
-  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  for (let n = w.nextNode(); n; n = w.nextNode()) {
-    const i = n.textContent!.indexOf(text);
-    if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + text.length); const s = getSelection()!; s.removeAllRanges(); s.addRange(r); return true; }
-  }
-  return false;
-}, text).then(async (ok) => { await pg.waitForTimeout(80); return ok; });
+/**
+ * 在编辑器里第一处 text 上设 DOM 选区（从第 a 个字到第 b 个字后面），再等编辑器自己的选区对上（ProseMirror 读 DOM 选区是异步的，
+ * 负载高时会晚）。代码块里的字在 CodeMirror 里：它把选区转给 ProseMirror，位置 = 代码块开头 + 在代码里的偏移
+ */
+async function selectIn(pg: Page, text: string, a: number, b: number): Promise<boolean> {
+  const want = await pg.evaluate(([text, a, b]) => {
+    const root = document.querySelector(".md-pm")!;
+    const view = (root as any).editor.view;
+    const pmPos = (n: Node, off: number): number => {
+      const cm = n.parentElement!.closest(".cm-content");
+      if (!cm) return view.posAtDOM(n, off);
+      let el: any = cm;
+      while (el && !el.pmViewDesc) el = el.parentElement;
+      const line = n.parentElement!.closest(".cm-line")!;
+      let at = 0;
+      for (const l of cm.querySelectorAll(".cm-line")) { if (l === line) break; at += l.textContent!.length + 1; }
+      const r = document.createRange(); r.setStart(line, 0); r.setEnd(n, off);
+      return el.pmViewDesc.posAtStart + at + r.toString().length;
+    };
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    for (let n = w.nextNode(); n; n = w.nextNode()) {
+      const i = n.textContent!.indexOf(text as string);
+      if (i < 0) continue;
+      const r = document.createRange(); r.setStart(n, i + (a as number)); r.setEnd(n, i + (b as number));
+      const s = getSelection()!; s.removeAllRanges(); s.addRange(r);
+      return [pmPos(n, i + (a as number)), pmPos(n, i + (b as number))];
+    }
+    return null;
+  }, [text, a, b] as const);
+  if (!want) return false;
+  await pg.waitForFunction(([from, to]) => {
+    const s = (document.querySelector(".md-pm") as any)?.editor?.state.selection;
+    return !!s && s.from === from && s.to === to;
+  }, want, { timeout: 5000 });
+  return true;
+}
+/** 光标放到编辑器里第一处 text 的第 off 个字后面 */
+const caretTo = (pg: Page, text: string, off = 1) => selectIn(pg, text, off, off);
+const selectText = (pg: Page, text: string) => selectIn(pg, text, 0, text.length);
 /** 编辑器 DOM 的简写：p("text" strong("b") MATH[x]) */
 const dom = (pg: Page) => pg.evaluate(() => {
   const root = document.querySelector(".md-pm");

@@ -4,7 +4,7 @@
 // Usage: npm run harness -- variants [--light]   screenshots: test-out/harness/variants-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type CodeCard, type Segment, type SegView } from "@codeboard/core";
+import { addVariant, emptyBoard, type CodeCard, type Segment, type SegView } from "@codeboard/core";
 import { shot, put, symCard, findSym, viewOf, OUT, type Host } from "../harness";
 import { test, open, light, verdict } from "../fixtures";
 
@@ -18,6 +18,7 @@ async function shotPr(h: Host, name: string, away = true) {
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 
 test("variants", () => verdict("variants", variants));
+test("variantTabSwitchTime", () => verdict("variantTabSwitchTime", switchTime));
 
 /** 宿主的样子：另一个 worktree 上改了两行（一行改、一行加），函数整体下移 7 行 */
 function edit(s: Segment, how: "wt" | "branch" | "latest"): Segment {
@@ -92,7 +93,7 @@ async function variants(res: Record<string, unknown>) {
   res.note = note;
   await shotPr(h, "variants-2-tabs-mine");
 
-  // 3. 「+」再加一个分支；切换：点标签到画面换好在一帧左右
+  // 3. 「+」再加一个分支；切换：点标签后的下一帧画面已经换好（用多久在 variantTabSwitchTime 里单独量）
   await card.locator(".vtab.vadd").click(); await wait(h, 400);
   await page.locator(".ctx button", { hasText: /^Branch or Commit…/ }).hover(); await wait(h, 400);
   await page.locator(".ctx button", { hasText: /^fix-spec-bug/ }).click(); await wait(h, 800);
@@ -166,11 +167,66 @@ async function variants(res: Record<string, unknown>) {
 
   const ok = listed && tabs.length === 2 && /Upstream · bb823b3/.test(tabs[0]) && /vllm-exp · worktree · exp-overlap/.test(tabs[1]) && mine === 1 && vmk.includes("~") && vmk.includes("+") && followed
     && /1 changed · 1 added/.test(summary ?? "") && note === "block_N=64 · num_stages=3 → 131 TFLOPS"
-    && nTabs === 3 && /Upstream/.test(undo.tab ?? "") && !undo.src && t.ok && t.ms < 40 && back
+    && nTabs === 3 && /Upstream/.test(undo.tab ?? "") && !undo.src && t.ok && back
     && baseItems.some((x) => /Upstream Latest · main 4c1d0e9/.test(x)) && /Upstream latest main 4c1d0e9/.test(baseLabel ?? "") && behind === "3 behind"
     && cols.length === 3 && /Base/.test(cols[0]) && /Mine/.test(cols[1]) && /Upstream latest/.test(cols[2]) && changedRows >= 1 && theirs >= 1 && both === 3 && /^1 line changed on both sides/.test(head3 ?? "") && /scheduled_seqs = \[\]/.test(baseRow ?? "")
     && vOnly && hidden && shownAgain
     && /merged into main/.test(toast ?? "") && converted && convLink === callLine + 3 && res.converted && (res.converted as { tabs: number }).tabs === 0;
   await page.context().close();
   return ok;
+}
+
+/**
+ * 切换 Variant 标签用多久：点标签到下一帧（画面已经换好）。白板直接带着两个 Variant 打开（和 variants 里一样的卡、箭头、Sidenote），
+ * 来回切 10 次取中位数。量时间，单独跑（tiers.json 的 solo）
+ */
+async function switchTime(res: Record<string, unknown>) {
+  const b = emptyBoard("bV", "vllm · variant switch");
+  const sch = nv("Scheduler.schedule");
+  const add = nv("BlockManager.allocate");
+  put(b, sch, 60, 80, 600);
+  put(b, add, 760, 80, 520);
+  const s0 = sch.segments[0];
+  const ret = s0.start + s0.text.length - 1;
+  const callLine = s0.start + s0.text.findIndex((t) => /self\.block_manager\.allocate/.test(t));
+  b.links.push({ id: "l1", from: { card: sch.id, seg: s0.id, line: callLine }, to: { card: add.id }, call: { name: "allocate", col: 0 } });
+  b.sidenotes.push({ id: "n1", at: { card: sch.id, seg: s0.id, lines: [ret, ret] }, kind: "text", md: "returns the batch" });
+  addVariant(b, sch.id, { id: "v1", name: "vllm-exp", from: { kind: "wt", dir: "/work/vllm-exp", branch: "exp-overlap" }, segs: [edit(s0, "wt")] });
+  const h = await open({
+    board: b, light, w: 1500, h: 950,
+    on: async (m, reply) => {
+      if (m.type === "views") { await reply(m.req!, Object.fromEntries(m.segs.map((s) => [s.id, plainView(s)]))); return true; }
+      return false;
+    },
+  });
+  const page = h.page;
+  const card = page.locator(`.card[data-id="${sch.id}"]`);
+  await card.locator(".vtab.up.on").waitFor({ timeout: 5000 });
+  // 先来回切一次：宿主把另一个 Variant 的展示数据给过来（之后切换不再等宿主）
+  for (const sel of [".vtab:not(.up):not(.vadd)", ".vtab.up"]) { await card.locator(sel).click(); await wait(h, 500); }
+  const ms: number[] = [];
+  let ok = true;
+  for (let i = 0; i < 10; i++) {
+    const toMine = i % 2 === 0;
+    const t = await page.evaluate(async ([id, toMine]) => {
+      const sel = toMine ? ".vtab:not(.up):not(.vadd)" : ".vtab.up";
+      const el = document.querySelector(`.card[data-id="${id}"] ${sel}`) as HTMLElement;
+      const t0 = performance.now();
+      el.click();
+      await new Promise((r) => requestAnimationFrame(() => r(0)));
+      const t1 = performance.now();
+      const mine = !!document.querySelector(`.card[data-id="${id}"] .chead .mine`);
+      return { ms: t1 - t0, ok: mine === toMine && document.querySelector(`.card[data-id="${id}"] ${sel}.on`) !== null };
+    }, [sch.id, toMine] as const);
+    ms.push(t.ms);
+    ok &&= t.ok;
+    await wait(h, 300); // 自动保存、宿主的回复都过去了再切下一次
+  }
+  const sorted = [...ms].sort((a, b) => a - b);
+  const median = (sorted[4] + sorted[5]) / 2;
+  res.ms = ms.map((x) => Math.round(x));
+  res.median = Math.round(median);
+  res.shown = ok;
+  await page.context().close();
+  return ok && median < 40;
 }
