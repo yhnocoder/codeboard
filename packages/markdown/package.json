@@ -1,6 +1,6 @@
 {
   "name": "@yhnocoder/markdown",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A Typora-style WYSIWYG Markdown editor (TipTap, SolidJS) and a fast static renderer that share one schema",
   "keywords": [
     "markdown",

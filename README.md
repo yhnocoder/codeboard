@@ -71,10 +71,9 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 
 CodeBoard runs as a VS Code extension (VS Code 1.90 or later).
 
-1. Download the `.vsix` from the [latest release](https://github.com/yhnocoder/codeboard/releases/latest).
-2. In VS Code, run **Extensions: Install from VSIX…** and pick the file.
+Install it from the [Visual Studio Marketplace](https://marketplace.visualstudio.com/items?itemName=yhnocoder.codeboard-vscode), or search for **CodeBoard** in the Extensions view. VSCodium, Cursor and other editors that use [Open VSX](https://open-vsx.org/extension/yhnocoder/codeboard-vscode) can install it from there.
 
-A Visual Studio Marketplace listing is planned.
+To install a specific version by hand, download its `.vsix` from [Releases](https://github.com/yhnocoder/codeboard/releases) and run **Extensions: Install from VSIX…** in VS Code.
 
 ### Your first board
 
@@ -112,7 +111,6 @@ CodeBoard runs locally and collects no telemetry. Boards are stored on your mach
 
 CodeBoard is in early preview, and file formats may still change between releases (older boards are upgraded automatically). Planned next:
 
-- A Visual Studio Marketplace release.
 - A standalone desktop app for macOS. The board UI does not depend on VS Code, so it can move to other hosts.
 - Runtime tracing: showing the actual inputs and outputs of Python functions on their cards.
 
@@ -127,6 +125,7 @@ The repository is an npm workspace:
 | [`packages/core`](packages/core) | Data model, symbol resolution, and keeping cards in sync with the code. Pure TypeScript. |
 | [`packages/board`](packages/board) | The board UI, built with SolidJS. Independent of any editor. |
 | [`packages/host`](packages/host) | Reads code, highlights, resolves calls, tracks versions, and stores boards. Independent of any editor. |
+| [`packages/markdown`](packages/markdown) | The Markdown editor and renderer used by Notes, published on npm as [`@yhnocoder/markdown`](https://www.npmjs.com/package/@yhnocoder/markdown). |
 | [`extensions/vscode`](extensions/vscode) | The VS Code extension: connects the host and the board to VS Code. |
 | [`examples`](examples) | Real codebases (git submodules) used for testing and demos. |
 
