@@ -1,6 +1,6 @@
 {
   "name": "codeboard-vscode",
-  "displayName": "CodeBoard",
+  "displayName": "CodeBoard: Code Reading Whiteboard",
   "description": "A whiteboard for reading code: put functions on it, click calls to expand them layer by layer, cards pinned to commits.",
   "publisher": "yhnocoder",
   "private": true,

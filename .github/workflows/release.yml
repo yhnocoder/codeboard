@@ -3,7 +3,9 @@
 #   codeboard-vscode-<version>.vsix   the VS Code extension (Extensions view → ⋯ → Install from VSIX…)
 #   6 screenshots at 2x               4 features in VS Code light, then every board theme in light and in dark (tools/release/shots.sh)
 # The version comes from extensions/vscode/package.json; a tag that names a different version fails the release.
-# The release stays a draft until someone publishes it on GitHub. Nothing is published to the Marketplace.
+# The release stays a draft until someone reviews and publishes it on GitHub. Publishing it runs the publish job:
+# the .vsix attached to that release (not a rebuild) goes to the VS Code Marketplace (secret VSCE_PAT) and Open VSX
+# (secret OVSX_PAT), in the GitHub environment "marketplace". A store whose secret is not set is skipped with a notice.
 name: Release
 on:
   push:
@@ -11,18 +13,27 @@ on:
   # A PR that changes the release flow runs package + shots as a check; no release is made
   pull_request:
     paths: [".github/workflows/release.yml", "tools/release/**", "extensions/vscode/test/release-shots.cjs", "extensions/vscode/.vscodeignore"]
-  # By hand: the draft release is tagged v<package.json version> on this commit when published
+  # By hand: without publish_tag, the draft release is tagged v<package.json version> on this commit when published;
+  # with publish_tag, the .vsix of that published release is (re)published to the stores, nothing is built
   workflow_dispatch:
+    inputs:
+      publish_tag:
+        description: "Publish this already published release (for example v0.2.0) to the Marketplace and Open VSX instead of building a draft"
+        required: false
+        default: ""
+  release:
+    types: [published]
 permissions:
   contents: write
 concurrency:
-  group: release-${{ github.event.pull_request.number || github.ref }}
+  group: release-${{ (github.event_name == 'release' || inputs.publish_tag) && format('publish-{0}', github.event.release.tag_name || inputs.publish_tag) || github.event.pull_request.number || github.ref }}
   cancel-in-progress: false
 env:
   VSCODE_VERSION: "1.142.0"
   E2E_EXTENSIONS: "ms-python.python@2026.10.0 ms-python.vscode-pylance@2026.4.1"
 jobs:
   package:
+    if: github.event_name != 'release' && !inputs.publish_tag
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
@@ -47,6 +58,7 @@ jobs:
         with: { name: vsix, path: extensions/vscode/*.vsix, retention-days: 30 }
 
   shots:
+    if: github.event_name != 'release' && !inputs.publish_tag
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -82,3 +94,43 @@ jobs:
             TARGET=(); [ "${{ github.event_name }}" = workflow_dispatch ] && TARGET=(--target "$GITHUB_SHA")
             gh release create "v$V" --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "CodeBoard $V" "${TARGET[@]}" "${FILES[@]}"
           fi
+
+  publish:
+    if: github.event_name == 'release' || inputs.publish_tag
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # Add required reviewers to this environment in the repository settings to approve each publish
+    environment: marketplace
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Download the .vsix of the release
+        id: vsix
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.publish_tag }}
+        run: |
+          if [ "$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json isDraft -q .isDraft)" != false ]; then
+            echo "::error::Release $TAG is not published (or does not exist). Publish the draft on GitHub first."; exit 1
+          fi
+          VSIX="out/codeboard-vscode-${TAG#v}.vsix"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "$(basename "$VSIX")" --dir out
+          if [ ! -s "$VSIX" ]; then echo "::error::Release $TAG has no $(basename "$VSIX")."; exit 1; fi
+          echo "path=$VSIX" >> $GITHUB_OUTPUT
+      # --skip-duplicate: a version that is already in the store counts as done, so a re-run only fills in what failed
+      - name: Publish to the VS Code Marketplace
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          VSIX: ${{ steps.vsix.outputs.path }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then echo "::notice::VSCE_PAT is not set: skipped publishing to the VS Code Marketplace."; exit 0; fi
+          npx -y @vscode/vsce@3.9.2 publish --packagePath "$VSIX" --skip-duplicate
+      - name: Publish to Open VSX
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+          VSIX: ${{ steps.vsix.outputs.path }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then echo "::notice::OVSX_PAT is not set: skipped publishing to Open VSX."; exit 0; fi
+          npx -y ovsx@1.2.0 publish "$VSIX" --skip-duplicate

@@ -1,4 +1,4 @@
-# Only the bundle (dist/), the board webview (media/), README and LICENSE go into the .vsix
+# Only the bundle (dist/), the board webview (media/), README, CHANGELOG and LICENSE go into the .vsix
 src/**
 test/**
 node_modules/**

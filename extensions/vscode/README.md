@@ -54,7 +54,7 @@ Nine board themes (plus an experimental one), each with a light and a dark varia
 
 ## Getting started
 
-1. Install CodeBoard: download the `.vsix` from the [latest release](https://github.com/yhnocoder/codeboard/releases/latest) and run **Extensions: Install from VSIX…**. (A Marketplace listing is planned.)
+1. Install **CodeBoard: Code Reading Whiteboard** from the Extensions view (VS Code Marketplace or Open VSX), or download the `.vsix` from the [latest release](https://github.com/yhnocoder/codeboard/releases/latest) and run **Extensions: Install from VSIX…**.
 2. Open a repository, put the cursor inside a function and press `Alt+B` (or right-click and choose **Add to Board**). The board opens beside the editor with the function as a card. With several lines selected across definitions, `Alt+B` makes one card with several parts and `Shift+Alt+B` one card per definition.
 3. Click the underlined calls in the card to expand them. `Shift+1` fits the whole board, `Shift+2` the selection, and `?` lists every shortcut.
 
@@ -74,7 +74,11 @@ Set the DeepSeek key with **CodeBoard: Set DeepSeek API Key**; it is kept in VS 
 
 ## Privacy
 
-Boards are stored locally, in VS Code's workspace storage or in `codeboard.storageDir`. Inline completions are the only feature that sends your Note text out: when they are enabled, the text around the caret of the Note you are editing goes to the provider you chose (DeepSeek, or a VS Code language model such as Copilot), and only to that provider.
+CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading. Only these features reach the network:
+
+- **Gray inline completions** (in Notes and Free code cards): the text around the caret (up to a few thousand characters) goes to a VS Code language model such as GitHub Copilot or, only if you set a DeepSeek API key, to DeepSeek. Turn them off with `"codeboard.ai.provider": "off"`.
+- **GitHub**: the GitHub Files sidebar, pasted GitHub file links and pull-request variants read from GitHub's API, signed in with your VS Code GitHub account when a repository needs it.
+- **Web page cards**: pasting a link fetches that page once for its title, description and images, which are saved with the board. Images that a Note links by URL load from that URL.
 
 ## License
 
