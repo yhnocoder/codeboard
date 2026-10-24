@@ -102,9 +102,11 @@ Set a DeepSeek API key with **CodeBoard: Set DeepSeek API Key**. It is kept in V
 
 ## Privacy
 
-CodeBoard is local-first. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading.
+CodeBoard runs locally and collects no telemetry. Boards are stored on your machine, in VS Code's workspace storage or in `codeboard.storageDir`, and nothing is written into the repository you are reading. Only these features reach the network:
 
-Inline completions are the only feature that sends anything out. When they are enabled, the text around the caret of the Note you are editing goes to the provider you chose, and only to that provider. Set `codeboard.ai.provider` to `off` to turn them off.
+- **Gray inline completions** (in Notes and Free code cards): the text around the caret (up to a few thousand characters) goes to a VS Code language model such as GitHub Copilot or, only if you set a DeepSeek API key, to DeepSeek. Turn them off with `"codeboard.ai.provider": "off"`.
+- **GitHub**: the GitHub Files sidebar, pasted GitHub file links and pull-request variants read from GitHub's API, signed in with your VS Code GitHub account when a repository needs it.
+- **Web page cards**: pasting a link fetches that page once for its title, description and images, which are saved with the board. Images that a Note links by URL load from that URL.
 
 ## Roadmap
 
