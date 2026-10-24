@@ -95,6 +95,29 @@ jobs:
             gh release create "v$V" --repo "$GITHUB_REPOSITORY" --draft --generate-notes --title "CodeBoard $V" "${TARGET[@]}" "${FILES[@]}"
           fi
 
+  # On a PR that changes the release flow: check that the store tokens are set and still valid (they expire)
+  tokens:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: Check VSCE_PAT for publisher yhnocoder
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -z "$VSCE_PAT" ]; then echo "::warning::VSCE_PAT is not set as a repository secret."; exit 0; fi
+          npx -y @vscode/vsce@3.9.2 verify-pat yhnocoder
+      - name: Check OVSX_PAT for namespace yhnocoder
+        env:
+          OVSX_PAT: ${{ secrets.OVSX_PAT }}
+        run: |
+          if [ -z "$OVSX_PAT" ]; then echo "::warning::OVSX_PAT is not set as a repository secret."; exit 0; fi
+          npx -y ovsx@1.2.0 verify-pat yhnocoder
+
   publish:
     if: github.event_name == 'release' || inputs.publish_tag
     runs-on: ubuntu-24.04
