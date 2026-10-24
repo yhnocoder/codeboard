@@ -58,25 +58,32 @@ async function command(page, text, prompt) {
   await command0(page, text, prompt);
   if (process.env.SHOTS_DEBUG) console.log(`  · ${text} ${Date.now() - t}ms`);
 }
+// With the board's webview focused, VS Code focuses the webview again whenever a quick input closes: the workbench posts "focus" to the
+// webview, whose host page then calls focus() on the board's frame. That message can land after the next quick input has opened (F1's
+// palette, or the input box a command opens about 60 ms after the palette closes), which takes the focus from the quick input and so
+// closes it at once: whatever is typed next would go to the board. So every quick input is checked to be still open and focused a moment
+// after it shows, and opened again when it is not
+const qiFocused = (page) => page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget"));
+const qiStays = async (page) => { await sleep(150); return await qi(page).isVisible() && await qiFocused(page); };
 async function command0(page, text, prompt) {
-  await openPalette(page);
-  // Commands are listed at once; a command that is not in the palette is a broken step, not something to stand in for with the first row
-  if (!(await pick(page, text, 2000))) { await page.keyboard.press("Escape"); await qiClosed(page); throw new Error(`no command "${text}" in the command palette`); }
-  if (!prompt) return qiClosed(page);
-  if (!(await until(async () => !(await qiValue(page)).startsWith(">") &&
-      (await page.locator(".quick-input-widget .quick-input-title, .quick-input-widget .quick-input-message").allInnerTexts()).some((t) => t.toLowerCase().includes(prompt.toLowerCase())))))
-    console.log(`  ! no input box "${prompt}"`);
+  for (let i = 0; i < 5; i++) {
+    await openPalette(page);
+    // Commands are listed at once; a command that is not in the palette is a broken step, not something to stand in for with the first row
+    if (!(await pick(page, text, 2000))) { await page.keyboard.press("Escape"); await qiClosed(page); throw new Error(`no command "${text}" in the command palette`); }
+    if (!prompt) return qiClosed(page);
+    const box = () => until(async () => await qi(page).isVisible() && !(await qiValue(page)).startsWith(">") &&
+      (await page.locator(".quick-input-widget .quick-input-title, .quick-input-widget .quick-input-message").allInnerTexts()).some((t) => t.toLowerCase().includes(prompt.toLowerCase())), 3000);
+    if (await box() && await qiStays(page)) return;
+    console.log(`  … input box "${prompt}" closed as it opened (focus went back to the webview), running "${text}" again`);
+  }
+  throw new Error(`the input box "${prompt}" of "${text}" does not stay open`);
 }
-// F1, then wait until the command palette is open and has the keyboard. With the board's webview focused, VS Code sometimes hands the
-// focus back to the webview a few ms after the palette opens (the palette's input loses focus, the window blurs), which closes the
-// palette again: whatever is typed next would go to the board. So press F1 again until the palette stays open
+// F1, then wait until the command palette is open and has the keyboard (pressed again when the webview took the focus back, see above)
 async function openPalette(page) {
-  const focused = () => page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget"));
   for (let i = 0; i < 5; i++) {
     await page.keyboard.press("F1");
     if (!(await qi(page).waitFor({ state: "visible", timeout: 3000 }).then(() => true, () => false))) { console.log("  … command palette did not open, F1 again"); continue; }
-    await sleep(150);
-    if (await qi(page).isVisible() && await focused()) return;
+    if (await qiStays(page)) return;
     console.log("  … command palette closed as it opened (focus went back to the webview), F1 again");
   }
   throw new Error("the command palette does not stay open");
@@ -214,20 +221,21 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
   console.log(`  … reduced motion: ${await f.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches).catch(() => "?")}`);
   await until(() => card(f, "LLMEngine.step").count(), 15000);
   // Name the board (the name shows on the editor tab and in some themes' board header)
+  const boardTab = page.locator('.editor-group-container .tab:has-text("nano-vllm: one engine step")');
   await command(page, "CodeBoard: Rename Board", "Rename board");
   await page.keyboard.press("Control+a"); await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await qiClosed(page);
-  await until(() => page.locator('.editor-group-container .tab:has-text("nano-vllm: one engine step")').count(), 5000);
+  check(await until(() => boardTab.count(), 5000), "board renamed (its editor tab shows the new name)");
   // A dummy DeepSeek key: shots.sh points codeboard.ai.deepseekBaseUrl at a local mock that answers with a fixed completion
   await command(page, "CodeBoard: Set DeepSeek API Key", "DeepSeek API Key");
   await page.keyboard.type("sk-release-shots-mock"); await page.keyboard.press("Enter"); await qiClosed(page);
-  await until(() => page.locator(".notification-list-item-message", { hasText: "key saved" }).count(), 10000);
+  check(await until(() => page.locator(".notification-list-item-message", { hasText: "key saved" }).count(), 10000), "DeepSeek API key saved");
   console.log(`  … after setting the key: ${(await page.locator(".notification-list-item-message").allInnerTexts()).join(" | ")}`);
   // The toasts ("Added to …", the key) sit over the board's Fit to Window button: clear them now rather than when a click misses
   await command(page, "Notifications: Clear All Notifications");
   // The board fills the window while it is built (children are placed in the room the view has) and for the board shots
   // Make the board's group the active one by clicking its tab (VS Code has "Focus Second Editor Group" only as the Ctrl+2 keybinding,
   // not in the palette, and a webview having the keyboard does not make its group the one Maximize acts on)
-  await page.locator('.editor-group-container .tab:has-text("nano-vllm: one engine step")').click();
+  await boardTab.click();
   await command(page, "View: Toggle Maximize Editor Group");
   const fills = async () => { const [b, e] = [await (await f.frameElement()).boundingBox(), await page.locator(".monaco-workbench .part.editor").boundingBox()]; return b && e && b.width > e.width * 0.9; };
   check(await until(fills, 5000), "board fills the editor area");
