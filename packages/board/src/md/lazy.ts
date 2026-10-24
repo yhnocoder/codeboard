@@ -1,7 +1,7 @@
 // 静态 Markdown 放进元素里。打开一大块白板时：视野附近的 Note 马上渲染；远处的、还没缓存的先占位（原文排版、但整块藏着，
 // 绝不让人看到没渲染的原文），之后：
-// - 每一帧：进到视野外一圈（和 cull.ts 显示卡片的范围一样，半屏）的，这一帧就渲染，近的先，一帧最多 FRAME_MS；
-//   超了的下一帧接着（这一帧它还藏着，不会露出原文）
+// - 每一帧：已经在屏幕里的（平移、缩小极快时会有）不限，这一帧全部渲染（和 cull.ts 一样：不能让人看到空卡）；
+//   进到视野外一圈（和 cull.ts 显示卡片的范围一样，半屏）的，近的先，一帧最多 FRAME_MS，超了的下一帧接着（这一帧它还藏着，不会露出原文）
 // - 空闲时：其余的由近到远补完（镜头在动时每段最多 3ms，免得挤进平移、缩放的帧）
 import { createEffect, createRoot, on, untrack } from "solid-js";
 import { cam, camMoving } from "../state/camera";
@@ -10,7 +10,7 @@ import { renderMd, renderMdInline, mdCached, hydrate } from "@codeboard/markdown
 type Job = { el: HTMLElement; src: string; inline?: boolean };
 const pending = new Map<HTMLElement, Job>();
 let idleOn = false, frameOn = false;
-const FRAME_MS = 4, IN_VIEW_MS = 10;
+const FRAME_MS = 4;
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 /** 卡片中心离视野中心多远（屏幕像素）；在视野外一圈以内或不在卡片上（浮层、批注）返回 -1 */
@@ -51,8 +51,8 @@ function near() {
   if (now - spentAt > 12) { spent = 0; spentAt = now; }
   for (const { j, d } of byDist()) {
     if (d >= 0) break;
-    // 已经在屏幕里的（平移极快时）预算放宽，尽量这一帧就画出来；只在屏幕外一圈里的守 FRAME_MS
-    if (spent > (d === -2 ? IN_VIEW_MS : FRAME_MS)) break;
+    // 已经在屏幕里的不看预算，这一帧一定画出来；只在屏幕外一圈里的守 FRAME_MS
+    if (d === -1 && spent > FRAME_MS) break;
     const t = performance.now();
     run(j);
     spent += performance.now() - t;
