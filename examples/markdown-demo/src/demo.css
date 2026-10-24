@@ -1,0 +1,65 @@
+/* The demo page: the theme variables @codeboard/markdown's stylesheet reads (light, and dark on html[data-theme=dark]), the page
+   layout, and the few outside styles the package borrows (.ctx menu, .pill bar, .tbtn button, .lnk link, the highlighter's token
+   classes). Heading sizes, lists, quotes and the code block box are the container's call, so they are set here for .note */
+:root {
+  color-scheme: light;
+  --bg: #eeece6; --surface: #fdfcfa; --glass: rgba(253, 252, 250, .96);
+  --ink: #211f1b; --ink-2: #625e56; --ink-3: #9a958b;
+  --line: rgba(60, 45, 20, .09); --hair: rgba(60, 45, 20, .16); --hlrow: rgba(60, 45, 20, .07); --row: rgba(60, 45, 20, .06);
+  --accent: #b5552d; --accent-ink: #ffffff; --warn: #c48a1f;
+  --k-kw: #9a3f22; --k-fn: #2e5d86; --k-str: #4a7536; --k-com: #9a958a; --k-num: #8a6416; --k-self: #7a4f9a;
+  --lk-orange: #c46a2a; --lk-blue: #3a72aa; --lk-green: #4c8a3a;
+  --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(50, 35, 10, .08), 0 10px 28px -8px rgba(50, 35, 10, .18);
+  --sys: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --note-h: var(--sys);
+  --r-card: 10px;
+  --t: 1;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1b1a18; --surface: #252421; --glass: rgba(37, 36, 33, .96);
+  --ink: #ece8e1; --ink-2: #b4aea3; --ink-3: #7d786f;
+  --line: rgba(255, 245, 225, .08); --hair: rgba(255, 245, 225, .15); --hlrow: rgba(255, 245, 225, .07); --row: rgba(255, 245, 225, .06);
+  --accent: #e0835a; --accent-ink: #1b1a18; --warn: #e0a83c;
+  --k-kw: #e08a6a; --k-fn: #7fb0de; --k-str: #9ccc7e; --k-com: #7d786f; --k-num: #d9b45f; --k-self: #c19be0;
+  --lk-orange: #e0905a; --lk-blue: #7fa9d9; --lk-green: #8cc070;
+  --sh-float: 0 0 0 .5px var(--hair), 0 10px 28px -8px rgba(0, 0, 0, .5);
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 13px/1.6 var(--sys); }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+.bar { display: flex; align-items: center; gap: 12px; padding: 10px 20px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.bar #mode { color: var(--ink-3); }
+.bar .opened { margin-left: auto; color: var(--k-fn); }
+.bar #theme { padding: 3px 10px; border-radius: 6px; box-shadow: inset 0 0 0 1px var(--hair); }
+main { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); gap: 20px; padding: 20px; align-items: start; }
+.note { padding: 16px 20px; background: var(--surface); border-radius: var(--r-card); box-shadow: var(--sh-float); }
+.note .md { min-height: 3em; cursor: text; }
+.src h2 { margin: 0 0 6px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.src pre { margin: 0; padding: 12px; background: var(--surface); border-radius: 8px; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; color: var(--ink-2); }
+
+/* the container's Markdown look */
+.note .md p { margin: 0; }
+.note .md h1, .note .md h2, .note .md h3 { margin: 10px 0 4px; font: 600 1.05em/1.4 var(--note-h); color: var(--ink); }
+.note .md h1 { font-size: 1.8em; line-height: 1.25; }
+.note .md h2 { font-size: 1.35em; line-height: 1.3; }
+.note .md > :first-child, .note .md .md-pm > :first-child { margin-top: 0; }
+.note .md ul, .note .md ol { margin: 2px 0; padding-left: 1.3em; }
+.note .md blockquote { margin: 2px 0; padding-left: 8px; border-left: 2px solid var(--hair); color: var(--ink-2); }
+.note .md pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 5px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
+.note .md code { font: .9em var(--mono); padding: 0 3px; border-radius: 3px; background: var(--hlrow); }
+.note .md pre code { padding: 0; background: none; }
+
+/* borrowed by the package */
+mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 2px; }
+.lnk { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; cursor: pointer; }
+.kw { color: var(--k-kw); } .fn { color: var(--k-fn); } .str { color: var(--k-str); } .com { color: var(--k-com); font-style: italic; } .num { color: var(--k-num); } .self { color: var(--k-self); }
+.pill { display: inline-flex; align-items: center; gap: 2px; background: var(--glass); border-radius: 10px; padding: 4px; box-shadow: var(--sh-float); }
+.tbtn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; border-radius: 6px; color: var(--ink-2); font-size: 12.5px; }
+.tbtn.on { color: var(--accent); background: var(--row); }
+.ctx { z-index: 40; overflow-y: auto; min-width: 210px; max-width: 300px; padding: 5px; border-radius: 10px; background: var(--glass); box-shadow: var(--sh-float); }
+.ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 5px; font-size: 12.5px; color: var(--ink); text-align: left; }
+.ctx button .lb { flex: 1 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ctx button small { margin-left: auto; font: 10.5px var(--mono); color: var(--ink-3); padding-left: 12px; }

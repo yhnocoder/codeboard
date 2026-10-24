@@ -1,0 +1,180 @@
+/* @codeboard/markdown 的样式：静态显示（.md）、编辑器（.md-pm 和浮层）、代码编辑器（.cbcm，CodeMirror）。
+   颜色、字体都用主题的 CSS 变量（用的一方在 :root 或外层元素上给）：
+     颜色   --ink --ink-2 --ink-3（字，由深到浅）--surface（底）--hlrow（浅底色：表头、代码块、悬停）--hair --line（细线）
+            --accent --accent-ink（强调色和压在它上面的字）--warn（出错）--k-fn（链接、引用、脚注）
+            --k-kw --k-num --k-self --k-str --lk-blue --lk-orange --lk-green（Mermaid 的系列色）--sh-float（浮层阴影）
+     字体   --sys（正文、Mermaid）--mono（代码、记号）--note-h（小标题）
+     其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）
+   公式还要 KaTeX 自己的样式（@codeboard/markdown/katex.css，放在这一份前面）。
+   借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮），静态显示的链接 .lnk。代码块着色的 class
+   （.kw .fn …）由给着色的一方（setCodeHighlighter）配样式 */
+/* KaTeX 公式 */
+.katex { font-size: 1.08em; }
+math { font-size: 1.05em; }
+.math { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+/* Markdown（静态显示和编辑器共用一套：.md 是静态，.ProseMirror 在编辑器里） */
+.md :is(p, h1, h2, h3, h4, h5, h6, li, td, th, summary) { white-space: pre-wrap; }
+.md p + p, .md p + :is(ul, ol, pre, table, blockquote, details, .math), .md :is(ul, ol, pre, table, blockquote, details, .math) + p { margin-top: .5em; }
+.md p:empty::before { content: "\200b"; }
+.md h4, .md h5, .md h6 { margin: 2px 0 2px; font: 600 1em/1.4 var(--note-h); color: var(--ink); }
+.md hr { border: 0; border-top: 1px solid var(--hair); margin: 8px 0; }
+/* [toc] 目录（#30）：按标题级别缩进 */
+.md .md-toc { margin: 4px 0 8px; padding: 6px 10px; border-left: 2px solid var(--hair); color: var(--ink-2); font-size: .95em; }
+.md .md-toc > div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: 1.6; }
+.md .md-toc .l2 { padding-left: 1em; } .md .md-toc .l3 { padding-left: 2em; } .md .md-toc .l4, .md .md-toc .l5, .md .md-toc .l6 { padding-left: 3em; }
+.md .md-toc .none { color: var(--ink-3); font-style: italic; }
+/* 原样的 HTML：编辑时显示不出东西的（注释、空标签）显示成淡色的源码 */
+.md .md-html.src { color: var(--ink-3); font-family: var(--mono); font-size: .85em; white-space: pre-wrap; }
+.md li > p { margin: 0; }
+.md li::marker { color: var(--ink-3); }
+.md strong { font-weight: 650; }
+.md s { color: var(--ink-2); }
+.md pre code { background: none; padding: 0; font: inherit; }
+.md pre.md-code { position: relative; color: var(--ink); }
+.md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }
+.md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
+.md .math .katex-display { margin: 2px 0; }
+/* 代码块着色是宿主给的（和代码卡同一套 .kw .fn …）；Note 里的调用点不能点，不画成链接 */
+.md pre.md-code .call { text-decoration: none; cursor: inherit; }
+.md pre.md-code .call:hover { background: none; }
+/* 任务 */
+.md ul[data-type="taskList"] { list-style: none; padding-left: 2px; }
+.md li[data-type="taskItem"] { display: flex; gap: 6px; align-items: flex-start; }
+.md li[data-type="taskItem"] > label { flex: none; display: flex; align-items: center; height: 1.6em; user-select: none; -webkit-user-select: none; }
+.md li[data-type="taskItem"] > div { flex: 1; min-width: 0; }
+.md li[data-type="taskItem"][data-checked="true"] > div > p { color: var(--ink-3); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 60%, transparent); }
+.md li[data-type="taskItem"] input { appearance: none; -webkit-appearance: none; margin: 0; width: 13px; height: 13px; border-radius: 3.5px; box-shadow: inset 0 0 0 1.25px var(--ink-3); background: var(--surface); cursor: pointer; display: grid; place-items: center; }
+.md li[data-type="taskItem"] input:checked { background: var(--accent); box-shadow: none; }
+.md li[data-type="taskItem"] input:checked::after { content: ""; width: 6px; height: 3px; border: 1.5px solid var(--accent-ink); border-top: 0; border-right: 0; transform: translateY(-1px) rotate(-45deg); }
+/* 表格 */
+.md table { border-collapse: collapse; margin: 4px 0; font-size: .95em; display: block; overflow-x: auto; max-width: 100%; }
+.md th, .md td { border: 1px solid var(--hair); padding: 3px 8px; text-align: left; vertical-align: top; min-width: 2em; }
+.md th { background: var(--hlrow); font-weight: 600; }
+.md th p, .md td p { margin: 0; }
+/* 折叠块 */
+.md details { margin: 4px 0; padding: 2px 0 2px 10px; border-left: 2px solid var(--hair); }
+.md summary { cursor: pointer; font-weight: 600; color: var(--ink); list-style: none; margin-left: -4px; }
+.md summary::-webkit-details-marker { display: none; }
+.md summary::before { content: "▸"; display: inline-block; width: 1em; color: var(--ink-3); transition: transform calc(var(--t) * 120ms); }
+.md details[open] > summary::before { transform: rotate(90deg); }
+/* [[引用]]（白板上指向卡片） */
+.cref { display: inline-block; padding: 0 6px; margin: 0 1px; border-radius: 5px; line-height: 1.45; font-size: .94em; color: var(--k-fn); background: color-mix(in srgb, var(--k-fn) 11%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--k-fn) 30%, transparent); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+.cref::before { content: "↗ "; opacity: .6; }
+.cref:hover { background: color-mix(in srgb, var(--k-fn) 18%, transparent); }
+.cref.missing { color: var(--ink-3); background: var(--hlrow); box-shadow: inset 0 0 0 .5px var(--hair); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 50%, transparent); }
+/* 脚注 */
+.md sup.fnref { color: var(--k-fn); font-size: .75em; padding: 0 1px; }
+.md ol.footnotes { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); font-size: .9em; color: var(--ink-2); }
+/* Mermaid（diagram.ts，pele 画的 SVG）：颜色和字体都是 CSS 变量，接到主题变量上，换明暗 / 主题配色不用重画 */
+.mmd {
+  margin: 4px 0;
+  --pele-bg: var(--surface); --pele-fg: var(--ink); --pele-muted: var(--ink-2); --pele-line: var(--ink-2); --pele-accent: var(--accent);
+  --pele-surface: color-mix(in srgb, var(--ink) 5%, var(--surface)); --pele-surface-alt: color-mix(in srgb, var(--ink) 10%, var(--surface));
+  --pele-border: color-mix(in srgb, var(--ink) 20%, var(--surface)); --pele-critical: var(--accent); --pele-error: var(--warn);
+  --pele-font: var(--sys); --pele-font-mono: var(--mono); --pele-radius: calc(var(--r-card) * .5);
+  --pele-series-1: var(--lk-blue); --pele-series-2: var(--lk-orange); --pele-series-3: var(--lk-green); --pele-series-4: var(--k-kw);
+  --pele-series-5: var(--k-fn); --pele-series-6: var(--k-num); --pele-series-7: var(--k-self); --pele-series-8: var(--k-str);
+}
+.mmd.ok { display: flex; justify-content: center; overflow: hidden; }
+.mmd.ok svg { max-width: 100%; height: auto; }
+.mmd-err { font: 11px/1.45 var(--mono); color: var(--warn); margin-bottom: 2px; }
+/* Markdown 编辑器（@codeboard/markdown/editor，懒加载）：内容沿用上面 .md 的样式，这里只管编辑时才有的东西 */
+.md-pm { outline: none; min-height: 1.6em; cursor: text; }
+/* TipTap 自带的基础样式（injectCSS 关掉了：每次挂载 / 卸载它都要在整个页面里查一遍 style 标签和 .tiptap） */
+.md-pm { position: relative; word-wrap: break-word; white-space: break-spaces; font-variant-ligatures: none; font-feature-settings: "liga" 0; }
+.md-pm [contenteditable="false"] { white-space: normal; }
+.md-pm [contenteditable="false"] [contenteditable="true"] { white-space: pre-wrap; }
+.md-pm img.ProseMirror-separator { display: inline; border: none; margin: 0; width: 0; height: 0; }
+.md-pm .ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; margin: 0; }
+.md-pm .ProseMirror-gapcursor::after { content: ""; display: block; position: absolute; top: -2px; width: 20px; border-top: 1px solid var(--ink); animation: pm-blink 1.1s steps(2, start) infinite; }
+@keyframes pm-blink { to { visibility: hidden; } }
+.md-pm.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
+.md-pm.ProseMirror-hideselection *::selection { background: transparent; }
+.md-pm.ProseMirror-hideselection * { caret-color: transparent; }
+/* 占位字可能折成几行：浮动占满一整行宽、右边距抵掉（不挤光标），段落 flow-root 把浮动的高度算进来，几行都露得出来 */
+.md-pm p.is-empty:first-child:last-child::before, .md-pm .is-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
+.md-pm :is(p, h1, h2, h3, h4, h5, h6).is-empty { display: flow-root; }
+.md-pm .ProseMirror-selectednode { outline: 1.5px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+.md-pm ::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+.md-pm pre { white-space: pre; tab-size: 4; }
+.md-pm pre code { white-space: inherit; }
+.md-pm .tiptap-mathematics-render { cursor: pointer; border-radius: 4px; }
+.md-pm .tiptap-mathematics-render:hover { background: var(--hlrow); }
+.md-pm [data-type="block-math"] { display: block; text-align: center; padding: 2px 0; overflow-x: auto; }
+.md-pm [data-type="block-math"]:has(.block-math-inner:empty)::after, .md-pm [data-type="inline-math"]:empty::after { content: "Empty formula"; color: var(--ink-3); font-size: .9em; }
+.md-pm .block-math-error, .md-pm .inline-math-error { color: var(--warn); font-family: var(--mono); font-size: .9em; }
+.md-pm [data-type="details"] { display: flex; gap: 2px; margin: 4px 0; padding: 2px 0 2px 4px; border-left: 2px solid var(--hair); }
+.md-pm [data-type="details"] > button { flex: none; width: 18px; height: 1.6em; color: var(--ink-3); border-radius: 4px; }
+.md-pm [data-type="details"] > button::before { content: "▸"; display: inline-block; transition: transform calc(var(--t) * 120ms); }
+.md-pm [data-type="details"].is-open > button::before { transform: rotate(90deg); }
+.md-pm [data-type="details"] > button:hover { color: var(--ink); background: var(--hlrow); }
+.md-pm [data-type="details"] > div { flex: 1; min-width: 0; }
+.md-pm [data-type="details"] summary { font-weight: 600; list-style: none; }
+.md-pm [data-type="details"] summary::before { content: none; }
+.md-pm [data-type="details"]:not(.is-open) [data-type="detailsContent"] { display: none; }
+.md-pm .tableWrapper { overflow-x: auto; margin: 4px 0; }
+.md-pm .tableWrapper table { display: table; margin: 0; }
+.md-pm .selectedCell { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+.md-pm ol.footnotes li::marker { color: var(--ink-3); }
+.md-pm a { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; }
+.md-pm img { cursor: default; }
+.md-pm img.ProseMirror-selectednode { outline-offset: 2px; }
+.md-ghost { color: var(--ink-3); opacity: .85; pointer-events: none; user-select: none; -webkit-user-select: none; }
+/* 光标所在处显示的 Markdown 记号（editor/typora.ts） */
+.md-pm .md-mk, .md-pm .md-mka::before, .md-pm .md-mkb::after, .md-pm .md-mkh::before { color: var(--ink-3); opacity: .75; font-family: var(--mono); font-size: .85em; font-weight: 400; font-style: normal; text-decoration: none; user-select: none; -webkit-user-select: none; }
+.md-pm .md-mka::before { content: attr(data-mka); }
+.md-pm .md-mkb::after { content: attr(data-mkb); }
+.md-pm .md-mkh::before { content: attr(data-mka); }
+/* 光标处展开的 Markdown 原文（真的字，能改，editor/source.ts）：记号淡色 */
+.md-pm .md-mkc { color: var(--ink-3); }
+.md-pm .md-esch { display: none; }
+.md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab; user-select: none; -webkit-user-select: none; }
+.md-handle:hover { color: var(--ink); background: var(--hlrow); }
+.md-raw { display: block; width: 100%; min-height: 3em; margin: 0; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow: hidden; }
+.mdui-anchor { z-index: 60; }
+.md-menu { position: static; max-height: 300px; min-width: 220px; }
+.md-menu button.sel { background: var(--accent); color: var(--accent-ink); }
+.md-menu button.sel small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+.md-empty { padding: 6px 8px; font-size: 12px; color: var(--ink-3); }
+.md-bubble, .md-mathpop { position: absolute; z-index: 60; left: 0; top: 0; }
+.md-bubble .tbtn { height: 26px; padding: 0 8px; min-width: 26px; justify-content: center; }
+.md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
+.md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
+.md-mathpop { display: flex; align-items: flex-end; gap: 6px; padding: 6px; }
+.md-mathpop textarea { width: 300px; border: 0; outline: none; resize: vertical; background: var(--surface); border-radius: 6px; padding: 5px 7px; font: 12px/1.5 var(--mono); box-shadow: inset 0 0 0 1px var(--hair); }
+.md-mathhint { font-size: 11px; color: var(--ink-3); padding-bottom: 4px; white-space: nowrap; }
+/* 代码编辑（CodeMirror，cm/editor.ts）：字体、行高跟着外面（Free code 卡是 .code，Note 里是 pre），没有内边距；字的位置和显示时一样 */
+.cbcm .cm-content .call { cursor: text; }
+.cbcm .cm-content .call:hover { background: none; }
+.cbcm .cm-gutters { cursor: default; }
+/* 补全菜单、悬停、签名提示：挂在 body 上（不跟着白板缩放），样式和白板的弹出框一样 */
+.cbcm-tip.cm-tooltip, .cm-tooltip.cm-tooltip-hover, .cm-tooltip.cbcm-sig, .cm-tooltip.cm-completionInfo { border-radius: 8px; color: var(--ink); box-shadow: var(--sh-float); font: 12px/1.45 var(--sys); z-index: 60; }
+/* CodeMirror adopts its theme sheet after ours, so its .ͼN .cm-tooltip rules win ties: these two outrank them by one selector part */
+body .cm-tooltip:is(.cbcm-tip, .cm-tooltip-hover, .cbcm-sig, .cm-completionInfo) { border: none; background: var(--surface); }
+body .cm-tooltip.cbcm-ac.cm-tooltip-autocomplete > ul { max-height: 248px; }
+.cbcm-ac.cm-tooltip-autocomplete > ul { font: 11.5px/1.2 var(--mono); min-width: 220px; max-width: 460px; padding: 4px; }
+.cbcm-ac.cm-tooltip-autocomplete > ul > li.cbcm-opt { display: flex; align-items: baseline; gap: 10px; padding: 4px 8px; border-radius: 5px; color: var(--ink); line-height: 16px; }
+.cbcm-ac.cm-tooltip-autocomplete > ul > li[aria-selected] { background: var(--accent); color: var(--accent-ink); }
+.cbcm-ac .cm-completionLabel { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; }
+.cbcm-ac .cm-completionMatchedText { text-decoration: none; font-weight: 650; }
+.cbcm-ac .cm-completionDetail { margin-left: auto; font: 11px var(--sys); font-style: normal; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 200px; }
+.cbcm-ac li[aria-selected] .cm-completionDetail { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+.cbcm-ac li.cbcm-opt::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: 2px; background: var(--ink-3); opacity: .55; align-self: center; }
+.cbcm-ac li.cbcm-opt.k-function::before, .cbcm-ac li.cbcm-opt.k-method::before { background: var(--k-fn); opacity: 1; border-radius: 50%; }
+.cbcm-ac li.cbcm-opt.k-class::before, .cbcm-ac li.cbcm-opt.k-interface::before, .cbcm-ac li.cbcm-opt.k-type::before, .cbcm-ac li.cbcm-opt.k-enum::before { background: var(--k-self); opacity: 1; }
+.cbcm-ac li.cbcm-opt.k-keyword::before { background: var(--k-kw); opacity: 1; }
+.cbcm-ac li.cbcm-opt.k-module::before { background: var(--k-str); opacity: 1; }
+.cbcm-ac li.cbcm-opt.k-variable::before, .cbcm-ac li.cbcm-opt.k-property::before, .cbcm-ac li.cbcm-opt.k-constant::before { background: var(--k-num); opacity: 1; }
+.cbcm-ac li.cbcm-opt[aria-selected]::before { background: var(--accent-ink); }
+.cm-tooltip.cm-completionInfo { box-shadow: var(--sh-float); padding: 8px 10px; max-width: 420px; max-height: 260px; overflow: auto; font: 12px/1.5 var(--sys); }
+.cbcm-hover { padding: 8px 12px; max-width: 520px; max-height: 320px; overflow: auto; font: 12px/1.5 var(--sys); }
+.cbcm-hover pre, .cbcm-doc pre { margin: 2px 0 6px; padding: 0; background: none; font: 11.5px/1.5 var(--mono); white-space: pre-wrap; }
+.cbcm-hover hr, .cbcm-doc hr { border: 0; border-top: 1px solid var(--line); margin: 6px 0; }
+.cbcm-hover p, .cbcm-doc p { margin: 0 0 4px; }
+.cbcm-sig { padding: 6px 10px; max-width: 560px; }
+.cbcm-sig-l { font: 11.5px/1.5 var(--mono); white-space: pre-wrap; color: var(--ink-2); }
+.cbcm-sig-l b { color: var(--k-fn); font-weight: 650; background: color-mix(in srgb, var(--k-fn) 12%, transparent); border-radius: 3px; }
+.cbcm-sig-d { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); font-size: 11.5px; color: var(--ink-2); white-space: pre-wrap; }
+/* Note 里的代码块（editor/codeblock.ts）：pre 是 ProseMirror 的不可编辑节点，里面的 CodeMirror 照样不折行、没有内边距 */
+.md-pm pre .cbcm .cm-content { white-space: pre; padding: 0; }
+.md-pm pre .cbcm .cm-content.cm-lineWrapping { white-space: pre-wrap; }

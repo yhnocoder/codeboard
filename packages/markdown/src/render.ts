@@ -36,7 +36,7 @@ function tex(cx: Cx, src: string, display: boolean) {
   catch { return `<code>${esc(src)}</code>`; }
 }
 
-/** 图片地址：assets/ 开头的是白板自己的资源目录（宿主给 webview 地址） */
+/** 图片地址：assets/ 开头的是用的一方自己的资源目录，换成 setAssetBase 给的地址（白板：宿主给 webview 地址） */
 let assetBase = "";
 export const setAssetBase = (b: string) => { if (b !== assetBase) { assetBase = b; cache.clear(); } };
 const assetUrl = (src: string) => (/^assets\//.test(src) && assetBase ? `${assetBase}/${src.slice(7)}` : src);
@@ -44,7 +44,7 @@ const assetUrl = (src: string) => (/^assets\//.test(src) && assetBase ? `${asset
 /** Note 里原样写着的 HTML：注释不显示；其余照放，整篇最后过 DOMPurify */
 const userHtml = (h: string) => (isHtmlComment(h) ? "" : h);
 
-/** 显示时和 renderHTML 不一样的节点：编辑器里它们是节点视图，或者显示时要交给白板（返回 undefined 照 renderHTML） */
+/** 显示时和 renderHTML 不一样的节点：编辑器里它们是节点视图，或者显示时要交给用的一方（返回 undefined 照 renderHTML） */
 const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   // 公式：静态的 KaTeX（行内的不再包一层 span，少一个节点）
   inlineMath: (n, cx) => tex(cx, n.attrs.latex, !!n.attrs.display),
@@ -61,7 +61,7 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   htmlInline: (n) => userHtml(n.attrs.raw),
   htmlBlock: (n) => { const h = userHtml(n.attrs.raw); return h && `<div class="md-html">${h}</div>`; },
 };
-/** 显示时不一样的格式：链接不放 href，点了由白板交给宿主打开（A.openLink），webview 自己不跳转 */
+/** 显示时不一样的格式：链接不放 href，点了由 mdClick 交给用的一方打开（白板交给宿主），webview 自己不跳转 */
 const DISPLAY_MARKS: Record<string, (m: Mark) => DOMOutputSpec> = {
   link: (m) => ["a", { class: "lnk", "data-href": m.attrs.href }, 0],
 };

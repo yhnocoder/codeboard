@@ -4,13 +4,13 @@
 
 | 层 | 什么时候 | 时间上限 | 跑什么 |
 |---|---|---|---|
-| 1 本地 | 每次改完：`npm run check` | 3 分钟 | typecheck、单元测试（core、board、host、插件）；这次改动需要的 harness 场景 |
+| 1 本地 | 每次改完：`npm run check` | 3 分钟 | typecheck、单元测试（core、markdown、board、host、插件）、Markdown 示例；这次改动需要的 harness 场景 |
 | 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部；harness 两个 job 并行；e2e 拆两段并行；perf（只在改了被测代码时跑） |
 | 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / codeedit）、完整 perf、study-task replay |
 
 ## 一定会测到的
 
-**大问题**：typecheck、单元测试（core、board、host、插件，都是 vitest）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
+**大问题**：typecheck、单元测试（core、markdown、board、host、插件，都是 vitest）、Markdown 示例（`examples/markdown-demo`：只用 `@codeboard/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
 
 **正在修的问题**：下面这几类场景不受时间预算限制，每次都跑：
 - 这次改动新增或改过的测试文件里的场景
@@ -37,6 +37,7 @@ npm run check -- --all                # 所有场景，不限时间
 npm run harness -- markdownRender     # 只跑点名的场景（HARNESS_LIGHT=1 用亮色主题）
 npm run harness -- --workers=4        # 所有场景（manual 除外），4 个 worker 一起跑
 npx playwright test -c packages/board -g markdownRender    # 直接用 Playwright（不管 tiers.json；-g 按标题匹配，--ui、--debug 都能用）
+npm test -w @codeboard/markdown-demo                      # Markdown 示例：构建 examples/markdown-demo，Playwright 走一遍（截图在 test-out/markdown-demo/）
 npm run e2e                                               # 整套 e2e（E2E_PART=1|2|3 或 E2E_ONLY=capture,addsel 只跑一部分）
 ```
 

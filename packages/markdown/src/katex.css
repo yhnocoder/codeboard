@@ -1,0 +1,2 @@
+/* KaTeX 自己的样式（字体、排版）：公式要它。用的一方放在 style.css 前面 */
+@import "katex/dist/katex.min.css";

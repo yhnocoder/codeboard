@@ -2,44 +2,15 @@
 // 一边读一边写会让浏览器每张卡都重新排一次版，打开大白板时几百张卡就是几百次排版。
 // 还有：指针最后在哪、白板左上角、代码卡的几个固定尺寸、内容本来的大小（Fit Content、改大小时用）
 import { batch } from "solid-js";
+import { queueMeasure, observeResize, setMeasureBatch } from "@codeboard/markdown/ui";
 import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
 import { state, cardById } from "./store";
 import { shown } from "./ui";
 import { toWorld } from "./camera";
 
-type Read = () => (() => void) | void;
-const queue = new Map<unknown, Read>();
-let pending = false;
-
-/** 排进这一轮（同一个 key 只量一次）：read 只读 DOM，返回的函数再写 store */
-export function queueMeasure(key: unknown, read: Read) {
-  queue.set(key, read);
-  if (pending) return;
-  pending = true;
-  queueMicrotask(flush);
-}
-function flush() {
-  pending = false;
-  const reads = [...queue.values()];
-  queue.clear();
-  const writes = reads.map((r) => r());
-  batch(() => { for (const w of writes) w?.(); });
-}
-
-// 所有卡共用一个 ResizeObserver：一帧里变了尺寸的元素在一次回调里一起报，正好一起量
-const handlers = new Map<Element, Set<() => void>>();
-const ro = new ResizeObserver((es) => { for (const e of es) handlers.get(e.target)?.forEach((f) => f()); });
-export function observeResize(el: Element, f: () => void): () => void {
-  let s = handlers.get(el);
-  if (!s) { s = new Set(); handlers.set(el, s); ro.observe(el); }
-  s.add(f);
-  return () => {
-    const t = handlers.get(el);
-    if (!t) return;
-    t.delete(f);
-    if (!t.size) { handlers.delete(el); ro.unobserve(el); }
-  };
-}
+// 先读后写的一轮测量和共用的 ResizeObserver 在 @codeboard/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
+setMeasureBatch(batch);
+export { queueMeasure, observeResize };
 
 // ---------- 指针、白板位置 ----------
 

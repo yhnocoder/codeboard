@@ -7,7 +7,7 @@ import { closeHistory } from "@tiptap/pm/history";
 import { reconvert } from "./typora";
 import { serializeMd } from "../schema";
 import { autoClosersAt } from "./pairs";
-import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost as G } from "../../ui/ghost";
+import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost as G } from "../ui/ghost";
 
 const CARET = "\uE000";
 /** 光标前后的 Markdown 原文（模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown） */

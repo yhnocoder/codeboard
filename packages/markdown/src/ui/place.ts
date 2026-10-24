@@ -1,4 +1,4 @@
-// 浮层定位（@floating-ui/dom）：右键菜单、二级菜单、弹窗、按钮提示、Link List 悬停预览共用。
+// 浮层定位（@floating-ui/dom）：编辑器的菜单、选中工具条、公式框，白板的右键菜单、二级菜单、弹窗、按钮提示、Link List 悬停预览共用。
 // 标准的 offset → flip → shift：放不下就翻到另一边，最后推回窗口里。
 import { computePosition, flip, offset, shift, type OffsetOptions, type Placement, type Strategy, type VirtualElement } from "@floating-ui/dom";
 

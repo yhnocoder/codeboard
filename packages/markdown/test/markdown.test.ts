@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
 // Markdown 往返（jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素）：解析成文档再写回，要稳定，不乱转义；旧版手写渲染器写的 Note 照样显示得合理
 import { describe, expect, it } from "vitest";
-import { parseMd, serializeMd } from "../../src/md/schema";
-import { renderMd } from "../../src/md/render";
-import { toggleTask } from "../../src/md/view";
-import { cleanCompletion, completePrompt } from "@codeboard/core";
+import { parseMd, serializeMd } from "../src/schema";
+import { renderMd } from "../src/render";
+import { toggleTask } from "../src/view";
 import { getSchema, type JSONContent } from "@tiptap/core";
 import { Node as PMNode } from "@tiptap/pm/model";
-import { baseExtensions } from "../../src/md/schema";
+import { baseExtensions } from "../src/schema";
 
 const schema = getSchema(baseExtensions);
 
@@ -160,20 +159,6 @@ describe("task toggle on static notes", () => {
   });
 });
 
-describe("AI completion text", () => {
-  it("cleans model output", () => {
-    expect(cleanCompletion("```\n the rest.\n```", "Hello and", "")).toBe(" the rest.");
-    expect(cleanCompletion("Hello and more", "say Hello and", "")).toBe(" more");
-    expect(cleanCompletion("next line\nsecond", "x ", "")).toBe("next line");
-    expect(cleanCompletion("   ", "x", "")).toBe("");
-  });
-  it("prompt carries the text around the cursor", () => {
-    const p = completePrompt("before text", "after text");
-    expect(p).toContain("before text");
-    expect(p).toContain("after text");
-  });
-});
-
 describe("typed math and block source", () => {
   it("re-parses text that is Pandoc inline math", () => {
     const d = parseMd("a \\$\\frac{a}{b}\\$ b");
@@ -268,7 +253,7 @@ describe("typed math and block source", () => {
     same("sum $$x$$ here");
   });
   it("blockSource gives the block's Markdown without escaping", async () => {
-    const { blockSource } = await import("../../src/md/schema");
+    const { blockSource } = await import("../src/schema");
     const p = parseMd("**b** and $m$").content![0];
     expect(blockSource(p)).toBe("**b** and $m$");
     expect(blockSource({ type: "paragraph", content: [{ type: "text", text: "x $y$ *z*" }] })).toBe("x $y$ *z*");

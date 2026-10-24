@@ -3,7 +3,13 @@
 import { EditorState, StateField, StateEffect, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, hoverTooltip, showTooltip, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
-import type { LspItem, LspSignature } from "@codeboard/core";
+
+/** 补全的一项（宿主的语言服务给的；from 是要替换的范围在这一行里的起点） */
+export type LspItem = { label: string; kind?: LspKind; detail?: string; doc?: string; insert?: string; from?: number; to?: number };
+/** 补全项的种类：菜单里每种一个颜色（markdown.css 的 .cbcm-opt.k-*） */
+export type LspKind = "function" | "method" | "class" | "interface" | "enum" | "variable" | "constant" | "property" | "module" | "keyword" | "type" | "text";
+/** 签名提示：label 是整条签名，params[i].at 是第 i 个参数在 label 里的范围 */
+export type LspSignature = { label: string; doc?: string; params: { at: [number, number]; doc?: string }[]; active: number };
 
 export type LspHost = {
   /** 文字变了（防抖后）：宿主的虚拟文档跟上，语言服务好提前分析 */
@@ -11,8 +17,10 @@ export type LspHost = {
   complete(text: string, line: number, col: number, trigger?: string): Promise<LspItem[] | null>;
   hover(text: string, line: number, col: number): Promise<string[] | null>;
   signature(text: string, line: number, col: number, trigger?: string): Promise<LspSignature | null>;
-  /** Markdown → HTML（悬停、文档说明用白板的渲染） */
+  /** Markdown → HTML（悬停、文档说明；一般就是 renderMd） */
   md(src: string): string;
+  /** 不再用了：编辑器拆掉时调（宿主关掉这段代码的虚拟文档） */
+  close?(): void;
 };
 
 const SYNC_MS = 250, SIG_MS = 60;

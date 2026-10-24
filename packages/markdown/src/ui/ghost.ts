@@ -1,4 +1,4 @@
-// 灰字补全的规则（和编辑器无关）：Note（md/editor/ghost.ts，ProseMirror）和代码（cm/ghost.ts，CodeMirror）各一层薄的接上。
+// 灰字补全的规则（和编辑器无关）：Note（editor/ghost.ts，ProseMirror）和代码（cm/ghost.ts，CodeMirror）各一层薄的接上。
 // 停笔一会儿后问宿主要续写，问的时候又动过就作废；打的字正好是灰字开头只吃掉那几个字；Tab 全收、⌘→ 收一个词、Esc 清掉
 export type Ghost = { text: string; pos: number } | null;
 export type Complete = (before: string, after: string) => Promise<string | null>;

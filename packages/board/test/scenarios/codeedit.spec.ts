@@ -124,6 +124,11 @@ async function looks() {
     // 光标落在双击的那一行
     const curLine = await pg.evaluate(() => { const l = document.querySelector('.card[data-id="c1"] .cm-activeLine'); return l ? [...l.parentElement!.children].indexOf(l) : -1; });
     if (theme === "warm-ink") check(`codeedit ${light ? "light" : "dark"} caret on the double-clicked line`, curLine === 2, { curLine });
+    // CodeMirror rewrites the editor's class attribute on focus: the package's classes must survive it (the .cbcm rules apply)
+    if (theme === "warm-ink") {
+      const cls = await pg.evaluate(() => document.querySelector('.card[data-id="c1"] .cm-editor')?.className ?? "");
+      check(`codeedit ${light ? "light" : "dark"} focused editor keeps cbcm classes`, /\bcm-focused\b/.test(cls) && /\bcbcm\b/.test(cls) && /\bcbcm-card\b/.test(cls), { cls });
+    }
     if (shotA) {
       await pg.mouse.move(900, 650);
       const shotB = await clipShot(pg, '.card[data-id="c1"]');

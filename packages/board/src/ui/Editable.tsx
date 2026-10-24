@@ -1,11 +1,11 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框（md 的是所见即所得的 Markdown 编辑器）。
 // ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
-import { keepKey } from "./editkeys";
+import { keepKey } from "@codeboard/markdown/ui";
 import { Show, batch, createEffect, onMount } from "solid-js";
 import { useFinish } from "./hooks";
 import { editing, setEditing, type Editing } from "../state/ui";
 import { MdStatic } from "./Md";
-import { loadEditor, editorNow, editorOpts, prepareSelected, type MdEditorHandle } from "../md/load";
+import { loadEditor, editorNow, editorOpts, prepareSelected, NOTE_PLACEHOLDER, type MdEditorHandle } from "../md/load";
 import { sel } from "../state/store";
 
 export function Editable(p: {
@@ -92,7 +92,7 @@ function MdEdit(p: P) {
   const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
     if (done() || !el.isConnected) return;
     el.textContent = "";
-    ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder, onDone: finish });
+    ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder ?? NOTE_PLACEHOLDER, onDone: finish });
   };
   // 预加载过的：元素挂到页面上后立刻挂编辑器（同一个任务里，不闪静态内容）；否则等加载完
   const now = editorNow();

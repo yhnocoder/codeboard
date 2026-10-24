@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Markdown demo</title>
+</head>
+<body>
+  <header class="bar">
+    <b>@codeboard/markdown</b>
+    <span id="mode">Static · click to edit</span>
+    <span id="opened" class="opened"></span>
+    <button id="theme" type="button">Dark</button>
+  </header>
+  <main>
+    <section class="note"><div id="note" class="md"></div></section>
+    <section class="src"><h2>Saved Markdown</h2><pre id="source"></pre></section>
+  </main>
+  <script type="module" src="./src/main.ts"></script>
+</body>
+</html>

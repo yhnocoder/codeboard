@@ -1,5 +1,6 @@
 // npm run check: the local test run, about 3 minutes. See TESTING.md.
-//   1. typecheck and unit tests (core, board, host, extension) side by side; the board is rebuilt only when its sources changed since the last build
+//   1. typecheck, unit tests (core, markdown, board, host, extension) and the Markdown demo (examples/markdown-demo, built and run
+//      in Chromium) side by side; the board is rebuilt only when its sources changed since the last build
 //   2. the harness scenarios this change needs (tools/test/pick.mjs), compared with origin/main, several at a time,
 //      within what is left of the 3 minutes
 // Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness>]
@@ -34,7 +35,7 @@ function run(name, cmd, a, env = {}) {
 // The board build takes most of a minute: skip it when nothing it is built from changed since the last one
 function buildHash() {
   const h = createHash("sha1");
-  const files = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "packages/board/src", "packages/board/vite.config.ts", "packages/board/package.json", "packages/core/src", "package-lock.json"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
+  const files = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "packages/board/src", "packages/board/vite.config.ts", "packages/board/package.json", "packages/markdown/src", "packages/markdown/package.json", "packages/core/src", "package-lock.json"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
   for (const f of files.sort()) { h.update(f); try { h.update(fs.readFileSync(path.join(REPO, f))); } catch { /* deleted */ } }
   return h.digest("hex");
 }
@@ -48,6 +49,7 @@ const first = await Promise.all([
   run("typecheck", "npm", ["run", "typecheck"]),
   run("unit tests", "npm", ["test"]),
   build,
+  run("markdown demo", "npm", ["test", "-w", "@codeboard/markdown-demo"]),
 ]);
 if (!first[2]) { console.log("build failed: no harness run"); process.exit(1); }
 

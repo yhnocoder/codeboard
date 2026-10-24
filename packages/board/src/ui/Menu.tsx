@@ -1,7 +1,7 @@
 // 自定义右键菜单、对话框、提示。浏览器自带的右键菜单全部屏蔽。
 import { createSignal, For, Show, onCleanup, onMount, createEffect } from "solid-js";
 import { Icon } from "./icons";
-import { place, virtual } from "./place";
+import { place, virtual } from "@codeboard/markdown/ui";
 import { useOverlay } from "./overlay";
 
 export type Item =

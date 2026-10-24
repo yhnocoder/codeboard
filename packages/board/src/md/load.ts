@@ -1,16 +1,18 @@
-// 编辑器那一块（TipTap 的视图、菜单、补全）单独打包，第一次编辑时才加载；白板打开后空闲时先悄悄加载好
-import { cardTitle, isCode } from "@codeboard/core";
+// 编辑器那一块（@codeboard/markdown/editor：TipTap 的视图、菜单、补全）单独打包，第一次编辑时才加载；白板打开后空闲时先悄悄加载好。
+// 编辑器要的白板能力（[[ 引用的候选、存图、AI 补全、代码块的语言服务）在 editorOpts 里接上
+import { cardTitle, isCode, langInfo } from "@codeboard/core";
 import { state, placed } from "../state/store";
 import { ask } from "../host";
 import { editing, dragging } from "../state/ui";
 import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
-import type { MdEditorOpts, MdEditorHandle } from "./editor";
+import { lspHost } from "../cm/load";
+import type { MdEditorOpts, MdEditorHandle } from "@codeboard/markdown/editor";
 
 export type { MdEditorHandle };
-type Mod = typeof import("./editor");
+type Mod = typeof import("@codeboard/markdown/editor");
 let mod: Promise<Mod> | undefined, ready: Mod | undefined;
-export const loadEditor = () => (mod ??= import("./editor").then((m) => (ready = m)));
+export const loadEditor = () => (mod ??= import("@codeboard/markdown/editor").then((m) => (ready = m)));
 /** 已经加载好了就直接拿（同一帧里挂上编辑器，不等 Promise） */
 export const editorNow = () => ready;
 
@@ -61,11 +63,22 @@ export function refCandidates(): { id: string; title: string; kind: string }[] {
   return out;
 }
 
-/** 编辑器要的白板能力：卡片列表、存图、AI 补全（宿主没有就什么都不做） */
+/** Note 的占位字（没给自己的占位字时） */
+export const NOTE_PLACEHOLDER = "Type / for blocks, [[ to link a card";
+
+let seq = 0;
+/** Note 里一个代码块的语言服务：宿主给它一个虚拟文档（.codeboard-note-code-* 隐藏文件），代码块拆掉时关掉 */
+function codeLsp(lang: () => string) {
+  if (!langInfo(lang())?.lsp) return undefined;
+  const id = `note-code-${Math.random().toString(36).slice(2, 8)}${++seq}`;
+  return lspHost(id, () => langInfo(lang())?.vscodeId ?? lang());
+}
+
+/** 编辑器要的白板能力：[[ 引用卡片、存图、AI 补全（宿主没有就什么都不做）、代码块的注释记号和语言服务 */
 export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placeholder"> {
   return {
     isMac: state.host.isMac,
-    cards: refCandidates,
+    refs: { items: refCandidates, menu: "Link to Card", empty: "No card with that title" },
     openLink,
     pickImage: () => ask("pickFile", { kind: "image" }).catch(() => null),
     saveImage: async (dataUrl: string, name: string) => {
@@ -73,5 +86,6 @@ export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placehold
       return f ? `assets/${f}` : dataUrl;
     },
     complete: state.host.complete ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null) : undefined,
+    code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true },
   };
 }

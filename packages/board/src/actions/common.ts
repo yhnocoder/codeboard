@@ -8,7 +8,7 @@ import { notesOf, ping, setPopIn, popIn, setPaletteOpen } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";
 import { lastPointer, naturalSize, chromeOf } from "../state/measure";
 import { send, ask } from "../host";
-import { renderMd, renderMdInline } from "../md/render";
+import { renderMd, renderMdInline } from "@codeboard/markdown";
 
 const isMac = () => state.host.isMac;
 /** 说明文字里的修饰键（「⌥-click」「⌘↵ to save」）；有绑定的快捷键用 keymap 的 kbd(id) */
