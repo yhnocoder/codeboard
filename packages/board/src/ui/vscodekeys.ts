@@ -1,4 +1,4 @@
-// VS Code 的 webview 里，输入框、编辑器里的哪些按键要交给 VS Code（@codeboard/markdown 的 keepKey 照这个放行，index.tsx 接上）。
+// VS Code 的 webview 里，输入框、编辑器里的哪些按键要交给 VS Code（@yhnocoder/markdown 的 keepKey 照这个放行，index.tsx 接上）。
 // VS Code 的 webview 外壳在 window 上收 keydown，转给 VS Code，由它的 Cut / Copy / Paste / Undo / Select All 命令回到 webview 里执行
 // （mac 上浏览器自己不做这些，全靠菜单）。在这之前 stopPropagation 掉的话，⌘X / ⌘C / ⌘V 什么都不发生。
 // 白板自己的 window 快捷键看到焦点在输入框里会直接跳过（interact.ts 的 typing）。

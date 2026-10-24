@@ -1,4 +1,4 @@
-/* The demo page: the theme variables @codeboard/markdown's stylesheet reads (light, and dark on html[data-theme=dark]), the page
+/* The demo page: the theme variables @yhnocoder/markdown's stylesheet reads (light, and dark on html[data-theme=dark]), the page
    layout, and the few outside styles the package borrows (.ctx menu, .pill bar, .tbtn button, .lnk link, the highlighter's token
    classes). Heading sizes, lists, quotes and the code block box are the container's call, so they are set here for .note */
 :root {

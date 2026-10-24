@@ -1,0 +1,54 @@
+# Publishes packages/markdown to npm as @yhnocoder/markdown. This file is the package's npm Trusted Publisher, so its name
+# (markdown-release.yml) must not change: npm trusts it through GitHub's OIDC token, no NPM_TOKEN secret, and every version
+# gets a provenance statement.
+#
+# To release: bump "version" in packages/markdown/package.json in a PR and merge it, then push the tag markdown-v<that version>
+# (or run this workflow by hand on that tag). A tag that names a different version, or a run that is not on a tag, fails.
+# The job builds the package, runs its unit tests (including the check of what the tarball holds) and the Markdown demo, which
+# uses the built package exactly as an npm user would, and then publishes.
+#
+# The first version is published by hand, once (npm publish -w @yhnocoder/markdown --provenance=false, signed in as the owner),
+# because only an existing package can have a Trusted Publisher; then configure it on npmjs.com, package settings, Trusted Publisher,
+# GitHub Actions, repository yhnocoder/codeboard, workflow markdown-release.yml. See CONTRIBUTING.md.
+name: Markdown release
+on:
+  push:
+    tags: ["markdown-v*"]
+  workflow_dispatch:
+permissions:
+  contents: read
+  id-token: write # the OIDC token npm Trusted Publishing exchanges for a publish
+concurrency:
+  group: markdown-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the tag against the package version
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          V=$(node -p 'require("./packages/markdown/package.json").version')
+          if [ "$REF_TYPE" != tag ] || [ "$TAG" != "markdown-v$V" ]; then
+            echo "::error::$REF_TYPE $TAG does not match packages/markdown/package.json version $V. Bump the version there first, or run this on the tag markdown-v$V."; exit 1
+          fi
+      # Node 22, npm 11.21.1 (Trusted Publishing needs npm 11.5.1 or later), npm ci, and only the markdown build
+      - uses: ./.github/actions/setup
+        with: { build: npm run build -w @yhnocoder/markdown }
+      - name: Check the npm version
+        run: |
+          node -e 'const [a, b, c] = process.argv[1].split(".").map(Number); process.exit(a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1))) ? 0 : 1)' "$(npm --version)" \
+            || npm i -g npm@11.21.1
+          npm --version
+      - name: Unit tests (with the tarball check)
+        run: npm test -w @yhnocoder/markdown
+      - uses: ./.github/actions/chromium
+      - name: Markdown demo (the built package in Chromium)
+        run: npm test -w @codeboard/markdown-demo
+      - name: Publish
+        # prepack builds again and adds the LICENSE; publishConfig sets public access and provenance
+        run: npm publish -w @yhnocoder/markdown

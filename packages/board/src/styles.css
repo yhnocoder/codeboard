@@ -524,7 +524,7 @@ kbd { font: 10.5px var(--mono); }
 .nbody blockquote, .cdesc blockquote, .tx blockquote, .sn-text blockquote { margin: 2px 0; padding-left: 8px; border-left: 2px solid var(--hair); color: var(--ink-2); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 5px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
 .sp { height: .6em; }
-/* Markdown 本身的样式（.md、编辑器、代码编辑器）在 @codeboard/markdown 的 markdown.css（index.tsx 接在这一份后面）；这里只有白板这边的 */
+/* Markdown 本身的样式（.md、编辑器、代码编辑器）在 @yhnocoder/markdown 的 markdown.css（index.tsx 接在这一份后面）；这里只有白板这边的 */
 .md-pend { visibility: hidden; } /* md/lazy.ts：还没渲染的 Note 只占位，不露原文 */
 .card.nobg .mmd { --pele-bg: var(--bg); }
 .md.editing { position: relative; }

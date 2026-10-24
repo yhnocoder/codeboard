@@ -1,6 +1,6 @@
 // From GitHub…：输入 owner/repo（或贴链接）→ 选分支 / tag / commit（加卡时钉成 commit）→ 浏览文件树 → 打开文件选行 → Add to Board。
 // 数据都由宿主走 GitHub REST API 拿（私有仓库用 VS Code 的 GitHub 登录，被拒时才请用户登录）。
-import { keepKey } from "@codeboard/markdown/ui";
+import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, createMemo, createSignal, onMount, batch } from "solid-js";
 import { baseName, parseRepoInput, type Commit, type GhFile, type GhQuery, type GhReplyOf, type GhRepo, type GhTree, type RepoInput } from "@codeboard/core";
 import { toast } from "../state/store";

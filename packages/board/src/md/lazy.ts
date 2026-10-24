@@ -5,7 +5,7 @@
 // - 空闲时：其余的由近到远补完（镜头在动时每段最多 3ms，免得挤进平移、缩放的帧）
 import { createEffect, createRoot, on, untrack } from "solid-js";
 import { cam, camMoving } from "../state/camera";
-import { renderMd, renderMdInline, mdCached, hydrate } from "@codeboard/markdown";
+import { renderMd, renderMdInline, mdCached, hydrate } from "@yhnocoder/markdown";
 
 type Job = { el: HTMLElement; src: string; inline?: boolean };
 const pending = new Map<HTMLElement, Job>();

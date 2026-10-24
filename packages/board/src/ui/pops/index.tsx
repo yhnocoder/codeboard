@@ -8,7 +8,7 @@ import { cam } from "../../state/camera";
 import { pops, closeAllPops, type PopInst, type Pop } from "../../state/pop";
 import * as A from "../../actions";
 import { pushLayer } from "../overlay";
-import { place, virtual } from "@codeboard/markdown/ui";
+import { place, virtual } from "@yhnocoder/markdown/ui";
 import { POPS } from "./registry";
 import type { PopProps } from "./common";
 

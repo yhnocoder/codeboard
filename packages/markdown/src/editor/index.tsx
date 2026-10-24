@@ -1,4 +1,4 @@
-// 所见即所得的 Markdown 编辑器（TipTap，白板的 Note 用它）。这是 @codeboard/markdown/editor：单独打包，第一次编辑时才 import()。
+// 所见即所得的 Markdown 编辑器（TipTap，白板的 Note 用它）。这是 @yhnocoder/markdown/editor：单独打包，第一次编辑时才 import()。
 // 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选引用、公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。用的一方的东西（引用的候选、存图、打开链接、AI 补全、代码的语言服务）都从 MdEditorOpts 进来
 import { keepKey } from "../ui/editkeys";
 import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
