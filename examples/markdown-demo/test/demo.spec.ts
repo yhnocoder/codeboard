@@ -1,4 +1,4 @@
-// The whole chain with only @codeboard/markdown: static render (KaTeX, a Mermaid diagram, highlighted code, [[refs]] resolved by
+// The whole chain with only @yhnocoder/markdown: static render (KaTeX, a Mermaid diagram, highlighted code, [[refs]] resolved by
 // the page), click to edit (the editor chunk loads), type with a Typora-style conversion, Esc saves the Markdown and the page
 // renders it statically again
 import * as path from "node:path";

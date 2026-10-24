@@ -34,7 +34,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - uses: ./.github/actions/chromium
-      - name: Markdown demo (@codeboard/markdown on its own, built and driven in Chromium)
+      - name: Markdown demo (@yhnocoder/markdown on its own, built and driven in Chromium)
         run: npm test -w @codeboard/markdown-demo
 
   harness:

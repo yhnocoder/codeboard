@@ -1,4 +1,4 @@
-// 编辑代码用的 CodeMirror 6（白板的 Free code 卡、Note 里的代码块）。单独打包（@codeboard/markdown/code-editor），用的一方第一次编辑前再 import()。
+// 编辑代码用的 CodeMirror 6（白板的 Free code 卡、Note 里的代码块）。单独打包（@yhnocoder/markdown/code-editor），用的一方第一次编辑前再 import()。
 // 样式和显示时一模一样：同一个字体、行高、行号栏、着色（着色不用 CodeMirror 自己的语言包：显示时的 HTML 拿来当装饰，
 // 打字时旧的着色跟着改动挪，新的着色回来就换上）。进出编辑字的位置一点不动。
 // 补全、悬停、签名提示问宿主的语言服务（cm/lsp.ts）；灰字补全复用 Note 的那一套（宿主的 complete）。

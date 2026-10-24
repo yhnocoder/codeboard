@@ -5,7 +5,7 @@
 ```bash
 git submodule update --init
 npm install
-npm run build      # board UI + extension, compiled into extensions/vscode/dist (no .vsix)
+npm run build      # @yhnocoder/markdown (packages/markdown/dist), board UI + extension, compiled into extensions/vscode/dist (no .vsix)
 npm test           # unit tests (core, markdown, board, host, extension)
 npm run check      # local test tier: typecheck, unit tests and affected harness scenarios (~3 min)
 npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Code and xvfb)
@@ -19,6 +19,10 @@ npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Co
 
 One-time setup for the stores: create the Marketplace publisher `yhnocoder`; add an Azure DevOps personal access token (Organization: All accessible organizations, scope Marketplace: Manage) as the repository secret `VSCE_PAT`; create an Open VSX access token, add it as `OVSX_PAT`, and create the namespace once with `npx ovsx create-namespace yhnocoder -p <token>`. Until a secret is set, its store is skipped with a notice. Add required reviewers to the `marketplace` environment to approve each publish.
 
+### Releasing @yhnocoder/markdown
+
+`packages/markdown` is published to npm as `@yhnocoder/markdown` by `.github/workflows/markdown-release.yml`, with npm Trusted Publishing (no token; the package gets a provenance statement). Bump `version` in `packages/markdown/package.json` in a PR and merge it, then push the tag `markdown-v<that version>`: the workflow checks the tag against the version, builds, runs the package's unit tests and the demo, and publishes. The very first version is published by hand once (`npm publish -w @yhnocoder/markdown --provenance=false` from a clean checkout of main after `npm ci`, signed in to npm as the package owner; provenance needs CI), so that the package exists and `markdown-release.yml` can be added as its Trusted Publisher on npmjs.com (package settings, GitHub Actions, repository `yhnocoder/codeboard`).
+
 To debug the extension, open this repository in VS Code, press `F5` and pick **CodeBoard：在 nano-vllm 上调试插件**. A new window opens with the extension installed and `examples/nano-vllm` loaded.
 
 Test tiers, time budgets and how scenarios are selected are described in [TESTING.md](TESTING.md).
@@ -26,12 +30,12 @@ Test tiers, time budgets and how scenarios are selected are described in [TESTIN
 ## Repository layout
 
 - `packages/core`: data model, symbol resolution, syncing cards with the current code (pure TypeScript, with tests)
-- `packages/markdown`: the Markdown renderer and editor on their own (schema, static render and `hydrate`, the TipTap editor, the CodeMirror code editor and their stylesheet), with everything board-specific passed in as options or setters. Entries: `@codeboard/markdown` (read-only: schema, render, `hydrate`, clicks; no Solid), `/editor` (the editor, loaded lazily), `/code-editor` (CodeMirror on its own, as in Free code cards), `/ui` (the shared key forwarding, popover placement and measure batching the board uses too), `/style.css` and `/katex.css`. It ships TypeScript / Solid source, so a consumer builds it with vite-plugin-solid and provides `solid-js` (a peer dependency)
+- `packages/markdown`: the Markdown renderer and editor on their own (schema, static render and `hydrate`, the TipTap editor, the CodeMirror code editor and their stylesheet), with everything board-specific passed in as options or setters. Entries: `@yhnocoder/markdown` (read-only: schema, render, `hydrate`, clicks; no Solid), `/editor` (the editor, loaded lazily), `/code-editor` (CodeMirror on its own, as in Free code cards), `/ui` (the shared key forwarding, popover placement and measure batching the board uses too), `/style.css` and `/katex.css`. It is published to npm, and its build (`npm run build -w @yhnocoder/markdown`: `dist/` with the Solid JSX compiled, `.d.ts` declarations and the two stylesheets) is what the board and the demo use too, exactly as an npm user would; `solid-js` is a peer dependency. The root `npm run build` builds it first, and `npm run check` before anything else; after changing `packages/markdown/src`, rebuild it before typechecking or building the board on their own. Its README is the npm page
 - `packages/board`: the board UI (SolidJS), bundled into the extension's webview
 - `packages/host`: the editor-independent host: reads code, highlights, resolves calls, tracks versions, stores and coordinates boards
 - `extensions/vscode`: the VS Code extension: the VS Code adapters around `packages/host` (activation, webview panels, sidebar, CodeLens, commands, the `Workspace` implementation)
 - `examples/`: test repositories as git submodules (nano-vllm, sglang, DeepEP)
-- `examples/markdown-demo`: a small Vite page that uses only `@codeboard/markdown` (static render, click to edit, save, light / dark); its Playwright test (`npm test -w @codeboard/markdown-demo`) runs in `npm run check` and CI
+- `examples/markdown-demo`: a small Vite page that uses only `@yhnocoder/markdown` (static render, click to edit, save, light / dark); its Playwright test (`npm test -w @codeboard/markdown-demo`) runs in `npm run check` and CI
 - `explore/`: requirement explorations and prototypes
 - `tools/`: test runner, release and review scripts
 

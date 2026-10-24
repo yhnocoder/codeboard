@@ -1,11 +1,11 @@
-/* @codeboard/markdown 的样式：静态显示（.md）、编辑器（.md-pm 和浮层）、代码编辑器（.cbcm，CodeMirror）。
+/* @yhnocoder/markdown 的样式：静态显示（.md）、编辑器（.md-pm 和浮层）、代码编辑器（.cbcm，CodeMirror）。
    颜色、字体都用主题的 CSS 变量（用的一方在 :root 或外层元素上给）：
      颜色   --ink --ink-2 --ink-3（字，由深到浅）--surface（底）--hlrow（浅底色：表头、代码块、悬停）--hair --line（细线）
             --accent --accent-ink（强调色和压在它上面的字）--warn（出错）--k-fn（链接、引用、脚注）
             --k-kw --k-num --k-self --k-str --lk-blue --lk-orange --lk-green（Mermaid 的系列色）--sh-float（浮层阴影）
      字体   --sys（正文、Mermaid）--mono（代码、记号）--note-h（小标题）
      其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）
-   公式还要 KaTeX 自己的样式（@codeboard/markdown/katex.css，放在这一份前面）。
+   公式还要 KaTeX 自己的样式（@yhnocoder/markdown/katex.css，放在这一份前面）。
    借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮），静态显示的链接 .lnk。代码块着色的 class
    （.kw .fn …）由给着色的一方（setCodeHighlighter）配样式 */
 /* KaTeX 公式 */
@@ -78,7 +78,7 @@ math { font-size: 1.05em; }
 .mmd.ok { display: flex; justify-content: center; overflow: hidden; }
 .mmd.ok svg { max-width: 100%; height: auto; }
 .mmd-err { font: 11px/1.45 var(--mono); color: var(--warn); margin-bottom: 2px; }
-/* Markdown 编辑器（@codeboard/markdown/editor，懒加载）：内容沿用上面 .md 的样式，这里只管编辑时才有的东西 */
+/* Markdown 编辑器（@yhnocoder/markdown/editor，懒加载）：内容沿用上面 .md 的样式，这里只管编辑时才有的东西 */
 .md-pm { outline: none; min-height: 1.6em; cursor: text; }
 /* TipTap 自带的基础样式（injectCSS 关掉了：每次挂载 / 卸载它都要在整个页面里查一遍 style 标签和 .tiptap） */
 .md-pm { position: relative; word-wrap: break-word; white-space: break-spaces; font-variant-ligatures: none; font-feature-settings: "liga" 0; }

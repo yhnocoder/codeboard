@@ -1,3 +1,4 @@
+import * as fs from "node:fs";
 import { defineConfig, type Plugin } from "vite";
 import solid from "vite-plugin-solid";
 import { build } from "esbuild";
@@ -14,10 +15,22 @@ function scriptString(): Plugin {
   };
 }
 
+// With BOARD_SOURCEMAP: the board's source maps go through the maps of the built packages it uses (@yhnocoder/markdown's dist/) back
+// to their sources, so the nightly coverage sees packages/markdown/src
+function inputSourcemaps(): Plugin {
+  return {
+    name: "input-sourcemaps",
+    load(id) {
+      if (!/\/packages\/[^/]+\/dist\/.*\.js$/.test(id) || id.includes("/node_modules/") || !fs.existsSync(id + ".map")) return;
+      return { code: fs.readFileSync(id, "utf8"), map: fs.readFileSync(id + ".map", "utf8") };
+    },
+  };
+}
+
 // 白板界面打包成一个入口 js（ES module）+ 一个 css，由宿主（VS Code webview）加载；
 // Markdown 编辑器、Mermaid 图（pele）这些用到时才 import() 的放在 chunks/ 里
 export default defineConfig({
-  plugins: [solid(), scriptString()],
+  plugins: [solid(), scriptString(), ...(process.env.BOARD_SOURCEMAP ? [inputSourcemaps()] : [])],
   base: "./", // 字体用相对 css 的路径：webview 里没有站点根
   build: {
     outDir: "../../extensions/vscode/media/board",

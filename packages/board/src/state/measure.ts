@@ -2,13 +2,13 @@
 // 一边读一边写会让浏览器每张卡都重新排一次版，打开大白板时几百张卡就是几百次排版。
 // 还有：指针最后在哪、白板左上角、代码卡的几个固定尺寸、内容本来的大小（Fit Content、改大小时用）
 import { batch } from "solid-js";
-import { queueMeasure, observeResize, setMeasureBatch } from "@codeboard/markdown/ui";
+import { queueMeasure, observeResize, setMeasureBatch } from "@yhnocoder/markdown/ui";
 import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
 import { state, cardById } from "./store";
 import { shown } from "./ui";
 import { toWorld } from "./camera";
 
-// 先读后写的一轮测量和共用的 ResizeObserver 在 @codeboard/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
+// 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
 setMeasureBatch(batch);
 export { queueMeasure, observeResize };
 

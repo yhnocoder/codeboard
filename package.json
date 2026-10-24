@@ -4,9 +4,9 @@
   "packageManager": "npm@11.21.1",
   "workspaces": ["packages/*", "extensions/*", "examples/markdown-demo"],
   "scripts": {
-    "build": "npm run build -w @codeboard/board && npm run build -w codeboard-vscode",
+    "build": "npm run build -w @yhnocoder/markdown && npm run build -w @codeboard/board && npm run build -w codeboard-vscode",
     "package": "npm run build && npm run package -w codeboard-vscode",
-    "test": "npm test -w @codeboard/core && npm test -w @codeboard/markdown && npm test -w @codeboard/board && npm test -w @codeboard/host && npm test -w codeboard-vscode",
+    "test": "npm test -w @codeboard/core && npm test -w @yhnocoder/markdown && npm test -w @codeboard/board && npm test -w @codeboard/host && npm test -w codeboard-vscode",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "e2e": "npm run e2e -w codeboard-vscode",
     "check": "node tools/test/check.mjs",

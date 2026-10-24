@@ -1,5 +1,5 @@
-// @codeboard/markdown stands on its own: its code and the example that uses it (examples/markdown-demo) import only npm packages and
-// their own files, never the board, the host, core, the VS Code extension or vscode, and depend on no other @codeboard package. This is
+// @yhnocoder/markdown stands on its own: its code and the example that uses it (examples/markdown-demo) import only npm packages and
+// their own files, never the board, the host, core, the VS Code extension or vscode, and depend on no other package of this repo. This is
 // the one check for the package (packages/host/test/boundary.test.ts covers host and board). What the board adds comes in through
 // options and setters
 import * as fs from "node:fs";
@@ -30,10 +30,10 @@ function bad(root: string, dirs: string[]) {
   }
   return out;
 }
-/** @codeboard/* packages a package.json depends on (any kind of dependency) */
-const codeboardDeps = (pkg: string) => {
+/** Packages of this repo (@codeboard/*, @yhnocoder/*) a package.json depends on (any kind of dependency) */
+const repoDeps = (pkg: string) => {
   const j = JSON.parse(fs.readFileSync(path.join(REPO, pkg, "package.json"), "utf8"));
-  return [j.dependencies, j.devDependencies, j.peerDependencies, j.optionalDependencies].flatMap((d) => Object.keys(d ?? {})).filter((n) => n.startsWith("@codeboard/")).sort();
+  return [j.dependencies, j.devDependencies, j.peerDependencies, j.optionalDependencies].flatMap((d) => Object.keys(d ?? {})).filter((n) => /^@(codeboard|yhnocoder)\//.test(n)).sort();
 };
 
 describe("markdown package boundaries", () => {
@@ -47,10 +47,10 @@ describe("markdown package boundaries", () => {
   });
   it("packages/markdown imports nothing from the board, host, core or the extension", () => {
     expect(bad("packages/markdown", ["packages/markdown/src", "packages/markdown/test"])).toEqual([]);
-    expect(codeboardDeps("packages/markdown")).toEqual([]);
+    expect(repoDeps("packages/markdown")).toEqual([]);
   });
-  it("the example uses only @codeboard/markdown", () => {
+  it("the example uses only @yhnocoder/markdown", () => {
     expect(bad("examples/markdown-demo", ["examples/markdown-demo/src", "examples/markdown-demo/test", "examples/markdown-demo/index.html"])).toEqual([]);
-    expect(codeboardDeps("examples/markdown-demo")).toEqual(["@codeboard/markdown"]);
+    expect(repoDeps("examples/markdown-demo")).toEqual(["@yhnocoder/markdown"]);
   });
 });

@@ -2,7 +2,7 @@
 
 [toc]
 
-A short note that uses everything `@codeboard/markdown` supports :rocket:. Click anywhere in it to edit; press <kbd>Esc</kbd> to save.
+A short note that uses everything `@yhnocoder/markdown` supports :rocket:. Click anywhere in it to edit; press <kbd>Esc</kbd> to save.
 
 ## Text
 

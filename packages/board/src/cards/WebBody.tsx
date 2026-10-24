@@ -6,7 +6,7 @@ import { cardTitle, domainOf, urlPath, type LinkItem, type LinksCard, type WebCa
 import { editing, setEditing } from "../state/ui";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
-import { place, virtual } from "@codeboard/markdown/ui";
+import { place, virtual } from "@yhnocoder/markdown/ui";
 import { below } from "../ui/Menu";
 import * as A from "../actions";
 import "./web.css";
