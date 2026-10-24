@@ -1,5 +1,5 @@
 // 调用链：变量、调用图标记、动态分发选实现、跨边界取值、按名字搜、RPC 箭头的属性。
-import { keepKey } from "@codeboard/markdown/ui";
+import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, createSignal, createMemo, createEffect } from "solid-js";
 import { varKey, varText, langLabel, RPC_MECHS, type GraphMark, type Var } from "@codeboard/core";
 import { state, flows } from "../../state/store";

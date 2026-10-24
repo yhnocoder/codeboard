@@ -1,5 +1,5 @@
 // 版本：diff（和 Compare 同一套对齐）、三方对照、commit 列表。
-import { keepKey } from "@codeboard/markdown/ui";
+import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, createSignal, createMemo } from "solid-js";
 import { alignRows, wordDiff, cardTitle, versionLabel, isCode, segOf, escHtml, threeWay, upstreamSegs, activeOf, viewKeyOf, UPSTREAM, type Segment } from "@codeboard/core";
 import { state, cardById, toast } from "../../state/store";

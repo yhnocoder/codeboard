@@ -4,6 +4,9 @@ inputs:
   dir:
     description: Directory of the checkout to install and build
     default: .
+  build:
+    description: The build command (by default everything; the root build starts with @yhnocoder/markdown, which the board and the demo use)
+    default: npm run build
 runs:
   using: composite
   steps:
@@ -13,4 +16,6 @@ runs:
       run: npm i -g npm@11.21.1
     - shell: bash
       working-directory: ${{ inputs.dir }}
-      run: npm ci --no-audit --no-fund && npm run build
+      env:
+        BUILD: ${{ inputs.build }}
+      run: npm ci --no-audit --no-fund && bash -c "$BUILD"

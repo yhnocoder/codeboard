@@ -1,12 +1,12 @@
-// @codeboard/markdown on its own: a static note (read-only entry: renderMd + hydrate), click it to edit (the editor entry, loaded
+// @yhnocoder/markdown on its own: a static note (read-only entry: renderMd + hydrate), click it to edit (the editor entry, loaded
 // on first use), finishing the edit saves the Markdown back and renders it statically again. Everything a host would add comes in
 // through the package's setters and options: the code highlighter, [[wiki link]] resolution and clicks, the image asset base.
 // AI ghost completion (`complete`), language services (`code.lsp`) and image storage (`saveImage`; by default pasted and picked
 // images stay inline as data: URLs) are optional hooks and are left off here.
-import { renderMd, hydrate, mdClick, setCodeHighlighter, setRefResolver, setAssetBase } from "@codeboard/markdown";
-import type { MdEditorHandle } from "@codeboard/markdown/editor";
-import "@codeboard/markdown/katex.css";
-import "@codeboard/markdown/style.css";
+import { renderMd, hydrate, mdClick, setCodeHighlighter, setRefResolver, setAssetBase } from "@yhnocoder/markdown";
+import type { MdEditorHandle } from "@yhnocoder/markdown/editor";
+import "@yhnocoder/markdown/katex.css";
+import "@yhnocoder/markdown/style.css";
 import "./demo.css";
 import sample from "./sample.md?raw";
 import { highlight } from "./highlight";
@@ -43,7 +43,7 @@ function show() {
 async function edit() {
   if (editor) return;
   mode.textContent = "Loading the editor…";
-  const { mountEditor } = await import("@codeboard/markdown/editor");
+  const { mountEditor } = await import("@yhnocoder/markdown/editor");
   note.textContent = "";
   note.classList.add("editing");
   mode.textContent = "Editing · Esc or ⌘↵ saves";

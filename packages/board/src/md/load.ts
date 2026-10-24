@@ -1,4 +1,4 @@
-// 编辑器那一块（@codeboard/markdown/editor：TipTap 的视图、菜单、补全）单独打包，第一次编辑时才加载；白板打开后空闲时先悄悄加载好。
+// 编辑器那一块（@yhnocoder/markdown/editor：TipTap 的视图、菜单、补全）单独打包，第一次编辑时才加载；白板打开后空闲时先悄悄加载好。
 // 编辑器要的白板能力（[[ 引用的候选、存图、AI 补全、代码块的语言服务）在 editorOpts 里接上
 import { cardTitle, isCode, langInfo } from "@codeboard/core";
 import { state, placed } from "../state/store";
@@ -7,12 +7,12 @@ import { editing, dragging } from "../state/ui";
 import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
 import { lspHost } from "../cm/load";
-import type { MdEditorOpts, MdEditorHandle } from "@codeboard/markdown/editor";
+import type { MdEditorOpts, MdEditorHandle } from "@yhnocoder/markdown/editor";
 
 export type { MdEditorHandle };
-type Mod = typeof import("@codeboard/markdown/editor");
+type Mod = typeof import("@yhnocoder/markdown/editor");
 let mod: Promise<Mod> | undefined, ready: Mod | undefined;
-export const loadEditor = () => (mod ??= import("@codeboard/markdown/editor").then((m) => (ready = m)));
+export const loadEditor = () => (mod ??= import("@yhnocoder/markdown/editor").then((m) => (ready = m)));
 /** 已经加载好了就直接拿（同一帧里挂上编辑器，不等 Promise） */
 export const editorNow = () => ready;
 

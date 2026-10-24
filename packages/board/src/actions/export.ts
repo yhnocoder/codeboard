@@ -11,7 +11,7 @@ import { lodBusy, lodOf } from "../state/lodcards";
 import { setExportOpen, exportBusy, setExportBusy, type ExportOpts } from "../state/export";
 import { ask, send } from "../host";
 import { flushMd } from "../md/lazy";
-import { renderMd } from "@codeboard/markdown";
+import { renderMd } from "@yhnocoder/markdown";
 import type { ViewerData } from "../export/viewer";
 import VIEWER_JS from "../export/viewer.ts?script";
 

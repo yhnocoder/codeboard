@@ -1,6 +1,6 @@
 // 原地编辑的文字：平时是普通文字（或渲染后的 Markdown），进入编辑后是纯文本可编辑框（md 的是所见即所得的 Markdown 编辑器）。
 // ↵ 提交（多行时 ⌘↵），点别处提交。Esc：单行取消，多行（Note 正文）保存后退出。
-import { keepKey } from "@codeboard/markdown/ui";
+import { keepKey } from "@yhnocoder/markdown/ui";
 import { Show, batch, createEffect, onMount } from "solid-js";
 import { useFinish } from "./hooks";
 import { editing, setEditing, type Editing } from "../state/ui";

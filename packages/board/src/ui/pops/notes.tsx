@@ -1,5 +1,5 @@
 // Sidenote 弹窗（看、改、右键菜单）和加 Sidenote（Code / Paste / Text / Link / Card）。
-import { keepKey } from "@codeboard/markdown/ui";
+import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, Switch, Match, createSignal, createEffect } from "solid-js";
 import { cardTitle, versionLabel, baseName, isCode, langLabel, LANGS, guessLang, escHtml, type Sidenote, type SearchItem, type SegView } from "@codeboard/core";
 import { state, cardById, toast, sharedOn } from "../../state/store";
