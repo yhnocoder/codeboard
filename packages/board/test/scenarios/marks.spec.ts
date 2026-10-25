@@ -122,7 +122,7 @@ test("markArrowStable", async () => {
 test("noteAnnotations", async () => {
   const b = emptyBoard("b1", "annotations");
   const md = [
-    "每一步先由 {Scheduler|决定谁先跑} 挑出这一批要跑的序列，再交给 ModelRunner {做一次前向|prefill / decode 二选一|purple below}，最后 postprocess 把新 token 接到序列后面。",
+    "每一步先由 {Scheduler|决定谁先跑} 挑出这一批要跑的序列，再交给 ModelRunner {做一次前向|prefill / decode 二选一，不混在一批|purple below}，最后 postprocess 把新 token 接到序列后面。",
     "",
     "Prefill and decode {never share a batch|like this|green} in ==nano-vllm==.",
     "",
@@ -153,7 +153,8 @@ test("noteAnnotations", async () => {
     const right = e.getBoundingClientRect().left + parseFloat(lb.left) + c.measureText(e.dataset.note!).width;
     return { right, pRight: p.getBoundingClientRect().right, ax: e.style.getPropertyValue("--ax") };
   });
-  check("annotLabelInsideBlock", fit.right <= fit.pRight + 0.5 && parseFloat(fit.ax) < 0, fit);
+  // the label would run past the paragraph (natural right = right - ax): it is pulled back inside, and only then
+  check("annotLabelInsideBlock", fit.right <= fit.pRight + 0.5 && (fit.right - parseFloat(fit.ax) > fit.pRight) === parseFloat(fit.ax) < 0, fit);
   await shot(h, "marks-note-annotations");
 
   // typing the syntax in the editor
