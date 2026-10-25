@@ -48,6 +48,50 @@ test("sectionLook", async () => {
   await close(h);
 });
 
+/** Section ▸ Fit Content: the frame tightens to its member cards plus the standard padding (22 at the sides and bottom, 34 at the top
+ *  for the title), animated; one undo step brings the old frame back */
+test("sectionFitContent", async () => {
+  const b = emptyBoard("b1", "fit section");
+  put(b, { id: "a", kind: "note", bg: true, md: "# Prefill\n\nChecks the free KV blocks." } as NoteCard, 240, 220, 300);
+  put(b, { id: "c", kind: "note", bg: true, md: "# Decode\n\nOne token per step." } as NoteCard, 600, 300, 260);
+  b.sections.push({ id: "S", title: "Scheduling", x: 80, y: 60, w: 1100, h: 760 });
+  b.place.a.section = "S"; b.place.c.section = "S";
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1300, h: 900 });
+  await wait(h, 800);
+  await shot(h, "sect-fit-01-before");
+  await h.page.locator('.slabel[data-sect="S"] .sname').click({ button: "right" }); await wait(h, 250);
+  const items = await h.page.locator(".ctx button").allTextContents();
+  check("sectionFitContent in the Section menu", items.some((t) => t.includes("Fit Content")), { items });
+  if (!items.some((t) => t.includes("Fit Content"))) return;
+  const w0 = (await h.page.locator('.sect[data-sect="S"]').boundingBox())!.width;
+  await h.page.locator(".ctx button", { hasText: "Fit Content" }).click();
+  const samples = await h.page.evaluate(() => new Promise<number[]>((res) => {
+    const el = document.querySelector('.sect[data-sect="S"]')!, out: number[] = [];
+    const f = () => { out.push(el.getBoundingClientRect().width); if (out.length < 30) requestAnimationFrame(f); else res(out); };
+    requestAnimationFrame(f);
+  }));
+  await wait(h, 600);
+  const got = await h.page.evaluate(() => {
+    const r = (s: string) => document.querySelector(s)!.getBoundingClientRect();
+    const f = r('.sect[data-sect="S"]'), a = r('.card[data-id="a"]'), c = r('.card[data-id="c"]');
+    const want = { l: Math.min(a.left, c.left) - 22, t: Math.min(a.top, c.top) - 34, r: Math.max(a.right, c.right) + 22, b: Math.max(a.bottom, c.bottom) + 22 };
+    return { frame: { l: f.left, t: f.top, r: f.right, b: f.bottom }, want };
+  });
+  const w1 = got.frame.r - got.frame.l;
+  const mid = samples.filter((v) => v < w0 - 2 && v > w1 + 2).length;
+  const s = h.board().sections[0];
+  await shot(h, "sect-fit-02-after");
+  const near = (x: number, y: number) => Math.abs(x - y) < 1.5;
+  check("sectionFitContent wraps its members", near(got.frame.l, got.want.l) && near(got.frame.t, got.want.t) && near(got.frame.r, got.want.r) && near(got.frame.b, got.want.b)
+    && near(s.x, got.want.l) && near(s.y, got.want.t) && near(s.w, w1), { got, s });
+  check("sectionFitContent animated", mid >= 3, { w0, w1, samples });
+  await h.page.keyboard.press("Control+z"); await wait(h, 500);
+  const back = h.board().sections[0];
+  check("sectionFitContent one undo step", back.x === 80 && back.y === 60 && back.w === 1100 && back.h === 760, { back });
+  await close(h);
+});
+
 /** Drag a card by its title bar from one Section into another: the target Section lights up during the drag, the card joins it, one undo puts it back */
 test("dragCardIntoOtherSection", async () => {
   const h = await open({ board: twoSections(), light });

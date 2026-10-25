@@ -377,6 +377,9 @@ input, textarea { font: inherit; color: var(--ink); }
 .sect.sel.drop { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
 /* a card moving into or out of a Section: the frames ease to their new size instead of jumping */
 .sect.moving { transition: border-color .15s var(--out), background-color .15s var(--out), box-shadow .15s var(--out), left .16s var(--out), top .16s var(--out), width .16s var(--out), height .16s var(--out); }
+/* Fit Content: the frame and its title ease to the new rect */
+.sect.fit { transition: left .26s var(--out), top .26s var(--out), width .26s var(--out), height .26s var(--out); }
+.slabel.fit { transition: color .15s var(--out), left .26s var(--out), top .26s var(--out); }
 .sect .sgrip { position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px; pointer-events: auto; cursor: nwse-resize; }
 #slabels { position: absolute; left: 0; top: 0; z-index: 4; }
 .slabel { position: absolute; z-index: 4; display: flex; align-items: center; gap: 2px; width: max-content; margin: 6px 0 0 16px; padding: 1px 2px 1px 6px; border-radius: 8.5px;

@@ -2,7 +2,7 @@
 // 拖卡时卡要进的 Section 亮起来（.drop），框跟着成员变化缓动（.moving）。
 import { For, Show, createMemo } from "solid-js";
 import { state, sel } from "../state/store";
-import { frames, depthOf, hiddenByAncestor, allMembers, dropSections, movingHome } from "../state/sections";
+import { frames, depthOf, hiddenByAncestor, allMembers, dropSections, movingHome, fitting } from "../state/sections";
 import { Editable } from "../ui/Editable";
 import { Icon } from "../ui/icons";
 import { sectionLabelDown, sectionEdgeDown } from "../interact";
@@ -17,7 +17,7 @@ export function SectionFrames() {
         const r = createMemo(() => frames().get(s.id));
         return (
           <Show when={r()}>
-            <div class="sect" classList={{ [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), locked: A.sectionLocked(s), drop: dropSections().has(s.id), moving: !!movingHome() }} data-sect={s.id}
+            <div class="sect" classList={{ [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), locked: A.sectionLocked(s), drop: dropSections().has(s.id), moving: !!movingHome(), fit: fitting().has(s.id) }} data-sect={s.id}
               style={{ left: `${r()!.x}px`, top: `${r()!.y}px`, width: `${r()!.w}px`, height: `${r()!.h}px` }}>
               <span class="sgrip" data-nodrag data-export="strip" onPointerDown={(e) => sectionEdgeDown(e, s.id)} />
             </div>
@@ -37,7 +37,7 @@ export function SectionLabels() {
         const n = () => allMembers(s.id).length;
         return (
           <Show when={r()}>
-            <div class="slabel" classList={{ collapsed: !!s.collapsed, [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), drop: dropSections().has(s.id), moving: !!movingHome() }} data-sect={s.id}
+            <div class="slabel" classList={{ collapsed: !!s.collapsed, [`c-${s.color}`]: !!s.color, sel: sel.sections.includes(s.id), drop: dropSections().has(s.id), moving: !!movingHome(), fit: fitting().has(s.id) }} data-sect={s.id}
               style={{ left: `${r()!.x}px`, top: `${r()!.y}px`, ...(s.collapsed ? { width: `${r()!.w}px`, height: `${r()!.h}px` } : {}) }}
               onPointerDown={(e) => sectionLabelDown(e, s.id)} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); A.sectionMenu(s.id, e.clientX, e.clientY); }}>
               <Show when={!s.collapsed}><span class="dots">⋮⋮</span></Show>

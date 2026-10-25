@@ -16,8 +16,8 @@ import { animate, Spring, reduceMotion } from "../state/camera";
 import { setEditing, setPopIn } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
-import { frameOf, allMembers, isHidden } from "../state/sections";
-import { popCard, revealCard, sectionById, selCards } from "./common";
+import { frameOf, fitFrame, setFitting, allMembers, isHidden } from "../state/sections";
+import { popCard, revealCard, sectionById, sectionLocked, selCards } from "./common";
 import { requestViews } from "./create";
 import { kbd } from "../keymap";
 
@@ -389,6 +389,25 @@ export function toggleSection(id: string) {
     setPopIn((p) => { const n = { ...p }; for (const [m, o] of offs) { if (done) delete n[m]; else n[m] = { ...o, v: Math.max(0, sp.v) }; } return n; });
     if (done) apply();
     return done;
+  });
+}
+/** Section 的 Fit Content（#40）：框收到刚好包住成员卡和子 Section（标准边距）；缓动过去，一步撤销。折叠的、锁着的、空的不动 */
+export function fitSections(ids: string[]) {
+  const fits = new Map<string, Rect>();
+  for (const id of ids) {
+    const s = sectionById(id);
+    if (!s || s.collapsed || sectionLocked(s)) continue;
+    const r = fitFrame(s);
+    if (r) fits.set(id, r);
+  }
+  if (!fits.size) return;
+  if (!reduceMotion()) {
+    const me = new Set(fits.keys());
+    setFitting(me);
+    setTimeout(() => setFitting((f) => (f === me ? new Set() : f)), 320);
+  }
+  mutate((b) => {
+    for (const [id, r] of fits) { const s = b.sections.find((q) => q.id === id); if (s) Object.assign(s, { x: r.x, y: r.y, w: r.w, h: r.h }); }
   });
 }
 export function renameSection(id: string, v: string) {

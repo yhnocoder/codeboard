@@ -3,17 +3,17 @@ import {
   findCard, isCode, cardTitle, segOf, allCodeCards, walkOrder, headOf, canMark, type CodeCard, type CompareCard, type LinkSide, type Section, type CallSpan,
 } from "@codeboard/core";
 import { state, mutate, sel, select, lineSel, isSel, flows, cardById, hostOf, toast, placeOf, sharedOn, type LineSel } from "../state/store";
-import { hiddenByAncestor } from "../state/sections";
+import { hiddenByAncestor, fitFrame } from "../state/sections";
 import { toWorld } from "../state/camera";
 import { setEditing, setPaletteOpen } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
-import { K, fitAll, fitContent, openCode, openLink, sectionById, selCards, selectAll, selectCard } from "./common";
+import { K, fitAll, fitContent, openCode, openLink, sectionById, sectionLocked, selCards, selectAll, selectCard } from "./common";
 import { boardOffset } from "../state/measure";
 import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, setLinkSide, clearLinkSides, toggleCallMark, toggleLoopMark, resetLabelPos, deleteLabel } from "./links";
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
-import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
+import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem, fitSections } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setMarkColor, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
@@ -418,6 +418,7 @@ export function sectionMenu(id: string, x: number, y: number) {
   openMenu([
     { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "section", id }) },
     { label: s.collapsed ? "Expand" : "Collapse", run: () => toggleSection(id) },
+    { label: "Fit Content", kbd: kbd("fitContent"), disabled: s.collapsed ? "Expand the Section first" : sectionLocked(s) ? "The Section is locked" : fitFrame(s) ? false : "No cards inside", run: () => fitSections([id]) },
     { label: s.locked ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock([], [id]) },
     ...(s.parent ? [{ label: "Move Out of Parent Section", run: () => set((q) => { q.parent = sectionById(q.parent)?.parent; }) } as Item] : []),
     { label: "Color", sub: SECTION_COLORS.map(([v, lb]) => ({ label: lb, checked: (s.color ?? "none") === v, run: () => set((q) => { q.color = v === "none" ? undefined : v; }) })) },

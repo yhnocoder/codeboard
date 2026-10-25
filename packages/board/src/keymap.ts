@@ -117,7 +117,7 @@ export const KEYMAP: Bind[] = [
   { id: "deleteEverywhere", keys: ["mod+Backspace", "mod+Delete"], show: "⌘⌫", label: "Delete Everywhere (linked card)", group: "Cards", when: () => hasCards() && !lineSel(), run: (a) => void a.deleteEverywhere() },
   { id: "lock", keys: ["mod+shift+l"], label: "Lock / Unlock", group: "Cards", run: (a) => a.toggleLock(sel.cards.slice(), sel.sections.slice()) },
   { id: "turnIntoBoard", keys: ["mod+shift+b"], label: "Turn into Board", group: "Cards", run: (a) => void a.turnIntoBoard() },
-  { id: "fitContent", keys: ["alt+KeyF"], label: "Fit Content", group: "Cards", when: hasCards, run: (a) => a.fitContent(sel.cards) },
+  { id: "fitContent", keys: ["alt+KeyF"], label: "Fit Content", group: "Cards", when: () => hasCards() || sel.sections.length > 0, run: (a) => { if (sel.cards.length) a.fitContent(sel.cards); else a.fitSections(sel.sections.slice()); } },
   { id: "wrap", keys: ["alt+KeyZ"], label: "Wrap Lines", group: "Cards", run: (a) => a.toggleWrap(sel.cards.slice()) },
   { id: "nudgeL", keys: ["ArrowLeft", "shift+ArrowLeft"], show: "Arrows", label: "Nudge (⇧ = 10px)", group: "Cards", when: () => hasCards() && !walk(), run: nudge(-1, 0) },
   { id: "nudgeR", keys: ["ArrowRight", "shift+ArrowRight"], when: () => hasCards() && !walk(), run: nudge(1, 0) },

@@ -212,8 +212,18 @@ export const sectionPill = (s: Pick<Section, "x" | "y">): Rect => ({ x: s.x, y: 
 /** 展开的 Section 的框：自己存的框 ∪ 里面的东西（成员卡、子 Section 的框，各加边距） */
 export function sectionFrame(s: Rect, inner: Iterable<Rect>): Rect {
   let r: Rect = { x: s.x, y: s.y, w: s.w, h: s.h };
-  for (const k of inner) r = union(r, { x: k.x - SECTION_PAD.l, y: k.y - SECTION_PAD.t, w: k.w + SECTION_PAD.l + SECTION_PAD.r, h: k.h + SECTION_PAD.t + SECTION_PAD.b });
+  for (const k of inner) r = union(r, padded(k));
   return r;
+}
+const padded = (k: Rect): Rect => ({ x: k.x - SECTION_PAD.l, y: k.y - SECTION_PAD.t, w: k.w + SECTION_PAD.l + SECTION_PAD.r, h: k.h + SECTION_PAD.t + SECTION_PAD.b });
+
+/** Section 的 Fit Content：刚好包住里面的东西（各加边距）的框，往外取整到整数；里面没东西 = undefined */
+export function sectionFit(inner: Iterable<Rect>): Rect | undefined {
+  let r: Rect | undefined;
+  for (const k of inner) r = r ? union(r, padded(k)) : padded(k);
+  if (!r) return undefined;
+  const x = Math.floor(r.x), y = Math.floor(r.y);
+  return { x, y, w: Math.ceil(r.x + r.w) - x, h: Math.ceil(r.y + r.h) - y };
 }
 
 /** 整块白板每个 Section 的框（折叠的是标题条；子 Section 折叠时按标题条算进父框）。rects = 摆着的卡的矩形 */
