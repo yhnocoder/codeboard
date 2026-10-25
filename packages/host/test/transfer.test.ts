@@ -7,7 +7,7 @@ import { emptyBoard, type Board, type CodeCard, type Segment, type Source } from
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "../src/nodefs";
 import { useWorkspace } from "../src/ws";
-import { copyToProject, otherProjects, recordProject, removeMoved, type Project } from "../src/transfer";
+import { copyToProject, freeName, otherProjects, recordProject, removeMoved, type Project } from "../src/transfer";
 import { nodeWorkspace } from "./node-workspace";
 import { tempRepo } from "./helpers";
 
@@ -182,6 +182,32 @@ describe("move to another project", () => {
     expect(trash.some((f) => f.startsWith("bS1."))).toBe(true);
     expect(fs.existsSync(path.join(src, "cards/sh.json"))).toBe(true);
     expect((await new Storage(nodeFs, { dir: () => dst }).list()).map((m) => m.id).sort()).toEqual(["bM", "bS1", "bS2"]);
+  });
+});
+
+describe("board names in the target", () => {
+  it("suffixes a name the target already has with the first free number, across groups and boards moved together", async () => {
+    const src = mk("xsrc"), dst = mk("xdst");
+    const store = new Storage(nodeFs, { dir: () => src });
+    const S = emptyBoard("bS", "Engine step");
+    const M = emptyBoard("bM", "Engine step");
+    put(M, { id: "fr", kind: "board", board: "bS" });
+    await store.save(S); await store.save(M);
+    const there = new Storage(nodeFs, { dir: () => dst });
+    await there.save(emptyBoard("t1", "Engine step"));
+    await there.save(emptyBoard("t3", "Engine step (3)"), { group: "Elsewhere" });
+    await there.save(emptyBoard("t4", "Other"));
+
+    await copyToProject(store, "bM", project(B, dst));
+    const after = new Storage(nodeFs, { dir: () => dst });
+    expect((await after.load("bM"))?.name).toBe("Engine step (2)");
+    expect((await after.load("bS"))?.name).toBe("Engine step (4)");
+    // 这边的名字不动；再拷一次接着往后数
+    expect((await store.load("bM"))?.name).toBe("Engine step");
+    const t = await copyToProject(store, "bM", project(B, dst));
+    expect((await new Storage(nodeFs, { dir: () => dst }).load(t!.id))?.name).toBe("Engine step (5)");
+    expect(freeName("Other (2)", new Set(["Other (2)", "Other"]))).toBe("Other (3)");
+    expect(freeName("New", new Set(["Old"]))).toBe("New");
   });
 });
 

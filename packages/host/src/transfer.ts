@@ -62,11 +62,14 @@ export async function copyToProject(store: Storage, id: string, to: Project): Pr
 
   const target = new Storage(nodeFs, { dir: () => to.dir, log });
   try {
-    const taken = new Set((await target.list()).map((m) => m.id));
+    const there = await target.list();
+    const taken = new Set(there.map((m) => m.id));
     const ids = new Map([...src.keys()].map((x) => [x, taken.has(x) ? uid("b") : x]));
+    const names = new Set(there.map((m) => m.name));
     const roots = new Map<string, Source | null>();
     for (const { board, refs, group } of src.values()) {
       board.id = ids.get(board.id)!;
+      board.name = freeName(board.name, names);
       for (const c of board.cards) if (c.kind === "board" && ids.has(c.board)) c.board = ids.get(c.board)!;
       await rehome(board, to.folders, roots);
       // 那边卡库里已经有的共享卡：用那边的（同一张卡）；读不了的那张在这块白板上留成普通卡，不去盖掉那边的文件
@@ -85,6 +88,17 @@ export async function copyToProject(store: Storage, id: string, to: Project): Pr
   } finally {
     target.dispose();
   }
+}
+
+/** 那边（所有分组）已经有这个名字：加 " (2)"、" (3)"……取第一个没用过的；names 记下用掉的（同一次搬的白板也算） */
+export function freeName(name: string, names: Set<string>): string {
+  let n = name;
+  if (names.has(n)) {
+    const base = name.replace(/ \(\d+\)$/, "");
+    for (let i = 2; names.has(n = `${base} (${i})`); i++);
+  }
+  names.add(n);
+  return n;
 }
 
 /**
