@@ -67,9 +67,9 @@ export function CardView(p: { card: Card }) {
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
     // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开。
-    // Note / Text 存的高度是上限：跟着内容高矮，内容更高时停在这里、正文里滚（styles.css）；删了字卡跟着变矮，不留空
-    if (pl().h && c().kind === "note") s["max-height"] = `${pl().h}px`;
-    else if (pl().h && c().kind !== "code") s.height = `${pl().h}px`;
+    // Note / Text：没存高度 = 跟着内容（删了字变矮、写多了变高）；存了高度 = 用户拖出来的固定高度，
+    // 内容更高时在正文里滚（styles.css，边上渐隐），更矮时下面留空，直到 Fit Content 回到跟着内容
+    if (pl().h && c().kind !== "code") s.height = `${pl().h}px`;
     const g = grow();
     if (g) { s.width = `${g.w}px`; if (c().kind !== "code") s.height = `${g.h}px`; }
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
@@ -125,7 +125,11 @@ export function CardView(p: { card: Card }) {
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <Show when={!pl().locked}>
-          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>
+          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<>
+            <div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />
+            {/* Note 的下边：只改高度（拖出来的高度会一直留着，直到 Fit Content） */}
+            <Show when={c().kind === "note"}><span class="hb" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} /></Show>
+          </>}>
             {/* Mark：右下角一个小方块只改宽度，字号不变、字跟着折行 */}
             <Show when={(c() as NoteCard).hand} fallback={<>
               <span class="hw l" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { left: true })} />

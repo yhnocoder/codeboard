@@ -290,8 +290,8 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
       if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
     } else setGuides([]);
     setSizeHint(hint ? { x: x + w / 2, y: r0.y + h + 8, text: hint } : null);
-    // Note / Text 的高度是上限（Card.tsx）：拉到内容那么高或更高就是自动高度，不存一个比内容还高的数
-    const auto = bottom && nat && (c.kind === "note" ? h > nat.h - 8 / z : Math.abs(h - nat.h) < 8 / z);
+    // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）
+    const auto = bottom && nat && Math.abs(h - nat.h) < 8 / z;
     live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (bottom) k.h = auto ? undefined : Math.round(h - hx); });
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }
