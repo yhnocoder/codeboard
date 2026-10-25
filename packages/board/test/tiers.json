@@ -3,7 +3,8 @@
   "smoke": [
     "expandCall", "expandAndWalk", "peek", "notes", "sections", "markdownRender", "markdownEdit", "export", "patchsave", "versions", "compare",
     "web", "menusFitWindow", "calltree", "questions", "runtime", "syncundo", "sharedsync", "walkthroughOrder", "zoomLevels", "palette",
-    "settingsPage", "linkMergeSection", "linklist"
+    "settingsPage", "linkMergeSection", "linklist", "dragCardIntoOtherSection", "noteResizeClipsContent", "markdownHighlight", "mathSourceInPlace",
+    "stickerBitmapsPicker", "notePastedImageSameSizeInBothModes"
   ],
   "manual": ["markdownRecord"],
   "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime"],
