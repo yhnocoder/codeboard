@@ -17,6 +17,7 @@ import { setMediaDir } from "@codeboard/host/exports";
 import { initSource } from "@codeboard/host/source";
 import { onDidOpenGithubFile } from "@codeboard/host/github";
 import { githubDir, openStorage, type Storage } from "@codeboard/host/storage";
+import { scheduleAssetSweep } from "@codeboard/host/assetsweep";
 import { watchVersions } from "@codeboard/host/watch";
 import { debounce, useWorkspace } from "@codeboard/host/ws";
 import { forgetDefs } from "@codeboard/host/defcache";
@@ -34,6 +35,9 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const ready = startAnalysis(path.join(ctx.extensionUri.fsPath, "dist"));
   const store = (storage = openStorage());
   sub({ dispose: () => store.dispose() });
+  // assets/ 里没人用的旧图：存储目录打开后在后台清（一天一次）；换了目录再排一次
+  let unsweep = scheduleAssetSweep(store);
+  sub({ dispose: () => unsweep() });
   initSource(githubDir());
   const webviews = new BoardWebviews(ctx, store);
   const panels = new BoardHub(webviews.env(), store);
@@ -98,7 +102,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 名字索引跟着文件的保存、新建、删除、外面的改动增量更新
   sub(watchNameIndex());
   sub(ws.settings.onDidChange((e) => {
-    if (e.affects("codeboard.storageDir")) void store.reset().then(() => marks.rebuild());
+    if (e.affects("codeboard.storageDir")) void store.reset().then(() => { marks.rebuild(); unsweep(); unsweep = scheduleAssetSweep(store); });
     if (affectsSettings(e)) panels.broadcast({ type: "host", host: { settings: readSettings() } });
     if (e.affects("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
   }));

@@ -240,6 +240,8 @@ export class Storage {
 
   /** 缓存里的白板（不拷贝，只读）：开着的面板用它当宿主这边的那一份 */
   peek(id: string): Board | undefined { return this.cache.get(id)?.board; }
+  /** 内存里的所有白板（含还没写盘的改动） */
+  peekAll(): Board[] { return [...this.cache.values()].map((e) => e.board); }
 
   /** 整块白板写盘（宿主自己改的白板、新建、改名、移组）。refs：新白板上哪些卡是共享卡（复制白板时）；已有的白板沿用它的 */
   async save(b: Board, opts: { group?: string | null; refs?: Iterable<string> } = {}) {
