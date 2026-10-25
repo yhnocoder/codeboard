@@ -12,6 +12,7 @@ import { createEffect, createSignal, For, onCleanup, Show, type Accessor } from 
 import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
+import { clipboardText } from "./clipboard";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView } from "./codeblock";
 import { MathBlockView } from "./mathblock";
@@ -442,11 +443,7 @@ function makeInst(dragHandle = false): Inst {
       attributes: { class: "md-pm", spellcheck: "false" },
       handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
       // 复制：text/plain 放 Markdown（text/html 照旧）；代码块里选的字原样
-      clipboardTextSerializer: (slice) => {
-        const one = slice.content.childCount === 1 ? slice.content.firstChild! : null;
-        if (one?.type.spec.code && slice.openStart > 0) return one.textContent;
-        try { return serializeMd({ type: "doc", content: slice.content.toJSON() ?? [] }); } catch { return slice.content.textBetween(0, slice.content.size, "\n\n"); }
-      },
+      clipboardTextSerializer: clipboardText,
       // 白板上的 Note 一般不滚动（卡片跟着内容长高），白板本身也不滚（靠镜头）：不让 ProseMirror 去滚所有祖先。
       // 定了高度的 Note 正文自己会滚（overflow: auto）：光标只在正文里滚进来。找能滚的祖先先看样式，自动高度的卡不量排版。
       // 代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常

@@ -372,6 +372,76 @@ test("markdownMarksAroundFormula", async () => {
   await close(h);
 });
 
+/** Copying part of a formatted span: text/plain is Markdown with the markers balanced around the selected part, text/html carries
+ *  the format, and pasting it back into the Note keeps the format (saved as the same Markdown) */
+test("copyPartialMarkBalanced", async () => {
+  const b = emptyBoard("b1", "copy");
+  const src = "==Plain words== **Bold words** *Ital words* ~~Gone words~~ `Code words` [Link words](https://e.com/p) ==aa $x$ bb== end";
+  put(b, { id: "n1", kind: "note", md: src, bg: true } as NoteCard, 60, 60, 760);
+  b.cam = { x: 0, y: 0, z: 1.2 };
+  const h = await open({ board: b, light, w: 1100, h: 700 });
+  const pg = h.page;
+  const pm = '.card[data-id="n1"] .md-pm';
+  await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 600, y: 12 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  await pg.evaluate(() => { const w = window as any; w.__clip = []; document.addEventListener("copy", (e) => w.__clip.push([e.clipboardData?.getData("text/plain"), e.clipboardData?.getData("text/html")])); });
+  // 选中第一段里的一截字：公式算一个字（\u0000），选区的头尾落在公式外面的字上
+  const select = (phrase: string) => pg.evaluate(([root, w]) => {
+    const p = document.querySelector(root)!.querySelector("p")!, pts: [Node, number][] = [];
+    let flat = "";
+    const visit = (n: Node) => {
+      if (n instanceof Element && n.matches('[data-type="inline-math"], .katex')) { pts.push([n.parentNode!, [...n.parentNode!.childNodes].indexOf(n as ChildNode)]); flat += "\u0000"; return; }
+      if (n.nodeType === 3) { for (let i = 0; i < n.textContent!.length; i++) { pts.push([n, i]); flat += n.textContent![i]; } return; }
+      n.childNodes.forEach(visit);
+    };
+    visit(p);
+    const i = flat.indexOf(w);
+    if (i < 0 || flat.indexOf(w, i + 1) >= 0) return false;
+    const [en, eo] = pts[i + w.length - 1], r = document.createRange();
+    r.setStart(...pts[i]); r.setEnd(en, eo + 1);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    return true;
+  }, [pm, phrase] as const);
+  // [selected, text/plain, text/html carries it, the pasted paragraph: its one formatted element and the words in it]
+  const cases: [string, string, RegExp, string][] = [
+    ["ain wor", "==ain wor==", /<mark>ain wor<\/mark>/, "mark ain wor"], ["old wor", "**old wor**", /<strong>old wor<\/strong>/, "strong old wor"],
+    ["tal wor", "*tal wor*", /<em>tal wor<\/em>/, "em tal wor"], ["one wor", "~~one wor~~", /<s>one wor<\/s>/, "s one wor"],
+    ["ode wor", "`ode wor`", /<code>ode wor<\/code>/, "code ode wor"], ["ink wor", "[ink wor](https://e.com/p)", /<a [^>]*href="https:\/\/e\.com\/p"[^>]*>ink wor<\/a>/, "a ink wor https://e.com/p"],
+    ["a \u0000 b", "==a $x$ b==", /<mark>a <span[^>]*data-type="inline-math"[\s\S]*<\/mark>/, "mark a $x$ b"],
+  ];
+  const out: { sel: string; selected: boolean; plain?: string; html: boolean; pasted?: string }[] = [];
+  for (const [sel, plain, html, want] of cases) {
+    const selected = await select(sel);
+    await pg.waitForTimeout(80);
+    await pg.keyboard.press("ControlOrMeta+c");
+    const [p, hh] = await pg.evaluate(() => (window as any).__clip.pop() ?? []) as [string, string];
+    // 粘回去：文末另起一段，把刚才剪贴板里的两份一起粘进来（和系统粘贴一样走编辑器的 paste）
+    await pg.keyboard.press("ControlOrMeta+End");
+    await pg.keyboard.press("Enter");
+    await pg.evaluate(([root, p, hh]) => {
+      const dt = new DataTransfer(); dt.setData("text/plain", p); dt.setData("text/html", hh);
+      document.querySelector(root)!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, [pm, p, hh] as const);
+    await pg.waitForTimeout(80);
+    // 光标处的记号装饰不算：只看格式元素和里面的字（公式写成 $latex$）
+    const pasted = await pg.evaluate((root) => {
+      const ps = document.querySelector(root)!.querySelectorAll(":scope > p"), p = ps[ps.length - 1], el = p.firstElementChild;
+      if (!el || p.childNodes.length !== 1) return p.innerHTML;
+      let t = "";
+      const visit = (n: Node) => { if (n instanceof Element && n.matches('[data-type="inline-math"]')) { t += `$${n.getAttribute("data-latex")}$`; return; } if (n.nodeType === 3) t += n.textContent; else n.childNodes.forEach(visit); };
+      visit(el);
+      return [el.tagName.toLowerCase(), t, el.getAttribute("href") ?? ""].join(" ").trim();
+    }, pm);
+    out.push({ sel: sel.replace("\u0000", "$x$"), selected, plain: p, html: html.test(hh ?? ""), pasted });
+    check(`copyPartialMarkBalanced ${plain}`, selected && p === plain && html.test(hh ?? "") && pasted === want, out[out.length - 1]);
+  }
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(1500);
+  const saved = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
+  check("copyPartialMarkBalanced-saved", saved === [src, ...cases.map((c) => c[1])].join("\n\n"), { saved, out });
+  await close(h);
+});
+
 /** One editor is reused across Notes: each edit starts from that Note's text with its own undo history */
 test("markdownEditorReuse", async () => {
   const { b } = mdBoard();
