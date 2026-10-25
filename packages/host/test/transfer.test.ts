@@ -171,17 +171,20 @@ describe("project registry", () => {
   it("lists other projects, newest first, without this one or ones whose folder is gone", async () => {
     const mem = new Map<string, unknown>();
     const state = { get: <T>(k: string) => mem.get(k) as T | undefined, set: async (k: string, v: unknown) => { mem.set(k, v); } };
-    await recordProject(state, "/tmp/here-boards");
+    // 这个项目的存储目录还没有（没有白板）：登记时建好，这个窗口的 watcher 才看得到别的窗口拷过来的第一块白板
+    const here = path.join(mk("xhere"), "boards"), here2 = path.join(mk("xhere"), "boards");
+    await recordProject(state, here);
+    expect(fs.existsSync(here)).toBe(true);
     mem.set("codeboard.projects", {
       ...(mem.get("codeboard.projects") as object),
       "/b": { folder: B, name: "b", dir: "/b", seen: 2 },
       "/o": { folder: O, name: "o", dir: "/o", seen: 3 },
       "/x": { folder: "/tmp/codeboard-no-such-folder", name: "x", dir: "/x", seen: 4 },
     });
-    expect((await otherProjects(state, "/tmp/here-boards")).map((p) => p.dir)).toEqual(["/o", "/b"]);
-    expect(Object.keys(mem.get("codeboard.projects") as object).sort()).toEqual(["/b", "/o", "/tmp/here-boards"]);
+    expect((await otherProjects(state, here)).map((p) => p.dir)).toEqual(["/o", "/b"]);
+    expect(Object.keys(mem.get("codeboard.projects") as object).sort()).toEqual(["/b", "/o", here].sort());
     // 同一个文件夹换了存储目录：旧的那条换掉
-    await recordProject(state, "/tmp/here-boards-2");
-    expect(Object.keys(mem.get("codeboard.projects") as object).sort()).toEqual(["/b", "/o", "/tmp/here-boards-2"]);
+    await recordProject(state, here2);
+    expect(Object.keys(mem.get("codeboard.projects") as object).sort()).toEqual(["/b", "/o", here2].sort());
   });
 });

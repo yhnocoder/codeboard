@@ -24,6 +24,9 @@ export async function recordProject(state: StateStore, dir: string): Promise<voi
   for (const [k, p] of Object.entries(all)) if (folder && p.folder === folder) delete all[k];
   all[dir] = { folder, name: folder ? path.basename(folder) : "No Folder", dir, seen: Date.now() };
   await state.set(PROJECTS, all);
+  // 存储目录先建好：还没有白板的项目没有这个目录，别的窗口拷过来时目录和白板文件一起出现，
+  // 这个窗口的存储 watcher 漏掉那个文件（要重新加载窗口才列出来）
+  await fs.mkdir(dir, { recursive: true }).catch((e) => log("warn", `transfer: cannot create ${dir}: ${e instanceof Error ? e.message : e}`));
 }
 
 /** 别的项目（不含存储目录是 dir 的这个），最近记下的在前；文件夹已经没了的从登记表里去掉 */
