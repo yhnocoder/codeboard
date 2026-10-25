@@ -179,10 +179,10 @@ test("markdownEdit", async () => {
 });
 
 /** ==highlight==: typing ==hi== turns into a highlight, the toolbar's highlighter button and ⌘⇧H toggle it, it is saved as ==…==,
- *  and the static Note draws the same highlighter as the editor */
+ *  and the static Note draws the same highlighter as the editor: one unbroken band over a phrase, its spaces and bold inside it */
 test("markdownHighlight", async () => {
   const b = emptyBoard("b1", "highlight");
-  put(b, { id: "n1", kind: "note", md: "Plain words in a note", bg: true } as NoteCard, 60, 60, 460);
+  put(b, { id: "n1", kind: "note", md: "Plain words in a note with **bold** inside", bg: true } as NoteCard, 60, 60, 460);
   b.cam = { x: 0, y: 0, z: 1.4 };
   const h = await open({ board: b, light, w: 1000, h: 640 });
   const pg = h.page;
@@ -198,17 +198,35 @@ test("markdownHighlight", async () => {
   const before = await marks();
   await pg.keyboard.type("=");
   const typed = await marks();
-  // 选中一个词（DOM 选区，和拖选一样）；工具条要等选区停下来才出
-  const sel = async (word: string) => {
+  // 选中一段字（DOM 选区，和拖选一样，可以跨过粗体）；工具条要等选区停下来才出
+  const sel = async (phrase: string) => {
     await pg.evaluate(([root, w]) => {
-      const walk = document.createTreeWalker(document.querySelector(root)!, NodeFilter.SHOW_TEXT);
-      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
-        const i = n.textContent!.indexOf(w);
-        if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.length); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); return; }
-      }
-    }, [pm, word] as const);
+      const walk = document.createTreeWalker(document.querySelector(root)!, NodeFilter.SHOW_TEXT), ns: Text[] = [];
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) ns.push(n as Text);
+      const all = ns.map((n) => n.data).join(""), i = all.indexOf(w);
+      if (i < 0) return;
+      const at = (k: number): [Text, number] => { for (const n of ns) { if (k <= n.data.length) return [n, k]; k -= n.data.length; } return [ns[ns.length - 1], ns[ns.length - 1].data.length]; };
+      const r = document.createRange(); r.setStart(...at(i)); r.setEnd(...at(i + w.length));
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    }, [pm, phrase] as const);
   };
-  await sel("words");
+  /** 一段高亮的字在屏幕上是不是一整条底色：每一行上，<mark> 的框首尾相接盖满这段字，中间没有缝，也没有叠在一起（半透明叠两层会更深） */
+  const band = (root: string, phrase: string) => pg.evaluate(([root, w]) => {
+    const el = document.querySelector(root)!, walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), ns: Text[] = [];
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) ns.push(n as Text);
+    const all = ns.map((n) => n.data).join(""), i = all.indexOf(w);
+    if (i < 0) return { found: false, gaps: [], overlaps: [] };
+    const at = (k: number): [Text, number] => { for (const n of ns) { if (k <= n.data.length) return [n, k]; k -= n.data.length; } return [ns[ns.length - 1], ns[ns.length - 1].data.length]; };
+    const r = document.createRange(); r.setStart(...at(i)); r.setEnd(...at(i + w.length));
+    const span = r.getBoundingClientRect();
+    const boxes = [...el.querySelectorAll("mark")].flatMap((m) => [...m.getClientRects()]).filter((b) => b.right > span.left && b.left < span.right && b.bottom > span.top && b.top < span.bottom).sort((a, b) => a.left - b.left);
+    const gaps: number[] = [], overlaps: number[] = [];
+    if (!boxes.length || boxes[0].left > span.left + 0.5 || boxes[boxes.length - 1].right < span.right - 0.5) gaps.push(-1);
+    for (let k = 1; k < boxes.length; k++) { const d = boxes[k].left - boxes[k - 1].right; if (d > 0.5) gaps.push(+d.toFixed(1)); if (d < -0.5) overlaps.push(+d.toFixed(1)); }
+    return { found: true, boxes: boxes.length, gaps, overlaps };
+  }, [root, phrase] as const);
+  const solid = (b: { found: boolean; gaps: number[]; overlaps: number[] }) => b.found && !b.gaps.length && !b.overlaps.length;
+  await sel("Plain words");
   const btn = pg.locator('.md-bubble .tbtn[data-tip="Highlight"]');
   await btn.waitFor({ timeout: 2000 });
   await pg.waitForTimeout(300); // 淡入结束
@@ -236,8 +254,8 @@ test("markdownHighlight", async () => {
   const onOff = await btn.evaluate((b) => b.classList.contains("on"));
   await btn.click();
   await pg.waitForTimeout(150);
-  // ⌘⇧H：选中 "Plain" 按快捷键
-  await sel("Plain");
+  // ⌘⇧H：选中跨过粗体的一段按快捷键
+  await sel("note with bold");
   await pg.waitForTimeout(100);
   await pg.keyboard.press("ControlOrMeta+Shift+h");
   await pg.waitForTimeout(150);
@@ -252,6 +270,7 @@ test("markdownHighlight", async () => {
   }, pm);
   const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return `${c.backgroundColor} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
   const editLook = await look(`${pm} mark`);
+  const editBand = { phrase: await band(pm, "Plain words"), bold: await band(pm, "note with bold") };
   await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-edit-card.png") }).catch(() => {});
   await saveShot(h, "md-highlight-edit");
   await pg.keyboard.press("Escape");
@@ -259,15 +278,17 @@ test("markdownHighlight", async () => {
   const saved = md();
   const showLook = await look('.card[data-id="n1"] .nbody mark');
   const shown = await pg.locator('.card[data-id="n1"] .nbody mark').allTextContents();
+  const showBand = { phrase: await band('.card[data-id="n1"] .nbody', "Plain words"), bold: await band('.card[data-id="n1"] .nbody', "note with bold") };
   await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-display-card.png") }).catch(() => {});
   await saveShot(h, "md-highlight-display");
-  const r = { before, typed, icons, labels, onBefore, added, onAfter, removed, onOff, keyed, reveal, editLook, showLook, shown, saved };
+  const r = { before, typed, icons, labels, onBefore, added, onAfter, removed, onOff, keyed, reveal, editLook, showLook, shown, saved, editBand, showBand };
   check("markdownHighlight-typing", before.length === 0 && typed.join() === "hi", r);
-  check("markdownHighlight-toolbar", icons === 7 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("words") && onAfter && !removed.includes("words") && !onOff, r);
-  check("markdownHighlight-shortcut", keyed.includes("Plain"), r);
+  check("markdownHighlight-toolbar", icons === 7 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("Plain words") && onAfter && !removed.includes("Plain words") && !onOff, r);
+  check("markdownHighlight-shortcut", keyed.includes("note with bold"), r);
   check("markdownHighlight-reveal", reveal.includes("==|=="), r);
-  check("markdownHighlight-saved", saved === "==Plain== ==words== in a note and ==hi==", r);
-  check("markdownHighlight-display", shown.join() === "Plain,words,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && !(editLook[0] ?? "").startsWith("rgba(0, 0, 0, 0)"), r);
+  check("markdownHighlight-saved", saved === "==Plain words== in a ==note with **bold**== inside and ==hi==", r);
+  check("markdownHighlight-display", shown.join() === "Plain words,note with bold,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && !(editLook[0] ?? "").startsWith("rgba(0, 0, 0, 0)"), r);
+  check("markdownHighlight-oneBand", [editBand.phrase, editBand.bold, showBand.phrase, showBand.bold].every(solid), r);
   await close(h);
 });
 
