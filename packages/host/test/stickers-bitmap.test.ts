@@ -3,8 +3,8 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { StickerPack } from "@codeboard/core";
-import { MAX_BITMAP, MAX_SVG, readPacks, sniffImage } from "../src/stickers";
+import { sniffImage, type StickerPack } from "@codeboard/core";
+import { MAX_BITMAP, MAX_SVG, readPacks } from "../src/stickers";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { animWebp, apng, faceFrames, gif, png, WEBP_1PX } from "./images";
@@ -19,18 +19,18 @@ const AWEBP = animWebp(1, 1, [WEBP_1PX, WEBP_1PX]);
 
 describe("sniffImage", () => {
   it("recognises PNG, APNG, WebP, animated WebP, GIF and multi-frame GIF by their bytes", () => {
-    expect(sniffImage(PNG)).toEqual({ mime: "image/png", anim: false });
-    expect(sniffImage(APNG)).toEqual({ mime: "image/png", anim: true });
-    expect(sniffImage(WEBP_1PX)).toEqual({ mime: "image/webp", anim: false });
-    expect(sniffImage(AWEBP)).toEqual({ mime: "image/webp", anim: true });
-    expect(sniffImage(GIF1)).toEqual({ mime: "image/gif", anim: false });
-    expect(sniffImage(GIF2)).toEqual({ mime: "image/gif", anim: true });
+    expect(sniffImage(PNG)).toEqual({ mime: "image/png", anim: false, w: 16, h: 16 });
+    expect(sniffImage(APNG)).toEqual({ mime: "image/png", anim: true, w: 16, h: 16 });
+    expect(sniffImage(WEBP_1PX)).toEqual({ mime: "image/webp", anim: false, w: 1, h: 1 });
+    expect(sniffImage(AWEBP)).toEqual({ mime: "image/webp", anim: true, w: 1, h: 1 });
+    expect(sniffImage(GIF1)).toEqual({ mime: "image/gif", anim: false, w: 8, h: 8 });
+    expect(sniffImage(GIF2)).toEqual({ mime: "image/gif", anim: true, w: 8, h: 8 });
   });
 
   it("rejects other files, wrong magic bytes and truncated images", () => {
     expect(sniffImage(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"))).toBeNull();
     expect(sniffImage(Buffer.from("not an image at all, just text pretending"))).toBeNull();
-    expect(sniffImage(Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...Buffer.alloc(40)]))).toBeNull(); // JPEG is not a sticker format
+    expect(sniffImage(Buffer.from([0xff, 0xd8, 0xff, 0xe0, ...Buffer.alloc(40)]))).toBeNull(); // JPEG start without a frame header
     const badSig = Buffer.from(PNG); badSig[1] = 0x51;
     expect(sniffImage(badSig)).toBeNull();
     expect(sniffImage(PNG.subarray(0, 40))).toBeNull(); // cut before IDAT

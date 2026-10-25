@@ -20,7 +20,7 @@ const PAGES = [
 ];
 const findPage = (label: string) => PAGES.find((p) => p.id === label || p.title.toLowerCase() === label.trim().toLowerCase()) ?? null;
 setRefResolver(findPage, { missing: "No page with this title" });
-// ![…](assets/x.svg) → ./assets/x.svg in the static render (the editor shows the path as written, which this page serves too)
+// ![…](assets/x.svg) → ./assets/x.svg, in the static render and in the editor alike
 setAssetBase("./assets");
 
 // ---------- the page ----------

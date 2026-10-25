@@ -91,13 +91,15 @@ function segMd(s: Segment, link?: string): string[] {
   return out;
 }
 
+/** Note 里存储目录 assets/ 下的图（粘贴的截图）：导出的 .md 放在别处，地址对不上，和 Image 卡一样写成 *Image: alt* */
+const localImages = (md: string) => md.replace(/!\[([^\]\n]*)\]\(<?assets\/[^)\s>]+>?(?:\s+"[^"\n]*")?\)/g, (_m, alt: string) => `*Image${alt ? `: ${alt}` : ""}*`);
 const quote = (s: string) => s.split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n");
 
 function noteMd(b: Board, n: Sidenote, links?: Record<string, string>): string {
   const where = n.at.lines ? (n.at.lines[0] === n.at.lines[1] ? ` · line ${n.at.lines[0]}` : ` · lines ${n.at.lines[0]}–${n.at.lines[1]}`) : "";
   const head = `**Sidenote**${where}${n.why ? ` · ${n.why}` : ""}`;
   switch (n.kind) {
-    case "text": return quote(`${head}\n\n${n.md.trim()}`);
+    case "text": return quote(`${head}\n\n${localImages(n.md.trim())}`);
     case "link": return quote(`${head}: [${n.title || domainOf(n.url)}](${n.url})`);
     case "card": { const c = findCard(b, n.card)?.card; return quote(`${head}: see “${c ? cardTitle(c, b) : n.card}”`); }
     case "paste": { const f = fence(n.text); return quote(`${head}${n.url ? ` · ${n.url}` : ""}\n\n${f}${mdLang(n.lang)}\n${n.text}\n${f}`); }
@@ -130,7 +132,7 @@ function bodyMd(b: Board, c: Card, o: MdOpts): string[] {
       if (c.msg) return [`Message: ${c.md.trim()}${c.msg.where ? ` (${c.msg.where})` : ""}`];
       // Note 自己第一行就是标题（## prefix caching）：节标题已经写了，不重复
       const md = c.md.trim(), m = /^#{1,6}\s+(.+)\n?/.exec(md);
-      return [m && m[1].trim() === cardTitle(c, b) ? md.slice(m[0].length).trim() : md];
+      return [localImages(m && m[1].trim() === cardTitle(c, b) ? md.slice(m[0].length).trim() : md)];
     }
     case "image": return [/^(https?:|data:)/.test(c.src) ? `![${c.alt ?? ""}](${c.src})` : `*Image${c.alt ? `: ${c.alt}` : ""}*`];
     case "web": return [`[${c.meta?.title || domainOf(c.url)}](${c.url})`, ...(c.meta?.desc ? ["", c.meta.desc] : [])];

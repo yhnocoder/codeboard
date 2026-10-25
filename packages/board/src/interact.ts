@@ -621,6 +621,7 @@ export function installKeys() {
   // 拖文件进来：图片
   window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault(); });
   window.addEventListener("drop", (e) => {
+    if (e.defaultPrevented) return; // 拖进正在编辑的 Note：编辑器已经插进去了
     const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
     if (!files.length) return;
     e.preventDefault();

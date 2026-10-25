@@ -15,6 +15,7 @@ import { Icon, type IconName } from "./icons";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView } from "./codeblock";
 import { MathBlockView } from "./mathblock";
+import { imageEditing, insertImageUrl, type SaveImage } from "./image";
 import { Typora, reconvert } from "./typora";
 import { sourceKey } from "./source";
 import { place, virtual } from "../ui/place";
@@ -30,8 +31,8 @@ export type MdEditorOpts = {
   onDone: (v: string | null) => void;
   /** [[ 引用：候选（kind 显示在右边）、/ 菜单里那一项的名字、没有对得上的候选时的提示。不给就没有 [[ 菜单 */
   refs?: { items: () => { id: string; title: string; kind: string }[]; menu: string; empty: string };
-  /** 存图（粘贴、/Image）：回写进 Markdown 的地址；不给就把 data: 地址原样写进去 */
-  saveImage?: (dataUrl: string, name: string) => Promise<string>;
+  /** 存图（粘贴、拖进来、/Image）：回写进 Markdown 的地址，null = 不插（存不了，用的一方自己提示）；不给就把 data: 地址原样写进去 */
+  saveImage?: SaveImage;
   pickImage?: () => Promise<string | null>;
   openLink?: (url: string) => void;
   /** 灰字补全（宿主没有就不给） */
@@ -77,7 +78,7 @@ type Ui = {
   opts: MdEditorOpts;
 };
 const uiOf = new WeakMap<Editor, Ui>();
-const saveImage = (o: MdEditorOpts, dataUrl: string, name: string) => (o.saveImage ? o.saveImage(dataUrl, name) : Promise.resolve(dataUrl));
+const saveImage = (o: MdEditorOpts): SaveImage => o.saveImage ?? ((u) => Promise.resolve(u));
 
 /** 刚插进去的空公式块在哪 */
 function emptyMathNear(e: Editor) {
@@ -100,8 +101,7 @@ async function insertPickedImage(e: Editor) {
   const ui = uiOf.get(e);
   const url = await ui?.opts.pickImage?.();
   if (!url || e.isDestroyed) return;
-  const src = await saveImage(ui!.opts, url, "image.png");
-  e.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run();
+  await insertImageUrl(e, saveImage(ui!.opts), url, "image.png");
 }
 
 /** 一个 suggestion 菜单（/ 和 [[ 共用）：键盘上下选、↵ 选中、Esc 关 */
@@ -274,6 +274,8 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   // 公式：点一下在原处展开原文（行内的由 source.ts 换成 $…$，公式块自己的节点视图展开，见 mathblock.ts）
   const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false } })
     : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
+    // 图片：和静态显示同一份 <img> 属性；粘贴、拖进来的图交给用的一方存（editor/image.ts）
+    : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
     // 代码块：编辑时用 CodeMirror（和 Free code 卡同一个编辑器）
     : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown }) })
     : x));
@@ -359,15 +361,6 @@ const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\$\$|\|.*\|)|\*\*[^*]+\*\*
 function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
-  const img = [...cd.items].find((i) => i.type.startsWith("image/"));
-  if (img) {
-    const f = img.getAsFile();
-    if (!f) return false;
-    const rd = new FileReader();
-    rd.onload = async () => { const src = await saveImage(o, String(rd.result), f.name || "pasted.png"); if (!e.isDestroyed) e.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run(); };
-    rd.readAsDataURL(f);
-    return true;
-  }
   const text = cd.getData("text/plain").replace(/\r\n?/g, "\n");
   const $f = e.state.selection.$from;
   if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴

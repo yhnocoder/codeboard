@@ -22,7 +22,7 @@ npm i @yhnocoder/markdown solid-js
 
 | Import | What |
 |---|---|
-| `@yhnocoder/markdown` | Read-only: `parseMd`, `serializeMd`, `renderMd`, `renderMdInline`, `hydrate`, `mdClick`, `toggleTask`, and the setters `setCodeHighlighter`, `setRefResolver`, `setAssetBase`. No Solid, no editor. |
+| `@yhnocoder/markdown` | Read-only: `parseMd`, `serializeMd`, `renderMd`, `renderMdInline`, `hydrate`, `mdClick`, `toggleTask`, and the setters `setCodeHighlighter`, `setRefResolver`, `setImageResolver` / `setAssetBase`. No Solid, no editor. |
 | `@yhnocoder/markdown/editor` | The editor: `mountEditor`, plus `prepare` / `warmUp` to parse ahead of time. Load it with `import()` on first edit to keep it out of your initial bundle. |
 | `@yhnocoder/markdown/code-editor` | The CodeMirror 6 code editor the editor uses for code blocks, on its own: `codeEditor`. |
 | `@yhnocoder/markdown/ui` | Small helpers the editor uses that a host may share: key handling inside inputs (`keepKey`, `setKeyPassThrough`), popover placement (`place`, `virtual`), batched DOM measuring (`queueMeasure`, `observeResize`). |
@@ -43,6 +43,8 @@ import "@yhnocoder/markdown/style.css";
 setCodeHighlighter(async (text, lang) => myHighlighter(text, lang));
 setRefResolver((label) => findPage(label), { missing: "No page with this title" });
 setAssetBase("./assets");
+// or resolve every image yourself, with its size if you know it (width / height reserve the space before it decodes):
+// setImageResolver((src) => ({ src: myUrl(src), width: 640, height: 480 }));
 
 const note = document.getElementById("note")!; // give it class="md"
 let src = "# Hello\n\nSome **Markdown** with $e^{i\\pi} = -1$.";
@@ -80,7 +82,7 @@ note.addEventListener("click", (e) => {
 show();
 ```
 
-`mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates), `saveImage` / `pickImage` (where pasted and picked images go; by default they stay inline as `data:` URLs), `complete` (inline AI completion), `code` (comment tokens and language services for code blocks) and `dragHandle` (a ⋮⋮ handle left of the hovered block for dragging it; off by default). The handle has `value()`, `destroy()` and `editor()` (the TipTap editor).
+`mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates), `saveImage` / `pickImage` (where pasted, dropped and picked images go: `saveImage(dataUrl, name)` resolves to the path written into the Markdown, or `null` to insert nothing; by default they stay inline as `data:` URLs), `complete` (inline AI completion), `code` (comment tokens and language services for code blocks) and `dragHandle` (a ⋮⋮ handle left of the hovered block for dragging it; off by default). The handle has `value()`, `destroy()` and `editor()` (the TipTap editor).
 
 A complete page using only this package is in [examples/markdown-demo](https://github.com/yhnocoder/codeboard/tree/main/examples/markdown-demo).
 

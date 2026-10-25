@@ -157,6 +157,8 @@ function resRef(u: string, base: string): string {
   if (assets && abs.startsWith(assets)) return `cbres:asset/${abs.slice(assets.length).split(/[?#]/)[0]}`;
   return abs;
 }
+/** 悬停内容（HTML 字符串）里的图（Markdown 里的 assets/ 图）也换成 cbres: 引用 */
+const imgRefs = (html: string) => html.replace(/(<img\b[^>]*?\ssrc=")([^"]*)"/g, (_m, a, u) => `${a}${resRef(u.replace(/&amp;/g, "&"), location.href).replace(/&/g, "&amp;")}"`);
 /** board.css 所在的目录（字体、背景图都在它下面） */
 function mediaBase(): string {
   const l = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].find((x) => /board\.css(\?|$)/.test(x.href));
@@ -236,9 +238,9 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   const rs = order.map((id) => ({ id, ...rectOf(id) }));
   const box = bounds(rs) ?? { x: 0, y: 0, w: 800, h: 600 };
   const notes: Record<string, string> = {};
-  for (const n of b.sidenotes) if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = noteHtml(n);
+  for (const n of b.sidenotes) if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = imgRefs(noteHtml(n));
   const questions: Record<string, string> = {};
-  if (o.questions) for (const s of b.stickers) if (qs.has(s.id)) questions[s.id] = `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${renderMd(s.q?.md || "(no text)")}</div>`;
+  if (o.questions) for (const s of b.stickers) if (qs.has(s.id)) questions[s.id] = imgRefs(`<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${renderMd(s.q?.md || "(no text)")}</div>`);
   const cardLinks: Record<string, string> = {};
   for (const id of order) { const c = b.cards.find((k) => k.id === id); const s = c?.kind === "code" ? c.segments[0] : undefined; if (s && links[s.id]) cardLinks[id] = links[s.id]; }
   const walkIds = o.scope === "walk" ? order : (() => { const s = startCards(b)[0]; return s ? walkOrder(b, s).map(hostOf).filter((id) => keep.has(id)) : []; })();

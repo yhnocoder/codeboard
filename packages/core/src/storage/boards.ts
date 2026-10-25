@@ -720,6 +720,20 @@ export class Storage {
     await this.fs.writeFile(this.fs.join(this.assetsDir(), file), buf);
     return file;
   }
+
+  /**
+   * 放一个文件到 assets/，文件名由调用的一方定（按内容取的名字：已经有了就不再写）。先写临时文件再改名，
+   * 写到一半断掉不会留下一个名字对、内容不全的文件
+   */
+  async putAsset(file: string, buf: Uint8Array): Promise<void> {
+    if (!/^[\w.-]+$/.test(file) || file.startsWith(".")) throw new Error(`Bad asset name ${file}`);
+    const abs = this.fs.join(this.assetsDir(), file);
+    if (await this.fs.stat(abs).then(() => true, () => false)) return;
+    await this.fs.mkdir(this.assetsDir());
+    const tmp = `${abs}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+    await this.fs.writeFile(tmp, buf);
+    await this.fs.rename(tmp, abs);
+  }
 }
 
 /**

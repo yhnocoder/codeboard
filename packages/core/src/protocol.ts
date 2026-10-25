@@ -221,6 +221,7 @@ export type BoardToHost =
   | { type: "github"; req: number; url: string }
   | { type: "gh"; req: number; q: GhQuery }
   | { type: "saveAsset"; req: number; name: string; dataUrl: string }
+  | { type: "saveImage"; req: number; dataUrl: string } // Note 里的图：宿主验过、存进 assets/，回 Markdown 里写的地址
   | { type: "exportPng"; dataUrl: string; name: string }
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
   | { type: "checkVersions" }
@@ -366,6 +367,7 @@ type Replies = {
   github: NewCard;
   gh: GhReplyOf<GhQuery["op"]>; // 按 q.op
   saveAsset: string; // assets/ 里的文件名
+  saveImage: string; // Markdown 里写的地址（assets/…）
   views: Record<string, SegView>;
   webMeta: WebMeta;
   stickerPacks: StickerPack[];

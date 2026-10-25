@@ -463,7 +463,8 @@ export function mdHeading(md: string): string {
     i = e + 1;
   }
 }
-export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
+/** Markdown 的第一行字（标题用）：图片换成它的 alt（只有一张没 alt 的图的行跳过：粘贴的截图） */
+export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1").replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
 /** 当正则里的字面文字 */
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */

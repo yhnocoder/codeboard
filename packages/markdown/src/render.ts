@@ -5,6 +5,7 @@ import type { DOMOutputSpec, Fragment, Mark, Node as PMNode } from "@tiptap/pm/m
 import katex from "katex";
 import DOMPurify from "dompurify";
 import { isHtmlComment, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
+import { imageAttrs, onImagesChanged } from "./image";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -36,10 +37,11 @@ function tex(cx: Cx, src: string, display: boolean) {
   catch { return `<code>${esc(src)}</code>`; }
 }
 
-/** 图片地址：assets/ 开头的是用的一方自己的资源目录，换成 setAssetBase 给的地址（白板：宿主给 webview 地址） */
-let assetBase = "";
-export const setAssetBase = (b: string) => { if (b !== assetBase) { assetBase = b; cache.clear(); } };
-const assetUrl = (src: string) => (/^assets\//.test(src) && assetBase ? `${assetBase}/${src.slice(7)}` : src);
+// 图片地址由用的一方解析（image.ts）：解析换了全部重画；一张图加载完学到了大小，带着它的那几篇重画（下次画时先留好位置）
+onImagesChanged((raw) => {
+  if (raw === undefined) return cache.clear();
+  for (const k of [...cache.keys()]) if (k.includes(raw)) cache.delete(k);
+});
 
 /** Note 里原样写着的 HTML：注释不显示；其余照放，整篇最后过 DOMPurify */
 const userHtml = (h: string) => (isHtmlComment(h) ? "" : h);
@@ -53,8 +55,8 @@ const DISPLAY: Record<string, (n: PMNode, cx: Cx) => string | undefined> = {
   codeBlock: (n, cx) => (n.attrs.language === "mermaid" ? trust(cx, `<div class="mmd" data-src="${escA(n.textContent)}"><pre class="md-code"><code>${esc(n.textContent)}</code></pre></div>`) : undefined),
   // 目录：填上这篇的标题
   toc: (_n, cx) => `<nav data-type="toc" class="md-toc">${tocHtml(tocEntries(cx.doc))}</nav>`,
-  // 图片：资源换成 webview 地址；不让浏览器拖图（拖的是卡片）
-  image: (n) => specHtml(["img", { src: assetUrl(n.attrs.src ?? ""), alt: n.attrs.alt ?? "", title: n.attrs.title ?? null, draggable: "false" }], ""),
+  // 图片：地址、大小交给用的一方解析（和编辑器的节点视图同一份属性）；不让浏览器拖图（拖的是卡片）
+  image: (n) => specHtml(["img", { ...imageAttrs(n.attrs), draggable: "false" }], ""),
   // 一条定义都还没写（只有正文里的 [^1]）：不画空的脚注列表
   footnotes: (n) => (n.content.content.some((f) => f.childCount > 1 || f.firstChild!.content.size > 0) ? undefined : ""),
   // 原样的 HTML：显示它本身（编辑器里是节点视图）
