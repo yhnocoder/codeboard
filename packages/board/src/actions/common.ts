@@ -197,7 +197,7 @@ export function fitContent(ids: string[]) {
       if (!p) continue;
       if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
       const c = b.cards.find((k) => k.id === id);
-      p.h = c?.kind === "note" || c?.kind === "web" ? undefined : Math.round(n.h - (c?.kind === "code" ? chrome.get(id)! : 0));
+      p.h = c?.kind === "note" || c?.kind === "web" || c?.kind === "image" ? undefined : Math.round(n.h - (c?.kind === "code" ? chrome.get(id)! : 0));
     }
   });
   growFrom(from);

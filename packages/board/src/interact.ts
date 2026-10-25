@@ -271,16 +271,19 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   const nat = naturalSize(c.id);
   const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
   const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
+  // 图片卡的高度跟着图片的宽高比（不存）：拖角只改宽度，往下拖按卡现在的比例折成宽度
+  const image = c.kind === "image", bottom = !!edges.bottom && !image;
   track(e, (ev) => {
     moving();
     const z = cam.z, dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     let w = r0.w, h = r0.h, x = r0.x;
-    if (edges.right) w = Math.max(minW, r0.w + dx);
+    const ddx = image && edges.bottom && Math.abs((dy * r0.w) / r0.h) > Math.abs(dx) ? (dy * r0.w) / r0.h : dx;
+    if (edges.right) w = Math.max(minW, r0.w + ddx);
     if (edges.left) { w = Math.max(minW, r0.w - dx); x = r0.x + r0.w - w; }
-    if (edges.bottom) h = Math.max(minH, r0.h + dy);
+    if (bottom) h = Math.max(minH, r0.h + dy);
     let hint: string | null = null;
     if (!(ev.metaKey || ev.ctrlKey) && !edges.left) {
-      const sn = snapResize({ x, y: r0.y, w, h }, { right: edges.right, bottom: edges.bottom }, targets, tune("snap") / z);
+      const sn = snapResize({ x, y: r0.y, w, h }, { right: edges.right, bottom }, targets, tune("snap") / z);
       w = sn.w; h = sn.h;
       setGuides(sn.guides.filter(() => !sn.same));
       if (sn.same === "w") hint = `same width · ${Math.round(w)}`;
@@ -288,8 +291,8 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
     } else setGuides([]);
     setSizeHint(hint ? { x: x + w / 2, y: r0.y + h + 8, text: hint } : null);
     // Note / Text 的高度是上限（Card.tsx）：拉到内容那么高或更高就是自动高度，不存一个比内容还高的数
-    const auto = edges.bottom && nat && (c.kind === "note" ? h > nat.h - 8 / z : Math.abs(h - nat.h) < 8 / z);
-    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (edges.bottom) k.h = auto ? undefined : Math.round(h - hx); });
+    const auto = bottom && nat && (c.kind === "note" ? h > nat.h - 8 / z : Math.abs(h - nat.h) < 8 / z);
+    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (bottom) k.h = auto ? undefined : Math.round(h - hx); });
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }
 

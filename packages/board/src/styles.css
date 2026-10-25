@@ -630,10 +630,11 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .members .more:hover { color: var(--accent); background: var(--row); }
 
 /* image / web */
-.imgb { flex: 1 1 auto; min-height: 0; overflow: hidden; border-radius: var(--r-card); display: flex; cursor: grab; }
+.imgb { flex: none; overflow: hidden; border-radius: var(--r-card); display: flex; cursor: grab; }
 .imgb:has(+ .cdesc) { border-radius: var(--r-card) var(--r-card) 0 0; }
 .card.image .cdesc { border-bottom: 0; border-top: 1px solid var(--line); }
-.imgb img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; }
+/* 图片卡跟着图片的宽高比：宽度是卡的，高度是图片按比例算的（卡不存高度），不会有上下 / 左右的空白条 */
+.imgb img { width: 100%; height: auto; display: block; pointer-events: none; }
 
 /* edge ports (drag out an arrow) */
 .eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair; }

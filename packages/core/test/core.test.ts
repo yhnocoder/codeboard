@@ -412,6 +412,12 @@ describe("migrateBoard", () => {
     expect(b.stickers).toEqual([]);
     expect(migrateBoard(structuredClone(b))).toEqual(b);
   });
+  it("image cards keep no height: it follows the image's aspect ratio", () => {
+    const b = migrateBoard({ version: 6, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, cards: [{ id: "i", kind: "image", src: "a.png" }, { id: "n", kind: "note", md: "x", bg: true }],
+      place: { i: { x: 1, y: 2, w: 300, h: 300 }, n: { x: 0, y: 0, w: 200, h: 90 } } });
+    expect(b.place.i).toEqual({ x: 1, y: 2, w: 300 });
+    expect(b.place.n.h).toBe(90);
+  });
   it("v3 → v4: code cards store the code area height (minus the 36px Warm Ink header), other cards keep theirs", () => {
     const a = { id: "a", kind: "code", segments: [seg("sa")], mergedFrom: [{ card: { id: "m", kind: "code", segments: [seg("sm")] }, place: { x: 0, y: 0, w: 300, h: 200 } }] };
     const raw = {
