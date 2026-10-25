@@ -1,12 +1,13 @@
-// 多白板与共享卡：⌘C 记下卡、贴到别的白板（默认共享，⌥ 独立副本）、「⧉ N boards」列表和跳转、
+// 多白板与共享卡：⌘C 记下卡、贴到别的白板（默认共享，⌥ 独立副本）、⌘X 剪下卡（这块白板上 ⌘V 原样放回）、「⧉ N boards」列表和跳转、
 // Remove from This Board / Delete Everywhere / Unlink、共享卡 Update 先问范围、Sidenote 的 Board-only 和复查标记。
 // 卡在几块白板上、谁连到它由宿主算好（state/store 的 shared），这里只读。
 import { unwrap } from "solid-js/store";
 import {
-  bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel,
-  type Card, type DiffData, type PastedCards,
+  bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel, cardCopies, center, estSize,
+  type Card, type CardCopy, type DiffData, type Link, type PastedCards, type SegView,
 } from "@codeboard/core";
-import { state, setState, mutate, sel, select, cardById, hostOf, toast, flushSave, shared, sharedOn, rectOf } from "../state/store";
+import { state, setState, mutate, sel, select, clearSel, cardById, hostOf, toast, flushSave, shared, sharedOn, rectOf } from "../state/store";
+import { frames, deepestAt, isHidden } from "../state/sections";
 import { camTo, camTarget, fitTop, isVisible } from "../state/camera";
 import { ghostOut } from "../state/ghost";
 import { openPop } from "../state/pop";
@@ -20,15 +21,54 @@ import { updateSidenote } from "./notes";
 
 /** ⌘C：选中的卡记到宿主（贴到别的白板时用），文字照旧写进剪贴板（代码卡 = 看得见的行，其他卡 = 内容 / 标题） */
 export function copyCardsSel(): boolean {
-  const cs = selCards().map((c) => cardById(c.id)?.host ?? c).filter((c, i, a) => a.indexOf(c) === i);
+  const cs = selHosts();
   if (!cs.length) return false;
+  const text = copyCards(cs);
+  const code = cs.length === 1 && isCode(cs[0]) ? text.split("\n").length : 0;
+  toast(code ? `Copied ${code} lines · paste on another board for a linked card` : `Copied ${cs.length} card${cs.length > 1 ? "s" : ""}`);
+  return true;
+}
+/** 选中的卡（Compare 的栏算它的 Compare），去重 */
+const selHosts = () => selCards().map((c) => cardById(c.id)?.host ?? c).filter((c, i, a) => a.indexOf(c) === i);
+/** 卡的文字进剪贴板，宿主记下是哪几张卡；返回文字 */
+function copyCards(cs: Card[]): string {
   flushSave(); // 宿主那边是最新的内容
   const text = cs.map(textOf).join("\n\n");
   remember(cs[0].id, text); // 同一块白板上 ⌘V：放在原卡旁边
   navigator.clipboard?.writeText(text).catch(() => {});
   send({ type: "copyCards", cards: cs.map((c) => c.id), text });
-  const code = cs.length === 1 && isCode(cs[0]) ? text.split("\n").length : 0;
-  toast(code ? `Copied ${code} lines · paste on another board for a linked card` : `Copied ${cs.length} card${cs.length > 1 ? "s" : ""}`);
+  return text;
+}
+
+/** ⌘X 剪下的卡：内容、Sidenote、连着它们的箭头。这块白板上 ⌘V（剪贴板里还是这些字）时原样放回：同一个 id，箭头接回还在的卡 */
+let cutClip: { board: string; text: string; cards: CardCopy[]; links: Link[]; views: Record<string, SegView> } | null = null;
+/** ⌘X：复制 + 删除，一步撤销。看不见的卡（折叠起来的）不剪 */
+export function cutCardsSel(): boolean {
+  const cs = selHosts().filter((c) => !isHidden(c.id));
+  if (!cs.length) return false;
+  const ids = new Set(cs.map((c) => c.id));
+  const b = unwrap(state.board);
+  const cards = structuredClone(cardCopies(b, ids));
+  const links = structuredClone(b.links.filter((l) => ids.has(l.from.card) || ids.has(l.to.card)));
+  const views: Record<string, SegView> = {}, all = unwrap(state.views);
+  for (const x of cards) if (x.card.kind === "code") for (const sg of x.card.segments) if (all[sg.id]) views[sg.id] = all[sg.id];
+  const text = copyCards(cs);
+  ghostOut(ids);
+  if (!mutate((d) => removeCards(d, ids))) return true;
+  cutClip = { board: state.board.id, text, cards, links, views };
+  clearSel();
+  toast(`Cut ${cs.length} card${cs.length > 1 ? "s" : ""}`);
+  return true;
+}
+const norm = (t: string) => t.replace(/\r\n/g, "\n").trim();
+/** ⌘V 在剪下它们的白板上：放回剪下的卡（都还不在白板上 = 原来的 id；再贴一次 = 副本）。text 为空 = 菜单里的 Paste，按宿主记的剪贴板 */
+function pasteCut(text: string | undefined, at: { x: number; y: number }): boolean {
+  const c = cutClip;
+  if (!c || c.board !== state.board.id) return false;
+  if (text !== undefined ? norm(text) !== norm(c.text) : state.host.clip?.board !== state.board.id) return false;
+  const back = c.cards.every((x) => !cardById(x.card.id));
+  const ids = putCards(c.cards, c.links, !back, at, c.views);
+  if (ids) toast(back ? `Pasted ${ids.length} card${ids.length > 1 ? "s" : ""}` : `Pasted ${ids.length > 1 ? `${ids.length} copies` : "a copy"}`);
   return true;
 }
 function textOf(c: Card): string {
@@ -48,6 +88,7 @@ const pasteCopy = (alt: boolean) => (state.host.settings.pasteOther === "copy") 
  * text 为空 = 不核对文字（菜单、⌥⌘V）
  */
 export async function pasteFromBoard(text: string | undefined, at: { x: number; y: number }, alt = false): Promise<boolean> {
+  if (pasteCut(text, at)) return true;
   const r = await ask("pasteCards", { text, copy: pasteCopy(alt) }).catch(() => null);
   if (!r) return false;
   placePasted(r, at);
@@ -57,32 +98,50 @@ export async function pasteFromBoard(text: string | undefined, at: { x: number; 
 /** 贴过来的卡放在 at：几张卡之间的相对位置不变 */
 export function placePasted(r: PastedCards, at: { x: number; y: number }) {
   const tops = r.cards.filter((x) => x.place);
-  const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
-  if (!box) return;
-  // 整组放在指针处附近的空地上（不压住别的卡），组内的相对位置不变
-  const free = findFree({ ...box, x: at.x, y: at.y }, state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)));
-  const dx = Math.round(free.x - box.x), dy = Math.round(free.y - box.y);
-  let ids: string[] = [], segs: Record<string, string> = {};
-  if (r.shared && tops.every((x) => cardById(x.card.id))) {
+  if (r.shared && tops.length && tops.every((x) => cardById(x.card.id))) {
     const id = tops[0].card.id;
     select({ cards: tops.map((x) => x.card.id) });
     revealCard(id);
     return toast("Already on this board");
   }
+  const ids = putCards(r.cards, r.links, !r.shared, at, r.views);
+  if (!ids) return;
+  const n = ids.length;
+  toast(r.shared ? `Pasted as linked card${n > 1 ? "s" : ""} · also on ${r.from}` : `Pasted ${n > 1 ? `${n} copies` : "a copy"} from ${r.from}`);
+}
+/**
+ * 把卡放到指针 at 附近的空地上（一步撤销），组内的相对位置不变；落在哪个 Section 里（卡的中心，和拖卡同一个算法）就进哪个。
+ * copy = 独立副本（新 id），否则原样放（同一个 id）。返回放下的卡（摆着的那几张），没有可放的返回 null
+ */
+function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: number; y: number }, views: Record<string, SegView>): string[] | null {
+  const tops = items.filter((x) => x.place);
+  const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
+  if (!box) return null;
+  // 整组放在指针处附近的空地上（不压住别的卡），组内的相对位置不变
+  const free = findFree({ ...box, x: at.x, y: at.y }, state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)));
+  const dx = Math.round(free.x - box.x), dy = Math.round(free.y - box.y);
+  const fr = frames();
+  let ids: string[] = [], segs: Record<string, string> = {};
   mutate((b) => {
-    const m = placeCards(b, r.cards, { copy: !r.shared, links: r.links, at: (p) => ({ ...p, x: p.x + dx, y: p.y + dy }) });
+    const m = placeCards(b, items, { copy, links, at: (p) => ({ ...p, x: p.x + dx, y: p.y + dy }) });
     ids = tops.map((x) => m.cards[x.card.id]).filter(Boolean);
     segs = m.segs;
+    for (const x of tops) {
+      const id = m.cards[x.card.id], p = id ? b.place[id] : undefined;
+      if (!p) continue;
+      const mid = center({ x: p.x, y: p.y, ...estSize(x.card, p) });
+      const s = deepestAt(fr, mid.x, mid.y)?.id;
+      if (s) p.section = s;
+    }
   });
-  setState("views", (v) => { const n = { ...v }; for (const [o, k] of Object.entries(segs)) if (r.views[o]) n[k] = r.views[o]; for (const [k, x] of Object.entries(r.views)) if (!segs[k]) n[k] = x; return n; });
+  setState("views", (v) => { const n = { ...v }; for (const [o, k] of Object.entries(segs)) if (views[o]) n[k] = views[o]; for (const [k, x] of Object.entries(views)) if (!segs[k]) n[k] = x; return n; });
   select({ cards: ids });
   requestAnimationFrame(() => {
     const u = bounds(ids.map((id) => hostRect(id)!).filter(Boolean));
     if (u && !isVisible(u)) { const f = fitTop(u, camTarget().z); camTo(f.x, f.y, f.z); }
     ids.forEach((id) => popCard(id));
   });
-  const n = ids.length;
-  toast(r.shared ? `Pasted as linked card${n > 1 ? "s" : ""} · also on ${r.from}` : `Pasted ${n > 1 ? `${n} copies` : "a copy"} from ${r.from}`);
+  return ids;
 }
 
 // ---------- 「⧉ N boards」 ----------
