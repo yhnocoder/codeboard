@@ -111,6 +111,17 @@ describe("typing rule: re-parse what is before the caret (retype)", () => {
     expect(mdOf(a.s)).toBe("\\$a$ and $b$");
     expect(type("==a== x ==b=", "=").s.doc.firstChild!.firstChild!.text).toBe("==a== x ");
   });
+  it("typing the closing = of ==hi== highlights it and saves it back as ==hi==", () => {
+    const { changed, s } = type("say ==hi=", "=");
+    expect(changed).toBe(true);
+    const hl = s.doc.firstChild!.child(1);
+    expect(hl.text).toBe("hi");
+    expect(hl.marks.map((m) => m.type.name)).toEqual(["highlight"]);
+    expect(mdOf(s)).toBe("say ==hi==");
+    // a lone == (x == y) and a space inside the markers stay text
+    expect(type("x == y =", "=").changed).toBe(false);
+    expect(type("x == y=", "=").changed).toBe(false);
+  });
   it("leaves bold, italic and strike to TipTap's own rules", () => {
     for (const [md, ch] of [["x **b*", "*"], ["x *i", "*"], ["x ~~s~", "~"], ["x ~a b", "~"]] as const) expect(type(md, ch).changed, md).toBe(false);
   });

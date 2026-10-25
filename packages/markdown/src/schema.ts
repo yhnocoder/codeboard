@@ -409,13 +409,15 @@ const Lnk = Link.extend({
 
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
+  // 高亮排在所有格式前面：它是最外层的 <mark>，里面再有粗体、链接时底色也是连着的一整段（排在后面会被拆成几段）
+  Highlight,
   StarterKit.configure({
     document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false, link: false,
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
-  Lnk, U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
+  Lnk, U, Kbd, Hr, InlineCode, Sub, Sup, Toc,
   Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
   WikiRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,

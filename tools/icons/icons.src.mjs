@@ -72,6 +72,18 @@ export const ICONS = {
   export: ["M8 2v8M5 5l3-3 3 3" + poly([[3, 8], [3, 14, R], [13, 14, R], [13, 8]]), "", "share"],
 };
 
+// The Markdown editor's selection toolbar (packages/markdown/src/editor/icons.tsx): the same grid rules, written into the package
+// because it imports nothing from the board. code and link are the board's shapes.
+export const MD_ICONS = {
+  bold: ["M4 8h6a2.5 2.5 0 0 1 0 5H4.5a.5 .5 0 0 1-.5-.5v-9a.5 .5 0 0 1 .5-.5H9a2.5 2.5 0 0 1 0 5", "", "bold"],
+  italic: ["M13 3H7M9 13H3M10 3 6 13", "", "italic"],
+  strike: ["M11 3H6.5a2.5 2.5 0 0 0-1.77 4.27M9.5 8a2.5 2.5 0 0 1 0 5H4M2 8h12", "", "strikethrough"],
+  code: ICONS.code,
+  link: ICONS.link,
+  highlight: [poly([[14, 8], [11, 11, 1], [7, 7, 1], [11, 3]]) + "M7 8l-4 4v2h5l2-2", "", "highlighter"],
+  math: ["M12 5V3.5a.5 .5 0 0 0-.5-.5H4l4 5-4 5h7.5a.5 .5 0 0 0 .5-.5V11", "", "sigma"],
+};
+
 // Sticker built-ins (stickers/glyphs.tsx): white marks on a coloured disc, drawn on the same 16 grid and placed in the
 // sticker's 24 box at 3/4 scale (16 grid 0..16 -> 6..18), so at the default 32 px sticker size one grid unit is one pixel.
 // Stickers scale with the canvas, so their marks are not pixel-snapped beyond that; stroke stays 2 in the 24 box (themes.css

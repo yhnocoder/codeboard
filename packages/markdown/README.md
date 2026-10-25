@@ -98,11 +98,13 @@ A complete page using only this package is in [examples/markdown-demo](https://g
 | `--k-fn` | Links, refs, footnotes |
 | `--k-kw` `--k-num` `--k-self` `--k-str` `--lk-blue` `--lk-orange` `--lk-green` | Mermaid series colors |
 | `--sh-float` | Shadow of popovers |
+| `--md-hl` | Background of `==highlight==` (a translucent highlighter color) |
 | `--sys` `--mono` `--note-h` | Body / Mermaid font, code font, small headings |
 | `--r-card` | Corner radius (Mermaid uses half) |
 | `--t` | Animation duration multiplier (1 is normal) |
+| `--ico-w` | Stroke width of the selection toolbar's icons: 1 (default) or 2 px |
 
-A few classes are styled by the page, not by the package, so menus and buttons match the rest of your UI: `.ctx` (menus), `.pill` (floating bars), `.tbtn` (toolbar buttons), `.lnk` (links in the static render), `mark`, and the token classes your highlighter emits (`.kw`, `.fn`, `.str`, `.com`, `.num`, `.self`). Heading sizes, list indents, quotes and the code block box are also left to the container. The demo's [demo.css](https://github.com/yhnocoder/codeboard/blob/main/examples/markdown-demo/src/demo.css) is a complete light and dark theme to start from.
+A few classes are styled by the page, not by the package, so menus and buttons match the rest of your UI: `.ctx` (menus), `.pill` (floating bars), `.tbtn` (toolbar buttons, `.on` when the format is active; each carries its name in `data-tip` and its shortcut in `data-kbd` for your tooltips), `.lnk` (links in the static render), and the token classes your highlighter emits (`.kw`, `.fn`, `.str`, `.com`, `.num`, `.self`). Heading sizes, list indents, quotes and the code block box are also left to the container. The demo's [demo.css](https://github.com/yhnocoder/codeboard/blob/main/examples/markdown-demo/src/demo.css) is a complete light and dark theme to start from.
 
 ## License
 

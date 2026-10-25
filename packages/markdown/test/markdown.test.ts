@@ -220,6 +220,21 @@ describe("typed math and block source", () => {
     expect(JSON.stringify(parseMd(lit))).not.toMatch(/subscript|superscript|highlight/);
     expect(renderMd("==a== b~2~ c^3^")).toBe("<p><mark>a</mark> b<sub>2</sub> c<sup>3</sup></p>");
   });
+  it("==highlight== parses to the highlight mark and serializes back with other marks inside and around it", () => {
+    for (const md of ["==hi==", "a ==two words== b", "==a **b** c==", "==**bold hl**==", "==`code` inside==", "==*x*== and ==~~y~~=="]) same(md);
+    // the highlight is the outermost mark (one unbroken background), so a highlight inside bold is written with == outside
+    expect(stable("**==bold hl==**")).toBe("==**bold hl**==");
+    const marks = (md: string) => { const out: string[] = []; const w = (n: JSONContent) => { for (const m of n.marks ?? []) out.push(m.type); n.content?.forEach(w); }; w(parseMd(md)); return out; };
+    expect(marks("a ==two words== b")).toEqual(["highlight"]);
+    expect(marks("==a **b** c==").sort()).toEqual(["bold", "highlight", "highlight", "highlight"]);
+    // a highlight mark made in the editor is written as ==…==
+    const d: JSONContent = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "see " }, { type: "text", text: "this", marks: [{ type: "highlight" }] }] }] };
+    expect(serializeMd(d).trim()).toBe("see ==this==");
+    // not highlights: spaces just inside the markers, a lone ==, ===
+    for (const md of ["a == b == c", "x == y", "== spaced =="]) expect(marks(md), md).toEqual([]);
+    // the static render uses the same <mark> the editor draws
+    expect(renderMd("a ==two **b**== c")).toBe("<p>a <mark>two <strong>b</strong></mark> c</p>");
+  });
   // #30：单独一行的 [toc] 是目录，显示时列出所有标题；段落里的 [toc] 字照留
   it("[toc] is a table of contents", () => {
     same("[toc]\n\n# A\n\n## B");

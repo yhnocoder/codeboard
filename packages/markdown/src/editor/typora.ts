@@ -494,6 +494,8 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       },
       // ⌘⇧X 也是删除线（⌘⇧S 是 TipTap 自带的）
       "Mod-Shift-x": () => e.commands.toggleStrike(),
+      // ⌘⇧H 高亮（==hl==）
+      "Mod-Shift-h": () => e.commands.toggleMark("highlight"),
       "Mod-k": () => { this.options.openLink(e); return true; },
       // ⌘⇧V：粘贴成纯文字（不当 Markdown、不要格式）
       "Mod-Shift-v": () => {

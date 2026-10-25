@@ -3,10 +3,12 @@
      颜色   --ink --ink-2 --ink-3（字，由深到浅）--surface（底）--hlrow（浅底色：表头、代码块、悬停）--hair --line（细线）
             --accent --accent-ink（强调色和压在它上面的字）--warn（出错）--k-fn（链接、引用、脚注）
             --k-kw --k-num --k-self --k-str --lk-blue --lk-orange --lk-green（Mermaid 的系列色）--sh-float（浮层阴影）
+            --md-hl（==高亮== 的荧光笔底色，半透明的暖黄）
      字体   --sys（正文、Mermaid）--mono（代码、记号）--note-h（小标题）
-     其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）
+     其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）--ico-w（工具条图标的描边，1 或 2 px，默认 1）
    公式还要 KaTeX 自己的样式（@yhnocoder/markdown/katex.css，放在这一份前面）。
-   借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮），静态显示的链接 .lnk。代码块着色的 class
+   借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮，开着的是 .on），静态显示的链接 .lnk；
+   工具条按钮的提示（名字在 data-tip，快捷键在 data-kbd）也由用的一方显示。代码块着色的 class
    （.kw .fn …）由给着色的一方（setCodeHighlighter）配样式 */
 /* KaTeX 公式 */
 .katex { font-size: 1.08em; }
@@ -34,6 +36,8 @@ math { font-size: 1.05em; }
 .md li::marker { color: var(--ink-3); }
 .md strong { font-weight: 650; }
 .md s { color: var(--ink-2); }
+/* ==高亮==：荧光笔的底色 --md-hl（主题给，亮暗各一份）；换行时每一截都有自己的圆角 */
+.md mark { background: var(--md-hl); color: inherit; border-radius: 2px; padding: 0 1px; margin: 0 -1px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }
@@ -146,6 +150,11 @@ math { font-size: 1.05em; }
 .md-mathpop { transform-origin: 50% 0; animation: md-pop calc(var(--t) * 140ms) cubic-bezier(.2, .8, .2, 1); }
 @keyframes md-pop { from { opacity: 0; scale: .96; } }
 .md-bubble .tbtn { height: 26px; padding: 0 8px; min-width: 26px; justify-content: center; }
+/* 格式按钮是方的图标按钮；开、关格式时底色和颜色过渡过去 */
+.md-bubble .tbtn.md-ib { width: 28px; padding: 0; transition: background calc(var(--t) * 120ms), color calc(var(--t) * 120ms); }
+/* 线条图标（editor/icons.tsx）：描边 --ico-w（1 或 2）；1px 时整组平移半个像素，线落在像素中心上 */
+.md-ico { display: block; width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1); stroke-linecap: round; stroke-linejoin: round; }
+.md-ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 .md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
 .md-mathpop { display: flex; align-items: flex-end; gap: 6px; padding: 6px; }

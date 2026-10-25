@@ -148,7 +148,7 @@ test("markdownEdit", async () => {
   await pg.waitForTimeout(150);
   const bubble = await pg.locator(".md-bubble").count();
   await saveShot(h, "md-edit-bubble");
-  await pg.locator(".md-bubble .tbtn", { hasText: /^I$/ }).click();
+  await pg.locator('.md-bubble .tbtn[data-tip="Italic"]').click();
   const italic = await pg.locator('.card[data-id="n1"] .md-pm em', { hasText: "words" }).count();
   // ⌘Z：编辑器里的撤销（斜体没了），板子不撤销
   await pg.keyboard.press("ArrowRight");
@@ -175,6 +175,99 @@ test("markdownEdit", async () => {
     && r.rawHas && backWys && focusBack && exited === 0 && Object.values(r.saved).every(Boolean);
   await saveShot(h, "md-edit-saved");
   check("markdownEdit", ok, r);
+  await close(h);
+});
+
+/** ==highlight==: typing ==hi== turns into a highlight, the toolbar's highlighter button and ⌘⇧H toggle it, it is saved as ==…==,
+ *  and the static Note draws the same highlighter as the editor */
+test("markdownHighlight", async () => {
+  const b = emptyBoard("b1", "highlight");
+  put(b, { id: "n1", kind: "note", md: "Plain words in a note", bg: true } as NoteCard, 60, 60, 460);
+  b.cam = { x: 0, y: 0, z: 1.4 };
+  const h = await open({ board: b, light, w: 1000, h: 640 });
+  const pg = h.page;
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const md = () => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
+  const pm = '.card[data-id="n1"] .md-pm';
+  const marks = () => pg.locator(`${pm} mark`).allTextContents();
+  await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 300, y: 12 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  await pg.keyboard.press("ControlOrMeta+End");
+  // 打字：==hi== 打完收尾的 = 就变高亮
+  await pg.keyboard.type(" and ==hi=");
+  const before = await marks();
+  await pg.keyboard.type("=");
+  const typed = await marks();
+  // 选中一个词（DOM 选区，和拖选一样）；工具条要等选区停下来才出
+  const sel = async (word: string) => {
+    await pg.evaluate(([root, w]) => {
+      const walk = document.createTreeWalker(document.querySelector(root)!, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+        const i = n.textContent!.indexOf(w);
+        if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + w.length); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); return; }
+      }
+    }, [pm, word] as const);
+  };
+  await sel("words");
+  const btn = pg.locator('.md-bubble .tbtn[data-tip="Highlight"]');
+  await btn.waitFor({ timeout: 2000 });
+  await pg.waitForTimeout(300); // 淡入结束
+  const bubble = pg.locator(".md-bubble");
+  await bubble.screenshot({ path: path.join(SHOTS, "md-toolbar-1x.png") }).catch(() => {});
+  // 放大看的工具条：设备像素比 3 下截一张（看线条落在像素上）
+  const cdp = await pg.context().newCDPSession(pg);
+  const vp = pg.viewportSize()!;
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: vp.width, height: vp.height, deviceScaleFactor: 3, mobile: false });
+  await pg.waitForTimeout(300);
+  await bubble.screenshot({ path: path.join(SHOTS, "md-toolbar-3x.png") }).catch(() => {});
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await pg.waitForTimeout(200);
+  const icons = await pg.locator(".md-bubble .tbtn.md-ib svg.md-ico").count();
+  const labels = await pg.locator(".md-bubble .tbtn.md-ib").evaluateAll((bs) => bs.map((b) => `${b.getAttribute("aria-label")}`));
+  const onBefore = await btn.evaluate((b) => b.classList.contains("on"));
+  await btn.click();
+  await pg.waitForTimeout(150);
+  const added = await marks();
+  const onAfter = await btn.evaluate((b) => b.classList.contains("on") && b.getAttribute("aria-pressed") === "true");
+  await saveShot(h, "md-highlight-toolbar-on");
+  await btn.click();
+  await pg.waitForTimeout(150);
+  const removed = await marks();
+  const onOff = await btn.evaluate((b) => b.classList.contains("on"));
+  await btn.click();
+  await pg.waitForTimeout(150);
+  // ⌘⇧H：选中 "Plain" 按快捷键
+  await sel("Plain");
+  await pg.waitForTimeout(100);
+  await pg.keyboard.press("ControlOrMeta+Shift+h");
+  await pg.waitForTimeout(150);
+  const keyed = await marks();
+  // 光标放进高亮里：两边的 == 记号显出来（和别的格式一样）
+  await pg.evaluate((root) => { const ms = document.querySelectorAll(`${root} mark`); const t = ms[ms.length - 1].firstChild!; const r = document.createRange(); r.setStart(t, 1); r.collapse(true); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); }, pm);
+  await pg.waitForTimeout(200);
+  // 开头的记号在 .md-mka 上，收尾的在 .md-mkb 上
+  const reveal = await pg.evaluate((root) => {
+    const q = (c: string, k: "mka" | "mkb") => [...document.querySelectorAll(`${root} .${c}`)].map((e) => (e as HTMLElement).dataset[k]).join("");
+    return `${q("md-mka", "mka")}|${q("md-mkb", "mkb")}`;
+  }, pm);
+  const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return `${c.backgroundColor} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
+  const editLook = await look(`${pm} mark`);
+  await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-edit-card.png") }).catch(() => {});
+  await saveShot(h, "md-highlight-edit");
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(1500);
+  const saved = md();
+  const showLook = await look('.card[data-id="n1"] .nbody mark');
+  const shown = await pg.locator('.card[data-id="n1"] .nbody mark').allTextContents();
+  await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-display-card.png") }).catch(() => {});
+  await saveShot(h, "md-highlight-display");
+  const r = { before, typed, icons, labels, onBefore, added, onAfter, removed, onOff, keyed, reveal, editLook, showLook, shown, saved };
+  check("markdownHighlight-typing", before.length === 0 && typed.join() === "hi", r);
+  check("markdownHighlight-toolbar", icons === 7 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("words") && onAfter && !removed.includes("words") && !onOff, r);
+  check("markdownHighlight-shortcut", keyed.includes("Plain"), r);
+  check("markdownHighlight-reveal", reveal.includes("==|=="), r);
+  check("markdownHighlight-saved", saved === "==Plain== ==words== in a note and ==hi==", r);
+  check("markdownHighlight-display", shown.join() === "Plain,words,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && !(editLook[0] ?? "").startsWith("rgba(0, 0, 0, 0)"), r);
   await close(h);
 });
 

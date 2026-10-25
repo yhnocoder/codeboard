@@ -11,6 +11,7 @@ import { render } from "solid-js/web";
 import { createSignal, For, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
+import { Icon, type IconName } from "./icons";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView } from "./codeblock";
 import { Typora, reconvert } from "./typora";
@@ -184,10 +185,17 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     const r = posToDOMRect(e.view, e.state.selection.from, e.state.selection.to);
     queueMicrotask(() => { if (el) void place(el, virtual({ x: r.left, y: r.top, width: r.width, height: r.height }), "top", { gap: 8, pad: 6 }).then(({ x, y }) => { el.style.left = `${x}px`; el.style.top = `${y}px`; }); });
   };
-  const B = (q: { label: string; tip: string; on: () => boolean; run: () => void; style?: any }) => (
-    <button class="tbtn" classList={{ on: (p.tick(), q.on()) }} data-tip={q.tip} style={q.style} onClick={q.run}>{q.label}</button>
-  );
+  // 图标按钮：名字和快捷键给读屏（aria-label）和用的一方的提示条（data-tip / data-kbd）；开着的格式是强调色（.on），aria-pressed 同步
+  const B = (q: { icon: IconName; tip: string; kbd?: string; on: () => boolean; run: () => void }) => {
+    const on = () => (p.tick(), q.on());
+    return (
+      <button class="tbtn md-ib" classList={{ on: on() }} aria-pressed={on()} aria-label={q.kbd ? `${q.tip} (${q.kbd})` : q.tip} data-tip={q.tip} data-kbd={q.kbd} onClick={q.run}>
+        <Icon name={q.icon} />
+      </button>
+    );
+  };
   const mod = (p.ui.opts.isMac ?? /Mac|iPhone|iPad/.test(navigator.platform)) ? "⌘" : "Ctrl+";
+  const shift = mod === "⌘" ? "⇧" : "Shift+";
   let busy = false;
   const applyLink = (v: string, stay = true) => {
     if (link() === null || busy) return;
@@ -217,13 +225,14 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       {(pos(), null)}
       <div ref={el} class="pill md-bubble" onMouseDown={(ev) => { if (!(ev.target as HTMLElement).closest("input")) ev.preventDefault(); }} onPointerDown={(ev) => ev.stopPropagation()}>
         <Show when={link() !== null} fallback={<>
-          {B({ label: "B", tip: `Bold · ${mod}B`, on: () => e.isActive("bold"), run: () => e.chain().focus().toggleBold().run(), style: { "font-weight": 700 } })}
-          {B({ label: "I", tip: `Italic · ${mod}I`, on: () => e.isActive("italic"), run: () => e.chain().focus().toggleItalic().run(), style: { "font-style": "italic", "font-family": "var(--serif)" } })}
-          {B({ label: "S", tip: `Strikethrough · ${mod}⇧S`, on: () => e.isActive("strike"), run: () => e.chain().focus().toggleStrike().run(), style: { "text-decoration": "line-through" } })}
-          {B({ label: "</>", tip: `Inline Code · ${mod}E`, on: () => e.isActive("code"), run: () => e.chain().focus().toggleCode().run(), style: { "font-family": "var(--mono)", "font-size": "11px" } })}
+          {B({ icon: "bold", tip: "Bold", kbd: `${mod}B`, on: () => e.isActive("bold"), run: () => e.chain().focus().toggleBold().run() })}
+          {B({ icon: "italic", tip: "Italic", kbd: `${mod}I`, on: () => e.isActive("italic"), run: () => e.chain().focus().toggleItalic().run() })}
+          {B({ icon: "strike", tip: "Strikethrough", kbd: `${mod}${shift}S`, on: () => e.isActive("strike"), run: () => e.chain().focus().toggleStrike().run() })}
+          {B({ icon: "highlight", tip: "Highlight", kbd: `${mod}${shift}H`, on: () => e.isActive("highlight"), run: () => e.chain().focus().toggleMark("highlight").run() })}
+          {B({ icon: "code", tip: "Inline Code", kbd: `${mod}E`, on: () => e.isActive("code"), run: () => e.chain().focus().toggleCode().run() })}
           <span class="sep" />
-          {B({ label: "Link", tip: "Link", on: () => e.isActive("link"), run: () => setLink(e.getAttributes("link").href ?? "") })}
-          {B({ label: "∑", tip: "Inline Math", on: () => false, run: toMath })}
+          {B({ icon: "link", tip: "Link", kbd: `${mod}K`, on: () => e.isActive("link"), run: () => setLink(e.getAttributes("link").href ?? "") })}
+          {B({ icon: "math", tip: "Inline Math", on: () => false, run: toMath })}
         </>}>
           <input class="md-linkin" placeholder="Paste or type a link…" value={link() ?? ""} spellcheck={false}
             ref={(i) => queueMicrotask(() => { i.focus(); i.select(); })}
