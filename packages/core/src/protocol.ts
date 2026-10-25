@@ -59,15 +59,20 @@ export type Settings = {
   exportQuestions: boolean; // 导出时带上问题（默认不带）
   exportBoardOnly: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
   exportScope: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
+  noteHeadingInBody: boolean; // Note 开头的标题已经是卡头的名字时，正文里还显示它吗（默认不显示，只是显示上藏起来，编辑时照常出现）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
   hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
-  welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board",
+  welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board", noteHeadingInBody: false,
 };
 
-/** 贴纸图标包：Iconify JSON 一个文件一套，或一个装 .svg 的文件夹（文件夹名 = 包名） */
-export type StickerPack = { id: string; name: string; icons: { name: string; svg: string }[] };
+/**
+ * 贴纸图标包：Iconify JSON 一个文件一套，或一个文件夹（文件夹名 = 包名）装 .svg / .png / .webp / .gif。
+ * svg = SVG 源码（白板用 DOMPurify 清洗后画）；img = 位图的 data: URL（宿主按文件头认过格式，mime 取自文件头），anim = 动图（GIF 多帧、动画 WebP、APNG）
+ */
+export type StickerIcon = { name: string; svg: string } | { name: string; img: string; anim?: true };
+export type StickerPack = { id: string; name: string; icons: StickerIcon[] };
 
 export type HostInfo = {
   fontFamily?: string; // 跟随 VS Code 编辑器字体
@@ -216,6 +221,7 @@ export type BoardToHost =
   | { type: "github"; req: number; url: string }
   | { type: "gh"; req: number; q: GhQuery }
   | { type: "saveAsset"; req: number; name: string; dataUrl: string }
+  | { type: "saveImage"; req: number; dataUrl: string } // Note 里的图：宿主验过、存进 assets/，回 Markdown 里写的地址
   | { type: "exportPng"; dataUrl: string; name: string }
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
   | { type: "checkVersions" }
@@ -361,6 +367,7 @@ type Replies = {
   github: NewCard;
   gh: GhReplyOf<GhQuery["op"]>; // 按 q.op
   saveAsset: string; // assets/ 里的文件名
+  saveImage: string; // Markdown 里写的地址（assets/…）
   views: Record<string, SegView>;
   webMeta: WebMeta;
   stickerPacks: StickerPack[];

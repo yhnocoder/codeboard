@@ -10,6 +10,7 @@ import { webMeta } from "./web";
 import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
 import { openStickerDir, readPacks } from "./stickers";
+import { saveNoteImage } from "./images";
 import { log } from "./log";
 import { copyDiagnostics } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
@@ -72,6 +73,7 @@ export function makeHandler(panels: BoardHost): Handler {
     paste: (_p, m) => pasteCard(m.text),
     github: (_p, m) => githubCard(m.url),
     saveAsset: (_p, m) => store.saveAsset(m.name, m.dataUrl),
+    saveImage: (_p, m) => saveNoteImage(store, m.dataUrl),
     exportPng: (_p, m) => exportPng(m.dataUrl, m.name),
     views: (_p, m) => viewsFor(m.segs),
     checkVersions: (p) => p.refreshStale(),

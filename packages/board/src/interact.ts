@@ -1,16 +1,16 @@
 // 指针交互：拖卡（吸附、合并、⌥ 拖成 Sidenote、进出 Section）、改大小、框选、平移、缩放、
 // 拖 Section 标签、从调用拖出带 Call 标记的箭头、从行尾 / 卡边拖出箭头。installKeys 装窗口级的监听（按键分发在 keymap.ts）。
 import {
-  findCard, isCode, snapMove, snapResize, bounds, center, contains,
+  findCard, isCode, snapMove, snapResize, bounds, center,
   type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
-  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, toast, placeOf,
+  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf,
 } from "./state/store";
 import { tune } from "./state/tune";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
-import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing } from "./state/ui";
-import { frames, deepestAt, frameOf, sec, descSections, allMembers, visibleCards } from "./state/sections";
+import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing } from "./state/ui";
+import { frames, deepestAt, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
@@ -19,6 +19,7 @@ import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf }
 import { installOverlays, modalOpen, isTyping } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch } from "./keymap";
+import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
@@ -43,6 +44,19 @@ function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: Point
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
   window.addEventListener("pointercancel", onUp, true);
+}
+
+/** 拖卡、改卡的大小：一次撤销（beginGesture）；真动起来以后 AI 灰字补全先停（显示着的清掉、不再问），松手再照常（#9） */
+// 拖的全是新建、还没写内容的卡（createFresh）：不单独进撤销栈。写了内容时「新建 + 内容」那一步里已经是挪过的位置；
+// 空着结束编辑就整个消失，撤销栈里也不留一张空卡
+function cardGesture(ids: string[]) {
+  const done = beginGesture();
+  const fresh = ids.length > 0 && ids.every(isFresh);
+  let held = false;
+  return {
+    moving: () => { if (!held) { held = true; holdGhosts(true); } },
+    end: () => { if (held) holdGhosts(false); done(!(fresh && ids.every(isFresh))); },
+  };
 }
 
 const ev0x = (e: PointerEvent) => e.clientX, ev0y = (e: PointerEvent) => e.clientY;
@@ -81,8 +95,13 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     return;
   }
   e.preventDefault();
-  (document.activeElement as HTMLElement | null)?.blur?.();
-  window.getSelection()?.removeAllRanges();
+  // 拖的正是在编辑内容的这张卡（Note、手写代码）：接着编辑，焦点、光标都不动。拖动不算写完：
+  // 新建的空 Note 拖一下不会被当成「什么都没写」而消失，拖完接着打字
+  const ed = editing();
+  if (!(ed && ed.id === f.host.id && (ed.kind === "note" || ed.kind === "free"))) {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    window.getSelection()?.removeAllRanges();
+  }
   if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
   if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id); // 双击子白板框 = 进去
   const tc = cardById(target)?.card;
@@ -113,11 +132,11 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
   if (!ids.length) return onClick?.();
   const skip = new Set(ids);
-  const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y }; });
+  const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y, r: rectOf(cardById(i)!.host) }; });
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
   const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
-  const end = beginGesture();
+  const { end, moving } = cardGesture(ids);
   const sx = e.clientX, sy = e.clientY;
   let mergeT: number | undefined, mergeTgt: string | undefined;
   const g = cardById(grabbed)!.host;
@@ -171,12 +190,15 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       setGuides(sn.guides);
     } else setGuides([]);
     live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = Math.round(it.ox + dx); c.y = Math.round(it.oy + dy); } } });
+    // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算
+    setMovingHome(drop ? null : new Map(items.map((it) => [it.id, homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id])));
   };
-  track(e, (ev) => onMove(ev), (ev, moved) => {
+  track(e, (ev) => { moving(); onMove(ev); }, (ev, moved) => {
     clearTimeout(settleT);
     clearTimeout(mergeT);
     setGuides([]);
     setDragging(new Set<string>());
+    setMovingHome(null);
     const drop = dropTarget();
     setDropTarget(null);
     if (!moved) { end(); onClick?.(); return; }
@@ -191,13 +213,12 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       end();
       return A.cardToSidenote(ids[0], { card: drop.card, seg: drop.seg, lines: [drop.line!, drop.line!] });
     }
-    // 中心点决定进出哪个 Section
+    // 盖住卡三分之一以上（几个都够时取盖得多的）的 Section 就是它的（homeFor）
     live((b) => {
       for (const it of items) {
         const c = hostPlace(b, it.id);
         if (!c) continue;
-        const r = rectOf(cardById(it.id)!.host), p = center(r);
-        const best = deepestAt(fr, p.x, p.y);
+        const best = homeFor(fr, rectOf(cardById(it.id)!.host));
         c.section = best?.id;
       }
     });
@@ -243,30 +264,35 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   A.selectCard(id);
   const r0 = rectOf(c);
   const targets = visibleCards().filter((k) => k.id !== id).map((k) => rectOf(k));
-  const end = beginGesture();
+  const { end, moving } = cardGesture([c.id]);
   const sx = e.clientX, sy = e.clientY;
   const text = c.kind === "note" && !c.bg;
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（#2：单行卡拉高后能缩回去）
   const nat = naturalSize(c.id);
   const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
   const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
+  // 图片卡的高度跟着图片的宽高比（不存）：拖角只改宽度，往下拖按卡现在的比例折成宽度
+  const image = c.kind === "image", bottom = !!edges.bottom && !image;
   track(e, (ev) => {
+    moving();
     const z = cam.z, dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     let w = r0.w, h = r0.h, x = r0.x;
-    if (edges.right) w = Math.max(minW, r0.w + dx);
+    const ddx = image && edges.bottom && Math.abs((dy * r0.w) / r0.h) > Math.abs(dx) ? (dy * r0.w) / r0.h : dx;
+    if (edges.right) w = Math.max(minW, r0.w + ddx);
     if (edges.left) { w = Math.max(minW, r0.w - dx); x = r0.x + r0.w - w; }
-    if (edges.bottom) h = Math.max(minH, r0.h + dy);
+    if (bottom) h = Math.max(minH, r0.h + dy);
     let hint: string | null = null;
     if (!(ev.metaKey || ev.ctrlKey) && !edges.left) {
-      const sn = snapResize({ x, y: r0.y, w, h }, { right: edges.right, bottom: edges.bottom }, targets, tune("snap") / z);
+      const sn = snapResize({ x, y: r0.y, w, h }, { right: edges.right, bottom }, targets, tune("snap") / z);
       w = sn.w; h = sn.h;
       setGuides(sn.guides.filter(() => !sn.same));
       if (sn.same === "w") hint = `same width · ${Math.round(w)}`;
       if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
     } else setGuides([]);
     setSizeHint(hint ? { x: x + w / 2, y: r0.y + h + 8, text: hint } : null);
-    const auto = edges.bottom && nat && Math.abs(h - nat.h) < 8 / z;
-    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (edges.bottom) k.h = auto ? undefined : Math.round(h - hx); });
+    // Note / Text 的高度是上限（Card.tsx）：拉到内容那么高或更高就是自动高度，不存一个比内容还高的数
+    const auto = bottom && nat && (c.kind === "note" ? h > nat.h - 8 / z : Math.abs(h - nat.h) < 8 / z);
+    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (bottom) k.h = auto ? undefined : Math.round(h - hx); });
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }
 
@@ -426,7 +452,7 @@ function drawSection(e: PointerEvent) {
     const r = moved ? { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(120, Math.abs(b.x - a.x)), h: Math.max(80, Math.abs(b.y - a.y)) } : { x: a.x, y: a.y, w: 360, h: 240 };
     clearSel();
     // 新框落在哪个 Section 里（按框中心，取最深的）就是它的父级；
-    // 只收同一层的东西：中心点在框内、原来属于父级（或更外层）的卡，整个落在框内、和它同父级的 Section
+    // 只收同一层的东西：三分之一以上在框内、原来属于父级（或更外层）的卡（partlyIn，和 homeFor 同一条规则），整个落在框内、和它同父级的 Section
     const fr = frames();
     const c0 = center(r);
     // 整个落在新框里的 Section 不能当父级（那是从内往外画：它们反过来成为新框的子级）
@@ -435,7 +461,7 @@ function drawSection(e: PointerEvent) {
     const parent = deepestAt(fr, c0.x, c0.y, enclosed)?.id;
     const outer = new Set<string | undefined>([undefined]);
     for (let p = parent ? sec(parent) : undefined; p; p = p.parent ? sec(p.parent) : undefined) outer.add(p.id);
-    const inside = visibleCards().filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y) && outer.has(placeOf(c.id).section); }).map((c) => c.id);
+    const inside = visibleCards().filter((c) => partlyIn(rectOf(c), r) && outer.has(placeOf(c.id).section)).map((c) => c.id);
     const subs = state.board.sections.filter((s) => enclosed.has(s.id) && s.parent === parent).map((s) => s.id);
     select({ cards: inside, sections: subs });
     A.moveToNewSection(r, parent);
@@ -465,7 +491,7 @@ export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
   if (t.closest(NODRAG)) return;
   e.preventDefault();
-  if (!t.closest(".cbody")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
+  if (!t.closest(".cbody, .nbody, .tx")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
   stopCam();
   const p = local(e);
   if (e.ctrlKey || e.metaKey) {
@@ -595,6 +621,7 @@ export function installKeys() {
   // 拖文件进来：图片
   window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault(); });
   window.addEventListener("drop", (e) => {
+    if (e.defaultPrevented) return; // 拖进正在编辑的 Note：编辑器已经插进去了
     const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
     if (!files.length) return;
     e.preventDefault();

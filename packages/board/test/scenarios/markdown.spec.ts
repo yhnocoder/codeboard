@@ -145,10 +145,10 @@ test("markdownEdit", async () => {
   // 选中几个字：出工具条，点 I 变斜体
   await pg.keyboard.type("tail words");
   for (let i = 0; i < 5; i++) await pg.keyboard.press("Shift+ArrowLeft");
-  await pg.waitForTimeout(150);
+  await pg.waitForTimeout(650); // 选区停住 400ms 后才出工具条
   const bubble = await pg.locator(".md-bubble").count();
   await saveShot(h, "md-edit-bubble");
-  await pg.locator(".md-bubble .tbtn", { hasText: /^I$/ }).click();
+  await pg.locator('.md-bubble .tbtn[data-tip="Italic"]').click();
   const italic = await pg.locator('.card[data-id="n1"] .md-pm em', { hasText: "words" }).count();
   // ⌘Z：编辑器里的撤销（斜体没了），板子不撤销
   await pg.keyboard.press("ArrowRight");
@@ -175,6 +175,270 @@ test("markdownEdit", async () => {
     && r.rawHas && backWys && focusBack && exited === 0 && Object.values(r.saved).every(Boolean);
   await saveShot(h, "md-edit-saved");
   check("markdownEdit", ok, r);
+  await close(h);
+});
+
+/** ==highlight==: typing ==hi== turns into a highlight, the toolbar's highlighter button and ⌘⇧H toggle it, it is saved as ==…==,
+ *  and the static Note draws the same highlighter as the editor: one unbroken band over a phrase, its spaces and bold inside it */
+test("markdownHighlight", async () => {
+  const b = emptyBoard("b1", "highlight");
+  put(b, { id: "n1", kind: "note", md: "Plain words in a note with **bold** inside", bg: true } as NoteCard, 60, 60, 460);
+  b.cam = { x: 0, y: 0, z: 1.4 };
+  const h = await open({ board: b, light, w: 1000, h: 640 });
+  const pg = h.page;
+  fs.mkdirSync(SHOTS, { recursive: true });
+  const md = () => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
+  const pm = '.card[data-id="n1"] .md-pm';
+  const marks = () => pg.locator(`${pm} mark`).allTextContents();
+  await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 300, y: 12 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  await pg.keyboard.press("ControlOrMeta+End");
+  // 打字：==hi== 打完收尾的 = 就变高亮
+  await pg.keyboard.type(" and ==hi=");
+  const before = await marks();
+  await pg.keyboard.type("=");
+  const typed = await marks();
+  // 选中一段字（DOM 选区，和拖选一样，可以跨过粗体）；工具条要等选区停下来才出
+  const sel = async (phrase: string) => {
+    await pg.evaluate(([root, w]) => {
+      const walk = document.createTreeWalker(document.querySelector(root)!, NodeFilter.SHOW_TEXT), ns: Text[] = [];
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) ns.push(n as Text);
+      const all = ns.map((n) => n.data).join(""), i = all.indexOf(w);
+      if (i < 0) return;
+      const at = (k: number): [Text, number] => { for (const n of ns) { if (k <= n.data.length) return [n, k]; k -= n.data.length; } return [ns[ns.length - 1], ns[ns.length - 1].data.length]; };
+      const r = document.createRange(); r.setStart(...at(i)); r.setEnd(...at(i + w.length));
+      getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    }, [pm, phrase] as const);
+  };
+  /** 一段高亮的字在屏幕上是不是一整条底色：每一行上，<mark> 的框首尾相接盖满这段字，中间没有缝，也没有叠在一起（半透明叠两层会更深） */
+  const band = (root: string, phrase: string) => pg.evaluate(([root, w]) => {
+    const el = document.querySelector(root)!, walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT), ns: Text[] = [];
+    for (let n = walk.nextNode(); n; n = walk.nextNode()) ns.push(n as Text);
+    const all = ns.map((n) => n.data).join(""), i = all.indexOf(w);
+    if (i < 0) return { found: false, gaps: [], overlaps: [] };
+    const at = (k: number): [Text, number] => { for (const n of ns) { if (k <= n.data.length) return [n, k]; k -= n.data.length; } return [ns[ns.length - 1], ns[ns.length - 1].data.length]; };
+    const r = document.createRange(); r.setStart(...at(i)); r.setEnd(...at(i + w.length));
+    const span = r.getBoundingClientRect();
+    const boxes = [...el.querySelectorAll("mark")].flatMap((m) => [...m.getClientRects()]).filter((b) => b.right > span.left && b.left < span.right && b.bottom > span.top && b.top < span.bottom).sort((a, b) => a.left - b.left);
+    const gaps: number[] = [], overlaps: number[] = [];
+    if (!boxes.length || boxes[0].left > span.left + 0.5 || boxes[boxes.length - 1].right < span.right - 0.5) gaps.push(-1);
+    for (let k = 1; k < boxes.length; k++) { const d = boxes[k].left - boxes[k - 1].right; if (d > 0.5) gaps.push(+d.toFixed(1)); if (d < -0.5) overlaps.push(+d.toFixed(1)); }
+    return { found: true, boxes: boxes.length, gaps, overlaps };
+  }, [root, phrase] as const);
+  const solid = (b: { found: boolean; gaps: number[]; overlaps: number[] }) => b.found && !b.gaps.length && !b.overlaps.length;
+  await sel("Plain words");
+  const btn = pg.locator('.md-bubble .tbtn[data-tip="Highlight"]');
+  await btn.waitFor({ timeout: 2000 });
+  await pg.waitForTimeout(300); // 淡入结束
+  const bubble = pg.locator(".md-bubble");
+  await bubble.screenshot({ path: path.join(SHOTS, "md-toolbar-1x.png") }).catch(() => {});
+  // 放大看的工具条：设备像素比 3 下截一张（看线条落在像素上）
+  const cdp = await pg.context().newCDPSession(pg);
+  const vp = pg.viewportSize()!;
+  await cdp.send("Emulation.setDeviceMetricsOverride", { width: vp.width, height: vp.height, deviceScaleFactor: 3, mobile: false });
+  await pg.waitForTimeout(300);
+  await bubble.screenshot({ path: path.join(SHOTS, "md-toolbar-3x.png") }).catch(() => {});
+  await cdp.send("Emulation.clearDeviceMetricsOverride");
+  await pg.waitForTimeout(200);
+  const icons = await pg.locator(".md-bubble .tbtn.md-ib svg.md-ico").count();
+  const labels = await pg.locator(".md-bubble .tbtn.md-ib").evaluateAll((bs) => bs.map((b) => `${b.getAttribute("aria-label")}`));
+  const onBefore = await btn.evaluate((b) => b.classList.contains("on"));
+  await btn.click();
+  await pg.waitForTimeout(150);
+  const added = await marks();
+  const onAfter = await btn.evaluate((b) => b.classList.contains("on") && b.getAttribute("aria-pressed") === "true");
+  await saveShot(h, "md-highlight-toolbar-on");
+  await btn.click();
+  await pg.waitForTimeout(150);
+  const removed = await marks();
+  const onOff = await btn.evaluate((b) => b.classList.contains("on"));
+  await btn.click();
+  await pg.waitForTimeout(150);
+  // ⌘⇧H：选中跨过粗体的一段按快捷键
+  await sel("note with bold");
+  await pg.waitForTimeout(100);
+  await pg.keyboard.press("ControlOrMeta+Shift+h");
+  await pg.waitForTimeout(150);
+  const keyed = await marks();
+  // 光标放进高亮里：两边的 == 记号显出来（和别的格式一样）
+  await pg.evaluate((root) => { const ms = document.querySelectorAll(`${root} mark`); const t = ms[ms.length - 1].firstChild!; const r = document.createRange(); r.setStart(t, 1); r.collapse(true); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); }, pm);
+  await pg.waitForTimeout(200);
+  // 开头的记号在 .md-mka 上，收尾的在 .md-mkb 上
+  const reveal = await pg.evaluate((root) => {
+    const q = (c: string, k: "mka" | "mkb") => [...document.querySelectorAll(`${root} .${c}`)].map((e) => (e as HTMLElement).dataset[k]).join("");
+    return `${q("md-mka", "mka")}|${q("md-mkb", "mkb")}`;
+  }, pm);
+  const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return `${c.backgroundColor} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
+  const editLook = await look(`${pm} mark`);
+  const editBand = { phrase: await band(pm, "Plain words"), bold: await band(pm, "note with bold") };
+  await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-edit-card.png") }).catch(() => {});
+  await saveShot(h, "md-highlight-edit");
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(1500);
+  const saved = md();
+  const showLook = await look('.card[data-id="n1"] .nbody mark');
+  const shown = await pg.locator('.card[data-id="n1"] .nbody mark').allTextContents();
+  const showBand = { phrase: await band('.card[data-id="n1"] .nbody', "Plain words"), bold: await band('.card[data-id="n1"] .nbody', "note with bold") };
+  await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-display-card.png") }).catch(() => {});
+  await saveShot(h, "md-highlight-display");
+  const r = { before, typed, icons, labels, onBefore, added, onAfter, removed, onOff, keyed, reveal, editLook, showLook, shown, saved, editBand, showBand };
+  check("markdownHighlight-typing", before.length === 0 && typed.join() === "hi", r);
+  check("markdownHighlight-toolbar", icons === 7 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("Plain words") && onAfter && !removed.includes("Plain words") && !onOff, r);
+  check("markdownHighlight-shortcut", keyed.includes("note with bold"), r);
+  check("markdownHighlight-reveal", reveal.includes("==|=="), r);
+  check("markdownHighlight-saved", saved === "==Plain words== in a ==note with **bold**== inside and ==hi==", r);
+  check("markdownHighlight-display", shown.join() === "Plain words,note with bold,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && !(editLook[0] ?? "").startsWith("rgba(0, 0, 0, 0)"), r);
+  check("markdownHighlight-oneBand", [editBand.phrase, editBand.bold, showBand.phrase, showBand.bold].every(solid), r);
+  await close(h);
+});
+
+/** The selection toolbar waits until the selection holds still: none while drag-selecting or extending with ⇧←, it shows ~400 ms
+ *  after the mouse is let go / the last key, and it goes at once when the selection collapses */
+test("markdownToolbarWaitsForStillSelection", async () => {
+  const b = emptyBoard("b1", "settle");
+  put(b, { id: "n1", kind: "note", md: "Select some of these words slowly with the mouse", bg: true } as NoteCard, 60, 60, 520);
+  b.cam = { x: 0, y: 0, z: 1.4 };
+  const h = await open({ board: b, light, w: 1000, h: 640 });
+  const pg = h.page;
+  const pm = '.card[data-id="n1"] .md-pm';
+  const has = () => pg.evaluate(() => !!document.querySelector(".md-bubble"));
+  await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 400, y: 12 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pg.waitForTimeout(200);
+  // 字在屏幕上的位置：从 "some" 的开头拖到 "slowly" 的末尾
+  const at = (w: string, end: boolean) => pg.evaluate(([root, w, end]) => {
+    const t = document.querySelector(root)!.querySelector("p")!.firstChild!, i = t.textContent!.indexOf(w) + (end ? w.length : 0);
+    const r = document.createRange(); r.setStart(t, i); r.collapse(true); const b = r.getBoundingClientRect(); return { x: b.left, y: b.top + b.height / 2 };
+  }, [pm, w, end] as const);
+  const a = await at("some", false), z = await at("slowly", true);
+  await pg.mouse.move(a.x, a.y);
+  await pg.mouse.down();
+  const during: boolean[] = [];
+  for (let k = 1; k <= 8; k++) { await pg.mouse.move(a.x + ((z.x - a.x) * k) / 8, a.y, { steps: 2 }); await pg.waitForTimeout(90); during.push(await has()); }
+  await pg.waitForTimeout(600); // 按着鼠标停住：还是在选，不出
+  const heldStill = await has();
+  const dragged = await pg.evaluate(() => getSelection()!.toString());
+  await pg.mouse.up();
+  await pg.waitForTimeout(120);
+  const rightAfterUp = await has();
+  await pg.waitForTimeout(500);
+  const afterPause = await has();
+  const opacity = await pg.evaluate(() => getComputedStyle(document.querySelector(".md-bubble")!).opacity);
+  // 收拢：立刻收起
+  await pg.keyboard.press("End");
+  await pg.waitForTimeout(40);
+  const afterCollapse = await has();
+  // 键盘扩选：⇧← 按着走的途中不出，停下 400ms 后出
+  const keys: boolean[] = [];
+  for (let k = 0; k < 6; k++) { await pg.keyboard.press("Shift+ArrowLeft"); await pg.waitForTimeout(120); keys.push(await has()); }
+  await pg.waitForTimeout(500);
+  const afterKeys = await has();
+  const r = { during, heldStill, dragged, rightAfterUp, afterPause, opacity, afterCollapse, keys, afterKeys };
+  check("markdownToolbarWaitsForStillSelection-drag", dragged.includes("some of these words") && during.every((x) => !x) && !heldStill && !rightAfterUp && afterPause && opacity === "1", r);
+  check("markdownToolbarWaitsForStillSelection-collapse", !afterCollapse, r);
+  check("markdownToolbarWaitsForStillSelection-keys", keys.every((x) => !x) && afterKeys, r);
+  await close(h);
+});
+
+/** Formatting around an inline formula or emoji: the static Note draws the formula inside the bold / highlight, and an edit
+ *  that only adds a word keeps the Markdown around it as it was */
+test("markdownMarksAroundFormula", async () => {
+  const b = emptyBoard("b1", "marks");
+  const src = "**bold with $x^2$ inside** and ==marked :tada: emoji== and *a $y$* done";
+  put(b, { id: "n1", kind: "note", md: src, bg: true } as NoteCard, 60, 60, 560);
+  b.cam = { x: 0, y: 0, z: 1.4 };
+  const h = await open({ board: b, light, w: 1000, h: 640 });
+  const pg = h.page;
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await pg.waitForTimeout(400);
+  const body = '.card[data-id="n1"] .nbody';
+  const r0 = await pg.evaluate((q) => ({
+    boldMath: !!document.querySelector(`${q} strong .katex`), markEmoji: !!document.querySelector(`${q} mark .emoji, ${q} mark [data-type="emoji"]`) || [...document.querySelectorAll(`${q} mark`)].some((m) => m.textContent!.includes("🎉")),
+    emMath: !!document.querySelector(`${q} em .katex`),
+  }), body);
+  await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-marks-around-formula-display.png") }).catch(() => {});
+  // 编辑：文末加一个词，保存下来的原文除了这个词不变
+  await pg.locator(body).dblclick({ position: { x: 500, y: 12 } });
+  await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
+  const r1 = await pg.evaluate(() => ({ editBoldMath: !!document.querySelector('.card[data-id="n1"] .md-pm strong [data-type="inline-math"], .card[data-id="n1"] .md-pm strong .katex') }));
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pg.keyboard.type(" end");
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(1500);
+  const saved = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
+  const r = { ...r0, ...r1, saved };
+  check("markdownMarksAroundFormula", r0.boldMath && r0.markEmoji && r0.emMath && r1.editBoldMath && saved === `${src} end`, r);
+  await close(h);
+});
+
+/** Copying part of a formatted span: text/plain is Markdown with the markers balanced around the selected part, text/html carries
+ *  the format, and pasting it back into the Note keeps the format (saved as the same Markdown) */
+test("copyPartialMarkBalanced", async () => {
+  const b = emptyBoard("b1", "copy");
+  const src = "==Plain words== **Bold words** *Ital words* ~~Gone words~~ `Code words` [Link words](https://e.com/p) ==aa $x$ bb== end";
+  put(b, { id: "n1", kind: "note", md: src, bg: true } as NoteCard, 60, 60, 760);
+  b.cam = { x: 0, y: 0, z: 1.2 };
+  const h = await open({ board: b, light, w: 1100, h: 700 });
+  const pg = h.page;
+  const pm = '.card[data-id="n1"] .md-pm';
+  await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 600, y: 12 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  await pg.evaluate(() => { const w = window as any; w.__clip = []; document.addEventListener("copy", (e) => w.__clip.push([e.clipboardData?.getData("text/plain"), e.clipboardData?.getData("text/html")])); });
+  // 选中第一段里的一截字：公式算一个字（\u0000），选区的头尾落在公式外面的字上
+  const select = (phrase: string) => pg.evaluate(([root, w]) => {
+    const p = document.querySelector(root)!.querySelector("p")!, pts: [Node, number][] = [];
+    let flat = "";
+    const visit = (n: Node) => {
+      if (n instanceof Element && n.matches('[data-type="inline-math"], .katex')) { pts.push([n.parentNode!, [...n.parentNode!.childNodes].indexOf(n as ChildNode)]); flat += "\u0000"; return; }
+      if (n.nodeType === 3) { for (let i = 0; i < n.textContent!.length; i++) { pts.push([n, i]); flat += n.textContent![i]; } return; }
+      n.childNodes.forEach(visit);
+    };
+    visit(p);
+    const i = flat.indexOf(w);
+    if (i < 0 || flat.indexOf(w, i + 1) >= 0) return false;
+    const [en, eo] = pts[i + w.length - 1], r = document.createRange();
+    r.setStart(...pts[i]); r.setEnd(en, eo + 1);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    return true;
+  }, [pm, phrase] as const);
+  // [selected, text/plain, text/html carries it, the pasted paragraph: its one formatted element and the words in it]
+  const cases: [string, string, RegExp, string][] = [
+    ["ain wor", "==ain wor==", /<mark>ain wor<\/mark>/, "mark ain wor"], ["old wor", "**old wor**", /<strong>old wor<\/strong>/, "strong old wor"],
+    ["tal wor", "*tal wor*", /<em>tal wor<\/em>/, "em tal wor"], ["one wor", "~~one wor~~", /<s>one wor<\/s>/, "s one wor"],
+    ["ode wor", "`ode wor`", /<code>ode wor<\/code>/, "code ode wor"], ["ink wor", "[ink wor](https://e.com/p)", /<a [^>]*href="https:\/\/e\.com\/p"[^>]*>ink wor<\/a>/, "a ink wor https://e.com/p"],
+    ["a \u0000 b", "==a $x$ b==", /<mark>a <span[^>]*data-type="inline-math"[\s\S]*<\/mark>/, "mark a $x$ b"],
+  ];
+  const out: { sel: string; selected: boolean; plain?: string; html: boolean; pasted?: string }[] = [];
+  for (const [sel, plain, html, want] of cases) {
+    const selected = await select(sel);
+    await pg.waitForTimeout(80);
+    await pg.keyboard.press("ControlOrMeta+c");
+    const [p, hh] = await pg.evaluate(() => (window as any).__clip.pop() ?? []) as [string, string];
+    // 粘回去：文末另起一段，把刚才剪贴板里的两份一起粘进来（和系统粘贴一样走编辑器的 paste）
+    await pg.keyboard.press("ControlOrMeta+End");
+    await pg.keyboard.press("Enter");
+    await pg.evaluate(([root, p, hh]) => {
+      const dt = new DataTransfer(); dt.setData("text/plain", p); dt.setData("text/html", hh);
+      document.querySelector(root)!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+    }, [pm, p, hh] as const);
+    await pg.waitForTimeout(80);
+    // 光标处的记号装饰不算：只看格式元素和里面的字（公式写成 $latex$）
+    const pasted = await pg.evaluate((root) => {
+      const ps = document.querySelector(root)!.querySelectorAll(":scope > p"), p = ps[ps.length - 1], el = p.firstElementChild;
+      if (!el || p.childNodes.length !== 1) return p.innerHTML;
+      let t = "";
+      const visit = (n: Node) => { if (n instanceof Element && n.matches('[data-type="inline-math"]')) { t += `$${n.getAttribute("data-latex")}$`; return; } if (n.nodeType === 3) t += n.textContent; else n.childNodes.forEach(visit); };
+      visit(el);
+      return [el.tagName.toLowerCase(), t, el.getAttribute("href") ?? ""].join(" ").trim();
+    }, pm);
+    out.push({ sel: sel.replace("\u0000", "$x$"), selected, plain: p, html: html.test(hh ?? ""), pasted });
+    check(`copyPartialMarkBalanced ${plain}`, selected && p === plain && html.test(hh ?? "") && pasted === want, out[out.length - 1]);
+  }
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(1500);
+  const saved = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
+  check("copyPartialMarkBalanced-saved", saved === [src, ...cases.map((c) => c[1])].join("\n\n"), { saved, out });
   await close(h);
 });
 

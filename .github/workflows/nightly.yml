@@ -1,8 +1,10 @@
 # Nightly, tier 3 of TESTING.md: every test, with no time limit, on main. Jobs run in parallel:
 #   harness  every harness scenario (2 jobs), recording which source files each one runs and how long it takes; the first job
 #            also runs the Markdown demo (examples/markdown-demo)
-#   e2e      the whole VS Code e2e in 3 parts, including the steps the per-push run leaves out (export, variants, code editing)
-#   perf     the full benchmark (base, head, head, base) against main as it was a day earlier
+#   e2e      the whole VS Code e2e in 3 parts, including the steps the per-push run leaves out (export, variants, an image pasted
+#            into a Note, the sticker folder, the Note heading setting with cut and paste, code editing)
+#   perf     the full benchmark (base, head, head, base) against main as it was a day earlier, then the board benchmark again with
+#            100 animated GIF stickers on the board (run-perf.mjs --anim; never in the per-push run)
 #   publish  the impact map for tools/test/pick.mjs (impact/ on the ci-screenshots branch), and a comment on the issue labelled
 #            "replay-nightly" when the set of failures changes, including when everything passes again
 # The study-task replay runs nightly too, in replay.yml.
@@ -67,7 +69,7 @@ jobs:
 
   perf:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with: { fetch-depth: 0 }
@@ -78,7 +80,7 @@ jobs:
         run: |
           BASE=$(git rev-list -1 --before="24 hours ago" HEAD)
           if [ -n "$BASE" ] && [ "$BASE" != "$(git rev-parse HEAD)" ]; then tools/review/checkout-base.sh "$BASE" base; fi
-      - name: Perf, a day earlier vs now
+      - name: Perf, a day earlier vs now (and with animated stickers)
         run: tools/review/perf-ab.sh "$([ -d base ] && echo base)" test-out/perf
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}

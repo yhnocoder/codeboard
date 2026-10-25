@@ -111,10 +111,42 @@ describe("typing rule: re-parse what is before the caret (retype)", () => {
     expect(mdOf(a.s)).toBe("\\$a$ and $b$");
     expect(type("==a== x ==b=", "=").s.doc.firstChild!.firstChild!.text).toBe("==a== x ");
   });
+  it("typing the closing = of ==hi== highlights it and saves it back as ==hi==", () => {
+    const { changed, s } = type("say ==hi=", "=");
+    expect(changed).toBe(true);
+    const hl = s.doc.firstChild!.child(1);
+    expect(hl.text).toBe("hi");
+    expect(hl.marks.map((m) => m.type.name)).toEqual(["highlight"]);
+    expect(mdOf(s)).toBe("say ==hi==");
+    // a lone == (x == y) and a space inside the markers stay text
+    expect(type("x == y =", "=").changed).toBe(false);
+    expect(type("x == y=", "=").changed).toBe(false);
+  });
   it("leaves bold, italic and strike to TipTap's own rules", () => {
     for (const [md, ch] of [["x **b*", "*"], ["x *i", "*"], ["x ~~s~", "~"], ["x ~a b", "~"]] as const) expect(type(md, ch).changed, md).toBe(false);
   });
   it("does not create footnotes", () => {
     expect(type("see [[x]] and [^1", "]").changed).toBe(false);
+  });
+  it("a whole-line $$…$$ becomes a math block at once, the caret in the paragraph after it", () => {
+    const { changed, s } = type("$$\\frac{200}{10}$", "$");
+    expect(changed).toBe(true);
+    expect(s.doc.firstChild!.type.name).toBe("blockMath");
+    expect(s.doc.firstChild!.attrs.latex).toBe("\\frac{200}{10}");
+    expect(s.selection.$head.parent.type.name).toBe("paragraph");
+    expect(s.selection.$head.index(0)).toBe(1);
+    expect(mdOf(s)).toBe("$$\n\\frac{200}{10}\n$$");
+  });
+  it("$$…$$ in a table cell stays inline, as the cell's Markdown is", () => {
+    let s = state("| a |\n| - |\n| x |");
+    let cell = -1;
+    s.doc.descendants((n, pos) => { if (cell < 0 && n.type.name === "tableCell") cell = pos; });
+    s = s.apply(s.tr.setSelection(TextSelection.create(s.doc, cell + 2)).deleteRange(cell + 2, cell + 3).insertText("$$y$", cell + 2));
+    const tr = s.tr.insertText("$");
+    expect(retype(tr)).toBe(true);
+    const after = s.apply(tr);
+    let inline = 0;
+    after.doc.descendants((n) => { if (n.type.name === "inlineMath") inline++; });
+    expect(inline).toBe(1);
   });
 });

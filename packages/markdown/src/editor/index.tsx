@@ -1,20 +1,26 @@
 // 所见即所得的 Markdown 编辑器（TipTap，白板的 Note 用它）。这是 @yhnocoder/markdown/editor：单独打包，第一次编辑时才 import()。
-// 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选引用、公式源码框、拖动手柄、灰字补全、⌘/ 原文模式。用的一方的东西（引用的候选、存图、打开链接、AI 补全、代码的语言服务）都从 MdEditorOpts 进来
+// 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选引用、拖动手柄（dragHandle）、灰字补全、⌘/ 原文模式。用的一方的东西（引用的候选、存图、打开链接、AI 补全、代码的语言服务）都从 MdEditorOpts 进来
 import { keepKey } from "../ui/editkeys";
 import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
-import { EditorState, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
+import { EditorState, NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { render } from "solid-js/web";
-import { createSignal, For, Show, type Accessor } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
+import { Icon, type IconName } from "./icons";
+import { clipboardText } from "./clipboard";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView } from "./codeblock";
+import { MathBlockView } from "./mathblock";
+import { imageEditing, insertImageUrl, type SaveImage } from "./image";
 import { Typora, reconvert } from "./typora";
+import { sourceKey } from "./source";
 import { place, virtual } from "../ui/place";
+import { revealIn, scroller } from "../ui/reveal";
 import type { LspHost } from "../cm/editor";
 
 export type MdEditorOpts = {
@@ -26,8 +32,8 @@ export type MdEditorOpts = {
   onDone: (v: string | null) => void;
   /** [[ 引用：候选（kind 显示在右边）、/ 菜单里那一项的名字、没有对得上的候选时的提示。不给就没有 [[ 菜单 */
   refs?: { items: () => { id: string; title: string; kind: string }[]; menu: string; empty: string };
-  /** 存图（粘贴、/Image）：回写进 Markdown 的地址；不给就把 data: 地址原样写进去 */
-  saveImage?: (dataUrl: string, name: string) => Promise<string>;
+  /** 存图（粘贴、拖进来、/Image）：回写进 Markdown 的地址，null = 不插（存不了，用的一方自己提示）；不给就把 data: 地址原样写进去 */
+  saveImage?: SaveImage;
   pickImage?: () => Promise<string | null>;
   openLink?: (url: string) => void;
   /** 灰字补全（宿主没有就不给） */
@@ -35,6 +41,8 @@ export type MdEditorOpts = {
   /** 代码块（CodeMirror）：行注释记号（⌘/，默认 //）、语言服务（这种语言没有就给 undefined，块拆掉时调它的 close）、
    *  按下不往外冒（见 CodeEditorOpts.stopPointerDown） */
   code?: { comment?: (lang: string | undefined) => string | undefined; lsp?: (lang: () => string) => LspHost | undefined; stopPointerDown?: boolean };
+  /** 块左边的拖动把手（⋮⋮，拖着移动整块）。默认没有 */
+  dragHandle?: boolean;
 };
 export type MdEditorHandle = { value(): string | null; destroy(): void; editor(): Editor };
 
@@ -65,15 +73,13 @@ const SLASH: MenuItem[] = [
 type Ui = {
   menu: Accessor<{ kind: "slash" | "ref" | "emoji"; items: MenuItem[]; i: number } | null>;
   setMenu: (v: { kind: "slash" | "ref" | "emoji"; items: MenuItem[]; i: number } | null) => void;
-  math: Accessor<{ pos: number; latex: string; block: boolean } | null>;
-  setMath: (v: { pos: number; latex: string; block: boolean } | null) => void;
   /** 工具条里的链接输入框（null = 没打开） */
   link: Accessor<string | null>;
   setLink: (v: string | null) => void;
   opts: MdEditorOpts;
 };
 const uiOf = new WeakMap<Editor, Ui>();
-const saveImage = (o: MdEditorOpts, dataUrl: string, name: string) => (o.saveImage ? o.saveImage(dataUrl, name) : Promise.resolve(dataUrl));
+const saveImage = (o: MdEditorOpts): SaveImage => o.saveImage ?? ((u) => Promise.resolve(u));
 
 /** 刚插进去的空公式块在哪 */
 function emptyMathNear(e: Editor) {
@@ -82,18 +88,21 @@ function emptyMathNear(e: Editor) {
   e.state.doc.descendants((n, pos) => { if (n.type.name === "blockMath" && !n.attrs.latex && (best < 0 || Math.abs(pos - at) < Math.abs(best - at))) best = pos; });
   return best;
 }
+/**
+ * 在原处展开公式的 LaTeX 原文（Typora 一样）：选中它——公式块自己展开（mathblock.ts），行内公式由 source.ts 换成 $…$ 原文
+ * （check：和鼠标点完松开一样，让它看这一次选区）
+ */
 function openMathAt(e: Editor, pos: number) {
   const n = e.state.doc.nodeAt(pos);
-  const ui = uiOf.get(e);
-  if (!n || !ui || (n.type.name !== "inlineMath" && n.type.name !== "blockMath")) return;
-  ui.setMath({ pos, latex: n.attrs.latex ?? "", block: n.type.name === "blockMath" });
+  if (!n || (n.type.name !== "inlineMath" && n.type.name !== "blockMath")) return;
+  e.view.dispatch(e.state.tr.setSelection(NodeSelection.create(e.state.doc, pos)).setMeta(sourceKey, { check: true }));
+  if (n.type.name === "inlineMath") e.view.focus();
 }
 async function insertPickedImage(e: Editor) {
   const ui = uiOf.get(e);
   const url = await ui?.opts.pickImage?.();
   if (!url || e.isDestroyed) return;
-  const src = await saveImage(ui!.opts, url, "image.png");
-  e.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run();
+  await insertImageUrl(e, saveImage(ui!.opts), url, "image.png");
 }
 
 /** 一个 suggestion 菜单（/ 和 [[ 共用）：键盘上下选、↵ 选中、Esc 关 */
@@ -163,30 +172,55 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
 }
 
 /** 焦点去的地方还在编辑器（或它的浮层）里 */
-const isInside = (e: Editor, t: EventTarget | null) => t instanceof Node && (e.view.dom.contains(t) || !!(t as Element).closest?.(".mdui, .md-bubble, .md-mathpop"));
+const isInside = (e: Editor, t: EventTarget | null) => t instanceof Node && (e.view.dom.contains(t) || !!(t as Element).closest?.(".mdui, .md-bubble"));
 
 // ---------- 选中工具条 ----------
+/** 选区停住多久后出工具条 */
+const SETTLE_MS = 400;
 function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   let el!: HTMLDivElement;
   const link = p.ui.link, setLink = p.ui.setLink;
   const e = p.editor;
-  const shown = () => {
+  // 选中的字能不能出工具条
+  const want = () => {
     p.tick();
     const s = e.state.selection;
-    if (link() !== null) return true;
-    if (s.empty || !(s instanceof TextSelection) || !e.isFocused || p.ui.menu() || p.ui.math()) return false;
+    if (s.empty || !(s instanceof TextSelection) || !e.isFocused || p.ui.menu()) return false;
     return !s.$from.parent.type.spec.code && s.$from.parent.inlineContent;
   };
+  // 不是一选就出：选区停住 SETTLE_MS 后才出（拖选、⇧方向键扩选的途中不闪），按着鼠标时不算停住；
+  // 选区一收拢（没选字了）立刻收起。点按钮改格式时选区不动，工具条留着
+  const [settled, setSettled] = createSignal(false);
+  let timer: ReturnType<typeof setTimeout> | undefined, last = "", down = false;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => setSettled(!down && want()), SETTLE_MS); };
+  createEffect(() => {
+    const ok = want(), s = e.state.selection, key = `${s.from}:${s.to}`;
+    if (!ok) { clearTimeout(timer); last = ""; setSettled(false); return; }
+    if (key !== last) { last = key; setSettled(false); arm(); }
+  });
+  const press = (ev: PointerEvent) => { if (ev.button === 0 && e.view.dom.contains(ev.target as Node)) down = true; };
+  const release = () => { if (!down) return; down = false; if (want()) { setSettled(false); arm(); } };
+  window.addEventListener("pointerdown", press, true);
+  window.addEventListener("pointerup", release, true);
+  onCleanup(() => { clearTimeout(timer); window.removeEventListener("pointerdown", press, true); window.removeEventListener("pointerup", release, true); });
+  const shown = () => link() !== null || (settled() && want());
   const pos = () => {
     p.tick();
     if (!shown()) return;
     const r = posToDOMRect(e.view, e.state.selection.from, e.state.selection.to);
     queueMicrotask(() => { if (el) void place(el, virtual({ x: r.left, y: r.top, width: r.width, height: r.height }), "top", { gap: 8, pad: 6 }).then(({ x, y }) => { el.style.left = `${x}px`; el.style.top = `${y}px`; }); });
   };
-  const B = (q: { label: string; tip: string; on: () => boolean; run: () => void; style?: any }) => (
-    <button class="tbtn" classList={{ on: (p.tick(), q.on()) }} data-tip={q.tip} style={q.style} onClick={q.run}>{q.label}</button>
-  );
+  // 图标按钮：名字和快捷键给读屏（aria-label）和用的一方的提示条（data-tip / data-kbd）；开着的格式是强调色（.on），aria-pressed 同步
+  const B = (q: { icon: IconName; tip: string; kbd?: string; on: () => boolean; run: () => void }) => {
+    const on = () => (p.tick(), q.on());
+    return (
+      <button class="tbtn md-ib" classList={{ on: on() }} aria-pressed={on()} aria-label={q.kbd ? `${q.tip} (${q.kbd})` : q.tip} data-tip={q.tip} data-kbd={q.kbd} onClick={q.run}>
+        <Icon name={q.icon} />
+      </button>
+    );
+  };
   const mod = (p.ui.opts.isMac ?? /Mac|iPhone|iPad/.test(navigator.platform)) ? "⌘" : "Ctrl+";
+  const shift = mod === "⌘" ? "⇧" : "Shift+";
   let busy = false;
   const applyLink = (v: string, stay = true) => {
     if (link() === null || busy) return;
@@ -216,13 +250,14 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
       {(pos(), null)}
       <div ref={el} class="pill md-bubble" onMouseDown={(ev) => { if (!(ev.target as HTMLElement).closest("input")) ev.preventDefault(); }} onPointerDown={(ev) => ev.stopPropagation()}>
         <Show when={link() !== null} fallback={<>
-          {B({ label: "B", tip: `Bold · ${mod}B`, on: () => e.isActive("bold"), run: () => e.chain().focus().toggleBold().run(), style: { "font-weight": 700 } })}
-          {B({ label: "I", tip: `Italic · ${mod}I`, on: () => e.isActive("italic"), run: () => e.chain().focus().toggleItalic().run(), style: { "font-style": "italic", "font-family": "var(--serif)" } })}
-          {B({ label: "S", tip: `Strikethrough · ${mod}⇧S`, on: () => e.isActive("strike"), run: () => e.chain().focus().toggleStrike().run(), style: { "text-decoration": "line-through" } })}
-          {B({ label: "</>", tip: `Inline Code · ${mod}E`, on: () => e.isActive("code"), run: () => e.chain().focus().toggleCode().run(), style: { "font-family": "var(--mono)", "font-size": "11px" } })}
+          {B({ icon: "bold", tip: "Bold", kbd: `${mod}B`, on: () => e.isActive("bold"), run: () => e.chain().focus().toggleBold().run() })}
+          {B({ icon: "italic", tip: "Italic", kbd: `${mod}I`, on: () => e.isActive("italic"), run: () => e.chain().focus().toggleItalic().run() })}
+          {B({ icon: "strike", tip: "Strikethrough", kbd: `${mod}${shift}S`, on: () => e.isActive("strike"), run: () => e.chain().focus().toggleStrike().run() })}
+          {B({ icon: "highlight", tip: "Highlight", kbd: `${mod}${shift}H`, on: () => e.isActive("highlight"), run: () => e.chain().focus().toggleMark("highlight").run() })}
+          {B({ icon: "code", tip: "Inline Code", kbd: `${mod}E`, on: () => e.isActive("code"), run: () => e.chain().focus().toggleCode().run() })}
           <span class="sep" />
-          {B({ label: "Link", tip: "Link", on: () => e.isActive("link"), run: () => setLink(e.getAttributes("link").href ?? "") })}
-          {B({ label: "∑", tip: "Inline Math", on: () => false, run: toMath })}
+          {B({ icon: "link", tip: "Link", kbd: `${mod}K`, on: () => e.isActive("link"), run: () => setLink(e.getAttributes("link").href ?? "") })}
+          {B({ icon: "math", tip: "Inline Math", on: () => false, run: toMath })}
         </>}>
           <input class="md-linkin" placeholder="Paste or type a link…" value={link() ?? ""} spellcheck={false}
             ref={(i) => queueMicrotask(() => { i.focus(); i.select(); })}
@@ -234,63 +269,14 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   );
 }
 
-// ---------- 公式源码框：点公式出来，↵ 写回，Esc 放弃 ----------
-function MathPop(p: { editor: Editor; ui: Ui }) {
-  let el!: HTMLDivElement;
-  const e = p.editor;
-  // 边打边预览：公式节点跟着源码框改（不进撤销），结束时先换回原样再按一步写进去
-  const live = (latex: string, hist = false) => {
-    const m = p.ui.math(), n = m && e.state.doc.nodeAt(m.pos);
-    if (!m || !n || n.attrs.latex === latex) return;
-    const tr = e.state.tr.setNodeMarkup(m.pos, undefined, { ...n.attrs, latex });
-    if (!hist) tr.setMeta("addToHistory", false);
-    e.view.dispatch(tr);
-  };
-  // stay=false：焦点去了编辑器外面（点了别的卡片）——写好公式后照样保存退出，不把焦点拉回来
-  const done = (latex: string | null, stay = true) => {
-    const m = p.ui.math();
-    if (m) live(m.latex);
-    if (stay) e.view.focus(); // 同上：焦点不经过 body
-    p.ui.setMath(null);
-    const c = () => (stay ? e.chain().focus() : e.chain());
-    const leave = () => { if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); };
-    if (!m) return leave();
-    const n = e.state.doc.nodeAt(m.pos);
-    if (latex === null) { if (n && !n.attrs.latex) c().deleteRange({ from: m.pos, to: m.pos + n.nodeSize }).run(); else if (stay) e.commands.focus(); return leave(); }
-    if (!n) return leave();
-    if (!latex.trim()) { c().deleteRange({ from: m.pos, to: m.pos + n.nodeSize }).run(); return leave(); }
-    c().command(({ tr }) => { tr.setNodeMarkup(m.pos, undefined, { ...n.attrs, latex }); tr.setSelection(TextSelection.near(tr.doc.resolve(m.pos + n.nodeSize))); return true; }).run();
-    leave();
-  };
-  return (
-    <Show when={p.ui.math()}>{(m) => {
-      queueMicrotask(() => {
-        const dom = e.view.nodeDOM(m().pos) as HTMLElement | null;
-        const r = dom?.getBoundingClientRect() ?? posToDOMRect(e.view, m().pos, m().pos);
-        if (el) void place(el, virtual({ x: r.left, y: r.top, width: r.width, height: r.height }), "bottom-start", { gap: 6 }).then(({ x, y }) => { el.style.left = `${x}px`; el.style.top = `${y}px`; });
-      });
-      return (
-        <div ref={el} class="pill md-mathpop" onPointerDown={(ev) => ev.stopPropagation()}>
-          <textarea spellcheck={false} rows={m().block ? 3 : 1} value={m().latex} placeholder="LaTeX, e.g. \frac{a}{b}"
-            ref={(t) => queueMicrotask(() => { t.focus(); t.select(); })}
-            onInput={(ev) => live(ev.currentTarget.value)}
-            onKeyDown={(ev) => {
-              keepKey(ev);
-              if (ev.key === "Escape") { ev.preventDefault(); done(null); }
-              else if (ev.key === "Enter" && !ev.isComposing && (!m().block || ev.metaKey || ev.ctrlKey || !ev.shiftKey)) { ev.preventDefault(); done(ev.currentTarget.value); }
-            }}
-            onBlur={(ev) => { if (p.ui.math()) done(ev.currentTarget.value, isInside(e, ev.relatedTarget)); }} />
-          <span class="md-mathhint">↵ Done</span>
-        </div>
-      );
-    }}</Show>
-  );
-}
-
 // ---------- 编辑器专用的扩展 ----------
-function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement, exit: () => void, complete: (b: string, a: string) => Promise<string | null>): AnyExtension[] {
+function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement | null, exit: () => void, complete: (b: string, a: string) => Promise<string | null>): AnyExtension[] {
   const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
-  const base = baseExtensions.map((x) => (x.name === "inlineMath" || x.name === "blockMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false, displayMode: x.name === "blockMath" } })
+  // 公式：点一下在原处展开原文（行内的由 source.ts 换成 $…$，公式块自己的节点视图展开，见 mathblock.ts）
+  const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false } })
+    : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
+    // 图片：和静态显示同一份 <img> 属性；粘贴、拖进来的图交给用的一方存（editor/image.ts）
+    : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
     // 代码块：编辑时用 CodeMirror（和 Free code 卡同一个编辑器）
     : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown }) })
     : x));
@@ -349,7 +335,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       };
     },
   });
-  // 优先级最低，菜单、灰字、公式框、列表、表格先拿：Esc 保存退出；Tab 在别处没用时什么都不做（不能让浏览器把焦点移出编辑器）
+  // 优先级最低，菜单、灰字、列表、表格先拿：Esc 保存退出；Tab 在别处没用时什么都不做（不能让浏览器把焦点移出编辑器）
   const Last = Extension.create({
     name: "cbLast",
     priority: 1,
@@ -366,7 +352,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     ...base, Slash, Ref, Emo, Rules, Last, Tail,
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
-    DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } }),
+    ...(handle ? [DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } })] : []),
     Ghost.configure({ complete }),
   ];
 }
@@ -376,15 +362,6 @@ const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\$\$|\|.*\|)|\*\*[^*]+\*\*
 function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
-  const img = [...cd.items].find((i) => i.type.startsWith("image/"));
-  if (img) {
-    const f = img.getAsFile();
-    if (!f) return false;
-    const rd = new FileReader();
-    rd.onload = async () => { const src = await saveImage(o, String(rd.result), f.name || "pasted.png"); if (!e.isDestroyed) e.chain().focus().insertContent({ type: "image", attrs: { src, alt: "" } }).run(); };
-    rd.readAsDataURL(f);
-    return true;
-  }
   const text = cd.getData("text/plain").replace(/\r\n?/g, "\n");
   const $f = e.state.selection.$from;
   if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴
@@ -438,17 +415,21 @@ function dedent(s: string) {
 // 编辑器只建一次（空闲时预热好），每次编辑把它挪进这张卡、换一个新的 EditorState（文档、撤销、各插件状态都是新的）：
 // 不用每次重建 schema、扩展、插件和视图，进入编辑只剩把这份文档画出来
 type Sess = { o: MdEditorOpts; onTx: (tr: Transaction) => void; onFocus: () => void; onBlur: (ev: FocusEvent) => void; finish: () => void };
-type Inst = { editor: Editor; box: HTMLElement; handle: HTMLElement; sess: Sess | null; prepared?: string };
+type Inst = { editor: Editor; box: HTMLElement; dragHandle: boolean; sess: Sess | null; prepared?: string };
 let pool: Inst | undefined;
 
-function makeInst(): Inst {
+/** dragHandle：带不带拖动把手（扩展在建编辑器时就定下了，带和不带的是两个编辑器） */
+function makeInst(dragHandle = false): Inst {
   const box = document.createElement("div");
   box.style.display = "contents";
-  const handle = document.createElement("div");
-  handle.className = "md-handle";
-  handle.textContent = "⋮⋮";
-  handle.setAttribute("data-tip", "Drag to move");
-  const inst: Inst = { editor: undefined as unknown as Editor, box, handle, sess: null };
+  let handle: HTMLElement | null = null;
+  if (dragHandle) {
+    handle = document.createElement("div");
+    handle.className = "md-handle";
+    handle.textContent = "⋮⋮";
+    handle.setAttribute("data-tip", "Drag to move");
+  }
+  const inst: Inst = { editor: undefined as unknown as Editor, box, dragHandle, sess: null };
   // 扩展里读到的选项都转到当前这次编辑上
   const o = new Proxy({} as MdEditorOpts, { get: (_t, k) => (inst.sess?.o as Record<string | symbol, unknown> | undefined)?.[k] });
   const complete = (b: string, a: string) => (o.complete ? o.complete(b, a) : Promise.resolve(null));
@@ -462,14 +443,16 @@ function makeInst(): Inst {
       attributes: { class: "md-pm", spellcheck: "false" },
       handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
       // 复制：text/plain 放 Markdown（text/html 照旧）；代码块里选的字原样
-      clipboardTextSerializer: (slice) => {
-        const one = slice.content.childCount === 1 ? slice.content.firstChild! : null;
-        if (one?.type.spec.code && slice.openStart > 0) return one.textContent;
-        try { return serializeMd({ type: "doc", content: slice.content.toJSON() ?? [] }); } catch { return slice.content.textBetween(0, slice.content.size, "\n\n"); }
+      clipboardTextSerializer: clipboardText,
+      // 白板上的 Note 一般不滚动（卡片跟着内容长高），白板本身也不滚（靠镜头）：不让 ProseMirror 去滚所有祖先。
+      // 定了高度的 Note 正文自己会滚（overflow: auto）：光标只在正文里滚进来。找能滚的祖先先看样式，自动高度的卡不量排版。
+      // 代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常
+      handleScrollToSelection: (v) => {
+        if (v.state.selection.$head.parent.type.spec.code || !v.dom.closest(".card")) return false;
+        const box = scroller(v.dom);
+        if (box) { const c = v.coordsAtPos(v.state.selection.head); revealIn(box, c.top, c.bottom); }
+        return true;
       },
-      // 白板上的 Note 不滚动（卡片跟着内容长高）：每打一个字都去量光标位置、找能滚的祖先，要强制排版一次，白花。
-      // 只有代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常
-      handleScrollToSelection: (v) => !v.state.selection.$head.parent.type.spec.code && !!v.dom.closest(".card"),
       handleClick: (_v, _pos, ev) => {
         // ⌘ 点链接：打开
         const a = (ev.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
@@ -544,10 +527,10 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   let changed = false, raw: HTMLTextAreaElement | null = null, rawStart = "", done = false;
   const [tick, setTick] = createSignal(0);
   const [menu, setMenu] = createSignal<ReturnType<Ui["menu"]>>(null);
-  const [math, setMath] = createSignal<ReturnType<Ui["math"]>>(null);
-  // 那一个正被别的 Note 用着（两次编辑交接的那一下）：这次单独建一个，用完拆掉
-  if (!pool) pool = makeInst();
-  const inst = pool.sess ? makeInst() : pool;
+  // 那一个正被别的 Note 用着（两次编辑交接的那一下），或者要不要拖动把手和它不一样：这次单独建一个，用完拆掉
+  const dragHandle = !!o.dragHandle;
+  if (!pool) pool = makeInst(dragHandle);
+  const inst = pool.sess || pool.dragHandle !== dragHandle ? makeInst(dragHandle) : pool;
   const pooled = inst === pool;
   const editor = inst.editor;
   const sess: Sess = {
@@ -570,21 +553,21 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     // 这一个任务里就拿焦点（不等 TipTap 的下一帧），光标和编辑器同一帧出现。放进微任务：双击是在 pointerdown 里进来的，
     // 同一个事件冒泡到画布时会把焦点 blur 掉；从菜单进来时菜单关掉会把焦点放回 body，下一帧再补一次
     queueMicrotask(() => { if (inst.sess === sess && !editor.view.hasFocus()) editor.view.focus(); });
-    // 下一帧那次只补"焦点掉到了 body"的情况：慢机器上第一帧可能来得很晚，那时已经打了 $$⏎ / ⌘K，焦点在公式框、链接框里，
-    // 不能抢回编辑器（公式框失焦就关掉，空公式块被删掉，接着打的字落进正文）。TipTap 的 focus() 是无条件在下一帧抢
+    // 下一帧那次只补"焦点掉到了 body"的情况：慢机器上第一帧可能来得很晚，那时已经打了 $$⏎ / ⌘K，焦点在公式块的原文、链接框里，
+    // 不能抢回编辑器（公式原文失焦就收起，空公式块被删掉，接着打的字落进正文）。TipTap 的 focus() 是无条件在下一帧抢
     requestAnimationFrame(() => {
       const a = document.activeElement;
       if (inst.sess === sess && !editor.isDestroyed && !editor.view.hasFocus() && (!a || a === document.body)) editor.view.focus();
     });
   }
   const [link, setLink] = createSignal<string | null>(null);
-  const ui: Ui = { menu, setMenu, math, setMath, link, setLink, opts: o };
+  const ui: Ui = { menu, setMenu, link, setLink, opts: o };
   uiOf.set(editor, ui);
-  // 浮在页面上的部件（菜单、工具条、公式框）放在 body 下的一层里
+  // 浮在页面上的部件（菜单、工具条）放在 body 下的一层里
   const layer = document.createElement("div");
   layer.className = "mdui";
   document.body.append(layer);
-  const disposeUi = render(() => <><Bubble editor={editor} tick={tick} ui={ui} /><MathPop editor={editor} ui={ui} /></>, layer);
+  const disposeUi = render(() => <Bubble editor={editor} tick={tick} ui={ui} />, layer);
 
   const value = (): string | null => {
     if (raw) return raw.value !== rawStart || changed ? raw.value.replace(/\s+$/, "") : null;
@@ -597,7 +580,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     destroy();
     o.onDone(v);
   };
-  // 焦点离开编辑器和它的浮层：保存退出（点工具条、公式框、链接输入框时不算）
+  // 焦点离开编辑器和它的浮层：保存退出（点工具条、链接输入框时不算）
   function blurred(ev?: FocusEvent) {
     const inside = (n: EventTarget | null | undefined) => n instanceof Node && (host.contains(n) || layer.contains(n) || !!(n as Element).closest?.(".mdui, .mdui-anchor, .md-handle"));
     if (inside(ev?.relatedTarget)) return;

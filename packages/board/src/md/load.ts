@@ -7,6 +7,7 @@ import { editing, dragging } from "../state/ui";
 import { camMoving } from "../state/camera";
 import { openLink } from "../actions/common";
 import { lspHost } from "../cm/load";
+import { saveNoteImage } from "./images";
 import type { MdEditorOpts, MdEditorHandle } from "@yhnocoder/markdown/editor";
 
 export type { MdEditorHandle };
@@ -81,10 +82,7 @@ export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placehold
     refs: { items: refCandidates, menu: "Link to Card", empty: "No card with that title" },
     openLink,
     pickImage: () => ask("pickFile", { kind: "image" }).catch(() => null),
-    saveImage: async (dataUrl: string, name: string) => {
-      const f = await ask("saveAsset", { name, dataUrl }).catch(() => null);
-      return f ? `assets/${f}` : dataUrl;
-    },
+    saveImage: saveNoteImage,
     complete: state.host.complete ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null) : undefined,
     code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true },
   };

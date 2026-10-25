@@ -12,6 +12,7 @@ import { ask } from "../host";
 import { openLink, popCard } from "./common";
 import { boardOffset } from "../state/measure";
 import { setFetchingKeys, rowDrag, setRowDrag, setGhPicker, type RowDrag } from "../state/web";
+import { settleHome } from "../state/sections";
 
 /** 图片地址：assets/ 下的文件名 → webview 能读的 URL */
 export const assetSrc = (name?: string) => (!name ? undefined : /^(data:|https?:|blob:)/.test(name) ? name : `${state.host.assetBase}/${name}`);
@@ -62,6 +63,7 @@ export function newLinkList(urls: string[], at?: { x: number; y: number }) {
     const p = findFree({ ...p0, ...size }, b.cards.filter((k) => b.place[k.id]).map((k) => rectOf(k)));
     b.cards.push(card);
     b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: defaultWidth(card) };
+    settleHome(b, id);
   });
   select({ cards: [id] });
   popCard(id);

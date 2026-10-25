@@ -93,6 +93,14 @@ export const KEYMAP: Bind[] = [
     },
   },
   {
+    // ⌘X 剪下选中的卡（复制 + 删除，一步撤销）。有原生选区、选了行时不管（浏览器自己处理）；编辑器里的 ⌘X 到不了这里（isTyping）
+    id: "cut", keys: ["mod+x"], label: "Cut (paste on this board puts the cards back)", group: "Cards", when: hasCards, run: (a) => {
+      const s = window.getSelection();
+      if ((s && !s.isCollapsed) || lineSel()) return false;
+      return a.cutCardsSel();
+    },
+  },
+  {
     // ⌥⌘V：别的白板上复制的卡贴成另一种（默认是独立副本）。浏览器不一定为它发 paste 事件，这里直接要
     id: "pasteOther", keys: ["mod+alt+KeyV"], label: "Paste as Copy (on another board)", group: "Cards",
     run: (a) => void a.pasteFromBoard(undefined, atPointer(), true).then((ok) => { if (!ok) toast("Copy cards on another board first"); }),

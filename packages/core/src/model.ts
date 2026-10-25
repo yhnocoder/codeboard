@@ -446,7 +446,25 @@ export function codeGlyph(c: CodeCard): string {
 /** 路径的最后一段（/ 和 \ 都认） */
 export const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 /** Markdown 的第一句（去掉标题、引用、列表标记和 ** `；__init__ 这种名字不动）：Note 的默认名、问题列表、骨架里的名字 */
-export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
+/**
+ * Markdown 开头的标题（第一行非空的是 # 标题时）的纯文字，没有就是 ""：Note 卡头显示它（不另存一份标题）。
+ * 只看到第一行非空的为止，不解析整篇；去掉行内的 **、*、_、`、~~ 和链接写法
+ */
+export function mdHeading(md: string): string {
+  let i = 0;
+  for (;;) {
+    const e = md.indexOf("\n", i);
+    const line = md.slice(i, e < 0 ? undefined : e).trim();
+    if (line) {
+      const m = /^#{1,6}\s+(.*?)(?:\s+#+)?$/.exec(line);
+      return m ? m[1].replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/(\*\*|__|~~|`|\*|_)(?=\S)(.+?)(?<=\S)\1/g, "$2").replace(/\$+/g, "").trim() : "";
+    }
+    if (e < 0) return "";
+    i = e + 1;
+  }
+}
+/** Markdown 的第一行字（标题用）：图片换成它的 alt（只有一张没 alt 的图的行跳过：粘贴的截图） */
+export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1").replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
 /** 当正则里的字面文字 */
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */

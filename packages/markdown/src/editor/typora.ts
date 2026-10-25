@@ -9,7 +9,7 @@
 import { Extension, InputRule, Mark as TMark, wrappingInputRule, type Editor } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { Fragment, type Mark, type Node as PMNode, type Schema } from "@tiptap/pm/model";
+import { Fragment, type Mark, type Node as PMNode, type ResolvedPos, type Schema } from "@tiptap/pm/model";
 import { closeHistory } from "@tiptap/pm/history";
 import { ESC_MARK, MARK_MD, blockSource, parseSource } from "../schema";
 import { SourceMark, headPrefix, sourcePlugin, srcRuns } from "./source";
@@ -105,6 +105,13 @@ export function retype(tr: Transaction, pos = tr.selection.head): boolean {
     if (!span) continue;
     const start = $c.start() + i, marks = $c.marks();
     tr.replaceWith(start, $c.pos, span);
+    // 这一段只剩刚变出来的这一个（一整行的 $$m$$）：照存回去再读进来的样子换成块（公式块），编辑时和显示时一样。
+    // 表格的格子里写回去是一行行内内容，还是行内的
+    const $s = tr.doc.resolve(start), p = $s.parent;
+    if (p.type.name === "paragraph" && p.childCount === 1 && span.childCount === 1 && !span.firstChild!.isText && !$s.node(-1).type.spec.tableRole) {
+      const n = soleBlock(p, tr.doc.type.schema);
+      if (n && !n.isTextblock && n.isAtom && swapBlock(tr, $s, n)) return true;
+    }
     tr.setSelection(TextSelection.create(tr.doc, start + span.size));
     tr.setStoredMarks(marks); // 接着打的字不带刚变出来的格式
     return true;
@@ -112,26 +119,37 @@ export function retype(tr: Transaction, pos = tr.selection.head): boolean {
   return false;
 }
 
-/** 回车：整段（光标在段尾）解析出来是一个不是字的块（代码块、分隔线、目录、公式块）时换成它。缩进的代码块打字时不变（Typora 一样） */
-function enterBlock(state: EditorState): boolean {
-  const tr = state.tr, $c = tr.selection.$head, p = $c.parent;
-  if (!tr.selection.empty || p.type.name !== "paragraph" || !p.content.size || $c.parentOffset !== p.content.size) return false;
+/** 一段（段落）当 Markdown 原文按块解析出来正好是一个块时给它（存回去再读进来就是它） */
+function soleBlock(p: PMNode, schema: Schema): PMNode | null {
   const src = blockSource(p.toJSON());
-  if (/^(?: {4}|\t)/.test(src)) return false;
-  let ns: PMNode[];
-  try { ns = parseSource(src, false)!.map((j) => state.schema.nodeFromJSON(j)); } catch { return false; }
-  const n = ns.length === 1 ? ns[0] : null;
-  if (!n || !(n.isAtom || n.type.spec.code)) return false;
-  const start = $c.before(), $s = tr.doc.resolve(start);
+  if (/^(?: {4}|\t)/.test(src)) return null; // 缩进的代码块打字时不变（Typora 一样）
+  try {
+    const ns = parseSource(src, false)!.map((j) => schema.nodeFromJSON(j));
+    return ns.length === 1 ? ns[0] : null;
+  } catch { return null; }
+}
+/** $in 所在的这一段换成块 n：代码块光标放进去，别的放到它后面那一段（没有就补一个） */
+function swapBlock(tr: Transaction, $in: ResolvedPos, n: PMNode): boolean {
+  const start = $in.before(), $s = tr.doc.resolve(start);
   if (!$s.parent.canReplace($s.index(), $s.index() + 1, Fragment.from(n))) return false;
-  tr.replaceWith(start, $c.after(), n);
+  tr.replaceWith(start, $in.after(), n);
   const end = start + n.nodeSize;
   if (n.type.spec.code) tr.setSelection(TextSelection.create(tr.doc, end - 1));
   else {
-    if (!tr.doc.resolve(end).nodeAfter?.isTextblock) tr.insert(end, state.schema.nodes.paragraph.create());
+    if (!tr.doc.resolve(end).nodeAfter?.isTextblock) tr.insert(end, tr.doc.type.schema.nodes.paragraph.create());
     tr.setSelection(TextSelection.near(tr.doc.resolve(end + 1)));
+    tr.setStoredMarks([]);
   }
   return true;
+}
+
+/** 回车：整段（光标在段尾）解析出来是一个不是字的块（代码块、分隔线、目录、公式块）时换成它 */
+function enterBlock(state: EditorState): boolean {
+  const tr = state.tr, $c = tr.selection.$head, p = $c.parent;
+  if (!tr.selection.empty || p.type.name !== "paragraph" || !p.content.size || $c.parentOffset !== p.content.size) return false;
+  const n = soleBlock(p, state.schema);
+  if (!n || !(n.isAtom || n.type.spec.code)) return false;
+  return swapBlock(tr, $c, n);
 }
 const mkEl = (text: string) => {
   const s = document.createElement("span");
@@ -224,8 +242,8 @@ const listType = (e: Editor) => {
   for (let d = $h.depth; d > 0; d--) { const n = $h.node(d).type.name; if (n === "listItem" || n === "taskItem") return n; }
   return "listItem";
 };
-/** 在光标这一段后面放一个块（这一段是空的就换掉它）；caret 给出光标位置，不给就选不动，then 之后再做的事 */
-function blockAfter(e: Editor, node: PMNode, caret?: (start: number) => number, then?: (start: number) => void) {
+/** 在光标这一段后面放一个块（这一段是空的就换掉它）；caret 给出光标位置，不给就选中它 */
+function blockAfter(e: Editor, node: PMNode, caret?: (start: number) => number) {
   const $h = e.state.selection.$head;
   if ($h.depth < 1) return false;
   const d = $h.depth, empty = $h.parent.isTextblock && !$h.parent.content.size;
@@ -235,7 +253,6 @@ function blockAfter(e: Editor, node: PMNode, caret?: (start: number) => number, 
   const tr = closeHistory(e.state.tr).replaceWith(from, to, node);
   tr.setSelection(caret ? TextSelection.near(tr.doc.resolve(caret(from))) : NodeSelection.create(tr.doc, from));
   e.view.dispatch(tr.scrollIntoView());
-  if (then) then(from);
   return true;
 }
 function selectWord(e: Editor) {
@@ -296,7 +313,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
             if (!tr.doc.resolve(end).nodeAfter?.isTextblock) tr.insert(end, s.nodes.paragraph.create());
             tr.setSelection(TextSelection.near(tr.doc.resolve(end + 1)));
           }
-          if (r.then) queueMicrotask(() => r.then!(start)); // 派发完马上打开（下一个键就进源码框）
+          if (r.then) queueMicrotask(() => r.then!(start)); // 派发完马上打开（下一个键就打进公式原文）
           return undefined;
         },
       });
@@ -361,7 +378,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       } }),
       // ```语言 / *** / --- / ___ / [toc] / 一整行的 $$m$$ 加回车：解析出来的块（enterBlock）
       new InputRule({ find: (text) => (text.endsWith("\n") ? { index: text.length - 1, text: "\n" } : null), undoable: false, handler: ({ state }) => (enterBlock(state) ? undefined : null) }),
-      // $$ 加回车：空的公式块，打开源码框
+      // $$ 加回车：空的公式块，展开原文
       enterRule(/^\$\$\n$/, () => ({ nodes: [s.nodes.blockMath.create({ latex: "" })], then: (st) => openMath(ed, st) })),
       // 上一段下面一行 === 加回车：上一段变一级标题（setext）
       new InputRule({ find: /^=+\n$/, undoable: false, handler: ({ state, range }) => {
@@ -401,12 +418,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       "Mod-z": () => e.commands.undoInputRule() || e.commands.undo(),
       // keymap 找不到带 Shift 的会退回去找不带的（key 是小写 z 时），先在这里接住重做
       "Shift-Mod-z": () => e.commands.redo(),
-      Enter: () => {
-        const sel = e.state.selection;
-        // 选中的公式：打开源码框
-        if (sel instanceof NodeSelection && /^(inlineMath|blockMath)$/.test(sel.node.type.name)) { this.options.openMath(e, sel.from); return true; }
-        return false;
-      },
       Backspace: () => {
         const sel = e.state.selection;
         if (!sel.empty) return false;
@@ -420,17 +431,22 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
           e.view.dispatch(e.state.tr.replaceWith(from, $h.pos, e.schema.text(src, $h.marks())));
           return true;
         }
-        // 展开着的标题，光标紧跟在 "## " 后面：变回普通段落（和没展开时在行首退格一样）
+        // 展开着的标题，光标紧跟在 "## " 后面：一次退一个 #（## → # → 普通段落，和 Typora 一样；没展开时在行首退格也一样）
         const pre = headPrefix($h.parent);
         if (pre && $h.parentOffset === pre) {
-          const st = $h.start();
-          e.view.dispatch(e.state.tr.delete(st, st + pre).setNodeMarkup($h.before(), e.schema.nodes.paragraph));
+          const st = $h.start(), level = /^#*/.exec($h.parent.textBetween(0, pre))![0].length, tr = e.state.tr;
+          if (level > 1) tr.delete(st + level - 1, st + level).setNodeMarkup($h.before(), undefined, { ...$h.parent.attrs, level: level - 1 });
+          else tr.delete(st, st + pre).setNodeMarkup($h.before(), e.schema.nodes.paragraph);
+          e.view.dispatch(tr);
           return true;
         }
         if ($h.parentOffset !== 0) return false;
         if (e.commands.undoInputRule()) return true;
-        // 标题行首：变回普通段落
-        if ($h.parent.type.name === "heading") return e.commands.setParagraph();
+        // 标题行首：降一级，一级标题变回普通段落
+        if ($h.parent.type.name === "heading") {
+          const level = $h.parent.attrs.level as number;
+          return level > 1 ? e.commands.setHeading({ level: (level - 1) as 1 }) : e.commands.setParagraph();
+        }
         // 列表项、引用的第一段开头：拿出来变回正文
         if ($h.depth >= 2 && $h.index(-1) === 0) {
           const outer = $h.node(-1).type.name;
@@ -454,7 +470,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
         const table = s.nodes.table.create(null, [row("tableHeader"), row("tableCell"), row("tableCell")]);
         return blockAfter(e, table, (st) => st + 4);
       },
-      "Mod-Alt-b": () => blockAfter(e, e.schema.nodes.blockMath.create({ latex: "" }), undefined, (st) => this.options.openMath(e, st)),
+      "Mod-Alt-b": () => blockAfter(e, e.schema.nodes.blockMath.create({ latex: "" })), // 选中它：公式块展开原文（mathblock.ts）
       "Mod-]": () => e.commands.sinkListItem(listType(e)),
       "Mod-[": () => e.commands.liftListItem(listType(e)),
       // ⌘⇧` 行内代码；Mac 上 ⌃⇧` 删除线（Windows / Linux 上这两个是同一个键，归行内代码）
@@ -476,6 +492,8 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       },
       // ⌘⇧X 也是删除线（⌘⇧S 是 TipTap 自带的）
       "Mod-Shift-x": () => e.commands.toggleStrike(),
+      // ⌘⇧H 高亮（==hl==）
+      "Mod-Shift-h": () => e.commands.toggleMark("highlight"),
       "Mod-k": () => { this.options.openLink(e); return true; },
       // ⌘⇧V：粘贴成纯文字（不当 Markdown、不要格式）
       "Mod-Shift-v": () => {

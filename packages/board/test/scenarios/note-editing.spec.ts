@@ -1,10 +1,12 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
 // Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
-import { put, findSym, symCard, type Host } from "../harness";
+//          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
+//          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle
+import { put, findSym, symCard, shot, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check } from "../fixtures";
+import { test, open, check, light } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 
@@ -237,5 +239,212 @@ test("undoIsOneStep", async () => {
   const clearUndone = st(), text = md(h, "n0");
   check("undoIsOneStep place sidenote", placed === "code,note,note sn0 l1" && placeUndone === start, { start, placed, placeUndone });
   check("undoIsOneStep clear note", cleared === "code sn1 l0" && clearUndone === start && text === "hello world", { cleared, clearUndone, text });
+  await close(h);
+});
+
+/** 一行里打完 $$m$$（不按回车、不离开编辑）：马上就是公式块，位置、大小和退出编辑后显示的一样（居中，不是行内的小公式）；接着打的字在下一段 */
+test("noteDisplayMathTypedAsBlock", async () => {
+  const h = await open({ board: board([""]), light });
+  await h.page.waitForTimeout(1500);
+  const geo = () => h.page.evaluate(() => {
+    const body = document.querySelector('.card[data-id="n0"] .nbody')!, base = body.querySelector(".katex-html .katex-base");
+    const b = body.getBoundingClientRect(), r = base?.getBoundingClientRect();
+    return {
+      block: body.querySelectorAll("[data-type=block-math], .math").length, inline: body.querySelectorAll("[data-type=inline-math], p .katex").length,
+      display: body.querySelectorAll(".katex-display").length,
+      ...(r ? { x: Math.round(r.left - b.left), y: Math.round(r.top - b.top), w: Math.round(r.width), h: Math.round(r.height), dx: Math.round(r.left + r.width / 2 - (b.left + b.width / 2)) } : {}),
+    };
+  });
+  await editNote(h, "n0");
+  await h.page.keyboard.type("$$\\frac{200}{10}$$", { delay: 20 }); // 不走 keys()：{200} 会被当成按键
+  await h.page.waitForTimeout(150);
+  const typed = await geo();
+  await shot(h, "noteDisplayMathTypedAsBlock-typed");
+  await keys(h.page, "after");
+  await exitEdit(h);
+  await h.page.waitForTimeout(1500);
+  const shown = await geo(), text = md(h, "n0");
+  await shot(h, "noteDisplayMathTypedAsBlock-shown");
+  const same = (["x", "y", "w", "h"] as const).every((k) => typed[k] !== undefined && Math.abs(typed[k]! - shown[k]!) <= 1);
+  check("noteDisplayMathTypedAsBlock", typed.block === 1 && typed.inline === 0 && typed.display === 1 && Math.abs(typed.dx ?? 99) <= 2 && same && text === "$$\n\\frac{200}{10}\n$$\n\nafter", { typed, shown, text });
+  await close(h);
+});
+
+/** 双击进编辑：卡片高度、每一块的位置都不变，字形（连字）不变；选中的底色两边一样，是主题的强调色而不是浏览器的蓝色 */
+test("noteEditKeepsLayout", async () => {
+  const docs = [
+    "# Heading\n\nA paragraph with **bold**, `code` and $x^2$ math.\n\n- one\n- two\n\n> quote line\n\n```python\nx = 1\n```\n\n$$\n\\frac{200}{10}\n$$\n\nLast paragraph.",
+    // 正文、一整行的公式、再几段，最后一行是一段的结尾（公式上下的空、最后一段下面的边距）
+    "The rate is **20 per second** when we split it.\n\n$$\\frac{200\\ s}{10\\ s}=20$$\n\nSo the batch takes **ten** seconds,\nand the queue drains.\n\nLast line ends here.",
+  ];
+  // the heading shown in the body too (by default a leading heading that is the title is hidden there: noteTitleHeadingHiddenInBody)
+  const h = await open({ board: board(docs), light, settings: { noteHeadingInBody: true } });
+  await h.page.waitForTimeout(1500);
+  const geo = (id: string) => h.page.evaluate((id) => {
+    const card = document.querySelector(`.card[data-id="${id}"]`)!, body = card.querySelector(".nbody")!, root = body.querySelector(".md-pm") ?? body;
+    const box = card.getBoundingClientRect(), p = root.querySelector("p")!;
+    return {
+      h: Math.round(box.height), ys: [...root.children].map((e) => Math.round(e.getBoundingClientRect().top - box.top)),
+      below: Math.round(box.bottom - root.lastElementChild!.getBoundingClientRect().bottom),
+      sel: getComputedStyle(p, "::selection").backgroundColor, lig: getComputedStyle(p).fontVariantLigatures,
+    };
+  }, id);
+  for (const i of docs.keys()) {
+    const id = `n${i}`, shown = await geo(id);
+    await h.page.locator(`.card[data-id="${id}"] .nbody p`).last().dblclick();
+    await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
+    await h.page.mouse.move(5, 5);
+    await h.page.waitForTimeout(300);
+    const edit = await geo(id);
+    check(`noteEditKeepsLayout ${id}`, JSON.stringify(shown) === JSON.stringify(edit) && shown.sel !== "rgba(0, 0, 0, 0)", { shown, edit });
+    await exitEdit(h);
+    await h.page.waitForTimeout(300);
+  }
+  await close(h);
+});
+
+/** 打完 "## " 这一行马上是标题的字号、行高，"##" 也是标题的字号；接着打字时这一行、卡片的高度都不再变 */
+test("headingMarkerTypedAtHeadingSize", async () => {
+  const h = await open({ board: board([""]), light });
+  await h.page.waitForTimeout(1500);
+  await editNote(h, "n0");
+  const line = () => h.page.evaluate(() => {
+    const c = document.querySelector('.card[data-id="n0"]')!, e = c.querySelector(".md-pm")!.firstElementChild as HTMLElement;
+    return { tag: e.tagName, fs: getComputedStyle(e).fontSize, mk: getComputedStyle(e, "::before").fontSize, mkText: getComputedStyle(e, "::before").content, lh: Math.round(e.getBoundingClientRect().height), card: Math.round(c.getBoundingClientRect().height) };
+  });
+  await keys(h.page, "## ");
+  await h.page.waitForTimeout(150);
+  const space = await line();
+  await shot(h, "headingMarkerTypedAtHeadingSize-space");
+  await keys(h.page, "Title");
+  await h.page.waitForTimeout(150);
+  const typed = await line();
+  await shot(h, "headingMarkerTypedAtHeadingSize-typed");
+  check("headingMarkerTypedAtHeadingSize", space.tag === "H2" && space.mkText === '"## "' && space.mk === space.fs && typed.lh === space.lh && typed.card === space.card, { space, typed });
+  await close(h);
+});
+
+/** 占位字只在整篇 Note 空着时显示；有内容的 Note 里新起的空行不显示 */
+test("placeholderOnlyWhenNoteEmpty", async () => {
+  const h = await open({ board: board(["", "first line"]), light });
+  await h.page.waitForTimeout(1500);
+  const ph = (id: string) => h.page.evaluate((id) => [...document.querySelectorAll(`.card[data-id="${id}"] .md-pm > *`)].map((e) => getComputedStyle(e, "::before").content), id);
+  await editNote(h, "n0");
+  const empty = await ph("n0");
+  await exitEdit(h);
+  await editNote(h, "n1");
+  await keys(h.page, "{Control+End}{Enter}");
+  await h.page.waitForTimeout(150);
+  const line = await ph("n1");
+  await shot(h, "placeholderOnlyWhenNoteEmpty");
+  check("placeholderOnlyWhenNoteEmpty", empty.length === 1 && empty[0] !== "none" && line.length === 2 && line.every((c) => c === "none"), { empty, line });
+  await close(h);
+});
+
+/** A leading heading that is the Note's title isn't shown again in the body (display only: the Markdown keeps it); editing shows it,
+ *  sliding in without a jump; a title set by the user or the setting keeps it in the body */
+test("noteTitleHeadingHiddenInBody", async () => {
+  const doc = "# KV cache budget\n\nPrefill first, then decode.\n\nOne block per sequence.";
+  const b = board([doc, doc]);
+  (b.cards.find((c) => c.id === "n1") as NoteCard).title = "My own title";
+  const h = await open({ board: b, light });
+  await h.page.waitForTimeout(1200);
+  const look = () => h.page.evaluate(() => [0, 1].map((i) => {
+    const card = document.querySelector(`.card[data-id="n${i}"]`)!, head = card.querySelector(".nbody h1") as HTMLElement | null;
+    return { title: card.querySelector(".chead .ctitle")!.textContent, h1: !!head && head.getBoundingClientRect().height > 0, h: Math.round(card.getBoundingClientRect().height) };
+  }));
+  const shown = await look();
+  await shot(h, "note-heading-01-hidden");
+  check("note-heading-hidden", shown[0].title === "KV cache budget" && !shown[0].h1 && shown[1].title === "My own title" && shown[1].h1 && md(h, "n0") === doc.trim(), shown);
+  // enter editing: the heading is there to edit and slides in (card height grows in small steps, no jump)
+  await h.page.evaluate(() => { const w = window as any; w.__hs = []; const card = document.querySelector('.card[data-id="n0"]')!; const t0 = performance.now();
+    const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 1500) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+  await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await h.page.waitForSelector('.card[data-id="n0"] .md-pm h1', { timeout: 5000 });
+  await h.page.waitForTimeout(80);
+  await shot(h, "note-heading-02-editing");
+  await h.page.waitForTimeout(1500);
+  const hs: number[] = await h.page.evaluate(() => (window as any).__hs);
+  const steps = hs.slice(1).map((v, i) => v - hs[i]), grow = hs[hs.length - 1] - hs[0], jump = Math.max(...steps);
+  const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.textContent, op: e ? getComputedStyle(e).opacity : "" }; });
+  check("note-heading-editable", edit.text === "KV cache budget" && edit.op === "1", edit);
+  check("note-heading-slides-in", grow > 20 && jump < grow * 0.6, { grow, jump, frames: hs.length });
+  // leave: hidden again, card back to its height; while it slides out, the part above the body's top edge is clipped (never over the card header)
+  await h.page.evaluate(() => { const w = window as any; w.__over = []; const t0 = performance.now();
+    const f = () => { const body = document.querySelector('.card[data-id="n0"] .nbody') as HTMLElement, e = body.querySelector("h1"); if (e && e.getBoundingClientRect().height > 0) { const out = body.getBoundingClientRect().top - e.getBoundingClientRect().top; if (out > 1) w.__over.push({ out: Math.round(out), clip: getComputedStyle(body).clipPath }); }
+      if (performance.now() - t0 < 600) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+  await exitEdit(h); await h.page.waitForTimeout(600);
+  const over: { out: number; clip: string }[] = await h.page.evaluate(() => (window as any).__over);
+  check("note-heading-slide-stays-in-body", over.length > 0 && over.every((o) => o.clip.startsWith("inset")), over);
+  const after = await look();
+  check("note-heading-hidden-after-edit", !after[0].h1 && Math.abs(after[0].h - shown[0].h) <= 1 && md(h, "n0") === doc.trim(), { after, shown });
+  await close(h);
+  // Settings → Notes: keep the heading in the body
+  const h2 = await open({ board: board([doc]), light, settings: { noteHeadingInBody: true } });
+  await h2.page.waitForTimeout(1200);
+  const kept = await h2.page.evaluate(() => (document.querySelector('.card[data-id="n0"] .nbody h1') as HTMLElement | null)?.getBoundingClientRect().height ?? 0);
+  await shot(h2, "note-heading-03-setting-show");
+  check("note-heading-setting-shows", kept > 0, { kept });
+  await close(h2);
+});
+
+/**
+ * 公式在原处展开 LaTeX 原文（Typora 一样），没有浮出来的公式框：点行内公式，它换成 $…$ 原文，光标离开时变回公式；
+ * 方向键走进公式块，原文在块里展开、预览在下面边打边变；Esc 收起写回（和显示时一样高），一次 ⌘Z 撤回这次修改
+ */
+test("mathSourceInPlace", async () => {
+  const h = await open({ board: board(["a $x^2$ b\n\n$$\n\\frac{1}{2}\n$$\n\nend"]), light });
+  const pg = h.page, card = '.card[data-id="n0"]';
+  await pg.waitForTimeout(1500);
+  const blockH = () => pg.evaluate((card) => Math.round(document.querySelector(`${card} :is(.math, [data-type=block-math])`)!.getBoundingClientRect().height), card);
+  const tex = () => pg.evaluate((card) => [...document.querySelectorAll(`${card} annotation`)].map((a) => a.textContent), card);
+  const shownH = await blockH();
+  await pg.locator(`${card} .nbody p`).last().dblclick();
+  await pg.waitForSelector(`${card} .md-pm`, { timeout: 5000 });
+  // 行内：点一下，换成原文，光标在里面
+  { const b = (await pg.locator(`${card} .md-pm [data-type=inline-math] .katex-base`).boundingBox())!; await pg.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
+  await pg.waitForTimeout(200);
+  const inline = await pg.evaluate((card) => ({ text: (document.querySelector(`${card} .md-pm p`) as HTMLElement).innerText, math: document.querySelectorAll(`${card} .md-pm [data-type=inline-math]`).length }), card);
+  await shot(h, "mathSourceInPlace-inline");
+  await pg.keyboard.type("+1");
+  // 方向键往下：离开行内原文（变回公式），走进公式块（展开原文）
+  await keys(pg, "{ArrowDown}");
+  await pg.waitForTimeout(200);
+  const open1 = await pg.evaluate((card) => {
+    const b = document.querySelector(`${card} [data-type=block-math]`)!, t = b.querySelector("textarea")!, pv = b.querySelector(".block-math-inner")!;
+    return { open: b.classList.contains("is-open"), focus: document.activeElement === t, value: t.value, above: t.getBoundingClientRect().bottom <= pv.getBoundingClientRect().top + 1, inline: document.querySelectorAll(`${card} .md-pm [data-type=inline-math]`).length };
+  }, card);
+  await pg.keyboard.press("Control+a");
+  await pg.keyboard.type("\\frac{3}{4}");
+  await pg.waitForTimeout(150);
+  const live = await tex();
+  await shot(h, "mathSourceInPlace-block");
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(200);
+  const closed = await pg.evaluate((card) => ({ open: document.querySelectorAll(`${card} .is-open`).length, inEditor: !!document.activeElement?.closest(".md-pm") && document.activeElement?.tagName !== "TEXTAREA" }), card);
+  const closedH = await blockH(), after = await tex();
+  await pg.waitForTimeout(700);
+  await pg.keyboard.press("Control+z");
+  await pg.waitForTimeout(200);
+  const undone = await tex();
+  await exitEdit(h);
+  await pg.waitForTimeout(1500);
+  const text = md(h, "n0"), pops = await pg.locator(".md-mathpop").count();
+  const r = { inline, open1, live, closed, shownH, closedH, after, undone, text, pops };
+  check("mathSourceInPlace", inline.text.includes("$x^2$") && inline.math === 0 && open1.open && open1.focus && open1.value === "\\frac{1}{2}" && open1.above && open1.inline === 1
+    && live.includes("\\frac{3}{4}") && closed.open === 0 && closed.inEditor && closedH === shownH && after.includes("\\frac{3}{4}") && undone.includes("\\frac{1}{2}")
+    && text === "a $x^2+1$ b\n\n$$\n\\frac{1}{2}\n$$\n\nend" && pops === 0, r);
+  await close(h);
+});
+
+/** 编辑时没有块左边的拖动把手（⋮⋮）：白板不开 dragHandle */
+test("noteEditorHasNoDragHandle", async () => {
+  const h = await open({ board: board(["# Title\n\nfirst\n\nsecond"]), light });
+  await h.page.waitForTimeout(1500);
+  await editNote(h, "n0");
+  for (const p of await h.page.locator('.card[data-id="n0"] .md-pm > *').all()) { await p.hover(); await h.page.waitForTimeout(120); }
+  await shot(h, "noteEditorHasNoDragHandle");
+  const handles = await h.page.locator(".md-handle").count();
+  check("noteEditorHasNoDragHandle", handles === 0, { handles });
   await close(h);
 });

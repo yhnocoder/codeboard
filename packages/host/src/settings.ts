@@ -23,6 +23,7 @@ const KEY: Record<keyof Settings, string> = {
   exportQuestions: "export.includeQuestions",
   exportBoardOnly: "export.includeBoardOnlyNotes",
   exportScope: "export.scope",
+  noteHeadingInBody: "notes.headingInBody",
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -47,6 +48,7 @@ const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   exportQuestions: (v) => typeof v === "boolean",
   exportBoardOnly: (v) => typeof v === "boolean",
   exportScope: (v) => v === "board" || v === "sections" || v === "walk",
+  noteHeadingInBody: (v) => typeof v === "boolean",
 };
 
 export const validSetting = (k: string, v: unknown): k is keyof Settings => k in KEY && VALID[k as keyof Settings](v);

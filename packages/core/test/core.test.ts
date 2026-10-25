@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, descendants, hiddenByCollapse, stampBorn, loadBoard, snapMove, align,
-  cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize,
+  cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize, mdHeading,
   type Board, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
 import { initAnalysis, analyze, planSelection, listsMembers, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
@@ -339,6 +339,21 @@ describe("segments", () => {
   });
 });
 
+describe("note title from its leading heading", () => {
+  it("returns the text of a leading ATX heading, without inline marks", () => {
+    expect(mdHeading("# KV cache budget\n\nPrefill first.")).toBe("KV cache budget");
+    expect(mdHeading("\n\n  ## **Decode** `loop` ##\nbody")).toBe("Decode loop");
+    expect(mdHeading("### [Scheduler](https://x.y/z) and _batching_")).toBe("Scheduler and batching");
+    expect(mdHeading("# 异构并行计算")).toBe("异构并行计算");
+  });
+  it("is empty when the first non-blank line is not a heading", () => {
+    expect(mdHeading("Just text\n# Later heading")).toBe("");
+    expect(mdHeading("#hashtag")).toBe("");
+    expect(mdHeading("")).toBe("");
+    expect(mdHeading("\n  \n")).toBe("");
+  });
+});
+
 describe("paste", () => {
   it("parses GitHub links with line ranges", () => {
     expect(parseGithubUrl("https://github.com/GeeeekExplorer/nano-vllm/blob/main/nanovllm/engine/scheduler.py#L25-L34")).toEqual({
@@ -396,6 +411,12 @@ describe("migrateBoard", () => {
     expect(b.links[0]).toEqual({ id: "l", from: { card: "a" }, to: { card: "w" }, style: { head: { end: false } } }); // old plain links had no arrowhead
     expect(b.stickers).toEqual([]);
     expect(migrateBoard(structuredClone(b))).toEqual(b);
+  });
+  it("image cards keep no height: it follows the image's aspect ratio", () => {
+    const b = migrateBoard({ version: 6, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, cards: [{ id: "i", kind: "image", src: "a.png" }, { id: "n", kind: "note", md: "x", bg: true }],
+      place: { i: { x: 1, y: 2, w: 300, h: 300 }, n: { x: 0, y: 0, w: 200, h: 90 } } });
+    expect(b.place.i).toEqual({ x: 1, y: 2, w: 300 });
+    expect(b.place.n.h).toBe(90);
   });
   it("v3 → v4: code cards store the code area height (minus the 36px Warm Ink header), other cards keep theirs", () => {
     const a = { id: "a", kind: "code", segments: [seg("sa")], mergedFrom: [{ card: { id: "m", kind: "code", segments: [seg("sm")] }, place: { x: 0, y: 0, w: 300, h: 200 } }] };

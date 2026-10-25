@@ -1,12 +1,12 @@
 /* The demo page: the theme variables @yhnocoder/markdown's stylesheet reads (light, and dark on html[data-theme=dark]), the page
-   layout, and the few outside styles the package borrows (.ctx menu, .pill bar, .tbtn button, .lnk link, the highlighter's token
+   layout, and the few outside styles the package borrows (.ctx menu, .pill bar, .tbtn button and its tooltip, .lnk link, the highlighter's token
    classes). Heading sizes, lists, quotes and the code block box are the container's call, so they are set here for .note */
 :root {
   color-scheme: light;
   --bg: #eeece6; --surface: #fdfcfa; --glass: rgba(253, 252, 250, .96);
   --ink: #211f1b; --ink-2: #625e56; --ink-3: #9a958b;
   --line: rgba(60, 45, 20, .09); --hair: rgba(60, 45, 20, .16); --hlrow: rgba(60, 45, 20, .07); --row: rgba(60, 45, 20, .06);
-  --accent: #b5552d; --accent-ink: #ffffff; --warn: #c48a1f;
+  --accent: #b5552d; --accent-ink: #ffffff; --warn: #c48a1f; --md-hl: rgba(240, 200, 100, .35);
   --k-kw: #9a3f22; --k-fn: #2e5d86; --k-str: #4a7536; --k-com: #9a958a; --k-num: #8a6416; --k-self: #7a4f9a;
   --lk-orange: #c46a2a; --lk-blue: #3a72aa; --lk-green: #4c8a3a;
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(50, 35, 10, .08), 0 10px 28px -8px rgba(50, 35, 10, .18);
@@ -21,7 +21,7 @@
   --bg: #1b1a18; --surface: #252421; --glass: rgba(37, 36, 33, .96);
   --ink: #ece8e1; --ink-2: #b4aea3; --ink-3: #7d786f;
   --line: rgba(255, 245, 225, .08); --hair: rgba(255, 245, 225, .15); --hlrow: rgba(255, 245, 225, .07); --row: rgba(255, 245, 225, .06);
-  --accent: #e0835a; --accent-ink: #1b1a18; --warn: #e0a83c;
+  --accent: #e0835a; --accent-ink: #1b1a18; --warn: #e0a83c; --md-hl: rgba(224, 176, 85, .28);
   --k-kw: #e08a6a; --k-fn: #7fb0de; --k-str: #9ccc7e; --k-com: #7d786f; --k-num: #d9b45f; --k-self: #c19be0;
   --lk-orange: #e0905a; --lk-blue: #7fa9d9; --lk-green: #8cc070;
   --sh-float: 0 0 0 .5px var(--hair), 0 10px 28px -8px rgba(0, 0, 0, .5);
@@ -53,12 +53,14 @@ main { display: grid; grid-template-columns: minmax(0, 560px) minmax(0, 1fr); ga
 .note .md pre code { padding: 0; background: none; }
 
 /* borrowed by the package */
-mark { background: color-mix(in srgb, var(--accent) 22%, transparent); color: inherit; border-radius: 2px; }
 .lnk { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; cursor: pointer; }
 .kw { color: var(--k-kw); } .fn { color: var(--k-fn); } .str { color: var(--k-str); } .com { color: var(--k-com); font-style: italic; } .num { color: var(--k-num); } .self { color: var(--k-self); }
 .pill { display: inline-flex; align-items: center; gap: 2px; background: var(--glass); border-radius: 10px; padding: 4px; box-shadow: var(--sh-float); }
 .tbtn { height: 28px; padding: 0 10px; display: inline-flex; align-items: center; border-radius: 6px; color: var(--ink-2); font-size: 12.5px; }
 .tbtn.on { color: var(--accent); background: var(--row); }
+/* the selection bar's tooltips: the button's name (data-tip) and shortcut (data-kbd) */
+.md-bubble [data-tip]:hover::after { content: attr(data-tip) "  " attr(data-kbd); position: absolute; bottom: calc(100% + 6px); left: 50%; translate: -50% 0; padding: 3px 7px; border-radius: 5px; background: var(--ink); color: var(--surface); font-size: 11px; white-space: pre; pointer-events: none; }
+.md-bubble [data-tip] { position: relative; }
 .ctx { z-index: 40; overflow-y: auto; min-width: 210px; max-width: 300px; padding: 5px; border-radius: 10px; background: var(--glass); box-shadow: var(--sh-float); }
 .ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 5px; font-size: 12.5px; color: var(--ink); text-align: left; }
 .ctx button .lb { flex: 1 0 auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

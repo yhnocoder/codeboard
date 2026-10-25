@@ -240,6 +240,8 @@ export class Storage {
 
   /** 缓存里的白板（不拷贝，只读）：开着的面板用它当宿主这边的那一份 */
   peek(id: string): Board | undefined { return this.cache.get(id)?.board; }
+  /** 内存里的所有白板（含还没写盘的改动） */
+  peekAll(): Board[] { return [...this.cache.values()].map((e) => e.board); }
 
   /** 整块白板写盘（宿主自己改的白板、新建、改名、移组）。refs：新白板上哪些卡是共享卡（复制白板时）；已有的白板沿用它的 */
   async save(b: Board, opts: { group?: string | null; refs?: Iterable<string> } = {}) {
@@ -719,6 +721,20 @@ export class Storage {
     await this.fs.mkdir(this.assetsDir());
     await this.fs.writeFile(this.fs.join(this.assetsDir(), file), buf);
     return file;
+  }
+
+  /**
+   * 放一个文件到 assets/，文件名由调用的一方定（按内容取的名字：已经有了就不再写）。先写临时文件再改名，
+   * 写到一半断掉不会留下一个名字对、内容不全的文件
+   */
+  async putAsset(file: string, buf: Uint8Array): Promise<void> {
+    if (!/^[\w.-]+$/.test(file) || file.startsWith(".")) throw new Error(`Bad asset name ${file}`);
+    const abs = this.fs.join(this.assetsDir(), file);
+    if (await this.fs.stat(abs).then(() => true, () => false)) return;
+    await this.fs.mkdir(this.assetsDir());
+    const tmp = `${abs}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+    await this.fs.writeFile(tmp, buf);
+    await this.fs.rename(tmp, abs);
   }
 }
 

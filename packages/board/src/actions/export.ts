@@ -14,6 +14,7 @@ import { flushMd } from "../md/lazy";
 import { renderMd } from "@yhnocoder/markdown";
 import type { ViewerData } from "../export/viewer";
 import VIEWER_JS from "../export/viewer.ts?script";
+import { bitmapOf } from "../stickers/glyphs";
 
 /** 讲解路径从哪张卡开始：选中的卡，否则第一张 Start 卡，否则第一张调用图的根 */
 export function walkStart(): string | undefined {
@@ -156,6 +157,8 @@ function resRef(u: string, base: string): string {
   if (assets && abs.startsWith(assets)) return `cbres:asset/${abs.slice(assets.length).split(/[?#]/)[0]}`;
   return abs;
 }
+/** 悬停内容（HTML 字符串）里的图（Markdown 里的 assets/ 图）也换成 cbres: 引用 */
+const imgRefs = (html: string) => html.replace(/(<img\b[^>]*?\ssrc=")([^"]*)"/g, (_m, a, u) => `${a}${resRef(u.replace(/&amp;/g, "&"), location.href).replace(/&/g, "&amp;")}"`);
 /** board.css 所在的目录（字体、背景图都在它下面） */
 function mediaBase(): string {
   const l = [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].find((x) => /board\.css(\?|$)/.test(x.href));
@@ -226,6 +229,8 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
     if (/^\d+$/.test(el.textContent ?? "")) el.textContent = String(ids.length);
   });
   world.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => { if (hidden.has(el.dataset.note!)) el.remove(); });
+  // 停在第一帧的动图贴纸（屏幕外的）在快照里照样播
+  world.querySelectorAll<HTMLImageElement>("img.glyph.anim").forEach((im) => { const ic = bitmapOf({ pack: im.dataset.pack!, name: im.dataset.name! }); if (ic) im.setAttribute("src", ic.img); });
   world.querySelectorAll<HTMLImageElement>("img[src]").forEach((im) => { im.setAttribute("src", resRef(im.getAttribute("src")!, location.href)); });
   world.querySelectorAll<HTMLElement>("[style*='url(']").forEach((el) => el.setAttribute("style", el.getAttribute("style")!.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (_m, _q, u) => `url("${resRef(u, location.href)}")`)));
 
@@ -233,9 +238,9 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
   const rs = order.map((id) => ({ id, ...rectOf(id) }));
   const box = bounds(rs) ?? { x: 0, y: 0, w: 800, h: 600 };
   const notes: Record<string, string> = {};
-  for (const n of b.sidenotes) if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = noteHtml(n);
+  for (const n of b.sidenotes) if (keep.has(hostOf(n.at.card)) && !hidden.has(n.id)) notes[n.id] = imgRefs(noteHtml(n));
   const questions: Record<string, string> = {};
-  if (o.questions) for (const s of b.stickers) if (qs.has(s.id)) questions[s.id] = `<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${renderMd(s.q?.md || "(no text)")}</div>`;
+  if (o.questions) for (const s of b.stickers) if (qs.has(s.id)) questions[s.id] = imgRefs(`<div class="xv-w">${s.q?.done ? "Answered" : "Question"}</div><div class="md">${renderMd(s.q?.md || "(no text)")}</div>`);
   const cardLinks: Record<string, string> = {};
   for (const id of order) { const c = b.cards.find((k) => k.id === id); const s = c?.kind === "code" ? c.segments[0] : undefined; if (s && links[s.id]) cardLinks[id] = links[s.id]; }
   const walkIds = o.scope === "walk" ? order : (() => { const s = startCards(b)[0]; return s ? walkOrder(b, s).map(hostOf).filter((id) => keep.has(id)) : []; })();
@@ -280,7 +285,7 @@ html,body{margin:0;height:100%;overflow:hidden}
 .xv-top{position:fixed;left:12px;top:10px;display:flex;gap:10px;align-items:center;padding:5px 10px;font:12px var(--ui,system-ui)}
 .xv-info{opacity:.65}
 .xv-dock{position:fixed;right:12px;bottom:12px;display:flex;align-items:center;gap:2px;padding:3px 6px;font:12px var(--ui,system-ui)}
-.xv-dock .ib,.xv-walk .ib{min-width:26px;height:26px;border:0;background:none;color:inherit;font:inherit;cursor:pointer;border-radius:6px}
+.xv-dock .ib,.xv-walk .ib{min-width:26px;height:26px;border:0;background:none;color:inherit;font:inherit;cursor:pointer;border-radius:8.5px}
 .xv-dock .ib:hover,.xv-walk .ib:hover{background:var(--hover,rgba(127,127,127,.15))}
 .xv-dock .sep{width:1px;height:16px;margin:0 4px;background:currentColor;opacity:.2}
 .xv-zoom{min-width:44px;text-align:center}

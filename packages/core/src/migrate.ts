@@ -73,6 +73,8 @@ function normLink(l: Link) {
 
 function normalize(b: any) {
   for (const c of b.cards as (Card | { kind: "shared" })[]) if (c.kind !== "shared") normCard(c);
+  // 图片卡的高度跟着图片的宽高比（宽度定了，高度由图片算出来），不存：旧文件、旧的拖角存下的高度去掉
+  for (const c of b.cards as Card[]) if (c.kind === "image" && b.place[c.id]) delete b.place[c.id].h;
   for (const s of b.sections) s.title ??= "";
   b.links.forEach(normLink);
   b.sidenotes.forEach(normNote);

@@ -9,7 +9,7 @@ import { boardSwitched } from "./state/root";
 import * as A from "./actions";
 import { runKey } from "./keymap";
 import { choose } from "./ui/Menu";
-import { setAssetBase } from "@yhnocoder/markdown";
+import { setNoteAssets } from "./md/images";
 import { preloadEditor } from "./md/load";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
@@ -21,7 +21,7 @@ export function onHost(m: HostToBoard) {
       const b = loadBoard(m.board);
       batch(() => {
         setState("host", m.host);
-        setAssetBase(m.host.assetBase);
+        setNoteAssets(m.host.assetBase);
         if (!preloaded) { preloaded = true; preloadEditor(); preloadCm(); }
         setState("boards", m.boards);
         setState("views", m.views);
@@ -70,7 +70,7 @@ export function onHost(m: HostToBoard) {
       break;
     }
     case "boards": setState("boards", m.boards); break;
-    case "host": setState("host", (h) => ({ ...h, ...m.host })); if (m.host.assetBase !== undefined) setAssetBase(m.host.assetBase); break;
+    case "host": setState("host", (h) => ({ ...h, ...m.host })); if (m.host.assetBase !== undefined) setNoteAssets(m.host.assetBase); break;
     case "add": {
       const ids = A.addCards(m.cards);
       if (m.ask === "split" && ids.length === 1) askSplit(ids[0]);

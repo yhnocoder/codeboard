@@ -31,22 +31,35 @@ export type GhostQuery = {
   show(text: string): void;
 };
 
-/** 防抖地问：probe 现在能问就给一次问（不能就 null），排上时和到点时各看一次 */
+// 用的一方说「先别补」（白板上拖卡、改卡的大小时）：显示着的灰字都清掉，排着的问作废，放开前不再问
+let held = false;
+const askers = new Set<GhostAsker>();
+/** on = 先别补：每个编辑器的灰字清掉、排着的问作废；off = 照常（不补问，下次打字时再问） */
+export function holdGhosts(on: boolean) {
+  held = on;
+  if (on) for (const a of askers) a.drop();
+}
+
+/** 防抖地问：probe 现在能问就给一次问（不能就 null），排上时和到点时各看一次。clear 清掉这个编辑器显示着的灰字 */
 export class GhostAsker {
   private timer: number | undefined;
   private n = 0;
-  constructor(private complete: Complete, private delay = DELAY) {}
+  constructor(private complete: Complete, private clear: () => void, private delay = DELAY) { askers.add(this); }
   schedule(probe: () => GhostQuery | null) {
     this.cancel();
     const id = this.n;
-    if (!probe()) return;
+    if (held || !probe()) return;
     this.timer = window.setTimeout(async () => {
-      const q = probe();
+      const q = held ? null : probe();
       if (id !== this.n || !q) return;
       const [before, after] = q.context();
       const text = await this.complete(before, after).catch(() => null);
-      if (id === this.n && text && q.still()) q.show(text);
+      if (id === this.n && !held && text && q.still()) q.show(text);
     }, this.delay);
   }
   cancel() { clearTimeout(this.timer); this.n++; }
+  /** 作废排着的问，清掉显示着的灰字 */
+  drop() { this.cancel(); this.clear(); }
+  /** 编辑器拆掉时 */
+  dispose() { this.cancel(); askers.delete(this); }
 }

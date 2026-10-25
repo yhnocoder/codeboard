@@ -409,13 +409,15 @@ const Lnk = Link.extend({
 
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
+  // 高亮排在所有格式前面：它是最外层的 <mark>，里面再有粗体、链接时底色也是连着的一整段（排在后面会被拆成几段）
+  Highlight,
   StarterKit.configure({
     document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false, link: false,
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
   Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
-  Lnk, U, Kbd, Hr, InlineCode, Highlight, Sub, Sup, Toc,
+  Lnk, U, Kbd, Hr, InlineCode, Sub, Sup, Toc,
   Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
   WikiRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
@@ -472,6 +474,16 @@ const mm = new MarkdownManager({
 let schema: Schema | undefined;
 export const mdSchema = () => (schema ??= getSchema(baseExtensions));
 
+// ---------- 包着行内原子节点的格式：**a $x$**、==:tada:==、[![i](u)](l) ----------
+// @tiptap/markdown 只给字加格式（applyMarkToContent 只认 text，往下找 content），行内的公式、表情、图片、[[引用]] 这些没有内容的
+// 节点就没了外面的格式；写回时它又在每个非文字节点前把格式全关掉。两头都在这里补：读的时候行内原子节点也带上格式，
+// 写的时候带格式的原子节点先写成自己的 Markdown 字（见 toMd），和两边的字一起被同一对记号包住
+const isMarkableLeaf = (type: string | undefined) => { const t = type ? mdSchema().nodes[type] : undefined; return !!t && t.isInline && t.isLeaf && type !== "hardBreak"; };
+type ApplyMark = (mark: string, content: JSONContent[], attrs?: Record<string, any>) => JSONContent[];
+const textMarks = (mm as unknown as { applyMarkToContent: ApplyMark }).applyMarkToContent.bind(mm);
+(mm as unknown as { applyMarkToContent: ApplyMark }).applyMarkToContent = (mark, content, attrs) => content.flatMap((n) =>
+  isMarkableLeaf(n.type) ? [{ ...n, marks: [...(n.marks ?? []), attrs ? { type: mark, attrs } : { type: mark }] }] : textMarks(mark, [n], attrs));
+
 // 字的转义由 escText 决定：交给 MarkdownManager 之前，把它会转义、变实体的字符换成私用区的字，写完再换回来，它就原样写出
 const SHIELD = 0xe200;
 const shield = (s: string) => s.replace(/[&<>\\`*_[\]~]/g, (c) => String.fromCharCode(SHIELD + c.charCodeAt(0)));
@@ -481,6 +493,8 @@ function toMd(content: JSONContent[], raw: boolean): string {
   const { nodes, marks } = mdSchema();
   const prep = (ns: JSONContent[], code: boolean): JSONContent[] => ns.map((n) => {
     if (n.type === "text") return code || n.marks?.some((m) => marks[m.type]?.spec.code) ? n : { ...n, text: shield(raw ? n.text! : escText(n.text!)) };
+    // 带格式的行内原子节点：先写成它自己的 Markdown，当作带同样格式的字（不转义），格式的记号就包在它外面
+    if (n.marks?.length && isMarkableLeaf(n.type)) return { type: "text", text: shield(mm.serialize({ type: "doc", content: [{ type: "paragraph", content: [{ ...n, marks: undefined }] }] }).replace(/^\n+|\n+$/g, "")), marks: n.marks };
     // 折叠块的标题由 details 自己写成 HTML 的字，不经过这里
     return n.content ? { ...n, content: prep(n.content, code || !!nodes[n.type!]?.spec.code || n.type === "detailsSummary") } : n;
   });

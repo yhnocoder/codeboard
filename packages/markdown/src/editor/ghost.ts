@@ -8,6 +8,7 @@ import { reconvert } from "./typora";
 import { serializeMd } from "../schema";
 import { autoClosersAt } from "./pairs";
 import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost as G } from "../ui/ghost";
+import { revealIn, scroller } from "../ui/reveal";
 
 const CARET = "\uE000";
 /** 光标前后的 Markdown 原文（模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown） */
@@ -21,6 +22,13 @@ export function mdAround(s: EditorState, pos: number): [string, string] {
 }
 
 export const ghostKey = new PluginKey<G>("cbGhost");
+
+/** 编辑器在一个自己会滚的框里（定了高度的 Note）：灰字整段滚进来看得见，光标那一行不滚出去 */
+function reveal(view: EditorView, pos: number) {
+  const box = scroller(view.dom), span = view.dom.querySelector(".md-ghost");
+  if (!box || !span) return;
+  revealIn(box, view.coordsAtPos(pos).top, span.getBoundingClientRect().bottom);
+}
 
 /** 现在能问就给一次问 */
 function probe(view: EditorView) {
@@ -43,7 +51,6 @@ export const Ghost = Extension.create<{ complete?: Complete }>({
   addProseMirrorPlugins() {
     const complete = this.options.complete;
     if (!complete) return [];
-    const asker = new GhostAsker(complete);
     return [new Plugin<G>({
       key: ghostKey,
       state: {
@@ -95,17 +102,21 @@ export const Ghost = Extension.create<{ complete?: Complete }>({
           return false;
         },
       },
-      view: () => ({
-        update(view, prev) {
-          if (view.state.doc !== prev.doc || !view.state.selection.eq(prev.selection)) {
+      view: (v) => {
+        const asker = new GhostAsker(complete, () => { if (!v.isDestroyed && ghostKey.getState(v.state)) v.dispatch(v.state.tr.setMeta(ghostKey, null)); });
+        return {
+          update(view, prev) {
             const g = ghostKey.getState(view.state);
-            // 灰字还在（打的字吃掉了一部分）就不再问
-            if (!g) asker.schedule(() => probe(view));
-            else asker.cancel();
-          }
-        },
-        destroy() { asker.cancel(); },
-      }),
+            if (view.state.doc !== prev.doc || !view.state.selection.eq(prev.selection)) {
+              // 灰字还在（打的字吃掉了一部分）就不再问
+              if (!g) asker.schedule(() => probe(view));
+              else asker.cancel();
+            }
+            if (g && g !== ghostKey.getState(prev)) reveal(view, g.pos);
+          },
+          destroy() { asker.dispose(); },
+        };
+      },
     })];
   },
 });

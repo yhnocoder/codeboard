@@ -1,11 +1,12 @@
 // Performance benchmark: builds a large board from nano-vllm and measures camera, drag, mutate, expand, undo and load times in the browser.
-// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] (--inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
+// Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] (--anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16: main-thread task durations; the 60 fps budget is 16.7 ms).
 import * as fs from "node:fs";
 import { ready, openBoard, launch, symCard, files, type Host } from "./harness";
 import { emptyBoard, skeletonOf, stampBorn, uid, type Board, type BoardCard, type CodeCard, type Link, type Section, type Sidenote, type Skeleton } from "@codeboard/core";
 import type { CDPSession } from "playwright-core";
+import { faceFrames, gif } from "@codeboard/host/test/images";
 
 const arg = (k: string, d: string) => { const i = process.argv.indexOf(`--${k}`); return i > 0 ? process.argv[i + 1] : d; };
 const NCARDS = +arg("cards", "240"), NNOTES = +arg("notes", "0"), NFRAMES = +arg("frames", "0"), RUNS = +arg("runs", "3"), JSON_OUT = arg("json", ""), PROFILE = arg("profile", ""), THEME = arg("theme", "");
@@ -232,10 +233,14 @@ async function once() {
   // A sticker bound to the hub card (the card the drag scenario grabs), for the stickerDrag scenario
   const STK = "kperf";
   if (!NNOTES) board.stickers.push({ id: STK, icon: { pack: "builtin", name: "zap" }, at: { kind: "canvas", x: 24, y: -48, size: 32, on: { card: hubOf(board) } } });
-  const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length, ...(sk ? { frames: NFRAMES } : {}) };
+  // --anim: every star / flag sticker becomes an animated 64px GIF (2 frames, 200 ms), like a pack of downloaded animated emoji
+  const ANIM = process.argv.includes("--anim");
+  const pack = ANIM ? [{ id: "perf", name: "perf", icons: [{ name: "wink", anim: true, img: `data:image/gif;base64,${gif(64, 64, [[0, 0, 0], [236, 120, 160], [60, 40, 30]], faceFrames(64, [236, 120, 160, 255]).map((f) => (x: number, y: number) => { const c = f(x, y); return c[3] === 0 ? 0 : c[0] === 60 ? 2 : 1; }), 200, 0).toString("base64")}` }] }] : [];
+  if (ANIM) for (const k of board.stickers) if (k.icon.pack === "builtin" && k.id !== STK) k.icon = { pack: "perf", name: "wink" };
+  const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length, ...(ANIM ? { animStickers: board.stickers.filter((k) => k.icon.pack === "perf").length } : {}), ...(sk ? { frames: NFRAMES } : {}) };
   const t0 = performance.now();
   let cdp!: CDPSession;
-  const h = await openBoard(await launch(), { board, settings: THEME ? { theme: THEME } as any : undefined, on: sk ? (m, reply) => (m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : false) : undefined, beforeLoad: async (page) => {
+  const h = await openBoard(await launch(), { board, settings: THEME ? { theme: THEME } as any : undefined, on: (m, reply) => (sk && m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : ANIM && m.type === "stickerPacks" ? (void reply(m.req!, pack), true) : false), beforeLoad: async (page) => {
     cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
     if (PROFILE === "load") { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }

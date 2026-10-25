@@ -106,9 +106,9 @@ test("markdownInputRules", async () => {
     { name: "code indent plain", seq: "```{Enter}  x = 1{Enter}y", md: "```\n  x = 1\n  y\n```" },
     { name: "code indent block", init: "```python\nif a:\n    x = 1\n```", seq: "{ArrowUp}{End}{Enter}y", md: "```python\nif a:\n    x = 1\n    y\n```" },
     { name: "code fence c++", seq: "```c++{Enter}int a;", md: "```c++\nint a;\n```" },
-    { name: "math block", seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-mathpop textarea"); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); }, md: "$$\nx^2\n$$" },
+    { name: "math block", seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); }, md: "$$\nx^2\n$$" },
     // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
-    { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-mathpop textarea"); await pg.waitForTimeout(600); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
+    { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pg.waitForTimeout(600); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
     { name: "math block one line", seq: "$$a+b$${Enter}", md: "$$\na+b\n$$", dom: count(".md-pm [data-type=block-math]"), domOk: (n) => n === 1 },
     // #30：[toc] 回车出目录，跟着后面打的标题变
     { name: "toc", seq: "[toc]{Enter}# A{Enter}## B", md: "[toc]\n\n# A\n\n## B", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`)), domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]' },
@@ -150,7 +150,9 @@ test("markdownInputRules", async () => {
     // 标题行首退格：变回段落
     // （刚在空 Note 里打完字马上按 Home，headless Chromium 里偶尔落回行尾：先停一下）
     // Home 之后要等 ProseMirror 收到 selectionchange 再按 Backspace（keys 里等），不然 Backspace 按的还是行尾的光标
-    { name: "heading backspace", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "h" },
+    // 一次退一个 #：## → # → 普通段落（Typora 一样）
+    { name: "heading backspace one level", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "# h" },
+    { name: "heading backspace to paragraph", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}{Backspace}"), md: "h" },
     { name: "task toggle", seq: "- [ ] t", after: async (pg) => { await pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first().click(); await pg.waitForTimeout(100); }, md: "- [x] t" },
     { name: "quote backspace", seq: "> q", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "q" },
     { name: "list backspace", seq: "- a{Enter}b", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "- a\n\nb" },
@@ -273,7 +275,7 @@ test("editorKeys", async () => {
   for (let k = 0; k < 10; k++) {
     await selectBoldY();
     const t0 = Date.now();
-    while (!(await settled()) && Date.now() - t0 < 500) await pg.waitForTimeout(50);
+    while (!(await settled()) && Date.now() - t0 < 1000) await pg.waitForTimeout(50);
     if (await settled()) break;
   }
   await pg.keyboard.press("Control+c");

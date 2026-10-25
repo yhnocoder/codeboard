@@ -15,6 +15,7 @@ import { editing, setEditing } from "../state/ui";
 import { promptText } from "../ui/Menu";
 import { ask } from "../host";
 import { lineY } from "../state/geo";
+import { settleHome } from "../state/sections";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
 
@@ -46,6 +47,7 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; ex
       else { const vc = viewportCenter(); p = findFree({ x: vc.x - size.w / 2, y: vc.y - Math.min(size.h, 300) / 2, ...size }, others); }
       const place: Place = { x: Math.round(p.x), y: Math.round(p.y), w };
       placeCards(b, [{ card: c, place }], { copy: false, at: (q) => (o.section ? { ...q, section: o.section } : q) });
+      if (!o.section) settleHome(b, c.id); // 没指定（跟着调用它的卡）就看落在哪个 Section 里
       ids.push(c.id);
       prev = { x: place.x, y: place.y, ...size };
     }
@@ -64,7 +66,7 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; ex
 export function newNote(at?: { x: number; y: number }, bg = true, text = "") {
   const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 140, y: v.y - 40 }; })();
   const id = uid("n");
-  const add = (b: Board) => { b.cards.push({ id, kind: "note", md: text, bg, size: "body" }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: bg ? 280 : 320 }; };
+  const add = (b: Board) => { b.cards.push({ id, kind: "note", md: text, bg, size: "body" }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: bg ? 280 : 320 }; settleHome(b, id); };
   if (text) mutate(add); else createFresh(id, add); // 空卡：写了内容才进撤销栈，什么都没写就消失
   select({ cards: [id] });
   if (!text) setEditing({ kind: "note", id });
@@ -104,7 +106,7 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
   } else {
     // 空卡：写了代码才进撤销栈，什么都没写就消失
     const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 240, y: v.y - 60 }; })();
-    createFresh(id, (b) => { b.cards.push({ id, kind: "code", segments: [seg] }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: 480 }; });
+    createFresh(id, (b) => { b.cards.push({ id, kind: "code", segments: [seg] }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: 480 }; settleHome(b, id); });
     select({ cards: [id] });
     popCard(id);
   }

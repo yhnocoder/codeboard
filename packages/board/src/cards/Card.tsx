@@ -8,7 +8,7 @@ import {
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
-import { editing, setEditing, dragging, popIn, walk, pingCard, dropTarget } from "../state/ui";
+import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
 import { isHidden } from "../state/sections";
 import { queueMeasure, observeResize } from "../state/measure";
@@ -29,7 +29,7 @@ import { whenIdle } from "../state/idle";
 import { landed } from "../canvas/Links";
 import { enterCard, leaveCard } from "../state/hover";
 import { merged, vlive } from "../state/variants";
-import { cardContextMenu, cardDblClick, cardPointerDown, justDragged, linkPortDown, resizeDown } from "../interact";
+import { cardContextMenu, cardDblClick, cardPointerDown, cardWheel, justDragged, linkPortDown, resizeDown } from "../interact";
 import { kbd } from "../keymap";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
@@ -62,10 +62,16 @@ export function CardView(p: { card: Card }) {
   const [labelReady, setLabelReady] = createSignal(false);
   onMount(() => whenIdle(() => setLabelReady(true)));
   const pop = () => popIn()[c().id];
+  const grow = () => sizeIn()[c().id]; // Fit Content 后从旧的大小变过去（actions/common.ts growFrom）
   const pl = () => placeOf(c().id);
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
-    if (pl().h && c().kind !== "code") s.height = `${pl().h}px`; // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开
+    // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开。
+    // Note / Text 存的高度是上限：跟着内容高矮，内容更高时停在这里、正文里滚（styles.css）；删了字卡跟着变矮，不留空
+    if (pl().h && c().kind === "note") s["max-height"] = `${pl().h}px`;
+    else if (pl().h && c().kind !== "code") s.height = `${pl().h}px`;
+    const g = grow();
+    if (g) { s.width = `${g.w}px`; if (c().kind !== "code") s.height = `${g.h}px`; }
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
     const pi = pop();
     if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
@@ -105,7 +111,8 @@ export function CardView(p: { card: Card }) {
         }}
         onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
         onPointerDown={(e) => cardPointerDown(e, c().id)} onContextMenu={(e) => cardContextMenu(e, c().id)} onDblClick={(e) => cardDblClick(e, c().id)}>
-        <div class="cface">
+        {/* 定了高度的 Note / Text 正文放不下时自己滚（styles.css）：滚轮和代码卡的 .cbody 一样归 cardWheel 判 */}
+        <div class="cface" onWheel={(e) => { const b = (e.target as HTMLElement).closest<HTMLElement>(".nbody, .tx"); if (b) cardWheel(e, b); }}>
         <Dynamic component={BODIES[c().kind] as Component<{ card: Card }>} card={c()} />
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
@@ -288,7 +295,7 @@ function CodeCardView(p: { card: CodeCard }) {
       {/* 色带、底栏只有几个材质主题显示（look.ts 的 shape） */}
       <Show when={shape().band}><CodeBand card={c()} /></Show>
       <Show when={c().variants?.length}><VariantBar card={c()} /></Show>
-      <div class="carea" style={placeOf(c().id).h ? { height: `${placeOf(c().id).h}px` } : undefined}>
+      <div class="carea" style={sizeIn()[c().id] ? { height: `${sizeIn()[c().id]!.h}px` } : placeOf(c().id).h ? { height: `${placeOf(c().id).h}px` } : undefined}>
       <Desc id={c().id} desc={c().desc} />
       <Show when={act.missingNote(c())}>
         <div class="cmiss" data-nodrag>

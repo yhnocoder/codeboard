@@ -247,12 +247,12 @@ export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) 
   changed();
 }
 
-/** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈 */
-export function beginGesture(): () => void {
+/** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈（record = false：不进，比如挪的是还没结算的新卡） */
+export function beginGesture(): (record?: boolean) => void {
   const before = snap();
   held.add(before);
   // 拍的这份就是现在的白板：留作快照缓存，800ms 后的自动保存不用再拍一遍
-  return () => { held.delete(before); const after = (cur = snap()); if (!same(after, before)) { pushUndo(before, after); changed(); } };
+  return (record = true) => { held.delete(before); const after = (cur = snap()); if (record && !same(after, before)) { pushUndo(before, after); changed(); } };
 }
 /** 还没进撤销栈、但以后会进的快照（拖动开始时拍的）：它们之后的 sync 记录不能丢 */
 const held = new Set<Snap>();
@@ -437,30 +437,17 @@ export function allIds(): string[] {
 
 // 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接把改动发给宿主，不用盯着整块白板的 JSON 看它变没变。
 // 宿主马上换上、稍后写盘，面板关掉时把没写的写完。白板这边关标签页时发出去的消息到不了宿主（VS Code 关面板时丢掉还没处理的消息），
-// 所以改动要尽早发：一步改动（mutate、撤销重做、拖动结束、宿主同步来的）在这一帧画完后马上发，同一帧里的几次合成一次；
+// 所以一步改动（mutate、撤销重做、拖动结束、宿主同步来的）在改它的这个任务结束时就发（微任务），同一个任务里的几次合成一次：
+// 改动一出现在 DOM 上，消息就已经发出去了。等下一帧再发的话，DOM 先变了、消息还没发，这时关掉标签页就丢了（Esc 结束编辑后马上关）。
+// 快照的每一段 mutate 已经拍过，这里只比字符串、解析变了的那几段，放在这个任务里不多占一帧。
 // 拖动中的 live、镜头停下的 liveCam 停一会儿才发（不在每一帧拍整块白板的快照），拖动结束时那一步和别的改动一样发。
 // 镜头停下后 LIVE_DELAY 内关掉标签页，这次镜头位置就丢了（只是镜头，不算内容）。
 // 发给宿主的是增量（BoardPatch）：拿现在的快照和上次发出去的那份按 id 比，只发变了的项、删掉的 id、白板本身的字段（变了才发）和镜头。
-// 快照的每一段本来就有（mutate 拍过的直接用），这里只比字符串、解析变了的那几段
 let queued = false;
-/** 看不见的白板不出帧（requestAnimationFrame 不跑）：最多等这么久就直接发 */
-const FRAME_WAIT = 100;
 function changed() {
   if (queued) return;
   queued = true;
-  let done = false, raf = 0, t: number | undefined;
-  const go = () => {
-    if (done) return;
-    done = true;
-    cancelAnimationFrame(raf);
-    clearTimeout(t);
-    queued = false;
-    flushSave();
-  };
-  // 比较快照、发消息放在这一帧画完之后，不挤进用户操作的那一帧；后台的白板（宿主同步来的改动）直接发
-  if (document.hidden) { t = window.setTimeout(go, 0); return; }
-  raf = requestAnimationFrame(() => { clearTimeout(t); t = window.setTimeout(go, 0); });
-  t = window.setTimeout(go, FRAME_WAIT);
+  queueMicrotask(() => { queued = false; flushSave(); });
 }
 let saveTimer: number | undefined;
 const LIVE_DELAY = 800;

@@ -3,7 +3,7 @@
 //        node tools/icons/gen.mjs --check   writes nothing; exits 1 if the tables in icons.tsx / glyphs.tsx are not what gen.mjs would write (hand edits)
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { ICONS, STICKERS, STICKER_BOX } from "./icons.src.mjs";
+import { ICONS, MD_ICONS, STICKERS, STICKER_BOX } from "./icons.src.mjs";
 import { xform } from "./shapes.mjs";
 
 const CHECK = process.argv.includes("--check");
@@ -11,17 +11,19 @@ const stale = [];
 const write = (f, text) => { if (!CHECK) fs.writeFileSync(f, text); else if (fs.readFileSync(f, "utf8") !== text) stale.push(path.relative(root, f)); };
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const file = path.join(root, "packages/board/src/ui/icons.tsx");
-const rows = (k) => Object.entries(ICONS).filter(([, v]) => v[k]).map(([n, v]) => `  ${n}: "${v[k]}", // ${v[2]}`).join("\n");
-let src = fs.readFileSync(file, "utf8");
-const put = (v, body) => {
+const rows = (set, k) => Object.entries(set).filter(([, v]) => v[k]).map(([n, v]) => `  ${n}: "${v[k]}", // ${v[2]}`).join("\n");
+const put = (src, v, body, f) => {
   const re = new RegExp(`(const ${v}: Record<string, string> = \\{\\n)[\\s\\S]*?(\\n\\};)`);
-  if (!re.test(src)) throw new Error(`no table ${v} in icons.tsx`);
-  src = src.replace(re, (_, a, b) => a + body + b);
+  if (!re.test(src)) throw new Error(`no table ${v} in ${path.relative(root, f)}`);
+  return src.replace(re, (_, a, b) => a + body + b);
 };
-put("P", rows(0));
-put("F", rows(1));
-write(file, src);
+// the board's icons (stroke table P and fill table F), and the Markdown editor's toolbar icons (strokes only)
+write(file, put(put(fs.readFileSync(file, "utf8"), "P", rows(ICONS, 0), file), "F", rows(ICONS, 1), file));
 console.log(`icons.tsx: ${Object.keys(ICONS).length} icons`);
+const mdFile = path.join(root, "packages/markdown/src/editor/icons.tsx");
+if (Object.values(MD_ICONS).some((v) => v[1])) throw new Error("MD_ICONS: the Markdown toolbar icons are strokes only");
+write(mdFile, put(fs.readFileSync(mdFile, "utf8"), "P", rows(MD_ICONS, 0), mdFile));
+console.log(`markdown icons.tsx: ${Object.keys(MD_ICONS).length} icons`);
 
 // sticker built-ins: replace the d / fill of each BUILTIN row in glyphs.tsx
 const gfile = path.join(root, "packages/board/src/stickers/glyphs.tsx");

@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 1 本地 | 每次改完：`npm run check` | 3 分钟 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、单元测试（core、markdown、board、host、插件）、Markdown 示例；这次改动需要的 harness 场景 |
 | 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部；harness 两个 job 并行；e2e 拆两段并行；perf（只在改了被测代码时跑） |
-| 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / codeedit）、完整 perf、study-task replay |
+| 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、study-task replay |
 
 ## 一定会测到的
 

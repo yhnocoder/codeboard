@@ -19,6 +19,16 @@ const [off, setOff] = createStore<Record<string, boolean>>({});
 /** 这张卡离屏幕很远，内容不画 */
 export const offscreen = (id: string) => !!off[id];
 
+/**
+ * 世界坐标里的一块（动图贴纸）在不在屏幕附近：进到屏幕外 1/4 屏以内算在，离开半屏以外才算不在（was = 上一次的结果，免得在边上来回切）。
+ * 只是几次乘加；跟踪镜头和视野大小，在 memo 里用
+ */
+export function nearView(r: { x: number; y: number; w: number; h: number }, was: boolean) {
+  const { w, h } = viewTracked(), z = cam.z;
+  const L = r.x * z + cam.x, T = r.y * z + cam.y, R = L + r.w * z, B = T + r.h * z, m = was ? 0.5 : 0.25;
+  return !(R < -w * m || L > w * (1 + m) || B < -h * m || T > h * (1 + m));
+}
+
 /** Canvas 里调用一次 */
 export function trackOffscreen() {
   // 每张卡一个 memo：卡的位置、大小很少变，拖一张卡时只重算它自己的；镜头每帧变，下面只做算术

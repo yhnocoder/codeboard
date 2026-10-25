@@ -3,18 +3,25 @@
      颜色   --ink --ink-2 --ink-3（字，由深到浅）--surface（底）--hlrow（浅底色：表头、代码块、悬停）--hair --line（细线）
             --accent --accent-ink（强调色和压在它上面的字）--warn（出错）--k-fn（链接、引用、脚注）
             --k-kw --k-num --k-self --k-str --lk-blue --lk-orange --lk-green（Mermaid 的系列色）--sh-float（浮层阴影）
+            --md-hl（==高亮== 的荧光笔底色，半透明的暖黄）
      字体   --sys（正文、Mermaid）--mono（代码、记号）--note-h（小标题）
-     其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）
+     其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）--ico-w（工具条图标的描边，1 或 2 px，默认 1）
    公式还要 KaTeX 自己的样式（@yhnocoder/markdown/katex.css，放在这一份前面）。
-   借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮），静态显示的链接 .lnk。代码块着色的 class
+   借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮，开着的是 .on），静态显示的链接 .lnk；
+   工具条按钮的提示（名字在 data-tip，快捷键在 data-kbd）也由用的一方显示。代码块着色的 class
    （.kw .fn …）由给着色的一方（setCodeHighlighter）配样式 */
 /* KaTeX 公式 */
 .katex { font-size: 1.08em; }
 math { font-size: 1.05em; }
 .math { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
 /* Markdown（静态显示和编辑器共用一套：.md 是静态，.ProseMirror 在编辑器里） */
+/* 连字和编辑器里一样关掉（ProseMirror 要关，不然光标落不进连字中间）：进编辑时字形不变 */
+.md { font-variant-ligatures: none; }
 .md :is(p, h1, h2, h3, h4, h5, h6, li, td, th, summary) { white-space: pre-wrap; }
-.md p + p, .md p + :is(ul, ol, pre, table, blockquote, details, .math), .md :is(ul, ol, pre, table, blockquote, details, .math) + p { margin-top: .5em; }
+/* 选中的底色：静态显示和编辑器一样用主题的强调色，不是浏览器的蓝色 */
+.md ::selection, .md-pm ::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+/* 公式块在静态显示里是 .math，在编辑器里是 [data-type="block-math"]：两边同一套间距，进出编辑时不跳 */
+.md p + p, .md p + :is(ul, ol, pre, table, blockquote, details, .math, [data-type="block-math"]), .md :is(ul, ol, pre, table, blockquote, details, .math, [data-type="block-math"]) + p { margin-top: .5em; }
 .md p:empty::before { content: "\200b"; }
 .md h4, .md h5, .md h6 { margin: 2px 0 2px; font: 600 1em/1.4 var(--note-h); color: var(--ink); }
 .md hr { border: 0; border-top: 1px solid var(--hair); margin: 8px 0; }
@@ -29,11 +36,13 @@ math { font-size: 1.05em; }
 .md li::marker { color: var(--ink-3); }
 .md strong { font-weight: 650; }
 .md s { color: var(--ink-2); }
+/* ==高亮==：荧光笔的底色 --md-hl（主题给，亮暗各一份）；换行时每一截都有自己的圆角 */
+.md mark { background: var(--md-hl); color: inherit; border-radius: 2px; padding: 0 1px; margin: 0 -1px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
-.md .math .katex-display { margin: 2px 0; }
+.md :is(.math, [data-type="block-math"]) .katex-display { margin: 2px 0; }
 /* 代码块着色是宿主给的（和代码卡同一套 .kw .fn …）；Note 里的调用点不能点，不画成链接 */
 .md pre.md-code .call { text-decoration: none; cursor: inherit; }
 .md pre.md-code .call:hover { background: none; }
@@ -92,17 +101,21 @@ math { font-size: 1.05em; }
 .md-pm.ProseMirror-hideselection *::selection { background: transparent; }
 .md-pm.ProseMirror-hideselection * { caret-color: transparent; }
 /* 占位字可能折成几行：浮动占满一整行宽、右边距抵掉（不挤光标），段落 flow-root 把浮动的高度算进来，几行都露得出来 */
-.md-pm p.is-empty:first-child:last-child::before, .md-pm .is-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
-.md-pm :is(p, h1, h2, h3, h4, h5, h6).is-empty { display: flow-root; }
+/* 只在整篇都空着时显示（有内容的 Note 里的空行不显示，Typora 一样） */
+.md-pm .is-editor-empty:not(.md-mkh)::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
+.md-pm :is(p, h1, h2, h3, h4, h5, h6).is-editor-empty { display: flow-root; }
 .md-pm .ProseMirror-selectednode { outline: 1.5px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
-.md-pm ::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .md-pm pre { white-space: pre; tab-size: 4; }
 .md-pm pre code { white-space: inherit; }
-.md-pm .tiptap-mathematics-render { cursor: pointer; border-radius: 4px; }
+.md-pm .tiptap-mathematics-render { cursor: pointer; border-radius: 4px; transition: background calc(var(--t) * 120ms); }
 .md-pm .tiptap-mathematics-render:hover { background: var(--hlrow); }
 .md-pm [data-type="block-math"] { display: block; text-align: center; padding: 2px 0; overflow-x: auto; }
 .md-pm [data-type="block-math"]:has(.block-math-inner:empty)::after, .md-pm [data-type="inline-math"]:empty::after { content: "Empty formula"; color: var(--ink-3); font-size: .9em; }
 .md-pm .block-math-error, .md-pm .inline-math-error { color: var(--warn); font-family: var(--mono); font-size: .9em; }
+/* 公式块展开的 LaTeX 原文（editor/mathblock.ts）：在块里、预览上面，照 Typora；收起时不占地方，和静态显示一样 */
+.md-pm .md-mathsrc { display: none; }
+.md-pm [data-type="block-math"].is-open { cursor: text; background: none; outline: none; }
+.md-pm [data-type="block-math"].is-open .md-mathsrc { display: block; box-sizing: border-box; width: 100%; margin: 0 0 4px; padding: 5px 8px; border: 0; outline: none; resize: none; overflow: hidden; text-align: left; color: var(--ink); background: var(--hlrow); border-radius: 5px; font: 12px/1.5 var(--mono); }
 .md-pm [data-type="details"] { display: flex; gap: 2px; margin: 4px 0; padding: 2px 0 2px 4px; border-left: 2px solid var(--hair); }
 .md-pm [data-type="details"] > button { flex: none; width: 18px; height: 1.6em; color: var(--ink-3); border-radius: 4px; }
 .md-pm [data-type="details"] > button::before { content: "▸"; display: inline-block; transition: transform calc(var(--t) * 120ms); }
@@ -121,14 +134,15 @@ math { font-size: 1.05em; }
 .md-pm img.ProseMirror-selectednode { outline-offset: 2px; }
 .md-ghost { color: var(--ink-3); opacity: .85; pointer-events: none; user-select: none; -webkit-user-select: none; }
 /* 光标所在处显示的 Markdown 记号（editor/typora.ts） */
-.md-pm .md-mk, .md-pm .md-mka::before, .md-pm .md-mkb::after, .md-pm .md-mkh::before { color: var(--ink-3); opacity: .75; font-family: var(--mono); font-size: .85em; font-weight: 400; font-style: normal; text-decoration: none; user-select: none; -webkit-user-select: none; }
+.md-pm .md-mk, .md-pm .md-mka::before, .md-pm .md-mkb::after { color: var(--ink-3); opacity: .75; font-family: var(--mono); font-size: .85em; font-weight: 400; font-style: normal; text-decoration: none; user-select: none; -webkit-user-select: none; }
 .md-pm .md-mka::before { content: attr(data-mka); }
 .md-pm .md-mkb::after { content: attr(data-mkb); }
-.md-pm .md-mkh::before { content: attr(data-mka); }
+/* 标题的 "## "：照 Typora 用标题自己的字体、字号，淡色（和光标走进去后展开成的原文 .md-mkc 一样）：打完 "## " 这一行马上就是标题的样子，后面打字不再跳 */
+.md-pm .md-mkh::before { content: attr(data-mka); color: var(--ink-3); user-select: none; -webkit-user-select: none; }
 /* 光标处展开的 Markdown 原文（真的字，能改，editor/source.ts）：记号淡色 */
 .md-pm .md-mkc { color: var(--ink-3); }
 .md-pm .md-esch { display: none; }
-.md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab; user-select: none; -webkit-user-select: none; }
+.md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab; user-select: none; -webkit-user-select: none; transition: color calc(var(--t) * 100ms), background calc(var(--t) * 100ms); }
 .md-handle:hover { color: var(--ink); background: var(--hlrow); }
 .md-raw { display: block; width: 100%; min-height: 3em; margin: 0; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow: hidden; }
 .mdui-anchor { z-index: 60; }
@@ -136,13 +150,18 @@ math { font-size: 1.05em; }
 .md-menu button.sel { background: var(--accent); color: var(--accent-ink); }
 .md-menu button.sel small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
 .md-empty { padding: 6px 8px; font-size: 12px; color: var(--ink-3); }
-.md-bubble, .md-mathpop { position: absolute; z-index: 60; left: 0; top: 0; }
+.md-bubble { position: absolute; z-index: 60; left: 0; top: 0; }
+/* 出现时淡入、稍微放大一点落稳（和白板的浮条一样），不是一下子冒出来 */
+.md-bubble { transform-origin: 50% 100%; animation: md-pop calc(var(--t) * 140ms) cubic-bezier(.2, .8, .2, 1); }
+@keyframes md-pop { from { opacity: 0; scale: .96; } }
 .md-bubble .tbtn { height: 26px; padding: 0 8px; min-width: 26px; justify-content: center; }
+/* 格式按钮是方的图标按钮；开、关格式时底色和颜色过渡过去 */
+.md-bubble .tbtn.md-ib { width: 28px; padding: 0; transition: background calc(var(--t) * 120ms), color calc(var(--t) * 120ms); }
+/* 线条图标（editor/icons.tsx）：描边 --ico-w（1 或 2）；1px 时整组平移半个像素，线落在像素中心上 */
+.md-ico { display: block; width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1); stroke-linecap: round; stroke-linejoin: round; }
+.md-ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 .md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
-.md-mathpop { display: flex; align-items: flex-end; gap: 6px; padding: 6px; }
-.md-mathpop textarea { width: 300px; border: 0; outline: none; resize: vertical; background: var(--surface); border-radius: 6px; padding: 5px 7px; font: 12px/1.5 var(--mono); box-shadow: inset 0 0 0 1px var(--hair); }
-.md-mathhint { font-size: 11px; color: var(--ink-3); padding-bottom: 4px; white-space: nowrap; }
 /* 代码编辑（CodeMirror，cm/editor.ts）：字体、行高跟着外面（Free code 卡是 .code，Note 里是 pre），没有内边距；字的位置和显示时一样 */
 .cbcm .cm-content .call { cursor: text; }
 .cbcm .cm-content .call:hover { background: none; }

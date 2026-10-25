@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  emptyBoard, loadBoard, boardQuestions, collectQuestions, questionsMarkdown, exportOrder, boardMarkdown, githubPermalink, segPermalink, inlineSnapshot, removeCards, renameCard,
+  emptyBoard, loadBoard, boardQuestions, collectQuestions, questionsMarkdown, exportOrder, boardMarkdown, githubPermalink, segPermalink, inlineSnapshot, removeCards, renameCard, cardTitle,
   type Board, type Card, type CodeCard,
 } from "../src";
 
@@ -88,6 +88,17 @@ describe("export", () => {
     const all = boardMarkdown(b, { order: ["BlockManager.can_allocate"], questions: true, boardOnly: true });
     expect(all).toContain("- [ ] **Question** (line 41): why >=?");
     expect(boardMarkdown(b, { order: ["Scheduler.schedule"], boardOnly: true })).toContain("private");
+  });
+
+  it("writes a Note's pasted images (stored in assets/) as placeholders, like Image cards; web images stay", () => {
+    const b = board("b", "imgs", [note("n", "shot ![screen](assets/0123456789abcdef-640x480.png) and ![](assets/a-1x1.gif \"t\")\n\n![w](https://a.b/c.png)")]);
+    const md = boardMarkdown(b, { order: ["n"] });
+    expect(md).toContain("shot *Image: screen* and *Image*");
+    expect(md).toContain("![w](https://a.b/c.png)");
+    expect(md).not.toContain("assets/");
+    expect(md).toContain("## shot screen and");
+    // a Note that starts with a pasted screenshot is titled by its first line of text
+    expect(cardTitle(note("p", "![](assets/0123456789abcdef-1x1.png)\n\nScheduler flow"))).toBe("Scheduler flow");
   });
 
   it("builds GitHub permalinks and inlines snapshot resources", async () => {

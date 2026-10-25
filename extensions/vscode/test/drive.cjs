@@ -407,6 +407,163 @@ async function codeeditStep(page) {
   const tabs = await page.locator(".tabs-container .tab").allTextContents().catch(() => []);
   check(!tabs.some((t) => /codeboard-|Untitled/.test(t)), "no leftover editor tab for the virtual document after reloading the window", tabs);
 }
+// Test images made in code (no binary fixtures): the harness's own helpers in packages/host/test/images.ts, bundled on the fly
+let imagesMod = null;
+const testImages = () => {
+  if (imagesMod) return imagesMod;
+  const { outputFiles } = require("esbuild").buildSync({ entryPoints: [path.join(__dirname, "../../../packages/host/test/images.ts")], bundle: true, platform: "node", format: "cjs", write: false, logLevel: "silent" });
+  const m = { exports: {} };
+  new Function("module", "exports", "require", outputFiles[0].text)(m, m.exports, require);
+  return (imagesMod = m.exports);
+};
+/** Change one entry of the user settings.json, as the Settings UI would (the extension listens and passes it on to the board) */
+const setUserSetting = (key, value) => {
+  const f = path.join(UD, "User/settings.json"), s = JSON.parse(fs.readFileSync(f, "utf8"));
+  if (value === undefined) delete s[key]; else s[key] = value;
+  fs.writeFileSync(f, JSON.stringify(s, null, 1));
+};
+const boardsDir = () => execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards 2>/dev/null || true`).toString().trim().split("\n")[0];
+const boardNamed = (name) => { const d = boardsDir(); return d ? fs.readdirSync(d).filter((n) => n.endsWith(".json")).map((n) => JSON.parse(fs.readFileSync(path.join(d, n), "utf8"))).find((b) => b.name === name) : undefined; };
+/** CodeBoard: New Board named `name`; returns its webview frame (a fresh webview, so nothing cached from earlier steps) */
+async function newBoard(page, name) {
+  const before = new Set();
+  for (const x of page.frames()) if (await x.$("#board").catch(() => null)) before.add(x);
+  // right after startup the command may not be registered yet (the extension still activating): try again
+  for (let k = 0; k < 3; k++) {
+    await command(page, "CodeBoard: New Board"); await sleep(600);
+    await page.keyboard.press("Control+a"); await page.keyboard.type(name); await page.keyboard.press("Enter"); await sleep(2500);
+    for (let i = 0; i < 20; i++) {
+      for (const x of page.frames()) if (!before.has(x) && await x.$("#board").catch(() => null)) { await sleep(1000); return x; }
+      await sleep(500);
+    }
+    await page.keyboard.press("Escape"); await sleep(1000);
+  }
+  throw new Error(`New Board ${name}: no new board webview`);
+}
+/** A new Note at an empty spot, in edit mode with its editor focused */
+async function newNote(page, f) {
+  const fb = await (await f.frameElement()).boundingBox(), sp = await emptySpot(f);
+  await page.mouse.click(fb.x + sp.x, fb.y + sp.y); await sleep(300);
+  await page.keyboard.press("n");
+  return f.waitForFunction(() => !!document.activeElement?.closest(".card.note .md-pm"), null, { timeout: 5000 }).then(() => true, () => false);
+}
+
+// Images in Notes: a PNG pasted from the clipboard while editing a Note is saved by the host as a file under <storageDir>/assets/,
+// the Markdown references assets/<file>, and the board shows it through the webview's resource address in display mode.
+// The paste is a synthetic ClipboardEvent carrying the image file (what a screenshot on the clipboard gives the webview; xvfb has no
+// image clipboard). E2E_ONLY=noteimage runs only this step
+async function noteimageStep(page) {
+  const f = await newBoard(page, "Note Images E2E");
+  check(await newNote(page, f), "noteimage: n opens a new Note with its editor focused");
+  await page.keyboard.type("Pasted screenshot:"); await page.keyboard.press("Enter");
+  const { png } = testImages();
+  const bytes = png(96, 64, (x, y) => (y < 14 ? [228, 226, 222, 255] : x < 24 ? [242, 240, 236, 255] : (y - 14) % 10 < 4 && x < 30 + ((y * 7) % 50) ? [60, 60, 70, 255] : [255, 255, 255, 255]));
+  await f.evaluate((b64) => {
+    const dt = new DataTransfer();
+    dt.items.add(new File([Uint8Array.from(atob(b64), (c) => c.charCodeAt(0))], "image.png", { type: "image/png" }));
+    document.activeElement.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, bytes.toString("base64"));
+  const inEdit = await f.waitForFunction(() => [...document.querySelectorAll(".card.note .md-pm img")].some((i) => i.complete && i.naturalWidth > 0), null, { timeout: 8000 }).then(() => true, () => false);
+  check(inEdit, "noteimage: the pasted image shows in the Note being edited", await f.evaluate(() => [...document.querySelectorAll(".card.note .md-pm img")].map((i) => i.getAttribute("src"))).catch((e) => String(e)));
+  await page.keyboard.press("Escape"); await sleep(2500);
+  const md = (boardNamed("Note Images E2E")?.cards ?? []).find((c) => c.kind === "note")?.md ?? "";
+  const ref = /!\[[^\]]*\]\((assets\/([0-9a-f]{16}-96x64\.png))\)/.exec(md);
+  check(!!ref && !/base64/.test(md), "noteimage: the Markdown references assets/<file>, no inline data", md.slice(0, 200));
+  const file = ref ? path.join(boardsDir(), ref[1]) : "";
+  check(!!ref && fs.existsSync(file) && fs.readFileSync(file).equals(bytes), "noteimage: the image is saved under <storageDir>/assets/ byte for byte", { file, assets: fs.existsSync(path.join(boardsDir(), "assets")) ? fs.readdirSync(path.join(boardsDir(), "assets")) : [] });
+  const shown = await f.waitForFunction(() => {
+    const i = document.querySelector(".card.note .nbody:not(.editing) img");
+    return i && i.complete && i.naturalWidth === 96 ? { src: i.getAttribute("src"), w: Math.round(i.getBoundingClientRect().width) } : null;
+  }, null, { timeout: 8000 }).then((h) => h.jsonValue(), () => null);
+  check(!!shown && !/^assets\//.test(shown.src) && shown.w > 0, "noteimage: the board shows the saved image in display mode, through the webview resource address", shown);
+  await shot(page, "19-note-pasted-image");
+}
+
+// Sticker folder: codeboard.stickerFolder points at a folder with a pack (a subfolder) holding a PNG and an animated GIF; both show in
+// the picker under the pack's tab and place on the board. E2E_ONLY=stickerfolder runs only this step
+async function stickerfolderStep(page) {
+  const { png, gif, faceFrames } = testImages();
+  const dir = path.join(path.dirname(WS), "stickers"), pack = path.join(dir, "E2E Pack");
+  fs.mkdirSync(pack, { recursive: true });
+  fs.writeFileSync(path.join(pack, "smile.png"), png(64, 64, faceFrames(64, [244, 192, 64, 255])[0]));
+  const idx = (p) => (x, y) => { const c = p(x, y); return c[3] === 0 ? 0 : c[0] === 60 ? 2 : 1; };
+  fs.writeFileSync(path.join(pack, "wink.gif"), gif(64, 64, [[0, 0, 0], [236, 120, 160], [60, 40, 30]], faceFrames(64, [236, 120, 160, 255]).map(idx), 200, 0));
+  setUserSetting("codeboard.stickerFolder", dir); await sleep(1500);
+  const f = await newBoard(page, "Stickers E2E");
+  // the Sticker button; in a narrow pane (two editor groups) it is folded into More as Add a Sticker
+  const openPicker = async () => {
+    if (await f.locator('.bbar button[aria-label="Sticker"]').count()) await f.locator('.bbar button[aria-label="Sticker"]').first().click();
+    else { await f.locator('.bbar button[aria-label="More"]').first().click(); await sleep(400); await f.locator(".ctx button", { hasText: /^Add a Sticker/ }).first().click(); }
+    await sleep(600);
+  };
+  await openPicker();
+  check(/stickers$/.test(await f.locator(".stkpick .sfoot span").textContent().catch(() => "")), "stickerfolder: the picker names the folder from codeboard.stickerFolder", await f.locator(".stkpick .sfoot span").textContent().catch(() => ""));
+  await f.locator(".stkpick .stabs button", { hasText: "E2E Pack" }).click({ timeout: 5000 }).catch(() => {});
+  const cells = await f.waitForFunction(() => {
+    const im = [...document.querySelectorAll(".stkpick img.glyph.img")];
+    return im.length === 2 && im.every((i) => i.complete && i.naturalWidth > 0) ? im.map((i) => ({ name: i.dataset.name, anim: i.classList.contains("anim") })) : null;
+  }, null, { timeout: 8000 }).then((h) => h.jsonValue(), () => null);
+  check(!!cells && cells.some((c) => c.name === "smile" && !c.anim) && cells.some((c) => c.name === "wink" && c.anim), "stickerfolder: the PNG and the animated GIF show in the picker under the pack's tab", cells ?? await f.locator(".stkpick .stabs button").allTextContents().catch(() => []));
+  await shot(page, "20-sticker-folder-picker");
+  // place both: pick in the picker, then click empty canvas
+  const fb = await (await f.frameElement()).boundingBox();
+  const sp = await emptySpot(f);
+  for (const [k, name] of ["smile", "wink"].entries()) {
+    if (!(await f.locator(".stkpick").count())) { await openPicker(); await f.locator(".stkpick .stabs button", { hasText: "E2E Pack" }).click().catch(() => {}); await sleep(400); }
+    await f.locator(`.stkpick .scell[data-tip="${name}"]`).click({ timeout: 5000 }).catch(() => {}); await sleep(400);
+    const x = fb.x + sp.x + 60 + k * 120, y = fb.y + sp.y + 60;
+    await page.mouse.move(x, y, { steps: 4 });
+    await page.mouse.click(x, y); await sleep(600);
+  }
+  await sleep(1500);
+  const placed = await f.evaluate(() => [...document.querySelectorAll("[data-sticker] img.glyph.img")].map((i) => ({ ok: i.complete && i.naturalWidth > 0, anim: i.classList.contains("anim"), paused: i.classList.contains("paused") })));
+  const saved = (boardNamed("Stickers E2E")?.stickers ?? []).map((s) => `${s.icon.pack}/${s.icon.name}`).sort();
+  check(placed.length === 2 && placed.every((p) => p.ok) && placed.some((p) => p.anim && !p.paused), "stickerfolder: both stickers are drawn on the board, the GIF playing", placed);
+  check(JSON.stringify(saved) === JSON.stringify(["E2E Pack/smile", "E2E Pack/wink"]), "stickerfolder: both stickers are saved with the board by pack and name", saved);
+  await shot(page, "21-sticker-folder-board");
+  setUserSetting("codeboard.stickerFolder", undefined);
+}
+
+// codeboard.notes.headingInBody from VS Code's settings reaches the board: a Note titled by its leading heading hides that heading in
+// its body by default and shows it once the setting is on. Then Ctrl+X on the Note and Ctrl+V on the same board put the same card back.
+// E2E_ONLY=notesettings runs only this step
+async function notesettingsStep(page) {
+  const f = await newBoard(page, "Note Settings E2E");
+  check(await newNote(page, f), "notesettings: n opens a new Note with its editor focused");
+  await page.keyboard.type("# Plan"); await page.keyboard.press("Enter"); await page.keyboard.type("Schedule, then run, then postprocess.");
+  await page.keyboard.press("Escape"); await sleep(1500);
+  const note = f.locator(".card.note").first();
+  const look = () => note.evaluate((c) => {
+    const h = c.querySelector(".nbody > :is(h1,h2,h3):first-child");
+    return { title: c.querySelector(".chead .ctitle")?.textContent, hidden: c.querySelector(".nbody")?.classList.contains("hidehead"), heading: !!h && getComputedStyle(h).display !== "none" };
+  }).catch((e) => String(e));
+  const off = await look();
+  check(off.title === "Plan" && off.hidden && !off.heading, "notesettings: by default the Note is titled Plan and its body hides the heading", off);
+  setUserSetting("codeboard.notes.headingInBody", true);
+  let on = off; for (let i = 0; i < 20 && !on.heading; i++) { await sleep(250); on = await look(); }
+  check(on.title === "Plan" && !on.hidden && on.heading, "notesettings: codeboard.notes.headingInBody in VS Code settings shows the heading in the body", on);
+  await shot(page, "22-note-heading-in-body");
+  // Ctrl+X / Ctrl+V on the same board
+  const before = (boardNamed("Note Settings E2E")?.cards ?? []).find((c) => c.kind === "note");
+  await note.locator(".chead .ctitle").click(); await sleep(400);
+  await page.keyboard.press("Control+x"); await sleep(1500);
+  const cut = await f.locator(".card.note").count(), afterCut = (boardNamed("Note Settings E2E")?.cards ?? []).filter((c) => c.kind === "note").length;
+  check(cut === 0 && afterCut === 0, "notesettings: Ctrl+X removes the Note from the board", { onScreen: cut, saved: afterCut });
+  const fb = await (await f.frameElement()).boundingBox(), sp = await emptySpot(f);
+  await page.mouse.move(fb.x + sp.x, fb.y + sp.y);
+  await page.keyboard.press("Control+v"); await sleep(1500);
+  if (!(await f.locator(".card.note").count())) {
+    console.log("  (Ctrl+V did not put the Note back: the system clipboard did not reach the webview, pasting from the canvas menu)");
+    await f.locator("#board").click({ button: "right", position: sp }); await sleep(500);
+    await f.locator(".ctx button", { hasText: /^Paste as / }).first().click({ timeout: 3000 }).catch(() => {}); await sleep(1500);
+  }
+  await sleep(1000);
+  const back = (boardNamed("Note Settings E2E")?.cards ?? []).filter((c) => c.kind === "note");
+  check(await f.locator(".card.note").count() === 1 && back.length === 1 && back[0].id === before?.id && back[0].md === before?.md, "notesettings: pasting on the same board puts the same Note back (same id, same text)", { before: before && [before.id, before.md], back: back.map((c) => [c.id, c.md]) });
+  check(/^Plan$/.test(await f.locator(".card.note .chead .ctitle").first().textContent().catch(() => "")), "notesettings: the pasted Note keeps its title");
+  setUserSetting("codeboard.notes.headingInBody", undefined);
+}
+
 const finish = async (browser, errors) => {
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
@@ -431,11 +588,12 @@ const finish = async (browser, errors) => {
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
   // E2E_ONLY=capture,addsel runs only those steps, in that order. E2E_PART splits the run for parallel CI jobs:
   // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (nightly)
-  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep };
-  const PARTS = { 2: "capture,addsel,cardfocus,close", 3: "export,variants,codeedit" };
+  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep, noteimage: noteimageStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep };
+  // Part 3 holds the slow steps (each 20 s or more on its own board); codeedit reloads the window, so it goes last
+  const PARTS = { 2: "capture,addsel,cardfocus,close", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
   const only = process.env.E2E_ONLY || PARTS[process.env.E2E_PART];
   if (only) {
-    for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); await STEPS[k](page); }
+    for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); const t0 = Date.now(); await STEPS[k](page); console.log(`- ${k}: ${((Date.now() - t0) / 1000).toFixed(1)} s`); }
     return finish(browser, errors);
   }
 

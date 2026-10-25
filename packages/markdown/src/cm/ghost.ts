@@ -48,7 +48,7 @@ export function dropGhost(v: EditorView): boolean {
 
 export function ghostExtension(host: GhostHost): Extension {
   const plugin = ViewPlugin.fromClass(class {
-    asker = new GhostAsker(host.complete);
+    asker = new GhostAsker(host.complete, () => dropGhost(this.view));
     constructor(readonly view: EditorView) {}
     update(u: ViewUpdate) {
       if (!u.docChanged && !u.selectionSet && !u.focusChanged) return;
@@ -67,7 +67,7 @@ export function ghostExtension(host: GhostHost): Extension {
         show: (text: string) => v.dispatch({ effects: setGhost.of({ text, pos }) }),
       };
     }
-    destroy() { this.asker.cancel(); }
+    destroy() { this.asker.dispose(); }
   });
   return [ghostField, plugin];
 }

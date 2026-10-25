@@ -6,6 +6,7 @@ import { state, mutate, sel, select, clearSel, cardById, hostOf, rectOf, toast, 
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
 import { crumbs, frameOf, skelOf, subRect, walkBack, setWalkBack } from "../state/subboards";
 import { walk, setWalk } from "../state/ui";
+import { settleHome } from "../state/sections";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
 
@@ -127,6 +128,7 @@ export function insertBoard(child: string, at = viewportCenter()) {
   const ok = mutate((b) => {
     b.cards.push({ id, kind: "board", board: child } satisfies BoardCard);
     b.place[id] = { x: Math.round(at.x), y: Math.round(at.y), w: 560, h: 360 };
+    settleHome(b, id);
   });
   if (ok) select({ cards: [id] });
 }

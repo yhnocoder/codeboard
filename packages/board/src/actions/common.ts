@@ -4,7 +4,7 @@ import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } 
 import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
-import { notesOf, ping, setPopIn, popIn, setPaletteOpen } from "../state/ui";
+import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAnim } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";
 import { lastPointer, naturalSize, chromeOf } from "../state/measure";
 import { send, ask } from "../host";
@@ -190,13 +190,45 @@ export function fitContent(ids: string[]) {
   for (const id of ids) { const h = cardById(id)?.host.id; const n = h && naturalSize(h); if (h && n) sz.set(h, n); }
   if (!sz.size) return;
   const chrome = new Map([...sz.keys()].map((id) => [id, chromeOf(id)]));
+  const from = new Map([...sz.keys()].flatMap((id) => { const s = shownSize(id); return s ? [[id, s] as const] : []; }));
   mutate((b) => {
     for (const [id, n] of sz) {
       const p = b.place[id];
       if (!p) continue;
       if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
       const c = b.cards.find((k) => k.id === id);
-      p.h = c?.kind === "note" || c?.kind === "web" ? undefined : Math.round(n.h - (c?.kind === "code" ? chrome.get(id)! : 0));
+      p.h = c?.kind === "note" || c?.kind === "web" || c?.kind === "image" ? undefined : Math.round(n.h - (c?.kind === "code" ? chrome.get(id)! : 0));
     }
   });
+  growFrom(from);
 }
+
+/** 卡画出来的宽和存着高度的那一块的高（代码卡是内容区 .carea，别的卡整张） */
+function shownSize(id: string): SizeAnim | null {
+  const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
+  if (!el) return null;
+  const box = el.querySelector<HTMLElement>(":scope > .cface > .carea") ?? el;
+  return { w: el.offsetWidth, h: box.offsetHeight };
+}
+/** 卡已经是新的大小（白板里改好了）：画面上从旧的大小平滑地变过去 */
+function growFrom(from: Map<string, SizeAnim>) {
+  if (reduceMotion()) return;
+  const runs = [...from].flatMap(([id, a]) => {
+    const b = shownSize(id);
+    return b && (Math.abs(a.w - b.w) > 1 || Math.abs(a.h - b.h) > 1) ? [{ id, a, b }] : [];
+  });
+  if (!runs.length) return;
+  const me = {};
+  for (const r of runs) growing.set(r.id, me);
+  const sp = new Spring(0, 170, 26, 0.002); sp.t = 1;
+  // 动画中又变了一次（再按一次 Fit Content）：那张卡归新的这一轮，从它画到一半的大小接着变
+  const at = (v: number | null) => { for (const r of runs) if (growing.get(r.id) === me) setSizeIn(r.id, v === null ? undefined : { w: r.a.w + (r.b.w - r.a.w) * v, h: r.a.h + (r.b.h - r.a.h) * v }); };
+  at(0);
+  animate((dt, instant) => {
+    instant ? sp.set(1) : sp.step(dt);
+    if (sp.done) { at(null); for (const r of runs) if (growing.get(r.id) === me) growing.delete(r.id); return true; }
+    at(Math.min(1, sp.v));
+    return false;
+  });
+}
+const growing = new Map<string, object>();
