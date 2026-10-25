@@ -2,7 +2,7 @@
 // Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
 //          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
-//          placeholderOnlyWhenNoteEmpty
+//          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle
 import { put, findSym, symCard, shot, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -381,4 +381,65 @@ test("noteTitleHeadingHiddenInBody", async () => {
   await shot(h2, "note-heading-03-setting-show");
   check("note-heading-setting-shows", kept > 0, { kept });
   await close(h2);
+});
+
+/**
+ * 公式在原处展开 LaTeX 原文（Typora 一样），没有浮出来的公式框：点行内公式，它换成 $…$ 原文，光标离开时变回公式；
+ * 方向键走进公式块，原文在块里展开、预览在下面边打边变；Esc 收起写回（和显示时一样高），一次 ⌘Z 撤回这次修改
+ */
+test("mathSourceInPlace", async () => {
+  const h = await open({ board: board(["a $x^2$ b\n\n$$\n\\frac{1}{2}\n$$\n\nend"]), light });
+  const pg = h.page, card = '.card[data-id="n0"]';
+  await pg.waitForTimeout(1500);
+  const blockH = () => pg.evaluate((card) => Math.round(document.querySelector(`${card} :is(.math, [data-type=block-math])`)!.getBoundingClientRect().height), card);
+  const tex = () => pg.evaluate((card) => [...document.querySelectorAll(`${card} annotation`)].map((a) => a.textContent), card);
+  const shownH = await blockH();
+  await pg.locator(`${card} .nbody p`).last().dblclick();
+  await pg.waitForSelector(`${card} .md-pm`, { timeout: 5000 });
+  // 行内：点一下，换成原文，光标在里面
+  { const b = (await pg.locator(`${card} .md-pm [data-type=inline-math] .katex-base`).boundingBox())!; await pg.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
+  await pg.waitForTimeout(200);
+  const inline = await pg.evaluate((card) => ({ text: (document.querySelector(`${card} .md-pm p`) as HTMLElement).innerText, math: document.querySelectorAll(`${card} .md-pm [data-type=inline-math]`).length }), card);
+  await shot(h, "mathSourceInPlace-inline");
+  await pg.keyboard.type("+1");
+  // 方向键往下：离开行内原文（变回公式），走进公式块（展开原文）
+  await keys(pg, "{ArrowDown}");
+  await pg.waitForTimeout(200);
+  const open1 = await pg.evaluate((card) => {
+    const b = document.querySelector(`${card} [data-type=block-math]`)!, t = b.querySelector("textarea")!, pv = b.querySelector(".block-math-inner")!;
+    return { open: b.classList.contains("is-open"), focus: document.activeElement === t, value: t.value, above: t.getBoundingClientRect().bottom <= pv.getBoundingClientRect().top + 1, inline: document.querySelectorAll(`${card} .md-pm [data-type=inline-math]`).length };
+  }, card);
+  await pg.keyboard.press("Control+a");
+  await pg.keyboard.type("\\frac{3}{4}");
+  await pg.waitForTimeout(150);
+  const live = await tex();
+  await shot(h, "mathSourceInPlace-block");
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(200);
+  const closed = await pg.evaluate((card) => ({ open: document.querySelectorAll(`${card} .is-open`).length, inEditor: !!document.activeElement?.closest(".md-pm") && document.activeElement?.tagName !== "TEXTAREA" }), card);
+  const closedH = await blockH(), after = await tex();
+  await pg.waitForTimeout(700);
+  await pg.keyboard.press("Control+z");
+  await pg.waitForTimeout(200);
+  const undone = await tex();
+  await exitEdit(h);
+  await pg.waitForTimeout(1500);
+  const text = md(h, "n0"), pops = await pg.locator(".md-mathpop").count();
+  const r = { inline, open1, live, closed, shownH, closedH, after, undone, text, pops };
+  check("mathSourceInPlace", inline.text.includes("$x^2$") && inline.math === 0 && open1.open && open1.focus && open1.value === "\\frac{1}{2}" && open1.above && open1.inline === 1
+    && live.includes("\\frac{3}{4}") && closed.open === 0 && closed.inEditor && closedH === shownH && after.includes("\\frac{3}{4}") && undone.includes("\\frac{1}{2}")
+    && text === "a $x^2+1$ b\n\n$$\n\\frac{1}{2}\n$$\n\nend" && pops === 0, r);
+  await close(h);
+});
+
+/** 编辑时没有块左边的拖动把手（⋮⋮）：白板不开 dragHandle */
+test("noteEditorHasNoDragHandle", async () => {
+  const h = await open({ board: board(["# Title\n\nfirst\n\nsecond"]), light });
+  await h.page.waitForTimeout(1500);
+  await editNote(h, "n0");
+  for (const p of await h.page.locator('.card[data-id="n0"] .md-pm > *').all()) { await p.hover(); await h.page.waitForTimeout(120); }
+  await shot(h, "noteEditorHasNoDragHandle");
+  const handles = await h.page.locator(".md-handle").count();
+  check("noteEditorHasNoDragHandle", handles === 0, { handles });
+  await close(h);
 });

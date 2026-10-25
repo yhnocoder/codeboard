@@ -80,7 +80,7 @@ note.addEventListener("click", (e) => {
 show();
 ```
 
-`mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates), `saveImage` / `pickImage` (where pasted and picked images go; by default they stay inline as `data:` URLs), `complete` (inline AI completion) and `code` (comment tokens and language services for code blocks). The handle has `value()`, `destroy()` and `editor()` (the TipTap editor).
+`mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates), `saveImage` / `pickImage` (where pasted and picked images go; by default they stay inline as `data:` URLs), `complete` (inline AI completion), `code` (comment tokens and language services for code blocks) and `dragHandle` (a ⋮⋮ handle left of the hovered block for dragging it; off by default). The handle has `value()`, `destroy()` and `editor()` (the TipTap editor).
 
 A complete page using only this package is in [examples/markdown-demo](https://github.com/yhnocoder/codeboard/tree/main/examples/markdown-demo).
 

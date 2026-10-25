@@ -1,4 +1,4 @@
-// 光标处的 Markdown 原文，照 Typora（#11）：光标走进 **粗体**、*斜体*、~~删除线~~、`代码`、[链接](url)、标题，或用方向键走到行内公式上时，
+// 光标处的 Markdown 原文，照 Typora（#11）：光标走进 **粗体**、*斜体*、~~删除线~~、`代码`、[链接](url)、标题，或用方向键走到、点一下行内公式时，
 // 那一段换成它的 Markdown 原文——是真的字，能直接改记号（** 改成 *、## 改成 #、改链接地址、改公式源码）；光标离开那一段时重新解析回去。
 // - 原文带 mdSrc 标记（code: true：打字规则在原文里不触发，不然改到一半的 ** 会被马上转掉）
 // - 只在光标单纯移动（方向键、Home/End、点一下）时展开；打字、自动转换后不展开（刚打完 **b** 接着往下打字，不会冒出原文）
@@ -82,11 +82,10 @@ function collapse(state: EditorState, tr: Transaction, heads: number[]): boolean
   return ops.length > 0;
 }
 
-/** 光标单纯移动到格式文字、标题里，或方向键走到行内公式上：换成原文 */
-function expand(state: EditorState, tr: Transaction, fromHead: number, byArrow: boolean): number | null {
+/** 光标单纯移动到格式文字、标题里，或选中了行内公式（方向键走到、点一下）：换成原文 */
+function expand(state: EditorState, tr: Transaction, fromHead: number): number | null {
   const sel = tr.selection, s = state.schema, src = s.marks[SRC_MARK];
   if (sel instanceof NodeSelection && sel.node.type.name === "inlineMath") {
-    if (!byArrow) return null; // 点一下公式是打开公式框
     const d = sel.node.attrs.display ? "$$" : "$", text = `${d}${sel.node.attrs.latex ?? ""}${d}`;
     tr.replaceWith(sel.from, sel.to, s.text(text, [src.create()]));
     tr.setSelection(TextSelection.create(tr.doc, fromHead <= sel.from ? sel.from + d.length : sel.from + text.length - d.length));
@@ -136,7 +135,7 @@ function expand(state: EditorState, tr: Transaction, fromHead: number, byArrow: 
 export function sourcePlugin() {
   // nav：这次光标是用户自己移的（方向键、Home / End、翻页；点一下在松开时另发一个 check）。程序里设的选区（原文模式切回来、
   // 走出代码块之类）不展开
-  let down = false, arrow = false, nav = false, view: EditorView | null = null;
+  let down = false, nav = false, view: EditorView | null = null;
   const up = () => { if (!down) return; down = false; if (view && !view.isDestroyed) view.dispatch(view.state.tr.setMeta(sourceKey, { check: true })); };
   return new Plugin<number[]>({
     key: sourceKey,
@@ -154,8 +153,8 @@ export function sourcePlugin() {
       return { destroy: () => { window.removeEventListener("mouseup", up, true); view = null; } };
     },
     props: {
-      handleKeyDown: (_v, ev) => { arrow = /^Arrow/.test(ev.key) && !ev.shiftKey; nav = /^(Arrow|Home$|End$|Page)/.test(ev.key) && !ev.shiftKey; return false; },
-      handleDOMEvents: { mousedown: () => { down = true; arrow = nav = false; return false; } },
+      handleKeyDown: (_v, ev) => { nav = /^(Arrow|Home$|End$|Page)/.test(ev.key) && !ev.shiftKey; return false; },
+      handleDOMEvents: { mousedown: () => { down = true; nav = false; return false; } },
     },
     appendTransaction(trs, old, state) {
       if (trs.some((t) => t.getMeta(sourceKey)?.own)) return null;
@@ -166,7 +165,7 @@ export function sourcePlugin() {
       // 单纯移动光标（没改字）才展开；鼠标按着的时候先不动字（拖选会乱），松开时再看
       const moved = trs.every((t) => !t.docChanged) && trs.some((t) => (nav && t.selectionSet) || t.getMeta(sourceKey)?.check);
       let opened: number | null = null;
-      if (moved && !down) opened = expand(state, tr, old.selection.head, arrow);
+      if (moved && !down) opened = expand(state, tr, old.selection.head);
       if (!tr.docChanged) return null;
       // 还展开着的标题：还有 ## 的，或者 ## 删光了但光标还在里面的（离开时变回段落）
       const h = tr.selection.head;

@@ -140,7 +140,7 @@ export const PROBES: Probe[] = [
   { name: "html-inline", run: async ({ pg }) => { const k = K(pg); await k.t("a <kbd>Ctrl</kbd> b"); } },
   // ---------- 标记显隐、撤销、退格 ----------
   { name: "reveal-bold", start: "a **bold** b", run: async ({ pg, info }) => { await pg.keyboard.press("End"); for (let i = 0; i < 4; i++) await pg.keyboard.press("ArrowLeft"); await pg.waitForTimeout(100); info.text = await pg.locator(".md-pm").innerText(); } },
-  { name: "reveal-math", start: "a $x^2$ b", run: async ({ pg, info }) => { await pg.keyboard.press("End"); await pg.keyboard.press("ArrowLeft"); await pg.keyboard.press("ArrowLeft"); await pg.waitForTimeout(150); info.text = await pg.locator(".md-pm").innerText(); info.mathpop = await pg.locator(".md-mathpop").count(); } },
+  { name: "reveal-math", start: "a $x^2$ b", run: async ({ pg, info }) => { await pg.keyboard.press("End"); await pg.keyboard.press("ArrowLeft"); await pg.keyboard.press("ArrowLeft"); await pg.waitForTimeout(150); info.text = await pg.locator(".md-pm").innerText(); } },
   { name: "reveal-heading", start: "## Head", run: async ({ pg, info }) => { await caretTo(pg, "Head", 1); await pg.waitForTimeout(100); info.text = await pg.locator(".md-pm").innerText(); } },
   { name: "reveal-link", start: "see [docs](https://x.y) end", run: async ({ pg, info }) => { await pg.keyboard.press("End"); for (let i = 0; i < 6; i++) await pg.keyboard.press("ArrowLeft"); await pg.waitForTimeout(100); info.text = await pg.locator(".md-pm").innerText(); } },
   { name: "undo-bold-rule", run: async ({ pg }) => { const k = K(pg); await k.t("a **bold**"); await k.p("ControlOrMeta+z"); } },
@@ -317,7 +317,8 @@ const ISSUES: Record<string, [string, (i: I) => boolean][]> = {
     ["key-indent", md("- a\n  - b")], ["key-select-word", (i) => i.sel === "beta"], ["key-select-line", (i) => i.sel === "alpha beta"],
   ],
   "#15 inline shortcuts": [["key-underline", md("<u>word</u> here")], ["key-code-typora", md("`word` here")], ["key-strike-tiptap", md("~~word~~ here")]],
-  "#16 Backspace at the start reverts": [["backspace-heading-start", md("Head")], ["backspace-list-start", md("item")], ["backspace-quote-start", md("quote")]],
+  // 标题一次退一个 #（## → # → 段落，Typora 一样）
+  "#16 Backspace at the start reverts": [["backspace-heading-start", md("# Head")], ["backspace-list-start", md("item")], ["backspace-quote-start", md("quote")]],
   "#17 the model sees Markdown": [["ai-context", (i) => i.ask?.before === "a **b** $x^2$ [[Ref]] `c` and mo"]],
   "#18 #19 paste Markdown": [["paste-md-inline", (i) => i.md === "x a **b** and $y^2$" && /^p\(/.test(i.dom) && !/\) p\(/.test(i.dom)], ["paste-md-math-block", md("$$\na+b\n$$")]],
   "#20 copy gives Markdown": [["clip-copy-plain-md", (i) => i.copied?.plain === "a **b** $x^2$ [[Ref]] `c` [l](https://x.y)"]],

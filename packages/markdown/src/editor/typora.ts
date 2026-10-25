@@ -242,8 +242,8 @@ const listType = (e: Editor) => {
   for (let d = $h.depth; d > 0; d--) { const n = $h.node(d).type.name; if (n === "listItem" || n === "taskItem") return n; }
   return "listItem";
 };
-/** 在光标这一段后面放一个块（这一段是空的就换掉它）；caret 给出光标位置，不给就选不动，then 之后再做的事 */
-function blockAfter(e: Editor, node: PMNode, caret?: (start: number) => number, then?: (start: number) => void) {
+/** 在光标这一段后面放一个块（这一段是空的就换掉它）；caret 给出光标位置，不给就选中它 */
+function blockAfter(e: Editor, node: PMNode, caret?: (start: number) => number) {
   const $h = e.state.selection.$head;
   if ($h.depth < 1) return false;
   const d = $h.depth, empty = $h.parent.isTextblock && !$h.parent.content.size;
@@ -253,7 +253,6 @@ function blockAfter(e: Editor, node: PMNode, caret?: (start: number) => number, 
   const tr = closeHistory(e.state.tr).replaceWith(from, to, node);
   tr.setSelection(caret ? TextSelection.near(tr.doc.resolve(caret(from))) : NodeSelection.create(tr.doc, from));
   e.view.dispatch(tr.scrollIntoView());
-  if (then) then(from);
   return true;
 }
 function selectWord(e: Editor) {
@@ -314,7 +313,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
             if (!tr.doc.resolve(end).nodeAfter?.isTextblock) tr.insert(end, s.nodes.paragraph.create());
             tr.setSelection(TextSelection.near(tr.doc.resolve(end + 1)));
           }
-          if (r.then) queueMicrotask(() => r.then!(start)); // 派发完马上打开（下一个键就进源码框）
+          if (r.then) queueMicrotask(() => r.then!(start)); // 派发完马上打开（下一个键就打进公式原文）
           return undefined;
         },
       });
@@ -379,7 +378,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       } }),
       // ```语言 / *** / --- / ___ / [toc] / 一整行的 $$m$$ 加回车：解析出来的块（enterBlock）
       new InputRule({ find: (text) => (text.endsWith("\n") ? { index: text.length - 1, text: "\n" } : null), undoable: false, handler: ({ state }) => (enterBlock(state) ? undefined : null) }),
-      // $$ 加回车：空的公式块，打开源码框
+      // $$ 加回车：空的公式块，展开原文
       enterRule(/^\$\$\n$/, () => ({ nodes: [s.nodes.blockMath.create({ latex: "" })], then: (st) => openMath(ed, st) })),
       // 上一段下面一行 === 加回车：上一段变一级标题（setext）
       new InputRule({ find: /^=+\n$/, undoable: false, handler: ({ state, range }) => {
@@ -419,12 +418,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       "Mod-z": () => e.commands.undoInputRule() || e.commands.undo(),
       // keymap 找不到带 Shift 的会退回去找不带的（key 是小写 z 时），先在这里接住重做
       "Shift-Mod-z": () => e.commands.redo(),
-      Enter: () => {
-        const sel = e.state.selection;
-        // 选中的公式：打开源码框
-        if (sel instanceof NodeSelection && /^(inlineMath|blockMath)$/.test(sel.node.type.name)) { this.options.openMath(e, sel.from); return true; }
-        return false;
-      },
       Backspace: () => {
         const sel = e.state.selection;
         if (!sel.empty) return false;
@@ -477,7 +470,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
         const table = s.nodes.table.create(null, [row("tableHeader"), row("tableCell"), row("tableCell")]);
         return blockAfter(e, table, (st) => st + 4);
       },
-      "Mod-Alt-b": () => blockAfter(e, e.schema.nodes.blockMath.create({ latex: "" }), undefined, (st) => this.options.openMath(e, st)),
+      "Mod-Alt-b": () => blockAfter(e, e.schema.nodes.blockMath.create({ latex: "" })), // 选中它：公式块展开原文（mathblock.ts）
       "Mod-]": () => e.commands.sinkListItem(listType(e)),
       "Mod-[": () => e.commands.liftListItem(listType(e)),
       // ⌘⇧` 行内代码；Mac 上 ⌃⇧` 删除线（Windows / Linux 上这两个是同一个键，归行内代码）

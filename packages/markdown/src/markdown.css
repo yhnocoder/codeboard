@@ -112,6 +112,10 @@ math { font-size: 1.05em; }
 .md-pm [data-type="block-math"] { display: block; text-align: center; padding: 2px 0; overflow-x: auto; }
 .md-pm [data-type="block-math"]:has(.block-math-inner:empty)::after, .md-pm [data-type="inline-math"]:empty::after { content: "Empty formula"; color: var(--ink-3); font-size: .9em; }
 .md-pm .block-math-error, .md-pm .inline-math-error { color: var(--warn); font-family: var(--mono); font-size: .9em; }
+/* 公式块展开的 LaTeX 原文（editor/mathblock.ts）：在块里、预览上面，照 Typora；收起时不占地方，和静态显示一样 */
+.md-pm .md-mathsrc { display: none; }
+.md-pm [data-type="block-math"].is-open { cursor: text; background: none; outline: none; }
+.md-pm [data-type="block-math"].is-open .md-mathsrc { display: block; box-sizing: border-box; width: 100%; margin: 0 0 4px; padding: 5px 8px; border: 0; outline: none; resize: none; overflow: hidden; text-align: left; color: var(--ink); background: var(--hlrow); border-radius: 5px; font: 12px/1.5 var(--mono); }
 .md-pm [data-type="details"] { display: flex; gap: 2px; margin: 4px 0; padding: 2px 0 2px 4px; border-left: 2px solid var(--hair); }
 .md-pm [data-type="details"] > button { flex: none; width: 18px; height: 1.6em; color: var(--ink-3); border-radius: 4px; }
 .md-pm [data-type="details"] > button::before { content: "▸"; display: inline-block; transition: transform calc(var(--t) * 120ms); }
@@ -146,10 +150,9 @@ math { font-size: 1.05em; }
 .md-menu button.sel { background: var(--accent); color: var(--accent-ink); }
 .md-menu button.sel small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
 .md-empty { padding: 6px 8px; font-size: 12px; color: var(--ink-3); }
-.md-bubble, .md-mathpop { position: absolute; z-index: 60; left: 0; top: 0; }
+.md-bubble { position: absolute; z-index: 60; left: 0; top: 0; }
 /* 出现时淡入、稍微放大一点落稳（和白板的浮条一样），不是一下子冒出来 */
 .md-bubble { transform-origin: 50% 100%; animation: md-pop calc(var(--t) * 140ms) cubic-bezier(.2, .8, .2, 1); }
-.md-mathpop { transform-origin: 50% 0; animation: md-pop calc(var(--t) * 140ms) cubic-bezier(.2, .8, .2, 1); }
 @keyframes md-pop { from { opacity: 0; scale: .96; } }
 .md-bubble .tbtn { height: 26px; padding: 0 8px; min-width: 26px; justify-content: center; }
 /* 格式按钮是方的图标按钮；开、关格式时底色和颜色过渡过去 */
@@ -159,9 +162,6 @@ math { font-size: 1.05em; }
 .md-ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 .md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
-.md-mathpop { display: flex; align-items: flex-end; gap: 6px; padding: 6px; }
-.md-mathpop textarea { width: 300px; border: 0; outline: none; resize: vertical; background: var(--surface); border-radius: 6px; padding: 5px 7px; font: 12px/1.5 var(--mono); box-shadow: inset 0 0 0 1px var(--hair); }
-.md-mathhint { font-size: 11px; color: var(--ink-3); padding-bottom: 4px; white-space: nowrap; }
 /* 代码编辑（CodeMirror，cm/editor.ts）：字体、行高跟着外面（Free code 卡是 .code，Note 里是 pre），没有内边距；字的位置和显示时一样 */
 .cbcm .cm-content .call { cursor: text; }
 .cbcm .cm-content .call:hover { background: none; }
