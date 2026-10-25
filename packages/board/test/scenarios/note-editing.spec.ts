@@ -369,8 +369,13 @@ test("noteTitleHeadingHiddenInBody", async () => {
   const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.textContent, op: e ? getComputedStyle(e).opacity : "" }; });
   check("note-heading-editable", edit.text === "KV cache budget" && edit.op === "1", edit);
   check("note-heading-slides-in", grow > 20 && jump < grow * 0.6, { grow, jump, frames: hs.length });
-  // leave: hidden again, card back to its height
+  // leave: hidden again, card back to its height; while it slides out, the part above the body's top edge is clipped (never over the card header)
+  await h.page.evaluate(() => { const w = window as any; w.__over = []; const t0 = performance.now();
+    const f = () => { const body = document.querySelector('.card[data-id="n0"] .nbody') as HTMLElement, e = body.querySelector("h1"); if (e && e.getBoundingClientRect().height > 0) { const out = body.getBoundingClientRect().top - e.getBoundingClientRect().top; if (out > 1) w.__over.push({ out: Math.round(out), clip: getComputedStyle(body).clipPath }); }
+      if (performance.now() - t0 < 600) requestAnimationFrame(f); }; requestAnimationFrame(f); });
   await exitEdit(h); await h.page.waitForTimeout(600);
+  const over: { out: number; clip: string }[] = await h.page.evaluate(() => (window as any).__over);
+  check("note-heading-slide-stays-in-body", over.length > 0 && over.every((o) => o.clip.startsWith("inset")), over);
   const after = await look();
   check("note-heading-hidden-after-edit", !after[0].h1 && Math.abs(after[0].h - shown[0].h) <= 1 && md(h, "n0") === doc.trim(), { after, shown });
   await close(h);

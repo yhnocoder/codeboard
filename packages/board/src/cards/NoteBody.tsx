@@ -41,7 +41,7 @@ export function NoteBody(p: { card: NoteCard }) {
 
 const HEADS = ":is(h1, h2, h3, h4, h5, h6):first-child";
 /**
- * 藏起来的开头标题进出编辑：进 = 编辑器里的标题从上面滑出来（负的 margin-top → 0，淡入），出 = 显示的正文里它滑回去再藏起来（done）。
+ * 藏起来的开头标题进出编辑：进 = 编辑器里的标题从正文上沿滑出来（负的 margin-top → 0，淡入），出 = 显示的正文里它滑回去再藏起来（done）；正文上沿以外的部分剪掉。
  * 只动这一张卡的一个元素（WAAPI，不改 DOM 属性，ProseMirror 看不到）
  */
 function slideHeading(id: string, entering: boolean, done: () => void) {
@@ -50,9 +50,13 @@ function slideHeading(id: string, entering: boolean, done: () => void) {
   if (!h) return done();
   const off = `${-(h.offsetHeight + parseFloat(getComputedStyle(h).marginBottom))}px`;
   const hidden = { marginTop: off, opacity: 0 }, shown = { marginTop: "0px", opacity: 1 };
-  const a = h.animate(entering ? [hidden, shown] : [shown, hidden], { duration: 160, easing: "cubic-bezier(.2, .8, .2, 1)", fill: entering ? "none" : "forwards" });
+  const opts = { duration: 160, easing: "cubic-bezier(.2, .8, .2, 1)" };
+  const a = h.animate(entering ? [hidden, shown] : [shown, hidden], { ...opts, fill: entering ? "none" : "forwards" });
+  // 滑动时标题在正文上沿外面的那部分剪掉，不盖到卡头上（只剪上边，下面和两侧照常溢出）
+  const top = { clipPath: "inset(0 -100vmax -100vmax -100vmax)" };
+  const clip = body!.animate([top, top], opts);
   if (entering) return done();
-  a.onfinish = a.oncancel = () => { done(); a.cancel(); };
+  a.onfinish = a.oncancel = () => { done(); a.cancel(); clip.cancel(); };
 }
 
 /** Text 选中时上方的小工具条：粗体、加背景 */
