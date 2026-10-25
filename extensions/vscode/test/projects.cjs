@@ -12,7 +12,7 @@
 //   M  = multi-root.code-workspace: [notes (a small git repo), the nano-vllm copy]: nano-vllm is M's second folder
 //   1. In S: a board with LLMEngine.step, Copy to M (listed by its workspace name). M (open the whole time) lists it without a reload,
 //      the card shows its code, Open in Editor opens llm_engine.py at def step. nano-vllm is M's second folder: the source is written
-//      relative to M's first folder ("../ws"), the same as a card M adds itself
+//      relative to M's first folder ("../ws"), the same as a card M adds itself. A second copy arrives as "Engine copy (2)"
 //   2. In M: a board with notes' admit and nano-vllm's Scheduler.schedule, Move to S. S lists it without a reload; Scheduler.schedule
 //      (nano-vllm = S's folder) is repo-relative there, admit (notes, outside S) external; both show their code, admit opens notes/kv.py at
 //      line 4; M no longer lists the board and its file is in M's .trash
@@ -220,6 +220,10 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
       const at = await openCardCode(M, g, "LLMEngine.step", "llm_engine.py");
       check(at.tab === "llm_engine.py" && /engine\/llm_engine\.py/.test(at.crumbs) && /^Ln 49\b/.test(at.ln), "M: Open in Editor on the copied card opens engine/llm_engine.py at def step (line 49)", at);
     }
+    // Copying it again: the target already has the name, so the second copy is suffixed
+    await command(S, "Notifications: Clear All Notifications");
+    const err3 = await transfer(S, false, "multi-root", "Engine copy");
+    check(!err3 && await listed(M, "Engine copy (2)", 15000), "S: copying the same board again lands as Engine copy (2) in M", err3);
     await shot(M, "projects-1-copied");
 
     // 2. M → S (move), from the multi-root workspace: one card from each folder
