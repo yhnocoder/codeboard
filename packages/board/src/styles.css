@@ -543,7 +543,7 @@ kbd { font: 10.5px var(--mono); }
 .nbody h1, .tx h1 { margin: 4px 0 6px; font: 600 1.8em/1.25 var(--display, var(--note-h)); letter-spacing: -0.01em; }
 .nbody h2, .tx h2 { margin: 4px 0 4px; font-size: 1.35em; line-height: 1.3; }
 .nbody h3, .tx h3 { font-size: 1.1em; }
-.nbody > :first-child, .tx > :first-child { margin-top: 0; }
+.nbody > :first-child, .tx > :first-child, .nbody .md-pm > :first-child, .tx .md-pm > :first-child { margin-top: 0; }
 .nbody ul, .nbody ol, .cdesc ul, .cdesc ol, .tx ul, .tx ol, .inote ul, .sn-text ul, .sn-text ol { margin: 2px 0; padding-left: 1.3em; }
 .nbody blockquote, .cdesc blockquote, .tx blockquote, .sn-text blockquote { margin: 2px 0; padding-left: 8px; border-left: 2px solid var(--hair); color: var(--ink-2); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 5px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }

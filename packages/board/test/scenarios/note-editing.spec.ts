@@ -1,7 +1,7 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
 // Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
-//          noteDisplayMathTypedAsBlock
+//          noteDisplayMathTypedAsBlock noteEditKeepsLayout
 import { put, findSym, symCard, shot, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -266,5 +266,28 @@ test("noteDisplayMathTypedAsBlock", async () => {
   await shot(h, "noteDisplayMathTypedAsBlock-shown");
   const same = (["x", "y", "w", "h"] as const).every((k) => typed[k] !== undefined && Math.abs(typed[k]! - shown[k]!) <= 1);
   check("noteDisplayMathTypedAsBlock", typed.block === 1 && typed.inline === 0 && typed.display === 1 && Math.abs(typed.dx ?? 99) <= 2 && same && text === "$$\n\\frac{200}{10}\n$$\n\nafter", { typed, shown, text });
+  await close(h);
+});
+
+/** 双击进编辑：卡片高度、每一块的位置都不变，字形（连字）不变；选中的底色两边一样，是主题的强调色而不是浏览器的蓝色 */
+test("noteEditKeepsLayout", async () => {
+  const doc = "# Heading\n\nA paragraph with **bold**, `code` and $x^2$ math.\n\n- one\n- two\n\n> quote line\n\n```python\nx = 1\n```\n\n$$\n\\frac{200}{10}\n$$\n\nLast paragraph.";
+  const h = await open({ board: board([doc]), light });
+  await h.page.waitForTimeout(1500);
+  const geo = () => h.page.evaluate(() => {
+    const card = document.querySelector('.card[data-id="n0"]')!, body = card.querySelector(".nbody")!, root = body.querySelector(".md-pm") ?? body;
+    const top = card.getBoundingClientRect().top, p = root.querySelector("p")!;
+    return {
+      h: Math.round(card.getBoundingClientRect().height), ys: [...root.children].map((e) => Math.round(e.getBoundingClientRect().top - top)),
+      sel: getComputedStyle(p, "::selection").backgroundColor, lig: getComputedStyle(p).fontVariantLigatures,
+    };
+  });
+  const shown = await geo();
+  await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await h.page.waitForSelector('.card[data-id="n0"] .md-pm', { timeout: 5000 });
+  await h.page.mouse.move(5, 5);
+  await h.page.waitForTimeout(300);
+  const edit = await geo();
+  check("noteEditKeepsLayout", JSON.stringify(shown) === JSON.stringify(edit) && shown.sel !== "rgba(0, 0, 0, 0)", { shown, edit });
   await close(h);
 });

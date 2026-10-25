@@ -13,8 +13,13 @@
 math { font-size: 1.05em; }
 .math { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
 /* Markdown（静态显示和编辑器共用一套：.md 是静态，.ProseMirror 在编辑器里） */
+/* 连字和编辑器里一样关掉（ProseMirror 要关，不然光标落不进连字中间）：进编辑时字形不变 */
+.md { font-variant-ligatures: none; }
 .md :is(p, h1, h2, h3, h4, h5, h6, li, td, th, summary) { white-space: pre-wrap; }
-.md p + p, .md p + :is(ul, ol, pre, table, blockquote, details, .math), .md :is(ul, ol, pre, table, blockquote, details, .math) + p { margin-top: .5em; }
+/* 选中的底色：静态显示和编辑器一样用主题的强调色，不是浏览器的蓝色 */
+.md ::selection, .md-pm ::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
+/* 公式块在静态显示里是 .math，在编辑器里是 [data-type="block-math"]：两边同一套间距，进出编辑时不跳 */
+.md p + p, .md p + :is(ul, ol, pre, table, blockquote, details, .math, [data-type="block-math"]), .md :is(ul, ol, pre, table, blockquote, details, .math, [data-type="block-math"]) + p { margin-top: .5em; }
 .md p:empty::before { content: "\200b"; }
 .md h4, .md h5, .md h6 { margin: 2px 0 2px; font: 600 1em/1.4 var(--note-h); color: var(--ink); }
 .md hr { border: 0; border-top: 1px solid var(--hair); margin: 8px 0; }
@@ -33,7 +38,7 @@ math { font-size: 1.05em; }
 .md pre.md-code { position: relative; color: var(--ink); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }
 .md kbd { font: .85em var(--mono); padding: 0 4px; border-radius: 4px; box-shadow: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair); }
-.md .math .katex-display { margin: 2px 0; }
+.md :is(.math, [data-type="block-math"]) .katex-display { margin: 2px 0; }
 /* 代码块着色是宿主给的（和代码卡同一套 .kw .fn …）；Note 里的调用点不能点，不画成链接 */
 .md pre.md-code .call { text-decoration: none; cursor: inherit; }
 .md pre.md-code .call:hover { background: none; }
@@ -95,10 +100,9 @@ math { font-size: 1.05em; }
 .md-pm p.is-empty:first-child:last-child::before, .md-pm .is-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
 .md-pm :is(p, h1, h2, h3, h4, h5, h6).is-empty { display: flow-root; }
 .md-pm .ProseMirror-selectednode { outline: 1.5px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
-.md-pm ::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 .md-pm pre { white-space: pre; tab-size: 4; }
 .md-pm pre code { white-space: inherit; }
-.md-pm .tiptap-mathematics-render { cursor: pointer; border-radius: 4px; }
+.md-pm .tiptap-mathematics-render { cursor: pointer; border-radius: 4px; transition: background calc(var(--t) * 120ms); }
 .md-pm .tiptap-mathematics-render:hover { background: var(--hlrow); }
 .md-pm [data-type="block-math"] { display: block; text-align: center; padding: 2px 0; overflow-x: auto; }
 .md-pm [data-type="block-math"]:has(.block-math-inner:empty)::after, .md-pm [data-type="inline-math"]:empty::after { content: "Empty formula"; color: var(--ink-3); font-size: .9em; }
@@ -128,7 +132,7 @@ math { font-size: 1.05em; }
 /* 光标处展开的 Markdown 原文（真的字，能改，editor/source.ts）：记号淡色 */
 .md-pm .md-mkc { color: var(--ink-3); }
 .md-pm .md-esch { display: none; }
-.md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab; user-select: none; -webkit-user-select: none; }
+.md-handle { position: fixed; z-index: 30; width: 14px; height: 20px; display: grid; place-items: center; font-size: 11px; letter-spacing: -2px; color: var(--ink-3); border-radius: 4px; cursor: grab; user-select: none; -webkit-user-select: none; transition: color calc(var(--t) * 100ms), background calc(var(--t) * 100ms); }
 .md-handle:hover { color: var(--ink); background: var(--hlrow); }
 .md-raw { display: block; width: 100%; min-height: 3em; margin: 0; padding: 0; border: 0; outline: none; resize: none; background: transparent; color: var(--ink); font: 12px/1.6 var(--mono); white-space: pre-wrap; overflow: hidden; }
 .mdui-anchor { z-index: 60; }
@@ -137,6 +141,10 @@ math { font-size: 1.05em; }
 .md-menu button.sel small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
 .md-empty { padding: 6px 8px; font-size: 12px; color: var(--ink-3); }
 .md-bubble, .md-mathpop { position: absolute; z-index: 60; left: 0; top: 0; }
+/* 出现时淡入、稍微放大一点落稳（和白板的浮条一样），不是一下子冒出来 */
+.md-bubble { transform-origin: 50% 100%; animation: md-pop calc(var(--t) * 140ms) cubic-bezier(.2, .8, .2, 1); }
+.md-mathpop { transform-origin: 50% 0; animation: md-pop calc(var(--t) * 140ms) cubic-bezier(.2, .8, .2, 1); }
+@keyframes md-pop { from { opacity: 0; scale: .96; } }
 .md-bubble .tbtn { height: 26px; padding: 0 8px; min-width: 26px; justify-content: center; }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 .md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
