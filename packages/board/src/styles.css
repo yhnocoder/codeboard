@@ -383,22 +383,40 @@ input, textarea { font: inherit; color: var(--ink); }
 .sect .sgrip { position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px; pointer-events: auto; cursor: nwse-resize; }
 #slabels { position: absolute; left: 0; top: 0; z-index: 4; }
 .slabel { position: absolute; z-index: 4; display: flex; align-items: center; gap: 2px; width: max-content; margin: 6px 0 0 16px; padding: 1px 2px 1px 6px; border-radius: 8.5px;
-  font: 500 12.5px/20px var(--label-font); letter-spacing: -.005em; color: var(--ink-2); pointer-events: auto; white-space: nowrap; transform-origin: 0 50%;
+  font: 600 12.5px/20px var(--label-font); letter-spacing: -.005em; color: var(--ink-2); pointer-events: auto; white-space: nowrap; transform-origin: 0 50%;
   transition: color .15s var(--out); }
 .slabel:hover, .slabel.drop { color: var(--ink); }
 .slabel.sel { color: var(--accent); }
 .slabel .dots { position: absolute; right: 100%; top: 1px; padding-right: 1px; color: var(--ink-3); font-size: 11px; letter-spacing: -2px; }
 .slabel .dots, .slabel:not(.collapsed) .chev2 { opacity: 0; transition: opacity .15s var(--out); }
 .slabel:hover .dots, .slabel:hover .chev2, .slabel.sel .dots, .slabel.sel .chev2 { opacity: 1; }
-.slabel .chev2 { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ink-3); font-size: 10px; transition: opacity .15s var(--out), background-color .15s var(--out), color .15s var(--out); }
+/* the collapse caret: one thin chevron, right of the title and pointing down while open; before the title and pointing right
+   when collapsed. It turns between the two */
+.slabel .chev2 { order: 1; flex: none; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; color: var(--ink-3); transition: opacity .15s var(--out), background-color .15s var(--out), color .15s var(--out); }
+.slabel .chev2 .ico { width: 10px; height: 10px; --ico-w: 2; rotate: 90deg; transition: rotate .2s var(--out); }
+.slabel.collapsed .chev2 { order: 0; }
+.slabel.collapsed .chev2 .ico { rotate: 0deg; }
 .slabel .chev2:hover { background: var(--hlrow); color: var(--ink); }
 .slabel .sname { min-width: 20px; }
 .slabel .sname.editing { white-space: pre; min-width: 60px; display: inline-block; }
-.slabel .scount { color: var(--ink-3); font-weight: 400; }
-.slabel.collapsed { z-index: 3; margin: 0; padding: 4px 10px 4px 4px; border-radius: 11px; color: var(--ink-2); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
-.slabel.collapsed:hover { color: var(--ink); }
-.slabel.collapsed.sel { color: var(--ink); box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
+.slabel .scount { flex: none; margin-left: 5px; color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* collapsed: a compact pill, caret · bold title · grey card count */
+.slabel.collapsed { z-index: 3; margin: 0; gap: 3px; padding: 4px 12px 4px 6px; border-radius: 11px; color: var(--ink); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
+.slabel.collapsed .sname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.slabel.collapsed.sel { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
 .slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
+/* hovering a collapsed Section: a few of its cards in two columns (kind icon, title) and "+N more" */
+.spv { position: absolute; left: 0; top: calc(100% + 6px); width: 320px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; padding: 6px;
+  border-radius: 12px; background: var(--surface); box-shadow: var(--sh-float); color: var(--ink-2); cursor: default;
+  font: 400 12px/22px var(--sys); letter-spacing: normal; text-transform: none; white-space: nowrap;
+  animation: spv-in .16s var(--out) backwards; transition: opacity .12s var(--out), translate .12s var(--out); }
+.spv.out { opacity: 0; translate: 0 -3px; }
+@keyframes spv-in { from { opacity: 0; translate: 0 -3px; } }
+.spv-i { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 6px; border-radius: 7px; color: inherit; font: inherit; text-align: left; }
+.spv-i:hover { background: var(--hlrow); color: var(--ink); }
+.spv-i .ico { flex: none; width: 13px; height: 13px; color: var(--ink-3); }
+.spv-t { overflow: hidden; text-overflow: ellipsis; }
+.spv-more { padding: 0 6px; color: var(--ink-3); }
 .slabel.moving:not(.collapsed) { transition: color .15s var(--out), left .16s var(--out), top .16s var(--out); }
 
 

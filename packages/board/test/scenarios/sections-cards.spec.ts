@@ -92,6 +92,64 @@ test("sectionFitContent", async () => {
   await close(h);
 });
 
+/** A collapsed Section is a compact pill: a small caret, the title in bold, "· N cards" in grey. Hovering it shows a few of its cards
+ *  (kind icon and title, two columns) and "+N more". The caret is one small icon that turns when the Section expands */
+test("sectionCollapsedPill", async () => {
+  const b = emptyBoard("b1", "collapsed section");
+  const s = findSym("Scheduler.schedule");
+  const code = symCard(s.f, s.s);
+  put(b, code, 120, 140, 480);
+  const titles = ["Prefill", "Decode", "Preemption", "Block manager", "Prefix cache", "KV budget", "Sampling"];
+  titles.forEach((t, i) => put(b, { id: `n${i}`, kind: "note", bg: true, md: `# ${t}\n\nNotes.` } as NoteCard, 660 + (i % 2) * 300, 140 + Math.floor(i / 2) * 160, 260));
+  for (const id of Object.keys(b.place)) b.place[id].section = "S";
+  b.sections.push({ id: "S", title: "异构并行计算", x: 80, y: 80, w: 1200, h: 800, collapsed: true });
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 900, h: 600 });
+  await wait(h, 800);
+  await h.page.mouse.move(800, 550);
+  const pill = '.slabel[data-sect="S"]';
+  const look = await h.page.evaluate((sel) => {
+    const p = document.querySelector(sel)!, n = p.querySelector<HTMLElement>(".sname")!, c = p.querySelector(".scount");
+    const pr = p.getBoundingClientRect(), cr = c?.getBoundingClientRect();
+    return { name: n.textContent, weight: +getComputedStyle(n).fontWeight, clipped: n.scrollWidth > n.clientWidth + 1, count: c?.textContent?.replace(/\s+/g, " ").trim(), countInside: !!cr && cr.right <= pr.right + 0.5,
+      countGrey: !!c && getComputedStyle(c).color !== getComputedStyle(n).color };
+  }, pill);
+  await shot(h, "sect-pill-01-collapsed");
+  check("sectionCollapsedPill title and count", look.name === "异构并行计算" && look.weight >= 600 && !look.clipped && look.count === "· 8 cards" && look.countInside && look.countGrey, look);
+  // hover: a preview of a few member cards, each with its kind icon, then "+N more"
+  await h.page.locator(`${pill} .sname`).hover(); await wait(h, 700);
+  const pv = await h.page.evaluate((sel) => {
+    const v = document.querySelector(`${sel} .spv`);
+    if (!v) return null;
+    const rows = [...v.querySelectorAll(".spv-i")].map((r) => ({ icon: !!r.querySelector("svg"), text: r.textContent?.trim() }));
+    return { rows, more: v.querySelector(".spv-more")?.textContent?.trim(), opacity: +getComputedStyle(v).opacity };
+  }, pill);
+  await shot(h, "sect-pill-02-hover-preview");
+  const shownTitles = pv?.rows.map((r) => r.text) ?? [];
+  check("sectionCollapsedPill hover preview", !!pv && pv.opacity > 0.9 && pv.rows.length === 5 && pv.rows.every((r) => r.icon) && shownTitles.every((t) => !!t && ([...titles, "Scheduler.schedule"].some((x) => t.includes(x)))) && pv.more === "+3 more", pv);
+  await h.page.mouse.move(800, 550); await wait(h, 500);
+  const gone = await h.page.evaluate((sel) => { const v = document.querySelector(`${sel} .spv`); return !v || +getComputedStyle(v).opacity < 0.05; }, pill);
+  check("sectionCollapsedPill preview hides", gone);
+  // the caret: one small icon, pointing right while collapsed and down once expanded (it turns)
+  const angle = () => h.page.evaluate((sel) => {
+    const i = document.querySelector(`${sel} .chev2 svg`);
+    if (!i) return null;
+    // the turn, from the rotate property or the transform
+    const cs = getComputedStyle(i), rot = cs.rotate && cs.rotate !== "none" ? parseFloat(cs.rotate) : 0;
+    const m = new DOMMatrix(cs.transform === "none" ? "" : cs.transform);
+    return { deg: Math.round(rot + (Math.atan2(m.b, m.a) * 180) / Math.PI), size: Math.min(i.getBoundingClientRect().width, i.getBoundingClientRect().height) };
+  }, pill);
+  const a0 = await angle();
+  await h.page.locator(`${pill} .chev2`).click();
+  await wait(h, 900);
+  await h.page.locator(`${pill} .sname`).hover(); await wait(h, 400);
+  const a1 = await angle();
+  const gap = await h.page.evaluate((sel) => { const n = document.querySelector(`${sel} .sname`)!.getBoundingClientRect(), c = document.querySelector(`${sel} .chev2`)!.getBoundingClientRect(); return c.left - n.right; }, pill);
+  await shot(h, "sect-pill-03-expanded-hover");
+  check("sectionCollapsedPill caret turns", !!a0 && !!a1 && a0.size <= 12 && Math.abs(a1.deg - a0.deg) === 90 && gap >= 0 && gap < 10, { a0, a1, gap });
+  await close(h);
+});
+
 /** Drag a card by its title bar from one Section into another: the target Section lights up during the drag, the card joins it, one undo puts it back */
 test("dragCardIntoOtherSection", async () => {
   const h = await open({ board: twoSections(), light });
