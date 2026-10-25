@@ -40,7 +40,18 @@ export type Segment = {
   hidden?: [number, number][]; // 手动隐藏的行范围
   hl?: number[]; // 显式高亮的行
   keep?: string; // 用户对这个 HEAD 选了 Keep：同一个新版本不再提醒，HEAD 再变才提醒
+  annots?: CodeAnnot[]; // 贴在字上的手写标注（代码本身不改）
 };
+
+/** 手写的东西（Mark 卡、贴在字上的标注）的四种颜色 */
+export const HAND_COLORS = ["blue", "purple", "orange", "green"] as const;
+export type HandColor = (typeof HAND_COLORS)[number];
+
+/**
+ * 代码里一段字上的手写标注：第 line 行的第 from 到 to 个字（0-based，to 不含，按原文算，Tab 算一个字），
+ * 标签写在那一行上面（below = 下面）新开的一条窄轨道里。color 没有 = blue
+ */
+export type CodeAnnot = { line: number; from: number; to: number; text: string; color?: HandColor; below?: true };
 
 // ---------- 卡片（内容） ----------
 
@@ -115,6 +126,8 @@ export type NoteCard = CardBase & {
   bg: boolean; // false = Text（没有背景、边框、标题栏，直接写在画布上）
   size?: "title" | "heading" | "body"; // Text 的字号
   bold?: boolean;
+  /** Mark（标注卡）：手写字、统一字号、这一种颜色、没有框（bg 为 false）；从它出发的箭头画成这个颜色的手绘线 */
+  hand?: HandColor;
   /** 消息卡（线框 03）：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
   msg?: { where?: string };
 };
@@ -401,7 +414,7 @@ export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
   if (c.title) return c.title;
   switch (c.kind) {
     case "code": return codeTitle(c);
-    case "note": return firstLine(c.md) || (c.bg ? "Note" : "Text");
+    case "note": return firstLine(c.md) || (c.hand ? "Mark" : c.bg ? "Note" : "Text");
     case "image": return c.alt || "Image";
     case "web": return c.meta?.title || domainOf(c.url);
     case "links": return "Links";
@@ -593,10 +606,11 @@ export function mergeOverlapping(segs: Segment[]): Segment[] {
       }
       p.hidden = [...(p.hidden ?? []), ...(s.hidden ?? [])];
       p.hl = [...new Set([...(p.hl ?? []), ...(s.hl ?? [])])];
+      if (s.annots) p.annots = [...(p.annots ?? []), ...s.annots];
       if (p.symbol && s.symbol?.qual !== p.symbol.qual) p.symbol = undefined;
       continue;
     }
-    out.push({ ...s, text: [...s.text], hidden: s.hidden ? [...s.hidden] : undefined, hl: s.hl ? [...s.hl] : undefined });
+    out.push({ ...s, text: [...s.text], hidden: s.hidden ? [...s.hidden] : undefined, hl: s.hl ? [...s.hl] : undefined, annots: s.annots?.map((a) => ({ ...a })) });
   }
   return out;
 }

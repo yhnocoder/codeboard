@@ -15,7 +15,7 @@ import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
 import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
-import { openAddNote, setNoteBg, showPeek } from "./notes";
+import { openAddNote, setMarkColor, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel } from "./shared";
@@ -24,7 +24,7 @@ import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from ".
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import { LEGEND, legendName, type Link } from "@codeboard/core";
+import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
 
 /**
@@ -143,6 +143,11 @@ function cardItems(id: string, x: number, y: number): Item[] {
     { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "title", id }) },
     { label: "Process Tag…", run: () => void addProc(id) },
     { label: "Start Card", checked: !!placeOf(id).start, run: () => toggleStart(id) },
+    ...tail,
+  ];
+  if (c.kind === "note" && c.hand) return [
+    { label: "Color", sub: HAND_COLORS.map((k) => ({ label: k[0].toUpperCase() + k.slice(1), checked: c.hand === k, run: () => setMarkColor(id, k) })) },
+    { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
     ...tail,
   ];
   if (c.kind === "note") return [

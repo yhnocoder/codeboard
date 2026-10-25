@@ -6,7 +6,9 @@ A Typora-style WYSIWYG Markdown editor and a fast static renderer that share one
 - **Editor**: `mountEditor(el, opts)` edits the same Markdown in place, Typora style: you type Markdown and it turns into formatting as you go, with a `/` menu, a selection toolbar, math, tables, task lists, footnotes, emoji, images and code blocks edited with CodeMirror. It is built on [TipTap](https://tiptap.dev) (ProseMirror) with a [SolidJS](https://www.solidjs.com) UI.
 - Both sides read and write Markdown through one schema, so a note looks the same before, during and after editing, and what the editor saves is plain Markdown.
 
-Supported: CommonMark and GFM (tables, task lists, strikethrough, autolinks), KaTeX math (`$…$`, `$$…$$`), Mermaid diagrams, footnotes, `:emoji:` shortcodes, `==highlight==`, `<details>`, `[toc]`, `[[wiki links]]` and inline HTML (sanitized with DOMPurify).
+Supported: CommonMark and GFM (tables, task lists, strikethrough, autolinks), KaTeX math (`$…$`, `$$…$$`), Mermaid diagrams, footnotes, `:emoji:` shortcodes, `==highlight==`, `{text|annotation}`, `<details>`, `[toc]`, `[[wiki links]]` and inline HTML (sanitized with DOMPurify).
+
+Annotations write a handwritten note above a span of text, ruby style: `{Scheduler|decides who runs first}`. An optional third part sets the color (`blue`, the default, `purple`, `orange` or `green`) and `below` puts the note under the text: `{one forward pass|prefill or decode|purple below}`. Write `\{ \} \| \\` for those characters inside, and `|` as `\|` inside a table cell. Annotations are unrelated to `==highlight==`. Other Markdown viewers show the source as written, so no text is lost. The note and its small arrow are drawn with CSS only: the annotated words become an inline block with a narrow rail above (or below), so only that line gets taller.
 
 Used by [CodeBoard](https://github.com/yhnocoder/codeboard).
 
@@ -101,6 +103,8 @@ A complete page using only this package is in [examples/markdown-demo](https://g
 | `--k-kw` `--k-num` `--k-self` `--k-str` `--lk-blue` `--lk-orange` `--lk-green` | Mermaid series colors |
 | `--sh-float` | Shadow of popovers |
 | `--md-hl` | Background of `==highlight==` (a translucent highlighter color) |
+| `--md-annot-blue` `--md-annot-purple` `--md-annot-orange` `--md-annot-green` | Colors of `{text|annotation}` (defaults built in) |
+| `--md-hand` | Handwriting font of annotations (default: Shantell Sans, then LXGW WenKai Lite, Kaiti, cursive; the package bundles no fonts) |
 | `--sys` `--mono` `--note-h` | Body / Mermaid font, code font, small headings |
 | `--r-card` | Corner radius (Mermaid uses half) |
 | `--t` | Animation duration multiplier (1 is normal) |

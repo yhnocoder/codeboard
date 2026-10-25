@@ -73,6 +73,9 @@ export function CardView(p: { card: Card }) {
     const g = grow();
     if (g) { s.width = `${g.w}px`; if (c().kind !== "code") s.height = `${g.h}px`; }
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
+    // Mark 的颜色：写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
+    const k = c();
+    if (k.kind === "note" && k.hand) (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand})`;
     const pi = pop();
     if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
     else if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
@@ -86,7 +89,11 @@ export function CardView(p: { card: Card }) {
     if (h.kind === "compare") return !h.cols.includes(cur);
     return c().id !== cur;
   };
-  const kindClass = () => (c().kind === "note" ? ((c() as NoteCard).msg ? "note msg" : (c() as NoteCard).bg ? "note" : "text") : c().kind === "compare" ? "cmp" : c().kind === "code" ? "ccard" : c().kind);
+  const kindClass = () => {
+    const k = c();
+    if (k.kind === "note") return k.msg ? "note msg" : k.bg ? "note" : k.hand ? "text mark" : "text";
+    return k.kind === "compare" ? "cmp" : k.kind === "code" ? "ccard" : k.kind;
+  };
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
   // 先算成这张卡自己的真假，只有值真变了的那张卡才重算 classList
   const lift = createMemo(() => dragging().has(c().id));
@@ -119,8 +126,13 @@ export function CardView(p: { card: Card }) {
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <Show when={!pl().locked}>
           <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>
-            <span class="hw l" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { left: true })} />
-            <span class="hw r" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { right: true })} />
+            {/* Mark：右下角一个小方块只改宽度，字号不变、字跟着折行 */}
+            <Show when={(c() as NoteCard).hand} fallback={<>
+              <span class="hw l" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { left: true })} />
+              <span class="hw r" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { right: true })} />
+            </>}>
+              <span class="mkgrip" data-nodrag data-export="strip" data-tip="Drag to change the width" onPointerDown={(e) => resizeDown(e, c().id, { right: true })} />
+            </Show>
           </Show>
         </Show>
         </div>

@@ -2,7 +2,7 @@
 // 校验的是迁移之后的结果，结构和 model.ts 的类型一一对应；旧文件的样子（缺省、null）由迁移负责。
 // 只拦会让白板读坏的东西（类型不对、缺必填字段、kind 不认得），不认得的字段原样保留。
 import * as v from "valibot";
-import { BOARD_VERSION, type Board, type BoardFile, type SharedCardFile } from "./model";
+import { BOARD_VERSION, HAND_COLORS, type Board, type BoardFile, type SharedCardFile } from "./model";
 import { migrateBoard, migrateSharedCard } from "./migrate";
 
 const str = v.string(), num = v.number(), bool = v.boolean(), yes = v.literal(true);
@@ -25,6 +25,7 @@ const Segment = obj({
   id: str, src: Source, path: str, lang: str, start: num, end: num, text: v.array(str), version: Version,
   symbol: opt(obj({ qual: str, kind: v.picklist(["function", "class", "module"]) })), scope: opt(str),
   hidden: opt(v.array(v.tuple([num, num]))), hl: opt(v.array(num)), keep: opt(str),
+  annots: opt(v.array(obj({ line: num, from: num, to: num, text: str, color: opt(v.picklist(HAND_COLORS)), below: opt(yes) }))),
 });
 
 /** 代码卡的 Variant（线框 07）；单独导出给 test/schema-types.ts 对照 model.ts */
@@ -58,7 +59,7 @@ const CodeCard: v.GenericSchema = obj(codeEntries);
 export type CodeCardSchemaKeys = keyof typeof codeEntries;
 const Card = v.variant("kind", [
   CodeCard as v.LooseObjectSchema<{ kind: v.LiteralSchema<"code", undefined> }, undefined>,
-  obj({ ...base, kind: v.literal("note"), md: str, bg: bool, size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), msg: opt(obj({ where: opt(str) })) }),
+  obj({ ...base, kind: v.literal("note"), md: str, bg: bool, size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), hand: opt(v.picklist(HAND_COLORS)), msg: opt(obj({ where: opt(str) })) }),
   obj({ ...base, kind: v.literal("image"), src: str, alt: opt(str), bg: opt(bool) }),
   obj({ ...base, kind: v.literal("web"), url: str, meta: opt(WebMeta), style: opt(v.picklist(["banner", "side", "text", "compact"])) }),
   obj({ ...base, kind: v.literal("links"), items: v.array(obj({ id: str, url: str, title: opt(str), meta: opt(WebMeta), rich: opt(bool) })), rich: opt(bool) }),

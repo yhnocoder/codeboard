@@ -77,7 +77,7 @@ export function switchVariant(b: Board, cardId: string, vid: string): boolean {
     // 隐藏 / 高亮是这个 Variant 自己的：带着存回去，目标的原样换上
     rebaseSegment(b, cardId, clone(t), lineMapOf(s, t), { notes: (n) => !n.variant });
     const i = c.segments.findIndex((x) => x.id === s.id);
-    if (i >= 0) { c.segments[i].hidden = t.hidden; c.segments[i].hl = t.hl; if (!t.hidden) delete c.segments[i].hidden; if (!t.hl) delete c.segments[i].hl; }
+    if (i >= 0) { c.segments[i].hidden = t.hidden; c.segments[i].hl = t.hl; c.segments[i].annots = t.annots; if (!t.hidden) delete c.segments[i].hidden; if (!t.hl) delete c.segments[i].hl; if (!t.annots) delete c.segments[i].annots; }
   }
   from.segs = cur;
   delete to.segs;

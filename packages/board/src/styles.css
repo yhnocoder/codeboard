@@ -17,6 +17,10 @@
   --edge: #9a958b;
   --s-sand: rgba(206,170,110,.16); --s-blue: rgba(96,145,205,.12); --s-green: rgba(110,165,95,.13); --s-pink: rgba(215,120,145,.12);
   --lk-orange: #c46a2a; --lk-blue: #3a72aa; --lk-green: #4c8a3a; --guide: #2f7de1;
+  /* 手写的 Mark 卡、标注和它们的箭头：四种颜色（主题不另配，亮暗各一份）和手写字体 */
+  --hd-blue: #3a72aa; --hd-purple: #7d55b0; --hd-orange: #c46a2a; --hd-green: #4c8a3a;
+  --hand: "Shantell Sans", "LXGW WenKai Lite", "Kaiti SC", STKaiti, KaiTi, cursive;
+  --md-hand: var(--hand); --md-annot-blue: var(--hd-blue); --md-annot-purple: var(--hd-purple); --md-annot-orange: var(--hd-orange); --md-annot-green: var(--hd-green);
   --glass: rgba(253,252,250,.94);
   --tip-bg: rgba(34,32,28,.92); --tip-ink: #f6f4ef;
   --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,.9), 0 1px 1px rgba(50,35,10,.04), 0 3px 8px -2px rgba(50,35,10,.06), 0 18px 36px -14px rgba(50,35,10,.16);
@@ -53,6 +57,7 @@
   --edge: #78746c;
   --s-sand: rgba(214,180,120,.10); --s-blue: rgba(120,165,225,.09); --s-green: rgba(140,195,120,.09); --s-pink: rgba(230,140,165,.09);
   --lk-orange: #e3955a; --lk-blue: #7fb0e0; --lk-green: #96c47e; --guide: #5aa2ff;
+  --hd-blue: #7fb0e0; --hd-purple: #b89be6; --hd-orange: #e3955a; --hd-green: #96c47e;
   --glass: rgba(42,41,38,.94);
   --tip-bg: rgba(245,243,238,.94); --tip-ink: #1d1c1a;
   --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,245,230,.06), 0 1px 1px rgba(0,0,0,.25), 0 3px 8px -2px rgba(0,0,0,.3), 0 18px 36px -14px rgba(0,0,0,.55);
@@ -279,6 +284,17 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.text.sel .hw { display: block; }
 .hw.l { left: -8px; } .hw.r { right: -8px; }
 .card.text .ttb { position: absolute; left: 0; top: -44px; display: none; white-space: nowrap; width: max-content; }
+/* Mark（标注卡）：手写字、统一字号、一种颜色、没有框；选中时虚线框和右下角调宽度的小方块，上方四个颜色点 */
+.hc-blue { --hc: var(--hd-blue); } .hc-purple { --hc: var(--hd-purple); } .hc-orange { --hc: var(--hd-orange); } .hc-green { --hc: var(--hd-green); }
+.card.mark .tx.hand { font: 18px/1.3 var(--hand); color: var(--hc); }
+.card.mark .tx.hand :is(p, li) { margin: 0; }
+.card.mark:hover { outline-color: color-mix(in srgb, var(--hc) 60%, transparent); }
+.card.mark.sel { outline: 1px dashed var(--hc); outline-offset: 4px; }
+.mkgrip { position: absolute; right: -9px; bottom: -9px; width: 10px; height: 10px; border-radius: 3px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--hc); cursor: nwse-resize; display: none; }
+.card.mark.sel .mkgrip { display: block; }
+.ttb.hdots { gap: 6px; padding: 5px 8px; }
+.hdot { width: 16px; height: 16px; border-radius: 50%; corner-shape: round; padding: 0; border: 0; background: var(--hc); box-shadow: 0 0 0 2px var(--glass); cursor: default; }
+.hdot.on { box-shadow: 0 0 0 2px var(--glass), 0 0 0 3.5px var(--ink); }
 .card.text.sel.solo:not(.editing) .ttb { display: inline-flex; }
 .card.note .nbody { padding: 10px 14px 12px; font-size: 13px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
 /* 定了高度的 Note（拖小了）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外（#2、#10）。

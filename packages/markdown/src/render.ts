@@ -139,7 +139,7 @@ let purifier: ReturnType<typeof DOMPurify> | undefined;
 function purify(html: string) {
   if (!purifier) {
     purifier = DOMPurify(window);
-    purifier.setConfig({ ADD_ATTR: ["data-href", "data-latex", "data-src", "data-cardref", "data-lang", "data-type", "data-checked", "data-display", "data-cbr"] });
+    purifier.setConfig({ ADD_ATTR: ["data-note", "data-color", "data-below", "data-href", "data-latex", "data-src", "data-cardref", "data-lang", "data-type", "data-checked", "data-display", "data-cbr"] });
   }
   return purifier.sanitize(html);
 }

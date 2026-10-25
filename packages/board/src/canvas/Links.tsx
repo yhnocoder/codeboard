@@ -22,6 +22,7 @@ import { isBindHot } from "../state/stickers";
 import { subRect, frameOf } from "../state/subboards";
 import { FRAME_HEAD } from "@codeboard/core";
 import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
+import { handLine } from "./hand";
 import { carAt, type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
 import { rooted } from "../state/root";
@@ -123,7 +124,17 @@ function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
 const anchorsFor = (bs: Base, s: [Side, Side], atMap: readonly [boolean, boolean]): [Anchor, Anchor] =>
   [anchorOn(bs.a.box, s[0], atMap[0] ? bs.a.hy : bs.a.y), anchorOn(bs.b.box, s[1], atMap[1] ? bs.b.hy : bs.b.y)];
 
-export type Geo = { d: string; mx: number; my: number; head?: string | CarPose; tail?: string | CarPose; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[]; /** 子白板框上的入口点 */ entry?: { x: number; y: number } };
+export type Geo = {
+  d: string; mx: number; my: number; head?: string | CarPose; tail?: string | CarPose; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[]; /** 子白板框上的入口点 */ entry?: { x: number; y: number };
+  /** 手绘线（从 Mark 出发）：第二笔；head / tail 是手绘的箭头 path */
+  d2?: string;
+};
+
+/** 从 Mark 出发的箭头画成手绘线：返回 Mark 的颜色，别的箭头 undefined */
+export function handOf(L: Pick<Link, "from">) {
+  const c = cardById(L.from.card)?.card;
+  return c?.kind === "note" ? c.hand : undefined;
+}
 
 /** 粗细档 → 箭头放大多少 */
 const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);
@@ -135,12 +146,19 @@ const headOrCar = (k: Shape0["head"], tx: number, ty: number, ux: number, uy: nu
   k === "car" ? carAt(tx, ty, ux, uy, s) : headPath(k, tx, ty, ux, uy, s);
 type Shape0 = ReturnType<typeof shape>;
 /** 箭头（或 City 的车）：同一份几何画成 path，或车的三条 path（见 Traffic.tsx） */
-function Head(p: { cls: string; d: string | CarPose; road?: Road }) {
-  return <>{shape().head === "car" ? <Car cls={p.cls} at={p.d as CarPose} road={p.road} /> : <path class={p.cls} d={p.d as string} />}</>;
+function Head(p: { cls: string; d: string | CarPose; road?: Road; hand?: boolean }) {
+  return <>{shape().head === "car" && !p.hand ? <Car cls={p.cls} at={p.d as CarPose} road={p.road} /> : <path class={p.cls} d={p.d as string} />}</>;
 }
 
 function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean): Geo {
-  const route = shape().route, hd = headOf(L), hk = shape().head, s = headScale(L);
+  const hd = headOf(L), hk = shape().head, s = headScale(L);
+  // 手绘线：照曲线走（制图、City 的直角折线也一样），画的时候再抖；线头不画圆点（Mark 没有框）
+  if (handOf(L) && bs.kind !== "gutter") {
+    const sh = bs.kind === "self" ? selfArc(p, q, "curve") : connect(p, q, "curve", undefined, { a: bs.a.pill ? undefined : bs.a.outer, b: bs.b.pill ? undefined : bs.b.outer });
+    const h = handLine(L.id, sh.pts, hd.end, hd.start, s);
+    return { d: h.d, d2: h.d2, head: h.head, tail: h.tail, mx: sh.mx, my: sh.my, pts: sh.pts };
+  }
+  const route = shape().route;
   let sh: Shape;
   if (bs.kind === "gutter") {
     sh = gutterLine(bs.gx!, p.y, q.y, bs.a.col === "left");
@@ -234,7 +252,7 @@ function makeRoute(L: Link): Route {
   });
   const sig = createMemo(() => {
     const bs = base(), s = sides();
-    if (!bs || !s || bs.kind !== "normal" || bs.b.inner) return ""; // 连进子白板骨架的不合并（各自落到骨架里的卡上）
+    if (!bs || !s || bs.kind !== "normal" || bs.b.inner || handOf(L)) return ""; // 连进子白板骨架的不合并（各自落到骨架里的卡上）；手绘线各画各的
     return `${s.split("|")[1]}|${headOf(L).end ? 1 : 0}`;
   });
   return { L, base, sides, ends, sig };
@@ -552,7 +570,8 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
   const toHue = () => { const t = cardById(L.to.card)?.card; return t?.kind === "code" ? fileHue(t.segments[0]?.path) : 0; };
   // 证据（manual 虚线、observed 绿）、Generated from（点线）：同一层，只换样式
   // RPC（跨进程）：点划线；↩ back to：淡一点
-  const style = () => `${colorCls(L)}${widthCls(L)}${L.call?.ev ? ` ev-${L.call.ev.kind}` : ""}${L.gen ? " gen" : ""}${L.rpc ? " rpc" : ""}${L.back ? " back" : ""}`;
+  const hand = () => handOf(L);
+  const style = () => `${hand() ? ` hand hc-${hand()}` : colorCls(L)}${widthCls(L)}${L.call?.ev ? ` ev-${L.call.ev.kind}` : ""}${L.gen ? " gen" : ""}${L.rpc ? " rpc" : ""}${L.back ? " back" : ""}`;
   const gutter = () => r.base()?.kind === "gutter";
   const road: Road = L.call ? "main" : "street";
   const cls = () => `edge${L.call ? "" : " plain"}${L.style?.dash ? " dashed" : ""}${style()}${L.lost ? " lost" : ""}${gutter() ? " cmpline" : ""}${on() ? " on" : ""}`;
@@ -561,9 +580,10 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
       <Show when={g()}>
         <g class="link" data-lk={L.id} data-from={L.from.card} data-to={L.to.card} data-call={L.call ? "" : undefined} data-merged={merged() ? "" : undefined} data-sides={r.sides()}>
           <path class={cls()} d={g()!.d} />
-          <Show when={city() && !gutter()}><Lane d={g()!.d} road={road} s={headScale(L)} start={!!g()!.tail} end={!!g()!.head} /></Show>
-          <Show when={g()!.head}><Head cls={`ahead end ${shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} road={road} /></Show>
-          <Show when={g()!.tail}><Head cls={`ahead start ${shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.tail!} road={road} /></Show>
+          <Show when={g()!.d2}><path class={`${cls()} p2`} d={g()!.d2} /></Show>
+          <Show when={city() && !gutter() && !hand()}><Lane d={g()!.d} road={road} s={headScale(L)} start={!!g()!.tail} end={!!g()!.head} /></Show>
+          <Show when={g()!.head}><Head cls={`ahead end ${hand() ? "chevron" : shape().head}${style()}${L.lost?.to ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.head!} road={road} hand={!!hand()} /></Show>
+          <Show when={g()!.tail}><Head cls={`ahead start ${hand() ? "chevron" : shape().head}${style()}${L.lost?.from ? " lost" : ""}${on() ? " on" : ""}`} d={g()!.tail!} road={road} hand={!!hand()} /></Show>
           <path class="lhit" data-link={L.id} d={g()!.d} ref={hitWidth}
             onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
             onPointerDown={(e) => { if (e.button !== 0) return; e.stopPropagation(); e.preventDefault(); if (isDbl(`l${L.id}`, e)) return A.setLinkEditing(L.id); select({ links: [L.id] }, e.shiftKey); }} />
@@ -582,8 +602,8 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
       </Show>
     </g>
   ) as SVGGElement;
-  const casing = <g><Show when={city() && !gutter() && g()}>{(gg) => <path class={`casing${L.call ? "" : " plain"}${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
-  const kerb = <g><Show when={city() && L.call && !gutter() && g()}>{(gg) => <path class={`kerb${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
+  const casing = <g><Show when={city() && !gutter() && !hand() && g()}>{(gg) => <path class={`casing${L.call ? "" : " plain"}${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
+  const kerb = <g><Show when={city() && L.call && !gutter() && !hand() && g()}>{(gg) => <path class={`kerb${widthCls(L)}`} d={gg().d} />}</Show></g> as SVGGElement;
   const label = <div class="lw"><LinkLabel L={L} g={g} /><LinkStickers link={L.id} /></div> as HTMLDivElement;
   return { line, casing, kerb, port, label };
 }

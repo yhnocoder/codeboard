@@ -113,7 +113,7 @@ function Banner() {
 const NARROW = 700;
 const narrow = () => viewTracked().w < NARROW;
 
-/** 唯一的工具栏：新建（Note、Text、Code ▾、Image、Web、Section、Arrow、Sticker）· Search · ⋯；窄时右端接上缩放 */
+/** 唯一的工具栏：新建（Note、Text、Mark、Code ▾、Image、Web、Section、Arrow、Sticker）· Search · ⋯；窄时右端接上缩放 */
 function Toolbar() {
   const at = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return [r.left, r.top - 6] as const; };
   const codeMenu = (el: HTMLElement) => { const [x, y] = at(el); openMenu([
@@ -125,6 +125,7 @@ function Toolbar() {
   const tools: { icon: string; label: string; run: (el: HTMLElement) => void; tip?: string; kbd?: string; more?: boolean; fold?: string }[] = [
     { icon: "note", label: "Note", kbd: kbd("newNote"), run: () => A.newNote() },
     { icon: "text", label: "Text", kbd: kbd("newText"), run: () => A.newNote(undefined, false) },
+    { icon: "mark", label: "Mark", kbd: kbd("newMark"), tip: "New Mark: a handwritten note whose arrows are hand-drawn", run: () => A.newMark() },
     { icon: "code", label: "Code", tip: "New Code, From GitHub, Add Function", more: true, run: codeMenu },
     { icon: "image", label: "Image", fold: "New Image", run: () => A.newImage() },
     { icon: "web", label: "Web", fold: "New Web Card", tip: "New Web Card", run: () => A.newWeb() },
