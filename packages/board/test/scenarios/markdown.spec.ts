@@ -268,7 +268,7 @@ test("markdownHighlight", async () => {
     const q = (c: string, k: "mka" | "mkb") => [...document.querySelectorAll(`${root} .${c}`)].map((e) => (e as HTMLElement).dataset[k]).join("");
     return `${q("md-mka", "mka")}|${q("md-mkb", "mkb")}`;
   }, pm);
-  const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return `${c.backgroundColor} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
+  const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return `${c.backgroundImage} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
   const editLook = await look(`${pm} mark`);
   const editBand = { phrase: await band(pm, "Plain words"), bold: await band(pm, "note with bold") };
   await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-edit-card.png") }).catch(() => {});
@@ -287,7 +287,7 @@ test("markdownHighlight", async () => {
   check("markdownHighlight-shortcut", keyed.includes("note with bold"), r);
   check("markdownHighlight-reveal", reveal.includes("==|=="), r);
   check("markdownHighlight-saved", saved === "==Plain words== in a ==note with **bold**== inside and ==hi==", r);
-  check("markdownHighlight-display", shown.join() === "Plain words,note with bold,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && !(editLook[0] ?? "").startsWith("rgba(0, 0, 0, 0)"), r);
+  check("markdownHighlight-display", shown.join() === "Plain words,note with bold,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && (editLook[0] ?? "").startsWith("linear-gradient("), r);
   check("markdownHighlight-oneBand", [editBand.phrase, editBand.bold, showBand.phrase, showBand.bold].every(solid), r);
   await close(h);
 });
