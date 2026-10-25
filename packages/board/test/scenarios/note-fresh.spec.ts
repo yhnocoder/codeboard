@@ -75,3 +75,37 @@ test("emptyNewNoteSurvivesDrag", async () => {
   await pg.waitForTimeout(900);
   check("emptyNewNoteSurvivesDrag moved empty note discarded on click away", (await notes(h)) === 0, { notes: await notes(h) });
 });
+
+/** Ending the first edit of a new Text (Esc): by the time the text shows on the board, the change has been posted to the host.
+ *  VS Code drops what the webview posts after its tab starts closing, so a send left for a later frame can be lost (e2e closeStep) */
+test("newTextReachesHostWhenShown", async () => {
+  const h = await open({ board: emptyBoard("b1", "fresh"), light, w: 1200, h: 800 });
+  const pg = h.page;
+  await pg.waitForTimeout(800);
+  // record what the page posts, in the page (synchronously, at postMessage time)
+  await pg.evaluate(() => { const w = window as any, o = w.__host; w.__posted = []; w.__host = (s: string) => { w.__posted.push(s); return o(s); }; });
+  const runs: { shown: boolean; posted: boolean }[] = [];
+  for (let i = 0; i < 5; i++) {
+    await pg.mouse.click(200 + i * 150, 300);
+    await pg.keyboard.press("t");
+    await pg.waitForFunction(() => !!document.activeElement?.closest(".card[data-id] .md-pm"), null, { timeout: 5000 });
+    const word = `typed${i}`;
+    await pg.keyboard.type(`${word} then closed`);
+    // Esc and the check in one task of the page, as soon as the text shows: no frame and no other task in between
+    // (closing the tab is another task, so what the page does in microtasks of this one still counts)
+    runs.push(await pg.evaluate((word) => {
+      const ed = document.activeElement as HTMLElement;
+      ed.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", code: "Escape", bubbles: true, cancelable: true }));
+      return new Promise<{ shown: boolean; posted: boolean }>((res) => {
+        const look = () => {
+          const shown = [...document.querySelectorAll(".card[data-id]")].some((e) => !e.querySelector(".md-pm") && e.textContent!.includes(word));
+          if (!shown) return void queueMicrotask(look);
+          res({ shown, posted: ((window as any).__posted as string[]).some((s) => s.includes(word)) });
+        };
+        queueMicrotask(look);
+      });
+    }, word));
+    await pg.waitForTimeout(300);
+  }
+  check("newTextReachesHostWhenShown posted when shown", runs.every((r) => r.shown && r.posted), { runs });
+});
