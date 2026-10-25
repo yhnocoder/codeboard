@@ -15,6 +15,7 @@ import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
 import { selSticker, setSelSticker } from "./state/stickers";
+import { ghostOut } from "./state/ghost";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
 import { installOverlays, modalOpen, isTyping } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
@@ -143,6 +144,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const mergeOk = ids.every((i) => cardById(i)!.card.kind === "code");
   const webOk = ids.every((i) => { const k = cardById(i)!.card.kind; return k === "web" || k === "links"; }); // Web 卡拖到另一张的标题上 → Link List
   const noteOk = ids.length === 1 && g.kind === "note" && g.bg;
+  const imageOk = ids.length === 1 && g.kind === "image"; // 图片卡拖到 Note / Text 上 → 放进它的 Markdown
   setDragging(new Set(ids));
   // 拖得快时不吸附（顺滑），慢下来才对齐：屏幕上的速度，指数平滑
   let vx = ev0x(e), vy = ev0y(e), vt = performance.now(), speed = 0;
@@ -174,6 +176,10 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         drop = { kind: "merge", card: uid, armed: false };
         mergeT = window.setTimeout(() => { if (mergeTgt === uid) { setDropTarget({ kind: "merge", card: uid, armed: true }); setGuides([]); } }, 400);
       }
+    } else if (imageOk && uid && ucard?.card.kind === "note") {
+      clearTimeout(mergeT); mergeTgt = undefined;
+      const d = dropTarget();
+      drop = d?.kind === "note" && d.card === uid ? d : { kind: "note", card: uid };
     } else if (row && uid && ucard && (noteOk || (ev.altKey && ids.length === 1 && isCode(g)))) {
       const at = rowAnchor(row, uid);
       clearTimeout(mergeT); mergeTgt = undefined;
@@ -207,6 +213,19 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
       end();
       return webOk ? A.mergeIntoLinkList([drop.card, ...ids], drop.card) : A.mergeCards([drop.card, ...ids], drop.card);
+    }
+    if (drop?.kind === "note") {
+      // 图先存成 Note 的图（要问宿主）：这期间卡留在松手的地方、Note 还亮着；好了以后卡在这里淡出，回到原处再删，
+      // 撤销时卡回到拖之前的地方（拖动和放进 Note 是一步）
+      setDropTarget(drop);
+      void A.noteImageFor(ids[0]).then((src) => {
+        if (src) ghostOut([ids[0]]);
+        setDropTarget(null);
+        live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
+        end();
+        if (src) A.putImageInNote(ids[0], drop.card, src);
+      });
+      return;
     }
     if (drop?.kind === "line") {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });

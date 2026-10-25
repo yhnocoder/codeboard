@@ -102,7 +102,7 @@ export function CardView(p: { card: Card }) {
     const d = dropTarget(), id = c().id;
     if (!d) return 0;
     const m = d.kind === "merge" && d.card === id;
-    return (m && d.armed ? 1 : 0) | (m && !d.armed ? 2 : 0) | (d.kind === "card" && d.card === id ? 4 : 0) | (d.cands?.includes(id) ? 8 : 0);
+    return (m && d.armed ? 1 : 0) | (m && !d.armed ? 2 : 0) | (d.kind === "card" && d.card === id ? 4 : 0) | (d.cands?.includes(id) ? 8 : 0) | (d.kind === "note" && d.card === id ? 16 : 0);
   });
   return (
     <Show when={!isHidden(c().id)}>
@@ -112,7 +112,7 @@ export function CardView(p: { card: Card }) {
           editing: ed(), off: offscreen(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
-          "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8),
+          "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8), "img-drop": !!(drop() & 16),
           "bind-hot": isBindHot(`card:${c().id}`),
           "bind-anchor": isBindAnchor(c().id),
         }}

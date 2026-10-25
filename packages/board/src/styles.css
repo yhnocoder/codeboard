@@ -146,7 +146,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .card { position: absolute; isolation: isolate; background: var(--surface); border-radius: var(--r-card); box-shadow: var(--sh-card); transform-origin: 0 18px; display: flex; flex-direction: column;
   transition: box-shadow calc(var(--t) * 160ms) var(--out), scale calc(var(--t) * 260ms) cubic-bezier(.3, 1.35, .5, 1), opacity calc(var(--t) * 240ms) var(--out), filter calc(var(--t) * 240ms); }
 .card.sel { box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
-.card.lift { scale: 1.012; box-shadow: var(--sh-lift); transition: box-shadow calc(var(--t) * 120ms) var(--out), scale calc(var(--t) * 120ms) var(--out); z-index: 10; }
+.card.lift { scale: 1.012; box-shadow: var(--sh-lift); transition: box-shadow calc(var(--t) * 120ms) var(--out), scale calc(var(--t) * 120ms) var(--out), opacity calc(var(--t) * 160ms) var(--out); z-index: 10; }
 .card.sel.lift { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-lift); }
 .card.dim { opacity: .28; filter: saturate(.4); }
 .card.leaving { opacity: 0; scale: .96; transition: opacity calc(var(--t) * 140ms) var(--in), scale calc(var(--t) * 140ms) var(--in); }
@@ -438,6 +438,17 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.merge-arm { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--k-fn) 60%, transparent), var(--sh-card); }
 .card.merge-hot { box-shadow: 0 0 0 2.5px var(--k-fn), 0 0 0 6px var(--hi), var(--sh-card); }
 .card.merge-hot::after { content: "Release to merge"; position: absolute; left: 50%; top: -30px; transform: translateX(-50%); font: 600 11.5px/1 var(--sys); color: #fff; background: var(--k-fn); padding: 6px 10px; border-radius: 8.5px; white-space: nowrap; box-shadow: var(--sh-float); z-index: 5; }
+/* An image card dragged over a Note / Text: the Note lights up (the card's box-shadow transition) and a caret line grows in under its
+   text where the image will go; a label says what releasing does. Only transform / opacity animate, so the drag stays at 60 fps. */
+.card.img-drop { box-shadow: 0 0 0 2.5px var(--accent), 0 0 0 7px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
+.card.img-drop > .cface::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 9px; height: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; z-index: 4;
+  transform-origin: 0 50%; animation: imgdrop-caret calc(var(--t) * 220ms) var(--out) both, imgdrop-pulse calc(var(--t) * 1100ms) calc(var(--t) * 220ms) ease-in-out infinite alternate; }
+.card.img-drop::after { content: "Release to add the image"; position: absolute; left: 50%; top: -30px; translate: -50% 0; font: 600 11.5px/1 var(--sys); color: #fff; background: var(--accent); padding: 6px 10px; border-radius: 8.5px; white-space: nowrap; box-shadow: var(--sh-float); z-index: 5; pointer-events: none;
+  animation: imgdrop-label calc(var(--t) * 180ms) var(--out) both; }
+@keyframes imgdrop-caret { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+@keyframes imgdrop-pulse { from { opacity: 1; } to { opacity: .45; } }
+@keyframes imgdrop-label { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.board:has(.card.img-drop) .card.lift { opacity: .72; } /* the picture lets the caret under it show through */
 /* math */
 .tex { font-family: var(--mono); font-size: .95em; color: var(--ink-2); }
 /* lock */
