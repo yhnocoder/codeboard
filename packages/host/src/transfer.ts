@@ -5,12 +5,12 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { allCodeCards, allSegments, loadSharedCard, pruneRefs, putShared, subBoardsOf, uid, type Board, type SharedCard, type Source, type WebMeta } from "@codeboard/core";
-import { Storage } from "@codeboard/core/storage";
+import { Storage, pasteClip, type CardClip, type Pasted } from "@codeboard/core/storage";
 import type { StateStore } from "./env";
 import { log } from "./log";
 import { nodeFs } from "./nodefs";
 import { rootOf, srcKey } from "./source";
-import { exists, posix, ws0 } from "./ws";
+import { exists, posix, workspace, ws0 } from "./ws";
 
 /** 登记过的一个项目：folder = 第一个工作区文件夹（没打开文件夹的窗口是 ""），dir = 它的白板存储目录，seen = 上次记下的时间 */
 export type Project = { folder: string; name: string; dir: string; seen: number };
@@ -103,20 +103,23 @@ export async function removeMoved(store: Storage, t: Transferred, close: (id: st
   return [...gone];
 }
 
-/** 段的来源按目标项目改写（folder = 它的第一个工作区文件夹，没有 = ""）；memo 按来源缓存 */
-async function rehome(b: Board, folder: string, memo: Map<string, Source | null>) {
+/**
+ * 段的来源按目标项目改写（folder = 它的第一个工作区文件夹，没有 = ""）；memo 按来源缓存。
+ * from = 这些段原来那个项目的文件夹（repo 相对它）；不给 = 就是这个窗口的项目（rootOf，含 Locate Repo… 记下的映射）
+ */
+async function rehome(b: Pick<Board, "cards" | "sidenotes">, folder: string, memo: Map<string, Source | null>, from?: string) {
   for (const s of allSegments(b)) {
     if (s.src.kind !== "repo" && s.src.kind !== "external") continue;
     const k = srcKey(s.src);
-    if (!memo.has(k)) memo.set(k, await sourceIn(s.src, folder));
+    if (!memo.has(k)) memo.set(k, await sourceIn(s.src, folder, from));
     const n = memo.get(k);
     if (n) s.src = { ...n };
   }
 }
 
-/** 这个来源在目标项目里怎么写：根在 folder 里 → repo（相对 folder），否则 → external。这边找不到根返回 null（不改） */
-async function sourceIn(src: Source, folder: string): Promise<Source | null> {
-  const root = rootOf(src);
+/** 这个来源在目标项目里怎么写：根在 folder 里 → repo（相对 folder），否则 → external。找不到根返回 null（不改） */
+async function sourceIn(src: Source, folder: string, from?: string): Promise<Source | null> {
+  const root = from === undefined ? rootOf(src) : src.kind === "repo" ? (from ? path.resolve(from, src.repo) : null) : src.kind === "external" ? src.root : null;
   if (!root || !(await exists(root))) return null;
   const abs = path.resolve(root);
   if (folder) {
@@ -139,8 +142,8 @@ async function readShared(dir: string, id: string): Promise<SharedCard | "bad" |
 
 const FILE = /^[\w-][\w.-]*$/;
 
-/** 白板用到的 assets/ 里的文件：图片卡、网页卡和链接列表的预览图和图标，Markdown 里的 assets/xxx */
-function assetsOf(b: Board): string[] {
+/** 白板（或几张卡）用到的 assets/ 里的文件：图片卡、网页卡和链接列表的预览图和图标，Markdown 里的 assets/xxx */
+function assetsOf(b: Pick<Board, "cards">): string[] {
   const out = new Set<string>();
   const add = (n?: string) => { if (n && FILE.test(n)) out.add(n); };
   const meta = (m?: WebMeta) => { add(m?.image); add(m?.icon); };
@@ -153,8 +156,8 @@ function assetsOf(b: Board): string[] {
   return [...out];
 }
 
-/** 白板引用的运行记录（Generated 卡、observed 的 Call） */
-function runsOf(b: Board): Set<string> {
+/** 白板（或几张卡）引用的运行记录（Generated 卡、observed 的 Call） */
+function runsOf(b: Pick<Board, "cards" | "links">): Set<string> {
   const out = new Set<string>();
   for (const c of allCodeCards(b)) if (c.gen?.run && FILE.test(c.gen.run)) out.add(c.gen.run);
   for (const l of b.links) if (l.call?.ev?.run && FILE.test(l.call.ev.run)) out.add(l.call.ev.run);
@@ -167,5 +170,53 @@ async function copyFiles(from: string, to: string, names: Iterable<string>) {
     if (!(await exists(path.join(from, n)))) continue;
     await fs.mkdir(to, { recursive: true });
     await fs.copyFile(path.join(from, n), path.join(to, n), fs.constants.COPYFILE_EXCL).catch((e: NodeJS.ErrnoException) => { if (e.code !== "EEXIST") throw e; });
+  }
+}
+
+// ---------- 跨窗口粘贴卡：⌘C 时宿主把剪贴板也记进全局存储目录，别的窗口（别的项目）⌘V 时从那边的存储目录拷成独立副本 ----------
+
+/** 跨窗口的卡片剪贴板：dir = 复制它的窗口的白板存储目录，folder = 那个窗口的第一个工作区文件夹，at = 复制的时间 */
+export type FarClip = CardClip & { dir: string; folder: string; at: number };
+
+/** 不核对文字的粘贴（菜单、⌥⌘V）只认这么久以内复制的 */
+const FAR_RECENT = 5 * 60_000;
+const clipFile = () => path.join(workspace().storage.globalDir(), "clipboard.json");
+
+/** ⌘C：记下跨窗口的剪贴板（先写临时文件再改名，别的窗口读不到写了一半的） */
+export async function recordClip(dir: string, clip: CardClip): Promise<void> {
+  const file = clipFile(), tmp = `${file}.${process.pid}.tmp`;
+  const far: FarClip = { ...clip, dir, folder: ws0(), at: Date.now() };
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(tmp, JSON.stringify(far));
+  await fs.rename(tmp, file);
+}
+
+async function readClip(): Promise<FarClip | null> {
+  try {
+    const c = JSON.parse(await fs.readFile(clipFile(), "utf8")) as FarClip;
+    return typeof c.dir === "string" && typeof c.board === "string" && Array.isArray(c.cards) && typeof c.text === "string" ? c : null;
+  } catch { return null; }
+}
+
+/**
+ * ⌘V 时这个窗口的剪贴板对不上：看别的窗口复制的卡。同一个存储目录（同一个项目开了两个窗口）就在这边的存储里拷；
+ * 别的存储目录：读那边的白板，拷成独立副本（不同项目之间没有共享卡），段的来源按这边的工作区改写，用到的图片和运行记录拷过来（这边有的不覆盖）
+ */
+export async function pasteFar(store: Storage, target: string, o: { text?: string; copy: boolean }): Promise<Pasted | null> {
+  const clip = await readClip();
+  if (!clip || (o.text === undefined && Date.now() - clip.at > FAR_RECENT)) return null;
+  if (path.resolve(clip.dir) === path.resolve(store.dir())) return pasteClip(store, clip, target, { ...o, copy: true });
+  const src = new Storage(nodeFs, { dir: () => clip.dir, log });
+  try {
+    const r = await pasteClip(src, clip, "", { ...o, copy: true });
+    if (!r) return null;
+    const some = { cards: r.cards.map((x) => x.card), sidenotes: r.cards.flatMap((x) => x.sidenotes ?? []), links: r.links };
+    await rehome(some, ws0(), new Map(), clip.folder);
+    await copyFiles(path.join(clip.dir, "assets"), store.assetsDir(), assetsOf(some));
+    await copyFiles(path.join(clip.dir, "runs"), path.join(store.dir(), "runs"), [...runsOf(some)].map((x) => `${x}.json`));
+    const from = clip.folder ? `${r.from} (${path.basename(clip.folder)})` : r.from;
+    return { ...r, from };
+  } finally {
+    src.dispose();
   }
 }
