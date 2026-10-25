@@ -320,6 +320,37 @@ test("markdownToolbarWaitsForStillSelection", async () => {
   await close(h);
 });
 
+/** Formatting around an inline formula or emoji: the static Note draws the formula inside the bold / highlight, and an edit
+ *  that only adds a word keeps the Markdown around it as it was */
+test("markdownMarksAroundFormula", async () => {
+  const b = emptyBoard("b1", "marks");
+  const src = "**bold with $x^2$ inside** and ==marked :tada: emoji== and *a $y$* done";
+  put(b, { id: "n1", kind: "note", md: src, bg: true } as NoteCard, 60, 60, 560);
+  b.cam = { x: 0, y: 0, z: 1.4 };
+  const h = await open({ board: b, light, w: 1000, h: 640 });
+  const pg = h.page;
+  fs.mkdirSync(SHOTS, { recursive: true });
+  await pg.waitForTimeout(400);
+  const body = '.card[data-id="n1"] .nbody';
+  const r0 = await pg.evaluate((q) => ({
+    boldMath: !!document.querySelector(`${q} strong .katex`), markEmoji: !!document.querySelector(`${q} mark .emoji, ${q} mark [data-type="emoji"]`) || [...document.querySelectorAll(`${q} mark`)].some((m) => m.textContent!.includes("🎉")),
+    emMath: !!document.querySelector(`${q} em .katex`),
+  }), body);
+  await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-marks-around-formula-display.png") }).catch(() => {});
+  // 编辑：文末加一个词，保存下来的原文除了这个词不变
+  await pg.locator(body).dblclick({ position: { x: 500, y: 12 } });
+  await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
+  const r1 = await pg.evaluate(() => ({ editBoldMath: !!document.querySelector('.card[data-id="n1"] .md-pm strong [data-type="inline-math"], .card[data-id="n1"] .md-pm strong .katex') }));
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pg.keyboard.type(" end");
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(1500);
+  const saved = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
+  const r = { ...r0, ...r1, saved };
+  check("markdownMarksAroundFormula", r0.boldMath && r0.markEmoji && r0.emMath && r1.editBoldMath && saved === `${src} end`, r);
+  await close(h);
+});
+
 /** One editor is reused across Notes: each edit starts from that Note's text with its own undo history */
 test("markdownEditorReuse", async () => {
   const { b } = mdBoard();

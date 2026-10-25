@@ -235,6 +235,28 @@ describe("typed math and block source", () => {
     // the static render uses the same <mark> the editor draws
     expect(renderMd("a ==two **b**== c")).toBe("<p>a <mark>two <strong>b</strong></mark> c</p>");
   });
+  it("formatting around an inline formula, emoji, image or [[ref]] wraps it and is written back around it", () => {
+    for (const md of [
+      "**a $x$ b**", "**$x$**", "*a $x$*", "~~$x$~~", "==a $x$ b==", "[a $x$ b](https://e.com/p)",
+      "**a :tada: b**", "*:tada:*", "~~a :tada:~~", "==:tada: hi==", "[go :tada:](https://e.com/p)",
+      "**a *b $x$* c**", "==**$x$** and :tada:==", "***$x$***", "**a [[R]] b**", "**see ![i](https://e.com/i.png) here**",
+      "a $x$ b and **c** $y$ **d**",
+    ]) same(md);
+    // the atom carries the mark in the document, so the editor and the static render draw it inside
+    const walkJson = (n: JSONContent, f: (n: JSONContent) => void) => { f(n); n.content?.forEach((c) => walkJson(c, f)); };
+    const marksOf = (md: string, type: string) => { let out: string[] | undefined; walkJson(parseMd(md), (n) => { if (n.type === type) out = (n.marks ?? []).map((m) => m.type).sort(); }); return out; };
+    expect(marksOf("**a $x$**", "inlineMath")).toEqual(["bold"]);
+    expect(marksOf("==*:tada:*==", "emoji")).toEqual(["highlight", "italic"]);
+    expect(marksOf("[a $x$](https://e.com)", "inlineMath")).toEqual(["link"]);
+    expect(marksOf("a $x$", "inlineMath")).toEqual([]);
+    expect(renderMd("**a $x$ :tada:**")).toMatch(/^<p><strong>a <span class="katex">.*<span class="md-emoji"[^>]*>🎉<\/span><\/strong><\/p>$/);
+    expect(renderMd("==:tada:==")).toMatch(/^<p><mark><span class="md-emoji"[^>]*>🎉<\/span><\/mark><\/p>$/);
+    // a mark made in the editor over text and a formula is written as one span
+    const d: JSONContent = { type: "doc", content: [{ type: "paragraph", content: [
+      { type: "text", text: "see ", marks: [{ type: "bold" }] }, { type: "inlineMath", attrs: { latex: "x^2", display: false }, marks: [{ type: "bold" }] }, { type: "text", text: " now" },
+    ] }] };
+    expect(serializeMd(d)).toBe("**see $x^2$** now");
+  });
   // #30：单独一行的 [toc] 是目录，显示时列出所有标题；段落里的 [toc] 字照留
   it("[toc] is a table of contents", () => {
     same("[toc]\n\n# A\n\n## B");
