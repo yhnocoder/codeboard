@@ -27,21 +27,35 @@ export function hydrate(el: HTMLElement, html: string) {
 
 /**
  * {字|批注} 的标签从被标的字的左边开始写；写到这一块（段落、列表项、格子）右边外面去的，往左挪回来（--ax），最多挪到块的左边。
- * 标签是 ::before，量不到：按它的字体用 canvas 算宽度。位置用 offsetLeft 量（同一张卡里，不受镜头缩放、滚动影响）
+ * 标签是 ::before，量不到：按它的字体用 canvas 算宽度。位置用 offsetLeft 量（同一张卡里，不受镜头缩放、滚动影响）。
+ * 手写字体按需加载（中文字体按 unicode-range 才下载）：字体还没到时先按替代字体放，到了再量一次
  */
 let ctx: CanvasRenderingContext2D | null | undefined;
+/** 量的时候字体还没到的：字体加载完（loadingdone）再量一次 */
+const refit = new Set<HTMLElement>();
 function fitAnnots(el: HTMLElement) {
   ctx ??= document.createElement("canvas").getContext("2d");
   if (!ctx) return;
+  let late = false;
   for (const a of el.querySelectorAll<HTMLElement>(".md-annot")) {
     const block = a.parentElement?.closest<HTMLElement>("p, li, td, th, h1, h2, h3, h4, h5, h6, summary") ?? el;
     if (a.offsetParent !== block.offsetParent && a.offsetParent !== block) continue;
     const left = a.offsetParent === block ? a.offsetLeft : a.offsetLeft - block.offsetLeft;
-    const lb = getComputedStyle(a, "::before");
+    const lb = getComputedStyle(a, "::before"), note = a.dataset.note ?? "";
     ctx.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
-    const over = left + ctx.measureText(a.dataset.note ?? "").width - block.clientWidth;
+    if (!document.fonts.check(ctx.font, note)) { late = true; void document.fonts.load(ctx.font, note).catch(() => {}); }
+    const over = left + ctx.measureText(note).width - block.clientWidth; // 标签往左 2px 起笔（markdown.css），右边也就留了 2px
     a.style.setProperty("--ax", over > 0 ? `${-Math.min(over, Math.max(0, left))}px` : "0px");
   }
+  if (!late) return;
+  if (!refit.size) document.fonts.addEventListener("loadingdone", refitAll);
+  refit.add(el);
+}
+function refitAll() {
+  const els = [...refit];
+  refit.clear();
+  document.fonts.removeEventListener("loadingdone", refitAll);
+  for (const el of els) if (el.isConnected) fitAnnots(el);
 }
 
 /**

@@ -144,6 +144,16 @@ test("noteAnnotations", async () => {
   check("annotHighlightSeparate", (await pg.locator(".card mark").count()) === 1);
   const lineH = await pg.evaluate(() => { const ps = [...document.querySelectorAll<HTMLElement>(".card .nbody p")]; return ps.map((p) => p.getBoundingClientRect().height); });
   check("annotOnlyAnnotatedLinesTaller", lineH.length === 3 && lineH[2] < lineH[1], lineH);
+  // a label at the end of a line is pulled back inside the paragraph, measured with the handwriting font once it has loaded
+  await pg.waitForTimeout(300);
+  const fit = await pg.evaluate(() => {
+    const e = [...document.querySelectorAll<HTMLElement>(".card .md-annot")][1], p = e.closest("p")!;
+    const lb = getComputedStyle(e, "::before"), c = document.createElement("canvas").getContext("2d")!;
+    c.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
+    const right = e.getBoundingClientRect().left + parseFloat(lb.left) + c.measureText(e.dataset.note!).width;
+    return { right, pRight: p.getBoundingClientRect().right, ax: e.style.getPropertyValue("--ax") };
+  });
+  check("annotLabelInsideBlock", fit.right <= fit.pRight + 0.5 && parseFloat(fit.ax) < 0, fit);
   await shot(h, "marks-note-annotations");
 
   // typing the syntax in the editor
