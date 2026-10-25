@@ -10,7 +10,7 @@ import {
 import { tune } from "./state/tune";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
 import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing } from "./state/ui";
-import { frames, deepestAt, frameOf, sec, descSections, allMembers, visibleCards } from "./state/sections";
+import { frames, deepestAt, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
@@ -113,7 +113,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
   if (!ids.length) return onClick?.();
   const skip = new Set(ids);
-  const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y }; });
+  const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y, mid: center(rectOf(cardById(i)!.host)) }; });
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
   const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
@@ -171,12 +171,15 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       setGuides(sn.guides);
     } else setGuides([]);
     live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = Math.round(it.ox + dx); c.y = Math.round(it.oy + dy); } } });
+    // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算
+    setMovingHome(drop ? null : new Map(items.map((it) => [it.id, deepestAt(fr, it.mid.x + dx, it.mid.y + dy)?.id])));
   };
   track(e, (ev) => onMove(ev), (ev, moved) => {
     clearTimeout(settleT);
     clearTimeout(mergeT);
     setGuides([]);
     setDragging(new Set<string>());
+    setMovingHome(null);
     const drop = dropTarget();
     setDropTarget(null);
     if (!moved) { end(); onClick?.(); return; }

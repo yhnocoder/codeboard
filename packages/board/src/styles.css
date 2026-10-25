@@ -29,7 +29,7 @@
   --t: 1;
   /* 材质主题（themes.css）可换的形状和字体 */
   --r-card: 9px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
-  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
+  --sect-border: .5px solid var(--hair); --sect-fill: color-mix(in srgb, var(--ink) 2.2%, transparent); --sect-sh: inset 0 1px 0 rgba(255,255,255,.5);
   --out: cubic-bezier(.2, .8, .2, 1);
   --in: cubic-bezier(.4, 0, 1, 1);
 }
@@ -54,6 +54,7 @@
   --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,245,230,.06), 0 1px 1px rgba(0,0,0,.25), 0 3px 8px -2px rgba(0,0,0,.3), 0 18px 36px -14px rgba(0,0,0,.55);
   --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(0,0,0,.4), 0 30px 60px -18px rgba(0,0,0,.75);
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.35), 0 10px 28px -8px rgba(0,0,0,.55);
+  --sect-border: .5px solid var(--hair); --sect-fill: color-mix(in srgb, var(--ink) 2.5%, transparent); --sect-sh: inset 0 1px 0 rgba(255,245,230,.025);
 }
 :root, [data-look] { --row: color-mix(in srgb, var(--accent) 9%, transparent); }
 
@@ -314,18 +315,37 @@ input, textarea { font: inherit; color: var(--ink); }
 .cfoot { flex: none; display: flex; gap: 14px; align-items: center; padding: 5px 12px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-3); }
 .cfoot i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; vertical-align: -1px; margin-right: 5px; }
 
-/* sections */
-.sect { position: absolute; border: var(--sect-border); border-radius: calc(var(--r-card) + 3px); pointer-events: none; }
-.slabel { position: absolute; left: 10px; top: -13px; display: flex; align-items: center; gap: 4px; padding: 2px 8px 2px 4px; font: 600 12px/20px var(--label-font); color: var(--ink-2); background: var(--bg); border-radius: 6px; pointer-events: auto; white-space: nowrap; }
-.slabel:hover { color: var(--ink); }
-.slabel .dots { color: var(--ink-3); font-size: 11px; letter-spacing: -2px; padding: 0 4px 0 2px; }
-.slabel .chev2 { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; color: var(--ink-3); }
-.slabel .chev2:hover { background: var(--hlrow); color: var(--ink); }
-.sect.collapsed { border: 0; }
-.sect.collapsed .slabel { position: static; background: var(--surface); box-shadow: var(--sh-card); padding: 6px 12px 6px 6px; border-radius: 8px; }
-.sect.sel .slabel, .slabel.free.sel { box-shadow: 0 0 0 1.5px var(--accent); }
+/* Sections: a quiet tray behind the cards (hairline, faint fill, card-like corners); the title is plain text in the top
+   padding, aligned with the cards; drag handle and caret show on hover; accent only when selected; a card dragged over
+   another Section lights that Section up (.drop). Themes change the tokens (--sect-border, --sect-fill, --sect-sh) and the label font. */
+.sect { position: absolute; z-index: 0; border: var(--sect-border); border-radius: calc(var(--r-card) + 1px); pointer-events: none; box-shadow: var(--sect-sh);
+  transition: border-color .15s var(--out), background-color .15s var(--out), box-shadow .15s var(--out); }
+.sect:not([class*=" c-"]) { background: var(--sect-fill); }
+.sect.sel { border-color: color-mix(in srgb, var(--accent) 70%, transparent); box-shadow: var(--sect-sh), 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
+.sect.drop { border-color: color-mix(in srgb, var(--ink) 42%, transparent); background-color: color-mix(in srgb, var(--ink) 6.5%, transparent); box-shadow: var(--sect-sh), 0 0 0 4px color-mix(in srgb, var(--ink) 7%, transparent); }
+.sect.sel.drop { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
+/* a card moving into or out of a Section: the frames ease to their new size instead of jumping */
+.sect.moving { transition: border-color .15s var(--out), background-color .15s var(--out), box-shadow .15s var(--out), left .16s var(--out), top .16s var(--out), width .16s var(--out), height .16s var(--out); }
+.sect .sgrip { position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px; pointer-events: auto; cursor: nwse-resize; }
 #slabels { position: absolute; left: 0; top: 0; z-index: 4; }
-.slabel.free { position: absolute; }
+.slabel { position: absolute; z-index: 4; display: flex; align-items: center; gap: 2px; width: max-content; margin: 6px 0 0 16px; padding: 1px 2px 1px 6px; border-radius: 6px;
+  font: 500 12.5px/20px var(--label-font); letter-spacing: -.005em; color: var(--ink-2); pointer-events: auto; white-space: nowrap; transform-origin: 0 50%;
+  transition: color .15s var(--out); }
+.slabel:hover, .slabel.drop { color: var(--ink); }
+.slabel.sel { color: var(--accent); }
+.slabel .dots { position: absolute; right: 100%; top: 1px; padding-right: 1px; color: var(--ink-3); font-size: 11px; letter-spacing: -2px; }
+.slabel .dots, .slabel:not(.collapsed) .chev2 { opacity: 0; transition: opacity .15s var(--out); }
+.slabel:hover .dots, .slabel:hover .chev2, .slabel.sel .dots, .slabel.sel .chev2 { opacity: 1; }
+.slabel .chev2 { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; color: var(--ink-3); font-size: 10px; transition: opacity .15s var(--out), background-color .15s var(--out), color .15s var(--out); }
+.slabel .chev2:hover { background: var(--hlrow); color: var(--ink); }
+.slabel .sname { min-width: 20px; }
+.slabel .sname.editing { white-space: pre; min-width: 60px; display: inline-block; }
+.slabel .scount { color: var(--ink-3); font-weight: 400; }
+.slabel.collapsed { z-index: 3; margin: 0; padding: 4px 10px 4px 4px; border-radius: 8px; color: var(--ink-2); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
+.slabel.collapsed:hover { color: var(--ink); }
+.slabel.collapsed.sel { color: var(--ink); box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
+.slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
+.slabel.moving:not(.collapsed) { transition: color .15s var(--out), left .16s var(--out), top .16s var(--out); }
 
 
 /* arrow styles, labels */
@@ -366,7 +386,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .alignbar .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 /* section colours (nested frames each keep their own) */
 .sect.c-sand { background: var(--s-sand); } .sect.c-blue { background: var(--s-blue); } .sect.c-green { background: var(--s-green); } .sect.c-pink { background: var(--s-pink); }
-.sect.collapsed { background: none; }
 .sw { display: inline-block; width: 11px; height: 11px; border-radius: 3px; box-shadow: inset 0 0 0 .5px var(--hair); vertical-align: -1px; margin-right: 6px; }
 /* ---------- floating chrome ---------- */
 .over { position: absolute; display: flex; align-items: center; gap: 4px; z-index: 20; }
@@ -508,6 +527,7 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 .card.nobg > .cface > .chead .ctitle.editing, .genrun .grun.editing, .lrow.rich .wbm.none .wt.editing, .msgb .mname.editing { text-overflow: clip; }
 .editing:empty::before, [data-ph]:empty::before { content: attr(data-ph); color: var(--ink-3); }
 .ctitle.sys { font-family: var(--sys); }
+.ctitle.untitled { color: var(--ink-3); } /* Note without a title or a leading heading: the placeholder recedes */
 .lnk { color: var(--k-fn); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--k-fn) 40%, transparent); text-underline-offset: 2px; cursor: pointer; }
 .lnk:hover { text-decoration-color: var(--k-fn); }
 kbd { font: 10.5px var(--mono); }
@@ -631,17 +651,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card.merge-hot::after { content: none; }
 .guides { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 8; }
 
-/* sections */
-.sect { z-index: 0; }
-.sect.sel { border-color: var(--accent); }
-.sect .sgrip { position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px; pointer-events: auto; cursor: nwse-resize; }
-.slabel { z-index: 4; transform-origin: 0 50%; }
-.slabel.sel { box-shadow: 0 0 0 1.5px var(--accent); }
-.slabel .sname { min-width: 20px; }
-.slabel.collapsed { background: var(--surface); box-shadow: var(--sh-card); padding: 4px 10px 4px 4px; border-radius: 8px; z-index: 3; }
-.slabel.collapsed.sel { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
-.slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
-.slabel .scount { color: var(--ink-3); font-weight: 400; }
 .board[data-mode="draw"], .board[data-mode="draw"] * { cursor: crosshair !important; }
 
 /* chrome */
@@ -897,10 +906,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .tbtn.pri { background: var(--accent); color: var(--accent-ink); }
 .tbtn.pri:hover { background: color-mix(in srgb, var(--accent) 88%, var(--ink)); color: var(--accent-ink); }
 
-/* Section（#8 #9）：标题一行、按内容变宽；区域铺一层很淡的底色（有颜色时用那个颜色） */
-.slabel { width: max-content; }
-.slabel .sname.editing { white-space: pre; min-width: 60px; display: inline-block; }
-.sect:not([class*=" c-"], .collapsed) { background: color-mix(in srgb, var(--ink) 3.5%, transparent); }
 .cand small.cur { flex: none; color: var(--accent); }
 .k-commits .cand small { flex: none; }
 .k-commits .cand .lb { flex: 1 1 auto; min-width: 0; }

@@ -3,7 +3,7 @@ import { unwrap } from "solid-js/store";
 import {
   arrangeCards, makeCompare, overlaps, removeSections as removeSectionsIn, renameTitleRefs, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
   uid, findCard, isCode, cardTitle, segOf,
-  bounds, removeCards,
+  bounds, removeCards, SECTION_PAD, GAP,
   copyText, cardRows, LANGS, defaultWidth,
   type Arrange, type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment,
   type Rect,
@@ -333,6 +333,31 @@ export function moveToNewSection(rect?: Rect, parentId?: string) {
   });
   select({ sections: [id] });
   setEditing({ kind: "section", id });
+}
+/**
+ * Move to Section ▸：选中的卡进这个 Section，整组（相对位置不变）挪到框里第一块空地上（框左上角往下找），从原来的位置飞过去。一步撤销
+ */
+export function moveToSection(id: string) {
+  const s = sectionById(id);
+  const ids = [...new Set(sel.cards.map(hostOf))].filter((i) => state.board.place[i] && !isHidden(i));
+  if (!s || s.collapsed || !ids.length) return;
+  const set = new Set(ids);
+  const box = bounds(ids.map((i) => rectOf(i)))!;
+  const f = frameOf(s, set);
+  const others = state.board.cards.filter((c) => state.board.place[c.id] && !set.has(c.id) && !isHidden(c.id)).map((c) => rectOf(c));
+  const to = freeIn(f, box, others);
+  const dx = Math.round(to.x - box.x), dy = Math.round(to.y - box.y);
+  const from = new Map(ids.map((i) => { const r = rectOf(i); return [i, { x: r.x + r.w / 2, y: r.y + r.h / 2 }]; }));
+  mutate((b) => { for (const i of ids) { const p = b.place[i]; p.x += dx; p.y += dy; p.section = id; } });
+  requestAnimationFrame(() => { ids.forEach((i) => popCard(i, from.get(i))); revealCard(ids[0], false); });
+  toast(`Moved to ${s.title}`);
+}
+/** 框 f 里能放下 box 的第一块空地（从左上角一行一行往下找）；放不下就放在框里最下面的东西下面（框往下长） */
+function freeIn(f: Rect, box: Rect, others: Rect[]): { x: number; y: number } {
+  const x0 = f.x + SECTION_PAD.l, y0 = f.y + SECTION_PAD.t, x1 = f.x + f.w - SECTION_PAD.r - box.w, y1 = f.y + f.h - SECTION_PAD.b - box.h;
+  const inside = others.filter((o) => overlaps(o, f));
+  for (let y = y0; y <= y1; y += 24) for (let x = x0; x <= Math.max(x0, x1); x += 24) if (!inside.some((o) => overlaps({ ...box, x, y }, o, GAP))) return { x, y };
+  return { x: x0, y: Math.max(y0, ...inside.map((o) => o.y + o.h + GAP)) };
 }
 export function toggleSection(id: string) {
   const s0 = sectionById(id);

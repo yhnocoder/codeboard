@@ -1,6 +1,7 @@
 // Section 的实际框：自己存的框 ∪ 成员卡（含边距）∪ 子 Section（core layout.sectionFrame，和子白板骨架同一套算法）。框随内容自动撑大，也能拖边改大。
-// 成员关系：卡片中心点落在哪个最深的框里（拖动结束时更新）。
-import { createMemo, mapArray } from "solid-js";
+// 成员关系：卡片中心点落在哪个最深的框里（拖动结束时更新）。拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，
+// 要进的 Section 撑开、亮起来（.drop），松手时才真的改 place.section。
+import { createMemo, createSignal, mapArray } from "solid-js";
 import { sectionFrame, sectionPill, type Rect, type Section } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
 import { rooted } from "./root";
@@ -19,7 +20,20 @@ export function hiddenByAncestor(s: Section): boolean {
 }
 // 父 → 子 Section、Section → 直属卡：一次分好组，算框时不用每个 Section 都扫一遍所有卡
 const kids = rooted(() => createMemo(() => groupBy(state.board.sections, (s) => s.parent)));
-const members = rooted(() => createMemo(() => groupBy(placed(), (c) => state.board.place[c.id]?.section)));
+
+/** 拖动中的卡松手后会在哪个 Section（卡 id → Section id，undefined = 不在 Section 里）；没在拖 = null。只在落点换了 Section 时才变 */
+const [moving, setMoving] = createSignal<ReadonlyMap<string, string | undefined> | null>(null, {
+  equals: (a, b) => a === b || (!!a && !!b && a.size === b.size && [...a].every(([k, v]) => b.has(k) && b.get(k) === v)),
+});
+export { moving as movingHome, setMoving as setMovingHome };
+/** 拖动中的卡要进的、和它现在不同的 Section：画成 .drop */
+export const dropSections = rooted(() => createMemo(() => {
+  const out = new Set<string>();
+  for (const [id, s] of moving() ?? []) if (s && s !== state.board.place[id]?.section) out.add(s);
+  return out;
+}));
+const homeOf = (id: string) => { const m = moving(); return m?.has(id) ? m.get(id) : state.board.place[id]?.section; };
+const members = rooted(() => createMemo(() => groupBy(placed(), (c) => homeOf(c.id))));
 function groupBy<T>(xs: T[], key: (x: T) => string | undefined) {
   const m = new Map<string, T[]>();
   for (const x of xs) { const k = key(x); if (k === undefined) continue; const a = m.get(k); a ? a.push(x) : m.set(k, [x]); }

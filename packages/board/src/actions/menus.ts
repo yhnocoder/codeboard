@@ -2,7 +2,8 @@
 import {
   findCard, isCode, cardTitle, segOf, allCodeCards, walkOrder, headOf, canMark, type CodeCard, type CompareCard, type LinkSide, type Section, type CallSpan,
 } from "@codeboard/core";
-import { state, mutate, sel, select, lineSel, isSel, flows, cardById, toast, placeOf, sharedOn, type LineSel } from "../state/store";
+import { state, mutate, sel, select, lineSel, isSel, flows, cardById, hostOf, toast, placeOf, sharedOn, type LineSel } from "../state/store";
+import { hiddenByAncestor } from "../state/sections";
 import { toWorld } from "../state/camera";
 import { setEditing, setPaletteOpen } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
@@ -12,12 +13,12 @@ import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, se
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
-import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
+import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { unlinkShared } from "./edit";
-import { deleteEverywhere, pasteFromBoard, copyCardsSel } from "./shared";
+import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from "./calls";
 import { setLegendOpen } from "../state/calls";
@@ -124,7 +125,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
   const tail: Item[] = [
     arrangeItem(() => [host.id]),
     null,
-    { label: "Move to New Section", run: () => moveToNewSection() },
+    ...sectionItems(),
     turnItem(),
     ...deleteItems(host.id),
   ];
@@ -134,7 +135,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     { label: "Edit", sub: [lockItem] },
     arrangeItem(() => [host.id]),
     null,
-    { label: "Move to New Section", run: () => moveToNewSection() },
+    ...sectionItems(),
     { label: "Remove from This Board", kbd: "⌫", hint: "The board stays in the sidebar", run: deleteSel },
     { label: "Delete Board…", danger: true, run: () => void deleteFrameBoard(id) },
   ];
@@ -188,7 +189,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
       null,
       { label: "Separate", run: () => separate(id) },
       { label: "Walk Through", kbd: "P", disabled: canWalk ? false : "No arrows go out of this card", run: () => startWalk(id) },
-      { label: "Move to New Section", run: () => moveToNewSection() },
+      ...sectionItems(),
       lockItem, arrangeItem(() => [host.id]), null,
       ...deleteItems(host.id),
     ];
@@ -243,10 +244,24 @@ function cardItems(id: string, x: number, y: number): Item[] {
     { label: "Call Graph", sub: flow },
     ...(col ? [] : [arrangeItem(() => [host.id])]),
     null,
-    ...(col ? [] : [{ label: "Move to New Section", run: () => moveToNewSection() } as Item, turnItem()]),
+    ...(col ? [] : [...sectionItems(), turnItem()]),
     ...deleteItems(host.id),
   ];
   return items;
+}
+
+/**
+ * Move to Section ▸（白板上有别的 Section 时）：选中的卡进哪个 Section（展开着、看得见的；子 Section 写成「父 › 子」）；Move to New Section
+ */
+function sectionItems(): Item[] {
+  const homes = new Set(sel.cards.map((i) => placeOf(hostOf(i)).section));
+  const name = (q: Section): string => { const p = q.parent ? sectionById(q.parent) : undefined; return p ? `${name(p)} › ${q.title}` : q.title; };
+  const to = state.board.sections.filter((q) => !q.collapsed && !hiddenByAncestor(q) && !(homes.size === 1 && homes.has(q.id)))
+    .map((q) => ({ q, label: name(q) })).sort((a, b) => a.label.localeCompare(b.label));
+  return [
+    ...(to.length && sel.cards.length ? [{ label: "Move to Section", sub: to.map(({ q, label }): Item => ({ label, run: () => moveToSection(q.id) })) } as Item] : []),
+    { label: "Move to New Section", run: () => moveToNewSection() },
+  ];
 }
 
 /** 选中的卡变成一块子白板（线框 05 ④） */
@@ -263,11 +278,12 @@ function multiItems(): Item[] {
     ...(codes.length >= 2 ? [{ label: "Merge into One Card", disabled: mc.ok ? false : mc.why, run: () => mergeCards(sel.cards) } as Item] : []),
     ...(canLinkList(cs) ? [{ label: "Merge into Link List", run: () => mergeIntoLinkList(sel.cards) } as Item] : []),
     { label: "Connect with Arrow", disabled: cs.length === 2 ? false : "Select exactly two cards", run: () => { const [a, b] = cs; addLink({ card: a.id }, { card: b.id }); } },
-    { label: "Move to New Section", run: () => moveToNewSection() },
+    ...sectionItems(),
     turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock(sel.cards, sel.sections) },
     arrangeItem(() => [...sel.cards]),
     null,
+    { label: "Cut", kbd: kbd("cut"), run: () => cutCardsSel() },
     { label: "Copy", kbd: kbd("copy"), run: () => copyCardsSel() },
     { label: "Duplicate", kbd: kbd("duplicate"), run: duplicateSel },
     { label: cs.some((c) => sharedOn(c.id) > 1) ? "Remove from This Board" : "Delete", kbd: "⌫", danger: !cs.some((c) => sharedOn(c.id) > 1), run: deleteSel },
