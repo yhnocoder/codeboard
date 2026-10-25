@@ -239,3 +239,76 @@ test("noteShrinksWithContent", async () => {
   const back = await gap();
   check("noteShrinksWithContent undo restores", Math.abs(back.card - full.card) < 1 && h.board().place.n0?.h === 260, { back, full, h: h.board().place.n0?.h });
 });
+
+/** A Note whose body scrolls fades out at the edge that has more content (top, bottom or both); the fade is only a mask on
+ *  the body, so moving cards, arrows, marquee, wheel and resize over it work as anywhere else */
+test("noteScrollFades", async () => {
+  const b = board([{ md: LONG, h: 170 }, { md: "Other card" }]);
+  b.place.n1 = { x: 620, y: 460, w: 220 };
+  const h = await open({ board: b, light, w: 1000, h: 700 });
+  const pg = h.page;
+  await pg.waitForTimeout(1200);
+  const body = `${card("n0")} .nbody`;
+  const fades = () => pg.locator(body).evaluate((e) => { const s = getComputedStyle(e); return [parseFloat(s.getPropertyValue("--fade-t")), parseFloat(s.getPropertyValue("--fade-b"))]; });
+  const scrollTo = (y: number | "end") => pg.locator(body).evaluate((e, y) => { e.scrollTop = y === "end" ? e.scrollHeight : y; }, y);
+  const top = await fades();
+  await cardShot(h, "n0", "21-fade-top");
+  await scrollTo(60); await pg.waitForTimeout(200);
+  const mid = await fades();
+  await cardShot(h, "n0", "21-fade-middle");
+  await scrollTo("end"); await pg.waitForTimeout(200);
+  const end = await fades();
+  await cardShot(h, "n0", "21-fade-bottom");
+  const other = await pg.locator(`${card("n1")} .nbody`).evaluate((e) => getComputedStyle(e).maskImage);
+  check("noteScrollFades top: only the bottom fades", top[0] === 0 && top[1] > 15, { top });
+  check("noteScrollFades middle: both edges fade", mid[0] > 15 && mid[1] > 15, { mid });
+  check("noteScrollFades bottom: only the top fades", end[0] > 15 && end[1] === 0, { end });
+  check("noteScrollFades no mask on an auto-height note", other === "none", { other });
+  await scrollTo(60); await pg.waitForTimeout(200);
+
+  const r0 = await rect(h, card("n0"));
+  const fx = r0.left + 200, fy = r0.bottom - 8; // inside the bottom fade
+  // another card dragged onto the faded area (and back again with undo)
+  const o = await rect(h, `${card("n1")} .chead`);
+  const ox = o.left + 40, oy = (o.top + o.bottom) / 2;
+  await drag(h, ox, oy, fx - ox, fy - oy, 14);
+  await pg.waitForTimeout(1300); // the host gets the change with the next save
+  const moved = { ...h.board().place.n1 };
+  check("noteScrollFades drag another card onto the fade", Math.abs(moved.x - (620 + fx - ox)) < 3 && Math.abs(moved.y - (460 + fy - oy)) < 3, { moved });
+  await pg.keyboard.press("Control+z");
+  await pg.waitForTimeout(400);
+  // an arrow dragged from the other card onto the faded area links to this Note
+  await pg.locator(card("n1")).hover();
+  const port = await rect(h, `${card("n1")} .eport.t`);
+  const px = (port.left + port.right) / 2, py = (port.top + port.bottom) / 2;
+  await drag(h, px, py, fx - 80 - px, fy - py, 14);
+  await pg.waitForTimeout(1300);
+  const links = h.board().links.map((l) => [(l.from as { card: string }).card, (l.to as { card: string }).card]);
+  check("noteScrollFades arrow dropped on the fade", links.some(([a, z]) => a === "n1" && z === "n0"), { links });
+  // wheel over the faded area scrolls the body once the Note is selected
+  await pg.mouse.click(r0.left + 100, r0.top + 15);
+  const st0 = await pg.locator(body).evaluate((e) => e.scrollTop);
+  await pg.mouse.move(fx, fy);
+  await pg.mouse.wheel(0, 60);
+  await pg.waitForTimeout(400);
+  const st1 = await pg.locator(body).evaluate((e) => e.scrollTop);
+  check("noteScrollFades wheel on the fade scrolls the body", st1 > st0, { st0, st1 });
+  // resize by the corner (inside the fade)
+  const g = await rect(h, `${card("n0")} .grip`);
+  await drag(h, (g.left + g.right) / 2, (g.top + g.bottom) / 2, 0, -40, 8);
+  await pg.waitForTimeout(1300);
+  check("noteScrollFades resize in the faded corner", Math.abs((h.board().place.n0.h ?? 0) - 130) < 3, { h: h.board().place.n0.h });
+  // move the Note by its header
+  const p0 = { ...h.board().place.n0 };
+  const hd = await rect(h, `${card("n0")} .chead`);
+  await drag(h, hd.left + 80, (hd.top + hd.bottom) / 2, 30, 30, 8);
+  await pg.waitForTimeout(1300);
+  const p1 = h.board().place.n0;
+  check("noteScrollFades header drag moves", p1.x === p0.x + 30 && p1.y === p0.y + 30, { p0, p1 });
+  // marquee from the empty board across the faded area selects the Note
+  await pg.mouse.click(950, 680);
+  const r1 = await rect(h, card("n0"));
+  await drag(h, r1.right + 30, r1.bottom + 30, -(r1.right - r1.left) / 2 - 30, -40, 10);
+  const selected = await pg.locator(`${card("n0")}.sel`).count();
+  check("noteScrollFades marquee across the fade selects", selected === 1, { selected });
+});

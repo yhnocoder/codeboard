@@ -279,7 +279,16 @@ input, textarea { font: inherit; color: var(--ink); }
 /* 定了高度的 Note（拖小了）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外（#2、#10）。
    不拉伸（flex-grow 0）：放得下时正文和原来一样只有内容那么高，Fit Content、改大小时量的是内容。
    Text 没有框，不裁：从 Note 换过来带着的高度用 Fit Content 去掉 */
-.card.note:not(.autoh) .nbody { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; }
+.card.note:not(.autoh) .nbody { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent;
+  /* 上下还有内容时边上渐隐（字淡进卡自己的底色）：滚动驱动的动画，不用 JS、不排版。滚到顶 / 底时那一边在最后 20px 里淡掉，不跳；
+     放得下（不能滚）时时间线不生效，两边都是 0。遮罩在正文自己身上，不盖别的东西，指针照常 */
+  --fade-t: 0px; --fade-b: 0px;
+  mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-t), #000 calc(100% - var(--fade-b)), transparent);
+  animation: nfade-t linear both, nfade-b linear both; animation-timeline: scroll(self), scroll(self); animation-range: 0px 20px, calc(100% - 20px) 100%; }
+@property --fade-t { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-b { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@keyframes nfade-t { from { --fade-t: 0px; } to { --fade-t: 22px; } }
+@keyframes nfade-b { from { --fade-b: 22px; } to { --fade-b: 0px; } }
 .card.note .nbody[contenteditable] { cursor: text; user-select: text; -webkit-user-select: text; }
 .card.note .chead .ctitle { font-family: var(--sys); }
 
