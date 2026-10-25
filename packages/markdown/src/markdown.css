@@ -3,7 +3,7 @@
      颜色   --ink --ink-2 --ink-3（字，由深到浅）--surface（底）--hlrow（浅底色：表头、代码块、悬停）--hair --line（细线）
             --accent --accent-ink（强调色和压在它上面的字）--warn（出错）--k-fn（链接、引用、脚注）
             --k-kw --k-num --k-self --k-str --lk-blue --lk-orange --lk-green（Mermaid 的系列色）--sh-float（浮层阴影）
-            --md-hl（==高亮== 的荧光笔底色，半透明的暖黄）
+            --md-hl（==高亮== 的荧光笔底色，半透明的淡暖黄，只涂字的下半截）
      字体   --sys（正文、Mermaid）--mono（代码、记号）--note-h（小标题）
      其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）--ico-w（工具条图标的描边，1 或 2 px，默认 1）
    公式还要 KaTeX 自己的样式（@yhnocoder/markdown/katex.css，放在这一份前面）。
@@ -36,8 +36,10 @@ math { font-size: 1.05em; }
 .md li::marker { color: var(--ink-3); }
 .md strong { font-weight: 650; }
 .md s { color: var(--ink-2); }
-/* ==高亮==：荧光笔的底色 --md-hl（主题给，亮暗各一份）；换行时每一截都有自己的圆角 */
-.md mark { background: var(--md-hl); color: inherit; border-radius: 2px; padding: 0 1px; margin: 0 -1px; -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+/* ==高亮==：荧光笔的底色 --md-hl（主题给，亮暗各一份），只涂字的下半截、稍稍压过字底：一条平的色带，没有圆角，左右没有内边距
+   （进出编辑时字不挪；下边的 .12em 是行内元素的竖向内边距，只加长底色，不占行高），跨过空格、中文、粗体都是连着的一条。
+   border-radius 写 0：盖掉白板给搜索结果 <mark> 的圆角 */
+.md mark { background: linear-gradient(transparent 58%, var(--md-hl) 58%); color: inherit; border-radius: 0; padding: 0 0 .12em; margin: 0; }
 /* {字|批注}：贴在字上的手写标注。被标的字是一个行内块，上面（data-below：下面）多出一条窄轨道，标签和一个小箭头画在轨道里
    （::before 是标签，::after 是箭头，都只用 CSS：不量位置、不建节点，编辑器里和静态显示一样）。只有这一行变高，代码和字不会被盖住。
    颜色 --md-annot-blue / -purple / -orange / -green，手写字体 --md-hand（都有默认值） */

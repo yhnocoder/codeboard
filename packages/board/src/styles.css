@@ -9,7 +9,7 @@
   --accent: #b5552d; --accent-ink: #ffffff; --warn: #c48a1f;
   --k-kw: #9a3f22; --k-fn: #2e5d86; --k-str: #4a7536; --k-com: #9a958a; --k-num: #8a6416; --k-self: #7a4f9a; --k-p: #6f6a62;
   --hi: rgba(46,93,134,.16);
-  --mark: #3b3833; --mark-ink: #f6f4ef; --md-hl: rgba(240,200,100,.35);
+  --mark: #3b3833; --mark-ink: #f6f4ef; --md-hl: rgba(238,200,100,.3);
   --inote: rgba(60,45,20,.05);
   --hlrow: rgba(60,45,20,.07); --hlbar: #6a655c;
   --chg: rgba(196,138,31,.13); --chg-strong: rgba(196,138,31,.34); --del: rgba(181,85,45,.09); --add: rgba(74,117,54,.10);

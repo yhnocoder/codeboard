@@ -26,7 +26,7 @@
   --row: #f8e8dc;
   --k-kw: #9a3f22; --k-fn: #2e5d86; --k-str: #4a7536; --k-com: #9a958a; --k-num: #8a6416; --k-self: #7a4f9a; --k-p: #6f6a62;
   --hi: rgba(46,93,134,.16);
-  --mark: #3b3833; --mark-ink: #f6f4ef; --md-hl: rgba(240,200,100,.35);
+  --mark: #3b3833; --mark-ink: #f6f4ef; --md-hl: rgba(238,200,100,.3);
   --inote: rgba(60,45,20,.05); --hlrow: rgba(60,45,20,.06); --hlbar: #6a655c; --hatch: rgba(60,45,20,.07);
   --edge: #1f1e1b;
   --s-sand: rgba(206,170,110,.16); --s-blue: rgba(96,145,205,.12); --s-green: rgba(110,165,95,.13); --s-pink: rgba(215,120,145,.12);
@@ -72,7 +72,7 @@
   --row: rgba(10,108,220,.08);
   --k-kw: #a8329d; --k-fn: #2f6f78; --k-str: #c2361f; --k-com: #7b8692; --k-num: #2a2ad0; --k-self: #6c36a8; --k-p: #4c4c52;
   --hi: rgba(47,111,120,.15);
-  --mark: #3a3a3e; --mark-ink: #f5f5f7; --md-hl: rgba(255,214,10,.28);
+  --mark: #3a3a3e; --mark-ink: #f5f5f7; --md-hl: rgba(255,214,10,.24);
   --inote: rgba(0,0,0,.04); --hlrow: rgba(0,0,0,.05); --hlbar: #6e6e73; --hatch: rgba(0,0,0,.06);
   --edge: #a0a0a6;
   --s-sand: rgba(185,170,135,.15); --s-blue: rgba(10,108,220,.08); --s-green: rgba(100,150,125,.12); --s-pink: rgba(190,120,150,.1);
@@ -120,7 +120,7 @@
   --row: rgba(242,88,62,.08);
   --k-kw: #8a4fd0; --k-fn: #2563c9; --k-str: #1f8a5b; --k-com: #a3a9b5; --k-num: #d0602f; --k-self: #c2417a; --k-p: #8a909c;
   --hi: rgba(37,99,201,.12);
-  --mark: #8c8377; --mark-ink: #ffffff; --md-hl: rgba(255,196,90,.35);
+  --mark: #8c8377; --mark-ink: #ffffff; --md-hl: rgba(255,196,90,.3);
   --inote: rgba(55,38,20,.035); --hlrow: rgba(55,38,20,.045); --hlbar: #b2aa9e; --hatch: rgba(55,38,20,.05);
   --edge: #b9b1a6;
   --s-sand: rgba(225,200,150,.14); --s-blue: rgba(140,170,230,.12); --s-green: rgba(150,195,140,.12); --s-pink: rgba(242,140,120,.1);
@@ -174,7 +174,7 @@
   --k-kw: #161616; --k-fn: #161616; --k-str: #55544f; --k-com: #9b9a95; --k-num: #55544f; --k-self: #55544f; --k-p: #9b9a95;
   --hi: rgba(22,22,22,.08);
   --chg: rgba(22,22,22,.06); --chg-strong: rgba(22,22,22,.16); --del: rgba(22,22,22,.06); --add: rgba(22,22,22,.03);
-  --mark: #161616; --mark-ink: #f2f1ed; --md-hl: rgba(240,210,110,.4);
+  --mark: #161616; --mark-ink: #f2f1ed; --md-hl: rgba(240,210,110,.33);
   --inote: rgba(22,22,22,.035); --hlrow: rgba(22,22,22,.045); --hlbar: #161616; --hatch: rgba(22,22,22,.08);
   --edge: #55544f;
   --s-sand: rgba(22,22,22,.025); --s-blue: rgba(22,22,22,.04); --s-green: rgba(22,22,22,.03); --s-pink: rgba(22,22,22,.05);
@@ -226,7 +226,7 @@
   --row: rgba(217,89,42,.16);
   --k-kw: #b2441b; --k-fn: #255e58; --k-str: #8a6a12; --k-com: #9a8c78; --k-num: #8a6a12; --k-self: #7b4a7a; --k-p: #6e6253;
   --hi: rgba(226,166,47,.3);
-  --mark: #2a231c; --mark-ink: #f7efdd; --md-hl: rgba(255,198,60,.45);
+  --mark: #2a231c; --mark-ink: #f7efdd; --md-hl: rgba(255,198,60,.36);
   --inote: rgba(226,166,47,.12); --hlrow: rgba(42,35,28,.06); --hlbar: #2a231c; --hatch: rgba(42,35,28,.08);
   --edge: #2a231c;
   --s-sand: rgba(226,166,47,.2); --s-blue: rgba(63,94,156,.14); --s-green: rgba(47,111,104,.15); --s-pink: rgba(217,89,42,.14);
@@ -280,7 +280,7 @@
   --k-kw: #191714; --k-fn: #191714; --k-str: #4a463f; --k-com: #8a8478; --k-num: #4a463f; --k-self: #4a463f; --k-p: #8a8478;
   --hi: rgba(25,23,20,.1);
   --chg: rgba(163,42,28,.08); --chg-strong: rgba(163,42,28,.2); --del: rgba(163,42,28,.08); --add: rgba(25,23,20,.05);
-  --mark: #191714; --mark-ink: #f6f3eb; --md-hl: rgba(240,205,90,.4);
+  --mark: #191714; --mark-ink: #f6f3eb; --md-hl: rgba(240,205,90,.32);
   --inote: rgba(25,23,20,.04); --hlrow: rgba(25,23,20,.07); --hlbar: #191714; --hatch: rgba(25,23,20,.08);
   --edge: #191714;
   --s-sand: rgba(175,145,90,.1); --s-blue: rgba(70,100,145,.07); --s-green: rgba(85,120,80,.08); --s-pink: rgba(163,42,28,.06);
@@ -332,7 +332,7 @@
   --row: rgba(31,106,80,.1);
   --k-kw: #13372b; --k-fn: #1f6a50; --k-str: #7a5a2a; --k-com: #87998f; --k-num: #7a5a2a; --k-self: #4f6f62; --k-p: #6f857a;
   --hi: rgba(31,106,80,.14);
-  --mark: #13372b; --mark-ink: #e6eee5; --md-hl: rgba(232,196,104,.4);
+  --mark: #13372b; --mark-ink: #e6eee5; --md-hl: rgba(232,196,104,.32);
   --inote: rgba(19,55,43,.04); --hlrow: rgba(19,55,43,.06); --hlbar: #2e5547; --hatch: rgba(19,55,43,.07);
   --edge: #2e5547;
   --s-sand: rgba(160,140,90,.1); --s-blue: rgba(60,110,140,.08); --s-green: rgba(31,106,80,.08); --s-pink: rgba(150,90,90,.07);
@@ -382,7 +382,7 @@
   --k-kw: #1d1c1a; --k-fn: #2d5b70; --k-str: #9a5a2c; --k-com: #9a958b; --k-num: #9a5a2c; --k-self: #4c4943; --k-p: #9a958b;
   --hi: rgba(45,91,112,.14);
   --chg: rgba(154,90,44,.1); --chg-strong: rgba(154,90,44,.26); --del: rgba(184,50,31,.08); --add: rgba(45,91,112,.08);
-  --mark: #1d1c1a; --mark-ink: #faf7f0; --md-hl: rgba(226,190,110,.35);
+  --mark: #1d1c1a; --mark-ink: #faf7f0; --md-hl: rgba(226,190,110,.3);
   --inote: rgba(29,28,26,.04); --hlrow: rgba(29,28,26,.06); --hlbar: #1d1c1a; --hatch: rgba(29,28,26,.07);
   --edge: rgba(29,28,26,.8);
   --s-sand: rgba(154,90,44,.07); --s-blue: rgba(45,91,112,.07); --s-green: rgba(80,110,80,.07); --s-pink: rgba(184,50,31,.06);
@@ -433,7 +433,7 @@
   --row: rgba(246,201,59,.24);
   --k-kw: #1f5fbf; --k-fn: #13804a; --k-str: #b0521c; --k-com: #9aa0a8; --k-num: #b0521c; --k-self: #a3367a; --k-p: #7f858f;
   --hi: rgba(31,95,191,.14);
-  --mark: #1f5fbf; --mark-ink: #ffffff; --md-hl: rgba(255,205,60,.4);
+  --mark: #1f5fbf; --mark-ink: #ffffff; --md-hl: rgba(255,205,60,.32);
   --inote: rgba(31,95,191,.05); --hlrow: rgba(0,0,0,.05); --hlbar: #1f5fbf; --hatch: rgba(0,0,0,.06);
   --edge: #7c828c;
   --s-sand: rgba(224,200,140,.18); --s-blue: rgba(184,214,236,.4); --s-green: rgba(160,205,140,.3); --s-pink: rgba(230,150,150,.16);

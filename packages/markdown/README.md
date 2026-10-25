@@ -102,7 +102,7 @@ A complete page using only this package is in [examples/markdown-demo](https://g
 | `--k-fn` | Links, refs, footnotes |
 | `--k-kw` `--k-num` `--k-self` `--k-str` `--lk-blue` `--lk-orange` `--lk-green` | Mermaid series colors |
 | `--sh-float` | Shadow of popovers |
-| `--md-hl` | Background of `==highlight==` (a translucent highlighter color) |
+| `--md-hl` | Color of the `==highlight==` marker band, drawn under the lower half of the text (a translucent highlighter color) |
 | `--md-annot-blue` `--md-annot-purple` `--md-annot-orange` `--md-annot-green` | Colors of `{text|annotation}` (defaults built in) |
 | `--md-hand` | Handwriting font of annotations (default: Shantell Sans, then LXGW WenKai Lite, Kaiti, cursive; the package bundles no fonts) |
 | `--sys` `--mono` `--note-h` | Body / Mermaid font, code font, small headings |
