@@ -1,7 +1,8 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
 // Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
-//          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody
+//          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
+//          placeholderOnlyWhenNoteEmpty
 import { put, findSym, symCard, shot, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -271,25 +272,72 @@ test("noteDisplayMathTypedAsBlock", async () => {
 
 /** 双击进编辑：卡片高度、每一块的位置都不变，字形（连字）不变；选中的底色两边一样，是主题的强调色而不是浏览器的蓝色 */
 test("noteEditKeepsLayout", async () => {
-  const doc = "# Heading\n\nA paragraph with **bold**, `code` and $x^2$ math.\n\n- one\n- two\n\n> quote line\n\n```python\nx = 1\n```\n\n$$\n\\frac{200}{10}\n$$\n\nLast paragraph.";
+  const docs = [
+    "# Heading\n\nA paragraph with **bold**, `code` and $x^2$ math.\n\n- one\n- two\n\n> quote line\n\n```python\nx = 1\n```\n\n$$\n\\frac{200}{10}\n$$\n\nLast paragraph.",
+    // 正文、一整行的公式、再几段，最后一行是一段的结尾（公式上下的空、最后一段下面的边距）
+    "The rate is **20 per second** when we split it.\n\n$$\\frac{200\\ s}{10\\ s}=20$$\n\nSo the batch takes **ten** seconds,\nand the queue drains.\n\nLast line ends here.",
+  ];
   // the heading shown in the body too (by default a leading heading that is the title is hidden there: noteTitleHeadingHiddenInBody)
-  const h = await open({ board: board([doc]), light, settings: { noteHeadingInBody: true } });
+  const h = await open({ board: board(docs), light, settings: { noteHeadingInBody: true } });
   await h.page.waitForTimeout(1500);
-  const geo = () => h.page.evaluate(() => {
-    const card = document.querySelector('.card[data-id="n0"]')!, body = card.querySelector(".nbody")!, root = body.querySelector(".md-pm") ?? body;
-    const top = card.getBoundingClientRect().top, p = root.querySelector("p")!;
+  const geo = (id: string) => h.page.evaluate((id) => {
+    const card = document.querySelector(`.card[data-id="${id}"]`)!, body = card.querySelector(".nbody")!, root = body.querySelector(".md-pm") ?? body;
+    const box = card.getBoundingClientRect(), p = root.querySelector("p")!;
     return {
-      h: Math.round(card.getBoundingClientRect().height), ys: [...root.children].map((e) => Math.round(e.getBoundingClientRect().top - top)),
+      h: Math.round(box.height), ys: [...root.children].map((e) => Math.round(e.getBoundingClientRect().top - box.top)),
+      below: Math.round(box.bottom - root.lastElementChild!.getBoundingClientRect().bottom),
       sel: getComputedStyle(p, "::selection").backgroundColor, lig: getComputedStyle(p).fontVariantLigatures,
     };
+  }, id);
+  for (const i of docs.keys()) {
+    const id = `n${i}`, shown = await geo(id);
+    await h.page.locator(`.card[data-id="${id}"] .nbody p`).last().dblclick();
+    await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
+    await h.page.mouse.move(5, 5);
+    await h.page.waitForTimeout(300);
+    const edit = await geo(id);
+    check(`noteEditKeepsLayout ${id}`, JSON.stringify(shown) === JSON.stringify(edit) && shown.sel !== "rgba(0, 0, 0, 0)", { shown, edit });
+    await exitEdit(h);
+    await h.page.waitForTimeout(300);
+  }
+  await close(h);
+});
+
+/** 打完 "## " 这一行马上是标题的字号、行高，"##" 也是标题的字号；接着打字时这一行、卡片的高度都不再变 */
+test("headingMarkerTypedAtHeadingSize", async () => {
+  const h = await open({ board: board([""]), light });
+  await h.page.waitForTimeout(1500);
+  await editNote(h, "n0");
+  const line = () => h.page.evaluate(() => {
+    const c = document.querySelector('.card[data-id="n0"]')!, e = c.querySelector(".md-pm")!.firstElementChild as HTMLElement;
+    return { tag: e.tagName, fs: getComputedStyle(e).fontSize, mk: getComputedStyle(e, "::before").fontSize, mkText: getComputedStyle(e, "::before").content, lh: Math.round(e.getBoundingClientRect().height), card: Math.round(c.getBoundingClientRect().height) };
   });
-  const shown = await geo();
-  await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
-  await h.page.waitForSelector('.card[data-id="n0"] .md-pm', { timeout: 5000 });
-  await h.page.mouse.move(5, 5);
-  await h.page.waitForTimeout(300);
-  const edit = await geo();
-  check("noteEditKeepsLayout", JSON.stringify(shown) === JSON.stringify(edit) && shown.sel !== "rgba(0, 0, 0, 0)", { shown, edit });
+  await keys(h.page, "## ");
+  await h.page.waitForTimeout(150);
+  const space = await line();
+  await shot(h, "headingMarkerTypedAtHeadingSize-space");
+  await keys(h.page, "Title");
+  await h.page.waitForTimeout(150);
+  const typed = await line();
+  await shot(h, "headingMarkerTypedAtHeadingSize-typed");
+  check("headingMarkerTypedAtHeadingSize", space.tag === "H2" && space.mkText === '"## "' && space.mk === space.fs && typed.lh === space.lh && typed.card === space.card, { space, typed });
+  await close(h);
+});
+
+/** 占位字只在整篇 Note 空着时显示；有内容的 Note 里新起的空行不显示 */
+test("placeholderOnlyWhenNoteEmpty", async () => {
+  const h = await open({ board: board(["", "first line"]), light });
+  await h.page.waitForTimeout(1500);
+  const ph = (id: string) => h.page.evaluate((id) => [...document.querySelectorAll(`.card[data-id="${id}"] .md-pm > *`)].map((e) => getComputedStyle(e, "::before").content), id);
+  await editNote(h, "n0");
+  const empty = await ph("n0");
+  await exitEdit(h);
+  await editNote(h, "n1");
+  await keys(h.page, "{Control+End}{Enter}");
+  await h.page.waitForTimeout(150);
+  const line = await ph("n1");
+  await shot(h, "placeholderOnlyWhenNoteEmpty");
+  check("placeholderOnlyWhenNoteEmpty", empty.length === 1 && empty[0] !== "none" && line.length === 2 && line.every((c) => c === "none"), { empty, line });
   await close(h);
 });
 

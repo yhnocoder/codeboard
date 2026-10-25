@@ -101,8 +101,9 @@ math { font-size: 1.05em; }
 .md-pm.ProseMirror-hideselection *::selection { background: transparent; }
 .md-pm.ProseMirror-hideselection * { caret-color: transparent; }
 /* 占位字可能折成几行：浮动占满一整行宽、右边距抵掉（不挤光标），段落 flow-root 把浮动的高度算进来，几行都露得出来 */
-.md-pm p.is-empty:first-child:last-child::before, .md-pm .is-empty::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
-.md-pm :is(p, h1, h2, h3, h4, h5, h6).is-empty { display: flow-root; }
+/* 只在整篇都空着时显示（有内容的 Note 里的空行不显示，Typora 一样） */
+.md-pm .is-editor-empty:not(.md-mkh)::before { content: attr(data-placeholder); color: var(--ink-3); float: left; width: 100%; margin-right: -100%; pointer-events: none; }
+.md-pm :is(p, h1, h2, h3, h4, h5, h6).is-editor-empty { display: flow-root; }
 .md-pm .ProseMirror-selectednode { outline: 1.5px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
 .md-pm pre { white-space: pre; tab-size: 4; }
 .md-pm pre code { white-space: inherit; }
@@ -129,10 +130,11 @@ math { font-size: 1.05em; }
 .md-pm img.ProseMirror-selectednode { outline-offset: 2px; }
 .md-ghost { color: var(--ink-3); opacity: .85; pointer-events: none; user-select: none; -webkit-user-select: none; }
 /* 光标所在处显示的 Markdown 记号（editor/typora.ts） */
-.md-pm .md-mk, .md-pm .md-mka::before, .md-pm .md-mkb::after, .md-pm .md-mkh::before { color: var(--ink-3); opacity: .75; font-family: var(--mono); font-size: .85em; font-weight: 400; font-style: normal; text-decoration: none; user-select: none; -webkit-user-select: none; }
+.md-pm .md-mk, .md-pm .md-mka::before, .md-pm .md-mkb::after { color: var(--ink-3); opacity: .75; font-family: var(--mono); font-size: .85em; font-weight: 400; font-style: normal; text-decoration: none; user-select: none; -webkit-user-select: none; }
 .md-pm .md-mka::before { content: attr(data-mka); }
 .md-pm .md-mkb::after { content: attr(data-mkb); }
-.md-pm .md-mkh::before { content: attr(data-mka); }
+/* 标题的 "## "：照 Typora 用标题自己的字体、字号，淡色（和光标走进去后展开成的原文 .md-mkc 一样）：打完 "## " 这一行马上就是标题的样子，后面打字不再跳 */
+.md-pm .md-mkh::before { content: attr(data-mka); color: var(--ink-3); user-select: none; -webkit-user-select: none; }
 /* 光标处展开的 Markdown 原文（真的字，能改，editor/source.ts）：记号淡色 */
 .md-pm .md-mkc { color: var(--ink-3); }
 .md-pm .md-esch { display: none; }
