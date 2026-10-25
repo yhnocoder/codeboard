@@ -5,11 +5,11 @@ import {
   type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
-  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, toast, placeOf,
+  state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf,
 } from "./state/store";
 import { tune } from "./state/tune";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
-import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing } from "./state/ui";
+import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing } from "./state/ui";
 import { frames, deepestAt, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
@@ -47,12 +47,15 @@ function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: Point
 }
 
 /** 拖卡、改卡的大小：一次撤销（beginGesture）；真动起来以后 AI 灰字补全先停（显示着的清掉、不再问），松手再照常（#9） */
-function cardGesture() {
+// 拖的全是新建、还没写内容的卡（createFresh）：不单独进撤销栈。写了内容时「新建 + 内容」那一步里已经是挪过的位置；
+// 空着结束编辑就整个消失，撤销栈里也不留一张空卡
+function cardGesture(ids: string[]) {
   const done = beginGesture();
+  const fresh = ids.length > 0 && ids.every(isFresh);
   let held = false;
   return {
     moving: () => { if (!held) { held = true; holdGhosts(true); } },
-    end: () => { if (held) holdGhosts(false); done(); },
+    end: () => { if (held) holdGhosts(false); done(!(fresh && ids.every(isFresh))); },
   };
 }
 
@@ -92,8 +95,13 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     return;
   }
   e.preventDefault();
-  (document.activeElement as HTMLElement | null)?.blur?.();
-  window.getSelection()?.removeAllRanges();
+  // 拖的正是在编辑内容的这张卡（Note、手写代码）：接着编辑，焦点、光标都不动。拖动不算写完：
+  // 新建的空 Note 拖一下不会被当成「什么都没写」而消失，拖完接着打字
+  const ed = editing();
+  if (!(ed && ed.id === f.host.id && (ed.kind === "note" || ed.kind === "free"))) {
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    window.getSelection()?.removeAllRanges();
+  }
   if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
   if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id); // 双击子白板框 = 进去
   const tc = cardById(target)?.card;
@@ -128,7 +136,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
   const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
-  const { end, moving } = cardGesture();
+  const { end, moving } = cardGesture(ids);
   const sx = e.clientX, sy = e.clientY;
   let mergeT: number | undefined, mergeTgt: string | undefined;
   const g = cardById(grabbed)!.host;
@@ -257,7 +265,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   A.selectCard(id);
   const r0 = rectOf(c);
   const targets = visibleCards().filter((k) => k.id !== id).map((k) => rectOf(k));
-  const { end, moving } = cardGesture();
+  const { end, moving } = cardGesture([c.id]);
   const sx = e.clientX, sy = e.clientY;
   const text = c.kind === "note" && !c.bg;
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（#2：单行卡拉高后能缩回去）
@@ -280,7 +288,8 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
       if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
     } else setGuides([]);
     setSizeHint(hint ? { x: x + w / 2, y: r0.y + h + 8, text: hint } : null);
-    const auto = edges.bottom && nat && Math.abs(h - nat.h) < 8 / z;
+    // Note / Text 的高度是上限（Card.tsx）：拉到内容那么高或更高就是自动高度，不存一个比内容还高的数
+    const auto = edges.bottom && nat && (c.kind === "note" ? h > nat.h - 8 / z : Math.abs(h - nat.h) < 8 / z);
     live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (edges.bottom) k.h = auto ? undefined : Math.round(h - hx); });
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }

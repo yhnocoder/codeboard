@@ -247,12 +247,12 @@ export function settleFresh(id: string, keep: boolean, fn?: (b: Board) => void) 
   changed();
 }
 
-/** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈 */
-export function beginGesture(): () => void {
+/** 拖动这种连续的修改：开始时记一下，结束时如果变了才进撤销栈（record = false：不进，比如挪的是还没结算的新卡） */
+export function beginGesture(): (record?: boolean) => void {
   const before = snap();
   held.add(before);
   // 拍的这份就是现在的白板：留作快照缓存，800ms 后的自动保存不用再拍一遍
-  return () => { held.delete(before); const after = (cur = snap()); if (!same(after, before)) { pushUndo(before, after); changed(); } };
+  return (record = true) => { held.delete(before); const after = (cur = snap()); if (record && !same(after, before)) { pushUndo(before, after); changed(); } };
 }
 /** 还没进撤销栈、但以后会进的快照（拖动开始时拍的）：它们之后的 sync 记录不能丢 */
 const held = new Set<Snap>();
