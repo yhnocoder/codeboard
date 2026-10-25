@@ -17,7 +17,7 @@ import { GitHubPicker } from "./ui/GitHubPicker";
 import { MenuLayer, DialogLayer, TooltipLayer, openMenu, promptText } from "./ui/Menu";
 import { Icon } from "./ui/icons";
 import { startDraw } from "./state/mode";
-import { cardTitle } from "@codeboard/core";
+import { cardTitle, THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import * as A from "./actions";
 import { flows, cardById } from "./state/store";
 import { MarkView } from "./cards/Card";
@@ -162,6 +162,8 @@ function Toolbar() {
       { label: "Apply Run…", run: () => A.pickRun() },
       null,
       { label: "Settings…", kbd: kbd("settings"), run: () => A.openSettings() },
+      // 快速换主题：和设置页的主题选择是同一个设置（codeboard.theme），换了就存下
+      { label: "Theme", sub: THEMES.map(([id, name]) => ({ label: name, checked: state.host.settings.theme === id, hint: EXPERIMENTAL_THEMES.includes(id) ? "Experimental" : undefined, run: () => A.setSetting("theme", id) })) },
       { label: "Keyboard Shortcuts", kbd: kbd("help"), run: () => setKeysOpen(true) },
       { label: "Copy Diagnostics", run: () => A.copyDiagnostics() },
     ], x, y, { up: true });
