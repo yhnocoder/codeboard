@@ -87,16 +87,19 @@ test("dragCardIntoOtherSection", async () => {
   await close(h);
 });
 
-/** Membership is by area: a card belongs to the Section that covers more than half of it. A wide card mostly inside joins (the
- *  Section lights up while it is over it); a card whose centre is inside but which sticks out over a corner (less than half inside) doesn't */
-test("sectionMembershipByOverlap", async () => {
+/** Membership is where the card is put: the deepest Section containing the card's top-left corner. A wide card whose corner is inside
+ *  joins even with under half of its area inside (the Section lights up while it is over it); a card whose corner is just outside stays
+ *  out even though most of it overlaps */
+test("sectionMembershipByCorner", async () => {
   const b = emptyBoard("b1", "membership");
-  put(b, { id: "c1", kind: "note", bg: true, md: "Corner card" } as NoteCard, 100, 620, 200);
-  put(b, { id: "w1", kind: "note", bg: true, md: "# A wide card\n\nMost of it goes inside the Section." } as NoteCard, 560, 560, 560);
+  put(b, { id: "c1", kind: "note", bg: true, md: "Corner outside" } as NoteCard, 100, 620, 200);
+  put(b, { id: "w1", kind: "note", bg: true, md: "# A wide card\n\nIts corner goes inside the Section." } as NoteCard, 560, 560, 560);
   b.sections.push({ id: "S", title: "Scheduling", x: 600, y: 100, w: 400, h: 300 });
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light });
   await wait(h, 800);
+  const size = (id: string) => h.page.evaluate((i) => { const r = document.querySelector(`.card[data-id="${i}"]`)!.getBoundingClientRect(); return { w: r.width, h: r.height }; }, id);
+  const inside = (p: { x: number; y: number }, r: { w: number; h: number }) => (Math.max(0, Math.min(p.x + r.w, 1000) - Math.max(p.x, 600)) * Math.max(0, Math.min(p.y + r.h, 400) - Math.max(p.y, 100))) / (r.w * r.h);
   const move = async (id: string, dx: number, dy: number, name?: string) => {
     const hd = (await h.page.locator(`.card[data-id="${id}"] .chead`).boundingBox())!;
     const x = hd.x + 30, y = hd.y + hd.height / 2;
@@ -107,17 +110,18 @@ test("sectionMembershipByOverlap", async () => {
     await h.page.mouse.up(); await wait(h, 500);
     return lit;
   };
-  // corner: centre inside the Section, about 40% of the card inside: stays out
-  const r0 = h.board().place.c1;
-  const litC = await move("c1", 880 - r0.x, 350 - r0.y);
-  const pc = h.board().place.c1, rc = await h.page.evaluate(() => { const r = document.querySelector('.card[data-id="c1"]')!.getBoundingClientRect(); return { w: r.width, h: r.height }; });
-  const centreIn = pc.x + rc.w / 2 < 1000 && pc.y + rc.h / 2 < 400;
-  check("overlap-corner-stays-out", centreIn && !pc.section && litC === 0, { pc, rc, litC });
+  // corner just left of the Section, ~95% of the card over it: stays out
+  const c0 = h.board().place.c1;
+  const litC = await move("c1", 590 - c0.x, 150 - c0.y, "27-corner-01-corner-outside");
+  const pc = h.board().place.c1, ac = inside(pc, await size("c1"));
+  check("corner-outside-stays-out", pc.x < 600 && ac > 0.9 && !pc.section && litC === 0, { pc, ac, litC });
   await h.page.keyboard.press("Control+z"); await wait(h, 400);
-  // wide card: about 70% of its width inside: joins; the Section lights up during the drag
-  const litW = await move("w1", 0, 120 - h.board().place.w1.y, "27-overlap-01-wide-card-over-section");
-  await shot(h, "27-overlap-02-wide-card-joined");
-  check("overlap-wide-card-joins", h.board().place.w1.section === "S" && litW === 1, { place: h.board().place.w1, litW });
+  // wide card: corner inside, under half of its area inside: joins, and the Section lights up during the drag
+  const w0 = h.board().place.w1;
+  const litW = await move("w1", 740 - w0.x, 250 - w0.y, "27-corner-02-wide-card-over-section");
+  await shot(h, "27-corner-03-wide-card-joined");
+  const pw = h.board().place.w1, aw = inside(pw, await size("w1"));
+  check("corner-inside-joins", pw.section === "S" && aw < 0.5 && aw > 0.35 && litW === 1, { pw, aw, litW });
   await close(h);
 });
 
