@@ -1,6 +1,6 @@
 // Note（有背景的便签）和 Text（直接写在画布上的字）。内容是 Markdown，支持公式。
-import { Show } from "solid-js";
-import { findCard, type NoteCard } from "@codeboard/core";
+import { Show, createMemo } from "solid-js";
+import { findCard, mdHeading, type NoteCard } from "@codeboard/core";
 import { mutate, isSel, sel, placeOf } from "../state/store";
 import { editing } from "../state/ui";
 import { Editable } from "../ui/Editable";
@@ -10,6 +10,8 @@ import { below } from "../ui/Menu";
 
 export function NoteBody(p: { card: NoteCard }) {
   const c = () => p.card;
+  // 卡头：用户改过的名字 → Markdown 开头的标题 → Note。只在 md 变了时重算（只看第一行非空的）
+  const heading = createMemo(() => (c().bg ? mdHeading(c().md) : ""));
   return (
     <Show when={c().bg} fallback={
       <Editable class={`tx st-${c().size ?? "body"}`} kind="note" id={c().id} value={c().md} multiline md placeholder="Type something…"
@@ -17,7 +19,7 @@ export function NoteBody(p: { card: NoteCard }) {
     }>
       <div class="chead" data-drag>
         <Show when={placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-nodrag onClick={() => A.toggleLock([c().id])}><Icon name="lock" /></button></Show>
-        <span class="kind">¶</span><span class="ctitle sys">Note</span><span class="grow" />
+        <span class="kind">¶</span><span class="ctitle sys" classList={{ untitled: !c().title && !heading() }}>{c().title || heading() || "Note"}</span><span class="grow" />
         <button class="ib" aria-label="Note Menu" data-tip="More Actions" data-nodrag onClick={(e) => A.cardMenu(c().id, ...below(e.currentTarget))}><Icon name="more" /></button>
       </div>
       <Editable class="nbody" kind="note" id={c().id} value={c().md} multiline md placeholder="Write a note… Markdown and $math$ work" onCommit={(v) => A.setNoteText(c().id, v)} />

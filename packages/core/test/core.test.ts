@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   alignRows, wordDiff, mapLines, findBlock, diffLines, computeFlows, walkOrder, descendants, hiddenByCollapse, stampBorn, loadBoard, snapMove, align,
-  cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize,
+  cardRows, rowIndexOf, copyText, parseGithubUrl, classifyPaste, guessLang, migrateBoard, mergeOverlapping, sortSegments, emptyBoard, estSize, mdHeading,
   type Board, type CodeCard, type Link, type Segment, type SegView,
 } from "../src";
 import { initAnalysis, analyze, planSelection, listsMembers, varCandidates, symbolAt, pyprojectScripts, initExports, BLANK, COMMENT, DOCSTRING, type FileAnalysis } from "../src/analysis";
@@ -336,6 +336,21 @@ describe("segments", () => {
     expect(sorted.map((s) => s.id)).toEqual(["a", "b", "c"]);
     const m = mergeOverlapping(sorted);
     expect(m[0]).toMatchObject({ start: 10, end: 14, text: ["1", "2", "3", "4", "5"] });
+  });
+});
+
+describe("note title from its leading heading", () => {
+  it("returns the text of a leading ATX heading, without inline marks", () => {
+    expect(mdHeading("# KV cache budget\n\nPrefill first.")).toBe("KV cache budget");
+    expect(mdHeading("\n\n  ## **Decode** `loop` ##\nbody")).toBe("Decode loop");
+    expect(mdHeading("### [Scheduler](https://x.y/z) and _batching_")).toBe("Scheduler and batching");
+    expect(mdHeading("# 异构并行计算")).toBe("异构并行计算");
+  });
+  it("is empty when the first non-blank line is not a heading", () => {
+    expect(mdHeading("Just text\n# Later heading")).toBe("");
+    expect(mdHeading("#hashtag")).toBe("");
+    expect(mdHeading("")).toBe("");
+    expect(mdHeading("\n  \n")).toBe("");
   });
 });
 
