@@ -25,6 +25,7 @@ export function nodeWorkspace(root = WS): TestWorkspace {
     open, fire, finds: 0,
     files: {
       roots: () => [root],
+      name: () => path.basename(root),
       rootOf: (abs) => (inRoot(abs) ? root : undefined),
       unsavedText: (abs) => open.get(abs),
       openLanguage: () => undefined,
