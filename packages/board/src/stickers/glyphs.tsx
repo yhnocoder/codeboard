@@ -1,7 +1,11 @@
 // 贴纸图标：内置一套（彩色圆底 + 白色线条；各主题在 themes.css 里换成自己的画法；线条是 Lucide 的造型，ISC 许可，
-// 见 public/icons/LICENSE-lucide.txt；d / fill 由 tools/icons/gen.mjs 从 tools/icons/icons.src.mjs 写入），Emoji 直接用系统字体，自定义包（Iconify JSON / SVG 文件夹）由插件读本地目录。
-import { createSignal, Show, type JSX } from "solid-js";
-import type { IconRef, StickerPack } from "@codeboard/core";
+// 见 public/icons/LICENSE-lucide.txt；d / fill 由 tools/icons/gen.mjs 从 tools/icons/icons.src.mjs 写入），Emoji 直接用系统字体，
+// 自定义包（Iconify JSON / 装 SVG、PNG、WebP、GIF 的文件夹）由插件读本地目录。
+// 位图（#11）用原生 <img> 画（宿主认过格式的 data: URL），动图由浏览器自己播。动图在白板上只在看得见、且是完整档（不是概览 / 地图档）时播，
+// 别的时候换成第一帧的静态图（第一次要用时解一帧画进 canvas，存成 PNG data: URL，每个图标一份）：屏幕外、缩小了的动图不再每帧重画。
+// 播不播由外面用 GlyphPlay 告诉（画布上的贴纸看自己在不在屏幕附近，选图标面板看指针在不在格子上），没人说就一直播
+import { createContext, createMemo, createSignal, Show, useContext, type Accessor, type JSX } from "solid-js";
+import type { IconRef, StickerIcon, StickerPack } from "@codeboard/core";
 import DOMPurify from "dompurify";
 import { ask } from "../host";
 
@@ -35,15 +39,63 @@ export function loadPacks(force = false) {
   return loading;
 }
 export { packs };
+/** 自定义包里的图标；包还没读过就去读（白板上有自定义贴纸时，不用先打开选图标面板） */
+export const iconOf = (i: IconRef): StickerIcon | undefined => {
+  const ps = packs();
+  if (!ps) { void loadPacks(); return undefined; }
+  return ps.find((p) => p.id === i.pack)?.icons.find((x) => x.name === i.name);
+};
+type Bitmap = Extract<StickerIcon, { img: string }>;
+/** 自定义包里的位图图标 */
+export const bitmapOf = (i: IconRef): Bitmap | undefined => { const ic = iconOf(i); return ic && "img" in ic ? ic : undefined; };
 // 包里的 SVG 是用户目录里的文件：画之前用 DOMPurify（svg 配置）清洗，去掉脚本、事件属性、javascript: 链接、foreignObject、<style>；按图标缓存
 const clean = new WeakMap<object, string>();
 const svgOf = (i: IconRef) => {
-  const ic = packs()?.find((p) => p.id === i.pack)?.icons.find((x) => x.name === i.name);
-  if (!ic) return undefined;
+  const ic = iconOf(i);
+  if (!ic || !("svg" in ic)) return undefined;
   let s = clean.get(ic);
   if (s === undefined) clean.set(ic, s = DOMPurify.sanitize(ic.svg, { USE_PROFILES: { svg: true, svgFilters: true }, FORBID_TAGS: ["style"] }));
   return s;
 };
+
+/** 动图现在能不能播：画布上的贴纸、选图标面板各自提供；默认一直播（放贴纸时的影子、别的小地方） */
+export const GlyphPlay = createContext<Accessor<boolean>>(() => true);
+
+// 动图的第一帧（静态 PNG data: URL），按图标缓存；要用时才解码，解码在 createImageBitmap 里（不占主线程），画一次 canvas。
+// 一个接一个做（每个各占一个任务）：打开一整包动图的面板时几百个第一帧不挤在一帧里
+const STILL_MAX = 480; // 最大 240px 的贴纸在 2x 屏上够用；更大的原图缩下来，data: URL 不用太大
+const stills = new WeakMap<Bitmap, Accessor<string | undefined>>();
+let stillQueue = Promise.resolve();
+function stillOf(ic: Bitmap): Accessor<string | undefined> {
+  let a = stills.get(ic);
+  if (a) return a;
+  const [url, setUrl] = createSignal<string>();
+  stills.set(ic, a = url);
+  stillQueue = stillQueue.then(async () => {
+    const [head, b64] = ic.img.split(",", 2);
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const bm = await createImageBitmap(new Blob([bytes], { type: head.slice(5, head.indexOf(";")) }));
+    const k = Math.min(1, STILL_MAX / Math.max(bm.width, bm.height));
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(bm.width * k)); cv.height = Math.max(1, Math.round(bm.height * k));
+    cv.getContext("2d")!.drawImage(bm, 0, 0, cv.width, cv.height);
+    bm.close();
+    setUrl(cv.toDataURL("image/png"));
+  }).catch(() => void setUrl(ic.img)); // 解不出第一帧就照原样画
+  return a;
+}
+
+/** 位图贴纸：原生 <img>，在方框里按比例缩放（object-fit: contain）；动图不能播时换成第一帧 */
+function BitmapGlyph(p: { icon: IconRef; ic: Bitmap; class?: string; style: JSX.CSSProperties }) {
+  const may = useContext(GlyphPlay);
+  // 只有动图跟踪「能不能播」（画布上的贴纸据此跟踪镜头）；镜头每帧变，这里只在播 / 停切换时才换 src
+  const play = createMemo(() => !!p.ic.anim && may());
+  const src = () => (!p.ic.anim || play() ? p.ic.img : stillOf(p.ic)());
+  return <img class={`glyph img ${p.class ?? ""}`} classList={{ anim: !!p.ic.anim, paused: !!p.ic.anim && !play() }} style={p.style} src={src()} alt="" draggable={false}
+    data-pack={p.icon.pack} data-name={p.icon.name} />;
+}
 
 /** 一个贴纸的样子；size = 像素 */
 export function Glyph(p: { icon: IconRef; color?: string; size: number; class?: string; style?: JSX.CSSProperties }) {
@@ -53,7 +105,10 @@ export function Glyph(p: { icon: IconRef; color?: string; size: number; class?: 
   return (
     <Show when={p.icon.pack !== "emoji"} fallback={<span class={`glyph emoji ${p.class ?? ""}`} style={{ ...base(), "font-size": `${p.size * 0.86}px` }}>{p.icon.name}</span>}>
       <Show when={b()} fallback={
-        <Show when={svgOf(p.icon)} fallback={<span class={`glyph missing ${p.class ?? ""}`} style={base()} data-tip={`Missing icon ${p.icon.pack}:${p.icon.name}`} />}>
+        <Show when={svgOf(p.icon)} fallback={
+          <Show when={bitmapOf(p.icon)} keyed fallback={<span class={`glyph missing ${p.class ?? ""}`} style={base()} data-tip={`Missing icon ${p.icon.pack}:${p.icon.name}`} />}>
+            {(ic) => <BitmapGlyph icon={p.icon} ic={ic} class={p.class} style={base()} />}
+          </Show>}>
           <span class={`glyph custom ${p.class ?? ""}`} style={{ ...base(), color: col() }} innerHTML={svgOf(p.icon)} />
         </Show>}>
         <Show when={!b()!.text} fallback={<span class={`glyph tag bi ${p.class ?? ""}`} style={{ height: `${p.size}px`, "font-size": `${p.size * 0.5}px`, "--c": col(), ...p.style }}>{b()!.text}</span>}>

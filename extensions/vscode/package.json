@@ -621,7 +621,7 @@
         "codeboard.stickerFolder": {
           "type": "string",
           "default": "",
-          "description": "Folder with sticker packs (Iconify JSON files or folders of SVGs)."
+          "description": "Folder with sticker packs (Iconify JSON files, or folders of SVG, PNG, WebP or GIF images; animated ones play)."
         },
         "codeboard.debug.enabled": {
           "type": "boolean",

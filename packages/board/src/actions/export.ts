@@ -14,6 +14,7 @@ import { flushMd } from "../md/lazy";
 import { renderMd } from "@yhnocoder/markdown";
 import type { ViewerData } from "../export/viewer";
 import VIEWER_JS from "../export/viewer.ts?script";
+import { bitmapOf } from "../stickers/glyphs";
 
 /** 讲解路径从哪张卡开始：选中的卡，否则第一张 Start 卡，否则第一张调用图的根 */
 export function walkStart(): string | undefined {
@@ -226,6 +227,8 @@ async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Rec
     if (/^\d+$/.test(el.textContent ?? "")) el.textContent = String(ids.length);
   });
   world.querySelectorAll<HTMLElement>("[data-note]").forEach((el) => { if (hidden.has(el.dataset.note!)) el.remove(); });
+  // 停在第一帧的动图贴纸（屏幕外的）在快照里照样播
+  world.querySelectorAll<HTMLImageElement>("img.glyph.anim").forEach((im) => { const ic = bitmapOf({ pack: im.dataset.pack!, name: im.dataset.name! }); if (ic) im.setAttribute("src", ic.img); });
   world.querySelectorAll<HTMLImageElement>("img[src]").forEach((im) => { im.setAttribute("src", resRef(im.getAttribute("src")!, location.href)); });
   world.querySelectorAll<HTMLElement>("[style*='url(']").forEach((el) => el.setAttribute("style", el.getAttribute("style")!.replace(/url\(\s*(["']?)([^"')]+)\1\s*\)/g, (_m, _q, u) => `url("${resRef(u, location.href)}")`)));
 

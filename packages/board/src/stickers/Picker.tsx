@@ -5,13 +5,14 @@ import { createMemo, createSignal, For, Show, onCleanup } from "solid-js";
 import { firstLine, type IconRef, type Sticker } from "@codeboard/core";
 import { linkCurve } from "../state/geo";
 import { bezAt } from "../canvas/geom";
-import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, packs } from "./glyphs";
+import { BUILTIN, EMOJI, STICKER_COLORS, Glyph, GlyphPlay, packs } from "./glyphs";
 import { pickSticker, stickerDown, stickerMenu, stickerLabel } from "../actions/stickers";
 import { stickerPick, setStickerPick, stickerColor, setStickerColor, isSelSticker, stickerList, freeStickers, boundStickers, linkStickers } from "../state/stickers";
 import { placing } from "../state/mode";
-import { state } from "../state/store";
+import { placeOf, rectOf, state } from "../state/store";
+import { nearView } from "../state/cull";
 import { send } from "../host";
-import { cam, lod } from "../state/camera";
+import { cam, camMoving, lod } from "../state/camera";
 import { shownIcon, stickerClick } from "../actions/questions";
 import { useOverlay } from "../ui/overlay";
 
@@ -42,10 +43,16 @@ export function StickerPicker() {
       </div>
       <input class="sq" placeholder="Search icons…" value={q()} onInput={(e) => setQ(e.currentTarget.value)} onKeyDown={keepKey} />
       <div class="sgrid">
-        <For each={items()}>{(it) => <button class="scell" data-tip={it.label} onClick={() => pickSticker(it.icon)}><Glyph icon={it.icon} color={tab() === "emoji" ? undefined : stickerColor()} size={22} /></button>}</For>
+        {/* 动图只在指针停在格子上时播：一个包几百个动图表情一起播，每帧都要重画整个面板 */}
+        <For each={items()}>{(it) => {
+          const [hot, setHot] = createSignal(false);
+          return <button class="scell" data-tip={it.label} onClick={() => pickSticker(it.icon)} onPointerEnter={() => setHot(true)} onPointerLeave={() => setHot(false)}>
+            <GlyphPlay.Provider value={hot}><Glyph icon={it.icon} color={tab() === "emoji" ? undefined : stickerColor()} size={22} /></GlyphPlay.Provider>
+          </button>;
+        }}</For>
         <Show when={!items().length}><div class="sempty">{tab() === "builtin" || tab() === "emoji" ? "No match" : "No icons in this pack"}</div></Show>
       </div>
-      <Show when={tab() !== "emoji"}>
+      <Show when={tab() !== "emoji" && (tab() === "builtin" || !packs()?.find((pk) => pk.id === tab())?.icons.every((i) => "img" in i))}>
         <div class="scolors">
           <span>Color</span>
           <button class="sw def" classList={{ on: !stickerColor() }} data-tip="Default" onClick={() => setStickerColor(undefined)} />
@@ -74,16 +81,27 @@ export function PlacingGhost() {
 type FreeAt = Extract<Sticker["at"], { kind: "canvas" }>;
 const menuAt = (id: string) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); stickerMenu(id, e.clientX, e.clientY); };
 
-/** 一枚可拖、可改大小的贴纸；x、y 是它所在那一层的坐标（画布 = 世界坐标，卡里 = 相对卡左上角） */
-function FreeSticker(p: { s: Sticker; x: number; y: number }) {
+/**
+ * 动图贴纸能不能播：完整档（概览、地图档不播），且世界坐标里的这一块在屏幕附近（state/cull.ts 的 nearView）。
+ * 停随时停；开始播等镜头停下（平移时新进来的先画第一帧，免得换图、建合成层挤进平移的那几帧，同 cull.ts 等镜头停下再藏）。
+ * 只有动图会调它（stickers/glyphs.tsx），别的贴纸不跟踪镜头
+ */
+function playNear(rect: () => { x: number; y: number; w: number; h: number }) {
+  let was = false;
+  return () => (was = lod() === "full" && nearView(rect(), was) && (was || !camMoving()));
+}
+
+/** 一枚可拖、可改大小的贴纸；x、y 是它所在那一层的坐标（画布 = 世界坐标，卡里 = 相对卡左上角，card = 那张卡） */
+function FreeSticker(p: { s: Sticker; x: number; y: number; card?: string }) {
   const at = () => p.s.at as FreeAt;
   const size = () => at().size ?? 32;
   const sel = () => isSelSticker(p.s.id);
+  const play = playNear(() => { const o = p.card ? placeOf(p.card) : { x: 0, y: 0 }; return { x: o.x + p.x, y: o.y + p.y, w: size(), h: size() }; });
   return (
     <div class="stk canvas" classList={{ q: !!p.s.q, done: !!p.s.q?.done, sel: sel(), bound: !!at().on, "lod-map": lod() === "map" }} data-sticker={p.s.id} data-tip={stickerLabel(p.s.icon)}
       style={{ left: `${p.x}px`, top: `${p.y}px`, "min-width": `${size()}px`, height: `${size()}px`, "--s": `${size()}px` }}
       onPointerDown={(e) => stickerDown(e, p.s.id)} onClick={(e) => stickerClick(p.s.id, e.currentTarget)} onContextMenu={menuAt(p.s.id)}>
-      <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={size()} />
+      <GlyphPlay.Provider value={play}><Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={size()} /></GlyphPlay.Provider>
       <Show when={sel()}><span class="sgrip" data-nodrag data-export="strip" style={{ scale: `${1 / cam.z}` }} onPointerDown={(e) => stickerDown(e, p.s.id, true)} /></Show>
     </div>
   );
@@ -91,15 +109,17 @@ function FreeSticker(p: { s: Sticker; x: number; y: number }) {
 
 /** 卡角上、代码行上的小贴纸（不能改大小） */
 export function StickerChip(p: { s: Sticker; size: number }) {
+  const card = p.s.at.kind === "line" ? p.s.at.card : undefined;
+  const play = card ? playNear(() => rectOf(card)) : () => lod() === "full";
   return (
     <span class="stk" classList={{ sel: isSelSticker(p.s.id), q: !!p.s.q, done: !!p.s.q?.done }} data-sticker={p.s.id} data-tip={p.s.q?.md ? firstLine(p.s.q.md) : stickerLabel(p.s.icon)}
       onPointerDown={(e) => stickerDown(e, p.s.id)} onClick={(e) => { e.stopPropagation(); stickerClick(p.s.id, e.currentTarget); }} onContextMenu={menuAt(p.s.id)}>
-      <Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={p.size} />
+      <GlyphPlay.Provider value={play}><Glyph icon={shownIcon(p.s).icon} color={shownIcon(p.s).color} size={p.size} /></GlyphPlay.Provider>
     </span>
   );
 }
 
-const FreeList = (p: { list: Sticker[] }) => <For each={p.list}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} />}</For>;
+const FreeList = (p: { list: Sticker[]; card?: string }) => <For each={p.list}>{(s) => <FreeSticker s={s} x={(s.at as FreeAt).x} y={(s.at as FreeAt).y} card={p.card} />}</For>;
 
 /** 画布上没绑东西的贴纸（世界坐标层，在所有卡上面） */
 export function CanvasStickers() {
@@ -110,7 +130,7 @@ export function CanvasStickers() {
 /** 绑在卡上的贴纸：放在卡里面，跟卡同一图层、一起走 */
 export function BoundStickers(p: { card: string }) {
   const list = stickerList(() => boundStickers(p.card));
-  return <FreeList list={list()} />;
+  return <FreeList list={list()} card={p.card} />;
 }
 
 /** 绑在一条箭头上的贴纸：沿线位置 t + 偏移；选中时画一条虚线连到线上那一点。跟这条线在同一层（canvas/Links.tsx） */

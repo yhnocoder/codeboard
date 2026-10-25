@@ -79,7 +79,7 @@ function SettingsPage(p: { section?: string }) {
             }}>+ Add Package</button>
           </div>
         </Sec>
-        <Sec id="stickers" title="Sticker Packs folder" hint="Iconify JSON files, or folders of SVGs.">
+        <Sec id="stickers" title="Sticker Packs folder" hint="Iconify JSON files, or folders of SVG, PNG, WebP or GIF images (animated ones play).">
           <div class="st-row">
             <PathField />
             <button class="btn" onClick={() => send({ type: "openStickerDir" })}>Open Folder</button>
