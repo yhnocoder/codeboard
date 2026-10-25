@@ -1,10 +1,11 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
 // Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
-import { put, findSym, symCard, type Host } from "../harness";
+//          noteDisplayMathTypedAsBlock
+import { put, findSym, symCard, shot, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check } from "../fixtures";
+import { test, open, check, light } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 
@@ -237,5 +238,33 @@ test("undoIsOneStep", async () => {
   const clearUndone = st(), text = md(h, "n0");
   check("undoIsOneStep place sidenote", placed === "code,note,note sn0 l1" && placeUndone === start, { start, placed, placeUndone });
   check("undoIsOneStep clear note", cleared === "code sn1 l0" && clearUndone === start && text === "hello world", { cleared, clearUndone, text });
+  await close(h);
+});
+
+/** 一行里打完 $$m$$（不按回车、不离开编辑）：马上就是公式块，位置、大小和退出编辑后显示的一样（居中，不是行内的小公式）；接着打的字在下一段 */
+test("noteDisplayMathTypedAsBlock", async () => {
+  const h = await open({ board: board([""]), light });
+  await h.page.waitForTimeout(1500);
+  const geo = () => h.page.evaluate(() => {
+    const body = document.querySelector('.card[data-id="n0"] .nbody')!, base = body.querySelector(".katex-html .katex-base");
+    const b = body.getBoundingClientRect(), r = base?.getBoundingClientRect();
+    return {
+      block: body.querySelectorAll("[data-type=block-math], .math").length, inline: body.querySelectorAll("[data-type=inline-math], p .katex").length,
+      display: body.querySelectorAll(".katex-display").length,
+      ...(r ? { x: Math.round(r.left - b.left), y: Math.round(r.top - b.top), w: Math.round(r.width), h: Math.round(r.height), dx: Math.round(r.left + r.width / 2 - (b.left + b.width / 2)) } : {}),
+    };
+  });
+  await editNote(h, "n0");
+  await h.page.keyboard.type("$$\\frac{200}{10}$$", { delay: 20 }); // 不走 keys()：{200} 会被当成按键
+  await h.page.waitForTimeout(150);
+  const typed = await geo();
+  await shot(h, "noteDisplayMathTypedAsBlock-typed");
+  await keys(h.page, "after");
+  await exitEdit(h);
+  await h.page.waitForTimeout(1500);
+  const shown = await geo(), text = md(h, "n0");
+  await shot(h, "noteDisplayMathTypedAsBlock-shown");
+  const same = (["x", "y", "w", "h"] as const).every((k) => typed[k] !== undefined && Math.abs(typed[k]! - shown[k]!) <= 1);
+  check("noteDisplayMathTypedAsBlock", typed.block === 1 && typed.inline === 0 && typed.display === 1 && Math.abs(typed.dx ?? 99) <= 2 && same && text === "$$\n\\frac{200}{10}\n$$\n\nafter", { typed, shown, text });
   await close(h);
 });

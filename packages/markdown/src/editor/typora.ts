@@ -9,7 +9,7 @@
 import { Extension, InputRule, Mark as TMark, wrappingInputRule, type Editor } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
-import { Fragment, type Mark, type Node as PMNode, type Schema } from "@tiptap/pm/model";
+import { Fragment, type Mark, type Node as PMNode, type ResolvedPos, type Schema } from "@tiptap/pm/model";
 import { closeHistory } from "@tiptap/pm/history";
 import { ESC_MARK, MARK_MD, blockSource, parseSource } from "../schema";
 import { SourceMark, headPrefix, sourcePlugin, srcRuns } from "./source";
@@ -105,6 +105,13 @@ export function retype(tr: Transaction, pos = tr.selection.head): boolean {
     if (!span) continue;
     const start = $c.start() + i, marks = $c.marks();
     tr.replaceWith(start, $c.pos, span);
+    // 这一段只剩刚变出来的这一个（一整行的 $$m$$）：照存回去再读进来的样子换成块（公式块），编辑时和显示时一样。
+    // 表格的格子里写回去是一行行内内容，还是行内的
+    const $s = tr.doc.resolve(start), p = $s.parent;
+    if (p.type.name === "paragraph" && p.childCount === 1 && span.childCount === 1 && !span.firstChild!.isText && !$s.node(-1).type.spec.tableRole) {
+      const n = soleBlock(p, tr.doc.type.schema);
+      if (n && !n.isTextblock && n.isAtom && swapBlock(tr, $s, n)) return true;
+    }
     tr.setSelection(TextSelection.create(tr.doc, start + span.size));
     tr.setStoredMarks(marks); // 接着打的字不带刚变出来的格式
     return true;
@@ -112,26 +119,37 @@ export function retype(tr: Transaction, pos = tr.selection.head): boolean {
   return false;
 }
 
-/** 回车：整段（光标在段尾）解析出来是一个不是字的块（代码块、分隔线、目录、公式块）时换成它。缩进的代码块打字时不变（Typora 一样） */
-function enterBlock(state: EditorState): boolean {
-  const tr = state.tr, $c = tr.selection.$head, p = $c.parent;
-  if (!tr.selection.empty || p.type.name !== "paragraph" || !p.content.size || $c.parentOffset !== p.content.size) return false;
+/** 一段（段落）当 Markdown 原文按块解析出来正好是一个块时给它（存回去再读进来就是它） */
+function soleBlock(p: PMNode, schema: Schema): PMNode | null {
   const src = blockSource(p.toJSON());
-  if (/^(?: {4}|\t)/.test(src)) return false;
-  let ns: PMNode[];
-  try { ns = parseSource(src, false)!.map((j) => state.schema.nodeFromJSON(j)); } catch { return false; }
-  const n = ns.length === 1 ? ns[0] : null;
-  if (!n || !(n.isAtom || n.type.spec.code)) return false;
-  const start = $c.before(), $s = tr.doc.resolve(start);
+  if (/^(?: {4}|\t)/.test(src)) return null; // 缩进的代码块打字时不变（Typora 一样）
+  try {
+    const ns = parseSource(src, false)!.map((j) => schema.nodeFromJSON(j));
+    return ns.length === 1 ? ns[0] : null;
+  } catch { return null; }
+}
+/** $in 所在的这一段换成块 n：代码块光标放进去，别的放到它后面那一段（没有就补一个） */
+function swapBlock(tr: Transaction, $in: ResolvedPos, n: PMNode): boolean {
+  const start = $in.before(), $s = tr.doc.resolve(start);
   if (!$s.parent.canReplace($s.index(), $s.index() + 1, Fragment.from(n))) return false;
-  tr.replaceWith(start, $c.after(), n);
+  tr.replaceWith(start, $in.after(), n);
   const end = start + n.nodeSize;
   if (n.type.spec.code) tr.setSelection(TextSelection.create(tr.doc, end - 1));
   else {
-    if (!tr.doc.resolve(end).nodeAfter?.isTextblock) tr.insert(end, state.schema.nodes.paragraph.create());
+    if (!tr.doc.resolve(end).nodeAfter?.isTextblock) tr.insert(end, tr.doc.type.schema.nodes.paragraph.create());
     tr.setSelection(TextSelection.near(tr.doc.resolve(end + 1)));
+    tr.setStoredMarks([]);
   }
   return true;
+}
+
+/** 回车：整段（光标在段尾）解析出来是一个不是字的块（代码块、分隔线、目录、公式块）时换成它 */
+function enterBlock(state: EditorState): boolean {
+  const tr = state.tr, $c = tr.selection.$head, p = $c.parent;
+  if (!tr.selection.empty || p.type.name !== "paragraph" || !p.content.size || $c.parentOffset !== p.content.size) return false;
+  const n = soleBlock(p, state.schema);
+  if (!n || !(n.isAtom || n.type.spec.code)) return false;
+  return swapBlock(tr, $c, n);
 }
 const mkEl = (text: string) => {
   const s = document.createElement("span");
