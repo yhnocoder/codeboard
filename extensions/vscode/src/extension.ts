@@ -15,6 +15,7 @@ import { questionsMarkdown } from "@codeboard/core";
 import { openOnBoard } from "@codeboard/host/handlers";
 import { setMediaDir } from "@codeboard/host/exports";
 import { initSource } from "@codeboard/host/source";
+import { recordProject } from "@codeboard/host/transfer";
 import { onDidOpenGithubFile } from "@codeboard/host/github";
 import { githubDir, openStorage, type Storage } from "@codeboard/host/storage";
 import { scheduleAssetSweep } from "@codeboard/host/assetsweep";
@@ -43,6 +44,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const panels = new BoardHub(webviews.env(), store);
   sub(panels);
   panels.handler = makeHandler(panels);
+  // 跨工作区记下这个项目的存储目录：别的窗口的 Copy / Move to Another Project… 在里面找
+  void recordProject(panels.globalState, store.dir());
 
   // 先注册恢复面板，再等 tree-sitter（恢复时的 ready 消息会等 init 里的分析）
   sub(vscode.window.registerWebviewPanelSerializer(VIEW_TYPE, { deserializeWebviewPanel: async (p, state) => { await ready; await webviews.restore(panels, p, state); } }));
@@ -102,7 +105,7 @@ export async function activate(ctx: vscode.ExtensionContext) {
   // 名字索引跟着文件的保存、新建、删除、外面的改动增量更新
   sub(watchNameIndex());
   sub(ws.settings.onDidChange((e) => {
-    if (e.affects("codeboard.storageDir")) void store.reset().then(() => { marks.rebuild(); unsweep(); unsweep = scheduleAssetSweep(store); });
+    if (e.affects("codeboard.storageDir")) void store.reset().then(() => { marks.rebuild(); unsweep(); unsweep = scheduleAssetSweep(store); void recordProject(panels.globalState, store.dir()); });
     if (affectsSettings(e)) panels.broadcast({ type: "host", host: { settings: readSettings() } });
     if (e.affects("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
   }));

@@ -87,6 +87,16 @@
         "category": "CodeBoard"
       },
       {
+        "command": "codeboard.copyToProject",
+        "title": "Copy to Another Project…",
+        "category": "CodeBoard"
+      },
+      {
+        "command": "codeboard.moveToProject",
+        "title": "Move to Another Project…",
+        "category": "CodeBoard"
+      },
+      {
         "command": "codeboard.revealInFolder",
         "title": "Reveal in Folder",
         "category": "CodeBoard"
@@ -319,6 +329,16 @@
           "command": "codeboard.moveToGroup",
           "when": "view == codeboard.boards && viewItem == board",
           "group": "2_edit@3"
+        },
+        {
+          "command": "codeboard.copyToProject",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@4"
+        },
+        {
+          "command": "codeboard.moveToProject",
+          "when": "view == codeboard.boards && viewItem == board",
+          "group": "2_edit@5"
         },
         {
           "command": "codeboard.revealInFolder",

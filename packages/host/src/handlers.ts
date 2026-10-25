@@ -17,6 +17,7 @@ import type { BoardHost, BoardPanel } from "./boards";
 import { callVars, dispatchAt, expand, peek } from "./resolve";
 import { search, searchPick, entryPoints, searchName, genSource } from "./search";
 import { pasteClip } from "@codeboard/core/storage";
+import { pasteFar, recordClip } from "./transfer";
 import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
 import { allQuestions, exportFile, permalinks } from "./exports";
@@ -89,12 +90,16 @@ export function makeHandler(panels: BoardHost): Handler {
     openBoard: (_p, m) => openOnBoard(panels, m.id, m.card, m.line, m.sticker),
     copyCards: (p, m) => {
       panels.clip = { board: p.id, cards: m.cards, text: m.text };
+      // 别的窗口（别的项目）也能贴：记进全局存储目录
+      void recordClip(store.dir(), panels.clip).catch((e) => log("warn", `copyCards: ${e instanceof Error ? e.message : e}`));
       panels.broadcast({ type: "host", host: { clip: { board: p.id, n: m.cards.length } } });
       // 白板里写剪贴板可能被 webview 拦下：宿主再写一次，⌘V 收到的文字和记下的一样
       if (m.text) void workspace().ui.copy(m.text);
     },
     pasteCards: async (p, m) => {
-      const r = await pasteClip(store, panels.clip, p.id, { text: m.text, copy: !!m.copy });
+      const o = { text: m.text, copy: !!m.copy };
+      // 这个窗口的剪贴板对不上：看是不是别的窗口复制的卡
+      const r = (await pasteClip(store, panels.clip, p.id, o)) ?? (await pasteFar(store, p.id, o));
       if (!r) return null;
       const segs: Segment[] = r.cards.flatMap((x) => [...(x.card.kind === "code" ? x.card.segments : []), ...(x.sidenotes ?? []).flatMap((n) => (n.kind === "code" ? [n.code] : []))]);
       return { ...r, views: await viewsFor(segs) };

@@ -135,6 +135,9 @@ export class BoardHub implements BoardHost, Disposable {
     if (now) run(); else this.skelT = setTimeout(run, 120);
   }
 
+  /** 跨工作区的状态 */
+  get globalState() { return this.env.globalState; }
+
   /** 上次打开的时间（跨工作区；「回来接上」的提示用） */
   lastOpened(id: string): number | undefined { return this.env.globalState.get<Record<string, number>>(OPENED)?.[id]; }
   opened(id: string) {

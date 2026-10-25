@@ -1,5 +1,5 @@
 // 编辑器和侧栏的命令做什么：Add to Board（⌥B）、Add to Another Board…、Add to Selected Card、Add Function at Cursor、
-// Add as Sidenote（⌥S）、Reveal on Board，以及白板的新建 / 改名 / 删除 / 分组。命令注册在 commands.ts（VS Code 适配层）。
+// Add as Sidenote（⌥S）、Reveal on Board，以及白板的新建 / 改名 / 删除 / 分组 / 拷到或搬到别的项目。命令注册在 commands.ts（VS Code 适配层）。
 import * as path from "node:path";
 import { allCodeCards, estSize, placeCards, removeCards, type Board, type CardCopy, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
@@ -11,6 +11,7 @@ import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
 import { copyDiagnostics } from "./diagnostics";
 import { applyFlow, captureFlow } from "./runs";
+import { copyToProject, otherProjects, removeMoved } from "./transfer";
 import { langOf, readText, splitLines, workspace } from "./ws";
 
 /** 侧栏的节点（命令参数） */
@@ -96,6 +97,28 @@ export function makeActions(panels: BoardHost, store: Storage) {
     }
     const p = await panels.show(h.board.id);
     p?.post({ type: "reveal", card: h.card.id, seg: h.seg, lines: h.lines });
+  };
+
+  /** Copy / Move to Another Project…：选一个登记过的别的项目，拷过去（transfer.ts）；Move 再从这边删掉（放进 .trash），和 Delete Board 一样先关面板 */
+  const toProject = async (a: unknown, move: boolean) => {
+    const id = boardArg(a) ?? panels.target;
+    const b = id && (await store.load(id));
+    if (!b || !panels.globalState) return;
+    const ps = await otherProjects(panels.globalState, store.dir());
+    if (!ps.length) { void ui().info("No other project found. Open the other project once with CodeBoard so it shows up here."); return; }
+    const r = await ui().pick(ps.map((p) => ({ label: `$(folder) ${p.name}`, description: p.folders.join(" · ") || p.dir, p })), { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true });
+    if (!r) return;
+    if (move) {
+      const ok = await ui().warn(`Move board “${b.name}” to ${r.p.name}?`, { modal: true, detail: "It is removed from this project (restorable from .trash). Sub-boards, shared cards and images go with it." }, "Move");
+      if (ok !== "Move") return;
+    }
+    const t = await copyToProject(store, b.id, r.p);
+    if (!t) return;
+    if (move) {
+      await removeMoved(store, t, (x) => { panels.get(x)?.view.dispose(); if (panels.target === x) panels.setTarget(undefined); });
+      await panels.pushBoards();
+    }
+    void ui().info(`${move ? "Moved" : "Copied"} “${b.name}” to ${r.p.name}.`);
   };
 
   return {
@@ -235,6 +258,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
       if (panels.target === b.id) panels.setTarget(undefined);
       await panels.pushBoards();
     },
+    "codeboard.copyToProject": (a?: unknown) => toProject(a, false),
+    "codeboard.moveToProject": (a?: unknown) => toProject(a, true),
     "codeboard.moveToGroup": async (a?: unknown) => {
       const id = boardArg(a);
       if (!id) return;
