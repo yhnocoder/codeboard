@@ -3,11 +3,11 @@
 // 卡在几块白板上、谁连到它由宿主算好（state/store 的 shared），这里只读。
 import { unwrap } from "solid-js/store";
 import {
-  bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel, cardCopies, center, estSize,
+  bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel, cardCopies,
   type Card, type CardCopy, type DiffData, type Link, type PastedCards, type SegView,
 } from "@codeboard/core";
 import { state, setState, mutate, sel, select, clearSel, cardById, hostOf, toast, flushSave, shared, sharedOn, rectOf } from "../state/store";
-import { frames, deepestAt, isHidden } from "../state/sections";
+import { isHidden, settleHome } from "../state/sections";
 import { camTo, camTarget, fitTop, isVisible } from "../state/camera";
 import { ghostOut } from "../state/ghost";
 import { openPop } from "../state/pop";
@@ -120,19 +120,12 @@ function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: numb
   // 整组放在指针处附近的空地上（不压住别的卡），组内的相对位置不变
   const free = findFree({ ...box, x: at.x, y: at.y }, state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)));
   const dx = Math.round(free.x - box.x), dy = Math.round(free.y - box.y);
-  const fr = frames();
   let ids: string[] = [], segs: Record<string, string> = {};
   mutate((b) => {
     const m = placeCards(b, items, { copy, links, at: (p) => ({ ...p, x: p.x + dx, y: p.y + dy }) });
     ids = tops.map((x) => m.cards[x.card.id]).filter(Boolean);
     segs = m.segs;
-    for (const x of tops) {
-      const id = m.cards[x.card.id], p = id ? b.place[id] : undefined;
-      if (!p) continue;
-      const mid = center({ x: p.x, y: p.y, ...estSize(x.card, p) });
-      const s = deepestAt(fr, mid.x, mid.y)?.id;
-      if (s) p.section = s;
-    }
+    for (const id of ids) settleHome(b, id);
   });
   setState("views", (v) => { const n = { ...v }; for (const [o, k] of Object.entries(segs)) if (views[o]) n[k] = views[o]; for (const [k, x] of Object.entries(views)) if (!segs[k]) n[k] = x; return n; });
   select({ cards: ids });

@@ -87,6 +87,40 @@ test("dragCardIntoOtherSection", async () => {
   await close(h);
 });
 
+/** Membership is by area: a card belongs to the Section that covers more than half of it. A wide card mostly inside joins (the
+ *  Section lights up while it is over it); a card whose centre is inside but which sticks out over a corner (less than half inside) doesn't */
+test("sectionMembershipByOverlap", async () => {
+  const b = emptyBoard("b1", "membership");
+  put(b, { id: "c1", kind: "note", bg: true, md: "Corner card" } as NoteCard, 100, 620, 200);
+  put(b, { id: "w1", kind: "note", bg: true, md: "# A wide card\n\nMost of it goes inside the Section." } as NoteCard, 560, 560, 560);
+  b.sections.push({ id: "S", title: "Scheduling", x: 600, y: 100, w: 400, h: 300 });
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light });
+  await wait(h, 800);
+  const move = async (id: string, dx: number, dy: number, name?: string) => {
+    const hd = (await h.page.locator(`.card[data-id="${id}"] .chead`).boundingBox())!;
+    const x = hd.x + 30, y = hd.y + hd.height / 2;
+    await h.page.mouse.move(x, y); await h.page.mouse.down();
+    await h.page.mouse.move(x + dx / 2, y + dy / 2, { steps: 6 }); await h.page.mouse.move(x + dx, y + dy, { steps: 8 }); await wait(h, 300);
+    const lit = await h.page.locator('.sect.drop[data-sect="S"]').count();
+    if (name) await shot(h, name);
+    await h.page.mouse.up(); await wait(h, 500);
+    return lit;
+  };
+  // corner: centre inside the Section, about 40% of the card inside: stays out
+  const r0 = h.board().place.c1;
+  const litC = await move("c1", 880 - r0.x, 350 - r0.y);
+  const pc = h.board().place.c1, rc = await h.page.evaluate(() => { const r = document.querySelector('.card[data-id="c1"]')!.getBoundingClientRect(); return { w: r.width, h: r.height }; });
+  const centreIn = pc.x + rc.w / 2 < 1000 && pc.y + rc.h / 2 < 400;
+  check("overlap-corner-stays-out", centreIn && !pc.section && litC === 0, { pc, rc, litC });
+  await h.page.keyboard.press("Control+z"); await wait(h, 400);
+  // wide card: about 70% of its width inside: joins; the Section lights up during the drag
+  const litW = await move("w1", 0, 120 - h.board().place.w1.y, "27-overlap-01-wide-card-over-section");
+  await shot(h, "27-overlap-02-wide-card-joined");
+  check("overlap-wide-card-joins", h.board().place.w1.section === "S" && litW === 1, { place: h.board().place.w1, litW });
+  await close(h);
+});
+
 /** A Note whose Markdown starts with a heading shows the heading as its title; a title set by the user wins; no heading = "Note" */
 test("noteTitleFromHeading", async () => {
   const b = emptyBoard("b1", "titles");

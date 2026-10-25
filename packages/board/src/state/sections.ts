@@ -1,8 +1,8 @@
 // Section 的实际框：自己存的框 ∪ 成员卡（含边距）∪ 子 Section（core layout.sectionFrame，和子白板骨架同一套算法）。框随内容自动撑大，也能拖边改大。
-// 成员关系：卡片中心点落在哪个最深的框里（拖动结束时更新）。拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，
+// 成员关系（homeFor）：卡盖住一半以上面积的那个 Section（拖动结束、粘贴、新建时定）。拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，
 // 要进的 Section 撑开、亮起来（.drop），松手时才真的改 place.section。
 import { createMemo, createSignal, mapArray } from "solid-js";
-import { sectionFrame, sectionPill, type Rect, type Section } from "@codeboard/core";
+import { sectionFrame, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
 import { rooted } from "./root";
 
@@ -79,7 +79,40 @@ export const frames = rooted(() => createMemo<Map<string, Rect>>((prev) => {
   return same && m.size === prev.size ? prev : m;
 }, new Map()));
 
-/** 世界坐标 (x, y) 落在哪个最深的展开 Section 里 */
+/** 两个矩形重叠的面积 */
+export function overlapArea(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+/** 矩形 r 有一半以上的面积在 f 里 */
+export const mostlyIn = (r: Rect, f: Rect) => 2 * overlapArea(r, f) > r.w * r.h;
+/**
+ * 卡（矩形 r）属于哪个 Section：盖住它一半以上面积的展开 Section；有几个（嵌套、框叠在一起）时取最深的，一样深取盖得多的；都不到一半 = 不在 Section 里。
+ * 所有决定卡在哪个 Section 的地方都用它（拖动的预演和松手、粘贴、新建、画新 Section 时收哪些卡）。跟卡不相交的框一比就跳过
+ */
+export function homeFor(fr: Map<string, Rect>, r: Rect, skip?: Set<string>): Section | undefined {
+  const half = (r.w * r.h) / 2;
+  let best: Section | undefined, bd = -1, bo = 0;
+  for (const s of state.board.sections) {
+    if (s.collapsed || skip?.has(s.id)) continue;
+    const f = fr.get(s.id);
+    if (!f) continue;
+    const o = overlapArea(r, f);
+    if (o <= half) continue;
+    const d = depthOf(s);
+    if (d > bd || (d === bd && o > bo)) { best = s; bd = d; bo = o; }
+  }
+  return best;
+}
+/** 刚放到白板上的卡（还没量过尺寸，按估计的大小）进它落在的 Section：在 mutate 里调 */
+export function settleHome(b: Board, id: string) {
+  const p = b.place[id], c = b.cards.find((k) => k.id === id);
+  if (!p || !c) return;
+  const s = homeFor(frames(), { x: p.x, y: p.y, ...estSize(c, p) })?.id;
+  if (s) p.section = s; else delete p.section;
+}
+
+/** 世界坐标 (x, y) 落在哪个最深的展开 Section 里（Section 的父级：画框、拖标签） */
 export function deepestAt(fr: Map<string, Rect>, x: number, y: number, skip?: Set<string>): Section | undefined {
   let best: Section | undefined, bd = -1, ba = Infinity;
   for (const s of state.board.sections) {

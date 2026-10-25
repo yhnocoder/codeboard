@@ -1,7 +1,7 @@
 // 指针交互：拖卡（吸附、合并、⌥ 拖成 Sidenote、进出 Section）、改大小、框选、平移、缩放、
 // 拖 Section 标签、从调用拖出带 Call 标记的箭头、从行尾 / 卡边拖出箭头。installKeys 装窗口级的监听（按键分发在 keymap.ts）。
 import {
-  findCard, isCode, snapMove, snapResize, bounds, center, contains,
+  findCard, isCode, snapMove, snapResize, bounds, center,
   type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
@@ -10,7 +10,7 @@ import {
 import { tune } from "./state/tune";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
 import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing } from "./state/ui";
-import { frames, deepestAt, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
+import { frames, deepestAt, homeFor, mostlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
 import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
@@ -132,7 +132,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const ids = sel.cards.filter((i) => cardById(i) && !A.isLocked(i));
   if (!ids.length) return onClick?.();
   const skip = new Set(ids);
-  const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y, mid: center(rectOf(cardById(i)!.host)) }; });
+  const items = ids.map((i) => { const c = placeOf(i); return { id: i, ox: c.x, oy: c.y, r: rectOf(cardById(i)!.host) }; });
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
   const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
@@ -191,7 +191,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     } else setGuides([]);
     live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = Math.round(it.ox + dx); c.y = Math.round(it.oy + dy); } } });
     // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算
-    setMovingHome(drop ? null : new Map(items.map((it) => [it.id, deepestAt(fr, it.mid.x + dx, it.mid.y + dy)?.id])));
+    setMovingHome(drop ? null : new Map(items.map((it) => [it.id, homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id])));
   };
   track(e, (ev) => { moving(); onMove(ev); }, (ev, moved) => {
     clearTimeout(settleT);
@@ -213,13 +213,12 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       end();
       return A.cardToSidenote(ids[0], { card: drop.card, seg: drop.seg, lines: [drop.line!, drop.line!] });
     }
-    // 中心点决定进出哪个 Section
+    // 盖住卡一半以上的 Section 就是它的（homeFor）
     live((b) => {
       for (const it of items) {
         const c = hostPlace(b, it.id);
         if (!c) continue;
-        const r = rectOf(cardById(it.id)!.host), p = center(r);
-        const best = deepestAt(fr, p.x, p.y);
+        const best = homeFor(fr, rectOf(cardById(it.id)!.host));
         c.section = best?.id;
       }
     });
@@ -450,7 +449,7 @@ function drawSection(e: PointerEvent) {
     const r = moved ? { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.max(120, Math.abs(b.x - a.x)), h: Math.max(80, Math.abs(b.y - a.y)) } : { x: a.x, y: a.y, w: 360, h: 240 };
     clearSel();
     // 新框落在哪个 Section 里（按框中心，取最深的）就是它的父级；
-    // 只收同一层的东西：中心点在框内、原来属于父级（或更外层）的卡，整个落在框内、和它同父级的 Section
+    // 只收同一层的东西：一半以上在框内、原来属于父级（或更外层）的卡（mostlyIn，和 homeFor 同一条规则），整个落在框内、和它同父级的 Section
     const fr = frames();
     const c0 = center(r);
     // 整个落在新框里的 Section 不能当父级（那是从内往外画：它们反过来成为新框的子级）
@@ -459,7 +458,7 @@ function drawSection(e: PointerEvent) {
     const parent = deepestAt(fr, c0.x, c0.y, enclosed)?.id;
     const outer = new Set<string | undefined>([undefined]);
     for (let p = parent ? sec(parent) : undefined; p; p = p.parent ? sec(p.parent) : undefined) outer.add(p.id);
-    const inside = visibleCards().filter((c) => { const p = center(rectOf(c)); return contains(r, p.x, p.y) && outer.has(placeOf(c.id).section); }).map((c) => c.id);
+    const inside = visibleCards().filter((c) => mostlyIn(rectOf(c), r) && outer.has(placeOf(c.id).section)).map((c) => c.id);
     const subs = state.board.sections.filter((s) => enclosed.has(s.id) && s.parent === parent).map((s) => s.id);
     select({ cards: inside, sections: subs });
     A.moveToNewSection(r, parent);
