@@ -438,17 +438,22 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
           e.view.dispatch(e.state.tr.replaceWith(from, $h.pos, e.schema.text(src, $h.marks())));
           return true;
         }
-        // 展开着的标题，光标紧跟在 "## " 后面：变回普通段落（和没展开时在行首退格一样）
+        // 展开着的标题，光标紧跟在 "## " 后面：一次退一个 #（## → # → 普通段落，和 Typora 一样；没展开时在行首退格也一样）
         const pre = headPrefix($h.parent);
         if (pre && $h.parentOffset === pre) {
-          const st = $h.start();
-          e.view.dispatch(e.state.tr.delete(st, st + pre).setNodeMarkup($h.before(), e.schema.nodes.paragraph));
+          const st = $h.start(), level = /^#*/.exec($h.parent.textBetween(0, pre))![0].length, tr = e.state.tr;
+          if (level > 1) tr.delete(st + level - 1, st + level).setNodeMarkup($h.before(), undefined, { ...$h.parent.attrs, level: level - 1 });
+          else tr.delete(st, st + pre).setNodeMarkup($h.before(), e.schema.nodes.paragraph);
+          e.view.dispatch(tr);
           return true;
         }
         if ($h.parentOffset !== 0) return false;
         if (e.commands.undoInputRule()) return true;
-        // 标题行首：变回普通段落
-        if ($h.parent.type.name === "heading") return e.commands.setParagraph();
+        // 标题行首：降一级，一级标题变回普通段落
+        if ($h.parent.type.name === "heading") {
+          const level = $h.parent.attrs.level as number;
+          return level > 1 ? e.commands.setHeading({ level: (level - 1) as 1 }) : e.commands.setParagraph();
+        }
         // 列表项、引用的第一段开头：拿出来变回正文
         if ($h.depth >= 2 && $h.index(-1) === 0) {
           const outer = $h.node(-1).type.name;

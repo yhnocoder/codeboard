@@ -150,7 +150,9 @@ test("markdownInputRules", async () => {
     // 标题行首退格：变回段落
     // （刚在空 Note 里打完字马上按 Home，headless Chromium 里偶尔落回行尾：先停一下）
     // Home 之后要等 ProseMirror 收到 selectionchange 再按 Backspace（keys 里等），不然 Backspace 按的还是行尾的光标
-    { name: "heading backspace", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "h" },
+    // 一次退一个 #：## → # → 普通段落（Typora 一样）
+    { name: "heading backspace one level", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "# h" },
+    { name: "heading backspace to paragraph", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}{Backspace}"), md: "h" },
     { name: "task toggle", seq: "- [ ] t", after: async (pg) => { await pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first().click(); await pg.waitForTimeout(100); }, md: "- [x] t" },
     { name: "quote backspace", seq: "> q", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "q" },
     { name: "list backspace", seq: "- a{Enter}b", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "- a\n\nb" },
