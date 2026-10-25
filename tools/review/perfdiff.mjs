@@ -1,12 +1,12 @@
 // Perf comparison for CI: base vs head, measured in the same job on the same runner.
-// Usage: node tools/review/perfdiff.mjs <dir>   (dir holds board-base-*.json, board-head-*.json from run-perf.mjs --json,
+// Usage: node tools/review/perfdiff.mjs <dir> [title]   (dir holds board-base-*.json, board-head-*.json from run-perf.mjs --json,
 //        and host-base.log / host-head.log with one JSON line per run-perf-host.mjs run)
-// Writes <dir>/summary.md and exits 1 when an operation regresses past the thresholds below.
+// title names the run in the summary (default "Performance"). Writes <dir>/summary.md and exits 1 when an operation regresses past the thresholds below.
 // The runner has no GPU, so absolute times mean little; ratios between base and head on the same machine do.
 import fs from "node:fs";
 import path from "node:path";
 
-const dir = process.argv[2];
+const dir = process.argv[2], title = process.argv[3] || "Performance";
 if (!dir) { console.error("usage: perfdiff.mjs <dir>"); process.exit(2); }
 
 // Thresholds picked from run-to-run noise of the same commit (3 local runs, quick profile):
@@ -61,9 +61,10 @@ for (const op of ops) {
   if (over) slow.push(op);
   lines.push(`| ${op} | ${cell(bb, hb, LIMITS.busy, `${op} work per step`)} | ${cell(bf, hf, LIMITS.frame, `${op} frame p95`, FRAME_BUDGET)} | ${over ? "⚠ over 16.7 ms" : ""} |`);
 }
-for (const k of ["dragEnd"]) {
+// with animated stickers (run-perf.mjs --anim), also the main-thread work per idle second: what the playing stickers cost when nothing moves
+for (const k of ["dragEnd", ...(H[0].animStickers ? ["idleBusy1s"] : [])]) {
   const b = median(B.map((r) => r[k])), h = median(H.map((r) => r[k]));
-  if (Number.isFinite(h)) lines.push(`| ${k} (one-off) | ${cell(b, h, LIMITS.scalar, k)} | | |`);
+  if (Number.isFinite(h)) lines.push(`| ${k} (${k === "dragEnd" ? "one-off" : "ms per idle second"}) | ${cell(b, h, LIMITS.scalar, k)} | | |`);
 }
 const HB = hostRuns("base"), HH = hostRuns("head");
 if (HH.length) {
@@ -75,7 +76,7 @@ if (HH.length) {
 }
 
 const head = [
-  `**Performance** (${H.length} run${H.length > 1 ? "s" : ""} per side, base and head alternating on the same runner; medians; the runner has no GPU, so compare ratios, not absolute times): ` +
+  `**${title}** (${H.length} run${H.length > 1 ? "s" : ""} per side, base and head alternating on the same runner; medians; the runner has no GPU, so compare ratios, not absolute times): ` +
     (!B.length ? "no base results, nothing to compare." : fails.length ? `❌ ${fails.length} regression${fails.length > 1 ? "s" : ""}.` : "✅ no regressions."),
   ...fails.map((f) => `- ${f}`),
   inBudget.length ? `\nSlower but still inside the ${FRAME_BUDGET} ms frame budget (not a failure): ${inBudget.join("; ")}.` : "",
