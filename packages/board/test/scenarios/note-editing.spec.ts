@@ -1,7 +1,7 @@
 // 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
 // Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
-//          noteDisplayMathTypedAsBlock noteEditKeepsLayout
+//          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody
 import { put, findSym, symCard, shot, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
@@ -272,7 +272,8 @@ test("noteDisplayMathTypedAsBlock", async () => {
 /** 双击进编辑：卡片高度、每一块的位置都不变，字形（连字）不变；选中的底色两边一样，是主题的强调色而不是浏览器的蓝色 */
 test("noteEditKeepsLayout", async () => {
   const doc = "# Heading\n\nA paragraph with **bold**, `code` and $x^2$ math.\n\n- one\n- two\n\n> quote line\n\n```python\nx = 1\n```\n\n$$\n\\frac{200}{10}\n$$\n\nLast paragraph.";
-  const h = await open({ board: board([doc]), light });
+  // the heading shown in the body too (by default a leading heading that is the title is hidden there: noteTitleHeadingHiddenInBody)
+  const h = await open({ board: board([doc]), light, settings: { noteHeadingInBody: true } });
   await h.page.waitForTimeout(1500);
   const geo = () => h.page.evaluate(() => {
     const card = document.querySelector('.card[data-id="n0"]')!, body = card.querySelector(".nbody")!, root = body.querySelector(".md-pm") ?? body;
@@ -290,4 +291,46 @@ test("noteEditKeepsLayout", async () => {
   const edit = await geo();
   check("noteEditKeepsLayout", JSON.stringify(shown) === JSON.stringify(edit) && shown.sel !== "rgba(0, 0, 0, 0)", { shown, edit });
   await close(h);
+});
+
+/** A leading heading that is the Note's title isn't shown again in the body (display only: the Markdown keeps it); editing shows it,
+ *  sliding in without a jump; a title set by the user or the setting keeps it in the body */
+test("noteTitleHeadingHiddenInBody", async () => {
+  const doc = "# KV cache budget\n\nPrefill first, then decode.\n\nOne block per sequence.";
+  const b = board([doc, doc]);
+  (b.cards.find((c) => c.id === "n1") as NoteCard).title = "My own title";
+  const h = await open({ board: b, light });
+  await h.page.waitForTimeout(1200);
+  const look = () => h.page.evaluate(() => [0, 1].map((i) => {
+    const card = document.querySelector(`.card[data-id="n${i}"]`)!, head = card.querySelector(".nbody h1") as HTMLElement | null;
+    return { title: card.querySelector(".chead .ctitle")!.textContent, h1: !!head && head.getBoundingClientRect().height > 0, h: Math.round(card.getBoundingClientRect().height) };
+  }));
+  const shown = await look();
+  await shot(h, "note-heading-01-hidden");
+  check("note-heading-hidden", shown[0].title === "KV cache budget" && !shown[0].h1 && shown[1].title === "My own title" && shown[1].h1 && md(h, "n0") === doc.trim(), shown);
+  // enter editing: the heading is there to edit and slides in (card height grows in small steps, no jump)
+  await h.page.evaluate(() => { const w = window as any; w.__hs = []; const card = document.querySelector('.card[data-id="n0"]')!; const t0 = performance.now();
+    const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 1500) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+  await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await h.page.waitForSelector('.card[data-id="n0"] .md-pm h1', { timeout: 5000 });
+  await h.page.waitForTimeout(80);
+  await shot(h, "note-heading-02-editing");
+  await h.page.waitForTimeout(1500);
+  const hs: number[] = await h.page.evaluate(() => (window as any).__hs);
+  const steps = hs.slice(1).map((v, i) => v - hs[i]), grow = hs[hs.length - 1] - hs[0], jump = Math.max(...steps);
+  const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.textContent, op: e ? getComputedStyle(e).opacity : "" }; });
+  check("note-heading-editable", edit.text === "KV cache budget" && edit.op === "1", edit);
+  check("note-heading-slides-in", grow > 20 && jump < grow * 0.6, { grow, jump, frames: hs.length });
+  // leave: hidden again, card back to its height
+  await exitEdit(h); await h.page.waitForTimeout(600);
+  const after = await look();
+  check("note-heading-hidden-after-edit", !after[0].h1 && Math.abs(after[0].h - shown[0].h) <= 1 && md(h, "n0") === doc.trim(), { after, shown });
+  await close(h);
+  // Settings → Notes: keep the heading in the body
+  const h2 = await open({ board: board([doc]), light, settings: { noteHeadingInBody: true } });
+  await h2.page.waitForTimeout(1200);
+  const kept = await h2.page.evaluate(() => (document.querySelector('.card[data-id="n0"] .nbody h1') as HTMLElement | null)?.getBoundingClientRect().height ?? 0);
+  await shot(h2, "note-heading-03-setting-show");
+  check("note-heading-setting-shows", kept > 0, { kept });
+  await close(h2);
 });

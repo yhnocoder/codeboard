@@ -640,6 +640,11 @@
           "default": "text",
           "description": "What double-clicking empty board space creates."
         },
+        "codeboard.notes.headingInBody": {
+          "type": "boolean",
+          "default": false,
+          "description": "When a Note starts with a heading, the card's title bar shows it. Also show it at the top of the Note's text (it always shows while editing)."
+        },
         "codeboard.flowNumbers.hide": {
           "type": "boolean",
           "default": false,

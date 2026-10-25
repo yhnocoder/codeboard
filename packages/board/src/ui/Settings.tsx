@@ -59,6 +59,9 @@ function SettingsPage(p: { section?: string }) {
         <Sec id="numbers" title="Call graph marks" hint="The letter or icon on cards that shows which call graph they belong to.">
           <label class="st-check"><input type="checkbox" checked={cur().hideNumbers} onChange={(e) => A.setSetting("hideNumbers", e.currentTarget.checked)} />Hide Call Graph Marks</label>
         </Sec>
+        <Sec id="notes" title="Notes" hint="A Note that starts with a heading uses it as its title. The heading stays in the Note and shows while you edit.">
+          <label class="st-check"><input type="checkbox" checked={cur().noteHeadingInBody} onChange={(e) => A.setSetting("noteHeadingInBody", e.currentTarget.checked)} />Also Show the Title Heading in the Note</label>
+        </Sec>
         <Sec id="hide" title="New cards hide" hint="What new code cards start with hidden. Each card can still toggle them.">
           <div class="st-checks">
             <For each={[["comments", "Comments"], ["docstrings", "Docstrings"], ["blank", "Blank Lines"]] as [keyof HideFlags, string][]}>{([k, lb]) => (

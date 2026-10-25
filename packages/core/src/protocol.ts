@@ -59,11 +59,12 @@ export type Settings = {
   exportQuestions: boolean; // 导出时带上问题（默认不带）
   exportBoardOnly: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
   exportScope: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
+  noteHeadingInBody: boolean; // Note 开头的标题已经是卡头的名字时，正文里还显示它吗（默认不显示，只是显示上藏起来，编辑时照常出现）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
   hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
-  welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board",
+  welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board", noteHeadingInBody: false,
 };
 
 /**
