@@ -66,8 +66,12 @@ export const DEFAULT_SETTINGS: Settings = {
   welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board",
 };
 
-/** 贴纸图标包：Iconify JSON 一个文件一套，或一个装 .svg 的文件夹（文件夹名 = 包名） */
-export type StickerPack = { id: string; name: string; icons: { name: string; svg: string }[] };
+/**
+ * 贴纸图标包：Iconify JSON 一个文件一套，或一个文件夹（文件夹名 = 包名）装 .svg / .png / .webp / .gif。
+ * svg = SVG 源码（白板用 DOMPurify 清洗后画）；img = 位图的 data: URL（宿主按文件头认过格式，mime 取自文件头），anim = 动图（GIF 多帧、动画 WebP、APNG）
+ */
+export type StickerIcon = { name: string; svg: string } | { name: string; img: string; anim?: true };
+export type StickerPack = { id: string; name: string; icons: StickerIcon[] };
 
 export type HostInfo = {
   fontFamily?: string; // 跟随 VS Code 编辑器字体
