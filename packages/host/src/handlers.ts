@@ -10,7 +10,7 @@ import { webMeta } from "./web";
 import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
 import { openStickerDir, readPacks } from "./stickers";
-import { saveNoteImage } from "./images";
+import { readAsset, saveNoteImage } from "./images";
 import { log } from "./log";
 import { copyDiagnostics } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
@@ -75,6 +75,7 @@ export function makeHandler(panels: BoardHost): Handler {
     github: (_p, m) => githubCard(m.url),
     saveAsset: (_p, m) => store.saveAsset(m.name, m.dataUrl),
     saveImage: (_p, m) => saveNoteImage(store, m.dataUrl),
+    readAsset: (_p, m) => readAsset(store, m.file),
     exportPng: (_p, m) => exportPng(m.dataUrl, m.name),
     views: (_p, m) => viewsFor(m.segs),
     checkVersions: (p) => p.refreshStale(),
@@ -93,8 +94,9 @@ export function makeHandler(panels: BoardHost): Handler {
       // 别的窗口（别的项目）也能贴：记进全局存储目录
       void recordClip(store.dir(), panels.clip).catch((e) => log("warn", `copyCards: ${e instanceof Error ? e.message : e}`));
       panels.broadcast({ type: "host", host: { clip: { board: p.id, n: m.cards.length } } });
-      // 白板里写剪贴板可能被 webview 拦下：宿主再写一次，⌘V 收到的文字和记下的一样
-      if (m.text) void workspace().ui.copy(m.text);
+      // 白板里写剪贴板可能被 webview 拦下：宿主再写一次，⌘V 收到的文字和记下的一样。
+      // rich = 白板自己写了文字 + 图片：宿主再写只有文字的会把图盖掉（白板写不了时会再发 copyText）
+      if (m.text && !m.rich) void workspace().ui.copy(m.text);
     },
     pasteCards: async (p, m) => {
       const o = { text: m.text, copy: !!m.copy };
