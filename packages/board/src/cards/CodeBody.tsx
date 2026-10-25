@@ -16,6 +16,15 @@ import { whenIdle } from "../state/idle";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
 import * as act from "../actions";
 import { callPointerDown, cardWheel, linkPortDown } from "../interact";
+import { Editable } from "../ui/Editable";
+import { annotDraft, annotKey, annotMenu, commitDraft, setAnnotText, startAnnot } from "../actions/annots";
+
+/** 第 i 个字前面占几个等宽的格（Tab 跳到下一个 4 的倍数，和 .src 的 tab-size 一样） */
+function vcol(t: string, i: number) {
+  let c = 0;
+  for (let k = 0; k < i && k < t.length; k++) c = t[k] === "\t" ? c + 4 - (c % 4) : c + 1;
+  return c;
+}
 
 /** 第 i 个字符前面有没有没配对的引号（单行内；三引号字符串的中间行靠高亮 class 判断） */
 function inQuotes(t: string, i: number) {
@@ -213,13 +222,28 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       const call = viewOf(r.seg)?.calls[+x.dataset.c!];
       if (call) { e.preventDefault(); e.stopPropagation(); act.callMenu(c().id, r.seg, call, e.clientX, e.clientY); return; }
     }
-    if (r?.t === "line") lineCtx(r, e);
+    if (r?.t === "line") lineCtx(r, e, textSel());
+  };
+  /** 选中的字在同一行里时：第几行、第几到第几个字（按原文算） */
+  const textSel = () => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.rangeCount) return undefined;
+    const rg = sel.getRangeAt(0), a = rowEl(rg.startContainer);
+    if (!a || a !== rowEl(rg.endContainer)) return undefined;
+    const r = rows()[+a.dataset.r!];
+    if (r?.t !== "line") return undefined;
+    const off = (n: Node, o: number) => { const p = document.createRange(); p.selectNodeContents(a); p.setEnd(n, o); return p.toString().length; };
+    const s = segById(r.seg), t = s?.text[r.line - s.start] ?? "";
+    let from = off(rg.startContainer, rg.startOffset), to = off(rg.endContainer, rg.endOffset);
+    while (from < to && /\s/.test(t[from])) from++;
+    while (to > from && /\s/.test(t[to - 1])) to--;
+    return to > from ? { card: c().id, seg: r.seg, line: r.line, from, to } : undefined;
   };
   // 右键代码行或行号：选中这一行（已在选中的几行里就保留），打开行菜单
-  const lineCtx = (r: Extract<Row, { t: "line" }>, e: MouseEvent) => {
+  const lineCtx = (r: Extract<Row, { t: "line" }>, e: MouseEvent, words?: ReturnType<typeof textSel>) => {
     e.preventDefault(); e.stopPropagation();
     const ls = lineSel();
-    if (ls && ls.card === c().id && ls.seg === r.seg && r.line >= ls.start && r.line <= ls.end) return act.lineMenu(ls, e.clientX, e.clientY);
+    if (ls && ls.card === c().id && ls.seg === r.seg && r.line >= ls.start && r.line <= ls.end) return act.lineMenu(ls, e.clientX, e.clientY, words && (() => startAnnot(words)));
     const one = { card: c().id, seg: r.seg, start: r.line, end: r.line };
     window.getSelection()?.removeAllRanges();
     setLineSel(one);
@@ -324,6 +348,53 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
 
 
+  // 贴在字上的手写标注：每一行上面 / 下面一条窄轨道（只有有标注的行才有），被标的字底下一块淡色（rowbgs 里）
+  type Ann = { i: number; text: string; color: string; below: boolean; from: number; to: number; draft?: boolean };
+  const annots = createMemo(() => {
+    const m = new Map<string, Ann[]>();
+    const add = (seg: string, line: number, a: Ann) => { const k = `${seg}:${line}`; const l = m.get(k); if (l) l.push(a); else m.set(k, [a]); };
+    for (const s of c().segments) {
+      (s.annots ?? []).forEach((a, i) => {
+        const t = s.text[a.line - s.start] ?? "";
+        add(s.id, a.line, { i, text: a.text, color: a.color ?? "blue", below: !!a.below, from: vcol(t, a.from), to: vcol(t, a.to) });
+      });
+    }
+    const d = annotDraft();
+    if (d?.card === c().id) {
+      const s = segById(d.seg), t = s?.text[d.line - (s?.start ?? 0)] ?? "";
+      const color = s?.annots?.[s.annots.length - 1]?.color ?? "blue";
+      add(d.seg, d.line, { i: -1, text: "", color, below: false, from: vcol(t, d.from), to: vcol(t, d.to), draft: true });
+    }
+    return m;
+  });
+  const railOf = (l: Extract<Row, { t: "line" }>, below: boolean) => { const as = annots().get(`${l.seg}:${l.line}`)?.filter((a) => a.below === below); return as?.length ? as : undefined; };
+  /** 藏了公共缩进时字往左挪了多少（和 .src.ded .l 的 text-indent 一样） */
+  const shift = () => (ded() ? `${DED_PAD}px - ${ded()}ch` : "0px");
+  const annotRows = createMemo(() => {
+    const out: { row: number; a: Ann }[] = [];
+    rows().forEach((r, i) => { if (r.t === "line") for (const a of annots().get(`${r.seg}:${r.line}`) ?? []) out.push({ row: i, a }); });
+    return out;
+  });
+  const Rail = (q: { l: Extract<Row, { t: "line" }>; list: Ann[]; below: boolean }) => (
+    <div class="arail" classList={{ below: q.below }} aria-hidden="true" data-nodrag>
+      <For each={q.list}>{(a) => (
+        <>
+          <span class={`aanc hc-${a.color}`} style={{ left: `calc(${shift()} + ${a.from}ch)` }}>
+            <span class="alab" data-tip={a.draft ? undefined : "Double-click to edit · Right-click for more"}
+              onDblClick={(e) => { e.stopPropagation(); if (!a.draft) setEditing({ kind: "annot", id: annotKey(c().id, q.l.seg, a.i) }); }}
+              onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); const s = segById(q.l.seg); const x = s?.annots?.[a.i]; if (x) annotMenu(c().id, q.l.seg, a.i, x, e.clientX, e.clientY); }}>
+              <Editable class="alt" kind="annot" id={a.draft ? "draft" : annotKey(c().id, q.l.seg, a.i)} value={a.text} placeholder="Write a note…"
+                onCommit={(v) => (a.draft ? commitDraft(v) : setAnnotText(c().id, q.l.seg, a.i, v))} />
+            </span>
+          </span>
+          <span class={`aanc hc-${a.color}`} style={{ left: `calc(${shift()} + ${(a.from + a.to) / 2}ch)` }}><i class="aarr" /></span>
+        </>
+      )}</For>
+    </div>
+  );
+  // 草稿没写字就关掉了编辑（Esc、点别处）：草稿去掉
+  createEffect(() => { const e = editing(); if (annotDraft()?.card === c().id && !(e?.kind === "annot" && e.id === "draft")) queueMicrotask(() => { if (!(editing()?.kind === "annot" && editing()?.id === "draft")) commitDraft(""); }); });
+
   const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n): n is Extract<Sidenote, { kind: "text" }> => n.kind === "text" && !!n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
   const cmtLine = (r: Row) => r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;
 
@@ -388,6 +459,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
         </div>
         <div class="rowbgs">
         <For each={vrows()}>{(x) => <Show when={ys()[x.i]}><div class={`vbg ${x.k === "+" ? "add" : "chg"}`} style={{ top: `${ys()[x.i].y}px`, height: `${ys()[x.i].h}px` }} /></Show>}</For>
+        <For each={annotRows()}>{(x) => <Show when={ys()[x.row]}><div class={`abg hc-${x.a.color}`} style={{ top: `${ys()[x.row].y}px`, left: `calc(var(--gutter) + ${shift()} + ${x.a.from}ch)`, width: `${x.a.to - x.a.from}ch` }} /></Show>}</For>
         <For each={rows()}>
           {(r, i) => (
             <Show when={ys()[i()] && lineRow(r)}>
@@ -408,7 +480,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
                 <Match when={lineRow(r)}>
                   {(l) => (
                     <>
+                      <Show when={railOf(l(), false)}>{(as) => <Rail l={l()} list={as()} below={false} />}</Show>
                       <div class="l" classList={{ cmt: !!cmtLine(l()), drop: dropAt(l().seg, l().line) }} data-r={i()} innerHTML={lineHtml(l()) || "​"} />
+                      <Show when={railOf(l(), true)}>{(as) => <Rail l={l()} list={as()} below={true} />}</Show>
                       <For each={alwaysNotes(l().seg, l().line)}>{(n) => <div class="inote" data-note={n.id} innerHTML={act.mdInline(n.md)} />}</For>
                     </>
                   )}

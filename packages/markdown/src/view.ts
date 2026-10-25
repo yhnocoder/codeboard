@@ -22,6 +22,26 @@ export function hydrate(el: HTMLElement, html: string) {
   }
   if (html.includes('class="md-code" data-lang')) colorCode(el);
   if (html.includes('class="mmd"')) void import("./diagram").then((m) => m.renderAll(el));
+  if (html.includes('class="md-annot"')) fitAnnots(el);
+}
+
+/**
+ * {字|批注} 的标签从被标的字的左边开始写；写到这一块（段落、列表项、格子）右边外面去的，往左挪回来（--ax），最多挪到块的左边。
+ * 标签是 ::before，量不到：按它的字体用 canvas 算宽度。位置用 offsetLeft 量（同一张卡里，不受镜头缩放、滚动影响）
+ */
+let ctx: CanvasRenderingContext2D | null | undefined;
+function fitAnnots(el: HTMLElement) {
+  ctx ??= document.createElement("canvas").getContext("2d");
+  if (!ctx) return;
+  for (const a of el.querySelectorAll<HTMLElement>(".md-annot")) {
+    const block = a.parentElement?.closest<HTMLElement>("p, li, td, th, h1, h2, h3, h4, h5, h6, summary") ?? el;
+    if (a.offsetParent !== block.offsetParent && a.offsetParent !== block) continue;
+    const left = a.offsetParent === block ? a.offsetLeft : a.offsetLeft - block.offsetLeft;
+    const lb = getComputedStyle(a, "::before");
+    ctx.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
+    const over = left + ctx.measureText(a.dataset.note ?? "").width - block.clientWidth;
+    a.style.setProperty("--ax", over > 0 ? `${-Math.min(over, Math.max(0, left))}px` : "0px");
+  }
 }
 
 /**

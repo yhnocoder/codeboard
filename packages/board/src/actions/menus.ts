@@ -100,9 +100,10 @@ const genItems = (at: { card: string; seg?: string; line?: number }): Item[] => 
   { label: "Choose File…", run: () => addGenerated(at, "file") },
 ];
 /** 右键代码行 / 行号：行的操作，整张卡的菜单在最后的 Card ▸ 里 */
-export function lineMenu(ls: LineSel, x: number, y: number) {
+/** annotate：选中了同一行里的一段字时，加一条贴在字上的手写标注 */
+export function lineMenu(ls: LineSel, x: number, y: number, annotate?: () => void) {
   selectCard(ls.card);
-  openMenu([...lineItems(ls), null, { label: "Card", sub: cardItems(ls.card, x, y) }], x, y);
+  openMenu([...(annotate ? [{ label: "Annotate Selection…", hint: "A handwritten note above the selected words", run: annotate }, null] : []), ...lineItems(ls), null, { label: "Card", sub: cardItems(ls.card, x, y) }], x, y);
 }
 
 // ---------- 卡片菜单 ----------

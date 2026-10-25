@@ -20,3 +20,4 @@ export * from "./questions";
 export * from "./export";
 export * from "./variants";
 export * from "./pops";
+export * from "./annots";

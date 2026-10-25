@@ -56,7 +56,7 @@ export function reconvert(tr: Transaction): Transaction {
 }
 
 /** 能收尾一段行内语法的字 → 那段语法开头可能的字 */
-const OPENERS: Record<string, string> = { "*": "*", "~": "~", "=": "=", "^": "^", "$": "$", ")": "[!", ">": "<", ":": ":", "]": "[" };
+const OPENERS: Record<string, string> = { "*": "*", "~": "~", "=": "=", "^": "^", "$": "$", ")": "[!", ">": "<", ":": ":", "]": "[", "}": "{" };
 /** 这几种格式打字时用 TipTap 自带的规则（**b** *i* _i_ ~~s~~）；***粗斜体*** 这里变 */
 const NATIVE = new Set(["bold", "italic", "strike"]);
 const hasFootnote = (f: Fragment) => { let y = false; f.descendants((n) => { if (n.type.name === "footnoteReference") y = true; }); return y; };
@@ -83,7 +83,7 @@ function spanOf(ctx: Fragment, cut: Fragment, schema: Schema): Fragment | null {
 }
 
 /**
- * 打字时的行内转换（==hl== H~2~ x^2^ $m$ [t](u) ![a](u) <u>u</u> :e: [[R]] ***bi***）：只看刚打完收尾记号、到光标为止的那一段，
+ * 打字时的行内转换（==hl== H~2~ x^2^ $m$ [t](u) ![a](u) <u>u</u> :e: [[R]] ***bi*** {字|批注}）：只看刚打完收尾记号、到光标为止的那一段，
  * 和以前一条条的规则一样——从左往右找一个开头字，从它到光标解析出来正好是一整段新格式就换掉（同一个 transaction，⌘Z 撤回成打的字）。
  * 开头字前面紧挨着同样的字或 \ 时不算（**b* 里的 *b*、~~s~ 里的 ~s~、\$）；前面撤回成字的不会再变；
  * 光标后面的不动（自动补的右括号）；最后一个脚注引用之前的不动，解析出脚注引用也不要。

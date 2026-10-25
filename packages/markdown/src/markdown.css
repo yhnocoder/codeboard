@@ -41,19 +41,19 @@ math { font-size: 1.05em; }
 /* {字|批注}：贴在字上的手写标注。被标的字是一个行内块，上面（data-below：下面）多出一条窄轨道，标签和一个小箭头画在轨道里
    （::before 是标签，::after 是箭头，都只用 CSS：不量位置、不建节点，编辑器里和静态显示一样）。只有这一行变高，代码和字不会被盖住。
    颜色 --md-annot-blue / -purple / -orange / -green，手写字体 --md-hand（都有默认值） */
-.md .md-annot { --ac: var(--md-annot-blue, #3a72aa); position: relative; display: inline-block; max-width: 100%; padding-top: 1.45em; text-indent: 0;
+.md .md-annot { --ac: var(--md-annot-blue, #3a72aa); position: relative; display: inline-block; max-width: 100%; padding-top: 2.05em; text-indent: 0;
   background: color-mix(in srgb, var(--ac) 16%, transparent); background-clip: content-box; border-radius: 3px; }
 .md .md-annot[data-color="purple"] { --ac: var(--md-annot-purple, #7d55b0); }
 .md .md-annot[data-color="orange"] { --ac: var(--md-annot-orange, #c46a2a); }
 .md .md-annot[data-color="green"] { --ac: var(--md-annot-green, #4c8a3a); }
-.md .md-annot::before { content: attr(data-note); position: absolute; top: 0; left: -2px; white-space: nowrap; pointer-events: none;
-  font: 400 .95em/1.15 var(--md-hand, "Shantell Sans", "LXGW WenKai Lite", "Kaiti SC", STKaiti, KaiTi, cursive); color: var(--ac); }
-.md .md-annot::after { content: ""; position: absolute; left: calc(50% - 4px); top: 1.05em; width: 8px; height: .42em; min-height: 6px; pointer-events: none; background: var(--ac);
+.md .md-annot::before { content: attr(data-note); position: absolute; top: 0; left: calc(var(--ax, 0px) - 2px); white-space: nowrap; pointer-events: none;
+  font: 400 1.1em/1.15 var(--md-hand, "Shantell Sans", "LXGW WenKai Lite", "Kaiti SC", STKaiti, KaiTi, cursive); color: var(--ac); }
+.md .md-annot::after { content: ""; position: absolute; left: calc(50% - 5px); top: 1.3em; width: 10px; height: .72em; min-height: 9px; pointer-events: none; background: var(--ac);
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 .8Q2.9 5 4 9.2M1.4 6.4Q3 7.6 4 9.2Q4.8 7.4 6.6 6.6' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 .8Q2.9 5 4 9.2M1.4 6.4Q3 7.6 4 9.2Q4.8 7.4 6.6 6.6' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
-.md .md-annot[data-below] { padding-top: 0; padding-bottom: 1.45em; }
+.md .md-annot[data-below] { padding-top: 0; padding-bottom: 2.05em; }
 .md .md-annot[data-below]::before { top: auto; bottom: 0; }
-.md .md-annot[data-below]::after { top: auto; bottom: 1.05em; transform: scaleY(-1); }
+.md .md-annot[data-below]::after { top: auto; bottom: 1.3em; transform: scaleY(-1); }
 .md pre code { background: none; padding: 0; font: inherit; }
 .md pre.md-code { position: relative; color: var(--ink); }
 .md img { display: inline-block; vertical-align: middle; max-width: 100%; height: auto; margin: 4px 0; border-radius: 5px; box-shadow: 0 0 0 .5px var(--hair); }

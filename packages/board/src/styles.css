@@ -83,6 +83,7 @@ body { background: var(--bg); color: var(--ink); font: 13px/1.5 var(--sys); -web
 :where(.chrome .nbody, .chrome .cdesc, .chrome .tx) { cursor: default; }
 :where(.chrome .pk-top, .chrome .pk-top *) { user-select: text; -webkit-user-select: text; }
 :where(.chrome .src .gap, .chrome .src .gap *, .chrome .src .inote, .chrome .src .inote *) { user-select: none; -webkit-user-select: none; cursor: default; }
+:where(.chrome .src .arail, .chrome .src .arail *) { user-select: none; -webkit-user-select: none; cursor: default; }
 :where(.chrome .src .fbar, .chrome .src .fbar *, .chrome .src .mgap, .chrome .src .mgap *) { user-select: none; -webkit-user-select: none; cursor: default; }
 :where(.chrome .pcode .cno) { user-select: none; -webkit-user-select: none; }
 :where(.chrome .cbcm .cm-content, .chrome .cbcm .cm-content *) { user-select: text; -webkit-user-select: text; cursor: text; }
@@ -255,6 +256,20 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.lo-ov .dedm { visibility: hidden; }
 .src .l { height: 20px; margin-right: -24px; padding-right: 24px; } /* 行伸进 .src 右边的 24px 留白：鼠标往右去拿行尾圆点时一直还在这一行上，不会落到 .src 本身上把悬停行清掉。宽度、折行都不变 */
 .src .l.drop { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
+/* 贴在字上的手写标注（actions/annots.ts）：有标注的行上面（.below 是下面）一条窄轨道，标签从被标的字左边写起，小箭头指着字的中间；
+   被标的字底下一块淡色（.abg，在 rowbgs 里）。位置按等宽字的格数（ch），不量 DOM */
+.arail { position: relative; height: 26px; white-space: nowrap; }
+.aanc { position: absolute; top: 0; bottom: 0; width: 0; }
+.alab { position: absolute; left: -2px; top: 1px; font: 14px/16px var(--hand); color: var(--hc); cursor: default; }
+.arail.below .alab { top: auto; bottom: 1px; }
+.alab .alt { white-space: pre; min-width: 1em; outline: none; }
+.alab .alt.editing { user-select: text; -webkit-user-select: text; background: var(--surface); box-shadow: 0 0 0 1px var(--hc); border-radius: 3px; padding: 0 3px; margin: 0 -3px; cursor: text; }
+.alab .alt[data-ph]:empty::before { content: attr(data-ph); opacity: .55; }
+.aarr { position: absolute; left: -5px; bottom: 0; width: 10px; height: 9px; background: var(--hc);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 .8Q2.9 5 4 9.2M1.4 6.4Q3 7.6 4 9.2Q4.8 7.4 6.6 6.6' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 10' preserveAspectRatio='none'%3E%3Cpath d='M3.6 .8Q2.9 5 4 9.2M1.4 6.4Q3 7.6 4 9.2Q4.8 7.4 6.6 6.6' fill='none' stroke='%23000' stroke-width='1.3' stroke-linecap='round'/%3E%3C/svg%3E") center / 100% 100% no-repeat; }
+.arail.below .aarr { bottom: auto; top: 0; transform: scaleY(-1); }
+.abg { position: absolute; height: 20px; border-radius: 3px; background: color-mix(in srgb, var(--hc) 18%, transparent); pointer-events: none; }
 .gutter .no.drop { color: var(--accent); font-weight: 600; }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 /* 隐藏行的条和行高亮一样撑满整张卡宽（左边盖住行号栏，右边到卡边） */
