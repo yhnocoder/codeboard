@@ -490,12 +490,12 @@ input, textarea { font: inherit; color: var(--ink); }
 .ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 7px; font-size: 12.5px; color: var(--ink); text-align: left; }
 .ctx button .lb { flex: 1 0 auto; max-width: calc(100% - 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx button .ck { width: 12px; flex: none; color: var(--accent); font-size: 11px; }
-.ctx button:not([disabled]):hover { background: var(--accent); color: var(--accent-ink); }
-.ctx button:not([disabled]):hover .ck { color: var(--accent-ink); }
+.ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--accent); color: var(--accent-ink); }
+.ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck { color: var(--accent-ink); }
 .ctx button small { margin-left: auto; font: 10.5px var(--mono); color: var(--ink-3); padding-left: 12px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.ctx button:not([disabled]):hover small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+.ctx button:not([disabled]):is(:hover, .kb, .subopen) small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
 .ctx button.danger { color: #d6453d; }
-.ctx button.danger:not([disabled]):hover { background: #d6453d; color: #fff; }
+.ctx button.danger:not([disabled]):is(:hover, .kb, .subopen) { background: #d6453d; color: #fff; }
 .ctx .mh { padding: 4px 8px 3px 30px; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx button[disabled] { color: var(--ink-3); flex-wrap: wrap; row-gap: 0; }
 .ctx button .why { flex-basis: 100%; font: 11px/1.35 var(--sys); color: var(--ink-3); padding: 1px 0 2px 22px; white-space: normal; }

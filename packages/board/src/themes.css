@@ -552,8 +552,8 @@
 :root.look-soft-light .ib, :root.look-soft-light .tbtn { border-radius: 12.5px; }
 :root.look-soft-light .pill .ib { width: 30px; height: 30px; }
 :root.look-soft-light .ctx button { border-radius: 11px; }
-:root.look-soft-light .ctx button:not([disabled]):hover { background: var(--well); color: var(--ink); }
-:root.look-soft-light .ctx button:not([disabled]):hover .ck, :root.look-soft-light .ctx button:not([disabled]):hover small { color: var(--ink-3); }
+:root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--well); color: var(--ink); }
+:root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck, :root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) small { color: var(--ink-3); }
 :root.look-soft-light .sep { width: 1px; background: var(--hair); }
 :root.look-soft-light .toast { left: auto; right: 20px; top: 20px; bottom: auto; translate: 0 -8px; background: var(--surface); color: var(--ink); border-radius: 17px; padding: 9px 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
 :root.look-soft-light .toast.show { translate: 0 0; }
@@ -611,7 +611,7 @@
 :root.look-drafting .tbtn:hover, :root.look-drafting .ib:hover { color: var(--ink); background: var(--tint); }
 :root.look-drafting .sep { width: 1px; background: var(--rule); }
 :root.look-drafting .zoom { font: 10.5px var(--mono); color: var(--ink); }
-:root.look-drafting .ctx button:not([disabled]):hover { background: var(--ink); color: var(--bg); }
+:root.look-drafting .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--ink); color: var(--bg); }
 :root.look-drafting .toast { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--ink); border-radius: 0; font: 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 7px 12px; }
 :root.look-drafting .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
 :root.look-drafting .tip { border-radius: 0; }
@@ -686,8 +686,8 @@
 :root.look-colorful .ib, :root.look-colorful .tbtn, :root.look-colorful .btn, :root.look-colorful .ctx button, :root.look-colorful .cand, :root.look-colorful .db button, :root.look-colorful .fld, :root.look-colorful .zoom { border-radius: 0; }
 :root.look-colorful .pill .tbtn { height: 30px; font: 600 10.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); }
 :root.look-colorful .pill .ib { height: 30px; width: 32px; color: var(--ink); }
-:root.look-colorful .pill .tbtn:hover, :root.look-colorful .pill .ib:hover, :root.look-colorful .ctx button:not([disabled]):hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
-:root.look-colorful .ctx button:not([disabled]):hover .ck, :root.look-colorful .ctx button:not([disabled]):hover small { color: var(--ink-2); }
+:root.look-colorful .pill .tbtn:hover, :root.look-colorful .pill .ib:hover, :root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
+:root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck, :root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) small { color: var(--ink-2); }
 :root.look-colorful .zoom { height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; font: 600 10.5px var(--sys); letter-spacing: .12em; color: var(--ink); }
 :root.look-colorful .toast { background: var(--toast); color: var(--paper-ink); border-radius: 0; box-shadow: none; font: 500 10.5px var(--sys); letter-spacing: .16em; text-transform: uppercase; padding: 8px 12px; }
 :root.look-colorful .toast::before { content: ""; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; background: var(--f1); flex: none; }
@@ -739,7 +739,7 @@
 :root.look-newspaper .pill .tbtn + .tbtn { box-shadow: inset .5px 0 0 var(--hair); }
 :root.look-newspaper .pill .ib { color: var(--ink); }
 :root.look-newspaper .pill .tbtn:hover, :root.look-newspaper .pill .ib:hover { background: var(--bg); }
-:root.look-newspaper .ctx button:not([disabled]):hover { background: var(--ink); color: var(--surface); }
+:root.look-newspaper .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--ink); color: var(--surface); }
 :root.look-newspaper .sep { width: .5px; background: var(--rule); }
 :root.look-newspaper .zoom { font: 400 11px var(--mono); color: var(--ink); }
 :root.look-newspaper .toast { background: var(--ink); color: var(--surface); border-radius: 0; box-shadow: none; font: 400 12.5px var(--serif); padding: 6px 12px 6px 6px; }
@@ -802,7 +802,7 @@
 :root.look-poster .bbar .sep, :root.look-poster .dock .sep { width: .5px; height: 14px; background: var(--band-ink); opacity: .4; margin: 0 6px; }
 :root.look-poster :is(.bbar, .dock) .zoom { color: var(--band-ink); font: 400 10px var(--mono); letter-spacing: .1em; }
 :root.look-poster :is(.bbar, .dock) .zoom:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); }
-:root.look-poster .ctx button:not([disabled]):hover { background: var(--band); color: var(--band-ink); }
+:root.look-poster .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--band); color: var(--band-ink); }
 :root.look-poster .toast { bottom: 66px; background: var(--surface); color: var(--ink); border-radius: 0; box-shadow: 0 0 0 .5px var(--rule), 0 0 0 2.5px var(--surface), 0 0 0 3px var(--rule); font: 400 10px var(--mono); letter-spacing: .2em; padding: 7px 14px; }
 :root.look-poster .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline .5px; text-underline-offset: 3px; }
 :root.look-poster .tip { border-radius: 0; }
@@ -853,8 +853,8 @@
 :root.look-ink-wash .dock .pill { border-radius: 1px; box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); }
 :root.look-ink-wash .ib, :root.look-ink-wash .tbtn, :root.look-ink-wash .btn, :root.look-ink-wash .ctx button, :root.look-ink-wash .cand, :root.look-ink-wash .db button, :root.look-ink-wash .fld, :root.look-ink-wash .zoom { border-radius: 2px; }
 :root.look-ink-wash .pill .tbtn, :root.look-ink-wash .pill .ib { color: var(--ink); }
-:root.look-ink-wash .pill .tbtn:hover, :root.look-ink-wash .pill .ib:hover, :root.look-ink-wash .ctx button:not([disabled]):hover { background: var(--wash); color: var(--ink); }
-:root.look-ink-wash .ctx button:not([disabled]):hover .ck, :root.look-ink-wash .ctx button:not([disabled]):hover small { color: var(--ink-3); }
+:root.look-ink-wash .pill .tbtn:hover, :root.look-ink-wash .pill .ib:hover, :root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--wash); color: var(--ink); }
+:root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck, :root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) small { color: var(--ink-3); }
 :root.look-ink-wash .sep { width: .5px; background: var(--hair); }
 :root.look-ink-wash .zoom { font: 13px var(--serif); color: var(--ink-2); }
 :root.look-ink-wash .toast { background: var(--paper); color: var(--ink); border-radius: 2px; box-shadow: var(--sh-float); font: 12.5px var(--serif); padding-left: 8px; }

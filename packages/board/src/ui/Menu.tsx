@@ -27,11 +27,40 @@ export const openMenuAt = (items: Item[], el: Element) => openMenu(items, ...bel
 export const closeMenu = () => setMenu(null);
 export const menuOpen = () => !!menu();
 
-function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void; up?: boolean; anchor?: Element }) {
+/** 开着的各级菜单，外层在前：键盘（↑↓ 选、→ 开二级、← / Esc 关二级、↵ 执行）只作用在最里面那一级 */
+type Level = { move: (d: 1 | -1) => void; enter: () => void; activate: () => boolean; closeSub: () => void };
+const levels: Level[] = [];
+
+function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void; up?: boolean; anchor?: Element; kb?: boolean }) {
   let el!: HTMLDivElement;
+  const btns: HTMLButtonElement[] = [];
   const [pos, setPos] = createSignal({ x: p.x, y: p.y, ox: "0px", oy: "0px" });
   const [open, setOpen] = createSignal(false);
-  const [subOf, setSubOf] = createSignal<{ i: number; x: number; y: number; el: Element } | null>(null);
+  const [subOf, setSubOf] = createSignal<{ i: number; x: number; y: number; el: Element; kb: boolean } | null>(null);
+  /** 键盘选中的那一项（.kb，样子和悬停一样）；鼠标一动就交还给悬停 */
+  const [kbAt, setKbAt] = createSignal<number | null>(null);
+  const live = (it: Item) => !!it && !it.head && !it.disabled;
+  const openSub = (i: number, kb: boolean) => {
+    const b = btns[i];
+    if (!b || subOf()?.i === i) return;
+    const r = b.getBoundingClientRect();
+    setSubOf({ i, x: r.right, y: r.top - 5, el: b, kb });
+  };
+  const level: Level = {
+    move: (d) => {
+      const ids = p.items.map((it, i) => (live(it) ? i : -1)).filter((i) => i >= 0);
+      if (!ids.length) return;
+      const k = ids.indexOf(kbAt() ?? -1);
+      const next = ids[k < 0 ? (d > 0 ? 0 : ids.length - 1) : (k + d + ids.length) % ids.length];
+      setKbAt(next);
+      btns[next]?.scrollIntoView({ block: "nearest" });
+    },
+    enter: () => { const i = kbAt(); if (i !== null && (p.items[i] as Exclude<Item, null>).sub) openSub(i, true); },
+    activate: () => { const i = kbAt(); if (i === null) return false; btns[i]?.click(); return true; },
+    closeSub: () => { const s = subOf(); setSubOf(null); if (s) setKbAt(s.i); },
+  };
+  levels.push(level);
+  onCleanup(() => levels.splice(levels.indexOf(level), 1));
   onMount(() => {
     // 右键菜单从点往右下开（up：从工具栏往上开）；二级菜单贴着父项往右开；放不下翻到另一边，太高就限高滚动
     const at = p.anchor
@@ -43,19 +72,24 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
       setPos({ x, y, ox: `${Math.max(0, Math.min(w, p.x - x))}px`, oy: `${Math.max(0, Math.min(h, p.y - y))}px` });
       requestAnimationFrame(() => setOpen(true));
     });
+    // 用 → 打开的二级菜单：选中第一项
+    if (p.kb) level.move(1);
   });
   return (
     <><div ref={el} class="ctx" classList={{ open: open() }} role="menu" style={{ left: `${pos().x}px`, top: `${pos().y}px`, "max-height": `${window.innerHeight - 8}px`, "transform-origin": `${pos().ox} ${pos().oy}` }}
-      data-nodrag onContextMenu={(e) => e.preventDefault()}>
+      data-nodrag onContextMenu={(e) => e.preventDefault()} onPointerMove={() => kbAt() !== null && setKbAt(null)}>
       <For each={p.items}>
         {(it, i) =>
           it?.head ? <div class="mh">{it.label}</div> : it ? (
-            <button role="menuitem" class={it.danger ? "danger" : ""} disabled={!!it.disabled} title={typeof it.disabled === "string" ? it.disabled : it.hint}
-              onPointerEnter={(e) => {
-                if (it.sub && !it.disabled) { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); if (subOf()?.i !== i()) setSubOf({ i: i(), x: r.right, y: r.top - 5, el: e.currentTarget }); }
-                else setSubOf(null);
-              }}
-              onClick={() => { if (it.sub || it.disabled) return; p.onClose(); it.run?.(); }}>
+            <button ref={(b) => (btns[i()] = b)} role="menuitem" class={it.danger ? "danger" : ""} classList={{ kb: kbAt() === i(), subopen: subOf()?.i === i() }}
+              disabled={!!it.disabled} title={typeof it.disabled === "string" ? it.disabled : it.hint}
+              aria-haspopup={it.sub ? "menu" : undefined} aria-expanded={it.sub ? subOf()?.i === i() : undefined}
+              onPointerEnter={() => { if (it.sub && !it.disabled) openSub(i(), false); else setSubOf(null); }}
+              onClick={() => {
+                if (it.disabled) return;
+                if (it.sub) return openSub(i(), kbAt() === i());
+                p.onClose(); it.run?.();
+              }}>
               <span class="ck">{it.checked ? <Icon name="check" size={12} /> : null}</span>
               <span class="lb">{it.label}</span>
               <Show when={it.kbd}><small title={it.kbd}>{it.kbd}</small></Show>
@@ -66,13 +100,28 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
       </For>
     </div>
     <Show when={subOf()} keyed>
-      {(s) => <MenuList items={(p.items[s.i] as Exclude<Item, null>).sub!} x={s.x} y={s.y} anchor={s.el} onClose={p.onClose} />}
+      {(s) => <MenuList items={(p.items[s.i] as Exclude<Item, null>).sub!} x={s.x} y={s.y} anchor={s.el} kb={s.kb} onClose={p.onClose} />}
     </Show></>
   );
 }
 
+/** 菜单的按键：↑↓ 在最里面一级里选，→ 打开选中项的二级菜单，← 关掉最里面的二级菜单，Esc 先关二级菜单、没有二级时关整个菜单，↵ / 空格执行选中项 */
+function menuKeys(e: KeyboardEvent) {
+  const deep = levels.at(-1), parent = levels.at(-2);
+  if (!deep || e.isComposing) return false;
+  switch (e.key) {
+    case "ArrowDown": deep.move(1); return true;
+    case "ArrowUp": deep.move(-1); return true;
+    case "ArrowRight": deep.enter(); return true;
+    case "ArrowLeft": parent?.closeSub(); return true;
+    case "Escape": if (!parent) return false; parent.closeSub(); return true;
+    case "Enter": case " ": return deep.activate();
+  }
+  return false;
+}
+
 function RootMenu(p: { m: MenuState }) {
-  useOverlay({ close: closeMenu, inside: (t) => !!t.closest(".ctx"), grab: true, outside: true, blur: true });
+  useOverlay({ close: closeMenu, inside: (t) => !!t.closest(".ctx"), grab: true, outside: true, blur: true, keys: menuKeys });
   return <MenuList items={p.m.items} x={p.m.x} y={p.m.y} up={p.m.up} onClose={closeMenu} />;
 }
 export function MenuLayer() {
