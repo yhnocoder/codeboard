@@ -145,7 +145,7 @@ test("markdownEdit", async () => {
   // 选中几个字：出工具条，点 I 变斜体
   await pg.keyboard.type("tail words");
   for (let i = 0; i < 5; i++) await pg.keyboard.press("Shift+ArrowLeft");
-  await pg.waitForTimeout(150);
+  await pg.waitForTimeout(650); // 选区停住 400ms 后才出工具条
   const bubble = await pg.locator(".md-bubble").count();
   await saveShot(h, "md-edit-bubble");
   await pg.locator('.md-bubble .tbtn[data-tip="Italic"]').click();
@@ -268,6 +268,55 @@ test("markdownHighlight", async () => {
   check("markdownHighlight-reveal", reveal.includes("==|=="), r);
   check("markdownHighlight-saved", saved === "==Plain== ==words== in a note and ==hi==", r);
   check("markdownHighlight-display", shown.join() === "Plain,words,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && !(editLook[0] ?? "").startsWith("rgba(0, 0, 0, 0)"), r);
+  await close(h);
+});
+
+/** The selection toolbar waits until the selection holds still: none while drag-selecting or extending with ⇧←, it shows ~400 ms
+ *  after the mouse is let go / the last key, and it goes at once when the selection collapses */
+test("markdownToolbarWaitsForStillSelection", async () => {
+  const b = emptyBoard("b1", "settle");
+  put(b, { id: "n1", kind: "note", md: "Select some of these words slowly with the mouse", bg: true } as NoteCard, 60, 60, 520);
+  b.cam = { x: 0, y: 0, z: 1.4 };
+  const h = await open({ board: b, light, w: 1000, h: 640 });
+  const pg = h.page;
+  const pm = '.card[data-id="n1"] .md-pm';
+  const has = () => pg.evaluate(() => !!document.querySelector(".md-bubble"));
+  await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 400, y: 12 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pg.waitForTimeout(200);
+  // 字在屏幕上的位置：从 "some" 的开头拖到 "slowly" 的末尾
+  const at = (w: string, end: boolean) => pg.evaluate(([root, w, end]) => {
+    const t = document.querySelector(root)!.querySelector("p")!.firstChild!, i = t.textContent!.indexOf(w) + (end ? w.length : 0);
+    const r = document.createRange(); r.setStart(t, i); r.collapse(true); const b = r.getBoundingClientRect(); return { x: b.left, y: b.top + b.height / 2 };
+  }, [pm, w, end] as const);
+  const a = await at("some", false), z = await at("slowly", true);
+  await pg.mouse.move(a.x, a.y);
+  await pg.mouse.down();
+  const during: boolean[] = [];
+  for (let k = 1; k <= 8; k++) { await pg.mouse.move(a.x + ((z.x - a.x) * k) / 8, a.y, { steps: 2 }); await pg.waitForTimeout(90); during.push(await has()); }
+  await pg.waitForTimeout(600); // 按着鼠标停住：还是在选，不出
+  const heldStill = await has();
+  const dragged = await pg.evaluate(() => getSelection()!.toString());
+  await pg.mouse.up();
+  await pg.waitForTimeout(120);
+  const rightAfterUp = await has();
+  await pg.waitForTimeout(500);
+  const afterPause = await has();
+  const opacity = await pg.evaluate(() => getComputedStyle(document.querySelector(".md-bubble")!).opacity);
+  // 收拢：立刻收起
+  await pg.keyboard.press("End");
+  await pg.waitForTimeout(40);
+  const afterCollapse = await has();
+  // 键盘扩选：⇧← 按着走的途中不出，停下 400ms 后出
+  const keys: boolean[] = [];
+  for (let k = 0; k < 6; k++) { await pg.keyboard.press("Shift+ArrowLeft"); await pg.waitForTimeout(120); keys.push(await has()); }
+  await pg.waitForTimeout(500);
+  const afterKeys = await has();
+  const r = { during, heldStill, dragged, rightAfterUp, afterPause, opacity, afterCollapse, keys, afterKeys };
+  check("markdownToolbarWaitsForStillSelection-drag", dragged.includes("some of these words") && during.every((x) => !x) && !heldStill && !rightAfterUp && afterPause && opacity === "1", r);
+  check("markdownToolbarWaitsForStillSelection-collapse", !afterCollapse, r);
+  check("markdownToolbarWaitsForStillSelection-keys", keys.every((x) => !x) && afterKeys, r);
   await close(h);
 });
 

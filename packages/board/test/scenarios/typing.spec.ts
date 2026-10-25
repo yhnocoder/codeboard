@@ -273,7 +273,7 @@ test("editorKeys", async () => {
   for (let k = 0; k < 10; k++) {
     await selectBoldY();
     const t0 = Date.now();
-    while (!(await settled()) && Date.now() - t0 < 500) await pg.waitForTimeout(50);
+    while (!(await settled()) && Date.now() - t0 < 1000) await pg.waitForTimeout(50);
     if (await settled()) break;
   }
   await pg.keyboard.press("Control+c");

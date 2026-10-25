@@ -8,7 +8,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
 import { render } from "solid-js/web";
-import { createSignal, For, Show, type Accessor } from "solid-js";
+import { createEffect, createSignal, For, onCleanup, Show, type Accessor } from "solid-js";
 import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
@@ -168,17 +168,35 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
 const isInside = (e: Editor, t: EventTarget | null) => t instanceof Node && (e.view.dom.contains(t) || !!(t as Element).closest?.(".mdui, .md-bubble, .md-mathpop"));
 
 // ---------- 选中工具条 ----------
+/** 选区停住多久后出工具条 */
+const SETTLE_MS = 400;
 function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   let el!: HTMLDivElement;
   const link = p.ui.link, setLink = p.ui.setLink;
   const e = p.editor;
-  const shown = () => {
+  // 选中的字能不能出工具条
+  const want = () => {
     p.tick();
     const s = e.state.selection;
-    if (link() !== null) return true;
     if (s.empty || !(s instanceof TextSelection) || !e.isFocused || p.ui.menu() || p.ui.math()) return false;
     return !s.$from.parent.type.spec.code && s.$from.parent.inlineContent;
   };
+  // 不是一选就出：选区停住 SETTLE_MS 后才出（拖选、⇧方向键扩选的途中不闪），按着鼠标时不算停住；
+  // 选区一收拢（没选字了）立刻收起。点按钮改格式时选区不动，工具条留着
+  const [settled, setSettled] = createSignal(false);
+  let timer: ReturnType<typeof setTimeout> | undefined, last = "", down = false;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => setSettled(!down && want()), SETTLE_MS); };
+  createEffect(() => {
+    const ok = want(), s = e.state.selection, key = `${s.from}:${s.to}`;
+    if (!ok) { clearTimeout(timer); last = ""; setSettled(false); return; }
+    if (key !== last) { last = key; setSettled(false); arm(); }
+  });
+  const press = (ev: PointerEvent) => { if (ev.button === 0 && e.view.dom.contains(ev.target as Node)) down = true; };
+  const release = () => { if (!down) return; down = false; if (want()) { setSettled(false); arm(); } };
+  window.addEventListener("pointerdown", press, true);
+  window.addEventListener("pointerup", release, true);
+  onCleanup(() => { clearTimeout(timer); window.removeEventListener("pointerdown", press, true); window.removeEventListener("pointerup", release, true); });
+  const shown = () => link() !== null || (settled() && want());
   const pos = () => {
     p.tick();
     if (!shown()) return;
