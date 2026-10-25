@@ -4,7 +4,7 @@
 import { unwrap } from "solid-js/store";
 import {
   bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel, cardCopies,
-  type Card, type CardCopy, type DiffData, type Link, type PastedCards, type SegView,
+  type Card, type CardCopy, type DiffData, type ImageCard, type Link, type PastedCards, type SegView,
 } from "@codeboard/core";
 import { state, setState, mutate, sel, select, clearSel, cardById, hostOf, toast, flushSave, shared, sharedOn, rectOf } from "../state/store";
 import { isHidden, settleHome } from "../state/sections";
@@ -16,28 +16,59 @@ import { ask, send } from "../host";
 import { hostRect, popCard, revealCard, selCards } from "./common";
 import { cardText, remember } from "./edit";
 import { updateSidenote } from "./notes";
+import { imageDataUrl, pngOf } from "./imagedata";
 
 // ---------- 复制 / 粘贴 ----------
 
-/** ⌘C：选中的卡记到宿主（贴到别的白板时用），文字照旧写进剪贴板（代码卡 = 看得见的行，其他卡 = 内容 / 标题） */
+/** ⌘C：选中的卡记到宿主（贴到别的白板时用），卡的内容写进剪贴板（代码卡 = 看得见的行，Note / Text = Markdown，图片卡 = 图 + Markdown 的图） */
 export function copyCardsSel(): boolean {
   const cs = selHosts();
   if (!cs.length) return false;
   const text = copyCards(cs);
+  copied = { board: state.board.id, cards: cs.map((c) => c.id), text, n: 0 };
   const code = cs.length === 1 && isCode(cs[0]) ? text.split("\n").length : 0;
   toast(code ? `Copied ${code} lines · paste on another board for a linked card` : `Copied ${cs.length} card${cs.length > 1 ? "s" : ""}`);
   return true;
 }
 /** 选中的卡（Compare 的栏算它的 Compare），去重 */
 const selHosts = () => selCards().map((c) => cardById(c.id)?.host ?? c).filter((c, i, a) => a.indexOf(c) === i);
-/** 卡的文字进剪贴板，宿主记下是哪几张卡；返回文字 */
+/**
+ * 卡的内容进系统剪贴板，宿主记下是哪几张卡；返回文字。别的应用拿到的是卡的文字（几张卡之间空一行）；有图片卡时还有那张图（image/png，
+ * 第一张），这时白板自己写剪贴板（宿主只能写文字，会把图盖掉），写不了再让宿主写文字
+ */
 function copyCards(cs: Card[]): string {
   flushSave(); // 宿主那边是最新的内容
   const text = cs.map(textOf).join("\n\n");
   remember(cs[0].id, text); // 同一块白板上 ⌘V：放在原卡旁边
-  navigator.clipboard?.writeText(text).catch(() => {});
-  send({ type: "copyCards", cards: cs.map((c) => c.id), text });
+  const img = cs.find((c): c is ImageCard => c.kind === "image");
+  const rich = !!img && typeof ClipboardItem !== "undefined" && !!navigator.clipboard?.write;
+  if (rich) {
+    // 要在按键的这一刻调 write（用户手势），图的内容随后才有：ClipboardItem 收 Promise
+    const png = imageDataUrl(unwrap(img)).then((u) => (u ? pngOf(u) : Promise.reject(new Error("No image data"))));
+    navigator.clipboard.write([new ClipboardItem({ "text/plain": new Blob([text], { type: "text/plain" }), "image/png": png })])
+      .catch(() => send({ type: "copyText", text }));
+  } else navigator.clipboard?.writeText(text).catch(() => {});
+  send({ type: "copyCards", cards: cs.map((c) => c.id), text, rich });
   return text;
+}
+/** ⌘C 复制的卡（这块白板上的）：同一块白板上 ⌘V 贴成副本，大小、样子和原来的一样；n = 已经贴了几次（一次比一次错开一点） */
+let copied: { board: string; cards: string[]; text: string; n: number } | null = null;
+/** ⌘V 在复制它们的白板上：贴副本，放在原卡旁边（错开，允许重叠），和 ⌘D 一样换新 id；剪贴板里不是这几张卡的字返回 false */
+function pasteCopied(text: string | undefined): boolean {
+  const c = copied;
+  if (!c || c.board !== state.board.id) return false;
+  if (text !== undefined ? norm(text) !== norm(c.text) : state.host.clip?.board !== state.board.id) return false;
+  const b = unwrap(state.board);
+  const ids = new Set(c.cards.filter((id) => b.place[id] && !isHidden(id)));
+  if (!ids.size) return false;
+  const items = structuredClone(cardCopies(b, ids));
+  const links = structuredClone(b.links.filter((l) => ids.has(l.from.card) && ids.has(l.to.card)));
+  const box = bounds([...ids].map((id) => hostRect(id)!).filter(Boolean));
+  if (!box) return false;
+  const k = ++c.n;
+  const made = putCards(items, links, true, { x: box.x + 36 * k, y: box.y + 36 * k }, unwrap(state.views), true);
+  if (made) toast(made.length > 1 ? `Pasted ${made.length} copies` : "Pasted a copy");
+  return true;
 }
 
 /** ⌘X 剪下的卡：内容、Sidenote、连着它们的箭头。这块白板上 ⌘V（剪贴板里还是这些字）时原样放回：同一个 id，箭头接回还在的卡 */
@@ -77,7 +108,18 @@ function textOf(c: Card): string {
   if (c.kind === "web") return c.url;
   if (c.kind === "links") return c.items.map((i) => i.url).join("\n");
   if (c.kind === "compare") return c.cols.map((k) => { const x = cardById(k)?.card; return x ? textOf(x) : ""; }).join("\n\n");
+  if (c.kind === "image") return imageText(c);
   return cardTitle(c, state.board);
+}
+
+/**
+ * 图片卡给只收文字的应用的：Markdown 的图，地址和 Note 里的图一样写（assets/…，贴进 Note 就显示这张图）；网上的图写网址。
+ * data: 的图不写那一大串 base64，只写说明（图本身在 image/png 里）
+ */
+function imageText(c: ImageCard): string {
+  const alt = (c.alt ?? "").replace(/[[\]\s]+/g, " ").trim();
+  if (c.src.startsWith("data:")) return alt || c.desc?.trim() || "Image";
+  return `![${alt}](${/^https?:/.test(c.src) ? c.src : `assets/${c.src}`})`;
 }
 
 /** 粘贴默认做什么：设置里的 Paste onto Another Board；alt = ⌥ 粘贴，换成另一种 */
@@ -88,7 +130,7 @@ const pasteCopy = (alt: boolean) => (state.host.settings.pasteOther === "copy") 
  * text 为空 = 不核对文字（菜单、⌥⌘V）
  */
 export async function pasteFromBoard(text: string | undefined, at: { x: number; y: number }, alt = false): Promise<boolean> {
-  if (pasteCut(text, at)) return true;
+  if (pasteCut(text, at) || pasteCopied(text)) return true;
   const r = await ask("pasteCards", { text, copy: pasteCopy(alt) }).catch(() => null);
   if (!r) return false;
   placePasted(r, at);
@@ -113,12 +155,12 @@ export function placePasted(r: PastedCards, at: { x: number; y: number }) {
  * 把卡放到指针 at 附近的空地上（一步撤销），组内的相对位置不变；落在哪个 Section 里（卡的中心，和拖卡同一个算法）就进哪个。
  * copy = 独立副本（新 id），否则原样放（同一个 id）。返回放下的卡（摆着的那几张），没有可放的返回 null
  */
-function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: number; y: number }, views: Record<string, SegView>): string[] | null {
+function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: number; y: number }, views: Record<string, SegView>, exact = false): string[] | null {
   const tops = items.filter((x) => x.place);
   const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
   if (!box) return null;
-  // 整组放在指针处附近的空地上（不压住别的卡），组内的相对位置不变
-  const free = findFree({ ...box, x: at.x, y: at.y }, state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)));
+  // 整组放在指针处附近的空地上（不压住别的卡），组内的相对位置不变；exact = 就放在 at（可以压住别的卡）
+  const free = exact ? at : findFree({ ...box, x: at.x, y: at.y }, state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)));
   const dx = Math.round(free.x - box.x), dy = Math.round(free.y - box.y);
   let ids: string[] = [], segs: Record<string, string> = {};
   mutate((b) => {

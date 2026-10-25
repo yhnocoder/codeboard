@@ -310,7 +310,7 @@ export function canvasMenu(x: number, y: number) {
       { label: state.host.settings.pasteOther === "copy" ? "Paste as Copy" : "Paste as Linked Card", kbd: kbd("paste"), run: () => void pasteFromBoard(undefined, w) },
       { label: state.host.settings.pasteOther === "copy" ? "Paste as Linked Card" : "Paste as Copy", kbd: kbd("pasteOther"), run: () => void pasteFromBoard(undefined, w, true) },
     ] as Item[] : [
-      { label: "Paste", kbd: kbd("paste"), run: () => navigator.clipboard?.readText().then((t) => pasteText(t, w)).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) } as Item,
+      { label: "Paste", kbd: kbd("paste"), run: () => navigator.clipboard?.readText().then(async (t) => { if (!(await pasteFromBoard(t, w))) await pasteText(t, w); }).catch(() => toast("Clipboard not available here. Press ⌘V instead.")) } as Item,
     ]),
     { label: "Insert Board", sub: insertable().length ? insertable().map((m) => ({ label: m.name, hint: m.why ? `Can’t: ${m.why}` : undefined, run: () => insertBoard(m.id, w) })) : [{ label: "No other boards yet", disabled: "Create another board first" }] },
     null,

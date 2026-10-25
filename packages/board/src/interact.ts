@@ -596,27 +596,24 @@ export function installKeys() {
   const spaceUp = () => setSpaceDown(false);
   window.addEventListener("keyup", (e) => { if (e.key === " ") spaceUp(); });
   window.addEventListener("blur", spaceUp);
-  // 粘贴：图片 → Image 卡；文字 → 按内容判断
+  // 粘贴：白板上复制的卡 → 卡（剪贴板里可能同时有图：复制的是图片卡）；否则图片 → Image 卡；文字 → 按内容判断
   window.addEventListener("paste", (e) => {
     if (isTyping(e.target)) return;
     const items = [...(e.clipboardData?.items ?? [])];
-    const img = items.find((i) => i.type.startsWith("image/"));
-    const w = worldAt(lastPointer());
-    if (img) {
-      e.preventDefault();
-      const f = img.getAsFile();
-      if (!f) return;
-      const rd = new FileReader();
-      rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w);
-      rd.readAsDataURL(f);
-      return;
-    }
+    const file = items.find((i) => i.type.startsWith("image/"))?.getAsFile() ?? null;
     const text = e.clipboardData?.getData("text/plain");
-    if (text) {
-      e.preventDefault();
-      // 先问宿主：是别的白板上复制的卡就贴卡（共享卡），否则照旧按文字粘贴
-      void A.pasteFromBoard(text, w).then((done) => { if (done) return; const near = A.pasteNear(text); A.pasteText(text, near ?? w, !!near); });
-    }
+    const w = worldAt(lastPointer());
+    if (!file && !text) return;
+    e.preventDefault();
+    const image = (f: File) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w); rd.readAsDataURL(f); };
+    if (!text) return image(file!);
+    // 先看是不是白板上复制的卡（这块白板的，或者问宿主：别的白板上的就贴卡），否则照旧按图 / 文字粘贴
+    void A.pasteFromBoard(text, w).then((done) => {
+      if (done) return;
+      if (file) return image(file);
+      const near = A.pasteNear(text);
+      A.pasteText(text, near ?? w, !!near);
+    });
   });
   // 拖文件进来：图片
   window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault(); });
