@@ -24,8 +24,9 @@ const put = (b: Board, c: Board["cards"][number], x = 0) => { b.cards.push(c); b
 const codeOf = (r: Pasted | null, id: string) => r?.cards.find((x) => x.card.id === id)?.card as CodeCard | undefined;
 
 /** 一个窗口：它的工作区、存储目录、白板消息处理 */
-function windowOf(folder: string) {
+function windowOf(folder: string, more: string[] = []) {
   const ws = nodeWorkspace(folder);
+  if (more.length) ws.files = { ...ws.files, roots: () => [folder, ...more] }; // 多根工作区
   ws.storage = { ...ws.storage, globalDir: () => G };
   const dir = mk("pdir");
   const store = new Storage(nodeFs, { dir: () => dir });
@@ -70,6 +71,17 @@ async function copied(a: ReturnType<typeof windowOf>, text: string) {
 }
 
 describe("paste cards from another window", () => {
+  it("writes a repo in any folder of this multi-root workspace relative to its first folder", async () => {
+    const a = await source();
+    await copied(a, "Into a multi-root window");
+    const b = windowOf(B, [A]);
+    await b.store.save(emptyBoard("bHere", "Here"));
+    const r = (await b.send("bHere", { type: "pasteCards", text: "Into a multi-root window", copy: false })) as Pasted | null;
+    // 仓库 A 是这个窗口的第二个根：和这边自己加卡一样写成相对第一个根的 repo
+    expect(codeOf(r, "k1")?.segments[0].src).toEqual({ kind: "repo", repo: path.relative(B, A) });
+    expect(codeOf(r, "k2")?.segments[0].src).toEqual({ kind: "repo", repo: "lib" });
+  });
+
   it("brings copies of the cards, their image and run record, with sources for this workspace", async () => {
     const a = await source();
     await copied(a, "Note and two cards");

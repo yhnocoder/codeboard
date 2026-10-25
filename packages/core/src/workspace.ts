@@ -8,6 +8,8 @@ export type LogLevel = "info" | "warn" | "error";
 export interface WorkspaceFiles {
   /** 工作区根目录（绝对路径）；第一个是主根，Source.repo 相对它 */
   roots(): string[];
+  /** 工作区的名字：存成文件的多根工作区是 .code-workspace 的名字，否则是第一个根的文件夹名；没打开文件夹是 "" */
+  name(): string;
   /** 文件所在的工作区根（不在任何根下返回 undefined） */
   rootOf(abs: string): string | undefined;
   /** 编辑器里有未保存改动的磁盘文件：未保存的内容；没打开或没改过返回 undefined（读磁盘上的） */

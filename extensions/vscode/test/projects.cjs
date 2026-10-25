@@ -10,8 +10,9 @@
 //
 //   S  = the nano-vllm copy (single folder)
 //   M  = multi-root.code-workspace: [notes (a small git repo), the nano-vllm copy]: nano-vllm is M's second folder
-//   1. In S: a board with LLMEngine.step, Copy to M. M (open the whole time) lists it without a reload, the card shows its code,
-//      Open in Editor opens llm_engine.py at def step. nano-vllm is in M but not under its first folder: how the source was written is logged
+//   1. In S: a board with LLMEngine.step, Copy to M (listed by its workspace name). M (open the whole time) lists it without a reload,
+//      the card shows its code, Open in Editor opens llm_engine.py at def step. nano-vllm is M's second folder: the source is written
+//      relative to M's first folder ("../ws"), the same as a card M adds itself
 //   2. In M: a board with notes' admit and nano-vllm's Scheduler.schedule, Move to S. S lists it without a reload; Scheduler.schedule
 //      (nano-vllm = S's folder) is repo-relative there, admit (notes, outside S) external; both show their code, admit opens notes/kv.py at
 //      line 4; M no longer lists the board and its file is in M's .trash
@@ -197,8 +198,8 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
     if (!f) return;
     await renameBoard(S, "Engine copy");
     await command(M, "Focus on Boards View");
-    const err1 = await transfer(S, false, "notes", "Engine copy");
-    check(!err1, "S: Copy to Another Project… lists the multi-root window (by its first folder) and copies the board", err1);
+    const err1 = await transfer(S, false, "multi-root", "Engine copy");
+    check(!err1, "S: Copy to Another Project… lists the multi-root window by its workspace name and copies the board", err1);
     const seen = await listed(M, "Engine copy", 15000);
     check(seen, "M lists the copied board without a reload");
     if (!seen) {
@@ -210,9 +211,8 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
     const mDir = boardsDir(PUD, "multi-root.code-workspace"), sDir = boardsDir(PUD, `/${path.basename(WS)}`);
     const copied = boardsIn(mDir).find((x) => x.b.name === "Engine copy");
     const s1 = copied && segOf(copied.b, "llm_engine.py");
-    // The repo is M's second folder: transfer.ts writes repo sources only for roots under the first folder, so this becomes external
-    console.log(`  … projects: in the multi-root target, the second folder's code is ${JSON.stringify(s1?.src)}`);
-    check(s1 && (s1.src.kind === "external" ? s1.src.root === WS : s1.src.kind === "repo"), "M: the copied card's source still points at the nano-vllm copy", s1?.src);
+    const second = path.relative(NOTES, WS).split(path.sep).join("/");
+    check(s1 && s1.src.kind === "repo" && s1.src.repo === second, `M: the copied card's source is repo "${second}" (nano-vllm is M's second folder)`, s1?.src);
     await sideRow(M, "Engine copy").first().click();
     const g = await boardFrame(M);
     check(!!g && await until(() => card(g, "LLMEngine.step").locator(".src", { hasText: "def step(self):" }).count(), 15000), "M: the copied card shows its code");
@@ -235,7 +235,9 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
     check(!!h && await card(h, "admit").count() === 1, "M: Scheduler.schedule from the second folder joins the same board");
     let before;
     await until(() => (before = boardsIn(mDir).find((x) => x.b.name === "Mixed move")) && segOf(before.b, "scheduler.py"), 10000, 200); // saved shortly after the edit
-    console.log(`  … projects: in M, admit is ${JSON.stringify(segOf(before?.b ?? { cards: [] }, "kv.py")?.src)}, Scheduler.schedule ${JSON.stringify(segOf(before?.b ?? { cards: [] }, "scheduler.py")?.src)}`);
+    // The copied card above has to match what M writes itself for its second folder
+    const own = segOf(before?.b ?? { cards: [] }, "scheduler.py")?.src;
+    check(own?.kind === "repo" && own.repo === second, `M: a card M adds from its second folder has the same source, repo "${second}"`, own);
     await command(S, "Focus on Boards View");
     const err2 = await transfer(M, true, path.basename(WS), "Mixed move");
     check(!err2, "M: Move to Another Project… asks to confirm and moves the board to S", err2);

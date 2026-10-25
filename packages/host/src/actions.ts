@@ -106,7 +106,7 @@ export function makeActions(panels: BoardHost, store: Storage) {
     if (!b || !panels.globalState) return;
     const ps = await otherProjects(panels.globalState, store.dir());
     if (!ps.length) { void ui().info("No other project found. Open the other project once with CodeBoard so it shows up here."); return; }
-    const r = await ui().pick(ps.map((p) => ({ label: `$(folder) ${p.name}`, description: p.folder || p.dir, p })), { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true });
+    const r = await ui().pick(ps.map((p) => ({ label: `$(folder) ${p.name}`, description: p.folders.join(" · ") || p.dir, p })), { placeHolder: `${move ? "Move" : "Copy"} “${b.name}” to which project?`, matchOnDescription: true });
     if (!r) return;
     if (move) {
       const ok = await ui().warn(`Move board “${b.name}” to ${r.p.name}?`, { modal: true, detail: "It is removed from this project (restorable from .trash). Sub-boards, shared cards and images go with it." }, "Move");

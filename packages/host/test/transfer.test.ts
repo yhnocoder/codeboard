@@ -20,7 +20,7 @@ let n = 0;
 const seg = (src: Source, p = "x.py"): Segment => ({ id: `s${++n}`, src, path: p, lang: "python", start: 1, end: 1, text: ["x = 1"], version: { kind: "none" } });
 const code = (id: string, ...segs: Segment[]): CodeCard => ({ id, kind: "code", segments: segs });
 const put = (b: Board, c: Board["cards"][number], x = 0) => { b.cards.push(c); b.place[c.id] = { x, y: 0, w: 400, ...(c.kind === "board" ? { h: 300 } : {}) }; };
-const project = (folder: string, dir: string): Project => ({ folder, name: path.basename(folder), dir, seen: 0 });
+const project = (folders: string | string[], dir: string): Project => { const fs = [folders].flat(); return { folders: fs, name: path.basename(fs[0]), dir, seen: 0 }; };
 const codeOf = (b: Board | null, id: string) => b?.cards.find((c) => c.id === id) as CodeCard | undefined;
 
 beforeAll(() => {
@@ -105,6 +105,24 @@ describe("copy to another project", () => {
     expect(v.segments[0].path).toBe("x.py");
   });
 
+  it("writes a repo in any folder of a multi-root target relative to its first folder, as that window adds code itself", async () => {
+    const src = mk("xsrc"), dst = mk("xdst");
+    const store = new Storage(nodeFs, { dir: () => src });
+    const b = emptyBoard("bMR", "Multi-root");
+    put(b, code("a", seg({ kind: "repo", repo: "" })));
+    put(b, code("lib", seg({ kind: "external", root: path.join(B, "lib") })), 500);
+    put(b, code("o", seg({ kind: "external", root: O })), 900);
+    await store.save(b);
+
+    // 目标窗口的文件夹：[B, A]，仓库 A 是第二个根
+    await copyToProject(store, "bMR", project([B, A], dst));
+    const got = await new Storage(nodeFs, { dir: () => dst }).load("bMR");
+    expect(codeOf(got, "a")?.segments[0].src).toEqual({ kind: "repo", repo: path.relative(B, A) });
+    expect(path.relative(B, A).startsWith("../")).toBe(true);
+    expect(codeOf(got, "lib")?.segments[0].src).toEqual({ kind: "repo", repo: "lib" });
+    expect(codeOf(got, "o")?.segments[0].src).toEqual({ kind: "external", root: O });
+  });
+
   it("gives a board whose id the target already has a new id and points the parent's sub-board frame at it; keeps the target's shared card", async () => {
     const src = mk("xsrc"), dst = mk("xdst");
     const store = new Storage(nodeFs, { dir: () => src });
@@ -171,15 +189,14 @@ describe("project registry", () => {
   it("lists other projects, newest first, without this one or ones whose folder is gone", async () => {
     const mem = new Map<string, unknown>();
     const state = { get: <T>(k: string) => mem.get(k) as T | undefined, set: async (k: string, v: unknown) => { mem.set(k, v); } };
-    // 这个项目的存储目录还没有（没有白板）：登记时建好，这个窗口的 watcher 才看得到别的窗口拷过来的第一块白板
     const here = path.join(mk("xhere"), "boards"), here2 = path.join(mk("xhere"), "boards");
     await recordProject(state, here);
-    expect(fs.existsSync(here)).toBe(true);
+    expect((mem.get("codeboard.projects") as Record<string, Project>)[here]).toMatchObject({ folders: [A], name: path.basename(A) });
     mem.set("codeboard.projects", {
       ...(mem.get("codeboard.projects") as object),
-      "/b": { folder: B, name: "b", dir: "/b", seen: 2 },
-      "/o": { folder: O, name: "o", dir: "/o", seen: 3 },
-      "/x": { folder: "/tmp/codeboard-no-such-folder", name: "x", dir: "/x", seen: 4 },
+      "/b": { folders: [B], name: "b", dir: "/b", seen: 2 },
+      "/o": { folders: [O, B], name: "o", dir: "/o", seen: 3 },
+      "/x": { folders: ["/tmp/codeboard-no-such-folder"], name: "x", dir: "/x", seen: 4 },
     });
     expect((await otherProjects(state, here)).map((p) => p.dir)).toEqual(["/o", "/b"]);
     expect(Object.keys(mem.get("codeboard.projects") as object).sort()).toEqual(["/b", "/o", here].sort());
