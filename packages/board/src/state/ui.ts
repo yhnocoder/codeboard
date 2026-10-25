@@ -73,6 +73,12 @@ export const popIn = () => popStore;
 export function setPopIn(f: (p: Record<string, PopAnim>) => Record<string, PopAnim>) {
   setPopStore(reconcile(f({ ...unwrap(popStore) })));
 }
+// 卡的大小变过去的动画（Fit Content）：id → 这一帧画出来的宽、高（高是存着高度的那一块：代码卡的内容区，别的卡整张）。
+// 白板里已经是新的大小；同样存成 store，每帧只重算在变的卡
+export type SizeAnim = { w: number; h: number };
+const [sizeStore, setSizeStore] = createStore<Record<string, SizeAnim | undefined>>({});
+export const sizeIn = () => sizeStore;
+export const setSizeIn = (id: string, s: SizeAnim | undefined) => setSizeStore(id, s);
 // 讲解
 export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[] };
 export const [walk, setWalk] = createSignal<Walk | null>(null);

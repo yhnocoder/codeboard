@@ -276,6 +276,10 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.text .ttb { position: absolute; left: 0; top: -44px; display: none; white-space: nowrap; width: max-content; }
 .card.text.sel.solo:not(.editing) .ttb { display: inline-flex; }
 .card.note .nbody { padding: 10px 14px 12px; font-size: 13px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
+/* 定了高度的 Note（拖小了）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外（#2、#10）。
+   不拉伸（flex-grow 0）：放得下时正文和原来一样只有内容那么高，Fit Content、改大小时量的是内容。
+   Text 没有框，不裁：从 Note 换过来带着的高度用 Fit Content 去掉 */
+.card.note:not(.autoh) .nbody { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; }
 .card.note .nbody[contenteditable] { cursor: text; user-select: text; -webkit-user-select: text; }
 .card.note .chead .ctitle { font-family: var(--sys); }
 

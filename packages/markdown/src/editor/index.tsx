@@ -15,6 +15,7 @@ import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView } from "./codeblock";
 import { Typora, reconvert } from "./typora";
 import { place, virtual } from "../ui/place";
+import { revealIn, scroller } from "../ui/reveal";
 import type { LspHost } from "../cm/editor";
 
 export type MdEditorOpts = {
@@ -467,9 +468,15 @@ function makeInst(): Inst {
         if (one?.type.spec.code && slice.openStart > 0) return one.textContent;
         try { return serializeMd({ type: "doc", content: slice.content.toJSON() ?? [] }); } catch { return slice.content.textBetween(0, slice.content.size, "\n\n"); }
       },
-      // 白板上的 Note 不滚动（卡片跟着内容长高）：每打一个字都去量光标位置、找能滚的祖先，要强制排版一次，白花。
-      // 只有代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常
-      handleScrollToSelection: (v) => !v.state.selection.$head.parent.type.spec.code && !!v.dom.closest(".card"),
+      // 白板上的 Note 一般不滚动（卡片跟着内容长高），白板本身也不滚（靠镜头）：不让 ProseMirror 去滚所有祖先。
+      // 定了高度的 Note 正文自己会滚（overflow: auto）：光标只在正文里滚进来。找能滚的祖先先看样式，自动高度的卡不量排版。
+      // 代码块（横向能滚）和不在卡片上的（浮层里可能能滚）照常
+      handleScrollToSelection: (v) => {
+        if (v.state.selection.$head.parent.type.spec.code || !v.dom.closest(".card")) return false;
+        const box = scroller(v.dom);
+        if (box) { const c = v.coordsAtPos(v.state.selection.head); revealIn(box, c.top, c.bottom); }
+        return true;
+      },
       handleClick: (_v, _pos, ev) => {
         // ⌘ 点链接：打开
         const a = (ev.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;

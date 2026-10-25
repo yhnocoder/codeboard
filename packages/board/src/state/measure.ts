@@ -97,5 +97,8 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number }
     const w = el.offsetWidth;
     return img?.naturalWidth ? { h: Math.round(head + (w * img.naturalHeight) / img.naturalWidth), minH: head + 40 } : null;
   }
+  // Note / Text：正文定了高度时在自己里面滚（styles.css），整张卡的 scrollHeight 量不到它：正文以上 + 正文的内容 + 卡的下边
+  const nb = el.querySelector<HTMLElement>(":scope > .cface > .nbody, :scope > .cface > .tx");
+  if (nb) return { h: Math.ceil(nb.offsetTop + nb.scrollHeight + parseFloat(getComputedStyle(el).paddingBottom) + el.clientTop), minH: head + 30 };
   return { h: el.scrollHeight, minH: head + 30 };
 }

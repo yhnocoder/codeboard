@@ -147,6 +147,8 @@ function cardItems(id: string, x: number, y: number): Item[] {
   ];
   if (c.kind === "note") return [
     { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
+    // Note / Text 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高
+    { label: "Fit Content", kbd: kbd("fitContent"), disabled: placeOf(id).h ? false : "Already as tall as its content", run: () => fitContent([id]) },
     { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
     ...tail,
   ];

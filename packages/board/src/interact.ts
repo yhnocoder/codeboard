@@ -19,6 +19,7 @@ import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf }
 import { installOverlays, modalOpen, isTyping } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
 import { dispatch } from "./keymap";
+import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
@@ -43,6 +44,16 @@ function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: Point
   window.addEventListener("pointermove", onMove, true);
   window.addEventListener("pointerup", onUp, true);
   window.addEventListener("pointercancel", onUp, true);
+}
+
+/** 拖卡、改卡的大小：一次撤销（beginGesture）；真动起来以后 AI 灰字补全先停（显示着的清掉、不再问），松手再照常（#9） */
+function cardGesture() {
+  const done = beginGesture();
+  let held = false;
+  return {
+    moving: () => { if (!held) { held = true; holdGhosts(true); } },
+    end: () => { if (held) holdGhosts(false); done(); },
+  };
 }
 
 const ev0x = (e: PointerEvent) => e.clientX, ev0y = (e: PointerEvent) => e.clientY;
@@ -117,7 +128,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
   const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
-  const end = beginGesture();
+  const { end, moving } = cardGesture();
   const sx = e.clientX, sy = e.clientY;
   let mergeT: number | undefined, mergeTgt: string | undefined;
   const g = cardById(grabbed)!.host;
@@ -174,7 +185,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     // 松手后会在哪个 Section（和下面松手时同一个算法）：先预演出来，要进的 Section 亮起来；合并 / 变 Sidenote 时不算
     setMovingHome(drop ? null : new Map(items.map((it) => [it.id, deepestAt(fr, it.mid.x + dx, it.mid.y + dy)?.id])));
   };
-  track(e, (ev) => onMove(ev), (ev, moved) => {
+  track(e, (ev) => { moving(); onMove(ev); }, (ev, moved) => {
     clearTimeout(settleT);
     clearTimeout(mergeT);
     setGuides([]);
@@ -246,7 +257,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   A.selectCard(id);
   const r0 = rectOf(c);
   const targets = visibleCards().filter((k) => k.id !== id).map((k) => rectOf(k));
-  const end = beginGesture();
+  const { end, moving } = cardGesture();
   const sx = e.clientX, sy = e.clientY;
   const text = c.kind === "note" && !c.bg;
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（#2：单行卡拉高后能缩回去）
@@ -254,6 +265,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
   const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
   track(e, (ev) => {
+    moving();
     const z = cam.z, dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
     let w = r0.w, h = r0.h, x = r0.x;
     if (edges.right) w = Math.max(minW, r0.w + dx);
@@ -468,7 +480,7 @@ export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
   if (t.closest(NODRAG)) return;
   e.preventDefault();
-  if (!t.closest(".cbody")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
+  if (!t.closest(".cbody, .nbody, .tx")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
   stopCam();
   const p = local(e);
   if (e.ctrlKey || e.metaKey) {

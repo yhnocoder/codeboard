@@ -3,3 +3,5 @@
 export { keepKey, setKeyPassThrough } from "./editkeys";
 export { place, virtual } from "./place";
 export { queueMeasure, observeResize, setMeasureBatch } from "./measure";
+// 灰字补全先停一下（拖动、改大小时）：Note 和代码编辑器里的都清掉、不问
+export { holdGhosts } from "./ghost";
