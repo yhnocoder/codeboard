@@ -11,7 +11,7 @@ import { readSettings } from "./settings";
 import { warmBoard } from "./prefetch";
 import { startNameIndex } from "./nameindex";
 import { workspace } from "./ws";
-import type { ViewPlace } from "./env";
+import type { StateStore, ViewPlace } from "./env";
 
 /** 宿主转发的 ⌘ / Ctrl 键（webview 里不自己处理）：与 package.json 里 codeboard.boardKey 的键一致（"+" 是 "=" 那个键按了 Shift）；board 的 lists.test.ts 会核对 */
 export const FORWARDED_KEYS = ["k", "d", "0", "1", "=", "+", "-", "shift+l", "shift+b", ","];
@@ -65,6 +65,8 @@ export interface BoardHost {
   opened?(id: string): void;
   /** 这个工作区第一次 Add to Board：返回 true 并记下，之后都是 false */
   firstAdd?(): boolean;
+  /** 跨工作区的状态（HostEnv.globalState）：Copy / Move to Another Project… 在里面找别的项目 */
+  readonly globalState?: StateStore;
 }
 
 const DAY = 864e5;

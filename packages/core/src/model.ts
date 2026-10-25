@@ -512,6 +512,22 @@ export function allCodeCards(b: Pick<Board, "cards">): CodeCard[] {
   return b.cards.filter(isCode);
 }
 
+/**
+ * 白板上所有的段（同一个对象，不拷贝）：代码卡（含 Compare 的两栏）的段、各个 Variant 存着的段、合并前的原卡（一层层往里）、Code sidenote。
+ * 换项目时改写段的来源用（漏一个，那段在新项目里就找不到代码）
+ */
+export function allSegments(b: Pick<Board, "cards" | "sidenotes">): Segment[] {
+  const out = new Set<Segment>();
+  const walk = (c: CodeCard) => {
+    for (const s of c.segments) out.add(s);
+    for (const v of c.variants ?? []) for (const s of v.segs ?? []) out.add(s);
+    for (const m of c.mergedFrom ?? []) walk(m.card);
+  };
+  allCodeCards(b).forEach(walk);
+  for (const n of b.sidenotes) if (n.kind === "code") out.add(n.code);
+  return [...out];
+}
+
 /** Compare 的两栏（按 cols 的顺序）；有一栏找不到时返回 undefined */
 export function colsOf(b: Pick<Board, "cards">, c: CompareCard): [CodeCard, CodeCard] | undefined {
   const a = b.cards.find((k) => k.id === c.cols[0]), k = b.cards.find((x) => x.id === c.cols[1]);

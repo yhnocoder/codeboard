@@ -56,6 +56,7 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 - Draw, label and retype arrows; drop in images and web pages; highlight lines.
 - Compare a card across branches, worktrees or pull requests, with change marks and a three-way view.
 - Turn a group of cards into a sub-board, or share one card across several boards.
+- Copy or move a board to another project, with its sub-boards, shared cards and images.
 - Browse a GitHub repository from the sidebar, or paste a GitHub file link onto a board.
 - Pin questions to code with `?` stickers and collect them in the Questions view.
 - Export a board as Markdown, a standalone HTML snapshot, or a PNG.
