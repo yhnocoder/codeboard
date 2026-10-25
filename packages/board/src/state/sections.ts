@@ -1,5 +1,5 @@
 // Section 的实际框：自己存的框 ∪ 成员卡（含边距）∪ 子 Section（core layout.sectionFrame，和子白板骨架同一套算法）。框随内容自动撑大，也能拖边改大。
-// 成员关系（homeFor）：卡的左上角落在的最深的 Section（拖动结束、粘贴、新建时定）。拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，
+// 成员关系（homeFor）：盖住卡三分之一以上面积的 Section，几个都够时取盖得多的（拖动结束、粘贴、新建时定）。拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，
 // 要进的 Section 撑开、亮起来（.drop），松手时才真的改 place.section。
 import { createMemo, createSignal, mapArray } from "solid-js";
 import { sectionFrame, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
@@ -79,13 +79,31 @@ export const frames = rooted(() => createMemo<Map<string, Rect>>((prev) => {
   return same && m.size === prev.size ? prev : m;
 }, new Map()));
 
-/** 卡的左上角（卡头的起点，「放下」它的那一点）在不在框 f 里：新画的 Section 收哪些卡也按这一点（和 homeFor 同一条规则） */
-export const cornerIn = (r: Rect, f: Rect) => r.x > f.x && r.x < f.x + f.w && r.y > f.y && r.y < f.y + f.h;
+/** 两个矩形重叠的面积 */
+export function overlapArea(a: Rect, b: Rect): number {
+  const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+  return w > 0 && h > 0 ? w * h : 0;
+}
+/** 矩形 r 有三分之一以上的面积在 f 里：算 r 在 f 里（homeFor、新画的 Section 收哪些卡，同一条规则） */
+export const partlyIn = (r: Rect, f: Rect) => 3 * overlapArea(r, f) > r.w * r.h;
 /**
- * 卡（矩形 r）属于哪个 Section：卡的左上角落在的最深的展开 Section；不在任何框里 = 不在 Section 里。
- * 所有决定卡在哪个 Section 的地方都用它（拖动的预演和松手、粘贴、新建）
+ * 卡（矩形 r）属于哪个 Section：盖住它三分之一以上面积的展开 Section；有几个时，嵌套的取最深的，一样深取盖得多的；都不到 = 不在 Section 里。
+ * 所有决定卡在哪个 Section 的地方都用它（拖动的预演和松手、粘贴、新建）。跟卡不相交的框一比就跳过
  */
-export const homeFor = (fr: Map<string, Rect>, r: Rect, skip?: Set<string>): Section | undefined => deepestAt(fr, r.x, r.y, skip);
+export function homeFor(fr: Map<string, Rect>, r: Rect, skip?: Set<string>): Section | undefined {
+  const third = (r.w * r.h) / 3;
+  let best: Section | undefined, bd = -1, bo = 0;
+  for (const s of state.board.sections) {
+    if (s.collapsed || skip?.has(s.id)) continue;
+    const f = fr.get(s.id);
+    if (!f) continue;
+    const o = overlapArea(r, f);
+    if (o <= third) continue;
+    const d = depthOf(s);
+    if (d > bd || (d === bd && o > bo)) { best = s; bd = d; bo = o; }
+  }
+  return best;
+}
 /** 刚放到白板上的卡（还没量过尺寸，按估计的大小）进它落在的 Section：在 mutate 里调 */
 export function settleHome(b: Board, id: string) {
   const p = b.place[id], c = b.cards.find((k) => k.id === id);
