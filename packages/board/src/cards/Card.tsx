@@ -66,7 +66,10 @@ export function CardView(p: { card: Card }) {
   const pl = () => placeOf(c().id);
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
-    if (pl().h && c().kind !== "code") s.height = `${pl().h}px`; // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开
+    // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开。
+    // Note / Text 存的高度是上限：跟着内容高矮，内容更高时停在这里、正文里滚（styles.css）；删了字卡跟着变矮，不留空
+    if (pl().h && c().kind === "note") s["max-height"] = `${pl().h}px`;
+    else if (pl().h && c().kind !== "code") s.height = `${pl().h}px`;
     const g = grow();
     if (g) { s.width = `${g.w}px`; if (c().kind !== "code") s.height = `${g.h}px`; }
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
