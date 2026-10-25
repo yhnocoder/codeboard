@@ -122,3 +122,30 @@ test("themeLooks", async () => {
     await h.page.context().close();
   }
 });
+
+/** Corners: rounded boxes use continuous-curvature (squircle) corners from one token (--corner); circles and pills stay round.
+ *  Screenshots: the board with a Section, a Note and a menu, and card corners close up (squircle-*) */
+test("squircleCorners", async () => {
+  const b = board();
+  b.cards.push({ id: "n1", kind: "note", bg: true, md: "# Corners\n\nSmooth, continuous curvature." } as any);
+  b.place.n1 = { x: 80, y: 600, w: 320 };
+  b.sections.push({ id: "S1", title: "Engine", x: 50, y: 70, w: 620, h: 470 });
+  b.place[b.cards[0].id].section = "S1";
+  const h = await open({ board: b, light, w: 1400, h: 900 });
+  await h.page.waitForTimeout(900);
+  const css = await h.page.evaluate(() => {
+    const cs = (sel: string) => { const e = document.querySelector(sel); return e ? getComputedStyle(e).getPropertyValue("corner-top-left-shape") : null; };
+    return { supported: CSS.supports("corner-shape", "squircle"), card: cs(".card"), head: cs(".card .chead"), sect: cs(".sect"), bar: cs(".bbar"), menu: cs(".ctx"), dot: cs(".chead .rev .rl") && getComputedStyle(document.querySelector(".chead .rev .rl")!, "::before").getPropertyValue("corner-top-left-shape") };
+  });
+  await h.page.locator('.card[data-id="n1"] .chead').click({ button: "right" }); await h.page.waitForTimeout(400);
+  const menu = await h.page.evaluate(() => getComputedStyle(document.querySelector(".ctx")!).getPropertyValue("corner-top-left-shape"));
+  await shot(h, "squircle-01-board");
+  await h.page.keyboard.press("Escape"); await h.page.mouse.click(1200, 820); await h.page.mouse.move(1300, 850); await h.page.waitForTimeout(500);
+  const r = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
+  await h.page.screenshot({ path: path.join(OUT, "squircle-02-note-corner.png"), clip: { x: r.x - 8, y: r.y + r.height - 40, width: 48, height: 48 } });
+  const r2 = (await h.page.locator(".card.ccard").nth(1).boundingBox())!;
+  await h.page.screenshot({ path: path.join(OUT, "squircle-03-code-corner.png"), clip: { x: r2.x + r2.width - 40, y: r2.y - 8, width: 48, height: 48 } });
+  const smooth = (v: string | null) => !!v && v !== "round" && v !== "superellipse(1)";
+  check("squircle-corners", !css.supported || (smooth(css.card) && smooth(css.head) && smooth(css.sect) && smooth(css.bar) && smooth(menu) && !smooth(css.dot)), { ...css, menu });
+  await h.page.context().close();
+});

@@ -31,7 +31,7 @@ test("sectionLook", async () => {
     const f = document.querySelector('.sect[data-sect="S2"]')!, l = document.querySelector('.slabel[data-sect="S2"]')!;
     const fs = getComputedStyle(f), ls = getComputedStyle(l);
     const op = (sel: string) => { const e = l.querySelector(sel); return e ? +getComputedStyle(e).opacity : -1; };
-    return { border: fs.borderTopStyle, radius: parseFloat(fs.borderTopLeftRadius), labelBg: ls.backgroundColor, dots: op(".dots"), chev: op(".chev2"), shadow: fs.boxShadow };
+    return { border: fs.borderTopStyle, radius: parseFloat(fs.borderTopLeftRadius), cardRadius: parseFloat(getComputedStyle(document.querySelector(".card")!).borderTopLeftRadius), labelBg: ls.backgroundColor, dots: op(".dots"), chev: op(".chev2"), shadow: fs.boxShadow };
   });
   const idle = await look();
   await shot(h, "sect-look-01-idle");
@@ -42,7 +42,7 @@ test("sectionLook", async () => {
   const selected = await look();
   await shot(h, "sect-look-03-selected");
   const clear = (c: string) => c === "rgba(0, 0, 0, 0)" || c === "transparent";
-  check("section-look-idle", idle.border !== "dashed" && idle.radius <= 12 && clear(idle.labelBg) && idle.dots === 0 && idle.chev === 0, idle);
+  check("section-look-idle", idle.border !== "dashed" && idle.radius <= idle.cardRadius + 2 && clear(idle.labelBg) && idle.dots === 0 && idle.chev === 0, idle);
   check("section-look-hover", hover.dots > 0.9 && hover.chev > 0.9, hover);
   check("section-look-selected", selected.shadow !== idle.shadow, { idle: idle.shadow, selected: selected.shadow });
   await close(h);

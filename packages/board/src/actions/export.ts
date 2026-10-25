@@ -283,7 +283,7 @@ html,body{margin:0;height:100%;overflow:hidden}
 .xv-top{position:fixed;left:12px;top:10px;display:flex;gap:10px;align-items:center;padding:5px 10px;font:12px var(--ui,system-ui)}
 .xv-info{opacity:.65}
 .xv-dock{position:fixed;right:12px;bottom:12px;display:flex;align-items:center;gap:2px;padding:3px 6px;font:12px var(--ui,system-ui)}
-.xv-dock .ib,.xv-walk .ib{min-width:26px;height:26px;border:0;background:none;color:inherit;font:inherit;cursor:pointer;border-radius:6px}
+.xv-dock .ib,.xv-walk .ib{min-width:26px;height:26px;border:0;background:none;color:inherit;font:inherit;cursor:pointer;border-radius:8.5px}
 .xv-dock .ib:hover,.xv-walk .ib:hover{background:var(--hover,rgba(127,127,127,.15))}
 .xv-dock .sep{width:1px;height:16px;margin:0 4px;background:currentColor;opacity:.2}
 .xv-zoom{min-width:44px;text-align:center}

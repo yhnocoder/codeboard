@@ -36,7 +36,7 @@
   --sh-card: 0 1px 2px rgba(40,30,10,.05), 0 4px 14px rgba(40,30,10,.05);
   --sh-lift: 0 2px 6px rgba(40,30,10,.08), 0 18px 40px -12px rgba(40,30,10,.22);
   --sh-float: 0 1px 2px rgba(40,30,10,.05), 0 4px 14px rgba(40,30,10,.05);
-  --r-card: 10px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
+  --r-card: 14px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
   --sect-border: 1px solid #d6d1c4;
 }
 :root.look-classic[data-theme="dark"], :root[data-theme="dark"] [data-look="classic"] {
@@ -58,7 +58,7 @@
   --sh-card: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.2);
   --sh-lift: 0 2px 6px rgba(0,0,0,.4), 0 18px 40px -12px rgba(0,0,0,.6);
   --sh-float: 0 1px 2px rgba(0,0,0,.3), 0 4px 14px rgba(0,0,0,.2);
-  --r-card: 10px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
+  --r-card: 14px; --display: var(--serif); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
   --sect-border: 1px solid #45423c;
 }
 
@@ -82,7 +82,7 @@
   --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,1), 0 1px 1px rgba(0,0,0,.04), 0 3px 8px -2px rgba(0,0,0,.06), 0 18px 36px -14px rgba(0,0,0,.14);
   --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(0,0,0,.1), 0 30px 60px -18px rgba(0,0,0,.28);
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.08), 0 10px 28px -8px rgba(0,0,0,.16);
-  --r-card: 9px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
+  --r-card: 12.5px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
   --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
 }
 :root.look-graphite[data-theme="dark"], :root[data-theme="dark"] [data-look="graphite"] {
@@ -104,7 +104,7 @@
   --sh-card: 0 0 0 .5px var(--hair), inset 0 .5px 0 rgba(255,255,255,.07), 0 1px 1px rgba(0,0,0,.3), 0 3px 8px -2px rgba(0,0,0,.35), 0 18px 36px -14px rgba(0,0,0,.6);
   --sh-lift: 0 0 0 .5px var(--hair), 0 4px 10px -2px rgba(0,0,0,.4), 0 30px 60px -18px rgba(0,0,0,.75);
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(0,0,0,.4), 0 10px 28px -8px rgba(0,0,0,.6);
-  --r-card: 9px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
+  --r-card: 12.5px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.25;
   --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
 }
 
@@ -131,7 +131,7 @@
   --sh-soft: 0 12px 30px -12px rgba(55,38,20,.2);
   --sh-lift: 0 2px 6px rgba(55,38,20,.06), 0 40px 70px -24px rgba(55,38,20,.32);
   --sh-float: 0 0 0 .5px var(--hair), 0 12px 30px -12px rgba(55,38,20,.2);
-  --r-card: 18px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
+  --r-card: 25px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
   --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 55%, transparent);
 }
 :root.look-soft-light[data-theme="dark"], :root[data-theme="dark"] [data-look="soft-light"] {
@@ -155,7 +155,7 @@
   --sh-soft: 0 12px 30px -12px rgba(0,0,0,.6);
   --sh-lift: 0 2px 6px rgba(0,0,0,.35), 0 40px 70px -24px rgba(0,0,0,.8);
   --sh-float: 0 0 0 .5px var(--hair), 0 12px 30px -12px rgba(0,0,0,.6);
-  --r-card: 18px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
+  --r-card: 25px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
   --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
 }
 
@@ -443,7 +443,7 @@
   --sh-card: 0 0 0 1px rgba(0,0,0,.08), 0 6px 14px -6px rgba(30,40,60,.3);
   --sh-lift: 0 0 0 1px rgba(0,0,0,.08), 0 20px 34px -14px rgba(30,40,60,.4);
   --sh-float: 0 0 0 1px rgba(0,0,0,.08), 0 8px 18px -8px rgba(0,0,0,.4);
-  --r-card: 6px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 2;
+  --r-card: 8.5px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 2;
   --sect-border: 2px solid rgba(255,255,255,.9);
 }
 :root.look-city[data-theme="dark"], :root[data-theme="dark"] [data-look="city"] {
@@ -467,7 +467,7 @@
   --sh-card: 0 0 0 1px rgba(255,255,255,.06), 0 6px 14px -6px rgba(0,0,0,.6);
   --sh-lift: 0 0 0 1px rgba(255,255,255,.06), 0 20px 34px -14px rgba(0,0,0,.75);
   --sh-float: 0 0 0 1px rgba(255,255,255,.06), 0 8px 18px -8px rgba(0,0,0,.6);
-  --r-card: 6px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 2;
+  --r-card: 8.5px; --display: var(--ui); --label-font: var(--ui); --note-h: var(--ui); --edge-w: 2;
   --sect-border: 2px solid rgba(255,255,255,.07);
 }
 
@@ -482,26 +482,26 @@
 :root.look-classic .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent), var(--sh-card); }
 :root.look-classic .card.lift { box-shadow: 0 0 0 1px var(--line), var(--sh-lift); }
 :root.look-classic .chead { height: 38px; padding: 0 8px 0 12px; gap: 8px; }
-:root.look-classic .chead .step { border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+:root.look-classic .chead .step { border-radius: 1398.5px; corner-shape: round; background: var(--accent); color: var(--accent-ink); }
 :root.look-classic .ctitle { font-size: 12.5px; letter-spacing: 0; }
 :root.look-classic .cpath { font: 11.5px var(--sys); }
-:root.look-classic .chead .rev:not(.lang):not(.unc) { border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; gap: 5px; }
-:root.look-classic .chead .rev:not(.new):not(.lang):not(.unc):not(.lost)::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+:root.look-classic .chead .rev:not(.lang):not(.unc) { border: 1px solid var(--line); border-radius: 1398.5px; corner-shape: round; padding: 1px 7px; gap: 5px; }
+:root.look-classic .chead .rev:not(.new):not(.lang):not(.unc):not(.lost)::before { content: ""; width: 6px; height: 6px; border-radius: 50%; corner-shape: round; background: var(--ok); }
 :root.look-classic .chead .rev.new { border-color: var(--warn); color: var(--ink-2); background: color-mix(in srgb, var(--warn) 13%, transparent); }
 /* Folding header chips (styles.css, card header priority): the pill and its dot are drawn on the label, so a chip that is folding
    shows only its mark, never an empty pill */
 :root.look-classic .chead .rev.fold:not(.unc) { border: 0; padding: 0; background: none; --rwh: calc(1lh + 4px); }
 :root.look-classic .chead .rev.fold:not(.unc)::before { display: none; }
-:root.look-classic .chead .rev.fold:not(.unc) .rl { display: flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 999px; padding: 1px 7px; }
+:root.look-classic .chead .rev.fold:not(.unc) .rl { display: flex; align-items: center; gap: 5px; border: 1px solid var(--line); border-radius: 1398.5px; corner-shape: round; padding: 1px 7px; }
 :root.look-classic .chead .rev.fold:not(.unc) .rl > i { margin: 0; }
-:root.look-classic .chead .rev.fold:not(.new):not(.unc):not(.lost) .rl::after { content: ""; order: -1; width: 6px; height: 6px; border-radius: 50%; background: var(--ok); flex: none; }
+:root.look-classic .chead .rev.fold:not(.new):not(.unc):not(.lost) .rl::after { content: ""; order: -1; width: 6px; height: 6px; border-radius: 50%; corner-shape: round; background: var(--ok); flex: none; }
 :root.look-classic .chead .rev.fold:not(.new):not(.unc):not(.lost) .rl::before { background: var(--ok); opacity: 1; }
 :root.look-classic .chead .rev.fold.new .rl { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
 :root.look-classic .chead .rev.fold:not(.unc):hover .rl { background: var(--hlrow); }
 :root.look-classic .port { display: none; }
-:root.look-classic .vcard { --vc-bg: var(--bg); --vc-sh: 0 0 0 1px var(--line); --vc-r: 6px; }
+:root.look-classic .vcard { --vc-bg: var(--bg); --vc-sh: 0 0 0 1px var(--line); --vc-r: 8.5px; }
 :root.look-classic .vcard, :root.look-classic .vbox, :root.look-classic .vlabel { color: var(--ink); font-size: 11px; }
-:root.look-classic .pill, :root.look-classic .ctx, :root.look-classic .pop, :root.look-classic .dialog, :root.look-classic .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 9px; }
+:root.look-classic .pill, :root.look-classic .ctx, :root.look-classic .pop, :root.look-classic .dialog, :root.look-classic .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 12.5px; }
 :root.look-classic .toast { background: var(--toast); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--sh-float); }
 :root.look-classic .toast .tlink { font-weight: 500; }
 :root.look-classic .bbar .pill { gap: 6px; }
@@ -510,7 +510,7 @@
 :root.look-graphite .chead .step { background: none; color: var(--ink-3); padding: 0; min-width: 0; font-weight: 500; }
 :root.look-graphite .chead .step:hover { background: none; color: var(--accent); }
 :root.look-graphite .rev.new i { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
-:root.look-graphite .chead .rev.new { background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: 999px; }
+:root.look-graphite .chead .rev.new { background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: 1398.5px; corner-shape: round; }
 
 /* ---------- Soft Light ---------- */
 :root.look-soft-light { --call-deco: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); }
@@ -526,13 +526,13 @@
 :root.look-soft-light .ccard > .cface > .chead .subc, :root.look-soft-light .ccard > .cface > .chead .lockb, :root.look-soft-light .ccard > .cface > .chead .mk { order: 1; }
 :root.look-soft-light .ccard > .cface > .chead .rev { order: 2; margin-left: auto; color: var(--ink-3); }
 :root.look-soft-light .ccard > .cface > .chead .rev ~ .rev { margin-left: 0; }
-:root.look-soft-light .ccard > .cface > .chead .ib { order: 3; border-radius: 9px; }
+:root.look-soft-light .ccard > .cface > .chead .ib { order: 3; border-radius: 12.5px; }
 :root.look-soft-light .ccard > .cface > .chead .ctitle { order: 5; flex: 1 0 100%; font: 300 18px/1.35 var(--sys); color: var(--ink); letter-spacing: -.005em; }
 :root.look-soft-light .ccard > .cface > .chead .cpath { order: 6; flex: 1 0 100%; max-width: none; font: 400 11px var(--sys); color: var(--ink-3); letter-spacing: .02em; padding: 0; }
 :root.look-soft-light .ccard > .cface > .chead .rev.new { color: var(--ink-2); gap: 7px; }
 :root.look-soft-light .rev.new i { width: 7px; height: 7px; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
 :root.look-soft-light .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
-:root.look-soft-light .ccard .carea > .cbody { margin: 0 10px; border-radius: 12px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
+:root.look-soft-light .ccard .carea > .cbody { margin: 0 10px; border-radius: 17px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
 :root.look-soft-light[data-theme="dark"] .ccard .carea > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
 /* 托盘下面的 10px 留白算卡的外框（在内容区 .carea 外面）；有 Source 底栏时留白在托盘和底栏之间，底栏贴底 */
 :root.look-soft-light .ccard .carea { margin-bottom: 10px; }
@@ -545,22 +545,22 @@
 :root.look-soft-light .edge { stroke: color-mix(in srgb, var(--edge) 85%, transparent); }
 :root.look-soft-light .ahead.dot { stroke: none; }
 :root.look-soft-light .port { stroke: var(--coral); fill: var(--surface); }
-:root.look-soft-light .vcard { --vc-bg: var(--surface); --vc-sh: var(--sh-soft), 0 0 0 .5px var(--hair); --vc-r: 12px; --vl-pad: 5px 10px; }
+:root.look-soft-light .vcard { --vc-bg: var(--surface); --vc-sh: var(--sh-soft), 0 0 0 .5px var(--hair); --vc-r: 17px; --vl-pad: 5px 10px; }
 :root.look-soft-light .vcard, :root.look-soft-light .vbox, :root.look-soft-light .vlabel { font-size: 10.5px; }
-:root.look-soft-light .pill, :root.look-soft-light .ctx, :root.look-soft-light .pop, :root.look-soft-light .dialog, :root.look-soft-light .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
+:root.look-soft-light .pill, :root.look-soft-light .ctx, :root.look-soft-light .pop, :root.look-soft-light .dialog, :root.look-soft-light .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 19.5px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
 :root.look-soft-light .pill { padding: 5px; }
-:root.look-soft-light .ib, :root.look-soft-light .tbtn { border-radius: 9px; }
+:root.look-soft-light .ib, :root.look-soft-light .tbtn { border-radius: 12.5px; }
 :root.look-soft-light .pill .ib { width: 30px; height: 30px; }
-:root.look-soft-light .ctx button { border-radius: 8px; }
+:root.look-soft-light .ctx button { border-radius: 11px; }
 :root.look-soft-light .ctx button:not([disabled]):hover { background: var(--well); color: var(--ink); }
 :root.look-soft-light .ctx button:not([disabled]):hover .ck, :root.look-soft-light .ctx button:not([disabled]):hover small { color: var(--ink-3); }
 :root.look-soft-light .sep { width: 1px; background: var(--hair); }
-:root.look-soft-light .toast { left: auto; right: 20px; top: 20px; bottom: auto; translate: 0 -8px; background: var(--surface); color: var(--ink); border-radius: 12px; padding: 9px 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
+:root.look-soft-light .toast { left: auto; right: 20px; top: 20px; bottom: auto; translate: 0 -8px; background: var(--surface); color: var(--ink); border-radius: 17px; padding: 9px 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
 :root.look-soft-light .toast.show { translate: 0 0; }
 :root.look-soft-light .toast .tlink { color: var(--coral); font-weight: 500; }
-:root.look-soft-light .sect { border-radius: 24px; }
+:root.look-soft-light .sect { border-radius: 33.5px; }
 :root.look-soft-light .slabel { font-weight: 400; letter-spacing: .02em; }
-:root.look-soft-light .mk { border-radius: 50%; }
+:root.look-soft-light .mk { border-radius: 50%; corner-shape: round; }
 :root.look-soft-light .mast { display: flex; position: absolute; left: 24px; top: 16px; z-index: 3; pointer-events: none; flex-direction: column; gap: 4px; max-width: 46%; }
 :root.look-soft-light .mast::before { content: ""; width: 26px; height: 1px; background: var(--coral); }
 :root.look-soft-light .mast .mn { font: 300 24px/1.15 var(--sys); color: var(--ink); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -639,10 +639,10 @@
 :root.look-colorful .chead .step:hover { background: var(--fc); color: var(--bink); }
 :root.look-colorful .chead .cpath { max-width: none; flex: 1 1 auto; color: var(--ink-2); font: inherit; border-right: 2px solid var(--rule); }
 :root.look-colorful .chead .rev { font: inherit; color: var(--ink-2); gap: 7px; }
-:root.look-colorful .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--f3); }
+:root.look-colorful .chead .rev:not(.new):not(.lang):not(.unc)::before { content: ""; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; background: var(--f3); }
 :root.look-colorful .chead .rev.fold:not(.new):not(.unc)::before { display: none; } /* drawn on the label instead, so it folds with it */
 :root.look-colorful .chead .rev.fold:not(.new):not(.unc) .rl { display: flex; align-items: center; gap: 7px; }
-:root.look-colorful .chead .rev.fold:not(.new):not(.unc) .rl::after { content: ""; order: -1; width: 7px; height: 7px; border-radius: 50%; background: var(--f3); flex: none; }
+:root.look-colorful .chead .rev.fold:not(.new):not(.unc) .rl::after { content: ""; order: -1; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; background: var(--f3); flex: none; }
 :root.look-colorful .chead .rev.fold:not(.new):not(.unc) .rl::before { width: 7px; height: 7px; background: var(--f3); opacity: 1; top: calc(var(--rwh, 1lh) * -0.5 - 3.5px); }
 :root.look-colorful .chead .rev.new { color: var(--ink); }
 :root.look-colorful .rev.new i { width: 7px; height: 7px; background: var(--f1); }
@@ -690,7 +690,7 @@
 :root.look-colorful .ctx button:not([disabled]):hover .ck, :root.look-colorful .ctx button:not([disabled]):hover small { color: var(--ink-2); }
 :root.look-colorful .zoom { height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; font: 600 10.5px var(--sys); letter-spacing: .12em; color: var(--ink); }
 :root.look-colorful .toast { background: var(--toast); color: var(--paper-ink); border-radius: 0; box-shadow: none; font: 500 10.5px var(--sys); letter-spacing: .16em; text-transform: uppercase; padding: 8px 12px; }
-:root.look-colorful .toast::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--f1); flex: none; }
+:root.look-colorful .toast::before { content: ""; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; background: var(--f1); flex: none; }
 :root.look-colorful .toast .tlink { color: var(--f2); font-weight: 600; }
 :root.look-colorful .tip { border-radius: 0; }
 :root.look-colorful .mast { display: flex; position: absolute; left: 14px; top: 12px; z-index: 3; pointer-events: none; height: 30px; align-items: center; padding: 0 12px; max-width: 40%;
@@ -887,7 +887,7 @@
 :root.look-city .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-card); }
 :root.look-city .card.sel.lift { box-shadow: 0 0 0 2px var(--sign), var(--sh-lift); }
 /* 卡头是一块蓝底白字的路牌（内圈一道白线）；Note 是绿色指路牌 */
-:root.look-city .card:not(.nobg) > .cface > .chead { margin: 5px 5px 0; padding: 0 6px 0 9px; gap: 8px; border: 0; border-bottom: 1px solid rgba(0,0,0,.01); border-radius: 4px; /* 透明的下沿：见 Ink Wash 卡头编号印章的注释 */ background: var(--sign); color: var(--sign-ink); box-shadow: var(--signbox); }
+:root.look-city .card:not(.nobg) > .cface > .chead { margin: 5px 5px 0; padding: 0 6px 0 9px; gap: 8px; border: 0; border-bottom: 1px solid rgba(0,0,0,.01); border-radius: 5.5px; /* 透明的下沿：见 Ink Wash 卡头编号印章的注释 */ background: var(--sign); color: var(--sign-ink); box-shadow: var(--signbox); }
 :root.look-city .card.note > .cface > .chead { background: var(--gsign); box-shadow: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85); }
 :root.look-city .chead .ctitle { font: 600 13px var(--ui); letter-spacing: 0; }
 :root.look-city .card:not(.nobg) > .cface > .chead .cpath.cpath, :root.look-city .card:not(.nobg) > .cface > .chead .rev:not(.new), :root.look-city .card:not(.nobg) > .cface > .chead .kind.kind, :root.look-city .card:not(.nobg) > .cface > .chead .plusn.plusn { color: rgba(255,255,255,.75); }
@@ -895,7 +895,7 @@
 :root.look-city .card:not(.nobg) > .cface > .chead .ib.ib:hover, :root.look-city .card:not(.nobg) > .cface > .chead .cpath.cpath:hover, :root.look-city .card:not(.nobg) > .cface > .chead .rev:not(.new):hover, :root.look-city .card:not(.nobg) > .cface > .chead .subc.subc:hover { background: rgba(255,255,255,.16); color: #fff; }
 :root.look-city .chead .cpath { font: 400 11px var(--ui); }
 /* 编号：红色国道牌 */
-:root.look-city .chead .step { height: 19px; padding: 0 5px; border-radius: 3px 3px 8px 8px; background: var(--shield); color: #fff; font: 700 10.5px var(--ui); box-shadow: inset 0 0 0 1px rgba(255,255,255,.75); }
+:root.look-city .chead .step { height: 19px; padding: 0 5px; border-radius: 4px 4px 11px 11px; background: var(--shield); color: #fff; font: 700 10.5px var(--ui); box-shadow: inset 0 0 0 1px rgba(255,255,255,.75); }
 :root.look-city .chead .step:hover { background: color-mix(in srgb, var(--shield) 80%, #000); color: #fff; }
 /* 有新版本：施工牌 */
 :root.look-city .chead .rev.new { color: #2b2b2b; border-radius: 2px; font: 700 10px var(--ui); text-shadow: 0 0 2px #fff, 0 0 2px #fff; background: repeating-linear-gradient(-45deg, #ffffff 0 5px, #f28a1c 5px 10px); }
@@ -925,43 +925,43 @@
 :root.look-city .port { fill: var(--asphalt); stroke: var(--casing); stroke-width: 2; }
 /* 车流：小车沿路开（关键帧由 Traffic.tsx 用 Web Animations 加上），靠右行驶；只有 transform 和 opacity 在变，合成器自己跑 */
 :root.look-city .movers { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 2; pointer-events: none; }
-:root.look-city .mover { position: absolute; left: 0; top: 0; width: 22px; height: 10px; border-radius: 3px; background: #2f7de1; box-shadow: inset 0 0 0 .6px rgba(0,0,0,.3);
+:root.look-city .mover { position: absolute; left: 0; top: 0; width: 22px; height: 10px; border-radius: 4px; background: #2f7de1; box-shadow: inset 0 0 0 .6px rgba(0,0,0,.3);
   opacity: 0; will-change: transform, opacity; }
 :root.look-city .mover::before { content: ""; position: absolute; left: 6px; top: 1.6px; width: 9px; height: 6.8px; border-radius: 1.5px; background: rgba(255,255,255,.55); }
 :root.look-city .mover.k1 { background: #f2c230; }
 :root.look-city .mover.k2 { background: #f4f4f4; }
 :root.look-city .mover.k2::before { background: rgba(0,0,0,.18); }
 /* 夜里车灯亮着 */
-:root.look-city[data-theme="dark"] .mover::after { content: ""; position: absolute; left: 21px; top: 1px; width: 16px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(255,214,120,.45), rgba(255,214,120,0)); }
+:root.look-city[data-theme="dark"] .mover::after { content: ""; position: absolute; left: 21px; top: 1px; width: 16px; height: 8px; border-radius: 5.5px; background: linear-gradient(90deg, rgba(255,214,120,.45), rgba(255,214,120,0)); }
 /* 箭头上的数据写在绿色指路牌上 */
-:root.look-city .vcard { --vc-bg: var(--gsign); --vc-sh: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85), 0 3px 6px -3px rgba(0,0,0,.4); --vc-r: 4px; --vl-pad: 4px 10px; }
+:root.look-city .vcard { --vc-bg: var(--gsign); --vc-sh: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85), 0 3px 6px -3px rgba(0,0,0,.4); --vc-r: 5.5px; --vl-pad: 4px 10px; }
 :root.look-city .vcard, :root.look-city .vbox, :root.look-city .vlabel { font: 600 10.5px/15px var(--mono); color: #fff; }
 :root.look-city .vlabel { font-family: var(--ui); }
-:root.look-city .sect { border-radius: 14px; }
-:root.look-city .slabel { color: #fff; background: var(--sign); border-radius: 4px; box-shadow: var(--signbox); padding: 2px 10px 2px 6px; }
+:root.look-city .sect { border-radius: 19.5px; }
+:root.look-city .slabel { color: #fff; background: var(--sign); border-radius: 5.5px; box-shadow: var(--signbox); padding: 2px 10px 2px 6px; }
 :root.look-city .slabel .dots, :root.look-city .slabel .chev2, :root.look-city .slabel .scount { color: rgba(255,255,255,.7); }
-:root.look-city .ctx, :root.look-city .pop, :root.look-city .dialog, :root.look-city .keys, :root.look-city .palette, :root.look-city .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 8px; box-shadow: var(--sh-float); }
+:root.look-city .ctx, :root.look-city .pop, :root.look-city .dialog, :root.look-city .keys, :root.look-city .palette, :root.look-city .stkpick { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 11px; box-shadow: var(--sh-float); }
 /* 工具条：一整块蓝色标识牌，按钮是牌上的白色图标；缩放比例只是一行小字 */
-:root.look-city :is(.bbar, .dock) .pill { gap: 2px; padding: 5px 8px; border-radius: 6px; background: var(--sign); -webkit-backdrop-filter: none; backdrop-filter: none;
+:root.look-city :is(.bbar, .dock) .pill { gap: 2px; padding: 5px 8px; border-radius: 8.5px; background: var(--sign); -webkit-backdrop-filter: none; backdrop-filter: none;
   box-shadow: inset 0 0 0 2px var(--sign), inset 0 0 0 4px rgba(255,255,255,.9), 0 4px 10px -4px rgba(0,0,0,.45); }
-:root.look-city :is(.bbar, .dock) .tbtn, :root.look-city :is(.bbar, .dock) .ib { height: 30px; color: #fff; border-radius: 4px; }
+:root.look-city :is(.bbar, .dock) .tbtn, :root.look-city :is(.bbar, .dock) .ib { height: 30px; color: #fff; border-radius: 5.5px; }
 :root.look-city :is(.bbar, .dock) .ib { width: 32px; }
 :root.look-city :is(.bbar, .dock) .tbtn:hover, :root.look-city :is(.bbar, .dock) .ib:hover, :root.look-city :is(.bbar, .dock) .zoom:hover { background: rgba(255,255,255,.16); color: #fff; }
 :root.look-city :is(.bbar, .dock) .sep { width: 2px; height: 18px; background: rgba(255,255,255,.55); margin: 0 6px; }
 :root.look-city :is(.bbar, .dock) .zoom { min-width: 40px; color: rgba(255,255,255,.8); font: 600 10.5px var(--mono); }
 /* 红绿灯（车流开关）：红灯 = 车停着（默认），绿灯 = 车在开 */
-:root.look-city .dock .ib.traffic { width: 16px; height: 30px; margin: 0 4px; border-radius: 4px; background: #2a2e35; box-shadow: 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.1); --r: #ff3b2f; --y: #4a4122; --g: #1f4a30; }
+:root.look-city .dock .ib.traffic { width: 16px; height: 30px; margin: 0 4px; border-radius: 5.5px; background: #2a2e35; box-shadow: 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 1px rgba(255,255,255,.1); --r: #ff3b2f; --y: #4a4122; --g: #1f4a30; }
 :root.look-city .dock .ib.traffic[aria-pressed="true"] { --r: #4a2522; --g: #22d36b; }
 :root.look-city .dock .ib.traffic:hover { background: #363b44; }
 :root.look-city .dock .ib.traffic::before { content: ""; width: 8px; height: 26px;
   background: radial-gradient(circle at 50% 4px, var(--r) 0 3px, transparent 3.5px), radial-gradient(circle at 50% 13px, var(--y) 0 3px, transparent 3.5px), radial-gradient(circle at 50% 22px, var(--g) 0 3px, transparent 3.5px); }
-:root.look-city .ib, :root.look-city .tbtn, :root.look-city .btn, :root.look-city .ctx button, :root.look-city .cand, :root.look-city .db button, :root.look-city .fld { border-radius: 4px; }
-:root.look-city .toast { background: var(--surface); color: var(--ink); border-radius: 8px; box-shadow: var(--sh-float); font: 500 12.5px var(--ui); padding-left: 10px; }
-:root.look-city .toast::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 3px var(--shield); flex: none; }
+:root.look-city .ib, :root.look-city .tbtn, :root.look-city .btn, :root.look-city .ctx button, :root.look-city .cand, :root.look-city .db button, :root.look-city .fld { border-radius: 5.5px; }
+:root.look-city .toast { background: var(--surface); color: var(--ink); border-radius: 11px; box-shadow: var(--sh-float); font: 500 12.5px var(--ui); padding-left: 10px; }
+:root.look-city .toast::before { content: ""; width: 14px; height: 14px; border-radius: 50%; corner-shape: round; background: #fff; box-shadow: inset 0 0 0 3px var(--shield); flex: none; }
 :root.look-city .toast .tlink { color: var(--sign); font-weight: 700; }
 :root.look-city[data-theme="dark"] .toast .tlink { color: var(--accent); }
 /* 白板名：左上角一块路牌 */
-:root.look-city .mast { display: flex; position: absolute; left: 14px; top: 12px; z-index: 3; pointer-events: none; flex-direction: column; padding: 5px 12px 6px; max-width: 40%; border-radius: 5px; background: var(--sign); box-shadow: var(--signbox), 0 6px 12px -6px rgba(0,0,0,.4); }
+:root.look-city .mast { display: flex; position: absolute; left: 14px; top: 12px; z-index: 3; pointer-events: none; flex-direction: column; padding: 5px 12px 6px; max-width: 40%; border-radius: 7px; background: var(--sign); box-shadow: var(--signbox), 0 6px 12px -6px rgba(0,0,0,.4); }
 :root.look-city .mast::before { content: "CODEBOARD"; font: 600 8.5px var(--ui); letter-spacing: .2em; color: rgba(255,255,255,.75); }
 :root.look-city .mast .mn { font: 700 14px var(--ui); color: #fff; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
