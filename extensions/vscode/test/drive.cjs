@@ -564,6 +564,8 @@ async function notesettingsStep(page) {
   setUserSetting("codeboard.notes.headingInBody", undefined);
 }
 
+// Copy / Move to Another Project… between two windows of a second VS Code, one a multi-root workspace (projects.cjs). E2E_ONLY=projects runs only this step
+const projectsStep = () => require("./projects.cjs")({ check, OUT, WS, UD, port: Number(process.env.CDP_PORT || 9223) + 10 });
 const finish = async (browser, errors) => {
   check(!errors.length, "no webview errors", errors.slice(0, 3));
   fs.writeFileSync(`${OUT}/audit.json`, JSON.stringify(audits, null, 1));
@@ -588,9 +590,9 @@ const finish = async (browser, errors) => {
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
   // E2E_ONLY=capture,addsel runs only those steps, in that order. E2E_PART splits the run for parallel CI jobs:
   // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (nightly)
-  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep, noteimage: noteimageStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep };
+  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep, noteimage: noteimageStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep, projects: projectsStep };
   // Part 3 holds the slow steps (each 20 s or more on its own board); codeedit reloads the window, so it goes last
-  const PARTS = { 2: "capture,addsel,cardfocus,close", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
+  const PARTS = { 2: "capture,addsel,cardfocus,close,projects", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
   const only = process.env.E2E_ONLY || PARTS[process.env.E2E_PART];
   if (only) {
     for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); const t0 = Date.now(); await STEPS[k](page); console.log(`- ${k}: ${((Date.now() - t0) / 1000).toFixed(1)} s`); }
@@ -849,6 +851,6 @@ const finish = async (browser, errors) => {
     await shot(page, "10-pick-impl");
   } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
 
-  if (process.env.E2E_PART !== "1") { await captureStep(page); await addselStep(page); await cardfocusStep(page); await closeStep(page); }
+  if (process.env.E2E_PART !== "1") { await captureStep(page); await addselStep(page); await cardfocusStep(page); await closeStep(page); await projectsStep(); }
   await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });
