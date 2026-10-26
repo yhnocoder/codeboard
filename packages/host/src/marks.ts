@@ -1,5 +1,3 @@
-// 编辑器里的标记要画什么：哪些文件的哪些函数 / 类在白板上（CodeLens「+ Card」「on N boards」），目标白板上有哪些行（行号旁的竖条）。
-// 画出来由 lens.ts（VS Code 适配层）负责。
 import { allCodeCards, type Segment } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { absOf } from "./source";
@@ -13,7 +11,6 @@ export type Lens = { line: number; title: string; tooltip: string; command: stri
 export class BoardMarks {
   private byFile = new Map<string, Entry[]>();
 
-  /** 白板变了：重建「文件 → 段」索引 */
   async rebuild(store: Storage) {
     const m = new Map<string, Entry[]>();
     for (const { board } of await store.all()) {

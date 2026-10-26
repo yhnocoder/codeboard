@@ -1,4 +1,3 @@
-// 白板存储：目录结构、分组、.trash、资源都在 core（@codeboard/core/storage），这里只决定目录在哪、接上 node:fs。
 // 默认放在插件给这个工作区的存储目录里（boards/），不往正在读的仓库里写；codeboard.storageDir 可以换位置。
 import * as path from "node:path";
 import { mkdirSync } from "node:fs";
@@ -10,8 +9,8 @@ import { settingDir, workspace } from "./ws";
 export type { Storage };
 
 /**
- * 存储目录也看着：另一个窗口写了白板或共享卡，开着的白板马上换上。目录先建好再看：VS Code 的 watcher 看一个还不存在的目录时，
- * 目录和文件一起出现（别的窗口 Copy to Another Project… 到一个还没有白板的项目）那个文件会漏掉，要重新加载窗口才列出来
+ * 目录先建好再看：VS Code 的 watcher 看一个还不存在的目录时，目录和文件一起出现（别的窗口 Copy to Another Project… 到一个
+ * 还没有白板的项目）那个文件会漏掉，要重新加载窗口才列出来
  */
 export const openStorage = () => new Storage(nodeFs, { dir: boardDir, log, watch: (base, glob, fn) => {
   try { mkdirSync(base, { recursive: true }); } catch (e) { log("warn", `storage: cannot create ${base}: ${e instanceof Error ? e.message : e}`); }

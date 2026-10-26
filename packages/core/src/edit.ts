@@ -387,7 +387,6 @@ const findSeg = (b: Board, cardId: string, segId: string) => findOwner(b, cardId
 
 // ---------- 共享卡、拷贝、合并 / 拆开（白板动作里的领域改动都在这里，白板只管选中、动画、提示） ----------
 
-/** 删掉这些 Sidenote */
 export function removeSidenotes(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
   b.sidenotes = b.sidenotes.filter((n) => !gone.has(n.id));
@@ -417,7 +416,6 @@ export function sidenoteToCard(b: Board, id: string, card: string): void {
   b.links.push({ id: uid("l"), from: { card: n.at.card, seg: n.at.seg, line: n.at.lines?.[0] }, to: { card } });
 }
 
-/** 删掉这些 Sticker */
 export function removeStickers(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
   b.stickers = b.stickers.filter((k) => !gone.has(k.id));

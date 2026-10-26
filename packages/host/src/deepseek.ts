@@ -1,15 +1,11 @@
-// DeepSeek 的灰字补全（宿主用；密钥只在宿主里，不进白板）。先用 FIM（光标前 + 光标后，直接续写），出错再退回对话接口。
-// fetch 由调用方给（VS Code 里是 Node 自带的；测试里是假的）
+// DeepSeek 的灰字补全（密钥只在宿主里，不进白板）。先用 FIM（光标前 + 光标后，直接续写），出错再退回对话接口。
 import { COMPLETE_SYSTEM, completePrompt, spaceChatReply } from "@codeboard/core";
 
 export interface DeepseekOpts {
   key: string;
-  /** 默认 https://api.deepseek.com */
   baseUrl?: string;
-  /** 默认 deepseek-flash */
   model?: string;
   signal?: AbortSignal;
-  /** 默认 3 秒 */
   timeoutMs?: number;
   fetch?: typeof fetch;
 }
@@ -21,7 +17,6 @@ export type DeepseekRequest = { url: string; init: { method: "POST"; headers: Re
 const base = (o: DeepseekOpts) => (o.baseUrl || "https://api.deepseek.com").replace(/\/+$/, "");
 const headers = (key: string) => ({ "Content-Type": "application/json", Accept: "application/json", Authorization: `Bearer ${key}` });
 
-/** FIM：prompt = 光标前，suffix = 光标后；到换行就停 */
 export function deepseekFimRequest(o: DeepseekOpts, before: string, after: string): DeepseekRequest {
   return {
     url: `${base(o)}/beta/completions`,
@@ -31,7 +26,6 @@ export function deepseekFimRequest(o: DeepseekOpts, before: string, after: strin
   };
 }
 
-/** 退路：对话接口，提示词和 Copilot 那条一样 */
 export function deepseekChatRequest(o: DeepseekOpts, before: string, after: string): DeepseekRequest {
   return {
     url: `${base(o)}/chat/completions`,
@@ -43,7 +37,6 @@ export function deepseekChatRequest(o: DeepseekOpts, before: string, after: stri
   };
 }
 
-// FIM 被拒绝过的“地址 + 模型”（进程内记着）
 const noFim = new Set<string>();
 const fimKey = (o: DeepseekOpts) => `${base(o)} ${o.model || DEEPSEEK_MODEL}`;
 /** 测试用：忘掉 FIM 被拒绝过的记录 */
@@ -53,7 +46,6 @@ export const resetDeepseekFim = () => noFim.clear();
 export async function deepseekComplete(o: DeepseekOpts, before: string, after: string): Promise<string | undefined> {
   const f = o.fetch ?? fetch;
   if (!o.key || o.signal?.aborted) return undefined;
-  // 外面取消或者超时都中止请求
   const ac = new AbortController();
   const stop = () => ac.abort();
   o.signal?.addEventListener("abort", stop);

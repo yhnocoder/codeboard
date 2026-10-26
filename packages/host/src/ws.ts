@@ -1,11 +1,9 @@
-// 工作区路径、文件内容、语言：所有模块共用的小工具。编辑器和工作区只经过 Workspace（激活时 useWorkspace 接上）。
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { codeExts, langOfExt, type Workspace } from "@codeboard/core";
 
 let current: Workspace | undefined;
-/** 激活时（测试里是 Node 实现）接上 Workspace */
 export function useWorkspace(w: Workspace) { current = w; }
 export function workspace(): Workspace {
   if (!current) throw new Error("Workspace not set");
@@ -13,7 +11,6 @@ export function workspace(): Workspace {
 }
 export const hasWorkspace = () => !!current;
 
-/** 工作区根目录 */
 export const wsRoots = () => workspace().files.roots();
 /** 第一个工作区根：Source.repo 相对它 */
 export const ws0 = () => wsRoots()[0] ?? "";
@@ -57,7 +54,6 @@ export function langOf(file: string): string {
   return langOfExt(file)?.id ?? "plaintext";
 }
 
-/** 代码文件（建名字索引、找工作区代码用）：语言表里有语法的扩展名 */
 export const CODE_GLOB = `**/*.{${codeExts().join(",")}}`;
 export const CODE_EXCLUDE = "**/{node_modules,.git,.venv,venv,build,dist,__pycache__,.mypy_cache,.tox}/**";
 
@@ -65,13 +61,11 @@ export function mkUid(p: string) {
   return `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
-/** 防抖：同一个 key 连续触发只跑最后一次 */
 export function debounce<A extends unknown[]>(fn: (...a: A) => void, ms: number) {
   let t: NodeJS.Timeout | undefined;
   return (...a: A) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); };
 }
 
-/** 简单的 LRU 缓存 */
 export class Lru<V> {
   private m = new Map<string, V>();
   constructor(private max: number) {}

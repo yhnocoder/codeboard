@@ -1,4 +1,3 @@
-// 宿主用：把一行代码的高亮 token 拼成 HTML，调用名字外面套一层可点击的 .call。
 // 颜色用白板自己的 class（kw / fn / str / com / num / self / p / dec），亮色暗色由白板的 CSS 决定。
 
 export type Tok = { text: string; cls?: string };
@@ -26,7 +25,6 @@ export function renderLine(toks: Tok[], marks: Mark[] = [], cut?: number): strin
     line = line.slice(0, keep);
   }
   const ms = marks.filter((m) => m.col < line.length && m.end > m.col).sort((a, b) => a.col - b.col);
-  // 所有切点
   const cuts = new Set<number>([0, line.length]);
   let c = 0;
   for (const t of tk) { cuts.add(c); c += t.text.length; }

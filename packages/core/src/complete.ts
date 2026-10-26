@@ -1,4 +1,3 @@
-// Note 编辑时的灰字补全：提示词和回答的清理（和宿主无关；宿主只负责把提示交给语言模型）
 export const COMPLETE_SYSTEM = [
   "You are an inline autocomplete engine inside a whiteboard app where developers write Markdown notes while reading code.",
   "Continue the note at the cursor. Reply with ONLY the text to insert at the cursor: no explanation, no quotes, no code fences around the reply.",
@@ -7,7 +6,6 @@ export const COMPLETE_SYSTEM = [
   "If nothing useful can be added, reply with nothing.",
 ].join("\n");
 
-/** 光标前最多 2000 字、光标后最多 400 字 */
 export function completePrompt(before: string, after: string): string {
   const b = before.slice(-2000), a = after.slice(0, 400);
   return `<note_before_cursor>\n${b}\n</note_before_cursor>\n<note_after_cursor>\n${a}\n</note_after_cursor>\nText to insert at the cursor:`;

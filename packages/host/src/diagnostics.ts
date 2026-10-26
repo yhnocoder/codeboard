@@ -1,4 +1,3 @@
-// Copy Diagnostics：版本、Python / Pylance、工作区 git 状态、白板规模、最近的日志 → 剪贴板（home 换成 ~）。
 import * as os from "node:os";
 import { formatDiagnostics, type Board, type DiagInfo } from "@codeboard/core";
 import { git } from "./git";

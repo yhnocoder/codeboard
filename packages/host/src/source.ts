@@ -1,4 +1,3 @@
-// 代码从哪来、钉在哪个版本：文件绝对路径 ⇄ Source + path，建卡时的 Version，以及读「那个版本」的文件内容。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { fingerprint, locateSeg, parseDistInfo, sameLines, type Segment, type Source, type Version } from "@codeboard/core";
@@ -29,7 +28,6 @@ export const srcLabel = (s: Source) => (s.kind === "repo" ? (s.repo ? path.basen
 export const hasLocalFile = (s: Source) => s.kind === "repo" || s.kind === "external";
 export const githubFileDir = (owner: string, name: string, commit: string) => path.join(ghRoot, owner, name, commit);
 
-/** src 在本机的根目录（找不到返回 null） */
 export function rootOf(src: Source, version?: Version): string | null {
   const mapped = repoMap[srcKey(src)];
   if (mapped) return mapped;
@@ -46,7 +44,6 @@ export function absOf(seg: Pick<Segment, "src" | "path" | "version">): string | 
   return r ? path.join(r, seg.path) : null;
 }
 
-/** 一个段所在的仓库 / 文件在不在本机 */
 export async function present(seg: Pick<Segment, "src" | "path" | "version">): Promise<boolean> {
   if (seg.src.kind === "free") return true;
   const r = rootOf(seg.src, seg.version);
@@ -55,12 +52,11 @@ export async function present(seg: Pick<Segment, "src" | "path" | "version">): P
 
 const SITE = /[\\/](site-packages|dist-packages)[\\/]/;
 
-/** 磁盘上的文件 → 白板上的位置 */
 export async function locOfFile(abs: string): Promise<Loc> {
   if (ghRoot && abs.startsWith(ghRoot + path.sep)) {
     const [owner, name, commit, ...rest] = posix(path.relative(ghRoot, abs)).split("/");
     let ref = commit;
-    try { ref = (await fs.readFile(path.join(ghRoot, owner, name, commit, ".codeboard-ref"), "utf8")).trim() || commit; } catch { /* */ }
+    try { ref = (await fs.readFile(path.join(ghRoot, owner, name, commit, ".codeboard-ref"), "utf8")).trim() || commit; } catch {}
     return { src: { kind: "github", owner, name, ref }, path: rest.join("/"), root: path.join(ghRoot, owner, name, commit), abs, fixed: { kind: "git", commit } };
   }
   const git = await repoRootOf(abs);
@@ -79,11 +75,11 @@ export async function locOfFile(abs: string): Promise<Loc> {
   return { src: { kind: "external", root }, path: path.basename(abs), root, abs };
 }
 
-/** pip / conda 包：site-packages 下顶层目录对应的 *.dist-info 里的版本 */
 // 标准库：…/lib/python3.12/xxx.py（不在 site-packages 里）；Pylance 自带的 typeshed 存根
 const STDLIB = /[\\/]python(\d+\.\d+)[\\/](?!.*[\\/](?:site|dist)-packages[\\/])/i;
 const TYPESHED = /[\\/]typeshed(?:-fallback)?[\\/]stdlib[\\/]/;
 
+/** pip / conda 包：site-packages 下顶层目录对应的 *.dist-info 里的版本 */
 async function pkgVersion(abs: string): Promise<{ name: string; version: string } | null> {
   const site = SITE.exec(abs);
   if (!site) {

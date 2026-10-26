@@ -1,4 +1,4 @@
-// 按文件头认位图：PNG（含 APNG）、JPEG、WebP（含动画）、GIF（含多帧），连同显示出来的宽高。宿主用：贴纸包（stickers.ts）、Note 里粘贴的图（images.ts）。
+// 按文件头认位图：PNG（含 APNG）、JPEG、WebP（含动画）、GIF（含多帧），连同显示出来的宽高。
 // 没用库：运行时依赖里没有认文件类型的库，而要看的动图标记（APNG 的 acTL、WebP VP8X 的动画位、GIF 的帧数）和 JPEG 的 EXIF 方向通用的库也不管；
 // 真正解码在 webview 的图片解码器里
 

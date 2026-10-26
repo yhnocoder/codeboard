@@ -1,5 +1,5 @@
 // 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（卡片的框和名字、调用图标记、连线、Section 色）发给父白板，
-// 父白板只画骨架，不拿子白板的完整内容。纯函数：骨架、子白板关系（侧栏的树、不能套成环）、把选中的卡拆成一块新白板（Turn into Board）。
+// 父白板只画骨架，不拿子白板的完整内容。
 import { cardTitle, clone, emptyBoard, firstLine, hostOf, isCode, uid, versionLabel, withCols, type Board, type BoardCard, type Card, type Link, type Place } from "./model";
 import { cardsToFrame, removeCards, removeSections, removeStickers, renumberBorn } from "./edit";
 import { computeFlows } from "./flow";
@@ -153,8 +153,6 @@ function mainCommit(b: Board): string | undefined {
 export function skelHas(sk: Skeleton, card: string): boolean {
   return sk.cards.some((c) => c.id === card || !!c.ids?.includes(card));
 }
-
-// ---------- Turn into Board ----------
 
 /** 子白板框的标题栏高度、四周留白（世界坐标）：白板界面画骨架、箭头找入口点都按它 */
 export const FRAME_HEAD = 30, FRAME_PAD = 12;

@@ -1,5 +1,3 @@
-// 版本：建段（钉 HEAD / 包版本 / 指纹）和「新版本」检查。
-// 检查时机：打开白板、git HEAD 变化、保存文件（只影响 uncommitted 和仓库外文件）。
 import * as path from "node:path";
 import { allCodeCards, locateSeg, sameLines, storedSegs, trackSeg, upstreamSegs, versionLabel, viewKey, type Board, type Segment, type Stale, type SymRef } from "@codeboard/core";
 import { headOf, isAncestor, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -32,7 +30,6 @@ export function variantSegments(b: Pick<Board, "cards">): Segment[] {
   return allCodeCards(b).flatMap((c) => storedSegs(c).map(({ vid, seg }) => ({ ...seg, id: viewKey(seg.id, vid) })));
 }
 
-/** 从文件的几行建一个段 */
 export async function makeSegment(loc: Loc, lines: string[], start: number, end: number, opts: { symbol?: SymRef; scope?: string; lang?: string } = {}): Promise<Segment> {
   const lang = opts.lang ?? langOf(loc.abs);
   const text = lines.slice(start - 1, end);
@@ -45,7 +42,6 @@ export async function makeSegment(loc: Loc, lines: string[], start: number, end:
 
 const symsOf = (lang: string, text: string) => analysisOf(lang, text).symbols;
 
-/** 一个段和当前代码的关系 */
 export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Promise<Stale> {
   if (!hasLocalFile(seg.src)) return { state: "ok" };
   const root = rootOf(seg.src, seg.version);
@@ -107,14 +103,13 @@ export async function staleFor(segs: Segment[], up?: Set<string>): Promise<Recor
   return out;
 }
 
-/** 一张白板里有新版本的卡片数（侧栏圆点、状态栏计数） */
+/** 一张白板里有新版本的卡片数 */
 export function countStale(b: Board, st: Record<string, Stale>): number {
   let n = 0;
   for (const c of allCodeCards(b)) if (upstreamSegs(c).some((s) => st[s.id]?.state === "changed")) n++;
   return n;
 }
 
-/** 段在当前工作区文件里的位置（跳转、行号旁标记用）；文件不在返回 null */
 export async function workingPlace(seg: Segment): Promise<{ abs: string; start: number; end: number; lines: string[]; exact: boolean } | null> {
   if (seg.src.kind === "free") return null;
   const root = rootOf(seg.src, seg.version);

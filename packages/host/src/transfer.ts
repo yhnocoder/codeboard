@@ -188,7 +188,7 @@ async function copyFiles(from: string, to: string, names: Iterable<string>) {
   }
 }
 
-// ---------- 跨窗口粘贴卡：⌘C 时宿主把剪贴板也记进全局存储目录，别的窗口（别的项目）⌘V 时从那边的存储目录拷成独立副本 ----------
+// 跨窗口粘贴卡：⌘C 时宿主把剪贴板也记进全局存储目录，别的窗口（别的项目）⌘V 时从那边的存储目录拷成独立副本
 
 /** 跨窗口的卡片剪贴板：dir = 复制它的窗口的白板存储目录，folders = 那个窗口的工作区文件夹（第一个是主根），at = 复制的时间 */
 export type FarClip = CardClip & { dir: string; folders: string[]; at: number };

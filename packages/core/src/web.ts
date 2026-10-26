@@ -1,5 +1,3 @@
-// 网页元信息：从 HTML 里取标题、描述、站点名、预览图、图标（宿主抓网页后调用；纯函数，便于测试）。
-
 export type PageMeta = { title?: string; desc?: string; site?: string; image?: string; icon?: string };
 
 const ENT: Record<string, string> = { amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", "#39": "'", mdash: "—", ndash: "–", hellip: "…", middot: "·", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“" };
@@ -14,7 +12,6 @@ export function decodeEntities(s: string): string {
 }
 const clean = (s?: string) => { const t = s && decodeEntities(s).replace(/\s+/g, " ").trim(); return t || undefined; };
 
-/** 一个标签的属性（小写名 → 值） */
 function attrs(tag: string): Record<string, string> {
   const o: Record<string, string> = {};
   const re = /([\w:-]+)\s*(?:=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
@@ -63,16 +60,15 @@ export function parseWebMeta(html: string, url: string): PageMeta {
   const score = (i: { href: string; rel: string; size: number }) => (/\.svg(\?|$)/i.test(i.href) ? 0 : Math.abs(i.size - 32) + (i.rel.includes("apple") ? 8 : 0));
   const best = icons.sort((a, b) => score(a) - score(b))[0];
   let icon = best ? abs(best.href, base) : undefined;
-  if (!icon) { try { icon = new URL("/favicon.ico", url).href; } catch { /* */ } }
+  if (!icon) { try { icon = new URL("/favicon.ico", url).href; } catch {} }
   return { title, desc, site, image, icon };
 }
 
-/** 网址的路径部分（A2「什么都没抓到」时放第二行）：/wiki/x?tab=notes */
+/** 网址的路径部分（什么都没抓到时显示）：/wiki/x?tab=notes */
 export function urlPath(url: string): string {
   try { const u = new URL(url); const p = u.pathname + u.search + u.hash; return p === "/" ? "" : p; } catch { return ""; }
 }
 
-/** 从 Content-Type 或 <meta charset> 猜编码 */
 export function charsetOf(contentType: string | null | undefined, head: string): string {
   const c = /charset=["']?([\w-]+)/i.exec(contentType ?? "")?.[1] ?? /<meta[^>]+charset=["']?([\w-]+)/i.exec(head)?.[1];
   return (c ?? "utf-8").toLowerCase();

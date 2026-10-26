@@ -1,6 +1,4 @@
-// 一块打开的白板：读白板、算段的展示数据和版本状态、发 init；宿主信息；版本状态重算。
-// 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。界面本身（BoardView）由编辑器适配层实现
-//（VS Code 里是 webview，见 env.ts 的 openView），所有打开的白板由 hub.ts 的 BoardHub 管（BoardHost）。
+// 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。
 import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
@@ -16,7 +14,6 @@ import type { StateStore, ViewPlace } from "./env";
 /** 宿主转发的 ⌘ / Ctrl 键（webview 里不自己处理）：与 package.json 里 codeboard.boardKey 的键一致（"+" 是 "=" 那个键按了 Shift）；board 的 lists.test.ts 会核对 */
 export const FORWARDED_KEYS = ["k", "d", "0", "1", "=", "+", "-", "shift+l", "shift+b", ","];
 
-/** 白板的界面（VS Code 里是一个 webview 标签页） */
 export interface BoardView {
   /** 直接发给界面（不排队） */
   postMessage(m: HostToBoard): void;
@@ -27,15 +24,11 @@ export interface BoardView {
   dispose(): void;
   /** 本机目录在界面里的地址（图片卡的 assets/） */
   resourceUrl(dir: string): string;
-  /** 界面发来的消息 */
   onMessage: Event<BoardToHost>;
-  /** 成了当前的标签页 */
   onDidActivate: Event<void>;
-  /** 关掉了 */
   onDidDispose: Event<void>;
 }
 
-/** 所有打开的白板（面板管理器） */
 export interface BoardHost {
   readonly store: Storage;
   /** 编辑器里 Add to 的目标白板 */
@@ -54,11 +47,10 @@ export interface BoardHost {
   clip: CardClip | undefined;
   /** 共享卡的情况（在几块白板上、谁连到它）重新推给白板；now = 不等防抖 */
   refreshShared(now?: boolean, fresh?: string): void;
-  /** 面板换一块白板显示（进入 / 离开子白板） */
   /** 子白板的骨架重新推给白板（变了的）；now = 不等防抖，fresh = 刚 init 的白板 */
   refreshSkeletons(now?: boolean, fresh?: string): void;
-  /** 一块白板的骨架（没了 = null） */
   skeleton(id: string): Skeleton | null;
+  /** 面板换一块白板显示（进入 / 离开子白板） */
   switchBoard(p: BoardPanel, to: string, o: { crumbs: Crumb[]; cams: Camera[]; walk?: WalkHop; cam?: Camera }): Promise<boolean>;
   /** 每块白板上次打开的时间（「回来接上」的提示用）；opened 记下这一次 */
   lastOpened?(id: string): number | undefined;
@@ -70,7 +62,7 @@ export interface BoardHost {
 }
 
 const DAY = 864e5;
-/** 「回来接上」（线框 06）：设置 welcomeBack 允许、隔得够久、这块白板上还有没解决的问题时才提示 */
+/** 「回来接上」：设置 welcomeBack 允许、隔得够久、这块白板上还有没解决的问题时才提示 */
 export function welcomeOf(b: Board, last: number | undefined, mode: Settings["welcomeBack"], now = Date.now()): { days: number; open: number } | undefined {
   if (mode === "off" || last === undefined) return undefined;
   const days = Math.floor((now - last) / DAY);
@@ -179,7 +171,6 @@ export class BoardPanel {
     } catch (e) { workspace().log("warn", `variants: ${e instanceof Error ? e.message : e}`); }
   }
 
-  /** 白板上（含不在显示的 Variant）有没有这些文件里的段 */
   holds(paths: ReadonlySet<string>): boolean {
     return !!this.board && [...boardSegments(this.board), ...variantSegments(this.board)].some((s) => inPaths(s, paths));
   }

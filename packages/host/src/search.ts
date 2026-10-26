@@ -1,4 +1,3 @@
-// ⌘K 面板：白板上的卡和 Sidenote、工作区的符号和文件；Start from Entry Point…
 import * as path from "node:path";
 import { allCodeCards, cardTitle, codeExts, computeFlows, escapeRegExp, fuzzy, guessLang, LANG_TABLE, substr, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
 import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
@@ -170,8 +169,6 @@ export async function entryPoints(): Promise<SearchItem[]> {
 }
 
 
-// ---------- 解析不到的调用：按名字在所有语言里找（线框 01 二） ----------
-
 
 /** 叫这个名字的定义（名字索引，所有语言）+ 字符串里的这个名字（"unified_attention"：注册表、绑定），按语言排 */
 export async function searchName(name: string): Promise<NameHit[]> {
@@ -193,8 +190,6 @@ export async function searchName(name: string): Promise<NameHit[]> {
   const k = (h: NameHit) => { const i = LANG_TABLE.findIndex((l) => l.id === h.lang); return i < 0 ? LANG_TABLE.length : i; };
   return out.map((h, i) => [h, i] as const).sort((a, b) => k(a[0]) - k(b[0]) || Number(b[0].def) - Number(a[0].def) || a[1] - b[1]).map(([h]) => h);
 }
-
-// ---------- Generated 卡的内容 ----------
 
 /** 选文件的过滤：代码文件，再加上编译器的中间产物和日志 */
 const GEN_EXT = [...codeExts(), "ptx", "ll", "mlir", "txt", "log"];

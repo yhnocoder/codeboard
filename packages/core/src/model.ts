@@ -1,10 +1,10 @@
-// 白板的持久化数据模型（第 7 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
-// 卡片内容（Card）和它在这块白板上的摆放（Place）分开存：v0.2 的共享卡片、子白板会让同一张卡出现在几块白板上，
+// 白板的持久化数据模型，宿主和白板界面共用。
+// 卡片内容（Card）和它在这块白板上的摆放（Place）分开存：共享卡、子白板让同一张卡出现在几块白板上，
 // 内容只有一份，摆放每块白板各一份。Compare 只引用两张卡的 id，那两张卡在 cards 里但没有 Place（不单独出现在画布上）。
 // 基本元素：Card、Place、Link、Section、Sidenote、Sticker。流程、讲解、Compare 都由它们派生。
-// 第 6 版起有共享卡：内容存在卡库 <存储目录>/cards/<id>.json（卡 + 跟着它走的 Sidenote），白板文件里只留引用（SharedRef）；
+// 共享卡：内容存在卡库 <存储目录>/cards/<id>.json（卡 + 跟着它走的 Sidenote），白板文件里只留引用（SharedRef）；
 // 宿主读白板时把引用换成内容（inflate），界面拿到的永远是完整的 Board。
-// 第 7 版：Markdown 里转义的 \$ 总是字面的 $（旧编辑器写下的 \$…\$ 公式由 migrate.ts 改成 $…$）。
+// Markdown 里转义的 \$ 总是字面的 $（旧编辑器写下的 \$…\$ 公式由 migrate.ts 改成 $…$）。
 
 export const BOARD_VERSION = 7;
 
@@ -60,7 +60,7 @@ type CardBase = {
   id: string;
   title?: string; // 用户改过的名字；没有就用默认名
   desc?: string; // 卡片说明（标题下一段话，Walkthrough 时显示）
-  /** 进程标签（线框 03）：自由文字（rank 0、rank 1…N、Scheduler × TP）；light = 线程 / CUDA stream，浅一点的样式 */
+  /** 进程标签：自由文字（rank 0、rank 1…N、Scheduler × TP）；light = 线程 / CUDA stream，浅一点的样式 */
   procs?: ProcTag[];
 };
 
@@ -84,14 +84,13 @@ export type CodeCard = CardBase & {
   /** Generated 卡：生成出来的代码 / 编译产物（what = CUDA source、Inductor output），钉在一次运行和那组参数上（run），不钉 commit */
   gen?: { what: string; run?: string };
   /**
-   * 我的改动（线框 07）：同一段代码的几个版本，卡上一排标签页。第一个永远是上游（钉住的版本，from.kind = upstream）。
+   * 我的改动：同一段代码的几个版本，卡上一排标签页。第一个永远是上游（钉住的版本，from.kind = upstream）。
    * 当前显示的那个（active）的段就是 segments；其余 Variant 的段存在各自的 segs 里，段 id 和 segments 一一对应（Link、Sidenote 的 seg 不用换）。
    */
   variants?: Variant[];
   active?: string; // 当前显示的 Variant 的 id；没有 = 上游
 };
 
-/** Variant 从哪来 */
 export type VariantFrom =
   | { kind: "upstream" } // 钉住的上游版本（卡原来的段）
   | { kind: "ref"; ref: string } // 分支 / tag / commit（分支会跟着走：rebase 后按函数名重新定位）
@@ -109,7 +108,6 @@ export type Variant = { id: string; name: string; from: VariantFrom; note?: stri
 export const UPSTREAM = "up";
 /** 当前显示的 Variant（没有 Variant 的卡 = 上游） */
 export const activeOf = (c: Pick<CodeCard, "active">) => c.active ?? UPSTREAM;
-/** 卡上显示的是不是上游以外的 Variant */
 export const onVariant = (c: Pick<CodeCard, "variants" | "active">) => !!c.variants?.length && activeOf(c) !== UPSTREAM;
 /** 不是当前显示的 Variant 的段，展示数据存在 views[viewKey(段, Variant)] */
 export const viewKey = (sid: string, vid: string) => `${sid}@${vid}`;
@@ -129,7 +127,7 @@ export type NoteCard = CardBase & {
   bold?: boolean;
   /** Mark（标注卡）：手写字、统一字号、这一种颜色、没有框（bg 为 false）；从它出发的箭头画成这个颜色的手绘线 */
   hand?: HandColor;
-  /** 消息卡（线框 03）：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
+  /** 消息卡：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
   msg?: { where?: string };
 };
 /** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */
@@ -145,7 +143,6 @@ export type WebMeta = {
   at?: number; // 抓取时间
   failed?: boolean; // 什么都没抓到（需要登录 / 离线）
 };
-/** Web 卡：书签样式（标题 + 两行描述 + 域名 + 右侧预览图） */
 /** Web 卡样式：不填 = Auto（横图放上面，方图放右边） */
 export type WebStyle = "banner" | "side" | "text" | "compact";
 export type WebCard = CardBase & { kind: "web"; url: string; meta?: WebMeta; style?: WebStyle };
@@ -173,16 +170,15 @@ export type CardKind = Card["kind"];
 
 // ---------- 摆放 ----------
 
-/** 一张卡在这块白板上的位置和状态 */
 export type Place = {
   x: number;
   y: number;
   w: number;
-  h?: number; // 用户拖过高度才有；否则按内容自动高，上限后卡内滚动。代码卡（第 4 版起）存的是内容区的高度，不含卡头 / 底栏（那部分随主题变）
+  h?: number; // 用户拖过高度才有；否则按内容自动高，上限后卡内滚动。代码卡存的是内容区的高度，不含卡头 / 底栏（那部分随主题变）
   section?: string; // 所在 Section（按卡片中心点判断，拖动结束时更新）
   locked?: boolean;
   collapsed?: boolean; // 折叠了它下面的 Call 子树
-  start?: boolean; // 起点卡（线框 12）：不选卡直接 Walkthrough、调用树从这里开始
+  start?: boolean; // 起点卡：不选卡直接 Walkthrough、调用树从这里开始
 };
 
 // ---------- Link（界面上叫 Arrow） ----------
@@ -220,7 +216,7 @@ export type CallMark = {
 };
 
 /**
- * 证据分三档（线框 13）：没有 ev = static（静态解析出来的）；manual = 手动补的；observed = 一次运行里真的从这一行进了那个函数。
+ * 证据分三档：没有 ev = static（静态解析出来的）；manual = 手动补的；observed = 一次运行里真的从这一行进了那个函数。
  * 线上画最强的那档（observed > static > manual），悬停列出全部：observed 时 base 记下它原来是哪档（manual；没有 = static）。
  * via = 怎么补上的（registry、search）；cmd / log / at / commit = observed 的证据：运行命令、日志行、时间、当时的 commit；
  * count = 那次运行里调了几次，run = 运行记录的 id（<存储目录>/runs/<id>.json）
@@ -237,7 +233,7 @@ export type CallAlt = { label: string; detail?: string; path?: string; line?: nu
 export type LinkStyle = { dash?: true; width?: 1 | 2 | 3; head?: { start?: boolean; end?: boolean }; color?: string };
 
 /**
- * 箭头：只有这一种（第 5 版起）。两端各是整张卡或某一行，一行 / 一张卡可以连出、连进任意多条。
+ * 箭头：只有这一种。两端各是整张卡或某一行，一行 / 一张卡可以连出、连进任意多条。
  * 调用是箭头上的 Call 标记（call），不是另一种线。标记怎么组合见 LinkMarks
  */
 export type Link = LinkBase & LinkMarks;
@@ -262,15 +258,10 @@ type LinkBase = {
   style?: LinkStyle;
   sides?: { from?: LinkSide; to?: LinkSide }; // 用户选过的进出边
   lost?: { from?: true; to?: true }; // 这一端连着的行在代码更新后没了：端点退到卡头，画成红色，等用户重连或删掉
-  // 标记（LinkMarks）：
-  //   gen = Generated from：从 Generated 卡连回生成它的那一行（点线）
-  //   rpc = RPC 标记（线框 03）：不是直接调用，而是发消息让另一个进程去做（点划线）。和 Call 一样连进调用图，标记字母跨过去
-  //   back = 「↩ back to」：回到起点的线（结果送回去），Walkthrough 走到这里停，不沿它走
 };
 /** 这条箭头能不能加 call / rpc / back（Generated from 不能，见 LinkMarks） */
 export const canMark = (l: Link): l is LinkBase & Extract<LinkMarks, { gen?: undefined }> => !l.gen;
 
-/** 跨进程的机制 */
 export const RPC_MECHS = ["shm", "zmq", "HTTP", "gRPC", "torch.distributed", "queue", "ray", "custom"] as const;
 /** mech = 机制（custom 时 custom 是用户写的名字）；msg = 消息或方法名；fan = 一对一 / 一对所有 rank */
 export type RpcMark = { mech: string; custom?: string; msg?: string; fan?: "one" | "all" };
@@ -314,7 +305,7 @@ export type Sidenote = {
   lineRemoved?: boolean; // 更新版本时原来的行被删了，改挂整卡
   boardOnly?: true; // 挂在共享卡上、但只属于这块白板（不跟着卡去别的白板）
   review?: string; // Update 时挂着的行变了：新版本的标签（如 9f3e2a1），琥珀色提醒复查；用户看过就去掉
-  variant?: string; // 只在卡的这个 Variant 上显示（线框 07）；行号按那个 Variant 的代码算。没有 = 跟着卡，所有 Variant 都显示
+  variant?: string; // 只在卡的这个 Variant 上显示；行号按那个 Variant 的代码算。没有 = 跟着卡，所有 Variant 都显示
 } & (
   | { kind: "code"; code: Segment } // 仓库里或仓库外的代码，钉版本
   | { kind: "paste"; text: string; lang: string; url?: string }
@@ -339,7 +330,7 @@ export type StickerAt =
   | { kind: "canvas"; x: number; y: number; size?: number; on?: StickerOn };
 
 /**
- * 疑问（线框 06）：「?」贴纸上写的问题。md = 问题（Markdown）；done = 已解决（贴纸画成 ✓）；answer = 解答它的卡（Note 或别的卡）；at = 提问时间。
+ * 疑问：「?」贴纸上写的问题。md = 问题（Markdown）；done = 已解决（贴纸画成 ✓）；answer = 解答它的卡（Note 或别的卡）；at = 提问时间。
  */
 export type Question = { md: string; done?: true; answer?: string; at?: number };
 export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt; q?: Question };
@@ -375,7 +366,7 @@ export type Board = {
   seq?: number;
   /** 用户改过的调用图标记：键是那张调用图里最早建的卡 */
   marks?: Record<string, GraphMark>;
-  /** Arrow 图例（线框 12）：内置几种样式的名字，用户改过的才存 */
+  /** Arrow 图例：内置几种样式的名字，用户改过的才存 */
   legend?: Partial<Record<LegendKey, string>>;
 };
 
@@ -384,7 +375,7 @@ export const LEGEND = [["call", "Call"], ["rpc", "RPC"], ["observed", "Observed"
 export type LegendKey = (typeof LEGEND)[number][0];
 export const legendName = (b: Pick<Board, "legend">, k: LegendKey) => b.legend?.[k] || LEGEND.find((x) => x[0] === k)![1];
 
-// ---------- 共享卡（第 6 版） ----------
+// ---------- 共享卡 ----------
 
 /** 白板文件里共享卡的位置：只有 id，内容在卡库里。在 cards 里占着叠放顺序 */
 export type SharedRef = { id: string; kind: "shared" };
@@ -402,15 +393,12 @@ export function emptyBoard(id: string, name: string): Board {
   return { version: BOARD_VERSION, id, name, cam: { x: 80, y: 80, z: 1 }, cards: [], place: {}, links: [], sections: [], sidenotes: [], stickers: [], born: {}, seq: 0 };
 }
 
-// ---------- 小工具 ----------
-
 let seq = 0;
 /** 新 id：前缀 + 时间 + 序号 + 随机（卡、段、Link、白板都用它） */
 export const uid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toString(36)}${Math.random().toString(36).slice(2, 5)}`;
 
 export const isCode = (c: Card | undefined): c is CodeCard => c?.kind === "code";
 
-/** 卡片的显示名 */
 export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
   if (c.title) return c.title;
   switch (c.kind) {
@@ -459,7 +447,6 @@ export function codeGlyph(c: CodeCard): string {
 
 /** 路径的最后一段（/ 和 \ 都认） */
 export const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
-/** Markdown 的第一句（去掉标题、引用、列表标记和 ** `；__init__ 这种名字不动）：Note 的默认名、问题列表、骨架里的名字 */
 /**
  * Markdown 开头的标题（第一行非空的是 # 标题时）的纯文字，没有就是 ""：Note 卡头显示它（不另存一份标题）。
  * 只看到第一行非空的为止，不解析整篇；去掉行内的 **、*、_、`、~~ 和链接写法
@@ -479,7 +466,6 @@ export function mdHeading(md: string): string {
 }
 /** Markdown 的第一行字（标题用）：图片换成它的 alt（只有一张没 alt 的图的行跳过：粘贴的截图） */
 export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1").replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
-/** 当正则里的字面文字 */
 export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));

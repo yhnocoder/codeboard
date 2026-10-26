@@ -26,7 +26,6 @@ export function varCandidates(call: CallSite, callee: Sym | undefined): Var[] {
     out.push(pair(a.name ?? short(a.text), a.kw));
   }
   if (call.assigned?.length) out.push({ a: call.assigned.join(", "), ret: true });
-  // 去重（同一个名字出现两次）
   const seen = new Set<string>();
   return out.filter((v) => { const k = varKey(v); if (seen.has(k)) return false; seen.add(k); return true; });
 }

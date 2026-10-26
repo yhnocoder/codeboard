@@ -28,7 +28,7 @@ const Segment = obj({
   annots: opt(v.array(obj({ line: num, from: num, to: num, text: str, color: opt(v.picklist(HAND_COLORS)), below: opt(yes) }))),
 });
 
-/** 代码卡的 Variant（线框 07）；单独导出给 test/schema-types.ts 对照 model.ts */
+/** 代码卡的 Variant；单独导出给 test/schema-types.ts 对照 model.ts */
 export const VariantSchema = obj({
   id: str, name: str, note: opt(str), segs: opt(v.array(Segment)), merged: opt(str),
   from: v.variant("kind", [
@@ -126,7 +126,6 @@ export const BoardSchema = obj(boardEntries);
 /** 白板文件：cards 里还可以有共享卡的引用 */
 const SharedRef = obj({ id: str, kind: v.literal("shared") });
 export const BoardFileSchema = obj({ ...boardEntries, cards: v.array(v.union([Card, SharedRef])) });
-/** 卡库里的一张共享卡 */
 export const SharedCardSchema = obj({ version: v.literal(BOARD_VERSION), card: Card, sidenotes: v.array(Sidenote) });
 
 /** 迁移前只要求是个对象、版本号（有的话）是数字；认不认得这个版本由 migrateBoard 判断 */
@@ -150,7 +149,7 @@ export function loadBoard(raw: unknown): Board {
   return b as Board;
 }
 
-/** 白板文件（任何版本）→ 校验过的第 7 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 白板文件（任何版本）→ 校验过的当前版本的白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function loadBoardFile(raw: unknown): BoardFile {
   check(RawBoard, raw, "Not a board file");
   const b = migrateBoard(raw);

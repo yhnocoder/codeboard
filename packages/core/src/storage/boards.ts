@@ -1,6 +1,6 @@
-// 白板存储（第 2 版起的目录结构）：一张白板一个 JSON，组 = 子文件夹（只有一层），图片放 assets/，删掉的放 .trash/。
+// 白板存储：一张白板一个 JSON，组 = 子文件夹（只有一层），图片放 assets/，删掉的放 .trash/。
 // 目录在哪由宿主决定（dir()）；读写都经过 Fs 适配器。旧版本的白板文件读进来时迁移，下次保存写成当前版本。
-// 第 6 版起还是卡库（Library）：共享卡放 cards/<id>.json，白板文件里只留引用。这里缓存的、交出去的都是换上了内容的完整白板；
+// 也是卡库（Library）：共享卡放 cards/<id>.json，白板文件里只留引用。这里缓存的、交出去的都是换上了内容的完整白板；
 // 写盘时再拆开（deflate），共享卡按项和磁盘上的合并后写卡文件，再通知开着同一张卡的别的白板（onDidShare）。
 // 白板发来的改动（patch）马上改缓存里的那份，稍后写盘（WRITE_DELAY 里的改动合成一次写）；关面板、退出时 flush() 把没写的写下去。
 // 存储目录有人在外面（另一个窗口）写了：白板文件三方合并进缓存（onDidMerge），卡库里的卡换进有它的白板（onDidShare），不等这边存盘。
@@ -86,14 +86,12 @@ export class Storage {
   private recoveredEmitter = new Emitter<string>();
   /** 写不下去的白板又写下去了（说过写不下去的才说） */
   readonly onDidRecoverSave = this.recoveredEmitter.event;
-  /** 正写不下去的白板 */
   private failing = new Set<string>();
   /** 正在看着的存储目录（设置里换了目录时换一个） */
   private watched?: { dir: string; sub: Disposable };
 
   constructor(private fs: Fs, private opts: StorageOpts) { this.watchDir(); }
 
-  /** 不再看着存储目录 */
   dispose() { this.watched?.sub.dispose(); this.watched = undefined; }
 
   /** 看着现在的存储目录（建好时；设置里换了目录时 reset 换过去） */
@@ -169,7 +167,7 @@ export class Storage {
       else if (d.isDir && !RESERVED.has(d.name) && !d.name.startsWith(".")) {
         this.emptyGroups.add(d.name);
         let sub: string[] = [];
-        try { sub = (await fs.readdir(fs.join(root, d.name))).map((x) => x.name); } catch { /* */ }
+        try { sub = (await fs.readdir(fs.join(root, d.name))).map((x) => x.name); } catch {}
         for (const n of sub) if (n.endsWith(".json")) files.push({ file: fs.join(root, d.name, n), group: d.name });
       }
     }
@@ -222,7 +220,6 @@ export class Storage {
     return { id: e.id, name: e.board.name, group: e.group, cards: e.board.cards.length, stale: this.stale.get(e.id) || undefined, subs: subs.length ? subs : undefined };
   }
 
-  /** 所有白板（搜索、CodeLens、Reveal 用） */
   async all(): Promise<{ board: Board; group?: string }[]> {
     return (await this.scan()).map((e) => ({ board: e.board, group: e.group }));
   }
@@ -499,10 +496,8 @@ export class Storage {
     for (const c of cards) e.held.add(c);
   }
 
-  /** 白板上哪些卡是共享卡 */
   refsOf(id: string): ReadonlySet<string> { return this.cache.get(id)?.refs ?? new Set(); }
 
-  /** 有这张共享卡的白板 */
   async boardsWith(card: string): Promise<string[]> {
     return (await this.scan()).filter((e) => e.refs.has(card)).map((e) => e.id);
   }

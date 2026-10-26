@@ -1,4 +1,4 @@
-// 白板发来的消息：每种消息一个处理函数，带 req 的请求返回值就是回答（类型按 core 的 ReplyOf 检查；Panels 包成 reply）。
+// 白板发来的消息：带 req 的请求，处理函数的返回值就是回答（类型按 core 的 ReplyOf 检查；BoardHub 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
@@ -31,7 +31,6 @@ import { lookupName } from "./nameindex";
 const SAFE_BOARD_ID = /^[\w-]{1,80}$/;
 
 type Msg<T extends BoardToHost["type"]> = Extract<BoardToHost, { type: T }>;
-/** 处理函数的返回值：要回答的请求是它的回答，其他的不管 */
 type Out<T extends BoardToHost["type"]> = T extends AskType ? ReplyOf<T> : unknown;
 type Handlers = { [T in BoardToHost["type"]]: (p: BoardPanel, m: Msg<T>) => Promise<Out<T>> | Out<T> };
 export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown>;
@@ -39,7 +38,7 @@ export type Handler = (p: BoardPanel, m: BoardToHost) => Promise<unknown>;
 export function makeHandler(panels: BoardHost): Handler {
   const store = panels.store;
   const h: Handlers = {
-    ready: () => undefined, // Panels 自己处理
+    ready: () => undefined, // BoardHub 自己处理
     patch: async (p, m) => {
       // 存到这块面板打开的那个文件（p.id），不信白板发来的东西里的 id
       const name = p.board?.name;
@@ -112,24 +111,19 @@ export function makeHandler(panels: BoardHost): Handler {
     searchName: (_p, m) => searchName(m.name),
     genSource: (_p, m) => genSource(m.from),
     complete: (p, m) => complete(p, m.before, m.after),
-    // ---------- 编辑中的代码：虚拟文档、补全、悬停、签名（codeedit.ts） ----------
     codeDoc: (_p, m) => codeDoc(m.id, m.lang, m.text, m.near),
     codeDocClose: (_p, m) => codeDocClose(m.id),
     lspComplete: (_p, m) => lspComplete(m.id, m.text, m.line, m.col, m.trigger),
     lspHover: (_p, m) => lspHover(m.id, m.text, m.line, m.col),
     lspSignature: (_p, m) => lspSignature(m.id, m.text, m.line, m.col, m.trigger),
-    // ---------- 运行时（线框 13） ----------
     captureRun: (p) => void captureFlow(store.dir(), p),
     applyRun: (p) => void applyFlow(store.dir(), p),
-    // ---------- 问题、导出（线框 06、08） ----------
     questions: () => allQuestions(store),
     permalinks: (_p, m) => permalinks(m.segs),
     exportFile: (_p, m) => exportFile(store, m.kind, m.name, m.text),
     copyText: (_p, m) => workspace().ui.copy(m.text),
-    // ---------- 我的改动（线框 07） ----------
     variantSources: (_p, m) => variantSources(m.seg),
     addVariant: (_p, m) => addVariant(m.segs, m.from),
-    // ---------- 子白板 ----------
     skeletons: async (_p, m) => {
       await store.list(); // 缓存里还没有的白板先扫进来
       return Object.fromEntries(m.ids.map((id) => [id, panels.skeleton(id)]));
@@ -179,7 +173,6 @@ export function makeHandler(panels: BoardHost): Handler {
       return true;
     },
   };
-  /** 删掉一块白板（放进 .trash）：开着它的别的面板关掉 */
   async function removeBoard(p: BoardPanel, id: string) {
     await store.remove(id);
     closeOthers(p, id);
@@ -193,8 +186,6 @@ export function makeHandler(panels: BoardHost): Handler {
   }
   return async (p, m) => (h[m.type] as ((p: BoardPanel, m: BoardToHost) => unknown) | undefined)?.(p, m); // 不认识的消息（更新的白板）不理
 }
-
-// ---------- 跳转 ----------
 
 export const openAt = (abs: string, line?: number) => workspace().editor.open(abs, { line });
 
@@ -234,8 +225,6 @@ async function openCard(p: BoardPanel, m: Msg<"open">) {
   if (!seg) throw new Error("Card not found.");
   return openSeg(seg, m.line);
 }
-
-// ---------- 版本 ----------
 
 /** 「新版本」diff：钉住的段 vs HEAD（against 可以是别的 commit / branch，或 "working" = 工作区） */
 async function diff(seg: Segment, against?: string): Promise<DiffData> {
@@ -342,10 +331,6 @@ async function resolveTyped(p: BoardPanel, text: string): Promise<Commit | null>
   }
   return null;
 }
-
-/** Focus 模式的只读源码浮窗：整个文件（那个版本） */
-
-// ---------- 其他 ----------
 
 /** 打开一块白板，选中那张卡（和那一行：别的白板上连进来的箭头从哪一行出发、问题贴在哪一行）；sticker = 再打开那个问题 */
 export async function openOnBoard(panels: BoardHost, id: string, card?: string, line?: number, sticker?: string) {

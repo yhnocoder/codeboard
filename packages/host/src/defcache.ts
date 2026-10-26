@@ -9,7 +9,6 @@ const TTL = 60_000;
 const cache = new Lru<{ p: Promise<Def[]>; at: number }>(300);
 let gen = 0;
 
-/** 文件内容变了：之前问到的定义位置可能已经不对 */
 export function forgetDefs() { gen++; cache.clear(); }
 
 /**

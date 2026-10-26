@@ -1,11 +1,10 @@
-// 我的改动（线框 07）：一张代码卡的几个 Variant（上游、分支、工作区、另一个 worktree、复制出来的文件、PR）。
+// 我的改动：一张代码卡的几个 Variant（上游、分支、工作区、另一个 worktree、复制出来的文件、PR）。
 // 当前显示的 Variant 的段在 card.segments，其余的存在 variant.segs，段 id 一一对应：Link、Sticker 的行号切换时按内容跟过去（rebaseSegment），
 // 「只在这个 Variant」的 Sidenote 行号按那个 Variant 的代码算，切换时不动。纯函数，读文件、跑 git 由宿主做。
 import { activeOf, clone, onVariant, UPSTREAM, versionLabel, type Board, type CodeCard, type Segment, type Sidenote, type Variant, type VariantFrom } from "./model";
 import { alignRows, mapLines, sameLines } from "./diff";
 import { lineMapOf, moveNoteLines, rebaseSegment, remapSegMarks, type LineMap } from "./edit";
 
-/** 某个 Variant 的段：当前显示的在 card.segments，其余在 variant.segs */
 export function segsOf(c: Pick<CodeCard, "segments" | "variants" | "active">, vid: string): Segment[] | undefined {
   if (activeOf(c) === vid) return c.segments;
   return c.variants?.find((v) => v.id === vid)?.segs;
@@ -60,7 +59,7 @@ export function addVariant(b: Board, cardId: string, v: Variant & { segs: Segmen
 
 /**
  * 切到另一个 Variant：现在的段存回它自己的 Variant，换上目标的段（同一个段 id）。
- * Link 两端、Sticker、跟着卡的 Sidenote 的行号按内容跟过去（rebaseSegment），没了的跟今天一样（Link 端点 lost、Sidenote 改挂整卡）；
+ * Link 两端、Sticker、跟着卡的 Sidenote 的行号按内容跟过去（rebaseSegment），没了的照常处理（Link 端点 lost、Sidenote 改挂整卡）；
  * 「只在某个 Variant」的 Sidenote 不动。目标里没有的段保持原样
  */
 export function switchVariant(b: Board, cardId: string, vid: string): boolean {
@@ -154,8 +153,6 @@ function releaseNotes(b: Board, c: CodeCard, vid: string) {
 
 /** Sidenote 在这张卡现在显示的 Variant 上看不看得见 */
 export const noteShown = (n: Pick<Sidenote, "variant">, c: Pick<CodeCard, "active"> | undefined) => !n.variant || !c || n.variant === activeOf(c);
-
-// ---------- 对比 ----------
 
 export type VariantMarks = { marks: Map<string, "+" | "~">; changed: number; added: number; removed: number };
 const NONE: VariantMarks = { marks: new Map(), changed: 0, added: 0, removed: 0 };

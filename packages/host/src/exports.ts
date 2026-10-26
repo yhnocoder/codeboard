@@ -1,4 +1,3 @@
-// 问题汇总（线框 06）和导出（线框 08）的宿主部分：所有白板的问题、GitHub 永久链接、存导出的文件（HTML 快照内联字体和图片）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { collectQuestions, inlineSnapshot, mimeOf, segPermalink, type QuestionItem, type Segment } from "@codeboard/core";

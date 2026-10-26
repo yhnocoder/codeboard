@@ -1,4 +1,3 @@
-// 箭头上的标签框要用到的纯文本小工具：调用处的文字、参数在新代码里还在不在、↺ 是哪一行的循环。
 import { escapeRegExp, type Segment, type Var } from "./model";
 
 const lineText = (s: Segment, line: number) => s.text[line - s.start];

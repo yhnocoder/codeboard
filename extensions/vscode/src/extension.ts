@@ -1,4 +1,3 @@
-// 插件入口（VS Code 适配层）：接上 Workspace，再注册存储、白板面板、命令、侧栏、编辑器标记、版本监听。
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { affectsSettings, readSettings } from "@codeboard/host/settings";
@@ -36,7 +35,6 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const ready = startAnalysis(path.join(ctx.extensionUri.fsPath, "dist"));
   const store = (storage = openStorage());
   sub({ dispose: () => store.dispose() });
-  // assets/ 里没人用的旧图：存储目录打开后在后台清（一天一次）；换了目录再排一次
   let unsweep = scheduleAssetSweep(store);
   sub({ dispose: () => unsweep() });
   initSource(githubDir());
@@ -55,7 +53,6 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const gh = new GithubTree(store);
   sub(vscode.window.registerTreeDataProvider("codeboard.boards", tree));
   sub(vscode.window.registerTreeDataProvider("codeboard.github", gh));
-  // QUESTIONS：白板一存盘就重算（防抖）
   setMediaDir(path.join(ctx.extensionUri.fsPath, "media", "board"));
   const qtree = new QuestionsTree(store);
   sub(vscode.window.registerTreeDataProvider("codeboard.questions", qtree));
@@ -74,10 +71,8 @@ export async function activate(ctx: vscode.ExtensionContext) {
   const marks = new EditorMarks(ctx, store, panels);
   sub(vscode.languages.registerCodeLensProvider([{ scheme: "file", language: "python" }, { scheme: "file", language: "cpp" }, { scheme: "file", language: "cuda-cpp" }, { scheme: "file", language: "c" }], marks));
 
-  // 历史版本的只读文档
   sub(registerVersionDocs(showFile));
 
-  // 状态栏：目标白板 + 有新版本的卡片数
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
   status.command = "codeboard.switchTarget";
   sub(status);
@@ -96,20 +91,17 @@ export async function activate(ctx: vscode.ExtensionContext) {
   sub(panels.onDidChangeTarget(() => { tree.refresh(); updateStatus(); marks.rebuild(); }));
   sub(panels.onDidChangeStale(() => { tree.refresh(); updateStatus(); void panels.pushBoards(); }));
   sub(vscode.window.onDidChangeVisibleTextEditors(() => marks.redecorate()));
-  // 文件改了：缓存的「转到定义」结果作废
   sub(files.onDidEdit((abs) => { marks.redecorate(); if (abs) forgetDefs(); }));
   sub(files.onDidSave((abs) => { if (abs) forgetDefs(); }));
   sub(files.onDidCreate(() => forgetDefs()));
   sub(files.onDidDelete(() => forgetDefs()));
   sub(files.onDidRename(() => forgetDefs()));
-  // 名字索引跟着文件的保存、新建、删除、外面的改动增量更新
   sub(watchNameIndex());
   sub(ws.settings.onDidChange((e) => {
     if (e.affects("codeboard.storageDir")) void store.reset().then(() => { marks.rebuild(); unsweep(); unsweep = scheduleAssetSweep(store); void recordProject(panels.globalState, store.dir()); });
     if (affectsSettings(e)) panels.broadcast({ type: "host", host: { settings: readSettings() } });
     if (e.affects("editor.fontFamily")) panels.broadcast({ type: "host", host: { fontFamily: ws.settings.get<string>("editor.fontFamily") } });
   }));
-  // GITHUB FILES：白板里加了 GitHub 卡，或这个工作区打开了新的 GitHub 文件
   sub(store.onDidSave(() => gh.refresh()));
   sub(onDidOpenGithubFile(() => gh.refresh()));
 

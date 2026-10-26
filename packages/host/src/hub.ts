@@ -1,6 +1,3 @@
-// 所有打开的白板（一张白板一个界面，可以同时开几张）：共享卡改了就转给开着同一张卡的别的白板，合并进来的改动、子白板的骨架、
-// 「⧉ N boards」推给开着的白板，进出子白板换的是同一个面板，界面发来的消息交给 handlers。最近聚焦的白板是编辑器里 Add to 的目标。
-// 和编辑器无关：开界面、跨工作区的状态走 HostEnv（env.ts），这个工作区的状态走 workspace().storage。
 import { Emitter, cutCrumbs, sharedInfo, skeletonOf, subBoardsOf, type AskType, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Disposable, type HostToBoard, type ReplyOf, type Segment, type Skeleton, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { BoardPanel, type BoardHost, type BoardView } from "./boards";
@@ -98,7 +95,6 @@ export class BoardHub implements BoardHost, Disposable {
   private skelSent = new Map<BoardPanel, Map<string, string>>();
   private dirtySkels = new Set<string>();
   private allSkels = false;
-  /** 一块白板的骨架（宿主缓存里的那份；没了 = null） */
   skeleton(id: string): Skeleton | null {
     const b = this.store.peek(id);
     return b ? skeletonOf(b, (x) => this.store.peek(x)?.name) : null;
@@ -135,7 +131,6 @@ export class BoardHub implements BoardHost, Disposable {
     if (now) run(); else this.skelT = setTimeout(run, 120);
   }
 
-  /** 跨工作区的状态 */
   get globalState() { return this.env.globalState; }
 
   /** 上次打开的时间（跨工作区；「回来接上」的提示用） */
@@ -199,7 +194,6 @@ export class BoardHub implements BoardHost, Disposable {
   all() { return [...this.panels.values()]; }
   metas(): Promise<BoardMeta[]> { return this.store.list(); }
 
-  /** 打开（或切到）一张白板 */
   async show(id: string, place: ViewPlace = {}): Promise<BoardPanel | undefined> {
     const ex = this.panels.get(id);
     if (ex) { ex.view.reveal(place.preserveFocus); return ex; }
@@ -262,7 +256,6 @@ export class BoardHub implements BoardHost, Disposable {
 
   broadcast(m: HostToBoard) { for (const p of this.all()) p.post(m); }
 
-  /** 白板列表变了：推给所有白板 */
   async pushBoards() { const boards = await this.metas(); this.broadcast({ type: "boards", boards }); }
 
   staleChanged(id: string, n: number) {

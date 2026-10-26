@@ -1,4 +1,4 @@
-// 运行记录（线框 13 三）：「指定一个入口跑一次，只抓 Study Scope 里的调用」的结果。宿主写进 <存储目录>/runs/<id>.json，
+// 运行记录：「指定一个入口跑一次，只抓 Study Scope 里的调用」的结果。宿主写进 <存储目录>/runs/<id>.json，
 // 再拿它给白板上已有的 Call 箭头挂上 observed 证据和实参；对不上箭头的调用列出来让人挑着建。
 //
 // 一次调用 = 运行时从 from（调用方的文件:行）进入了 to（被调函数：文件 + def 那一行 + qualname）。同一对 from → to 合成一条，
@@ -15,7 +15,6 @@
 //               "count": 64, "samples": [{ "n": 1, "args": [["seqs", "list · len 4"], ["is_prefill", "False"]] }] }],
 //   "truncated": false                                                   // 不同的调用对太多，后面的丢了
 // }
-// 纯函数，白板和宿主都用。
 import * as v from "valibot";
 import { sameSource, type Board, type CallSample, type CodeCard, type Link, type Source } from "./model";
 
@@ -49,10 +48,8 @@ export function loadRun(raw: unknown): RunRecord {
 
 /** 运行记录里的绝对路径在白板上是哪个来源的哪个文件（宿主按 locOfFile 算好发给白板）；hp = 宿主的显示路径（建卡时用） */
 export type RunLoc = { src: Source; path: string; hp: string };
-/** 发给白板的一次运行：记录 + 路径 → 位置 */
 export type RunApply = { run: RunRecord; locs: Record<string, RunLoc> };
 
-/** 代码卡里含 (loc, line) 的段 */
 function segAt(c: CodeCard, loc: RunLoc, line: number) {
   return c.segments.find((s) => s.src.kind !== "free" && s.path === loc.path && sameSource(s.src, loc.src) && s.start <= line && line <= s.end);
 }
