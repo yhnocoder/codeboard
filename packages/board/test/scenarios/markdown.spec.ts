@@ -4,7 +4,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
+import type { Page } from "playwright-core";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const close = (h: Host) => h.page.context().close();
@@ -61,8 +62,19 @@ export function mdBoard(): { b: Board; note: NoteCard; text: NoteCard } {
   return { b, note, text };
 }
 
+/** The selection toolbar shows once the selection has held still this long (packages/markdown/src/editor/index.tsx SETTLE_MS) */
+const BUBBLE_SETTLE = 400;
+/** ProseMirror has read the DOM selection (it does in the async selectionchange; its DOM observer's currentSelection is the DOM
+ *  selection it last read) */
+const pmHasSelection = (pg: Page) => pg.waitForFunction(() => {
+  const root = document.querySelector(".md-pm") as any;
+  if (!root?.editor) return true;
+  const v = root.editor.view;
+  return v.domObserver.currentSelection.eq(v.domSelectionRange());
+}, null, { timeout: 5000 });
+
 async function saveShot(h: Host, name: string) {
-  await shot(h, name);
+  await shot(h, name, "idle");
   try { fs.mkdirSync(SHOTS, { recursive: true }); await h.page.screenshot({ path: `${SHOTS}/${name}.png` }); } catch { /* no project files here */ }
 }
 
@@ -73,7 +85,9 @@ test("markdownRender", async () => {
     // 视野外很远的一张：先放纯文字，空闲时补渲染
     put(b, { id: "far", kind: "note", md: "far **away** $y^2$", bg: true } as NoteCard, 9000, 6000, 300);
     const h = await open({ board: b, light, w: 1400, h: 950, settings: { theme } as any });
-    await h.page.waitForTimeout(500);
+    // the far Note renders when the board is idle (its plain text first)
+    await until(h, "the far Note is rendered", () => h.page.evaluate(() => !!document.querySelector('.card[data-id="far"] .nbody strong') && !!document.querySelector('.card[data-id="far"] .katex')));
+    await idle(h);
     const far = await h.page.evaluate(() => !!document.querySelector('.card[data-id="far"] .nbody strong') && !!document.querySelector('.card[data-id="far"] .katex'));
     check(`markdownRender-offview ${theme}`, far, { far });
     const r = await h.page.evaluate(() => {
@@ -94,13 +108,14 @@ test("markdownRender", async () => {
     check(`markdownRender ${theme}`, ok, r);
     // 静态勾选框：改原文；点链接：交给宿主；点引用：选中那张卡
     await h.page.locator('.card[data-id="n1"] li[data-type=taskItem] input').first().click();
-    await h.page.waitForTimeout(1300);
+    await until(h, "the ticked task is saved", () => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md !== RICH);
     const md = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
     await h.page.locator('.card[data-id="n1"] a.lnk').first().click();
-    await h.page.waitForTimeout(150);
+    await until(h, "the link goes to the host", () => h.sent.some((m) => m.type === "openLink"));
     const opened = h.sent.some((m) => m.type === "openLink");
     await h.page.locator('.card[data-id="n1"] .cref').first().click();
-    await h.page.waitForTimeout(700);
+    await until(h, "the chip selects a card", () => h.page.locator(".card.sel").count());
+    await idle(h);
     const selId = await h.page.locator(".card.sel").evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.id));
     check(`markdownRender-click ${theme}`, opened && selId.length === 1 && selId[0] !== "n1" && md.includes("- [x] check"), { opened, selId, task: md.split("\n")[4] });
     await close(h);
@@ -126,18 +141,19 @@ test("markdownEdit", async () => {
   // / 菜单：过滤后回车插入表格
   await pg.keyboard.press("Enter");
   await pg.keyboard.type("/tab");
-  await pg.waitForTimeout(150);
+  await pg.locator(".md-menu button").first().waitFor();
   const slash = await pg.locator(".md-menu button").allTextContents();
   await saveShot(h, "md-edit-slash");
   await pg.keyboard.press("Enter");
-  await pg.waitForTimeout(100);
+  await until(h, "the menu inserts a table", async () => (await pg.locator('.card[data-id="n1"] .md-pm table').count()) !== tables0);
   const table = await pg.locator('.card[data-id="n1"] .md-pm table').count();
   await pg.keyboard.type("cell");
   // 跳出表格：表格后面再来一段（光标在表格最后一格，↓ 出表格）
   for (let i = 0; i < 3; i++) await pg.keyboard.press("ArrowDown");
   // [[ 选卡
   await pg.keyboard.type(" see [[sched");
-  await pg.waitForTimeout(150);
+  await pg.locator(".md-menu button .lb").first().waitFor();
+  await idle(h); // the picker's items come from the host's search
   const refItems = await pg.locator(".md-menu button .lb").allTextContents();
   await saveShot(h, "md-edit-ref");
   await pg.keyboard.press("Enter");
@@ -145,7 +161,7 @@ test("markdownEdit", async () => {
   // 选中几个字：出工具条，点 I 变斜体
   await pg.keyboard.type("tail words");
   for (let i = 0; i < 5; i++) await pg.keyboard.press("Shift+ArrowLeft");
-  await pg.waitForTimeout(650); // 选区停住 400ms 后才出工具条
+  await pg.locator(".md-bubble").waitFor(); // 选区停住 400ms 后才出工具条
   const bubble = await pg.locator(".md-bubble").count();
   await saveShot(h, "md-edit-bubble");
   await pg.locator('.md-bubble .tbtn[data-tip="Italic"]').click();
@@ -157,7 +173,7 @@ test("markdownEdit", async () => {
   const stillEditing = await pg.locator('.card[data-id="n1"] .md-pm').count();
   // ⌘/ 原文模式
   await pg.keyboard.press("Control+/");
-  const rawVal = await pg.locator(".md-raw").inputValue().catch(() => "");
+  const rawVal = await pg.locator(".md-raw").inputValue({ timeout: 5000 });
   await pg.keyboard.type("\nraw line");
   // 切回来时焦点要立刻（同一个按键里）回到编辑器：之前要等下一帧，CI 上紧接着的 Esc 落到了白板上，没保存也没退出
   await pg.keyboard.press("Control+/");
@@ -165,7 +181,8 @@ test("markdownEdit", async () => {
   const backWys = await pg.locator('.card[data-id="n1"] .md-pm').isVisible();
   // Esc 保存退出
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1500); // 自动保存约 1 秒后才发给宿主
+  await until(h, "Esc saves the Note", () => md() !== RICH);
+  await idle(h);
   const after = md();
   const exited = await pg.locator(".md-pm").count();
   const r = { focus, boldNow, cards0, cardsNow: nCards(), slash: slash.slice(0, 3), table, refItems: refItems.slice(0, 3), chip, bubble, italic, italicAfterUndo, stillEditing,
@@ -229,40 +246,45 @@ test("markdownHighlight", async () => {
   await sel("Plain words");
   const btn = pg.locator('.md-bubble .tbtn[data-tip="Highlight"]');
   await btn.waitFor({ timeout: 2000 });
-  await pg.waitForTimeout(300); // 淡入结束
+  await idle(h); // 淡入结束
   const bubble = pg.locator(".md-bubble");
   await bubble.screenshot({ path: path.join(SHOTS, "md-toolbar-1x.png") }).catch(() => {});
   // 放大看的工具条：设备像素比 3 下截一张（看线条落在像素上）
   const cdp = await pg.context().newCDPSession(pg);
   const vp = pg.viewportSize()!;
   await cdp.send("Emulation.setDeviceMetricsOverride", { width: vp.width, height: vp.height, deviceScaleFactor: 3, mobile: false });
-  await pg.waitForTimeout(300);
+  await idle(h);
   await bubble.screenshot({ path: path.join(SHOTS, "md-toolbar-3x.png") }).catch(() => {});
   await cdp.send("Emulation.clearDeviceMetricsOverride");
-  await pg.waitForTimeout(200);
+  await idle(h);
   const icons = await pg.locator(".md-bubble .tbtn.md-ib svg.md-ico").count();
   const labels = await pg.locator(".md-bubble .tbtn.md-ib").evaluateAll((bs) => bs.map((b) => `${b.getAttribute("aria-label")}`));
   const onBefore = await btn.evaluate((b) => b.classList.contains("on"));
+  /** the highlights in the editor changed from `was` */
+  const marksChange = (what: string, was: string[]) => until(h, what, async () => JSON.stringify(await marks()) !== JSON.stringify(was));
+  let was = await marks();
   await btn.click();
-  await pg.waitForTimeout(150);
+  await marksChange("the toolbar button highlights the selection", was);
   const added = await marks();
   const onAfter = await btn.evaluate((b) => b.classList.contains("on") && b.getAttribute("aria-pressed") === "true");
   await saveShot(h, "md-highlight-toolbar-on");
   await btn.click();
-  await pg.waitForTimeout(150);
+  await marksChange("the toolbar button takes the highlight off", added);
   const removed = await marks();
   const onOff = await btn.evaluate((b) => b.classList.contains("on"));
   await btn.click();
-  await pg.waitForTimeout(150);
+  await marksChange("the toolbar button highlights it again", removed);
   // ⌘⇧H：选中跨过粗体的一段按快捷键
   await sel("note with bold");
-  await pg.waitForTimeout(100);
+  await pmHasSelection(pg);
+  was = await marks();
   await pg.keyboard.press("ControlOrMeta+Shift+h");
-  await pg.waitForTimeout(150);
+  await marksChange("⌘⇧H highlights the selection", was);
   const keyed = await marks();
   // 光标放进高亮里：两边的 == 记号显出来（和别的格式一样）
   await pg.evaluate((root) => { const ms = document.querySelectorAll(`${root} mark`); const t = ms[ms.length - 1].firstChild!; const r = document.createRange(); r.setStart(t, 1); r.collapse(true); getSelection()!.removeAllRanges(); getSelection()!.addRange(r); }, pm);
-  await pg.waitForTimeout(200);
+  await pmHasSelection(pg);
+  await idle(h); // the markers around the caret show
   // 开头的记号在 .md-mka 上，收尾的在 .md-mkb 上
   const reveal = await pg.evaluate((root) => {
     const q = (c: string, k: "mka" | "mkb") => [...document.querySelectorAll(`${root} .${c}`)].map((e) => (e as HTMLElement).dataset[k]).join("");
@@ -274,7 +296,8 @@ test("markdownHighlight", async () => {
   await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-edit-card.png") }).catch(() => {});
   await saveShot(h, "md-highlight-edit");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1500);
+  await until(h, "Esc saves the Note", () => md() !== "Plain words in a note with **bold** inside");
+  await idle(h);
   const saved = md();
   const showLook = await look('.card[data-id="n1"] .nbody mark');
   const shown = await pg.locator('.card[data-id="n1"] .nbody mark').allTextContents();
@@ -305,7 +328,8 @@ test("markdownToolbarWaitsForStillSelection", async () => {
   await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 400, y: 12 } });
   await pg.waitForSelector(pm, { timeout: 5000 });
   await pg.keyboard.press("ControlOrMeta+End");
-  await pg.waitForTimeout(200);
+  await pmHasSelection(pg);
+  await idle(h);
   // 字在屏幕上的位置：从 "some" 的开头拖到 "slowly" 的末尾
   const at = (w: string, end: boolean) => pg.evaluate(([root, w, end]) => {
     const t = document.querySelector(root)!.querySelector("p")!.firstChild!, i = t.textContent!.indexOf(w) + (end ? w.length : 0);
@@ -315,24 +339,24 @@ test("markdownToolbarWaitsForStillSelection", async () => {
   await pg.mouse.move(a.x, a.y);
   await pg.mouse.down();
   const during: boolean[] = [];
-  for (let k = 1; k <= 8; k++) { await pg.mouse.move(a.x + ((z.x - a.x) * k) / 8, a.y, { steps: 2 }); await pg.waitForTimeout(90); during.push(await has()); }
-  await pg.waitForTimeout(600); // 按着鼠标停住：还是在选，不出
+  for (let k = 1; k <= 8; k++) { await pg.mouse.move(a.x + ((z.x - a.x) * k) / 8, a.y, { steps: 2 }); await hold(h, 90, "a slow drag: over all eight steps more than BUBBLE_SETTLE passes, still no toolbar"); during.push(await has()); }
+  await hold(h, BUBBLE_SETTLE + 200, "the mouse held down and still for longer than BUBBLE_SETTLE: still selecting, no toolbar"); // 按着鼠标停住：还是在选，不出
   const heldStill = await has();
   const dragged = await pg.evaluate(() => getSelection()!.toString());
   await pg.mouse.up();
-  await pg.waitForTimeout(120);
-  const rightAfterUp = await has();
-  await pg.waitForTimeout(500);
+  const rightAfterUp = await has(); // the toolbar's timer starts at the release: not shown yet
+  await pg.locator(".md-bubble").waitFor(); // and BUBBLE_SETTLE after it, it shows
   const afterPause = await has();
+  await idle(h); // its fade-in
   const opacity = await pg.evaluate(() => getComputedStyle(document.querySelector(".md-bubble")!).opacity);
   // 收拢：立刻收起
   await pg.keyboard.press("End");
-  await pg.waitForTimeout(40);
+  await pmHasSelection(pg); // the editor knows the selection collapsed: the toolbar goes at once
   const afterCollapse = await has();
   // 键盘扩选：⇧← 按着走的途中不出，停下 400ms 后出
   const keys: boolean[] = [];
-  for (let k = 0; k < 6; k++) { await pg.keyboard.press("Shift+ArrowLeft"); await pg.waitForTimeout(120); keys.push(await has()); }
-  await pg.waitForTimeout(500);
+  for (let k = 0; k < 6; k++) { await pg.keyboard.press("Shift+ArrowLeft"); await pmHasSelection(pg); await hold(h, 120, "a key every 120 ms, under BUBBLE_SETTLE: no toolbar on the way"); keys.push(await has()); }
+  await pg.locator(".md-bubble").waitFor(); // 停下 BUBBLE_SETTLE 后出
   const afterKeys = await has();
   const r = { during, heldStill, dragged, rightAfterUp, afterPause, opacity, afterCollapse, keys, afterKeys };
   check("markdownToolbarWaitsForStillSelection-drag", dragged.includes("some of these words") && during.every((x) => !x) && !heldStill && !rightAfterUp && afterPause && opacity === "1", r);
@@ -351,7 +375,7 @@ test("markdownMarksAroundFormula", async () => {
   const h = await open({ board: b, light, w: 1000, h: 640 });
   const pg = h.page;
   fs.mkdirSync(SHOTS, { recursive: true });
-  await pg.waitForTimeout(400);
+  await idle(h);
   const body = '.card[data-id="n1"] .nbody';
   const r0 = await pg.evaluate((q) => ({
     boldMath: !!document.querySelector(`${q} strong .katex`), markEmoji: !!document.querySelector(`${q} mark .emoji, ${q} mark [data-type="emoji"]`) || [...document.querySelectorAll(`${q} mark`)].some((m) => m.textContent!.includes("🎉")),
@@ -365,7 +389,8 @@ test("markdownMarksAroundFormula", async () => {
   await pg.keyboard.press("ControlOrMeta+End");
   await pg.keyboard.type(" end");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1500);
+  await until(h, "Esc saves the Note", () => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md !== src);
+  await idle(h);
   const saved = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
   const r = { ...r0, ...r1, saved };
   check("markdownMarksAroundFormula", r0.boldMath && r0.markEmoji && r0.emMath && r1.editBoldMath && saved === `${src} end`, r);
@@ -440,7 +465,7 @@ test("copyPartialMarkBalanced", async () => {
     await pg.waitForFunction(([root, n]) => {
       const ps = document.querySelector(root)!.querySelectorAll(":scope > p");
       return ps.length === n && !!ps[n - 1].textContent;
-    }, [pm, paras] as const, { timeout: 5000 }).catch(() => {});
+    }, [pm, paras] as const, { timeout: 5000 });
     // 光标处的记号装饰不算：只看格式元素和里面的字（公式写成 $latex$）
     const pasted = await pg.evaluate((root) => {
       const ps = document.querySelector(root)!.querySelectorAll(":scope > p"), p = ps[ps.length - 1], el = p.firstElementChild;
@@ -454,7 +479,8 @@ test("copyPartialMarkBalanced", async () => {
     check(`copyPartialMarkBalanced ${plain}`, selected && p === plain && html.test(hh ?? "") && pasted === want, out[out.length - 1]);
   }
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1500);
+  await until(h, "Esc saves the Note", () => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md !== src);
+  await idle(h);
   const saved = (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
   check("copyPartialMarkBalanced-saved", saved === [src, ...cases.map((c) => c[1])].join("\n\n"), { saved, out });
   await close(h);
@@ -472,16 +498,18 @@ test("markdownEditorReuse", async () => {
   await pg.keyboard.press("Enter"); await pg.keyboard.type("first edit AAA");
   await pg.keyboard.press("Escape");
   // 编辑 n1 时镜头放大到字看得清（退出编辑不缩回去），t1 出了视野：先看全部再双击它
-  await pg.keyboard.press("ControlOrMeta+0"); await pg.waitForTimeout(800);
+  await pg.keyboard.press("ControlOrMeta+0"); await idle(h);
   await pg.locator('.card[data-id="t1"] .tx').dblclick();
   await pm("t1").waitFor({ timeout: 5000 });
   const t1Text = await pm("t1").innerText();
   // 撤销不能撤回上一张 Note 的内容
   for (let i = 0; i < 3; i++) await pg.keyboard.press("ControlOrMeta+z");
   const afterUndo = await pm("t1").innerText();
+  const t1Before = mdOf("t1");
   await pg.keyboard.press("Enter"); await pg.keyboard.type("second BBB");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1500);
+  await until(h, "Esc saves the second Note", () => mdOf("t1") !== t1Before);
+  await idle(h);
   const n1 = mdOf("n1"), t1 = mdOf("t1");
   const r = { t1Fresh: t1Text.includes("Reading notes") && !t1Text.includes("AAA"), undoKept: afterUndo === t1Text, n1Saved: n1.includes("first edit AAA") && !n1.includes("BBB"),
     t1Saved: t1.includes("second BBB") && !t1.includes("AAA") && t1.startsWith("# Reading notes"), stale: await pg.locator(".md-pm").count() };
@@ -529,14 +557,17 @@ test("markdownLazyRender", async () => {
     w.__lz.on = true; requestAnimationFrame(tick);
   });
   await pg.mouse.move(700, 450);
-  // 马上往远处平移（右下），再缩小、放大
-  for (let i = 0; i < 40; i++) { await pg.mouse.wheel(60, 50); await pg.waitForTimeout(16); }
+  // 马上往远处平移（右下），再缩小、放大（一帧一下，像触控板）
+  const WHEEL_STEP = 16;
+  for (let i = 0; i < 40; i++) { await pg.mouse.wheel(60, 50); await hold(h, WHEEL_STEP, "wheel steps at 60 Hz, as a trackpad sends them"); }
   await pg.keyboard.down("Control");
-  for (let i = 0; i < 12; i++) { await pg.mouse.wheel(0, 40); await pg.waitForTimeout(16); }
-  for (let i = 0; i < 12; i++) { await pg.mouse.wheel(0, -40); await pg.waitForTimeout(16); }
+  for (let i = 0; i < 12; i++) { await pg.mouse.wheel(0, 40); await hold(h, WHEEL_STEP, "wheel steps at 60 Hz, as a trackpad sends them"); }
+  for (let i = 0; i < 12; i++) { await pg.mouse.wheel(0, -40); await hold(h, WHEEL_STEP, "wheel steps at 60 Hz, as a trackpad sends them"); }
   await pg.keyboard.up("Control");
-  for (let i = 0; i < 30; i++) { await pg.mouse.wheel(-40, 60); await pg.waitForTimeout(16); }
-  await pg.waitForTimeout(1500);
+  for (let i = 0; i < 30; i++) { await pg.mouse.wheel(-40, 60); await hold(h, WHEEL_STEP, "wheel steps at 60 Hz, as a trackpad sends them"); }
+  // 1.5 秒内全部渲染完
+  await until(h, "every Note is rendered within 1.5 s of the last wheel step", () => pg.evaluate(() => !document.querySelectorAll(".md-pend").length && document.querySelectorAll(".card .nbody h2, .card .tx h2").length === 320), 1500);
+  await idle(h);
   const r = await pg.evaluate(() => {
     const w = window as any; w.__lz.on = false;
     const ws = [...w.__lz.waits].sort((a: number, b: number) => a - b);
@@ -571,7 +602,8 @@ test("markdownPaste", async () => {
   await pg.keyboard.press("Enter");
   await paste({ "text/plain": "- [ ] pasted task\n- [x] done **too**" });
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1500);
+  await until(h, "Esc saves the Note", () => (h.board().cards.find((c) => c.id === "t1") as NoteCard).md !== "# Reading notes\nTwo lines, old style\n- a list\n- with block_manager");
+  await idle(h);
   const md = (h.board().cards.find((c) => c.id === "t1") as NoteCard).md;
   const r = { html: /### From web\n\na \*\*bold\*\* word and \[link\]\(https:\/\/x\.y\/a_b\)\n\n- one\n- two/.test(md), noStyle: !/style=|<span/.test(md),
     code: md.includes("```python\ndef f(x):\n    return x * 2\n```"), inline: md.includes("`seq_len`"), tasks: md.includes("- [ ] pasted task\n- [x] done **too**") };
@@ -601,7 +633,8 @@ test("mermaidThemes", async () => {
     b.cam = { x: 0, y: 0, z: 0.72 };
     const h = await open({ board: b, light: true, w: 1400, h: 1260, settings: { theme } as any });
     const pg = h.page;
-    await pg.waitForFunction((n) => document.querySelectorAll(".mmd.ok svg, .mmd-err").length >= n, DIAGRAMS.length, { timeout: 5000 }).catch(() => {});
+    await pg.waitForFunction((n) => document.querySelectorAll(".mmd.ok svg, .mmd-err").length >= n, DIAGRAMS.length, { timeout: 5000 });
+    await idle(h);
     const look = () => pg.evaluate(() => {
       const svgs = [...document.querySelectorAll<SVGElement>(".mmd.ok svg")];
       const txt = svgs[0]?.querySelector("text");
@@ -613,7 +646,8 @@ test("mermaidThemes", async () => {
     const lt = await look();
     await saveShot(h, `mermaid-${theme}-light`);
     await pg.evaluate(() => { (window as any).__svg0 = document.querySelector(".mmd.ok svg"); document.body.className = "vscode-dark"; });
-    await pg.waitForTimeout(300);
+    await until(h, "the diagrams are recoloured for dark", async () => (await look()).text !== lt.text);
+    await idle(h);
     const dk = await look();
     const same = await pg.evaluate(() => (window as any).__svg0 === document.querySelector(".mmd.ok svg"));
     await saveShot(h, `mermaid-${theme}-dark`);
@@ -627,7 +661,7 @@ test("mermaidThemes", async () => {
   const pg = h.page;
   await pg.waitForSelector(".mmd.ok svg", { timeout: 5000 });
   await pg.evaluate(() => { (window as any).__svg0 = document.querySelector(".mmd.ok svg"); const el = document.documentElement; el.classList.replace("look-warm-ink", "look-newspaper"); el.dataset.look = "newspaper"; });
-  await pg.waitForTimeout(400);
+  await pg.waitForFunction(() => { const s = document.querySelector(".mmd.ok svg"); return !!s && s !== (window as any).__svg0; }, null, { timeout: 5000 }); // drawn again
   const r = await pg.evaluate(() => { const s = document.querySelector(".mmd.ok svg"); return { redrawn: !!s && s !== (window as any).__svg0, font: s ? getComputedStyle(s.querySelector("text")!).fontFamily.split(",")[0] : null }; });
   check("mermaidThemes font switch redraws", r.redrawn && /Old Standard/.test(r.font ?? ""), r);
   await close(h);
@@ -639,7 +673,7 @@ test("mermaidThemes", async () => {
   const size = () => h2.page.evaluate(() => { const s = document.querySelector(".mmd.ok svg")!; return [+s.getAttribute("width")!, +s.getAttribute("height")!]; });
   const narrow = await size();
   await h2.page.evaluate(() => { (document.querySelector('.card[data-id="m0"]') as HTMLElement).style.width = "800px"; });
-  await h2.page.waitForTimeout(300);
+  await until(h2, "the diagram is laid out again for the wider Note", async () => (await size())[0] !== narrow[0]);
   const wide = await size();
   check("mermaidThemes wider Note lays out left to right", narrow[1] > narrow[0] && wide[0] > wide[1], { narrow, wide });
   await close(h2);

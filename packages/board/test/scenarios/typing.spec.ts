@@ -3,21 +3,43 @@
 import { put, findSym, symCard, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check } from "../fixtures";
+import { test, open, check, expect, idle } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
+
+/** ProseMirror has read the DOM selection: Home / End / arrows move the caret in the browser, and ProseMirror only learns of it
+ *  in the async selectionchange (its DOM observer's currentSelection is the DOM selection it last read). With the focus in a
+ *  nested editor (a code block's CodeMirror, a formula box) that editor has the caret, not ProseMirror */
+const pmHasSelection = (pg: Page) => pg.waitForFunction(() => {
+  const root = document.querySelector(".md-pm") as any;
+  if (!root?.editor || document.activeElement !== root) return true;
+  const v = root.editor.view;
+  return v.domObserver.currentSelection.eq(v.domSelectionRange());
+}, null, { timeout: 5000 });
+/** ProseMirror's first moments after it gets focus (prosemirror-view): 20 ms after focus it puts its own selection back into the
+ *  DOM, and for 200 ms it takes a caret at the very start for the browser resetting the selection and puts its own back
+ *  (DOMObserver.flush). A caret the browser moves in that time (Home, ⌘↑, Ctrl+Home right after the editor opened) is undone.
+ *  Wait until both are over: the focus is that old, then one more task (timers run in the order they fall due) */
+const focusSettled = (pg: Page) => pg.evaluate(async () => {
+  const v = (document.querySelector(".md-pm") as any)?.editor?.view;
+  if (!v) return;
+  await new Promise((r) => setTimeout(r, Math.max(0, v.input.lastFocus + 201 - Date.now())));
+  await new Promise((r) => setTimeout(r, 0));
+});
+/** The page's next frames, through its own requestAnimationFrame (slowFrames makes them late) */
+const pageFrames = (pg: Page, n = 2) => pg.evaluate(async (n) => { for (let i = 0; i < n; i++) await new Promise<void>((r) => requestAnimationFrame(() => r())); }, n);
 
 /** 打一串：{Enter}、{Control+z} 之类是按键，其余是字 */
 async function keys(pg: Page, seq: string) {
   for (const part of seq.split(/(\{(?:Enter|Tab|Home|End|Backspace|Escape|Arrow\w+|Control\+[^}]+|Shift\+[^}]+)\})/)) {
     if (!part) continue;
     if (part.startsWith("{") && part.endsWith("}")) {
-      // Home / End / 方向键是浏览器自己移光标，ProseMirror 要等异步的 selectionchange 才知道；脚本按键比人快得多，前后各等一下
+      // Home / End / 方向键是浏览器自己移光标，ProseMirror 要等异步的 selectionchange 才知道；脚本按键比人快得多，前后各等它读到选区
       const nav = /Home|End|Arrow/.test(part);
-      if (nav) await pg.waitForTimeout(300);
+      if (nav) { await focusSettled(pg); await pmHasSelection(pg); }
       await pg.keyboard.press(part.slice(1, -1));
-      if (nav) await pg.waitForTimeout(100);
+      if (nav) await pmHasSelection(pg);
     }
     else await pg.keyboard.type(part);
   }
@@ -41,9 +63,10 @@ function board(n: number, init: (string | undefined)[] = []): Board {
   return b;
 }
 const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
-async function editNote(h: Host, id: string) {
+async function editNote(h: Host, id: string, pre?: (pg: Page) => Promise<void>) {
   await h.post({ type: "reveal", card: id } as any);
-  await h.page.waitForTimeout(450);
+  await idle(h); // the camera flies to the card
+  if (pre) await pre(h.page); // slow frames from here on: opening the editor, not the camera flight before it
   await h.page.locator(`.card[data-id="${id}"] .nbody`).dblclick();
   await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
 }
@@ -56,16 +79,15 @@ async function runCases(h: Host, prefix: string, all: Case[]) {
   const doms: unknown[] = [];
   for (let i = 0; i < cases.length; i++) {
     const c = cases[i], id = `n${i}`;
-    if (c.pre) await c.pre(h.page);
-    await editNote(h, id);
+    await editNote(h, id, c.pre);
     await keys(h.page, c.seq);
-    await h.page.waitForTimeout(60);
+    if (c.dom) await idle(h); // what the DOM looks like once the keys are handled
     doms[i] = c.dom ? await c.dom(h.page) : undefined;
     if (c.after) await c.after(h.page);
     // 退出：公式框、菜单开着时 Esc 先关它们
-    for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) { await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(80); }
+    for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) { await h.page.keyboard.press("Escape"); await idle(h); }
   }
-  await h.page.waitForTimeout(1500);
+  await idle(h); // every Note's Markdown has reached the host
   for (let i = 0; i < cases.length; i++) {
     const c = cases[i], got = md(h, `n${i}`);
     const okMd = typeof c.md === "string" ? got === c.md : c.md.test(got);
@@ -108,7 +130,7 @@ test("markdownInputRules", async () => {
     { name: "code fence c++", seq: "```c++{Enter}int a;", md: "```c++\nint a;\n```" },
     { name: "math block", seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); }, md: "$$\nx^2\n$$" },
     // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
-    { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pg.waitForTimeout(600); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
+    { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pageFrames(pg); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
     { name: "math block one line", seq: "$$a+b$${Enter}", md: "$$\na+b\n$$", dom: count(".md-pm [data-type=block-math]"), domOk: (n) => n === 1 },
     // #30：[toc] 回车出目录，跟着后面打的标题变
     { name: "toc", seq: "[toc]{Enter}# A{Enter}## B", md: "[toc]\n\n# A\n\n## B", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`)), domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]' },
@@ -153,7 +175,7 @@ test("markdownInputRules", async () => {
     // 一次退一个 #：## → # → 普通段落（Typora 一样）
     { name: "heading backspace one level", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "# h" },
     { name: "heading backspace to paragraph", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}{Backspace}"), md: "h" },
-    { name: "task toggle", seq: "- [ ] t", after: async (pg) => { await pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first().click(); await pg.waitForTimeout(100); }, md: "- [x] t" },
+    { name: "task toggle", seq: "- [ ] t", after: async (pg) => { await pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first().click(); await expect(pg.locator('.md-pm li[data-type="taskItem"] input[type=checkbox]').first()).toBeChecked(); }, md: "- [x] t" },
     { name: "quote backspace", seq: "> q", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "q" },
     { name: "list backspace", seq: "- a{Enter}b", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "- a\n\nb" },
     { name: "task backspace", seq: "- [ ] t", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "t" },
@@ -208,7 +230,7 @@ test("editorKeys", async () => {
     { name: "strike ⇧X", seq: "{Control+Shift+x}s{Control+Shift+x} x", md: "~~s~~ x" },
     { name: "code", seq: "{Control+e}c{Control+e} x", md: "`c` x" },
     { name: "link ⌘K on selection", seq: "word{Shift+Home}{Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.keyboard.type("x.y/z"); await pg.keyboard.press("Enter"); }, md: "[word](https://x.y/z)" },
-    { name: "link ⌘K slow frame", pre: slowFrames(400), seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.waitForTimeout(600); await pg.keyboard.type("https://c.d"); await pg.keyboard.press("Enter"); await fastFrames(pg); }, md: "see https://c.d" },
+    { name: "link ⌘K slow frame", pre: slowFrames(400), seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pageFrames(pg); await pg.keyboard.type("https://c.d"); await pg.keyboard.press("Enter"); await fastFrames(pg); }, md: "see https://c.d" },
     { name: "link ⌘K at caret", seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.keyboard.type("https://a.b"); await pg.keyboard.press("Enter"); }, md: "see https://a.b" },
     { name: "undo redo", seq: "one{Control+z}two{Control+z}{Control+Shift+z}", md: "two" },
     { name: "redo ⌘Y", seq: "abc{Control+z}{Control+y}", md: "abc" },
@@ -231,7 +253,7 @@ test("editorKeys", async () => {
   await editNote(h, `n${base + 1}`);
   await keys(pg, "esc{Escape}");
   const exitedEsc = (await pg.locator(".md-pm").count()) === 0;
-  await pg.waitForTimeout(1400);
+  await idle(h);
   check("editorKeys exit", exitedEnter && exitedEsc && md(h, `n${base}`) === "saved" && md(h, `n${base + 1}`) === "esc", { exitedEnter, exitedEsc });
 
   // 冒泡到 window 的按键（VS Code 的 webview 外壳就在 window 上收 keydown）
@@ -271,22 +293,15 @@ test("editorKeys", async () => {
   // 等 ProseMirror 真的拿到这个选区再复制：它是在异步的 selectionchange 里才读 DOM 选区的；刚拿到焦点时它还会在 20ms 后把自己的
   // （收起的）选区写回 DOM，慢机器上这一下可能落在脚本设好选区之后，选区就没了（CI 上复制、剪切到的都是空的）。
   // 选中工具条只在 ProseMirror 的选区不空时出现；DOM 上的选区也还得是 "bold y"，不是就重新选
-  const settled = () => pg.evaluate(() => !!document.querySelector(".md-bubble") && getSelection()!.toString() === "bold y");
-  for (let k = 0; k < 10; k++) {
-    await selectBoldY();
-    const t0 = Date.now();
-    while (!(await settled()) && Date.now() - t0 < 1000) await pg.waitForTimeout(50);
-    if (await settled()) break;
-  }
+  // 所以先等 ProseMirror 拿到焦点后的那一下（prosemirror-view handlers.focus：焦点后 20ms 的 setTimeout）过去，再设选区、等它读到
+  await focusSettled(pg);
+  await selectBoldY();
+  await pg.waitForFunction(() => !!document.querySelector(".md-bubble") && getSelection()!.toString() === "bold y", null, { timeout: 5000 });
   await pg.keyboard.press("Control+c");
   // 收起选区再剪（按 End 在 CI 上偶尔赶在选区同步前，选区没收起来）。等 ProseMirror 也收起来了（选中工具条消失）再剪：
   // 它同样是在异步的 selectionchange 里才读到，固定等 100ms 在忙的机器上不够（剪到的还是 "**bold** y"）
-  for (let k = 0; k < 10; k++) {
-    await pg.evaluate(() => getSelection()!.collapseToEnd());
-    const t0 = Date.now();
-    while (await pg.evaluate(() => !!document.querySelector(".md-bubble")) && Date.now() - t0 < 500) await pg.waitForTimeout(50);
-    if (!(await pg.evaluate(() => !!document.querySelector(".md-bubble")))) break;
-  }
+  await pg.evaluate(() => getSelection()!.collapseToEnd());
+  await expect(pg.locator(".md-bubble")).toHaveCount(0);
   await pg.keyboard.press("Control+x"); // 没选中：什么都不剪
   await pg.keyboard.press("Control+a");
   await pg.keyboard.press("Control+x");
@@ -315,7 +330,7 @@ test("editorKeys", async () => {
     && pasted.strong === 1 && pasted.math === 1
     && JSON.stringify(paletteFwd) === JSON.stringify(["c", "x", "v", "a", "z"]);
   check("editorKeys forward+clipboard", ok, { blocked, passed, clip, emptied, pasted, paletteFwd });
-  await pg.waitForTimeout(1300);
+  await idle(h);
   check("editorKeys paste saved", md(h, n) === "pasted **b** and $m$", { got: md(h, n) });
   await close(h);
 });
@@ -333,9 +348,9 @@ test("aiCompletionAccept", async () => {
   const accept = async (id: string, seq: string) => {
     await editNote(h, id);
     await keys(pg, seq);
-    await pg.waitForSelector(".md-ghost", { timeout: 4000 }).catch(() => {});
+    await pg.waitForSelector(".md-ghost", { timeout: 4000 });
     await pg.keyboard.press("Tab");
-    await pg.waitForTimeout(80);
+    await pg.locator(".md-ghost").waitFor({ state: "detached" });
   };
   // 1：补全里有完整的 $a$ **b** `c`
   await accept("n0", "see ");
@@ -348,7 +363,7 @@ test("aiCompletionAccept", async () => {
   // 一次 ⌘Z：整个接受撤回（回到打了一半的，连同自动补的 }）
   await pg.keyboard.press("Control+z");
   const undone = (await pg.locator(inNote("n1", "p")).first().textContent())?.trim();
-  await pg.waitForTimeout(1000); // 灰字又出来了也一样能重做
+  await pg.locator(inNote("n1", ".md-ghost")).waitFor(); // 撤销后又问了一次，灰字又出来了也一样能重做
   await pg.keyboard.press("Control+Shift+z");
   const redone = await pg.locator(inNote("n1", "[data-type=inline-math]")).count();
   await pg.keyboard.press("Escape");
@@ -359,7 +374,7 @@ test("aiCompletionAccept", async () => {
   // 4：补全是一个 $$…$$（单独一段就是公式块）
   await accept("n3", "Sum ");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1500);
+  await idle(h);
   const r = { d1, d2, undone, redone, d3, md: [0, 1, 2, 3].map((i) => md(h, `n${i}`)) };
   const ok = d1.math === 1 && d1.strong === 1 && d1.code === 1 && d2 === 1 && undone === "x $\\frac{}" && redone === 1
     && r.md[0] === "see $a$ and **b** with `c` end" && r.md[1] === "x $\\frac{a}{b}$ done" && d3.h1 === 1 && d3.strong === 1 && r.md[2] === "# Title **x**"
