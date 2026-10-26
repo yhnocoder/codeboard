@@ -6,9 +6,16 @@
 //                               Auto-detect goes back to detecting
 //  softLightCodeHeaderOneRow    Soft Light: the header is one 40px row (like the Note's) with a long title, which ellipsizes;
 //                               the repo card's path ellipsizes before its title
-//  codeAreaPadding              the code area's paddings: Soft Light 7px left of the line numbers, 4 / 6 above and below, 8 right;
-//                               Warm Ink unchanged (6 / 8, 24 right)
+//  codeAreaPadding              the code area's paddings: Soft Light 7px left of the line numbers (in the well), 4 / 6 above and below,
+//                               8 right; Warm Ink (no well) 17px left of the numbers, 6 / 8, 18 right; the numbers end 22px before the code
 //  fitContentWidthCodeCard      ⌥F fits a code card's width to its longest line and its height to its lines (animated), in Warm Ink and Soft Light
+//  fitContentSameInEveryTheme   ⌥F gives the same Place (card width, code area height) in every look (one shared code area geometry), so a card
+//                               fitted in Warm Ink fits exactly in Soft Light and the others and the other way round: no wrapped line, no
+//                               scroll. A 5-line card, a 105-line card (3-digit numbers) and a too-wide card with Wrap Lines on (shrinks to
+//                               its longest line, wrap stays on) and a too-narrow one whose long line wraps before ⌥F. Fitted cards keep
+//                               no height (follow their content) unless taller than the cap for cards without one
+//  fitContentFollowsCodeEdits   after ⌥F a Free code card follows its content: 3 lines added while editing grow it by 3 × 20px with no
+//                               scroll (Warm Ink, Soft Light); a height dragged with the corner handle is stored and stays fixed
 // Usage: npm run harness -- codeHeaderHoverOnly …   screenshots: test-out/harness/cchead-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -171,8 +178,9 @@ const pads = (pg: Page, id: string) => pg.evaluate((id) => {
   const body = card.querySelector<HTMLElement>(".cbody")!, code = body.querySelector<HTMLElement>(".code")!, src = code.querySelector<HTMLElement>(".src")!;
   const nos = [...code.querySelectorAll<HTMLElement>(".gutter .no")];
   const left = Math.min(...nos.map((n) => { const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect().left; }));
+  const right = Math.max(...nos.map((n) => { const r = document.createRange(); r.selectNodeContents(n); return r.getBoundingClientRect().right; }));
   const cs = getComputedStyle(code);
-  return { noLeft: Math.round((left - body.getBoundingClientRect().left) * 10) / 10, top: parseFloat(cs.paddingTop), bottom: parseFloat(cs.paddingBottom), right: parseFloat(getComputedStyle(src).paddingRight) };
+  return { noLeft: Math.round((left - body.getBoundingClientRect().left) * 10) / 10, gap: Math.round((src.getBoundingClientRect().left - right) * 10) / 10, top: parseFloat(cs.paddingTop), bottom: parseFloat(cs.paddingBottom), right: parseFloat(getComputedStyle(src).paddingRight) };
 }, id);
 
 test("codeAreaPadding", async () => {
@@ -184,9 +192,10 @@ test("codeAreaPadding", async () => {
   }
   const sl = out["soft-light"] as { free: Awaited<ReturnType<typeof pads>>; repo: Awaited<ReturnType<typeof pads>> };
   const wi = out["warm-ink"] as typeof sl;
+  const gapOk = [sl.free, sl.repo, wi.free, wi.repo].every((p) => Math.abs(p.gap - 22) < 0.6);
   const slOk = [sl.free, sl.repo].every((p) => Math.abs(p.noLeft - 7) < 0.6 && p.top === 4 && p.bottom === 6 && p.right === 8);
-  const wiOk = [wi.free, wi.repo].every((p) => p.top === 6 && p.bottom === 8 && p.right === 24);
-  check("codeAreaPadding Soft Light 7 left of the numbers, 4 / 6, 8 right; Warm Ink unchanged", slOk && wiOk, out);
+  const wiOk = [wi.free, wi.repo].every((p) => Math.abs(p.noLeft - 17) < 0.6 && p.top === 6 && p.bottom === 8 && p.right === 18);
+  check("codeAreaPadding Soft Light 7 left of the numbers, 4 / 6, 8 right; Warm Ink 17, 6 / 8, 18 right; 22 from numbers to code", slOk && wiOk && gapOk, out);
 });
 
 test("fitContentWidthCodeCard", async () => {
@@ -210,9 +219,139 @@ test("fitContentWidthCodeCard", async () => {
     });
     const pw = h.board().place.f2.w;
     await save(h, `cchead-${theme}-fit-after`, '.card[data-id="f2"]');
-    const pr = theme === "soft-light" ? 8 : 24;
+    const pr = theme === "soft-light" ? 8 : 18;
     check(`fitContentWidthCodeCard ${theme}`, scroll0 && !after.hscroll && !after.vscroll && after.gap <= 2 && after.w > w0 && pw === after.w && mid > w0 && mid < after.w && after.room >= pr && after.room <= pr + 8, { w0, mid, after, pw, scroll0 });
     // back to the narrow width for the next theme
     await h.page.keyboard.press("ControlOrMeta+z"); await h.page.waitForTimeout(700);
+  }
+});
+
+/** The looks to check (City is experimental) */
+const LOOKS = ["warm-ink", "soft-light", "classic", "drafting", "graphite", "colorful", "newspaper", "poster", "ink-wash"];
+// 105 lines: 3-digit line numbers, lines of different lengths
+const MANY = Array.from({ length: 105 }, (_, i) => (i === 61 ? "    total = total + values[i] * weights[i] - offsets[i] / (scale + 1.0f); // longest" : `    total += values[${i}];${" ".repeat(i % 7)}`));
+function fitBoard(): Board {
+  const b = emptyBoard("b1", "fitthemes");
+  put(b, free("f1", C_CODE, { title: "five lines" }), 60, 60, 300);
+  const wrap = free("w1", LONG, { title: "wrapped" });
+  wrap.wrap = true;
+  put(b, wrap, 60, 300, 1000);
+  // wrap on and too narrow: the long line wraps before ⌥F (the fitted height is the unwrapped one)
+  const narrow = free("w2", LONG, { title: "wrapped narrow" });
+  narrow.wrap = true;
+  put(b, narrow, 760, 60, 300);
+  put(b, free("m1", MANY, { title: "many lines" }), 60, 560, 320);
+  b.place.m1.h = 300;
+  b.cam = { x: 0, y: 0, z: 1 };
+  return b;
+}
+const FIT_IDS = ["f1", "w1", "w2", "m1"] as const;
+/** What a fitted card looks like now: width, code area height, wrapped lines, scrollbars */
+const fitState = (pg: Page) => pg.evaluate((ids) => Object.fromEntries(ids.map((id) => {
+  const card = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!, b = card.querySelector<HTMLElement>(".cbody")!;
+  const ls = [...b.querySelectorAll<HTMLElement>(".src .l")];
+  return [id, { w: card.offsetWidth, h: card.querySelector<HTMLElement>(":scope > .cface > .carea")!.offsetHeight, lines: ls.length,
+    wrapped: ls.filter((l) => l.getClientRects().length && l.offsetHeight > 21).length, hscroll: b.scrollWidth > b.clientWidth + 1, vscroll: b.scrollHeight > b.clientHeight + 1,
+    wrapOn: b.classList.contains("wrap") }];
+})), FIT_IDS as unknown as string[]);
+async function fitAll(h: Host) {
+  await h.page.mouse.click(1050, 40); await h.page.waitForTimeout(150);
+  await h.page.keyboard.press("ControlOrMeta+a"); await h.page.waitForTimeout(150);
+  await h.page.keyboard.press("Alt+KeyF"); await h.page.waitForTimeout(800);
+  const st = await fitState(h.page);
+  // h: the stored code area height (none = follows its content, only a card taller than the cap stores one); ca: the code area's height on screen
+  return Object.fromEntries(FIT_IDS.map((id) => [id, { w: h.board().place[id].w!, h: h.board().place[id].h ?? null, ca: st[id].h }]));
+}
+const same = (a: { w: number; h: number | null; ca: number }, b: typeof a) => Math.abs(a.w - b.w) <= 1 && Math.abs(a.ca - b.ca) <= 1 && (a.h === null) === (b.h === null) && (a.h === null || Math.abs(a.h - b.h!) <= 1);
+
+test("fitContentSameInEveryTheme", async () => {
+  const h = await open({ board: fitBoard(), light, w: 1100, h: 800, settings: { theme: "warm-ink" } as never });
+  const fits: Record<string, Record<string, { w: number; h: number | null; ca: number }>> = {};
+  const bad: unknown[] = [];
+  const PADS = 14; // code area height: 6 + lines + 8 (Soft Light: 4 + lines + 6 + 4 under the well)
+  // ⌥F in each look on its own
+  for (const theme of LOOKS) {
+    await setTheme(h, theme);
+    fits[theme] = await fitAll(h);
+    const st = await fitState(h.page);
+    for (const id of FIT_IDS) {
+      const s = st[id];
+      if (s.wrapped || s.hscroll || s.vscroll || Math.abs(s.h - (s.lines * 20 + PADS)) > 1 || Math.abs(s.w - fits[theme][id].w) > 1) bad.push({ theme, id, s, fit: fits[theme][id] });
+    }
+    if (!st.w1.wrapOn || !st.w2.wrapOn) bad.push({ theme, wrapOff: true });
+    if (theme === "warm-ink" || theme === "soft-light") await save(h, `fitthemes-${theme}`, '.card[data-id="f1"], .card[data-id="w1"]');
+  }
+  const ref = fits["warm-ink"];
+  const diff = LOOKS.flatMap((t) => FIT_IDS.filter((id) => !same(fits[t][id], ref[id])).map((id) => ({ t, id, got: fits[t][id], ref: ref[id] })));
+  check("fitContentSameInEveryTheme every look fits to the same Place", diff.length === 0, { diff, ref });
+  check("fitContentSameInEveryTheme short cards follow their content, the 105-line card stores its height", ref.f1.h === null && ref.w1.h === null && ref.w2.h === null && ref.m1.h === 105 * 20 + 14, ref);
+  check("fitContentSameInEveryTheme fitted, no wrapped line, no scroll, carea = lines × 20 + 14", bad.length === 0, bad);
+  // the wrapped card shrank from 1000 to its longest line
+  check("fitContentSameInEveryTheme a too-wide / too-narrow wrapped card fits its longest line", ref.w1.w < 700 && ref.w1.w > ref.f1.w && same(ref.w2, ref.w1), ref);
+  // fitted in one, switched to the others: still fits exactly (both directions)
+  const moved: unknown[] = [];
+  for (const from of ["warm-ink", "soft-light"]) {
+    await setTheme(h, from); await fitAll(h);
+    for (const theme of LOOKS) {
+      if (theme === from) continue;
+      await setTheme(h, theme);
+      const st = await fitState(h.page);
+      for (const id of FIT_IDS) {
+        const s = st[id];
+        if (s.wrapped || s.hscroll || s.vscroll || Math.abs(s.w - fits[theme][id].w) > 1 || Math.abs(s.h - fits[theme][id].ca) > 1) moved.push({ from, theme, id, s, fit: fits[theme][id] });
+      }
+      if (from === "warm-ink" && theme === "soft-light") await save(h, "fitthemes-warm-ink-to-soft-light", '.card[data-id="f1"], .card[data-id="w1"]');
+    }
+  }
+  check("fitContentSameInEveryTheme fitted in Warm Ink / Soft Light, fits exactly in every other look", moved.length === 0, moved);
+  // the 105-line card, for the screenshots
+  for (const theme of ["warm-ink", "soft-light"]) {
+    await setTheme(h, theme);
+    await h.page.mouse.click(1050, 40); await h.page.waitForTimeout(150);
+    // pan down to the card's longest line (line 62)
+    await h.page.mouse.move(700, 400); await h.page.mouse.wheel(0, 1200); await h.page.waitForTimeout(500);
+    await save(h, `fitthemes-${theme}-many`);
+    await h.page.mouse.wheel(0, -1200); await h.page.waitForTimeout(500);
+  }
+});
+
+test("fitContentFollowsCodeEdits", async () => {
+  for (const theme of ["warm-ink", "soft-light"]) {
+    const b = emptyBoard("b1", "fitedit");
+    put(b, free("f1", C_CODE, { title: "grows" }), 80, 80, 300);
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light, w: 1100, h: 800, settings: { theme } as never });
+    await setTheme(h, theme);
+    const pg = h.page;
+    const size = () => pg.evaluate(() => { const c = document.querySelector<HTMLElement>('.card[data-id="f1"]')!, bd = c.querySelector<HTMLElement>(".cbody")!; return { h: c.offsetHeight, vscroll: bd.scrollHeight > bd.clientHeight + 1 }; });
+    const addLines = async (n: number) => {
+      await pg.locator('.card[data-id="f1"] .src .l').nth(1).dblclick();
+      await pg.waitForSelector('.card[data-id="f1"] .cm-content', { timeout: 8000 });
+      await pg.keyboard.press("ControlOrMeta+End");
+      for (let i = 0; i < n; i++) await pg.keyboard.insertText(`\n// added ${i}`);
+      await pg.waitForTimeout(300);
+      const editing = await size();
+      await pg.mouse.click(1000, 760); await pg.waitForTimeout(600);
+      return { editing, after: await size() };
+    };
+    const hd = (await pg.locator('.card[data-id="f1"] .chead').boundingBox())!;
+    await pg.mouse.click(hd.x + 40, hd.y + hd.height / 2); await pg.waitForTimeout(150);
+    await pg.keyboard.press("Alt+KeyF"); await pg.waitForTimeout(800);
+    const fitted = { ...(await size()), place: { ...h.board().place.f1 } };
+    const grown = await addLines(3);
+    check(`fitContentFollowsCodeEdits ${theme} a fitted card grows by 3 lines while editing and after`, fitted.place.h === undefined && !fitted.vscroll
+      && Math.abs(grown.editing.h - fitted.h - 60) <= 1 && Math.abs(grown.after.h - fitted.h - 60) <= 1 && !grown.editing.vscroll && !grown.after.vscroll, { fitted, grown });
+    // drag the corner handle down 60px (Ctrl: no snapping): the height is stored and stays
+    await pg.hover('.card[data-id="f1"] .cbody'); await pg.waitForTimeout(200);
+    const g = (await pg.locator('.card[data-id="f1"] .grip').boundingBox())!;
+    await pg.keyboard.down("Control");
+    await pg.mouse.move(g.x + g.width / 2, g.y + g.height / 2); await pg.mouse.down();
+    await pg.mouse.move(g.x + g.width / 2, g.y + g.height / 2 + 30, { steps: 4 }); await pg.mouse.move(g.x + g.width / 2, g.y + g.height / 2 + 60, { steps: 4 });
+    await pg.mouse.up(); await pg.keyboard.up("Control"); await pg.waitForTimeout(300);
+    const dragged = { ...(await size()), place: { ...h.board().place.f1 } };
+    const fixed = await addLines(1);
+    check(`fitContentFollowsCodeEdits ${theme} a dragged height stays when a line is added`, typeof dragged.place.h === "number" && Math.abs(dragged.h - grown.after.h - 60) <= 1
+      && Math.abs(fixed.after.h - dragged.h) <= 1 && h.board().place.f1.h === dragged.place.h, { dragged, fixed, h: h.board().place.f1.h });
+    await h.close();
   }
 });

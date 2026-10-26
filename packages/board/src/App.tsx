@@ -1,7 +1,7 @@
 // 白板界面：画布、底部唯一的工具栏（新建 · Search · ⋯）、缩放、讲解条、横幅、提示。看板就是一个普通编辑器标签页。
 import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { tune } from "./state/tune";
-import { GUTTER, DED_PAD } from "./state/measure";
+import { DED_PAD, CODE_MAX } from "./state/measure";
 import { unwrap } from "solid-js/store";
 import { state, mutate, liveCam, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
 import { cam, camTarget, zoomAt, viewTracked } from "./state/camera";
@@ -36,9 +36,9 @@ export function App() {
   // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
   let camT: number | undefined;
   createEffect(() => document.documentElement.style.setProperty("--menu-ms", `${tune("menuOpen")}ms`));
-  // 代码卡的行号区宽、藏缩进时的留空：JS 量尺寸和 CSS 用同一份（挂在 body 上，导出的 HTML / PNG 也带着）
-  document.body.style.setProperty("--gutter", `${GUTTER}px`);
+  // 代码卡藏缩进时的留空、没存高度时最高多少：JS 量尺寸和 CSS 用同一份（挂在 body 上，导出的 HTML / PNG 也带着）。行号区宽在 styles.css 的 .code 上
   document.body.style.setProperty("--ded-pad", `${DED_PAD}px`);
+  document.body.style.setProperty("--code-max", `${CODE_MAX}px`);
   // 慢动作：CSS 里的时长都乘 --t（系统「减少动态效果」时 styles.css 的 media 规则仍然优先）
   createEffect(() => { const s = tune("animSpeed"); if (s === 100) document.documentElement.style.removeProperty("--t"); else document.documentElement.style.setProperty("--t", String(100 / s)); });
   createEffect(on(() => [cam.x, cam.y, cam.z], () => {

@@ -225,7 +225,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .cdesc:empty { display: none; }
 .cdesc[contenteditable]:empty { display: block; min-height: 30px; }
 .cbody { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; border-radius: 0 0 var(--r-card) var(--r-card); }
-.card.autoh .cbody { max-height: 460px; }
+.card.autoh .cbody { max-height: var(--code-max); } /* 没存高度的代码卡跟着内容，最高 --code-max（measure.ts CODE_MAX） */
 .grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 3; }
 /* The grip's corner is concentric with the card's (--cr, the card's own corner radius): inset by --gi, its radius is --cr − --gi, so
  * its arc keeps the same distance from the card's edge all the way round (a square card gets a square grip). On a large radius
@@ -239,10 +239,13 @@ input, textarea { font: inherit; color: var(--ink); }
 .hb { position: absolute; left: 14px; right: 14px; bottom: -3px; height: 7px; cursor: ns-resize; z-index: 2; }
 
 /* code */
-.code { --code-pt: 6px; --code-pr: 24px; position: relative; padding: var(--code-pt) 0 calc(var(--code-pt) + 2px); font: 11px/20px var(--mono); min-width: max-content; }
+/* 代码区的几何，所有主题同一套：行号左边空 --code-pl，行号栏 = --nd 位数字宽（右对齐），再空 22px 到代码（标记、贴纸、
+   隐藏行的 + 都在这 22px 里），最长行右边空 --code-pr；上 --code-pt，下 --code-pt + 2px。没有托盘的主题左 17、右 18；
+   有托盘的（Soft Light：托盘离卡边各 10px）左 7、右 8，另外 10px 是托盘的边。这样同一份 Place（w、.carea 的 h）在每个主题里都刚好装下同样的代码 */
+.code { --code-pt: 6px; --code-pl: 17px; --code-pr: 18px; --gutter: calc(var(--code-pl) + var(--nd, 3) * 1ch + 22px); position: relative; padding: var(--code-pt) 0 calc(var(--code-pt) + 2px); font: 11px/20px var(--mono); min-width: max-content; }
 .gutter { position: absolute; left: 0; top: 0; bottom: 0; width: var(--gutter); z-index: 2; pointer-events: none; }
 .gutter > * { pointer-events: auto; }
-.no { position: absolute; left: 2px; width: 30px; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: var(--no-o, .65); }
+.no { position: absolute; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: var(--no-o, .65); }
 .no:hover { opacity: 1; color: var(--ink-2); }
 .no.link { color: var(--no-link, var(--accent)); font-weight: var(--no-link-w, inherit); opacity: 1; }
 .no.jump::before { content: ""; position: absolute; left: 6px; right: -4px; top: -1px; border-top: 1px dashed var(--ink-3); opacity: .7; }
@@ -267,7 +270,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .dedm::before { content: ""; position: absolute; inset: 0 -4px; } /* 悬停热区宽一点，好看到提示 */
 .dedm:hover { opacity: 1; }
 .card.lo-ov .dedm { visibility: hidden; }
-.src .l { height: 20px; margin-right: calc(-1 * var(--code-pr)); padding-right: var(--code-pr); } /* 行伸进 .src 右边的留白（--code-pr，默认 24px）：鼠标往右去拿行尾圆点时一直还在这一行上，不会落到 .src 本身上把悬停行清掉。宽度、折行都不变 */
+.src .l { height: 20px; margin-right: calc(-1 * var(--code-pr)); padding-right: var(--code-pr); } /* 行伸进 .src 右边的留白（--code-pr）：鼠标往右去拿行尾圆点时一直还在这一行上，不会落到 .src 本身上把悬停行清掉。宽度、折行都不变 */
 .src .l.drop { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 /* 贴在字上的手写标注（actions/annots.ts）：有标注的行上面（.below 是下面）一条窄轨道，标签从被标的字左边写起，小箭头指着字的中间；
    被标的字底下一块淡色（.abg，在 rowbgs 里）。位置按等宽字的格数（ch），不量 DOM */
@@ -337,9 +340,9 @@ input, textarea { font: inherit; color: var(--ink); }
   --fade-t: 0px; --fade-b: 0px;
   mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-t), #000 calc(100% - var(--fade-b)), transparent);
   animation: nfade-t linear both, nfade-b linear both; animation-timeline: scroll(self), scroll(self); animation-range: 0px 20px, calc(100% - 20px) 100%; }
-/* 行号栏宽（App 挂到 body 上，主题可以按卡改，themes.css Soft Light）：注册成长度，用 ch 写的值在 .code 上就算成 px，
+/* 行号栏宽（.code 上按 --code-pl、--nd 算）：注册成长度，用 ch 写的值在 .code 上就算成 px，
    字号不同的子元素（.mk 之类）拿到的是同一个宽度 */
-@property --gutter { syntax: "<length>"; inherits: true; initial-value: 54px; }
+@property --gutter { syntax: "<length>"; inherits: true; initial-value: 0px; }
 @property --fade-t { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --fade-b { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @keyframes nfade-t { from { --fade-t: 0px; } to { --fade-t: 22px; } }
@@ -718,7 +721,12 @@ kbd { font: 10.5px var(--mono); }
 .rowbg.lsel { background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .rowbg.vhi { background: var(--hi); }
 .no.sel { color: var(--accent); opacity: 1; }
-.gutter .no { cursor: pointer; }
+.gutter .no { left: var(--code-pl); width: calc(var(--nd, 3) * 1ch); cursor: pointer; }
+/* 编辑代码卡（CodeMirror）时同一套几何：进出编辑字不动（@yhnocoder/markdown 自己的默认是 54px 的行号栏，卡上用这里的） */
+.card .code .cbcm-card .cm-content { padding-right: var(--code-pr); }
+.card .code .cbcm-card .cm-line { padding-right: var(--code-pr); margin-right: calc(-1 * var(--code-pr)); }
+.card .code .cbcm-card .cm-lineNumbers { width: var(--gutter); }
+.card .code .cbcm-card .cm-lineNumbers .cm-gutterElement { width: calc(var(--code-pl) + var(--nd, 3) * 1ch); padding-left: var(--code-pl); }
 .lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); z-index: 4; cursor: crosshair; opacity: .0; transition: opacity .1s; }
 .lport.l { left: -5px; } .lport.r { right: -5px; }
 .lport { opacity: 1; }

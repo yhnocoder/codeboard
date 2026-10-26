@@ -530,22 +530,18 @@
 :root.look-soft-light .ccard > .cface > .chead .cpath { font: 400 10.5px var(--sys); color: var(--ink-3); letter-spacing: .04em; opacity: .85; }
 :root.look-soft-light .ccard > .cface > .chead .lang { font: 500 10.5px var(--sys); letter-spacing: .04em; border-radius: 12.5px; }
 :root.look-soft-light .ccard > .cface > .chead .rev.new { color: var(--ink-2); gap: 7px; }
-/* Code area in the well: 7px left of the line numbers (the number column is as wide as the card's longest number, --nd digits),
-   4px above the code and 6px below it (bottom = top + 2, like Warm Ink's 6 / 8), 8px right of the longest line */
-:root.look-soft-light .ccard .code { --code-pt: 4px; --code-pr: 8px; --gutter: calc(7px + var(--nd, 3) * 1ch + 22px); }
-:root.look-soft-light .ccard .code .gutter .no { left: 7px; width: calc(var(--nd, 3) * 1ch); }
-:root.look-soft-light .ccard .code .cbcm-card .cm-content { padding-right: var(--code-pr); }
-:root.look-soft-light .ccard .code .cbcm-card .cm-line { padding-right: var(--code-pr); margin-right: calc(-1 * var(--code-pr)); }
-:root.look-soft-light .ccard .code .cbcm-card .cm-lineNumbers { width: var(--gutter); }
-:root.look-soft-light .ccard .code .cbcm-card .cm-lineNumbers .cm-gutterElement { width: calc(7px + var(--nd, 3) * 1ch); padding-left: 7px; }
+/* Code area in the well: the shared geometry (styles.css .code) with the well's 10px edge taken off each side: 7px left of the
+   line numbers, 8px right of the longest line; 4px above the code and 6px below it (+ 4px under the well, inside .carea) */
+:root.look-soft-light .ccard .code { --code-pt: 4px; --code-pl: 7px; --code-pr: 8px; }
 :root.look-soft-light .rev.new i { width: 7px; height: 7px; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
 :root.look-soft-light .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
-:root.look-soft-light .ccard .carea > .cbody { margin: 0 10px; border-radius: 17px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
+:root.look-soft-light .ccard .carea > .cbody { margin: 0 10px 4px; border-radius: 17px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
 :root.look-soft-light[data-theme="dark"] .ccard .carea > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
-/* 托盘下面的 10px 留白算卡的外框（在内容区 .carea 外面）；有 Source 底栏时留白在托盘和底栏之间，底栏贴底 */
-:root.look-soft-light .ccard .carea { margin-bottom: 10px; }
+/* 托盘下面留 10px：4px 在内容区 .carea 里（托盘的 4 + 代码上下 4 / 6 = Warm Ink 的 6 / 8，同样的行 .carea 一样高），6px 算卡的外框；
+   有 Source 底栏时 10px 都在托盘和底栏之间，底栏贴底 */
+:root.look-soft-light .ccard .carea { margin-bottom: 6px; }
 :root.look-soft-light .ccard .carea > .cbody:not(:last-child) { margin-bottom: 10px; }
-:root.look-soft-light .ccard .carea > .cfoot { margin-bottom: -10px; }
+:root.look-soft-light .ccard .carea > .cfoot { margin-bottom: -6px; }
 /* Note: header + body top padding = Warm Ink's (36 + 10), so the same text at the same width is the same height in both */
 :root.look-soft-light .card.note > .cface > .chead { height: 40px; padding-top: 9px; padding-left: 16px; }
 :root.look-soft-light .card.note .nbody { font-weight: 300; --md-fs: var(--note-fs, 13.5px); padding: 6px 16px 12px; }
@@ -726,7 +722,7 @@
 :root.look-newspaper .cband .cmeta, :root.look-newspaper .cband .big { display: none; }
 :root.look-newspaper .cdesc { margin-top: -4px; padding: 0 12px 10px; border-bottom: 0; font: italic 400 12.5px/1.45 var(--serif); color: var(--ink-2); }
 :root.look-newspaper .ccard .carea > .cbody { border-top: .5px solid var(--hair); }
-:root.look-newspaper .gutter::after { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; border-left: .5px solid var(--hair); }
+:root.look-newspaper .gutter::after { content: ""; position: absolute; left: calc(var(--gutter) - 3px); top: 0; bottom: 0; border-left: .5px solid var(--hair); }
 :root.look-newspaper .port { fill: var(--ink); stroke: none; }
 :root.look-newspaper .ahead.triangle { stroke: none; }
 :root.look-newspaper .vcard { --vc-bg: none; --vc-sh: none; --vc-r: 0; --vl-pad: 1px 2px; }

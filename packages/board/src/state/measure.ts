@@ -41,12 +41,12 @@ export function boardOffset() {
 export const boardPoint = (p: { x: number; y: number }) => { const o = boardOffset(); return { x: p.x - o.x, y: p.y - o.y }; };
 export const worldAt = (p: { x: number; y: number }) => { const b = boardPoint(p); return toWorld(b.x, b.y); };
 
-// ---------- 代码卡的固定尺寸（CSS 里用同一份：App 挂到 body 上的 --gutter、--ded-pad） ----------
+// ---------- 代码卡的固定尺寸（CSS 里用同一份：App 挂到 body 上的 --ded-pad；行号栏宽 --gutter 在 styles.css 的 .code 上，量 .src 的左边距） ----------
 
-/** 行号栏宽 = .src 的左边距 */
-export const GUTTER = 54;
 /** 藏了公共缩进时代码离左边留的空 */
 export const DED_PAD = 16;
+/** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（App 挂到 body 上的 --code-max） */
+export const CODE_MAX = 460;
 let charW = 0;
 /** 等宽字体一个字的宽度（量一次） */
 export function monoWidth(el: Element) {
@@ -65,7 +65,7 @@ export function chromeOf(id: string): number {
   return el && a ? el.offsetHeight - a.offsetHeight : 0;
 }
 /** 卡片内容刚好装下的宽高；minH = 头部 + 一行 */
-export function naturalSize(id: string): { w?: number; h: number; minH: number } | null {
+export function naturalSize(id: string): { w?: number; h: number; minH: number; body?: number } | null {
   const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`);
   if (!el) return null;
   const f = cardById(id);
@@ -77,9 +77,15 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number }
     const top = body.offsetTop, bs = getComputedStyle(body);
     // 代码区自己的边框、内边距，再加上它下面到卡边的那一截（Soft Light 的托盘离卡底 10px）。不算横向滚动条：适配后的宽度放得下最长行
     const frame = parseFloat(bs.borderTopWidth) + parseFloat(bs.borderBottomWidth) + parseFloat(bs.paddingTop) + parseFloat(bs.paddingBottom);
-    const h = top + code.offsetHeight + frame + Math.max(0, el.offsetHeight - top - body.offsetHeight);
+    // 自动换行开着时：新的宽度放得下最长行，不会再折行，减掉现在折出来的那几行（每行比一行高多出的部分）
+    let wrapped = 0;
+    if (src && f.card.wrap) {
+      const lh = parseFloat(getComputedStyle(src).lineHeight) || 20;
+      for (const l of src.querySelectorAll<HTMLElement>(".l")) wrapped += Math.max(0, l.offsetHeight - lh);
+    }
+    const h = top + code.offsetHeight - wrapped + frame + Math.max(0, el.offsetHeight - top - body.offsetHeight);
     let w: number | undefined;
-    if (src && !f.card.wrap) {
+    if (src) {
       const cs = getComputedStyle(src);
       // 只量显示着的行（#25 Linda：藏了 Docstring / 注释 / 空行后，藏掉的长行不该把卡撑宽）：
       // 和 CodeBody 同一套 cardRows；Hide Comments 去掉行尾注释；藏了公共缩进时减掉那几格、加上左边留的空
@@ -93,7 +99,7 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number }
       // 加上代码区外面的那一圈（Soft Light 的托盘离卡边各 10px）：卡比 .cbody 宽多少
       w = Math.ceil(longest * monoWidth(src) + (ded ? DED_PAD : 0) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4 + el.offsetWidth - body.offsetWidth);
     }
-    return { w, h, minH: top + 6 + 20 + 8 + 2 };
+    return { w, h, minH: top + 6 + 20 + 8 + 2, body: code.offsetHeight - wrapped + frame };
   }
   if (f?.card.kind === "image") {
     const img = el.querySelector("img");
