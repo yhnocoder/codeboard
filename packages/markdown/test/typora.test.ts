@@ -122,8 +122,28 @@ describe("typing rule: re-parse what is before the caret (retype)", () => {
     expect(type("x == y =", "=").changed).toBe(false);
     expect(type("x == y=", "=").changed).toBe(false);
   });
-  it("leaves bold, italic and strike to TipTap's own rules", () => {
-    for (const [md, ch] of [["x **b*", "*"], ["x *i", "*"], ["x ~~s~", "~"], ["x ~a b", "~"]] as const) expect(type(md, ch).changed, md).toBe(false);
+  it("waits for the closing ~~, and keeps a single ~ with spaces as text", () => {
+    for (const [md, ch] of [["x ~~s", "~"], ["x ~a b", "~"]] as const) expect(type(md, ch).changed, md).toBe(false);
+  });
+  // #66：打完收尾的记号就变，和解析器一样：前面紧挨着中文、同一行前面有行内代码 `void **` 时也变，代码里的记号不动
+  it("converts **b**, *i*, ~~s~~, ==h== and `c` after CJK text, also with ** inside an earlier code span", () => {
+    const code = (pre: string) => [schema.text("("), schema.text("void **", [schema.marks.code.create()]), schema.text(`) ${pre}`)];
+    for (const pre of ["指向要 free 的对象的 ", "指向要 free 的对象的"]) {
+      for (const [typed, ch, want, mark] of [["**Pointer*", "*", "**Pointer**", "bold"], ["*Pointer", "*", "*Pointer*", "italic"], ["~~Pointer~", "~", "~~Pointer~~", "strike"], ["==Pointer=", "=", "==Pointer==", "highlight"]] as const) {
+        for (const withCode of [false, true]) {
+          const doc = schema.node("doc", null, [schema.node("bulletList", null, [schema.node("listItem", null, [schema.node("paragraph", null, [...(withCode ? code(pre) : [schema.text(pre)]), schema.text(typed)])])])]);
+          let s = EditorState.create({ doc, schema });
+          s = s.apply(s.tr.setSelection(TextSelection.atEnd(s.doc)));
+          const tr = s.tr.insertText(ch);
+          expect(retype(tr), `${withCode} ${pre}${typed}${ch}`).toBe(true);
+          s = s.apply(tr);
+          const last = s.doc.firstChild!.firstChild!.firstChild!.lastChild!;
+          expect(last.text).toBe("Pointer");
+          expect(last.marks.map((m) => m.type.name)).toEqual([mark]);
+          expect(mdOf(s)).toBe(`- ${withCode ? "(`void **`) " : ""}${pre}${want}`);
+        }
+      }
+    }
   });
   it("does not create footnotes", () => {
     expect(type("see [[x]] and [^1", "]").changed).toBe(false);

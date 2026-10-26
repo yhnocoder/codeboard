@@ -1,6 +1,6 @@
 // 照 Typora 的“边写边变”：
-// - 行内：打完收尾的记号就变。解析器（schema.ts）能判断的不另写规则：刚收尾、到光标为止的那一段按解析器解析（retype）；
-//   **b** *i* _i_ ~~s~~ 用 TipTap 自带的，`c` 按反引号的长度配对（codeSpanAtEnd）
+// - 行内：打完收尾的记号就变。解析器（schema.ts）能判断的不另写规则：刚收尾、到光标为止的那一段按解析器解析（retype），
+//   **b** *i* ~~s~~ 也是（中文后面紧跟的 **粗体**、同一行前面有行内代码 `void **` 时也对，#66）；_i_ 用 TipTap 自带的，`c` 按反引号的长度配对（codeSpanAtEnd）
 // - 块：# > - 1. [ ] 加空格用 TipTap 自带的；回车时整段解析出来是代码块、分隔线、目录、公式块的就换成它（enterBlock）；
 //   $$ / === / <details> / |表|头| 加回车另有规则（解析器认不出来）
 // - 光标移进格式文字、标题、行内公式时展开成能改的 Markdown 原文（source.ts）；还没展开时（刚打完）照旧把记号画在两头（装饰）
@@ -57,8 +57,6 @@ export function reconvert(tr: Transaction): Transaction {
 
 /** 能收尾一段行内语法的字 → 那段语法开头可能的字 */
 const OPENERS: Record<string, string> = { "*": "*", "~": "~", "=": "=", "^": "^", "$": "$", ")": "[!", ">": "<", ":": ":", "]": "[", "}": "{" };
-/** 这几种格式打字时用 TipTap 自带的规则（**b** *i* _i_ ~~s~~）；***粗斜体*** 这里变 */
-const NATIVE = new Set(["bold", "italic", "strike"]);
 const hasFootnote = (f: Fragment) => { let y = false; f.descendants((n) => { if (n.type.name === "footnoteReference") y = true; }); return y; };
 
 /**
@@ -78,12 +76,13 @@ function spanOf(ctx: Fragment, cut: Fragment, schema: Schema): Fragment | null {
   f.forEach((n) => { common = n.isText ? (common ?? n.marks).filter((m) => m.isInSet(n.marks)) : []; });
   const fresh = (common as readonly Mark[] | null ?? []).filter((m) => !m.isInSet(cut.firstChild!.marks)).map((m) => m.type.name);
   if (!fresh.length) return null;
-  if (fresh.every((n) => NATIVE.has(n)) && !(fresh.includes("bold") && fresh.includes("italic"))) return null;
+  // 删除线只认 ~~s~~（写回也是它）；单个 ~ 是下标（H~2~O），~a b~ 照 Typora 是字
+  if (fresh.includes("strike") && !cut.textBetween(0, cut.size, undefined, "\ufffc").startsWith("~~")) return null;
   return f;
 }
 
 /**
- * 打字时的行内转换（==hl== H~2~ x^2^ $m$ [t](u) ![a](u) <u>u</u> :e: [[R]] ***bi*** {字|批注}）：只看刚打完收尾记号、到光标为止的那一段，
+ * 打字时的行内转换（**b** *i* ~~s~~ ***bi*** ==hl== H~2~ x^2^ $m$ [t](u) ![a](u) <u>u</u> :e: [[R]] {字|批注}）：只看刚打完收尾记号、到光标为止的那一段，
  * 和以前一条条的规则一样——从左往右找一个开头字，从它到光标解析出来正好是一整段新格式就换掉（同一个 transaction，⌘Z 撤回成打的字）。
  * 开头字前面紧挨着同样的字或 \ 时不算（**b* 里的 *b*、~~s~ 里的 ~s~、\$）；前面撤回成字的不会再变；
  * 光标后面的不动（自动补的右括号）；最后一个脚注引用之前的不动，解析出脚注引用也不要。
