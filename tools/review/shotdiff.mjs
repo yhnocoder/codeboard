@@ -4,6 +4,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium } from "playwright-core";
+import { CHROMIUM } from "../test/chromium.mjs";
 
 const [base, head, out, urlPrefix = "", urlSuffix = ""] = process.argv.slice(2);
 if (!base || !head || !out) { console.error("usage: shotdiff.mjs <baseline> <head> <out> [URL prefix]"); process.exit(2); }
@@ -11,8 +12,7 @@ const THRESH = 32;        // a pixel counts as changed when any channel differs 
 const CHANGED = 0.005;    // a step counts as changed when more than 0.5% of pixels changed (filters caret blink, late semantic highlighting, etc.)
 fs.mkdirSync(out, { recursive: true });
 const pngs = (d) => (fs.existsSync(d) ? fs.readdirSync(d).filter((n) => n.endsWith(".png")).sort() : []);
-const exe = process.env.CHROMIUM ?? (fs.existsSync("/opt/pw-browsers/chromium-1194/chrome-linux/chrome") ? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" : undefined);
-const browser = await chromium.launch({ executablePath: exe });
+const browser = await chromium.launch({ executablePath: CHROMIUM });
 const page = await browser.newPage();
 const b64 = (p) => (p && fs.existsSync(p) ? "data:image/png;base64," + fs.readFileSync(p).toString("base64") : null);
 
