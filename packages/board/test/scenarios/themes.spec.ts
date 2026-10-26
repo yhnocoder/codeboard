@@ -276,7 +276,7 @@ test("menuOpensWithoutOvershoot", async () => {
   const top = summary(await sample(() => pg.locator('.bbar button[aria-label="More"]').click()));
   await pg.locator(".ctx").first().locator("button[role=menuitem]", { hasText: /^Theme$/ }).hover();
   await idle(h); // the submenu opens on pointerenter
-  await pg.keyboard.press("Escape"); // closes only the submenu; → opens it again
+  await pg.keyboard.press("ArrowLeft"); // closes only the submenu; → opens it again
   await idle(h);
   const sub = summary(await sample(() => pg.keyboard.press("ArrowRight")));
   const ok = (m: ReturnType<typeof summary>) => m.frames > 3 && m.maxScale <= 1 && m.minScale >= 0.96 && m.settledAt !== null && m.settledAt <= 200;
