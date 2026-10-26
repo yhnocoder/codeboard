@@ -60,11 +60,11 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
   createEffect(() => { const l = seg().lang; ed()?.setLang(l); });
 
   return (
-    <div class="code freecode">
+    <div class="code freecode" style={{ "--nd": String(String(seg().start + seg().text.length - 1).length) }}>
       {/* CodeMirror 自己的容器（不和 Solid 管的东西放在一起：Solid 清空子节点时会把它一起清掉） */}
       <div ref={box} style={{ display: "contents" }} />
       <Show when={!ed()}>
-        <div class="gutter"><For each={seg().text}>{(_, i) => <span class="no" style={{ top: `${6 + i() * 20}px` }}>{seg().start + i()}</span>}</For></div>
+        <div class="gutter"><For each={seg().text}>{(_, i) => <span class="no" style={{ top: `calc(var(--code-pt) + ${i() * 20}px)` }}>{seg().start + i()}</span>}</For></div>
         <div class="src"><For each={seg().text}>{(t, i) => <div class="l" innerHTML={v0?.html[i()] ?? escHtml(t) ?? "​"} />}</For></div>
       </Show>
     </div>

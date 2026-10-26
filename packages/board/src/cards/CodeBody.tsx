@@ -11,7 +11,7 @@ import { lineStickers, stickerList } from "../state/stickers";
 import { StickerChip } from "../stickers/Picker";
 import { setGeo } from "../state/geo";
 import { look } from "../state/look";
-import { queueMeasure, observeResize, GUTTER, DED_PAD, monoWidth, lastDown } from "../state/measure";
+import { queueMeasure, observeResize, DED_PAD, monoWidth, lastDown } from "../state/measure";
 import { whenIdle } from "../state/idle";
 import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget } from "../state/ui";
 import * as act from "../actions";
@@ -48,6 +48,8 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     cardRows(c(), { views: state.views, shown: shown(), versionOf: (s) => versionChip(c(), s) }),
   );
   const segById = (id: string) => c().segments.find((s) => s.id === id);
+  /** 最大行号有几位：主题可以让行号栏刚好装下（themes.css，Soft Light） */
+  const numDigits = createMemo(() => { let m = 1; for (const r of rows()) if (r.t === "line" && r.line > m) m = r.line; return String(m).length; });
   const viewOf = (id: string): SegView | undefined => state.views[id];
 
   // 行号、标记的位置（实测）
@@ -121,7 +123,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       const sh = ded() ? DED_PAD - ded() * cw : 0;
       img.push(cmtLine(r) ? "linear-gradient(var(--bar-c), var(--bar-c))" : "linear-gradient(var(--bar), var(--bar))");
       size.push(`${((t.length - ind) * cw).toFixed(1)}px 10px`);
-      pos.push(`${(GUTTER + sh + ind * cw).toFixed(1)}px ${y[i].y + 5}px`);
+      pos.push(`calc(var(--gutter) + ${(sh + ind * cw).toFixed(1)}px) ${y[i].y + 5}px`);
     });
     return img.length ? { img: img.join(","), size: size.join(","), pos: pos.join(",") } : { img: undefined, size: undefined, pos: undefined };
   });
@@ -425,7 +427,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
           }} />
       </Show>
       <Show when={!freeEditing()}>
-      <div ref={codeEl} class="code" onCopy={onCopy}>
+      <div ref={codeEl} class="code" style={{ "--nd": String(numDigits()) }} onCopy={onCopy}>
         <div class="gutter">
           <For each={rows()}>
             {(r, i) => (

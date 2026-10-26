@@ -88,7 +88,8 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number }
       });
       const ded = commonIndent(texts);
       const longest = Math.max(12, ...texts.map((t) => t.trimEnd().length - ded));
-      w = Math.ceil(longest * monoWidth(src) + (ded ? DED_PAD : 0) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4);
+      // 加上代码区外面的那一圈（Soft Light 的托盘离卡边各 10px）：卡比 .cbody 宽多少
+      w = Math.ceil(longest * monoWidth(src) + (ded ? DED_PAD : 0) + parseFloat(cs.marginLeft) + parseFloat(cs.paddingRight) + 4 + el.offsetWidth - body.offsetWidth);
     }
     return { w, h, minH: top + 6 + 20 + 8 + 2 };
   }

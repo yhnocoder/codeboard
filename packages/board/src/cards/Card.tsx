@@ -177,7 +177,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={!p.col && placeOf(c().id).start}><span class="startt" data-tip="Start card: Walkthrough and the call tree start here">START</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" data-nodrag onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={kbd("lock")} data-nodrag onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
-      <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
+      <Show when={!free()}><span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span></Show>
       <Show when={!free() && act.mixedLangs() && cardChip(c())}>{(k) => <span class="lchip" data-l={k()}>{k()}</span>}</Show>
       <Show when={c().gen}>
         <span class="gentag" data-tip="Generated code: pinned to a run, not a commit">Generated · {c().gen!.what}</span>
@@ -186,19 +186,23 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
         <Editable class="ctitle" kind="title" id={c().id} value={free() ? c().title ?? "" : cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
       </Show>
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
-      <Show when={free()} fallback={
+      <Show when={!free()}>
         <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !justDragged() && act.openCode(c().id)}>
           <span class="rw"><span class="rl">{multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}</span></span>
-        </span>}>
-        <button class="rev lang" data-nodrag onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
+        </span>
       </Show>
       <Show when={act.dispatchOf(c().id)}>{(n) => <span class="disp1" data-tip="Picked from a dynamic dispatch: the others are the grey boxes beside it">1 of {n()}</span>}</Show>
       <span class="grow" />
       <Procs card={c().id} procs={c().procs} />
-      {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
-      {/* 窄卡卡头的取舍（styles.css「卡头优先级」）：版本 / + uncommitted 先缩成小记号，再收起 ← N 和复制，然后路径省略，标题最后；
+      {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时它们不占宽度（.hov 收成 0 宽），标题能用满整行，悬停时展开、淡入 */}
+      {/* 窄卡卡头的取舍（styles.css「卡头优先级」）：版本 / + uncommitted 先缩成小记号，再收起 ← N，然后路径省略，标题最后；
           .rw 里的 .rl 放不下时整个折到看不见的第二行。完整文字在 data-tip 里 */}
-      <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" data-nodrag onClick={() => act.copyCard(c())}><span class="rw"><Icon name="copy" /></span></button>
+      <span class="hov"><span>
+        <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" data-nodrag onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
+        <Show when={free()}>
+          <button class="lang" data-tip="Change Language" data-nodrag onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")}</button>
+        </Show>
+      </span></span>
       <Show when={review()}><span class="rvdot" data-tip="A sidenote's line changed in the new version: check it" /></Show>
       <Show when={act.openQuestionsOn(c().id)}>{(n) => <button class="qcount" data-tip="Open questions on this card" data-nodrag onClick={() => act.openQuestionsOf(c().id)}>? {n()}</button>}</Show>
       <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" data-nodrag onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>

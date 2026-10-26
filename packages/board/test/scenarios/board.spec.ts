@@ -363,7 +363,7 @@ test("freeCodeLanguage", async () => {
   const h = await open({ board: emptyBoard("b1", "free"), light, w: 1000, h: 700 });
   await h.page.mouse.click(300, 200, { button: "right" }); await h.page.waitForTimeout(300);
   await h.page.locator(".ctx button", { hasText: "New Code" }).click(); await h.page.waitForTimeout(400);
-  await h.page.locator(".card .rev.lang").first().click(); await h.page.waitForTimeout(400);
+  await h.page.locator(".card .chead .lang").first().click(); await h.page.waitForTimeout(400);
   const afterOpen = await h.page.locator(".card").count();
   await h.page.locator(".ctx button").nth(2).click(); await h.page.waitForTimeout(400);
   const afterPick = await h.page.locator(".card").count();

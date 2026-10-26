@@ -157,7 +157,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.leaving { opacity: 0; scale: .96; transition: opacity calc(var(--t) * 140ms) var(--in), scale calc(var(--t) * 140ms) var(--in); }
 .card.ping { animation: ping calc(var(--t) * 700ms) var(--out); }
 @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent), var(--sh-card); } 100% { box-shadow: 0 0 0 14px transparent, var(--sh-card); } }
-.chead { height: 36px; flex: none; display: flex; align-items: center; gap: 7px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--head); border-radius: var(--r-card) var(--r-card) 0 0; }
+.chead { --hg: 7px; height: 36px; flex: none; display: flex; align-items: center; gap: 7px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--head); border-radius: var(--r-card) var(--r-card) 0 0; }
 .step { font: 600 10.5px/1 var(--mono); height: 19px; min-width: 20px; padding: 0 6px; border-radius: 7px; display: inline-grid; place-items: center; background: var(--row); color: var(--accent); flex: none; font-variant-numeric: tabular-nums; }
 .chead .step { cursor: pointer; transition: background .12s; }
 .chead .step:hover { background: var(--accent); color: var(--accent-ink); }
@@ -172,12 +172,12 @@ input, textarea { font: inherit; color: var(--ink); }
 .rev:hover { color: var(--ink); background: var(--hlrow); }
 /* Card header priority on a narrow card. Plain flex, no JS layout reads, and it follows the real title and path in every theme:
  *  1. the version chip and "+ uncommitted" (.rev.fold) fold to a small mark first
- *  2. then "← N" and Copy Code (.linkedin.fold, .ib.cpy) fold away
+ *  2. then "← N" (.linkedin.fold) folds away
  *  3. then the path ellipsizes, and below 4em folds away too
  *  4. the title ellipsizes last, down to 4em
  * The title is the only one with flex-basis auto: it keeps its width until the others have nothing left, then shrinks. The path and
  * the chips start from flex-basis 0 (a chip from its folded size) and grow back up to their own width (max-width: max-content) out
- * of the room the title leaves, in proportion to flex-grow: path 1e8, "← N" and Copy 1e4, the version chips 1. With these gaps a
+ * of the room the title leaves, in proportion to flex-grow: path 1e8, "← N" 1e4, the version chips 1. With these gaps a
  * tier gets all of the room until it is whole, and only what is left goes to the next one, so nothing is cut while a lower-priority
  * item still has its full width. Grow factors of 1e4 keep a whole tier within 1/100px of its width, and 1e8 is far inside
  * Chromium's flex precision. The .grow spacer is an auto margin, so it only takes what is left after all of them.
@@ -185,20 +185,20 @@ input, textarea { font: inherit; color: var(--ink); }
  * fits it wraps onto the clipped second line instead of being ellipsized, and its ::before (the compact mark) moves up into view.
  * A chip that is part way back shows its mark at the right end of the room it got, so that room reads as part of the gap before it;
  * anything drawn around a chip belongs on .rl, so it folds with the label. The full text is in the button's data-tip; the button and
- * its click stay as they are. The language chip of free cards (.rev.lang) shrinks with the title (flex-shrink 20). */
+ * its click stay as they are.
+ * The hover-only buttons (.hov: Copy Code, and the language of Free code cards) are not part of this: hidden, they take no width at
+ * all, so the title gets the whole row; on hover they open to their own width and the title gives way (ellipsizes) for them. */
 .chead .rev { flex-shrink: 20; min-width: 0; overflow: hidden; white-space: nowrap; }
 .chead .fold { overflow: visible; min-width: auto; }
 .chead .rev.fold { flex: 1 0 0; max-width: max-content; }
 .chead .rev.fold::before { flex-shrink: 0; }
-.chead .linkedin.fold, .chead .ib.cpy { flex: 1e4 0 0; min-width: 0; max-width: max-content; padding: 0; }
-.chead .ib.cpy { width: auto; display: flex; align-items: center; }
+.chead .linkedin.fold { flex: 1e4 0 0; min-width: 0; max-width: max-content; padding: 0; }
 .chead .cpath { flex: 1e8 0 0; max-width: max-content; }
-.chead > .grow { flex: none; margin-left: auto; }
+.chead > .grow { flex: none; margin-left: auto; margin-right: calc(-1 * var(--hg)); } /* the spacer takes no gap of its own */
 .chead .ctitle { flex: 0 1 auto; min-width: 4em; }
 .chead .rw { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; justify-content: flex-end; height: var(--rwh, 1lh); min-width: 0; overflow: hidden; }
 .chead .rw::before { content: ""; width: 0; height: var(--rwh, 1lh); }
 .chead .rev .rw { min-width: 8px; }
-.chead .ib.cpy .rw { --rwh: 26px; width: 26px; justify-content: center; }
 /* break-all only makes the label's min-content one character: on the first line it always gets its full width and never breaks */
 .chead .rl { position: relative; white-space: normal; word-break: break-all; }
 .chead .rl > i { margin-right: 4px; vertical-align: 1px; }
@@ -239,17 +239,17 @@ input, textarea { font: inherit; color: var(--ink); }
 .hb { position: absolute; left: 14px; right: 14px; bottom: -3px; height: 7px; cursor: ns-resize; z-index: 2; }
 
 /* code */
-.code { position: relative; padding: 6px 0 8px; font: 11px/20px var(--mono); min-width: max-content; }
+.code { --code-pt: 6px; --code-pr: 24px; position: relative; padding: var(--code-pt) 0 calc(var(--code-pt) + 2px); font: 11px/20px var(--mono); min-width: max-content; }
 .gutter { position: absolute; left: 0; top: 0; bottom: 0; width: var(--gutter); z-index: 2; pointer-events: none; }
 .gutter > * { pointer-events: auto; }
 .no { position: absolute; left: 2px; width: 30px; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: var(--no-o, .65); }
 .no:hover { opacity: 1; color: var(--ink-2); }
 .no.link { color: var(--no-link, var(--accent)); font-weight: var(--no-link-w, inherit); opacity: 1; }
 .no.jump::before { content: ""; position: absolute; left: 6px; right: -4px; top: -1px; border-top: 1px dashed var(--ink-3); opacity: .7; }
-.mk { position: absolute; left: 36px; width: 14px; height: 14px; margin-top: 3px; border-radius: 5px; background: var(--mark); color: var(--mark-ink); font: 600 9px/14px var(--sys); text-align: center; z-index: 2; }
+.mk { position: absolute; left: calc(var(--gutter) - 18px); width: 14px; height: 14px; margin-top: 3px; border-radius: 5px; background: var(--mark); color: var(--mark-ink); font: 600 9px/14px var(--sys); text-align: center; z-index: 2; }
 .mk:hover, .mk.on { background: var(--accent); color: var(--accent-ink); }
-.mkr { position: absolute; left: 42.5px; width: 1.5px; background: var(--mark); opacity: .45; border-radius: 1px; }
-.addn { position: absolute; left: 36px; width: 14px; height: 14px; margin-top: 3px; border-radius: 5px; border: 1px dashed var(--ink-2); color: var(--ink-2); font: 12px/12px var(--sys); text-align: center; background: var(--surface); z-index: 3; }
+.mkr { position: absolute; left: calc(var(--gutter) - 11.5px); width: 1.5px; background: var(--mark); opacity: .45; border-radius: 1px; }
+.addn { position: absolute; left: calc(var(--gutter) - 18px); width: 14px; height: 14px; margin-top: 3px; border-radius: 5px; border: 1px dashed var(--ink-2); color: var(--ink-2); font: 12px/12px var(--sys); text-align: center; background: var(--surface); z-index: 3; }
 .addn:hover { border-style: solid; border-color: var(--accent); color: var(--accent); }
 .rowbgs { position: absolute; inset: 0; pointer-events: none; }
 .rowbg { position: absolute; left: 0; right: 0; height: 20px; pointer-events: none; z-index: 0; }
@@ -257,17 +257,17 @@ input, textarea { font: inherit; color: var(--ink); }
 .rowbg.hl { background: var(--hlrow); box-shadow: inset 2px 0 0 var(--hlbar); }
 .rowbg.flash { animation: flash calc(var(--t) * 600ms) var(--out); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 28%, transparent); } 100% { background: var(--row); } }
-.src { margin: 0 0 0 var(--gutter); padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
+.src { margin: 0 0 0 var(--gutter); padding-right: var(--code-pr); font: inherit; white-space: pre; position: relative; z-index: 1; }
 .src { tab-size: 4; }
 /* 藏起来的公共缩进：代码往左挪，留 16px 画几根细竖线（一根 = 一层，最多 4 根） */
 .src.ded .l { text-indent: calc(var(--ded-pad) - var(--ded) * 1ch); }
-.dedm { position: absolute; left: 55px; top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; opacity: .7;
+.dedm { position: absolute; left: calc(var(--gutter) + 1px); top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; opacity: .7;
   background: repeating-linear-gradient(90deg, var(--hair) 0 .5px, transparent .5px 3px);
   -webkit-mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); } /* 很淡的细虚线，不抢代码的眼 */
 .dedm::before { content: ""; position: absolute; inset: 0 -4px; } /* 悬停热区宽一点，好看到提示 */
 .dedm:hover { opacity: 1; }
 .card.lo-ov .dedm { visibility: hidden; }
-.src .l { height: 20px; margin-right: -24px; padding-right: 24px; } /* 行伸进 .src 右边的 24px 留白：鼠标往右去拿行尾圆点时一直还在这一行上，不会落到 .src 本身上把悬停行清掉。宽度、折行都不变 */
+.src .l { height: 20px; margin-right: calc(-1 * var(--code-pr)); padding-right: var(--code-pr); } /* 行伸进 .src 右边的留白（--code-pr，默认 24px）：鼠标往右去拿行尾圆点时一直还在这一行上，不会落到 .src 本身上把悬停行清掉。宽度、折行都不变 */
 .src .l.drop { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 /* 贴在字上的手写标注（actions/annots.ts）：有标注的行上面（.below 是下面）一条窄轨道，标签从被标的字左边写起，小箭头指着字的中间；
    被标的字底下一块淡色（.abg，在 rowbgs 里）。位置按等宽字的格数（ch），不量 DOM */
@@ -286,7 +286,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .gutter .no.drop { color: var(--accent); font-weight: 600; }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 /* 隐藏行的条和行高亮一样撑满整张卡宽（左边盖住行号栏，右边到卡边） */
-.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: calc(-1 * var(--gutter)); margin-right: -24px; padding-left: calc(var(--gutter) + 8px); border-radius: 0; }
+.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: calc(-1 * var(--gutter)); margin-right: calc(-1 * var(--code-pr)); padding-left: calc(var(--gutter) + 8px); border-radius: 0; }
 .gap b { font-weight: 500; color: var(--ink-2); padding: 1px 5px; border-radius: 5.5px; }
 .gap b:hover { color: var(--accent); background: var(--row); }
 .inote { white-space: normal; font: 12px/1.55 var(--sys); color: var(--ink-2); background: var(--inote); box-shadow: inset 2px 0 0 var(--ink-3); margin: 2px 12px 4px -2px; padding: 5px 10px; border-radius: 0 7px 7px 0; max-width: 520px; }
@@ -337,6 +337,9 @@ input, textarea { font: inherit; color: var(--ink); }
   --fade-t: 0px; --fade-b: 0px;
   mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-t), #000 calc(100% - var(--fade-b)), transparent);
   animation: nfade-t linear both, nfade-b linear both; animation-timeline: scroll(self), scroll(self); animation-range: 0px 20px, calc(100% - 20px) 100%; }
+/* 行号栏宽（App 挂到 body 上，主题可以按卡改，themes.css Soft Light）：注册成长度，用 ch 写的值在 .code 上就算成 px，
+   字号不同的子元素（.mk 之类）拿到的是同一个宽度 */
+@property --gutter { syntax: "<length>"; inherits: true; initial-value: 54px; }
 @property --fade-t { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --fade-b { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @keyframes nfade-t { from { --fade-t: 0px; } to { --fade-t: 22px; } }
@@ -693,7 +696,9 @@ kbd { font: 10.5px var(--mono); }
 .rev.unc { color: var(--k-num); }
 .rev.unc:hover { color: var(--ink); }
 .rev.sm { padding: 0 4px; }
-.rev.lang { color: var(--ink-2); }
+/* Free code 的语言：淡色小字，悬停才像按钮；点开换语言 */
+.chead .lang { font: 500 10.5px var(--mono); color: var(--ink-3); padding: 2px 5px; border-radius: 7px; white-space: nowrap; flex: none; transition: background .12s, color .12s; }
+.chead .lang:hover { color: var(--ink); background: var(--hlrow); }
 .mk.inline { position: static; margin: 0; flex: none; }
 /* 选中单张代码卡时浮在卡片上方的小工具条：不改变卡片高度，不挤压下面的卡 */
 .cmiss { padding: 6px 12px; font-size: 11.5px; color: var(--warn); background: var(--chg); border-bottom: 1px solid var(--line); flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
@@ -982,7 +987,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .stkpick .tlink { color: var(--accent); font-weight: 600; font-size: 11.5px; }
 
 /* 行号栏：行号 | 标记列（旁注、"+"、贴纸都是 14px）| 代码（#13 #14 #16） */
-.lstks { position: absolute; left: 36px; height: 20px; display: flex; align-items: center; gap: 2px; z-index: 3; }
+.lstks { position: absolute; left: calc(var(--gutter) - 18px); height: 20px; display: flex; align-items: center; gap: 2px; z-index: 3; }
 .lstks .stk { position: static; cursor: pointer; border-radius: 50%; corner-shape: round; }
 .lstks.dot { left: 33px; margin-top: -2px; height: 8px; z-index: 4; }
 /* !important: the glyph sets its size inline (stickers/glyphs.tsx), and a stylesheet can only beat inline styles this way */
@@ -1064,9 +1069,15 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 删掉的卡：原地留一份副本缩小淡出（state/ghost.ts） */
 .card.ghost-out { pointer-events: none; transition: opacity calc(var(--t) * 180ms) var(--in, ease-in), scale calc(var(--t) * 200ms) var(--in, ease-in); transform-origin: 50% 40%; }
 .card.ghost-out.go { opacity: 0; scale: .94; }
-/* Copy Code：只有图标，悬停 / 选中卡时出现 */
-.chead .ib.cpy { opacity: 0; transition: opacity calc(var(--t) * 120ms); }
-.card:hover .chead .ib.cpy, .card.sel .chead .ib.cpy, .chead .ib.cpy:focus-visible { opacity: 1; }
+/* 悬停才出现的按钮（Copy Code，Free code 的语言）：没悬停时 0 宽、不占位置，标题能用满整行；悬停 / 选中卡时展开到自己的宽度并淡入。
+   一个两层的 grid：列宽 0fr → 1fr 只排这一行卡头，不碰别的卡。
+   卡很窄、标题已经缩到最短时它们自己再缩（被裁掉），不把 ··· 挤出卡外：标题的 flex-shrink 大得多，先缩的总是标题
+   （两边都要 ≥ 1：一行里还能缩的 flex-shrink 加起来不到 1 时，Chromium 只分掉那么一点，剩下的就溢出了）。
+   卡头的 gap 也算在里面：.hov 左边 −gap（--hg = 这个主题卡头的 gap），里面左边补回 gap，收起时连它前面那道缝也没有 */
+.chead > .hov { display: grid; grid-template-columns: minmax(0, 0fr); flex: 0 1 auto; min-width: 0; margin-left: calc(-1 * var(--hg)); overflow: hidden; opacity: 0; transition: grid-template-columns calc(var(--t) * 180ms) var(--out), opacity calc(var(--t) * 150ms) var(--out); }
+.chead > .hov > span { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; padding-left: var(--hg); }
+.card:hover .chead > .hov, .card.sel .chead > .hov, .chead > .hov:focus-within { grid-template-columns: minmax(0, 1fr); opacity: 1; }
+.chead:has(> .hov) .ctitle { flex-shrink: 1e4; }
 .cbody.wrap .src.ded .l { text-indent: 0; } /* 自动换行时不藏缩进：换行的续行会对不齐 */
 .cbody.wrap .dedm { display: none; }
 
@@ -1346,7 +1357,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .vbg { position: absolute; left: 0; right: 0; pointer-events: none; z-index: 0; }
 .vbg.add { background: var(--add); }
 .vbg.chg { background: var(--chg); }
-.vmk { position: absolute; left: 34px; width: 10px; height: 20px; font: 700 10px/20px var(--mono); color: var(--warn); text-align: center; pointer-events: none; }
+.vmk { position: absolute; left: calc(var(--gutter) - 20px); width: 10px; height: 20px; font: 700 10px/20px var(--mono); color: var(--warn); text-align: center; pointer-events: none; }
 .vmk.add { color: var(--lk-green); }
 .pop.k-three { max-width: 96vw; }
 .threepop { width: min(1180px, 94vw); display: flex; flex-direction: column; max-height: 80vh; }
