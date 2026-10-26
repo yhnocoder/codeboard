@@ -11,7 +11,7 @@
   "}"
  ],
  "cpp\u0000__global__ void store_kvcache(const float* k, int* slot) {\n  int i = blockIdx.x;\n  cache[slot[i]] = k[i];\n}": [
-  "__global__ void store_kvcache(const float* k, int* slot) {",
+  "__global__ <span class=\"kw\">void</span> <span class=\"fn\">store_kvcache</span>(<span class=\"kw\">const</span> <span class=\"kw\">float*</span> k<span class=\"p\">,</span> <span class=\"kw\">int*</span> slot) {",
   "  <span class=\"kw\">int</span> i <span class=\"kw\">=</span> <span class=\"num\">blockIdx</span><span class=\"p\">.</span>x;",
   "  <span class=\"num\">cache</span>[<span class=\"num\">slot</span>[i]] <span class=\"kw\">=</span> <span class=\"num\">k</span>[i];",
   "}"

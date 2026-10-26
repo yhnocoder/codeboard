@@ -49,6 +49,9 @@ console.log(`Wrote ${Object.keys(out).length} segments to ${path.relative(proces
   for (const [lang, text] of [...Object.entries(NOTE_CODE), ...NOTE_CODE_EXTRA]) {
     if (!lang) continue;
     const id = langId(lang);
+    // shiki 每行有分词时限（tokenizeTimeLimit，500ms）：语法的正则第一次用到时才编译，第一次分词会超时，超时的那行整行一个颜色或不着色。
+    // 先拿同样的代码多一行（宿主按文本缓存，不会命中）空跑一遍把正则都编译好，再算要的那份：每次生成都一样，都是完整着色
+    await highlight([...text.split("\n"), ""], id);
     notes[noteCodeKey(id, text)] = await highlight(text.split("\n"), id);
   }
   const file = path.join(path.dirname(OUT_FILE), "notecode.json");
