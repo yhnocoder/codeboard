@@ -461,7 +461,7 @@ export function fitSections(ids: string[]) {
   if (!reduceMotion()) {
     const me = new Set(fits.keys());
     setFitting(me);
-    setTimeout(() => setFitting((f) => (f === me ? new Set() : f)), 320);
+    setTimeout(() => setFitting((f) => (f === me ? new Set<string>() : f)), 320);
   }
   mutate((b) => {
     for (const [id, r] of fits) { const s = b.sections.find((q) => q.id === id); if (s) Object.assign(s, { x: r.x, y: r.y, w: r.w, h: r.h }); }
