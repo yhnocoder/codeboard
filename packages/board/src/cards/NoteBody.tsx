@@ -69,16 +69,18 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
   let H: number, p0: number, p1: number;
   if (entering) {
     H = head.offsetHeight; p0 = parseFloat(getComputedStyle(body).paddingTop);
-    face.style.setProperty("--fold-h", `${H}px`);
+    face.style.setProperty("--fold-h", `${H}px`); face.style.setProperty("--fold-p0", `${p0}px`);
     setFolded(true);
   } else {
-    H = parseFloat(face.style.getPropertyValue("--fold-h")) || head.offsetHeight; p1 = parseFloat(getComputedStyle(body).paddingTop);
+    H = parseFloat(face.style.getPropertyValue("--fold-h")) || head.offsetHeight;
+    p0 = parseFloat(face.style.getPropertyValue("--fold-p0")) || 0;
   }
   const blk = h ? block(h) : 0;
-  if (entering) { p1 = Math.max(6, H + p0! - blk); face.style.setProperty("--fold-pt", `${p1}px`); }
-  else p0 = p1! + blk - H;
+  if (entering) { p1 = Math.max(6, H + p0 - blk); face.style.setProperty("--fold-pt", `${p1}px`); face.dataset.foldBlk = String(blk); }
+  // 出：显示的标题和编辑器里的不一定一样高（差零点几到几像素）：起点的上边距补上这点差，第一帧和编辑时摆得一样，最后落回原来的上边距
+  else p1 = Math.max(0, parseFloat(getComputedStyle(body).paddingTop) + (parseFloat(face.dataset.foldBlk ?? "") || blk) - blk);
   if (reduceMotion()) { if (!entering) setFolded(false); return done(); }
-  const opts: KeyframeAnimationOptions = { duration: 170, easing: "cubic-bezier(.2, .8, .2, 1)", fill: entering ? "none" : "forwards" };
+  const opts: KeyframeAnimationOptions = { duration: 220, easing: "cubic-bezier(.2, .8, .2, 1)", fill: entering ? "none" : "forwards" };
   const dir = <T,>(a: T, b: T) => (entering ? [a, b] : [b, a]);
   const hs = getComputedStyle(head);
   const pad = body.animate(dir({ paddingTop: `${p0!}px` }, { paddingTop: `${p1!}px` }) as Keyframe[], opts);
