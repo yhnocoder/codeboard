@@ -233,3 +233,51 @@ test("themeMenuSwitchesTheme", async () => {
   check("themeMenu-checksCurrent", (res.checkedNow as string[]).join() === "Poster" && res.closed === 0, res);
   await pg.context().close();
 });
+
+/** Menus open from the click point with a short ease-out: scale .97 → 1 and a fade, never past 1 (no spring overshoot),
+ *  settled within about 200 ms. Checked on the ··· More menu and on its Theme submenu, sampled every frame */
+test("menuOpensWithoutOvershoot", async () => {
+  const h = await open({ board: board(), light: true, w: 1300, h: 820 });
+  const pg = h.page;
+  await pg.waitForTimeout(500);
+  type S = { t: number; s: number; o: number };
+  // from the frame the action runs: the newest menu's scale and opacity every frame for 400 ms (t = ms since the action)
+  const sample = async (act: () => Promise<void>) => {
+    await pg.evaluate(() => {
+      const w = window as unknown as { __menuSamples: Promise<S[]>; __menuGo: () => void };
+      const n0 = document.querySelectorAll(".ctx").length;
+      let go!: () => void;
+      const started = new Promise<void>((r) => { go = r; });
+      w.__menuGo = go;
+      w.__menuSamples = started.then(async () => {
+        const out: S[] = [], t0 = performance.now();
+        while (performance.now() - t0 < 400) {
+          await new Promise(requestAnimationFrame);
+          const ms = document.querySelectorAll<HTMLElement>(".ctx");
+          if (ms.length <= n0) continue;
+          const cs = getComputedStyle(ms[ms.length - 1]);
+          out.push({ t: Math.round(performance.now() - t0), s: cs.scale === "none" ? 1 : parseFloat(cs.scale), o: +cs.opacity });
+        }
+        return out;
+      });
+    });
+    await pg.evaluate(() => (window as unknown as { __menuGo: () => void }).__menuGo());
+    await act();
+    return pg.evaluate(() => (window as unknown as { __menuSamples: Promise<S[]> }).__menuSamples);
+  };
+  const summary = (xs: S[]) => {
+    const settled = xs.find((_, i) => xs.slice(i).every((y) => y.s === 1 && y.o === 1));
+    // settledAt: ms from the menu's first frame on screen (the click itself takes a moment to reach the page)
+    return { frames: xs.length, first: xs[0], maxScale: Math.max(...xs.map((x) => x.s)), minScale: Math.min(...xs.map((x) => x.s)), settledAt: settled ? settled.t - xs[0].t : null };
+  };
+  const top = summary(await sample(() => pg.locator('.bbar button[aria-label="More"]').click()));
+  await pg.locator(".ctx").first().locator("button[role=menuitem]", { hasText: /^Theme$/ }).hover();
+  await pg.waitForTimeout(400);
+  await pg.keyboard.press("Escape"); // closes only the submenu; → opens it again
+  await pg.waitForTimeout(300);
+  const sub = summary(await sample(() => pg.keyboard.press("ArrowRight")));
+  const ok = (m: ReturnType<typeof summary>) => m.frames > 3 && m.maxScale <= 1 && m.minScale >= 0.96 && m.settledAt !== null && m.settledAt <= 200;
+  check("menuOpen-noOvershoot", ok(top), top);
+  check("menuOpen-submenuNoOvershoot", ok(sub), sub);
+  await pg.context().close();
+});

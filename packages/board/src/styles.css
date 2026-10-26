@@ -481,11 +481,12 @@ input, textarea { font: inherit; color: var(--ink); }
 .zoom { font: 11.5px var(--mono); color: var(--ink-2); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 
 .ctx { position: absolute; z-index: 40; overflow-y: auto; overscroll-behavior: contain; min-width: 210px; max-width: 300px; padding: 5px; border-radius: 14px; background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
-  box-shadow: var(--sh-float); transform-origin: 0 0; opacity: 0; scale: .45 .3; visibility: hidden;
+  box-shadow: var(--sh-float); transform-origin: 0 0; opacity: 0; scale: .97; visibility: hidden;
   transition: opacity calc(var(--t) * 90ms) var(--in), scale calc(var(--t) * 90ms) var(--in), visibility 0s linear calc(var(--t) * 90ms); }
-/* 打开：从点击点"弹"出来。起步就快（初速度大），冲过头一点再落稳；内容整体出现，不逐项飘入（逐项飘入像网页） */
+/* 打开：从点击点（transform-origin）轻轻放大到 1 并淡入，不冲过头：透明度 120ms，缩放 --menu-ms（默认 150ms，Debug 里可调）；
+   内容整体出现，不逐项飘入（逐项飘入像网页）。关：90ms 淡出 */
 .ctx.open { opacity: 1; scale: 1; visibility: visible;
-  transition: opacity calc(var(--t) * 70ms) linear, scale calc(var(--t) * var(--menu-ms, 300ms)) linear(0, .42 6%, .74 13%, .93 21%, 1.03 30%, 1.05 37%, 1.035 46%, 1.01 58%, .998 72%, 1), visibility 0s; }
+  transition: opacity calc(var(--t) * 120ms) cubic-bezier(.2, 0, 0, 1), scale calc(var(--t) * var(--menu-ms, 150ms)) cubic-bezier(.2, 0, 0, 1), visibility 0s; }
 @media (prefers-reduced-motion: reduce) { .ctx.open { transition-duration: 0s; } }
 .ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 7px; font-size: 12.5px; color: var(--ink); text-align: left; }
 .ctx button .lb { flex: 1 0 auto; max-width: calc(100% - 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
