@@ -12,6 +12,7 @@ export class MathBlockView implements NodeView {
   private open = false;
   /** 正在写回（写回时会拿走焦点，那一下的 blur 不再写一次） */
   private leaving = false;
+  private width: ResizeObserver;
 
   constructor(private node: PMNode, private view: EditorView, private getPos: () => number | undefined) {
     this.dom = document.createElement("div");
@@ -24,6 +25,11 @@ export class MathBlockView implements NodeView {
     this.preview = document.createElement("div");
     this.preview.className = "block-math-inner";
     this.dom.append(this.src, this.preview);
+    // 原文按排出来的高度量（长的一行会折行）：只有一行时也只占一行；Note 变宽变窄时重量
+    this.src.rows = 1;
+    let w = 0;
+    this.width = new ResizeObserver(([e]) => { if (e.contentRect.width !== w) { w = e.contentRect.width; if (this.open) this.fit(); } });
+    this.width.observe(this.dom);
     this.src.addEventListener("input", () => { this.fit(); this.render(this.src.value); });
     this.src.addEventListener("keydown", (e) => this.key(e));
     this.src.addEventListener("blur", (e) => {
@@ -39,8 +45,8 @@ export class MathBlockView implements NodeView {
     katex.render(latex, this.preview, { displayMode: true, throwOnError: false });
     if (!latex.trim()) this.preview.textContent = "";
   }
-  /** 原文几行就几行高（不量排版） */
-  private fit() { this.src.rows = Math.max(1, this.src.value.split("\n").length); }
+  /** 原文排出来多高就多高（折行也算），不在框里滚、不被裁掉 */
+  private fit() { this.src.style.height = "auto"; this.src.style.height = `${this.src.scrollHeight}px`; }
 
   selectNode() {
     this.open = true;
@@ -98,4 +104,5 @@ export class MathBlockView implements NodeView {
   }
   stopEvent(e: Event) { return e.target === this.src; }
   ignoreMutation() { return true; }
+  destroy() { this.width.disconnect(); }
 }

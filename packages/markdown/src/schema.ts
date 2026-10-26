@@ -1,6 +1,6 @@
 // 编辑器和静态显示共用这一套 schema，所以编辑和显示长得一样。
 // MarkdownManager 只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
-import { Mark, Node, getSchema, mergeAttributes, markInputRule, markPasteRule, InputRule, type AnyExtension, type JSONContent } from "@tiptap/core";
+import { Mark, Node, getSchema, mergeAttributes, markInputRule, markPasteRule, parseIndentedBlocks, InputRule, type AnyExtension, type JSONContent } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
 import Bold, { starPasteRegex } from "@tiptap/extension-bold";
@@ -15,22 +15,51 @@ import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import { MarkdownManager } from "@tiptap/markdown";
 import { Marked } from "marked";
-import { TaskList, TaskItem } from "@tiptap/extension-list";
+import { TaskList, TaskItem, ListItem, OrderedList } from "@tiptap/extension-list";
 import Image from "@tiptap/extension-image";
 import { Details, DetailsSummary, DetailsContent } from "@tiptap/extension-details";
 import { InlineMath, BlockMath } from "@tiptap/extension-mathematics";
 import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table";
 import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import DOMPurify from "dompurify";
+import katex from "katex";
 import { EMOJI } from "./emoji";
 
 // ---------- 公式：照 Pandoc 的规则 ----------
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
 // 行内的 $$…$$ 是行内的大号公式
 const INLINE_MATH = /^\$\$([^$]+?)\$\$|^\$([^$\s](?:[^$]*[^$\s\\])?)\$(?!\d)/;
+/** 交给 KaTeX 排的 TeX：行内的 $$…$$ 留在行内（displayMode 关着），用 \displaystyle 排成大号的；原文不改 */
+export const mathTex = (latex: string, display: boolean) => (display ? `\\displaystyle ${latex}` : latex);
 const Math1 = InlineMath.extend({
   addAttributes() {
     return { ...this.parent?.(), display: { default: false, parseHTML: (e) => e.getAttribute("data-display") === "yes", renderHTML: (a) => (a.display ? { "data-display": "yes" } : {}) } };
+  },
+  // 和 TipTap 自带的一样，只是 $$…$$ 照 mathTex 排（自带的不认 display，排成小号的）
+  addNodeView() {
+    const { onClick } = this.options, editable = () => this.editor.isEditable;
+    return ({ node, getPos }) => {
+      const dom = document.createElement("span");
+      dom.className = "tiptap-mathematics-render";
+      if (editable()) dom.classList.add("tiptap-mathematics-render--editable");
+      dom.dataset.type = "inline-math";
+      dom.setAttribute("data-latex", node.attrs.latex);
+      if (node.attrs.display) dom.dataset.display = "yes";
+      try {
+        katex.render(mathTex(node.attrs.latex, !!node.attrs.display), dom, { ...this.options.katexOptions, displayMode: false });
+      } catch {
+        dom.textContent = node.attrs.latex;
+        dom.classList.add("inline-math-error");
+      }
+      const click = (ev: MouseEvent) => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const pos = getPos();
+        if (pos != null) onClick?.(node, pos);
+      };
+      if (onClick) dom.addEventListener("click", click);
+      return { dom, destroy: () => dom.removeEventListener("click", click) };
+    };
   },
   // 打字时由编辑器按这里的解析规则重解析（editor/typora.ts；TipTap 自带的把 $$x$$ 当行内小公式）
   addInputRules: () => [],
@@ -55,6 +84,11 @@ const BLOCK_MATH = /^ {0,3}\$\$([^$]+?)\$\$[ \t]*(?:\n|$)/;
  * 只认换行后面的那一处（re 以 \n 开头）；在行首的由 tokenize 直接认
  */
 const lineStart = (re: RegExp) => (src: string) => { const m = re.exec(src); return m ? m.index + 1 : -1; };
+/**
+ * 有序列表交给 marked 自己的列表规则（CommonMark）：TipTap 另写的那套要求记号后面有字，空的 "2." 会被读成上一项的续行。
+ * 关掉它要换成一个什么都不认的分词器（写 undefined 会取回父扩展的那个）；脚注列表是从有序列表扩展来的，也带着它
+ */
+const NO_OL_TOKENIZER = { name: "orderedList", level: "block" as const, start: () => -1, tokenize: () => undefined };
 const Math2 = BlockMath.extend({
   addInputRules: () => [],
   renderMarkdown: (n) => `$$\n${n.attrs?.latex ?? ""}\n$$`,
@@ -70,7 +104,10 @@ const Math2 = BlockMath.extend({
 });
 
 // ---------- 代码块 ----------
+// isolating：编辑时代码块是一个自己管光标的代码编辑器（editor/codeblock.ts），对 ProseMirror 来说是封闭的块，
+// 两个代码块之间、文档头尾的代码块外面才停得住光标（gapcursor 只认两边封闭的位置）
 const Code = CodeBlock.extend({
+  isolating: true,
   addAttributes() {
     return {
       language: {
@@ -272,8 +309,10 @@ const FnDef = Footnote.extend({
     },
   },
 });
-const FnList = Footnotes.extend({ markdownTokenName: "footnotes", parseMarkdown: undefined, renderMarkdown: undefined, renderHTML: () => ["ol", { class: "footnotes" }, 0] });
-const Doc = Document.extend({ content: "block+ footnotes?" });
+const FnList = Footnotes.extend({ markdownTokenName: "footnotes", markdownTokenizer: NO_OL_TOKENIZER, parseMarkdown: undefined, renderMarkdown: undefined, renderHTML: () => ["ol", { class: "footnotes" }, 0] });
+// 文末可以有一个脚注列表，ProseMirror 就把它当成块后面的默认节点：gapcursor 只在默认节点是文字块的地方停，自己说可以停
+// （停住以后打字、回车照样新起一段：它们找的是最近的文字块）
+const Doc = Document.extend({ content: "block+ footnotes?", allowGapCursor: true });
 
 // 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）
 const Img = Image.configure({ inline: true, allowBase64: true });
@@ -425,10 +464,45 @@ const Sup = tagMark("superscript", "sup", SUP_RE);
 const Hr = HorizontalRule.extend({ addInputRules: () => [] });
 // 行内代码的打字规则在 editor/typora.ts（反引号按长度配对）
 const InlineCode = CodeMark.extend({ addInputRules: () => [] });
+// ---------- 列表 ----------
+// 空的列表项只写记号（"2."、"-"、"- [ ]"），后面不留空格：写回时末尾的空白会被去掉，而 marked 把行尾带空格的 "- " 读成段落里的字
+const bareEmpty = (n: JSONContent, md: string) => {
+  const first = n.content?.[0];
+  return first?.type === "paragraph" && !first.content?.length ? md.replace(/^([^\n]*?)[ \t]+(?=\n|$)/, "$1") : md;
+};
+const Item = ListItem.extend({ renderMarkdown(n, h, c) { return bareEmpty(n, String(this.parent?.(n, h, c) ?? "")); } });
+// 有序列表：分词交给 marked（见 NO_OL_TOKENIZER），列表项和无序列表一样由 listItem 解析（空的项给一个空段落）
+const Ordered = OrderedList.extend({
+  markdownTokenizer: NO_OL_TOKENIZER,
+  parseMarkdown: (t, h) => (t.type === "list" && t.ordered
+    ? { type: "orderedList", ...(typeof t.start === "number" && t.start !== 1 ? { attrs: { start: t.start } } : {}), content: h.parseChildren(t.items ?? []) }
+    : []),
+});
 // 勾选项：编辑器里是 TipTap 的节点视图（不带 data-type，样式靠这个属性，补上）；静态显示照 renderHTML，勾选框后面不要空的 span
 const Task = TaskItem.extend({
   renderHTML: ({ node, HTMLAttributes }) => ["li", mergeAttributes(HTMLAttributes, { "data-type": "taskItem" }), ["label", ["input", { type: "checkbox", checked: node.attrs.checked ? "checked" : null }]], ["div", 0]],
+  renderMarkdown(n, h, c) { return bareEmpty(n, String(this.parent?.(n, h, c) ?? "")); },
 }).configure({ nested: true, HTMLAttributes: { "data-type": "taskItem" } });
+// 勾选列表照 TipTap 的规则，只是空的勾选项（行里只有 "- [ ]"）也认
+const TASK_ITEM = /^(\s*)([-+*])\s+\[([ xX])\](?:[ \t]+(.*))?$/;
+const taskBlocks = (src: string, lx: any) => parseIndentedBlocks(src, {
+  itemPattern: TASK_ITEM,
+  extractItemData: (m) => ({ indentLevel: m[1].length, mainContent: m[4] ?? "", checked: m[3].toLowerCase() === "x" }),
+  createToken: (d, nestedTokens) => ({ type: "taskItem", raw: "", mainContent: d.mainContent, indentLevel: d.indentLevel, checked: d.checked, text: d.mainContent, tokens: lx.inlineTokens(d.mainContent), nestedTokens }),
+  customNestedParser: (body) => {
+    const r = taskBlocks(body, lx);
+    if (!r) return lx.blockTokens(body);
+    const rest = body.slice(r.raw.length);
+    return [{ type: "taskList", raw: r.raw, items: r.items }, ...(rest.trim() ? lx.blockTokens(rest) : [])];
+  },
+}, lx);
+const Tasks = TaskList.extend({
+  markdownTokenizer: {
+    name: "taskList", level: "block",
+    start: (src) => src.match(/^\s*[-+*]\s+\[[ xX]\](?:[ \t]|$)/m)?.index ?? -1,
+    tokenize: (src, _t, lx) => { const r = taskBlocks(src, lx); return r ? { type: "taskList", raw: r.raw, items: r.items } : undefined; },
+  },
+});
 // 表格：GFM 存不下合并单元格和一格多段，所以一格只放一段
 const Cell = TableCell.extend({ content: "paragraph" });
 // 表格前后不多写空行
@@ -453,7 +527,7 @@ export const baseExtensions: AnyExtension[] = [
   // 标注、高亮排在所有格式前面：它们是最外层的那一层，里面再有粗体、链接时底色也是连着的一整段（排在后面会被拆成几段）
   Annot, Highlight,
   StarterKit.configure({
-    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, italic: false, strike: false, horizontalRule: false, code: false, link: false,
+    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, italic: false, strike: false, horizontalRule: false, code: false, link: false, listItem: false, orderedList: false,
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
   // 打字时的 **b** *i* ~~s~~ 不用 TipTap 自带的正则（要求开头记号前是空白：中文后面紧跟的 **粗体** 不变；整行的字连行内代码里的 ** 一起配对，
@@ -463,7 +537,7 @@ export const baseExtensions: AnyExtension[] = [
   Italic.extend({ addInputRules() { return [outsideCode(markInputRule({ find: underscoreInputRegex, type: this.type }))]; } }),
   Strike.extend({ addInputRules: () => [] }),
   Lnk, U, Kbd, Hr, InlineCode, Sub, Sup, Toc,
-  Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
+  Item, Ordered, Doc, Para, Code, Tasks, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,
   WikiRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
 ];

@@ -14,6 +14,8 @@
 .katex { font-size: 1.08em; }
 math { font-size: 1.05em; }
 .math { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+/* 比 Note 宽的公式在自己的框里横着滚（细滚动条，滚到头不带着白板走） */
+.math, .md-pm [data-type="block-math"] { scrollbar-width: thin; scrollbar-color: var(--hair) transparent; overscroll-behavior-x: contain; }
 /* 连字和编辑器里一样关掉（ProseMirror 要关，不然光标落不进连字中间）：进编辑时字形不变 */
 .md { font-variant-ligatures: none; }
 .md :is(p, h1, h2, h3, h4, h5, h6, li, td, th, summary) { white-space: pre-wrap; }
@@ -184,7 +186,7 @@ math { font-size: 1.05em; }
 .md-ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 /* 代码块右上角的语言名（editor/codelang.ts）：不占地方，显示、编辑时的排版一样。第一行伸到它下面时（.md-under）
-   只在悬停、列表开着时显示，不盖住代码 */
+   悬停在块上、光标在块里都不显示（不盖住代码），只在指着它那一角、用键盘走到它上面、列表开着时显示 */
 .md-pm pre.md-code > .md-lang { position: absolute; right: 10px; top: 6px; z-index: 1; display: flex; align-items: center; gap: 3px; max-width: 50%; margin: 0; padding: 0;
   border: 0; border-radius: 0; outline: none; background: none; box-shadow: none; color: var(--ink-3); font: 11px/18px var(--sys); letter-spacing: .01em; white-space: nowrap;
   cursor: default; user-select: none; -webkit-user-select: none;
@@ -192,7 +194,7 @@ math { font-size: 1.05em; }
 .md-pm pre.md-code > .md-lang .md-lang-nm { overflow: hidden; text-overflow: ellipsis; }
 .md-pm pre.md-code > .md-lang .md-lang-v { flex: none; opacity: 0; transition: opacity calc(var(--t, 1) * 120ms); }
 .md-pm pre.md-code:is(:hover, :focus-within) > .md-lang, .md-pm pre.md-code > .md-lang[aria-expanded="true"] { opacity: 1; }
-.md-pm pre.md-code:focus-within:not(:hover) > .md-lang.md-under:not([aria-expanded="true"]) { opacity: 0; }
+.md-pm pre.md-code > .md-lang.md-under:not(:hover, :focus-visible, [aria-expanded="true"]) { opacity: 0; }
 .md-pm pre.md-code > .md-lang:is(:hover, [aria-expanded="true"]) { color: var(--ink-2); }
 .md-pm pre.md-code:hover > .md-lang .md-lang-v, .md-pm pre.md-code > .md-lang[aria-expanded="true"] .md-lang-v { opacity: .8; }
 .md-pm pre.md-code > .md-lang:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }

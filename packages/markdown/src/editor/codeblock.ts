@@ -1,7 +1,8 @@
 // ProseMirror 的文档是唯一的来源：CodeMirror 里的改动转成 ProseMirror 的改动，反过来也一样，撤销走 ProseMirror
 // （照 CodeMirror 官网 “CodeMirror in ProseMirror” 的做法）
-import type { Node as PMNode } from "@tiptap/pm/model";
-import { Selection, TextSelection } from "@tiptap/pm/state";
+import type { Node as PMNode, ResolvedPos } from "@tiptap/pm/model";
+import { Plugin, Selection, TextSelection } from "@tiptap/pm/state";
+import { GapCursor } from "@tiptap/pm/gapcursor";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/core";
@@ -11,6 +12,47 @@ import { completionStatus } from "@codemirror/autocomplete";
 import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
 import { cachedCode, highlightCode } from "../code";
 import { LangBox, type CodeLang } from "./codelang";
+
+/** GapCursor.valid 是 prosemirror-gapcursor 自己的箭头键用的判断，有，只是类型里没写 */
+const gapAt = ($p: ResolvedPos) => (GapCursor as unknown as { valid($p: ResolvedPos): boolean }).valid($p);
+
+/**
+ * 点在两个代码块之间的空隙里、或者点在代码块靠那条缝的内边距上：光标停在两块中间。prosemirror-gapcursor 自己的点击只看
+ * 离点的地方最近的字，那是代码块里的字，进的是代码块
+ */
+export const codeGapClick = () => new Plugin({
+  props: {
+    handleDOMEvents: {
+      mousedown(view, e) {
+        const t = e.target as HTMLElement;
+        if (e.button !== 0 || !view.editable || (t !== view.dom && !(t.parentElement === view.dom && t.matches("pre.md-code")))) return false;
+        const doc = view.state.doc, y = e.clientY;
+        for (let i = 0, at = 0; i <= doc.childCount; at += i < doc.childCount ? doc.child(i).nodeSize : 0, i++) {
+          const before = i > 0 ? (view.nodeDOM(at - doc.child(i - 1).nodeSize) as HTMLElement | null) : null;
+          const after = i < doc.childCount ? (view.nodeDOM(at) as HTMLElement | null) : null;
+          if (!(before?.matches("pre.md-code") || after?.matches("pre.md-code"))) continue;
+          // 缝从上一块的字的下沿到下一块的字的上沿（代码块的内边距算在缝里）
+          const top = before ? edge(before, "bottom") : -Infinity, bottom = after ? edge(after, "top") : Infinity;
+          if (y < top || y > bottom) continue;
+          const $p = doc.resolve(at);
+          if (!gapAt($p)) return false;
+          e.preventDefault();
+          view.dispatch(view.state.tr.setSelection(new GapCursor($p)));
+          view.focus();
+          return true;
+        }
+        return false;
+      },
+    },
+  },
+});
+/** 一块的内容的上沿 / 下沿：代码块不算内边距，别的块就是它的边 */
+function edge(el: HTMLElement, side: "top" | "bottom") {
+  const r = el.getBoundingClientRect();
+  if (!el.matches("pre.md-code")) return r[side];
+  const cs = getComputedStyle(el);
+  return side === "top" ? r.top + parseFloat(cs.paddingTop) : r.bottom - parseFloat(cs.paddingBottom);
+}
 
 /** comment 不给就是 // */
 export type CodeBlockHost = {
@@ -82,7 +124,7 @@ export class CodeBlockView implements NodeView {
       left: (to) => this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to })),
     });
     this.dom.append(this.langBox.label);
-    // 第一行长到伸进语言名下面：光标在块里时也不显示它，只在悬停、列表开着时（.md-under），不盖住代码
+    // 第一行长到伸进语言名下面（.md-under）：悬停、光标在块里时都不显示它，不盖住代码（见 markdown.css）
     this.dom.addEventListener("pointerenter", () => this.fitLabel());
     this.dom.addEventListener("focusin", () => this.fitLabel());
     this.fitLabel();
@@ -131,8 +173,9 @@ export class CodeBlockView implements NodeView {
     if (!edge) return false;
     const pos = this.getPos();
     if (pos === undefined) return false;
-    const target = pos + (dir < 0 ? 0 : this.node.nodeSize);
-    const sel = Selection.near(this.view.state.doc.resolve(target), dir);
+    // 挨着的是另一个代码块（或文档的头尾）时停在两块中间（gapcursor）；Selection.near 只找字和节点，会直接进到下一块里
+    const $t = this.view.state.doc.resolve(pos + (dir < 0 ? 0 : this.node.nodeSize));
+    const sel = gapAt($t) ? new GapCursor($t) : Selection.near($t, dir);
     this.view.dispatch(this.view.state.tr.setSelection(sel).scrollIntoView());
     this.view.focus();
     return true;
@@ -178,7 +221,8 @@ export class CodeBlockView implements NodeView {
     this.updating = false;
   }
   selectNode() { this.cm.view.focus(); }
-  stopEvent() { return true; }
+  // 按在块自己的内边距上（不在代码里）交给 ProseMirror：codeGapClick 看是不是点在两块之间的缝上
+  stopEvent(e: Event) { return !(e.type === "mousedown" && e.target === this.dom); }
   ignoreMutation() { return true; }
   destroy() { cancelAnimationFrame(this.fitting); this.cm.destroy(); this.langBox.destroy(); }
 }
