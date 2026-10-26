@@ -264,29 +264,29 @@
   --sect-border: 2px solid var(--rule);
 }
 
-/* ---------- Newspaper：新闻纸、黑色油墨；卡片是一篇报道（眉题 No. x.y、粗体标题、斜体导语），代码像打字机排的引文 ---------- */
+/* ---------- Newspaper：刚印出来的新闻纸（近白）、黑色油墨，报头是左下角一行小字；卡片是一篇报道（眉题 No. x.y、粗体标题、斜体导语），代码像打字机排的引文 ---------- */
 :root.look-newspaper, [data-look="newspaper"] {
   color-scheme: light;
   --sys: "Old Standard TT", "Songti SC", "Noto Serif SC", Georgia, serif;
   --serif: "Old Standard TT", "Songti SC", "Noto Serif SC", Georgia, serif;
   --mono: "Courier Prime", "Courier New", ui-monospace, monospace;
   --mast-font: "UnifrakturMaguntia", "Old Standard TT", Georgia, serif;
-  --bg: #f0ece2; --surface: #f6f3eb; --head: transparent;
+  --bg: #f4f4f1; --surface: #fdfdfb; --head: transparent;
   --ink: #191714; --ink-2: #4a463f; --ink-3: #8a8478;
   --rule: #2a2722; --line: rgba(25,23,20,.14); --hair: rgba(25,23,20,.28);
   --stamp: #a32a1c;
-  --accent: #191714; --accent-ink: #f6f3eb; --warn: #a32a1c;
+  --accent: #191714; --accent-ink: #fdfdfb; --warn: #a32a1c;
   --row: rgba(25,23,20,.07);
   --k-kw: #191714; --k-fn: #191714; --k-str: #4a463f; --k-com: #8a8478; --k-num: #4a463f; --k-self: #4a463f; --k-p: #8a8478;
   --hi: rgba(25,23,20,.1);
   --chg: rgba(163,42,28,.08); --chg-strong: rgba(163,42,28,.2); --del: rgba(163,42,28,.08); --add: rgba(25,23,20,.05);
-  --mark: #191714; --mark-ink: #f6f3eb; --md-hl: rgba(240,205,90,.32);
+  --mark: #191714; --mark-ink: #fdfdfb; --md-hl: rgba(240,205,90,.32);
   --inote: rgba(25,23,20,.04); --hlrow: rgba(25,23,20,.07); --hlbar: #191714; --hatch: rgba(25,23,20,.08);
   --edge: #191714;
   --s-sand: rgba(175,145,90,.1); --s-blue: rgba(70,100,145,.07); --s-green: rgba(85,120,80,.08); --s-pink: rgba(163,42,28,.06);
   --lk-orange: #a32a1c; --lk-blue: #2d4f7c; --lk-green: #3f6a3a; --guide: #a32a1c;
-  --glass: #f6f3eb;
-  --tip-bg: #191714; --tip-ink: #f6f3eb;
+  --glass: #fdfdfb;
+  --tip-bg: #191714; --tip-ink: #fdfdfb;
   --sh-card: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair);
   --sh-lift: 0 0 0 .5px var(--hair), 0 14px 28px -14px rgba(25,23,20,.35);
   --sh-float: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair);
@@ -746,10 +746,11 @@
 :root.look-newspaper .toast::before { content: "Bulletin"; flex: none; font: 700 10px/1.5 var(--serif); letter-spacing: .2em; text-transform: uppercase; background: var(--stamp); color: #fff; padding: 1px 6px; }
 :root.look-newspaper .toast .tlink { color: var(--surface); font-weight: 700; font-style: italic; }
 :root.look-newspaper .tip { border-radius: 0; }
-:root.look-newspaper .mast { display: flex; position: absolute; left: 50%; translate: -50% 0; top: 8px; z-index: 3; pointer-events: none; flex-direction: column; align-items: center; gap: 3px;
-  width: min(720px, calc(100% - 300px)); border-bottom: 3px double var(--rule); padding-bottom: 5px; }
-:root.look-newspaper .mast .mn { font: 400 26px/1.1 var(--mast-font); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-:root.look-newspaper .mast::after { content: "Vol. I · CodeBoard Edition"; font: 400 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); border-top: .5px solid var(--rule); padding-top: 3px; width: 100%; text-align: center; }
+:root.look-newspaper .mast { display: flex; position: absolute; left: 16px; bottom: 14px; z-index: 3; pointer-events: none; align-items: baseline; gap: 8px; max-width: 40%; }
+:root.look-newspaper .mast .mn { font: 400 13px/1.2 var(--mast-font); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+:root.look-newspaper .mast::after { content: "Vol. I · CodeBoard Edition"; flex: none; font: 400 8.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+/* 窄窗口里工具条靠左下（styles.css），报头让到它上面 */
+@media (max-width: 900px) { :root.look-newspaper .mast { bottom: 58px; } }
 
 /* ---------- Poster（艺术） ---------- */
 :root.look-poster { --no-link: var(--ink); --kw-w: 600; --call-deco: underline .5px var(--k-fn); --ico-w: 2; --port-r: 0; --port-rot: 45deg; }
