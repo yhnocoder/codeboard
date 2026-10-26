@@ -197,6 +197,15 @@ math { font-size: 1.05em; }
 .md-ico { display: block; width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1); stroke-linecap: round; stroke-linejoin: round; }
 .md-ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
+/* 代码块右下角的语言框（editor/codelang.ts）：编辑时光标在这一块里、鼠标停在块上时淡淡地显示，点进去改；下面的语言列表是 .md-menu */
+.md-pm pre.md-code > .md-lang { position: absolute; right: 4px; bottom: 2px; z-index: 1; field-sizing: content; min-width: 4ch; max-width: 50%; height: 16px; padding: 0 4px; margin: 0;
+  border: 0; border-radius: 4px; outline: none; background: var(--hlrow); color: var(--ink-3); font: 10px/16px var(--mono); text-align: right;
+  opacity: 0; transition: opacity calc(var(--t, 1) * 120ms), color calc(var(--t, 1) * 120ms); }
+.md-pm pre.md-code > .md-lang::placeholder { color: var(--ink-3); opacity: .7; }
+.md-pm pre.md-code:is(:hover, :focus-within) > .md-lang { opacity: 1; }
+.md-pm pre.md-code > .md-lang:is(:hover, :focus) { color: var(--ink); box-shadow: 0 0 0 .5px var(--hair); }
+.md-langbox { position: fixed; left: 0; top: 0; }
+.md-langbox .md-menu { min-width: 180px; max-height: 240px; }
 .md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
 /* 代码编辑（CodeMirror，cm/editor.ts）：字体、行高跟着外面（Free code 卡是 .code，Note 里是 pre），没有内边距；字的位置和显示时一样 */
 .cbcm .cm-content .call { cursor: text; }

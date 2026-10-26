@@ -3,7 +3,7 @@
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
 //          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
 //          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle noteFontSizeSettings
-//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight noteCodeBlockClickAwayEnds
+//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight noteCodeBlockClickAwayEnds noteCodeBlockLanguagePicker
 //          noteRefChipOnBaseline noteEndingInCodeBlockNoExtraSpace
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -713,4 +713,79 @@ test("noteEndingInCodeBlockNoExtraSpace", async () => {
     check(`noteEndingInCodeBlockNoExtraSpace ${theme} unchanged`, md(h, "n0") === notes[0], { got: md(h, "n0") });
     await close(h);
   }
+});
+
+/** Note 代码块右下角的语言框（#68，照 Typora）：光标在块里时显示；打字筛出语言，↵ 定下来（马上换着色，一次撤销回去），Esc 不改，
+ *  点列表里的一项也行，清空 = 纯文字；框开着时点了别处：照打的定下来，保存退出。写回成 ```语言 */
+test("noteCodeBlockLanguagePicker", async () => {
+  const CODE = "def f():\n    return 1";
+  const h = await open({ board: board([`Intro\n\n\`\`\`\n${CODE}\n\`\`\`\n\nafter`, "other note"]), light });
+  await idle(h);
+  const pg = h.page, n0 = '.card[data-id="n0"]';
+  const box = pg.locator(`${n0} .md-pm pre .md-lang`), list = pg.locator(".md-langbox button");
+  const kws = () => pg.locator(`${n0} .md-pm pre .cm-content .kw`).count();
+  const opacity = () => box.evaluate((e) => getComputedStyle(e).opacity);
+  const res: Record<string, unknown> = { inDisplay: await pg.locator(`${n0} .md-lang`).count() }; // 只在编辑时有
+  await editNote(h, "n0");
+  // 光标在代码里：显示（纯文字时是 Language 的占位字）
+  await pg.locator(`${n0} .md-pm pre .cm-content`).click();
+  await until(h, "the language box shows while the caret is in the block", async () => (await opacity()) === "1");
+  res.plain = { value: await box.inputValue(), placeholder: await box.getAttribute("placeholder"), kw: await kws() };
+  // 打 py：Python 在最前面、选中；↵ 定下来，着色马上换，焦点回到代码
+  await box.click();
+  await pg.keyboard.type("py");
+  await expect(list.first()).toHaveText(/Python/);
+  res.list = { first: await list.first().innerText(), sel: await pg.locator(".md-langbox button.sel").innerText() };
+  await shot(h, "noteCodeBlockLanguagePicker-list");
+  await pg.keyboard.press("Enter");
+  await expect(pg.locator(".md-langbox")).toHaveCount(0);
+  await until(h, "python keywords colored", kws);
+  res.python = { value: await box.inputValue(), inCode: await pg.evaluate(() => !!document.activeElement?.closest(".cm-content")) };
+  await shot(h, "noteCodeBlockLanguagePicker-python");
+  // 一次撤销回到纯文字，重做又是 Python
+  await pg.keyboard.press("Control+z");
+  await until(h, "undo: back to plain text", async () => (await kws()) === 0 && (await box.inputValue()) === "");
+  await pg.keyboard.press("Control+Shift+z");
+  await until(h, "redo: python again", async () => (await kws()) > 0 && (await box.inputValue()) === "python");
+  // Esc：不改，还在编辑
+  await box.click();
+  await pg.keyboard.type("rust");
+  await pg.keyboard.press("Escape");
+  await expect(pg.locator(".md-langbox")).toHaveCount(0);
+  res.esc = { value: await box.inputValue(), editing: await editing(h, "n0") };
+  // 清空 ↵：纯文字
+  await box.click();
+  await pg.keyboard.press("Backspace"); // 打开时整个选中
+  await pg.keyboard.press("Enter");
+  await until(h, "cleared: plain text", async () => (await kws()) === 0 && (await box.inputValue()) === "");
+  // 点列表里的一项
+  await box.click();
+  await pg.keyboard.type("cu");
+  await pg.locator(".md-langbox button", { hasText: "CUDA" }).click();
+  await until(h, "picked CUDA", async () => (await box.inputValue()) === "cuda");
+  // 光标离开这一块、鼠标也不在上面：不显示
+  await pg.mouse.move(5, 5);
+  await keys(pg, "{ArrowDown}{ArrowDown}{ArrowDown}");
+  await until(h, "the language box hides when the caret leaves the block", async () => (await opacity()) === "0");
+  await exitEdit(h);
+  await idle(h);
+  res.saved = md(h, "n0");
+  // 框开着时点了别的卡片：照打的定下来，保存退出
+  await editNote(h, "n0");
+  await pg.locator(`${n0} .md-pm pre .cm-content`).click();
+  await box.click();
+  await pg.keyboard.type("rust");
+  await pg.locator('.card[data-id="n1"] .nbody').click();
+  await until(h, "the edit is saved", () => md(h, "n0").startsWith("Intro\n\n```rust"));
+  await idle(h);
+  res.away = { md: md(h, "n0"), editing: await editing(h, "n0"), list: await pg.locator(".md-langbox").count() };
+  const ok = res.inDisplay === 0
+    && JSON.stringify(res.plain) === JSON.stringify({ value: "", placeholder: "Language", kw: 0 })
+    && /^Python\s+python$/.test(String((res.list as any).first)) && /^Python/.test(String((res.list as any).sel))
+    && JSON.stringify(res.python) === JSON.stringify({ value: "python", inCode: true })
+    && JSON.stringify(res.esc) === JSON.stringify({ value: "python", editing: 1 })
+    && res.saved === `Intro\n\n\`\`\`cuda\n${CODE}\n\`\`\`\n\nafter`
+    && JSON.stringify(res.away) === JSON.stringify({ md: `Intro\n\n\`\`\`rust\n${CODE}\n\`\`\`\n\nafter`, editing: 0, list: 0 });
+  check("noteCodeBlockLanguagePicker", ok, res);
+  await close(h);
 });

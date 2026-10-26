@@ -16,6 +16,7 @@ import { Icon, type IconName } from "./icons";
 import { clipboardText } from "./clipboard";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView } from "./codeblock";
+import type { CodeLang } from "./codelang";
 import { MathBlockView } from "./mathblock";
 import { imageEditing, insertImageUrl, type SaveImage } from "./image";
 import { Typora, reconvert } from "./typora";
@@ -41,11 +42,12 @@ export type MdEditorOpts = {
   /** 灰字补全（宿主没有就不给） */
   complete?: (before: string, after: string) => Promise<string | null>;
   /** 代码块（CodeMirror）：行注释记号（⌘/，默认 //）、语言服务（这种语言没有就给 undefined，块拆掉时调它的 close）、
-   *  按下不往外冒（见 CodeEditorOpts.stopPointerDown） */
-  code?: { comment?: (lang: string | undefined) => string | undefined; lsp?: (lang: () => string) => LspHost | undefined; stopPointerDown?: boolean };
+   *  按下不往外冒（见 CodeEditorOpts.stopPointerDown）、右下角语言框里列出的语言（着色认得的；Mermaid 总在） */
+  code?: { comment?: (lang: string | undefined) => string | undefined; lsp?: (lang: () => string) => LspHost | undefined; stopPointerDown?: boolean; langs?: readonly CodeLang[] };
   /** 块左边的拖动把手（⋮⋮，拖着移动整块）。默认没有 */
   dragHandle?: boolean;
 };
+export type { CodeLang } from "./codelang";
 export type MdEditorHandle = { value(): string | null; destroy(): void; editor(): Editor };
 
 type MenuItem = { title: string; hint?: string; key: string; run: (e: Editor, r: Range) => void; ref?: true };
@@ -326,7 +328,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     // 图片：和静态显示同一份 <img> 属性；粘贴、拖进来的图交给用的一方存（editor/image.ts）
     : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
     // 代码块：编辑时用 CodeMirror（和 Free code 卡同一个编辑器）
-    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown }) })
+    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
     : x));
   const Slash = Extension.create({
     name: "cbSlash",
