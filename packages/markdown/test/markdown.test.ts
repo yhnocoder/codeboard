@@ -28,8 +28,8 @@ describe("markdown round trip", () => {
     expect(rt("\\# not a heading")).toBe("\\# not a heading");
     expect(rt("\\- not a list")).toBe("\\- not a list");
     expect(rt("a \\<b\\> tag")).toBe("a \\<b> tag");
-    // 旧版存下的 \$…\$（打字时被转义的公式）：按 Pandoc 规则能当公式就当公式
-    expect(rt("price \\$5\\$")).toBe("price $5$");
+    // 转义过的 \$ 是字面的 $，两头都转义了也一样（旧编辑器写下的 \$…\$ 公式由白板文件的迁移改好，不在这里）
+    expect(rt("price \\$5\\$")).toBe("price \\$5$");
     expect(rt("costs \\$5 or \\$6")).toMatch(/^costs \\?\$5 or \\?\$6$/);
     stable("costs \\$5 or \\$6");
     stable("\\[not a link\\](x)");
@@ -160,10 +160,24 @@ describe("task toggle on static notes", () => {
 });
 
 describe("typed math and block source", () => {
-  it("re-parses text that is Pandoc inline math", () => {
+  it("text that is Pandoc inline math with plain $ is math; escaped on both sides it is literal text, as in Typora", () => {
+    expect(JSON.stringify(parseMd("a $\\frac{a}{b}$ b"))).toContain('"inlineMath"');
     const d = parseMd("a \\$\\frac{a}{b}\\$ b");
-    expect(JSON.stringify(d)).toContain('"inlineMath"');
-    expect(rt("a \\$\\frac{a}{b}\\$ b")).toBe("a $\\frac{a}{b}$ b");
+    expect(JSON.stringify(d)).not.toContain('"inlineMath"');
+    expect(d.content![0].content).toEqual([{ type: "text", text: "a $\\frac{a}{b}$ b" }]);
+    expect(renderMd("a \\$\\frac{a}{b}\\$ b")).toBe("<p>a $\\frac{a}{b}$ b</p>");
+  });
+  it("an escaped \\$a\\$ stays literal after load → save → load", () => {
+    const has = (s: string) => JSON.stringify(parseMd(s)).includes('"inlineMath"');
+    const saved = rt("\\$a\\$");
+    expect(saved).toBe("\\$a$");
+    expect(has(saved)).toBe(false);
+    expect(parseMd(saved)).toEqual(parseMd("\\$a\\$"));
+    same(saved);
+    // literal text "$a$b$" is written as \$a\$b$ (each $ that would open a formula is escaped) and reads back as the same text
+    const lit = { type: "doc", content: [{ type: "paragraph", content: [{ type: "text", text: "$a$b$" }] }] };
+    expect(serializeMd(lit)).toBe("\\$a\\$b$");
+    expect(parseMd(serializeMd(lit))).toEqual(lit);
   });
   // N1：打 $x$ 变成公式后 ⌘Z 撤回，存下的是 \$x$；显示和再次编辑都要是字面的 $x$（Typora 一样），不能又变回公式
   it("an escaped \\$ stays a literal dollar, shown and re-parsed", () => {

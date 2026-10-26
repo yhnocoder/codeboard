@@ -1,11 +1,12 @@
-// 白板的持久化数据模型（第 6 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
+// 白板的持久化数据模型（第 7 版）。宿主（VS Code，将来的 macOS app）和白板界面共用。
 // 卡片内容（Card）和它在这块白板上的摆放（Place）分开存：v0.2 的共享卡片、子白板会让同一张卡出现在几块白板上，
 // 内容只有一份，摆放每块白板各一份。Compare 只引用两张卡的 id，那两张卡在 cards 里但没有 Place（不单独出现在画布上）。
 // 基本元素：Card、Place、Link、Section、Sidenote、Sticker。流程、讲解、Compare 都由它们派生。
 // 第 6 版起有共享卡：内容存在卡库 <存储目录>/cards/<id>.json（卡 + 跟着它走的 Sidenote），白板文件里只留引用（SharedRef）；
 // 宿主读白板时把引用换成内容（inflate），界面拿到的永远是完整的 Board。
+// 第 7 版：Markdown 里转义的 \$ 总是字面的 $（旧编辑器写下的 \$…\$ 公式由 migrate.ts 改成 $…$）。
 
-export const BOARD_VERSION = 6;
+export const BOARD_VERSION = 7;
 
 // ---------- 版本 ----------
 
@@ -352,7 +353,7 @@ export const isQuestion = (s: Pick<Sticker, "icon" | "q">) => !!s.q || (s.icon.p
 export type Camera = { x: number; y: number; z: number };
 
 export type Board = {
-  version: 6;
+  version: 7;
   id: string;
   name: string;
   cam: Camera;
@@ -392,7 +393,7 @@ export type BoardFile = Omit<Board, "cards"> & { cards: (Card | SharedRef)[] };
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 6 };
+export type SharedCardFile = SharedCard & { version: 7 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };

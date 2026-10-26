@@ -277,7 +277,7 @@ describe("card library (shared cards)", () => {
     expect(file(fs, "A").cards).toEqual([{ id: "s", kind: "shared" }, note("la")]);
     expect(file(fs, "A").sidenotes.map((n: any) => n.id)).toEqual(["n2"]);
     const c = card(fs, "s");
-    expect(c).toMatchObject({ version: 6, card: note("s") });
+    expect(c).toMatchObject({ version: 7, card: note("s") });
     expect(c.rev).toBeUndefined();
     expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
     // Loading inflates

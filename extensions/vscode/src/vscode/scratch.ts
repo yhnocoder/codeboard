@@ -12,7 +12,7 @@ import * as fs from "node:fs";
 import type { LspItem, LspKind, LspSignature, WorkspaceScratch } from "@codeboard/core";
 import { HEARTBEAT_MS, SCRATCH_GLOB, isScratchName, scratchName, staleScratch } from "@codeboard/host/scratchnames";
 
-type Doc = { uri: vscode.Uri; lang: string; doc: vscode.TextDocument };
+export type Doc = { uri: vscode.Uri; lang: string; doc: vscode.TextDocument };
 const docs = new Map<string, Doc>();
 const files = new Set<string>();
 /** 这是不是某段编辑中的代码的文档（文档变了、存了、文件变了的监听里要跳过它） */
@@ -102,14 +102,33 @@ async function ensure(id: string, lang: string, near: string | undefined, store:
   return d;
 }
 
-/** 换内容：写文件，等 VS Code 把文档读回来（问语言服务之前文档要和白板上的一样） */
-async function setText(d: Doc, text: string) {
-  if (d.doc.getText() === text) return;
+/** 等 VS Code 把写好的文件读回文档最多等多久：过了就当这次同步失败（这次请求回空、下次再同步），不拿旧内容去问语言服务 */
+export const RELOAD_LIMIT_MS = 10_000;
+/** 文档的字和要的字一样（VS Code 读回来时可能把换行统一成 \r\n） */
+const sameText = (a: string, b: string) => a === b || a.replace(/\r\n/g, "\n") === b.replace(/\r\n/g, "\n");
+
+/**
+ * 换内容：写文件，等 VS Code 把文档读回来（onDidChangeTextDocument，文档的字和要的一样）再返回：问语言服务之前文档要和白板上的一样。
+ * 等不到就失败（写文件出错、文档在读回来之前被关掉、RELOAD_LIMIT_MS 内没来），这次的补全 / 悬停 / 签名回空
+ */
+export async function setText(d: Doc, text: string) {
+  if (sameText(d.doc.getText(), text)) return;
   const k = d.uri.toString();
-  await new Promise<void>((done) => {
-    const t = setTimeout(() => { sub.dispose(); done(); }, 1500);
-    const sub = vscode.workspace.onDidChangeTextDocument((e) => { if (e.document.uri.toString() === k && e.document.getText() === text) { clearTimeout(t); sub.dispose(); done(); } });
-    void vscode.workspace.fs.writeFile(d.uri, Buffer.from(text, "utf8"));
+  await new Promise<void>((resolve, reject) => {
+    let over = false;
+    const end = (err?: Error) => {
+      if (over) return;
+      over = true;
+      clearTimeout(limit);
+      for (const s of subs) s.dispose();
+      if (err) reject(err); else resolve();
+    };
+    const subs = [
+      vscode.workspace.onDidChangeTextDocument((e) => { if (e.document.uri.toString() === k && sameText(e.document.getText(), text)) { d.doc = e.document; end(); } }),
+      vscode.workspace.onDidCloseTextDocument((doc) => { if (doc.uri.toString() === k) end(new Error(`scratch document was closed before it reloaded: ${d.uri.fsPath}`)); }),
+    ];
+    const limit = setTimeout(() => end(new Error(`scratch document did not reload within ${RELOAD_LIMIT_MS} ms: ${d.uri.fsPath}`)), RELOAD_LIMIT_MS);
+    vscode.workspace.fs.writeFile(d.uri, Buffer.from(text, "utf8")).then(undefined, (e: unknown) => end(e instanceof Error ? e : new Error(String(e))));
   });
 }
 

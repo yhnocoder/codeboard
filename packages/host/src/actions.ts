@@ -24,13 +24,16 @@ export function makeActions(panels: BoardHost, store: Storage) {
   const boardArg = (a: unknown): string | undefined => (typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined);
 
   /** Add to 的目标白板：最近聚焦的；没有就第一张；一张都没有就新建 */
-  const targetId = async (): Promise<string> => {
+  // Commands that run at once share one answer: in a workspace without a board, Alt+B and Open Board pressed together each found no
+  // board and each created a "New Board" (the card went into one, the other was shown)
+  let targeting: Promise<string> | null = null;
+  const targetId = (): Promise<string> => (targeting ??= (async () => {
     const metas = await store.list();
     if (panels.target && metas.some((m) => m.id === panels.target)) return panels.target;
     const id = metas[0]?.id ?? (await store.create("New Board")).id;
     panels.setTarget(id);
     return id;
-  };
+  })().finally(() => { targeting = null; }));
 
   const notify = async (b: { id: string; name: string }, n: number, undo: () => Promise<void>) => {
     const r = await ui().info(`Added ${n > 1 ? `${n} cards` : "to"} “${b.name}”`, "Open", "Undo");

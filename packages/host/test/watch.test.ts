@@ -12,6 +12,7 @@ import type { BoardHost } from "../src/boards";
 import { staleFor } from "../src/versions";
 import { watchVersions } from "../src/watch";
 import { useWorkspace } from "../src/ws";
+import { recentLog } from "../src/log";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { card, sleep, startTreeSitter } from "./helpers";
 
@@ -70,5 +71,26 @@ describe("version re-checks", () => {
     await sleep(900);
     expect(rechecks).toEqual([[seqAbs]]);
     expect((await staleFor([seg]))[seg.id]?.state).toBe("lost");
+  });
+});
+
+describe("new-version counts for closed boards", () => {
+  it("a failure on one board is logged with its id, and the other boards are still counted", async () => {
+    const d2 = fs.mkdtempSync("/tmp/codeboard-watch-fail-");
+    const st = new Storage(nodeFs, { dir: () => d2 });
+    await st.save(emptyBoard("bBad", "Bad"));
+    await st.save(emptyBoard("bOk", "Ok"));
+    const counted: string[] = [];
+    const failing = {
+      refreshStale: async () => {}, get: () => undefined,
+      staleChanged: (id: string) => { if (id === "bBad") throw new Error("sidebar is gone"); counted.push(id); },
+    } as unknown as BoardHost;
+    const w = watchVersions(failing, st);
+    try {
+      const logged = () => recentLog().find((l) => l.includes("[warn]") && l.includes("bBad") && l.includes("sidebar is gone"));
+      for (let i = 0; i < 100 && !(logged() && counted.includes("bOk")); i++) await sleep(20);
+      expect(logged()).toMatch(/versions: could not count new versions on closed board bBad: sidebar is gone/);
+      expect(counted).toContain("bOk");
+    } finally { w.dispose(); fs.rmSync(d2, { recursive: true, force: true }); }
   });
 });

@@ -12,7 +12,7 @@ on:
     tags: ["v*"]
   # A PR that changes the release flow runs package + shots as a check; no release is made
   pull_request:
-    paths: [".github/workflows/release.yml", "tools/release/**", "extensions/vscode/test/release-shots.cjs", "extensions/vscode/.vscodeignore"]
+    paths: [".github/workflows/release.yml", "tools/release/**", "extensions/vscode/test/release-shots.cjs", "extensions/vscode/test/wait.cjs", "extensions/vscode/test/ui.cjs", "extensions/vscode/.vscodeignore"]
   # By hand: without publish_tag, the draft release is tagged v<package.json version> on this commit when published;
   # with publish_tag, the .vsix of that published release is (re)published to the stores, nothing is built
   workflow_dispatch:

@@ -1,11 +1,12 @@
-// 旧白板文件 → 当前版本（第 6 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 7 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
 import { BOARD_VERSION, cornerAt, emptyBoard, isCode, uid, type BoardFile, type Card, type Link, type LinkStyle, type Place, type Segment, type SharedCardFile, type Sidenote, type Sticker } from "./model";
 
-/** 读进来的白板文件（第 1–6 版）→ 第 6 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–7 版）→ 第 7 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
+  const from = typeof raw?.version === "number" ? raw.version : 1;
   let b = dropNulls(raw);
   if (!(b?.version >= 3)) b = v2to3(b?.version === 2 ? b : v1to2(b));
   b.place ??= {};
@@ -16,6 +17,8 @@ export function migrateBoard(raw: any): BoardFile {
   if (b.version === 3) v3to4(b);
   if (b.version === 4) v4to5(b);
   // 第 5 版 → 第 6 版：多了共享卡的引用和 Sidenote 的 boardOnly，旧文件里都没有
+  // 第 6 版 → 第 7 版：所见即所得编辑器（v0.1.8 起，写第 5、6 版）写下的 \$…\$ 公式，见 v6to7
+  if (from === 5 || from === 6) v6to7(b);
   b.version = BOARD_VERSION;
   normalize(b);
   return b;
@@ -23,7 +26,14 @@ export function migrateBoard(raw: any): BoardFile {
 
 /** 卡库里的文件 cards/<id>.json：和白板文件一样补齐 */
 export function migrateSharedCard(raw: any): SharedCardFile {
+  if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Shared card file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
   const sc = dropNulls(raw);
+  // 卡库从第 6 版才有
+  if (sc?.version === 6) {
+    if (sc.card) v6to7Card(sc.card);
+    (sc.sidenotes ?? []).forEach(v6to7Note);
+    sc.version = BOARD_VERSION;
+  }
   if (sc?.card) normCard(sc.card);
   for (const n of sc?.sidenotes ?? []) normNote(n);
   return sc;
@@ -97,6 +107,95 @@ function cornerStickers(b: any) {
 }
 
 // ---------- 版本链 ----------
+
+/**
+ * 第 6 版 → 第 7 版：Markdown 里转义的 \$ 从此总是字面的 $（Typora 一样）。之前每次解析都把两头都转义了的 \$…\$ 当成公式
+ * （所见即所得编辑器 v0.1.8 起把打了没转成公式的 $…$ 写成过这样）；这样的字在这里改成 $…$，公式源码就是当时读出来的那段字（\X 转义去掉）。
+ * 只有第 5、6 版的文件可能有（v0.1.8、v0.2 写的）：第 1–4 版的文件只有之前的手写渲染器写过，它不把 \$ 当公式的开头，那时写的 \$ 本来就是字面的。
+ * 存 Markdown 的地方：Note 的 md、每张卡的 desc（合并进来的卡也是）、文字 Sidenote 的 md、问题贴纸的 md。
+ * 照当时的解析冻结在这里，跟现在的解析器怎么写无关；拿不准的（中间有会断开文字的写法：代码、强调、链接、HTML、表格的 | 等）不动，留成字面的 $
+ */
+function v6to7(b: any) {
+  for (const c of b.cards) if (c.kind !== "shared") v6to7Card(c);
+  b.sidenotes.forEach(v6to7Note);
+  for (const k of b.stickers) if (typeof k.q?.md === "string") k.q.md = oldMath(k.q.md);
+}
+function v6to7Card(c: any) {
+  if (typeof c.desc === "string") c.desc = oldMath(c.desc);
+  if (c.kind === "note" && typeof c.md === "string") c.md = oldMath(c.md);
+  for (const m of c.mergedFrom ?? []) if (m?.card) v6to7Card(m.card);
+}
+function v6to7Note(n: any) {
+  if (n.kind === "text" && typeof n.md === "string") n.md = oldMath(n.md);
+}
+
+const SHIELD7 = 0xe300; // \X 转义先换成一个私用区的字（一个字对应文字里的一个字），写回时换回 \X
+const ESC7 = String.fromCharCode(SHIELD7 + 36); // \$
+/** 文字层面的字：\X → X */
+const plain7 = (s: string) => s.replace(/[\uE300-\uE37F]/g, (c) => String.fromCharCode(c.charCodeAt(0) - SHIELD7));
+const raw7 = (s: string) => s.replace(/[\uE300-\uE37F]/g, (c) => `\\${String.fromCharCode(c.charCodeAt(0) - SHIELD7)}`);
+/** 公式里有这些：没转义的当时会断开那段字（公式就没转出来）；转义过的写进 $…$ 里会被当成记号，也不改 */
+const BREAKS7 = /[`*[\]~\n]|==|<[^>\s]*>|<[A-Za-z/!?][^>\n]*>|&(?:#\d+|#x[\da-f]+|\w+);|\^[^^\s]+\^|:[a-z0-9_+-]+:|https?:\/\/|www\./i;
+
+/** 一段 Markdown 里旧编辑器写下的 \$…\$ → $…$ */
+function oldMath(md: string): string {
+  if (!md.includes("\\$") || /[\uE300-\uE37F]/.test(md)) return md;
+  // 不动的行：围栏代码块、缩进的代码块、HTML 块（到空行为止）。其余的行连成一段段交给 oldMathText
+  const out: string[] = [];
+  let run: string[] = [], fence = "", html = false;
+  const flush = () => { if (run.length) out.push(oldMathText(run.join("\n"))); run = []; };
+  const fixed = (l: string) => { flush(); out.push(l); };
+  for (const l of md.split("\n")) {
+    const f = /^ {0,3}(`{3,}|~{3,})/.exec(l);
+    if (fence) { fixed(l); if (new RegExp(`^ {0,3}${fence[0]}{${fence.length},}\\s*$`).test(l)) fence = ""; }
+    else if (f) { fence = f[1]; fixed(l); }
+    else if (html) { fixed(l); html = !!l.trim(); }
+    else if (/^ {0,3}<[A-Za-z/!?]/.test(l)) { html = true; fixed(l); }
+    else if (/^( {4}|\t)/.test(l)) fixed(l);
+    else run.push(l);
+  }
+  flush();
+  return out.join("\n");
+}
+
+/** 一段（不含代码块、HTML 块的）行：跳过行内代码、公式、链接地址、HTML 标签，两头都转义了的 \$…\$ 改成 $…$ */
+function oldMathText(src: string): string {
+  const p = src.replace(/\\([!-/:-@[-`{-~])/g, (_, c: string) => String.fromCharCode(SHIELD7 + c.charCodeAt(0)));
+  // 成对的写法（上标、高亮、下标、表情、网址、标注 {a|b}、HTML 标签和 <自动链接>）：和一对 \$ 交叉时当时就分成了几段字
+  const spans = [...p.matchAll(/\^[^^\s]+\^|==(?=[^\s=])[^\n]*?[^\s]==|~(?!~)[^~\s]+~(?!~)|:[a-z0-9_+-]+:|(?:https?:\/\/|www\.)\S+|\{[^{}\n]*\|[^{}\n]*\}|<[^>\s]*>|<[A-Za-z/!?][^>\n]*>/g)].map((x) => [x.index, x.index + x[0].length]);
+  // 表格里 | 分开格子
+  const table = /^ {0,3}\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/m.test(p) && p.includes("|");
+  let out = "", i = 0, lone = false; // lone：这一段前面有个没配成公式的 $（改出来的 $ 会和它配成对）
+  const keep = (n: number) => { out += raw7(p.slice(i, i + n)); i += n; };
+  while (i < p.length) {
+    const c = p[i], rest = p.slice(i);
+    if (/^\n[ \t]*\n/.test(rest)) lone = false;
+    if (c === "`") {
+      const n = /^`+/.exec(rest)![0].length;
+      const close = new RegExp(`(?<!\`)\`{${n}}(?!\`)`).exec(p.slice(i + n));
+      keep(close && !/\n[ \t]*\n/.test(p.slice(i + n, i + n + close.index)) ? n + close.index + n : n);
+      continue;
+    }
+    const skip = c === "]" ? /^\]\([^)\n]*\)/.exec(rest) : c === "<" ? /^<[^>\s]*>|^<[A-Za-z/!?][^>\n]*>/.exec(rest)
+      : c === "$" ? /^\$\$[^$]+?\$\$|^\$[^$\s](?:[^$]*[^$\s\\])?\$(?!\d)/.exec(rest) : null;
+    if (skip) { keep(skip[0].length); continue; }
+    if (c === ESC7) {
+      const m = /^\uE324([^$\uE324]*)\uE324/.exec(rest);
+      const t = m ? plain7(m[1]) : "", prev = i ? plain7(p[i - 1]) : "";
+      // 当时的规则认不认这一对；认的话拿得准才改，拿不准的整对留着（右边那个 \$ 也不再当开头，和当时一样）
+      if (m && prev !== "$" && prev !== "\\" && /^\S(?:[^]*[^\s\\])?$/.test(t) && !/^[\d$\uE324]/.test(p.slice(i + m[0].length))) {
+        const end = i + m[0].length;
+        const sure = !lone && !t.endsWith("\\") && !BREAKS7.test(t) && !(table && t.includes("|")) && !spans.some(([a, b]) => a < end && b > i);
+        out += sure ? `$${t}$` : raw7(m[0]);
+        i = end;
+        continue;
+      }
+    }
+    if (c === "$") lone = true;
+    keep(1);
+  }
+  return out;
+}
 
 /**
  * 第 4 版 → 第 5 版：Call link / Plain link 合成一种箭头。

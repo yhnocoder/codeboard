@@ -11,6 +11,7 @@ import type { Storage } from "./storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
 import { debounce, workspace, wsRoots } from "./ws";
 import { forgetDefs } from "./defcache";
+import { log } from "./log";
 
 export function watchVersions(panels: BoardHost, store: Storage): Disposable {
   const files = workspace().files;
@@ -40,11 +41,15 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
     subs.push(files.watch(gd, "{HEAD,packed-refs,refs/heads/**}", () => onGit()));
   };
 
-  /** 关着的白板：算有几张卡有新版本 */
+  /**
+   * 关着的白板：算有几张卡有新版本。读不到的段 staleFor 自己当没变；这里出错是 bug（白板的结构、侧栏），
+   * 记进日志（Copy Diagnostics 也看得到），接着算别的白板
+   */
   const countClosed = async () => {
     for (const { board } of await store.all()) {
       if (panels.get(board.id)?.ready) continue;
-      try { const ss = staleSegments(board); panels.staleChanged(board.id, countStale(board, await staleFor(ss.segs, ss.up))); } catch { /* */ }
+      try { const ss = staleSegments(board); panels.staleChanged(board.id, countStale(board, await staleFor(ss.segs, ss.up))); }
+      catch (e) { log("warn", `versions: could not count new versions on closed board ${board.id}: ${e instanceof Error ? e.message : e}`); }
     }
   };
 

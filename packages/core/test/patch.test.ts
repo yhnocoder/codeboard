@@ -44,7 +44,7 @@ describe("applyPatch", () => {
     expect(b.name).toBe("New");
     expect(b.hideNumbers).toBeUndefined();
     expect(b.id).toBe("b");
-    expect(b.version).toBe(6);
+    expect(b.version).toBe(7);
     expect(b.cam).toEqual({ x: 1, y: 2, z: 3 });
     expect(b.cards.length).toBe(3);
   });
@@ -115,15 +115,68 @@ describe("shared cards: inflate / deflate / putShared", () => {
   });
 });
 
-describe("board format v6", () => {
-  it("v5 → v6 only bumps the version; v6 boards keep sidenote boardOnly", () => {
+describe("board format v6 and v7", () => {
+  it("v5 → v7 only bumps the version when no Markdown has escaped dollars; boards keep sidenote boardOnly", () => {
     const v5 = { ...board(), version: 5 } as any;
     const b = loadBoard(structuredClone(v5));
-    expect(b.version).toBe(6);
+    expect(b.version).toBe(7);
     expect({ ...b, version: 5 }).toEqual(v5);
     const c = board();
     c.sidenotes[0].boardOnly = true;
     expect(loadBoard(structuredClone(c)).sidenotes[0].boardOnly).toBe(true);
+  });
+
+  // The WYSIWYG editor of v0.1.8–v0.2 (board files v5 and v6) wrote formulas it did not convert as \$…\$; a parse-time rule read them
+  // as math. Now \$ is always a literal $: v6 → v7 rewrites that text to $…$ once, wherever Markdown is stored.
+  const oldMath = (version: number) => {
+    const b = board() as any;
+    b.version = version;
+    b.cards[0].md = "a \\$x^2\\$ b, \\$\\frac{a}{b}\\$ and \\$\\{n\\}\\$";
+    b.cards[1].desc = "cost \\$O(n)\\$";
+    b.cards.push({ id: "m", kind: "code", segments: [], mergedFrom: [{ card: { id: "o", kind: "code", segments: [], desc: "\\$y\\$" }, place: { x: 0, y: 0, w: 1 } }] });
+    b.place.m = { x: 0, y: 0, w: 100 };
+    b.sidenotes[0].md = "\\$z\\$";
+    b.stickers.push({ id: "q", icon: { pack: "builtin", name: "question" }, at: { kind: "canvas", x: 0, y: 0 }, q: { md: "why \\$k\\$?" } });
+    b.cards[2].md = [
+      "`\\$a\\$` code, \\$x$ half escaped, costs \\$5 or \\$6, \\$**b**\\$ split by bold, [t](http://x/\\$y\\$)",
+      "```", "\\$c\\$", "```",
+      "    \\$indented\\$",
+      "$a\\$b$ math with an escaped dollar, \\\\\\$e\\$ after an escaped backslash",
+    ].join("\n");
+    return b;
+  };
+  it("v6 → v7: an old board's \\$a\\$ becomes math once; code, half-escaped and unsure text stay as written", () => {
+    const b = loadBoard(oldMath(6));
+    expect(b.version).toBe(7);
+    expect((b.cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
+    expect(b.cards[1].desc).toBe("cost $O(n)$");
+    expect((b.cards[3] as any).mergedFrom[0].card.desc).toBe("$y$");
+    expect((b.sidenotes[0] as any).md).toBe("$z$");
+    expect(b.stickers[0].q!.md).toBe("why $k$?");
+    expect((b.cards[2] as any).md).toBe(oldMath(6).cards[2].md);
+    // once: the upgraded board is read as is
+    expect(loadBoard(structuredClone(b))).toEqual(b);
+    // v5 files were written by the same editor
+    expect((loadBoard(oldMath(5)).cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
+  });
+  it("v6 → v7 leaves boards from before the WYSIWYG editor alone: their \\$ was always literal", () => {
+    const raw = { ...oldMath(6), version: 4 };
+    delete raw.born; delete raw.seq;
+    expect((loadBoard(raw).cards[0] as any).md).toBe(oldMath(6).cards[0].md);
+  });
+  it("a v7 board's escaped \\$a\\$ is literal text and stays as written", () => {
+    const b = board();
+    (b.cards[0] as any).md = "\\$a\\$";
+    const again = loadBoard(structuredClone(loadBoard(structuredClone(b))));
+    expect((again.cards[0] as any).md).toBe("\\$a\\$");
+  });
+  it("v6 → v7 upgrades shared card files (the card and its travelling sidenotes) once, and refuses newer ones", () => {
+    const sc = loadSharedCard({ version: 6, card: { ...note("s", "\\$a\\$"), desc: "\\$d\\$" }, sidenotes: [text("n", "s", { md: "\\$t\\$" } as any)] });
+    expect(sc.version).toBe(7);
+    expect(sc.card).toMatchObject({ md: "$a$", desc: "$d$" });
+    expect((sc.sidenotes[0] as any).md).toBe("$t$");
+    expect((loadSharedCard({ version: 7, card: note("s", "\\$a\\$"), sidenotes: [] }).card as any).md).toBe("\\$a\\$");
+    expect(() => loadSharedCard({ version: 8, card: note("s"), sidenotes: [] })).toThrow(/newer/);
   });
 });
 
