@@ -132,7 +132,6 @@
   --sh-lift: 0 2px 6px rgba(55,38,20,.06), 0 40px 70px -24px rgba(55,38,20,.32);
   --sh-float: 0 0 0 .5px var(--hair), 0 12px 30px -12px rgba(55,38,20,.2);
   --r-card: 25px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
-  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 55%, transparent);
 }
 :root.look-soft-light[data-theme="dark"], :root[data-theme="dark"] [data-look="soft-light"] {
   color-scheme: dark;
@@ -156,7 +155,6 @@
   --sh-lift: 0 2px 6px rgba(0,0,0,.35), 0 40px 70px -24px rgba(0,0,0,.8);
   --sh-float: 0 0 0 .5px var(--hair), 0 12px 30px -12px rgba(0,0,0,.6);
   --r-card: 25px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
-  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
 }
 
 /* ---------- Drafting：工程图纸。只有墨和线，没有颜色、阴影和圆角（中性灰，暗色也是中性的） ---------- */
