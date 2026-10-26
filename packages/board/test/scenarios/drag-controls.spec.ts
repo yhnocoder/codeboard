@@ -1,7 +1,9 @@
-// Drags that pass over another card's controls: nothing under the pointer takes the drag over. Moving a card, a marquee and
-// dragging an arrow out of a card's edge port across another card's ··· (More Actions) button, its resize grip and its edge
-// port: the drag keeps following the pointer to where it is released, no tooltip shows and none of those controls shows hover.
-// Usage: npm run harness -- dragPassesOverCardControls
+// Drags and pans that pass over cards and their controls: nothing under the pointer takes the gesture over.
+// dragPassesOverCardControls: moving a card, a marquee and dragging an arrow out of a card's edge port across another card's
+// ··· (More Actions) button, its resize grip and its edge port keep following the pointer to where they are released, no
+// tooltip shows and none of those controls shows hover. panKeepsGoingOverCards: a wheel (two-finger) pan and a middle-button
+// drag pan keep moving the canvas while a card's edge and body come under the pointer.
+// Usage: npm run harness -- dragPassesOverCardControls panKeepsGoingOverCards
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { type Host } from "../harness";
 import { test, open, check, light } from "../fixtures";
@@ -108,4 +110,70 @@ test("dragPassesOverCardControls", async () => {
   const links = h.board().links.map((l) => `${l.from.card}>${l.to.card}`);
   check("dragPassesOverCardControls arrow: no tooltip, no hover", clean(linked), linked);
   check("dragPassesOverCardControls arrow: links to the card it is released on", links.includes("n0>n1") && linked.every((m) => m.off === 0), { links, linked });
+});
+
+/** A Note shorter than its text, which scrolls in its body (like the long Notes the issue came from) */
+function panBoard(): Board {
+  const b = emptyBoard("b2", "pan over cards");
+  const md = Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long note that scrolls inside its body.`).join("\n\n");
+  b.cards.push({ id: "n0", kind: "note", md, bg: true } as NoteCard);
+  b.place.n0 = { x: 300, y: 60, w: 420, h: 240 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  return b;
+}
+const camOf = (h: Host) => h.page.evaluate(() => {
+  const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec((document.querySelector(".world") as HTMLElement).style.transform);
+  return { x: Number(m![1]), y: Number(m![2]) };
+});
+
+/** Panning the canvas while a card comes under the pointer: a two-finger (wheel) pan that started on the empty canvas below a
+ *  Note brings the Note down under the pointer, across its bottom edge (edge port, height handle, resize grip) and its
+ *  scrolling body, and keeps going, slow and fast. A pan dragged with the middle button follows the pointer to the release */
+test("panKeepsGoingOverCards", async () => {
+  const h = await open({ board: panBoard(), light, w: 1100, h: 700 });
+  const pg = h.page;
+  await pg.waitForTimeout(600);
+  const TOTAL = 420; // more than the card is tall: the pointer goes in at its bottom edge and out at its top
+  const wheelRuns: { where: string; step: number; moved: number; want: number; under: string[] }[] = [];
+  for (const [where, step] of [["middle", 6], ["corner", 6], ["middle", 42]] as const) {
+    const r = await box(h, N0);
+    const at = { x: where === "middle" ? r.x : r.right - 5, y: r.bottom + 60 }; // below the bottom edge port / the resize grip
+    await pg.mouse.move(at.x, at.y);
+    await pg.waitForTimeout(400); // a new wheel gesture
+    const c0 = await camOf(h);
+    const under: string[] = [];
+    let n = 0;
+    for (let done = 0; done < TOTAL; done += step) {
+      await pg.mouse.wheel(0, -step);
+      await pg.waitForTimeout(16);
+      if (n++ % Math.ceil(42 / step) === 0) under.push(await pg.evaluate((p) => String(document.elementFromPoint(p.x, p.y)?.className ?? ""), at));
+    }
+    await pg.waitForTimeout(100);
+    const c1 = await camOf(h);
+    wheelRuns.push({ where, step, moved: Math.round(c1.y - c0.y), want: Math.ceil(TOTAL / step) * step, under: [...new Set(under)] });
+    // back where it was, as a separate gesture from the empty canvas above the card
+    await pg.waitForTimeout(300);
+    await pg.mouse.move(at.x, 20);
+    await pg.waitForTimeout(400);
+    await pg.mouse.wheel(0, c1.y - c0.y);
+    await pg.waitForTimeout(300);
+  }
+  check("panKeepsGoingOverCards wheel pan crosses the card", wheelRuns.every((w) => w.moved === w.want), wheelRuns);
+
+  // a pan dragged with the middle button from the empty canvas below the card, slow and fast
+  const dragRuns: { steps: number; moved: Pt; want: Pt }[] = [];
+  for (const steps of [60, 4]) {
+    const r = await box(h, N0);
+    const from = { x: r.x, y: r.bottom + 40 }, to = { x: r.x - 120, y: r.top - 30 };
+    const c0 = await camOf(h);
+    await pg.mouse.move(from.x, from.y);
+    await pg.mouse.down({ button: "middle" });
+    for (let i = 1; i <= steps; i++) { await pg.mouse.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps); await pg.waitForTimeout(16); }
+    await pg.waitForTimeout(150); // held still before the release: no fling
+    await pg.mouse.up({ button: "middle" });
+    await pg.waitForTimeout(200);
+    const c1 = await camOf(h);
+    dragRuns.push({ steps, moved: { x: Math.round(c1.x - c0.x), y: Math.round(c1.y - c0.y) }, want: { x: Math.round(to.x - from.x), y: Math.round(to.y - from.y) } });
+  }
+  check("panKeepsGoingOverCards drag pan follows the pointer", dragRuns.every((d) => d.moved.x === d.want.x && d.moved.y === d.want.y), dragRuns);
 });

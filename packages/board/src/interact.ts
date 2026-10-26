@@ -507,9 +507,14 @@ function startPan(e: PointerEvent) {
 }
 
 /** 滚轮：两指平移；⌘ / 捏合 缩放 */
+/** 滚轮在这上面归它自己（原生滚动，不动画布）：画布上浮着的面板、浮层（data-nodrag）；卡上的按钮、把手、边上的圆点不算，
+ *  卡里只有能输入的东西算 */
+const ownsWheel = (t: HTMLElement) => !!t.closest(NODRAG) && (!t.closest(".card") || !!t.closest("input, textarea, [contenteditable]"));
 export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
-  if (t.closest(NODRAG)) return;
+  // 正在平移画布的这次滚动手势一路平移下去（#51）：画布带着卡移到指针下面，指针落到卡边的圆点、把手上也不停
+  const panning = wheelOwner === "canvas" && performance.now() - wheelLast <= 200;
+  if (!panning && ownsWheel(t)) return;
   e.preventDefault();
   if (!t.closest(".cbody, .nbody, .tx")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
   stopCam();
