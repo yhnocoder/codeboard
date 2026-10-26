@@ -253,11 +253,12 @@ async function note() {
     const h = await open({ board: b, light, w: 1200, h: 800, on: lspStub });
     const pg = h.page;
     await idle(h);
+    // the code's glyphs (the language label shown while editing is not code)
     const pos = () => pg.evaluate(() => {
       const pre = document.querySelector('.card[data-id="n0"] pre')!;
       const out: (number | string)[][] = [];
       const w = document.createTreeWalker(pre, NodeFilter.SHOW_TEXT);
-      for (let t = w.nextNode(); t; t = w.nextNode()) for (let i = 0; i < t.textContent!.length; i++) { if (!/\S/.test(t.textContent![i])) continue; const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1); const b = r.getBoundingClientRect(); out.push([Math.round(b.x * 2) / 2, Math.round(b.y * 2) / 2, getComputedStyle(t.parentElement!).color]); }
+      for (let t = w.nextNode(); t; t = w.nextNode()) if (!t.parentElement!.closest(".md-lang")) for (let i = 0; i < t.textContent!.length; i++) { if (!/\S/.test(t.textContent![i])) continue; const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1); const b = r.getBoundingClientRect(); out.push([Math.round(b.x * 2) / 2, Math.round(b.y * 2) / 2, getComputedStyle(t.parentElement!).color]); }
       const cs = getComputedStyle(pre), pb = pre.getBoundingClientRect();
       return { out, font: cs.font, pad: cs.padding, bg: cs.backgroundColor, box: [Math.round(pb.width), Math.round(pb.height)], cm: !!pre.querySelector(".cm-content") };
     });
