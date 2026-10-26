@@ -10,6 +10,7 @@ import { state } from "../state/store";
 import { loadCm, cmNow, lspHost, ghostHost, nearSeg, hostHighlight } from "../cm/load";
 import type { CodeEditor } from "@yhnocoder/markdown/code-editor";
 import { lastDown } from "../state/measure";
+import { takeEditEntry } from "../state/ui";
 
 
 export type FreeEditCtl = { text(): string; focus(): void; el: HTMLElement };
@@ -22,6 +23,8 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
   let gone = false;
   const id = `free-${p.card().id}`;
 
+  // 显示时选了一段代码再按 ⌫ / Delete 进来的（#69）：选上同一段，再把这个键交给编辑器
+  const entry = takeEditEntry("free", p.card().id);
   const make = (m: typeof import("@yhnocoder/markdown/code-editor")) => {
     if (gone) return;
     const lsp = lspHost(id, () => seg().lang, () => nearSeg(p.card().id, seg().lang));
@@ -48,10 +51,18 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
     queueMicrotask(() => {
       if (gone) return;
       const d = lastDown(), at = d && v.posAtCoords(d);
-      v.dispatch({ selection: { anchor: at ?? 0 } });
+      const doc = v.state.doc, pos = ([l, c]: [number, number]) => (l < doc.lines ? Math.min(doc.line(l + 1).from + c, doc.line(l + 1).to) : null);
+      const a = entry && pos(entry.from), b = entry && pos(entry.to), picked = a !== null && b !== null && a < b;
+      v.dispatch({ selection: picked ? { anchor: a, head: b } : { anchor: at ?? 0 } });
       let n = 0;
       const grab = () => { if (gone || v.hasFocus || ++n > 20) return; v.focus(); requestAnimationFrame(grab); };
       grab();
+      if (entry && picked) {
+        // 和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删
+        const ev = new KeyboardEvent("keydown", { key: entry.key, code: entry.key, bubbles: true, cancelable: true });
+        v.contentDOM.dispatchEvent(ev);
+        if (!ev.defaultPrevented) v.dispatch(v.state.replaceSelection(""), { userEvent: "delete.selection", scrollIntoView: true });
+      }
     });
   };
   onMount(() => { const m = cmNow(); if (m) make(m); else void loadCm().then(make).catch((e) => console.error("code editor:", e)); });

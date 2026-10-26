@@ -4,6 +4,7 @@ import { createStore, reconcile, unwrap } from "solid-js/store";
 import { noteShown, type CodeCard, type Guide, type Link, type Sidenote } from "@codeboard/core";
 import { state } from "./store";
 import { rooted, onBoardSwitch } from "./root";
+import type { StaticTextRange } from "@yhnocoder/markdown";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
 export const [shown, setShown] = createSignal<Set<string>>(new Set());
@@ -54,6 +55,24 @@ export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 // 正在编辑的东西
 export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen" | "question" | "vnote" | "annot"; id: string } | null;
 export const [editing, setEditing] = createSignal<Editing>(null);
+/**
+ * 显示时选中一段字再按 ⌫ / Delete（#69）：进入编辑，把同一段选上，再把这个键交给编辑器（和在编辑器里按一样）。
+ * note：静态 Markdown 上数出来的一段（staticTextRange）；free：自由代码卡的第几行第几个字（行从 0 数）。编辑器挂上时取走（takeEditEntry）
+ */
+export type EditEntry = { key: "Backspace" | "Delete"; id: string } & (
+  | { kind: "note"; range: StaticTextRange }
+  | { kind: "free"; from: [line: number, col: number]; to: [line: number, col: number] }
+);
+/** 代码卡显示的代码（.src）→ 选区两头在第几段第几行第几个字（行从 0 数，按原文算）；两头不在同一段的代码行里给 null。CodeBody 挂上 */
+export const codeTextRange = new WeakMap<Element, (rg: Range) => { seg: string; from: [number, number]; to: [number, number] } | null>();
+let entry: EditEntry | null = null;
+export const setEditEntry = (e: EditEntry | null) => { entry = e; };
+export function takeEditEntry<K extends EditEntry["kind"]>(kind: K, id: string): Extract<EditEntry, { kind: K }> | null {
+  const e = entry;
+  if (e?.kind !== kind || e.id !== id) return null;
+  entry = null;
+  return e as Extract<EditEntry, { kind: K }>;
+}
 
 // 拖动中：吸附参考线、合并目标、落点行、图片卡要放进的 Note（note）……
 export const [guides, setGuides] = createSignal<Guide[]>([]);

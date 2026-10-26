@@ -13,7 +13,8 @@ import {
   type LineSel,
 } from "../state/store";
 import { animate, Spring, reduceMotion } from "../state/camera";
-import { setEditing, setPopIn } from "../state/ui";
+import { setEditing, setPopIn, setEditEntry, codeTextRange } from "../state/ui";
+import { staticTextRange } from "@yhnocoder/markdown";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
 import { frameOf, fitFrame, setFitting, allMembers, isHidden } from "../state/sections";
@@ -84,6 +85,40 @@ export function deleteSel() {
     removeSectionsIn(b, secs);
   });
   if (ok) clearSel();
+}
+/**
+ * 显示时在一张卡里选中了一段字再按 ⌫ / Delete（#69）：不删卡。Note / Text / Mark 和自由代码卡进入编辑，选上同一段，
+ * 再把这个键交给编辑器（和在编辑器里按一样：删掉这段字，编辑器里一步撤销；退出编辑时照常存成一步）。
+ * 文件里的代码改不了：什么都不做。没选字、两头不在同一张卡的正文 / 代码里：返回 false（照旧删选中的卡）
+ */
+export function editTextSel(key: "Backspace" | "Delete"): boolean {
+  const s = window.getSelection();
+  if (!s || s.isCollapsed || !s.rangeCount) return false;
+  const rg = s.getRangeAt(0);
+  const el = (n: Node) => (n instanceof Element ? n : n.parentElement);
+  const a = el(rg.startContainer), b = el(rg.endContainer);
+  const cardEl = a?.closest<HTMLElement>(".card[data-id]");
+  if (!cardEl || cardEl !== b?.closest(".card[data-id]")) return false;
+  const id = cardEl.dataset.id!, c = cardById(id)?.card;
+  // Note / Text / Mark 的正文（静态 Markdown，还没在编辑）
+  const md = a!.closest<HTMLElement>(".md");
+  if (c?.kind === "note" && md && md === b!.closest(".md") && md.matches(".nbody, .tx") && !md.classList.contains("editing")) {
+    // 数不出来（选区落在了数不到的地方）：只进入编辑，不删字
+    const range = staticTextRange(md, rg);
+    setEditEntry(range && { kind: "note", id, key, range });
+    setEditing({ kind: "note", id });
+    return true;
+  }
+  // 代码卡的代码
+  const src = a!.closest(".src");
+  const map = src && src === b!.closest(".src") ? codeTextRange.get(src) : undefined;
+  if (c?.kind !== "code" || !map) return false;
+  const r = map(rg), seg = r && c.segments.find((x) => x.id === r.seg);
+  if (seg?.src.kind === "free" && c.segments.length === 1) {
+    setEditEntry({ kind: "free", id, key, from: r!.from, to: r!.to });
+    setEditing({ kind: "free", id });
+  }
+  return true;
 }
 export function deleteLinks(ids: string[]) {
   const s = new Set(ids);
