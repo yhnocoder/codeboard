@@ -1,5 +1,3 @@
-// 指针交互：拖卡（吸附、合并、⌥ 拖成 Sidenote、进出 Section）、改大小、框选、平移、缩放、
-// 拖 Section 标签、从调用拖出带 Call 标记的箭头、从行尾 / 卡边拖出箭头。installKeys 装窗口级的监听（按键分发在 keymap.ts）。
 import {
   findCard, isCode, snapMove, snapResize, bounds, center,
   type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
@@ -27,7 +25,6 @@ const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.cl
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
 const worldOf = (e: { clientX: number; clientY: number }) => worldAt(pt(e));
 
-/** 通用拖动：按下后跟踪移动，松手收尾。返回 false 的 move 不算移动。 */
 function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = 3) {
   const sx = e.clientX, sy = e.clientY;
   let moved = false;
@@ -48,7 +45,7 @@ function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: Point
   window.addEventListener("pointercancel", onUp, true);
 }
 
-/** 拖卡、改卡的大小：一次撤销（beginGesture）；真动起来以后 AI 灰字补全先停（显示着的清掉、不再问），松手再照常（#9） */
+/** 拖卡、改卡的大小：一次撤销（beginGesture）；真动起来以后 AI 灰字补全先停（显示着的清掉、不再问），松手再照常 */
 // 拖的全是新建、还没写内容的卡（createFresh）：不单独进撤销栈。写了内容时「新建 + 内容」那一步里已经是挪过的位置；
 // 空着结束编辑就整个消失，撤销栈里也不留一张空卡
 function cardGesture(ids: string[]) {
@@ -90,8 +87,6 @@ export function isDbl(key: string, e: { clientX: number; clientY: number }) {
   return r;
 }
 
-// ---------- 卡片 ----------
-
 export function cardPointerDown(e: PointerEvent, id: string) {
   const t = e.target as HTMLElement;
   if (e.button === 1 || (e.button === 0 && spaceDown())) return startPan(e);
@@ -121,12 +116,12 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     (document.activeElement as HTMLElement | null)?.blur?.();
     window.getSelection()?.removeAllRanges();
   }
-  if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url); // 双击书签 = 在浏览器里打开
-  if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id); // 双击子白板框 = 进去
+  if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url);
+  if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id);
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`, e)) return setEditing({ kind: "title", id: target });
-  // 调用图标记：点 = 改标记（字母 / 图标），拖 = 连同它往下调用的卡一起走（#29）
+  // 调用图标记：点 = 改标记（字母 / 图标），拖 = 连同它往下调用的卡一起走
   if (t.closest(".step")) {
     const el = t.closest(".step")!;
     const was = [...sel.cards];
@@ -140,10 +135,8 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   startCardDrag(e, f.host.id);
 }
 
-/** 卡（或 Compare 里一栏）所在那张摆放卡的位置 */
 const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };
 
-/** onClick：按下去没拖动就松手时调用 */
 /** 卡头上能点也能拖的东西（文件路径、版本号）：刚拖完松手时浏览器还会补一个 click，这时不算点 */
 let dragEndAt = -1e9;
 export const justDragged = () => performance.now() - dragEndAt < 250;
@@ -256,7 +249,6 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   });
 }
 
-/** 落点行 → Anchor */
 function rowAnchor(row: HTMLElement, hostId: string): Anchor | null {
   const colEl = row.closest("[data-col]") as HTMLElement | null;
   const cid = colEl?.dataset.col ?? hostId;
@@ -296,7 +288,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   const { end, moving } = cardGesture([c.id]);
   const sx = e.clientX, sy = e.clientY;
   const text = c.kind === "note" && !c.bg;
-  // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（#2：单行卡拉高后能缩回去）
+  // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度
   const nat = naturalSize(c.id);
   const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
   const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
@@ -325,7 +317,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }
 
-// 一次滚动手势从哪开始就一直归谁（#51）：画布上开始 → 一路平移，经过卡片也不停；停 ~200ms 才算结束。
+// 一次滚动手势从哪开始就一直归谁：画布上开始 → 一路平移，经过卡片也不停；停 ~200ms 才算结束。
 // 卡片里滚代码只在：卡片已选中，或者不是紧跟着一次画布平移开始的滚动
 let wheelOwner: HTMLElement | "canvas" | null = null, wheelLast = 0, panEnd = 0;
 function ownerFor(e: WheelEvent, el: HTMLElement | null): HTMLElement | "canvas" {
@@ -346,7 +338,7 @@ export function cardWheel(e: WheelEvent, el: HTMLElement) {
   if (ownerFor(e, el) === el) e.stopPropagation();
 }
 
-// ---------- 调用：点 = 展开；拖 = 接到已有卡 / 放到指定位置 ----------
+// 调用：点 = 展开；拖 = 接到已有卡 / 放到指定位置
 
 export function callPointerDown(e: PointerEvent, cardId: string, seg: string, call: CallSpan, el: HTMLElement) {
   if (connectFrom()) return;
@@ -383,8 +375,6 @@ export function callPointerDown(e: PointerEvent, cardId: string, seg: string, ca
     A.expandCall(cardId, seg, call, { x: w.x + 8, y: w.y - 18 });
   }, 6);
 }
-
-// ---------- 箭头：从行尾圆点 / 卡边圆点拖出 ----------
 
 /** side：用户从哪个圆点拖出来，起点就固定在那一侧（不再按位置自动推） */
 export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string; line?: number }, sx: number, sy: number, side?: LinkSide) {
@@ -429,8 +419,6 @@ function finishConnect(e: PointerEvent, id: string) {
   const sub = ((e.target as Element).closest("[data-sub]") as HTMLElement | SVGElement | null)?.dataset.sub;
   A.addLink(from, sub && !sub.startsWith("more:") && cardById(to)?.card.kind === "board" ? { card: to, sub } : { card: to });
 }
-
-// ---------- 画布 ----------
 
 export function canvasPointerDown(e: PointerEvent) {
   const t = e.target as HTMLElement;
@@ -515,13 +503,12 @@ function startPan(e: PointerEvent) {
   }, 0);
 }
 
-/** 滚轮：两指平移；⌘ / 捏合 缩放 */
 /** 滚轮在这上面归它自己（原生滚动，不动画布）：画布上浮着的面板、浮层（data-nodrag）；卡上的按钮、把手、边上的圆点不算，
  *  卡里只有能输入的东西算 */
 const ownsWheel = (t: HTMLElement) => !!t.closest(NODRAG) && (!t.closest(".card") || !!t.closest("input, textarea, [contenteditable]"));
 export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
-  // 正在平移画布的这次滚动手势一路平移下去（#51）：画布带着卡移到指针下面，指针落到卡边的圆点、把手上也不停
+  // 正在平移画布的这次滚动手势一路平移下去：画布带着卡移到指针下面，指针落到卡边的圆点、把手上也不停
   const panning = wheelOwner === "canvas" && performance.now() - wheelLast <= 200;
   if (!panning && ownsWheel(t)) return;
   e.preventDefault();
@@ -548,7 +535,7 @@ export function canvasContextMenu(e: MouseEvent) {
   A.canvasMenu(e.clientX, e.clientY);
 }
 
-// ---------- Section 标签：拖动整体移动（卡片、子 Section 一起走） ----------
+// Section 标签：拖动整体移动（卡片、子 Section 一起走）
 
 export function sectionLabelDown(e: PointerEvent, id: string) {
   if (e.button !== 0 || (e.target as Element).closest(NODRAG)) return;
@@ -566,7 +553,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
   const items = [...members.map((c) => { const q = placeOf(c.id); return { kind: "c" as const, id: c.id, ox: q.x, oy: q.y }; }), ...subs.map((q) => ({ kind: "s" as const, id: q.id, ox: q.x, oy: q.y }))];
   const skip = new Set(subs.map((q) => q.id));
   const fr = new Map(frames());
-  // 和拖卡一样对齐、吸附（#60）：吸到别的 Section 的边和中线。自己、子 Section 跟着走；外层的框包着它、跟着它变，也不算
+  // 和拖卡一样对齐、吸附：吸到别的 Section 的边和中线。自己、子 Section 跟着走；外层的框包着它、跟着它变，也不算
   const box = fr.get(id);
   const outer = new Set<string>();
   for (let p = sec(s.parent); p && !outer.has(p.id); p = sec(p.parent)) outer.add(p.id);
@@ -619,8 +606,6 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
     live((b) => { const q = b.sections.find((x) => x.id === id); if (q) { q.x = f0.x; q.y = f0.y; q.w = Math.round(w); q.h = Math.round(h); } });
   }, () => end());
 }
-
-// ---------- 窗口级的监听（只在这里装一次） ----------
 
 export function installKeys() {
   installOverlays();

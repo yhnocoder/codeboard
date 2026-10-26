@@ -1,4 +1,3 @@
-// core 存储的 Fs 适配器：node:fs 实现。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { createHash } from "node:crypto";

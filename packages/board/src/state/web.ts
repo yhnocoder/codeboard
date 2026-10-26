@@ -1,4 +1,3 @@
-// Web 卡和 Link List 的界面状态：正在抓的网页信息、正在拖的行、From GitHub… 面板
 import { createSignal } from "solid-js";
 import { onBoardSwitch } from "./root";
 

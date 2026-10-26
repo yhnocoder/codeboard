@@ -1,4 +1,3 @@
-// 各种浮层共用：卡头（标题、Pinned、关闭）、一小段只读代码
 import { For, Show, type JSX } from "solid-js";
 import { closePop, type PopInst, type Pop } from "../../state/pop";
 import { Icon } from "../icons";

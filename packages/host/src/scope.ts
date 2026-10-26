@@ -36,7 +36,6 @@ export async function topPkgOf(abs: string): Promise<string> {
   return top || path.basename(abs).replace(/\.\w+$/, "");
 }
 
-/** 定义所在的文件是 library 吗：是的话返回包名 */
 export async function libOf(abs: string): Promise<string | undefined> {
   return inWorkspace(abs) ? undefined : topPkgOf(abs);
 }

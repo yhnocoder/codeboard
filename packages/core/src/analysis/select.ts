@@ -1,4 +1,3 @@
-// 编辑器选区 → 建什么卡（03 E 的边界情况）。
 import { BLANK, symbolAt, type FileAnalysis, type Sym } from "./index";
 
 export type Sel = { startLine: number; startCol: number; endLine: number; endCol: number }; // 1-based 行，0-based 列
@@ -86,12 +85,10 @@ export function planSelection(sels: Sel[], a: FileAnalysis): Plan | null {
   return { kind: "segments", ranges: [rangeOf({ start, end }, a)] };
 }
 
-/** 光标所在的函数（或类）：Add Function at Cursor */
 export function symbolAtCursor(a: FileAnalysis, line: number): Sym | undefined {
   return symbolAt(a.symbols, line, "def") ?? symbolAt(a.symbols, line, "class");
 }
 
-/** 类的成员方法（直接子级） */
 export const membersOf = (a: FileAnalysis, cls: Sym) => a.symbols.filter((s) => s.parent === cls.qual && s.kind === "def");
 
 /** 类卡要不要列成员：有方法 / 嵌套类才列；只有字段的类（dataclass 等）列出来是空的，做成普通代码卡 */

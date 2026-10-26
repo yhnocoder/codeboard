@@ -1,4 +1,3 @@
-// 行级 / 词级 diff，Compare 卡和「新版本」diff 窗共用的对齐算法，以及按内容迁移行号。
 import { diffArrays } from "diff";
 
 export type DiffLine = { op: " " | "+" | "-"; text: string; a?: number; b?: number };

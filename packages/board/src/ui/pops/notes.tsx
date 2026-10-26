@@ -1,4 +1,3 @@
-// Sidenote 弹窗（看、改、右键菜单）和加 Sidenote（Code / Paste / Text / Link / Card）。
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, Switch, Match, createSignal, createEffect } from "solid-js";
 import { cardTitle, versionLabel, baseName, isCode, langLabel, LANGS, guessLang, escHtml, type Sidenote, type SearchItem, type SegView } from "@codeboard/core";
@@ -12,8 +11,6 @@ import { Icon } from "../icons";
 import { MdStatic } from "../Md";
 import { openMenu, type Item } from "../Menu";
 import { PopHead, Code, type PopProps } from "./common";
-
-// ---------- Sidenote 弹窗 ----------
 
 export function NotesPop(p: PopProps<"notes">) {
   const notes = () => p.pop.ids.map((id) => state.board.sidenotes.find((n) => n.id === id)).filter(Boolean) as Sidenote[];
@@ -92,7 +89,6 @@ function NoteItem(p: { n: Sidenote }) {
     </>
   );
 }
-/** Sidenote 右键：Board-only（共享卡上才有）、Place on Board、看过了、删除 */
 const hasVariants = (id: string) => { const c = cardById(id)?.card; return isCode(c) && !!c.variants?.length; };
 function noteMenu(n: Sidenote, x: number, y: number) {
   const linked = n.kind !== "card" && sharedOn(n.at.card) > 1;
@@ -106,7 +102,7 @@ function noteMenu(n: Sidenote, x: number, y: number) {
     { label: "Delete Sidenote", danger: true, run: () => A.deleteSidenote(n.id) },
   ], x, y);
 }
-// 旁注原地编辑（#37）：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。
+// 旁注原地编辑：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。
 // 和 Note、问题的编辑一样，Esc、⌘↵、点到外面都是保存（Cancel 才是放弃）。字删光了保存就是删掉这条：Text sidenote 就是那段字，加的时候也不让加空的
 const [snEditing, setSnEditing] = createSignal<string | null>(null);
 function editText(n: Sidenote) {
@@ -137,9 +133,6 @@ function SidenoteEditor(p: { n: Extract<Sidenote, { kind: "text" }> }) {
     </div>
   );
 }
-
-
-// ---------- 加 Sidenote ----------
 
 const TABS = [["code", "Code"], ["paste", "Paste"], ["text", "Text"], ["link", "Link"], ["card", "Card"]] as const;
 

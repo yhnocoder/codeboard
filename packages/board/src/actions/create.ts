@@ -1,4 +1,3 @@
-// 建卡：宿主建好的卡放到白板上、Note / Text / Image / Web / Code、粘贴、选区拆成几张卡。
 import { createEffect } from "solid-js";
 import { rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
@@ -134,9 +133,6 @@ export async function requestViews(segs: Segment[]) {
   if (v) setState("views", (o) => ({ ...o, ...v }));
 }
 
-
-// ---------- 粘贴 ----------
-
 export async function pasteText(text: string, at?: { x: number; y: number }, exact = false) {
   if (!text.trim()) return;
   const k = classifyPaste(text);
@@ -152,8 +148,6 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   newFreeCode(at, text.replace(/\s+$/, ""), guessLang(text) ?? "python", undefined, exact);
 }
 
-
-/** 选中的片段跨了几个顶层函数：按函数拆成几张卡，或一张多段卡 */
 /** 选中的几行另起一张卡：同一个文件、同一个版本，放在原卡右边那几行的高度 */
 export function cardFromLines(ls: LineSel) {
   const f = cardById(ls.card);
@@ -172,6 +166,7 @@ export function cardFromLines(ls: LineSel) {
   requestViews([seg]);
 }
 
+/** 选中的片段跨了几个顶层函数：按函数拆成几张卡，或一张多段卡 */
 export function splitSnippet(id: string, merge: boolean) {
   const c = cardById(id)?.card;
   if (!isCode(c) || c.segments.length !== 1) return;
@@ -211,8 +206,7 @@ export function splitSnippet(id: string, merge: boolean) {
   requestViews(parts);
 }
 
-
-// 新建的 Note / Text / Code / 问题第一次编辑结束时还是空的：直接消失，不进撤销（#26）。
+// 新建的 Note / Text / Code / 问题第一次编辑结束时还是空的：直接消失，不进撤销。
 // 写了内容的在 setNoteText / setFreeCode / setQuestionText 里结算；这里兜住“什么都没改”（Editable 不提交）的情况。
 rooted(() => {
   let prev: string | undefined;

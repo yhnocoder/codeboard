@@ -68,7 +68,6 @@ async function resolve(g: GithubRef): Promise<{ commit: string; ref: string; pat
   throw new Error(`Cannot resolve “${g.ref}” in ${g.owner}/${g.name}.`);
 }
 
-/** 下载（或读缓存）某个 commit 的文件 */
 export async function fetchFile(owner: string, name: string, commit: string, rel: string, ref?: string): Promise<string> {
   const dir = githubFileDir(owner, name, commit);
   const file = path.join(dir, rel);
@@ -107,15 +106,12 @@ async function cardAt(owner: string, name: string, commit: string, ref: string, 
   return (await withViews([newCodeCard([seg])]))[0];
 }
 
-/** GitHub 链接 → 卡 */
 export async function githubCard(url: string): Promise<NewCard> {
   const g = parseGithubUrl(url);
   if (!g) throw new Error("Not a GitHub file link.");
   const { commit, ref, path: rel } = await resolve(g);
   return cardAt(g.owner, g.name, commit, ref, rel, g.start, g.end);
 }
-
-// ---------- From GitHub… ----------
 
 export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
   const base = repoUrl(q.owner, q.name);
@@ -148,14 +144,12 @@ export async function ghQuery(q: GhQuery): Promise<ReplyOf<"gh">> {
   }
 }
 
-// ---------- 侧栏 GITHUB FILES ----------
 // 下载的文件按 commit 缓存在全局目录里，所有工作区共用；侧栏只列这个工作区用过的：
 // 这个工作区里打开或加成卡的文件（记在工作区状态里），加上这个工作区的白板上 GitHub Code 卡引用的文件
 
 const OPENED = "codeboard.githubFiles";
 const fileKey = (owner: string, name: string, commit: string, rel: string) => `${owner}/${name}/${commit}/${rel}`;
 const opened = new Emitter<void>();
-/** 这个工作区打开了一个以前没打开过的 GitHub 文件 */
 export const onDidOpenGithubFile = opened.event;
 
 let remembering = Promise.resolve();
@@ -171,7 +165,6 @@ function remember(owner: string, name: string, commit: string, rel: string): Pro
   return run;
 }
 
-/** 侧栏 GITHUB FILES：这个工作区用过的 owner/name/commit 和下面的文件 */
 export async function workspaceGithubFiles(store: Storage): Promise<{ owner: string; name: string; commit: string; ref: string; files: { abs: string; rel: string; cards: number }[] }[]> {
   const cards = new Map<string, number>(), refs = new Map<string, string>();
   for (const { board } of await store.all()) for (const c of board.cards) {

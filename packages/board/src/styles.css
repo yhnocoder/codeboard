@@ -1,6 +1,5 @@
 
-/* CodeBoard 白板：暖墨材质。从 explore/mock 的样式起步（它又基于 explore/ui-feel/board.html）。
-   主题跟随 VS Code：index.tsx 按 body 的 vscode-dark / vscode-light 设置 html[data-theme]。 */
+/* 暖墨材质（默认）。明暗跟随 VS Code：host.ts 按 body 的 vscode-dark / vscode-light 设置 html[data-theme] */
 :root, [data-look="warm-ink"] {
   color-scheme: light;
   --bg: #eeece6; --surface: #fdfcfa; --head: #f8f6f1;
@@ -106,7 +105,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .board:is([data-mode="pan"], [data-mode="space"]) * { cursor: grab !important; }
 .board:is([data-mode="connect"], [data-mode="pick"]), .board:is([data-mode="connect"], [data-mode="pick"]) * { cursor: crosshair !important; }
 .world { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
-/* 世界层一直单独成层，镜头一动就按位图缩放、不重画（#15）。停下时 Canvas 给 .settle 一两帧：去掉 will-change 的提示，让浏览器按新比例重新清晰栅格化。
+/* 世界层一直单独成层，镜头一动就按位图缩放、不重画。停下时 Canvas 给 .settle 一两帧：去掉 will-change 的提示，让浏览器按新比例重新清晰栅格化。
    一直带着一个看不出来的 3D 变换（绕 x 轴转 0°），去掉 will-change 时它还是单独一层：退回普通层的话要把整层重画一遍（概览档 ~60ms）。
    这个 3D 变换不能只在 .settle 时加：加上、去掉都会让浏览器把整个世界层 3 万个节点的绘制属性重走一遍（每次 ~20ms，停下时连掉两帧）。
    只在动的时候才升层的话，每段手势的第一帧都要把整层重画一遍（~25ms，掉一帧） */
@@ -116,13 +115,13 @@ input, textarea { font: inherit; color: var(--ink); }
 .edges { position: absolute; left: 0; top: 0; overflow: visible; width: 1px; height: 1px; pointer-events: none; }
 /* 实线。不要用 stroke-dasharray 画实线：1px 的虚线段要逐段栅格化，一条线变成几千段，改一条线整层都慢 */
 .edge { fill: none; stroke: var(--edge); stroke-width: calc(var(--edge-w) * var(--lw, 1)); stroke-linecap: round; transition: opacity .2s; }
-/* 粗细三档（W01 D 24）：默认 2 = 主题自己的粗细，1 / 3 按它缩放，所以每种材质的样子不变 */
+/* 粗细三档：默认 2 = 主题自己的粗细，1 / 3 按它缩放，所以每种材质的样子不变 */
 .edge.w1, .ahead.w1 { --lw: .6; } .edge.w3, .ahead.w3 { --lw: 1.6; }
-/* Compare 两栏之间行对行的对照线（W01 B 11）：不带箭头 */
+/* Compare 两栏之间行对行的对照线：不带箭头 */
 .edge.cmpline { stroke-dasharray: 2 3; }
 /* 带不带 Call 标记默认一样：实线 + 箭头；虚线要在菜单里选 */
 .edge.dashed { stroke-dasharray: 4 4; stroke-dashoffset: 0; }
-/* 连着的行在代码更新后没了：端点退到卡头，线标红，等用户重连或删掉（WS2 细化画法） */
+/* 连着的行在代码更新后没了：端点退到卡头，线标红，等用户重连或删掉 */
 .edge.lost, .ahead.lost { stroke: var(--lk-lost, #d64545); }
 .ahead.triangle.lost, .ahead.dot.lost { fill: var(--lk-lost, #d64545); }
 .edge.hot { stroke: var(--accent); stroke-width: 1.6; }
@@ -133,7 +132,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .ahead.hot { stroke: var(--accent); }
 .port { fill: var(--surface); stroke: var(--edge); stroke-width: var(--edge-w); transition: opacity calc(var(--t) * 120ms); }
 /* 线的图层（canvas/Links.tsx 的「图层」）：线都在 .bottom 这一层（所有卡下面），放线、City 的路、线的标签框和贴纸（开着的车全在一层 .movers，见 Traffic.tsx）。
-   标签框、贴纸原来的 z-index 在层里清掉，不然会跑到所有卡上面。线头的圆点在 .ports 这一层（在所有卡上面，跟以前的 .edges 一样）。
+   标签框、贴纸原来的 z-index 在层里清掉，不然会跑到所有卡上面。线头的圆点在 .ports 这一层（在所有卡上面）。
    浮上来的线（选中、拖着、指针下那张卡的）在 .top 这一层，在所有卡和画布贴纸上面 */
 .lyr { position: absolute; left: 0; top: 0; pointer-events: none; }
 .lyr.top { z-index: 5; }
@@ -266,7 +265,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .src.ded .l { text-indent: calc(var(--ded-pad) - var(--ded) * 1ch); }
 .dedm { position: absolute; left: calc(var(--gutter) + 1px); top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; opacity: .7;
   background: repeating-linear-gradient(90deg, var(--hair) 0 .5px, transparent .5px 3px);
-  -webkit-mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); } /* 很淡的细虚线，不抢代码的眼 */
+  -webkit-mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); }
 .dedm::before { content: ""; position: absolute; inset: 0 -4px; } /* 悬停热区宽一点，好看到提示 */
 .dedm:hover { opacity: 1; }
 .card.lo-ov .dedm { visibility: hidden; }
@@ -331,7 +330,7 @@ input, textarea { font: inherit; color: var(--ink); }
    没改 = 主题的字号（这里和 themes.css 给），标题按正文的比例（没设的 --note-fs-hN 让 --md-hN 无效，回到包里的默认比例） */
 .card.note .nbody { --md-fs: var(--note-fs, 13.5px); --md-h1: var(--note-fs-h1); --md-h2: var(--note-fs-h2); --md-h3: var(--note-fs-h3); --md-h4: var(--note-fs-h4); --md-h5: var(--note-fs-h5); --md-h6: var(--note-fs-h6); }
 .card.note .nbody { padding: 10px 14px 12px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
-/* 定了高度的 Note（用户拖过下边 / 角）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外（#2、#10）；放得下时下面留空。
+/* 定了高度的 Note（用户拖过下边 / 角）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外；放得下时下面留空。
    不拉伸（flex-grow 0）：正文只有内容那么高，Fit Content、改大小时量的是内容。
    Text 没有框，不裁：从 Note 换过来带着的高度用 Fit Content 去掉 */
 .card.note:not(.autoh) .nbody { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent;
@@ -645,7 +644,6 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 .step .glyph { vertical-align: -3px; }
 @media (prefers-reduced-motion: reduce) { :root { --t: 0.001; } }
 
-/* ===================== v0.1 additions ===================== */
 .app { position: fixed; inset: 0; }
 /* a field being typed in; a card in edit mode also has .editing, and keeps its own corners, shadow and cursor */
 .editing:where(:not(.card)) { outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 4px; background: var(--surface); text-overflow: clip; cursor: text; user-select: text; -webkit-user-select: text; white-space: pre-wrap; }
@@ -898,11 +896,10 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .srcpop { width: min(640px, 90vw); }
 .pop .sres { margin-top: 0; }
 .card.lost .cbody { filter: grayscale(1); opacity: .62; } /* 符号找不到：显示旧代码，变灰 */
-/* 白板只占半边窗口时，底部工具条只留图标（悬停仍有提示），不被裁掉 */
 /* 底部工具条只有图标（所有主题一样），名字在悬停提示里 */
 .bbar .tbtn { padding-inline: 7px; }
 
-/* 无背景（#39）：内容直接在画布上；头部和细边框只在悬停 / 选中时浮出 */
+/* 无背景：内容直接在画布上；头部和细边框只在悬停 / 选中时浮出 */
 .card.nobg { background: transparent; box-shadow: none; }
 .card.nobg:hover:not(.sel) { box-shadow: 0 0 0 1px var(--hair); }
 .card.nobg > .cface > .chead { position: absolute; left: -1px; right: auto; bottom: calc(100% + 6px); max-width: min(100%, 320px); height: 26px; gap: 4px; padding: 0 2px 0 8px; border: none; border-radius: 10px;
@@ -913,7 +910,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .card.nobg:hover > .cface > .chead, .card.nobg.sel > .cface > .chead { opacity: 1; translate: 0 0; pointer-events: auto; }
 .card.nobg .cbody { background: transparent; }
 
-/* 调用上的变量：一行一个，→ 对齐，收在一个小框里（#31） */
+/* 调用上的变量：一行一个，→ 对齐，收在一个小框里 */
 .vbox { display: grid; grid-template-columns: auto auto auto; padding: var(--vl-pad, 3px 4px); font: 10.5px/15px var(--mono); color: var(--ink-2); }
 /* 一整行（含字间空隙）是一个悬停区，不再只绑在字上：鼠标在框里移动时代码高亮不会一闪一闪 */
 .vrow { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: 5px; padding: .5px 3px; border-radius: 4px; }
@@ -994,7 +991,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .board[data-mode="place"], .board[data-mode="place"] * { cursor: copy !important; }
 .stkpick .tlink { color: var(--accent); font-weight: 600; font-size: 11.5px; }
 
-/* 行号栏：行号 | 标记列（旁注、"+"、贴纸都是 14px）| 代码（#13 #14 #16） */
+/* 行号栏：行号 | 标记列（旁注、"+"、贴纸都是 14px）| 代码 */
 .lstks { position: absolute; left: calc(var(--gutter) - 18px); height: 20px; display: flex; align-items: center; gap: 2px; z-index: 3; }
 .lstks .stk { position: static; cursor: pointer; border-radius: 50%; corner-shape: round; }
 .lstks.dot { left: 33px; margin-top: -2px; height: 8px; z-index: 4; }
@@ -1004,16 +1001,16 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .lstks.dot .glyph.tag { font-size: 0 !important; padding: 0; }
 .stkpick { align-items: stretch; text-align: left; }
 
-/* 缩放分档（#11）：概览 = 名字 + 图标记 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量）。
+/* 缩放分档：概览 = 名字 + 图标记 + 代码灰条；地图 = 名字 + 色块。只换可见性，不改布局（不触发重新测量）。
    卡上的样子跟着卡自己的 .lo-ov / .lo-map 走（state/lodcards.ts 每帧换一批，屏幕中间的先换），不跟着 .board 一次全换：241 张卡一起换要 100+ ms，掉好几帧 */
 .board { --bar: color-mix(in srgb, var(--ink) 13%, transparent); }
 .card.lo-ov .crows .cmpl, .card.lo-ov .cno,
 .card.lo-ov .cpath, .card.lo-ov .rev, .card.lo-ov .chead .ib, .card.lo-ov .lport { visibility: hidden; }
-/* 缩小看全局：参数收起，留 ↺ 和自己写的字；只有参数的框整个不画（W01 C） */
+/* 缩小看全局：参数收起，留 ↺ 和自己写的字；只有参数的框整个不画 */
 .lyr.lod-overview .vbox, .lyr.lod-overview .vchips.argsonly, .lyr.lod-overview .vplus, .lyr.lod-overview .mkcall { display: none; }
 .lyr.lod-overview .vcard.split .vhead { border-bottom: 0; }
 /* 代码和行号节点多（241 张卡 ≈ 3 万个）：用 opacity 藏，不用 visibility。visibility 会继承，切档时里面每个节点都要重算样式（一次 0.3–0.5 秒）；
-   opacity 不继承，只算这两个元素。指针由盖住整个代码区的 .ovm 接住，跟以前点到被藏起来的行号和代码一样交给卡片 */
+   opacity 不继承，只算这两个元素。指针由盖住整个代码区的 .ovm 接住，交给卡片 */
 .card.lo-ov .gutter, .card.lo-ov .src, .card.lo-ov .rowbgs { opacity: 0; }
 /* 概览档：每行按真实缩进和长度画一根直角灰条（注释行淡一些），轮廓就是这段代码本身的样子 */
 .card .code > .ovm { position: absolute; inset: 0; z-index: 4; background-repeat: no-repeat; --bar-c: color-mix(in srgb, var(--ink) 6%, transparent); } /* 色块的 x 从 --gutter（行号区宽，跟 .src 的 margin-left 一致）算起 */
@@ -1044,7 +1041,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .maplabel > .mt { min-width: 0; max-width: 100%; }
 .maplabel .step { height: auto; padding: .08em .3em; font-size: .8em; border-radius: calc(5.5px * var(--iz, 1)); }
 
-/* 旁注原地编辑（#37） */
+/* 旁注原地编辑 */
 .sn-edit { padding: 6px 10px 8px; display: flex; flex-direction: column; gap: 6px; min-width: 340px; }
 .sn-edit textarea { font: 12px/1.55 var(--mono); color: var(--ink); background: var(--surface); border: 1px solid var(--accent); border-radius: 8.5px; padding: 6px 8px; resize: none; outline: none; min-height: 60px; max-height: 320px; overflow-y: auto; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 14%, transparent); }
 .sn-edit .sn-prev { padding: 6px 8px; border-radius: 8.5px; background: var(--hlrow); max-width: none; }
@@ -1092,7 +1089,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .cbody.wrap .src.ded .l { text-indent: 0; } /* 自动换行时不藏缩进：换行的续行会对不齐 */
 .cbody.wrap .dedm { display: none; }
 
-/* 子白板框（线框 05，风格 C：带名字的骨架）。骨架是一张 SVG（cards/BoardBody.tsx），颜色都在这里按主题取 */
+/* 子白板框：带名字的骨架。骨架是一张 SVG（cards/BoardBody.tsx），颜色都在这里按主题取 */
 .card.board { --cr: calc(var(--r-card) + 4px); border-radius: var(--cr); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 45%, transparent), var(--sh-card); }
 .card.board.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
 .card.board.drop-hot { box-shadow: 0 0 0 2px var(--k-fn), var(--sh-card); }
@@ -1121,7 +1118,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .board[data-mode="connect"] .skel .sk-c:hover .sk-box, .board .skel .sk-c:hover .sk-box { stroke: color-mix(in srgb, var(--accent) 80%, transparent); }
 .sbentry { fill: var(--surface); stroke: var(--edge, var(--ink-2)); stroke-width: 1.6; }
 .sbentry.lost { stroke: var(--lk-lost, #d64545); }
-/* 地图档（拉远）：只剩灰块、形状和 Section 色；名字浮在框上面，字号按 --iz 放大 */
 /* 地图档的名字：框里左上角一块底色（卡本身裁掉框外的东西，放框上面看不见） */
 .sbfar { position: absolute; left: 0; top: 0; max-width: 100%; box-sizing: border-box; visibility: hidden; padding: calc(2px * var(--iz, 1)) calc(6px * var(--iz, 1)); border-radius: 0 0 calc(5.5px * var(--iz, 1)) 0;
   background: color-mix(in srgb, var(--surface) 88%, transparent); font: 700 calc(12px * var(--iz, 1))/1.25 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 1; --iz: inherit; }
@@ -1140,7 +1136,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .crumbs .crumb.cur { color: var(--ink); font-weight: 600; cursor: default; }
 .crumbs .csep { color: var(--ink-3); }
 
-/* ---------- 接上断掉的调用链、跨语言（线框 01、02） ---------- */
+/* ---------- 接上断掉的调用链、跨语言 ---------- */
 /* 证据：manual = 虚线，observed = 绿；Generated from = 点线（和别的线同一层，只换样式） */
 :root { --ev-obs: var(--ok, #4f8a4a); }
 :root[data-theme="dark"] { --ev-obs: var(--ok, #8dbb79); }
@@ -1195,7 +1191,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .sres.names .grp-h { padding: 6px 12px 2px; font: 600 10px var(--sys); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
 .sres.names .empty.sm { padding: 2px 12px 4px; font-size: 11px; }
 
-/* ---------- 调用（线框 03、12、13）：RPC、进程标签、消息卡、起点、步数、图例、调用树、运行时的实参 ---------- */
+/* ---------- 调用：RPC、进程标签、消息卡、起点、步数、图例、调用树、运行时的实参 ---------- */
 /* RPC = 点划线（跨进程）；↩ back to 淡一点 */
 .edge.rpc, .edge.rpc.ev-manual { stroke-dasharray: 9 4 2 4; }
 .edge.back { stroke-opacity: .7; }
@@ -1211,8 +1207,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 起点卡 */
 :root { --start: #2f7d4f; }
 .startt { flex-shrink: 0; font: 700 9.5px/15px var(--sys); letter-spacing: .04em; color: #fff; background: var(--start); border-radius: 4px; padding: 0 5px; }
-/* Walkthrough 的步数（算出来的，不存） */
-/* Walkthrough 步号：画在卡片层之上，不跟 dim 一起变淡 */
+/* Walkthrough 步号（算出来的，不存）：画在卡片层之上，不跟 dim 一起变淡 */
 .wsteps { position: absolute; left: 0; top: 0; pointer-events: none; }
 .wstep { position: absolute; transform-origin: left bottom; font: 700 11px/18px var(--sys); color: var(--ink-2); background: var(--surface); border: 1px solid var(--hair); border-radius: 14px; padding: 0 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wstep.cur { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
@@ -1280,7 +1275,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .cpanel .empty.sm { padding: 6px 8px; color: var(--ink-3); font-size: 11.5px; white-space: normal; }
 .dock .ib[aria-pressed="true"] { color: var(--accent); background: var(--row); }
 
-/* ---------- 疑问（线框 06） ---------- */
+/* ---------- 疑问 ---------- */
 .chead .qcount { font: 600 10.5px/16px var(--sys); color: #7a4d00; background: #fdf0d5; border: 0; border-radius: 11px; padding: 0 7px; cursor: pointer; white-space: nowrap; flex: none; }
 :root[data-theme="dark"] .chead .qcount, .vscode-dark .chead .qcount { color: #f3c46b; background: color-mix(in srgb, #d08a12 24%, transparent); }
 .pop.k-question { width: 380px; }
@@ -1315,7 +1310,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .welcome { position: absolute; top: 12px; left: 50%; translate: -50% 0; z-index: 21; padding: 3px 3px 3px 12px; gap: 8px; font-size: 12.5px; animation: popin calc(var(--t) * 200ms) var(--out); }
 .crumbs ~ .welcome { top: 52px; }
 
-/* ---------- 导出（线框 08） ---------- */
+/* ---------- 导出 ---------- */
 .dialog.xdlg { width: min(560px, calc(100vw - 24px)); }
 .xdlg .xf { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; flex-wrap: wrap; }
 .xdlg .xf.last { border-bottom: 0; }
@@ -1338,7 +1333,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock，先靠左；再窄 dock 并进底栏（App.tsx NARROW） */
 @media (max-width: 900px) { .bbar { left: 12px; right: auto; margin-inline: 0; } }
 
-/* ---------- 我的改动（线框 07）：Variant 标签页、MINE、对比基准、改过的行、三方对照 ---------- */
+/* ---------- 我的改动：Variant 标签页、MINE、对比基准、改过的行、三方对照 ---------- */
 .vtabs { display: flex; align-items: stretch; flex: none; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--head); font: 10.5px/1 var(--sys); }
 .vtab { padding: 5px 10px; color: var(--ink-2); white-space: nowrap; border-right: 1px solid var(--line); display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
 .vtab:hover { color: var(--ink); background: var(--hlrow); }

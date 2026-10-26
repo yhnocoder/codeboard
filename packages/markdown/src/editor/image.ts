@@ -1,6 +1,3 @@
-// 编辑器里的图片：节点视图（和静态显示同一份 <img> 属性：一样大，切换时不跳）、粘贴截图、拖进图片文件。
-// 图交给用的一方存（MdEditorOpts.saveImage：白板交给宿主存成 assets/ 里的文件），回来的地址写进 Markdown（![](地址)）；
-// 回 null 就不插（存不了：不是图、太大，用的一方自己提示）。几张图一起插，算撤销栈里单独的一步
 import type { Editor, Node as TNode } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
@@ -8,7 +5,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 import { imageAttrs } from "../image";
 
-/** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插 */
+/** 存一张图（data: URL、文件名）→ 写进 Markdown 的地址；null = 不插（存不了时用的一方自己提示） */
 export type SaveImage = (dataUrl: string, name: string) => Promise<string | null>;
 
 const readUrl = (f: File) => new Promise<string>((ok, bad) => {
@@ -19,7 +16,7 @@ const readUrl = (f: File) => new Promise<string>((ok, bad) => {
 });
 const imagesOf = (files: FileList | File[] | undefined | null) => [...(files ?? [])].filter((f) => f.type.startsWith("image/"));
 
-/** 剪贴板里有图又有字（从 Excel、网页复制的东西常带一张图）：字不是空的就粘字（交给别的粘贴处理）；网页上复制一张图时 HTML 里只有那张图 */
+/** 剪贴板里有图又有字（从 Excel、网页复制的东西常带一张图）：有字就粘字（交给别的粘贴处理）；网页上复制一张图时 HTML 里只有那张图 */
 function pastedImages(cd: DataTransfer): File[] {
   const files = imagesOf(cd.files).length ? imagesOf(cd.files) : [...cd.items].filter((i) => i.kind === "file" && i.type.startsWith("image/")).map((i) => i.getAsFile()).filter((f): f is File => !!f);
   if (!files.length) return [];
@@ -66,7 +63,7 @@ class ImageView {
   ignoreMutation() { return true; }
 }
 
-/** schema 里的图片节点加上编辑时的东西。save 每次粘贴时才取（编辑器是共用的，选项跟着这一次编辑） */
+/** save 每次粘贴时才取（编辑器是共用的，选项跟着这一次编辑） */
 export function imageEditing(base: TNode, editor: () => Editor, save: () => SaveImage) {
   return base.extend({
     addNodeView: () => ({ node }) => new ImageView(node),

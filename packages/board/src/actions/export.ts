@@ -1,8 +1,6 @@
-// 导出（线框 08）：对话框选格式（HTML 快照 / Markdown / PNG）、范围（整块 / 选中的 Section / 一条讲解路径）、带不带问题和 Board-only 笔记。
 // HTML 快照：把画布克隆一份（和 webview 里画的一样，当前主题），去掉范围外的卡和不带出去的东西，CSS 收进来，
 // 字体和图片写成 cbres: 引用，宿主换成 data: URL（webview 的 CSP 不让 fetch）；配一小段只读的平移缩放脚本（export/viewer.ts）。
 // PNG 用同一份克隆画到 canvas 上。交互用的部件在组件里标 data-export="strip"，克隆时一起删。
-// 都是点了 Export 才做、异步做，不进每帧的工作
 import { unwrap } from "solid-js/store";
 import { boardMarkdown, cardTitle, exportOrder, findCard, isQuestion, startCards, walkOrder, bounds, escHtml, THEMES, type Board, type ExportFormat, type ExportScope, type Segment, type Sidenote } from "@codeboard/core";
 import { state, sel, select, lineSel, setLineSel, rectOf, hostOf, toast, flows } from "../state/store";

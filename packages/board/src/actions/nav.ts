@@ -1,4 +1,3 @@
-// 回去的路：谁连到这里（卡头的「← N」）、跳转后的后退 / 前进（⌃- / ⌃⇧-）。
 import { createMemo, createSignal } from "solid-js";
 import { cardTitle, isCode, segOf, type Link } from "@codeboard/core";
 import { state, sel, select, clearSel, cardById, toast, shared } from "../state/store";
@@ -8,8 +7,6 @@ import { flash } from "../state/ui";
 import { openPop } from "../state/pop";
 import { revealCard } from "./common";
 import { rooted, onBoardSwitch } from "../state/root";
-
-// ---------- 连进来的箭头 ----------
 
 // 卡片 id → 连进来的箭头（Compare：连到它和它两栏的都算）。只在线的两端变时重算，拖动卡片不碰它
 const inIndex = rooted(() => createMemo(() => {
@@ -52,8 +49,6 @@ export function showLinkedHere(id: string, el: Element) {
     ],
   }, { el, prefer: "below" });
 }
-
-// ---------- 后退 / 前进 ----------
 
 type Spot = { cam: { x: number; y: number; z: number }; card?: string };
 const back: Spot[] = [], fwd: Spot[] = [];

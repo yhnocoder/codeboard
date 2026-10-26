@@ -73,7 +73,6 @@ function PlainEdit(p: P) {
   );
 }
 
-
 /** Markdown 编辑：编辑器代码第一次用到时才加载（单独一个 chunk），加载完之前先显示静态内容 */
 function MdEdit(p: P) {
   let el!: HTMLDivElement;
@@ -90,7 +89,7 @@ function MdEdit(p: P) {
     f(v);
   });
   const start = p.value;
-  // 显示时选了一段字再按 ⌫ / Delete 进来的（#69）：选上同一段，再把这个键交给编辑器
+  // 显示时选了一段字再按 ⌫ / Delete 进来的：选上同一段，再把这个键交给编辑器
   const entry = p.kind === "note" ? takeEditEntry("note", p.id) : null;
   const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
     if (done() || !el.isConnected) return;

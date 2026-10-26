@@ -1,5 +1,4 @@
-// 箭头走线的纯计算（不碰 DOM、不读 store）：两端走哪一侧（W03 1–4，带缓冲）、端点和朝向、曲线 / 直角折线、错位时斜着进（W03 11）。
-// Links.tsx 每条线一个 memo 调这里；单元测试在 test/unit/route.test.ts。
+// 纯计算：不碰 DOM、不读 store（Links.tsx 每条线一个 memo 调这里）。
 
 import { clamp } from "./geom";
 
@@ -11,7 +10,7 @@ export type Box = { x: number; y: number; w: number; h: number };
  */
 export type Mode = "sepR" | "sepL" | "stackR" | "stackL" | "down" | "up";
 export type Pt = { x: number; y: number };
-/** 端点：位置 + 朝卡外的方向（单位向量） */
+/** nx, ny：朝卡外的方向（单位向量） */
 export type Anchor = { x: number; y: number; nx: number; ny: number };
 
 /**
@@ -23,7 +22,7 @@ const CLEAR = 24;
 const cx = (b: Box) => b.x + b.w / 2, cy = (b: Box) => b.y + b.h / 2;
 
 /**
- * W03 1–4 + 5：按两张卡的左右关系定摆法。H = 换边缓冲：从「上下」换成「左右分开」要拉开 H，分开以后要重叠才换回来；
+ * 按两张卡的左右关系定摆法。H = 换边缓冲：从「上下」换成「左右分开」要拉开 H，分开以后要重叠才换回来；
  * C 形的左右、卡↔卡的上下也要越过 H 才换（来回拖不抖）。prev = 这条线上一次的结果（没有 = 第一次画）
  */
 export function chooseMode(a: Box, b: Box, cards: boolean, prev: Mode | undefined, H: number): Mode {
@@ -79,7 +78,7 @@ export function slide(a: Anchor, b: Anchor, p: number): Anchor {
 const rot = (n: Pt, ang: number): Pt => ({ x: n.x * Math.cos(ang) - n.y * Math.sin(ang), y: n.x * Math.sin(ang) + n.y * Math.cos(ang) });
 const MAX_TILT = Math.PI / 4;
 /**
- * W03 11：终点正前方空间不够、侧向又偏得多时，方向朝对面那一端斜过去，最多 45°（不先拐直角再进）。
+ * 终点正前方空间不够、侧向又偏得多时，方向朝对面那一端斜过去，最多 45°（不先拐直角再进）。
  * 前方空间够大时慢慢回到正对（≥ 160 不斜），所以远的线还是平着进出。返回转过的角（带符号）
  */
 export function tiltAngle(p: Anchor, q: Pt): number {
@@ -100,7 +99,7 @@ export type Shape = { d: string; pts: number[]; mx: number; my: number; /** 终�
  */
 export function connect(p: Anchor, q: Anchor, route: "curve" | "elbow", tilt: { start: boolean; end: boolean } = { start: true, end: true }, boxes: { a?: Box; b?: Box } = {}, clear = CLEAR): Shape {
   const dot = p.nx * q.nx + p.ny * q.ny;
-  // 同一侧、但起点在终点卡的里侧（或反过来），直着绕会穿过那张卡：从卡的下面 / 上面绕过去（W01 E3 Compare 交换后从右边进）
+  // 同一侧、但起点在终点卡的里侧（或反过来），直着绕会穿过那张卡：从卡的下面 / 上面绕过去（比如 Compare 交换后从右边进）
   if (dot > 0.5 && p.ny === 0) {
     if (boxes.b && crosses(p, q, boxes.b)) return around(p, q, boxes.b, route, false, clear);
     if (boxes.a && crosses(q, p, boxes.a)) return around(q, p, boxes.a, route, true, clear);
@@ -206,7 +205,7 @@ function elbow(p: Anchor, q: Anchor, dot: number, clear = CLEAR): Shape {
   };
 }
 
-/** 卡内自连（W01 4）：从这一侧绕一个弧回来 */
+/** 卡内自连：从这一侧绕一个弧回来 */
 export function selfArc(p: Anchor, q: Anchor, route: "curve" | "elbow", clear = CLEAR): Shape {
   const k = clamp(Math.abs(q.y - p.y) * 0.5 + Math.abs(q.x - p.x) * 0.5, 28, 90);
   if (route === "elbow") {
@@ -224,7 +223,7 @@ export function selfArc(p: Anchor, q: Anchor, route: "curve" | "elbow", clear = 
   };
 }
 
-/** Compare 两栏之间行对行（W01 11）：中缝里一条直的对照线，不带箭头 */
+/** Compare 两栏之间行对行：中缝里一条直的对照线，不带箭头 */
 export function gutterLine(x: number, y1: number, y2: number, left: boolean): Shape {
   const g = 7, xa = left ? x - g : x + g, xb = left ? x + g : x - g;
   return {

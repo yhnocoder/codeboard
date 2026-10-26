@@ -1,4 +1,4 @@
-// 跨语言下钻（线框 02）：Python → C++ / CUDA / Rust，C++ → CUDA kernel，Triton、TileLang。
+// 跨语言下钻：Python → C++ / CUDA / Rust，C++ → CUDA kernel，Triton、TileLang。
 // 认边界用 core 的纯文本函数（analysis/bridge.ts），这里负责找文件、找符号、读取值。结果是「目标符号 + 要并进 Call 标记的边界和取值」。
 // 都是宿主上的异步工作：读文件、查名字索引，白板不等。
 import * as path from "node:path";

@@ -1,4 +1,4 @@
-// 我的改动（线框 07）：卡上的 Variant 从哪读代码（分支、工作区、另一个 worktree、复制出来的文件、GitHub PR），
+// 我的改动：卡上的 Variant 从哪读代码（分支、工作区、另一个 worktree、复制出来的文件、GitHub PR），
 // 按函数名在那里重新找到这段（不靠行号：rebase、改了上面的代码都找得到），以及刷新：代码变了、rebase 了、合进上游了、上游最新。
 import * as os from "node:os";
 import * as path from "node:path";
@@ -13,7 +13,6 @@ import { absOf, locOfFile, hasLocalFile } from "./source";
 import { viewsFor } from "./views";
 import { posix, readText, splitLines, workspace } from "./ws";
 
-/** 段所在的 git 仓库根和相对路径（不在 git 里返回 null） */
 async function repoOf(seg: Segment): Promise<{ root: string; rel: string; abs: string } | null> {
   if (!hasLocalFile(seg.src)) return null;
   const abs = absOf(seg);
@@ -39,7 +38,6 @@ export function shortDir(here: string, dir: string, home = os.homedir()) {
   return home && (dir === home || dir.startsWith(home + path.sep)) ? `~${dir.slice(home.length).split(path.sep).join("/")}` : dir;
 }
 
-/** 一个来源里这个文件的内容和那个版本 */
 type Read = { text: string; src: Source; path: string; version: Version; tip?: string };
 
 async function readFrom(up: Segment, from: VariantFrom, net = true): Promise<Read | null> {

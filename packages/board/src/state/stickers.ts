@@ -1,4 +1,3 @@
-// 贴纸的界面状态（选中、选图标面板、拖动时亮起来的目标）和按卡 / 行 / 线分好组的索引。
 // 每张卡、每条线只问自己那一组：拖一枚贴纸时索引重算一次，没变的组还是原来的数组，卡和线都不用重算
 import { createMemo, createSelector, createSignal } from "solid-js";
 import type { Sticker } from "@codeboard/core";
@@ -12,7 +11,7 @@ export const [stickerColor, setStickerColor] = createSignal<string | undefined>(
 export const [selSticker, setSelSticker] = createSignal<string | null>(null);
 export const isSelSticker = rooted(() => createSelector(selSticker));
 
-/** 拖贴纸时指针下面能绑的东西（亮起来）："card:id" / "link:id" */
+/** 拖贴纸时指针下面能绑的东西（亮起来） */
 export type BindTarget = { card: string } | { link: string };
 const [bindHot, setBindHotKey] = createSignal<string | null>(null);
 const keyOf = (t: BindTarget | null) => (!t ? null : "card" in t ? `card:${t.card}` : `link:${t.link}`);

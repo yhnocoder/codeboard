@@ -1,6 +1,5 @@
-// Section 的实际框：自己存的框 ∪ 成员卡（含边距）∪ 子 Section（core layout.sectionFrame，和子白板骨架同一套算法）。框随内容自动撑大，也能拖边改大。
-// 成员关系（homeFor）：盖住卡三分之一以上面积的 Section，几个都够时取盖得多的（拖动结束、粘贴、新建时定）。拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，
-// 要进的 Section 撑开、亮起来（.drop），松手时才真的改 place.section。
+// Section 的实际框：自己存的框 ∪ 成员卡（含边距）∪ 子 Section（core layout.sectionFrame，和子白板骨架同一套算法），框随内容自动撑大，也能拖边改大。
+// 拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，要进的撑开、亮起来（.drop），松手时才真的改 place.section。
 import { createMemo, createSignal, mapArray } from "solid-js";
 import { sectionFrame, sectionFit, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
@@ -87,7 +86,6 @@ export const frames = rooted(() => createMemo<Map<string, Rect>>((prev) => {
   return same && m.size === prev.size ? prev : m;
 }, new Map()));
 
-/** 两个矩形重叠的面积 */
 export function overlapArea(a: Rect, b: Rect): number {
   const w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), h = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
   return w > 0 && h > 0 ? w * h : 0;

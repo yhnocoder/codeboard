@@ -1,4 +1,3 @@
-// 建卡：从文件位置、符号、编辑器选区做成 CodeCard（位置由白板定）。
 import { uid, type CodeCard, type EditorState, type NewCard, type Segment } from "@codeboard/core";
 import { listsMembers, planSelection, symbolAtCursor, type Plan, type Range, type Sel, type Sym } from "@codeboard/core/analysis";
 import * as path from "node:path";
@@ -8,7 +7,6 @@ import { makeSegment } from "./versions";
 import { viewsFor } from "./views";
 import { langOf, readText, splitLines } from "./ws";
 
-/** 默认卡宽：按最长的行估 */
 export function widthFor(segs: Segment[]): number {
   const longest = Math.max(20, ...segs.flatMap((s) => s.text.map((l) => l.replace(/\t/g, "    ").length)));
   return Math.round(Math.min(760, Math.max(380, longest * 7.4 + 70)));
@@ -29,7 +27,6 @@ export async function symCard(loc: Loc, lines: string[], sym: Sym, lang: string,
   return newCodeCard([seg], cls && listsMembers(analysisOf(lang, lines.join("\n")), sym) ? { members: { shown } } : {});
 }
 
-/** 文件里的一个符号 → 卡 */
 export async function cardForFileSym(abs: string, sym: Sym): Promise<NewCard | null> {
   const text = await readText(abs);
   if (text === null) return null;
@@ -80,7 +77,6 @@ export async function cardsFromEditor(ed: EditorState, mode: "auto" | "function"
   const isEmpty = (s: Sel) => s.startLine === s.endLine && s.startCol === s.endCol;
   const empty = ed.selections.every(isEmpty);
   if (!loc) {
-    // 未命名文件 / 不在磁盘上：Free code
     const t = (empty ? text : ed.selectionText).replace(/\n$/, "");
     if (!t.trim()) return { error: "Nothing to add." };
     return { cards: [freeCard(t, lang)] };

@@ -1,4 +1,3 @@
-// 子白板（线框 05）：进入 / 返回（面包屑）、Turn into Board、插入已有的白板、移除框、删掉那块白板；讲解走到子白板时进去再回来。
 import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
 import { cardTitle, descendants, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
@@ -14,10 +13,8 @@ import { promptText } from "../ui/Menu";
 const subsOf = (id: string) => state.boards.find((m) => m.id === id)?.subs;
 const nameOf = (id: string) => state.boards.find((m) => m.id === id)?.name ?? "Board";
 
-// ---------- 进入 / 返回 ----------
-
 let leaving = false;
-/** 双击框 / ⌘↵：镜头先推进框里，再在这个面板里打开子白板（先把没存的改动发出去）。walk = 讲解接着在子白板里走 */
+/** 双击框 / ⌘↵：镜头先推进框里，再在这个面板里打开子白板（先把没存的改动发出去）。walkHop = 讲解接着在子白板里走 */
 export function enterFrame(id: string, walkHop?: WalkHop) {
   const f = frameOf(id);
   if (!f || leaving) return;
@@ -40,9 +37,6 @@ export function leaveBoard(depth?: number, walkHop?: WalkHop) {
   flushSave();
   send({ type: "leaveBoard", ...(depth !== undefined ? { depth } : {}), ...(walkHop ? { walk: walkHop } : {}) });
 }
-
-// ---------- 讲解跨白板 ----------
-
 
 /** 讲解走到子白板框：镜头推进那张卡（箭头连到的）所在的框，进去从那张卡讲起，讲完回来 */
 export function walkIntoFrame(frame: string, i: number) {
@@ -67,9 +61,6 @@ export function walkOut(dir: 1 | -1) {
   leaveBoard(undefined, { resume: { root: b.root, i: b.i + dir } });
 }
 
-// ---------- Turn into Board / 插入 / 移除 ----------
-
-/** 选中的卡变成一块新白板，原地留下骨架框；外面连进来的箭头改连到框里那张卡（⌘⇧B） */
 /**
  * 新白板默认用哪张卡的名字：调用图里最上面的那张（调用它的卡都不在这些卡里），这样的有几张就取往下调用到的选中卡最多的；
  * 再一样就按阅读顺序（先上后左）
@@ -82,6 +73,7 @@ function topCard(ids: string[]): string {
   return (roots.length ? roots : reading).map((id, i) => ({ id, i, n: below(id) })).sort((a, b) => b.n - a.n || a.i - b.i)[0].id;
 }
 
+/** 选中的卡变成一块新白板，原地留下骨架框；外面连进来的箭头改连到框里那张卡（⌘⇧B） */
 export async function turnIntoBoard() {
   const ids = [...new Set(sel.cards.map((id) => cardById(id)?.host.id).filter((x): x is string => !!x))];
   if (!ids.length) return toast("Select the cards to turn into a board first");

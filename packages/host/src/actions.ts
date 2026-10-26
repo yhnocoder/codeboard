@@ -1,5 +1,3 @@
-// 编辑器和侧栏的命令做什么：Add to Board（⌥B）、Add to Another Board…、Add to Selected Card、Add Function at Cursor、
-// Add as Sidenote（⌥S）、Reveal on Board，以及白板的新建 / 改名 / 删除 / 分组 / 拷到或搬到别的项目。命令注册在 commands.ts（VS Code 适配层）。
 import * as path from "node:path";
 import { allCodeCards, estSize, placeCards, removeCards, type Board, type CardCopy, type CodeCard, type KeyAction } from "@codeboard/core";
 import { analysisOf } from "./analysis";
@@ -24,8 +22,8 @@ export function makeActions(panels: BoardHost, store: Storage) {
   const boardArg = (a: unknown): string | undefined => (typeof a === "string" ? a : (a as Node)?.kind === "board" ? (a as { id: string }).id : undefined);
 
   /** Add to 的目标白板：最近聚焦的；没有就第一张；一张都没有就新建 */
-  // Commands that run at once share one answer: in a workspace without a board, Alt+B and Open Board pressed together each found no
-  // board and each created a "New Board" (the card went into one, the other was shown)
+  // Commands that run at once share one answer: otherwise Alt+B and Open Board pressed together in a workspace without a board
+  // would each find no board and each create a "New Board"
   let targeting: Promise<string> | null = null;
   const targetId = (): Promise<string> => (targeting ??= (async () => {
     const metas = await store.list();
@@ -128,14 +126,12 @@ export function makeActions(panels: BoardHost, store: Storage) {
     // 白板聚焦时，VS Code 自己的快捷键（⌘K 和弦、⌘1 切编辑组、⌘± 缩放窗口……）会抢在白板前面；
     // 这些键在白板里另有用途，所以注册同样的键，转给白板处理
     "codeboard.boardKey": (action: KeyAction) => active()?.post({ type: "key", action }),
-    // Open Settings：在当前白板里开设置页；没有白板在前台就开目标白板
     "codeboard.openSettings": async () => {
       const p = active() ?? (panels.target ? await panels.show(panels.target) : panels.all()[0]);
       if (!p) { void ui().info("Open a board first. CodeBoard settings are also under Settings → Extensions → CodeBoard."); return; }
       p.view.reveal();
       p.post({ type: "key", action: "openSettings" });
     },
-    // 运行时（线框 13）：跑一次入口，结果给前台的白板（没有就给目标白板）
     "codeboard.captureRun": async () => { await captureFlow(store.dir(), active() ?? (panels.target ? panels.get(panels.target) : undefined)); },
     "codeboard.applyRun": async () => { await applyFlow(store.dir(), active() ?? (panels.target ? panels.get(panels.target) : undefined)); },
     "codeboard.copyDiagnostics": () => copyDiagnostics((active() ?? (panels.target ? panels.get(panels.target) : undefined))?.board),
@@ -212,8 +208,6 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const id = await pickBoard(store, "Add to which board from the editor?", true);
       if (id) panels.setTarget(id);
     },
-
-    // ---------- 白板管理 ----------
 
     "codeboard.openBoard": async (a?: unknown, o?: { here?: boolean }) => {
       const id = boardArg(a) ?? (await targetId());
@@ -312,7 +306,6 @@ export function makeActions(panels: BoardHost, store: Storage) {
   };
 }
 
-/** 选一张白板（可以新建） */
 export async function pickBoard(store: Storage, placeHolder: string, allowNew: boolean): Promise<string | undefined> {
   const metas = await store.list();
   const NEW = { label: "$(add) New Board…", id: "" };

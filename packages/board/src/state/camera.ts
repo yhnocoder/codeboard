@@ -36,10 +36,8 @@ export function animate(fn: Anim) {
   if (!rafOn) { rafOn = true; last = performance.now(); requestAnimationFrame(tick); }
 }
 
-// ---------- 镜头 ----------
-
 export const [cam, setCamStore0] = createStore({ x: 80, y: 80, z: 1 });
-/** 镜头在动（最后一次变化后 180ms 内）。这时 .world.moving 让浏览器把世界层当位图缩放；停下后按新比例重新清晰绘制（#15） */
+/** 镜头在动（最后一次变化后 180ms 内）。这时 .world.moving 让浏览器把世界层当位图缩放；停下后按新比例重新清晰绘制 */
 export const [camMoving, setCamMoving] = createSignal(false);
 let still: number | undefined;
 // 「在动」和镜头本身同一批更新：先改镜头再标「在动」的话，第一帧会把按停下比例画的东西（stillZ）多重画一遍
@@ -79,7 +77,6 @@ export function camTo(x: number, y: number, z: number, soft = false) {
 /** 目标镜头（动画中时是终点） */
 export const camTarget = () => (running ? { x: sx.t, y: sy.t, z: sz.t } : { ...cam });
 
-/** 惯性滑动 */
 export function fling(vx: number, vy: number) {
   if (reduceMotion() || Math.hypot(vx, vy) < 80) return;
   const g = ++gen;
@@ -148,7 +145,7 @@ export function zoomAt(f: number, px = viewport.w / 2, py = viewport.h / 2, smoo
 export const toWorld = (px: number, py: number) => ({ x: (px - cam.x) / cam.z, y: (py - cam.y) / cam.z });
 export const viewportCenter = () => toWorld(viewport.w / 2, viewport.h / 2);
 
-// ---------- 缩放分档（#11）：100% 正常；概览只剩卡片名、图标记和灰条；地图只剩名字和色块 ----------
+// 缩放分档：100% 正常；概览只剩卡片名、图标记和灰条；地图只剩名字和色块
 
 let heldZ = 1;
 /**
@@ -166,5 +163,5 @@ export const lod = rooted(() => createMemo<Lod>(() => {
   if (fullHold()) return "full";
   return cam.z >= overviewZ() ? "full" : cam.z >= state.host.settings.zoomMap ? "overview" : "map";
 }));
-/** 缩得很小时不弹定义预览、旁注（#12） */
+/** 缩得很小时不弹定义预览、旁注 */
 export const quietHover = () => lod() !== "full";

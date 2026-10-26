@@ -1,4 +1,4 @@
-// 复制时放进 text/plain 的字：选中的那一片写成 Markdown（只选了格式里的一部分时，记号成对包住选中的字）；代码块里选的字原样
+// 复制时 text/plain 里放 Markdown；只选了代码块里的字时放原文
 import type { Slice } from "@tiptap/pm/model";
 import { serializeMd } from "../schema";
 

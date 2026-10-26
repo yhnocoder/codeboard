@@ -3,7 +3,6 @@
 
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 
-/** 三次贝塞尔在 t 处的点 */
 export function bezAt(p: number[], t: number) {
   const u = 1 - t, a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
   return { x: a * p[0] + b * p[2] + c * p[4] + d * p[6], y: a * p[1] + b * p[3] + c * p[5] + d * p[7] };

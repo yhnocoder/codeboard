@@ -1,5 +1,3 @@
-// 多白板与共享卡：⌘C 记下卡、贴到别的白板（默认共享，⌥ 独立副本）、⌘X 剪下卡（这块白板上 ⌘V 原样放回）、「⧉ N boards」列表和跳转、
-// Remove from This Board / Delete Everywhere / Unlink、共享卡 Update 先问范围、Sidenote 的 Board-only 和复查标记。
 // 卡在几块白板上、谁连到它由宿主算好（state/store 的 shared），这里只读。
 import { unwrap } from "solid-js/store";
 import {
@@ -18,8 +16,6 @@ import { cardText, remember } from "./edit";
 import { updateSidenote } from "./notes";
 import { imageDataUrl, pngOf } from "./imagedata";
 
-// ---------- 复制 / 粘贴 ----------
-
 /** ⌘C：选中的卡记到宿主（贴到别的白板时用），卡的内容写进剪贴板（代码卡 = 看得见的行，Note / Text = Markdown，图片卡 = 图 + Markdown 的图） */
 export function copyCardsSel(): boolean {
   const cs = selHosts();
@@ -30,7 +26,6 @@ export function copyCardsSel(): boolean {
   toast(code ? `Copied ${code} lines · paste on another board for a linked card` : `Copied ${cs.length} card${cs.length > 1 ? "s" : ""}`);
   return true;
 }
-/** 选中的卡（Compare 的栏算它的 Compare），去重 */
 const selHosts = () => selCards().map((c) => cardById(c.id)?.host ?? c).filter((c, i, a) => a.indexOf(c) === i);
 /**
  * 卡的内容进系统剪贴板，宿主记下是哪几张卡；返回文字。别的应用拿到的是卡的文字（几张卡之间空一行）；有图片卡时还有那张图（image/png，
@@ -159,7 +154,7 @@ function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: numb
   const tops = items.filter((x) => x.place);
   const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
   if (!box) return null;
-  // 整组放在指针处附近的空地上（不压住别的卡），组内的相对位置不变；exact = 就放在 at（可以压住别的卡）
+  // exact = 就放在 at（可以压住别的卡）
   const free = exact ? at : findFree({ ...box, x: at.x, y: at.y }, state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)));
   const dx = Math.round(free.x - box.x), dy = Math.round(free.y - box.y);
   let ids: string[] = [], segs: Record<string, string> = {};
@@ -179,8 +174,6 @@ function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: numb
   return ids;
 }
 
-// ---------- 「⧉ N boards」 ----------
-
 /** 卡头的徽标：列出它在哪几块白板上（各自的调用图标记），点一块跳过去并定位 */
 export function showBoardsOf(id: string, el: Element) {
   if (sharedOn(id) < 2) return;
@@ -197,9 +190,6 @@ export function boardsText(id: string) {
   return `This card is on ${bs.length} boards: ${bs.map((b) => b.name).join(", ")}.`;
 }
 
-// ---------- 删除 ----------
-
-/** 选中的卡里有在别的白板上也有的共享卡 */
 export const selShared = () => sel.cards.map(hostOf).filter((id) => sharedOn(id) > 1);
 
 /** Delete Everywhere…（⌘⌫）：问一下，从所有白板上删掉（这块白板上这一步能撤销，撤销回来是一份独立副本） */
@@ -219,8 +209,6 @@ export async function deleteEverywhere(ids = selShared()) {
   const done = await ask("deleteEverywhere", { card: id }).catch((e: Error) => { toast(`Couldn't delete everywhere: ${e.message}`); return -1; });
   if (done >= 0) toast(`Deleted from ${Math.max(done, n)} boards`);
 }
-
-// ---------- Update ----------
 
 /**
  * 共享卡 Update：先按设置决定范围（问 / 所有白板 / 只这块白板）。只这块白板 = 先拆成副本（别的白板留在旧版本），再更新。
@@ -263,13 +251,10 @@ export function reviewToast(cardId: string) {
   return n ? ` · ${n} sidenote${n > 1 ? "s" : ""} on changed lines, check ${n > 1 ? "them" : "it"}` : "";
 }
 
-// ---------- Sidenote ----------
-
 /** Board-only：共享卡上的这条 Sidenote 只留在这块白板（不跟着卡去别的白板），再点一次又跟着走 */
 export function toggleBoardOnly(id: string) {
   updateSidenote(id, (n) => { n.boardOnly = n.boardOnly ? undefined : true; });
 }
-/** 看过了：去掉复查标记 */
 export function markReviewed(id: string) {
   updateSidenote(id, (n) => { delete n.review; });
 }

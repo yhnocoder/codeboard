@@ -1,4 +1,3 @@
-// 侧栏：BOARDS（组 = 文件夹，白板后面是卡片数，有新版本的卡时加圆点）和 GITHUB FILES（这个工作区用过的 GitHub 文件）。
 // 子白板缩进在父白板下面（一块白板可以在几块父白板下面各出现一次）；有父白板的不再列在顶层。
 import * as vscode from "vscode";
 import { workspaceGithubFiles } from "@codeboard/host/github";
@@ -75,8 +74,6 @@ export class GithubTree implements vscode.TreeDataProvider<GNode> {
     return it;
   }
 }
-
-// ---------- QUESTIONS（线框 06）：所有白板上的问题，按白板分组；默认只看没解决的 ----------
 
 type QNode = { kind: "board"; id: string; name: string; items: QuestionItem[] } | { kind: "q"; q: QuestionItem };
 

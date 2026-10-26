@@ -1,4 +1,3 @@
-// City 材质的组件：停在路尽头的车（箭头的位置上）、路面标线、红绿灯是绿灯时沿路开的车流。几何在 city.ts；Links.tsx 只管箭头。
 import { For, Index, Show, createEffect, createMemo, on, onCleanup, untrack, type Accessor } from "solid-js";
 import type { Link } from "@codeboard/core";
 import { look, traffic } from "../state/look";
@@ -28,7 +27,7 @@ type Way = { L: Link; base: Accessor<{ kind: string } | null>; geo?: Accessor<{ 
 /**
  * City 的车流（红绿灯是绿灯时）：镜头附近最多 MAX_ROADS 条调用路上各开两辆车。车是 HTML 小块，用 Web Animations 沿路走：
  * 关键帧只有 transform 和 opacity，整段交给合成器跑，主线程每帧什么都不做；只在路变了（拖卡片）时重建那条路上的两段动画。
- * 车不跟着路分到各张卡的那一层，跟以前一样全在一层（.movers，在所有卡上面）：分开的话每层车都要另起合成层，拖、改动时慢一倍以上。
+ * 车不跟着路分到各张卡的那一层，全在一层（.movers，在所有卡上面）：分开的话每层车都要另起合成层，拖、改动时慢一倍以上。
  * 停着的车（.ahead.car）和路一起在路的那一层。
  * 红灯、别的材质、系统开了「减少动态效果」时整层不存在（没有动画、没有计时器）。挑哪几条路只在镜头停下时算一次（trackTraffic 的 pick）
  */
@@ -81,7 +80,6 @@ function Mover(p: { d: () => string; k: number; phase: number }) {
     stop();
     const f = d ? driveFrames(d) : null;
     if (!f) return;
-    // 车速大约 50px/s
     const ms = Math.max(3000, (f.len / 50) * 1000);
     const at = ((was % 1) + 1) % 1 * ms;
     const opt: KeyframeAnimationOptions = { duration: ms, iterations: Infinity, easing: "linear" };

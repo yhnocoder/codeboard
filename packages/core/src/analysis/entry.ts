@@ -1,6 +1,3 @@
-// Start from Entry Point…：找 Python 项目的入口（__main__ 块、pyproject 脚本、包导出的公共 API）。
-// 这里只做文本解析，读文件、找符号由宿主做。
-
 /** pyproject.toml 的 [project.scripts]：name = "pkg.mod:func" */
 export function pyprojectScripts(toml: string): { name: string; module: string; func: string }[] {
   const out: { name: string; module: string; func: string }[] = [];

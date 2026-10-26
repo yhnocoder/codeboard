@@ -8,7 +8,6 @@ import * as path from "node:path";
 import { IMAGE_EXT, sniffImage } from "@codeboard/core";
 import type { Storage } from "./storage";
 
-/** 一张图的大小上限 */
 export const MAX_NOTE_IMAGE = 10 * 1024 * 1024;
 /** Markdown 里写的地址的前缀（相对存储目录） */
 export const ASSET_PREFIX = "assets/";

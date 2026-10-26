@@ -9,9 +9,7 @@ export type Layer = {
   inside?: (t: Element) => boolean;
   grab?: boolean;
   modal?: boolean;
-  /** 点外面就关 */
   outside?: boolean;
-  /** 窗口失焦就关 */
   blur?: boolean;
   /** 这一层自己的按键（对话框的 ↵）：返回 true = 处理了 */
   keys?: (e: KeyboardEvent) => boolean;

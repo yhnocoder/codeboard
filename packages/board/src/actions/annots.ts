@@ -1,4 +1,4 @@
-// 代码卡上贴在字上的手写标注（Segment.annots）：选一段字加一条、双击改字、右键换颜色 / 上下 / 删。代码本身不动。
+// 代码卡上贴在字上的手写标注（Segment.annots）：代码本身不动。
 // 新加的一条先是草稿（annotDraft），写了字才进白板和撤销栈；什么都没写就消失
 import { createSignal } from "solid-js";
 import { findCard, isCode, HAND_COLORS, type Board, type CodeAnnot, type HandColor } from "@codeboard/core";
@@ -6,7 +6,6 @@ import { mutate } from "../state/store";
 import { setEditing } from "../state/ui";
 import { openMenu } from "../ui/Menu";
 
-/** 正在写的新标注：哪张卡、哪一段、第几行、第几到第几个字 */
 export type AnnotDraft = { card: string; seg: string; line: number; from: number; to: number };
 export const [annotDraft, setAnnotDraft] = createSignal<AnnotDraft | null>(null);
 /** 原地编辑（Editable）的 id：卡|段|第几条；草稿是 "draft" */
@@ -56,7 +55,6 @@ export function setAnnotText(card: string, seg: string, i: number, text: string)
 export const setAnnotColor = (card: string, seg: string, i: number, color: HandColor) => edit(card, seg, i, (a) => { if (color === "blue") delete a.color; else a.color = color; });
 export const setAnnotBelow = (card: string, seg: string, i: number, below: boolean) => edit(card, seg, i, (a) => { if (below) a.below = true; else delete a.below; });
 
-/** 右键标签：颜色、上 / 下、改字、删 */
 export function annotMenu(card: string, seg: string, i: number, a: CodeAnnot, x: number, y: number) {
   const cap = (k: string) => k[0].toUpperCase() + k.slice(1);
   openMenu([

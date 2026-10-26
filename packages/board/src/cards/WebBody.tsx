@@ -1,4 +1,3 @@
-// Web 卡（书签样式：标题 + 两行描述 + 图标和域名，右侧预览图）和 Link List（每行 favicon + 标题 + 域名，可展开成小书签）。
 // 抓不全时缺什么收什么：没图 → 没有右栏；只有标题 → 标题 + 域名；什么都没有 → 域名首字母方块 + 域名当标题 + 路径 + Retry / Edit Title。
 import { For, Show, createSignal, onCleanup } from "solid-js";
 import { Portal } from "solid-js/web";
@@ -11,7 +10,6 @@ import { below } from "../ui/Menu";
 import * as A from "../actions";
 import "./web.css";
 import { fetching, rowDrag } from "../state/web";
-
 
 /** favicon；拿不到用域名首字母方块 */
 function Fav(p: { meta?: WebMeta; url: string; big?: boolean }) {
@@ -82,8 +80,6 @@ function Bookmark(p: {
   );
 }
 
-// ---------- Web 卡 ----------
-
 export function WebBody(p: { card: WebCard }) {
   const c = () => p.card;
   const menu = (e: MouseEvent) => A.cardMenu(c().id, ...below(e.currentTarget as Element));
@@ -98,8 +94,6 @@ export function WebBody(p: { card: WebCard }) {
     </>
   );
 }
-
-// ---------- Link List ----------
 
 export function LinksBody(p: { card: LinksCard }) {
   const c = () => p.card;

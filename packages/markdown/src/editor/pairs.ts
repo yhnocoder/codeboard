@@ -1,6 +1,4 @@
-// 自动配对括号和引号，照 Typora 的默认（#34）：( [ { " ' 打一个出一对，光标在中间；选中了字时把它括起来。
-// 紧跟在自己补的那个右括号前面再打它：盖过去（字还是走正常的输入，所以 [t](url) 之类的打字规则照常触发）；
-// 一对空括号中间退格：两个一起删。引号前后是字母、数字时不配（don't、5'）。Markdown 记号（* _ ` $ ~）不配对（Typora 默认也关着）
+// 照 Typora 的默认：Markdown 记号（* _ ` $ ~）不配对
 import { Plugin, PluginKey, TextSelection, type EditorState } from "@tiptap/pm/state";
 import type { EditorView } from "@tiptap/pm/view";
 
@@ -54,7 +52,6 @@ export function pairsPlugin() {
         // 刚打完 `c` 的光标紧跟在代码后面，但接着打的字不再是代码
         if ((state.storedMarks ?? $f.marks()).some((m) => m.type.spec.code && m.type.name !== "mdSrc")) return false;
         const k = ev.key, list = pairsKey.getState(state) ?? [];
-        // 一对空的中间退格：两个都删
         if (k === "Backspace" && sel.empty) {
           const prev = charAt(view, sel.from), next = nextChar(view, sel.from);
           if (PAIRS[prev] && PAIRS[prev] === next) {
@@ -78,7 +75,6 @@ export function pairsPlugin() {
         const prev = charAt(view, sel.from), next = nextChar(view, sel.to);
         const tr = state.tr;
         if (!sel.empty) {
-          // 选中了字：括起来，选区留在里面的字上
           tr.insertText(close, sel.to).insertText(k, sel.from);
           tr.setSelection(TextSelection.create(tr.doc, sel.from + 1, sel.to + 1));
         } else {

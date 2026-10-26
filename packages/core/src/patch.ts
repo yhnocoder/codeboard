@@ -1,6 +1,6 @@
-// 白板 → 宿主的增量保存（第 6 版起）：每类东西只发变了的项和删掉的 id，白板本身的字段整个发。宿主按它改自己那份白板再写盘。
+// 白板 → 宿主的增量保存：每类东西只发变了的项和删掉的 id，白板本身的字段整个发。宿主按它改自己那份白板再写盘。
 // 共享卡：白板文件里是引用，内容在卡库；inflate / deflate 在两种样子之间换，putShared 把卡库里的新内容放进一块白板。
-// 纯函数，直接改传进来的对象。
+// 直接改传进来的对象。
 import { clone, sameVersion, versionLabel, withCols, type Board, type BoardFile, type Camera, type Card, type Link, type Place, type Section, type SharedCard, type Sidenote, type Sticker } from "./model";
 import { lineMapOf, moveLineRefs, type CardCopy } from "./edit";
 
@@ -25,7 +25,6 @@ export type BoardPatch = {
 export const LISTS = ["cards", "links", "sections", "sidenotes", "stickers"] as const;
 const OWN = new Set<string>(["version", "id", "cam", "place", ...LISTS]);
 
-/** 改动应用到白板上 */
 export function applyPatch(b: Board, p: BoardPatch): void {
   if (p.head) {
     for (const k of Object.keys(b)) if (!OWN.has(k)) delete (b as Record<string, unknown>)[k];

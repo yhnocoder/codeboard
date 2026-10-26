@@ -1,5 +1,3 @@
-// 宿主用：在另一个版本的文件里重新找到一段代码，并判断它和钉住的内容比起来变没变（「新版本」黄点）。
-// 纯函数，读文件、跑 git 由宿主做。
 import { inRanges, type Segment, type Version } from "./model";
 import type { Stale } from "./protocol";
 import { diffLines, findBlock, sameLines } from "./diff";

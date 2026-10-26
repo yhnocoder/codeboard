@@ -1,5 +1,3 @@
-// 宿主用：没有语言服务时按名字找被调函数，同名的多个定义按接收者排序；⌘K 的名字匹配打分。
-
 export type Cand = { qual: string; path: string; line: number };
 
 const norm = (s: string) => s.replace(/_/g, "").toLowerCase();

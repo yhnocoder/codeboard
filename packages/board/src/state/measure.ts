@@ -1,6 +1,5 @@
 // 量 DOM（卡片尺寸、卡里每行的位置）：先把这一轮要量的都读完，再一起写回 store。
 // 一边读一边写会让浏览器每张卡都重新排一次版，打开大白板时几百张卡就是几百次排版。
-// 还有：指针最后在哪、白板左上角、代码卡的几个固定尺寸、内容本来的大小（Fit Content、改大小时用）
 import { batch } from "solid-js";
 import { queueMeasure, observeResize, setMeasureBatch } from "@yhnocoder/markdown/ui";
 import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
@@ -11,8 +10,6 @@ import { toWorld } from "./camera";
 // 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
 setMeasureBatch(batch);
 export { queueMeasure, observeResize };
-
-// ---------- 指针、白板位置 ----------
 
 let lastPtr = { x: 0, y: 0 };
 /** 指针最后在哪（屏幕坐标）：installKeys 里开始记 */
@@ -29,7 +26,6 @@ export function trackPointer() {
   window.addEventListener("pointerdown", (e) => { at(e); down = { ...lastPtr, target: e.target as HTMLElement | null }; }, { capture: true, passive: true });
   window.addEventListener("resize", () => { boardAt = null; });
 }
-/** 白板左上角（屏幕坐标） */
 export function boardOffset() {
   if (boardAt) return boardAt;
   const el = document.getElementById("board");
@@ -41,7 +37,7 @@ export function boardOffset() {
 export const boardPoint = (p: { x: number; y: number }) => { const o = boardOffset(); return { x: p.x - o.x, y: p.y - o.y }; };
 export const worldAt = (p: { x: number; y: number }) => { const b = boardPoint(p); return toWorld(b.x, b.y); };
 
-// ---------- 代码卡的固定尺寸（CSS 里用同一份：App 挂到 body 上的 --ded-pad；行号栏宽 --gutter 在 styles.css 的 .code 上，量 .src 的左边距） ----------
+// 代码卡的固定尺寸，CSS 里用同一份：App 挂到 body 上的 --ded-pad；行号栏宽 --gutter 在 styles.css 的 .code 上，量 .src 的左边距
 
 /** 藏了公共缩进时代码离左边留的空 */
 export const DED_PAD = 16;
@@ -55,8 +51,6 @@ export function monoWidth(el: Element) {
   ctx.font = getComputedStyle(el).font;
   return (charW = ctx.measureText("0".repeat(100)).width / 100 || 7.2);
 }
-
-// ---------- 内容本来的大小 ----------
 
 /** 代码卡的卡头 / 色带 / 底栏一共多高：主题决定，直接量布局。代码卡的 Place.h 存的是中间内容区（.carea）的高度，不含这些 */
 export function chromeOf(id: string): number {
@@ -87,7 +81,7 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number; 
     let w: number | undefined;
     if (src) {
       const cs = getComputedStyle(src);
-      // 只量显示着的行（#25 Linda：藏了 Docstring / 注释 / 空行后，藏掉的长行不该把卡撑宽）：
+      // 只量显示着的行（藏了 Docstring / 注释 / 空行后，藏掉的长行不该把卡撑宽）：
       // 和 CodeBody 同一套 cardRows；Hide Comments 去掉行尾注释；藏了公共缩进时减掉那几格、加上左边留的空
       const card = f.card;
       const texts = cardRows(card, { views: state.views, shown: shown() }).flatMap((r) => {

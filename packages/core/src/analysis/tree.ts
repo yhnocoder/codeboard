@@ -1,4 +1,3 @@
-// tree-sitter 的加载、解析和语法树缓存。
 // 带 key（通常是文件路径）解析时留着上次的树：文本变了就 tree.edit + 增量解析，没变就直接复用。
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Language as TSLanguage, Tree, Edit, Query } from "@vscode/tree-sitter-wasm";
@@ -45,15 +44,12 @@ function parser(g: Grammar) {
 }
 
 const queries = new Map<string, Query>();
-/** 每个语法的查询只编译一次 */
 export function query(g: Grammar, name: string, src: string): Query {
   const k = `${g}\0${name}`;
   let q = queries.get(k);
   if (!q) queries.set(k, (q = new TS.Query(langs.get(g)!, src)));
   return q;
 }
-
-// ---------- 语法树缓存 ----------
 
 type Entry = { g: Grammar; text: string; tree: Tree };
 const trees = new Map<string, Entry>();

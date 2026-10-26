@@ -1,5 +1,4 @@
-// 代码卡的代码区：行号栏（绝对定位，按实测行位置摆）+ Sidenote 标记列 + 一整块连续的代码文本。
-// 代码是一整块，选区连续；复制时只要代码文本、不带行号（copy 事件里自己拼）。
+// 代码是一整块连续文本（选区连续），行号栏按实测行位置绝对定位；复制时不带行号（copy 事件里自己拼）。
 import { FreeEdit } from "./FreeEdit";
 import { lod } from "../state/camera";
 import { menuOpen } from "../ui/Menu";
@@ -38,9 +37,6 @@ function inQuotes(t: string, i: number) {
   return !!q;
 }
 
-
-
-
 export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; dim?: () => boolean }) {
   let codeEl!: HTMLDivElement, srcEl!: HTMLDivElement, scrollEl!: HTMLDivElement;
   const c = () => p.card;
@@ -78,7 +74,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   createEffect(() => { rows(); notesOn(c().id); look(); later(); }); // 换材质主题：标题区高度变了，行的位置要重量
 
   const fromLines = createMemo(() => new Set(linksFrom(c().id).map((l) => `${l.from.seg}:${l.from.line}`)));
-  // 我的改动（线框 07）：和对比基准比新加 / 改过的行（只有显示着别的 Variant 的卡才有，其余卡不多建任何节点）
+  // 我的改动：和对比基准比新加 / 改过的行（只有显示着别的 Variant 的卡才有，其余卡不多建任何节点）
   const vrows = createMemo(() => {
     if (!c().variants?.length) return [];
     const m = act.marksOf(c());
@@ -90,14 +86,9 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const isHl = (s: Segment | undefined, l: number) => !!s?.hl?.includes(l);
   const inSel = (seg: string, l: number) => { const ls = lineSel(); return !!ls && ls.card === c().id && ls.seg === seg && l >= ls.start && l <= ls.end; };
 
-  /**
-   * 概览档的代码轮廓：每行按真实缩进和长度画一根圆角条，整张卡合成一张 SVG 当遮罩（.ovm 用它，颜色跟主题）。
-   * 只在概览档算；行本身不加内联样式，样式共享不受影响，切档时只多算这一个属性。
-   * .ovm 是 .src 的兄弟、盖住整个代码区（行号 + 代码）：概览档用 opacity 藏行号和代码（不继承，不用重算里面几千个节点的样式），
-   * 指针落在 .ovm 上，跟以前它们被 visibility 藏起来时一样交给卡片。
-   */
-  // 概览档的灰条（.ovm）在空闲时就提前做好，藏着（styles.css），进概览档时只是显示出来：
-  // 241 张卡的灰条在切档那一帧里一起建要好几十 ms
+  // 概览档的代码轮廓（.ovm）：每行按真实缩进和长度一个色块；行本身不加内联样式，样式共享不受影响。
+  // .ovm 是 .src 的兄弟、盖住整个代码区：概览档用 opacity 藏行号和代码（不继承，不用重算里面几千个节点的样式），指针落在 .ovm 上交给卡片。
+  // 灰条在空闲时就提前做好、藏着（styles.css），进概览档时只是显示出来：241 张卡的灰条在切档那一帧里一起建要好几十 ms
   const [warm, setWarm] = createSignal(false);
   onMount(() => whenIdle(() => setWarm(true)));
   /**
@@ -137,7 +128,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     return v?.html[i] ?? escHtml(s?.text[i] ?? "");
   };
 
-  // ---------- 行选择：拖选代码或点行号（⇧ 扩展） ----------
+  // 行选择：拖选代码或点行号（⇧ 扩展）
   const onSelChange = () => {
     const sel = window.getSelection();
     if (!sel || sel.isCollapsed || !sel.rangeCount) return;
@@ -271,7 +262,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const [scrollY, setScrollY] = createSignal(0);
   const onScroll = () => { setScrollY(scrollEl.scrollTop); measure(); };
 
-  // ---------- 悬停：标识符 → 定义预览；行尾圆点 → 拉箭头 ----------
+  // 悬停：标识符 → 定义预览；行尾圆点 → 拉箭头
   const [hoverRow, setHoverRow] = createSignal(-1);
   let peekKey = "", peekTimer: number | undefined, peekPt = { x: 0, y: 0 };
   const onMove = (e: PointerEvent) => {
@@ -363,7 +354,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     return [...by].map(([row, list]) => ({ row, list }));
   });
   const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
-
 
   // 贴在字上的手写标注：每一行上面 / 下面一条窄轨道（只有有标注的行才有），被标的字底下一块淡色（rowbgs 里）
   type Ann = { i: number; text: string; color: string; below: boolean; from: number; to: number; draft?: boolean };

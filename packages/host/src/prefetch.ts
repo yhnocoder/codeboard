@@ -11,7 +11,7 @@ import { hasLocalFile } from "./source";
 
 type PrefetchReq = { seg: Segment; line: number; col: number; name: string };
 
-const MAX_RUN = 2; // 同时最多几个预取
+const MAX_RUN = 2;
 const MAX_WAIT = 4; // 排队的只留最新的几个（鼠标扫过一串调用时，旧的没用了）
 let running = 0;
 const queue: (() => Promise<void>)[] = [];
@@ -41,8 +41,6 @@ async function warmCall(seg: Segment, line: number, col: number, name: string) {
   // 只为把 token / 分析 / 版本缓存热起来，卡本身丢掉；类里的方法 expand 还要问一次转到实现（动态分发），一起问好
   await Promise.all([t && cardForFileSym(t.abs, t.sym), dispatchOf(defs[0], name)]);
 }
-
-// ---------- 打开白板：后台预热语言服务 ----------
 
 const WARM_DELAY = 1500, WARM_FILES = 6, WARM_GAP = 200, WARM_RETRY = 6;
 const warmed = new Map<string, number>(); // 文件 → 上次预热的时间

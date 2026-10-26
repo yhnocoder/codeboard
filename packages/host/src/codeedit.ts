@@ -17,7 +17,6 @@ const MAX_ITEMS = 300;
 
 const scratch = () => workspace().language.scratch;
 
-/** 放在哪个文件旁边：near 那段代码的文件；没有就是工作区根下面 */
 function nearAbs(near?: Near): string | undefined {
   if (near && near.src.kind !== "free" && near.src.kind !== "github") { const a = absOf(near); if (a) return a; }
   const r = ws0();
@@ -31,7 +30,6 @@ function queue<T>(d: Doc, fn: () => Promise<T>): Promise<T> {
   return p;
 }
 
-/** 建 / 更新虚拟文档（打字时防抖发来） */
 export function codeDoc(id: string, lang: string, text: string, near?: Near) {
   const s = scratch();
   if (!s) return;
@@ -50,7 +48,6 @@ export function codeDocClose(id: string) {
   void queue(d, () => s.close(id)).catch(() => undefined);
 }
 
-/** 先同步成 text，再问；排队时来了更新的同类请求就不问了 */
 async function withDoc<T>(id: string, op: string, text: string, empty: T, fn: () => Promise<T>): Promise<T> {
   const s = scratch(), d = docs.get(id);
   if (!s || !d) return empty;

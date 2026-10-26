@@ -1,4 +1,3 @@
-// Sidenote（弹窗、添加、Place on Board、卡变成 Sidenote）和定义预览。
 import { unwrap } from "solid-js/store";
 import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, type Sidenote, type SegView, type Anchor, type HandColor } from "@codeboard/core";
 import { state, setState, mutate, sel, select, clearSel, lineSel, cardById, hostOf, toast } from "../state/store";
@@ -11,8 +10,6 @@ import { addCards, requestViews } from "./create";
 import { tune } from "../state/tune";
 import { hostRect, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
-
-// ---------- Sidenote ----------
 
 let hoverT: number | undefined, leaveT: number | undefined;
 export function hoverMarker(el: Element, ids: string[], e: PointerEvent) {
@@ -123,8 +120,6 @@ export function putImageInNote(imageId: string, noteId: string, src: string) {
   toast("Added the image to the Note");
 }
 
-// ---------- 定义预览 ----------
-
 let peekLeave: number | undefined;
 export function scheduleHidePeek() {
   clearTimeout(peekLeave);
@@ -146,7 +141,6 @@ export async function showPeek(el: Element, cardId: string, segId: string, line:
     updatePop(pid, (p) => ({ ...(p as any), data: r ?? { none: "No definition found", word } }));
   } catch { updatePop(pid, (p) => ({ ...(p as any), data: { none: "No definition found", word } })); }
 }
-
 
 /** Mark 的颜色（它的箭头跟着变） */
 export function setMarkColor(id: string, hand: HandColor) {

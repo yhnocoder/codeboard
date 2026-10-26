@@ -1,4 +1,4 @@
-// 网页元信息：贴链接那一刻抓一次（标题、描述、站点名、预览图、图标），图片存进白板的 assets/，离线也能显示。
+// 网页元信息只在贴链接那一刻抓一次，图片存进 assets/，离线也能显示。
 // 不带浏览器 cookie：需要登录的页面抓不到，白板降级显示（域名首字母 + 路径 + Retry）。
 import { charsetOf, parseWebMeta, type WebMeta } from "@codeboard/core";
 import type { Storage } from "./storage";
@@ -38,7 +38,6 @@ async function grab(url: string, accept: string, max: number, html = false): Pro
 
 const EXT: Record<string, string> = { "image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp", "image/svg+xml": "svg", "image/x-icon": "ico", "image/vnd.microsoft.icon": "ico", "image/avif": "avif" };
 
-/** 图片存进 assets/（按内容去重），回文件名 */
 async function saveImage(store: Storage, url: string, kind: "og" | "icon"): Promise<string | undefined> {
   const r = await grab(url, "image/*,*/*;q=0.5", IMG_MAX);
   if (!r || !r.buf.length) return undefined;

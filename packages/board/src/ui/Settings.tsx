@@ -1,5 +1,4 @@
-// Settings 页：白板里的整窗页面（⌘, / ⋯ → Settings… / 命令 CodeBoard: Open Settings）。
-// 改动乐观更新 state.host.settings，宿主写进 codeboard.*；快捷键清单和 ? 浮层都从 keymap.ts 的表生成。
+// 快捷键清单和 ? 浮层都从 keymap.ts 的表生成。
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
 import { THEMES, EXPERIMENTAL_THEMES, NOTE_FONT_LEVELS, NOTE_FONT_RANGE, type HideFlags, type NoteFontLevel, type Settings as S } from "@codeboard/core";
 import { state } from "../state/store";

@@ -1,5 +1,5 @@
-// Markdown 的唯一一套 schema + 解析 / 写回：编辑器（懒加载）和其他卡片的静态显示都用它，所以编辑和显示长得一样。
-// MarkdownManager 全应用只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
+// 编辑器和静态显示共用这一套 schema，所以编辑和显示长得一样。
+// MarkdownManager 只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
 import { Mark, Node, getSchema, mergeAttributes, markInputRule, markPasteRule, InputRule, type AnyExtension, type JSONContent } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
@@ -24,7 +24,7 @@ import { Footnotes, Footnote, FootnoteReference } from "tiptap-footnotes";
 import DOMPurify from "dompurify";
 import { EMOJI } from "./emoji";
 
-// ---------- 公式：照旧版的 Pandoc 规则 ----------
+// ---------- 公式：照 Pandoc 的规则 ----------
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
 // 行内的 $$…$$ 是行内的大号公式
 const INLINE_MATH = /^\$\$([^$]+?)\$\$|^\$([^$\s](?:[^$]*[^$\s\\])?)\$(?!\d)/;
@@ -69,7 +69,7 @@ const Math2 = BlockMath.extend({
   },
 });
 
-// ---------- 代码块：pre.md-code[data-lang]（着色是宿主给的，见 code.ts）；内容里有 ``` 时用更长的围栏 ----------
+// ---------- 代码块 ----------
 const Code = CodeBlock.extend({
   addAttributes() {
     return {
@@ -139,7 +139,7 @@ const Det = Details.extend({
 const DetSum = DetailsSummary.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 const DetBody = DetailsContent.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 
-// ---------- [toc]：目录（Typora #30） ----------
+// ---------- [toc]：目录 ----------
 // 单独一行的 [toc]（不分大小写）。目录里是这篇的所有标题，跟着标题变：显示时 render.ts 填，编辑时节点视图自己填
 const TOC_RE = /^ {0,3}\[toc\][ \t]*(?:\n|$)/i;
 export const tocEntries = (doc: { descendants: (f: (n: any) => boolean | void) => void }) => {
@@ -174,7 +174,7 @@ const Toc = Node.create({
   },
 });
 
-// ---------- :smile: 表情（Typora #31） ----------
+// ---------- :smile: 表情 ----------
 // 存成 :名字:（和 Typora、GitHub 一样），显示成表情字。只认 emoji.ts 里有的名字；前面紧挨着字母数字的不算（1:100: 是比例）
 const EMOJI_AT = /^:([a-z0-9_+-]+):/;
 const isEmoji = (name: string) => Object.prototype.hasOwnProperty.call(EMOJI, name);
@@ -204,8 +204,8 @@ const Emoji = Node.create({
 });
 
 // ---------- [[引用]]（wiki 链接） ----------
-// 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（view.ts 的 setRefResolver，编辑器的 refs；白板上是卡，
-// 渲染时先按 id、再按标题找卡，Card 改名时白板顺手改写引用）。节点名、class、data 属性沿用最早的卡片引用，存下的文件和样式都不变
+// 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（setRefResolver、编辑器的 refs）。
+// 节点名 cardRef、class、data 属性是最早的卡片引用留下的名字：改了就要动存下的文件和样式
 const WikiRef = Node.create({
   name: "cardRef",
   group: "inline", inline: true, atom: true, selectable: true,
@@ -275,7 +275,6 @@ const FnDef = Footnote.extend({
 const FnList = Footnotes.extend({ markdownTokenName: "footnotes", parseMarkdown: undefined, renderMarkdown: undefined, renderHTML: () => ["ol", { class: "footnotes" }, 0] });
 const Doc = Document.extend({ content: "block+ footnotes?" });
 
-// ---------- 其他 ----------
 // 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）
 const Img = Image.configure({ inline: true, allowBase64: true });
 // TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
@@ -364,7 +363,7 @@ function mdSyntax(name: string, re: RegExp) {
     },
   };
 }
-// ---------- 行内 HTML：<u>、<kbd> 是格式；别的标签按字原样留着（写回时 < 转义成 \<，不写实体） ----------
+// ---------- <u>、<kbd> ----------
 const U = Underline.extend(mdSyntax("underline", /^<u>([\s\S]+?)<\/u>/));
 const Kbd = Mark.create({
   name: "kbd",
@@ -373,7 +372,7 @@ const Kbd = Mark.create({
   renderHTML: ({ HTMLAttributes }) => ["kbd", HTMLAttributes, 0],
   ...mdSyntax("kbd", /^<kbd>([\s\S]+?)<\/kbd>/),
 });
-// ---------- ==高亮==、H~2~O、x^2^（Typora 的扩展语法，#32） ----------
+// ---------- ==高亮==、H~2~O、x^2^（Typora 的扩展语法） ----------
 // 下标、上标照 Pandoc：中间不能有空白（要空白写 \ ），~ 只有一个（~~ 是删除线）；高亮 == 里两头不是空白
 const SUB_RE = /^~(?!~)((?:\\.|[^~\s\\])+)~(?!~)/, SUP_RE = /^\^((?:\\.|[^\^\s\\])+)\^/, HL_RE = /^==(?=[^\s=])((?:\\.|[^\n\\])*?[^\s\\])==/;
 const tagMark = (name: string, tag: string, re: RegExp) => Mark.create({
@@ -458,7 +457,7 @@ export const baseExtensions: AnyExtension[] = [
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
   // 打字时的 **b** *i* ~~s~~ 不用 TipTap 自带的正则（要求开头记号前是空白：中文后面紧跟的 **粗体** 不变；整行的字连行内代码里的 ** 一起配对，
-  // 会把代码里的记号吃掉，#66），由编辑器按解析器重解析（editor/typora.ts 的 retype），和存回去再读进来的一样。
+  // 会把代码里的记号吃掉），由编辑器按解析器重解析（editor/typora.ts 的 retype），和存回去再读进来的一样。
   // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）；打 _i_ 照旧变斜体（存成 *i*），但不跨过行内代码
   Bold.extend({ addInputRules: () => [], addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
   Italic.extend({ addInputRules() { return [outsideCode(markInputRule({ find: underscoreInputRegex, type: this.type }))]; } }),
@@ -512,14 +511,14 @@ function escText(s: string): string {
 const mm = new MarkdownManager({
   marked: (() => {
     const m = new Marked();
-    // _ 不当强调：__init__、block_manager 都是代码里的名字（旧版也只认 *）
+    // _ 不当强调：__init__、block_manager 都是代码里的名字
     m.use({ tokenizer: { emStrong(src: string) { return src[0] === "_" ? undefined : false; } } as any });
     return m as any;
   })(),
   extensions: baseExtensions,
 });
-/** 这套扩展的 schema（静态显示、写回时认代码节点用） */
 let schema: Schema | undefined;
+/** 这套扩展的 schema */
 export const mdSchema = () => (schema ??= getSchema(baseExtensions));
 
 // ---------- 包着行内原子节点的格式：**a $x$**、==:tada:==、[![i](u)](l) ----------
@@ -609,7 +608,7 @@ export function parseSource(src: string, inline: boolean): JSONContent[] | null 
   return ns && restorePairs(ns);
 }
 
-// ---------- 光标处展开的 Markdown 原文（#11，编辑器里的 mdSrc 标记，见 editor/source.ts） ----------
+// ---------- 光标处展开的 Markdown 原文（编辑器里的 mdSrc 标记，见 editor/source.ts） ----------
 // 光标走进 **粗体**、链接、标题、行内公式时，那一段换成带 mdSrc 标记的原文（真的字，能改）；光标离开时把原文重新解析回去。
 // 写出 Markdown 之前（保存、复制、原文模式）先在这里把还展开着的原文收回去，所以 mdSrc 永远不会写进文件
 export const SRC_MARK = "mdSrc";
@@ -657,7 +656,7 @@ export function unsourceBlock(b: JSONContent, keep: (from: number, to: number, p
   if (type !== b.type) attrs = undefined;
   return { ...b, type, ...(attrs ? { attrs } : { attrs: undefined }), content: out };
 }
-// ---------- 打字时的反斜杠转义（#27，编辑器里的 mdEsc 标记） ----------
+// ---------- 打字时的反斜杠转义（编辑器里的 mdEsc 标记） ----------
 // 在编辑器里打 \* 时那个 \ 带 mdEsc 标记（光标不在旁边时不显示，Typora 一样）；写出时这一对原样写 \*，不再把 \ 当字转义成 \\\*。
 // 先换成一个私用区的字（写出时不会被转义、不影响旁边的记号），写完再换回 \X
 export const ESC_MARK = "mdEsc";

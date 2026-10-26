@@ -29,7 +29,7 @@ export type Stale =
   | { state: "uncommitted" } // 钉在 HEAD，但工作区有未提交改动
   | { state: "missing" }; // 仓库 / 文件不在：只读快照
 
-/** 材质主题（10 种）；明暗跟随 VS Code */
+/** 材质主题；明暗跟随 VS Code */
 export const THEMES = [
   ["warm-ink", "Warm Ink"], ["graphite", "Graphite"], ["soft-light", "Soft Light"], ["drafting", "Drafting"],
   ["colorful", "Colorful"], ["newspaper", "Newspaper"], ["poster", "Poster"], ["classic", "Classic"],
@@ -111,7 +111,6 @@ export type PeekDef = {
   text: string[];
   seg: Segment; // Pin as Sidenote / Place on Board 用
   follow?: { label: string; line: number; col: number; path: string }; // 下一跳：config.max_num_batched_tokens · config.py:9
-  // 以下 v0.1.5 起；旧的宿主没有，白板按 start 连续行显示
   kind?: "field" | "function" | "class" | "module" | "other"; // 源码部分按定义类型取（module 不放源码）
   rows?: number[]; // html / text 每一行的行号（不连续时）；缺省 = start 起连续
   head?: string; // 行上面的小标题：class Config
@@ -170,13 +169,11 @@ export type HostToBoard =
   | { type: "add"; cards: NewCard[]; ask?: "split"; sel?: { card: string } }
   /** 撤销编辑器里的一次添加（⌥B 之后接着按 ⌘Z、通知里的 Undo）：只拿掉这几张卡 */
   | { type: "undoAdd"; cards: string[] }
-  /** 给选中的卡追加一段 */
   | { type: "appendSegment"; card: string; seg: Segment; view: SegView }
   /** 编辑器 ⌥S：作为 Sidenote 挂到白板上选中的行 */
   | { type: "addSidenote"; seg: Segment; view?: SegView }
   /** sticker：顺带打开这个问题（Questions 面板点进来的） */
   | { type: "reveal"; card: string; seg?: string; lines?: [number, number]; sticker?: string }
-  /** 宿主拦下的快捷键转给白板 */
   | { type: "key"; action: KeyAction }
   /** 侧栏 / 命令面板改了白板名 */
   | { type: "rename"; name: string }
@@ -199,7 +196,7 @@ export type HostToBoard =
   | { type: "crumbs"; crumbs: Crumb[] }
   /** 一次运行（Capture Run 跑完，或 Apply Run… 选的）：白板给对上的 Call 箭头挂 observed 证据和实参，没对上的列出来 */
   | { type: "run"; apply: RunApply }
-  /** 有 Variant 的卡（线框 07）：Variant 的代码变了（保存、分支 rebase、PR 更新）、合进了上游、上游最新的代码。只发有变化的卡 */
+  /** 有 Variant 的卡：Variant 的代码变了（保存、分支 rebase、PR 更新）、合进了上游、上游最新的代码。只发有变化的卡 */
   | { type: "variants"; cards: Record<string, VariantSync> }
   | { type: "reply"; req: number; data?: ReplyOf<AskType>; error?: string };
 
@@ -294,15 +291,15 @@ export type BoardToHost =
   /** 白板的 ⋯ 菜单：Capture Run…（问命令、跑一次、发回 run）/ Apply Run…（从存着的运行记录里选一次） */
   | { type: "captureRun" }
   | { type: "applyRun" }
-  /** Questions 面板（线框 06）：所有白板上的问题（宿主按存好的白板算；这块白板白板自己按当前状态换掉） */
+  /** Questions 面板：所有白板上的问题（宿主按存好的白板算；这块白板由白板自己按当前状态换掉） */
   | { type: "questions"; req: number }
   /** 导出 Markdown 前：段的 GitHub 永久链接（段 id → URL；算不出的不给） */
   | { type: "permalinks"; req: number; segs: Segment[] }
-  /** 导出（线框 08）：存成文件（先问存到哪）。html 里的 cbres: 引用由宿主换成 data: URL（单个文件、离线能开）。回存了没有 */
+  /** 导出：存成文件（先问存到哪）。html 里的 cbres: 引用由宿主换成 data: URL（单个文件、离线能开）。回存了没有 */
   | { type: "exportFile"; req: number; kind: "html" | "md"; name: string; text: string }
   /** 写剪贴板（webview 里写可能被拦下） */
   | { type: "copyText"; text: string }
-  /** Add Variant 菜单（线框 07）：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
+  /** Add Variant 菜单：这段代码所在仓库的其他 worktree、本地分支。回 VariantSources */
   | { type: "variantSources"; req: number; seg: Segment }
   /** 加一个 Variant：segs = 上游的段，宿主在那个来源里按函数名重新找（file 没给 abs 时先让用户选文件）。回 NewVariant；取消回 null */
   | { type: "addVariant"; req: number; segs: Segment[]; from: AddVariantFrom };
@@ -354,8 +351,7 @@ export type DispatchResult = { impls: ImplPick[]; base: string; abstract?: true 
 export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev">;
 /** 动态分发的一个实现：qual / 路径 / 行；lib = 在 library 里（包名）；base = 基类自己的实现（不是抽象的） */
 export type ImplPick = { label: string; detail: string; path: string; line: number; qual: string; lib?: string; base?: true };
-/** 跨语言按名字搜到的一处：lang = py / cpp / cuda / rust；def = 定义，否则是字符串注册（"name"） */
-/** lang：语言表（langs.ts）的 id */
+/** 跨语言按名字搜到的一处：lang = 语言表（langs.ts）的 id；def = 定义，否则是字符串注册（"name"） */
 export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
 /** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
 export type GenSource = { text: string; lang: string; name: string };

@@ -1,6 +1,5 @@
-// 自定义贴纸包（#45）：Sticker Packs 目录里的 Iconify JSON（一套一个文件）和图标文件夹（文件夹名 = 包名）。纯本地，不联网。
-// 文件夹里可以是 SVG，也可以是位图 PNG / WebP / GIF（含动图，#11）：位图按文件头认格式（core 的 sniffImage；扩展名只用来挑文件），读成 data: URL 随包发给白板。
-// 目录：设置 Sticker Folder（相对路径相对工作区根），空 = ~/.codeboard/stickers；Open Folder 打开的也是它。
+// 自定义贴纸包：Sticker Packs 目录里的 Iconify JSON（一套一个文件）和图标文件夹（文件夹名 = 包名）。纯本地，不联网。
+// 文件夹里可以是 SVG，也可以是位图 PNG / WebP / GIF（含动图）：位图按文件头认格式（core 的 sniffImage；扩展名只用来挑文件），读成 data: URL 随包发给白板。
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
@@ -14,7 +13,6 @@ export const stickerDir = () => {
   return d ? settingDir(d) : path.join(os.homedir(), ".codeboard", "stickers");
 };
 
-/** Open Folder：没有就建，然后在系统文件管理器里打开 */
 export async function openStickerDir() {
   const dir = stickerDir();
   try {
@@ -37,7 +35,6 @@ const MAX_JSON = 64 * 1024 * 1024;
 const BITMAP_EXT = /\.(png|webp|gif)$/i;
 const ICON_EXT = /\.(svg|png|webp|gif)$/i;
 
-/** Iconify JSON → 包 */
 export function iconifyPack(id: string, j: any): StickerPack | null {
   if (!j || typeof j.icons !== "object") return null;
   const W = j.width ?? 16, H = j.height ?? 16;

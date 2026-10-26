@@ -1,5 +1,3 @@
-// Note 里的灰字补全：规则在 ui/ghost.ts（和代码同一套），这里是 ProseMirror 那一层：状态、装饰、按键。
-// 灰字只是装饰，不进文档；问的是光标前后的 Markdown 原文；输入法组字时不问
 import { Extension } from "@tiptap/core";
 import { Plugin, PluginKey, type EditorState } from "@tiptap/pm/state";
 import { Decoration, DecorationSet, type EditorView } from "@tiptap/pm/view";
@@ -11,7 +9,7 @@ import { GhostAsker, eatGhost, nextWord, wantGhost, type Complete, type Ghost as
 import { revealIn, scroller } from "../ui/reveal";
 
 const CARET = "\uE000";
-/** 光标前后的 Markdown 原文（模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown） */
+/** 问 Markdown 原文：模型看到 **b**、`c`、$x$、[[Ref]]、# 才知道该写 Markdown */
 export function mdAround(s: EditorState, pos: number): [string, string] {
   try {
     const md = serializeMd(s.tr.insertText(CARET, pos).doc.toJSON());
@@ -23,14 +21,13 @@ export function mdAround(s: EditorState, pos: number): [string, string] {
 
 export const ghostKey = new PluginKey<G>("cbGhost");
 
-/** 编辑器在一个自己会滚的框里（定了高度的 Note）：灰字整段滚进来看得见，光标那一行不滚出去 */
+/** 编辑器在自己会滚的框里时：灰字整段滚进来，光标那一行不滚出去 */
 function reveal(view: EditorView, pos: number) {
   const box = scroller(view.dom), span = view.dom.querySelector(".md-ghost");
   if (!box || !span) return;
   revealIn(box, view.coordsAtPos(pos).top, span.getBoundingClientRect().bottom);
 }
 
-/** 现在能问就给一次问 */
 function probe(view: EditorView) {
   const s = view.state, sel = s.selection, $p = sel.$head, p = $p.parent;
   if (!view.hasFocus() || view.composing || !sel.empty) return null;

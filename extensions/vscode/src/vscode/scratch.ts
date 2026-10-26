@@ -1,10 +1,9 @@
-// WorkspaceScratch 的 VS Code 实现：白板里编辑中的代码对应一个不在编辑器里显示的文档，补全 / 悬停 / 签名走
-// vscode.executeCompletionItemProvider / executeHoverProvider / executeSignatureHelpProvider（Python 一般是 Pylance 在答）。
-// 文档是 near 那个源文件旁边的一个隐藏文件 .codeboard-scratch-<id>.py（Pylance 只认工作区里的磁盘文件和 untitled：同目录下 import、
-// 相对 import 都按源文件的位置找），编辑结束就删掉；它的名字写进仓库的 .git/info/exclude（只在本机，不进提交），git status 看不到。
-// 内容直接写文件（vscode.workspace.fs），VS Code 从磁盘读回来：文档从来不是“未保存”的。用 WorkspaceEdit 改的话（untitled 也一样），
+// 白板里编辑中的代码对应 near 源文件旁的隐藏文件 .codeboard-scratch-<id>.py，补全 / 悬停 / 签名问 VS Code（Python 一般是 Pylance 在答）。
+// 放在源文件旁边：Pylance 只认工作区里的磁盘文件和 untitled，同目录 import、相对 import 都按源文件的位置找。编辑结束就删掉；
+// 名字写进仓库的 .git/info/exclude（只在本机，不进提交），git status 看不到。
+// 内容直接写文件（vscode.workspace.fs），VS Code 从磁盘读回来：用 WorkspaceEdit 改的话（untitled 也一样），
 // VS Code 过一会儿会给未保存的文档开一个标签页，重新加载窗口时还会恢复出来。
-// 编辑的这段时间里资源管理器能看到这个文件；Pylance 的问题面板也可能列出它的问题。
+// 已知的副作用：编辑期间资源管理器能看到这个文件，Pylance 的问题面板也可能列出它的问题。
 // 文件名规则、心跳和崩溃后清理的规则见 ../scratchnames.ts。
 import * as vscode from "vscode";
 import * as path from "node:path";
@@ -15,14 +14,12 @@ import { HEARTBEAT_MS, SCRATCH_GLOB, isScratchName, scratchName, staleScratch } 
 export type Doc = { uri: vscode.Uri; lang: string; doc: vscode.TextDocument };
 const docs = new Map<string, Doc>();
 const files = new Set<string>();
-/** 这是不是某段编辑中的代码的文档（文档变了、存了、文件变了的监听里要跳过它） */
+/** 文档变了、存了、文件变了的监听里要跳过它 */
 export const isScratch = (u: vscode.Uri) => u.scheme === "file" && (files.has(u.fsPath) || isScratchName(path.basename(u.fsPath)));
 
-/** 放文件的目录：near 那个文件的目录；没给就是工作区根（store：没有工作区时） */
 function dirFor(near: string | undefined, store: string): string {
   return near ? path.dirname(near) : path.join(store, "scratch");
 }
-/** 仓库的 .git/info/exclude 里加上 .codeboard-scratch-*（每个仓库一次） */
 const excluded = new Set<string>();
 function exclude(dir: string) {
   for (let d = dir; d && d !== path.dirname(d); d = path.dirname(d)) {
@@ -40,12 +37,12 @@ function exclude(dir: string) {
         fs.mkdirSync(path.dirname(f), { recursive: true });
         fs.appendFileSync(f, `${t && !t.endsWith("\n") ? "\n" : ""}${NOTE}${SCRATCH_GLOB}\n`);
       }
-    } catch { /* 写不了就算了 */ }
+    } catch {}
     return;
   }
 }
 const cleaned = new Set<string>();
-/** 上次没删掉的（窗口被关掉、崩了）：只删名字对得上、不是这个进程的、mtime 超过 10 分钟的（别的窗口在用的文件每分钟刷一次 mtime）。出错就跳过 */
+/** 上次没删掉的（窗口被关掉、崩了）：只删名字对得上、不是这个进程的、过了 STALE_MS 的。出错就跳过 */
 function cleanup(dir: string) {
   try {
     const now = Date.now();
@@ -55,11 +52,10 @@ function cleanup(dir: string) {
       try { const st = fs.statSync(path.join(dir, name)); if (st.isFile()) entries.push({ name, mtimeMs: st.mtimeMs }); } catch { /* 刚被删了 */ }
     }
     for (const name of staleScratch(entries, now, (n) => files.has(path.join(dir, n)))) {
-      try { fs.rmSync(path.join(dir, name), { force: true }); } catch { /* 删不了就算了 */ }
+      try { fs.rmSync(path.join(dir, name), { force: true }); } catch {}
     }
-  } catch { /* 读不了目录就算了 */ }
+  } catch {}
 }
-/** 心跳：打开着的文件每分钟 touch 一次，别的窗口的清理就知道它还在用 */
 let heartbeat: ReturnType<typeof setInterval> | undefined;
 function beat() {
   const now = new Date();
@@ -104,11 +100,11 @@ async function ensure(id: string, lang: string, near: string | undefined, store:
 
 /** 等 VS Code 把写好的文件读回文档最多等多久：过了就当这次同步失败（这次请求回空、下次再同步），不拿旧内容去问语言服务 */
 export const RELOAD_LIMIT_MS = 10_000;
-/** 文档的字和要的字一样（VS Code 读回来时可能把换行统一成 \r\n） */
+// VS Code 读回来时可能把换行统一成 \r\n
 const sameText = (a: string, b: string) => a === b || a.replace(/\r\n/g, "\n") === b.replace(/\r\n/g, "\n");
 
 /**
- * 换内容：写文件，等 VS Code 把文档读回来（onDidChangeTextDocument，文档的字和要的一样）再返回：问语言服务之前文档要和白板上的一样。
+ * 写文件后等 VS Code 把文档读回来（onDidChangeTextDocument，文档的字和要的一样）再返回：问语言服务之前文档要和白板上的一样。
  * 等不到就失败（写文件出错、文档在读回来之前被关掉、RELOAD_LIMIT_MS 内没来），这次的补全 / 悬停 / 签名回空
  */
 export async function setText(d: Doc, text: string) {
@@ -162,7 +158,6 @@ function signature(h: vscode.SignatureHelp | undefined): LspSignature | null {
   return { label: s.label, doc: md(s.documentation), params, active: active < params.length ? active : -1 };
 }
 
-/** 插件停用时：删掉还在编辑的那些文件（窗口关了、白板关了没来得及结束编辑） */
 export function disposeScratch() {
   if (heartbeat) { clearInterval(heartbeat); heartbeat = undefined; }
   for (const f of files) fs.rmSync(f, { force: true });

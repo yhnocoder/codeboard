@@ -1,5 +1,5 @@
-// 导出（线框 08）：给没装插件的人看。范围（整块 / 选中的 Section / 一条讲解路径）→ 卡的顺序；Markdown 按这个顺序写；
-// HTML 快照由白板克隆画布、宿主把字体图片内联成一个文件（inlineSnapshot）。纯函数，白板和宿主都能用。
+// 导出给没装插件的人看。范围（整块 / 选中的 Section / 一条讲解路径）→ 卡的顺序；Markdown 按这个顺序写；
+// HTML 快照由白板克隆画布、宿主把字体图片内联成一个文件（inlineSnapshot）。
 // Markdown 原样写出用户的文字和标识符：不做转义（block_manager 不会变成 block\_manager）
 import { cardAndCols, cardTitle, colsOf, hostOf, stickerWhere, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
 import { computeFlows, isCall, startCards, walkOrder } from "./flow";
@@ -45,13 +45,12 @@ export function exportOrder(b: Board, scope: ExportScope): string[] {
 export type MdOpts = {
   order: string[];
   title?: string;
-  /** 带上问题（默认不带，线框 08） */
+  /** 带上问题（默认不带） */
   questions?: boolean;
   /** 带上 Board-only 的 Sidenote（只属于这块白板的私人笔记；默认不带） */
   boardOnly?: boolean;
   /** 段的 GitHub 永久链接（宿主按 remote 算；没有就只写路径和 commit） */
   links?: Record<string, string>;
-  /** 子白板卡：那块白板的名字 */
   boardName?: (id: string) => string | undefined;
 };
 
@@ -119,7 +118,6 @@ function arrowMd(b: Board, l: Link): string {
   return bits.join(" · ");
 }
 
-/** 一张卡的正文 */
 function bodyMd(b: Board, c: Card, o: MdOpts): string[] {
   switch (c.kind) {
     case "code": {
@@ -172,7 +170,7 @@ export function boardMarkdown(b: Board, o: MdOpts): string {
       if (qs.length) out.push("");
     }
     const outs = b.links.filter((l) => ids.includes(l.from.card) && !ids.includes(l.to.card) && !l.gen).sort((x, y) => Number(!isCall(x)) - Number(!isCall(y)) || (x.from.line ?? 0) - (y.from.line ?? 0));
-    if (outs.length) out.push(...outs.map((l) => `- ${arrowMd(b, l)}`), ""); // 列表：每条箭头一行
+    if (outs.length) out.push(...outs.map((l) => `- ${arrowMd(b, l)}`), "");
   }
   return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trimEnd()}\n`;
 }
@@ -207,7 +205,6 @@ export async function inlineSnapshot(html: string, load: (kind: "media" | "asset
   return html.replace(RES_RE, (k) => got.get(k) ?? "");
 }
 
-/** 按扩展名猜 MIME（字体、图片） */
 export function mimeOf(p: string): string {
   const e = p.toLowerCase().split(".").pop() ?? "";
   return ({ woff2: "font/woff2", woff: "font/woff", ttf: "font/ttf", otf: "font/otf", png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", gif: "image/gif", webp: "image/webp", svg: "image/svg+xml", ico: "image/x-icon" } as Record<string, string>)[e] ?? "application/octet-stream";

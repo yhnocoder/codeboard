@@ -1,4 +1,3 @@
-// 子白板：宿主发来的骨架（只有框、名字、标记、连线、Section 色）、面包屑，和骨架在框里的摆法。
 // 骨架画在框里（cards/BoardBody.tsx），连到骨架里某张卡的箭头（End.sub）按同一套摆法找那张卡的位置（canvas/Links.tsx）。
 import { createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
@@ -14,7 +13,6 @@ export const [crumbs, setCrumbs] = createSignal<Crumb[]>([]);
 /** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
 export const [walkBack, setWalkBack] = createSignal<{ root: string; i: number } | null>(null);
 
-/** 白板上的子白板框 */
 export const frames = rooted(() => createMemo(() => state.board.cards.filter((c): c is BoardCard => c.kind === "board")));
 const frameById = rooted(() => createMemo(() => new Map(frames().map((c) => [c.id, c]))));
 export const frameOf = (id: string) => frameById().get(id);
@@ -68,8 +66,6 @@ export function trackSkeletons() {
     }));
   });
 }
-
-// ---------- 骨架在框里的摆法 ----------
 
 /** 框里放骨架的区域（世界坐标）：标题栏下面、四周留白 */
 export function innerOf(r: Rect): Rect {

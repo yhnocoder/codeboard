@@ -1,5 +1,3 @@
-// 粘贴到画布：按剪贴板内容决定建什么卡；GitHub 代码链接解析；语言猜测。
-
 export type GithubRef = { owner: string; name: string; ref: string; path: string; start?: number; end?: number };
 
 /** https://github.com/o/r/blob/<ref>/<path>#L25-L34（ref 里带 / 的分支名由宿主再用 API 校正） */

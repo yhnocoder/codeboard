@@ -1,5 +1,4 @@
 // 代码编辑器（CodeMirror，@yhnocoder/markdown/code-editor）单独打包，第一次编辑代码前才要；白板打开后空闲时先悄悄加载好。
-// 这里还有编辑器要的宿主能力：语言服务（补全、悬停、签名）、灰字补全、着色。
 import type { Segment, SegView, LspItem, LspSignature } from "@codeboard/core";
 import { unwrap } from "solid-js/store";
 import { state } from "../state/store";

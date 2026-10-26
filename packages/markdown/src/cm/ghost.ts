@@ -1,4 +1,3 @@
-// 代码里的灰字补全：规则在 ui/ghost.ts（和 Note 同一套），这里是 CodeMirror 那一层：状态、装饰、接受。
 // 补全菜单开着时不显示灰字，Tab 归菜单
 import { StateField, StateEffect, type Extension } from "@codemirror/state";
 import { EditorView, Decoration, WidgetType, ViewPlugin, type ViewUpdate } from "@codemirror/view";
@@ -32,7 +31,7 @@ const ghostField = StateField.define<Ghost>({
   provide: (f) => EditorView.decorations.from(f, (g) => (g ? Decoration.set([Decoration.widget({ widget: new GhostWidget(g.text), side: 1 }).range(g.pos)]) : Decoration.none)),
 });
 
-/** 有灰字就接受（all = 整段，否则一个词）；没有回 false */
+/** all = 整段，否则一个词 */
 export function acceptGhost(v: EditorView, all = true): boolean {
   const g = v.state.field(ghostField, false);
   if (!g) return false;

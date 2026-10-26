@@ -1,4 +1,4 @@
-// 我的改动（线框 07）的界面状态：宿主给的、不存盘的上游最新和落后几个 commit，对比基准，提示过的合入（都按卡 id）
+// Variant 的界面状态：宿主给的、不存盘的上游最新和落后几个 commit，对比基准，提示过的合入（都按卡 id）
 import { createSignal } from "solid-js";
 import { createStore, reconcile } from "solid-js/store";
 import type { Segment, SegView } from "@codeboard/core";

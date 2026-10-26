@@ -1,8 +1,5 @@
-// 自由代码卡的编辑：CodeMirror（@yhnocoder/markdown/code-editor），排版和显示时一模一样（同一个 .code 字体行高、54px 的行号栏、宿主给的着色），
-// 进出编辑字的位置不动。改了的行先留着挪过来的旧着色，宿主的着色回来就换上；当前行有底色。
-// Tab / ⇧Tab 缩进（多行一起），回车保持缩进（: { [ ( 结尾多缩一级），⌘/ 切换注释，Esc / ⌘↵ 结束。
-// 补全菜单、悬停、签名提示问宿主的语言服务（VS Code 里是 Pylance 之类），灰字补全和 Note 一样。
-// CodeMirror 还没加载好时（一般空闲时早就预加载了）先照原样显示，加载好了再换上
+// 自由代码卡的编辑：CodeMirror，排版和显示时一模一样（同一个 .code 字体行高、54px 的行号栏、宿主给的着色），进出编辑字的位置不动。
+// 改了的行先留着挪过来的旧着色，宿主的着色回来就换上。CodeMirror 还没加载好时先照原样显示，加载好了再换上
 import { createEffect, For, onCleanup, onMount, Show, createSignal } from "solid-js";
 import { escHtml, langInfo } from "@codeboard/core";
 import type { CodeCard, SegView } from "@codeboard/core";
@@ -11,7 +8,6 @@ import { loadCm, cmNow, lspHost, ghostHost, nearSeg, hostHighlight } from "../cm
 import type { CodeEditor } from "@yhnocoder/markdown/code-editor";
 import { lastDown } from "../state/measure";
 import { takeEditEntry } from "../state/ui";
-
 
 export type FreeEditCtl = { text(): string; focus(): void; el: HTMLElement };
 
@@ -23,7 +19,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
   let gone = false;
   const id = `free-${p.card().id}`;
 
-  // 显示时选了一段代码再按 ⌫ / Delete 进来的（#69）：选上同一段，再把这个键交给编辑器
+  // 显示时选了一段代码再按 ⌫ / Delete 进来的：选上同一段，再把这个键交给编辑器
   const entry = takeEditEntry("free", p.card().id);
   const make = (m: typeof import("@yhnocoder/markdown/code-editor")) => {
     if (gone) return;

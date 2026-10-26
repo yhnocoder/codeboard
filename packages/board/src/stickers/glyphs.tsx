@@ -1,7 +1,6 @@
-// 贴纸图标：内置一套（彩色圆底 + 白色线条；各主题在 themes.css 里换成自己的画法；线条是 Lucide 的造型，ISC 许可，
-// 见 public/icons/LICENSE-lucide.txt；d / fill 由 tools/icons/gen.mjs 从 tools/icons/icons.src.mjs 写入），Emoji 直接用系统字体，
-// 自定义包（Iconify JSON / 装 SVG、PNG、WebP、GIF 的文件夹）由插件读本地目录。
-// 位图（#11）用原生 <img> 画（宿主认过格式的 data: URL），动图由浏览器自己播。动图在白板上只在看得见、且是完整档（不是概览 / 地图档）时播，
+// 内置贴纸：彩色圆底 + 白色线条（各主题在 themes.css 里换画法）；线条是 Lucide 的造型（ISC 许可，见 public/icons/LICENSE-lucide.txt），
+// d / fill 由 tools/icons/gen.mjs 从 tools/icons/icons.src.mjs 写入。Emoji 直接用系统字体；自定义包（Iconify JSON / 图片文件夹）由插件读本地目录。
+// 位图用原生 <img> 画（宿主认过格式的 data: URL），动图由浏览器自己播。动图在白板上只在看得见、且是完整档（不是概览 / 地图档）时播，
 // 别的时候换成第一帧的静态图（第一次要用时解一帧画进 canvas，存成 PNG data: URL，每个图标一份）：屏幕外、缩小了的动图不再每帧重画。
 // 播不播由外面用 GlyphPlay 告诉（画布上的贴纸看自己在不在屏幕附近，选图标面板看指针在不在格子上），没人说就一直播
 import { createContext, createMemo, createSignal, Show, useContext, type Accessor, type JSX } from "solid-js";
@@ -46,7 +45,6 @@ export const iconOf = (i: IconRef): StickerIcon | undefined => {
   return ps.find((p) => p.id === i.pack)?.icons.find((x) => x.name === i.name);
 };
 type Bitmap = Extract<StickerIcon, { img: string }>;
-/** 自定义包里的位图图标 */
 export const bitmapOf = (i: IconRef): Bitmap | undefined => { const ic = iconOf(i); return ic && "img" in ic ? ic : undefined; };
 // 包里的 SVG 是用户目录里的文件：画之前用 DOMPurify（svg 配置）清洗，去掉脚本、事件属性、javascript: 链接、foreignObject、<style>；按图标缓存
 const clean = new WeakMap<object, string>();

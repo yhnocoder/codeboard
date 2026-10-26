@@ -57,7 +57,6 @@ export function stmtEnd(lines: string[], l: number): number {
   return l;
 }
 
-/** 太多行时以当前行为中心截一段 */
 const around = (rows: number[], line: number, n = MAX_ROWS) => {
   if (rows.length <= n) return rows;
   const i = Math.max(0, rows.indexOf(line));

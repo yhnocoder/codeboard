@@ -1,4 +1,3 @@
-// 代码卡的「行」：哪些行显示、哪里画省略条 / 函数边界线 / 文件分隔条。
 // 白板按它渲染，Link 端点、Sidenote 标记按它找位置。
 import { inRanges, type CodeCard, type HideFlags, type Segment } from "./model";
 
@@ -29,7 +28,6 @@ export type RowOpts = {
   versionOf?: (s: Segment) => string | undefined; // 和其他段版本不同时，文件条上显示
 };
 
-/** 一张代码卡要渲染的行 */
 export function cardRows(c: Pick<CodeCard, "segments" | "hide">, o: RowOpts = {}): Row[] {
   const rows: Row[] = [];
   const hide = { ...c.hide, comments: c.hide?.comments || o.hideAllComments };
@@ -123,11 +121,10 @@ export function copyText(lines: string[]): string {
   return lines.map((l) => (Number.isFinite(ind) ? l.slice(Math.min(ind, l.length - l.trimStart().length)) : l)).join("\n");
 }
 
-/** 合并卡片时的标题版本标记：所有段版本一样 → 那个版本；不一样 → Mixed versions */
+/** 段的版本不全一样（标题上显示 Mixed versions） */
 export function mixedVersions(c: CodeCard): boolean {
   const vs = new Set(c.segments.filter((s) => s.src.kind !== "free").map((s) => JSON.stringify(s.version)));
   return vs.size > 1;
 }
 
-/** 卡里一共有多少个文件 */
 export const fileCount = (c: CodeCard) => new Set(c.segments.map((s) => s.path)).size;

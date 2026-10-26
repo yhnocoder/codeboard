@@ -1,4 +1,4 @@
-// 快捷键：一张表同时管按键分发（installKeys）、? 浮层和 Settings 页的清单、菜单和按钮提示里的快捷键（kbd）。
+// 一张表同时管按键分发（installKeys）、? 浮层和 Settings 页的清单、菜单和按钮提示里的快捷键（kbd）。
 // keys 是按键写法：mod（⌘ / Ctrl）、shift、alt、ctrl（⌃；非 Mac 是 Ctrl+Alt）加一个键：
 // 字母和符号按 e.key（布局里打出来的字），Key* / Digit* / Bracket* / Minus 按 e.code（⌥ 会改掉 e.key）。
 // 没有 keys 的行只进清单（鼠标手势、编辑器里的快捷键）；没有 label 的行不进清单。表的顺序就是分发的顺序：同一个键先匹配的先做。
@@ -39,7 +39,6 @@ const atPointer = () => worldAt(lastPointer());
 const hasCards = () => sel.cards.length > 0;
 
 export const KEYMAP: Bind[] = [
-  // ---------- Create ----------
   { id: "newNote", keys: ["n"], label: "New Note", group: "Create", run: (a) => void a.newNote(atPointer(), true) },
   { id: "newText", keys: ["t"], label: "New Text", group: "Create", run: (a) => void a.newNote(atPointer(), false) },
   { id: "newMark", keys: ["m"], label: "New Mark", group: "Create", run: (a) => void a.newMark(atPointer()) },
@@ -49,7 +48,6 @@ export const KEYMAP: Bind[] = [
   { id: "editorAdd", show: "⌥B", label: "Add to Board (editor)", group: "Create" },
   { id: "editorSplit", show: "⇧⌥B", label: "Add selection as separate cards, one per definition (editor)", group: "Create" },
   { id: "editorNote", show: "⌥S", label: "Add as Sidenote to selected lines (editor)", group: "Create" },
-  // ---------- View ----------
   { id: "search", keys: ["mod+k"], label: "Search", group: "View", run: () => void setPaletteOpen({ mode: "all" }) },
   { id: "fitWindow", keys: ["shift+Digit1", "!"], show: "⇧1", label: "Fit to Window", group: "View", run: (a) => a.fitAll() },
   { id: "fitSelection", keys: ["shift+Digit2"], label: "Fit Selection", group: "View", run: (a) => a.fitSelection() },
@@ -62,7 +60,6 @@ export const KEYMAP: Bind[] = [
   { id: "zoomOut", keys: ["mod+-"], show: "⌘−", label: "Zoom Out", group: "View", run: () => zoomAt(0.8) },
   { id: "zoomGesture", show: "⌘ + scroll / pinch", label: "Zoom", group: "View" },
   { id: "pan", keys: [" "], show: "Space + drag / two fingers", label: "Pan", group: "View", run: () => setSpaceDown(true) },
-  // ---------- Cards ----------
   { id: "marquee", show: "Drag empty space", label: "Select with a box", group: "Cards" },
   { id: "selectAll", keys: ["mod+a"], label: "Select All", group: "Cards", run: (a) => a.selectAll() },
   { id: "move", show: "Drag title bar", label: "Move (snaps; ⌘ to turn off)", group: "Cards" },
@@ -112,7 +109,7 @@ export const KEYMAP: Bind[] = [
   { id: "front", keys: ["mod+shift+BracketRight"], label: "Bring to Front", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "front") },
   { id: "back", keys: ["mod+shift+BracketLeft"], label: "Send to Back", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "back") },
   { id: "deleteSticker", keys: ["Backspace", "Delete"], when: () => !!selSticker(), run: (a) => a.removeSticker(selSticker()!) },
-  // 选中了一张卡里的一段字：进入编辑删掉这段字，不删卡（#69）
+  // 选中了一张卡里的一段字：进入编辑删掉这段字，不删卡
   { id: "deleteText", keys: ["Backspace", "Delete"], run: (a, e) => a.editTextSel(e.key === "Delete" ? "Delete" : "Backspace") },
   { id: "delete", keys: ["Backspace", "Delete"], show: "⌫", label: "Delete (linked card: remove from this board)", group: "Cards", run: (a) => { if (!lineSel() || sel.cards.length) a.deleteSel(); } },
   // ⌘⌫：共享卡 Delete Everywhere（要确认）；⌫ 只从这块白板移除
@@ -126,7 +123,6 @@ export const KEYMAP: Bind[] = [
   { id: "nudgeR", keys: ["ArrowRight", "shift+ArrowRight"], when: () => hasCards() && !walk(), run: nudge(1, 0) },
   { id: "nudgeU", keys: ["ArrowUp", "shift+ArrowUp"], when: () => hasCards() && !walk(), run: nudge(0, -1) },
   { id: "nudgeD", keys: ["ArrowDown", "shift+ArrowDown"], when: () => hasCards() && !walk(), run: nudge(0, 1) },
-  // ---------- Code ----------
   { id: "expand", show: "Click a call", label: "Expand into a new card (or go to the one already expanded)", group: "Code" },
   { id: "dragCall", show: "Drag a call", label: "Arrow to an existing card", group: "Code" },
   { id: "selectLines", show: "Click line numbers", label: "Select lines (⇧ extends)", group: "Code" },
@@ -134,12 +130,10 @@ export const KEYMAP: Bind[] = [
   { id: "copyCode", show: "⌘C", label: "Copy code without line numbers", group: "Code" },
   { id: "peek", show: "Hover a name", label: "Definition peek", group: "Code" },
   { id: "pinPop", show: "⌘ + hover", label: "Pin a popup", group: "Code" },
-  // ---------- Walkthrough ----------
   { id: "walk", keys: ["p"], label: "Walk Through from the selected card", group: "Walkthrough", run: (a) => a.startWalk() },
   { id: "walkNext", keys: ["ArrowRight", "ArrowDown"], show: "→", label: "Next Step", group: "Walkthrough", when: () => !!walk(), run: (a) => a.walkTo(walk()!.i + 1) },
   { id: "walkPrev", keys: ["ArrowLeft", "ArrowUp"], show: "←", label: "Previous Step", group: "Walkthrough", when: () => !!walk(), run: (a) => a.walkTo(walk()!.i - 1) },
   { id: "walkExit", show: "Esc", label: "Exit", group: "Walkthrough" },
-  // ---------- Board ----------
   { id: "undo", keys: ["mod+z"], label: "Undo", group: "Board", run: () => void undo() },
   { id: "redo", keys: ["mod+shift+z", "mod+y"], show: "⇧⌘Z", label: "Redo", group: "Board", run: () => void redo() },
   { id: "settings", keys: ["mod+Comma"], label: "Settings", group: "Board", run: (a) => a.toggleSettings() },
@@ -158,8 +152,6 @@ export const KEYMAP: Bind[] = [
 ];
 
 const byId = new Map(KEYMAP.map((b) => [b.id, b]));
-
-// ---------- 匹配 ----------
 
 const CODE = /^(Key[A-Z]|Digit\d|Bracket(Left|Right)|Minus|Equal|Comma)$/;
 type Combo = { mod: boolean; shift: boolean; alt: boolean; ctrl: boolean; key: string };
@@ -197,8 +189,6 @@ export function runKey(a: A, k: KeyAction) {
   const b = byId.get(k);
   if (b?.run && (!b.when || b.when())) b.run(a, new KeyboardEvent("keydown"));
 }
-
-// ---------- 写法 ----------
 
 const KEY_TEXT: Record<string, string> = { Enter: "↵", Escape: "Esc", Backspace: "⌫", Delete: "⌫", ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓", " ": "Space", Minus: "-", Equal: "=", Comma: ",", BracketLeft: "[", BracketRight: "]", "-": "−" };
 /** Mac 的写法，修饰键按 ⌃⌥⇧⌘ 的顺序 */

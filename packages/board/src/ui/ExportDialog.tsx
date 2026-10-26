@@ -1,4 +1,3 @@
-// 导出对话框（线框 08 一）：格式 · 范围 · 带不带问题和 Board-only 笔记 · 当前主题 · 文件名
 import { For, Show } from "solid-js";
 import { cardTitle } from "@codeboard/core";
 import { state, flows, cardById } from "../state/store";

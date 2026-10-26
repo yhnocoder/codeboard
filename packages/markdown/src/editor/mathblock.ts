@@ -1,6 +1,4 @@
-// 公式块，照 Typora：光标走进来（点一下、方向键走到、$$⏎、⌘⌥B）时在块里展开成能改的 LaTeX 原文，下面照旧是边打边变的预览；
-// 光标离开（Esc、⌘↵、方向键走出头、点别处）时写回，只剩公式。没展开时和静态显示的 .math 一样（同一个 KaTeX 的 display 排版）。
-// 原文改到一半不进文档：离开时一步写回（一次 ⌘Z 撤回整次修改）；写回时原文空了就删掉这一块
+// 照 Typora：选中时展开成能改的 LaTeX 原文，下面是边打边变的预览。原文改到一半不进文档：离开时一步写回（一次 ⌘Z 撤回整次修改）
 import katex from "katex";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { NodeSelection, TextSelection } from "@tiptap/pm/state";
@@ -44,7 +42,6 @@ export class MathBlockView implements NodeView {
   /** 原文几行就几行高（不量排版） */
   private fit() { this.src.rows = Math.max(1, this.src.value.split("\n").length); }
 
-  // 选中这一块（光标走进来）：展开原文
   selectNode() {
     this.open = true;
     this.dom.classList.add("is-open");

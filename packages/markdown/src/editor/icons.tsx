@@ -1,7 +1,7 @@
-// 选中工具条的线条图标：Lucide 的造型（https://lucide.dev，ISC 许可），从 24 格按 2/3 缩到 16 格后重画，横竖线落在整数坐标上。
-// 描边宽度是 --ico-w（1 或 2，用的一方按主题给，默认 1）：1px 时 markdown.css 把整组描边平移 (-.5, -.5)，线落在半像素中心上，不糊。
+// Lucide 的造型（https://lucide.dev，ISC 许可），从 24 格按 2/3 缩到 16 格后重画，横竖线落在整数坐标上
+// （1px 描边时 markdown.css 再平移半像素，见 .md-ico）。
 // 路径表由 tools/icons/gen.mjs 从 tools/icons/icons.src.mjs（MD_ICONS）生成，别手改。
-/** 描边路径；名字后面的注释是 Lucide 里的原名 */
+/** 名字后面的注释是 Lucide 里的原名 */
 const P: Record<string, string> = {
   bold: "M4 8h6a2.5 2.5 0 0 1 0 5H4.5a.5 .5 0 0 1-.5-.5v-9a.5 .5 0 0 1 .5-.5H9a2.5 2.5 0 0 1 0 5", // bold
   italic: "M13 3H7M9 13H3M10 3 6 13", // italic

@@ -1,11 +1,9 @@
-// 侧栏 BOARDS 的树（与 VS Code 无关，测试里直接用）：组 → 白板 → 子白板。子白板缩进在父白板下面，
 // 一块白板可以在几块父白板下面各出现一次；有父白板的不再列在顶层（只在环里的除外，免得从侧栏消失）。
 import type { BoardMeta } from "@codeboard/core";
 
 /** path = 从顶层到它的白板 id（树里同一块白板可以出现几次，节点 id 要按路径区分；也防环） */
 export type TreeNode = { kind: "group"; name: string } | { kind: "board"; id: string; meta: BoardMeta; path: string[] };
 
-/** n 的子节点；n 缺省 = 顶层（groups = 所有组） */
 export function treeChildren(metas: BoardMeta[], groups: string[], n?: TreeNode): TreeNode[] {
   const byId = new Map(metas.map((m) => [m.id, m]));
   const board = (meta: BoardMeta, path: string[] = []): TreeNode => ({ kind: "board", id: meta.id, meta, path: [...path, meta.id] });

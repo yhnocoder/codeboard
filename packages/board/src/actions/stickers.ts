@@ -1,4 +1,3 @@
-// 贴纸（#44 #45）：工具栏 Sticker → 选图标 → 点一下放下。贴在代码行（进行号栏，随 Update 跟行走）、卡片角上、或画布任意位置。
 import { uid, removeStickers, isQuestion, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
 import { openQuestion, setAnswered, linkAnswer, setStickerDragged } from "./questions";
 import { state, mutate, live, beginGesture, toast, rectOf } from "../state/store";
@@ -43,7 +42,7 @@ export function placeStickerAt(e: PointerEvent): boolean {
   }
   const id = uid("k");
   const st: Sticker = { id, icon: p.icon, color: p.color && p.color !== defaultColor(p.icon) ? p.color : undefined, at };
-  // 「?」贴纸：放下就写问题（线框 06）
+  // 「?」贴纸：放下就写问题
   const q = isQuestion(st);
   if (q) st.q = { md: "", at: Date.now() };
   mutate((b) => { b.stickers.push(st); });
@@ -51,7 +50,6 @@ export function placeStickerAt(e: PointerEvent): boolean {
   if (q) requestAnimationFrame(() => openQuestion(id, undefined, true));
   return true;
 }
-
 
 /**
  * 指针下面的卡或箭头（跳过贴纸自己）；不在任何东西上时吸附最近的：
@@ -101,7 +99,6 @@ function stickerWorld(s: Sticker): { x: number; y: number } | null {
   return { x: q.x + s.at.x, y: q.y + s.at.y };
 }
 
-/** 世界坐标 + 绑定目标 → StickerAt */
 function bindAt(w: { x: number; y: number }, size: number, t: BindTarget | null): StickerAt {
   if (t && "card" in t) { const r = rectOf({ id: t.card } as any); return { kind: "canvas", x: Math.round(w.x - r.x), y: Math.round(w.y - r.y), size, on: { card: t.card } }; }
   if (t && "link" in t) {

@@ -1,8 +1,8 @@
-// Copy Diagnostics 的文本：宿主收集事实，这里排版（纯函数，好测）。home 目录一律换成 ~。
+// Copy Diagnostics 的文本：home 目录一律换成 ~。
 import { escapeRegExp } from "./model";
 
 export type DiagInfo = {
-  ext: string; // CodeBoard 的版本
+  ext: string;
   app: string; // 宿主和它的版本：VS Code 1.105.0
   os: string; // darwin 24.1.0 arm64
   env: string[]; // 宿主自己关心的几行（VS Code：Python / Pylance 装没装）

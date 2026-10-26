@@ -1,16 +1,16 @@
-// 静态 Markdown 挂到页面上以后的事：[[引用]] 认目标、代码块着色、Mermaid 换成图、点链接 / 引用 / 勾选框。
 import { renderMd } from "./render";
 import { colorCode } from "./code";
 
-/** [[标题]] 指向的东西（白板上是卡）：用的一方注册怎么找（这里不认识目标，单元测试能跑）。missing：找不到时的提示 */
+/** [[标题]] 指向的东西（白板上是卡） */
 export type RefTarget = { id: string; title: string };
 type Ref = RefTarget | null;
 let resolve: (label: string) => Ref = () => null;
 let missing = "Nothing with this title";
+/** 接上 [[标题]] 怎么找目标；missing：找不到时的提示 */
 export const setRefResolver = (f: (label: string) => Ref, o: { missing?: string } = {}) => { resolve = f; if (o.missing) missing = o.missing; };
 export const resolveRef = (label: string) => resolve(label);
 
-/** innerHTML 放进去以后调用：只在真的有引用 / 代码 / 图表时才去查 DOM */
+/** renderMd 的 HTML 用 innerHTML 放进 el 以后调用：认 [[引用]]、代码块着色、Mermaid 换成图、摆批注标签 */
 export function hydrate(el: HTMLElement, html: string) {
   if (html.includes('class="cref"')) {
     for (const r of el.querySelectorAll<HTMLElement>(".cref")) {
@@ -25,15 +25,12 @@ export function hydrate(el: HTMLElement, html: string) {
   if (html.includes('class="md-annot"')) fitAnnots(el);
 }
 
-/**
- * {字|批注} 的标签居中在被标的字上面（markdown.css：left 50% 再往回挪半个标签宽，箭头也在正中），只用 CSS，不用量。
- * 这里只管超出：居中时写到这一块（段落、列表项、格子）左右外面去的，挪回块里（--ax，左边优先）。
- * 标签是 ::before，量不到：按它的字体用 canvas 算宽度。位置用 offsetLeft 量（同一张卡里，不受镜头缩放、滚动影响）。
- * 什么时候量：放进去时（还没挂到页面上的，下一帧）；手写字体到了（按需加载，中文字体按 unicode-range 才下载）；
- * 块变宽变窄（改卡片宽度、换行）。先全部量完再一起写，不来回排版
+/*
+ * {字|批注} 的标签靠 CSS 居中在被标的字上面；这里只把居中后超出所在块（段落、列表项、格子）左右的挪回块里（--ax，左边优先）。
+ * 标签是 ::before，量不到：按它的字体用 canvas 算宽度。位置用 offsetLeft 量（不受镜头缩放、滚动影响）。
+ * 字体按需加载（中文字体按 unicode-range 才下载），量的时候还没到的，到了再量一次。先全部量完再一起写，不来回排版
  */
 let ctx: CanvasRenderingContext2D | null | undefined;
-/** 量的时候字体还没到的：字体加载完（loadingdone）再量一次 */
 const refit = new Set<HTMLElement>();
 let sized: ResizeObserver | undefined;
 const BLOCK = "p, li, td, th, h1, h2, h3, h4, h5, h6, summary";
@@ -71,8 +68,8 @@ function refitAll() {
 }
 
 /**
- * 静态 Markdown 上的点击：链接交给 openLink（webview 自己不跳转），引用交给 openRef（白板上是跳到卡），勾选框改原文。处理了返回 true。
- * onToggle 给了才能勾（拿到改好的原文）
+ * 静态 Markdown 上的点击：链接交给 openLink（页面自己不跳转），引用交给 openRef，勾选框改原文交给 onToggle（不给就勾不了）。
+ * 处理了返回 true
  */
 export function mdClick(e: MouseEvent, src: string, o: { openLink: (u: string) => void; openRef: (id: string) => void; onToggle?: (next: string) => void }): boolean {
   const t = e.target as HTMLElement;
