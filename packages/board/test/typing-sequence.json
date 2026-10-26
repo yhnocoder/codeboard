@@ -86,9 +86,9 @@
     "i → x ***bi",
     "* → x ***bi*",
     "* → x ***bi**",
-    "* → x <i><b>bi</b></i>",
-    "  → x <i><b>bi</b></i> ",
-    "y → x <i><b>bi</b></i> y"
+    "* → x <b><i>bi</i></b>",
+    "  → x <b><i>bi</i></b> ",
+    "y → x <b><i>bi</i></b> y"
   ],
   "subSup": [
     "H → H",
