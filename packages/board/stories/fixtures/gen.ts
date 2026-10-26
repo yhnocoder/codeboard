@@ -11,6 +11,13 @@ const PICK = {
   schedule: "Scheduler.schedule",
   preempt: "Scheduler.preempt",
   canAppend: "BlockManager.can_append",
+  // ---- Canvas（箭头、Section、LOD 的小样）：短函数，几张卡放在一块白板上也看得全
+  step: "LLMEngine.step",
+  canAllocate: "BlockManager.can_allocate",
+  allocate: "BlockManager.allocate",
+  deallocate: "BlockManager.deallocate",
+  mayAppend: "BlockManager.may_append",
+  // ---- Canvas 结束
 } as const;
 
 await ready();

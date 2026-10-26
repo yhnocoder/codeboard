@@ -404,5 +404,493 @@
    ],
    "bare": {}
   }
+ },
+ "step": {
+  "seg": {
+   "id": "s-step",
+   "src": {
+    "kind": "repo",
+    "repo": ""
+   },
+   "path": "nanovllm/engine/llm_engine.py",
+   "lang": "python",
+   "start": 49,
+   "end": 55,
+   "text": [
+    "    def step(self):",
+    "        seqs, is_prefill = self.scheduler.schedule()",
+    "        num_tokens = sum(seq.num_scheduled_tokens for seq in seqs) if is_prefill else -len(seqs)",
+    "        token_ids = self.model_runner.call(\"run\", seqs, is_prefill)",
+    "        self.scheduler.postprocess(seqs, token_ids, is_prefill)",
+    "        outputs = [(seq.seq_id, seq.completion_token_ids) for seq in seqs if seq.is_finished]",
+    "        return outputs, num_tokens"
+   ],
+   "version": {
+    "kind": "git",
+    "commit": "bb823b3c0ffee"
+   },
+   "symbol": {
+    "qual": "LLMEngine.step",
+    "kind": "function"
+   }
+  },
+  "view": {
+   "html": [
+    "    <span class=\"kw\">def</span> step<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">)</span><span class=\"p\">:</span>",
+    "        seqs<span class=\"p\">,</span> is_prefill <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>scheduler<span class=\"p\">.</span><span class=\"call\" data-c=\"0\">schedule</span><span class=\"p\">(</span><span class=\"p\">)</span>",
+    "        num_tokens <span class=\"p\">=</span> sum<span class=\"p\">(</span>seq<span class=\"p\">.</span>num_scheduled_tokens <span class=\"kw\">for</span> seq <span class=\"kw\">in</span> seqs<span class=\"p\">)</span> <span class=\"kw\">if</span> is_prefill <span class=\"kw\">else</span> <span class=\"p\">-</span>len<span class=\"p\">(</span>seqs<span class=\"p\">)</span>",
+    "        token_ids <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>model_runner<span class=\"p\">.</span><span class=\"call\" data-c=\"1\">call</span><span class=\"p\">(</span><span class=\"str\">&quot;run&quot;</span><span class=\"p\">,</span> seqs<span class=\"p\">,</span> is_prefill<span class=\"p\">)</span>",
+    "        <span class=\"self\">self</span><span class=\"p\">.</span>scheduler<span class=\"p\">.</span><span class=\"call\" data-c=\"2\">postprocess</span><span class=\"p\">(</span>seqs<span class=\"p\">,</span> token_ids<span class=\"p\">,</span> is_prefill<span class=\"p\">)</span>",
+    "        outputs <span class=\"p\">=</span> <span class=\"p\">[</span><span class=\"p\">(</span>seq<span class=\"p\">.</span>seq_id<span class=\"p\">,</span> seq<span class=\"p\">.</span>completion_token_ids<span class=\"p\">)</span> <span class=\"kw\">for</span> seq <span class=\"kw\">in</span> seqs <span class=\"kw\">if</span> seq<span class=\"p\">.</span>is_finished<span class=\"p\">]</span>",
+    "        <span class=\"kw\">return</span> outputs<span class=\"p\">,</span> num_tokens"
+   ],
+   "flags": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "calls": [
+    {
+     "line": 50,
+     "col": 42,
+     "end": 50,
+     "name": "schedule",
+     "recv": "self.scheduler",
+     "loop": false
+    },
+    {
+     "line": 52,
+     "col": 38,
+     "end": 42,
+     "name": "call",
+     "recv": "self.model_runner",
+     "loop": false,
+     "dispatch": "run"
+    },
+    {
+     "line": 53,
+     "col": 23,
+     "end": 34,
+     "name": "postprocess",
+     "recv": "self.scheduler",
+     "loop": false
+    }
+   ],
+   "defs": [
+    {
+     "line": 49,
+     "name": "step",
+     "qual": "LLMEngine.step"
+    }
+   ],
+   "bare": {}
+  }
+ },
+ "canAllocate": {
+  "seg": {
+   "id": "s-canAllocate",
+   "src": {
+    "kind": "repo",
+    "repo": ""
+   },
+   "path": "nanovllm/engine/block_manager.py",
+   "lang": "python",
+   "start": 58,
+   "end": 73,
+   "text": [
+    "    def can_allocate(self, seq: Sequence) -> int:",
+    "        h = -1",
+    "        num_cached_blocks = 0",
+    "        num_new_blocks = seq.num_blocks",
+    "        for i in range(seq.num_blocks - 1):",
+    "            token_ids = seq.block(i)",
+    "            h = self.compute_hash(token_ids, h)",
+    "            block_id = self.hash_to_block_id.get(h, -1)",
+    "            if block_id == -1 or self.blocks[block_id].token_ids != token_ids:",
+    "                break",
+    "            num_cached_blocks += 1",
+    "            if block_id in self.used_block_ids:",
+    "                num_new_blocks -= 1",
+    "        if len(self.free_block_ids) < num_new_blocks:",
+    "            return -1",
+    "        return num_cached_blocks"
+   ],
+   "version": {
+    "kind": "git",
+    "commit": "bb823b3c0ffee"
+   },
+   "symbol": {
+    "qual": "BlockManager.can_allocate",
+    "kind": "function"
+   }
+  },
+  "view": {
+   "html": [
+    "    <span class=\"kw\">def</span> can_allocate<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">,</span> seq<span class=\"p\">:</span> Sequence<span class=\"p\">)</span> <span class=\"p\">-</span><span class=\"p\">&gt;</span> int<span class=\"p\">:</span>",
+    "        h <span class=\"p\">=</span> <span class=\"p\">-</span><span class=\"num\">1</span>",
+    "        num_cached_blocks <span class=\"p\">=</span> <span class=\"num\">0</span>",
+    "        num_new_blocks <span class=\"p\">=</span> seq<span class=\"p\">.</span>num_blocks",
+    "        <span class=\"kw\">for</span> i <span class=\"kw\">in</span> range<span class=\"p\">(</span>seq<span class=\"p\">.</span>num_blocks <span class=\"p\">-</span> <span class=\"num\">1</span><span class=\"p\">)</span><span class=\"p\">:</span>",
+    "            token_ids <span class=\"p\">=</span> seq<span class=\"p\">.</span><span class=\"call\" data-c=\"0\">block</span><span class=\"p\">(</span>i<span class=\"p\">)</span>",
+    "            h <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span><span class=\"call\" data-c=\"1\">compute_hash</span><span class=\"p\">(</span>token_ids<span class=\"p\">,</span> h<span class=\"p\">)</span>",
+    "            block_id <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>hash_to_block_id<span class=\"p\">.</span><span class=\"call\" data-c=\"2\">get</span><span class=\"p\">(</span>h<span class=\"p\">,</span> <span class=\"p\">-</span><span class=\"num\">1</span><span class=\"p\">)</span>",
+    "            <span class=\"kw\">if</span> block_id <span class=\"p\">=</span><span class=\"p\">=</span> <span class=\"p\">-</span><span class=\"num\">1</span> <span class=\"kw\">or</span> <span class=\"self\">self</span><span class=\"p\">.</span>blocks<span class=\"p\">[</span>block_id<span class=\"p\">]</span><span class=\"p\">.</span>token_ids <span class=\"p\">!</span><span class=\"p\">=</span> token_ids<span class=\"p\">:</span>",
+    "                <span class=\"kw\">break</span>",
+    "            num_cached_blocks <span class=\"p\">+</span><span class=\"p\">=</span> <span class=\"num\">1</span>",
+    "            <span class=\"kw\">if</span> block_id <span class=\"kw\">in</span> <span class=\"self\">self</span><span class=\"p\">.</span>used_block_ids<span class=\"p\">:</span>",
+    "                num_new_blocks <span class=\"p\">-</span><span class=\"p\">=</span> <span class=\"num\">1</span>",
+    "        <span class=\"kw\">if</span> len<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">.</span>free_block_ids<span class=\"p\">)</span> <span class=\"p\">&lt;</span> num_new_blocks<span class=\"p\">:</span>",
+    "            <span class=\"kw\">return</span> <span class=\"p\">-</span><span class=\"num\">1</span>",
+    "        <span class=\"kw\">return</span> num_cached_blocks"
+   ],
+   "flags": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "calls": [
+    {
+     "line": 63,
+     "col": 28,
+     "end": 33,
+     "name": "block",
+     "recv": "seq",
+     "loop": true
+    },
+    {
+     "line": 64,
+     "col": 21,
+     "end": 33,
+     "name": "compute_hash",
+     "recv": "self",
+     "loop": true
+    },
+    {
+     "line": 65,
+     "col": 45,
+     "end": 48,
+     "name": "get",
+     "recv": "self.hash_to_block_id",
+     "loop": true
+    }
+   ],
+   "defs": [
+    {
+     "line": 58,
+     "name": "can_allocate",
+     "qual": "BlockManager.can_allocate"
+    }
+   ],
+   "bare": {}
+  }
+ },
+ "allocate": {
+  "seg": {
+   "id": "s-allocate",
+   "src": {
+    "kind": "repo",
+    "repo": ""
+   },
+   "path": "nanovllm/engine/block_manager.py",
+   "lang": "python",
+   "start": 75,
+   "end": 92,
+   "text": [
+    "    def allocate(self, seq: Sequence, num_cached_blocks: int):",
+    "        assert not seq.block_table",
+    "        h = -1",
+    "        for i in range(num_cached_blocks):",
+    "            token_ids = seq.block(i)",
+    "            h = self.compute_hash(token_ids, h)",
+    "            block_id = self.hash_to_block_id[h]",
+    "            block = self.blocks[block_id]",
+    "            if block_id in self.used_block_ids:",
+    "                block.ref_count += 1",
+    "            else:",
+    "                block.ref_count = 1",
+    "                self.free_block_ids.remove(block_id)",
+    "                self.used_block_ids.add(block_id)",
+    "            seq.block_table.append(block_id)",
+    "        for i in range(num_cached_blocks, seq.num_blocks):",
+    "            seq.block_table.append(self._allocate_block())",
+    "        seq.num_cached_tokens = num_cached_blocks * self.block_size"
+   ],
+   "version": {
+    "kind": "git",
+    "commit": "bb823b3c0ffee"
+   },
+   "symbol": {
+    "qual": "BlockManager.allocate",
+    "kind": "function"
+   }
+  },
+  "view": {
+   "html": [
+    "    <span class=\"kw\">def</span> allocate<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">,</span> seq<span class=\"p\">:</span> Sequence<span class=\"p\">,</span> num_cached_blocks<span class=\"p\">:</span> int<span class=\"p\">)</span><span class=\"p\">:</span>",
+    "        <span class=\"kw\">assert</span> <span class=\"kw\">not</span> seq<span class=\"p\">.</span>block_table",
+    "        h <span class=\"p\">=</span> <span class=\"p\">-</span><span class=\"num\">1</span>",
+    "        <span class=\"kw\">for</span> i <span class=\"kw\">in</span> range<span class=\"p\">(</span>num_cached_blocks<span class=\"p\">)</span><span class=\"p\">:</span>",
+    "            token_ids <span class=\"p\">=</span> seq<span class=\"p\">.</span><span class=\"call\" data-c=\"0\">block</span><span class=\"p\">(</span>i<span class=\"p\">)</span>",
+    "            h <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span><span class=\"call\" data-c=\"1\">compute_hash</span><span class=\"p\">(</span>token_ids<span class=\"p\">,</span> h<span class=\"p\">)</span>",
+    "            block_id <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>hash_to_block_id<span class=\"p\">[</span>h<span class=\"p\">]</span>",
+    "            block <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>blocks<span class=\"p\">[</span>block_id<span class=\"p\">]</span>",
+    "            <span class=\"kw\">if</span> block_id <span class=\"kw\">in</span> <span class=\"self\">self</span><span class=\"p\">.</span>used_block_ids<span class=\"p\">:</span>",
+    "                block<span class=\"p\">.</span>ref_count <span class=\"p\">+</span><span class=\"p\">=</span> <span class=\"num\">1</span>",
+    "            <span class=\"kw\">else</span><span class=\"p\">:</span>",
+    "                block<span class=\"p\">.</span>ref_count <span class=\"p\">=</span> <span class=\"num\">1</span>",
+    "                <span class=\"self\">self</span><span class=\"p\">.</span>free_block_ids<span class=\"p\">.</span><span class=\"call\" data-c=\"2\">remove</span><span class=\"p\">(</span>block_id<span class=\"p\">)</span>",
+    "                <span class=\"self\">self</span><span class=\"p\">.</span>used_block_ids<span class=\"p\">.</span><span class=\"call\" data-c=\"3\">add</span><span class=\"p\">(</span>block_id<span class=\"p\">)</span>",
+    "            seq<span class=\"p\">.</span>block_table<span class=\"p\">.</span><span class=\"call\" data-c=\"4\">append</span><span class=\"p\">(</span>block_id<span class=\"p\">)</span>",
+    "        <span class=\"kw\">for</span> i <span class=\"kw\">in</span> range<span class=\"p\">(</span>num_cached_blocks<span class=\"p\">,</span> seq<span class=\"p\">.</span>num_blocks<span class=\"p\">)</span><span class=\"p\">:</span>",
+    "            seq<span class=\"p\">.</span>block_table<span class=\"p\">.</span><span class=\"call\" data-c=\"5\">append</span><span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">.</span><span class=\"call\" data-c=\"6\">_allocate_block</span><span class=\"p\">(</span><span class=\"p\">)</span><span class=\"p\">)</span>",
+    "        seq<span class=\"p\">.</span>num_cached_tokens <span class=\"p\">=</span> num_cached_blocks <span class=\"p\">*</span> <span class=\"self\">self</span><span class=\"p\">.</span>block_size"
+   ],
+   "flags": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "calls": [
+    {
+     "line": 79,
+     "col": 28,
+     "end": 33,
+     "name": "block",
+     "recv": "seq",
+     "loop": true
+    },
+    {
+     "line": 80,
+     "col": 21,
+     "end": 33,
+     "name": "compute_hash",
+     "recv": "self",
+     "loop": true
+    },
+    {
+     "line": 87,
+     "col": 36,
+     "end": 42,
+     "name": "remove",
+     "recv": "self.free_block_ids",
+     "loop": true
+    },
+    {
+     "line": 88,
+     "col": 36,
+     "end": 39,
+     "name": "add",
+     "recv": "self.used_block_ids",
+     "loop": true
+    },
+    {
+     "line": 89,
+     "col": 28,
+     "end": 34,
+     "name": "append",
+     "recv": "seq.block_table",
+     "loop": true
+    },
+    {
+     "line": 91,
+     "col": 28,
+     "end": 34,
+     "name": "append",
+     "recv": "seq.block_table",
+     "loop": true
+    },
+    {
+     "line": 91,
+     "col": 40,
+     "end": 55,
+     "name": "_allocate_block",
+     "recv": "self",
+     "loop": true
+    }
+   ],
+   "defs": [
+    {
+     "line": 75,
+     "name": "allocate",
+     "qual": "BlockManager.allocate"
+    }
+   ],
+   "bare": {}
+  }
+ },
+ "deallocate": {
+  "seg": {
+   "id": "s-deallocate",
+   "src": {
+    "kind": "repo",
+    "repo": ""
+   },
+   "path": "nanovllm/engine/block_manager.py",
+   "lang": "python",
+   "start": 94,
+   "end": 101,
+   "text": [
+    "    def deallocate(self, seq: Sequence):",
+    "        for block_id in reversed(seq.block_table):",
+    "            block = self.blocks[block_id]",
+    "            block.ref_count -= 1",
+    "            if block.ref_count == 0:",
+    "                self._deallocate_block(block_id)",
+    "        seq.num_cached_tokens = 0",
+    "        seq.block_table.clear()"
+   ],
+   "version": {
+    "kind": "git",
+    "commit": "bb823b3c0ffee"
+   },
+   "symbol": {
+    "qual": "BlockManager.deallocate",
+    "kind": "function"
+   }
+  },
+  "view": {
+   "html": [
+    "    <span class=\"kw\">def</span> deallocate<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">,</span> seq<span class=\"p\">:</span> Sequence<span class=\"p\">)</span><span class=\"p\">:</span>",
+    "        <span class=\"kw\">for</span> block_id <span class=\"kw\">in</span> reversed<span class=\"p\">(</span>seq<span class=\"p\">.</span>block_table<span class=\"p\">)</span><span class=\"p\">:</span>",
+    "            block <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>blocks<span class=\"p\">[</span>block_id<span class=\"p\">]</span>",
+    "            block<span class=\"p\">.</span>ref_count <span class=\"p\">-</span><span class=\"p\">=</span> <span class=\"num\">1</span>",
+    "            <span class=\"kw\">if</span> block<span class=\"p\">.</span>ref_count <span class=\"p\">=</span><span class=\"p\">=</span> <span class=\"num\">0</span><span class=\"p\">:</span>",
+    "                <span class=\"self\">self</span><span class=\"p\">.</span><span class=\"call\" data-c=\"0\">_deallocate_block</span><span class=\"p\">(</span>block_id<span class=\"p\">)</span>",
+    "        seq<span class=\"p\">.</span>num_cached_tokens <span class=\"p\">=</span> <span class=\"num\">0</span>",
+    "        seq<span class=\"p\">.</span>block_table<span class=\"p\">.</span><span class=\"call\" data-c=\"1\">clear</span><span class=\"p\">(</span><span class=\"p\">)</span>"
+   ],
+   "flags": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "calls": [
+    {
+     "line": 99,
+     "col": 21,
+     "end": 38,
+     "name": "_deallocate_block",
+     "recv": "self",
+     "loop": true
+    },
+    {
+     "line": 101,
+     "col": 24,
+     "end": 29,
+     "name": "clear",
+     "recv": "seq.block_table",
+     "loop": false
+    }
+   ],
+   "defs": [
+    {
+     "line": 94,
+     "name": "deallocate",
+     "qual": "BlockManager.deallocate"
+    }
+   ],
+   "bare": {}
+  }
+ },
+ "mayAppend": {
+  "seg": {
+   "id": "s-mayAppend",
+   "src": {
+    "kind": "repo",
+    "repo": ""
+   },
+   "path": "nanovllm/engine/block_manager.py",
+   "lang": "python",
+   "start": 106,
+   "end": 108,
+   "text": [
+    "    def may_append(self, seq: Sequence):",
+    "        if len(seq) % self.block_size == 1:",
+    "            seq.block_table.append(self._allocate_block())"
+   ],
+   "version": {
+    "kind": "git",
+    "commit": "bb823b3c0ffee"
+   },
+   "symbol": {
+    "qual": "BlockManager.may_append",
+    "kind": "function"
+   }
+  },
+  "view": {
+   "html": [
+    "    <span class=\"kw\">def</span> may_append<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">,</span> seq<span class=\"p\">:</span> Sequence<span class=\"p\">)</span><span class=\"p\">:</span>",
+    "        <span class=\"kw\">if</span> len<span class=\"p\">(</span>seq<span class=\"p\">)</span> <span class=\"p\">%</span> <span class=\"self\">self</span><span class=\"p\">.</span>block_size <span class=\"p\">=</span><span class=\"p\">=</span> <span class=\"num\">1</span><span class=\"p\">:</span>",
+    "            seq<span class=\"p\">.</span>block_table<span class=\"p\">.</span><span class=\"call\" data-c=\"0\">append</span><span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">.</span><span class=\"call\" data-c=\"1\">_allocate_block</span><span class=\"p\">(</span><span class=\"p\">)</span><span class=\"p\">)</span>"
+   ],
+   "flags": [
+    0,
+    0,
+    0
+   ],
+   "calls": [
+    {
+     "line": 108,
+     "col": 28,
+     "end": 34,
+     "name": "append",
+     "recv": "seq.block_table",
+     "loop": false
+    },
+    {
+     "line": 108,
+     "col": 40,
+     "end": 55,
+     "name": "_allocate_block",
+     "recv": "self",
+     "loop": false
+    }
+   ],
+   "defs": [
+    {
+     "line": 106,
+     "name": "may_append",
+     "qual": "BlockManager.may_append"
+    }
+   ],
+   "bare": {}
+  }
  }
 }
