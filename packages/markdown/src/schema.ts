@@ -3,7 +3,9 @@
 import { Mark, Node, getSchema, mergeAttributes, markInputRule, markPasteRule, InputRule, type AnyExtension, type JSONContent } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
 import StarterKit from "@tiptap/starter-kit";
-import Bold, { starInputRegex, starPasteRegex } from "@tiptap/extension-bold";
+import Bold, { starPasteRegex } from "@tiptap/extension-bold";
+import Italic, { underscoreInputRegex } from "@tiptap/extension-italic";
+import Strike from "@tiptap/extension-strike";
 import Link from "@tiptap/extension-link";
 import CodeBlock from "@tiptap/extension-code-block";
 import Underline from "@tiptap/extension-underline";
@@ -444,16 +446,23 @@ const Lnk = Link.extend({
   },
 }).configure({ openOnClick: false, autolink: true, linkOnPaste: true, HTMLAttributes: { class: "lnk", rel: null, target: null } });
 
+/** 打字规则：匹配到的那一段里有行内代码时不算（规则的正则看的是整行的字，代码里的记号也在里面） */
+const outsideCode = (r: InputRule) => new InputRule({ find: r.find, undoable: r.undoable, handler: (p) => (p.state.doc.rangeHasMark(p.range.from, p.range.to, p.state.schema.marks.code) ? null : r.handler(p)) });
+
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
   // 标注、高亮排在所有格式前面：它们是最外层的那一层，里面再有粗体、链接时底色也是连着的一整段（排在后面会被拆成几段）
   Annot, Highlight,
   StarterKit.configure({
-    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false, link: false,
+    document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, italic: false, strike: false, horizontalRule: false, code: false, link: false,
     heading: { levels: [1, 2, 3, 4, 5, 6] },
   }),
-  // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）
-  Bold.extend({ addInputRules() { return [markInputRule({ find: starInputRegex, type: this.type })]; }, addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
+  // 打字时的 **b** *i* ~~s~~ 不用 TipTap 自带的正则（要求开头记号前是空白：中文后面紧跟的 **粗体** 不变；整行的字连行内代码里的 ** 一起配对，
+  // 会把代码里的记号吃掉，#66），由编辑器按解析器重解析（editor/typora.ts 的 retype），和存回去再读进来的一样。
+  // 粗体只认 **b**：__init__ 是代码里的名字（解析时 _ 也不当强调）；打 _i_ 照旧变斜体（存成 *i*），但不跨过行内代码
+  Bold.extend({ addInputRules: () => [], addPasteRules() { return [markPasteRule({ find: starPasteRegex, type: this.type })]; } }),
+  Italic.extend({ addInputRules() { return [outsideCode(markInputRule({ find: underscoreInputRegex, type: this.type }))]; } }),
+  Strike.extend({ addInputRules: () => [] }),
   Lnk, U, Kbd, Hr, InlineCode, Sub, Sup, Toc,
   Doc, Para, Code, TaskList, Task, Img, Det, DetSum, DetBody, Math1, Math2,
   Tbl, TableRow, Head, Cell,

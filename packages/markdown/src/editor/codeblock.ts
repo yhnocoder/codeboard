@@ -1,15 +1,19 @@
 // Note 里的代码块：编辑时用和 Free code 卡同一个 CodeMirror（../cm/editor.ts），看上去和显示时一样（同一个 pre.md-code、字体、
 // 宿主给的着色，见 ../code.ts），字的位置不动。ProseMirror 的文档还是唯一的来源：CodeMirror 里的改动转成 ProseMirror 的改动，反过来也一样
 // （照 CodeMirror 官网 “CodeMirror in ProseMirror” 的做法）。撤销走 ProseMirror；方向键在开头 / 结尾时走出代码块；
-// Esc / ⌘↵ 结束整张 Note 的编辑；空代码块里退格变回段落。语言服务、灰字补全和 Free code 卡一样
+// Esc / ⌘↵、焦点离开编辑器结束整张 Note 的编辑；空代码块里退格变回段落。语言服务、灰字补全和 Free code 卡一样。
+// 右上角的语言名改这一块的语言（codelang.ts）
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Selection, TextSelection } from "@tiptap/pm/state";
+import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/core";
 import type { ViewUpdate, KeyBinding } from "@codemirror/view";
+import { EditorSelection } from "@codemirror/state";
 import { completionStatus } from "@codemirror/autocomplete";
 import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
 import { cachedCode, highlightCode } from "../code";
+import { LangBox, type CodeLang } from "./codelang";
 
 /** 代码块要的：所在的编辑器、结束整张 Note 的编辑、灰字补全；行注释记号、语言服务由用的一方给（不给就是 //、没有） */
 export type CodeBlockHost = {
@@ -19,12 +23,16 @@ export type CodeBlockHost = {
   lsp?: (lang: () => string) => LspHost | undefined;
   /** 代码编辑器里按下不往外冒（见 CodeEditorOpts.stopPointerDown） */
   stopPointerDown?: boolean;
+  /** 语言框里列出的语言（着色认得的）；不给就只有 Mermaid，打别的照打的写 */
+  langs?: () => readonly CodeLang[];
 };
 
 export class CodeBlockView implements NodeView {
   dom: HTMLElement;
   cm: CodeEditor;
+  langBox: LangBox;
   updating = false;
+  private fitting = 0;
   constructor(public node: PMNode, public view: PMView, public getPos: () => number | undefined, host: CodeBlockHost) {
     const lang = () => (this.node.attrs.language as string | null) ?? "";
     this.dom = document.createElement("pre");
@@ -55,8 +63,44 @@ export class CodeBlockView implements NodeView {
       stopPointerDown: host.stopPointerDown,
       ghost: { complete: host.complete },
       onExit: () => host.exit(),
+      // 焦点从代码直接去了编辑器外面（点了别的卡片、画布）：ProseMirror 只听它自己根元素的 blur，代码编辑器是它里面另一个
+      // 可编辑的元素（stopEvent），收不到，替它发一个，用的一方照常保存退出（和公式块的原文一样）
+      onBlur: (e) => {
+        const to = e.relatedTarget;
+        if (!(to instanceof Node && this.view.dom.contains(to))) this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to }));
+      },
       onUpdate: (u) => this.forward(u),
       className: "cbcm-md",
+    });
+    this.langBox = new LangBox({
+      lang,
+      langs: () => host.langs?.() ?? [],
+      // 一步（自己一步撤销，不和前面打的字连在一起）；着色跟着换（update）
+      set: (language) => {
+        const pos = this.getPos();
+        if (pos === undefined) return;
+        this.view.dispatch(closeHistory(this.view.state.tr.setNodeMarkup(pos, undefined, { ...this.node.attrs, language })));
+      },
+      back: () => this.cm.focus(),
+      left: (to) => this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to })),
+    });
+    this.dom.append(this.langBox.label);
+    // 第一行长到伸进语言名下面：光标在块里时也不显示它，只在悬停、列表开着时（.md-under），不盖住代码
+    this.dom.addEventListener("pointerenter", () => this.fitLabel());
+    this.dom.addEventListener("focusin", () => this.fitLabel());
+    this.fitLabel();
+  }
+
+  /** 下一帧量一次：第一行（屏幕上的第一行，折行也算）的末尾伸到了语言名的左边没有 */
+  fitLabel() {
+    if (this.fitting) return;
+    this.fitting = requestAnimationFrame(() => {
+      this.fitting = 0;
+      const v = this.cm.view, lb = this.langBox.label;
+      if (!lb.isConnected) return;
+      const r = lb.getBoundingClientRect();
+      const c = v.coordsAtPos(v.moveToLineBoundary(EditorSelection.cursor(0), true).head, -1);
+      lb.classList.toggle("md-under", !!c && c.right > r.left - 4 && c.top < r.bottom);
     });
   }
 
@@ -78,6 +122,7 @@ export class CodeBlockView implements NodeView {
     });
     tr.setSelection(TextSelection.create(tr.doc, selFrom, selTo));
     this.view.dispatch(tr);
+    if (u.docChanged) this.fitLabel();
   }
 
   /** 方向键在开头 / 结尾：光标走出代码块 */
@@ -115,7 +160,7 @@ export class CodeBlockView implements NodeView {
     if (node.type !== this.node.type) return false;
     const langChanged = node.attrs.language !== this.node.attrs.language;
     this.node = node;
-    if (langChanged) { const l = (node.attrs.language as string | null) ?? ""; if (l) this.dom.dataset.lang = l; else delete this.dom.dataset.lang; this.cm.setLang(l); }
+    if (langChanged) { const l = (node.attrs.language as string | null) ?? ""; if (l) this.dom.dataset.lang = l; else delete this.dom.dataset.lang; this.cm.setLang(l); this.langBox.sync(); }
     if (this.updating) return true;
     const next = node.textContent, cur = this.cm.view.state.doc.toString();
     if (next !== cur) {
@@ -125,6 +170,7 @@ export class CodeBlockView implements NodeView {
       this.updating = true;
       this.cm.view.dispatch({ changes: { from: a, to: ca, insert: next.slice(a, na) } });
       this.updating = false;
+      this.fitLabel();
     }
     return true;
   }
@@ -139,5 +185,5 @@ export class CodeBlockView implements NodeView {
   selectNode() { this.cm.view.focus(); }
   stopEvent() { return true; }
   ignoreMutation() { return true; }
-  destroy() { this.cm.destroy(); }
+  destroy() { cancelAnimationFrame(this.fitting); this.cm.destroy(); this.langBox.destroy(); }
 }

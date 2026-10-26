@@ -6,7 +6,7 @@ import { frames, isHidden, visibleCards } from "../state/sections";
 import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
 import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAnim } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";
-import { lastPointer, naturalSize, chromeOf } from "../state/measure";
+import { lastPointer, naturalSize, chromeOf, CODE_MAX } from "../state/measure";
 import { send, ask } from "../host";
 import { renderMd, renderMdInline } from "@yhnocoder/markdown";
 
@@ -184,9 +184,10 @@ export function openWorktreeDiff(id: string) {
     .catch((e) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, error: (e as Error).message } : p)));
 }
 
-/** Fit Content（#25）：宽 = 最长行，高 = 所有可见行；多选时各自适配 */
+/** Fit Content（#25）：宽 = 最长行，高 = 所有可见行；多选时各自适配。
+ *  高度不存（Note、代码卡和新卡一样跟着内容：加行变高、删行变矮），只有代码比没存高度时的上限（CODE_MAX）还高的代码卡存下内容区的高度 */
 export function fitContent(ids: string[]) {
-  const sz = new Map<string, { w?: number; h: number }>();
+  const sz = new Map<string, { w?: number; h: number; body?: number }>();
   for (const id of ids) { const h = cardById(id)?.host.id; const n = h && naturalSize(h); if (h && n) sz.set(h, n); }
   if (!sz.size) return;
   const chrome = new Map([...sz.keys()].map((id) => [id, chromeOf(id)]));
@@ -197,7 +198,8 @@ export function fitContent(ids: string[]) {
       if (!p) continue;
       if (n.w) p.w = Math.max(240, Math.min(1600, n.w));
       const c = b.cards.find((k) => k.id === id);
-      p.h = c?.kind === "note" || c?.kind === "web" || c?.kind === "image" ? undefined : Math.round(n.h - (c?.kind === "code" ? chrome.get(id)! : 0));
+      const code = c?.kind === "code";
+      p.h = c?.kind === "note" || c?.kind === "web" || c?.kind === "image" || (code && n.body !== undefined && n.body <= CODE_MAX) ? undefined : Math.round(n.h - (code ? chrome.get(id)! : 0));
     }
   });
   growFrom(from);

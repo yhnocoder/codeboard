@@ -9,3 +9,12 @@ export const CARD_CONTROL = `${NODRAG}, [contenteditable], input, textarea, sele
 export const OWNS_POINTER = `.card, .slabel, .lhit, .lmid, .vchips, ${NODRAG}`;
 /** 浮在画布上的工具条（不是白板内容）：放贴纸时点在这上面不算 */
 export const BOARD_CHROME = ".alignbar";
+
+/**
+ * 按下去开始的拖动（拖卡、改大小、框选、平移、拖线、拖贴纸……）：指针捕获在按下的元素上，直到松手。
+ * 拖的过程中指针经过的别的东西（别的卡的 ··· 按钮、右下角把手、卡边的圆点）收不到 pointerover / enter：
+ * 不显示 :hover、不弹提示、不换光标，拖动照常跟着走。落点照样按位置找（elementFromPoint），不受影响
+ */
+export function holdPointer(e: PointerEvent) {
+  try { (e.target as Element | null)?.setPointerCapture?.(e.pointerId); } catch { /* 不是还按着的指针（合成的事件） */ }
+}

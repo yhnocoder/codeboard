@@ -1,5 +1,5 @@
 // 画布：镜头变换后的世界层（Section 框 → 线 → 卡片 → 车流、线头圆点 → 画布贴纸、Section 标签 → 临时浮上来的线 → 参考线），
-// 加上屏幕坐标的框选框、对齐工具条。
+// 加上屏幕坐标的框选框、多选工具条。
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
 import { state, sel, rectOf, cardById, hostOf, mutate, placed } from "../state/store";
@@ -20,6 +20,7 @@ import { Icon } from "../ui/icons";
 import * as A from "../actions";
 import { align } from "@codeboard/core";
 import { boardMode } from "../state/mode";
+import { kbd } from "../keymap";
 
 const EXT = 2048;
 
@@ -148,22 +149,50 @@ const AL: { op: AlignOp; icon: string; tip: string }[] = [
   { op: "hdist", icon: "distH", tip: "Distribute Horizontally" }, { op: "vdist", icon: "distV", tip: "Distribute Vertically" },
 ];
 
-/** 选中 ≥2 张卡时浮在上方的对齐工具条 */
+/** 工具条的高度（4 + 30 + 4）：上面放不下时翻到选中的卡下面 */
+const BAR_H = 38;
+
+/** 选中 ≥2 张卡时浮在上方的工具条：Create Section、Create Sub-board、Tidy Up，··· 里是对齐和分布 */
 function AlignBar() {
   const rs = createMemo(() => sel.cards.map((id) => { const f = cardById(id); return f ? { id: f.host.id, ...rectOf(f.host) } : null; }).filter(Boolean) as ({ id: string; x: number; y: number; w: number; h: number })[]);
   const box = createMemo(() => bounds(rs()));
-  const pos = () => { const b = box()!; return { x: b.x * cam.z + cam.x + (b.w * cam.z) / 2, y: b.y * cam.z + cam.y - 12 }; };
+  const shown = () => rs().length >= 2 && dragging().size === 0 && !walk();
+  // 上方：卡的上边往上 12px；顶上 56px 内（白板的标题栏）放不下就放到卡的下边下面
+  const pos = () => {
+    const b = box()!, x = b.x * cam.z + cam.x + (b.w * cam.z) / 2, top = b.y * cam.z + cam.y - 12 - BAR_H;
+    return { x, y: top >= 56 ? top : (b.y + b.h) * cam.z + cam.y + 12 };
+  };
+  const [more, setMore] = createSignal(false);
+  let el: HTMLDivElement | undefined;
+  createEffect(on(() => sel.cards.join(" "), () => setMore(false), { defer: true }));
+  createEffect(on(shown, (s) => { if (!s) setMore(false); }));
+  createEffect(() => {
+    if (!more()) return;
+    const down = (e: PointerEvent) => { if (!el?.contains(e.target as Node)) setMore(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") { e.stopPropagation(); setMore(false); } };
+    document.addEventListener("pointerdown", down, true);
+    document.addEventListener("keydown", key, true);
+    onCleanup(() => { document.removeEventListener("pointerdown", down, true); document.removeEventListener("keydown", key, true); });
+  });
   const run = (op: AlignOp) => {
     const m = align(rs(), op);
     mutate((b) => { for (const [id, p] of m) { const c = b.place[id]; if (c && !A.isLocked(id)) Object.assign(c, p); } });
   };
+  const tip = (label: string, id?: string) => { const k = id && kbd(id); return k ? `${label} (${k})` : label; };
   return (
-    <Show when={rs().length >= 2 && dragging().size === 0 && !walk()}>
-      <div class="alignbar pill show" data-nodrag style={{ left: `${pos().x}px`, top: `${Math.max(56, pos().y)}px` }}>
-        <For each={AL}>{(a, i) => <>
-          <Show when={i() === 3 || i() === 5}><span class="sep" /></Show>
-          <button class="ib" aria-label={a.tip} data-tip={a.tip} onClick={() => run(a.op)}><Icon name={a.icon} /></button>
-        </>}</For>
+    <Show when={shown()}>
+      <div ref={el} class="alignbar pill show" data-nodrag style={{ left: `${pos().x}px`, top: `${pos().y}px` }}>
+        <button class="tbtn" data-tip="Create Section" onClick={() => { setMore(false); A.moveToNewSection(); }}><Icon name="newSection" />Create Section</button>
+        <button class="tbtn" data-tip={tip("Create Sub-board", "turnIntoBoard")} onClick={() => { setMore(false); void A.turnIntoBoard(); }}><Icon name="subBoard" />Create Sub-board</button>
+        <button class="tbtn" data-tip={tip("Tidy Up", "tidyUp")} onClick={() => { setMore(false); A.tidyUp(); }}><Icon name="tidy" />Tidy Up</button>
+        <span class="sep" />
+        <button class="ib" classList={{ on: more() }} aria-label="More" aria-haspopup="menu" aria-expanded={more()} data-tip={more() ? undefined : "More"} onClick={() => setMore(!more())}><Icon name="more" /></button>
+        <div class="alignmore" classList={{ open: more() }} role="menu" aria-label="Align and Distribute">
+          <div class="t">Align</div>
+          <For each={AL.slice(0, 5)}>{(a) => <button class="ib" role="menuitem" aria-label={a.tip} data-tip={a.tip} tabIndex={more() ? 0 : -1} onClick={() => run(a.op)}><Icon name={a.icon} /></button>}</For>
+          <div class="t">Distribute</div>
+          <For each={AL.slice(5)}>{(a) => <button class="ib" role="menuitem" aria-label={a.tip} data-tip={a.tip} tabIndex={more() ? 0 : -1} onClick={() => run(a.op)}><Icon name={a.icon} /></button>}</For>
+        </div>
       </div>
     </Show>
   );

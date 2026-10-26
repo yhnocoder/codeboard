@@ -3,7 +3,8 @@
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { Show, batch, createEffect, onMount } from "solid-js";
 import { useFinish } from "./hooks";
-import { editing, setEditing, type Editing } from "../state/ui";
+import { editing, setEditing, takeEditEntry, type Editing } from "../state/ui";
+import { docRange } from "@yhnocoder/markdown";
 import { MdStatic } from "./Md";
 import { loadEditor, editorNow, editorOpts, prepareSelected, NOTE_PLACEHOLDER, type MdEditorHandle } from "../md/load";
 import { sel } from "../state/store";
@@ -89,10 +90,22 @@ function MdEdit(p: P) {
     f(v);
   });
   const start = p.value;
+  // 显示时选了一段字再按 ⌫ / Delete 进来的（#69）：选上同一段，再把这个键交给编辑器
+  const entry = p.kind === "note" ? takeEditEntry("note", p.id) : null;
   const mount = (m: NonNullable<ReturnType<typeof editorNow>>) => {
     if (done() || !el.isConnected) return;
     el.textContent = "";
     ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder ?? NOTE_PLACEHOLDER, onDone: finish });
+    const e = ed.editor(), r = entry && docRange(e.state.doc, entry.range);
+    if (!r) return;
+    e.commands.setTextSelection(r);
+    // 编辑器拿到焦点（mountEditor 放进了微任务）以后，和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删
+    queueMicrotask(() => {
+      if (e.isDestroyed) return;
+      const ev = new KeyboardEvent("keydown", { key: entry!.key, code: entry!.key, bubbles: true, cancelable: true });
+      e.view.dom.dispatchEvent(ev);
+      if (!ev.defaultPrevented) e.commands.deleteSelection();
+    });
   };
   // 预加载过的：元素挂到页面上后立刻挂编辑器（同一个任务里，不闪静态内容）；否则等加载完
   const now = editorNow();

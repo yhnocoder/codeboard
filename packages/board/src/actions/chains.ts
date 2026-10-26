@@ -1,9 +1,7 @@
 // 接上断掉的调用链、跨语言（线框 01、02）：选实现、灰色备选、取值选择、跨语言按名字搜、手动补边、Generated 卡。
-import { createMemo } from "solid-js";
-import { rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, segOf, cardTitle, instName, genWhat, cardChip, rankByReceiver, sameCallSite, baseName, swapCallTarget,
+  uid, isCode, segOf, cardTitle, instName, genWhat, rankByReceiver, sameCallSite, baseName, swapCallTarget,
   type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
 } from "@codeboard/core";
 import { state, setState, mutate, cardById, hostOf, toast, placeOf, select } from "../state/store";
@@ -285,12 +283,6 @@ export function setGenRun(id: string, v: string) {
 
 // ---------- 卡头 ----------
 
-/** 白板上混着几种语言才在卡头出语言标签（全是 Python 的白板不加噪音） */
-export const mixedLangs = rooted(() => createMemo(() => {
-  const s = new Set<string>();
-  for (const c of state.board.cards) if (isCode(c)) { const k = cardChip(c); if (k) s.add(k); if (s.size > 1) return true; }
-  return false;
-}));
 /** 动态分发选出来的卡：「1 of N」 */
 export function dispatchOf(id: string): number {
   return linksInto(id).find((l) => l.call?.impls)?.call?.impls ?? 0;

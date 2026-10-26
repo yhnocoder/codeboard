@@ -2,8 +2,12 @@
 // Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
 //          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
-//          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle
-import { put, findSym, symCard, shot, type Host } from "../harness";
+//          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle noteFontSizeSettings
+//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight noteCodeBlockClickAwayEnds noteCodeBlockLanguagePicker
+//          noteRefChipOnBaseline noteEndingInCodeBlockNoExtraSpace
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { test, open, check, light, expect, until, idle, pmHasSelection, focusSettled } from "../fixtures";
@@ -225,6 +229,31 @@ test("noteCodeScratchClosed", async () => {
   await close(h);
 });
 
+/** 光标在 Note 的代码块（CodeMirror）里：点别的卡、点画布空白，和在正文里一样保存并结束编辑 */
+test("noteCodeBlockClickAwayEnds", async () => {
+  const h = await open({ board: board(["```python\nx = 1\n```", "other note"]) });
+  await idle(h);
+  const cases: { name: string; away: () => Promise<void>; md: string }[] = [
+    { name: "otherCard", away: () => h.page.locator('.card[data-id="n1"] .nbody').click(), md: "```python\nx = 1 # a\n```" },
+    { name: "otherCardHead", away: () => h.page.locator('.card[data-id="n1"] .chead .kind').click(), md: "```python\nx = 1 # a # b\n```" },
+    { name: "canvas", away: () => h.page.mouse.click(300, 700), md: "```python\nx = 1 # a # b # c\n```" },
+  ];
+  for (const [i, c] of cases.entries()) {
+    await editNote(h, "n0");
+    await h.page.locator('.card[data-id="n0"] .md-pm pre .cm-content').click();
+    await keys(h.page, `{End} # ${"abc"[i]}`);
+    await idle(h);
+    const inCode = await h.page.evaluate(() => !!document.activeElement?.closest(".cm-content"));
+    const was = md(h, "n0");
+    await c.away();
+    await until(h, `the edit is saved (${c.name})`, () => md(h, "n0") !== was); await idle(h);
+    const still = await editing(h, "n0");
+    check(`noteCodeBlockClickAwayEnds ${c.name}`, inCode && still === 0 && md(h, "n0") === c.md, { inCode, still, got: md(h, "n0"), want: c.md });
+    await exitEdit(h);
+  }
+  await close(h);
+});
+
 /** 一个动作一次撤销：Sidenote → Place on Board；Note 的字删光（Note 跟着删掉） */
 test("undoIsOneStep", async () => {
   const b = board(["hello world"]);
@@ -350,7 +379,7 @@ test("placeholderOnlyWhenNoteEmpty", async () => {
 });
 
 /** A leading heading that is the Note's title isn't shown again in the body (display only: the Markdown keeps it); editing shows it,
- *  sliding in without a jump; a title set by the user or the setting keeps it in the body */
+ *  sliding in while the header folds away (same card height); a title set by the user or the setting keeps it in the body */
 test("noteTitleHeadingHiddenInBody", async () => {
   const doc = "# KV cache budget\n\nPrefill first, then decode.\n\nOne block per sequence.";
   const b = board([doc, doc]);
@@ -364,7 +393,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   const shown = await look();
   await shot(h, "note-heading-01-hidden");
   check("note-heading-hidden", shown[0].title === "KV cache budget" && !shown[0].h1 && shown[1].title === "My own title" && shown[1].h1 && md(h, "n0") === doc.trim(), shown);
-  // enter editing: the heading is there to edit and slides in (card height grows in small steps, no jump)
+  // enter editing: the heading is there to edit and slides in while the header folds away, so the card keeps its height
   await h.page.evaluate(() => { const w = window as any; w.__hs = []; w.__hsDone = false; const card = document.querySelector('.card[data-id="n0"]')!; const t0 = performance.now();
     const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 1500) requestAnimationFrame(f); else w.__hsDone = true; }; requestAnimationFrame(f); });
   await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
@@ -375,7 +404,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   const steps = hs.slice(1).map((v, i) => v - hs[i]), grow = hs[hs.length - 1] - hs[0], jump = Math.max(...steps);
   const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.textContent, op: e ? getComputedStyle(e).opacity : "" }; });
   check("note-heading-editable", edit.text === "KV cache budget" && edit.op === "1", edit);
-  check("note-heading-slides-in", grow > 20 && jump < grow * 0.6, { grow, jump, frames: hs.length });
+  check("note-heading-slides-in", hs.length > 5 && Math.abs(grow) <= 0.5 && Math.max(...steps.map(Math.abs)) <= 0.5, { grow, jump, frames: hs.length });
   // leave: hidden again, card back to its height; while it slides out, the part above the body's top edge is clipped (never over the card header)
   await h.page.evaluate(() => { const w = window as any; w.__over = []; w.__overDone = false; const t0 = performance.now();
     const f = () => { const body = document.querySelector('.card[data-id="n0"] .nbody') as HTMLElement, e = body.querySelector("h1"); if (e && e.getBoundingClientRect().height > 0) { const out = body.getBoundingClientRect().top - e.getBoundingClientRect().top; if (out > 1) w.__over.push({ out: Math.round(out), clip: getComputedStyle(body).clipPath }); }
@@ -452,5 +481,355 @@ test("noteEditorHasNoDragHandle", async () => {
   await shot(h, "noteEditorHasNoDragHandle");
   const handles = await h.page.locator(".md-handle").count();
   check("noteEditorHasNoDragHandle", handles === 0, { handles });
+  await close(h);
+});
+
+/** Settings → Notes → Font size: body text and H1 set in the Settings page apply at once to every Note (same element, no re-render),
+ *  the same while editing; headings left at Theme scale with the body; Text cards keep their size; the Note re-measures and pushes
+ *  the card below it down; Reset All goes back to the theme's sizes. Screenshots to FONT_SHOTS (default test-out/harness/fonts) */
+test("noteFontSizeSettings", async () => {
+  const SHOTS = process.env.FONT_SHOTS ?? path.join(OUT, "fonts");
+  try { fs.mkdirSync(SHOTS, { recursive: true }); } catch { /* harness output only */ }
+  const b = emptyBoard("b1", "note fonts");
+  const doc = "# Scheduler\n\n## Prefill first\n\nEach step picks waiting sequences while the KV cache has room, then decodes the running ones.\n\n### Preemption\n\nWhen blocks run out, the newest sequence goes back to waiting.";
+  put(b, { id: "n0", kind: "note", md: doc, bg: true } as NoteCard, 60, 60, 420);
+  put(b, { id: "n1", kind: "note", md: "Below the first Note.", bg: true } as NoteCard, 60, 305, 420);
+  put(b, { id: "t0", kind: "note", md: "A Text card", bg: false } as NoteCard, 560, 60, 240);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1200, h: 820, settings: { theme: "warm-ink", noteHeadingInBody: true } as never });
+  const pg = h.page;
+  await idle(h);
+  type Mark = HTMLElement & { __mark?: number };
+  const sizes = () => pg.evaluate(() => {
+    const card = document.querySelector('.card[data-id="n0"]') as HTMLElement, body = card.querySelector(".nbody") as HTMLElement & { __mark?: number };
+    const root = body.querySelector(".md-pm") ?? body;
+    const px = (sel: string) => parseFloat(getComputedStyle(root.querySelector(sel)!).fontSize);
+    return { body: px(":scope > p"), h1: px("h1"), h2: px("h2"), h3: px("h3"), text: parseFloat(getComputedStyle(document.querySelector('.card[data-id="t0"] .tx')!).fontSize),
+      cardH: Math.round(card.getBoundingClientRect().height), same: body.__mark === 1, editing: !!body.querySelector(".md-pm") };
+  });
+  const below = () => h.board().place.n1?.y ?? 0;
+  const before = await sizes(), belowBefore = below();
+  await pg.evaluate(() => { (document.querySelector('.card[data-id="n0"] .nbody') as Mark).__mark = 1; });
+  await pg.screenshot({ path: path.join(SHOTS, "note-before.png"), clip: { x: 40, y: 40, width: 800, height: 560 } });
+
+  // Settings → Notes: one row per level; untouched levels show the theme's size
+  await pg.keyboard.press("Meta+Comma");
+  await pg.waitForSelector(".settings");
+  const sec = pg.locator('.settings [data-sec="notes"]');
+  await sec.scrollIntoViewIfNeeded();
+  const rows = () => sec.locator(".st-fr").evaluateAll((rs) => rs.map((r) => ({ level: (r as HTMLElement).dataset.level, value: (r.querySelector("input") as HTMLInputElement).value, theme: !!r.querySelector(".st-def") })));
+  const rows0 = await rows();
+  const setRow = async (level: string, v: string) => { const inp = sec.locator(`.st-fr[data-level="${level}"] input`); await inp.fill(v); await inp.press("Enter"); await idle(h); };
+  await setRow("body", "16");
+  await setRow("h1", "32");
+  await pg.mouse.move(5, 5);
+  await pg.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await idle(h);
+  const rows1 = await rows();
+  await sec.screenshot({ path: path.join(SHOTS, "settings-notes.png") });
+  const sent = h.sent.filter((m) => m.type === "setSetting" && (m as { key: string }).key === "noteFontSize").map((m) => (m as { value: unknown }).value);
+  await pg.keyboard.press("Escape");
+  await pg.locator(".settings").waitFor({ state: "detached" }); await idle(h);
+  const after = await sizes(), belowAfter = below();
+  await pg.screenshot({ path: path.join(SHOTS, "note-after.png"), clip: { x: 40, y: 40, width: 800, height: 560 } });
+
+  // the same sizes in the editor
+  await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await pg.waitForSelector('.card[data-id="n0"] .md-pm', { timeout: 5000 });
+  await pg.mouse.move(5, 5);
+  await idle(h);
+  const edit = await sizes();
+  await exitEdit(h);
+
+  // Reset All: back to the theme
+  await pg.keyboard.press("Meta+Comma");
+  await pg.waitForSelector(".settings");
+  await pg.locator('.settings [data-sec="notes"] button', { hasText: "Reset All" }).click();
+  await pg.keyboard.press("Escape");
+  await pg.locator(".settings").waitFor({ state: "detached" }); await idle(h);
+  const reset = await sizes();
+
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.1;
+  check("noteFont-themeDefaults", near(before.body, 13.5) && near(before.h1, 13.5 * 1.8) && near(before.h2, 13.5 * 1.35)
+    && rows0.length === 7 && rows0.every((r) => r.theme) && rows0[0].value === "13.5" && rows0[1].value === "24.3", { before, rows0 });
+  check("noteFont-settingsRows", rows1[0]?.value === "16" && !rows1[0]?.theme && rows1[1]?.value === "32" && !rows1[1]?.theme && rows1[2]?.theme && rows1[2]?.value === "21.6"
+    && JSON.stringify(sent[sent.length - 1]) === JSON.stringify({ body: 16, h1: 32, h2: null, h3: null, h4: null, h5: null, h6: null }), { rows1, sent });
+  check("noteFont-appliesLive", near(after.body, 16) && near(after.h1, 32) && near(after.h2, 16 * 1.35) && near(after.h3, 16 * 1.1) && after.same && near(after.text, before.text), { after, before });
+  check("noteFont-cardRemeasures", after.cardH > before.cardH + 20 && belowAfter > belowBefore, { before: before.cardH, after: after.cardH, belowBefore, belowAfter });
+  check("noteFont-sameWhileEditing", edit.editing && near(edit.body, 16) && near(edit.h1, 32) && near(edit.h2, after.h2) && Math.abs(edit.cardH - after.cardH) <= 1, { edit, after });
+  check("noteFont-resetAll", near(reset.body, 13.5) && near(reset.h1, 13.5 * 1.8) && Math.abs(reset.cardH - before.cardH) <= 1, { reset, before });
+  await close(h);
+});
+
+const FOLD_TEXT = "计算系统 A 相对于计算系统 B 的应用加速比。\n\nSpeedup is the time on B over the time on A.";
+const FOLD_NOTES = [`# 加速比、Amdahl's Law\n\n${FOLD_TEXT}`, FOLD_TEXT, `### Amdahl's Law\n\n${FOLD_TEXT}`];
+/** Editing a Note whose header shows its leading heading folds the whole header away (··· stays, still clickable) while the heading
+ *  slides in, and the card keeps its height every frame (H1 and H3); a Note without a heading keeps its header and its height.
+ *  Warm Ink and Soft Light; screenshots of both states go to test-out/harness/noteFold-<theme>-*.png */
+test("noteEditKeepsHeightWithHeaderFolded", async () => {
+  for (const theme of ["warm-ink", "soft-light"]) {
+    const b = emptyBoard("b1", "fold");
+    FOLD_NOTES.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * 420, 60, 380));
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light: true, w: 1400, h: 520, settings: { theme } as never });
+    const pg = h.page;
+    await idle(h);
+    const hOf = (id: string) => pg.evaluate((id) => document.querySelector(`.card[data-id="${id}"]`)!.getBoundingClientRect().height, id);
+    await pg.screenshot({ path: path.join(OUT, `noteFold-${theme}-display.png`), clip: { x: 40, y: 40, width: 1300, height: 260 } });
+    const res: Record<string, unknown>[] = [];
+    for (const id of ["n0", "n1", "n2"]) {
+      const before = await hOf(id);
+      await pg.evaluate((id) => { const w = window as any; w.__hs = []; const card = document.querySelector(`.card[data-id="${id}"]`)!; const t0 = performance.now();
+        const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 700) requestAnimationFrame(f); else w.__hsDone = true; }; w.__hsDone = false; requestAnimationFrame(f); }, id);
+      await pg.locator(`.card[data-id="${id}"] .nbody p`).last().dblclick();
+      await pg.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
+      await pg.mouse.move(5, 5);
+      await pg.waitForFunction(() => (window as any).__hsDone); // every frame of the 700 ms from the double-click is recorded
+      await idle(h);
+      const hs: number[] = await pg.evaluate(() => (window as any).__hs);
+      const st = await pg.evaluate((id) => {
+        const card = document.querySelector(`.card[data-id="${id}"]`)!, head = card.querySelector(".chead")!, ib = head.querySelector<HTMLElement>(".ib")!, r = ib.getBoundingClientRect();
+        const hd = card.querySelector<HTMLElement>(".md-pm > :is(h1, h3)");
+        return { folded: head.classList.contains("fold"), title: getComputedStyle(head.querySelector(".ctitle")!).opacity,
+          ibHit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest(".ib") === ib, heading: hd ? getComputedStyle(hd).opacity : null };
+      }, id);
+      if (id !== "n1") await pg.screenshot({ path: path.join(OUT, `noteFold-${theme}-editing-${id === "n0" ? "h1" : "h3"}.png`), clip: { x: 40, y: 40, width: 1300, height: 260 } });
+      await exitEdit(h);
+      const after = await hOf(id), unfolded = await pg.evaluate((id) => !document.querySelector(`.card[data-id="${id}"] .chead`)!.classList.contains("fold"), id);
+      const dev = Math.max(...hs.map((v) => Math.abs(v - before)));
+      res.push({ id, before, dev: +dev.toFixed(2), frames: hs.length, after, unfolded, ...st });
+    }
+    const [h1, none, h3] = res as any[];
+    check(`noteFold-keepsHeight-${theme}`, res.every((r: any) => r.dev <= 0.5 && r.frames > 5 && Math.abs(r.after - r.before) <= 0.5 && r.unfolded), res);
+    check(`noteFold-onlyWhenHeaderIsHeading-${theme}`, h1.folded && h3.folded && !none.folded && h1.title === "0" && none.title === "1" && h1.heading === "1" && h3.heading === "1", res);
+    check(`noteFold-moreButtonStaysClickable-${theme}`, h1.ibHit && h3.ibHit, res);
+    await close(h);
+  }
+});
+
+/** The same Note text at the same width is the same height in Warm Ink and Soft Light (same font size, header and padding) */
+test("noteHeightSameInWarmInkAndSoftLight", async () => {
+  const heights: Record<string, number[]> = {};
+  for (const theme of ["warm-ink", "soft-light"]) {
+    const b = emptyBoard("b1", "same height");
+    const notes = ["# Title\n\nShort line one.\n\nShort line two.\n\n- item a\n- item b", "一行中文和 English.\n\n第二段。", "### Small title\n\nOne line."];
+    notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * 420, 60, 380));
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light: true, w: 1400, h: 520, settings: { theme } as never });
+    await idle(h);
+    heights[theme] = await h.page.evaluate(() => ["n0", "n1", "n2"].map((id) => +document.querySelector(`.card[data-id="${id}"]`)!.getBoundingClientRect().height.toFixed(2)));
+    await close(h);
+  }
+  check("noteHeight-sameInWarmInkAndSoftLight", heights["warm-ink"].every((v, i) => Math.abs(v - heights["soft-light"][i]) <= 1), heights);
+});
+
+const THEMES = ["warm-ink", "soft-light"] as const;
+/** Notes in a row, `w` wide each */
+function noteRow(notes: string[], w = 380): Board {
+  const b = emptyBoard("b1", "notes");
+  notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * (w + 40), 60, w));
+  b.cam = { x: 0, y: 0, z: 1 };
+  return b;
+}
+/** A screenshot of one card with a margin around it, no hover on it */
+async function cardShot(h: Host, id: string, name: string) {
+  await h.page.mouse.move(2, 2);
+  await idle(h);
+  const r = await h.page.locator(`.card[data-id="${id}"]`).boundingBox();
+  if (r) await h.page.screenshot({ path: path.join(OUT, `${name}.png`), clip: { x: r.x - 24, y: r.y - 24, width: r.width + 48, height: r.height + 48 } });
+}
+
+/** A [[card reference]] chip in Note text sits on the text's baseline (its label's baseline is the line's), and its box is no taller
+ *  than the line: the paragraph is exactly its lines tall, displayed and while editing. Warm Ink and Soft Light; screenshots:
+ *  test-out/harness/noteRefChipOnBaseline-<theme>-<display|edit>.png */
+test("noteRefChipOnBaseline", async () => {
+  const text = "对于向量加法 kernel，调用 kernel 之前，程序员需要在 [[Global Memory]] 中分配空间，并把数据从主机内存传送到设备 global memory 中的已分配空间。";
+  for (const theme of THEMES) {
+    const h = await open({ board: noteRow([text, "# Global Memory\n\nThe device's DRAM."]), light: true, w: 1000, h: 420, settings: { theme } as never });
+    const pg = h.page;
+    await idle(h);
+    // baselines from the text boxes (a text box's top is its baseline less the font's ascent): nothing is added to the page, so it
+    // is the same measurement in the editor (ProseMirror would read a node put into its DOM)
+    const geo = () => pg.evaluate(async () => {
+      await document.fonts.ready;
+      const chip = document.querySelector<HTMLElement>('.card[data-id="n0"] .cref')!, p = chip.closest("p")!;
+      const ctx = document.createElement("canvas").getContext("2d")!;
+      const base = (t: Node) => {
+        const r = document.createRange();
+        r.selectNodeContents(t);
+        const cs = getComputedStyle(t.parentElement!);
+        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        return r.getClientRects()[0].top + ctx.measureText(t.textContent!).fontBoundingBoxAscent;
+      };
+      const label = [...chip.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!, next = chip.nextSibling!;
+      const lh = parseFloat(getComputedStyle(p).lineHeight), ph = p.getBoundingClientRect().height, lines = Math.round(ph / lh);
+      return { chip: +base(label).toFixed(2), text: +base(next).toFixed(2), chipH: +chip.getBoundingClientRect().height.toFixed(2), lh, ph: +ph.toFixed(2), lines,
+        missing: chip.classList.contains("missing") };
+    });
+    const shown = await geo();
+    await cardShot(h, "n0", `noteRefChipOnBaseline-${theme}-display`);
+    await pg.locator('.card[data-id="n0"] .nbody p').dblclick({ position: { x: 4, y: 4 } });
+    await pg.waitForSelector('.card[data-id="n0"] .md-pm .cref', { timeout: 5000 });
+    await idle(h);
+    const edit = await geo();
+    await cardShot(h, "n0", `noteRefChipOnBaseline-${theme}-edit`);
+    await exitEdit(h);
+    for (const [mode, g] of [["display", shown], ["edit", edit]] as const)
+      check(`noteRefChipOnBaseline ${theme} ${mode}`, !g.missing && Math.abs(g.chip - g.text) <= 0.5 && g.chipH <= g.lh && g.lines >= 2 && Math.abs(g.ph - g.lines * g.lh) <= 0.5, g);
+    await close(h);
+  }
+});
+
+/** A Note whose last block is a code block has as much room below it as one ending in a paragraph (no trailing margin, no extra
+ *  blank line), and keeps its height when editing starts and ends, with the caret at the very end too (the editor's empty paragraph
+ *  after the code block, where typing goes on, takes no room until something is typed into it). Warm Ink and Soft Light;
+ *  screenshots: test-out/harness/noteEndingInCodeBlockNoExtraSpace-<theme>-<display|edit>.png */
+test("noteEndingInCodeBlockNoExtraSpace", async () => {
+  const notes = ["`cudaFree()`: frees object from device global memory\n\n```\nDF\n```", "`cudaFree()`: frees object from device global memory\n\nLast paragraph."];
+  for (const theme of THEMES) {
+    const h = await open({ board: noteRow(notes), light: true, w: 1000, h: 420, settings: { theme } as never });
+    const pg = h.page;
+    await idle(h);
+    const geo = (id: string) => pg.evaluate((id) => {
+      const card = document.querySelector(`.card[data-id="${id}"]`)!, body = card.querySelector(".nbody")!;
+      const last = id === "n0" ? body.querySelector("pre")! : [...body.querySelectorAll("p")].pop()!;
+      const c = card.getBoundingClientRect();
+      return { h: +c.height.toFixed(2), below: +(c.bottom - last.getBoundingClientRect().bottom).toFixed(2) };
+    }, id);
+    const para = await geo("n1"), shown = await geo("n0");
+    await cardShot(h, "n0", `noteEndingInCodeBlockNoExtraSpace-${theme}-display`);
+    await pg.locator('.card[data-id="n0"] .nbody p').first().dblclick();
+    await pg.waitForSelector('.card[data-id="n0"] .md-pm pre', { timeout: 5000 });
+    await idle(h);
+    const edit = await geo("n0");
+    await keys(pg, "{Control+End}"); // the caret after the code block, where typing goes on
+    await idle(h);
+    const atEnd = await geo("n0");
+    await cardShot(h, "n0", `noteEndingInCodeBlockNoExtraSpace-${theme}-edit`);
+    await exitEdit(h);
+    const after = await geo("n0");
+    check(`noteEndingInCodeBlockNoExtraSpace ${theme} display`, Math.abs(shown.below - para.below) <= 0.5, { shown, para });
+    check(`noteEndingInCodeBlockNoExtraSpace ${theme} edit`, [edit, atEnd, after].every((g) => Math.abs(g.h - shown.h) <= 0.5 && Math.abs(g.below - shown.below) <= 0.5), { shown, edit, atEnd, after });
+    check(`noteEndingInCodeBlockNoExtraSpace ${theme} unchanged`, md(h, "n0") === notes[0], { got: md(h, "n0") });
+    await close(h);
+  }
+});
+
+/** Note 代码块右上角的语言名（#68 照 Typora，#70 的样子）：光标在块里时淡淡地显示（Plain text、Python），右上角、没有底色和边框；
+ *  悬停时出现 ▾。点它在下面打开列表，筛选框里打字筛出语言，↵ 定下来（马上换着色，一次撤销回去），Esc 不改，点列表里的一项也行，
+ *  Plain text 那一行 = 纯文字；列表开着时点了别处：照筛出的定下来，保存退出。写回成 ```语言 */
+test("noteCodeBlockLanguagePicker", async () => {
+  const CODE = "def f():\n    return 1";
+  const h = await open({ board: board([`Intro\n\n\`\`\`\n${CODE}\n\`\`\`\n\nafter`, "other note"]), light });
+  await idle(h);
+  const pg = h.page, n0 = '.card[data-id="n0"]';
+  const pre = pg.locator(`${n0} .md-pm pre`), label = pg.locator(`${n0} .md-pm pre .md-lang`);
+  const list = pg.locator(".md-langbox .md-lo"), filter = pg.locator(".md-langbox .md-langq");
+  const kws = () => pg.locator(`${n0} .md-pm pre .cm-content .kw`).count();
+  const style = (sel: string, k: string) => pg.locator(sel).first().evaluate((e, k) => getComputedStyle(e).getPropertyValue(k), k);
+  const opacity = () => style(`${n0} .md-pm pre .md-lang`, "opacity");
+  const chevron = () => style(`${n0} .md-pm pre .md-lang .md-lang-v`, "opacity");
+  const name = () => label.innerText();
+  const inCode = () => pg.evaluate(() => !!document.activeElement?.closest(".cm-content"));
+  /** 这张 Note 的截图，鼠标留在原处（悬停的样子） */
+  const snap = async (n: string) => {
+    await idle(h);
+    const r = (await pg.locator(n0).boundingBox())!, l = (await pg.locator(".md-langbox").count()) ? await pg.locator(".md-langbox").boundingBox() : null;
+    const bottom = Math.max(r.y + r.height, l ? l.y + l.height : 0);
+    await pg.screenshot({ path: path.join(OUT, `noteCodeBlockLanguagePicker-${n}.png`), clip: { x: r.x - 24, y: r.y - 24, width: r.width + 48, height: bottom - r.y + 48 } });
+  };
+  const res: Record<string, unknown> = { inDisplay: await pg.locator(`${n0} .md-lang`).count() }; // 只在编辑时有
+  await editNote(h, "n0");
+  // 光标在代码里：显示 Plain text（纯文字）；鼠标不在块上：没有 ▾
+  await pg.locator(`${n0} .md-pm pre .cm-content`).click();
+  await pg.mouse.move(2, 2);
+  await until(h, "the language label shows while the caret is in the block", async () => (await opacity()) === "1");
+  await idle(h);
+  res.plain = { name: await name(), kw: await kws(), chevron: await chevron() };
+  // 右上角（离右边 10px、上边 6px），一行淡色小字：没有底色、边框、阴影
+  const [lr, pr] = [(await label.boundingBox())!, (await pre.boundingBox())!];
+  const look = await label.evaluate((e) => { const s = getComputedStyle(e); return { bg: s.backgroundColor, border: s.borderTopWidth + s.borderTopStyle, shadow: s.boxShadow, font: s.fontSize }; });
+  res.place = { right: +(pr.x + pr.width - lr.x - lr.width).toFixed(1), top: +(lr.y - pr.y).toFixed(1), ...look };
+  check("noteCodeBlockLanguagePicker label at the top right, plain text", Math.abs((res.place as any).right - 10) <= 1 && Math.abs((res.place as any).top - 6) <= 1
+    && look.bg === "rgba(0, 0, 0, 0)" && /^0px/.test(look.border) && look.shadow === "none" && look.font === "11px", res.place);
+  await snap("rest");
+  // 悬停：▾ 淡入
+  await pre.hover();
+  await until(h, "the chevron fades in on hover", async () => +(await chevron()) > 0.5);
+  await snap("hover");
+  // 点开：筛选框拿到焦点，现在的（Plain text）打 ✓、选中
+  await label.click();
+  await expect(filter).toBeFocused();
+  res.open = { placeholder: await filter.getAttribute("placeholder"), sel: await pg.locator(".md-langbox .md-lo.sel .lb").innerText(), ck: await pg.locator(".md-langbox .md-lo.sel .ck").innerText() };
+  await snap("list");
+  // 打 py：Python 在最前面、选中；↵ 定下来，着色马上换，焦点回到代码
+  await pg.keyboard.type("py");
+  await expect(list.first()).toHaveText(/Python/);
+  res.list = { first: await list.first().innerText(), sel: await pg.locator(".md-langbox .md-lo.sel").innerText() };
+  await snap("filtered");
+  await pg.keyboard.press("Enter");
+  await expect(pg.locator(".md-langbox")).toHaveCount(0);
+  await until(h, "python keywords colored", kws);
+  res.python = { name: await name(), inCode: await inCode() };
+  await snap("python");
+  // 一次撤销回到纯文字，重做又是 Python
+  await pg.keyboard.press("Control+z");
+  await until(h, "undo: back to plain text", async () => (await kws()) === 0 && (await name()) === "Plain text");
+  await pg.keyboard.press("Control+Shift+z");
+  await until(h, "redo: python again", async () => (await kws()) > 0 && (await name()) === "Python");
+  // Esc：不改，回到代码里，还在编辑
+  await label.click();
+  await expect(filter).toBeFocused();
+  await pg.keyboard.type("rust");
+  await pg.keyboard.press("Escape");
+  await expect(pg.locator(".md-langbox")).toHaveCount(0);
+  res.esc = { name: await name(), editing: await editing(h, "n0"), inCode: await inCode() };
+  // ↑↓ 在列表里挪；Plain text 那一行：纯文字
+  await label.click();
+  await expect(filter).toBeFocused();
+  await pg.keyboard.type("c");
+  const first = await pg.locator(".md-langbox .md-lo.sel .lb").innerText();
+  await pg.keyboard.press("ArrowDown");
+  res.arrow = first !== (await pg.locator(".md-langbox .md-lo.sel .lb").innerText());
+  await pg.keyboard.press("Escape");
+  await label.click();
+  await expect(filter).toBeFocused();
+  await pg.keyboard.type("plain");
+  await expect(pg.locator(".md-langbox .md-lo.sel .lb")).toHaveText("Plain text");
+  await pg.keyboard.press("Enter");
+  await until(h, "plain text row: no language", async () => (await kws()) === 0 && (await name()) === "Plain text");
+  // 点列表里的一项
+  await label.click();
+  await expect(filter).toBeFocused();
+  await pg.keyboard.type("cu");
+  await pg.locator(".md-langbox .md-lo", { hasText: "CUDA" }).click();
+  await until(h, "picked CUDA", async () => (await name()) === "CUDA");
+  // 光标离开这一块、鼠标也不在上面：不显示
+  await pg.mouse.move(5, 5);
+  await keys(pg, "{ArrowDown}{ArrowDown}{ArrowDown}");
+  await until(h, "the language label hides when the caret leaves the block", async () => (await opacity()) === "0");
+  await exitEdit(h);
+  await idle(h);
+  res.saved = md(h, "n0");
+  // 列表开着时点了别的卡片：照筛出的定下来，保存退出
+  await editNote(h, "n0");
+  await pg.locator(`${n0} .md-pm pre .cm-content`).click();
+  await label.click();
+  await expect(filter).toBeFocused();
+  await pg.keyboard.type("rust");
+  await pg.locator('.card[data-id="n1"] .nbody').click();
+  await until(h, "the edit is saved", () => md(h, "n0").startsWith("Intro\n\n```rust"));
+  await idle(h);
+  res.away = { md: md(h, "n0"), editing: await editing(h, "n0"), list: await pg.locator(".md-langbox").count() };
+  const ok = res.inDisplay === 0
+    && JSON.stringify(res.plain) === JSON.stringify({ name: "Plain text", kw: 0, chevron: "0" })
+    && JSON.stringify(res.open) === JSON.stringify({ placeholder: "Filter languages", sel: "Plain text", ck: "✓" })
+    && /^Python\s+python$/.test(String((res.list as any).first)) && /Python/.test(String((res.list as any).sel))
+    && JSON.stringify(res.python) === JSON.stringify({ name: "Python", inCode: true })
+    && JSON.stringify(res.esc) === JSON.stringify({ name: "Python", editing: 1, inCode: true })
+    && res.arrow === true
+    && res.saved === `Intro\n\n\`\`\`cuda\n${CODE}\n\`\`\`\n\nafter`
+    && JSON.stringify(res.away) === JSON.stringify({ md: `Intro\n\n\`\`\`rust\n${CODE}\n\`\`\`\n\nafter`, editing: 0, list: 0 });
+  check("noteCodeBlockLanguagePicker", ok, res);
   await close(h);
 });

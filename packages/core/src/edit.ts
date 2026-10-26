@@ -668,6 +668,21 @@ export function cardIntoSidenote(b: Board, cardId: string, n: Sidenote): void {
   if (n.kind !== "card") removeCards(b, [cardId]);
 }
 
+/**
+ * Image 卡拖进 Note：Note 的 Markdown 末尾接上这张图（src = Note 里写的地址，如 assets/…；图的说明接在图下面），Image 卡连同它的箭头删掉。
+ * 不是 Image 卡 / Note 时什么都不改，返回 false
+ */
+export function imageIntoNote(b: Board, imageId: string, noteId: string, src: string): boolean {
+  const img = b.cards.find((c) => c.id === imageId), note = b.cards.find((c) => c.id === noteId);
+  if (img?.kind !== "image" || note?.kind !== "note") return false;
+  const alt = (img.alt ?? "").replace(/[[\]\s]+/g, " ").trim();
+  const block = `![${alt}](${src})${img.desc?.trim() ? `\n\n${img.desc.trim()}` : ""}`;
+  const md = note.md.replace(/\s+$/, "");
+  note.md = md ? `${md}\n\n${block}` : block;
+  removeCards(b, [imageId]);
+  return true;
+}
+
 /** 卡改了名：Note、卡片说明、Text sidenote 里写着 [[旧名]] 的引用跟着改 */
 export function renameTitleRefs(b: Board, from: string, to: string): void {
   if (!from || from === to || /[\[\]\n]/.test(to)) return;

@@ -15,9 +15,10 @@ import { geo } from "./state/geo";
 import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
 import { selSticker, setSelSticker } from "./state/stickers";
+import { ghostOut } from "./state/ghost";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
 import { installOverlays, modalOpen, isTyping } from "./ui/overlay";
-import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
+import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
 import { dispatch } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
@@ -30,6 +31,7 @@ const worldOf = (e: { clientX: number; clientY: number }) => worldAt(pt(e));
 function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = 3) {
   const sx = e.clientX, sy = e.clientY;
   let moved = false;
+  holdPointer(e);
   const onMove = (ev: PointerEvent) => {
     if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < threshold) return;
     moved = true;
@@ -59,7 +61,24 @@ function cardGesture(ids: string[]) {
   };
 }
 
-const ev0x = (e: PointerEvent) => e.clientX, ev0y = (e: PointerEvent) => e.clientY;
+/**
+ * 拖卡、拖 Section 时吸不吸附：拖得快时不吸附（顺滑），慢下来才对齐。屏幕上的速度，指数平滑。
+ * 停住不动时没有 move 事件：停一下就当速度为 0 再算一次（again(ev, true)，这时才吸附）
+ */
+function snapPace(e: PointerEvent, again: (ev: PointerEvent, still: boolean) => void) {
+  let vx = e.clientX, vy = e.clientY, vt = performance.now(), speed = 0, settleT: number | undefined;
+  return {
+    fast(ev: PointerEvent, still: boolean) {
+      clearTimeout(settleT);
+      if (!still) settleT = window.setTimeout(() => again(ev, true), 110);
+      const now = performance.now(), dt = Math.max(1, now - vt);
+      speed = still ? 0 : speed * 0.6 + (Math.hypot(ev.clientX - vx, ev.clientY - vy) / dt) * 1000 * 0.4;
+      vx = ev.clientX; vy = ev.clientY; vt = now;
+      return speed > tune("snapSpeed");
+    },
+    stop: () => clearTimeout(settleT),
+  };
+}
 
 // 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）：同一个东西上、够快、两下点在差不多同一个地方
 const DBL_SLOP = 6;
@@ -143,20 +162,13 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const mergeOk = ids.every((i) => cardById(i)!.card.kind === "code");
   const webOk = ids.every((i) => { const k = cardById(i)!.card.kind; return k === "web" || k === "links"; }); // Web 卡拖到另一张的标题上 → Link List
   const noteOk = ids.length === 1 && g.kind === "note" && g.bg;
+  const imageOk = ids.length === 1 && g.kind === "image"; // 图片卡拖到 Note / Text 上 → 放进它的 Markdown
   setDragging(new Set(ids));
-  // 拖得快时不吸附（顺滑），慢下来才对齐：屏幕上的速度，指数平滑
-  let vx = ev0x(e), vy = ev0y(e), vt = performance.now(), speed = 0;
-  let settleT: number | undefined;
+  const pace = snapPace(e, (ev, still) => onMove(ev, still));
   const onMove = (ev: PointerEvent, still = false) => {
-    clearTimeout(settleT);
-    // 停住不动时没有 move 事件：停一下就当速度为 0 再算一次（这时才吸附）
-    if (!still) settleT = window.setTimeout(() => onMove(ev, true), 110);
     const z = cam.z;
     let dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
-    const now = performance.now(), dt = Math.max(1, now - vt);
-    speed = still ? 0 : speed * 0.6 + (Math.hypot(ev.clientX - vx, ev.clientY - vy) / dt) * 1000 * 0.4;
-    vx = ev.clientX; vy = ev.clientY; vt = now;
-    const fast = speed > tune("snapSpeed");
+    const fast = pace.fast(ev, still);
     // 合并 / 变成 Sidenote 的落点
     const under = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => (n as HTMLElement).closest?.(".card") && !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!)) as HTMLElement | undefined;
     const uc = under?.closest(".card") as HTMLElement | undefined;
@@ -174,6 +186,10 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
         drop = { kind: "merge", card: uid, armed: false };
         mergeT = window.setTimeout(() => { if (mergeTgt === uid) { setDropTarget({ kind: "merge", card: uid, armed: true }); setGuides([]); } }, 400);
       }
+    } else if (imageOk && uid && ucard?.card.kind === "note") {
+      clearTimeout(mergeT); mergeTgt = undefined;
+      const d = dropTarget();
+      drop = d?.kind === "note" && d.card === uid ? d : { kind: "note", card: uid };
     } else if (row && uid && ucard && (noteOk || (ev.altKey && ids.length === 1 && isCode(g)))) {
       const at = rowAnchor(row, uid);
       clearTimeout(mergeT); mergeTgt = undefined;
@@ -194,7 +210,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     setMovingHome(drop ? null : new Map(items.map((it) => [it.id, homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id])));
   };
   track(e, (ev) => { moving(); onMove(ev); }, (ev, moved) => {
-    clearTimeout(settleT);
+    pace.stop();
     clearTimeout(mergeT);
     setGuides([]);
     setDragging(new Set<string>());
@@ -207,6 +223,19 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
       end();
       return webOk ? A.mergeIntoLinkList([drop.card, ...ids], drop.card) : A.mergeCards([drop.card, ...ids], drop.card);
+    }
+    if (drop?.kind === "note") {
+      // 图先存成 Note 的图（要问宿主）：这期间卡留在松手的地方、Note 还亮着；好了以后卡在这里淡出，回到原处再删，
+      // 撤销时卡回到拖之前的地方（拖动和放进 Note 是一步）
+      setDropTarget(drop);
+      void A.noteImageFor(ids[0]).then((src) => {
+        if (src) ghostOut([ids[0]]);
+        setDropTarget(null);
+        live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
+        end();
+        if (src) A.putImageInNote(ids[0], drop.card, src);
+      });
+      return;
     }
     if (drop?.kind === "line") {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
@@ -290,8 +319,8 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
       if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
     } else setGuides([]);
     setSizeHint(hint ? { x: x + w / 2, y: r0.y + h + 8, text: hint } : null);
-    // Note / Text 的高度是上限（Card.tsx）：拉到内容那么高或更高就是自动高度，不存一个比内容还高的数
-    const auto = bottom && nat && (c.kind === "note" ? h > nat.h - 8 / z : Math.abs(h - nat.h) < 8 / z);
+    // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）
+    const auto = bottom && nat && Math.abs(h - nat.h) < 8 / z;
     live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (bottom) k.h = auto ? undefined : Math.round(h - hx); });
   }, () => { setGuides([]); setSizeHint(null); end(); });
 }
@@ -487,9 +516,14 @@ function startPan(e: PointerEvent) {
 }
 
 /** 滚轮：两指平移；⌘ / 捏合 缩放 */
+/** 滚轮在这上面归它自己（原生滚动，不动画布）：画布上浮着的面板、浮层（data-nodrag）；卡上的按钮、把手、边上的圆点不算，
+ *  卡里只有能输入的东西算 */
+const ownsWheel = (t: HTMLElement) => !!t.closest(NODRAG) && (!t.closest(".card") || !!t.closest("input, textarea, [contenteditable]"));
 export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
-  if (t.closest(NODRAG)) return;
+  // 正在平移画布的这次滚动手势一路平移下去（#51）：画布带着卡移到指针下面，指针落到卡边的圆点、把手上也不停
+  const panning = wheelOwner === "canvas" && performance.now() - wheelLast <= 200;
+  if (!panning && ownsWheel(t)) return;
   e.preventDefault();
   if (!t.closest(".cbody, .nbody, .tx")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过
   stopCam();
@@ -532,17 +566,33 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
   const items = [...members.map((c) => { const q = placeOf(c.id); return { kind: "c" as const, id: c.id, ox: q.x, oy: q.y }; }), ...subs.map((q) => ({ kind: "s" as const, id: q.id, ox: q.x, oy: q.y }))];
   const skip = new Set(subs.map((q) => q.id));
   const fr = new Map(frames());
+  // 和拖卡一样对齐、吸附（#60）：吸到别的 Section 的边和中线。自己、子 Section 跟着走；外层的框包着它、跟着它变，也不算
+  const box = fr.get(id);
+  const outer = new Set<string>();
+  for (let p = sec(s.parent); p && !outer.has(p.id); p = sec(p.parent)) outer.add(p.id);
+  const targets = [...fr.entries()].filter(([k]) => !skip.has(k) && !outer.has(k)).map(([, r]) => r);
   const end = beginGesture();
   const sx = e.clientX, sy = e.clientY;
-  track(e, (ev) => {
-    const dx = (ev.clientX - sx) / cam.z, dy = (ev.clientY - sy) / cam.z;
+  const pace = snapPace(e, (ev, still) => onMove(ev, still));
+  const onMove = (ev: PointerEvent, still = false) => {
+    const z = cam.z;
+    let dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
+    const fast = pace.fast(ev, still);
+    if (box && !(ev.metaKey || ev.ctrlKey) && !fast) {
+      const sn = snapMove({ ...box, x: box.x + dx, y: box.y + dy }, targets, tune("snap") / z);
+      dx += sn.dx; dy += sn.dy;
+      setGuides(sn.guides);
+    } else setGuides([]);
     live((b) => {
       for (const it of items) {
         const o = it.kind === "c" ? b.place[it.id] : b.sections.find((q) => q.id === it.id);
         if (o) { o.x = Math.round(it.ox + dx); o.y = Math.round(it.oy + dy); }
       }
     });
-  }, (ev, moved) => {
+  };
+  track(e, (ev) => onMove(ev), (ev, moved) => {
+    pace.stop();
+    setGuides([]);
     if (moved) {
       const w = worldOf(ev);
       const np = deepestAt(fr, w.x, w.y, skip);
@@ -596,27 +646,24 @@ export function installKeys() {
   const spaceUp = () => setSpaceDown(false);
   window.addEventListener("keyup", (e) => { if (e.key === " ") spaceUp(); });
   window.addEventListener("blur", spaceUp);
-  // 粘贴：图片 → Image 卡；文字 → 按内容判断
+  // 粘贴：白板上复制的卡 → 卡（剪贴板里可能同时有图：复制的是图片卡）；否则图片 → Image 卡；文字 → 按内容判断
   window.addEventListener("paste", (e) => {
     if (isTyping(e.target)) return;
     const items = [...(e.clipboardData?.items ?? [])];
-    const img = items.find((i) => i.type.startsWith("image/"));
-    const w = worldAt(lastPointer());
-    if (img) {
-      e.preventDefault();
-      const f = img.getAsFile();
-      if (!f) return;
-      const rd = new FileReader();
-      rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w);
-      rd.readAsDataURL(f);
-      return;
-    }
+    const file = items.find((i) => i.type.startsWith("image/"))?.getAsFile() ?? null;
     const text = e.clipboardData?.getData("text/plain");
-    if (text) {
-      e.preventDefault();
-      // 先问宿主：是别的白板上复制的卡就贴卡（共享卡），否则照旧按文字粘贴
-      void A.pasteFromBoard(text, w).then((done) => { if (done) return; const near = A.pasteNear(text); A.pasteText(text, near ?? w, !!near); });
-    }
+    const w = worldAt(lastPointer());
+    if (!file && !text) return;
+    e.preventDefault();
+    const image = (f: File) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w); rd.readAsDataURL(f); };
+    if (!text) return image(file!);
+    // 先看是不是白板上复制的卡（这块白板的，或者问宿主：别的白板上的就贴卡），否则照旧按图 / 文字粘贴
+    void A.pasteFromBoard(text, w).then((done) => {
+      if (done) return;
+      if (file) return image(file);
+      const near = A.pasteNear(text);
+      A.pasteText(text, near ?? w, !!near);
+    });
   });
   // 拖文件进来：图片
   window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault(); });

@@ -112,12 +112,15 @@ export const KEYMAP: Bind[] = [
   { id: "front", keys: ["mod+shift+BracketRight"], label: "Bring to Front", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "front") },
   { id: "back", keys: ["mod+shift+BracketLeft"], label: "Send to Back", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "back") },
   { id: "deleteSticker", keys: ["Backspace", "Delete"], when: () => !!selSticker(), run: (a) => a.removeSticker(selSticker()!) },
+  // 选中了一张卡里的一段字：进入编辑删掉这段字，不删卡（#69）
+  { id: "deleteText", keys: ["Backspace", "Delete"], run: (a, e) => a.editTextSel(e.key === "Delete" ? "Delete" : "Backspace") },
   { id: "delete", keys: ["Backspace", "Delete"], show: "⌫", label: "Delete (linked card: remove from this board)", group: "Cards", run: (a) => { if (!lineSel() || sel.cards.length) a.deleteSel(); } },
   // ⌘⌫：共享卡 Delete Everywhere（要确认）；⌫ 只从这块白板移除
   { id: "deleteEverywhere", keys: ["mod+Backspace", "mod+Delete"], show: "⌘⌫", label: "Delete Everywhere (linked card)", group: "Cards", when: () => hasCards() && !lineSel(), run: (a) => void a.deleteEverywhere() },
   { id: "lock", keys: ["mod+shift+l"], label: "Lock / Unlock", group: "Cards", run: (a) => a.toggleLock(sel.cards.slice(), sel.sections.slice()) },
   { id: "turnIntoBoard", keys: ["mod+shift+b"], label: "Turn into Board", group: "Cards", run: (a) => void a.turnIntoBoard() },
-  { id: "fitContent", keys: ["alt+KeyF"], label: "Fit Content", group: "Cards", when: hasCards, run: (a) => a.fitContent(sel.cards) },
+  { id: "fitContent", keys: ["alt+KeyF"], label: "Fit Content", group: "Cards", when: () => hasCards() || sel.sections.length > 0, run: (a) => { if (sel.cards.length) a.fitContent(sel.cards); else a.fitSections(sel.sections.slice()); } },
+  { id: "tidyUp", keys: ["alt+KeyT"], label: "Tidy Up", group: "Cards", when: () => sel.cards.length >= 2, run: (a) => a.tidyUp() },
   { id: "wrap", keys: ["alt+KeyZ"], label: "Wrap Lines", group: "Cards", run: (a) => a.toggleWrap(sel.cards.slice()) },
   { id: "nudgeL", keys: ["ArrowLeft", "shift+ArrowLeft"], show: "Arrows", label: "Nudge (⇧ = 10px)", group: "Cards", when: () => hasCards() && !walk(), run: nudge(-1, 0) },
   { id: "nudgeR", keys: ["ArrowRight", "shift+ArrowRight"], when: () => hasCards() && !walk(), run: nudge(1, 0) },

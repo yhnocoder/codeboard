@@ -6,7 +6,7 @@
   --bg: #eeece6; --surface: #fdfcfa; --glass: rgba(253, 252, 250, .96);
   --ink: #211f1b; --ink-2: #625e56; --ink-3: #9a958b;
   --line: rgba(60, 45, 20, .09); --hair: rgba(60, 45, 20, .16); --hlrow: rgba(60, 45, 20, .07); --row: rgba(60, 45, 20, .06);
-  --accent: #b5552d; --accent-ink: #ffffff; --warn: #c48a1f; --md-hl: rgba(240, 200, 100, .35);
+  --accent: #b5552d; --accent-ink: #ffffff; --warn: #c48a1f; --md-hl: rgba(238, 200, 100, .3);
   --k-kw: #9a3f22; --k-fn: #2e5d86; --k-str: #4a7536; --k-com: #9a958a; --k-num: #8a6416; --k-self: #7a4f9a;
   --lk-orange: #c46a2a; --lk-blue: #3a72aa; --lk-green: #4c8a3a;
   --sh-float: 0 0 0 .5px var(--hair), 0 2px 6px -1px rgba(50, 35, 10, .08), 0 10px 28px -8px rgba(50, 35, 10, .18);

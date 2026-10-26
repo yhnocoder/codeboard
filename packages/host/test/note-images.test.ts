@@ -99,3 +99,27 @@ describe("saving a pasted image", () => {
     expect(store.assetsDir()).toBe(path.join(dir, "assets"));
   });
 });
+
+describe("reading an image card's picture", () => {
+  const read = (s: ReturnType<typeof setup>, file: string) => makeHandler({ store: s.store } as unknown as BoardHost)({} as BoardPanel, { type: "readAsset", req: 1, file } as BoardToHost) as Promise<string>;
+
+  it("answers the file in assets/ as a data URL typed by its bytes, which saves into a Note like a pasted image", async () => {
+    const s = setup();
+    fs.mkdirSync(path.join(s.dir, "assets"), { recursive: true });
+    fs.writeFileSync(path.join(s.dir, "assets/card.png"), GIF); // a GIF under a .png name
+    fs.writeFileSync(path.join(s.dir, "assets/logo.svg"), "<svg xmlns='http://www.w3.org/2000/svg'/>");
+    const gifUrl = await read(s, "card.png");
+    expect(gifUrl).toBe(url(GIF, "image/gif"));
+    expect(await read(s, "logo.svg")).toMatch(/^data:image\/svg\+xml;base64,/);
+    expect(await s.save(gifUrl)).toBe(`assets/${sha(GIF)}-12x7.gif`);
+  });
+
+  it("refuses names outside assets/, missing files and files that are not images", async () => {
+    const s = setup();
+    fs.mkdirSync(path.join(s.dir, "assets"), { recursive: true });
+    fs.writeFileSync(path.join(s.dir, "assets/notes.txt"), "hello");
+    await expect(read(s, "../boards.json")).rejects.toThrow(/Bad asset name/);
+    await expect(read(s, "missing.png")).rejects.toThrow();
+    await expect(read(s, "notes.txt")).rejects.toThrow(/Not an image/);
+  });
+});

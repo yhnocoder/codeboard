@@ -55,29 +55,50 @@ export function classifyPaste(text: string): PasteKind {
   return lang ? { kind: "code", lang } : { kind: "note" };
 }
 
-/** 像不像代码；像的话猜语言（python / cpp / cuda-cpp，Triton、TileLang 归 python 但单独标出） */
+/** 像不像代码；像的话猜语言：python / shellscript，或花括号家族里的 c / cpp / cuda-cpp / javascript / typescript / rust / go
+ *  （Triton、TileLang 归 python，由 pythonDialect 单独标出）。按行打分：花括号、分号结尾这类家族共有的特征记在 c 里，
+ *  算出是这一家之后，再按各语言自己的特征（std::、fn、func、=>、: number …）分给具体的语言 */
 export function guessLang(text: string): string | null {
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
   if (!lines.length) return null;
-  const score = { py: 0, c: 0, cu: 0 };
+  const score = { py: 0, c: 0, cu: 0, sh: 0 };
+  const fam = { cpp: 0, c: 0, javascript: 0, typescript: 0, rust: 0, go: 0 };
   for (const l of lines) {
     const s = l.trim();
-    if (/^(def|class|import|from|return|if|elif|for|while|with|async|await|yield|raise|try|except|@)\b/.test(s) || /:\s*(#.*)?$/.test(s)) score.py++;
-    if (/\b(self|None|True|False|lambda)\b/.test(s) || /^\w+(\s*,\s*\w+)*\s*=\s*\S/.test(s)) score.py += 0.5;
-    if (/[;{}]\s*(\/\/.*)?$/.test(s) || /^#(include|define|pragma|if|endif)/.test(s) || /\b(std::|int|void|auto|const|template|struct|return)\b.*[;{]/.test(s)) score.c++;
-    if (/__global__|__device__|__shared__|threadIdx|blockIdx|<<<|cudaMalloc|__syncthreads/.test(s)) score.cu += 2;
+    const braced = /[;{}]\s*(\/\/.*)?$/.test(s);
+    if (/^(def|class|import|from|return|if|elif|for|while|with|async|await|yield|raise|try|except|@)\b/.test(s) && !braced || /:\s*(#.*)?$/.test(s)) score.py++;
+    if (/\b(self|None|True|False|lambda|elif)\b/.test(s) || /^\w+(\s*,\s*\w+)*\s*=\s*\S/.test(s) && !braced) score.py += 0.5;
+    const cLike = braced || /^#(include|define|pragma|if|endif)/.test(s) || /\b(std::|int|void|auto|const|template|struct|return)\b.*[;{]/.test(s);
+    const fam0 = Object.values(fam).reduce((a, b) => a + b, 0);
+    if (/__global__|__device__|__shared__|threadIdx|blockIdx|<<<|cudaMalloc|cudaMemcpy|__syncthreads/.test(s)) score.cu += 2;
     if (/\b(tl|T)\.\w+\(|program_id|@triton\.jit|tilelang/.test(s)) score.py += 1.5;
+    if (!braced && (/^(#!.*\b(ba|z)?sh\b|\$ \S)/.test(s) || /^(sudo|apt(-get)?|brew|pip3?|npm|npx|yarn|git|curl|wget|cd|ls|mkdir|rm|cp|mv|chmod|export|echo|source|conda|docker|make|nvcc)\s+[\w./~$"'-]/.test(s))) score.sh++;
+    if (/^(fi|done|esac)$|(^|;\s*)(then|do)$|\$\{\w+\}|\$\w+/.test(s) && !braced) score.sh += 0.5;
+    if (/std::|\btemplate\s*<|\bnamespace\b|\bclass\s+\w+\s*(:\s*public|\{|$)|\b(cout|cin|nullptr|constexpr|typename)\b|^(public|private|protected):|#include\s*<(iostream|vector|string|memory|map|unordered_map|algorithm|utility|functional|thread)>|\bauto\s+\w+\s*=|\w::\w+\(/.test(s)) fam.cpp++;
+    if (/#include\s*<\w+\.h>|\b(printf|scanf|malloc|calloc|free|memcpy|memset|sizeof)\s*\(|\btypedef\s+struct\b|\bstruct\s+\w+\s*\*|^(static\s+)?(void|int|char|float|double|long|unsigned|size_t)\b[\w\s*]*\(|\b(int|float|double|char|unsigned|long)\s*\*?\s+\w+\s*[=;[,)]/.test(s)) fam.c++;
+    if (/\bfunction\b|=>|\b(let|var)\s+[\w$]+\s*=|\bconst\s+([\w$]+\s*=|[{[])|console\.\w+\(|require\(|module\.exports|\bdocument\.|\bexport\s+(default|const|function|class)\b|^import\s.*\sfrom\s+['"]|===|!==/.test(s)) fam.javascript++;
+    if (/\binterface\s+\w+|\btype\s+\w+(<[^>]*>)?\s*=|:\s*(string|number|boolean|any|unknown|never)\b|\bas\s+const\b|\breadonly\s+\w+|\)\s*:\s*\w+(<[^>]*>)?(\[\])?\s*(=>|\{)/.test(s)) fam.typescript++;
+    if (/\bfn\s+\w+|\blet\s+mut\b|\bimpl\b|^(pub|mod|use)\s+[\w:{]|\w+!\(|&mut\b|::new\(|\b(Vec|Option|Result|Box)<|\b(Some|Ok|Err)\(/.test(s)) fam.rust++;
+    if (/^package\s+\w+$|\bfunc\s+(\([^)]*\)\s*)?\w+\(|:=|\bfmt\.\w+\(|\bgo\s+func\b|\bchan\b|\bdefer\b|^import\s+\(/.test(s)) fam.go++;
+    // 不靠分号、花括号的行（Go、JS 不写分号）有某一家自己的特征，也算花括号家族的代码行
+    if (cLike || Object.values(fam).reduce((a, b) => a + b, 0) > fam0) score.c++;
   }
   const n = lines.length;
-  const best = Math.max(score.py, score.c + score.cu);
+  const best = Math.max(score.py, score.c + score.cu, score.sh);
   // 一半以上的行有代码特征才算代码
   if (best < Math.max(1, n * 0.4)) {
     // 单行赋值 / 调用也算
     if (n > 2 || !/[=()[\]]/.test(text) || /[一-鿿]/.test(text)) return null;
   }
+  if (score.sh > score.py && score.sh > score.c + score.cu) return "shellscript";
   if (score.cu > 0) return "cuda-cpp";
-  if (score.c > score.py) return "cpp";
-  return "python";
+  if (score.c <= score.py) return "python";
+  // TS 是 JS 加类型：TS 的特征一出现就算 TS。C++ 的写法大多也是 C 的，所以 C++ 的特征一出现就算 C++
+  const ranked: [string, number][] = [
+    ["rust", fam.rust], ["go", fam.go], ["typescript", fam.typescript && fam.typescript + fam.javascript], ["javascript", fam.javascript], ["cpp", fam.cpp && fam.cpp + fam.c], ["c", fam.c],
+  ];
+  const top = ranked.reduce((a, b) => (b[1] > a[1] ? b : a));
+  return top[1] > 0 ? top[0] : "cpp";
 }
 
 /** Python 文件里更细的方言，用来给 Free code 的语言下拉默认值 */

@@ -13,6 +13,7 @@ import { openLink, popCard } from "./common";
 import { boardOffset } from "../state/measure";
 import { setFetchingKeys, rowDrag, setRowDrag, setGhPicker, type RowDrag } from "../state/web";
 import { settleHome } from "../state/sections";
+import { holdPointer } from "../ui/guard";
 
 /** 图片地址：assets/ 下的文件名 → webview 能读的 URL */
 export const assetSrc = (name?: string) => (!name ? undefined : /^(data:|https?:|blob:)/.test(name) ? name : `${state.host.assetBase}/${name}`);
@@ -192,6 +193,7 @@ export function rowGripDown(e: PointerEvent, id: string, item: string) {
     moved = true;
     setRowDrag(calc(ev));
   };
+  holdPointer(e);
   const onUp = (ev: PointerEvent) => {
     window.removeEventListener("pointermove", onMove, true);
     window.removeEventListener("pointerup", onUp, true);

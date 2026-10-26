@@ -367,6 +367,23 @@ describe("paste", () => {
     expect(classifyPaste("idx = tl.program_id(0)\nslot = tl.load(slot_mapping_ptr + idx)")).toEqual({ kind: "code", lang: "python" });
     expect(guessLang("__global__ void k(float* x) {\n  int i = threadIdx.x;\n}")).toBe("cuda-cpp");
   });
+  it("tells the common languages apart", () => {
+    const cases: [string, string][] = [
+      ["void vecAdd(float* A_h, float* B_h, float* C_h, int n) {\n    for (int i = 0; i < n; ++i) {\n        C_h[i] = A_h[i] + B_h[i];\n    }\n}", "c"],
+      ["#include <stdio.h>\nint main(void) {\n  printf(\"hi\\n\");\n  return 0;\n}", "c"],
+      ["#include <vector>\nstd::vector<int> v;\nfor (auto x : v) {\n  std::cout << x;\n}", "cpp"],
+      ["template <typename T>\nT add(T a, T b) {\n  return a + b;\n}", "cpp"],
+      ["def schedule(self, seqs):\n    for s in seqs:\n        if s.done:\n            return None", "python"],
+      ["const add = (a, b) => a + b;\nconsole.log(add(1, 2));", "javascript"],
+      ["function add(a: number, b: number): number {\n  return a + b;\n}", "typescript"],
+      ["interface Card {\n  id: string;\n}", "typescript"],
+      ["fn main() {\n    let mut v = Vec::new();\n    println!(\"{}\", v.len());\n}", "rust"],
+      ["package main\nimport \"fmt\"\nfunc main() {\n\tx := 1\n\tfmt.Println(x)\n}", "go"],
+      ["#!/bin/bash\nset -e\ncd build\nmake -j8\necho \"done $HOME\"", "shellscript"],
+      ["pip install -e .\ngit clone https://github.com/a/b", "shellscript"],
+    ];
+    for (const [code, lang] of cases) expect([code, guessLang(code)]).toEqual([code, lang]);
+  });
 });
 
 describe("entry points", () => {

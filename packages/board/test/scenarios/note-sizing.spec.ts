@@ -1,7 +1,7 @@
 // Note and Text card sizing: content stays inside a card made smaller, the AI ghost completion stays inside the card,
-// Fit Content on Notes and Texts (animated, one undo step), no ghost completion while a card is moved or resized, and a
-// Note's stored height acting as a maximum (the card follows its content down).
-// Usage: npm run harness -- noteResizeClipsContent noteGhostStaysInCard noteTextFitContent noGhostDuringCardGesture noteShrinksWithContent
+// Fit Content on Notes and Texts (animated, one undo step), no ghost completion while a card is moved or resized, a Note
+// without a stored height following its content, and a height set by hand being kept.
+// Usage: npm run harness -- noteResizeClipsContent noteGhostStaysInCard noteTextFitContent noGhostDuringCardGesture noteShrinksWithContent noteManualHeightSticks
 // Screenshots: test-out/harness/note-sizing-*.png (HARNESS_LIGHT=1 for the light theme)
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
@@ -204,10 +204,10 @@ test("noGhostDuringCardGesture", async () => {
   check("noGhostDuringCardGesture hidden while moving", seenMove === 0, { seenMove });
 });
 
-/** A Note's stored height is a maximum: deleting text makes the card follow the content down (no empty space left),
- *  writing more grows it back up to the stored height, where the body scrolls; undo brings the text and the height back */
+/** A Note that follows its content (no height set by hand): deleting text makes the card follow the content down (no empty
+ *  space left), writing more grows it again; undo brings the text back */
 test("noteShrinksWithContent", async () => {
-  const h = await open({ board: board([{ md: LONG, h: 260 }]), light, w: 1000, h: 700 });
+  const h = await open({ board: board([{ md: LONG }]), light, w: 1000, h: 700 });
   const pg = h.page;
   await idle(h);
   const gap = async () => { const c = await rect(h, card("n0")), b = await rect(h, `${card("n0")} .nbody`); return { card: c.h, gap: c.bottom - b.bottom }; };
@@ -223,24 +223,24 @@ test("noteShrinksWithContent", async () => {
   const done = await gap();
   await cardShot(h, "n0", "18-delete-shrinks-after");
   check("noteShrinksWithContent follows content down while typing", typing.card < full.card - 100 && typing.gap <= 2, { full, typing });
-  check("noteShrinksWithContent no empty space after editing", done.card < full.card - 100 && done.gap <= 2, { full, done });
-  // more text: grows back, but only up to the stored height, then scrolls
+  check("noteShrinksWithContent no empty space after editing", done.card < full.card - 100 && done.gap <= 2 && placeH(h, "n0") === undefined, { full, done, h: placeH(h, "n0") });
+  // more text: grows with it, nothing scrolls
   await editNote(h, "n0");
   await pg.keyboard.press("Control+End");
-  for (let i = 0; i < 30; i++) await pg.keyboard.type(" More words to make it long again.");
+  for (let i = 0; i < 12; i++) await pg.keyboard.type(" More words to make it long again.");
   await idle(h);
   const grown = await gap();
-  const scrolls = await pg.locator(`${card("n0")} .nbody`).evaluate((e) => e.scrollHeight > e.clientHeight);
+  const scrolls = await pg.locator(`${card("n0")} .nbody`).evaluate((e) => e.scrollHeight > e.clientHeight + 1);
   await pg.keyboard.press("Escape");
   await idle(h);
-  check("noteShrinksWithContent grows back up to the stored height", Math.abs(grown.card - 260) < 1 && scrolls, { grown, scrolls });
-  // two undo steps: the long text and the full height are back
+  check("noteShrinksWithContent grows with more text", grown.card > done.card + 40 && grown.gap <= 2 && !scrolls, { done, grown, scrolls });
+  // two undo steps: the long text is back, at its full height
   await pg.mouse.click(900, 650);
   await pg.keyboard.press("Control+z");
   await pg.keyboard.press("Control+z");
   await idle(h);
   const back = await gap();
-  check("noteShrinksWithContent undo restores", Math.abs(back.card - full.card) < 1 && h.board().place.n0?.h === 260, { back, full, h: h.board().place.n0?.h });
+  check("noteShrinksWithContent undo restores", Math.abs(back.card - full.card) < 1 && placeH(h, "n0") === undefined, { back, full, h: placeH(h, "n0") });
 });
 
 /** A Note whose body scrolls fades out at the edge that has more content (top, bottom or both); the fade is only a mask on
@@ -314,4 +314,56 @@ test("noteScrollFades", async () => {
   await drag(h, r1.right + 30, r1.bottom + 30, -(r1.right - r1.left) / 2 - 30, -40, 10);
   const selected = await pg.locator(`${card("n0")}.sel`).count();
   check("noteScrollFades marquee across the fade selects", selected === 1, { selected });
+});
+
+/** A Note's height set by hand is kept: dragging the corner below the content makes it taller (empty space below the text),
+ *  editing and leaving the editor keep it, deleting text doesn't shrink it; Fit Content returns it to following its content */
+test("noteManualHeightSticks", async () => {
+  const h = await open({ board: board([{ md: "Short note.\n\nTwo lines." }]), light, w: 1000, h: 700 });
+  const pg = h.page;
+  const md = () => (h.board().cards.find((c) => c.id === "n0") as NoteCard).md;
+  /** the stored height changed from `was`, and the board has settled */
+  const newH = async (what: string, was: number | undefined) => { await until(h, what, () => placeH(h, "n0") !== was); await idle(h); };
+  await idle(h);
+  const h0 = (await rect(h, card("n0"))).h;
+  const g = await rect(h, `${card("n0")} .grip`);
+  await drag(h, (g.left + g.right) / 2, (g.top + g.bottom) / 2, 0, 160, 10);
+  await newH("the dragged height is saved", undefined);
+  const taller = (await rect(h, card("n0"))).h;
+  await cardShot(h, "n0", "24-manual-height-taller");
+  check("noteManualHeightSticks drag taller", Math.abs(taller - (h0 + 160)) < 3 && Math.abs((placeH(h, "n0") ?? 0) - taller) < 3, { h0, taller, h: placeH(h, "n0") });
+  // edit, add a line, leave the editor: still the height set by hand
+  await editNote(h, "n0");
+  await pg.keyboard.press("Control+End");
+  await pg.keyboard.type(" Three.");
+  await idle(h);
+  const editing = (await rect(h, card("n0"))).h;
+  await pg.keyboard.press("Escape");
+  await pg.mouse.click(900, 650); // blur
+  await until(h, "the edit is saved", () => md().includes("Three.")); await idle(h);
+  const after = (await rect(h, card("n0"))).h;
+  check("noteManualHeightSticks survives edit and blur", Math.abs(editing - taller) < 1 && Math.abs(after - taller) < 1 && Math.abs((placeH(h, "n0") ?? 0) - taller) < 3, { taller, editing, after, h: placeH(h, "n0") });
+  // deleting text: the card keeps its height (only cards that follow their content shrink)
+  await editNote(h, "n0");
+  await pg.keyboard.press("Control+a");
+  await pg.keyboard.type("x");
+  await pg.keyboard.press("Escape");
+  await until(h, "the emptied Note is saved", () => md() === "x"); await idle(h);
+  const emptied = (await rect(h, card("n0"))).h;
+  check("noteManualHeightSticks no shrink after deleting text", Math.abs(emptied - taller) < 1, { taller, emptied });
+  // Fit Content: back to the content's height, following it again
+  await pg.locator(`${card("n0")} .chead`).click({ button: "right" });
+  const hand = placeH(h, "n0");
+  await pg.locator(".ctx button", { hasText: "Fit Content" }).click();
+  await newH("Fit Content is saved", hand);
+  const fit = (await rect(h, card("n0"))).h;
+  await cardShot(h, "n0", "24-manual-height-fit");
+  check("noteManualHeightSticks fit content follows content again", placeH(h, "n0") === undefined && fit < taller - 100, { fit, taller, h: placeH(h, "n0") });
+  // the bottom edge also sets the height (the width stays)
+  const c0 = await rect(h, card("n0"));
+  await pg.mouse.move(2, 2);
+  await drag(h, c0.left + 120, c0.bottom, 30, 90, 8);
+  await newH("the height set with the bottom edge is saved", undefined);
+  const c1 = await rect(h, card("n0"));
+  check("noteManualHeightSticks bottom edge", Math.abs(c1.h - (c0.h + 90)) < 3 && Math.abs((c1.right - c1.left) - (c0.right - c0.left)) < 1 && Math.abs((placeH(h, "n0") ?? 0) - c1.h) < 3, { c0, c1, h: placeH(h, "n0") });
 });

@@ -1,6 +1,6 @@
 // 编辑器那一块（@yhnocoder/markdown/editor：TipTap 的视图、菜单、补全）单独打包，第一次编辑时才加载；白板打开后空闲时先悄悄加载好。
 // 编辑器要的白板能力（[[ 引用的候选、存图、AI 补全、代码块的语言服务）在 editorOpts 里接上
-import { cardTitle, isCode, langInfo } from "@codeboard/core";
+import { LANG_TABLE, cardTitle, isCode, langInfo } from "@codeboard/core";
 import { state, placed } from "../state/store";
 import { ask } from "../host";
 import { editing, dragging } from "../state/ui";
@@ -75,6 +75,9 @@ function codeLsp(lang: () => string) {
   return lspHost(id, () => langInfo(lang())?.vscodeId ?? lang());
 }
 
+/** Note 代码块语言框里的语言：着色认得的（有 shiki 语法的）。写进围栏的是 GitHub 认的名字（cuda、bash），它指的不是这种语言时（Triton 的是 python）写 id */
+const CODE_LANGS = LANG_TABLE.filter((l) => l.shiki).map((l) => ({ name: l.md && langInfo(l.md) === l ? l.md : l.id, label: l.label, aliases: [l.id, ...l.aliases] }));
+
 /** 编辑器要的白板能力：[[ 引用卡片、存图、AI 补全（宿主没有就什么都不做）、代码块的注释记号和语言服务 */
 export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placeholder"> {
   return {
@@ -84,6 +87,6 @@ export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placehold
     pickImage: () => ask("pickFile", { kind: "image" }).catch(() => null),
     saveImage: saveNoteImage,
     complete: state.host.complete ? (before: string, after: string) => ask("complete", { before, after }).catch(() => null) : undefined,
-    code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true },
+    code: { comment: (l) => langInfo(l)?.comment, lsp: codeLsp, stopPointerDown: true, langs: CODE_LANGS },
   };
 }

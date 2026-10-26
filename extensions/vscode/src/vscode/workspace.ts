@@ -6,6 +6,9 @@ import { COMPLETE_SYSTEM, Emitter, completePrompt, type Workspace } from "@codeb
 import { deepseekComplete } from "@codeboard/host/deepseek";
 
 const EXT_ID = "yhnocoder.codeboard-vscode";
+// esbuild.mjs 写进来的构建信息：正式版是 ""，开发版是 "dev <commit>[ dirty]"（vitest 里没有这个常量）
+declare const __CODEBOARD_BUILD__: string | undefined;
+const BUILD = typeof __CODEBOARD_BUILD__ === "string" ? __CODEBOARD_BUILD__ : "";
 
 // ---------- 历史版本的只读文档：codeboard-git:/<path>?{root, commit, path} ----------
 
@@ -217,7 +220,10 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
     log: (level, text) => { (ch ??= vscode.window.createOutputChannel("CodeBoard", { log: true }))[level](text); },
     about: {
       app: vscode.version,
-      get ext() { return (vscode.extensions.getExtension(EXT_ID) ?? vscode.extensions.all.find((e) => e.packageJSON?.name === "codeboard-vscode"))?.packageJSON?.version ?? "?"; },
+      get ext() {
+        const v = (vscode.extensions.getExtension(EXT_ID) ?? vscode.extensions.all.find((e) => e.packageJSON?.name === "codeboard-vscode"))?.packageJSON?.version ?? "?";
+        return BUILD ? `${v} · ${BUILD}` : v;
+      },
       hasExtension: (id) => !!vscode.extensions.getExtension(id),
     },
   };

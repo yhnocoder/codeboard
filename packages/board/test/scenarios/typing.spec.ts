@@ -1,4 +1,4 @@
-// Markdown 编辑器：照 Typora 的边写边变、快捷键、剪贴板、灰字补全接受后的转换（npm run harness -- markdownInputRules editorKeys aiCompletionAccept）
+// Markdown 编辑器：照 Typora 的边写边变、快捷键、剪贴板、灰字补全接受后的转换（npm run harness -- markdownInputRules editorKeys aiCompletionAccept noteBoldInputRuleAfterCjk）
 // 每条规则：在一张空 Note 里打一串键 → 退出 → 看写回的 Markdown（和编辑时的 DOM）
 import { put, findSym, symCard, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
@@ -358,5 +358,40 @@ test("aiCompletionAccept", async () => {
     && r.md[0] === "see $a$ and **b** with `c` end" && r.md[1] === "x $\\frac{a}{b}$ done" && d3.h1 === 1 && d3.strong === 1 && r.md[2] === "# Title **x**"
     && r.md[3] === "Sum $$y$$";
   check("aiCompletionAccept", ok, r);
+  await close(h);
+});
+
+/** 列表项里中文后面打的行内格式（#66）：打完收尾的记号就变，前面紧挨着中文、同一行前面有带 ** 的行内代码时也变，代码里的 ** 不动；
+ *  输入法一个个提交的字也一样。存下来的是没转义的 **Pointer**，退出编辑后显示成粗体 */
+test("noteBoldInputRuleAfterCjk", async () => {
+  const CODE = "- (`void **`) 指向要 free 的对象的", CJK = "- 指向要 free 的对象的";
+  /** 这一项里的行内元素：标签:字 */
+  const inline = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll(".md-pm li p > *")].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`));
+  const want = (...v: string[]) => (got: string[]) => JSON.stringify(got) === JSON.stringify(v);
+  /** 输入法：每段先组字再提交（CDP），提交后 TipTap 再跑一遍打字规则 */
+  const ime = (parts: string[]) => async (pg: Page) => {
+    const cdp = await pg.context().newCDPSession(pg);
+    for (const t of parts) {
+      await cdp.send("Input.imeSetComposition", { text: t, selectionStart: t.length, selectionEnd: t.length });
+      await cdp.send("Input.insertText", { text: t });
+    }
+    await cdp.detach();
+  };
+  const cases: Case[] = [
+    { name: "bold after code with **", init: CODE, seq: " **Pointer**", md: `${CODE} **Pointer**`, dom: inline, domOk: want("code:void **", "strong:Pointer") },
+    { name: "bold right after CJK", init: CJK, seq: "**Pointer**", md: `${CJK}**Pointer**`, dom: inline, domOk: want("strong:Pointer") },
+    { name: "bold right after CJK with code", init: CODE, seq: "**Pointer**", md: `${CODE}**Pointer**`, dom: inline, domOk: want("code:void **", "strong:Pointer") },
+    { name: "italic", init: CODE, seq: " *Pointer*", md: `${CODE} *Pointer*`, dom: inline, domOk: want("code:void **", "em:Pointer") },
+    { name: "strike", init: CODE, seq: " ~~Pointer~~", md: `${CODE} ~~Pointer~~`, dom: inline, domOk: want("code:void **", "s:Pointer") },
+    { name: "highlight", init: CODE, seq: " ==Pointer==", md: `${CODE} ==Pointer==`, dom: inline, domOk: want("code:void **", "mark:Pointer") },
+    { name: "code", init: CODE, seq: " `Pointer`", md: `${CODE} \`Pointer\``, dom: inline, domOk: want("code:void **", "code:Pointer") },
+    { name: "ime bold", init: CODE, seq: " ", after: ime(["*", "*", "Pointer", "*", "*"]), md: `${CODE} **Pointer**` },
+  ];
+  const run = process.env.CASES ? cases.filter((c) => process.env.CASES!.split(",").some((q) => c.name.includes(q))) : cases;
+  const h = await open({ board: board(run.length, run.map((c) => c.init)), w: 1400, h: 900 });
+  await runCases(h, "noteBoldInputRuleAfterCjk", cases);
+  // 显示（不在编辑）：存下来的 **Pointer** 是粗体，代码里的 ** 照旧
+  const shown = await h.page.evaluate(() => [...document.querySelectorAll('.card[data-id="n0"] .nbody li :is(code, strong)')].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`));
+  check("noteBoldInputRuleAfterCjk display", JSON.stringify(shown) === '["code:void **","strong:Pointer"]', shown);
   await close(h);
 });

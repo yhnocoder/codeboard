@@ -279,7 +279,7 @@ test("markdownHighlight", async () => {
     const q = (c: string, k: "mka" | "mkb") => [...document.querySelectorAll(`${root} .${c}`)].map((e) => (e as HTMLElement).dataset[k]).join("");
     return `${q("md-mka", "mka")}|${q("md-mkb", "mkb")}`;
   }, pm);
-  const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return `${c.backgroundColor} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
+  const look = (q: string) => pg.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return `${c.backgroundImage} ${c.borderRadius} ${c.paddingLeft} ${c.color}`; }), q);
   const editLook = await look(`${pm} mark`);
   const editBand = { phrase: await band(pm, "Plain words"), bold: await band(pm, "note with bold") };
   await pg.locator('.card[data-id="n1"]').screenshot({ path: path.join(SHOTS, "md-highlight-edit-card.png") }).catch(() => {});
@@ -295,13 +295,93 @@ test("markdownHighlight", async () => {
   await saveShot(h, "md-highlight-display");
   const r = { before, typed, icons, labels, onBefore, added, onAfter, removed, onOff, keyed, reveal, editLook, showLook, shown, saved, editBand, showBand };
   check("markdownHighlight-typing", before.length === 0 && typed.join() === "hi", r);
-  check("markdownHighlight-toolbar", icons === 7 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("Plain words") && onAfter && !removed.includes("Plain words") && !onOff, r);
+  check("markdownHighlight-toolbar", icons === 8 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("Plain words") && onAfter && !removed.includes("Plain words") && !onOff, r);
   check("markdownHighlight-shortcut", keyed.includes("note with bold"), r);
   check("markdownHighlight-reveal", reveal.includes("==|=="), r);
   check("markdownHighlight-saved", saved === "==Plain words== in a ==note with **bold**== inside and ==hi==", r);
-  check("markdownHighlight-display", shown.join() === "Plain words,note with bold,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && !(editLook[0] ?? "").startsWith("rgba(0, 0, 0, 0)"), r);
+  check("markdownHighlight-display", shown.join() === "Plain words,note with bold,hi" && showLook.length === 3 && [...showLook, ...editLook].every((l) => l === editLook[0]) && (editLook[0] ?? "").startsWith("linear-gradient("), r);
   check("markdownHighlight-oneBand", [editBand.phrase, editBand.bold, showBand.phrase, showBand.bold].every(solid), r);
   await close(h);
+});
+
+/** ==highlight== is a flat marker band under the lower part of the text (the reference look in #35): no rounded corners or padding,
+ *  the upper part of the line stays the card's background, the band runs unbroken under spaces and CJK, and the editor and the static
+ *  Note draw it in exactly the same place (no layout shift on entering or leaving edit). Checked in Warm Ink light and dark */
+test("markdownHighlightBand", async () => {
+  const res: Record<string, unknown> = {};
+  const ok: Record<string, boolean> = {};
+  for (const lightPass of [true, false]) {
+    const b = emptyBoard("b1", "highlight band");
+    put(b, { id: "n1", kind: "note", md: "Before ==marker band over words and 中文的某个中间量== end", bg: true } as NoteCard, 60, 60, 640);
+    b.cam = { x: 0, y: 0, z: 1.4 };
+    const h = await open({ board: b, light: lightPass, w: 1100, h: 400, settings: { theme: "warm-ink" } as never });
+    const pg = h.page;
+    const card = '.card[data-id="n1"]';
+    /** Where the band is drawn, relative to the card: the mark's boxes, a word inside it, and its computed style */
+    const geom = (root: string) => pg.evaluate(([card, root]) => {
+      const c = document.querySelector(card)!.getBoundingClientRect(), m = document.querySelector(`${root} mark`) as HTMLElement;
+      const rel = (r: DOMRect) => [r.left - c.left, r.top - c.top, r.width, r.height].map((v) => +v.toFixed(2));
+      const t = [...m.childNodes].find((n) => n.nodeType === 3) as Text, i = t.data.indexOf("band");
+      const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 4);
+      const s = getComputedStyle(m);
+      return { boxes: [...m.getClientRects()].map(rel), word: rel(r.getBoundingClientRect()), style: `${s.borderRadius} ${s.paddingLeft} ${s.paddingRight} ${s.marginLeft}` };
+    }, [card, root] as const);
+    /** Pixels of the mark's line: is the space between "marker" and "band" background on top and band below, is the band's
+     *  bottom row unbroken from the mark's first to last pixel. The reference background is the space right after the mark */
+    const pixels = async (root: string) => {
+      const g = await pg.evaluate((root) => {
+        const m = document.querySelector(`${root} mark`) as HTMLElement, box = m.getBoundingClientRect();
+        const t = [...m.childNodes].find((n) => n.nodeType === 3) as Text, i = t.data.indexOf(" band");
+        const r = document.createRange(); r.setStart(t, i); r.setEnd(t, i + 1);
+        const sp = r.getBoundingClientRect();
+        const after = m.nextSibling as Text, r2 = document.createRange(); r2.setStart(after, 0); r2.setEnd(after, 1);
+        const sp2 = r2.getBoundingClientRect();
+        return { left: box.left, top: box.top, right: box.right, bottom: box.bottom, space: (sp.left + sp.right) / 2, after: (sp2.left + sp2.right) / 2 };
+      }, root);
+      const clip = { x: Math.floor(g.left) - 2, y: Math.floor(g.top), width: Math.ceil(g.after - g.left) + 6, height: Math.floor(g.bottom - g.top) };
+      const png = await pg.screenshot({ clip });
+      const px = await pg.evaluate(async (b64) => {
+        const img = new Image(); img.src = `data:image/png;base64,${b64}`; await img.decode();
+        const cv = document.createElement("canvas"); cv.width = img.width; cv.height = img.height;
+        const x = cv.getContext("2d")!; x.drawImage(img, 0, 0);
+        return { w: img.width, h: img.height, d: [...x.getImageData(0, 0, img.width, img.height).data] };
+      }, png.toString("base64"));
+      const at = (x: number, y: number) => { const k = (Math.round(y) * px.w + Math.round(x)) * 4; return [px.d[k], px.d[k + 1], px.d[k + 2]]; };
+      const diff = (a: number[], b: number[]) => Math.max(...a.map((v, i) => Math.abs(v - b[i])));
+      const bg = at(g.after - clip.x, px.h / 2);
+      const sx = g.space - clip.x;
+      const rows = [...Array(px.h).keys()];
+      const top = rows.filter((y) => y < px.h * 0.3).map((y) => diff(at(sx, y), bg));
+      const low = rows.filter((y) => y >= px.h * 0.7).map((y) => diff(at(sx, y), bg));
+      const band = at(sx, px.h - 2);
+      const bottom = [...Array(Math.floor(g.right - g.left) - 2).keys()].map((x) => diff(at(x + 1 + g.left - clip.x, px.h - 2), bg));
+      return { bg, band, topMax: Math.max(...top), lowMin: Math.min(...low), bottomGaps: bottom.filter((d) => d < 4).length, bottomN: bottom.length };
+    };
+    const look = (p: Awaited<ReturnType<typeof pixels>>) => p.topMax <= 3 && p.lowMin >= 6 && p.bottomGaps === 0 && p.band[0] > p.band[2];
+    await idle(h);
+    const shown = { geom: await geom(`${card} .nbody`), px: await pixels(`${card} .nbody`) };
+    const tag = lightPass ? "light" : "dark";
+    fs.mkdirSync(SHOTS, { recursive: true });
+    await pg.locator(card).screenshot({ path: path.join(SHOTS, `md-highlight-band-${tag}-display.png`) }).catch(() => {});
+    // 进编辑：光标放在高亮后面（不在高亮里，不显出 == 记号）
+    await pg.locator(`${card} .nbody`).dblclick({ position: { x: 20, y: 10 } });
+    const pm = `${card} .md-pm`;
+    await pg.waitForSelector(pm, { timeout: 5000 });
+    await focusSettled(pg);
+    await pg.keyboard.press("ControlOrMeta+End");
+    await pmHasSelection(pg); await idle(h);
+    const edit = { geom: await geom(pm), px: await pixels(pm) };
+    await pg.locator(card).screenshot({ path: path.join(SHOTS, `md-highlight-band-${tag}-edit.png`) }).catch(() => {});
+    const same = (a: number[][], b: number[][]) => a.length === b.length && a.every((r, i) => r.every((v, j) => Math.abs(v - b[i][j]) <= 0.5));
+    res[tag] = { shown, edit };
+    ok[`${tag}-flat`] = [shown.geom.style, edit.geom.style].every((s) => s === "0px 0px 0px 0px");
+    ok[`${tag}-band`] = look(shown.px) && look(edit.px);
+    ok[`${tag}-sameGeometry`] = same(shown.geom.boxes, edit.geom.boxes) && same([shown.geom.word], [edit.geom.word]);
+    await close(h);
+  }
+  check("markdownHighlightBand-flat", ok["light-flat"] && ok["dark-flat"], res);
+  check("markdownHighlightBand-lowerBand", ok["light-band"] && ok["dark-band"], res);
+  check("markdownHighlightBand-sameInEditAndDisplay", ok["light-sameGeometry"] && ok["dark-sameGeometry"], res);
 });
 
 /** The selection toolbar waits until the selection holds still: none while drag-selecting or extending with ⇧←, it shows ~400 ms

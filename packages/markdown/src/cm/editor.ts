@@ -256,18 +256,21 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
   let lang = o.lang;
   let exited = false;
   const exit = () => { if (exited) return; exited = true; o.onExit?.(); };
-  let hlBusy = false, hlGone = false, hlWant = false;
+  // relang：换了语言以后还没着过色（新语言不会着色时要把旧语言的颜色拿掉，不是留着）
+  let hlBusy = false, hlGone = false, hlWant = false, relang = false;
   // 着色：一次只问一个，回来时字又变了再问
   const rehighlight = async () => {
     if (!o.highlight || hlGone) return;
     if (hlBusy) { hlWant = true; return; }
     hlBusy = true; hlWant = false;
-    const text = view.state.doc.toString();
+    const text = view.state.doc.toString(), fresh = relang;
+    relang = false;
     try {
       const r = o.highlight(text);
       const html = r instanceof Promise ? await r.catch(() => null) : r;
       // 和现在的文字按行对：对不上的行留着旧的（宿主回来时又打了字）
       if (html != null && !hlGone) view.dispatch({ effects: setHl.of(parseHl(html)) });
+      else if (fresh && !hlGone) view.dispatch({ effects: setHl.of({ text, toks: [] }) });
     } finally { hlBusy = false; }
     if (!hlGone && (hlWant || view.state.doc.toString() !== text)) void rehighlight();
   };
@@ -310,7 +313,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
   return {
     view,
     text: () => view.state.doc.toString(),
-    setLang: (l) => { if (l !== lang) { lang = l; queueHl(); } },
+    setLang: (l) => { if (l !== lang) { lang = l; relang = true; queueHl(); } },
     focus: () => view.focus(),
     destroy: () => { hlGone = true; view.destroy(); o.lsp?.close?.(); },
   };

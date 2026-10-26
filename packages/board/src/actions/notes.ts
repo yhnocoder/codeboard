@@ -1,7 +1,8 @@
 // Sidenote（弹窗、添加、Place on Board、卡变成 Sidenote）和定义预览。
 import { unwrap } from "solid-js/store";
-import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, removeSidenotes, sidenoteCard, sidenoteToCard, type Sidenote, type SegView, type Anchor, type HandColor } from "@codeboard/core";
-import { state, setState, mutate, sel, clearSel, lineSel, cardById, hostOf, toast } from "../state/store";
+import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, type Sidenote, type SegView, type Anchor, type HandColor } from "@codeboard/core";
+import { state, setState, mutate, sel, select, clearSel, lineSel, cardById, hostOf, toast } from "../state/store";
+import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
 import { choose } from "../ui/Menu";
 import { openPop, closePop, pops, updatePop, pinPop } from "../state/pop";
@@ -107,6 +108,19 @@ export async function cardToSidenote(cardId: string, at: Anchor) {
   if (!ok) return;
   clearSel();
   toast("Added as Sidenote");
+}
+
+/** 图片卡拖到 Note 上松手：先把图存成 Note 的图（和 Note 里粘贴的图同一条路），回 Markdown 里写的地址；存不了回 null（已经提示过） */
+export async function noteImageFor(imageId: string): Promise<string | null> {
+  const c = cardById(imageId)?.card;
+  return c?.kind === "image" ? noteImageOf(unwrap(c)) : null;
+}
+/** 图放进 Note 的 Markdown 末尾，图片卡删掉：一步撤销 */
+export function putImageInNote(imageId: string, noteId: string, src: string) {
+  let ok = false;
+  if (!mutate((b) => { ok = imageIntoNote(b, imageId, noteId, src); }) || !ok) return;
+  select({ cards: [noteId] });
+  toast("Added the image to the Note");
 }
 
 // ---------- 定义预览 ----------

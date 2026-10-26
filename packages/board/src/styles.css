@@ -9,7 +9,7 @@
   --accent: #b5552d; --accent-ink: #ffffff; --warn: #c48a1f;
   --k-kw: #9a3f22; --k-fn: #2e5d86; --k-str: #4a7536; --k-com: #9a958a; --k-num: #8a6416; --k-self: #7a4f9a; --k-p: #6f6a62;
   --hi: rgba(46,93,134,.16);
-  --mark: #3b3833; --mark-ink: #f6f4ef; --md-hl: rgba(240,200,100,.35);
+  --mark: #3b3833; --mark-ink: #f6f4ef; --md-hl: rgba(238,200,100,.3);
   --inote: rgba(60,45,20,.05);
   --hlrow: rgba(60,45,20,.07); --hlbar: #6a655c;
   --chg: rgba(196,138,31,.13); --chg-strong: rgba(196,138,31,.34); --del: rgba(181,85,45,.09); --add: rgba(74,117,54,.10);
@@ -66,11 +66,16 @@
   --sect-border: .5px solid var(--hair); --sect-fill: color-mix(in srgb, var(--ink) 2.5%, transparent); --sect-sh: inset 0 1px 0 rgba(255,245,230,.025);
 }
 :root, [data-look] { --row: color-mix(in srgb, var(--accent) 9%, transparent); }
+/* The canvas colour. Settings → Theme → Use VS Code's Background swaps it for VS Code's editor background (VS Code sets
+   --vscode-editor-background on <html> in the webview; without it, as in a browser, the theme's own --bg stays). Only what lies
+   on the canvas itself follows it: the board, its pattern's ground and the knockouts behind arrow labels. Cards keep --bg. */
+:root { --canvas: var(--bg); }
+:root[data-vsbg] { --canvas: var(--vscode-editor-background, var(--bg)); }
 
 * { box-sizing: border-box; }
 *, ::before, ::after { corner-shape: var(--corner); }
 html, body { margin: 0; height: 100%; overflow: hidden; }
-body { background: var(--bg); color: var(--ink); font: 13px/1.5 var(--sys); -webkit-font-smoothing: antialiased; }
+body { background: var(--canvas); color: var(--ink); font: 13px/1.5 var(--sys); -webkit-font-smoothing: antialiased; }
 /* Selection and cursor by region. Every region rule is wrapped in :where() (zero specificity), so any component rule
  * (.call, .cpath, .grip…) wins over them by plain specificity and needs no !important. Among the regions the later rule wins,
  * so a region nested in another comes after it: inline notes and gaps after code, a peek's line numbers and text after the peek.
@@ -95,7 +100,7 @@ input, textarea { font: inherit; color: var(--ink); }
 
 /* ---------- board ---------- */
 /* clip 而不是 hidden：hidden 的盒子还能被程序滚动，Tab 把焦点移到画面外的卡上的按钮时浏览器会把整块白板滚过去，镜头的换算（适应窗口、框选、放卡）就全偏了 */
-.board { position: fixed; inset: 0; overflow: clip; background: var(--bg); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
+.board { position: fixed; inset: 0; overflow: clip; background: var(--canvas); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
 .board:focus { outline: none; }
 .board:is([data-mode="pan"], [data-mode="space"]) { cursor: grab; }
 .board:is([data-mode="pan"], [data-mode="space"]) * { cursor: grab !important; }
@@ -143,16 +148,16 @@ input, textarea { font: inherit; color: var(--ink); }
 .vplus:hover { background: var(--accent); color: var(--accent-ink); }
 
 /* ---------- cards ---------- */
-.card { position: absolute; isolation: isolate; background: var(--surface); border-radius: var(--r-card); box-shadow: var(--sh-card); transform-origin: 0 18px; display: flex; flex-direction: column;
+.card { --cr: var(--r-card); position: absolute; isolation: isolate; background: var(--surface); border-radius: var(--cr); box-shadow: var(--sh-card); transform-origin: 0 18px; display: flex; flex-direction: column;
   transition: box-shadow calc(var(--t) * 160ms) var(--out), scale calc(var(--t) * 260ms) cubic-bezier(.3, 1.35, .5, 1), opacity calc(var(--t) * 240ms) var(--out), filter calc(var(--t) * 240ms); }
 .card.sel { box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
-.card.lift { scale: 1.012; box-shadow: var(--sh-lift); transition: box-shadow calc(var(--t) * 120ms) var(--out), scale calc(var(--t) * 120ms) var(--out); z-index: 10; }
+.card.lift { scale: 1.012; box-shadow: var(--sh-lift); transition: box-shadow calc(var(--t) * 120ms) var(--out), scale calc(var(--t) * 120ms) var(--out), opacity calc(var(--t) * 160ms) var(--out); z-index: 10; }
 .card.sel.lift { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-lift); }
 .card.dim { opacity: .28; filter: saturate(.4); }
 .card.leaving { opacity: 0; scale: .96; transition: opacity calc(var(--t) * 140ms) var(--in), scale calc(var(--t) * 140ms) var(--in); }
 .card.ping { animation: ping calc(var(--t) * 700ms) var(--out); }
 @keyframes ping { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 45%, transparent), var(--sh-card); } 100% { box-shadow: 0 0 0 14px transparent, var(--sh-card); } }
-.chead { height: 36px; flex: none; display: flex; align-items: center; gap: 7px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--head); border-radius: var(--r-card) var(--r-card) 0 0; }
+.chead { --hg: 7px; height: 36px; flex: none; display: flex; align-items: center; gap: 7px; padding: 0 6px 0 10px; border-bottom: 1px solid var(--line); white-space: nowrap; background: var(--head); border-radius: var(--r-card) var(--r-card) 0 0; }
 .step { font: 600 10.5px/1 var(--mono); height: 19px; min-width: 20px; padding: 0 6px; border-radius: 7px; display: inline-grid; place-items: center; background: var(--row); color: var(--accent); flex: none; font-variant-numeric: tabular-nums; }
 .chead .step { cursor: pointer; transition: background .12s; }
 .chead .step:hover { background: var(--accent); color: var(--accent-ink); }
@@ -167,12 +172,12 @@ input, textarea { font: inherit; color: var(--ink); }
 .rev:hover { color: var(--ink); background: var(--hlrow); }
 /* Card header priority on a narrow card. Plain flex, no JS layout reads, and it follows the real title and path in every theme:
  *  1. the version chip and "+ uncommitted" (.rev.fold) fold to a small mark first
- *  2. then "← N" and Copy Code (.linkedin.fold, .ib.cpy) fold away
+ *  2. then "← N" (.linkedin.fold) folds away
  *  3. then the path ellipsizes, and below 4em folds away too
  *  4. the title ellipsizes last, down to 4em
  * The title is the only one with flex-basis auto: it keeps its width until the others have nothing left, then shrinks. The path and
  * the chips start from flex-basis 0 (a chip from its folded size) and grow back up to their own width (max-width: max-content) out
- * of the room the title leaves, in proportion to flex-grow: path 1e8, "← N" and Copy 1e4, the version chips 1. With these gaps a
+ * of the room the title leaves, in proportion to flex-grow: path 1e8, "← N" 1e4, the version chips 1. With these gaps a
  * tier gets all of the room until it is whole, and only what is left goes to the next one, so nothing is cut while a lower-priority
  * item still has its full width. Grow factors of 1e4 keep a whole tier within 1/100px of its width, and 1e8 is far inside
  * Chromium's flex precision. The .grow spacer is an auto margin, so it only takes what is left after all of them.
@@ -180,20 +185,20 @@ input, textarea { font: inherit; color: var(--ink); }
  * fits it wraps onto the clipped second line instead of being ellipsized, and its ::before (the compact mark) moves up into view.
  * A chip that is part way back shows its mark at the right end of the room it got, so that room reads as part of the gap before it;
  * anything drawn around a chip belongs on .rl, so it folds with the label. The full text is in the button's data-tip; the button and
- * its click stay as they are. The language chip of free cards (.rev.lang) shrinks with the title (flex-shrink 20). */
+ * its click stay as they are.
+ * The hover-only buttons (.hov: Copy Code, and the language of Free code cards) are not part of this: hidden, they take no width at
+ * all, so the title gets the whole row; on hover they open to their own width and the title gives way (ellipsizes) for them. */
 .chead .rev { flex-shrink: 20; min-width: 0; overflow: hidden; white-space: nowrap; }
 .chead .fold { overflow: visible; min-width: auto; }
 .chead .rev.fold { flex: 1 0 0; max-width: max-content; }
 .chead .rev.fold::before { flex-shrink: 0; }
-.chead .linkedin.fold, .chead .ib.cpy { flex: 1e4 0 0; min-width: 0; max-width: max-content; padding: 0; }
-.chead .ib.cpy { width: auto; display: flex; align-items: center; }
+.chead .linkedin.fold { flex: 1e4 0 0; min-width: 0; max-width: max-content; padding: 0; }
 .chead .cpath { flex: 1e8 0 0; max-width: max-content; }
-.chead > .grow { flex: none; margin-left: auto; }
+.chead > .grow { flex: none; margin-left: auto; margin-right: calc(-1 * var(--hg)); } /* the spacer takes no gap of its own */
 .chead .ctitle { flex: 0 1 auto; min-width: 4em; }
 .chead .rw { display: flex; flex-wrap: wrap; align-items: center; align-content: flex-start; justify-content: flex-end; height: var(--rwh, 1lh); min-width: 0; overflow: hidden; }
 .chead .rw::before { content: ""; width: 0; height: var(--rwh, 1lh); }
 .chead .rev .rw { min-width: 8px; }
-.chead .ib.cpy .rw { --rwh: 26px; width: 26px; justify-content: center; }
 /* break-all only makes the label's min-content one character: on the first line it always gets its full width and never breaks */
 .chead .rl { position: relative; white-space: normal; word-break: break-all; }
 .chead .rl > i { margin-right: 4px; vertical-align: 1px; }
@@ -205,7 +210,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .chead .cpath .rw { justify-content: flex-start; }
 .chead .cpath .rl { flex: 1 1 4em; min-width: 4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: normal; }
 .grow { flex: 1; }
-.ib { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8.5px; color: var(--ink-2); transition: background .1s, color .1s, scale .12s; flex: none; }
+.ib { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8.5px; color: var(--ib-ink, var(--ink-2)); transition: background .1s, color .1s, scale .12s; flex: none; }
 .ib:hover, .tbtn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ib:active, .tbtn:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
 .ib[disabled] { opacity: .35; }
@@ -220,23 +225,34 @@ input, textarea { font: inherit; color: var(--ink); }
 .cdesc:empty { display: none; }
 .cdesc[contenteditable]:empty { display: block; min-height: 30px; }
 .cbody { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; border-radius: 0 0 var(--r-card) var(--r-card); }
-.card.autoh .cbody { max-height: 460px; }
+.card.autoh .cbody { max-height: var(--code-max); } /* 没存高度的代码卡跟着内容，最高 --code-max（measure.ts CODE_MAX） */
 .grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 3; }
-.grip::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 8px; height: 8px; border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); border-radius: 0 0 8.5px 0; opacity: 0; transition: opacity .12s; }
+/* The grip's corner is concentric with the card's (--cr, the card's own corner radius): inset by --gi, its radius is --cr − --gi, so
+ * its arc keeps the same distance from the card's edge all the way round (a square card gets a square grip). On a large radius
+ * the box grows with the arc and the clip keeps only the last 12px of it, the part in the corner. The squircle corner shape
+ * (*::after) applies to both, so the grip follows it too. */
+.grip::after { content: ""; --gi: 3px; --gr: max(0px, calc(var(--cr) - var(--gi))); position: absolute; right: var(--gi); bottom: var(--gi); width: max(8px, var(--gr)); height: max(8px, var(--gr));
+  border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); border-radius: 0 0 var(--gr) 0; clip-path: inset(max(0px, calc(100% - 12px)) 0 0 max(0px, calc(100% - 12px)));
+  opacity: 0; transition: opacity .12s; }
 .card:hover .grip::after { opacity: .7; }
+/* Note 的下边：一条看不见的把手（拐角留给 .grip，中间的连线点在它上面一层） */
+.hb { position: absolute; left: 14px; right: 14px; bottom: -3px; height: 7px; cursor: ns-resize; z-index: 2; }
 
 /* code */
-.code { position: relative; padding: 6px 0 8px; font: 11px/20px var(--mono); min-width: max-content; }
+/* 代码区的几何，所有主题同一套：行号左边空 --code-pl，行号栏 = --nd 位数字宽（右对齐），再空 22px 到代码（标记、贴纸、
+   隐藏行的 + 都在这 22px 里），最长行右边空 --code-pr；上 --code-pt，下 --code-pt + 2px。没有托盘的主题左 17、右 18；
+   有托盘的（Soft Light：托盘离卡边各 10px）左 7、右 8，另外 10px 是托盘的边。这样同一份 Place（w、.carea 的 h）在每个主题里都刚好装下同样的代码 */
+.code { --code-pt: 6px; --code-pl: 17px; --code-pr: 18px; --gutter: calc(var(--code-pl) + var(--nd, 3) * 1ch + 22px); position: relative; padding: var(--code-pt) 0 calc(var(--code-pt) + 2px); font: 11px/20px var(--mono); min-width: max-content; }
 .gutter { position: absolute; left: 0; top: 0; bottom: 0; width: var(--gutter); z-index: 2; pointer-events: none; }
 .gutter > * { pointer-events: auto; }
-.no { position: absolute; left: 2px; width: 30px; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: var(--no-o, .65); }
+.no { position: absolute; height: 20px; text-align: right; color: var(--ink-3); font-variant-numeric: tabular-nums; opacity: var(--no-o, .65); }
 .no:hover { opacity: 1; color: var(--ink-2); }
 .no.link { color: var(--no-link, var(--accent)); font-weight: var(--no-link-w, inherit); opacity: 1; }
 .no.jump::before { content: ""; position: absolute; left: 6px; right: -4px; top: -1px; border-top: 1px dashed var(--ink-3); opacity: .7; }
-.mk { position: absolute; left: 36px; width: 14px; height: 14px; margin-top: 3px; border-radius: 5px; background: var(--mark); color: var(--mark-ink); font: 600 9px/14px var(--sys); text-align: center; z-index: 2; }
+.mk { position: absolute; left: calc(var(--gutter) - 18px); width: 14px; height: 14px; margin-top: 3px; border-radius: 5px; background: var(--mark); color: var(--mark-ink); font: 600 9px/14px var(--sys); text-align: center; z-index: 2; }
 .mk:hover, .mk.on { background: var(--accent); color: var(--accent-ink); }
-.mkr { position: absolute; left: 42.5px; width: 1.5px; background: var(--mark); opacity: .45; border-radius: 1px; }
-.addn { position: absolute; left: 36px; width: 14px; height: 14px; margin-top: 3px; border-radius: 5px; border: 1px dashed var(--ink-2); color: var(--ink-2); font: 12px/12px var(--sys); text-align: center; background: var(--surface); z-index: 3; }
+.mkr { position: absolute; left: calc(var(--gutter) - 11.5px); width: 1.5px; background: var(--mark); opacity: .45; border-radius: 1px; }
+.addn { position: absolute; left: calc(var(--gutter) - 18px); width: 14px; height: 14px; margin-top: 3px; border-radius: 5px; border: 1px dashed var(--ink-2); color: var(--ink-2); font: 12px/12px var(--sys); text-align: center; background: var(--surface); z-index: 3; }
 .addn:hover { border-style: solid; border-color: var(--accent); color: var(--accent); }
 .rowbgs { position: absolute; inset: 0; pointer-events: none; }
 .rowbg { position: absolute; left: 0; right: 0; height: 20px; pointer-events: none; z-index: 0; }
@@ -244,17 +260,17 @@ input, textarea { font: inherit; color: var(--ink); }
 .rowbg.hl { background: var(--hlrow); box-shadow: inset 2px 0 0 var(--hlbar); }
 .rowbg.flash { animation: flash calc(var(--t) * 600ms) var(--out); }
 @keyframes flash { 0% { background: color-mix(in srgb, var(--accent) 28%, transparent); } 100% { background: var(--row); } }
-.src { margin: 0 0 0 var(--gutter); padding-right: 24px; font: inherit; white-space: pre; position: relative; z-index: 1; }
+.src { margin: 0 0 0 var(--gutter); padding-right: var(--code-pr); font: inherit; white-space: pre; position: relative; z-index: 1; }
 .src { tab-size: 4; }
 /* 藏起来的公共缩进：代码往左挪，留 16px 画几根细竖线（一根 = 一层，最多 4 根） */
 .src.ded .l { text-indent: calc(var(--ded-pad) - var(--ded) * 1ch); }
-.dedm { position: absolute; left: 55px; top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; opacity: .7;
+.dedm { position: absolute; left: calc(var(--gutter) + 1px); top: 4px; bottom: 4px; width: calc(var(--lv) * 3px - 2px); z-index: 2; opacity: .7;
   background: repeating-linear-gradient(90deg, var(--hair) 0 .5px, transparent .5px 3px);
   -webkit-mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); mask: repeating-linear-gradient(180deg, #000 0 2px, transparent 2px 4px); } /* 很淡的细虚线，不抢代码的眼 */
 .dedm::before { content: ""; position: absolute; inset: 0 -4px; } /* 悬停热区宽一点，好看到提示 */
 .dedm:hover { opacity: 1; }
 .card.lo-ov .dedm { visibility: hidden; }
-.src .l { height: 20px; margin-right: -24px; padding-right: 24px; } /* 行伸进 .src 右边的 24px 留白：鼠标往右去拿行尾圆点时一直还在这一行上，不会落到 .src 本身上把悬停行清掉。宽度、折行都不变 */
+.src .l { height: 20px; margin-right: calc(-1 * var(--code-pr)); padding-right: var(--code-pr); } /* 行伸进 .src 右边的留白（--code-pr）：鼠标往右去拿行尾圆点时一直还在这一行上，不会落到 .src 本身上把悬停行清掉。宽度、折行都不变 */
 .src .l.drop { background: color-mix(in srgb, var(--accent) 16%, transparent); box-shadow: inset 2px 0 0 var(--accent); }
 /* 贴在字上的手写标注（actions/annots.ts）：有标注的行上面（.below 是下面）一条窄轨道，标签从被标的字左边写起，小箭头指着字的中间；
    被标的字底下一块淡色（.abg，在 rowbgs 里）。位置按等宽字的格数（ch），不量 DOM */
@@ -273,7 +289,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .gutter .no.drop { color: var(--accent); font-weight: 600; }
 .src::selection, .src *::selection { background: color-mix(in srgb, var(--accent) 26%, transparent); }
 /* 隐藏行的条和行高亮一样撑满整张卡宽（左边盖住行号栏，右边到卡边） */
-.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: calc(-1 * var(--gutter)); margin-right: -24px; padding-left: calc(var(--gutter) + 8px); border-radius: 0; }
+.gap { height: 22px; margin: 1px 0; line-height: 22px; font: 11px/22px var(--sys); color: var(--ink-3); background: var(--hlrow); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); margin-left: calc(-1 * var(--gutter)); margin-right: calc(-1 * var(--code-pr)); padding-left: calc(var(--gutter) + 8px); border-radius: 0; }
 .gap b { font-weight: 500; color: var(--ink-2); padding: 1px 5px; border-radius: 5.5px; }
 .gap b:hover { color: var(--accent); background: var(--row); }
 .inote { white-space: normal; font: 12px/1.55 var(--sys); color: var(--ink-2); background: var(--inote); box-shadow: inset 2px 0 0 var(--ink-3); margin: 2px 12px 4px -2px; padding: 5px 10px; border-radius: 0 7px 7px 0; max-width: 520px; }
@@ -284,13 +300,13 @@ input, textarea { font: inherit; color: var(--ink); }
 .src span.pk:hover { background: var(--hlrow); border-radius: 4px; }
 
 /* text & note */
-.card.text { background: transparent; box-shadow: none; border-radius: 5.5px; padding: 2px 4px; }
+.card.text { --cr: 5.5px; background: transparent; box-shadow: none; border-radius: var(--cr); padding: 2px 4px; }
 .card.text:hover { box-shadow: 0 0 0 1px var(--hair); outline: 1px dashed var(--ink-3); outline-offset: 2px; box-shadow: none; }
 .card.text.sel { outline: 1.5px solid var(--accent); outline-offset: 2px; box-shadow: none; }
 .card.text .tx { white-space: pre-wrap; word-break: break-word; outline: none; min-height: 1.4em; color: var(--ink); }
 .tx.st-title { font: 600 26px/1.25 var(--display); letter-spacing: -0.01em; }
 .tx.st-heading { font: 600 16px/1.4 var(--sys); }
-.tx.st-body { font: 13px/1.6 var(--sys); color: var(--ink); }
+.tx.st-body { font: 13.5px/1.6 var(--sys); color: var(--ink); }
 .tx.bold { font-weight: 700; }
 .tx[contenteditable] { cursor: text; user-select: text; -webkit-user-select: text; }
 .tx[contenteditable]:empty::before { content: attr(data-ph); color: var(--ink-3); }
@@ -311,9 +327,12 @@ input, textarea { font: inherit; color: var(--ink); }
 .hdot { width: 16px; height: 16px; border-radius: 50%; corner-shape: round; padding: 0; border: 0; background: var(--hc); box-shadow: 0 0 0 2px var(--glass); cursor: default; }
 .hdot.on { box-shadow: 0 0 0 2px var(--glass), 0 0 0 3.5px var(--ink); }
 .card.text.sel.solo:not(.editing) .ttb { display: inline-flex; }
-.card.note .nbody { padding: 10px 14px 12px; font-size: 13px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
-/* 定了高度的 Note（拖小了）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外（#2、#10）。
-   不拉伸（flex-grow 0）：放得下时正文和原来一样只有内容那么高，Fit Content、改大小时量的是内容。
+/* Note 的字号走 Markdown 包的 --md-fs / --md-h1…h6。设置 → Notes 里改的（App 挂在根上的 --note-fs、--note-fs-h1…h6）优先；
+   没改 = 主题的字号（这里和 themes.css 给），标题按正文的比例（没设的 --note-fs-hN 让 --md-hN 无效，回到包里的默认比例） */
+.card.note .nbody { --md-fs: var(--note-fs, 13.5px); --md-h1: var(--note-fs-h1); --md-h2: var(--note-fs-h2); --md-h3: var(--note-fs-h3); --md-h4: var(--note-fs-h4); --md-h5: var(--note-fs-h5); --md-h6: var(--note-fs-h6); }
+.card.note .nbody { padding: 10px 14px 12px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
+/* 定了高度的 Note（用户拖过下边 / 角）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外（#2、#10）；放得下时下面留空。
+   不拉伸（flex-grow 0）：正文只有内容那么高，Fit Content、改大小时量的是内容。
    Text 没有框，不裁：从 Note 换过来带着的高度用 Fit Content 去掉 */
 .card.note:not(.autoh) .nbody { flex: 0 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent;
   /* 上下还有内容时边上渐隐（字淡进卡自己的底色）：滚动驱动的动画，不用 JS、不排版。滚到顶 / 底时那一边在最后 20px 里淡掉，不跳；
@@ -321,12 +340,23 @@ input, textarea { font: inherit; color: var(--ink); }
   --fade-t: 0px; --fade-b: 0px;
   mask-image: linear-gradient(to bottom, transparent, #000 var(--fade-t), #000 calc(100% - var(--fade-b)), transparent);
   animation: nfade-t linear both, nfade-b linear both; animation-timeline: scroll(self), scroll(self); animation-range: 0px 20px, calc(100% - 20px) 100%; }
+/* 行号栏宽（.code 上按 --code-pl、--nd 算）：注册成长度，用 ch 写的值在 .code 上就算成 px，
+   字号不同的子元素（.mk 之类）拿到的是同一个宽度 */
+@property --gutter { syntax: "<length>"; inherits: true; initial-value: 0px; }
 @property --fade-t { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @property --fade-b { syntax: "<length>"; inherits: false; initial-value: 0px; }
 @keyframes nfade-t { from { --fade-t: 0px; } to { --fade-t: 22px; } }
 @keyframes nfade-b { from { --fade-b: 22px; } to { --fade-b: 0px; } }
 .card.note .nbody[contenteditable] { cursor: text; user-select: text; -webkit-user-select: text; }
 .card.note .chead .ctitle { font-family: var(--sys); }
+/* 编辑开头标题就是卡头名字的 Note 时（NoteBody foldHeader）：整行卡头收起，正文盖上来（卡头高 --fold-h），只留 ··· 在原处；
+   正文上边距 --fold-pt = 卡头高 + 原来的上边距 − 标题这一块，所以卡片和不编辑时一样高。各级标题下面都留半个正文字号 */
+.card.note > .cface > .chead.fold { position: relative; z-index: 1; margin-bottom: calc(-1 * var(--fold-h, 36px)); background: transparent; border-bottom-color: transparent; pointer-events: none; }
+.card.note > .cface > .chead.fold > :not(.ib) { opacity: 0; }
+.card.note > .cface > .chead.fold > .ib { pointer-events: auto; }
+/* :root: above the themes' own Note padding (themes.css) */
+:root .card.note > .cface > .nbody.fold { padding-top: var(--fold-pt, 10px); }
+.nbody.fold > :is(h1, h2, h3, h4, h5, h6):first-child, .nbody.fold > :is(.md-pm, .md-loading) > :is(h1, h2, h3, h4, h5, h6):first-child { margin-bottom: calc(var(--md-fs) * .5); }
 
 /* compare */
 .cmp .colh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); flex: none; background: var(--head); }
@@ -375,25 +405,46 @@ input, textarea { font: inherit; color: var(--ink); }
 .sect.sel.drop { border-color: color-mix(in srgb, var(--accent) 70%, transparent); }
 /* a card moving into or out of a Section: the frames ease to their new size instead of jumping */
 .sect.moving { transition: border-color .15s var(--out), background-color .15s var(--out), box-shadow .15s var(--out), left .16s var(--out), top .16s var(--out), width .16s var(--out), height .16s var(--out); }
+/* Fit Content: the frame and its title ease to the new rect */
+.sect.fit { transition: left .26s var(--out), top .26s var(--out), width .26s var(--out), height .26s var(--out); }
+.slabel.fit { transition: color .15s var(--out), left .26s var(--out), top .26s var(--out); }
 .sect .sgrip { position: absolute; right: -4px; bottom: -4px; width: 14px; height: 14px; pointer-events: auto; cursor: nwse-resize; }
 #slabels { position: absolute; left: 0; top: 0; z-index: 4; }
 .slabel { position: absolute; z-index: 4; display: flex; align-items: center; gap: 2px; width: max-content; margin: 6px 0 0 16px; padding: 1px 2px 1px 6px; border-radius: 8.5px;
-  font: 500 12.5px/20px var(--label-font); letter-spacing: -.005em; color: var(--ink-2); pointer-events: auto; white-space: nowrap; transform-origin: 0 50%;
+  font: 600 12.5px/20px var(--label-font); letter-spacing: -.005em; color: var(--ink-2); pointer-events: auto; white-space: nowrap; transform-origin: 0 50%;
   transition: color .15s var(--out); }
 .slabel:hover, .slabel.drop { color: var(--ink); }
 .slabel.sel { color: var(--accent); }
 .slabel .dots { position: absolute; right: 100%; top: 1px; padding-right: 1px; color: var(--ink-3); font-size: 11px; letter-spacing: -2px; }
 .slabel .dots, .slabel:not(.collapsed) .chev2 { opacity: 0; transition: opacity .15s var(--out); }
 .slabel:hover .dots, .slabel:hover .chev2, .slabel.sel .dots, .slabel.sel .chev2 { opacity: 1; }
-.slabel .chev2 { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ink-3); font-size: 10px; transition: opacity .15s var(--out), background-color .15s var(--out), color .15s var(--out); }
+/* the collapse caret: one thin chevron, right of the title and pointing down while open; before the title and pointing right
+   when collapsed. It turns between the two */
+.slabel .chev2 { order: 1; flex: none; width: 16px; height: 16px; display: grid; place-items: center; border-radius: 5px; color: var(--ink-3); transition: opacity .15s var(--out), background-color .15s var(--out), color .15s var(--out); }
+.slabel .chev2 .ico { width: 10px; height: 10px; --ico-w: 2; rotate: 90deg; transition: rotate .2s var(--out); }
+.slabel.collapsed .chev2 { order: 0; }
+.slabel.collapsed .chev2 .ico { rotate: 0deg; }
 .slabel .chev2:hover { background: var(--hlrow); color: var(--ink); }
 .slabel .sname { min-width: 20px; }
 .slabel .sname.editing { white-space: pre; min-width: 60px; display: inline-block; }
-.slabel .scount { color: var(--ink-3); font-weight: 400; }
-.slabel.collapsed { z-index: 3; margin: 0; padding: 4px 10px 4px 4px; border-radius: 11px; color: var(--ink-2); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
-.slabel.collapsed:hover { color: var(--ink); }
-.slabel.collapsed.sel { color: var(--ink); box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
+.slabel .scount { flex: none; margin-left: 5px; color: var(--ink-3); font-weight: 400; font-variant-numeric: tabular-nums; }
+/* collapsed: a compact pill, caret · bold title · grey card count */
+.slabel.collapsed { z-index: 3; margin: 0; gap: 3px; padding: 4px 12px 4px 6px; border-radius: 11px; color: var(--ink); background: var(--surface); box-shadow: var(--sh-card); transition: color .15s var(--out), box-shadow .15s var(--out); }
+.slabel.collapsed .sname { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.slabel.collapsed.sel { box-shadow: 0 0 0 1.5px var(--accent), var(--sh-card); }
 .slabel.c-sand.collapsed { background: color-mix(in srgb, var(--surface) 80%, #d6b478); }
+/* hovering a collapsed Section: a few of its cards in two columns (kind icon, title) and "+N more" */
+.spv { position: absolute; left: 0; top: calc(100% + 6px); width: 320px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; padding: 6px;
+  border-radius: 12px; background: var(--surface); box-shadow: var(--sh-float); color: var(--ink-2); cursor: default;
+  font: 400 12px/22px var(--sys); letter-spacing: normal; text-transform: none; white-space: nowrap;
+  animation: spv-in .16s var(--out) backwards; transition: opacity .12s var(--out), translate .12s var(--out); }
+.spv.out { opacity: 0; translate: 0 -3px; }
+@keyframes spv-in { from { opacity: 0; translate: 0 -3px; } }
+.spv-i { display: flex; align-items: center; gap: 7px; min-width: 0; padding: 0 6px; border-radius: 7px; color: inherit; font: inherit; text-align: left; }
+.spv-i:hover { background: var(--hlrow); color: var(--ink); }
+.spv-i .ico { flex: none; width: 13px; height: 13px; color: var(--ink-3); }
+.spv-t { overflow: hidden; text-overflow: ellipsis; }
+.spv-more { padding: 0 6px; color: var(--ink-3); }
 .slabel.moving:not(.collapsed) { transition: color .15s var(--out), left .16s var(--out), top .16s var(--out); }
 
 
@@ -415,14 +466,25 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.merge-arm { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--k-fn) 60%, transparent), var(--sh-card); }
 .card.merge-hot { box-shadow: 0 0 0 2.5px var(--k-fn), 0 0 0 6px var(--hi), var(--sh-card); }
 .card.merge-hot::after { content: "Release to merge"; position: absolute; left: 50%; top: -30px; transform: translateX(-50%); font: 600 11.5px/1 var(--sys); color: #fff; background: var(--k-fn); padding: 6px 10px; border-radius: 8.5px; white-space: nowrap; box-shadow: var(--sh-float); z-index: 5; }
+/* An image card dragged over a Note / Text: the Note lights up (the card's box-shadow transition) and a caret line grows in under its
+   text where the image will go; a label says what releasing does. Only transform / opacity animate, so the drag stays at 60 fps. */
+.card.img-drop { box-shadow: 0 0 0 2.5px var(--accent), 0 0 0 7px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
+.card.img-drop > .cface::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 9px; height: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; z-index: 4;
+  transform-origin: 0 50%; animation: imgdrop-caret calc(var(--t) * 220ms) var(--out) both, imgdrop-pulse calc(var(--t) * 1100ms) calc(var(--t) * 220ms) ease-in-out infinite alternate; }
+.card.img-drop::after { content: "Release to add the image"; position: absolute; left: 50%; top: -30px; translate: -50% 0; font: 600 11.5px/1 var(--sys); color: #fff; background: var(--accent); padding: 6px 10px; border-radius: 8.5px; white-space: nowrap; box-shadow: var(--sh-float); z-index: 5; pointer-events: none;
+  animation: imgdrop-label calc(var(--t) * 180ms) var(--out) both; }
+@keyframes imgdrop-caret { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }
+@keyframes imgdrop-pulse { from { opacity: 1; } to { opacity: .45; } }
+@keyframes imgdrop-label { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.board:has(.card.img-drop) .card.lift { opacity: .72; } /* the picture lets the caret under it show through */
 /* math */
 .tex { font-family: var(--mono); font-size: .95em; color: var(--ink-2); }
 /* lock */
-.lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ink-2); }
+.lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ib-ink, var(--ink-2)); }
 .lockb:hover { background: var(--hlrow); color: var(--accent); }
 .lockb svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; }
 .card.text .lockb.abs { position: absolute; right: -22px; top: 2px; }
-.card.locked .grip, .card.locked .hw { display: none; }
+.card.locked .grip, .card.locked .hw, .card.locked .hb { display: none; }
 .slabel .lockb { width: 16px; height: 16px; }
 /* snapping guides, align bar */
 #guides { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 8; }
@@ -430,9 +492,22 @@ input, textarea { font: inherit; color: var(--ink); }
 .guide.v { border-left-width: 1px; width: 0; }
 .guide.h { border-top-width: 1px; height: 0; }
 .ghint { position: absolute; transform: translate(-50%, 0); font: 600 10.5px/1 var(--sys); color: #fff; background: var(--guide); padding: 4px 6px; border-radius: 5.5px; white-space: nowrap; }
-.alignbar.pill { position: absolute; z-index: 15; display: none; }
+.alignbar.pill { position: absolute; z-index: 15; display: none; translate: -50% 0; }
 .alignbar.pill.show { display: inline-flex; }
+.alignbar .tbtn { height: 30px; color: var(--ink); }
+.alignbar > .ib { width: 30px; height: 30px; }
+.alignbar > .ib.on { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .alignbar .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
+/* ··· 里的对齐和分布：贴着工具条右下角往下开，从右上角放大到 1 并淡入（和右键菜单一样的曲线），关时淡出 */
+.alignmore { position: absolute; right: 0; top: calc(100% + 6px); display: grid; grid-template-columns: repeat(5, 30px); gap: 2px; padding: 4px; border-radius: 12px;
+  background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); box-shadow: var(--sh-float);
+  transform-origin: top right; opacity: 0; scale: .97; visibility: hidden;
+  transition: opacity calc(var(--t) * 90ms) var(--in), scale calc(var(--t) * 90ms) var(--in), visibility 0s linear calc(var(--t) * 90ms); }
+.alignmore.open { opacity: 1; scale: 1; visibility: visible;
+  transition: opacity calc(var(--t) * 150ms) ease-out, scale calc(var(--t) * 150ms) ease-out, visibility 0s; }
+.alignmore .ib { width: 30px; height: 30px; }
+.alignmore .t { grid-column: 1 / -1; font: 600 10.5px/1 var(--sys); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 6px 6px 3px; }
+@media (prefers-reduced-motion: reduce) { .alignmore.open { transition-duration: 0s; } }
 /* section colours (nested frames each keep their own) */
 .sect.c-sand { background: var(--s-sand); } .sect.c-blue { background: var(--s-blue); } .sect.c-green { background: var(--s-green); } .sect.c-pink { background: var(--s-pink); }
 .sw { display: inline-block; width: 11px; height: 11px; border-radius: 4px; box-shadow: inset 0 0 0 .5px var(--hair); vertical-align: -1px; margin-right: 6px; }
@@ -447,21 +522,22 @@ input, textarea { font: inherit; color: var(--ink); }
 .zoom { font: 11.5px var(--mono); color: var(--ink-2); min-width: 44px; text-align: center; font-variant-numeric: tabular-nums; }
 
 .ctx { position: absolute; z-index: 40; overflow-y: auto; overscroll-behavior: contain; min-width: 210px; max-width: 300px; padding: 5px; border-radius: 14px; background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
-  box-shadow: var(--sh-float); transform-origin: 0 0; opacity: 0; scale: .45 .3; visibility: hidden;
+  box-shadow: var(--sh-float); transform-origin: 0 0; opacity: 0; scale: .97; visibility: hidden;
   transition: opacity calc(var(--t) * 90ms) var(--in), scale calc(var(--t) * 90ms) var(--in), visibility 0s linear calc(var(--t) * 90ms); }
-/* 打开：从点击点"弹"出来。起步就快（初速度大），冲过头一点再落稳；内容整体出现，不逐项飘入（逐项飘入像网页） */
+/* 打开：从点击点（transform-origin）轻轻放大到 1 并淡入，不冲过头：透明度 120ms，缩放 --menu-ms（默认 150ms，Debug 里可调）；
+   内容整体出现，不逐项飘入（逐项飘入像网页）。关：90ms 淡出 */
 .ctx.open { opacity: 1; scale: 1; visibility: visible;
-  transition: opacity calc(var(--t) * 70ms) linear, scale calc(var(--t) * var(--menu-ms, 300ms)) linear(0, .42 6%, .74 13%, .93 21%, 1.03 30%, 1.05 37%, 1.035 46%, 1.01 58%, .998 72%, 1), visibility 0s; }
+  transition: opacity calc(var(--t) * 120ms) cubic-bezier(.2, 0, 0, 1), scale calc(var(--t) * var(--menu-ms, 150ms)) cubic-bezier(.2, 0, 0, 1), visibility 0s; }
 @media (prefers-reduced-motion: reduce) { .ctx.open { transition-duration: 0s; } }
 .ctx button { display: flex; width: 100%; align-items: center; gap: 10px; padding: 4px 8px; border-radius: 7px; font-size: 12.5px; color: var(--ink); text-align: left; }
 .ctx button .lb { flex: 1 0 auto; max-width: calc(100% - 22px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx button .ck { width: 12px; flex: none; color: var(--accent); font-size: 11px; }
-.ctx button:not([disabled]):hover { background: var(--accent); color: var(--accent-ink); }
-.ctx button:not([disabled]):hover .ck { color: var(--accent-ink); }
+.ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--accent); color: var(--accent-ink); }
+.ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck { color: var(--accent-ink); }
 .ctx button small { margin-left: auto; font: 10.5px var(--mono); color: var(--ink-3); padding-left: 12px; white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.ctx button:not([disabled]):hover small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
+.ctx button:not([disabled]):is(:hover, .kb, .subopen) small { color: color-mix(in srgb, var(--accent-ink) 75%, transparent); }
 .ctx button.danger { color: #d6453d; }
-.ctx button.danger:not([disabled]):hover { background: #d6453d; color: #fff; }
+.ctx button.danger:not([disabled]):is(:hover, .kb, .subopen) { background: #d6453d; color: #fff; }
 .ctx .mh { padding: 4px 8px 3px 30px; font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ctx button[disabled] { color: var(--ink-3); flex-wrap: wrap; row-gap: 0; }
 .ctx button .why { flex-basis: 100%; font: 11px/1.35 var(--sys); color: var(--ink-3); padding: 1px 0 2px 22px; white-space: normal; }
@@ -571,7 +647,8 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 
 /* ===================== v0.1 additions ===================== */
 .app { position: fixed; inset: 0; }
-.editing { outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 4px; background: var(--surface); text-overflow: clip; cursor: text; user-select: text; -webkit-user-select: text; white-space: pre-wrap; }
+/* a field being typed in; a card in edit mode also has .editing, and keeps its own corners, shadow and cursor */
+.editing:where(:not(.card)) { outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 4px; background: var(--surface); text-overflow: clip; cursor: text; user-select: text; -webkit-user-select: text; white-space: pre-wrap; }
 /* fields that ellipsize with a more specific selector than .editing */
 .card.nobg > .cface > .chead .ctitle.editing, .genrun .grun.editing, .lrow.rich .wbm.none .wt.editing, .msgb .mname.editing { text-overflow: clip; }
 .editing:empty::before, [data-ph]:empty::before { content: attr(data-ph); color: var(--ink-3); }
@@ -583,22 +660,27 @@ kbd { font: 10.5px var(--mono); }
 
 /* markdown */
 .nbody p, .cdesc p, .tx p, .inote p, .sn-text p, .pdesc p { margin: 0; }
-.nbody h1, .nbody h2, .nbody h3, .cdesc h1, .cdesc h2, .cdesc h3, .tx h1, .tx h2, .tx h3, .sn-text h1, .sn-text h2, .sn-text h3 { margin: 2px 0 4px; font: 600 1.05em/1.4 var(--note-h); color: var(--ink); }
-/* Note / Text 里的 Markdown 标题要有层级（# 大标题、## 小标题、### 加粗正文） */
-.nbody h1, .tx h1 { margin: 4px 0 6px; font: 600 1.8em/1.25 var(--display, var(--note-h)); letter-spacing: -0.01em; }
-.nbody h2, .tx h2 { margin: 4px 0 4px; font-size: 1.35em; line-height: 1.3; }
-.nbody h3, .tx h3 { font-size: 1.1em; }
+.cdesc h1, .cdesc h2, .cdesc h3, .tx h1, .tx h2, .tx h3, .sn-text h1, .sn-text h2, .sn-text h3 { margin: 2px 0 4px; font: 600 1.05em/1.4 var(--note-h); color: var(--ink); }
+.nbody h1, .nbody h2, .nbody h3 { margin: 2px 0 4px; font-weight: 600; line-height: 1.4; font-family: var(--note-h); color: var(--ink); } /* 字号：--md-h1…h3（上面） */
+/* Note / Text 里的 Markdown 标题要有层级（# 大标题、## 小标题、### 加粗正文）；Text 用自己的字号档，按比例 */
+.nbody h1, .tx h1 { margin: 4px 0 6px; font-weight: 600; line-height: 1.25; font-family: var(--display, var(--note-h)); letter-spacing: -0.01em; }
+.nbody h2, .tx h2 { margin: 4px 0 4px; line-height: 1.3; }
+.tx h1 { font-size: 1.8em; }
+.tx h2 { font-size: 1.35em; }
+.tx h3 { font-size: 1.1em; }
 .nbody > :first-child, .tx > :first-child, .nbody .md-pm > :first-child, .tx .md-pm > :first-child { margin-top: 0; }
 /* Note whose leading heading is already its title (Settings → Notes): not shown again in the body; the editor shows it */
 .nbody.hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; }
 .nbody.hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
+.nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; } /* still hidden while the editor loads (NoteBody foldHeader) */
+.nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
 .nbody ul, .nbody ol, .cdesc ul, .cdesc ol, .tx ul, .tx ol, .inote ul, .sn-text ul, .sn-text ol { margin: 2px 0; padding-left: 1.3em; }
 .nbody blockquote, .cdesc blockquote, .tx blockquote, .sn-text blockquote { margin: 2px 0; padding-left: 8px; border-left: 2px solid var(--hair); color: var(--ink-2); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 7px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }
 .sp { height: .6em; }
 /* Markdown 本身的样式（.md、编辑器、代码编辑器）在 @yhnocoder/markdown 的 markdown.css（index.tsx 接在这一份后面）；这里只有白板这边的 */
 .md-pend { visibility: hidden; } /* md/lazy.ts：还没渲染的 Note 只占位，不露原文 */
-.card.nobg .mmd { --pele-bg: var(--bg); }
+.card.nobg .mmd { --pele-bg: var(--canvas); }
 .md.editing { position: relative; }
 .card.note .nbody, .card.text .tx { white-space: normal; }
 /* 编辑时跟显示时同一种字体、同一个位置，不再套一层白框（卡本身已经有选中框） */
@@ -617,7 +699,9 @@ kbd { font: 10.5px var(--mono); }
 .rev.unc { color: var(--k-num); }
 .rev.unc:hover { color: var(--ink); }
 .rev.sm { padding: 0 4px; }
-.rev.lang { color: var(--ink-2); }
+/* Free code 的语言：淡色小字，悬停才像按钮；点开换语言 */
+.chead .lang { font: 500 10.5px var(--mono); color: var(--ink-3); padding: 2px 5px; border-radius: 7px; white-space: nowrap; flex: none; transition: background .12s, color .12s; }
+.chead .lang:hover { color: var(--ink); background: var(--hlrow); }
 .mk.inline { position: static; margin: 0; flex: none; }
 /* 选中单张代码卡时浮在卡片上方的小工具条：不改变卡片高度，不挤压下面的卡 */
 .cmiss { padding: 6px 12px; font-size: 11.5px; color: var(--warn); background: var(--chg); border-bottom: 1px solid var(--line); flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
@@ -637,7 +721,12 @@ kbd { font: 10.5px var(--mono); }
 .rowbg.lsel { background: color-mix(in srgb, var(--accent) 11%, transparent); }
 .rowbg.vhi { background: var(--hi); }
 .no.sel { color: var(--accent); opacity: 1; }
-.gutter .no { cursor: pointer; }
+.gutter .no { left: var(--code-pl); width: calc(var(--nd, 3) * 1ch); cursor: pointer; }
+/* 编辑代码卡（CodeMirror）时同一套几何：进出编辑字不动（@yhnocoder/markdown 自己的默认是 54px 的行号栏，卡上用这里的） */
+.card .code .cbcm-card .cm-content { padding-right: var(--code-pr); }
+.card .code .cbcm-card .cm-line { padding-right: var(--code-pr); margin-right: calc(-1 * var(--code-pr)); }
+.card .code .cbcm-card .cm-lineNumbers { width: var(--gutter); }
+.card .code .cbcm-card .cm-lineNumbers .cm-gutterElement { width: calc(var(--code-pl) + var(--nd, 3) * 1ch); padding-left: var(--code-pl); }
 .lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); z-index: 4; cursor: crosshair; opacity: .0; transition: opacity .1s; }
 .lport.l { left: -5px; } .lport.r { right: -5px; }
 .lport { opacity: 1; }
@@ -906,7 +995,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .stkpick .tlink { color: var(--accent); font-weight: 600; font-size: 11.5px; }
 
 /* 行号栏：行号 | 标记列（旁注、"+"、贴纸都是 14px）| 代码（#13 #14 #16） */
-.lstks { position: absolute; left: 36px; height: 20px; display: flex; align-items: center; gap: 2px; z-index: 3; }
+.lstks { position: absolute; left: calc(var(--gutter) - 18px); height: 20px; display: flex; align-items: center; gap: 2px; z-index: 3; }
 .lstks .stk { position: static; cursor: pointer; border-radius: 50%; corner-shape: round; }
 .lstks.dot { left: 33px; margin-top: -2px; height: 8px; z-index: 4; }
 /* !important: the glyph sets its size inline (stickers/glyphs.tsx), and a stylesheet can only beat inline styles this way */
@@ -988,14 +1077,23 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 /* 删掉的卡：原地留一份副本缩小淡出（state/ghost.ts） */
 .card.ghost-out { pointer-events: none; transition: opacity calc(var(--t) * 180ms) var(--in, ease-in), scale calc(var(--t) * 200ms) var(--in, ease-in); transform-origin: 50% 40%; }
 .card.ghost-out.go { opacity: 0; scale: .94; }
-/* Copy Code：只有图标，悬停 / 选中卡时出现 */
-.chead .ib.cpy { opacity: 0; transition: opacity calc(var(--t) * 120ms); }
-.card:hover .chead .ib.cpy, .card.sel .chead .ib.cpy, .chead .ib.cpy:focus-visible { opacity: 1; }
+/* 悬停才出现的按钮（Copy Code，Free code 的语言）：没悬停时 0 宽、不占位置，标题能用满整行；悬停 / 选中卡时展开到自己的宽度并淡入。
+   一个两层的 grid：列宽 0fr → 1fr 只排这一行卡头，不碰别的卡。
+   卡很窄、标题已经缩到最短时它们自己再缩（被裁掉），不把 ··· 挤出卡外：标题的 flex-shrink 大得多，先缩的总是标题
+   （两边都要 ≥ 1：一行里还能缩的 flex-shrink 加起来不到 1 时，Chromium 只分掉那么一点，剩下的就溢出了）。
+   卡头的 gap 也算在里面：.hov 左边 −gap（--hg = 这个主题卡头的 gap），里面左边补回 gap，收起时连它前面那道缝也没有 */
+.chead > .hov { display: grid; grid-template-columns: minmax(0, 0fr); flex: 0 1 auto; min-width: 0; margin-left: calc(-1 * var(--hg)); overflow: hidden; opacity: 0;
+  /* closing: fade out first, then the width eases shut (an ease-out here would snap it shut in the first few frames) */
+  transition: grid-template-columns calc(var(--t) * 260ms) cubic-bezier(.4, 0, .2, 1) calc(var(--t) * 60ms), opacity calc(var(--t) * 160ms) ease; }
+.chead > .hov > span { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; padding-left: var(--hg); }
+.card:hover .chead > .hov, .card.sel .chead > .hov, .chead > .hov:focus-within { grid-template-columns: minmax(0, 1fr); opacity: 1;
+  transition: grid-template-columns calc(var(--t) * 180ms) var(--out), opacity calc(var(--t) * 150ms) var(--out); }
+.chead:has(> .hov) .ctitle { flex-shrink: 1e4; }
 .cbody.wrap .src.ded .l { text-indent: 0; } /* 自动换行时不藏缩进：换行的续行会对不齐 */
 .cbody.wrap .dedm { display: none; }
 
 /* 子白板框（线框 05，风格 C：带名字的骨架）。骨架是一张 SVG（cards/BoardBody.tsx），颜色都在这里按主题取 */
-.card.board { border-radius: calc(var(--r-card) + 4px); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 45%, transparent), var(--sh-card); }
+.card.board { --cr: calc(var(--r-card) + 4px); border-radius: var(--cr); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 45%, transparent), var(--sh-card); }
 .card.board.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
 .card.board.drop-hot { box-shadow: 0 0 0 2px var(--k-fn), var(--sh-card); }
 .sbhead { position: relative; z-index: 2; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; flex: none; font: 700 12.5px/1 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; cursor: grab; }
@@ -1078,10 +1176,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .altbox .lib-tag { font: 500 9.5px/14px var(--sys); padding: 0 5px; border-radius: 5.5px; box-shadow: inset 0 0 0 1px var(--hair); }
 .lod-overview .altcol { opacity: .8; }
 /* 卡头：语言标签、1 of N、Generated */
-.lchip { flex-shrink: 0; font: 600 9px/15px var(--sys); letter-spacing: .05em; padding: 0 5px; border-radius: 5.5px; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--hair); }
-.lchip[data-l="PY"] { color: #3b6ea8; } .lchip[data-l="C++"] { color: #8a4baf; } .lchip[data-l="CUDA"] { color: #4f8a2a; }
-.lchip[data-l="TRITON"] { color: #b5552d; } .lchip[data-l="TILELANG"] { color: #a0731c; } .lchip[data-l="RUST"] { color: #9c4a32; }
-:root[data-theme="dark"] .lchip { filter: brightness(1.5); }
 .disp1 { flex-shrink: 0; font: 10.5px var(--sys); color: var(--ink-3); }
 .gentag { flex-shrink: 0; font: 500 10.5px/16px var(--sys); color: var(--ink-2); padding: 0 6px; border-radius: 5.5px; border: 1px dashed var(--ink-3); }
 .genrun { min-width: 40px; flex-shrink: 10; overflow: hidden; cursor: text; }
@@ -1123,7 +1217,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .wstep { position: absolute; transform-origin: left bottom; font: 700 11px/18px var(--sys); color: var(--ink-2); background: var(--surface); border: 1px solid var(--hair); border-radius: 14px; padding: 0 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wstep.cur { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 /* 消息卡：圆角小卡，类型名 + message */
-.card.note.msg { border-radius: 19.5px; }
+.card.note.msg { --cr: 19.5px; border-radius: var(--cr); }
 .card.note.msg .cface { border-radius: 19.5px; }
 .msgb { padding: 6px 12px 7px; display: flex; flex-direction: column; gap: 2px; cursor: grab; }
 .msgb .mrow1, .msgb .mrow2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
@@ -1270,7 +1364,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .vbg { position: absolute; left: 0; right: 0; pointer-events: none; z-index: 0; }
 .vbg.add { background: var(--add); }
 .vbg.chg { background: var(--chg); }
-.vmk { position: absolute; left: 34px; width: 10px; height: 20px; font: 700 10px/20px var(--mono); color: var(--warn); text-align: center; pointer-events: none; }
+.vmk { position: absolute; left: calc(var(--gutter) - 20px); width: 10px; height: 20px; font: 700 10px/20px var(--mono); color: var(--warn); text-align: center; pointer-events: none; }
 .vmk.add { color: var(--lk-green); }
 .pop.k-three { max-width: 96vw; }
 .threepop { width: min(1180px, 94vw); display: flex; flex-direction: column; max-height: 80vh; }

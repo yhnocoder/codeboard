@@ -665,10 +665,65 @@
           "default": false,
           "description": "When a Note starts with a heading, the card's title bar shows it. Also show it at the top of the Note's text (it always shows while editing)."
         },
+        "codeboard.notes.fontSize": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": false,
+          "properties": {
+            "body": {
+              "type": ["number", "null"],
+              "minimum": 10,
+              "maximum": 24,
+              "description": "Body text size in px. Leave out or null to use the theme's size."
+            },
+            "h1": {
+              "type": ["number", "null"],
+              "minimum": 10,
+              "maximum": 40,
+              "description": "Heading 1 size in px. Leave out or null to use the theme's size."
+            },
+            "h2": {
+              "type": ["number", "null"],
+              "minimum": 10,
+              "maximum": 40,
+              "description": "Heading 2 size in px. Leave out or null to use the theme's size."
+            },
+            "h3": {
+              "type": ["number", "null"],
+              "minimum": 10,
+              "maximum": 40,
+              "description": "Heading 3 size in px. Leave out or null to use the theme's size."
+            },
+            "h4": {
+              "type": ["number", "null"],
+              "minimum": 10,
+              "maximum": 40,
+              "description": "Heading 4 size in px. Leave out or null to use the theme's size."
+            },
+            "h5": {
+              "type": ["number", "null"],
+              "minimum": 10,
+              "maximum": 40,
+              "description": "Heading 5 size in px. Leave out or null to use the theme's size."
+            },
+            "h6": {
+              "type": ["number", "null"],
+              "minimum": 10,
+              "maximum": 40,
+              "description": "Heading 6 size in px. Leave out or null to use the theme's size."
+            }
+          },
+          "description": "Font sizes in Notes, in px: body text and each heading level. Levels left out follow the theme (headings scale with the body text). Text cards keep their own sizes."
+        },
         "codeboard.flowNumbers.hide": {
           "type": "boolean",
           "default": false,
           "description": "Hide the call graph marks (A, B… or an icon) on cards."
+        },
+        "codeboard.useVSCodeBackground": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use VS Code's editor background as the board background in every theme. Cards, text and accent colors stay the theme's; patterns such as grids stay on top."
         },
         "codeboard.themeReflow": {
           "type": "string",

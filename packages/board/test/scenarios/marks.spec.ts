@@ -5,7 +5,7 @@
 // Screenshots: test-out/harness/marks-*.png (HARNESS_LIGHT=1 for the light theme)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
-import { test, open, check, light, until, idle } from "../fixtures";
+import { test, open, check, light, until, idle, frames, pmHasSelection, focusSettled } from "../fixtures";
 
 const sym = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; const i = s.text.findIndex((t) => re.test(t)); return s.start + Math.max(0, i); };
@@ -157,10 +157,10 @@ test("noteAnnotations", async () => {
     const e = [...document.querySelectorAll<HTMLElement>(".card .md-annot")][1], p = e.closest("p")!;
     const lb = getComputedStyle(e, "::before"), c = document.createElement("canvas").getContext("2d")!;
     c.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
-    const right = e.getBoundingClientRect().left + parseFloat(lb.left) + c.measureText(e.dataset.note!).width;
+    const right = e.getBoundingClientRect().left + parseFloat(lb.left) + new DOMMatrix(lb.transform).m41 + c.measureText(e.dataset.note!).width;
     return { right, pRight: p.getBoundingClientRect().right, ax: e.style.getPropertyValue("--ax") };
   });
-  // the label would run past the paragraph (natural right = right - ax): it is pulled back inside, and only then
+  // centered, the label would run past the paragraph (natural right = right - ax): it is pulled back inside, and only then
   check("annotLabelInsideBlock", fit.right <= fit.pRight + 0.5 && (fit.right - parseFloat(fit.ax) > fit.pRight) === parseFloat(fit.ax) < 0, fit);
   await shot(h, "marks-note-annotations");
 
@@ -257,5 +257,140 @@ test("codeAnnotations", async () => {
   await idle(h);
   const left = (h.board().cards[0] as CodeCard).segments[0].annots ?? [];
   check("codeAnnotRemove", left.length === 2 && !left.some((a) => a.text === "KV cache blocks") && (await pg.locator(`${card(sch.id)} .arail.below`).count()) === 0, left);
+  await h.close();
+});
+
+/** The CUDA sentence: an annotation at the start of a line, one in the middle of a line, and one inside bold */
+const CUDA_MD = [
+  "{CUDA C++ 程序的结构|异构计算}反映了计算机中==主机（host，即 CPU）与一个或多个设备（device，即 GPU）共存==的情况。",
+  "",
+  "每个 kernel 由 {很多个线程|thread}同时执行，**线程按 {block|线程块|purple} 分组**。",
+].join("\n");
+/** Each annotation's span, label and arrow on screen: the label's box from the ::before font (canvas) and its computed left + transform */
+const annotGeo = (pg: Host["page"], sel: string) => pg.evaluate((sel) => [...document.querySelectorAll<HTMLElement>(`${sel} .md-annot`)].map((e) => {
+  const r = e.getBoundingClientRect(), lb = getComputedStyle(e, "::before"), ar = getComputedStyle(e, "::after");
+  const c = document.createElement("canvas").getContext("2d")!;
+  c.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
+  const w = c.measureText(e.dataset.note!).width, left = r.left + parseFloat(lb.left) + new DOMMatrix(lb.transform).m41;
+  const block = e.parentElement!.closest("p")!.getBoundingClientRect();
+  return { note: e.dataset.note!, spanCenter: r.left + r.width / 2, labelCenter: left + w / 2, arrowCenter: r.left + parseFloat(ar.left) + parseFloat(ar.width) / 2,
+    labelLeft: left, labelRight: left + w, atLineStart: Math.abs(r.left - block.left) < 1, inBlock: left >= block.left - 0.5 && left + w <= block.right + 0.5 };
+}), sel);
+
+/** {text|note} labels are centered over the annotated words (and their arrow), whether the words start the line or sit in the middle of it,
+ *  in the static Note and in its editor */
+test("noteAnnotationLabelCentered", async () => {
+  const b = emptyBoard("b1", "annotations");
+  b.cards.push({ id: "n1", kind: "note", md: CUDA_MD, bg: true } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 520 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 760, h: 420, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.evaluate(() => document.fonts.ready);
+  await idle(h);
+  const centered = (g: Awaited<ReturnType<typeof annotGeo>>) => g.length === 3 && g.every((a) => Math.abs(a.labelCenter - a.spanCenter) <= 2 && Math.abs(a.arrowCenter - a.spanCenter) <= 2 && a.inBlock);
+  const geo = await annotGeo(pg, card("n1"));
+  check("annotFirstAtLineStart", geo[0]?.atLineStart && !geo[1]?.atLineStart, geo);
+  check("annotLabelCentered", centered(geo), geo);
+  await shot(h, "marks-annotation-centered");
+  await pg.locator(`${card("n1")} .nbody p`).first().dblclick({ position: { x: 300, y: 40 } });
+  await pg.waitForSelector(`${card("n1")} .md-pm .md-annot`, { timeout: 5000 });
+  await idle(h);
+  const ed = await annotGeo(pg, `${card("n1")} .md-pm`);
+  check("annotLabelCenteredInEditor", centered(ed), ed);
+  await h.close();
+});
+
+/** The annotation label is drawn in the bundled handwriting fonts (Shantell Sans for Latin, LXGW WenKai Lite for Chinese):
+ *  the computed font is the hand font, both faces are loaded, and the glyphs really come from them (not a system fallback) */
+test("noteAnnotationHandFont", async () => {
+  const b = emptyBoard("b1", "annotations");
+  b.cards.push({ id: "n1", kind: "note", md: CUDA_MD, bg: true } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 520 };
+  const h = await open({ board: b, light: true, w: 760, h: 420, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.evaluate(() => document.fonts.ready);
+  const f = await pg.evaluate(() => {
+    const labels = [...document.querySelectorAll<HTMLElement>(".card .md-annot")].map((e) => {
+      const lb = getComputedStyle(e, "::before"), font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
+      return { note: e.dataset.note!, family: lb.fontFamily, checked: document.fonts.check(font, e.dataset.note) };
+    });
+    const faces = Object.fromEntries([...document.fonts].filter((x) => /Shantell Sans|LXGW WenKai Lite/.test(x.family)).map((x) => [x.family.replace(/"/g, ""), x.status]));
+    // glyphs drawn with the label's font stack vs the same stack without the bundled face: they differ only if the bundled face is used
+    const draw = (font: string, t: string) => { const c = document.createElement("canvas"); c.width = 160; c.height = 40; const x = c.getContext("2d")!; x.font = font; x.fillText(t, 2, 30); return x.getImageData(0, 0, 160, 40).data; };
+    const differ = (a: Uint8ClampedArray, b: Uint8ClampedArray) => { let n = 0; for (let i = 3; i < a.length; i += 4) if (a[i] !== b[i]) n++; return n; };
+    const stack = labels[0]?.family ?? "";
+    const without = (name: string) => stack.split(",").filter((s) => !s.includes(name)).join(",");
+    return { labels, faces, cjk: differ(draw(`24px ${stack}`, "异构计算"), draw(`24px ${without("LXGW")}`, "异构计算")), latin: differ(draw(`24px ${stack}`, "thread"), draw(`24px ${without("Shantell")}`, "thread")) };
+  });
+  check("annotHandFontFamily", f.labels.length === 3 && f.labels.every((l) => /^"?Shantell Sans"?,\s*"?LXGW WenKai Lite"?/.test(l.family)), f.labels);
+  check("annotHandFontsLoaded", f.faces["Shantell Sans"] === "loaded" && f.faces["LXGW WenKai Lite"] === "loaded" && f.labels.every((l) => l.checked), f);
+  check("annotHandGlyphsFromBundledFonts", f.cjk > 50 && f.latin > 50, f);
+  await h.close();
+});
+
+/** Handwritten Note in the Note editor's selection toolbar: select words → the button → type the note (the label shows on the words
+ *  as you type) → Enter; one undo takes it off; on an annotated selection the button is on and opens with its note, Escape keeps it */
+test("noteAnnotationFromToolbar", async () => {
+  const b = emptyBoard("b1", "annotations");
+  b.cards.push({ id: "n1", kind: "note", md: "Prefill and decode never share a batch in nano-vllm.", bg: true } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 460 };
+  b.cam = { x: 0, y: 0, z: 1.25 };
+  const h = await open({ board: b, light: true, w: 820, h: 420, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  const pm = `${card("n1")} .md-pm`;
+  const md = () => (h.board().cards[0] as NoteCard).md;
+  await pg.locator(`${card("n1")} .nbody p`).dblclick({ position: { x: 20, y: 8 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  const sel = (w: string) => pg.evaluate(([root, w]) => {
+    const t = [...document.querySelector(root)!.querySelectorAll("p")].map((p) => p.firstChild as Text).find((n) => n?.data.includes(w))!;
+    const r = document.createRange(), i = t.data.indexOf(w); r.setStart(t, i); r.setEnd(t, i + w.length);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+  }, [pm, w] as const);
+  await focusSettled(pg); // a selection set by script within ProseMirror's focus window would be undone
+  await sel("never share a batch");
+  await pmHasSelection(pg);
+  const btn = pg.locator('.md-bubble .tbtn[data-tip="Handwritten Note"]');
+  await btn.waitFor({ timeout: 2000 });
+  await idle(h);
+  const tip = await btn.evaluate((b) => ({ label: b.getAttribute("aria-label"), on: b.classList.contains("on"), ico: !!b.querySelector("svg.md-ico path")?.getAttribute("d") }));
+  check("annotButton", tip.label === "Handwritten Note" && !tip.on && tip.ico, tip);
+  await btn.hover();
+  await pg.locator(".tip").waitFor(); await idle(h); // its tooltip is in the picture
+  await shot(h, "marks-annotation-toolbar-button");
+  await btn.click();
+  const input = pg.locator(".md-bubble input.md-annotin");
+  await input.waitFor({ timeout: 2000 });
+  check("annotInputFocused", await input.evaluate((i) => document.activeElement === i));
+  await pg.keyboard.type("not mixed");
+  await pg.locator(`${pm} .md-annot`).first().waitFor(); await frames(pg);
+  const live = await pg.locator(`${pm} .md-annot`).evaluateAll((es) => es.map((e) => [e.textContent, (e as HTMLElement).dataset.note]));
+  check("annotLivePreview", live.length === 1 && live[0][0] === "never share a batch" && live[0][1] === "not mixed", live);
+  await shot(h, "marks-annotation-toolbar-typing");
+  await pg.keyboard.press("Enter");
+  await input.waitFor({ state: "detached" });
+  check("annotEditorFocusedAfterEnter", await pg.evaluate((pm) => document.activeElement === document.querySelector(`${pm} .ProseMirror`) || !!document.activeElement?.closest(pm), pm));
+  // the button is on for the annotated words; it opens with the note, Escape leaves it as it was. The toolbar comes back
+  // TOOLBAR_SETTLE after the editor has the focus again: wait (up to 5 s) for it with its button on
+  const on = await until(h, "the toolbar is back with Handwritten Note on", () => btn.evaluate((b) => b.classList.contains("on")).catch(() => false)).catch(() => false);
+  await btn.click();
+  await input.waitFor({ timeout: 2000 });
+  const prefilled = await input.inputValue();
+  await pg.keyboard.press("Escape");
+  await input.waitFor({ state: "detached" }); await frames(pg);
+  const kept = await pg.locator(`${pm} .md-annot`).evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.note));
+  check("annotButtonEditsExisting", on && prefilled === "not mixed" && kept.length === 1 && kept[0] === "not mixed", { on, prefilled, kept });
+  // one undo takes the annotation off (the live preview steps are not separate undo steps)
+  await pg.keyboard.press("ControlOrMeta+z");
+  await frames(pg); // ProseMirror's undo changes the DOM on the key press
+  const undone = await pg.evaluate((pm) => ({ annots: document.querySelectorAll(`${pm} .md-annot`).length, text: document.querySelector(pm)!.textContent }), pm);
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
+  await frames(pg);
+  const redone = await pg.evaluate((pm) => document.querySelector(pm)!.innerHTML, pm);
+  check("annotOneUndoStep", undone.annots === 0 && undone.text === "Prefill and decode never share a batch in nano-vllm." && /data-note="not mixed"/.test(redone), { undone, redone });
+  await pg.mouse.click(760, 380);
+  await pg.locator(pm).waitFor({ state: "detached" }); await idle(h); // the editor has closed and its save reached the host
+  check("annotSaved", md() === "Prefill and decode {never share a batch|not mixed} in nano-vllm.", md());
+  await shot(h, "marks-annotation-toolbar-saved");
   await h.close();
 });

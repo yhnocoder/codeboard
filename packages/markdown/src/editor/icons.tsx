@@ -10,9 +10,10 @@ const P: Record<string, string> = {
   link: "M6.67 8.67a3.33 3.33 0 0 0 5.03.36l2-2a3.33 3.33 0 0 0-4.71-4.71L7.84 3.46M9.33 7.33a3.33 3.33 0 0 0-5.03-.36l-2 2a3.33 3.33 0 0 0 4.71 4.71l1.14-1.14", // link
   highlight: "M14 8L11.707 10.293A1 1 0 0 1 10.293 10.293L7.707 7.707A1 1 0 0 1 7.707 6.293L11 3M7 8l-4 4v2h5l2-2", // highlighter
   math: "M12 5V3.5a.5 .5 0 0 0-.5-.5H4l4 5-4 5h7.5a.5 .5 0 0 0 .5-.5V11", // sigma
+  annot: "M10.5 2.5l2.5 2.5L7 11H4.5V8.5zM2 14c1.3-.8 2.7-.8 4 0s2.7.8 4 0 2.7-.8 4 0", // pen with a squiggle
 };
 
-export type IconName = "bold" | "italic" | "strike" | "code" | "link" | "highlight" | "math";
+export type IconName = "bold" | "italic" | "strike" | "code" | "link" | "highlight" | "math" | "annot";
 
 export const Icon = (p: { name: IconName }) => (
   <svg class="md-ico" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d={P[p.name]} /></svg>

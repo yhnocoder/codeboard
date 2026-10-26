@@ -2,7 +2,7 @@
 // 成员关系（homeFor）：盖住卡三分之一以上面积的 Section，几个都够时取盖得多的（拖动结束、粘贴、新建时定）。拖动中先预演（movingHome）：卡离开的 Section 回到没有它的框，
 // 要进的 Section 撑开、亮起来（.drop），松手时才真的改 place.section。
 import { createMemo, createSignal, mapArray } from "solid-js";
-import { sectionFrame, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
+import { sectionFrame, sectionFit, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
 import { rooted } from "./root";
 
@@ -59,6 +59,14 @@ export function frameOf(s: Section, skip?: Set<string>, seen = new Set<string>()
   const cards = directMembers(s.id).filter((c) => !skip?.has(c.id)).map(rectOf);
   return sectionFrame(s, [...cards, ...childrenOf(s.id).map((ch) => (ch.collapsed ? sectionPill(ch) : frameOf(ch, skip, seen)))]);
 }
+/** Fit Content 的框：刚好包住直属卡和子 Section（各加边距）；里面没东西 = undefined */
+export function fitFrame(s: Section): Rect | undefined {
+  return sectionFit([...directMembers(s.id).map(rectOf), ...childrenOf(s.id).map((ch) => (ch.collapsed ? sectionPill(ch) : frameOf(ch)))]);
+}
+/** 正在缓动到新框的 Section（Fit Content）：框和标签这一会儿带 transition（.fit） */
+const [fitting, setFitting] = createSignal<ReadonlySet<string>>(new Set());
+export { fitting, setFitting };
+
 // 渲染用：每个 Section 一个 memo（子 Section 用它自己的 memo）：拖一张卡时只重算它所在的 Section 和上面几层，不是 42 个全算。
 // 子 Section 的 memo 还没建好（或者父子关系成了环，不该发生）时退回它自己存的框
 const frameMemos = rooted(() => mapArray(() => state.board.sections, (s) => [s.id, createMemo<Rect | undefined>(() => sectionFrame(s, [

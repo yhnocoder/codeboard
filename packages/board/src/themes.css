@@ -26,7 +26,7 @@
   --row: #f8e8dc;
   --k-kw: #9a3f22; --k-fn: #2e5d86; --k-str: #4a7536; --k-com: #9a958a; --k-num: #8a6416; --k-self: #7a4f9a; --k-p: #6f6a62;
   --hi: rgba(46,93,134,.16);
-  --mark: #3b3833; --mark-ink: #f6f4ef; --md-hl: rgba(240,200,100,.35);
+  --mark: #3b3833; --mark-ink: #f6f4ef; --md-hl: rgba(238,200,100,.3);
   --inote: rgba(60,45,20,.05); --hlrow: rgba(60,45,20,.06); --hlbar: #6a655c; --hatch: rgba(60,45,20,.07);
   --edge: #1f1e1b;
   --s-sand: rgba(206,170,110,.16); --s-blue: rgba(96,145,205,.12); --s-green: rgba(110,165,95,.13); --s-pink: rgba(215,120,145,.12);
@@ -72,7 +72,7 @@
   --row: rgba(10,108,220,.08);
   --k-kw: #a8329d; --k-fn: #2f6f78; --k-str: #c2361f; --k-com: #7b8692; --k-num: #2a2ad0; --k-self: #6c36a8; --k-p: #4c4c52;
   --hi: rgba(47,111,120,.15);
-  --mark: #3a3a3e; --mark-ink: #f5f5f7; --md-hl: rgba(255,214,10,.28);
+  --mark: #3a3a3e; --mark-ink: #f5f5f7; --md-hl: rgba(255,214,10,.24);
   --inote: rgba(0,0,0,.04); --hlrow: rgba(0,0,0,.05); --hlbar: #6e6e73; --hatch: rgba(0,0,0,.06);
   --edge: #a0a0a6;
   --s-sand: rgba(185,170,135,.15); --s-blue: rgba(10,108,220,.08); --s-green: rgba(100,150,125,.12); --s-pink: rgba(190,120,150,.1);
@@ -120,7 +120,7 @@
   --row: rgba(242,88,62,.08);
   --k-kw: #8a4fd0; --k-fn: #2563c9; --k-str: #1f8a5b; --k-com: #a3a9b5; --k-num: #d0602f; --k-self: #c2417a; --k-p: #8a909c;
   --hi: rgba(37,99,201,.12);
-  --mark: #8c8377; --mark-ink: #ffffff; --md-hl: rgba(255,196,90,.35);
+  --mark: #8c8377; --mark-ink: #ffffff; --md-hl: rgba(255,196,90,.3);
   --inote: rgba(55,38,20,.035); --hlrow: rgba(55,38,20,.045); --hlbar: #b2aa9e; --hatch: rgba(55,38,20,.05);
   --edge: #b9b1a6;
   --s-sand: rgba(225,200,150,.14); --s-blue: rgba(140,170,230,.12); --s-green: rgba(150,195,140,.12); --s-pink: rgba(242,140,120,.1);
@@ -132,7 +132,6 @@
   --sh-lift: 0 2px 6px rgba(55,38,20,.06), 0 40px 70px -24px rgba(55,38,20,.32);
   --sh-float: 0 0 0 .5px var(--hair), 0 12px 30px -12px rgba(55,38,20,.2);
   --r-card: 25px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
-  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 55%, transparent);
 }
 :root.look-soft-light[data-theme="dark"], :root[data-theme="dark"] [data-look="soft-light"] {
   color-scheme: dark;
@@ -156,7 +155,6 @@
   --sh-lift: 0 2px 6px rgba(0,0,0,.35), 0 40px 70px -24px rgba(0,0,0,.8);
   --sh-float: 0 0 0 .5px var(--hair), 0 12px 30px -12px rgba(0,0,0,.6);
   --r-card: 25px; --display: var(--sys); --label-font: var(--sys); --note-h: var(--sys); --edge-w: 1.5;
-  --sect-border: 1.5px dashed color-mix(in srgb, var(--ink-3) 70%, transparent);
 }
 
 /* ---------- Drafting：工程图纸。只有墨和线，没有颜色、阴影和圆角（中性灰，暗色也是中性的） ---------- */
@@ -174,7 +172,7 @@
   --k-kw: #161616; --k-fn: #161616; --k-str: #55544f; --k-com: #9b9a95; --k-num: #55544f; --k-self: #55544f; --k-p: #9b9a95;
   --hi: rgba(22,22,22,.08);
   --chg: rgba(22,22,22,.06); --chg-strong: rgba(22,22,22,.16); --del: rgba(22,22,22,.06); --add: rgba(22,22,22,.03);
-  --mark: #161616; --mark-ink: #f2f1ed; --md-hl: rgba(240,210,110,.4);
+  --mark: #161616; --mark-ink: #f2f1ed; --md-hl: rgba(240,210,110,.33);
   --inote: rgba(22,22,22,.035); --hlrow: rgba(22,22,22,.045); --hlbar: #161616; --hatch: rgba(22,22,22,.08);
   --edge: #55544f;
   --s-sand: rgba(22,22,22,.025); --s-blue: rgba(22,22,22,.04); --s-green: rgba(22,22,22,.03); --s-pink: rgba(22,22,22,.05);
@@ -226,7 +224,7 @@
   --row: rgba(217,89,42,.16);
   --k-kw: #b2441b; --k-fn: #255e58; --k-str: #8a6a12; --k-com: #9a8c78; --k-num: #8a6a12; --k-self: #7b4a7a; --k-p: #6e6253;
   --hi: rgba(226,166,47,.3);
-  --mark: #2a231c; --mark-ink: #f7efdd; --md-hl: rgba(255,198,60,.45);
+  --mark: #2a231c; --mark-ink: #f7efdd; --md-hl: rgba(255,198,60,.36);
   --inote: rgba(226,166,47,.12); --hlrow: rgba(42,35,28,.06); --hlbar: #2a231c; --hatch: rgba(42,35,28,.08);
   --edge: #2a231c;
   --s-sand: rgba(226,166,47,.2); --s-blue: rgba(63,94,156,.14); --s-green: rgba(47,111,104,.15); --s-pink: rgba(217,89,42,.14);
@@ -264,29 +262,29 @@
   --sect-border: 2px solid var(--rule);
 }
 
-/* ---------- Newspaper：新闻纸、黑色油墨；卡片是一篇报道（眉题 No. x.y、粗体标题、斜体导语），代码像打字机排的引文 ---------- */
+/* ---------- Newspaper：刚印出来的新闻纸（近白）、黑色油墨，报头是左下角一行小字；卡片是一篇报道（眉题 No. x.y、粗体标题、斜体导语），代码像打字机排的引文 ---------- */
 :root.look-newspaper, [data-look="newspaper"] {
   color-scheme: light;
   --sys: "Old Standard TT", "Songti SC", "Noto Serif SC", Georgia, serif;
   --serif: "Old Standard TT", "Songti SC", "Noto Serif SC", Georgia, serif;
   --mono: "Courier Prime", "Courier New", ui-monospace, monospace;
   --mast-font: "UnifrakturMaguntia", "Old Standard TT", Georgia, serif;
-  --bg: #f0ece2; --surface: #f6f3eb; --head: transparent;
+  --bg: #f4f4f1; --surface: #fdfdfb; --head: transparent;
   --ink: #191714; --ink-2: #4a463f; --ink-3: #8a8478;
   --rule: #2a2722; --line: rgba(25,23,20,.14); --hair: rgba(25,23,20,.28);
   --stamp: #a32a1c;
-  --accent: #191714; --accent-ink: #f6f3eb; --warn: #a32a1c;
+  --accent: #191714; --accent-ink: #fdfdfb; --warn: #a32a1c;
   --row: rgba(25,23,20,.07);
   --k-kw: #191714; --k-fn: #191714; --k-str: #4a463f; --k-com: #8a8478; --k-num: #4a463f; --k-self: #4a463f; --k-p: #8a8478;
   --hi: rgba(25,23,20,.1);
   --chg: rgba(163,42,28,.08); --chg-strong: rgba(163,42,28,.2); --del: rgba(163,42,28,.08); --add: rgba(25,23,20,.05);
-  --mark: #191714; --mark-ink: #f6f3eb; --md-hl: rgba(240,205,90,.4);
+  --mark: #191714; --mark-ink: #fdfdfb; --md-hl: rgba(240,205,90,.32);
   --inote: rgba(25,23,20,.04); --hlrow: rgba(25,23,20,.07); --hlbar: #191714; --hatch: rgba(25,23,20,.08);
   --edge: #191714;
   --s-sand: rgba(175,145,90,.1); --s-blue: rgba(70,100,145,.07); --s-green: rgba(85,120,80,.08); --s-pink: rgba(163,42,28,.06);
   --lk-orange: #a32a1c; --lk-blue: #2d4f7c; --lk-green: #3f6a3a; --guide: #a32a1c;
-  --glass: #f6f3eb;
-  --tip-bg: #191714; --tip-ink: #f6f3eb;
+  --glass: #fdfdfb;
+  --tip-bg: #191714; --tip-ink: #fdfdfb;
   --sh-card: 0 1px 0 var(--hair), 0 0 0 .5px var(--hair);
   --sh-lift: 0 0 0 .5px var(--hair), 0 14px 28px -14px rgba(25,23,20,.35);
   --sh-float: 0 0 0 .5px var(--hair), 0 1px 0 var(--hair);
@@ -332,7 +330,7 @@
   --row: rgba(31,106,80,.1);
   --k-kw: #13372b; --k-fn: #1f6a50; --k-str: #7a5a2a; --k-com: #87998f; --k-num: #7a5a2a; --k-self: #4f6f62; --k-p: #6f857a;
   --hi: rgba(31,106,80,.14);
-  --mark: #13372b; --mark-ink: #e6eee5; --md-hl: rgba(232,196,104,.4);
+  --mark: #13372b; --mark-ink: #e6eee5; --md-hl: rgba(232,196,104,.32);
   --inote: rgba(19,55,43,.04); --hlrow: rgba(19,55,43,.06); --hlbar: #2e5547; --hatch: rgba(19,55,43,.07);
   --edge: #2e5547;
   --s-sand: rgba(160,140,90,.1); --s-blue: rgba(60,110,140,.08); --s-green: rgba(31,106,80,.08); --s-pink: rgba(150,90,90,.07);
@@ -382,7 +380,7 @@
   --k-kw: #1d1c1a; --k-fn: #2d5b70; --k-str: #9a5a2c; --k-com: #9a958b; --k-num: #9a5a2c; --k-self: #4c4943; --k-p: #9a958b;
   --hi: rgba(45,91,112,.14);
   --chg: rgba(154,90,44,.1); --chg-strong: rgba(154,90,44,.26); --del: rgba(184,50,31,.08); --add: rgba(45,91,112,.08);
-  --mark: #1d1c1a; --mark-ink: #faf7f0; --md-hl: rgba(226,190,110,.35);
+  --mark: #1d1c1a; --mark-ink: #faf7f0; --md-hl: rgba(226,190,110,.3);
   --inote: rgba(29,28,26,.04); --hlrow: rgba(29,28,26,.06); --hlbar: #1d1c1a; --hatch: rgba(29,28,26,.07);
   --edge: rgba(29,28,26,.8);
   --s-sand: rgba(154,90,44,.07); --s-blue: rgba(45,91,112,.07); --s-green: rgba(80,110,80,.07); --s-pink: rgba(184,50,31,.06);
@@ -433,7 +431,7 @@
   --row: rgba(246,201,59,.24);
   --k-kw: #1f5fbf; --k-fn: #13804a; --k-str: #b0521c; --k-com: #9aa0a8; --k-num: #b0521c; --k-self: #a3367a; --k-p: #7f858f;
   --hi: rgba(31,95,191,.14);
-  --mark: #1f5fbf; --mark-ink: #ffffff; --md-hl: rgba(255,205,60,.4);
+  --mark: #1f5fbf; --mark-ink: #ffffff; --md-hl: rgba(255,205,60,.32);
   --inote: rgba(31,95,191,.05); --hlrow: rgba(0,0,0,.05); --hlbar: #1f5fbf; --hatch: rgba(0,0,0,.06);
   --edge: #7c828c;
   --s-sand: rgba(224,200,140,.18); --s-blue: rgba(184,214,236,.4); --s-green: rgba(160,205,140,.3); --s-pink: rgba(230,150,150,.16);
@@ -481,7 +479,7 @@
 :root.look-classic .card:not(.text):not(.nobg) { box-shadow: 0 0 0 1px var(--line), var(--sh-card); }
 :root.look-classic .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 13%, transparent), var(--sh-card); }
 :root.look-classic .card.lift { box-shadow: 0 0 0 1px var(--line), var(--sh-lift); }
-:root.look-classic .chead { height: 38px; padding: 0 8px 0 12px; gap: 8px; }
+:root.look-classic .chead { height: 38px; padding: 0 8px 0 12px; gap: 8px; --hg: 8px; }
 :root.look-classic .chead .step { border-radius: 1398.5px; corner-shape: round; background: var(--accent); color: var(--accent-ink); }
 :root.look-classic .ctitle { font-size: 12.5px; letter-spacing: 0; }
 :root.look-classic .cpath { font: 11.5px var(--sys); }
@@ -499,7 +497,7 @@
 :root.look-classic .chead .rev.fold.new .rl { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
 :root.look-classic .chead .rev.fold:not(.unc):hover .rl { background: var(--hlrow); }
 :root.look-classic .port { display: none; }
-:root.look-classic .vcard { --vc-bg: var(--bg); --vc-sh: 0 0 0 1px var(--line); --vc-r: 8.5px; }
+:root.look-classic .vcard { --vc-bg: var(--canvas); --vc-sh: 0 0 0 1px var(--line); --vc-r: 8.5px; }
 :root.look-classic .vcard, :root.look-classic .vbox, :root.look-classic .vlabel { color: var(--ink); font-size: 11px; }
 :root.look-classic .pill, :root.look-classic .ctx, :root.look-classic .pop, :root.look-classic .dialog, :root.look-classic .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 12.5px; }
 :root.look-classic .toast { background: var(--toast); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--sh-float); }
@@ -516,30 +514,37 @@
 :root.look-soft-light { --call-deco: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); }
 :root.look-soft-light .card.sel:not(.text) { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
 :root.look-soft-light .card.sel.lift { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), var(--sh-lift); }
-:root.look-soft-light .chead { background: none; border-bottom: 0; }
-:root.look-soft-light .ccard > .cface > .chead { height: auto; flex-wrap: wrap; row-gap: 1px; column-gap: 8px; padding: 14px 10px 10px 18px; }
-:root.look-soft-light .ccard > .cface > .chead .kind, :root.look-soft-light .ccard > .cface > .chead .grow, :root.look-soft-light .ccard > .cface > .chead .plusn { display: none; }
-:root.look-soft-light .ccard > .cface > .chead .step { order: 0; height: 16px; padding: 0; min-width: 0; gap: 10px; display: inline-flex; background: none; color: var(--ink-3); font: 500 9.5px var(--sys); letter-spacing: .32em; }
+:root.look-soft-light .chead { --ib-ink: var(--ink-3); background: none; border-bottom: 0; } /* header icons in the header's own warm grey (the Note title, STEP and version chip) */
+:root.look-soft-light .ccard > .cface > .chead .kind, :root.look-soft-light .ccard > .cface > .chead .plusn { display: none; }
+/* Code card header = the Note's: one 40px row, 16px from the left, the title in the same small spaced capitals; the contents sit
+   1px higher than the Note's (padding-top 9px − 1px, centred: 7px). Repo cards: title, the path in faint small text right after it
+   (it ellipsizes before the title), the hover-only buttons, version, ···. The title ellipsizes; it never wraps onto a row of its own */
+:root.look-soft-light .ccard > .cface > .chead { box-sizing: border-box; height: 40px; padding: 7px 6px 0 16px; column-gap: 8px; --hg: 8px; }
+:root.look-soft-light .ccard > .cface > .chead .step { height: 16px; padding: 0; min-width: 0; gap: 10px; display: inline-flex; background: none; color: var(--ink-3); font: 500 9.5px var(--sys); letter-spacing: .32em; }
 :root.look-soft-light .ccard > .cface > .chead .step::before { content: "STEP\00a0"; }
 :root.look-soft-light .ccard > .cface > .chead .step::after { content: ""; width: 26px; height: 1px; background: var(--coral); }
 :root.look-soft-light .ccard > .cface > .chead .step:hover { color: var(--coral); background: none; }
-:root.look-soft-light .ccard > .cface > .chead .subc, :root.look-soft-light .ccard > .cface > .chead .lockb, :root.look-soft-light .ccard > .cface > .chead .mk { order: 1; }
-:root.look-soft-light .ccard > .cface > .chead .rev { order: 2; margin-left: auto; color: var(--ink-3); }
-:root.look-soft-light .ccard > .cface > .chead .rev ~ .rev { margin-left: 0; }
-:root.look-soft-light .ccard > .cface > .chead .ib { order: 3; border-radius: 12.5px; }
-:root.look-soft-light .ccard > .cface > .chead .ctitle { order: 5; flex: 1 0 100%; font: 300 18px/1.35 var(--sys); color: var(--ink); letter-spacing: -.005em; }
-:root.look-soft-light .ccard > .cface > .chead .cpath { order: 6; flex: 1 0 100%; max-width: none; font: 400 11px var(--sys); color: var(--ink-3); letter-spacing: .02em; padding: 0; }
+:root.look-soft-light .ccard > .cface > .chead .rev { color: var(--ink-3); }
+:root.look-soft-light .ccard > .cface > .chead .ib { width: 22px; height: 22px; border-radius: 12.5px; }
+:root.look-soft-light .ccard > .cface > .chead .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
+:root.look-soft-light .ccard > .cface > .chead .cpath { font: 400 10.5px var(--sys); color: var(--ink-3); letter-spacing: .04em; opacity: .85; }
+:root.look-soft-light .ccard > .cface > .chead .lang { font: 500 10.5px var(--sys); letter-spacing: .04em; border-radius: 12.5px; }
 :root.look-soft-light .ccard > .cface > .chead .rev.new { color: var(--ink-2); gap: 7px; }
+/* Code area in the well: the shared geometry (styles.css .code) with the well's 10px edge taken off each side: 7px left of the
+   line numbers, 8px right of the longest line; 4px above the code and 6px below it (+ 4px under the well, inside .carea) */
+:root.look-soft-light .ccard .code { --code-pt: 4px; --code-pl: 7px; --code-pr: 8px; }
 :root.look-soft-light .rev.new i { width: 7px; height: 7px; background: var(--coral); box-shadow: 0 0 0 3px color-mix(in srgb, var(--coral) 18%, transparent); }
 :root.look-soft-light .cdesc { border-bottom: 0; padding: 0 18px 10px; font-weight: 300; }
-:root.look-soft-light .ccard .carea > .cbody { margin: 0 10px; border-radius: 17px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
+:root.look-soft-light .ccard .carea > .cbody { margin: 0 10px 4px; border-radius: 17px; background: var(--well); box-shadow: inset 0 1px 3px rgba(55,38,20,.07), inset 0 0 0 .5px var(--hair); }
 :root.look-soft-light[data-theme="dark"] .ccard .carea > .cbody { box-shadow: inset 0 1px 3px rgba(0,0,0,.35), inset 0 0 0 .5px var(--hair); }
-/* 托盘下面的 10px 留白算卡的外框（在内容区 .carea 外面）；有 Source 底栏时留白在托盘和底栏之间，底栏贴底 */
-:root.look-soft-light .ccard .carea { margin-bottom: 10px; }
+/* 托盘下面留 10px：4px 在内容区 .carea 里（托盘的 4 + 代码上下 4 / 6 = Warm Ink 的 6 / 8，同样的行 .carea 一样高），6px 算卡的外框；
+   有 Source 底栏时 10px 都在托盘和底栏之间，底栏贴底 */
+:root.look-soft-light .ccard .carea { margin-bottom: 6px; }
 :root.look-soft-light .ccard .carea > .cbody:not(:last-child) { margin-bottom: 10px; }
-:root.look-soft-light .ccard .carea > .cfoot { margin-bottom: -10px; }
-:root.look-soft-light .card.note > .cface > .chead { padding-top: 6px; }
-:root.look-soft-light .card.note .nbody { font-weight: 300; font-size: 14px; padding: 2px 18px 16px; }
+:root.look-soft-light .ccard .carea > .cfoot { margin-bottom: -6px; }
+/* Note: header + body top padding = Warm Ink's (36 + 10), so the same text at the same width is the same height in both */
+:root.look-soft-light .card.note > .cface > .chead { height: 40px; padding-top: 9px; padding-left: 16px; }
+:root.look-soft-light .card.note .nbody { font-weight: 300; --md-fs: var(--note-fs, 13.5px); padding: 6px 16px 12px; }
 :root.look-soft-light .card.note .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
 :root.look-soft-light .tx.st-title { font-weight: 300; font-size: 30px; }
 :root.look-soft-light .edge { stroke: color-mix(in srgb, var(--edge) 85%, transparent); }
@@ -552,8 +557,8 @@
 :root.look-soft-light .ib, :root.look-soft-light .tbtn { border-radius: 12.5px; }
 :root.look-soft-light .pill .ib { width: 30px; height: 30px; }
 :root.look-soft-light .ctx button { border-radius: 11px; }
-:root.look-soft-light .ctx button:not([disabled]):hover { background: var(--well); color: var(--ink); }
-:root.look-soft-light .ctx button:not([disabled]):hover .ck, :root.look-soft-light .ctx button:not([disabled]):hover small { color: var(--ink-3); }
+:root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--well); color: var(--ink); }
+:root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck, :root.look-soft-light .ctx button:not([disabled]):is(:hover, .kb, .subopen) small { color: var(--ink-3); }
 :root.look-soft-light .sep { width: 1px; background: var(--hair); }
 :root.look-soft-light .toast { left: auto; right: 20px; top: 20px; bottom: auto; translate: 0 -8px; background: var(--surface); color: var(--ink); border-radius: 17px; padding: 9px 14px; box-shadow: var(--sh-soft), 0 0 0 .5px var(--hair); }
 :root.look-soft-light .toast.show { translate: 0 0; }
@@ -572,7 +577,7 @@
 :root.look-drafting .card.sel:not(.text)::after { content: ""; position: absolute; inset: -9px; border: 1px dashed var(--ink-2); pointer-events: none; }
 :root.look-drafting .card.sel:not(.text)::before { content: "SELECTED"; position: absolute; top: -26px; left: -9px; font: 10px var(--mono); letter-spacing: .12em; color: var(--ink-2); pointer-events: none; }
 :root.look-drafting .card.lift { box-shadow: var(--sh-lift); }
-:root.look-drafting .chead { padding: 0 6px 0 12px; gap: 10px; border-bottom: 1px solid var(--rule); }
+:root.look-drafting .chead { padding: 0 6px 0 12px; gap: 10px; --hg: 10px; border-bottom: 1px solid var(--rule); }
 :root.look-drafting .chead .kind { display: none; }
 :root.look-drafting .chead .step { background: none; color: var(--ink-3); font: 400 10.5px var(--mono); padding: 0; min-width: 0; }
 :root.look-drafting .chead .step:hover { background: none; color: var(--ink); text-decoration: underline; }
@@ -593,10 +598,10 @@
 :root.look-drafting .ahead.triangle { fill: var(--ink); stroke: none; }
 :root.look-drafting .ahead.triangle.on { fill: var(--accent); }
 :root.look-drafting .port { fill: var(--bg); stroke: var(--ink); }
-:root.look-drafting .vcard { --vc-bg: var(--bg); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 5px; }
+:root.look-drafting .vcard { --vc-bg: var(--canvas); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 5px; }
 :root.look-drafting .vcard, :root.look-drafting .vbox, :root.look-drafting .vlabel { font: 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-drafting .mk, :root.look-drafting .addn { border-radius: 0; }
-:root.look-drafting .card.note .nbody { font: 11px/1.7 var(--mono); color: var(--ink-2); }
+:root.look-drafting .card.note .nbody { --md-fs: var(--note-fs, 11px); line-height: 1.7; font-family: var(--mono); color: var(--ink-2); }
 :root.look-drafting .card.note .nbody h1, :root.look-drafting .card.note .nbody h2, :root.look-drafting .card.note .nbody h3, :root.look-drafting .card.note .nbody strong, :root.look-drafting .card.note .nbody b { font-family: var(--head-font); color: var(--ink); letter-spacing: .06em; }
 :root.look-drafting .card.note .ctitle { font-size: 11px; }
 :root.look-drafting .tx.st-title { font: 600 24px/1.25 var(--head-font); text-transform: uppercase; letter-spacing: .08em; }
@@ -611,7 +616,7 @@
 :root.look-drafting .tbtn:hover, :root.look-drafting .ib:hover { color: var(--ink); background: var(--tint); }
 :root.look-drafting .sep { width: 1px; background: var(--rule); }
 :root.look-drafting .zoom { font: 10.5px var(--mono); color: var(--ink); }
-:root.look-drafting .ctx button:not([disabled]):hover { background: var(--ink); color: var(--bg); }
+:root.look-drafting .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--ink); color: var(--bg); }
 :root.look-drafting .toast { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--ink); border-radius: 0; font: 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 7px 12px; }
 :root.look-drafting .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline; text-underline-offset: 3px; }
 :root.look-drafting .tip { border-radius: 0; }
@@ -629,7 +634,7 @@
 :root.look-colorful .card[data-fc="5"] { --fc: var(--f6); }
 :root.look-colorful .card.sel:not(.text) { box-shadow: 0 0 0 2px var(--rule), 6px 6px 0 2px var(--rule); }
 :root.look-colorful .card.lift { box-shadow: var(--sh-lift); }
-:root.look-colorful .chead { height: 30px; gap: 0; padding: 0; border-bottom: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
+:root.look-colorful .chead { height: 30px; gap: 0; --hg: 0px; padding: 0; border-bottom: 2px solid var(--rule); font: 500 9.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; }
 :root.look-colorful .chead > .step, :root.look-colorful .chead > .subc, :root.look-colorful .chead > .lockb, :root.look-colorful .chead > .kind, :root.look-colorful .chead > .ctitle, :root.look-colorful .chead > .plusn, :root.look-colorful .chead > .cpath, :root.look-colorful .chead > .rev, :root.look-colorful .chead > .mk, :root.look-colorful .chead > .ib, :root.look-colorful .chead > .seg2, :root.look-colorful .chead > .tools, :root.look-colorful .chead > .lcount { height: 100%; display: flex; align-items: center; padding: 0 10px; border-radius: 0; }
 :root.look-colorful .chead .kind, :root.look-colorful .chead .grow { display: none; }
 :root.look-colorful .ccard > .cface > .chead .ctitle { display: none; }
@@ -661,7 +666,7 @@
 :root.look-colorful .cxfoot .ico { width: 13px; height: 13px; stroke-width: 1.6; }
 :root.look-colorful .cxfoot .act:hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
 :root.look-colorful .cxfoot.new .act { background: var(--f3); color: var(--paper-ink); }
-:root.look-colorful .card.note .nbody { font-size: 13.5px; }
+:root.look-colorful .card.note .nbody { --md-fs: var(--note-fs, 13.5px); }
 :root.look-colorful .card.note .nbody h1, :root.look-colorful .card.note .nbody h2, :root.look-colorful .card.note .nbody h3 { font-weight: 600; letter-spacing: .02em; }
 :root.look-colorful .tx.st-title { font-weight: 600; letter-spacing: .02em; }
 :root.look-colorful .edge:not([class*="lc-"]), :root.look-colorful .ahead:not([class*="lc-"]) { stroke: var(--rule); }
@@ -686,8 +691,8 @@
 :root.look-colorful .ib, :root.look-colorful .tbtn, :root.look-colorful .btn, :root.look-colorful .ctx button, :root.look-colorful .cand, :root.look-colorful .db button, :root.look-colorful .fld, :root.look-colorful .zoom { border-radius: 0; }
 :root.look-colorful .pill .tbtn { height: 30px; font: 600 10.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); }
 :root.look-colorful .pill .ib { height: 30px; width: 32px; color: var(--ink); }
-:root.look-colorful .pill .tbtn:hover, :root.look-colorful .pill .ib:hover, :root.look-colorful .ctx button:not([disabled]):hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
-:root.look-colorful .ctx button:not([disabled]):hover .ck, :root.look-colorful .ctx button:not([disabled]):hover small { color: var(--ink-2); }
+:root.look-colorful .pill .tbtn:hover, :root.look-colorful .pill .ib:hover, :root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
+:root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck, :root.look-colorful .ctx button:not([disabled]):is(:hover, .kb, .subopen) small { color: var(--ink-2); }
 :root.look-colorful .zoom { height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; font: 600 10.5px var(--sys); letter-spacing: .12em; color: var(--ink); }
 :root.look-colorful .toast { background: var(--toast); color: var(--paper-ink); border-radius: 0; box-shadow: none; font: 500 10.5px var(--sys); letter-spacing: .16em; text-transform: uppercase; padding: 8px 12px; }
 :root.look-colorful .toast::before { content: ""; width: 7px; height: 7px; border-radius: 50%; corner-shape: round; background: var(--f1); flex: none; }
@@ -701,7 +706,7 @@
 :root.look-newspaper { --no-o: 1; --no-link: var(--ink); --no-link-w: 700; --kw-w: 700; --str-i: italic; --call-deco: underline 1px currentColor; --ico-w: 2; }
 :root.look-newspaper .card:not(.text):not(.nobg) { border-top: 3px solid var(--rule); }
 :root.look-newspaper .card.sel:not(.text) { box-shadow: var(--sh-card); outline: 1.5px solid var(--ink); outline-offset: 5px; }
-:root.look-newspaper .chead { height: 28px; padding: 0 6px 0 12px; gap: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
+:root.look-newspaper .chead { height: 28px; padding: 0 6px 0 12px; gap: 8px; --hg: 8px; border-bottom: .5px solid var(--hair); font: 700 9.5px var(--serif); letter-spacing: .16em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-newspaper .chead .kind { display: none; }
 :root.look-newspaper .ccard > .cface > .chead .ctitle { display: none; }
 :root.look-newspaper .card:not(.ccard) > .cface > .chead .ctitle { font: inherit; letter-spacing: inherit; }
@@ -717,17 +722,17 @@
 :root.look-newspaper .cband .cmeta, :root.look-newspaper .cband .big { display: none; }
 :root.look-newspaper .cdesc { margin-top: -4px; padding: 0 12px 10px; border-bottom: 0; font: italic 400 12.5px/1.45 var(--serif); color: var(--ink-2); }
 :root.look-newspaper .ccard .carea > .cbody { border-top: .5px solid var(--hair); }
-:root.look-newspaper .gutter::after { content: ""; position: absolute; left: 51px; top: 0; bottom: 0; border-left: .5px solid var(--hair); }
+:root.look-newspaper .gutter::after { content: ""; position: absolute; left: calc(var(--gutter) - 3px); top: 0; bottom: 0; border-left: .5px solid var(--hair); }
 :root.look-newspaper .port { fill: var(--ink); stroke: none; }
 :root.look-newspaper .ahead.triangle { stroke: none; }
 :root.look-newspaper .vcard { --vc-bg: none; --vc-sh: none; --vc-r: 0; --vl-pad: 1px 2px; }
 :root.look-newspaper .vcard, :root.look-newspaper .vbox, :root.look-newspaper .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink); }
-:root.look-newspaper .vchips { font: italic 400 12px var(--serif); color: var(--ink); background: var(--bg); padding: 0 4px; }
+:root.look-newspaper .vchips { font: italic 400 12px var(--serif); color: var(--ink); background: var(--canvas); padding: 0 4px; }
 :root.look-newspaper .vchips::before { content: "— "; white-space: pre; }
 :root.look-newspaper .vchips::after { content: " —"; white-space: pre; }
 :root.look-newspaper .mk, :root.look-newspaper .addn { border-radius: 0; }
-:root.look-newspaper .card.note .nbody { font: 13.5px/1.55 var(--serif); }
-:root.look-newspaper .card.note .nbody h1, :root.look-newspaper .card.note .nbody h2, :root.look-newspaper .card.note .nbody h3 { font: 700 19px/1.15 var(--serif); letter-spacing: -.01em; margin-bottom: 6px; }
+:root.look-newspaper .card.note .nbody { --md-fs: var(--note-fs, 13.5px); line-height: 1.55; font-family: var(--serif); --md-h1: var(--note-fs-h1, 19px); --md-h2: var(--note-fs-h2, 19px); --md-h3: var(--note-fs-h3, 19px); }
+:root.look-newspaper .card.note .nbody h1, :root.look-newspaper .card.note .nbody h2, :root.look-newspaper .card.note .nbody h3 { font-weight: 700; line-height: 1.15; font-family: var(--serif); letter-spacing: -.01em; margin-bottom: 6px; }
 :root.look-newspaper .tx.st-title { font: 700 30px/1.15 var(--serif); }
 :root.look-newspaper .tx.st-body { font-family: var(--serif); }
 :root.look-newspaper .sect { border-radius: 0; }
@@ -739,17 +744,18 @@
 :root.look-newspaper .pill .tbtn + .tbtn { box-shadow: inset .5px 0 0 var(--hair); }
 :root.look-newspaper .pill .ib { color: var(--ink); }
 :root.look-newspaper .pill .tbtn:hover, :root.look-newspaper .pill .ib:hover { background: var(--bg); }
-:root.look-newspaper .ctx button:not([disabled]):hover { background: var(--ink); color: var(--surface); }
+:root.look-newspaper .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--ink); color: var(--surface); }
 :root.look-newspaper .sep { width: .5px; background: var(--rule); }
 :root.look-newspaper .zoom { font: 400 11px var(--mono); color: var(--ink); }
 :root.look-newspaper .toast { background: var(--ink); color: var(--surface); border-radius: 0; box-shadow: none; font: 400 12.5px var(--serif); padding: 6px 12px 6px 6px; }
 :root.look-newspaper .toast::before { content: "Bulletin"; flex: none; font: 700 10px/1.5 var(--serif); letter-spacing: .2em; text-transform: uppercase; background: var(--stamp); color: #fff; padding: 1px 6px; }
 :root.look-newspaper .toast .tlink { color: var(--surface); font-weight: 700; font-style: italic; }
 :root.look-newspaper .tip { border-radius: 0; }
-:root.look-newspaper .mast { display: flex; position: absolute; left: 50%; translate: -50% 0; top: 8px; z-index: 3; pointer-events: none; flex-direction: column; align-items: center; gap: 3px;
-  width: min(720px, calc(100% - 300px)); border-bottom: 3px double var(--rule); padding-bottom: 5px; }
-:root.look-newspaper .mast .mn { font: 400 26px/1.1 var(--mast-font); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-:root.look-newspaper .mast::after { content: "Vol. I · CodeBoard Edition"; font: 400 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); border-top: .5px solid var(--rule); padding-top: 3px; width: 100%; text-align: center; }
+:root.look-newspaper .mast { display: flex; position: absolute; left: 16px; bottom: 14px; z-index: 3; pointer-events: none; align-items: baseline; gap: 8px; max-width: 40%; }
+:root.look-newspaper .mast .mn { font: 400 13px/1.2 var(--mast-font); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+:root.look-newspaper .mast::after { content: "Vol. I · CodeBoard Edition"; flex: none; font: 400 8.5px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--ink-2); }
+/* 窄窗口里工具条靠左下（styles.css），报头让到它上面 */
+@media (max-width: 900px) { :root.look-newspaper .mast { bottom: 58px; } }
 
 /* ---------- Poster（艺术） ---------- */
 :root.look-poster { --no-link: var(--ink); --kw-w: 600; --call-deco: underline .5px var(--k-fn); --ico-w: 2; --port-r: 0; --port-rot: 45deg; }
@@ -759,7 +765,7 @@
 :root.look-poster .board::after { inset: 12px; border: .5px solid var(--rule); }
 :root.look-poster .card:not(.text):not(.nobg) { outline: .5px solid var(--rule); outline-offset: 3px; }
 :root.look-poster .card.sel:not(.text) { box-shadow: 0 0 0 1.5px var(--rule); outline: 1px solid var(--ink); outline-offset: 5px; }
-:root.look-poster .ccard > .cface > .chead { position: relative; justify-content: center; height: auto; padding: 10px 32px 0; gap: 10px; border-bottom: 0; font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-2); }
+:root.look-poster .ccard > .cface > .chead { position: relative; justify-content: center; height: auto; padding: 10px 32px 0; gap: 10px; --hg: 10px; border-bottom: 0; font: 400 9.5px var(--mono); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-poster .ccard > .cface > .chead .kind, :root.look-poster .ccard > .cface > .chead .grow, :root.look-poster .ccard > .cface > .chead .ctitle, :root.look-poster .ccard > .cface > .chead .rev:not(.unc) { display: none; }
 :root.look-poster .ccard > .cface > .chead .step { display: inline-flex; align-items: center; white-space: nowrap; background: none; color: var(--ink-2); font: inherit; letter-spacing: inherit; padding: 0; min-width: 0; height: auto; }
 :root.look-poster .ccard > .cface > .chead .step::before { content: "NO.\00a0"; }
@@ -786,8 +792,8 @@
 :root.look-poster .vcard { --vc-bg: var(--surface); --vc-sh: 0 0 0 .5px var(--rule); --vc-r: 0; --vl-pad: 4px 9px; }
 :root.look-poster .vcard, :root.look-poster .vbox, :root.look-poster .vlabel { font: 9.5px/14px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink); }
 :root.look-poster .mk, :root.look-poster .addn { border-radius: 0; }
-:root.look-poster .card.note .nbody { font-size: 12px; line-height: 1.7; }
-:root.look-poster .card.note .nbody h1, :root.look-poster .card.note .nbody h2, :root.look-poster .card.note .nbody h3 { font: 400 17px/1.3 var(--serif); letter-spacing: .02em; text-align: center; margin-bottom: 6px; }
+:root.look-poster .card.note .nbody { --md-fs: var(--note-fs, 12px); line-height: 1.7; --md-h1: var(--note-fs-h1, 17px); --md-h2: var(--note-fs-h2, 17px); --md-h3: var(--note-fs-h3, 17px); }
+:root.look-poster .card.note .nbody h1, :root.look-poster .card.note .nbody h2, :root.look-poster .card.note .nbody h3 { font-weight: 400; line-height: 1.3; font-family: var(--serif); letter-spacing: .02em; text-align: center; margin-bottom: 6px; }
 :root.look-poster .tx.st-title { font: 400 28px/1.2 var(--serif); letter-spacing: .08em; }
 :root.look-poster .sect { border-radius: 0; outline: .5px solid var(--rule); outline-offset: 3px; }
 :root.look-poster .slabel { font: 400 13px/20px var(--serif); letter-spacing: .06em; border-radius: 0; }
@@ -802,7 +808,7 @@
 :root.look-poster .bbar .sep, :root.look-poster .dock .sep { width: .5px; height: 14px; background: var(--band-ink); opacity: .4; margin: 0 6px; }
 :root.look-poster :is(.bbar, .dock) .zoom { color: var(--band-ink); font: 400 10px var(--mono); letter-spacing: .1em; }
 :root.look-poster :is(.bbar, .dock) .zoom:hover { background: color-mix(in srgb, var(--band-ink) 14%, transparent); }
-:root.look-poster .ctx button:not([disabled]):hover { background: var(--band); color: var(--band-ink); }
+:root.look-poster .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--band); color: var(--band-ink); }
 :root.look-poster .toast { bottom: 66px; background: var(--surface); color: var(--ink); border-radius: 0; box-shadow: 0 0 0 .5px var(--rule), 0 0 0 2.5px var(--surface), 0 0 0 3px var(--rule); font: 400 10px var(--mono); letter-spacing: .2em; padding: 7px 14px; }
 :root.look-poster .toast .tlink { color: var(--ink); font-weight: 500; text-decoration: underline .5px; text-underline-offset: 3px; }
 :root.look-poster .tip { border-radius: 0; }
@@ -814,12 +820,12 @@
 /* ---------- Ink Wash（水墨） ---------- */
 /* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
 :root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1; }
-:root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--bg); }
-:root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--bg); }
+:root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--canvas); }
+:root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--canvas); }
 :root.look-ink-wash .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), var(--sh-card); }
 :root.look-ink-wash .card.sel.lift { box-shadow: 0 0 0 1px var(--ink), var(--sh-lift); }
 /* 卡头下面不画分隔线，换成一笔干笔墨痕 */
-:root.look-ink-wash .card:not(.nobg) > .cface > .chead { position: relative; height: 38px; padding: 0 8px 0 14px; gap: 9px; border-bottom: 0; }
+:root.look-ink-wash .card:not(.nobg) > .cface > .chead { position: relative; height: 38px; padding: 0 8px 0 14px; gap: 9px; --hg: 9px; border-bottom: 0; }
 :root.look-ink-wash .card:not(.nobg) > .cface > .chead::after { content: ""; position: absolute; left: 8px; right: 30%; bottom: 1px; height: 3.5px; background: var(--ink); opacity: .55; pointer-events: none;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat;
           mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 8' preserveAspectRatio='none'%3E%3Cpath d='M0 4.6C20 2.4 60 1.6 120 2.2S240 3 300 4.4L300 4.9C250 5.2 180 6.4 110 6.1S30 6.6 0 5.4Z'/%3E%3Cpath d='M30 3.2L90 2.9M150 3.4L230 3.6M60 6L140 5.7' stroke='%23000' stroke-width='.5' opacity='.5'/%3E%3C/svg%3E") 0 0 / 100% 100% no-repeat; }
@@ -838,9 +844,9 @@
 :root.look-ink-wash .rowbg.hl { background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent); box-shadow: none; }
 :root.look-ink-wash .port { fill: var(--ink); stroke: none; }
 :root.look-ink-wash .ahead.dot { opacity: .9; }
-:root.look-ink-wash .vcard { --vc-bg: radial-gradient(closest-side, var(--bg) 62%, transparent); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 10px; }
+:root.look-ink-wash .vcard { --vc-bg: radial-gradient(closest-side, var(--canvas) 62%, transparent); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 10px; }
 :root.look-ink-wash .vcard, :root.look-ink-wash .vbox, :root.look-ink-wash .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink-2); }
-:root.look-ink-wash .card.note .nbody { font: 13.5px/1.65 var(--serif); }
+:root.look-ink-wash .card.note .nbody { --md-fs: var(--note-fs, 13.5px); line-height: 1.65; font-family: var(--serif); }
 :root.look-ink-wash .tx.st-title { font: 400 30px/1.2 var(--serif); letter-spacing: .02em; }
 :root.look-ink-wash .sect { border-radius: 2px; }
 :root.look-ink-wash .slabel { font: italic 400 13px/20px var(--serif); border-radius: 2px; }
@@ -853,8 +859,8 @@
 :root.look-ink-wash .dock .pill { border-radius: 1px; box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); }
 :root.look-ink-wash .ib, :root.look-ink-wash .tbtn, :root.look-ink-wash .btn, :root.look-ink-wash .ctx button, :root.look-ink-wash .cand, :root.look-ink-wash .db button, :root.look-ink-wash .fld, :root.look-ink-wash .zoom { border-radius: 2px; }
 :root.look-ink-wash .pill .tbtn, :root.look-ink-wash .pill .ib { color: var(--ink); }
-:root.look-ink-wash .pill .tbtn:hover, :root.look-ink-wash .pill .ib:hover, :root.look-ink-wash .ctx button:not([disabled]):hover { background: var(--wash); color: var(--ink); }
-:root.look-ink-wash .ctx button:not([disabled]):hover .ck, :root.look-ink-wash .ctx button:not([disabled]):hover small { color: var(--ink-3); }
+:root.look-ink-wash .pill .tbtn:hover, :root.look-ink-wash .pill .ib:hover, :root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) { background: var(--wash); color: var(--ink); }
+:root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) .ck, :root.look-ink-wash .ctx button:not([disabled]):is(:hover, .kb, .subopen) small { color: var(--ink-3); }
 :root.look-ink-wash .sep { width: .5px; background: var(--hair); }
 :root.look-ink-wash .zoom { font: 13px var(--serif); color: var(--ink-2); }
 :root.look-ink-wash .toast { background: var(--paper); color: var(--ink); border-radius: 2px; box-shadow: var(--sh-float); font: 12.5px var(--serif); padding-left: 8px; }
@@ -880,14 +886,14 @@
   --signbox: inset 0 0 0 2px var(--sign), inset 0 0 0 3px rgba(255,255,255,.85); }
 :root.look-city .board { background: url("./scenes/city-light.svg") center / cover no-repeat,
   linear-gradient(var(--street) 0 7px, transparent 7px) 0 50px / 120px 120px, linear-gradient(90deg, var(--street) 0 7px, transparent 7px) 40px 0 / 120px 120px,
-  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--bg); }
+  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--canvas); }
 :root.look-city[data-theme="dark"] .board { background: url("./scenes/city-dark.svg") center / cover no-repeat,
   linear-gradient(var(--street) 0 7px, transparent 7px) 0 50px / 120px 120px, linear-gradient(90deg, var(--street) 0 7px, transparent 7px) 40px 0 / 120px 120px,
-  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--bg); }
+  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--canvas); }
 :root.look-city .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-card); }
 :root.look-city .card.sel.lift { box-shadow: 0 0 0 2px var(--sign), var(--sh-lift); }
 /* 卡头是一块蓝底白字的路牌（内圈一道白线）；Note 是绿色指路牌 */
-:root.look-city .card:not(.nobg) > .cface > .chead { margin: 5px 5px 0; padding: 0 6px 0 9px; gap: 8px; border: 0; border-bottom: 1px solid rgba(0,0,0,.01); border-radius: 5.5px; /* 透明的下沿：见 Ink Wash 卡头编号印章的注释 */ background: var(--sign); color: var(--sign-ink); box-shadow: var(--signbox); }
+:root.look-city .card:not(.nobg) > .cface > .chead { margin: 5px 5px 0; padding: 0 6px 0 9px; gap: 8px; --hg: 8px; border: 0; border-bottom: 1px solid rgba(0,0,0,.01); border-radius: 5.5px; /* 透明的下沿：见 Ink Wash 卡头编号印章的注释 */ background: var(--sign); color: var(--sign-ink); box-shadow: var(--signbox); }
 :root.look-city .card.note > .cface > .chead { background: var(--gsign); box-shadow: inset 0 0 0 2px var(--gsign), inset 0 0 0 3px rgba(255,255,255,.85); }
 :root.look-city .chead .ctitle { font: 600 13px var(--ui); letter-spacing: 0; }
 :root.look-city .card:not(.nobg) > .cface > .chead .cpath.cpath, :root.look-city .card:not(.nobg) > .cface > .chead .rev:not(.new), :root.look-city .card:not(.nobg) > .cface > .chead .kind.kind, :root.look-city .card:not(.nobg) > .cface > .chead .plusn.plusn { color: rgba(255,255,255,.75); }

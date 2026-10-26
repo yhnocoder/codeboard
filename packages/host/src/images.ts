@@ -3,6 +3,8 @@
 // 只收 PNG / JPEG / WebP / GIF，按文件头认（不信扩展名和 mime）；文件名 = 内容的 sha1 前 16 位 + 显示的宽高：同一张图只存一份，
 // 白板不用先解码就知道它多大（显示、编辑时先留好位置，切换时不跳）
 import { createHash } from "node:crypto";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { IMAGE_EXT, sniffImage } from "@codeboard/core";
 import type { Storage } from "./storage";
 
@@ -24,4 +26,15 @@ export async function saveNoteImage(store: Storage, dataUrl: string): Promise<st
   const file = `${createHash("sha1").update(buf).digest("hex").slice(0, 16)}-${t.w}x${t.h}.${IMAGE_EXT[t.mime]}`;
   await store.putAsset(file, buf);
   return ASSET_PREFIX + file;
+}
+
+/** Image 卡的图（assets/ 里的文件名）读成 data: URL：复制到剪贴板、拖进 Note 时白板要图的内容（webview 不能 fetch 资源地址）。认不出、太大时抛错 */
+export async function readAsset(store: Storage, file: string): Promise<string> {
+  if (!/^[\w.-]+$/.test(file) || file.startsWith(".")) throw new Error(`Bad asset name ${file}`);
+  const abs = path.join(store.assetsDir(), file);
+  if ((await fs.stat(abs)).size > MAX_NOTE_IMAGE) throw new Error(`Image is larger than ${MAX_NOTE_IMAGE >> 20} MB`);
+  const buf = await fs.readFile(abs);
+  const mime = sniffImage(buf)?.mime ?? (/\.svg$/i.test(file) ? "image/svg+xml" : null);
+  if (!mime) throw new Error("Not an image");
+  return `data:${mime};base64,${buf.toString("base64")}`;
 }

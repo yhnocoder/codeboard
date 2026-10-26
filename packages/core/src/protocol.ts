@@ -39,9 +39,18 @@ export type ThemeId = (typeof THEMES)[number][0];
 /** 实验性的主题：主题选择里和 VS Code 设置说明里标 Experimental；性能测试和 CI 的性能门槛不管它们（City 太复杂，容易超时） */
 export const EXPERIMENTAL_THEMES: readonly ThemeId[] = ["city"];
 
+/** Note 里能单独设字号的几级：正文和 H1–H6 */
+export const NOTE_FONT_LEVELS = ["body", "h1", "h2", "h3", "h4", "h5", "h6"] as const;
+export type NoteFontLevel = (typeof NOTE_FONT_LEVELS)[number];
+/** Note 的字号（px）；null = 跟主题（正文是主题的字号，标题按正文的比例） */
+export type NoteFontSizes = Record<NoteFontLevel, number | null>;
+/** 设置页里能选的字号范围（px），宿主也按它检查 */
+export const NOTE_FONT_RANGE = { body: [10, 24], heading: [10, 40] } as const;
+
 /** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用。宿主发来的总是和 DEFAULT_SETTINGS 合并好的完整设置 */
 export type Settings = {
   theme: ThemeId;
+  vscodeBg: boolean; // 白板画布的底色换成 VS Code 编辑器的背景色（卡片、文字、强调色还是主题的；默认关）
   hideOnNew: HideFlags; // 新卡默认隐藏什么（替代卡片上的 Hide 浮条）
   studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
   stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
@@ -60,11 +69,13 @@ export type Settings = {
   exportBoardOnly: boolean; // 导出时带上 Board-only 的 Sidenote（默认不带）
   exportScope: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
   noteHeadingInBody: boolean; // Note 开头的标题已经是卡头的名字时，正文里还显示它吗（默认不显示，只是显示上藏起来，编辑时照常出现）
+  noteFontSize: NoteFontSizes; // Note 正文和各级标题的字号（px，null = 跟主题）；Text 卡有自己的字号档，不受影响
 };
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
+  theme: "warm-ink", vscodeBg: false, hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
   hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
   welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board", noteHeadingInBody: false,
+  noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null },
 };
 
 /**
@@ -222,6 +233,7 @@ export type BoardToHost =
   | { type: "gh"; req: number; q: GhQuery }
   | { type: "saveAsset"; req: number; name: string; dataUrl: string }
   | { type: "saveImage"; req: number; dataUrl: string } // Note 里的图：宿主验过、存进 assets/，回 Markdown 里写的地址
+  | { type: "readAsset"; req: number; file: string } // Image 卡的图（assets/ 里的文件名）：回 data: URL（复制到剪贴板、拖进 Note 用）
   | { type: "exportPng"; dataUrl: string; name: string }
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
   | { type: "checkVersions" }
@@ -237,8 +249,11 @@ export type BoardToHost =
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
   | { type: "log"; level: "info" | "warn" | "error"; text: string }
   | { type: "openBoard"; id: string; card?: string; line?: number; sticker?: string }
-  /** ⌘C 复制了这些卡（text = 写进剪贴板的文字）：宿主记下来，贴到别的白板时用 */
-  | { type: "copyCards"; cards: string[]; text: string }
+  /**
+   * ⌘C 复制了这些卡（text = 写进剪贴板的文字）：宿主记下来，贴到别的白板时用。
+   * rich = 白板自己写剪贴板（文字 + 图片），宿主不再写文字盖掉它；写不了时白板再发 copyText
+   */
+  | { type: "copyCards"; cards: string[]; text: string; rich?: boolean }
   /** 粘贴：剪贴板里是别的白板上复制的卡就回 PastedCards（text 对不上、同一块白板回 null）；copy = 独立副本 */
   | { type: "pasteCards"; req: number; text?: string; copy?: boolean }
   /** 共享卡 Delete Everywhere：从所有白板上删掉（回删了它的白板数） */
@@ -368,6 +383,7 @@ type Replies = {
   gh: GhReplyOf<GhQuery["op"]>; // 按 q.op
   saveAsset: string; // assets/ 里的文件名
   saveImage: string; // Markdown 里写的地址（assets/…）
+  readAsset: string; // data: URL
   views: Record<string, SegView>;
   webMeta: WebMeta;
   stickerPacks: StickerPack[];

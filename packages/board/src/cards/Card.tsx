@@ -3,7 +3,7 @@ import { send } from "../host";
 import { createMemo, createSignal, Show, onMount, onCleanup, createEffect, For, type JSX, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import {
-  cardTitle, cardChip, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
+  cardTitle, hiddenLang, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
   type Card, type CodeCard, type NoteCard, type ImageCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
@@ -67,9 +67,9 @@ export function CardView(p: { card: Card }) {
   const style = (): JSX.CSSProperties => {
     const s: JSX.CSSProperties = { left: `${pl().x}px`, top: `${pl().y}px`, width: `${pl().w}px` };
     // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开。
-    // Note / Text 存的高度是上限：跟着内容高矮，内容更高时停在这里、正文里滚（styles.css）；删了字卡跟着变矮，不留空
-    if (pl().h && c().kind === "note") s["max-height"] = `${pl().h}px`;
-    else if (pl().h && c().kind !== "code") s.height = `${pl().h}px`;
+    // Note / Text：没存高度 = 跟着内容（删了字变矮、写多了变高）；存了高度 = 用户拖出来的固定高度，
+    // 内容更高时在正文里滚（styles.css，边上渐隐），更矮时下面留空，直到 Fit Content 回到跟着内容
+    if (pl().h && c().kind !== "code") s.height = `${pl().h}px`;
     const g = grow();
     if (g) { s.width = `${g.w}px`; if (c().kind !== "code") s.height = `${g.h}px`; }
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
@@ -102,7 +102,7 @@ export function CardView(p: { card: Card }) {
     const d = dropTarget(), id = c().id;
     if (!d) return 0;
     const m = d.kind === "merge" && d.card === id;
-    return (m && d.armed ? 1 : 0) | (m && !d.armed ? 2 : 0) | (d.kind === "card" && d.card === id ? 4 : 0) | (d.cands?.includes(id) ? 8 : 0);
+    return (m && d.armed ? 1 : 0) | (m && !d.armed ? 2 : 0) | (d.kind === "card" && d.card === id ? 4 : 0) | (d.cands?.includes(id) ? 8 : 0) | (d.kind === "note" && d.card === id ? 16 : 0);
   });
   return (
     <Show when={!isHidden(c().id)}>
@@ -112,7 +112,7 @@ export function CardView(p: { card: Card }) {
           editing: ed(), off: offscreen(c().id), "lo-ov": lodOf(c().id) === "overview", "lo-map": lodOf(c().id) === "map",
           lost: c().kind === "code" && act.cardStale(c() as CodeCard) === "lost",
           gen: c().kind === "code" && !!(c() as CodeCard).gen,
-          "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8),
+          "merge-hot": !!(drop() & 1), "merge-arm": !!(drop() & 2), "drop-hot": !!(drop() & 4), "drop-cand": !!(drop() & 8), "img-drop": !!(drop() & 16),
           "bind-hot": isBindHot(`card:${c().id}`),
           "bind-anchor": isBindAnchor(c().id),
         }}
@@ -125,7 +125,11 @@ export function CardView(p: { card: Card }) {
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <Show when={!pl().locked}>
-          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />}>
+          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<>
+            <div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />
+            {/* Note 的下边：只改高度（拖出来的高度会一直留着，直到 Fit Content） */}
+            <Show when={c().kind === "note"}><span class="hb" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} /></Show>
+          </>}>
             {/* Mark：右下角一个小方块只改宽度，字号不变、字跟着折行 */}
             <Show when={(c() as NoteCard).hand} fallback={<>
               <span class="hw l" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { left: true })} />
@@ -173,8 +177,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={!p.col && placeOf(c().id).start}><span class="startt" data-tip="Start card: Walkthrough and the call tree start here">START</span></Show>
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" data-nodrag onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={kbd("lock")} data-nodrag onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
-      <span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span>
-      <Show when={!free() && act.mixedLangs() && cardChip(c())}>{(k) => <span class="lchip" data-l={k()}>{k()}</span>}</Show>
+      <Show when={!free()}><span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span></Show>
       <Show when={c().gen}>
         <span class="gentag" data-tip="Generated code: pinned to a run, not a commit">Generated · {c().gen!.what}</span>
       </Show>
@@ -182,19 +185,23 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
         <Editable class="ctitle" kind="title" id={c().id} value={free() ? c().title ?? "" : cardTitle(c())} onCommit={(v) => act.renameCard(c().id, v)} />
       </Show>
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
-      <Show when={free()} fallback={
+      <Show when={!free()}>
         <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !justDragged() && act.openCode(c().id)}>
-          <span class="rw"><span class="rl">{multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}</span></span>
-        </span>}>
-        <button class="rev lang" data-nodrag onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")} ▾</button>
+          <span class="rw"><span class="rl">{multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}${s0() && hiddenLang(s0()!) ? ` · ${hiddenLang(s0()!)}` : ""}`}</span></span>
+        </span>
       </Show>
       <Show when={act.dispatchOf(c().id)}>{(n) => <span class="disp1" data-tip="Picked from a dynamic dispatch: the others are the grey boxes beside it">1 of {n()}</span>}</Show>
       <span class="grow" />
       <Procs card={c().id} procs={c().procs} />
-      {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时右侧的东西挨在一起，中间不空一块 */}
-      {/* 窄卡卡头的取舍（styles.css「卡头优先级」）：版本 / + uncommitted 先缩成小记号，再收起 ← N 和复制，然后路径省略，标题最后；
+      {/* 悬停才出现的按钮放在右侧这一组的最左边：没悬停时它们不占宽度（.hov 收成 0 宽），标题能用满整行，悬停时展开、淡入 */}
+      {/* 窄卡卡头的取舍（styles.css「卡头优先级」）：版本 / + uncommitted 先缩成小记号，再收起 ← N，然后路径省略，标题最后；
           .rw 里的 .rl 放不下时整个折到看不见的第二行。完整文字在 data-tip 里 */}
-      <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" data-nodrag onClick={() => act.copyCard(c())}><span class="rw"><Icon name="copy" /></span></button>
+      <span class="hov"><span>
+        <button class="ib cpy" aria-label="Copy Code" data-tip="Copy Code" data-nodrag onClick={() => act.copyCard(c())}><Icon name="copy" /></button>
+        <Show when={free()}>
+          <button class="lang" data-tip="Change Language" data-nodrag onClick={(e) => act.langMenu(c().id, e.currentTarget)}>{langLabel(s0()?.lang ?? "python")}</button>
+        </Show>
+      </span></span>
       <Show when={review()}><span class="rvdot" data-tip="A sidenote's line changed in the new version: check it" /></Show>
       <Show when={act.openQuestionsOn(c().id)}>{(n) => <button class="qcount" data-tip="Open questions on this card" data-nodrag onClick={() => act.openQuestionsOf(c().id)}>? {n()}</button>}</Show>
       <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" data-nodrag onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
@@ -211,7 +218,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
         <button class="rev fold" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={`${revLabel()} · ${stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}`}
           onClick={(e) => justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : onVar() ? act.switchVariant(c().id, UPSTREAM) : act.commitMenu(c().id, e.currentTarget))}>
-          <span class="rw"><span class="rl"><Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>{revLabel()}<Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show></span></span>
+          <span class="rw"><span class="rl"><Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>{revLabel()}</span></span>
         </button>
       </Show>
       <Show when={!c().variants?.length && (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))}>

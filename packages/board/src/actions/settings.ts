@@ -1,5 +1,5 @@
 // 设置页、主题、诊断：设置改了先乐观更新本地 state.host.settings，再让宿主写进 codeboard.*（宿主会再广播回来）。
-import type { Settings } from "@codeboard/core";
+import { NOTE_FONT_LEVELS, type NoteFontLevel, type NoteFontSizes, type Settings } from "@codeboard/core";
 import { setState, state, placed, rectOf, sync } from "../state/store";
 import { settingsOpen, setSettingsOpen, setKeysOpen } from "../state/ui";
 import { send } from "../host";
@@ -24,20 +24,54 @@ export function applyLook(id: string | undefined) {
   const el = document.documentElement;
   if (el.dataset.look === (id ?? "warm-ink")) return;
   const first = !el.dataset.look;
-  const before = first ? null : new Map(placed().map((k) => [k.id, rectOf(k)]));
+  const before = first ? null : rects();
   // themes.css 的结构规则挂在 html.look-<id> 下（类名进得了祖先过滤，别的主题的规则不用逐个比到根）；data-look 留给变量块和小样
   if (!first) el.classList.remove(`look-${el.dataset.look}`);
   el.dataset.look = id ?? "warm-ink";
   el.classList.add(`look-${el.dataset.look}`);
-  // 卡头 / 色带高度跟主题变：等新尺寸量完（两帧），把被压住的卡往下推（设置里可以改成允许重叠）。
-  // 代码卡卡头的高度由布局决定：新主题的字体还在加载时量到的是后备字体的高度，等字体到了再量两帧
+  // 卡头 / 色带高度跟主题变
+  if (before) pushDownLater(before);
+}
+
+/** Use VS Code's Background: html[data-vsbg] switches --canvas (styles.css) to VS Code's editor background. Only an attribute = only a style recalc */
+export function applyVscodeBg(on: boolean) {
+  document.documentElement.toggleAttribute("data-vsbg", on === true);
+}
+
+/** Note 的字号（设置 → Notes）挂成根上的 --note-fs、--note-fs-h1…h6（styles.css 交给 Markdown 包的 --md-fs、--md-h1…h6）：
+ *  只改变量 = 只重算样式，显示和编辑一样、不重新渲染；卡的尺寸监听会重新量高度 */
+export function applyNoteFonts(f: NoteFontSizes) {
+  const st = document.documentElement.style;
+  for (const k of NOTE_FONT_LEVELS) {
+    const v = f[k], name = k === "body" ? "--note-fs" : `--note-fs-${k}`;
+    if (typeof v === "number" && Number.isFinite(v)) st.setProperty(name, `${v}px`);
+    else st.removeProperty(name);
+  }
+}
+
+/** 改一级的字号（null = 回到主题的）：Note 变高压住下面的卡时，和换主题一样往下推 */
+export function setNoteFont(level: NoteFontLevel | "all", px: number | null) {
+  const f = state.host.settings.noteFontSize;
+  const next = { ...f };
+  for (const k of NOTE_FONT_LEVELS) if (level === "all" || k === level) next[k] = px;
+  if (NOTE_FONT_LEVELS.every((k) => next[k] === f[k])) return;
+  const before = rects();
+  setSetting("noteFontSize", next);
+  pushDownLater(before);
+}
+
+const rects = () => new Map(placed().map((k) => [k.id, rectOf(k)]));
+/** 样式变了、卡跟着变大小以后：等新尺寸量完（两帧），把被压住的卡往下推（设置里可以改成允许重叠）。
+ *  代码卡卡头的高度由布局决定：新主题的字体还在加载时量到的是后备字体的高度，等字体到了再量两帧 */
+function pushDownLater(before: Map<string, R>) {
+  if (state.host.settings.themeReflow === "overlap") return;
   const two = (f: () => void) => requestAnimationFrame(() => requestAnimationFrame(f));
-  if (before && state.host.settings.themeReflow !== "overlap") two(() => (document.fonts?.status === "loading" ? document.fonts.ready.then(() => two(() => reflowAfterTheme(before))) : reflowAfterTheme(before)));
+  two(() => (document.fonts?.status === "loading" ? document.fonts.ready.then(() => two(() => reflowAfterTheme(before))) : reflowAfterTheme(before)));
 }
 
 type R = { x: number; y: number; w: number; h: number };
-/** 换主题后：原来不重叠的上下两张卡，上面那张变高压住了下面那张 → 下面那张（连同更下面的）往下挪，间距保持原样（最多 24）。
- *  视图推出来的改动：走 sync，换主题不产生撤销步骤 */
+/** 换主题、改字号后：原来不重叠的上下两张卡，上面那张变高压住了下面那张 → 下面那张（连同更下面的）往下挪，间距保持原样（最多 24）。
+ *  视图推出来的改动：走 sync，不产生撤销步骤 */
 function reflowAfterTheme(before: Map<string, R>) {
   const ids = [...before.keys()].filter((id) => state.board.place[id]).sort((a, b) => before.get(a)!.y - before.get(b)!.y);
   const now = new Map(ids.map((id) => [id, rectOf(id)]));

@@ -13,7 +13,7 @@ export const TUNE = {
   sideBuffer: { def: 16, label: "Arrows: distance before an end switches sides", unit: "px", min: 0, max: 80 },
   sideSlide: { def: 120, label: "Arrows: end slide when switching sides", unit: "ms", min: 0, max: 1000 },
   liftFade: { def: 140, label: "Arrows: fade when lifting above / dropping below cards", unit: "ms", min: 0, max: 1000 },
-  menuOpen: { def: 300, label: "Menu open animation", unit: "ms", min: 0, max: 1200 },
+  menuOpen: { def: 150, label: "Menu open animation", unit: "ms", min: 0, max: 600 },
   animSpeed: { def: 100, label: "All animations speed (slow motion)", unit: "%", min: 5, max: 100 },
 } as const;
 export type TuneKey = keyof typeof TUNE;

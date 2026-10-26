@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import {
   danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, removeLinks, replaceCards, retargetCards, shiftBy, stampBorn,
   placeCards, unlinkCard, mergeCodeCards, removeLostCalls, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines, sidenoteCard, sidenoteToCard,
-  arrangeCards, cardIntoSidenote, joinLinks, makeCompare, removeSections, renameTitleRefs, splitLink, swapCallTarget, renumberBorn,
+  arrangeCards, cardIntoSidenote, imageIntoNote, joinLinks, makeCompare, removeSections, renameTitleRefs, splitLink, swapCallTarget, renumberBorn,
   type Board, type Card, type CodeCard, type Link, type Segment,
 } from "../src";
 
@@ -648,6 +648,22 @@ describe("board action edits (core edit)", () => {
     expect(b.cards.map((c) => c.id)).toEqual(["a"]);
     expect(b.links).toEqual([]);
     expect(b.sidenotes.map((n) => n.id)).toEqual(["n2"]);
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("imageIntoNote appends the image (and its caption) to the Note and removes the image card with its arrows", () => {
+    const b = base([code("a")]);
+    placeCards(b, [
+      { card: { id: "n", kind: "note", md: "# Plan\n\nStep one\n\n", bg: true }, place: { x: 0, y: 0, w: 300 } },
+      { card: { id: "i", kind: "image", src: "abc.png", alt: "the [batch]", desc: "Prefill first" }, place: { x: 400, y: 0, w: 200 } },
+    ], { copy: false });
+    b.links.push({ id: "l", from: { card: "a" }, to: { card: "i" } });
+    expect(imageIntoNote(b, "i", "a", "assets/x.png")).toBe(false);
+    expect(imageIntoNote(b, "i", "n", "assets/abc-40x30.png")).toBe(true);
+    expect(b.cards.map((c) => c.id)).toEqual(["a", "n"]);
+    expect((b.cards[1] as { md: string }).md).toBe("# Plan\n\nStep one\n\n![the batch](assets/abc-40x30.png)\n\nPrefill first");
+    expect(b.links).toEqual([]);
+    expect(b.place.i).toBeUndefined();
     expect(danglingRefs(b)).toEqual([]);
   });
 

@@ -224,8 +224,7 @@ async function crosslang(res: Record<string, unknown>) {
   put(B, buf, 60, 120, 520);
   const h = await chainsHost(B), page = h.page;
 
-  // 1. Python → pybind → C++ → launch macro → CUDA kernel (chips appear once the board mixes languages)
-  res.chipPyOnly = await page.locator(".lchip").count();
+  // 1. Python → pybind → C++ → launch macro → CUDA kernel (each path already names its language, so no card adds one)
   await callIn(h, buf.id, "intranode_dispatch").click();
   await until(h, "the pybind call expands into the C++ card", () => cardByQual(h, "deep_ep::Buffer::intranode_dispatch"), 6000); await idle(h);
   const cpp = cardByQual(h, "deep_ep::Buffer::intranode_dispatch");
@@ -241,7 +240,7 @@ async function crosslang(res: Record<string, unknown>) {
   const kern = h.board().cards.find((c) => c.id === kl?.to.card) as CodeCard | undefined;
   res.kernel = kern?.title;
   res.vals = kl?.call?.vals?.map((v) => `${v.name}=${v.value}`).join(" ");
-  res.chips = await page.locator(".lchip").allTextContents();
+  res.paths = await page.locator(".chead .cpath").allTextContents();
   res.labels = await page.locator(".vbt").allTextContents();
   // drag the kernel card a little right and down so the boundary label sits between the cards
   await page.keyboard.press("Shift+Digit1"); await idle(h);
@@ -293,8 +292,7 @@ async function crosslang(res: Record<string, unknown>) {
   res.triton = "card" in r && r.mark?.bound === "kernel[grid]" && (r.mark?.alts?.length ?? 0) === 2;
 
   const g = res.gen as { what?: string; run?: string } | undefined;
-  const ok = res.chipPyOnly === 0 && res.pybind && res.host && res.kernel === "dispatch<8, 768, 8192>" && res.vals === "kNumRanks=8 kNumThreads=768 kNumTMABytesPerWarp=8192"
-    && (res.chips as string[]).includes("PY") && (res.chips as string[]).includes("C++") && (res.chips as string[]).includes("CUDA")
+  const ok = (res.paths as string[]).length >= 4 && !(res.paths as string[]).some((t) => t.includes(" · ")) && res.pybind && res.host && res.kernel === "dispatch<8, 768, 8192>" && res.vals === "kNumRanks=8 kNumThreads=768 kNumTMABytesPerWarp=8192"
     && (res.labels as string[]).includes("launch macro · SWITCH_RANKS") && (res.labels as string[]).includes("pybind · deep_ep.cpp .def")
     && res.greyVals === 2 && res.valOpts === 3 && res.valSet && g?.what === "CUDA source" && !!g?.run && res.genLink && /Generated · CUDA source/.test(String(res.genHead)) && res.triton;
   check("crosslang", ok, JSON.stringify(res));

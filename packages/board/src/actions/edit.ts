@@ -4,20 +4,21 @@ import {
   arrangeCards, makeCompare, overlaps, removeSections as removeSectionsIn, renameTitleRefs, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
   uid, findCard, isCode, cardTitle, segOf,
   bounds, removeCards, SECTION_PAD, GAP,
-  copyText, cardRows, LANGS, defaultWidth,
+  copyText, cardRows, LANGS, langLabel, guessLang, pythonDialect, defaultWidth,
   type Arrange, type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment,
-  type Rect,
+  tidy, type Rect,
 } from "@codeboard/core";
 import {
   state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, hostOf, rectOf, toast, placeOf, sharedOn,
   type LineSel,
 } from "../state/store";
 import { animate, Spring, reduceMotion } from "../state/camera";
-import { setEditing, setPopIn } from "../state/ui";
+import { setEditing, setPopIn, setEditEntry, codeTextRange } from "../state/ui";
+import { staticTextRange } from "@yhnocoder/markdown";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
-import { frameOf, allMembers, isHidden } from "../state/sections";
-import { popCard, revealCard, sectionById, selCards } from "./common";
+import { frameOf, fitFrame, setFitting, allMembers, isHidden } from "../state/sections";
+import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
 import { requestViews } from "./create";
 import { kbd } from "../keymap";
 
@@ -85,6 +86,40 @@ export function deleteSel() {
   });
   if (ok) clearSel();
 }
+/**
+ * 显示时在一张卡里选中了一段字再按 ⌫ / Delete（#69）：不删卡。Note / Text / Mark 和自由代码卡进入编辑，选上同一段，
+ * 再把这个键交给编辑器（和在编辑器里按一样：删掉这段字，编辑器里一步撤销；退出编辑时照常存成一步）。
+ * 文件里的代码改不了：什么都不做。没选字、两头不在同一张卡的正文 / 代码里：返回 false（照旧删选中的卡）
+ */
+export function editTextSel(key: "Backspace" | "Delete"): boolean {
+  const s = window.getSelection();
+  if (!s || s.isCollapsed || !s.rangeCount) return false;
+  const rg = s.getRangeAt(0);
+  const el = (n: Node) => (n instanceof Element ? n : n.parentElement);
+  const a = el(rg.startContainer), b = el(rg.endContainer);
+  const cardEl = a?.closest<HTMLElement>(".card[data-id]");
+  if (!cardEl || cardEl !== b?.closest(".card[data-id]")) return false;
+  const id = cardEl.dataset.id!, c = cardById(id)?.card;
+  // Note / Text / Mark 的正文（静态 Markdown，还没在编辑）
+  const md = a!.closest<HTMLElement>(".md");
+  if (c?.kind === "note" && md && md === b!.closest(".md") && md.matches(".nbody, .tx") && !md.classList.contains("editing")) {
+    // 数不出来（选区落在了数不到的地方）：只进入编辑，不删字
+    const range = staticTextRange(md, rg);
+    setEditEntry(range && { kind: "note", id, key, range });
+    setEditing({ kind: "note", id });
+    return true;
+  }
+  // 代码卡的代码
+  const src = a!.closest(".src");
+  const map = src && src === b!.closest(".src") ? codeTextRange.get(src) : undefined;
+  if (c?.kind !== "code" || !map) return false;
+  const r = map(rg), seg = r && c.segments.find((x) => x.id === r.seg);
+  if (seg?.src.kind === "free" && c.segments.length === 1) {
+    setEditEntry({ kind: "free", id, key, from: r!.from, to: r!.to });
+    setEditing({ kind: "free", id });
+  }
+  return true;
+}
 export function deleteLinks(ids: string[]) {
   const s = new Set(ids);
   if (mutate((b) => removeLinks(b, s))) select({});
@@ -107,6 +142,24 @@ export const arrangeItem = (ids: () => string[]): Item => ({
     { label: "Send to Back", kbd: kbd("back"), run: () => arrange(ids(), "back") },
   ],
 });
+
+/**
+ * Tidy Up（core 的 tidy）：选中的卡之间有箭头的排成列，没箭头的排成行放在下面。一步撤销；卡和线从旧位置滑过去。
+ * 锁住的卡不动，当成障碍（别的卡绕开它）
+ */
+export function tidyUp(ids = sel.cards) {
+  const hosts = [...new Set(ids.map(hostOf))].filter((id) => state.board.place[id]);
+  const free = hosts.filter((id) => !isLocked(id));
+  if (free.length < 2) return;
+  const inSel = new Set(free);
+  const links = state.board.links.map((l) => [hostOf(l.from.card), hostOf(l.to.card)] as [string, string]).filter(([f, t]) => inSel.has(f) && inSel.has(t));
+  const m = tidy(free.map((id) => ({ id, ...rectOf(id) })), links, hosts.filter(isLocked).map((id) => rectOf(id)));
+  const moved: { id: string; ox: number; oy: number }[] = [];
+  for (const [id, p] of m) { const c = placeOf(id), ox = c.x - p.x, oy = c.y - p.y; if (ox || oy) moved.push({ id, ox, oy }); }
+  if (!moved.length) return;
+  if (!mutate((b) => { for (const [id, p] of m) { const c = b.place[id]; if (c) { c.x = p.x; c.y = p.y; } } })) return;
+  slideFrom(moved);
+}
 
 export function duplicateSel() {
   const cs = selCards().filter((c) => c.kind !== "compare");
@@ -166,22 +219,40 @@ export function setFreeCode(id: string, text: string) {
     const s = c.segments[0];
     s.text = text.split("\n");
     s.end = s.start + s.text.length - 1;
+    // 语言没手选过就跟着内容走（认不出来时不动）
+    if (s.src.kind === "free" && !s.src.langPicked) s.lang = detectLang(text) ?? s.lang;
     seg = structuredClone(unwrap(s));
   };
   if (isFresh(id)) settleFresh(id, !!text.trim(), set);
   else mutate(set);
   if (seg) requestViews([seg]);
 }
-function setLang(id: string, lang: string) {
+/** Free code 按内容认语言：Python 再细分 Triton / TileLang */
+const detectLang = (text: string) => { const g = guessLang(text); return g === "python" ? pythonDialect(text) : g; };
+/** lang = null：回到按内容自动识别 */
+function setLang(id: string, lang: string | null) {
   let seg: Segment | undefined;
-  mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c)) { c.segments[0].lang = lang; seg = structuredClone(unwrap(c.segments[0])); } });
+  mutate((b) => {
+    const c = findCard(b, id)?.card;
+    if (!isCode(c)) return;
+    const s = c.segments[0];
+    if (s.src.kind === "free") s.src.langPicked = lang ? true : undefined;
+    s.lang = lang ?? detectLang(s.text.join("\n")) ?? s.lang;
+    seg = structuredClone(unwrap(s));
+  });
   if (seg) requestViews([seg]);
 }
 export function langMenu(id: string, el: Element) {
   const r = el.getBoundingClientRect();
   const c = cardById(id)?.card;
   if (!isCode(c)) return;
-  openMenu(LANGS.map((l) => ({ label: l.label, checked: c.segments[0].lang === l.id, run: () => setLang(id, l.id) })), r.left, r.bottom + 4);
+  const s = c.segments[0];
+  const auto = s.src.kind === "free" ? detectLang(s.text.join("\n")) : null;
+  const picked = s.src.kind !== "free" || !!s.src.langPicked;
+  openMenu([
+    ...(s.src.kind === "free" ? [{ label: auto ? `Auto-detect (${langLabel(auto)})` : "Auto-detect", checked: !picked, run: () => setLang(id, null) }, null] : []),
+    ...LANGS.map((l) => ({ label: l.label, checked: picked && s.lang === l.id, run: () => setLang(id, l.id) })),
+  ], r.left, r.bottom + 4);
 }
 export function toggleHide(id: string, k: "comments" | "docstrings" | "blank") {
   mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c)) c.hide = { ...c.hide, [k]: !c.hide?.[k] }; });
@@ -389,6 +460,25 @@ export function toggleSection(id: string) {
     setPopIn((p) => { const n = { ...p }; for (const [m, o] of offs) { if (done) delete n[m]; else n[m] = { ...o, v: Math.max(0, sp.v) }; } return n; });
     if (done) apply();
     return done;
+  });
+}
+/** Section 的 Fit Content（#40）：框收到刚好包住成员卡和子 Section（标准边距）；缓动过去，一步撤销。折叠的、锁着的、空的不动 */
+export function fitSections(ids: string[]) {
+  const fits = new Map<string, Rect>();
+  for (const id of ids) {
+    const s = sectionById(id);
+    if (!s || s.collapsed || sectionLocked(s)) continue;
+    const r = fitFrame(s);
+    if (r) fits.set(id, r);
+  }
+  if (!fits.size) return;
+  if (!reduceMotion()) {
+    const me = new Set(fits.keys());
+    setFitting(me);
+    setTimeout(() => setFitting((f) => (f === me ? new Set() : f)), 320);
+  }
+  mutate((b) => {
+    for (const [id, r] of fits) { const s = b.sections.find((q) => q.id === id); if (s) Object.assign(s, { x: r.x, y: r.y, w: r.w, h: r.h }); }
   });
 }
 export function renameSection(id: string, v: string) {
