@@ -4,7 +4,7 @@
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard, migrateBoard, type Board } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle } from "../fixtures";
 
 const svg = (w: number, hgt: number, fill: string) => "data:image/svg+xml," + encodeURIComponent(
   `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${hgt}"><rect width="${w}" height="${hgt}" fill="${fill}"/><circle cx="${w / 2}" cy="${hgt / 2}" r="${Math.min(w, hgt) / 3}" fill="#fff8"/></svg>`);
@@ -26,7 +26,8 @@ test("imageFollowsAspectRatio", async () => {
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: migrateBoard(JSON.parse(JSON.stringify({ ...b, version: 6 }))), light, w: 1000, h: 800 });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  await until(h, "both images are decoded", () => pg.locator(".imgb img").evaluateAll((els) => els.length === 2 && els.every((e) => (e as HTMLImageElement).complete && (e as HTMLImageElement).naturalWidth > 0)));
+  await idle(h);
   await pg.screenshot({ path: path.join(OUT, "image-29-aspect.png"), clip: { x: 20, y: 40, width: 800, height: 620 } });
   const wide = await fit(h, "wide"), tall = await fit(h, "tall");
   check("imageFollowsAspectRatio wide image, no bands", noBands(wide), wide);
@@ -39,10 +40,12 @@ test("imageFollowsAspectRatio", async () => {
   const g = (await pg.locator('.card[data-id="wide"] .grip').boundingBox())!;
   await pg.mouse.move(g.x + g.width / 2, g.y + g.height / 2);
   await pg.mouse.down();
-  for (let i = 1; i <= 10; i++) { await pg.mouse.move(g.x + g.width / 2 + i * 8, g.y + g.height / 2 + i * 20); await pg.waitForTimeout(20); }
-  const during = await fit(h, "wide");
+  for (let i = 1; i <= 10; i++) await pg.mouse.move(g.x + g.width / 2 + i * 8, g.y + g.height / 2 + i * 20);
+  // the last move has been applied: the picture is 80 px wider than before
+  const during = await until(h, "the card follows the drag", async () => { const f = await fit(h, "wide"); return f.img.w >= wide.img.w + 79 ? f : null; });
   await pg.mouse.up();
-  await pg.waitForTimeout(1300);
+  await until(h, "the resize is saved", () => h.board().place.wide.w > 360);
+  await idle(h);
   const after = await fit(h, "wide");
   await pg.screenshot({ path: path.join(OUT, "image-29-aspect-resized.png"), clip: { x: 20, y: 40, width: 800, height: 620 } });
   const p = h.board().place.wide;

@@ -1,7 +1,7 @@
 // Scenarios for Web cards (bookmarks), Link Lists, GitHub links and the From GitHub… panel. Host network requests (webMeta, gh) are faked here.
 import { shot, files, viewOf, put, type Host, type OnMsg } from "../harness";
 import { emptyBoard, uid, type Board, type WebCard, type WebMeta, type LinksCard, type CodeCard, type Segment, type GhTree } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, expect, until, idle, frames } from "../fixtures";
 
 const svg = (s: string) => `data:image/svg+xml;base64,${Buffer.from(s).toString("base64")}`;
 const fav = (c: string, t = "") => svg(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" rx="7" fill="${c}"/><text x="16" y="22" font-family="Arial" font-weight="700" font-size="17" fill="#fff" text-anchor="middle">${t}</text></svg>`);
@@ -94,22 +94,24 @@ test("web", async () => {
   put(b, { id: uid("w"), kind: "web", url: "https://example.com/slow" }, 1020, 380, 300); // not fetched yet
   const h = await open({ board: b, light, on: webHost });
   await shot(h, "web-01-states");
-  await h.page.locator(".card.web").first().hover(); await h.page.waitForTimeout(200);
+  await h.page.locator(".card.web").first().hover();
   await shot(h, "web-02-hover");
   const t = h.page.locator(".card.web").first().locator(".wtitle");
-  await t.dblclick(); await h.page.waitForTimeout(200);
+  await t.dblclick();
+  await until(h, "double-clicking the title opens the link", () => h.sent.some((m) => m.type === "openLink"));
   const opened = h.sent.filter((m) => m.type === "openLink").length;
   // A2 third variant: Edit Title / Retry
   await h.page.locator(".card.web .wlink", { hasText: "Edit Title" }).first().click();
   await h.page.keyboard.type("KV cache design notes"); await h.page.keyboard.press("Enter");
-  await h.page.waitForTimeout(200);
+  await until(h, "the edited title is saved", () => (h.board().cards as WebCard[]).some((c) => c.title === "KV cache design notes"));
   // Paste a URL: shows Fetching… first, then becomes a bookmark
+  const pasted = () => (h.board().cards as WebCard[]).find((c) => c.url.includes("flashinfer"));
   await paste(h, "https://flashinfer.ai/2024/02/02/cascade-inference.html", 120, 560);
-  await h.page.waitForTimeout(120);
+  await until(h, "the pasted URL becomes a card", pasted);
   await shot(h, "web-03-fetching");
-  await h.page.waitForTimeout(600);
+  // webHost answers webMeta 350 ms later (a timer of its own: not a board message idle() could see)
+  await until(h, "the pasted card gets its page's metadata", () => pasted()?.meta?.title);
   await shot(h, "web-04-pasted");
-  await h.page.waitForTimeout(900);
   const cards = h.board().cards as WebCard[];
   const ok = opened === 1 && cards.some((c) => c.title === "KV cache design notes") && cards.some((c) => c.url.includes("flashinfer") && c.meta?.title);
   check("web", ok, JSON.stringify({ opened, n: cards.length }));
@@ -122,7 +124,7 @@ test("webdrag", async () => {
   const url = "https://arxiv.org/abs/2309.06180";
   put(b, web(url), 200, 120, 588);
   const h = await open({ board: b, light, on: webHost });
-  await h.page.waitForTimeout(400);
+  await idle(h);
   const c = h.page.locator(".card.web").first();
   const spots: Record<string, string> = { image: ".wimg img", title: ".wtitle", description: ".wdesc", site: ".wsite" };
   const bad: string[] = [];
@@ -132,20 +134,20 @@ test("webdrag", async () => {
     const r = (await el.boundingBox())!, before = (await c.boundingBox())!;
     const x = r.x + r.width / 2, y = r.y + r.height / 2;
     await h.page.mouse.move(x, y); await h.page.mouse.down();
-    for (let i = 1; i <= 10; i++) { await h.page.mouse.move(x + 7 * i, y + 5 * i); await h.page.waitForTimeout(16); }
-    await h.page.mouse.up(); await h.page.waitForTimeout(300);
+    for (let i = 1; i <= 10; i++) { await h.page.mouse.move(x + 7 * i, y + 5 * i); await frames(h.page); }
+    await h.page.mouse.up(); await idle(h);
     const after = (await c.boundingBox())!;
     if (Math.hypot(after.x - before.x, after.y - before.y) < 30) bad.push(`${name}: card did not move`);
   }
   // The replay's way (r18): select by a click near the top, zoom to the card (Shift+2), drag from 60% down the middle
   {
     const r0 = (await c.boundingBox())!;
-    await h.page.mouse.click(r0.x + r0.width / 2, r0.y + 4); await h.page.keyboard.press("Shift+@"); await h.page.waitForTimeout(900);
+    await h.page.mouse.click(r0.x + r0.width / 2, r0.y + 4); await h.page.keyboard.press("Shift+@"); await idle(h);
     const r = (await c.boundingBox())!, x = r.x + r.width / 2, y = r.y + r.height * 0.6;
     const hit = await h.page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y) as HTMLElement; return e ? `${e.tagName}.${e.className}` : ""; }, [x, y]);
     await h.page.mouse.move(x, y); await h.page.mouse.down();
-    for (let i = 1; i <= 10; i++) { await h.page.mouse.move(x + 7 * i, y + 5 * i); await h.page.waitForTimeout(40); }
-    await h.page.mouse.up(); await h.page.waitForTimeout(600);
+    for (let i = 1; i <= 10; i++) { await h.page.mouse.move(x + 7 * i, y + 5 * i); await frames(h.page); }
+    await h.page.mouse.up(); await idle(h);
     const a = (await c.boundingBox())!;
     if (Math.hypot(a.x - r.x, a.y - r.y) < 30) bad.push(`after zoom, middle (${hit}): card did not move`);
   }
@@ -163,18 +165,19 @@ test("webstyles", async () => {
   const ids = styles.map((st, i) => { const c = { ...web(url), style: st }; put(b, c, 40 + (i % 3) * 400, 40 + Math.floor(i / 3) * 380, 360); return c.id; });
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 1300, h: 820, on: webHost });
-  await h.page.waitForTimeout(600);
+  await idle(h);
   const op = (id: string) => h.page.locator(`.card[data-id="${id}"] .wacts`).evaluate((e) => +getComputedStyle(e).opacity);
   const hidden = await op(ids[2]);
   const r = (await h.page.locator(`.card[data-id="${ids[2]}"]`).boundingBox())!;
-  await h.page.mouse.move(r.x + 40, r.y + 40); await h.page.waitForTimeout(300);
+  await h.page.mouse.move(r.x + 40, r.y + 40); await idle(h); // the ↗ fades in
   const shown = await op(ids[2]);
   const info = await Promise.all(ids.map((id) => h.page.locator(`.card[data-id="${id}"] .wbm`).evaluate((e) => ({ banner: e.classList.contains("wbanner"), compact: e.classList.contains("wcompact"), img: !!e.querySelector(".wimg"), h: Math.round(e.getBoundingClientRect().height) }))));
   await shot(h, "web-styles");
   // Menu View ▸ No Image
-  await h.page.mouse.click(r.x + 40, r.y + 40, { button: "right" }); await h.page.waitForTimeout(400);
-  await h.page.locator(".ctx button", { hasText: /^View/ }).hover(); await h.page.waitForTimeout(400);
-  await h.page.locator(".ctx button", { hasText: "No Image" }).click(); await h.page.waitForTimeout(1400);
+  await h.page.mouse.click(r.x + 40, r.y + 40, { button: "right" });
+  await h.page.locator(".ctx button", { hasText: /^View/ }).hover();
+  await h.page.locator(".ctx button", { hasText: "No Image" }).click();
+  await until(h, "View ▸ No Image is saved", () => (h.board().cards.find((c) => c.id === ids[2]) as WebCard).style !== "side");
   const st = (h.board().cards.find((c) => c.id === ids[2]) as WebCard).style;
   const ok = hidden === 0 && shown === 1 && info[1].banner && !info[2].banner && info[2].img && !info[3].img && info[4].compact && !info[4].img && info[4].h < 50 && st === "text";
   check("web-styles", ok, JSON.stringify({ hidden, shown, info, st }));
@@ -191,49 +194,51 @@ test("linklist", async () => {
   const dst = await h.page.locator(`.card[data-id="${a.id}"] .wtitle`).boundingBox();
   await h.page.mouse.move(src!.x + 40, src!.y + 8); await h.page.mouse.down();
   await h.page.mouse.move(dst!.x + 60, dst!.y + 10, { steps: 10 });
-  await h.page.waitForTimeout(550);
+  await h.page.locator(".drophint", { hasText: "Release to merge" }).waitFor(); // armed 400 ms after it got there (interact.ts)
   await shot(h, "ll-01-merge-armed");
-  await h.page.mouse.up(); await h.page.waitForTimeout(300);
-  await h.page.waitForTimeout(900); // wait for autosave
+  await h.page.mouse.up();
   const L = () => h.board().cards.find((k) => k.kind === "links") as LinksCard | undefined;
+  await until(h, "the drop merges the cards into a Link List", L);
+  await idle(h);
   const merged = L()?.items.length === 2 && h.board().cards.length === 1;
   // Multi-line paste → new Link List
   await paste(h, ["https://flashinfer.ai/2024/02/02/cascade-inference.html", "https://docs.internal.company/wiki/kv-cache-design/a-very-long-page-name-that-keeps-going-and-going?tab=notes&rev=2025-10-16T04:15:00Z&from=board", "https://triton-lang.org/main/python-api/triton.language.html"].join("\n"), 700, 120);
-  await h.page.waitForTimeout(1200);
   const lists = () => h.board().cards.filter((k) => k.kind === "links") as LinksCard[];
+  await until(h, "the pasted lines become a Link List", () => lists().length > 1);
+  await idle(h);
   const pasted = lists().length === 2 && lists()[1].items.length === 3;
   // Merge two Link Lists (multi-select → Merge into Link List)
   await h.page.keyboard.press("Control+a");
   await h.page.locator(".card.links .chead").first().click({ button: "right" });
-  await h.page.locator(".ctx button", { hasText: "Merge into Link List" }).click(); await h.page.waitForTimeout(300);
+  await h.page.locator(".ctx button", { hasText: "Merge into Link List" }).click();
+  await until(h, "the two Link Lists are merged", () => lists().length === 1);
   await h.page.mouse.click(1300, 860);
   await shot(h, "ll-02-compact");
   // Hover a Compact row: toolbar + full bookmark
   const rows = h.page.locator(".card.links .lrow");
-  await rows.nth(2).hover(); await h.page.waitForTimeout(800);
+  await rows.nth(2).hover(); await h.page.locator(".lpeek").waitFor(); // the peek shows 550 ms after the hover (WebBody.tsx)
   await shot(h, "ll-03-hover-peek");
   // Switch a single row to Rich
-  await rows.nth(1).hover(); await rows.nth(1).locator('.ltools .lb[aria-label="Show as Rich"]').click(); await h.page.waitForTimeout(200);
-  await rows.nth(0).hover(); await rows.nth(0).locator('.ltools .lb[aria-label="Show as Rich"]').click(); await h.page.waitForTimeout(200);
-  await h.page.mouse.move(1300, 860); await h.page.waitForTimeout(200);
+  await rows.nth(1).hover(); await rows.nth(1).locator('.ltools .lb[aria-label="Show as Rich"]').click(); await expect(rows.nth(1)).toHaveClass(/\brich\b/);
+  await rows.nth(0).hover(); await rows.nth(0).locator('.ltools .lb[aria-label="Show as Rich"]').click(); await expect(rows.nth(0)).toHaveClass(/\brich\b/);
+  await h.page.mouse.move(1300, 860);
   await shot(h, "ll-04-mixed");
-  await rows.nth(1).hover(); await h.page.waitForTimeout(250);
+  await rows.nth(1).hover();
   await shot(h, "ll-05-rich-hover");
   // Right-click a row
-  await rows.nth(3).click({ button: "right" }); await h.page.waitForTimeout(200);
+  await rows.nth(3).click({ button: "right" }); await h.page.locator(".ctx button").first().waitFor();
   await shot(h, "ll-06-row-menu");
   await h.page.keyboard.press("Escape");
   // ⋯ → View ▸ Rich
-  await h.page.locator(".card.links .chead").click({ button: "right", position: { x: 30, y: 12 } }); await h.page.waitForTimeout(150);
-  await h.page.locator(".ctx button", { hasText: "View" }).hover(); await h.page.waitForTimeout(250);
+  await h.page.locator(".card.links .chead").click({ button: "right", position: { x: 30, y: 12 } });
+  await h.page.locator(".ctx button", { hasText: "View" }).hover();
   await shot(h, "ll-06b-view");
   // Submenus are currently drawn in the parent menu's coordinate space (old Menu.tsx issue, to be fixed in the menu rewrite); click directly here
   await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().waitFor({ state: "attached" });
-  await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().dispatchEvent("click"); await h.page.waitForTimeout(300);
+  await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().dispatchEvent("click");
+  await until(h, "View ▸ Rich is saved", () => L()?.rich);
   await h.page.mouse.move(1300, 860);
   await shot(h, "ll-07-all-rich");
-  // L() is the last board the page saved; autosave runs ~800ms after a change, so read it only after that
-  await h.page.waitForTimeout(900);
   const rich = !!L()?.rich;
   // Reorder via ⋮⋮: drag row 4 to the top
   const order0 = L()!.items.map((x) => x.url);
@@ -241,20 +246,22 @@ test("linklist", async () => {
   const g = await rows.nth(3).locator(".lgrip").boundingBox();
   const top = await rows.nth(0).boundingBox();
   await h.page.mouse.move(g!.x + 5, g!.y + 8); await h.page.mouse.down();
-  await h.page.mouse.move(g!.x + 5, top!.y + 6, { steps: 8 }); await h.page.waitForTimeout(100);
+  await h.page.mouse.move(g!.x + 5, top!.y + 6, { steps: 8 });
   await shot(h, "ll-08-reorder");
-  await h.page.mouse.up(); await h.page.waitForTimeout(1000);
+  await h.page.mouse.up();
+  await until(h, "the reorder is saved", () => L()!.items[0].url !== order0[0]);
+  await idle(h);
   const order1 = L()!.items.map((x) => x.url);
   const reordered = order1[0] === order0[3] && order1.length === order0.length;
   // Drag out of the card = split into a Web card
   await rows.nth(1).hover();
   const g2 = await rows.nth(1).locator(".lgrip").boundingBox();
   await h.page.mouse.move(g2!.x + 5, g2!.y + 8); await h.page.mouse.down();
-  await h.page.mouse.move(320, 420, { steps: 10 }); await h.page.waitForTimeout(100);
+  await h.page.mouse.move(320, 420, { steps: 10 });
   await shot(h, "ll-09-drag-out");
-  await h.page.mouse.up(); await h.page.waitForTimeout(400);
+  await h.page.mouse.up();
+  await until(h, "the row dragged out becomes a Web card", () => h.board().cards.some((k) => k.kind === "web"));
   await shot(h, "ll-10-split");
-  await h.page.waitForTimeout(600);
   const split = h.board().cards.filter((k) => k.kind === "web").length === 1 && L()!.items.length === order0.length - 1;
   const ok = merged && pasted && rich && reordered && split;
   check("linklist", ok, JSON.stringify({ merged, pasted, rich, reordered, split }));
@@ -265,43 +272,41 @@ test("linklist", async () => {
 test("github", async () => {
   const h = await open({ board: emptyBoard("b1", "vllm attention"), light, on: ghHost });
   await paste(h, "https://github.com/vllm-project/vllm/blob/main/nanovllm/engine/scheduler.py#L24-L41", 200, 200);
-  await h.page.waitForTimeout(700);
+  await until(h, "the blob link becomes a card", () => h.board().cards.length);
   await shot(h, "gh-01-blob-paste");
-  await h.page.waitForTimeout(900);
   const blob = (h.board().cards[0] as CodeCard | undefined)?.segments?.[0];
   const blobOk = blob?.src.kind === "github" && blob.version.kind === "git" && blob.start === 24;
   // Sidebar Add Repo… → host sends githubPicker
   await h.post({ type: "githubPicker" });
-  await h.page.waitForTimeout(200);
+  await h.page.locator(".ghp-in:focus").waitFor();
   await shot(h, "gh-02-picker-empty");
   await h.page.keyboard.type("vllm-project/vllm"); await h.page.keyboard.press("Enter");
-  await h.page.waitForTimeout(900);
   await h.page.locator(".ghp .gt.dir", { hasText: "nanovllm" }).click();
   await h.page.locator(".ghp .gt.dir", { hasText: "layers" }).click();
   await h.page.locator(".ghp .gt", { hasText: "attention.py" }).click();
-  await h.page.waitForTimeout(500);
   const l = (n: number) => h.page.locator(`.ghp .gl[data-l="${n}"] .no`);
+  await l(30).waitFor({ state: "attached" }); // the file comes from the host
   await l(30).scrollIntoViewIfNeeded();
   const a = await l(30).boundingBox(), z = await l(36).boundingBox();
   await h.page.mouse.move(a!.x + 10, a!.y + 8); await h.page.mouse.down();
   await h.page.mouse.move(z!.x + 10, z!.y + 8, { steps: 6 }); await h.page.mouse.up();
   await shot(h, "gh-03-picker-file");
   // Switch to a tag: commit changes, file stays open
-  await h.page.locator(".ghp-seg button", { hasText: "Tag" }).click(); await h.page.waitForTimeout(900);
-  await h.page.locator(".ghp-refin").click(); await h.page.waitForTimeout(150);
+  await h.page.locator(".ghp-seg button", { hasText: "Tag" }).click();
+  await h.page.locator(".ghp-pin code", { hasText: SHA["v0.6.0"].slice(0, 7) }).waitFor(); // the tag's commit
+  await h.page.locator(".ghp-refin").click(); await h.page.locator(".ghp-refin:focus").waitFor();
   await shot(h, "gh-04-picker-tag");
   await h.page.keyboard.press("Escape");
   await h.page.locator(".ghp .btn.pri", { hasText: "Add to Board" }).click();
-  await h.page.waitForTimeout(800);
+  await until(h, "Add to Board adds the card", () => h.board().cards.length > 1);
   await shot(h, "gh-05-added");
-  await h.page.waitForTimeout(900);
   const c = h.board().cards[1] as CodeCard | undefined;
   const s = c?.segments[0];
   const ok = blobOk && s?.src.kind === "github" && (s.src as any).ref === "v0.6.0" && (s.version as any).commit === SHA["v0.6.0"] && s.start === 30 && s.end === 36;
   check("github", ok, JSON.stringify({ blobOk, ref: (s?.src as any)?.ref, start: s?.start, end: s?.end }));
   // Paste a link to open at file and line
   await h.post({ type: "githubPicker", repo: "https://github.com/vllm-project/vllm/blob/main/nanovllm/engine/block_manager.py#L10-L20" });
-  await h.page.waitForTimeout(1300);
+  await h.page.locator('.ghp .gl.on[data-l="10"]').waitFor(); // the linked file open at its lines
   await shot(h, "gh-06-picker-link");
   await close(h);
 });

@@ -3,7 +3,8 @@ import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type Link } from "@codeboard/core";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle, hold } from "../fixtures";
+import { LINK_LEAVE } from "../../src/state/timing";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; const i = s.text.findIndex((t) => re.test(t)); return s.start + Math.max(0, i); };
@@ -29,16 +30,16 @@ test("graphMarksLinked", async () => {
   const h = await open({ board: b, light, w: 1500, h: 950 });
   const marks = await h.page.locator(".card .chead .step").allTextContents();
   const badge = await h.page.locator(`.card[data-id="${sch.id}"] .linkedin`).textContent();
-  await h.page.locator(`.card[data-id="${sch.id}"] .chead .ctitle`).click(); await h.page.waitForTimeout(150);
-  await h.page.locator(`.card[data-id="${sch.id}"] .linkedin`).click(); await h.page.waitForTimeout(300);
+  await h.page.locator(`.card[data-id="${sch.id}"] .chead .ctitle`).click(); await h.page.locator(`.card.sel[data-id="${sch.id}"]`).waitFor();
+  await h.page.locator(`.card[data-id="${sch.id}"] .linkedin`).click(); await h.page.locator(".pop .cand .lb").first().waitFor(); await idle(h);
   const items = await h.page.locator(".pop .cand .lb").allTextContents();
   await shot(h, "arrows-linked-1");
-  await h.page.locator(".pop .cand", { hasText: "LLMEngine.step" }).click(); await h.page.waitForTimeout(500);
+  await h.page.locator(".pop .cand", { hasText: "LLMEngine.step" }).click(); await idle(h);
   const s1 = await selected(h);
   const bar = await h.page.locator(".navbar").count();
-  await h.page.keyboard.press("Control+Alt+Minus"); await h.page.waitForTimeout(400);
+  await h.page.keyboard.press("Control+Alt+Minus"); await idle(h);
   const s2 = await selected(h);
-  await h.page.keyboard.press("Control+Alt+Shift+Minus"); await h.page.waitForTimeout(400);
+  await h.page.keyboard.press("Control+Alt+Shift+Minus"); await idle(h);
   const s3 = await selected(h);
   const ok = marks.length === 3 && marks.every((m) => m === "A") && badge?.trim() === "← 2" && items.length === 2
     && s1.join() === step.id && s2.join() === sch.id && s3.join() === step.id && bar === 0;
@@ -50,18 +51,20 @@ test("graphMarksLinked", async () => {
 test("graphMarkPicker", async () => {
   const { b, step } = graphBoard();
   const h = await open({ board: b, light, w: 1500, h: 950 });
-  await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click(); await h.page.waitForTimeout(300);
+  await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click(); await h.page.locator(".pop.k-mark").waitFor();
   const pop = await h.page.locator(".pop.k-mark").count();
   await shot(h, "arrows-mark-1");
-  await h.page.locator(".pop.k-mark .markgrid button", { hasText: /^Q$/ }).click(); await h.page.waitForTimeout(1300);
+  await h.page.locator(".pop.k-mark .markgrid button", { hasText: /^Q$/ }).click();
+  await until(h, "the picked letter is saved", () => h.board().marks); await idle(h);
   const stored = JSON.stringify(h.board().marks);
   const marks = await h.page.locator(".card .chead .step").allTextContents();
-  await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click(); await h.page.waitForTimeout(300);
-  await h.page.locator(".pop.k-mark .markgrid.icons button").first().click(); await h.page.waitForTimeout(400);
+  await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click();
+  await h.page.locator(".pop.k-mark .markgrid.icons button").first().click(); await idle(h);
   const icons = await h.page.locator(".card .chead .step .glyph").count();
   await shot(h, "arrows-mark-2");
-  await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click(); await h.page.waitForTimeout(300);
-  await h.page.locator(".pop.k-mark .cand", { hasText: "Auto" }).click(); await h.page.waitForTimeout(1300);
+  await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click();
+  await h.page.locator(".pop.k-mark .cand", { hasText: "Auto" }).click();
+  await until(h, "Auto clears the stored mark", () => !h.board().marks); await idle(h);
   const back = await h.page.locator(".card .chead .step").allTextContents();
   const ok = pop === 1 && stored === JSON.stringify({ [step.id]: { letter: "Q" } }) && marks.join() === "Q,Q,Q" && icons === 3 && back.join() === "A,A,A" && !h.board().marks;
   check("graph-mark", ok, JSON.stringify({ pop, stored, marks, icons, back, after: h.board().marks }));
@@ -80,10 +83,10 @@ test("walkthroughOrder", async () => {
   b.links.push({ id: "C2", from: { card: sch.id, seg: sch.segments[0].id, line: lineOf(sch, /allocate\(/) }, to: { card: alloc.id }, call: { name: "allocate", col: 0 } });
   b.cam = { x: 0, y: 0, z: 0.6 };
   const h = await open({ board: b, light, w: 1500, h: 950 });
-  await h.page.locator(`.card[data-id="${step.id}"] .chead .ctitle`).click(); await h.page.waitForTimeout(150);
-  await h.page.keyboard.press("p"); await h.page.waitForTimeout(600);
+  await h.page.locator(`.card[data-id="${step.id}"] .chead .ctitle`).click(); await h.page.locator(`.card.sel[data-id="${step.id}"]`).waitFor();
+  await h.page.keyboard.press("p"); await h.page.locator(".present .ptitle").waitFor(); await idle(h);
   const titles: string[] = [];
-  for (let i = 0; i < 4; i++) { titles.push((await h.page.locator(".present .ptitle").textContent()) ?? ""); await h.page.keyboard.press("ArrowRight"); await h.page.waitForTimeout(300); }
+  for (let i = 0; i < 4; i++) { titles.push((await h.page.locator(".present .ptitle").textContent()) ?? ""); await h.page.keyboard.press("ArrowRight"); await idle(h); }
   const cnt = await h.page.locator(".present .cnt").textContent();
   await h.page.keyboard.press("Escape");
   const ok = titles.join() === "LLMEngine.step,Scheduler.schedule,BlockManager.allocate,Why batches" && cnt === "4 / 4";
@@ -98,7 +101,7 @@ test("walkthroughOrder", async () => {
 test("arrowSides", async () => {
   const out = process.env.ROUTING_OUT ?? path.join(OUT, "arrow-routing");
   fs.mkdirSync(out, { recursive: true });
-  const save = async (h: Host, name: string, clip?: { x: number; y: number; width: number; height: number }) => { await h.page.waitForTimeout(450); await h.page.screenshot({ path: path.join(out, `${name}.png`), clip }); };
+  const save = async (h: Host, name: string, clip?: { x: number; y: number; width: number; height: number }) => { await idle(h); await h.page.screenshot({ path: path.join(out, `${name}.png`), clip }); };
   const sidesOf = (h: Host) => h.page.evaluate(() => Object.fromEntries([...document.querySelectorAll<SVGGElement>("g.link")].map((g) => [g.dataset.lk!, g.dataset.sides!])));
   const results: Record<string, boolean> = {};
   const ln = (c: CodeCard, d: number) => c.segments[0].start + d;
@@ -119,7 +122,7 @@ test("arrowSides", async () => {
     }));
     b.cam = { x: 0, y: 0, z: 0.6 };
     const h = await open({ board: b, light: true, w: 2440, h: 1600 });
-    await h.page.waitForTimeout(600);
+    await idle(h);
     const got = await sidesOf(h);
     const bad: string[] = [];
     rows.forEach((_, ri) => lay.forEach((_, ci) => { const g = got[`A${ri}${ci}`]; if (g !== want[ri][ci]) bad.push(`A${ri}${ci}: ${g} ≠ ${want[ri][ci]}`); }));
@@ -144,8 +147,8 @@ test("arrowSides", async () => {
     const seq: [number, string][] = [];
     await h.page.mouse.move(x0, y0); await h.page.mouse.down();
     const step = async (dx: number, name: string) => {
-      for (let i = 1; i <= 3; i++) { await h.page.mouse.move(x0 + dx, y0 + 2 * i); await h.page.waitForTimeout(16); }
-      await h.page.waitForTimeout(220);
+      for (let i = 1; i <= 3; i++) await h.page.mouse.move(x0 + dx, y0 + 2 * i);
+      await idle(h); // the card has followed the pointer and the arrow's ends have slid to their sides
       seq.push([dx, (await sidesOf(h)).H]);
       await save(h, `w03-b-${name}`);
     };
@@ -156,11 +159,11 @@ test("arrowSides", async () => {
     // slide (W03 6): right after the switch the end is still on its way
     await h.page.mouse.move(x0 - 70, y0 + 8);
     const early = await h.page.evaluate(() => document.querySelector<SVGPathElement>('g.link[data-lk="H"] path.edge')!.getAttribute("d"));
-    await h.page.waitForTimeout(400);
+    await idle(h);
     const late = await h.page.evaluate(() => document.querySelector<SVGPathElement>('g.link[data-lk="H"] path.edge')!.getAttribute("d"));
     seq.push([-70, (await sidesOf(h)).H]);
     await step(-800, "4-left");        // far left: start left, end right
-    await h.page.mouse.up(); await h.page.waitForTimeout(300);
+    await h.page.mouse.up(); await idle(h);
     const want = ["right|left", "right|left", "right|right", "right|right", "right|left", "left|right"];
     results.hysteresis = seq.map((x) => x[1]).join() === want.join();
     check("w03-b-hysteresis", results.hysteresis, JSON.stringify(seq));
@@ -184,7 +187,7 @@ test("arrowSides", async () => {
     tg.forEach((c, i) => b.links.push({ id: `F${i}`, from: end(fan, ln(fan, 2)), to: end(c) }));
     b.cam = { x: 0, y: 0, z: 0.7 };
     const h = await open({ board: b, light: true, w: 1700, h: 1100 });
-    await h.page.waitForTimeout(500);
+    await idle(h);
     const info = await h.page.evaluate(() => ({
       merges: [...document.querySelectorAll<SVGGElement>("g.merge")].map((g) => ({ card: g.dataset.card, line: g.dataset.line ?? null, n: g.dataset.n, heads: g.querySelectorAll(".ahead.end").length })),
       ownHeads: [...document.querySelectorAll<SVGGElement>("g.link")].filter((g) => /^[MN]/.test(g.dataset.lk!)).map((g) => g.querySelectorAll(".ahead.end").length).reduce((a, b) => a + b, 0),
@@ -223,7 +226,7 @@ test("arrowSides", async () => {
     b.links.push({ id: "ES", from: end(self, ln(self, 1)), to: end(self, ln(self, 4)), style: { width: 3, dash: true, color: "blue", head: { start: true, end: true } } });
     b.cam = { x: 0, y: 0, z: 0.75 };
     const h = await open({ board: b, light: true, w: 1600, h: 900 });
-    await h.page.waitForTimeout(800);
+    await idle(h);
     const got = await sidesOf(h);
     const gutterHeads = await h.page.locator('g.link[data-lk="EG"] .ahead').count();
     const cmpline = await h.page.locator('g.link[data-lk="EG"] path.edge.cmpline').count();
@@ -257,20 +260,22 @@ test("dragLinkSide", async () => {
   const h = await open({ board: b, light, w: 1300, h: 800 });
   const ca = h.page.locator(`.card[data-id="${a.id}"]`);
   const box = (await ca.boundingBox())!;
-  await h.page.mouse.move(box.x + 100, box.y + 10); await h.page.waitForTimeout(200);
+  await h.page.mouse.move(box.x + 100, box.y + 10); await ca.locator(".eport.l").waitFor(); await idle(h);
   const dot = (await ca.locator(".eport.l").boundingBox())!;
   const head = (await ca.locator(".chead").boundingBox())!;
   const onHead = dot.y + dot.height / 2 >= head.y && dot.y + dot.height / 2 <= head.y + head.height;
   const tb = (await h.page.locator(`.card[data-id="${t.id}"]`).boundingBox())!;
   const drag = async (from: { x: number; y: number; width: number; height: number }) => {
+    const n = h.board().links.length;
     await h.page.mouse.move(from.x + from.width / 2, from.y + from.height / 2); await h.page.mouse.down();
-    await h.page.mouse.move(tb.x + 150, tb.y + 80, { steps: 10 }); await h.page.mouse.up(); await h.page.waitForTimeout(600);
+    await h.page.mouse.move(tb.x + 150, tb.y + 80, { steps: 10 }); await h.page.mouse.up();
+    await until(h, "the dragged arrow is saved", () => h.board().links.length > n); await idle(h);
   };
   await drag(dot);
   // 行尾左边的圆点：先悬停那一行让圆点出来
   const row = (await ca.locator(".src .l").nth(2).boundingBox())!;
-  await h.page.mouse.move(row.x + 100, row.y + row.height / 2); await h.page.waitForTimeout(150);
-  await drag((await ca.locator(".lport.l").boundingBox())!); await h.page.waitForTimeout(900);
+  await h.page.mouse.move(row.x + 100, row.y + row.height / 2); await ca.locator(".lport.l").waitFor(); await idle(h);
+  await drag((await ca.locator(".lport.l").boundingBox())!);
   const links = h.board().links as Link[];
   const sides = await h.page.evaluate(() => [...document.querySelectorAll<SVGGElement>("g.link")].map((g) => g.dataset.sides));
   await shot(h, "arrows-dragside");
@@ -289,7 +294,7 @@ test("commonIndentHidden", async () => {
   put(b, lm, 80, 80, 560); put(b, plain, 80, 360, 560);
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 900, h: 640 });
-  await h.page.waitForTimeout(400);
+  await idle(h);
   const left = (id: string) => h.page.evaluate((id) => { const c = document.querySelector(`.card[data-id="${id}"]`)!; const l = c.querySelector(".src .l")!; const r = document.createRange(); r.selectNodeContents(l); const tx = [...r.getClientRects()].find((q) => q.width > 0)!; const t = l.textContent!; const ind = t.length - t.trimStart().length; const sp = document.createRange(); sp.setStart(l.firstChild ?? l, 0); return { codeX: Math.round(c.querySelector(".src")!.getBoundingClientRect().left), firstX: Math.round(tx.left), ind, marks: c.querySelectorAll(".dedm").length }; }, id);
   const a = await left(lm.id), p = await left(plain.id);
   await shot(h, "arrows-dedent");
@@ -311,11 +316,12 @@ test("constructorCall", async () => {
   const ce = h.page.locator(`.card[data-id="${eng.id}"]`);
   const row = ce.locator(".src .l", { hasText: "self.model_runner = ModelRunner(" });
   const rb = (await row.boundingBox())!;
-  await h.page.mouse.move(rb.x + 100, rb.y + rb.height / 2); await h.page.waitForTimeout(150);
+  await h.page.mouse.move(rb.x + 100, rb.y + rb.height / 2); await ce.locator(".lport.r").waitFor(); await idle(h);
   const p = (await ce.locator(".lport.r").boundingBox())!;
   const tb = (await h.page.locator(`.card[data-id="${mr.id}"]`).boundingBox())!;
   await h.page.mouse.move(p.x + p.width / 2, p.y + p.height / 2); await h.page.mouse.down();
-  await h.page.mouse.move(tb.x + 300, tb.y + 12, { steps: 10 }); await h.page.mouse.up(); await h.page.waitForTimeout(1300);
+  await h.page.mouse.move(tb.x + 300, tb.y + 12, { steps: 10 }); await h.page.mouse.up();
+  await until(h, "the drawn arrow is saved", () => h.board().links.length); await idle(h);
   const l = h.board().links[0] as Link | undefined;
   const marks = await h.page.locator(".card .chead .step").allTextContents();
   await shot(h, "arrows-ctor");
@@ -337,12 +343,12 @@ test("headingDrag", async () => {
     const x0 = h.board().place[a.id].x;
     const r = (await ca.locator(`.chead ${sel}`).first().boundingBox())!;
     await h.page.mouse.move(r.x + r.width / 2, r.y + r.height / 2); await h.page.mouse.down();
-    await h.page.mouse.move(r.x + r.width / 2 + 80, r.y + r.height / 2 + 40, { steps: 8 }); await h.page.mouse.up(); await h.page.waitForTimeout(900);
+    await h.page.mouse.move(r.x + r.width / 2 + 80, r.y + r.height / 2 + 40, { steps: 8 }); await h.page.mouse.up(); await idle(h); // the drop is sent at once
     moved[sel] = h.board().place[a.id].x - x0;
   }
   const menuAfterDrag = await h.page.locator(".pop").count();
   const r = (await ca.locator(".chead .rev").first().boundingBox())!;
-  await h.page.mouse.click(r.x + r.width / 2, r.y + r.height / 2); await h.page.waitForTimeout(400);
+  await h.page.mouse.click(r.x + r.width / 2, r.y + r.height / 2); await idle(h);
   const menuOnClick = await h.page.locator(".pop").count();
   const ok = moved[".cpath"] === 80 && moved[".rev"] === 80 && menuAfterDrag === 0 && menuOnClick > 0;
   check("head-drag", ok, JSON.stringify({ moved, menuAfterDrag, menuOnClick }));
@@ -362,9 +368,11 @@ test("manualCallMark", async () => {
     for (const f of [0.5, 0.4, 0.6, 0.3, 0.7]) { const q = p.getPointAtLength(p.getTotalLength() * f); const x = q.x * m.a + q.y * m.c + m.e, y = q.x * m.b + q.y * m.d + m.f; if ((document.elementFromPoint(x, y) as Element | null)?.closest("[data-link]")) return { x, y }; }
     return null;
   });
-  await h.page.mouse.click(pt!.x, pt!.y, { button: "right" }); await h.page.waitForTimeout(300);
+  await h.page.mouse.click(pt!.x, pt!.y, { button: "right" });
+  await h.page.locator(".ctx").first().locator(":scope > button").first().waitFor(); await idle(h);
   const items = await h.page.locator(".ctx").first().locator(":scope > button").allTextContents();
-  await h.page.locator(".ctx button", { hasText: "Call Mark" }).first().click(); await h.page.waitForTimeout(900);
+  await h.page.locator(".ctx button", { hasText: "Call Mark" }).first().click();
+  await until(h, "the Call Mark is saved", () => (h.board().links[0] as Link).call); await idle(h);
   const call = (h.board().links[0] as Link).call;
   const marks = await h.page.locator(".card .chead .step").allTextContents();
   await shot(h, "arrows-manualcall");
@@ -387,7 +395,7 @@ test("linePortHover", async () => {
   const ce = h.page.locator(`.card[data-id="${eng.id}"]`);
   const row = (await ce.locator(".src .l").nth(3).boundingBox())!;
   // 停在行首缩进上（不在名字上，不弹 Peek）
-  await h.page.mouse.move(row.x + 20, row.y + row.height / 2); await h.page.waitForTimeout(150);
+  await h.page.mouse.move(row.x + 20, row.y + row.height / 2); await ce.locator(".lport.r").waitFor(); await idle(h);
   const port = () => ce.evaluate((c) => { const e = c.querySelector(".lport.r"); if (!e) return null; const r = e.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height }; });
   const p = (await port())!;
   const py = p.y + p.height / 2, px = p.x + p.width / 2;
@@ -395,7 +403,7 @@ test("linePortHover", async () => {
   const trail: string[] = [];
   let ok = true, shotAt = false;
   for (let x = row.x + 20; x <= px; x += 6) {
-    await h.page.mouse.move(Math.min(x, px), py); await h.page.waitForTimeout(30);
+    await h.page.mouse.move(Math.min(x, px), py); await idle(h);
     const q = await port();
     const top = await h.page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y) as HTMLElement | null; return e ? e.tagName + "." + (e.getAttribute("class") ?? "") : "-"; }, [Math.min(x, px), py]);
     const same = !!q && Math.abs(q.y + q.height / 2 - py) < 1;
@@ -403,7 +411,7 @@ test("linePortHover", async () => {
     if (Math.min(x, px) > px - 12 && !shotAt) { shotAt = true; await shot(h, "arrows-lporthold-1"); }
     trail.push(`${Math.round(Math.min(x, px) - px)}:${same ? "ok" : q ? "moved" : "gone"}:${top}`);
   }
-  await h.page.waitForTimeout(400);
+  await hold(h, LINK_LEAVE + 100, "the port must still be there once a hover-leave delay would be over");
   const still = await port();
   if (!still || Math.abs(still.y + still.height / 2 - py) >= 1) ok = false;
   await shot(h, "arrows-lporthold-2");
@@ -423,15 +431,15 @@ test("headPortHidden", async () => {
   const op = (c: typeof ce, s: string) => c.locator(`.eport.${s}`).evaluate((e) => getComputedStyle(e).opacity);
   const sides = await h.page.locator("g.link").getAttribute("data-sides");
   const box = (await ce.boundingBox())!;
-  await h.page.mouse.move(box.x + 200, box.y + 10); await h.page.waitForTimeout(300);
+  await h.page.mouse.move(box.x + 200, box.y + 10); await idle(h);
   const r = await op(ce, "r"), l = await op(ce, "l");
   await shot(h, "arrows-eportland-1");
   const mb = (await cm.boundingBox())!;
-  await h.page.mouse.move(mb.x + 200, mb.y + 10); await h.page.waitForTimeout(300);
+  await h.page.mouse.move(mb.x + 200, mb.y + 10); await idle(h);
   const ml = await op(cm, "l"), mrr = await op(cm, "r");
   const dot = (await ce.locator(".eport.r").boundingBox())!;
   // 圆点外半边被线的点击区盖着，靠卡里的那半边悬停
-  await h.page.mouse.move(dot.x + 2, dot.y + dot.height / 2); await h.page.waitForTimeout(300);
+  await h.page.mouse.move(dot.x + 2, dot.y + dot.height / 2); await idle(h);
   const rh = await op(ce, "r");
   await shot(h, "arrows-eportland-2");
   const ok = sides === "left|right" && r === "0" && l === "1" && ml === "0" && mrr === "1" && rh === "1";

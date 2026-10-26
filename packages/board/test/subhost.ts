@@ -25,6 +25,12 @@ export async function subHost(start: Board, others: Board[]) {
   let h!: Host; // a patch can come in before open() returns (the first skeletons mark lost arrows): h?.post there (init() pushes the skeletons again)
   const sent = new Map<string, string>();
   const sk = (id: string): Skeleton | null => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)?.name) : null; };
+  // a push the host starts on its own (debounced skeletons, crumbs): once the scenario has closed the page it goes nowhere. Without
+  // this, a push timed after a scenario that ends right after its last save rejects in the next scenario of the worker
+  const pushed = (m: HostToBoard) => {
+    if (!h || h.page.isClosed()) return;
+    h.post(m).catch((e) => { if (!h.page.isClosed()) throw e; });
+  };
   const dirty = new Set<string>();
   let all = false, t: ReturnType<typeof setTimeout> | undefined;
   const push = () => {
@@ -40,12 +46,12 @@ export async function subHost(start: Board, others: Board[]) {
         sent.set(id, k); out[id] = s;
       }
       dirty.clear(); all = false;
-      if (Object.keys(out).length) void h?.post({ type: "skeletons", boards: out });
+      if (Object.keys(out).length) pushed({ type: "skeletons", boards: out });
     }, 120);
   };
   store.onDidSave((b) => { dirty.add(b.id); push(); });
   // like BoardHub: a deleted board on the breadcrumbs can't be gone back to
-  store.onDidRemoveBoard((id) => { const c = cutCrumbs(crumbs, cams, id); if (c) { crumbs = c.crumbs; cams = c.cams; void h.post({ type: "crumbs", crumbs }); } });
+  store.onDidRemoveBoard((id) => { const c = cutCrumbs(crumbs, cams, id); if (c) { crumbs = c.crumbs; cams = c.cams; pushed({ type: "crumbs", crumbs }); } });
   store.onDidChange(() => { all = true; push(); });
   const init = async (walk?: unknown, cam?: Camera) => {
     const b = (await store.load(cur))!;
