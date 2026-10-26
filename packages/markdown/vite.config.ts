@@ -29,7 +29,7 @@ export default defineConfig({
     minify: false,
     sourcemap: true,
     lib: { entry: ["src/index.ts", "src/editor/index.tsx", "src/cm/editor.ts", "src/ui/index.ts"], formats: ["es"] },
-    rollupOptions: {
+    rolldownOptions: {
       external: (id) => deps.some((d) => id === d || id.startsWith(d + "/")),
       output: { preserveModules: true, preserveModulesRoot: "src", entryFileNames: "[name].js" },
     },
