@@ -92,12 +92,12 @@ test("codeHeaderHoverOnly", async () => {
     check(`codeHeaderHoverOnly copy and language on hover (${theme})`, hov.hovW > 30 && hov.hovO === 1 && hov.langText === "C"
       && hov.title!.r <= hov.copy!.l && hov.copy!.r <= hov.lang!.l && hov.lang!.r <= hov.more!.l && hov.more!.r <= hov.head!.r, hov);
     check(`codeHeaderHoverOnly language label opens the menu (${theme})`, top && menu.some((t) => t.startsWith("Auto-detect")) && menu.includes("C") && menu.includes("Python"), { top, menu });
-    // leaving the card closes the group gently: 100 ms later it is still part open and fading
+    // leaving the card closes the group gently: the resting state's transition fades first, then eases the width shut over 200+ ms
     await away(h.page); await h.page.waitForTimeout(300);
-    await h.page.hover('.card[data-id="f1"] .cbody'); await h.page.waitForTimeout(400);
-    await h.page.mouse.move(1000, 790); await h.page.waitForTimeout(100);
-    const closing = await head(h.page, "f1");
-    check(`codeHeaderHoverOnly closes with an animation (${theme})`, closing.hovW > 10 && closing.hovO < 1, closing);
+    const closing = await h.page.evaluate(() => { const t = getComputedStyle(document.querySelector('.card[data-id="f1"] .chead > .hov')!); return { prop: t.transitionProperty, dur: t.transitionDuration, delay: t.transitionDelay }; });
+    const durs = closing.dur.split(",").map((d) => parseFloat(d) * 1000), delays = closing.delay.split(",").map((d) => parseFloat(d) * 1000);
+    const wi = closing.prop.split(",").map((p) => p.trim()).indexOf("grid-template-columns");
+    check(`codeHeaderHoverOnly closes with an animation (${theme})`, wi >= 0 && durs[wi] >= 200 && delays[wi] > 0, closing);
     // repo card: copy is hover-only too, the path follows the title
     await away(h.page); await h.page.waitForTimeout(300);
     const r0 = await head(h.page, "r1");
