@@ -620,7 +620,8 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 
 /* ===================== v0.1 additions ===================== */
 .app { position: fixed; inset: 0; }
-.editing { outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 4px; background: var(--surface); text-overflow: clip; cursor: text; user-select: text; -webkit-user-select: text; white-space: pre-wrap; }
+/* a field being typed in; a card in edit mode also has .editing, and keeps its own corners, shadow and cursor */
+.editing:where(:not(.card)) { outline: none; box-shadow: 0 0 0 1.5px var(--accent); border-radius: 4px; background: var(--surface); text-overflow: clip; cursor: text; user-select: text; -webkit-user-select: text; white-space: pre-wrap; }
 /* fields that ellipsize with a more specific selector than .editing */
 .card.nobg > .cface > .chead .ctitle.editing, .genrun .grun.editing, .lrow.rich .wbm.none .wt.editing, .msgb .mname.editing { text-overflow: clip; }
 .editing:empty::before, [data-ph]:empty::before { content: attr(data-ph); color: var(--ink-3); }

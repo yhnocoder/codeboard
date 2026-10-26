@@ -383,3 +383,29 @@ test("resizeGripInsideCardCorner", async () => {
   check("softLight-headerIconsMatchTitle", !!head && head.icon === head.title, head);
   await pg.context().close();
 });
+
+/** A Note or Text card keeps its own corner radius (--cr) while it is being edited, in Soft Light (large corners) and Warm Ink */
+test("editingKeepsCardCorners", async () => {
+  for (const theme of ["soft-light", "warm-ink"]) {
+    const b = emptyBoard("b1", "corners");
+    b.cards.push({ id: "n1", kind: "note", bg: true, md: "# Corners\n\nThe card keeps its rounded corners while editing." } as any);
+    b.place.n1 = { x: 80, y: 80, w: 360 };
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light: true, w: 900, h: 600, settings: { theme } as never });
+    const pg = h.page;
+    await pg.waitForTimeout(400);
+    const radius = () => pg.evaluate(() => {
+      const c = document.querySelector<HTMLElement>('.card[data-id="n1"]')!, cs = getComputedStyle(c);
+      return { r: cs.borderTopLeftRadius, br: cs.borderBottomRightRadius, cr: cs.getPropertyValue("--cr").trim(), editing: c.classList.contains("editing"), cursor: cs.cursor };
+    });
+    const idle = await radius();
+    await pg.locator('.card[data-id="n1"] .nbody p').last().dblclick();
+    await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
+    await pg.mouse.move(5, 5);
+    await pg.waitForTimeout(300);
+    const edit = await radius();
+    await pg.screenshot({ path: path.join(OUT, `editingCorners-${theme}.png`), clip: { x: 40, y: 40, width: 480, height: 320 } });
+    check(`editingKeepsCardCorners-${theme}`, edit.editing && parseFloat(idle.r) >= 10 && edit.r === idle.r && edit.br === idle.br && edit.cursor === idle.cursor, { idle, edit });
+    await pg.context().close();
+  }
+});
