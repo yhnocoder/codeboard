@@ -303,7 +303,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.text .tx { white-space: pre-wrap; word-break: break-word; outline: none; min-height: 1.4em; color: var(--ink); }
 .tx.st-title { font: 600 26px/1.25 var(--display); letter-spacing: -0.01em; }
 .tx.st-heading { font: 600 16px/1.4 var(--sys); }
-.tx.st-body { font: 13px/1.6 var(--sys); color: var(--ink); }
+.tx.st-body { font: 13.5px/1.6 var(--sys); color: var(--ink); }
 .tx.bold { font-weight: 700; }
 .tx[contenteditable] { cursor: text; user-select: text; -webkit-user-select: text; }
 .tx[contenteditable]:empty::before { content: attr(data-ph); color: var(--ink-3); }
