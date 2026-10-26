@@ -385,8 +385,17 @@ test("copyPartialMarkBalanced", async () => {
   await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 600, y: 12 } });
   await pg.waitForSelector(pm, { timeout: 5000 });
   await pg.evaluate(() => { const w = window as any; w.__clip = []; document.addEventListener("copy", (e) => w.__clip.push([e.clipboardData?.getData("text/plain"), e.clipboardData?.getData("text/html")])); });
-  // 选中第一段里的一截字：公式算一个字（\u0000），选区的头尾落在公式外面的字上
-  const select = (phrase: string) => pg.evaluate(([root, w]) => {
+  // 选中第一段里的一截字：公式算一个字（\u0000），选区的头尾落在公式外面的字上；再等编辑器自己的选区对上（ProseMirror 读 DOM 选区是异步的）
+  const select = async (phrase: string) => {
+    const want = await selectDom(phrase);
+    if (!want) return false;
+    await pg.waitForFunction(([root, [from, to]]) => {
+      const s = (document.querySelector(root) as any)?.editor?.state.selection;
+      return !!s && s.from === from && s.to === to;
+    }, [pm, want] as const, { timeout: 5000 });
+    return true;
+  };
+  const selectDom = (phrase: string) => pg.evaluate(([root, w]) => {
     const p = document.querySelector(root)!.querySelector("p")!, pts: [Node, number][] = [];
     let flat = "";
     const visit = (n: Node) => {
@@ -396,11 +405,11 @@ test("copyPartialMarkBalanced", async () => {
     };
     visit(p);
     const i = flat.indexOf(w);
-    if (i < 0 || flat.indexOf(w, i + 1) >= 0) return false;
-    const [en, eo] = pts[i + w.length - 1], r = document.createRange();
+    if (i < 0 || flat.indexOf(w, i + 1) >= 0) return null;
+    const [en, eo] = pts[i + w.length - 1], r = document.createRange(), view = (document.querySelector(root) as any).editor.view;
     r.setStart(...pts[i]); r.setEnd(en, eo + 1);
     getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
-    return true;
+    return [view.posAtDOM(...pts[i]), view.posAtDOM(en, eo + 1)] as [number, number];
   }, [pm, phrase] as const);
   // [selected, text/plain, text/html carries it, the pasted paragraph: its one formatted element and the words in it]
   const cases: [string, string, RegExp, string][] = [
@@ -412,17 +421,26 @@ test("copyPartialMarkBalanced", async () => {
   const out: { sel: string; selected: boolean; plain?: string; html: boolean; pasted?: string }[] = [];
   for (const [sel, plain, html, want] of cases) {
     const selected = await select(sel);
-    await pg.waitForTimeout(80);
     await pg.keyboard.press("ControlOrMeta+c");
     const [p, hh] = await pg.evaluate(() => (window as any).__clip.pop() ?? []) as [string, string];
     // 粘回去：文末另起一段，把刚才剪贴板里的两份一起粘进来（和系统粘贴一样走编辑器的 paste）
+    // 等光标真到了文末再回车，等粘进来的那段出现再读
     await pg.keyboard.press("ControlOrMeta+End");
+    await pg.waitForFunction((root) => {
+      const s = (document.querySelector(root) as any)?.editor?.state.selection;
+      return !!s && s.empty && s.$from.parentOffset === s.$from.parent.content.size && s.$from.after(1) === s.$from.doc.content.size;
+    }, pm, { timeout: 5000 });
     await pg.keyboard.press("Enter");
+    const paras = out.length + 2;
+    await pg.waitForFunction(([root, n]) => document.querySelector(root)!.querySelectorAll(":scope > p").length === n, [pm, paras] as const, { timeout: 5000 });
     await pg.evaluate(([root, p, hh]) => {
       const dt = new DataTransfer(); dt.setData("text/plain", p); dt.setData("text/html", hh);
       document.querySelector(root)!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
     }, [pm, p, hh] as const);
-    await pg.waitForTimeout(80);
+    await pg.waitForFunction(([root, n]) => {
+      const ps = document.querySelector(root)!.querySelectorAll(":scope > p");
+      return ps.length === n && !!ps[n - 1].textContent;
+    }, [pm, paras] as const, { timeout: 5000 }).catch(() => {});
     // 光标处的记号装饰不算：只看格式元素和里面的字（公式写成 $latex$）
     const pasted = await pg.evaluate((root) => {
       const ps = document.querySelector(root)!.querySelectorAll(":scope > p"), p = ps[ps.length - 1], el = p.firstElementChild;

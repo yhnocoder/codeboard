@@ -175,6 +175,8 @@ async function exportScenario(res: Record<string, unknown>) {
   await page.locator(".xdlg button.def").click();
   await until(h, () => files.html, 20000);
   res.htmlMs = Date.now() - t0;
+  // files.html 在 reply() 关对话框之前就有了：等它关掉（关不掉的话 5 秒后照样记下 1）
+  await page.locator(".xdlg").waitFor({ state: "detached", timeout: 5000 }).catch(() => {});
   res.closed = await page.locator(".xdlg").count();
   const html = fs.readFileSync(files.html, "utf8");
   res.htmlKB = Math.round(html.length / 1024);
