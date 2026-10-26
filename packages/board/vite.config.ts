@@ -3,8 +3,8 @@ import { defineConfig, type Plugin } from "vite";
 import solid from "vite-plugin-solid";
 import { build } from "esbuild";
 
-// import x from "./a.ts?script"：把 a.ts 单独打包成一段 IIFE，x 是它的源码字符串（导出的 HTML 里内联的查看脚本）
-function scriptString(): Plugin {
+// import x from "./a.ts?script"：把 a.ts 单独打包成一段 IIFE，x 是它的源码字符串（导出的 HTML 里内联的查看脚本）。小样（.storybook/vite.config.ts）也用它
+export function scriptString(): Plugin {
   return {
     name: "script-string",
     async load(id) {

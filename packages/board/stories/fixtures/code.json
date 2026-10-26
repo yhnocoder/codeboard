@@ -1,0 +1,408 @@
+{
+ "schedule": {
+  "seg": {
+   "id": "s-schedule",
+   "src": {
+    "kind": "repo",
+    "repo": ""
+   },
+   "path": "nanovllm/engine/scheduler.py",
+   "lang": "python",
+   "start": 25,
+   "end": 73,
+   "text": [
+    "    def schedule(self) -> tuple[list[Sequence], bool]:",
+    "        scheduled_seqs = []",
+    "        num_batched_tokens = 0",
+    "",
+    "        # prefill",
+    "        while self.waiting and len(scheduled_seqs) < self.max_num_seqs:",
+    "            seq = self.waiting[0]",
+    "            remaining = self.max_num_batched_tokens - num_batched_tokens",
+    "            if remaining == 0:",
+    "                break",
+    "            if not seq.block_table:",
+    "                num_cached_blocks = self.block_manager.can_allocate(seq)",
+    "                if num_cached_blocks == -1:",
+    "                    break",
+    "                num_tokens = seq.num_tokens - num_cached_blocks * self.block_size",
+    "            else:",
+    "                num_tokens = seq.num_tokens - seq.num_cached_tokens",
+    "            if remaining < num_tokens and scheduled_seqs:  # only allow chunked prefill for the first seq",
+    "                break",
+    "            if not seq.block_table:",
+    "                self.block_manager.allocate(seq, num_cached_blocks)",
+    "            seq.num_scheduled_tokens = min(num_tokens, remaining)",
+    "            num_batched_tokens += seq.num_scheduled_tokens",
+    "            if seq.num_cached_tokens + seq.num_scheduled_tokens == seq.num_tokens:",
+    "                seq.status = SequenceStatus.RUNNING",
+    "                self.waiting.popleft()",
+    "                self.running.append(seq)",
+    "            scheduled_seqs.append(seq)",
+    "",
+    "        if scheduled_seqs:",
+    "            return scheduled_seqs, True",
+    "",
+    "        # decode",
+    "        while self.running and len(scheduled_seqs) < self.max_num_seqs:",
+    "            seq = self.running.popleft()",
+    "            while not self.block_manager.can_append(seq):",
+    "                if self.running:",
+    "                    self.preempt(self.running.pop())",
+    "                else:",
+    "                    self.preempt(seq)",
+    "                    break",
+    "            else:",
+    "                seq.num_scheduled_tokens = 1",
+    "                seq.is_prefill = False",
+    "                self.block_manager.may_append(seq)",
+    "                scheduled_seqs.append(seq)",
+    "        assert scheduled_seqs",
+    "        self.running.extendleft(reversed(scheduled_seqs))",
+    "        return scheduled_seqs, False"
+   ],
+   "version": {
+    "kind": "git",
+    "commit": "bb823b3c0ffee"
+   },
+   "symbol": {
+    "qual": "Scheduler.schedule",
+    "kind": "function"
+   }
+  },
+  "view": {
+   "html": [
+    "    <span class=\"kw\">def</span> schedule<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">)</span> <span class=\"p\">-</span><span class=\"p\">&gt;</span> tuple<span class=\"p\">[</span>list<span class=\"p\">[</span>Sequence<span class=\"p\">]</span><span class=\"p\">,</span> bool<span class=\"p\">]</span><span class=\"p\">:</span>",
+    "        scheduled_seqs <span class=\"p\">=</span> <span class=\"p\">[</span><span class=\"p\">]</span>",
+    "        num_batched_tokens <span class=\"p\">=</span> <span class=\"num\">0</span>",
+    "",
+    "        <span class=\"com\"># prefill</span>",
+    "        <span class=\"kw\">while</span> <span class=\"self\">self</span><span class=\"p\">.</span>waiting <span class=\"kw\">and</span> len<span class=\"p\">(</span>scheduled_seqs<span class=\"p\">)</span> <span class=\"p\">&lt;</span> <span class=\"self\">self</span><span class=\"p\">.</span>max_num_seqs<span class=\"p\">:</span>",
+    "            seq <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>waiting<span class=\"p\">[</span><span class=\"num\">0</span><span class=\"p\">]</span>",
+    "            remaining <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>max_num_batched_tokens <span class=\"p\">-</span> num_batched_tokens",
+    "            <span class=\"kw\">if</span> remaining <span class=\"p\">=</span><span class=\"p\">=</span> <span class=\"num\">0</span><span class=\"p\">:</span>",
+    "                <span class=\"kw\">break</span>",
+    "            <span class=\"kw\">if</span> <span class=\"kw\">not</span> seq<span class=\"p\">.</span>block_table<span class=\"p\">:</span>",
+    "                num_cached_blocks <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>block_manager<span class=\"p\">.</span><span class=\"call\" data-c=\"0\">can_allocate</span><span class=\"p\">(</span>seq<span class=\"p\">)</span>",
+    "                <span class=\"kw\">if</span> num_cached_blocks <span class=\"p\">=</span><span class=\"p\">=</span> <span class=\"p\">-</span><span class=\"num\">1</span><span class=\"p\">:</span>",
+    "                    <span class=\"kw\">break</span>",
+    "                num_tokens <span class=\"p\">=</span> seq<span class=\"p\">.</span>num_tokens <span class=\"p\">-</span> num_cached_blocks <span class=\"p\">*</span> <span class=\"self\">self</span><span class=\"p\">.</span>block_size",
+    "            <span class=\"kw\">else</span><span class=\"p\">:</span>",
+    "                num_tokens <span class=\"p\">=</span> seq<span class=\"p\">.</span>num_tokens <span class=\"p\">-</span> seq<span class=\"p\">.</span>num_cached_tokens",
+    "            <span class=\"kw\">if</span> remaining <span class=\"p\">&lt;</span> num_tokens <span class=\"kw\">and</span> scheduled_seqs<span class=\"p\">:</span>  <span class=\"com\"># only allow chunked prefill for the first seq</span>",
+    "                <span class=\"kw\">break</span>",
+    "            <span class=\"kw\">if</span> <span class=\"kw\">not</span> seq<span class=\"p\">.</span>block_table<span class=\"p\">:</span>",
+    "                <span class=\"self\">self</span><span class=\"p\">.</span>block_manager<span class=\"p\">.</span><span class=\"call\" data-c=\"1\">allocate</span><span class=\"p\">(</span>seq<span class=\"p\">,</span> num_cached_blocks<span class=\"p\">)</span>",
+    "            seq<span class=\"p\">.</span>num_scheduled_tokens <span class=\"p\">=</span> min<span class=\"p\">(</span>num_tokens<span class=\"p\">,</span> remaining<span class=\"p\">)</span>",
+    "            num_batched_tokens <span class=\"p\">+</span><span class=\"p\">=</span> seq<span class=\"p\">.</span>num_scheduled_tokens",
+    "            <span class=\"kw\">if</span> seq<span class=\"p\">.</span>num_cached_tokens <span class=\"p\">+</span> seq<span class=\"p\">.</span>num_scheduled_tokens <span class=\"p\">=</span><span class=\"p\">=</span> seq<span class=\"p\">.</span>num_tokens<span class=\"p\">:</span>",
+    "                seq<span class=\"p\">.</span>status <span class=\"p\">=</span> SequenceStatus<span class=\"p\">.</span>RUNNING",
+    "                <span class=\"self\">self</span><span class=\"p\">.</span>waiting<span class=\"p\">.</span><span class=\"call\" data-c=\"2\">popleft</span><span class=\"p\">(</span><span class=\"p\">)</span>",
+    "                <span class=\"self\">self</span><span class=\"p\">.</span>running<span class=\"p\">.</span><span class=\"call\" data-c=\"3\">append</span><span class=\"p\">(</span>seq<span class=\"p\">)</span>",
+    "            scheduled_seqs<span class=\"p\">.</span><span class=\"call\" data-c=\"4\">append</span><span class=\"p\">(</span>seq<span class=\"p\">)</span>",
+    "",
+    "        <span class=\"kw\">if</span> scheduled_seqs<span class=\"p\">:</span>",
+    "            <span class=\"kw\">return</span> scheduled_seqs<span class=\"p\">,</span> <span class=\"kw\">True</span>",
+    "",
+    "        <span class=\"com\"># decode</span>",
+    "        <span class=\"kw\">while</span> <span class=\"self\">self</span><span class=\"p\">.</span>running <span class=\"kw\">and</span> len<span class=\"p\">(</span>scheduled_seqs<span class=\"p\">)</span> <span class=\"p\">&lt;</span> <span class=\"self\">self</span><span class=\"p\">.</span>max_num_seqs<span class=\"p\">:</span>",
+    "            seq <span class=\"p\">=</span> <span class=\"self\">self</span><span class=\"p\">.</span>running<span class=\"p\">.</span><span class=\"call\" data-c=\"5\">popleft</span><span class=\"p\">(</span><span class=\"p\">)</span>",
+    "            <span class=\"kw\">while</span> <span class=\"kw\">not</span> <span class=\"self\">self</span><span class=\"p\">.</span>block_manager<span class=\"p\">.</span><span class=\"call\" data-c=\"6\">can_append</span><span class=\"p\">(</span>seq<span class=\"p\">)</span><span class=\"p\">:</span>",
+    "                <span class=\"kw\">if</span> <span class=\"self\">self</span><span class=\"p\">.</span>running<span class=\"p\">:</span>",
+    "                    <span class=\"self\">self</span><span class=\"p\">.</span><span class=\"call\" data-c=\"7\">preempt</span><span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">.</span>running<span class=\"p\">.</span><span class=\"call\" data-c=\"8\">pop</span><span class=\"p\">(</span><span class=\"p\">)</span><span class=\"p\">)</span>",
+    "                <span class=\"kw\">else</span><span class=\"p\">:</span>",
+    "                    <span class=\"self\">self</span><span class=\"p\">.</span><span class=\"call\" data-c=\"9\">preempt</span><span class=\"p\">(</span>seq<span class=\"p\">)</span>",
+    "                    <span class=\"kw\">break</span>",
+    "            <span class=\"kw\">else</span><span class=\"p\">:</span>",
+    "                seq<span class=\"p\">.</span>num_scheduled_tokens <span class=\"p\">=</span> <span class=\"num\">1</span>",
+    "                seq<span class=\"p\">.</span>is_prefill <span class=\"p\">=</span> <span class=\"kw\">False</span>",
+    "                <span class=\"self\">self</span><span class=\"p\">.</span>block_manager<span class=\"p\">.</span><span class=\"call\" data-c=\"10\">may_append</span><span class=\"p\">(</span>seq<span class=\"p\">)</span>",
+    "                scheduled_seqs<span class=\"p\">.</span><span class=\"call\" data-c=\"11\">append</span><span class=\"p\">(</span>seq<span class=\"p\">)</span>",
+    "        <span class=\"kw\">assert</span> scheduled_seqs",
+    "        <span class=\"self\">self</span><span class=\"p\">.</span>running<span class=\"p\">.</span><span class=\"call\" data-c=\"12\">extendleft</span><span class=\"p\">(</span>reversed<span class=\"p\">(</span>scheduled_seqs<span class=\"p\">)</span><span class=\"p\">)</span>",
+    "        <span class=\"kw\">return</span> scheduled_seqs<span class=\"p\">,</span> <span class=\"kw\">False</span>"
+   ],
+   "flags": [
+    0,
+    0,
+    0,
+    1,
+    2,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    1,
+    0,
+    0,
+    1,
+    2,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "calls": [
+    {
+     "line": 36,
+     "col": 55,
+     "end": 67,
+     "name": "can_allocate",
+     "recv": "self.block_manager",
+     "loop": true
+    },
+    {
+     "line": 45,
+     "col": 35,
+     "end": 43,
+     "name": "allocate",
+     "recv": "self.block_manager",
+     "loop": true
+    },
+    {
+     "line": 50,
+     "col": 29,
+     "end": 36,
+     "name": "popleft",
+     "recv": "self.waiting",
+     "loop": true
+    },
+    {
+     "line": 51,
+     "col": 29,
+     "end": 35,
+     "name": "append",
+     "recv": "self.running",
+     "loop": true
+    },
+    {
+     "line": 52,
+     "col": 27,
+     "end": 33,
+     "name": "append",
+     "recv": "scheduled_seqs",
+     "loop": true
+    },
+    {
+     "line": 59,
+     "col": 31,
+     "end": 38,
+     "name": "popleft",
+     "recv": "self.running",
+     "loop": true
+    },
+    {
+     "line": 60,
+     "col": 41,
+     "end": 51,
+     "name": "can_append",
+     "recv": "self.block_manager",
+     "loop": true
+    },
+    {
+     "line": 62,
+     "col": 25,
+     "end": 32,
+     "name": "preempt",
+     "recv": "self",
+     "loop": true
+    },
+    {
+     "line": 62,
+     "col": 46,
+     "end": 49,
+     "name": "pop",
+     "recv": "self.running",
+     "loop": true
+    },
+    {
+     "line": 64,
+     "col": 25,
+     "end": 32,
+     "name": "preempt",
+     "recv": "self",
+     "loop": true
+    },
+    {
+     "line": 69,
+     "col": 35,
+     "end": 45,
+     "name": "may_append",
+     "recv": "self.block_manager",
+     "loop": true
+    },
+    {
+     "line": 70,
+     "col": 31,
+     "end": 37,
+     "name": "append",
+     "recv": "scheduled_seqs",
+     "loop": true
+    },
+    {
+     "line": 72,
+     "col": 21,
+     "end": 31,
+     "name": "extendleft",
+     "recv": "self.running",
+     "loop": false
+    }
+   ],
+   "defs": [
+    {
+     "line": 25,
+     "name": "schedule",
+     "qual": "Scheduler.schedule"
+    }
+   ],
+   "bare": {
+    "42": "            <span class=\"kw\">if</span> remaining <span class=\"p\">&lt;</span> num_tokens <span class=\"kw\">and</span> scheduled_seqs<span class=\"p\">:</span>"
+   }
+  }
+ },
+ "preempt": {
+  "seg": {
+   "id": "s-preempt",
+   "src": {
+    "kind": "repo",
+    "repo": ""
+   },
+   "path": "nanovllm/engine/scheduler.py",
+   "lang": "python",
+   "start": 75,
+   "end": 79,
+   "text": [
+    "    def preempt(self, seq: Sequence):",
+    "        seq.status = SequenceStatus.WAITING",
+    "        seq.is_prefill = True",
+    "        self.block_manager.deallocate(seq)",
+    "        self.waiting.appendleft(seq)"
+   ],
+   "version": {
+    "kind": "git",
+    "commit": "bb823b3c0ffee"
+   },
+   "symbol": {
+    "qual": "Scheduler.preempt",
+    "kind": "function"
+   }
+  },
+  "view": {
+   "html": [
+    "    <span class=\"kw\">def</span> preempt<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">,</span> seq<span class=\"p\">:</span> Sequence<span class=\"p\">)</span><span class=\"p\">:</span>",
+    "        seq<span class=\"p\">.</span>status <span class=\"p\">=</span> SequenceStatus<span class=\"p\">.</span>WAITING",
+    "        seq<span class=\"p\">.</span>is_prefill <span class=\"p\">=</span> <span class=\"kw\">True</span>",
+    "        <span class=\"self\">self</span><span class=\"p\">.</span>block_manager<span class=\"p\">.</span><span class=\"call\" data-c=\"0\">deallocate</span><span class=\"p\">(</span>seq<span class=\"p\">)</span>",
+    "        <span class=\"self\">self</span><span class=\"p\">.</span>waiting<span class=\"p\">.</span><span class=\"call\" data-c=\"1\">appendleft</span><span class=\"p\">(</span>seq<span class=\"p\">)</span>"
+   ],
+   "flags": [
+    0,
+    0,
+    0,
+    0,
+    0
+   ],
+   "calls": [
+    {
+     "line": 78,
+     "col": 27,
+     "end": 37,
+     "name": "deallocate",
+     "recv": "self.block_manager",
+     "loop": false
+    },
+    {
+     "line": 79,
+     "col": 21,
+     "end": 31,
+     "name": "appendleft",
+     "recv": "self.waiting",
+     "loop": false
+    }
+   ],
+   "defs": [
+    {
+     "line": 75,
+     "name": "preempt",
+     "qual": "Scheduler.preempt"
+    }
+   ],
+   "bare": {}
+  }
+ },
+ "canAppend": {
+  "seg": {
+   "id": "s-canAppend",
+   "src": {
+    "kind": "repo",
+    "repo": ""
+   },
+   "path": "nanovllm/engine/block_manager.py",
+   "lang": "python",
+   "start": 103,
+   "end": 104,
+   "text": [
+    "    def can_append(self, seq: Sequence) -> bool:",
+    "        return len(self.free_block_ids) >= (len(seq) % self.block_size == 1)"
+   ],
+   "version": {
+    "kind": "git",
+    "commit": "bb823b3c0ffee"
+   },
+   "symbol": {
+    "qual": "BlockManager.can_append",
+    "kind": "function"
+   }
+  },
+  "view": {
+   "html": [
+    "    <span class=\"kw\">def</span> can_append<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">,</span> seq<span class=\"p\">:</span> Sequence<span class=\"p\">)</span> <span class=\"p\">-</span><span class=\"p\">&gt;</span> bool<span class=\"p\">:</span>",
+    "        <span class=\"kw\">return</span> len<span class=\"p\">(</span><span class=\"self\">self</span><span class=\"p\">.</span>free_block_ids<span class=\"p\">)</span> <span class=\"p\">&gt;</span><span class=\"p\">=</span> <span class=\"p\">(</span>len<span class=\"p\">(</span>seq<span class=\"p\">)</span> <span class=\"p\">%</span> <span class=\"self\">self</span><span class=\"p\">.</span>block_size <span class=\"p\">=</span><span class=\"p\">=</span> <span class=\"num\">1</span><span class=\"p\">)</span>"
+   ],
+   "flags": [
+    0,
+    0
+   ],
+   "calls": [],
+   "defs": [
+    {
+     "line": 103,
+     "name": "can_append",
+     "qual": "BlockManager.can_append"
+    }
+   ],
+   "bare": {}
+  }
+ }
+}
