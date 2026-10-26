@@ -2,10 +2,9 @@
 // a Note's title from its first heading, and ⌘X on cards (npm run harness -- sectionLook dragCardIntoOtherSection …)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
-const wait = (h: Host, ms: number) => h.page.waitForTimeout(ms);
 
 /** Two Sections side by side: a code card in the left one, a Note with a heading in the right one */
 function twoSections(): Board {
@@ -25,33 +24,33 @@ function twoSections(): Board {
 /** Section frame: a solid hairline (no dashes), no pill behind the title, handle and caret only on hover; selected = accent */
 test("sectionLook", async () => {
   const h = await open({ board: twoSections(), light });
-  await h.page.keyboard.press("Shift+!"); await wait(h, 600);
-  await h.page.mouse.move(1380, 880);
+  await h.page.keyboard.press("Shift+!"); await idle(h);
+  await h.page.mouse.move(1380, 880); await idle(h);
   const look = () => h.page.evaluate(() => {
     const f = document.querySelector('.sect[data-sect="S2"]')!, l = document.querySelector('.slabel[data-sect="S2"]')!;
     const fs = getComputedStyle(f), ls = getComputedStyle(l);
     const op = (sel: string) => { const e = l.querySelector(sel); return e ? +getComputedStyle(e).opacity : -1; };
     return { border: fs.borderTopStyle, radius: parseFloat(fs.borderTopLeftRadius), cardRadius: parseFloat(getComputedStyle(document.querySelector(".card")!).borderTopLeftRadius), labelBg: ls.backgroundColor, dots: op(".dots"), chev: op(".chev2"), shadow: fs.boxShadow };
   });
-  const idle = await look();
-  await shot(h, "sect-look-01-idle");
-  await h.page.locator('.slabel[data-sect="S2"] .sname').hover(); await wait(h, 400);
+  const rest = await look();
+  await shot(h, "sect-look-01-idle", "idle");
+  await h.page.locator('.slabel[data-sect="S2"] .sname').hover(); await idle(h); // the handle and caret fade in
   const hover = await look();
-  await shot(h, "sect-look-02-hover");
-  await h.page.locator('.slabel[data-sect="S2"] .sname').click(); await wait(h, 400);
+  await shot(h, "sect-look-02-hover", "idle");
+  await h.page.locator('.slabel[data-sect="S2"] .sname').click(); await h.page.locator('.sect.sel[data-sect="S2"], .slabel.sel[data-sect="S2"]').first().waitFor(); await idle(h);
   const selected = await look();
-  await shot(h, "sect-look-03-selected");
+  await shot(h, "sect-look-03-selected", "idle");
   const clear = (c: string) => c === "rgba(0, 0, 0, 0)" || c === "transparent";
-  check("section-look-idle", idle.border !== "dashed" && idle.radius <= idle.cardRadius + 2 && clear(idle.labelBg) && idle.dots === 0 && idle.chev === 0, idle);
+  check("section-look-idle", rest.border !== "dashed" && rest.radius <= rest.cardRadius + 2 && clear(rest.labelBg) && rest.dots === 0 && rest.chev === 0, rest);
   check("section-look-hover", hover.dots > 0.9 && hover.chev > 0.9, hover);
-  check("section-look-selected", selected.shadow !== idle.shadow, { idle: idle.shadow, selected: selected.shadow });
+  check("section-look-selected", selected.shadow !== rest.shadow, { idle: rest.shadow, selected: selected.shadow });
   await close(h);
 });
 
 /** Drag a card by its title bar from one Section into another: the target Section lights up during the drag, the card joins it, one undo puts it back */
 test("dragCardIntoOtherSection", async () => {
   const h = await open({ board: twoSections(), light });
-  await h.page.keyboard.press("Shift+!"); await wait(h, 600);
+  await h.page.keyboard.press("Shift+!"); await idle(h);
   const head = (await h.page.locator('.card[data-id="n1"] .chead').boundingBox())!;
   const card = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
   const s1 = (await h.page.locator('.sect[data-sect="S1"]').boundingBox())!;
@@ -62,27 +61,29 @@ test("dragCardIntoOtherSection", async () => {
   const dx = to.x - (card.x + card.width / 2), dy = to.y - (card.y + card.height / 2);
   await h.page.mouse.move(grab.x, grab.y); await h.page.mouse.down();
   await h.page.mouse.move(grab.x + dx / 2, grab.y + dy / 2, { steps: 6 });
-  await h.page.mouse.move(grab.x + dx, grab.y + dy, { steps: 10 }); await wait(h, 300);
+  await h.page.mouse.move(grab.x + dx, grab.y + dy, { steps: 10 }); await idle(h);
   const during = await h.page.evaluate(() => [...document.querySelectorAll(".sect.drop, .slabel.drop")].map((e) => (e as HTMLElement).dataset.sect));
   const s2b = (await h.page.locator('.sect[data-sect="S2"]').boundingBox())!;
-  await shot(h, "sect-drag-01-over-target");
-  await h.page.mouse.up(); await wait(h, 500);
+  await shot(h, "sect-drag-01-over-target", "idle");
+  await h.page.mouse.up(); await idle(h); // the drop is sent at once
   const after = h.board().place.n1.section;
   const lit = await h.page.locator(".sect.drop").count();
-  await shot(h, "sect-drag-02-dropped");
+  await shot(h, "sect-drag-02-dropped", "idle");
   check("drag-into-section-highlight", during.includes("S1") && !during.includes("S2"), { during });
   // the Section the card leaves keeps its own frame during the drag instead of stretching after the card
   check("drag-source-section-stays", Math.abs(s2b.height - s2a.height) < 2 && Math.abs(s2b.width - s2a.width) < 2, { before: s2a, during: s2b });
   check("drag-into-section-joins", after === "S1" && lit === 0, { after, lit });
-  await h.page.keyboard.press("Control+z"); await wait(h, 500);
+  await h.page.keyboard.press("Control+z"); await idle(h);
   check("drag-into-section-undo", h.board().place.n1.section === "S2", { section: h.board().place.n1.section });
   // the same move from the card menu: Move to Section ▸ 异构并行计算 (the card lands inside that Section's frame)
-  await h.page.locator('.card[data-id="n1"] .chead').click({ button: "right" }); await wait(h, 200);
-  await h.page.locator(".ctx button", { hasText: "Move to Section" }).hover(); await wait(h, 300);
-  await shot(h, "sect-menu-01-move-to");
-  await h.page.locator(".ctx button", { hasText: "异构并行计算" }).click(); await wait(h, 700);
+  await h.page.locator('.card[data-id="n1"] .chead').click({ button: "right" });
+  await h.page.locator(".ctx button", { hasText: "Move to Section" }).hover();
+  await h.page.locator(".ctx button", { hasText: "异构并行计算" }).waitFor();
+  await shot(h, "sect-menu-01-move-to", "idle");
+  await h.page.locator(".ctx button", { hasText: "异构并行计算" }).click();
+  await until(h, "Move to Section saves the card in S1", () => h.board().place.n1.section !== "S2"); await idle(h);
   const p = h.board().place.n1, f = (await h.page.locator('.sect[data-sect="S1"]').boundingBox())!, c = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
-  await shot(h, "sect-menu-02-moved");
+  await shot(h, "sect-menu-02-moved", "idle");
   check("move-to-section-menu", p.section === "S1" && p.y >= 60 && p.y <= 820 && c.x >= f.x && c.x + c.width <= f.x + f.width && c.y >= f.y && c.y + c.height <= f.y + f.height + 1, { p, f, c });
   await close(h);
 });
@@ -99,7 +100,7 @@ test("sectionMembershipByOverlap", async () => {
   b.sections.push({ id: "T", title: "Memory", x: 1100, y: 100, w: 400, h: 300 });
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 1600 });
-  await wait(h, 800);
+  await idle(h);
   const size = (id: string) => h.page.evaluate((i) => { const r = document.querySelector(`.card[data-id="${i}"]`)!.getBoundingClientRect(); return { w: r.width, h: r.height }; }, id);
   const share = (p: { x: number; y: number }, r: { w: number; h: number }, f: { x: number; y: number; w: number; h: number }) =>
     (Math.max(0, Math.min(p.x + r.w, f.x + f.w) - Math.max(p.x, f.x)) * Math.max(0, Math.min(p.y + r.h, f.y + f.h) - Math.max(p.y, f.y))) / (r.w * r.h);
@@ -110,24 +111,24 @@ test("sectionMembershipByOverlap", async () => {
     const hd = (await h.page.locator(`.card[data-id="${id}"] .chead`).boundingBox())!;
     const x = hd.x + 30, y = hd.y + hd.height / 2;
     await h.page.mouse.move(x, y); await h.page.mouse.down();
-    await h.page.mouse.move(x + dx / 2, y + dy / 2, { steps: 6 }); await h.page.mouse.move(x + dx, y + dy, { steps: 8 }); await wait(h, 300);
+    await h.page.mouse.move(x + dx / 2, y + dy / 2, { steps: 6 }); await h.page.mouse.move(x + dx, y + dy, { steps: 8 }); await idle(h);
     const lit = await h.page.evaluate(() => [...document.querySelectorAll(".sect.drop")].map((e) => (e as HTMLElement).dataset.sect));
-    if (name) await shot(h, name);
-    await h.page.mouse.up(); await wait(h, 500);
+    if (name) await shot(h, name, "idle");
+    await h.page.mouse.up(); await idle(h); // the drop is sent at once
     const p = h.board().place[id], r = await size(id);
     return { p, lit, s: share(p, r, S), t: share(p, r, T) };
   };
   // about a quarter inside S (and a quarter inside T): stays out
   const q = await move("c1", 950, 150, "27-third-01-quarter-inside");
   check("overlap-quarter-stays-out", q.s < 1 / 3 && q.t < 1 / 3 && q.s > 0.15 && !q.p.section && !q.lit.length, q);
-  await h.page.keyboard.press("Control+z"); await wait(h, 400);
+  await h.page.keyboard.press("Control+z"); await idle(h);
   // over two Sections, more than a third in each: joins the one it overlaps more
   const two = await move("m1", 840, 150, "27-third-02-over-two-sections");
   check("overlap-two-sections-more-wins", two.s > 1 / 3 && two.t > 1 / 3 && two.p.section === (two.s > two.t ? "S" : "T") && two.lit.length === 1 && two.lit[0] === two.p.section, two);
-  await h.page.keyboard.press("Control+z"); await wait(h, 400);
+  await h.page.keyboard.press("Control+z"); await idle(h);
   // wide card a bit under half inside: joins, and the Section lights up during the drag
   const w = await move("w1", 740, 250, "27-third-03-wide-card-over-section");
-  await shot(h, "27-third-04-wide-card-joined");
+  await shot(h, "27-third-04-wide-card-joined", "idle");
   check("overlap-under-half-joins", w.p.section === "S" && w.s > 0.4 && w.s < 0.5 && w.lit.length === 1 && w.lit[0] === "S", w);
   await close(h);
 });
@@ -139,17 +140,17 @@ test("noteTitleFromHeading", async () => {
   put(b, { id: "n2", kind: "note", bg: true, md: "Just a paragraph, no heading." } as NoteCard, 440, 80, 300);
   put(b, { id: "n3", kind: "note", bg: true, md: "# From heading", title: "Chosen by me" } as NoteCard, 800, 80, 300);
   const h = await open({ board: b, light, w: 1200, h: 600 });
-  await wait(h, 500);
+  await idle(h);
   const title = (id: string) => h.page.locator(`.card[data-id="${id}"] .chead .ctitle`).textContent();
   const t0 = { n1: await title("n1"), n2: await title("n2"), n3: await title("n3") };
-  await shot(h, "note-title-01");
+  await shot(h, "note-title-01", "idle");
   check("note-title-from-heading", t0.n1 === "KV cache budget" && t0.n2 === "Note" && t0.n3 === "Chosen by me", t0);
   // editing the heading changes the title
-  await h.page.locator('.card[data-id="n2"] .nbody').dblclick(); await wait(h, 400);
+  await h.page.locator('.card[data-id="n2"] .nbody').dblclick(); await h.page.locator(".md-pm:focus").waitFor();
   await h.page.keyboard.press("Control+a"); await h.page.keyboard.type("# Decode loop\n\nOne token per step.");
-  await h.page.keyboard.press("Escape"); await wait(h, 500);
+  await h.page.keyboard.press("Escape"); await idle(h);
   const t1 = await title("n2");
-  await shot(h, "note-title-02-edited");
+  await shot(h, "note-title-02-edited", "idle");
   check("note-title-follows-edit", t1 === "Decode loop", { t1, md: (h.board().cards.find((c) => c.id === "n2") as NoteCard).md });
   await close(h);
 });
@@ -159,14 +160,15 @@ test("cutCardsPasteUndo", async () => {
   const b = twoSections();
   const code = b.cards[0].id;
   const h = await open({ board: b, light });
-  await h.page.keyboard.press("Shift+!"); await wait(h, 600);
+  await h.page.keyboard.press("Shift+!"); await idle(h);
   const p0 = { ...h.board().place.n1 };
-  await h.page.locator('.card[data-id="n1"] .chead').click(); await wait(h, 200);
-  await h.page.keyboard.press("Control+x"); await wait(h, 600);
+  await h.page.locator('.card[data-id="n1"] .chead').click(); await h.page.locator('.card.sel[data-id="n1"]').waitFor();
+  await h.page.keyboard.press("Control+x"); await idle(h);
   const cut = { n1: !!h.board().cards.find((c) => c.id === "n1"), copied: h.sent.some((m) => m.type === "copyCards") };
-  await h.page.keyboard.press("Control+z"); await wait(h, 600);
+  await h.page.keyboard.press("Control+z");
+  await until(h, "undo brings the cut card back", () => h.board().cards.some((c) => c.id === "n1")); await idle(h);
   const undone = { n1: !!h.board().cards.find((c) => c.id === "n1"), place: h.board().place.n1 };
-  await h.page.keyboard.press("Control+Shift+z"); await wait(h, 600);
+  await h.page.keyboard.press("Control+Shift+z"); await idle(h);
   const redone = !h.board().cards.some((c) => c.id === "n1");
   check("cut-removes-card", !cut.n1 && cut.copied, cut);
   check("cut-single-undo", undone.n1 && undone.place?.x === p0.x && undone.place?.y === p0.y && undone.place?.section === "S2", { undone, p0 });
@@ -174,14 +176,14 @@ test("cutCardsPasteUndo", async () => {
   // paste: the clipboard has the card's text; the same card comes back (same id, its heading intact) at the pointer
   await h.page.mouse.move(1000, 700);
   await h.page.evaluate((t) => { const dt = new DataTransfer(); dt.setData("text/plain", t); document.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true })); }, (b.cards[1] as NoteCard).md);
-  await wait(h, 900);
+  await idle(h);
   const back = h.board().cards.find((c) => c.id === "n1") as NoteCard | undefined;
-  await shot(h, "cut-01-pasted");
+  await shot(h, "cut-01-pasted", "idle");
   check("cut-paste-restores", !!back && back.md === (b.cards[1] as NoteCard).md && h.board().cards.length === 2, { ids: h.board().cards.map((c) => c.id) });
   // ⌘X inside the Note editor: text is cut, the card stays
-  await h.page.locator('.card[data-id="n1"] .nbody').dblclick(); await wait(h, 400);
-  await h.page.keyboard.press("Control+a"); await h.page.keyboard.press("Control+x"); await wait(h, 300);
-  await h.page.keyboard.press("Escape"); await wait(h, 400);
+  await h.page.locator('.card[data-id="n1"] .nbody').dblclick(); await h.page.locator(".md-pm:focus").waitFor();
+  await h.page.keyboard.press("Control+a"); await h.page.keyboard.press("Control+x"); await idle(h);
+  await h.page.keyboard.press("Escape"); await idle(h);
   const ids = h.board().cards.map((c) => c.id);
   check("cut-in-editor-keeps-card", ids.includes(code) && h.sent.filter((m) => m.type === "copyCards").length === 1, { ids, copies: h.sent.filter((m) => m.type === "copyCards").length });
   await close(h);
