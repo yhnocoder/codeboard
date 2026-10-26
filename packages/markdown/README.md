@@ -84,7 +84,7 @@ note.addEventListener("click", (e) => {
 show();
 ```
 
-`mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates), `saveImage` / `pickImage` (where pasted, dropped and picked images go: `saveImage(dataUrl, name)` resolves to the path written into the Markdown, or `null` to insert nothing; by default they stay inline as `data:` URLs), `complete` (inline AI completion), `code` (comment tokens and language services for code blocks, and `langs`: the languages listed by the language box at a code block's bottom right, as `{ name, label, aliases }` where `name` is what goes into the fence) and `dragHandle` (a ⋮⋮ handle left of the hovered block for dragging it; off by default). The handle has `value()`, `destroy()` and `editor()` (the TipTap editor).
+`mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates), `saveImage` / `pickImage` (where pasted, dropped and picked images go: `saveImage(dataUrl, name)` resolves to the path written into the Markdown, or `null` to insert nothing; by default they stay inline as `data:` URLs), `complete` (inline AI completion), `code` (comment tokens and language services for code blocks, and `langs`: the languages listed when the language name at a code block's top right is clicked, as `{ name, label, aliases }` where `label` is what the block shows and `name` is what goes into the fence) and `dragHandle` (a ⋮⋮ handle left of the hovered block for dragging it; off by default). The handle has `value()`, `destroy()` and `editor()` (the TipTap editor).
 
 A complete page using only this package is in [examples/markdown-demo](https://github.com/yhnocoder/codeboard/tree/main/examples/markdown-demo).
 

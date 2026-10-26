@@ -1,6 +1,6 @@
 // 代码块的语言框（#68）：打的字筛出语言、定下来写进围栏的名字
 import { describe, expect, it } from "vitest";
-import { langOf, matchLangs, type CodeLang } from "../src/editor/codelang";
+import { langLabel, langOf, matchLangs, type CodeLang } from "../src/editor/codelang";
 
 const LANGS: CodeLang[] = [
   { name: "python", label: "Python", aliases: ["py", "python3"] },
@@ -25,5 +25,12 @@ describe("code block language box", () => {
     expect(langOf(LANGS, " zig ")).toBe("zig");
     expect(langOf(LANGS, "zig extra words")).toBe("zig");
     expect(langOf(LANGS, "   ")).toBeNull();
+  });
+  it("shows a language by its display name, aliases included, anything unknown as written, and none as Plain text", () => {
+    expect(langLabel(LANGS, "cuda")).toBe("CUDA");
+    expect(langLabel(LANGS, "py")).toBe("Python");
+    expect(langLabel(LANGS, "cpp")).toBe("C++");
+    expect(langLabel(LANGS, "zig")).toBe("zig");
+    expect(langLabel(LANGS, "")).toBe("Plain text");
   });
 });

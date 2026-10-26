@@ -197,15 +197,34 @@ math { font-size: 1.05em; }
 .md-ico { display: block; width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: var(--ico-w, 1); stroke-linecap: round; stroke-linejoin: round; }
 .md-ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
-/* 代码块右下角的语言框（editor/codelang.ts）：编辑时光标在这一块里、鼠标停在块上时淡淡地显示，点进去改；下面的语言列表是 .md-menu */
-.md-pm pre.md-code > .md-lang { position: absolute; right: 4px; bottom: 2px; z-index: 1; field-sizing: content; min-width: 4ch; max-width: 50%; height: 16px; padding: 0 4px; margin: 0;
-  border: 0; border-radius: 4px; outline: none; background: var(--hlrow); color: var(--ink-3); font: 10px/16px var(--mono); text-align: right;
+/* 代码块右上角的语言名（editor/codelang.ts）：一行淡色小字，没有底色和边框；编辑时光标在这一块里、鼠标停在块上时淡入，悬停时字变深、
+   出现 ▾。第一行伸到它下面时（.md-under）只在悬停、列表开着时显示，不盖住代码。不占地方：显示、编辑时的排版一样 */
+.md-pm pre.md-code > .md-lang { position: absolute; right: 10px; top: 6px; z-index: 1; display: flex; align-items: center; gap: 3px; max-width: 50%; margin: 0; padding: 0;
+  border: 0; border-radius: 0; outline: none; background: none; box-shadow: none; color: var(--ink-3); font: 11px/18px var(--sys); letter-spacing: .01em; white-space: nowrap;
+  cursor: default; user-select: none; -webkit-user-select: none;
   opacity: 0; transition: opacity calc(var(--t, 1) * 120ms), color calc(var(--t, 1) * 120ms); }
-.md-pm pre.md-code > .md-lang::placeholder { color: var(--ink-3); opacity: .7; }
-.md-pm pre.md-code:is(:hover, :focus-within) > .md-lang { opacity: 1; }
-.md-pm pre.md-code > .md-lang:is(:hover, :focus) { color: var(--ink); box-shadow: 0 0 0 .5px var(--hair); }
+.md-pm pre.md-code > .md-lang .md-lang-nm { overflow: hidden; text-overflow: ellipsis; }
+.md-pm pre.md-code > .md-lang .md-lang-v { flex: none; opacity: 0; transition: opacity calc(var(--t, 1) * 120ms); }
+.md-pm pre.md-code:is(:hover, :focus-within) > .md-lang, .md-pm pre.md-code > .md-lang[aria-expanded="true"] { opacity: 1; }
+.md-pm pre.md-code:focus-within:not(:hover) > .md-lang.md-under:not([aria-expanded="true"]) { opacity: 0; }
+.md-pm pre.md-code > .md-lang:is(:hover, [aria-expanded="true"]) { color: var(--ink-2); }
+.md-pm pre.md-code:hover > .md-lang .md-lang-v, .md-pm pre.md-code > .md-lang[aria-expanded="true"] .md-lang-v { opacity: .8; }
+.md-pm pre.md-code > .md-lang:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
+/* 语言列表：上面是筛选框（下面一条细线），下面是语言（左边显示名，右边围栏里的名字，现在的打 ✓），选中的一行是淡淡的强调色。
+   从语言名的右下角放大淡入（.ctx 的过渡）；只滚语言那一段 */
 .md-langbox { position: fixed; left: 0; top: 0; }
-.md-langbox .md-menu { min-width: 180px; max-height: 240px; }
+.md-langbox .md-menu { width: 200px; min-width: 0; max-height: none; overflow: hidden; display: flex; flex-direction: column; padding: 4px; transform-origin: 100% 0; }
+.md-langbox .md-langq { flex: none; width: 100%; height: 28px; margin: 0 0 4px; padding: 0 8px; border: 0; border-bottom: .5px solid var(--hair); border-radius: 0; outline: none;
+  background: transparent; color: var(--ink); font: 12.5px var(--sys); }
+.md-langbox .md-langq::placeholder { color: var(--ink-3); }
+.md-langbox .md-langs { max-height: 196px; overflow-y: auto; overscroll-behavior: contain; }
+.md-langbox .md-langs .md-lo { gap: 6px; }
+.md-langbox .md-langs .md-lo .ck { width: 10px; }
+/* 选中（键盘或悬停）：淡淡的强调色，字不变（盖过 .ctx 和各主题的悬停色） */
+.md-langbox .md-langs .md-lo.md-lo.md-lo:not([disabled]):is(:hover, .kb, .sel) { background: transparent; color: var(--ink); }
+.md-langbox .md-langs .md-lo.md-lo.md-lo:not([disabled]).sel { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.md-langbox .md-langs .md-lo.md-lo.md-lo:not([disabled]) small { color: var(--ink-3); }
+.md-langbox .md-langs .md-lo.md-lo.md-lo:not([disabled]) .ck { color: var(--accent); }
 .md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
 /* 代码编辑（CodeMirror，cm/editor.ts）：字体、行高跟着外面（Free code 卡是 .code，Note 里是 pre），没有内边距；字的位置和显示时一样 */
 .cbcm .cm-content .call { cursor: text; }
