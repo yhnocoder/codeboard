@@ -1,4 +1,3 @@
-// 右键 / ⋯ 菜单：卡片、多选、画布、连线、Section、调用、选中的行。
 import {
   findCard, isCode, cardTitle, segOf, allCodeCards, walkOrder, headOf, canMark, type CodeCard, type CompareCard, type LinkSide, type Section, type CallSpan,
 } from "@codeboard/core";
@@ -53,7 +52,7 @@ export function callMenu(cardId: string, segId: string, call: CallSpan, x: numbe
   const had = expandedTo(cardId, segId, call);
   const items: Item[] = [
     ...(el ? [{ label: "Peek Definition", run: () => showPeek(el, cardId, segId, call.line, call.col, call.name, true) }] : []),
-    // 已经展开过：点 = 跳到那张卡（Go to），要再建一张用 Expand Again（W01 B 7）
+    // 已经展开过：点 = 跳到那张卡（Go to），要再建一张用 Expand Again
     ...(had ? [
       { label: `Go to ${cardTitle(cardById(had)!.card, state.board)}`, kbd: "Click", run: () => jumpTo(had) },
       { label: "Expand Again", hint: "Makes a second card for this call", run: () => expandCall(cardId, segId, call, undefined, undefined, true) },
@@ -65,7 +64,7 @@ export function callMenu(cardId: string, segId: string, call: CallSpan, x: numbe
         return { label: `${n?.label ? n.label + "  " : ""}${cardTitle(k)}`, run: () => attachCall(cardId, segId, call, k.id) };
       }) : [{ label: "No card for this function on the board", disabled: "Drag the call onto any code card to link it" }],
     },
-    // 解析不到的调用（字符串注册、跨语言）：按名字搜，或手动补一条 Call 箭头（线框 01 二）
+    // 解析不到的调用（字符串注册、跨语言）：按名字搜，或手动补一条 Call 箭头
     { label: `Search “${call.name}” in All Languages`, run: () => searchAllLangs(cardId, segId, call) },
     { label: "Draw Call Arrow Manually…", run: () => drawManual(cardId, segId, call) },
     null,
@@ -73,9 +72,6 @@ export function callMenu(cardId: string, segId: string, call: CallSpan, x: numbe
   ];
   openMenu(items, x, y);
 }
-
-
-// ---------- 行 ----------
 
 function lineItems(ls: LineSel): Item[] {
   const f = cardById(ls.card);
@@ -87,10 +83,10 @@ function lineItems(ls: LineSel): Item[] {
     { label: "Hide Lines", kbd: "H", run: () => hideLines(ls) },
     { label: hlAll ? "Remove Highlight" : "Highlight Lines", run: () => toggleHl(ls) },
     { label: "Add Sidenote", kbd: "S", run: () => openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) },
-    // 疑问（线框 06）：在第一行贴「?」并直接写问题
+    // 疑问：在第一行贴「?」并直接写问题
     { label: "Ask a Question", run: () => askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) },
     { label: "New Card from Lines", run: () => cardFromLines(ls) },
-    // 生成的代码 / 编译产物：钉在一次运行上，点线连回这一行（线框 02 三）
+    // 生成的代码 / 编译产物：钉在一次运行上，点线连回这一行
     { label: "Add Generated Code", sub: genItems({ card: ls.card, seg: ls.seg, line: ls.start }) },
     { label: "Copy", kbd: kbd("copy"), run: () => copyLines(ls) },
   ];
@@ -105,8 +101,6 @@ export function lineMenu(ls: LineSel, x: number, y: number, annotate?: () => voi
   selectCard(ls.card);
   openMenu([...(annotate ? [{ label: "Annotate Selection…", hint: "A handwritten note above the selected words", run: annotate }, null] : []), ...lineItems(ls), null, { label: "Card", sub: cardItems(ls.card, x, y) }], x, y);
 }
-
-// ---------- 卡片菜单 ----------
 
 export function cardMenu(id: string, x: number, y: number) {
   const items = cardItems(id, x, y);
@@ -203,7 +197,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ];
   }
   if (!isCode(c)) return [];
-  // 代码卡（也可能是 Compare 里的一栏）。分组短一点，Hide*/Wrap 收进 View ▸（#24）
+  // 代码卡（也可能是 Compare 里的一栏）。分组短一点，Hide*/Wrap 收进 View ▸
   const col = f.host.id !== c.id;
   const node = flows().byId.get(c.id);
   const hasKids = flows().kids.has(c.id);
@@ -229,12 +223,12 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ...(col ? [] : [lockItem]),
     ...(!col && (c.segments.length > 1 || c.mergedFrom) ? [{ label: "Unmerge", run: () => unmerge(c.id) } as Item] : []),
     null,
-    // 进程标签（线框 03）：自由文字；线程 / CUDA stream 用浅一点的标签
+    // 进程标签：自由文字；线程 / CUDA stream 用浅一点的标签
     { label: "Process Tag…", hint: "rank 0, rank 1…N, Scheduler × TP", run: () => void addProc(c.id) },
     { label: "Thread / Stream Tag…", run: () => void addProc(c.id, true) },
   ];
   const flow: Item[] = [
-    // 起点卡（线框 12）：不选卡直接 Walkthrough、调用树从这里开始
+    // 起点卡：不选卡直接 Walkthrough、调用树从这里开始
     { label: "Start Card", checked: !!placeOf(host.id).start, hint: "Walkthrough with nothing selected starts here", run: () => toggleStart(c.id) },
     null,
     { label: "Select", disabled: node ? false : "Not in a call graph", run: () => selectFlow(c.id) },
@@ -247,7 +241,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     ...(col ? [] : [{ label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent(sel.cards.length > 1 ? sel.cards : [c.id]) } as Item]),
     { label: "Edit", sub: edit },
     { label: "View", sub: view },
-    // 我的改动（线框 07）：同一段代码的分支 / 工作区 / 另一个 worktree / 复制的文件 / PR
+    // 我的改动：同一段代码的分支 / 工作区 / 另一个 worktree / 复制的文件 / PR
     ...(free || col || c.gen ? [] : [{ label: c.variants?.length ? "Add Another Variant…" : "Add Variant…", run: () => void addVariantMenu(c.id, x, y) } as Item]),
     { label: "Call Graph", sub: flow },
     ...(col ? [] : [arrangeItem(() => [host.id])]),
@@ -272,7 +266,6 @@ function sectionItems(): Item[] {
   ];
 }
 
-/** 选中的卡变成一块子白板（线框 05 ④） */
 const turnItem = (): Item => ({ label: "Turn into Board…", kbd: kbd("turnIntoBoard"), run: () => void turnIntoBoard() });
 
 function multiItems(): Item[] {
@@ -320,8 +313,7 @@ export function canvasMenu(x: number, y: number) {
   ], x, y);
 }
 
-
-/** 箭头右键（W01 D 22、24、25）：Call 标记、线的样子、两端进出边、标签、删除 */
+/** 箭头右键：Call 标记、线的样子、两端进出边、标签、删除 */
 export function linkMenu(id: string, x: number, y: number) {
   const L = state.board.links.find((l) => l.id === id);
   if (!L) return;
@@ -345,7 +337,7 @@ export function linkMenu(id: string, x: number, y: number) {
   const marks = canMark(L); // Generated from 不加别的标记（LinkMarks）
   openMenu([
     ...(marks && canCall ? [{ label: "Call Mark", checked: !!L.call, hint: L.call ? "Turning it off hides the arguments and ↺; your text stays" : found ? "This line calls the target function" : "Mark this arrow as a call", run: () => toggleCallMark(id) } as Item] : []),
-    // 跨进程（线框 03）：RPC 也是线上的标记；↩ back to = 回到起点的线
+    // 跨进程：RPC 也是线上的标记；↩ back to = 回到起点的线
     ...(marks ? [
       { label: L.rpc ? "Edit RPC…" : "Mark as RPC…", run: () => markRpc(id) },
       ...(L.rpc ? [{ label: "Remove RPC Mark", run: () => clearRpc(id) } as Item] : []),
@@ -373,7 +365,7 @@ export function linkMenu(id: string, x: number, y: number) {
 }
 
 /**
- * Style ▸（线框 12 三）：图例里的几种样式，名字是这块白板的图例。只是挑个样式，不加规则：
+ * Style ▸：图例里的几种样式，名字是这块白板的图例。只是挑个样式，不加规则：
  * Call / See also / RPC 能直接换；Observed 来自一次运行，Generated from 来自 Add Generated Code，只显示
  */
 function styleItems(L: Link): Item[] {
@@ -391,7 +383,7 @@ function styleItems(L: Link): Item[] {
   return [...LEGEND.map(([k]) => run[k]), null, { label: "Edit Legend…", run: () => setLegendOpen(true) }];
 }
 
-/** 标签框右键（W01 D 23）：编辑、选参数和 ↺（只在 Call 上）、回到中间、删掉自己写的字 */
+/** 标签框右键：编辑、选参数和 ↺（只在 Call 上）、回到中间、删掉自己写的字 */
 export function labelMenu(id: string, x: number, y: number) {
   const L = state.board.links.find((l) => l.id === id);
   if (!L) return;
@@ -427,4 +419,3 @@ export function sectionMenu(id: string, x: number, y: number) {
     { label: "Remove Section", hint: "Cards and inner sections stay", run: () => removeSections([id]) },
   ], x, y);
 }
-

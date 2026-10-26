@@ -1,4 +1,3 @@
-// 版本：新版本提示、diff、Update / Keep、commit 列表、切换 commit。
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, allCodeCards, rebaseSegment, rebaseUpstream, upstreamSegs, viewKeyOf, UPSTREAM, type CodeCard, type Segment, type DiffData, type Commit, type SegView,
@@ -13,8 +12,6 @@ import { updateScoped, reviewToast } from "./shared";
 import { choose } from "../ui/Menu";
 import { unlinkCard, versionLabel } from "@codeboard/core";
 import { sharedOn } from "../state/store";
-
-// ---------- 版本 ----------
 
 /** 卡片标题上的版本点：changed = 黄点；hidden = 只有隐藏的行变了（空心点） */
 export function cardStale(c: CodeCard): "changed" | "hidden" | "lost" | "missing" | null {
@@ -113,7 +110,7 @@ export async function commitMenu(id: string, el: Element) {
   if (!isCode(c)) return;
   const s = c.segments[0];
   if (s.src.kind === "github" || s.src.kind === "free") return;
-  // 先拿列表再开弹窗：弹窗不会先以 Loading 打开再变大、换位置（#19 开选择器时卡片闪一下）；拿得慢才先开
+  // 先拿列表再开弹窗：弹窗不会先以 Loading 打开再变大、换位置；拿得慢才先开
   const seg = structuredClone(unwrap(s));
   const req = ask("commits", { seg }).catch(() => [] as Commit[]);
   const quick = await Promise.race([req, new Promise<null>((r) => setTimeout(() => r(null), 250))]);
@@ -138,7 +135,6 @@ export async function switchCommit(id: string, commit: string) {
   toast(`Switched to ${commit.slice(0, 7)}`);
 }
 
-
 /** Relocate 之后宿主送来新段（同一个 id）：换掉旧段，行号跟过去，状态回到正常 */
 export function replaceSegment(cardId: string, seg: Segment, view: SegView) {
   const c = cardById(cardId)?.card;
@@ -156,4 +152,3 @@ export function reviewNext() {
   toast("All cards are up to date");
 }
 export const staleCount = () => allCodeCards(state.board).filter((c) => cardStale(c) === "changed").length;
-

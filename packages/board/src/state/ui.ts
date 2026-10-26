@@ -33,7 +33,7 @@ export const notesOn = (id: string) => notesOf(id).filter((n) => n.kind === "tex
 const notesIndex = rooted(() => createMemo(() => {
   const m = new Map<string, Sidenote[]>();
   for (const n of state.board.sidenotes) {
-    // 「只在某个 Variant」：卡显示着那个 Variant 才算（线框 07）
+    // 「只在某个 Variant」：卡显示着那个 Variant 才算
     if (n.variant && !noteShown(n, state.board.cards.find((c) => c.id === n.at.card) as CodeCard | undefined)) continue;
     const a = m.get(n.at.card); a ? a.push(n) : m.set(n.at.card, [n]);
   }
@@ -52,11 +52,10 @@ export const [pingCard, setPingCard] = createSignal<{ id: string; n: number } | 
 let pingN = 0;
 export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 
-// 正在编辑的东西
 export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen" | "question" | "vnote" | "annot"; id: string } | null;
 export const [editing, setEditing] = createSignal<Editing>(null);
 /**
- * 显示时选中一段字再按 ⌫ / Delete（#69）：进入编辑，把同一段选上，再把这个键交给编辑器（和在编辑器里按一样）。
+ * 显示时选中一段字再按 ⌫ / Delete：进入编辑，把同一段选上，再把这个键交给编辑器（和在编辑器里按一样）。
  * note：静态 Markdown 上数出来的一段（staticTextRange）；free：自由代码卡的第几行第几个字（行从 0 数）。编辑器挂上时取走（takeEditEntry）
  */
 export type EditEntry = { key: "Backspace" | "Delete"; id: string } & (
@@ -98,10 +97,8 @@ export type SizeAnim = { w: number; h: number };
 const [sizeStore, setSizeStore] = createStore<Record<string, SizeAnim | undefined>>({});
 export const sizeIn = () => sizeStore;
 export const setSizeIn = (id: string, s: SizeAnim | undefined) => setSizeStore(id, s);
-// 讲解
 export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[] };
 export const [walk, setWalk] = createSignal<Walk | null>(null);
-// 弹窗
 export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; q?: string }>(false);
 export const [keysOpen, setKeysOpen] = createSignal(false);
 // Settings 页（整窗）；section = 打开时滚到哪一节

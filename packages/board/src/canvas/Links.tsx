@@ -1,7 +1,6 @@
-// Link 层：SVG 箭头。走线规则见 route.ts（W03）；这里把卡、行、Compare 栏的位置读出来，按条建 memo，只在它两端的卡变了时重算。
-// 线都画在所有卡下面那一层（见下面的「图层」），选中的、正拖着的、指针下那张卡的线临时浮到所有卡上面。
-// 每条线：base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
-// 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：各自画到合并点，合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
+// 走线规则见 route.ts。每条线按条建 memo，只在它两端的卡变了时重算：
+// base（两端的矩形和行的 y）→ sides（走哪一侧，带缓冲）→ ends（端点，换边时滑过去）→ geo（路径、箭头）。
+// 汇到同一处（同一张卡的卡头 / 同一行、同一侧）的几条线：合并点到终点的那一小段和箭头只画一次（<g class="merge">）。
 import { Show, batch, createEffect, createMemo, createRenderEffect, createSelector, createSignal, mapArray, on, onCleanup, type Accessor } from "solid-js";
 import { headOf, type Link, type LinkSide, type Rect } from "@codeboard/core";
 import { state, sel, select, rectOf, cardById, hostOf, collapsedAway, placeOf, placed, live, beginGesture } from "../state/store";
@@ -30,7 +29,7 @@ import { rooted } from "../state/root";
 
 import { clamp } from "./geom";
 
-/** 卡（或 Compare 的一栏）的矩形；在折叠的 Section 里时是那个标题条 */
+/** 在折叠的 Section 里时是那个标题条 */
 function endRect(id: string): { r: Rect; pill: boolean } | null {
   const f = cardById(id);
   if (!f) return null;
@@ -43,7 +42,6 @@ function endRect(id: string): { r: Rect; pill: boolean } | null {
   if (f.host.id !== id && g?.colX !== undefined) return { r: { x: base.x + g.colX, y: base.y, w: g.colW ?? base.w / 2, h: base.h }, pill: false };
   return { r: base, pill: false };
 }
-/** 卡头那一行的 y（卡端落在左右边时用） */
 function headY(id: string, r: Rect) {
   const f = cardById(id);
   const g = geo[id];
@@ -51,7 +49,7 @@ function headY(id: string, r: Rect) {
   return r.y + (g?.head ?? HEAD_H) / 2;
 }
 
-/** 一端：矩形、是不是行端、行的 y（看不到那一行时 = 卡头）、Compare 的哪一栏 */
+/** y：行的 y（看不到那一行时 = 卡头） */
 type End = {
   box: Box; /** 整张卡（Compare 栏 → 整张 Compare）：绕路时要避开的 */ outer: Box; line: boolean; y: number; /** 卡头那一行的 y（行端的卡在地图档时用） */ hy: number; col?: "left" | "right"; host: string; card: string; pill: boolean;
   /** 连到子白板骨架里的一张卡（End.sub）：那张卡在画布上的矩形。线先走到框边上的入口点（box 左右两边、对着那张卡的高度），再进去落到它上面 */
@@ -70,7 +68,7 @@ function endOf(e: Link["from"]): End | null {
   const line = e.line !== undefined;
   const hy = er.pill ? r.y + r.h / 2 : headY(e.card, r);
   let y = hy;
-  // 行端：那一行的 y；行被折叠 / 藏起来时落到卡头，线的样子不变（W01 B 5）。卡在地图档（看不到行）时也落到卡头：那个在 ends 里挑（hy）
+  // 行端：那一行的 y；行被折叠 / 藏起来时落到卡头，线的样子不变。卡在地图档（看不到行）时也落到卡头：那个在 ends 里挑（hy）
   if (line && !er.pill) {
     const p = lineY(e.card, e.seg, e.line);
     const row = p?.row !== undefined ? geo[e.card]?.rows[p.row] : undefined;
@@ -93,7 +91,7 @@ function baseOf(L: Link): Base | null {
   const a = endOf(L.from), b = endOf(L.to);
   if (!a || !b) return null;
   if (a.host === b.host && !a.pill) {
-    // 同一张 Compare 的两栏之间、行对行：中缝的对照线（W01 B 11）
+    // 同一张 Compare 的两栏之间、行对行：中缝的对照线
     if (a.card !== b.card && a.col && b.col && a.col !== b.col && a.line && b.line) return { a, b, kind: "gutter", gx: a.col === "left" ? a.box.x + a.box.w : b.box.x + b.box.w };
     return { a, b, kind: "self" };
   }
@@ -105,7 +103,7 @@ const okSide = (s: LinkSide | undefined, line: boolean): Side | undefined => (s 
 // 每条线上一次的摆法（换边缓冲要知道现在是哪种）。不是响应式的：只在这条线自己的 memo 里读写
 const modes = new Map<string, Mode>();
 
-/** 两端走哪一侧：用户指定（W03 10）> Compare 栏（左栏只走左侧、右栏只走右侧，W01 B 10 / 12）> 自动（W03 1–4，带缓冲） */
+/** 两端走哪一侧：用户指定 > Compare 栏（左栏只走左侧、右栏只走右侧）> 自动（带缓冲） */
 function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
   const { a, b } = bs;
   const uf = okSide(L.sides?.from, a.line), ut = okSide(L.sides?.to, b.line);
@@ -137,7 +135,6 @@ export function handOf(L: Pick<Link, "from">) {
   return c?.kind === "note" ? c.hand : undefined;
 }
 
-/** 粗细档 → 箭头放大多少 */
 const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);
 /** 合并点离终点多远 */
 const STUB = 28;
@@ -191,8 +188,6 @@ function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean): Geo 
   };
 }
 
-// ---------- 每条线一份走线状态 ----------
-
 type Route = {
   L: Link;
   base: Accessor<Base | null>;
@@ -209,7 +204,7 @@ type Route = {
 };
 const routes = new Map<string, Route>();
 
-// 换边时端点滑过去（W03 6）：只有正在换边的那几条线跟着 rAF 重算，别的线不动
+// 换边时端点滑过去：只有正在换边的那几条线跟着 rAF 重算，别的线不动
 const sliding = new Map<string, (t: number) => void>();
 let slideRaf = 0;
 function tickSlides(now: number) {
@@ -259,7 +254,6 @@ function makeRoute(L: Link): Route {
   return { L, base, sides, ends, sig };
 }
 
-/** 终点是同一处的几条线（同一张卡的卡头，或同一行）：终点的 key */
 const toKey = (L: Link) => `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? ""}${L.to.sub !== undefined ? `|${L.to.sub}` : ""}`;
 
 // 线的三次贝塞尔控制点（贴纸、标签沿线走时用）：登记给 state/geo 的 linkCurve
@@ -277,7 +271,6 @@ export function geoOf(L: Link): Geo | null {
   const [p, q] = anchorsFor(bs, sidesFor(L, bs, false), [mapHides(L.from), mapHides(L.to)]);
   return geoFrom(L, bs, p, q, false);
 }
-
 
 function portPath(x: number, y: number) {
   const k = shape().port;
@@ -316,7 +309,6 @@ function portDrag(e: PointerEvent, id: string) {
   window.addEventListener("pointermove", move);
   window.addEventListener("pointerup", up);
 }
-
 
 /** 画着的线的走线状态（City 的车流要读） */
 const [roads, setRoads] = createSignal<Accessor<Route[]>>(() => []);
@@ -372,7 +364,6 @@ function order(p: Element, ns: Element[]) {
     if (n === at) at = at.nextElementSibling; else p.insertBefore(n, at);
   }
 }
-
 
 /** Canvas 里调用一次：每条线的走线、几何、节点，和它画在哪一层 */
 export function trackLinks() {
@@ -484,7 +475,7 @@ export function trackLinks() {
   trackTraffic(views);
 }
 
-// 线浮上来、落回去时不硬切（Linda 10-17：太僵）：原来那层留一份影子，浮上来的那份从透明淡入（影子在卡下面垫着，没被卡盖住的那段一直在）；
+// 线浮上来、落回去时不硬切：原来那层留一份影子，浮上来的那份从透明淡入（影子在卡下面垫着，没被卡盖住的那段一直在）；
 // 落回去时影子留在上面一层淡出。影子只是拷贝的几条 path，去掉 data-lk / data-link，不接事件，动画完就删
 const fading = new Map<object, () => void>();
 function crossfade(key: object, els: Element[], up: boolean) {
@@ -611,10 +602,10 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
 }
 
 /**
- * 几条线汇到同一处（W03 8 / 9）：合并点到终点的一小段 + 一个箭头。
+ * 几条线汇到同一处：合并点到终点的一小段 + 一个箭头。
  * 结构固定，方便材质另画（City 的路口等）：<g class="merge" data-card data-line data-side data-n> 里一条 .edge.stub 和一个 .ahead.end
+ * 返回一个合并组：成员和合并段（Merge 和 City 的路沿、白边线共用）
  */
-/** 一个合并组：成员和合并段（Merge 和 City 的路沿、白边线共用） */
 function stubOf(key: string, groups: Accessor<Map<string, Link[]>>, byId: Accessor<Map<string, Route>>) {
   const [k, sig] = key.split("#");
   const members = createMemo(() => (groups().get(k) ?? []).filter((L) => byId().get(L.id)?.sig() === sig), [], { equals: same });

@@ -1,4 +1,3 @@
-// 线上的标签框：↺、自己写的字、调用参数（一条线一个框，沿线拖动）。W01 C 13–21、D 23。
 import { For, Show, createMemo, createSignal, onCleanup, type Accessor } from "solid-js";
 import { varKey, callText, varGone, loopLine, segOf, isCode, type Link, type Rect } from "@codeboard/core";
 import { state, sel, select, live, beginGesture, cardById, rectOf } from "../state/store";
@@ -31,7 +30,7 @@ function watchSize(el: HTMLElement, cb: (b: Box) => void) {
 }
 
 /**
- * 拖线上的标签框：只沿着这条线滑，框不压到两端的卡上（W01 C 19）；存的是线上的比例 at（20）。
+ * 拖线上的标签框：只沿着这条线滑，框不压到两端的卡上；存的是线上的比例 at。
  * 框的大小和两张卡的位置在开始拖时量一次，拖的过程中不读布局
  */
 function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => number[] | undefined, at: () => { x: number; y: number } | null, ends: () => Rect[]) {
@@ -62,10 +61,10 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
 
 const NONE = new Set<string>();
 
-/** 证据标签的悬停：三档证据都列出来（线上只画最强的那档，线框 13） */
+/** 证据标签的悬停：三档证据都列出来（线上只画最强的那档） */
 const evTip = (L: Link) => ["Evidence for this call", ...A.evidenceLines(L)].join("\n");
 
-/** 灰色备选（线框 01）：同一个调用点的别的实现 / 别的取值，虚线灰框排在目标卡右边；点一下换成它（原来的变灰）。map 缩放级别不画 */
+/** 灰色备选：同一个调用点的别的实现 / 别的取值，虚线灰框排在目标卡右边；点一下换成它（原来的变灰）。map 缩放级别不画 */
 export function AltBoxes() {
   const links = createMemo(() => state.board.links.filter((l) => l.call && (l.call.alts?.length || l.call.vals?.some((v) => (v.opts?.length ?? 0) > 1)) && visible(l)));
   return <For each={links()}>{(L) => <AltsOf L={L} />}</For>;
@@ -95,17 +94,17 @@ function AltsOf(p: { L: Link }) {
 export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
   const L = p.L;
   const g = p.g;
-  // 参数和 ↺ 只在有 Call 标记的线上（W01 C 14、15）；自己写的字任何线都能有（13）
+  // 参数和 ↺ 只在有 Call 标记的线上；自己写的字任何线都能有
   const vars = () => L.call?.vars ?? [];
   const loop = () => !!L.call?.loop;
   const editingLabel = () => editing()?.kind === "label" && editing()?.id === L.id;
   const head = () => loop() || !!L.label || editingLabel();
-  // 跨边界 / 证据 / Generated from：框最上面一行是边界类型（或证据），下一行是取值（线框 02）
+  // 跨边界 / 证据 / Generated from：框最上面一行是边界类型（或证据），下一行是取值
   const ev = () => L.call?.ev;
   const bvals = () => L.call?.vals ?? [];
   const [allVals, setAllVals] = createSignal(false);
   const shownVals = () => (allVals() || bvals().length <= 4 ? bvals() : bvals().slice(0, 3));
-  // RPC（线框 03）：RPC · shm · "run"；回到起点的线：↩ back to A
+  // RPC：RPC · shm · "run"；回到起点的线：↩ back to A
   const rpcT = () => A.rpcLabel(L);
   const backT = () => (L.back ? A.backLabel(L) : "");
   // 运行时看到的实参（observed）：一次一组，◀ ▶ 切换（不存，默认第一次）
@@ -183,7 +182,7 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
             labelDrag(e, L.id, e.currentTarget, () => g()?.pts, pos, ends);
           }}>
           <Show when={plus()}>{plusBtn(true)}</Show>
-          {/* 一个框：上面一行是 ↺ 和自己写的字，下面一个参数一行；只有其中一样时就只是那一样（W01 C 16） */}
+          {/* 一个框：上面一行是 ↺ 和自己写的字，下面一个参数一行；只有其中一样时就只是那一样 */}
           <div class="vcard" classList={{ split: (head() || top()) && (vars().length > 0 || seen().length > 0) }}>
             <Show when={top()}>
               <div class="vtop" classList={{ under: head() }}>

@@ -1,4 +1,3 @@
-// 流程：点调用展开、接到已有的卡、折叠子树、讲解（Walkthrough）、类卡成员。
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, cardTitle, segOf, allCodeCards,
@@ -20,14 +19,7 @@ import { walkIntoFrame, walkOut } from "./subboards";
 import { walkBack, setWalkBack } from "../state/subboards";
 import { lateDispatch, openImplPicker, unresolvedMenu, searchAllLangs } from "./chains";
 
-// ---------- 点调用展开 ----------
-
 const pending = new Set<string>();
-
-/**
- * 点调用 = 新建一张卡（永远新建，不复用已有的），连一条带 Call 标记的箭头。
- * at：拖出来松在画布上时的位置。
- */
 
 /** 这一行的这个调用已经连到哪张卡（点过展开，或自己连到了这个函数的卡）：有就返回那张卡。连到的卡没了的（lost）不算 */
 export function expandedTo(cardId: string, segId: string, call: CallSpan): string | undefined {
@@ -64,13 +56,13 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
     toast(`Could not expand ${call.name}(): ${(e as Error).message}`);
     return;
   } finally { pending.delete(key); }
-  // 解析不到（字符串注册表等）：给两条路，按名字跨语言搜或手动补边（线框 01 二）
+  // 解析不到（字符串注册表等）：给两条路，按名字跨语言搜或手动补边
   if ("none" in r) { if (r.name) unresolvedMenu(cardId, segId, call, r.reason); else toast(r.reason || `No definition found for ${call.name}()`); return; }
   if ("pick" in r) {
     showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again, extra) })));
     return;
   }
-  // 动态分发：列出全部实现，选一个（线框 01 一）
+  // 动态分发：列出全部实现，选一个
   if ("impls" in r) return openImplPicker(cardId, segId, call, r, at, again);
   placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w, { mark: { ...r.mark, ...extra?.mark }, label: extra?.label, title: r.title });
   // 宿主没等转到实现就建了卡：有没有子类覆盖在后台问，回来了再给选（不让点击等语言服务在整个工作区里找子类）
@@ -171,7 +163,6 @@ function followExpanded(cardId: string, segId: string, call: CallSpan, id: strin
 }
 const CODE_LEFT = 52, CHAR_W = 7.4; // 代码卡里代码左边距、一个字的宽（和 defaultWidth 的估计一致）
 
-/** Call 标记：点的是这一行的哪个调用、在不在循环里、变量候选 */
 export function callMark(call: CallSpan, cands?: Var[]): NonNullable<Link["call"]> {
   const m: NonNullable<Link["call"]> = { name: call.name, col: call.col };
   if (call.loop) m.loop = true;
@@ -207,7 +198,7 @@ export function askCands(lid: string, cardId: string, segId: string, call: CallS
     .catch(() => {});
 }
 
-// ---------- 悬停在调用上：让宿主先去问定义 ----------
+// 悬停在调用上：让宿主先去问定义
 
 const PREFETCH_DWELL = 150; // 停这么久才算（鼠标扫过去的不算）
 let preKey = "", preTimer: number | undefined;
@@ -236,8 +227,6 @@ export function hoverCall(cardId: string, segId: string | undefined, target: Eve
     send({ type: "prefetch", seg: structuredClone(unwrap(seg)), line: call.line, col: call.col, name: call.name });
   }, PREFETCH_DWELL);
 }
-
-// ---------- project / library code ----------
 
 /** library 调用：宿主标了包名，且不在 Study Scope 里 */
 export const isLibCall = (call: Pick<CallSpan, "pkg">) => !!call.pkg && !state.host.settings.studyScope.includes(call.pkg);
@@ -268,16 +257,12 @@ export function calleeMatches(c: Card, call: CallSpan) {
 
 export const allCodeCandidates = (call: CallSpan) => allCodeCards(state.board).filter((k) => calleeMatches(k, call)).map((k) => k.id);
 
-
-// ---------- 调用图 ----------
-
 /** 选中这张卡和它往下调用到的所有卡（点调用图标记时；拖标记 = 一起移动） */
 export function selectSubtree(id: string, add = false) {
   if (!flows().byId.has(id)) return;
   const ids = [...new Set([id, ...descendants(flows(), id)].map(hostOf))];
   select({ cards: add ? [...new Set([...sel.cards, ...ids])] : ids });
 }
-/** Select Call Graph：整张调用图 */
 export function selectFlow(id: string) {
   const g = flows().byId.get(id);
   if (g) select({ cards: [...new Set(g.cards.map(hostOf))] });
@@ -301,7 +286,7 @@ export function openMarkPicker(cardId: string, el?: Element) {
   openPop({ kind: "mark", card: cardId }, at ? { el: at, prefer: "below" } : lastPointer());
 }
 
-// ---------- 讲解（Walkthrough）：从选中的卡出发（没选就从起点卡），先沿 Call 箭头走到底，再走普通箭头 ----------
+// 讲解（Walkthrough）：从选中的卡出发（没选就从起点卡），先沿 Call 箭头走到底，再走普通箭头
 
 export function startWalk(id?: string, o: { at?: number; single?: boolean } = {}) {
   const start = id ?? sel.cards[0] ?? startCards(state.board)[0] ?? flows().graphs[0]?.roots[0];
@@ -340,7 +325,6 @@ export function exitWalk() {
   setShowCollapsed(false);
   camTo(w.before.x, w.before.y, w.before.z, true);
 }
-
 
 /** 类卡里点一个成员：展开成函数卡，从类卡那一行连一条带 Call 标记的箭头 */
 export function expandMember(cardId: string, d: { line: number; name: string; qual: string }) {

@@ -1,5 +1,3 @@
-// 疑问（线框 06）：「?」贴纸上写问题（共用 Note 的 Markdown 编辑器）、标已解决（贴纸换成 ✓，可以挂上解答它的卡）、
-// 卡头显示没解决的个数、Questions 面板（所有白板，宿主算）、复制 / 导出成 Markdown 清单、隔几天回来时的提示。
 // 面板只在开着时算；卡头的个数是一张按卡分好的表，贴纸变了才重算（不进每帧的工作）
 import { createMemo } from "solid-js";
 import { boardQuestions, isQuestion, questionsMarkdown, removeStickers, uid, type Board, type IconRef, type QuestionItem, type Sticker } from "@codeboard/core";
@@ -102,9 +100,6 @@ export function linkAnswer(id: string) {
   });
 }
 
-// ---------- Questions 面板 ----------
-
-
 export function toggleQuestions(v = !questionsOpen()) {
   setQuestionsOpen(v);
   if (v) refreshQuestions();
@@ -147,7 +142,7 @@ export function exportQuestions(items: QuestionItem[]) {
   void ask("exportFile", { kind: "md", name: `${state.board.name || "board"} questions`, text: questionsMarkdown(items, { title: "Questions" }) }).catch((e) => toast(`Export failed: ${(e as Error).message}`));
 }
 
-// ---------- 回来接上 ----------
+// 隔几天回来时的提示
 
 export function showWelcomeQuestions() {
   setWelcome(null);

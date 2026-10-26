@@ -1,5 +1,3 @@
-// 画布：镜头变换后的世界层（Section 框 → 线 → 卡片 → 车流、线头圆点 → 画布贴纸、Section 标签 → 临时浮上来的线 → 参考线），
-// 加上屏幕坐标的框选框、多选工具条。
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
 import { state, sel, rectOf, cardById, hostOf, mutate, placed } from "../state/store";
@@ -63,7 +61,7 @@ export function Canvas() {
   // 线的 SVG 后面紧跟一块空的、盖住整块白板的方框（.wext，不画东西）。线在所有卡下面，卡都压在线那个合成层上面，只能并进它（或者更上面的层）；
   // Chromium 合并时看两块范围拼起来空不空（稀疏就另起一层），线那层的范围只是线画到的地方，卡并不进去，相隔很远的卡彼此也并不了，
   // 结果几乎每张卡一个合成层（实测 74 层，CDP 的原因都是 Overlap；SVG 自己没有 will-change、动画、滤镜之类的原因）。
-  // 这一块先并进线那层、把范围撑到整块白板，后面的卡就都并得进去：层数跟以前一样（25 层，Section 框还是各自一层）。
+  // 这一块先并进线那层、把范围撑到整块白板，后面的卡就都并得进去：层数回到 25 层（Section 框还是各自一层）。
   // 放在最前面（Section 框前面）也行，但那样 Section 框、线、卡全挤进一个层，缩放、捏合的慢帧多。范围按卡和 Section 的外框往外留 EXT、对齐到 EXT 的整数倍，拖动中不重算
   const extent = createMemo<string>((prev) => {
     if (prev && dragging().size) return prev;

@@ -1,4 +1,3 @@
-// 白板状态：白板数据（持久化、进撤销栈）+ 界面状态（选择、弹窗、讲解……，不持久化）
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
@@ -20,19 +19,12 @@ export const [state, setState] = createStore({
   stale: {} as Record<string, Stale>,
 });
 
-/**
- * 共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算好发来，整个换掉；reconcile 只通知变了的卡）。
- * 只有在两块以上白板上的卡才有；不进撤销栈、不存盘
- */
+/** 共享卡在几块白板上、别的白板上谁连到它。宿主存盘后算好整个发来；只有在两块以上白板上的卡才有；不进撤销栈、不存盘 */
 export const [shared, setShared] = createStore<Record<string, SharedInfo>>({});
-/** 这张卡在几块白板上（不是共享卡、或只在这块白板上时是 0） */
 export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
-
-// ---------- 选择 ----------
 
 export type Sel = { cards: string[]; links: string[]; sections: string[] };
 export const [sel, setSel] = createStore<Sel>({ cards: [], links: [], sections: [] });
-/** 卡里选中的行（Sidenote、Hide Lines、Highlight 用） */
 export type LineSel = { card: string; seg: string; start: number; end: number };
 export const [lineSel, setLineSel] = createSignal<LineSel | null>(null);
 
@@ -62,13 +54,11 @@ export function reportSelection() {
   }, SEL_REPORT);
 }
 
-// ---------- 派生 ----------
-
-/** 调用图（标记、Call 箭头的父子）。只读卡的 id / 段、线的两端和 Call 标记、born / marks：拖动卡片不会让它重算 */
+/** 只读卡的 id / 段、线的两端和 Call 标记、born / marks：拖动卡片不会让它重算 */
 export const flows = rooted(() => createMemo(() => computeFlows(state.board)));
 /** 因为折叠藏起来的卡（不管 Walkthrough 有没有临时展开） */
 export const collapsedSet = rooted(() => createMemo(() => hiddenByCollapse(state.board, flows())));
-/** Walkthrough 时临时展开所有折叠的卡：只影响显示，不写进白板（不进撤销、不存盘） */
+/** Walkthrough 时临时展开所有折叠的卡：只影响显示，不进撤销、不存盘 */
 export const [showCollapsed, setShowCollapsed] = createSignal(false);
 onBoardSwitch(() => setShowCollapsed(false));
 export const collapsedAway = rooted(() => createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet())));
@@ -81,9 +71,8 @@ const cardIndex = rooted(() => createMemo(() => {
   return m;
 }));
 export const cardById = (id: string) => cardIndex().get(id);
-/** 卡所在的顶层卡（Compare 的栏 → 它的 Compare）；不认识的 id 原样返回 */
 export const hostOf = (id: string) => cardById(id)?.host.id ?? id;
-/** 画布上摆着的卡（有 Place 的），按叠放顺序 */
+/** 按叠放顺序 */
 export const placed = rooted(() => createMemo(() => state.board.cards.filter((c) => state.board.place[c.id])));
 
 const NOWHERE: Place = { x: 0, y: 0, w: 320 };
@@ -94,7 +83,7 @@ export function placeOf(id: string): Place {
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
 export const [sizes, setSizes] = createStore<Record<string, { w: number; h: number }>>({});
-/** 卡片在画布上的矩形：位置来自 Place，宽高优先用实测（量到 0 的不算：卡被藏起来时量到的） */
+/** 宽高优先用实测；量到 0 的不算（卡被藏起来时量到的） */
 export function rectOf(c: { id: string } | string) {
   const id = typeof c === "string" ? c : c.id;
   const p = placeOf(id);
@@ -102,8 +91,6 @@ export function rectOf(c: { id: string } | string) {
   // 还没量到：代码卡的 h 只是内容区，按 Warm Ink 的卡头加回去
   return { x: p.x, y: p.y, w: s && s.w > 0 ? s.w : p.w, h: s && s.h > 0 ? s.h : p.h ? p.h + (cardById(id)?.host.kind === "code" ? CODE_HEAD : 0) : 120 };
 }
-
-// ---------- 撤销 / 重做 ----------
 
 // 三层：mutate = 用户的修改（进撤销栈）；sync = 宿主同步来的、视图推出来的（存盘，不进撤销栈）；live = 拖动中的修改（结束时整个手势进一次撤销栈）。
 // 快照按「每张卡 / 每条线 / 每个 Section / 每条 Sidenote 一段 JSON」存，没变的那段直接沿用上一份快照里的字符串，
@@ -286,10 +273,7 @@ export function sync(fn: (b: Board) => void, shared?: string[]) {
   changed();
 }
 
-/**
- * 别的白板改了共享卡（宿主转来的，或者撤销时宿主跳过的项）：按项换上，不进撤销栈、撤销后重放；不再发回宿主。
- * items = 变了的项（卡 id、Sidenote id）；Sidenote 在 sc 里没有 = 删了
- */
+/** 别的白板改了共享卡（宿主转来的，或者撤销时宿主跳过的项）：按项换上，不进撤销栈、撤销后重放；不再发回宿主 */
 export function syncShared(cards: SharedUpdate[], views?: Record<string, SegView>) {
   // 先把还没发的改动发出去：之后把「已发」整个对齐到现在，宿主那边的这几项不会被发回去
   flushSave();
@@ -328,7 +312,7 @@ function trimSync() {
   while (i < syncLog.length && (syncLog[i].n <= min || syncLog.length - i > SYNC_MAX)) i++;
   if (i) syncLog.splice(0, i);
 }
-/** 回到快照 s 之后：重放 s 之后的 sync（不进撤销栈）。返回有没有重放，和重放了的共享项 */
+/** 回到快照 s 之后：重放 s 之后的 sync（不进撤销栈） */
 function replaySync(s: Snap): { any: boolean; shared: Set<string> } {
   const xs = syncLog.filter((x) => x.n > s.epoch);
   const shared = new Set(xs.flatMap((x) => x.shared ?? []));
@@ -434,16 +418,11 @@ export function allIds(): string[] {
   return state.board.cards.map((c) => c.id);
 }
 
-// ---------- 自动保存：没有保存按钮 ----------
-
-// 白板只在这个文件里被改（mutate / live / 撤销重做），改完直接把改动发给宿主，不用盯着整块白板的 JSON 看它变没变。
-// 宿主马上换上、稍后写盘，面板关掉时把没写的写完。白板这边关标签页时发出去的消息到不了宿主（VS Code 关面板时丢掉还没处理的消息），
-// 所以一步改动（mutate、撤销重做、拖动结束、宿主同步来的）在改它的这个任务结束时就发（微任务），同一个任务里的几次合成一次：
-// 改动一出现在 DOM 上，消息就已经发出去了。等下一帧再发的话，DOM 先变了、消息还没发，这时关掉标签页就丢了（Esc 结束编辑后马上关）。
-// 快照的每一段 mutate 已经拍过，这里只比字符串、解析变了的那几段，放在这个任务里不多占一帧。
-// 拖动中的 live、镜头停下的 liveCam 停一会儿才发（不在每一帧拍整块白板的快照），拖动结束时那一步和别的改动一样发。
-// 镜头停下后 LIVE_DELAY 内关掉标签页，这次镜头位置就丢了（只是镜头，不算内容）。
-// 发给宿主的是增量（BoardPatch）：拿现在的快照和上次发出去的那份按 id 比，只发变了的项、删掉的 id、白板本身的字段（变了才发）和镜头。
+// 白板只在这个文件里被改（mutate / live / 撤销重做），改完把增量（BoardPatch）发给宿主；宿主马上换上、稍后写盘。
+// VS Code 关面板时丢掉还没处理的消息，所以一步改动在改它的这个任务结束时就发（微任务，同一任务里的合成一次）：
+// 改动一出现在 DOM 上消息就已经发出去了；等下一帧再发的话，Esc 结束编辑后马上关标签页就会丢。
+// 拖动中的 live、镜头停下的 liveCam 停一会儿才发（不在每一帧拍整块白板的快照）；LIVE_DELAY 内关掉标签页只丢镜头位置。
+// 增量 = 现在的快照和上次发出去的那份按 id 比：变了的项、删掉的 id、变了的白板字段和镜头。
 let queued = false;
 function changed() {
   if (queued) return;
@@ -535,8 +514,6 @@ function diffList(ia: string[], pa: string[], ib: string[], pb: string[], ordere
   }
   return set.length || del.length || out.order ? out : null;
 }
-
-// ---------- toast ----------
 
 export type ToastT = { text: string; actions?: { label: string; run: () => void }[]; n: number };
 export const [toastMsg, setToastMsg] = createSignal<ToastT | null>(null);

@@ -21,7 +21,6 @@ export type ModeKind = Mode["kind"];
 const IDLE: Mode = { kind: "idle" };
 export const [mode, setMode] = createSignal<Mode>(IDLE);
 export const idle = () => setMode(IDLE);
-/** 现在是 k 模式就返回它（带上它的数据） */
 export const modeIs = <K extends ModeKind>(k: K): Extract<Mode, { kind: K }> | null => { const m = mode(); return m.kind === k ? (m as Extract<Mode, { kind: K }>) : null; };
 
 export const connectFrom = () => modeIs("connect")?.from ?? null;
@@ -34,7 +33,6 @@ export function startDraw() { setMode({ kind: "draw" }); toast(DRAW_HINT); }
 /** 画完（或取消）：把提示也收掉 */
 export function endDraw() { if (modeIs("draw")) idle(); if (toastMsg()?.text === DRAW_HINT) setToastMsg(null); }
 
-/** 接下来点的那张卡交给 then */
 export const pickCardThen = (then: (id: string) => void) => setMode({ kind: "pick", then });
 /** 点一张卡：交出回调，回到 idle */
 export function takePick(): ((id: string) => void) | null { const m = modeIs("pick"); if (m) idle(); return m?.then ?? null; }
@@ -48,8 +46,6 @@ export function cancelMode(): boolean {
   toast(k === "connect" ? "Connect cancelled" : "Cancelled");
   return true;
 }
-
-// ---------- 临时盖在模式上面的：拖着平移、按住空格 ----------
 
 export const [panning, setPanning] = createSignal(false);
 export const [spaceDown, setSpaceDown] = createSignal(false);

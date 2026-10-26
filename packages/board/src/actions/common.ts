@@ -1,4 +1,3 @@
-// 公用：快捷键符号、选择、锁、镜头、新卡弹出动画、打开编辑器 / 链接 / diff、Fit Content。
 import { unwrap } from "solid-js/store";
 import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
 import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
@@ -17,8 +16,6 @@ export const K = {
   get alt() { return isMac() ? "⌥" : "Alt+"; },
 };
 
-// ---------- 选择 ----------
-
 export function selectCard(id: string, add = false) {
   const f = cardById(id);
   if (!f) return;
@@ -30,8 +27,6 @@ export function selectAll() {
   select({ cards: visibleCards().filter((c) => !isLocked(c.id)).map((c) => c.id) });
 }
 export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(Boolean) as Card[];
-
-// ---------- 小工具 ----------
 
 export const mdInline = (s: string) => renderMdInline(s);
 export const mdBlock = (s: string) => renderMd(s);
@@ -63,8 +58,6 @@ export function isLocked(id: string) {
   if (!f) return false;
   return !!placeOf(f.host.id).locked || sectionLocked(sectionOf(f.host.id));
 }
-
-// ---------- 镜头 ----------
 
 /** 带到眼前：藏在折叠的调用子树、折叠的 Section 里的卡先展开（展开了要等它画出来、量好大小再挪镜头） */
 export function revealCard(id: string, doPing = true) {
@@ -108,8 +101,6 @@ export function fitSelection() {
   camTo(f.x, f.y, f.z);
 }
 
-
-
 /** 新卡弹出来：从 from 点（世界坐标）放大淡入。透明度只增不减。 */
 export function popCard(id: string, from?: { x: number; y: number }) {
   const h = cardById(id)?.host;
@@ -134,7 +125,6 @@ export function popCard(id: string, from?: { x: number; y: number }) {
   });
 }
 
-
 /** 卡片已经挪到新位置，画面上从旧位置滑过去 */
 export function slideFrom(list: { id: string; ox: number; oy: number }[]) {
   if (reduceMotion()) return;
@@ -154,13 +144,10 @@ export function headPoint(cardId: string) {
   return r ? { x: r.x, y: r.y + 20 } : null;
 }
 
-
 export function showPicker(title: string, items: { label: string; detail: string; run: () => void }[]) {
   const p = lastPointer();
   openPop({ kind: "pick", title, items }, { x: p.x, y: p.y + 12 });
 }
-
-// ---------- 打开 ----------
 
 export function openCode(id: string, seg?: string, line?: number) {
   const c = cardById(id)?.card;
@@ -184,7 +171,7 @@ export function openWorktreeDiff(id: string) {
     .catch((e) => updatePop(pid, (p) => (p.kind === "diff" ? { ...p, error: (e as Error).message } : p)));
 }
 
-/** Fit Content（#25）：宽 = 最长行，高 = 所有可见行；多选时各自适配。
+/** Fit Content：宽 = 最长行，高 = 所有可见行；多选时各自适配。
  *  高度不存（Note、代码卡和新卡一样跟着内容：加行变高、删行变矮），只有代码比没存高度时的上限（CODE_MAX）还高的代码卡存下内容区的高度 */
 export function fitContent(ids: string[]) {
   const sz = new Map<string, { w?: number; h: number; body?: number }>();

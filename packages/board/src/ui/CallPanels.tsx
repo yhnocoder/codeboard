@@ -1,4 +1,3 @@
-// 调用相关的几块小面板：Arrow 图例（线框 12 三）、调用树侧栏（线框 13 A）、运行时看到但白板上没有箭头的调用（线框 13 三）。
 // 都是开着才算（关着的面板不读 flows、不进每帧的工作）
 import { For, Show } from "solid-js";
 import { cardTitle, LEGEND, legendName, type LegendKey } from "@codeboard/core";

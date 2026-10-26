@@ -1,4 +1,3 @@
-// 调用相关的界面状态（线框 12、13）：Arrow 图例、调用树侧栏开没开，最近一次挂上来的运行记录
 import { createSignal } from "solid-js";
 import type { RunApply } from "@codeboard/core";
 import { onBoardSwitch } from "./root";

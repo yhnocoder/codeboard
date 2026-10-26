@@ -1,5 +1,4 @@
 // Section：框画在卡片下面，标签浮在卡片上面（拖标签整体移动）；折叠后是一条「▸ 名字 · N cards」，指着它停一会儿下面摊开几张成员卡的预览。
-// 拖卡时卡要进的 Section 亮起来（.drop），框跟着成员变化缓动（.moving）。
 import { For, Show, createMemo, createSignal, onCleanup } from "solid-js";
 import { cardTitle, type Card } from "@codeboard/core";
 import { state, sel } from "../state/store";

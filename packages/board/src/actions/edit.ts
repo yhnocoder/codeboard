@@ -1,4 +1,3 @@
-// 改白板：行（隐藏、高亮、复制）、删除 / 复制卡、卡片属性、Compare、合并 / 拆开、Section。
 import { unwrap } from "solid-js/store";
 import {
   arrangeCards, makeCompare, overlaps, removeSections as removeSectionsIn, renameTitleRefs, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
@@ -69,9 +68,6 @@ export function toggleHl(ls: LineSel) {
   });
 }
 
-
-// ---------- 删除 / 复制 ----------
-
 export function deleteSel() {
   const ids = new Set<string>();
   for (const id of sel.cards) { const f = cardById(id); if (f && !isHidden(f.host.id)) ids.add(f.host.id); } // 拖调用图标记时连着选上的折叠起来的卡：看不见的不删
@@ -87,7 +83,7 @@ export function deleteSel() {
   if (ok) clearSel();
 }
 /**
- * 显示时在一张卡里选中了一段字再按 ⌫ / Delete（#69）：不删卡。Note / Text / Mark 和自由代码卡进入编辑，选上同一段，
+ * 显示时在一张卡里选中了一段字再按 ⌫ / Delete：不删卡。Note / Text / Mark 和自由代码卡进入编辑，选上同一段，
  * 再把这个键交给编辑器（和在编辑器里按一样：删掉这段字，编辑器里一步撤销；退出编辑时照常存成一步）。
  * 文件里的代码改不了：什么都不做。没选字、两头不在同一张卡的正文 / 代码里：返回 false（照旧删选中的卡）
  */
@@ -169,7 +165,6 @@ export function duplicateSel() {
     // core placeCards：卡、段换新 id；摆放错开 48，不带折叠、锁定
     const r = placeCards(b, cs.map((c) => ({ card: unwrap(c), place: unwrap(b.place[c.id]) })), { copy: true, at: (p) => ({ ...p, x: p.x + 48, y: p.y + 48 }) });
     made = cs.map((c) => r.cards[c.id]);
-    // 各段的展示数据跟着复制
     for (const [o, n] of Object.entries(r.segs)) { const v = state.views[o]; if (v) setState("views", n, v); }
   });
   select({ cards: made });
@@ -189,8 +184,6 @@ export function copyCard(c: CodeCard) {
   toast(`Copied ${lines.length} lines`);
   return lines.join("\n");
 }
-
-// ---------- 卡片属性 ----------
 
 export const compareTitle = (c: CompareCard) => cardTitle(c, state.board);
 export function renameCard(id: string, v: string) {
@@ -292,9 +285,6 @@ export function missingNote(c: CodeCard): string | null {
   return null;
 }
 
-
-// ---------- Compare ----------
-
 export function compareCheck(): { ok: true } | { ok: false; why: string } {
   const cs = selCards();
   if (cs.length !== 2 || !cs.every((c) => c.kind === "code")) return { ok: false, why: "Select exactly two code cards" };
@@ -329,8 +319,6 @@ export function separate(id: string) {
   });
   select({ cards: ids });
 }
-
-// ---------- 合并 / 拆开 ----------
 
 export function mergeCheck(cs: Card[]): { ok: true } | { ok: false; why: string } {
   if (cs.length < 2) return { ok: false, why: "Select two or more code cards" };
@@ -380,8 +368,6 @@ export function unlinkShared(id: string) {
   select({ cards: [to] });
   toast("Unlinked. This board now has its own copy; the other boards keep the linked card.");
 }
-
-// ---------- Section ----------
 
 export function moveToNewSection(rect?: Rect, parentId?: string) {
   const ids = sel.cards.map((i) => cardById(i)?.host.id).filter(Boolean) as string[];
@@ -451,7 +437,7 @@ export function toggleSection(id: string) {
     requestAnimationFrame(() => members.forEach((m) => popCard(m, pt)));
     return;
   }
-  // 折叠：卡片收进标题条（往标签缩、变淡），收完再真正折叠（#10）
+  // 折叠：卡片收进标题条（往标签缩、变淡），收完再真正折叠
   const offs = new Map(members.map((m) => { const p = placeOf(m); return [m, { ox: pt.x - p.x, oy: pt.y - p.y }]; }));
   const sp = new Spring(1, 200, 26, 0.02); sp.t = 0;
   animate((dt) => {
@@ -462,7 +448,7 @@ export function toggleSection(id: string) {
     return done;
   });
 }
-/** Section 的 Fit Content（#40）：框收到刚好包住成员卡和子 Section（标准边距）；缓动过去，一步撤销。折叠的、锁着的、空的不动 */
+/** Section 的 Fit Content：框收到刚好包住成员卡和子 Section（标准边距）；缓动过去，一步撤销。折叠的、锁着的、空的不动 */
 export function fitSections(ids: string[]) {
   const fits = new Map<string, Rect>();
   for (const id of ids) {
@@ -485,8 +471,7 @@ export function renameSection(id: string, v: string) {
   mutate((b) => { const s = b.sections.find((q) => q.id === id); if (s) s.title = v.trim() || "Untitled Section"; });
 }
 
-
-// ---------- 无背景（#39）：Image 默认无背景，Code 可选 ----------
+// 无背景：Image 默认无背景，Code 可选
 
 export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && !!c.nobg);
 export function toggleNoBg(id: string) {

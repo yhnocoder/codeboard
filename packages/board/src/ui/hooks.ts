@@ -1,4 +1,3 @@
-// 浮层、编辑框共用的：↑↓ 选中（到头绕回来）、边输入边问宿主（等一下再问，旧的回答晚到时丢掉）、编辑结束只算一次（关掉时存）
 import { createEffect, createSignal, onCleanup } from "solid-js";
 
 /** ↑↓ 在 count 项里移动选中，到头绕回来。key 处理了返回 true */

@@ -1,4 +1,3 @@
-// v0.2 调用（线框 03、12、13）：RPC 标记、进程标签、消息卡、↩ back to；起点卡；Arrow 图例；调用树；运行记录（observed 证据和实参）。
 import { createMemo } from "solid-js";
 import { rooted } from "../state/root";
 import {
@@ -15,8 +14,6 @@ import { lastPointer } from "../state/measure";
 import { expandCall } from "./flow";
 
 const linkById = (id: string) => state.board.links.find((l) => l.id === id);
-
-// ---------- RPC（线框 03） ----------
 
 /** Arrow 菜单 Mark as RPC…：先标上（默认 shm），再开属性浮层改机制、消息名、一对多 */
 export function markRpc(id: string, el?: Element) {
@@ -96,8 +93,6 @@ export function toggleMsgCard(id: string) {
   requestAnimationFrame(() => popCard(mid));
 }
 
-// ---------- 进程标签 ----------
-
 /** light = 线程 / CUDA stream（浅一点的标签） */
 export async function addProc(cardId: string, light = false) {
   const t = await promptText(light ? "Thread / Stream Tag" : "Process Tag", "", light ? "e.g. CUDA stream 1, worker thread" : "e.g. rank 0, rank 1…N, Scheduler × TP", "Add");
@@ -121,8 +116,6 @@ export function removeProc(cardId: string, i: number) {
 }
 export const procCls = (p: ProcTag) => `proc${p.light ? " light" : ""}`;
 
-// ---------- 起点卡（线框 12） ----------
-
 export function toggleStart(cardId: string) {
   const host = hostOf(cardId);
   mutate((b) => { const p = b.place[host]; if (!p) return; if (p.start) delete p.start; else p.start = true; });
@@ -138,8 +131,6 @@ export const walkSteps = rooted(() => createMemo(() => {
   w.order.forEach((id, i) => { const h = hostOf(id); if (!m.has(h)) m.set(h, i + 1); });
   return m;
 }));
-
-// ---------- Arrow 图例（线框 12） ----------
 
 export async function renameLegend(k: LegendKey) {
   const v = await promptText("Rename in the Legend", legendName(state.board, k), LEGEND.find((x) => x[0] === k)![1], "Save");
@@ -159,7 +150,7 @@ export function legendOf(L: Link): LegendKey {
   return "see";
 }
 
-// ---------- 调用树（线框 13 A）：侧栏，从起点卡（或选中的卡）沿 Call / RPC 箭头算，只读 ----------
+// 调用树（侧栏）：从起点卡（或选中的卡）沿 Call / RPC 箭头算，只读
 
 /** 树根和它从哪来：选中一张在调用图里的卡 → 它；否则起点卡；都没有 → 每张调用图的根 */
 const treeRoots = rooted(() => createMemo((): { ids: string[]; from: "selection" | "start" | "roots" } => {
@@ -174,8 +165,7 @@ export const treeFrom = () => treeRoots().from;
 /** 只在侧栏开着时算（关着不读 flows） */
 export const treeRows = rooted(() => createMemo((): TreeRow[] => (treeOpen() ? callTree(flows(), treeRoots().ids) : [])));
 
-// ---------- 运行记录（线框 13 三） ----------
-
+// 运行记录：observed 证据和实参
 
 export function captureRun() { send({ type: "captureRun" }); }
 export function pickRun() { send({ type: "applyRun" }); }

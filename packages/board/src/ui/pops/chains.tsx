@@ -1,4 +1,3 @@
-// 调用链：变量、调用图标记、动态分发选实现、跨边界取值、按名字搜、RPC 箭头的属性。
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, createSignal, createMemo, createEffect } from "solid-js";
 import { varKey, varText, langLabel, RPC_MECHS, type GraphMark, type Var } from "@codeboard/core";
@@ -27,8 +26,6 @@ export function VarsPop(p: PopProps<"vars">) {
   );
 }
 
-// ---------- 调用图标记 ----------
-
 /** 图标用内置贴纸（名字引用，画法跟着贴纸走） */
 const MARK_ICONS = ["star", "flag", "zap", "bug", "heart", "question", "check", "hourglass"];
 const MARK_LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
@@ -53,8 +50,6 @@ export function MarkPop(p: PopProps<"mark">) {
     </Show>
   );
 }
-
-// ---------- 接上断掉的调用链（线框 01、02） ----------
 
 /** 动态分发：N 个实现选一个。library 的要 ⌥；Why this one? 写进箭头的标签框。键盘在输入框里：↑ / ↓ 选、↵ 定、Esc 关 */
 export function ImplsPop(p: PopProps<"impls">) {
@@ -141,7 +136,7 @@ export function NamesPop(p: PopProps<"names">) {
   );
 }
 
-/** RPC 箭头的属性（线框 03 三）：机制、消息 / 方法名、一对多、插一张消息卡、↩ back to。改了马上生效，都能以后再改 */
+/** RPC 箭头的属性：机制、消息 / 方法名、一对多、插一张消息卡、↩ back to。改了马上生效，都能以后再改 */
 export function RpcPop(p: PopProps<"rpc">) {
   const L = () => state.board.links.find((l) => l.id === p.pop.link);
   const r = () => L()?.rpc;

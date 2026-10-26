@@ -1,4 +1,3 @@
-// 版本：diff（和 Compare 同一套对齐）、三方对照、commit 列表。
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, createSignal, createMemo } from "solid-js";
 import { alignRows, wordDiff, cardTitle, versionLabel, isCode, segOf, escHtml, threeWay, upstreamSegs, activeOf, viewKeyOf, UPSTREAM, type Segment } from "@codeboard/core";
@@ -10,7 +9,7 @@ import { ask } from "../../host";
 import * as A from "../../actions";
 import { PopHead, type PopProps } from "./common";
 
-// ---------- 版本 diff（和 Compare 同一套对齐） ----------
+// 版本 diff：和 Compare 同一套对齐
 
 function DiffTable(p: { left: { start: number; text: string[]; html: string[] }; right: { start: number; text: string[]; html: string[] } }) {
   const rows = createMemo(() => {
@@ -71,7 +70,7 @@ export function DiffPop(p: PopProps<"diff">) {
   );
 }
 
-// ---------- 三方对照（线框 07）：原版 / 我的 / 上游最新，两边都改了的行高亮 ----------
+// 三方对照：原版 / 我的 / 上游最新，两边都改了的行高亮
 
 export function ThreePop(p: PopProps<"three">) {
   const c = () => { const k = cardById(p.pop.card)?.card; return isCode(k) ? k : undefined; };
@@ -113,7 +112,6 @@ export function ThreePop(p: PopProps<"three">) {
     </div>
   );
 }
-
 
 export function CommitsPop(p: PopProps<"commits">) {
   const [ref, setRef] = createSignal("");

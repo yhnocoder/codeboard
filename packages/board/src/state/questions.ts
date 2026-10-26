@@ -1,4 +1,3 @@
-// 疑问（线框 06）的界面状态：Questions 面板、宿主给的别的白板的问题、隔几天回来时的提示
 import { createSignal } from "solid-js";
 import type { QuestionItem } from "@codeboard/core";
 import { onBoardSwitch } from "./root";

@@ -1,5 +1,4 @@
-// City 材质的几何（纯计算，不碰 DOM、不读 store）：停在路尽头的车和它前面的人行横道、路面标线、沿路开的车的关键帧。
-// 画它们的组件在 Traffic.tsx；单元测试在 test/unit/city.test.ts。
+// 纯计算，不碰 DOM、不读 store；画它们的组件在 Traffic.tsx。
 import type { Pt } from "./route";
 
 const r = (v: number) => Math.round(v * 10) / 10;
