@@ -4,7 +4,7 @@ import {
   initAnalysis, analyze, pybindDefs, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
   jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, instName, splitArgs,
 } from "../src/analysis";
-import { segChip, genWhat } from "../src";
+import { segChip, hiddenLang, genWhat } from "../src";
 
 beforeAll(() => initAnalysis());
 
@@ -244,6 +244,11 @@ describe("language chips", () => {
     expect(segChip(seg("cuda-cpp", ["void f() {"]))).toBe("CUDA");
     expect(segChip(seg("rust", ["fn f() {}"]))).toBe("RUST");
     expect(segChip(seg("plaintext", ["x"]))).toBeUndefined();
+    expect(hiddenLang(seg("python", ["def f():"], "a.py"))).toBeUndefined();
+    expect(hiddenLang(seg("python", ["@triton.jit", "def k(x):"], "k.py"))).toBe("Triton");
+    expect(hiddenLang(seg("cpp", ["__global__ void k() {"], "a.hpp"))).toBe("CUDA");
+    expect(hiddenLang(seg("cpp", ["void f() {"], "a.cpp"))).toBeUndefined();
+    expect(hiddenLang(seg("cuda-cpp", ["void f() {"], "k.cu"))).toBeUndefined();
   });
   it("Generated card: what it is", () => {
     expect(genWhat("cuda-cpp", "kernel.cu")).toBe("CUDA source");

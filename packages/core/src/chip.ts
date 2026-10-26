@@ -22,6 +22,17 @@ export function segChip(s: Pick<Segment, "lang" | "path" | "text">): LangChip | 
 
 export const cardChip = (c: CodeCard): LangChip | undefined => (c.segments[0] ? segChip(c.segments[0]) : undefined);
 
+const EXT_CHIP: [RegExp, LangChip][] = [[/\.pyi?$/, "PY"], [/\.(cu|cuh)$/, "CUDA"], [/\.(c|cc|cpp|cxx|h|hh|hpp|hxx)$/, "C++"], [/\.rs$/, "RUST"]];
+const CHIP_NAME: Record<LangChip, string> = { PY: "Python", "C++": "C++", CUDA: "CUDA", TRITON: "Triton", TILELANG: "TileLang", RUST: "Rust" };
+
+/** 路径看不出来的语言（.py 里的 Triton / TileLang kernel、.hpp 里的 CUDA），写在卡头路径后面；路径已经说明了的不写 */
+export function hiddenLang(s: Pick<Segment, "lang" | "path" | "text">): string | undefined {
+  const k = segChip(s);
+  if (!k) return undefined;
+  const byExt = EXT_CHIP.find(([re]) => re.test(s.path))?.[1];
+  return byExt === k ? undefined : CHIP_NAME[k];
+}
+
 /** Generated 卡的 what：按语言 / 文件名猜（CUDA source、Inductor output…） */
 export function genWhat(lang: string, name = "", text = ""): string {
   if (/torchinductor|triton_(poi|red|per|tem)_/.test(name + text.slice(0, 2000))) return "Inductor output";

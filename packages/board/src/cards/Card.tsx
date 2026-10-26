@@ -3,7 +3,7 @@ import { send } from "../host";
 import { createMemo, createSignal, Show, onMount, onCleanup, createEffect, For, type JSX, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import {
-  cardTitle, cardChip, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
+  cardTitle, hiddenLang, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
   type Card, type CodeCard, type NoteCard, type ImageCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
@@ -178,7 +178,6 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={hiddenKids()}><button class="subc" data-tip="Expand Subtree" data-nodrag onClick={() => act.toggleCollapse(c().id)}>▸ {hiddenKids()}</button></Show>
       <Show when={!p.col && placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-kbd={kbd("lock")} data-nodrag onClick={() => act.toggleLock([c().id])}><Icon name="lock" /></button></Show>
       <Show when={!free()}><span class="kind" classList={{ c: codeGlyph(c()) !== "ƒ" }}>{codeGlyph(c())}</span></Show>
-      <Show when={!free() && act.mixedLangs() && cardChip(c())}>{(k) => <span class="lchip" data-l={k()}>{k()}</span>}</Show>
       <Show when={c().gen}>
         <span class="gentag" data-tip="Generated code: pinned to a run, not a commit">Generated · {c().gen!.what}</span>
       </Show>
@@ -188,7 +187,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={c().title && c().segments.length > 1}><span class="plusn">+{c().mergedFrom ? c().mergedFrom!.length - 1 : 0 || ""}</span></Show>
       <Show when={!free()}>
         <span class="cpath" data-tip={multi() ? "Open First Segment in Editor" : "Open in Editor"} data-kbd="↵" onClick={() => !justDragged() && act.openCode(c().id)}>
-          <span class="rw"><span class="rl">{multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}`}</span></span>
+          <span class="rw"><span class="rl">{multi() ? `${c().segments.length} segments${fileCount(c()) > 1 ? ` · ${fileCount(c())} files` : ""}` : `${shortPath(s0()?.path ?? "")}:${s0()?.start}${s0() && hiddenLang(s0()!) ? ` · ${hiddenLang(s0()!)}` : ""}`}</span></span>
         </span>
       </Show>
       <Show when={act.dispatchOf(c().id)}>{(n) => <span class="disp1" data-tip="Picked from a dynamic dispatch: the others are the grey boxes beside it">1 of {n()}</span>}</Show>
@@ -219,7 +218,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
         <button class="rev fold" data-dragclick classList={{ new: stale() === "changed" || stale() === "hidden", hollow: stale() === "hidden", lost: stale() === "lost" }}
           data-tip={`${revLabel()} · ${stale() === "changed" ? "New version · View Diff" : stale() === "hidden" ? "Changes only in hidden lines" : s0()?.version.kind === "hash" ? "Unknown version (not in git)" : "Pinned version"}`}
           onClick={(e) => justDragged() ? undefined : (stale() === "changed" || stale() === "hidden" ? act.openDiff(c().id) : onVar() ? act.switchVariant(c().id, UPSTREAM) : act.commitMenu(c().id, e.currentTarget))}>
-          <span class="rw"><span class="rl"><Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>{revLabel()}<Show when={stale() !== "changed" && stale() !== "hidden" && s0()?.src.kind !== "github"}> ▾</Show></span></span>
+          <span class="rw"><span class="rl"><Show when={stale() === "changed" || stale() === "hidden"}><i /></Show>{revLabel()}</span></span>
         </button>
       </Show>
       <Show when={!c().variants?.length && (act.uncommitted(c()) || c().segments.some((s) => state.stale[s.id]?.state === "uncommitted"))}>

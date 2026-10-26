@@ -1074,9 +1074,12 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
    卡很窄、标题已经缩到最短时它们自己再缩（被裁掉），不把 ··· 挤出卡外：标题的 flex-shrink 大得多，先缩的总是标题
    （两边都要 ≥ 1：一行里还能缩的 flex-shrink 加起来不到 1 时，Chromium 只分掉那么一点，剩下的就溢出了）。
    卡头的 gap 也算在里面：.hov 左边 −gap（--hg = 这个主题卡头的 gap），里面左边补回 gap，收起时连它前面那道缝也没有 */
-.chead > .hov { display: grid; grid-template-columns: minmax(0, 0fr); flex: 0 1 auto; min-width: 0; margin-left: calc(-1 * var(--hg)); overflow: hidden; opacity: 0; transition: grid-template-columns calc(var(--t) * 180ms) var(--out), opacity calc(var(--t) * 150ms) var(--out); }
+.chead > .hov { display: grid; grid-template-columns: minmax(0, 0fr); flex: 0 1 auto; min-width: 0; margin-left: calc(-1 * var(--hg)); overflow: hidden; opacity: 0;
+  /* closing: fade out first, then the width eases shut (an ease-out here would snap it shut in the first few frames) */
+  transition: grid-template-columns calc(var(--t) * 260ms) cubic-bezier(.4, 0, .2, 1) calc(var(--t) * 60ms), opacity calc(var(--t) * 160ms) ease; }
 .chead > .hov > span { display: flex; align-items: center; gap: 2px; min-width: 0; overflow: hidden; padding-left: var(--hg); }
-.card:hover .chead > .hov, .card.sel .chead > .hov, .chead > .hov:focus-within { grid-template-columns: minmax(0, 1fr); opacity: 1; }
+.card:hover .chead > .hov, .card.sel .chead > .hov, .chead > .hov:focus-within { grid-template-columns: minmax(0, 1fr); opacity: 1;
+  transition: grid-template-columns calc(var(--t) * 180ms) var(--out), opacity calc(var(--t) * 150ms) var(--out); }
 .chead:has(> .hov) .ctitle { flex-shrink: 1e4; }
 .cbody.wrap .src.ded .l { text-indent: 0; } /* 自动换行时不藏缩进：换行的续行会对不齐 */
 .cbody.wrap .dedm { display: none; }
@@ -1165,10 +1168,6 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .altbox .lib-tag { font: 500 9.5px/14px var(--sys); padding: 0 5px; border-radius: 5.5px; box-shadow: inset 0 0 0 1px var(--hair); }
 .lod-overview .altcol { opacity: .8; }
 /* 卡头：语言标签、1 of N、Generated */
-.lchip { flex-shrink: 0; font: 600 9px/15px var(--sys); letter-spacing: .05em; padding: 0 5px; border-radius: 5.5px; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--hair); }
-.lchip[data-l="PY"] { color: #3b6ea8; } .lchip[data-l="C++"] { color: #8a4baf; } .lchip[data-l="CUDA"] { color: #4f8a2a; }
-.lchip[data-l="TRITON"] { color: #b5552d; } .lchip[data-l="TILELANG"] { color: #a0731c; } .lchip[data-l="RUST"] { color: #9c4a32; }
-:root[data-theme="dark"] .lchip { filter: brightness(1.5); }
 .disp1 { flex-shrink: 0; font: 10.5px var(--sys); color: var(--ink-3); }
 .gentag { flex-shrink: 0; font: 500 10.5px/16px var(--sys); color: var(--ink-2); padding: 0 6px; border-radius: 5.5px; border: 1px dashed var(--ink-3); }
 .genrun { min-width: 40px; flex-shrink: 10; overflow: hidden; cursor: text; }
