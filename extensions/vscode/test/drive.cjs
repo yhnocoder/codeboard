@@ -8,9 +8,11 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failed = 0;
 const check = (ok, what, extra) => { console.log(`${ok ? "✓" : "✗"} ${what}${!ok && extra !== undefined ? "  " + JSON.stringify(extra).slice(0, 300) : ""}`); if (!ok) failed++; };
 
+/** The board on screen: boards in background tabs keep their webview, so skip frames hidden by VS Code */
 async function boardFrame(page) {
+  const shown = async (f) => { for (let x = f; x.parentFrame(); x = x.parentFrame()) if (!await (await x.frameElement()).isVisible()) return false; return true; };
   for (let i = 0; i < 80; i++) {
-    for (const f of page.frames()) { try { if (await f.$("#board")) return f; } catch {} }
+    for (const f of page.frames()) { try { if (await f.$("#board") && await shown(f)) return f; } catch {} }
     await sleep(500);
   }
   throw new Error("board webview not found");
@@ -72,8 +74,9 @@ const card = (f, title) => f.locator(".card", { has: f.locator(".chead .ctitle",
 const boardJson = () => {
   const d = execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards 2>/dev/null || true`).toString().trim().split("\n")[0];
   if (!d) return null;
-  const f = fs.readdirSync(d).find((n) => n.endsWith(".json"));
-  return f ? JSON.parse(fs.readFileSync(path.join(d, f), "utf8")) : null;
+  // the board saved last: once several boards exist, that is the one the step just changed
+  const f = fs.readdirSync(d).filter((n) => n.endsWith(".json")).map((n) => path.join(d, n)).sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0];
+  return f ? JSON.parse(fs.readFileSync(f, "utf8")) : null;
 };
 
 // 13. Capture Run（线框 13）：跑一次工作区里的小脚本（nano-vllm 要 torch，这里没有），tracer 只记 Study Scope 里的调用；
