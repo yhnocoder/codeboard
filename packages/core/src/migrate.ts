@@ -60,6 +60,7 @@ function normSeg(s: Segment) {
 }
 
 function normCard(c: Card) {
+  dropFalse(c, ["tilt"]);
   if (c.kind === "note") c.bg ??= false;
   if (c.kind !== "code") return;
   dropFalse(c, ["keepOld"]);

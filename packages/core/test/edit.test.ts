@@ -676,6 +676,28 @@ describe("board action edits (core edit)", () => {
     expect(danglingRefs(b)).toEqual([]);
   });
 
+  it("card tilt: a merge takes the target's, its parts (unmerge, split by segment) take the merged card's, a Compare takes the left column's, a copy keeps it", () => {
+    const b = base([{ ...code("a", seg("sa", 1, ["a"])), tilt: true }, code("c", seg("sc", 10, ["c"]))]);
+    mergeCodeCards(b, ["a", "c"], "c", { id: "m" });
+    const m = b.cards.find((x) => x.id === "m")!;
+    expect(m.tilt).toBeUndefined();
+    m.tilt = true;
+    const u = unmergeCard(b, "m")!;
+    expect(u.made.map((id) => b.cards.find((x) => x.id === id)!.tilt)).toEqual([true, true]);
+    expect(danglingRefs(b)).toEqual([]);
+    const s = base([{ ...code("t"), segments: [seg("s1", 1, ["a"]), seg("s2", 10, ["b"])], tilt: true }]);
+    expect(unmergeCard(s, "t")!.made.map((id) => s.cards.find((x) => x.id === id)!.tilt)).toEqual([true, true]);
+    const k = base([{ ...code("p"), tilt: true }, code("q")]);
+    makeCompare(k, "k", ["p", "q"], { x: 0, y: 0, w: 300 });
+    expect(k.cards.find((x) => x.id === "k")!.tilt).toBe(true);
+    const k2 = base([code("p"), { ...code("q"), tilt: true }]);
+    makeCompare(k2, "k", ["p", "q"], { x: 0, y: 0, w: 300 });
+    expect(k2.cards.find((x) => x.id === "k")!.tilt).toBeUndefined();
+    const into = base([]);
+    const ids = placeCards(into, [{ card: { id: "n", kind: "note", md: "x", bg: true, tilt: true }, place: { x: 0, y: 0, w: 100 } }], { copy: true });
+    expect(into.cards.find((x) => x.id === ids.cards.n)!.tilt).toBe(true);
+  });
+
   it("renameTitleRefs rewrites [[old]] in notes, descriptions and text sidenotes", () => {
     const b = base([{ id: "n", kind: "note", md: "see [[ Foo ]] and [[foo.bar]]", bg: false }, { ...code("a"), desc: "[[foo]]" }]);
     b.sidenotes = [{ id: "s", at: { card: "a" }, kind: "text", md: "[[FOO]]" }];

@@ -21,11 +21,12 @@ import { holdPointer } from "../ui/guard";
 import { isBindHot } from "../state/stickers";
 import { subRect, frameOf } from "../state/subboards";
 import { FRAME_HEAD } from "@codeboard/core";
-import { chooseMode, sidesOf, anchorOn, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
+import { chooseMode, sidesOf, anchorOn, turnAnchor, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
 import { handLine } from "./hand";
 import { carAt, type CarPose, type Road } from "./city";
 import { Car, Lane, trackTraffic } from "./Traffic";
 import { rooted } from "../state/root";
+import { tiltOf } from "../state/tilt";
 
 import { clamp } from "./geom";
 
@@ -121,7 +122,12 @@ function sidesFor(L: Link, bs: Base, remember: boolean): [Side, Side] {
 }
 /** atMap：两端各自是不是「行端、那张卡在地图档」（落到卡头） */
 const anchorsFor = (bs: Base, s: [Side, Side], atMap: readonly [boolean, boolean]): [Anchor, Anchor] =>
-  [anchorOn(bs.a.box, s[0], atMap[0] ? bs.a.hy : bs.a.y), anchorOn(bs.b.box, s[1], atMap[1] ? bs.b.hy : bs.b.y)];
+  [tilted(bs.a, anchorOn(bs.a.box, s[0], atMap[0] ? bs.a.hy : bs.a.y)), tilted(bs.b, anchorOn(bs.b.box, s[1], atMap[1] ? bs.b.hy : bs.b.y))];
+/** 斜贴的卡：端点落在转过去的边上（state/tilt.ts，转动中每一帧都跟着） */
+function tilted(e: End, a: Anchor): Anchor {
+  const deg = e.pill ? 0 : tiltOf(e.host);
+  return deg ? turnAnchor(a, e.outer, (deg * Math.PI) / 180) : a;
+}
 
 export type Geo = {
   d: string; mx: number; my: number; head?: string | CarPose; tail?: string | CarPose; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[]; /** 子白板框上的入口点 */ entry?: { x: number; y: number };

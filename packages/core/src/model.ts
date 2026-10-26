@@ -62,6 +62,8 @@ type CardBase = {
   desc?: string; // 卡片说明（标题下一段话，Walkthrough 时显示）
   /** 进程标签：自由文字（rank 0、rank 1…N、Scheduler × TP）；light = 线程 / CUDA stream，浅一点的样式 */
   procs?: ProcTag[];
+  /** 像贴纸一样斜贴在白板上（转 TILT_DEG，编辑时回正） */
+  tilt?: true;
 };
 
 export type ProcTag = { text: string; light?: boolean };

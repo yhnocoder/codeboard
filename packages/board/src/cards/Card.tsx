@@ -30,6 +30,7 @@ import { enterCard, leaveCard } from "../state/hover";
 import { merged, vlive } from "../state/variants";
 import { cardContextMenu, cardDblClick, cardPointerDown, cardWheel, justDragged, linkPortDown, resizeDown } from "../interact";
 import { kbd } from "../keymap";
+import { tiltOf, trackTilt } from "../state/tilt";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
@@ -57,6 +58,7 @@ export function CardView(p: { card: Card }) {
     const pg = pingCard();
     if (pg?.id === c().id && el) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
   });
+  trackTilt(c);
   const [labelReady, setLabelReady] = createSignal(false);
   onMount(() => whenIdle(() => setLabelReady(true)));
   const pop = () => popIn()[c().id];
@@ -74,6 +76,9 @@ export function CardView(p: { card: Card }) {
     // Mark 的颜色：写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
     const k = c();
     if (k.kind === "note" && k.hand) (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand})`;
+    // 斜贴：绕卡的中心转（箭头的端点按同一个中心转，Links.tsx）
+    const a = tiltOf(k.id);
+    if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%" });
     const pi = pop();
     if (pi?.slide) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px)`; s.transition = "none"; }
     else if (pi) { s.transform = `translate(${(1 - pi.v) * pi.ox}px, ${(1 - pi.v) * pi.oy}px) scale(${0.9 + 0.1 * pi.v})`; s.opacity = String(Math.min(1, pi.v * 1.8)); s.transition = "none"; }
