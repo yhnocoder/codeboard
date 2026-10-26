@@ -3,6 +3,7 @@
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
 //          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
 //          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle noteFontSizeSettings
+//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
@@ -344,7 +345,7 @@ test("placeholderOnlyWhenNoteEmpty", async () => {
 });
 
 /** A leading heading that is the Note's title isn't shown again in the body (display only: the Markdown keeps it); editing shows it,
- *  sliding in without a jump; a title set by the user or the setting keeps it in the body */
+ *  sliding in while the header folds away (same card height); a title set by the user or the setting keeps it in the body */
 test("noteTitleHeadingHiddenInBody", async () => {
   const doc = "# KV cache budget\n\nPrefill first, then decode.\n\nOne block per sequence.";
   const b = board([doc, doc]);
@@ -358,7 +359,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   const shown = await look();
   await shot(h, "note-heading-01-hidden");
   check("note-heading-hidden", shown[0].title === "KV cache budget" && !shown[0].h1 && shown[1].title === "My own title" && shown[1].h1 && md(h, "n0") === doc.trim(), shown);
-  // enter editing: the heading is there to edit and slides in (card height grows in small steps, no jump)
+  // enter editing: the heading is there to edit and slides in while the header folds away, so the card keeps its height
   await h.page.evaluate(() => { const w = window as any; w.__hs = []; const card = document.querySelector('.card[data-id="n0"]')!; const t0 = performance.now();
     const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 1500) requestAnimationFrame(f); }; requestAnimationFrame(f); });
   await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
@@ -370,7 +371,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   const steps = hs.slice(1).map((v, i) => v - hs[i]), grow = hs[hs.length - 1] - hs[0], jump = Math.max(...steps);
   const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.textContent, op: e ? getComputedStyle(e).opacity : "" }; });
   check("note-heading-editable", edit.text === "KV cache budget" && edit.op === "1", edit);
-  check("note-heading-slides-in", grow > 20 && jump < grow * 0.6, { grow, jump, frames: hs.length });
+  check("note-heading-slides-in", hs.length > 5 && Math.abs(grow) <= 0.5 && Math.max(...steps.map(Math.abs)) <= 0.5, { grow, jump, frames: hs.length });
   // leave: hidden again, card back to its height; while it slides out, the part above the body's top edge is clipped (never over the card header)
   await h.page.evaluate(() => { const w = window as any; w.__over = []; const t0 = performance.now();
     const f = () => { const body = document.querySelector('.card[data-id="n0"] .nbody') as HTMLElement, e = body.querySelector("h1"); if (e && e.getBoundingClientRect().height > 0) { const out = body.getBoundingClientRect().top - e.getBoundingClientRect().top; if (out > 1) w.__over.push({ out: Math.round(out), clip: getComputedStyle(body).clipPath }); }
@@ -518,13 +519,74 @@ test("noteFontSizeSettings", async () => {
   const reset = await sizes();
 
   const near = (a: number, b: number) => Math.abs(a - b) < 0.1;
-  check("noteFont-themeDefaults", near(before.body, 13) && near(before.h1, 13 * 1.8) && near(before.h2, 13 * 1.35)
-    && rows0.length === 7 && rows0.every((r) => r.theme) && rows0[0].value === "13" && rows0[1].value === "23.4", { before, rows0 });
+  check("noteFont-themeDefaults", near(before.body, 13.5) && near(before.h1, 13.5 * 1.8) && near(before.h2, 13.5 * 1.35)
+    && rows0.length === 7 && rows0.every((r) => r.theme) && rows0[0].value === "13.5" && rows0[1].value === "24.3", { before, rows0 });
   check("noteFont-settingsRows", rows1[0]?.value === "16" && !rows1[0]?.theme && rows1[1]?.value === "32" && !rows1[1]?.theme && rows1[2]?.theme && rows1[2]?.value === "21.6"
     && JSON.stringify(sent[sent.length - 1]) === JSON.stringify({ body: 16, h1: 32, h2: null, h3: null, h4: null, h5: null, h6: null }), { rows1, sent });
   check("noteFont-appliesLive", near(after.body, 16) && near(after.h1, 32) && near(after.h2, 16 * 1.35) && near(after.h3, 16 * 1.1) && after.same && near(after.text, before.text), { after, before });
   check("noteFont-cardRemeasures", after.cardH > before.cardH + 20 && belowAfter > belowBefore, { before: before.cardH, after: after.cardH, belowBefore, belowAfter });
   check("noteFont-sameWhileEditing", edit.editing && near(edit.body, 16) && near(edit.h1, 32) && near(edit.h2, after.h2) && Math.abs(edit.cardH - after.cardH) <= 1, { edit, after });
-  check("noteFont-resetAll", near(reset.body, 13) && near(reset.h1, 13 * 1.8) && Math.abs(reset.cardH - before.cardH) <= 1, { reset, before });
+  check("noteFont-resetAll", near(reset.body, 13.5) && near(reset.h1, 13.5 * 1.8) && Math.abs(reset.cardH - before.cardH) <= 1, { reset, before });
   await close(h);
+});
+
+const FOLD_TEXT = "计算系统 A 相对于计算系统 B 的应用加速比。\n\nSpeedup is the time on B over the time on A.";
+const FOLD_NOTES = [`# 加速比、Amdahl's Law\n\n${FOLD_TEXT}`, FOLD_TEXT, `### Amdahl's Law\n\n${FOLD_TEXT}`];
+/** Editing a Note whose header shows its leading heading folds the whole header away (··· stays, still clickable) while the heading
+ *  slides in, and the card keeps its height every frame (H1 and H3); a Note without a heading keeps its header and its height.
+ *  Warm Ink and Soft Light; screenshots of both states go to test-out/harness/noteFold-<theme>-*.png */
+test("noteEditKeepsHeightWithHeaderFolded", async () => {
+  for (const theme of ["warm-ink", "soft-light"]) {
+    const b = emptyBoard("b1", "fold");
+    FOLD_NOTES.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * 420, 60, 380));
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light: true, w: 1400, h: 520, settings: { theme } as never });
+    const pg = h.page;
+    await pg.waitForTimeout(1200);
+    const hOf = (id: string) => pg.evaluate((id) => document.querySelector(`.card[data-id="${id}"]`)!.getBoundingClientRect().height, id);
+    await pg.screenshot({ path: path.join(OUT, `noteFold-${theme}-display.png`), clip: { x: 40, y: 40, width: 1300, height: 260 } });
+    const res: Record<string, unknown>[] = [];
+    for (const id of ["n0", "n1", "n2"]) {
+      const before = await hOf(id);
+      await pg.evaluate((id) => { const w = window as any; w.__hs = []; const card = document.querySelector(`.card[data-id="${id}"]`)!; const t0 = performance.now();
+        const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 700) requestAnimationFrame(f); }; requestAnimationFrame(f); }, id);
+      await pg.locator(`.card[data-id="${id}"] .nbody p`).last().dblclick();
+      await pg.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
+      await pg.mouse.move(5, 5);
+      await pg.waitForTimeout(800);
+      const hs: number[] = await pg.evaluate(() => (window as any).__hs);
+      const st = await pg.evaluate((id) => {
+        const card = document.querySelector(`.card[data-id="${id}"]`)!, head = card.querySelector(".chead")!, ib = head.querySelector<HTMLElement>(".ib")!, r = ib.getBoundingClientRect();
+        const hd = card.querySelector<HTMLElement>(".md-pm > :is(h1, h3)");
+        return { folded: head.classList.contains("fold"), title: getComputedStyle(head.querySelector(".ctitle")!).opacity,
+          ibHit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest(".ib") === ib, heading: hd ? getComputedStyle(hd).opacity : null };
+      }, id);
+      if (id !== "n1") await pg.screenshot({ path: path.join(OUT, `noteFold-${theme}-editing-${id === "n0" ? "h1" : "h3"}.png`), clip: { x: 40, y: 40, width: 1300, height: 260 } });
+      await exitEdit(h); await pg.waitForTimeout(500);
+      const after = await hOf(id), unfolded = await pg.evaluate((id) => !document.querySelector(`.card[data-id="${id}"] .chead`)!.classList.contains("fold"), id);
+      const dev = Math.max(...hs.map((v) => Math.abs(v - before)));
+      res.push({ id, before, dev: +dev.toFixed(2), frames: hs.length, after, unfolded, ...st });
+    }
+    const [h1, none, h3] = res as any[];
+    check(`noteFold-keepsHeight-${theme}`, res.every((r: any) => r.dev <= 0.5 && r.frames > 5 && Math.abs(r.after - r.before) <= 0.5 && r.unfolded), res);
+    check(`noteFold-onlyWhenHeaderIsHeading-${theme}`, h1.folded && h3.folded && !none.folded && h1.title === "0" && none.title === "1" && h1.heading === "1" && h3.heading === "1", res);
+    check(`noteFold-moreButtonStaysClickable-${theme}`, h1.ibHit && h3.ibHit, res);
+    await close(h);
+  }
+});
+
+/** The same Note text at the same width is the same height in Warm Ink and Soft Light (same font size, header and padding) */
+test("noteHeightSameInWarmInkAndSoftLight", async () => {
+  const heights: Record<string, number[]> = {};
+  for (const theme of ["warm-ink", "soft-light"]) {
+    const b = emptyBoard("b1", "same height");
+    const notes = ["# Title\n\nShort line one.\n\nShort line two.\n\n- item a\n- item b", "一行中文和 English.\n\n第二段。", "### Small title\n\nOne line."];
+    notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * 420, 60, 380));
+    b.cam = { x: 0, y: 0, z: 1 };
+    const h = await open({ board: b, light: true, w: 1400, h: 520, settings: { theme } as never });
+    await h.page.waitForTimeout(1200);
+    heights[theme] = await h.page.evaluate(() => ["n0", "n1", "n2"].map((id) => +document.querySelector(`.card[data-id="${id}"]`)!.getBoundingClientRect().height.toFixed(2)));
+    await close(h);
+  }
+  check("noteHeight-sameInWarmInkAndSoftLight", heights["warm-ink"].every((v, i) => Math.abs(v - heights["soft-light"][i]) <= 1), heights);
 });

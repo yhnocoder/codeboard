@@ -326,7 +326,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.text.sel.solo:not(.editing) .ttb { display: inline-flex; }
 /* Note 的字号走 Markdown 包的 --md-fs / --md-h1…h6。设置 → Notes 里改的（App 挂在根上的 --note-fs、--note-fs-h1…h6）优先；
    没改 = 主题的字号（这里和 themes.css 给），标题按正文的比例（没设的 --note-fs-hN 让 --md-hN 无效，回到包里的默认比例） */
-.card.note .nbody { --md-fs: var(--note-fs, 13px); --md-h1: var(--note-fs-h1); --md-h2: var(--note-fs-h2); --md-h3: var(--note-fs-h3); --md-h4: var(--note-fs-h4); --md-h5: var(--note-fs-h5); --md-h6: var(--note-fs-h6); }
+.card.note .nbody { --md-fs: var(--note-fs, 13.5px); --md-h1: var(--note-fs-h1); --md-h2: var(--note-fs-h2); --md-h3: var(--note-fs-h3); --md-h4: var(--note-fs-h4); --md-h5: var(--note-fs-h5); --md-h6: var(--note-fs-h6); }
 .card.note .nbody { padding: 10px 14px 12px; line-height: 1.6; color: var(--ink); white-space: pre-wrap; word-break: break-word; outline: none; }
 /* 定了高度的 Note（用户拖过下边 / 角）：放不下的内容在正文里滚，和代码卡的 .cbody 一样，不跑出卡外（#2、#10）；放得下时下面留空。
    不拉伸（flex-grow 0）：正文只有内容那么高，Fit Content、改大小时量的是内容。
@@ -343,6 +343,14 @@ input, textarea { font: inherit; color: var(--ink); }
 @keyframes nfade-b { from { --fade-b: 22px; } to { --fade-b: 0px; } }
 .card.note .nbody[contenteditable] { cursor: text; user-select: text; -webkit-user-select: text; }
 .card.note .chead .ctitle { font-family: var(--sys); }
+/* 编辑开头标题就是卡头名字的 Note 时（NoteBody foldHeader）：整行卡头收起，正文盖上来（卡头高 --fold-h），只留 ··· 在原处；
+   正文上边距 --fold-pt = 卡头高 + 原来的上边距 − 标题这一块，所以卡片和不编辑时一样高。各级标题下面都留半个正文字号 */
+.card.note > .cface > .chead.fold { position: relative; z-index: 1; margin-bottom: calc(-1 * var(--fold-h, 36px)); background: transparent; border-bottom-color: transparent; pointer-events: none; }
+.card.note > .cface > .chead.fold > :not(.ib) { opacity: 0; }
+.card.note > .cface > .chead.fold > .ib { pointer-events: auto; }
+/* :root: above the themes' own Note padding (themes.css) */
+:root .card.note > .cface > .nbody.fold { padding-top: var(--fold-pt, 10px); }
+.nbody.fold > :is(h1, h2, h3, h4, h5, h6):first-child, .nbody.fold > :is(.md-pm, .md-loading) > :is(h1, h2, h3, h4, h5, h6):first-child { margin-bottom: calc(var(--md-fs) * .5); }
 
 /* compare */
 .cmp .colh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); flex: none; background: var(--head); }
@@ -645,6 +653,8 @@ kbd { font: 10.5px var(--mono); }
 /* Note whose leading heading is already its title (Settings → Notes): not shown again in the body; the editor shows it */
 .nbody.hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; }
 .nbody.hidehead.md:not(.editing) > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
+.nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child { display: none; } /* still hidden while the editor loads (NoteBody foldHeader) */
+.nbody.hidehead.editing > .md-loading > :is(h1, h2, h3, h4, h5, h6):first-child + * { margin-top: 0; }
 .nbody ul, .nbody ol, .cdesc ul, .cdesc ol, .tx ul, .tx ol, .inote ul, .sn-text ul, .sn-text ol { margin: 2px 0; padding-left: 1.3em; }
 .nbody blockquote, .cdesc blockquote, .tx blockquote, .sn-text blockquote { margin: 2px 0; padding-left: 8px; border-left: 2px solid var(--hair); color: var(--ink-2); }
 .nbody pre, .cdesc pre, .tx pre, .sn-text pre { margin: 4px 0; padding: 6px 8px; background: var(--hlrow); border-radius: 7px; font: 11px/1.5 var(--mono); overflow-x: auto; white-space: pre; }

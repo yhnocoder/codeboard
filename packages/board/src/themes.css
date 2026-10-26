@@ -536,8 +536,9 @@
 :root.look-soft-light .ccard .carea { margin-bottom: 10px; }
 :root.look-soft-light .ccard .carea > .cbody:not(:last-child) { margin-bottom: 10px; }
 :root.look-soft-light .ccard .carea > .cfoot { margin-bottom: -10px; }
-:root.look-soft-light .card.note > .cface > .chead { padding-top: 6px; }
-:root.look-soft-light .card.note .nbody { font-weight: 300; --md-fs: var(--note-fs, 14px); padding: 2px 18px 16px; }
+/* Note: header + body top padding = Warm Ink's (36 + 10), so the same text at the same width is the same height in both */
+:root.look-soft-light .card.note > .cface > .chead { height: 40px; padding-top: 9px; padding-left: 16px; }
+:root.look-soft-light .card.note .nbody { font-weight: 300; --md-fs: var(--note-fs, 13.5px); padding: 6px 16px 12px; }
 :root.look-soft-light .card.note .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
 :root.look-soft-light .tx.st-title { font-weight: 300; font-size: 30px; }
 :root.look-soft-light .edge { stroke: color-mix(in srgb, var(--edge) 85%, transparent); }
