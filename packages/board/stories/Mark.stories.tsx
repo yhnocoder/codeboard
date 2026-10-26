@@ -1,24 +1,14 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { HAND_COLORS, type HandColor } from "@codeboard/core";
 import { Stage, scene, markCard, type Globals, type Scene } from "./support/board";
+import { ONE, MANY, markGroup } from "./support/groups";
 
 type Args = { md: string; color: HandColor; w: number; state: "normal" | "selected" | "editing" };
 
-const ONE = "先排 prefill";
-const MANY = "block 不够就抢占最后进来的请求，它回到等待队列最前面";
-
 function overview(a: Args): Scene {
-  const { board, put, caption } = scene("Mark overview");
-  HAND_COLORS.forEach((k, i) => {
-    caption(k[0].toUpperCase() + k.slice(1), 40 + i * 220, 40, 200);
-    put(markCard(`m-${k}`, ONE, k), { x: 40 + i * 220, y: 40, w: 200 });
-  });
-  caption("One line (wide)", 40, 200, 400); put(markCard("m-wide", MANY, a.color), { x: 40, y: 200, w: 620 });
-  caption("Wrapped (narrow)", 700, 200); put(markCard("m-narrow", MANY, a.color), { x: 700, y: 200, w: a.w });
-  // 选中时颜色条在卡上方，名字再往上让开
-  caption("Selected (toolbar, handle)", 40, 384); put(markCard("m-sel", ONE, a.color), { x: 40, y: 420, w: 220 });
-  caption("Editing", 420, 420); put(markCard("m-edit", ONE, a.color), { x: 420, y: 420, w: 220 });
-  return { board, sel: ["m-sel"], editing: "m-edit" };
+  const { board, at } = scene("Mark overview");
+  const g = markGroup(at(0, 0), a, { editing: true });
+  return { board, sel: [g.sel], editing: g.editing };
 }
 
 function single(a: Args): Scene {

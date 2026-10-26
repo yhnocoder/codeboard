@@ -1,6 +1,6 @@
 // 白板数据、主题、缩放都照宿主和用户的路从外面喂进去（onHost、setCam、select、setEditing），不为小样改组件：
 // 这样小样里看到的和插件里一样
-import { createEffect, createMemo, on, untrack, For, type JSX } from "solid-js";
+import { createEffect, createMemo, on, untrack } from "solid-js";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type Card, type CodeAnnot, type CodeCard, type NoteCard, type HandColor, type Place, type Stale, type ThemeId } from "@codeboard/core";
 import { App } from "../../src/App";
 import { onHost } from "../../src/hostio";
@@ -53,8 +53,14 @@ export function scene(name: string) {
     return c;
   };
   const caption = (text: string, x: number, y: number, w = 280) => put(textCard(`cap-${board.cards.length}`, text), { x, y: y - 34, w });
-  return { board, put, caption };
+  // 几组卡摆在同一块白板上：每组按自己的坐标写，放的时候整体平移
+  const at = (dx: number, dy: number) => ({
+    put: <C extends Card>(c: C, p: Parameters<typeof put>[1]) => put(c, { ...p, x: p.x + dx, y: p.y + dy }),
+    caption: (text: string, x: number, y: number, w?: number) => caption(text, x + dx, y + dy, w),
+  });
+  return { board, put, caption, at };
 }
+export type Group = ReturnType<ReturnType<typeof scene>["at"]>;
 
 export const noteCard = (id: string, md: string, title?: string): NoteCard => ({ id, kind: "note", md, bg: true, ...(title ? { title } : {}) });
 export const textCard = (id: string, md: string): NoteCard => ({ id, kind: "note", md, bg: false, size: "body" });
@@ -74,21 +80,4 @@ export function annotAt(seg: CodeCard["segments"][0], word: string, text: string
   if (i < 0) return [];
   const from = seg.text[i].indexOf(word);
   return [{ line: seg.start + i, from, to: from + word.length, text, ...o }];
-}
-
-// 白板的状态是整个页面一份（模块级的 store），一页只能挂一个 App，所以几个 story 排在一页上要各用一个 iframe
-export function Frames(p: { globals: Globals; items: { id: string; title: string; w?: number; h: number }[] }) {
-  const q = () => `theme:${p.globals.theme};scheme:${p.globals.scheme};zoom:${p.globals.zoom}`;
-  const wrap: JSX.CSSProperties = { position: "fixed", inset: "0", overflow: "auto", padding: "16px 24px 40px", "box-sizing": "border-box", background: "var(--canvas)", color: "var(--ink)" };
-  return (
-    <div style={wrap}>
-      <For each={p.items}>{(it) => (
-        <section style={{ "margin-bottom": "28px" }}>
-          <h3 style={{ font: "600 13px/1.4 var(--sys)", margin: "0 0 8px" }}>{it.title}</h3>
-          <iframe title={it.title} src={`iframe.html?id=${it.id}&viewMode=story&globals=${q()}`}
-            style={{ width: `${it.w ?? 1400}px`, height: `${it.h}px`, border: "1px solid color-mix(in srgb, var(--ink) 18%, transparent)", "border-radius": "6px", display: "block" }} />
-        </section>
-      )}</For>
-    </div>
-  );
 }

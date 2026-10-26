@@ -1,24 +1,15 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { HAND_COLORS, type HandColor, type Stale } from "@codeboard/core";
+import { HAND_COLORS, type HandColor } from "@codeboard/core";
 import { Stage, scene, codeCard, annotAt, type Globals, type Scene } from "./support/board";
+import { changed, codeGroup } from "./support/groups";
 
 type Fixture = "schedule" | "preempt" | "canAppend";
 type Args = { code: Fixture; title: string; w: number; h: number; newVersion: boolean; annot: string; annotColor: HandColor; selected: boolean };
 
-const changed: Stale = { state: "changed", hiddenOnly: false, head: "f64d821" };
-
 function overview(a: Args): Scene {
-  const { board, put, caption } = scene("Code overview");
-  // 从 y = 80 起：上面留给「有新版本」的横幅
-  const y = 80, c2 = a.w + 80, c3 = 2 * a.w + 120;
-  caption("Scheduler.schedule", 40, y); put(codeCard("c-default", "schedule"), { x: 40, y, w: a.w });
-  caption("Annotations on the code", c2, y);
-  put(codeCard("c-annot", "schedule", { annots: (s) => [...annotAt(s, "self.waiting", "还没跑的请求"), ...annotAt(s, "num_cached_blocks", a.annot, { color: a.annotColor, below: true })] }), { x: c2, y, w: a.w, h: 300 });
-  caption("New version (amber dot)", c2, y + 430);
-  const stale = put(codeCard("c-stale", "canAppend"), { x: c2, y: y + 430, w: a.w });
-  caption("Narrow", c3, y, 200); put(codeCard("c-narrow", "preempt"), { x: c3, y, w: 200 });
-  caption("Selected", c3, y + 260); put(codeCard("c-sel", "preempt"), { x: c3, y: y + 260, w: 280 });
-  return { board, stale: { [stale.segments[0].id]: changed }, sel: ["c-sel"] };
+  const { board, at } = scene("Code overview");
+  const g = codeGroup(at(0, 0), a);
+  return { board, stale: g.stale, sel: [g.sel] };
 }
 
 function single(a: Args): Scene {

@@ -1,6 +1,6 @@
 // App.tsx 没有导出 Toolbar（它读的状态都是全局的），所以挂整个 App
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { Stage, Frames, scene, noteCard, type Globals, type Scene } from "./support/board";
+import { Stage, scene, noteCard, type Globals, type Scene } from "./support/board";
 
 type Args = { note: string };
 
@@ -33,17 +33,8 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Overview: Story = {
-  render: (_, ctx) => <Frames globals={ctx.globals as Globals} items={[
-    { id: "toolbar--wide", title: "Wide", w: 1100, h: 220 },
-    { id: "toolbar--code-menu", title: "Code menu open", w: 1100, h: 300 },
-    { id: "toolbar--more-menu", title: "More menu open", w: 1100, h: 660 },
-    { id: "toolbar--narrow", title: "Narrow (beside the editor, < 700px): zoom joins the toolbar, the rarer buttons fold into ⋯", w: 600, h: 220 },
-  ]} />,
-  argTypes: { note: { table: { disable: true } } },
-};
 export const Wide: Story = {};
 export const CodeMenu: Story = { name: "Code Menu", play: click("Code") };
 export const MoreMenu: Story = { name: "More Menu", play: click("More") };
-// 窄的样子按白板的宽度算：单独打开 iframe.html 时没有 viewport，看总览里 600px 宽的那个
+// 窄的样子按白板的宽度算（< 700px）：用 Storybook 工具栏的 viewport（preview.tsx 里的 narrow）
 export const Narrow: Story = { globals: { viewport: { value: "narrow", isRotated: false } } };

@@ -1,50 +1,13 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, noteCard, type Globals, type Scene } from "./support/board";
+import { SHORT, LONG, TITLED, RICH, noteGroup } from "./support/groups";
 
 type Args = { md: string; title: string; w: number; h: number; state: "normal" | "selected" | "editing" };
 
-const SHORT = "KV cache 按 block 分配，一个 block 256 个 token。";
-const LONG = [
-  "# Scheduler.schedule",
-  "",
-  "每一步先排 **prefill**：等待队列里的请求按顺序拿 block，直到 token 数或序列数到上限。",
-  "",
-  "- 第一个请求可以 chunked prefill：只排一部分 token",
-  "- 拿不到 block 就停，等下一步",
-  "- 已经有 block table 的（被抢占过的）只补没算过的 token",
-  "",
-  "没有可排的 prefill 时才排 **decode**：每个正在跑的请求排一个 token；block 不够就抢占最后进来的请求（`preempt`），",
-  "它的 block 全部释放，回到等待队列最前面。",
-  "",
-  "## 为什么先 prefill",
-  "",
-  "prefill 的 token 多，一步算得满；decode 每个请求只有一个 token，攒多一点再算更划算。",
-  "这样 GPU 一直有活干，等待的请求也不会饿着。",
-].join("\n");
-const TITLED = "# Block Manager\n\n管 KV cache 的 block：分配、释放、按 hash 复用前缀。";
-const RICH = [
-  "注意力的开销是 $O(n^2 d)$，每个 token 的 KV 占 $2 \\cdot L \\cdot h \\cdot d$ 个数。",
-  "",
-  "```python",
-  "num_blocks = (seq.num_tokens + block_size - 1) // block_size",
-  "```",
-  "",
-  "![KV cache blocks](assets/kv-blocks-320x120.png)",
-  "",
-  "{prefix caching|按 block 的 hash 复用前缀} 让相同的 system prompt 只算一次。",
-].join("\n");
-
 function overview(a: Args): Scene {
-  const { board, put, caption } = scene("Note overview");
-  const col = (i: number) => 40 + i * (a.w + 60);
-  caption("Empty", col(0), 40); put(noteCard("n-empty", ""), { x: col(0), y: 40, w: a.w });
-  caption("Short", col(0), 220); put(noteCard("n-short", SHORT), { x: col(0), y: 220, w: a.w });
-  caption("Titled (heading in the header)", col(0), 420); put(noteCard("n-titled", TITLED), { x: col(0), y: 420, w: a.w });
-  caption("Long (fixed height, scrolls)", col(1), 40); put(noteCard("n-long", LONG), { x: col(1), y: 40, w: a.w, h: a.h });
-  caption("Math, code, image, annotation", col(2), 40); put(noteCard("n-rich", RICH), { x: col(2), y: 40, w: a.w + 40 });
-  caption("Selected", col(1), a.h + 120); put(noteCard("n-sel", SHORT), { x: col(1), y: a.h + 120, w: a.w });
-  caption("Editing", col(2), 620); put(noteCard("n-edit", TITLED), { x: col(2), y: 620, w: a.w + 40 });
-  return { board, sel: ["n-sel"], editing: "n-edit" };
+  const { board, at } = scene("Note overview");
+  const g = noteGroup(at(0, 0), a);
+  return { board, sel: [g.sel], editing: g.editing };
 }
 
 function single(a: Args): Scene {
