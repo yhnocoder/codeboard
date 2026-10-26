@@ -2,10 +2,11 @@
 // bubble toolbar, [[card refs]], raw mode, task toggle on static notes (npm run harness -- markdownRender markdownEdit … [--light])
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
+import { shot, symCard, findSym, put, OUT, REPO, type Host } from "../harness";
+import type { Page } from "@playwright/test";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { TOOLBAR_SETTLE } from "@yhnocoder/markdown/ui";
-import { test, open, check, light, expect, until, idle, hold, pmHasSelection, focusSettled } from "../fixtures";
+import { test, open, check, light, expect, until, idle, hold, frames, pmHasSelection, focusSettled } from "../fixtures";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const close = (h: Host) => h.page.context().close();
@@ -750,4 +751,52 @@ test("mermaidThemes", async () => {
   const wide = await size();
   check("mermaidThemes wider Note lays out left to right", narrow[1] > narrow[0] && wide[0] > wide[1], { narrow, wide });
   await close(h2);
+});
+
+/** A theme whose font is not loaded yet: the Mermaid diagrams are laid out again only once that font has loaded, so their boxes
+ *  fit the real glyphs and not the fallback font's (the font is served late here, and the fallback is much wider) */
+test("mermaidThemeFontLoads", async () => {
+  const FONT = path.join(REPO, "extensions/vscode/media/board/fonts/OldStandardTT-400.woff2");
+  const CSS = `@font-face { font-family: "SlowTest"; src: url("http://fonts.test/slow.woff2") format("woff2"); }
+    :root.look-newspaper { --sys: "SlowTest", monospace !important; }`;
+  /** The theme's font from a server that answers once `gate` resolves; `seen.requested` once the page asked for it */
+  const slowFont = (gate: Promise<void>, seen: { requested: boolean }, preload: boolean) => async (pg: Page) => {
+    await pg.route("http://fonts.test/**", async (r) => {
+      seen.requested = true;
+      await gate;
+      await r.fulfill({ path: FONT, contentType: "font/woff2", headers: { "access-control-allow-origin": "*" } });
+    });
+    await pg.addInitScript(([css, preload]) => addEventListener("DOMContentLoaded", () => {
+      const st = document.createElement("style"); st.textContent = css as string; document.head.append(st);
+      if (preload) void document.fonts.load('1em "SlowTest"');
+    }), [CSS, preload] as const);
+  };
+  const diagram = () => { const b = emptyBoard("b1", "mermaid"); put(b, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[0][1]}\n\`\`\``, bg: true } as NoteCard, 40, 40, 440); return b; };
+  const size = (pg: Page) => pg.evaluate(() => { const s = document.querySelector(".mmd.ok svg")!; return { w: +s.getAttribute("width")!, h: +s.getAttribute("height")!, rects: [...s.querySelectorAll("rect")].map((r) => +(+r.getAttribute("width")!).toFixed(1)) }; });
+
+  // the diagram drawn with the font loaded from the start
+  const ref = await open({ board: diagram(), light: true, w: 900, h: 700, settings: { theme: "newspaper" } as any, beforeLoad: slowFont(Promise.resolve(), { requested: false }, true) });
+  await ref.page.waitForSelector(".mmd.ok svg", { timeout: 5000 });
+  await idle(ref);
+  const want = await size(ref.page);
+  await close(ref);
+
+  let release!: () => void;
+  const seen = { requested: false };
+  const h = await open({ board: diagram(), light: true, w: 900, h: 700, settings: { theme: "warm-ink" } as any, beforeLoad: slowFont(new Promise<void>((r) => { release = r; }), seen, false) });
+  const pg = h.page;
+  await pg.waitForSelector(".mmd.ok svg", { timeout: 5000 });
+  await pg.evaluate(() => { (window as any).__svg0 = document.querySelector(".mmd.ok svg"); const el = document.documentElement; el.classList.replace("look-warm-ink", "look-newspaper"); el.dataset.look = "newspaper"; });
+  await until(h, "the page asks for the new theme's font", () => seen.requested);
+  // the board gets several frames while the font is still on its way: nothing is laid out with the fallback font
+  await frames(pg, 10);
+  const early = await pg.evaluate(() => document.querySelector(".mmd.ok svg") !== (window as any).__svg0);
+  release();
+  await pg.waitForFunction(() => { const s = document.querySelector(".mmd.ok svg"); return !!s && s !== (window as any).__svg0; }, null, { timeout: 5000 });
+  await idle(h);
+  const got = await size(pg);
+  await saveShot(h, "mermaid-font-loads");
+  check("mermaidThemeFontLoads-waitsForFont", !early, { early });
+  check("mermaidThemeFontLoads-fitsLoadedFont", JSON.stringify(got) === JSON.stringify(want), { got, want });
+  await close(h);
 });

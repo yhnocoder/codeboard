@@ -54,10 +54,10 @@ let watching = false;
 function watchLook(p: P) {
   if (watching) return;
   watching = true;
-  let t: number | undefined;
   new MutationObserver(() => {
-    clearTimeout(t);
-    t = window.setTimeout(() => { for (const box of document.querySelectorAll<HTMLElement>(".mmd[data-done]")) queueFit(p, box); }, 50); // 等主题的样式落定再取字体
+    const refit = () => { for (const box of document.querySelectorAll<HTMLElement>(".mmd[data-done]")) queueFit(p, box); };
+    // 新主题的字体可能还没下载：按后备字体量出来的字宽不对
+    document.fonts.load(`1em ${fontOf()}`).then(refit, refit);
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-look"] });
 }
 
