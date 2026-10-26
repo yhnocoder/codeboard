@@ -281,3 +281,53 @@ test("menuOpensWithoutOvershoot", async () => {
   check("menuOpen-submenuNoOvershoot", ok(sub), sub);
   await pg.context().close();
 });
+
+/** The bottom-right resize grip is concentric with the card's rounded corner in every theme (code card and Note): its arc
+ *  has the same centre as the card's corner arc and every point of it stays inside the card, at least 1px from the edge; a card
+ *  with (almost) square corners gets a square grip.
+ *  Also: Soft Light's header icons (···) use the header's text colour */
+test("resizeGripInsideCardCorner", async () => {
+  const b = board();
+  b.cards.push({ id: "n1", kind: "note", bg: true, md: "# Corner\n\nThe resize grip follows the card's corner." } as any);
+  b.place.n1 = { x: 80, y: 560, w: 360 };
+  const h = await open({ board: b, light: true, w: 1300, h: 820, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.waitForTimeout(500);
+  const geo = () => pg.evaluate(() => [...document.querySelectorAll<HTMLElement>(".card")].flatMap((card) => {
+    const grip = card.querySelector<HTMLElement>(":scope > .cface > .grip");
+    if (!grip) return [];
+    const W = card.offsetWidth, H = card.offsetHeight, cs = getComputedStyle(card);
+    const r = Math.min(parseFloat(cs.borderBottomRightRadius) || 0, W / 2, H / 2);
+    const a = getComputedStyle(grip, "::after");
+    const w = parseFloat(a.width), hh = parseFloat(a.height);
+    const R = Math.min(parseFloat(a.borderBottomRightRadius) || 0, w, hh);
+    // the grip's box in card pixels (the canvas is scaled: divide screen pixels by the zoom)
+    const cr = card.getBoundingClientRect(), gr = grip.getBoundingClientRect(), z = cr.width / W;
+    const cx = (gr.right - cr.left) / z - parseFloat(a.right), cy = (gr.bottom - cr.top) / z - parseFloat(a.bottom);
+    const gc = [cx - R, cy - R], cc = [W - r, H - r];
+    let worst = Infinity;
+    for (let i = 0; i <= 18; i++) {
+      const t = (i / 18) * Math.PI / 2, x = gc[0] + R * Math.cos(t), y = gc[1] + R * Math.sin(t);
+      const m = x > cc[0] && y > cc[1] ? r - Math.hypot(x - cc[0], y - cc[1]) : Math.min(W - x, H - y);
+      worst = Math.min(worst, m);
+    }
+    return [{ id: card.dataset.id, r, R: +R.toFixed(2), off: +Math.hypot(gc[0] - cc[0], gc[1] - cc[1]).toFixed(2), margin: +worst.toFixed(2) }];
+  }));
+  await pg.keyboard.press("Meta+Comma");
+  await pg.waitForSelector(".settings");
+  const res: Record<string, Awaited<ReturnType<typeof geo>>> = {};
+  let head = null as null | { icon: string; title: string };
+  for (const sw of await pg.locator(".settings .st-sw").all()) {
+    await sw.click(); await pg.waitForTimeout(150);
+    const look = await pg.evaluate(() => document.documentElement.dataset.look!);
+    res[look] = await geo();
+    if (look === "soft-light") head = await pg.evaluate(() => {
+      const hd = document.querySelector('.card[data-id="n1"] .chead')!;
+      return { icon: getComputedStyle(hd.querySelector(".ib")!).color, title: getComputedStyle(hd.querySelector(".ctitle")!).color };
+    });
+  }
+  const bad = Object.entries(res).flatMap(([look, gs]) => gs.filter((g) => (g.R > 0 ? g.off > 0.6 : g.r >= 4) || g.margin < 1).map((g) => ({ look, ...g })));
+  check("resizeGrip-concentricInsideCorner", Object.keys(res).length >= 10 && Object.values(res).every((g) => g.length >= 2) && bad.length === 0, { bad, res });
+  check("softLight-headerIconsMatchTitle", !!head && head.icon === head.title, head);
+  await pg.context().close();
+});

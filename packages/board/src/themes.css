@@ -516,7 +516,7 @@
 :root.look-soft-light { --call-deco: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); }
 :root.look-soft-light .card.sel:not(.text) { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
 :root.look-soft-light .card.sel.lift { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), var(--sh-lift); }
-:root.look-soft-light .chead { background: none; border-bottom: 0; }
+:root.look-soft-light .chead { --ib-ink: var(--ink-3); background: none; border-bottom: 0; } /* header icons in the header's own warm grey (the Note title, STEP and version chip) */
 :root.look-soft-light .ccard > .cface > .chead { height: auto; flex-wrap: wrap; row-gap: 1px; column-gap: 8px; padding: 14px 10px 10px 18px; }
 :root.look-soft-light .ccard > .cface > .chead .kind, :root.look-soft-light .ccard > .cface > .chead .grow, :root.look-soft-light .ccard > .cface > .chead .plusn { display: none; }
 :root.look-soft-light .ccard > .cface > .chead .step { order: 0; height: 16px; padding: 0; min-width: 0; gap: 10px; display: inline-flex; background: none; color: var(--ink-3); font: 500 9.5px var(--sys); letter-spacing: .32em; }

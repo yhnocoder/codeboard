@@ -143,7 +143,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .vplus:hover { background: var(--accent); color: var(--accent-ink); }
 
 /* ---------- cards ---------- */
-.card { position: absolute; isolation: isolate; background: var(--surface); border-radius: var(--r-card); box-shadow: var(--sh-card); transform-origin: 0 18px; display: flex; flex-direction: column;
+.card { --cr: var(--r-card); position: absolute; isolation: isolate; background: var(--surface); border-radius: var(--cr); box-shadow: var(--sh-card); transform-origin: 0 18px; display: flex; flex-direction: column;
   transition: box-shadow calc(var(--t) * 160ms) var(--out), scale calc(var(--t) * 260ms) cubic-bezier(.3, 1.35, .5, 1), opacity calc(var(--t) * 240ms) var(--out), filter calc(var(--t) * 240ms); }
 .card.sel { box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
 .card.lift { scale: 1.012; box-shadow: var(--sh-lift); transition: box-shadow calc(var(--t) * 120ms) var(--out), scale calc(var(--t) * 120ms) var(--out), opacity calc(var(--t) * 160ms) var(--out); z-index: 10; }
@@ -205,7 +205,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .chead .cpath .rw { justify-content: flex-start; }
 .chead .cpath .rl { flex: 1 1 4em; min-width: 4em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; word-break: normal; }
 .grow { flex: 1; }
-.ib { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8.5px; color: var(--ink-2); transition: background .1s, color .1s, scale .12s; flex: none; }
+.ib { width: 26px; height: 26px; display: grid; place-items: center; border-radius: 8.5px; color: var(--ib-ink, var(--ink-2)); transition: background .1s, color .1s, scale .12s; flex: none; }
 .ib:hover, .tbtn:hover { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .ib:active, .tbtn:active { background: color-mix(in srgb, var(--ink) 12%, transparent); transition: none; scale: .96; }
 .ib[disabled] { opacity: .35; }
@@ -222,7 +222,13 @@ input, textarea { font: inherit; color: var(--ink); }
 .cbody { flex: 1 1 auto; min-height: 0; overflow: auto; position: relative; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: var(--hair) transparent; border-radius: 0 0 var(--r-card) var(--r-card); }
 .card.autoh .cbody { max-height: 460px; }
 .grip { position: absolute; right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; z-index: 3; }
-.grip::after { content: ""; position: absolute; right: 3px; bottom: 3px; width: 8px; height: 8px; border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); border-radius: 0 0 8.5px 0; opacity: 0; transition: opacity .12s; }
+/* The grip's corner is concentric with the card's (--cr, the card's own corner radius): inset by --gi, its radius is --cr − --gi, so
+ * its arc keeps the same distance from the card's edge all the way round (a square card gets a square grip). On a large radius
+ * the box grows with the arc and the clip keeps only the last 12px of it, the part in the corner. The squircle corner shape
+ * (*::after) applies to both, so the grip follows it too. */
+.grip::after { content: ""; --gi: 3px; --gr: max(0px, calc(var(--cr) - var(--gi))); position: absolute; right: var(--gi); bottom: var(--gi); width: max(8px, var(--gr)); height: max(8px, var(--gr));
+  border-right: 1.5px solid var(--ink-3); border-bottom: 1.5px solid var(--ink-3); border-radius: 0 0 var(--gr) 0; clip-path: inset(max(0px, calc(100% - 12px)) 0 0 max(0px, calc(100% - 12px)));
+  opacity: 0; transition: opacity .12s; }
 .card:hover .grip::after { opacity: .7; }
 /* Note 的下边：一条看不见的把手（拐角留给 .grip，中间的连线点在它上面一层） */
 .hb { position: absolute; left: 14px; right: 14px; bottom: -3px; height: 7px; cursor: ns-resize; z-index: 2; }
@@ -286,7 +292,7 @@ input, textarea { font: inherit; color: var(--ink); }
 .src span.pk:hover { background: var(--hlrow); border-radius: 4px; }
 
 /* text & note */
-.card.text { background: transparent; box-shadow: none; border-radius: 5.5px; padding: 2px 4px; }
+.card.text { --cr: 5.5px; background: transparent; box-shadow: none; border-radius: var(--cr); padding: 2px 4px; }
 .card.text:hover { box-shadow: 0 0 0 1px var(--hair); outline: 1px dashed var(--ink-3); outline-offset: 2px; box-shadow: none; }
 .card.text.sel { outline: 1.5px solid var(--accent); outline-offset: 2px; box-shadow: none; }
 .card.text .tx { white-space: pre-wrap; word-break: break-word; outline: none; min-height: 1.4em; color: var(--ink); }
@@ -455,7 +461,7 @@ input, textarea { font: inherit; color: var(--ink); }
 /* math */
 .tex { font-family: var(--mono); font-size: .95em; color: var(--ink-2); }
 /* lock */
-.lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ink-2); }
+.lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ib-ink, var(--ink-2)); }
 .lockb:hover { background: var(--hlrow); color: var(--accent); }
 .lockb svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; }
 .card.text .lockb.abs { position: absolute; right: -22px; top: 2px; }
@@ -1036,7 +1042,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .cbody.wrap .dedm { display: none; }
 
 /* 子白板框（线框 05，风格 C：带名字的骨架）。骨架是一张 SVG（cards/BoardBody.tsx），颜色都在这里按主题取 */
-.card.board { border-radius: calc(var(--r-card) + 4px); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 45%, transparent), var(--sh-card); }
+.card.board { --cr: calc(var(--r-card) + 4px); border-radius: var(--cr); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 45%, transparent), var(--sh-card); }
 .card.board.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
 .card.board.drop-hot { box-shadow: 0 0 0 2px var(--k-fn), var(--sh-card); }
 .sbhead { position: relative; z-index: 2; display: flex; align-items: center; gap: 7px; height: 30px; padding: 0 10px; flex: none; font: 700 12.5px/1 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; cursor: grab; }
@@ -1164,7 +1170,7 @@ mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .wstep { position: absolute; transform-origin: left bottom; font: 700 11px/18px var(--sys); color: var(--ink-2); background: var(--surface); border: 1px solid var(--hair); border-radius: 14px; padding: 0 8px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .wstep.cur { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
 /* 消息卡：圆角小卡，类型名 + message */
-.card.note.msg { border-radius: 19.5px; }
+.card.note.msg { --cr: 19.5px; border-radius: var(--cr); }
 .card.note.msg .cface { border-radius: 19.5px; }
 .msgb { padding: 6px 12px 7px; display: flex; flex-direction: column; gap: 2px; cursor: grab; }
 .msgb .mrow1, .msgb .mrow2 { display: flex; align-items: center; gap: 6px; min-width: 0; }
