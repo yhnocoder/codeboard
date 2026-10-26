@@ -283,7 +283,7 @@ test("markdownHighlight", async () => {
   await saveShot(h, "md-highlight-display");
   const r = { before, typed, icons, labels, onBefore, added, onAfter, removed, onOff, keyed, reveal, editLook, showLook, shown, saved, editBand, showBand };
   check("markdownHighlight-typing", before.length === 0 && typed.join() === "hi", r);
-  check("markdownHighlight-toolbar", icons === 7 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("Plain words") && onAfter && !removed.includes("Plain words") && !onOff, r);
+  check("markdownHighlight-toolbar", icons === 8 && labels.some((l) => /^Highlight \((⌘⇧|Ctrl\+Shift\+)H\)$/.test(l)) && !onBefore && added.includes("Plain words") && onAfter && !removed.includes("Plain words") && !onOff, r);
   check("markdownHighlight-shortcut", keyed.includes("note with bold"), r);
   check("markdownHighlight-reveal", reveal.includes("==|=="), r);
   check("markdownHighlight-saved", saved === "==Plain words== in a ==note with **bold**== inside and ==hi==", r);

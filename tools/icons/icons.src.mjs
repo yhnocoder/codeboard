@@ -89,6 +89,7 @@ export const MD_ICONS = {
   link: ICONS.link,
   highlight: [poly([[14, 8], [11, 11, 1], [7, 7, 1], [11, 3]]) + "M7 8l-4 4v2h5l2-2", "", "highlighter"],
   math: ["M12 5V3.5a.5 .5 0 0 0-.5-.5H4l4 5-4 5h7.5a.5 .5 0 0 0 .5-.5V11", "", "sigma"],
+  annot: ICONS.mark,
 };
 
 // Sticker built-ins (stickers/glyphs.tsx): white marks on a coloured disc, drawn on the same 16 grid and placed in the

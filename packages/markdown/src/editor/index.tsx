@@ -203,11 +203,18 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   window.addEventListener("pointerdown", press, true);
   window.addEventListener("pointerup", release, true);
   onCleanup(() => { clearTimeout(timer); window.removeEventListener("pointerdown", press, true); window.removeEventListener("pointerup", release, true); });
-  const shown = () => link() !== null || (settled() && want());
+  // 手写批注的输入框（null = 没打开）：打开时记下选中的那段，打字时标签直接画在字上（不进撤销），回车 / 点开时才算一步
+  const [annot, setAnnot] = createSignal<string | null>(null);
+  const shown = () => link() !== null || annot() !== null || (settled() && want());
   const pos = () => {
     p.tick();
     if (!shown()) return;
-    const r = posToDOMRect(e.view, e.state.selection.from, e.state.selection.to);
+    let r = posToDOMRect(e.view, e.state.selection.from, e.state.selection.to);
+    // 写批注时：工具条让开整个被标的字（连着上面 / 下面画标签的那条轨道），别盖住正在写的标签
+    if (annot() !== null) {
+      const n = e.view.domAtPos(e.state.selection.from + 1).node, a = (n instanceof Element ? n : n.parentElement)?.closest(".md-annot");
+      if (a) { const b = a.getBoundingClientRect(), x = Math.min(r.left, b.left), y = Math.min(r.top, b.top); r = new DOMRect(x, y, Math.max(r.right, b.right) - x, Math.max(r.bottom, b.bottom) - y); }
+    }
     queueMicrotask(() => { if (el) void place(el, virtual({ x: r.left, y: r.top, width: r.width, height: r.height }), "top", { gap: 8, pad: 6 }).then(({ x, y }) => { el.style.left = `${x}px`; el.style.top = `${y}px`; }); });
   };
   // 图标按钮：名字和快捷键给读屏（aria-label）和用的一方的提示条（data-tip / data-kbd）；开着的格式是强调色（.on），aria-pressed 同步
@@ -240,6 +247,40 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     if (url) c.setLink({ href }).run(); else c.unsetLink().run();
     if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // 点到了外面：照样保存退出
   };
+  // 选中的字原来的批注（改一个已有的）：预览、取消时回到它
+  let annotAt: { from: number; to: number; was: Record<string, any> | null } | null = null;
+  const markAnnot = (tr: Transaction, note: string) => {
+    const r = annotAt!, type = e.schema.marks.annot;
+    tr.removeMark(r.from, r.to, type);
+    if (note) tr.addMark(r.from, r.to, type.create({ ...(r.was ?? {}), note }));
+    else if (r.was) tr.addMark(r.from, r.to, type.create(r.was));
+    return tr;
+  };
+  const openAnnot = () => {
+    const { from, to } = e.state.selection;
+    const was = e.isActive("annot") ? { ...e.getAttributes("annot") } : null;
+    annotAt = { from, to, was };
+    setAnnot(was?.note ?? "");
+  };
+  const previewAnnot = (v: string) => { if (annotAt) e.view.dispatch(markAnnot(e.state.tr, v.trim()).setMeta("addToHistory", false)); };
+  const applyAnnot = (v: string | null, stay = true) => {
+    if (annot() === null || busy || !annotAt) return;
+    busy = true;
+    if (stay) e.view.focus();
+    setAnnot(null);
+    busy = false;
+    const note = v?.trim() ?? "", r = annotAt;
+    // 先撤掉预览（不进撤销），再一步写上：撤销一次回到加批注之前；Esc（v = null）只撤掉预览。清空了字再回车：去掉批注
+    e.view.dispatch(markAnnot(e.state.tr, "").setMeta("addToHistory", false));
+    if (v !== null && (note || r.was)) {
+      const tr = e.state.tr;
+      tr.removeMark(r.from, r.to, e.schema.marks.annot);
+      if (note) tr.addMark(r.from, r.to, e.schema.marks.annot.create({ ...(r.was ?? {}), note }));
+      e.view.dispatch(tr.setSelection(TextSelection.create(tr.doc, r.from, r.to)));
+    }
+    annotAt = null;
+    if (!stay) e.view.dom.dispatchEvent(new FocusEvent("blur")); // 点到了外面：照样保存退出
+  };
   const toMath = () => {
     const { from, to } = e.state.selection;
     const latex = e.state.doc.textBetween(from, to, " ");
@@ -249,7 +290,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     <Show when={shown()}>
       {(pos(), null)}
       <div ref={el} class="pill md-bubble" onMouseDown={(ev) => { if (!(ev.target as HTMLElement).closest("input")) ev.preventDefault(); }} onPointerDown={(ev) => ev.stopPropagation()}>
-        <Show when={link() !== null} fallback={<>
+        <Show when={link() !== null || annot() !== null} fallback={<>
           {B({ icon: "bold", tip: "Bold", kbd: `${mod}B`, on: () => e.isActive("bold"), run: () => e.chain().focus().toggleBold().run() })}
           {B({ icon: "italic", tip: "Italic", kbd: `${mod}I`, on: () => e.isActive("italic"), run: () => e.chain().focus().toggleItalic().run() })}
           {B({ icon: "strike", tip: "Strikethrough", kbd: `${mod}${shift}S`, on: () => e.isActive("strike"), run: () => e.chain().focus().toggleStrike().run() })}
@@ -258,11 +299,18 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
           <span class="sep" />
           {B({ icon: "link", tip: "Link", kbd: `${mod}K`, on: () => e.isActive("link"), run: () => setLink(e.getAttributes("link").href ?? "") })}
           {B({ icon: "math", tip: "Inline Math", on: () => false, run: toMath })}
+          {B({ icon: "annot", tip: "Handwritten Note", on: () => e.isActive("annot"), run: openAnnot })}
         </>}>
-          <input class="md-linkin" placeholder="Paste or type a link…" value={link() ?? ""} spellcheck={false}
+          <Show when={annot() !== null} fallback={<input class="md-linkin" placeholder="Paste or type a link…" value={link() ?? ""} spellcheck={false}
             ref={(i) => queueMicrotask(() => { i.focus(); i.select(); })}
             onKeyDown={(ev) => { keepKey(ev); if (ev.key === "Enter") { ev.preventDefault(); applyLink(ev.currentTarget.value); } if (ev.key === "Escape") { ev.preventDefault(); e.view.focus(); setLink(null); } }}
-            onBlur={(ev) => { if (link() !== null) applyLink(ev.currentTarget.value, isInside(e, ev.relatedTarget)); }} />
+            onBlur={(ev) => { if (link() !== null) applyLink(ev.currentTarget.value, isInside(e, ev.relatedTarget)); }} />}>
+            <input class="md-linkin md-annotin" placeholder="Write a handwritten note…" value={annot() ?? ""} spellcheck={false}
+              ref={(i) => queueMicrotask(() => { i.focus(); i.select(); })}
+              onInput={(ev) => { setAnnot(ev.currentTarget.value); previewAnnot(ev.currentTarget.value); }}
+              onKeyDown={(ev) => { keepKey(ev); if (ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); applyAnnot(ev.currentTarget.value); } if (ev.key === "Escape") { ev.preventDefault(); applyAnnot(null); } }}
+              onBlur={(ev) => { if (annot() !== null) applyAnnot(ev.currentTarget.value, isInside(e, ev.relatedTarget)); }} />
+          </Show>
         </Show>
       </div>
     </Show>

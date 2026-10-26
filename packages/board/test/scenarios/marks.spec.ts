@@ -319,3 +319,67 @@ test("noteAnnotationHandFont", async () => {
   check("annotHandGlyphsFromBundledFonts", f.cjk > 50 && f.latin > 50, f);
   await h.close();
 });
+
+/** Handwritten Note in the Note editor's selection toolbar: select words → the button → type the note (the label shows on the words
+ *  as you type) → Enter; one undo takes it off; on an annotated selection the button is on and opens with its note, Escape keeps it */
+test("noteAnnotationFromToolbar", async () => {
+  const b = emptyBoard("b1", "annotations");
+  b.cards.push({ id: "n1", kind: "note", md: "Prefill and decode never share a batch in nano-vllm.", bg: true } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 460 };
+  b.cam = { x: 0, y: 0, z: 1.25 };
+  const h = await open({ board: b, light: true, w: 820, h: 420, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  const pm = `${card("n1")} .md-pm`;
+  const md = () => (h.board().cards[0] as NoteCard).md;
+  await pg.locator(`${card("n1")} .nbody p`).dblclick({ position: { x: 20, y: 8 } });
+  await pg.waitForSelector(pm, { timeout: 5000 });
+  const sel = (w: string) => pg.evaluate(([root, w]) => {
+    const t = [...document.querySelector(root)!.querySelectorAll("p")].map((p) => p.firstChild as Text).find((n) => n?.data.includes(w))!;
+    const r = document.createRange(), i = t.data.indexOf(w); r.setStart(t, i); r.setEnd(t, i + w.length);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+  }, [pm, w] as const);
+  await sel("never share a batch");
+  const btn = pg.locator('.md-bubble .tbtn[data-tip="Handwritten Note"]');
+  await btn.waitFor({ timeout: 2000 });
+  await pg.waitForTimeout(300);
+  const tip = await btn.evaluate((b) => ({ label: b.getAttribute("aria-label"), on: b.classList.contains("on"), ico: !!b.querySelector("svg.md-ico path")?.getAttribute("d") }));
+  check("annotButton", tip.label === "Handwritten Note" && !tip.on && tip.ico, tip);
+  await btn.hover();
+  await pg.waitForTimeout(700);
+  await shot(h, "marks-annotation-toolbar-button");
+  await btn.click();
+  const input = pg.locator(".md-bubble input.md-annotin");
+  await input.waitFor({ timeout: 2000 });
+  check("annotInputFocused", await input.evaluate((i) => document.activeElement === i));
+  await pg.keyboard.type("not mixed");
+  await pg.waitForTimeout(150);
+  const live = await pg.locator(`${pm} .md-annot`).evaluateAll((es) => es.map((e) => [e.textContent, (e as HTMLElement).dataset.note]));
+  check("annotLivePreview", live.length === 1 && live[0][0] === "never share a batch" && live[0][1] === "not mixed", live);
+  await shot(h, "marks-annotation-toolbar-typing");
+  await pg.keyboard.press("Enter");
+  await pg.waitForTimeout(150);
+  check("annotEditorFocusedAfterEnter", await pg.evaluate((pm) => document.activeElement === document.querySelector(`${pm} .ProseMirror`) || !!document.activeElement?.closest(pm), pm));
+  // the button is on for the annotated words; it opens with the note, Escape leaves it as it was
+  await pg.waitForTimeout(500);
+  const on = await btn.evaluate((b) => b.classList.contains("on")).catch(() => false);
+  await btn.click();
+  await input.waitFor({ timeout: 2000 });
+  const prefilled = await input.inputValue();
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(150);
+  const kept = await pg.locator(`${pm} .md-annot`).evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.note));
+  check("annotButtonEditsExisting", on && prefilled === "not mixed" && kept.length === 1 && kept[0] === "not mixed", { on, prefilled, kept });
+  // one undo takes the annotation off (the live preview steps are not separate undo steps)
+  await pg.keyboard.press("ControlOrMeta+z");
+  await pg.waitForTimeout(150);
+  const undone = await pg.evaluate((pm) => ({ annots: document.querySelectorAll(`${pm} .md-annot`).length, text: document.querySelector(pm)!.textContent }), pm);
+  await pg.keyboard.press("ControlOrMeta+Shift+z");
+  await pg.waitForTimeout(150);
+  const redone = await pg.evaluate((pm) => document.querySelector(pm)!.innerHTML, pm);
+  check("annotOneUndoStep", undone.annots === 0 && undone.text === "Prefill and decode never share a batch in nano-vllm." && /data-note="not mixed"/.test(redone), { undone, redone });
+  await pg.mouse.click(760, 380);
+  await pg.waitForTimeout(400);
+  check("annotSaved", md() === "Prefill and decode {never share a batch|not mixed} in nano-vllm.", md());
+  await shot(h, "marks-annotation-toolbar-saved");
+  await h.close();
+});
