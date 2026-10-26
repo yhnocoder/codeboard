@@ -4,6 +4,7 @@
 //          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
 //          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle noteFontSizeSettings
 //          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight noteCodeBlockClickAwayEnds
+//          noteRefChipOnBaseline noteEndingInCodeBlockNoExtraSpace
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
@@ -620,4 +621,96 @@ test("noteHeightSameInWarmInkAndSoftLight", async () => {
     await close(h);
   }
   check("noteHeight-sameInWarmInkAndSoftLight", heights["warm-ink"].every((v, i) => Math.abs(v - heights["soft-light"][i]) <= 1), heights);
+});
+
+const THEMES = ["warm-ink", "soft-light"] as const;
+/** Notes in a row, `w` wide each */
+function noteRow(notes: string[], w = 380): Board {
+  const b = emptyBoard("b1", "notes");
+  notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * (w + 40), 60, w));
+  b.cam = { x: 0, y: 0, z: 1 };
+  return b;
+}
+/** A screenshot of one card with a margin around it, no hover on it */
+async function cardShot(h: Host, id: string, name: string) {
+  await h.page.mouse.move(2, 2);
+  await idle(h);
+  const r = await h.page.locator(`.card[data-id="${id}"]`).boundingBox();
+  if (r) await h.page.screenshot({ path: path.join(OUT, `${name}.png`), clip: { x: r.x - 24, y: r.y - 24, width: r.width + 48, height: r.height + 48 } });
+}
+
+/** A [[card reference]] chip in Note text sits on the text's baseline (its label's baseline is the line's), and its box is no taller
+ *  than the line: the paragraph is exactly its lines tall, displayed and while editing. Warm Ink and Soft Light; screenshots:
+ *  test-out/harness/noteRefChipOnBaseline-<theme>-<display|edit>.png */
+test("noteRefChipOnBaseline", async () => {
+  const text = "对于向量加法 kernel，调用 kernel 之前，程序员需要在 [[Global Memory]] 中分配空间，并把数据从主机内存传送到设备 global memory 中的已分配空间。";
+  for (const theme of THEMES) {
+    const h = await open({ board: noteRow([text, "# Global Memory\n\nThe device's DRAM."]), light: true, w: 1000, h: 420, settings: { theme } as never });
+    const pg = h.page;
+    await idle(h);
+    // baselines from the text boxes (a text box's top is its baseline less the font's ascent): nothing is added to the page, so it
+    // is the same measurement in the editor (ProseMirror would read a node put into its DOM)
+    const geo = () => pg.evaluate(async () => {
+      await document.fonts.ready;
+      const chip = document.querySelector<HTMLElement>('.card[data-id="n0"] .cref')!, p = chip.closest("p")!;
+      const ctx = document.createElement("canvas").getContext("2d")!;
+      const base = (t: Node) => {
+        const r = document.createRange();
+        r.selectNodeContents(t);
+        const cs = getComputedStyle(t.parentElement!);
+        ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+        return r.getClientRects()[0].top + ctx.measureText(t.textContent!).fontBoundingBoxAscent;
+      };
+      const label = [...chip.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!, next = chip.nextSibling!;
+      const lh = parseFloat(getComputedStyle(p).lineHeight), ph = p.getBoundingClientRect().height, lines = Math.round(ph / lh);
+      return { chip: +base(label).toFixed(2), text: +base(next).toFixed(2), chipH: +chip.getBoundingClientRect().height.toFixed(2), lh, ph: +ph.toFixed(2), lines,
+        missing: chip.classList.contains("missing") };
+    });
+    const shown = await geo();
+    await cardShot(h, "n0", `noteRefChipOnBaseline-${theme}-display`);
+    await pg.locator('.card[data-id="n0"] .nbody p').dblclick({ position: { x: 4, y: 4 } });
+    await pg.waitForSelector('.card[data-id="n0"] .md-pm .cref', { timeout: 5000 });
+    await idle(h);
+    const edit = await geo();
+    await cardShot(h, "n0", `noteRefChipOnBaseline-${theme}-edit`);
+    await exitEdit(h);
+    for (const [mode, g] of [["display", shown], ["edit", edit]] as const)
+      check(`noteRefChipOnBaseline ${theme} ${mode}`, !g.missing && Math.abs(g.chip - g.text) <= 0.5 && g.chipH <= g.lh && g.lines >= 2 && Math.abs(g.ph - g.lines * g.lh) <= 0.5, g);
+    await close(h);
+  }
+});
+
+/** A Note whose last block is a code block has as much room below it as one ending in a paragraph (no trailing margin, no extra
+ *  blank line), and keeps its height when editing starts and ends, with the caret at the very end too (the editor's empty paragraph
+ *  after the code block, where typing goes on, takes no room until something is typed into it). Warm Ink and Soft Light;
+ *  screenshots: test-out/harness/noteEndingInCodeBlockNoExtraSpace-<theme>-<display|edit>.png */
+test("noteEndingInCodeBlockNoExtraSpace", async () => {
+  const notes = ["`cudaFree()`: frees object from device global memory\n\n```\nDF\n```", "`cudaFree()`: frees object from device global memory\n\nLast paragraph."];
+  for (const theme of THEMES) {
+    const h = await open({ board: noteRow(notes), light: true, w: 1000, h: 420, settings: { theme } as never });
+    const pg = h.page;
+    await idle(h);
+    const geo = (id: string) => pg.evaluate((id) => {
+      const card = document.querySelector(`.card[data-id="${id}"]`)!, body = card.querySelector(".nbody")!;
+      const last = id === "n0" ? body.querySelector("pre")! : [...body.querySelectorAll("p")].pop()!;
+      const c = card.getBoundingClientRect();
+      return { h: +c.height.toFixed(2), below: +(c.bottom - last.getBoundingClientRect().bottom).toFixed(2) };
+    }, id);
+    const para = await geo("n1"), shown = await geo("n0");
+    await cardShot(h, "n0", `noteEndingInCodeBlockNoExtraSpace-${theme}-display`);
+    await pg.locator('.card[data-id="n0"] .nbody p').first().dblclick();
+    await pg.waitForSelector('.card[data-id="n0"] .md-pm pre', { timeout: 5000 });
+    await idle(h);
+    const edit = await geo("n0");
+    await keys(pg, "{Control+End}"); // the caret after the code block, where typing goes on
+    await idle(h);
+    const atEnd = await geo("n0");
+    await cardShot(h, "n0", `noteEndingInCodeBlockNoExtraSpace-${theme}-edit`);
+    await exitEdit(h);
+    const after = await geo("n0");
+    check(`noteEndingInCodeBlockNoExtraSpace ${theme} display`, Math.abs(shown.below - para.below) <= 0.5, { shown, para });
+    check(`noteEndingInCodeBlockNoExtraSpace ${theme} edit`, [edit, atEnd, after].every((g) => Math.abs(g.h - shown.h) <= 0.5 && Math.abs(g.below - shown.below) <= 0.5), { shown, edit, atEnd, after });
+    check(`noteEndingInCodeBlockNoExtraSpace ${theme} unchanged`, md(h, "n0") === notes[0], { got: md(h, "n0") });
+    await close(h);
+  }
 });

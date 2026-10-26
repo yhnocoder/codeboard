@@ -95,8 +95,9 @@ math { font-size: 1.05em; }
 .md summary::-webkit-details-marker { display: none; }
 .md summary::before { content: "▸"; display: inline-block; width: 1em; color: var(--ink-3); transition: transform calc(var(--t) * 120ms); }
 .md details[open] > summary::before { transform: rotate(90deg); }
-/* [[引用]]（白板上指向卡片） */
-.cref { display: inline-block; padding: 0 6px; margin: 0 1px; border-radius: 5px; line-height: 1.45; font-size: .94em; color: var(--k-fn); background: color-mix(in srgb, var(--k-fn) 11%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--k-fn) 30%, transparent); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: bottom; }
+/* [[引用]]（白板上指向卡片）。坐在字的基线上（和旁边的字同一条线，换字体也一样）：行内块 overflow 不是 visible 时基线默认是它的下边缘，
+   baseline-source: first 让它用里面那行字的基线（写在 vertical-align 后面：vertical-align 是简写，会把它重设成 auto）；框（line-height 1.45、字小一号）比正文的行矮，这一行不变高 */
+.cref { display: inline-block; padding: 0 6px; margin: 0 1px; border-radius: 5px; line-height: 1.45; font-size: .94em; color: var(--k-fn); background: color-mix(in srgb, var(--k-fn) 11%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--k-fn) 30%, transparent); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: baseline; baseline-source: first; }
 .cref::before { content: "↗ "; opacity: .6; }
 .cref:hover { background: color-mix(in srgb, var(--k-fn) 18%, transparent); }
 .cref.missing { color: var(--ink-3); background: var(--hlrow); box-shadow: inset 0 0 0 .5px var(--hair); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 50%, transparent); }
@@ -126,6 +127,12 @@ math { font-size: 1.05em; }
 .md-pm .ProseMirror-gapcursor { display: none; pointer-events: none; position: absolute; margin: 0; }
 .md-pm .ProseMirror-gapcursor::after { content: ""; display: block; position: absolute; top: -2px; width: 20px; border-top: 1px solid var(--ink); animation: pm-blink 1.1s steps(2, start) infinite; }
 @keyframes pm-blink { to { visibility: hidden; } }
+/* 最后一块下面不留外边距：最后是代码块、表格、公式时，下面空出来的和最后是一段字时一样多。编辑器里最后是代码、公式、表格这类时
+   后面垫着一个空段落（editor/index.tsx padEnd）：还空着时标成 .md-pad，不占高度（进出编辑时卡片一样高，下面不多一行），
+   光标在里面（.at）时画成一条短横线（和 gapcursor 一样）；打了字就是普通的一段 */
+.md > :last-child, .md-pm > :last-child, .md-pm > :has(+ .md-pad:last-child) { margin-bottom: 0; }
+.md-pm > p.md-pad.md-pad { height: 0; margin: 0; font-size: 0; line-height: 0; position: relative; caret-color: transparent; }
+.md-pm.ProseMirror-focused > p.md-pad.at::after { content: ""; position: absolute; left: 0; top: 4px; width: 20px; border-top: 1px solid var(--ink); animation: pm-blink 1.1s steps(2, start) infinite; pointer-events: none; }
 .md-pm.ProseMirror-focused .ProseMirror-gapcursor { display: block; }
 .md-pm.ProseMirror-hideselection *::selection { background: transparent; }
 .md-pm.ProseMirror-hideselection * { caret-color: transparent; }
