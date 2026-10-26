@@ -4,9 +4,10 @@
 import { emptyBoard, type Board } from "@codeboard/core";
 import { put, symCard, findSym, type Host } from "../harness";
 import { subHost } from "../subhost";
-import { test, open, verdict } from "../fixtures";
+import { test, open, verdict, expect, until, idle, hold } from "../fixtures";
+import { CAM_SETTLE, LIVE_DELAY } from "../../src/state/timing";
 
-const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
+type Sub = Awaited<ReturnType<typeof subHost>>;
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 
 test("changesreachhost", () => verdict("changes-reach-host-at-once", changesReachHost));
@@ -25,14 +26,16 @@ test("deletedparentcrumb", () => verdict("a-deleted-parent-board-leaves-the-brea
 async function deletedParentCrumb(res: Record<string, unknown>) {
   const { P, C } = parentAndChild();
   const t = await subHost(P, [C]), h = t.h, page = h.page;
-  await wait(h, 800);
-  await enter(h, "fC");
+  await idle(h);
+  await enter(t, "fC");
   res.crumbsIn = await page.locator(".crumbs .crumb").allTextContents();
-  await t.store.remove("bParent"); await wait(h, 600);
+  await t.store.remove("bParent");
+  await expect(page.locator(".crumbs .crumb")).toHaveCount(0);
   res.crumbsAfter = await page.locator(".crumbs .crumb").count();
   const errors: string[] = [];
   page.on("console", (m) => { if (m.type() === "error") errors.push(m.text()); });
-  await page.mouse.click(1000, 700); await page.keyboard.press("Escape"); await wait(h, 1000);
+  // Esc must not go back: a leaveBoard would be in flight (or handled) by the time the board is idle
+  await page.mouse.click(1000, 700); await page.keyboard.press("Escape"); await idle(h);
   res.stillOn = t.cur();
   res.errors = errors.length;
   await page.context().close();
@@ -49,9 +52,14 @@ async function expandLostCall(res: Record<string, unknown>) {
   const s = step.segments[0], line = s.start + s.text.findIndex((x) => /schedule\(\)/.test(x));
   P.links.push({ id: "lGone", from: { card: step.id, seg: s.id, line }, to: { card: "fC", sub: "cDeletedThere" }, call: { name: "schedule", col: 0 } });
   const t = await subHost(P, [C]), h = t.h, page = h.page;
-  await wait(h, 1500);
-  res.lost = !!t.store.peek("bParent")!.links.find((l) => l.id === "lGone")?.lost?.to;
-  await page.locator(`.card[data-id="${step.id}"] .src .call`, { hasText: /^schedule$/ }).first().click(); await wait(h, 1800);
+  const gone = () => t.store.peek("bParent")!.links.find((l) => l.id === "lGone");
+  // the first skeletons mark the arrow lost
+  await until(h, "the arrow into the deleted card is marked lost", () => gone()?.lost?.to);
+  res.lost = !!gone()?.lost?.to;
+  await idle(h);
+  await page.locator(`.card[data-id="${step.id}"] .src .call`, { hasText: /^schedule$/ }).first().click();
+  await until(h, "the call expands into a new card", () => t.store.peek("bParent")!.cards.some((c) => c.kind === "code" && c.id !== step.id));
+  await idle(h);
   const b = t.store.peek("bParent")!;
   const calls = b.links.filter((l) => l.call?.name === "schedule");
   res.calls = calls.map((l) => ({ to: b.cards.find((c) => c.id === l.to.card)?.kind, lost: !!l.lost }));
@@ -65,21 +73,31 @@ async function undoTurnIntoBoard(res: Record<string, unknown>) {
   const step = nv("LLMEngine.step"), post = nv("Scheduler.postprocess");
   put(P, step, 60, 80, 600); put(P, post, 760, 80, 600);
   const t = await subHost(P, []), h = t.h, page = h.page;
-  await wait(h, 800);
+  await idle(h);
   const boards = async () => (await t.store.list()).map((m) => m.id).filter((id) => id !== "bParent");
+  const frame = () => t.store.peek("bParent")!.cards.find((c) => c.kind === "board");
   await page.locator(`.card[data-id="${post.id}"] .chead`).click({ position: { x: 120, y: 10 } });
-  await page.keyboard.press("Meta+Shift+b"); await wait(h, 400);
+  await page.keyboard.press("Meta+Shift+b");
   await page.locator(".dialog input").fill("Post");
-  await page.locator(".dialog button", { hasText: "Create Board" }).click(); await wait(h, 1800);
+  await page.locator(".dialog button", { hasText: "Create Board" }).click();
+  await until(h, "Turn into Board makes the board and its frame", async () => (await boards()).length && frame());
+  await idle(h);
   const made = await boards();
   res.made = made.length;
-  await page.mouse.click(1000, 700); await wait(h, 200);
-  await page.keyboard.press("Meta+z"); await wait(h, 1600);
+  await page.mouse.click(1000, 700);
+  await page.keyboard.press("Meta+z");
+  await until(h, "undo removes the new board", async () => !(await boards()).length);
+  await idle(h);
   res.afterUndo = { boards: (await boards()).length, cardBack: t.store.peek("bParent")!.cards.map((c) => c.kind).join(",") };
-  await page.keyboard.press("Meta+Shift+z"); await wait(h, 1600);
-  const frame = t.store.peek("bParent")!.cards.find((c) => c.kind === "board");
-  res.afterRedo = { boards: await boards(), frameTo: frame?.kind === "board" ? frame.board : null, childCards: made[0] ? t.store.peek(made[0])?.cards.length : null };
-  res.skel = await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub]`).count();
+  await page.keyboard.press("Meta+Shift+z");
+  await until(h, "redo makes the board again", async () => (await boards()).length && frame());
+  await idle(h);
+  const f = frame();
+  res.afterRedo = { boards: await boards(), frameTo: f?.kind === "board" ? f.board : null, childCards: made[0] ? t.store.peek(made[0])?.cards.length : null };
+  // the host pushes the frame's skeleton after the save (subhost.ts, debounced): not a board message idle() could see
+  const skel = page.locator(`.card[data-id="${f?.id}"] .skel [data-sub]`);
+  await until(h, "the frame shows its board's cards", () => skel.count());
+  res.skel = await skel.count();
   await page.context().close();
   const a = res.afterUndo as { boards: number; cardBack: string }, r = res.afterRedo as { boards: string[]; frameTo: string | null; childCards: number | null };
   return res.made === 1 && a.boards === 0 && a.cardBack === "code,code" && r.boards.length === 1 && r.frameTo === made[0] && r.childCards === 1 && (res.skel as number) >= 1;
@@ -93,28 +111,47 @@ function parentAndChild() {
   P.cards.push({ id: "fC", kind: "board", board: C.id }); P.place.fC = { x: 60, y: 80, w: 520, h: 360 };
   return { P, C, step };
 }
-const enter = async (h: Host, frame: string) => { await h.page.locator(`.card[data-id="${frame}"] .sbhead`).dblclick({ position: { x: 200, y: 12 } }); await wait(h, 1600); };
-const leave = async (h: Host) => { await h.page.locator(".crumbs .crumb", { hasText: "Parent" }).click(); await wait(h, 1600); };
+/** The panel switched boards: the host sent the next board's init and the board has shown it */
+async function switched(t: Sub, n: number, what: string) {
+  await until(t.h, what, () => t.inits.length > n);
+  await idle(t.h);
+}
+const enter = async (t: Sub, frame: string) => {
+  const n = t.inits.length;
+  await t.h.page.locator(`.card[data-id="${frame}"] .sbhead`).dblclick({ position: { x: 200, y: 12 } });
+  await switched(t, n, `entering ${frame} opens its board`);
+};
+const leave = async (t: Sub) => {
+  const n = t.inits.length;
+  await t.h.page.locator(".crumbs .crumb", { hasText: "Parent" }).click();
+  await switched(t, n, "the crumb goes back to Parent");
+};
 
 /** Undo on a board still undoes its own last change after entering a sub-board and coming back */
 async function undoAfterPeek(res: Record<string, unknown>) {
   const { P, C } = parentAndChild();
   const t = await subHost(P, [C]), h = t.h, page = h.page;
-  await wait(h, 800);
-  await page.mouse.click(1000, 600); await wait(h, 200);
-  await page.keyboard.press("t"); await wait(h, 400);
-  await page.keyboard.type("hello text"); await page.keyboard.press("Escape"); await wait(h, 300);
-  await page.keyboard.press("Escape"); await wait(h, 800);
+  await idle(h);
+  await page.mouse.click(1000, 600);
+  await page.keyboard.press("t");
+  await page.locator(".md-pm:focus").waitFor();
+  await page.keyboard.type("hello text"); await page.keyboard.press("Escape");
+  await expect(page.locator(".md-pm:focus")).toHaveCount(0);
+  await page.keyboard.press("Escape");
   const hasText = () => t.store.peek("bParent")!.cards.some((c) => c.kind === "note" && c.md === "hello text");
+  await until(h, "the typed text is saved", hasText);
+  await idle(h);
   res.typed = hasText();
-  await enter(h, "fC");
+  await enter(t, "fC");
   res.inChild = t.cur() === "bChild";
-  await leave(h);
+  await leave(t);
   res.back = t.cur() === "bParent";
-  await page.mouse.click(1000, 600); await wait(h, 200);
-  await page.keyboard.press("Meta+z"); await wait(h, 1400);
+  await page.mouse.click(1000, 600);
+  await page.keyboard.press("Meta+z");
+  await until(h, "undo removes the text", () => !hasText());
   res.undone = !hasText();
-  await page.keyboard.press("Meta+Shift+z"); await wait(h, 1400);
+  await page.keyboard.press("Meta+Shift+z");
+  await until(h, "redo brings the text back", hasText);
   res.redone = hasText();
   await page.context().close();
   return res.typed === true && res.inChild === true && res.back === true && res.undone === true && res.redone === true;
@@ -124,11 +161,13 @@ async function undoAfterPeek(res: Record<string, unknown>) {
 async function lineMenu(h: Host, card: string, line: number, label: string) {
   const page = h.page;
   const l = page.locator(`.card[data-id="${card}"] .gutter .no`, { hasText: new RegExp(`^${line}$`) }).first();
-  await l.evaluate((el) => (el as HTMLElement).click()); await wait(h, 200);
+  await l.evaluate((el) => (el as HTMLElement).click());
+  await expect(page.locator(`.card[data-id="${card}"] .gutter .no.sel`, { hasText: new RegExp(`^${line}$`) })).toHaveCount(1);
   const b = (await l.boundingBox())!;
-  await page.mouse.click(b.x + b.width + 260, b.y + b.height / 2, { button: "right" }); await wait(h, 300);
-  if (!(await page.locator(".ctx button", { hasText: label }).count())) { await page.locator(".ctx button", { hasText: /^Edit/ }).hover(); await wait(h, 300); }
-  await page.locator(".ctx button", { hasText: label }).first().click(); await wait(h, 700);
+  await page.mouse.click(b.x + b.width + 260, b.y + b.height / 2, { button: "right" });
+  await page.locator(".ctx button").first().waitFor();
+  if (!(await page.locator(".ctx button", { hasText: label }).count())) await page.locator(".ctx button", { hasText: /^Edit/ }).hover();
+  await page.locator(".ctx button", { hasText: label }).first().click();
 }
 
 /** Ask a Question, then close it without writing anything: no question is left behind and nothing goes on the undo stack.
@@ -139,19 +178,27 @@ async function emptyQuestion(res: Record<string, unknown>) {
   put(b, step, 60, 80, 600);
   const h = await open({ board: b }), page = h.page;
   const line = step.segments[0].start + 2;
+  const editor = page.locator(".pop.k-question .ProseMirror");
   await lineMenu(h, step.id, line, "Ask a Question");
-  res.editor = await page.locator(".pop.k-question .ProseMirror").count();
-  await page.keyboard.press("Escape"); await wait(h, 300);
-  await page.mouse.click(1000, 700); await wait(h, 1400);
+  await editor.waitFor();
+  res.editor = await editor.count();
+  await page.keyboard.press("Escape"); await idle(h);
+  // the empty question must not stay: closing it is the trigger, so the board is idle once whatever it does is sent
+  await page.mouse.click(1000, 700); await idle(h);
   res.emptyLeft = h.board().stickers.length;
   res.emptyShown = await page.locator("[data-sticker]").count();
   await lineMenu(h, step.id, line, "Ask a Question");
-  await page.keyboard.type("why?"); await page.keyboard.press("Escape"); await wait(h, 300);
-  await page.mouse.click(1000, 700); await wait(h, 1400);
+  await page.locator(".pop.k-question .ProseMirror:focus").waitFor();
+  await page.keyboard.type("why?"); await page.keyboard.press("Escape"); await idle(h);
+  await page.mouse.click(1000, 700);
+  await until(h, "the written question is saved", () => h.board().stickers.length);
+  await idle(h);
   res.written = h.board().stickers.map((s) => s.q?.md);
-  await page.keyboard.press("Meta+z"); await wait(h, 1400);
+  await page.keyboard.press("Meta+z");
+  await until(h, "undo removes the question", () => !h.board().stickers.length);
   res.afterUndo = h.board().stickers.length;
-  await page.keyboard.press("Meta+z"); await wait(h, 1400);
+  // nothing else is on the undo stack: a second undo changes nothing
+  await page.keyboard.press("Meta+z"); await idle(h);
   res.afterSecondUndo = h.board().stickers.length;
   await page.context().close();
   return res.editor === 1 && res.emptyLeft === 0 && res.emptyShown === 0 && JSON.stringify(res.written) === '["why?"]' && res.afterUndo === 0 && res.afterSecondUndo === 0;
@@ -165,33 +212,34 @@ async function changesReachHost(res: Record<string, unknown>) {
   const got: { t: number; patch: any }[] = [];
   const h = await open({ board: b, on: (m) => { if (m.type === "patch") got.push({ t: Date.now(), patch: m.patch }); return false; } });
   const page = h.page;
-  await page.locator(`.card[data-id="${step.id}"] .chead`).click({ position: { x: 120, y: 10 } }); await wait(h, 900);
+  await page.locator(`.card[data-id="${step.id}"] .chead`).click({ position: { x: 120, y: 10 } }); await idle(h);
   got.length = 0;
   // Wrap Lines on the selected card
   let t0 = Date.now();
   await page.keyboard.press("Alt+z");
-  for (let i = 0; i < 40 && !got.length; i++) await page.waitForTimeout(25);
+  await until(h, "Wrap Lines reaches the host", () => got.length, 1000);
   res.wrapMs = got.length ? got[0].t - t0 : null;
   res.wrapSent = !!got[0]?.patch.cards?.set?.some((c: any) => c.id === step.id);
   // A new Text card: typed text, Esc
-  await page.mouse.click(900, 600); await wait(h, 300);
+  await page.mouse.click(900, 600); await idle(h);
   got.length = 0;
-  await page.keyboard.press("t"); await wait(h, 400);
+  await page.keyboard.press("t");
+  await page.locator(".md-pm:focus").waitFor();
   await page.keyboard.type("typed then closed");
   t0 = Date.now();
   await page.keyboard.press("Escape");
   const typed = () => got.find((g) => g.patch.cards?.set?.some((c: any) => c.kind === "note" && c.md === "typed then closed"));
-  for (let i = 0; i < 40 && !typed(); i++) await page.waitForTimeout(25);
+  await until(h, "the closed Text card reaches the host", typed, 1000);
   res.textMs = typed() ? typed()!.t - t0 : null;
-  // A settled camera (600 ms after panning) is not sent per frame: it goes out once, 800 ms after it settles
-  await page.mouse.move(700, 500); await wait(h, 300);
+  // A settled camera (CAM_SETTLE after panning) is not sent per frame: it goes out once, LIVE_DELAY after it settles
+  await page.mouse.move(700, 500); await idle(h);
   got.length = 0;
-  await page.mouse.wheel(0, 200); await page.waitForTimeout(750);
+  await page.mouse.wheel(0, 200);
+  await hold(h, CAM_SETTLE + 150, "the camera has settled but LIVE_DELAY is not over: no camera patch yet");
   res.camBefore = got.some((g) => g.patch.cam);
-  t0 = Date.now();
-  for (let i = 0; i < 100 && !got.some((g) => g.patch.cam); i++) await page.waitForTimeout(25);
+  await until(h, "the settled camera is sent", () => got.some((g) => g.patch.cam), LIVE_DELAY + 1700);
   res.camSent = got.filter((g) => g.patch.cam).length;
-  await page.waitForTimeout(300);
+  await hold(h, 300, "no second camera patch follows");
   res.camSends = got.filter((g) => g.patch.cam).length;
   await page.context().close();
   return res.wrapSent === true && (res.wrapMs as number) < 300 && res.textMs !== null && (res.textMs as number) < 300 && res.camBefore === false && res.camSent === 1 && res.camSends === 1;

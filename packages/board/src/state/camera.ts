@@ -4,6 +4,7 @@ import { createSignal, createMemo, batch } from "solid-js";
 import { tune } from "./tune";
 import { rooted } from "./root";
 import { state } from "./store";
+import { CAM_STILL } from "./timing";
 
 export const reduceMotion = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -45,7 +46,7 @@ let still: number | undefined;
 function setCamStore(p: Partial<{ x: number; y: number; z: number }>) {
   batch(() => { if (!camMoving()) setCamMoving(true); setCamStore0(p); });
   clearTimeout(still);
-  still = window.setTimeout(() => setCamMoving(false), 180);
+  still = window.setTimeout(() => setCamMoving(false), CAM_STILL);
 }
 const sx = new Spring(0, 120, 22, 0.05), sy = new Spring(0, 120, 22, 0.05), sz = new Spring(1, 120, 22, 0.0005);
 let running = false, gen = 0;

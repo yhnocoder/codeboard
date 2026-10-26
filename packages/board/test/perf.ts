@@ -240,7 +240,7 @@ async function once() {
   const res: Record<string, unknown> = { cards: board.cards.length, links: board.links.length, sections: board.sections.length, sidenotes: board.sidenotes.length, ...(ANIM ? { animStickers: board.stickers.filter((k) => k.icon.pack === "perf").length } : {}), ...(sk ? { frames: NFRAMES } : {}) };
   const t0 = performance.now();
   let cdp!: CDPSession;
-  const h = await openBoard(await launch(), { board, settings: THEME ? { theme: THEME } as any : undefined, on: (m, reply) => (sk && m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : ANIM && m.type === "stickerPacks" ? (void reply(m.req!, pack), true) : false), beforeLoad: async (page) => {
+  const h = await openBoard(await launch(), { until: "shown", board, settings: THEME ? { theme: THEME } as any : undefined, on: (m, reply) => (sk && m.type === "skeletons" ? (void reply(m.req!, Object.fromEntries(m.ids.map((id) => [id, sk]))), true) : ANIM && m.type === "stickerPacks" ? (void reply(m.req!, pack), true) : false), beforeLoad: async (page) => {
     cdp = await page.context().newCDPSession(page);
     await cdp.send("Performance.enable");
     if (PROFILE === "load") { await cdp.send("Profiler.enable"); await cdp.send("Profiler.setSamplingInterval", { interval: 200 }); await cdp.send("Profiler.start"); }

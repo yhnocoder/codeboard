@@ -9,7 +9,7 @@ import * as path from "node:path";
 import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, expect, until, idle, pmHasSelection, focusSettled } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 
@@ -18,11 +18,11 @@ async function keys(pg: Page, seq: string, delay = 0) {
   for (const part of seq.split(/(\{[A-Za-z0-9+]+\})/)) {
     if (!part) continue;
     if (/^\{.+\}$/.test(part)) {
-      // 方向键是浏览器自己移光标，ProseMirror 要等 selectionchange 才知道：前后各等一下
+      // 方向键是浏览器自己移光标，ProseMirror 要等 selectionchange 才知道：前后各等它读到选区
       const nav = /Home|End|Arrow/.test(part);
-      if (nav) await pg.waitForTimeout(300);
+      if (nav) { await focusSettled(pg); await pmHasSelection(pg); }
       await pg.keyboard.press(part.slice(1, -1));
-      await pg.waitForTimeout(nav ? 120 : 30);
+      if (nav) await pmHasSelection(pg);
     } else await pg.keyboard.type(part, { delay });
   }
 }
@@ -39,25 +39,25 @@ const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) a
 const editing = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"] .md-pm`).count();
 async function editNote(h: Host, id: string) {
   await h.post({ type: "reveal", card: id } as any);
-  await h.page.waitForTimeout(450);
+  await idle(h); // the camera flies to the card
   await h.page.locator(`.card[data-id="${id}"] .nbody`).dblclick();
   await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
 }
 async function exitEdit(h: Host) {
-  for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) { await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(80); }
+  for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) { await h.page.keyboard.press("Escape"); await idle(h); }
 }
 /** 每条一张 Note：打一串键、退出，最后一起看写回的 Markdown */
 async function typeCases(name: string, cases: { name: string; init?: string; seq: string; md: string; delay?: number }[]) {
   const h = await open({ board: board(cases.map((c) => c.init ?? "")) });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   for (let i = 0; i < cases.length; i++) {
     await editNote(h, `n${i}`);
     if (cases[i].init) await keys(h.page, "{Control+End}");
     await keys(h.page, cases[i].seq, cases[i].delay);
-    await h.page.waitForTimeout(150);
+    await idle(h);
     await exitEdit(h);
   }
-  await h.page.waitForTimeout(1500);
+  await idle(h); // every Note's Markdown has reached the host
   cases.forEach((c, i) => check(`${name} ${c.name}`, md(h, `n${i}`) === c.md, { got: md(h, `n${i}`), want: c.md }));
   await close(h);
 }
@@ -65,14 +65,13 @@ async function typeCases(name: string, cases: { name: string; init?: string; seq
 /** 最后一块是图片的 Note（打的、粘贴的截图）：退出以后还能再双击编辑 */
 test("noteImageReopens", async () => {
   const h = await open({ board: board(["a\n\n![i](https://x.y/a.png)", ""]) });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   let first = 0;
   try { await editNote(h, "n0"); first = await editing(h, "n0"); } catch { /* 打不开 */ }
   await exitEdit(h);
   await editNote(h, "n1");
   await keys(h.page, "![cat](https://x.y/c.png)");
   await exitEdit(h);
-  await h.page.waitForTimeout(800);
   let again = 0;
   try { await editNote(h, "n1"); again = await editing(h, "n1"); } catch { /* 打不开 */ }
   await exitEdit(h);
@@ -92,7 +91,7 @@ test("noteAutoPairOvertype", async () => {
 /** 段落、标题里按 Tab 不离开编辑器（后面打的字照样进来）；列表里照样缩进 */
 test("noteTabStaysInEditor", async () => {
   const h = await open({ board: board(["", "", ""]) });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   const runs: { seq: string; want: string }[] = [{ seq: "x{Tab}y", want: "xy" }, { seq: "# h{Tab}{Shift+Tab}i", want: "# hi" }, { seq: "- a{Enter}{Tab}b", want: "- a\n  - b" }];
   const still: number[] = [];
   for (let i = 0; i < runs.length; i++) {
@@ -101,7 +100,7 @@ test("noteTabStaysInEditor", async () => {
     still.push(await h.page.evaluate((id) => (document.activeElement?.closest(`.card[data-id="${id}"] .md-pm`) ? 1 : 0), `n${i}`));
     await exitEdit(h);
   }
-  await h.page.waitForTimeout(1200);
+  await idle(h);
   runs.forEach((r, i) => check(`noteTabStaysInEditor ${r.seq}`, still[i] === 1 && md(h, `n${i}`) === r.want, { focused: still[i], got: md(h, `n${i}`) }));
   await close(h);
 });
@@ -119,7 +118,7 @@ test("noteTrailingBlockExit", async () => {
 test("notePasteIntoTableCell", async () => {
   const T = "| a | b |\n| - | - |\n| 1 | 2 |";
   const h = await open({ board: board([T, T]) });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   const paste = (vs: boolean) => h.page.evaluate((vs) => {
     const dt = new DataTransfer();
     dt.setData("text/plain", "x = 1\nif x:\n    y()\n");
@@ -131,10 +130,10 @@ test("notePasteIntoTableCell", async () => {
     await h.page.locator(`.card[data-id="n${i}"] .md-pm td`).first().click();
     await keys(h.page, "{End}");
     await paste(vs);
-    await h.page.waitForTimeout(200);
+    await expect(h.page.locator(`.card[data-id="n${i}"] .md-pm td`).first()).toContainText("y()");
     await exitEdit(h);
   }
-  await h.page.waitForTimeout(1200);
+  await idle(h);
   for (const i of [0, 1]) {
     const got = md(h, `n${i}`), rows = got.split("\n");
     check(`notePasteIntoTableCell ${i ? "plain text" : "VS Code"}`, rows.length === 3 && /^\| 1x = 1<br>if x:<br>\s*y\(\)\s*\| 2\s*\|$/.test(rows[2]), { got });
@@ -148,7 +147,7 @@ test("editorKeysReachVsCode", async () => {
   b.cards.push({ id: "c1", kind: "code", segments: [{ id: "s1", src: { kind: "free" }, path: "", lang: "python", start: 1, end: 1, text: ["x = 1"], version: { kind: "none" } }] } as CodeCard);
   b.place.c1 = { x: 700, y: 400, w: 400 };
   const h = await open({ board: b });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   await h.page.evaluate(() => { (window as any).__keys = []; window.addEventListener("keydown", (e) => (window as any).__keys.push(`${e.ctrlKey ? "C+" : ""}${e.shiftKey ? "S+" : ""}${e.key}`)); });
   const KEYS = ["F1", "Control+Shift+P", "Control+P"];
   const got = async () => { const k = await h.page.evaluate(() => (window as any).__keys.splice(0)); return k as string[]; };
@@ -175,28 +174,35 @@ test("sidenoteTextEditSaves", async () => {
   b.place[C.id] = { x: 300, y: 60, w: 520 };
   b.sidenotes.push({ id: "sn1", kind: "text", md: "original", at: { card: C.id, seg: s.id, lines: [s.start + 2, s.start + 2] } });
   const h = await open({ board: b });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   const texts = () => h.board().sidenotes.map((n) => (n.kind === "text" ? n.md : n.kind));
+  /** the host's sidenotes changed from what they were before the edit */
+  const saved = async (what: string, before: string) => { await until(h, what, () => JSON.stringify(texts()) !== before); await idle(h); };
   const openEdit = async () => {
-    await h.page.locator(".mk").first().click(); await h.page.waitForTimeout(500);
-    await h.page.locator("button.tbtn", { hasText: /^Edit$/ }).click(); await h.page.waitForTimeout(400);
+    await h.page.locator(".mk").first().click();
+    await h.page.locator("button.tbtn", { hasText: /^Edit$/ }).click();
+    await h.page.locator(".sn-edit textarea:focus").waitFor();
+    return JSON.stringify(texts());
   };
-  await openEdit(); await keys(h.page, " +esc{Escape}"); await h.page.waitForTimeout(1500);
+  let before = await openEdit(); await keys(h.page, " +esc{Escape}"); await saved("Esc saves the sidenote", before);
   const afterEsc = texts();
-  await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
-  await openEdit(); await keys(h.page, " +click"); await h.page.mouse.click(1200, 800); await h.page.waitForTimeout(1500);
+  await h.page.keyboard.press("Escape"); await idle(h);
+  before = await openEdit(); await keys(h.page, " +click"); await h.page.mouse.click(1200, 800); await saved("a click outside saves the sidenote", before);
   const afterClick = texts();
-  await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
-  await openEdit(); await keys(h.page, " +cancel"); await h.page.locator(".sn-edit button", { hasText: "Cancel" }).click(); await h.page.waitForTimeout(1500);
+  await h.page.keyboard.press("Escape"); await idle(h);
+  // Cancel must not save: it is the trigger, so once the board is idle whatever it sends has reached the host
+  await openEdit(); await keys(h.page, " +cancel"); await h.page.locator(".sn-edit button", { hasText: "Cancel" }).click(); await idle(h);
   const afterCancel = texts();
   // Add Sidenote → Text：写了字按 Esc
-  await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
-  await h.page.locator(".mk").first().click(); await h.page.waitForTimeout(500);
-  await h.page.locator("button.tbtn", { hasText: "+ Add" }).click(); await h.page.waitForTimeout(400);
-  await h.page.locator(".addnote .tab", { hasText: "Text" }).click(); await h.page.waitForTimeout(200);
-  await keys(h.page, "added by esc{Escape}"); await h.page.waitForTimeout(1500);
+  await h.page.keyboard.press("Escape"); await idle(h);
+  await h.page.locator(".mk").first().click();
+  await h.page.locator("button.tbtn", { hasText: "+ Add" }).click();
+  await h.page.locator(".addnote .tab", { hasText: "Text" }).click();
+  await h.page.locator(".addnote textarea:focus").waitFor();
+  before = JSON.stringify(texts());
+  await keys(h.page, "added by esc{Escape}"); await saved("Esc adds the text sidenote", before);
   const afterAdd = texts();
-  await openEdit(); await keys(h.page, "{Control+a}{Backspace}{Control+Enter}"); await h.page.waitForTimeout(1500);
+  before = await openEdit(); await keys(h.page, "{Control+a}{Backspace}{Control+Enter}"); await saved("saving an emptied sidenote deletes it", before);
   const afterClear = texts();
   const ok = JSON.stringify(afterEsc) === '["original +esc"]' && JSON.stringify(afterClick) === '["original +esc +click"]' && JSON.stringify(afterCancel) === '["original +esc +click"]'
     && JSON.stringify(afterAdd) === '["original +esc +click","added by esc"]' && JSON.stringify(afterClear) === '["added by esc"]';
@@ -207,13 +213,15 @@ test("sidenoteTextEditSaves", async () => {
 /** Note 里的代码块编辑完：退出编辑时它在宿主那边的语言服务文档（.codeboard-note-code-* 隐藏文件）关掉 */
 test("noteCodeScratchClosed", async () => {
   const h = await open({ board: board(["```python\nx = 1\n```"]) });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   await editNote(h, "n0");
   await h.page.locator('.card[data-id="n0"] .md-pm pre .cm-content').click();
   await keys(h.page, "{End}{Enter}y = x");
-  await h.page.waitForTimeout(1500); // 改动停一下才同步给宿主（开文档）
+  // 改动停一下才同步给宿主（开文档）
+  await until(h, "the code block's document is opened on the host", () => h.sent.some((m) => m.type === "codeDoc"));
   await exitEdit(h);
-  await h.page.waitForTimeout(800);
+  await until(h, "the code block's document is closed on the host", () => h.sent.some((m) => m.type === "codeDocClose"));
+  await idle(h);
   const opened = [...new Set(h.sent.filter((m) => m.type === "codeDoc").map((m: any) => m.id as string))];
   const closed = h.sent.filter((m) => m.type === "codeDocClose").map((m: any) => m.id as string);
   check("noteCodeScratchClosed", opened.length === 1 && opened.every((id) => closed.includes(id)), { opened, closed });
@@ -251,16 +259,18 @@ test("undoIsOneStep", async () => {
   b.place[C.id] = { x: 700, y: 60, w: 520 };
   b.sidenotes.push({ id: "sn1", kind: "text", md: "side text", at: { card: C.id, seg: s.id, lines: [s.start + 2, s.start + 2] } });
   const h = await open({ board: b });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   const st = () => { const B = h.board(); return `${B.cards.map((c) => c.kind).sort().join(",")} sn${B.sidenotes.length} l${B.links.length}`; };
-  const undo = async () => { await h.page.locator("#board").click({ position: { x: 600, y: 760 } }); await h.page.waitForTimeout(200); await h.page.keyboard.press("Control+z"); await h.page.waitForTimeout(1500); };
+  /** the host's board changed from `was` */
+  const changed = async (what: string, was: string) => { await until(h, what, () => st() !== was); await idle(h); };
+  const undo = async () => { const was = st(); await h.page.locator("#board").click({ position: { x: 600, y: 760 } }); await h.page.keyboard.press("Control+z"); await changed("undo reaches the host", was); };
   const start = st();
-  await h.page.locator(".mk").first().click(); await h.page.waitForTimeout(600);
-  await h.page.locator("button.tbtn", { hasText: "Place on Board" }).click(); await h.page.waitForTimeout(1200);
+  await h.page.locator(".mk").first().click();
+  await h.page.locator("button.tbtn", { hasText: "Place on Board" }).click(); await changed("the sidenote is placed on the board", start);
   const placed = st();
   await undo();
   const placeUndone = st();
-  await editNote(h, "n0"); await keys(h.page, "{Control+a}{Backspace}"); await exitEdit(h); await h.page.waitForTimeout(1200);
+  await editNote(h, "n0"); await keys(h.page, "{Control+a}{Backspace}"); await exitEdit(h); await changed("the emptied Note is deleted", placeUndone);
   const cleared = st();
   await undo();
   const clearUndone = st(), text = md(h, "n0");
@@ -272,7 +282,7 @@ test("undoIsOneStep", async () => {
 /** 一行里打完 $$m$$（不按回车、不离开编辑）：马上就是公式块，位置、大小和退出编辑后显示的一样（居中，不是行内的小公式）；接着打的字在下一段 */
 test("noteDisplayMathTypedAsBlock", async () => {
   const h = await open({ board: board([""]), light });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   const geo = () => h.page.evaluate(() => {
     const body = document.querySelector('.card[data-id="n0"] .nbody')!, base = body.querySelector(".katex-html .katex-base");
     const b = body.getBoundingClientRect(), r = base?.getBoundingClientRect();
@@ -284,12 +294,11 @@ test("noteDisplayMathTypedAsBlock", async () => {
   });
   await editNote(h, "n0");
   await h.page.keyboard.type("$$\\frac{200}{10}$$", { delay: 20 }); // 不走 keys()：{200} 会被当成按键
-  await h.page.waitForTimeout(150);
+  await idle(h);
   const typed = await geo();
   await shot(h, "noteDisplayMathTypedAsBlock-typed");
   await keys(h.page, "after");
   await exitEdit(h);
-  await h.page.waitForTimeout(1500);
   const shown = await geo(), text = md(h, "n0");
   await shot(h, "noteDisplayMathTypedAsBlock-shown");
   const same = (["x", "y", "w", "h"] as const).every((k) => typed[k] !== undefined && Math.abs(typed[k]! - shown[k]!) <= 1);
@@ -306,7 +315,7 @@ test("noteEditKeepsLayout", async () => {
   ];
   // the heading shown in the body too (by default a leading heading that is the title is hidden there: noteTitleHeadingHiddenInBody)
   const h = await open({ board: board(docs), light, settings: { noteHeadingInBody: true } });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   const geo = (id: string) => h.page.evaluate((id) => {
     const card = document.querySelector(`.card[data-id="${id}"]`)!, body = card.querySelector(".nbody")!, root = body.querySelector(".md-pm") ?? body;
     const box = card.getBoundingClientRect(), p = root.querySelector("p")!;
@@ -321,11 +330,10 @@ test("noteEditKeepsLayout", async () => {
     await h.page.locator(`.card[data-id="${id}"] .nbody p`).last().dblclick();
     await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
     await h.page.mouse.move(5, 5);
-    await h.page.waitForTimeout(300);
+    await idle(h);
     const edit = await geo(id);
     check(`noteEditKeepsLayout ${id}`, JSON.stringify(shown) === JSON.stringify(edit) && shown.sel !== "rgba(0, 0, 0, 0)", { shown, edit });
     await exitEdit(h);
-    await h.page.waitForTimeout(300);
   }
   await close(h);
 });
@@ -333,18 +341,18 @@ test("noteEditKeepsLayout", async () => {
 /** 打完 "## " 这一行马上是标题的字号、行高，"##" 也是标题的字号；接着打字时这一行、卡片的高度都不再变 */
 test("headingMarkerTypedAtHeadingSize", async () => {
   const h = await open({ board: board([""]), light });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   await editNote(h, "n0");
   const line = () => h.page.evaluate(() => {
     const c = document.querySelector('.card[data-id="n0"]')!, e = c.querySelector(".md-pm")!.firstElementChild as HTMLElement;
     return { tag: e.tagName, fs: getComputedStyle(e).fontSize, mk: getComputedStyle(e, "::before").fontSize, mkText: getComputedStyle(e, "::before").content, lh: Math.round(e.getBoundingClientRect().height), card: Math.round(c.getBoundingClientRect().height) };
   });
   await keys(h.page, "## ");
-  await h.page.waitForTimeout(150);
+  await idle(h);
   const space = await line();
   await shot(h, "headingMarkerTypedAtHeadingSize-space");
   await keys(h.page, "Title");
-  await h.page.waitForTimeout(150);
+  await idle(h);
   const typed = await line();
   await shot(h, "headingMarkerTypedAtHeadingSize-typed");
   check("headingMarkerTypedAtHeadingSize", space.tag === "H2" && space.mkText === '"## "' && space.mk === space.fs && typed.lh === space.lh && typed.card === space.card, { space, typed });
@@ -354,14 +362,14 @@ test("headingMarkerTypedAtHeadingSize", async () => {
 /** 占位字只在整篇 Note 空着时显示；有内容的 Note 里新起的空行不显示 */
 test("placeholderOnlyWhenNoteEmpty", async () => {
   const h = await open({ board: board(["", "first line"]), light });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   const ph = (id: string) => h.page.evaluate((id) => [...document.querySelectorAll(`.card[data-id="${id}"] .md-pm > *`)].map((e) => getComputedStyle(e, "::before").content), id);
   await editNote(h, "n0");
   const empty = await ph("n0");
   await exitEdit(h);
   await editNote(h, "n1");
   await keys(h.page, "{Control+End}{Enter}");
-  await h.page.waitForTimeout(150);
+  await idle(h);
   const line = await ph("n1");
   await shot(h, "placeholderOnlyWhenNoteEmpty");
   check("placeholderOnlyWhenNoteEmpty", empty.length === 1 && empty[0] !== "none" && line.length === 2 && line.every((c) => c === "none"), { empty, line });
@@ -375,7 +383,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   const b = board([doc, doc]);
   (b.cards.find((c) => c.id === "n1") as NoteCard).title = "My own title";
   const h = await open({ board: b, light });
-  await h.page.waitForTimeout(1200);
+  await idle(h);
   const look = () => h.page.evaluate(() => [0, 1].map((i) => {
     const card = document.querySelector(`.card[data-id="n${i}"]`)!, head = card.querySelector(".nbody h1") as HTMLElement | null;
     return { title: card.querySelector(".chead .ctitle")!.textContent, h1: !!head && head.getBoundingClientRect().height > 0, h: Math.round(card.getBoundingClientRect().height) };
@@ -384,23 +392,22 @@ test("noteTitleHeadingHiddenInBody", async () => {
   await shot(h, "note-heading-01-hidden");
   check("note-heading-hidden", shown[0].title === "KV cache budget" && !shown[0].h1 && shown[1].title === "My own title" && shown[1].h1 && md(h, "n0") === doc.trim(), shown);
   // enter editing: the heading is there to edit and slides in while the header folds away, so the card keeps its height
-  await h.page.evaluate(() => { const w = window as any; w.__hs = []; const card = document.querySelector('.card[data-id="n0"]')!; const t0 = performance.now();
-    const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 1500) requestAnimationFrame(f); }; requestAnimationFrame(f); });
+  await h.page.evaluate(() => { const w = window as any; w.__hs = []; w.__hsDone = false; const card = document.querySelector('.card[data-id="n0"]')!; const t0 = performance.now();
+    const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 1500) requestAnimationFrame(f); else w.__hsDone = true; }; requestAnimationFrame(f); });
   await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
   await h.page.waitForSelector('.card[data-id="n0"] .md-pm h1', { timeout: 5000 });
-  await h.page.waitForTimeout(80);
   await shot(h, "note-heading-02-editing");
-  await h.page.waitForTimeout(1500);
+  await h.page.waitForFunction(() => (window as any).__hsDone, null, { timeout: 5000 }); // the heights recorded over 1.5 s
   const hs: number[] = await h.page.evaluate(() => (window as any).__hs);
   const steps = hs.slice(1).map((v, i) => v - hs[i]), grow = hs[hs.length - 1] - hs[0], jump = Math.max(...steps);
   const edit = await h.page.evaluate(() => { const e = document.querySelector('.card[data-id="n0"] .md-pm h1') as HTMLElement | null; return { text: e?.textContent, op: e ? getComputedStyle(e).opacity : "" }; });
   check("note-heading-editable", edit.text === "KV cache budget" && edit.op === "1", edit);
   check("note-heading-slides-in", hs.length > 5 && Math.abs(grow) <= 0.5 && Math.max(...steps.map(Math.abs)) <= 0.5, { grow, jump, frames: hs.length });
   // leave: hidden again, card back to its height; while it slides out, the part above the body's top edge is clipped (never over the card header)
-  await h.page.evaluate(() => { const w = window as any; w.__over = []; const t0 = performance.now();
+  await h.page.evaluate(() => { const w = window as any; w.__over = []; w.__overDone = false; const t0 = performance.now();
     const f = () => { const body = document.querySelector('.card[data-id="n0"] .nbody') as HTMLElement, e = body.querySelector("h1"); if (e && e.getBoundingClientRect().height > 0) { const out = body.getBoundingClientRect().top - e.getBoundingClientRect().top; if (out > 1) w.__over.push({ out: Math.round(out), clip: getComputedStyle(body).clipPath }); }
-      if (performance.now() - t0 < 600) requestAnimationFrame(f); }; requestAnimationFrame(f); });
-  await exitEdit(h); await h.page.waitForTimeout(600);
+      if (performance.now() - t0 < 600) requestAnimationFrame(f); else w.__overDone = true; }; requestAnimationFrame(f); });
+  await exitEdit(h); await h.page.waitForFunction(() => (window as any).__overDone, null, { timeout: 5000 }); // recorded over 0.6 s
   const over: { out: number; clip: string }[] = await h.page.evaluate(() => (window as any).__over);
   check("note-heading-slide-stays-in-body", over.length > 0 && over.every((o) => o.clip.startsWith("inset")), over);
   const after = await look();
@@ -408,7 +415,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   await close(h);
   // Settings → Notes: keep the heading in the body
   const h2 = await open({ board: board([doc]), light, settings: { noteHeadingInBody: true } });
-  await h2.page.waitForTimeout(1200);
+  await idle(h2);
   const kept = await h2.page.evaluate(() => (document.querySelector('.card[data-id="n0"] .nbody h1') as HTMLElement | null)?.getBoundingClientRect().height ?? 0);
   await shot(h2, "note-heading-03-setting-show");
   check("note-heading-setting-shows", kept > 0, { kept });
@@ -422,7 +429,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
 test("mathSourceInPlace", async () => {
   const h = await open({ board: board(["a $x^2$ b\n\n$$\n\\frac{1}{2}\n$$\n\nend"]), light });
   const pg = h.page, card = '.card[data-id="n0"]';
-  await pg.waitForTimeout(1500);
+  await idle(h);
   const blockH = () => pg.evaluate((card) => Math.round(document.querySelector(`${card} :is(.math, [data-type=block-math])`)!.getBoundingClientRect().height), card);
   const tex = () => pg.evaluate((card) => [...document.querySelectorAll(`${card} annotation`)].map((a) => a.textContent), card);
   const shownH = await blockH();
@@ -430,32 +437,31 @@ test("mathSourceInPlace", async () => {
   await pg.waitForSelector(`${card} .md-pm`, { timeout: 5000 });
   // 行内：点一下，换成原文，光标在里面
   { const b = (await pg.locator(`${card} .md-pm [data-type=inline-math] .katex-base`).boundingBox())!; await pg.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
-  await pg.waitForTimeout(200);
+  await until(h, "the clicked formula opens as its source", async () => !(await pg.locator(`${card} .md-pm [data-type=inline-math]`).count()));
   const inline = await pg.evaluate((card) => ({ text: (document.querySelector(`${card} .md-pm p`) as HTMLElement).innerText, math: document.querySelectorAll(`${card} .md-pm [data-type=inline-math]`).length }), card);
   await shot(h, "mathSourceInPlace-inline");
   await pg.keyboard.type("+1");
   // 方向键往下：离开行内原文（变回公式），走进公式块（展开原文）
   await keys(pg, "{ArrowDown}");
-  await pg.waitForTimeout(200);
+  await pg.locator(`${card} [data-type=block-math].is-open textarea:focus`).waitFor();
   const open1 = await pg.evaluate((card) => {
     const b = document.querySelector(`${card} [data-type=block-math]`)!, t = b.querySelector("textarea")!, pv = b.querySelector(".block-math-inner")!;
     return { open: b.classList.contains("is-open"), focus: document.activeElement === t, value: t.value, above: t.getBoundingClientRect().bottom <= pv.getBoundingClientRect().top + 1, inline: document.querySelectorAll(`${card} .md-pm [data-type=inline-math]`).length };
   }, card);
   await pg.keyboard.press("Control+a");
   await pg.keyboard.type("\\frac{3}{4}");
-  await pg.waitForTimeout(150);
+  await until(h, "the preview follows the typing", async () => (await tex()).includes("\\frac{3}{4}"));
   const live = await tex();
   await shot(h, "mathSourceInPlace-block");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(200);
+  await expect(pg.locator(`${card} .is-open`)).toHaveCount(0);
+  await idle(h);
   const closed = await pg.evaluate((card) => ({ open: document.querySelectorAll(`${card} .is-open`).length, inEditor: !!document.activeElement?.closest(".md-pm") && document.activeElement?.tagName !== "TEXTAREA" }), card);
   const closedH = await blockH(), after = await tex();
-  await pg.waitForTimeout(700);
   await pg.keyboard.press("Control+z");
-  await pg.waitForTimeout(200);
+  await until(h, "undo takes the formula edit back", async () => (await tex()).includes("\\frac{1}{2}"));
   const undone = await tex();
   await exitEdit(h);
-  await pg.waitForTimeout(1500);
   const text = md(h, "n0"), pops = await pg.locator(".md-mathpop").count();
   const r = { inline, open1, live, closed, shownH, closedH, after, undone, text, pops };
   check("mathSourceInPlace", inline.text.includes("$x^2$") && inline.math === 0 && open1.open && open1.focus && open1.value === "\\frac{1}{2}" && open1.above && open1.inline === 1
@@ -467,9 +473,9 @@ test("mathSourceInPlace", async () => {
 /** 编辑时没有块左边的拖动把手（⋮⋮）：白板不开 dragHandle */
 test("noteEditorHasNoDragHandle", async () => {
   const h = await open({ board: board(["# Title\n\nfirst\n\nsecond"]), light });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   await editNote(h, "n0");
-  for (const p of await h.page.locator('.card[data-id="n0"] .md-pm > *').all()) { await p.hover(); await h.page.waitForTimeout(120); }
+  for (const p of await h.page.locator('.card[data-id="n0"] .md-pm > *').all()) { await p.hover(); await idle(h); } // a drag handle would show on hover
   await shot(h, "noteEditorHasNoDragHandle");
   const handles = await h.page.locator(".md-handle").count();
   check("noteEditorHasNoDragHandle", handles === 0, { handles });

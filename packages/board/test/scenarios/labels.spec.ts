@@ -3,19 +3,18 @@ import * as fs from "node:fs";
 import { symCard, findSym, put, OUT, type Host } from "../harness";
 import * as path from "node:path";
 import { emptyBoard, type Board, type CodeCard, type Link } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle } from "../fixtures";
 
 const SHOTS = process.env.LABEL_SHOTS ?? path.join(OUT, "arrow-labels");
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
 const colOf = (c: CodeCard, line: number, name: string) => c.segments[0].text[line - c.segments[0].start].indexOf(name);
 const close = (h: Host) => h.page.context().close();
-const SAVE = 1300; // the board saves after a quiet second; h.board() is the last save
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 
 async function snap(h: Host, name: string) {
-  await h.page.waitForTimeout(400);
+  await idle(h);
   try { fs.mkdirSync(SHOTS, { recursive: true }); await h.page.screenshot({ path: `${SHOTS}/${name}.png` }); }
   catch (e) { console.log("(no screenshot)", (e as Error).message); }
 }
@@ -68,9 +67,9 @@ async function boxOnArrow(h: Host, id: string, cards: string[]) {
 async function pick(h: Host, path: string[]) {
   for (let i = 0; i < path.length; i++) {
     const btn = h.page.locator(".ctx").nth(i).locator("button", { has: h.page.locator(".lb", { hasText: new RegExp(`^${esc(path[i])}$`) }) });
-    if (i < path.length - 1) { await btn.hover(); await h.page.waitForTimeout(150); } else await btn.click();
+    if (i < path.length - 1) await btn.hover(); else await btn.click(); // submenus open on pointerenter; click waits for the item
   }
-  await h.page.waitForTimeout(SAVE);
+  await idle(h); // a change is sent at once: idle waits for the host to have it
 }
 const menuLabels = (h: Host, n = 0) => h.page.locator(".ctx").nth(n).locator("button .lb").allTextContents();
 async function arrowMenu(h: Host, id: string, f = 0.2) {
@@ -81,9 +80,13 @@ async function arrowMenu(h: Host, id: string, f = 0.2) {
     const top = await h.page.evaluate(([x, y]) => (document.elementFromPoint(x, y) as Element | null)?.closest("[data-link]")?.tagName ?? "", [q.x, q.y] as const);
     if (top === "path") { p = q; break; }
   }
-  await h.page.mouse.click(p.x, p.y, { button: "right" }); await h.page.waitForTimeout(250);
+  await h.page.mouse.click(p.x, p.y, { button: "right" });
+  await h.page.locator(".ctx button").first().waitFor(); await idle(h);
 }
-async function labelMenu(h: Host, id: string) { await box(h, id).click({ button: "right", position: { x: 8, y: 6 } }); await h.page.waitForTimeout(250); }
+async function labelMenu(h: Host, id: string) {
+  await box(h, id).click({ button: "right", position: { x: 8, y: 6 } });
+  await h.page.locator(".ctx button").first().waitFor(); await idle(h);
+}
 
 test("arrowLabelsMenus", async () => {
   const { b, sch, alloc, can, lines } = labelBoard();
@@ -107,53 +110,54 @@ test("arrowLabelsMenus", async () => {
     const a = (await A.boundingBox())!;
     await h.page.mouse.move(a.x + a.width / 2, a.y + a.height / 2 + 60);
     await h.page.keyboard.down("Control"); for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, -40); await h.page.keyboard.up("Control");
-    await h.page.waitForTimeout(300);
     await snap(h, "labels-1b-closeup");
     await h.page.keyboard.down("Control"); for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, 40); await h.page.keyboard.up("Control");
-    await h.page.waitForTimeout(300);
+    await idle(h);
   }
 
   // hover an argument: its names light up in both cards (W01 C 17)
-  await A.locator(".vrow").first().hover(); await h.page.waitForTimeout(150);
+  await A.locator(".vrow").first().hover(); await idle(h);
   const hiFrom = await h.page.locator(`.card[data-id="${sch.id}"] .rowbg.vhi`).count(), hiTo = await h.page.locator(`.card[data-id="${alloc.id}"] .rowbg.vhi`).count();
   check("arg-hover-highlight", hiFrom > 0 && hiTo > 0, { hiFrom, hiTo });
   await snap(h, "labels-2-arg-hover");
-  await h.page.mouse.move(5, 900); await h.page.waitForTimeout(400);
+  await h.page.mouse.move(5, 900); await idle(h);
 
   // hover the arrow: "+" opens the Arguments picker with the candidates (W01 C 18)
   const pB = await onArrow(h, "LB", 0.3);
-  await h.page.mouse.move(pB.x, pB.y); await h.page.waitForTimeout(150);
-  await h.page.locator(".vplus").first().click(); await h.page.waitForTimeout(300);
+  await h.page.mouse.move(pB.x, pB.y);
+  await h.page.locator(".vplus").first().click();
+  await h.page.locator(".pop.k-vars .picker-h").waitFor(); await idle(h);
   const picker = { title: await h.page.locator(".pop.k-vars .picker-h").textContent(), n: await h.page.locator(".pop.k-vars").count() };
   check("plus-opens-arguments", picker.n === 1 && picker.title === "Arguments", picker);
-  await h.page.keyboard.press("Escape"); await h.page.mouse.click(5, 900); await h.page.waitForTimeout(200);
+  await h.page.keyboard.press("Escape"); await h.page.mouse.click(5, 900); await idle(h);
 
   // zoomed out: arguments collapse, ↺ and own text stay
   {
     const lb = h.page.locator(".lyr").first();
     await h.page.mouse.move(700, 500);
     await h.page.keyboard.down("Control"); for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, 20); await h.page.keyboard.up("Control");
-    await h.page.waitForTimeout(500);
+    await idle(h);
     const lod = await lb.getAttribute("class");
     const rowsShown = await A.locator(".vbox").evaluate((e) => getComputedStyle(e).display !== "none");
     const headShown = await A.locator(".vhead").evaluate((e) => getComputedStyle(e).display !== "none");
     check("lod-collapses-args", /lod-overview/.test(lod ?? "") && !rowsShown && headShown, { lod, rowsShown, headShown });
     await snap(h, "labels-3-zoomed-out");
     await h.page.keyboard.down("Control"); for (let i = 0; i < 2; i++) await h.page.mouse.wheel(0, -20); await h.page.keyboard.up("Control");
-    await h.page.waitForTimeout(500);
+    await idle(h);
   }
 
   // ---- drag along the arrow, ratio kept when a card moves (W01 C 19–20) ----
   const r0 = (await A.boundingBox())!;
   await h.page.mouse.move(r0.x + 12, r0.y + 8); await h.page.mouse.down();
-  await h.page.mouse.move(r0.x + 400, r0.y - 300, { steps: 10 }); await h.page.mouse.up(); await h.page.waitForTimeout(SAVE);
+  await h.page.mouse.move(r0.x + 400, r0.y - 300, { steps: 10 }); await h.page.mouse.up();
+  await until(h, "the dragged label position is saved", () => linkOf(h, "LA")?.at !== undefined); await idle(h);
   const at1 = linkOf(h, "LA")?.at;
   const on1 = await boxOnArrow(h, "LA", [sch.id, alloc.id]);
   check("drag-along-arrow", at1 !== undefined && at1 > 0.5 && on1.d < 4 && !on1.hit, { at1, ...on1 });
   // pull it hard onto the target card: it stops before the card
   const r1 = (await A.boundingBox())!;
   await h.page.mouse.move(r1.x + 12, r1.y + 8); await h.page.mouse.down();
-  await h.page.mouse.move(r1.x + 900, r1.y - 200, { steps: 10 }); await h.page.mouse.up(); await h.page.waitForTimeout(SAVE);
+  await h.page.mouse.move(r1.x + 900, r1.y - 200, { steps: 10 }); await h.page.mouse.up(); await idle(h); // the drop is sent at once
   const at2 = linkOf(h, "LA")?.at;
   const on2 = await boxOnArrow(h, "LA", [sch.id, alloc.id]);
   check("drag-stops-off-card", at2 !== undefined && at2 < 1 && on2.d < 4 && !on2.hit, { at2, ...on2 });
@@ -161,7 +165,8 @@ test("arrowLabelsMenus", async () => {
   const hd = h.page.locator(`.card[data-id="${alloc.id}"] .chead`);
   const hb = (await hd.boundingBox())!;
   await h.page.mouse.move(hb.x + 60, hb.y + 10); await h.page.mouse.down();
-  await h.page.mouse.move(hb.x + 60 + 150, hb.y + 10 + 220, { steps: 8 }); await h.page.mouse.up(); await h.page.waitForTimeout(SAVE);
+  await h.page.mouse.move(hb.x + 60 + 150, hb.y + 10 + 220, { steps: 8 }); await h.page.mouse.up();
+  await until(h, "the moved card is saved", () => h.board().place[alloc.id].y !== b.place[alloc.id].y); await idle(h);
   const at3 = linkOf(h, "LA")?.at;
   const on3 = await boxOnArrow(h, "LA", [sch.id, alloc.id]);
   const moved = h.board().place[alloc.id].y !== b.place[alloc.id].y;
@@ -181,21 +186,22 @@ test("arrowLabelsMenus", async () => {
   check("loop-mark-toggle", !loopOff && loopEl === 0 && linkOf(h, "LA")?.call?.loop === true, { loopOff, loopEl, back: linkOf(h, "LA")?.call?.loop });
   await labelMenu(h, "LA"); await pick(h, ["Arguments…"]);
   check("label-menu-arguments", await h.page.locator(".pop.k-vars").count() === 1, {});
-  await h.page.keyboard.press("Escape"); await h.page.mouse.click(5, 900); await h.page.waitForTimeout(200);
+  await h.page.keyboard.press("Escape"); await h.page.mouse.click(5, 900); await idle(h);
   await labelMenu(h, "LC");
   const lmPlain = await menuLabels(h);
   await pick(h, ["Edit Label"]);
   const editingNow = await C.locator(".vlabel.editing").count();
-  await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(200);
+  await h.page.keyboard.press("Escape"); await idle(h);
   check("label-menu-plain", lmPlain.join("|") === "Edit Label|Reset Label Position|Delete Label" && editingNow === 1, { lmPlain, editingNow });
   await labelMenu(h, "LC"); await pick(h, ["Delete Label"]);
   const delLabel = linkOf(h, "LC")?.label;
-  await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(SAVE);
+  await h.page.keyboard.press("Meta+z");
+  await until(h, "undo brings the label back", () => linkOf(h, "LC")?.label); await idle(h);
   check("delete-label-undo", delLabel === undefined && linkOf(h, "LC")?.label === "why batches", { delLabel, back: linkOf(h, "LC")?.label });
   // Enter on a selected arrow edits its label
-  await C.click({ position: { x: 8, y: 6 } }); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(150);
+  await C.click({ position: { x: 8, y: 6 } }); await h.page.keyboard.press("Enter"); await idle(h);
   const enterEdits = await C.locator(".vlabel.editing").count();
-  await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(150);
+  await h.page.keyboard.press("Escape"); await idle(h);
   check("enter-edits-label", enterEdits === 1, { enterEdits });
 
   // ---- Arrow menu (W01 D 22, 24, 25) ----
@@ -203,10 +209,10 @@ test("arrowLabelsMenus", async () => {
   const am = await menuLabels(h);
   // Mark as RPC…, ↩ Back to Start (call chains) and the Style presets
   check("arrow-menu-items", am.join("|") === "Call Mark|Mark as RPC…|↩ Back to Start|Style|Line|Width|Start|End|Color|Start Side|End Side|Reset Sides|Edit Label|Delete", am);
-  await h.page.locator(".ctx").first().locator("button", { hasText: "End Side" }).hover(); await h.page.waitForTimeout(200);
+  await h.page.locator(".ctx").first().locator("button", { hasText: "End Side" }).hover(); await idle(h); // its submenu opens on pointerenter
   const endSides = await menuLabels(h, 1);
   await snap(h, "labels-6-arrow-menu");
-  await h.page.locator(".ctx").first().locator("button", { hasText: "Start Side" }).hover(); await h.page.waitForTimeout(200);
+  await h.page.locator(".ctx").first().locator("button", { hasText: "Start Side" }).hover(); await idle(h);
   const startSides = await menuLabels(h, 1);
   check("side-options", endSides.join() === "Auto,Left,Right,Top,Bottom" && startSides.join() === "Auto,Left,Right", { startSides, endSides });
   await h.page.keyboard.press("Escape");
@@ -248,7 +254,7 @@ test("arrowLabelsMenus", async () => {
   await arrowMenu(h, "LB", 0.3);
   await pick(h, ["Add Label"]);
   const adding = await B.locator(".vlabel.editing").count();
-  await h.page.keyboard.type("checks free blocks"); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(SAVE);
+  await h.page.keyboard.type("checks free blocks"); await h.page.keyboard.press("Enter"); await idle(h);
   check("add-label", adding === 1 && linkOf(h, "LB")?.label === "checks free blocks", { adding, label: linkOf(h, "LB")?.label });
   await arrowMenu(h, "LB", 0.3); await pick(h, ["Delete"]);
   check("delete-arrow", !linkOf(h, "LB"), { left: h.board().links.map((l) => l.id) });

@@ -6,7 +6,7 @@ import * as path from "node:path";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { put, OUT, type Host, type OnMsg } from "../harness";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 const CODE = ["def f(x):", "    y = x + 1  # one", "    return y", "", "print(f(2))"];
@@ -46,6 +46,8 @@ const geo = (pg: Page, card: string, lineSel: string, noSel: string) => pg.evalu
 const SHOW = [".src .l", ".gutter .no"] as const, EDIT = [".cm-line", ".cm-lineNumbers .cm-gutterElement"] as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const firstDiff = (a: any, b: any) => { for (const k of ["lines", "nos", "size"]) if (!same(a[k], b[k])) return { k, a: JSON.stringify(a[k]).slice(0, 600), b: JSON.stringify(b[k]).slice(0, 600) }; return null; };
+/** The board asked the host for signature help on a document like this (signature help re-asks SIG_MS = 60 ms after a change while open, packages/markdown/src/cm/lsp.ts; only waited on as state here) */
+const askedSig = (h: Host, re: RegExp) => until(h, `signature help is asked for ${re}`, () => h.sent.some((m) => m.type === "lspSignature" && re.test((m as { text: string }).text)));
 const text = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].map((l) => l.textContent).join("\n"));
 
 async function save(h: Host, name: string) {
@@ -66,7 +68,7 @@ async function sideBySide(pg: Page, a: Buffer, b: Buffer, la: string, lb: string
   await p2.setContent(`<body style="margin:0;background:${bg};font:13px -apple-system,Segoe UI,sans-serif;color:#888"><div style="display:flex;gap:24px;padding:16px;align-items:flex-start">
     <figure style="margin:0"><figcaption style="margin-bottom:6px">${la}</figcaption><img src="data:image/png;base64,${a.toString("base64")}"></figure>
     <figure style="margin:0"><figcaption style="margin-bottom:6px">${lb}</figcaption><img src="data:image/png;base64,${b.toString("base64")}"></figure></div></body>`);
-  await p2.waitForTimeout(100);
+  await p2.waitForFunction(() => [...document.images].every((i) => i.complete && i.naturalWidth > 0));
   await p2.screenshot({ path: path.join(OUT, `${name}.png`), fullPage: true });
   await p2.context().close();
 }
@@ -112,12 +114,12 @@ async function looks() {
   for (const [theme, light] of only) {
     const h = await open({ board: freeBoard(), light, w: 1000, h: 700, settings: { theme } as any });
     const pg = h.page;
-    await pg.waitForTimeout(400);
+    await idle(h);
     const a = await geo(pg, "c1", ...SHOW);
     const shotA = theme === "warm-ink" && light ? await clipShot(pg, '.card[data-id="c1"]') : null;
     await pg.locator('.card[data-id="c1"] .src .l').nth(2).dblclick();
     await editing(pg);
-    await pg.waitForTimeout(200);
+    await idle(h);
     const b = await geo(pg, "c1", ...EDIT);
     const ok = same(a.lines, b.lines) && same(a.nos, b.nos) && same(a.size, b.size) && b.cur === 1;
     check(`codeedit ${theme} ${light ? "light" : "dark"} entering edit: same glyphs, colours, line numbers, size`, ok, ok ? { size: b.size, glyphs: b.lines.flat().length } : { diff: firstDiff(a, b), cur: b.cur });
@@ -137,7 +139,7 @@ async function looks() {
     }
     await pg.keyboard.press("Escape");
     await pg.waitForSelector('.card[data-id="c1"] .src .l');
-    await pg.waitForTimeout(300);
+    await idle(h);
     const c = await geo(pg, "c1", ...SHOW);
     const ok2 = same(a, c);
     check(`codeedit ${theme} ${light ? "light" : "dark"} leaving edit: back where it was`, ok2, ok2 ? {} : { diff: firstDiff(a, c) });
@@ -148,26 +150,32 @@ async function looks() {
 async function typing() {
   const h = await open({ board: freeBoard(), light: true, w: 1000, h: 700, settings: { theme: "warm-ink" } as any, on: lspStub });
   const pg = h.page;
-  await pg.waitForTimeout(300);
+  await idle(h);
   await pg.locator('.card[data-id="c1"] .src .l').nth(2).dblclick();
   await editing(pg);
   // 打字：新的一行很快就着色；回车保持缩进（: 结尾多一级）
   await pg.keyboard.press("Control+End");
   await pg.keyboard.press("Enter");
   await pg.keyboard.type("for i in range(", { delay: 15 });
-  await pg.waitForSelector(".cbcm-sig", { timeout: 4000 }).catch(() => null);
+  await pg.waitForSelector(".cbcm-sig", { timeout: 4000 });
   // 签名提示开着、刚打的字的补全还在问（看不见）：一次 Esc 关掉看得见的签名提示，不退出，提示也不会被还在路上的回复再打开
   await pg.keyboard.type("3");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(100);
+  // the signature help asked again after "3" and the completion still being asked must not reopen anything:
+  // wait for that request to be sent, then idle waits until the host has answered everything
+  await askedSig(h, /range\(3$/m);
+  await idle(h);
   const stillEditing = await pg.locator('.card[data-id="c1"] .cm-content').count() === 1, sigClosed = await pg.locator(".cbcm-sig").count() === 0;
   await pg.keyboard.type("):");
   await pg.keyboard.press("End");
   await pg.keyboard.press("Enter");
   await pg.keyboard.type("pass");
-  await pg.waitForTimeout(300);
+  await until(h, "the typed lines are in the editor", async () => (await text(pg)).endsWith("\n    pass"));
   const v1 = await text(pg);
-  const colored = await pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].slice(-2).map((l) => l.querySelectorAll("span.kw").length));
+  const kws = () => pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].slice(-2).map((l) => l.querySelectorAll("span.kw").length));
+  // the highlighter parses in the background: the new lines are coloured soon after
+  await until(h, "the new lines are highlighted", async () => (await kws()).every((n) => n > 0));
+  const colored = await kws();
   // 选中两行 Tab / ⇧Tab；⌘/ 注释再取消
   await pg.keyboard.press("Control+End");
   await pg.keyboard.press("Shift+ArrowUp");
@@ -193,39 +201,44 @@ async function typing() {
   await pg.keyboard.press("Enter");
   await pg.keyboard.press("Shift+Tab");
   await pg.keyboard.type("r");
-  await pg.waitForSelector(".cbcm-ac li", { timeout: 4000 }).catch(() => null);
+  await pg.waitForSelector(".cbcm-ac li", { timeout: 4000 });
   const items = await pg.locator(".cbcm-ac li .cm-completionLabel").allTextContents();
   const asked = h.sent.filter((m) => m.type === "lspComplete").length;
   check("codeedit completion menu from the language service", items.length === 5 && items[0] === "range" && asked > 0, { items, asked });
-  await pg.waitForTimeout(400);
+  await idle(h);
   await pg.screenshot({ path: path.join(OUT, "pr9-2-completion.png") });
   await save(h, "pr9-2-completion");
   await pg.keyboard.press("Tab");
   await pg.keyboard.type("(1, ");
-  await pg.waitForSelector(".cbcm-sig", { timeout: 4000 }).catch(() => null);
-  await pg.waitForTimeout(250);
+  await pg.waitForSelector(".cbcm-sig", { timeout: 4000 });
+  // "," asks at once; the space re-asks 60 ms later only if the help was already open by then.
+  // Once the ask after the comma is answered the help marks the active parameter
+  await askedSig(h, /range\(1, ?$/m);
+  await idle(h);
   const sig = await pg.evaluate(() => ({ l: document.querySelector(".cbcm-sig-l")?.textContent, b: document.querySelector(".cbcm-sig-l b")?.textContent }));
   const v6 = await text(pg);
   check("codeedit Tab accepts; signature help shows the active parameter", /\nrange\(1, $/.test(v6) && sig.b === "stop: SupportsIndex", { last: v6.split("\n").pop(), sig });
   await pg.screenshot({ path: path.join(OUT, "pr9-3-signature.png") });
   await save(h, "pr9-3-signature");
   await pg.keyboard.type("5)");
-  await pg.waitForTimeout(300);
+  await askedSig(h, /range\(1, 5\)$/m);
+  await idle(h);
   const sigGone = await pg.locator(".cbcm-sig").count() === 0;
   check("codeedit signature help closes after )", sigGone, {});
   // 悬停
   const pr = pg.locator('.card[data-id="c1"] .cm-line', { hasText: "print(f(2))" });
   const pb = (await pr.boundingBox())!;
   await pg.mouse.move(pb.x + 12, pb.y + 10);
-  await pg.waitForSelector(".cbcm-hover", { timeout: 4000 }).catch(() => null);
-  const hov = await pg.locator(".cbcm-hover").textContent().catch(() => null);
+  await pg.waitForSelector(".cbcm-hover", { timeout: 4000 });
+  const hov = await pg.locator(".cbcm-hover").textContent();
   check("codeedit hover from the language service", !!hov && /def print/.test(hov), { hov: hov?.slice(0, 80) });
-  await pg.waitForTimeout(200);
+  await idle(h);
   await pg.screenshot({ path: path.join(OUT, "pr9-3b-hover.png") });
   await save(h, "pr9-3b-hover");
   await pg.mouse.move(900, 650);
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1200);
+  await until(h, "leaving the editor saves the code", () => (h.board().cards[0] as any).segments[0].text.join("\n").endsWith("range(1, 5)"));
+  await idle(h);
   const saved = (h.board().cards[0] as any).segments[0].text.join("\n");
   check("codeedit saved; the virtual document is closed", saved === `${CODE.join("\n")}\nfor i in range(3):\n    pass\nrange(1, 5)` && h.sent.some((m) => m.type === "codeDocClose"), { saved: saved.split("\n").slice(-3) });
 
@@ -239,7 +252,7 @@ async function note() {
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light, w: 1200, h: 800, on: lspStub });
     const pg = h.page;
-    await pg.waitForTimeout(500);
+    await idle(h);
     const pos = () => pg.evaluate(() => {
       const pre = document.querySelector('.card[data-id="n0"] pre')!;
       const out: (number | string)[][] = [];
@@ -252,7 +265,7 @@ async function note() {
     const shotA = light ? await clipShot(pg, '.card[data-id="n0"]', 12) : null;
     await pg.locator('.card[data-id="n0"] .nbody').dblclick({ position: { x: 10, y: 8 } });
     await pg.waitForSelector('.card[data-id="n0"] .md-pm pre .cm-content', { timeout: 8000 });
-    await pg.waitForTimeout(200);
+    await idle(h);
     const c = await pos();
     const ok = same(a.out, c.out) && a.font === c.font && a.bg === c.bg && same(a.box, c.box) && c.cm;
     check(`codeedit Note code block ${light ? "light" : "dark"}: CodeMirror, same glyphs and colours`, ok, ok ? { glyphs: c.out.length } : { a: { ...a, out: JSON.stringify(a.out).slice(0, 400) }, c: { ...c, out: JSON.stringify(c.out).slice(0, 400) } });
@@ -262,24 +275,25 @@ async function note() {
       const lb = (await l.boundingBox())!;
       await pg.mouse.click(lb.x + 60, lb.y + 8);
       await pg.mouse.move(1100, 700, { steps: 4 }); // 不停在代码上（悬停提示）
-      await pg.waitForTimeout(150);
+      await pg.locator('.card[data-id="n0"] pre .cm-editor.cm-focused').waitFor();
       await pg.keyboard.press("End");
       await pg.keyboard.type("  # add");
       await pg.keyboard.press("Enter");
       await pg.keyboard.type("r");
-      await pg.waitForSelector(".cbcm-ac li", { timeout: 4000 }).catch(() => null);
+      await pg.waitForSelector(".cbcm-ac li", { timeout: 4000 });
       const items = await pg.locator(".cbcm-ac li").count();
       await pg.keyboard.press("Escape");
       // r、缩进（一次删一级）、换行
       for (let i = 0; i < 3; i++) await pg.keyboard.press("Backspace");
       await pg.mouse.move(1100, 700, { steps: 8 });
-      await pg.waitForTimeout(600);
+      await idle(h);
       const shotB = await clipShot(pg, '.card[data-id="n0"]', 12);
       if (shotA) { await sideBySide(pg, shotA, shotB, "Note · displayed", "Note · editing the code block", "pr9-4-note-code-block"); await save(h, "pr9-4-note-code-block"); }
       await pg.keyboard.press("ArrowDown");
       await pg.keyboard.type("!");
       await pg.keyboard.press("Escape");
-      await pg.waitForTimeout(1500);
+      await until(h, "leaving the note saves it", () => ((h.board().cards[0] as NoteCard).md ?? "").includes("!end"));
+      await idle(h);
       const md = ((h.board().cards[0] as NoteCard).md ?? "").trim();
       check("codeedit Note code block: edits write back, menu in the block, arrows leave it", md === "intro\n\n```python\ndef f(x):\n    return x + 1  # add\n```\n\n!end" && items > 0, { md, items });
     }
@@ -297,11 +311,11 @@ async function wrapLook() {
   for (const light of [true, false]) {
     const h = await open({ board: b, light, w: 1000, h: 700 });
     const pg = h.page;
-    await pg.waitForTimeout(400);
+    await idle(h);
     const a = await geo(pg, "c1", ...SHOW);
     await pg.locator('.card[data-id="c1"] .src .l').nth(0).dblclick();
     await editing(pg);
-    await pg.waitForTimeout(200);
+    await idle(h);
     const e = await geo(pg, "c1", ...EDIT);
     const ok = same(a.lines, e.lines) && same(a.nos, e.nos) && same(a.size, e.size);
     check(`codeedit wrapped card ${light ? "light" : "dark"}: same glyphs entering edit`, ok, ok ? { size: e.size, rows: new Set(e.lines[1].map((g) => g[1])).size } : { diff: firstDiff(a, e) });
@@ -313,13 +327,12 @@ async function wrapLook() {
 async function newCode() {
   const h = await open({ board: freeBoard(), light: true, w: 1000, h: 700, on: lspStub });
   const pg = h.page;
-  await pg.waitForTimeout(200);
+  await idle(h);
   await pg.mouse.click(300, 450, { button: "right" });
   await pg.locator(".ctx button", { hasText: /^New Code/ }).first().click();
-  await pg.waitForSelector(".card .cm-content", { timeout: 8000 }).catch(() => null);
-  await pg.waitForTimeout(300);
+  await pg.waitForSelector(".card .cm-content:focus", { timeout: 8000 });
   await pg.keyboard.type("import os", { delay: 20 });
-  await pg.waitForTimeout(300);
+  await idle(h);
   const st = await pg.evaluate(() => ({ cm: [...document.querySelectorAll(".card .cm-content")].map((e) => e.textContent), active: document.activeElement?.className, texts: document.querySelectorAll(".card.text").length }));
   check("codeedit New Code: an empty card is edited at once", st.cm.length === 1 && st.cm[0] === "import os" && st.texts === 0, st);
   await close(h);
@@ -333,18 +346,18 @@ async function ghost() {
     return false;
   } });
   const pg = h.page;
-  await pg.waitForTimeout(200);
+  await idle(h);
   await pg.locator('.card[data-id="c1"] .src .l').nth(4).dblclick();
   await editing(pg);
   await pg.keyboard.press("Control+End");
   await pg.keyboard.press("Enter");
   await pg.keyboard.type("print(f");
-  await pg.waitForSelector('.card[data-id="c1"] .md-ghost', { timeout: 3000 }).catch(() => null);
-  const g = await pg.locator('.card[data-id="c1"] .md-ghost').textContent().catch(() => null);
+  await pg.waitForSelector('.card[data-id="c1"] .md-ghost', { timeout: 3000 });
+  const g = await pg.locator('.card[data-id="c1"] .md-ghost').textContent();
   await pg.screenshot({ path: path.join(OUT, "pr9-5-ghost.png") });
   await save(h, "pr9-5-ghost");
   await pg.keyboard.press("Tab");
-  await pg.waitForTimeout(100);
+  await idle(h);
   const last = (await text(pg)).split("\n").pop();
   const asked = h.sent.filter((m) => m.type === "complete") as any[];
   check("codeedit gray inline completion in code: shown after a pause, Tab accepts", g === "(3))" && last === "print(f(3))" && asked.length > 0, { g, last, before: asked[0]?.before.slice(-12) });
@@ -363,7 +376,7 @@ test("codeedit", async () => {
 test("codeEditKeystrokeLatency", async () => {
   const h = await open({ board: freeBoard(), light: true, w: 1000, h: 700, settings: { theme: "warm-ink" } as any, on: lspStub });
   const pg = h.page;
-  await pg.waitForTimeout(400);
+  await idle(h);
   await pg.locator('.card[data-id="c1"] .src .l').nth(0).dblclick();
   await editing(pg);
   await pg.keyboard.press("Control+End");

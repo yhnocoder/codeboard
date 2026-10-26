@@ -10,6 +10,9 @@
 //             ran) counts every scenario as affected, the quickest first. A new source file is placed through the changed files
 //             that import it; only when nothing else changed it can't be placed.
 // What doesn't fit is reported as deferred: the nightly run covers it.
+//
+// repeatPick (harness.mjs --changed-since, the nightly flake repeat): the scenarios defined in test files changed since a commit,
+// the quickest first, within a wall-time cap for running each of them several times.
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -78,7 +81,7 @@ export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
   const why = new Map();
   const add = (n, w) => { if (all[n] && !why.has(n)) why.set(n, w); };
   for (const n of focus) { if (all[n]) add(n, "asked"); else notes.push(`unknown scenario: ${n}`); }
-  for (const n of names) if (change.files.includes(all[n])) add(n, "test changed");
+  for (const n of changedScenarios(all, change, tiers)) add(n, "test changed");
   if (impact.map) for (const n of names) if (!map[n]) add(n, "new");
   for (const n of impact.failing ?? []) add(n, "failing last night");
   for (const n of tiers.smoke ?? []) add(n, "smoke");
@@ -106,6 +109,28 @@ export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
     if (used + ms(n) <= budgetMs) { why.set(n, "affected"); used += ms(n); } else deferred.push(n);
   }
   return { run: [...why].map(([name, w]) => ({ name, why: w, ms: ms(name) })), deferred, notes };
+}
+
+/** Scenarios (manual ones left out) defined in a test file the change touches; a new scenario is always in one */
+export const changedScenarios = (all, change, tiers) =>
+  Object.keys(all).filter((n) => !(tiers.manual ?? []).includes(n) && change.files.includes(all[n]));
+
+/**
+ * The flake repeat: changedScenarios, the quickest first, while the estimated wall time of `repeat` runs of each fits in capMs:
+ * the "solo" ones (tiers.json) one at a time, the others on `workers` workers.
+ * → { run: [{ name, why, ms }], deferred: [names], notes: [strings] }
+ */
+export function repeatPick({ all, change, impact, tiers, repeat, workers, capMs }) {
+  const ms = (n) => impact.map?.scenarios?.[n]?.ms ?? DEFAULT_MS;
+  const cost = (n) => (ms(n) * repeat) / ((tiers.solo ?? []).includes(n) ? 1 : workers);
+  const names = changedScenarios(all, change, tiers).sort((a, b) => ms(a) - ms(b) || a.localeCompare(b));
+  const run = [], deferred = [];
+  let used = 0;
+  for (const n of names) {
+    if (used + cost(n) <= capMs) { run.push({ name: n, why: "test changed", ms: ms(n) }); used += cost(n); } else deferred.push(n);
+  }
+  const notes = deferred.length ? [`${deferred.length} changed scenarios over the ${+(capMs / 60000).toFixed(1)} min cap, not repeated: ${deferred.join(", ")}`] : [];
+  return { run, deferred, notes };
 }
 
 /** Longest-first split into n shards of about equal time; shard k (1-based) */

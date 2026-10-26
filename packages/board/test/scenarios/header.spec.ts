@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type CodeCard } from "@codeboard/core";
 import { shot, put, symCard, findSym, OUT, type Host } from "../harness";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, idle } from "../fixtures";
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const { audit } = require("../../../../tools/review/audit.cjs") as { audit: (t: unknown, step: string) => Promise<{ issues: { rule: string; what: string }[] }> };
 
@@ -77,7 +77,7 @@ test("headnarrow", async () => {
   for (const theme of THEMES) for (const light of [true, false]) {
     await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, theme } } as never });
     await h.page.evaluate((l) => { document.body.className = l ? "vscode-light" : "vscode-dark"; }, light);
-    await h.page.waitForTimeout(500);
+    await idle(h); // the new theme and its transitions
     const { rows, bad } = await measure(h, ids, SWEEP);
     const l2 = (await audit(h.page, theme)).issues.filter((i) => i.rule.startsWith("L2"));
     // The narrowest cards may have to truncate the title once everything else is folded; the widest shows everything in full
@@ -91,6 +91,5 @@ test("headnarrow", async () => {
   }
   await shot(h, "head-last");
   check("headnarrow", ok);
-  if (!ok) process.exitCode = 1;
   await h.page.context().close();
 });

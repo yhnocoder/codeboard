@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { REPO, put } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, idle } from "../fixtures";
 
 const FIXTURE = path.join(REPO, "packages/board/test/typing-sequence.json");
 const SEQS: Record<string, string> = {
@@ -46,6 +46,18 @@ const snap = (pg: Page) => pg.evaluate(() => {
   const p = document.querySelector(".md-pm p");
   return p ? walk(p) : "";
 });
+/** The editor's paragraph once it has stopped changing: the same in two frames in a row (input rules and the Markdown
+ *  source marks are applied in the key's own task, decorations that follow the caret may take a frame) */
+async function settled(pg: Page) {
+  let a = await snap(pg);
+  for (let i = 0; i < 120; i++) {
+    await pg.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
+    const b = await snap(pg);
+    if (b === a) return b;
+    a = b;
+  }
+  throw new Error(`settled: the paragraph kept changing for 120 frames (last: ${a})`);
+}
 
 test("typingKeyByKey", async () => {
   const names = Object.keys(SEQS);
@@ -55,21 +67,20 @@ test("typingKeyByKey", async () => {
   for (let i = 0; i < names.length; i++) {
     const id = `n${i}`;
     await h.post({ type: "reveal", card: id } as any);
-    await pg.waitForTimeout(400);
+    await idle(h); // the camera flies to the card
     await pg.locator(`.card[data-id="${id}"] .nbody`).dblclick();
-    await pg.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
+    await pg.locator(`.card[data-id="${id}"] .md-pm:focus`).waitFor();
     const states: string[] = [];
     for (const part of SEQS[names[i]].split(/(\{[^}]+\})/)) {
       if (!part) continue;
       for (const k of part.startsWith("{") ? [part] : [...part]) {
         if (k.startsWith("{")) await pg.keyboard.press(k.slice(1, -1));
         else await pg.keyboard.type(k);
-        await pg.waitForTimeout(30);
-        states.push(`${k} → ${await snap(pg)}`);
+        states.push(`${k} → ${await settled(pg)}`);
       }
     }
     got[names[i]] = states;
-    for (let k = 0; k < 3 && (await pg.locator(".md-pm").count()); k++) { await pg.keyboard.press("Escape"); await pg.waitForTimeout(80); }
+    for (let k = 0; k < 3 && (await pg.locator(".md-pm").count()); k++) { await pg.keyboard.press("Escape"); await idle(h); }
   }
   await pg.context().close();
   if (process.env.RECORD) { fs.writeFileSync(FIXTURE, JSON.stringify(got, null, 2) + "\n"); console.log(`recorded ${FIXTURE}`); return; }

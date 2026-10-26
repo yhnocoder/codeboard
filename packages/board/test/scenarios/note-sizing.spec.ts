@@ -6,7 +6,7 @@
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle, hold } from "../fixtures";
 
 const LONG = [
   "## Scheduler notes",
@@ -43,7 +43,7 @@ const placeH = (h: Host, id: string) => h.board().place[id]?.h;
 /** A screenshot of one card with a margin around it */
 async function cardShot(h: Host, id: string, name: string, keepMouse = false) {
   if (!keepMouse) await h.page.mouse.move(2, 2); // no hover tooltip in the picture
-  await h.page.waitForTimeout(keepMouse ? 50 : 500);
+  await idle(h);
   const r = await rect(h, card(id));
   const m = 40, below = 160; // room below the card: shows anything that runs past its bottom edge
   await h.page.screenshot({ path: path.join(OUT, `note-sizing-${name}.png`), clip: { x: Math.max(0, r.left - m), y: Math.max(0, r.top - m), width: r.right - r.left + 2 * m, height: r.bottom - r.top + m + below } });
@@ -52,27 +52,30 @@ async function editNote(h: Host, id: string) {
   await h.page.locator(`${card(id)} .nbody`).dblclick();
   await h.page.waitForSelector(`${card(id)} .md-pm`, { timeout: 5000 });
 }
-/** Drags from (x, y) by (dx, dy) in small steps; `during` runs between the steps */
-async function drag(h: Host, x: number, y: number, dx: number, dy: number, steps: number, during?: () => Promise<void>) {
+/** A gesture that has to last: 30 steps this far apart outlast the 700 ms an AI completion waits after typing */
+const SLOW_STEP = 40;
+/** Drags from (x, y) by (dx, dy) in small steps; `during` runs between the steps; `slow`: SLOW_STEP between the steps */
+async function drag(h: Host, x: number, y: number, dx: number, dy: number, steps: number, during?: () => Promise<void>, slow = false) {
   const pg = h.page;
   await pg.mouse.move(x, y);
   await pg.mouse.down();
   for (let i = 1; i <= steps; i++) {
     await pg.mouse.move(x + (dx * i) / steps, y + (dy * i) / steps);
-    await pg.waitForTimeout(40);
+    if (slow) await hold(h, SLOW_STEP, "the gesture goes on past the completion's delay");
     await during?.();
   }
   await pg.mouse.up();
 }
+const scrollTop = (h: Host, sel: string) => h.page.locator(sel).evaluate((e) => e.scrollTop);
 
 /** A Note dragged smaller by its corner: the Markdown stays inside the card and scrolls in the body (like a Code card's body) */
 test("noteResizeClipsContent", async () => {
   const h = await open({ board: board([{ md: LONG }]), light, w: 1000, h: 700 });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  await idle(h);
   const g = await rect(h, `${card("n0")} .grip`);
   await drag(h, (g.left + g.right) / 2, (g.top + g.bottom) / 2, 0, -170, 8);
-  await pg.waitForTimeout(300);
+  await idle(h);
   const c = await rect(h, card("n0")), body = await rect(h, `${card("n0")} .nbody`);
   const scroll = await pg.locator(`${card("n0")} .nbody`).evaluate((e) => ({ sh: e.scrollHeight, ch: e.clientHeight }));
   await cardShot(h, "n0", "02-resize-overflow");
@@ -82,7 +85,7 @@ test("noteResizeClipsContent", async () => {
   // the wheel over the body scrolls the note, not the board
   await pg.mouse.move((body.left + body.right) / 2, (body.top + body.bottom) / 2);
   await pg.mouse.wheel(0, 200);
-  await pg.waitForTimeout(400);
+  await until(h, "the wheel scrolls the note's body", async () => (await scrollTop(h, `${card("n0")} .nbody`)) > 0);
   const top = await pg.locator(`${card("n0")} .nbody`).evaluate((e) => e.scrollTop);
   check("noteResizeClipsContent wheel scrolls body", top > 0, { top });
 });
@@ -95,7 +98,7 @@ test("noteGhostStaysInCard", async () => {
     on: (m, r) => { if (m.type !== "complete") return false; void r(m.req!, GHOST); return true; },
   });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  await idle(h);
   await editNote(h, "n0");
   await pg.keyboard.press("Control+End");
   await pg.keyboard.type(" Then");
@@ -103,8 +106,8 @@ test("noteGhostStaysInCard", async () => {
   const caret = await pg.evaluate(() => { const r = window.getSelection()!.getRangeAt(0).getBoundingClientRect(); return { top: r.top, bottom: r.bottom }; });
   const body0 = await rect(h, `${card("n0")} .nbody`);
   check("noteGhostStaysInCard caret visible", caret.bottom <= body0.bottom + 0.5 && caret.top >= body0.top - 0.5, { caret, body: body0 });
-  const shown = await pg.waitForSelector(`${card("n0")} .md-ghost`, { timeout: 4000 }).then(() => true).catch(() => false);
-  await pg.waitForTimeout(300);
+  const shown = await pg.waitForSelector(`${card("n0")} .md-ghost`, { timeout: 4000 }).then(() => true);
+  await idle(h);
   const c = await rect(h, card("n0")), body = await rect(h, `${card("n0")} .nbody`);
   const gh = shown ? await rect(h, `${card("n0")} .md-ghost`) : null;
   await cardShot(h, "n0", "10-ghost-overflow");
@@ -117,7 +120,7 @@ test("noteGhostStaysInCard", async () => {
 test("noteTextFitContent", async () => {
   const h = await open({ board: board([{ md: LONG, h: 150 }, { md: "A Text card that was a Note with a fixed height.\n\nSecond paragraph.\n\nThird.", h: 40, bg: false }]), light, w: 1100, h: 700 });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  await idle(h);
   await cardShot(h, "n0", "05-fit-content-before");
   await pg.locator(`${card("n1")} .tx`).click(); // selected: the outline shows the card's box
   await cardShot(h, "n1", "05-fit-content-text-before");
@@ -138,7 +141,7 @@ test("noteTextFitContent", async () => {
     const f = () => { out.push(el.getBoundingClientRect().height); if (out.length < 40) requestAnimationFrame(f); else res(out); };
     requestAnimationFrame(f);
   }), card("n0"));
-  await pg.waitForTimeout(400);
+  await idle(h);
   const h1 = (await rect(h, card("n0"))).h;
   const fits = await pg.locator(`${card("n0")} .nbody`).evaluate((e) => e.scrollHeight <= e.clientHeight + 1);
   const mid = samples.filter((v) => v > h0 + 2 && v < h1 - 2).length;
@@ -146,14 +149,14 @@ test("noteTextFitContent", async () => {
   check("noteTextFitContent note animated", mid >= 3, { h0, h1, samples });
   await cardShot(h, "n0", "05-fit-content-after");
   await pg.keyboard.press("Control+z");
-  await pg.waitForTimeout(400);
+  await idle(h);
   check("noteTextFitContent one undo step", placeH(h, "n0") === 150, { h: placeH(h, "n0") });
 
   const textMenu = await items(`${card("n1")} .tx`);
   check("noteTextFitContent text menu", textMenu.some((t) => t.includes("Fit Content")), { textMenu });
   if (!textMenu.some((t) => t.includes("Fit Content"))) return;
   await pg.locator(".ctx button", { hasText: "Fit Content" }).click();
-  await pg.waitForTimeout(700);
+  await idle(h);
   const tc = await rect(h, card("n1")), tx = await rect(h, `${card("n1")} .tx`);
   await cardShot(h, "n1", "05-fit-content-text-after");
   check("noteTextFitContent text grows to content", placeH(h, "n1") === undefined && tx.bottom <= tc.bottom + 0.5, { h: placeH(h, "n1"), tc, tx });
@@ -167,12 +170,12 @@ test("noGhostDuringCardGesture", async () => {
     on: (m, r) => { if (m.type !== "complete") return false; asked++; void r(m.req!, " completed by the model"); return true; },
   });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  await idle(h);
   const ghosts = () => pg.locator(".md-ghost").count();
   await editNote(h, "n0");
   await pg.keyboard.press("Control+End");
   await pg.keyboard.type(" and");
-  await pg.waitForSelector(".md-ghost", { timeout: 4000 }).catch(() => {});
+  await pg.waitForSelector(".md-ghost", { timeout: 4000 });
   const before = await ghosts();
   // resize by the corner while the ghost shows: it goes away at once
   const g = await rect(h, `${card("n0")} .grip`);
@@ -186,11 +189,11 @@ test("noGhostDuringCardGesture", async () => {
   await drag(h, (g2.left + g2.right) / 2, (g2.top + g2.bottom) / 2, -40, -30, 30, async () => {
     seenLate += await ghosts();
     if (++step === 25) await cardShot(h, "n0", "09-ghost-during-resize", true); // past the 700 ms the completion waits for
-  });
+  }, true);
   const askedDuring = asked - asked0;
   // moving the card by its header: a ghost that shows goes away too
   await pg.keyboard.type(" x");
-  await pg.waitForSelector(".md-ghost", { timeout: 4000 }).catch(() => {});
+  await pg.waitForSelector(".md-ghost", { timeout: 4000 });
   const before2 = await ghosts();
   const head = await rect(h, `${card("n0")} .chead`);
   let seenMove = 0;
@@ -206,17 +209,17 @@ test("noGhostDuringCardGesture", async () => {
 test("noteShrinksWithContent", async () => {
   const h = await open({ board: board([{ md: LONG }]), light, w: 1000, h: 700 });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  await idle(h);
   const gap = async () => { const c = await rect(h, card("n0")), b = await rect(h, `${card("n0")} .nbody`); return { card: c.h, gap: c.bottom - b.bottom }; };
   const full = await gap();
   await cardShot(h, "n0", "18-delete-shrinks-before");
   await editNote(h, "n0");
   await pg.keyboard.press("Control+a");
   await pg.keyboard.type("Short now.");
-  await pg.waitForTimeout(200);
+  await idle(h);
   const typing = await gap();
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1300);
+  await idle(h);
   const done = await gap();
   await cardShot(h, "n0", "18-delete-shrinks-after");
   check("noteShrinksWithContent follows content down while typing", typing.card < full.card - 100 && typing.gap <= 2, { full, typing });
@@ -225,17 +228,17 @@ test("noteShrinksWithContent", async () => {
   await editNote(h, "n0");
   await pg.keyboard.press("Control+End");
   for (let i = 0; i < 12; i++) await pg.keyboard.type(" More words to make it long again.");
-  await pg.waitForTimeout(200);
+  await idle(h);
   const grown = await gap();
   const scrolls = await pg.locator(`${card("n0")} .nbody`).evaluate((e) => e.scrollHeight > e.clientHeight + 1);
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1300);
+  await idle(h);
   check("noteShrinksWithContent grows with more text", grown.card > done.card + 40 && grown.gap <= 2 && !scrolls, { done, grown, scrolls });
   // two undo steps: the long text is back, at its full height
   await pg.mouse.click(900, 650);
   await pg.keyboard.press("Control+z");
   await pg.keyboard.press("Control+z");
-  await pg.waitForTimeout(600);
+  await idle(h);
   const back = await gap();
   check("noteShrinksWithContent undo restores", Math.abs(back.card - full.card) < 1 && placeH(h, "n0") === undefined, { back, full, h: placeH(h, "n0") });
 });
@@ -247,16 +250,16 @@ test("noteScrollFades", async () => {
   b.place.n1 = { x: 620, y: 460, w: 220 };
   const h = await open({ board: b, light, w: 1000, h: 700 });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  await idle(h);
   const body = `${card("n0")} .nbody`;
   const fades = () => pg.locator(body).evaluate((e) => { const s = getComputedStyle(e); return [parseFloat(s.getPropertyValue("--fade-t")), parseFloat(s.getPropertyValue("--fade-b"))]; });
   const scrollTo = (y: number | "end") => pg.locator(body).evaluate((e, y) => { e.scrollTop = y === "end" ? e.scrollHeight : y; }, y);
   const top = await fades();
   await cardShot(h, "n0", "21-fade-top");
-  await scrollTo(60); await pg.waitForTimeout(200);
+  await scrollTo(60); await idle(h); // the fades follow the scroll event
   const mid = await fades();
   await cardShot(h, "n0", "21-fade-middle");
-  await scrollTo("end"); await pg.waitForTimeout(200);
+  await scrollTo("end"); await idle(h);
   const end = await fades();
   await cardShot(h, "n0", "21-fade-bottom");
   const other = await pg.locator(`${card("n1")} .nbody`).evaluate((e) => getComputedStyle(e).maskImage);
@@ -264,7 +267,7 @@ test("noteScrollFades", async () => {
   check("noteScrollFades middle: both edges fade", mid[0] > 15 && mid[1] > 15, { mid });
   check("noteScrollFades bottom: only the top fades", end[0] > 15 && end[1] === 0, { end });
   check("noteScrollFades no mask on an auto-height note", other === "none", { other });
-  await scrollTo(60); await pg.waitForTimeout(200);
+  await scrollTo(60); await idle(h); // the fades follow the scroll event
 
   const r0 = await rect(h, card("n0"));
   const fx = r0.left + 200, fy = r0.bottom - 8; // inside the bottom fade
@@ -272,17 +275,17 @@ test("noteScrollFades", async () => {
   const o = await rect(h, `${card("n1")} .chead`);
   const ox = o.left + 40, oy = (o.top + o.bottom) / 2;
   await drag(h, ox, oy, fx - ox, fy - oy, 14);
-  await pg.waitForTimeout(1300); // the host gets the change with the next save
+  await idle(h); // the drop is sent at once
   const moved = { ...h.board().place.n1 };
   check("noteScrollFades drag another card onto the fade", Math.abs(moved.x - (620 + fx - ox)) < 3 && Math.abs(moved.y - (460 + fy - oy)) < 3, { moved });
   await pg.keyboard.press("Control+z");
-  await pg.waitForTimeout(400);
+  await idle(h);
   // an arrow dragged from the other card onto the faded area links to this Note
   await pg.locator(card("n1")).hover();
   const port = await rect(h, `${card("n1")} .eport.t`);
   const px = (port.left + port.right) / 2, py = (port.top + port.bottom) / 2;
   await drag(h, px, py, fx - 80 - px, fy - py, 14);
-  await pg.waitForTimeout(1300);
+  await idle(h);
   const links = h.board().links.map((l) => [(l.from as { card: string }).card, (l.to as { card: string }).card]);
   check("noteScrollFades arrow dropped on the fade", links.some(([a, z]) => a === "n1" && z === "n0"), { links });
   // wheel over the faded area scrolls the body once the Note is selected
@@ -290,19 +293,19 @@ test("noteScrollFades", async () => {
   const st0 = await pg.locator(body).evaluate((e) => e.scrollTop);
   await pg.mouse.move(fx, fy);
   await pg.mouse.wheel(0, 60);
-  await pg.waitForTimeout(400);
+  await until(h, "the wheel scrolls the selected note's body", async () => (await scrollTop(h, body)) > st0);
   const st1 = await pg.locator(body).evaluate((e) => e.scrollTop);
   check("noteScrollFades wheel on the fade scrolls the body", st1 > st0, { st0, st1 });
   // resize by the corner (inside the fade)
   const g = await rect(h, `${card("n0")} .grip`);
   await drag(h, (g.left + g.right) / 2, (g.top + g.bottom) / 2, 0, -40, 8);
-  await pg.waitForTimeout(1300);
+  await idle(h);
   check("noteScrollFades resize in the faded corner", Math.abs((h.board().place.n0.h ?? 0) - 130) < 3, { h: h.board().place.n0.h });
   // move the Note by its header
   const p0 = { ...h.board().place.n0 };
   const hd = await rect(h, `${card("n0")} .chead`);
   await drag(h, hd.left + 80, (hd.top + hd.bottom) / 2, 30, 30, 8);
-  await pg.waitForTimeout(1300);
+  await idle(h);
   const p1 = h.board().place.n0;
   check("noteScrollFades header drag moves", p1.x === p0.x + 30 && p1.y === p0.y + 30, { p0, p1 });
   // marquee from the empty board across the faded area selects the Note

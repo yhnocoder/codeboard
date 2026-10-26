@@ -21,6 +21,7 @@ import { Typora, reconvert } from "./typora";
 import { sourceKey } from "./source";
 import { place, virtual } from "../ui/place";
 import { revealIn, scroller } from "../ui/reveal";
+import { TOOLBAR_SETTLE } from "../ui/timing";
 import type { LspHost } from "../cm/editor";
 
 export type MdEditorOpts = {
@@ -175,8 +176,6 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
 const isInside = (e: Editor, t: EventTarget | null) => t instanceof Node && (e.view.dom.contains(t) || !!(t as Element).closest?.(".mdui, .md-bubble"));
 
 // ---------- 选中工具条 ----------
-/** 选区停住多久后出工具条 */
-const SETTLE_MS = 400;
 function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   let el!: HTMLDivElement;
   const link = p.ui.link, setLink = p.ui.setLink;
@@ -188,11 +187,11 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     if (s.empty || !(s instanceof TextSelection) || !e.isFocused || p.ui.menu()) return false;
     return !s.$from.parent.type.spec.code && s.$from.parent.inlineContent;
   };
-  // 不是一选就出：选区停住 SETTLE_MS 后才出（拖选、⇧方向键扩选的途中不闪），按着鼠标时不算停住；
+  // 不是一选就出：选区停住 TOOLBAR_SETTLE 后才出（拖选、⇧方向键扩选的途中不闪），按着鼠标时不算停住；
   // 选区一收拢（没选字了）立刻收起。点按钮改格式时选区不动，工具条留着
   const [settled, setSettled] = createSignal(false);
   let timer: ReturnType<typeof setTimeout> | undefined, last = "", down = false;
-  const arm = () => { clearTimeout(timer); timer = setTimeout(() => setSettled(!down && want()), SETTLE_MS); };
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => setSettled(!down && want()), TOOLBAR_SETTLE); };
   createEffect(() => {
     const ok = want(), s = e.state.selection, key = `${s.from}:${s.to}`;
     if (!ok) { clearTimeout(timer); last = ""; setSettled(false); return; }

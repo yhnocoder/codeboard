@@ -12,9 +12,8 @@ import { DEFAULT_SETTINGS, THEMES, emptyBoard, type CodeCard } from "@codeboard/
 import { shot, put, symCard, findSym, files, ready, OUT, REPO, type Host } from "../harness";
 import { analyze } from "@codeboard/core/analysis";
 import { uid, type Segment } from "@codeboard/core";
-import { test, open, light, verdict } from "../fixtures";
+import { test, open, light, verdict, expect, until, idle } from "../fixtures";
 
-const wait = (h: Host, ms = 600) => h.page.waitForTimeout(ms);
 async function shotTo(h: Host, name: string) {
   await shot(h, name);
   const d = process.env.SHOTS_DIR;
@@ -36,7 +35,7 @@ test("fithide", () => verdict("fithide", fithide));
 const setTheme = async (h: Host, theme: string, light: boolean) => {
   await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, theme } } as never });
   await h.page.evaluate((l) => { document.body.className = l ? "vscode-light" : "vscode-dark"; }, light);
-  await wait(h, 400);
+  await idle(h);
 };
 
 /** The open question popover: is anything clipped or wrapped? */
@@ -73,10 +72,11 @@ async function qpop(res: Record<string, unknown>) {
   const L = lineOf(alloc, /compute_hash/);
   b.stickers.push({ id: "kQ", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: alloc.id, seg: alloc.segments[0].id, line: L }, q: { md: "" } });
   const h = await open({ board: b, light: true, w: 1300, h: 800, settings: { theme: "drafting" } as never }), page = h.page;
-  await page.keyboard.press("Shift+Digit1"); await wait(h, 800);
+  await page.keyboard.press("Shift+Digit1"); await idle(h);
   // open the question and start editing it (empty: the placeholder shows)
-  await page.locator(`[data-sticker="kQ"]`).first().click(); await wait(h, 500);
-  await page.locator(".pop.k-question .qbody").dblclick(); await wait(h, 600);
+  await page.locator(`[data-sticker="kQ"]`).first().click();
+  await page.locator(".pop.k-question .qbody").dblclick();
+  await page.locator(".pop.k-question .ProseMirror:focus").waitFor(); await idle(h);
   res.editing = await page.locator(".pop.k-question .ProseMirror").count();
   const bad: unknown[] = [];
   for (const light of [true, false]) for (const [theme] of THEMES) {
@@ -89,7 +89,7 @@ async function qpop(res: Record<string, unknown>) {
   // with text: the box grows with the content, the footer still fits
   await setTheme(h, "drafting", true);
   await page.keyboard.type("Why does the hash chain include the previous block's h? $h_i = f(h_{i-1})$ and what if two prefixes share a block?");
-  await wait(h, 300);
+  await expect(page.locator(".pop.k-question .ProseMirror")).toContainText("share a block?"); await idle(h);
   const t = await measure(h);
   res.typed = { bodyClips: t.bodyClips, btns: t.btns.map((x) => x.h) };
   await shotPopover(h, "fixq-qpop-drafting-typed");
@@ -97,8 +97,8 @@ async function qpop(res: Record<string, unknown>) {
   return res.editing === 1 && bad.length === 0 && !t.bodyClips;
 }
 async function shotPopover(h: Host, name: string) {
+  await idle(h);
   const r = await h.page.locator(".pop.k-question").boundingBox();
-  await h.page.waitForTimeout(300);
   if (!r) return shotTo(h, name);
   await h.page.screenshot({ path: path.join(OUT, `${name}.png`), clip: { x: Math.max(0, r.x - 40), y: Math.max(0, r.y - 40), width: r.width + 80, height: r.height + 80 } });
   const d = process.env.SHOTS_DIR;
@@ -111,7 +111,7 @@ async function dataclass(res: Record<string, unknown>) {
   const ctx = nv("Context"), sch = nv("Scheduler");
   put(b, ctx, 60, 80, 560); put(b, sch, 700, 80, 560);
   const h = await open({ board: b, light: true, w: 1300, h: 800 }), page = h.page;
-  await page.keyboard.press("Shift+Digit1"); await wait(h, 900);
+  await page.keyboard.press("Shift+Digit1"); await idle(h);
   const card = page.locator(`.card[data-id="${ctx.id}"]`);
   res.lines = await card.locator(".src .no, .gutter .no").count();
   res.text = (await card.locator(".cbody").innerText()).replace(/\s+/g, " ");
@@ -132,10 +132,11 @@ async function varmenu(res: Record<string, unknown>) {
     if (m.type === "variantSources") { void reply(m.req!, { worktrees: [{ dir: long, branch: "exp-overlap-scheduling-with-a-long-name", label: `exp-overlap-scheduling-with-a-long-name · ~/src/very/deep/folder/for/experiments/nano-vllm-overlap-experiment` }], branches: ["main"], current: "main", pr: "GeeeekExplorer/nano-vllm" }); return true; }
     return false;
   } }), page = h.page;
-  await page.keyboard.press("Shift+Digit1"); await wait(h, 800);
-  await page.locator(`.card[data-id="${sch.id}"] .chead`).click({ button: "right", position: { x: 140, y: 12 } }); await wait(h, 400);
-  await page.locator(".ctx button", { hasText: /^Add Variant/ }).first().click(); await wait(h, 800);
+  await page.keyboard.press("Shift+Digit1"); await idle(h);
+  await page.locator(`.card[data-id="${sch.id}"] .chead`).click({ button: "right", position: { x: 140, y: 12 } });
+  await page.locator(".ctx button", { hasText: /^Add Variant/ }).first().click();
   const it = page.locator(".ctx button", { hasText: "Other Worktree" }).first();
+  await it.waitFor(); await idle(h); // the submenu comes from the host's variantSources reply
   res.item = await it.evaluate((el) => {
     const lb = el.querySelector(".lb") as HTMLElement, sm = el.querySelector("small") as HTMLElement;
     const menu = el.closest(".ctx")!.getBoundingClientRect();
@@ -164,19 +165,23 @@ async function segsep(res: Record<string, unknown>) {
   const touch: CodeCard = { id: "cTouch", kind: "code", segments: [ctxSeg(18, 20, { qual: "get_context", kind: "function" }), ctxSeg(21, 23, { qual: "set_context", kind: "function" })] };
   put(b, ctx, 60, 60, 620); put(b, three, 60, 330, 900); put(b, one, 1000, 60, 900); put(b, touch, 1000, 640, 900);
   const h = await open({ board: b, light: true, w: 1900, h: 1000 }), page = h.page;
-  await page.keyboard.press("Shift+Digit1"); await wait(h, 900);
+  await page.keyboard.press("Shift+Digit1"); await idle(h);
   const sepOf = (id: string) => page.locator(`.card[data-id="${id}"] .src`).evaluate((el) => [...el.children].filter((k) => k.matches(".gap, .fnbar")).map((k) => (k.textContent ?? "").replace(/\s+/g, " ").trim()));
   res.three = await sepOf("cThree");
   res.one = await sepOf("cOne");
   res.touch = await sepOf("cTouch");
   await shotTo(h, "fixq-segsep");
   // merge the class card into the three-segment card: Context's segment comes first
-  await page.locator(`.card[data-id="${ctx.id}"] .chead`).click({ position: { x: 300, y: 10 } }); await wait(h, 200);
-  await page.locator(`.card[data-id="cThree"] .chead`).click({ position: { x: 400, y: 10 }, modifiers: ["Shift"] }); await wait(h, 300);
-  await page.locator(`.card[data-id="cThree"] .chead`).click({ position: { x: 400, y: 10 }, button: "right" }); await wait(h, 400);
+  await page.locator(`.card[data-id="${ctx.id}"] .chead`).click({ position: { x: 300, y: 10 } });
+  await page.locator(`.card.sel[data-id="${ctx.id}"]`).waitFor();
+  await page.locator(`.card[data-id="cThree"] .chead`).click({ position: { x: 400, y: 10 }, modifiers: ["Shift"] });
+  await expect(page.locator(".card.sel")).toHaveCount(2);
+  await page.locator(`.card[data-id="cThree"] .chead`).click({ position: { x: 400, y: 10 }, button: "right" });
   const item = page.locator(".ctx button", { hasText: "Merge into One Card" });
+  await item.waitFor();
   res.mergeDisabled = await item.isDisabled();
-  await item.click(); await wait(h, 900);
+  await item.click();
+  await until(h, "the merged card is saved", () => h.board().cards.some((c) => c.kind === "code" && c.segments.length === 4)); await idle(h);
   const m = h.board().cards.find((c) => c.kind === "code" && c.segments.length === 4) as CodeCard | undefined;
   res.merged = m?.segments.map((sg) => `${sg.symbol?.qual}:${sg.start}-${sg.end}`);
   res.mergedSep = m ? await sepOf(m.id) : null;
@@ -229,10 +234,12 @@ async function fithide(res: Record<string, unknown>) {
   const b = emptyBoard("bF", "torch · module");
   put(b, c, 60, 60, 500);
   const h = await open({ board: b, light: true, w: 1400, h: 900 }), page = h.page;
-  await wait(h, 900);
+  await idle(h);
   const card = page.locator(`.card[data-id="${c.id}"]`);
-  await card.locator(".chead").click({ position: { x: 200, y: 10 }, button: "right" }); await wait(h, 400);
-  await page.locator(".ctx button", { hasText: "Fit Content" }).click(); await wait(h, 700);
+  const w0 = await card.evaluate((el) => (el as HTMLElement).offsetWidth);
+  await card.locator(".chead").click({ position: { x: 200, y: 10 }, button: "right" });
+  await page.locator(".ctx button", { hasText: "Fit Content" }).click();
+  await until(h, "Fit Content changes the card's width", () => card.evaluate((el, w0) => (el as HTMLElement).offsetWidth !== w0, w0)); await idle(h);
   res.w = await card.evaluate((el) => (el as HTMLElement).offsetWidth); // the board's copy reaches the host later (patches are batched)
   // where the shown text really ends: the right edge of the rendered text of every code row, in board units, plus .src's right padding
   const m = await card.evaluate((el) => {

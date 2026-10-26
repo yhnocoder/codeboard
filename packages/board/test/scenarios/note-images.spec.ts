@@ -11,7 +11,7 @@ import { saveNoteImage } from "@codeboard/host/images";
 import { png, type Rgba } from "@codeboard/host/test/images";
 import type { Page } from "playwright-core";
 import { OUT, put, shot, type Host } from "../harness";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle } from "../fixtures";
 
 const BASE = "https://cb-assets.test/res";
 
@@ -61,12 +61,10 @@ async function imageHost(md: string[]) {
 const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
 async function editNote(h: Host, id: string) {
   await h.page.locator(`.card[data-id="${id}"] .nbody`).dblclick();
-  await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
-  await h.page.waitForTimeout(150);
+  await h.page.locator(`.card[data-id="${id}"] .md-pm:focus`).waitFor();
 }
 async function exitEdit(h: Host) {
-  for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) { await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(80); }
-  await h.page.waitForTimeout(400);
+  for (let k = 0; k < 3 && (await h.page.locator(".md-pm").count()); k++) { await h.page.keyboard.press("Escape"); await idle(h); }
 }
 /** Paste files (bytes, type, name) into the focused editor, as the clipboard of a screenshot does */
 async function pasteFiles(pg: Page, files: { b64: string; type: string; name: string }[]) {
@@ -89,7 +87,7 @@ const cardH = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"]`).
 /** Paste a screenshot into a Note: one file in assets/, ![](assets/…) in the Markdown, the same size while editing and after */
 test("notePastedImageSameSizeInBothModes", async () => {
   const { h, saves, assets, done } = await imageHost(["**Prefill before decode.** The scheduler fills the batch with waiting sequences first:"]); // no title heading: display mode hides that one
-  await h.page.waitForTimeout(800);
+  await idle(h);
   await editNote(h, "n0");
   await h.page.keyboard.press("Control+End");
   await h.page.keyboard.press("Enter");
@@ -97,7 +95,6 @@ test("notePastedImageSameSizeInBothModes", async () => {
   const edit = await imgBox(h, "n0", ".md-pm");
   await h.page.keyboard.press("Enter");
   await h.page.keyboard.type("Then decode runs one token per sequence.");
-  await h.page.waitForTimeout(300);
   await shot(h, "26-note-image-edit");
   const editH = await cardH(h, "n0");
   await exitEdit(h);
@@ -123,7 +120,7 @@ test("notePastedImageSameSizeInBothModes", async () => {
 /** ⌘Z right after a paste takes the image out and nothing else (the typing before it stays); redo puts it back */
 test("notePasteImageIsOneUndoStep", async () => {
   const { h, done } = await imageHost([""]);
-  await h.page.waitForTimeout(800);
+  await idle(h);
   await editNote(h, "n0");
   await h.page.keyboard.type("before ");
   await pasteFiles(h.page, [pngFile]);
@@ -131,13 +128,13 @@ test("notePasteImageIsOneUndoStep", async () => {
   const imgs = () => h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').count();
   const text = () => h.page.locator('.card[data-id="n0"] .md-pm').innerText();
   await h.page.keyboard.press("Control+z");
-  await h.page.waitForTimeout(150);
+  await until(h, "undo takes the pasted image out", async () => (await imgs()) === 0);
   const afterUndo = { imgs: await imgs(), text: (await text()).trim() };
   await h.page.keyboard.press("Control+Shift+z");
-  await h.page.waitForTimeout(150);
+  await until(h, "redo puts the image back", async () => (await imgs()) === 1);
   const afterRedo = await imgs();
   await h.page.keyboard.press("Control+z");
-  await h.page.waitForTimeout(150);
+  await until(h, "undo takes the image out again", async () => (await imgs()) === 0);
   await exitEdit(h);
   check("notePasteImageIsOneUndoStep", afterUndo.imgs === 0 && afterUndo.text === "before" && afterRedo === 1 && md(h, "n0") === "before", { afterUndo, afterRedo, md: md(h, "n0") });
   await done();
@@ -146,7 +143,7 @@ test("notePasteImageIsOneUndoStep", async () => {
 /** An image file dropped onto the Note being edited goes into the Note (not a new Image card on the board) */
 test("noteDropImageFileInserts", async () => {
   const { h, saves, done } = await imageHost(["Drop here:"]);
-  await h.page.waitForTimeout(800);
+  await idle(h);
   await editNote(h, "n0");
   const cards0 = h.board().cards.length;
   await h.page.evaluate((f) => {
@@ -167,10 +164,10 @@ test("noteDropImageFileInserts", async () => {
 /** A file that says it is a PNG but isn't: the host refuses it, the board says why, nothing is inserted or written */
 test("noteNonImagePasteRefused", async () => {
   const { h, assets, done } = await imageHost(["keep"]);
-  await h.page.waitForTimeout(800);
+  await idle(h);
   await editNote(h, "n0");
   await pasteFiles(h.page, [{ b64: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>").toString("base64"), type: "image/png", name: "fake.png" }]);
-  const toast = await h.page.locator(".toast").first().innerText({ timeout: 3000 }).catch(() => "");
+  const toast = await h.page.locator(".toast").first().innerText({ timeout: 3000 }); // the host's refusal
   const imgs = await h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').count();
   await exitEdit(h);
   check("noteNonImagePasteRefused", /PNG, JPEG, WebP and GIF/.test(toast) && imgs === 0 && md(h, "n0") === "keep" && assets().length === 0, { toast, imgs, md: md(h, "n0"), assets: assets() });
