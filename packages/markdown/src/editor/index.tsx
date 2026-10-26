@@ -1,5 +1,4 @@
-// 所见即所得的 Markdown 编辑器（TipTap，白板的 Note 用它）。这是 @yhnocoder/markdown/editor：单独打包，第一次编辑时才 import()。
-// 解析 / 写回用 ../schema 里全应用唯一的那一个 MarkdownManager；这里只加编辑专用的：/ 菜单、选中工具条、[[ 选引用、拖动手柄（dragHandle）、灰字补全、⌘/ 原文模式。用的一方的东西（引用的候选、存图、打开链接、AI 补全、代码的语言服务）都从 MdEditorOpts 进来
+// 解析 / 写回用 ../schema 里唯一的那一个 MarkdownManager；这里只加编辑专用的
 import { keepKey } from "../ui/editkeys";
 import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
@@ -42,7 +41,7 @@ export type MdEditorOpts = {
   /** 灰字补全（宿主没有就不给） */
   complete?: (before: string, after: string) => Promise<string | null>;
   /** 代码块（CodeMirror）：行注释记号（⌘/，默认 //）、语言服务（这种语言没有就给 undefined，块拆掉时调它的 close）、
-   *  按下不往外冒（见 CodeEditorOpts.stopPointerDown）、右下角语言框里列出的语言（着色认得的；Mermaid 总在） */
+   *  按下不往外冒（见 CodeEditorOpts.stopPointerDown）、右上角语言框里列出的语言（着色认得的；Mermaid 总在） */
   code?: { comment?: (lang: string | undefined) => string | undefined; lsp?: (lang: () => string) => LspHost | undefined; stopPointerDown?: boolean; langs?: readonly CodeLang[] };
   /** 块左边的拖动把手（⋮⋮，拖着移动整块）。默认没有 */
   dragHandle?: boolean;
@@ -52,7 +51,6 @@ export type MdEditorHandle = { value(): string | null; destroy(): void; editor()
 
 type MenuItem = { title: string; hint?: string; key: string; run: (e: Editor, r: Range) => void; ref?: true };
 
-// ---------- / 菜单 ----------
 const SLASH: MenuItem[] = [
   { title: "Heading 1", key: "h1 title", hint: "#", run: (e, r) => e.chain().focus().deleteRange(r).setNode("heading", { level: 1 }).run() },
   { title: "Heading 2", key: "h2 subtitle", hint: "##", run: (e, r) => e.chain().focus().deleteRange(r).setNode("heading", { level: 2 }).run() },
@@ -73,7 +71,7 @@ const SLASH: MenuItem[] = [
   { title: "Divider", key: "hr rule line", hint: "---", run: (e, r) => e.chain().focus().deleteRange(r).setHorizontalRule().run() },
 ];
 
-// 每个编辑器自己的一份界面状态（同一时间只有一个编辑器，但不靠这一点）
+// 每个编辑器一份（同一时间只有一个编辑器，但不靠这一点）
 type Ui = {
   menu: Accessor<{ kind: "slash" | "ref" | "emoji"; items: MenuItem[]; i: number } | null>;
   setMenu: (v: { kind: "slash" | "ref" | "emoji"; items: MenuItem[]; i: number } | null) => void;
@@ -85,7 +83,6 @@ type Ui = {
 const uiOf = new WeakMap<Editor, Ui>();
 const saveImage = (o: MdEditorOpts): SaveImage => o.saveImage ?? ((u) => Promise.resolve(u));
 
-/** 刚插进去的空公式块在哪 */
 function emptyMathNear(e: Editor) {
   const at = e.state.selection.from;
   let best = -1;
@@ -109,7 +106,7 @@ async function insertPickedImage(e: Editor) {
   await insertImageUrl(e, saveImage(ui!.opts), url, "image.png");
 }
 
-/** 一个 suggestion 菜单（/ 和 [[ 共用）：键盘上下选、↵ 选中、Esc 关 */
+/** /、[[、: 三个菜单共用 */
 function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[]; on?: () => boolean }) {
   return Suggestion<MenuItem, MenuItem>({
     editor,
@@ -183,7 +180,6 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   let el!: HTMLDivElement;
   const link = p.ui.link, setLink = p.ui.setLink;
   const e = p.editor;
-  // 选中的字能不能出工具条
   const want = () => {
     p.tick();
     const s = e.state.selection;
@@ -219,7 +215,7 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
     }
     queueMicrotask(() => { if (el) void place(el, virtual({ x: r.left, y: r.top, width: r.width, height: r.height }), "top", { gap: 8, pad: 6 }).then(({ x, y }) => { el.style.left = `${x}px`; el.style.top = `${y}px`; }); });
   };
-  // 图标按钮：名字和快捷键给读屏（aria-label）和用的一方的提示条（data-tip / data-kbd）；开着的格式是强调色（.on），aria-pressed 同步
+  // data-tip / data-kbd 给用的一方的提示条
   const B = (q: { icon: IconName; tip: string; kbd?: string; on: () => boolean; run: () => void }) => {
     const on = () => (p.tick(), q.on());
     return (
@@ -319,15 +315,12 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   );
 }
 
-// ---------- 编辑器专用的扩展 ----------
 function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement | null, exit: () => void, complete: (b: string, a: string) => Promise<string | null>): AnyExtension[] {
   const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
   // 公式：点一下在原处展开原文（行内的由 source.ts 换成 $…$，公式块自己的节点视图展开，见 mathblock.ts）
   const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false } })
     : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
-    // 图片：和静态显示同一份 <img> 属性；粘贴、拖进来的图交给用的一方存（editor/image.ts）
     : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
-    // 代码块：编辑时用 CodeMirror（和 Free code 卡同一个编辑器）
     : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
     : x));
   const Slash = Extension.create({
@@ -359,7 +352,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       })];
     },
   });
-  // : 加两个以上的字母：表情菜单（Typora #31）；打完 :名字: 直接变（schema.ts 的输入规则）
+  // 打完 :名字: 直接变是 schema.ts 的输入规则
   const Emo = Extension.create({
     name: "cbEmoji",
     addProseMirrorPlugins() {
@@ -375,7 +368,6 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       })];
     },
   });
-  // 打字时的转换都在 typora.ts（[[标题]] 也是重解析变成引用）
   const Rules = Extension.create({
     name: "cbRules",
     addKeyboardShortcuts() {
@@ -391,8 +383,8 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
     priority: 1,
     addKeyboardShortcuts() { return { Escape: () => { exit(); return true; }, Tab: () => true, "Shift-Tab": () => true }; },
   });
-  // 正文最后总有一个能打字的地方（Typora 一样）：最后一块是代码、公式、表格这类时，后面垫一个空段落，方向键、点击走得出去
-  // 垫的空段落还空着时标成 .md-pad（markdown.css：不占高度，进出编辑时卡片一样高；光标在里面（.at）时画成一条短横线）。打了字就是普通的一段
+  // 正文最后总有一个能打字的地方（Typora 一样）：最后一块是代码、公式、表格这类时，后面垫一个空段落，方向键、点击走得出去。
+  // 还空着时标成 .md-pad（markdown.css：不占高度，进出编辑时卡片一样高）
   const Tail = Extension.create({
     name: "cbTail",
     addProseMirrorPlugins: () => [new Plugin({
@@ -419,7 +411,6 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   ];
 }
 
-// ---------- 粘贴 ----------
 const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\$\$|\|.*\|)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|\$[^$\s][^$]*\$/m;
 function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
   const cd = ev.clipboardData;
@@ -504,7 +495,6 @@ function makeInst(dragHandle = false): Inst {
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
       handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
-      // 复制：text/plain 放 Markdown（text/html 照旧）；代码块里选的字原样
       clipboardTextSerializer: clipboardText,
       // 白板上的 Note 一般不滚动（卡片跟着内容长高），白板本身也不滚（靠镜头）：不让 ProseMirror 去滚所有祖先。
       // 定了高度的 Note 正文自己会滚（overflow: auto）：光标只在正文里滚进来。找能滚的祖先先看样式，自动高度的卡不量排版。
@@ -516,7 +506,6 @@ function makeInst(dragHandle = false): Inst {
         return true;
       },
       handleClick: (_v, _pos, ev) => {
-        // ⌘ 点链接：打开
         const a = (ev.target as HTMLElement).closest?.("a[href]") as HTMLAnchorElement | null;
         if (a && (ev.metaKey || ev.ctrlKey)) { ev.preventDefault(); o.openLink?.(a.getAttribute("href")!); return true; }
         return false;
@@ -528,12 +517,11 @@ function makeInst(dragHandle = false): Inst {
   });
   return inst;
 }
-/** 同一套插件、全新的状态（文档、撤销栈、各插件的状态都从头来） */
 const freshState = (prev: EditorState, doc: PMNode) => EditorState.create({ doc, plugins: prev.plugins });
 /** 正文的末尾（脚注列表前面） */
 const bodyEnd = (d: PMNode) => d.content.size - (d.lastChild?.type.name === "footnotes" ? d.lastChild.nodeSize : 0);
-/** 正文最后一块后面接着打字的地方：最后一块是代码、公式、表格、折叠块这类时补一个空段落（不写进文件）。补了返回 true */
 const TYPABLE = /^(paragraph|heading|bulletList|orderedList|taskList)$/;
+/** 最后一块是代码、公式、表格、折叠块这类时补一个空段落（不写进文件）。补了返回 true */
 function padEnd(tr: Transaction): boolean {
   const end = bodyEnd(tr.doc), last = tr.doc.resolve(end).nodeBefore;
   if (!last || TYPABLE.test(last.type.name)) return false;
@@ -633,7 +621,6 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   const [link, setLink] = createSignal<string | null>(null);
   const ui: Ui = { menu, setMenu, link, setLink, opts: o };
   uiOf.set(editor, ui);
-  // 浮在页面上的部件（菜单、工具条）放在 body 下的一层里
   const layer = document.createElement("div");
   layer.className = "mdui";
   document.body.append(layer);
@@ -664,7 +651,6 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
       raw.className = "md-raw";
       raw.spellcheck = false;
       raw.value = rawStart = md;
-      // 已经改过的话，原文模式里不改也要保存
       editor.view.dom.style.display = "none";
       host.append(raw);
       const grow = () => { raw!.style.height = "auto"; raw!.style.height = `${raw!.scrollHeight}px`; };
@@ -695,7 +681,6 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     if (ev.key === "Escape" || (ev.key === "Enter" && mod)) { ev.preventDefault(); finish(); }
   };
   host.addEventListener("keydown", onKey);
-  // 原文模式里 ⌘/ 也要能切回来
   const destroy = () => {
     host.removeEventListener("keydown", onKey);
     inst.sess = null;
@@ -710,7 +695,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
       inst.box.remove();
       if (focused) editor.view.dom.dispatchEvent(new FocusEvent("blur"));
       if (!pooled) { if (!editor.isDestroyed) editor.destroy(); return; }
-      // 留着的那一个也不留这次的文档：节点视图跟着拆掉（代码块关掉宿主那边的语言服务文档，也就是那个 .codeboard-note-code-* 隐藏文件）
+      // 留着的那一个也不留这次的文档：节点视图跟着拆掉（代码块关掉宿主那边的语言服务文档）
       editor.view.updateState(stateFor(editor, ""));
     }));
   };

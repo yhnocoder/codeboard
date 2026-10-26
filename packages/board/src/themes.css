@@ -1,13 +1,10 @@
-/* 材质主题：html[data-look]（Settings → Theme），明暗仍跟随 VS Code（html[data-theme]）。
-   照着 explore/ui-feel/material.html（styles/*.css）做：每种材质不只是换颜色，还换字体、线（发丝线 / 2px 墨线 / 双线）、
-   阴影（多层柔影 / 硬投影 / 没有）、卡片头的排法、连线和箭头、浮条、提示条、选中的样子。
+/* 材质主题：html[data-look]，明暗仍跟随 VS Code（html[data-theme]）。Warm Ink 是 styles.css 里的默认值，不在这里。
    - 变量在前半（亮色块、暗色块各写全，否则暗色下会漏出亮色的值）；[data-look] 也挂在设置页的小样上，所以变量块也匹配元素。
    - 结构规则在后半，只挂在 :root.look-<id> 下面（applyLook 和 data-look 一起挂的类）。不用 :root[data-look="…"]：属性值进不了
      浏览器的祖先过滤（bloom filter），每个元素重算样式时，别的主题的规则都要沿祖先一路比到根；类名能直接排除。
      同理，规则最右边不要单独写 :is(…) / :not(…)（会落进「每个元素都要试」的那一桶），拆成几条带类名的选择器。
    - 要 JS 配合的只有连线走法、箭头 / 端口形状（state/look.ts）和几个默认隐藏的部件：
      .cband（色带 / 大标题）、.cxfoot（卡片底栏）、.cfig（图注）、.mast（报头）。
-   Warm Ink 是 styles.css 里的默认值，不在这里。
    - 代码区的字号、字宽、行高、上下留白所有主题都一样（11px / 20px 行，字宽 6.6px）：换主题时卡片装得下同样的内容。
    - 背景画（Ink Wash 的远山、City 的街区）是 .board 的背景：固定在窗口上，不跟着画布平移缩放，镜头动时不重画；
      画里的滤镜只在换主题、改窗口大小时栅格化一次。没有常驻动画。 */
@@ -16,7 +13,7 @@
    Tokens
    ====================================================================== */
 
-/* ---------- Classic：v1 原样（实线边框、同一种阴影、陶土色强调） ---------- */
+/* ---------- Classic：实线边框、同一种阴影、陶土色强调 ---------- */
 :root.look-classic, [data-look="classic"] {
   color-scheme: light;
   --bg: #f4f2ec; --surface: #ffffff; --head: #ffffff;
@@ -853,7 +850,7 @@
 :root.look-ink-wash .pill, :root.look-ink-wash .ctx, :root.look-ink-wash .pop, :root.look-ink-wash .dialog, :root.look-ink-wash .keys, :root.look-ink-wash .palette, :root.look-ink-wash .stkpick { background: var(--paper); -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 2px; box-shadow: var(--sh-float); }
 /* 底部工具条：一条素宣纸，右边斜搁一支毛笔 */
 :root.look-ink-wash .bbar .pill { position: relative; padding: 5px 30px 5px 12px; border-radius: 1px; background: linear-gradient(180deg, color-mix(in srgb, var(--paper) 96%, #fff), var(--paper));
-  box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); } /* 像装裱：纸面 + 里面一道细框线（原来的纤维噪点底纹在 1x 屏上发糊） */
+  box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); } /* 像装裱：纸面 + 里面一道细框线（不用纤维噪点底纹：在 1x 屏上发糊） */
 :root.look-ink-wash .bbar .pill::after { content: ""; position: absolute; right: 3px; top: -12px; width: 13px; height: 62px; rotate: 24deg; pointer-events: none; filter: drop-shadow(2px 3px 2px rgba(0,0,0,.3));
   background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 84'%3E%3Cdefs%3E%3ClinearGradient id='h' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%236b4a26'/%3E%3Cstop offset='.45' stop-color='%23c79a5c'/%3E%3Cstop offset='1' stop-color='%235a3c1c'/%3E%3C/linearGradient%3E%3ClinearGradient id='t' x1='0' x2='1'%3E%3Cstop offset='0' stop-color='%23111'/%3E%3Cstop offset='.45' stop-color='%23444'/%3E%3Cstop offset='1' stop-color='%230b0b0b'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M8 1.5a1.6 1.6 0 0 1 0 3.2' fill='none' stroke='%23b0322a' stroke-width='1'/%3E%3Crect x='5' y='4' width='6' height='50' rx='2.6' fill='url(%23h)'/%3E%3Cpath d='M5.4 22h5.2M5.4 40h5.2' stroke='%235a3c1c' stroke-width='.7' opacity='.7'/%3E%3Crect x='4.6' y='52' width='6.8' height='5' rx='1.2' fill='%23222'/%3E%3Cpath d='M4.8 57c0 8 1.6 16 3.2 25 1.6-9 3.2-17 3.2-25z' fill='url(%23t)'/%3E%3C/svg%3E") center / contain no-repeat; }
 :root.look-ink-wash .dock .pill { border-radius: 1px; box-shadow: inset 0 0 0 3px var(--paper), inset 0 0 0 3.5px var(--hair), var(--sh-float); }
@@ -875,7 +872,6 @@
 /* 界面字体只给浮在白板上的部件和卡头用（--ui），不换 --sys：白板里大量文字换成网页字体后，Chromium 在缩放分档切换时会把每张卡的行号栏提成合成层 */
 :root.look-city .app { font-family: var(--ui); }
 :root.look-city .app > .board { font-family: var(--sys); }
-/* 99%：见 Ink Wash 卡头编号印章的注释 */
 /* ---------- City（城市道路） ---------- */
 /* 街区、河、公园、楼是白板背景（固定在窗口上，镜头动时不重画）。
    调用是大路：路肩（.casings 里一层，在所有线下面）+ 白边线（.kerbs 里一层，也在所有路面下面，路口里就没有边线）+ 路面（.edge）+ 双黄线（.lane，一个 path 两条线），横平竖直；

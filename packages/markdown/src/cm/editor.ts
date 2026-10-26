@@ -1,7 +1,5 @@
-// 编辑代码用的 CodeMirror 6（白板的 Free code 卡、Note 里的代码块）。单独打包（@yhnocoder/markdown/code-editor），用的一方第一次编辑前再 import()。
-// 样式和显示时一模一样：同一个字体、行高、行号栏、着色（着色不用 CodeMirror 自己的语言包：显示时的 HTML 拿来当装饰，
-// 打字时旧的着色跟着改动挪，新的着色回来就换上）。进出编辑字的位置一点不动。
-// 补全、悬停、签名提示问宿主的语言服务（cm/lsp.ts）；灰字补全复用 Note 的那一套（宿主的 complete）。
+// 和显示时一模一样，进出编辑字的位置一点不动。着色不用 CodeMirror 自己的语言包：显示时的 HTML 拿来当装饰，
+// 打字时旧的着色跟着改动挪，新的着色回来就换上
 import { EditorState, EditorSelection, StateEffect, StateField, Prec, type Extension, type Range, type Text, type ChangeSpec } from "@codemirror/state";
 import { EditorView, Decoration, keymap, lineNumbers, highlightActiveLine, highlightActiveLineGutter, tooltips, type DecorationSet, type KeyBinding } from "@codemirror/view";
 import { history, historyKeymap, defaultKeymap } from "@codemirror/commands";
@@ -15,8 +13,6 @@ export type { LspHost, GhostHost };
 export type { LspItem, LspKind, LspSignature } from "./lsp";
 
 const IND = "    ";
-
-// ---------- 着色：显示时的 HTML（宿主的 kw / fn / str…，Note 里的代码块也是宿主给的）→ 装饰 ----------
 
 /** 一段着色：[from, to) 是解码后文字的下标，cls = 那一层 span 的 class */
 type Tok = { from: number; to: number; cls: string };
@@ -41,7 +37,6 @@ export function parseHl(html: string): { text: string; toks: Tok[] } {
 const marks = new Map<string, Decoration>();
 const markOf = (cls: string) => { let d = marks.get(cls); if (!d) marks.set(cls, (d = Decoration.mark({ class: cls }))); return d; };
 
-/** 新的着色（给的是哪段文字的着色） */
 const setHl = StateEffect.define<{ text: string; toks: Tok[] }>();
 
 /** 把一份着色按行对到现在的文字上：同一行（或插删行后对应的那一行）文字一样就用新的，对不上的行留着旧的（已跟着改动挪过） */
@@ -53,7 +48,6 @@ function rebuild(doc: Text, old: DecorationSet, hl: { text: string; toks: Tok[] 
   for (const l of lines) { starts.push(at); at += l.length + 1; }
   const shift = doc.lines - lines.length;
   const out: Range<Decoration>[] = [];
-  // 按新着色的行分好
   const byLine: Tok[][] = lines.map(() => []);
   for (const t of hl.toks) {
     let i = upper(starts, t.from);
@@ -88,9 +82,6 @@ const hlField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 });
 
-// ---------- 按键：Tab / ⇧Tab 缩进，回车保持缩进（: { [ ( 结尾多缩一级），⌘/ 注释 ----------
-
-/** 选中的几行一起改 */
 function editLines(view: EditorView, fn: (ls: string[]) => string[]) {
   const { state } = view;
   const changes: ChangeSpec[] = [];
@@ -116,9 +107,8 @@ function editLines(view: EditorView, fn: (ls: string[]) => string[]) {
 /** 补全菜单看得见（还在问宿主、或问回来一个都对不上时看不见） */
 const menuShown = (s: EditorState) => currentCompletions(s).length > 0;
 
-/** Esc：先关看得见的补全菜单、签名提示、灰字，都没有才退出。
- *  打完字补全要等一会儿才去问宿主（还在问时看不见）：Esc 顺手把它作废，但不算关了什么，照样往下走——
- *  不然这一下 Esc 什么也看不到，退出要按几下取决于宿主回得快慢 */
+/** Esc：先关看得见的补全菜单、签名提示、灰字，都没有才退出。还在问宿主（看不见）的补全顺手作废，但不算关了什么，
+ *  照样往下走：不然这一下 Esc 什么也看不到，退出要按几下取决于宿主回得快慢 */
 function escKey(exit: () => void): KeyBinding {
   return {
     key: "Escape",
@@ -184,8 +174,6 @@ function keys(lang: () => string | undefined, exit: () => void, commentOf: (lang
   ];
 }
 
-// ---------- 编辑器 ----------
-
 export type CodeEditorOpts = {
   parent: HTMLElement;
   text: string;
@@ -202,7 +190,6 @@ export type CodeEditorOpts = {
   comment?: (lang: string | undefined) => string | undefined;
   /** 语言服务（补全、悬停、签名提示）；不给就没有 */
   lsp?: LspHost;
-  /** 灰字补全 */
   ghost?: GhostHost;
   /** 按下不往外冒（外面把按下当成拖动、框选时，比如白板的卡片） */
   stopPointerDown?: boolean;
@@ -219,7 +206,6 @@ export type CodeEditorOpts = {
   activeLine?: boolean;
   /** 编辑器根元素再加的 class（比如 Note 里的代码块 cbcm-md）；cbcm 和有行号栏时的 cbcm-card 总会有 */
   className?: string;
-  /** 其余的扩展 */
   extensions?: Extension[];
   /** 改动先给它（Note 里转成 ProseMirror 的改动）；不给就直接改 */
   dispatch?: (trs: readonly import("@codemirror/state").Transaction[], view: EditorView) => void;

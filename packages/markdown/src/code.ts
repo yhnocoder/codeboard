@@ -1,5 +1,4 @@
-// 代码块的着色：由用的一方给（白板给的是宿主的 shiki，和代码卡同一个），
-// 按 语言 + 文字 缓存。显示和编辑（CodeMirror）都用它；还没回来时先放纯文字（同样的字，回来后只换颜色，不跳）
+// 着色还没回来时先放纯文字：同样的字，回来后只换颜色，不跳
 
 /** 文字 + 语言（换成了正式 id，见下面的 id）→ 着好色的 HTML（只有 span 和转义的字，每行之间一个 \n）；不会着色给 null */
 export type CodeHighlighter = (text: string, lang: string) => Promise<string | null>;
@@ -37,8 +36,8 @@ export function highlightCode(text: string, lang: string): Promise<string | null
   return p;
 }
 
-/** 静态显示挂上以后：el 里还没上色的代码块上色（缓存里有的马上换，没有的等宿主回来） */
 const colored = new WeakSet<HTMLElement>();
+/** 静态显示挂上以后：el 里还没上色的代码块上色（缓存里有的马上换，没有的等宿主回来） */
 export function colorCode(el: HTMLElement) {
   for (const code of el.querySelectorAll<HTMLElement>("pre.md-code[data-lang] > code")) {
     if (colored.has(code)) continue;

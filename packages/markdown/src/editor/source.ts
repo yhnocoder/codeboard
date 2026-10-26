@@ -1,9 +1,8 @@
-// 光标处的 Markdown 原文，照 Typora（#11）：光标走进 **粗体**、*斜体*、~~删除线~~、`代码`、[链接](url)、标题，或用方向键走到、点一下行内公式时，
-// 那一段换成它的 Markdown 原文——是真的字，能直接改记号（** 改成 *、## 改成 #、改链接地址、改公式源码）；光标离开那一段时重新解析回去。
+// 照 Typora：光标走进格式文字、标题，或走到行内公式时，那一段换成真的 Markdown 原文（能直接改记号），离开时重新解析回去。
 // - 原文带 mdSrc 标记（code: true：打字规则在原文里不触发，不然改到一半的 ** 会被马上转掉）
-// - 只在光标单纯移动（方向键、Home/End、点一下）时展开；打字、自动转换后不展开（刚打完 **b** 接着往下打字，不会冒出原文）
+// - 只在光标单纯移动时展开：刚打完 **b** 接着往下打字，不会冒出原文
 // - 收回、展开都跟着引起它的那一步进撤销记录（appendTransaction），撤销时原文和格式一起回去
-// - 写出 Markdown（保存、复制、原文模式）时 schema.ts 的 unsource 把还展开着的收回去
+// - 写出 Markdown 时 schema.ts 的 unsource 把还展开着的收回去
 import { Mark } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { Fragment, type Node as PMNode } from "@tiptap/pm/model";
