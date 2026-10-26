@@ -26,27 +26,39 @@ export function hydrate(el: HTMLElement, html: string) {
 }
 
 /**
- * {字|批注} 的标签从被标的字的左边开始写；写到这一块（段落、列表项、格子）右边外面去的，往左挪回来（--ax），最多挪到块的左边。
+ * {字|批注} 的标签居中在被标的字上面（markdown.css：left 50% 再往回挪半个标签宽，箭头也在正中），只用 CSS，不用量。
+ * 这里只管超出：居中时写到这一块（段落、列表项、格子）左右外面去的，挪回块里（--ax，左边优先）。
  * 标签是 ::before，量不到：按它的字体用 canvas 算宽度。位置用 offsetLeft 量（同一张卡里，不受镜头缩放、滚动影响）。
- * 手写字体按需加载（中文字体按 unicode-range 才下载）：字体还没到时先按替代字体放，到了再量一次
+ * 什么时候量：放进去时（还没挂到页面上的，下一帧）；手写字体到了（按需加载，中文字体按 unicode-range 才下载）；
+ * 块变宽变窄（改卡片宽度、换行）。先全部量完再一起写，不来回排版
  */
 let ctx: CanvasRenderingContext2D | null | undefined;
 /** 量的时候字体还没到的：字体加载完（loadingdone）再量一次 */
 const refit = new Set<HTMLElement>();
+let sized: ResizeObserver | undefined;
+const BLOCK = "p, li, td, th, h1, h2, h3, h4, h5, h6, summary";
 function fitAnnots(el: HTMLElement) {
+  if (!el.isConnected) { if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => { if (el.isConnected) fitAnnots(el); }); return; }
   ctx ??= document.createElement("canvas").getContext("2d");
   if (!ctx) return;
+  if (typeof ResizeObserver === "function") sized ??= new ResizeObserver((es) => { for (const e of es) { const t = e.target as HTMLElement; if (!t.isConnected || !t.querySelector(".md-annot")) sized!.unobserve(t); else fitAnnots(t); } });
+  sized?.observe(el);
   let late = false;
+  const out: [HTMLElement, number][] = [];
   for (const a of el.querySelectorAll<HTMLElement>(".md-annot")) {
-    const block = a.parentElement?.closest<HTMLElement>("p, li, td, th, h1, h2, h3, h4, h5, h6, summary") ?? el;
+    const block = a.parentElement?.closest<HTMLElement>(BLOCK) ?? el;
     if (a.offsetParent !== block.offsetParent && a.offsetParent !== block) continue;
     const left = a.offsetParent === block ? a.offsetLeft : a.offsetLeft - block.offsetLeft;
     const lb = getComputedStyle(a, "::before"), note = a.dataset.note ?? "";
     ctx.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
     if (!document.fonts.check(ctx.font, note)) { late = true; void document.fonts.load(ctx.font, note).catch(() => {}); }
-    const over = left + ctx.measureText(note).width - block.clientWidth; // 标签往左 2px 起笔（markdown.css），右边也就留了 2px
-    a.style.setProperty("--ax", over > 0 ? `${-Math.min(over, Math.max(0, left))}px` : "0px");
+    const w = ctx.measureText(note).width, from = left + (a.offsetWidth - w) / 2; // 居中时标签左边在块里的位置
+    const room = block.clientWidth;
+    let ax = from + w > room ? room - (from + w) : 0;
+    if (from + ax < 0) ax = -from;
+    out.push([a, Math.round(ax * 2) / 2]);
   }
+  for (const [a, ax] of out) a.style.setProperty("--ax", `${ax}px`);
   if (!late) return;
   if (!refit.size) document.fonts.addEventListener("loadingdone", refitAll);
   refit.add(el);

@@ -150,10 +150,10 @@ test("noteAnnotations", async () => {
     const e = [...document.querySelectorAll<HTMLElement>(".card .md-annot")][1], p = e.closest("p")!;
     const lb = getComputedStyle(e, "::before"), c = document.createElement("canvas").getContext("2d")!;
     c.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
-    const right = e.getBoundingClientRect().left + parseFloat(lb.left) + c.measureText(e.dataset.note!).width;
+    const right = e.getBoundingClientRect().left + parseFloat(lb.left) + new DOMMatrix(lb.transform).m41 + c.measureText(e.dataset.note!).width;
     return { right, pRight: p.getBoundingClientRect().right, ax: e.style.getPropertyValue("--ax") };
   });
-  // the label would run past the paragraph (natural right = right - ax): it is pulled back inside, and only then
+  // centered, the label would run past the paragraph (natural right = right - ax): it is pulled back inside, and only then
   check("annotLabelInsideBlock", fit.right <= fit.pRight + 0.5 && (fit.right - parseFloat(fit.ax) > fit.pRight) === parseFloat(fit.ax) < 0, fit);
   await shot(h, "marks-note-annotations");
 
@@ -248,5 +248,74 @@ test("codeAnnotations", async () => {
   await pg.waitForTimeout(200);
   const left = (h.board().cards[0] as CodeCard).segments[0].annots ?? [];
   check("codeAnnotRemove", left.length === 2 && !left.some((a) => a.text === "KV cache blocks") && (await pg.locator(`${card(sch.id)} .arail.below`).count()) === 0, left);
+  await h.close();
+});
+
+/** The CUDA sentence: an annotation at the start of a line, one in the middle of a line, and one inside bold */
+const CUDA_MD = [
+  "{CUDA C++ 程序的结构|异构计算}反映了计算机中==主机（host，即 CPU）与一个或多个设备（device，即 GPU）共存==的情况。",
+  "",
+  "每个 kernel 由 {很多个线程|thread}同时执行，**线程按 {block|线程块|purple} 分组**。",
+].join("\n");
+/** Each annotation's span, label and arrow on screen: the label's box from the ::before font (canvas) and its computed left + transform */
+const annotGeo = (pg: Host["page"], sel: string) => pg.evaluate((sel) => [...document.querySelectorAll<HTMLElement>(`${sel} .md-annot`)].map((e) => {
+  const r = e.getBoundingClientRect(), lb = getComputedStyle(e, "::before"), ar = getComputedStyle(e, "::after");
+  const c = document.createElement("canvas").getContext("2d")!;
+  c.font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
+  const w = c.measureText(e.dataset.note!).width, left = r.left + parseFloat(lb.left) + new DOMMatrix(lb.transform).m41;
+  const block = e.parentElement!.closest("p")!.getBoundingClientRect();
+  return { note: e.dataset.note!, spanCenter: r.left + r.width / 2, labelCenter: left + w / 2, arrowCenter: r.left + parseFloat(ar.left) + parseFloat(ar.width) / 2,
+    labelLeft: left, labelRight: left + w, atLineStart: Math.abs(r.left - block.left) < 1, inBlock: left >= block.left - 0.5 && left + w <= block.right + 0.5 };
+}), sel);
+
+/** {text|note} labels are centered over the annotated words (and their arrow), whether the words start the line or sit in the middle of it,
+ *  in the static Note and in its editor */
+test("noteAnnotationLabelCentered", async () => {
+  const b = emptyBoard("b1", "annotations");
+  b.cards.push({ id: "n1", kind: "note", md: CUDA_MD, bg: true } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 520 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 760, h: 420, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.evaluate(() => document.fonts.ready);
+  await pg.waitForTimeout(200);
+  const centered = (g: Awaited<ReturnType<typeof annotGeo>>) => g.length === 3 && g.every((a) => Math.abs(a.labelCenter - a.spanCenter) <= 2 && Math.abs(a.arrowCenter - a.spanCenter) <= 2 && a.inBlock);
+  const geo = await annotGeo(pg, card("n1"));
+  check("annotFirstAtLineStart", geo[0]?.atLineStart && !geo[1]?.atLineStart, geo);
+  check("annotLabelCentered", centered(geo), geo);
+  await shot(h, "marks-annotation-centered");
+  await pg.locator(`${card("n1")} .nbody p`).first().dblclick({ position: { x: 300, y: 40 } });
+  await pg.waitForSelector(`${card("n1")} .md-pm .md-annot`, { timeout: 5000 });
+  await pg.waitForTimeout(200);
+  const ed = await annotGeo(pg, `${card("n1")} .md-pm`);
+  check("annotLabelCenteredInEditor", centered(ed), ed);
+  await h.close();
+});
+
+/** The annotation label is drawn in the bundled handwriting fonts (Shantell Sans for Latin, LXGW WenKai Lite for Chinese):
+ *  the computed font is the hand font, both faces are loaded, and the glyphs really come from them (not a system fallback) */
+test("noteAnnotationHandFont", async () => {
+  const b = emptyBoard("b1", "annotations");
+  b.cards.push({ id: "n1", kind: "note", md: CUDA_MD, bg: true } as NoteCard);
+  b.place.n1 = { x: 80, y: 80, w: 520 };
+  const h = await open({ board: b, light: true, w: 760, h: 420, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.evaluate(() => document.fonts.ready);
+  const f = await pg.evaluate(() => {
+    const labels = [...document.querySelectorAll<HTMLElement>(".card .md-annot")].map((e) => {
+      const lb = getComputedStyle(e, "::before"), font = `${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`;
+      return { note: e.dataset.note!, family: lb.fontFamily, checked: document.fonts.check(font, e.dataset.note) };
+    });
+    const faces = Object.fromEntries([...document.fonts].filter((x) => /Shantell Sans|LXGW WenKai Lite/.test(x.family)).map((x) => [x.family.replace(/"/g, ""), x.status]));
+    // glyphs drawn with the label's font stack vs the same stack without the bundled face: they differ only if the bundled face is used
+    const draw = (font: string, t: string) => { const c = document.createElement("canvas"); c.width = 160; c.height = 40; const x = c.getContext("2d")!; x.font = font; x.fillText(t, 2, 30); return x.getImageData(0, 0, 160, 40).data; };
+    const differ = (a: Uint8ClampedArray, b: Uint8ClampedArray) => { let n = 0; for (let i = 3; i < a.length; i += 4) if (a[i] !== b[i]) n++; return n; };
+    const stack = labels[0]?.family ?? "";
+    const without = (name: string) => stack.split(",").filter((s) => !s.includes(name)).join(",");
+    return { labels, faces, cjk: differ(draw(`24px ${stack}`, "异构计算"), draw(`24px ${without("LXGW")}`, "异构计算")), latin: differ(draw(`24px ${stack}`, "thread"), draw(`24px ${without("Shantell")}`, "thread")) };
+  });
+  check("annotHandFontFamily", f.labels.length === 3 && f.labels.every((l) => /^"?Shantell Sans"?,\s*"?LXGW WenKai Lite"?/.test(l.family)), f.labels);
+  check("annotHandFontsLoaded", f.faces["Shantell Sans"] === "loaded" && f.faces["LXGW WenKai Lite"] === "loaded" && f.labels.every((l) => l.checked), f);
+  check("annotHandGlyphsFromBundledFonts", f.cjk > 50 && f.latin > 50, f);
   await h.close();
 });
