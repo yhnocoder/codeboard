@@ -18,13 +18,13 @@ const typingInto = (h: Host) => h.page.waitForFunction(() => { const a = documen
 
 test("expandCall", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
-  await shot(h, "01-start", "idle");
+  await shot(h, "01-start");
   await callEl(h, "schedule").click();
   await until(h, "schedule() expands into a card", () => h.board().cards.length > 1);
-  await shot(h, "02-expanded", "idle");
+  await shot(h, "02-expanded");
   await callEl(h, "postprocess").click();
   await until(h, "postprocess() expands into a card", () => h.board().cards.length > 2);
-  await shot(h, "03-two", "idle");
+  await shot(h, "03-two");
   console.log("cards:", h.board().cards.length, "links:", h.board().links.length);
   await h.page.context().close();
 });
@@ -32,7 +32,7 @@ test("expandCall", async () => {
 test("expandAndWalk", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
   await callEl(h, "schedule").click(); await until(h, "schedule() expands", () => h.board().cards.length > 1);
-  await shot(h, "flow-00", "idle");
+  await shot(h, "flow-00");
   await callEl(h, "postprocess").first().click({ timeout: 5000 }); await until(h, "postprocess() expands", () => h.board().cards.length > 2);
   const pos = () => JSON.stringify(h.board().cards.map((c: any) => [c.segments?.[0]?.symbol?.qual, h.board().place[c.id]?.x, h.board().place[c.id]?.y]));
   await idle(h); console.log(pos());
@@ -40,12 +40,12 @@ test("expandAndWalk", async () => {
   await until(h, "allocate() expands", () => h.board().cards.length > 3);
   await idle(h); console.log(pos(), JSON.stringify(h.board().links.map((l) => [l.from.card, l.to.card])));
   await h.page.keyboard.press("Shift+!"); await idle(h);
-  await shot(h, "flow-01-three", "idle");
+  await shot(h, "flow-01-three");
   await h.page.keyboard.press("Escape");
   await h.page.keyboard.press("p"); await idle(h);
-  await shot(h, "flow-02-walk", "idle");
+  await shot(h, "flow-02-walk");
   await h.page.keyboard.press("ArrowRight"); await idle(h);
-  await shot(h, "flow-03-walk2", "idle");
+  await shot(h, "flow-03-walk2");
   await h.page.keyboard.press("Escape");
   console.log("cards:", h.board().cards.length, "links:", h.board().links.length);
   await h.page.context().close();
@@ -55,24 +55,24 @@ test("notes", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .no").nth(5).click();
   await h.page.locator(".card .no").nth(7).click({ modifiers: ["Shift"] });
-  await shot(h, "notes-01-lines", "idle");
+  await shot(h, "notes-01-lines");
   await h.page.keyboard.press("s"); await h.page.locator(".pop button", { hasText: /^Text$/ }).waitFor();
-  await shot(h, "notes-02-add", "idle");
+  await shot(h, "notes-02-add");
   await h.page.locator(".pop button", { hasText: /^Text$/ }).click();
   await h.page.locator(".pop textarea, .pop [contenteditable]").first().click();
   await h.page.keyboard.type("Prefill admits waiting seqs until the token budget runs out.");
   await h.page.locator(".pop button", { hasText: /^Add$/ }).click();
   await until(h, "the sidenote is added", () => h.board().sidenotes.length);
-  await shot(h, "notes-03-done", "idle");
+  await shot(h, "notes-03-done");
   await h.page.mouse.move(1300, 800);
   await h.page.keyboard.press("n"); await h.page.locator(".md-pm:focus").waitFor();
   await h.page.keyboard.type("# Why chunked prefill\nKeeps $O(n)$ memory **bounded**.");
   await h.page.keyboard.press("Escape"); await until(h, "the Note is saved", () => h.board().cards.some((c) => c.kind === "note")); await idle(h);
   await h.page.mouse.click(1300, 500);
-  await shot(h, "notes-04-note", "idle");
+  await shot(h, "notes-04-note");
   console.log("cards:", h.board().cards.map((c) => c.kind).join(","), "sidenotes:", JSON.stringify((h.board() as any).sidenotes));
   await h.page.locator(".card .mk").first().hover(); await h.page.locator(".pop.k-notes").waitFor(); // shows 120 ms after the hover
-  await shot(h, "notes-05-hover", "idle");
+  await shot(h, "notes-05-hover");
   await h.page.context().close();
 });
 
@@ -92,7 +92,7 @@ test("sections", async () => {
   await typingInto(h);
   await h.page.keyboard.type("Generate step"); await h.page.keyboard.press("Enter");
   await until(h, "both sections are saved", () => h.board().sections.length > 1);
-  await shot(h, "sec-01-nested", "idle");
+  await shot(h, "sec-01-nested");
   console.log(JSON.stringify(h.board().sections.map((s) => [s.name, s.parent ?? null])), JSON.stringify(h.board().cards.map((c) => h.board().place[c.id]?.section ?? null)));
   await h.page.context().close();
 });
@@ -103,16 +103,16 @@ test("compare", async () => {
   await h.page.keyboard.press("Control+a"); await h.page.keyboard.press("Meta+a");
   await h.page.locator(".card").first().locator(".chead").click({ button: "right" });
   await h.page.locator(".ctx button").first().waitFor();
-  await shot(h, "cmp-01-menu", "idle");
+  await shot(h, "cmp-01-menu");
   await h.page.locator(".ctx button", { hasText: "Compare" }).first().click();
   await until(h, "Compare makes a compare card", () => h.board().cards.some((c) => c.kind === "compare"));
-  await shot(h, "cmp-02-compare", "idle");
+  await shot(h, "cmp-02-compare");
   console.log("kinds:", h.board().cards.map((c) => c.kind).join(","));
   // Unified: switching turns it into a single-column diff (previously rows weren't redrawn and stayed side by side)
   await h.page.locator(".cmpwrap .tools button", { hasText: "Unified" }).click();
   await h.page.locator(".cmpwrap .urow").first().waitFor(); await idle(h);
   const u = { urow: await h.page.locator(".cmpwrap .urow").count(), crow: await h.page.locator(".cmpwrap .crow").count() };
-  await shot(h, "cmp-03-unified", "idle");
+  await shot(h, "cmp-03-unified");
   check("compare-unified", u.urow > 0 && u.crow === 0, JSON.stringify(u));
   await h.page.context().close();
 });
@@ -123,15 +123,15 @@ test("versions", async () => {
   const seg = (b.cards[0] as any).segments[0].id;
   await h.post({ type: "stale", stale: { [seg]: { state: "changed", hiddenOnly: false, head: "f64d8210" } } } as any);
   await h.page.locator(".banner").waitFor();
-  await shot(h, "ver-01-stale", "idle");
+  await shot(h, "ver-01-stale");
   await h.page.locator(".banner button", { hasText: "Review" }).click();
   await h.page.locator(".pop button", { hasText: /^Update/ }).first().waitFor(); // the diff comes from the host
-  await shot(h, "ver-02-diff", "idle");
+  await shot(h, "ver-02-diff");
   console.log(await h.page.evaluate(() => [...document.querySelectorAll(".pop, .pop .diffpop, .pop .dbody, .pop .crows, .pop .db")].map((e) => { const r = e.getBoundingClientRect(); return e.className + " " + Math.round(r.x) + " " + Math.round(r.width) + " " + getComputedStyle(e).width; }).join("\n")));
   const v0 = JSON.stringify((h.board().cards[0] as any).segments[0].version);
   await h.page.locator(".pop button", { hasText: /^Update/ }).first().click();
   await until(h, "Update pins the new version", () => JSON.stringify((h.board().cards[0] as any).segments[0].version) !== v0);
-  await shot(h, "ver-03-updated", "idle");
+  await shot(h, "ver-03-updated");
   console.log("version:", JSON.stringify((h.board().cards[0] as any).segments[0].version));
   await h.page.context().close();
 });
@@ -142,11 +142,11 @@ test("lost", async () => {
   const [s1, s2] = b.cards.map((c: any) => c.segments[0].id);
   await h.post({ type: "stale", stale: { [s1]: { state: "lost" }, [s2]: { state: "changed", hiddenOnly: false, head: "f64d8210" } } } as any);
   await h.page.keyboard.press("Shift+!"); await idle(h);
-  await shot(h, "lost-01", "idle");
+  await shot(h, "lost-01");
   await h.page.locator(".banner button", { hasText: "Update All" }).click(); await idle(h);
   await h.page.locator(".cmiss button", { hasText: "Keep Old Version" }).click();
   await until(h, "Keep Old Version is saved", () => h.board().cards.some((c: any) => c.keepOld)); await idle(h);
-  await shot(h, "lost-02", "idle");
+  await shot(h, "lost-02");
   console.log("banner:", await h.page.locator(".banner").count(), "cmiss:", await h.page.locator(".cmiss").count(), JSON.stringify(h.board().cards.map((c: any) => [c.keepOld ?? null, c.segments[0].version.commit])));
   await h.page.context().close();
 });
@@ -161,7 +161,7 @@ test("linkMergeSection", async () => {
   await h.page.mouse.dblclick(700, 120); await typingInto(h);
   await h.page.keyboard.type("Scheduler overview"); await h.page.keyboard.press("Escape");
   await until(h, "the Text is saved", () => h.board().cards.some((c) => c.kind === "note")); await idle(h);
-  await shot(h, "misc-01", "idle");
+  await shot(h, "misc-01");
   // Merge: ⌥-drag the second card's title onto the first card's title
   const heads = h.page.locator(".card.ccard .chead");
   const a = await heads.nth(0).boundingBox(), b = await heads.nth(1).boundingBox();
@@ -171,7 +171,7 @@ test("linkMergeSection", async () => {
   const n0 = h.board().cards.length;
   await h.page.mouse.up(); await h.page.keyboard.up("Alt");
   await until(h, "the drop merges the two cards", () => h.board().cards.length < n0); await idle(h);
-  await shot(h, "misc-02-merged", "idle");
+  await shot(h, "misc-02-merged");
   console.log("kinds:", h.board().cards.map((c: any) => c.kind + (c.segments ? ":" + c.segments.length : "")).join(","), "links:", JSON.stringify(h.board().links.map((l) => [l.kind, l.from.card, l.to.card])));
   // Section, then collapse
   await h.page.keyboard.press("Control+a");
@@ -181,7 +181,7 @@ test("linkMergeSection", async () => {
   if (await toSection.count()) { await toSection.click(); await typingInto(h); } else console.log("no Move to New Section");
   await h.page.keyboard.type("Scheduler"); await h.page.keyboard.press("Enter");
   await idle(h);
-  await shot(h, "misc-03-section", "idle");
+  await shot(h, "misc-03-section");
   console.log("sections:", JSON.stringify(h.board().sections.map((q) => [q.title, q.collapsed ?? false])));
   await h.page.context().close();
 });
@@ -204,7 +204,7 @@ test("cmptree", async () => {
   const marks = await h.page.locator(".card.cmp .chead .step").allTextContents();
   const ok = b.links.filter((l) => l.call).length === 2 && marks.length === 2 && new Set(marks).size === 2;
   check("cmptree", ok, JSON.stringify({ links: b.links.length, cols: cmp?.cols, marks }));
-  await shot(h, "cmptree", "idle");
+  await shot(h, "cmptree");
   await h.page.context().close();
 });
 
@@ -236,7 +236,7 @@ test("cmpdel", async () => {
   const marks = await h.page.locator(".card.cmp .chead .step").allTextContents();
   const ok = nb.cards.length === 5 && nb.links.map((l) => l.id).join() === "Xcl,Ycr" && marks0.join() === "A,A" && new Set(marks).size === 2;
   check("cmpdel", ok, JSON.stringify({ cards: nb.cards.length, links: nb.links.map((l) => l.id), marks0, marks }));
-  await shot(h, "cmpdel", "idle");
+  await shot(h, "cmpdel");
   await h.page.context().close();
 });
 
@@ -421,7 +421,7 @@ test("secout", async () => {
   const ss = h.board().sections, inner = ss.find((q) => q.title === "Inner")!, outer = ss.find((q) => q.title === "Outer")!;
   const ok = inner.parent === outer.id && !outer.parent && h.board().place[h.board().cards[0].id]?.section === inner.id;
   check("secout", ok, JSON.stringify(ss.map((q) => [q.title, q.parent ? ss.find((x) => x.id === q.parent)!.title : null]).concat([["card", h.board().place[h.board().cards[0].id]?.section === inner.id ? "Inner" : "?"]])));
-  await shot(h, "secout", "idle");
+  await shot(h, "secout");
   await h.page.context().close();
 });
 
@@ -452,11 +452,11 @@ test("palette", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
   await h.page.keyboard.press("Control+k"); await h.page.keyboard.press("Meta+k");
   await h.page.locator(".palette input:focus").waitFor();
-  await shot(h, "pal-01-entry", "idle");
+  await shot(h, "pal-01-entry");
   await h.page.keyboard.type("alloc"); await idle(h); // the results come from the host
-  await shot(h, "pal-02-query", "idle");
+  await shot(h, "pal-02-query");
   await h.page.keyboard.press("Enter"); await until(h, "the picked result is placed", () => h.board().cards.length > 1);
-  await shot(h, "pal-03-placed", "idle");
+  await shot(h, "pal-03-placed");
   console.log("cards:", h.board().cards.length);
   await h.page.context().close();
 });
@@ -465,7 +465,7 @@ test("peek", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .src .call", { hasText: "can_allocate" }).first().hover();
   await h.page.locator(".pop.k-peek .pt").waitFor(); // PEEK_DELAY after the hover, filled from the host
-  await shot(h, "peek-01", "idle");
+  await shot(h, "peek-01");
   await h.page.context().close();
 });
 
@@ -489,7 +489,7 @@ test("peekkinds", async () => {
       more: e.querySelector(".pk-more")?.textContent, lib: e.querySelector(".lib-tag")?.textContent, head: e.querySelector(".pk-head")?.textContent,
     })).catch(() => null);
     console.log(k, JSON.stringify(info));
-    await shot(h, `peekkinds-${k}`, "idle");
+    await shot(h, `peekkinds-${k}`);
   }
   await h.page.context().close();
 });
@@ -500,7 +500,7 @@ test("libcalls", async () => {
   const lib = h.page.locator(`.card .src .call[data-p="torch"]`).first();
   const deco = () => lib.evaluate((e) => getComputedStyle(e).textDecorationLine);
   console.log("lib calls:", await h.page.locator(".card .src .call[data-p]").count(), "project calls:", await h.page.locator(".card .src .call:not([data-p])").count(), "lib deco:", await deco());
-  await shot(h, "libcalls-01", "idle");
+  await shot(h, "libcalls-01");
   await lib.click(); await idle(h); // a library call does not expand: an expand would be in flight by now
   console.log("after click: cards", h.board().cards.length, "expand sent", h.sent.filter((m) => m.type === "expand").length);
   await lib.click({ modifiers: ["Alt"] }); await until(h, "⌥-click expands anyway", () => h.sent.some((m) => m.type === "expand")); await idle(h);
@@ -508,11 +508,11 @@ test("libcalls", async () => {
   await h.page.mouse.move(5, 5); await idle(h);
   await lib.click({ button: "right" }); await h.page.locator(".ctx button").first().waitFor(); await idle(h);
   console.log("menu:", JSON.stringify(await h.page.locator(".ctx button").allTextContents()));
-  await shot(h, "libcalls-02-menu", "idle");
+  await shot(h, "libcalls-02-menu");
   await h.page.locator(".ctx button", { hasText: "Study Scope" }).first().click();
   await until(h, "the Study Scope setting is sent", () => h.sent.some((m) => m.type === "setSetting")); await idle(h);
   console.log("setSetting:", JSON.stringify(h.sent.filter((m) => m.type === "setSetting")), "deco now:", await deco());
-  await shot(h, "libcalls-03-scoped", "idle");
+  await shot(h, "libcalls-03-scoped");
   await h.page.context().close();
 });
 
@@ -526,7 +526,7 @@ test("attachvars", async () => {
   await until(h, "the call is attached to the card", () => h.board().links.length); await idle(h);
   const ls = h.board().links;
   check("attachvars", ls.length === 1 && ls[0].call && ls[0].call.cands?.length, JSON.stringify(ls.map((l) => l.call)));
-  await shot(h, "attachvars", "idle");
+  await shot(h, "attachvars");
   await h.page.context().close();
 });
 
@@ -575,18 +575,18 @@ test("themes", async () => {
   for (const m of ["light", "dark"] as const) {
     await mode(m);
     await h.page.mouse.move(5, 450);
-    await shot(h, `theme-${m}-warm-ink-base`, "idle");
+    await shot(h, `theme-${m}-warm-ink-base`);
     await h.page.keyboard.press("Meta+,"); await h.page.locator(".settings").waitFor();
-    await shot(h, `theme-${m}-settings`, "idle");
+    await shot(h, `theme-${m}-settings`);
     if (m === "light") {
       await h.page.keyboard.press("Escape"); await h.page.keyboard.press("?"); await h.page.locator(".keys").waitFor();
-      await shot(h, `theme-${m}-keys-overlay`, "idle");
+      await shot(h, `theme-${m}-keys-overlay`);
       await h.page.locator(".keys .tlink").click(); await h.page.locator(".settings").waitFor(); await idle(h);
       console.log("Search… in ? overlay opens Settings:", await h.page.locator(".settings").count() === 1, "overlay closed:", !(await h.page.locator(".keys").count()));
       await h.page.locator(".st-filter").scrollIntoViewIfNeeded();
-      await shot(h, `theme-${m}-settings-keys`, "idle");
+      await shot(h, `theme-${m}-settings-keys`);
       await h.page.locator(".st-filter").fill("zoom"); await idle(h);
-      await shot(h, `theme-${m}-settings-keys-zoom`, "idle");
+      await shot(h, `theme-${m}-settings-keys-zoom`);
       await h.page.locator(".st-filter").fill("");
       await h.page.locator(".st-filter").press("Escape"); await idle(h);
       console.log("Esc in filter closes settings:", !(await h.page.locator(".settings").count()));
@@ -598,12 +598,12 @@ test("themes", async () => {
       const name = (await sw.locator(".st-swn").textContent())!.toLowerCase().replace(/ /g, "-");
       const sets = h.sent.length;
       await sw.click(); await until(h, `the ${name} theme is applied`, () => h.sent.slice(sets).some((x) => x.type === "setSetting")); await idle(h);
-      if (i === n - 1) await shot(h, `theme-${m}-settings-${name}`, "idle");
+      if (i === n - 1) await shot(h, `theme-${m}-settings-${name}`);
       await h.page.keyboard.press("Escape"); await idle(h);
       await poke(); await idle(h);
       if (await h.page.locator(".card.sel").count() !== 1) console.log("theme", m, name, "selected", await h.page.locator(".card.sel").count());
       await h.page.mouse.move(5, 450);
-      await shot(h, `theme-${m}-${i}-${name}`, "idle");
+      await shot(h, `theme-${m}-${i}-${name}`);
       await h.page.keyboard.press("Meta+,"); await h.page.locator(".settings").waitFor();
     }
     await h.page.locator(".st-sw").first().click();

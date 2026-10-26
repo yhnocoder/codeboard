@@ -94,7 +94,10 @@ export async function ready() { await initAnalysis(path.join(REPO, "node_modules
 /** Lets a scenario play part of the host: return true if handled */
 export type OnMsg = (m: BoardToHost & { req?: number }, reply: (req: number, data?: unknown, error?: string) => Promise<void>) => boolean | Promise<boolean>;
 
-export type OpenOptions = { board?: Board; settings?: Partial<typeof DEFAULT_SETTINGS>; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void>; on?: OnMsg; host?: Record<string, unknown> };
+export type OpenOptions = { board?: Board; settings?: Partial<typeof DEFAULT_SETTINGS>; light?: boolean; w?: number; h?: number; beforeLoad?: (p: Page) => Promise<void>; on?: OnMsg; host?: Record<string, unknown>;
+  /** "shown": return as soon as the board is on the page, without waiting for idle() (a scenario about the board's first moments,
+   *  e.g. acting while the lazy Markdown queue is still filling in idle time) */
+  until?: "idle" | "shown" };
 /** What the caller does with the board's self-checks (a failed one is named by `check`) and, if given, with the page's coverage */
 export type Watch = { fail: (check: string, detail: string) => void; coverage?: (entries: PageCoverage) => void };
 
@@ -206,8 +209,9 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
   await o.beforeLoad?.(page);
   await page.goto(`file://${html}`);
   await page.waitForFunction(() => document.querySelector(".board"));
-  await page.waitForTimeout(300);
-  return { page, board: () => board, sent, post, close: () => context.close() };
+  const h: Host = { page, board: () => board, sent, post, close: () => context.close() };
+  if (o.until !== "shown") await idle(h); // the board's first requests to the host answered, its first render and the camera at rest
+  return h;
 }
 
 // ---------- Definition preview: lines taken per peekPlan, hover faked with docstrings (libraries use the fake data below) ----------
@@ -245,10 +249,10 @@ export function peekMock(seg: Segment, word: string): any {
   };
 }
 
-/** A screenshot into test-out/harness/. `settle`: "idle" waits for idle() (scenario files that moved off fixed sleeps); a number
- *  is the old fixed wait, the default until every scenario file is migrated (then idle() becomes the only way) */
-export async function shot(h: Host, name: string, settle: "idle" | number = 450) {
-  if (settle === "idle") await idle(h); else await h.page.waitForTimeout(settle);
+/** A screenshot into test-out/harness/, once the board is idle(). `at: "now"` takes it at once: a picture of something on its
+ *  way (mid-animation), the moment chosen by the caller */
+export async function shot(h: Host, name: string, at: "idle" | "now" = "idle") {
+  if (at === "idle") await idle(h);
   await h.page.screenshot({ path: path.join(OUT, `${name}.png`) });
 }
 

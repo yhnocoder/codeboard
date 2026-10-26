@@ -1,12 +1,12 @@
 // 调试用的常量：平时用默认值；VS Code 设置 codeboard.debug 打开后，设置页多一节 Debug 可以现调（存在 codeboard.debug.tune）
 import { state } from "./store";
-import { DBL_CLICK, PEEK_DELAY } from "./timing";
+import { DBL_CLICK, LINK_LEAVE, PEEK_DELAY } from "./timing";
 
 export const TUNE = {
   peekDelay: { def: PEEK_DELAY, label: "Peek: hover delay", unit: "ms", min: 100, max: 3000 },
   peekStill: { def: 4, label: "Peek: max mouse wobble while waiting", unit: "px", min: 0, max: 30 },
   peekHide: { def: 260, label: "Peek: hide after leaving", unit: "ms", min: 0, max: 2000 },
-  linkLeave: { def: 300, label: "Arrow hover: keep after leaving", unit: "ms", min: 0, max: 2000 },
+  linkLeave: { def: LINK_LEAVE, label: "Arrow hover: keep after leaving", unit: "ms", min: 0, max: 2000 },
   dblClick: { def: DBL_CLICK, label: "Double-click window", unit: "ms", min: 150, max: 800 },
   snap: { def: 6, label: "Snap distance", unit: "px", min: 0, max: 30 },
   snapSpeed: { def: 700, label: "No snapping while dragging faster than", unit: "px/s", min: 100, max: 5000 },

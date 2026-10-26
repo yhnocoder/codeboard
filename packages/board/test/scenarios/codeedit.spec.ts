@@ -46,7 +46,7 @@ const geo = (pg: Page, card: string, lineSel: string, noSel: string) => pg.evalu
 const SHOW = [".src .l", ".gutter .no"] as const, EDIT = [".cm-line", ".cm-lineNumbers .cm-gutterElement"] as const;
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const firstDiff = (a: any, b: any) => { for (const k of ["lines", "nos", "size"]) if (!same(a[k], b[k])) return { k, a: JSON.stringify(a[k]).slice(0, 600), b: JSON.stringify(b[k]).slice(0, 600) }; return null; };
-/** The board asked the host for signature help on a document like this (signature help re-asks 60 ms after a change while open) */
+/** The board asked the host for signature help on a document like this (signature help re-asks SIG_MS = 60 ms after a change while open, packages/markdown/src/cm/lsp.ts; only waited on as state here) */
 const askedSig = (h: Host, re: RegExp) => until(h, `signature help is asked for ${re}`, () => h.sent.some((m) => m.type === "lspSignature" && re.test((m as { text: string }).text)));
 const text = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].map((l) => l.textContent).join("\n"));
 

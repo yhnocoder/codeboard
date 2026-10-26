@@ -13,7 +13,7 @@ import type { Page } from "@playwright/test";
 
 const MEDIA = path.join(REPO, "extensions/vscode/media/board");
 async function shotPr(h: Host, name: string) {
-  await shot(h, name, "idle");
+  await shot(h, name);
   const d = process.env.SHOTS_DIR;
   if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
 }

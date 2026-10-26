@@ -52,6 +52,8 @@ npm run e2e                                               # 整套 e2e（E2E_PAR
 
 - 宿主（`packages/host`）的测试写成 `packages/host/test/<功能>.test.ts`（vitest，跑在 nano-vllm 的副本和测试自己建的小 git 仓库上），`npm test` 会跑。
 - 新场景是 `packages/board/test/scenarios/` 里某个 `*.spec.ts` 中的一个 `test("名字", …)`，从 `../fixtures` 引 `test`、`open`、`check`；新文件不用登记。场景名在所有文件里不能重名，也不带空格（`tiers.json`、覆盖率、`Tests:` 行都按名字对）。
+- 场景里不写固定的等待（`waitForTimeout`、`setTimeout` 凑的 sleep、自己的 `wait`）：等真实的状态，用 `until(h, 说明, 条件)`（宿主那份白板、`h.sent`、元素个数）、`idle(h)`（白板静下来了）或 Playwright 自己的等待（`waitFor`、`toHaveCount`）。`packages/board/test/unit/scenario-waits.test.ts` 按形状检查，`npm test` 会跑。
+- 真得等一段固定时间的（检查某个产品定时器到点前什么都不发生、悬停延迟、测量）用 `hold(h, 毫秒, 原因)`，毫秒取产品里有名字的常量（`packages/board/src/state/timing.ts`，Markdown 编辑器的在 `@yhnocoder/markdown/ui`），原因写清这段时间里不该发生什么。
 - 一个场景单独跑最好在 20 秒以内；更长的，考虑拆开。
 - 只记录、不判对错的场景放进 `tiers.json` 的 `manual`，默认不跑。
 - 改了很基础的东西（store、渲染）又想在本地多跑一些：`npm run check -- --all`。

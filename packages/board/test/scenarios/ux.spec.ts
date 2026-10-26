@@ -60,7 +60,7 @@ async function dockFits(res: Record<string, unknown>) {
       res.tree = await h.page.locator(".cpanel.ctree").count();
       if (res.folded !== 4 || res.tree !== 1) ok = false;
     }
-    await shot(h, `ux-dock-${w}`, "idle");
+    await shot(h, `ux-dock-${w}`);
     await h.page.context().close();
   }
   return ok;
@@ -99,7 +99,7 @@ async function expandFollow(res: Record<string, unknown>) {
   res.below = ids.slice(1).every((id) => P[id].x === P[step.id].x + 56 && P[id].y > P[step.id].y);
   await h.page.keyboard.press("Shift+Digit1"); await idle(h);
   res.fitZ = await zoomOf(h);
-  await shot(h, "ux-expand-follow", "idle");
+  await shot(h, "ux-expand-follow");
   await h.page.context().close();
   return ok && !!res.below && (res.fitZ as number) >= 0.6;
 }
@@ -126,7 +126,7 @@ async function expandColumns(res: Record<string, unknown>) {
   await h.page.keyboard.press("Shift+Digit1"); await idle(h);
   const z = await zoomOf(h);
   res.z = z;
-  await shot(h, "ux-expand-columns", "idle");
+  await shot(h, "ux-expand-columns");
   await h.page.context().close();
   if (!sched || !post || !alloc) return false;
   const right = (a: string, c: string) => r(c).x >= r(a).x + r(a).w;
@@ -188,7 +188,7 @@ async function dispatchByName(res: Record<string, unknown>) {
   const callLine = stepCard.segments[0].start + stepCard.segments[0].text.findIndex((t) => /model_runner\.call\(/.test(t));
   const link = run && h.board().links.find((l) => l.to.card === run.id);
   res.card = !!run; res.link = link ? { line: link.from.line, call: link.call?.name, via: link.call?.ev?.via } : null;
-  await shot(h, "ux-dispatch", "idle");
+  await shot(h, "ux-dispatch");
   await h.page.context().close();
   return /model_runner\.py/.test(String(res.first)) && /\brun\b/.test(String(res.first)) && !!run && link?.from.line === callLine && link?.call?.name === "call" && link?.call?.ev?.via === 'call("run")';
 }
@@ -227,7 +227,7 @@ async function lineMenu(res: Record<string, unknown>) {
   res.open = o?.line;
   await callEl(h, step.id, "schedule").click({ button: "right" }); await menuOpen();
   res.call = (await menuTexts(h)).some((t) => /^Expand/.test(t));
-  await shot(h, "ux-linemenu", "idle");
+  await shot(h, "ux-linemenu");
   await page.context().close();
   const c = res.code as { sel: string[]; hide: boolean; ask: boolean; card: boolean }, g = res.gutter as { sel: string[]; hide: boolean };
   return c.sel.join() === "51" && c.hide && c.ask && c.card && res.cardSub === true && g.sel.join() === "50" && g.hide
@@ -262,7 +262,7 @@ async function readableNote(res: Record<string, unknown>) {
   const editingT = await page.evaluate(() => !!document.activeElement?.closest('.card[data-id="t1"]'));
   const font2 = await px('.card[data-id="t1"] .tx');
   res.text = { z3, z4: await zoomOf(h), font: +font2.toFixed(1), editing: editingT };
-  await shot(h, "ux-readable", "idle");
+  await shot(h, "ux-readable");
   await page.context().close();
   return z1 > 0.48 && z1 <= 1 && font1 >= 10.9 && inView(box, 1200, 800) && z2 === z1 && z3 >= 0.6 && z3 < 0.8 && editingT && font2 >= 10.9;
 }

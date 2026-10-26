@@ -9,7 +9,7 @@ import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
 import { rooted, onBoardSwitch } from "./root";
 import { trimLru } from "./lru";
-import { LIVE_DELAY, RESEND_DELAY } from "./timing";
+import { LIVE_DELAY, RESEND_DELAY, SEL_REPORT } from "./timing";
 
 export const [state, setState] = createStore({
   loaded: false,
@@ -59,7 +59,7 @@ export function reportSelection() {
   selTimer = window.setTimeout(() => {
     const ls = lineSel();
     send({ type: "selection", cards: [...sel.cards], lines: ls ?? undefined });
-  }, 60);
+  }, SEL_REPORT);
 }
 
 // ---------- 派生 ----------

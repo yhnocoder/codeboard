@@ -13,3 +13,8 @@ export const RESEND_DELAY = 2000;
 export const DBL_CLICK = 420;
 /** Hovering a word in code this long shows its definition (TUNE.peekDelay's default) */
 export const PEEK_DELAY = 800;
+/** After the pointer leaves an arrow or a card, its hover (the + on the arrow, the arrow lifted above the cards) lasts this long
+ *  (hover.ts; TUNE.linkLeave's default) */
+export const LINK_LEAVE = 300;
+/** The selection (cards, code lines) is reported to the host this long after its last change (store.ts reportSelection) */
+export const SEL_REPORT = 60;

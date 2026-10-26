@@ -127,7 +127,7 @@ test("sharedcards", async () => {
   await cardEl(m, "Scheduler.schedule").locator(".chead .shb").click();
   await m.page.locator(".pop.k-boards .cand").first().waitFor(); await idle(m);
   res.list = await m.page.locator(".pop.k-boards .cand").allTextContents();
-  await shot(m, "shared-1-badge-boards", "idle");
+  await shot(m, "shared-1-badge-boards");
   await m.page.locator(".pop.k-boards .cand", { hasText: "Attention" }).click();
   await until(m, "the pick asks the host to open Attention", () => t.opened.length);
   await a.page.locator(".card.sel .ctitle").first().waitFor(); await both(a, m); // the host's reveal on Attention
@@ -157,7 +157,7 @@ test("sharedcards", async () => {
   await m.page.locator(".pop.k-notes .sn-item").first().click({ button: "right" });
   await m.page.locator(".ctx button").first().waitFor(); await idle(m);
   res.noteMenu = await m.page.locator(".ctx button").allTextContents();
-  await shot(m, "shared-2-sidenote-menu", "idle");
+  await shot(m, "shared-2-sidenote-menu");
   await m.page.locator(".ctx button", { hasText: "Board-only" }).click();
   await until(m, "the sidenote is made board-only on MoE", () => t.store.peek("bM")!.sidenotes.some((n) => n.kind === "text" && n.md === "Added on MoE." && n.boardOnly));
   await until(a, "Attention's saved board drops the board-only sidenote", async () => !(await t.store.load("bA"))!.sidenotes.some((n) => n.kind === "text" && n.md === "Added on MoE."));
@@ -171,7 +171,7 @@ test("sharedcards", async () => {
   await m.page.locator(".diffpop .db button.def").click(); // the diff comes with the host's reply
   await m.page.locator(".dialog").waitFor(); await idle(m);
   res.dialog = await m.page.locator(".dialog").textContent();
-  await shot(m, "shared-3-update-scope", "idle");
+  await shot(m, "shared-3-update-scope");
   await m.page.locator(".dialog button", { hasText: "Update on All Boards" }).click();
   await until(m, "Update on All Boards updates the card on Attention", () => (t.store.peek("bA")!.cards.find((c) => c.id === sch.id) as any)?.segments[0].version.commit === "f64d8210");
   await until(a, "Attention shows the review marker", () => cardEl(a, "Scheduler.schedule").locator(".mk.rv, .chead .rvdot").count()); await both(a, m);
@@ -179,13 +179,13 @@ test("sharedcards", async () => {
   res.updatedA = sa.version.commit === "f64d8210";
   res.reviewA = (await t.store.load("bA"))!.sidenotes.find((n) => n.id === "sn1")?.review;
   res.amberA = await cardEl(a, "Scheduler.schedule").locator(".mk.rv, .chead .rvdot").count();
-  await shot(a, "shared-4-review-marker", "idle");
+  await shot(a, "shared-4-review-marker");
 
   // 7. Card menu on a shared card: Remove from This Board / Delete Everywhere… / Unlink
   await cardEl(m, "Scheduler.schedule").locator(".chead").click({ button: "right", position: { x: 80, y: 10 } });
   await m.page.locator(".ctx button").first().waitFor(); await idle(m);
   res.menu = await m.page.locator(".ctx .mh, .ctx button").allTextContents();
-  await shot(m, "shared-5-delete-menu", "idle");
+  await shot(m, "shared-5-delete-menu");
   await m.page.keyboard.press("Escape");
 
   // 8. ⌫ removes from MoE only (Attention keeps it, badge goes away); ⌘Z brings it back linked

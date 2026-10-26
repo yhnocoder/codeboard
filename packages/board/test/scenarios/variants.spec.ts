@@ -10,7 +10,7 @@ import { test, open, light, verdict, until, idle } from "../fixtures";
 
 async function shotPr(h: Host, name: string, away = true) {
   if (away) await h.page.mouse.move(1490, 700);
-  await shot(h, name, "idle");
+  await shot(h, name);
   const d = process.env.SHOTS_DIR;
   if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
 }

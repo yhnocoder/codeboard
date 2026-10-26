@@ -89,8 +89,7 @@ test("headnarrow", async () => {
     await h.page.screenshot({ path: path.join(OUT, `${name}.png`), clip: { x: 30, y: 20, width: 660, height: WIDTHS.length * 128 } });
     if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
   }
-  await shot(h, "head-last", "idle");
+  await shot(h, "head-last");
   check("headnarrow", ok);
-  if (!ok) process.exitCode = 1;
   await h.page.context().close();
 });

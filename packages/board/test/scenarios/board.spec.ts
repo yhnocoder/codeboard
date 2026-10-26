@@ -2,10 +2,7 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard } from "@codeboard/core";
 import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
-import { DBL_CLICK, LIVE_DELAY } from "../../src/state/timing";
-
-/** TUNE.linkLeave's default (tune.ts): an arrow's hover (and its "+") is kept this long after the pointer left */
-const LINK_LEAVE = 300;
+import { DBL_CLICK, LINK_LEAVE, LIVE_DELAY } from "../../src/state/timing";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
@@ -37,7 +34,7 @@ test("zoomLevels", async () => {
   for (const [z, n] of [[0.45, "board-12-overview"], [0.18, "board-13-map"]] as const) {
     b.cam = { x: 60, y: 60, z };
     const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
-    await shot(h, n, "idle");
+    await shot(h, n);
     if (n === "board-12-overview") {
       // Overview hides code with opacity, so the hidden code must not take the pointer: a press on a call lands on the cover and goes to the card
       const hit = await h.page.evaluate(() => {
@@ -55,11 +52,11 @@ test("zoomLevels", async () => {
       for (let i = 0; i < 4; i++) { await h.page.mouse.wheel(0, 20); await hold(h, 40, "pinch rhythm: the camera keeps moving between the wheel steps"); }
       await h.page.keyboard.up("Control");
       // pictures of the labels during and right after the pinch: taken at these times on purpose
-      await shot(h, "board-13b-map-pinch-mid", 0);
+      await shot(h, "board-13b-map-pinch-mid", "now");
       const fs = () => h.page.evaluate(() => { const e = document.querySelector(".maplabel"); return e ? getComputedStyle(e).fontSize : "none"; });
       const mid = await fs();
-      await hold(h, 200, "a picture 200 ms after the pinch"); await shot(h, "board-13c-map-pinch-200ms", 0);
-      await shot(h, "board-13d-map-pinch-settled", "idle");
+      await hold(h, 200, "a picture 200 ms after the pinch"); await shot(h, "board-13c-map-pinch-200ms", "now");
+      await shot(h, "board-13d-map-pinch-settled");
       const z = await h.page.evaluate(() => +((document.querySelector(".world") as HTMLElement).style.transform.match(/scale\(([\d.]+)\)/)?.[1] ?? 1));
       const end = await fs(), iz = await h.page.evaluate(() => +getComputedStyle(document.querySelector(".world > .card")!).getPropertyValue("--iz"));
       check("map-labels-settle-after-pinch", Math.abs(iz * z - 1) < 0.01, JSON.stringify({ mid, end, z, iz }));
@@ -68,14 +65,14 @@ test("zoomLevels", async () => {
   }
   const h = await open({ board: structuredClone({ ...b, cam: { x: 0, y: 0, z: 0.8 } }), light, w: 1400, h: 900 });
   await h.page.locator('.slabel[data-sect="g1"] button[aria-label="Collapse Section"]').click();
-  await hold(h, 120, "a picture mid-fold"); await shot(h, "board-14-folding", 0);
-  await shot(h, "board-15-folded", "idle");
+  await hold(h, 120, "a picture mid-fold"); await shot(h, "board-14-folding", "now");
+  await shot(h, "board-15-folded");
   await close(h);
 });
 
 test("linkPlusDelay", async () => {
   const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
-  await shot(h, "board-01-board", "idle");
+  await shot(h, "board-01-board");
   await h.page.locator('path.lhit[data-link="L2"]').hover({ force: true }); await h.page.locator(".vplus").first().waitFor();
   // the timing is what this checks: the "+" stays for linkLeave after the pointer left, then goes
   await h.page.mouse.move(10, 10); await hold(h, LINK_LEAVE - 180, "still inside linkLeave after leaving the arrow");
@@ -84,22 +81,22 @@ test("linkPlusDelay", async () => {
   const plusLater = await h.page.locator(".vplus").count();
   check("vplus-delay", plusSoon >= 1 && plusLater === 0, JSON.stringify({ plusSoon, plusLater }));
   await h.page.locator(".card .src .l").nth(3).hover();
-  await shot(h, "board-02-ports", "idle");
+  await shot(h, "board-02-ports");
   await close(h);
 });
 
 test("menusFitWindow", async () => {
   const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
   await h.page.locator(".card.ccard .chead").first().click({ button: "right", position: { x: 300, y: 12 } }); await h.page.locator(".ctx button").first().waitFor();
-  await shot(h, "board-03-cardmenu", "idle");
+  await shot(h, "board-03-cardmenu");
   await h.page.locator(".ctx button", { hasText: /^View$/ }).hover();
-  await shot(h, "board-04-view", "idle");
+  await shot(h, "board-04-view");
   await h.page.keyboard.press("Escape");
   await h.page.locator('.bbar button[aria-label="Code"]').click(); await h.page.locator(".ctx button").first().waitFor();
-  await shot(h, "board-05-codemenu", "idle");
+  await shot(h, "board-05-codemenu");
   await h.page.keyboard.press("Escape");
   await h.page.locator('.bbar button[aria-label="More"]').click(); await h.page.locator(".ctx button").first().waitFor();
-  await shot(h, "board-06-more", "idle");
+  await shot(h, "board-06-more");
   await h.page.keyboard.press("Escape");
   // Menu hits the bottom edge: flips upward, last item visible
   await h.page.locator(".card.ccard").nth(2).locator(".chead").click({ button: "right", position: { x: 200, y: 12 } });
@@ -112,7 +109,7 @@ test("menusFitWindow", async () => {
 test("stickerPlace", async () => {
   const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
   await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.locator(".stkpick .scell").first().waitFor();
-  await shot(h, "board-07-picker", "idle");
+  await shot(h, "board-07-picker");
   await h.page.locator(".stkpick .scell").nth(3).click();
   // Click the gutter → stick to that line (click code body → bind to the card, tested by stickerBinding)
   await h.page.locator(".card").first().locator(".gutter .no").nth(5).click();
@@ -125,7 +122,7 @@ test("stickerPlace", async () => {
   const st = h.board().stickers;
   const ok = st.length === 7 && st[5].at.kind === "line" && st[6].at.kind === "canvas";
   check("sticker-place", ok, JSON.stringify(st.slice(5).map((s) => s.at)));
-  await shot(h, "board-08-placed", "idle");
+  await shot(h, "board-08-placed");
   await h.page.keyboard.press("Delete"); await idle(h);
   check("sticker-delete", h.board().stickers.length === 6);
   // 选好贴纸（放置模式）后换了白板：模式不能带到新白板上，点画布不放贴纸
@@ -176,7 +173,7 @@ test("emptyCardDiscard", async () => {
   await h.page.mouse.click(1000, 700); await idle(h); // leaving the empty note discards it
   await h.page.locator('.bbar button[aria-label="Code"]').click();
   await h.page.locator(".ctx button", { hasText: /^New Code$/ }).click(); await h.page.locator(".card .cm-content:focus").waitFor();
-  await shot(h, "board-09-newcode", "idle");
+  await shot(h, "board-09-newcode");
   await hold(h, DBL_CLICK, "two single clicks on the same spot, not a double-click (which would make a Text)");
   await h.page.mouse.click(1000, 700);
   // dropping an untouched new card is a live change: the board sends it LIVE_DELAY later (a timer idle() can't see)
@@ -203,11 +200,11 @@ test("cardResizeFit", async () => {
   const g2 = (await grip.boundingBox())!;
   await h.page.mouse.move(g2.x + 7, g2.y + 7); await h.page.mouse.down(); await h.page.mouse.move(g2.x + 7, g2.y - 400, { steps: 8 }); await h.page.mouse.up();
   const short = (await h.page.locator(".card").first().boundingBox())!.height;
-  await shot(h, "board-10-short", "idle");
+  await shot(h, "board-10-short");
   await grip.dblclick(); await idle(h);
   const p = h.board().place[one.id];
   check("resize-fit", tall && short < 100 && p.w < 700, JSON.stringify({ tall, short, fit: p }));
-  await shot(h, "board-11-fit", "idle");
+  await shot(h, "board-11-fit");
   await close(h);
 });
 
@@ -223,7 +220,7 @@ test("contextMenuCorners", async () => {
     await h.page.locator(".ctx button").first().waitFor(); await idle(h);
     const r = await h.page.locator(".ctx").first().evaluate((e) => { const r = e.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, sh: e.scrollHeight, ch: e.clientHeight }; });
     out.push(r && { at: [x, y], ...r, ok: r.l >= 0 && r.t >= 0 && r.r <= vw.width && r.b <= vw.height });
-    await shot(h, `board-ctx-${out.length}`, "idle");
+    await shot(h, `board-ctx-${out.length}`);
     await h.page.keyboard.press("Escape"); await idle(h);
   }
   check("ctx-in-viewport", out.every((o) => o?.ok), JSON.stringify(out));
@@ -243,7 +240,7 @@ test("stickerBinding", async () => {
   const p0 = await pos();
   // Covered: card nb is above post, k6 is below nb
   const covered = await h.page.evaluate(() => { const e = document.querySelector<HTMLElement>('[data-sticker="k6"]')!; const r = e.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) as HTMLElement; return !!top.closest('.card[data-id="nb"]'); });
-  await shot(h, "board-bind-1", "idle");
+  await shot(h, "board-bind-1");
   // Drag post's title bar down 60
   const hd = h.page.locator(`.card[data-id="${post}"] .chead`).first();
   const r = (await hd.boundingBox())!;
@@ -256,7 +253,7 @@ test("stickerBinding", async () => {
   // the pointer has left the dragged card: its hover ends only after linkLeave (a timer idle() can't see), then its arrows fade back down
   await hold(h, LINK_LEAVE, "the hover on the dragged card ends after linkLeave");
   await idle(h);
-  await shot(h, "board-bind-2", "idle");
+  await shot(h, "board-bind-2");
   const tether = await h.page.locator(".tether line").count();
   // Drag k5 (on the canvas) onto the schedule card → binds to it
   const k5 = (await h.page.locator('[data-sticker="k5"]').boundingBox())!;
@@ -265,7 +262,7 @@ test("stickerBinding", async () => {
   const hot = await h.page.locator(".card.bind-hot").count();
   await h.page.mouse.up(); await idle(h);
   const bound = await h.page.evaluate(() => !!document.querySelector('.card [data-sticker="k5"]'));
-  await shot(h, "board-bind-3", "idle");
+  await shot(h, "board-bind-3");
   check("sticker-bind", covered && follows && linkMoved && tether === 1 && hot === 1 && bound, JSON.stringify({ covered, follows, linkMoved, tether, hot, bound, p0: p0.k6, p1: p1.k6 }));
   await close(h);
 });
@@ -281,12 +278,12 @@ test("childArrowAnchor", async () => {
   const h = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
   const port = (hh: Host) => hh.page.locator("path.port").first().evaluate((e) => +e.getAttribute("data-x")!);
   const auto = await port(h);
-  await shot(h, "board-side-1", "idle");
+  await shot(h, "board-side-1");
   await close(h);
   b.links[0].sides = { from: "left" };
   const h2 = await open({ board: structuredClone(b), light, w: 1400, h: 900 });
   const user = await port(h2);
-  await shot(h2, "board-side-2", "idle");
+  await shot(h2, "board-side-2");
   await close(h2);
   check("call-side", auto > 1000 && user < 100, JSON.stringify({ auto, user }));
 });
@@ -299,13 +296,13 @@ test("noteBackgroundToggle", async () => {
   const h = await open({ board: b, light, w: 900, h: 600 });
   const first = () => h.page.evaluate(() => { const c = document.querySelector('.card[data-id="n1"]')!; const t = c.querySelector(".nbody, .tx")!; const r = document.createRange(); r.selectNodeContents(t); const q = r.getClientRects()[0]; const f = getComputedStyle(t).fontSize; const cs = getComputedStyle(t); return { x: Math.round(q.left), y: Math.round(q.top), f, w: Math.round(t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) }; });
   const a = await first();
-  await shot(h, "board-notebg-1", "idle");
+  await shot(h, "board-notebg-1");
   const box = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
   await h.page.mouse.click(box.x + 100, box.y + 60, { button: "right" });
   await h.page.locator(".ctx button", { hasText: "Hide Background" }).click(); await idle(h);
   await h.page.mouse.click(10, 500); await idle(h);
   const c = await first();
-  await shot(h, "board-notebg-2", "idle");
+  await shot(h, "board-notebg-2");
   const ok = Math.abs(a.x - c.x) <= 1 && Math.abs(a.y - c.y) <= 1 && a.f === c.f && Math.abs(a.w - c.w) <= 1;
   check("note-bg-same-layout", ok, JSON.stringify({ a, c }));
   await close(h);
@@ -320,7 +317,7 @@ test("submenuFlip", async () => {
   await h.page.mouse.click(vw.width - 30, 200, { button: "right" });
   await h.page.locator(".ctx button", { hasText: "View" }).hover(); await idle(h); // the submenu opens on pointerenter
   const rs = await h.page.locator(".ctx").evaluateAll((es) => es.map((e) => { const r = e.getBoundingClientRect(); return { l: r.left, r: r.right, t: r.top, b: r.bottom }; }));
-  await shot(h, "board-submenu", "idle");
+  await shot(h, "board-submenu");
   const [m, s] = rs;
   const ok = rs.length === 2 && (s.l >= m.r - 6 || s.r <= m.l + 6) && s.r <= vw.width && s.l >= 0;
   check("submenu-no-cover", ok, JSON.stringify(rs));
@@ -334,9 +331,9 @@ test("codeDescription", async () => {
   const h = await open({ board: b, light, w: 1200, h: 800 });
   const hd = h.page.locator(".card .chead").first();
   await hd.click({ button: "right", position: { x: 200, y: 12 } }); await h.page.locator(".ctx button").first().waitFor();
-  await shot(h, "board-cardmenu", "idle");
+  await shot(h, "board-cardmenu");
   await h.page.locator('.ctx button:has(.lb:text-is("Edit"))').hover();
-  await shot(h, "board-cardmenu-edit", "idle");
+  await shot(h, "board-cardmenu-edit");
   await h.page.locator(".ctx button", { hasText: "Add Description" }).click(); await idle(h);
   const editing = await h.page.locator(".cdesc.editing").count();
   const focused = await h.page.evaluate(() => !!document.activeElement?.closest(".cdesc"));
@@ -344,7 +341,7 @@ test("codeDescription", async () => {
   const desc = (h.board().cards[0] as any).desc;
   await hd.hover(); await idle(h);
   const cpy = await h.page.locator(".chead .ib.cpy").first().evaluate((e) => getComputedStyle(e).opacity);
-  await shot(h, "board-desc", "idle");
+  await shot(h, "board-desc");
   check("add-description", editing === 1 && focused && desc === "Picks prefill first." && cpy === "1", JSON.stringify({ editing, focused, desc, cpy }));
   await close(h);
 });
@@ -359,7 +356,7 @@ test("linkLabelBoxes", async () => {
   b.links.push({ id: "L3", from: { card: b.cards[2].id }, to: { card: tail.id }, label: "only a label" });
   void step;
   const h = await open({ board: b, light, w: 1400, h: 950 });
-  await shot(h, "board-vlabel", "idle");
+  await shot(h, "board-vlabel");
   const n = await h.page.locator(".vcard").count();
   check("vlabel-boxes", n === 3, n);
   await close(h);
@@ -369,9 +366,9 @@ test("linkLabelBoxes", async () => {
 test("dblclickText", async () => {
   const h = await open({ board: emptyBoard("b1", "dbl"), light, w: 900, h: 600 });
   await h.page.mouse.dblclick(300, 200); await h.page.locator(".tx.editing").waitFor();
-  await shot(h, "board-dbl-1", "idle");
+  await shot(h, "board-dbl-1");
   await h.page.keyboard.type("Hello board");
-  await shot(h, "board-dbl-2", "idle");
+  await shot(h, "board-dbl-2");
   const r = await h.page.evaluate(() => { const t = document.querySelector<HTMLElement>(".tx.editing")!; const cs = getComputedStyle(t); const c = t.closest(".card")!.getBoundingClientRect(), tr = t.getBoundingClientRect(); return { font: cs.fontFamily.slice(0, 20), bg: cs.backgroundColor, sh: cs.boxShadow, inset: Math.round(tr.left - c.left), w: Math.round(c.width - tr.width) }; });
   check("dblclick-text", r.sh === "none" && r.inset < 10 && r.w < 20, JSON.stringify(r));
   await close(h);
@@ -409,7 +406,7 @@ test("cardFromLines", async () => {
   await until(h, "the new card is saved", () => h.board().cards.length === 2); await idle(h);
   const cs = h.board().cards as any[];
   const nc = cs[1]?.segments?.[0];
-  await shot(h, "board-fromlines", "idle");
+  await shot(h, "board-fromlines");
   check("card-from-lines", cs.length === 2 && nc?.text.length === 4 && plus === 0, JSON.stringify({ n: cs.length, lines: nc?.text.length, start: nc?.start, plus }));
   await close(h);
 });
@@ -419,7 +416,7 @@ test("debugSettings", async () => {
   const h = await open({ board: emptyBoard("b1", "dbg"), light, w: 1200, h: 900, settings: { debug: true } });
   await h.page.keyboard.press("Meta+,");
   await h.page.locator('[data-sec="debug"]').scrollIntoViewIfNeeded();
-  await shot(h, "board-debug", "idle");
+  await shot(h, "board-debug");
   const n = await h.page.locator('[data-sec="debug"] .st-tr').count();
   check("debug-tune", n >= 6, n);
   await close(h);
@@ -462,7 +459,7 @@ test("imageCardDrag", async () => {
   const r = (await h.page.locator('.card[data-id="i1"]').boundingBox())!;
   await h.page.mouse.move(r.x + 200, r.y + 120); await h.page.mouse.down(); await h.page.mouse.move(r.x + 260, r.y + 170, { steps: 8 }); await idle(h); await h.page.mouse.up(); await idle(h);
   const p = h.board().place.i1;
-  await shot(h, "board-img", "idle");
+  await shot(h, "board-img");
   check("image-drag-body", heads === 0 && p.x === 180 && p.y === 170, JSON.stringify({ heads, x: p.x, y: p.y }));
   await close(h);
 });
@@ -476,7 +473,7 @@ test("stickerMagnet", async () => {
   await h.page.mouse.move(k5.x + 20, k5.y + 20); await h.page.mouse.down();
   await h.page.mouse.move(sch.x + 30, sch.y - 22, { steps: 10 });
   const hot = await h.page.locator(".card.bind-hot").count();
-  await shot(h, "board-magnet", "idle");
+  await shot(h, "board-magnet");
   await h.page.mouse.up(); await idle(h);
   const at = h.board().stickers.find((k) => k.id === "k5")!.at as any;
   check("sticker-magnet", hot === 1 && at.on?.card === b.cards[1].id, JSON.stringify({ hot, at }));
@@ -496,7 +493,7 @@ test("expandStaysInView", async () => {
   const nb = h.board();
   const nid = nb.cards.find((c) => c.id !== step.id && !c.id.startsWith("wall"))?.id;
   const r = nid && (await h.page.locator(`.card[data-id="${nid}"]`).boundingBox());
-  await shot(h, "board-placeview", "idle");
+  await shot(h, "board-placeview");
   const ok = !!r && !!nid && nb.place[nid].y < 900 && r.y >= 0 && r.y < 950 - 100 && r.x >= 0 && r.x < 1500 - 100;
   check("place-in-view", ok, JSON.stringify({ p: nid && nb.place[nid], r }));
   await close(h);
@@ -513,7 +510,7 @@ test("sidenoteDelete", async () => {
   await h.page.locator('.pop.k-notes [aria-label="Delete Sidenote"]').click();
   await until(h, "the sidenote is deleted", () => h.board().sidenotes.length === 1); await idle(h);
   const p1 = (await h.page.locator(".pop.k-notes").boundingBox())!;
-  await shot(h, "board-notedel", "idle");
+  await shot(h, "board-notedel");
   const ok = Math.abs(p1.x - p0.x) < 30 && Math.abs(p1.y - p0.y) < 30 && h.board().sidenotes.length === 1;
   check("note-delete-stays", ok, JSON.stringify({ p0, p1 }));
   await close(h);
@@ -527,7 +524,7 @@ test("noteHeadings", async () => {
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 900, h: 500 });
   const fs = await h.page.evaluate(() => [...document.querySelectorAll(".card h1, .card h2, .card p")].map((e) => [e.tagName, parseFloat(getComputedStyle(e).fontSize)]));
-  await shot(h, "board-notehead", "idle");
+  await shot(h, "board-notehead");
   await h.page.locator('.card[data-id="t2"] .nbody').dblclick(); await h.page.locator(".md-pm:focus").waitFor();
   await h.page.keyboard.press("Control+a");
   await until(h, "⌘A selects text", () => h.page.evaluate(() => String(window.getSelection()).length > 0));
@@ -547,7 +544,7 @@ test("stickerThemes", async () => {
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light, w: 760, h: 140, settings: { theme } as any });
     const bg = await h.page.locator('[data-sticker="k0"] circle.bg').evaluate((e) => getComputedStyle(e).fill);
-    await shot(h, `board-stk-${theme}`, "idle");
+    await shot(h, `board-stk-${theme}`);
     console.log("stk", theme, bg);
     await close(h);
   }
@@ -600,7 +597,7 @@ test("peekClosesOnLeave", async () => {
   await h.page.mouse.move(5, 500);
   await expect(h.page.locator(".pop.k-peek")).toHaveCount(0); await idle(h);
   const after = await h.page.locator(".pop.k-peek").count();
-  await shot(h, "board-peekleave", "idle");
+  await shot(h, "board-peekleave");
   check("peek-leave", shown === 1 && after === 0, JSON.stringify({ shown, after }));
   await close(h);
 });
@@ -612,7 +609,7 @@ test("arrowShapeUpRight", async () => {
   b.place[b.cards[1].id] = { ...b.place[b.cards[1].id], x: 760, y: 40 };
   b.place[b.cards[2].id] = { ...b.place[b.cards[2].id], x: 760, y: 900 };
   const h = await open({ board: b, light: true, w: 1500, h: 950 });
-  await shot(h, "board-arrowup", "idle");
+  await shot(h, "board-arrowup");
   await close(h);
 });
 
@@ -635,7 +632,7 @@ test("themeReflow", async () => {
     const y1 = h.board().place[post].y;
     const a = (await h.page.locator(`.card[data-id="${st}"]`).boundingBox())!, p = (await h.page.locator(`.card[data-id="${post}"]`).boundingBox())!;
     res[mode] = { y1, overlap: a.y + a.height > p.y };
-    if (mode === "push") await shot(h, "board-reflow", "idle");
+    if (mode === "push") await shot(h, "board-reflow");
     await close(h);
   }
   const ok = res.push.y1 > y0 && !res.push.overlap && res.overlap.y1 === y0;
@@ -683,7 +680,7 @@ test("pasteNearOriginal", async () => {
   const nb = h.board(), p0 = nb.place[st.id];
   const nid = nb.cards.find((c) => !b.cards.some((o) => o.id === c.id))?.id;
   const p1 = nid ? nb.place[nid] : undefined;
-  await shot(h, "board-pastenear", "idle");
+  await shot(h, "board-pastenear");
   const ok = !!p1 && p1.x === p0.x + 36 && p1.y === p0.y + 36;
   check("paste-near", ok, JSON.stringify({ p0, p1 }));
   await close(h);
@@ -703,11 +700,11 @@ test("lineToLineLink", async () => {
   await h.page.mouse.move(p.x + 4, p.y + 4); await h.page.mouse.down();
   await h.page.mouse.move(no.x + no.width / 2, no.y + no.height / 2, { steps: 10 });
   const lit = await h.page.locator(`.card[data-id="${sch}"] .no.drop`).count();
-  await shot(h, "board-line2line-1", "idle");
+  await shot(h, "board-line2line-1");
   await h.page.mouse.up();
   await until(h, "the new arrow is saved", () => h.board().links.length); await idle(h);
   const l = h.board().links[0] as any;
-  await shot(h, "board-line2line-2", "idle");
+  await shot(h, "board-line2line-2");
   check("line-to-line", l?.from.line && l?.to.line && lit === 1, JSON.stringify({ from: l?.from, to: l?.to, lit }));
   await close(h);
 });
@@ -738,7 +735,7 @@ test("labelDragAlongArrow", async () => {
   await h.page.mouse.move(r0.x + 10, r0.y + 8); await h.page.mouse.down(); await h.page.mouse.move(r0.x + 10, r0.y + 120, { steps: 8 }); await h.page.mouse.up(); await idle(h); // the drop is sent at once
   const r1 = (await box.boundingBox())!;
   const at = (h.board().links.find((l) => l.id === "L2") as any).at;
-  await shot(h, "board-labeldrag", "idle");
+  await shot(h, "board-labeldrag");
   check("label-drag", at !== undefined && Math.abs(r1.y - r0.y) > 40, JSON.stringify({ at, dy: r1.y - r0.y }));
   await close(h);
 });

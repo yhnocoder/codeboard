@@ -15,7 +15,7 @@ import { uid, type Segment } from "@codeboard/core";
 import { test, open, light, verdict, expect, until, idle } from "../fixtures";
 
 async function shotTo(h: Host, name: string) {
-  await shot(h, name, "idle");
+  await shot(h, name);
   const d = process.env.SHOTS_DIR;
   if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
 }

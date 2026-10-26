@@ -13,6 +13,7 @@
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { put, symCard, findSym, viewOf, type Host } from "../harness";
 import { test, open, verdict, until, idle, hold } from "../fixtures";
+import { SEL_REPORT } from "../../src/state/timing";
 
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
@@ -20,8 +21,6 @@ const close = (h: Host) => h.page.context().close();
 /** The last selection the board reported to the host (hidden cards are not in the DOM, so read it from there) */
 const lastSel = (h: Host) => [...h.sent].reverse().find((m) => m.type === "selection") as { cards: string[] } | undefined;
 const sels = (h: Host) => h.sent.filter((m) => m.type === "selection").length;
-/** The board reports the selection SEL_REPORT ms after its last change (store.ts reportSelection) */
-const SEL_REPORT = 60;
 /** After a pointer gesture that selects: a new selection report came, and no later one is still pending */
 async function reported(h: Host, n: number, what: string) {
   await until(h, what, () => sels(h) > n);

@@ -57,13 +57,13 @@ test("cityTheme", async () => {
       };
     });
     const off = await probe();
-    await shot(h, `city-${light ? "light" : "dark"}-off`, "idle");
+    await shot(h, `city-${light ? "light" : "dark"}-off`);
     try { await h.page.screenshot({ path: `${SHOTS}/city-${light ? "light" : "dark"}-off.png` }); } catch { /* ignore */ }
     await h.page.locator(".dock .traffic").click(); await h.page.mouse.move(5, 500);
     // the cars come with the green light, on the roads picked once the camera is still
     await h.page.locator('.dock .traffic[aria-pressed="true"]').waitFor(); await idle(h);
     const on = await probe();
-    await shot(h, `city-${light ? "light" : "dark"}-on`, "idle");
+    await shot(h, `city-${light ? "light" : "dark"}-on`);
     try { await h.page.screenshot({ path: `${SHOTS}/city-${light ? "light" : "dark"}-on.png` }); } catch { /* ignore */ }
     await h.page.locator(".dock .traffic").click();
     await h.page.locator('.dock .traffic[aria-pressed="false"]').waitFor(); await idle(h);
@@ -83,7 +83,7 @@ test("cityTheme", async () => {
     // Close-up of the junction and the parked cars (road markings, zebra crossings): screenshot only
     b.cam = { x: -1050, y: -1200, z: 2.5 };
     const z = await open({ board: b, light, w: 1300, h: 900, settings: { theme: "city" } as any });
-    await shot(z, `city-${light ? "light" : "dark"}-zoom`, "idle");
+    await shot(z, `city-${light ? "light" : "dark"}-zoom`);
     try { await z.page.screenshot({ path: `${SHOTS}/city-${light ? "light" : "dark"}-zoom.png` }); } catch { /* ignore */ }
     await z.page.context().close();
   }
@@ -116,7 +116,7 @@ test("themeLooks", async () => {
       endlessOn = await h.page.evaluate(() => document.getAnimations().filter((a) => a.playState === "running" && a.effect?.getComputedTiming().iterations === Infinity).length);
       await h.page.locator(".dock .traffic").click(); await h.page.mouse.move(5, 500);
     }
-    await shot(h, `look-${theme}-${light ? "light" : "dark"}`, "idle");
+    await shot(h, `look-${theme}-${light ? "light" : "dark"}`);
     const ok = r.look === theme
       && r.stroke === STROKE[theme] && r.endless === 0 && (theme === "city" ? endlessOn > 0 : endlessOn === 0)
       && (theme === "ink-wash" || theme === "city" ? r.scene : true)
@@ -142,7 +142,7 @@ test("squircleCorners", async () => {
   });
   await h.page.locator('.card[data-id="n1"] .chead').click({ button: "right" }); await h.page.locator(".ctx").waitFor();
   const menu = await h.page.evaluate(() => getComputedStyle(document.querySelector(".ctx")!).getPropertyValue("corner-top-left-shape"));
-  await shot(h, "squircle-01-board", "idle");
+  await shot(h, "squircle-01-board");
   await h.page.keyboard.press("Escape"); await h.page.mouse.click(1200, 820); await h.page.mouse.move(1300, 850); await idle(h);
   const r = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
   await h.page.screenshot({ path: path.join(OUT, "squircle-02-note-corner.png"), clip: { x: r.x - 8, y: r.y + r.height - 40, width: 48, height: 48 } });

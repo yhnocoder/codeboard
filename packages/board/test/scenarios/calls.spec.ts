@@ -19,7 +19,7 @@ import { nodeWorkspace } from "@codeboard/host/test/node-workspace";
 import { test, open, check, light, verdict, expect, until, idle } from "../fixtures";
 
 async function shotPr(h: Host, name: string) {
-  await shot(h, name, "idle");
+  await shot(h, name);
   const d = process.env.SHOTS_DIR;
   if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
 }

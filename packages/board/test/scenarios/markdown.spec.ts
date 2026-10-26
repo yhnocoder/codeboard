@@ -4,8 +4,8 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
-import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
-import type { Page } from "playwright-core";
+import { TOOLBAR_SETTLE } from "@yhnocoder/markdown/ui";
+import { test, open, check, light, expect, until, idle, hold, pmHasSelection, focusSettled } from "../fixtures";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const close = (h: Host) => h.page.context().close();
@@ -62,19 +62,8 @@ export function mdBoard(): { b: Board; note: NoteCard; text: NoteCard } {
   return { b, note, text };
 }
 
-/** The selection toolbar shows once the selection has held still this long (packages/markdown/src/editor/index.tsx SETTLE_MS) */
-const BUBBLE_SETTLE = 400;
-/** ProseMirror has read the DOM selection (it does in the async selectionchange; its DOM observer's currentSelection is the DOM
- *  selection it last read) */
-const pmHasSelection = (pg: Page) => pg.waitForFunction(() => {
-  const root = document.querySelector(".md-pm") as any;
-  if (!root?.editor) return true;
-  const v = root.editor.view;
-  return v.domObserver.currentSelection.eq(v.domSelectionRange());
-}, null, { timeout: 5000 });
-
 async function saveShot(h: Host, name: string) {
-  await shot(h, name, "idle");
+  await shot(h, name);
   try { fs.mkdirSync(SHOTS, { recursive: true }); await h.page.screenshot({ path: `${SHOTS}/${name}.png` }); } catch { /* no project files here */ }
 }
 
@@ -339,13 +328,13 @@ test("markdownToolbarWaitsForStillSelection", async () => {
   await pg.mouse.move(a.x, a.y);
   await pg.mouse.down();
   const during: boolean[] = [];
-  for (let k = 1; k <= 8; k++) { await pg.mouse.move(a.x + ((z.x - a.x) * k) / 8, a.y, { steps: 2 }); await hold(h, 90, "a slow drag: over all eight steps more than BUBBLE_SETTLE passes, still no toolbar"); during.push(await has()); }
-  await hold(h, BUBBLE_SETTLE + 200, "the mouse held down and still for longer than BUBBLE_SETTLE: still selecting, no toolbar"); // 按着鼠标停住：还是在选，不出
+  for (let k = 1; k <= 8; k++) { await pg.mouse.move(a.x + ((z.x - a.x) * k) / 8, a.y, { steps: 2 }); await hold(h, 90, "a slow drag: over all eight steps more than TOOLBAR_SETTLE passes, still no toolbar"); during.push(await has()); }
+  await hold(h, TOOLBAR_SETTLE + 200, "the mouse held down and still for longer than TOOLBAR_SETTLE: still selecting, no toolbar"); // 按着鼠标停住：还是在选，不出
   const heldStill = await has();
   const dragged = await pg.evaluate(() => getSelection()!.toString());
   await pg.mouse.up();
   const rightAfterUp = await has(); // the toolbar's timer starts at the release: not shown yet
-  await pg.locator(".md-bubble").waitFor(); // and BUBBLE_SETTLE after it, it shows
+  await pg.locator(".md-bubble").waitFor(); // and TOOLBAR_SETTLE after it, it shows
   const afterPause = await has();
   await idle(h); // its fade-in
   const opacity = await pg.evaluate(() => getComputedStyle(document.querySelector(".md-bubble")!).opacity);
@@ -355,8 +344,8 @@ test("markdownToolbarWaitsForStillSelection", async () => {
   const afterCollapse = await has();
   // 键盘扩选：⇧← 按着走的途中不出，停下 400ms 后出
   const keys: boolean[] = [];
-  for (let k = 0; k < 6; k++) { await pg.keyboard.press("Shift+ArrowLeft"); await pmHasSelection(pg); await hold(h, 120, "a key every 120 ms, under BUBBLE_SETTLE: no toolbar on the way"); keys.push(await has()); }
-  await pg.locator(".md-bubble").waitFor(); // 停下 BUBBLE_SETTLE 后出
+  for (let k = 0; k < 6; k++) { await pg.keyboard.press("Shift+ArrowLeft"); await pmHasSelection(pg); await hold(h, 120, "a key every 120 ms, under TOOLBAR_SETTLE: no toolbar on the way"); keys.push(await has()); }
+  await pg.locator(".md-bubble").waitFor(); // 停下 TOOLBAR_SETTLE 后出
   const afterKeys = await has();
   const r = { during, heldStill, dragged, rightAfterUp, afterPause, opacity, afterCollapse, keys, afterKeys };
   check("markdownToolbarWaitsForStillSelection-drag", dragged.includes("some of these words") && during.every((x) => !x) && !heldStill && !rightAfterUp && afterPause && opacity === "1", r);
@@ -409,6 +398,9 @@ test("copyPartialMarkBalanced", async () => {
   const pm = '.card[data-id="n1"] .md-pm';
   await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 600, y: 12 } });
   await pg.waitForSelector(pm, { timeout: 5000 });
+  // the editor has the focus and ProseMirror's focus timers are over: within them it puts its own selection back over the one set below
+  await pg.locator(`${pm}:focus`).waitFor();
+  await focusSettled(pg);
   await pg.evaluate(() => { const w = window as any; w.__clip = []; document.addEventListener("copy", (e) => w.__clip.push([e.clipboardData?.getData("text/plain"), e.clipboardData?.getData("text/html")])); });
   // 选中第一段里的一截字：公式算一个字（\u0000），选区的头尾落在公式外面的字上；再等编辑器自己的选区对上（ProseMirror 读 DOM 选区是异步的）
   const select = async (phrase: string) => {
@@ -526,7 +518,8 @@ test("markdownLazyRender", async () => {
     put(b, c, (i % cols) * 460, Math.floor(i / cols) * 520, 400);
   }
   b.cam = { x: 40, y: 40, z: 1 };
-  const h = await open({ board: b, light, w: 1400, h: 900 });
+  // at once: in idle time the board renders the far Notes too, and the pan must reach some still in the queue
+  const h = await open({ board: b, light, w: 1400, h: 900, until: "shown" });
   const pg = h.page;
   // 每一帧都查：视野里有没有还没渲染的 Note（藏着的）、有没有露出来的原文（没藏的占位）
   await pg.evaluate(() => {

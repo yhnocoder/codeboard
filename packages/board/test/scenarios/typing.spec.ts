@@ -3,32 +3,10 @@
 import { put, findSym, symCard, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check, expect, idle } from "../fixtures";
+import { test, open, check, expect, idle, pmHasSelection, focusSettled, frames } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
-
-/** ProseMirror has read the DOM selection: Home / End / arrows move the caret in the browser, and ProseMirror only learns of it
- *  in the async selectionchange (its DOM observer's currentSelection is the DOM selection it last read). With the focus in a
- *  nested editor (a code block's CodeMirror, a formula box) that editor has the caret, not ProseMirror */
-const pmHasSelection = (pg: Page) => pg.waitForFunction(() => {
-  const root = document.querySelector(".md-pm") as any;
-  if (!root?.editor || document.activeElement !== root) return true;
-  const v = root.editor.view;
-  return v.domObserver.currentSelection.eq(v.domSelectionRange());
-}, null, { timeout: 5000 });
-/** ProseMirror's first moments after it gets focus (prosemirror-view): 20 ms after focus it puts its own selection back into the
- *  DOM, and for 200 ms it takes a caret at the very start for the browser resetting the selection and puts its own back
- *  (DOMObserver.flush). A caret the browser moves in that time (Home, ⌘↑, Ctrl+Home right after the editor opened) is undone.
- *  Wait until both are over: the focus is that old, then one more task (timers run in the order they fall due) */
-const focusSettled = (pg: Page) => pg.evaluate(async () => {
-  const v = (document.querySelector(".md-pm") as any)?.editor?.view;
-  if (!v) return;
-  await new Promise((r) => setTimeout(r, Math.max(0, v.input.lastFocus + 201 - Date.now())));
-  await new Promise((r) => setTimeout(r, 0));
-});
-/** The page's next frames, through its own requestAnimationFrame (slowFrames makes them late) */
-const pageFrames = (pg: Page, n = 2) => pg.evaluate(async (n) => { for (let i = 0; i < n; i++) await new Promise<void>((r) => requestAnimationFrame(() => r())); }, n);
 
 /** 打一串：{Enter}、{Control+z} 之类是按键，其余是字 */
 async function keys(pg: Page, seq: string) {
@@ -130,7 +108,7 @@ test("markdownInputRules", async () => {
     { name: "code fence c++", seq: "```c++{Enter}int a;", md: "```c++\nint a;\n```" },
     { name: "math block", seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); }, md: "$$\nx^2\n$$" },
     // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
-    { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await pageFrames(pg); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
+    { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await frames(pg, 2); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
     { name: "math block one line", seq: "$$a+b$${Enter}", md: "$$\na+b\n$$", dom: count(".md-pm [data-type=block-math]"), domOk: (n) => n === 1 },
     // #30：[toc] 回车出目录，跟着后面打的标题变
     { name: "toc", seq: "[toc]{Enter}# A{Enter}## B", md: "[toc]\n\n# A\n\n## B", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`)), domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]' },
@@ -230,7 +208,7 @@ test("editorKeys", async () => {
     { name: "strike ⇧X", seq: "{Control+Shift+x}s{Control+Shift+x} x", md: "~~s~~ x" },
     { name: "code", seq: "{Control+e}c{Control+e} x", md: "`c` x" },
     { name: "link ⌘K on selection", seq: "word{Shift+Home}{Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.keyboard.type("x.y/z"); await pg.keyboard.press("Enter"); }, md: "[word](https://x.y/z)" },
-    { name: "link ⌘K slow frame", pre: slowFrames(400), seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pageFrames(pg); await pg.keyboard.type("https://c.d"); await pg.keyboard.press("Enter"); await fastFrames(pg); }, md: "see https://c.d" },
+    { name: "link ⌘K slow frame", pre: slowFrames(400), seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await frames(pg, 2); await pg.keyboard.type("https://c.d"); await pg.keyboard.press("Enter"); await fastFrames(pg); }, md: "see https://c.d" },
     { name: "link ⌘K at caret", seq: "see {Control+k}", after: async (pg) => { await pg.waitForSelector(".md-linkin"); await pg.keyboard.type("https://a.b"); await pg.keyboard.press("Enter"); }, md: "see https://a.b" },
     { name: "undo redo", seq: "one{Control+z}two{Control+z}{Control+Shift+z}", md: "two" },
     { name: "redo ⌘Y", seq: "abc{Control+z}{Control+y}", md: "abc" },

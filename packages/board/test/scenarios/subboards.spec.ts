@@ -26,7 +26,7 @@ const lineOf = (c: ReturnType<typeof card>, re: RegExp) => { const s = c.segment
 
 /** Screenshot also into the PR shots folder when SHOTS_DIR is set */
 async function shotPr(h: Host, name: string) {
-  await shot(h, name, "idle");
+  await shot(h, name);
   const d = process.env.SHOTS_DIR;
   if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
 }
@@ -39,7 +39,7 @@ test("turnIntoBoardUndo", async () => {
   const a = card("Scheduler.schedule"), c = card("BlockManager.allocate"), d = card("BlockManager.can_allocate");
   put(E, a, 60, 60, 560); put(E, c, 700, 60, 480); put(E, d, 700, 500, 480);
   const t = await subHost(E, []);
-  const h = t.h, page = h.page, res: Record<string, unknown> = {};
+  const h = t.h, page = h.page;
   const turn = async (ids: string[], name: string) => {
     await page.keyboard.press("Shift+Digit1"); await idle(h);
     for (const [i, id] of ids.entries()) await page.locator(`.card[data-id="${id}"] .chead`).click({ position: { x: 120, y: 10 }, modifiers: i ? ["Shift"] : [] });
@@ -56,7 +56,7 @@ test("turnIntoBoardUndo", async () => {
   // undo clicks the same empty spot each time: a second click there within DBL_CLICK would be a double-click (a new Text)
   const undo = async (id: string) => { await hold(h, DBL_CLICK, "not a double-click with the previous undo's click"); await page.mouse.click(5, 880); await page.keyboard.press("Meta+z"); await until(h, "undo takes the frame off", () => !has(id)); await idle(h); };
   const redo = async (id: string) => { await page.keyboard.press("Meta+Shift+z"); await until(h, "redo puts the frame back", () => has(id)); await idle(h); };
-  try {
+  await verdict("turnIntoBoardUndo", async (res) => {
     // edited: enter, delete a card, come back, undo
     const f1 = (await turn([c.id, d.id], "Alloc"))!;
     let n = t.inits.length;
@@ -86,11 +86,9 @@ test("turnIntoBoardUndo", async () => {
     res.trashed = !t.store.peek(f2.board);
     await redo(f2.id);
     res.restored = !!t.store.peek(f2.board) && t.store.peek("bUndo")!.cards.some((k) => k.id === f2.id);
-  } catch (e) { res.error = (e as Error).message.split("\n")[0]; }
-  const ok = res.entered && res.back && res.parentBack && JSON.stringify(res.childKept) === JSON.stringify([c.id]) && res.relinked && res.stillKept && res.trashed && res.restored;
-  check("turnIntoBoardUndo", ok, JSON.stringify(res));
+    return res.entered && res.back && res.parentBack && JSON.stringify(res.childKept) === JSON.stringify([c.id]) && res.relinked && res.stillKept && res.trashed && res.restored;
+  });
   await h.page.context().close();
-  if (!ok) process.exit(1);
 });
 
 async function run(res: Record<string, unknown>) {

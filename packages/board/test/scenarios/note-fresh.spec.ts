@@ -4,7 +4,7 @@
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard } from "@codeboard/core";
-import { test, open, check, light, until, idle } from "../fixtures";
+import { test, open, check, light, until, idle, frames } from "../fixtures";
 
 const notes = (h: Host) => h.page.locator(".card.note").count();
 const editing = (h: Host) => h.page.locator(".card.note .md-pm").count();
@@ -15,12 +15,10 @@ async function newNote(h: Host) {
   await h.page.locator(".card.note .md-pm:focus").waitFor();
   await idle(h); // the pop-in: box() reads where the card ends up
 }
-/** One rendered frame: each pointer move of a drag lands in a frame of its own, as a real drag does */
-const frame = (h: Host) => h.page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
 async function drag(h: Host, x: number, y: number, dx: number, dy: number, steps = 12) {
   await h.page.mouse.move(x, y);
   await h.page.mouse.down();
-  for (let i = 1; i <= steps; i++) { await h.page.mouse.move(x + (dx * i) / steps, y + (dy * i) / steps); await frame(h); }
+  for (let i = 1; i <= steps; i++) { await h.page.mouse.move(x + (dx * i) / steps, y + (dy * i) / steps); await frames(h.page); }
   await h.page.mouse.up();
   await idle(h);
 }

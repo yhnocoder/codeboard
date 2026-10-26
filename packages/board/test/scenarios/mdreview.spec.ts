@@ -6,29 +6,11 @@ import { OUT, type Host } from "../harness";
 import { emptyBoard, cleanCompletion, DEFAULT_SETTINGS, type NoteCard } from "@codeboard/core";
 import { deepseekComplete } from "@codeboard/host/deepseek";
 import type { Page } from "playwright-core";
-import { test, open, check, until, idle } from "../fixtures";
+import { test, open, check, until, idle, pmHasSelection, focusSettled } from "../fixtures";
 
 type Ctx = { pg: Page; h: Host; info: Record<string, unknown> };
 type Probe = { name: string; start?: string; run: (c: Ctx) => Promise<void>; ai?: string | "real"; keepOpen?: boolean };
 
-/** ProseMirror has read the DOM selection: arrows, Home / End move the caret in the browser, and ProseMirror only learns of it in
- *  the async selectionchange (its DOM observer's currentSelection is the DOM selection it last read) */
-const pmHasSelection = (pg: Page) => pg.waitForFunction(() => {
-  const root = document.querySelector(".md-pm") as any;
-  if (!root?.editor || document.activeElement !== root) return true;
-  const v = root.editor.view;
-  return v.domObserver.currentSelection.eq(v.domSelectionRange());
-}, null, { timeout: 5000 });
-/** ProseMirror's first moments after it gets focus (prosemirror-view): 20 ms after focus it puts its own selection back into the
- *  DOM, and for 200 ms it takes a caret at the very start for the browser resetting the selection and puts its own back
- *  (DOMObserver.flush). A caret the browser moves in that time (Home, ⌘↑, Ctrl+Home right after the editor opened) is undone.
- *  Wait until both are over: the focus is that old, then one more task (timers run in the order they fall due) */
-const focusSettled = (pg: Page) => pg.evaluate(async () => {
-  const v = (document.querySelector(".md-pm") as any)?.editor?.view;
-  if (!v) return;
-  await new Promise((r) => setTimeout(r, Math.max(0, v.input.lastFocus + 201 - Date.now())));
-  await new Promise((r) => setTimeout(r, 0));
-});
 /** The editor after the caret moved: ProseMirror knows it, the decorations around it (revealed source) are drawn */
 const caretShown = async (pg: Page, h: Host) => { await pmHasSelection(pg); await idle(h); };
 /** A completion was asked for and its answer is shown (or there was none) */
@@ -43,6 +25,7 @@ const K = (pg: Page) => ({
  * 负载高时会晚）。代码块里的字在 CodeMirror 里：它把选区转给 ProseMirror，位置 = 代码块开头 + 在代码里的偏移
  */
 async function selectIn(pg: Page, text: string, a: number, b: number): Promise<boolean> {
+  await focusSettled(pg); // within ProseMirror's focus timers it puts its own selection back over the one set here
   const want = await pg.evaluate(([text, a, b]) => {
     const root = document.querySelector(".md-pm")!;
     const view = (root as any).editor.view;

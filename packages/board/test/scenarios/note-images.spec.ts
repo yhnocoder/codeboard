@@ -95,12 +95,12 @@ test("notePastedImageSameSizeInBothModes", async () => {
   const edit = await imgBox(h, "n0", ".md-pm");
   await h.page.keyboard.press("Enter");
   await h.page.keyboard.type("Then decode runs one token per sequence.");
-  await shot(h, "26-note-image-edit", "idle");
+  await shot(h, "26-note-image-edit");
   const editH = await cardH(h, "n0");
   await exitEdit(h);
   const disp = await imgBox(h, "n0", ".nbody");
   const dispH = await cardH(h, "n0");
-  await shot(h, "26-note-image-display", "idle");
+  await shot(h, "26-note-image-display");
   const text = md(h, "n0"), files = assets();
   const ref = /\n\n!\[\]\((assets\/[0-9a-f]{16}-800x450\.png)\)\n\nThen decode/.exec(text);
   check("notePastedImageSaved", saves.length === 1 && files.length === 1 && !!ref && ref[1] === `assets/${files[0]}` && !text.includes("base64"), { saves, files, text });

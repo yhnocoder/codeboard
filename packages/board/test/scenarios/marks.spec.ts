@@ -54,13 +54,13 @@ test("markCard", async () => {
   check("markArrowColor", edge[0]?.stroke === look.color, { arrow: edge[0]?.stroke, mark: look.color });
   check("plainArrowNotHand", l3.length > 0 && l3.every((p) => !/\bhand\b/.test(p.cls)), l3.map((p) => p.cls));
   check("markArrowNoMerge", (await pg.locator(`.link[data-lk="L1"]`).getAttribute("data-merged")) === null);
-  await shot(h, "marks-board", "idle");
+  await shot(h, "marks-board");
 
   // select: the color dots; purple → the Mark and its arrow change color
   await pg.locator(`${card("m1")} .tx`).click();
   await pg.locator(`${card("m1")} .hdots .hdot`).first().waitFor();
   check("markColorDots", (await pg.locator(`${card("m1")} .hdots .hdot`).count()) === 4);
-  await shot(h, "marks-selected", "idle");
+  await shot(h, "marks-selected");
   await pg.locator(`${card("m1")} .hdot.hc-purple`).click();
   await until(h, "the new color is saved", () => (h.board().cards.find((c) => c.id === "m1") as NoteCard | undefined)?.hand !== "blue");
   await idle(h); // the color transition
@@ -162,7 +162,7 @@ test("noteAnnotations", async () => {
   });
   // the label would run past the paragraph (natural right = right - ax): it is pulled back inside, and only then
   check("annotLabelInsideBlock", fit.right <= fit.pRight + 0.5 && (fit.right - parseFloat(fit.ax) > fit.pRight) === parseFloat(fit.ax) < 0, fit);
-  await shot(h, "marks-note-annotations", "idle");
+  await shot(h, "marks-note-annotations");
 
   // typing the syntax in the editor
   await pg.locator(`${card("n1")} .nbody p`).last().dblclick();
@@ -218,7 +218,7 @@ test("codeAnnotations", async () => {
   check("codeAnnotAligned", Math.abs(geo.bgs[0].left - geo.wordX) < 2 && Math.abs(geo.labs[0].left - geo.wordX) < 4 && Math.abs(geo.bgs[1].left - geo.allocX) < 2, geo);
   check("codeAnnotRailPlace", geo.labs[0].bottom <= geo.lwTop + 1 && geo.labs[1].top >= geo.laBottom - 1, geo);
   check("codeAnnotGutterFollows", Math.abs(geo.noTop - geo.lwTop) < 2, geo);
-  await shot(h, "marks-code-annotations", "idle");
+  await shot(h, "marks-code-annotations");
 
   // select "scheduled_seqs" on the first body line, right-click, Annotate Selection…
   const l2 = s.start + 1;

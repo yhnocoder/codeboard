@@ -4,9 +4,7 @@ import { emptyBoard, type Board, type CodeCard, type Link } from "@codeboard/cor
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
-
-/** TUNE.linkLeave's default (tune.ts): a hover is kept this long after the pointer left */
-const LINK_LEAVE = 300;
+import { LINK_LEAVE } from "../../src/state/timing";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; const i = s.text.findIndex((t) => re.test(t)); return s.start + Math.max(0, i); };
@@ -35,7 +33,7 @@ test("graphMarksLinked", async () => {
   await h.page.locator(`.card[data-id="${sch.id}"] .chead .ctitle`).click(); await h.page.locator(`.card.sel[data-id="${sch.id}"]`).waitFor();
   await h.page.locator(`.card[data-id="${sch.id}"] .linkedin`).click(); await h.page.locator(".pop .cand .lb").first().waitFor(); await idle(h);
   const items = await h.page.locator(".pop .cand .lb").allTextContents();
-  await shot(h, "arrows-linked-1", "idle");
+  await shot(h, "arrows-linked-1");
   await h.page.locator(".pop .cand", { hasText: "LLMEngine.step" }).click(); await idle(h);
   const s1 = await selected(h);
   const bar = await h.page.locator(".navbar").count();
@@ -55,7 +53,7 @@ test("graphMarkPicker", async () => {
   const h = await open({ board: b, light, w: 1500, h: 950 });
   await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click(); await h.page.locator(".pop.k-mark").waitFor();
   const pop = await h.page.locator(".pop.k-mark").count();
-  await shot(h, "arrows-mark-1", "idle");
+  await shot(h, "arrows-mark-1");
   await h.page.locator(".pop.k-mark .markgrid button", { hasText: /^Q$/ }).click();
   await until(h, "the picked letter is saved", () => h.board().marks); await idle(h);
   const stored = JSON.stringify(h.board().marks);
@@ -63,7 +61,7 @@ test("graphMarkPicker", async () => {
   await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click();
   await h.page.locator(".pop.k-mark .markgrid.icons button").first().click(); await idle(h);
   const icons = await h.page.locator(".card .chead .step .glyph").count();
-  await shot(h, "arrows-mark-2", "idle");
+  await shot(h, "arrows-mark-2");
   await h.page.locator(`.card[data-id="${step.id}"] .chead .step`).click();
   await h.page.locator(".pop.k-mark .cand", { hasText: "Auto" }).click();
   await until(h, "Auto clears the stored mark", () => !h.board().marks); await idle(h);
@@ -280,7 +278,7 @@ test("dragLinkSide", async () => {
   await drag((await ca.locator(".lport.l").boundingBox())!);
   const links = h.board().links as Link[];
   const sides = await h.page.evaluate(() => [...document.querySelectorAll<SVGGElement>("g.link")].map((g) => g.dataset.sides));
-  await shot(h, "arrows-dragside", "idle");
+  await shot(h, "arrows-dragside");
   const ok = onHead && links.length === 2 && links.every((l) => l.sides?.from === "left") && sides.every((x) => x?.startsWith("left|"));
   check("drag-side", ok, JSON.stringify({ onHead, dot: dot.y, head: [head.y, head.height], sides: links.map((l) => l.sides), drawn: sides }));
   await close(h);
@@ -299,7 +297,7 @@ test("commonIndentHidden", async () => {
   await idle(h);
   const left = (id: string) => h.page.evaluate((id) => { const c = document.querySelector(`.card[data-id="${id}"]`)!; const l = c.querySelector(".src .l")!; const r = document.createRange(); r.selectNodeContents(l); const tx = [...r.getClientRects()].find((q) => q.width > 0)!; const t = l.textContent!; const ind = t.length - t.trimStart().length; const sp = document.createRange(); sp.setStart(l.firstChild ?? l, 0); return { codeX: Math.round(c.querySelector(".src")!.getBoundingClientRect().left), firstX: Math.round(tx.left), ind, marks: c.querySelectorAll(".dedm").length }; }, id);
   const a = await left(lm.id), p = await left(plain.id);
-  await shot(h, "arrows-dedent", "idle");
+  await shot(h, "arrows-dedent");
   const cw = await h.page.evaluate(() => { const s = document.createElement("span"); s.textContent = "x".repeat(100); document.querySelector(".src")!.appendChild(s); const w = s.getBoundingClientRect().width / 100; s.remove(); return w; });
   // 第一行 "if k in…" 的字落在离代码左边 ~16px 的地方，而不是 16 个空格之后
   const firstText = await h.page.evaluate((id) => { const l = document.querySelector(`.card[data-id="${id}"] .src .l`)!; const w = document.createTreeWalker(l, NodeFilter.SHOW_TEXT); let n: Node | null; while ((n = w.nextNode())) { const i = n.textContent!.search(/\S/); if (i >= 0) { const r = document.createRange(); r.setStart(n, i); r.setEnd(n, i + 1); return Math.round(r.getBoundingClientRect().left); } } return -1; }, lm.id);
@@ -326,7 +324,7 @@ test("constructorCall", async () => {
   await until(h, "the drawn arrow is saved", () => h.board().links.length); await idle(h);
   const l = h.board().links[0] as Link | undefined;
   const marks = await h.page.locator(".card .chead .step").allTextContents();
-  await shot(h, "arrows-ctor", "idle");
+  await shot(h, "arrows-ctor");
   const ok = !!l?.call && l.call.name === "ModelRunner" && marks.length === 2;
   check("ctor-call", ok, JSON.stringify({ call: l?.call, marks }));
   await close(h);
@@ -377,7 +375,7 @@ test("manualCallMark", async () => {
   await until(h, "the Call Mark is saved", () => (h.board().links[0] as Link).call); await idle(h);
   const call = (h.board().links[0] as Link).call;
   const marks = await h.page.locator(".card .chead .step").allTextContents();
-  await shot(h, "arrows-manualcall", "idle");
+  await shot(h, "arrows-manualcall");
   const ok = items.some((t) => t.includes("Call Mark")) && call?.name === "schedule" && call.col === 0 && marks.length === 2;
   check("manual-call", ok, JSON.stringify({ items, call, marks }));
   await close(h);
@@ -410,13 +408,13 @@ test("linePortHover", async () => {
     const top = await h.page.evaluate(([x, y]) => { const e = document.elementFromPoint(x, y) as HTMLElement | null; return e ? e.tagName + "." + (e.getAttribute("class") ?? "") : "-"; }, [Math.min(x, px), py]);
     const same = !!q && Math.abs(q.y + q.height / 2 - py) < 1;
     if (!same) ok = false;
-    if (Math.min(x, px) > px - 12 && !shotAt) { shotAt = true; await shot(h, "arrows-lporthold-1", "idle"); }
+    if (Math.min(x, px) > px - 12 && !shotAt) { shotAt = true; await shot(h, "arrows-lporthold-1"); }
     trail.push(`${Math.round(Math.min(x, px) - px)}:${same ? "ok" : q ? "moved" : "gone"}:${top}`);
   }
   await hold(h, LINK_LEAVE + 100, "the port must still be there once a hover-leave delay would be over");
   const still = await port();
   if (!still || Math.abs(still.y + still.height / 2 - py) >= 1) ok = false;
-  await shot(h, "arrows-lporthold-2", "idle");
+  await shot(h, "arrows-lporthold-2");
   check("lport-hold", ok, JSON.stringify(trail.filter((t, i) => !t.includes(":ok:") || i > trail.length - 6)));
   await close(h);
 });
@@ -435,7 +433,7 @@ test("headPortHidden", async () => {
   const box = (await ce.boundingBox())!;
   await h.page.mouse.move(box.x + 200, box.y + 10); await idle(h);
   const r = await op(ce, "r"), l = await op(ce, "l");
-  await shot(h, "arrows-eportland-1", "idle");
+  await shot(h, "arrows-eportland-1");
   const mb = (await cm.boundingBox())!;
   await h.page.mouse.move(mb.x + 200, mb.y + 10); await idle(h);
   const ml = await op(cm, "l"), mrr = await op(cm, "r");
@@ -443,7 +441,7 @@ test("headPortHidden", async () => {
   // 圆点外半边被线的点击区盖着，靠卡里的那半边悬停
   await h.page.mouse.move(dot.x + 2, dot.y + dot.height / 2); await idle(h);
   const rh = await op(ce, "r");
-  await shot(h, "arrows-eportland-2", "idle");
+  await shot(h, "arrows-eportland-2");
   const ok = sides === "left|right" && r === "0" && l === "1" && ml === "0" && mrr === "1" && rh === "1";
   check("eport-land", ok, JSON.stringify({ sides, r, l, ml, mr: mrr, rh }));
   await close(h);

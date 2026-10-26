@@ -6,30 +6,9 @@
 import { put, findSym, symCard, shot, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check, light, expect, until, idle } from "../fixtures";
+import { test, open, check, light, expect, until, idle, pmHasSelection, focusSettled } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
-
-/** ProseMirror has read the DOM selection: arrows, Home / End move the caret in the browser, and ProseMirror only learns of it in
- *  the async selectionchange (its DOM observer's currentSelection is the DOM selection it last read). With the focus in a nested
- *  editor (a code block's CodeMirror, a formula's textarea) that editor has the caret, not ProseMirror */
-const pmHasSelection = (pg: Page) => pg.waitForFunction(() => {
-  const root = document.querySelector(".md-pm") as any;
-  if (!root?.editor || document.activeElement !== root) return true;
-  const v = root.editor.view;
-  return v.domObserver.currentSelection.eq(v.domSelectionRange());
-}, null, { timeout: 5000 });
-
-/** ProseMirror's first moments after it gets focus (prosemirror-view): 20 ms after focus it puts its own selection back into the
- *  DOM, and for 200 ms it takes a caret at the very start for the browser resetting the selection and puts its own back
- *  (DOMObserver.flush). A caret the browser moves in that time (Home, ⌘↑, Ctrl+Home right after the editor opened) is undone.
- *  Wait until both are over: the focus is that old, then one more task (timers run in the order they fall due) */
-const focusSettled = (pg: Page) => pg.evaluate(async () => {
-  const v = (document.querySelector(".md-pm") as any)?.editor?.view;
-  if (!v) return;
-  await new Promise((r) => setTimeout(r, Math.max(0, v.input.lastFocus + 201 - Date.now())));
-  await new Promise((r) => setTimeout(r, 0));
-});
 
 /** 打一串：{Enter}、{Control+z} 之类是按键，其余是字 */
 async function keys(pg: Page, seq: string, delay = 0) {
@@ -290,11 +269,11 @@ test("noteDisplayMathTypedAsBlock", async () => {
   await h.page.keyboard.type("$$\\frac{200}{10}$$", { delay: 20 }); // 不走 keys()：{200} 会被当成按键
   await idle(h);
   const typed = await geo();
-  await shot(h, "noteDisplayMathTypedAsBlock-typed", "idle");
+  await shot(h, "noteDisplayMathTypedAsBlock-typed");
   await keys(h.page, "after");
   await exitEdit(h);
   const shown = await geo(), text = md(h, "n0");
-  await shot(h, "noteDisplayMathTypedAsBlock-shown", "idle");
+  await shot(h, "noteDisplayMathTypedAsBlock-shown");
   const same = (["x", "y", "w", "h"] as const).every((k) => typed[k] !== undefined && Math.abs(typed[k]! - shown[k]!) <= 1);
   check("noteDisplayMathTypedAsBlock", typed.block === 1 && typed.inline === 0 && typed.display === 1 && Math.abs(typed.dx ?? 99) <= 2 && same && text === "$$\n\\frac{200}{10}\n$$\n\nafter", { typed, shown, text });
   await close(h);
@@ -344,11 +323,11 @@ test("headingMarkerTypedAtHeadingSize", async () => {
   await keys(h.page, "## ");
   await idle(h);
   const space = await line();
-  await shot(h, "headingMarkerTypedAtHeadingSize-space", "idle");
+  await shot(h, "headingMarkerTypedAtHeadingSize-space");
   await keys(h.page, "Title");
   await idle(h);
   const typed = await line();
-  await shot(h, "headingMarkerTypedAtHeadingSize-typed", "idle");
+  await shot(h, "headingMarkerTypedAtHeadingSize-typed");
   check("headingMarkerTypedAtHeadingSize", space.tag === "H2" && space.mkText === '"## "' && space.mk === space.fs && typed.lh === space.lh && typed.card === space.card, { space, typed });
   await close(h);
 });
@@ -365,7 +344,7 @@ test("placeholderOnlyWhenNoteEmpty", async () => {
   await keys(h.page, "{Control+End}{Enter}");
   await idle(h);
   const line = await ph("n1");
-  await shot(h, "placeholderOnlyWhenNoteEmpty", "idle");
+  await shot(h, "placeholderOnlyWhenNoteEmpty");
   check("placeholderOnlyWhenNoteEmpty", empty.length === 1 && empty[0] !== "none" && line.length === 2 && line.every((c) => c === "none"), { empty, line });
   await close(h);
 });
@@ -383,14 +362,14 @@ test("noteTitleHeadingHiddenInBody", async () => {
     return { title: card.querySelector(".chead .ctitle")!.textContent, h1: !!head && head.getBoundingClientRect().height > 0, h: Math.round(card.getBoundingClientRect().height) };
   }));
   const shown = await look();
-  await shot(h, "note-heading-01-hidden", "idle");
+  await shot(h, "note-heading-01-hidden");
   check("note-heading-hidden", shown[0].title === "KV cache budget" && !shown[0].h1 && shown[1].title === "My own title" && shown[1].h1 && md(h, "n0") === doc.trim(), shown);
   // enter editing: the heading is there to edit and slides in (card height grows in small steps, no jump)
   await h.page.evaluate(() => { const w = window as any; w.__hs = []; w.__hsDone = false; const card = document.querySelector('.card[data-id="n0"]')!; const t0 = performance.now();
     const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 1500) requestAnimationFrame(f); else w.__hsDone = true; }; requestAnimationFrame(f); });
   await h.page.locator('.card[data-id="n0"] .nbody p').last().dblclick();
   await h.page.waitForSelector('.card[data-id="n0"] .md-pm h1', { timeout: 5000 });
-  await shot(h, "note-heading-02-editing", "idle");
+  await shot(h, "note-heading-02-editing");
   await h.page.waitForFunction(() => (window as any).__hsDone, null, { timeout: 5000 }); // the heights recorded over 1.5 s
   const hs: number[] = await h.page.evaluate(() => (window as any).__hs);
   const steps = hs.slice(1).map((v, i) => v - hs[i]), grow = hs[hs.length - 1] - hs[0], jump = Math.max(...steps);
@@ -411,7 +390,7 @@ test("noteTitleHeadingHiddenInBody", async () => {
   const h2 = await open({ board: board([doc]), light, settings: { noteHeadingInBody: true } });
   await idle(h2);
   const kept = await h2.page.evaluate(() => (document.querySelector('.card[data-id="n0"] .nbody h1') as HTMLElement | null)?.getBoundingClientRect().height ?? 0);
-  await shot(h2, "note-heading-03-setting-show", "idle");
+  await shot(h2, "note-heading-03-setting-show");
   check("note-heading-setting-shows", kept > 0, { kept });
   await close(h2);
 });
@@ -433,7 +412,7 @@ test("mathSourceInPlace", async () => {
   { const b = (await pg.locator(`${card} .md-pm [data-type=inline-math] .katex-base`).boundingBox())!; await pg.mouse.click(b.x + b.width / 2, b.y + b.height / 2); }
   await until(h, "the clicked formula opens as its source", async () => !(await pg.locator(`${card} .md-pm [data-type=inline-math]`).count()));
   const inline = await pg.evaluate((card) => ({ text: (document.querySelector(`${card} .md-pm p`) as HTMLElement).innerText, math: document.querySelectorAll(`${card} .md-pm [data-type=inline-math]`).length }), card);
-  await shot(h, "mathSourceInPlace-inline", "idle");
+  await shot(h, "mathSourceInPlace-inline");
   await pg.keyboard.type("+1");
   // 方向键往下：离开行内原文（变回公式），走进公式块（展开原文）
   await keys(pg, "{ArrowDown}");
@@ -446,7 +425,7 @@ test("mathSourceInPlace", async () => {
   await pg.keyboard.type("\\frac{3}{4}");
   await until(h, "the preview follows the typing", async () => (await tex()).includes("\\frac{3}{4}"));
   const live = await tex();
-  await shot(h, "mathSourceInPlace-block", "idle");
+  await shot(h, "mathSourceInPlace-block");
   await pg.keyboard.press("Escape");
   await expect(pg.locator(`${card} .is-open`)).toHaveCount(0);
   await idle(h);
@@ -470,7 +449,7 @@ test("noteEditorHasNoDragHandle", async () => {
   await idle(h);
   await editNote(h, "n0");
   for (const p of await h.page.locator('.card[data-id="n0"] .md-pm > *').all()) { await p.hover(); await idle(h); } // a drag handle would show on hover
-  await shot(h, "noteEditorHasNoDragHandle", "idle");
+  await shot(h, "noteEditorHasNoDragHandle");
   const handles = await h.page.locator(".md-handle").count();
   check("noteEditorHasNoDragHandle", handles === 0, { handles });
   await close(h);

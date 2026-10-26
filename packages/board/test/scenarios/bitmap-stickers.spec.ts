@@ -4,7 +4,7 @@ import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, type Board, type StickerPack } from "@codeboard/core";
 import { animWebp, apng, faceFrames, gif, png, type Paint, type Rgba } from "@codeboard/host/test/images";
 import type { Browser, Page } from "@playwright/test";
-import { test, open, check, light, until, idle, hold } from "../fixtures";
+import { test, open, check, light, until, idle, hold, frames } from "../fixtures";
 
 const YELLOW: Rgba = [244, 192, 64, 255], PINK: Rgba = [236, 120, 160, 255], BLUE: Rgba = [96, 150, 236, 255];
 const toGif = (size: number, frames: Paint[]) => {
@@ -77,8 +77,6 @@ async function pictures(h: Host, sel: string) {
   for (let i = 0; i < 6; i++) { seen.add((await h.page.locator(sel).screenshot()).toString("base64")); await hold(h, SAMPLE, "sampling an animation over time"); }
   return seen.size;
 }
-/** The next frame has been drawn (the camera follows a wheel event within a frame) */
-const frame = (page: Page) => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
 /** Every paused sticker shows its first frame (decoded off the main thread, one after the other) */
 const stills = (h: Host, sel: string) => until(h, "the paused stickers show their decoded first frame", () => h.page.evaluate((sel) =>
   [...document.querySelectorAll<HTMLImageElement>(sel)].every((im) => !im.classList.contains("paused") || (im.getAttribute("src")!.startsWith("data:image/png;") && im.complete && im.naturalWidth > 0)), sel));
@@ -86,7 +84,7 @@ const zoom = async (h: Host, dy: number, reached: () => Promise<boolean>) => {
   const page = h.page;
   await page.mouse.move(900, 80);
   await page.keyboard.down("Control");
-  for (let i = 0; i < 30 && !(await reached()); i++) { await page.mouse.wheel(0, dy); await frame(page); }
+  for (let i = 0; i < 30 && !(await reached()); i++) { await page.mouse.wheel(0, dy); await frames(page, 2); }
   await page.keyboard.up("Control");
   await idle(h);
   await stills(h, "[data-sticker] img.glyph.img");
@@ -114,14 +112,14 @@ test("stickerBitmapsAnimate", async ({ browser }) => {
   const moving = { gif: await pictures(h, '[data-sticker="k3"] img'), webp: await pictures(h, '[data-sticker="k4"] img'), apng: await pictures(h, '[data-sticker="k5"] img') };
   check("sticker-anim-frames-change", moving.gif > 1 && moving.webp > 1 && moving.apng > 1, JSON.stringify(moving));
   check("sticker-anim-offscreen-paused", st.k7.paused && st.k7.src.startsWith("data:image/png;") && st.k7.src !== orig.wink, JSON.stringify({ ...st.k7, src: st.k7.src.slice(0, 30) }));
-  await shot(h, "stickers-bitmap-board", "idle");
+  await shot(h, "stickers-bitmap-board");
 
   // Zoomed out to the overview: every animated sticker stops on its first frame
   await zoom(h, 40, () => h.page.evaluate(() => document.getElementById("board")!.classList.contains("lod-overview")));
   st = await imgs(h.page);
   const still = await pictures(h, '[data-sticker="k3"] img');
   check("sticker-anim-paused-zoomed-out", ANIM.every((k) => st[k].paused && st[k].src.startsWith("data:image/png;") && st[k].src !== orig[nameOf(k)]) && still === 1, JSON.stringify({ still, paused: ANIM.map((k) => [k, st[k].paused]) }));
-  await shot(h, "stickers-bitmap-overview", "idle");
+  await shot(h, "stickers-bitmap-overview");
 
   // Back to full detail: they play again
   await zoom(h, -40, () => h.page.evaluate(() => !document.getElementById("board")!.className.includes("lod-")));
@@ -131,7 +129,7 @@ test("stickerBitmapsAnimate", async ({ browser }) => {
   // Panned so the far one is on screen: it plays, and the ones now far away stop
   await h.page.mouse.move(900, 80) // empty canvas, not over the card;
   const k7x = async () => (await h.page.locator('[data-sticker="k7"]').boundingBox())?.x ?? 1e9;
-  for (let i = 0; i < 80 && (await k7x()) > 500; i++) { await h.page.mouse.wheel(Math.min(400, (await k7x()) - 450), 0); await frame(h.page); }
+  for (let i = 0; i < 80 && (await k7x()) > 500; i++) { await h.page.mouse.wheel(Math.min(400, (await k7x()) - 450), 0); await frames(h.page, 2); }
   await idle(h);
   await stills(h, "[data-sticker] img.glyph.img");
   const after = await imgs(h.page);
@@ -156,5 +154,5 @@ test("stickerBitmapsPicker", async ({ browser }) => {
   await until(h, "the hovered animated sticker plays", async () => (await cells()).find((c) => c.name === "wink")?.paused === false);
   const hov = await cells();
   check("sticker-picker-anim-on-hover", hov.find((c) => c.name === "wink")?.paused === false && hov.filter((c) => c.anim && c.name !== "wink").every((c) => c.paused), JSON.stringify(hov));
-  await shot(h, "stickers-bitmap-picker", "idle");
+  await shot(h, "stickers-bitmap-picker");
 });
