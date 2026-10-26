@@ -5,3 +5,4 @@ export { setAssetBase, setImageResolver, type ImageResolver, type ResolvedImage 
 export { hydrate, mdClick, toggleTask, setRefResolver, resolveRef, type RefTarget } from "./view";
 export { setCodeHighlighter, highlightCode, cachedCode, colorCode, type CodeHighlighter } from "./code";
 export { staticTextRange, docRange, type StaticTextRange } from "./selmap";
+export { setMathPreamble, mathMacros, mathPreambleDefs, mathPreambleErrors, type MathDef } from "./math";

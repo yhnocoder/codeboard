@@ -2,7 +2,7 @@
 // default), and values the board sends are checked before they are written
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "@codeboard/core";
-import { readSettings, validSetting, writeSetting } from "../src/settings";
+import { affectsSettings, readSettings, validSetting, writeSetting } from "../src/settings";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 
@@ -51,5 +51,23 @@ describe("VS Code background", () => {
     await writeSetting("vscodeBg", true);
     await writeSetting("vscodeBg", "yes" as never);
     expect(conf.get("codeboard.useVSCodeBackground")).toBe(true);
+  });
+});
+
+describe("Math preamble", () => {
+  it("is empty by default and read from codeboard.math.preamble", () => {
+    expect(readSettings().mathPreamble).toBe("");
+    conf.set("codeboard.math.preamble", "\\newcommand{\\R}{\\mathbb{R}}");
+    expect(readSettings().mathPreamble).toBe("\\newcommand{\\R}{\\mathbb{R}}");
+  });
+
+  it("is reported as a CodeBoard setting change, so open boards get it", () => {
+    expect(affectsSettings({ affects: (k) => k === "codeboard.math.preamble" })).toBe(true);
+  });
+
+  it("accepts only text", async () => {
+    await writeSetting("mathPreamble", "\\def\\x{y}");
+    await writeSetting("mathPreamble", 3 as never);
+    expect(conf.get("codeboard.math.preamble")).toBe("\\def\\x{y}");
   });
 });

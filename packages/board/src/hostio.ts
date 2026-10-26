@@ -10,6 +10,7 @@ import * as A from "./actions";
 import { runKey } from "./keymap";
 import { choose } from "./ui/Menu";
 import { setNoteAssets } from "./md/images";
+import { applyMathPreamble } from "./md/math";
 import { preloadEditor } from "./md/load";
 import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
@@ -22,6 +23,7 @@ export function onHost(m: HostToBoard) {
       batch(() => {
         setState("host", m.host);
         setNoteAssets(m.host.assetBase);
+        applyMathPreamble(m.host.settings.mathPreamble);
         if (!preloaded) { preloaded = true; preloadEditor(); preloadCm(); }
         setState("boards", m.boards);
         setState("views", m.views);

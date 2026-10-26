@@ -665,6 +665,12 @@
           "default": false,
           "description": "When a Note starts with a heading, the card's title bar shows it. Also show it at the top of the Note's text (it always shows while editing)."
         },
+        "codeboard.math.preamble": {
+          "type": "string",
+          "default": "",
+          "editPresentation": "multilineText",
+          "markdownDescription": "Math preamble: `\\newcommand` and `\\def` lines that every formula on every board can use, for example `\\newcommand{\\R}{\\mathbb{R}}`. Applies right away to Notes, the editor and exports."
+        },
         "codeboard.notes.fontSize": {
           "type": "object",
           "default": {},

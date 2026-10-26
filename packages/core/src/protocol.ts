@@ -70,12 +70,13 @@ export type Settings = {
   exportScope: "board" | "sections" | "walk"; // 导出对话框默认的范围（默认整块）
   noteHeadingInBody: boolean; // Note 开头的标题已经是卡头的名字时，正文里还显示它吗（默认不显示，只是显示上藏起来，编辑时照常出现）
   noteFontSize: NoteFontSizes; // Note 正文和各级标题的字号（px，null = 跟主题）；Text 卡有自己的字号档，不受影响
+  mathPreamble: string; // 公式预设：几行 \newcommand / \def，所有白板的公式都认（显示、编辑、导出）
 };
 export const DEFAULT_SETTINGS: Settings = {
   theme: "warm-ink", vscodeBg: false, hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
   hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
   welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board", noteHeadingInBody: false,
-  noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null },
+  noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null }, mathPreamble: "",
 };
 
 /**

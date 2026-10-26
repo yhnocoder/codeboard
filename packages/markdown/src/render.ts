@@ -5,6 +5,7 @@ import katex from "katex";
 import DOMPurify from "dompurify";
 import { isHtmlComment, mathTex, mdSchema, parseMd, tocEntries, tocHtml } from "./schema";
 import { imageAttrs, onImagesChanged } from "./image";
+import { mathMacros } from "./math";
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const escA = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
@@ -32,7 +33,7 @@ type Cx = { doc: PMNode; trusted: string[] };
 const trust = (cx: Cx, html: string) => `<span data-cbr="${cx.trusted.push(html) - 1}"></span>`;
 const untrust = (html: string, t: string[]) => html.replace(/<span data-cbr="(\d+)"><\/span>/g, (_, i) => t[+i] ?? "");
 function tex(cx: Cx, src: string, display: boolean) {
-  try { return trust(cx, katex.renderToString(src, { displayMode: display, throwOnError: false, output: "html" })); }
+  try { return trust(cx, katex.renderToString(src, { displayMode: display, throwOnError: false, output: "html", macros: mathMacros() })); }
   catch { return `<code>${esc(src)}</code>`; }
 }
 
