@@ -700,11 +700,10 @@ function unsource(ns: JSONContent[]): JSONContent[] {
   return ns.map((n) => (n.content?.some(isSrc) ? unsourceBlock(n) : n.content ? { ...n, content: unsource(n.content) } : n));
 }
 
-// 字里看着像 $公式$ 的（Pandoc 规则）变成公式：旧版编辑器里打的 $\frac{a}{b}$ 没转成公式，写回成了 \$…\$，再读进来时转过来。
-// 两头要是同一种 $：都没转义，或者都转义了（旧版的 \$…\$）。只转义了开头的 \$x$ 是现在的编辑器写下的普通文字（打 $x$ 变成公式后
-// ⌘Z 撤回的就是这样存的），Typora 里也是字面的 $，不当公式
+// 字里看着像 $公式$ 的（Pandoc 规则，和 INLINE_MATH 一样）变成公式：两头都是没转义的 $。转义过的 \$ 总是字面的 $（Typora 一样）：
+// \$x$、\$x\$ 都是普通文字（打 $x$ 变成公式后 ⌘Z 撤回的就存成 \$x$）
 const ESC_DOLLAR = "\uE024";
-const TEXT_MATH = /(^|[^$\\\uE024])([$\uE024])([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\2(?![\d$\uE024])/g;
+const TEXT_MATH = /(^|[^$\\\uE024])\$([^$\s\uE024](?:[^$\uE024]*[^$\s\\\uE024])?)\$(?![\d$\uE024])/g;
 /** 占位字换回去：正文、链接地址里是 $；代码、公式源码、原样的 HTML 里原样是 \$ */
 function unDollar(ns: JSONContent[], raw = false): JSONContent[] {
   const fix = (t: string, r: boolean) => (t.includes(ESC_DOLLAR) ? t.replaceAll(ESC_DOLLAR, r ? "\\$" : "$") : t);
@@ -722,15 +721,15 @@ function mathify(ns: JSONContent[] | undefined): JSONContent[] | undefined {
   const out: JSONContent[] = [];
   for (const n of ns) {
     if (n.type === "codeBlock") { out.push(n); continue; }
-    if (n.type === "text" && /[$\uE024]/.test(n.text ?? "") && !(n.marks ?? []).some((m) => m.type === "code")) {
+    if (n.type === "text" && n.text?.includes("$") && !(n.marks ?? []).some((m) => m.type === "code")) {
       let last = 0, m: RegExpExecArray | null;
       const t = n.text!;
       TEXT_MATH.lastIndex = 0;
       while ((m = TEXT_MATH.exec(t))) {
         const at = m.index + m[1].length;
         if (at > last) out.push({ ...n, text: t.slice(last, at) });
-        out.push({ type: "inlineMath", attrs: { latex: m[3], display: false } });
-        last = at + m[3].length + 2;
+        out.push({ type: "inlineMath", attrs: { latex: m[2], display: false } });
+        last = at + m[2].length + 2;
         TEXT_MATH.lastIndex = last;
       }
       if (last === 0) out.push(n);

@@ -150,7 +150,7 @@ export function loadBoard(raw: unknown): Board {
   return b as Board;
 }
 
-/** 白板文件（任何版本）→ 校验过的第 6 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 白板文件（任何版本）→ 校验过的第 7 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function loadBoardFile(raw: unknown): BoardFile {
   check(RawBoard, raw, "Not a board file");
   const b = migrateBoard(raw);

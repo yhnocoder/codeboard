@@ -202,7 +202,7 @@ describe("danglingRefs", () => {
 
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
-    expect(() => migrateBoard({ version: 7, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 8, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
   });
 });
 
