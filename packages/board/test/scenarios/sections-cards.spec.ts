@@ -1,5 +1,6 @@
 // Sections and card edits: the Section look (idle, hover, selected), moving a card from one Section into another,
-// a Note's title from its first heading, and ⌘X on cards (npm run harness -- sectionLook dragCardIntoOtherSection …)
+// dragging a Section snaps it to other Sections, a Note's title from its first heading, and ⌘X on cards
+// (npm run harness -- sectionLook dragCardIntoOtherSection sectionDragSnapsToSection …)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, light } from "../fixtures";
@@ -186,6 +187,54 @@ test("dragCardIntoOtherSection", async () => {
   const p = h.board().place.n1, f = (await h.page.locator('.sect[data-sect="S1"]').boundingBox())!, c = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
   await shot(h, "sect-menu-02-moved");
   check("move-to-section-menu", p.section === "S1" && p.y >= 60 && p.y <= 820 && c.x >= f.x && c.x + c.width <= f.x + f.width && c.y >= f.y && c.y + c.height <= f.y + f.height + 1, { p, f, c });
+  await close(h);
+});
+
+/** Dragging a Section by its label aligns it with other Sections like a card drag: slowed down near another Section's edge it
+ *  snaps onto it and a guide line shows; holding Ctrl turns snapping off. The cards inside move along; one undo puts it back */
+test("sectionDragSnapsToSection", async () => {
+  const b = emptyBoard("b1", "section snapping");
+  put(b, { id: "a", kind: "note", bg: true, md: "Prefill" } as NoteCard, 120, 140, 220);
+  put(b, { id: "c", kind: "note", bg: true, md: "Decode" } as NoteCard, 660, 500, 200);
+  b.sections.push({ id: "S1", title: "Scheduling", x: 60, y: 60, w: 400, h: 300 });
+  b.sections.push({ id: "S2", title: "KV cache", x: 600, y: 420, w: 320, h: 220 });
+  b.place.a.section = "S1"; b.place.c.section = "S2";
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, settings: { theme: "warm-ink" } as any });
+  await wait(h, 800);
+  const box = async (id: string) => (await h.page.locator(`.sect[data-sect="${id}"]`).boundingBox())!;
+  const s1 = await box("S1"), s2 = await box("S2");
+  const label = (await h.page.locator('.slabel[data-sect="S2"] .sname').boundingBox())!;
+  const grab = { x: label.x + 10, y: label.y + label.height / 2 };
+  // S2's left edge to 4px right of S1's left edge, its top 40px lower (no horizontal edge or centre line within reach)
+  const dx = s1.x + 4 - s2.x, dy = 40;
+  const guides = () => h.page.evaluate(() => [...document.querySelectorAll(".guides .guide")].map((g) => { const r = g.getBoundingClientRect(); return { v: g.classList.contains("v"), x: r.x, y: r.y, h: r.height }; }));
+  const card0 = { ...h.board().place.c };
+  await h.page.mouse.move(grab.x, grab.y); await h.page.mouse.down();
+  await h.page.mouse.move(grab.x + dx / 2, grab.y + dy / 2, { steps: 8 });
+  await h.page.mouse.move(grab.x + dx, grab.y + dy, { steps: 12 }); await wait(h, 300);
+  const during = await guides(), s2d = await box("S2");
+  await shot(h, "sect-snap-01-guide");
+  await h.page.mouse.up(); await wait(h, 400);
+  const sec2 = h.board().sections.find((q) => q.id === "S2")!, card1 = h.board().place.c;
+  const left = (await box("S2")).x, gone = (await guides()).length;
+  await shot(h, "sect-snap-02-dropped");
+  const v = during.find((g) => g.v);
+  check("section-drag-guide", !!v && Math.abs(v.x - s1.x) < 1.5 && v.y <= s1.y + 1 && v.y + v.h >= s2d.y + s2d.height - 1, { during, s1, s2d });
+  check("section-drag-snaps", Math.abs(s2d.x - s1.x) < 0.5 && Math.abs(left - s1.x) < 0.5 && sec2.x === 60 && sec2.y === 460 && gone === 0, { s2d, left, sec2, gone });
+  check("section-drag-moves-cards", card1.x === card0.x + (sec2.x - 600) && card1.y === card0.y + 40, { card0, card1 });
+  await h.page.keyboard.press("Control+z"); await wait(h, 400);
+  const back = h.board().sections.find((q) => q.id === "S2")!;
+  check("section-drag-undo", back.x === 600 && back.y === 420 && h.board().place.c.x === card0.x, { back, c: h.board().place.c });
+  // Ctrl held: no snapping, no guide
+  const label2 = (await h.page.locator('.slabel[data-sect="S2"] .sname').boundingBox())!;
+  const g2 = { x: label2.x + 10, y: label2.y + label2.height / 2 };
+  await h.page.mouse.move(g2.x, g2.y); await h.page.mouse.down(); await h.page.keyboard.down("Control");
+  await h.page.mouse.move(g2.x + dx, g2.y + dy, { steps: 12 }); await wait(h, 300);
+  const free = await guides();
+  await h.page.mouse.up(); await h.page.keyboard.up("Control"); await wait(h, 400);
+  const sec3 = h.board().sections.find((q) => q.id === "S2")!;
+  check("section-drag-ctrl-no-snap", free.length === 0 && sec3.x === 64, { free, sec3 });
   await close(h);
 });
 

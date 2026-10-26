@@ -61,7 +61,24 @@ function cardGesture(ids: string[]) {
   };
 }
 
-const ev0x = (e: PointerEvent) => e.clientX, ev0y = (e: PointerEvent) => e.clientY;
+/**
+ * 拖卡、拖 Section 时吸不吸附：拖得快时不吸附（顺滑），慢下来才对齐。屏幕上的速度，指数平滑。
+ * 停住不动时没有 move 事件：停一下就当速度为 0 再算一次（again(ev, true)，这时才吸附）
+ */
+function snapPace(e: PointerEvent, again: (ev: PointerEvent, still: boolean) => void) {
+  let vx = e.clientX, vy = e.clientY, vt = performance.now(), speed = 0, settleT: number | undefined;
+  return {
+    fast(ev: PointerEvent, still: boolean) {
+      clearTimeout(settleT);
+      if (!still) settleT = window.setTimeout(() => again(ev, true), 110);
+      const now = performance.now(), dt = Math.max(1, now - vt);
+      speed = still ? 0 : speed * 0.6 + (Math.hypot(ev.clientX - vx, ev.clientY - vy) / dt) * 1000 * 0.4;
+      vx = ev.clientX; vy = ev.clientY; vt = now;
+      return speed > tune("snapSpeed");
+    },
+    stop: () => clearTimeout(settleT),
+  };
+}
 
 // 双击检测（pointerdown 里 preventDefault 后浏览器的 dblclick 不可靠）：同一个东西上、够快、两下点在差不多同一个地方
 const DBL_SLOP = 6;
@@ -147,19 +164,11 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const noteOk = ids.length === 1 && g.kind === "note" && g.bg;
   const imageOk = ids.length === 1 && g.kind === "image"; // 图片卡拖到 Note / Text 上 → 放进它的 Markdown
   setDragging(new Set(ids));
-  // 拖得快时不吸附（顺滑），慢下来才对齐：屏幕上的速度，指数平滑
-  let vx = ev0x(e), vy = ev0y(e), vt = performance.now(), speed = 0;
-  let settleT: number | undefined;
+  const pace = snapPace(e, (ev, still) => onMove(ev, still));
   const onMove = (ev: PointerEvent, still = false) => {
-    clearTimeout(settleT);
-    // 停住不动时没有 move 事件：停一下就当速度为 0 再算一次（这时才吸附）
-    if (!still) settleT = window.setTimeout(() => onMove(ev, true), 110);
     const z = cam.z;
     let dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
-    const now = performance.now(), dt = Math.max(1, now - vt);
-    speed = still ? 0 : speed * 0.6 + (Math.hypot(ev.clientX - vx, ev.clientY - vy) / dt) * 1000 * 0.4;
-    vx = ev.clientX; vy = ev.clientY; vt = now;
-    const fast = speed > tune("snapSpeed");
+    const fast = pace.fast(ev, still);
     // 合并 / 变成 Sidenote 的落点
     const under = document.elementsFromPoint(ev.clientX, ev.clientY).find((n) => (n as HTMLElement).closest?.(".card") && !skip.has(((n as HTMLElement).closest(".card") as HTMLElement).dataset.id!)) as HTMLElement | undefined;
     const uc = under?.closest(".card") as HTMLElement | undefined;
@@ -201,7 +210,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     setMovingHome(drop ? null : new Map(items.map((it) => [it.id, homeFor(fr, { ...it.r, x: it.r.x + dx, y: it.r.y + dy })?.id])));
   };
   track(e, (ev) => { moving(); onMove(ev); }, (ev, moved) => {
-    clearTimeout(settleT);
+    pace.stop();
     clearTimeout(mergeT);
     setGuides([]);
     setDragging(new Set<string>());
@@ -557,17 +566,33 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
   const items = [...members.map((c) => { const q = placeOf(c.id); return { kind: "c" as const, id: c.id, ox: q.x, oy: q.y }; }), ...subs.map((q) => ({ kind: "s" as const, id: q.id, ox: q.x, oy: q.y }))];
   const skip = new Set(subs.map((q) => q.id));
   const fr = new Map(frames());
+  // 和拖卡一样对齐、吸附（#60）：吸到别的 Section 的边和中线。自己、子 Section 跟着走；外层的框包着它、跟着它变，也不算
+  const box = fr.get(id);
+  const outer = new Set<string>();
+  for (let p = sec(s.parent); p && !outer.has(p.id); p = sec(p.parent)) outer.add(p.id);
+  const targets = [...fr.entries()].filter(([k]) => !skip.has(k) && !outer.has(k)).map(([, r]) => r);
   const end = beginGesture();
   const sx = e.clientX, sy = e.clientY;
-  track(e, (ev) => {
-    const dx = (ev.clientX - sx) / cam.z, dy = (ev.clientY - sy) / cam.z;
+  const pace = snapPace(e, (ev, still) => onMove(ev, still));
+  const onMove = (ev: PointerEvent, still = false) => {
+    const z = cam.z;
+    let dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
+    const fast = pace.fast(ev, still);
+    if (box && !(ev.metaKey || ev.ctrlKey) && !fast) {
+      const sn = snapMove({ ...box, x: box.x + dx, y: box.y + dy }, targets, tune("snap") / z);
+      dx += sn.dx; dy += sn.dy;
+      setGuides(sn.guides);
+    } else setGuides([]);
     live((b) => {
       for (const it of items) {
         const o = it.kind === "c" ? b.place[it.id] : b.sections.find((q) => q.id === it.id);
         if (o) { o.x = Math.round(it.ox + dx); o.y = Math.round(it.oy + dy); }
       }
     });
-  }, (ev, moved) => {
+  };
+  track(e, (ev) => onMove(ev), (ev, moved) => {
+    pace.stop();
+    setGuides([]);
     if (moved) {
       const w = worldOf(ev);
       const np = deepestAt(fr, w.x, w.y, skip);
