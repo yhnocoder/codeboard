@@ -115,19 +115,17 @@ export function questionList(): QuestionItem[] {
 /** 点一条：这块白板上的就选中那张卡、那一行，打开问题；别的白板的让宿主打开那块白板 */
 export function gotoQuestion(q: QuestionItem) {
   if (q.board !== state.board.id) { send({ type: "openBoard", id: q.board, card: q.card, line: q.line, sticker: q.sticker }); return; }
-  revealQuestion(q.sticker, q.card, q.seg, q.line);
+  void revealQuestion(q.sticker, q.card, q.seg, q.line);
 }
-export function revealQuestion(sticker: string, card?: string, seg?: string, line?: number) {
-  if (card) {
-    const f = cardById(card);
-    if (f) {
-      select({ cards: [f.host.id] });
-      if (seg && line !== undefined) setLineSel({ card, seg, start: line, end: line });
-      revealCard(card);
-    }
+export async function revealQuestion(sticker: string, card?: string, seg?: string, line?: number) {
+  const f = card ? cardById(card) : undefined;
+  if (card && f) {
+    select({ cards: [f.host.id] });
+    if (seg && line !== undefined) setLineSel({ card, seg, start: line, end: line });
+    // 浮层按贴纸开那一刻的位置摆：镜头还在飞时开会留在半路
+    await revealCard(card);
   }
-  // 等镜头飞过去、贴纸重新放好再开浮层
-  setTimeout(() => openQuestion(sticker), 450);
+  openQuestion(sticker);
 }
 
 export function copyQuestions(items: QuestionItem[]) {

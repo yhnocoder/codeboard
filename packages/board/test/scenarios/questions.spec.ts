@@ -30,6 +30,64 @@ const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.
 
 test("questions", () => verdict("questions", questions));
 
+// Going to a question far away: the popover opens once the camera has arrived, also when the flight is slow (slow motion makes it
+// several seconds), so it sits next to the sticker and not where the sticker was mid-flight; a question already in view opens at once
+test("questionOpensAfterFlight", async () => {
+  const b = emptyBoard("bF", "flight");
+  const near = nv("Scheduler.schedule"), far = nv("BlockManager.allocate");
+  put(b, near, 60, 80, 640); put(b, far, 5200, 3400, 640);
+  const line = lineOf(far, /compute_hash/);
+  b.stickers.push({ id: "kF", icon: { pack: "builtin", name: "question" }, at: { kind: "line", card: far.id, seg: far.segments[0].id, line }, q: { md: "far away question" } });
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1400, h: 900, settings: { tune: { animSpeed: 40 } } as never, on: (m, reply) => (m.type === "questions" ? (void reply(m.req!, []), true) : false) });
+  const pg = h.page;
+  /** The world's transform when the question popover appeared */
+  const watchPop = () => pg.evaluate(() => {
+    const w = window as unknown as { __popAt?: string | null };
+    w.__popAt = null;
+    const world = () => (document.querySelector(".world") as HTMLElement).style.transform;
+    const mo = new MutationObserver(() => { if (document.querySelector(".pop.k-question")) { w.__popAt = world(); mo.disconnect(); } });
+    mo.observe(document.body, { childList: true, subtree: true });
+    return world();
+  });
+  const popAt = () => pg.evaluate(() => (window as unknown as { __popAt?: string | null }).__popAt);
+  const world = () => pg.evaluate(() => (document.querySelector(".world") as HTMLElement).style.transform);
+  const nextToSticker = () => pg.evaluate(() => {
+    const p = document.querySelector(".pop.k-question")!.getBoundingClientRect(), s = document.querySelector('[data-sticker="kF"]')!.getBoundingClientRect();
+    return Math.min(Math.abs(p.left - s.right), Math.abs(p.right - s.left), Math.abs(p.top - s.bottom), Math.abs(p.bottom - s.top)) < 40;
+  });
+
+  await pg.locator('.dock [aria-label="Questions"]').click();
+  await pg.locator(".qpanel .qrow").first().waitFor(); await idle(h);
+  // from the Questions panel: the camera flies to the far card
+  const before = await watchPop();
+  await pg.locator(".qpanel .qrow", { hasText: "far away question" }).click();
+  await pg.locator(".pop.k-question .qtext").waitFor({ timeout: 15000 });
+  await idle(h, 15000);
+  const panel = { before, popAt: await popAt(), after: await world(), next: await nextToSticker() };
+  await shot(h, "questions-after-flight");
+  // the question is in view now: clicking the row again opens it without moving the camera
+  await pg.keyboard.press("Escape"); await idle(h);
+  const still = await watchPop();
+  await pg.locator(".qpanel .qrow", { hasText: "far away question" }).click();
+  await pg.locator(".pop.k-question .qtext").waitFor();
+  const inView = { before: still, popAt: await popAt() };
+  // the host reveals it (from another board's Questions panel), after panning far away from it
+  await pg.keyboard.press("Escape"); await idle(h);
+  await pg.locator('.qpanel [aria-label="Close Questions"]').click(); await idle(h);
+  await pg.mouse.move(700, 450); await pg.mouse.wheel(-6000, -4000); await idle(h);
+  const home = await watchPop();
+  await h.post({ type: "reveal", card: far.id, seg: far.segments[0].id, lines: [line, line], sticker: "kF" });
+  await pg.locator(".pop.k-question .qtext").waitFor({ timeout: 15000 });
+  await idle(h, 15000);
+  const host = { before: home, popAt: await popAt(), after: await world(), next: await nextToSticker() };
+  const r = { panel, inView, host };
+  check("questionOpensAfterFlight-panel", panel.before !== panel.after && panel.popAt === panel.after && panel.next, r);
+  check("questionOpensAfterFlight-inView", inView.popAt === inView.before, r);
+  check("questionOpensAfterFlight-host", host.before !== host.after && host.popAt === host.after && host.next, r);
+  await h.page.context().close();
+});
+
 test("export", () => verdict("export", exportScenario));
 
 test("settingsPage", () => verdict("settingsPage", settings));
