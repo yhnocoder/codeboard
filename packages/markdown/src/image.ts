@@ -1,8 +1,5 @@
-// 图片：Markdown 里写的地址 → 页面上显示的地址和大小。静态显示（render.ts）和编辑器的图片节点视图（editor/image.ts）用同一份 <img> 属性，
-// 两种模式里一样大、一样的边距，切换时不跳。
-// 地址由用的一方解析（setImageResolver；白板：assets/… 换成 webview 的资源地址，文件名里带着宽高）。给了宽高就写进 width / height：
-// 图还没解码时浏览器已经按比例留好位置（CSS 里 max-width: 100%、height: auto）。没给的，第一次加载完记下它的大小，之后再画就带上。
-// 解码不占主线程（decoding=async），离屏的不先加载（loading=lazy）
+// 静态显示和编辑器的图片节点视图用同一份 <img> 属性，切换时不跳。写上 width / height，图还没解码时浏览器已经按比例
+// 留好位置（CSS 里 max-width: 100%、height: auto）；解析没给宽高的，第一次加载完记下大小，之后再画就带上
 
 /** 解析出来的图：显示的地址，知道的话还有宽高（像素） */
 export type ResolvedImage = { src: string; width?: number; height?: number };
@@ -10,7 +7,7 @@ export type ResolvedImage = { src: string; width?: number; height?: number };
 export type ImageResolver = (src: string) => ResolvedImage | undefined;
 
 let resolver: ImageResolver | null = null;
-/** 加载完才知道大小的图：显示的地址 → 宽高 */
+/** 显示的地址 → 加载完才知道的宽高 */
 const learned = new Map<string, { w: number; h: number }>();
 /** 显示的地址 → Markdown 里写的地址（学到大小时让静态显示的缓存里带着它的那几篇重画） */
 const rawOf = new Map<string, string>();

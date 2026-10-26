@@ -1,9 +1,7 @@
-// 设置：存在用户设置 codeboard.* 里（用户级），白板设置页读写同一份。
 import { DEFAULT_SETTINGS, THEMES, NOTE_FONT_LEVELS, NOTE_FONT_RANGE, type Settings } from "@codeboard/core";
 import { log } from "./log";
 import { workspace } from "./ws";
 
-/** Settings 字段 → 配置键 */
 const KEY: Record<keyof Settings, string> = {
   theme: "theme",
   vscodeBg: "useVSCodeBackground",
@@ -30,7 +28,6 @@ const KEY: Record<keyof Settings, string> = {
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
-/** 白板发来的值对不对得上 Settings 的类型 */
 const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   theme: (v) => THEMES.some(([id]) => id === v),
   vscodeBg: (v) => typeof v === "boolean",
@@ -54,7 +51,6 @@ const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   noteHeadingInBody: (v) => typeof v === "boolean",
   noteFontSize: (v) => isObj(v) && Object.entries(v).every(([k, x]) => NOTE_FONT_LEVELS.includes(k as never) && (x === null || x === undefined || fontPx(k, x))),
 };
-/** 字号在设置页能选的范围里 */
 function fontPx(level: string, v: unknown) {
   const [lo, hi] = NOTE_FONT_RANGE[level === "body" ? "body" : "heading"];
   return num(v) && (v as number) >= lo && (v as number) <= hi;

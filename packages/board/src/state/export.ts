@@ -1,4 +1,3 @@
-// 导出对话框（线框 08）的界面状态
 import { createSignal } from "solid-js";
 import type { ExportFormat, ExportScope } from "@codeboard/core";
 import { onBoardSwitch } from "./root";

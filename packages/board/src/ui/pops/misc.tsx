@@ -1,4 +1,3 @@
-// 问题贴纸、共享卡在哪几块白板上、通用的选择列表。
 import { For, Show, createEffect } from "solid-js";
 import { cardTitle } from "@codeboard/core";
 import { state, cardById, shared } from "../../state/store";
@@ -8,8 +7,6 @@ import { Glyph } from "../../stickers/glyphs";
 import * as A from "../../actions";
 import { Editable } from "../Editable";
 import { PopHead, type PopProps } from "./common";
-
-// ---------- 问题（线框 06） ----------
 
 export function QuestionPop(p: PopProps<"question">) {
   const s = () => state.board.stickers.find((k) => k.id === p.pop.sticker);
@@ -43,9 +40,6 @@ export function QuestionPop(p: PopProps<"question">) {
   );
 }
 
-
-// ---------- 共享卡：在哪几块白板上 ----------
-
 export function BoardsPop(p: PopProps<"boards">) {
   const bs = () => shared[p.pop.card]?.boards ?? [];
   createEffect(() => { if (bs().length < 2) closePop(p.inst.id); });
@@ -65,8 +59,6 @@ export function BoardsPop(p: PopProps<"boards">) {
     </>
   );
 }
-
-// ---------- 选择 / commit / 变量 / 源码 ----------
 
 export function PickPop(p: PopProps<"pick">) {
   return (

@@ -1,4 +1,3 @@
-// 箭头（Link）：普通箭头、连接模式、标签、调用上的变量。
 import { uid, isCode, cardTitle, varKey, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
 import { state, mutate, select, cardById, hostOf, toast } from "../state/store";
 import { setEditing, setHoverVar } from "../state/ui";
@@ -16,11 +15,9 @@ function subName(to: EndRef): string | undefined {
   return callName(t.t.split(/[\s(]/)[0]);
 }
 
-// ---------- 箭头 ----------
-
 type EndRef = { card: string; seg?: string; line?: number; sub?: string };
 
-/** 这条箭头其实是调用：从代码行连到「这一行调用的函数」所在的卡（#28：只有一种 Arrow，是不是调用自动判断） */
+/** 这条箭头其实是调用：从代码行连到「这一行调用的函数」所在的卡（只有一种 Arrow，是不是调用自动判断） */
 export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
   if (from.line === undefined || !from.seg || to.line !== undefined) return;
   // 连到子白板骨架里的卡：出发行调用了同名函数就是调用（并进这块白板的调用图）
@@ -48,7 +45,7 @@ export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
 }
 
 /**
- * 新箭头。从代码行连到「这一行调用的函数」所在的卡时自动带上 Call 标记（W01 B：手画的线连到被调函数），
+ * 新箭头。从代码行连到「这一行调用的函数」所在的卡时自动带上 Call 标记，
  * 连到别的（Note、某一行）就是普通箭头。两端可以是整张卡或某一行，数量不限；只有同一张卡的同一处连自己不行
  */
 export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
@@ -107,9 +104,6 @@ export function toggleVar(id: string, v: Var) {
   });
 }
 
-
-// ---------- 箭头走哪一侧（W03 10：右键 Start Side / End Side 固定，Reset Sides 回到自动） ----------
-
 /**
  * 固定起点 / 终点走哪一侧。每一端：不传（undefined）= 不变；"auto" = 回到自动；left / right / top / bottom = 固定。
  * 行端只能左右（固定成上下会被忽略、照自动走）
@@ -124,10 +118,7 @@ function setSides(id: string, from?: LinkSide | "auto", to?: LinkSide | "auto") 
     if (s.from || s.to) l.sides = s; else delete l.sides;
   });
 }
-/** 两端都回到自动 */
 const resetSides = (id: string) => setSides(id, "auto", "auto");
-
-// ---------- WS3：箭头 / 标签菜单改的数据（都走 mutate，可撤销） ----------
 
 const editLink = (id: string, f: (l: Link) => void) => mutate((b) => { const l = b.links.find((k) => k.id === id); if (l) f(l); });
 
@@ -154,7 +145,6 @@ export function toggleCallMark(id: string) {
   if (L.call) return editLink(id, (l) => { delete l.call; });
   makeCall(id);
 }
-/** ↺ 开关（只在 Call 上） */
 export const toggleLoopMark = (id: string) => editLink(id, (l) => { if (!l.call) return; if (l.call.loop) delete l.call.loop; else l.call.loop = true; });
 export const resetLabelPos = (id: string) => editLink(id, (l) => { delete l.at; });
 /** Delete Label：只删自己写的字（参数、↺ 不动） */

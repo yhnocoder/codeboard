@@ -1,4 +1,3 @@
-// 导出的 HTML 里跑的查看脚本：只读，平移（拖、滚轮）、缩放（⌘ / Ctrl + 滚轮、按钮）、适应窗口、讲解路径一步步走、悬停看 Sidenote 和问题、复制代码、打开永久链接。
 // 单独打包成一段 IIFE（vite.config 的 ?script），导出时整段写进页面；数据在页面里的 #xv-data（JSON）。不能 import 白板的代码
 export type Rect = { x: number; y: number; w: number; h: number };
 export type ViewerData = {

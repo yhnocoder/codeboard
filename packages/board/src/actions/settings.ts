@@ -1,4 +1,4 @@
-// 设置页、主题、诊断：设置改了先乐观更新本地 state.host.settings，再让宿主写进 codeboard.*（宿主会再广播回来）。
+// 设置改了先乐观更新本地 state.host.settings，再让宿主写进 codeboard.*（宿主会再广播回来）。
 import { NOTE_FONT_LEVELS, type NoteFontLevel, type NoteFontSizes, type Settings } from "@codeboard/core";
 import { setState, state, placed, rectOf, sync } from "../state/store";
 import { settingsOpen, setSettingsOpen, setKeysOpen } from "../state/ui";
@@ -100,4 +100,3 @@ function reflowAfterTheme(before: Map<string, R>) {
 export function copyDiagnostics() {
   send({ type: "copyDiagnostics" });
 }
-

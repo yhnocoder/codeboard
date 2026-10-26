@@ -1,7 +1,7 @@
-// Capture Run（线框 13 三，最小抓取）：用户给一个 Python 入口（命令 / 脚本 + 参数），宿主跑一次，记下被调函数在 Study Scope 里的调用。
+// Capture Run：用户给一个 Python 入口（命令 / 脚本 + 参数），宿主跑一次，记下被调函数在 Study Scope 里的调用。
 // 不改用户的工作区：在临时目录里放一个 sitecustomize.py，PYTHONPATH 指过去，Python 启动时自己装上 sys.setprofile 的抓取器；
 // 进程退出时每个进程写一个 trace-<pid>.json，宿主合成一份运行记录（格式见 core/run.ts），存到 <存储目录>/runs/<id>.json。
-// 多进程、可调抓取范围放 v0.3；这里子进程也会带上抓取器（同一个环境变量），记录合在一起。
+// 多进程分开记、可调抓取范围还没做：子进程也会带上抓取器（同一个环境变量），记录合在一起。
 import { spawn } from "node:child_process";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -182,7 +182,6 @@ export function mergeTraces(ts: Trace[]): { calls: RunCall[]; truncated: boolean
     const all: CallSample[] = [...o.samples, ...c.samples.map((s) => ({ ...s, n: s.n + base }))];
     o.samples = all.length > FIRST + 1 ? [...all.slice(0, FIRST), all[all.length - 1]] : all;
   }
-  // 次数多的在前
   return { calls: [...m.values()].sort((a, b) => b.count - a.count), truncated: ts.some((t) => t.truncated) };
 }
 
@@ -262,15 +261,12 @@ export async function runLocs(r: RunRecord): Promise<Record<string, RunLoc>> {
   return out;
 }
 
-/** 选运行记录时的一行 */
 export function runLabel(r: RunRecord): { label: string; description: string; detail: string } {
   const d = new Date(r.at);
   const when = `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
   const n = r.calls.reduce((s, c) => s + c.count, 0);
   return { label: r.entry, description: `${when}${r.commit ? ` · ${r.commit.slice(0, 7)}` : ""}`, detail: `${r.calls.length} call sites · ${n} calls${r.exit ? ` · exit ${r.exit}` : ""}` };
 }
-
-// ---------- 命令：CodeBoard: Capture Run… / Apply Run…（命令面板和白板的 ⋯ 菜单都走这里） ----------
 
 /** 发给白板的那一份（白板只要记录 + 路径对照） */
 export async function runApply(r: RunRecord) { return { run: r, locs: await runLocs(r) }; }
@@ -300,7 +296,6 @@ export async function captureFlow(storageDir: string, p: Target | undefined): Pr
   return rec;
 }
 
-/** 从存着的运行记录里选一次，发给白板 */
 export async function applyFlow(storageDir: string, p: Target | undefined) {
   const w = workspace();
   if (!p) { void w.ui.info("Open a board first."); return; }

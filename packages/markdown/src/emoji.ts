@@ -1,4 +1,4 @@
-// :smile: 表情（Typora #31）：GitHub 的短名里常用的这些。文件里存 :名字:（和 Typora 一样），显示成表情字
+// GitHub 短名里常用的这些。文件里存 :名字:（和 Typora 一样），显示成表情字
 export const EMOJI: Record<string, string> = {
   smile: "😄", smiley: "😃", grinning: "😀", grin: "😁", laughing: "😆", satisfied: "😆", joy: "😂", rofl: "🤣", sweat_smile: "😅",
   blush: "😊", innocent: "😇", wink: "😉", slightly_smiling_face: "🙂", upside_down_face: "🙃", relaxed: "☺️", yum: "😋",

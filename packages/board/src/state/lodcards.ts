@@ -29,7 +29,6 @@ const izWant = rooted(() => createMemo(() => {
 export const izOf = (id: string) => cardIz[id] ?? izWant();
 // 换完了的档：新出现的卡直接用它
 const [settled, setSettled] = createSignal<Lod>("full");
-/** 这张卡现在按哪一档显示 */
 export const lodOf = (id: string): Lod => cardLod[id] ?? settled();
 
 /** Canvas 里调用一次 */

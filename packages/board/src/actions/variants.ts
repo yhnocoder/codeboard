@@ -1,4 +1,3 @@
-// 我的改动（线框 07）：卡上的 Variant 标签页、Add Variant 菜单、对比基准、三方对照、合进上游后转回普通卡、「只在这个 Variant」的 Sidenote。
 // 切换只在白板里换段和展示数据（宿主事先把每个 Variant 的代码和高亮都给了），一帧之内完成。
 import { batch, createEffect, untrack } from "solid-js";
 import { rooted } from "../state/root";
@@ -14,8 +13,6 @@ import { setEditing } from "../state/ui";
 import { vlive, setVlive, vbase, setVbase, merged, setMergedSig } from "../state/variants";
 
 const code = (id: string) => { const c = cardById(id)?.card; return isCode(c) ? c : undefined; };
-
-// ---------- 切换 ----------
 
 /**
  * 段 id → views[段 id] 里现在放的是哪个 Variant 的展示数据。卡上显示的 Variant 变了（切换、撤销 / 重做、别的白板改了共享卡）
@@ -75,8 +72,6 @@ export function switchVariant(id: string, vid: string) {
   });
 }
 
-// ---------- 添加 ----------
-
 /** 卡头的「+」/ 菜单里的 Add Variant…：先问宿主有哪些 worktree、分支，再开菜单 */
 export async function addVariantMenu(id: string, x: number, y: number) {
   const c = code(id);
@@ -122,8 +117,6 @@ export async function addVariant(id: string, from: AddVariantFrom) {
   toast(isMine(code(id)!) ? `Added variant ${nv.name}` : `Added variant ${nv.name}: same code as upstream`);
 }
 
-// ---------- 改名、删除、说明 ----------
-
 export function variantMenu(id: string, vid: string, x: number, y: number) {
   const c = code(id);
   const v = c?.variants?.find((k) => k.id === vid);
@@ -163,9 +156,6 @@ export function setVariantNote(id: string, text: string) {
   });
 }
 
-// ---------- 对比 ----------
-
-/** 对比基准的段和名字 */
 export function baseOf(c: CodeCard): { key: string; label: string; segs?: Segment[] } {
   const k = vbase[c.id] ?? UPSTREAM;
   if (k === "latest") { const l = vlive[c.id]?.latest; return { key: k, label: l ? `Upstream latest ${l.label}` : "Upstream latest", segs: l?.segs }; }
@@ -203,8 +193,6 @@ export function openThreeWay(id: string, el?: Element) {
   if (!vlive[id]?.latest) return void toast("Upstream latest is not available (no upstream branch found)");
   openPop({ kind: "three", card: id }, el ? { el, prefer: "below" } : { x: innerWidth / 2 - 300, y: 120 });
 }
-
-// ---------- 宿主同步来的 ----------
 
 /** 每个合入只提示一次（这次打开白板里） */
 const asked = new Set<string>();
@@ -265,8 +253,6 @@ export function mergedPrompt(id: string) {
     { label: "Keep Variants", run: () => keepMerged(id, m.vid, m.tip) },
   ], 12000);
 }
-
-// ---------- Sidenote ----------
 
 /** 「只在这个 Variant」：挂在有 Variant 的卡上的 Sidenote 才有 */
 export function toggleVariantOnly(noteId: string) {

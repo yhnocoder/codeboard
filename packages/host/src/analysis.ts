@@ -1,4 +1,3 @@
-// tree-sitter 分析的缓存：同一份内容只分析一次。
 import { fingerprint } from "@codeboard/core";
 import { analyze, clipAnalysis, initAnalysis, type FileAnalysis } from "@codeboard/core/analysis";
 import { Lru } from "./ws";

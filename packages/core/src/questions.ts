@@ -1,8 +1,6 @@
-// 疑问（线框 06）：「?」贴纸上写的问题跨白板汇总（Questions 面板、侧栏 QUESTIONS）、复制 / 导出成 Markdown 清单。
 // 纯函数：宿主拿卡库里的所有白板算；白板只在面板开着时算自己这一块（不进每帧的工作）。
 import { baseName, cardTitle, isCode, isQuestion, findCard, stickerWhere, type Board } from "./model";
 
-/** 一条问题：在哪块白板、哪张卡、哪一行 */
 export type QuestionItem = {
   board: string; boardName: string; group?: string;
   sticker: string;

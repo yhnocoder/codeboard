@@ -1,4 +1,4 @@
-// 存储用的最小文件系统适配器：宿主给 node:fs 的实现，测试用内存实现。路径拼接也交给它（Windows 的分隔符）。
+// 路径拼接也交给 Fs（Windows 的分隔符）。
 
 export type DirEnt = { name: string; isFile: boolean; isDir: boolean };
 export type FileStat = { mtimeMs: number; birthtimeMs: number; ctimeMs: number };
@@ -25,7 +25,6 @@ export interface Fs {
 
 import { baseName } from "../model";
 
-/** 所在的目录（去掉最后一段） */
 export const dirName = (p: string) => p.slice(0, Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\")));
 /** 扩展名（含点；没有返回 ""），同 node path.extname */
 export function extName(p: string) {

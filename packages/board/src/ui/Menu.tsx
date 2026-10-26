@@ -1,4 +1,3 @@
-// 自定义右键菜单、对话框、提示。浏览器自带的右键菜单全部屏蔽。
 import { createSignal, For, Show, onCleanup, onMount, createEffect } from "solid-js";
 import { Icon } from "./icons";
 import { place, virtual } from "@yhnocoder/markdown/ui";
@@ -129,8 +128,6 @@ export function MenuLayer() {
   return <Show when={menu()} keyed>{(m) => <RootMenu m={m} />}</Show>;
 }
 
-// ---------- 对话框：问一次，粗框按钮 = 默认（↵） ----------
-
 type DialogState = { title: string; text?: string; warn?: string; note?: string; options: string[]; def: number; done: (i: number | null) => void; input?: { value: string; placeholder?: string } };
 const [dialog, setDialog] = createSignal<DialogState | null>(null);
 
@@ -174,7 +171,7 @@ export function DialogLayer() {
   return <Show when={dialog()} keyed>{(d) => <Dialog d={d} />}</Show>;
 }
 
-// ---------- 按钮提示：停 500ms 出现并带快捷键；之后在按钮间滑动立刻切换；按下即消失 ----------
+// 按钮提示：停一会儿出现并带快捷键；之后在按钮间滑动立刻切换；按下即消失
 
 export function TooltipLayer() {
   const [tip, setTip] = createSignal<{ text: string; kbd?: string; at: HTMLElement } | null>(null);

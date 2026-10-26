@@ -1,5 +1,3 @@
-// 编辑器里的标记（VS Code 适配层）：CodeLens 只挂在白板上有的函数 / 类上方（「+ Card」「on N boards」），
-// 目标白板上有的行在行号旁画一道细竖条。画什么由 marks.ts 算。设置 codeboard.editorMarks：all（都画）、lens（只要 CodeLens）、off（都不画），改了立即生效
 import * as vscode from "vscode";
 import { BoardMarks } from "@codeboard/host/marks";
 import type { BoardHub } from "@codeboard/host/hub";
@@ -30,7 +28,6 @@ export class EditorMarks implements vscode.CodeLensProvider {
     }));
   }
 
-  /** 白板变了：重建索引 */
   readonly rebuild = debounce(async () => {
     await this.marks.rebuild(this.store);
     this.emitter.fire();

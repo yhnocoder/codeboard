@@ -1,7 +1,6 @@
-// 小事件发射器（宿主和以后的 macOS 版共用，不依赖 vscode.EventEmitter）。监听函数同步调用，一个出错不影响别的。
+// 不依赖 vscode.EventEmitter。监听函数同步调用，一个出错不影响别的。
 
 export type Disposable = { dispose(): void };
-/** 订阅：返回 Disposable，dispose 后不再收到 */
 export type Event<T> = (fn: (e: T) => void) => Disposable;
 
 export class Emitter<T = void> {

@@ -1,4 +1,3 @@
-// 定义预览：签名、文档、代码；Follow 跟到下一层；钉成 Sidenote / 放成卡（动作在 actions/pops.ts）。
 import { For, Show } from "solid-js";
 import { baseName, escHtml } from "@codeboard/core";
 import { state } from "../../state/store";

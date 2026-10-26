@@ -1,4 +1,3 @@
-// Web 卡和 Link List：抓网页信息 / Retry、合成 Link List、行的排序 / 拖出 / 切换 Rich、菜单；From GitHub… 面板入口。
 import { unwrap } from "solid-js/store";
 import {
   uid, findCard, removeCards, estSize, defaultWidth, findFree,
@@ -17,9 +16,6 @@ import { holdPointer } from "../ui/guard";
 
 /** 图片地址：assets/ 下的文件名 → webview 能读的 URL */
 export const assetSrc = (name?: string) => (!name ? undefined : /^(data:|https?:|blob:)/.test(name) ? name : `${state.host.assetBase}/${name}`);
-
-// ---------- 抓网页信息 ----------
-
 
 /** 抓一次网页信息存进卡（或 Link List 的一行）。宿主同步来的数据，不进撤销栈 */
 export async function fetchMeta(id: string, url: string, item?: string) {
@@ -42,8 +38,6 @@ export async function retryMeta(id: string, item?: string) {
   const m = await fetchMeta(id, url, item);
   if (m.failed) toast("Still nothing. The page may need a login: open it in your browser.", [{ label: "Open in Browser", run: () => openLink(url) }]);
 }
-
-// ---------- Link List ----------
 
 const asItem = (c: WebCard): LinkItem => {
   const meta = c.meta ? { ...structuredClone(unwrap(c.meta)) } : undefined;
@@ -145,10 +139,6 @@ function moveItemOut(id: string, item: string, at?: { x: number; y: number }) {
   popCard(nid);
 }
 
-// ---------- 菜单 ----------
-
-/** Web 卡 / Link List 的 ⋯ 菜单里自己的那几项（通用项由 cardMenu 接在后面） */
-/** 右键一行 */
 export function rowMenu(id: string, item: string, x: number, y: number) {
   const c = cardById(id)?.card;
   const it = itemOf(id, item);
@@ -165,8 +155,7 @@ export function rowMenu(id: string, item: string, x: number, y: number) {
   ], x, y);
 }
 
-// ---------- 行拖动：⋮⋮ 上下排序；拖出卡外 = 拆成 Web 卡 ----------
-
+// 行拖动：⋮⋮ 上下排序；拖出卡外 = 拆成 Web 卡
 
 export function rowGripDown(e: PointerEvent, id: string, item: string) {
   if (e.button !== 0) return;
@@ -213,8 +202,5 @@ export function rowGripDown(e: PointerEvent, id: string, item: string) {
   window.addEventListener("pointercancel", onUp, true);
 }
 
-// ---------- From GitHub… ----------
-
 /** 打开 From GitHub… 面板（工具栏 Code ▾、侧栏 Add Repo… 都走这里）；repo 可以预填 owner/repo 或链接 */
 export function openGitHubPicker(repo?: string) { setGhPicker({ repo }); }
-

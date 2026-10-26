@@ -35,7 +35,7 @@ export function watchHover() {
   createEffect(on(camMoving, (mv) => { if (!mv) setHoverCard(hovNow); }, { defer: true }));
 }
 
-// 离开连线后过 300ms 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停（#30）。移到指针下那张卡的线上时，那张卡也还算悬停着
+// 离开连线后过 linkLeave 才算离开：鼠标从线移到 "+" 或变量框的路上不丢悬停。移到指针下那张卡的线上时，那张卡也还算悬停着
 let leaveT: number | undefined;
 export const enterLink = (id: string) => {
   clearTimeout(leaveT); setHoverLink(id);

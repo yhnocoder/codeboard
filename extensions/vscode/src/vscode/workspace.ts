@@ -1,4 +1,3 @@
-// Workspace 的 VS Code 实现：功能代码只经过它访问编辑器和工作区（见 core/workspace.ts）。
 import * as vscode from "vscode";
 import * as path from "node:path";
 import { vscodeScratch, isScratch } from "./scratch";
@@ -10,8 +9,7 @@ const EXT_ID = "yhnocoder.codeboard-vscode";
 declare const __CODEBOARD_BUILD__: string | undefined;
 const BUILD = typeof __CODEBOARD_BUILD__ === "string" ? __CODEBOARD_BUILD__ : "";
 
-// ---------- 历史版本的只读文档：codeboard-git:/<path>?{root, commit, path} ----------
-
+// 历史版本的只读文档：codeboard-git:/<path>?{root, commit, path}
 export const GIT_SCHEME = "codeboard-git";
 export function gitUri(root: string, commit: string, rel: string): vscode.Uri {
   return vscode.Uri.from({ scheme: GIT_SCHEME, path: `/${commit.slice(0, 7)}/${rel}`, query: JSON.stringify({ root, commit, path: rel }) });
@@ -22,7 +20,6 @@ export function parseGitUri(u: vscode.Uri): { root: string; commit: string; path
     return { ...q, abs: path.join(q.root, q.path) };
   } catch { return null; }
 }
-/** 历史版本文档的内容由 show(root, commit, path) 给 */
 export function registerVersionDocs(show: (root: string, commit: string, rel: string) => Promise<string | null>): vscode.Disposable {
   return vscode.workspace.registerTextDocumentContentProvider(GIT_SCHEME, {
     provideTextDocumentContent: async (u) => {
@@ -31,8 +28,6 @@ export function registerVersionDocs(show: (root: string, commit: string, rel: st
     },
   });
 }
-
-// ---------- 跳转：开在白板旁边那一栏，闪一下行 ----------
 
 let flashDeco: vscode.TextEditorDecorationType | undefined;
 
@@ -52,7 +47,6 @@ async function show(uri: vscode.Uri, line: number | undefined, end?: number, rea
   }
 }
 
-/** 代码开在白板旁边的那一栏（白板在第一栏时开第二栏） */
 function codeColumn(): vscode.ViewColumn {
   const tab = vscode.window.tabGroups.activeTabGroup;
   const boardActive = tab.activeTab?.input instanceof vscode.TabInputWebview;
@@ -61,8 +55,7 @@ function codeColumn(): vscode.ViewColumn {
   return other?.viewColumn ?? vscode.ViewColumn.Beside;
 }
 
-// ---------- 设置：完整键 codeboard.newCards.hide = 节 codeboard + 键 newCards.hide ----------
-
+// 设置的完整键 codeboard.newCards.hide = 节 codeboard + 键 newCards.hide
 const splitKey = (k: string) => { const i = k.indexOf("."); return [k.slice(0, i), k.slice(i + 1)] as const; };
 
 const fileOrUndef = (u: vscode.Uri) => (u.scheme === "file" ? u.fsPath : undefined);
@@ -202,7 +195,6 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
     },
     ai: {
       ask: copilotAsk,
-      // 灰字补全：codeboard.ai.provider 选模型。auto = 设了 DeepSeek 密钥就用 DeepSeek，否则 Copilot
       complete: async (before, after, o) => {
         const cfg = vscode.workspace.getConfiguration("codeboard.ai");
         const provider = cfg.get<string>("provider", "auto");
@@ -229,7 +221,6 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
   };
 }
 
-/** 定义 / 实现：只要磁盘文件里的位置 */
 async function locations(cmd: string, abs: string, line: number, col: number): Promise<{ abs: string; line: number; col: number }[]> {
   const r = await vscode.commands.executeCommand<(vscode.Location | vscode.LocationLink)[]>(cmd, vscode.Uri.file(abs), new vscode.Position(line - 1, col));
   const out: { abs: string; line: number; col: number }[] = [];

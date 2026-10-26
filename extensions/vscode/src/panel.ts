@@ -1,5 +1,3 @@
-// 白板的界面（VS Code 适配层）：一张白板一个 webview 标签页。HostEnv 的 VS Code 实现：开 webview、globalState；
-// 白板之间的协调（共享卡、子白板、Add to 的目标）在 @codeboard/host/hub。
 import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
@@ -11,7 +9,6 @@ import type { Storage } from "@codeboard/host/storage";
 
 export const VIEW_TYPE = "codeboard.board";
 
-/** BoardView 的 VS Code 实现：一个 webview 标签页 */
 function webviewView(panel: vscode.WebviewPanel): BoardView {
   return {
     postMessage: (m) => void panel.webview.postMessage(m),
@@ -28,9 +25,7 @@ function webviewView(panel: vscode.WebviewPanel): BoardView {
   };
 }
 
-/** 白板的 webview：开新的标签页（HostEnv.openView）、窗口重新加载后恢复（restore） */
 export class BoardWebviews {
-  /** 开着的白板 webview（新白板开在它们那一栏） */
   private open = new Set<vscode.WebviewPanel>();
 
   constructor(private ctx: vscode.ExtensionContext, private store: Storage) {}
@@ -39,7 +34,6 @@ export class BoardWebviews {
     return {
       globalState: { get: (k) => this.ctx.globalState.get(k), set: async (k, v) => { await this.ctx.globalState.update(k, v); } },
       openView: (id, title, place) => {
-        // here：侧栏里点的，开在当前这一栏（不新开分栏）
         const col = place.side ? vscode.ViewColumn.Beside : place.here ? vscode.ViewColumn.Active : this.boardColumn() ?? vscode.ViewColumn.Beside;
         const panel = vscode.window.createWebviewPanel(VIEW_TYPE, title, { viewColumn: col, preserveFocus: place.preserveFocus }, { enableScripts: true, retainContextWhenHidden: true });
         return this.setup(panel, id);
@@ -47,14 +41,12 @@ export class BoardWebviews {
     };
   }
 
-  /** 窗口重新加载后恢复面板：webview 的 state 里记着白板 id */
   async restore(hub: BoardHub, panel: vscode.WebviewPanel, state: unknown) {
     const id = await hub.restoreId((state as { __board?: string } | undefined)?.__board);
     if (!id) { panel.dispose(); return; }
     hub.attach(id, this.setup(panel, id));
   }
 
-  /** 已经有白板开着的那一栏（新白板也开在那里，成为一个新标签） */
   private boardColumn() {
     return [...this.open].map((p) => p.viewColumn).find((c) => c);
   }

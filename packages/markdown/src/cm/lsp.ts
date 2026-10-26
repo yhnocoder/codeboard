@@ -1,5 +1,4 @@
-// 编辑中的代码的语言功能：补全菜单、悬停、签名提示，都问宿主（VS Code 里是 Pylance 之类）。菜单和提示框由 CodeMirror 画，样式跟白板走。
-// 请求都是异步的，打字不等它：补全用 CodeMirror 的 context.aborted（又打了字就作废），悬停、签名按请求号只认最新的。
+// 请求都是异步的，打字不等它：补全用 CodeMirror 的 context.aborted（又打了字就作废），签名按请求号只认最新的
 import { EditorState, StateField, StateEffect, type Extension } from "@codemirror/state";
 import { EditorView, ViewPlugin, hoverTooltip, showTooltip, type Tooltip, type ViewUpdate } from "@codemirror/view";
 import type { CompletionContext, CompletionResult, Completion } from "@codemirror/autocomplete";
@@ -19,7 +18,7 @@ export type LspHost = {
   signature(text: string, line: number, col: number, trigger?: string): Promise<LspSignature | null>;
   /** Markdown → HTML（悬停、文档说明；一般就是 renderMd） */
   md(src: string): string;
-  /** 不再用了：编辑器拆掉时调（宿主关掉这段代码的虚拟文档） */
+  /** 编辑器拆掉时调（宿主关掉这段代码的虚拟文档） */
   close?(): void;
 };
 
@@ -34,7 +33,6 @@ function mdDom(host: LspHost, src: string, cls: string) {
   return d;
 }
 
-// ---------- 补全 ----------
 function completionSource(host: LspHost) {
   return async (ctx: CompletionContext): Promise<CompletionResult | null> => {
     const word = ctx.matchBefore(/[\w$]+/);
@@ -61,7 +59,7 @@ function completionSource(host: LspHost) {
   };
 }
 
-// ---------- 签名提示：打 ( 或 , 时问；开着的时候光标、文字一变就再问（换当前参数，出了括号宿主回空就关） ----------
+// 签名提示：打 ( 或 , 时问；开着的时候光标、文字一变就再问（换当前参数，出了括号宿主回空就关）
 type Sig = { sig: LspSignature; pos: number };
 const setSig = StateEffect.define<Sig | null>();
 const sigField = StateField.define<Sig | null>({
@@ -125,7 +123,6 @@ function signaturePlugin(host: LspHost) {
   });
 }
 
-// ---------- 悬停 ----------
 function hover(host: LspHost) {
   return hoverTooltip(async (view, pos) => {
     const l = view.state.doc.lineAt(pos), t = l.text, i = pos - l.from;
@@ -139,7 +136,6 @@ function hover(host: LspHost) {
   }, { hoverTime: 450 });
 }
 
-/** 签名提示开着就关掉 */
 export function dismissSig(v: EditorView): boolean {
   if (!v.state.field(sigField, false)) return false;
   v.dispatch({ effects: setSig.of(null) });

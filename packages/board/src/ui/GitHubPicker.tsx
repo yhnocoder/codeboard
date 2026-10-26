@@ -1,4 +1,3 @@
-// From GitHub…：输入 owner/repo（或贴链接）→ 选分支 / tag / commit（加卡时钉成 commit）→ 浏览文件树 → 打开文件选行 → Add to Board。
 // 数据都由宿主走 GitHub REST API 拿（私有仓库用 VS Code 的 GitHub 登录，被拒时才请用户登录）。
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, createMemo, createSignal, onMount, batch } from "solid-js";
@@ -111,8 +110,6 @@ export function GitHubPicker() {
     toast(`Added ${baseName(f.path)} ${s}–${e} · pinned to ${c.commit.slice(0, 7)}`);
   }
 
-  // ---------- 文件树 ----------
-
   const nodes = createMemo(() => {
     const m = new Map<string, Node>([["", { dirs: [], files: [] }]]);
     const t = tree();
@@ -148,7 +145,7 @@ export function GitHubPicker() {
     </>
   );
 
-  // ---------- 选行：按下拖过行号 / 代码选范围，⇧ 点击扩展 ----------
+  // 选行：按下拖过行号 / 代码选范围，⇧ 点击扩展
 
   let anchor = 0, down = false;
   const lineDown = (e: PointerEvent, l: number) => {

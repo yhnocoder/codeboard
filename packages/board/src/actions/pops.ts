@@ -1,4 +1,3 @@
-// 浮层里的操作：定义预览的 Pin as Sidenote / Place on Board / Follow，加 Sidenote 时搜代码。界面在 ui/pops/
 import { unwrap } from "solid-js/store";
 import { uid, type Anchor, type PeekDef, type SearchItem, type Sidenote } from "@codeboard/core";
 import { toast } from "../state/store";

@@ -1,4 +1,3 @@
-// 接上断掉的调用链、跨语言（线框 01、02）：选实现、灰色备选、取值选择、跨语言按名字搜、手动补边、Generated 卡。
 import { unwrap } from "solid-js/store";
 import {
   uid, isCode, segOf, cardTitle, instName, genWhat, rankByReceiver, sameCallSite, baseName, swapCallTarget,
@@ -14,9 +13,6 @@ import { lastPointer } from "../state/measure";
 import { callMark, expandCall, placeExpanded, isLibCall } from "./flow";
 import { linksInto } from "./nav";
 
-// ---------- 动态分发：列出全部实现，选一个 ----------
-
-/** link：卡已经按定义建好了（转到实现后回来的）：选一个就换掉那条箭头连着的卡；abstract = 基类的方法是抽象的，换掉后不留成备选 */
 /** 调用处那个名字的元素（浮层挂在它下面） */
 function callEl(cardId: string, segId: string, call: CallSpan): Element | null {
   const host = hostOf(cardId);
@@ -55,7 +51,7 @@ export async function lateDispatch(cardId: string, segId: string, call: CallSpan
   openImplPicker(cardId, segId, call, r, undefined, false, { link: L.id, ...(r.abstract ? { abstract: true } : {}) });
 }
 
-/** library 包在不在 Study Scope 里：不在的要 ⌥ 才展开（v0.1.5 的规则） */
+/** library 包在不在 Study Scope 里：不在的要 ⌥ 才展开 */
 const libBlocked = (lib?: string) => !!lib && isLibCall({ pkg: lib });
 
 /** 选了一个实现：建卡连线，其余的留成灰色备选；why 写进箭头的标签框。library 的要 ⌥。回 false = 没展开 */
@@ -76,8 +72,6 @@ export function pickImpl(p: ImplPop, i: number, why: string, alt: boolean): bool
   void expandCall(p.card, p.seg, p.call, p.at, { path: it.path, line: it.line, qual: it.qual }, p.again, { mark: { impls: p.impls.length, ...(alts.length ? { alts } : {}) }, label: why.trim() || undefined });
   return true;
 }
-
-// ---------- 灰色备选：同一个调用点的别的实现 / 别的取值 ----------
 
 /** 一个备选：i = 在 call.alts 里的位置；opt = 由取值的 opts 派生的（val 是第几个取值） */
 export type AltItem = { alt: CallAlt; i?: number; opt?: { val: number; value: string } };
@@ -173,8 +167,6 @@ export async function swapAlt(linkId: string, k: number, o: { label?: string; dr
 let altDown = false;
 export const setAltDown = (v: boolean) => { altDown = v; };
 
-// ---------- 取值选择：kNumRanks 取几 ----------
-
 export function openValPicker(linkId: string, vi: number, el: Element) {
   openPop({ kind: "vals", link: linkId, val: vi }, { el, prefer: "below" });
 }
@@ -189,8 +181,6 @@ export function setVal(linkId: string, vi: number, value: string) {
     if (isCode(tc)) retitle(tc, before, l.call.vals!);
   });
 }
-
-// ---------- 解析不到：按名字跨语言搜，或手动补边 ----------
 
 export function unresolvedMenu(cardId: string, segId: string, call: CallSpan, reason: string) {
   const el = callEl(cardId, segId, call);
@@ -251,7 +241,7 @@ export function manualCallTo(from: { card: string; seg?: string; line?: number; 
   toast(`Linked to ${cardTitle(t.card)} (manual)`);
 }
 
-// ---------- Generated 卡：生成的代码 / 编译产物，钉在一次运行上 ----------
+// Generated 卡：生成的代码 / 编译产物，钉在一次运行上
 
 const hhmm = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
@@ -280,8 +270,6 @@ export async function addGenerated(at: { card: string; seg?: string; line?: numb
 export function setGenRun(id: string, v: string) {
   mutate((b) => { const c = b.cards.find((k) => k.id === id); if (isCode(c) && c.gen) { if (v.trim()) c.gen.run = v.trim(); else delete c.gen.run; } });
 }
-
-// ---------- 卡头 ----------
 
 /** 动态分发选出来的卡：「1 of N」 */
 export function dispatchOf(id: string): number {

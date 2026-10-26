@@ -1,10 +1,9 @@
 // 照 Typora 的“边写边变”：
 // - 行内：打完收尾的记号就变。解析器（schema.ts）能判断的不另写规则：刚收尾、到光标为止的那一段按解析器解析（retype），
-//   **b** *i* ~~s~~ 也是（中文后面紧跟的 **粗体**、同一行前面有行内代码 `void **` 时也对，#66）；_i_ 用 TipTap 自带的，`c` 按反引号的长度配对（codeSpanAtEnd）
+//   **b** *i* ~~s~~ 也是（中文后面紧跟的 **粗体**、同一行前面有行内代码 `void **` 时也对）；_i_ 用 TipTap 自带的，`c` 按反引号的长度配对（codeSpanAtEnd）
 // - 块：# > - 1. [ ] 加空格用 TipTap 自带的；回车时整段解析出来是代码块、分隔线、目录、公式块的就换成它（enterBlock）；
 //   $$ / === / <details> / |表|头| 加回车另有规则（解析器认不出来）
-// - 光标移进格式文字、标题、行内公式时展开成能改的 Markdown 原文（source.ts）；还没展开时（刚打完）照旧把记号画在两头（装饰）
-// - ⌘Z 紧跟在自动转换后面：撤回成打的字；标题行首退格：变回普通段落
+// - 光标移进格式文字、标题、行内公式时展开成原文（source.ts）；还没展开时（刚打完）把记号画在两头（装饰）
 // - 一次进来一大段字（接受补全、粘贴）时打字规则不会触发：把这一段当 Markdown 重新解析一遍（reconvert）
 import { Extension, InputRule, Mark as TMark, wrappingInputRule, type Editor } from "@tiptap/core";
 import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
@@ -83,7 +82,7 @@ function spanOf(ctx: Fragment, cut: Fragment, schema: Schema): Fragment | null {
 
 /**
  * 打字时的行内转换（**b** *i* ~~s~~ ***bi*** ==hl== H~2~ x^2^ $m$ [t](u) ![a](u) <u>u</u> :e: [[R]] {字|批注}）：只看刚打完收尾记号、到光标为止的那一段，
- * 和以前一条条的规则一样——从左往右找一个开头字，从它到光标解析出来正好是一整段新格式就换掉（同一个 transaction，⌘Z 撤回成打的字）。
+ * 从左往右找一个开头字，从它到光标解析出来正好是一整段新格式就换掉（同一个 transaction，⌘Z 撤回成打的字）。
  * 开头字前面紧挨着同样的字或 \ 时不算（**b* 里的 *b*、~~s~ 里的 ~s~、\$）；前面撤回成字的不会再变；
  * 光标后面的不动（自动补的右括号）；最后一个脚注引用之前的不动，解析出脚注引用也不要。
  * pos：刚打的字后面（打字规则给的 range.to）；盖过自动补的右括号时光标还在那个字前面，不能看光标
@@ -267,7 +266,7 @@ function selectWord(e: Editor) {
   return true;
 }
 
-/** 打字时的转义 \X 里的那个 \（#27）：光标不在旁边时不显示；写出时原样是 \X（schema.ts 的 escPairs） */
+/** 打字时的转义 \X 里的那个 \：光标不在旁边时不显示；写出时原样是 \X（schema.ts 的 escPairs） */
 const EscMark = TMark.create({ name: ESC_MARK, inclusive: false, parseHTML: () => [], renderHTML: () => ["span", { class: "md-esc" }, 0] });
 const escKey = new PluginKey("cbEsc");
 /** 光标不在旁边（\ 前、\ 和字之间、字后面）的转义 \：藏起来 */
@@ -292,7 +291,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
     const s = this.editor.schema;
     const openMath = this.options.openMath;
     const ed = this.editor;
-    /** 回车触发的块规则：这一段换成 nodes，光标放进 at(起点) 返回的位置 */
+    /** 回车触发的块规则：这一段换成 nodes，光标放到 caret(起点)；不给 caret 就放到后面一段 */
     const enterRule = (find: RegExp, make: (m: RegExpMatchArray) => { nodes: PMNode[]; caret?: (start: number) => number; then?: (start: number) => void } | null) =>
       new InputRule({
         find, undoable: false,
@@ -317,7 +316,7 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
         },
       });
     return [
-      // 反斜杠后面打标点：这一对是转义（#27）。\ 带 mdEsc 标记（平时不显示，写出时原样 \X）；\ 自己是被转义的那个字时不算
+      // 反斜杠后面打标点：这一对是转义。\ 带 mdEsc 标记；\ 自己是被转义的那个字时不算
       // （这一版 TipTap 先把打的字插进去了，range 已经包含它）
       new InputRule({ find: /\\[!-/:-@[-`{-~]$/, handler: ({ state, range }) => {
         const esc = s.marks[ESC_MARK], at = range.from;
@@ -377,7 +376,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       } }),
       // ```语言 / *** / --- / ___ / [toc] / 一整行的 $$m$$ 加回车：解析出来的块（enterBlock）
       new InputRule({ find: (text) => (text.endsWith("\n") ? { index: text.length - 1, text: "\n" } : null), undoable: false, handler: ({ state }) => (enterBlock(state) ? undefined : null) }),
-      // $$ 加回车：空的公式块，展开原文
       enterRule(/^\$\$\n$/, () => ({ nodes: [s.nodes.blockMath.create({ latex: "" })], then: (st) => openMath(ed, st) })),
       // 上一段下面一行 === 加回车：上一段变一级标题（setext）
       new InputRule({ find: /^=+\n$/, undoable: false, handler: ({ state, range }) => {
@@ -390,12 +388,10 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
         tr.setSelection(TextSelection.near(tr.doc.resolve(start + prev.nodeSize + 1)));
         return undefined;
       } }),
-      // <details> 加回车：折叠块，光标在标题里
       enterRule(/^<details>\n$/i, () => ({
         nodes: [s.nodes.details.create(null, [s.nodes.detailsSummary.create(), s.nodes.detailsContent.create(null, s.nodes.paragraph.create())])],
         caret: (st) => st + 2,
       })),
-      // |a|b| 加回车：以这一行为表头的表格，光标在第一格
       enterRule(/^\|(.+)\|\n$/, (m) => {
         const heads = m[1].split("|").map((x) => x.trim());
         if (!heads.length || heads.length > 20) return null;
@@ -475,7 +471,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       // ⌘⇧` 行内代码；Mac 上 ⌃⇧` 删除线（Windows / Linux 上这两个是同一个键，归行内代码）
       "Mod-Shift-`": () => e.commands.toggleCode(),
       ...(IS_MAC ? { "Ctrl-Shift-`": () => e.commands.toggleStrike() } : {}),
-      // ⌘D 选中光标处的词，⌘L 选中这一段
       "Mod-d": () => selectWord(e),
       "Mod-l": () => { const $h = e.state.selection.$head; if (!$h.parent.isTextblock) return false; e.view.dispatch(e.state.tr.setSelection(TextSelection.create(e.state.doc, $h.start(), $h.end()))); return true; },
       // 表格里 ⌘↵：下面加一行，光标到新行第一格（表格外才是保存退出）
@@ -491,7 +486,6 @@ export const Typora = Extension.create<{ openMath: (e: Editor, pos: number) => v
       },
       // ⌘⇧X 也是删除线（⌘⇧S 是 TipTap 自带的）
       "Mod-Shift-x": () => e.commands.toggleStrike(),
-      // ⌘⇧H 高亮（==hl==）
       "Mod-Shift-h": () => e.commands.toggleMark("highlight"),
       "Mod-k": () => { this.options.openLink(e); return true; },
       // ⌘⇧V：粘贴成纯文字（不当 Markdown、不要格式）

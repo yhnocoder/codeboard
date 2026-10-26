@@ -1,4 +1,3 @@
-// 浮层：Sidenote、定义预览、加 Sidenote、版本 diff、多个定义选择、commit 列表、变量、调用链、问题。
 // 这里只管外框（贴着锚点放、跟着镜头走、悬停时不收起）；每种浮层的内容按 kind 查 registry.ts
 import { For, createSignal, createEffect, onCleanup, on, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";

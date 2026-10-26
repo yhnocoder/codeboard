@@ -176,7 +176,7 @@ function sorted(caps: QueryCapture[]): Cap[] {
 
 /** text / lines：源码；r0..r1：只要这几行（0-based，含） */
 type Cx = { text: string; lines: string[]; out: FileAnalysis; r0: number; r1: number };
-/** 外围的定义。visited = 旧的递归能走到（定义在外层定义的 body 里）；bs / be = body 的范围 */
+/** 外围的定义。visited = 它和它外面的定义都走到了，而且它在外层定义的 body 里；bs / be = body 的范围 */
 type DefFrame = { e: number; visited: boolean; scope: string[]; qual: string; isClass: boolean; bs: number; be: number };
 
 function run(g: Grammar, cx: Cx, caps: Cap[]) {
@@ -204,8 +204,6 @@ function run(g: Grammar, cx: Cx, caps: Cap[]) {
   comments(cmt, cx);
   if (g === "cpp") cudaLaunches(cx);
 }
-
-// ---------- 通用 ----------
 
 function walk(n: Node, fn: (n: Node) => boolean | void) {
   if (fn(n) === false) return;
@@ -246,7 +244,7 @@ function pyDef(cx: Cx, def: Node, up: DefFrame | undefined): DefFrame {
   const p = def.parent;
   const c = p?.type === "decorated_definition" ? p : def; // 带装饰器的从装饰器那行算起
   const cs = c.startIndex, e = def.endIndex;
-  // 外层定义没被走到，或者不在外层定义的 body 里（出错的树）：旧的递归走不到，不算
+  // 外层定义没被走到，或者不在外层定义的 body 里（出错的树）：不算
   if (up && !(up.visited && up.bs <= cs && e <= up.be)) return { e, visited: false, scope: [], qual: "", isClass: false, bs: 0, be: 0 };
   const scope = up?.scope ?? [], cls = up?.isClass ? up.qual : undefined;
   const name = def.childForFieldName("name")?.text ?? "?";
@@ -562,14 +560,11 @@ function rustCall({ out }: Cx, n: Node, loop: boolean, inRhs: boolean) {
   });
 }
 
-// ---------- 按行查 ----------
-
 /** 含有某一行的最内层符号 */
 export function symbolAt(syms: Sym[], line: number, kind?: Sym["kind"]): Sym | undefined {
   return syms.filter((s) => s.start <= line && line <= s.end && (!kind || s.kind === kind)).sort((a, b) => a.end - a.start - (b.end - b.start))[0];
 }
 
-/** 某行上的调用 */
 export const callsOn = (a: FileAnalysis, line: number) => a.calls.filter((c) => c.line === line);
 
 export * from "./vars";

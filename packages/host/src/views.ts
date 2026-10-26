@@ -1,4 +1,3 @@
-// 段的展示数据（SegView）：shiki 高亮成每行 HTML，调用名字套 .call，加上注释 / docstring / 空行标记和段里的函数。
 // 分析尽量在「那个版本」的整个文件上做（片段在函数中间时语法才对），拿不到整个文件就分析段文本本身。
 import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore, type LanguageInput } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
@@ -31,7 +30,6 @@ async function highlighter(sl: string): Promise<HighlighterCore> {
   return h;
 }
 
-/** 段的 lang → shiki 语法；没有语法的不着色 */
 function shikiLang(lang: string): string | null {
   const s = langInfo(lang)?.shiki;
   return s && s in GRAMMAR ? s : null;
@@ -95,7 +93,6 @@ function findIndex(all: string[], block: string[]) {
 
 const MAX_FULL = 6000; // 超过这么多行的文件只高亮段本身
 
-/** 一段代码的展示数据 */
 export async function segView(seg: Segment): Promise<SegView> {
   const lang = seg.lang;
   if (seg.src.kind === "free") return snippetView(seg);

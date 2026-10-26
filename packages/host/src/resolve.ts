@@ -1,4 +1,3 @@
-// 点调用展开（expand）、标识符悬停看定义（peek）、全工作区的符号名字索引。
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as path from "node:path";
 import { escapeRegExp, grammarOf, grammarOfFile, rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
@@ -14,8 +13,6 @@ import { libOf } from "./scope";
 import { entriesOf, indexedFiles, lookupName, type IndexEntry } from "./nameindex";
 import { log } from "./log";
 import { exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
-
-// ---------- 名字索引（nameindex.ts） ----------
 
 export { nameIndexReady, resetIndex, startNameIndex } from "./nameindex";
 
@@ -59,7 +56,6 @@ async function askDefs(abs: string, line: number, col: number): Promise<Def[]> {
   }
 }
 
-/** 定义位置 → 那里的函数 / 类 */
 export async function symAtDef(d: Def, name?: string, qual?: string): Promise<{ abs: string; sym: Sym } | null> {
   const text = await readText(d.abs);
   if (text === null) return null;
@@ -106,7 +102,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
       const line = wp.start + (m.line - seg.start);
       const defs = await clickDefs(wp.abs, line, m.col);
       lspN = defs.length;
-      // 动态分发：定义处是基类的方法、有子类覆盖它 → 列出全部实现让人选（线框 01 一）
+      // 动态分发：定义处是基类的方法、有子类覆盖它 → 列出全部实现让人选
       // 转到实现在 Pylance 那边要在整个工作区里找子类（冷的时候、慢机器上要好几秒）：点击只等一小会儿（预取过的话已经在缓存里），
       // 等不到就先按定义建卡，回 dispatching，白板再单独问（dispatchAt），有覆盖再给选
       if (defs.length === 1) {
@@ -123,8 +119,8 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
     // Python 调到 C / C++ / Rust 扩展：语言服务找不到定义，先看 pybind / PyO3 的注册（再退到名字索引）
     // 名字索引里有同名的 Python 定义就不算（self.model.forward 不去找 C++ 的 .def("forward")）
     if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && !(await lookupName(m.name)).some((e) => /\.pyi?$/.test(e.abs))) crossed = await viaRegistry(m.name);
-    // 语言服务给了定义、只是那里不是函数 / 类（变量、属性、参数）：不再去建全工作区的名字索引（大仓库要几十秒）
-    // 语言服务说了话就不扫工作区：只在当前文件和已经分析过的文件里按名字找
+    // 语言服务给了定义、只是那里不是函数 / 类（变量、属性、参数）：不扫工作区（大仓库建名字索引要几十秒），
+    // 只在当前文件和已经分析过的文件里按名字找
     if (!crossed.length && !targets.length) {
       let ents = lspN ? await nearbyEntries(m.name, wp?.abs) : await lookupName(m.name);
       if (grammarOf(seg.lang) === "cpp") ents = await cppCands(ents, site);

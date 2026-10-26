@@ -1,16 +1,11 @@
-// Note 代码块右上角的语言名（照 Typora #68，样子是 #70 的 B）：编辑时光标在这一块里、或鼠标停在块上时淡淡地显示语言的名字（CUDA、
-// Python，没有就是 Plain text），悬停时出现 ▾。点它在下面打开语言列表（用的一方给的、着色认得的那些，再加 Mermaid 和 Plain text），
-// 上面是筛选框：打字筛、↑↓ 选、↵ / 点一下定下来（一步，进撤销），Esc 不改、回到代码里；打了字或挑过之后点了别处，照挑的定下来，
-// 和链接框一样。打的字对不上任何语言时 ↵ 照打的写。改了马上换着色，写回成 ```语言
 import { keepKey } from "../ui/editkeys";
 import { place } from "../ui/place";
 
 /** 一种语言：name 是写进围栏的名字，label 显示的名字，aliases 打这些也算它（不分大小写） */
 export type CodeLang = { name: string; label: string; aliases?: string[] };
 
-/** Note 里的 Mermaid 图（diagram.ts）：着色不认得，也列出来 */
+/** 着色不认得，也列出来 */
 const MERMAID: CodeLang = { name: "mermaid", label: "Mermaid" };
-/** 列表最后一行：纯文字（围栏不写语言） */
 const PLAIN: CodeLang = { name: "", label: "Plain text", aliases: ["plain", "text", "plaintext", "none"] };
 
 /** 打的字 → 对得上的语言：名字、显示名、别名开头对上的排前面，包含的其次；没打字时全部 */
@@ -37,7 +32,6 @@ export function langLabel(all: readonly CodeLang[], lang: string): string {
 }
 
 export type LangBoxHost = {
-  /** 现在的语言 */
   lang: () => string;
   /** 定下来（null = 纯文字）：一步改文档 */
   set: (lang: string | null) => void;
@@ -51,7 +45,6 @@ export type LangBoxHost = {
 const CHEVRON = `<svg class="md-lang-v" width="8" height="8" viewBox="0 0 8 8" aria-hidden="true"><path d="M1.5 3 4 5.5 6.5 3" fill="none" stroke="currentColor" stroke-width="1"/></svg>`;
 
 export class LangBox {
-  /** 代码块右上角的语言名（点它打开列表） */
   readonly label: HTMLButtonElement;
   private name: HTMLSpanElement;
   private box: HTMLDivElement | null = null;
@@ -86,7 +79,7 @@ export class LangBox {
     return ls.some((l) => l.name === MERMAID.name) ? [...ls] : [...ls, MERMAID];
   }
 
-  /** 文档里的语言变了（撤销、别处改的）：跟着换名字 */
+  /** 文档里的语言变了（撤销、别处改的）时调 */
   sync() {
     const n = langLabel(this.all(), this.host.lang());
     this.name.textContent = n;

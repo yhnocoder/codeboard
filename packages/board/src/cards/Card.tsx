@@ -1,4 +1,3 @@
-// 卡片外壳：位置、选中、拖动抬起、弹出动画、讲解变暗；按种类渲染内容。
 import { send } from "../host";
 import { createMemo, createSignal, Show, onMount, onCleanup, createEffect, For, type JSX, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
@@ -34,7 +33,6 @@ import { kbd } from "../keymap";
 
 const EPORT_SIDE: Record<"t" | "r" | "b" | "l", LinkSide> = { t: "top", r: "right", b: "bottom", l: "left" };
 
-/** 卡的内容按种类：kind → 组件（漏了一种类型检查会报） */
 const BODIES: { [K in Card["kind"]]: Component<{ card: Extract<Card, { kind: K }> }> } = {
   code: (p) => <CodeCardView card={p.card} />,
   note: (p) => <Show when={p.card.msg} fallback={<NoteBody card={p.card} />}><MsgBody card={p.card} /></Show>,
@@ -148,8 +146,6 @@ export function CardView(p: { card: Card }) {
     </Show>
   );
 }
-
-// ---------- 代码卡 ----------
 
 export function CodeHead(p: { card: CodeCard; col?: boolean }) {
   const c = () => p.card;
@@ -273,7 +269,7 @@ function CodeFoot(p: { card: CodeCard }) {
   );
 }
 
-/** 进程标签（线框 03）：rank 0、Scheduler × TP；浅的是线程 / CUDA stream。点一下改或删 */
+/** 进程标签：rank 0、Scheduler × TP；浅的是线程 / CUDA stream。点一下改或删 */
 export function Procs(p: { card: string; procs?: { text: string; light?: boolean }[] }) {
   return (
     <For each={p.procs ?? []}>{(t, i) => (
@@ -283,7 +279,7 @@ export function Procs(p: { card: string; procs?: { text: string; light?: boolean
   );
 }
 
-/** 消息卡（线框 03）：跨进程时夹在发送点和接收处之间，圆角小卡：类型名 + 「message」 */
+/** 消息卡：跨进程时夹在发送点和接收处之间，圆角小卡：类型名 + 「message」 */
 function MsgBody(p: { card: NoteCard }) {
   const c = () => p.card;
   return (
@@ -338,7 +334,7 @@ function CodeCardView(p: { card: CodeCard }) {
   );
 }
 
-/** Variant 标签页（线框 07）：点了换代码；右键改名、删除、写说明。下面一行是对比基准和改了几行，再下面是这个 Variant 的一行说明 */
+/** Variant 标签页：点了换代码；右键改名、删除、写说明。下面一行是对比基准和改了几行，再下面是这个 Variant 的一行说明 */
 function VariantBar(p: { card: CodeCard }) {
   const c = () => p.card;
   const cur = () => activeOf(c());
@@ -425,8 +421,6 @@ function Desc(p: { id: string; desc?: string }) {
     </Show>
   );
 }
-
-// ---------- 图片 / 网页 ----------
 
 function ImageView(p: { card: ImageCard }) {
   const src = () => (p.card.src.startsWith("data:") || /^https?:/.test(p.card.src) ? p.card.src : `${state.host.assetBase}/${p.card.src}`);

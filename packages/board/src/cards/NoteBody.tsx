@@ -1,4 +1,3 @@
-// Note（有背景的便签）和 Text（直接写在画布上的字）。内容是 Markdown，支持公式。
 import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
 import { findCard, mdHeading, HAND_COLORS, type NoteCard } from "@codeboard/core";
 import { state, mutate, isSel, sel, placeOf } from "../state/store";
@@ -44,12 +43,11 @@ export function NoteBody(p: { card: NoteCard }) {
   );
 }
 
-
 const HEADS = ":is(h1, h2, h3, h4, h5, h6):first-child";
 /** 标题这一块（自己的高 + 下边距），按卡片自己的像素算（画布缩放了也一样；offsetHeight 取整会差零点几） */
 const block = (e: HTMLElement) => { const r = e.getBoundingClientRect(); return r.height * (e.offsetWidth / r.width || 1) + parseFloat(getComputedStyle(e).marginBottom); };
 /**
- * 开头标题就是卡头名字的 Note 进出编辑（#54）：进 = 整行卡头收起（负的 margin-bottom 让正文盖上来，卡头的字淡掉，··· 留在原处），
+ * 开头标题就是卡头名字的 Note 进出编辑：进 = 整行卡头收起（负的 margin-bottom 让正文盖上来，卡头的字淡掉，··· 留在原处），
  * 编辑器里的标题从正文上沿滑出来（负的 margin-top → 0，淡入）；卡头高 + 正文上边距换成标题这一块 + 新的上边距（--fold-pt），卡片高度不变。
  * 出 = 反过来，显示的正文里标题滑回去，最后 done 再把它藏起来；正文上沿以外的部分剪掉。
  * 三样一起用同一条缓动走（WAAPI，不改 DOM 属性，ProseMirror 看不到），每一帧加起来一样高；减弱动效时直接到位

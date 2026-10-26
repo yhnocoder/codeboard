@@ -1,7 +1,5 @@
-// Mermaid 图：页面上有 ```mermaid 块时才加载 pele（Mermaid 语法 → SVG，同步、没有依赖）。
-// 颜色是 SVG 里的 CSS 变量（markdown.css 的 .mmd 把 --pele-* 接到主题变量上），换明暗、换主题配色都不用重画。
-// 布局跟字体和宽度有关：按「字体 + 宽度上限 + 源码」缓存。图比 Note 宽就给 pele 宽度上限（maxWidth），它改成竖着排，
-// 字不缩小；拖宽 Note 放得下了再换回原来的方向。换了字体的主题、Note 宽度跨了档才重画
+// 颜色是 SVG 里的 CSS 变量（markdown.css 的 .mmd 把 --pele-* 接到主题变量上），换明暗、换配色都不用重画。
+// 图比 Note 宽就给 pele 宽度上限（maxWidth），它改成竖着排，字不缩小；放得下了再换回原来的方向
 import { observeResize, queueMeasure } from "./ui/measure";
 
 type P = typeof import("pele");
@@ -23,7 +21,6 @@ function draw(p: P, src: string, font: string, max: number) {
   return d;
 }
 
-/** 按 box 现在的宽度画（宽度、字体都没变就不动） */
 function fit(p: P, box: HTMLElement, w: number, font: string) {
   const src = box.dataset.src ?? "";
   try {
@@ -44,7 +41,6 @@ function fit(p: P, box: HTMLElement, w: number, font: string) {
   }
 }
 
-/** 排进下一轮量 DOM：先读宽度，再画（宽度是 0 = 没显示出来，先不画） */
 function queueFit(p: P, box: HTMLElement) {
   queueMeasure(box, () => {
     const w = box.clientWidth;
@@ -53,7 +49,7 @@ function queueFit(p: P, box: HTMLElement) {
   });
 }
 
-// 换主题（html 的 data-look，主题的字体跟着它变）后字体可能变了：画好的图都按新字体再对一遍
+// 主题（html 的 data-look）带着字体：换了以后画好的图都按新字体再对一遍
 let watching = false;
 function watchLook(p: P) {
   if (watching) return;
@@ -65,7 +61,6 @@ function watchLook(p: P) {
   }).observe(document.documentElement, { attributes: true, attributeFilter: ["data-look"] });
 }
 
-/** 把 el 里的 .mmd 占位换成图；之后 Note 宽度变了跟着重排 */
 export async function renderAll(el: HTMLElement) {
   const boxes = [...el.querySelectorAll<HTMLElement>(".mmd:not([data-done])")];
   if (!boxes.length) return;
@@ -78,7 +73,7 @@ export async function renderAll(el: HTMLElement) {
     let w = -1;
     const stop = observeResize(box, () => {
       if (!box.isConnected) { stop(); return; } // Note 重新渲染换掉了这块
-      if (box.clientWidth === w) return; // 只是图换了以后变高
+      if (box.clientWidth === w) return; // 只是换了图以后变高
       w = box.clientWidth;
       queueFit(p, box);
     });

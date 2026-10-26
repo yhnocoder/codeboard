@@ -1,5 +1,4 @@
-// 选贴纸的面板：Built-in / 自定义包 / Emoji，搜索，颜色。开在工具栏 Sticker 按钮上面。
-// 下面是画在白板上的贴纸：画布上的、绑在卡 / 线上的、卡角上的、代码行上的（每张卡、每条线只读 state/stickers 里自己那一组）
+// 白板上的贴纸：每张卡、每条线只读 state/stickers 里自己那一组
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { createMemo, createSignal, For, Show, onCleanup } from "solid-js";
 import { firstLine, type IconRef, type Sticker } from "@codeboard/core";

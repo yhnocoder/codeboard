@@ -1,4 +1,3 @@
-// 白板界面：画布、底部唯一的工具栏（新建 · Search · ⋯）、缩放、讲解条、横幅、提示。看板就是一个普通编辑器标签页。
 import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { tune } from "./state/tune";
 import { CAM_SETTLE } from "./state/timing";
@@ -34,7 +33,7 @@ import { exportOpen } from "./state/export";
 import { legendOpen, runState, setLegendOpen, setTreeOpen, treeOpen } from "./state/calls";
 
 export function App() {
-  // 自动保存在 store 里（白板一变约 1 秒后写盘）；镜头单独记，停下来再存
+  // 自动保存在 store 里；镜头单独记，停下来再存
   let camT: number | undefined;
   createEffect(() => document.documentElement.style.setProperty("--menu-ms", `${tune("menuOpen")}ms`));
   // 代码卡藏缩进时的留空、没存高度时最高多少：JS 量尺寸和 CSS 用同一份（挂在 body 上，导出的 HTML / PNG 也带着）。行号区宽在 styles.css 的 .code 上
@@ -49,7 +48,6 @@ export function App() {
       const t = camTarget();
       const c = state.board.cam;
       if (Math.abs(c.x - t.x) + Math.abs(c.y - t.y) + Math.abs(c.z - t.z) > 0.5) {
-        // 镜头不进撤销栈
         liveCam({ x: Math.round(t.x), y: Math.round(t.y), z: +t.z.toFixed(3) });
       }
     }, CAM_SETTLE);
@@ -63,11 +61,11 @@ export function App() {
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
       <Show when={!walk()}><Toolbar /></Show>
       <Show when={!narrow() || walk()}><Dock /></Show>
-      {/* 调用树侧栏、Arrow 图例、运行面板（线框 12、13）：开着才有 */}
+      {/* 调用树侧栏、Arrow 图例、运行面板：开着才有 */}
       <Show when={treeOpen()}><CallTreePanel /></Show>
       <Show when={legendOpen()}><LegendPanel /></Show>
       <Show when={runState()}><RunPanel /></Show>
-      {/* 疑问（线框 06）：Questions 面板、隔几天回来的提示 */}
+      {/* 疑问：Questions 面板、隔几天回来的提示 */}
       <Show when={questionsOpen()}><QuestionsPanel /></Show>
       <Show when={welcome() && !walk()}><WelcomeHint /></Show>
       <Show when={walk()}><WalkBar /></Show>
@@ -114,7 +112,7 @@ function Banner() {
 const NARROW = 700;
 const narrow = () => viewTracked().w < NARROW;
 
-/** 唯一的工具栏：新建（Note、Text、Mark、Code ▾、Image、Web、Section、Arrow、Sticker）· Search · ⋯；窄时右端接上缩放 */
+/** 唯一的工具栏；窄时右端接上缩放 */
 function Toolbar() {
   const at = (el: HTMLElement) => { const r = el.getBoundingClientRect(); return [r.left, r.top - 6] as const; };
   const codeMenu = (el: HTMLElement) => { const [x, y] = at(el); openMenu([
@@ -158,7 +156,7 @@ function Toolbar() {
       { label: "Export…", hint: "HTML snapshot, Markdown or PNG", run: () => A.openExport() },
       { label: "Questions", checked: questionsOpen(), run: () => A.toggleQuestions() },
       null,
-      // 运行时（线框 13）：跑一次入口，给 Call 箭头挂上 observed 证据和实参
+      // 运行时：跑一次入口，给 Call 箭头挂上 observed 证据和实参
       { label: "Capture Run…", hint: "Run a Python entry once and mark the calls it makes", run: () => A.captureRun() },
       { label: "Apply Run…", run: () => A.pickRun() },
       null,

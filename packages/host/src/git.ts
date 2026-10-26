@@ -1,4 +1,3 @@
-// git 命令行：仓库根、HEAD、某个 commit 的文件内容、log。结果按不可变的 key 缓存。
 import { execFile } from "node:child_process";
 import * as path from "node:path";
 import { parseGitLog } from "@codeboard/core";
@@ -101,7 +100,7 @@ export function isAncestor(root: string, a: string, b: string): Promise<boolean>
 }
 
 const ups = new Map<string, Promise<string>>();
-/** 上游分支（线框 07 的「上游最新」）：origin/HEAD 指的分支，没有就本地 main / master，都没有 = HEAD */
+/** 上游分支：origin/HEAD 指的分支，没有就本地 main / master，都没有 = HEAD */
 export function upstreamRef(root: string): Promise<string> {
   let p = ups.get(root);
   if (!p) {
@@ -143,13 +142,11 @@ export async function worktrees(root: string): Promise<Worktree[]> {
   return res;
 }
 
-/** 本地分支（Add Variant 的 Branch or Commit… 列表），最近提交的在前 */
 export async function branches(root: string, n = 30): Promise<string[]> {
   const out = await git(root, ["for-each-ref", "--sort=-committerdate", `--count=${n}`, "--format=%(refname:short)", "refs/heads"]);
   return (out ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
 }
 
-/** origin 是 GitHub 仓库时的 owner / name */
 export async function githubRemote(root: string): Promise<{ owner: string; name: string } | null> {
   const u = (await git(root, ["remote", "get-url", "origin"]))?.trim() ?? "";
   const m = /github\.com[:/]([^/]+)\/([^/]+?)(?:\.git)?\/?$/.exec(u);

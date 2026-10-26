@@ -1,13 +1,12 @@
 // 调用图：有 Call 标记的箭头连成的图（连通分量）。标记（字母 / 图标）、讲解顺序、折叠都从 Link 算出来，不另外存。
 // 一张卡可以有好几条进来的 Call 箭头，图里可以有环；没有编号。
-// RPC 箭头（跨进程）也算图里的边：另一端的卡沿用同一个标记（线框 03）。「↩ back to」的线不算（它是回到起点的）
+// RPC 箭头（跨进程）也算图里的边：另一端的卡沿用同一个标记。「↩ back to」的线不算（它是回到起点的）
 import { cardAndCols, hostOf, type Board, type Card, type GraphMark, type Link } from "./model";
 
 /** 调用图里的边：Call 或 RPC 标记的箭头（不是 ↩ back to） */
 export type CallLink = Link;
 export const isCall = (l: Link): boolean => (!!l.call || !!l.rpc) && !l.back;
 
-/** 一张调用图 */
 export type Graph = {
   /** 图里最早建的卡（按 born）：用户改的标记存在它名下 */
   id: string;
@@ -17,7 +16,6 @@ export type Graph = {
   mark: GraphMark;
   /** 字母（自动分配的或用户选的）；用的是图标时为 "" */
   label: string;
-  /** 用户改过标记 */
   custom: boolean;
 };
 
@@ -28,7 +26,6 @@ export type Flows = {
   byId: Map<string, Graph>;
   /** 卡片 id → 从它出去的 Call 箭头，按出发位置排 */
   kids: Map<string, CallLink[]>;
-  /** 卡片 id → 进来的 Call 箭头 */
   parents: Map<string, CallLink[]>;
 };
 
@@ -153,7 +150,7 @@ export function startCards(b: Pick<Board, "cards" | "place"> & Partial<Pick<Boar
   return b.cards.filter((c) => b.place[c.id]?.start).map((c) => c.id).sort((x, y) => rank(x) - rank(y));
 }
 
-/** 调用树的一行（线框 13 A）：缩进 depth；again = 这张卡在上面已经展开过（递归、被多处调用），不再往下 */
+/** 调用树的一行：缩进 depth；again = 这张卡在上面已经展开过（递归、被多处调用），不再往下 */
 export type TreeRow = { card: string; depth: number; link?: string; again?: boolean; rpc?: boolean };
 
 /**

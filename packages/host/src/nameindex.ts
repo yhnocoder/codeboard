@@ -32,7 +32,7 @@ let listing: Promise<void> | undefined;
 let running: Promise<void> | undefined;
 let wanted = false; // 有人要过后台建（白板打开过）：文件改了之后也在后台补上
 
-// ---------- 单词位图：4096 位，每个标识符按 FNV 哈希置一位（会误报、不会漏报） ----------
+// 单词位图：4096 位，每个标识符按 FNV 哈希置一位（会误报、不会漏报）
 
 const BITS = 4096;
 const IDENT = /^[A-Za-z_]\w*$/;
@@ -81,7 +81,6 @@ function list(): Promise<void> {
   })());
 }
 
-/** 分析一个文件，替换它在索引里的条目 */
 async function indexFile(abs: string, text?: string | null) {
   const g = gen, st = stamps.get(abs);
   text ??= await readText(abs, false);
@@ -158,7 +157,7 @@ export async function lookupName(name: string): Promise<IndexEntry[]> {
 
 /**
  * 文本里有这个词的代码文件和它们的文本（跨语言找注册、宏定义、按名字搜用）。先看单词位图（会误报、不会漏报），再读文件确认；
- * 没读过的文件读一次、记下位图。ext = 只要这些扩展名
+ * 没读过的文件读一次、记下位图。grammar = 只要这种语法的文件
  */
 export async function grepWord(word: string, grammar?: Grammar): Promise<{ abs: string; text: string }[]> {
   await list();
@@ -208,12 +207,10 @@ export function changedFile(abs: string) {
   if (wanted) void drain();
 }
 
-/** 文件 / 文件夹删了 */
 export function removedPath(p: string) {
   for (const abs of [...order.keys()]) if (abs === p || abs.startsWith(p + path.sep)) { drop(abs); todo.delete(abs); sigs.delete(abs); order.delete(abs); stamps.set(abs, (stamps.get(abs) ?? 0) + 1); }
 }
 
-/** 工作区根变了：全部重来 */
 export function resetIndex() {
   gen++;
   order = new Map();

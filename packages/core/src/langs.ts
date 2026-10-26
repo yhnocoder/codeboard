@@ -7,7 +7,6 @@ export type Grammar = "python" | "cpp" | "rust";
 export type LangInfo = {
   /** 段的 lang，也是 Markdown 围栏里的正式名字 */
   id: string;
-  /** 显示的名字（卡头、语言下拉、按语言分组） */
   label: string;
   /** 在代码卡的语言下拉里 */
   pick?: boolean;
@@ -15,9 +14,7 @@ export type LangInfo = {
   aliases: string[];
   /** 文件扩展名（不带点）；第一个是新建文件（语言服务的虚拟文档）用的 */
   ext: string[];
-  /** 行注释 */
   comment: string;
-  /** VS Code 的 languageId */
   vscodeId: string;
   /** 导出 Markdown 时围栏写的名字（GitHub 认的）；空串 = 不写 */
   md: string;
@@ -75,17 +72,12 @@ for (const l of LANG_TABLE) {
 
 /** 名字（id 或别名，不分大小写）→ 语言；不认识的给 undefined */
 export const langInfo = (name: string | null | undefined): LangInfo | undefined => (name ? byName.get(name.toLowerCase()) : undefined);
-/** 文件路径 → 语言（按扩展名） */
 export const langOfExt = (file: string): LangInfo | undefined => byExt.get(/\.([^./\\]+)$/.exec(file)?.[1].toLowerCase() ?? "");
 /** 代码卡语言下拉里的语言 */
 export const LANGS: readonly LangInfo[] = LANG_TABLE.filter((l) => l.pick);
-/** 显示的名字（不认识的照原样） */
 export const langLabel = (name: string) => langInfo(name)?.label ?? name;
-/** 名字 → 正式 id（不认识的照原样） */
 export const langId = (name: string) => langInfo(name)?.id ?? name;
-/** 语言（id 或别名）用哪个语法；不分析的给 null */
 export const grammarOf = (lang: string): Grammar | null => langInfo(lang)?.grammar ?? null;
-/** 文件按扩展名用哪个语法；不分析的给 null */
 export const grammarOfFile = (file: string): Grammar | null => langOfExt(file)?.grammar ?? null;
 /** 有语法的语言的扩展名（只这一个语法的，或全部）：建名字索引、找工作区代码的文件 */
 export const codeExts = (g?: Grammar): string[] => LANG_TABLE.filter((l) => l.grammar && (!g || l.grammar === g)).flatMap((l) => l.ext);
