@@ -28,7 +28,7 @@ export const closeMenu = () => setMenu(null);
 export const menuOpen = () => !!menu();
 
 /** 开着的各级菜单，外层在前：键盘（↑↓ 选、→ 开二级、← / Esc 关二级、↵ 执行）只作用在最里面那一级 */
-type Level = { move: (d: 1 | -1) => void; enter: () => void; activate: () => boolean; closeSub: () => void };
+type Level = { move: (d: 1 | -1) => void; enter: () => void; activate: () => boolean; closeSub: () => void; kbSub: () => boolean };
 const levels: Level[] = [];
 
 function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void; up?: boolean; anchor?: Element; kb?: boolean }) {
@@ -58,6 +58,7 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
     enter: () => { const i = kbAt(); if (i !== null && (p.items[i] as Exclude<Item, null>).sub) openSub(i, true); },
     activate: () => { const i = kbAt(); if (i === null) return false; btns[i]?.click(); return true; },
     closeSub: () => { const s = subOf(); setSubOf(null); if (s) setKbAt(s.i); },
+    kbSub: () => !!subOf()?.kb,
   };
   levels.push(level);
   onCleanup(() => levels.splice(levels.indexOf(level), 1));
@@ -105,7 +106,7 @@ function MenuList(p: { items: Item[]; x: number; y: number; onClose: () => void;
   );
 }
 
-/** 菜单的按键：↑↓ 在最里面一级里选，→ 打开选中项的二级菜单，← 关掉最里面的二级菜单，Esc 先关二级菜单、没有二级时关整个菜单，↵ / 空格执行选中项 */
+/** 菜单的按键：↑↓ 在最里面一级里选，→ 打开选中项的二级菜单，← 关掉最里面的二级菜单，Esc 先关用 → 打开的二级菜单，悬停开的二级或没有二级时关整个菜单，↵ / 空格执行选中项 */
 function menuKeys(e: KeyboardEvent) {
   const deep = levels.at(-1), parent = levels.at(-2);
   if (!deep || e.isComposing) return false;
@@ -114,7 +115,7 @@ function menuKeys(e: KeyboardEvent) {
     case "ArrowUp": deep.move(-1); return true;
     case "ArrowRight": deep.enter(); return true;
     case "ArrowLeft": parent?.closeSub(); return true;
-    case "Escape": if (!parent) return false; parent.closeSub(); return true;
+    case "Escape": if (!parent?.kbSub()) return false; parent.closeSub(); return true;
     case "Enter": case " ": return deep.activate();
   }
   return false;
