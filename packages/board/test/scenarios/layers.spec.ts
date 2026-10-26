@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { symCard, findSym, put, OUT, type Host } from "../harness";
 import { emptyBoard, type CodeCard } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle } from "../fixtures";
 
 const city = !!process.env.HARNESS_CITY;
 const SHOTS = process.env.STACK_SHOTS ?? path.join(OUT, "arrows-under-cards");
@@ -13,7 +13,7 @@ const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + Math.max(0, s.text.findIndex((t) => re.test(t))); };
 
 async function snap(h: Host, name: string) {
-  await h.page.waitForTimeout(300);
+  await idle(h);
   try { fs.mkdirSync(SHOTS, { recursive: true }); await h.page.screenshot({ path: `${SHOTS}/${name}${city ? "-city" : ""}-${light ? "light" : "dark"}.png` }); }
   catch (e) { console.log("(no screenshot)", (e as Error).message); }
 }
@@ -27,8 +27,15 @@ test("arrowsUnderCards", async () => {
   b.links.push({ id: "AB", from: { card: A.id, seg: s0.id, line: lineOf(A, /scheduler\.schedule\(/) }, to: { card: B.id }, call: { name: "schedule", col: 0 } });
   b.cam = { x: 0, y: 0, z: 0.7 };
   const h = await open({ board: b, light, w: 1400, h: 800, settings: city ? { theme: "city" } as any : undefined });
-  await h.page.waitForTimeout(600);
-  const away = async () => { await h.page.mouse.move(6, 790); await h.page.waitForTimeout(500); };
+  await idle(h);
+  const lifted = () => h.page.evaluate(() => !!document.querySelector('g.link[data-lk="AB"]')?.closest(".lyr.top"));
+  /** Whether the arrow is in the top layer, once it is where it should be: dropping comes linkLeave after the pointer left a card */
+  const settled = async (top: boolean) => {
+    await until(h, top ? "the arrow is lifted above the cards" : "the arrow is back under the cards", async () => (await lifted()) === top);
+    await idle(h);
+  };
+  /** Pointer to an empty corner; `top`: the arrow stays lifted (it is selected) */
+  const away = async (top = false) => { await h.page.mouse.move(6, 790); await settled(top); };
   // What is really on top of the arrow inside C, inside D and in the gap between A and D; whether the arrow is lifted;
   // whether the line port at A's edge paints above A
   const probe = () => h.page.evaluate(([a, c, d]) => {
@@ -66,9 +73,15 @@ test("arrowsUnderCards", async () => {
   const order = () => h.board().cards.map((c) => name(c.id)).join("");
   const pick = async (id: string) => {
     const k = (await h.page.locator(`.card[data-id="${id}"] .chead .kind`).boundingBox())!;
-    await h.page.mouse.click(k.x + 4, k.y + 4); await h.page.waitForTimeout(150);
+    await h.page.mouse.click(k.x + 4, k.y + 4);
+    await h.page.locator(`.card.sel[data-id="${id}"]`).waitFor();
   };
-  const arrange = async (id: string, keys: string) => { await pick(id); await h.page.keyboard.press(keys); await away(); await h.page.waitForTimeout(900); };
+  const arrange = async (id: string, keys: string) => {
+    const was = order();
+    await pick(id); await h.page.keyboard.press(keys);
+    await until(h, `${keys} reorders the cards`, () => order() !== was);
+    await away();
+  };
 
   await away();
   let p = await look();
@@ -115,26 +128,27 @@ test("arrowsUnderCards", async () => {
   // machine): the hover must still end once the pointer moves somewhere outside the card. Swallow every pointerleave before it reaches
   // the card (window, capture phase), hover A, move away: the arrows still drop, with the same fade
   await h.page.evaluate(() => { (window as any).__eat = (e: Event) => e.stopPropagation(); window.addEventListener("pointerleave", (window as any).__eat, true); });
-  await h.page.mouse.move(ab.x + ab.width / 2, ab.y + ab.height / 2); await h.page.waitForTimeout(500);
+  await h.page.mouse.move(ab.x + ab.width / 2, ab.y + ab.height / 2); await settled(true);
   p = await look();
   check("lost-leave-hover-lifts", p.top, p);
   await watch();
   await h.page.mouse.move(6, 790);
   fd = await fade();
-  await h.page.waitForTimeout(300);
+  await settled(false);
   p = await look();
   check("lost-leave-hover-still-ends", p.onC === "C" && !p.top && fd.down && !fd.up && fd.clean, { ...p, ...fd });
   await h.page.evaluate(() => window.removeEventListener("pointerleave", (window as any).__eat, true));
 
   // hover the unrelated card C: nothing changes
   const cb = (await h.page.locator(`.card[data-id="${C.id}"]`).boundingBox())!;
-  await h.page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height - 20); await h.page.waitForTimeout(150);
+  // a lift would start on pointerenter (no delay): the board is idle once it would have run its fade
+  await h.page.mouse.move(cb.x + cb.width / 2, cb.y + cb.height - 20); await idle(h);
   p = await look();
   check("hover-other-card-no-lift", p.onC === "C" && !p.top, p);
   await away();
 
   // select the arrow (click it in the gap between A and D): it floats to the top until the selection goes
-  await h.page.mouse.click(p.near.x, p.near.y); await away();
+  await h.page.mouse.click(p.near.x, p.near.y); await away(true);
   p = await look();
   check("selected-arrow-lifts", p.onC === "arrow" && p.top, p);
   await snap(h, "4-selected-lifts");
