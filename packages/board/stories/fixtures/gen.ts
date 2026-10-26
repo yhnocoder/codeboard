@@ -11,13 +11,20 @@ const PICK = {
   schedule: "Scheduler.schedule",
   preempt: "Scheduler.preempt",
   canAppend: "BlockManager.can_append",
-  // ---- Canvas（箭头、Section、LOD 的小样）：短函数，几张卡放在一块白板上也看得全
+  // ---- Code 和 Canvas 小样共用（stories/support/code.tsx、canvas.tsx）：调用图、Compare、类卡、多段卡、箭头、LOD ----
   step: "LLMEngine.step",
+  postprocess: "Scheduler.postprocess",
   canAllocate: "BlockManager.can_allocate",
   allocate: "BlockManager.allocate",
   deallocate: "BlockManager.deallocate",
   mayAppend: "BlockManager.may_append",
-  // ---- Canvas 结束
+  runnerCall: "ModelRunner.call",
+  runnerLoop: "ModelRunner.loop",
+  runnerRun: "ModelRunner.run",
+  prepareDecode: "ModelRunner.prepare_decode",
+  capture: "ModelRunner.capture_cudagraph",
+  blockManager: "BlockManager",
+  context: "Context",
 } as const;
 
 await ready();
