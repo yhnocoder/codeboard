@@ -737,7 +737,7 @@ kbd { font: 10.5px var(--mono); }
 .cfoot span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cfoot .sw.chg { background: var(--chg-strong); }
 .cfoot .sw.void { background-image: repeating-linear-gradient(135deg, var(--ink-3) 0 1px, transparent 1px 3px); }
-mark { background: var(--chg-strong); color: inherit; border-radius: 2px; }
+mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; }
 .crow.changed .cl { background: var(--chg); }
 .crow.left .cl:first-child, .crow.right .cl:last-child { background: var(--chg); }
 .cmpwrap { display: contents; }
