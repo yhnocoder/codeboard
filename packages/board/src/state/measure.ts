@@ -74,8 +74,10 @@ export function naturalSize(id: string): { w?: number; h: number; minH: number }
   const head = el.querySelector<HTMLElement>(":scope > .cface > .chead")?.offsetHeight ?? 0;
   if (f && isCode(f.card) && body && code) {
     const src = code.querySelector<HTMLElement>(".src");
-    const top = body.offsetTop;
-    const h = top + code.offsetHeight + 2;
+    const top = body.offsetTop, bs = getComputedStyle(body);
+    // 代码区自己的边框、内边距，再加上它下面到卡边的那一截（Soft Light 的托盘离卡底 10px）。不算横向滚动条：适配后的宽度放得下最长行
+    const frame = parseFloat(bs.borderTopWidth) + parseFloat(bs.borderBottomWidth) + parseFloat(bs.paddingTop) + parseFloat(bs.paddingBottom);
+    const h = top + code.offsetHeight + frame + Math.max(0, el.offsetHeight - top - body.offsetHeight);
     let w: number | undefined;
     if (src && !f.card.wrap) {
       const cs = getComputedStyle(src);

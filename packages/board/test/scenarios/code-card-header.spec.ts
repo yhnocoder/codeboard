@@ -8,7 +8,7 @@
 //                               the repo card's path ellipsizes before its title
 //  codeAreaPadding              the code area's paddings: Soft Light 7px left of the line numbers, 4 / 6 above and below, 8 right;
 //                               Warm Ink unchanged (6 / 8, 24 right)
-//  fitContentWidthCodeCard      ⌥F fits a code card's width to its longest line (animated), in Warm Ink and Soft Light
+//  fitContentWidthCodeCard      ⌥F fits a code card's width to its longest line and its height to its lines (animated), in Warm Ink and Soft Light
 // Usage: npm run harness -- codeHeaderHoverOnly …   screenshots: test-out/harness/cchead-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -30,6 +30,7 @@ function board(): Board {
   put(b, { id: "n1", kind: "note", md: "The plain way: one loop, **one pair of elements at a time**.\n\nNext step: a CUDA kernel where each thread computes one `C_h[i]`.", bg: true } as never, 600, 60, 360);
   put(b, repo("Scheduler.preempt", "r1"), 60, 300, 480);
   put(b, free("f2", LONG, { title: "vecAdd - fit" }), 60, 520, 320);
+  b.place.f2.h = 70; // set too short by hand: Fit Content has to bring the height back too
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
@@ -205,12 +206,12 @@ test("fitContentWidthCodeCard", async () => {
       const card = document.querySelector<HTMLElement>('.card[data-id="f2"]')!, b = card.querySelector<HTMLElement>(".cbody")!;
       const ls = [...b.querySelectorAll<HTMLElement>(".src .l")];
       const right = Math.max(...ls.map((l) => { const r = document.createRange(); r.selectNodeContents(l); return r.getBoundingClientRect().right; }));
-      return { w: card.offsetWidth, hscroll: b.scrollWidth > b.clientWidth + 1, room: Math.round(b.getBoundingClientRect().right - right) };
+      return { w: card.offsetWidth, hscroll: b.scrollWidth > b.clientWidth + 1, vscroll: b.scrollHeight > b.clientHeight + 1, gap: b.clientHeight - b.scrollHeight, room: Math.round(b.getBoundingClientRect().right - right) };
     });
     const pw = h.board().place.f2.w;
     await save(h, `cchead-${theme}-fit-after`, '.card[data-id="f2"]');
     const pr = theme === "soft-light" ? 8 : 24;
-    check(`fitContentWidthCodeCard ${theme}`, scroll0 && !after.hscroll && after.w > w0 && pw === after.w && mid > w0 && mid < after.w && after.room >= pr && after.room <= pr + 8, { w0, mid, after, pw, scroll0 });
+    check(`fitContentWidthCodeCard ${theme}`, scroll0 && !after.hscroll && !after.vscroll && after.gap <= 2 && after.w > w0 && pw === after.w && mid > w0 && mid < after.w && after.room >= pr && after.room <= pr + 8, { w0, mid, after, pw, scroll0 });
     // back to the narrow width for the next theme
     await h.page.keyboard.press("ControlOrMeta+z"); await h.page.waitForTimeout(700);
   }
