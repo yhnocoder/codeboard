@@ -38,3 +38,20 @@ for (const [key, qual] of Object.entries(PICK)) {
 }
 fs.writeFileSync(OUT_FILE, JSON.stringify(out, null, 1) + "\n");
 console.log(`Wrote ${Object.keys(out).length} segments to ${path.relative(process.cwd(), OUT_FILE)}`);
+
+// ---------- Note 里代码块的着色（Cards/Note Markdown、Cards/Note Editing）----------
+// 白板把 Note 的代码块交给宿主着色（cm/load.ts noteHighlight → views）；这里用宿主同一个 highlight 预先算好，假宿主按「语言 + 代码」查表
+{
+  const { highlight } = await import("@codeboard/host/views");
+  const { langId } = await import("@codeboard/core");
+  const { NOTE_CODE, NOTE_CODE_EXTRA, noteCodeKey } = await import("./notecode");
+  const notes: Record<string, string[]> = {};
+  for (const [lang, text] of [...Object.entries(NOTE_CODE), ...NOTE_CODE_EXTRA]) {
+    if (!lang) continue;
+    const id = langId(lang);
+    notes[noteCodeKey(id, text)] = await highlight(text.split("\n"), id);
+  }
+  const file = path.join(path.dirname(OUT_FILE), "notecode.json");
+  fs.writeFileSync(file, JSON.stringify(notes, null, 1) + "\n");
+  console.log(`Wrote ${Object.keys(notes).length} Note code blocks to ${path.relative(process.cwd(), file)}`);
+}
