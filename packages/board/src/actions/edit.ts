@@ -4,7 +4,7 @@ import {
   arrangeCards, makeCompare, overlaps, removeSections as removeSectionsIn, renameTitleRefs, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
   uid, findCard, isCode, cardTitle, segOf,
   bounds, removeCards, SECTION_PAD, GAP,
-  copyText, cardRows, LANGS, defaultWidth,
+  copyText, cardRows, LANGS, langLabel, guessLang, pythonDialect, defaultWidth,
   type Arrange, type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment,
   tidy, type Rect,
 } from "@codeboard/core";
@@ -184,22 +184,40 @@ export function setFreeCode(id: string, text: string) {
     const s = c.segments[0];
     s.text = text.split("\n");
     s.end = s.start + s.text.length - 1;
+    // 语言没手选过就跟着内容走（认不出来时不动）
+    if (s.src.kind === "free" && !s.src.langPicked) s.lang = detectLang(text) ?? s.lang;
     seg = structuredClone(unwrap(s));
   };
   if (isFresh(id)) settleFresh(id, !!text.trim(), set);
   else mutate(set);
   if (seg) requestViews([seg]);
 }
-function setLang(id: string, lang: string) {
+/** Free code 按内容认语言：Python 再细分 Triton / TileLang */
+const detectLang = (text: string) => { const g = guessLang(text); return g === "python" ? pythonDialect(text) : g; };
+/** lang = null：回到按内容自动识别 */
+function setLang(id: string, lang: string | null) {
   let seg: Segment | undefined;
-  mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c)) { c.segments[0].lang = lang; seg = structuredClone(unwrap(c.segments[0])); } });
+  mutate((b) => {
+    const c = findCard(b, id)?.card;
+    if (!isCode(c)) return;
+    const s = c.segments[0];
+    if (s.src.kind === "free") s.src.langPicked = lang ? true : undefined;
+    s.lang = lang ?? detectLang(s.text.join("\n")) ?? s.lang;
+    seg = structuredClone(unwrap(s));
+  });
   if (seg) requestViews([seg]);
 }
 export function langMenu(id: string, el: Element) {
   const r = el.getBoundingClientRect();
   const c = cardById(id)?.card;
   if (!isCode(c)) return;
-  openMenu(LANGS.map((l) => ({ label: l.label, checked: c.segments[0].lang === l.id, run: () => setLang(id, l.id) })), r.left, r.bottom + 4);
+  const s = c.segments[0];
+  const auto = s.src.kind === "free" ? detectLang(s.text.join("\n")) : null;
+  const picked = s.src.kind !== "free" || !!s.src.langPicked;
+  openMenu([
+    ...(s.src.kind === "free" ? [{ label: auto ? `Auto-detect (${langLabel(auto)})` : "Auto-detect", checked: !picked, run: () => setLang(id, null) }, null] : []),
+    ...LANGS.map((l) => ({ label: l.label, checked: picked && s.lang === l.id, run: () => setLang(id, l.id) })),
+  ], r.left, r.bottom + 4);
 }
 export function toggleHide(id: string, k: "comments" | "docstrings" | "blank") {
   mutate((b) => { const c = findCard(b, id)?.card; if (isCode(c)) c.hide = { ...c.hide, [k]: !c.hide?.[k] }; });

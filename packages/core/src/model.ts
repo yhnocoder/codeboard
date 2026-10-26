@@ -21,7 +21,7 @@ export type Source =
   | { kind: "repo"; repo: string } // 工作区里的 git 仓库（多根工作区的每个根、每个子模块各算一个），repo = 相对工作区的仓库根路径，"" 表示第一个根
   | { kind: "external"; root: string } // 工作区外的文件（另一个 clone、site-packages）；root 是绝对路径的「根」，path 相对它
   | { kind: "github"; owner: string; name: string; ref: string } // GitHub Code：文件缓存在本地，钉 commit 不更新
-  | { kind: "free"; url?: string }; // 手写或粘贴，只有文本
+  | { kind: "free"; url?: string; langPicked?: true }; // 手写或粘贴，只有文本；langPicked = 语言是从下拉里手选的，不再按内容自动识别
 
 export type SymRef = { qual: string; kind: "function" | "class" | "module" };
 

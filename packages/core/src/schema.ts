@@ -19,7 +19,7 @@ const Source = v.variant("kind", [
   obj({ kind: v.literal("repo"), repo: str }),
   obj({ kind: v.literal("external"), root: str }),
   obj({ kind: v.literal("github"), owner: str, name: str, ref: str }),
-  obj({ kind: v.literal("free"), url: opt(str) }),
+  obj({ kind: v.literal("free"), url: opt(str), langPicked: opt(yes) }),
 ]);
 const Segment = obj({
   id: str, src: Source, path: str, lang: str, start: num, end: num, text: v.array(str), version: Version,
