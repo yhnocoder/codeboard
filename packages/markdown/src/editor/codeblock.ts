@@ -1,7 +1,7 @@
 // Note 里的代码块：编辑时用和 Free code 卡同一个 CodeMirror（../cm/editor.ts），看上去和显示时一样（同一个 pre.md-code、字体、
 // 宿主给的着色，见 ../code.ts），字的位置不动。ProseMirror 的文档还是唯一的来源：CodeMirror 里的改动转成 ProseMirror 的改动，反过来也一样
 // （照 CodeMirror 官网 “CodeMirror in ProseMirror” 的做法）。撤销走 ProseMirror；方向键在开头 / 结尾时走出代码块；
-// Esc / ⌘↵ 结束整张 Note 的编辑；空代码块里退格变回段落。语言服务、灰字补全和 Free code 卡一样
+// Esc / ⌘↵、焦点离开编辑器结束整张 Note 的编辑；空代码块里退格变回段落。语言服务、灰字补全和 Free code 卡一样
 import type { Node as PMNode } from "@tiptap/pm/model";
 import { Selection, TextSelection } from "@tiptap/pm/state";
 import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
@@ -55,6 +55,12 @@ export class CodeBlockView implements NodeView {
       stopPointerDown: host.stopPointerDown,
       ghost: { complete: host.complete },
       onExit: () => host.exit(),
+      // 焦点从代码直接去了编辑器外面（点了别的卡片、画布）：ProseMirror 只听它自己根元素的 blur，代码编辑器是它里面另一个
+      // 可编辑的元素（stopEvent），收不到，替它发一个，用的一方照常保存退出（和公式块的原文一样）
+      onBlur: (e) => {
+        const to = e.relatedTarget;
+        if (!(to instanceof Node && this.view.dom.contains(to))) this.view.dom.dispatchEvent(new FocusEvent("blur", { relatedTarget: to }));
+      },
       onUpdate: (u) => this.forward(u),
       className: "cbcm-md",
     });

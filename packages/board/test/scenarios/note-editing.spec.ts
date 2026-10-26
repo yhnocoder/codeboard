@@ -3,7 +3,7 @@
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
 //          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
 //          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle noteFontSizeSettings
-//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight
+//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight noteCodeBlockClickAwayEnds
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
@@ -217,6 +217,30 @@ test("noteCodeScratchClosed", async () => {
   const opened = [...new Set(h.sent.filter((m) => m.type === "codeDoc").map((m: any) => m.id as string))];
   const closed = h.sent.filter((m) => m.type === "codeDocClose").map((m: any) => m.id as string);
   check("noteCodeScratchClosed", opened.length === 1 && opened.every((id) => closed.includes(id)), { opened, closed });
+  await close(h);
+});
+
+/** 光标在 Note 的代码块（CodeMirror）里：点别的卡、点画布空白，和在正文里一样保存并结束编辑 */
+test("noteCodeBlockClickAwayEnds", async () => {
+  const h = await open({ board: board(["```python\nx = 1\n```", "other note"]) });
+  await h.page.waitForTimeout(1500);
+  const cases: { name: string; away: () => Promise<void>; md: string }[] = [
+    { name: "otherCard", away: () => h.page.locator('.card[data-id="n1"] .nbody').click(), md: "```python\nx = 1 # a\n```" },
+    { name: "otherCardHead", away: () => h.page.locator('.card[data-id="n1"] .chead .kind').click(), md: "```python\nx = 1 # a # b\n```" },
+    { name: "canvas", away: () => h.page.mouse.click(300, 700), md: "```python\nx = 1 # a # b # c\n```" },
+  ];
+  for (const [i, c] of cases.entries()) {
+    await editNote(h, "n0");
+    await h.page.locator('.card[data-id="n0"] .md-pm pre .cm-content').click();
+    await keys(h.page, `{End} # ${"abc"[i]}`);
+    await h.page.waitForTimeout(150);
+    const inCode = await h.page.evaluate(() => !!document.activeElement?.closest(".cm-content"));
+    await c.away();
+    await h.page.waitForTimeout(400);
+    const still = await editing(h, "n0");
+    check(`noteCodeBlockClickAwayEnds ${c.name}`, inCode && still === 0 && md(h, "n0") === c.md, { inCode, still, got: md(h, "n0"), want: c.md });
+    await exitEdit(h);
+  }
   await close(h);
 });
 
