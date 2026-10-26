@@ -1,6 +1,7 @@
 // 白板界面：画布、底部唯一的工具栏（新建 · Search · ⋯）、缩放、讲解条、横幅、提示。看板就是一个普通编辑器标签页。
 import { Show, For, createEffect, createMemo, on } from "solid-js";
 import { tune } from "./state/tune";
+import { CAM_SETTLE } from "./state/timing";
 import { GUTTER, DED_PAD } from "./state/measure";
 import { unwrap } from "solid-js/store";
 import { state, mutate, liveCam, toast, toastMsg, setToastMsg, canUndo, canRedo, undo, redo, sel } from "./state/store";
@@ -51,7 +52,7 @@ export function App() {
         // 镜头不进撤销栈
         liveCam({ x: Math.round(t.x), y: Math.round(t.y), z: +t.z.toFixed(3) });
       }
-    }, 600);
+    }, CAM_SETTLE);
   }));
   return (
     <div class="app chrome" style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}>

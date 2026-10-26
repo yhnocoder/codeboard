@@ -9,6 +9,7 @@ import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
 import { rooted, onBoardSwitch } from "./root";
 import { trimLru } from "./lru";
+import { LIVE_DELAY, RESEND_DELAY } from "./timing";
 
 export const [state, setState] = createStore({
   loaded: false,
@@ -450,7 +451,6 @@ function changed() {
   queueMicrotask(() => { queued = false; flushSave(); });
 }
 let saveTimer: number | undefined;
-const LIVE_DELAY = 800;
 function changedLive() {
   if (!state.loaded) return;
   clearTimeout(saveTimer);
@@ -462,8 +462,6 @@ let sent: { snap: Snap; cam: string } | null = null;
 let undone = false;
 const NOT_UNDONE = "Changed on another board; not undone.";
 const camKey = (c: Camera) => `${c.x},${c.y},${c.z}`;
-/** 宿主没收下之后多久整块再发一次（只发一次：再不收下就等下一次修改） */
-const RESEND_DELAY = 2000;
 let resend: number | undefined;
 export function flushSave(retry = false) {
   clearTimeout(resend);
@@ -482,7 +480,7 @@ export function flushSave(retry = false) {
     sent = null;
     if (retry) return;
     toast(`Couldn't save the board: ${e.message}`);
-    resend = window.setTimeout(() => flushSave(true), RESEND_DELAY);
+    resend = window.setTimeout(() => flushSave(true), RESEND_DELAY); // 宿主没收下之后多久整块再发一次（只发一次：再不收下就等下一次修改）
   });
 }
 /** 宿主刚发来的白板就是存着的那一份 */

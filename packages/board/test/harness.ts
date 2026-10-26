@@ -110,7 +110,7 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
   fs.writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="file://${MEDIA}/board.css"></head>
 <body class="${o.light ? "vscode-light" : "vscode-dark"}"><div id="root"></div>
 <script>addEventListener("message", (e) => { if (e.data?.type === "init") window.__tInit = performance.now(); }, true); addEventListener("pointerdown", () => { window.__tDown = performance.now(); }, true);</script>
-<script>window.acquireVsCodeApi = () => ({ postMessage: (m) => window.__host(JSON.stringify(m)) });</script>
+<script>window.__inflight = 0; window.acquireVsCodeApi = () => ({ postMessage: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); } });</script>
 <script type="module" src="file://${MEDIA}/board.js"></script></body></html>`);
   const context = await browser.newContext({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
@@ -245,7 +245,45 @@ export function peekMock(seg: Segment, word: string): any {
   };
 }
 
-export async function shot(h: Host, name: string) {
-  await h.page.waitForTimeout(450);
+/** A screenshot into test-out/harness/. `settle`: "idle" waits for idle() (scenario files that moved off fixed sleeps); a number
+ *  is the old fixed wait, the default until every scenario file is migrated (then idle() becomes the only way) */
+export async function shot(h: Host, name: string, settle: "idle" | number = 450) {
+  if (settle === "idle") await idle(h); else await h.page.waitForTimeout(settle);
   await h.page.screenshot({ path: path.join(OUT, `${name}.png`) });
+}
+
+/**
+ * Waits until the board has settled: no board message still being handled by the host (window.__inflight, counted in the page
+ * file above until the handler returns, i.e. after its reply was posted), the camera at rest (.world neither .moving nor
+ * .settle), no finite Web Animation or CSS transition running (infinite ones, like spinners and animated stickers, don't count),
+ * fonts loaded, and no card moved or resized (their inline styles: the pop-in, slide, fold and grow springs) for `frames` frames
+ * in a row. Throws after `ms`, saying what was still busy. Re-exported by fixtures.ts.
+ */
+export async function idle(h: Host, ms = 5000, frames = 3) {
+  const t0 = Date.now();
+  await h.page.evaluate(() => { (window as any).__quiet = { n: 0, key: "\0", busy: [] }; });
+  try {
+    await h.page.waitForFunction((need) => {
+      const w = window as any, q = w.__quiet;
+      const world = document.querySelector(".world") as HTMLElement | null;
+      const anims = document.getAnimations().filter((a) => a.playState === "running" && Number.isFinite(a.effect?.getComputedTiming().endTime));
+      q.busy = [
+        w.__inflight > 0 && `${w.__inflight} message(s) waiting on the host`,
+        document.fonts.status !== "loaded" && "fonts loading",
+        world?.matches(".moving, .settle") && "camera moving",
+        anims.length > 0 && `animations: ${anims.map((a) => (a as CSSTransition).transitionProperty ?? (a as CSSAnimation).animationName ?? "?").join(", ")}`,
+      ].filter(Boolean);
+      let key = world?.style.transform ?? "";
+      for (const el of document.querySelectorAll<HTMLElement>(".card, .carea")) key += "|" + el.style.cssText;
+      if (key !== q.key) q.busy.push("cards moving");
+      q.n = q.busy.length ? 0 : q.n + 1;
+      q.key = key;
+      return q.n >= need;
+    }, frames, { polling: "raf", timeout: ms });
+    if (process.env.IDLE_DEBUG) console.log("IDLE", Date.now() - t0, "ms", new Error().stack!.split("\n")[2].trim()); // which waits take long
+  } catch (e) {
+    if (h.page.isClosed()) throw e;
+    const busy = await h.page.evaluate(() => (window as any).__quiet.busy as string[]).catch(() => ["page gone"]);
+    throw new Error(`idle: the board did not settle within ${ms} ms (${busy.join("; ") || "?"})`);
+  }
 }

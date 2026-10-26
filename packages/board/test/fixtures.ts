@@ -7,7 +7,7 @@
 //                    checks returns undefined. If f throws, res goes into the error.
 // Coverage (HARNESS_COV=1, nightly): the source files each test runs, attached to its result as "coverage" (tools/test/harness.mjs reads it).
 import { test as base, expect, type Browser } from "@playwright/test";
-import { ready, openBoard, type Host, type OpenOptions, type PageCoverage } from "./harness";
+import { ready, openBoard, idle, type Host, type OpenOptions, type PageCoverage } from "./harness";
 import { nodeCoverage, pageFiles } from "./coverage";
 import tiers from "./tiers.json";
 
@@ -35,6 +35,28 @@ export async function verdict(name: string, f: (res: Record<string, unknown>) =>
   try { ok = await f(res); } catch (e) { if (e instanceof Error) e.message += `\n${name} ${JSON.stringify(res)}`; throw e; }
   if (ok !== undefined) check(name, ok, JSON.stringify(res));
 }
+
+// ---------- Waiting for real state, not for a fixed time ----------
+//   until(h, what, f)   polls f (Node side: h.board(), h.sent, a store, a locator count…) until it returns something truthy and
+//                       returns it; throws after ms, naming what it waited for and the last value
+//   idle(h)             the board has settled: host replied to everything, camera at rest, no animation, cards still (harness.ts)
+//   hold(h, ms, why)    a fixed wait that has to be one: a check that something does NOT happen within a product delay (pass
+//                       the constant from src/state/timing.ts), a hover delay, a measurement. Never to let the board catch up
+export { idle };
+
+export async function until<T>(h: Host, what: string, f: () => T | Promise<T>, ms = 5000): Promise<NonNullable<T>> {
+  const end = Date.now() + ms;
+  let last: T;
+  for (;;) {
+    last = await f();
+    if (last) return last as NonNullable<T>;
+    if (Date.now() > end || h.page.isClosed()) break;
+    await new Promise((r) => setTimeout(r, 20));
+  }
+  throw new Error(`until: ${what}: not within ${ms} ms (last: ${JSON.stringify(last)?.slice(0, 300)})`);
+}
+
+export const hold = (h: Host, ms: number, _why: string) => h.page.waitForTimeout(ms);
 
 /** The running test's browser and boards */
 let cur: { browser: Browser; hosts: Host[]; coverage?: PageCoverage } | undefined;
