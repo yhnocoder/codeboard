@@ -4,7 +4,7 @@
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle } from "../fixtures";
 
 const notes = (h: Host) => h.page.locator(".card.note").count();
 const editing = (h: Host) => h.page.locator(".card.note .md-pm").count();
@@ -12,18 +12,20 @@ const focused = (h: Host) => h.page.evaluate(() => !!document.activeElement?.clo
 const box = (h: Host, sel: string) => h.page.evaluate((sel) => { const r = document.querySelector(sel)!.getBoundingClientRect(); return { x: r.left, y: r.top, w: r.width, h: r.height, r: r.right, b: r.bottom }; }, sel);
 async function newNote(h: Host) {
   await h.page.locator('.bbar button[aria-label="Note"]').click();
-  await h.page.waitForSelector(".card.note .md-pm", { timeout: 5000 });
-  await h.page.waitForTimeout(400);
+  await h.page.locator(".card.note .md-pm:focus").waitFor();
+  await idle(h); // the pop-in: box() reads where the card ends up
 }
+/** One rendered frame: each pointer move of a drag lands in a frame of its own, as a real drag does */
+const frame = (h: Host) => h.page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => r())));
 async function drag(h: Host, x: number, y: number, dx: number, dy: number, steps = 12) {
   await h.page.mouse.move(x, y);
   await h.page.mouse.down();
-  for (let i = 1; i <= steps; i++) { await h.page.mouse.move(x + (dx * i) / steps, y + (dy * i) / steps); await h.page.waitForTimeout(25); }
+  for (let i = 1; i <= steps; i++) { await h.page.mouse.move(x + (dx * i) / steps, y + (dy * i) / steps); await frame(h); }
   await h.page.mouse.up();
-  await h.page.waitForTimeout(400);
+  await idle(h);
 }
 async function shot(h: Host, name: string) {
-  await h.page.waitForTimeout(300);
+  await idle(h);
   const r = await box(h, ".card.note").catch(() => ({ x: 400, y: 300, w: 300, h: 100, r: 700, b: 400 }));
   await h.page.screenshot({ path: path.join(OUT, `note-fresh-${name}.png`), clip: { x: Math.max(0, r.x - 260), y: Math.max(0, r.y - 160), width: r.w + 520, height: r.h + 320 } });
 }
@@ -32,7 +34,7 @@ async function shot(h: Host, name: string) {
 test("emptyNewNoteSurvivesDrag", async () => {
   const h = await open({ board: emptyBoard("b1", "fresh"), light, w: 1200, h: 800 });
   const pg = h.page;
-  await pg.waitForTimeout(800);
+  await idle(h);
 
   // move by the header
   await newNote(h);
@@ -44,12 +46,12 @@ test("emptyNewNoteSurvivesDrag", async () => {
   check("emptyNewNoteSurvivesDrag still editing after move", (await editing(h)) === 1 && (await focused(h)), { editing: await editing(h), focused: await focused(h) });
   await pg.keyboard.type("kept");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1300);
+  await until(h, "the typed text is saved", () => h.board().cards.some((c) => c.kind === "note" && c.md.trim() === "kept"));
   const md = h.board().cards.map((c) => (c.kind === "note" ? c.md.trim() : c.kind));
   check("emptyNewNoteSurvivesDrag typed text saved", md.length === 1 && md[0] === "kept", { md });
   await pg.mouse.click(1100, 760);
   await pg.keyboard.press("Control+z");
-  await pg.waitForTimeout(600);
+  await until(h, "undo takes the note away", async () => (await notes(h)) === 0);
   check("emptyNewNoteSurvivesDrag one undo step", (await notes(h)) === 0, { notes: await notes(h) });
 
   // resize by the corner: still there, still editing
@@ -60,9 +62,10 @@ test("emptyNewNoteSurvivesDrag", async () => {
 
   // editing ends while still empty (click on the board): the Note goes away, nothing to undo
   await pg.mouse.click(1100, 760);
-  await pg.waitForTimeout(900);
+  await until(h, "the empty note goes away", async () => (await notes(h)) === 0);
+  await idle(h);
   const left = await notes(h);
-  await pg.locator('.bbar button[aria-label="More"]').click(); await pg.waitForTimeout(200);
+  await pg.locator('.bbar button[aria-label="More"]').click();
   const undoOff = await pg.locator(".ctx button", { hasText: /^Undo/ }).isDisabled();
   await pg.keyboard.press("Escape");
   check("emptyNewNoteSurvivesDrag empty note discarded on click away", left === 0 && undoOff, { left, undoOff });
@@ -72,7 +75,7 @@ test("emptyNewNoteSurvivesDrag", async () => {
   const c = await box(h, ".card.note .chead");
   await drag(h, c.x + 60, c.y + c.h / 2, 150, 90);
   await pg.mouse.click(60, 760);
-  await pg.waitForTimeout(900);
+  await until(h, "the moved empty note goes away", async () => (await notes(h)) === 0);
   check("emptyNewNoteSurvivesDrag moved empty note discarded on click away", (await notes(h)) === 0, { notes: await notes(h) });
 });
 
@@ -81,7 +84,7 @@ test("emptyNewNoteSurvivesDrag", async () => {
 test("newTextReachesHostWhenShown", async () => {
   const h = await open({ board: emptyBoard("b1", "fresh"), light, w: 1200, h: 800 });
   const pg = h.page;
-  await pg.waitForTimeout(800);
+  await idle(h);
   // record what the page posts, in the page (synchronously, at postMessage time)
   await pg.evaluate(() => { const w = window as any, o = w.__host; w.__posted = []; w.__host = (s: string) => { w.__posted.push(s); return o(s); }; });
   const runs: { shown: boolean; posted: boolean }[] = [];
@@ -105,7 +108,7 @@ test("newTextReachesHostWhenShown", async () => {
         queueMicrotask(look);
       });
     }, word));
-    await pg.waitForTimeout(300);
+    await idle(h);
   }
   check("newTextReachesHostWhenShown posted when shown", runs.every((r) => r.shown && r.posted), { runs });
 });

@@ -5,7 +5,7 @@
 // Screenshots: test-out/harness/marks-*.png (HARNESS_LIGHT=1 for the light theme)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, until, idle } from "../fixtures";
 
 const sym = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; const i = s.text.findIndex((t) => re.test(t)); return s.start + Math.max(0, i); };
@@ -54,15 +54,16 @@ test("markCard", async () => {
   check("markArrowColor", edge[0]?.stroke === look.color, { arrow: edge[0]?.stroke, mark: look.color });
   check("plainArrowNotHand", l3.length > 0 && l3.every((p) => !/\bhand\b/.test(p.cls)), l3.map((p) => p.cls));
   check("markArrowNoMerge", (await pg.locator(`.link[data-lk="L1"]`).getAttribute("data-merged")) === null);
-  await shot(h, "marks-board");
+  await shot(h, "marks-board", "idle");
 
   // select: the color dots; purple → the Mark and its arrow change color
   await pg.locator(`${card("m1")} .tx`).click();
-  await pg.waitForTimeout(200);
+  await pg.locator(`${card("m1")} .hdots .hdot`).first().waitFor();
   check("markColorDots", (await pg.locator(`${card("m1")} .hdots .hdot`).count()) === 4);
-  await shot(h, "marks-selected");
+  await shot(h, "marks-selected", "idle");
   await pg.locator(`${card("m1")} .hdot.hc-purple`).click();
-  await pg.waitForTimeout(200);
+  await until(h, "the new color is saved", () => (h.board().cards.find((c) => c.id === "m1") as NoteCard | undefined)?.hand !== "blue");
+  await idle(h); // the color transition
   const after = await pg.evaluate((sel) => getComputedStyle(document.querySelector(sel)!).color, `${card("m1")} .tx`);
   const l1b = (await linkPaths(h, "L1")).find((p) => /\bedge\b/.test(p.cls));
   check("markRecolor", h.board().cards.find((c) => c.id === "m1")?.kind === "note" && (h.board().cards.find((c) => c.id === "m1") as NoteCard).hand === "purple" && after !== look.color && l1b?.stroke === after, { after, arrow: l1b?.stroke });
@@ -76,7 +77,8 @@ test("markCard", async () => {
     await pg.mouse.down();
     for (let i = 1; i <= 8; i++) await pg.mouse.move(grip.x + grip.width / 2 - i * 12, grip.y + grip.height / 2);
     await pg.mouse.up();
-    await pg.waitForTimeout(250);
+    await until(h, "the new width is saved", () => h.board().place.m1?.w !== 200);
+    await idle(h);
     const now = await pg.locator(card("m1")).boundingBox();
     const size = await pg.evaluate((sel) => getComputedStyle(document.querySelector(sel)!).fontSize, `${card("m1")} .tx`);
     check("markWidthWraps", (h.board().place.m1?.w ?? 999) < 200 && !!now && now.height > before.height + 10 && size === "18px", { w: h.board().place.m1?.w, before: before.height, after: now?.height, size });
@@ -88,7 +90,7 @@ test("markCard", async () => {
   await pg.keyboard.press("End");
   await pg.keyboard.type(" ok");
   await pg.mouse.click(700, 880);
-  await pg.waitForTimeout(300);
+  await until(h, "the edit is saved", () => (h.board().cards.find((c) => c.id === "m3") as NoteCard | undefined)?.md !== "先挑这一批");
   const md3 = (h.board().cards.find((c) => c.id === "m3") as NoteCard | undefined)?.md;
   check("markEdit", md3 === "先挑这一批 ok", { md3 });
   await h.close();
@@ -109,7 +111,7 @@ test("markArrowStable", async () => {
     moved = (await linkPaths(h, "L1")).map((p) => p.d).join("|");
     for (let i = 5; i >= 0; i--) await pg.mouse.move(x + i * 10, y + i * 15);
     await pg.mouse.up();
-    await pg.waitForTimeout(300);
+    await idle(h);
   }
   const d1 = (await linkPaths(h, "L1")).map((p) => p.d).join("|");
   check("markArrowFollows", !!moved && moved !== d0);
@@ -145,7 +147,12 @@ test("noteAnnotations", async () => {
   const lineH = await pg.evaluate(() => { const ps = [...document.querySelectorAll<HTMLElement>(".card .nbody p")]; return ps.map((p) => p.getBoundingClientRect().height); });
   check("annotOnlyAnnotatedLinesTaller", lineH.length === 3 && lineH[2] < lineH[1], lineH);
   // a label at the end of a line is pulled back inside the paragraph, measured with the handwriting font once it has loaded
-  await pg.waitForTimeout(300);
+  // (view.ts fitAnnots measures again on the fonts' loadingdone): every label's font is there, then the board is idle
+  await pg.waitForFunction(() => [...document.querySelectorAll<HTMLElement>(".card .md-annot")].every((e) => {
+    const lb = getComputedStyle(e, "::before");
+    return document.fonts.check(`${lb.fontWeight} ${lb.fontSize} ${lb.fontFamily}`, e.dataset.note ?? "");
+  }), null, { timeout: 5000 });
+  await idle(h);
   const fit = await pg.evaluate(() => {
     const e = [...document.querySelectorAll<HTMLElement>(".card .md-annot")][1], p = e.closest("p")!;
     const lb = getComputedStyle(e, "::before"), c = document.createElement("canvas").getContext("2d")!;
@@ -155,17 +162,18 @@ test("noteAnnotations", async () => {
   });
   // the label would run past the paragraph (natural right = right - ax): it is pulled back inside, and only then
   check("annotLabelInsideBlock", fit.right <= fit.pRight + 0.5 && (fit.right - parseFloat(fit.ax) > fit.pRight) === parseFloat(fit.ax) < 0, fit);
-  await shot(h, "marks-note-annotations");
+  await shot(h, "marks-note-annotations", "idle");
 
   // typing the syntax in the editor
   await pg.locator(`${card("n1")} .nbody p`).last().dblclick();
   await pg.waitForSelector(`${card("n1")} .md-pm`, { timeout: 5000 });
   await pg.keyboard.press("Control+End");
   await pg.keyboard.type(" Then {decode|one token each|orange}.");
-  await pg.waitForTimeout(150);
+  await idle(h);
   const live = await pg.locator(`${card("n1")} .md-pm .md-annot`).count();
   await pg.mouse.click(800, 650);
-  await pg.waitForTimeout(400);
+  await until(h, "the edit is saved", () => (h.board().cards[0] as NoteCard).md !== md);
+  await idle(h);
   const saved = (h.board().cards[0] as NoteCard).md;
   check("annotTyped", saved.includes("{decode|one token each|orange}") && (await pg.locator(`${card("n1")} .md-annot`).count()) === 4, { live, tail: saved.slice(-80) });
   await h.close();
@@ -210,7 +218,7 @@ test("codeAnnotations", async () => {
   check("codeAnnotAligned", Math.abs(geo.bgs[0].left - geo.wordX) < 2 && Math.abs(geo.labs[0].left - geo.wordX) < 4 && Math.abs(geo.bgs[1].left - geo.allocX) < 2, geo);
   check("codeAnnotRailPlace", geo.labs[0].bottom <= geo.lwTop + 1 && geo.labs[1].top >= geo.laBottom - 1, geo);
   check("codeAnnotGutterFollows", Math.abs(geo.noTop - geo.lwTop) < 2, geo);
-  await shot(h, "marks-code-annotations");
+  await shot(h, "marks-code-annotations", "idle");
 
   // select "scheduled_seqs" on the first body line, right-click, Annotate Selection…
   const l2 = s.start + 1;
@@ -225,27 +233,28 @@ test("codeAnnotations", async () => {
     while ((n = w2.nextNode())) { const len = (n as Text).length; if (off + len >= i + 14) { r.setEnd(n, i + 14 - off); break; } off += len; }
     getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
   }, { id: sch.id, l2 });
-  await pg.waitForTimeout(150);
+  // the card takes the DOM selection as its line selection (CodeBody's selectionchange)
+  await pg.locator(`${card(sch.id)} .gutter .no.sel`, { hasText: new RegExp(`^${l2}$`) }).waitFor();
   const box = await pg.evaluate(() => { const r = getSelection()!.getRangeAt(0).getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
   await pg.mouse.click(box.x, box.y, { button: "right" });
-  await pg.waitForTimeout(200);
+  await pg.locator(".ctx button").first().waitFor();
   const item = pg.locator(".ctx button[role=menuitem]", { hasText: "Annotate Selection" });
   check("codeAnnotMenu", (await item.count()) === 1);
   if (await item.count()) {
     await item.click();
-    await pg.waitForTimeout(150);
+    await pg.locator(`${card(sch.id)} .alt:focus`).waitFor();
     await pg.keyboard.type("先清空");
     await pg.keyboard.press("Enter");
-    await pg.waitForTimeout(250);
+    await until(h, "the annotation is saved", () => ((h.board().cards[0] as CodeCard).segments[0].annots ?? []).length !== 2);
   }
   const got = (h.board().cards[0] as CodeCard).segments[0].annots ?? [];
   const t2 = s.text[l2 - s.start];
   check("codeAnnotAdd", got.length === 3 && got.some((a) => a.line === l2 && a.text === "先清空" && a.from === t2.indexOf("scheduled_seqs") && a.to === a.from + 14), got);
   // right-click a label → Remove
   await pg.locator(`${card(sch.id)} .alab`, { hasText: "KV cache blocks" }).click({ button: "right" });
-  await pg.waitForTimeout(150);
   await pg.locator(".ctx button[role=menuitem]", { hasText: "Remove Annotation" }).click();
-  await pg.waitForTimeout(200);
+  await until(h, "the annotation is removed", () => ((h.board().cards[0] as CodeCard).segments[0].annots ?? []).length !== 3);
+  await idle(h);
   const left = (h.board().cards[0] as CodeCard).segments[0].annots ?? [];
   check("codeAnnotRemove", left.length === 2 && !left.some((a) => a.text === "KV cache blocks") && (await pg.locator(`${card(sch.id)} .arail.below`).count()) === 0, left);
   await h.close();

@@ -1,7 +1,8 @@
 // Board interaction scenarios: each one opens a board, performs a series of actions, and takes screenshots.
 import { shot, symCard, findSym, viewOf, put, type Host } from "../harness";
 import { emptyBoard, putShared, type Board } from "@codeboard/core";
-import { test, open, check, light } from "../fixtures";
+import { RESEND_DELAY } from "../../src/state/timing";
+import { test, open, check, light, expect, until, idle } from "../fixtures";
 
 
 function boardWith(...quals: string[]): Board {
@@ -11,37 +12,40 @@ function boardWith(...quals: string[]): Board {
   return b;
 }
 const callEl = (h: Host, name: string, nth = 0) => h.page.locator(`.card .src .call:text-is("${name}")`).nth(nth);
+/** Something took the keyboard to type into (a section's name, a new Text, the palette): an input, a textarea or an editor */
+const typingInto = (h: Host) => h.page.waitForFunction(() => { const a = document.activeElement as HTMLElement | null; return !!a && (a.matches("input, textarea") || a.isContentEditable); }, null, { timeout: 5000 });
 
 
 test("expandCall", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
-  await shot(h, "01-start");
+  await shot(h, "01-start", "idle");
   await callEl(h, "schedule").click();
-  await h.page.waitForTimeout(900);
-  await shot(h, "02-expanded");
+  await until(h, "schedule() expands into a card", () => h.board().cards.length > 1);
+  await shot(h, "02-expanded", "idle");
   await callEl(h, "postprocess").click();
-  await h.page.waitForTimeout(900);
-  await shot(h, "03-two");
+  await until(h, "postprocess() expands into a card", () => h.board().cards.length > 2);
+  await shot(h, "03-two", "idle");
   console.log("cards:", h.board().cards.length, "links:", h.board().links.length);
   await h.page.context().close();
 });
 
 test("expandAndWalk", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
-  await callEl(h, "schedule").click(); await h.page.waitForTimeout(700);
-  await shot(h, "flow-00");
-  await callEl(h, "postprocess").first().click({ timeout: 5000 }); await h.page.waitForTimeout(700);
+  await callEl(h, "schedule").click(); await until(h, "schedule() expands", () => h.board().cards.length > 1);
+  await shot(h, "flow-00", "idle");
+  await callEl(h, "postprocess").first().click({ timeout: 5000 }); await until(h, "postprocess() expands", () => h.board().cards.length > 2);
   const pos = () => JSON.stringify(h.board().cards.map((c: any) => [c.segments?.[0]?.symbol?.qual, h.board().place[c.id]?.x, h.board().place[c.id]?.y]));
-  await h.page.waitForTimeout(1200); console.log(pos());
+  await idle(h); console.log(pos());
   await h.page.locator(".card .src .call", { hasText: "allocate" }).first().click();
-  await h.page.waitForTimeout(1200); console.log(pos(), JSON.stringify(h.board().links.map((l) => [l.from.card, l.to.card]))); await h.page.waitForTimeout(700);
-  await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(700);
-  await shot(h, "flow-01-three");
+  await until(h, "allocate() expands", () => h.board().cards.length > 3);
+  await idle(h); console.log(pos(), JSON.stringify(h.board().links.map((l) => [l.from.card, l.to.card])));
+  await h.page.keyboard.press("Shift+!"); await idle(h);
+  await shot(h, "flow-01-three", "idle");
   await h.page.keyboard.press("Escape");
-  await h.page.keyboard.press("p"); await h.page.waitForTimeout(900);
-  await shot(h, "flow-02-walk");
-  await h.page.keyboard.press("ArrowRight"); await h.page.waitForTimeout(900);
-  await shot(h, "flow-03-walk2");
+  await h.page.keyboard.press("p"); await idle(h);
+  await shot(h, "flow-02-walk", "idle");
+  await h.page.keyboard.press("ArrowRight"); await idle(h);
+  await shot(h, "flow-03-walk2", "idle");
   await h.page.keyboard.press("Escape");
   console.log("cards:", h.board().cards.length, "links:", h.board().links.length);
   await h.page.context().close();
@@ -51,63 +55,64 @@ test("notes", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .no").nth(5).click();
   await h.page.locator(".card .no").nth(7).click({ modifiers: ["Shift"] });
-  await shot(h, "notes-01-lines");
-  await h.page.keyboard.press("s"); await h.page.waitForTimeout(400);
-  await shot(h, "notes-02-add");
+  await shot(h, "notes-01-lines", "idle");
+  await h.page.keyboard.press("s"); await h.page.locator(".pop button", { hasText: /^Text$/ }).waitFor();
+  await shot(h, "notes-02-add", "idle");
   await h.page.locator(".pop button", { hasText: /^Text$/ }).click();
   await h.page.locator(".pop textarea, .pop [contenteditable]").first().click();
   await h.page.keyboard.type("Prefill admits waiting seqs until the token budget runs out.");
   await h.page.locator(".pop button", { hasText: /^Add$/ }).click();
-  await h.page.waitForTimeout(400);
-  await shot(h, "notes-03-done");
+  await until(h, "the sidenote is added", () => h.board().sidenotes.length);
+  await shot(h, "notes-03-done", "idle");
   await h.page.mouse.move(1300, 800);
-  await h.page.keyboard.press("n"); await h.page.waitForTimeout(300);
+  await h.page.keyboard.press("n"); await h.page.locator(".md-pm:focus").waitFor();
   await h.page.keyboard.type("# Why chunked prefill\nKeeps $O(n)$ memory **bounded**.");
-  await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
+  await h.page.keyboard.press("Escape"); await until(h, "the Note is saved", () => h.board().cards.some((c) => c.kind === "note")); await idle(h);
   await h.page.mouse.click(1300, 500);
-  await shot(h, "notes-04-note");
+  await shot(h, "notes-04-note", "idle");
   console.log("cards:", h.board().cards.map((c) => c.kind).join(","), "sidenotes:", JSON.stringify((h.board() as any).sidenotes));
-  await h.page.locator(".card .mk").first().hover(); await h.page.waitForTimeout(600);
-  await shot(h, "notes-05-hover");
+  await h.page.locator(".card .mk").first().hover(); await h.page.locator(".pop.k-notes").waitFor(); // shows 120 ms after the hover
+  await shot(h, "notes-05-hover", "idle");
   await h.page.context().close();
 });
 
 test("sections", async () => {
   const b = boardWith("LLMEngine.step", "Scheduler.schedule");
   const h = await open({ board: b, light });
-  await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(600);
+  await h.page.keyboard.press("Shift+!"); await idle(h);
   const r = await h.page.locator(".card").first().boundingBox();
   await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
   await h.page.mouse.move(r!.x - 40, r!.y - 60); await h.page.mouse.down();
   await h.page.mouse.move(r!.x + r!.width + 30, r!.y + r!.height + 40, { steps: 8 }); await h.page.mouse.up();
-  await h.page.waitForTimeout(400);
+  await typingInto(h);
   await h.page.keyboard.type("Engine"); await h.page.keyboard.press("Enter");
   await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
   await h.page.mouse.move(r!.x - 80, r!.y - 120); await h.page.mouse.down();
   await h.page.mouse.move(1350, 820, { steps: 8 }); await h.page.mouse.up();
-  await h.page.waitForTimeout(300);
+  await typingInto(h);
   await h.page.keyboard.type("Generate step"); await h.page.keyboard.press("Enter");
-  await h.page.waitForTimeout(400);
-  await shot(h, "sec-01-nested");
+  await until(h, "both sections are saved", () => h.board().sections.length > 1);
+  await shot(h, "sec-01-nested", "idle");
   console.log(JSON.stringify(h.board().sections.map((s) => [s.name, s.parent ?? null])), JSON.stringify(h.board().cards.map((c) => h.board().place[c.id]?.section ?? null)));
   await h.page.context().close();
 });
 
 test("compare", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
-  await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
+  await h.page.keyboard.press("Shift+!"); await idle(h);
   await h.page.keyboard.press("Control+a"); await h.page.keyboard.press("Meta+a");
   await h.page.locator(".card").first().locator(".chead").click({ button: "right" });
-  await h.page.waitForTimeout(200);
-  await shot(h, "cmp-01-menu");
+  await h.page.locator(".ctx button").first().waitFor();
+  await shot(h, "cmp-01-menu", "idle");
   await h.page.locator(".ctx button", { hasText: "Compare" }).first().click();
-  await h.page.waitForTimeout(900);
-  await shot(h, "cmp-02-compare");
+  await until(h, "Compare makes a compare card", () => h.board().cards.some((c) => c.kind === "compare"));
+  await shot(h, "cmp-02-compare", "idle");
   console.log("kinds:", h.board().cards.map((c) => c.kind).join(","));
   // Unified: switching turns it into a single-column diff (previously rows weren't redrawn and stayed side by side)
-  await h.page.locator(".cmpwrap .tools button", { hasText: "Unified" }).click(); await h.page.waitForTimeout(500);
+  await h.page.locator(".cmpwrap .tools button", { hasText: "Unified" }).click();
+  await h.page.locator(".cmpwrap .urow").first().waitFor(); await idle(h);
   const u = { urow: await h.page.locator(".cmpwrap .urow").count(), crow: await h.page.locator(".cmpwrap .crow").count() };
-  await shot(h, "cmp-03-unified");
+  await shot(h, "cmp-03-unified", "idle");
   check("compare-unified", u.urow > 0 && u.crow === 0, JSON.stringify(u));
   await h.page.context().close();
 });
@@ -117,15 +122,16 @@ test("versions", async () => {
   const h = await open({ board: b, light });
   const seg = (b.cards[0] as any).segments[0].id;
   await h.post({ type: "stale", stale: { [seg]: { state: "changed", hiddenOnly: false, head: "f64d8210" } } } as any);
-  await h.page.waitForTimeout(400);
-  await shot(h, "ver-01-stale");
+  await h.page.locator(".banner").waitFor();
+  await shot(h, "ver-01-stale", "idle");
   await h.page.locator(".banner button", { hasText: "Review" }).click();
-  await h.page.waitForTimeout(1200);
-  await shot(h, "ver-02-diff");
+  await h.page.locator(".pop button", { hasText: /^Update/ }).first().waitFor(); // the diff comes from the host
+  await shot(h, "ver-02-diff", "idle");
   console.log(await h.page.evaluate(() => [...document.querySelectorAll(".pop, .pop .diffpop, .pop .dbody, .pop .crows, .pop .db")].map((e) => { const r = e.getBoundingClientRect(); return e.className + " " + Math.round(r.x) + " " + Math.round(r.width) + " " + getComputedStyle(e).width; }).join("\n")));
+  const v0 = JSON.stringify((h.board().cards[0] as any).segments[0].version);
   await h.page.locator(".pop button", { hasText: /^Update/ }).first().click();
-  await h.page.waitForTimeout(600);
-  await shot(h, "ver-03-updated");
+  await until(h, "Update pins the new version", () => JSON.stringify((h.board().cards[0] as any).segments[0].version) !== v0);
+  await shot(h, "ver-03-updated", "idle");
   console.log("version:", JSON.stringify((h.board().cards[0] as any).segments[0].version));
   await h.page.context().close();
 });
@@ -135,41 +141,47 @@ test("lost", async () => {
   const h = await open({ board: b, light });
   const [s1, s2] = b.cards.map((c: any) => c.segments[0].id);
   await h.post({ type: "stale", stale: { [s1]: { state: "lost" }, [s2]: { state: "changed", hiddenOnly: false, head: "f64d8210" } } } as any);
-  await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(600);
-  await shot(h, "lost-01");
-  await h.page.locator(".banner button", { hasText: "Update All" }).click(); await h.page.waitForTimeout(800);
-  await h.page.locator(".cmiss button", { hasText: "Keep Old Version" }).click(); await h.page.waitForTimeout(500);
-  await shot(h, "lost-02");
+  await h.page.keyboard.press("Shift+!"); await idle(h);
+  await shot(h, "lost-01", "idle");
+  await h.page.locator(".banner button", { hasText: "Update All" }).click(); await idle(h);
+  await h.page.locator(".cmiss button", { hasText: "Keep Old Version" }).click();
+  await until(h, "Keep Old Version is saved", () => h.board().cards.some((c: any) => c.keepOld)); await idle(h);
+  await shot(h, "lost-02", "idle");
   console.log("banner:", await h.page.locator(".banner").count(), "cmiss:", await h.page.locator(".cmiss").count(), JSON.stringify(h.board().cards.map((c: any) => [c.keepOld ?? null, c.segments[0].version.commit])));
   await h.page.context().close();
 });
 
 test("linkMergeSection", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule", "Scheduler.postprocess"), light });
-  await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
+  await h.page.keyboard.press("Shift+!"); await idle(h);
   // Arrow: select two cards, click Link
   await h.page.keyboard.press("Control+a");
-  await h.page.locator(".bbar button[aria-label=\"Arrow\"]").click(); await h.page.waitForTimeout(400);
+  await h.page.locator(".bbar button[aria-label=\"Arrow\"]").click(); await until(h, "the arrow is added", () => h.board().links.length); await idle(h);
   // Text: double-click empty space
-  await h.page.mouse.dblclick(700, 120); await h.page.waitForTimeout(300);
-  await h.page.keyboard.type("Scheduler overview"); await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(300);
-  await shot(h, "misc-01");
+  await h.page.mouse.dblclick(700, 120); await typingInto(h);
+  await h.page.keyboard.type("Scheduler overview"); await h.page.keyboard.press("Escape");
+  await until(h, "the Text is saved", () => h.board().cards.some((c) => c.kind === "note")); await idle(h);
+  await shot(h, "misc-01", "idle");
   // Merge: ⌥-drag the second card's title onto the first card's title
   const heads = h.page.locator(".card.ccard .chead");
   const a = await heads.nth(0).boundingBox(), b = await heads.nth(1).boundingBox();
   await h.page.mouse.move(b!.x + 60, b!.y + 10); await h.page.mouse.down();
   await h.page.keyboard.down("Alt");
-  await h.page.mouse.move(a!.x + 80, a!.y + 12, { steps: 12 }); await h.page.waitForTimeout(200);
-  await h.page.mouse.up(); await h.page.keyboard.up("Alt"); await h.page.waitForTimeout(700);
-  await shot(h, "misc-02-merged");
+  await h.page.mouse.move(a!.x + 80, a!.y + 12, { steps: 12 }); await h.page.locator(".drophint", { hasText: "Release to merge" }).waitFor(); // ⌥ arms it at once
+  const n0 = h.board().cards.length;
+  await h.page.mouse.up(); await h.page.keyboard.up("Alt");
+  await until(h, "the drop merges the two cards", () => h.board().cards.length < n0); await idle(h);
+  await shot(h, "misc-02-merged", "idle");
   console.log("kinds:", h.board().cards.map((c: any) => c.kind + (c.segments ? ":" + c.segments.length : "")).join(","), "links:", JSON.stringify(h.board().links.map((l) => [l.kind, l.from.card, l.to.card])));
   // Section, then collapse
   await h.page.keyboard.press("Control+a");
-  await h.page.locator(".card.ccard .chead").first().click({ button: "right" }); await h.page.waitForTimeout(200);
-  await h.page.locator(".ctx button", { hasText: "Move to New Section" }).first().click().catch(() => console.log("no Move to New Section"));
-  await h.page.waitForTimeout(300); await h.page.keyboard.type("Scheduler"); await h.page.keyboard.press("Enter");
-  await h.page.waitForTimeout(400);
-  await shot(h, "misc-03-section");
+  await h.page.locator(".card.ccard .chead").first().click({ button: "right" });
+  await h.page.locator(".ctx button").first().waitFor();
+  const toSection = h.page.locator(".ctx button", { hasText: "Move to New Section" }).first();
+  if (await toSection.count()) { await toSection.click(); await typingInto(h); } else console.log("no Move to New Section");
+  await h.page.keyboard.type("Scheduler"); await h.page.keyboard.press("Enter");
+  await idle(h);
+  await shot(h, "misc-03-section", "idle");
   console.log("sections:", JSON.stringify(h.board().sections.map((q) => [q.title, q.collapsed ?? false])));
   await h.page.context().close();
 });
@@ -177,18 +189,22 @@ test("linkMergeSection", async () => {
 // The Compare one-flow rule is gone: each column can expand into its own call graph, and the Compare shows both marks
 test("cmptree", async () => {
   const h = await open({ board: boardWith("LLMEngine.step", "Scheduler.schedule"), light });
-  await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(400);
+  await h.page.keyboard.press("Shift+!"); await idle(h);
   await h.page.keyboard.press("Control+a");
-  await h.page.locator(".card.ccard .chead").first().click({ button: "right" }); await h.page.waitForTimeout(200);
-  await h.page.locator(".ctx button", { hasText: "Compare" }).first().click(); await h.page.waitForTimeout(800);
-  await h.page.locator(".card .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(800);
+  await h.page.locator(".card.ccard .chead").first().click({ button: "right" });
+  await h.page.locator(".ctx button", { hasText: "Compare" }).first().click();
+  await until(h, "Compare makes a compare card", () => h.board().cards.some((c) => c.kind === "compare")); await idle(h);
+  const calls = () => h.board().links.filter((l) => l.call).length;
+  await h.page.locator(".card .call", { hasText: /^schedule$/ }).first().click();
+  await until(h, "schedule() expands from the left column", () => calls() > 0); await idle(h);
   await h.page.keyboard.press("Escape");
-  await h.page.locator(".card .call", { hasText: /^can_allocate$/ }).first().click(); await h.page.waitForTimeout(1600);
+  await h.page.locator(".card .call", { hasText: /^can_allocate$/ }).first().click();
+  await until(h, "can_allocate() expands from the right column", () => calls() > 1); await idle(h);
   const b = h.board(); const cmp = b.cards.find((c) => c.kind === "compare") as any;
   const marks = await h.page.locator(".card.cmp .chead .step").allTextContents();
   const ok = b.links.filter((l) => l.call).length === 2 && marks.length === 2 && new Set(marks).size === 2;
   check("cmptree", ok, JSON.stringify({ links: b.links.length, cols: cmp?.cols, marks }));
-  await shot(h, "cmptree");
+  await shot(h, "cmptree", "idle");
   await h.page.context().close();
 });
 
@@ -205,19 +221,22 @@ test("cmpdel", async () => {
   const call = (id: string, f: any, line: number, t: any) => ({ id, from: { card: f.id, seg: f.segments[0].id, line }, to: { card: t.id }, call: { name: "f", col: 0 } });
   b.links.push(call("RX", R, ln(R, 2), X), call("RY", R, ln(R, 4), Y), call("Xcl", X, ln(X, 3), cl), call("Ycr", Y, ln(Y, 3), cr));
   const h = await open({ board: b, light });
-  await h.page.keyboard.press("Shift+!"); await h.page.waitForTimeout(500);
+  await h.page.keyboard.press("Shift+!"); await idle(h);
   const marks0 = await h.page.locator(".card.cmp .chead .step").allTextContents();
   // Delete the R → X link, then the common ancestor card
   await h.page.locator('path.lhit[data-link="RX"]').dispatchEvent("pointerdown", { button: 0 });
-  await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(300);
-  await h.page.locator(".card", { has: h.page.locator(".ctitle", { hasText: /^LLMEngine\.step$/ }) }).locator(".chead").click({ position: { x: 40, y: 10 } });
-  await h.page.waitForTimeout(100);
-  await h.page.keyboard.press("Delete"); await h.page.waitForTimeout(1600);
+  await h.page.keyboard.press("Delete");
+  await until(h, "the R → X link is deleted", () => !h.board().links.some((l) => l.id === "RX")); await idle(h);
+  const rCard = h.page.locator(".card", { has: h.page.locator(".ctitle", { hasText: /^LLMEngine\.step$/ }) });
+  await rCard.locator(".chead").click({ position: { x: 40, y: 10 } });
+  await expect(rCard).toHaveClass(/\bsel\b/);
+  await h.page.keyboard.press("Delete");
+  await until(h, "the common ancestor card is deleted", () => !h.board().cards.some((c) => c.id === R.id)); await idle(h);
   const nb = h.board();
   const marks = await h.page.locator(".card.cmp .chead .step").allTextContents();
   const ok = nb.cards.length === 5 && nb.links.map((l) => l.id).join() === "Xcl,Ycr" && marks0.join() === "A,A" && new Set(marks).size === 2;
   check("cmpdel", ok, JSON.stringify({ cards: nb.cards.length, links: nb.links.map((l) => l.id), marks0, marks }));
-  await shot(h, "cmpdel");
+  await shot(h, "cmpdel", "idle");
   await h.page.context().close();
 });
 
@@ -232,18 +251,19 @@ test("rebase", async () => {
   const h = await open({ board: b, light });
   // A moves down 5 lines as a whole (HEAD changed, content didn't)
   await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5, version: sa.version } } });
-  await h.page.waitForTimeout(300);
+  const segOf = (i: number) => (h.board().cards[i] as any).segments[0];
+  await until(h, "the host's move reaches the board", () => segOf(0).start === sa.start + 5);
   // B is Relocated 7 lines down (same content)
   await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
-  await h.page.waitForTimeout(300);
+  await until(h, "the Relocate reaches the board", () => segOf(1).start === sb.start + 7);
   await h.page.keyboard.press("Control+z"); await h.page.keyboard.press("Meta+z"); // undoes only the Relocate; the move must not be undone
-  await h.page.waitForTimeout(1300);
+  await until(h, "undo takes the Relocate back", () => segOf(1).start !== sb.start + 7); await idle(h);
   const nb = h.board() as any, L = nb.links[0], na = nb.cards[0].segments[0], nbs = nb.cards[1].segments[0];
   const ok = na.start === sa.start + 5 && JSON.stringify(na.hidden) === JSON.stringify([[sa.start + 13, sa.start + 14]]) && L.to.line === sa.start + 8
     && nbs.start === sb.start && L.from.line === sb.start + 2 && nb.sidenotes[0].at.lines[0] === sb.start + 2;
   // Relocate again (no undo): Link start and Sidenote follow to the new lines
   await h.post({ type: "replaceSegment", card: B.id, seg: { ...sb, start: sb.start + 7, end: sb.end + 7 }, view: viewOf(sb) } as any);
-  await h.page.waitForTimeout(1300);
+  await until(h, "the second Relocate reaches the board", () => segOf(1).start === sb.start + 7); await idle(h);
   const nb2 = h.board() as any;
   const ok2 = nb2.links[0].from.line === sb.start + 9 && nb2.sidenotes[0].at.lines[0] === sb.start + 9;
   check("rebase", ok && ok2, JSON.stringify({ aStart: na.start - sa.start, hidden: na.hidden?.[0]?.map((x: number) => x - sa.start), to: L.to.line - sa.start, bAfterUndo: nbs.start - sb.start, from: nb2.links[0].from.line - sb.start, note: nb2.sidenotes[0].at.lines[0] - sb.start }));
@@ -258,15 +278,16 @@ test("syncundo", async () => {
   b.links.push({ id: "L", from: { card: B.id }, to: { card: A.id, seg: sa.id, line: sa.start + 3 } } as any);
   b.sidenotes.push({ id: "n1", kind: "text", md: "x", at: { card: A.id, seg: sa.id, lines: [sa.start + 2, sa.start + 2] } } as any);
   const h = await open({ board: b, light });
-  await h.post({ type: "rename", name: "Renamed" }); await h.page.waitForTimeout(200);
+  await h.post({ type: "rename", name: "Renamed" }); await until(h, "the rename reaches the board", () => h.board().name === "Renamed");
   await h.post({ type: "stale", stale: { [sa.id]: { state: "moved", start: sa.start + 5, end: sa.end + 5, version: sa.version } } });
-  await h.page.waitForTimeout(300);
-  await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300);
+  await until(h, "the host's move reaches the board", () => (h.board().cards[0] as any).segments[0].start === sa.start + 5);
+  await h.page.keyboard.press("Meta+z"); await until(h, "undo takes the rename back", () => h.board().name === name0); await idle(h);
   const at = (x: any) => ({ name: x.name, start: x.cards[0].segments[0].start - sa.start, to: x.links[0].to.line - sa.start, note: x.sidenotes[0].at.lines[0] - sa.start });
   const u = at(h.board());
-  await h.page.keyboard.press("Meta+Shift+z"); await h.page.waitForTimeout(1300);
+  await h.page.keyboard.press("Meta+Shift+z"); await until(h, "redo renames again", () => h.board().name === "Renamed"); await idle(h);
   const r = at(h.board());
-  await h.page.keyboard.press("Meta+z"); await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1300); // nothing older to undo: the move stays
+  // nothing older to undo: the move stays (the second undo is the trigger: once idle, whatever it changed has reached the host)
+  await h.page.keyboard.press("Meta+z"); await h.page.keyboard.press("Meta+z"); await until(h, "undo takes the rename back again", () => h.board().name === name0); await idle(h);
   const u2 = at(h.board());
   const moved = (x: any) => x.start === 5 && x.to === 8 && x.note === 7;
   const ok = u.name === name0 && moved(u) && r.name === "Renamed" && moved(r) && u2.name === name0 && moved(u2);
@@ -290,25 +311,33 @@ test("patchsave", async () => {
     fail = false; void reply(m.req!, undefined, "disk full"); return true;
   } });
   const head = (i: number) => h.page.locator(".card").nth(i).locator(".chead");
-  await head(0).click({ position: { x: 60, y: 10 } }); await h.page.waitForTimeout(1200);
-  const idle = patches.length; // selecting is not a change
-  await h.page.keyboard.press("ArrowRight"); await h.page.waitForTimeout(1200);
+  /** the next patch after this many */
+  const sent = async (what: string, n: number) => { await until(h, what, () => patches.length > n); await idle(h); };
+  // selecting is not a change: the click is the trigger, so once the board is idle a patch would have been sent
+  await head(0).click({ position: { x: 60, y: 10 } }); await idle(h);
+  const idleCount = patches.length;
+  await h.page.keyboard.press("ArrowRight"); await sent("the nudge is sent", idleCount);
   const nudge = patches.at(-1); // the first change also numbers the cards (head.born)
-  await h.page.keyboard.press("Meta+Shift+BracketRight"); await h.page.waitForTimeout(1200); // bring to front: order only
+  let n = patches.length;
+  await h.page.keyboard.press("Meta+Shift+BracketRight"); await sent("bring to front is sent", n); // bring to front: order only
   const front = patches.at(-1);
   // the card that is on screen (the third one sticks out past the right edge, and the canvas does not scroll to it)
-  await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Backspace"); await h.page.waitForTimeout(1200);
+  n = patches.length;
+  await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Backspace"); await sent("the delete is sent", n);
   const del = patches.at(-1);
-  await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1200);
-  await h.post({ type: "rename", name: "Renamed" }); await h.page.waitForTimeout(1200);
+  n = patches.length;
+  await h.page.keyboard.press("Meta+z"); await sent("the undo is sent", n);
+  n = patches.length;
+  await h.post({ type: "rename", name: "Renamed" }); await sent("the rename is sent", n);
   const ren = patches.at(-1);
   const inc = structuredClone(h.board());
   fail = true;
-  await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("ArrowDown"); await h.page.waitForTimeout(1200);
+  n = patches.length;
+  await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("ArrowDown"); await sent("the refused nudge is sent", n);
   const failed = patches.at(-1);
-  const toast = await h.page.locator(".toast").textContent().catch(() => "");
-  // no further edit: the board sends itself whole once, a moment later
-  await h.page.waitForTimeout(2400);
+  const toast = await h.page.locator(".toast").textContent();
+  // no further edit: the board sends itself whole once, RESEND_DELAY later
+  await until(h, "the board sends itself whole", () => patches.at(-1)?.full, RESEND_DELAY + 1500); await idle(h);
   const full = patches.at(-1), resends = patches.length - patches.indexOf(failed) - 1;
   const { applyPatch } = await import("@codeboard/core");
   const moved = Object.keys(failed?.place?.set ?? {})[0];
@@ -316,10 +345,10 @@ test("patchsave", async () => {
   const y0 = y(inc);
   applyPatch(inc, failed);
   const twice = y(h.board()) === y(inc) && full?.place?.set?.[moved]?.y === y(inc) && y(inc) !== y0 && resends === 1;
-  const ok = idle === 0 && nudge?.place && !nudge.cards && Object.keys(nudge.place.set).length === 1
+  const ok = idleCount === 0 && nudge?.place && !nudge.cards && Object.keys(nudge.place.set).length === 1
     && front?.cards?.order && !front.cards.set && del?.cards?.del?.length === 1
     && ren?.head?.name === "Renamed" && !ren.cards && /Couldn't save the board: disk full/.test(toast ?? "") && full?.full === true && twice;
-  check("patch-save", ok, JSON.stringify({ idle, nudge: nudge && Object.keys(nudge), front: front && Object.keys(front.cards ?? {}), del: del && Object.keys(del), ren: ren && Object.keys(ren), toast, full: !!full?.full, resends, twice }));
+  check("patch-save", ok, JSON.stringify({ idle: idleCount, nudge: nudge && Object.keys(nudge), front: front && Object.keys(front.cards ?? {}), del: del && Object.keys(del), ren: ren && Object.keys(ren), toast, full: !!full?.full, resends, twice }));
   await h.page.context().close();
 });
 
@@ -331,25 +360,27 @@ test("sharedsync", async () => {
   const patches: any[] = [];
   const h = await open({ board: b, light, on: (m) => { if (m.type === "patch") patches.push(m); return false; } });
   const head = (i: number) => h.page.locator(".card").nth(i).locator(".chead");
-  await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Alt+z"); await h.page.waitForTimeout(1200);
+  await head(0).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Alt+z"); await until(h, "the wrap is sent", () => patches.length); await idle(h);
   const wrote = patches.at(-1)?.patch.cards?.set?.[0]?.wrap === true;
   const n0 = patches.length;
   // Another board renames the card (its copy has our wrap); the host's copy already has it
   const sc = { card: { ...structuredClone(A), wrap: true, title: "Remote" }, sidenotes: [{ id: "rn", kind: "text", md: "remote note", at: { card: A.id } }], items: [A.id, "rn"] } as any;
   putShared(h.board(), structuredClone(sc));
   await h.post({ type: "shared", cards: [sc] });
-  await h.page.waitForTimeout(1200);
+  // the other board's version shows; a patch back would be in flight by the time the board is idle
+  await expect(h.page.locator(".card").nth(0).locator(".ctitle")).toHaveText("Remote"); await idle(h);
   const echo = patches.length - n0; // must be 0
   const title = await h.page.locator(".card").nth(0).locator(".ctitle").textContent();
-  await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(300);
-  const toast = await h.page.locator(".toast").textContent().catch(() => "");
-  await h.page.waitForTimeout(1200);
+  await h.page.keyboard.press("Meta+z");
+  const toast = await h.page.locator(".toast").textContent();
+  await idle(h);
   const after = h.board().cards.find((c) => c.id === A.id) as any;
   const undoPatch = patches.slice(n0).find((m) => m.undo);
   // A local card still undoes normally, without the toast
   await h.page.locator(".toast").evaluate((e) => e.remove()).catch(() => {});
-  await head(1).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Alt+z"); await h.page.waitForTimeout(1200);
-  await h.page.keyboard.press("Meta+z"); await h.page.waitForTimeout(1200);
+  const wrapB = () => (h.board().cards.find((c) => c.id === B.id) as any).wrap;
+  await head(1).click({ position: { x: 60, y: 10 } }); await h.page.keyboard.press("Alt+z"); await until(h, "the local wrap is sent", wrapB); await idle(h);
+  await h.page.keyboard.press("Meta+z"); await until(h, "undo takes the local wrap back", () => !wrapB()); await idle(h);
   const local = (h.board().cards.find((c) => c.id === B.id) as any).wrap;
   const toast2 = await h.page.locator(".toast").count();
   const ok = wrote && echo === 0 && title === "Remote" && /not undone/.test(toast ?? "") && after.wrap === true && after.title === "Remote"
@@ -367,8 +398,8 @@ test("follow", async () => {
   b.sidenotes.push({ id: "n1", kind: "text", md: "on the edited line", at: { card: c.id, seg: s0.id, lines: [s0.start + 3, s0.start + 3] } } as any);
   const h = await open({ board: b, light });
   await h.post({ type: "stale", stale: { [s0.id]: { state: "changed", hiddenOnly: false, head: "f64d8210" } } } as any);
-  await h.page.waitForTimeout(300);
-  await h.page.locator(".banner button", { hasText: "Update All" }).click(); await h.page.waitForTimeout(900);
+  await h.page.locator(".banner button", { hasText: "Update All" }).click();
+  await until(h, "Update All pins the new version", () => JSON.stringify((h.board().cards[0] as any).segments[0].version) !== JSON.stringify(s0.version)); await idle(h);
   const nb = h.board() as any, ns = nb.cards[0].segments[0], n = nb.sidenotes[0];
   const ok = JSON.stringify(n.at.lines) === JSON.stringify([s0.start + 3, s0.start + 3]) && !n.lineRemoved && JSON.stringify(ns.hl) === JSON.stringify(s0.hl) && JSON.stringify(ns.hidden) === JSON.stringify(s0.hidden);
   check("follow", ok, JSON.stringify({ at: n.at, removed: n.lineRemoved ?? false, hl: ns.hl, hidden: ns.hidden, version: ns.version.commit }));
@@ -383,30 +414,33 @@ test("secout", async () => {
     await h.page.locator(".bbar button[aria-label=\"Section\"]").click();
     await h.page.mouse.move(r!.x - pad, r!.y - pad - 20); await h.page.mouse.down();
     await h.page.mouse.move(r!.x + r!.width + pad, r!.y + r!.height + pad, { steps: 8 }); await h.page.mouse.up();
-    await h.page.waitForTimeout(300); await h.page.keyboard.type(name); await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(300);
+    await typingInto(h); await h.page.keyboard.type(name); await h.page.keyboard.press("Enter");
+    await until(h, `the section ${name} is saved`, () => h.board().sections.some((q) => q.title === name)); await idle(h);
   };
-  await draw(30, "Inner"); await draw(90, "Outer"); await h.page.waitForTimeout(1200); // wait for autosave
+  await draw(30, "Inner"); await draw(90, "Outer");
   const ss = h.board().sections, inner = ss.find((q) => q.title === "Inner")!, outer = ss.find((q) => q.title === "Outer")!;
   const ok = inner.parent === outer.id && !outer.parent && h.board().place[h.board().cards[0].id]?.section === inner.id;
   check("secout", ok, JSON.stringify(ss.map((q) => [q.title, q.parent ? ss.find((x) => x.id === q.parent)!.title : null]).concat([["card", h.board().place[h.board().cards[0].id]?.section === inner.id ? "Inner" : "?"]])));
-  await shot(h, "secout");
+  await shot(h, "secout", "idle");
   await h.page.context().close();
 });
 
 // Regression: subtrees expanded by Walkthrough are not written to the board
 test("walkview", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
-  await h.page.locator(".card .src .call", { hasText: /^schedule$/ }).first().click(); await h.page.waitForTimeout(700);
+  await h.page.locator(".card .src .call", { hasText: /^schedule$/ }).first().click(); await until(h, "schedule() expands", () => h.board().cards.length > 1); await idle(h);
   const root = h.board().cards[0].id;
-  await h.page.locator(".card").first().locator(".chead").click({ button: "right" }); await h.page.waitForTimeout(200);
-  await h.page.locator('.ctx button:has(.lb:text-is("Call Graph"))').hover(); await h.page.waitForTimeout(400);
-  await h.page.locator(".ctx button", { hasText: /Collapse/ }).first().click(); await h.page.waitForTimeout(1500);
+  await h.page.locator(".card").first().locator(".chead").click({ button: "right" });
+  await h.page.locator('.ctx button:has(.lb:text-is("Call Graph"))').hover();
+  await h.page.locator(".ctx button", { hasText: /Collapse/ }).first().click();
+  await until(h, "the collapse is saved", () => h.board().place[root]?.collapsed); await idle(h);
   const before = JSON.stringify(h.board());
-  await h.page.keyboard.press("Escape"); await h.page.keyboard.press("p"); await h.page.waitForTimeout(600);
+  // Walkthrough's expanded subtrees must not be saved: each key is the trigger, so once the board is idle a save would have been sent
+  await h.page.keyboard.press("Escape"); await h.page.keyboard.press("p"); await idle(h);
   const shown = await h.page.locator(".card").count();
-  await h.page.keyboard.press("ArrowRight"); await h.page.waitForTimeout(1600);
+  await h.page.keyboard.press("ArrowRight"); await idle(h);
   const during = JSON.stringify(h.board());
-  await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(1600);
+  await h.page.keyboard.press("Escape"); await idle(h);
   const after = JSON.stringify(h.board()), hidden = await h.page.locator(".card").count();
   const strip = (j: string) => { const o = JSON.parse(j); delete o.cam; return JSON.stringify(o); };
   const ok = shown === 2 && hidden === 1 && strip(before) === strip(during) && strip(before) === strip(after) && (JSON.parse(after).place[root]?.collapsed === true);
@@ -417,12 +451,12 @@ test("walkview", async () => {
 test("palette", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
   await h.page.keyboard.press("Control+k"); await h.page.keyboard.press("Meta+k");
-  await h.page.waitForTimeout(300);
-  await shot(h, "pal-01-entry");
-  await h.page.keyboard.type("alloc"); await h.page.waitForTimeout(400);
-  await shot(h, "pal-02-query");
-  await h.page.keyboard.press("Enter"); await h.page.waitForTimeout(900);
-  await shot(h, "pal-03-placed");
+  await h.page.locator(".palette input:focus").waitFor();
+  await shot(h, "pal-01-entry", "idle");
+  await h.page.keyboard.type("alloc"); await idle(h); // the results come from the host
+  await shot(h, "pal-02-query", "idle");
+  await h.page.keyboard.press("Enter"); await until(h, "the picked result is placed", () => h.board().cards.length > 1);
+  await shot(h, "pal-03-placed", "idle");
   console.log("cards:", h.board().cards.length);
   await h.page.context().close();
 });
@@ -430,8 +464,8 @@ test("palette", async () => {
 test("peek", async () => {
   const h = await open({ board: boardWith("Scheduler.schedule"), light });
   await h.page.locator(".card .src .call", { hasText: "can_allocate" }).first().hover();
-  await h.page.waitForTimeout(1200);
-  await shot(h, "peek-01");
+  await h.page.locator(".pop.k-peek .pt").waitFor(); // PEEK_DELAY after the hover, filled from the host
+  await shot(h, "peek-01", "idle");
   await h.page.context().close();
 });
 
@@ -445,16 +479,17 @@ test("peekkinds", async () => {
     ["library", "LLMEngine.__init__", "mp.get_context", "get_context"],
   ];
   for (const [k, card, line, word] of cases) {
-    await h.page.mouse.move(5, 5); await h.page.waitForTimeout(500);
-    await hoverWord(h, card, line, word); await h.page.waitForTimeout(1100);
+    await h.page.mouse.move(5, 5); await expect(h.page.locator(".pop.k-peek")).toHaveCount(0); await idle(h);
+    await hoverWord(h, card, line, word);
     const pop = h.page.locator(".pop.k-peek");
+    await pop.locator(".pt").waitFor(); await idle(h); // PEEK_DELAY after the hover, filled from the host
     const info = await pop.evaluate((e) => ({
       title: e.querySelector(".pt")?.textContent, sig: e.querySelector(".pk-sig")?.textContent, doc: !!e.querySelector(".pk-doc"),
       rows: [...e.querySelectorAll(".pl .no")].map((x) => x.textContent).join(","), hl: e.querySelector(".pl.hl .no")?.textContent,
       more: e.querySelector(".pk-more")?.textContent, lib: e.querySelector(".lib-tag")?.textContent, head: e.querySelector(".pk-head")?.textContent,
     })).catch(() => null);
     console.log(k, JSON.stringify(info));
-    await shot(h, `peekkinds-${k}`);
+    await shot(h, `peekkinds-${k}`, "idle");
   }
   await h.page.context().close();
 });
@@ -465,18 +500,19 @@ test("libcalls", async () => {
   const lib = h.page.locator(`.card .src .call[data-p="torch"]`).first();
   const deco = () => lib.evaluate((e) => getComputedStyle(e).textDecorationLine);
   console.log("lib calls:", await h.page.locator(".card .src .call[data-p]").count(), "project calls:", await h.page.locator(".card .src .call:not([data-p])").count(), "lib deco:", await deco());
-  await shot(h, "libcalls-01");
-  await lib.click(); await h.page.waitForTimeout(700);
+  await shot(h, "libcalls-01", "idle");
+  await lib.click(); await idle(h); // a library call does not expand: an expand would be in flight by now
   console.log("after click: cards", h.board().cards.length, "expand sent", h.sent.filter((m) => m.type === "expand").length);
-  await lib.click({ modifiers: ["Alt"] }); await h.page.waitForTimeout(700);
+  await lib.click({ modifiers: ["Alt"] }); await until(h, "⌥-click expands anyway", () => h.sent.some((m) => m.type === "expand")); await idle(h);
   console.log("after alt-click: expand sent", h.sent.filter((m) => m.type === "expand").length);
-  await h.page.mouse.move(5, 5); await h.page.waitForTimeout(400);
-  await lib.click({ button: "right" }); await h.page.waitForTimeout(400);
+  await h.page.mouse.move(5, 5); await idle(h);
+  await lib.click({ button: "right" }); await h.page.locator(".ctx button").first().waitFor(); await idle(h);
   console.log("menu:", JSON.stringify(await h.page.locator(".ctx button").allTextContents()));
-  await shot(h, "libcalls-02-menu");
-  await h.page.locator(".ctx button", { hasText: "Study Scope" }).first().click(); await h.page.waitForTimeout(500);
+  await shot(h, "libcalls-02-menu", "idle");
+  await h.page.locator(".ctx button", { hasText: "Study Scope" }).first().click();
+  await until(h, "the Study Scope setting is sent", () => h.sent.some((m) => m.type === "setSetting")); await idle(h);
   console.log("setSetting:", JSON.stringify(h.sent.filter((m) => m.type === "setSetting")), "deco now:", await deco());
-  await shot(h, "libcalls-03-scoped");
+  await shot(h, "libcalls-03-scoped", "idle");
   await h.page.context().close();
 });
 
@@ -487,10 +523,10 @@ test("attachvars", async () => {
   const t = await h.page.locator(".card").nth(1).locator(".chead").boundingBox();
   await h.page.mouse.move(c!.x + 10, c!.y + c!.height / 2); await h.page.mouse.down();
   await h.page.mouse.move(t!.x + 60, t!.y + 40, { steps: 10 }); await h.page.mouse.up();
-  await h.page.waitForTimeout(2500);
+  await until(h, "the call is attached to the card", () => h.board().links.length); await idle(h);
   const ls = h.board().links;
   check("attachvars", ls.length === 1 && ls[0].call && ls[0].call.cands?.length, JSON.stringify(ls.map((l) => l.call)));
-  await shot(h, "attachvars");
+  await shot(h, "attachvars", "idle");
   await h.page.context().close();
 });
 
@@ -518,7 +554,7 @@ test("themes", async () => {
   b.links.push({ id: "l1", from: { card: note.id }, to: { card: a.id }, style: { color: "blue" }, label: "why" });
   b.cam = { x: 120, y: 60, z: 0.92 };
   const h = await open({ board: b, light: false });
-  await h.page.waitForTimeout(600);
+  await idle(h);
   await h.page.keyboard.press("Escape");
   const poke = async () => {
     // Show a toast (click Arrow with no card selected), then select the entry card (click its header)
@@ -533,41 +569,42 @@ test("themes", async () => {
     }, a.id);
     await h.page.mouse.click(pt.x, pt.y);
   };
-  await poke(); await h.page.waitForTimeout(400);
+  await poke(); await idle(h);
   console.log("cards after poke:", h.board().cards.length, "toast:", await h.page.locator(".toast").count(), "selected:", await h.page.locator(".card.sel").count());
-  const mode = async (m: "light" | "dark") => { await h.page.evaluate((c) => { document.body.className = c; }, `vscode-${m}`); await h.page.waitForTimeout(100); };
+  const mode = async (m: "light" | "dark") => { await h.page.evaluate((c) => { document.body.className = c; }, `vscode-${m}`); await idle(h); };
   for (const m of ["light", "dark"] as const) {
     await mode(m);
     await h.page.mouse.move(5, 450);
-    await shot(h, `theme-${m}-warm-ink-base`);
-    await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(300);
-    await shot(h, `theme-${m}-settings`);
+    await shot(h, `theme-${m}-warm-ink-base`, "idle");
+    await h.page.keyboard.press("Meta+,"); await h.page.locator(".settings").waitFor();
+    await shot(h, `theme-${m}-settings`, "idle");
     if (m === "light") {
-      await h.page.keyboard.press("Escape"); await h.page.keyboard.press("?"); await h.page.waitForTimeout(200);
-      await shot(h, `theme-${m}-keys-overlay`);
-      await h.page.locator(".keys .tlink").click(); await h.page.waitForTimeout(300);
+      await h.page.keyboard.press("Escape"); await h.page.keyboard.press("?"); await h.page.locator(".keys").waitFor();
+      await shot(h, `theme-${m}-keys-overlay`, "idle");
+      await h.page.locator(".keys .tlink").click(); await h.page.locator(".settings").waitFor(); await idle(h);
       console.log("Search… in ? overlay opens Settings:", await h.page.locator(".settings").count() === 1, "overlay closed:", !(await h.page.locator(".keys").count()));
       await h.page.locator(".st-filter").scrollIntoViewIfNeeded();
-      await shot(h, `theme-${m}-settings-keys`);
-      await h.page.locator(".st-filter").fill("zoom"); await h.page.waitForTimeout(100);
-      await shot(h, `theme-${m}-settings-keys-zoom`);
+      await shot(h, `theme-${m}-settings-keys`, "idle");
+      await h.page.locator(".st-filter").fill("zoom"); await idle(h);
+      await shot(h, `theme-${m}-settings-keys-zoom`, "idle");
       await h.page.locator(".st-filter").fill("");
-      await h.page.locator(".st-filter").press("Escape"); await h.page.waitForTimeout(200);
+      await h.page.locator(".st-filter").press("Escape"); await idle(h);
       console.log("Esc in filter closes settings:", !(await h.page.locator(".settings").count()));
-      await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(300);
+      await h.page.keyboard.press("Meta+,"); await h.page.locator(".settings").waitFor();
     }
     const n = await h.page.locator(".st-sw").count();
     for (let i = 0; i < n; i++) {
       const sw = h.page.locator(".st-sw").nth(i);
       const name = (await sw.locator(".st-swn").textContent())!.toLowerCase().replace(/ /g, "-");
-      await sw.click(); await h.page.waitForTimeout(150);
-      if (i === n - 1) await shot(h, `theme-${m}-settings-${name}`);
-      await h.page.keyboard.press("Escape"); await h.page.waitForTimeout(150);
-      await poke();
+      const sets = h.sent.length;
+      await sw.click(); await until(h, `the ${name} theme is applied`, () => h.sent.slice(sets).some((x) => x.type === "setSetting")); await idle(h);
+      if (i === n - 1) await shot(h, `theme-${m}-settings-${name}`, "idle");
+      await h.page.keyboard.press("Escape"); await idle(h);
+      await poke(); await idle(h);
       if (await h.page.locator(".card.sel").count() !== 1) console.log("theme", m, name, "selected", await h.page.locator(".card.sel").count());
       await h.page.mouse.move(5, 450);
-      await shot(h, `theme-${m}-${i}-${name}`);
-      await h.page.keyboard.press("Meta+,"); await h.page.waitForTimeout(150);
+      await shot(h, `theme-${m}-${i}-${name}`, "idle");
+      await h.page.keyboard.press("Meta+,"); await h.page.locator(".settings").waitFor();
     }
     await h.page.locator(".st-sw").first().click();
     await h.page.keyboard.press("Escape");
