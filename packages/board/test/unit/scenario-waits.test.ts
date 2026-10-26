@@ -1,7 +1,9 @@
 // The harness scenarios wait for real state, not for a fixed time: no scenario file (nor harness.ts / subhost.ts, which they run
 // through) sleeps on its own. The waits are until / idle / Playwright's own; a wait that has to be a fixed time goes through
 // hold(h, ms, why) (or focusSettled, ProseMirror's focus timers, which holds through it) in fixtures.ts, so that every one of them
-// is named and counted. Checked by shape, like packages/core/test/edit.test.ts; prints how many hold sites there are
+// is named and counted. Checked by shape, like packages/core/test/edit.test.ts; prints how many hold sites there are.
+// The VS Code e2e scripts (extensions/vscode/test/*.cjs) follow the same rules through their own helpers in wait.cjs: until / idle,
+// and hold(ms, why) with a named constant for the fixed waits
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -62,7 +64,7 @@ describe("harness scenarios wait for state, not for time", () => {
         if (/^\s*(\/\/|\/?\*)/.test(t)) return;
         for (const m of t.matchAll(/\bhold\s*\(([^)]*)/g)) {
           holds.push(`${f}:${i + 1}`);
-          if (!/^[^,]+,[^,]+,\s*["'`]\s*\S/.test(m[1])) bare.push(`${f}:${i + 1}: ${t.trim()}`);
+          if (!/^[^,]+,[^,]+,\s*["'`]\s*[^"'`\s]/.test(m[1])) bare.push(`${f}:${i + 1}: ${t.trim()}`);
         }
         for (const _ of t.matchAll(/\bfocusSettled\s*\(/g)) focus.push(`${f}:${i + 1}`);
       });
@@ -84,5 +86,53 @@ describe("harness scenarios wait for state, not for time", () => {
       "infoT = setTimeout(() => void pushInfo(), 60); const waited = 1;",
     ].join("\n"));
     expect(hits.map((h) => h.at.split(":")[1]).sort((a, b) => +a - +b)).toEqual(["1", "2", "3", "4", "5", "5"]);
+  });
+});
+
+// ---------- the VS Code e2e scripts ----------
+const E2E = path.join(TEST, "../../../extensions/vscode/test");
+const e2eFiles = () => fs.readdirSync(E2E).filter((f) => /\.c?js$/.test(f));
+/** wait.cjs's poll step: the one timer the e2e scripts wait on, inside until / soon / idle / hold */
+const E2E_ALLOW: [string, string][] = [["wait.cjs", "const tick = (ms) => new Promise((r) => setTimeout(r, ms));"]];
+/** A click or wait whose failure is swallowed: .catch(() => {}) with nothing in it */
+const SWALLOW = /\.catch\(\s*\(\s*\w*\s*\)\s*=>\s*\{\s*\}\s*\)/g;
+const lineOf = (text: string, i: number) => text.slice(0, i).split("\n").length;
+
+describe("VS Code e2e scripts wait for state, not for time", () => {
+  it("no e2e script sleeps or swallows a failed wait", () => {
+    const bad: string[] = [];
+    let allowed = 0;
+    for (const f of e2eFiles()) {
+      const text = fs.readFileSync(path.join(E2E, f), "utf8");
+      const swallowed = [...text.matchAll(SWALLOW)].map((m) => ({ at: `${f}:${lineOf(text, m.index)}`, line: "", match: m[0] }));
+      for (const h of [...scan(f, text), ...swallowed]) {
+        if (E2E_ALLOW.some(([af, snip]) => af === f && h.line.includes(snip))) allowed++; else bad.push(`${h.at}: ${h.match}`);
+      }
+    }
+    expect(bad).toEqual([]);
+    expect(allowed).toBe(E2E_ALLOW.length);
+  });
+
+  it("every e2e hold has a named time and says why, and they are counted", () => {
+    const holds: string[] = [], bare: string[] = [];
+    for (const f of e2eFiles()) {
+      fs.readFileSync(path.join(E2E, f), "utf8").split("\n").forEach((t, i) => {
+        if (/^\s*(\/\/|\/?\*)/.test(t)) return;
+        for (const m of t.matchAll(/\bawait\s+hold\s*\(([^)]*)/g)) { // a hold that is not awaited would wait for nothing
+          holds.push(`${f}:${i + 1}`);
+          // hold(<a named constant, not a bare number>, "<why>")
+          if (!/^\s*[A-Za-z_][\w.]*\s*(?:[-+*]\s*[A-Za-z_][\w.]*\s*)*,\s*["'`]\s*[^"'`\s]/.test(m[1])) bare.push(`${f}:${i + 1}: ${t.trim()}`);
+        }
+      });
+    }
+    console.log(`fixed waits in the VS Code e2e scripts: ${holds.length} hold() sites (${holds.join(", ")})`);
+    expect(bare).toEqual([]);
+  });
+
+  it("catches a bare-number hold and a swallowed wait", () => {
+    const t = "await hold(300, \"x\");\nawait btn.click().catch(() => {});\nawait hold(timing.PEEK_DELAY, \"no Peek\");";
+    expect([...t.matchAll(SWALLOW)].length).toBe(1);
+    const ok = (args: string) => /^\s*[A-Za-z_][\w.]*\s*(?:[-+*]\s*[A-Za-z_][\w.]*\s*)*,\s*["'`]\s*[^"'`\s]/.test(args);
+    expect([ok("300, \"x\""), ok("timing.PEEK_DELAY, \"no Peek\""), ok("QI_REFOCUS, \"\"")]).toEqual([false, true, false]);
   });
 });

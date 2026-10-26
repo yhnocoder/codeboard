@@ -3,144 +3,27 @@
 //   SHOTS=features  1-overview, 2-peek, 3-new-version, 4-notes
 //   SHOTS=themes    themes/<theme>.png (+ .json with the Scheduler.schedule card's box), one per board theme; tools/release/compose-themes.mjs stacks them into one picture
 //   THEMES_DARK=<VS Code color theme>  then switches VS Code to that theme on the same board and shoots the themes again into themes-dark/
-// Every step waits on what it needs (a quick input, a card, a swatch, the board at rest) rather than for a fixed time, so a run takes about a minute and a half; SHOTS_DEBUG=1 logs where the time goes
+// Every step waits on what it needs (a quick input, a card, a swatch, the board at rest: wait.cjs, ui.cjs), never for a fixed time, so a
+// run takes about a minute and a half; SHOTS_DEBUG=1 logs where the time goes
 const { chromium } = require("playwright-core");
 const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
+const { until, soon, idle, track } = require("./wait.cjs");
+const { command, qiClosed, openFile, boardFrames, boardFrame, card, typingIn, focusSettled, fit } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 const SHOTS = (process.env.SHOTS || "features,themes").split(",");
 // Board themes in the order the Settings page lists them; City is experimental and left out
 const THEMES = ["Warm Ink", "Graphite", "Soft Light", "Drafting", "Colorful", "Newspaper", "Poster", "Classic", "Ink Wash"];
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const T0 = Date.now();
 let failed = 0;
 const lap = (what) => { if (process.env.SHOTS_DEBUG) console.log(`  · ${what}  [${((Date.now() - T0) / 1000).toFixed(1)}s]`); };
 const check = (ok, what) => { console.log(`${ok ? "✓" : "✗"} ${what}  [${((Date.now() - T0) / 1000).toFixed(1)}s]`); if (!ok) failed++; };
-// Poll until fn() is truthy (errors count as not yet); false after ms
-const until = async (fn, ms = 10000, step = 50) => {
-  for (const end = Date.now() + ms; Date.now() < end; await sleep(step)) { try { if (await fn()) return true; } catch {} }
-  return false;
-};
 
-async function boardFrame(page) {
-  for (let i = 0; i < 400; i++) {
-    for (const f of page.frames()) { try { if (await f.$("#board")) return f; } catch {} }
-    await sleep(100);
-  }
-  throw new Error("board webview not found");
-}
-// The quick input (command palette, Quick Open, input boxes)
-const qi = (page) => page.locator(".quick-input-widget");
-const qiValue = (page) => page.locator(".quick-input-widget .quick-input-box input").inputValue();
-// Type into an open quick pick, then accept the row whose label (before any ", <keybinding>") contains the text: Enter when it is the
-// focused row, a click when it is further down (e.g. under "Browse Color Themes in Marketplace"). Without such a row after ms, nothing
-// is accepted (the pick stays open for the caller to close). Returns whether the row was found
-const pick = async (page, text, ms = 5000) => {
-  await page.keyboard.type(text);
-  const rows = page.locator(".quick-input-widget .monaco-list-row");
-  // The list can still change under us (Quick Open fills in as files are indexed): find the row again if the click misses
-  const find = () => rows.evaluateAll((rs, t) => { const i = rs.findIndex((r) => (r.getAttribute("aria-label") ?? "").toLowerCase().split(", ")[0].includes(t)); return [i, i >= 0 && rs[i].classList.contains("focused")]; }, text.toLowerCase());
-  let at = -1, focused = false;
-  for (const end = Date.now() + ms; Date.now() < end;) {
-    [at, focused] = await find().catch(() => [-1, false]);
-    if (at >= 0 && focused) { await page.keyboard.press("Enter"); return true; }
-    if (at >= 0 && await rows.nth(at).click({ timeout: 1000 }).then(() => true, () => false)) return true;
-    await sleep(50);
-  }
-  console.log(`  ! quick pick has no row for "${text}": ${JSON.stringify({ value: await qiValue(page).catch(() => "?"), rows: await rows.evaluateAll((rs) => rs.slice(0, 4).map((r) => `${r.className}|${r.getAttribute("aria-label")}`)) })}`);
-  return false;
-};
-// Run a command from the palette; returns once the palette is gone, or, for a command that asks for input, once its input box
-// (with `prompt` in its title or message) is up, so nothing typed next goes to the closing palette
-async function command(page, text, prompt) {
-  const t = Date.now();
-  await command0(page, text, prompt);
-  if (process.env.SHOTS_DEBUG) console.log(`  · ${text} ${Date.now() - t}ms`);
-}
-// With the board's webview focused, VS Code focuses the webview again whenever a quick input closes: the workbench posts "focus" to the
-// webview, whose host page then calls focus() on the board's frame. That message can land after the next quick input has opened (F1's
-// palette, or the input box a command opens about 60 ms after the palette closes), which takes the focus from the quick input and so
-// closes it at once: whatever is typed next would go to the board. So every quick input is checked to be still open and focused a moment
-// after it shows, and opened again when it is not
-const qiFocused = (page) => page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget"));
-const qiStays = async (page) => { await sleep(150); return await qi(page).isVisible() && await qiFocused(page); };
-async function command0(page, text, prompt) {
-  for (let i = 0; i < 5; i++) {
-    await openPalette(page);
-    // Commands are listed at once; a command that is not in the palette is a broken step, not something to stand in for with the first row
-    if (!(await pick(page, text, 2000))) { await page.keyboard.press("Escape"); await qiClosed(page); throw new Error(`no command "${text}" in the command palette`); }
-    if (!prompt) return qiClosed(page);
-    const box = () => until(async () => await qi(page).isVisible() && !(await qiValue(page)).startsWith(">") &&
-      (await page.locator(".quick-input-widget .quick-input-title, .quick-input-widget .quick-input-message").allInnerTexts()).some((t) => t.toLowerCase().includes(prompt.toLowerCase())), 3000);
-    if (await box() && await qiStays(page)) return;
-    console.log(`  … input box "${prompt}" closed as it opened (focus went back to the webview), running "${text}" again`);
-  }
-  throw new Error(`the input box "${prompt}" of "${text}" does not stay open`);
-}
-// F1, then wait until the command palette is open and has the keyboard (pressed again when the webview took the focus back, see above)
-async function openPalette(page) {
-  for (let i = 0; i < 5; i++) {
-    await page.keyboard.press("F1");
-    if (!(await qi(page).waitFor({ state: "visible", timeout: 3000 }).then(() => true, () => false))) { console.log("  … command palette did not open, F1 again"); continue; }
-    if (await qiStays(page)) return;
-    console.log("  … command palette closed as it opened (focus went back to the webview), F1 again");
-  }
-  throw new Error("the command palette does not stay open");
-}
-// Wait until the quick input is closed
-const qiClosed = (page) => qi(page).waitFor({ state: "hidden" }).catch(() => {});
-async function openFile(page, name, line) {
-  const tab = page.locator(`.editor-group-container .tab.active[aria-label*="${name}"], .editor-group-container .tab.active:has-text("${name}")`);
-  for (let i = 0; i < 5; i++) {
-    await command(page, "View: Focus First Editor Group");
-    await page.keyboard.press("Control+p"); await qi(page).waitFor({ state: "visible" });
-    // Quick Open finds nothing until the workspace's files are indexed: then close it and try again
-    if (await pick(page, name, 10000) && await until(() => tab.count(), 5000)) break;
-    await page.keyboard.press("Escape"); await qiClosed(page);
-  }
-  if (line) {
-    await page.keyboard.press("Control+g"); await qi(page).waitFor({ state: "visible" });
-    await page.keyboard.type(String(line)); await page.keyboard.press("Enter"); await qiClosed(page);
-  }
-}
-// Wait until the board stops moving: no running animations, the same card boxes and no DOM change for `quiet` ms.
-// Polled from here every 40 ms (timers inside the webview can be throttled to about one a second); DOM changes are counted by a
-// MutationObserver rather than by serializing the board, which took ~100 ms a sample
-const settle = async (fr, quiet = 300) => {
-  const t0 = Date.now(), why = {};
-  const sample = () => fr.evaluate(() => {
-    if (!window.__muts) { window.__muts = { n: 0 }; new MutationObserver((l) => { window.__muts.n += l.length; }).observe(document.querySelector("#board") ?? document.body, { subtree: true, childList: true, attributes: true, characterData: true }); }
-    const w = document.querySelector(".world");
-    const busy = document.getAnimations().filter((a) => a.playState === "running" && a.effect?.getTiming().iterations !== Infinity).map((a) => `${a.animationName ?? a.transitionProperty}@${String(a.effect?.target?.className?.baseVal ?? a.effect?.target?.className ?? "").slice(0, 24)}`);
-    return { busy, s: (w ? getComputedStyle(w).transform : "") + "|" + [...document.querySelectorAll(".card")].map((c) => { const r = c.getBoundingClientRect(); return `${r.x|0},${r.y|0},${r.width|0},${r.height|0}`; }).join(";") + "|" + window.__muts.n };
-  }).catch(() => null);
-  let last = await sample(), since = Date.now();
-  while (last && Date.now() - t0 < 12000) {
-    await sleep(40);
-    const cur = await sample();
-    if (!cur) break;
-    for (const b of cur.busy) why[b] = (why[b] ?? 0) + 1;
-    if (cur.s !== last.s) { const [a, b] = [last.s.split("|"), cur.s.split("|")]; const k = a[0] !== b[0] ? "transform" : a[1] !== b[1] ? "cards" : "dom"; why[k] = (why[k] ?? 0) + 1; }
-    if (cur.busy.length || cur.s !== last.s) since = Date.now(); else if (Date.now() - since >= quiet) break;
-    last = cur;
-  }
-  if (process.env.SHOTS_DEBUG && Date.now() - t0 > 800) console.log(`  · settle ${Date.now() - t0}ms ${JSON.stringify(why).slice(0, 200)}`);
-};
-// Fit with the board's own button. A VS Code notification toast (e.g. from Pylance) can sit over it in the bottom-right corner:
-// then clear the notifications and try again, and fail loudly rather than carry on with an unfitted camera
-const fit = async (f) => {
-  await settle(f);
-  const btn = f.locator('button[aria-label="Fit to Window"]').first();
-  for (let i = 0; i < 3; i++) {
-    if (await btn.click({ timeout: 3000 }).then(() => true, () => false)) return settle(f);
-    console.log("  … Fit to Window is covered, clearing notifications");
-    await command(f.page(), "Notifications: Clear All Notifications");
-  }
-  throw new Error("cannot click Fit to Window");
-};
+// The board at rest, then its Fit to Window button, then at rest again
+const fitted = async (f) => { await idle(f); await fit(f); await idle(f); };
 // Move the mouse off the board so no hover state (card toolbar, tooltips) is captured
-const park = async (page, f) => { await page.mouse.move(2, 400); if (f) await settle(f, 200); else await sleep(400); }; // one jump: a path across the board could open a Peek on the way
+const park = async (page, f) => { await page.mouse.move(2, 400); await idle(f, { quiet: 200 }); }; // one jump: a path across the board could open a Peek on the way
 // Clipped to the board below VS Code's tab bar: the webview's box starts a few pixels under the tabs, which would show as a strip along the top edge
 const boardShot = async (page, f, file) => {
   const box = await f.locator("#board").boundingBox();
@@ -156,49 +39,47 @@ const boardShot = async (page, f, file) => {
 // Bring a card's heading well inside the board view before clicking it: fit, then pan with the wheel if it still sits outside
 // (window sizes differ between machines; a heading under VS Code's title bar or the board toolbar can't be clicked)
 async function reveal(page, f, title, refit = true) {
-  if (refit) await fit(f);
+  if (refit) await fitted(f);
   const loc = card(f, title).locator(".chead .ctitle");
   for (let i = 0; i < 4; i++) {
     const [b, t] = [await (await f.frameElement()).boundingBox(), await loc.boundingBox()];
-    if (!b || !t) break;
+    if (!b || !t) throw new Error(`${title}: no box for the board or the card's heading`);
     const cx = t.x + Math.min(t.width, 120) / 2, cy = t.y + t.height / 2;
     if (cx > b.x + 40 && cx < b.x + b.width - 40 && cy > b.y + 40 && cy < b.y + b.height - 90) return loc;
-    const why = await f.evaluate(() => ({ scroll: [...document.querySelectorAll("*")].filter((e) => e.scrollTop || e.scrollLeft).map((e) => `${e.tagName}.${e.className}`.slice(0, 40) + `@${e.scrollLeft},${e.scrollTop}`).slice(0, 4), world: getComputedStyle(document.querySelector(".world") ?? document.body).transform, h: innerHeight }));
-    console.log(`  … panning to ${title} (heading at ${cx | 0},${cy | 0}, board ${b.x | 0},${b.y | 0} ${b.width | 0}×${b.height | 0}) ${JSON.stringify(why)}`);
+    console.log(`  … panning to ${title} (heading at ${cx | 0},${cy | 0}, board ${b.x | 0},${b.y | 0} ${b.width | 0}×${b.height | 0})`);
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2);
-    await page.mouse.wheel(cx - (b.x + b.width / 2), cy - (b.y + b.height / 2)); await settle(f);
+    await page.mouse.wheel(cx - (b.x + b.width / 2), cy - (b.y + b.height / 2)); await idle(f);
   }
-  return loc;
+  throw new Error(`${title} cannot be panned into view`);
 }
-const card = (f, title) => f.locator(".card", { has: f.locator(".chead .ctitle", { hasText: new RegExp(`^${title.replace(/\./g, "\\.")}$`) }) });
 // Click empty board space and clear the selection (no selection outline or align toolbar in the shots)
 const blank = async (f) => { await f.locator("#board").click({ position: { x: 30, y: 300 } }); await f.page().keyboard.press("Escape"); };
-// Zoom to the selection (Shift+2) and wait for the camera to arrive
-const zoomToSelection = async (page, f) => {
-  const before = await f.evaluate(() => getComputedStyle(document.querySelector(".world")).transform).catch(() => "");
-  await page.keyboard.press("Shift+Digit2");
-  await until(() => f.evaluate((b) => getComputedStyle(document.querySelector(".world")).transform !== b, before), 3000, 30);
-  await settle(f);
-};
+// Zoom to the selection (Shift+2: the board has the keyboard after the click that selected) and wait for the camera to arrive
+const zoomToSelection = async (page, f) => { await page.keyboard.press("Shift+Digit2"); await idle(f); };
 // Turn on Always Show in the open Sidenote popover. The button toggles: leave it alone when it is already on (.on)
 const alwaysShowIn = async (f) => {
   const btn = f.locator(".pop button", { hasText: /^Always Show$/ }).first();
-  if (!(await btn.waitFor({ timeout: 5000 }).then(() => true, () => false))) return console.log("  ! no Always Show");
+  await btn.waitFor({ timeout: 5000 });
   if (!(await btn.evaluate((b) => b.classList.contains("on")))) await btn.click();
-  await until(() => btn.evaluate((b) => b.classList.contains("on")), 3000);
+  await until("Always Show is on", () => btn.evaluate((b) => b.classList.contains("on")), 3000);
 };
-const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').first().click(); await settle(f); };
+const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').first().click(); await idle(f); };
+// Escape out of the Note editor, and wait until it has let go of the keyboard. A gray completion takes the first Escape (it only
+// dismisses the completion): wait for any completion asked for to arrive (idle: no request waiting on the host), and clear it first
+const leaveNote = async (page, f) => {
+  await idle(f);
+  if (await f.locator(".md-ghost").count()) {
+    await page.keyboard.press("Escape");
+    await until("Escape dismisses the gray completion", async () => !(await f.locator(".md-ghost").count()), 5000);
+  }
+  await page.keyboard.press("Escape");
+  await until("the Note editor lets go of the keyboard", async () => !(await f.locator(".card.note .ProseMirror-focused").count()), 5000);
+};
 
 (async () => {
-  let browser;
-  for (let i = 0; i < 300 && !browser; i++) { try { browser = await chromium.connectOverCDP(`http://127.0.0.1:${process.env.CDP_PORT || 9223}`); } catch { await sleep(200); } }
-  if (!browser) throw new Error("cannot connect to VS Code");
-  let page;
-  for (let i = 0; i < 300 && !page; i++) {
-    page = browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes("workbench"));
-    if (!page) await sleep(200);
-  }
-  if (!page) throw new Error("VS Code main window not found");
+  const browser = await until("VS Code's debugging port answers", () => chromium.connectOverCDP(`http://127.0.0.1:${process.env.CDP_PORT || 9223}`).catch(() => null), 60000, 200);
+  const page = await until("the VS Code window", () => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes("workbench")), 60000, 200);
+  await track(page); // the board's requests to the host, for idle()
   // Reduced motion: the board's camera, card and arrow animations jump straight to where they end (the shots show the board at rest,
   // so they look the same), and every wait for the board to settle is short. Emulated for the window and its webviews
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -208,28 +89,25 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
 
   // Board: LLMEngine.step with schedule and postprocess expanded, one level deeper into allocate, a Sidenote and a Note
   await command(page, "View: Close Primary Side Bar");
-  await openFile(page, "llm_engine.py", 51);
+  await openFile(page, path.join(WS, "nanovllm/engine/llm_engine.py"), 51);
   lap("file open");
   // Alt+B adds the function under the caret to the board, once CodeBoard is active (opening a Python file activates it).
-  // The first add in a workspace opens the board beside the code, in the second editor group (later adds say "Added to …" instead)
+  // The first add in a workspace opens the board beside the code, in the second editor group
   await page.keyboard.press("Alt+b");
-  const boardShown = () => page.frames().some((fr) => fr.url().includes("vscode-webview")) || page.locator(".notification-list-item-message", { hasText: /^Added/ }).count();
-  if (!(await until(boardShown, 15000, 100))) console.log("  ! Alt+B neither opened the board nor said Added");
+  await until("Alt+B puts LLMEngine.step on the board", async () => { const [b] = await boardFrames(page); return b && card(b, "LLMEngine.step").count(); }, 30000, 100);
   await command(page, "CodeBoard: Open Board");
   const f = await boardFrame(page);
   lap("board open");
-  console.log(`  … reduced motion: ${await f.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches).catch(() => "?")}`);
-  await until(() => card(f, "LLMEngine.step").count(), 15000);
+  console.log(`  … reduced motion: ${await f.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)}`);
   // Name the board (the name shows on the editor tab and in some themes' board header)
   const boardTab = page.locator('.editor-group-container .tab:has-text("nano-vllm: one engine step")');
   await command(page, "CodeBoard: Rename Board", "Rename board");
-  await page.keyboard.press("Control+a"); await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await qiClosed(page);
-  check(await until(() => boardTab.count(), 5000), "board renamed (its editor tab shows the new name)");
+  await page.keyboard.press("Control+a"); await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await qiClosed(page, "the Rename board box");
+  check(await soon(() => boardTab.count(), Boolean, 5000), "board renamed (its editor tab shows the new name)");
   // A dummy DeepSeek key: shots.sh points codeboard.ai.deepseekBaseUrl at a local mock that answers with a fixed completion
   await command(page, "CodeBoard: Set DeepSeek API Key", "DeepSeek API Key");
-  await page.keyboard.type("sk-release-shots-mock"); await page.keyboard.press("Enter"); await qiClosed(page);
-  check(await until(() => page.locator(".notification-list-item-message", { hasText: "key saved" }).count(), 10000), "DeepSeek API key saved");
-  console.log(`  … after setting the key: ${(await page.locator(".notification-list-item-message").allInnerTexts()).join(" | ")}`);
+  await page.keyboard.type("sk-release-shots-mock"); await page.keyboard.press("Enter"); await qiClosed(page, "the DeepSeek API Key box");
+  check(await soon(() => page.locator(".notification-list-item-message", { hasText: "key saved" }).count(), Boolean, 10000), "DeepSeek API key saved");
   // The toasts ("Added to …", the key) sit over the board's Fit to Window button: clear them now rather than when a click misses
   await command(page, "Notifications: Clear All Notifications");
   // The board fills the window while it is built (children are placed in the room the view has) and for the board shots
@@ -238,13 +116,14 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
   await boardTab.click();
   await command(page, "View: Toggle Maximize Editor Group");
   const fills = async () => { const [b, e] = [await (await f.frameElement()).boundingBox(), await page.locator(".monaco-workbench .part.editor").boundingBox()]; return b && e && b.width > e.width * 0.9; };
-  check(await until(fills, 5000), "board fills the editor area");
-  await fit(f);
+  check(await soon(fills, Boolean, 5000), "board fills the editor area");
+  await fitted(f);
   check(await card(f, "LLMEngine.step").count() === 1, "LLMEngine.step on the board");
+  // Expanding waits on the language server: wait for each new card
   const expand = async (from, name, child) => {
     await blank(f);
     await card(f, from).locator(".src .call", { hasText: new RegExp(`^${name}$`) }).first().click();
-    await until(() => card(f, child).count(), 10000); await settle(f);
+    await until(`expanding ${name} adds ${child}`, () => card(f, child).count(), 20000); await idle(f);
   };
   await expand("LLMEngine.step", "schedule", "Scheduler.schedule");
   await expand("LLMEngine.step", "postprocess", "Scheduler.postprocess");
@@ -257,49 +136,51 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
   await sch.locator(".no").nth(5).click(); await sch.locator(".no").nth(6).click({ modifiers: ["Shift"] });
   await page.keyboard.press("s");
   await f.locator(".pop button", { hasText: /^Text$/ }).click();
+  await until("the Sidenote's text field has the keyboard", () => typingIn(f, ".pop"));
   await page.keyboard.type("Prefill admits waiting sequences until the token budget runs out.");
   await f.locator(".pop button", { hasText: /^Add$/ }).click();
-  await until(() => sch.locator(".mk").count(), 5000);
-  await page.keyboard.press("Escape"); await blank(f); await settle(f);
-  check(await sch.locator(".mk").count() >= 1, "Sidenote added");
+  check(await soon(() => sch.locator(".mk").count(), Boolean, 5000), "Sidenote added");
+  await page.keyboard.press("Escape"); await blank(f); await idle(f);
 
   // Arrange: Scheduler.postprocess beside Scheduler.schedule, so the tree uses the width of the window
   const drag = async (title, target) => {
     await reveal(page, f, title, false);
     const h = await card(f, title).locator(".chead").boundingBox(), to = await target();
     await page.mouse.move(h.x + 40, h.y + h.height / 2); await page.mouse.down();
-    await page.mouse.move(to.x + 40, to.y + h.height / 2, { steps: 20 }); await page.mouse.up(); await settle(f);
+    await page.mouse.move(to.x + 40, to.y + h.height / 2, { steps: 20 }); await page.mouse.up(); await idle(f);
   };
-  await blank(f); await fit(f);
-  for (let i = 0; i < 2; i++) await f.locator('button[aria-label="Zoom Out"]').first().click().then(() => settle(f), () => {});
+  await blank(f); await fitted(f);
+  for (let i = 0; i < 2; i++) await zoomOut(f);
   await drag("Scheduler.postprocess", async () => { const b = await card(f, "Scheduler.schedule").boundingBox(); return { x: b.x + b.width + 30, y: b.y }; });
   // Note in the free corner under Scheduler.postprocess, beside BlockManager.allocate (keeps the board compact), created under the mouse
   const [alloc, post] = [await card(f, "BlockManager.allocate").boundingBox(), await card(f, "Scheduler.postprocess").boundingBox()];
-  await blank(f); await page.mouse.move(Math.max(alloc.x + alloc.width + 40, post.x), post.y + post.height + 30); await sleep(100);
+  await blank(f); await page.mouse.move(Math.max(alloc.x + alloc.width + 40, post.x), post.y + post.height + 30);
   await page.keyboard.press("n");
-  await f.locator(".card.note .ProseMirror-focused").waitFor({ timeout: 5000 }).catch(() => console.log("  ! Note editor not focused"));
+  await until("the new Note's editor has the keyboard", () => typingIn(f, ".card.note"), 5000);
   // Markdown as you type: a heading, a list with a [[card reference]] (picked from the [[ menu), inline and display math, a link.
-  // The last sentence is where the Notes shot puts the caret to show the gray completion
-  const type = async (text, enter = true) => { await page.keyboard.type(text); await sleep(150); if (enter) { await page.keyboard.press("Enter"); await sleep(150); } };
+  // The editor applies each key as it comes; only the [[ menu has to be waited for. The last sentence is where the Notes shot puts the
+  // caret to show the gray completion
+  const type = async (text, enter = true) => { await page.keyboard.type(text); if (enter) await page.keyboard.press("Enter"); };
   await type("## One engine step");
-  await type("- **schedule** picks prefill or decode: [[Scheduler.sch", false); await sleep(600);
-  await page.keyboard.press("Enter"); await sleep(300); await page.keyboard.press("Enter"); await sleep(150);
+  await type("- **schedule** picks prefill or decode: [[Scheduler.sch", false);
+  await until("the [[ menu offers Scheduler.schedule", () => f.locator(".md-menu button.sel", { hasText: "Scheduler.schedule" }).count(), 5000);
+  await page.keyboard.press("Enter"); await page.keyboard.press("Enter");
   await type("**run** executes the model on the batch");
-  await page.keyboard.press("Enter"); await sleep(150);
+  await page.keyboard.press("Enter");
   await type("Tokens per step: $\\sum_i n_i \\le B$ ");
   await type("KV blocks per sequence:");
   await type("$$\\left\\lceil \\frac{\\text{tokens}}{\\text{block size}} \\right\\rceil$$");
   await type("From [nano-vllm](https://github.com/GeeeekExplorer/nano-vllm) by GeeeekExplorer.");
   await type("Decode adds one token per sequence each step.", false);
-  await page.keyboard.press("Escape"); await sleep(300);
-  await page.keyboard.press("Escape"); await settle(f);
+  await leaveNote(page, f);
+  await page.keyboard.press("Escape"); await idle(f);
   check(await f.locator(".card.note").count() === 1, "Note created");
   check(await f.locator(".card.note .cref").count() >= 1, "Note links to Scheduler.schedule");
   // Size the Note to its content
   await blank(f); await f.locator(".card.note .chead").first().click();
-  await page.keyboard.press("Alt+f"); await settle(f);
+  await page.keyboard.press("Alt+f"); await idle(f);
   lap("note sized");
-  await blank(f); await fit(f); await park(page, f);
+  await blank(f); await fitted(f); await park(page, f);
 
   if (SHOTS.includes("features")) {
     // 1. Overview: the whole tree of expanded calls with its arrows, marks and the Note
@@ -314,37 +195,35 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
     await call.hover();
     lap("peek: hovered");
     // (opens after the hover delay, then shows "Looking up …" until the definition arrives)
-    await until(async () => (await f.locator(".pop.k-peek").count()) && !(await f.locator(".pop.k-peek .empty", { hasText: "Looking up" }).count()), 8000);
-    await settle(f);
+    await soon(async () => (await f.locator(".pop.k-peek").count()) && !(await f.locator(".pop.k-peek .empty", { hasText: "Looking up" }).count()), Boolean, 8000);
+    await idle(f);
     check(await f.locator(".pop.k-peek").count() === 1, "Definition Peek opens");
     await boardShot(page, f, "2-peek.png");
     const cb = await card(f, "Scheduler.schedule").boundingBox();
     await page.mouse.move(cb.x + cb.width + 40, cb.y + 20, { steps: 6 }); await page.mouse.move(5, 300, { steps: 12 });
-    await until(async () => !(await f.locator(".pop.k-peek").count()), 5000); await settle(f);
+    await until("the Peek closes once the mouse leaves", async () => !(await f.locator(".pop.k-peek").count()), 5000); await idle(f);
 
     // 4. Notes: zoomed to the Note and Scheduler.schedule, the Sidenote always shown beside its lines,
     // the Note open for editing with the caret after its last sentence and the gray completion (from the mock) behind it
-    await blank(f); await fit(f);
+    await blank(f); await fitted(f);
     await card(f, "Scheduler.schedule").locator(".mk").first().click();
-    await alwaysShowIn(f); await settle(f);
-    await page.keyboard.press("Escape"); await blank(f); await settle(f);
+    await alwaysShowIn(f); await idle(f);
+    await page.keyboard.press("Escape"); await blank(f); await idle(f);
     await f.locator(".card.note .chead").first().click();
-    await card(f, "Scheduler.schedule").locator(".chead .ctitle").click({ modifiers: ["Shift"], timeout: 5000 }).catch(() => console.log("  ! could not add Scheduler.schedule to the selection"));
+    await card(f, "Scheduler.schedule").locator(".chead .ctitle").click({ modifiers: ["Shift"], timeout: 5000 });
     // One step out, so the Note keeps clear of the zoom controls once the gray text adds a line
-    await zoomToSelection(page, f); await blank(f); await settle(f);
+    await zoomToSelection(page, f); await blank(f); await idle(f);
     await zoomOut(f);
     await f.locator(".card.note .nbody").first().dblclick();
-    await f.locator(".card.note .ProseMirror-focused").waitFor({ timeout: 5000 }).catch(() => {});
+    await until("the Note's editor has the keyboard", () => typingIn(f, ".card.note"), 5000);
     // Retype the closing period: the completion is asked for after an edit, once typing pauses
-    await page.keyboard.press("Control+End"); await sleep(100);
-    await page.keyboard.press("Backspace"); await sleep(100); await page.keyboard.type("."); await sleep(100);
-    console.log(`  … Note editor focused: ${await f.locator(".card.note .ProseMirror-focused").count()}`);
-    const ghost = await until(() => f.locator(".md-ghost").count(), 10000, 100);
-    check(ghost, "gray completion shown in the Note");
+    await focusSettled(f); // or ProseMirror undoes the Ctrl+End (the double click just focused it)
+    await page.keyboard.press("Control+End"); await page.keyboard.press("Backspace"); await page.keyboard.type(".");
+    check(await soon(() => f.locator(".md-ghost").count(), Boolean, 10000, 100), "gray completion shown in the Note");
     await park(page, f);
     await boardShot(page, f, "4-notes.png");
-    await page.keyboard.press("Escape"); await sleep(100); await page.keyboard.press("Escape");
-    await blank(f); await fit(f);
+    await leaveNote(page, f); await page.keyboard.press("Escape");
+    await blank(f); await fitted(f);
 
     // 3. New version: commit a change to Scheduler.schedule; the card stays pinned to its commit and offers the diff
     const file = path.join(WS, "nanovllm/engine/scheduler.py");
@@ -353,24 +232,26 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
     check(changed !== src, "scheduler.py edited");
     fs.writeFileSync(file, changed);
     execSync(`git -C ${WS} -c user.name=dev -c user.email=dev@example.com commit -qam "Scheduler: comment the admission order"`);
-    const isNew = await until(() => card(f, "Scheduler.schedule").locator(".rev.new").count(), 15000, 100);
-    check(isNew, "card shows New version");
-    await f.locator('.banner button[aria-label="Dismiss"]').click({ timeout: 1000 }).catch(() => {}); await settle(f);
+    check(await soon(() => card(f, "Scheduler.schedule").locator(".rev.new").count(), Boolean, 15000, 100), "card shows New version");
+    // A card with a new version also brings up the board's "has a new version" banner: dismiss it, it is not part of the shot
+    const dismiss = f.locator('.banner button[aria-label="Dismiss"]');
+    await dismiss.click({ timeout: 5000 }); await dismiss.waitFor({ state: "hidden", timeout: 5000 }); await idle(f);
     await card(f, "Scheduler.schedule").locator(".rev.new").first().click();
-    await f.locator(".pop button", { hasText: /^Keep / }).first().waitFor({ timeout: 5000 }).catch(() => {}); await settle(f);
+    const keep = f.locator(".pop button", { hasText: /^Keep / }).first();
+    await keep.waitFor({ timeout: 5000 }); await idle(f);
     await park(page, f);
     await boardShot(page, f, "3-new-version.png");
     // Keep the pinned version so the theme shots that follow show a plain board
-    await f.locator(".pop button", { hasText: /^Keep / }).first().click({ timeout: 3000 }).catch(() => page.keyboard.press("Escape")); await settle(f);
+    await keep.click({ timeout: 3000 }); await keep.waitFor({ state: "hidden", timeout: 5000 }); await idle(f);
   }
 
   if (SHOTS.includes("themes")) {
     // One shot per board theme of Scheduler.schedule alone (with its Sidenote shown), picked on the board's own Settings page.
     // Everything else on the board is hidden while the shot is taken; in Warm Ink the card fills 80% of the shot's width
-    await blank(f); await fit(f);
+    await blank(f); await fitted(f);
     await card(f, "Scheduler.schedule").locator(".mk").first().click();
-    await alwaysShowIn(f); await settle(f);
-    await page.keyboard.press("Escape"); await blank(f); await settle(f);
+    await alwaysShowIn(f); await idle(f);
+    await page.keyboard.press("Escape"); await blank(f); await idle(f);
     // Hide every element but the card, its ancestors and its contents (the board background stays); window.__unsolo() undoes it.
     // Can run again: what the board mounted since (e.g. the arrowhead of the incoming link, redrawn after a camera move) is hidden too
     const solo = (el) => el.evaluate((c) => {
@@ -393,18 +274,17 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
         return b.width > 0 && b.height > 0 && b.right > r.left - m && b.left < r.right + m && b.bottom > r.top - m && b.top < r.bottom + m;
       }).slice(0, 4).map((e) => `${e.tagName.toLowerCase()}.${String(e.className?.baseVal ?? e.className).trim().replace(/\s+/g, ".")}`));
     });
-    // Pick a theme on the board's Settings page and wait until the board wears it (data-look) with its fonts loaded
+    // Pick a theme on the board's Settings page and wait until the board wears it (data-look) with its fonts loaded (idle waits for fonts)
     const setLook = async (t) => {
       const id = t.toLowerCase().replace(/ /g, "-");
       await blank(f);
       await page.keyboard.press("Control+,");
       const sw = f.locator(".st-sw", { hasText: t }).first();
       await sw.click({ timeout: 5000 });
-      check(await until(() => f.evaluate((id) => document.documentElement.dataset.look === id, id), 5000, 30), `${t}: board theme set`);
+      check(await soon(() => f.evaluate((id) => document.documentElement.dataset.look === id, id), Boolean, 5000, 30), `${t}: board theme set`);
       await page.keyboard.press("Control+,");
-      await f.locator(".st-sw").first().waitFor({ state: "hidden", timeout: 5000 }).catch(() => console.log("  ! Settings page still open"));
-      await f.evaluate(() => document.fonts.ready);
-      await settle(f);
+      await f.locator(".st-sw").first().waitFor({ state: "hidden", timeout: 5000 });
+      await idle(f);
     };
     const CARD_W = 640;
     let zoom;
@@ -417,7 +297,7 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
         // zoom, and some themes were shot at the fit-to-window zoom; the composition then scaled those up into blurry slices)
         // Only the first shot starts from Fit to Window; later ones start at the right zoom and only pan if the new theme moved the card
         const sch = card(f, "Scheduler.schedule");
-        if (zoom === undefined) await fit(f);
+        if (zoom === undefined) await fitted(f);
         await solo(await sch.elementHandle());
         const fb = await f.locator("#board").boundingBox();
         const zoomOf = async () => (await sch.boundingBox()).width / await sch.evaluate((e) => e.offsetWidth);
@@ -437,12 +317,12 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
             return false;
           }, zoom);
           if (done) break;
-          await settle(f, 200);
+          await idle(f, { quiet: 200 });
         }
         // Park the mouse on the board beside the card (empty: the rest is hidden), so the card loses :hover. Parking outside the
         // webview left the card hovered in some themes, showing its left link port (a dot, ring or diamond at the heading)
         await page.mouse.move(fb.x + 4, fb.y + fb.height / 2);
-        await until(() => sch.evaluate((c) => !c.matches(":hover")), 3000, 30); await settle(f, 200);
+        await until(`${t}: the card is no longer hovered`, () => sch.evaluate((c) => !c.matches(":hover")), 3000, 30); await idle(f, { quiet: 200 });
         // Hide again what appeared since (the camera moved), then make sure only the card shows, neither hovered nor selected
         await solo(await sch.elementHandle());
         const left = await strays(sch);
@@ -466,12 +346,12 @@ const zoomOut = async (f) => { await f.locator('button[aria-label="Zoom Out"]').
       // Straight into the user settings (VS Code watches the file); the Color Theme picker labels themes differently from the setting
       const sf = path.join(UD, "User", "settings.json"), us = JSON.parse(fs.readFileSync(sf, "utf8"));
       fs.writeFileSync(sf, JSON.stringify({ ...us, "workbench.colorTheme": process.env.THEMES_DARK }, null, 2));
-      check(await until(() => f.evaluate(() => document.documentElement.dataset.theme === "dark"), 10000), `VS Code switched to ${process.env.THEMES_DARK}`);
-      await settle(f);
+      check(await soon(() => f.evaluate(() => document.documentElement.dataset.theme === "dark"), Boolean, 10000), `VS Code switched to ${process.env.THEMES_DARK}`);
+      await idle(f);
       await shootThemes("themes-dark");
     }
   }
   console.log(failed ? `${failed} checks failed` : "all passed");
-  await browser.close().catch(() => {});
+  await browser.close().catch(() => { /* VS Code may already be closing the connection */ });
   process.exit(failed ? 1 : 0);
 })().catch((e) => { console.error(e); process.exit(2); });
