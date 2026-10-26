@@ -5,8 +5,14 @@
 #            into a Note, the sticker folder, the Note heading setting with cut and paste, code editing)
 #   perf     the full benchmark (base, head, head, base) against main as it was a day earlier, then the board benchmark again with
 #            100 animated GIF stickers on the board (run-perf.mjs --anim; never in the per-push run)
+#   repeat   after the harness jobs: the flake repeat. The scenarios in test files changed since the previous finished scheduled
+#            nightly (its head_sha, from this workflow's run list), each run 3 times on 4 workers (the "solo" ones one at a time),
+#            within a 15 minute cap; any failed run is a flake. Flakes are reported in their own section of the issue comment and
+#            don't make the run red (the step continues on error). No previous scheduled run, or its commit missing from the clone, is
+#            an error in the report (nothing is repeated), never a fallback to some other set of scenarios
 #   publish  the impact map for tools/test/pick.mjs (impact/ on the ci-screenshots branch), and a comment on the issue labelled
-#            "replay-nightly" when the set of failures changes, including when everything passes again
+#            "replay-nightly" (tools/test/nightly-report.mjs) when the set of failures changes, including when everything passes
+#            again, and when the repeat found flakes or the set that passed only when run alone changes
 # The study-task replay runs nightly too, in replay.yml.
 name: Nightly
 on:
@@ -86,8 +92,46 @@ jobs:
         if: ${{ !cancelled() }}
         with: { name: perf, path: test-out/perf, retention-days: 14 }
 
+  repeat:
+    needs: harness
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions: { contents: read, actions: read }
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 } # the base commit and the diff to it
+      - name: Find the previous scheduled nightly run
+        id: base
+        env: { GH_TOKEN: "${{ github.token }}" }
+        run: |
+          BASE=$(gh api "repos/${{ github.repository }}/actions/workflows/nightly.yml/runs?event=schedule&status=completed&per_page=30" \
+            --jq '[.workflow_runs[] | select(.id != ${{ github.run_id }} and (.conclusion == "success" or .conclusion == "failure"))][0].head_sha // ""') || BASE=""
+          if [ -z "$BASE" ]; then
+            MSG="no previous finished scheduled nightly run found: nothing repeated"
+            echo "::error::Flake repeat: $MSG"
+            mkdir -p test-out/harness
+            node -e 'require("fs").writeFileSync("test-out/harness/repeat.json", JSON.stringify({ error: process.argv[1], results: [] }))' "$MSG"
+          else echo "Flake repeat: scenarios in test files changed since $BASE"; fi
+          echo "sha=$BASE" >> "$GITHUB_OUTPUT"
+      - run: git submodule update --init examples/nano-vllm
+        if: steps.base.outputs.sha != ''
+      - uses: ./.github/actions/setup
+        if: steps.base.outputs.sha != ''
+      - uses: ./.github/actions/chromium
+        if: steps.base.outputs.sha != ''
+      - name: Repeat the new and changed scenarios (flakes)
+        if: steps.base.outputs.sha != ''
+        # a flake is reported, not a red run; a stuck run is cut off here, its results then missing (an error in the report)
+        continue-on-error: true
+        timeout-minutes: 20
+        run: node tools/test/harness.mjs --changed-since="${{ steps.base.outputs.sha }}" --repeat=3 --workers=4 --cap=15 --json=test-out/harness/repeat.json
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: repeat, path: test-out/harness/repeat.json, retention-days: 14, if-no-files-found: ignore }
+
   publish:
-    needs: [harness, e2e, perf]
+    needs: [harness, e2e, perf, repeat]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -103,45 +147,14 @@ jobs:
           JOBS: ${{ toJSON(needs) }}
         with:
           script: |
-            const fs = require("fs");
-            const A = "test-out/artifacts";
-            const json = (f) => (fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : null);
-            const read = (f) => (fs.existsSync(f) ? fs.readFileSync(f, "utf8") : "");
-            const jobs = JSON.parse(process.env.JOBS);
+            const { nightlyReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/nightly-report.mjs`);
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-            const sha = context.sha.slice(0, 7);
-            const fails = [];
-            for (const k of [1, 2]) {
-              const r = json(`${A}/harness-${k}/result.json`);
-              if (!r) { fails.push(`harness ${k}/2: no results`); continue; }
-              for (const x of r.results.filter((x) => !x.ok)) fails.push(`harness ${x.name}: ${(x.fails[0] || x.error || "").split("\n")[0].slice(0, 160)}`);
-            }
-            for (const k of [1, 2, 3]) {
-              const log = read(`${A}/e2e-${k}/e2e.log`);
-              const bad = log.split("\n").filter((l) => /^✗/.test(l));
-              if (bad.length) bad.forEach((l) => fails.push(`e2e ${k}/3: ${l.slice(2, 160)}`));
-              else if (jobs.e2e.result !== "success" && !/all passed/.test(log)) fails.push(`e2e ${k}/3: failed (see the run log)`);
-            }
-            if (jobs.perf.result === "failure") fails.push(`perf: ${read(`${A}/perf/summary.md`).split("\n").find((l) => /❌|regress/i.test(l))?.slice(0, 160) || "regression (see the run log)"}`);
-
-            // Same issue as the nightly replay; this run keeps its own hidden marker
+            // Same issue as the nightly replay; this run keeps its own hidden markers
             const LABEL = "replay-nightly";
             const open = await github.rest.issues.listForRepo({ ...context.repo, labels: LABEL, state: "open", per_page: 1 });
             const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Nightly test results", labels: [LABEL],
               body: "The nightly runs (`.github/workflows/nightly.yml`, `replay.yml`) comment here when their set of failures changes, including when everything passes again." })).data;
             const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: issue.number, per_page: 100 });
-            const lastMark = comments.reverse().map((c) => /<!-- nightly-failures: (.*) -->/.exec(c.body || "")).find(Boolean);
-            const before = new Set(lastMark ? JSON.parse(lastMark[1]) : []);
-            const key = (f) => f.split(":")[0];
-            const same = fails.length === before.size && fails.every((f) => [...before].some((b) => key(b) === key(f)));
-            core.info(`failing: ${fails.length}, last reported: ${before.size}, changed: ${!same}`);
-            if (same) return;
-            const fixed = [...before].filter((b) => !fails.some((f) => key(f) === key(b)));
-            const body = [
-              fails.length ? `❌ **Nightly: ${fails.length} failing** on main @ ${sha}` : `✅ **Nightly: everything passes again** on main @ ${sha}`,
-              `[Run log](${run}) · harness scenarios failing here are run on every PR until they pass`, "",
-              ...fails.map((f) => `- ${[...before].some((b) => key(b) === key(f)) ? "" : "🆕 "}${f}`),
-              ...(fixed.length ? ["", "Passing again:", ...fixed.map((f) => `- ${key(f)}`)] : []), "",
-              `<!-- nightly-failures: ${JSON.stringify(fails)} -->`,
-            ].join("\n");
-            await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body });
+            const r = nightlyReport({ dir: "test-out/artifacts", jobs: JSON.parse(process.env.JOBS), comments: comments.map((c) => c.body || ""), run, sha: context.sha.slice(0, 7) });
+            core.info(`failing: ${r.fails.length}, flakes: ${r.flaky.flakes.length}, alone: ${r.flaky.alone.length}${r.flaky.error ? `, repeat error: ${r.flaky.error}` : ""}; comment: ${r.due}`);
+            if (r.due) await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body: r.body });
