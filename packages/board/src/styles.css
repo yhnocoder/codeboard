@@ -66,11 +66,16 @@
   --sect-border: .5px solid var(--hair); --sect-fill: color-mix(in srgb, var(--ink) 2.5%, transparent); --sect-sh: inset 0 1px 0 rgba(255,245,230,.025);
 }
 :root, [data-look] { --row: color-mix(in srgb, var(--accent) 9%, transparent); }
+/* The canvas colour. Settings → Theme → Use VS Code's Background swaps it for VS Code's editor background (VS Code sets
+   --vscode-editor-background on <html> in the webview; without it, as in a browser, the theme's own --bg stays). Only what lies
+   on the canvas itself follows it: the board, its pattern's ground and the knockouts behind arrow labels. Cards keep --bg. */
+:root { --canvas: var(--bg); }
+:root[data-vsbg] { --canvas: var(--vscode-editor-background, var(--bg)); }
 
 * { box-sizing: border-box; }
 *, ::before, ::after { corner-shape: var(--corner); }
 html, body { margin: 0; height: 100%; overflow: hidden; }
-body { background: var(--bg); color: var(--ink); font: 13px/1.5 var(--sys); -webkit-font-smoothing: antialiased; }
+body { background: var(--canvas); color: var(--ink); font: 13px/1.5 var(--sys); -webkit-font-smoothing: antialiased; }
 /* Selection and cursor by region. Every region rule is wrapped in :where() (zero specificity), so any component rule
  * (.call, .cpath, .grip…) wins over them by plain specificity and needs no !important. Among the regions the later rule wins,
  * so a region nested in another comes after it: inline notes and gaps after code, a peek's line numbers and text after the peek.
@@ -95,7 +100,7 @@ input, textarea { font: inherit; color: var(--ink); }
 
 /* ---------- board ---------- */
 /* clip 而不是 hidden：hidden 的盒子还能被程序滚动，Tab 把焦点移到画面外的卡上的按钮时浏览器会把整块白板滚过去，镜头的换算（适应窗口、框选、放卡）就全偏了 */
-.board { position: fixed; inset: 0; overflow: clip; background: var(--bg); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
+.board { position: fixed; inset: 0; overflow: clip; background: var(--canvas); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
 .board:focus { outline: none; }
 .board:is([data-mode="pan"], [data-mode="space"]) { cursor: grab; }
 .board:is([data-mode="pan"], [data-mode="space"]) * { cursor: grab !important; }
@@ -645,7 +650,7 @@ kbd { font: 10.5px var(--mono); }
 .sp { height: .6em; }
 /* Markdown 本身的样式（.md、编辑器、代码编辑器）在 @yhnocoder/markdown 的 markdown.css（index.tsx 接在这一份后面）；这里只有白板这边的 */
 .md-pend { visibility: hidden; } /* md/lazy.ts：还没渲染的 Note 只占位，不露原文 */
-.card.nobg .mmd { --pele-bg: var(--bg); }
+.card.nobg .mmd { --pele-bg: var(--canvas); }
 .md.editing { position: relative; }
 .card.note .nbody, .card.text .tx { white-space: normal; }
 /* 编辑时跟显示时同一种字体、同一个位置，不再套一层白框（卡本身已经有选中框） */

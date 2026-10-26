@@ -6,6 +6,7 @@ import { workspace } from "./ws";
 /** Settings 字段 → 配置键 */
 const KEY: Record<keyof Settings, string> = {
   theme: "theme",
+  vscodeBg: "useVSCodeBackground",
   hideOnNew: "newCards.hide",
   studyScope: "studyScope",
   stickerDir: "stickerFolder",
@@ -32,6 +33,7 @@ const num = (v: unknown) => typeof v === "number" && Number.isFinite(v);
 /** 白板发来的值对不对得上 Settings 的类型 */
 const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   theme: (v) => THEMES.some(([id]) => id === v),
+  vscodeBg: (v) => typeof v === "boolean",
   hideOnNew: (v) => isObj(v) && Object.values(v).every((x) => x === undefined || typeof x === "boolean"),
   studyScope: (v) => Array.isArray(v) && v.every((x) => typeof x === "string"),
   stickerDir: (v) => typeof v === "string",

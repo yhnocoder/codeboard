@@ -499,7 +499,7 @@
 :root.look-classic .chead .rev.fold.new .rl { border-color: var(--warn); background: color-mix(in srgb, var(--warn) 13%, transparent); }
 :root.look-classic .chead .rev.fold:not(.unc):hover .rl { background: var(--hlrow); }
 :root.look-classic .port { display: none; }
-:root.look-classic .vcard { --vc-bg: var(--bg); --vc-sh: 0 0 0 1px var(--line); --vc-r: 8.5px; }
+:root.look-classic .vcard { --vc-bg: var(--canvas); --vc-sh: 0 0 0 1px var(--line); --vc-r: 8.5px; }
 :root.look-classic .vcard, :root.look-classic .vbox, :root.look-classic .vlabel { color: var(--ink); font-size: 11px; }
 :root.look-classic .pill, :root.look-classic .ctx, :root.look-classic .pop, :root.look-classic .dialog, :root.look-classic .keys { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: 0 0 0 1px var(--line), var(--sh-float); border-radius: 12.5px; }
 :root.look-classic .toast { background: var(--toast); color: var(--ink); box-shadow: 0 0 0 1px var(--line), var(--sh-float); }
@@ -593,7 +593,7 @@
 :root.look-drafting .ahead.triangle { fill: var(--ink); stroke: none; }
 :root.look-drafting .ahead.triangle.on { fill: var(--accent); }
 :root.look-drafting .port { fill: var(--bg); stroke: var(--ink); }
-:root.look-drafting .vcard { --vc-bg: var(--bg); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 5px; }
+:root.look-drafting .vcard { --vc-bg: var(--canvas); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 5px; }
 :root.look-drafting .vcard, :root.look-drafting .vbox, :root.look-drafting .vlabel { font: 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-drafting .mk, :root.look-drafting .addn { border-radius: 0; }
 :root.look-drafting .card.note .nbody { --md-fs: var(--note-fs, 11px); line-height: 1.7; font-family: var(--mono); color: var(--ink-2); }
@@ -722,7 +722,7 @@
 :root.look-newspaper .ahead.triangle { stroke: none; }
 :root.look-newspaper .vcard { --vc-bg: none; --vc-sh: none; --vc-r: 0; --vl-pad: 1px 2px; }
 :root.look-newspaper .vcard, :root.look-newspaper .vbox, :root.look-newspaper .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink); }
-:root.look-newspaper .vchips { font: italic 400 12px var(--serif); color: var(--ink); background: var(--bg); padding: 0 4px; }
+:root.look-newspaper .vchips { font: italic 400 12px var(--serif); color: var(--ink); background: var(--canvas); padding: 0 4px; }
 :root.look-newspaper .vchips::before { content: "— "; white-space: pre; }
 :root.look-newspaper .vchips::after { content: " —"; white-space: pre; }
 :root.look-newspaper .mk, :root.look-newspaper .addn { border-radius: 0; }
@@ -815,8 +815,8 @@
 /* ---------- Ink Wash（水墨） ---------- */
 /* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
 :root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1; }
-:root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--bg); }
-:root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--bg); }
+:root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--canvas); }
+:root.look-ink-wash[data-theme="dark"] .board { background: url("./scenes/ink-dark.svg") center bottom / cover no-repeat, var(--canvas); }
 :root.look-ink-wash .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 1px var(--ink), 0 0 0 7px var(--wash), var(--sh-card); }
 :root.look-ink-wash .card.sel.lift { box-shadow: 0 0 0 1px var(--ink), var(--sh-lift); }
 /* 卡头下面不画分隔线，换成一笔干笔墨痕 */
@@ -839,7 +839,7 @@
 :root.look-ink-wash .rowbg.hl { background: linear-gradient(90deg, transparent, var(--wash) 8%, var(--wash) 70%, transparent); box-shadow: none; }
 :root.look-ink-wash .port { fill: var(--ink); stroke: none; }
 :root.look-ink-wash .ahead.dot { opacity: .9; }
-:root.look-ink-wash .vcard { --vc-bg: radial-gradient(closest-side, var(--bg) 62%, transparent); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 10px; }
+:root.look-ink-wash .vcard { --vc-bg: radial-gradient(closest-side, var(--canvas) 62%, transparent); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 10px; }
 :root.look-ink-wash .vcard, :root.look-ink-wash .vbox, :root.look-ink-wash .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink-2); }
 :root.look-ink-wash .card.note .nbody { --md-fs: var(--note-fs, 13.5px); line-height: 1.65; font-family: var(--serif); }
 :root.look-ink-wash .tx.st-title { font: 400 30px/1.2 var(--serif); letter-spacing: .02em; }
@@ -881,10 +881,10 @@
   --signbox: inset 0 0 0 2px var(--sign), inset 0 0 0 3px rgba(255,255,255,.85); }
 :root.look-city .board { background: url("./scenes/city-light.svg") center / cover no-repeat,
   linear-gradient(var(--street) 0 7px, transparent 7px) 0 50px / 120px 120px, linear-gradient(90deg, var(--street) 0 7px, transparent 7px) 40px 0 / 120px 120px,
-  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--bg); }
+  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--canvas); }
 :root.look-city[data-theme="dark"] .board { background: url("./scenes/city-dark.svg") center / cover no-repeat,
   linear-gradient(var(--street) 0 7px, transparent 7px) 0 50px / 120px 120px, linear-gradient(90deg, var(--street) 0 7px, transparent 7px) 40px 0 / 120px 120px,
-  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--bg); }
+  linear-gradient(var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, linear-gradient(90deg, var(--blockc) 1px, transparent 1px) 0 0 / 20px 20px, var(--canvas); }
 :root.look-city .card.sel:not(.text):not(.lo-map) { box-shadow: 0 0 0 2px var(--sign), 0 0 0 6px color-mix(in srgb, var(--sign) 20%, transparent), var(--sh-card); }
 :root.look-city .card.sel.lift { box-shadow: 0 0 0 2px var(--sign), var(--sh-lift); }
 /* 卡头是一块蓝底白字的路牌（内圈一道白线）；Note 是绿色指路牌 */

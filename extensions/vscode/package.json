@@ -720,6 +720,11 @@
           "default": false,
           "description": "Hide the call graph marks (A, B… or an icon) on cards."
         },
+        "codeboard.useVSCodeBackground": {
+          "type": "boolean",
+          "default": false,
+          "description": "Use VS Code's editor background as the board background in every theme. Cards, text and accent colors stay the theme's; patterns such as grids stay on top."
+        },
         "codeboard.themeReflow": {
           "type": "string",
           "enum": ["push", "overlap"],

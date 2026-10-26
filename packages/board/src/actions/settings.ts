@@ -33,6 +33,11 @@ export function applyLook(id: string | undefined) {
   if (before) pushDownLater(before);
 }
 
+/** Use VS Code's Background: html[data-vsbg] switches --canvas (styles.css) to VS Code's editor background. Only an attribute = only a style recalc */
+export function applyVscodeBg(on: boolean) {
+  document.documentElement.toggleAttribute("data-vsbg", on === true);
+}
+
 /** Note 的字号（设置 → Notes）挂成根上的 --note-fs、--note-fs-h1…h6（styles.css 交给 Markdown 包的 --md-fs、--md-h1…h6）：
  *  只改变量 = 只重算样式，显示和编辑一样、不重新渲染；卡的尺寸监听会重新量高度 */
 export function applyNoteFonts(f: NoteFontSizes) {

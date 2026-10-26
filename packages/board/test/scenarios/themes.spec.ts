@@ -282,6 +282,58 @@ test("menuOpensWithoutOvershoot", async () => {
   await pg.context().close();
 });
 
+/** Settings → Theme → Use VS Code's Background: in every theme the canvas takes VS Code's editor background
+ *  (--vscode-editor-background, set on <html> here as VS Code does in the webview) at once, cards keep the theme's surface,
+ *  pattern themes keep their pattern on top (Poster grid, City streets, Ink Wash hills); a VS Code theme change follows live;
+ *  without the VS Code variable the theme's own background stays; turning it off restores the theme's background */
+test("vscodeBackgroundSetting", async () => {
+  const VS = "rgb(58, 61, 65)", VS2 = "rgb(30, 31, 34)";
+  const h = await open({ board: board(), light: true, w: 1300, h: 820, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await pg.evaluate((c) => document.documentElement.style.setProperty("--vscode-editor-background", c), VS);
+  await pg.waitForTimeout(400);
+  const probe = () => pg.evaluate(() => {
+    const board = getComputedStyle(document.querySelector(".board")!), root = getComputedStyle(document.documentElement);
+    const probeBg = document.createElement("div"); probeBg.style.color = root.getPropertyValue("--bg"); document.body.append(probeBg);
+    const themeBg = getComputedStyle(probeBg).color; probeBg.remove();
+    return { look: document.documentElement.dataset.look, bg: board.backgroundColor, image: board.backgroundImage, themeBg,
+      card: getComputedStyle(document.querySelector(".card.ccard")!).backgroundColor };
+  });
+  const before = await probe();
+  await pg.keyboard.press("Meta+Comma");
+  await pg.waitForSelector(".settings");
+  await pg.locator(".settings label.st-check", { hasText: "Use VS Code's Background" }).click();
+  await pg.waitForTimeout(200);
+  const on = await probe();
+  const sentNow = () => h.sent.filter((m) => m.type === "setSetting" && (m as { key: string }).key === "vscodeBg").map((m) => (m as { value: boolean }).value);
+  const sent = sentNow();
+  // every theme, switched live from the Settings page
+  const looks: Record<string, Awaited<ReturnType<typeof probe>>> = {};
+  for (const sw of await pg.locator(".settings .st-sw").all()) {
+    await sw.click(); await pg.waitForTimeout(120);
+    const r = await probe(); looks[r.look!] = r;
+  }
+  await pg.locator(".settings .st-sw", { hasText: "Warm Ink" }).click();
+  await pg.evaluate((c) => document.documentElement.style.setProperty("--vscode-editor-background", c), VS2);
+  await pg.waitForTimeout(100);
+  const live = await probe();
+  await pg.evaluate(() => document.documentElement.style.removeProperty("--vscode-editor-background"));
+  await pg.waitForTimeout(100);
+  const noVar = await probe();
+  await pg.evaluate((c) => document.documentElement.style.setProperty("--vscode-editor-background", c), VS);
+  await pg.locator(".settings label.st-check", { hasText: "Use VS Code's Background" }).click();
+  await pg.waitForTimeout(200);
+  const off = await probe();
+  const pattern: Record<string, (img: string) => boolean> = { poster: (i) => i.includes("linear-gradient"), city: (i) => i.includes("linear-gradient") && i.includes("url("), "ink-wash": (i) => i.includes("url(") };
+  const bad = Object.entries(looks).filter(([id, r]) => r.bg !== VS || r.card === VS || (pattern[id] && !pattern[id](r.image))).map(([id]) => id);
+  check("vscodeBackground-offByDefault", before.bg === before.themeBg && before.bg !== VS, before);
+  check("vscodeBackground-switchesOn", on.bg === VS && on.card === before.card && sent.join() === "true", { on, sent });
+  check("vscodeBackground-everyTheme", Object.keys(looks).length >= 10 && bad.length === 0, { bad, looks });
+  check("vscodeBackground-followsVSCode", live.bg === VS2 && noVar.bg === noVar.themeBg, { live, noVar });
+  check("vscodeBackground-switchesOff", off.bg === off.themeBg && off.bg !== VS && sentNow().join() === "true,false", { off, sent: sentNow() });
+  await pg.context().close();
+});
+
 /** The bottom-right resize grip is concentric with the card's rounded corner in every theme (code card and Note): its arc
  *  has the same centre as the card's corner arc and every point of it stays inside the card, at least 1px from the edge; a card
  *  with (almost) square corners gets a square grip.

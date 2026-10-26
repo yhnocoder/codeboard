@@ -39,3 +39,17 @@ describe("Note font sizes", () => {
     expect(conf.get("codeboard.notes.fontSize")).toEqual(v);
   });
 });
+
+describe("VS Code background", () => {
+  it("is off by default and read from codeboard.useVSCodeBackground", () => {
+    expect(readSettings().vscodeBg).toBe(false);
+    conf.set("codeboard.useVSCodeBackground", true);
+    expect(readSettings().vscodeBg).toBe(true);
+  });
+
+  it("accepts only booleans", async () => {
+    await writeSetting("vscodeBg", true);
+    await writeSetting("vscodeBg", "yes" as never);
+    expect(conf.get("codeboard.useVSCodeBackground")).toBe(true);
+  });
+});

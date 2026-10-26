@@ -50,6 +50,7 @@ export const NOTE_FONT_RANGE = { body: [10, 24], heading: [10, 40] } as const;
 /** 全局设置：同步成 VS Code 的 codeboard.* 设置，所有白板共用。宿主发来的总是和 DEFAULT_SETTINGS 合并好的完整设置 */
 export type Settings = {
   theme: ThemeId;
+  vscodeBg: boolean; // 白板画布的底色换成 VS Code 编辑器的背景色（卡片、文字、强调色还是主题的；默认关）
   hideOnNew: HideFlags; // 新卡默认隐藏什么（替代卡片上的 Hide 浮条）
   studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
   stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
@@ -71,7 +72,7 @@ export type Settings = {
   noteFontSize: NoteFontSizes; // Note 正文和各级标题的字号（px，null = 跟主题）；Text 卡有自己的字号档，不受影响
 };
 export const DEFAULT_SETTINGS: Settings = {
-  theme: "warm-ink", hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
+  theme: "warm-ink", vscodeBg: false, hideOnNew: { blank: false }, studyScope: [], stickerDir: "", zoomOverview: 0.6, zoomMap: 0.25, dblClick: "text",
   hideNumbers: false, themeReflow: "push", debug: false, tune: {}, pasteOther: "linked", sharedUpdate: "ask", subPreview: "skeleton",
   welcomeBack: "2d", exportQuestions: false, exportBoardOnly: false, exportScope: "board", noteHeadingInBody: false,
   noteFontSize: { body: null, h1: null, h2: null, h3: null, h4: null, h5: null, h6: null },

@@ -17,6 +17,7 @@ const cur = (): S => state.host.settings;
 /** 主题同步 + 设置页本身；App 里挂一次 */
 export function SettingsLayer() {
   createEffect(() => A.applyLook(state.host.settings.theme));
+  createEffect(() => A.applyVscodeBg(state.host.settings.vscodeBg));
   createEffect(() => A.applyNoteFonts(state.host.settings.noteFontSize));
   return <Show when={settingsOpen()} keyed>{(o) => <SettingsPage section={o.section} />}</Show>;
 }
@@ -50,6 +51,7 @@ function SettingsPage(p: { section?: string }) {
               </button>
             )}</For>
           </div>
+          <label class="st-check" data-tip="Cards, text and accents keep the theme's colors"><input type="checkbox" checked={cur().vscodeBg} onChange={(e) => A.setSetting("vscodeBg", e.currentTarget.checked)} />Use VS Code's Background</label>
           <div class="st-sub">When a theme or font size makes cards taller</div>
           <div class="st-chips">
             <For each={[["push", "Push Cards Below Down"], ["overlap", "Allow Overlap"]] as const}>{([v, lb]) => (
