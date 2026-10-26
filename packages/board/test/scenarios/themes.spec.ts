@@ -161,7 +161,7 @@ test("themeMenuSwitchesTheme", async () => {
   try { fs.mkdirSync(SHOTS, { recursive: true }); } catch { /* harness output only */ }
   const h = await open({ board: board(), light: true, w: 1300, h: 820, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
-  await pg.waitForTimeout(500);
+  await idle(h);
   const menus = () => pg.locator(".ctx").count();
   const first = () => pg.locator(".ctx").first();
   const sub = () => pg.locator(".ctx").nth(1);
@@ -169,7 +169,7 @@ test("themeMenuSwitchesTheme", async () => {
     label: b.querySelector(".lb")!.textContent, checked: !!b.querySelector(".ck svg"), kb: b.classList.contains("kb"), off: (b as HTMLButtonElement).disabled })));
   const look = () => pg.evaluate(() => document.documentElement.dataset.look);
   const themeSet = () => h.sent.filter((m) => m.type === "setSetting" && (m as { key: string }).key === "theme").map((m) => (m as { value: string }).value);
-  const more = async () => { await pg.locator('.bbar button[aria-label="More"]').click(); await pg.waitForTimeout(350); };
+  const more = async () => { await pg.locator('.bbar button[aria-label="More"]').click(); await first().waitFor(); await idle(h); };
   const res: Record<string, unknown> = {};
 
   // 鼠标：悬停 Theme 打开二级菜单，当前主题打勾；点 Graphite 立刻换
@@ -177,16 +177,16 @@ test("themeMenuSwitchesTheme", async () => {
   const tops = await items(first()), labels = tops.map((t) => t.label);
   res.afterSettings = labels[labels.indexOf("Settings…") + 1];
   await first().locator("button[role=menuitem]", { hasText: /^Theme$/ }).hover();
-  await pg.waitForTimeout(400);
+  await idle(h); // the submenu opens on pointerenter
   res.hoverMenus = await menus();
   const subItems = await items(sub());
   res.subItems = subItems;
   res.subOpen = await sub().evaluate((e) => e.classList.contains("open"));
   await sub().locator("button", { hasText: "Ink Wash" }).hover();
-  await pg.waitForTimeout(150);
+  await idle(h);
   await pg.screenshot({ path: path.join(SHOTS, "theme-menu-light.png") });
   await sub().locator("button", { hasText: /^Graphite$/ }).click();
-  await pg.waitForTimeout(300);
+  await idle(h);
   res.clicked = { menus: await menus(), look: await look(), set: themeSet() };
 
   // 键盘：↓ 走到 Theme，→ 打开（选中第一项），← 关回来；→ 再开，Esc 只关二级；→ 再开，↓ 走到 Poster，↵ 换
@@ -196,33 +196,33 @@ test("themeMenuSwitchesTheme", async () => {
   for (let i = 0; i < steps; i++) await pg.keyboard.press("ArrowDown");
   res.kbOnTheme = (await items(first())).find((t) => t.kb)?.label;
   await pg.keyboard.press("ArrowRight");
-  await pg.waitForTimeout(350);
+  await idle(h);
   const right = { menus: await menus(), firstKb: (await items(sub()))[0]?.kb };
   res.right = right;
   await pg.keyboard.press("ArrowLeft");
-  await pg.waitForTimeout(150);
+  await idle(h);
   res.left = { menus: await menus(), kb: (await items(first())).find((t) => t.kb)?.label };
   await pg.keyboard.press("ArrowRight");
-  await pg.waitForTimeout(350);
+  await idle(h);
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(150);
+  await idle(h);
   res.esc = { menus: await menus() };
   await pg.keyboard.press("ArrowRight");
-  await pg.waitForTimeout(350);
+  await idle(h);
   const now = await items(sub());
   for (let i = 0; i < now.findIndex((t) => t.label === "Poster"); i++) await pg.keyboard.press("ArrowDown");
   res.kbOnPoster = (await items(sub())).find((t) => t.kb)?.label;
   await pg.keyboard.press("Enter");
-  await pg.waitForTimeout(300);
+  await idle(h);
   res.entered = { menus: await menus(), look: await look(), set: themeSet() };
   // 再打开：勾跟着换到 Poster
   await more();
   await first().locator("button[role=menuitem]", { hasText: /^Theme$/ }).hover();
-  await pg.waitForTimeout(400);
+  await idle(h); // the submenu opens on pointerenter
   res.checkedNow = (await items(sub())).filter((t) => t.checked).map((t) => t.label);
   await pg.keyboard.press("Escape");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(200);
+  await idle(h);
   res.closed = await menus();
 
   const names = ["Warm Ink", "Graphite", "Soft Light", "Drafting", "Colorful", "Newspaper", "Poster", "Classic", "Ink Wash", "City"];
@@ -242,7 +242,7 @@ test("themeMenuSwitchesTheme", async () => {
 test("menuOpensWithoutOvershoot", async () => {
   const h = await open({ board: board(), light: true, w: 1300, h: 820 });
   const pg = h.page;
-  await pg.waitForTimeout(500);
+  await idle(h);
   type S = { t: number; s: number; o: number };
   // from the frame the action runs: the newest menu's scale and opacity every frame for 400 ms (t = ms since the action)
   const sample = async (act: () => Promise<void>) => {
@@ -275,9 +275,9 @@ test("menuOpensWithoutOvershoot", async () => {
   };
   const top = summary(await sample(() => pg.locator('.bbar button[aria-label="More"]').click()));
   await pg.locator(".ctx").first().locator("button[role=menuitem]", { hasText: /^Theme$/ }).hover();
-  await pg.waitForTimeout(400);
+  await idle(h); // the submenu opens on pointerenter
   await pg.keyboard.press("Escape"); // closes only the submenu; → opens it again
-  await pg.waitForTimeout(300);
+  await idle(h);
   const sub = summary(await sample(() => pg.keyboard.press("ArrowRight")));
   const ok = (m: ReturnType<typeof summary>) => m.frames > 3 && m.maxScale <= 1 && m.minScale >= 0.96 && m.settledAt !== null && m.settledAt <= 200;
   check("menuOpen-noOvershoot", ok(top), top);
@@ -294,7 +294,7 @@ test("vscodeBackgroundSetting", async () => {
   const h = await open({ board: board(), light: true, w: 1300, h: 820, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
   await pg.evaluate((c) => document.documentElement.style.setProperty("--vscode-editor-background", c), VS);
-  await pg.waitForTimeout(400);
+  await idle(h);
   const probe = () => pg.evaluate(() => {
     const board = getComputedStyle(document.querySelector(".board")!), root = getComputedStyle(document.documentElement);
     const probeBg = document.createElement("div"); probeBg.style.color = root.getPropertyValue("--bg"); document.body.append(probeBg);
@@ -306,26 +306,26 @@ test("vscodeBackgroundSetting", async () => {
   await pg.keyboard.press("Meta+Comma");
   await pg.waitForSelector(".settings");
   await pg.locator(".settings label.st-check", { hasText: "Use VS Code's Background" }).click();
-  await pg.waitForTimeout(200);
+  await idle(h);
   const on = await probe();
   const sentNow = () => h.sent.filter((m) => m.type === "setSetting" && (m as { key: string }).key === "vscodeBg").map((m) => (m as { value: boolean }).value);
   const sent = sentNow();
   // every theme, switched live from the Settings page
   const looks: Record<string, Awaited<ReturnType<typeof probe>>> = {};
   for (const sw of await pg.locator(".settings .st-sw").all()) {
-    await sw.click(); await pg.waitForTimeout(120);
+    await sw.click(); await idle(h);
     const r = await probe(); looks[r.look!] = r;
   }
   await pg.locator(".settings .st-sw", { hasText: "Warm Ink" }).click();
   await pg.evaluate((c) => document.documentElement.style.setProperty("--vscode-editor-background", c), VS2);
-  await pg.waitForTimeout(100);
+  await idle(h);
   const live = await probe();
   await pg.evaluate(() => document.documentElement.style.removeProperty("--vscode-editor-background"));
-  await pg.waitForTimeout(100);
+  await idle(h);
   const noVar = await probe();
   await pg.evaluate((c) => document.documentElement.style.setProperty("--vscode-editor-background", c), VS);
   await pg.locator(".settings label.st-check", { hasText: "Use VS Code's Background" }).click();
-  await pg.waitForTimeout(200);
+  await idle(h);
   const off = await probe();
   const pattern: Record<string, (img: string) => boolean> = { poster: (i) => i.includes("linear-gradient"), city: (i) => i.includes("linear-gradient") && i.includes("url("), "ink-wash": (i) => i.includes("url(") };
   const bad = Object.entries(looks).filter(([id, r]) => r.bg !== VS || r.card === VS || (pattern[id] && !pattern[id](r.image))).map(([id]) => id);
@@ -347,7 +347,7 @@ test("resizeGripInsideCardCorner", async () => {
   b.place.n1 = { x: 80, y: 560, w: 360 };
   const h = await open({ board: b, light: true, w: 1300, h: 820, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
-  await pg.waitForTimeout(500);
+  await idle(h);
   const geo = () => pg.evaluate(() => [...document.querySelectorAll<HTMLElement>(".card")].flatMap((card) => {
     const grip = card.querySelector<HTMLElement>(":scope > .cface > .grip");
     if (!grip) return [];
@@ -373,7 +373,7 @@ test("resizeGripInsideCardCorner", async () => {
   const res: Record<string, Awaited<ReturnType<typeof geo>>> = {};
   let head = null as null | { icon: string; title: string };
   for (const sw of await pg.locator(".settings .st-sw").all()) {
-    await sw.click(); await pg.waitForTimeout(150);
+    await sw.click(); await idle(h);
     const look = await pg.evaluate(() => document.documentElement.dataset.look!);
     res[look] = await geo();
     if (look === "soft-light") head = await pg.evaluate(() => {
@@ -396,19 +396,19 @@ test("editingKeepsCardCorners", async () => {
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light: true, w: 900, h: 600, settings: { theme } as never });
     const pg = h.page;
-    await pg.waitForTimeout(400);
+    await idle(h);
     const radius = () => pg.evaluate(() => {
       const c = document.querySelector<HTMLElement>('.card[data-id="n1"]')!, cs = getComputedStyle(c);
       return { r: cs.borderTopLeftRadius, br: cs.borderBottomRightRadius, cr: cs.getPropertyValue("--cr").trim(), editing: c.classList.contains("editing"), cursor: cs.cursor };
     });
-    const idle = await radius();
+    const rest = await radius();
     await pg.locator('.card[data-id="n1"] .nbody p').last().dblclick();
     await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
     await pg.mouse.move(5, 5);
-    await pg.waitForTimeout(300);
+    await idle(h);
     const edit = await radius();
     await pg.screenshot({ path: path.join(OUT, `editingCorners-${theme}.png`), clip: { x: 40, y: 40, width: 480, height: 320 } });
-    check(`editingKeepsCardCorners-${theme}`, edit.editing && parseFloat(idle.r) >= 10 && edit.r === idle.r && edit.br === idle.br && edit.cursor === idle.cursor, { idle, edit });
+    check(`editingKeepsCardCorners-${theme}`, edit.editing && parseFloat(rest.r) >= 10 && edit.r === rest.r && edit.br === rest.br && edit.cursor === rest.cursor, { idle: rest, edit });
     await pg.context().close();
   }
 });

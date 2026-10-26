@@ -231,7 +231,7 @@ test("noteCodeScratchClosed", async () => {
 /** 光标在 Note 的代码块（CodeMirror）里：点别的卡、点画布空白，和在正文里一样保存并结束编辑 */
 test("noteCodeBlockClickAwayEnds", async () => {
   const h = await open({ board: board(["```python\nx = 1\n```", "other note"]) });
-  await h.page.waitForTimeout(1500);
+  await idle(h);
   const cases: { name: string; away: () => Promise<void>; md: string }[] = [
     { name: "otherCard", away: () => h.page.locator('.card[data-id="n1"] .nbody').click(), md: "```python\nx = 1 # a\n```" },
     { name: "otherCardHead", away: () => h.page.locator('.card[data-id="n1"] .chead .kind').click(), md: "```python\nx = 1 # a # b\n```" },
@@ -241,10 +241,11 @@ test("noteCodeBlockClickAwayEnds", async () => {
     await editNote(h, "n0");
     await h.page.locator('.card[data-id="n0"] .md-pm pre .cm-content').click();
     await keys(h.page, `{End} # ${"abc"[i]}`);
-    await h.page.waitForTimeout(150);
+    await idle(h);
     const inCode = await h.page.evaluate(() => !!document.activeElement?.closest(".cm-content"));
+    const was = md(h, "n0");
     await c.away();
-    await h.page.waitForTimeout(400);
+    await until(h, `the edit is saved (${c.name})`, () => md(h, "n0") !== was); await idle(h);
     const still = await editing(h, "n0");
     check(`noteCodeBlockClickAwayEnds ${c.name}`, inCode && still === 0 && md(h, "n0") === c.md, { inCode, still, got: md(h, "n0"), want: c.md });
     await exitEdit(h);
@@ -496,7 +497,7 @@ test("noteFontSizeSettings", async () => {
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 1200, h: 820, settings: { theme: "warm-ink", noteHeadingInBody: true } as never });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  await idle(h);
   type Mark = HTMLElement & { __mark?: number };
   const sizes = () => pg.evaluate(() => {
     const card = document.querySelector('.card[data-id="n0"]') as HTMLElement, body = card.querySelector(".nbody") as HTMLElement & { __mark?: number };
@@ -517,17 +518,17 @@ test("noteFontSizeSettings", async () => {
   await sec.scrollIntoViewIfNeeded();
   const rows = () => sec.locator(".st-fr").evaluateAll((rs) => rs.map((r) => ({ level: (r as HTMLElement).dataset.level, value: (r.querySelector("input") as HTMLInputElement).value, theme: !!r.querySelector(".st-def") })));
   const rows0 = await rows();
-  const setRow = async (level: string, v: string) => { const inp = sec.locator(`.st-fr[data-level="${level}"] input`); await inp.fill(v); await inp.press("Enter"); await pg.waitForTimeout(100); };
+  const setRow = async (level: string, v: string) => { const inp = sec.locator(`.st-fr[data-level="${level}"] input`); await inp.fill(v); await inp.press("Enter"); await idle(h); };
   await setRow("body", "16");
   await setRow("h1", "32");
   await pg.mouse.move(5, 5);
   await pg.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
-  await pg.waitForTimeout(300);
+  await idle(h);
   const rows1 = await rows();
   await sec.screenshot({ path: path.join(SHOTS, "settings-notes.png") });
   const sent = h.sent.filter((m) => m.type === "setSetting" && (m as { key: string }).key === "noteFontSize").map((m) => (m as { value: unknown }).value);
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(600);
+  await pg.locator(".settings").waitFor({ state: "detached" }); await idle(h);
   const after = await sizes(), belowAfter = below();
   await pg.screenshot({ path: path.join(SHOTS, "note-after.png"), clip: { x: 40, y: 40, width: 800, height: 560 } });
 
@@ -535,17 +536,16 @@ test("noteFontSizeSettings", async () => {
   await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
   await pg.waitForSelector('.card[data-id="n0"] .md-pm', { timeout: 5000 });
   await pg.mouse.move(5, 5);
-  await pg.waitForTimeout(300);
+  await idle(h);
   const edit = await sizes();
   await exitEdit(h);
-  await pg.waitForTimeout(300);
 
   // Reset All: back to the theme
   await pg.keyboard.press("Meta+Comma");
   await pg.waitForSelector(".settings");
   await pg.locator('.settings [data-sec="notes"] button', { hasText: "Reset All" }).click();
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(500);
+  await pg.locator(".settings").waitFor({ state: "detached" }); await idle(h);
   const reset = await sizes();
 
   const near = (a: number, b: number) => Math.abs(a - b) < 0.1;
@@ -572,18 +572,19 @@ test("noteEditKeepsHeightWithHeaderFolded", async () => {
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light: true, w: 1400, h: 520, settings: { theme } as never });
     const pg = h.page;
-    await pg.waitForTimeout(1200);
+    await idle(h);
     const hOf = (id: string) => pg.evaluate((id) => document.querySelector(`.card[data-id="${id}"]`)!.getBoundingClientRect().height, id);
     await pg.screenshot({ path: path.join(OUT, `noteFold-${theme}-display.png`), clip: { x: 40, y: 40, width: 1300, height: 260 } });
     const res: Record<string, unknown>[] = [];
     for (const id of ["n0", "n1", "n2"]) {
       const before = await hOf(id);
       await pg.evaluate((id) => { const w = window as any; w.__hs = []; const card = document.querySelector(`.card[data-id="${id}"]`)!; const t0 = performance.now();
-        const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 700) requestAnimationFrame(f); }; requestAnimationFrame(f); }, id);
+        const f = () => { w.__hs.push(card.getBoundingClientRect().height); if (performance.now() - t0 < 700) requestAnimationFrame(f); else w.__hsDone = true; }; w.__hsDone = false; requestAnimationFrame(f); }, id);
       await pg.locator(`.card[data-id="${id}"] .nbody p`).last().dblclick();
       await pg.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
       await pg.mouse.move(5, 5);
-      await pg.waitForTimeout(800);
+      await pg.waitForFunction(() => (window as any).__hsDone); // every frame of the 700 ms from the double-click is recorded
+      await idle(h);
       const hs: number[] = await pg.evaluate(() => (window as any).__hs);
       const st = await pg.evaluate((id) => {
         const card = document.querySelector(`.card[data-id="${id}"]`)!, head = card.querySelector(".chead")!, ib = head.querySelector<HTMLElement>(".ib")!, r = ib.getBoundingClientRect();
@@ -592,7 +593,7 @@ test("noteEditKeepsHeightWithHeaderFolded", async () => {
           ibHit: document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.closest(".ib") === ib, heading: hd ? getComputedStyle(hd).opacity : null };
       }, id);
       if (id !== "n1") await pg.screenshot({ path: path.join(OUT, `noteFold-${theme}-editing-${id === "n0" ? "h1" : "h3"}.png`), clip: { x: 40, y: 40, width: 1300, height: 260 } });
-      await exitEdit(h); await pg.waitForTimeout(500);
+      await exitEdit(h);
       const after = await hOf(id), unfolded = await pg.evaluate((id) => !document.querySelector(`.card[data-id="${id}"] .chead`)!.classList.contains("fold"), id);
       const dev = Math.max(...hs.map((v) => Math.abs(v - before)));
       res.push({ id, before, dev: +dev.toFixed(2), frames: hs.length, after, unfolded, ...st });
@@ -614,7 +615,7 @@ test("noteHeightSameInWarmInkAndSoftLight", async () => {
     notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * 420, 60, 380));
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light: true, w: 1400, h: 520, settings: { theme } as never });
-    await h.page.waitForTimeout(1200);
+    await idle(h);
     heights[theme] = await h.page.evaluate(() => ["n0", "n1", "n2"].map((id) => +document.querySelector(`.card[data-id="${id}"]`)!.getBoundingClientRect().height.toFixed(2)));
     await close(h);
   }

@@ -16,7 +16,7 @@ import { nodeFs } from "@codeboard/host/nodefs";
 import { readAsset, saveNoteImage } from "@codeboard/host/images";
 import { png } from "@codeboard/host/test/images";
 import { OUT, put, symCard, findSym, type Host } from "../harness";
-import { test, open, check } from "../fixtures";
+import { test, open, check, until, idle, frames } from "../fixtures";
 
 const BASE = "https://cb-assets.test/res";
 /** A 240 × 160 picture: a warm gradient with a dark band */
@@ -45,6 +45,9 @@ async function boardWith(b: Board) {
       return false;
     },
   });
+  // the pictures of the image cards have loaded
+  for (const img of await h.page.locator(".card .imgb img").all()) await img.evaluate((e) => (e as HTMLImageElement).decode());
+  await idle(h);
   const assets = () => fs.readdirSync(store.assetsDir()).sort();
   return { h, assets, done: async () => { await h.close(); fs.rmSync(dir, { recursive: true, force: true }); } };
 }
@@ -68,7 +71,7 @@ const pasteClipboard = (h: Host) => h.page.evaluate(async () => {
   window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
 });
 const shotTo = async (h: Host, name: string, clip?: { x: number; y: number; width: number; height: number }) => {
-  await h.page.waitForTimeout(400);
+  await idle(h);
   await h.page.screenshot({ path: path.join(OUT, `copy-paste-${name}.png`), clip });
 };
 
@@ -82,30 +85,28 @@ test("copiedCardsGiveOtherAppsTheirContent", async () => {
   b.cam = { x: 0, y: 0, z: 1 };
   const { h, done } = await boardWith(b);
   const pg = h.page;
-  await pg.waitForTimeout(800);
 
   // a Note, a Text and a code card: their text, in the order picked, with blank lines between
   await cardEl(h, "n1").locator(".chead").click();
   await cardEl(h, "t1").click({ modifiers: ["Shift"] });
   await cardEl(h, code.id).locator(".chead").click({ modifiers: ["Shift"] });
   await pg.keyboard.press("Meta+c");
-  await pg.waitForTimeout(300);
-  const three = await clipboard(h);
+  const three = await until(h, "the copy is on the clipboard", async () => { const c = await clipboard(h); return c.text ? c : undefined; });
   const want = [note.md, text.md, code.segments[0].text.join("\n")].join("\n\n");
   check("copiedCardsGiveOtherAppsTheirContent Note, Text and code as text", three.text === want, { got: three.text.slice(0, 300), want: want.slice(0, 300) });
 
   // an image card: the picture itself, and a Markdown image for apps that take only text (never the word "Image")
   await cardEl(h, "i1").locator(".imgb").click();
   await pg.keyboard.press("Meta+c");
-  await pg.waitForTimeout(600);
-  const img = await clipboard(h);
+  // the board writes the clipboard itself (text and picture in one write, the picture's PNG made after the key press)
+  const img = await until(h, "the image card's copy is on the clipboard", async () => { const c = await clipboard(h); return c.text !== three.text ? c : undefined; });
   check("copiedCardsGiveOtherAppsTheirContent image card gives its picture", img.types.includes("image/png") && img.png?.w === 240 && img.png?.h === 160, img);
   check("copiedCardsGiveOtherAppsTheirContent image card text is a Markdown image", img.text === "![](assets/card.png)", img.text);
 
   // pasted back on the board, that clipboard is still the card: a copy of the image card, not a new picture or a Note
   const before = h.board().cards.map((c) => c.id);
   await pasteClipboard(h);
-  await pg.waitForTimeout(800);
+  await until(h, "the paste is saved", () => h.board().cards.length > before.length); await idle(h);
   const added = h.board().cards.filter((c) => !before.includes(c.id));
   check("copiedCardsGiveOtherAppsTheirContent pasting it back gives the image card", added.length === 1 && added[0].kind === "image" && (added[0] as { src: string }).src === "card.png",
     added.map((c) => ({ kind: c.kind, src: (c as { src?: string }).src })));
@@ -125,7 +126,6 @@ test("pastedCardsKeepTheirSize", async () => {
   b.cam = { x: 0, y: 0, z: 0.8 };
   const { h, done } = await boardWith(b);
   const pg = h.page;
-  await pg.waitForTimeout(800);
   const orig = ["n1", "t1", code.id, "i1"];
   const size = (id: string) => cardEl(h, id).evaluate((el) => ({ w: (el as HTMLElement).offsetWidth, h: (el as HTMLElement).offsetHeight }));
   const sizes0 = Object.fromEntries(await Promise.all(orig.map(async (id) => [id, await size(id)] as const)));
@@ -133,12 +133,11 @@ test("pastedCardsKeepTheirSize", async () => {
   await pg.mouse.click(1250, 760); // the canvas has the focus
   await pg.keyboard.press("Meta+a");
   await pg.keyboard.press("Meta+c");
-  await pg.waitForTimeout(600);
-  const copied = [...h.sent].reverse().find((m) => m.type === "copyCards") as { text: string } | undefined;
+  const copied = await until(h, "the copy reaches the host", () => [...h.sent].reverse().find((m) => m.type === "copyCards") as { text: string } | undefined);
   await pg.mouse.move(700, 600);
   // ⌘V: the paste event with the text the board put on the clipboard
   await pg.evaluate((t) => { const dt = new DataTransfer(); dt.setData("text/plain", t); window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); }, copied?.text ?? "");
-  await pg.waitForTimeout(1000);
+  await until(h, "the paste is saved", () => h.board().cards.length > orig.length); await idle(h);
   const bd = h.board();
   const added = bd.cards.filter((c) => !orig.includes(c.id));
   const kindOf = (c: Card) => (c.kind === "note" ? (c.bg ? "note" : "text") : c.kind);
@@ -162,7 +161,6 @@ test("imageCardDropsIntoNote", async () => {
   b.cam = { x: 0, y: 0, z: 1 };
   const { h, assets, done } = await boardWith(b);
   const pg = h.page;
-  await pg.waitForTimeout(800);
   const place0 = { ...h.board().place.i1 };
 
   // drag the picture over the Note: the Note shows where it goes, with a transition (not snapped on)
@@ -170,16 +168,16 @@ test("imageCardDropsIntoNote", async () => {
   const to = (await cardEl(h, "n1").locator(".nbody").boundingBox())!;
   await pg.mouse.move(from.x + 60, from.y + 40);
   await pg.mouse.down();
-  for (let i = 1; i <= 14; i++) { await pg.mouse.move(from.x + 60 + ((to.x + 120 - from.x - 60) * i) / 14, from.y + 40 + ((to.y + 20 - from.y - 40) * i) / 14); await pg.waitForTimeout(16); }
-  await pg.waitForTimeout(60);
+  for (let i = 1; i <= 14; i++) { await pg.mouse.move(from.x + 60 + ((to.x + 120 - from.x - 60) * i) / 14, from.y + 40 + ((to.y + 20 - from.y - 40) * i) / 14); await frames(pg); }
+  await frames(pg, 3);
   const hover = await cardEl(h, "n1").evaluate((el) => ({ on: el.classList.contains("img-drop"), anim: getComputedStyle(el).transitionDuration, bar: getComputedStyle(el.querySelector(".cface")!, "::after").content }));
-  await pg.waitForTimeout(300);
   await shotTo(h, "image-over-note", { x: 40, y: 30, width: 900, height: 500 });
   check("imageCardDropsIntoNote the Note shows the drop", hover.on && hover.anim.split(",").some((d) => parseFloat(d) > 0) && hover.bar !== "none", hover);
   await pg.mouse.up();
-  await pg.waitForTimeout(1200);
-
   const note = () => h.board().cards.find((c) => c.id === "n1") as NoteCard;
+  // the host saves the picture under assets/, then the Note gets it
+  await until(h, "the drop is saved", () => note().md !== md0); await idle(h);
+
   const files = assets().filter((f) => f !== "card.png");
   const m = /^([\s\S]*)\n\n!\[\]\((assets\/[0-9a-f]{16}-240x160\.png)\)\n\nBatch layout$/.exec(note().md);
   check("imageCardDropsIntoNote the Note gets the image", !!m && m[1] === md0 && files.length === 1 && m[2] === `assets/${files[0]}`, { md: note().md, files });
@@ -191,7 +189,7 @@ test("imageCardDropsIntoNote", async () => {
   // one undo: the Note as it was and the image card back where it started
   await pg.mouse.click(1250, 760);
   await pg.keyboard.press("Meta+z");
-  await pg.waitForTimeout(600);
+  await until(h, "the undo is saved", () => h.board().place.i1); await idle(h);
   const back = h.board().place.i1;
   check("imageCardDropsIntoNote one undo restores both", note().md === md0 && !!back && back.x === place0.x && back.y === place0.y && back.w === place0.w, { md: note().md, back, place0 });
   await done();

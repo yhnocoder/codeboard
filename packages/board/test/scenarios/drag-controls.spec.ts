@@ -6,7 +6,7 @@
 // Usage: npm run harness -- dragPassesOverCardControls panKeepsGoingOverCards
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { type Host } from "../harness";
-import { test, open, check, light } from "../fixtures";
+import { test, open, check, light, idle, hold, frames } from "../fixtures";
 
 function board(): Board {
   const b = emptyBoard("b1", "drag over controls");
@@ -38,14 +38,17 @@ const leaks = (h: Host) => h.page.evaluate((controls) => ({
 type Seen = { tip: string | null; hover: string[]; off?: number | null };
 const clean = (seen: Seen[]) => seen.every((m) => m.tip === null && m.hover.length === 0);
 
-/** Moves the held pointer to `to` in a few large steps (each step's hit test sees the dragged card where the step before left
- *  it), then rests there longer than the tooltip delay (500 ms) */
-async function glide(h: Host, from: Pt, to: Pt, steps = 4, rest = 700) {
+/** The tooltip shows this long after the pointer comes to rest on a control (TooltipLayer, ui/Menu.tsx) */
+const TIP_DELAY = 500;
+/** Moves the held pointer to `to` in a few large steps, a rendered frame each (each step's hit test sees the dragged card where
+ *  the step before left it), then, with `rest`, rests there longer than the tooltip delay */
+async function glide(h: Host, from: Pt, to: Pt, steps = 4, rest = true) {
   for (let i = 1; i <= steps; i++) {
     await h.page.mouse.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps);
-    await h.page.waitForTimeout(16);
+    await frames(h.page);
   }
-  await h.page.waitForTimeout(rest);
+  if (rest) await hold(h, TIP_DELAY + 200, "resting on the control longer than the tooltip delay: a tooltip or hover would show by now");
+  else await frames(h.page, 2);
 }
 
 /** Holds the pointer down at `start`, passes it over n1's ···, grip and left port, then over `end` and releases it there;
@@ -62,16 +65,15 @@ async function across(h: Host, start: Pt, end: Pt, follow: (at: Pt) => Promise<n
     at = s;
     seen.push({ ...(await leaks(h)), off: await follow(s) });
   }
-  await glide(h, at, end, 3, 200);
+  await glide(h, at, end, 3, false);
   await h.page.mouse.up();
-  await h.page.waitForTimeout(300);
+  await idle(h);
   return seen;
 }
 
 test("dragPassesOverCardControls", async () => {
   const h = await open({ board: board(), light, w: 1100, h: 700 });
   const pg = h.page;
-  await pg.waitForTimeout(600);
 
   // 1. moving n0 by its header, grabbed near its right end: at each large step the pointer is past the card's right edge
   const n0 = await box(h, N0);
@@ -103,7 +105,7 @@ test("dragPassesOverCardControls", async () => {
   await pg.mouse.click(1000, 660); // nothing selected
   const n0now = await box(h, N0);
   await pg.mouse.move(n0now.x, n0now.y); // hovering n0 shows its ports
-  await pg.waitForTimeout(300);
+  await pg.locator(`${N0} .eport.t`).waitFor({ state: "visible" }); await idle(h);
   const port = await box(h, `${N0} .eport.t`);
   const rubber = async () => (await pg.locator(".edge.rubber").count()) === 1 ? 0 : null;
   const linked = await across(h, port, await box(h, `${N1} .nbody`), rubber);
@@ -121,6 +123,10 @@ function panBoard(): Board {
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
+/** A wheel pan that is going on keeps going while wheel events come within this long of each other (interact.ts canvasWheel) */
+const WHEEL_GESTURE = 200;
+/** A pan released within this long of its last move flings on (interact.ts startPan) */
+const FLING_WINDOW = 60;
 const camOf = (h: Host) => h.page.evaluate(() => {
   const m = /translate\(([-\d.]+)px, ([-\d.]+)px\)/.exec((document.querySelector(".world") as HTMLElement).style.transform);
   return { x: Number(m![1]), y: Number(m![2]) };
@@ -132,31 +138,30 @@ const camOf = (h: Host) => h.page.evaluate(() => {
 test("panKeepsGoingOverCards", async () => {
   const h = await open({ board: panBoard(), light, w: 1100, h: 700 });
   const pg = h.page;
-  await pg.waitForTimeout(600);
   const TOTAL = 420; // more than the card is tall: the pointer goes in at its bottom edge and out at its top
   const wheelRuns: { where: string; step: number; moved: number; want: number; under: string[] }[] = [];
   for (const [where, step] of [["middle", 6], ["corner", 6], ["middle", 42]] as const) {
     const r = await box(h, N0);
     const at = { x: where === "middle" ? r.x : r.right - 5, y: r.bottom + 60 }; // below the bottom edge port / the resize grip
     await pg.mouse.move(at.x, at.y);
-    await pg.waitForTimeout(400); // a new wheel gesture
+    await idle(h);
+    await hold(h, WHEEL_GESTURE + 200, "a new wheel gesture: longer than the gap that ends one");
     const c0 = await camOf(h);
     const under: string[] = [];
     let n = 0;
     for (let done = 0; done < TOTAL; done += step) {
       await pg.mouse.wheel(0, -step);
-      await pg.waitForTimeout(16);
+      await frames(pg);
       if (n++ % Math.ceil(42 / step) === 0) under.push(await pg.evaluate((p) => String(document.elementFromPoint(p.x, p.y)?.className ?? ""), at));
     }
-    await pg.waitForTimeout(100);
+    await idle(h);
     const c1 = await camOf(h);
     wheelRuns.push({ where, step, moved: Math.round(c1.y - c0.y), want: Math.ceil(TOTAL / step) * step, under: [...new Set(under)] });
     // back where it was, as a separate gesture from the empty canvas above the card
-    await pg.waitForTimeout(300);
     await pg.mouse.move(at.x, 20);
-    await pg.waitForTimeout(400);
+    await hold(h, WHEEL_GESTURE + 200, "a new wheel gesture: longer than the gap that ends one");
     await pg.mouse.wheel(0, c1.y - c0.y);
-    await pg.waitForTimeout(300);
+    await idle(h);
   }
   check("panKeepsGoingOverCards wheel pan crosses the card", wheelRuns.every((w) => w.moved === w.want), wheelRuns);
 
@@ -168,10 +173,10 @@ test("panKeepsGoingOverCards", async () => {
     const c0 = await camOf(h);
     await pg.mouse.move(from.x, from.y);
     await pg.mouse.down({ button: "middle" });
-    for (let i = 1; i <= steps; i++) { await pg.mouse.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps); await pg.waitForTimeout(16); }
-    await pg.waitForTimeout(150); // held still before the release: no fling
+    for (let i = 1; i <= steps; i++) { await pg.mouse.move(from.x + ((to.x - from.x) * i) / steps, from.y + ((to.y - from.y) * i) / steps); await frames(pg); }
+    await hold(h, FLING_WINDOW + 90, "held still before the release, longer than the fling window: no fling");
     await pg.mouse.up({ button: "middle" });
-    await pg.waitForTimeout(200);
+    await idle(h);
     const c1 = await camOf(h);
     dragRuns.push({ steps, moved: { x: Math.round(c1.x - c0.x), y: Math.round(c1.y - c0.y) }, want: { x: Math.round(to.x - from.x), y: Math.round(to.y - from.y) } });
   }

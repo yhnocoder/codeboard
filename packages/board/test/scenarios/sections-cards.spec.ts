@@ -3,7 +3,7 @@
 // (npm run harness -- sectionLook dragCardIntoOtherSection sectionDragSnapsToSection …)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
-import { test, open, check, light, until, idle } from "../fixtures";
+import { test, open, check, light, until, idle, hold } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 
@@ -58,9 +58,9 @@ test("sectionFitContent", async () => {
   b.place.a.section = "S"; b.place.c.section = "S";
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 1300, h: 900 });
-  await wait(h, 800);
+  await idle(h);
   await shot(h, "sect-fit-01-before");
-  await h.page.locator('.slabel[data-sect="S"] .sname').click({ button: "right" }); await wait(h, 250);
+  await h.page.locator('.slabel[data-sect="S"] .sname').click({ button: "right" }); await h.page.locator(".ctx button").first().waitFor(); await idle(h);
   const items = await h.page.locator(".ctx button").allTextContents();
   check("sectionFitContent in the Section menu", items.some((t) => t.includes("Fit Content")), { items });
   if (!items.some((t) => t.includes("Fit Content"))) return;
@@ -71,7 +71,7 @@ test("sectionFitContent", async () => {
     const f = () => { out.push(el.getBoundingClientRect().width); if (out.length < 30) requestAnimationFrame(f); else res(out); };
     requestAnimationFrame(f);
   }));
-  await wait(h, 600);
+  await until(h, "Fit Content is saved", () => h.board().sections[0].w !== 1100); await idle(h);
   const got = await h.page.evaluate(() => {
     const r = (s: string) => document.querySelector(s)!.getBoundingClientRect();
     const f = r('.sect[data-sect="S"]'), a = r('.card[data-id="a"]'), c = r('.card[data-id="c"]');
@@ -86,7 +86,8 @@ test("sectionFitContent", async () => {
   check("sectionFitContent wraps its members", near(got.frame.l, got.want.l) && near(got.frame.t, got.want.t) && near(got.frame.r, got.want.r) && near(got.frame.b, got.want.b)
     && near(s.x, got.want.l) && near(s.y, got.want.t) && near(s.w, w1), { got, s });
   check("sectionFitContent animated", mid >= 3, { w0, w1, samples });
-  await h.page.keyboard.press("Control+z"); await wait(h, 500);
+  await h.page.keyboard.press("Control+z");
+  await until(h, "the undo is saved", () => h.board().sections[0].w !== s.w); await idle(h);
   const back = h.board().sections[0];
   check("sectionFitContent one undo step", back.x === 80 && back.y === 60 && back.w === 1100 && back.h === 760, { back });
   await close(h);
@@ -105,7 +106,7 @@ test("sectionCollapsedPill", async () => {
   b.sections.push({ id: "S", title: "异构并行计算", x: 80, y: 80, w: 1200, h: 800, collapsed: true });
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 900, h: 600 });
-  await wait(h, 800);
+  await idle(h);
   await h.page.mouse.move(800, 550);
   const pill = '.slabel[data-sect="S"]';
   const look = await h.page.evaluate((sel) => {
@@ -117,7 +118,8 @@ test("sectionCollapsedPill", async () => {
   await shot(h, "sect-pill-01-collapsed");
   check("sectionCollapsedPill title and count", look.name === "异构并行计算" && look.weight >= 600 && !look.clipped && look.count === "· 8 cards" && look.countInside && look.countGrey, look);
   // hover: a preview of a few member cards, each with its kind icon, then "+N more"
-  await h.page.locator(`${pill} .sname`).hover(); await wait(h, 700);
+  // the preview shows PEEK_DELAY after the pointer comes onto the pill (a timer): wait for it, then for its fade-in
+  await h.page.locator(`${pill} .sname`).hover(); await h.page.locator(`${pill} .spv`).waitFor({ timeout: 5000 }); await idle(h);
   const pv = await h.page.evaluate((sel) => {
     const v = document.querySelector(`${sel} .spv`);
     if (!v) return null;
@@ -127,7 +129,7 @@ test("sectionCollapsedPill", async () => {
   await shot(h, "sect-pill-02-hover-preview");
   const shownTitles = pv?.rows.map((r) => r.text) ?? [];
   check("sectionCollapsedPill hover preview", !!pv && pv.opacity > 0.9 && pv.rows.length === 5 && pv.rows.every((r) => r.icon) && shownTitles.every((t) => !!t && ([...titles, "Scheduler.schedule"].some((x) => t.includes(x)))) && pv.more === "+3 more", pv);
-  await h.page.mouse.move(800, 550); await wait(h, 500);
+  await h.page.mouse.move(800, 550); await h.page.locator(`${pill} .spv`).waitFor({ state: "detached", timeout: 5000 }); await idle(h);
   const gone = await h.page.evaluate((sel) => { const v = document.querySelector(`${sel} .spv`); return !v || +getComputedStyle(v).opacity < 0.05; }, pill);
   check("sectionCollapsedPill preview hides", gone);
   // the caret: one small icon, pointing right while collapsed and down once expanded (it turns)
@@ -141,8 +143,8 @@ test("sectionCollapsedPill", async () => {
   }, pill);
   const a0 = await angle();
   await h.page.locator(`${pill} .chev2`).click();
-  await wait(h, 900);
-  await h.page.locator(`${pill} .sname`).hover(); await wait(h, 400);
+  await until(h, "expanding is saved", () => !h.board().sections[0].collapsed); await idle(h);
+  await h.page.locator(`${pill} .sname`).hover(); await idle(h);
   const a1 = await angle();
   const gap = await h.page.evaluate((sel) => { const n = document.querySelector(`${sel} .sname`)!.getBoundingClientRect(), c = document.querySelector(`${sel} .chev2`)!.getBoundingClientRect(); return c.left - n.right; }, pill);
   await shot(h, "sect-pill-03-expanded-hover");
@@ -193,6 +195,8 @@ test("dragCardIntoOtherSection", async () => {
 
 /** Dragging a Section by its label aligns it with other Sections like a card drag: slowed down near another Section's edge it
  *  snaps onto it and a guide line shows; holding Ctrl turns snapping off. The cards inside move along; one undo puts it back */
+/** A drag that comes to rest is looked at again this long after its last move, as a slow one, so it snaps (interact.ts snapPace) */
+const SNAP_SETTLE = 110;
 test("sectionDragSnapsToSection", async () => {
   const b = emptyBoard("b1", "section snapping");
   put(b, { id: "a", kind: "note", bg: true, md: "Prefill" } as NoteCard, 120, 140, 220);
@@ -202,7 +206,7 @@ test("sectionDragSnapsToSection", async () => {
   b.place.a.section = "S1"; b.place.c.section = "S2";
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, settings: { theme: "warm-ink" } as any });
-  await wait(h, 800);
+  await idle(h);
   const box = async (id: string) => (await h.page.locator(`.sect[data-sect="${id}"]`).boundingBox())!;
   const s1 = await box("S1"), s2 = await box("S2");
   const label = (await h.page.locator('.slabel[data-sect="S2"] .sname').boundingBox())!;
@@ -213,10 +217,12 @@ test("sectionDragSnapsToSection", async () => {
   const card0 = { ...h.board().place.c };
   await h.page.mouse.move(grab.x, grab.y); await h.page.mouse.down();
   await h.page.mouse.move(grab.x + dx / 2, grab.y + dy / 2, { steps: 8 });
-  await h.page.mouse.move(grab.x + dx, grab.y + dy, { steps: 12 }); await wait(h, 300);
+  await h.page.mouse.move(grab.x + dx, grab.y + dy, { steps: 12 });
+  await hold(h, SNAP_SETTLE + 100, "the pointer rests past the drag's settle delay: it snaps now if it is going to"); await idle(h);
   const during = await guides(), s2d = await box("S2");
   await shot(h, "sect-snap-01-guide");
-  await h.page.mouse.up(); await wait(h, 400);
+  await h.page.mouse.up();
+  await until(h, "the Section's move is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== 600); await idle(h);
   const sec2 = h.board().sections.find((q) => q.id === "S2")!, card1 = h.board().place.c;
   const left = (await box("S2")).x, gone = (await guides()).length;
   await shot(h, "sect-snap-02-dropped");
@@ -224,16 +230,19 @@ test("sectionDragSnapsToSection", async () => {
   check("section-drag-guide", !!v && Math.abs(v.x - s1.x) < 1.5 && v.y <= s1.y + 1 && v.y + v.h >= s2d.y + s2d.height - 1, { during, s1, s2d });
   check("section-drag-snaps", Math.abs(s2d.x - s1.x) < 0.5 && Math.abs(left - s1.x) < 0.5 && sec2.x === 60 && sec2.y === 460 && gone === 0, { s2d, left, sec2, gone });
   check("section-drag-moves-cards", card1.x === card0.x + (sec2.x - 600) && card1.y === card0.y + 40, { card0, card1 });
-  await h.page.keyboard.press("Control+z"); await wait(h, 400);
+  await h.page.keyboard.press("Control+z");
+  await until(h, "the undo is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== sec2.x); await idle(h);
   const back = h.board().sections.find((q) => q.id === "S2")!;
   check("section-drag-undo", back.x === 600 && back.y === 420 && h.board().place.c.x === card0.x, { back, c: h.board().place.c });
   // Ctrl held: no snapping, no guide
   const label2 = (await h.page.locator('.slabel[data-sect="S2"] .sname').boundingBox())!;
   const g2 = { x: label2.x + 10, y: label2.y + label2.height / 2 };
   await h.page.mouse.move(g2.x, g2.y); await h.page.mouse.down(); await h.page.keyboard.down("Control");
-  await h.page.mouse.move(g2.x + dx, g2.y + dy, { steps: 12 }); await wait(h, 300);
+  await h.page.mouse.move(g2.x + dx, g2.y + dy, { steps: 12 });
+  await hold(h, SNAP_SETTLE + 100, "the pointer rests past the drag's settle delay: with Ctrl it still must not snap"); await idle(h);
   const free = await guides();
-  await h.page.mouse.up(); await h.page.keyboard.up("Control"); await wait(h, 400);
+  await h.page.mouse.up(); await h.page.keyboard.up("Control");
+  await until(h, "the Section's move is saved", () => h.board().sections.find((q) => q.id === "S2")!.x !== 600); await idle(h);
   const sec3 = h.board().sections.find((q) => q.id === "S2")!;
   check("section-drag-ctrl-no-snap", free.length === 0 && sec3.x === 64, { free, sec3 });
   await close(h);

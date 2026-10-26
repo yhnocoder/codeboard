@@ -5,7 +5,7 @@
 // Screenshots: test-out/harness/marks-*.png (HARNESS_LIGHT=1 for the light theme)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
-import { test, open, check, light, until, idle } from "../fixtures";
+import { test, open, check, light, until, idle, frames, pmHasSelection, focusSettled } from "../fixtures";
 
 const sym = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; const i = s.text.findIndex((t) => re.test(t)); return s.start + Math.max(0, i); };
@@ -287,7 +287,7 @@ test("noteAnnotationLabelCentered", async () => {
   const h = await open({ board: b, light: true, w: 760, h: 420, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
   await pg.evaluate(() => document.fonts.ready);
-  await pg.waitForTimeout(200);
+  await idle(h);
   const centered = (g: Awaited<ReturnType<typeof annotGeo>>) => g.length === 3 && g.every((a) => Math.abs(a.labelCenter - a.spanCenter) <= 2 && Math.abs(a.arrowCenter - a.spanCenter) <= 2 && a.inBlock);
   const geo = await annotGeo(pg, card("n1"));
   check("annotFirstAtLineStart", geo[0]?.atLineStart && !geo[1]?.atLineStart, geo);
@@ -295,7 +295,7 @@ test("noteAnnotationLabelCentered", async () => {
   await shot(h, "marks-annotation-centered");
   await pg.locator(`${card("n1")} .nbody p`).first().dblclick({ position: { x: 300, y: 40 } });
   await pg.waitForSelector(`${card("n1")} .md-pm .md-annot`, { timeout: 5000 });
-  await pg.waitForTimeout(200);
+  await idle(h);
   const ed = await annotGeo(pg, `${card("n1")} .md-pm`);
   check("annotLabelCenteredInEditor", centered(ed), ed);
   await h.close();
@@ -347,47 +347,49 @@ test("noteAnnotationFromToolbar", async () => {
     const r = document.createRange(), i = t.data.indexOf(w); r.setStart(t, i); r.setEnd(t, i + w.length);
     getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
   }, [pm, w] as const);
+  await focusSettled(pg); // a selection set by script within ProseMirror's focus window would be undone
   await sel("never share a batch");
+  await pmHasSelection(pg);
   const btn = pg.locator('.md-bubble .tbtn[data-tip="Handwritten Note"]');
   await btn.waitFor({ timeout: 2000 });
-  await pg.waitForTimeout(300);
+  await idle(h);
   const tip = await btn.evaluate((b) => ({ label: b.getAttribute("aria-label"), on: b.classList.contains("on"), ico: !!b.querySelector("svg.md-ico path")?.getAttribute("d") }));
   check("annotButton", tip.label === "Handwritten Note" && !tip.on && tip.ico, tip);
   await btn.hover();
-  await pg.waitForTimeout(700);
+  await pg.locator(".tip").waitFor(); await idle(h); // its tooltip is in the picture
   await shot(h, "marks-annotation-toolbar-button");
   await btn.click();
   const input = pg.locator(".md-bubble input.md-annotin");
   await input.waitFor({ timeout: 2000 });
   check("annotInputFocused", await input.evaluate((i) => document.activeElement === i));
   await pg.keyboard.type("not mixed");
-  await pg.waitForTimeout(150);
+  await pg.locator(`${pm} .md-annot`).first().waitFor(); await frames(pg);
   const live = await pg.locator(`${pm} .md-annot`).evaluateAll((es) => es.map((e) => [e.textContent, (e as HTMLElement).dataset.note]));
   check("annotLivePreview", live.length === 1 && live[0][0] === "never share a batch" && live[0][1] === "not mixed", live);
   await shot(h, "marks-annotation-toolbar-typing");
   await pg.keyboard.press("Enter");
-  await pg.waitForTimeout(150);
+  await input.waitFor({ state: "detached" });
   check("annotEditorFocusedAfterEnter", await pg.evaluate((pm) => document.activeElement === document.querySelector(`${pm} .ProseMirror`) || !!document.activeElement?.closest(pm), pm));
-  // the button is on for the annotated words; it opens with the note, Escape leaves it as it was
-  await pg.waitForTimeout(500);
-  const on = await btn.evaluate((b) => b.classList.contains("on")).catch(() => false);
+  // the button is on for the annotated words; it opens with the note, Escape leaves it as it was. The toolbar comes back
+  // TOOLBAR_SETTLE after the editor has the focus again: wait (up to 5 s) for it with its button on
+  const on = await until(h, "the toolbar is back with Handwritten Note on", () => btn.evaluate((b) => b.classList.contains("on")).catch(() => false)).catch(() => false);
   await btn.click();
   await input.waitFor({ timeout: 2000 });
   const prefilled = await input.inputValue();
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(150);
+  await input.waitFor({ state: "detached" }); await frames(pg);
   const kept = await pg.locator(`${pm} .md-annot`).evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.note));
   check("annotButtonEditsExisting", on && prefilled === "not mixed" && kept.length === 1 && kept[0] === "not mixed", { on, prefilled, kept });
   // one undo takes the annotation off (the live preview steps are not separate undo steps)
   await pg.keyboard.press("ControlOrMeta+z");
-  await pg.waitForTimeout(150);
+  await frames(pg); // ProseMirror's undo changes the DOM on the key press
   const undone = await pg.evaluate((pm) => ({ annots: document.querySelectorAll(`${pm} .md-annot`).length, text: document.querySelector(pm)!.textContent }), pm);
   await pg.keyboard.press("ControlOrMeta+Shift+z");
-  await pg.waitForTimeout(150);
+  await frames(pg);
   const redone = await pg.evaluate((pm) => document.querySelector(pm)!.innerHTML, pm);
   check("annotOneUndoStep", undone.annots === 0 && undone.text === "Prefill and decode never share a batch in nano-vllm." && /data-note="not mixed"/.test(redone), { undone, redone });
   await pg.mouse.click(760, 380);
-  await pg.waitForTimeout(400);
+  await pg.locator(pm).waitFor({ state: "detached" }); await idle(h); // the editor has closed and its save reached the host
   check("annotSaved", md() === "Prefill and decode {never share a batch|not mixed} in nano-vllm.", md());
   await shot(h, "marks-annotation-toolbar-saved");
   await h.close();

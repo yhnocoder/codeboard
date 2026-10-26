@@ -2,9 +2,7 @@
 // and what Tidy Up does with arrows (npm run harness -- multiSelectToolbarTidyUp)
 import { shot, put, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
-import { test, open, check } from "../fixtures";
-
-const wait = (h: Host, ms: number) => h.page.waitForTimeout(ms);
+import { test, open, check, until, idle, frames } from "../fixtures";
 
 /** 7 Notes scattered around: a → b, a → c, c → d have arrows; e, f, g have none */
 function scattered(): Board {
@@ -34,10 +32,12 @@ const places = (h: Host) => Object.fromEntries(Object.entries(h.board().place).m
 test("multiSelectToolbarTidyUp", async () => {
   const h = await open({ board: scattered(), light: true, w: 1400, h: 900, settings: { theme: "warm-ink" } as never });
   const { page } = h;
-  await wait(h, 600);
+  const placed = () => JSON.stringify(places(h));
+  /** act, then wait until the host has the cards' places changed and the board has settled */
+  const moves = async (what: string, act: () => Promise<unknown>) => { const p0 = placed(); await act(); await until(h, what, () => placed() !== p0); await idle(h); };
   await page.mouse.click(1300, 860);
   await page.keyboard.press("Meta+a");
-  await wait(h, 300);
+  await page.locator(".alignbar").waitFor(); await idle(h);
   const bar = page.locator(".alignbar");
   const labels = await bar.evaluate((el) => [...el.querySelectorAll(":scope > button")].map((b) => b.textContent?.trim() || b.getAttribute("aria-label")));
   check("toolbarFourButtons", JSON.stringify(labels) === JSON.stringify(["Create Section", "Create Sub-board", "Tidy Up", "More"]), labels);
@@ -46,31 +46,33 @@ test("multiSelectToolbarTidyUp", async () => {
 
   // ··· → Align / Distribute
   await bar.locator('button[aria-label="More"]').click();
-  await wait(h, 250);
+  await page.locator(".alignmore").waitFor(); await idle(h);
   const more = page.locator(".alignmore");
   const tips = await more.evaluate((el) => [...el.querySelectorAll("button")].map((b) => b.getAttribute("data-tip")));
   const titles = await more.evaluate((el) => [...el.querySelectorAll(".t")].map((t) => t.textContent));
   check("moreOpensAlign", (await more.isVisible()) && tips.length === 7 && tips.includes("Align Left") && tips.includes("Distribute Vertically") && titles.join() === "Align,Distribute", { tips, titles });
   await shot(h, "multiSelect-more");
   const before = places(h);
-  await more.locator('button[aria-label="Align Top"]').click();
-  await wait(h, 300);
+  await moves("Align Top is saved", () => more.locator('button[aria-label="Align Top"]').click());
   const ys = new Set(Object.values(places(h)).map((p) => p.y));
   check("moreAlignTop", ys.size === 1, [...ys]);
   await page.keyboard.press("Escape");
-  await wait(h, 200);
+  await idle(h);
   check("moreClosesOnEscape", !(await more.isVisible()));
-  await page.keyboard.press("Meta+z"); await wait(h, 400);
+  await moves("the undo is saved", () => page.keyboard.press("Meta+z"));
   check("alignUndo", JSON.stringify(places(h)) === JSON.stringify(before), places(h));
 
   // Tidy Up: the cards slide (arrows follow), then linked cards stand in columns by depth and the rest in rows below them
   const start = await rects(h);
   const pathBefore = await page.locator('path.lhit[data-link="L2"]').first().getAttribute("d");
+  const p0 = placed();
   await bar.getByRole("button", { name: "Tidy Up" }).click();
-  await wait(h, 90);
+  // mid-slide: a couple of frames after the first frame in which card b has left where it was
+  await page.waitForFunction((s) => { const r = document.querySelector('.card[data-id="b"]')!.getBoundingClientRect(); return Math.round(r.x) !== s.x || Math.round(r.y) !== s.y; }, start.b, { polling: "raf" });
+  await frames(page, 2);
   const mid = await rects(h);
   const pathMid = await page.locator('path.lhit[data-link="L2"]').first().getAttribute("d");
-  await wait(h, 1400);
+  await until(h, "Tidy Up is saved", () => placed() !== p0); await idle(h);
   const end = await rects(h);
   const pathEnd = await page.locator('path.lhit[data-link="L2"]').first().getAttribute("d");
   const between = (k: "x" | "y", id: string) => Math.min(start[id][k], end[id][k]) < mid[id][k] && mid[id][k] < Math.max(start[id][k], end[id][k]);
@@ -87,7 +89,7 @@ test("multiSelectToolbarTidyUp", async () => {
   await shot(h, "multiSelect-after");
 
   // one ⌘Z puts every card back
-  await page.keyboard.press("Meta+z"); await wait(h, 400);
+  await moves("the undo is saved", () => page.keyboard.press("Meta+z"));
   check("tidyOneUndo", JSON.stringify(places(h)) === JSON.stringify(before), places(h));
 
   // ⌥T does the same; a locked card stays where it is
@@ -97,8 +99,8 @@ test("multiSelectToolbarTidyUp", async () => {
   await page.mouse.click(1300, 860);
   await page.keyboard.press("Meta+a");
   await page.locator('.card[data-id="f"]').click({ modifiers: ["Shift"] });
-  await wait(h, 200);
-  await page.keyboard.press("Alt+KeyT"); await wait(h, 1400);
+  await idle(h);
+  await moves("Tidy Up is saved", () => page.keyboard.press("Alt+KeyT"));
   const locked = places(h);
   check("tidyKey", locked.b.x !== before.b.x || locked.b.y !== before.b.y, locked.b);
   check("tidyLockedStays", locked.f.x === before.f.x && locked.f.y === before.f.y, locked.f);

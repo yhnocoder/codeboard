@@ -358,7 +358,7 @@ test("markdownHighlightBand", async () => {
       return { bg, band, topMax: Math.max(...top), lowMin: Math.min(...low), bottomGaps: bottom.filter((d) => d < 4).length, bottomN: bottom.length };
     };
     const look = (p: Awaited<ReturnType<typeof pixels>>) => p.topMax <= 3 && p.lowMin >= 6 && p.bottomGaps === 0 && p.band[0] > p.band[2];
-    await pg.waitForTimeout(300);
+    await idle(h);
     const shown = { geom: await geom(`${card} .nbody`), px: await pixels(`${card} .nbody`) };
     const tag = lightPass ? "light" : "dark";
     fs.mkdirSync(SHOTS, { recursive: true });
@@ -367,8 +367,9 @@ test("markdownHighlightBand", async () => {
     await pg.locator(`${card} .nbody`).dblclick({ position: { x: 20, y: 10 } });
     const pm = `${card} .md-pm`;
     await pg.waitForSelector(pm, { timeout: 5000 });
+    await focusSettled(pg);
     await pg.keyboard.press("ControlOrMeta+End");
-    await pg.waitForTimeout(300);
+    await pmHasSelection(pg); await idle(h);
     const edit = { geom: await geom(pm), px: await pixels(pm) };
     await pg.locator(card).screenshot({ path: path.join(SHOTS, `md-highlight-band-${tag}-edit.png`) }).catch(() => {});
     const same = (a: number[][], b: number[][]) => a.length === b.length && a.every((r, i) => r.every((v, j) => Math.abs(v - b[i][j]) <= 0.5));

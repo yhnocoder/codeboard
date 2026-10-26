@@ -321,11 +321,14 @@ test("noteScrollFades", async () => {
 test("noteManualHeightSticks", async () => {
   const h = await open({ board: board([{ md: "Short note.\n\nTwo lines." }]), light, w: 1000, h: 700 });
   const pg = h.page;
-  await pg.waitForTimeout(1200);
+  const md = () => (h.board().cards.find((c) => c.id === "n0") as NoteCard).md;
+  /** the stored height changed from `was`, and the board has settled */
+  const newH = async (what: string, was: number | undefined) => { await until(h, what, () => placeH(h, "n0") !== was); await idle(h); };
+  await idle(h);
   const h0 = (await rect(h, card("n0"))).h;
   const g = await rect(h, `${card("n0")} .grip`);
   await drag(h, (g.left + g.right) / 2, (g.top + g.bottom) / 2, 0, 160, 10);
-  await pg.waitForTimeout(400);
+  await newH("the dragged height is saved", undefined);
   const taller = (await rect(h, card("n0"))).h;
   await cardShot(h, "n0", "24-manual-height-taller");
   check("noteManualHeightSticks drag taller", Math.abs(taller - (h0 + 160)) < 3 && Math.abs((placeH(h, "n0") ?? 0) - taller) < 3, { h0, taller, h: placeH(h, "n0") });
@@ -333,11 +336,11 @@ test("noteManualHeightSticks", async () => {
   await editNote(h, "n0");
   await pg.keyboard.press("Control+End");
   await pg.keyboard.type(" Three.");
-  await pg.waitForTimeout(200);
+  await idle(h);
   const editing = (await rect(h, card("n0"))).h;
   await pg.keyboard.press("Escape");
   await pg.mouse.click(900, 650); // blur
-  await pg.waitForTimeout(1300);
+  await until(h, "the edit is saved", () => md().includes("Three.")); await idle(h);
   const after = (await rect(h, card("n0"))).h;
   check("noteManualHeightSticks survives edit and blur", Math.abs(editing - taller) < 1 && Math.abs(after - taller) < 1 && Math.abs((placeH(h, "n0") ?? 0) - taller) < 3, { taller, editing, after, h: placeH(h, "n0") });
   // deleting text: the card keeps its height (only cards that follow their content shrink)
@@ -345,13 +348,14 @@ test("noteManualHeightSticks", async () => {
   await pg.keyboard.press("Control+a");
   await pg.keyboard.type("x");
   await pg.keyboard.press("Escape");
-  await pg.waitForTimeout(1300);
+  await until(h, "the emptied Note is saved", () => md() === "x"); await idle(h);
   const emptied = (await rect(h, card("n0"))).h;
   check("noteManualHeightSticks no shrink after deleting text", Math.abs(emptied - taller) < 1, { taller, emptied });
   // Fit Content: back to the content's height, following it again
   await pg.locator(`${card("n0")} .chead`).click({ button: "right" });
+  const hand = placeH(h, "n0");
   await pg.locator(".ctx button", { hasText: "Fit Content" }).click();
-  await pg.waitForTimeout(800);
+  await newH("Fit Content is saved", hand);
   const fit = (await rect(h, card("n0"))).h;
   await cardShot(h, "n0", "24-manual-height-fit");
   check("noteManualHeightSticks fit content follows content again", placeH(h, "n0") === undefined && fit < taller - 100, { fit, taller, h: placeH(h, "n0") });
@@ -359,7 +363,7 @@ test("noteManualHeightSticks", async () => {
   const c0 = await rect(h, card("n0"));
   await pg.mouse.move(2, 2);
   await drag(h, c0.left + 120, c0.bottom, 30, 90, 8);
-  await pg.waitForTimeout(400);
+  await newH("the height set with the bottom edge is saved", undefined);
   const c1 = await rect(h, card("n0"));
   check("noteManualHeightSticks bottom edge", Math.abs(c1.h - (c0.h + 90)) < 3 && Math.abs((c1.right - c1.left) - (c0.right - c0.left)) < 1 && Math.abs((placeH(h, "n0") ?? 0) - c1.h) < 3, { c0, c1, h: placeH(h, "n0") });
 });
