@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 1 本地 | 每次改完：`npm run check` | 3 分钟 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、单元测试（core、markdown、board、host、插件）、Markdown 示例；这次改动需要的 harness 场景 |
 | 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部；harness 两个 job 并行；e2e 拆两段并行；perf（只在改了被测代码时跑） |
-| 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、study-task replay |
+| 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、study-task replay；harness 全量跑完后再做一轮 flaky 重复（见下） |
 
 ## 一定会测到的
 
@@ -25,6 +25,10 @@
 harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.spec.ts`，配置在 `packages/board/playwright.config.ts`）。`check(名字, 条件, 细节…)` 不成立、`expect` 不成立、抛异常、超时，都算失败，CI 会变红。`check` 不成立时场景接着跑完，最后一起算失败（`expect.soft`）。白板自检（`dangling references`）和宿主收到的每个版本过不了 schema 也是失败。
 
 `tools/test/harness.mjs` 分两轮调 Playwright：先在几个 worker 上一起跑，再一个一个单独跑。一起跑时挂了的场景会在第二轮单独再跑一次，单独跑过了就算过（报告里标"alone"）。对 CPU 负载敏感、并行时必挂的场景登记在 `tiers.json` 的 `solo`，放在第二轮单独跑（和 perf 一样）。
+
+每晚还有两件事单独报在 #19 的评论里（各自一节，不进 `nightly-failures`，所以不算"正在修的问题"、不带到 PR 上，也不让夜跑变红）：
+- **Flaky**：harness 全量跑完后，`repeat` job 把上一次跑完的定时夜跑（工作流运行列表里 `event=schedule` 的那次的 `head_sha`）以来改过的测试文件里的场景（新场景都在其中）各跑 3 遍（`harness.mjs --changed-since=<commit> --repeat=3`，4 个 worker 并行，`solo` 的仍一个一个跑，按估计用时最多 15 分钟，放不下的报出来），任何一遍挂了就算 flaky；全量里本来就挂的不重复算。找不到上一次定时夜跑或它的提交时报错，不拿别的场景凑合。
+- **只有单独跑才过**：全量里标了"alone"的场景。
 
 `tiers.json` 的 `known` 里登记的是已知、另有地方跟进的失败，按检查名（`check` 的名字开头）对上。它们照样会跑、出现在报告里，但不让 CI 变红。修好时把那一条删掉。
 
