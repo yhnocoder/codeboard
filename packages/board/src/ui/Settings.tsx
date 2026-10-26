@@ -1,7 +1,7 @@
 // Settings 页：白板里的整窗页面（⌘, / ⋯ → Settings… / 命令 CodeBoard: Open Settings）。
 // 改动乐观更新 state.host.settings，宿主写进 codeboard.*；快捷键清单和 ? 浮层都从 keymap.ts 的表生成。
 import { For, Show, createEffect, createSignal, onMount } from "solid-js";
-import { THEMES, EXPERIMENTAL_THEMES, type HideFlags, type Settings as S } from "@codeboard/core";
+import { THEMES, EXPERIMENTAL_THEMES, NOTE_FONT_LEVELS, NOTE_FONT_RANGE, type HideFlags, type NoteFontLevel, type Settings as S } from "@codeboard/core";
 import { state } from "../state/store";
 import { settingsOpen } from "../state/ui";
 import { send } from "../host";
@@ -17,6 +17,7 @@ const cur = (): S => state.host.settings;
 /** 主题同步 + 设置页本身；App 里挂一次 */
 export function SettingsLayer() {
   createEffect(() => A.applyLook(state.host.settings.theme));
+  createEffect(() => A.applyNoteFonts(state.host.settings.noteFontSize));
   return <Show when={settingsOpen()} keyed>{(o) => <SettingsPage section={o.section} />}</Show>;
 }
 
@@ -49,7 +50,7 @@ function SettingsPage(p: { section?: string }) {
               </button>
             )}</For>
           </div>
-          <div class="st-sub">When a theme makes cards taller</div>
+          <div class="st-sub">When a theme or font size makes cards taller</div>
           <div class="st-chips">
             <For each={[["push", "Push Cards Below Down"], ["overlap", "Allow Overlap"]] as const}>{([v, lb]) => (
               <button class="st-chip pick" classList={{ on: cur().themeReflow === v }} onClick={() => A.setSetting("themeReflow", v)}>{lb}</button>
@@ -59,8 +60,9 @@ function SettingsPage(p: { section?: string }) {
         <Sec id="numbers" title="Call graph marks" hint="The letter or icon on cards that shows which call graph they belong to.">
           <label class="st-check"><input type="checkbox" checked={cur().hideNumbers} onChange={(e) => A.setSetting("hideNumbers", e.currentTarget.checked)} />Hide Call Graph Marks</label>
         </Sec>
-        <Sec id="notes" title="Notes" hint="A Note that starts with a heading uses it as its title. The heading stays in the Note and shows while you edit.">
+        <Sec id="notes" title="Notes" hint="A Note that starts with a heading uses it as its title. The heading stays in the Note and shows while you edit. Font sizes apply to Notes while you read and edit them; Text cards keep their own sizes.">
           <label class="st-check"><input type="checkbox" checked={cur().noteHeadingInBody} onChange={(e) => A.setSetting("noteHeadingInBody", e.currentTarget.checked)} />Also Show the Title Heading in the Note</label>
+          <NoteFonts />
         </Sec>
         <Sec id="hide" title="New cards hide" hint="What new code cards start with hidden. Each card can still toggle them.">
           <div class="st-checks">
@@ -177,6 +179,61 @@ function Swatch(p: { id: string }) {
       <span class="sp-card b"><span class="sp-h"><i class="sp-t" /></span><i class="sp-l ink" /><i class="sp-l mu" /></span>
       <svg class="sp-edge" viewBox="0 0 100 60" preserveAspectRatio="none"><path d="M46 22 C 56 22, 52 40, 62 40" /></svg>
     </span>
+  );
+}
+
+const LEVEL: Record<NoteFontLevel, string> = { body: "Body Text", h1: "Heading 1", h2: "Heading 2", h3: "Heading 3", h4: "Heading 4", h5: "Heading 5", h6: "Heading 6" };
+const r1 = (v: number) => Math.round(v * 10) / 10;
+
+/** Note 的字号：正文和 H1–H6 一级一行。没改的显示主题的字号（灰色），改过的有 Reset；改了立刻生效（根上的 CSS 变量） */
+function NoteFonts() {
+  let probe!: HTMLDivElement;
+  // 主题给的字号：一张看不见的小样 Note 上把自己设的变量清掉再量（标题的默认值跟着现在的正文走，所以正文那块单独量）
+  const [defs, setDefs] = createSignal<Record<NoteFontLevel, number>>();
+  const measure = () => {
+    const px = (sel: string) => r1(parseFloat(getComputedStyle(probe.querySelector(sel)!).fontSize));
+    setDefs(Object.fromEntries(NOTE_FONT_LEVELS.map((k) => [k, px(k === "body" ? ".fp-body" : `.fp-heads ${k}`)])) as Record<NoteFontLevel, number>);
+  };
+  createEffect(() => { void cur().theme; for (const k of NOTE_FONT_LEVELS) void cur().noteFontSize[k]; measure(); });
+  const set = (k: NoteFontLevel, v: number | null) => {
+    const [lo, hi] = NOTE_FONT_RANGE[k === "body" ? "body" : "heading"];
+    if (v !== null) v = Math.min(hi, Math.max(lo, r1(v)));
+    // 正好是主题的字号 = 跟主题（换主题时跟着变）
+    if (v !== null && cur().noteFontSize[k] === null && Math.abs(v - (defs()?.[k] ?? -1)) < 0.05) v = null;
+    A.setNoteFont(k, v);
+  };
+  const changed = () => NOTE_FONT_LEVELS.some((k) => cur().noteFontSize[k] !== null);
+  const clear = Object.fromEntries(NOTE_FONT_LEVELS.map((k) => [k === "body" ? "--note-fs" : `--note-fs-${k}`, "initial"]));
+  return (
+    <>
+      <div class="st-sub row"><span>Font size</span><span class="grow" />
+        <button class="st-reset" disabled={!changed()} onClick={() => A.setNoteFont("all", null)}>Reset All</button>
+      </div>
+      <div class="st-fonts">
+        <For each={NOTE_FONT_LEVELS}>{(k) => {
+          const v = () => cur().noteFontSize[k];
+          const shown = () => v() ?? defs()?.[k] ?? 0;
+          const commit = (inp: HTMLInputElement) => { const n = parseFloat(inp.value); if (Number.isFinite(n)) set(k, n); inp.value = String(shown()); };
+          return (
+            <div class="st-fr" data-level={k} classList={{ custom: v() !== null }}>
+              <span class="st-fl">{LEVEL[k]}</span>
+              <span class="st-num">
+                <button class="st-step" aria-label={`Smaller ${LEVEL[k]}`} tabIndex={-1} onClick={() => set(k, Math.floor(shown() - 0.5))}>−</button>
+                <input type="number" aria-label={`${LEVEL[k]} size`} step={1} value={shown()} onChange={(e) => commit(e.currentTarget)} onKeyDown={(e) => { if (e.key === "Enter") commit(e.currentTarget); }} />px
+                <button class="st-step" aria-label={`Larger ${LEVEL[k]}`} tabIndex={-1} onClick={() => set(k, Math.ceil(shown() + 0.5))}>+</button>
+              </span>
+              <Show when={v() !== null} fallback={<span class="st-def">Theme</span>}>
+                <button class="st-x" aria-label={`Reset ${LEVEL[k]}`} data-tip="Reset to the Theme's Size" onClick={() => set(k, null)}><Icon name="undo" size={11} /></button>
+              </Show>
+            </div>
+          );
+        }}</For>
+      </div>
+      <div class="card note st-fprobe" ref={probe} aria-hidden="true">
+        <div class="nbody md fp-body" style={{ "--note-fs": "initial" }}><p /></div>
+        <div class="nbody md fp-heads" style={Object.fromEntries(Object.entries(clear).filter(([n]) => n !== "--note-fs"))}><h1 /><h2 /><h3 /><h4 /><h5 /><h6 /></div>
+      </div>
+    </>
   );
 }
 

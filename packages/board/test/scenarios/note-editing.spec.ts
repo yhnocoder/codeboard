@@ -2,8 +2,10 @@
 // Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
 //          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
-//          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle
-import { put, findSym, symCard, shot, type Host } from "../harness";
+//          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle noteFontSizeSettings
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { test, open, check, light } from "../fixtures";
@@ -446,5 +448,83 @@ test("noteEditorHasNoDragHandle", async () => {
   await shot(h, "noteEditorHasNoDragHandle");
   const handles = await h.page.locator(".md-handle").count();
   check("noteEditorHasNoDragHandle", handles === 0, { handles });
+  await close(h);
+});
+
+/** Settings → Notes → Font size: body text and H1 set in the Settings page apply at once to every Note (same element, no re-render),
+ *  the same while editing; headings left at Theme scale with the body; Text cards keep their size; the Note re-measures and pushes
+ *  the card below it down; Reset All goes back to the theme's sizes. Screenshots to FONT_SHOTS (default test-out/harness/fonts) */
+test("noteFontSizeSettings", async () => {
+  const SHOTS = process.env.FONT_SHOTS ?? path.join(OUT, "fonts");
+  try { fs.mkdirSync(SHOTS, { recursive: true }); } catch { /* harness output only */ }
+  const b = emptyBoard("b1", "note fonts");
+  const doc = "# Scheduler\n\n## Prefill first\n\nEach step picks waiting sequences while the KV cache has room, then decodes the running ones.\n\n### Preemption\n\nWhen blocks run out, the newest sequence goes back to waiting.";
+  put(b, { id: "n0", kind: "note", md: doc, bg: true } as NoteCard, 60, 60, 420);
+  put(b, { id: "n1", kind: "note", md: "Below the first Note.", bg: true } as NoteCard, 60, 305, 420);
+  put(b, { id: "t0", kind: "note", md: "A Text card", bg: false } as NoteCard, 560, 60, 240);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1200, h: 820, settings: { theme: "warm-ink", noteHeadingInBody: true } as never });
+  const pg = h.page;
+  await pg.waitForTimeout(1200);
+  type Mark = HTMLElement & { __mark?: number };
+  const sizes = () => pg.evaluate(() => {
+    const card = document.querySelector('.card[data-id="n0"]') as HTMLElement, body = card.querySelector(".nbody") as HTMLElement & { __mark?: number };
+    const root = body.querySelector(".md-pm") ?? body;
+    const px = (sel: string) => parseFloat(getComputedStyle(root.querySelector(sel)!).fontSize);
+    return { body: px(":scope > p"), h1: px("h1"), h2: px("h2"), h3: px("h3"), text: parseFloat(getComputedStyle(document.querySelector('.card[data-id="t0"] .tx')!).fontSize),
+      cardH: Math.round(card.getBoundingClientRect().height), same: body.__mark === 1, editing: !!body.querySelector(".md-pm") };
+  });
+  const below = () => h.board().place.n1?.y ?? 0;
+  const before = await sizes(), belowBefore = below();
+  await pg.evaluate(() => { (document.querySelector('.card[data-id="n0"] .nbody') as Mark).__mark = 1; });
+  await pg.screenshot({ path: path.join(SHOTS, "note-before.png"), clip: { x: 40, y: 40, width: 800, height: 560 } });
+
+  // Settings → Notes: one row per level; untouched levels show the theme's size
+  await pg.keyboard.press("Meta+Comma");
+  await pg.waitForSelector(".settings");
+  const sec = pg.locator('.settings [data-sec="notes"]');
+  await sec.scrollIntoViewIfNeeded();
+  const rows = () => sec.locator(".st-fr").evaluateAll((rs) => rs.map((r) => ({ level: (r as HTMLElement).dataset.level, value: (r.querySelector("input") as HTMLInputElement).value, theme: !!r.querySelector(".st-def") })));
+  const rows0 = await rows();
+  const setRow = async (level: string, v: string) => { const inp = sec.locator(`.st-fr[data-level="${level}"] input`); await inp.fill(v); await inp.press("Enter"); await pg.waitForTimeout(100); };
+  await setRow("body", "16");
+  await setRow("h1", "32");
+  await pg.mouse.move(5, 5);
+  await pg.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+  await pg.waitForTimeout(300);
+  const rows1 = await rows();
+  await sec.screenshot({ path: path.join(SHOTS, "settings-notes.png") });
+  const sent = h.sent.filter((m) => m.type === "setSetting" && (m as { key: string }).key === "noteFontSize").map((m) => (m as { value: unknown }).value);
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(600);
+  const after = await sizes(), belowAfter = below();
+  await pg.screenshot({ path: path.join(SHOTS, "note-after.png"), clip: { x: 40, y: 40, width: 800, height: 560 } });
+
+  // the same sizes in the editor
+  await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
+  await pg.waitForSelector('.card[data-id="n0"] .md-pm', { timeout: 5000 });
+  await pg.mouse.move(5, 5);
+  await pg.waitForTimeout(300);
+  const edit = await sizes();
+  await exitEdit(h);
+  await pg.waitForTimeout(300);
+
+  // Reset All: back to the theme
+  await pg.keyboard.press("Meta+Comma");
+  await pg.waitForSelector(".settings");
+  await pg.locator('.settings [data-sec="notes"] button', { hasText: "Reset All" }).click();
+  await pg.keyboard.press("Escape");
+  await pg.waitForTimeout(500);
+  const reset = await sizes();
+
+  const near = (a: number, b: number) => Math.abs(a - b) < 0.1;
+  check("noteFont-themeDefaults", near(before.body, 13) && near(before.h1, 13 * 1.8) && near(before.h2, 13 * 1.35)
+    && rows0.length === 7 && rows0.every((r) => r.theme) && rows0[0].value === "13" && rows0[1].value === "23.4", { before, rows0 });
+  check("noteFont-settingsRows", rows1[0]?.value === "16" && !rows1[0]?.theme && rows1[1]?.value === "32" && !rows1[1]?.theme && rows1[2]?.theme && rows1[2]?.value === "21.6"
+    && JSON.stringify(sent[sent.length - 1]) === JSON.stringify({ body: 16, h1: 32, h2: null, h3: null, h4: null, h5: null, h6: null }), { rows1, sent });
+  check("noteFont-appliesLive", near(after.body, 16) && near(after.h1, 32) && near(after.h2, 16 * 1.35) && near(after.h3, 16 * 1.1) && after.same && near(after.text, before.text), { after, before });
+  check("noteFont-cardRemeasures", after.cardH > before.cardH + 20 && belowAfter > belowBefore, { before: before.cardH, after: after.cardH, belowBefore, belowAfter });
+  check("noteFont-sameWhileEditing", edit.editing && near(edit.body, 16) && near(edit.h1, 32) && near(edit.h2, after.h2) && Math.abs(edit.cardH - after.cardH) <= 1, { edit, after });
+  check("noteFont-resetAll", near(reset.body, 13) && near(reset.h1, 13 * 1.8) && Math.abs(reset.cardH - before.cardH) <= 1, { reset, before });
   await close(h);
 });

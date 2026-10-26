@@ -1,5 +1,5 @@
 // 设置：存在用户设置 codeboard.* 里（用户级），白板设置页读写同一份。
-import { DEFAULT_SETTINGS, THEMES, type Settings } from "@codeboard/core";
+import { DEFAULT_SETTINGS, THEMES, NOTE_FONT_LEVELS, NOTE_FONT_RANGE, type Settings } from "@codeboard/core";
 import { log } from "./log";
 import { workspace } from "./ws";
 
@@ -24,6 +24,7 @@ const KEY: Record<keyof Settings, string> = {
   exportBoardOnly: "export.includeBoardOnlyNotes",
   exportScope: "export.scope",
   noteHeadingInBody: "notes.headingInBody",
+  noteFontSize: "notes.fontSize",
 };
 
 const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
@@ -49,7 +50,13 @@ const VALID: { [K in keyof Settings]-?: (v: unknown) => boolean } = {
   exportBoardOnly: (v) => typeof v === "boolean",
   exportScope: (v) => v === "board" || v === "sections" || v === "walk",
   noteHeadingInBody: (v) => typeof v === "boolean",
+  noteFontSize: (v) => isObj(v) && Object.entries(v).every(([k, x]) => NOTE_FONT_LEVELS.includes(k as never) && (x === null || x === undefined || fontPx(k, x))),
 };
+/** 字号在设置页能选的范围里 */
+function fontPx(level: string, v: unknown) {
+  const [lo, hi] = NOTE_FONT_RANGE[level === "body" ? "body" : "heading"];
+  return num(v) && (v as number) >= lo && (v as number) <= hi;
+}
 
 export const validSetting = (k: string, v: unknown): k is keyof Settings => k in KEY && VALID[k as keyof Settings](v);
 
@@ -58,7 +65,10 @@ export function readSettings(): Settings {
   const out = { ...DEFAULT_SETTINGS } as Record<string, unknown>;
   for (const k of Object.keys(KEY) as (keyof Settings)[]) {
     const v = s.get(`codeboard.${KEY[k]}`);
-    if (v !== undefined && v !== null) out[k] = v;
+    if (v === undefined || v === null) continue;
+    // 对象设置（newCards.hide、notes.fontSize）：settings.json 里只写了几项时，其余的取默认值，白板拿到的总是每项都在的完整对象
+    const d = DEFAULT_SETTINGS[k];
+    out[k] = isObj(d) && isObj(v) ? { ...d, ...v } : v;
   }
   return out as Settings;
 }

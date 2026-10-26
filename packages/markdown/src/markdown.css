@@ -5,6 +5,7 @@
             --k-kw --k-num --k-self --k-str --lk-blue --lk-orange --lk-green（Mermaid 的系列色）--sh-float（浮层阴影）
             --md-hl（==高亮== 的荧光笔底色，半透明的淡暖黄，只涂字的下半截）
      字体   --sys（正文、Mermaid）--mono（代码、记号）--note-h（小标题）
+     字号   --md-fs（正文）--md-h1 … --md-h6（各级标题；都有默认值，见下面）
      其他   --r-card（圆角，Mermaid 用一半）--t（动画时长的倍数，1 = 正常）--ico-w（工具条图标的描边，1 或 2 px，默认 1）
    公式还要 KaTeX 自己的样式（@yhnocoder/markdown/katex.css，放在这一份前面）。
    借用外面的样式（由用的一方给）：菜单、选中工具条、公式框的 .ctx（菜单）、.pill（浮条）、.tbtn（按钮，开着的是 .on），静态显示的链接 .lnk；
@@ -23,7 +24,16 @@ math { font-size: 1.05em; }
 /* 公式块在静态显示里是 .math，在编辑器里是 [data-type="block-math"]：两边同一套间距，进出编辑时不跳 */
 .md p + p, .md p + :is(ul, ol, pre, table, blockquote, details, .math, [data-type="block-math"]), .md :is(ul, ol, pre, table, blockquote, details, .math, [data-type="block-math"]) + p { margin-top: .5em; }
 .md p:empty::before { content: "\200b"; }
-.md h4, .md h5, .md h6 { margin: 2px 0 2px; font: 600 1em/1.4 var(--note-h); color: var(--ink); }
+/* 字号（用的一方在 .md 或外层元素上给）：--md-fs 正文（默认和外面一样大），--md-h1 … --md-h6 各级标题（默认 1.8em 1.35em 1.1em 1em 1em 1em，相对正文）。
+   静态显示和编辑器是同一个 .md，改变量立刻生效、两边一样。:where 不占优先级：用的一方自己写的字号照样算数 */
+:where(.md) { font-size: var(--md-fs, 1em); }
+:where(.md) :where(h1) { font-size: var(--md-h1, 1.8em); }
+:where(.md) :where(h2) { font-size: var(--md-h2, 1.35em); }
+:where(.md) :where(h3) { font-size: var(--md-h3, 1.1em); }
+:where(.md) :where(h4) { font-size: var(--md-h4, 1em); }
+:where(.md) :where(h5) { font-size: var(--md-h5, 1em); }
+:where(.md) :where(h6) { font-size: var(--md-h6, 1em); }
+.md h4, .md h5, .md h6 { margin: 2px 0 2px; font-weight: 600; line-height: 1.4; font-family: var(--note-h); color: var(--ink); }
 .md hr { border: 0; border-top: 1px solid var(--hair); margin: 8px 0; }
 /* [toc] 目录（#30）：按标题级别缩进 */
 .md .md-toc { margin: 4px 0 8px; padding: 6px 10px; border-left: 2px solid var(--hair); color: var(--ink-2); font-size: .95em; }

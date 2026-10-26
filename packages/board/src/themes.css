@@ -539,7 +539,7 @@
 :root.look-soft-light .ccard .carea > .cbody:not(:last-child) { margin-bottom: 10px; }
 :root.look-soft-light .ccard .carea > .cfoot { margin-bottom: -10px; }
 :root.look-soft-light .card.note > .cface > .chead { padding-top: 6px; }
-:root.look-soft-light .card.note .nbody { font-weight: 300; font-size: 14px; padding: 2px 18px 16px; }
+:root.look-soft-light .card.note .nbody { font-weight: 300; --md-fs: var(--note-fs, 14px); padding: 2px 18px 16px; }
 :root.look-soft-light .card.note .ctitle { font: 500 9.5px var(--sys); letter-spacing: .32em; text-transform: uppercase; color: var(--ink-3); }
 :root.look-soft-light .tx.st-title { font-weight: 300; font-size: 30px; }
 :root.look-soft-light .edge { stroke: color-mix(in srgb, var(--edge) 85%, transparent); }
@@ -596,7 +596,7 @@
 :root.look-drafting .vcard { --vc-bg: var(--bg); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 5px; }
 :root.look-drafting .vcard, :root.look-drafting .vbox, :root.look-drafting .vlabel { font: 10px/14px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-2); }
 :root.look-drafting .mk, :root.look-drafting .addn { border-radius: 0; }
-:root.look-drafting .card.note .nbody { font: 11px/1.7 var(--mono); color: var(--ink-2); }
+:root.look-drafting .card.note .nbody { --md-fs: var(--note-fs, 11px); line-height: 1.7; font-family: var(--mono); color: var(--ink-2); }
 :root.look-drafting .card.note .nbody h1, :root.look-drafting .card.note .nbody h2, :root.look-drafting .card.note .nbody h3, :root.look-drafting .card.note .nbody strong, :root.look-drafting .card.note .nbody b { font-family: var(--head-font); color: var(--ink); letter-spacing: .06em; }
 :root.look-drafting .card.note .ctitle { font-size: 11px; }
 :root.look-drafting .tx.st-title { font: 600 24px/1.25 var(--head-font); text-transform: uppercase; letter-spacing: .08em; }
@@ -661,7 +661,7 @@
 :root.look-colorful .cxfoot .ico { width: 13px; height: 13px; stroke-width: 1.6; }
 :root.look-colorful .cxfoot .act:hover { background: color-mix(in srgb, var(--f2) 35%, transparent); color: var(--ink); }
 :root.look-colorful .cxfoot.new .act { background: var(--f3); color: var(--paper-ink); }
-:root.look-colorful .card.note .nbody { font-size: 13.5px; }
+:root.look-colorful .card.note .nbody { --md-fs: var(--note-fs, 13.5px); }
 :root.look-colorful .card.note .nbody h1, :root.look-colorful .card.note .nbody h2, :root.look-colorful .card.note .nbody h3 { font-weight: 600; letter-spacing: .02em; }
 :root.look-colorful .tx.st-title { font-weight: 600; letter-spacing: .02em; }
 :root.look-colorful .edge:not([class*="lc-"]), :root.look-colorful .ahead:not([class*="lc-"]) { stroke: var(--rule); }
@@ -726,8 +726,8 @@
 :root.look-newspaper .vchips::before { content: "— "; white-space: pre; }
 :root.look-newspaper .vchips::after { content: " —"; white-space: pre; }
 :root.look-newspaper .mk, :root.look-newspaper .addn { border-radius: 0; }
-:root.look-newspaper .card.note .nbody { font: 13.5px/1.55 var(--serif); }
-:root.look-newspaper .card.note .nbody h1, :root.look-newspaper .card.note .nbody h2, :root.look-newspaper .card.note .nbody h3 { font: 700 19px/1.15 var(--serif); letter-spacing: -.01em; margin-bottom: 6px; }
+:root.look-newspaper .card.note .nbody { --md-fs: var(--note-fs, 13.5px); line-height: 1.55; font-family: var(--serif); --md-h1: var(--note-fs-h1, 19px); --md-h2: var(--note-fs-h2, 19px); --md-h3: var(--note-fs-h3, 19px); }
+:root.look-newspaper .card.note .nbody h1, :root.look-newspaper .card.note .nbody h2, :root.look-newspaper .card.note .nbody h3 { font-weight: 700; line-height: 1.15; font-family: var(--serif); letter-spacing: -.01em; margin-bottom: 6px; }
 :root.look-newspaper .tx.st-title { font: 700 30px/1.15 var(--serif); }
 :root.look-newspaper .tx.st-body { font-family: var(--serif); }
 :root.look-newspaper .sect { border-radius: 0; }
@@ -786,8 +786,8 @@
 :root.look-poster .vcard { --vc-bg: var(--surface); --vc-sh: 0 0 0 .5px var(--rule); --vc-r: 0; --vl-pad: 4px 9px; }
 :root.look-poster .vcard, :root.look-poster .vbox, :root.look-poster .vlabel { font: 9.5px/14px var(--mono); letter-spacing: .24em; text-transform: uppercase; color: var(--ink); }
 :root.look-poster .mk, :root.look-poster .addn { border-radius: 0; }
-:root.look-poster .card.note .nbody { font-size: 12px; line-height: 1.7; }
-:root.look-poster .card.note .nbody h1, :root.look-poster .card.note .nbody h2, :root.look-poster .card.note .nbody h3 { font: 400 17px/1.3 var(--serif); letter-spacing: .02em; text-align: center; margin-bottom: 6px; }
+:root.look-poster .card.note .nbody { --md-fs: var(--note-fs, 12px); line-height: 1.7; --md-h1: var(--note-fs-h1, 17px); --md-h2: var(--note-fs-h2, 17px); --md-h3: var(--note-fs-h3, 17px); }
+:root.look-poster .card.note .nbody h1, :root.look-poster .card.note .nbody h2, :root.look-poster .card.note .nbody h3 { font-weight: 400; line-height: 1.3; font-family: var(--serif); letter-spacing: .02em; text-align: center; margin-bottom: 6px; }
 :root.look-poster .tx.st-title { font: 400 28px/1.2 var(--serif); letter-spacing: .08em; }
 :root.look-poster .sect { border-radius: 0; outline: .5px solid var(--rule); outline-offset: 3px; }
 :root.look-poster .slabel { font: 400 13px/20px var(--serif); letter-spacing: .06em; border-radius: 0; }
@@ -840,7 +840,7 @@
 :root.look-ink-wash .ahead.dot { opacity: .9; }
 :root.look-ink-wash .vcard { --vc-bg: radial-gradient(closest-side, var(--bg) 62%, transparent); --vc-sh: none; --vc-r: 0; --vl-pad: 2px 10px; }
 :root.look-ink-wash .vcard, :root.look-ink-wash .vbox, :root.look-ink-wash .vlabel { font: italic 400 12px/16px var(--serif); color: var(--ink-2); }
-:root.look-ink-wash .card.note .nbody { font: 13.5px/1.65 var(--serif); }
+:root.look-ink-wash .card.note .nbody { --md-fs: var(--note-fs, 13.5px); line-height: 1.65; font-family: var(--serif); }
 :root.look-ink-wash .tx.st-title { font: 400 30px/1.2 var(--serif); letter-spacing: .02em; }
 :root.look-ink-wash .sect { border-radius: 2px; }
 :root.look-ink-wash .slabel { font: italic 400 13px/20px var(--serif); border-radius: 2px; }
