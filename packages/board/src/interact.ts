@@ -18,7 +18,7 @@ import { selSticker, setSelSticker } from "./state/stickers";
 import { ghostOut } from "./state/ghost";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
 import { installOverlays, modalOpen, isTyping } from "./ui/overlay";
-import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME } from "./ui/guard";
+import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
 import { dispatch } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
@@ -31,6 +31,7 @@ const worldOf = (e: { clientX: number; clientY: number }) => worldAt(pt(e));
 function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = 3) {
   const sx = e.clientX, sy = e.clientY;
   let moved = false;
+  holdPointer(e);
   const onMove = (ev: PointerEvent) => {
     if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < threshold) return;
     moved = true;

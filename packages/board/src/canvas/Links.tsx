@@ -18,6 +18,7 @@ import { isDbl } from "../interact";
 import * as A from "../actions";
 import { LinkLabel } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
+import { holdPointer } from "../ui/guard";
 import { isBindHot } from "../state/stickers";
 import { subRect, frameOf } from "../state/subboards";
 import { FRAME_HEAD } from "@codeboard/core";
@@ -305,6 +306,7 @@ function portDrag(e: PointerEvent, id: string) {
   if (!a) return;
   const end = beginGesture();
   setDragLink(id);
+  holdPointer(e);
   const move = (ev: PointerEvent) => {
     const o = boardOffset(), w = toWorld(ev.clientX - o.x, ev.clientY - o.y);
     const side = w.x >= a.x + a.w / 2 ? "right" : "left";

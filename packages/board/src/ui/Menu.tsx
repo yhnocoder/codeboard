@@ -188,6 +188,7 @@ export function TooltipLayer() {
   });
   const hide = () => { clearTimeout(timer); if (tip()) warmUntil = performance.now() + 800; setTip(null); };
   const over = (e: PointerEvent) => {
+    if (e.buttons) return; // 按着拖的时候经过按钮不弹提示（拖卡、框选、拖线……）
     const b = (e.target as HTMLElement).closest?.("[data-tip]") as HTMLElement | null;
     if (!b) return;
     clearTimeout(timer);

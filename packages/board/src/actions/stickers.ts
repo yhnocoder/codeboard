@@ -11,6 +11,7 @@ import { STICKER_COLORS, BUILTIN, defaultColor, loadPacks } from "../stickers/gl
 import { geo } from "../state/geo";
 import { stickerPick, setStickerPick, stickerColor, selSticker, setSelSticker, setBindHot, type BindTarget } from "../state/stickers";
 import { setMode, placing, idle } from "../state/mode";
+import { holdPointer } from "../ui/guard";
 
 export function stickerPicker(el: HTMLElement) {
   if (stickerPick()) return setStickerPick(null);
@@ -172,6 +173,7 @@ export function stickerDown(e: PointerEvent, id: string, resize = false) {
   const end = beginGesture();
   let moved = false, shown: Set<string> | undefined;
   setStickerDragged(false);
+  holdPointer(e);
   const move = (ev: PointerEvent) => {
     const dx = (ev.clientX - sx) / cam.z, dy = (ev.clientY - sy) / cam.z;
     if (resize) {

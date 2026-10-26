@@ -12,7 +12,7 @@ import * as A from "../actions";
 import { visible, type Geo } from "./Links";
 import { dragT, placeT, type Box } from "./labelpos";
 import { bezAt } from "./geom";
-import { NODRAG } from "../ui/guard";
+import { NODRAG, holdPointer } from "../ui/guard";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
 const sizeCbs = new WeakMap<Element, (b: Box) => void>();
@@ -40,6 +40,7 @@ function labelDrag(e: PointerEvent, id: string, el: HTMLElement, pts: () => numb
   const grab = c0 ? { x: w0.x - c0.x, y: w0.y - c0.y } : { x: 0, y: 0 };
   let end: (() => void) | null = null;
   let box: Box = { w: 0, h: 0 }, rs: Rect[] = [];
+  holdPointer(e);
   const move = (ev: PointerEvent) => {
     if (!end) {
       if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 4) return;
