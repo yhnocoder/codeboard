@@ -130,7 +130,7 @@ function Toolbar() {
     { icon: "image", label: "Image", fold: "New Image", run: () => A.newImage() },
     { icon: "web", label: "Web", fold: "New Web Card", tip: "New Web Card", run: () => A.newWeb() },
     { icon: "section", label: "Section", fold: "Draw a Section", tip: "Draw a Section", run: () => startDraw() },
-    { icon: "link", label: "Arrow", fold: "New Arrow", tip: "Select two cards, or pick a card then click another", run: () => {
+    { icon: "arrowLink", label: "Arrow", fold: "New Arrow", tip: "Select two cards, or pick a card then click another", run: () => {
       if (sel.cards.length === 2) A.addLink({ card: sel.cards[0] }, { card: sel.cards[1] });
       else if (sel.cards.length === 1) A.startConnect(sel.cards[0]);
       else toast("Select a card first, then click another card");

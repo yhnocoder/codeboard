@@ -54,6 +54,7 @@ const P: Record<string, string> = {
   sticker: "M10 2L14 6V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V2.5A.5 .5 0 0 1 2.5 2H10zM10 2V5.5A.5 .5 0 0 0 10.5 6H14M6 11c1.2 1 2.8 1 4 0", // sticker
   clock: "M14 8A6 6 0 1 1 2 8A6 6 0 1 1 14 8ZM8 5v3l2.5 1.5", // clock
   arrowR: "M3 8h10M9 4l4 4-4 4", // arrow-right
+  arrowLink: "M6 12A2 2 0 1 1 2 12A2 2 0 1 1 6 12ZM4 10V9a5 5 0 0 1 5-5h5M11 1l3 3-3 3", // custom: ring with a bent arrow
   question: "M14 8A6 6 0 1 1 2 8A6 6 0 1 1 14 8ZM6.5 6.5a1.5 1.5 0 0 1 3 0c0 1-1.5 1.5-1.5 2.5", // circle-help
   export: "M8 2v8M5 5l3-3 3 3M3 8V13.5A.5 .5 0 0 0 3.5 14H12.5A.5 .5 0 0 0 13 13.5V8", // share
 };
