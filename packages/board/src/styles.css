@@ -486,9 +486,22 @@ input, textarea { font: inherit; color: var(--ink); }
 .guide.v { border-left-width: 1px; width: 0; }
 .guide.h { border-top-width: 1px; height: 0; }
 .ghint { position: absolute; transform: translate(-50%, 0); font: 600 10.5px/1 var(--sys); color: #fff; background: var(--guide); padding: 4px 6px; border-radius: 5.5px; white-space: nowrap; }
-.alignbar.pill { position: absolute; z-index: 15; display: none; }
+.alignbar.pill { position: absolute; z-index: 15; display: none; translate: -50% 0; }
 .alignbar.pill.show { display: inline-flex; }
+.alignbar .tbtn { height: 30px; color: var(--ink); }
+.alignbar > .ib { width: 30px; height: 30px; }
+.alignbar > .ib.on { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .alignbar .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
+/* ··· 里的对齐和分布：贴着工具条右下角往下开，从右上角放大到 1 并淡入（和右键菜单一样的曲线），关时淡出 */
+.alignmore { position: absolute; right: 0; top: calc(100% + 6px); display: grid; grid-template-columns: repeat(5, 30px); gap: 2px; padding: 4px; border-radius: 12px;
+  background: var(--glass); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6); box-shadow: var(--sh-float);
+  transform-origin: top right; opacity: 0; scale: .97; visibility: hidden;
+  transition: opacity calc(var(--t) * 90ms) var(--in), scale calc(var(--t) * 90ms) var(--in), visibility 0s linear calc(var(--t) * 90ms); }
+.alignmore.open { opacity: 1; scale: 1; visibility: visible;
+  transition: opacity calc(var(--t) * 150ms) ease-out, scale calc(var(--t) * 150ms) ease-out, visibility 0s; }
+.alignmore .ib { width: 30px; height: 30px; }
+.alignmore .t { grid-column: 1 / -1; font: 600 10.5px/1 var(--sys); letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); padding: 6px 6px 3px; }
+@media (prefers-reduced-motion: reduce) { .alignmore.open { transition-duration: 0s; } }
 /* section colours (nested frames each keep their own) */
 .sect.c-sand { background: var(--s-sand); } .sect.c-blue { background: var(--s-blue); } .sect.c-green { background: var(--s-green); } .sect.c-pink { background: var(--s-pink); }
 .sw { display: inline-block; width: 11px; height: 11px; border-radius: 4px; box-shadow: inset 0 0 0 .5px var(--hair); vertical-align: -1px; margin-right: 6px; }

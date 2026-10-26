@@ -13,7 +13,7 @@ import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, se
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
-import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem, fitSections } from "./edit";
+import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem, fitSections, tidyUp } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setMarkColor, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
@@ -289,6 +289,7 @@ function multiItems(): Item[] {
     ...sectionItems(),
     turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock(sel.cards, sel.sections) },
+    { label: "Tidy Up", kbd: kbd("tidyUp"), disabled: cs.length >= 2 ? false : "Select two or more cards", run: () => tidyUp() },
     arrangeItem(() => [...sel.cards]),
     null,
     { label: "Cut", kbd: kbd("cut"), run: () => cutCardsSel() },

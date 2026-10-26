@@ -57,6 +57,9 @@ export const ICONS = {
   distV: ["M2 2h12M2 14h12" + rect(4, 6, 12, 10, R), "", "align-vertical-space-around"],
   sameW: [rect(2, 2, 14, 6, R) + rect(2, 10, 14, 14, R), "", "stretch-horizontal"],
   external: ["M10 2h4v4M14 2 7 9" + poly([[12, 9], [12, 14, R], [2, 14, R], [2, 4, R], [7, 4]]), "", "external-link"],
+  newSection: [rect(2, 3, 14, 13, 2) + "M2 6h12", "", "Section frame with a title bar (multi-select toolbar)"],
+  subBoard: [rect(2, 2, 14, 14, 2) + rect(5, 5, 11, 11, 1), "", "board in a board (multi-select toolbar)"],
+  tidy: [rect(2, 2, 6, 6, 1) + rect(10, 2, 14, 6, 1) + rect(2, 10, 6, 14, 1) + rect(10, 10, 14, 14, 1), "", "layout-grid"],
   copy: [rect(6, 6, 14, 14, R) + poly([[3, 10], [2, 10, R], [2, 2, R], [10, 2, R], [10, 3]]), "", "copy"],
   // 共享卡「⧉ N boards」：三张叠着的方块（square-stack 简化成三层，线间距 3）
   boards: [poly([[2, 7], [2, 2, R], [7, 2]]) + poly([[5, 10], [5, 5, R], [10, 5]]) + rect(8, 8, 14, 14, R), "", "square-stack"],

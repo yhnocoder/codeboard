@@ -6,7 +6,7 @@ import {
   bounds, removeCards, SECTION_PAD, GAP,
   copyText, cardRows, LANGS, defaultWidth,
   type Arrange, type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment,
-  type Rect,
+  tidy, type Rect,
 } from "@codeboard/core";
 import {
   state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, hostOf, rectOf, toast, placeOf, sharedOn,
@@ -17,7 +17,7 @@ import { setEditing, setPopIn } from "../state/ui";
 import { openMenu, type Item } from "../ui/Menu";
 import { ghostOut } from "../state/ghost";
 import { frameOf, fitFrame, setFitting, allMembers, isHidden } from "../state/sections";
-import { popCard, revealCard, sectionById, sectionLocked, selCards } from "./common";
+import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
 import { requestViews } from "./create";
 import { kbd } from "../keymap";
 
@@ -107,6 +107,24 @@ export const arrangeItem = (ids: () => string[]): Item => ({
     { label: "Send to Back", kbd: kbd("back"), run: () => arrange(ids(), "back") },
   ],
 });
+
+/**
+ * Tidy Up（core 的 tidy）：选中的卡之间有箭头的排成列，没箭头的排成行放在下面。一步撤销；卡和线从旧位置滑过去。
+ * 锁住的卡不动，当成障碍（别的卡绕开它）
+ */
+export function tidyUp(ids = sel.cards) {
+  const hosts = [...new Set(ids.map(hostOf))].filter((id) => state.board.place[id]);
+  const free = hosts.filter((id) => !isLocked(id));
+  if (free.length < 2) return;
+  const inSel = new Set(free);
+  const links = state.board.links.map((l) => [hostOf(l.from.card), hostOf(l.to.card)] as [string, string]).filter(([f, t]) => inSel.has(f) && inSel.has(t));
+  const m = tidy(free.map((id) => ({ id, ...rectOf(id) })), links, hosts.filter(isLocked).map((id) => rectOf(id)));
+  const moved: { id: string; ox: number; oy: number }[] = [];
+  for (const [id, p] of m) { const c = placeOf(id), ox = c.x - p.x, oy = c.y - p.y; if (ox || oy) moved.push({ id, ox, oy }); }
+  if (!moved.length) return;
+  if (!mutate((b) => { for (const [id, p] of m) { const c = b.place[id]; if (c) { c.x = p.x; c.y = p.y; } } })) return;
+  slideFrom(moved);
+}
 
 export function duplicateSel() {
   const cs = selCards().filter((c) => c.kind !== "compare");

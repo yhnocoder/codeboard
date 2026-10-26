@@ -46,6 +46,9 @@ const P: Record<string, string> = {
   distV: "M2 2h12M2 14h12M4.5 6H11.5A.5 .5 0 0 1 12 6.5V9.5A.5 .5 0 0 1 11.5 10H4.5A.5 .5 0 0 1 4 9.5V6.5A.5 .5 0 0 1 4.5 6z", // align-vertical-space-around
   sameW: "M2.5 2H13.5A.5 .5 0 0 1 14 2.5V5.5A.5 .5 0 0 1 13.5 6H2.5A.5 .5 0 0 1 2 5.5V2.5A.5 .5 0 0 1 2.5 2zM2.5 10H13.5A.5 .5 0 0 1 14 10.5V13.5A.5 .5 0 0 1 13.5 14H2.5A.5 .5 0 0 1 2 13.5V10.5A.5 .5 0 0 1 2.5 10z", // stretch-horizontal
   external: "M10 2h4v4M14 2 7 9M12 9V13.5A.5 .5 0 0 1 11.5 14H2.5A.5 .5 0 0 1 2 13.5V4.5A.5 .5 0 0 1 2.5 4H7", // external-link
+  newSection: "M4 3H12A2 2 0 0 1 14 5V11A2 2 0 0 1 12 13H4A2 2 0 0 1 2 11V5A2 2 0 0 1 4 3zM2 6h12", // Section frame with a title bar (multi-select toolbar)
+  subBoard: "M4 2H12A2 2 0 0 1 14 4V12A2 2 0 0 1 12 14H4A2 2 0 0 1 2 12V4A2 2 0 0 1 4 2zM6 5H10A1 1 0 0 1 11 6V10A1 1 0 0 1 10 11H6A1 1 0 0 1 5 10V6A1 1 0 0 1 6 5z", // board in a board (multi-select toolbar)
+  tidy: "M3 2H5A1 1 0 0 1 6 3V5A1 1 0 0 1 5 6H3A1 1 0 0 1 2 5V3A1 1 0 0 1 3 2zM11 2H13A1 1 0 0 1 14 3V5A1 1 0 0 1 13 6H11A1 1 0 0 1 10 5V3A1 1 0 0 1 11 2zM3 10H5A1 1 0 0 1 6 11V13A1 1 0 0 1 5 14H3A1 1 0 0 1 2 13V11A1 1 0 0 1 3 10zM11 10H13A1 1 0 0 1 14 11V13A1 1 0 0 1 13 14H11A1 1 0 0 1 10 13V11A1 1 0 0 1 11 10z", // layout-grid
   copy: "M6.5 6H13.5A.5 .5 0 0 1 14 6.5V13.5A.5 .5 0 0 1 13.5 14H6.5A.5 .5 0 0 1 6 13.5V6.5A.5 .5 0 0 1 6.5 6zM3 10H2.5A.5 .5 0 0 1 2 9.5V2.5A.5 .5 0 0 1 2.5 2H9.5A.5 .5 0 0 1 10 2.5V3", // copy
   boards: "M2 7V2.5A.5 .5 0 0 1 2.5 2H7M5 10V5.5A.5 .5 0 0 1 5.5 5H10M8.5 8H13.5A.5 .5 0 0 1 14 8.5V13.5A.5 .5 0 0 1 13.5 14H8.5A.5 .5 0 0 1 8 13.5V8.5A.5 .5 0 0 1 8.5 8z", // square-stack
   trash: "M2 4h12M6 7v4M10 7v4M13 4V13.5A.5 .5 0 0 1 12.5 14H3.5A.5 .5 0 0 1 3 13.5V4M6 4V2.5A.5 .5 0 0 1 6.5 2H9.5A.5 .5 0 0 1 10 2.5V4", // trash-2

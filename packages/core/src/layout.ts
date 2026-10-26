@@ -200,6 +200,104 @@ export function align(rs: (Rect & { id: string })[], op: AlignOp): Map<string, P
   return out;
 }
 
+// ---------- Tidy Up ----------
+
+/** Tidy Up 里列与列之间的空（留给箭头） */
+export const TIDY_COL_GAP = 2 * GAP;
+
+/**
+ * 整理选中的卡：选中的卡之间有箭头的，按箭头的深度排成一列一列（从左到右，每列保持现在从上到下的顺序）；
+ * 没有箭头连着的，按现在的 y 分成几行（每行按 x 排、顶端对齐）放在箭头那组下面；一条箭头都没有就只排行。
+ * 从这些卡现在的左上角开始摆。fixed = 不能动的卡（锁住的）：当成障碍，摆到它上面的卡顺着排列方向跳过去。
+ * 环也会停：深度只沿 DFS 树的前向边算，回边不算。返回每张卡的新 x / y
+ */
+export function tidy(rs: (Rect & { id: string })[], links: [string, string][], fixed: Rect[] = []): Map<string, { x: number; y: number }> {
+  const out = new Map<string, { x: number; y: number }>();
+  const b = bounds(rs);
+  if (!b) return out;
+  const byId = new Map(rs.map((r) => [r.id, r]));
+  const edges = links.filter(([f, t]) => f !== t && byId.has(f) && byId.has(t));
+  const linked = rs.filter((r) => edges.some(([f, t]) => f === r.id || t === r.id));
+  const rest = rs.filter((r) => !linked.includes(r));
+  // 和障碍重叠就顺着排列方向（列往下、行往右）跳过它，直到不重叠
+  const clear = (x: number, y: number, w: number, h: number, alongX: boolean) => {
+    for (let moved = true, n = 0; moved && n <= fixed.length; n++) {
+      moved = false;
+      for (const o of fixed) {
+        if (!overlaps({ x, y, w, h }, o, GAP - 1)) continue;
+        if (alongX) x = o.x + o.w + GAP; else y = o.y + o.h + GAP;
+        moved = true;
+      }
+    }
+    return { x, y };
+  };
+  let top = b.y;
+  if (linked.length) {
+    const depth = flowDepth(linked, edges);
+    const cols = new Map<number, (Rect & { id: string })[]>();
+    for (const r of linked) { const d = depth.get(r.id)!; cols.set(d, [...(cols.get(d) ?? []), r]); }
+    let x = b.x, bottom = b.y;
+    for (const d of [...cols.keys()].sort((p, q) => p - q)) {
+      const col = cols.get(d)!.sort((p, q) => p.y - q.y || p.x - q.x);
+      let y = b.y, w = 0;
+      for (const r of col) {
+        const p = clear(x, y, r.w, r.h, false);
+        out.set(r.id, p);
+        y = p.y + r.h + GAP; w = Math.max(w, r.w);
+        bottom = Math.max(bottom, p.y + r.h);
+      }
+      x += w + TIDY_COL_GAP;
+    }
+    top = bottom + TIDY_COL_GAP;
+  }
+  // 行：按 y 排，一张卡的顶端落在这一行的上四分之三里就算同一行
+  const rows: { top: number; h: number; rs: (Rect & { id: string })[] }[] = [];
+  for (const r of [...rest].sort((p, q) => p.y - q.y || p.x - q.x)) {
+    const last = rows[rows.length - 1];
+    if (last && r.y < last.top + last.h * 0.75) { last.rs.push(r); last.h = Math.max(last.h, r.y + r.h - last.top); }
+    else rows.push({ top: r.y, h: r.h, rs: [r] });
+  }
+  let y = top;
+  for (const row of rows) {
+    let x = b.x, bottom = y;
+    for (const r of row.rs.sort((p, q) => p.x - q.x || p.y - q.y)) {
+      const p = clear(x, y, r.w, r.h, true);
+      out.set(r.id, p);
+      x = p.x + r.w + GAP;
+      bottom = Math.max(bottom, p.y + r.h);
+    }
+    y = bottom + GAP;
+  }
+  return out;
+}
+
+/** 每张卡在箭头里的深度（最长路径）。先从没有箭头进来的卡（再按 x）开始 DFS，回边（成环的那条）不算，所以一定会停 */
+function flowDepth(rs: (Rect & { id: string })[], edges: [string, string][]): Map<string, number> {
+  const next = new Map<string, string[]>(rs.map((r) => [r.id, []]));
+  const into = new Set(edges.map(([, t]) => t));
+  for (const [f, t] of edges) next.get(f)!.push(t);
+  const order = [...rs].sort((p, q) => Number(into.has(p.id)) - Number(into.has(q.id)) || p.x - q.x || p.y - q.y);
+  const state = new Map<string, 1 | 2>(), fwd: [string, string][] = [];
+  const visit = (id: string) => {
+    state.set(id, 1);
+    for (const t of next.get(id)!) {
+      if (state.get(t) === 1) continue; // 回边
+      fwd.push([id, t]);
+      if (!state.has(t)) visit(t);
+    }
+    state.set(id, 2);
+  };
+  for (const r of order) if (!state.has(r.id)) visit(r.id);
+  const depth = new Map(rs.map((r) => [r.id, 0]));
+  // 去掉回边后没有环，最长路径最多 rs.length - 1 轮就定了
+  for (let k = 0; k < rs.length; k++) {
+    let changed = false;
+    for (const [f, t] of fwd) if (depth.get(f)! + 1 > depth.get(t)!) { depth.set(t, depth.get(f)! + 1); changed = true; }
+    if (!changed) break;
+  }
+  return depth;
+}
+
 // ---------- Section 的框 ----------
 
 /** Section 的框给成员卡、子 Section 留的边距；折叠后的标题条大小 */
