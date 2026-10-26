@@ -15,7 +15,7 @@ import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
 import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
-import { openAddNote, setNoteBg, showPeek } from "./notes";
+import { openAddNote, setMarkColor, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel } from "./shared";
@@ -24,7 +24,7 @@ import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from ".
 import { setLegendOpen } from "../state/calls";
 import { askQuestion, askQuestionOnCard } from "./questions";
 import { addVariantMenu } from "./variants";
-import { LEGEND, legendName, type Link } from "@codeboard/core";
+import { LEGEND, legendName, HAND_COLORS, type Link } from "@codeboard/core";
 import { kbd } from "../keymap";
 
 /**
@@ -100,9 +100,10 @@ const genItems = (at: { card: string; seg?: string; line?: number }): Item[] => 
   { label: "Choose File…", run: () => addGenerated(at, "file") },
 ];
 /** 右键代码行 / 行号：行的操作，整张卡的菜单在最后的 Card ▸ 里 */
-export function lineMenu(ls: LineSel, x: number, y: number) {
+/** annotate：选中了同一行里的一段字时，加一条贴在字上的手写标注 */
+export function lineMenu(ls: LineSel, x: number, y: number, annotate?: () => void) {
   selectCard(ls.card);
-  openMenu([...lineItems(ls), null, { label: "Card", sub: cardItems(ls.card, x, y) }], x, y);
+  openMenu([...(annotate ? [{ label: "Annotate Selection…", hint: "A handwritten note above the selected words", run: annotate }, null] : []), ...lineItems(ls), null, { label: "Card", sub: cardItems(ls.card, x, y) }], x, y);
 }
 
 // ---------- 卡片菜单 ----------
@@ -143,6 +144,11 @@ function cardItems(id: string, x: number, y: number): Item[] {
     { label: "Rename", kbd: "Double-click", run: () => setEditing({ kind: "title", id }) },
     { label: "Process Tag…", run: () => void addProc(id) },
     { label: "Start Card", checked: !!placeOf(id).start, run: () => toggleStart(id) },
+    ...tail,
+  ];
+  if (c.kind === "note" && c.hand) return [
+    { label: "Color", sub: HAND_COLORS.map((k) => ({ label: k[0].toUpperCase() + k.slice(1), checked: c.hand === k, run: () => setMarkColor(id, k) })) },
+    { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
     ...tail,
   ];
   if (c.kind === "note") return [

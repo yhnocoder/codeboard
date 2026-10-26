@@ -338,6 +338,7 @@ export const MARK_MD: Record<string, (attrs: Record<string, any>) => readonly [s
   link: (a) => ["[", `](${a.href ?? ""})`],
   underline: () => ["<u>", "</u>"], kbd: () => ["<kbd>", "</kbd>"],
   highlight: () => ["==", "=="], subscript: () => ["~", "~"], superscript: () => ["^", "^"],
+  annot: (a) => ["{", `|${escAnnot(a.note ?? "")}${annotOpts(a)}}`],
 };
 /**
  * 自己定义的格式的 Markdown 规则：re 从开头认一段（第 1 组是里面的字），记号来自 MARK_MD。
@@ -380,6 +381,42 @@ const tagMark = (name: string, tag: string, re: RegExp) => Mark.create({
   ...mdSyntax(name, re),
 });
 const Highlight = tagMark("highlight", "mark", HL_RE);
+
+// ---------- {字|批注}、{字|批注|purple below}：贴在字上的手写标注（注音 ruby 的写法） ----------
+// 和 ==高亮== 是两回事，各用各的记号。第三段可选：颜色（blue purple orange green，默认 blue）和 below（标签写在字下面）。
+// 字和批注里的 { } | \ 写成 \{ \} \| \\；表格里 | 本来就要写成 \|。别的 Markdown 查看器里它原样显示成 {字|批注}，字不会丢
+export const ANNOT_COLORS = ["blue", "purple", "orange", "green"] as const;
+export type AnnotColor = (typeof ANNOT_COLORS)[number];
+const ANNOT_PART = "((?:\\\\.|[^{}|\\n\\\\])+)";
+const ANNOT_RE = new RegExp(`^\\{${ANNOT_PART}\\|${ANNOT_PART}(?:\\|([a-z ]*))?\\}`);
+const escAnnot = (t: string) => t.replace(/[\\{}|]/g, "\\$&");
+const annotOpts = (a: Record<string, any>) => { const o = [a.color && a.color !== "blue" ? a.color : "", a.below ? "below" : ""].filter(Boolean).join(" "); return o ? `|${o}` : ""; };
+const Annot = Mark.create({
+  name: "annot",
+  inclusive: false,
+  addAttributes() {
+    return {
+      note: { default: "", parseHTML: (e) => e.getAttribute("data-note") ?? "", renderHTML: (a) => ({ "data-note": a.note }) },
+      color: { default: "blue", parseHTML: (e) => e.getAttribute("data-color") ?? "blue", renderHTML: (a) => (a.color && a.color !== "blue" ? { "data-color": a.color } : {}) },
+      below: { default: false, parseHTML: (e) => e.hasAttribute("data-below"), renderHTML: (a) => (a.below ? { "data-below": "" } : {}) },
+    };
+  },
+  parseHTML: () => [{ tag: "span.md-annot" }],
+  renderHTML: ({ HTMLAttributes }) => ["span", mergeAttributes(HTMLAttributes, { class: "md-annot" }), 0],
+  markdownTokenName: "x_annot",
+  parseMarkdown: (t: any, h: any) => h.applyMark("annot", h.parseInline(t.tokens ?? []), { note: t.note, color: t.color, below: t.below }),
+  renderMarkdown: (n: JSONContent, h: any) => { const [a, b] = MARK_MD.annot(n.attrs ?? {}); return `${a}${h.renderChildren(n)}${b}`; },
+  markdownTokenizer: {
+    name: "x_annot", level: "inline",
+    start: (src: string) => src.indexOf("{"),
+    tokenize: (src: string, _prev: unknown, lx: any) => {
+      const m = ANNOT_RE.exec(src);
+      if (!m) return;
+      const un = (t: string) => t.replace(/\\([\\{}|])/g, "$1"), opts = (m[3] ?? "").split(/\s+/);
+      return { type: "x_annot", raw: m[0], tokens: lx.inlineTokens(un(m[1])), note: un(m[2]).trim(), color: ANNOT_COLORS.find((c) => opts.includes(c)) ?? "blue", below: opts.includes("below") };
+    },
+  },
+});
 const Sub = tagMark("subscript", "sub", SUB_RE);
 const Sup = tagMark("superscript", "sup", SUP_RE);
 
@@ -409,8 +446,8 @@ const Lnk = Link.extend({
 
 /** 两边共用的扩展（只含 schema 和 markdown 规则；编辑器专用的插件在 editor/ 里另加） */
 export const baseExtensions: AnyExtension[] = [
-  // 高亮排在所有格式前面：它是最外层的 <mark>，里面再有粗体、链接时底色也是连着的一整段（排在后面会被拆成几段）
-  Highlight,
+  // 标注、高亮排在所有格式前面：它们是最外层的那一层，里面再有粗体、链接时底色也是连着的一整段（排在后面会被拆成几段）
+  Annot, Highlight,
   StarterKit.configure({
     document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, horizontalRule: false, code: false, link: false,
     heading: { levels: [1, 2, 3, 4, 5, 6] },
@@ -452,6 +489,8 @@ function escText(s: string): string {
       // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
       case "^": out += SUP_RE.test(s.slice(i)) && prev !== "^" ? "\\^" : c; break;
       case "=": out += HL_RE.test(s.slice(i)) && prev !== "=" ? "\\=" : c; break;
+      // 字面的 {a|b}：会被读成标注的才转义
+      case "{": out += ANNOT_RE.test(s.slice(i)) ? "\\{" : c; break;
       // 字面的 :smile:（会被读成表情的）：转义前一个冒号
       case ":": { const m = EMOJI_AT.exec(s.slice(i)); out += m && isEmoji(m[1]) && !/[\p{L}\p{N}_]/u.test(prev) ? "\\:" : c; break; }
       case "&": out += /^&(?:#\d+|#x[\da-f]+|\w+);/i.test(s.slice(i)) ? "&amp;" : c; break;
@@ -492,7 +531,12 @@ const unshield = (s: string) => s.replace(/[-]/g, (c) => String.fromCharCo
 function toMd(content: JSONContent[], raw: boolean): string {
   const { nodes, marks } = mdSchema();
   const prep = (ns: JSONContent[], code: boolean): JSONContent[] => ns.map((n) => {
-    if (n.type === "text") return code || n.marks?.some((m) => marks[m.type]?.spec.code) ? n : { ...n, text: shield(raw ? n.text! : escText(n.text!)) };
+    if (n.type === "text") {
+      if (code || n.marks?.some((m) => marks[m.type]?.spec.code)) return n;
+      // 标注里的字：{ } | 也要转义（它们会断开标注的写法）
+      const t = raw ? n.text! : escText(n.text!);
+      return { ...n, text: shield(n.marks?.some((m) => m.type === "annot") && !raw ? t.replace(/(?<!\\)[{}|]/g, "\\$&") : t) };
+    }
     // 带格式的行内原子节点：先写成它自己的 Markdown，当作带同样格式的字（不转义），格式的记号就包在它外面
     if (n.marks?.length && isMarkableLeaf(n.type)) return { type: "text", text: shield(mm.serialize({ type: "doc", content: [{ type: "paragraph", content: [{ ...n, marks: undefined }] }] }).replace(/^\n+|\n+$/g, "")), marks: n.marks };
     // 折叠块的标题由 details 自己写成 HTML 的字，不经过这里

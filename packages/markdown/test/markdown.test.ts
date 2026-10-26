@@ -402,3 +402,41 @@ describe("text at the start of a line that reads as a block", () => {
     same("**b** - x");
   });
 });
+
+describe("annotations {text|note}", () => {
+  const annots = (s: string) => {
+    const out: { text: string; note: string; color: string; below: boolean }[] = [];
+    const w = (ns: JSONContent[] | undefined) => ns?.forEach((n) => { const m = n.marks?.find((k) => k.type === "annot"); if (m) out.push({ text: n.text ?? "", note: m.attrs!.note, color: m.attrs!.color, below: m.attrs!.below }); w(n.content); });
+    w(parseMd(s).content);
+    return out;
+  };
+  it("parses the note, the color and below; == stays a plain highlight", () => {
+    expect(annots("每一步先由 {Scheduler|决定谁先跑} 挑")).toEqual([{ text: "Scheduler", note: "决定谁先跑", color: "blue", below: false }]);
+    expect(annots("{做一次前向|prefill / decode 二选一|purple below}")).toEqual([{ text: "做一次前向", note: "prefill / decode 二选一", color: "purple", below: true }]);
+    expect(annots("==nano-vllm==")).toEqual([]);
+    expect(JSON.stringify(parseMd("==nano-vllm=="))).toContain('"highlight"');
+  });
+  it("round trips, with formatting inside and escapes", () => {
+    same("每一步先由 {Scheduler|决定谁先跑} 挑出");
+    same("{做一次前向|prefill / decode 二选一|purple below}");
+    same("{**bold** and `code`|a note|green}");
+    same("{a \\| b|x \\} y}");
+    same("set literal \\{a|b} braces");
+    same("plain {braces} and a|b pipes stay");
+    same("==hl== and {t|n|orange}");
+  });
+  it("renders a span with the note in data attributes", () => {
+    const h = renderMd("see {Scheduler|决定谁先跑|purple below}");
+    expect(h).toContain('class="md-annot"');
+    expect(h).toContain('data-note="决定谁先跑"');
+    expect(h).toContain('data-color="purple"');
+    expect(h).toContain("data-below");
+    expect(h).toContain(">Scheduler</span>");
+  });
+  it("in a table the | is written \\|", () => {
+    const s = "| a | b |\n| --- | --- |\n| {x\\|y} | z |";
+    const d = annots(s);
+    expect(d).toEqual([{ text: "x", note: "y", color: "blue", below: false }]);
+    expect(annots(rt(s))).toEqual(d);
+  });
+});

@@ -73,6 +73,18 @@ export function newNote(at?: { x: number; y: number }, bg = true, text = "") {
   popCard(id);
   return id;
 }
+/** Mark（标注卡）：手写字、没有框；颜色接着上一张 Mark 用的 */
+export function newMark(at?: { x: number; y: number }) {
+  const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 80, y: v.y - 20 }; })();
+  const id = uid("n");
+  const last = [...state.board.cards].reverse().find((c) => c.kind === "note" && c.hand);
+  const hand = (last?.kind === "note" && last.hand) || "blue";
+  createFresh(id, (b) => { b.cards.push({ id, kind: "note", md: "", bg: false, hand }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: 180 }; settleHome(b, id); });
+  select({ cards: [id] });
+  setEditing({ kind: "note", id });
+  popCard(id);
+  return id;
+}
 export async function newImage(at?: { x: number; y: number }) {
   const dataUrl = await ask("pickFile", { kind: "image" }).catch(() => null);
   if (!dataUrl) return;

@@ -301,13 +301,24 @@ export function rebaseSegment(b: Board, cardId: string, ns: Segment, map: LineMa
   moveLineRefs(b, cardId, old, ns, map, { review: o.review, notes });
 }
 
-/** 新段 ns 带上旧段的隐藏 / 高亮（按 map 映射过去，没了的行去掉）。返回一份拷贝 */
-export function remapSegMarks(ns: Segment, old: Pick<Segment, "hidden" | "hl">, map: LineMap): Segment {
+/**
+ * 新段 ns 带上旧段的隐藏 / 高亮 / 标注（按 map 映射过去，没了的行去掉）。返回一份拷贝。
+ * 标注要被标的字还在那一行里：原位置不是那几个字时在新的这一行里找同样的字（找第一处），找不到就去掉
+ */
+export function remapSegMarks(ns: Segment, old: Pick<Segment, "hidden" | "hl" | "annots" | "text" | "start">, map: LineMap): Segment {
   const hidden = (old.hidden ?? []).map(([a, e]) => mapRange(map, a, e)).filter((r): r is [number, number] => !!r);
   const hl = (old.hl ?? []).map(map).filter(Boolean);
+  const annots = (old.annots ?? []).flatMap((a) => {
+    const line = map(a.line), words = (old.text[a.line - old.start] ?? "").slice(a.from, a.to);
+    const t = line ? ns.text[line - ns.start] : undefined;
+    if (!line || t === undefined || !words) return [];
+    const from = t.slice(a.from, a.to) === words ? a.from : t.indexOf(words);
+    return from < 0 ? [] : [{ ...a, line, from, to: from + words.length }];
+  });
   const out = clone(ns);
   if (hidden.length) out.hidden = hidden; else delete out.hidden;
   if (hl.length) out.hl = hl; else delete out.hl;
+  if (annots.length) out.annots = annots; else delete out.annots;
   return out;
 }
 
@@ -534,6 +545,8 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
     const src = m.segments.filter((q) => q.path === s.path && sameVersion(q.version, s.version) && q.start <= s.end && q.end >= s.start);
     s.hl = [...new Set(src.flatMap((q) => q.hl ?? []).filter((l) => l >= s.start && l <= s.end))];
     s.hidden = src.flatMap((q) => q.hidden ?? []).map(([a, c]) => [Math.max(a, s.start), Math.min(c, s.end)] as [number, number]).filter(([a, c]) => a <= c);
+    s.annots = src.flatMap((q) => q.annots ?? []).filter((a) => a.line >= s.start && a.line <= s.end).map((a) => ({ ...a }));
+    if (!s.annots.length) s.annots = undefined;
     if (!s.hl.length) s.hl = undefined;
     if (!s.hidden.length) s.hidden = undefined;
   }

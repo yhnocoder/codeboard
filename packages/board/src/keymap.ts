@@ -42,6 +42,7 @@ export const KEYMAP: Bind[] = [
   // ---------- Create ----------
   { id: "newNote", keys: ["n"], label: "New Note", group: "Create", run: (a) => void a.newNote(atPointer(), true) },
   { id: "newText", keys: ["t"], label: "New Text", group: "Create", run: (a) => void a.newNote(atPointer(), false) },
+  { id: "newMark", keys: ["m"], label: "New Mark", group: "Create", run: (a) => void a.newMark(atPointer()) },
   { id: "dblText", show: "Double-click empty space", label: "New Text (change in Settings)", group: "Create" },
   { id: "addSidenote", keys: ["s"], label: "Add Sidenote", group: "Create", run: (a) => a.addSidenoteUI() },
   { id: "paste", show: "⌘V", label: "Paste code, link or image", group: "Create" },
