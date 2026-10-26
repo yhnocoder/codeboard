@@ -1,6 +1,6 @@
-// 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（卡片的框和名字、调用图标记、连线、Section 色）发给父白板，
-// 父白板只画骨架，不拿子白板的完整内容。
-import { cardTitle, clone, emptyBoard, firstLine, hostOf, isCode, uid, versionLabel, withCols, type Board, type BoardCard, type Card, type Link, type Place } from "./model";
+// 子白板（BoardCard）：宿主把子白板算成一份很小的骨架（卡片的名字、种类、一行摘要、调用图标记、所在的 Section，[[ 能链接的卡）发给父白板，
+// 父白板按它画框里的分栏，不拿子白板的完整内容。
+import { baseName, cardTitle, clone, domainOf, emptyBoard, firstLine, hostOf, isCode, uid, versionLabel, withCols, type Board, type BoardCard, type Card, type Link, type Place } from "./model";
 import { cardsToFrame, removeCards, removeSections, removeStickers, renumberBorn } from "./edit";
 import { computeFlows } from "./flow";
 import { bounds, estSize, sectionFrames, type Rect } from "./layout";
@@ -8,15 +8,22 @@ import type { Crumb } from "./protocol";
 
 /**
  * 骨架里的一张卡：框（相对骨架左上角，子白板的坐标）、名字、种类；g = 在子白板的第几张调用图里，m / i = 那张图的字母 / 图标；
- * sec = 所在 Section 的颜色。k = "more" 是折起来的分支（「+N」），ids = 折进去的卡
+ * sec = 所在 Section 的颜色，si = 那个 Section 在 secs 里的下标。k = "more" 是折起来的分支（「+N」），ids = 折进去的卡。
+ * 框里的小卡片用的：f = 出处（代码的文件名、网页的域名），d = 一行摘要，l = 代码的行号范围，img = 图片（assets/ 下的文件名或小的 data: URL），
+ * hand = 手写的 Mark（画成便签）
  */
-export type SkelCard = { id: string; x: number; y: number; w: number; h: number; t: string; k: Card["kind"] | "more"; g?: number; m?: string; i?: string; sec?: string; ids?: string[] };
+export type SkelCard = {
+  id: string; x: number; y: number; w: number; h: number; t: string; k: Card["kind"] | "more"; g?: number; m?: string; i?: string; sec?: string; si?: number; ids?: string[];
+  f?: string; d?: string; l?: [number, number]; img?: string; hand?: true;
+};
+/** [[ 能链接到的一张卡（有真正标题的）：via = 从这块子白板往下要经过的子白板（框的卡 id、白板 id、名字），直接在这块上的没有 */
+export type SkelRef = { id: string; t: string; k: Card["kind"]; via?: { f: string; b: string; n: string }[] };
 export type SkelSec = { x: number; y: number; w: number; h: number; color?: string; t: string };
 /**
  * 一块子白板的骨架。w / h = 内容的范围；n = 卡数；commit = 代码卡里最多的那个 commit（短）；
- * links = 骨架里的连线，每三个数一条：[起点卡下标, 终点卡下标, 1 = Call / 0]
+ * refs = 它和它里面的子白板（一路往下）上能 [[ 链接的卡。框里不画子白板的箭头，所以骨架里没有连线
  */
-export type Skeleton = { id: string; name: string; n: number; commit?: string; w: number; h: number; cards: SkelCard[]; secs: SkelSec[]; links: number[] };
+export type Skeleton = { id: string; name: string; n: number; commit?: string; w: number; h: number; cards: SkelCard[]; secs: SkelSec[]; refs: SkelRef[] };
 
 /** 同一个出发点（同一张卡的同一行）的 Call 分支超过 FAN 条时，只留前 FAN_KEEP 条，其余折成「+N」 */
 export const FAN = 5, FAN_KEEP = 3;
@@ -56,16 +63,42 @@ function rectOf(c: Card, p: Place): Rect {
 }
 
 /**
- * 算一块白板的骨架。nameOf：子白板里又嵌着的子白板叫什么（画成一块带名字的框）。
+ * [[ 引用能用的标题：自己起的名字、Note 第一行是标题（# 开头，或标题 / 小标题字号的 Text）、按符号命名的代码卡、子白板。
+ * 图片和名字只是正文第一行的卡没有（undefined）
+ */
+export function refTitle(c: Card, nameOf: (board: string) => string | undefined = () => undefined): string | undefined {
+  if (c.kind === "image") return undefined;
+  const own = c.title?.trim();
+  if (own) return own;
+  switch (c.kind) {
+    case "note": {
+      const head = c.md.split("\n").find((l) => l.trim());
+      return head && (/^\s{0,3}#{1,6}\s/.test(head) || (!c.bg && !c.hand && (c.size === "title" || c.size === "heading"))) ? firstLine(head) || undefined : undefined;
+    }
+    case "code": return c.segments[0]?.symbol ? cardTitle(c) : undefined;
+    case "board": return nameOf(c.board) ?? "Board";
+    default: return undefined;
+  }
+}
+
+/** Note 去掉 Markdown 记号后的非空行（firstLine 同一套） */
+const textLines = (md: string) => md.split("\n").map((l) => firstLine(l)).filter(Boolean);
+/** 小卡片里能直接显示的图片：assets/ 下的文件，或者不大的 data: URL（大的不往骨架里塞） */
+const thumbOf = (src: string) => (!src.startsWith("data:") ? src : src.length <= 16_000 ? src : undefined);
+
+/**
+ * 算一块白板的骨架。peek：按 id 拿别的白板（子白板里又嵌着的子白板的名字、[[ 能链接到的它们的卡）。
  * 坐标整体挪到从 (0, 0) 开始、取整，发给白板的东西尽量小
  */
-export function skeletonOf(b: Board, nameOf: (id: string) => string | undefined = () => undefined): Skeleton {
+export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = () => undefined): Skeleton {
+  const nameOf = (id: string) => peek(id)?.name;
   const flows = computeFlows(b);
   const graphIndex = new Map(flows.graphs.map((g, i) => [g.id, i]));
   const placed = b.cards.filter((c) => b.place[c.id]);
   const rects = new Map(placed.map((c) => [c.id, rectOf(c, b.place[c.id])]));
   const frames = sectionFrames(b, rects);
   const secColor = new Map(b.sections.map((s) => [s.id, s.color]));
+  const secIndex = new Map(b.sections.map((s, i) => [s.id, i]));
   const host = hostOf(b);
 
   // 分支太多的出发点：留前 FAN_KEEP 条，其余目标折成「+N」（只折别处没有连进来的卡）
@@ -94,13 +127,16 @@ export function skeletonOf(b: Board, nameOf: (id: string) => string | undefined 
     if (fold.has(c.id)) continue;
     const r = rects.get(c.id)!;
     const g = flows.byId.get(c.kind === "compare" ? c.cols.find((k) => flows.byId.has(k)) ?? c.id : c.id);
-    const sc: SkelCard = { id: c.id, x: r.x, y: r.y, w: r.w, h: r.h, t: titleOf(c, b, nameOf), k: c.kind };
+    const sc: SkelCard = { id: c.id, x: r.x, y: r.y, w: r.w, h: r.h, t: titleOf(c, b, nameOf), k: c.kind, ...miniOf(c, nameOf) };
     if (g) {
       sc.g = graphIndex.get(g.id);
       if ("icon" in g.mark) sc.i = g.mark.icon; else sc.m = g.label;
     }
-    const col = secColor.get(b.place[c.id].section ?? "");
+    const sid = b.place[c.id].section ?? "";
+    const col = secColor.get(sid);
     if (col) sc.sec = col;
+    const si = secIndex.get(sid);
+    if (si !== undefined) sc.si = si;
     cards.push(sc);
   }
   cards.push(...mores);
@@ -111,24 +147,11 @@ export function skeletonOf(b: Board, nameOf: (id: string) => string | undefined 
     return o;
   });
 
-  const at = new Map(cards.map((c, i) => [c.id, i]));
-  const idx = (id: string) => at.get(fold.get(host(id)) ?? host(id));
-  const links: number[] = [];
-  const seen = new Set<string>();
-  for (const l of b.links) {
-    const a = idx(l.from.card), t = idx(l.to.card);
-    if (a === undefined || t === undefined || a === t) continue;
-    const k = `${a}|${t}`;
-    if (seen.has(k)) continue;
-    seen.add(k);
-    links.push(a, t, l.call ? 1 : 0);
-  }
-
   // 挪到从 (0, 0) 开始，取整
   const box = bounds([...cards, ...secs]) ?? { x: 0, y: 0, w: 1, h: 1 };
   const r0 = (n: number) => Math.round(n);
   for (const o of [...cards, ...secs]) { o.x = r0(o.x - box.x); o.y = r0(o.y - box.y); o.w = r0(o.w); o.h = r0(o.h); }
-  const sk: Skeleton = { id: b.id, name: b.name, n: b.cards.filter((c) => b.place[c.id]).length, w: Math.max(1, r0(box.w)), h: Math.max(1, r0(box.h)), cards, secs, links };
+  const sk: Skeleton = { id: b.id, name: b.name, n: b.cards.filter((c) => b.place[c.id]).length, w: Math.max(1, r0(box.w)), h: Math.max(1, r0(box.h)), cards, secs, refs: refsOf(b, peek) };
   const commit = mainCommit(b);
   if (commit) sk.commit = commit;
   return sk;
@@ -136,8 +159,62 @@ export function skeletonOf(b: Board, nameOf: (id: string) => string | undefined 
 
 function titleOf(c: Card, b: Board, nameOf: (id: string) => string | undefined): string {
   if (c.kind === "board") return c.title || nameOf(c.board) || "Board";
-  if (c.kind === "note") return (firstLine(c.md) || "Note").slice(0, 80);
+  if (c.kind === "note") return (c.hand ? textLines(c.md).join(" ").slice(0, 160) : (c.title || firstLine(c.md) || "Note").slice(0, 80)) || "Mark";
   return cardTitle(c, b).slice(0, 120);
+}
+
+/** 小卡片的出处、摘要、行号、图片（见 SkelCard） */
+function miniOf(c: Card, nameOf: (id: string) => string | undefined): Partial<SkelCard> {
+  const o: Partial<SkelCard> = {};
+  switch (c.kind) {
+    case "note": {
+      if (c.hand) { o.hand = true; break; }
+      const ls = textLines(c.md), d = c.title ? ls[0] : ls[1];
+      if (d) o.d = d.slice(0, 120);
+      break;
+    }
+    case "code": {
+      const s = c.segments[0];
+      if (!s || s.src.kind === "free") break;
+      o.f = baseName(s.path);
+      o.l = [s.start, s.end];
+      break;
+    }
+    case "image": {
+      const img = thumbOf(c.src);
+      if (img) o.img = img;
+      if (!c.src.startsWith("data:")) o.f = baseName(c.src);
+      break;
+    }
+    case "web": {
+      o.f = c.meta?.site || domainOf(c.url);
+      if (c.meta?.desc) o.d = c.meta.desc.slice(0, 120);
+      break;
+    }
+    case "links": o.d = `${c.items.length} link${c.items.length === 1 ? "" : "s"}`; break;
+    case "board": { const n = nameOf(c.board); if (n && c.title && c.title !== n) o.d = n; break; }
+  }
+  return o;
+}
+
+/** 这块白板上（和一路往下的子白板里）有真正标题的卡（refTitle）；套得太深、套成环的不往下走 */
+function refsOf(b: Board, peek: (id: string) => Board | undefined): SkelRef[] {
+  const out: SkelRef[] = [];
+  const seen = new Set<string>([b.id]);
+  const walk = (x: Board, via: { f: string; b: string; n: string }[]) => {
+    for (const c of x.cards) {
+      if (!x.place[c.id]) continue;
+      const t = refTitle(c, (id) => peek(id)?.name);
+      if (t) out.push(via.length ? { id: c.id, t, k: c.kind, via } : { id: c.id, t, k: c.kind });
+      if (c.kind !== "board" || seen.has(c.board) || via.length >= 8) continue;
+      const sub = peek(c.board);
+      if (!sub) continue;
+      seen.add(c.board);
+      walk(sub, [...via, { f: c.id, b: sub.id, n: sub.name }]);
+    }
+  };
+  walk(b, []);
+  return out;
 }
 
 /** 代码卡里出现最多的 git commit（短）；没有 git 代码时 undefined */
@@ -147,6 +224,30 @@ function mainCommit(b: Board): string | undefined {
   let best: string | undefined, bn = 0;
   for (const [k, v] of n) if (v > bn) { best = k; bn = v; }
   return best;
+}
+
+/**
+ * 卡 card 在 b 或它一路往下的哪块子白板上：从 b 进到那块要经过的框（frame = 上一层白板上的框，board = 进到的白板）。
+ * 就在 b 上是 []，哪都找不到是 null。宽度优先：同一张卡（共享卡）出现在几层时走最近的那层
+ */
+export function cardPath(b: Board, card: string, peek: (id: string) => Board | undefined): { frame: string; board: string }[] | null {
+  const seen = new Set<string>([b.id]);
+  let level: { b: Board; path: { frame: string; board: string }[] }[] = [{ b, path: [] }];
+  for (let depth = 0; level.length && depth < 9; depth++) {
+    const next: typeof level = [];
+    for (const { b: x, path } of level) {
+      if (x.cards.some((c) => c.id === card || (c.kind === "compare" && c.cols.includes(card)))) return path;
+      for (const c of x.cards) {
+        if (c.kind !== "board" || seen.has(c.board)) continue;
+        const sub = peek(c.board);
+        if (!sub) continue;
+        seen.add(c.board);
+        next.push({ b: sub, path: [...path, { frame: c.id, board: sub.id }] });
+      }
+    }
+    level = next;
+  }
+  return null;
 }
 
 /** 骨架里这张卡在不在（折进「+N」的也算在）：父白板上连到它的箭头据此标 lost */

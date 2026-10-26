@@ -16,7 +16,20 @@ import { preloadCm } from "./cm/load";
 import { questionsOpen, setWelcome } from "./state/questions";
 
 let preloaded = false;
+/** 进出子白板、旧白板还在淡出时收到的 init 和它后面的消息：淡出完再按顺序处理（actions/subboards.ts switchGate） */
+let held: HostToBoard[] | null = null;
 export function onHost(m: HostToBoard) {
+  if (held) { held.push(m); return; }
+  const gate = m.type === "init" ? A.switchGate() : null;
+  if (gate) {
+    held = [m];
+    void gate.then(() => { const q = held!; held = null; for (const x of q) onHost(x); });
+    return;
+  }
+  handle(m);
+}
+
+function handle(m: HostToBoard) {
   switch (m.type) {
     case "init": {
       const b = loadBoard(m.board);
@@ -41,10 +54,11 @@ export function onHost(m: HostToBoard) {
       if (questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
       markSaved();
+      A.boardShown();
       if (m.walk) hopWalk(m.walk);
       break;
     }
-    case "skeletons": putSkels(m.boards); break;
+    case "skeletons": putSkels(m.boards); A.refreshRefs(); break;
     case "crumbs": setCrumbs(m.crumbs); break;
     case "views": setState("views", (v) => ({ ...v, ...m.views })); break;
     case "stale": {
@@ -119,7 +133,7 @@ export function onHost(m: HostToBoard) {
     case "key": runKey(A, m.action); break;
     case "rename": if (m.name.trim()) mutate((b) => { b.name = m.name.trim(); }); break;
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
-    case "toast": toast(m.text); break;
+    case "toast": A.switchRefused(); toast(m.text); break;
     case "run": A.applyRunMsg(m.apply); break;
     case "variants": A.applyVariantSync(m.cards); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;

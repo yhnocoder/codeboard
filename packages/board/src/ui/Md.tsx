@@ -6,7 +6,7 @@ import { mathRev } from "../md/math";
 import { prepareHover, prepareLeave } from "../md/load";
 import * as A from "../actions";
 
-const openRef = (id: string) => { A.selectCard(id); A.revealCard(id); };
+const openRef = (id: string) => A.openCardRef(id);
 
 export function MdStatic(p: { src: string; class?: string; style?: any; ph?: string; tip?: string; inline?: boolean; onToggle?: (next: string) => void; onDblClick?: (e: MouseEvent) => void;
   /** 能双击编辑的：鼠标停上来就先在页面外准备好编辑器 */

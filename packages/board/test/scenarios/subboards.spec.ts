@@ -167,7 +167,7 @@ async function run(res: Record<string, unknown>) {
     await page.locator(`.card[data-id="${step.id}"] .chead`).click({ timeout: 5000, position: { x: 120, y: 10 } });
     await page.locator('.bbar button[aria-label="Arrow"]').click(); await idle(h);
     const target = child?.cards.find((c) => c.id === pre.id);
-    await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub="${target?.id}"] .sk-box`).click({ force: true });
+    await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub="${target?.id}"]`).click({ force: true });
     await until(h, "the arrow into the skeleton card is saved", () => t.store.peek("bEngine")!.links.some((l) => l.to.sub === pre.id && !l.call)); await idle(h);
     const nl = t.store.peek("bEngine")!.links.find((l) => l.to.sub === pre.id && !l.call);
     res.newArrow = !!nl;

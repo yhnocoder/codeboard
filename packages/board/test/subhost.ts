@@ -2,7 +2,7 @@
 // between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops) and pushing skeletons after saves (120 ms debounce).
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { DEFAULT_SETTINGS, cutCrumbs, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, cardPath, cutCrumbs, skeletonOf, subBoardsOf, wouldCycle, type Board, type Camera, type Crumb, type Skeleton, type SegView, type HostToBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "@codeboard/host/nodefs";
 import { viewOf, OUT, type Host } from "./harness";
@@ -24,7 +24,7 @@ export async function subHost(start: Board, others: Board[]) {
   const inits: { id: string; crumbs: number; walk?: unknown }[] = [];
   let h!: Host; // a patch can come in before open() returns (the first skeletons mark lost arrows): h?.post there (init() pushes the skeletons again)
   const sent = new Map<string, string>();
-  const sk = (id: string): Skeleton | null => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)?.name) : null; };
+  const sk = (id: string): Skeleton | null => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)) : null; };
   // a push the host starts on its own (debounced skeletons, crumbs): once the scenario has closed the page it goes nowhere. Without
   // this, a push timed after a scenario that ends right after its last save rejects in the next scenario of the worker
   const pushed = (m: HostToBoard) => {
@@ -33,6 +33,14 @@ export async function subHost(start: Board, others: Board[]) {
   };
   const dirty = new Set<string>();
   let all = false, t: ReturnType<typeof setTimeout> | undefined;
+  // like BoardHub: a skeleton lists the [[-linkable cards of the boards further down too, so a save below a frame's board redoes it
+  const touched = (id: string, seen = new Set<string>()): boolean => {
+    if (dirty.has(id)) return true;
+    if (seen.has(id)) return false;
+    seen.add(id);
+    const b = store.peek(id);
+    return !!b && subBoardsOf(b).some((x) => touched(x, seen));
+  };
   const push = () => {
     clearTimeout(t);
     t = setTimeout(() => {
@@ -40,7 +48,7 @@ export async function subHost(start: Board, others: Board[]) {
       if (!b) return;
       const out: Record<string, Skeleton | null> = {};
       for (const id of subBoardsOf(b)) {
-        if (sent.has(id) && !all && !dirty.has(id)) continue;
+        if (sent.has(id) && !all && !touched(id)) continue;
         const s = sk(id), k = JSON.stringify(s);
         if (sent.get(id) === k) continue;
         sent.set(id, k); out[id] = s;
@@ -82,7 +90,16 @@ export async function subHost(start: Board, others: Board[]) {
           const metas = await store.list();
           if (wouldCycle((id) => metas.find((x) => x.id === id)?.subs, cur, m.id)) return true;
           crumbs = [...crumbs, { id: cur, name: store.peek(cur)!.name, frame: m.frame }]; cams = [...cams, m.cam];
-          cur = m.id; await init(m.walk); return true;
+          cur = m.id;
+          // like the host's enterBoard: a card further down is reached through every board on the way (each one on the crumbs)
+          for (const hop of (m.reveal && cardPath(store.peek(cur)!, m.reveal, (id) => store.peek(id))) || []) {
+            const at = store.peek(cur)!;
+            crumbs = [...crumbs, { id: cur, name: at.name, frame: hop.frame }]; cams = [...cams, at.cam];
+            cur = hop.board;
+          }
+          await init(m.walk);
+          if (m.reveal) await h.post({ type: "reveal", card: m.reveal });
+          return true;
         }
         case "leaveBoard": {
           if (!crumbs.length) return true;

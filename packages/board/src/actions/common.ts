@@ -2,6 +2,7 @@ import { unwrap } from "solid-js/store";
 import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } from "@codeboard/core";
 import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import { frames, isHidden, visibleCards } from "../state/sections";
+import { subRef } from "../state/subboards";
 import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
 import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAnim } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";
@@ -33,7 +34,7 @@ export const selCards = () => sel.cards.map((id) => cardById(id)?.card).filter(B
 export const mdInline = (s: string) => (mathRev(), renderMdInline(s));
 export const mdBlock = (s: string) => (mathRev(), renderMd(s));
 export const sidenotesOf = notesOf;
-/** [[引用]] 找卡：先当 id，再按标题（不分大小写，重名时取第一张） */
+/** [[引用]] 找卡：先当 id，再按标题（不分大小写，重名时取第一张），再到子白板里找 */
 export function resolveCardRef(label: string): { id: string; title: string } | null {
   const l = label.trim();
   if (!l) return null;
@@ -41,7 +42,9 @@ export function resolveCardRef(label: string): { id: string; title: string } | n
   if (byId) return { id: byId.card.id, title: cardTitle(byId.card, state.board) };
   const low = l.toLowerCase();
   for (const c of placed()) { const t = cardTitle(c, state.board); if (t.trim().toLowerCase() === low) return { id: c.id, title: t.trim() }; }
-  return null;
+  // 子白板里的卡：[[子白板 › 卡]]
+  const s = subRef(l);
+  return s ? { id: s.id, title: s.label } : null;
 }
 export const hostRect = (id: string) => { const f = cardById(id); return f ? rectOf(f.host) : null; };
 

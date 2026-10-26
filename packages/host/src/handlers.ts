@@ -1,7 +1,7 @@
 // 白板发来的消息：带 req 的请求，处理函数的返回值就是回答（类型按 core 的 ReplyOf 检查；BoardHub 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { BOARD_VERSION, COMPLETE_SYSTEM, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { BOARD_VERSION, COMPLETE_SYSTEM, cardPath, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -142,7 +142,17 @@ export function makeHandler(panels: BoardHost): Handler {
       const subs = (id: string) => metas.find((x) => x.id === id)?.subs;
       if (m.id === p.id || wouldCycle(subs, p.id, m.id)) { p.toast("Can't open a board inside itself."); return; }
       const name = p.board?.name ?? metas.find((x) => x.id === p.id)?.name ?? "";
-      const ok = await panels.switchBoard(p, m.id, { crumbs: [...p.crumbs, { id: p.id, name, frame: m.frame }], cams: [...p.cams, m.cam], walk: m.walk });
+      const crumbs = [...p.crumbs, { id: p.id, name, frame: m.frame }], cams = [...p.cams, m.cam];
+      // 要带到的卡在更深的子白板里（[[ 链接）：一路进去，每一层都进面包屑，回去时落在那一层存着的镜头上
+      let to = m.id;
+      const start = m.reveal ? store.peek(m.id) ?? (await store.load(m.id)) : undefined;
+      for (const hop of (start && m.reveal && cardPath(start, m.reveal, (id) => store.peek(id))) || []) {
+        const at = store.peek(to)!;
+        crumbs.push({ id: to, name: at.name, frame: hop.frame }); cams.push(at.cam);
+        to = hop.board;
+      }
+      const ok = await panels.switchBoard(p, to, { crumbs, cams, walk: m.walk });
+      if (m.reveal) (ok ? p : panels.get(to))?.post({ type: "reveal", card: m.reveal });
       if (!ok) p.toast("That board is already open in another tab.");
     },
     leaveBoard: async (p, m) => {

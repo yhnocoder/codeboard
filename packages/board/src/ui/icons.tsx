@@ -77,3 +77,6 @@ export function Icon(p: { name: keyof typeof P | string; size?: number; class?: 
     </svg>
   );
 }
+/** 同一套图标拼成 SVG 字符串：整块用 innerHTML 放进去的地方用（子白板框里的小卡片） */
+export const iconHtml = (name: string, size = 16) =>
+  `<svg class="ico" viewBox="0 0 16 16" width="${size}" height="${size}" aria-hidden="true">${P[name] ? `<path d="${P[name]}"/>` : ""}${F[name] ? `<path class="f" d="${F[name]}"/>` : ""}</svg>`;

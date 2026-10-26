@@ -162,7 +162,7 @@ export type CompareCard = CardBase & {
 };
 
 /**
- * 子白板：另一块白板嵌在这块白板上，画成带名字的骨架（卡片标题、调用图标记、连线、Section 色，不画代码）。
+ * 子白板：另一块白板嵌在这块白板上，框里按 Section 分栏画成能读的小卡片（种类图标、标题、一行摘要，不画代码和箭头）。
  * 只存是哪块白板；骨架由宿主按那块白板算好发来（白板界面里没有子白板的完整内容）。Place 总有 h（框的大小由用户定）。
  */
 export type BoardCard = CardBase & { kind: "board"; board: string };

@@ -20,3 +20,6 @@ export const LINK_LEAVE = 300;
 export const SEL_REPORT = 60;
 /** A tilted card turns straight when its editing starts, and back when it ends, over this long (tilt.ts) */
 export const TILT_MS = 200;
+/** A wheel gesture ends after this long without a wheel event: until then it stays with whatever it started on, the canvas or a
+ *  scrollable part of a card (interact.ts ownerFor) */
+export const WHEEL_GESTURE = 200;
