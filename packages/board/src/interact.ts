@@ -16,7 +16,7 @@ import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spac
 import { selSticker, setSelSticker } from "./state/stickers";
 import { ghostOut } from "./state/ghost";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
-import { installOverlays, modalOpen, isTyping } from "./ui/overlay";
+import { installOverlays, modalOpen, typing } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
 import { dispatch } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
@@ -653,7 +653,7 @@ export function installKeys() {
   window.addEventListener("keydown", (e) => {
     // 按住 ⌘：正在显示的弹窗固定下来
     if (e.key === "Meta" || e.key === "Control") for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
-    if (isTyping(e.target) || modalOpen()) return;
+    if (typing() || modalOpen()) return;
     const kl = e.key.toLowerCase();
     if ((e.metaKey || e.ctrlKey) && state.host.forwardedKeys?.includes(e.shiftKey && (kl === "l" || kl === "b") ? `shift+${kl}` : kl)) { e.preventDefault(); return; } // 宿主会转回来
     dispatch(A, e);
@@ -663,7 +663,7 @@ export function installKeys() {
   window.addEventListener("blur", spaceUp);
   // 粘贴：白板上复制的卡 → 卡（剪贴板里可能同时有图：复制的是图片卡）；否则图片 → Image 卡；文字 → 按内容判断
   window.addEventListener("paste", (e) => {
-    if (isTyping(e.target)) return;
+    if (typing()) return;
     const items = [...(e.clipboardData?.items ?? [])];
     const file = items.find((i) => i.type.startsWith("image/"))?.getAsFile() ?? null;
     const text = e.clipboardData?.getData("text/plain");

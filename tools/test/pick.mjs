@@ -1,10 +1,19 @@
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import * as esbuild from "esbuild";
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const git = (...a) => execFileSync("git", a, { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 << 20 }).trim();
 export const DEFAULT_MS = 10000;
+/** A scenario's expected time: its time in the last nightly run; one that run doesn't have (new since) takes the median there, as a
+ *  new scenario is about as quick as the others (a flat guess of 10 s made a few new ones crowd affected ones out of the budget) */
+export function msOf(impact) {
+  const map = impact.map?.scenarios ?? {};
+  const all = Object.values(map).map((s) => s.ms).sort((a, b) => a - b);
+  const typical = all.length ? all[all.length >> 1] : DEFAULT_MS;
+  return (n) => map[n]?.ms ?? typical;
+}
 
 /**
  * Nightly results stored on the ci-screenshots branch: impact/harness.json { commit, generated, scenarios: { name: { ms, files: [paths] } } }
@@ -26,7 +35,7 @@ export function loadImpact() {
 }
 
 /**
- * Files changed between `base` (a commit) and the working tree, uncommitted and untracked files included: { files, added }.
+ * Files changed between `base` (a commit) and the working tree, uncommitted and untracked files included: { base, files, added }.
  * Throws when base isn't a commit of this clone: picking against some other commit would pick the wrong scenarios.
  */
 export function changes(base) {
@@ -39,7 +48,7 @@ export function changes(base) {
     if (st === "A") added.add(f);
   }
   for (const f of git("ls-files", "--others", "--exclude-standard").split("\n").filter(Boolean)) { files.add(f); added.add(f); }
-  return { files: [...files], added: [...added] };
+  return { base, files: [...files], added: [...added] };
 }
 
 /** Names on a "Tests: a, b" line (PR description) */
@@ -61,7 +70,7 @@ const SRC = /^packages\/(board|core|host|markdown)\/src\//;
 export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
   const names = Object.keys(all).filter((n) => !(tiers.manual ?? []).includes(n));
   const map = impact.map?.scenarios ?? {};
-  const ms = (n) => map[n]?.ms ?? DEFAULT_MS;
+  const ms = msOf(impact);
   const notes = [];
   const why = new Map();
   const add = (n, w) => { if (all[n] && !why.has(n)) why.set(n, w); };
@@ -96,9 +105,41 @@ export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
   return { run: [...why].map(([name, w]) => ({ name, why: w, ms: ms(name) })), deferred, notes };
 }
 
-/** Scenarios (manual ones left out) defined in a test file the change touches; a new scenario is always in one */
-export const changedScenarios = (all, change, tiers) =>
-  Object.keys(all).filter((n) => !(tiers.manual ?? []).includes(n) && change.files.includes(all[n]));
+/** Scenarios (manual ones left out) whose code the change touches: the scenario's own test(…) block, or the part of its file before
+ *  the first test (imports, shared helpers). Comments, whitespace and types don't count, so a comment-only cleanup of many test files
+ *  doesn't rerun all their scenarios. A new scenario is always changed */
+export function changedScenarios(all, change, tiers) {
+  const cache = new Map();
+  const parts = (file) => {
+    if (!cache.has(file)) {
+      let before = "";
+      try { before = git("show", `${change.base}:${file}`); } catch { /* new file */ }
+      let now = "";
+      try { now = fs.readFileSync(path.join(REPO, file), "utf8"); } catch { /* deleted */ }
+      cache.set(file, [chunks(before), chunks(now)]);
+    }
+    return cache.get(file);
+  };
+  return Object.keys(all).filter((n) => {
+    if ((tiers.manual ?? []).includes(n) || !change.files.includes(all[n])) return false;
+    const [a, b] = parts(all[n]);
+    return a.head !== b.head || !a.tests.has(n) || a.tests.get(n) !== b.tests.get(n);
+  });
+}
+/** A scenario file as { head, tests: name → code }: each top-level `test("name", …)` (one line, or up to its closing `});` line), and
+ *  the rest of the file (imports, helpers, wherever they stand). Each part has comments, whitespace and types stripped (esbuild; imports kept, though the tests that use them are elsewhere); a part esbuild can't
+ *  read on its own is kept as written, so any edit to it counts */
+export function chunks(src) {
+  const norm = (code) => { try { return esbuild.transformSync(code, { loader: "ts", minifyWhitespace: true, legalComments: "none", tsconfigRaw: { compilerOptions: { verbatimModuleSyntax: true } } }).code; } catch { return code; } };
+  const tests = new Map();
+  let head = "", from = 0;
+  for (const m of src.matchAll(/^test\("([^"]+)"(?:[^\n]*\);[ \t]*$|[^]*?^\}\);?[ \t]*$)/gm)) {
+    head += src.slice(from, m.index) + "\n";
+    tests.set(m[1], norm(m[0]));
+    from = m.index + m[0].length;
+  }
+  return { head: norm(head + src.slice(from)), tests };
+}
 
 /**
  * The flake repeat: changedScenarios, the quickest first, while the estimated wall time of `repeat` runs of each fits in capMs:
@@ -106,7 +147,7 @@ export const changedScenarios = (all, change, tiers) =>
  * → { run: [{ name, why, ms }], deferred: [names], notes: [strings] }
  */
 export function repeatPick({ all, change, impact, tiers, repeat, workers, capMs }) {
-  const ms = (n) => impact.map?.scenarios?.[n]?.ms ?? DEFAULT_MS;
+  const ms = msOf(impact);
   const cost = (n) => (ms(n) * repeat) / ((tiers.solo ?? []).includes(n) ? 1 : workers);
   const names = changedScenarios(all, change, tiers).sort((a, b) => ms(a) - ms(b) || a.localeCompare(b));
   const run = [], deferred = [];

@@ -291,6 +291,9 @@ describe("typed math and block source", () => {
       same(t);
       expect(JSON.stringify(parseMd(t))).not.toContain('"emoji"');
     }
+    // every GitHub shortcode, not only the common ones
+    expect(renderMd(":white_check_mark: :rotating_light:")).toContain(">✅</span>");
+    same(":hourglass_flowing_sand: :jack_o_lantern:");
     const lit = stable("\\:smile:");
     expect(JSON.stringify(parseMd(lit))).not.toContain('"emoji"');
     expect(JSON.stringify(parseMd(lit))).toContain(":smile:");

@@ -1,5 +1,6 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Disposable } from "@codeboard/core";
 import { analysisOf } from "../src/analysis";
@@ -8,9 +9,12 @@ import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { startTreeSitter } from "./helpers";
 
-const W = nodeWorkspace();
+// its own copy of nano-vllm: the probe file it creates would show up in the other files' scans of WS, which run alongside
+const ROOT = fs.mkdtempSync("/tmp/codeboard-nameindex-");
+execFileSync("git", ["clone", "-q", WS, ROOT]);
+const W = nodeWorkspace(ROOT);
 const key = (es: IndexEntry[]) => es.map((e) => `${e.abs}:${e.qual}:${e.defLine}`);
-const probe = path.join(WS, "nanovllm/zz_index_probe.py");
+const probe = path.join(ROOT, "nanovllm/zz_index_probe.py");
 let full: Map<string, string[]>, finds: number, watch: Disposable;
 
 beforeAll(async () => {
@@ -22,7 +26,7 @@ beforeAll(async () => {
   full = new Map();
   for (const f of await W.files.findFiles("**/*.{py,pyi,cu,cuh,cc,cpp,cxx,c,h,hpp}")) for (const s of analysisOf("python", fs.readFileSync(f, "utf8")).symbols) (full.get(s.name) ?? full.set(s.name, []).get(s.name)!).push(`${f}:${s.qual}:${s.defLine}`);
 });
-afterAll(() => { watch.dispose(); fs.rmSync(probe, { force: true }); W.open.clear(); });
+afterAll(() => { watch.dispose(); W.open.clear(); fs.rmSync(ROOT, { recursive: true, force: true }); });
 
 describe("name index", () => {
   it("finds a name before the index is built, the same definitions as a full scan", async () => {

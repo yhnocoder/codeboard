@@ -479,6 +479,52 @@ async function newNote(page, f) {
   return f.waitForFunction(() => !!document.activeElement?.closest(".card.note .md-pm"), null, { timeout: 5000 }).then(() => true, () => false);
 }
 
+// Paste while editing a Note: Ctrl+C a piece of a code block, select text in another code block and Ctrl+V. The text lands in the
+// code block and nothing else happens. The selection starts on the highlighted call "ceil": in VS Code the paste event goes to that
+// span, which the code editor replaces before the event reaches the board, and the board must not also make a card of it.
+// E2E_ONLY=notepaste runs only this step
+async function notepasteStep(page) {
+  const f = await newBoard(page, "Note Paste E2E");
+  check(await newNote(page, f), "notepaste: n opens a new Note with its editor focused");
+  await focusSettled(f);
+  const code = "vecAddKernel<<<ceil(n/128), 128>>>(...);";
+  await page.keyboard.type("Blocks"); await page.keyboard.press("Enter");
+  await page.keyboard.type("```cuda"); await page.keyboard.press("Enter");
+  await page.keyboard.type(code);
+  await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowDown");
+  await page.keyboard.type("also"); await page.keyboard.press("Enter");
+  await page.keyboard.type("```cuda"); await page.keyboard.press("Enter");
+  await page.keyboard.type(code);
+  const blocks = f.locator(".card.note .cm-content");
+  check(await soon(() => blocks.count(), (n) => n === 2) === 2, "notepaste: the Note has two code blocks", await f.evaluate(() => document.querySelector(".card.note .md-pm")?.innerHTML.slice(0, 300)));
+  const cards = () => f.locator(".card").count();
+  const before = await cards();
+  // select "ceil(n/128)" in the first block and copy it
+  const selectIn = async (i, from, len) => {
+    await blocks.nth(i).click();
+    await until(`code block ${i} has the keyboard`, () => f.evaluate((i) => document.activeElement === document.querySelectorAll(".card.note .cm-content")[i], i));
+    await page.keyboard.press("Home");
+    for (let k = 0; k < from; k++) await page.keyboard.press("ArrowRight");
+    for (let k = 0; k < len; k++) await page.keyboard.press("Shift+ArrowRight");
+  };
+  await selectIn(0, 15, 11);
+  check(await f.evaluate(() => getSelection().toString()) === "ceil(n/128)", "notepaste: the piece of code is selected", await f.evaluate(() => getSelection().toString()));
+  await page.keyboard.press("Control+c");
+  // pointer over empty canvas, where a pasted card would land
+  const fb = await (await f.frameElement()).boundingBox(), sp = await emptySpot(f);
+  await page.mouse.move(fb.x + sp.x, fb.y + sp.y);
+  // select "ceil(n/128), 128" in the second block and paste over it
+  await selectIn(1, 15, 16);
+  await page.keyboard.press("Control+v");
+  const pasted = await soon(() => blocks.nth(1).innerText(), (t) => t.includes("<<<ceil(n/128)>>>"));
+  await idle(f);
+  check(pasted.includes("<<<ceil(n/128)>>>"), "notepaste: Ctrl+V pastes into the code block", pasted);
+  const after = await cards();
+  check(after === before, "notepaste: Ctrl+V in a code block makes no card", { before, after });
+  await shot(page, "20-note-paste");
+  await page.keyboard.press("Escape");
+}
+
 // Images in Notes: a PNG pasted from the clipboard while editing a Note is saved by the host as a file under <storageDir>/assets/,
 // the Markdown references assets/<file>, and the board shows it through the webview's resource address in display mode.
 // The paste is a synthetic ClipboardEvent carrying the image file (what a screenshot on the clipboard gives the webview; xvfb has no
@@ -627,11 +673,18 @@ const finish = async (browser, errors) => {
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
   // E2E_ONLY=capture,addsel runs only those steps, in that order. E2E_PART splits the run for parallel CI jobs:
   // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (nightly)
-  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep, noteimage: noteimageStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep, projects: projectsStep };
+  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep, noteimage: noteimageStep, notepaste: notepasteStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep, projects: projectsStep };
   // Part 3 holds the slow steps (each 20 s or more on its own board); codeedit reloads the window, so it goes last
-  const PARTS = { 2: "capture,addsel,cardfocus,close,projects", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
-  const only = process.env.E2E_ONLY || PARTS[process.env.E2E_PART];
+  const PARTS = { 2: "capture,addsel,cardfocus,close,notepaste,projects", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
+  // E2E_FLOW=<file.cjs> runs a flow of your own after the E2E_ONLY steps (or alone): the file exports async (page, t) => { … }, t holds
+  // this driver's helpers. For reproducing a problem in the real VS Code without editing this file
+  const flow = process.env.E2E_FLOW && path.resolve(process.env.INIT_CWD || process.cwd(), process.env.E2E_FLOW);
+  if (flow) STEPS.flow = (page) => require(flow)(page, { check, until, soon, hold, idle, shot, newBoard, newNote, emptySpot, clickBoard, altB, sidenote, clipboard, boardJson, boardNamed, editorFocused, setUserSetting, command, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, W, OUT, WS, UD });
+  const only = [process.env.E2E_ONLY || PARTS[process.env.E2E_PART], flow && "flow"].filter(Boolean).join(",");
   if (only) {
+    // a step may begin with a command: wait until VS Code has loaded the extension's contributions (on a fresh window the command
+    // palette doesn't list them yet)
+    await page.locator('.activitybar .action-item a[aria-label^="CodeBoard"]').waitFor({ timeout: 60000 });
     for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); const t0 = Date.now(); await STEPS[k](page); console.log(`- ${k}: ${((Date.now() - t0) / 1000).toFixed(1)} s`); }
     return finish(browser, errors);
   }

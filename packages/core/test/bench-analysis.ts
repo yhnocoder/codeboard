@@ -1,15 +1,15 @@
-// 分析耗时：sglang 最大的 40 个 .py（或参数给的目录）。旧 = 逐节点遍历，新 = 查询 + 增量 + 按行
+// 分析耗时：一个仓库里最大的 40 个 .py（参数给的目录，默认 examples/sglang）。旧 = 逐节点遍历，新 = 查询 + 增量 + 按行
+// 跑法：npm run bench:analysis -w @codeboard/core [-- <目录>]（sglang 先 git submodule update --init --depth 1 examples/sglang）
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import TS from "@vscode/tree-sitter-wasm";
 import { initAnalysis, analyze, languageOf, forgetTree, setTreeCacheSize } from "../src/analysis";
 import { analyzeOld } from "./oracle/analysis-old";
 
-const WASM = "/home/user/codeboard/.claude/worktrees/agent-ad687c32c3cdd5a90/node_modules/@vscode/tree-sitter-wasm/wasm";
-const dir = process.argv[2] ?? "/home/user/sglang";
+const dir = process.argv[2] ?? new URL("../../../examples/sglang", import.meta.url).pathname;
 const files = execFileSync("bash", ["-c", `find ${dir} -name '*.py' -printf '%s %p\\n' | sort -rn | head -40`], { encoding: "utf8" }).trim().split("\n").map((l) => l.split(" ")[1]);
 const texts = files.map((f) => readFileSync(f, "utf8"));
-await initAnalysis(WASM);
+await initAnalysis();
 setTreeCacheSize(2 * files.length + 4); // 每个文件一棵树，不让 LRU 挤掉
 const p = new TS.Parser(); p.setLanguage(languageOf("python")!);
 

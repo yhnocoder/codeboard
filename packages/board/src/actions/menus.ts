@@ -286,7 +286,7 @@ function multiItems(): Item[] {
     turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock(sel.cards, sel.sections) },
     { label: "Tilt", kbd: kbd("tilt"), checked: cs.every((c) => cardById(c.id)?.host.tilt), run: () => toggleTilt(sel.cards) },
-    { label: "Tidy Up", kbd: kbd("tidyUp"), disabled: cs.length >= 2 ? false : "Select two or more cards", run: () => tidyUp() },
+    { label: "Tidy Up", kbd: kbd("tidyUp"), disabled: cs.length >= 2 ? false : "Select two or more cards", run: () => void tidyUp() },
     arrangeItem(() => [...sel.cards]),
     null,
     { label: "Cut", kbd: kbd("cut"), run: () => cutCardsSel() },
