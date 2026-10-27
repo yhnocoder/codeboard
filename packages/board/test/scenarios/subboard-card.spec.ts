@@ -258,7 +258,7 @@ test("subboardLinkPicker", async () => {
     await page.keyboard.press("Escape");
     await until(h, "the link is saved", () => (t.store.peek("bMain")!.cards.find((c) => c.id === "mNote") as NoteCard).md.includes("[[nano-vllm 调度器 › Deep › 深处的笔记]]"));
     await idle(h);
-    const chip = page.locator('.card[data-id="mNote"] .cref', { hasText: "深处" });
+    const chip = page.locator('.card[data-id="mNote"] .md-ref', { hasText: "深处" });
     res.resolved = await chip.evaluate((e) => !e.classList.contains("missing"));
     const n = t.inits.length;
     await chip.click();

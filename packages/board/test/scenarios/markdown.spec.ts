@@ -85,7 +85,7 @@ test("markdownRender", async () => {
         katex: n.querySelectorAll(".katex").length,
         hl: n.querySelectorAll("pre.md-code .kw").length,
         kwColor: cs(n.querySelector("pre.md-code .kw"))?.color, tasks: n.querySelectorAll("li[data-type=taskItem] input").length,
-        table: n.querySelectorAll("table td").length, chips: n.querySelectorAll(".cref").length, chipMissing: n.querySelectorAll(".cref.missing").length,
+        table: n.querySelectorAll("table td").length, chips: n.querySelectorAll(".md-ref").length, chipMissing: n.querySelectorAll(".md-ref.missing").length,
         fn: n.querySelectorAll("sup.fnref").length, details: n.querySelectorAll("details summary").length,
         raw: /\*\*|block\\_/.test((n as HTMLElement).innerText), under: (n as HTMLElement).innerText.includes("__init__"),
         desc: document.querySelector(".cdesc strong")?.textContent, text2: document.querySelector('.card[data-id="t1"] .tx h1')?.textContent,
@@ -101,7 +101,7 @@ test("markdownRender", async () => {
     await h.page.locator('.card[data-id="n1"] a.lnk').first().click();
     await until(h, "the link goes to the host", () => h.sent.some((m) => m.type === "openLink"));
     const opened = h.sent.some((m) => m.type === "openLink");
-    await h.page.locator('.card[data-id="n1"] .cref').first().click();
+    await h.page.locator('.card[data-id="n1"] .md-ref').first().click();
     await until(h, "the chip selects a card", () => h.page.locator(".card.sel").count());
     await idle(h);
     const selId = await h.page.locator(".card.sel").evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.id));
@@ -145,7 +145,7 @@ test("markdownEdit", async () => {
   const refItems = await pg.locator(".md-menu button .lb").allTextContents();
   await saveShot(h, "md-edit-ref");
   await pg.keyboard.press("Enter");
-  const chip = await pg.locator('.card[data-id="n1"] .md-pm .cref').count();
+  const chip = await pg.locator('.card[data-id="n1"] .md-pm .md-ref').count();
   // 选中几个字：出工具条，点 I 变斜体
   await pg.keyboard.type("tail words");
   for (let i = 0; i < 5; i++) await pg.keyboard.press("Shift+ArrowLeft");

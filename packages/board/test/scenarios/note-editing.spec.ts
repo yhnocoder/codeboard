@@ -645,7 +645,7 @@ test("noteRefChipOnBaseline", async () => {
     // is the same measurement in the editor (ProseMirror would read a node put into its DOM)
     const geo = () => pg.evaluate(async () => {
       await document.fonts.ready;
-      const chip = document.querySelector<HTMLElement>('.card[data-id="n0"] .cref')!, p = chip.closest("p")!;
+      const chip = document.querySelector<HTMLElement>('.card[data-id="n0"] .md-ref')!, p = chip.closest("p")!;
       const ctx = document.createElement("canvas").getContext("2d")!;
       const base = (t: Node) => {
         const r = document.createRange();
@@ -662,7 +662,7 @@ test("noteRefChipOnBaseline", async () => {
     const shown = await geo();
     await cardShot(h, "n0", `noteRefChipOnBaseline-${theme}-display`);
     await pg.locator('.card[data-id="n0"] .nbody p').dblclick({ position: { x: 4, y: 4 } });
-    await pg.waitForSelector('.card[data-id="n0"] .md-pm .cref', { timeout: 5000 });
+    await pg.waitForSelector('.card[data-id="n0"] .md-pm .md-ref', { timeout: 5000 });
     await idle(h);
     const edit = await geo();
     await cardShot(h, "n0", `noteRefChipOnBaseline-${theme}-edit`);

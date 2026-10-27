@@ -524,9 +524,8 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
         // The saved board changed when the board sent a change (a patch); the host writes it a moment later: wait for the file then
         const j1 = await sent(f, "patch") > p0 ? JSON.stringify(await soon(boardJson, (x) => JSON.stringify(x) !== j0, 5000, 100)) : j0;
         if (process.env.DEBUG) console.log("   ", k, p.join(" › "), a.equals(b) ? "picture unchanged" : "picture changed", j0 === j1 ? "save unchanged" : "save changed");
-        // Bring to front / send to back are no-ops when already there (the menu should ideally disable them; not a failure here)
         const last = p[p.length - 1];
-        if (a.equals(b) && j0 === j1 && !/^(Bring|Send) /.test(last)) dead.push(`${k}: ${p.join(" › ")}`);
+        if (a.equals(b) && j0 === j1) dead.push(`${k}: ${p.join(" › ")}`);
         // Items that open an editor: typing right away must land in it (an editor that appears without focus counts as no effect)
         else if (/Description|Rename|Title|^Edit$/.test(last) && j0 === j1) {
           await page.keyboard.type("zq9");

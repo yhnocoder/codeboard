@@ -317,9 +317,9 @@ export function openCardRef(id: string) {
 }
 /** 骨架到了以后，静态 Note 里的 [[引用]] 再认一遍（指向子白板里的卡的，骨架没到时显示成找不到） */
 export function refreshRefs() {
-  for (const r of document.querySelectorAll<HTMLElement>(".md .cref")) {
+  for (const r of document.querySelectorAll<HTMLElement>(".md .md-ref")) {
     if (r.closest("[contenteditable=true]")) continue;
-    const hit = resolveCardRef(r.dataset.cardref ?? "");
+    const hit = resolveCardRef(r.dataset.ref ?? "");
     r.classList.toggle("missing", !hit);
     if (!hit) continue;
     if (hit.title !== r.textContent) r.textContent = hit.title;

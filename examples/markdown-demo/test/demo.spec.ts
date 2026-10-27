@@ -25,8 +25,8 @@ test("markdownDemo", async ({ page }) => {
   const kw = await note.locator("pre.md-code span.kw").first().evaluate((e) => getComputedStyle(e).color);
   const plain = await note.locator("pre.md-code code").first().evaluate((e) => getComputedStyle(e).color);
   expect(kw).not.toBe(plain);
-  await expect(note.locator(".cref:not(.missing)")).toHaveText("Paging");
-  await expect(note.locator(".cref.missing")).toHaveText("Nowhere");
+  await expect(note.locator(".md-ref:not(.missing)")).toHaveText("Paging");
+  await expect(note.locator(".md-ref.missing")).toHaveText("Nowhere");
   await expect(note.locator("img")).toHaveAttribute("src", "./assets/pages.svg");
   await expect(note.locator("input[type=checkbox]")).toHaveCount(2);
   await expect(note.locator(".md-toc .l2")).toHaveCount(7);
@@ -35,7 +35,7 @@ test("markdownDemo", async ({ page }) => {
   await page.screenshot({ path: shot("static-light"), fullPage: true });
 
   // clicks the page handles: a ref, a task box (changes the saved Markdown, no editor)
-  await note.locator(".cref:not(.missing)").click();
+  await note.locator(".md-ref:not(.missing)").click();
   await expect(page.locator("#opened")).toHaveText("Opened page: paging");
   await note.locator("input[type=checkbox]").nth(1).click();
   await expect(page.locator("#source")).toContainText("- [x] evict the least recently used");

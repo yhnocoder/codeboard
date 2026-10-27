@@ -105,6 +105,26 @@ test("menusFitWindow", async () => {
   await close(h);
 });
 
+test("arrangeMenuDisablesNoOps", async () => {
+  const b = richBoard(), [bottom, , top] = b.cards.map((c) => c.id);
+  const h = await open({ board: b, light, w: 1500, h: 950 });
+  const arrange = async (id: string) => {
+    await h.page.locator(`.card[data-id="${id}"] .chead`).click({ button: "right", position: { x: 200, y: 12 } });
+    await h.page.locator(".ctx button", { hasText: /^Arrange$/ }).hover();
+    const sub = h.page.locator(".ctx").last();
+    await sub.locator(":scope > button").first().waitFor(); await idle(h);
+    return Object.fromEntries(await sub.locator(":scope > button").evaluateAll((bs) => bs.map((x) => [x.querySelector(".lb")!.textContent!.trim(), (x as HTMLButtonElement).disabled])));
+  };
+  const onTop = await arrange(top);
+  check("arrange-top-card", onTop["Bring to Front"] && onTop["Bring Forward"] && !onTop["Send Backward"] && !onTop["Send to Back"], JSON.stringify(onTop));
+  await h.page.keyboard.press("Escape"); await h.page.keyboard.press("Escape"); await idle(h);
+  const atBack = await arrange(bottom);
+  check("arrange-bottom-card", !atBack["Bring to Front"] && !atBack["Bring Forward"] && atBack["Send Backward"] && atBack["Send to Back"], JSON.stringify(atBack));
+  await h.page.locator(".ctx").last().locator(":scope > button", { has: h.page.locator(".lb", { hasText: /^Bring to Front$/ }) }).click();
+  await until(h, "the bottom card moves to the front", () => h.board().cards.at(-1)?.id === bottom);
+  await close(h);
+});
+
 test("stickerPlace", async () => {
   const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
   await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.locator(".stkpick .scell").first().waitFor();

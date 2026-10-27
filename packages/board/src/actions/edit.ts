@@ -128,15 +128,25 @@ export function arrange(ids: string[], how: Arrange) {
   const rs = [...set].filter((id) => state.board.place[id]).map((id) => rectOf(id));
   mutate((b) => arrangeCards(b, set, how, (id) => { const r = rectOf(id); return rs.some((m) => overlaps(m, r)); }));
 }
-export const arrangeItem = (ids: () => string[]): Item => ({
-  label: "Arrange",
-  sub: [
-    { label: "Bring to Front", kbd: kbd("front"), run: () => arrange(ids(), "front") },
-    { label: "Bring Forward", kbd: kbd("forward"), run: () => arrange(ids(), "forward") },
-    { label: "Send Backward", kbd: kbd("backward"), run: () => arrange(ids(), "backward") },
-    { label: "Send to Back", kbd: kbd("back"), run: () => arrange(ids(), "back") },
-  ],
-});
+/** Forward / Backward with nothing overlapping go all the way, so they change nothing exactly when Front / Back don't */
+function atEdge(ids: string[], top: boolean) {
+  const set = new Set(ids.map(hostOf)), cards = state.board.cards;
+  const n = cards.filter((c) => set.has(c.id)).length;
+  const edge = top ? cards.slice(cards.length - n) : cards.slice(0, n);
+  return n > 0 && edge.every((c) => set.has(c.id));
+}
+export const arrangeItem = (ids: () => string[]): Item => {
+  const front = atEdge(ids(), true) && "Already in front", back = atEdge(ids(), false) && "Already at the back";
+  return {
+    label: "Arrange",
+    sub: [
+      { label: "Bring to Front", kbd: kbd("front"), disabled: front, run: () => arrange(ids(), "front") },
+      { label: "Bring Forward", kbd: kbd("forward"), disabled: front, run: () => arrange(ids(), "forward") },
+      { label: "Send Backward", kbd: kbd("backward"), disabled: back, run: () => arrange(ids(), "backward") },
+      { label: "Send to Back", kbd: kbd("back"), disabled: back, run: () => arrange(ids(), "back") },
+    ],
+  };
+};
 
 /**
  * Tidy Up（core 的 tidy）：选中的卡之间有箭头的排成列，没箭头的排成行放在下面。一步撤销；卡和线从旧位置滑过去。

@@ -234,23 +234,22 @@ const Emoji = Node.create({
 });
 
 // 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（setRefResolver、编辑器的 refs）。
-// 节点名 cardRef、class、data 属性是最早的卡片引用留下的名字：改了就要动存下的文件和样式
 const WikiRef = Node.create({
-  name: "cardRef",
+  name: "wikiRef",
   group: "inline", inline: true, atom: true, selectable: true,
   addAttributes() { return { label: { default: "", rendered: false } }; },
-  parseHTML() { return [{ tag: "span[data-cardref]", getAttrs: (e) => ({ label: (e as HTMLElement).getAttribute("data-cardref") ?? "" }) }]; },
-  renderHTML({ node, HTMLAttributes }) { return ["span", mergeAttributes(HTMLAttributes, { class: "cref", "data-cardref": node.attrs.label }), node.attrs.label]; },
+  parseHTML() { return [{ tag: "span[data-ref]", getAttrs: (e) => ({ label: (e as HTMLElement).getAttribute("data-ref") ?? "" }) }]; },
+  renderHTML({ node, HTMLAttributes }) { return ["span", mergeAttributes(HTMLAttributes, { class: "md-ref", "data-ref": node.attrs.label }), node.attrs.label]; },
   renderText: ({ node }) => `[[${node.attrs.label}]]`,
-  parseMarkdown: (t) => ({ type: "cardRef", attrs: { label: t.label } }),
+  parseMarkdown: (t) => ({ type: "wikiRef", attrs: { label: t.label } }),
   renderMarkdown: (n) => `[[${n.attrs?.label ?? ""}]]`,
   markdownTokenizer: {
-    name: "cardRef", level: "inline",
+    name: "wikiRef", level: "inline",
     start: (src) => src.indexOf("[["),
     tokenize: (src) => {
       const m = /^\[\[([^\[\]\n]+?)\]\]/.exec(src);
       if (!m) return;
-      return { type: "cardRef", raw: m[0], label: m[1].trim() };
+      return { type: "wikiRef", raw: m[0], label: m[1].trim() };
     },
   },
 });

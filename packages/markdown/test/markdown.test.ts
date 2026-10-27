@@ -64,7 +64,7 @@ describe("markdown round trip", () => {
   });
   it("[[card ref]]", () => {
     same("see [[Scheduler.schedule]] and [[My note]]");
-    expect(JSON.stringify(parseMd("[[A b]]"))).toContain('"cardRef"');
+    expect(JSON.stringify(parseMd("[[A b]]"))).toContain('"wikiRef"');
   });
   it("footnotes", () => {
     same("text[^1] more[^2]\n\n[^1]: first note\n[^2]: second");
@@ -127,7 +127,7 @@ describe("static render", () => {
     expect(h).toContain('<pre class="md-code" data-lang="python"><code>def f(): return 1</code></pre>');
     expect(h).toContain('data-type="taskItem"');
     expect(h).toContain('checked="checked"');
-    expect(h).toContain('<span class="cref" data-cardref="Card">Card</span>');
+    expect(h).toContain('<span class="md-ref" data-ref="Card">Card</span>');
     expect(h).toContain('<sup class="fnref">1</sup>');
     expect(h).toContain('<ol class="footnotes">');
   });

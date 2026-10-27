@@ -75,7 +75,7 @@ const dom = (pg: Page) => pg.evaluate(() => {
     if (ty === "inline-math" || ty === "block-math") return `${ty}(${e.textContent})`;
     if (e.tagName === "BR") return "br";
     const kids = [...e.childNodes].map(d).filter(Boolean).join(" ");
-    const tag = e.tagName.toLowerCase() + (ty ? `:${ty}` : "") + (e.classList.contains("cref") ? ":ref" : "") + (e.tagName === "A" ? `[${e.getAttribute("href")}]` : "") + (e.tagName === "OL" && e.getAttribute("start") ? `[start=${e.getAttribute("start")}]` : "") + (e.tagName === "PRE" ? `[${e.querySelector("code")?.className ?? ""}]` : "");
+    const tag = e.tagName.toLowerCase() + (ty ? `:${ty}` : "") + (e.classList.contains("md-ref") ? ":ref" : "") + (e.tagName === "A" ? `[${e.getAttribute("href")}]` : "") + (e.tagName === "OL" && e.getAttribute("start") ? `[start=${e.getAttribute("start")}]` : "") + (e.tagName === "PRE" ? `[${e.querySelector("code")?.className ?? ""}]` : "");
     return `${tag}(${kids})`;
   };
   return [...root.childNodes].map(d).filter(Boolean).join(" ");
@@ -137,7 +137,7 @@ export const PROBES: Probe[] = [
   { name: "link-angle", run: async ({ pg }) => { const k = K(pg); await k.t("see <https://x.y> now"); } },
   { name: "autolink", run: async ({ pg }) => { const k = K(pg); await k.t("see https://x.y/a_b now"); } },
   { name: "image-inline", run: async ({ pg }) => { const k = K(pg); await k.t("pic ![a](https://x.y/a.png) end"); } },
-  { name: "cardref-typed", run: async ({ pg }) => { const k = K(pg); await k.t("see [[Scheduler"); await pg.locator(".md-menu").waitFor(); await k.p("Escape"); await k.t("]] ok"); } },
+  { name: "wikiref-typed", run: async ({ pg }) => { const k = K(pg); await k.t("see [[Scheduler"); await pg.locator(".md-menu").waitFor(); await k.p("Escape"); await k.t("]] ok"); } },
   { name: "footnote-ref", run: async ({ pg }) => { const k = K(pg); await k.t("claim[^1] ok"); } },
   { name: "emoji", run: async ({ pg }) => { const k = K(pg); await k.t("ok :smile: ok"); } },
   { name: "escape-star", run: async ({ pg }) => { const k = K(pg); await k.t("a \\*not\\* b"); } },

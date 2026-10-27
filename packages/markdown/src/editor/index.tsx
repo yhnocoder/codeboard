@@ -347,7 +347,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
             .map(({ c }) => ({ title: c.title, hint: c.kind, key: c.id, run: (e: Editor, r: Range) => {
               // 自动配对补上的 ]] 也一起换掉（pairs.ts）
               const to = e.state.doc.textBetween(r.to, Math.min(r.to + 2, e.state.doc.content.size), "", "\ufffc") === "]]" ? r.to + 2 : r.to;
-              e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "cardRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run();
+              e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "wikiRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run();
             } }));
         },
       })];
