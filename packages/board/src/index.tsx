@@ -6,7 +6,7 @@ import { listen, send, followHostTheme, forwardErrors } from "./host";
 import { setRefResolver, setCodeHighlighter } from "@yhnocoder/markdown";
 import { setKeyPassThrough } from "@yhnocoder/markdown/ui";
 import { vscodeKey } from "./ui/vscodekeys";
-import { langId } from "@codeboard/core";
+import { langId } from "@codeboard/analysis/langs";
 import { noteHighlight } from "./cm/load";
 import { resolveCardRef } from "./actions";
 import "@yhnocoder/markdown/katex.css";

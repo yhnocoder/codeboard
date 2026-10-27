@@ -1,10 +1,9 @@
-// 跨语言边界的文本识别（线框 02）：pybind、TORCH_LIBRARY、PyO3、launch macro、JIT 编译、Triton、TileLang，以及语言标签
+// 跨语言边界的文本识别（线框 02）：pybind、TORCH_LIBRARY、PyO3、launch macro、JIT 编译、Triton、TileLang
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   initAnalysis, analyze, pybindDefs, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
-  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, instName, splitArgs,
-} from "../src/analysis";
-import { segChip, hiddenLang, genWhat } from "../src";
+  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs,
+} from "../src";
 
 beforeAll(() => initAnalysis());
 
@@ -124,7 +123,6 @@ describe("launch macro", () => {
       { name: "kNumThreads", value: "768" },
       { name: "kNumTMABytesPerWarp", value: "8192" },
     ]);
-    expect(instName("dispatch", vals)).toBe("dispatch<8, 768, 8192>");
   });
   it("kernel<…><<<…>>>: template arguments at the launch", () => {
     const line = "  dispatch<8, kNumThreads><<<grid, 256>>>(p);";
@@ -231,35 +229,9 @@ def run(q):
   });
 });
 
-describe("language chips", () => {
-  const seg = (lang: string, text: string[], path = "x") => ({ lang, text, path });
-  it("PY / TRITON / TILELANG / C++ / CUDA / RUST", () => {
-    expect(segChip(seg("python", ["def f():", "  pass"]))).toBe("PY");
-    expect(segChip(seg("python", ["@triton.jit", "def k(x):"]))).toBe("TRITON");
-    expect(segChip(seg("python", ["@T.prim_func", "def main(Q):"]))).toBe("TILELANG");
-    expect(segChip(seg("python", ["@tilelang.jit(out_idx=[-1])", "def f(h):"]))).toBe("TILELANG");
-    expect(segChip(seg("cpp", ["torch::Tensor f() {"], "a.cpp"))).toBe("C++");
-    expect(segChip(seg("cpp", ["template <int N>", "__global__ void k() {"], "a.hpp"))).toBe("CUDA");
-    expect(segChip(seg("cpp", ["void f() {"], "k.cuh"))).toBe("CUDA");
-    expect(segChip(seg("cuda-cpp", ["void f() {"]))).toBe("CUDA");
-    expect(segChip(seg("rust", ["fn f() {}"]))).toBe("RUST");
-    expect(segChip(seg("plaintext", ["x"]))).toBeUndefined();
-    expect(hiddenLang(seg("python", ["def f():"], "a.py"))).toBeUndefined();
-    expect(hiddenLang(seg("python", ["@triton.jit", "def k(x):"], "k.py"))).toBe("Triton");
-    expect(hiddenLang(seg("cpp", ["__global__ void k() {"], "a.hpp"))).toBe("CUDA");
-    expect(hiddenLang(seg("cpp", ["void f() {"], "a.cpp"))).toBeUndefined();
-    expect(hiddenLang(seg("cuda-cpp", ["void f() {"], "k.cu"))).toBeUndefined();
-  });
-  it("Generated card: what it is", () => {
-    expect(genWhat("cuda-cpp", "kernel.cu")).toBe("CUDA source");
-    expect(genWhat("python", "/tmp/torchinductor_root/ab/cab.py")).toBe("Inductor output");
-    expect(genWhat("plaintext", "k.ptx")).toBe("PTX");
-  });
-});
-
 describe("dynamic dispatch", () => {
   it("abstract base methods", async () => {
-    const { isAbstractBody } = await import("../src/analysis");
+    const { isAbstractBody } = await import("../src");
     const src = `class Base:
     def forward(self, x):
         """Run it."""

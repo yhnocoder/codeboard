@@ -1,5 +1,5 @@
 import { fingerprint } from "@codeboard/core";
-import { analyze, clipAnalysis, initAnalysis, type FileAnalysis } from "@codeboard/core/analysis";
+import { analyze, clipAnalysis, initAnalysis, type FileAnalysis } from "@codeboard/analysis";
 import { Lru } from "./ws";
 
 let ready = false;

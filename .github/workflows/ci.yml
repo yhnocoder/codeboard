@@ -1,5 +1,5 @@
 # T0, tier 2 of TESTING.md: runs on every push and PR and should finish in about 5 minutes. Jobs run in parallel:
-#   unit     typecheck, unit tests (core, markdown, board, host, extension), the Markdown demo end to end (examples/markdown-demo)
+#   unit     typecheck, unit tests (analysis, core, markdown, board, host, extension), the Markdown demo end to end (examples/markdown-demo)
 #   harness  the browser harness scenarios this change needs (tools/test/pick.mjs), 2 jobs, Playwright Test on several workers in each
 #   e2e      real VS Code (with Pylance) e2e + generic UI audit, split into 2 parts
 #   perf     board + host perf benchmarks on base and head in one job (head, base, head); fails on a regression.
@@ -87,7 +87,7 @@ jobs:
         id: need
         run: |
           if [ -z "$BASE_SHA" ] || [ "${{ github.event_name }}" = push ]; then echo "run=true" >> $GITHUB_OUTPUT; exit 0; fi
-          if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(packages/(board|core|markdown)/(src/|test/(perf|harness)\.ts|vite\.config|package\.json)|packages/host/(src/|test/perf|package\.json)|package-lock\.json|tools/review/perf)'; then echo "run=true" >> $GITHUB_OUTPUT
+          if git diff --name-only "$BASE_SHA" HEAD | grep -qE '^(packages/(analysis|board|core|markdown)/(src/|test/(perf|harness)\.ts|vite\.config|package\.json)|packages/host/(src/|test/perf|package\.json)|package-lock\.json|tools/review/perf)'; then echo "run=true" >> $GITHUB_OUTPUT
           else echo "run=false" >> $GITHUB_OUTPUT; echo "No change to code the benchmarks run: perf skipped (the nightly run still measures it)"; fi
       - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
         if: steps.need.outputs.run == 'true'

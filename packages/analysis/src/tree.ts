@@ -2,7 +2,7 @@
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Language as TSLanguage, Tree, Edit, Query } from "@vscode/tree-sitter-wasm";
 
-import type { Grammar } from "../langs";
+import type { Grammar } from "./langs";
 export type { Edit, Grammar };
 
 let ready: Promise<void> | undefined;

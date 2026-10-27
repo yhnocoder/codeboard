@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { codeExts } from "@codeboard/core";
+import { codeExts } from "@codeboard/analysis/langs";
 import { startAnalysis } from "../src/analysis";
 import { CODE_GLOB, useWorkspace } from "../src/ws";
 import { isCode, lookupName, resetIndex } from "../src/nameindex";

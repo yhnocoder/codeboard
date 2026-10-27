@@ -4,8 +4,9 @@ import {
   placeChild, walkOrder, descendants, startCards, SIB_GAP, COL_GAP,
   estSize, defaultWidth, removeLostCalls, callName, sameCallSite,
   type Card, type CodeCard, type Link, type Place,
-  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Var, type Rect, type SegView, type CrossMark,
+  type GraphMark, type CallSpan, type ExpandPick, type ExpandResult, type Rect, type SegView, type CrossMark,
 } from "@codeboard/core";
+import type { Var } from "@codeboard/analysis/basics";
 import { state, setState, mutate, sync, sel, select, clearSel, flows, cardById, hostOf, rectOf, toast, setShowCollapsed, placeOf, placed } from "../state/store";
 import { camTo, camTarget, fitRect, usableW, usableH, fitTop, isVisible, union, overviewZ } from "../state/camera";
 import { lineY } from "../state/geo";

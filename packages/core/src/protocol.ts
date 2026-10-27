@@ -1,7 +1,8 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt, VariantFrom, Link } from "./model";
+import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Version, HideFlags, WebMeta, CallMark, VariantFrom, Link } from "./model";
+import type { Var, BoundVal, CallAlt } from "@codeboard/analysis/basics";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
@@ -354,7 +355,7 @@ export type DispatchResult = { impls: ImplPick[]; base: string; abstract?: true 
 export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev">;
 /** 动态分发的一个实现：qual / 路径 / 行；lib = 在 library 里（包名）；base = 基类自己的实现（不是抽象的） */
 export type ImplPick = { label: string; detail: string; path: string; line: number; qual: string; lib?: string; base?: true };
-/** 跨语言按名字搜到的一处：lang = 语言表（langs.ts）的 id；def = 定义，否则是字符串注册（"name"） */
+/** 跨语言按名字搜到的一处：lang = 语言表（@codeboard/analysis 的 langs.ts）的 id；def = 定义，否则是字符串注册（"name"） */
 export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
 /** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
 export type GenSource = { text: string; lang: string; name: string };

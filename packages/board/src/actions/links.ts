@@ -1,4 +1,5 @@
-import { uid, isCode, cardTitle, varKey, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
+import { uid, isCode, cardTitle, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide } from "@codeboard/core";
+import { varKey, type Var } from "@codeboard/analysis/basics";
 import { state, mutate, select, cardById, hostOf, toast } from "../state/store";
 import { setEditing, setHoverVar } from "../state/ui";
 import { setConnectFrom } from "../state/mode";

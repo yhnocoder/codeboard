@@ -4,8 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { initAnalysis, analyze, clipAnalysis, diffEdit, forgetTree, setTreeCacheSize, type FileAnalysis } from "../src/analysis";
-import { cachedTrees } from "../src/analysis/tree";
+import { initAnalysis, analyze, clipAnalysis, diffEdit, forgetTree, setTreeCacheSize, type FileAnalysis } from "../src";
+import { cachedTrees } from "../src/tree";
 import { analyzeOld } from "./oracle/analysis-old";
 
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));

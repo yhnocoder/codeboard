@@ -1,7 +1,7 @@
 // v0.1.5 的分析实现（JS 逐节点遍历），留作对比测试的基准：新实现的结果必须和它逐字段一致。
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Node } from "@vscode/tree-sitter-wasm";
-import { BLANK, COMMENT, DOCSTRING, grammarOf, cleanDoc, languageOf, type FileAnalysis, type Sym, type Param, type Arg, type CallSite } from "../../src/analysis";
+import { BLANK, COMMENT, DOCSTRING, grammarOf, cleanDoc, languageOf, type FileAnalysis, type Sym, type Param, type Arg, type CallSite } from "../../src";
 
 type Grammar = "python" | "cpp" | "rust";
 const parsers = new Map<Grammar, TSParser>();

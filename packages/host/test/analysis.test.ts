@@ -2,7 +2,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
-import { clipAnalysis } from "@codeboard/core/analysis";
+import { clipAnalysis } from "@codeboard/analysis";
 import { analysisOf, segAnalysis } from "../src/analysis";
 import { WS } from "./node-workspace";
 import { startTreeSitter } from "./helpers";

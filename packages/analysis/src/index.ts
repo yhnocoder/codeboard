@@ -3,9 +3,9 @@
 // Python 系（含 Triton、TileLang）用 python 语法；C / C++ / CUDA 用 cpp 语法，载入的是 tree-sitter-cuda（C++ 加上 <<<>>>、__global__ 等）。
 import type { Node, QueryCapture } from "@vscode/tree-sitter-wasm";
 import { languageOf, query, treeOf, type Edit, type Grammar } from "./tree";
-import { grammarOf } from "../langs";
-import { F_BLANK, F_COMMENT, F_DOCSTRING } from "../lines";
-export { grammarOf } from "../langs";
+import { grammarOf } from "./langs";
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "./basics";
+export { grammarOf } from "./langs";
 export { initAnalysis, languageOf, diffEdit, forgetTree, setTreeCacheSize, type Edit } from "./tree";
 
 
@@ -39,7 +39,7 @@ export type CallSite = {
   launch?: "grid" | "<<<"; // kernel 启动：Triton 的 kernel[grid](…)、CUDA 的 kernel<<<…>>>(…)
 };
 
-// 行标记和 lines.ts 的 F_* 是同一套值
+// 行标记和 basics.ts 的 F_* 是同一套值
 export const BLANK = F_BLANK, COMMENT = F_COMMENT, DOCSTRING = F_DOCSTRING;
 
 export type FileAnalysis = {

@@ -38,7 +38,7 @@ const opts = {
   plugins: [elkApart],
   sourcemap: true,
   logLevel: "info",
-  // core/analysis 里 import.meta.resolve 只在没给 wasm 目录时用（vitest）；打包后用不到
+  // @codeboard/analysis 里 import.meta.resolve 只在没给 wasm 目录时用（vitest）；打包后用不到
   define: { "import.meta.resolve": "undefined", __CODEBOARD_BUILD__: JSON.stringify(buildId()) },
 };
 if (process.argv.includes("--watch")) await (await context(opts)).watch();

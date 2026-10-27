@@ -3,7 +3,7 @@
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
-import { analyze, initAnalysis } from "@codeboard/core/analysis";
+import { analyze, initAnalysis } from "@codeboard/analysis";
 import { uid, type Segment } from "@codeboard/core";
 import { startAnalysis } from "../src/analysis";
 import { staleFor } from "../src/versions";

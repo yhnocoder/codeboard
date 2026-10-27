@@ -1,7 +1,8 @@
 import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { codeExts, langOfExt, type Workspace } from "@codeboard/core";
+import type { Workspace } from "@codeboard/core";
+import { codeExts, langOfExt } from "@codeboard/analysis/langs";
 
 let current: Workspace | undefined;
 export function useWorkspace(w: Workspace) { current = w; }
