@@ -3,7 +3,7 @@
 import { createSignal } from "solid-js";
 import type { CallSpan, IconRef } from "@codeboard/core";
 import { toast, toastMsg, setToastMsg } from "./store";
-import { onBoardSwitch } from "./root";
+import { boardSignal } from "./root";
 
 export type ConnectFrom = { card: string; seg?: string; line?: number; call?: CallSpan };
 export type Mode =
@@ -19,7 +19,7 @@ export type Mode =
 export type ModeKind = Mode["kind"];
 
 const IDLE: Mode = { kind: "idle" };
-export const [mode, setMode] = createSignal<Mode>(IDLE);
+export const [mode, setMode] = boardSignal<Mode>(IDLE);
 export const idle = () => setMode(IDLE);
 export const modeIs = <K extends ModeKind>(k: K): Extract<Mode, { kind: K }> | null => { const m = mode(); return m.kind === k ? (m as Extract<Mode, { kind: K }>) : null; };
 
@@ -47,9 +47,8 @@ export function cancelMode(): boolean {
   return true;
 }
 
-export const [panning, setPanning] = createSignal(false);
+export const [panning, setPanning] = boardSignal(false);
+// 按着的空格是键盘的状态，不跟白板走（换白板时还按着，松开才收到 keyup）
 export const [spaceDown, setSpaceDown] = createSignal(false);
 /** #board 的 data-mode */
 export const boardMode = (): string | undefined => (panning() ? "pan" : spaceDown() ? "space" : mode().kind === "idle" ? undefined : mode().kind);
-
-onBoardSwitch(idle);

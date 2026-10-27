@@ -7,6 +7,6 @@
     "stickerBitmapsPicker", "notePastedImageSameSizeInBothModes"
   ],
   "manual": ["markdownRecord"],
-  "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime", "mathHintsKeystrokeTime"],
+  "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime", "changesReachHostTime", "mathHintsKeystrokeTime"],
   "known": {}
 }

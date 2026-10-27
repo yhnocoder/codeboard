@@ -13,9 +13,10 @@ import { HEARTBEAT_MS, SCRATCH_GLOB, isScratchName, scratchName, staleScratch } 
 
 export type Doc = { uri: vscode.Uri; lang: string; doc: vscode.TextDocument };
 const docs = new Map<string, Doc>();
+/** 这个窗口建的、还在用的文件（崩溃后的清理不删它们） */
 const files = new Set<string>();
-/** 文档变了、存了、文件变了的监听里要跳过它 */
-export const isScratch = (u: vscode.Uri) => u.scheme === "file" && (files.has(u.fsPath) || isScratchName(path.basename(u.fsPath)));
+/** 文档变了、存了、文件变了的监听里要跳过它。按名字认：删掉以后才到的通知、别的窗口建的也跳过 */
+export const isScratch = (u: vscode.Uri) => u.scheme === "file" && isScratchName(path.basename(u.fsPath));
 
 function dirFor(near: string | undefined, store: string): string {
   return near ? path.dirname(near) : path.join(store, "scratch");
@@ -174,7 +175,7 @@ export function vscodeScratch(storeDir: () => string): WorkspaceScratch {
       if (!d) return;
       // 删掉文件：没打开在编辑器里、也没改过的文档，VS Code 过一会儿自己放掉
       fs.rmSync(d.uri.fsPath, { force: true });
-      setTimeout(() => files.delete(d.uri.fsPath), 5000); // 删文件的通知晚一点才来，那之前还要跳过它
+      files.delete(d.uri.fsPath);
     },
     completions: async (id, line, col, trigger) => {
       const d = docs.get(id);

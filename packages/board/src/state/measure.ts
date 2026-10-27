@@ -1,15 +1,25 @@
 // 量 DOM（卡片尺寸、卡里每行的位置）：先把这一轮要量的都读完，再一起写回 store。
 // 一边读一边写会让浏览器每张卡都重新排一次版，打开大白板时几百张卡就是几百次排版。
-import { batch } from "solid-js";
+import { batch, createEffect, createRoot } from "solid-js";
 import { queueMeasure, observeResize, setMeasureBatch } from "@yhnocoder/markdown/ui";
 import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
-import { state, cardById } from "./store";
+import { state, cardById, sizes } from "./store";
+import { visibleCards } from "./sections";
 import { shown } from "./ui";
 import { toWorld } from "./camera";
 
 // 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
 setMeasureBatch(batch);
 export { queueMeasure, observeResize };
+
+/** 看得见的卡都量过尺寸了（刚画出来的卡在 ResizeObserver 第一次报的时候量）；都量过就马上 */
+export function cardsMeasured(): Promise<void> {
+  return new Promise((done) => createRoot((dispose) => createEffect(() => {
+    if (!visibleCards().every((c) => sizes[c.id])) return;
+    dispose();
+    done();
+  })));
+}
 
 let lastPtr = { x: 0, y: 0 };
 /** 指针最后在哪（屏幕坐标）：installKeys 里开始记 */
@@ -37,11 +47,11 @@ export function boardOffset() {
 export const boardPoint = (p: { x: number; y: number }) => { const o = boardOffset(); return { x: p.x - o.x, y: p.y - o.y }; };
 export const worldAt = (p: { x: number; y: number }) => { const b = boardPoint(p); return toWorld(b.x, b.y); };
 
-// 代码卡的固定尺寸，CSS 里用同一份：App 挂到 body 上的 --ded-pad；行号栏宽 --gutter 在 styles.css 的 .code 上，量 .src 的左边距
+// 代码卡的固定尺寸，CSS 里用同一份：BoardView 挂到 body 上的 --ded-pad；行号栏宽 --gutter 在 styles.css 的 .code 上，量 .src 的左边距
 
 /** 藏了公共缩进时代码离左边留的空 */
 export const DED_PAD = 16;
-/** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（App 挂到 body 上的 --code-max） */
+/** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（BoardView 挂到 body 上的 --code-max） */
 export const CODE_MAX = 460;
 let charW = 0;
 /** 等宽字体一个字的宽度（量一次） */

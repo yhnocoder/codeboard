@@ -3,7 +3,9 @@
     "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
     "jsx": "preserve", "jsxImportSource": "solid-js",
     "strict": true, "noUnusedLocals": true, "noEmit": true, "skipLibCheck": true,
-    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+    "lib": ["ES2022", "DOM", "DOM.Iterable"], "resolveJsonModule": true, "allowImportingTsExtensions": true
   },
-  "include": ["src"]
+  "include": ["src", "stories", ".storybook"],
+  // 生成夹具的脚本跑在 Node 里（用 test/harness.ts），不和界面代码一起查
+  "exclude": ["stories/fixtures/gen.ts"]
 }

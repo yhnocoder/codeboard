@@ -139,6 +139,9 @@ async function revealShowsHiddenCard(res: Record<string, unknown>) {
   // collapse again, then click the already-expanded call in the caller
   await h.page.keyboard.press("Meta+z"); await idle(h);
   res.collapsedAgain = !(await shownIds(h)).includes(sch.id);
+  // the reveal brought the whole (tall) callee into view and undo leaves the camera there, with the caller above the viewport
+  await clickCanvas(h);
+  await h.page.keyboard.press("Shift+Digit1"); await idle(h);
   await h.page.locator(`.card[data-id="${step.id}"] .src .call:text-is("schedule")`).first().click(); await idle(h);
   res.clickShown = (await shownIds(h)).includes(sch.id);
   res.clickSel = await h.page.locator(`.card.sel[data-id="${sch.id}"]`).count();

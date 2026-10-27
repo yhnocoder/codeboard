@@ -451,6 +451,23 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     const kinds = [["code", ".card.ccard .chead"], ["note", ".card.note"], ["web", ".card.web"], ["image", ".card.image"]].filter(([k]) => !R19_KINDS || R19_KINDS.includes(k));
     if (!(await f.locator(".card.image").count())) { await blank(f, page); await pasteImage(f); }
     const fb = await (await f.frameElement()).boundingBox();
+    // Recorder for open()'s failure message: window focus / blur, right-clicks and the context menu (.ctx) coming and going, with times.
+    // It tells the ways a menu can fail to show apart: no contextmenu entry = the click never reached the board; "+ctx" then "blur" =
+    // the menu opened and the board lost the keyboard (a window blur closes menus, ui/overlay.ts), e.g. when VS Code focuses the
+    // webview's host page (WebviewElement.focus) and so takes it from the board's frame
+    await f.evaluate(() => {
+      if (window.__r19log) return;
+      const log = window.__r19log = [], at = () => Math.round(performance.now());
+      const d = (e) => e?.tagName ? `${e.tagName.toLowerCase()}.${String(e.className?.baseVal ?? e.className).trim().replace(/\s+/g, ".")}`.slice(0, 40) : String(e);
+      const rec = (...x) => { log.push([at(), ...x]); if (log.length > 200) log.shift(); };
+      for (const t of ["blur", "focus"]) window.addEventListener(t, (e) => e.target === window && rec(t, document.hasFocus()), true);
+      document.addEventListener("visibilitychange", () => rec("visibility", document.visibilityState));
+      window.addEventListener("pointerdown", (e) => rec("pointerdown", e.button, d(e.target)), true);
+      window.addEventListener("contextmenu", (e) => rec("contextmenu", d(e.target), document.hasFocus()), true);
+      const isMenu = (n) => n.nodeType === 1 && (n.matches(".ctx") || !!n.querySelector(".ctx"));
+      new MutationObserver((ms) => { for (const m of ms) { if ([...m.addedNodes].some(isMenu)) rec("+ctx"); if ([...m.removedNodes].some(isMenu)) rec("-ctx"); } })
+        .observe(document.body, { childList: true, subtree: true });
+    });
     const dead = [], unreachable = [];
     const closed = () => until("Esc closes the context menu", async () => !(await f.locator(".ctx").count()));
     for (const [k, sel] of kinds) {
@@ -464,10 +481,12 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
         const r = await rectOf(t), x = r.l + Math.min(60, r.w / 2), y = r.t + Math.min(10, r.h / 2);
         await page.mouse.click(fb.x + x, fb.y + y, { button: "right" });
         // when no menu opens, say what was under the click and where the keyboard was
-        await menuOpen(f).catch(async (e) => { throw new Error(`${e.message}; right-clicked ${k} at ${x | 0},${y | 0}: ${JSON.stringify(await f.evaluate(([x, y]) => {
+        // (printed whole here: the check that collects it cuts its details short)
+        await menuOpen(f).catch(async (e) => { const m = `${e.message}; right-clicked ${k} at ${x | 0},${y | 0}: ${JSON.stringify(await f.evaluate(([x, y]) => {
           const d = (e) => e ? `${e.tagName.toLowerCase()}.${String(e.className?.baseVal ?? e.className).trim().replace(/\s+/g, ".")}`.slice(0, 60) : null;
-          return { at: d(document.elementFromPoint(x, y)), card: d(document.elementFromPoint(x, y)?.closest(".card")), active: d(document.activeElement), open: [...document.querySelectorAll(".pop, .dialog, .palette, .settings")].map(d) };
-        }, [x, y]))}`); });
+          return { at: d(document.elementFromPoint(x, y)), card: d(document.elementFromPoint(x, y)?.closest(".card")), active: d(document.activeElement), open: [...document.querySelectorAll(".pop, .dialog, .palette, .settings")].map(d),
+            focus: document.hasFocus(), now: Math.round(performance.now()), log: (window.__r19log ?? []).slice(-15) };
+        }, [x, y]))}`; console.log(`    ${m}`); throw new Error(m); });
         await idle(f);
       };
       // The menu row labeled exactly so ("Edit" is a submenu; a substring match would hover "Edit Description" instead)

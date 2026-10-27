@@ -15,7 +15,7 @@ import { applyMathPreamble, mathRev } from "../md/math";
 
 const cur = (): S => state.host.settings;
 
-/** 主题同步 + 设置页本身；App 里挂一次 */
+/** 主题同步 + 设置页本身；BoardView 里挂一次 */
 export function SettingsLayer() {
   createEffect(() => A.applyLook(state.host.settings.theme));
   createEffect(() => A.applyVscodeBg(state.host.settings.vscodeBg));
@@ -28,7 +28,7 @@ export function SettingsLayer() {
 function SettingsPage(p: { section?: string }) {
   let el!: HTMLDivElement;
   // 盖住白板：白板快捷键都不响应；Esc、⌘, 关
-  useOverlay({ close: () => A.closeSettings(), grab: true, modal: true, keys: (e) => matches(e, "settings") && (A.closeSettings(), true) });
+  useOverlay({ close: () => A.closeSettings(), grab: true, modal: true, stay: true, keys: (e) => matches(e, "settings") && (A.closeSettings(), true) });
   onMount(() => {
     const t = p.section && el.querySelector<HTMLElement>(`[data-sec="${p.section}"]`);
     if (t) t.scrollIntoView({ block: "start" });

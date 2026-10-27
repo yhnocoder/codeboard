@@ -3,10 +3,10 @@ import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } 
 import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { subRef } from "../state/subboards";
-import { camTo, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
+import { camTo, camRest, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
 import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAnim } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";
-import { lastPointer, naturalSize, chromeOf, CODE_MAX } from "../state/measure";
+import { lastPointer, naturalSize, chromeOf, cardsMeasured, CODE_MAX } from "../state/measure";
 import { send, ask } from "../host";
 import { renderMd, renderMdInline } from "@yhnocoder/markdown";
 import { mathRev } from "../md/math";
@@ -64,17 +64,16 @@ export function isLocked(id: string) {
   return !!placeOf(f.host.id).locked || sectionLocked(sectionOf(f.host.id));
 }
 
-/** 带到眼前：藏在折叠的调用子树、折叠的 Section 里的卡先展开（展开了要等它画出来、量好大小再挪镜头） */
-export function revealCard(id: string, doPing = true) {
+/** 带到眼前：藏在折叠的调用子树、折叠的 Section 里的卡先展开（展开了要等它量好大小再挪镜头）。镜头停下时 resolve */
+export async function revealCard(id: string, doPing = true): Promise<void> {
   const f = cardById(id);
   if (!f) return;
-  const show = () => {
-    const r = hostRect(id);
-    if (!r) return;
-    ensureVisible(r);
-    if (doPing) ping(f.host.id);
-  };
-  if (unhide(id)) requestAnimationFrame(show); else show();
+  if (unhide(id)) await cardsMeasured();
+  const r = hostRect(id);
+  if (!r) return;
+  ensureVisible(r);
+  if (doPing) ping(f.host.id);
+  await camRest();
 }
 /** 展开藏着这张卡的：调用图里它上面折叠着的卡、它所在的折叠的 Section（一层层往外）。返回有没有展开什么 */
 function unhide(id: string): boolean {

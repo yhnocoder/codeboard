@@ -12,7 +12,7 @@ import { setGeo } from "../state/geo";
 import { look } from "../state/look";
 import { queueMeasure, observeResize, DED_PAD, monoWidth, lastDown } from "../state/measure";
 import { whenIdle } from "../state/idle";
-import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget, codeTextRange } from "../state/ui";
+import { shown, toggleShown, notesOn, linksFrom, flashRows, hoverVar, editing, setEditing, dragging, dropTarget, codeTextRange, type AnnotDraft } from "../state/ui";
 import * as act from "../actions";
 import { callPointerDown, cardWheel, linkPortDown } from "../interact";
 import { Editable } from "../ui/Editable";
@@ -356,7 +356,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   const markRows = createMemo(() => new Set(marks().map((m) => m.row)));
 
   // 贴在字上的手写标注：每一行上面 / 下面一条窄轨道（只有有标注的行才有），被标的字底下一块淡色（rowbgs 里）
-  type Ann = { i: number; text: string; color: string; below: boolean; from: number; to: number; draft?: boolean };
+  type Ann = { i: number; text: string; color: string; below: boolean; from: number; to: number; draft?: AnnotDraft };
   const annots = createMemo(() => {
     const m = new Map<string, Ann[]>();
     const add = (seg: string, line: number, a: Ann) => { const k = `${seg}:${line}`; const l = m.get(k); if (l) l.push(a); else m.set(k, [a]); };
@@ -370,7 +370,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     if (d?.card === c().id) {
       const s = segById(d.seg), t = s?.text[d.line - (s?.start ?? 0)] ?? "";
       const color = s?.annots?.[s.annots.length - 1]?.color ?? "blue";
-      add(d.seg, d.line, { i: -1, text: "", color, below: false, from: vcol(t, d.from), to: vcol(t, d.to), draft: true });
+      add(d.seg, d.line, { i: -1, text: "", color, below: false, from: vcol(t, d.from), to: vcol(t, d.to), draft: d });
     }
     return m;
   });
@@ -391,7 +391,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               onDblClick={(e) => { e.stopPropagation(); if (!a.draft) setEditing({ kind: "annot", id: annotKey(c().id, q.l.seg, a.i) }); }}
               onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); const s = segById(q.l.seg); const x = s?.annots?.[a.i]; if (x) annotMenu(c().id, q.l.seg, a.i, x, e.clientX, e.clientY); }}>
               <Editable class="alt" kind="annot" id={a.draft ? "draft" : annotKey(c().id, q.l.seg, a.i)} value={a.text} placeholder="Write a note…"
-                onCommit={(v) => (a.draft ? commitDraft(v) : setAnnotText(c().id, q.l.seg, a.i, v))} />
+                onCommit={(v) => (a.draft ? commitDraft(a.draft, v) : setAnnotText(c().id, q.l.seg, a.i, v))} />
             </span>
           </span>
           <span class={`aanc hc-${a.color}`} style={{ left: `calc(${shift()} + ${(a.from + a.to) / 2}ch)` }}><i class="aarr" /></span>
@@ -399,8 +399,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
       )}</For>
     </div>
   );
-  // 草稿没写字就关掉了编辑（Esc、点别处）：草稿去掉
-  createEffect(() => { const e = editing(); if (annotDraft()?.card === c().id && !(e?.kind === "annot" && e.id === "draft")) queueMicrotask(() => { if (!(editing()?.kind === "annot" && editing()?.id === "draft")) commitDraft(""); }); });
 
   const alwaysNotes = (seg: string, line: number) => act.sidenotesOf(c().id).filter((n): n is Extract<Sidenote, { kind: "text" }> => n.kind === "text" && !!n.alwaysShow && n.at.seg === seg && n.at.lines?.[1] === line);
   const cmtLine = (r: Row) => r.t === "line" && (viewOf(r.seg)?.flags[r.line - (segById(r.seg)?.start ?? 0)] ?? 0) & F_COMMENT;

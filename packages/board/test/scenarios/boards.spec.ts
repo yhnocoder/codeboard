@@ -10,7 +10,10 @@ import { CAM_SETTLE, LIVE_DELAY } from "../../src/state/timing";
 type Sub = Awaited<ReturnType<typeof subHost>>;
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 
-test("changesreachhost", () => verdict("changes-reach-host-at-once", changesReachHost));
+test("changesreachhost", () => verdict("changes-reach-host", changesReachHost));
+
+// how long they take, alone (tiers.json solo): a timing on a shared CPU says nothing
+test("changesReachHostTime", () => verdict("changes-reach-host-within-300ms", changesReachHostTime));
 
 test("emptyquestion", () => verdict("empty-new-question-is-dropped", emptyQuestion));
 
@@ -205,22 +208,26 @@ async function emptyQuestion(res: Record<string, unknown>) {
 }
 
 /** Each change goes to the host right away (the host writes it to disk and finishes the write when the panel closes), so closing the tab right after a change can't lose it; a settled camera waits for the live debounce */
-async function changesReachHost(res: Record<string, unknown>) {
+/** A board whose patches to the host are recorded with the time they arrived */
+async function saveBoard() {
   const b: Board = emptyBoard("bSave", "Save");
   const step = nv("LLMEngine.step");
   put(b, step, 60, 80, 600);
   const got: { t: number; patch: any }[] = [];
   const h = await open({ board: b, on: (m) => { if (m.type === "patch") got.push({ t: Date.now(), patch: m.patch }); return false; } });
-  const page = h.page;
-  await page.locator(`.card[data-id="${step.id}"] .chead`).click({ position: { x: 120, y: 10 } }); await idle(h);
+  await h.page.locator(`.card[data-id="${step.id}"] .chead`).click({ position: { x: 120, y: 10 } }); await idle(h);
   got.length = 0;
-  // Wrap Lines on the selected card
+  return { h, page: h.page, step, got };
+}
+
+/** Wrap Lines on the selected card, then a new Text card typed and closed with Esc: each reaches the host. Returns how long each took */
+async function wrapAndText({ h, page, step, got }: Awaited<ReturnType<typeof saveBoard>>, res: Record<string, unknown>) {
   let t0 = Date.now();
   await page.keyboard.press("Alt+z");
-  await until(h, "Wrap Lines reaches the host", () => got.length, 1000);
-  res.wrapMs = got.length ? got[0].t - t0 : null;
-  res.wrapSent = !!got[0]?.patch.cards?.set?.some((c: any) => c.id === step.id);
-  // A new Text card: typed text, Esc
+  const wrapped = () => got.find((g) => g.patch.cards?.set?.some((c: any) => c.id === step.id && c.wrap === true));
+  await until(h, "Wrap Lines reaches the host", wrapped);
+  const wrapMs = wrapped()!.t - t0;
+  res.wrapSent = true;
   await page.mouse.click(900, 600); await idle(h);
   got.length = 0;
   await page.keyboard.press("t");
@@ -229,8 +236,15 @@ async function changesReachHost(res: Record<string, unknown>) {
   t0 = Date.now();
   await page.keyboard.press("Escape");
   const typed = () => got.find((g) => g.patch.cards?.set?.some((c: any) => c.kind === "note" && c.md === "typed then closed"));
-  await until(h, "the closed Text card reaches the host", typed, 1000);
-  res.textMs = typed() ? typed()!.t - t0 : null;
+  await until(h, "the closed Text card reaches the host", typed);
+  res.textSent = true;
+  return { wrapMs, textMs: typed()!.t - t0 };
+}
+
+/** Wrap Lines, a closed Text card and a settled camera reach the host; the camera only once, LIVE_DELAY after it settled */
+async function changesReachHost(res: Record<string, unknown>) {
+  const s = await saveBoard(), { h, page, got } = s;
+  await wrapAndText(s, res);
   // A settled camera (CAM_SETTLE after panning) is not sent per frame: it goes out once, LIVE_DELAY after it settles
   await page.mouse.move(700, 500); await idle(h);
   got.length = 0;
@@ -242,5 +256,13 @@ async function changesReachHost(res: Record<string, unknown>) {
   await hold(h, 300, "no second camera patch follows");
   res.camSends = got.filter((g) => g.patch.cam).length;
   await page.context().close();
-  return res.wrapSent === true && (res.wrapMs as number) < 300 && res.textMs !== null && (res.textMs as number) < 300 && res.camBefore === false && res.camSent === 1 && res.camSends === 1;
+  return res.wrapSent === true && res.textSent === true && res.camBefore === false && res.camSent === 1 && res.camSends === 1;
+}
+
+/** The same edits reach the host at once: within 300 ms each (no debounce in the way) */
+async function changesReachHostTime(res: Record<string, unknown>) {
+  const s = await saveBoard();
+  Object.assign(res, await wrapAndText(s, res));
+  await s.page.context().close();
+  return (res.wrapMs as number) < 300 && (res.textMs as number) < 300;
 }

@@ -6,7 +6,7 @@ import {
 } from "@codeboard/core";
 import { ask, send } from "../host";
 import { ghostOut } from "./ghost";
-import { rooted, onBoardSwitch } from "./root";
+import { rooted, boardSignal } from "./root";
 import { trimLru } from "./lru";
 import { LIVE_DELAY, RESEND_DELAY, SEL_REPORT } from "./timing";
 
@@ -26,7 +26,7 @@ export const sharedOn = (id: string) => shared[id]?.boards.length ?? 0;
 export type Sel = { cards: string[]; links: string[]; sections: string[] };
 export const [sel, setSel] = createStore<Sel>({ cards: [], links: [], sections: [] });
 export type LineSel = { card: string; seg: string; start: number; end: number };
-export const [lineSel, setLineSel] = createSignal<LineSel | null>(null);
+export const [lineSel, setLineSel] = boardSignal<LineSel | null>(null);
 
 export function select(o: Partial<Sel>, add = false) {
   batch(() => {
@@ -59,8 +59,7 @@ export const flows = rooted(() => createMemo(() => computeFlows(state.board)));
 /** 因为折叠藏起来的卡（不管 Walkthrough 有没有临时展开） */
 export const collapsedSet = rooted(() => createMemo(() => hiddenByCollapse(state.board, flows())));
 /** Walkthrough 时临时展开所有折叠的卡：只影响显示，不进撤销、不存盘 */
-export const [showCollapsed, setShowCollapsed] = createSignal(false);
-onBoardSwitch(() => setShowCollapsed(false));
+export const [showCollapsed, setShowCollapsed] = boardSignal(false);
 export const collapsedAway = rooted(() => createMemo(() => (showCollapsed() ? new Set<string>() : collapsedSet())));
 
 /** id → 卡（Compare 的栏也在里面，host 是外面的 Compare）。卡的增删、换 id 时才重建；拖动、改内容不动它 */
@@ -82,7 +81,7 @@ export function placeOf(id: string): Place {
 }
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
-export const [sizes, setSizes] = createStore<Record<string, { w: number; h: number }>>({});
+export const [sizes, setSizes] = createStore<Record<string, { w: number; h: number } | undefined>>({});
 /** 宽高优先用实测；量到 0 的不算（卡被藏起来时量到的） */
 export function rectOf(c: { id: string } | string) {
   const id = typeof c === "string" ? c : c.id;

@@ -14,11 +14,7 @@ import type { PopProps } from "./common";
 export function Popovers() {
   // 开着弹窗时是一层：Esc 全关（点画布关掉在 interact.ts，拖卡时也关）
   createEffect(on(() => pops().length > 0, (has) => { if (has) onCleanup(pushLayer({ close: closeAllPops })); }));
-  return <>
-    {/* library 调用的样式跟着 Study Scope 变（这里顺带挂上，免得改 App） */}
-    <style>{A.libCallCss()}</style>
-    <For each={pops()}>{(p) => <PopFrame inst={p} />}</For>
-  </>;
+  return <For each={pops()}>{(p) => <PopFrame inst={p} />}</For>;
 }
 
 function PopFrame(p: { inst: PopInst }) {
