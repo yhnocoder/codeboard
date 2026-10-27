@@ -17,7 +17,7 @@ import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { pick, repeatPick, shard, loadImpact, changes, testsLine, DEFAULT_MS } from "./pick.mjs";
+import { pick, repeatPick, shard, loadImpact, changes, testsLine, msOf as estimate } from "./pick.mjs";
 
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const PW = [path.join(REPO, "node_modules/.bin/playwright"), "test", "-c", path.join(REPO, "packages/board/playwright.config.ts")];
@@ -50,7 +50,7 @@ for (const s of specs(report.suites)) {
   all[s.title] = path.relative(REPO, path.resolve(report.config.rootDir, s.file));
 }
 const impact = loadImpact();
-const msOf = (n) => impact.map?.scenarios?.[n]?.ms ?? DEFAULT_MS;
+const msOf = estimate(impact);
 
 let list, plan;
 const since = opt("changed-since");

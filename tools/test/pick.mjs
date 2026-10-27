@@ -20,6 +20,14 @@ import * as path from "node:path";
 const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const git = (...a) => execFileSync("git", a, { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 256 << 20 }).trim();
 export const DEFAULT_MS = 10000;
+/** A scenario's expected time: its time in the last nightly run; one that run doesn't have (new since) takes the median there, as a
+ *  new scenario is about as quick as the others (a flat guess of 10 s made a few new ones crowd affected ones out of the budget) */
+export function msOf(impact) {
+  const map = impact.map?.scenarios ?? {};
+  const all = Object.values(map).map((s) => s.ms).sort((a, b) => a - b);
+  const typical = all.length ? all[all.length >> 1] : DEFAULT_MS;
+  return (n) => map[n]?.ms ?? typical;
+}
 
 /**
  * Nightly results stored on the ci-screenshots branch: impact/harness.json { commit, generated, scenarios: { name: { ms, files: [paths] } } }
@@ -76,7 +84,7 @@ const SRC = /^packages\/(board|core|host|markdown)\/src\//;
 export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
   const names = Object.keys(all).filter((n) => !(tiers.manual ?? []).includes(n));
   const map = impact.map?.scenarios ?? {};
-  const ms = (n) => map[n]?.ms ?? DEFAULT_MS;
+  const ms = msOf(impact);
   const notes = [];
   const why = new Map();
   const add = (n, w) => { if (all[n] && !why.has(n)) why.set(n, w); };
@@ -121,7 +129,7 @@ export const changedScenarios = (all, change, tiers) =>
  * → { run: [{ name, why, ms }], deferred: [names], notes: [strings] }
  */
 export function repeatPick({ all, change, impact, tiers, repeat, workers, capMs }) {
-  const ms = (n) => impact.map?.scenarios?.[n]?.ms ?? DEFAULT_MS;
+  const ms = msOf(impact);
   const cost = (n) => (ms(n) * repeat) / ((tiers.solo ?? []).includes(n) ? 1 : workers);
   const names = changedScenarios(all, change, tiers).sort((a, b) => ms(a) - ms(b) || a.localeCompare(b));
   const run = [], deferred = [];
