@@ -739,3 +739,25 @@ test("labelDragAlongArrow", async () => {
   check("label-drag", at !== undefined && Math.abs(r1.y - r0.y) > 40, JSON.stringify({ at, dy: r1.y - r0.y }));
   await close(h);
 });
+
+// "This board is empty" shows only while nothing at all is drawn: a sticker or a Section on its own is content too
+test("emptyHintOnlyWhenNothingDrawn", async () => {
+  const shown = (h: Host) => h.page.locator(".emptyhint").isVisible();
+  let h = await open({ board: emptyBoard("b1", "empty"), light });
+  await idle(h);
+  check("empty-hint-on-empty-board", await shown(h));
+  await close(h);
+  const b = emptyBoard("b2", "stickers only");
+  b.stickers.push({ id: "k1", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 200, y: 200 } });
+  h = await open({ board: b, light });
+  await h.page.locator('[data-sticker="k1"]').waitFor();
+  await idle(h);
+  check("empty-hint-hidden-with-only-a-sticker", !(await shown(h)));
+  await close(h);
+  const s = emptyBoard("b3", "section only");
+  s.sections.push({ id: "s1", title: "Plan", x: 120, y: 120, w: 400, h: 300 });
+  h = await open({ board: s, light });
+  await idle(h);
+  check("empty-hint-hidden-with-only-a-section", !(await shown(h)));
+  await close(h);
+});

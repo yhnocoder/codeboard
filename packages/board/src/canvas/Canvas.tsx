@@ -108,7 +108,7 @@ export function Canvas() {
       </div>
       <Show when={marquee()}>{(m) => <div class="marquee" style={{ left: `${m().x}px`, top: `${m().y}px`, width: `${m().w}px`, height: `${m().h}px`, display: "block" }} />}</Show>
       <AlignBar />
-      <Show when={!placed().length && state.loaded}><EmptyHint /></Show>
+      <Show when={!placed().length && !state.board.stickers.length && !state.board.sections.length && state.loaded}><EmptyHint /></Show>
     </div>
   );
 }
