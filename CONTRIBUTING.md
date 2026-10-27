@@ -3,11 +3,11 @@
 ## Setup
 
 ```bash
-git submodule update --init
+git submodule update --init examples/nano-vllm   # the repository the tests run on (under a second); sglang and DeepEP are only for trying things by hand: git submodule update --init --depth 1 examples/sglang examples/DeepEP
 npm install
 npm run build      # @yhnocoder/markdown (packages/markdown/dist), board UI + extension, compiled into extensions/vscode/dist (no .vsix)
 npm test           # unit tests (core, markdown, board, host, extension)
-npm run check      # local test tier: typecheck, unit tests and affected harness scenarios (~3 min)
+npm run check      # local test tier: typecheck, unit tests and affected harness scenarios (~90 s)
 npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Code and xvfb)
 npm run storybook  # Storybook for the board UI at http://localhost:6006 (cards and toolbar, every theme, light / dark, zoom); not part of check or the per-push CI. `npm run storybook:check` builds it and opens every story in Chromium; that runs nightly
 ```
