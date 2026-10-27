@@ -229,9 +229,7 @@ test("linklist", async () => {
   await h.page.locator(".card.links .chead").click({ button: "right", position: { x: 30, y: 12 } });
   await h.page.locator(".ctx button", { hasText: "View" }).hover();
   await shot(h, "ll-06b-view");
-  // Submenus are currently drawn in the parent menu's coordinate space (old Menu.tsx issue, to be fixed in the menu rewrite); click directly here
-  await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().waitFor({ state: "attached" });
-  await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().dispatchEvent("click");
+  await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().click();
   await until(h, "View ▸ Rich is saved", () => L()?.rich);
   await h.page.mouse.move(1300, 860);
   await shot(h, "ll-07-all-rich");
