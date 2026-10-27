@@ -121,6 +121,8 @@ test("mathPreviewPlainErrors", async () => {
   // a typo: \tims
   await pg.keyboard.press("Control+a");
   await pg.keyboard.type("a \\tims b");
+  // the preview draws in the frame after an input: any error before that is one of the keystrokes on the way
+  await frames(pg, 2);
   await until(h, "the error shows", async () => (await err()).text);
   const typo = await err();
   await shot(h, "mathPreviewPlainErrors-typo");
@@ -130,6 +132,7 @@ test("mathPreviewPlainErrors", async () => {
   // a missing }
   await pg.keyboard.press("Control+a");
   await pg.keyboard.type("\\frac{n + 255}{256");
+  await frames(pg, 2);
   await until(h, "the error shows", async () => (await err()).text);
   const brace = await err();
   await shot(h, "mathPreviewPlainErrors-brace");
