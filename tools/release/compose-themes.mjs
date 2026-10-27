@@ -6,6 +6,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium } from "playwright-core";
+import { CHROMIUM } from "../test/chromium.mjs";
 
 const THEMES = [["warm-ink", "Warm Ink"], ["graphite", "Graphite"], ["soft-light", "Soft Light"], ["drafting", "Drafting"], ["colorful", "Colorful"], ["newspaper", "Newspaper"], ["poster", "Poster"], ["classic", "Classic"], ["ink-wash", "Ink Wash"]];
 const [dir, out, mode = "light"] = process.argv.slice(2);
@@ -41,8 +42,7 @@ const slice = (f) => {
 const html = shots.map(([f, name], i) => i === 0
   ? `<div class="shot" style="left:${PAD}px;width:${W}px;z-index:${shots.length};background-image:url(${b64(f)})"></div><div class="label" style="left:${PAD}px;width:${W}px">${name}</div>`
   : `<div class="shot slice" style="left:${PAD + W + SLICE * (i - 1) - R}px;width:${SLICE + R}px;z-index:${shots.length - i};background-image:url(${b64(f)});${slice(f)}"></div><div class="label" style="left:${PAD + W + SLICE * (i - 1)}px;width:${SLICE}px">${name}</div>`).join("");
-const exe = process.env.CHROMIUM ?? (fs.existsSync("/opt/pw-browsers/chromium-1194/chrome-linux/chrome") ? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" : undefined);
-const browser = await chromium.launch({ executablePath: exe });
+const browser = await chromium.launch({ executablePath: CHROMIUM });
 const page = await browser.newPage({ deviceScaleFactor: 2, viewport: { width: W + SLICE * (shots.length - 1) + PAD * 2, height: H + LABEL + PAD * 2 } });
 await page.setContent(`<style>${css}</style><div class="stage">${html}</div>`);
 await page.evaluate(() => document.fonts.ready);
