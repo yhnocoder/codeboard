@@ -95,6 +95,10 @@ export async function subHost(start: Board, others: Board[]) {
       }
     },
   });
+  // like BoardHub when a panel closes: the store writes what it still holds (it writes patches WRITE_DELAY later). The test's
+  // teardown awaits h.close(), so no write of this store is left over for the next scenario of the worker, whose subHost uses this dir
+  const close = h.close;
+  h.close = async () => { await close(); await store.flush(); };
   await init(); // the harness's own init has no board list / skeleton push yet
   return { store, h, inits, cur: () => cur, crumbs: () => crumbs };
 }

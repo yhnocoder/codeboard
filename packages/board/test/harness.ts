@@ -103,6 +103,13 @@ export type Watch = { fail: (check: string, detail: string) => void; coverage?: 
 
 export const launch = () => chromium.launch({ executablePath: CHROMIUM, args: CHROMIUM_ARGS });
 
+/**
+ * The sandbox is offline: a web address in a Note (an image at https://x.y/cat.png) can't load. Chromium reports that as a console
+ * error "Failed to load resource: net::ERR_…" (never as a page error), with the address as its location. Only these network errors,
+ * and only for http(s) addresses, are expected; anything else that doesn't load (a file of the board's own) fails the scenario
+ */
+const OFFLINE = /^Failed to load resource: net::(ERR_NAME_NOT_RESOLVED|ERR_TUNNEL_CONNECTION_FAILED|ERR_PROXY_CONNECTION_FAILED|ERR_INTERNET_DISCONNECTED|ERR_CONNECTION_REFUSED|ERR_CONNECTION_TIMED_OUT|ERR_ADDRESS_UNREACHABLE)$/;
+
 let pages = 0;
 /** Opens the board in a new context of `browser`; closing the host (or its context) ends it */
 export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Watch = { fail: (check, detail) => console.log("FAIL", check, detail) }): Promise<Host> {
@@ -134,12 +141,22 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
   const sent: BoardToHost[] = [];
   const post = (m: HostToBoard) => page.evaluate((s) => window.postMessage(JSON.parse(s), "*"), JSON.stringify(m));
   const reply = (req: number, data?: unknown, error?: string) => post({ type: "reply", req, data, error });
-  page.on("console", (m) => {
+  page.on("console", async (m) => {
+    const text = m.text();
     // mutate's self-check (core danglingRefs): any hit is a failure in every scenario
-    if (m.text().includes("dangling references")) watch.fail("dangling-refs", m.text());
-    else if (m.type() === "error" || m.type() === "warning") console.log(`[page ${m.type()}]`, m.text());
+    if (text.includes("dangling references")) return watch.fail("dangling-refs", text);
+    if (m.type() !== "error" && m.type() !== "warning") return;
+    const url = m.location().url;
+    if (OFFLINE.test(text) && /^https?:/.test(url)) return; // expected here, see OFFLINE
+    console.log(`[page ${m.type()}]`, text, url && !text.includes(url) ? `(${url})` : "");
+    // an exception the board caught and only logged (console.error("mutate failed", e)), or a file of its own that didn't load
+    const caught = (await Promise.all(m.args().map((a) => a.evaluate((v) => v instanceof Error).catch(() => false)))).some(Boolean);
+    if (page.isClosed()) return; // the scenario is over
+    if (caught) watch.fail("page-exception-logged", text);
+    else if (text.startsWith("Failed to load resource")) watch.fail("page-resource-failed", `${text} ${url}`);
   });
-  page.on("pageerror", (e) => console.log("[page error]", e.message));
+  // an exception the board didn't catch (an event handler, a timer, a rejected promise): a failure in every scenario
+  page.on("pageerror", (e) => watch.fail("page-error", e.stack || `${e.name}: ${e.message}`));
   await page.exposeFunction("__host", async (s: string) => {
     const m = JSON.parse(s) as BoardToHost & { req?: number };
     sent.push(m);
