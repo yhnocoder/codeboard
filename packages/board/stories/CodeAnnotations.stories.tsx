@@ -5,7 +5,7 @@ import { Stage, scene, type Globals, type Scene } from "./support/board";
 import { el, frames, rightClick } from "./support/play";
 import { fn, card } from "./support/code";
 import { setEditing } from "../src/state/ui";
-import { annotKey, setAnnotDraft } from "../src/actions/annots";
+import { annotKey, startAnnot } from "../src/actions/annots";
 
 type Mode = "none" | "editing" | "draft" | "menu";
 type Args = { text: string; color: HandColor; below: boolean; mode: Mode; w: number };
@@ -29,8 +29,7 @@ function single(a: Args): Scene {
       if (a.mode === "editing") setEditing({ kind: "annot", id: annotKey("a1", s.id, 0) });
       if (a.mode === "draft") {
         const x = on(s, "self.hash_to_block_id[h]", "", "blue");
-        setAnnotDraft({ card: "a1", seg: s.id, line: x.line, from: x.from, to: x.to });
-        setEditing({ kind: "annot", id: "draft" });
+        startAnnot({ card: "a1", seg: s.id, line: x.line, from: x.from, to: x.to });
       }
       if (a.mode === "menu") {
         await frames();
