@@ -1,5 +1,5 @@
 // The nightly run's comment on the "replay-nightly" issue (nightly.yml, publish job), built from the downloaded artifacts:
-//   failures      harness (harness-<k>/result.json), e2e (e2e-<k>/e2e.log) and perf; kept in the hidden marker
+//   failures      harness (harness-<k>/result.json), e2e (e2e-<k>/e2e.log), perf and Storybook (storybook/result.json); kept in the hidden marker
 //                 <!-- nightly-failures: [...] --> that the next night's "Passing again" diff and the PR carry-over read
 //   flakes        the flake repeat (repeat/repeat.json, harness.mjs --changed-since --repeat): new or changed scenarios that failed
 //                 a repetition. They don't make the run red, and never go into nightly-failures
@@ -33,6 +33,10 @@ export function nightlyReport({ dir, jobs, comments, run, sha }) {
     else if (jobs.e2e?.result !== "success" && !/all passed/.test(log)) fails.push(`e2e ${k}/3: failed (see the run log)`);
   }
   if (jobs.perf?.result === "failure") fails.push(`perf: ${read(`${dir}/perf/summary.md`).split("\n").find((l) => /❌|regress/i.test(l))?.slice(0, 160) || "regression (see the run log)"}`);
+
+  const sb = json(`${dir}/storybook/result.json`);
+  if (!sb) fails.push(`storybook: ${jobs.storybook?.result === "success" ? "no results" : "failed before any story ran (see the run log)"}`);
+  else for (const x of sb.failures) fails.push(`storybook ${x.id}: ${first({ error: x.error })}`);
 
   // The flake repeat. A scenario failing in the full run is a failure above, not a flake.
   const rep = json(`${dir}/repeat/repeat.json`);

@@ -12,7 +12,8 @@
     "check": "node tools/test/check.mjs",
     "harness": "node tools/test/harness.mjs",
     "storybook": "npm run build -w @yhnocoder/markdown && npm run storybook -w @codeboard/board",
-    "build-storybook": "npm run build -w @yhnocoder/markdown && npm run build-storybook -w @codeboard/board"
+    "build-storybook": "npm run build -w @yhnocoder/markdown && npm run build-storybook -w @codeboard/board",
+    "storybook:check": "npm run build-storybook && node tools/test/storybook.mjs"
   },
   "allowScripts": {
     "esbuild": true,
