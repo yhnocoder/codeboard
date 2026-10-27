@@ -9,10 +9,14 @@ import code from "../fixtures/code.json";
 
 /** 开着的第 level 级菜单（0 = 最外层），展开动画走完 */
 export const menu = (level = 0) => waitFor(() => document.querySelectorAll<HTMLElement>(".ctx.open")[level], `menu level ${level}`);
+/** 菜单里名字是 label 的那一项（不动它） */
+export async function menuButton(label: string, level = 0) {
+  const m = await menu(level);
+  return waitFor(() => [...m.querySelectorAll<HTMLButtonElement>("button[role=menuitem]")].find((x) => x.querySelector(".lb")?.textContent === label), `menu item ${label}`);
+}
 /** 菜单里的一项：sub = 悬停打开它的二级菜单（和鼠标移上去一样），否则点它 */
 export async function menuItem(label: string, o: { sub?: boolean; level?: number } = {}) {
-  const m = await menu(o.level ?? 0);
-  const b = await waitFor(() => [...m.querySelectorAll<HTMLButtonElement>("button[role=menuitem]")].find((x) => x.querySelector(".lb")?.textContent === label), `menu item ${label}`);
+  const b = await menuButton(label, o.level ?? 0);
   if (o.sub) { b.dispatchEvent(new PointerEvent("pointerenter")); await menu((o.level ?? 0) + 1); }
   else b.click();
   return b;

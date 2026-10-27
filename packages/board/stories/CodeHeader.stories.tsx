@@ -172,3 +172,11 @@ export const Crowded: Story = {
   name: "Crowded and Narrow",
   args: { title: "Scheduler.preempt", stale: "changed", version: "uncommitted", boards: 2, linkedIn: 3, procs: "rank 0", notes: 1, questions: 1, start: true, w: 300 },
 };
+// 悬停（CSS :hover，story 的 parameters.pseudo 摆出来）：悬停卡时卡头里只在悬停时才有的按钮（Copy Code）展开；
+// 卡头上各个小按钮（步骤号、路径、版本、共享、← 来自别的白板、旁注数）被指着时的样子，一张卡上同时摆出来
+export const Hover: Story = { name: "Hover (hover-only buttons open)", parameters: { pseudo: { hover: [".card"] } } };
+export const HoverButtons: Story = {
+  name: "Hover: Header Buttons",
+  args: { boards: 3, linkedIn: 2, notes: 2, w: 520 },
+  parameters: { pseudo: { hover: [".card", ".chead .cpath", ".chead .rev", ".chead .shb", ".chead .linkedin", ".chead .subc"] } },
+};

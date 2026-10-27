@@ -3,9 +3,9 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { BoardCard, CompareCard, ImageCard, LinksCard, NoteCard, WebCard } from "@codeboard/core";
 import { Stage, scene, noteCard, codeCard, markCard, textCard, type Globals, type Scene } from "./support/board";
-import { settled, rightClick, rightClickLink, key, el } from "./support/play";
+import { settled, rightClick, rightClickLink, key, el, forceHover } from "./support/play";
 import { SHORT, ONE } from "./support/groups";
-import { cardMenu, menuItem, menu } from "./support/ui";
+import { cardMenu, menuItem, menuButton, menu } from "./support/ui";
 import { onHost } from "../src/hostio";
 
 type Args = { locked: boolean; fixedHeight: boolean; shared: boolean; clip: boolean; boards: boolean };
@@ -120,3 +120,7 @@ export const Section: Story = { play: open(() => rightClick('.slabel[data-sect="
 export const SectionNested: Story = { name: "Section · Nested · Color ▸", play: open(async () => { await rightClick('.slabel[data-sect="s2"]'); await menuItem("Color", { sub: true }); }) };
 // ↓ 选第一项、→ 打开二级菜单并选上它的第一项：选中的样子和悬停一样（.kb）
 export const Keyboard: Story = { name: "Keyboard Navigation", play: open(async () => { await cardMenu("code"); await menu(); await key("ArrowDown"); await key("ArrowDown"); await key("ArrowDown"); await key("ArrowRight"); }) };
+// 悬停的菜单项（CSS :hover）：强调色底；危险的项（Delete）是红底。菜单是 play 里才开的，来不及被 parameters.pseudo 点到：开好以后加悬停类（forceHover）
+export const Hover: Story = { name: "Hover: Menu Item", play: open(async () => { await cardMenu("code"); await forceHover(await menuButton("Open in Editor")); }) };
+export const HoverDanger: Story = { name: "Hover: Menu Item (Delete, red)", play: open(async () => { await cardMenu("code"); await forceHover(await menuButton("Delete")); }) };
+export const HoverSub: Story = { name: "Hover: Sub-menu Item", play: open(async () => { await cardMenu("code"); await menuItem("Edit", { sub: true }); await forceHover(await menuButton("Lock", 1)); }) };

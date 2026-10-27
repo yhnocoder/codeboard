@@ -2,7 +2,8 @@
 // 假宿主要在白板的模块发第一条消息之前装好
 import "../stories/support/host";
 import type { Preview, Decorator } from "storybook-solidjs-vite";
-import { useGlobals } from "storybook/preview-api";
+import { addons, useGlobals } from "storybook/preview-api";
+import { STORY_CHANGED, UPDATE_GLOBALS } from "storybook/internal/core-events";
 import { createJSXDecorator } from "storybook-solidjs-vite";
 import { createEffect } from "solid-js";
 import { onHost } from "../src/hostio";
@@ -55,6 +56,11 @@ const viewport: Decorator = (Story, ctx) => {
   } else if (first) userViewport = structuredClone(c.userGlobals.viewport);
   return Story();
 };
+
+// storybook-addon-pseudo-states 把 story 参数里的悬停写进 globals，换到别的 story 后那份 globals 还在，
+// 新 story 挂上时它先用这份旧的：新 story 的卡也成了悬停，之后 globals 改了它也不会去掉已经加上的类。
+// 所以换 story 时先把 globals 里的清掉（它再按新 story 自己的 parameters.pseudo 来）；工具栏上的开关也跟着复位，只管当前这个 story
+addons.getChannel().on(STORY_CHANGED, () => addons.getChannel().emit(UPDATE_GLOBALS, { globals: { pseudo: false } }));
 
 const preview: Preview = {
   decorators: [scheme, viewport],

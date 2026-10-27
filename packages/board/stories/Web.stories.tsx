@@ -117,3 +117,8 @@ export const LinkLists: Story = { name: "Link Lists", ...own(lists) };
 export const LinkListPeek: Story = { name: "Link List: Hover Peek", ...own(lists), play: peek };
 export const LinkListReorder: Story = { name: "Link List: Dragging a Row", ...own(rowDrag(false)) };
 export const LinkListDragOut: Story = { name: "Link List: Dragging a Row Out", ...own(rowDrag(true)) };
+// 悬停（CSS :hover，story 的 parameters.pseudo 摆出来）：Web 卡右上角浮出 ↗ 和 ⋯（图上压着）、Compact 的域名让位给它们、卡上的链接按钮、Link List 的行
+export const Hover: Story = { name: "Hover (↗ ⋯ buttons)", parameters: { pseudo: { hover: [".card", ".card .wacts .ib:first-child"] } } };
+export const HoverCompact: Story = { name: "Hover: Compact (domain makes room)", args: { style: "compact", w: 380 }, parameters: { pseudo: { hover: [".card"] } } };
+export const HoverFailed: Story = { name: "Hover: Retry · Edit Title", args: { page: "failed", w: 340 }, parameters: { pseudo: { hover: [".card", ".card .wlink:first-of-type"] } } };
+export const LinkListHover: Story = { name: "Link List: Hover a Row (⋮⋮ and tools)", ...own(lists), parameters: { pseudo: { hover: ['.card[data-id="ll-compact"] .lrow:nth-child(2)', '.card[data-id="ll-compact"] .lrow:nth-child(2) .ltools .lb:first-child', '.card[data-id="ll-rich"] .lrow:nth-child(2)'] } } };

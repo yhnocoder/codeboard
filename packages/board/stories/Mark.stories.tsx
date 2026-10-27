@@ -92,3 +92,5 @@ export const Locked: Story = { args: { w: 200, locked: true, state: "selected" }
 export const WithArrow: Story = { name: "Arrow to a Card", args: { w: 200, arrow: true } };
 export const WithArrowSelected: Story = { name: "Arrow to a Card, Selected", args: { w: 200, arrow: true, color: "orange", state: "selected" } };
 export const Map: Story = { name: "Map Level (20%)", args: { w: 200, lod: "map" } };
+// 悬停（CSS :hover，story 的 parameters.pseudo 摆出来）：Mark 悬停时出一圈淡淡的虚线框，颜色跟着 Mark
+export const Hover: Story = { name: "Hover (dashed frame)", args: { w: 200 }, parameters: { pseudo: { hover: [".card"] } } };

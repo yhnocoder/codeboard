@@ -2,7 +2,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { HAND_COLORS, type Board, type CodeCard, type CallMark, type End, type HandColor, type Link, type LinkSide, type LinkStyle } from "@codeboard/core";
 import { Stage, scene, codeCard, noteCard, textCard, markCard, type Globals, type Group, type Scene } from "./support/board";
-import { waitFor, hover, $ } from "./support/play";
+import { waitFor, hover, forceHover, el, $ } from "./support/play";
 import { arrow, ln, whole, LINK_COLORS } from "./support/canvas";
 import { setEditing, setRubber, setDropTarget, setDragLink } from "../src/state/ui";
 import { setConnectFrom } from "../src/state/mode";
@@ -311,3 +311,12 @@ export const LabelHoverLine: Story = {
     row.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: row.getBoundingClientRect().left + 40, clientY: row.getBoundingClientRect().top + 6 }));
   },
 };
+// 悬停在箭头上出来的按钮被指着时的样子（CSS :hover）。线浮出来、出「+ Call」/「+」是 hoverLink() 的信号（和 Hover 一样由 Stage 的 after 设），
+// 按钮是 after 之后才画出来的，来不及被 parameters.pseudo 点到：play 里等它出现再加悬停类（support/play.ts 的 forceHover）
+const hoverButton = (which: Args["which"], sel: string): Story => ({
+  render: (a, ctx) => <Stage scene={() => hovering(a)} globals={ctx.globals as Globals} />,
+  args: { which }, argTypes: noArgs,
+  play: async () => { await forceHover(await el(sel)); },
+});
+export const HoverCallButton: Story = { name: "Hover: + Call Button under the Pointer", ...hoverButton("plain (+ Call)", ".mkcall") };
+export const HoverPlusButton: Story = { name: "Hover: + Button under the Pointer", ...hoverButton("call (+ arguments)", ".vplus") };

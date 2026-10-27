@@ -6,6 +6,8 @@ const config: StorybookConfig = {
   // 不用 packages/board/vite.config.ts：它的 build 写的是插件的输出目录和入口
   framework: { name: "storybook-solidjs-vite", options: { docgen: false, builder: { viteConfigPath: ".storybook/vite.config.ts" } } },
   stories: ["../stories/**/*.stories.tsx"],
+  // 悬停等 CSS 伪类：它把样式表里的 :hover 改写成 .pseudo-hover，story 用 parameters.pseudo 指定哪些元素处于悬停（工具栏上的开关也是它的）
+  addons: ["storybook-addon-pseudo-states"],
   staticDirs: [{ from: "../stories/fixtures/assets", to: "/sb-assets" }],
   core: { disableTelemetry: true },
 };

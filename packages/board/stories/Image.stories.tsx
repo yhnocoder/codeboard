@@ -73,3 +73,6 @@ export const EmptyCaptionEditing: Story = { name: "Adding a Caption (empty)", ar
 export const Locked: Story = { args: { frame: true, locked: true, state: "selected" } };
 export const Map: Story = { name: "Map Level (20%)", args: { lod: "map" } };
 export const DropOnNote: Story = { name: "Image Dragged over a Note", render: (_, ctx) => <Stage scene={dropOnNote} globals={ctx.globals as Globals} />, argTypes: hideAll };
+// 悬停（CSS :hover，story 的 parameters.pseudo 摆出来）：卡四边的连线点和右下角改宽度的弧
+export const Hover: Story = { name: "Hover (ports, resize corner)", args: { frame: true, desc: DESC }, parameters: { pseudo: { hover: [".card"] } } };
+export const HoverNoFrame: Story = { name: "Hover: No Frame", parameters: { pseudo: { hover: [".card"] } } };
