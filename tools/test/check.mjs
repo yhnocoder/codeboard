@@ -64,12 +64,22 @@ if (!base) {
   catch { console.log("no merge base with origin/main (fetch it, or pass --base=<ref>): no harness run"); await first; process.exit(1); }
 }
 const workers = Math.min(4, os.availableParallelism());
-// Harness budget: what is left of the 90 seconds, times the workers, minus a margin for start-up and the slowest scenario finishing last
-const budget = opt("budget") ?? Math.max(30, Math.round((LIMIT - secs() - 25) * workers * 0.8));
+// Harness budget: what is left of the 90 seconds, minus a margin for start-up and the slowest scenario finishing last, times the
+// scenario seconds this machine got through per second of wall time in the last check (the nightly estimates come from another
+// machine, and here the scenarios share the CPU with typecheck and unit tests); 0.8 per worker before the first run
+const JSON_OUT = path.join(REPO, "test-out/check/harness.json");
+const rate = (() => {
+  try {
+    const { planned, wall } = JSON.parse(fs.readFileSync(JSON_OUT, "utf8"));
+    if (planned > 0 && wall > 10) return Math.min(workers * 1.2, Math.max(workers * 0.4, planned / wall));
+  } catch { /* no earlier check */ }
+  return workers * 0.8;
+})();
+const budget = opt("budget") ?? Math.max(30, Math.round((LIMIT - secs() - 25) * rate));
 const harness = args.includes("--all") ? [...focus] : ["--select", `--base=${base}`, `--budget=${budget}`, ...(focus.length ? [`--focus=${focus.join(",")}`] : [])];
 console.log(`harness: ${args.includes("--all") ? "every scenario" : `changes since ${base.slice(0, 7)}, budget ${budget} s of scenario time`} on ${workers} workers`);
 const ok = await new Promise((resolve) => {
-  const p = spawn("node", ["tools/test/harness.mjs", ...harness, `--workers=${workers}`, "--json=test-out/check/harness.json"], { cwd: REPO, stdio: "inherit" });
+  const p = spawn("node", ["tools/test/harness.mjs", ...harness, `--workers=${workers}`, `--json=${JSON_OUT}`], { cwd: REPO, stdio: "inherit" });
   p.on("close", (code) => resolve(code === 0));
 });
 const all = (await first).every(Boolean) && ok;
