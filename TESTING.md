@@ -4,7 +4,7 @@
 
 | 层 | 什么时候 | 时间上限 | 跑什么 |
 |---|---|---|---|
-| 1 本地 | 每次改完：`npm run check` | 3 分钟 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、单元测试（core、markdown、board、host、插件，一次 vitest 并行跑完）、Markdown 示例；这次改动需要的 harness 场景（白板构建完就开始，和前面这些同时跑） |
+| 1 本地 | 每次改完：`npm run check` | 90 秒 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、单元测试（core、markdown、board、host、插件，一次 vitest 并行跑完）、Markdown 示例；这次改动需要的 harness 场景（白板构建完就开始，和前面这些同时跑） |
 | 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部；harness 两个 job 并行；e2e 拆两段并行；perf（只在改了被测代码时跑） |
 | 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、Storybook（构建后每个 story 都打开一遍）、study-task replay；harness 全量跑完后再做一轮 flaky 重复（见下） |
 
@@ -35,7 +35,7 @@ harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.s
 ## 常用命令
 
 ```bash
-npm run check                         # 本地第 1 层，约 3 分钟
+npm run check                         # 本地第 1 层，约 90 秒
 npm run check -- markdownRender notes          # 加上点名的场景
 npm run check -- --all                # 所有场景，不限时间
 npm run harness -- markdownRender     # 只跑点名的场景（HARNESS_LIGHT=1 用亮色主题）
