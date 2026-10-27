@@ -69,7 +69,7 @@ function SettingsPage(p: { section?: string }) {
           <label class="st-check"><input type="checkbox" checked={cur().noteHeadingInBody} onChange={(e) => A.setSetting("noteHeadingInBody", e.currentTarget.checked)} />Also Show the Title Heading in the Note</label>
           <NoteFonts />
         </Sec>
-        <Sec id="math" title="Math preamble" hint={"\\newcommand and \\def lines that every formula on every board can use. Typing \\ in a formula suggests them too."}>
+        <Sec id="math" title="Math preamble" hint={"\\newcommand and \\def lines that every formula on this project's boards can use. Saved in this project (.vscode/settings.json), not in your user settings. Typing \\ in a formula suggests them too."}>
           <Preamble />
         </Sec>
         <Sec id="hide" title="New cards hide" hint="What new code cards start with hidden. Each card can still toggle them.">

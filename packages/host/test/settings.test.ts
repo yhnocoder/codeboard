@@ -70,4 +70,15 @@ describe("Math preamble", () => {
     await writeSetting("mathPreamble", 3 as never);
     expect(conf.get("codeboard.math.preamble")).toBe("\\def\\x{y}");
   });
+
+  it("is saved in the project's workspace settings, other settings in the user settings", async () => {
+    const scopes = new Map<string, string | undefined>();
+    const set = W.settings.set;
+    W.settings.set = async (k, v, scope) => { scopes.set(k, scope); await set(k, v); };
+    await writeSetting("mathPreamble", "\\def\\x{y}");
+    await writeSetting("theme", DEFAULT_SETTINGS.theme);
+    W.settings.set = set;
+    expect(scopes.get("codeboard.math.preamble")).toBe("workspace");
+    expect(scopes.get("codeboard.theme")).toBe("user");
+  });
 });

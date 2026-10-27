@@ -154,7 +154,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
     },
     settings: {
       get: (key) => { const [s, k] = splitKey(key); return vscode.workspace.getConfiguration(s).get(k); },
-      set: async (key, v) => { const [s, k] = splitKey(key); await vscode.workspace.getConfiguration(s).update(k, v, vscode.ConfigurationTarget.Global); },
+      set: async (key, v, scope) => { const [s, k] = splitKey(key); await vscode.workspace.getConfiguration(s).update(k, v, scope === "workspace" ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global); },
       onDidChange: (fn) => vscode.workspace.onDidChangeConfiguration((e) => fn({ affects: (k) => e.affectsConfiguration(k) })),
     },
     editor: {

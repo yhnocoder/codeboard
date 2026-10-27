@@ -669,7 +669,7 @@
           "type": "string",
           "default": "",
           "editPresentation": "multilineText",
-          "markdownDescription": "Math preamble: `\\newcommand` and `\\def` lines that every formula on every board can use, for example `\\newcommand{\\R}{\\mathbb{R}}`. Applies right away to Notes, the editor and exports."
+          "markdownDescription": "Math preamble: `\\newcommand` and `\\def` lines that every formula on the boards can use, for example `\\newcommand{\\R}{\\mathbb{R}}`. The board's Settings page saves it in the workspace (this project); a user-level value applies to projects without their own. Applies right away to Notes, the editor and exports."
         },
         "codeboard.notes.fontSize": {
           "type": "object",

@@ -73,10 +73,13 @@ export function readSettings(): Settings {
   return out as Settings;
 }
 
+/** 跟着项目走的设置：从白板改时写进工作区设置，不写用户设置（公式预设里的命令通常是这个项目的记号） */
+const PROJECT = new Set<keyof Settings>(["mathPreamble"]);
+
 export async function writeSetting(k: keyof Settings, v: unknown) {
   if (!(k in KEY)) return;
   if (!validSetting(k, v)) { log("warn", `setSetting: ignored bad value for ${k}: ${JSON.stringify(v)?.slice(0, 200)}`); return; }
-  await workspace().settings.set(`codeboard.${KEY[k]}`, v);
+  await workspace().settings.set(`codeboard.${KEY[k]}`, v, PROJECT.has(k) ? "workspace" : "user");
 }
 
 export const affectsSettings = (e: { affects(key: string): boolean }) => (Object.values(KEY) as string[]).some((k) => e.affects(`codeboard.${k}`));
