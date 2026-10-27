@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-// 静态显示上选中的字 → 编辑器文档里同一段（staticTextRange / docRange）
 import { describe, expect, it } from "vitest";
 import { mdSchema, parseMd } from "../src/schema";
 import { renderMd } from "../src/render";

@@ -29,9 +29,7 @@ export type Pop =
   /** 三方对照：原版 / 我的 / 上游最新 */
   | { kind: "three"; card: string }
 
-/** 动态分发的候选（actions/chains 填） */
 export type ImplPop = { card: string; seg: string; call: CallSpan; impls: ImplPick[]; base: string; at?: { x: number; y: number }; again: boolean; link?: string; abstract?: boolean };
-/** 按名字在所有语言里搜的结果 */
 export type NamesPop = { card: string; seg: string; call: CallSpan; hits?: NameHit[] };
 
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };

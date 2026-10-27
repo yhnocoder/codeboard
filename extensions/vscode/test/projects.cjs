@@ -37,7 +37,6 @@ async function clickRow(p, text, ms = 8000) {
   }, Boolean, ms, 100);
 }
 
-// ---------- the board ----------
 /** Alt+B on the function at file:line; resolves to the board frame once the card is there (null when it never shows). The board may
  *  be in a background tab (the file opened over it in the same group): look in every board webview, shown or not */
 async function addFunction(p, file, line, title) {
@@ -87,7 +86,6 @@ async function openCardCode(p, f, title, file) {
   return { tab: (await text(g.locator(".tab.active"))).trim(), crumbs: (await g.locator(".breadcrumbs-control .monaco-icon-label").allInnerTexts()).join("/"), ln: (await text(ln)).trim() };
 }
 
-// ---------- where each window keeps its boards ----------
 /** The boards dir of the window whose workspace.json points at uri-ending (a folder or a .code-workspace) */
 function boardsDir(ud, ending) {
   const root = path.join(ud, "User", "workspaceStorage");

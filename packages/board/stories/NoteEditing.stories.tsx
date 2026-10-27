@@ -23,8 +23,6 @@ function shown(a: Args): Scene {
   return { board, sel: [ID] };
 }
 
-// ---------- play ----------
-
 type PM = { state: any; view: any; commands: any; chain: () => any; isDestroyed: boolean };
 const editor = () => waitFor(() => ($(`.card[data-id="${ID}"] .md-pm`) as (HTMLElement & { editor?: PM }) | null)?.editor, "the Markdown editor");
 /** 第一个 type 节点的位置（ProseMirror 的文档位置） */

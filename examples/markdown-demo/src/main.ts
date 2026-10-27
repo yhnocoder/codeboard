@@ -11,7 +11,6 @@ import "./demo.css";
 import sample from "./sample.md?raw";
 import { highlight } from "./highlight";
 
-// ---------- what the page supplies ----------
 setCodeHighlighter(async (text, lang) => highlight(text, lang), (lang) => (lang === "py" ? "python" : lang));
 const PAGES = [
   { id: "paging", title: "Paging", kind: "page" },
@@ -23,7 +22,6 @@ setRefResolver(findPage, { missing: "No page with this title" });
 // ![…](assets/x.svg) → ./assets/x.svg, in the static render and in the editor alike
 setAssetBase("./assets");
 
-// ---------- the page ----------
 const note = document.getElementById("note")!;
 const source = document.getElementById("source")!;
 const mode = document.getElementById("mode")!;

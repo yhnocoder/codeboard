@@ -187,8 +187,6 @@ describe("diff and alignment", () => {
   });
 });
 
-// ---------- Flows ----------
-
 const seg = (id: string, start = 1, end = 3): Segment => ({ id, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start, end, text: [], version: { kind: "git", commit: "x" } });
 const code = (id: string): CodeCard => ({ id, kind: "code", segments: [seg(`s${id}`, 1, 50)] });
 const call = (from: string, line: number, to: string): Link => ({ id: `${from}-${to}`, from: { card: from, seg: `s${from}`, line }, to: { card: to }, call: { name: to, col: 0 } });

@@ -108,8 +108,6 @@ function findFreeDown(want: Rect, others: Rect[]) {
   return { x: want.x, y };
 }
 
-// ---------- 吸附 ----------
-
 export type Guide = { axis: "x" | "y"; at: number; from: number; to: number };
 
 /**
@@ -165,8 +163,6 @@ export function snapResize(r: Rect, edges: { right?: boolean; bottom?: boolean }
   return { w, h, guides, same };
 }
 
-// ---------- 对齐工具条 ----------
-
 export type AlignOp = "left" | "hcenter" | "right" | "top" | "bottom" | "hdist" | "vdist";
 
 /** 返回每个矩形的新 x / y */
@@ -199,8 +195,6 @@ export function align(rs: (Rect & { id: string })[], op: AlignOp): Map<string, P
   }
   return out;
 }
-
-// ---------- Tidy Up ----------
 
 /** Tidy Up 里列与列之间的空（留给箭头） */
 export const TIDY_COL_GAP = 2 * GAP;
@@ -297,8 +291,6 @@ function flowDepth(rs: (Rect & { id: string })[], edges: [string, string][]): Ma
   }
   return depth;
 }
-
-// ---------- Section 的框 ----------
 
 /** Section 的框给成员卡、子 Section 留的边距；折叠后的标题条大小 */
 export const SECTION_PAD = { l: 22, r: 22, t: 34, b: 22 };

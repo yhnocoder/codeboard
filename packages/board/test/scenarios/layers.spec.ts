@@ -1,4 +1,4 @@
-// Arrows sit under the cards (npm run harness -- arrowsUnderCards [--light], HARNESS_CITY=1 for the City theme): every arrow is drawn below all cards, so any card it
+// Arrows sit under the cards (HARNESS_CITY=1 for the City theme): every arrow is drawn below all cards, so any card it
 // crosses covers it, whatever the b.cards order; the line port dots stay visible above their card; the selected arrow, the arrows of the
 // hovered card and the arrow being dragged float above all cards while that lasts. Checks look at what is really on top (hit test).
 import * as fs from "node:fs";

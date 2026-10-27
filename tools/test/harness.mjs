@@ -1,4 +1,3 @@
-// Runs the board harness scenarios (Playwright Test: packages/board/playwright.config.ts) with packages/board/test/tiers.json applied.
 // Usage: node tools/test/harness.mjs [scenario…] [--workers=N] [--shard=i/n] [--coverage] [--light] [--json=out.json]
 //          no names: every scenario except the manual ones
 //        --select [--base=<commit>] [--budget=<seconds>] [--focus=a,b]: only the scenarios the change since <commit> (default HEAD)
@@ -8,9 +7,6 @@
 //          since <commit> (tools/test/pick.mjs repeatPick), each run N times (Playwright --repeat-each), within a wall-time cap
 //          (default 15 min). No second run alone: any failed repetition fails the scenario. A missing or unknown <commit> is an
 //          error, written to --json as { error } (no fallback to some other set of scenarios).
-// Two Playwright runs: the scenarios on N workers, then one at a time the "solo" ones (they measure timing) and those that failed
-// beside others (a failure that passes alone counts as passed, reported as "alone"). Checks listed under "known" fail nothing
-// (fixtures.ts) but are reported. Exits 1 on any failure.
 // --json: { wall, workers, results: [{ name, why, ok, ms, fails, known, alone, files, runs, failed }], deferred, notes, base, repeat, error }
 //   runs and failed (how many repetitions ran and failed) only with --repeat
 import { spawn, spawnSync } from "node:child_process";
@@ -86,7 +82,6 @@ console.log(`running ${list.length} scenarios${repeat > 1 ? ` ${repeat} times ea
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
-/** One Playwright run of these scenarios (each `repeat` times) → their results */
 async function run(scenarios, n, tag) {
   if (!scenarios.length) return [];
   const json = path.join(OUT, `run-${tag}.json`);

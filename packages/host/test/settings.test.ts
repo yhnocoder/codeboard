@@ -1,5 +1,3 @@
-// Settings read from and written to codeboard.*: object settings come back complete (levels left out of settings.json take the
-// default), and values the board sends are checked before they are written
 import { beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS } from "@codeboard/core";
 import { affectsSettings, readSettings, validSetting, writeSetting } from "../src/settings";

@@ -11,7 +11,6 @@ import { settleHome } from "../state/sections";
 import { ask, send } from "../host";
 import { promptText } from "../ui/Menu";
 
-/** 子白板列表里的父子关系（宿主发来的 BoardMeta.subs） */
 const subsOf = (id: string) => state.boards.find((m) => m.id === id)?.subs;
 const nameOf = (id: string) => state.boards.find((m) => m.id === id)?.name ?? "Board";
 
@@ -39,7 +38,6 @@ export function leaveBoard(depth?: number, walkHop?: WalkHop) {
   send({ type: "leaveBoard", ...(depth !== undefined ? { depth } : {}), ...(walkHop ? { walk: walkHop } : {}) });
 }
 
-// ---------- 进出子白板的动画：标题变形 ----------
 // 换白板是宿主发来新的 init（整块白板换掉），两块白板不会同时在页面上：先把这一块淡出（同时名字开始飞），淡出完之前收到的 init 先压着
 // （hostio.ts 问 switchGate），淡出完再换上新白板、淡入。只动 opacity / transform，用 Web Animations（在合成线程上跑，换白板那一帧主线程忙也不卡）。
 // 时长跟着 --t（慢动作设置、系统「减少动态效果」）
@@ -304,7 +302,6 @@ export async function deleteFrameBoard(id: string) {
   if (!f) return;
   const done = await ask("deleteBoard", { id: f.board }).catch(() => false);
   if (!done) return;
-  // 这块白板上指着它的框都拿掉（连着的箭头、贴纸一起，core removeCards）
   mutate((b) => removeCards(b, b.cards.filter((c) => c.kind === "board" && c.board === f.board).map((c) => c.id)));
   clearSel();
 }

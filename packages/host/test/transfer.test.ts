@@ -1,5 +1,3 @@
-// Copy / Move to Another Project…: the board, its sub-boards, shared cards, images and run records land in the other project's
-// storage dir and load there; code sources are rewritten for that project; a move leaves the original in .trash; id collisions get new ids
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

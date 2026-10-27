@@ -1,18 +1,3 @@
-// Picks the harness scenarios a change needs, within a time budget. Used by tools/test/harness.mjs --select (CI and npm run check).
-//
-// Always run, whatever the budget:
-//   focus   scenarios being worked on: named with --focus or on a "Tests:" line of the PR description, defined in a test file the
-//           change touches, new since the last nightly run, or failing in the last nightly run
-//   smoke   the fixed list in packages/board/test/tiers.json: one quick scenario per main feature, so a big break never slips through
-// Then, while the budget lasts:
-//   affected  scenarios that ran a changed source file in the last nightly run (impact map), those that ran the fewest other
-//             files first. A change the map can't place (CSS, build config, lockfile, the harness itself, a source file no scenario
-//             ran) counts every scenario as affected, the quickest first. A new source file is placed through the changed files
-//             that import it; only when nothing else changed it can't be placed.
-// What doesn't fit is reported as deferred: the nightly run covers it.
-//
-// repeatPick (harness.mjs --changed-since, the nightly flake repeat): the scenarios defined in test files changed since a commit,
-// the quickest first, within a wall-time cap for running each of them several times.
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";

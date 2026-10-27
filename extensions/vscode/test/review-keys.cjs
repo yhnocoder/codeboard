@@ -1,4 +1,4 @@
-// v0.1.8 编辑器 Review（不进 CI）：真 VS Code 里，Note 编辑时常用快捷键是否生效。DRIVER=review-keys.cjs bash test/run.sh
+// 编辑器 Review（不进 CI）：真 VS Code 里，Note 编辑时常用快捷键是否生效。DRIVER=review-keys.cjs bash test/run.sh
 // Records what each key did (review-keys.json) rather than judging it. After each key the board is waited on until it has settled
 // (wait.cjs idle: nothing waiting on the host, no DOM change for a moment), never for a fixed time
 const { chromium } = require("playwright-core");

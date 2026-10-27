@@ -178,7 +178,6 @@ export type CodeEditorOpts = {
   parent: HTMLElement;
   text: string;
   lang?: string;
-  /** 折行（和卡片的 Wrap 一样） */
   wrap?: boolean;
   /** 行号栏：第一行的行号（和显示时一样画在左边 54px 里）；不给就没有行号栏（Note 里的代码块） */
   gutter?: { start: number };
@@ -188,14 +187,12 @@ export type CodeEditorOpts = {
   highlight?: (text: string) => string | null | Promise<string | null>;
   /** 这种语言的行注释记号（⌘/ 用）；不给或不认识时是 // */
   comment?: (lang: string | undefined) => string | undefined;
-  /** 语言服务（补全、悬停、签名提示）；不给就没有 */
   lsp?: LspHost;
   ghost?: GhostHost;
   /** 按下不往外冒（外面把按下当成拖动、框选时，比如白板的卡片） */
   stopPointerDown?: boolean;
   /** Esc / ⌘↵ */
   onExit?: () => void;
-  /** 文字变了（每次改动） */
   onChange?: (text: string) => void;
   onBlur?: (e: FocusEvent) => void;
   /** 额外的按键（优先），比如 Note 里方向键走出代码块 */

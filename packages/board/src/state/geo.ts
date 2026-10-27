@@ -1,4 +1,4 @@
-// 卡片里每一行的位置（实测），Link 端点、Sidenote 标记、讲解镜头都靠它。
+// 卡片里每一行的位置（实测）
 import { createStore } from "solid-js/store";
 import { rowIndexOf, type Row } from "@codeboard/core";
 import { rectOf, cardById } from "./store";

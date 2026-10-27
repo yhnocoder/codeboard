@@ -97,7 +97,6 @@ button:focus { outline: none; }
 button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 8.5px; }
 input, textarea { font: inherit; color: var(--ink); }
 
-/* ---------- board ---------- */
 /* clip 而不是 hidden：hidden 的盒子还能被程序滚动，Tab 把焦点移到画面外的卡上的按钮时浏览器会把整块白板滚过去，镜头的换算（适应窗口、框选、放卡）就全偏了 */
 .board { position: fixed; inset: 0; overflow: clip; background: var(--canvas); color: var(--ink); touch-action: none; overscroll-behavior: contain; }
 .board:focus { outline: none; }
@@ -146,7 +145,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .vplus.show { opacity: 1; }
 .vplus:hover { background: var(--accent); color: var(--accent-ink); }
 
-/* ---------- cards ---------- */
 .card { --cr: var(--r-card); position: absolute; isolation: isolate; background: var(--surface); border-radius: var(--cr); box-shadow: var(--sh-card); transform-origin: 0 18px; display: flex; flex-direction: column;
   transition: box-shadow calc(var(--t) * 160ms) var(--out), scale calc(var(--t) * 260ms) cubic-bezier(.3, 1.35, .5, 1), opacity calc(var(--t) * 240ms) var(--out), filter calc(var(--t) * 240ms); }
 .card.sel { box-shadow: 0 0 0 1.5px var(--accent), 0 0 0 4.5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
@@ -237,7 +235,6 @@ input, textarea { font: inherit; color: var(--ink); }
 /* Note 的下边：一条看不见的把手（拐角留给 .grip，中间的连线点在它上面一层） */
 .hb { position: absolute; left: 14px; right: 14px; bottom: -3px; height: 7px; cursor: ns-resize; z-index: 2; }
 
-/* code */
 /* 代码区的几何，所有主题同一套：行号左边空 --code-pl，行号栏 = --nd 位数字宽（右对齐），再空 22px 到代码（标记、贴纸、
    隐藏行的 + 都在这 22px 里），最长行右边空 --code-pr；上 --code-pt，下 --code-pt + 2px。没有托盘的主题左 17、右 18；
    有托盘的（Soft Light：托盘离卡边各 10px）左 7、右 8，另外 10px 是托盘的边。这样同一份 Place（w、.carea 的 h）在每个主题里都刚好装下同样的代码 */
@@ -298,7 +295,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .call:hover { background: color-mix(in srgb, var(--k-fn) 12%, transparent); text-decoration-color: var(--k-fn); }
 .src span.pk:hover { background: var(--hlrow); border-radius: 4px; }
 
-/* text & note */
 .card.text { --cr: 5.5px; background: transparent; box-shadow: none; border-radius: var(--cr); padding: 2px 4px; }
 .card.text:hover { box-shadow: 0 0 0 1px var(--hair); outline: 1px dashed var(--ink-3); outline-offset: 2px; box-shadow: none; }
 .card.text.sel { outline: 1.5px solid var(--accent); outline-offset: 2px; box-shadow: none; }
@@ -357,7 +353,6 @@ input, textarea { font: inherit; color: var(--ink); }
 :root .card.note > .cface > .nbody.fold { padding-top: var(--fold-pt, 10px); }
 .nbody.fold > :is(h1, h2, h3, h4, h5, h6):first-child, .nbody.fold > :is(.md-pm, .md-loading) > :is(h1, h2, h3, h4, h5, h6):first-child { margin-bottom: calc(var(--md-fs) * .5); }
 
-/* compare */
 .cmp .colh { display: grid; grid-template-columns: 1fr 1fr; border-bottom: 1px solid var(--line); flex: none; background: var(--head); }
 .cmp .colh > div { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; transition: opacity .2s; }
 .cmp .colh > div + div { border-left: 1px solid var(--line); }
@@ -447,7 +442,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .slabel.moving:not(.collapsed) { transition: color .15s var(--out), left .16s var(--out), top .16s var(--out); }
 
 
-/* arrow styles, labels */
 .edge.lc-orange, .ahead.lc-orange { stroke: var(--lk-orange); }
 .edge.lc-blue, .ahead.lc-blue { stroke: var(--lk-blue); }
 .edge.lc-green, .ahead.lc-green { stroke: var(--lk-green); }
@@ -457,7 +451,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .ahead.triangle.lc-orange, .ahead.dot.lc-orange { fill: var(--lk-orange); } .ahead.triangle.lc-blue, .ahead.dot.lc-blue { fill: var(--lk-blue); } .ahead.triangle.lc-green, .ahead.dot.lc-green { fill: var(--lk-green); }
 .ahead.triangle.on, .ahead.dot.on, .ahead.triangle.hot, .ahead.dot.hot { fill: var(--accent); }
 .vlabel { font: 11.5px/1 var(--sys); padding: 4px 7px; color: var(--ink-2); }
-/* merged card */
 .fbar { height: 24px; display: flex; align-items: center; gap: 6px; font: 11px/24px var(--mono); color: var(--ink-2); background: var(--head); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding-left: 8px; margin: 2px 12px 2px -58px; padding-left: 14px; }
 .fbar .kind { font-style: normal; }
 .mgap { height: 22px; margin: 1px 12px 1px 0; font: 11px/22px var(--sys); color: var(--ink-3); border-top: 1px dashed var(--hair); border-bottom: 1px dashed var(--hair); padding-left: 8px; background: repeating-linear-gradient(135deg, var(--hatch) 0 1px, transparent 1px 5px); }
@@ -476,16 +469,13 @@ input, textarea { font: inherit; color: var(--ink); }
 @keyframes imgdrop-pulse { from { opacity: 1; } to { opacity: .45; } }
 @keyframes imgdrop-label { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .board:has(.card.img-drop) .card.lift { opacity: .72; } /* the picture lets the caret under it show through */
-/* math */
 .tex { font-family: var(--mono); font-size: .95em; color: var(--ink-2); }
-/* lock */
 .lockb { flex: none; width: 18px; height: 18px; display: grid; place-items: center; border-radius: 5.5px; color: var(--ib-ink, var(--ink-2)); }
 .lockb:hover { background: var(--hlrow); color: var(--accent); }
 .lockb svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.4; }
 .card.text .lockb.abs { position: absolute; right: -22px; top: 2px; }
 .card.locked .grip, .card.locked .hw, .card.locked .hb { display: none; }
 .slabel .lockb { width: 16px; height: 16px; }
-/* snapping guides, align bar */
 #guides { position: absolute; left: 0; top: 0; pointer-events: none; z-index: 8; }
 .guide { position: absolute; border-color: color-mix(in srgb, var(--ink-3) 85%, transparent); border-style: dashed; border-width: 0; opacity: .9; }
 .guide.v { border-left-width: 1px; width: 0; }
@@ -510,7 +500,6 @@ input, textarea { font: inherit; color: var(--ink); }
 /* section colours (nested frames each keep their own) */
 .sect.c-sand { background: var(--s-sand); } .sect.c-blue { background: var(--s-blue); } .sect.c-green { background: var(--s-green); } .sect.c-pink { background: var(--s-pink); }
 .sw { display: inline-block; width: 11px; height: 11px; border-radius: 4px; box-shadow: inset 0 0 0 .5px var(--hair); vertical-align: -1px; margin-right: 6px; }
-/* ---------- floating chrome ---------- */
 .over { position: absolute; display: flex; align-items: center; gap: 4px; z-index: 20; }
 .dock { bottom: 12px; }
 .pill { display: inline-flex; align-items: center; gap: 2px; background: var(--glass); -webkit-backdrop-filter: blur(20px) saturate(1.6); backdrop-filter: blur(20px) saturate(1.6); border-radius: 14px; padding: 4px; box-shadow: var(--sh-float); }
@@ -561,7 +550,6 @@ input, textarea { font: inherit; color: var(--ink); }
 .present .hint { font-size: 11px; color: var(--ink-3); }
 .marquee { position: absolute; z-index: 15; border: 1px solid var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 2px; display: none; pointer-events: none; }
 
-/* popovers: peek, sidenotes, picker, add sidenote, variables */
 .pop { position: absolute; z-index: 35; background: var(--surface); border-radius: 14px; box-shadow: var(--sh-float), 0 18px 40px -16px rgba(0,0,0,.25); display: none; width: max-content; max-width: calc(100vw - 16px); font-size: 12.5px; color: var(--ink);
   transform-origin: 0 0; }
 .pop.open { display: block; animation: popin calc(var(--t) * 150ms) var(--out); }
@@ -656,7 +644,6 @@ textarea.fld { min-height: 86px; line-height: 1.5; }
 .lnk:hover { text-decoration-color: var(--k-fn); }
 kbd { font: 10.5px var(--mono); }
 
-/* markdown */
 .nbody p, .cdesc p, .tx p, .inote p, .sn-text p, .pdesc p { margin: 0; }
 .cdesc h1, .cdesc h2, .cdesc h3, .tx h1, .tx h2, .tx h3, .sn-text h1, .sn-text h2, .sn-text h3 { margin: 2px 0 4px; font: 600 1.05em/1.4 var(--note-h); color: var(--ink); }
 .nbody h1, .nbody h2, .nbody h3 { margin: 2px 0 4px; font-weight: 600; line-height: 1.4; font-family: var(--note-h); color: var(--ink); } /* 字号：--md-h1…h3（上面） */
@@ -687,7 +674,6 @@ kbd { font: 10.5px var(--mono); }
 /* 材质主题的部件（themes.css 按主题打开）：色带 / 大标题、卡片底栏、图注、报头 */
 .cband, .cxfoot, .cfig, .mast { display: none; }
 
-/* code card extras */
 .chead .ctitle { flex: 0 1 auto; }
 .plusn { font: 10.5px var(--mono); color: var(--ink-3); flex: none; }
 .rev i { width: 6px; height: 6px; border-radius: 50%; corner-shape: round; background: var(--warn); display: inline-block; flex: none; }
@@ -744,7 +730,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .colh .chead { height: 30px; border: 0; background: none; padding: 0; border-radius: 0; gap: 6px; flex: 1; min-width: 0; }
 .colh > div { padding: 0 6px 0 8px; }
 
-/* class card */
 .members { padding: 6px 0 8px; font: 11px/20px var(--mono); }
 .mrow { display: flex; white-space: nowrap; }
 .mrow .no { position: static; flex: none; width: 50px; padding-right: 8px; }
@@ -752,14 +737,12 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .members .more { margin: 4px 0 0 50px; font: 11px var(--sys); color: var(--ink-3); padding: 2px 6px; border-radius: 7px; }
 .members .more:hover { color: var(--accent); background: var(--row); }
 
-/* image / web */
 .imgb { flex: none; overflow: hidden; border-radius: var(--r-card); display: flex; cursor: grab; }
 .imgb:has(+ .cdesc) { border-radius: var(--r-card) var(--r-card) 0 0; }
 .card.image .cdesc { border-bottom: 0; border-top: 1px solid var(--line); }
 /* 图片卡跟着图片的宽高比：宽度是卡的，高度是图片按比例算的（卡不存高度），不会有上下 / 左右的空白条 */
 .imgb img { width: 100%; height: auto; display: block; pointer-events: none; }
 
-/* edge ports (drag out an arrow) */
 .eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair; }
 .card:hover > .cface > .eport { opacity: 1; }
 .card.text > .cface > .eport { display: none; }
@@ -773,7 +756,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .eport.r { top: 17px; right: -5px; margin-top: -4.5px; }
 .board.dragging .eport { visibility: hidden; transition: none; } /* 同上：不用 display，拖动开始、松开时几百张卡的圆点不用重新排版（松手那一帧 ~20ms） */
 
-/* links */
 .lhit { fill: none; stroke: transparent; stroke-width: 12; pointer-events: stroke; cursor: pointer; }
 .edge.on, .ahead.on { stroke: var(--accent); stroke-width: calc(var(--edge-w) * var(--lw, 1) + .45); }
 .port.lost { stroke: var(--lk-lost, #d64545); }
@@ -793,7 +775,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 
 .board[data-mode="draw"], .board[data-mode="draw"] * { cursor: crosshair !important; }
 
-/* chrome */
 /* 居中不用 translateX(-50%)：宽度是奇数时会落在半个像素上，图标发糊 */
 .bbar { bottom: 12px; left: 0; right: 0; width: max-content; margin-inline: auto; }
 .dock { right: 12px; }
@@ -813,7 +794,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .zoom { cursor: default; border-radius: 7px; padding: 3px 0; }
 .zoom:hover { background: var(--hlrow); }
 
-/* dialogs */
 .scrim { position: fixed; inset: 0; z-index: 50; background: rgba(0,0,0,.18); display: grid; place-items: center; animation: fadein calc(var(--t) * 120ms); }
 .scrim.light { background: rgba(0,0,0,.06); place-items: start center; padding-top: 12vh; }
 @keyframes fadein { from { opacity: 0; } }
@@ -831,7 +811,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .db button.def:hover { filter: brightness(1.06); }
 .db button[disabled] { opacity: .45; }
 
-/* palette */
 .palette { width: min(620px, 92vw); display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; overflow: hidden; border-radius: 17px; background: var(--surface); }
 .palette .pin { border: 0; outline: none; background: none; padding: 13px 16px; font-size: 14px; border-bottom: 1px solid var(--line); color: var(--ink); }
 .plist { max-height: 52vh; overflow: auto; padding: 4px 6px 6px; }
@@ -844,7 +823,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .pfoot { display: flex; gap: 16px; padding: 7px 14px; border-top: 1px solid var(--line); font-size: 11px; color: var(--ink-3); }
 .pfoot kbd { color: var(--ink-2); margin-right: 3px; }
 
-/* popovers */
 .pop { position: fixed; max-width: min(560px, 92vw); }
 .pop.k-diff { max-width: 92vw; }
 .pop.pinned { box-shadow: 0 0 0 1px var(--accent), var(--sh-float), 0 18px 40px -16px rgba(0,0,0,.25); }
@@ -938,7 +916,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .vrow.gone > span { text-decoration: line-through; color: var(--ink-3); }
 .vrow.gone:hover > span { color: var(--ink-3); }
 
-/* 贴纸 */
 .glyph { display: inline-grid; place-items: center; flex: none; line-height: 1; }
 .glyph.custom svg { width: 100%; height: 100%; display: block; }
 /* 位图贴纸（stickers/glyphs.tsx）：方框里按比例缩放，不拉伸 */
@@ -1155,7 +1132,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .sbmorph { position: fixed; z-index: 22; display: flex; align-items: center; box-sizing: border-box; white-space: nowrap; transform-origin: 0 0; pointer-events: none;
   font-family: var(--sys); font-weight: 600; line-height: 1; color: var(--ink); will-change: transform; }
 
-/* ---------- 接上断掉的调用链、跨语言 ---------- */
 /* 证据：manual = 虚线，observed = 绿；Generated from = 点线（和别的线同一层，只换样式） */
 :root { --ev-obs: var(--ok, #4f8a4a); }
 :root[data-theme="dark"] { --ev-obs: var(--ok, #8dbb79); }
@@ -1210,7 +1186,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .sres.names .grp-h { padding: 6px 12px 2px; font: 600 10px var(--sys); letter-spacing: .04em; text-transform: uppercase; color: var(--ink-3); }
 .sres.names .empty.sm { padding: 2px 12px 4px; font-size: 11px; }
 
-/* ---------- 调用：RPC、进程标签、消息卡、起点、步数、图例、调用树、运行时的实参 ---------- */
 /* RPC = 点划线（跨进程）；↩ back to 淡一点 */
 .edge.rpc, .edge.rpc.ev-manual { stroke-dasharray: 9 4 2 4; }
 .edge.back { stroke-opacity: .7; }
@@ -1294,7 +1269,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .cpanel .empty.sm { padding: 6px 8px; color: var(--ink-3); font-size: 11.5px; white-space: normal; }
 .dock .ib[aria-pressed="true"] { color: var(--accent); background: var(--row); }
 
-/* ---------- 疑问 ---------- */
 .chead .qcount { font: 600 10.5px/16px var(--sys); color: #7a4d00; background: #fdf0d5; border: 0; border-radius: 11px; padding: 0 7px; cursor: pointer; white-space: nowrap; flex: none; }
 :root[data-theme="dark"] .chead .qcount, .vscode-dark .chead .qcount { color: #f3c46b; background: color-mix(in srgb, #d08a12 24%, transparent); }
 .pop.k-question { width: 380px; }
@@ -1329,7 +1303,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .welcome { position: absolute; top: 12px; left: 50%; translate: -50% 0; z-index: 21; padding: 3px 3px 3px 12px; gap: 8px; font-size: 12.5px; animation: popin calc(var(--t) * 200ms) var(--out); }
 .crumbs ~ .welcome { top: 52px; }
 
-/* ---------- 导出 ---------- */
 .dialog.xdlg { width: min(560px, calc(100vw - 24px)); }
 .xdlg .xf { display: flex; align-items: center; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 12.5px; flex-wrap: wrap; }
 .xdlg .xf.last { border-bottom: 0; }
@@ -1352,7 +1325,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 /* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock，先靠左；再窄 dock 并进底栏（App.tsx NARROW） */
 @media (max-width: 900px) { .bbar { left: 12px; right: auto; margin-inline: 0; } }
 
-/* ---------- 我的改动：Variant 标签页、MINE、对比基准、改过的行、三方对照 ---------- */
 .vtabs { display: flex; align-items: stretch; flex: none; overflow: hidden; border-bottom: 1px solid var(--line); background: var(--head); font: 10.5px/1 var(--sys); }
 .vtab { padding: 5px 10px; color: var(--ink-2); white-space: nowrap; border-right: 1px solid var(--line); display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; }
 .vtab:hover { color: var(--ink); background: var(--hlrow); }

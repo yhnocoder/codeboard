@@ -1,8 +1,3 @@
-// Note and Text card sizing: content stays inside a card made smaller, the AI ghost completion stays inside the card,
-// Fit Content on Notes and Texts (animated, one undo step), no ghost completion while a card is moved or resized, a Note
-// without a stored height following its content, and a height set by hand being kept.
-// Usage: npm run harness -- noteResizeClipsContent noteGhostStaysInCard noteTextFitContent noGhostDuringCardGesture noteShrinksWithContent noteManualHeightSticks
-// Screenshots: test-out/harness/note-sizing-*.png (HARNESS_LIGHT=1 for the light theme)
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
@@ -296,12 +291,10 @@ test("noteScrollFades", async () => {
   await until(h, "the wheel scrolls the selected note's body", async () => (await scrollTop(h, body)) > st0);
   const st1 = await pg.locator(body).evaluate((e) => e.scrollTop);
   check("noteScrollFades wheel on the fade scrolls the body", st1 > st0, { st0, st1 });
-  // resize by the corner (inside the fade)
   const g = await rect(h, `${card("n0")} .grip`);
   await drag(h, (g.left + g.right) / 2, (g.top + g.bottom) / 2, 0, -40, 8);
   await idle(h);
   check("noteScrollFades resize in the faded corner", Math.abs((h.board().place.n0.h ?? 0) - 130) < 3, { h: h.board().place.n0.h });
-  // move the Note by its header
   const p0 = { ...h.board().place.n0 };
   const hd = await rect(h, `${card("n0")} .chead`);
   await drag(h, hd.left + 80, (hd.top + hd.bottom) / 2, 30, 30, 8);

@@ -1,5 +1,3 @@
-// Board coordination without an editor: BoardHub keeps the open boards through HostEnv (views, cross-workspace state) and the
-// workspace's own storage; a file change re-checks only that file's segments, only on the boards that hold it
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

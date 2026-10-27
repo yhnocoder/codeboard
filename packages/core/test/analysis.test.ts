@@ -1,4 +1,4 @@
-// tree-sitter 查询版分析 vs v0.1.5 的逐节点遍历（test/oracle）：结果必须逐字段一致。
+// tree-sitter 查询版分析 vs 旧的逐节点遍历（test/oracle）：结果必须逐字段一致。
 // 另外核对：按行分析 = 整文件分析裁剪；增量解析 = 重新解析。
 import { beforeAll, describe, expect, it } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";

@@ -1,6 +1,4 @@
 // @vitest-environment jsdom
-// 块：空的列表项（编辑时回车留下的 "2."、"-"、"- [ ]"）写回、读回来还是空的列表项；行中间的 $$…$$ 是行内的大号公式；
-// 代码块之间、文档头尾的代码块外面停得住光标（gapcursor）
 import { describe, expect, it } from "vitest";
 import { getSchema, type JSONContent } from "@tiptap/core";
 import { GapCursor } from "@tiptap/pm/gapcursor";

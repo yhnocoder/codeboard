@@ -89,6 +89,5 @@ export function navForward() {
   restore(s);
   bump();
 }
-/** 换白板时清空 */
 export function resetNav() { back.length = 0; fwd.length = 0; bump(); }
 onBoardSwitch(resetNav);

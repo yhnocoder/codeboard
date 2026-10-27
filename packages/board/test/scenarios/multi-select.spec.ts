@@ -1,5 +1,3 @@
-// The toolbar over a multi-selection: Create Section, Create Sub-board, Tidy Up and ··· (align and distribute),
-// and what Tidy Up does with arrows (npm run harness -- multiSelectToolbarTidyUp)
 import { shot, put, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, until, idle, frames } from "../fixtures";
@@ -44,7 +42,6 @@ test("multiSelectToolbarTidyUp", async () => {
   check("toolbarAlignHidden", !(await page.locator(".alignmore").isVisible()), "the align buttons are inside ···");
   await shot(h, "multiSelect-before");
 
-  // ··· → Align / Distribute
   await bar.locator('button[aria-label="More"]').click();
   await page.locator(".alignmore").waitFor(); await idle(h);
   const more = page.locator(".alignmore");
@@ -88,7 +85,6 @@ test("multiSelectToolbarTidyUp", async () => {
   check("tidyAnchorTopLeft", JSON.stringify(corner(p1)) === JSON.stringify(corner(before)) && p1.a.x === corner(before)[0], { p1 });
   await shot(h, "multiSelect-after");
 
-  // one ⌘Z puts every card back
   await moves("the undo is saved", () => page.keyboard.press("Meta+z"));
   check("tidyOneUndo", JSON.stringify(places(h)) === JSON.stringify(before), places(h));
 

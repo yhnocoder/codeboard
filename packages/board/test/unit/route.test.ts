@@ -1,4 +1,3 @@
-// 箭头走线规则（W03）：摆法、缓冲、端点、错位时的斜角
 import { describe, expect, it } from "vitest";
 import { chooseMode, sidesOf, anchorOn, tiltAngle, connect, slide, type Box } from "../../src/canvas/route";
 

@@ -87,7 +87,6 @@ const AI_CANNED: Record<string, string> = {
 };
 
 export const PROBES: Probe[] = [
-  // ---------- 块级输入规则 ----------
   { name: "h1", run: async ({ pg }) => { const k = K(pg); await k.t("# Title"); } },
   { name: "h6", run: async ({ pg }) => { const k = K(pg); await k.t("###### six"); } },
   { name: "h-no-space", run: async ({ pg }) => { const k = K(pg); await k.t("#tag stays text"); } },
@@ -116,7 +115,6 @@ export const PROBES: Probe[] = [
   { name: "setext-h1", run: async ({ pg }) => { const k = K(pg); await k.t("Title"); await k.p("Enter"); await k.t("==="); await k.p("Enter"); } },
   { name: "toc", run: async ({ pg }) => { const k = K(pg); await k.t("[toc]"); await k.p("Enter"); } },
   { name: "image-block", run: async ({ pg }) => { const k = K(pg); await k.t("![cat](https://x.y/cat.png)"); } },
-  // ---------- 行内 ----------
   { name: "bold-star", run: async ({ pg }) => { const k = K(pg); await k.t("a **bold** b"); } },
   { name: "bold-under", run: async ({ pg }) => { const k = K(pg); await k.t("a __bold__ b"); } },
   { name: "italic-star", run: async ({ pg }) => { const k = K(pg); await k.t("a *it* b"); } },
@@ -144,7 +142,6 @@ export const PROBES: Probe[] = [
   { name: "emoji", run: async ({ pg }) => { const k = K(pg); await k.t("ok :smile: ok"); } },
   { name: "escape-star", run: async ({ pg }) => { const k = K(pg); await k.t("a \\*not\\* b"); } },
   { name: "html-inline", run: async ({ pg }) => { const k = K(pg); await k.t("a <kbd>Ctrl</kbd> b"); } },
-  // ---------- 标记显隐、撤销、退格 ----------
   { name: "reveal-bold", start: "a **bold** b", run: async ({ pg, h, info }) => { await pg.keyboard.press("End"); for (let i = 0; i < 4; i++) await pg.keyboard.press("ArrowLeft"); await caretShown(pg, h); info.text = await pg.locator(".md-pm").innerText(); } },
   { name: "reveal-math", start: "a $x^2$ b", run: async ({ pg, h, info }) => { await pg.keyboard.press("End"); await pg.keyboard.press("ArrowLeft"); await pg.keyboard.press("ArrowLeft"); await caretShown(pg, h); info.text = await pg.locator(".md-pm").innerText(); } },
   { name: "reveal-heading", start: "## Head", run: async ({ pg, h, info }) => { await caretTo(pg, "Head", 1); await idle(h); info.text = await pg.locator(".md-pm").innerText(); } },
@@ -159,7 +156,6 @@ export const PROBES: Probe[] = [
   { name: "backspace-into-math", start: "a $x^2$", run: async ({ pg }) => { await pg.keyboard.press("End"); await pg.keyboard.press("Backspace"); } },
   { name: "type-after-math", start: "a $x^2$", run: async ({ pg }) => { await pg.keyboard.press("End"); await K(pg).t(" tail"); } },
   { name: "bold-continue", run: async ({ pg }) => { const k = K(pg); await k.t("a **bold**"); await k.t(" plain"); } },
-  // ---------- 列表、代码块里的按键 ----------
   { name: "list-enter-empty-exits", run: async ({ pg }) => { const k = K(pg); await k.t("- a"); await k.p("Enter", "Enter"); await k.t("out"); } },
   { name: "list-tab-indent", run: async ({ pg }) => { const k = K(pg); await k.t("- a"); await k.p("Enter", "Tab"); await k.t("b"); } },
   { name: "list-shift-tab", run: async ({ pg }) => { const k = K(pg); await k.t("- a"); await k.p("Enter", "Tab"); await k.t("b"); await k.p("Shift+Tab"); } },
@@ -174,7 +170,6 @@ export const PROBES: Probe[] = [
   { name: "hardbreak", run: async ({ pg }) => { const k = K(pg); await k.t("line1"); await k.p("Shift+Enter"); await k.t("line2"); } },
   { name: "table-tab-nav", start: "| a | b |\n| - | - |\n| 1 | 2 |", run: async ({ pg }) => { await caretTo(pg, "1", 1); await pg.keyboard.press("Tab"); await K(pg).t("X"); await pg.keyboard.press("Tab"); await K(pg).t("NEW"); } },
   { name: "table-enter-newrow", start: "| a | b |\n| - | - |\n| 1 | 2 |", run: async ({ pg }) => { await caretTo(pg, "2", 1); await pg.keyboard.press("ControlOrMeta+Enter"); await K(pg).t("R"); }, keepOpen: true },
-  // ---------- 快捷键（Typora 的 ⌘ 键；这里在 Linux 上按 Ctrl） ----------
   { name: "key-bold", start: "word here", run: async ({ pg }) => { await selectText(pg, "word"); await pg.keyboard.press("ControlOrMeta+b"); } },
   { name: "key-italic", start: "word here", run: async ({ pg }) => { await selectText(pg, "word"); await pg.keyboard.press("ControlOrMeta+i"); } },
   { name: "key-underline", start: "word here", run: async ({ pg }) => { await selectText(pg, "word"); await pg.keyboard.press("ControlOrMeta+u"); } },
@@ -205,7 +200,6 @@ export const PROBES: Probe[] = [
   { name: "key-home-end", start: "alpha beta", run: async ({ pg }) => { await pg.keyboard.press("Home"); await K(pg).t("X"); await pg.keyboard.press("End"); await K(pg).t("Y"); } },
   { name: "key-zoom-while-editing", start: "word", run: async ({ pg, h, info }) => { const z0 = await pg.evaluate(() => getComputedStyle(document.querySelector(".world")!).transform); await pg.keyboard.press("ControlOrMeta+Equal"); await pg.keyboard.press("ControlOrMeta+Minus"); await idle(h); info.zoomChanged = z0 !== await pg.evaluate(() => getComputedStyle(document.querySelector(".world")!).transform); }, keepOpen: true },
   { name: "key-space-pan", start: "word", run: async ({ pg }) => { await pg.keyboard.press("End"); await K(pg).t(" a b c"); } },
-  // ---------- 剪贴板 ----------
   { name: "clip-cut", start: "alpha beta gamma", run: async ({ pg, h, info }) => { await selectText(pg, "beta "); await pg.keyboard.press("ControlOrMeta+x"); await idle(h); info.clip = await pg.evaluate(() => Promise.race([navigator.clipboard.readText(), new Promise((r) => setTimeout(() => r("TIMEOUT"), 800))]).catch((e) => `ERR ${e}`)); } },
   { name: "clip-copy-paste", start: "alpha **beta** gamma", run: async ({ pg, h, info }) => { await selectText(pg, "beta"); await pg.keyboard.press("ControlOrMeta+c"); await idle(h); info.clip = await pg.evaluate(() => Promise.race([navigator.clipboard.readText(), new Promise((r) => setTimeout(() => r("TIMEOUT"), 800))]).catch((e) => `ERR ${e}`)); await pg.keyboard.press("End"); await pg.keyboard.press("ControlOrMeta+v"); } },
   { name: "clip-copy-plain-md", start: "a **b** $x^2$ [[Ref]] `c` [l](https://x.y)", run: async ({ pg, info }) => {
@@ -219,7 +213,6 @@ export const PROBES: Probe[] = [
   { name: "paste-plain-multiline", run: async ({ pg }) => { await pastePlain(pg, "line one\nline two\n\npara two"); } },
   { name: "paste-html-table", run: async ({ pg }) => { await pasteData(pg, { "text/html": "<table><tr><th>a</th><th>b</th></tr><tr><td>1</td><td>2</td></tr></table>", "text/plain": "a\tb\n1\t2" }); } },
   { name: "paste-shift-plain", start: "word", run: async ({ pg }) => { await pg.keyboard.press("End"); await pg.evaluate(() => Promise.race([navigator.clipboard.writeText(" **raw**"), new Promise((r) => setTimeout(r, 800))])); await pg.keyboard.press("ControlOrMeta+Shift+v"); } },
-  // ---------- AI 补全 ----------
   { name: "ai-math", ai: AI_CANNED.math, start: "Use", run: async ({ pg, h, info }) => { await pg.keyboard.press("End"); await K(pg).t(" it"); await answered(h); await pg.locator(".md-ghost").waitFor(); info.ghost = await dom(pg); await pg.keyboard.press("Tab"); } },
   { name: "ai-bold", ai: AI_CANNED.bold, start: "Allocate", run: async ({ pg, h, info }) => { await pg.keyboard.press("End"); await K(pg).t(" blocks"); await answered(h); await pg.locator(".md-ghost").waitFor(); info.ghost = await dom(pg); await pg.keyboard.press("Tab"); } },
   { name: "ai-context", ai: "x", start: "a **b** $x^2$ [[Ref]] `c` and", run: async ({ pg, h }) => { await pg.keyboard.press("End"); await K(pg).t(" mo"); await answered(h); } },

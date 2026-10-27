@@ -6,8 +6,6 @@
 //   imageCardDropsIntoNote                dragging an image card onto a Note lights the Note up; releasing puts the image into the
 //                                         Note's Markdown (saved under assets/ like a pasted image) and removes the image card, in one
 //                                         undo step
-// Usage: npm run harness -- copiedCardsGiveOtherAppsTheirContent pastedCardsKeepTheirSize imageCardDropsIntoNote
-// Screenshots: test-out/harness/copy-paste-*.png (Warm Ink)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type Card, type NoteCard } from "@codeboard/core";

@@ -103,7 +103,6 @@ export async function staleFor(segs: Segment[], up?: Set<string>): Promise<Recor
   return out;
 }
 
-/** 一张白板里有新版本的卡片数 */
 export function countStale(b: Board, st: Record<string, Stale>): number {
   let n = 0;
   for (const c of allCodeCards(b)) if (upstreamSegs(c).some((s) => st[s.id]?.state === "changed")) n++;

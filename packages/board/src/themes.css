@@ -9,10 +9,6 @@
    - 背景画（Ink Wash 的远山、City 的街区）是 .board 的背景：固定在窗口上，不跟着画布平移缩放，镜头动时不重画；
      画里的滤镜只在换主题、改窗口大小时栅格化一次。没有常驻动画。 */
 
-/* ======================================================================
-   Tokens
-   ====================================================================== */
-
 /* ---------- Classic：实线边框、同一种阴影、陶土色强调 ---------- */
 :root.look-classic, [data-look="classic"] {
   color-scheme: light;
@@ -466,11 +462,6 @@
   --sect-border: 2px solid rgba(255,255,255,.07);
 }
 
-/* ======================================================================
-   Structure
-   ====================================================================== */
-
-/* ---------- Classic ---------- */
 /* 代码行里成千上万的小元素（关键字、行号、调用、图标、端口）只换变量、不加规则：缩放时整板样式重算不变慢 */
 :root.look-classic { --no-o: .8; --call-deco: none; --ico-w: 2; }
 :root.look-classic .card:not(.text):not(.nobg) { box-shadow: 0 0 0 1px var(--line), var(--sh-card); }
@@ -501,13 +492,11 @@
 :root.look-classic .toast .tlink { font-weight: 500; }
 :root.look-classic .bbar .pill { gap: 6px; }
 
-/* ---------- Graphite ---------- */
 :root.look-graphite .chead .step { background: none; color: var(--ink-3); padding: 0; min-width: 0; font-weight: 500; }
 :root.look-graphite .chead .step:hover { background: none; color: var(--accent); }
 :root.look-graphite .rev.new i { box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 18%, transparent); }
 :root.look-graphite .chead .rev.new { background: color-mix(in srgb, var(--warn) 9%, transparent); border-radius: 1398.5px; corner-shape: round; }
 
-/* ---------- Soft Light ---------- */
 :root.look-soft-light { --call-deco: underline dotted color-mix(in srgb, var(--k-fn) 50%, transparent); }
 :root.look-soft-light .card.sel:not(.text) { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), 0 0 0 6px color-mix(in srgb, var(--coral) 10%, transparent), var(--sh-card); }
 :root.look-soft-light .card.sel.lift { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--coral) 70%, transparent), var(--sh-lift); }
@@ -567,7 +556,6 @@
 :root.look-soft-light .mast::before { content: ""; width: 26px; height: 1px; background: var(--coral); }
 :root.look-soft-light .mast .mn { font: 300 24px/1.15 var(--sys); color: var(--ink); letter-spacing: -.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------- Drafting ---------- */
 :root.look-drafting { --no-o: 1; --kw-w: 500; --com-i: normal; --call-deco: underline 1px var(--ink-3); --ico-w: 1; --port-r: 0; }
 :root.look-drafting .card:not(.text):not(.nobg) { background: var(--bg); box-shadow: 0 0 0 1px var(--rule); }
 :root.look-drafting .card.sel:not(.text) { box-shadow: 0 0 0 1px var(--ink); }
@@ -621,7 +609,6 @@
 :root.look-drafting .mast::before { content: "CODEBOARD · SHEET 1"; display: block; font: 10px var(--mono); letter-spacing: .14em; color: var(--ink-3); }
 :root.look-drafting .mast .mn { display: block; font: 600 12px var(--head-font); text-transform: uppercase; letter-spacing: .12em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------- Colorful ---------- */
 :root.look-colorful { --no-link: var(--ink); --no-link-w: 600; --call-deco: underline 1.5px color-mix(in srgb, var(--k-fn) 45%, transparent); --ico-w: 2; --port-ring: 2px; --port-ring-c: var(--rule); --port-bg: var(--f2); }
 :root.look-colorful .card { --fc: var(--f1); --bink: var(--paper-ink); }
 :root.look-colorful .card[data-fc="1"] { --fc: var(--f2); --bink: #2a231c; }
@@ -699,7 +686,6 @@
   background: var(--surface); box-shadow: 0 0 0 2px var(--rule); }
 :root.look-colorful .mast .mn { font: 600 11.5px var(--sys); letter-spacing: .2em; text-transform: uppercase; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ---------- Newspaper ---------- */
 :root.look-newspaper { --no-o: 1; --no-link: var(--ink); --no-link-w: 700; --kw-w: 700; --str-i: italic; --call-deco: underline 1px currentColor; --ico-w: 2; }
 :root.look-newspaper .card:not(.text):not(.nobg) { border-top: 3px solid var(--rule); }
 :root.look-newspaper .card.sel:not(.text) { box-shadow: var(--sh-card); outline: 1.5px solid var(--ink); outline-offset: 5px; }
@@ -754,7 +740,6 @@
 /* 窄窗口里工具条靠左下（styles.css），报头让到它上面 */
 @media (max-width: 900px) { :root.look-newspaper .mast { bottom: 58px; } }
 
-/* ---------- Poster（艺术） ---------- */
 :root.look-poster { --no-link: var(--ink); --kw-w: 600; --call-deco: underline .5px var(--k-fn); --ico-w: 2; --port-r: 0; --port-rot: 45deg; }
 :root.look-poster .board { background-image: linear-gradient(var(--gridc) 1px, transparent 1px), linear-gradient(90deg, var(--gridc) 1px, transparent 1px); background-size: 44px 44px; }
 :root.look-poster .board::before, :root.look-poster .board::after { content: ""; position: absolute; pointer-events: none; z-index: 3; }
@@ -814,7 +799,6 @@
 :root.look-poster .mast .mn { font: 400 24px/1.1 var(--serif); letter-spacing: .08em; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 
 
-/* ---------- Ink Wash（水墨） ---------- */
 /* 远山是白板背景（不跟着画布平移缩放，镜头动时不重画）；滤镜都在 SVG 里，只在换主题、改窗口大小时栅格化一次 */
 :root.look-ink-wash { --kw-w: 600; --no-link: var(--zhu); --call-deco: underline 1px var(--zhu); --ico-w: 1; }
 :root.look-ink-wash .board { background: url("./scenes/ink-light.svg") center bottom / cover no-repeat, var(--canvas); }
@@ -872,7 +856,6 @@
 /* 界面字体只给浮在白板上的部件和卡头用（--ui），不换 --sys：白板里大量文字换成网页字体后，Chromium 在缩放分档切换时会把每张卡的行号栏提成合成层 */
 :root.look-city .app { font-family: var(--ui); }
 :root.look-city .app > .board { font-family: var(--sys); }
-/* ---------- City（城市道路） ---------- */
 /* 街区、河、公园、楼是白板背景（固定在窗口上，镜头动时不重画）。
    调用是大路：路肩（.casings 里一层，在所有线下面）+ 白边线（.kerbs 里一层，也在所有路面下面，路口里就没有边线）+ 路面（.edge）+ 双黄线（.lane，一个 path 两条线），横平竖直；
    普通箭头是小街：白路沿 + 路面 + 一道白中线（.cline）；被调用那头停一辆车（三条 path，见 canvas/city.ts carPaths）代替箭头，车前是人行横道（画进车灯那条 path）；
@@ -967,9 +950,7 @@
 :root.look-city .mast::before { content: "CODEBOARD"; font: 600 8.5px var(--ui); letter-spacing: .2em; color: rgba(255,255,255,.75); }
 :root.look-city .mast .mn { font: 700 14px var(--ui); color: #fff; letter-spacing: .04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-/* ======================================================================
-   Settings 小样：每种材质最显眼的那一点
-   ====================================================================== */
+/* Settings 小样：每种材质最显眼的那一点 */
 .st-prev[data-look="classic"] .sp-card { box-shadow: 0 0 0 1px var(--line), var(--sh-card); }
 .st-prev[data-look="soft-light"] .sp-h { background: none; border-bottom: 0; }
 .st-prev[data-look="soft-light"] .sp-step { background: var(--coral); height: 1px; width: 8px; }
@@ -1000,9 +981,7 @@
 .st-prev[data-look="city"] .sp-t { background: #fff; }
 .st-prev[data-look="city"] .sp-edge path { stroke: var(--asphalt); stroke-width: 4; }
 
-/* ======================================================================
-   内置贴纸：每种材质自己的画法（变量见 styles.css 的 .glyph.bi）
-   ====================================================================== */
+/* 内置贴纸：每种材质自己的画法（变量见 styles.css 的 .glyph.bi） */
 /* Classic：原样的纯色圆 */
 [data-look="classic"] .glyph.bi { --stk-bg: var(--c); --stk-fg: #fff; }
 /* Graphite：降饱和，偏冷灰 */

@@ -14,7 +14,6 @@ export function toggleShown(k: string) {
   setShown(s);
 }
 
-// 卡片 id → 从它出发的 Link
 const fromIndex = rooted(() => createMemo(() => {
   const m = new Map<string, Link[]>();
   for (const l of state.board.links) {
@@ -86,7 +85,7 @@ export const [dropTarget, setDropTarget] = boardSignal<{ kind: "merge" | "line" 
 export const [dragging, setDragging] = boardSignal<Set<string>>(new Set());
 export const [marquee, setMarquee] = boardSignal<{ x: number; y: number; w: number; h: number } | null>(null);
 export const [rubber, setRubber] = boardSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);
-// 正在拖的线（拖起点圆点、拖标签框）；指针下的卡和线在 state/hover.ts
+// 正在拖的线（拖起点圆点、拖标签框）
 export const [dragLink, setDragLink] = boardSignal<string | null>(null);
 export const [hoverVar, setHoverVar] = boardSignal<{ link: string; names: string[]; from: string; to: string } | null>(null);
 // 新卡弹出动画：id → 起点偏移

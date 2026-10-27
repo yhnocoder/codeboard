@@ -1,11 +1,3 @@
-# Release: bump "version" in extensions/vscode/package.json, merge, then push the tag v<that version> (or run this by hand)
-# and this builds a draft GitHub Release with
-#   codeboard-vscode-<version>.vsix   the VS Code extension (Extensions view → ⋯ → Install from VSIX…)
-#   6 screenshots at 2x               4 features in VS Code light, then every board theme in light and in dark (tools/release/shots.sh)
-# The version comes from extensions/vscode/package.json; a tag that names a different version fails the release.
-# The release stays a draft until someone reviews and publishes it on GitHub. Publishing it runs the publish job:
-# the .vsix attached to that release (not a rebuild) goes to the VS Code Marketplace (secret VSCE_PAT) and Open VSX
-# (secret OVSX_PAT), in the GitHub environment "marketplace". A store whose secret is not set is skipped with a notice.
 name: Release
 on:
   push:

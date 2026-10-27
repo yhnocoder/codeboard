@@ -1,4 +1,3 @@
-// 跨语言边界的文本识别（线框 02）：pybind、TORCH_LIBRARY、PyO3、launch macro、JIT 编译、Triton、TileLang，以及语言标签
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   initAnalysis, analyze, pybindDefs, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,

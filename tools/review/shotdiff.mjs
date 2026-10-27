@@ -34,7 +34,6 @@ for (const name of names) {
       else { const g = (db.data[i] + db.data[i + 1] + db.data[i + 2]) / 3 * 0.35; diff.data.set([g, g, g, 255], i); }
     }
     const ratio = n / (w * h);
-    // triptych: before | after | diff, each scaled to half width
     const s = 0.5, gap = 12, W = Math.round(w * s), H = Math.round(h * s);
     const c = new OffscreenCanvas(W * 3 + gap * 2, H + 28); const x = c.getContext("2d");
     x.fillStyle = "#1b1b1b"; x.fillRect(0, 0, c.width, c.height);

@@ -308,7 +308,6 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   let leaveT: number | undefined;
   const onLeave = () => { clearPeek(); clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverRow(-1), 200); };
   const keepRow = () => clearTimeout(leaveT);
-  // 按下鼠标 = 要操作（展开调用、选行）：取消待弹的定义；peekKey 留着，同一个词上不再重新计时
   // 拖箭头松手会连到这一行：行号和这一行都亮起来
   const dropAt = (seg: string, line: number) => { const d = dropTarget(); return d?.kind === "line" && d.seg === seg && d.line === line; };
   const lportY = createMemo(() => { const i = hoverRow(); const r = rows()[i]; return i >= 0 && r?.t === "line" && ys()[i] ? { y: ys()[i].y, r } : null; });

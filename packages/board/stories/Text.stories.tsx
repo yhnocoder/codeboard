@@ -1,4 +1,3 @@
-// Text：没有背景、边框、卡头的 Note（bg: false），直接写在画布上；三档字号、粗体，选中时上方一条小工具栏（B · Show Background）
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { NoteCard } from "@codeboard/core";
 import { Stage, scene, type Globals, type Scene } from "./support/board";

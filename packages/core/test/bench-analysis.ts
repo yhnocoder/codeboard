@@ -1,4 +1,4 @@
-// 分析耗时：sglang 最大的 40 个 .py（或参数给的目录）。旧 = v0.1.5 逐节点遍历，新 = 查询 + 增量 + 按行
+// 分析耗时：sglang 最大的 40 个 .py（或参数给的目录）。旧 = 逐节点遍历，新 = 查询 + 增量 + 按行
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import TS from "@vscode/tree-sitter-wasm";

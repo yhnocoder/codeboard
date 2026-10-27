@@ -66,5 +66,4 @@ export const Commit: Story = { name: "Commit Mode", play: async (c) => { await l
 export const NoTags: Story = { name: "No Tags (Tag Disabled)", args: { repo: "GeeeekExplorer/nano-vllm" }, play: loaded,
   render: (a, ctx) => <Stage scene={board} globals={ctx.globals as Globals} replies={{ gh: github({ repo: { tags: [], private: a.isPrivate } }) }} /> };
 export const Adding: Story = { name: "Adding…", args: { waitAt: "card" }, play: async (c) => { await loaded(c); await el(".ghp-code .gl.on"); await click(".ghp-foot .btn.pri"); } };
-// 真的点：工具栏 Code ▾ → From GitHub…
 export const FromToolbar: Story = { name: "From the Toolbar", args: { repo: "" }, play: async () => { await settled(); await toolbar("Code"); await menu(); await menuItem("From GitHub…"); } };

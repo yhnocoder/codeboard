@@ -24,7 +24,7 @@ type VOut = v.InferOutput<typeof VariantSchema>;
 export const variantWrites: v.InferInput<typeof VariantSchema> = {} as Variant;
 
 export const writes: In = {} as Board;
-// 第 6 版：白板文件（cards 里可以有共享卡的引用）、卡库里的共享卡
+// 白板文件（cards 里可以有共享卡的引用）、卡库里的共享卡
 type FileOut = v.InferOutput<typeof BoardFileSchema>;
 type SharedOut = v.InferOutput<typeof SharedCardSchema>;
 export const fileWrites: v.InferInput<typeof BoardFileSchema> = {} as BoardFile;
@@ -45,7 +45,7 @@ export const keys = {
   file: ok({} as SameKeys<BoardFile, FileOut>),
   ref: ok({} as SameKeys<SharedRef, ByKind<FileOut["cards"][number], "shared">>),
   shared: ok({} as SameKeys<SharedCardFile, SharedOut>),
-  // Variant（线框 07）：CodeCard 的 schema 是递归的 GenericSchema 推不出类型，Variant 单独导出来对
+  // Variant：CodeCard 的 schema 是递归的 GenericSchema 推不出类型，Variant 单独导出来对
   variant: ok({} as SameKeys<Variant, VOut>),
   code: ok({} as Same<keyof CodeCard, CodeCardSchemaKeys> extends true ? true : { model: Exclude<keyof CodeCard, CodeCardSchemaKeys>; schema: Exclude<CodeCardSchemaKeys, keyof CodeCard> }),
 };

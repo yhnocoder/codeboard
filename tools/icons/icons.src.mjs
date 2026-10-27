@@ -7,8 +7,8 @@ import { poly, rect, circle, line, lucide } from "./shapes.mjs";
 
 // Corner radius of frames and bars (stroke centre line). Half a pixel keeps the whole arc inside the corner pixel at 1x
 // (1 px stroke) and gives a 1.5 px outer radius with 2 px strokes; a 1 px radius (Lucide's 1.33 rounded) measured softer
-// than the v0.1.6 set at 2x, see check.mjs.
-export const R = +(process.env.ICON_R ?? 0.5); // corner radius (stroke centre line) for frames and bars
+// than the old set at 2x, see check.mjs.
+export const R = +(process.env.ICON_R ?? 0.5);
 
 const corners = (a = 2, b = 14, arm = 3, r = R) => [
   poly([[a, a + arm], [a, a, r], [a + arm, a]]), poly([[b - arm, a], [b, a, r], [b, a + arm]]),
@@ -61,7 +61,7 @@ export const ICONS = {
   subBoard: [rect(2, 2, 14, 14, 2) + rect(5, 5, 11, 11, 1), "", "board in a board (multi-select toolbar)"],
   tidy: [rect(2, 2, 6, 6, 1) + rect(10, 2, 14, 6, 1) + rect(2, 10, 6, 14, 1) + rect(10, 10, 14, 14, 1), "", "layout-grid"],
   copy: [rect(6, 6, 14, 14, R) + poly([[3, 10], [2, 10, R], [2, 2, R], [10, 2, R], [10, 3]]), "", "copy"],
-  // 共享卡「⧉ N boards」：三张叠着的方块（square-stack 简化成三层，线间距 3）
+  // 三张叠着的方块（square-stack 简化成三层，线间距 3）
   boards: [poly([[2, 7], [2, 2, R], [7, 2]]) + poly([[5, 10], [5, 5, R], [10, 5]]) + rect(8, 8, 14, 14, R), "", "square-stack"],
   trash: ["M2 4h12M6 7v4M10 7v4" + poly([[13, 4], [13, 14, R], [3, 14, R], [3, 4]]) + poly([[6, 4], [6, 2, R], [10, 2, R], [10, 4]]), "", "trash-2"],
   dot: ["", "M7 7h2v2H7z", "dot"],
@@ -73,9 +73,9 @@ export const ICONS = {
   // New Arrow (bottom toolbar): an arrow leaving a card, a small ring, and bending towards another (not the chain "link",
   // which reads as a URL). The bend is a 5 radius quarter arc with its tangent points on whole coordinates
   arrowLink: [circle(4, 12, 2) + "M4 10V9a5 5 0 0 1 5-5h5M11 1l3 3-3 3", "", "custom: ring with a bent arrow"],
-  // 疑问面板（线框 06）：圆圈里一个问号（circle-help），点是填色的小方块
+  // 圆圈里一个问号（circle-help），点是填色的小方块
   question: [circle(8, 8, 6) + "M6.5 6.5a1.5 1.5 0 0 1 3 0c0 1-1.5 1.5-1.5 2.5", "M7 11h2v2H7z", "circle-help"],
-  // 导出（线框 08）：托盘上一个向上的箭头（share）
+  // 托盘上一个向上的箭头（share）
   export: ["M8 2v8M5 5l3-3 3 3" + poly([[3, 8], [3, 14, R], [13, 14, R], [13, 8]]), "", "share"],
 };
 

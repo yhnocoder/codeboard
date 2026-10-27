@@ -1,11 +1,3 @@
-// Playwright Test fixtures for the harness scenarios (scenarios/*.spec.ts):
-//   open(o)          the board page in a new context of the worker's browser, with Node as its host (harness.ts); the test's
-//                    boards are closed when it ends
-//   check(name, ok)  a named check: a failed one fails the test at its end (expect.soft) and the test goes on; a check listed
-//                    under "known" in tiers.json is reported as an annotation instead and doesn't fail the test
-//   verdict(name, f) runs f(res), which fills res and returns whether it passed: check(name, ok, res). An f that makes its own
-//                    checks returns undefined. If f throws, res goes into the error.
-// Coverage (HARNESS_COV=1, nightly): the source files each test runs, attached to its result as "coverage" (tools/test/harness.mjs reads it).
 import { test as base, expect, type Browser, type Page } from "@playwright/test";
 import { ready, openBoard, idle, type Host, type OpenOptions, type PageCoverage } from "./harness";
 import { nodeCoverage, pageFiles } from "./coverage";
@@ -15,7 +7,6 @@ export { expect };
 export type { Host };
 
 const COV = !!process.env.HARNESS_COV;
-/** The dark theme unless HARNESS_LIGHT=1 */
 export const light = !!process.env.HARNESS_LIGHT;
 
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -29,6 +20,7 @@ export function check(name: string, ok: unknown, ...detail: unknown[]) {
   expect.soft(ok, line.slice(0, 3000)).toBeTruthy();
 }
 
+// verdict(name, f): f fills res and returns whether it passed; an f that makes its own checks returns undefined.
 export async function verdict(name: string, f: (res: Record<string, unknown>) => Promise<unknown>) {
   const res: Record<string, unknown> = {};
   let ok: unknown;
@@ -36,12 +28,6 @@ export async function verdict(name: string, f: (res: Record<string, unknown>) =>
   if (ok !== undefined) check(name, ok, JSON.stringify(res));
 }
 
-// ---------- Waiting for real state, not for a fixed time ----------
-//   until(h, what, f)   polls f (Node side: h.board(), h.sent, a store, a locator count…) until it returns something truthy and
-//                       returns it; throws after ms, naming what it waited for and the last value
-//   idle(h)             the board has settled: host replied to everything, camera at rest, no animation, cards still (harness.ts)
-//   hold(h, ms, why)    a fixed wait that has to be one: a check that something does NOT happen within a product delay (pass
-//                       the constant from src/state/timing.ts), a hover delay, a measurement. Never to let the board catch up
 export { idle };
 
 export async function until<T>(h: Host, what: string, f: () => T | Promise<T>, ms = 5000): Promise<NonNullable<T>> {
@@ -63,8 +49,6 @@ export const hold = (h: { page: Page }, ms: number, _why: string) => h.page.wait
 /** n rendered frames of the page, through its own requestAnimationFrame (so a page that makes frames late makes these late too):
  *  each pointer move of a drag landing in a frame of its own, as a real one does */
 export const frames = (pg: Page, n = 1) => pg.evaluate(async (n) => { for (let i = 0; i < n; i++) await new Promise<void>((r) => requestAnimationFrame(() => r())); }, n);
-
-// ---------- ProseMirror (Notes, Text, the Markdown editor) ----------
 
 /** ProseMirror has read the DOM selection: Home / End / arrows move the caret in the browser, and ProseMirror only learns of it in
  *  the async selectionchange (its DOM observer's currentSelection is the DOM selection it last read). With the focus in a nested
@@ -98,7 +82,6 @@ export async function focusSettled(pg: Page) {
   }, PM_FOCUS_GUARD);
 }
 
-/** The running test's browser and boards */
 let cur: { browser: Browser; hosts: Host[]; coverage?: PageCoverage } | undefined;
 
 export async function open(o: OpenOptions = {}): Promise<Host> {

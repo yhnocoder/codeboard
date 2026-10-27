@@ -1,4 +1,4 @@
-// 纯计算，不碰 DOM、不读 store；画它们的组件在 Traffic.tsx。
+// 纯计算，不碰 DOM、不读 store。
 import type { Pt } from "./route";
 
 const r = (v: number) => Math.round(v * 10) / 10;

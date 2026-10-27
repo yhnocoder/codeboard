@@ -1,4 +1,3 @@
-// Performance benchmark: builds a large board from nano-vllm and measures camera, drag, mutate, expand, undo and load times in the browser.
 // Usage: node packages/board/test/run-perf.mjs [--cards 240] [--notes 200] (a board of Notes with realistic Markdown: open, pan, zoom, enter edit, type) [--runs 3] [--json out.json] [--quick] [--theme ink-wash] [--traffic] (City: green light, cars driving) [--profile <step>] [--trace <step>] [--steps <step>] [--long <step>] [--stop pinch] [--inval <step>] [--anim] (--anim: the line and corner stickers are animated GIFs from a sticker pack; --inval counts what invalidated style and layout; --stop pinch: end each run after the camera steps; --long breaks down each dropped frame; --steps prints each step's time, LOD class and camera)
 // Each scenario reports wall clock (action → next frame painted), main-thread busy time (CDP TaskDuration) and frame times
 // (frameP95 / frameMax / over16: main-thread task durations; the 60 fps budget is 16.7 ms).
@@ -54,7 +53,7 @@ export function bigBoard(n: number): Board {
     if (i % 6 === 2) b.stickers.push({ id: uid("k"), icon: { pack: "builtin", name: "flag" }, at: { kind: "card", card: c.id } });
   });
   b.cam = { x: 80, y: 80, z: 1 };
-  // Creation order, like every board the app has saved (v0.1.7+) or migrated: without it the first edit numbers all 241 cards at once
+  // Creation order, like every saved or migrated board: without it the first edit numbers all 241 cards at once
   stampBorn(b);
   return b;
 }
@@ -344,9 +343,9 @@ async function once() {
   res.hubLinks = board.links.filter((L) => L.from.card === hub || L.to.card === hub).length;
   await focusCard(h, hub);
   // Grab the header at a point that really is the header: arrows are drawn above the cards, and a long arrow between two other
-  // cards of the same row runs along the heading row (card ends attach there), so the kind glyph (the spot v0.1.6 grabbed) can be
-  // under its hit area (City). Take the glyph when it is free, so drag numbers stay comparable with v0.1.6; otherwise scan
-  // the header for a draggable point that is not a button and not covered
+  // cards of the same row runs along the heading row (card ends attach there), so the kind glyph can be under its hit area (City).
+  // Take the glyph when it is free, so drag numbers stay comparable with earlier runs; otherwise scan the header for a draggable
+  // point that is not a button and not covered
   const bx = await h.page.evaluate((id) => {
     const free = (x: number, y: number) => {
       const e = document.elementFromPoint(x, y);
@@ -524,7 +523,6 @@ async function traceStart(cdp: CDPSession) {
   };
 }
 
-/** The card with the most links */
 function hubOf(b: Board): string {
   const deg = new Map<string, number>();
   for (const L of b.links) for (const id of [L.from.card, L.to.card]) deg.set(id, (deg.get(id) ?? 0) + 1);

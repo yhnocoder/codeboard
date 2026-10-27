@@ -1,6 +1,3 @@
-// The board page and a host played by Node, for the harness scenarios (scenarios/*.spec.ts, run by Playwright Test) and the
-// perf benchmark: Chromium opens the board page, Node reads nano-vllm, analyzes it and replies to the board's messages.
-// No VS Code needed. Screenshots go to test-out/harness/.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
@@ -80,11 +77,9 @@ export function symCard(f: string, s: Sym): CodeCard {
   };
   return { id: uid("c"), kind: "code", segments: [seg], members: s.kind === "class" ? { shown: [] } : undefined };
 }
-/** Put a card on the board */
 export function put(b: Board, c: Card, x: number, y: number, w = 560) { b.cards.push(c); b.place[c.id] = { x, y, w }; }
 export const findSym = (qual: string) => allSyms().find((x) => x.s.qual === qual)!;
 
-/** V8 coverage of the board page (page.coverage) */
 export type PageCoverage = Awaited<ReturnType<Page["coverage"]["stopJSCoverage"]>>;
 
 export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void>; close: () => Promise<void> };
@@ -231,7 +226,7 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
   return h;
 }
 
-// ---------- Definition preview: lines taken per peekPlan, hover faked with docstrings (libraries use the fake data below) ----------
+// Definition preview: lines taken per peekPlan, hover faked with docstrings (libraries use the fake data below)
 
 const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const TORCH_MP = "torch.multiprocessing is a wrapper around the native [multiprocessing](https://docs.python.org/3/library/multiprocessing.html) module.\n\nIt registers custom reducers, that use shared memory to provide shared views on the same data in different processes. Once the tensor/storage is moved to shared_memory (see `share_memory_()`), it will be possible to send it to other processes without making any copies.\n\nThe API is 100% compatible with the original module - it's enough to change `import multiprocessing` to `import torch.multiprocessing` to have all the tensors sent through the queues or shared via other mechanisms, moved to shared memory.";
@@ -278,7 +273,7 @@ export async function shot(h: Host, name: string, at: "idle" | "now" = "idle") {
  * file above until the handler returns, i.e. after its reply was posted), the camera at rest (.world neither .moving nor
  * .settle), no finite Web Animation or CSS transition running (infinite ones, like spinners and animated stickers, don't count),
  * fonts loaded, and no card moved or resized (their inline styles: the pop-in, slide, fold and grow springs) for `frames` frames
- * in a row. Throws after `ms`, saying what was still busy. Re-exported by fixtures.ts.
+ * in a row. Throws after `ms`, saying what was still busy.
  */
 export async function idle(h: Host, ms = 5000, frames = 3) {
   const t0 = Date.now();

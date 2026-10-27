@@ -1,6 +1,5 @@
-// Shared cards (wireframe 04): two boards in two browsers, a host built on the real core Storage (temp dir) relaying
+// Shared cards: two boards in two browsers, a host built on the real core Storage (temp dir) relaying
 // patches, shared updates, the card clipboard, Delete Everywhere and the "⧉ N boards" / "← N" info, like packages/host/src/hub.ts.
-// Usage: npm run harness -- sharedcards [--light]   screenshots: test-out/harness/shared-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, sharedInfo, type Board, type Segment, type SegView } from "@codeboard/core";

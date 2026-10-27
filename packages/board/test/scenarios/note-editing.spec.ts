@@ -1,10 +1,3 @@
-// 在白板上改字：Note 的 Markdown 编辑器、Sidenote 的字、撤销。每个场景查一件事，名字就是查的那件事。
-// Usage: npm run harness -- noteImageReopens noteAutoPairOvertype noteTabStaysInEditor noteTrailingBlockExit
-//          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
-//          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
-//          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle noteFontSizeSettings
-//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight noteCodeBlockClickAwayEnds noteCodeBlockLanguagePicker noteLanguagePickerOpenWhenBoardChanges
-//          noteRefChipOnBaseline noteEndingInCodeBlockNoExtraSpace
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
@@ -715,7 +708,7 @@ test("noteEndingInCodeBlockNoExtraSpace", async () => {
   }
 });
 
-/** Note 代码块右上角的语言名（#68 照 Typora，#70 的样子）：光标在块里时淡淡地显示（Plain text、Python），右上角、没有底色和边框；
+/** Note 代码块右上角的语言名（照 Typora）：光标在块里时淡淡地显示（Plain text、Python），右上角、没有底色和边框；
  *  悬停时出现 ▾。点它在下面打开列表，筛选框里打字筛出语言，↵ 定下来（马上换着色，一次撤销回去），Esc 不改，点列表里的一项也行，
  *  Plain text 那一行 = 纯文字；列表开着时点了别处：照筛出的定下来，保存退出。写回成 ```语言 */
 test("noteCodeBlockLanguagePicker", async () => {

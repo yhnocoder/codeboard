@@ -109,7 +109,6 @@ export function clipAnalysis(a: FileAnalysis, start: number, end: number): FileA
   };
 }
 
-// ---------- 查询 ----------
 // 每个语法一个查询，解析完跑一遍拿到要用的全部节点（定义、调用、循环、注释、import），按位置顺序处理：
 // 定义、循环 / 函数各压一个栈，处理到某个节点时栈顶就是包着它的最内层定义 / 循环。
 
@@ -227,8 +226,6 @@ function comments(nodes: Node[], { lines, out, r0, r1 }: Cx) {
 // web-tree-sitter 解析 JS 字符串时下标、列号都是 UTF-16 的
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 const meets = (cx: Cx, n: Node) => n.startPosition.row <= cx.r1 && n.endPosition.row >= cx.r0;
-
-// ---------- Python ----------
 
 /** body 的第一条语句是字符串：标 DOCSTRING，返回正文 */
 function docstring(cx: Cx, body: Node | null): string | undefined {
@@ -399,8 +396,6 @@ function assignedTo(n: Node, g: Grammar): string[] | undefined {
   return undefined;
 }
 
-// ---------- C / C++ / CUDA ----------
-
 const CPP_SKIP = new Set("sizeof static_cast reinterpret_cast const_cast dynamic_cast printf assert".split(" "));
 
 function cppSymbols({ out }: Cx, root: Node) {
@@ -477,7 +472,6 @@ function cppParams(ps: Node | null): Param[] {
   return out;
 }
 
-// ---------- CUDA：kernel<<<grid, block>>>(…) ----------
 // tree-sitter 的 C++ 语法不认 <<<>>>（当成错误节点），按行认：名字（可带模板参数）后面紧跟 <<<
 
 const LAUNCH = /([A-Za-z_]\w*)\s*(?:<[^<>;]*(?:<[^<>;]*>[^<>;]*)*>)?\s*<<</g;
@@ -496,8 +490,6 @@ function cudaLaunches(cx: Cx) {
   }
   out.calls.sort((a, b) => a.line - b.line || a.col - b.col);
 }
-
-// ---------- Rust ----------
 
 /** 符号：fn、impl 里的方法（Type::f）、trait、struct / enum（当类）、mod；#[…] 属性算进起始行（和 Python 的装饰器一样） */
 function rustSymbols({ out, text }: Cx, root: Node) {

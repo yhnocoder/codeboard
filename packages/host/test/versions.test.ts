@@ -1,4 +1,3 @@
-// New versions of a card's code: only code after the pinned commit counts, and a commit that only moves the code re-pins the card
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
@@ -34,7 +33,6 @@ describe("new version check", () => {
   });
 
   it("moves the card to the new lines with the new commit as its pin when a commit only moves the code", async () => {
-    // It used to keep the old pin with the new commit's line numbers, so the header and permalinks named other code
     const F = ["def can_allocate(x):", "    return x > 0", "", "", "def allocate(x):", "    y = x + 1", "    return y", ""];
     R = tempRepo("moved", { "blocks.py": F.join("\n") });
     const base = git(R, "rev-parse", "HEAD");

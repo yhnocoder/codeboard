@@ -1,7 +1,3 @@
-// The board harness: Playwright Test runs the scenarios in test/scenarios/ against the built board (extensions/vscode/media/board),
-// Node playing the host (test/harness.ts, test/fixtures.ts). tools/test/harness.mjs runs it with tiers.json applied (selection,
-// solo and the alone re-run); see TESTING.md.
-//
 // The scenarios run the host's code from core (ES modules) and from the extension (a CommonJS package), which Playwright's own
 // loader can't mix, so the config first bundles them with esbuild into test-out/harness/specs/, one file per scenario file with
 // the shared code split out (one harness and one set of fixtures per worker); Playwright runs those bundles as they are.

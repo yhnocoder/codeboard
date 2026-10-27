@@ -59,7 +59,6 @@ const timing = new Proxy({}, { get(_, k) {
   return T[k];
 } });
 
-// ---------- requests waiting on the host ----------
 // The board asks the host with { type, req } and the host answers { type: "reply", req } (packages/board/src/host.ts). A board webview
 // is two frames: VS Code's host page (webview/browser/pre/index.html) and, inside it, the board. The board's acquireVsCodeApi() posts
 // through the host page's window.__vscode_post_message__, and replies come into the host page through a MessagePort before it hands
@@ -105,7 +104,6 @@ async function waiting(fr) {
 /** How many messages of this type the board in fr has sent to the host so far (e.g. "patch": its saved changes) */
 const sent = async (fr, type) => (await fr.parentFrame().evaluate((t) => window.__e2eSent?.[t] ?? 0, type));
 
-// ---------- the board has settled ----------
 // Sampled from here (timers in a webview may be throttled, and a hidden webview paints no frames): what is busy, plus a key of the
 // camera transform and a count of DOM mutations (cards measured, code highlighted, a host push shown). Settled once nothing is busy and
 // the key has not changed for `quiet` ms

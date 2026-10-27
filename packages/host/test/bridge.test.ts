@@ -1,5 +1,3 @@
-// Following calls across languages and broken chains, on the small repo in fixtures/crosslang (DeepEP v1 and the new JIT, torch.ops,
-// Triton, TileLang, PyO3, dynamic dispatch): each bridge expands to the right card with its values and alternatives
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

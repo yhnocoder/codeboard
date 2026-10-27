@@ -1,5 +1,3 @@
-// Hover prefetch: the definition request is shared with the click, keyed by file + position + content; the hover queue and the
-// board-open warm-up keep the language service from being flooded
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from "vitest";

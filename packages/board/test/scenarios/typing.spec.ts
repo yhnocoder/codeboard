@@ -1,4 +1,4 @@
-// Markdown 编辑器：照 Typora 的边写边变、快捷键、剪贴板、灰字补全接受后的转换（npm run harness -- markdownInputRules editorKeys aiCompletionAccept noteBoldInputRuleAfterCjk）
+// Markdown 编辑器：照 Typora 的边写边变、快捷键、剪贴板、灰字补全接受后的转换
 // 每条规则：在一张空 Note 里打一串键 → 退出 → 看写回的 Markdown（和编辑时的 DOM）
 import { put, findSym, symCard, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
@@ -101,7 +101,7 @@ test("markdownInputRules", async () => {
     { name: "task after bullet", seq: "- a{Enter}[ ] t", md: "- a\n\n- [ ] t" },
     { name: "task bare", seq: "[ ] t2", md: "- [ ] t2" },
     { name: "code fence", seq: "```python{Enter}x = 1", md: "```python\nx = 1\n```" },
-    // N2：Note 代码块里回车保留缩进（和 Free code 卡一样，按语言缩进；没语言时照上一行）
+    // Note 代码块里回车保留缩进（和 Free code 卡一样，按语言缩进；没语言时照上一行）
     { name: "code indent typed", seq: "```python{Enter}    x = 1{Enter}y", md: "```python\n    x = 1\n    y\n```" },
     { name: "code indent plain", seq: "```{Enter}  x = 1{Enter}y", md: "```\n  x = 1\n  y\n```" },
     { name: "code indent block", init: "```python\nif a:\n    x = 1\n```", seq: "{ArrowUp}{End}{Enter}y", md: "```python\nif a:\n    x = 1\n    y\n```" },
@@ -110,7 +110,7 @@ test("markdownInputRules", async () => {
     // 公式框打开后，打开编辑器时排着的那次补焦点（下一帧）不能把焦点从公式框抢回编辑器（公式框会关掉，空公式块被删）
     { name: "math block slow frame", pre: slowFrames(400), seq: "$${Enter}", after: async (pg) => { await pg.waitForSelector(".md-pm .md-mathsrc:focus"); await frames(pg, 2); await pg.keyboard.type("x^2"); await pg.keyboard.press("Control+Enter"); await fastFrames(pg); }, md: "$$\nx^2\n$$" },
     { name: "math block one line", seq: "$$a+b$${Enter}", md: "$$\na+b\n$$", dom: count(".md-pm [data-type=block-math]"), domOk: (n) => n === 1 },
-    // #30：[toc] 回车出目录，跟着后面打的标题变
+    // [toc] 回车出目录，跟着后面打的标题变
     { name: "toc", seq: "[toc]{Enter}# A{Enter}## B", md: "[toc]\n\n# A\n\n## B", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm nav.md-toc > div")].map((d) => `${d.className}:${d.textContent}`)), domOk: (v) => JSON.stringify(v) === '["l1:A","l2:B"]' },
     { name: "hr dashes", seq: "---{Enter}", md: "---" },
     // 没按回车就还是字（编辑时看到的也是字）：写回时转义，读回来不会变成分隔线
@@ -122,7 +122,7 @@ test("markdownInputRules", async () => {
     { name: "italic underscore", seq: "x _i_ y", md: "x *i* y" },
     { name: "underscore names", seq: "block_manager and __init__", md: "block_manager and __init__" },
     { name: "strike", seq: "~~s~~ t", md: "~~s~~ t" },
-    // #32：Typora 的 ==高亮==、H~2~O、x^2^；~~删除线~~ 和单个 ~ 照旧
+    // Typora 的 ==高亮==、H~2~O、x^2^；~~删除线~~ 和单个 ~ 照旧
     { name: "highlight", seq: "x ==hi== y", md: "x ==hi== y", dom: count(".md-pm mark"), domOk: (n) => n === 1 },
     { name: "subscript", seq: "H~2~O", md: "H~2~O", dom: count(".md-pm sub"), domOk: (n) => n === 1 },
     { name: "superscript", seq: "x^2^ y", md: "x^2^ y", dom: count(".md-pm sup"), domOk: (n) => n === 1 },
@@ -130,7 +130,7 @@ test("markdownInputRules", async () => {
     { name: "lone tilde", seq: "a ~ b ~/x", md: "a ~ b ~/x" },
     { name: "code span", seq: "`c` t", md: "`c` t" },
     { name: "inline math", seq: "$\\frac{a}{b}$ and $a$, $b$", md: "$\\frac{a}{b}$ and $a$, $b$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 3 },
-    // #27：打的 \* 照 Typora：存成 \*，光标不在旁边时 \ 不显示，在旁边时显示（能删）
+    // 打的 \* 照 Typora：存成 \*，光标不在旁边时 \ 不显示，在旁边时显示（能删）
     { name: "escape hidden", seq: "a \\*not\\* b", md: "a \\*not\\* b", dom: (pg) => pg.evaluate(() => [(document.querySelector(".md-pm p") as HTMLElement).innerText, document.querySelectorAll(".md-pm em").length]), domOk: (v) => JSON.stringify(v) === '["a *not* b",0]' },
     { name: "escape shown at caret", seq: "x \\# y{ArrowLeft}{ArrowLeft}", md: "x \\# y", dom: (pg) => pg.evaluate(() => (document.querySelector(".md-pm p") as HTMLElement).innerText), domOk: (v) => v === "x \\# y" },
     { name: "dollars stay text", seq: "$5 and $10", md: "$5 and $10" },
@@ -142,13 +142,12 @@ test("markdownInputRules", async () => {
     // ⌘Z 紧跟在转换后面：撤回成打的字
     { name: "undo bold rule", seq: "**b**{Control+z}", md: "\\*\\*b\\*\\*", dom: count(".md-pm strong"), domOk: (n) => n === 0 },
     { name: "undo heading rule", seq: "# {Control+z}x", md: "\\# x" },
-    // 写回成 \$a$；再读进来时字里的 $a$ 会变成公式（旧版存下来的 \$…\$ 也这样转过来）
+    // 写回成 \$a$；再读进来时字里的 $a$ 会变成公式
     { name: "undo math rule", seq: "$a${Control+z}", md: "\\$a$", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
-    // N1：⌘Z 撤回公式转换后存下的 \$x$，再打开编辑还是字面的 $x$（不变回公式），写回不变
+    // ⌘Z 撤回公式转换后存下的 \$x$，再打开编辑还是字面的 $x$（不变回公式），写回不变
     { name: "escaped dollar reopens as text", init: "a \\$x$ b", seq: "{End} c", md: "a \\$x$ b c", dom: count(".md-pm [data-type=inline-math]"), domOk: (n) => n === 0 },
     { name: "undo fence rule", seq: "```js{Enter}{Control+z}", md: /^```js$|^\\`\\`\\`js$/, dom: count(".md-pm pre"), domOk: (n) => n === 0 },
     // 标题行首退格：变回段落
-    // （刚在空 Note 里打完字马上按 Home，headless Chromium 里偶尔落回行尾：先停一下）
     // Home 之后要等 ProseMirror 收到 selectionchange 再按 Backspace（keys 里等），不然 Backspace 按的还是行尾的光标
     // 一次退一个 #：## → # → 普通段落（Typora 一样）
     { name: "heading backspace one level", seq: "## h", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "# h" },
@@ -159,7 +158,7 @@ test("markdownInputRules", async () => {
     { name: "task backspace", seq: "- [ ] t", after: (pg) => keys(pg, "{Home}{Backspace}"), md: "t" },
     { name: "home in text", init: "hello", seq: " ab{Home}x", md: "xhello ab" },
     // 光标在格式里：显示记号
-    // #11：光标移进去（方向键、Home）就展开成真的原文，能改记号；离开时重新解析
+    // 光标移进去（方向键、Home）就展开成真的原文，能改记号；离开时重新解析
     { name: "markers bold", seq: "x **bo**{ArrowLeft}", md: "x **bo**", dom: marks, domOk: (v) => JSON.stringify(v) === '["src:**bo**"]' },
     { name: "markers heading", seq: "## hd", md: "## hd", dom: marks, domOk: (v) => JSON.stringify(v) === '["## "]' },
     { name: "markers link", seq: "[t](https://q.r){ArrowLeft}", md: "[t](https://q.r)", dom: marks, domOk: (v) => JSON.stringify(v) === '["src:[t](https://q.r)"]' },
@@ -173,8 +172,7 @@ test("markdownInputRules", async () => {
     { name: "home in heading", seq: "## hd{Home}x", md: "## xhd" },
     // 输入法提交（不经过按键）
     { name: "ime insert", seq: "", after: async (pg) => { await pg.keyboard.insertText("看 $x^2$"); await pg.keyboard.insertText(" 完"); }, md: "看 $x^2$ 完" },
-    // / 菜单
-    // #34：括号、引号自动配对（Typora 默认）；盖过补上的右括号；空的一对里退格两个都删；撇号不配；Markdown 记号不配
+    // 括号、引号自动配对（Typora 默认）；盖过补上的右括号；空的一对里退格两个都删；撇号不配；Markdown 记号不配
     { name: "pair paren", seq: "f(x", md: "f(x)" },
     { name: "pair overtype", seq: "f(x) and [a] {b}", md: "f(x) and [a] {b}" },
     { name: "pair quotes", seq: 'say "hi" and \'yo\' ok', md: 'say "hi" and \'yo\' ok' },
@@ -182,7 +180,7 @@ test("markdownInputRules", async () => {
     { name: "pair wrap", seq: "word{Shift+Home}(", md: "(word)" },
     { name: "pair backspace", seq: "a ({Backspace}b", md: "a b" },
     { name: "pair not markdown", seq: "*a and `b", md: "*a and `b" },
-    // #31：打完 :名字: 变表情（存回短名）；: 加两个字出菜单，↵ 选；不认识的、跟在数字后面的不变
+    // 打完 :名字: 变表情（存回短名）；: 加两个字出菜单，↵ 选；不认识的、跟在数字后面的不变
     { name: "emoji typed", seq: "hi :tada: x", md: "hi :tada: x", dom: (pg) => pg.evaluate(() => [...document.querySelectorAll(".md-pm .md-emoji")].map((e) => e.textContent)), domOk: (v) => JSON.stringify(v) === '["🎉"]' },
     { name: "emoji menu", seq: ":smi{Enter} ok", md: ":smile: ok", dom: count(".md-pm .md-emoji"), domOk: (n) => n === 1 },
     { name: "emoji literal", seq: "a :nosuch: 1:100: b", md: "a :nosuch: 1:100: b", dom: count(".md-pm .md-emoji"), domOk: (n) => n === 0 },
@@ -361,7 +359,7 @@ test("aiCompletionAccept", async () => {
   await close(h);
 });
 
-/** 列表项里中文后面打的行内格式（#66）：打完收尾的记号就变，前面紧挨着中文、同一行前面有带 ** 的行内代码时也变，代码里的 ** 不动；
+/** 列表项里中文后面打的行内格式：打完收尾的记号就变，前面紧挨着中文、同一行前面有带 ** 的行内代码时也变，代码里的 ** 不动；
  *  输入法一个个提交的字也一样。存下来的是没转义的 **Pointer**，退出编辑后显示成粗体 */
 test("noteBoldInputRuleAfterCjk", async () => {
   const CODE = "- (`void **`) 指向要 free 的对象的", CJK = "- 指向要 free 的对象的";

@@ -1,4 +1,3 @@
-// 共享卡在各块白板上的情况：卡头的「⧉ N boards」（在哪几块白板上、各自的调用图标记）和「← N」（别的白板上连进来的箭头）。
 // 宿主在白板存盘后算一次发给白板（白板不在每一帧里算）；纯函数，只读传进来的白板。
 import { cardTitle, type Board } from "./model";
 import { computeFlows, type Flows } from "./flow";

@@ -76,7 +76,6 @@ export const BreadcrumbsDeep: Story = { name: "Breadcrumbs · 3 Levels", args: {
 export const Toast: Story = { args: { toast: "Select a card first, then click another card" }, play: keepToast };
 export const ToastAction: Story = { name: "Toast · With Button", args: { toast: "Still nothing. The page may need a login: open it in your browser.", action: "Open in Browser" }, play: keepToast };
 export const ToastError: Story = { name: "Toast · Error", args: { toast: "Couldn't delete everywhere: No reply from the editor (deleteEverywhere)" }, play: keepToast };
-// 真的点：什么都没选时点 Arrow
 export const ToastFromArrow: Story = { name: "Toast · Arrow With Nothing Selected", play: async () => { await settled(); await click('.bbar button[aria-label="Arrow"]'); } };
 export const KeyboardShortcuts: Story = { name: "Keyboard Shortcuts (?)", play: async () => { await settled(); await key("?"); } };
 export const Tooltip: Story = { name: "Tooltip (Hover a Button)", play: async () => { await settled(); await hover('.bbar button[aria-label="Note"]'); await el(".tip.show"); } };

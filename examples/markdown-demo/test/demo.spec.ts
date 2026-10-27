@@ -1,6 +1,3 @@
-// The whole chain with only @yhnocoder/markdown: static render (KaTeX, a Mermaid diagram, highlighted code, [[refs]] resolved by
-// the page), click to edit (the editor chunk loads), type with a Typora-style conversion, Esc saves the Markdown and the page
-// renders it statically again
 import * as path from "node:path";
 import { test, expect } from "@playwright/test";
 
@@ -21,7 +18,6 @@ test("markdownDemo", async ({ page }) => {
   await page.goto("./");
   const note = page.locator("#note");
 
-  // static render
   await expect(note.locator(".katex").first()).toBeVisible();
   await expect(note.locator(".math .katex-display")).toHaveCount(1);
   await expect(note.locator(".mmd svg")).toHaveCount(1);
@@ -46,7 +42,6 @@ test("markdownDemo", async ({ page }) => {
   await expect(note.locator(".md-pm")).toHaveCount(0);
   expect(await editorChunks(), "no editor or code editor chunk before the first click").toEqual([]);
 
-  // edit: Typora-style **bold** turns bold as it is typed
   await note.locator("p", { hasText: "A short note" }).click();
   const pm = note.locator(".md-pm");
   await expect(pm).toBeVisible();
@@ -79,7 +74,6 @@ test("markdownDemo", async ({ page }) => {
   await expect(cm).toHaveText("x = 1");
   await page.keyboard.press("Escape");
 
-  // saved Markdown and the static render again
   await expect(note.locator(".md-pm")).toHaveCount(0);
   await expect(page.locator("#source")).toContainText("Edited **here** now");
   await expect(page.locator("#source")).toContainText("```\nx = 1\n```");

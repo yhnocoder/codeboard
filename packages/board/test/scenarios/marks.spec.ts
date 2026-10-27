@@ -1,8 +1,3 @@
-// Mark cards (the handwritten note beside Text and Note) and their hand-drawn arrows: no frame, handwriting font, the color dots,
-// the width handle (text wraps, font size stays), double-click to edit, arrows drawn hand-style in the Mark's color and the
-// same shape every time the cards come back to the same place.
-// Usage: npm run harness -- markCard markArrowStable
-// Screenshots: test-out/harness/marks-*.png (HARNESS_LIGHT=1 for the light theme)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle, frames, pmHasSelection, focusSettled } from "../fixtures";

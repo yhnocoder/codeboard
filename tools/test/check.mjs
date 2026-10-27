@@ -1,10 +1,3 @@
-// npm run check: the local test run, about 3 minutes. See TESTING.md.
-//   1. the @yhnocoder/markdown build (packages/markdown/dist, a few seconds), which the board, its typecheck, the package's own
-//      tests and the demo all use; then typecheck, unit tests (core, markdown, board, host, extension) and the Markdown demo
-//      (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
-//      sources changed since the last one
-//   2. the harness scenarios this change needs (tools/test/pick.mjs), compared with origin/main, several at a time,
-//      within what is left of the 3 minutes
 // Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness>]
 //   scenario names are always run (the problem being worked on); --all runs every scenario, with no time limit
 import { spawn, execFileSync } from "node:child_process";

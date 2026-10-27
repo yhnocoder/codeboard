@@ -1,5 +1,3 @@
-// 真机试用（nano-vllm、白板放在编辑器旁边）后的体验修正
-// Usage: npm run harness -- <scenario>   screenshots: test-out/harness/ux-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, DEFAULT_SETTINGS, type CodeCard, type SegView, type HostToBoard, type NameHit } from "@codeboard/core";
@@ -72,7 +70,7 @@ const zoomOf = (h: Host) => h.page.evaluate(() => parseInt(document.querySelecto
 const inView = (b: { x: number; y: number; width: number; height: number } | null, vw: number, vh: number, top = Infinity) =>
   !!b && b.x >= 0 && b.y >= 0 && b.x + b.width <= vw && b.y + Math.min(b.height, top) <= vh;
 
-/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，子卡放在下面，新卡大半在视野里（和 replay r16 同一个标准）；之后 Fit 不低于概览 */
+/** 白板在编辑器旁边（窄）、100%：连着展开 step 的两个调用，子卡放在下面，新卡大半在视野里；之后 Fit 不低于概览 */
 async function expandFollow(res: Record<string, unknown>) {
   const b = emptyBoard("bE", "expand");
   const step = nv("LLMEngine.step"); put(b, step, 40, 80, 480);
@@ -267,7 +265,7 @@ async function readableNote(res: Record<string, unknown>) {
   return z1 > 0.48 && z1 <= 1 && font1 >= 10.9 && inView(box, 1200, 800) && z2 === z1 && z3 >= 0.6 && z3 < 0.8 && editingT && font2 >= 10.9;
 }
 
-/** ⌘K 在 nano-vllm 里搜 step：只列名字 / 全名里有 step 的符号（不再列 main、Context、get_context、…__init__） */
+/** ⌘K 在 nano-vllm 里搜 step：只列名字 / 全名里有 step 的符号（不列 main、Context、get_context、…__init__） */
 async function searchStep(res: Record<string, unknown>) {
   useWorkspace(nodeWorkspace(path.join(REPO, "examples/nano-vllm")));
   await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));

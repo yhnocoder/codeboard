@@ -1,4 +1,3 @@
-// Relocate… after the file was renamed (git mv + commit): offers the function in the renamed file, not the deleted one, and re-pins the card there
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";

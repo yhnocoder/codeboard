@@ -1,5 +1,3 @@
-// 代码区里按行的东西：高亮、选中的行、隐藏的行、藏注释 / 空行、藏公共缩进、折行、多段卡的分界、类卡、Sidenote 标记、行上的贴纸、
-// 箭头起点、变量高亮、拖箭头时的落点行
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, Segment } from "@codeboard/core";
 import { Stage, scene, noteCard, type Globals, type Group, type Scene } from "./support/board";

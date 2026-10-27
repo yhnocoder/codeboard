@@ -75,7 +75,6 @@ export const hostOf = (id: string) => cardById(id)?.host.id ?? id;
 export const placed = rooted(() => createMemo(() => state.board.cards.filter((c) => state.board.place[c.id])));
 
 const NOWHERE: Place = { x: 0, y: 0, w: 320 };
-/** 卡（或 Compare 的栏 → 它的 Compare）的摆放 */
 export function placeOf(id: string): Place {
   return state.board.place[id] ?? state.board.place[hostOf(id)] ?? NOWHERE;
 }
@@ -311,7 +310,6 @@ function trimSync() {
   while (i < syncLog.length && (syncLog[i].n <= min || syncLog.length - i > SYNC_MAX)) i++;
   if (i) syncLog.splice(0, i);
 }
-/** 回到快照 s 之后：重放 s 之后的 sync（不进撤销栈） */
 function replaySync(s: Snap): { any: boolean; shared: Set<string> } {
   const xs = syncLog.filter((x) => x.n > s.epoch);
   const shared = new Set(xs.flatMap((x) => x.shared ?? []));

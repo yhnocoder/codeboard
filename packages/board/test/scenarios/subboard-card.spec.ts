@@ -1,6 +1,3 @@
-// The sub-board card (a board placed on another board): its columns (one per section, mini cards at a fixed text size), the wheel
-// over it, entering / leaving with the title morph, and [[ links to cards inside sub-boards.
-// Usage: npm run harness -- <scenario…>   screenshots: test-out/harness/subboardcard-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type NoteCard } from "@codeboard/core";

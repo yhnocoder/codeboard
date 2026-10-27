@@ -132,7 +132,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     await expand("Scheduler.schedule", "can_allocate", "BlockManager.can_allocate");
     check(await card(f, "Scheduler.schedule").count() === 1 && await card(f, "Scheduler.postprocess").count() === 1, "two child cards");
     check(await card(f, "BlockManager.can_allocate").count() === 1, "grandchild BlockManager.can_allocate");
-    // Labels only name the tree (since v0.1.5 every card shows its tree's letter)
+    // Labels only name the tree (every card shows its tree's letter)
     const root = await text(card(f, "LLMEngine.step").locator(".chead .step"));
     const n = await text(card(f, "BlockManager.can_allocate").locator(".chead .step"));
     check(!!n && n === root, "grandchild is labeled with the same tree", { root, n });
@@ -313,7 +313,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     check(got === want, "same card count after reopening", { want, got });
   });
 
-  // One screenshot of the same board per theme, for side-by-side comparison with the material reference in T2 (checklist S11)
+  // One screenshot of the same board per theme, for side-by-side comparison
   await step("r14-themes", "One screenshot per theme (8)", async () => {
     // Close Settings with its own button: a stray Ctrl+, that reaches VS Code instead of the board opens VS Code's Settings over the board,
     // after which the hidden webview stops painting (stale screenshots, every later step waits out settle())
@@ -341,8 +341,6 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     const tab = await text(page.locator(".tab.active"));
     check(!/Settings/.test(tab), "the board is still the active editor after Settings", tab);
   });
-
-  // ---- The steps below come from v0.1.5 trial feedback (checklist section 4: C1 C2 C4 C8) ----
 
   await step("r15-paste-near", "Select a card, ⌘C ⌘V: the new card appears next to the original (C8)", async () => {
     await blank(f, page); await fit(f); await idle(f);
@@ -415,7 +413,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
       const r1 = await rectOf(pop);
       check(Math.abs(r1.l - r0.l) < 60 && Math.abs(r1.t - r0.t) < 60, "popup stays next to its anchor", { before: r0, after: r1 });
     }
-    // Leave the popup open so this step's screenshot and audit (L10) see it
+    // Leave the popup open so this step's screenshot and audit see it
   });
 
   await step("r18-drag-body", "Every non-code card can be dragged from the middle of its content (C2)", async () => {

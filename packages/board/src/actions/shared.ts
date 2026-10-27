@@ -245,7 +245,6 @@ export async function updateScoped(cardId: string, segId: string, data: DiffData
 /** Update 时用的复查标签：新版本的短名 */
 export const reviewLabel = (data: DiffData) => (data.newSeg ? versionLabel(data.newSeg.version) : "");
 
-/** Update 后数一下要复查的 Sidenote，提示一下 */
 export function reviewToast(cardId: string) {
   const n = state.board.sidenotes.filter((x) => x.at.card === cardId && x.review).length;
   return n ? ` · ${n} sidenote${n > 1 ? "s" : ""} on changed lines, check ${n > 1 ? "them" : "it"}` : "";

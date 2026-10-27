@@ -51,7 +51,7 @@ export const NOTE_FONT_RANGE = { body: [10, 24], heading: [10, 40] } as const;
 export type Settings = {
   theme: ThemeId;
   vscodeBg: boolean; // 白板画布的底色换成 VS Code 编辑器的背景色（卡片、文字、强调色还是主题的；默认关）
-  hideOnNew: HideFlags; // 新卡默认隐藏什么（替代卡片上的 Hide 浮条）
+  hideOnNew: HideFlags; // 新卡默认隐藏什么
   studyScope: string[]; // 除了工作区以外也算 project code 的包（torch、vllm…）
   stickerDir: string; // Sticker Packs 目录；"" = ~/.codeboard/stickers
   zoomOverview: number; // 低于这个比例：概览（代码变灰条）

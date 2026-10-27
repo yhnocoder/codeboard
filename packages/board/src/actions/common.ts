@@ -118,7 +118,7 @@ export function popCard(id: string, from?: { x: number; y: number }) {
   animate((dt, instant) => {
     if (performance.now() - start < (reduceMotion() ? 0 : 20)) return false;
     instant ? sp.set(1) : sp.step(dt);
-    const v = Math.min(1, Math.max(popIn()[id]?.v ?? 0, sp.v)); // 不回退
+    const v = Math.min(1, Math.max(popIn()[id]?.v ?? 0, sp.v));
     const done = sp.done || instant;
     setPopIn((p) => {
       const n = { ...p };

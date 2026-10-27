@@ -3,7 +3,6 @@
 // ··· (More Actions) button, its resize grip and its edge port keep following the pointer to where they are released, no
 // tooltip shows and none of those controls shows hover. panKeepsGoingOverCards: a wheel (two-finger) pan and a middle-button
 // drag pan keep moving the canvas while a card's edge and body come under the pointer.
-// Usage: npm run harness -- dragPassesOverCardControls panKeepsGoingOverCards
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { type Host } from "../harness";
 import { test, open, check, light, idle, hold, frames } from "../fixtures";
@@ -114,7 +113,7 @@ test("dragPassesOverCardControls", async () => {
   check("dragPassesOverCardControls arrow: links to the card it is released on", links.includes("n0>n1") && linked.every((m) => m.off === 0), { links, linked });
 });
 
-/** A Note shorter than its text, which scrolls in its body (like the long Notes the issue came from) */
+/** A Note shorter than its text, which scrolls in its body */
 function panBoard(): Board {
   const b = emptyBoard("b2", "pan over cards");
   const md = Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long note that scrolls inside its body.`).join("\n\n");

@@ -1,11 +1,9 @@
-// Fixes from Linda's first try in VS Code:
 //  qpop     — the question popover in every theme, light and dark: the placeholder is not clipped, the buttons never wrap
 //  dataclass — nano-vllm utils/context.py: a fields-only @dataclass class card shows its code (decorator + fields), not an empty member list
 //  segsep   — multi-segment cards show every segment boundary (⋯ N lines / a divider); a class card merges into one, segments by line
 //  varmenu  — Add Variant menu: a long worktree path does not wrap "Other Worktree", it is cut with an ellipsis
 //  fithide  — Fit Content on a card with Hide Docstrings / Comments / Blank Lines on: the width follows only the lines shown
 //             (torch Module.get_parameter: the long docstring line and a long trailing comment must not count)
-// Usage: npm run harness -- qpop dataclass segsep varmenu fithide   screenshots: test-out/harness/fixq-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, THEMES, emptyBoard, type CodeCard } from "@codeboard/core";
@@ -156,7 +154,7 @@ function ctxSeg(a: number, b: number, symbol?: Segment["symbol"]): Segment {
 
 async function segsep(res: Record<string, unknown>) {
   const b = emptyBoard("bS", "nano-vllm · context");
-  // Linda's board: the class card (made as a class card) above a card merged from get_context, set_context, reset_context
+  // the class card (made as a class card) above a card merged from get_context, set_context, reset_context
   const ctx = nv("Context");
   const three: CodeCard = { id: "cThree", kind: "code", segments: [nv("get_context"), nv("set_context"), nv("reset_context")].map((c) => c.segments[0]) };
   // ⌥B over lines 5–27 (one card): the class, _CONTEXT = Context() and the three functions

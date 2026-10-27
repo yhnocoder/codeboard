@@ -1,5 +1,3 @@
-// Sub-boards: entering / leaving switches the same panel (breadcrumbs, cameras and walkthrough hops carried over), a board can't
-// contain itself, Turn into Board saves into the parent's group, and the sidebar nests child boards under their parents
 import * as fs from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { emptyBoard, skeletonOf, type Board, type BoardToHost, type Camera, type Crumb, type WalkHop } from "@codeboard/core";

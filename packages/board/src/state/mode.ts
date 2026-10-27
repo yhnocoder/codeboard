@@ -24,7 +24,6 @@ export const idle = () => setMode(IDLE);
 export const modeIs = <K extends ModeKind>(k: K): Extract<Mode, { kind: K }> | null => { const m = mode(); return m.kind === k ? (m as Extract<Mode, { kind: K }>) : null; };
 
 export const connectFrom = () => modeIs("connect")?.from ?? null;
-/** 工具栏 Arrow / 手动补 Call 箭头：接下来点的卡连上 */
 export const setConnectFrom = (from: ConnectFrom) => setMode({ kind: "connect", from });
 export const placing = () => modeIs("place");
 

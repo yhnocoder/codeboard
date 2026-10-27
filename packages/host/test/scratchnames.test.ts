@@ -1,5 +1,3 @@
-// Scratch file naming and crash cleanup: only exact .codeboard-scratch-<id>.<ext> names that are not ours and whose mtime is older
-// than STALE_MS get deleted
 import { describe, expect, it } from "vitest";
 import { LANG_TABLE } from "@codeboard/core";
 import { HEARTBEAT_MS, STALE_MS, isScratchName, isStale, scratchName, staleScratch } from "../src/scratchnames";

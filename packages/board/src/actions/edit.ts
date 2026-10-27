@@ -105,7 +105,6 @@ export function editTextSel(key: "Backspace" | "Delete"): boolean {
     setEditing({ kind: "note", id });
     return true;
   }
-  // 代码卡的代码
   const src = a!.closest(".src");
   const map = src && src === b!.closest(".src") ? codeTextRange.get(src) : undefined;
   if (c?.kind !== "code" || !map) return false;
@@ -473,8 +472,6 @@ export function fitSections(ids: string[]) {
 export function renameSection(id: string, v: string) {
   mutate((b) => { const s = b.sections.find((q) => q.id === id); if (s) s.title = v.trim() || "Untitled Section"; });
 }
-
-// 无背景：Image 默认无背景，Code 可选
 
 export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && !!c.nobg);
 /** 倾斜：选中的几张卡里有没斜的就都斜，都斜着就都放正（Compare 的栏算整张 Compare） */

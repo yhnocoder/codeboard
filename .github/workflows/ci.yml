@@ -1,11 +1,3 @@
-# T0, tier 2 of TESTING.md: runs on every push and PR and should finish in about 5 minutes. Jobs run in parallel:
-#   unit     typecheck, unit tests (core, markdown, board, host, extension), the Markdown demo end to end (examples/markdown-demo)
-#   harness  the browser harness scenarios this change needs (tools/test/pick.mjs), 2 jobs, Playwright Test on several workers in each
-#   e2e      real VS Code (with Pylance) e2e + generic UI audit, split into 2 parts
-#   perf     board + host perf benchmarks on base and head in one job (head, base, head); fails on a regression.
-#            Only when the change touches code the benchmarks run
-#   report   publishes e2e screenshots to the ci-screenshots branch and updates the marked section of the PR description
-# Everything, with no time limit, runs every night: see nightly.yml. The study-task replay: see replay.yml.
 name: CI
 on:
   push:

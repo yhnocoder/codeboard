@@ -62,7 +62,6 @@ export async function expandCall(cardId: string, segId: string, call: CallSpan, 
     showPicker(`${call.name}() · ${r.pick.length} definitions`, r.pick.map((p) => ({ label: p.label, detail: p.detail, run: () => expandCall(cardId, segId, call, at, { path: p.path, line: p.line }, again, extra) })));
     return;
   }
-  // 动态分发：列出全部实现，选一个
   if ("impls" in r) return openImplPicker(cardId, segId, call, r, at, again);
   placeExpanded(cardId, segId, call, r.card, r.views, r.vars, at, r.w, { mark: { ...r.mark, ...extra?.mark }, label: extra?.label, title: r.title });
   // 宿主没等转到实现就建了卡：有没有子类覆盖在后台问，回来了再给选（不让点击等语言服务在整个工作区里找子类）
@@ -198,13 +197,11 @@ export function askCands(lid: string, cardId: string, segId: string, call: CallS
     .catch(() => {});
 }
 
-// 悬停在调用上：让宿主先去问定义
-
 const PREFETCH_DWELL = 150; // 停这么久才算（鼠标扫过去的不算）
 let preKey = "", preTimer: number | undefined;
 const sent = new Map<string, number>(); // 已经发过的调用 → 时间（宿主有缓存，短时间内不再发）
 
-/** CodeBody 的 pointermove 调：target 在 .call 上停稳了就发 prefetch（不等回答） */
+/** target 在 .call 上停稳了就发 prefetch（不等回答） */
 export function hoverCall(cardId: string, segId: string | undefined, target: EventTarget | null) {
   const x = (target as Element | null)?.closest?.(".call") as HTMLElement | null;
   const key = x && segId ? `${cardId}:${segId}:${x.dataset.c}` : "";

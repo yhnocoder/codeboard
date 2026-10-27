@@ -1,6 +1,3 @@
-// 写公式时的提示和公式预设：\ 命令补全、实时预览和大白话报错（一键修正）、设置 codeboard.math.preamble 里的 \newcommand。
-// Usage: npm run harness -- mathCommandAutocomplete mathInlineAutocomplete mathPreviewPlainErrors mathInlinePreviewBubble
-//          mathPreambleMacros mathPreambleSetting mathHintsKeystrokeTime
 import * as path from "node:path";
 import { put, shot, OUT, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type NoteCard } from "@codeboard/core";

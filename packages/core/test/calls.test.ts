@@ -1,4 +1,3 @@
-// v0.2 calls: RPC arrows in the call graph, ↩ back to, Start cards, call tree, run records (wireframes 03, 12, 13)
 import { describe, expect, it } from "vitest";
 import {
   applyRun, callName, callTree, computeFlows, emptyBoard, loadBoard, loadRun, matchRun, rpcText, startCards, walkOrder,

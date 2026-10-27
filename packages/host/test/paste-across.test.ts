@@ -1,5 +1,3 @@
-// Cards copied (⌘C) in one window paste (⌘V) on a board in another window with another storage folder: they arrive as independent
-// copies, with code sources rewritten for this workspace and the images and run records they use copied into this storage folder
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

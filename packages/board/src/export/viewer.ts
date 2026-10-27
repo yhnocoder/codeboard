@@ -48,7 +48,6 @@ function start(d: ViewerData) {
     else if (e.key === "ArrowRight") step(1);
     else if (e.key === "ArrowLeft") step(-1);
   });
-  // 讲解路径
   let wi = -1;
   const wbar = q(".xv-walk");
   const step = (k: number) => {

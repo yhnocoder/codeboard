@@ -1,7 +1,3 @@
-// The harness scenarios wait for real state, not for a fixed time: no scenario file (nor harness.ts / subhost.ts, which they run
-// through) sleeps on its own. The waits are until / idle / Playwright's own; a wait that has to be a fixed time goes through
-// hold(h, ms, why) (or focusSettled, ProseMirror's focus timers, which holds through it) in fixtures.ts, so that every one of them
-// is named and counted. Checked by shape, like packages/core/test/edit.test.ts; prints how many hold sites there are.
 // The VS Code e2e scripts (extensions/vscode/test/*.cjs) follow the same rules through their own helpers in wait.cjs: until / idle,
 // and hold(ms, why) with a named constant for the fixed waits
 import * as fs from "node:fs";
@@ -89,7 +85,6 @@ describe("harness scenarios wait for state, not for time", () => {
   });
 });
 
-// ---------- the VS Code e2e scripts ----------
 const E2E = path.join(TEST, "../../../extensions/vscode/test");
 const e2eFiles = () => fs.readdirSync(E2E).filter((f) => /\.c?js$/.test(f));
 /** wait.cjs's poll step: the one timer the e2e scripts wait on, inside until / soon / idle / hold */

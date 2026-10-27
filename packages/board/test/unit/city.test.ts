@@ -1,4 +1,3 @@
-// City 的几何（canvas/city.ts）：停着的车画进世界坐标、人行横道、路面标线、开着的车的关键帧
 import { describe, expect, it } from "vitest";
 import { carAt, carPaths, laneOf, zebraBack, driveFrames } from "../../src/canvas/city";
 

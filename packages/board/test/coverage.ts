@@ -62,7 +62,6 @@ function bundleSources(file: string, text: string, fns: Fn[], out: Set<string>) 
   }
 }
 
-/** Source files the board page ran */
 export function pageFiles(entries: PageCoverage, out: Set<string>) {
   for (const e of entries) if (e.url.startsWith("file://") && e.source) bundleSources(fileOf(e.url), e.source, e.functions, out);
 }

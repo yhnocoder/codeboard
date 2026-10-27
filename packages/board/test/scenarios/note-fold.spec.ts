@@ -1,4 +1,3 @@
-// Notes whose header folds away while editing: npm run harness -- noteTextStaysPutLeavingEdit
 import { emptyBoard, type NoteCard } from "@codeboard/core";
 import { put } from "../harness";
 import { test, open, check, idle } from "../fixtures";
@@ -12,7 +11,7 @@ test("noteTextStaysPutLeavingEdit", async () => {
   const pg = h.page;
   await pg.locator('.card[data-id="n0"] .nbody img').evaluate((e) => (e as HTMLImageElement).decode()); await idle(h);
   await pg.locator('.card[data-id="n0"] .nbody p').last().dblclick();
-  await pg.waitForSelector('.card[data-id="n0"] .md-pm'); await idle(h); // the editor is open, the header folded away
+  await pg.waitForSelector('.card[data-id="n0"] .md-pm'); await idle(h);
   await pg.evaluate(() => { const w = window as any; w.__y = []; const card = document.querySelector('.card[data-id="n0"]')!; const t0 = performance.now();
     const f = () => { const ps = card.querySelectorAll(".nbody p"); const p = ps[ps.length - 1] as HTMLElement | undefined; const z = card.getBoundingClientRect().width / (card as HTMLElement).offsetWidth; const im = card.querySelector(".nbody img") as HTMLElement | null; w.__y.push([Math.round(performance.now() - t0), p ? +((p.getBoundingClientRect().top - card.getBoundingClientRect().top) / z).toFixed(1) : null, card.querySelector(".md-pm") ? "ed" : "st", im ? +((im.getBoundingClientRect().top - card.getBoundingClientRect().top) / z).toFixed(1) : null, +z.toFixed(3)]); if (performance.now() - t0 < 500) requestAnimationFrame(f); else w.__yDone = true; }; requestAnimationFrame(f); });
   await pg.mouse.click(860, 480);

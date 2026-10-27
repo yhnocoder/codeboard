@@ -16,8 +16,6 @@ import { exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, s
 
 export { nameIndexReady, resetIndex, startNameIndex } from "./nameindex";
 
-// ---------- 转到定义 ----------
-
 /** 问语言服务（同一个文件、位置、内容的请求共用：悬停时可能已经在问了） */
 export const lspDefs = (abs: string, line: number, col: number): Promise<Def[]> => sharedDefs(abs, line, col, () => askDefs(abs, line, col));
 /** 定义处的「转到实现」（Pylance 要在整个工作区里找子类，冷的时候要好几秒）：悬停预取、打开白板的预热、点击、peek 共用一个请求 */
@@ -66,8 +64,6 @@ export async function symAtDef(d: Def, name?: string, qual?: string): Promise<{ 
 }
 
 const toSym = (e: IndexEntry): Sym => ({ name: e.name, qual: e.qual, kind: e.kind, start: e.start, end: e.end, defLine: e.defLine, sig: e.sig, params: [] });
-
-// ---------- expand ----------
 
 type ExpandReq = { seg: Segment; line: number; col: number; name: string; recv?: string; pick?: ExpandPick };
 
@@ -170,8 +166,6 @@ function callerOf(lang: string, full: string, line: number): { lang: string; lin
   return { lang, line: lines[line - 1] ?? "", fnText: fn ? lines.slice(fn.start - 1, fn.end).join("\n") : "" };
 }
 
-// ---------- 动态分发 ----------
-
 /** 点击时最多等转到实现多久（ms）：缓存里有、或者语言服务热着时够用；再久就先建卡 */
 const DISPATCH_WAIT = 200;
 const LATE = Symbol("late");
@@ -268,8 +262,6 @@ function calleeOf(sym: Sym, syms: Sym[]): Sym {
   return sym.params.length ? sym : syms.find((s) => s.qual === sym.qual && s.start === sym.start) ?? syms.find((s) => s.qual === sym.qual) ?? sym;
 }
 
-// ---------- 拖到已有的卡：变量候选 ----------
-
 type CallVarsReq = { seg: Segment; line: number; col: number; name: string; target: Segment };
 
 /** 调用接到已有的卡上（拖过去 / Link to Existing Card）：按目标卡的符号算变量候选 */
@@ -294,8 +286,6 @@ export async function callVars(m: CallVarsReq): Promise<Var[]> {
   const top = (t.symbol && syms.find((s) => s.qual === t.symbol!.qual)) ?? syms.filter((s) => s.start >= t.start && s.end <= t.end && (s.name === m.name || s.qual.endsWith(`.${m.name}`)))[0] ?? symbolAt(syms, t.start);
   return top ? varCandidates(site, calleeOf(top, syms)) : [];
 }
-
-// ---------- peek ----------
 
 type PeekReq = { seg: Segment; line: number; col: number; word: string; at?: { path: string; line: number; col: number } };
 type Hover = { sig?: string; doc?: string };

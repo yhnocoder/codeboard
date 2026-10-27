@@ -1,6 +1,5 @@
-// Sub-boards (wireframe 05): one browser plays a board panel; the host (subhost.ts) is core Storage on a temp dir and switches
+// Sub-boards: one browser plays a board panel; the host (subhost.ts) is core Storage on a temp dir and switches
 // the panel between boards like BoardHub.switchBoard (crumbs, cameras, walkthrough hops), pushes skeletons after saves.
-// Usage: npm run harness -- subboards [--light]   screenshots: test-out/harness/subboards-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, subBoardsOf, type Board } from "@codeboard/core";
@@ -92,7 +91,7 @@ test("turnIntoBoardUndo", async () => {
 });
 
 /** Lines selected on a sub-board, then back to the parent: the line selection was the sub-board's, so S on the parent has no lines to
- *  attach to (it used to open Add Sidenote for a card the parent does not have, and adding one left a dangling sidenote) */
+ *  attach to */
 test("lineSelectionStaysOnItsBoard", async () => {
   const C = emptyBoard("bLsChild", "Child"), P = emptyBoard("bLsParent", "Parent");
   const a = card("Scheduler.schedule"), c = card("BlockManager.allocate");

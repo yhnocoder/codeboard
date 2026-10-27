@@ -48,7 +48,5 @@ export const NoEntryPoints: Story = { name: "No Entry Points", args: { query: ""
 export const Results: Story = { args: { query: "block" }, play: open };
 export const NoMatch: Story = { name: "No Match", args: { query: "paged_attention_v2" }, play: open };
 export const Waiting: Story = { name: "Waiting for the Host", args: { slow: true }, play: open };
-// ↓ 两下：高亮跟着键盘走
 export const KeyboardSelection: Story = { name: "Keyboard Selection", args: { query: "block" }, play: async (c) => { await open(c); await el(".palette .cand"); await frames(2); await key("ArrowDown"); await key("ArrowDown"); } };
-// 真的点：工具栏的 Search
 export const FromToolbar: Story = { name: "From the Toolbar", args: { query: "" }, play: async () => { await settled(); await toolbar("Search"); } };

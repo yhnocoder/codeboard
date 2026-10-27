@@ -1,4 +1,3 @@
-// 白板按它渲染，Link 端点、Sidenote 标记按它找位置。
 import { inRanges, type CodeCard, type HideFlags, type Segment } from "./model";
 
 export const F_BLANK = 1, F_COMMENT = 2, F_DOCSTRING = 4;

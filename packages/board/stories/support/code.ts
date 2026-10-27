@@ -13,8 +13,6 @@ import code from "../fixtures/code.json";
 export type Fx = keyof typeof code;
 export const FX = code as unknown as Record<Fx, { seg: Segment; view: SegView }>;
 
-// ---------- 展示数据 ----------
-
 // 和 test/harness.ts 的 tokenize 一样粗的 Python 着色：改过的行、手写的代码在浏览器里现算，颜色和预先算好的 code.json 一致
 const KW = new Set("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await".split(" "));
 const CKW = new Set("void int float double char const return for if else while struct unsigned auto template typename __global__ __shared__ __syncthreads".split(" "));
@@ -67,15 +65,11 @@ export function register(seg: Segment, view: SegView = viewFor(seg), key = seg.i
   MINE.add(seg.id);
 }
 
-// ---------- 假宿主：多答几种请求 ----------
-
 // 只答自己登记过的段（register）、DIFFS 里有的：别的交给假宿主的下一层
 reply("views", (m: { segs: Segment[] }) => (m.segs.every((s) => MINE.has(s.id)) ? Object.fromEntries(m.segs.map((s) => [s.id, viewFor(s)])) : PASS));
 reply("diff", (m: { seg: Segment }) => DIFFS[m.seg.id] ?? PASS);
 export const DIFFS: Record<string, DiffData> = {};
 export { COMMITS } from "./host";
-
-// ---------- 段和卡 ----------
 
 let n = 0;
 /** 函数卡：codeCard 之外再改段（高亮、隐藏、版本、来源……）；改了文字的段自己算展示数据 */

@@ -247,7 +247,6 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       end();
       return A.cardToSidenote(ids[0], { card: drop.card, seg: drop.seg, lines: [drop.line!, drop.line!] });
     }
-    // 盖住卡三分之一以上（几个都够时取盖得多的）的 Section 就是它的（homeFor）
     live((b) => {
       for (const it of items) {
         const c = hostPlace(b, it.id);
@@ -681,7 +680,6 @@ export function installKeys() {
       A.pasteText(text, near ?? w, !!near);
     });
   });
-  // 拖文件进来：图片
   window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault(); });
   window.addEventListener("drop", (e) => {
     if (e.defaultPrevented) return; // 拖进正在编辑的 Note：编辑器已经插进去了

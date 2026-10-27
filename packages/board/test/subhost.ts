@@ -14,7 +14,6 @@ const viewsOf = (b: Board): Record<string, SegView> => {
   return v;
 };
 
-/** A host for one board panel that switches between boards */
 export async function subHost(start: Board, others: Board[]) {
   const dir = path.join(OUT, `subboards-store-${process.pid}-${start.id}`); // one per worker and start board: workers run side by side
   fs.rmSync(dir, { recursive: true, force: true });

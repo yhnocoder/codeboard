@@ -1,5 +1,3 @@
-// 旁注（Sidenote）：挂在代码卡的一行、几行或整张卡上；行号旁是计数的小标记（整卡的在卡头），Always Show 的文字直接写在行下面，
-// 指着标记弹出、点一下钉住。五种：代码、粘贴、文字、链接、另一张卡
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Sidenote } from "@codeboard/core";
 import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./support/board";

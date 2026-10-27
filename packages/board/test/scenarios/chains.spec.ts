@@ -1,7 +1,6 @@
-// Broken chains + cross-language (wireframes 01, 02). One browser plays the board; the host is the real resolver
+// Broken chains + cross-language. One browser plays the board; the host is the real resolver
 // (packages/host/src/resolve.ts) on the crosslang fixture repo through the node workspace, with a stub language
 // server for dynamic dispatch (definition = the base method, implementations = the overrides, as Pylance answers).
-// Usage: npm run harness -- pickimpl crosslang [--light]   screenshots: test-out/harness/{pickimpl,crosslang}-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type SegView, type HostToBoard } from "@codeboard/core";

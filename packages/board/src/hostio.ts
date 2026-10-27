@@ -1,4 +1,3 @@
-// 宿主发来的消息。换白板（init）时这块白板的界面状态（boardSignal）、浮层一起清掉（state/root.ts）
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard, type Sidenote } from "@codeboard/core";

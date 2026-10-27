@@ -1,4 +1,3 @@
-// Typora 式转换（reconvert）：整段插入后按 Markdown 重解析；一次撤销 / 重做
 import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
 import { EditorState, TextSelection } from "@tiptap/pm/state";
@@ -125,7 +124,7 @@ describe("typing rule: re-parse what is before the caret (retype)", () => {
   it("waits for the closing ~~, and keeps a single ~ with spaces as text", () => {
     for (const [md, ch] of [["x ~~s", "~"], ["x ~a b", "~"]] as const) expect(type(md, ch).changed, md).toBe(false);
   });
-  // #66：打完收尾的记号就变，和解析器一样：前面紧挨着中文、同一行前面有行内代码 `void **` 时也变，代码里的记号不动
+  // 打完收尾的记号就变，和解析器一样：前面紧挨着中文、同一行前面有行内代码 `void **` 时也变，代码里的记号不动
   it("converts **b**, *i*, ~~s~~, ==h== and `c` after CJK text, also with ** inside an earlier code span", () => {
     const code = (pre: string) => [schema.text("("), schema.text("void **", [schema.marks.code.create()]), schema.text(`) ${pre}`)];
     for (const pre of ["指向要 free 的对象的 ", "指向要 free 的对象的"]) {

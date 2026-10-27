@@ -8,7 +8,6 @@ const qi = (page) => page.locator(".quick-input-widget");
 const qiValue = (page) => page.locator(".quick-input-widget .quick-input-box input").inputValue();
 const qiFocused = (page) => page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget"));
 const qiOpen = async (page) => await qi(page).isVisible() && await qiFocused(page);
-/** Wait until the quick input is closed */
 const qiClosed = (page, what = "the quick input") => qi(page).waitFor({ state: "hidden", timeout: 10000 }).catch(() => { throw new Error(`${what} did not close`); });
 // With a board's webview focused, VS Code focuses the webview again whenever a quick input closes: the workbench posts "focus" to the
 // webview, whose host page then calls focus() on the board's frame. That message can land after the next quick input has opened (F1's

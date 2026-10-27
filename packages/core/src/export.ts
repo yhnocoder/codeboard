@@ -1,5 +1,3 @@
-// 导出给没装插件的人看。范围（整块 / 选中的 Section / 一条讲解路径）→ 卡的顺序；Markdown 按这个顺序写；
-// HTML 快照由白板克隆画布、宿主把字体图片内联成一个文件（inlineSnapshot）。
 // Markdown 原样写出用户的文字和标识符：不做转义（block_manager 不会变成 block\_manager）
 import { cardAndCols, cardTitle, colsOf, hostOf, stickerWhere, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
 import { computeFlows, isCall, startCards, walkOrder } from "./flow";

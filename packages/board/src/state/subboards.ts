@@ -1,4 +1,3 @@
-// 骨架画在框里（cards/BoardBody.tsx），连到骨架里某张卡的箭头（End.sub）按同一套摆法找那张卡的位置（canvas/Links.tsx）。
 import { batch, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { skelHas, type BoardCard, type Crumb, type Rect, type Skeleton, type SkelCard } from "@codeboard/core";
@@ -12,7 +11,7 @@ export const [skels, setSkels] = createStore<Record<string, Skeleton | null>>({}
 const [skelVer, setSkelVer] = createStore<Record<string, number>>({});
 /** 面包屑（从最外层到上一级）；顶层白板是空的 */
 export const [crumbs, setCrumbs] = createSignal<Crumb[]>([]);
-/** 进子白板时名字正飞向面包屑：面包屑上「当前」那一格先不显示（actions/subboards.ts） */
+/** 进子白板时名字正飞向面包屑：面包屑上「当前」那一格先不显示 */
 export const [crumbMorph, setCrumbMorph] = createSignal(false);
 /** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
 export const [walkBack, setWalkBack] = createSignal<{ root: string; i: number } | null>(null);
@@ -22,7 +21,6 @@ const frameById = rooted(() => createMemo(() => new Map(frames().map((c) => [c.i
 export const frameOf = (id: string) => frameById().get(id);
 export const skelOf = (frame: string): Skeleton | null | undefined => { const f = frameOf(frame); return f ? skels[f.board] : undefined; };
 
-/** 换白板（init）时：骨架、面包屑都换掉 */
 export function resetSubboards(c: Crumb[] | undefined) {
   setSkels(reconcile({}));
   setSkelVer(reconcile({}));
@@ -33,7 +31,6 @@ export function resetSubboards(c: Crumb[] | undefined) {
   asked.clear();
 }
 
-/** 宿主发来的骨架（变了的那几块） */
 export function putSkels(m: Record<string, Skeleton | null>) {
   batch(() => { for (const [id, s] of Object.entries(m)) { setSkels(id, reconcile(s)); setSkelVer(id, (v) => (v ?? 0) + 1); } });
 }
@@ -58,7 +55,7 @@ export function trackSkeletons() {
       const f = frameOf(l.to.card);
       if (!f) continue;
       const sk = skels[f.board];
-      if (sk === undefined) continue; // 还没拿到
+      if (sk === undefined) continue;
       const gone = sk === null || !skelHas(sk, l.to.sub);
       if (gone !== !!l.lost?.to) fix.push([l.id, gone]);
     }
@@ -74,7 +71,6 @@ export function trackSkeletons() {
   });
 }
 
-// ---------- 框里的分栏 ----------
 // 一个 Section 一栏（栏名 + 卡数；不在 Section 里的卡单独一栏），栏里是固定字号的小卡片。整个排布在这里算好（每张小卡片的位置、大小），
 // 框里只是按算好的位置摆（cards/BoardBody.tsx），箭头连到小卡片也按同一份位置（subRect）。只跟骨架有关：框改大小、平移缩放都不重算
 
@@ -114,7 +110,6 @@ export function miniLayout(sk: Skeleton): MiniLayout {
     const sec = sk.secs[k];
     const col: MiniCol = { key: k >= 0 ? `s${k}` : "none", t: sec?.t || (k >= 0 ? "Section" : "No section"), n: cs.length, x, w, cards: [] };
     if (sec?.color) col.color = sec.color;
-    // 一行 n 张，行高取这一行最高的那张
     let y = COL_HEAD;
     for (let i = 0; i < cs.length; i += n) {
       let rh = 0;
@@ -164,14 +159,11 @@ export function subRect(frame: string, sub: string): Rect | null {
   return { x, y, w: Math.max(20, Math.min(b.w, r.x + r.w - x)), h: Math.min(b.h, 30) };
 }
 
-// ---------- [[ 链接到子白板里的卡 ----------
 // 骨架带着子白板（一路往下）上有真正标题的卡（Skeleton.refs）。链接写成 [[子白板 › 卡]]（更深的一层层接上），按名字找回来
 
-/** 框在链接里叫什么：框自己起的名字，否则子白板的名字 */
 export const frameName = (f: BoardCard) => f.title || skels[f.board]?.name || state.boards.find((m) => m.id === f.board)?.name || "Board";
 export const REF_SEP = " › ";
 type SubRef = { id: string; label: string; k: string; frame: string };
-/** 这块白板上所有框里能链接的卡 */
 export function subRefs(): SubRef[] {
   const out: SubRef[] = [], seen = new Set<string>();
   for (const f of frames()) {
