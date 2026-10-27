@@ -82,7 +82,7 @@ export function placeOf(id: string): Place {
 }
 
 // 卡片实测尺寸（世界坐标）；Section 实际框
-export const [sizes, setSizes] = createStore<Record<string, { w: number; h: number } | undefined>>({});
+export const [sizes, setSizes] = createStore<Record<string, { w: number; h: number }>>({});
 /** 宽高优先用实测；量到 0 的不算（卡被藏起来时量到的） */
 export function rectOf(c: { id: string } | string) {
   const id = typeof c === "string" ? c : c.id;

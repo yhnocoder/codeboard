@@ -2,7 +2,7 @@
 // dragging a Section snaps it to other Sections, a Note's title from its first heading, and ⌘X on cards
 // (npm run harness -- sectionLook dragCardIntoOtherSection sectionDragSnapsToSection …)
 import { shot, symCard, findSym, put, type Host } from "../harness";
-import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
@@ -149,6 +149,33 @@ test("sectionCollapsedPill", async () => {
   const gap = await h.page.evaluate((sel) => { const n = document.querySelector(`${sel} .sname`)!.getBoundingClientRect(), c = document.querySelector(`${sel} .chev2`)!.getBoundingClientRect(); return c.left - n.right; }, pill);
   await shot(h, "sect-pill-03-expanded-hover");
   check("sectionCollapsedPill caret turns", !!a0 && !!a1 && a0.size <= 12 && Math.abs(a1.deg - a0.deg) === 90 && gap >= 0 && gap < 10, { a0, a1, gap });
+  await close(h);
+});
+
+/** A Note grows while its Section is collapsed (a larger Note font in the settings); revealing it expands the Section and frames the
+ *  Note by its new height, not the one measured before the collapse */
+test("revealFramesRegrownCard", async () => {
+  const b = emptyBoard("b1", "reveal regrown");
+  const md = Array.from({ length: 8 }, (_, i) => `Line ${i + 1} of the Note`).join("\n\n");
+  put(b, { id: "n", kind: "note", bg: true, md } as NoteCard, 2600, 1800, 420);
+  b.place.n.section = "S";
+  b.sections.push({ id: "S", title: "Far", x: 2560, y: 1740, w: 500, h: 900 });
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1400, h: 900 });
+  await idle(h);
+  const short = await h.page.locator('.card[data-id="n"]').evaluate((e) => (e as HTMLElement).offsetHeight);
+  await h.post({ type: "merged", patch: { sections: { set: [{ ...b.sections[0], collapsed: true }] } } });
+  await h.page.locator('.card[data-id="n"]').waitFor({ state: "detached" });
+  await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, noteFontSize: { ...DEFAULT_SETTINGS.noteFontSize, body: 40 } } } });
+  await h.post({ type: "reveal", card: "n" });
+  await h.page.locator('.card[data-id="n"]').waitFor();
+  await idle(h);
+  const r = await h.page.locator('.card[data-id="n"]').evaluate((e) => {
+    const c = e.getBoundingClientRect();
+    return { top: Math.round(c.top), bottom: Math.round(c.bottom), h: Math.round(c.height), vh: innerHeight };
+  });
+  await shot(h, "reveal-regrown");
+  check("revealFramesRegrownCard", r.h > short * 1.8 && r.top >= 0 && r.bottom <= r.vh, { ...r, short });
   await close(h);
 });
 

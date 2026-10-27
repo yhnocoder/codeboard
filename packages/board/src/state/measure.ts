@@ -1,10 +1,9 @@
 // 量 DOM（卡片尺寸、卡里每行的位置）：先把这一轮要量的都读完，再一起写回 store。
 // 一边读一边写会让浏览器每张卡都重新排一次版，打开大白板时几百张卡就是几百次排版。
-import { batch, createEffect, createRoot } from "solid-js";
+import { batch } from "solid-js";
 import { queueMeasure, observeResize, setMeasureBatch } from "@yhnocoder/markdown/ui";
 import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
-import { state, cardById, sizes } from "./store";
-import { visibleCards } from "./sections";
+import { state, cardById } from "./store";
 import { shown } from "./ui";
 import { toWorld } from "./camera";
 
@@ -12,13 +11,12 @@ import { toWorld } from "./camera";
 setMeasureBatch(batch);
 export { queueMeasure, observeResize };
 
-/** 看得见的卡都量过尺寸了（刚画出来的卡在 ResizeObserver 第一次报的时候量）；都量过就马上 */
+/**
+ * 刚画出来的卡（Solid 在调用前已同步画好）都量好了：ResizeObserver 在下一帧排版之后报新元素（在那一帧的 rAF 回调之后、绘制之前），
+ * 同一帧的微任务里写回 sizes，所以再下一帧的 rAF 时都到了。不按「每张卡都有尺寸」等：0×0 的元素可能永远不报，折叠前量的旧尺寸也不能算
+ */
 export function cardsMeasured(): Promise<void> {
-  return new Promise((done) => createRoot((dispose) => createEffect(() => {
-    if (!visibleCards().every((c) => sizes[c.id])) return;
-    dispose();
-    done();
-  })));
+  return new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(() => done())));
 }
 
 let lastPtr = { x: 0, y: 0 };

@@ -129,6 +129,41 @@ test("walkHopWaitsForMeasure", async () => {
   await h.page.context().close();
 });
 
+// A card that renders 0×0 may get no ResizeObserver notification (the spec starts an observation at 0×0; Chromium reports it anyway,
+// so the test drops it), so it is never measured: the hop must not wait for it
+test("walkHopSkipsUnmeasuredCard", async () => {
+  const P = emptyBoard("bZP", "Parent");
+  put(P, card("Scheduler.schedule"), 60, 60, 560);
+  const h = await open({ board: P, light, w: 1400, h: 900 });
+  const pg = h.page;
+  await pg.addStyleTag({ content: '.card[data-id="nZero"] { display: none !important; }' });
+  await pg.evaluate(() => {
+    const observe = ResizeObserver.prototype.observe;
+    // decided a microtask later: the ref that observes runs before Solid sets data-id
+    ResizeObserver.prototype.observe = function (el, o) { queueMicrotask(() => { if (!el.matches('[data-id="nZero"]')) observe.call(this, el, o); }); };
+  });
+  const C = emptyBoard("bZC", "Child");
+  C.cards.push({ id: "nStart", kind: "note", md: "# Start\n\nThe walk starts here.", bg: true });
+  C.place.nStart = { x: 2600, y: 1800, w: 420 };
+  C.cards.push({ id: "nZero", kind: "note", md: "Never laid out", bg: true });
+  C.place.nZero = { x: 200, y: 200, w: 300 };
+  C.cam = { x: 0, y: 0, z: 1 };
+  const world = () => pg.evaluate(() => (document.querySelector(".world") as HTMLElement).style.transform);
+  await h.post({ type: "init", board: C, boards: [{ id: P.id, name: P.name, cards: 1 }, { id: C.id, name: C.name, cards: 2 }], views: {}, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never, crumbs: [{ id: P.id, name: P.name }], walk: { into: { root: "x", i: 0 }, start: "nStart" } } as never);
+  const at = await world();
+  const moved = await until(h, "the walk moves the camera although one card is never measured", async () => (await world()) !== at, 3000).catch(() => false);
+  check("walkHopSkipsUnmeasuredCard-moves", moved, { at });
+  if (moved) {
+    await idle(h);
+    const r = await pg.evaluate(() => {
+      const c = document.querySelector('.card[data-id="nStart"]')!.getBoundingClientRect();
+      return { top: Math.round(c.top), bottom: Math.round(c.bottom), left: Math.round(c.left), right: Math.round(c.right), vw: innerWidth, vh: innerHeight };
+    });
+    check("walkHopSkipsUnmeasuredCard-frames", r.top >= 0 && r.left >= 0 && r.right <= r.vw && r.bottom <= r.vh, r);
+  }
+  await h.page.context().close();
+});
+
 async function run(res: Record<string, unknown>) {
   {
     // Engine: LLMEngine.step calls schedule / postprocess; schedule calls can_allocate, allocate, preempt (call marks)

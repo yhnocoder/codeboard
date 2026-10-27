@@ -53,9 +53,6 @@ export function CardView(p: { card: Card }) {
   };
   // 藏起来再显示（折叠、展开）时卡的元素是新建的：在 ref 里接上尺寸监听，随这个元素一起拆掉
   const mount = (e: HTMLDivElement) => { el = e; onCleanup(observeResize(e, () => queueMeasure(read, read))); };
-  // 卡离开了白板（换白板、删掉）：量过的尺寸跟着作废，回来时是新的元素，cardsMeasured 要等它重新量
-  const id = p.card.id;
-  onCleanup(() => setSizes(id, undefined));
   createEffect(() => {
     const pg = pingCard();
     if (pg?.id === c().id && el) { el.classList.remove("ping"); void el.offsetWidth; el.classList.add("ping"); }
