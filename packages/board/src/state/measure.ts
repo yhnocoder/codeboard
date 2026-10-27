@@ -37,11 +37,11 @@ export function boardOffset() {
 export const boardPoint = (p: { x: number; y: number }) => { const o = boardOffset(); return { x: p.x - o.x, y: p.y - o.y }; };
 export const worldAt = (p: { x: number; y: number }) => { const b = boardPoint(p); return toWorld(b.x, b.y); };
 
-// 代码卡的固定尺寸，CSS 里用同一份：App 挂到 body 上的 --ded-pad；行号栏宽 --gutter 在 styles.css 的 .code 上，量 .src 的左边距
+// 代码卡的固定尺寸，CSS 里用同一份：BoardView 挂到 body 上的 --ded-pad；行号栏宽 --gutter 在 styles.css 的 .code 上，量 .src 的左边距
 
 /** 藏了公共缩进时代码离左边留的空 */
 export const DED_PAD = 16;
-/** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（App 挂到 body 上的 --code-max） */
+/** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（BoardView 挂到 body 上的 --code-max） */
 export const CODE_MAX = 460;
 let charW = 0;
 /** 等宽字体一个字的宽度（量一次） */
