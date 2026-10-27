@@ -1,8 +1,8 @@
-// 宿主发来的消息。换白板（init）时各处的界面状态由 onBoardSwitch 登记的重置一起清掉（state/root.ts）
+// 宿主发来的消息。换白板（init）时这块白板的界面状态（boardSignal）、浮层一起清掉（state/root.ts）
 import { batch } from "solid-js";
 import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard, type Sidenote } from "@codeboard/core";
-import { state, setState, markSaved, setBoard, select, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, lineSel, sel, flows } from "./state/store";
+import { state, setState, markSaved, setBoard, select, clearSel, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, lineSel, sel, flows } from "./state/store";
 import { setCam } from "./state/camera";
 import { cardsMeasured } from "./state/measure";
 import { resetSubboards, putSkels, setCrumbs, setWalkBack } from "./state/subboards";
@@ -21,21 +21,22 @@ export function onHost(m: HostToBoard) {
     case "init": {
       const b = loadBoard(m.board);
       batch(() => {
-        setState("host", m.host);
+        // 宿主状态、版本状态整个换掉（store 的 setState 是合并：上一块白板的项会留下来）；views 是按段 id 的缓存，合并是故意的
+        setState("host", reconcile(m.host));
         setNoteAssets(m.host.assetBase);
         if (!preloaded) { preloaded = true; preloadEditor(); preloadCm(); }
         setState("boards", m.boards);
         setState("views", m.views);
-        setState("stale", m.stale);
+        setState("stale", reconcile(m.stale));
         setBoard(b, (m.crumbs ?? []).map((c) => c.id));
         A.resetShownViews();
         setShared(reconcile({}));
         setState("loaded", true);
-        // 换了一块白板（进入 / 离开子白板）：讲解、模式、弹出的面板、骨架、面包屑都是上一块白板的
+        // 换了一块白板（进入 / 离开子白板）：讲解、模式、拖动、弹出的面板、骨架、面包屑都是上一块白板的
         boardSwitched();
         resetSubboards(m.crumbs);
         setWelcome(m.welcome ?? null);
-        select({});
+        clearSel();
       });
       if (questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);

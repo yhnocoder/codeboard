@@ -1,7 +1,9 @@
 // 浮层栈：菜单、对话框、弹窗、面板打开时压上去，关了出栈。Esc、点外面关掉、窗口失焦都只在这里处理（installOverlays 装一次）。
 // Esc 归最上面那一层：grab 的层（菜单、对话框）焦点在哪都先关它；别的层焦点在输入框里时让输入框自己处理（取消编辑）。
-// 点外面：从最上面往下，点在某一层里面就停；没写 outside 的层挡住下面的层（不关）。modal 的层盖住白板：白板快捷键不响应
+// 点外面：从最上面往下，点在某一层里面就停；没写 outside 的层挡住下面的层（不关）。modal 的层盖住白板：白板快捷键不响应。
+// 换白板时关掉所有层（菜单、对话框、浮层说的都是上一块白板的卡），stay 的层（设置页）留着
 import { createSignal, onCleanup, type JSX } from "solid-js";
+import { onBoardSwitch } from "../state/root";
 
 export type Layer = {
   close: () => void;
@@ -11,6 +13,8 @@ export type Layer = {
   modal?: boolean;
   outside?: boolean;
   blur?: boolean;
+  /** 换白板时留着（设置页：和哪块白板都没关系） */
+  stay?: boolean;
   /** 这一层自己的按键（对话框的 ↵）：返回 true = 处理了 */
   keys?: (e: KeyboardEvent) => boolean;
 };
@@ -23,6 +27,11 @@ export function pushLayer(l: Layer): () => void {
   setStack((s) => [...s, l]);
   return () => setStack((s) => s.filter((x) => x !== l));
 }
+/** 从最上面一层往下逐层关；stay 的层留着 */
+export function closeOverlays() {
+  for (const l of [...stack()].reverse()) if (!l.stay) l.close();
+}
+onBoardSwitch(closeOverlays);
 /** 组件里用：挂上时压栈，卸下时出栈 */
 export const useOverlay = (l: Layer) => onCleanup(pushLayer(l));
 /** 包一段 JSX：它显示时是一层（嵌套的下拉框之类） */

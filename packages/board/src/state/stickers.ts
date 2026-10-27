@@ -2,18 +2,18 @@
 import { createMemo, createSelector, createSignal } from "solid-js";
 import type { Sticker } from "@codeboard/core";
 import { state } from "./store";
-import { rooted, onBoardSwitch } from "./root";
+import { rooted, boardSignal } from "./root";
 
 /** 选图标面板：开在哪个按钮上面 */
 export const [stickerPick, setStickerPick] = createSignal<{ x: number; y: number } | null>(null);
 /** 选图标面板里上次选的颜色 */
 export const [stickerColor, setStickerColor] = createSignal<string | undefined>(undefined);
-export const [selSticker, setSelSticker] = createSignal<string | null>(null);
+export const [selSticker, setSelSticker] = boardSignal<string | null>(null);
 export const isSelSticker = rooted(() => createSelector(selSticker));
 
 /** 拖贴纸时指针下面能绑的东西（亮起来） */
 export type BindTarget = { card: string } | { link: string };
-const [bindHot, setBindHotKey] = createSignal<string | null>(null);
+const [bindHot, setBindHotKey] = boardSignal<string | null>(null);
 const keyOf = (t: BindTarget | null) => (!t ? null : "card" in t ? `card:${t.card}` : `link:${t.link}`);
 export const setBindHot = (t: BindTarget | null) => setBindHotKey(keyOf(t));
 /** 这张卡 / 这条线是不是拖动中的贴纸要绑上去的目标：只通知变了的那两个 */
@@ -59,5 +59,3 @@ const anchorCard = rooted(() => createMemo(() => {
   return s?.at.kind === "canvas" && s.at.on && "card" in s.at.on ? s.at.on.card : null;
 }));
 export const isBindAnchor = rooted(() => createSelector(anchorCard));
-
-onBoardSwitch(() => { setSelSticker(null); setStickerPick(null); setBindHotKey(null); });

@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 1 本地 | 每次改完：`npm run check` | 3 分钟 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、单元测试（core、markdown、board、host、插件）、Markdown 示例；这次改动需要的 harness 场景 |
 | 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部；harness 两个 job 并行；e2e 拆两段并行；perf（只在改了被测代码时跑） |
-| 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、study-task replay；harness 全量跑完后再做一轮 flaky 重复（见下） |
+| 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、Storybook（构建后每个 story 都打开一遍）、study-task replay；harness 全量跑完后再做一轮 flaky 重复（见下） |
 
 ## 一定会测到的
 
@@ -43,6 +43,7 @@ npm run harness -- --workers=4        # 所有场景（manual 除外），4 个 
 npx playwright test -c packages/board -g markdownRender    # 直接用 Playwright（不管 tiers.json；-g 按标题匹配，--ui、--debug 都能用）
 npm run build -w @yhnocoder/markdown                      # 只构建 Markdown 包（packages/markdown/dist，几秒）：白板、它的 typecheck、Markdown 示例用的都是这份构建，和 npm 上的一样；改了 packages/markdown/src 单独跑这些之前先跑它
 npm test -w @codeboard/markdown-demo                      # Markdown 示例：构建 examples/markdown-demo，Playwright 走一遍（截图在 test-out/markdown-demo/）
+npm run storybook:check                                   # Storybook：构建后在 Chromium 里打开每个 story（各开一页，再在同一个预览里一个接一个），控制台报错、页面异常、请求失败、story 或 play 抛异常、超时都算失败；只在每晚跑，不进 check 和 ci.yml。构建过了就直接 node tools/test/storybook.mjs [story id 的正则]，结果在 test-out/storybook/result.json
 npm run e2e                                               # 整套 e2e（E2E_PART=1|2|3 或 E2E_ONLY=capture,addsel 只跑一部分）
 ```
 

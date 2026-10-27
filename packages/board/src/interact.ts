@@ -20,29 +20,37 @@ import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from ".
 import { dispatch } from "./keymap";
 import { holdGhosts } from "@yhnocoder/markdown/ui";
 import * as A from "./actions";
+import { onBoardSwitch } from "./state/root";
 
 const pt = (e: { clientX: number; clientY: number }) => ({ x: e.clientX, y: e.clientY });
 const local = (e: { clientX: number; clientY: number }) => boardPoint(pt(e));
 const worldOf = (e: { clientX: number; clientY: number }) => worldAt(pt(e));
 
-function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = 3) {
+// 进行中的拖动：拖到一半宿主换了白板（进子白板、打开别的白板），监听去掉、什么都不提交（没松手就不算数）。
+// 拖动中的界面状态（参考线、落点……）是 boardSignal，自己会清；drop 收拾别的（计时器、撤销栈的快照、停掉的补全）
+const gestures = new Set<{ ctl: AbortController; drop?: () => void }>();
+onBoardSwitch(() => { for (const g of gestures) { g.ctl.abort(); g.drop?.(); } gestures.clear(); });
+
+function track(e: PointerEvent, move: (ev: PointerEvent) => void, up: (ev: PointerEvent, moved: boolean) => void, threshold = 3, drop?: () => void) {
   const sx = e.clientX, sy = e.clientY;
   let moved = false;
   holdPointer(e);
+  const g = { ctl: new AbortController(), drop };
+  const o = { capture: true, signal: g.ctl.signal };
   const onMove = (ev: PointerEvent) => {
     if (!moved && Math.hypot(ev.clientX - sx, ev.clientY - sy) < threshold) return;
     moved = true;
     move(ev);
   };
   const onUp = (ev: PointerEvent) => {
-    window.removeEventListener("pointermove", onMove, true);
-    window.removeEventListener("pointerup", onUp, true);
-    window.removeEventListener("pointercancel", onUp, true);
+    g.ctl.abort();
+    gestures.delete(g);
     up(ev, moved);
   };
-  window.addEventListener("pointermove", onMove, true);
-  window.addEventListener("pointerup", onUp, true);
-  window.addEventListener("pointercancel", onUp, true);
+  window.addEventListener("pointermove", onMove, o);
+  window.addEventListener("pointerup", onUp, o);
+  window.addEventListener("pointercancel", onUp, o);
+  gestures.add(g);
 }
 
 /** 拖卡、改卡的大小：一次撤销（beginGesture）；真动起来以后 AI 灰字补全先停（显示着的清掉、不再问），松手再照常 */
@@ -55,6 +63,8 @@ function cardGesture(ids: string[]) {
   return {
     moving: () => { if (!held) { held = true; holdGhosts(true); } },
     end: () => { if (held) holdGhosts(false); done(!(fresh && ids.every(isFresh))); },
+    /** 作废（换了白板）：不进撤销栈 */
+    drop: () => { if (held) holdGhosts(false); done(false); },
   };
 }
 
@@ -148,7 +158,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const box = bounds(ids.map((i) => rectOf(cardById(i)!.host)))!;
   const targets = [...visibleCards().filter((c) => !skip.has(c.id)).map((c) => rectOf(c)), ...[...frames().entries()].map(([, r]) => r)];
   const fr = new Map(frames());
-  const { end, moving } = cardGesture(ids);
+  const { end, moving, drop: dropGesture } = cardGesture(ids);
   const sx = e.clientX, sy = e.clientY;
   let mergeT: number | undefined, mergeTgt: string | undefined;
   const g = cardById(grabbed)!.host;
@@ -246,7 +256,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     });
     end();
     void ev;
-  });
+  }, 3, () => { pace.stop(); clearTimeout(mergeT); dropGesture(); });
 }
 
 function rowAnchor(row: HTMLElement, hostId: string): Anchor | null {
@@ -285,7 +295,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   A.selectCard(id);
   const r0 = rectOf(c);
   const targets = visibleCards().filter((k) => k.id !== id).map((k) => rectOf(k));
-  const { end, moving } = cardGesture([c.id]);
+  const { end, moving, drop } = cardGesture([c.id]);
   const sx = e.clientX, sy = e.clientY;
   const text = c.kind === "note" && !c.bg;
   // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度
@@ -314,7 +324,7 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
     // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）
     const auto = bottom && nat && Math.abs(h - nat.h) < 8 / z;
     live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (bottom) k.h = auto ? undefined : Math.round(h - hx); });
-  }, () => { setGuides([]); setSizeHint(null); end(); });
+  }, () => { setGuides([]); setSizeHint(null); end(); }, 3, drop);
 }
 
 // 一次滚动手势从哪开始就一直归谁：画布上开始 → 一路平移，经过卡片也不停；停 ~200ms 才算结束。
@@ -589,7 +599,7 @@ export function sectionLabelDown(e: PointerEvent, id: string) {
       }
     }
     end();
-  });
+  }, 3, () => { pace.stop(); end(false); });
 }
 /** 拖 Section 的边改大小（框只会比内容大） */
 export function sectionEdgeDown(e: PointerEvent, id: string) {
@@ -604,7 +614,7 @@ export function sectionEdgeDown(e: PointerEvent, id: string) {
   track(e, (ev) => {
     const w = Math.max(120, f0.w + (ev.clientX - sx) / cam.z), h = Math.max(80, f0.h + (ev.clientY - sy) / cam.z);
     live((b) => { const q = b.sections.find((x) => x.id === id); if (q) { q.x = f0.x; q.y = f0.y; q.w = Math.round(w); q.h = Math.round(h); } });
-  }, () => end());
+  }, () => end(), 3, () => end(false));
 }
 
 export function installKeys() {

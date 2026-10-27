@@ -3,11 +3,11 @@ import { createSignal, createMemo } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
 import { noteShown, type CodeCard, type Guide, type Link, type Sidenote } from "@codeboard/core";
 import { state } from "./store";
-import { rooted, onBoardSwitch } from "./root";
+import { rooted, boardSignal } from "./root";
 import type { StaticTextRange } from "@yhnocoder/markdown";
 
 // 临时展开的手动隐藏范围（Show）："seg:from"
-export const [shown, setShown] = createSignal<Set<string>>(new Set());
+export const [shown, setShown] = boardSignal<Set<string>>(new Set());
 export function toggleShown(k: string) {
   const s = new Set(shown());
   s.has(k) ? s.delete(k) : s.add(k);
@@ -42,18 +42,24 @@ const notesIndex = rooted(() => createMemo(() => {
 export const notesOf = (id: string): Sidenote[] => notesIndex().get(id) ?? [];
 
 // 闪一下的行："card:seg:line"
-export const [flashRows, setFlashRows] = createSignal<Set<string>>(new Set());
+export const [flashRows, setFlashRows] = boardSignal<Set<string>>(new Set());
 export function flash(card: string, seg: string, lines: number[]) {
   const keys = lines.map((l) => `${card}:${seg}:${l}`);
   setFlashRows(new Set([...flashRows(), ...keys]));
   setTimeout(() => { const s = new Set(flashRows()); keys.forEach((k) => s.delete(k)); setFlashRows(s); }, 700);
 }
-export const [pingCard, setPingCard] = createSignal<{ id: string; n: number } | null>(null);
+export const [pingCard, setPingCard] = boardSignal<{ id: string; n: number } | null>(null);
 let pingN = 0;
 export const ping = (id: string) => setPingCard({ id, n: ++pingN });
 
-export type Editing = { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen" | "question" | "vnote" | "annot"; id: string } | null;
-export const [editing, setEditing] = createSignal<Editing>(null);
+/** 代码卡上新加的一条标注（还没写字）：贴在哪一行的哪几个字 */
+export type AnnotDraft = { card: string; seg: string; line: number; from: number; to: number };
+export type Editing =
+  | { kind: "title" | "desc" | "note" | "label" | "section" | "free" | "board" | "sidenote" | "gen" | "question" | "vnote"; id: string }
+  /** draft：新加的一条标注（id 是 "draft"），写了字才进白板；离开编辑它就没了 */
+  | { kind: "annot"; id: string; draft?: AnnotDraft }
+  | null;
+export const [editing, setEditing] = boardSignal<Editing>(null);
 /**
  * 显示时选中一段字再按 ⌫ / Delete：进入编辑，把同一段选上，再把这个键交给编辑器（和在编辑器里按一样）。
  * note：静态 Markdown 上数出来的一段（staticTextRange）；free：自由代码卡的第几行第几个字（行从 0 数）。编辑器挂上时取走（takeEditEntry）
@@ -74,15 +80,15 @@ export function takeEditEntry<K extends EditEntry["kind"]>(kind: K, id: string):
 }
 
 // 拖动中：吸附参考线、合并目标、落点行、图片卡要放进的 Note（note）……
-export const [guides, setGuides] = createSignal<Guide[]>([]);
-export const [sizeHint, setSizeHint] = createSignal<{ x: number; y: number; text: string } | null>(null);
-export const [dropTarget, setDropTarget] = createSignal<{ kind: "merge" | "line" | "card" | "cand" | "note"; card: string; seg?: string; line?: number; sub?: string; armed?: boolean; cands?: string[] } | null>(null);
-export const [dragging, setDragging] = createSignal<Set<string>>(new Set());
-export const [marquee, setMarquee] = createSignal<{ x: number; y: number; w: number; h: number } | null>(null);
-export const [rubber, setRubber] = createSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);
+export const [guides, setGuides] = boardSignal<Guide[]>([]);
+export const [sizeHint, setSizeHint] = boardSignal<{ x: number; y: number; text: string } | null>(null);
+export const [dropTarget, setDropTarget] = boardSignal<{ kind: "merge" | "line" | "card" | "cand" | "note"; card: string; seg?: string; line?: number; sub?: string; armed?: boolean; cands?: string[] } | null>(null);
+export const [dragging, setDragging] = boardSignal<Set<string>>(new Set());
+export const [marquee, setMarquee] = boardSignal<{ x: number; y: number; w: number; h: number } | null>(null);
+export const [rubber, setRubber] = boardSignal<{ x1: number; y1: number; x2: number; y2: number; plain?: boolean } | null>(null);
 // 正在拖的线（拖起点圆点、拖标签框）；指针下的卡和线在 state/hover.ts
-export const [dragLink, setDragLink] = createSignal<string | null>(null);
-export const [hoverVar, setHoverVar] = createSignal<{ link: string; names: string[]; from: string; to: string } | null>(null);
+export const [dragLink, setDragLink] = boardSignal<string | null>(null);
+export const [hoverVar, setHoverVar] = boardSignal<{ link: string; names: string[]; from: string; to: string } | null>(null);
 // 新卡弹出动画：id → 起点偏移
 // 存成 store：卡和线只订阅自己那一项，动画每帧只重算正在弹出的卡，而不是整块白板
 export type PopAnim = { ox: number; oy: number; v: number; slide?: boolean };
@@ -98,11 +104,9 @@ const [sizeStore, setSizeStore] = createStore<Record<string, SizeAnim | undefine
 export const sizeIn = () => sizeStore;
 export const setSizeIn = (id: string, s: SizeAnim | undefined) => setSizeStore(id, s);
 export type Walk = { root: string; order: string[]; i: number; before: { x: number; y: number; z: number }; expanded: string[] };
-export const [walk, setWalk] = createSignal<Walk | null>(null);
+export const [walk, setWalk] = boardSignal<Walk | null>(null);
 export const [paletteOpen, setPaletteOpen] = createSignal<false | { mode: "all" | "code" | "entry"; q?: string }>(false);
 export const [keysOpen, setKeysOpen] = createSignal(false);
 // Settings 页（整窗）；section = 打开时滚到哪一节
 export const [settingsOpen, setSettingsOpen] = createSignal<false | { section?: string }>(false);
-export const [banner, setBanner] = createSignal(true);
-
-onBoardSwitch(() => { setWalk(null); setBanner(true); setEditing(null); });
+export const [banner, setBanner] = boardSignal(true);

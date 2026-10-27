@@ -1,0 +1,39 @@
+{
+ "python\u0000def allocate(self, seq: Sequence):\n    # 先找空闲块\n    block_id = self.free_block_ids[0]\n    return len(seq) * 2": [
+  "<span class=\"kw\">def</span> <span class=\"fn\">allocate</span>(<span class=\"self\">self</span><span class=\"p\">,</span> seq<span class=\"p\">:</span> Sequence):",
+  "    <span class=\"com\"># 先找空闲块</span>",
+  "    block_id <span class=\"kw\">=</span><span class=\"self\"> self</span><span class=\"p\">.</span>free_block_ids<span class=\"p\">[</span><span class=\"num\">0</span><span class=\"p\">]</span>",
+  "    <span class=\"kw\">return</span> <span class=\"fn\">len</span><span class=\"p\">(seq)</span> <span class=\"kw\">*</span> <span class=\"num\">2</span>"
+ ],
+ "typescript\u0000export function rebase(seg: Segment, by: number): Segment {\n  return { ...seg, start: seg.start + by };\n}": [
+  "<span class=\"kw\">export</span> <span class=\"kw\">function</span> <span class=\"fn\">rebase</span>(seg<span class=\"kw\">:</span> <span class=\"fn\">Segment</span><span class=\"p\">,</span> by<span class=\"kw\">:</span> <span class=\"num\">number</span>)<span class=\"kw\">:</span> <span class=\"fn\">Segment</span> {",
+  "  <span class=\"kw\">return</span> { <span class=\"kw\">...</span>seg<span class=\"p\">,</span> start<span class=\"kw\">:</span> <span class=\"num\">seg</span>.start <span class=\"kw\">+</span> by };",
+  "}"
+ ],
+ "cpp\u0000__global__ void store_kvcache(const float* k, int* slot) {\n  int i = blockIdx.x;\n  cache[slot[i]] = k[i];\n}": [
+  "__global__ <span class=\"kw\">void</span> <span class=\"fn\">store_kvcache</span>(<span class=\"kw\">const</span> <span class=\"kw\">float*</span> k<span class=\"p\">,</span> <span class=\"kw\">int*</span> slot) {",
+  "  <span class=\"kw\">int</span> i <span class=\"kw\">=</span> <span class=\"num\">blockIdx</span><span class=\"p\">.</span>x;",
+  "  <span class=\"num\">cache</span>[<span class=\"num\">slot</span>[i]] <span class=\"kw\">=</span> <span class=\"num\">k</span>[i];",
+  "}"
+ ],
+ "rust\u0000fn hash_block(tokens: &[u32], prefix: u64) -> u64 {\n    xxh64(bytemuck::cast_slice(tokens), prefix)\n}": [
+  "<span class=\"kw\">fn</span> <span class=\"fn\">hash_block</span>(tokens<span class=\"kw\">:</span> <span class=\"kw\">&amp;</span>[<span class=\"fn\">u32</span>], prefix<span class=\"kw\">:</span> <span class=\"fn\">u64</span>) <span class=\"kw\">-&gt;</span> <span class=\"fn\">u64</span> {",
+  "    <span class=\"fn\">xxh64</span>(bytemuck<span class=\"kw\">::</span><span class=\"fn\">cast_slice</span>(tokens), prefix)",
+  "}"
+ ],
+ "shellscript\u0000python bench.py --model Qwen3-0.6B \\\n  --max-num-seqs 256 --enforce-eager": [
+  "<span class=\"fn\">python</span> <span class=\"str\">bench.py</span> <span class=\"str\">--model</span> <span class=\"str\">Qwen3-0.6B</span> \\",
+  "  <span class=\"str\">--max-num-seqs</span> <span class=\"num\">256</span> <span class=\"str\">--enforce-eager</span>"
+ ],
+ "json\u0000{ \"block_size\": 256, \"num_kvcache_blocks\": 1024, \"tensor_parallel_size\": 2 }": [
+  "{ <span class=\"kw\">&quot;block_size&quot;</span><span class=\"p\">:</span> <span class=\"num\">256</span><span class=\"p\">,</span> <span class=\"kw\">&quot;num_kvcache_blocks&quot;</span><span class=\"p\">:</span> <span class=\"num\">1024</span><span class=\"p\">,</span> <span class=\"kw\">&quot;tensor_parallel_size&quot;</span><span class=\"p\">:</span> <span class=\"num\">2</span> }"
+ ],
+ "diff\u0000-    if not self.block_manager.can_append(seq):\n+    while not self.block_manager.can_append(seq):\n         self.preempt(seq)": [
+  "-    if not self.block_manager.can_append(seq):",
+  "+    while not self.block_manager.can_append(seq):",
+  "         self.preempt(seq)"
+ ],
+ "python\u0000num_blocks = (seq.num_tokens + block_size - 1) // block_size": [
+  "num_blocks <span class=\"kw\">=</span> (seq<span class=\"p\">.</span>num_tokens <span class=\"kw\">+</span> block_size <span class=\"kw\">-</span> <span class=\"num\">1</span>) <span class=\"kw\">//</span> block_size"
+ ]
+}

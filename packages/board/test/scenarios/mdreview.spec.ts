@@ -338,7 +338,8 @@ const ISSUES: Record<string, [string, (i: I) => boolean][]> = {
     ["ai-mid-paragraph", (i) => /GHOST\[ ZZZ\]/.test(i.ghost)], ["ai-word-accept", (i) => /"Then we allocate" GHOST\[ the KV blocks\]/.test(i.after)],
   ],
   "#33 setext heading": [["setext-h1", md("# Title")]],
-  "no empty-paragraph junk": [["code-tab", (i) => !/&nbsp;|\n\n\n/.test(i.md)], ["code-auto-indent", (i) => !/&nbsp;|\n\n\n/.test(i.md)]],
+  // the edit happened (Tab indents the new line, Enter keeps the indent) and clicking another card ended it (runProbe: no info.err)
+  "no empty-paragraph junk": [["code-tab", md("```python\ndef f():\n        return 1\n```")], ["code-auto-indent", md("```python\ndef f():\n    x = 1\n    y\n```")]],
 };
 
 test("markdownRecord", async () => {
@@ -359,10 +360,9 @@ test("markdownReviewIssues", async () => {
     for (const [name, ok] of checks) {
       if (only && !only.some((o) => name.startsWith(o))) continue;
       const pr = PROBES.find((p) => p.name === name)!;
-      let info = await runProbe(pr);
-      // 偶尔第一下没点进去（无头浏览器）：再跑一次
-      if (!ok(info) && info.err) info = await runProbe(pr);
-      const pass = ok(info);
+      const info = await runProbe(pr);
+      // a probe that threw (the edit didn't open, clicking another card didn't end it, …) fails whatever its check says
+      const pass = !info.err && ok(info);
       check(`markdownReviewIssues ${issue} · ${name}`, pass, JSON.stringify({ md: info.md, dom: info.dom, err: info.err, sel: info.sel, ask: info.ask }).slice(0, 400));
     }
   }

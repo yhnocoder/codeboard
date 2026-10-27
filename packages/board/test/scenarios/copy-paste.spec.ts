@@ -53,13 +53,22 @@ async function boardWith(b: Board) {
 }
 
 const cardEl = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"]`);
-/** What the system clipboard holds now: its types, its text and, if there is one, the size of its PNG */
+/** What the system clipboard holds now: its types, its text and, if there is one, the size of its PNG, all of one copy. A
+ *  readText() after read() can already see the next copy (its text with the types of the copy before), so the text comes from
+ *  read()'s items too; their getType() throws "Clipboard data has changed" when a copy lands in between, and then there is no
+ *  answer yet (undefined: the until around it reads again) */
 const clipboard = (h: Host) => h.page.evaluate(async () => {
   const items = await navigator.clipboard.read();
   const types = items.flatMap((i) => i.types);
-  const it = items.find((i) => i.types.includes("image/png"));
-  const bmp = it ? await createImageBitmap(await it.getType("image/png")) : undefined;
-  return { types, text: await navigator.clipboard.readText(), png: bmp && { w: bmp.width, h: bmp.height } };
+  const of = (t: string) => items.find((i) => i.types.includes(t))?.getType(t);
+  try {
+    const txt = await of("text/plain"), img = await of("image/png");
+    const bmp = img ? await createImageBitmap(img) : undefined;
+    return { types, text: txt ? await txt.text() : "", png: bmp && { w: bmp.width, h: bmp.height } };
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "InvalidStateError") return undefined;
+    throw e;
+  }
 });
 /** ⌘V of what the system clipboard holds now: a paste event carrying its text and its picture, the way the browser sends one */
 const pasteClipboard = (h: Host) => h.page.evaluate(async () => {
@@ -91,7 +100,7 @@ test("copiedCardsGiveOtherAppsTheirContent", async () => {
   await cardEl(h, "t1").click({ modifiers: ["Shift"] });
   await cardEl(h, code.id).locator(".chead").click({ modifiers: ["Shift"] });
   await pg.keyboard.press("Meta+c");
-  const three = await until(h, "the copy is on the clipboard", async () => { const c = await clipboard(h); return c.text ? c : undefined; });
+  const three = await until(h, "the copy is on the clipboard", async () => { const c = await clipboard(h); return c?.text ? c : undefined; });
   const want = [note.md, text.md, code.segments[0].text.join("\n")].join("\n\n");
   check("copiedCardsGiveOtherAppsTheirContent Note, Text and code as text", three.text === want, { got: three.text.slice(0, 300), want: want.slice(0, 300) });
 
@@ -99,7 +108,7 @@ test("copiedCardsGiveOtherAppsTheirContent", async () => {
   await cardEl(h, "i1").locator(".imgb").click();
   await pg.keyboard.press("Meta+c");
   // the board writes the clipboard itself (text and picture in one write, the picture's PNG made after the key press)
-  const img = await until(h, "the image card's copy is on the clipboard", async () => { const c = await clipboard(h); return c.text !== three.text ? c : undefined; });
+  const img = await until(h, "the image card's copy is on the clipboard", async () => { const c = await clipboard(h); return c && c.text !== three.text ? c : undefined; });
   check("copiedCardsGiveOtherAppsTheirContent image card gives its picture", img.types.includes("image/png") && img.png?.w === 240 && img.png?.h === 160, img);
   check("copiedCardsGiveOtherAppsTheirContent image card text is a Markdown image", img.text === "![](assets/card.png)", img.text);
 

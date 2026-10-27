@@ -9,6 +9,7 @@ npm run build      # @yhnocoder/markdown (packages/markdown/dist), board UI + ex
 npm test           # unit tests (core, markdown, board, host, extension)
 npm run check      # local test tier: typecheck, unit tests and affected harness scenarios (~3 min)
 npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Code and xvfb)
+npm run storybook  # Storybook for the board UI at http://localhost:6006 (cards and toolbar, every theme, light / dark, zoom); not part of check or the per-push CI. `npm run storybook:check` builds it and opens every story in Chromium; that runs nightly
 ```
 
 `npm run package` builds everything and packs an installable `.vsix` into `extensions/vscode/`. Releases do the same in CI (`.github/workflows/release.yml`). To release:
