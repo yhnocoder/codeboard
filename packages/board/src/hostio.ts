@@ -4,6 +4,7 @@ import { reconcile } from "solid-js/store";
 import { loadBoard, findCard, isCode, allCodeCards, rebaseUpstream, upstreamSegs, shiftBy, walkOrder, removeCards, type HostToBoard, type Sidenote } from "@codeboard/core";
 import { state, setState, markSaved, setBoard, select, clearSel, toast, mutate, sync, syncShared, syncGone, syncMerged, setShared, setLineSel, lineSel, sel, flows } from "./state/store";
 import { setCam } from "./state/camera";
+import { cardsMeasured } from "./state/measure";
 import { resetSubboards, putSkels, setCrumbs, setWalkBack } from "./state/subboards";
 import { boardSwitched } from "./state/root";
 import * as A from "./actions";
@@ -40,7 +41,7 @@ export function onHost(m: HostToBoard) {
       if (questionsOpen()) A.refreshQuestions();
       setCam(b.cam.x, b.cam.y, b.cam.z);
       markSaved();
-      if (m.walk) hopWalk(m.walk);
+      if (m.walk) void hopWalk(m.walk);
       break;
     }
     case "skeletons": putSkels(m.boards); break;
@@ -111,8 +112,8 @@ export function onHost(m: HostToBoard) {
       if (!f) break;
       select({ cards: [f.host.id] });
       if (m.lines && m.seg) setLineSel({ card: m.card, seg: m.seg, start: m.lines[0], end: m.lines[1] });
-      A.revealCard(m.card);
-      if (m.sticker) A.revealQuestion(m.sticker);
+      const sticker = m.sticker;
+      void A.revealCard(m.card).then(() => { if (sticker) A.openQuestion(sticker); });
       break;
     }
     case "key": runKey(A, m.action); break;
@@ -135,23 +136,24 @@ export function onHost(m: HostToBoard) {
 }
 
 /** 跨白板的讲解：进了子白板就从 start 讲起（讲完回去），回到父白板就接着讲 */
-function hopWalk(w: NonNullable<Extract<HostToBoard, { type: "init" }>["walk"]>) {
-  // 等卡片量好尺寸再动镜头
-  setTimeout(() => {
-    if (w.into) {
-      const start = w.start ?? flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
-      if (!start) { A.leaveBoard(undefined, { resume: { root: w.into.root, i: w.into.i + 1 } }); return; }
-      setWalkBack(w.into);
-      A.startWalk(start, { single: true });
-    } else if (w.resume) {
-      const r = w.resume;
-      if (!state.board.cards.some((c) => c.id === r.root) || r.i < 0) return;
-      // 讲到头了（子白板是最后一步）：停在框上
-      const n = walkOrderLen(r.root);
-      if (r.i >= n) return;
-      A.startWalk(r.root, { at: r.i });
-    }
-  }, 120);
+async function hopWalk(w: NonNullable<Extract<HostToBoard, { type: "init" }>["walk"]>) {
+  // 镜头按卡的实际大小框：没量过的卡只有存下来的估计值
+  const board = state.board.id;
+  await cardsMeasured();
+  if (state.board.id !== board) return;
+  if (w.into) {
+    const start = w.start ?? flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
+    if (!start) { A.leaveBoard(undefined, { resume: { root: w.into.root, i: w.into.i + 1 } }); return; }
+    setWalkBack(w.into);
+    A.startWalk(start, { single: true });
+  } else if (w.resume) {
+    const r = w.resume;
+    if (!state.board.cards.some((c) => c.id === r.root) || r.i < 0) return;
+    // 讲到头了（子白板是最后一步）：停在框上
+    const n = walkOrderLen(r.root);
+    if (r.i >= n) return;
+    A.startWalk(r.root, { at: r.i });
+  }
 }
 const walkOrderLen = (root: string) => walkOrder(state.board, root).length;
 

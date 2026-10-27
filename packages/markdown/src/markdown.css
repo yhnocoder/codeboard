@@ -41,9 +41,8 @@ math { font-size: 1.05em; }
 .md li::marker { color: var(--ink-3); }
 .md strong { font-weight: 650; }
 .md s { color: var(--ink-2); }
-/* ==高亮==：左右没有内边距（进出编辑时字不挪）；下边的 .12em 是行内元素的竖向内边距，只加长底色，不占行高。
-   border-radius 写 0：盖掉白板给搜索结果 <mark> 的圆角 */
-.md mark { background: linear-gradient(transparent 58%, var(--md-hl) 58%); color: inherit; border-radius: 0; padding: 0 0 .12em; margin: 0; }
+/* ==高亮==：左右没有内边距（进出编辑时字不挪）；下边的 .12em 是行内元素的竖向内边距，只加长底色，不占行高 */
+.md mark { background: linear-gradient(transparent 58%, var(--md-hl) 58%); color: inherit; padding: 0 0 .12em; margin: 0; }
 /* {字|批注}：被标的字是一个行内块，上面（data-below：下面）多出一条窄轨道，标签（::before）和箭头（::after）画在轨道里，
    只用 CSS 居中：不量位置、不建节点，编辑器里和静态显示一样（静态显示时 view.ts 只把写出块外的标签挪回来，--ax）。
    只有这一行变高，代码和字不会被盖住。颜色 --md-annot-blue / -purple / -orange / -green，手写字体 --md-hand（都有默认值） */

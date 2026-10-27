@@ -1,15 +1,25 @@
 // 量 DOM（卡片尺寸、卡里每行的位置）：先把这一轮要量的都读完，再一起写回 store。
 // 一边读一边写会让浏览器每张卡都重新排一次版，打开大白板时几百张卡就是几百次排版。
-import { batch } from "solid-js";
+import { batch, createEffect, createRoot } from "solid-js";
 import { queueMeasure, observeResize, setMeasureBatch } from "@yhnocoder/markdown/ui";
 import { isCode, cardRows, shownText, commonIndent } from "@codeboard/core";
-import { state, cardById } from "./store";
+import { state, cardById, sizes } from "./store";
+import { visibleCards } from "./sections";
 import { shown } from "./ui";
 import { toWorld } from "./camera";
 
 // 先读后写的一轮测量和共用的 ResizeObserver 在 @yhnocoder/markdown 里（Mermaid 图的重排也排在同一轮里）：写回包在 batch 里
 setMeasureBatch(batch);
 export { queueMeasure, observeResize };
+
+/** 看得见的卡都量过尺寸了（刚画出来的卡在 ResizeObserver 第一次报的时候量）；都量过就马上 */
+export function cardsMeasured(): Promise<void> {
+  return new Promise((done) => createRoot((dispose) => createEffect(() => {
+    if (!visibleCards().every((c) => sizes[c.id])) return;
+    dispose();
+    done();
+  })));
+}
 
 let lastPtr = { x: 0, y: 0 };
 /** 指针最后在哪（屏幕坐标）：installKeys 里开始记 */

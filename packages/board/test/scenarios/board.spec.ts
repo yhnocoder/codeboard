@@ -537,6 +537,7 @@ test("noteHeadings", async () => {
 
 /** Built-in stickers in every theme */
 test("stickerThemes", async () => {
+  const seen: Record<string, unknown> = {};
   for (const theme of ["warm-ink", "classic", "graphite", "soft-light", "drafting", "colorful", "newspaper", "poster", "ink-wash", "city"]) {
     const b = emptyBoard("b1", "board");
     const names = ["star", "question", "exclaim", "check", "flag", "zap", "bug", "todo", "heart", "hourglass", "warning", "todo-text"];
@@ -545,9 +546,13 @@ test("stickerThemes", async () => {
     const h = await open({ board: b, light, w: 760, h: 140, settings: { theme } as any });
     const bg = await h.page.locator('[data-sticker="k0"] circle.bg').evaluate((e) => getComputedStyle(e).fill);
     await shot(h, `board-stk-${theme}`);
-    console.log("stk", theme, bg);
+    const got = { look: await h.page.evaluate(() => document.documentElement.dataset.look), drawn: await h.page.evaluate(() => [...document.querySelectorAll("[data-sticker]")].filter((e) => e.getBoundingClientRect().width > 0 && (e.querySelector("svg") || e.textContent?.trim())).length), bg };
+    seen[theme] = got;
+    check(`stickerThemes ${theme}: every built-in sticker is drawn, its badge filled`, got.look === theme && got.drawn === names.length && !/^(none|transparent|rgba\(0, 0, 0, 0\))$/.test(bg), got);
     await close(h);
   }
+  // the badge takes the theme's colors: not one color for all
+  check("stickerThemes the badge color follows the theme", new Set(Object.values(seen).map((x: any) => x.bg)).size >= 5, seen);
 });
 
 /** Code card metrics per theme: char width, line height, header height, code area vertical padding; cards must fit the same content after a theme switch */
@@ -569,6 +574,10 @@ test("themeMetrics", async () => {
     await close(h);
   }
   console.table(rows);
+  // the code's font size, line height and character width are the same in every theme, so a card holds the same lines and columns
+  const base = rows[0];
+  const off = rows.filter((r) => r.fs !== base.fs || r.lh !== base.lh || Math.abs(r.ch - base.ch) > 0.05);
+  check("themeMetrics code metrics are the same in every theme", off.length === 0, { base: { fs: base.fs, lh: base.lh, ch: base.ch }, off });
 });
 
 /** Fixed-height code card: visible code area height unchanged after a theme switch */
@@ -610,6 +619,19 @@ test("arrowShapeUpRight", async () => {
   b.place[b.cards[2].id] = { ...b.place[b.cards[2].id], x: 760, y: 900 };
   const h = await open({ board: b, light: true, w: 1500, h: 950 });
   await shot(h, "board-arrowup");
+  // the call arrow L1 leaves the call's row on the parent's right edge, rises through the gap and enters the child's left edge
+  // at its title, without going round either card
+  const r = await h.page.evaluate(([from, to]) => {
+    const box = (id: string) => document.querySelector(`.card[data-id="${id}"]`)!.getBoundingClientRect();
+    const a = box(from), c = box(to);
+    const path = document.querySelector('path.lhit[data-link="L1"]') as SVGPathElement, m = path.getScreenCTM()!, len = path.getTotalLength();
+    const pts = Array.from({ length: 41 }, (_, i) => { const q = path.getPointAtLength((len * i) / 40); return { x: q.x * m.a + q.y * m.c + m.e, y: q.x * m.b + q.y * m.d + m.f }; });
+    return { a: { right: a.right, top: a.top, bottom: a.bottom }, c: { left: c.left, top: c.top }, start: pts[0], end: pts[40],
+      inGap: pts.every((q) => q.x >= a.right - 2 && q.x <= c.left + 2), rising: pts.every((q, i) => i === 0 || q.y <= pts[i - 1].y + 0.5) };
+  }, [b.cards[0].id, b.cards[1].id]);
+  const ok = Math.abs(r.start.x - r.a.right) <= 12 && r.start.y > r.a.top && r.start.y < r.a.bottom && Math.abs(r.end.x - r.c.left) <= 12
+    && r.end.y >= r.c.top && r.end.y <= r.c.top + 48 && r.inGap && r.rising;
+  check("arrowShapeUpRight the arrow to an up-right child runs straight up through the gap between the cards", ok, r);
   await close(h);
 });
 

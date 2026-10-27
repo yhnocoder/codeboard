@@ -55,6 +55,7 @@ export function BoardView(p: { children?: JSX.Element }) {
   }));
   return (
     <div class="app chrome" style={{ "--font": state.host.fontFamily ? `${state.host.fontFamily}, var(--mono0)` : undefined }}>
+      <style>{A.libCallCss()}</style>
       <Canvas />
       {/* 报头 / 海报标题：只有 Newspaper、Poster、Soft Light、Drafting 显示（themes.css），默认 display: none */}
       <div class="mast" aria-hidden="true"><span class="mn">{state.board.name}</span></div>
