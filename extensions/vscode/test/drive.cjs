@@ -676,8 +676,15 @@ const finish = async (browser, errors) => {
   const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep, noteimage: noteimageStep, notepaste: notepasteStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep, projects: projectsStep };
   // Part 3 holds the slow steps (each 20 s or more on its own board); codeedit reloads the window, so it goes last
   const PARTS = { 2: "capture,addsel,cardfocus,close,notepaste,projects", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
-  const only = process.env.E2E_ONLY || PARTS[process.env.E2E_PART];
+  // E2E_FLOW=<file.cjs> runs a flow of your own after the E2E_ONLY steps (or alone): the file exports async (page, t) => { … }, t holds
+  // this driver's helpers. For reproducing a problem in the real VS Code without editing this file
+  const flow = process.env.E2E_FLOW && path.resolve(process.env.INIT_CWD || process.cwd(), process.env.E2E_FLOW);
+  if (flow) STEPS.flow = (page) => require(flow)(page, { check, until, soon, hold, idle, shot, newBoard, newNote, emptySpot, clickBoard, altB, sidenote, clipboard, boardJson, boardNamed, editorFocused, setUserSetting, command, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, W, OUT, WS, UD });
+  const only = [process.env.E2E_ONLY || PARTS[process.env.E2E_PART], flow && "flow"].filter(Boolean).join(",");
   if (only) {
+    // a step may begin with a command: wait until VS Code has loaded the extension's contributions (on a fresh window the command
+    // palette doesn't list them yet)
+    await page.locator('.activitybar .action-item a[aria-label^="CodeBoard"]').waitFor({ timeout: 60000 });
     for (const k of only.split(",")) { if (!STEPS[k]) throw new Error(`E2E_ONLY: no step ${k}`); const t0 = Date.now(); await STEPS[k](page); console.log(`- ${k}: ${((Date.now() - t0) / 1000).toFixed(1)} s`); }
     return finish(browser, errors);
   }
