@@ -41,8 +41,8 @@ export const NarrowMoreCity: Story = { name: "Narrow · More in City (Moving Car
 export const NarrowCode: Story = { name: "Narrow · Code Menu", globals: narrow, play: async () => { await settled(); await toolbar("Code"); } };
 // City 的 Dock 多一个红绿灯（车流开关）
 export const DockCity: Story = { name: "Dock · City (Traffic Light)", globals: { theme: "city" } };
-// 悬停（CSS :hover，story 的 parameters.pseudo 摆出来）：底部工具栏和右下角 Dock 上的按钮、缩放的 − / 100% / +
+// 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：底部工具栏和右下角 Dock 上的按钮、缩放的 − / 100% / +
 export const Hover: Story = {
   name: "Hover (tools, dock, zoom)",
-  parameters: { pseudo: { hover: ['.bbar button[aria-label="Text"]', '.dock button[aria-label="Call Tree"]', '.dock button[aria-label="Zoom In"]', ".dock .zoom"] } },
+  globals: { pseudo: { hover: ['.bbar button[aria-label="Text"]', '.dock button[aria-label="Call Tree"]', '.dock button[aria-label="Zoom In"]', ".dock .zoom"] } },
 };

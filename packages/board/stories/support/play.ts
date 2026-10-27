@@ -29,7 +29,7 @@ export async function hover(target: string | Element) {
   e.dispatchEvent(new PointerEvent("pointerenter", { ...o, bubbles: false }));
 }
 /**
- * 悬停的样子（CSS :hover）：storybook-addon-pseudo-states 把样式表里的 :hover 改写成 .pseudo-hover，story 的 parameters.pseudo 点到的元素它加上这个类。
+ * 悬停的样子（CSS :hover）：storybook-addon-pseudo-states 把样式表里的 :hover 改写成 .pseudo-hover，story 的 globals.pseudo 点到的元素它加上这个类。
  * 但它只在 story 挂上后的下一个 tick 里加；play / after 里才出现的元素（菜单、浮层、卡里异步画出来的）要自己加同一个类
  */
 export async function forceHover(target: string | Element, ...more: (string | Element)[]) {

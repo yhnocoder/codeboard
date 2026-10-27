@@ -312,7 +312,7 @@ export const LabelHoverLine: Story = {
   },
 };
 // 悬停在箭头上出来的按钮被指着时的样子（CSS :hover）。线浮出来、出「+ Call」/「+」是 hoverLink() 的信号（和 Hover 一样由 Stage 的 after 设），
-// 按钮是 after 之后才画出来的，来不及被 parameters.pseudo 点到：play 里等它出现再加悬停类（support/play.ts 的 forceHover）
+// 按钮是 after 之后才画出来的，来不及被 globals.pseudo 点到：play 里等它出现再加悬停类（support/play.ts 的 forceHover）
 const hoverButton = (which: Args["which"], sel: string): Story => ({
   render: (a, ctx) => <Stage scene={() => hovering(a)} globals={ctx.globals as Globals} />,
   args: { which }, argTypes: noArgs,

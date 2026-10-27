@@ -103,5 +103,5 @@ export const LockedSelected: Story = { name: "Locked, Selected (no handles)", ar
 export const Narrow: Story = { args: { md: TITLED, w: 140 } };
 export const Selected: Story = { args: { md: TITLED, selected: true } };
 export const Map: Story = { name: "Map Level (20%)", args: { md: TITLED, lod: "map" } };
-// 悬停（CSS :hover，story 的 parameters.pseudo 摆出来）：卡四边的连线点和右下角改大小的弧
-export const Hover: Story = { name: "Hover (ports, resize corner)", args: { md: TITLED }, parameters: { pseudo: { hover: [".card"] } } };
+// 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：卡四边的连线点和右下角改大小的弧
+export const Hover: Story = { name: "Hover (ports, resize corner)", args: { md: TITLED }, globals: { pseudo: { hover: [".card"] } } };

@@ -6,7 +6,9 @@ const config: StorybookConfig = {
   // 不用 packages/board/vite.config.ts：它的 build 写的是插件的输出目录和入口
   framework: { name: "storybook-solidjs-vite", options: { docgen: false, builder: { viteConfigPath: ".storybook/vite.config.ts" } } },
   stories: ["../stories/**/*.stories.tsx"],
-  // 悬停等 CSS 伪类：它把样式表里的 :hover 改写成 .pseudo-hover，story 用 parameters.pseudo 指定哪些元素处于悬停（工具栏上的开关也是它的）
+  // 悬停等 CSS 伪类：它把样式表里的 :hover 改写成 .pseudo-hover，story 用 globals.pseudo 指定哪些元素处于悬停（工具栏上的开关也是它的）。
+  // 不用 parameters.pseudo：插件会把它抄进用户的 globals，管理页再写进网址，选择器（.card）不是网址里允许的字，Storybook 报 "Omitted potentially
+  // unsafe URL args"，换到别的 story 那份 globals 还留着。story 自己的 globals 不进网址，也只管这一个 story
   addons: ["storybook-addon-pseudo-states"],
   staticDirs: [{ from: "../stories/fixtures/assets", to: "/sb-assets" }],
   core: { disableTelemetry: true },

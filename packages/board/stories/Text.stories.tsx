@@ -66,6 +66,6 @@ export const BoldSelected: Story = { name: "Bold, Selected (B on)", args: { size
 export const Editing: Story = { args: { md: PARA, state: "editing" } };
 export const Locked: Story = { args: { size: "heading", locked: true, state: "selected" } };
 export const Map: Story = { name: "Map Level (20%)", args: { size: "title", lod: "map" } };
-// 悬停（CSS :hover，story 的 parameters.pseudo 摆出来）：Text 没有框，悬停时才出一圈虚线框；选中时上方的小工具条里的按钮也有悬停色
-export const Hover: Story = { name: "Hover (dashed frame)", args: { size: "heading" }, parameters: { pseudo: { hover: [".card"] } } };
-export const HoverToolbar: Story = { name: "Hover: Toolbar Button", args: { size: "heading", state: "selected" }, parameters: { pseudo: { hover: [".card .ttb .tbtn:last-child"] } } };
+// 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：Text 没有框，悬停时才出一圈虚线框；选中时上方的小工具条里的按钮也有悬停色
+export const Hover: Story = { name: "Hover (dashed frame)", args: { size: "heading" }, globals: { pseudo: { hover: [".card"] } } };
+export const HoverToolbar: Story = { name: "Hover: Toolbar Button", args: { size: "heading", state: "selected" }, globals: { pseudo: { hover: [".card .ttb .tbtn:last-child"] } } };

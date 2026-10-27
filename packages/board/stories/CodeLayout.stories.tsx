@@ -90,13 +90,13 @@ export const MergeArmed: Story = { name: "Merge: Near", args: { state: "mergeArm
 export const MergeHot: Story = { name: "Merge: Release", args: { state: "mergeHot" } };
 export const Lifted: Story = { name: "Picked Up", args: { state: "lifted" } };
 export const MapLevel: Story = { args: { level: "map" } };
-// 悬停（CSS :hover，story 的 parameters.pseudo 摆出来）：卡上浮出连线的点（每行行端的、四条边的）、右下角改大小的弧；
+// 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：卡上浮出连线的点（每行行端的、四条边的）、右下角改大小的弧；
 // 点自己被指着时（.lport:hover / .eport:hover）填成强调色；无背景的卡悬停时出细边框和卡头
-export const Hover: Story = { name: "Hover (ports, resize corner)", parameters: { pseudo: { hover: [".card"] } } };
+export const Hover: Story = { name: "Hover (ports, resize corner)", globals: { pseudo: { hover: [".card"] } } };
 // 每行的点（.lport）只画在指针下的那一行（CodeBody 里自己的 hoverRow，没导出）：play 里照 Links 的 Line port under the pointer 那样发 pointerenter / pointermove
 export const HoverPorts: Story = {
   name: "Hover: Port under the Pointer",
-  parameters: { pseudo: { hover: [".card", ".card > .cface > .eport.r"] } },
+  globals: { pseudo: { hover: [".card", ".card > .cface > .eport.r"] } },
   play: async () => {
     const row = await el(`${card("c1")} .src > .l:nth-child(4)`);
     await hover(row);
@@ -105,4 +105,4 @@ export const HoverPorts: Story = {
     await forceHover(await el(`${card("c1")} .lport.r`));
   },
 };
-export const HoverNoBackground: Story = { name: "Hover: No Background (hairline, header)", args: { state: "nobg" }, parameters: { pseudo: { hover: [".card"] } } };
+export const HoverNoBackground: Story = { name: "Hover: No Background (hairline, header)", args: { state: "nobg" }, globals: { pseudo: { hover: [".card"] } } };

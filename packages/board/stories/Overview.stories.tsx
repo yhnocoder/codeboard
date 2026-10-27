@@ -26,7 +26,7 @@ export default meta;
 
 export const All: StoryObj<typeof meta> = {};
 
-// 每种卡被指着时的样子，放在同一块白板上（CSS :hover，story 的 parameters.pseudo 摆出来，全部卡一起悬停）：
+// 每种卡被指着时的样子，放在同一块白板上（CSS :hover，story 的 globals.pseudo 摆出来，全部卡一起悬停）：
 // Note / Code / Image 浮出连线的点和右下角的弧、Text 的虚线框、Mark 的淡虚线框、无背景的代码卡的细边框和卡头、Web 卡右上角的 ↗ ⋯、
 // Link List 被指着的那一行（⋮⋮ 和工具）、Text 选中时的工具条按钮。
 // 悬停也有 JS 的部分：指针下那张卡的箭头会浮到所有卡的上面，这是 hoverCard() 的信号（state/hover.ts）、不是 CSS，所以 after 里把它设成 h-a。
@@ -49,7 +49,7 @@ function hover(): Scene {
 }
 export const Hover: StoryObj<typeof meta> = {
   render: (_, ctx) => <Stage scene={hover} globals={ctx.globals as Globals} />,
-  parameters: {
+  globals: {
     pseudo: {
       hover: [
         '.card:not([data-id^="cap-"])', '.card[data-id="h-a"] .eport.r', ".card .ttb .tbtn:last-child", '.card[data-id="h-web"] .wacts .ib:first-child',
