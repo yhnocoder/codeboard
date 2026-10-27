@@ -13,7 +13,7 @@ import { setRefResolver, setCodeHighlighter } from "@yhnocoder/markdown";
 import { langId, THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import { noteHighlight } from "../src/cm/load";
 import { resolveCardRef } from "../src/actions";
-import type { Globals } from "../stories/support/board";
+import { storyChrome, type Globals } from "../stories/support/board";
 import "@yhnocoder/markdown/katex.css";
 import "../src/fonts.css";
 import "../src/styles.css";
@@ -57,13 +57,19 @@ const viewport: Decorator = (Story, ctx) => {
   return Story();
 };
 
+// 挂不挂工具栏和 Dock：按 story 的标题和 parameters.chrome（support/board.tsx storyChrome）
+const chrome: Decorator = (Story, ctx) => {
+  storyChrome(ctx.title, ctx.parameters.chrome);
+  return Story();
+};
+
 // storybook-addon-pseudo-states 把 story 参数里的悬停写进 globals，换到别的 story 后那份 globals 还在，
 // 新 story 挂上时它先用这份旧的：新 story 的卡也成了悬停，之后 globals 改了它也不会去掉已经加上的类。
 // 所以换 story 时先把 globals 里的清掉（它再按新 story 自己的 parameters.pseudo 来）；工具栏上的开关也跟着复位，只管当前这个 story
 addons.getChannel().on(STORY_CHANGED, () => addons.getChannel().emit(UPDATE_GLOBALS, { globals: { pseudo: false } }));
 
 const preview: Preview = {
-  decorators: [scheme, viewport],
+  decorators: [chrome, scheme, viewport],
   parameters: {
     layout: "fullscreen",
     viewport: { options: { narrow: { name: "Beside the editor (600px)", styles: { width: "600px", height: "800px" } } } },

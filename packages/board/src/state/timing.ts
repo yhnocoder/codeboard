@@ -3,7 +3,7 @@
 
 /** The camera counts as moving until this long after its last change (`.world.moving`, camera.ts) */
 export const CAM_STILL = 180;
-/** The camera position is saved once it has not changed for this long (App.tsx), then sent after LIVE_DELAY */
+/** The camera position is saved once it has not changed for this long (BoardView.tsx), then sent after LIVE_DELAY */
 export const CAM_SETTLE = 600;
 /** Live changes (drag in progress, a settled camera) go to the host this long after the last one (store.ts) */
 export const LIVE_DELAY = 800;

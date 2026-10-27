@@ -1,5 +1,5 @@
 // 底部工具栏（新建 · Search · ⋯，右下角缩放）和 Dock：Code、⋯ 菜单，⋯ 的 Theme ▸，能撤销 / 重做时的 ⋯，
-// 窄的时候收进 ⋯ 的那些（City 多一项 Moving Cars），City 的红绿灯。App.tsx 没有导出 Toolbar（它读的状态都是全局的），所以挂整个 App
+// 窄的时候收进 ⋯ 的那些（City 多一项 Moving Cars），City 的红绿灯。UI/ 下的小样挂整个 App（白板加上 Chrome）
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, noteCard, type Globals, type Scene } from "./support/board";
 import { settled, el, type, key } from "./support/play";

@@ -13,7 +13,7 @@ import { TUNE, tune, type TuneKey } from "../state/tune";
 
 const cur = (): S => state.host.settings;
 
-/** 主题同步 + 设置页本身；App 里挂一次 */
+/** 主题同步 + 设置页本身；BoardView 里挂一次 */
 export function SettingsLayer() {
   createEffect(() => A.applyLook(state.host.settings.theme));
   createEffect(() => A.applyVscodeBg(state.host.settings.vscodeBg));

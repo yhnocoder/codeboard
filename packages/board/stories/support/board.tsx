@@ -6,6 +6,7 @@ import {
   type Skeleton, type Stale, type ThemeId, type HostToBoard,
 } from "@codeboard/core";
 import { App } from "../../src/App";
+import { BoardView } from "../../src/BoardView";
 import { onHost } from "../../src/hostio";
 import { select, state, setState, setToastMsg } from "../../src/state/store";
 import { setEditing, setSettingsOpen } from "../../src/state/ui";
@@ -51,8 +52,17 @@ function resetChrome() {
   setSettingsOpen(false); setExportBusy(false); setQuestionsOpen(false); setQTab("open"); setToastMsg(null); setStickerColor(undefined);
 }
 
-/** replies：这个 story 挂着时假宿主先问它（support/host.ts） */
-export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Replies }) {
+let chromeDefault = true;
+/**
+ * 挂整个 App 还是只挂白板（BoardView：没有工具栏和 Dock，卡和画布的小样不被它们挡着；面包屑、新版本横幅、讲解条是白板自己的，照样有）。
+ * preview.tsx 每个 story 画之前调：parameters.chrome 写了就照它，没写时 Cards/、Canvas/、Code/ 只挂白板，UI/ 和 Overview 挂整个 App
+ */
+export function storyChrome(title: string, chrome: unknown) {
+  chromeDefault = typeof chrome === "boolean" ? chrome : !/^(Cards|Canvas|Code)\//.test(title);
+}
+
+/** replies：这个 story 挂着时假宿主先问它（support/host.ts）；chrome 盖过 storyChrome 定的 */
+export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Replies; chrome?: boolean }) {
   const g = p.globals;
   const scene = createMemo(p.scene);
   if (p.replies) useReplies(p.replies);
@@ -94,7 +104,7 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
     // 请求作废，那边弹「Couldn't save the board」。标成没加载，这一下就不存了（init 再标回来）
     setState("loaded", false);
   });
-  const app = <App />;
+  const app = (p.chrome ?? chromeDefault) ? <App /> : <BoardView />;
   // 上一个 story 开着的菜单、对话框、浮层：它的 App 卸下时已经出栈，信号还在，新 App 一挂上又画出来（init 那时还没有栈可关）。
   // 挂上以后关一次；写在 App 后面，浮层那一层（effect 里压栈）已经压上
   onMount(closeOverlays);

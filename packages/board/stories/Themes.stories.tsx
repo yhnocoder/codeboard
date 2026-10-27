@@ -39,6 +39,8 @@ function board(a: Args): Scene {
 
 const meta = {
   title: "Canvas/Themes",
+  // 主题也换工具栏和 Dock 的样子（themes.css），City 的红绿灯在 Dock 上：挂整个 App
+  parameters: { chrome: true },
   render: (a, ctx) => <Stage scene={() => board(a)} globals={ctx.globals as Globals} />,
   args: { traffic: false },
   argTypes: { traffic: { control: "boolean", description: "City only: green light, cars drive along the call roads" } },

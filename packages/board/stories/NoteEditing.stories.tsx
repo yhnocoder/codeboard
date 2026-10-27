@@ -2,7 +2,8 @@
 // 编辑器进来以后的状态由 play 走：编辑器挂在 .md-pm 上（TipTap 的 editor），光标、选区用它的命令放，和用户点进去、方向键走进去落在同一处
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, codeCard, type Globals, type Scene } from "./support/board";
-import { waitFor, $, frames, pointer } from "./support/play";
+import { waitFor, $, el, frames, pointer, key } from "./support/play";
+import { cam } from "../src/state/camera";
 import { TITLED, SHORT, LONG } from "./support/groups";
 import { MD, ALL_MD, codeBlock, noteAt } from "./support/cards";
 
@@ -113,9 +114,12 @@ const staticSelection = async () => {
   const r = document.createRange(); r.setStart(a, Math.floor(a.length / 2)); r.setEnd(b, Math.ceil(b.length / 2));
   const s = getSelection()!; s.removeAllRanges(); s.addRange(r);
 };
+// 卡的小样不挂工具栏：指针停在工具栏的 Note 会放卡的地方（左上角在视野正中往左上 140、40），按 N
 const newNote = async () => {
-  const b = await waitFor(() => $<HTMLButtonElement>('.bbar button[aria-label="Note"]'), "the Note button");
-  b.click();
+  const b = await el("#board");
+  const r = b.getBoundingClientRect();
+  pointer(b, "pointermove", { x: r.left + r.width / 2 - 140 * cam.z, y: r.top + r.height / 2 - 40 * cam.z });
+  await key("n");
   await waitFor(() => $(".card.note .md-pm"), "the new note's editor");
 };
 
