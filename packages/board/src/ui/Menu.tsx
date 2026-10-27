@@ -206,10 +206,21 @@ function Dialog(p: { d: DialogState }) {
   };
   useOverlay({ close: () => finish(null), grab: true, modal: true, keys });
   if (!p.d.input && !p.d.pick) queueMicrotask(() => document.querySelector<HTMLButtonElement>(".dialog .def")?.focus({ preventScroll: true }));
+  // VS Code gives a webview the keyboard in two steps, its host page first and then the board's frame, and Chrome delivers the first
+  // one to the webview's process on its own time: a dialog asked for right after (a palette command) can focus its field before that
+  // lands, and the landing takes the focus out of the board's frame and clears it. When the frame then gets the keyboard back with
+  // nothing in the dialog focused, it goes to the dialog's field (a text field keeps its selection)
+  let box!: HTMLDivElement;
+  const takeKeyboard = () => {
+    if (box.contains(document.activeElement)) return;
+    (box.querySelector("input") ?? box.querySelector<HTMLButtonElement>(".def"))?.focus({ preventScroll: true });
+  };
+  window.addEventListener("focus", takeKeyboard);
+  onCleanup(() => window.removeEventListener("focus", takeKeyboard));
   const d = () => p.d;
   return (
         <div class="scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) finish(null); }}>
-          <div class="dialog" classList={{ wide: d().options.length > 2 || !!d().pick }} role="dialog" aria-label={d().title}>
+          <div ref={box} class="dialog" classList={{ wide: d().options.length > 2 || !!d().pick }} role="dialog" aria-label={d().title}>
             <div class="dt">{d().title}</div>
             <Show when={d().text}><div class="dx">{d().text}</div></Show>
             <Show when={d().warn}><div class="dw">{d().warn}</div></Show>

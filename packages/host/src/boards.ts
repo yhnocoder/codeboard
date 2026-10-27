@@ -21,7 +21,8 @@ export interface BoardView {
   readonly visible: boolean;
   readonly active: boolean;
   reveal(preserveFocus?: boolean): void;
-  /** Give the active board the keyboard; resolves once the editor has done so (reveal resolves nothing and lands some time later) */
+  /** Give the active board the keyboard; resolves once the editor has started to (the keyboard reaches the board's frame a moment
+   *  later), where reveal resolves nothing */
   focus(): Promise<void>;
   dispose(): void;
   /** 本机目录在界面里的地址（图片卡的 assets/） */

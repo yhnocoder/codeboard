@@ -59,6 +59,33 @@ test("askTextEscape", async () => {
   check("askTextEscape: Cancel answers null", (await answer(h, id2)).value === null);
 });
 
+// VS Code can take the focus out of the board's frame while a dialog that just focused its field is opening (it moves the keyboard to
+// the webview's host page, then on to the board's frame): when the frame gets the keyboard back with nothing focused, the field takes it
+test("askFocusReturns", async () => {
+  const h = await open({ board: board(), light });
+  await idle(h);
+  const before = cards(h);
+  const id = await ask(h, RUN);
+  await until(h, "the field has the keyboard", () => inDialog(h));
+  // The focus leaves the board's frame for another one and its field is no longer focused, as when the host page takes the keyboard
+  await h.page.evaluate(() => {
+    const f = document.body.appendChild(document.createElement("iframe"));
+    (document.activeElement as HTMLElement).blur();
+    f.contentWindow!.focus();
+    f.remove();
+  });
+  check("askFocusReturns: the field has lost the keyboard", !(await inDialog(h)));
+  await h.page.evaluate(() => window.focus());
+  await until(h, "the board's frame has the keyboard back", () => h.page.evaluate(() => document.hasFocus()));
+  check("askFocusReturns: the field has the keyboard again", await inDialog(h));
+  check("askFocusReturns: its text is still selected", await h.page.locator(".dialog input").evaluate((i: HTMLInputElement) => i.selectionStart === 0 && i.selectionEnd === i.value.length));
+  await h.page.keyboard.type("tests/run.py");
+  await h.page.keyboard.press("Enter");
+  check("askFocusReturns: what is typed then answers", (await answer(h, id)).value === "tests/run.py");
+  await idle(h);
+  check("askFocusReturns: the keys typed made no card", cards(h) === before, { before, after: cards(h) });
+});
+
 test("askPassword", async () => {
   const h = await open({ board: board(), light });
   await idle(h);

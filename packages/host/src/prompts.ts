@@ -17,8 +17,8 @@ const plain = (s: string | undefined) => s?.replace(/\$\([\w-]+\)\s*/g, "");
 export function prompts(p: BoardPanel | undefined): Prompts {
   if (!p) return workspace().ui;
   // The board may be a moment from getting the keyboard back (from a quick input), or not have it (a command from the palette run
-  // with the keyboard in the Explorer): give it the keyboard first. Moving the keyboard to a webview takes it out of the frames inside
-  // and puts it back, and a field focused in between has all its text selected again: the dialog comes after
+  // with the keyboard in the Explorer): give it the keyboard first. focus() resolves once VS Code has started moving the keyboard, which
+  // reaches the board's frame some time later; the dialog takes it when it arrives (packages/board/src/ui/Menu.tsx)
   const ask = async (a: Parameters<BoardPanel["ask"]>[0]) => { if (!p.hasKeyboard) await p.view.focus(); return p.ask(a); };
   return {
     input: async (o) => {

@@ -142,7 +142,7 @@ async function command(page, text, prompt) {
   if ((await qiSince(page, mark)).includes("lost") || !(await qiOpen(page))) throw new Error(`the input box "${prompt}" of "${text}" lost the keyboard: ${(await qiSince(page, mark)).join(", ")}`);
 }
 /** CodeBoard asks on the board a command runs on (packages/host/src/prompts.ts): wait until its dialog (title) is up on board f and its
- *  field has the keyboard, with no hand-back to a webview left to move it */
+ *  field has the keyboard, with no hand-back to a webview left to move it, and the text in it all selected (what is typed replaces it) */
 async function boardDialog(page, f, title) {
   const has = () => f.evaluate((t) => {
     const d = document.querySelector(".dialog");
@@ -151,6 +151,8 @@ async function boardDialog(page, f, title) {
   await until(`the board's "${title}" dialog has the keyboard`, has, 10000);
   await keyboardSettled(page);
   if (!(await has())) throw new Error(`the board's "${title}" dialog lost the keyboard`);
+  const sel = await f.evaluate(() => { const a = document.activeElement; return a instanceof HTMLInputElement ? [a.selectionStart, a.selectionEnd, a.value.length] : null; });
+  if (sel && (sel[0] !== 0 || sel[1] !== sel[2])) throw new Error(`the board's "${title}" dialog does not have its text selected: ${JSON.stringify(sel)}`);
 }
 const boardDialogClosed = (f, what) => f.locator(".dialog").waitFor({ state: "detached", timeout: 10000 }).catch(() => { throw new Error(`${what} did not close`); });
 /** Wait for an input box or quick pick (not the palette) whose title, prompt or placeholder mentions text */
