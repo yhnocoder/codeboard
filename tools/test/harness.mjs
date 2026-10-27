@@ -101,6 +101,8 @@ if (against) {
   console.log(`on the board of ${against} (${sha.slice(0, 7)}), not the current build`);
 }
 
+if (!against && !fs.existsSync(path.join(REPO, "extensions/vscode/media/board/board.js"))) die("the board is not built (extensions/vscode/media/board/board.js): run npm run build first");
+
 const workers = Math.max(1, Math.min(workersWanted, list.length * repeat));
 const why = Object.fromEntries(list.map((x) => [x.name, x.why]));
 const counts = Object.entries(Object.groupBy(list, (x) => x.why)).map(([w, xs]) => `${xs.length} ${w}`).join(", ");

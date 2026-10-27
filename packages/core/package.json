@@ -6,7 +6,8 @@
   "main": "src/index.ts",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "bench:analysis": "node test/run-bench-analysis.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
