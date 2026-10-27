@@ -9,7 +9,7 @@ const path = require("path");
 const { execSync } = require("child_process");
 const { audit, report } = require("../../../tools/review/audit.cjs");
 const { until, soon, hold, idle, track, sent, timing } = require("./wait.cjs");
-const { command, openFile, boardFrame, boardFrames, card, text, typingIn, fit } = require("./ui.cjs");
+const { command, qiMark, openFile, boardFrame, boardFrames, card, text, typingIn, fit, boardHasKeyboard } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 
 const steps = [], audits = [];
@@ -82,6 +82,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
   const browser = await until("VS Code's debugging port answers", () => chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null), 60000, 500);
   const page = await until("the VS Code window", () => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes("workbench")), 60000, 200);
   await track(page); // before the first board's webview exists
+  await qiMark(page); // the keyboard hand-backs to webviews, likewise
   await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
   const errors = [];
   // Node deprecation warnings from other extensions are logged as errors too, and the workspace path contains "codeboard": not ours
@@ -349,7 +350,7 @@ const gap = (a, b) => Math.hypot(Math.max(0, a.l - b.r, b.l - a.r), Math.max(0, 
     const sid = await card(f, "LLMEngine.step").first().getAttribute("data-id");
     const src = f.locator(`.card[data-id="${sid}"]`), h = src.locator(".chead");
     await h.click({ position: { x: 120, y: 8 }, force: true });
-    await until("the card is selected and the board has the keyboard", async () => /\bsel\b/.test(await src.getAttribute("class")) && await f.evaluate(() => document.hasFocus()));
+    await until("the card is selected and the board has the keyboard", async () => /\bsel\b/.test(await src.getAttribute("class")) && await boardHasKeyboard(f));
     const before = boardJson(), ids = new Set((before?.cards ?? []).map((c) => c.id));
     await page.keyboard.press("Control+c");
     // ⌘V pastes what the system clipboard holds (read in the webview, which has the keyboard): the card's code once ⌘C has put it there

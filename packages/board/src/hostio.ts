@@ -133,6 +133,8 @@ function handle(m: HostToBoard) {
       break;
     }
     case "key": runKey(A, m.action); break;
+    // Nothing on the board depends on it; the e2e scripts wait for it before pressing the keys VS Code sends back
+    case "focusKey": document.documentElement.toggleAttribute("data-keys-here", m.has); break;
     case "rename": if (m.name.trim()) mutate((b) => { b.name = m.name.trim(); }); break;
     case "replaceSegment": A.replaceSegment(m.card, m.seg, m.view); break;
     case "toast": A.switchRefused(); toast(m.text); break;

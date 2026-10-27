@@ -21,7 +21,7 @@ const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { until, soon, idle, track } = require("./wait.cjs");
-const { command, qiClosed, openFile, boardFrame, boardFrames, card, text } = require("./ui.cjs");
+const { command, qiClosed, openFile, boardFrame, boardFrames, card, text, boardHasKeyboard } = require("./ui.cjs");
 
 const EXT = path.resolve(__dirname, "..");
 const CODE = process.env.VSCODE_BIN || process.env.VSCODE_TEST_PATH || "/opt/vscode/code";
@@ -74,7 +74,7 @@ async function transfer(p, move, project, board) {
 async function openCardCode(p, f, title, file) {
   await f.locator("#board").click({ position: { x: 20, y: 200 } }); await p.keyboard.press("Escape");
   await card(f, title).locator(".chead .ctitle").click();
-  await until(`${title} is selected and the board has the keyboard`, async () => /\bsel\b/.test(await card(f, title).getAttribute("class")) && await f.evaluate(() => document.hasFocus()));
+  await until(`${title} is selected and the board has the keyboard`, async () => /\bsel\b/.test(await card(f, title).getAttribute("class")) && await boardHasKeyboard(f));
   await p.keyboard.press("Enter");
   // The code opens beside the board and the keyboard stays on the board: find the group that shows file, then click its tab
   // so the status bar shows that editor's cursor (it is empty while the board has the focus)

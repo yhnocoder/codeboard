@@ -50,6 +50,7 @@ export function makeHandler(panels: BoardHost): Handler {
       return { skipped: skipped.length };
     },
     selection: (p, m) => { p.selection = m; },
+    focus: (p, m) => panels.boardFocus(p, m.has),
     open: (p, m) => openCard(p, m),
     openPath: (_p, m) => openAt(fromHostPath(m.path), m.line),
     openLink: (_p, m) => {

@@ -444,63 +444,63 @@
         "key": "ctrl+k",
         "mac": "cmd+k",
         "args": "search",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       },
       {
         "command": "codeboard.boardKey",
         "key": "ctrl+d",
         "mac": "cmd+d",
         "args": "duplicate",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       },
       {
         "command": "codeboard.boardKey",
         "key": "ctrl+0",
         "mac": "cmd+0",
         "args": "fitAll",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       },
       {
         "command": "codeboard.boardKey",
         "key": "ctrl+1",
         "mac": "cmd+1",
         "args": "zoom100",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       },
       {
         "command": "codeboard.boardKey",
         "key": "ctrl+=",
         "mac": "cmd+=",
         "args": "zoomIn",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       },
       {
         "command": "codeboard.boardKey",
         "key": "ctrl+-",
         "mac": "cmd+-",
         "args": "zoomOut",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       },
       {
         "command": "codeboard.boardKey",
         "key": "ctrl+shift+l",
         "mac": "cmd+shift+l",
         "args": "lock",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       },
       {
         "command": "codeboard.boardKey",
         "key": "ctrl+shift+b",
         "mac": "cmd+shift+b",
         "args": "turnIntoBoard",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       },
       {
         "command": "codeboard.boardKey",
         "key": "ctrl+,",
         "mac": "cmd+,",
         "args": "settings",
-        "when": "activeWebviewPanelId == 'codeboard.board'"
+        "when": "codeboard.boardFocused"
       }
     ],
     "viewsContainers": {

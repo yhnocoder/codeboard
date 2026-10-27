@@ -59,6 +59,8 @@ export interface BoardHost {
   firstAdd?(): boolean;
   /** 跨工作区的状态（HostEnv.globalState）：Copy / Move to Another Project… 在里面找别的项目 */
   readonly globalState?: StateStore;
+  /** The board's "focus" message */
+  boardFocus(p: BoardPanel, has: boolean): Promise<void>;
 }
 
 const DAY = 864e5;
@@ -88,6 +90,9 @@ export class BoardPanel {
   cams: Camera[] = [];
   /** 下一次 init 要带上的：接着讲解、换掉存着的镜头（回到父白板时） */
   next: { walk?: WalkHop; cam?: Camera } = {};
+
+  /** What the board last said about the keyboard (its "focus" messages) */
+  hasKeyboard = false;
 
   /** id 会变：进入子白板时同一个面板换成那块白板（BoardHub.switchBoard） */
   constructor(public id: string, readonly view: BoardView, private mgr: BoardHost) {}

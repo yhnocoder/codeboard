@@ -192,6 +192,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       copy: async (text) => vscode.env.clipboard.writeText(text),
       clipboard: async () => vscode.env.clipboard.readText(),
       undoAddKey: (on) => undoAddKey(on),
+      boardFocusKey: async (on) => { await vscode.commands.executeCommand("setContext", "codeboard.boardFocused", on); },
     },
     ai: {
       ask: copilotAsk,

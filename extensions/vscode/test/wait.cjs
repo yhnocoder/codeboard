@@ -65,7 +65,8 @@ const timing = new Proxy({}, { get(_, k) {
 // through the host page's window.__vscode_post_message__, and replies come into the host page through a MessagePort before it hands
 // them to the board. Both are wrapped in the host page before its own scripts run (an init script), so window.__e2eAsks there holds
 // the requests not answered yet. The board's own frame can't be instrumented this way: VS Code writes it with document.write.
-// Requests that wait on the user (a confirmation, a file dialog: WAITS_ON_USER in host.ts) are not counted
+// Requests that wait on the user (a confirmation, a file dialog: WAITS_ON_USER in host.ts) are not counted.
+// The same MessagePort brings the workbench's "focus" message: window.__e2eFocusSeq is the last one handled (see keyboardSettled in ui.cjs)
 const ON_USER = ["confirm", "pickFile", "exportFile", "deleteEverywhere", "deleteBoard", "newBoard", "gh", "github"];
 function trackAsks(skip) {
   if (!location.protocol.startsWith("vscode-webview") || !/\/index\.html$/.test(location.pathname)) return;
@@ -86,7 +87,10 @@ function trackAsks(skip) {
       d.set.call(this, typeof fn !== "function" ? fn : function (e) {
         const m = e.data?.args?.message;
         if (e.data?.channel === "message" && m?.type === "reply") asks.delete(m.req);
-        return fn.call(this, e);
+        const r = fn.call(this, e);
+        // The workbench's "focus" (ui.cjs numbers them): handled, so the board's frame has been given the focus by now
+        if (e.data?.channel === "focus" && typeof e.data.__e2eSeq === "number") window.__e2eFocusSeq = Math.max(window.__e2eFocusSeq ?? 0, e.data.__e2eSeq);
+        return r;
       });
     } });
   } catch (e) { window.__e2eTrackError = String(e); }

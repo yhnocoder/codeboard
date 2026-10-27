@@ -176,6 +176,9 @@ export type HostToBoard =
   /** sticker：顺带打开这个问题（Questions 面板点进来的） */
   | { type: "reveal"; card: string; seg?: string; lines?: [number, number]; sticker?: string }
   | { type: "key"; action: KeyAction }
+  /** VS Code's key context (codeboard.boardFocused) has been updated for this board's last "focus": the forwardedKeys come back as
+   *  { type: "key" } only while it says the board has the keyboard */
+  | { type: "focusKey"; has: boolean }
   /** 侧栏 / 命令面板改了白板名 */
   | { type: "rename"; name: string }
   /** Relocate：符号在编辑器里找到了新位置，换掉这一段（段 id 不变） */
@@ -206,6 +209,8 @@ export type BoardToHost =
   /** 自动保存：变了的项（undo = 这批改动里有撤销 / 重做）。回跳过的共享项数；写盘失败回 error，白板过一会儿整块重发 */
   | { type: "patch"; req: number; patch: BoardPatch; undo?: true }
   | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
+  /** The board's frame got or lost the keyboard. VS Code's API has no webview focus event (VS Code itself polls it every 250 ms) */
+  | { type: "focus"; has: boolean }
   /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
   | { type: "open"; card: string; seg?: string; line?: number }
   | { type: "openPath"; path: string; line?: number }
