@@ -82,7 +82,8 @@ describe("hover prefetch", () => {
     expect(calls).toBe(6);
     expect(maxLive).toBe(2);
     const at = (i: number) => `${llmAbs}:${sites[i].line}:${sites[i].col}`;
-    expect(asked.slice(0, 2)).toEqual([at(0), at(1)]);
+    // the 2 that start at once run side by side, so either can reach the language server first
+    expect([...asked.slice(0, 2)].sort()).toEqual([0, 1].map(at).sort());
     expect([...asked.slice(2)].sort()).toEqual([8, 9, 10, 11].map(at).sort());
   });
 });
