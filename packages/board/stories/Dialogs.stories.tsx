@@ -8,6 +8,7 @@ import { SHORT, changed } from "./support/groups";
 import { toolbar, menuItem, menu, cardMenu } from "./support/ui";
 import { onHost } from "../src/hostio";
 import { choose } from "../src/ui/Menu";
+import type { BoardAsk } from "@codeboard/core";
 
 type Args = { title: string; text: string; warn: string; note: string; options: number; def: number };
 
@@ -60,4 +61,43 @@ export const SplitSelection: Story = {
     const c = codeCard("add1", "schedule");
     onHost({ type: "add", cards: [{ card: c, views: { [c.segments[0].id]: VIEWS[c.segments[0].id] } }], ask: "split" });
   },
+};
+
+// Asked by the host (HostToBoard "ask"): a command run on this board, or one of its own requests (Capture Run…, Relocate…)
+let askN = 0;
+const ask = (a: BoardAsk) => async () => { await settled(); onHost({ type: "ask", id: ++askN, ask: a }); };
+export const CaptureRun: Story = {
+  name: "Capture Run (Text, From the Host)", argTypes: fixed,
+  play: ask({ kind: "text", title: "Capture Run", text: "Run a Python entry once and record the calls into Study Scope (script or -m module, with arguments)", value: "example.py --steps 2", placeholder: "example.py --steps 2   ·   -m mypkg.main", ok: "Run" }),
+};
+export const RenameFromPalette: Story = {
+  name: "Rename Board (Text, From the Command Palette)", argTypes: fixed,
+  play: ask({ kind: "text", title: "Rename Board", value: "KV cache 调度", ok: "Rename" }),
+};
+export const DeepSeekKey: Story = {
+  name: "DeepSeek API Key (Password)", argTypes: fixed,
+  play: ask({ kind: "text", title: "DeepSeek API Key", text: "Used for gray inline completions in Notes. Stored in VS Code's secret storage.", placeholder: "sk-…", ok: "Save", password: true }),
+};
+export const ApplyRun: Story = {
+  name: "Apply Run (Pick)", argTypes: fixed,
+  play: ask({ kind: "pick", title: "Apply which run to this board?", items: [
+    { label: "example.py --steps 2", description: "6/3/2026 14:02 · a1b2c3d", detail: "41 call sites · 3,112 calls" },
+    { label: "-m nanovllm.bench", description: "6/2/2026 09:40", detail: "28 call sites · 902 calls" },
+    { label: "tests/test_engine.py", description: "6/1/2026 18:21 · 9f8e7d6", detail: "12 call sites · 77 calls · exit 1" },
+  ] }),
+};
+export const Relocate: Story = {
+  name: "Relocate (Pick)", argTypes: fixed,
+  play: ask({ kind: "pick", title: "Where is BlockManager.can_append now?", items: [
+    { label: "BlockManager.can_append", description: "nanovllm/engine/block_manager.py:84" },
+    { label: "PagedBlockManager.can_append", description: "nanovllm/engine/paged.py:31" },
+    { label: "Choose File…", description: "" },
+  ] }),
+};
+export const CopyDiagnostics: Story = {
+  name: "Copy Diagnostics (Pick)", argTypes: fixed,
+  play: ask({ kind: "pick", title: "Copy Diagnostics", items: [
+    { label: "Copy Diagnostics", description: "Versions, workspace, recent log" },
+    { label: "Copy Diagnostics + Board JSON", description: "Also attach “KV cache 调度”" },
+  ] }),
 };

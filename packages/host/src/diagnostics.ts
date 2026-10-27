@@ -3,6 +3,7 @@ import { formatDiagnostics, type Board, type DiagInfo } from "@codeboard/core";
 import { git } from "./git";
 import { recentLog } from "./log";
 import { workspace, wsRoots } from "./ws";
+import type { Prompts } from "./prompts";
 
 async function folderInfo(p: string): Promise<DiagInfo["folders"][number]> {
   const head = (await git(p, ["rev-parse", "HEAD"]))?.trim();
@@ -12,9 +13,9 @@ async function folderInfo(p: string): Promise<DiagInfo["folders"][number]> {
 }
 
 /** board 给了就带上规模；attach = undefined 时问一次要不要附上白板 JSON */
-export async function copyDiagnostics(board?: Board, attach?: boolean) {
+export async function copyDiagnostics(ask: Prompts, board?: Board, attach?: boolean) {
   if (board && attach === undefined) {
-    const pick = await workspace().ui.pick([
+    const pick = await ask.pick([
       { label: "Copy Diagnostics", description: "Versions, workspace, recent log", attach: false },
       { label: "Copy Diagnostics + Board JSON", description: `Also attach “${board.name}”`, attach: true },
     ], { title: "Copy Diagnostics", placeHolder: "Attach board JSON?" });

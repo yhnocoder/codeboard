@@ -11,6 +11,11 @@ import type { RunApply } from "./run";
 import type { QuestionItem } from "./questions";
 import type { LspItem, LspSignature } from "./workspace";
 
+/** A question for the user in a board dialog (HostToBoard "ask"): a line of text, or one of a list */
+export type BoardAsk =
+  | { kind: "text"; title: string; text?: string; value?: string; placeholder?: string; ok: string; password?: boolean }
+  | { kind: "pick"; title: string; items: { label: string; description?: string; detail?: string }[] };
+
 /** 子白板的面包屑：从最外层到当前白板的上一级（进入子白板时宿主记着；frame = 在那块白板上是哪个框） */
 export type Crumb = { id: string; name: string; frame: string };
 /**
@@ -186,6 +191,9 @@ export type HostToBoard =
   | { type: "toast"; text: string }
   /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
   | { type: "githubPicker"; repo?: string }
+  /** A question CodeBoard asks while this board is where the user works (its own requests, a palette command on it): the board shows it
+   *  as one of its dialogs and sends { type: "answer", id } back */
+  | { type: "ask"; id: number; ask: BoardAsk }
   /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
   | { type: "shared"; cards: SharedUpdate[]; views?: Record<string, SegView> }
   /** 这块白板上的共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算，整个换掉） */
@@ -211,6 +219,8 @@ export type BoardToHost =
   | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
   /** The board's frame got or lost the keyboard. VS Code's API has no webview focus event (VS Code itself polls it every 250 ms) */
   | { type: "focus"; has: boolean }
+  /** The answer to the host's "ask" id: the text typed, the index of the item picked, or null when cancelled */
+  | { type: "answer"; id: number; value: string | number | null }
   /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
   | { type: "open"; card: string; seg?: string; line?: number }
   | { type: "openPath"; path: string; line?: number }

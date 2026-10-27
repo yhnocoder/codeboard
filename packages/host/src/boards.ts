@@ -1,5 +1,5 @@
 // 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。
-import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
+import { boardQuestions, type Board, type BoardAsk, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
 import { syncVariants } from "./variants";
@@ -21,6 +21,8 @@ export interface BoardView {
   readonly visible: boolean;
   readonly active: boolean;
   reveal(preserveFocus?: boolean): void;
+  /** Give the active board the keyboard; resolves once the editor has done so (reveal resolves nothing and lands some time later) */
+  focus(): Promise<void>;
   dispose(): void;
   /** 本机目录在界面里的地址（图片卡的 assets/） */
   resourceUrl(dir: string): string;
@@ -93,6 +95,8 @@ export class BoardPanel {
 
   /** What the board last said about the keyboard (its "focus" messages) */
   hasKeyboard = false;
+  private asks = new Map<number, (v: string | number | null) => void>();
+  private askN = 0;
 
   /** id 会变：进入子白板时同一个面板换成那块白板（BoardHub.switchBoard） */
   constructor(public id: string, readonly view: BoardView, private mgr: BoardHost) {}
@@ -105,8 +109,17 @@ export class BoardPanel {
   }
   toast(text: string) { this.post({ type: "toast", text }); }
 
+  /** Ask in a board dialog (HostToBoard "ask"); null when cancelled, or when the board closes or reloads first */
+  ask(a: BoardAsk): Promise<string | number | null> {
+    const id = ++this.askN;
+    return new Promise((r) => { this.asks.set(id, r); this.post({ type: "ask", id, ask: a }); });
+  }
+  answer(id: number, v: string | number | null) { this.asks.get(id)?.(v); this.asks.delete(id); }
+  dropAsks() { for (const r of this.asks.values()) r(null); this.asks.clear(); }
+
   /** webview 说 ready：读白板、算所有段的展示数据和版本状态，发 init */
   async init() {
+    this.dropAsks(); // a reloaded webview has no dialogs open
     const b = await this.mgr.store.load(this.id);
     if (!b) { this.view.dispose(); return; }
     const next = this.next;

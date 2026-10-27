@@ -20,6 +20,7 @@ import { pasteClip } from "@codeboard/core/storage";
 import { pasteFar, recordClip } from "./transfer";
 import { prefetchCall } from "./prefetch";
 import { applyFlow, captureFlow } from "./runs";
+import { prompts } from "./prompts";
 import { allQuestions, exportFile, permalinks } from "./exports";
 import { absOf, currentVersion, currentVersionLabel, locOfFile, mapRepo, present, srcKey, srcLabel, versionText, hasLocalFile } from "./source";
 import { boardSegments, makeSegment, workingPlace } from "./versions";
@@ -51,6 +52,7 @@ export function makeHandler(panels: BoardHost): Handler {
     },
     selection: (p, m) => { p.selection = m; },
     focus: (p, m) => panels.boardFocus(p, m.has),
+    answer: (p, m) => p.answer(m.id, m.value),
     open: (p, m) => openCard(p, m),
     openPath: (_p, m) => openAt(fromHostPath(m.path), m.line),
     openLink: (_p, m) => {
@@ -86,7 +88,7 @@ export function makeHandler(panels: BoardHost): Handler {
     gh: (_p, m) => ghQuery(m.q),
     stickerPacks: () => readPacks(),
     openStickerDir: () => openStickerDir(),
-    copyDiagnostics: (p, m) => copyDiagnostics(p.board, m.board),
+    copyDiagnostics: (p, m) => copyDiagnostics(prompts(p), p.board, m.board),
     log: (_p, m) => log(m.level, m.text),
     openBoard: (_p, m) => openOnBoard(panels, m.id, m.card, m.line, m.sticker),
     copyCards: (p, m) => {
@@ -117,8 +119,8 @@ export function makeHandler(panels: BoardHost): Handler {
     lspComplete: (_p, m) => lspComplete(m.id, m.text, m.line, m.col, m.trigger),
     lspHover: (_p, m) => lspHover(m.id, m.text, m.line, m.col),
     lspSignature: (_p, m) => lspSignature(m.id, m.text, m.line, m.col, m.trigger),
-    captureRun: (p) => void captureFlow(store.dir(), p),
-    applyRun: (p) => void applyFlow(store.dir(), p),
+    captureRun: (p) => void captureFlow(store.dir(), p, prompts(p)),
+    applyRun: (p) => void applyFlow(store.dir(), p, prompts(p)),
     questions: () => allQuestions(store),
     permalinks: (_p, m) => permalinks(m.segs),
     exportFile: (_p, m) => exportFile(store, m.kind, m.name, m.text),
@@ -384,20 +386,20 @@ async function relocate(p: BoardPanel, cardId: string) {
   const f = p.board && findCard(p.board, cardId);
   if (!f || !isCode(f.card)) throw new Error("Card not found.");
   const seg = f.card.segments.find((s) => s.symbol) ?? f.card.segments[0];
-  const ui = workspace().ui;
+  const ui = workspace().ui, ask = prompts(p);
   const name = seg.symbol?.qual.split(".").pop();
   const old = absOf(seg);
   const spots = [...(name ? await lookupName(name) : []), ...(old ? await spotsIn(old) : [])]
     .filter((s, i, all) => all.findIndex((o) => o.abs === s.abs && o.start === s.start) === i);
   const item = (s: Spot) => ({ label: `${s.kind === "class" ? "$(symbol-class)" : "$(symbol-method)"} ${s.qual}`, description: `${hostPath(s.abs)}:${s.defLine}`, s });
   const where = `Where is ${seg.symbol?.qual ?? "this code"} now?`;
-  const pick = await ui.pick([...spots.map(item), { label: "$(folder-opened) Choose File…", description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
+  const pick = await ask.pick([...spots.map(item), { label: "$(folder-opened) Choose File…", description: "", s: undefined }], { placeHolder: where, matchOnDescription: true });
   if (!pick) return;
   let to = pick.s;
   if (!to) {
     const abs = await ui.openDialog({ label: "Look in This File", title: where });
     if (!abs) return;
-    to = (await ui.pick((await spotsIn(abs)).map(item), { placeHolder: where }))?.s;
+    to = (await ask.pick((await spotsIn(abs)).map(item), { placeHolder: where }))?.s;
     if (!to) return;
   }
   const text = await readText(to.abs);
@@ -416,7 +418,7 @@ async function locateRepo(p: BoardPanel) {
   if (!miss.size) { p.toast("All repos are available."); return; }
   let key = [...miss.keys()][0];
   if (miss.size > 1) {
-    const r = await workspace().ui.pick([...miss.entries()].map(([k, s]) => ({ label: srcLabel(s.src), description: k, k })), { placeHolder: "Which repo do you want to locate?" });
+    const r = await prompts(p).pick([...miss.entries()].map(([k, s]) => ({ label: srcLabel(s.src), description: k, k })), { placeHolder: "Which repo do you want to locate?" });
     if (!r) return;
     key = r.k;
   }

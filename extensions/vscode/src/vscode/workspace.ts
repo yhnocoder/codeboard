@@ -178,7 +178,8 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       warn: async (text, o, ...actions) => vscode.window.showWarningMessage(text, { modal: o.modal, detail: o.detail }, ...actions),
       error: (text) => void vscode.window.showErrorMessage(text),
       pick: async (items, o) => vscode.window.showQuickPick(items, o),
-      input: async (o) => vscode.window.showInputBox(o),
+      // A secret is pasted from elsewhere: going to copy it must not close the box
+      input: async (o) => vscode.window.showInputBox({ title: o.title, prompt: o.prompt, value: o.value, placeHolder: o.placeHolder, password: o.password, ignoreFocusOut: o.password }),
       openDialog: async (o) => {
         const r = await vscode.window.showOpenDialog(o.folders
           ? { canSelectFolders: true, canSelectFiles: false, openLabel: o.label, title: o.title }

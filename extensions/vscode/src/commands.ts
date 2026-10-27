@@ -2,13 +2,14 @@ import * as vscode from "vscode";
 import { makeActions } from "@codeboard/host/actions";
 import type { BoardHub } from "@codeboard/host/hub";
 import type { Storage } from "@codeboard/host/storage";
+import { prompts } from "@codeboard/host/prompts";
 import { DEEPSEEK_SECRET } from "./vscode/workspace";
 
 export function registerCommands(ctx: vscode.ExtensionContext, panels: BoardHub, store: Storage) {
   const cmd = (id: string, fn: (...a: any[]) => unknown) => ctx.subscriptions.push(vscode.commands.registerCommand(id, fn));
   for (const [id, fn] of Object.entries(makeActions(panels, store))) cmd(id, fn as (...a: any[]) => unknown);
   cmd("codeboard.setDeepseekKey", async () => {
-    const key = await vscode.window.showInputBox({ title: "DeepSeek API Key", prompt: "Used for gray inline completions in Notes. Stored in VS Code's secret storage.", password: true, ignoreFocusOut: true, placeHolder: "sk-…" });
+    const key = await prompts(panels.all().find((p) => p.view.active)).input({ title: "DeepSeek API Key", ok: "Save", prompt: "Used for gray inline completions in Notes. Stored in VS Code's secret storage.", password: true, placeHolder: "sk-…" });
     if (!key?.trim()) return;
     await ctx.secrets.store(DEEPSEEK_SECRET, key.trim());
     void vscode.window.showInformationMessage("DeepSeek API key saved.");

@@ -10,7 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, idle, track } = require("./wait.cjs");
-const { command, qiMark, qiClosed, openFile, boardFrames, boardFrame, card, typingIn, focusSettled, fit } = require("./ui.cjs");
+const { command, watchKeyboard, boardDialog, boardDialogClosed, openFile, boardFrames, boardFrame, card, typingIn, focusSettled, fit } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 const SHOTS = (process.env.SHOTS || "features,themes").split(",");
 // Board themes in the order the Settings page lists them; City is experimental and left out
@@ -80,7 +80,7 @@ const leaveNote = async (page, f) => {
   const browser = await until("VS Code's debugging port answers", () => chromium.connectOverCDP(`http://127.0.0.1:${process.env.CDP_PORT || 9223}`).catch(() => null), 60000, 200);
   const page = await until("the VS Code window", () => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes("workbench")), 60000, 200);
   await track(page); // the board's requests to the host, for idle()
-  await qiMark(page); // the keyboard hand-backs to webviews, before the first one opens
+  await watchKeyboard(page); // the keyboard hand-backs to webviews, before the first one opens
   // Reduced motion: the board's camera, card and arrow animations jump straight to where they end (the shots show the board at rest,
   // so they look the same), and every wait for the board to settle is short. Emulated for the window and its webviews
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -102,12 +102,16 @@ const leaveNote = async (page, f) => {
   console.log(`  … reduced motion: ${await f.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)}`);
   // Name the board (the name shows on the editor tab and in some themes' board header)
   const boardTab = page.locator('.editor-group-container .tab:has-text("nano-vllm: one engine step")');
-  await command(page, "CodeBoard: Rename Board", "Rename board");
-  await page.keyboard.press("Control+a"); await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await qiClosed(page, "the Rename board box");
+  // From the palette over the board: CodeBoard asks on the board
+  await command(page, "CodeBoard: Rename Board");
+  await boardDialog(page, f, "Rename Board");
+  // The dialog opens with the name selected. No Ctrl+A: in a webview VS Code runs it and sends Select All back a moment later
+  await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await boardDialogClosed(f, "the Rename Board dialog");
   check(await soon(() => boardTab.count(), Boolean, 5000), "board renamed (its editor tab shows the new name)");
   // A dummy DeepSeek key: shots.sh points codeboard.ai.deepseekBaseUrl at a local mock that answers with a fixed completion
-  await command(page, "CodeBoard: Set DeepSeek API Key", "DeepSeek API Key");
-  await page.keyboard.type("sk-release-shots-mock"); await page.keyboard.press("Enter"); await qiClosed(page, "the DeepSeek API Key box");
+  await command(page, "CodeBoard: Set DeepSeek API Key");
+  await boardDialog(page, f, "DeepSeek API Key");
+  await page.keyboard.type("sk-release-shots-mock"); await page.keyboard.press("Enter"); await boardDialogClosed(f, "the DeepSeek API Key dialog");
   check(await soon(() => page.locator(".notification-list-item-message", { hasText: "key saved" }).count(), Boolean, 10000), "DeepSeek API key saved");
   // The toasts ("Added to …", the key) sit over the board's Fit to Window button: clear them now rather than when a click misses
   await command(page, "Notifications: Clear All Notifications");

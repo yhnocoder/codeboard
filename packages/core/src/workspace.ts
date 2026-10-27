@@ -103,14 +103,17 @@ export interface WorkspaceEditor {
 }
 
 export type PickItem = { label: string; description?: string; detail?: string };
+export type PickOpts = { placeHolder?: string; title?: string; matchOnDescription?: boolean };
+/** title: what is asked (the dialog's title on a board); ok: the button that accepts it there; password: the text is a secret */
+export type InputOpts = { prompt: string; value?: string; placeHolder?: string; title?: string; ok?: string; password?: boolean };
 
 export interface WorkspaceUi {
   info(text: string, ...actions: string[]): Promise<string | undefined>;
   warn(text: string, opts: { modal?: boolean; detail?: string }, ...actions: string[]): Promise<string | undefined>;
   error(text: string): void;
   /** 选一项；回的是传进来的那个对象 */
-  pick<T extends PickItem>(items: T[], opts?: { placeHolder?: string; title?: string; matchOnDescription?: boolean }): Promise<T | undefined>;
-  input(opts: { prompt: string; value?: string; placeHolder?: string }): Promise<string | undefined>;
+  pick<T extends PickItem>(items: T[], opts?: PickOpts): Promise<T | undefined>;
+  input(opts: InputOpts): Promise<string | undefined>;
   /** 选一个文件（filters）或文件夹（folders） */
   openDialog(opts: { folders?: boolean; filters?: Record<string, string[]>; label: string; title?: string }): Promise<string | undefined>;
   saveDialog(opts: { defaultPath: string; filters: Record<string, string[]> }): Promise<string | undefined>;

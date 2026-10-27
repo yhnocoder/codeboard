@@ -19,7 +19,6 @@ describe("relocate", () => {
     const R = tempRepo("mv", { "engine/scheduler.py": ["class Scheduler:", "    def schedule(self):", "        return 1", "", "    def other(self):", "        return 2", ""].join("\n") });
     const offered: string[][] = [];
     const W = nodeWorkspace(R);
-    W.ui = { ...W.ui, pick: (async (items: { description?: string }[]) => { offered.push(items.map((i) => i.description ?? "")); return items.find((i) => i.description?.startsWith("engine/sched.py")); }) as typeof W.ui.pick };
     useWorkspace(W);
     resetIndex();
     try {
@@ -29,6 +28,15 @@ describe("relocate", () => {
       const { view, posted } = stubView();
       const host = { store: new Storage(nodeFs, { dir: () => path.join(R, ".boards") }) } as unknown as BoardHost;
       const p = new BoardPanel("b", view, host);
+      // The board asks where the code is now in its own dialog: pick the renamed file there
+      const post = view.postMessage;
+      view.postMessage = (m) => {
+        post(m);
+        if (m.type !== "ask" || m.ask.kind !== "pick") return;
+        const ds = m.ask.items.map((i) => i.description ?? "");
+        offered.push(ds);
+        queueMicrotask(() => p.answer(m.id, ds.findIndex((d) => d.startsWith("engine/sched.py"))));
+      };
       p.ready = true;
       p.board = { ...emptyBoard("b", "B"), cards: [c], place: { [c.id]: { x: 0, y: 0, w: 500 } } };
       await makeHandler(host)(p, { type: "relocate", card: c.id });

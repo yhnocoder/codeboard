@@ -9,7 +9,8 @@ import { resetSubboards, putSkels, setCrumbs, setWalkBack } from "./state/subboa
 import { boardSwitched } from "./state/root";
 import * as A from "./actions";
 import { runKey } from "./keymap";
-import { choose } from "./ui/Menu";
+import { send } from "./host";
+import { choose, pickOne, promptText } from "./ui/Menu";
 import { setNoteAssets } from "./md/images";
 import { applyMathPreamble } from "./md/math";
 import { preloadEditor } from "./md/load";
@@ -141,6 +142,12 @@ function handle(m: HostToBoard) {
     case "run": A.applyRunMsg(m.apply); break;
     case "variants": A.applyVariantSync(m.cards); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
+    case "ask": {
+      const a = m.ask;
+      void (a.kind === "text" ? promptText(a.title, a.value, a.placeholder, a.ok, { text: a.text, password: a.password }) : pickOne(a.title, a.items))
+        .then((value) => send({ type: "answer", id: m.id, value }));
+      break;
+    }
     case "shared": if (m.views) A.sharedShown(m.cards.map((sc) => sc.card)); syncShared(m.cards, m.views); break;
     case "sharedInfo": setShared(reconcile(m.cards)); break;
     case "merged": syncMerged(m.patch, m.views); break;

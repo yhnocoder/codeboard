@@ -21,7 +21,7 @@ const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 const { until, soon, idle, track } = require("./wait.cjs");
-const { command, qiClosed, openFile, boardFrame, boardFrames, card, text, boardHasKeyboard } = require("./ui.cjs");
+const { command, watchKeyboard, qiClosed, openFile, boardFrame, boardFrames, card, text, boardHasKeyboard } = require("./ui.cjs");
 
 const EXT = path.resolve(__dirname, "..");
 const CODE = process.env.VSCODE_BIN || process.env.VSCODE_TEST_PATH || "/opt/vscode/code";
@@ -150,7 +150,7 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
     const windows = () => browser.contexts().flatMap((c) => c.pages()).filter((p) => p.url().includes("workbench"));
     await until("the projects VS Code's window", () => windows().length, 30000);
     const S = windows()[0];
-    await track(S);
+    await track(S); await watchKeyboard(S);
     await S.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
     // A second `code` with the same user-data-dir: hands over to the running VS Code and exits; M opens as a second window
     const cli = launch(MULTI);
@@ -158,7 +158,7 @@ module.exports = async function projectsStep({ check, OUT, WS, UD, port }) {
     check(await soon(() => windows().length === 2, Boolean, 30000), "a second `code` with the same user-data-dir opens a second window in the running VS Code", windows().length);
     const M = windows().find((p) => p !== S);
     if (!M) return;
-    await track(M);
+    await track(M); await watchKeyboard(M);
     await M.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
     // Both windows record themselves on activation (onStartupFinished)
     await until("both windows activate CodeBoard", () => activated(PUD) === 2, 60000, 200);

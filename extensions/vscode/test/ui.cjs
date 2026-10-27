@@ -19,13 +19,18 @@ const qiClosed = (page, what = "the quick input") => qi(page).waitFor({ state: "
 // The recorder also logs the quick input showing, hiding, and losing the keyboard while it shows.
 const WEBVIEW_FOCUS_DELAYER_MS = 50; // WebviewElement._focusDelayer
 const QI_RECORDER = (WEBVIEW_FOCUS_DELAYER_MS) => {
+  if (!/\/workbench[^/]*\.html$/.test(location.pathname)) return 0; // also an init script, which runs in every frame
   if (window.__e2eQi) return window.__e2eQi.ev.length;
   const rec = window.__e2eQi = { ev: [], seq: 0, focus: new Map() };
   const widget = () => document.querySelector(".quick-input-widget");
   const shown = (w) => !!w && getComputedStyle(w).display !== "none";
-  let was = shown(widget());
-  new MutationObserver(() => { const v = shown(widget()); if (v !== was) { was = v; rec.ev.push(v ? "show" : "hide"); } })
-    .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "class"] });
+  let was = false;
+  const observe = () => {
+    was = shown(widget());
+    new MutationObserver(() => { const v = shown(widget()); if (v !== was) { was = v; rec.ev.push(v ? "show" : "hide"); } })
+      .observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["style", "class"] });
+  };
+  if (document.body) observe(); else document.addEventListener("DOMContentLoaded", observe);
   // An accepted or cancelled quick input hides (or turns inert) before the keyboard moves on: losing it while shown means taken away
   window.addEventListener("focusout", (e) => {
     const w = widget();
@@ -57,9 +62,14 @@ const QI_RECORDER = (WEBVIEW_FOCUS_DELAYER_MS) => {
   };
   return 0;
 };
-/** Start the recorder (once per window, before the first board's webview exists: webviews already open are not watched); returns how
- *  many events it holds, so a caller reads only the ones after */
+/** Start the recorder if it is not running (it watches only webviews opened after it started); returns how many events it holds, so a
+ *  caller reads only the ones after */
 const qiMark = (page) => page.evaluate(QI_RECORDER, WEBVIEW_FOCUS_DELAYER_MS);
+/** Record the window's keyboard hand-backs from now on and after every reload (call before the first board's webview exists) */
+async function watchKeyboard(page) {
+  await page.addInitScript(QI_RECORDER, WEBVIEW_FOCUS_DELAYER_MS);
+  await qiMark(page);
+}
 const qiSince = (page, mark) => page.evaluate((m) => window.__e2eQi.ev.slice(m), mark);
 /** What a keyboard hand-back to a webview still waits for, or null when none is under way */
 async function handBack(page) {
@@ -133,6 +143,18 @@ async function command(page, text, prompt) {
   await keyboardSettled(page);
   if ((await qiSince(page, mark)).includes("lost") || !(await qiOpen(page))) throw new Error(`the input box "${prompt}" of "${text}" lost the keyboard: ${(await qiSince(page, mark)).join(", ")}`);
 }
+/** CodeBoard asks on the board a command runs on (packages/host/src/prompts.ts): wait until its dialog (title) is up on board f and its
+ *  field has the keyboard, with no hand-back to a webview left to move it */
+async function boardDialog(page, f, title) {
+  const has = () => f.evaluate((t) => {
+    const d = document.querySelector(".dialog");
+    return !!d && d.querySelector(".dt")?.textContent === t && document.hasFocus() && !!document.activeElement?.closest(".dialog");
+  }, title);
+  await until(`the board's "${title}" dialog has the keyboard`, has, 10000);
+  await keyboardSettled(page);
+  if (!(await has())) throw new Error(`the board's "${title}" dialog lost the keyboard`);
+}
+const boardDialogClosed = (f, what) => f.locator(".dialog").waitFor({ state: "detached", timeout: 10000 }).catch(() => { throw new Error(`${what} did not close`); });
 /** Wait for an input box or quick pick (not the palette) whose title, prompt or placeholder mentions text */
 const inputBoxShows = async (page, text) => await qi(page).isVisible() && !(await qiValue(page)).startsWith(">") &&
   [...await page.locator(".quick-input-widget .quick-input-title, .quick-input-widget .quick-input-message").allInnerTexts(),
@@ -217,4 +239,4 @@ async function fit(f) {
   await btn.click({ timeout: 5000 }); // when something else covers it, this fails and says what
 }
 
-module.exports = { qi, qiValue, qiOpen, qiMark, keyboardSettled, boardHasKeyboard, qiClosed, pick, command, inputBox, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit };
+module.exports = { qi, qiValue, qiOpen, qiMark, watchKeyboard, keyboardSettled, boardHasKeyboard, boardDialog, boardDialogClosed, qiClosed, pick, command, inputBox, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit };

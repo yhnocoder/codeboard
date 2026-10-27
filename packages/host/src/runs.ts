@@ -12,6 +12,7 @@ import { log } from "./log";
 import { readSettings } from "./settings";
 import { locOfFile } from "./source";
 import { hostPath, workspace, ws0, wsRoots } from "./ws";
+import type { Prompts } from "./prompts";
 
 /** 每个调用对留几次实参：前 FIRST 次 + 最后一次 */
 const FIRST = 3;
@@ -274,10 +275,10 @@ export async function runApply(r: RunRecord) { return { run: r, locs: await runL
 type Target = { post(m: { type: "run"; apply: Awaited<ReturnType<typeof runApply>> } | { type: "toast"; text: string }): void };
 
 /** 问入口、跑一次、存下来、发给白板（没有白板就只存） */
-export async function captureFlow(storageDir: string, p: Target | undefined): Promise<RunRecord | undefined> {
+export async function captureFlow(storageDir: string, p: Target | undefined, ask: Prompts): Promise<RunRecord | undefined> {
   const w = workspace();
   const last = w.storage.get<string>("codeboard.lastRun");
-  const cmd = await w.ui.input({ prompt: "Run a Python entry once and record the calls into Study Scope (script or -m module, with arguments)", value: last ?? "", placeHolder: "example.py --steps 2   ·   -m mypkg.main" });
+  const cmd = await ask.input({ title: "Capture Run", ok: "Run", prompt: "Run a Python entry once and record the calls into Study Scope (script or -m module, with arguments)", value: last ?? "", placeHolder: "example.py --steps 2   ·   -m mypkg.main" });
   if (!cmd?.trim()) return;
   await w.storage.set("codeboard.lastRun", cmd.trim());
   const interp = w.settings.get<string>("python.defaultInterpreterPath");
@@ -296,11 +297,11 @@ export async function captureFlow(storageDir: string, p: Target | undefined): Pr
   return rec;
 }
 
-export async function applyFlow(storageDir: string, p: Target | undefined) {
+export async function applyFlow(storageDir: string, p: Target | undefined, ask: Prompts) {
   const w = workspace();
   if (!p) { void w.ui.info("Open a board first."); return; }
   const rs = await listRuns(storageDir);
   if (!rs.length) { void w.ui.info("No runs yet. Use CodeBoard: Capture Run… first."); return; }
-  const r = await w.ui.pick(rs.map((x) => ({ ...runLabel(x), r: x })), { placeHolder: "Apply which run to this board?" });
+  const r = await ask.pick(rs.map((x) => ({ ...runLabel(x), r: x })), { placeHolder: "Apply which run to this board?" });
   if (r) p.post({ type: "run", apply: await runApply(r.r) });
 }
