@@ -8,7 +8,6 @@ import { nodeFs } from "../src/nodefs";
 import { makeHandler } from "../src/handlers";
 import { BoardPanel, type BoardHost } from "../src/boards";
 import { resetIndex } from "../src/nameindex";
-import { forgetHeads } from "../src/git";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { card, git, startTreeSitter, stubView, tempRepo } from "./helpers";
@@ -23,11 +22,9 @@ describe("relocate", () => {
     W.ui = { ...W.ui, pick: (async (items: { description?: string }[]) => { offered.push(items.map((i) => i.description ?? "")); return items.find((i) => i.description?.startsWith("engine/sched.py")); }) as typeof W.ui.pick };
     useWorkspace(W);
     resetIndex();
-    forgetHeads();
     try {
       const { card: c } = await card(path.join(R, "engine/scheduler.py"), "Scheduler.schedule");
       git(R, "mv", "engine/scheduler.py", "engine/sched.py"); git(R, "commit", "-qm", "rename");
-      forgetHeads();
       const head = git(R, "rev-parse", "HEAD");
       const { view, posted } = stubView();
       const host = { store: new Storage(nodeFs, { dir: () => path.join(R, ".boards") }) } as unknown as BoardHost;
@@ -44,7 +41,6 @@ describe("relocate", () => {
       expect(rs?.seg.version).toEqual({ kind: "git", commit: head });
     } finally {
       resetIndex();
-      forgetHeads();
       fs.rmSync(R, { recursive: true, force: true });
     }
   });

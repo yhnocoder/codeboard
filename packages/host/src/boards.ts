@@ -176,7 +176,14 @@ export class BoardPanel {
   }
 
   /** 重算版本状态并推给白板；paths = 只重查这些文件里的段（别的段留着上次的结果） */
-  async refreshStale(paths?: ReadonlySet<string>) {
+  refreshStale(paths?: ReadonlySet<string>): Promise<void> {
+    // One at a time: a check started before a commit can end after the one the commit started, and the older result would stay
+    const run = this.staleRun.then(() => this.checkStale(paths));
+    this.staleRun = run.catch(() => undefined);
+    return run;
+  }
+  private staleRun: Promise<void> = Promise.resolve();
+  private async checkStale(paths?: ReadonlySet<string>) {
     if (!this.board || !this.ready) return;
     void this.refreshVariants();
     const ss = staleSegments(this.board);

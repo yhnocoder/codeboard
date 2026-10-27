@@ -48,4 +48,6 @@ set +e
 node "$HERE/$DRIVER" "$OUT" "$WS" "$UD" 2>&1 | tee "$OUT/e2e.log"
 RC=${PIPESTATUS[0]}
 kill $PID 2>/dev/null; pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true
+# The extension's output channel (host-side logs) goes with the screenshots, so a failure in CI comes with them: one per window
+N=0; for L in $(find "$UD/logs" -name CodeBoard.log 2>/dev/null | sort); do N=$((N + 1)); cp "$L" "$OUT/CodeBoard-$N.log"; done
 exit $RC
