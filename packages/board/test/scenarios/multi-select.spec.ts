@@ -28,7 +28,7 @@ const rects = (h: Host) => h.page.evaluate(() => Object.fromEntries([...document
 }))) as Promise<Record<string, R>>;
 const places = (h: Host) => Object.fromEntries(Object.entries(h.board().place).map(([id, p]) => [id, { x: p.x, y: p.y }]));
 
-/** Four buttons; ··· opens Align / Distribute and they still align; Tidy Up: linked cards in columns left to right, the rest in rows below; one ⌘Z */
+/** Four buttons; ··· opens Align / Distribute and they still align; Tidy Up: linked cards in columns left to right (a caller centered on its callees, a column keeps its top-to-bottom order), the rest in rows below; one ⌘Z */
 test("multiSelectToolbarTidyUp", async () => {
   const h = await open({ board: scattered(), light: true, w: 1400, h: 900, settings: { theme: "warm-ink" } as never });
   const { page } = h;
@@ -79,7 +79,8 @@ test("multiSelectToolbarTidyUp", async () => {
   check("tidyAnimates", between("x", "b") || between("y", "b"), { start: start.b, mid: mid.b, end: end.b });
   check("tidyArrowsFollow", !!pathMid && pathMid !== pathBefore && pathMid !== pathEnd, { pathBefore, pathMid, pathEnd });
   const linkedBottom = Math.max(...["a", "b", "c", "d"].map((id) => end[id].y + end[id].h));
-  check("tidyColumns", end.a.x < end.b.x && end.b.x === end.c.x && end.c.x < end.d.x && end.c.y < end.b.y && end.a.y === end.c.y && end.d.y === end.a.y, end);
+  const cy = (id: string) => end[id].y + end[id].h / 2;
+  check("tidyColumns", end.a.x < end.b.x && end.b.x === end.c.x && end.c.x < end.d.x && end.c.y + end.c.h < end.b.y && cy("c") < cy("a") && cy("a") < cy("b"), end);
   const p1 = places(h);
   check("tidyColumnGap", p1.c.x - (p1.a.x + 240) === 56 && p1.d.x - (p1.c.x + 240) === 56, p1);
   check("tidyRowsBelow", ["e", "f", "g"].every((id) => end[id].y > linkedBottom), { linkedBottom, e: end.e, f: end.f, g: end.g });
