@@ -10,18 +10,20 @@ const qiFocused = (page) => page.evaluate(() => !!document.activeElement?.closes
 const qiOpen = async (page) => await qi(page).isVisible() && await qiFocused(page);
 /** Wait until the quick input is closed */
 const qiClosed = (page, what = "the quick input") => qi(page).waitFor({ state: "hidden", timeout: 10000 }).catch(() => { throw new Error(`${what} did not close`); });
-// VS Code hands the keyboard back to a board's webview when a quick input it took it from closes (VS Code 1.142, webviewElement.ts and
-// webview/browser/pre/index.html): it focuses the webview's iframe, 50 ms later (_focusDelayer) its own <body>, and posts "focus" to
-// the webview, whose host page then focuses the board's frame whatever has the keyboard by then. A key pressed before that lands is
-// lost, or opens a quick input that the landing "focus" closes within a frame or two (too fast for a visibility poll). Nothing in the
-// workbench's DOM says the message is on its way, so the workbench numbers the "focus" messages it posts, by webview, and the host
-// pages record the last one they handled (wait.cjs). A message posted to a webview that closed before handling it is not waited for.
+// VS Code hands the keyboard back to a board's webview when a quick input it took it from closes (VS Code 1.143, webviewElement.ts and
+// webview/browser/pre/index.html): WebviewElement._doFocus focuses the webview's iframe and starts _focusDelayer (50 ms), whose task
+// posts "focus" to the webview unless the webview has lost the focus by then; the webview's host page then focuses the board's frame
+// whatever has the keyboard by then. A key pressed before that lands is lost, or opens a quick input that the landing "focus" closes
+// within a frame or two (too fast for a visibility poll). When the delayer's task skips the post (VS Code no longer counts the
+// webview as focused: a blur its host page reported while the quick input was up), nothing in the DOM changes and the keyboard stays
+// on the host page's <body>: only the end of VS Code's own timer says that no "focus" is coming. So the recorder follows the timers that _doFocus starts (by their call stack) until they have
+// run or been cancelled, the workbench numbers the "focus" messages it posts, by webview, and the host pages record the last one they
+// handled (wait.cjs). A message posted to a webview that closed before handling it is not waited for.
 // The recorder also logs the quick input showing, hiding, and losing the keyboard while it shows.
-const WEBVIEW_FOCUS_DELAYER_MS = 50; // WebviewElement._focusDelayer
-const QI_RECORDER = (WEBVIEW_FOCUS_DELAYER_MS) => {
+const QI_RECORDER = () => {
   if (!/\/workbench[^/]*\.html$/.test(location.pathname)) return 0; // also an init script, which runs in every frame
   if (window.__e2eQi) return window.__e2eQi.ev.length;
-  const rec = window.__e2eQi = { ev: [], seq: 0, focus: new Map() };
+  const rec = window.__e2eQi = { ev: [], seq: 0, focus: new Map(), delayers: new Set() };
   const widget = () => document.querySelector(".quick-input-widget");
   const shown = (w) => !!w && getComputedStyle(w).display !== "none";
   let was = false;
@@ -36,18 +38,14 @@ const QI_RECORDER = (WEBVIEW_FOCUS_DELAYER_MS) => {
     const w = widget();
     if (w && w.contains(e.target) && !(e.relatedTarget && w.contains(e.relatedTarget)) && shown(w) && !w.inert) rec.ev.push("lost");
   }, true);
-  // VS Code decides 50 ms after focusing a webview's iframe whether to post it "focus" (the delayer skips that when the webview has
-  // lost the focus again). A timer set right after VS Code's, with the same delay, runs after it: until then a "focus" may still come
-  rec.delayers = 0;
-  // Focusing an iframe from outside fires no focusin here, only a focusout towards nothing
-  window.addEventListener("focusout", (e) => {
-    if (e.relatedTarget) return;
-    queueMicrotask(() => {
-      if (!document.activeElement?.matches?.("iframe.webview")) return;
-      rec.delayers++;
-      setTimeout(() => rec.delayers--, WEBVIEW_FOCUS_DELAYER_MS);
-    });
-  }, true);
+  const setT = window.setTimeout, clearT = window.clearTimeout;
+  window.setTimeout = function (fn, ...rest) {
+    if (typeof fn !== "function" || !/\._doFocus\b/.test(new Error().stack)) return setT.call(this, fn, ...rest);
+    const h = setT.call(this, function (...a) { rec.delayers.delete(h); return fn.apply(this, a); }, ...rest);
+    rec.delayers.add(h);
+    return h;
+  };
+  window.clearTimeout = function (h) { rec.delayers.delete(h); return clearT.call(this, h); };
   // A webview's host page hands the workbench its end of their MessagePort when it is ready; the port's iframe names the webview
   const ports = new WeakMap();
   window.addEventListener("message", (e) => {
@@ -64,20 +62,20 @@ const QI_RECORDER = (WEBVIEW_FOCUS_DELAYER_MS) => {
 };
 /** Start the recorder if it is not running (it watches only webviews opened after it started); returns how many events it holds, so a
  *  caller reads only the ones after */
-const qiMark = (page) => page.evaluate(QI_RECORDER, WEBVIEW_FOCUS_DELAYER_MS);
+const qiMark = (page) => page.evaluate(QI_RECORDER);
 /** Record the window's keyboard hand-backs from now on and after every reload (call before the first board's webview exists) */
 async function watchKeyboard(page) {
-  await page.addInitScript(QI_RECORDER, WEBVIEW_FOCUS_DELAYER_MS);
+  await page.addInitScript(QI_RECORDER);
   await qiMark(page);
 }
 const qiSince = (page, mark) => page.evaluate((m) => window.__e2eQi.ev.slice(m), mark);
 /** What a keyboard hand-back to a webview still waits for, or null when none is under way */
 async function handBack(page) {
   const wb = await page.evaluate(() => ({
-    delayers: window.__e2eQi?.delayers ?? 0,
+    delayers: window.__e2eQi?.delayers.size ?? 0,
     posted: [...(window.__e2eQi?.focus ?? [])].filter(([f]) => f.isConnected).map(([f, seq]) => ({ id: f.name, seq })),
   }));
-  if (wb.delayers) return "VS Code has focused a webview's iframe and not yet decided whether to post it \"focus\"";
+  if (wb.delayers) return "VS Code has focused a webview's iframe and its _focusDelayer has not yet decided whether to post it \"focus\"";
   const handled = new Map();
   for (const f of page.frames()) {
     if (!/^vscode-webview:.*\/index\.html/.test(f.url())) continue;
