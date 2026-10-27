@@ -181,9 +181,6 @@ export type HostToBoard =
   /** sticker：顺带打开这个问题（Questions 面板点进来的） */
   | { type: "reveal"; card: string; seg?: string; lines?: [number, number]; sticker?: string }
   | { type: "key"; action: KeyAction }
-  /** VS Code's key context (codeboard.boardFocused) has been updated for this board's last "focus": the forwardedKeys come back as
-   *  { type: "key" } only while it says the board has the keyboard */
-  | { type: "focusKey"; has: boolean }
   /** 侧栏 / 命令面板改了白板名 */
   | { type: "rename"; name: string }
   /** Relocate：符号在编辑器里找到了新位置，换掉这一段（段 id 不变） */

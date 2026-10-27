@@ -209,7 +209,6 @@ export class BoardHub implements BoardHost, Disposable {
       if (set) this.keyApplied = this.keyApplied.then(() => set(on)).catch((e) => log("warn", `boardFocused: ${e instanceof Error ? e.message : e}`));
     }
     await this.keyApplied;
-    if (this.panels.get(p.id) === p) p.post({ type: "focusKey", has: this.keyOn && p.hasKeyboard });
   }
 
   get(id: string) { return this.panels.get(id); }

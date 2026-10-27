@@ -213,8 +213,30 @@ async function focusSettled(f) {
   await f.evaluate(() => new Promise((r) => setTimeout(r, 0)));
 }
 
-/** The board in frame f has the keyboard and VS Code's key context says so: the keys VS Code sends back to the board are bound on it */
-const boardHasKeyboard = (f) => f.evaluate(() => document.hasFocus() && document.documentElement.hasAttribute("data-keys-here"));
+/** The board in frame f has the keyboard: the keys pressed next reach it. Its shortcuts that VS Code sends back need boardKeys too */
+const boardHasKeyboard = (f) => f.evaluate(() => document.hasFocus());
+/** VS Code's status bar while it waits for the second key of a chord ("(Ctrl+K) was pressed. Waiting for second key of chord...") */
+const inChord = (page) => page.locator(".part.statusbar", { hasText: /was pressed\. Waiting for (second|next) key of chord/ }).count();
+/** Who gets the board's shortcuts (Ctrl+K, Ctrl+, …: VS Code keybindings while its key context codeboard.boardFocused is on, which
+ *  VS Code sends back to the board on screen): press Ctrl+K and see. "board": the board in frame f opened its search (closed again
+ *  with Escape when the board has the keyboard); "vscode": VS Code began its own Ctrl+K chord (Escape ends it) */
+async function ctrlK(page, f) {
+  await page.keyboard.press("Control+k");
+  const who = await until("Ctrl+K opens the board's search or begins VS Code's chord", async () =>
+    (await f.locator(".palette").count()) ? "board" : (await inChord(page)) ? "vscode" : null, 5000);
+  if (who === "vscode") {
+    await page.keyboard.press("Escape");
+    await until("Escape ends VS Code's Ctrl+K chord", async () => !(await inChord(page)), 5000);
+  } else if (await boardHasKeyboard(f)) {
+    await until("the board's search has the keyboard", () => typingIn(f, ".palette"), 5000);
+    await page.keyboard.press("Escape");
+    await f.locator(".palette").waitFor({ state: "detached", timeout: 5000 });
+  }
+  return who;
+}
+/** Wait until VS Code sends the board's shortcuts back to the board in frame f, which has the keyboard: the host turns the key
+ *  context on once the board reports getting the keyboard, so right after a click a shortcut can still be VS Code's own */
+const boardKeys = (page, f) => until("VS Code sends the board's shortcuts to the board", async () => await boardHasKeyboard(f) && await ctrlK(page, f) === "board", 10000);
 
 /** The frames that show a board (#board); boards in background tabs keep their webview, and VS Code hides those */
 async function boardFrames(page, { visible = true } = {}) {
@@ -237,4 +259,4 @@ async function fit(f) {
   await btn.click({ timeout: 5000 }); // when something else covers it, this fails and says what
 }
 
-module.exports = { qi, qiValue, qiOpen, qiMark, watchKeyboard, keyboardSettled, boardHasKeyboard, boardDialog, boardDialogClosed, qiClosed, pick, command, inputBox, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit };
+module.exports = { qi, qiValue, qiOpen, qiMark, watchKeyboard, keyboardSettled, boardHasKeyboard, boardKeys, ctrlK, boardDialog, boardDialogClosed, qiClosed, pick, command, inputBox, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit };

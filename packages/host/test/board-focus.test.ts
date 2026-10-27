@@ -34,10 +34,9 @@ beforeAll(async () => {
 afterAll(() => { hub.dispose(); fs.rmSync(dir, { recursive: true, force: true }); });
 
 describe("board focus", () => {
-  it("sets the key context when a board gets or loses the keyboard, then tells the board", async () => {
+  it("sets the key context when a board gets or loses the keyboard", async () => {
     await focus(true);
     await focus(false);
     expect(keyContext).toEqual([true, false]);
-    expect(views[0].posted.filter((m) => m.type === "focusKey")).toEqual([{ type: "focusKey", has: true }, { type: "focusKey", has: false }]);
   });
 });

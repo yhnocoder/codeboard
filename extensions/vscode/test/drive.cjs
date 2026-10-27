@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, hold, idle, track, fromSource } = require("./wait.cjs");
-const { command, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard } = require("./ui.cjs");
+const { command, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard, boardKeys, ctrlK } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 /** The board file format the extension writes (core's model.ts), so the autosave check follows a format bump */
 const { BOARD_VERSION } = fromSource("packages/core/src/model.ts");
@@ -274,7 +274,7 @@ async function closeStep(page) {
   await el.locator(".chead .ctitle").first().click();
   await until("the code card is selected and the board has the keyboard", async () => /\bsel\b/.test(await el.getAttribute("class")) && await boardHasKeyboard(f))
     .catch(async (e) => {
-      const board = await f.evaluate(() => ({ focus: document.hasFocus(), keyContext: document.documentElement.hasAttribute("data-keys-here"), active: `${document.activeElement?.tagName}.${document.activeElement?.className}` }));
+      const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}` }));
       const workbench = await page.evaluate(() => `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`);
       throw new Error(`${e.message}: ${JSON.stringify({ card: await el.getAttribute("class"), board, workbench })}`);
     });
@@ -317,7 +317,8 @@ async function keyscopeStep(page) {
   await idle(f);
   await command(page, "File: Focus on Files Explorer");
   await until("the Explorer has the keyboard", () => page.evaluate(() => !!document.activeElement?.closest(".explorer-folders-view")));
-  await until("VS Code's key context says the board does not have the keyboard", async () => !(await f.evaluate(() => document.documentElement.hasAttribute("data-keys-here"))));
+  // The board reported losing the keyboard when the palette took it, so its shortcuts are VS Code's own again
+  check(await ctrlK(page, f) === "vscode", "keyscope: with the keyboard in the Explorer, Ctrl+K begins VS Code's chord, not the board's search");
   check(await page.evaluate(() => document.querySelector(".editor-group-container.active .tab.active")?.textContent ?? ""), "keyscope: the board is still the active editor");
   const camZoom = () => text(f.locator(".zoom"));
   const [z0, dpr0] = [await camZoom(), await page.evaluate(() => window.devicePixelRatio)];
@@ -609,7 +610,7 @@ async function stickerfolderStep(page) {
   setUserSetting("codeboard.stickerFolder", dir);
   // The picker reads the packs once per board, when it first opens: open it only once VS Code has the new setting. The board's own
   // Settings page shows the folder the host passed on (live)
-  await clickBoard(f);
+  await clickBoard(f); await boardKeys(page, f);
   await page.keyboard.press("Control+,");
   await until("the board's Settings page shows the new sticker folder", async () => /stickers$/.test(await f.locator(".settings .st-path").inputValue({ timeout: 1000 })), 15000);
   await page.keyboard.press("Control+,");
@@ -850,7 +851,7 @@ const finish = async (browser, errors) => {
   check(saved(b), `board autosaved (v${BOARD_VERSION} format)`, b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
 
   // 8b. Settings: Ctrl+, inside the board opens the Settings page (the extension routes VS Code's own Ctrl+, back to the board); changing the theme writes codeboard.theme
-  await clickBoard(f);
+  await clickBoard(f); await boardKeys(page, f);
   await page.keyboard.press("Control+,");
   check(await soon(() => f.locator(".settings").count(), (n) => n === 1) === 1, "Ctrl+, opens the Settings page in the board");
   await f.locator(".st-sw", { hasText: "Graphite" }).click();
