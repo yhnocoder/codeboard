@@ -91,6 +91,29 @@ test("turnIntoBoardUndo", async () => {
   await h.page.context().close();
 });
 
+/** Lines selected on a sub-board, then back to the parent: the line selection was the sub-board's, so S on the parent has no lines to
+ *  attach to (it used to open Add Sidenote for a card the parent does not have, and adding one left a dangling sidenote) */
+test("lineSelectionStaysOnItsBoard", async () => {
+  const C = emptyBoard("bLsChild", "Child"), P = emptyBoard("bLsParent", "Parent");
+  const a = card("Scheduler.schedule"), c = card("BlockManager.allocate");
+  put(C, c, 60, 60, 560);
+  put(P, a, 60, 60, 560);
+  P.cards.push({ id: "frLs", kind: "board", board: C.id });
+  P.place.frLs = { x: 700, y: 60, w: 480, h: 360 };
+  const t = await subHost(P, [C]);
+  const h = t.h, page = h.page;
+  let n = t.inits.length;
+  await page.locator(`.card[data-id="frLs"] .sbhead`).dblclick({ position: { x: 200, y: 12 } }); await switched(t, n, "entering Child opens its board");
+  await page.locator(`.card[data-id="${c.id}"] .gutter .no`).nth(2).click();
+  await expect(page.locator(`.card[data-id="${c.id}"] .gutter .no.sel`)).toHaveCount(1);
+  n = t.inits.length;
+  await page.locator(".crumbs .crumb", { hasText: "Parent" }).click(); await switched(t, n, "the breadcrumb goes back to Parent");
+  await page.keyboard.press("s");
+  await expect(page.locator(".toast")).toContainText("Select lines in a card first");
+  check("lineSelectionStaysOnItsBoard", (await page.locator(".pop.k-addNote").count()) === 0, "no Add Sidenote for the sub-board's card");
+  await h.page.context().close();
+});
+
 async function run(res: Record<string, unknown>) {
   {
     // Engine: LLMEngine.step calls schedule / postprocess; schedule calls can_allocate, allocate, preempt (call marks)

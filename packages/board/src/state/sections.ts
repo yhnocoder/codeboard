@@ -3,7 +3,7 @@
 import { createMemo, createSignal, mapArray } from "solid-js";
 import { sectionFrame, sectionFit, sectionPill, estSize, type Board, type Rect, type Section } from "@codeboard/core";
 import { state, rectOf, placed, hostOf, collapsedAway } from "./store";
-import { rooted } from "./root";
+import { rooted, boardSignal } from "./root";
 
 const byId = rooted(() => createMemo(() => new Map(state.board.sections.map((s) => [s.id, s]))));
 export const sec = (id?: string) => (id ? byId().get(id) : undefined);
@@ -21,7 +21,7 @@ export function hiddenByAncestor(s: Section): boolean {
 const kids = rooted(() => createMemo(() => groupBy(state.board.sections, (s) => s.parent)));
 
 /** 拖动中的卡松手后会在哪个 Section（卡 id → Section id，undefined = 不在 Section 里）；没在拖 = null。只在落点换了 Section 时才变 */
-const [moving, setMoving] = createSignal<ReadonlyMap<string, string | undefined> | null>(null, {
+const [moving, setMoving] = boardSignal<ReadonlyMap<string, string | undefined> | null>(null, {
   equals: (a, b) => a === b || (!!a && !!b && a.size === b.size && [...a].every(([k, v]) => b.has(k) && b.get(k) === v)),
 });
 export { moving as movingHome, setMoving as setMovingHome };
