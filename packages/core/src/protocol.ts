@@ -8,6 +8,7 @@ import type { CardCopy } from "./edit";
 import type { SharedInfo } from "./shared";
 import type { Skeleton } from "./subboard";
 import type { RunApply } from "./run";
+import type { Rect } from "./layout";
 import type { QuestionItem } from "./questions";
 import type { LspItem, LspSignature } from "./workspace";
 
@@ -242,6 +243,7 @@ export type BoardToHost =
   /** 网页元信息：抓一次，图片存进 assets/ */
   | { type: "webMeta"; req: number; url: string } // 回 WebMeta
   | { type: "stickerPacks"; req: number } // 回 StickerPack[]
+  | { type: "tidy"; req: number; cards: (Rect & { id: string })[]; links: [string, string][]; fixed: Rect[] } // Tidy Up 的排版（ELK 只在宿主里）：回每张卡的新 x / y
   | { type: "openStickerDir" }
   | { type: "copyDiagnostics"; board?: boolean }
   /** 白板里的错误 / 日志：写进 Output 面板的 CodeBoard 频道，Copy Diagnostics 会带上 */
@@ -384,6 +386,7 @@ type Replies = {
   views: Record<string, SegView>;
   webMeta: WebMeta;
   stickerPacks: StickerPack[];
+  tidy: Record<string, { x: number; y: number }>;
   confirm: boolean;
   pickFile: string | null; // data URL
   searchName: NameHit[];

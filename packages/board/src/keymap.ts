@@ -117,7 +117,7 @@ export const KEYMAP: Bind[] = [
   { id: "lock", keys: ["mod+shift+l"], label: "Lock / Unlock", group: "Cards", run: (a) => a.toggleLock(sel.cards.slice(), sel.sections.slice()) },
   { id: "turnIntoBoard", keys: ["mod+shift+b"], label: "Turn into Board", group: "Cards", run: (a) => void a.turnIntoBoard() },
   { id: "fitContent", keys: ["alt+KeyF"], label: "Fit Content", group: "Cards", when: () => hasCards() || sel.sections.length > 0, run: (a) => { if (sel.cards.length) a.fitContent(sel.cards); else a.fitSections(sel.sections.slice()); } },
-  { id: "tidyUp", keys: ["alt+KeyT"], label: "Tidy Up", group: "Cards", when: () => sel.cards.length >= 2, run: (a) => a.tidyUp() },
+  { id: "tidyUp", keys: ["alt+KeyT"], label: "Tidy Up", group: "Cards", when: () => sel.cards.length >= 2, run: (a) => void a.tidyUp() },
   // ⌥T 已经是 Tidy Up
   { id: "tilt", keys: ["alt+shift+KeyT"], label: "Tilt", group: "Cards", when: hasCards, run: (a) => a.toggleTilt(sel.cards.slice()) },
   { id: "wrap", keys: ["alt+KeyZ"], label: "Wrap Lines", group: "Cards", run: (a) => a.toggleWrap(sel.cards.slice()) },

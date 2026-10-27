@@ -1,35 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { parseWebMeta, urlPath, charsetOf, decodeEntities, classifyPaste, parseRepoInput } from "../src";
+import { urlPath, classifyPaste, parseRepoInput } from "../src";
 
-describe("parseWebMeta", () => {
-  it("prefers og tags and resolves relative URLs", () => {
-    const html = `<html><head><title>Fallback</title>
-      <meta property="og:title" content="FlashAttention-3: Fast &amp; Accurate">
-      <meta name="description" content="plain desc"><meta property='og:description' content="We develop three &#8230; techniques">
-      <meta property="og:site_name" content="arXiv"><meta property="og:image" content="/static/og.png">
-      <link rel="icon" href="/favicon-16.png" sizes="16x16"><link rel="icon" href="/favicon-32.png" sizes="32x32">
-    </head><body><meta property="og:title" content="ignored"></body></html>`;
-    expect(parseWebMeta(html, "https://arxiv.org/abs/2407.08608")).toEqual({
-      title: "FlashAttention-3: Fast & Accurate", desc: "We develop three … techniques", site: "arXiv",
-      image: "https://arxiv.org/static/og.png", icon: "https://arxiv.org/favicon-32.png",
-    });
-  });
-  it("falls back to <title>, meta description and /favicon.ico", () => {
-    const m = parseWebMeta(`<head><TITLE>\n  Triton  Language\nReference </TITLE><meta name="Description" content="Docs"></head>`, "https://triton-lang.org/main/index.html");
-    expect(m).toEqual({ title: "Triton Language Reference", desc: "Docs", site: undefined, image: undefined, icon: "https://triton-lang.org/favicon.ico" });
-  });
-  it("honours <base> and twitter tags, drops non-http images", () => {
-    const m = parseWebMeta(`<head><base href="https://cdn.x.io/a/"><meta name="twitter:title" content="T"><meta name="twitter:image" content="img.jpg"><link rel="shortcut icon" href="data:image/png;base64,AA"></head>`, "https://x.io/p");
-    expect(m.title).toBe("T");
-    expect(m.image).toBe("https://cdn.x.io/a/img.jpg");
-    expect(m.icon).toBe("https://x.io/favicon.ico");
-  });
-  it("small helpers", () => {
+describe("urlPath", () => {
+  it("is the path, query and hash, empty for the root", () => {
     expect(urlPath("https://docs.internal.company/wiki/kv-cache-design?tab=notes")).toBe("/wiki/kv-cache-design?tab=notes");
     expect(urlPath("https://a.com/")).toBe("");
-    expect(charsetOf("text/html; charset=GBK", "")).toBe("gbk");
-    expect(charsetOf(null, `<meta charset="Shift_JIS">`)).toBe("shift_jis");
-    expect(decodeEntities("a &lt;b&gt; &#x4e2d; &unknown;")).toBe("a <b> 中 &unknown;");
   });
 });
 

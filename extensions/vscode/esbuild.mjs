@@ -9,6 +9,9 @@ const require = createRequire(import.meta.url);
 const wasmDir = dirname(require.resolve("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm"));
 mkdirSync("dist", { recursive: true });
 for (const f of ["tree-sitter.wasm", "tree-sitter-python.wasm", "tree-sitter-cpp.wasm", "tree-sitter-rust.wasm"]) copyFileSync(join(wasmDir, f), join("dist", f));
+// ELK（Tidy Up 的排版）放在 dist/elk.js，第一次 Tidy Up 才 require：打进 extension.js 的话，插件每次启动都要多解析 3.5 MB（约 80 ms）
+copyFileSync(require.resolve("elkjs/lib/elk.bundled.js"), join("dist", "elk.js"));
+const elkApart = { name: "elk-apart", setup: (b) => b.onResolve({ filter: /^elkjs\// }, () => ({ path: "./elk.js", external: true })) };
 
 // 构建自哪个提交（Copy Diagnostics 里显示）：正好在发版 tag v<version> 上是正式版，什么都不加；否则写 "dev <短 commit>"，有没提交的改动再加 "dirty"
 function buildId() {
@@ -28,6 +31,7 @@ const opts = {
   format: "cjs",
   target: "node18",
   external: ["vscode"],
+  plugins: [elkApart],
   sourcemap: true,
   logLevel: "info",
   // core/analysis 里 import.meta.resolve 只在没给 wasm 目录时用（vitest）；打包后用不到

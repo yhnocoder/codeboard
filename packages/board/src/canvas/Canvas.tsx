@@ -182,7 +182,7 @@ function AlignBar() {
       <div ref={el} class="alignbar pill show" data-nodrag style={{ left: `${pos().x}px`, top: `${pos().y}px` }}>
         <button class="tbtn" data-tip="Create Section" onClick={() => { setMore(false); A.moveToNewSection(); }}><Icon name="newSection" />Create Section</button>
         <button class="tbtn" data-tip={tip("Create Sub-board", "turnIntoBoard")} onClick={() => { setMore(false); void A.turnIntoBoard(); }}><Icon name="subBoard" />Create Sub-board</button>
-        <button class="tbtn" data-tip={tip("Tidy Up", "tidyUp")} onClick={() => { setMore(false); A.tidyUp(); }}><Icon name="tidy" />Tidy Up</button>
+        <button class="tbtn" data-tip={tip("Tidy Up", "tidyUp")} onClick={() => { setMore(false); void A.tidyUp(); }}><Icon name="tidy" />Tidy Up</button>
         <span class="sep" />
         <button class="ib" classList={{ on: more() }} aria-label="More" aria-haspopup="menu" aria-expanded={more()} data-tip={more() ? undefined : "More"} onClick={() => setMore(!more())}><Icon name="more" /></button>
         <div class="alignmore" classList={{ open: more() }} role="menu" aria-label="Align and Distribute">
