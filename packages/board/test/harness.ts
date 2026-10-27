@@ -12,7 +12,8 @@ import { initAnalysis, analyze, varCandidates, importPkg, peekPlan, type FileAna
 declare const REPO_ROOT: string;
 export const REPO = REPO_ROOT;
 const NV = path.join(REPO, "examples/nano-vllm");
-const MEDIA = path.join(REPO, "extensions/vscode/media/board");
+// HARNESS_BOARD: another build of the board (harness.mjs --against=<ref> runs the scenarios on the build of an older commit)
+const MEDIA = process.env.HARNESS_BOARD || path.join(REPO, "extensions/vscode/media/board");
 export const OUT = path.join(REPO, "test-out/harness");
 
 export const files = new Map<string, { text: string[]; a: FileAnalysis }>();

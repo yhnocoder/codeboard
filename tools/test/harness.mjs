@@ -4,6 +4,8 @@
 //        --select [--base=<commit>] [--budget=<seconds>] [--focus=a,b]: only the scenarios the change since <commit> (default HEAD)
 //          needs (tools/test/pick.mjs; a "Tests:" line in PR_BODY counts as --focus)
 //        --coverage: also record which source files each scenario runs (nightly, for --select)
+//        --against=<ref>: run the scenarios (as they are now) on the board built from <ref>: does a new scenario fail on the old code?
+//          The build is made once per commit in a git worktree, test-out/against/<commit>
 //        --changed-since=<commit> --repeat=N [--cap=<minutes>]: the nightly flake repeat. The scenarios defined in test files changed
 //          since <commit> (tools/test/pick.mjs repeatPick), each run N times (Playwright --repeat-each), within a wall-time cap
 //          (default 15 min). No second run alone: any failed repetition fails the scenario. A missing or unknown <commit> is an
@@ -78,6 +80,26 @@ if (sinceMode) {
 } else list = Object.keys(all).filter((n) => !(tiers.manual ?? []).includes(n)).map((name) => ({ name, why: "all" }));
 const sh = opt("shard")?.split("/").map(Number);
 if (sh) list = shard(list, sh[0], sh[1], (it) => msOf(it.name));
+
+const against = opt("against");
+if (against) {
+  const git = (...a) => spawnSync("git", a, { cwd: REPO, encoding: "utf8" });
+  const sha = git("rev-parse", "--verify", "-q", `${against}^{commit}`).stdout.trim();
+  if (!sha) die(`--against: ${against} is not a commit in this clone`);
+  const dir = path.join(REPO, "test-out/against", sha), media = path.join(dir, "extensions/vscode/media/board");
+  if (!fs.existsSync(path.join(media, "board.js"))) {
+    console.log(`building the board at ${sha.slice(0, 7)} in ${path.relative(REPO, dir)}`);
+    git("worktree", "remove", "--force", dir); fs.rmSync(dir, { recursive: true, force: true }); git("worktree", "prune");
+    const add = git("worktree", "add", "--detach", dir, sha);
+    if (add.status) die(`--against: git worktree add failed:\n${add.stderr}`);
+    for (const cmd of ["npm ci --prefer-offline --no-audit --no-fund", "npm run build -w @yhnocoder/markdown", "npm run build -w @codeboard/board"]) {
+      const r = spawnSync("sh", ["-c", cmd], { cwd: dir, encoding: "utf8", maxBuffer: 64 << 20 });
+      if (r.status) die(`--against: ${cmd} failed at ${sha.slice(0, 7)}:\n${(r.stdout + r.stderr).slice(-3000)}`);
+    }
+  }
+  env.HARNESS_BOARD = media;
+  console.log(`on the board of ${against} (${sha.slice(0, 7)}), not the current build`);
+}
 
 const workers = Math.max(1, Math.min(workersWanted, list.length * repeat));
 const why = Object.fromEntries(list.map((x) => [x.name, x.why]));
