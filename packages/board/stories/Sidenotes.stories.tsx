@@ -2,8 +2,8 @@
 // 指着标记弹出、点一下钉住。五种：代码、粘贴、文字、链接、另一张卡
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Sidenote } from "@codeboard/core";
-import { scene, codeCard, noteCard, type Globals } from "./support/board";
-import { CanvasStage, until, $, type CScene } from "./support/canvas";
+import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./support/board";
+import { waitFor, $ } from "./support/play";
 import code from "./fixtures/code.json";
 
 type Kind = Sidenote["kind"];
@@ -22,16 +22,16 @@ const note = (id: string, card: string, seg: string | undefined, lines: [number,
   ...(o.why ? { why: o.why } : {}), ...(o.alwaysShow && kind === "text" ? { alwaysShow: true } : {}), ...(o.review ? { review: "9f3e2a1" } : {}),
 } as Sidenote);
 
-function playground(a: Args): CScene {
+function playground(a: Args): Scene {
   const { board: b, put } = scene("Sidenote");
   const c = put(codeCard("c", "schedule"), { x: 40, y: 40, w: 600, h: 420 });
   const other = put(noteCard("other", "# Block Manager\n\n按 hash 复用前缀"), { x: 800, y: 60, w: 260 });
   const s = c.segments[0], l = s.start + 11; // can_allocate 那一行
   b.sidenotes.push(note("sn", c.id, a.wholeCard ? undefined : s.id, a.wholeCard ? undefined : [l, l + a.lines - 1], a.kind, { ...a, other: other.id }));
-  return { board: b, after: a.pinned ? () => void until("the marker", () => $<HTMLElement>(".card .mk")).then((m) => m.click()) : undefined };
+  return { board: b, after: a.pinned ? () => void waitFor(() => $<HTMLElement>(".card .mk"), "the marker").then((m) => m.click()) : undefined };
 }
 
-function overview(): CScene {
+function overview(): Scene {
   const { board: b, put, caption } = scene("Sidenotes overview");
   caption("Line markers (count), a range, Always Show, review (amber), every kind; a sticker sharing a line", 40, 40, 900);
   const c = put(codeCard("c", "schedule"), { x: 40, y: 40, w: 640, h: 940 });
@@ -57,7 +57,7 @@ function overview(): CScene {
 
 const meta = {
   title: "Canvas/Sidenotes",
-  render: (a, ctx) => <CanvasStage scene={() => playground(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => playground(a)} globals={ctx.globals as Globals} />,
   args: { kind: "text", text: "**prefix caching**：命中的 block 引用计数加一", why: "", lines: 1, alwaysShow: false, review: false, wholeCard: false, pinned: true },
   argTypes: {
     kind: { control: "inline-radio", options: ["text", "code", "paste", "link", "card"] },
@@ -75,7 +75,7 @@ type Story = StoryObj<typeof meta>;
 
 const noArgs = Object.fromEntries(Object.keys(meta.args).map((k) => [k, { table: { disable: true } }])) as Story["argTypes"];
 
-export const Overview: Story = { render: (_, ctx) => <CanvasStage scene={overview} globals={ctx.globals as Globals} />, argTypes: noArgs };
+export const Overview: Story = { render: (_, ctx) => <Stage scene={overview} globals={ctx.globals as Globals} />, argTypes: noArgs };
 export const Text: Story = {};
 export const Code: Story = { args: { kind: "code", why: "命中几个 block 由 hash 决定" } };
 export const Paste: Story = { args: { kind: "paste" } };
@@ -88,5 +88,5 @@ export const WholeCard: Story = { name: "Whole Card", args: { wholeCard: true } 
 export const Pinned2: Story = {
   name: "Two on One Line (pinned)",
   argTypes: noArgs,
-  render: (_, ctx) => <CanvasStage scene={() => { const s = overview(); return { ...s, after: () => void until("the marker", () => $<HTMLElement>('.card[data-id="c"] .gutter .mk, .card[data-id="c"] .mk:not(.inline)')).then(() => [...document.querySelectorAll<HTMLElement>('.card[data-id="c"] .mk')].find((m) => m.textContent?.trim() === "2")?.click()) }; }} globals={ctx.globals as Globals} />,
+  render: (_, ctx) => <Stage scene={() => { const s = overview(); return { ...s, after: () => void waitFor(() => $<HTMLElement>('.card[data-id="c"] .gutter .mk, .card[data-id="c"] .mk:not(.inline)'), "the marker").then(() => [...document.querySelectorAll<HTMLElement>('.card[data-id="c"] .mk')].find((m) => m.textContent?.trim() === "2")?.click()) }; }} globals={ctx.globals as Globals} />,
 };

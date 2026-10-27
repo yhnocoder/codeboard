@@ -1,14 +1,14 @@
 // 拖动中的画布：吸附参考线、「same width」提示、合并（Release to merge）、放成旁注、拖调用时的候选卡。
 // 拖动本身是指针手势（interact.ts），这里直接设它中途留下的状态（ui.ts 的 dragging / guides / sizeHint / dropTarget）
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, codeCard, noteCard, type Globals } from "./support/board";
-import { CanvasStage, ln, type CScene } from "./support/canvas";
+import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./support/board";
+import { ln } from "./support/canvas";
 import { setDragging, setGuides, setSizeHint, setDropTarget } from "../src/state/ui";
 
 type What = "snap guides" | "resize: same width" | "merge: armed" | "merge: hovering" | "as sidenote" | "as code sidenote" | "call: candidates";
 type Args = { what: What };
 
-function board(a: Args): CScene {
+function board(a: Args): Scene {
   const { board: b, put } = scene("Dragging");
   const c1 = put(codeCard("d-c1", "preempt"), { x: 40, y: 60, w: 440 });
   const c2 = put(codeCard("d-c2", "deallocate"), { x: 640, y: 60, w: 440 });
@@ -54,7 +54,7 @@ function board(a: Args): CScene {
 const WHATS: What[] = ["snap guides", "resize: same width", "merge: armed", "merge: hovering", "as sidenote", "as code sidenote", "call: candidates"];
 const meta = {
   title: "Canvas/Drag",
-  render: (a, ctx) => <CanvasStage scene={() => board(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => board(a)} globals={ctx.globals as Globals} />,
   args: { what: "snap guides" },
   argTypes: { what: { control: "select", options: WHATS, description: "What the drag has reached" } },
 } satisfies Meta<Args>;

@@ -2,9 +2,11 @@
 // repo = 打开时预填的（侧栏 Add Repo…、贴链接时宿主带过来）；预填了就直接打开，链接里带路径和行号就一路打开到那几行
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { GhQuery } from "@codeboard/core";
-import { scene, noteCard, type Globals, type Scene } from "./support/board";
-import { UiStage, settled, toolbar, menu, menuItem, el, type, click, frames, github, HANG } from "./support/ui";
+import { Stage, scene, noteCard, type Globals, type Scene } from "./support/board";
+import { HANG } from "./support/host";
+import { settled, el, type, click, frames } from "./support/play";
 import { SHORT } from "./support/groups";
+import { toolbar, menu, menuItem, github } from "./support/ui";
 import { setGhPicker } from "../src/state/web";
 
 type Op = GhQuery["op"] | "";
@@ -23,7 +25,7 @@ function board(): Scene {
 const ops: Op[] = ["", "repo", "commit", "tree", "file", "card"];
 const meta = {
   title: "UI/GitHub Picker",
-  render: (a, ctx) => <UiStage scene={board} globals={ctx.globals as Globals}
+  render: (a, ctx) => <Stage scene={board} globals={ctx.globals as Globals}
     replies={{ gh: (m) => (a.waitAt === "card" && m.q.op === "card" ? HANG : github({ repo: { private: a.isPrivate }, truncated: a.truncated, fail: a.failAt ? { op: a.failAt, error: a.error } : undefined, hang: a.waitAt || undefined })(m)) }} />,
   args: { repo: LINK, isPrivate: false, truncated: false, failAt: "", error: NOT_FOUND, waitAt: "" },
   argTypes: {
@@ -62,7 +64,7 @@ export const BranchFiltered: Story = { name: "Branch List · Filtered", play: as
 export const Tag: Story = { name: "Tag Mode", play: async (c) => { await loaded(c); for (const b of document.querySelectorAll<HTMLElement>(".ghp-seg button")) if (b.textContent === "Tag") b.click(); await el(".ghp-tree .gt"); } };
 export const Commit: Story = { name: "Commit Mode", play: async (c) => { await loaded(c); for (const b of document.querySelectorAll<HTMLElement>(".ghp-seg button")) if (b.textContent === "Commit") b.click(); } };
 export const NoTags: Story = { name: "No Tags (Tag Disabled)", args: { repo: "GeeeekExplorer/nano-vllm" }, play: loaded,
-  render: (a, ctx) => <UiStage scene={board} globals={ctx.globals as Globals} replies={{ gh: github({ repo: { tags: [], private: a.isPrivate } }) }} /> };
+  render: (a, ctx) => <Stage scene={board} globals={ctx.globals as Globals} replies={{ gh: github({ repo: { tags: [], private: a.isPrivate } }) }} /> };
 export const Adding: Story = { name: "Adding…", args: { waitAt: "card" }, play: async (c) => { await loaded(c); await el(".ghp-code .gl.on"); await click(".ghp-foot .btn.pri"); } };
 // 真的点：工具栏 Code ▾ → From GitHub…
 export const FromToolbar: Story = { name: "From the Toolbar", args: { repo: "" }, play: async () => { await settled(); await toolbar("Code"); await menu(); await menuItem("From GitHub…"); } };

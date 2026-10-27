@@ -1,8 +1,9 @@
 // Section：框在卡下面，标签在卡上面；折叠成一条「▸ 名字 · N cards」，指着它停一会儿摊开成员的预览
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Section } from "@codeboard/core";
-import { scene, codeCard, noteCard, textCard, markCard, type Globals, type Group } from "./support/board";
-import { CanvasStage, arrow, ln, section, whole, until, hover, $, SECTION_COLORS, type CScene } from "./support/canvas";
+import { Stage, scene, codeCard, noteCard, textCard, markCard, type Globals, type Group, type Scene } from "./support/board";
+import { waitFor, hover, $ } from "./support/play";
+import { arrow, ln, section, whole, SECTION_COLORS } from "./support/canvas";
 import { setEditing, setDragging } from "../src/state/ui";
 import { setMovingHome } from "../src/state/sections";
 
@@ -12,7 +13,7 @@ type Args = { title: string; color: Color; cards: number; collapsed: boolean; lo
 const colorOf = (c: Color) => (c === "none" ? {} : { color: c });
 const MEMBERS = ["Scheduler.schedule 先排 prefill", "block 不够就抢占", "decode 每步一个 token", "**prefix caching**：按 hash 复用"];
 
-function playground(a: Args): CScene {
+function playground(a: Args): Scene {
   const { board: b, put } = scene("Section");
   const ids = MEMBERS.slice(0, a.cards).map((md, i) => put(noteCard(`m${i}`, md), { x: 80 + (i % 2) * 300, y: 140 + Math.floor(i / 2) * 170, w: 260 }).id);
   const s = section(b, { id: "s1", title: a.title, x: 40, y: 80, w: 300, h: 160, ...colorOf(a.color), ...(a.collapsed ? { collapsed: true } : {}), ...(a.locked ? { locked: true } : {}) }, ids);
@@ -28,13 +29,13 @@ function playground(a: Args): CScene {
 }
 
 /** 一个 Section 和几张成员卡：坐标是 Section 框的左上角 */
-function group(g: Group, b: CScene["board"], s: Section, cap: string, kids: (x: number, y: number) => string[]) {
+function group(g: Group, b: Scene["board"], s: Section, cap: string, kids: (x: number, y: number) => string[]) {
   g.caption(cap, s.x, s.y - 4, 380);
   const ids = kids(s.x, s.y);
   return section(b, s, ids);
 }
 
-function overview(): CScene {
+function overview(): Scene {
   const { board: b, at } = scene("Sections overview");
   const g = at(0, 0);
   // 第一行：五种颜色
@@ -68,7 +69,7 @@ function overview(): CScene {
 }
 
 /** 拖一张卡进另一个 Section：目标 Section 亮起来（.drop），拖着的卡和它原来的 Section 都在动（.moving） */
-function dragInto(): CScene {
+function dragInto(): Scene {
   const { board: b, at } = scene("Dragging into a Section");
   const g = at(0, 0);
   const a = g.put(noteCard("dg-a", "**can_allocate**\n\n先看 hash 命中几个 block"), { x: 62, y: 120, w: 260 });
@@ -82,7 +83,7 @@ function dragInto(): CScene {
 
 const meta = {
   title: "Canvas/Sections",
-  render: (a, ctx) => <CanvasStage scene={() => playground(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => playground(a)} globals={ctx.globals as Globals} />,
   args: { title: "Scheduling", color: "sand", cards: 2, collapsed: false, locked: false, selected: false, nested: false, linkIn: false, editing: false },
   argTypes: {
     title: { control: "text" },
@@ -101,16 +102,16 @@ type Story = StoryObj<typeof meta>;
 
 const noArgs = Object.fromEntries(Object.keys(meta.args).map((k) => [k, { table: { disable: true } }])) as Story["argTypes"];
 
-export const Overview: Story = { render: (_, ctx) => <CanvasStage scene={overview} globals={ctx.globals as Globals} />, argTypes: noArgs };
+export const Overview: Story = { render: (_, ctx) => <Stage scene={overview} globals={ctx.globals as Globals} />, argTypes: noArgs };
 export const Playground: Story = {};
 export const Collapsed: Story = { args: { collapsed: true, cards: 4, linkIn: true } };
 export const CollapsedPeek: Story = {
   name: "Collapsed · Peek on hover",
   args: { collapsed: true, cards: 4 },
-  play: async () => { hover(await until("the collapsed pill", () => $(".slabel.collapsed"))); await until("the peek", () => $(".spv")); },
+  play: async () => { hover(await waitFor(() => $(".slabel.collapsed"), "the collapsed pill")); await waitFor(() => $(".spv"), "the peek"); },
 };
 export const Nested: Story = { args: { nested: true, color: "pink" } };
 export const Selected: Story = { args: { selected: true } };
 export const Locked: Story = { args: { locked: true } };
 export const EditingName: Story = { name: "Editing the Name", args: { editing: true } };
-export const DragInto: Story = { name: "Dragging a Card In", render: (_, ctx) => <CanvasStage scene={dragInto} globals={ctx.globals as Globals} />, argTypes: noArgs };
+export const DragInto: Story = { name: "Dragging a Card In", render: (_, ctx) => <Stage scene={dragInto} globals={ctx.globals as Globals} />, argTypes: noArgs };

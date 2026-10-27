@@ -1,13 +1,13 @@
 // 缩放分档（LOD）：完整（≥ 60%）、概览（25%–60%，代码变灰条）、地图（< 25%，只剩卡名，名字按 1/z 放大）。
 // 工具栏的缩放只有 100 / 60 / 30，到不了地图档：这里的 zoom 参数直接给镜头比例
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, codeCard, noteCard, markCard, textCard, type Globals } from "./support/board";
-import { CanvasStage, arrow, ln, whole, section, usePacks, PACK, type CScene } from "./support/canvas";
+import { Stage, scene, codeCard, noteCard, markCard, textCard, type Globals, type Scene } from "./support/board";
 import { LONG } from "./support/groups";
+import { arrow, ln, whole, section, usePacks, PACK } from "./support/canvas";
 
 type Args = { zoom: number };
 
-function board(): CScene {
+function board(): Scene {
   const { board: b, put } = scene("Zoom levels");
   put(textCard("title", "# Scheduler 和 BlockManager"), { x: 40, y: 20, w: 600 });
   const step = put(codeCard("z-step", "step"), { x: 40, y: 140, w: 620 });
@@ -35,7 +35,7 @@ function board(): CScene {
 
 const meta = {
   title: "Canvas/LOD",
-  render: (a, ctx) => { usePacks(); return <CanvasStage scene={board} globals={ctx.globals as Globals} zoom={() => a.zoom} />; },
+  render: (a, ctx) => { usePacks(); return <Stage scene={() => ({ ...board(), zoom: a.zoom || undefined })} globals={ctx.globals as Globals} />; },
   args: { zoom: 0 },
   argTypes: { zoom: { control: { type: "range", min: 0, max: 1.5, step: 0.01 }, description: "Camera zoom (0: the toolbar's Zoom). Overview below 0.6, map below 0.25" } },
 } satisfies Meta<Args>;

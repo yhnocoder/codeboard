@@ -1,82 +1,10 @@
-// 非代码卡（Note、Text、Mark、Image、Web、子白板）小样共用的：舞台的补充（设置、骨架、共享、抓取中、镜头）、内容、假宿主的补充回复、play 的小工具
-import { createEffect, createMemo, on } from "solid-js";
+// 非代码卡（Note、Text、Mark、Image、Web、子白板）小样共用的：内容、图片、网页、子白板
 import {
-  emptyBoard, skeletonOf, type Board, type BoardCard, type ImageCard, type LinksCard, type LinkItem, type NoteCard, type Settings, type SharedInfo,
-  type Skeleton, type WebCard, type WebMeta, type WebStyle, type AskType, type Segment,
+  emptyBoard, skeletonOf, type Board, type BoardCard, type ImageCard, type LinksCard, type LinkItem, type NoteCard,
+  type Skeleton, type WebCard, type WebMeta, type WebStyle,
 } from "@codeboard/core";
-import { onHost } from "../../src/hostio";
-import { state } from "../../src/state/store";
-import { setCam, cam } from "../../src/state/camera";
-import { setFetchingKeys } from "../../src/state/web";
-import { Stage, codeCard, type Globals, type Scene } from "./board";
-import { NOTE_CODE, noteCodeKey } from "../fixtures/notecode";
-import NOTE_HTML from "../fixtures/notecode.json";
-
-export type CardScene = Scene & {
-  /** 合进宿主设置（init 之后再发一条 host，和用户在设置页改了一样） */
-  settings?: Partial<Settings>;
-  /** 宿主推来的子白板骨架；null = 那块白板没了；不给 = 还在等（Loading…） */
-  skels?: Record<string, Skeleton | null>;
-  /** 宿主算好的共享卡情况（在几块白板上、别的白板连进来的箭头） */
-  shared?: Record<string, SharedInfo>;
-  /** 正在抓网页信息的 Web 卡（或 Link List 的「卡 id/行 id」） */
-  fetching?: string[];
-  /** 盖过工具栏的缩放（工具栏只有 100 / 60 / 30，地图档要 25% 以下） */
-  zoom?: number;
-  /** 卡画出来以后再做的（进别的编辑、设拖放目标这类 src/state 里的 setter） */
-  after?: () => void;
-};
-
-// Stage 的 init 会把设置、骨架、共享都重置：这些等它发完 init（同一轮的微任务）再补上
-export function CardStage(p: { scene: () => CardScene; globals: Globals }) {
-  const sc = createMemo(p.scene);
-  const extra = (s: CardScene) => queueMicrotask(() => {
-    if (s.settings) onHost({ type: "host", host: { settings: { ...state.host.settings, ...s.settings } } });
-    if (s.skels) onHost({ type: "skeletons", boards: s.skels });
-    if (s.shared) onHost({ type: "sharedInfo", cards: s.shared });
-    setFetchingKeys(new Set(s.fetching ?? []));
-    if (s.zoom) setCam(cam.x, cam.y, s.zoom);
-    if (s.after) requestAnimationFrame(s.after);
-  });
-  createEffect(on(sc, extra));
-  return <Stage scene={sc} globals={p.globals} />;
-}
-
-// ---------- 假宿主的补充回复 ----------
-
-// support/host.ts 换掉了 __cbSent 的 push：再包一层，这里登记的 ask 由这里回，其余照旧交给它
-type Reply = (m: any) => unknown;
-/** 不回：等的那个状态一直留着（Fetching…） */
-export const PENDING = Symbol("pending");
-/** 这条不归这里管，交给 support/host.ts */
-export const PASS = Symbol("pass");
-const EXTRA: Partial<Record<AskType, Reply>> = {};
-export function hostReply<K extends AskType>(type: K, f: Reply) { EXTRA[type] = f; }
-{
-  const sent = window.__cbSent!;
-  const base = sent.push.bind(sent);
-  sent.push = (...ms: unknown[]) => {
-    const rest: unknown[] = [];
-    for (const m of ms) {
-      const q = m as { type: AskType; req?: number };
-      const f = typeof q.req === "number" ? EXTRA[q.type] : undefined;
-      const data = f ? f(q) : PASS;
-      if (data === PASS) { rest.push(m); continue; }
-      Array.prototype.push.call(sent, m);
-      if (data !== PENDING) window.postMessage({ type: "reply", req: q.req, data: data ?? null }, "*");
-    }
-    return rest.length ? base(...rest) : sent.length;
-  };
-}
-
-// Note 代码块的着色：宿主用 shiki 做，这里查 gen.ts 预先算好的表（fixtures/notecode.json）；查不到的照旧交给 support/host.ts
-hostReply("views", (m: { segs: Segment[] }) => {
-  if (!m.segs.every((s) => s.id === "note-code")) return PASS;
-  return Object.fromEntries(m.segs.flatMap((s) => {
-    const html = (NOTE_HTML as Record<string, string[]>)[noteCodeKey(s.lang, s.text.join("\n"))];
-    return html ? [[s.id, { html, flags: html.map(() => 0), calls: [], defs: [], bare: {} }]] : [];
-  }));
-});
+import { codeCard } from "./board";
+import { NOTE_CODE } from "../fixtures/notecode";
 
 // ---------- 内容 ----------
 
@@ -202,24 +130,3 @@ export function subBoard(id: string, name: string, o: { nested?: string; empty?:
 }
 export const skelOfBoard = (b: Board): Skeleton => ({ ...skeletonOf(b), commit: "f64d821" });
 export const boardFrame = (id: string, board: string, title?: string): BoardCard => ({ id, kind: "board", board, ...(title ? { title } : {}) });
-
-// ---------- play ----------
-
-export async function waitFor<T>(get: () => T | null | undefined, what: string, ms = 8000): Promise<T> {
-  const t0 = performance.now();
-  for (;;) {
-    const v = get();
-    if (v) return v;
-    if (performance.now() - t0 > ms) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise((r) => requestAnimationFrame(r));
-  }
-}
-export const $ = <E extends Element = HTMLElement>(sel: string) => document.querySelector<E>(sel);
-/** 白板静下来：卡都量好、编辑器的挂载走完（两帧） */
-export const frames = (n = 2) => new Promise<void>((r) => { const f = () => (--n <= 0 ? r() : requestAnimationFrame(f)); requestAnimationFrame(f); });
-/** 真的指针事件（白板的手势认 pointerdown / up，不认合成的 click） */
-export function pointer(el: Element, type: "pointerdown" | "pointerup" | "pointermove" | "pointerenter" | "pointerover", at?: { x: number; y: number }) {
-  const r = el.getBoundingClientRect();
-  const x = at?.x ?? r.left + r.width / 2, y = at?.y ?? r.top + r.height / 2;
-  el.dispatchEvent(new PointerEvent(type, { bubbles: type !== "pointerenter", clientX: x, clientY: y, pointerId: 1, pointerType: "mouse", button: 0, buttons: type === "pointerup" ? 0 : 1, isPrimary: true }));
-}

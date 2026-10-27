@@ -1,8 +1,10 @@
 // 版本：点琥珀点看新版本的 diff（Update / Keep / Duplicate），点版本号挑 commit；diff 还在取、取不到
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { CodeCard, Stale } from "@codeboard/core";
-import { scene, type Globals } from "./support/board";
-import { CodeStage, fn, edited, latestEdit, diffOf, DIFFS, COMMITS, waitEl, frames, popAt, card, lineOf, type CodeScene } from "./support/code";
+import { Stage, scene, type Globals, type Scene } from "./support/board";
+import { COMMITS } from "./support/host";
+import { el, frames } from "./support/play";
+import { fn, edited, latestEdit, diffOf, DIFFS, popAt, card, lineOf } from "./support/code";
 
 type Pop = "diff" | "commits" | "loading" | "error";
 type Args = { pop: Pop; title: string; notes: boolean; w: number };
@@ -19,12 +21,12 @@ function staleCard(id: string, a: Pick<Args, "title" | "notes">) {
 }
 
 async function click(sel: string) {
-  const b = await waitEl(sel);
+  const b = await el(sel);
   await frames();
   b.click();
 }
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const { board, put } = scene("Versions");
   const { c, s, stale } = staleCard("v1", a);
   put(c, { x: 40, y: 100, w: a.w, h: 300 });
@@ -46,7 +48,7 @@ function single(a: Args): CodeScene {
 }
 
 // 两个固定（pinned）的浮层能同时开着：diff 和 commit 列表放在一块白板上
-function overview(a: Args): CodeScene {
+function overview(a: Args): Scene {
   const { board, put, caption } = scene("Versions");
   const { c, s, stale } = staleCard("v1", a);
   caption("New version: View Diff (pinned)", 40, 100, a.w);
@@ -65,7 +67,7 @@ function overview(a: Args): CodeScene {
 
 const meta = {
   title: "Cards/Code Versions",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { pop: "diff", title: "New Version · Scheduler.schedule", notes: true, w: 560 },
   argTypes: {
     pop: { control: "inline-radio", options: ["diff", "commits", "loading", "error"], description: "Which popover (diff and commits are opened by clicking the version in the header)" },
@@ -78,7 +80,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {
-  render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   argTypes: { pop: { table: { disable: true } } },
 };
 export const Diff: Story = { name: "New Version Diff" };

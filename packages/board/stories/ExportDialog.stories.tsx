@@ -1,9 +1,10 @@
 // 导出对话框（ui/ExportDialog.tsx）：打开时按设置定默认，之后的选择是对话框自己的状态（state/export.ts 的 exportOpen），Controls 直接改它
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { createEffect, on } from "solid-js";
-import { scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
-import { UiStage, settled, toolbar, menu, menuItem, el, frames } from "./support/ui";
+import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
+import { settled, el, frames } from "./support/play";
 import { SHORT, TITLED } from "./support/groups";
+import { toolbar, menu, menuItem } from "./support/ui";
 import { setExportOpen, setExportBusy, exportOpen } from "../src/state/export";
 import { openExport } from "../src/actions/export";
 
@@ -32,7 +33,7 @@ const meta = {
       setExportBusy(busy);
       if (exportOpen()) setExportOpen({ format, scope, questions, boardOnly, sections: ["s1", "s2", "s3"].slice(0, picked) });
     }, { defer: true }));
-    return <UiStage scene={() => board(a)} globals={ctx.globals as Globals} />;
+    return <Stage scene={() => board(a)} globals={ctx.globals as Globals} />;
   },
   args: { format: "html", scope: "board", picked: 1, questions: false, boardOnly: false, busy: false, name: "KV cache 调度", sections: true, start: true },
   argTypes: {

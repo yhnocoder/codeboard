@@ -2,8 +2,8 @@
 // 箭头起点、变量高亮、拖箭头时的落点行
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, Segment } from "@codeboard/core";
-import { scene, noteCard, type Globals, type Group } from "./support/board";
-import { CodeStage, fn, multi, slice, seg0, lineOf, type CodeScene } from "./support/code";
+import { Stage, scene, noteCard, type Globals, type Group, type Scene } from "./support/board";
+import { fn, multi, slice, seg0, lineOf } from "./support/code";
 import { setLineSel } from "../src/state/store";
 import { setDropTarget, setHoverVar, toggleShown } from "../src/state/ui";
 
@@ -94,7 +94,7 @@ const CELLS: Record<State, Cell> = {
 };
 const STATES = Object.keys(CELLS) as State[];
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const { board, at } = scene("Code lines");
   const g = at(0, 0), cell = CELLS[a.state];
   const after = cell.make(board, g, "c1", 40, 40, a.w);
@@ -102,7 +102,7 @@ function single(a: Args): CodeScene {
   return { board, after: after ?? undefined };
 }
 
-function overview(a: Args): CodeScene {
+function overview(a: Args): Scene {
   const { board, at } = scene("Code lines");
   const g = at(0, 0);
   const afters: (() => void)[] = [];
@@ -122,7 +122,7 @@ function overview(a: Args): CodeScene {
 
 const meta = {
   title: "Cards/Code Lines",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { state: "highlight", w: 460, h: 0 },
   argTypes: {
     state: { control: "select", options: STATES },
@@ -134,7 +134,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {
-  render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   argTypes: { state: { table: { disable: true } }, h: { table: { disable: true } } },
 };
 export const Highlighted: Story = { args: { state: "highlight" } };

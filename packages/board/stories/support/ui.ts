@@ -1,113 +1,11 @@
-// 界面外框（工具栏、菜单、对话框、⌘K、设置、导出、GitHub）的小样共用：play 里像用户一样点、右键、悬停，
-// 宿主的回答按 story 换（support/host.ts 的表是固定的，这里在它前面再接一层）
-import { onCleanup } from "solid-js";
-import type { AskType, BoardToHost, Commit, GhFile, GhQuery, GhRepo, GhTree, SearchItem } from "@codeboard/core";
-import { Stage, type Globals, type Scene } from "./board";
-import { closeMenu } from "../../src/ui/Menu";
-import { setPaletteOpen, setKeysOpen, setSettingsOpen } from "../../src/state/ui";
-import { setGhPicker } from "../../src/state/web";
-import { setExportBusy } from "../../src/state/export";
-import { closeAllPops } from "../../src/state/pop";
-import { setToastMsg } from "../../src/state/store";
+// 界面外框（工具栏、菜单、对话框、⌘K、设置、导出、GitHub）的小样共用：开菜单、点菜单项，
+// 和按 story 换的宿主回答（交给 Stage 的 replies）用的假数据
+import type { Commit, GhFile, GhQuery, GhRepo, GhTree, SearchItem } from "@codeboard/core";
+import { HANG, type Reply } from "./host";
+import { waitFor, settled, click } from "./play";
 import code from "../fixtures/code.json";
 
-// ---------- 宿主的回答 ----------
-
-/** 回答：返回值 = data；抛错 = 宿主报错（reply.error）；HANG = 一直不回（看「加载中」） */
-export const HANG = Symbol("hang");
-type Reply = (m: any) => unknown;
-export type Replies = Partial<Record<AskType, Reply>>;
-let replies: Replies = {};
-
-const sent = window.__cbSent!;
-const base = sent.push.bind(sent);
-sent.push = (...ms: unknown[]) => {
-  const rest: unknown[] = [];
-  for (const m of ms) {
-    const q = m as BoardToHost & { req?: number };
-    const f = typeof q.req === "number" ? replies[q.type as AskType] : undefined;
-    if (!f) { rest.push(m); continue; }
-    Array.prototype.push.call(sent, m);
-    const req = q.req;
-    void (async () => {
-      try {
-        const data = await f(q);
-        if (data !== HANG) window.postMessage({ type: "reply", req, data }, "*");
-      } catch (e) { window.postMessage({ type: "reply", req, error: (e as Error).message }, "*"); }
-    })();
-  }
-  return rest.length ? base(...rest) : sent.length;
-};
-
-// ---------- 舞台 ----------
-
-/**
- * 白板的界面状态是整页一份：在 Storybook 里换 story 不重新载入页面，开着的设置页、⌘K、菜单、对话框会留到下一个 story。
- * 挂上和卸下时都关一遍（换白板的 init 只清它登记过的那些）
- */
-function closeAll() {
-  closeMenu(); setPaletteOpen(false); setKeysOpen(false); setSettingsOpen(false); setGhPicker(false); setExportBusy(false); closeAllPops(); setToastMsg(null);
-  // 对话框没有导出关的办法：按 Esc（和用户一样），一层一层关
-  for (let i = 0; i < 4 && document.querySelector(".dialog"); i++) window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
-}
-
-export function UiStage(p: { scene: () => Scene; globals: Globals; replies?: Replies }) {
-  replies = p.replies ?? {};
-  closeAll();
-  onCleanup(() => { closeAll(); replies = {}; });
-  return <Stage scene={p.scene} globals={p.globals} />;
-}
-
-// ---------- 像用户一样操作 ----------
-
-export async function waitFor<T>(get: () => T | null | undefined | false, what = "the element", ms = 8000): Promise<T> {
-  const t0 = performance.now();
-  for (;;) {
-    const v = get();
-    if (v) return v;
-    if (performance.now() - t0 > ms) throw new Error(`Timed out waiting for ${what}`);
-    await new Promise((r) => requestAnimationFrame(r));
-  }
-}
-export const frames = (n = 2) => new Promise<void>((r) => { const k = () => (n-- <= 0 ? r() : requestAnimationFrame(k)); k(); });
-export const el = <E extends Element = HTMLElement>(sel: string) => waitFor(() => document.querySelector<E>(sel), sel);
-const resolve = (t: string | Element) => (typeof t === "string" ? el(t) : Promise.resolve(t));
-const center = (e: Element) => { const r = e.getBoundingClientRect(); return { clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }; };
-
-/** 白板画好（卡挂上、量过尺寸）再操作：太早开的菜单会贴在还没摆好的元素上 */
-export async function settled(sel = ".card") { await el(sel); await frames(4); }
-
-/** 右键：坐标默认在元素中间（菜单从那里开） */
-export async function rightClick(target: string | Element, at?: { x: number; y: number }) {
-  const e = await resolve(target);
-  const p = at ? { clientX: at.x, clientY: at.y } : center(e);
-  e.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2, ...p }));
-}
-/** 右键一条线：落在路径的中点上 */
-export async function rightClickLink(id: string) {
-  const p = await el<SVGPathElement>(`path.lhit[data-link="${id}"]`);
-  const m = p.getPointAtLength(p.getTotalLength() / 2), ctm = p.getScreenCTM()!;
-  await rightClick(p, { x: ctm.a * m.x + ctm.c * m.y + ctm.e, y: ctm.b * m.x + ctm.d * m.y + ctm.f });
-}
-export async function click(target: string | Element) { (await resolve(target) as HTMLElement).click(); }
-/** 悬停：提示 500ms 后出来 */
-export async function hover(target: string | Element) {
-  const e = await resolve(target);
-  e.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, ...center(e) }));
-}
-export async function key(k: string, o: KeyboardEventInit = {}) {
-  (document.activeElement ?? window).dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true, ...o }));
-  await frames(1);
-}
-/** 输入框里打字（走 Solid 的 onInput）；commit = 再发 change（设置页的数字框） */
-export async function type(target: string | HTMLInputElement, text: string, o: { commit?: boolean } = {}) {
-  const i = await resolve(target) as HTMLInputElement;
-  i.focus();
-  i.value = text;
-  i.dispatchEvent(new InputEvent("input", { bubbles: true }));
-  if (o.commit) i.dispatchEvent(new Event("change", { bubbles: true }));
-  await frames(2);
-}
+// ---------- 菜单、工具栏 ----------
 
 /** 开着的第 level 级菜单（0 = 最外层），展开动画走完 */
 export const menu = (level = 0) => waitFor(() => document.querySelectorAll<HTMLElement>(".ctx.open")[level], `menu level ${level}`);

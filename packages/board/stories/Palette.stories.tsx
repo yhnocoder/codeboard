@@ -1,8 +1,10 @@
 // ⌘K 搜索（ui/Palette.tsx）：宿主回 search / entryPoints。query 空 = 列入口；有字 = 按名字筛（假宿主照宿主那样越打越少）
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, noteCard, type Globals, type Scene } from "./support/board";
-import { UiStage, settled, toolbar, el, type, key, frames, HANG, SEARCH, ENTRIES, searchReply, type Replies } from "./support/ui";
+import { Stage, scene, noteCard, type Globals, type Scene } from "./support/board";
+import { HANG, type Replies } from "./support/host";
+import { settled, el, type, key, frames } from "./support/play";
 import { SHORT } from "./support/groups";
+import { toolbar, SEARCH, ENTRIES, searchReply } from "./support/ui";
 import { setPaletteOpen } from "../src/state/ui";
 
 type Args = { query: string; entries: boolean; results: boolean; slow: boolean; mode: "all" | "code" };
@@ -19,7 +21,7 @@ const replies = (a: Args): Replies => ({
 
 const meta = {
   title: "UI/Palette",
-  render: (a, ctx) => <UiStage scene={board} replies={replies(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={board} replies={replies(a)} globals={ctx.globals as Globals} />,
   args: { query: "sched", entries: true, results: true, slow: false, mode: "all" },
   argTypes: {
     query: { control: "text", description: "Typed text (empty: entry points)" },

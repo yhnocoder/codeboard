@@ -2,13 +2,13 @@
 // Section、贴纸、手绘线。主题用工具栏的 Theme 换；下面每个主题也各有一个小样，直接翻着看
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { THEMES, cornerAt, type ThemeId } from "@codeboard/core";
-import { scene, codeCard, noteCard, markCard, textCard, type Globals } from "./support/board";
-import { CanvasStage, arrow, ln, whole, section, type CScene } from "./support/canvas";
+import { Stage, scene, codeCard, noteCard, markCard, textCard, type Globals, type Scene } from "./support/board";
+import { arrow, ln, whole, section } from "./support/canvas";
 import { setTraffic } from "../src/state/look";
 
 type Args = { traffic: boolean };
 
-function board(a: Args): CScene {
+function board(a: Args): Scene {
   const { board: b, put } = scene("Themes");
   put(textCard("title", "# KV cache 的一生"), { x: 40, y: 20, w: 420 });
   const step = put(codeCard("t-step", "step"), { x: 40, y: 120, w: 620 });
@@ -39,7 +39,7 @@ function board(a: Args): CScene {
 
 const meta = {
   title: "Canvas/Themes",
-  render: (a, ctx) => <CanvasStage scene={() => board(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => board(a)} globals={ctx.globals as Globals} />,
   args: { traffic: false },
   argTypes: { traffic: { control: "boolean", description: "City only: green light, cars drive along the call roads" } },
 } satisfies Meta<Args>;

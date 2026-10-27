@@ -1,7 +1,8 @@
 // Free code：手写 / 粘贴的代码。显示、有 / 没有标题、贴来的来源地址、折行、编辑中（CodeMirror）、语言菜单
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, type Globals } from "./support/board";
-import { CodeStage, free, waitEl, frames, card, type CodeScene } from "./support/code";
+import { Stage, scene, type Globals, type Scene } from "./support/board";
+import { el, frames } from "./support/play";
+import { free, card } from "./support/code";
 import { setEditing } from "../src/state/ui";
 
 type Lang = "python" | "c" | "cuda-cpp";
@@ -32,25 +33,25 @@ const CODE: Record<Lang, string[]> = {
 };
 
 async function langMenu(id: string) {
-  const b = await waitEl(`${card(id)} .chead .lang`);
+  const b = await el(`${card(id)} .chead .lang`);
   await frames(4);
   b.click();
 }
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const { board, put } = scene("Free code");
   put(free("f1", CODE[a.lang], { lang: a.lang, title: a.title || undefined, url: a.url || undefined, card: a.wrap ? { wrap: true } : {} }), { x: 40, y: 60, w: a.w });
   return {
     board, sel: a.mode === "selected" || a.mode === "langMenu" ? ["f1"] : undefined,
     after: async () => {
-      await waitEl(`${card("f1")} .src .l`);
+      await el(`${card("f1")} .src .l`);
       if (a.mode === "editing") setEditing({ kind: "free", id: "f1" });
       if (a.mode === "langMenu") await langMenu("f1");
     },
   };
 }
 
-function overview(a: Args): CodeScene {
+function overview(a: Args): Scene {
   const { board, put, caption } = scene("Free code");
   const cells: [string, string, Parameters<typeof free>[1], Parameters<typeof free>[2], number][] = [
     ["Python, no title", "f-py", CODE.python, { lang: "python" }, a.w],
@@ -65,12 +66,12 @@ function overview(a: Args): CodeScene {
     caption(cap, x, y, w);
     put(free(id, text, o), { x, y, w });
   });
-  return { board, sel: ["f-sel"], after: async () => { await waitEl(`${card("f-edit")} .src .l`); setEditing({ kind: "free", id: "f-edit" }); } };
+  return { board, sel: ["f-sel"], after: async () => { await el(`${card("f-edit")} .src .l`); setEditing({ kind: "free", id: "f-edit" }); } };
 }
 
 const meta = {
   title: "Cards/Free Code",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { lang: "python", title: "", url: "", wrap: false, mode: "view", w: 480 },
   argTypes: {
     lang: { control: "inline-radio", options: ["python", "c", "cuda-cpp"] },
@@ -85,7 +86,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {
-  render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   args: { w: 440 },
   argTypes: { lang: { table: { disable: true } }, title: { table: { disable: true } }, url: { table: { disable: true } }, wrap: { table: { disable: true } }, mode: { table: { disable: true } } },
 };

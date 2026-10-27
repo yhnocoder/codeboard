@@ -1,8 +1,9 @@
 // 箭头（界面上叫 Arrow）：种类、样式、标签、走线、手绘线、正在连的线。线的几何、图层都在 canvas/Links.tsx，这里只喂白板数据
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { HAND_COLORS, type Board, type CodeCard, type CallMark, type End, type HandColor, type Link, type LinkSide, type LinkStyle } from "@codeboard/core";
-import { scene, codeCard, noteCard, textCard, markCard, type Globals, type Group } from "./support/board";
-import { CanvasStage, arrow, ln, whole, until, hover, $, LINK_COLORS, type CScene } from "./support/canvas";
+import { Stage, scene, codeCard, noteCard, textCard, markCard, type Globals, type Group, type Scene } from "./support/board";
+import { waitFor, hover, $ } from "./support/play";
+import { arrow, ln, whole, LINK_COLORS } from "./support/canvas";
 import { setEditing, setRubber, setDropTarget, setDragLink } from "../src/state/ui";
 import { setConnectFrom } from "../src/state/mode";
 import { setHoverLink } from "../src/state/hover";
@@ -42,7 +43,7 @@ const styleOf = (a: Pick<Args, "color" | "width" | "dash" | "headStart" | "headE
   return Object.keys(s).length ? s : undefined;
 };
 
-function playground(a: Args): CScene {
+function playground(a: Args): Scene {
   const { board: b, put } = scene("Arrow");
   const src = put(codeCard("src", "preempt"), { x: 380, y: 260, w: 400 });
   const pos = { right: [900, 300], left: [-160, 300], below: [520, 560], "up-right": [880, 40], self: [0, 0] }[a.layout];
@@ -74,7 +75,7 @@ function pair(g: Group, b: Board, id: string, x: number, y: number, cap: string,
   arrow(b, id, o.from === "card" ? whole(s) : ln(s, "deallocate("), o.to === "line" ? ln(t as CodeCard, "_deallocate_block") : whole(t), link);
 }
 
-function overview(): CScene {
+function overview(): Scene {
   const { board: b, at } = scene("Arrows overview");
   // 调用图：schedule 里的几处调用，各连到被调的函数；证据三档、↺、参数
   const A = at(0, 0);
@@ -121,7 +122,7 @@ const SEEN = [
   { n: 2, args: [["seq", "Sequence(id=3, 512 tokens)"]] as [string, string][] },
   { n: 128, args: [["seq", "Sequence(id=17, 1 token)"]] as [string, string][] },
 ];
-function labels(): CScene {
+function labels(): Scene {
   const { board: b, at } = scene("Arrow labels");
   const g = at(0, 0);
   const call = (x: Partial<CallMark> = {}): CallMark => ({ name: "deallocate", col: 27, ...x });
@@ -152,7 +153,7 @@ function labels(): CScene {
 
 // ---------- 走线 ----------
 
-function routing(): CScene {
+function routing(): Scene {
   const { board: b, at } = scene("Arrow routing");
   const g = at(0, 0);
   // 汇合：三条线进同一张卡（卡头）只画一个箭头；三条线进同一行也合并
@@ -192,7 +193,7 @@ function routing(): CScene {
 
 // ---------- 手绘线（从 Mark 出发） ----------
 
-function handDrawn(a: Args): CScene {
+function handDrawn(a: Args): Scene {
   const { board: b, at } = scene("Hand-drawn arrows");
   const g = at(0, 0);
   const c = g.put(codeCard("hd-code", "allocate"), { x: 520, y: 80, w: 520 });
@@ -213,7 +214,7 @@ function handDrawn(a: Args): CScene {
 
 // ---------- 正在连 ----------
 
-function drawing(a: Args): CScene {
+function drawing(a: Args): Scene {
   const { board: b, put } = scene("Drawing an arrow");
   const src = put(codeCard("dr-src", "preempt"), { x: 40, y: 80, w: 420 });
   const dst = put(codeCard("dr-dst", "deallocate"), { x: 700, y: 260, w: 440 });
@@ -237,7 +238,7 @@ function drawing(a: Args): CScene {
 // ---------- 悬停 ----------
 
 /** 普通箭头、出发行其实调用了目标卡：悬停出「+ Call」；Call 箭头悬停出「+」（参数） */
-function hovering(a: Args): CScene {
+function hovering(a: Args): Scene {
   const { board: b, put } = scene("Hovering an arrow");
   const s = put(codeCard("hv-a", "preempt"), { x: 40, y: 80, w: 420 });
   const t = put(codeCard("hv-b", "deallocate"), { x: 640, y: 160, w: 420 });
@@ -247,7 +248,7 @@ function hovering(a: Args): CScene {
 
 const meta = {
   title: "Canvas/Links",
-  render: (a, ctx) => <CanvasStage scene={() => playground(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => playground(a)} globals={ctx.globals as Globals} />,
   args: {
     kind: "call", fromLine: true, toLine: false, layout: "right", color: "grey", width: 2, dash: false, headStart: false, headEnd: true,
     label: "", at: -1, loop: false, vars: false, lost: "none", sideFrom: "auto", sideTo: "auto", state: "normal",
@@ -279,22 +280,22 @@ type Story = StoryObj<typeof meta>;
 
 const noArgs = Object.fromEntries(Object.keys(meta.args).map((k) => [k, { table: { disable: true } }])) as Story["argTypes"];
 
-export const Overview: Story = { render: (_, ctx) => <CanvasStage scene={overview} globals={ctx.globals as Globals} />, argTypes: noArgs };
+export const Overview: Story = { render: (_, ctx) => <Stage scene={overview} globals={ctx.globals as Globals} />, argTypes: noArgs };
 export const Playground: Story = {};
-export const Labels: Story = { render: (_, ctx) => <CanvasStage scene={labels} globals={ctx.globals as Globals} />, argTypes: noArgs };
-export const Routing: Story = { render: (_, ctx) => <CanvasStage scene={routing} globals={ctx.globals as Globals} />, argTypes: noArgs };
+export const Labels: Story = { render: (_, ctx) => <Stage scene={labels} globals={ctx.globals as Globals} />, argTypes: noArgs };
+export const Routing: Story = { render: (_, ctx) => <Stage scene={routing} globals={ctx.globals as Globals} />, argTypes: noArgs };
 export const HandDrawn: Story = {
   name: "Hand-drawn (from a Mark)",
-  render: (a, ctx) => <CanvasStage scene={() => handDrawn(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => handDrawn(a)} globals={ctx.globals as Globals} />,
   argTypes: { ...noArgs, hand: { control: "inline-radio", options: [...HAND_COLORS], description: "Colour of the Mark on the right" } },
 };
 export const Drawing: Story = {
   name: "Drawing (rubber band)",
-  render: (a, ctx) => <CanvasStage scene={() => drawing(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => drawing(a)} globals={ctx.globals as Globals} />,
   argTypes: { ...noArgs, what: { control: "inline-radio", options: ["line port", "call", "connect mode"], description: "Dragging from a line's dot, dragging a call, or the toolbar's Arrow (click the next card)" } },
 };
 export const Hover: Story = {
-  render: (a, ctx) => <CanvasStage scene={() => hovering(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => hovering(a)} globals={ctx.globals as Globals} />,
   argTypes: { ...noArgs, which: { control: "inline-radio", options: ["plain (+ Call)", "call (+ arguments)"] } },
 };
 export const Selected: Story = { args: { state: "selected", kind: "call", vars: true } };
@@ -305,7 +306,7 @@ export const LabelHoverLine: Story = {
   name: "Line port under the pointer",
   // 指着连出来的行：两侧出圆点（拖出新箭头），行端的起点也能拖到另一侧
   play: async () => {
-    const row = await until("a code line", () => $(`.card[data-id="src"] .src > .l:nth-child(4)`));
+    const row = await waitFor(() => $(`.card[data-id="src"] .src > .l:nth-child(4)`), "a code line");
     hover(row);
     row.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, clientX: row.getBoundingClientRect().left + 40, clientY: row.getBoundingClientRect().top + 6 }));
   },

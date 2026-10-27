@@ -2,8 +2,9 @@
 // Generated from；选实现、选取值、按名字跨语言搜的浮层
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { CallSpan, ImplPick, NameHit } from "@codeboard/core";
-import { scene, type Globals } from "./support/board";
-import { CodeStage, fn, free, callLink, lineOf, popAt, waitEl, card, FX, type CodeScene } from "./support/code";
+import { Stage, scene, type Globals, type Scene } from "./support/board";
+import { el } from "./support/play";
+import { fn, free, callLink, lineOf, popAt, card, FX } from "./support/code";
 
 type Pop = "none" | "impls" | "vals" | "names" | "namesSearching";
 type Args = { pop: Pop; impls: number; observed: boolean };
@@ -55,12 +56,12 @@ function chains(a: Pick<Args, "impls" | "observed">) {
   return { board, ss, call, rs: run.segments[0], runCall };
 }
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const { board, ss, call, rs, runCall } = chains(a);
   return {
     board,
     after: async () => {
-      await waitEl(`${card("sch")} .src .l`);
+      await el(`${card("sch")} .src .l`);
       if (a.pop === "impls") await popAt({ kind: "impls", data: { card: "sch", seg: ss.id, call, impls: IMPLS, base: "BlockManager.can_allocate", again: false } }, `${card("sch")} .call[data-c="${FX.schedule.view.calls.indexOf(call)}"]`);
       if (a.pop === "vals") await popAt({ kind: "vals", link: "l-cap", val: 0 }, '.vchips[data-link="l-cap"]');
       if (a.pop === "names" || a.pop === "namesSearching") {
@@ -71,12 +72,12 @@ function single(a: Args): CodeScene {
 }
 
 // 选实现和按名字搜两个浮层固定住，同时开着
-function overview(a: Args): CodeScene {
+function overview(a: Args): Scene {
   const { board, ss, call, rs, runCall } = chains(a);
   return {
     board,
     after: async () => {
-      await waitEl(`${card("sch")} .src .l`);
+      await el(`${card("sch")} .src .l`);
       await popAt({ kind: "impls", data: { card: "sch", seg: ss.id, call, impls: IMPLS, base: "BlockManager.can_allocate", again: false } }, `${card("sch")} .chead`, { pin: true });
       await popAt({ kind: "names", data: { card: "run", seg: rs.id, call: runCall, hits: HITS } }, `${card("run")} .chead`, { pin: true });
     },
@@ -85,7 +86,7 @@ function overview(a: Args): CodeScene {
 
 const meta = {
   title: "Code/Call Chains",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { pop: "none", impls: 4, observed: true },
   argTypes: {
     pop: { control: "select", options: ["none", "impls", "vals", "names", "namesSearching"], description: "Pick an implementation, pick a value, search a name in all languages" },
@@ -97,7 +98,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {
-  render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   argTypes: { pop: { table: { disable: true } } },
 };
 export const Chains: Story = { name: "Dispatch, Values, Generated" };

@@ -2,22 +2,23 @@
 // 「抓取中」是 state/web 的 fetchingKeys（宿主还没回 webMeta），拖动中的样子是 state/web 的 rowDrag、state/ui 的 dropTarget：都由 setter 摆出来
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { WebStyle } from "@codeboard/core";
-import { scene, type Globals } from "./support/board";
+import { Stage, scene, type Globals, type Scene } from "./support/board";
+import { waitFor, $ } from "./support/play";
+import { PAGES, webCard, linksCard, type PageKey } from "./support/cards";
 import { setEditing, setDropTarget } from "../src/state/ui";
 import { setRowDrag } from "../src/state/web";
-import { CardStage, PAGES, webCard, linksCard, waitFor, $, type CardScene, type PageKey } from "./support/cards";
 
 type Style = WebStyle | "auto";
 type Args = { page: PageKey | "none"; style: Style; w: number; title: string; desc: string; state: "normal" | "selected" | "fetching" | "editing title" | "editing description" };
 
-function single(a: Args): CardScene {
+function single(a: Args): Scene {
   const { board, put } = scene("Web");
   put(webCard("w1", a.page === "none" ? null : a.page, { style: a.style === "auto" ? undefined : a.style, title: a.title || undefined, desc: a.desc || undefined }), { x: 40, y: 40, w: a.w });
   const ed = a.state === "editing title" ? "title" : a.state === "editing description" ? "desc" : null;
   return { board, sel: a.state === "selected" ? ["w1"] : undefined, fetching: a.state === "fetching" ? ["w1"] : undefined, after: ed ? () => setEditing({ kind: ed, id: "w1" }) : undefined };
 }
 
-function overview(): CardScene {
+function overview(): Scene {
   const { board, put, caption } = scene("Web overview");
   caption("Complete, wide image (Auto → banner)", 40, 40, 420); put(webCard("w-full", "full"), { x: 40, y: 40, w: 420 });
   caption("Square image (side)", 520, 40); put(webCard("w-sq", "square"), { x: 520, y: 40, w: 400 });
@@ -32,7 +33,7 @@ function overview(): CardScene {
   return { board, sel: ["w-sel"], fetching: ["w-fetch"], after: () => setEditing({ kind: "title", id: "w-edit" }) };
 }
 
-function styles(): CardScene {
+function styles(): Scene {
   const { board, put, caption } = scene("Web styles");
   (["auto", "banner", "side", "text", "compact"] as Style[]).forEach((st, i) => {
     const x = 40 + (i % 3) * 420, y = 40 + Math.floor(i / 3) * 400;
@@ -43,7 +44,7 @@ function styles(): CardScene {
 }
 
 const LIST: PageKey[] = ["full", "noImage", "titleOnly", "failed", "square"];
-function lists(): CardScene {
+function lists(): Scene {
   const { board, put, caption } = scene("Link Lists");
   caption("Compact rows", 40, 40); put(linksCard("ll-compact", LIST, { title: "KV Cache Reading" }), { x: 40, y: 40, w: 420 });
   caption("Rich rows (View ▸ Rich)", 520, 40); put(linksCard("ll-rich", LIST.slice(0, 3), { rich: true }), { x: 520, y: 40, w: 440 });
@@ -55,7 +56,7 @@ function lists(): CardScene {
 }
 
 // 拖 ⋮⋮ 重排：被拖的行变淡、落点一条线、指针旁一个标签；拖出卡外 = 拆成 Web 卡
-const rowDrag = (out: boolean) => (): CardScene => {
+const rowDrag = (out: boolean) => (): Scene => {
   const { board, put } = scene("Link List drag");
   put(linksCard("ll", LIST, { title: "KV Cache Reading" }), { x: 40, y: 40, w: 420 });
   return {
@@ -63,7 +64,7 @@ const rowDrag = (out: boolean) => (): CardScene => {
   };
 };
 // 一张 Web 卡拖到另一张的标题上停一会儿：「合并」亮起（armed），松手合成 Link List
-function mergeArmed(): CardScene {
+function mergeArmed(): Scene {
   const { board, put, caption } = scene("Web merge");
   caption("Another Web card held over this one (merge armed)", 40, 40, 420); put(webCard("wm-a", "noImage"), { x: 40, y: 110, w: 420 });
   caption("Held, not yet armed", 520, 40, 300); put(webCard("wm-b", "titleOnly"), { x: 520, y: 110, w: 320 });
@@ -78,11 +79,11 @@ const peek = async () => {
 };
 
 const hideAll = Object.fromEntries(["page", "style", "w", "title", "desc", "state"].map((k) => [k, { table: { disable: true } }]));
-const own = (f: () => CardScene) => ({ render: (_: unknown, ctx: { globals: unknown }) => <CardStage scene={f} globals={ctx.globals as Globals} />, argTypes: hideAll });
+const own = (f: () => Scene) => ({ render: (_: unknown, ctx: { globals: unknown }) => <Stage scene={f} globals={ctx.globals as Globals} />, argTypes: hideAll });
 
 const meta = {
   title: "Cards/Web",
-  render: (a, ctx) => <CardStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { page: "full", style: "auto", w: 420, title: "", desc: "", state: "normal" },
   argTypes: {
     page: { control: "select", options: [...Object.keys(PAGES), "none"], description: "What the host fetched (none: nothing yet)" },

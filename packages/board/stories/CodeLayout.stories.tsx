@@ -1,11 +1,11 @@
 // 代码卡的大小和摆放状态：很长（卡内滚动）、定了高度、很窄、很宽、选中（拖角）、锁住、无背景、拖到另一张卡上合并、拿起来拖着；
 // 三档细节（完整 / 概览灰条 / 地图只剩名字）：前两档用工具栏的缩放，地图档（< 25%）用 level 参数
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, type Globals } from "./support/board";
-import { CodeStage, fn, waitEl, card, type CodeScene } from "./support/code";
+import { Stage, scene, type Globals, type Scene } from "./support/board";
+import { el } from "./support/play";
+import { fn, card, type Fx } from "./support/code";
 import { setCam } from "../src/state/camera";
 import { setDragging, setDropTarget } from "../src/state/ui";
-import type { Fx } from "./support/code";
 
 type State = "default" | "long" | "tall" | "narrow" | "wide" | "selected" | "locked" | "nobg" | "mergeArmed" | "mergeHot" | "lifted";
 type Args = { state: State; level: "toolbar" | "map"; w: number };
@@ -35,15 +35,15 @@ function apply(s: State, id: string) {
   if (s === "lifted") setDragging(new Set([id]));
 }
 // 地图档：镜头缩到 0.2（工具栏的缩放只有 100 / 60 / 30）
-const mapLevel = async (a: Args) => { if (a.level === "map") { await waitEl(".card"); setCam(40, 40, 0.2); } };
+const mapLevel = async (a: Args) => { if (a.level === "map") { await el(".card"); setCam(40, 40, 0.2); } };
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const g = scene("Code layout");
   put(g, a.state, "c1", 40, 80, a.w);
-  return { board: g.board, sel: a.state === "selected" ? ["c1"] : undefined, after: async () => { await waitEl(`${card("c1")} .src .l`); apply(a.state, "c1"); await mapLevel(a); } };
+  return { board: g.board, sel: a.state === "selected" ? ["c1"] : undefined, after: async () => { await el(`${card("c1")} .src .l`); apply(a.state, "c1"); await mapLevel(a); } };
 }
 
-function overview(a: Args): CodeScene {
+function overview(a: Args): Scene {
   const g = scene("Code layout");
   // 合并的两种状态只能有一个（落点只有一个）：Overview 放 Release to merge
   const shown: State[] = STATES.filter((s) => s !== "mergeArmed");
@@ -59,13 +59,13 @@ function overview(a: Args): CodeScene {
   const id = (s: State) => `c${shown.indexOf(s)}`;
   return {
     board: g.board, sel: [id("selected")],
-    after: async () => { await waitEl(".card .src .l"); apply("mergeHot", id("mergeHot")); apply("lifted", id("lifted")); await mapLevel(a); },
+    after: async () => { await el(".card .src .l"); apply("mergeHot", id("mergeHot")); apply("lifted", id("lifted")); await mapLevel(a); },
   };
 }
 
 const meta = {
   title: "Cards/Code Layout",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { state: "default", level: "toolbar", w: 520 },
   argTypes: {
     state: { control: "select", options: STATES },
@@ -76,9 +76,9 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Overview: Story = { render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />, argTypes: { state: { table: { disable: true } } } };
-export const OverviewMap: Story = { name: "Overview at Map Level", render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { level: "map" }, argTypes: { state: { table: { disable: true } } } };
-export const OverviewLevel: Story = { name: "Overview at 30% (code as bars)", render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />, globals: { zoom: "30" }, argTypes: { state: { table: { disable: true } } } };
+export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, argTypes: { state: { table: { disable: true } } } };
+export const OverviewMap: Story = { name: "Overview at Map Level", render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { level: "map" }, argTypes: { state: { table: { disable: true } } } };
+export const OverviewLevel: Story = { name: "Overview at 30% (code as bars)", render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, globals: { zoom: "30" }, argTypes: { state: { table: { disable: true } } } };
 export const Long: Story = { args: { state: "long" } };
 export const FixedHeight: Story = { args: { state: "tall" } };
 export const Narrow: Story = { args: { state: "narrow" } };

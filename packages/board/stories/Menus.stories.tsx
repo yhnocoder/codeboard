@@ -2,9 +2,10 @@
 // 所以每个菜单一个 story；Overview 是一块摆着所有能开菜单的东西的白板，开着代码卡的菜单和它的 Edit ▸
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { BoardCard, CompareCard, ImageCard, LinksCard, NoteCard, WebCard } from "@codeboard/core";
-import { scene, noteCard, codeCard, markCard, textCard, type Globals, type Scene } from "./support/board";
-import { UiStage, settled, rightClick, rightClickLink, cardMenu, menuItem, menu, key, el } from "./support/ui";
+import { Stage, scene, noteCard, codeCard, markCard, textCard, type Globals, type Scene } from "./support/board";
+import { settled, rightClick, rightClickLink, key, el } from "./support/play";
 import { SHORT, ONE } from "./support/groups";
+import { cardMenu, menuItem, menu } from "./support/ui";
 import { onHost } from "../src/hostio";
 
 type Args = { locked: boolean; fixedHeight: boolean; shared: boolean; clip: boolean; boards: boolean };
@@ -63,7 +64,7 @@ function extras(a: Args) {
 
 const meta = {
   title: "UI/Menus",
-  render: (a, ctx) => <UiStage scene={() => board(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => board(a)} globals={ctx.globals as Globals} />,
   args: { locked: false, fixedHeight: true, shared: false, clip: false, boards: true },
   argTypes: {
     locked: { control: "boolean", description: "Note and Code card locked (Unlock in the menu)" },

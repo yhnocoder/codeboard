@@ -1,8 +1,9 @@
 // 我的改动（Variant）：标签页、MINE、改过的行（~ / +）、对比基准、落后几个 commit、一行说明、合进上游的提示点、三方对照、菜单
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { type Board, type CodeCard, type Segment } from "@codeboard/core";
-import { scene, type Globals, type Group } from "./support/board";
-import { CodeStage, fn, edited, viewFor, withVariants, wtEdit, branchEdit, latestEdit, waitEl, frames, card, type CodeScene } from "./support/code";
+import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";
+import { el, frames, rightClick } from "./support/play";
+import { fn, edited, viewFor, withVariants, wtEdit, branchEdit, latestEdit, card } from "./support/code";
 import { onHost } from "../src/hostio";
 import { setEditing } from "../src/state/ui";
 import { setVbase } from "../src/state/variants";
@@ -31,21 +32,21 @@ const sync = (id: string, latest: Segment, o: { behind?: number; merged?: boolea
   cards: { [id]: { latest: { label: "main 4c1d0e9", segs: [latest], views: { [latest.id]: viewFor(latest) } }, ...(o.behind ? { behind: { v1: o.behind, v2: o.behind } } : {}), ...(o.merged ? { merged: { v1: { into: "main 4c1d0e9", tip: "77aa12bcd" } } } : {}) } },
 });
 async function click(sel: string, ctx = false) {
-  const el = await waitEl(sel);
+  const e = await el(sel);
   await frames();
-  if (!ctx) return el.click();
-  const r = el.getBoundingClientRect();
-  el.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left + 10, clientY: r.bottom - 4 }));
+  if (!ctx) return e.click();
+  const r = e.getBoundingClientRect();
+  await rightClick(e, { x: r.left + 10, y: r.bottom - 4 });
 }
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const { board, at } = scene("Variants");
   const { latest } = variantCard(board, at(0, 0), "v", a, 40, 60, a.w);
   return {
     board,
     after: async () => {
       sync("v", latest, { behind: a.behind, merged: a.extra === "merged" });
-      await waitEl(`${card("v")} .vtab`);
+      await el(`${card("v")} .vtab`);
       if (a.extra === "noteEditing") setEditing({ kind: "vnote", id: "v" });
       if (a.extra === "baseLatest") setVbase("v", "latest");
       if (a.extra === "threeWay") await click(`${card("v")} .vbtn`);
@@ -64,7 +65,7 @@ const CELLS: [string, Partial<Args>][] = [
   ["Writing the variant's note", { shown: "worktree", extra: "noteEditing" }],
 ];
 
-function overview(a: Args): CodeScene {
+function overview(a: Args): Scene {
   const { board, at } = scene("Variants");
   const g = at(0, 0);
   const todo: (() => void)[] = [];
@@ -78,12 +79,12 @@ function overview(a: Args): CodeScene {
       if (x2.extra === "noteEditing") setEditing({ kind: "vnote", id });
     });
   });
-  return { board, after: async () => { await waitEl(".vtab"); todo.forEach((f) => f()); } };
+  return { board, after: async () => { await el(".vtab"); todo.forEach((f) => f()); } };
 }
 
 const meta = {
   title: "Cards/Code Variants",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { shown: "worktree", note: "block_N=64 · num_stages=3 → 131 TFLOPS", behind: 3, extra: "none", w: 620 },
   argTypes: {
     shown: { control: "inline-radio", options: ["upstream", "worktree", "branch"], description: "Which variant the card shows" },
@@ -97,7 +98,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {
-  render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   args: { w: 560 },
   argTypes: { shown: { table: { disable: true } }, note: { table: { disable: true } }, behind: { table: { disable: true } }, extra: { table: { disable: true } } },
 };

@@ -1,8 +1,8 @@
 // Compare：两张代码卡原地并成两栏。同一个函数的两个版本 / 两个不同的函数；Swap、Unified、Hide Same Lines、选中
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, CompareCard } from "@codeboard/core";
-import { scene, type Globals, type Group } from "./support/board";
-import { CodeStage, fn, edited, register, wtEdit, branchEdit, type CodeScene } from "./support/code";
+import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";
+import { fn, edited, register, wtEdit, branchEdit } from "./support/code";
 
 type Pair = "versions" | "functions";
 type Args = { pair: Pair; unified: boolean; hideSame: boolean; swap: boolean; selected: boolean; w: number; h: number };
@@ -25,7 +25,7 @@ function compare(b: Board, g: Group, id: string, a: Omit<Args, "selected">, x: n
   g.put(k, { x, y, w: a.w, ...(a.h ? { h: a.h } : {}) });
 }
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const { board, at } = scene("Compare");
   compare(board, at(0, 0), "k1", a, 40, 60);
   return { board, sel: a.selected ? ["k1"] : undefined };
@@ -38,7 +38,7 @@ const CELLS: [string, Partial<Args>][] = [
   ["Two different functions · Swap · selected", { pair: "functions", swap: true, selected: true }],
 ];
 
-function overview(a: Args): CodeScene {
+function overview(a: Args): Scene {
   const { board, at } = scene("Compare");
   const g = at(0, 0), sel: string[] = [];
   CELLS.forEach(([cap, o], i) => {
@@ -52,7 +52,7 @@ function overview(a: Args): CodeScene {
 
 const meta = {
   title: "Cards/Compare",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { pair: "versions", unified: false, hideSame: false, swap: false, selected: false, w: 1000, h: 0 },
   argTypes: {
     pair: { control: "inline-radio", options: ["versions", "functions"], description: "Two versions of schedule, or allocate vs deallocate" },
@@ -68,7 +68,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {
-  render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   args: { w: 900, h: 520 },
   argTypes: { pair: { table: { disable: true } }, unified: { table: { disable: true } }, hideSame: { table: { disable: true } }, swap: { table: { disable: true } }, selected: { table: { disable: true } } },
 };

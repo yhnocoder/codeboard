@@ -1,7 +1,8 @@
 // 样式顺序和初始化照抄 src/index.tsx，不然样子和插件里不一样；不 render、不发 ready，白板由 story 的 Stage 挂上、喂数据
 // 假宿主要在白板的模块发第一条消息之前装好
 import "../stories/support/host";
-import type { Preview } from "storybook-solidjs-vite";
+import type { Preview, Decorator } from "storybook-solidjs-vite";
+import { useGlobals } from "storybook/preview-api";
 import { createJSXDecorator } from "storybook-solidjs-vite";
 import { createEffect } from "solid-js";
 import { onHost } from "../src/hostio";
@@ -36,8 +37,27 @@ const scheme = createJSXDecorator((Story, ctx) => {
   return <Story />;
 });
 
+// Storybook 的 viewport 工具会把 story 自己带的 viewport（UI/Toolbar 的 Narrow 那几个）写进用户的 globals：
+// 从它们点到别的 story 还是 600px 宽。换到不带 viewport 的 story 时，换回进去之前用户自己选的那个。
+// 用户的只在每个 story 第一次画时记：写进去的那一下会让上一个 story 带着窄的再画一遍
+let userViewport: unknown;
+let fromStory = false;
+let lastId = "";
+const viewport: Decorator = (Story, ctx) => {
+  const [, update] = useGlobals();
+  const c = ctx as typeof ctx & { storyGlobals: Record<string, unknown>; userGlobals: Record<string, unknown> };
+  const first = c.id !== lastId;
+  lastId = c.id;
+  if ("viewport" in c.storyGlobals) fromStory = true;
+  else if (first && fromStory) {
+    fromStory = false;
+    if (JSON.stringify(c.userGlobals.viewport) !== JSON.stringify(userViewport)) update({ viewport: userViewport ?? { value: undefined, isRotated: false } });
+  } else if (first) userViewport = structuredClone(c.userGlobals.viewport);
+  return Story();
+};
+
 const preview: Preview = {
-  decorators: [scheme],
+  decorators: [scheme, viewport],
   parameters: {
     layout: "fullscreen",
     viewport: { options: { narrow: { name: "Beside the editor (600px)", styles: { width: "600px", height: "800px" } } } },

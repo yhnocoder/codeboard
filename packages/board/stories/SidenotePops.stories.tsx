@@ -2,9 +2,10 @@
 // Text 的原地编辑，以及加 Sidenote 的浮层（每个标签页）。浮层由 state/pop 的 openPop 打开，和点卡头的 Sidenote 标记一样
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Sidenote } from "@codeboard/core";
-import { scene, codeCard, type Globals } from "./support/board";
+import { Stage, scene, codeCard, type Globals, type Scene } from "./support/board";
+import { waitFor, $, frames } from "./support/play";
+import { noteAt } from "./support/cards";
 import { openPop, pinPop } from "../src/state/pop";
-import { CardStage, noteAt, waitFor, $, frames, type CardScene } from "./support/cards";
 
 type Kind = Sidenote["kind"];
 type Args = { why: string; review: boolean; lineRemoved: boolean; boardOnly: boolean; first: Kind };
@@ -27,7 +28,7 @@ function notes(a: Args): Sidenote[] {
   return [first, ...all.filter((n) => n !== first)];
 }
 
-function base(a: Args, open: (ids: string[]) => void): CardScene {
+function base(a: Args, open: (ids: string[]) => void): Scene {
   const { board, put } = scene("Sidenotes");
   put(codeCard(HOST, "preempt"), { x: 40, y: 60, w: 460 });
   put(noteAt("sn-note", "## 抢占\n\nblock 不够就抢占最后进来的请求。"), { x: 40, y: 360, w: 320 });
@@ -50,7 +51,7 @@ const addNote = (tab: "code" | "paste" | "text" | "link") => (a: Args) => {
 };
 
 // 固定了的浮层可以同时开几个：列表（固定）和加 Sidenote（不固定）各挂一张卡
-function overview(a: Args): CardScene {
+function overview(a: Args): Scene {
   const s = base(a, (ids) => {
     pinPop(openPop({ kind: "notes", card: HOST, ids, title: "Sidenotes · Scheduler.preempt", sel: ids[0] }, { el: marker(), prefer: "right" }));
     openPop({ kind: "addNote", at: { card: "sn-host2" }, tab: "text" }, { el: $('.card[data-id="sn-host2"]')!, prefer: "right" });
@@ -69,7 +70,7 @@ const editText = async () => {
 
 const meta = {
   title: "Cards/Sidenote Pops",
-  render: (a, ctx) => <CardStage scene={() => showList(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => showList(a)} globals={ctx.globals as Globals} />,
   args: { why: "", review: false, lineRemoved: false, boardOnly: false, first: "text" },
   argTypes: {
     why: { control: "text", description: "Why is it related (on the first sidenote)" },
@@ -82,12 +83,12 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Overview: Story = { render: (a, ctx) => <CardStage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { review: true, why: "decode 前要看" } };
+export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { review: true, why: "decode 前要看" } };
 export const List: Story = { name: "Sidenotes (every kind)" };
 export const Flags: Story = { name: "Review, Line Removed, Board-only", args: { review: true, lineRemoved: true, boardOnly: true, why: "decode 前要看" } };
 export const CodeFirst: Story = { name: "Code Sidenote Selected", args: { first: "code" } };
 export const EditingText: Story = { name: "Editing a Text Sidenote", play: editText };
-export const AddCode: Story = { name: "Add Sidenote: Code", render: (a, ctx) => <CardStage scene={() => addNote("code")(a)} globals={ctx.globals as Globals} /> };
-export const AddPaste: Story = { name: "Add Sidenote: Paste", render: (a, ctx) => <CardStage scene={() => addNote("paste")(a)} globals={ctx.globals as Globals} /> };
-export const AddText: Story = { name: "Add Sidenote: Text", render: (a, ctx) => <CardStage scene={() => addNote("text")(a)} globals={ctx.globals as Globals} /> };
-export const AddLink: Story = { name: "Add Sidenote: Link", render: (a, ctx) => <CardStage scene={() => addNote("link")(a)} globals={ctx.globals as Globals} /> };
+export const AddCode: Story = { name: "Add Sidenote: Code", render: (a, ctx) => <Stage scene={() => addNote("code")(a)} globals={ctx.globals as Globals} /> };
+export const AddPaste: Story = { name: "Add Sidenote: Paste", render: (a, ctx) => <Stage scene={() => addNote("paste")(a)} globals={ctx.globals as Globals} /> };
+export const AddText: Story = { name: "Add Sidenote: Text", render: (a, ctx) => <Stage scene={() => addNote("text")(a)} globals={ctx.globals as Globals} /> };
+export const AddLink: Story = { name: "Add Sidenote: Link", render: (a, ctx) => <Stage scene={() => addNote("link")(a)} globals={ctx.globals as Globals} /> };

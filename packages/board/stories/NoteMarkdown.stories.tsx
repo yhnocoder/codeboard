@@ -1,7 +1,7 @@
 // Note 正文里 Markdown 的每种写法（静态显示）。[[引用]] 要白板上有那张卡：引用的几张都放一张 Scheduler.schedule 代码卡
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, codeCard, type Globals } from "./support/board";
-import { CardStage, MD, ALL_MD, CODE_LANGS, codeBlock, noteAt, type CardScene, type MdKey } from "./support/cards";
+import { Stage, scene, codeCard, type Globals, type Scene } from "./support/board";
+import { MD, ALL_MD, CODE_LANGS, codeBlock, noteAt, type MdKey } from "./support/cards";
 
 const FEATURES: Record<MdKey, string> = {
   inline: "Inline marks, emoji, kbd, link", lists: "Lists (nested, ordered)", tasks: "Task lists", table: "Table (aligned columns)",
@@ -16,7 +16,7 @@ const withRefTarget = (s: ReturnType<typeof scene>, x: number, y: number, w = 48
 
 const srcOf = (f: Feature) => (f === "all" ? ALL_MD : f.startsWith("code:") ? codeBlock(f.slice(5)) : MD[f as MdKey]);
 
-function single(a: Args): CardScene {
+function single(a: Args): Scene {
   const s = scene("Markdown");
   s.put(noteAt("n1", a.md || srcOf(a.feature)), { x: 40, y: 40, w: a.w, ...(a.h ? { h: a.h } : {}) });
   if (a.feature === "refs" || a.feature === "all") withRefTarget(s, a.w + 120, 40);
@@ -24,7 +24,7 @@ function single(a: Args): CardScene {
 }
 
 // 按列往下排：每列记着下一张卡的 y（卡高按行数估，宁大勿小）
-function overview(a: Args): CardScene {
+function overview(a: Args): Scene {
   const s = scene("Markdown overview");
   const W = a.w, cols = [40, 40, 40, 40];
   const extra: Partial<Record<MdKey, number>> = { image: 140, mermaid: 170, math: 40, annot: 90, refs: 230, inline: 20 };
@@ -40,7 +40,7 @@ function overview(a: Args): CardScene {
   return { board: s.board };
 }
 
-function codeLangs(a: Args): CardScene {
+function codeLangs(a: Args): Scene {
   const s = scene("Code blocks");
   Object.keys(CODE_LANGS).forEach((lang, i) => {
     const x = 40 + (i % 3) * (a.w + 70), y = 74 + Math.floor(i / 3) * 210;
@@ -52,7 +52,7 @@ function codeLangs(a: Args): CardScene {
 
 const meta = {
   title: "Cards/Note Markdown",
-  render: (a, ctx) => <CardStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { feature: "all", md: "", w: 360, h: 0, selected: false },
   argTypes: {
     feature: { control: "select", options: ["all", ...Object.keys(FEATURES), ...Object.keys(CODE_LANGS).map((l) => `code:${l}`)], description: "Which Markdown sample" },
@@ -66,8 +66,8 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 const hide = { feature: { table: { disable: true } }, md: { table: { disable: true } }, h: { table: { disable: true } }, selected: { table: { disable: true } } };
-export const Overview: Story = { render: (a, ctx) => <CardStage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { w: 330 }, argTypes: hide };
-export const CodeBlocks: Story = { name: "Code Blocks (every language)", render: (a, ctx) => <CardStage scene={() => codeLangs(a)} globals={ctx.globals as Globals} />, args: { w: 440 }, argTypes: hide };
+export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, args: { w: 330 }, argTypes: hide };
+export const CodeBlocks: Story = { name: "Code Blocks (every language)", render: (a, ctx) => <Stage scene={() => codeLangs(a)} globals={ctx.globals as Globals} />, args: { w: 440 }, argTypes: hide };
 export const AllInOne: Story = { name: "All in One Note" };
 export const AllFixedHeight: Story = { name: "All in One Note, Fixed Height", args: { h: 420 } };
 export const Inline: Story = { name: "Inline Marks", args: { feature: "inline" } };

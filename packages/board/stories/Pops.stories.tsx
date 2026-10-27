@@ -2,8 +2,8 @@
 // 共享的情况是宿主发来的（sharedInfo）。QuestionPop 也在 misc.tsx 里，归 Questions 的小样
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { SharedInfo } from "@codeboard/core";
-import { scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
-import { UiStage, settled, click, el, frames } from "./support/ui";
+import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
+import { settled, click, el, frames } from "./support/play";
 import { SHORT, TITLED } from "./support/groups";
 import { onHost } from "../src/hostio";
 import { pops, pinPop } from "../src/state/pop";
@@ -40,7 +40,7 @@ function shared(a: Args) {
 
 const meta = {
   title: "UI/Card Header Pops",
-  render: (a, ctx) => <UiStage scene={() => board(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => board(a)} globals={ctx.globals as Globals} />,
   args: { boards: 3, marks: true, here: 2, far: 2 },
   argTypes: {
     boards: { control: { type: "range", min: 2, max: 5 }, description: "Boards the linked card is on (this one first)" },

@@ -1,7 +1,8 @@
 // Peek：悬停在代码里的名字上弹出的定义。函数、字段（带下一跳 Follow）、模块、library、动态分发、几个定义选一个、找不到、还在查
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, type Globals } from "./support/board";
-import { CodeStage, fn, peekOf, peekText, popAt, waitEl, card, type CodeScene } from "./support/code";
+import { Stage, scene, type Globals, type Scene } from "./support/board";
+import { el } from "./support/play";
+import { fn, peekOf, peekText, popAt, card } from "./support/code";
 import type { Pop } from "../src/state/pop";
 
 type Kind = "function" | "field" | "module" | "library" | "dispatch" | "picks" | "none" | "loading";
@@ -31,7 +32,7 @@ function def(kind: Kind, doc: string): { word: string; data?: Extract<Pop, { kin
 
 async function open(kind: Kind, doc: string, id: string, pin = false) {
   const { word, data } = def(kind, doc);
-  await waitEl(`${card(id)} .src .l`);
+  await el(`${card(id)} .src .l`);
   // 锚在 schedule 里第一处出现这个词的那一行
   const rows = [...document.querySelectorAll<HTMLElement>(`${card(id)} .src > .l`)];
   const r = rows.find((e) => e.textContent?.includes(word)) ?? rows[0];
@@ -40,7 +41,7 @@ async function open(kind: Kind, doc: string, id: string, pin = false) {
   await popAt({ kind: "peek", card: id, seg: seg(id), line: 25 + i, word, ...(data ? { data } : {}) }, `${card(id)} .src > .l[data-r="${r.dataset.r}"]`, { pin });
 }
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const { board, put } = scene("Peek");
   put(fn("p1", "schedule"), { x: 40, y: 40, w: 640, h: 460 });
   return { board, after: () => open(a.kind, a.doc, "p1") };
@@ -48,7 +49,7 @@ function single(a: Args): CodeScene {
 
 // 四个固定的浮层：每个挂在自己那张 schedule 卡上
 const OV: Kind[] = ["function", "field", "library", "dispatch"];
-function overview(a: Args): CodeScene {
+function overview(a: Args): Scene {
   const { board, put, caption } = scene("Peek");
   OV.forEach((k, i) => {
     const x = 40 + (i % 2) * 1000, y = 60 + Math.floor(i / 2) * 760;
@@ -60,7 +61,7 @@ function overview(a: Args): CodeScene {
 
 const meta = {
   title: "Code/Peek",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { kind: "function", doc: "Returns the number of cached blocks to reuse, or **-1** when there aren't enough free blocks." },
   argTypes: {
     kind: { control: "select", options: ["function", "field", "module", "library", "dispatch", "picks", "none", "loading"], description: "What the host found for the hovered name" },
@@ -70,7 +71,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Overview: Story = { render: (a, ctx) => <CodeStage scene={() => overview(a)} globals={ctx.globals as Globals} />, argTypes: { kind: { table: { disable: true } } } };
+export const Overview: Story = { render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />, argTypes: { kind: { table: { disable: true } } } };
 export const Function: Story = {};
 export const Field: Story = { name: "Field (Follow)", args: { kind: "field", doc: "" } };
 export const Module: Story = { args: { kind: "module", doc: "" } };

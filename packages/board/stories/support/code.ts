@@ -1,12 +1,12 @@
 // 代码卡、Compare、调用图、版本、Peek 小样共用：段和展示数据的拼法、假宿主多回答的几种请求、开浮层。
 // 状态还是照宿主和用户的路从外面喂（onHost、store / ui / pop 的 setter），不为小样改组件
-import { createEffect, createMemo, on, untrack } from "solid-js";
 import {
   F_BLANK, renderLine, viewKey, addVariant, switchVariant, UPSTREAM,
-  type AskType, type Board, type CallMark, type CallSpan, type CodeCard, type Commit, type DiffData, type Link, type PeekDef, type Segment, type SegView, type Variant,
+  type Board, type CallMark, type CallSpan, type CodeCard, type DiffData, type Link, type PeekDef, type Segment, type SegView, type Variant,
 } from "@codeboard/core";
-import { Stage, codeCard, type Globals, type Scene } from "./board";
-import { VIEWS } from "./host";
+import { codeCard } from "./board";
+import { VIEWS, PASS, reply } from "./host";
+import { el, frames } from "./play";
 import { openPop, pinPop, type At, type Pop } from "../../src/state/pop";
 import code from "../fixtures/code.json";
 
@@ -69,40 +69,11 @@ export function register(seg: Segment, view: SegView = viewFor(seg), key = seg.i
 
 // ---------- 假宿主：多答几种请求 ----------
 
-// support/host.ts 把 window.__cbSent 的 push 换成了回答 REPLIES；这里再包一层：这几种由小样答，别的照旧交给它
-export const CODE_REPLIES: Partial<Record<AskType, (m: any) => unknown>> = {
-  views: (m: { segs: Segment[] }) => (m.segs.every((s) => MINE.has(s.id)) ? Object.fromEntries(m.segs.map((s) => [s.id, viewFor(s)])) : undefined),
-  diff: (m: { seg: Segment }) => DIFFS[m.seg.id],
-  commits: () => COMMITS,
-  peek: (m: { word: string }) => PEEKS[m.word],
-  variantSources: () => ({
-    worktrees: [{ dir: "/work/vllm-exp", branch: "exp-overlap", label: "../vllm-exp · exp-overlap" }, { dir: "/work/nano-vllm-spec", branch: "fix-spec-bug", label: "../nano-vllm-spec · fix-spec-bug", dirty: true }],
-    branches: ["main", "fix-spec-bug", "exp-overlap", "chunked-prefill-v2"], current: "main", pr: "GeeeekExplorer/nano-vllm",
-  }),
-};
+// 只答自己登记过的段（register）、DIFFS 里有的：别的交给假宿主的下一层
+reply("views", (m: { segs: Segment[] }) => (m.segs.every((s) => MINE.has(s.id)) ? Object.fromEntries(m.segs.map((s) => [s.id, viewFor(s)])) : PASS));
+reply("diff", (m: { seg: Segment }) => DIFFS[m.seg.id] ?? PASS);
 export const DIFFS: Record<string, DiffData> = {};
-export const PEEKS: Record<string, PeekDef | null> = {};
-export const COMMITS: Commit[] = [
-  { commit: "f64d8217aa03", msg: "scheduler: chunked prefill only for the first seq", date: "2026-10-21", head: true },
-  { commit: "bb823b3c0ffe", msg: "block manager: hash the last full block", date: "2026-09-30" },
-  { commit: "4c1d0e9aa5b1", msg: "preempt: put the request back at the front", date: "2026-09-12" },
-  { commit: "9f3e2a1c7d42", msg: "first version of the scheduler", date: "2026-08-02" },
-];
-{
-  const sent = window.__cbSent!;
-  const prev = sent.push;
-  sent.push = (...ms: unknown[]) => {
-    const rest: unknown[] = [];
-    for (const m of ms) {
-      const q = m as { type: AskType; req?: number };
-      const data = typeof q.req === "number" ? CODE_REPLIES[q.type]?.(q) : undefined;
-      if (data === undefined) { rest.push(m); continue; }
-      Array.prototype.push.call(sent, m);
-      window.postMessage({ type: "reply", req: q.req, data: structuredClone(data) }, "*");
-    }
-    return rest.length ? prev.apply(sent, rest) : sent.length;
-  };
-}
+export { COMMITS } from "./host";
 
 // ---------- 段和卡 ----------
 
@@ -214,38 +185,11 @@ export function peekText(path: string, line: number, text: string[], o: Partial<
   return { path, line, start: line, html: text.map((t) => renderLine(tokenize(t, "python"))), text, seg, kind: "field", ...o };
 }
 
-// ---------- 舞台 ----------
-
-/** after：白板挂上、卡画出来以后再做的事（开浮层、进编辑、宿主后发的消息）；参数一变、白板重发以后也再做一遍 */
-export type CodeScene = Scene & { after?: () => void | Promise<void> };
-
-export function CodeStage(p: { scene: () => CodeScene; globals: Globals }) {
-  const sc = createMemo(p.scene);
-  const run = (s: CodeScene) => { const f = s.after; if (f) requestAnimationFrame(() => void Promise.resolve(f()).catch((e) => console.warn("story setup:", e))); };
-  // Stage 在这里同步挂上并发 init，所以后面的 after 一定在 init 之后
-  const el = <Stage scene={sc} globals={p.globals} />;
-  run(untrack(sc));
-  createEffect(on(sc, run, { defer: true }));
-  return el;
-}
-
-/** 等元素出现（卡要先画、量好行位置）；等不到就报错，Storybook 的 play / 控制台能看到 */
-export async function waitEl<T extends Element = HTMLElement>(sel: string, ms = 5000): Promise<T> {
-  const t0 = performance.now();
-  for (;;) {
-    const e = document.querySelector<T>(sel);
-    if (e && (e as unknown as HTMLElement).getClientRects?.().length) return e;
-    if (performance.now() - t0 > ms) throw new Error(`Timed out waiting for ${sel}`);
-    await new Promise((r) => requestAnimationFrame(r));
-  }
-}
-export const frames = async (k = 2) => { for (let i = 0; i < k; i++) await new Promise((r) => requestAnimationFrame(r)); };
-
 /** 浮层挂在 sel 那个元素上；pin = 固定（固定的可以同时开好几个，Overview 里用） */
 export async function popAt(pop: Pop, sel: string, o: { prefer?: At["prefer"]; pin?: boolean } = {}) {
-  const el = await waitEl(sel);
+  const at = await el(sel);
   await frames();
-  const id = openPop(pop, { el, prefer: o.prefer ?? "below" });
+  const id = openPop(pop, { el: at, prefer: o.prefer ?? "below" });
   if (o.pin) pinPop(id);
   return id;
 }

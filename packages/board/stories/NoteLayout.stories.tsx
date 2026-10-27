@@ -2,9 +2,10 @@
 // 内容的每种写法见 Cards/Note Markdown，编辑中的样子见 Cards/Note Editing
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { NOTE_FONT_LEVELS, type NoteFontSizes } from "@codeboard/core";
-import { scene, type Globals } from "./support/board";
+import { Stage, scene, type Globals, type Scene } from "./support/board";
+import { waitFor, $, frames } from "./support/play";
 import { LONG, TITLED, SHORT } from "./support/groups";
-import { CardStage, HEADINGS, noteAt, waitFor, $, frames, type CardScene } from "./support/cards";
+import { HEADINGS, noteAt } from "./support/cards";
 
 type Level = (typeof NOTE_FONT_LEVELS)[number];
 type Args = {
@@ -16,12 +17,12 @@ const fonts = (a: Args): NoteFontSizes | undefined => {
   const f = Object.fromEntries(NOTE_FONT_LEVELS.map((k) => [k, a[`fs_${k}`] || null])) as NoteFontSizes;
   return NOTE_FONT_LEVELS.some((k) => f[k] !== null) ? f : undefined;
 };
-const settingsOf = (a: Args): CardScene["settings"] => {
+const settingsOf = (a: Args): Scene["settings"] => {
   const f = fonts(a);
   return { ...(f ? { noteFontSize: f } : {}), ...(a.headingInBody ? { noteHeadingInBody: true } : {}) };
 };
 
-function single(a: Args): CardScene {
+function single(a: Args): Scene {
   const { board, put } = scene("Note layout");
   put(noteAt("n1", a.md, a.title ? { title: a.title } : {}), { x: 40, y: 40, w: a.w, ...(a.h ? { h: a.h } : {}), ...(a.locked ? { locked: true } : {}) });
   return { board, sel: a.selected ? ["n1"] : undefined, settings: settingsOf(a), zoom: a.lod === "map" ? 0.2 : undefined };
@@ -29,7 +30,7 @@ function single(a: Args): CardScene {
 
 const SCROLL = `${LONG}\n\n## 抢占之后\n\n被抢占的请求回到 waiting 最前面，下一步先排它。它的 block 全部释放，重新 prefill 时按 hash 还能复用前缀。`;
 
-function overview(a: Args): CardScene {
+function overview(a: Args): Scene {
   const { board, put, caption } = scene("Note layout overview");
   const W = 300;
   const col = (i: number) => 40 + i * (W + 60);
@@ -61,7 +62,7 @@ const levelTypes = Object.fromEntries(NOTE_FONT_LEVELS.map((k) => [`fs_${k}`, {
 
 const meta = {
   title: "Cards/Note Layout",
-  render: (a, ctx) => <CardStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { md: HEADINGS, title: "", w: 320, h: 0, headingInBody: false, locked: false, selected: false, lod: "toolbar", ...levelArgs },
   argTypes: {
     md: { control: "text", description: "Markdown" },
@@ -79,7 +80,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {
-  render: (a, ctx) => <CardStage scene={() => overview(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => overview(a)} globals={ctx.globals as Globals} />,
   argTypes: { md: { table: { disable: true } }, title: { table: { disable: true } }, w: { table: { disable: true } }, h: { table: { disable: true } }, locked: { table: { disable: true } }, selected: { table: { disable: true } }, lod: { table: { disable: true } } },
   play: scrollMid("l-scroll"),
 };

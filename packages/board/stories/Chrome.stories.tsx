@@ -3,7 +3,7 @@
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { emptyBoard } from "@codeboard/core";
 import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
-import { UiStage, settled, hover, key, el, frames, click } from "./support/ui";
+import { settled, hover, key, el, frames, click } from "./support/play";
 import { SHORT, TITLED, changed } from "./support/groups";
 import { onHost } from "../src/hostio";
 import { setState, toast, select } from "../src/state/store";
@@ -33,7 +33,7 @@ const crumbs = (n: number) => onHost({ type: "crumbs", crumbs: PARENTS.slice(0, 
 
 const meta = {
   title: "UI/Chrome",
-  render: (a, ctx) => <UiStage scene={() => { const s = board(a), n = a.crumbs; queueMicrotask(() => crumbs(n)); return s; }} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => { const s = board(a), n = a.crumbs; queueMicrotask(() => crumbs(n)); return s; }} globals={ctx.globals as Globals} />,
   args: { name: "KV cache 调度", stale: 0, crumbs: 0, toast: "", action: "" },
   argTypes: {
     name: { control: "text", description: "Board name (the Newspaper / Poster / Soft Light / Drafting masthead shows it)" },
@@ -67,7 +67,7 @@ export const Loading: Story = {
   argTypes: { name: { table: { disable: true } }, stale: { table: { disable: true } }, crumbs: { table: { disable: true } }, toast: { table: { disable: true } }, action: { table: { disable: true } } },
 };
 export const Empty: Story = {
-  render: (a, ctx) => <UiStage scene={() => ({ board: emptyBoard("sb", a.name) })} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => ({ board: emptyBoard("sb", a.name) })} globals={ctx.globals as Globals} />,
 };
 export const NewVersionBanner: Story = { name: "New Version Banner", args: { stale: 1 } };
 export const NewVersionBannerMany: Story = { name: "New Version Banner · 3 Cards", args: { stale: 3 } };

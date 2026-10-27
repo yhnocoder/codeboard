@@ -1,8 +1,7 @@
 // Text：没有背景、边框、卡头的 Note（bg: false），直接写在画布上；三档字号、粗体，选中时上方一条小工具栏（B · Show Background）
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { NoteCard } from "@codeboard/core";
-import { scene, type Globals } from "./support/board";
-import { CardStage, type CardScene } from "./support/cards";
+import { Stage, scene, type Globals, type Scene } from "./support/board";
 
 type Size = NonNullable<NoteCard["size"]>;
 type Args = { md: string; size: Size; bold: boolean; w: number; state: "normal" | "selected" | "editing"; locked: boolean; lod: "toolbar" | "map" };
@@ -13,13 +12,13 @@ const MDTEXT = "# Reading notes\nTwo lines, old style\n- a list\n- with **block_
 
 const text = (id: string, md: string, size: Size, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, bg: false, size, ...o });
 
-function single(a: Args): CardScene {
+function single(a: Args): Scene {
   const { board, put } = scene("Text");
   put(text("t1", a.md, a.size, a.bold ? { bold: true } : {}), { x: 40, y: 80, w: a.w, ...(a.locked ? { locked: true } : {}) });
   return { board, sel: a.state === "selected" ? ["t1"] : undefined, editing: a.state === "editing" ? "t1" : undefined, zoom: a.lod === "map" ? 0.2 : undefined };
 }
 
-function overview(): CardScene {
+function overview(): Scene {
   const { board, put, caption } = scene("Text overview");
   const sizes: Size[] = ["title", "heading", "body"];
   sizes.forEach((s, i) => {
@@ -38,7 +37,7 @@ function overview(): CardScene {
 
 const meta = {
   title: "Cards/Text",
-  render: (a, ctx) => <CardStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { md: ONE, size: "body", bold: false, w: 420, state: "normal", locked: false, lod: "toolbar" },
   argTypes: {
     md: { control: "text", description: "Markdown" },
@@ -53,7 +52,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const Overview: Story = { render: (_, ctx) => <CardStage scene={overview} globals={ctx.globals as Globals} />, argTypes: Object.fromEntries(["md", "size", "bold", "w", "state", "locked", "lod"].map((k) => [k, { table: { disable: true } }])) };
+export const Overview: Story = { render: (_, ctx) => <Stage scene={overview} globals={ctx.globals as Globals} />, argTypes: Object.fromEntries(["md", "size", "bold", "w", "state", "locked", "lod"].map((k) => [k, { table: { disable: true } }])) };
 export const Title: Story = { args: { size: "title" } };
 export const Heading: Story = { args: { size: "heading" } };
 export const Body: Story = {};

@@ -1,8 +1,8 @@
 // 代码卡的卡头：标题 / 文件:行 / 版本、新版本的琥珀点和横幅、共享、连进来的箭头、进程标签、START、锁、Sidenote、问题、Generated
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, SharedInfo, Stale } from "@codeboard/core";
-import { scene, type Globals, type Group } from "./support/board";
-import { CodeStage, fn, free, multi, slice, seg0, type CodeScene, type Fx } from "./support/code";
+import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";
+import { fn, free, multi, slice, seg0, type Fx } from "./support/code";
 import { onHost } from "../src/hostio";
 
 type Kind = "function" | "class" | "snippet" | "multi" | "github" | "generated";
@@ -63,7 +63,7 @@ const base: Args = {
   start: false, locked: false, notes: 0, review: false, questions: 0, desc: "", selected: false, w: 440,
 };
 
-function single(a: Args): CodeScene {
+function single(a: Args): Scene {
   const { board, at } = scene("Code header");
   const h = headCard(board, at(0, 0), "h1", a, { x: 40, y: 80 });
   return {
@@ -99,7 +99,7 @@ const CELLS: [string, Partial<Args>][] = [
   ["Everything at once, narrow (header priorities)", { title: "Scheduler.preempt", stale: "changed", version: "uncommitted", boards: 2, linkedIn: 3, procs: "rank 0", notes: 1, questions: 1, start: true, w: 300 }],
 ];
 
-function overview(w: number): CodeScene {
+function overview(w: number): Scene {
   const { board, at } = scene("Code headers");
   const g = at(0, 0);
   const stale: Record<string, Stale> = {}, info: Record<string, SharedInfo> = {}, sel: string[] = [];
@@ -117,7 +117,7 @@ function overview(w: number): CodeScene {
 
 const meta = {
   title: "Cards/Code Header",
-  render: (a, ctx) => <CodeStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: base,
   argTypes: {
     kind: { control: "inline-radio", options: ["function", "class", "snippet", "multi", "github", "generated"], description: "What the card holds (the glyph left of the title)" },
@@ -142,7 +142,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const Overview: Story = {
-  render: (a, ctx) => <CodeStage scene={() => overview(a.w)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => overview(a.w)} globals={ctx.globals as Globals} />,
   args: { w: 440 },
   argTypes: Object.fromEntries(Object.keys(base).filter((k) => k !== "w").map((k) => [k, { table: { disable: true } }])),
 };

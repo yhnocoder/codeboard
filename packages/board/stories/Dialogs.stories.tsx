@@ -1,12 +1,13 @@
 // 对话框（ui/Menu.tsx 的 choose / promptText）：整页同时只有一个，所以每种一个 story。
 // 能走真路径的都走真路径（菜单、横幅、宿主发来的消息）；Custom 直接调 choose，用 Controls 调标题、说明、提醒、按钮数
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
-import { UiStage, settled, toolbar, menuItem, menu, cardMenu, click, frames } from "./support/ui";
+import { Stage, scene, noteCard, codeCard, type Globals, type Scene } from "./support/board";
+import { VIEWS } from "./support/host";
+import { settled, click, frames } from "./support/play";
 import { SHORT, changed } from "./support/groups";
+import { toolbar, menuItem, menu, cardMenu } from "./support/ui";
 import { onHost } from "../src/hostio";
 import { choose } from "../src/ui/Menu";
-import { VIEWS } from "./support/host";
 
 type Args = { title: string; text: string; warn: string; note: string; options: number; def: number };
 
@@ -23,7 +24,7 @@ const OPTIONS = ["Update on All Boards", "This Board Only", "Keep", "Cancel"];
 
 const meta = {
   title: "UI/Dialogs",
-  render: (_, ctx) => <UiStage scene={board} globals={ctx.globals as Globals} />,
+  render: (_, ctx) => <Stage scene={board} globals={ctx.globals as Globals} />,
   args: {
     title: "Update BlockManager.can_append to f64d821?", text: "This card is on 3 boards: KV cache 调度, Engine 总览, Prefix caching.",
     warn: "2 sidenotes are on a changed line", note: "This Board Only makes a copy here, so the other boards keep the old version.", options: 3, def: 0,

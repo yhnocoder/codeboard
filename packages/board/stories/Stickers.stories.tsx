@@ -1,8 +1,9 @@
 // 贴纸：内置图标、Emoji、文件夹包里的位图和动图；贴在画布上、卡上、卡角、代码行、箭头上；选中、疑问、选图标面板、放的时候跟着指针的影子
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { cornerAt, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
-import { scene, codeCard, noteCard, type Globals } from "./support/board";
-import { CanvasStage, arrow, ln, whole, until, $, usePacks, PACK, type CScene } from "./support/canvas";
+import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./support/board";
+import { waitFor, $ } from "./support/play";
+import { arrow, ln, whole, usePacks, PACK } from "./support/canvas";
 import { BUILTIN, EMOJI, STICKER_COLORS } from "../src/stickers/glyphs";
 import { setSelSticker, setStickerPick, setStickerColor } from "../src/state/stickers";
 import { setMode } from "../src/state/mode";
@@ -17,7 +18,7 @@ const iconOf = (name: string): IconRef => (BUILTINS.includes(name) ? { pack: "bu
 /** 选中要等白板加载完（加载时会清掉） */
 const pick = (id: string) => () => setSelSticker(id);
 
-function playground(a: Args): CScene {
+function playground(a: Args): Scene {
   const { board: b, put } = scene("Sticker");
   const c = put(codeCard("c", "preempt"), { x: 40, y: 200, w: 440 });
   const n = put(noteCard("n", "释放 block 后回到等待队列"), { x: 760, y: 220, w: 240 });
@@ -35,7 +36,7 @@ function playground(a: Args): CScene {
   return { board: b, after: a.selected ? pick("k") : undefined };
 }
 
-function overview(): CScene {
+function overview(): Scene {
   const { board: b, at } = scene("Stickers overview");
   const g = at(0, 0);
   const add = (s: Sticker) => b.stickers.push(s);
@@ -76,7 +77,7 @@ function overview(): CScene {
 
 const meta = {
   title: "Canvas/Stickers",
-  render: (a, ctx) => { usePacks(); return <CanvasStage scene={() => playground(a)} globals={ctx.globals as Globals} />; },
+  render: (a, ctx) => { usePacks(); return <Stage scene={() => playground(a)} globals={ctx.globals as Globals} />; },
   args: { icon: "star", color: "", size: 48, where: "canvas", selected: false, question: "none" },
   argTypes: {
     icon: { control: "select", options: [...BUILTINS, ...BITMAPS, ...EMOJI.slice(0, 12)], description: "Built-in, folder pack (Party: bitmaps, wink / blink animated) or emoji" },
@@ -92,7 +93,7 @@ type Story = StoryObj<typeof meta>;
 
 const noArgs = Object.fromEntries(Object.keys(meta.args).map((k) => [k, { table: { disable: true } }])) as Story["argTypes"];
 
-export const Overview: Story = { render: (_, ctx) => { usePacks(); return <CanvasStage scene={overview} globals={ctx.globals as Globals} />; }, argTypes: noArgs };
+export const Overview: Story = { render: (_, ctx) => { usePacks(); return <Stage scene={overview} globals={ctx.globals as Globals} />; }, argTypes: noArgs };
 export const Playground: Story = {};
 export const Animated: Story = { args: { icon: "wink", size: 96 } };
 export const SelectedOnCard: Story = { name: "Selected · On a Card", args: { where: "on a card", selected: true } };
@@ -105,10 +106,10 @@ export const Answered: Story = { args: { question: "done", icon: "question" } };
 type Tab = "Built-in" | "Party" | "Emoji";
 const picker = (tab: Tab, color?: string): Story => ({
   argTypes: noArgs,
-  render: (_, ctx) => { usePacks(); return <CanvasStage scene={() => ({ ...playground(meta.args), after: () => { setStickerColor(color); setStickerPick({ x: 520, y: 520 }); } })} globals={ctx.globals as Globals} />; },
+  render: (_, ctx) => { usePacks(); return <Stage scene={() => ({ ...playground(meta.args), after: () => { setStickerColor(color); setStickerPick({ x: 520, y: 520 }); } })} globals={ctx.globals as Globals} />; },
   play: async () => {
     if (tab === "Built-in") return;
-    const b = await until(`the ${tab} tab`, () => [...document.querySelectorAll<HTMLButtonElement>(".stkpick .stabs button")].find((x) => x.textContent === tab));
+    const b = await waitFor(() => [...document.querySelectorAll<HTMLButtonElement>(".stkpick .stabs button")].find((x) => x.textContent === tab), `the ${tab} tab`);
     b.click();
   },
 });
@@ -119,9 +120,9 @@ export const PickerEmoji: Story = { name: "Picker · Emoji", ...picker("Emoji") 
 export const Placing: Story = {
   name: "Placing (follows the pointer)",
   argTypes: noArgs,
-  render: (_, ctx) => <CanvasStage scene={() => ({ ...playground(meta.args), after: () => setMode({ kind: "place", icon: { pack: "builtin", name: "zap" } }) })} globals={ctx.globals as Globals} />,
+  render: (_, ctx) => <Stage scene={() => ({ ...playground(meta.args), after: () => setMode({ kind: "place", icon: { pack: "builtin", name: "zap" } }) })} globals={ctx.globals as Globals} />,
   play: async () => {
-    await until("place mode", () => $('#board[data-mode="place"]'));
+    await waitFor(() => $('#board[data-mode="place"]'), "place mode");
     window.dispatchEvent(new PointerEvent("pointermove", { clientX: 640, clientY: 360 }));
   },
 };

@@ -1,21 +1,22 @@
 // Note 编辑中的样子：白板上同一时刻只有一张卡在编辑，编辑器里的浮层（公式原文、代码块、语言列表、选区工具条、/ 菜单、[[ 列表）也一次只开一个，所以每个状态一个 story。
 // 编辑器进来以后的状态由 play 走：编辑器挂在 .md-pm 上（TipTap 的 editor），光标、选区用它的命令放，和用户点进去、方向键走进去落在同一处
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, codeCard, type Globals } from "./support/board";
+import { Stage, scene, codeCard, type Globals, type Scene } from "./support/board";
+import { waitFor, $, frames, pointer } from "./support/play";
 import { TITLED, SHORT, LONG } from "./support/groups";
-import { CardStage, MD, ALL_MD, codeBlock, noteAt, waitFor, $, frames, pointer, type CardScene } from "./support/cards";
+import { MD, ALL_MD, codeBlock, noteAt } from "./support/cards";
 
 type Args = { md: string; title: string; w: number; h: number };
 
 const ID = "n1";
-function editing(a: Args): CardScene {
+function editing(a: Args): Scene {
   const { board, put } = scene("Note editing");
   put(noteAt(ID, a.md, a.title ? { title: a.title } : {}), { x: 40, y: 40, w: a.w, ...(a.h ? { h: a.h } : {}) });
   // [[ 列表、引用要有卡可选
   put(codeCard("ref-target", "schedule"), { x: a.w + 120, y: 40, w: 480, h: 200 });
   return { board, editing: ID };
 }
-function shown(a: Args): CardScene {
+function shown(a: Args): Scene {
   const { board, put } = scene("Note");
   put(noteAt(ID, a.md, a.title ? { title: a.title } : {}), { x: 40, y: 40, w: a.w, ...(a.h ? { h: a.h } : {}) });
   return { board, sel: [ID] };
@@ -120,7 +121,7 @@ const newNote = async () => {
 
 const meta = {
   title: "Cards/Note Editing",
-  render: (a, ctx) => <CardStage scene={() => editing(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => editing(a)} globals={ctx.globals as Globals} />,
   args: { md: TITLED, title: "", w: 360, h: 0 },
   argTypes: {
     md: { control: "text", description: "Markdown (the story's own state is reached again after a change)" },
@@ -136,7 +137,7 @@ const MATH = "注意力的开销是 $O(n^2 d)$，按 block 存 KV。\n\n$$\n\\te
 
 export const Fresh: Story = {
   name: "Fresh Note (just created)",
-  render: (_, ctx) => <CardStage scene={() => ({ board: scene("Empty board").board })} globals={ctx.globals as Globals} />,
+  render: (_, ctx) => <Stage scene={() => ({ board: scene("Empty board").board })} globals={ctx.globals as Globals} />,
   argTypes: { md: { table: { disable: true } }, title: { table: { disable: true } }, w: { table: { disable: true } }, h: { table: { disable: true } } },
   play: newNote,
 };
@@ -158,7 +159,7 @@ export const RefPicker: Story = { name: "Card Ref List ([[)", args: { md: SHORT 
 export const Typed: Story = { name: "Typing Turns Into Formatting", args: { md: "" }, play: typeAtEnd("## 抢占\n- block 不够就 **抢占** ") };
 export const StaticSelection: Story = {
   name: "Text Selected (not editing)",
-  render: (a, ctx) => <CardStage scene={() => shown(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => shown(a)} globals={ctx.globals as Globals} />,
   args: { md: MD.inline },
   play: staticSelection,
 };

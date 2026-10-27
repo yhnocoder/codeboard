@@ -2,11 +2,10 @@
 // 主题用 Storybook 工具栏的 Theme（设置页的主题选择跟着它；City 是 Experimental）。section = 打开时滚到哪一节（和 openSettings(section) 一样）
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { DEFAULT_SETTINGS, type Settings } from "@codeboard/core";
-import { scene, noteCard, type Globals, type Scene } from "./support/board";
-import { UiStage, settled, toolbar, menu, menuItem, el, type, click } from "./support/ui";
+import { Stage, scene, noteCard, type Globals, type Scene } from "./support/board";
+import { settled, el, type, click } from "./support/play";
 import { TITLED } from "./support/groups";
-import { onHost } from "../src/hostio";
-import { state } from "../src/state/store";
+import { toolbar, menu, menuItem } from "./support/ui";
 import { openSettings } from "../src/actions/settings";
 
 const SECTIONS = ["theme", "numbers", "notes", "hide", "scope", "stickers", "dblclick", "shared", "questions", "export", "zoom", "diagnostics", "debug", "shortcuts"] as const;
@@ -50,14 +49,14 @@ function board(): Scene {
   return { board };
 }
 
-// init 带的是默认设置：紧跟着发一条 host 消息换成 Controls 的（参数一变，scene 重算、init 重发，这条也重发）。
-// 主题在 init 之后才读：scene 里读的话，主题一变 scene 就重算，又发一遍，停不下来
-const stage = (a: Args) => () => { const s = board(), next = settings(a); queueMicrotask(() => onHost({ type: "host", host: { settings: { ...next, theme: state.host.settings.theme } } })); return s; };
+// init 带的是默认设置：Stage 紧跟着把 Controls 的合进去（参数一变，scene 重算、init 重发，这条也重发）。
+// 主题不在里面：它跟着工具栏的 Theme 走（scene 里读主题的话，主题一变 scene 就重算，又发一遍）
+const stage = (a: Args) => (): Scene => ({ ...board(), settings: settings(a) });
 
 const pick = <T extends readonly string[]>(options: T) => ({ control: "inline-radio" as const, options });
 const meta = {
   title: "UI/Settings",
-  render: (a, ctx) => <UiStage scene={stage(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={stage(a)} globals={ctx.globals as Globals} />,
   args: DEFAULTS,
   argTypes: {
     section: { control: "select", options: ["", ...SECTIONS], description: "Section to scroll to when opening (empty: top)" },

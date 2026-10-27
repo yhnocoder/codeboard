@@ -1,12 +1,12 @@
 // 图层：所有箭头都在所有卡下面（经过的卡盖住它），行端的圆点浮在卡上面；选中的箭头、指针下那张卡的箭头、正在拖的箭头临时浮到最上面
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
-import { scene, codeCard, noteCard, type Globals } from "./support/board";
-import { CanvasStage, arrow, ln, whole, type CScene } from "./support/canvas";
+import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./support/board";
+import { arrow, ln, whole } from "./support/canvas";
 import { setHoverCard } from "../src/state/hover";
 
 type Args = { lift: "none" | "selected arrow" | "hovered card"; overlap: boolean };
 
-function board(a: Args): CScene {
+function board(a: Args): Scene {
   const { board: b, put } = scene("Layers");
   // 箭头 A → B 一路穿过 D（在 cards 里最前，叠在最下面）和 C（最后，叠在最上面）：两张都盖住它
   put(noteCard("D", "**D**：叠放次序最低"), { x: 650, y: 140, w: 260 });
@@ -25,7 +25,7 @@ function board(a: Args): CScene {
 
 const meta = {
   title: "Canvas/Layers",
-  render: (a, ctx) => <CanvasStage scene={() => board(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => board(a)} globals={ctx.globals as Globals} />,
   args: { lift: "none", overlap: true },
   argTypes: {
     lift: { control: "inline-radio", options: ["none", "selected arrow", "hovered card"], description: "What floats the arrow above the cards" },

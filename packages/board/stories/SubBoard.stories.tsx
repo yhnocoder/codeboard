@@ -2,9 +2,9 @@
 // 这里的骨架用 core 的 skeletonOf 从一块真的子白板算（support/cards.tsx subBoard），和宿主发来的一样
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { emptyBoard, type Skeleton } from "@codeboard/core";
-import { scene, codeCard, type Globals } from "./support/board";
+import { Stage, scene, codeCard, type Globals, type Scene } from "./support/board";
+import { subBoard, skelOfBoard, boardFrame } from "./support/cards";
 import { setDropTarget } from "../src/state/ui";
-import { CardStage, subBoard, skelOfBoard, boardFrame, type CardScene } from "./support/cards";
 
 type Kind = "skeleton" | "empty" | "nested" | "loading" | "deleted";
 type Args = { kind: Kind; title: string; w: number; h: number; titleOnly: boolean; selected: boolean; lod: "toolbar" | "map" };
@@ -17,13 +17,13 @@ const skelFor = (k: Kind, board: string): Record<string, Skeleton | null> | unde
   k === "loading" ? undefined : { [board]: k === "deleted" ? null : k === "empty" ? skelOfBoard(EMPTY) : k === "nested" ? skelOfBoard(NESTED) : skelOfBoard(SCHED) };
 const boardOf = (k: Kind) => (k === "empty" ? EMPTY.id : k === "nested" ? NESTED.id : SCHED.id);
 
-function single(a: Args): CardScene {
+function single(a: Args): Scene {
   const { board, put } = scene("Sub-board");
   put(boardFrame("f1", boardOf(a.kind), a.title || undefined), { x: 40, y: 40, w: a.w, h: a.h });
   return { board, skels: skelFor(a.kind, boardOf(a.kind)), sel: a.selected ? ["f1"] : undefined, settings: a.titleOnly ? { subPreview: "title" } : undefined, zoom: a.lod === "map" ? 0.2 : undefined };
 }
 
-function overview(): CardScene {
+function overview(): Scene {
   const { board, put, caption } = scene("Sub-board overview");
   caption("Skeleton (sections, call marks, arrows)", 40, 40, 420); put(boardFrame("o-sk", SCHED.id), { x: 40, y: 40, w: 520, h: 340 });
   caption("Nested (a sub-board inside)", 620, 40); put(boardFrame("o-nest", NESTED.id), { x: 620, y: 40, w: 460, h: 340 });
@@ -45,18 +45,18 @@ function overview(): CardScene {
 }
 
 // 一张卡拖到框里骨架的某张卡上（要连进去）：那张卡亮起来
-function dropHot(): CardScene {
+function dropHot(): Scene {
   const { board, put, caption } = scene("Sub-board drop");
   caption("Arrow dragged onto a card inside the frame", 40, 40, 420); put(boardFrame("d1", SCHED.id), { x: 40, y: 40, w: 520, h: 340 });
   return { board, skels: { [SCHED.id]: skelOfBoard(SCHED) }, after: () => setDropTarget({ kind: "card", card: "d1", sub: `${SCHED.id}-a` }) };
 }
 
 const hideAll = Object.fromEntries(["kind", "title", "w", "h", "titleOnly", "selected", "lod"].map((k) => [k, { table: { disable: true } }]));
-const own = (f: () => CardScene) => ({ render: (_: unknown, ctx: { globals: unknown }) => <CardStage scene={f} globals={ctx.globals as Globals} />, argTypes: hideAll });
+const own = (f: () => Scene) => ({ render: (_: unknown, ctx: { globals: unknown }) => <Stage scene={f} globals={ctx.globals as Globals} />, argTypes: hideAll });
 
 const meta = {
   title: "Cards/Sub-board",
-  render: (a, ctx) => <CardStage scene={() => single(a)} globals={ctx.globals as Globals} />,
+  render: (a, ctx) => <Stage scene={() => single(a)} globals={ctx.globals as Globals} />,
   args: { kind: "skeleton", title: "", w: 520, h: 340, titleOnly: false, selected: false, lod: "toolbar" },
   argTypes: {
     kind: { control: "inline-radio", options: ["skeleton", "empty", "nested", "loading", "deleted"], description: "What the host sent for the board (loading: nothing yet; deleted: null)" },
