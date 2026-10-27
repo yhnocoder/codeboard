@@ -1,10 +1,12 @@
 // Picks the harness scenarios a change needs, within a time budget. Used by tools/test/harness.mjs --select (CI and npm run check).
 //
 // Always run, whatever the budget:
-//   focus   scenarios being worked on: named with --focus or on a "Tests:" line of the PR description, defined in a test file the
-//           change touches, new since the last nightly run, or failing in the last nightly run
+//   focus   scenarios being worked on: named with --focus or on a "Tests:" line of the PR description, changed by this change
+//           (changedScenarios), or failing in the last nightly run
 //   smoke   the fixed list in packages/board/test/tiers.json: one quick scenario per main feature, so a big break never slips through
 // Then, while the budget lasts:
+//   new       scenarios the last nightly run doesn't have yet that this change doesn't touch (another branch added them; their own
+//             PR ran them), the quickest first
 //   affected  scenarios that ran a changed source file in the last nightly run (impact map), those that ran the fewest other
 //             files first. A change the map can't place (CSS, build config, lockfile, the harness itself, a source file no scenario
 //             ran) counts every scenario as affected, the quickest first. A new source file is placed through the changed files
@@ -91,7 +93,6 @@ export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
   const add = (n, w) => { if (all[n] && !why.has(n)) why.set(n, w); };
   for (const n of focus) { if (all[n]) add(n, "asked"); else notes.push(`unknown scenario: ${n}`); }
   for (const n of changedScenarios(all, change, tiers)) add(n, "test changed");
-  if (impact.map) for (const n of names) if (!map[n]) add(n, "new");
   for (const n of impact.failing ?? []) add(n, "failing last night");
   for (const n of tiers.smoke ?? []) add(n, "smoke");
 
@@ -100,7 +101,8 @@ export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
   const src = change.files.filter((f) => SRC.test(f) && !global.includes(f));
   const placed = src.filter((f) => seen.has(f));
   const unplaced = src.filter((f) => !seen.has(f) && !(placed.length && change.added.includes(f)));
-  const rest = names.filter((n) => !why.has(n));
+  const fresh = impact.map ? names.filter((n) => !why.has(n) && !map[n]).sort((a, b) => ms(a) - ms(b) || a.localeCompare(b)) : [];
+  const rest = names.filter((n) => !why.has(n) && !fresh.includes(n));
   let affected = [];
   if (global.length || unplaced.length || (src.length && !impact.map)) {
     const causes = [...global, ...unplaced];
@@ -112,10 +114,10 @@ export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
     affected = rest.filter((n) => hit(n) > 0).sort((a, b) => files(a).length - files(b).length || ms(a) - ms(b) || a.localeCompare(b));
   }
   let used = [...why.keys()].reduce((t, n) => t + ms(n), 0);
-  if (used > budgetMs) notes.push(`focus and smoke alone take ${Math.round(used / 1000)} s, over the ${Math.round(budgetMs / 1000)} s budget`);
+  if (used > budgetMs) notes.push(`focus and smoke alone take ${Math.round(used / 1000)} s of scenario time, over the ${Math.round(budgetMs / 1000)} s budget`);
   const deferred = [];
-  for (const n of affected) {
-    if (used + ms(n) <= budgetMs) { why.set(n, "affected"); used += ms(n); } else deferred.push(n);
+  for (const [n, w] of [...fresh.map((n) => [n, "new"]), ...affected.map((n) => [n, "affected"])]) {
+    if (used + ms(n) <= budgetMs) { why.set(n, w); used += ms(n); } else deferred.push(n);
   }
   return { run: [...why].map(([name, w]) => ({ name, why: w, ms: ms(name) })), deferred, notes };
 }
