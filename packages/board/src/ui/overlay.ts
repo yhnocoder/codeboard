@@ -37,7 +37,12 @@ export const useOverlay = (l: Layer) => onCleanup(pushLayer(l));
 /** 包一段 JSX：它显示时是一层（嵌套的下拉框之类） */
 export function Overlay(p: Layer & { children: JSX.Element }) { useOverlay(p); return p.children; }
 
-export const isTyping = (t: EventTarget | null) => t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+/** 键盘和剪贴板归有焦点的那个元素：焦点在输入框、编辑器里时，白板不管按键和粘贴。不能看事件的 target：粘贴事件发给选区开头所在的
+ *  元素，CodeMirror 粘贴时同步换掉那段高亮的 span，冒泡到 window 时 target 已经不在页面上（不再 isContentEditable） */
+export const typing = () => {
+  const t = document.activeElement;
+  return t instanceof HTMLElement && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+};
 
 export function installOverlays() {
   window.addEventListener("keydown", (e) => {
@@ -45,7 +50,7 @@ export function installOverlays() {
     if (!top) return;
     if (top.keys?.(e)) { e.preventDefault(); e.stopPropagation(); return; }
     if (e.key !== "Escape" || e.isComposing) return;
-    if (!top.grab && isTyping(e.target)) return;
+    if (!top.grab && typing()) return;
     e.preventDefault(); e.stopPropagation();
     top.close();
   }, true);

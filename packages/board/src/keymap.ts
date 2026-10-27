@@ -91,7 +91,7 @@ export const KEYMAP: Bind[] = [
     },
   },
   {
-    // ⌘X 剪下选中的卡（复制 + 删除，一步撤销）。有原生选区、选了行时不管（浏览器自己处理）；编辑器里的 ⌘X 到不了这里（isTyping）
+    // ⌘X 剪下选中的卡（复制 + 删除，一步撤销）。有原生选区、选了行时不管（浏览器自己处理）；编辑器里的 ⌘X 到不了这里（typing）
     id: "cut", keys: ["mod+x"], label: "Cut (paste on this board puts the cards back)", group: "Cards", when: hasCards, run: (a) => {
       const s = window.getSelection();
       if ((s && !s.isCollapsed) || lineSel()) return false;

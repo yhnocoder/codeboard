@@ -6,7 +6,11 @@
 //   imageCardDropsIntoNote                dragging an image card onto a Note lights the Note up; releasing puts the image into the
 //                                         Note's Markdown (saved under assets/ like a pasted image) and removes the image card, in one
 //                                         undo step
-// Usage: npm run harness -- copiedCardsGiveOtherAppsTheirContent pastedCardsKeepTheirSize imageCardDropsIntoNote
+//   pasteIntoEditorMakesNoCard            ⌘V while editing a Note (into its code block, and into its text) pastes there only: the
+//                                         board does not also turn the paste into a card. In VS Code the paste event's target is the
+//                                         highlighted span the selection starts on, and the code editor replaces that span before the
+//                                         event reaches the board
+// Usage: npm run harness -- copiedCardsGiveOtherAppsTheirContent pastedCardsKeepTheirSize imageCardDropsIntoNote pasteIntoEditorMakesNoCard
 // Screenshots: test-out/harness/copy-paste-*.png (Warm Ink)
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -16,7 +20,7 @@ import { nodeFs } from "@codeboard/host/nodefs";
 import { readAsset, saveNoteImage } from "@codeboard/host/images";
 import { png } from "@codeboard/host/test/images";
 import { OUT, put, symCard, findSym, type Host } from "../harness";
-import { test, open, check, until, idle, frames } from "../fixtures";
+import { test, open, check, until, idle, frames, expect, focusSettled } from "../fixtures";
 
 const BASE = "https://cb-assets.test/res";
 /** A 240 × 160 picture: a warm gradient with a dark band */
@@ -202,4 +206,63 @@ test("imageCardDropsIntoNote", async () => {
   const back = h.board().place.i1;
   check("imageCardDropsIntoNote one undo restores both", note().md === md0 && !!back && back.x === place0.x && back.y === place0.y && back.w === place0.w, { md: note().md, back, place0 });
   await done();
+});
+
+test("pasteIntoEditorMakesNoCard", async () => {
+  const b = emptyBoard("b1", "paste");
+  const code = "vecAddKernel<<<ceil(n/128), 128>>>(...);";
+  put(b, { id: "n1", kind: "note", md: `Blocks\n\n\`\`\`cuda\n${code}\n\`\`\`\n\nalso`, bg: true } as NoteCard, 60, 60, 640);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1100, h: 700 });
+  const pg = h.page;
+  await cardEl(h, "n1").locator(".nbody").dblclick({ position: { x: 300, y: 10 } });
+  await cardEl(h, "n1").locator(".md-pm:focus").waitFor();
+  // the pointer rests on empty canvas, where a pasted card would land
+  await pg.mouse.move(900, 600);
+  /** Select `what` in the element `sel` of the Note and paste `text`, the event sent to the element the selection starts in (as in
+   *  VS Code). Returns whether that element was still on the page when the paste was done */
+  const paste = (sel: string, what: string, text: string) => pg.evaluate(([sel, what, text]) => {
+    const root = document.querySelector(`.card[data-id="n1"] ${sel}`)!;
+    // `what` can span several highlighted spans: find where it starts and ends among the text nodes
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    for (let n = w.nextNode(); n; n = w.nextNode()) nodes.push(n as Text);
+    const from = nodes.map((n) => n.data).join("").indexOf(what), to = from + what.length;
+    const at = (i: number, end: boolean) => {
+      let o = 0;
+      for (const n of nodes) { if (end ? i <= o + n.data.length : i < o + n.data.length) return [n, i - o] as const; o += n.data.length; }
+      throw new Error(`no "${what}" in ${sel}`);
+    };
+    const [t, ts] = at(from, false), [e, es] = at(to, true);
+    const r = document.createRange();
+    r.setStart(t, ts); r.setEnd(e, es);
+    getSelection()!.removeAllRanges(); getSelection()!.addRange(r);
+    return new Promise<string>((done) => requestAnimationFrame(() => setTimeout(() => {
+      const dt = new DataTransfer();
+      dt.setData("text/plain", text);
+      const el = t.parentElement!;
+      el.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+      done(el.isConnected ? "kept " + el.outerHTML.slice(0, 300) : "");
+    })));
+  }, [sel, what, text] as const);
+
+  // into the code block
+  await cardEl(h, "n1").locator(".cm-content").click();
+  await cardEl(h, "n1").locator(".cm-content:focus").waitFor();
+  // the selection starts on a highlighted token, "(": the editor replaces its span
+  const kept = await paste(".cm-content", "(n/128), 128", "+64");
+  await expect(cardEl(h, "n1").locator(".cm-content")).toContainText("ceil+64>>>");
+  check("pasteIntoEditorMakesNoCard code block: the paste target left the page", !kept, kept);
+  await idle(h);
+  check("pasteIntoEditorMakesNoCard code block: no new card", h.board().cards.length === 1, h.board().cards.map((c) => `${c.id}:${c.kind}`));
+
+  // into the text
+  await cardEl(h, "n1").locator(".md-pm > p").last().click();
+  await cardEl(h, "n1").locator(".md-pm:focus").waitFor();
+  await focusSettled(pg);
+  await paste(".md-pm > p:last-of-type", "also", "too");
+  await expect(cardEl(h, "n1").locator(".md-pm > p").last()).toHaveText("too");
+  await idle(h);
+  check("pasteIntoEditorMakesNoCard text: no new card", h.board().cards.length === 1, h.board().cards.map((c) => `${c.id}:${c.kind}`));
+  await h.close();
 });
