@@ -117,6 +117,28 @@ test("compare", async () => {
   await h.page.context().close();
 });
 
+// The board's word-diff <mark> (Compare) is rounded and filled; a Note's ==highlight== on the same board keeps the Markdown
+// package's flat lower band (the package's stylesheet does not override board rules)
+test("compareWordDiffMark", async () => {
+  const b = emptyBoard("b1", "marks");
+  const cl = symCard(findSym("BlockManager.can_allocate").f, findSym("BlockManager.can_allocate").s);
+  const cr = symCard(findSym("BlockManager.allocate").f, findSym("BlockManager.allocate").s);
+  b.cards.push(cl, cr, { id: "k", kind: "compare", cols: [cl.id, cr.id] });
+  b.place.k = { x: 80, y: 80, w: 900 };
+  put(b, { id: "n1", kind: "note", md: "Some ==highlighted words== here", bg: true } as any, 80, 700, 400);
+  const h = await open({ board: b, light });
+  await h.page.keyboard.press("Shift+!"); await idle(h);
+  await h.page.locator(".card.cmp mark").first().waitFor();
+  await h.page.locator('.card[data-id="n1"] .nbody mark').waitFor();
+  const look = (q: string) => h.page.evaluate((q) => [...document.querySelectorAll(q)].map((e) => { const c = getComputedStyle(e); return { radius: c.borderRadius, bg: c.backgroundColor, img: c.backgroundImage }; }), q);
+  const diff = await look(".card.cmp mark"), note = await look('.card[data-id="n1"] .nbody mark');
+  await shot(h, "cmp-wordDiff-and-highlight");
+  const r = { diff: diff.slice(0, 3), note };
+  check("compareWordDiffMark-diff", diff.length > 0 && diff.every((d) => d.radius === "2px" && d.bg !== "rgba(0, 0, 0, 0)" && d.img === "none"), r);
+  check("compareWordDiffMark-note", note.length === 1 && note[0].radius === "0px" && note[0].img.startsWith("linear-gradient") && note[0].bg === "rgba(0, 0, 0, 0)", r);
+  await h.page.context().close();
+});
+
 test("versions", async () => {
   const b = boardWith("Scheduler.schedule");
   const h = await open({ board: b, light });

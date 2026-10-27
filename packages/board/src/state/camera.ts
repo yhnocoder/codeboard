@@ -51,7 +51,13 @@ let running = false, gen = 0;
 
 export const ZMIN = 0.1, ZMAX = 2.5;
 
-export function stopCam() { gen++; running = false; }
+// 等镜头飞完的（camRest）：飞到了、被打断（拖动、别的镜头操作接手）都算停下
+const resting: (() => void)[] = [];
+function rest() { running = false; for (const r of resting.splice(0)) r(); }
+/** 镜头这次飞行（camTo）结束；没在飞就马上 */
+export const camRest = (): Promise<void> => (running ? new Promise((r) => resting.push(r)) : Promise.resolve());
+
+export function stopCam() { gen++; rest(); }
 export function setCam(x: number, y: number, z: number) {
   if (running) stopCam();
   setCamStore({ x, y, z: Math.min(ZMAX, Math.max(ZMIN, z)) });
@@ -70,7 +76,7 @@ export function camTo(x: number, y: number, z: number, soft = false) {
     const done = sx.done && sy.done && sz.done;
     if (done) for (const s of [sx, sy, sz]) s.set(s.t);
     setCamStore({ x: sx.v, y: sy.v, z: sz.v });
-    if (done) running = false;
+    if (done) rest();
     return done;
   });
 }

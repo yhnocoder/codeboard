@@ -147,7 +147,7 @@ export function replaceSegment(cardId: string, seg: Segment, view: SegView) {
 export function reviewNext() {
   for (const c of allCodeCards(state.board)) {
     const st = cardStale(c);
-    if (st === "changed" || st === "hidden") { select({ cards: [hostOf(c.id)] }); revealCard(c.id, false); setTimeout(() => openDiff(c.id), 350); return; }
+    if (st === "changed" || st === "hidden") { select({ cards: [hostOf(c.id)] }); void revealCard(c.id, false).then(() => openDiff(c.id)); return; }
   }
   toast("All cards are up to date");
 }

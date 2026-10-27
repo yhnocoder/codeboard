@@ -3,7 +3,7 @@
 // Usage: npm run harness -- subboards [--light]   screenshots: test-out/harness/subboards-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, subBoardsOf, type Board } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, subBoardsOf, type Board } from "@codeboard/core";
 import { subHost } from "../subhost";
 import { shot, symCard, findSym, viewOf, put, OUT, type Host } from "../harness";
 import { test, open, check, light, verdict, expect, until, idle, hold } from "../fixtures";
@@ -88,6 +88,44 @@ test("turnIntoBoardUndo", async () => {
     res.restored = !!t.store.peek(f2.board) && t.store.peek("bUndo")!.cards.some((k) => k.id === f2.id);
     return res.entered && res.back && res.parentBack && JSON.stringify(res.childKept) === JSON.stringify([c.id]) && res.relinked && res.stillKept && res.trashed && res.restored;
   });
+  await h.page.context().close();
+});
+
+// A Walkthrough hop into a sub-board frames the start card by its measured size (a tall Note with no saved height: its estimate is
+// far too short) and moves the camera as soon as the new board's cards are measured, a few frames after the board arrives
+test("walkHopWaitsForMeasure", async () => {
+  const P = emptyBoard("bWP", "Parent");
+  put(P, card("Scheduler.schedule"), 60, 60, 560);
+  const h = await open({ board: P, light, w: 1400, h: 900 });
+  const pg = h.page;
+  const C = emptyBoard("bWC", "Child");
+  const md = Array.from({ length: 18 }, (_, i) => `Line ${i + 1} of a tall Note whose height was never saved`).join("\n\n");
+  C.cards.push({ id: "nTall", kind: "note", md, bg: true });
+  C.place.nTall = { x: 2600, y: 1800, w: 420 };
+  C.cam = { x: 0, y: 0, z: 1 };
+  // counts the board's frames from the init to the first camera move after it
+  await pg.evaluate(() => {
+    const w = window as unknown as { __hop?: number | null };
+    w.__hop = null;
+    const world = () => (document.querySelector(".world") as HTMLElement).style.transform;
+    addEventListener("message", (e) => {
+      if (e.data?.type !== "init") return;
+      let n = 0, at = "";
+      const f = () => { n++; if (n === 1) at = world(); else if (world() !== at) { w.__hop = n - 1; return; } if (n < 600) requestAnimationFrame(f); };
+      requestAnimationFrame(f);
+    });
+  });
+  const views: Record<string, never> = {};
+  await h.post({ type: "init", board: C, boards: [{ id: P.id, name: P.name, cards: 1 }, { id: C.id, name: C.name, cards: 1 }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never, crumbs: [{ id: P.id, name: P.name }], walk: { into: { root: "x", i: 0 }, start: "nTall" } } as never);
+  await until(h, "the walk moves the camera", () => pg.evaluate(() => (window as unknown as { __hop?: number | null }).__hop != null));
+  await idle(h);
+  const r = await pg.evaluate(() => {
+    const c = document.querySelector('.card[data-id="nTall"]')!.getBoundingClientRect();
+    return { frames: (window as unknown as { __hop: number }).__hop, top: Math.round(c.top), bottom: Math.round(c.bottom), left: Math.round(c.left), right: Math.round(c.right), vw: innerWidth, vh: innerHeight };
+  });
+  await shot(h, "walk-hop-measured");
+  check("walkHopWaitsForMeasure-framesMeasured", r.top >= 0 && r.left >= 0 && r.right <= r.vw && r.bottom <= r.vh && r.bottom - r.top > 400, r);
+  check("walkHopWaitsForMeasure-soon", r.frames <= 4, r);
   await h.page.context().close();
 });
 

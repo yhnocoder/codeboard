@@ -1,6 +1,7 @@
 // Scratch file naming and crash cleanup: only exact .codeboard-scratch-<id>.<ext> names that are not ours and whose mtime is older
 // than STALE_MS get deleted
 import { describe, expect, it } from "vitest";
+import { LANG_TABLE } from "@codeboard/core";
 import { HEARTBEAT_MS, STALE_MS, isScratchName, isStale, scratchName, staleScratch } from "../src/scratchnames";
 
 const now = Date.UTC(2026, 9, 18, 12);
@@ -13,6 +14,10 @@ describe("scratch file names", () => {
   });
   it.each([scratchName("c:12/x", "python"), scratchName("k", "markdown"), scratchName("a-b_c", "cuda-cpp")])("%s is a scratch name", (n) => {
     expect(isScratchName(n)).toBe(true);
+  });
+  // the editor's watchers skip scratch files by this name alone, also for events that arrive after the file is gone
+  it("every language's scratch file has a scratch name", () => {
+    for (const l of LANG_TABLE) expect(isScratchName(scratchName("c:1", l.id)), l.id).toBe(true);
   });
   it.each([".codeboard-notes.md", ".codeboard-config", ".codeboard-ref", ".codeboard-scratch-x.md", ".codeboard-scratch-.py", ".codeboard-scratch-a.b.py", ".codeboard-scratch-x.py.bak", "x.codeboard-scratch-x.py", ".codeboard-x.py"])("%s is not a scratch name", (n) => {
     expect(isScratchName(n)).toBe(false);

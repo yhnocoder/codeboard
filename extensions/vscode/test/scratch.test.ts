@@ -32,7 +32,7 @@ class FakeDoc {
 }
 const uri = (p: string) => ({ fsPath: p, toString: () => `file://${p}` });
 
-const { setText, RELOAD_LIMIT_MS } = await import("../src/vscode/scratch");
+const { setText, isScratch, RELOAD_LIMIT_MS } = await import("../src/vscode/scratch");
 const doc = (text = "old") => { const u = uri("/w/.codeboard-scratch-a.py"); return { uri: u, lang: "python", doc: new FakeDoc(u, text) } as any; };
 const settled = (p: Promise<unknown>) => { const s = { done: false, err: undefined as unknown }; p.then(() => { s.done = true; }, (e) => { s.err = e; }); return s; };
 const tick = () => new Promise((r) => setImmediate(r));
@@ -85,5 +85,13 @@ describe("scratch setText", () => {
     await tick();
     expect(String(unwritten.err)).toMatch(/EACCES/);
     expect(changes.size + closes.size).toBe(0);
+  });
+});
+
+describe("scratch files in the editor's events", () => {
+  it("are skipped by name, with no file of this window behind them (a delete event that comes after the file is gone)", () => {
+    expect(isScratch({ scheme: "file", fsPath: "/w/.codeboard-scratch-gone.py" } as any)).toBe(true);
+    expect(isScratch({ scheme: "file", fsPath: "/w/llm_engine.py" } as any)).toBe(false);
+    expect(isScratch({ scheme: "untitled", fsPath: "/w/.codeboard-scratch-a.py" } as any)).toBe(false);
   });
 });

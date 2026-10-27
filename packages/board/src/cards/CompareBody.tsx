@@ -23,7 +23,7 @@ function linesOf(c: CodeCard): L[] {
   return out;
 }
 
-/** 在高亮后的 HTML 里给 [a, b) 字符区间包上 <mark>（跳过标签，实体算一个字符） */
+/** 在高亮后的 HTML 里给 [a, b) 字符区间包上 <mark class="wdiff">（跳过标签，实体算一个字符） */
 export function markHtml(html: string, ranges: [number, number][]): string {
   if (!ranges.length) return html;
   let out = "", pos = 0, open = false;
@@ -39,7 +39,7 @@ export function markHtml(html: string, ranges: [number, number][]): string {
     let ch = html[i], n = 1;
     if (ch === "&") { const j = html.indexOf(";", i); if (j > i && j - i < 8) { ch = html.slice(i, j + 1); n = j - i + 1; } }
     const want = inR(pos);
-    if (want && !open) { out += "<mark>"; open = true; }
+    if (want && !open) { out += "<mark class=\"wdiff\">"; open = true; }
     if (!want && open) { out += "</mark>"; open = false; }
     out += ch;
     i += n;
