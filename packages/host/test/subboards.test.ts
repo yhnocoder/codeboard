@@ -21,7 +21,7 @@ const panels: BoardHost = {
   store, target: undefined, clip: undefined,
   get: () => undefined, all: () => [], metas: () => store.list(), show: async () => undefined, setTarget: () => undefined, broadcast: () => undefined,
   pushBoards: async () => undefined, staleChanged: () => undefined, refreshStale: async () => undefined, refreshShared: () => undefined, refreshSkeletons: () => undefined,
-  skeleton: (id) => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)?.name) : null; },
+  skeleton: (id) => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)) : null; },
   switchBoard: async (p, to, o) => { switches.push({ to, ...o }); p.id = to; p.crumbs = o.crumbs; p.cams = o.cams; return true; },
 };
 const p = new BoardPanel("bE", view, panels);
@@ -65,6 +65,20 @@ describe("sub-boards", () => {
     expect(switches[1].crumbs).toEqual([]);
     expect(switches[1].cam?.z).toBe(0.5);
     expect(switches[1].walk?.resume?.i).toBe(3);
+  });
+  it("enters through every board on the way to a [[ linked card further down, each one on the crumbs, and reveals the card", async () => {
+    const T = emptyBoard("bT", "Top"), U = emptyBoard("bU", "Mid"), V = emptyBoard("bV", "Deep");
+    T.cards.push({ id: "fu", kind: "board", board: "bU" }); T.place.fu = { x: 0, y: 0, w: 560, h: 360 };
+    U.cards.push({ id: "fv", kind: "board", board: "bV" }); U.place.fv = { x: 0, y: 0, w: 560, h: 360 }; U.cam = { x: 7, y: 8, z: 0.75 };
+    V.cards.push({ id: "v1", kind: "note", md: "# deep", bg: true }); V.place.v1 = { x: 0, y: 0, w: 200 };
+    for (const b of [T, U, V]) await store.save(b);
+    const q = new BoardPanel("bT", view, panels);
+    q.ready = true; q.board = store.peek("bT");
+    const before = posted.length;
+    await makeHandler(panels)(q, { type: "enterBoard", id: "bU", frame: "fu", cam: { x: 1, y: 2, z: 1 }, reveal: "v1" });
+    expect(switches.at(-1)).toMatchObject({ to: "bV", crumbs: [{ id: "bT", name: "Top", frame: "fu" }, { id: "bU", name: "Mid", frame: "fv" }] });
+    expect(switches.at(-1)!.cams).toEqual([{ x: 1, y: 2, z: 1 }, { x: 7, y: 8, z: 0.75 }]);
+    expect(posted.slice(before)).toContainEqual({ type: "reveal", card: "v1" });
   });
   it("saves Turn into Board's new board in the parent's group", async () => {
     const nb = emptyBoard("bN", "New"); nb.cards.push({ id: "c1", kind: "note", md: "x", bg: true }); nb.place.c1 = { x: 80, y: 80, w: 200 };

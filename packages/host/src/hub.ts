@@ -97,7 +97,7 @@ export class BoardHub implements BoardHost, Disposable {
   private allSkels = false;
   skeleton(id: string): Skeleton | null {
     const b = this.store.peek(id);
-    return b ? skeletonOf(b, (x) => this.store.peek(x)?.name) : null;
+    return b ? skeletonOf(b, (x) => this.store.peek(x)) : null;
   }
   /**
    * 子白板的骨架推给开着的白板：每个面板只发它上面的子白板里变了的（还没发过的、存过盘的、白板列表变了时全部比一遍）。
@@ -112,6 +112,14 @@ export class BoardHub implements BoardHost, Disposable {
       this.allSkels = false;
       const memo = new Map<string, Skeleton | null>();
       const sk = (id: string) => { if (!memo.has(id)) memo.set(id, this.skeleton(id)); return memo.get(id)!; };
+      // 骨架里有一路往下的子白板上能 [[ 链接的卡：下面哪一层存了盘，这块的骨架也要重算
+      const touched = (id: string, seen = new Set<string>()): boolean => {
+        if (dirty.has(id)) return true;
+        if (seen.has(id)) return false;
+        seen.add(id);
+        const b = this.store.peek(id);
+        return !!b && subBoardsOf(b).some((x) => touched(x, seen));
+      };
       for (const p of this.all()) {
         const b = this.store.peek(p.id);
         if (!p.ready || !b) continue;
@@ -119,7 +127,7 @@ export class BoardHub implements BoardHost, Disposable {
         if (!sent) this.skelSent.set(p, (sent = new Map()));
         const out: Record<string, Skeleton | null> = {};
         for (const id of subBoardsOf(b)) {
-          if (sent.has(id) && !all && !dirty.has(id)) continue;
+          if (sent.has(id) && !all && !touched(id)) continue;
           const s = sk(id), k = JSON.stringify(s);
           if (sent.get(id) === k) continue;
           sent.set(id, k);

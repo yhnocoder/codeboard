@@ -10,6 +10,8 @@ import { promptText } from "./Menu";
 import { helpRows, matches } from "../keymap";
 import { useOverlay } from "./overlay";
 import { TUNE, tune, type TuneKey } from "../state/tune";
+import { mathPreambleErrors } from "@yhnocoder/markdown";
+import { applyMathPreamble, mathRev } from "../md/math";
 
 const cur = (): S => state.host.settings;
 
@@ -18,6 +20,8 @@ export function SettingsLayer() {
   createEffect(() => A.applyLook(state.host.settings.theme));
   createEffect(() => A.applyVscodeBg(state.host.settings.vscodeBg));
   createEffect(() => A.applyNoteFonts(state.host.settings.noteFontSize));
+  // 设置页里改了马上生效（宿主那边改了也走这里；hostio 在白板画出来前先给一次）
+  createEffect(() => applyMathPreamble(state.host.settings.mathPreamble));
   return <Show when={settingsOpen()} keyed>{(o) => <SettingsPage section={o.section} />}</Show>;
 }
 
@@ -64,6 +68,9 @@ function SettingsPage(p: { section?: string }) {
         <Sec id="notes" title="Notes" hint="A Note that starts with a heading uses it as its title. The heading stays in the Note and shows while you edit. Font sizes apply to Notes while you read and edit them; Text cards keep their own sizes.">
           <label class="st-check"><input type="checkbox" checked={cur().noteHeadingInBody} onChange={(e) => A.setSetting("noteHeadingInBody", e.currentTarget.checked)} />Also Show the Title Heading in the Note</label>
           <NoteFonts />
+        </Sec>
+        <Sec id="math" title="Math preamble" hint={"\\newcommand and \\def lines that every formula on this project's boards can use. Saved in this project (.vscode/settings.json), not in your user settings. Typing \\ in a formula suggests them too."}>
+          <Preamble />
         </Sec>
         <Sec id="hide" title="New cards hide" hint="What new code cards start with hidden. Each card can still toggle them.">
           <div class="st-checks">
@@ -234,6 +241,20 @@ function NoteFonts() {
         <div class="nbody md fp-body" style={{ "--note-fs": "initial" }}><p /></div>
         <div class="nbody md fp-heads" style={Object.fromEntries(Object.entries(clear).filter(([n]) => n !== "--note-fs"))}><h1 /><h2 /><h3 /><h4 /><h5 /><h6 /></div>
       </div>
+    </>
+  );
+}
+
+/** 公式预设：离开输入框（或 ⌘↵）时写回；排不出来的定义列在下面 */
+function Preamble() {
+  const commit = (v: string) => { if (v !== cur().mathPreamble) A.setSetting("mathPreamble", v); };
+  const errs = () => { void mathRev(); return mathPreambleErrors(); };
+  return (
+    <>
+      <textarea class="fld mono st-pre" spellcheck={false} rows={4} value={cur().mathPreamble} aria-label="Math preamble"
+        placeholder={"\\newcommand{\\R}{\\mathbb{R}}\n\\newcommand{\\norm}[1]{\\lVert #1 \\rVert}"}
+        onChange={(e) => commit(e.currentTarget.value)} onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) e.currentTarget.blur(); }} />
+      <For each={errs()}>{(m) => <div class="st-warn">{m}</div>}</For>
     </>
   );
 }

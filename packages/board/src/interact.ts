@@ -6,6 +6,7 @@ import {
   state, sel, select, toggleSel, clearSel, setLineSel, isSel, cardById, hostOf, rectOf, live, beginGesture, isFresh, toast, placeOf,
 } from "./state/store";
 import { tune } from "./state/tune";
+import { WHEEL_GESTURE } from "./state/timing";
 import { cam, setCam, stopCam, camTo, fling, toWorld, view, ZMIN, ZMAX, lod } from "./state/camera";
 import { setGuides, setSizeHint, setDropTarget, dropTarget, setDragging, setMarquee, setRubber, setEditing, editing } from "./state/ui";
 import { frames, deepestAt, homeFor, partlyIn, frameOf, sec, descSections, allMembers, visibleCards, setMovingHome } from "./state/sections";
@@ -127,7 +128,8 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     window.getSelection()?.removeAllRanges();
   }
   if (c.kind === "web" && inHead && isDbl(`w${id}`, e)) return A.openLink(c.url);
-  if (c.kind === "board" && isDbl(`b${id}`, e)) return A.enterFrame(id);
+  // 双击子白板框：进去；双击在框里的一张小卡片上就进去以后带到那张卡
+  if (c.kind === "board" && isDbl(`b${id}`, e)) { const sub = (t.closest("[data-sub]") as HTMLElement | null)?.dataset.sub; return A.enterFrame(id, undefined, sub && !sub.startsWith("more:") ? sub : undefined); }
   const tc = cardById(target)?.card;
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`, e)) return setEditing({ kind: "title", id: target });
@@ -330,14 +332,15 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
 // 一次滚动手势从哪开始就一直归谁：画布上开始 → 一路平移，经过卡片也不停；停 ~200ms 才算结束。
 // 卡片里滚代码只在：卡片已选中，或者不是紧跟着一次画布平移开始的滚动
 let wheelOwner: HTMLElement | "canvas" | null = null, wheelLast = 0, panEnd = 0;
-function ownerFor(e: WheelEvent, el: HTMLElement | null): HTMLElement | "canvas" {
+/** selOnly：只有卡片选中了才归它（子白板框里的分栏） */
+function ownerFor(e: WheelEvent, el: HTMLElement | null, selOnly = false): HTMLElement | "canvas" {
   const now = performance.now();
-  if (now - wheelLast > 200) {
+  if (now - wheelLast > WHEEL_GESTURE) {
     if (wheelOwner === "canvas") panEnd = wheelLast;
     const card = el?.closest(".card") as HTMLElement | null;
     const can = !!el && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
     const selected = !!card && isSel(card.dataset.id!);
-    wheelOwner = can && !e.ctrlKey && !e.metaKey && (selected || now - panEnd > 500) ? el! : "canvas";
+    wheelOwner = can && !e.ctrlKey && !e.metaKey && (selected || (!selOnly && now - panEnd > 500)) ? el! : "canvas";
   }
   wheelLast = now;
   return wheelOwner!;
@@ -346,6 +349,24 @@ function ownerFor(e: WheelEvent, el: HTMLElement | null): HTMLElement | "canvas"
 export function cardWheel(e: WheelEvent, el: HTMLElement) {
   if (e.ctrlKey || e.metaKey) return; // 交给画布缩放
   if (ownerFor(e, el) === el) e.stopPropagation();
+}
+
+/**
+ * 子白板框里的分栏：没选中的框上滚轮照常平移白板；选中了归分栏滚，滚到头就停在那，不会接着带动白板（返回 true = 滚了分栏）。
+ * 分栏只能横着滚的时候，竖着的滚轮也拿来横着滚（鼠标滚轮只有竖的）
+ */
+export function colsWheel(e: WheelEvent, el: HTMLElement, selected: boolean): boolean {
+  if (e.ctrlKey || e.metaKey || !selected) return false;
+  if (ownerFor(e, el, true) !== el) return false;
+  e.preventDefault();
+  e.stopPropagation();
+  const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
+  let dx = e.deltaX * k, dy = e.deltaY * k;
+  if (e.shiftKey && !dx) { dx = dy; dy = 0; }
+  if (!dx && el.scrollHeight <= el.clientHeight + 1) { dx = dy; dy = 0; }
+  el.scrollLeft += dx;
+  el.scrollTop += dy;
+  return true;
 }
 
 // 调用：点 = 展开；拖 = 接到已有卡 / 放到指定位置
@@ -519,7 +540,7 @@ const ownsWheel = (t: HTMLElement) => !!t.closest(NODRAG) && (!t.closest(".card"
 export function canvasWheel(e: WheelEvent) {
   const t = e.target as HTMLElement;
   // 正在平移画布的这次滚动手势一路平移下去：画布带着卡移到指针下面，指针落到卡边的圆点、把手上也不停
-  const panning = wheelOwner === "canvas" && performance.now() - wheelLast <= 200;
+  const panning = wheelOwner === "canvas" && performance.now() - wheelLast <= WHEEL_GESTURE;
   if (!panning && ownsWheel(t)) return;
   e.preventDefault();
   if (!t.closest(".cbody, .nbody, .tx")) ownerFor(e, null); // 卡片里的已经在 cardWheel 里记过

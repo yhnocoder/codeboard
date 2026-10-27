@@ -24,7 +24,7 @@ npm i @yhnocoder/markdown solid-js
 
 | Import | What |
 |---|---|
-| `@yhnocoder/markdown` | Read-only: `parseMd`, `serializeMd`, `renderMd`, `renderMdInline`, `hydrate`, `mdClick`, `toggleTask`, `staticTextRange` / `docRange` (text selected in the static render → the same range in the editor's document), and the setters `setCodeHighlighter`, `setRefResolver`, `setImageResolver` / `setAssetBase`. No Solid, no editor. |
+| `@yhnocoder/markdown` | Read-only: `parseMd`, `serializeMd`, `renderMd`, `renderMdInline`, `hydrate`, `mdClick`, `toggleTask`, `staticTextRange` / `docRange` (text selected in the static render → the same range in the editor's document), and the setters `setCodeHighlighter`, `setRefResolver`, `setImageResolver` / `setAssetBase`, `setMathPreamble` (see [Math](#math)). No Solid, no editor. |
 | `@yhnocoder/markdown/editor` | The editor: `mountEditor`, plus `prepare` / `warmUp` to parse ahead of time. Load it with `import()` on first edit to keep it out of your initial bundle. |
 | `@yhnocoder/markdown/code-editor` | The CodeMirror 6 code editor the editor uses for code blocks, on its own: `codeEditor`. |
 | `@yhnocoder/markdown/ui` | Small helpers the editor uses that a host may share: key handling inside inputs (`keepKey`, `setKeyPassThrough`), popover placement (`place`, `virtual`), batched DOM measuring (`queueMeasure`, `observeResize`), and the editor's fixed delays (`TOOLBAR_SETTLE`: how long a selection holds still before its toolbar shows). |
@@ -87,6 +87,23 @@ show();
 `mountEditor` takes more options, all optional: `placeholder`, `refs` (the `[[` menu's candidates), `saveImage` / `pickImage` (where pasted, dropped and picked images go: `saveImage(dataUrl, name)` resolves to the path written into the Markdown, or `null` to insert nothing; by default they stay inline as `data:` URLs), `complete` (inline AI completion), `code` (comment tokens and language services for code blocks, and `langs`: the languages listed when the language name at a code block's top right is clicked, as `{ name, label, aliases }` where `label` is what the block shows and `name` is what goes into the fence) and `dragHandle` (a ⋮⋮ handle left of the hovered block for dragging it; off by default). The handle has `value()`, `destroy()` and `editor()` (the TipTap editor).
 
 A complete page using only this package is in [examples/markdown-demo](https://github.com/yhnocoder/codeboard/tree/main/examples/markdown-demo).
+
+## Math
+
+Formulas are typeset with [KaTeX](https://katex.org): `$…$` inline, `$$…$$` on its own line as a block.
+
+**Preamble.** `setMathPreamble(src)` sets `\newcommand`, `\renewcommand` and `\def` lines that every formula can use, in the static render, the editor and anything you build with `renderMd`, for example:
+
+```ts
+import { setMathPreamble, mathPreambleErrors } from "@yhnocoder/markdown";
+
+setMathPreamble("\\newcommand{\\R}{\\mathbb{R}}\n\\newcommand{\\norm}[1]{\\lVert #1 \\rVert}");
+mathPreambleErrors(); // KaTeX's message for each definition it could not read, [] when all are fine
+```
+
+It returns `true` when the preamble changed. A change clears `renderMd`'s cache; HTML you already put on the page stays as it was, so render it again. Each formula gets a fresh copy of the definitions, so a `\newcommand` written inside one formula stays in that formula. A definition may span several lines; one with a mistake is skipped and the others still apply. `mathMacros()` returns the definitions as KaTeX `macros` (a new object each call) for your own `katex.render` calls.
+
+**Hints while editing a formula.** In the editor, typing `\` inside a formula (a math block's source, or an inline formula opened as `$…$`) lists matching commands, each with how it looks and a short description; preamble commands are tagged 预设 and those defined in the same formula 本式. ↑↓ choose, Enter or Tab insert (the caret lands in the first `{}`), Esc closes the list. While you type, a live preview shows the result (a small bubble under an inline formula). When the formula does not typeset, the last good result stays, dimmed, with a short explanation of what is wrong, the place marked, and a one-click fix for the common cases (a misspelled command → the nearest known one, preamble commands included; a missing `}`). Nothing is reported while you are still typing a command name that can complete. The hints use these classes, styled by `style.css`: `.md-mathac` (the list), `.md-mathtip` (the inline preview bubble), `.md-matherr` (the explanation) and `.md-mathstale` (the dimmed last good result).
 
 ## Theming
 

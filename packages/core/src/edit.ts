@@ -506,7 +506,7 @@ export function mergeCodeCards(b: Board, ids: string[], target: string, o: { id?
   const oldSegs = new Map(orig.flatMap((c) => c.segments.map((s) => [s.id, s] as const)));
   const TP = b.place[T.id];
   const M: CodeCard = {
-    id: mid, kind: "code", segments: segs, title: T.title, desc: T.desc, hide: T.hide,
+    id: mid, kind: "code", segments: segs, title: T.title, desc: T.desc, hide: T.hide, tilt: T.tilt,
     mergedFrom: orig.flatMap((c) => c.mergedFrom ?? [{ card: c, place: clone(b.place[c.id]) }]),
   };
   for (const c of orig) if (c !== T && c.desc) b.sidenotes.push({ id: uid("n"), at: { card: mid }, kind: "text", md: c.desc });
@@ -535,9 +535,11 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
       pp.push({ ...clone(o.place), x: o.place.x + dx, y: o.place.y + dy, section: mp.section });
       const k = clone(o.card);
       if (have.has(k.id)) k.id = uid("c"); // 复制过的合并卡再拆：原卡的 id 已经被另一份占了
+      // 拆出来的卡看起来和合并卡一样：合并后改过的倾斜算数
+      k.tilt = m.tilt;
       return k;
     })
-    : m.segments.map((s, i) => { pp.push({ x: mp.x + i * 40, y: mp.y + i * 40, w: mp.w, section: mp.section }); return { id: uid("c"), kind: "code", segments: [clone(s)], hide: m.hide }; });
+    : m.segments.map((s, i) => { pp.push({ x: mp.x + i * 40, y: mp.y + i * 40, w: mp.w, section: mp.section }); return { id: uid("c"), kind: "code", segments: [clone(s)], hide: m.hide, tilt: m.tilt }; });
   // 段的高亮 / 隐藏跟着行走
   for (const p of parts) for (const s of p.segments) {
     const src = m.segments.filter((q) => q.path === s.path && sameVersion(q.version, s.version) && q.start <= s.end && q.end >= s.start);
@@ -631,7 +633,9 @@ export function arrangeCards(b: Board, ids: Iterable<string>, how: Arrange, over
  * 绑在两栏上的贴纸改绑到 Compare 上
  */
 export function makeCompare(b: Board, id: string, cols: [string, string], place: Place): void {
-  b.cards.push({ id, kind: "compare", cols: [...cols] });
+  // 和摆放一样以左栏为准
+  const tilt = b.cards.find((c) => c.id === cols[0])?.tilt;
+  b.cards.push({ id, kind: "compare", cols: [...cols], tilt });
   b.place[id] = place;
   for (const k of cols) delete b.place[k];
   for (const s of b.stickers) if (s.at.kind === "canvas" && s.at.on && "card" in s.at.on && cols.includes(s.at.on.card)) s.at.on = { card: id };

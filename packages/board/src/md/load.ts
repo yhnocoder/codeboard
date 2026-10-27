@@ -1,6 +1,7 @@
 // 编辑器那一块（@yhnocoder/markdown/editor：TipTap 的视图、菜单、补全）单独打包，第一次编辑时才加载；白板打开后空闲时先悄悄加载好。
 // 编辑器要的白板能力（[[ 引用的候选、存图、AI 补全、代码块的语言服务）在 editorOpts 里接上
-import { LANG_TABLE, cardTitle, isCode, langInfo } from "@codeboard/core";
+import { LANG_TABLE, isCode, langInfo, refTitle } from "@codeboard/core";
+import { frameName, skels, subRefs } from "../state/subboards";
 import { state, placed } from "../state/store";
 import { ask } from "../host";
 import { editing, dragging } from "../state/ui";
@@ -54,13 +55,19 @@ function whenIdle(f: () => void) {
   ric(tryIt);
 }
 
-/** 白板上的卡（[[ 引用的候选）：标题、种类 */
+/**
+ * [[ 引用的候选：这块白板上和子白板里（一路往下，标上所在的子白板：子白板 › 卡）有真正标题的卡（core refTitle）：
+ * 图片、名字只是正文第一行的卡不列
+ */
 export function refCandidates(): { id: string; title: string; kind: string }[] {
   const out: { id: string; title: string; kind: string }[] = [];
+  const clean = (t: string) => t.replace(/[\[\]\n]/g, " ").slice(0, 160);
+  const boardName = (id: string) => skels[id]?.name ?? state.boards.find((m) => m.id === id)?.name;
   for (const c of placed()) {
-    const t = cardTitle(c, state.board).trim();
-    if (t) out.push({ id: c.id, title: t.replace(/[\[\]\n]/g, " ").slice(0, 120), kind: isCode(c) ? "code" : c.kind });
+    const t = c.kind === "board" ? frameName(c) : refTitle(c, boardName)?.trim();
+    if (t) out.push({ id: c.id, title: clean(t), kind: isCode(c) ? "code" : c.kind });
   }
+  for (const r of subRefs()) out.push({ id: r.id, title: clean(r.label), kind: r.k });
   return out;
 }
 

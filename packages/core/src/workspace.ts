@@ -71,8 +71,8 @@ export interface WorkspaceScratch {
 /** 用户设置，键是完整的点分名字（codeboard.theme、editor.fontFamily） */
 export interface WorkspaceSettings {
   get<T>(key: string): T | undefined;
-  /** 写用户级设置；undefined = 删掉 */
-  set(key: string, value: unknown): Promise<void>;
+  /** 写设置；undefined = 删掉。默认写用户级，"workspace" 写进当前项目（.vscode/settings.json） */
+  set(key: string, value: unknown, scope?: "user" | "workspace"): Promise<void>;
   onDidChange: Event<{ affects(key: string): boolean }>;
 }
 

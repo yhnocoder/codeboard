@@ -62,6 +62,16 @@ describe("loadBoard", () => {
       links: [{ id: "l", kind: "plain", from: { card: "k" }, to: { card: "w" } }] });
     expect(v2.cards.map((c) => c.id)).toEqual(["p", "q", "k", "w"]);
   });
+  it("keeps a card's tilt flag; a hand-written tilt: false counts as none, anything else is refused", () => {
+    const b: any = full();
+    b.cards[1].tilt = true;
+    b.cards[2].tilt = false;
+    const l = loadBoard(structuredClone(b));
+    expect(l.cards[1].tilt).toBe(true);
+    expect("tilt" in l.cards[2]).toBe(false);
+    b.cards[2].tilt = "yes";
+    expect(() => loadBoard(b)).toThrow(/cards\.2\.tilt/);
+  });
   it("leaves id to the caller (storage names it after the file)", () => {
     const b: any = full(); delete b.id;
     expect(loadBoard(b).id).toBeUndefined();

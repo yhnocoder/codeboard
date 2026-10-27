@@ -1,9 +1,11 @@
 import { batch } from "solid-js";
 import { unwrap } from "solid-js/store";
-import { cardTitle, descendants, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
+import { cardTitle, descendants, escHtml, extractBoard, removeCards, uid, wouldCycle, type BoardCard, type WalkHop } from "@codeboard/core";
 import { state, mutate, sel, select, clearSel, cardById, hostOf, rectOf, toast, flushSave, flows } from "../state/store";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
-import { crumbs, frameOf, skelOf, subRect, walkBack, setWalkBack } from "../state/subboards";
+import { iconHtml } from "../ui/icons";
+import { crumbs, frameOf, skelOf, subRect, subRefs, walkBack, setWalkBack, setCrumbMorph } from "../state/subboards";
+import { resolveCardRef, revealCard, selectCard } from "./common";
 import { walk, setWalk } from "../state/ui";
 import { settleHome } from "../state/sections";
 import { ask, send } from "../host";
@@ -13,29 +15,191 @@ import { promptText } from "../ui/Menu";
 const subsOf = (id: string) => state.boards.find((m) => m.id === id)?.subs;
 const nameOf = (id: string) => state.boards.find((m) => m.id === id)?.name ?? "Board";
 
-let leaving = false;
-/** 双击框 / ⌘↵：镜头先推进框里，再在这个面板里打开子白板（先把没存的改动发出去）。walkHop = 讲解接着在子白板里走 */
-export function enterFrame(id: string, walkHop?: WalkHop) {
+/**
+ * 双击框 / ⌘↵：在这个面板里打开子白板（先把没存的改动发出去）。镜头不动：框上的名字飞到左上角变成面包屑，两块白板交叉淡入淡出（morphIn）。
+ * walkHop = 讲解接着在子白板里走；reveal = 进去以后带到这张卡（[[ 链接到子白板里的卡、双击框里的小卡片），在更深的子白板里的宿主一路进去
+ */
+export function enterFrame(id: string, walkHop?: WalkHop, reveal?: string) {
   const f = frameOf(id);
-  if (!f || leaving) return;
+  if (!f || transit) return;
   if (skelOf(id) === null) return toast("This board was deleted or can’t be read.");
   if (f.board === state.board.id || wouldCycle(subsOf, state.board.id, f.board)) return toast("Can’t open a board inside itself.");
   const back = { ...camTarget() };
   flushSave();
-  leaving = true;
-  const r = rectOf(id);
-  const t = fitRect(r, 4);
-  camTo(t.x, t.y, t.z, true);
-  setTimeout(() => {
-    leaving = false;
-    send(walkHop ? { type: "enterBoard", id: f.board, frame: id, cam: back, walk: walkHop } : { type: "enterBoard", id: f.board, frame: id, cam: back });
-  }, 320);
+  morphIn(id, skelOf(id)?.name ?? nameOf(f.board));
+  send({ type: "enterBoard", id: f.board, frame: id, cam: back, ...(walkHop ? { walk: walkHop } : {}), ...(reveal ? { reveal } : {}) });
 }
-/** 面包屑 / Esc：回到第 depth 层（缺省 = 上一级） */
+/** 面包屑 / ← / Esc：回到第 depth 层（缺省 = 上一级）；名字从面包屑飞回框上，回到进去前的镜头 */
 export function leaveBoard(depth?: number, walkHop?: WalkHop) {
-  if (!crumbs().length) return;
+  const cs = crumbs();
+  if (!cs.length || transit) return;
   flushSave();
+  const d = Math.max(0, Math.min(cs.length - 1, depth ?? cs.length - 1));
+  morphOut(cs[d].id, cs[d].frame);
   send({ type: "leaveBoard", ...(depth !== undefined ? { depth } : {}), ...(walkHop ? { walk: walkHop } : {}) });
+}
+
+// ---------- 进出子白板的动画：标题变形 ----------
+// 换白板是宿主发来新的 init（整块白板换掉），两块白板不会同时在页面上：先把这一块淡出（同时名字开始飞），淡出完之前收到的 init 先压着
+// （hostio.ts 问 switchGate），淡出完再换上新白板、淡入。只动 opacity / transform，用 Web Animations（在合成线程上跑，换白板那一帧主线程忙也不卡）。
+// 时长跟着 --t（慢动作设置、系统「减少动态效果」）
+
+/** 进去 280ms、出来 220ms；淡出占前面一段，新白板至少用这么久淡入（宿主回得慢时名字先飞到，等新白板） */
+const ENTER_MS = 280, LEAVE_MS = 220, FADE_IN_MIN = 140;
+const EASE_OUT = "cubic-bezier(.215,.61,.355,1)", EASE_IN_OUT = "cubic-bezier(.645,.045,.355,1)";
+/** 淡入的子白板从 1.03 倍缩到 1（出来时淡出的子白板放大到 1.03），绕视口中心 */
+const ZOOM = 1.03;
+/** 等不到 init（宿主没换：成环、白板在别的标签页开着）就把动画收回来 */
+const GIVE_UP = 2500;
+/** 面包屑一格的左右留白（styles.css .crumbs .crumb） */
+const CRUMB_PAD = 6;
+const slow = () => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--t")) || 1;
+const worldEl = () => document.querySelector<HTMLElement>(".board > .world");
+type Spot = { r: DOMRect; font: number };
+type Transit = {
+  enter: boolean; t0: number; ms: number; out: Animation | null; gated: boolean; timer: number;
+  /** 名字的替身（放在面包屑「当前」那一格上）和它的飞行；to = 面包屑那一格 */
+  ghost: HTMLElement | null; fly: Animation | null; to?: Spot;
+  /** 出来时名字落到的框（回到哪块白板上的哪个框） */
+  back?: { board: string; frame: string };
+  hidden: HTMLElement[]; navOut: Animation | null;
+};
+let transit: Transit | null = null;
+/** 框上名字在屏幕上的位置，进去时记下（白板|框）：回来时镜头和进去前一模一样，名字一开始就往这里飞 */
+const titleAt = new Map<string, Spot>();
+
+const spotOf = (el: HTMLElement): Spot => { const r = el.getBoundingClientRect(); return { r, font: parseFloat(getComputedStyle(el).fontSize) * (r.height / (el.offsetHeight || r.height || 1)) }; };
+const titleEl = (frame: string) => document.querySelector<HTMLElement>(`.card[data-id="${CSS.escape(frame)}"] .sbname`);
+/** 替身放在框上名字的位置时的 transform（替身的盒子在面包屑那一格上，transform-origin 左上角） */
+function onTitle(title: Spot, crumb: Spot): string {
+  const k = title.font / crumb.font;
+  const dx = title.r.left - CRUMB_PAD * k - crumb.r.left, dy = title.r.top + title.r.height / 2 - crumb.r.top - (crumb.r.height * k) / 2;
+  return `translate(${dx}px, ${dy}px) scale(${k})`;
+}
+function ghostAt(text: string, crumb: Spot): HTMLElement {
+  const g = document.createElement("div");
+  g.className = "sbmorph";
+  g.textContent = text;
+  Object.assign(g.style, { left: `${crumb.r.left}px`, top: `${crumb.r.top}px`, height: `${crumb.r.height}px`, fontSize: `${crumb.font}px`, padding: `0 ${CRUMB_PAD}px` });
+  (document.querySelector(".app") ?? document.body).appendChild(g);
+  return g;
+}
+/** 进去以后面包屑上「当前」那一格在哪：照面包屑的样子（App.tsx Crumbs）摆一个看不见的量一下 */
+function crumbSpot(names: string[], cur: string): Spot | undefined {
+  const app = document.querySelector(".app");
+  if (!app) return undefined;
+  const nav = document.createElement("nav");
+  nav.className = "crumbs pill";
+  nav.style.cssText = "visibility: hidden; animation: none";
+  nav.innerHTML = `<button class="crumb back">${iconHtml("left", 14)}</button>${names.map((n) => `<button class="crumb">${escHtml(n)}</button><span class="csep">›</span>`).join("")}<span class="crumb cur"></span>`;
+  nav.querySelector(".cur")!.textContent = cur;
+  app.appendChild(nav);
+  const s = spotOf(nav.querySelector<HTMLElement>(".cur")!);
+  nav.remove();
+  return s;
+}
+
+function morphIn(frame: string, name: string) {
+  const ms = ENTER_MS * slow(), world = worldEl(), src = titleEl(frame);
+  const to = crumbSpot([...crumbs().map((c) => c.name), state.board.name], name);
+  const t: Transit = { enter: true, t0: performance.now(), ms, out: null, gated: false, timer: 0, ghost: null, fly: null, hidden: [], navOut: null, to };
+  if (src && to) {
+    const from = spotOf(src);
+    titleAt.set(`${state.board.id}|${frame}`, from);
+    t.ghost = ghostAt(name, to);
+    t.fly = t.ghost.animate([{ transform: onTitle(from, to) }, { transform: "none" }], { duration: ms, easing: EASE_OUT, fill: "forwards" });
+    src.style.visibility = "hidden";
+    t.hidden.push(src);
+  }
+  t.out = world?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.6, easing: "ease-in", fill: "forwards" }) ?? null;
+  start(t);
+}
+
+function morphOut(board: string, frame: string) {
+  const ms = LEAVE_MS * slow(), world = worldEl(), cur = document.querySelector<HTMLElement>(".crumbs .cur"), nav = cur?.closest<HTMLElement>(".crumbs");
+  const t: Transit = { enter: false, t0: performance.now(), ms, out: null, gated: false, timer: 0, ghost: null, fly: null, hidden: [], navOut: null, back: { board, frame } };
+  if (cur) {
+    const from = spotOf(cur);
+    t.to = from;
+    t.ghost = ghostAt(state.board.name, from);
+    const at = titleAt.get(`${board}|${frame}`);
+    if (at) t.fly = t.ghost.animate([{ transform: "none" }, { transform: onTitle(at, from) }], { duration: ms, easing: EASE_IN_OUT, fill: "forwards" });
+  }
+  t.navOut = nav?.animate([{ opacity: 1 }, { opacity: 0 }], { duration: ms * 0.3, easing: "ease-out", fill: "forwards" }) ?? null;
+  t.out = world?.animate([{ opacity: 1, scale: "1", translate: "0px 0px" }, { opacity: 0, scale: String(ZOOM), translate: zoomAround(ZOOM) }], { duration: ms * 0.65, easing: "ease-in", fill: "forwards" }) ?? null;
+  start(t);
+}
+/** 绕视口中心缩放 z 倍时世界层要挪多少（世界层的 transform-origin 是左上角） */
+function zoomAround(z: number) {
+  const b = document.getElementById("board"), cx = (b?.clientWidth ?? 0) / 2, cy = (b?.clientHeight ?? 0) / 2;
+  return `${cx * (1 - z)}px ${cy * (1 - z)}px`;
+}
+
+function start(t: Transit) {
+  transit = t;
+  t.timer = window.setTimeout(() => { if (transit === t && !t.gated) giveUp(t); }, GIVE_UP);
+}
+/** 宿主没换白板：淡出的白板淡回来，名字回到原处 */
+function giveUp(t: Transit) {
+  transit = null;
+  worldEl()?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: FADE_IN_MIN * slow(), easing: EASE_OUT });
+  t.out?.cancel();
+  t.navOut?.cancel();
+  finish(t);
+}
+function finish(t: Transit) {
+  t.fly?.cancel();
+  t.ghost?.remove();
+  for (const el of t.hidden) el.style.visibility = "";
+  setCrumbMorph(false);
+}
+
+/** 宿主说换不了（hostio.ts 收到 toast：成环、白板在别的标签页开着）：不等 GIVE_UP，马上收回来 */
+export function switchRefused() {
+  const t = transit;
+  if (t && !t.gated) { clearTimeout(t.timer); giveUp(t); }
+}
+/**
+ * hostio.ts 收到 init 时问：正在进出子白板、旧白板还没淡出完，就返回淡出完的时候（init 和后面的消息先压着，到时再按顺序处理）。
+ * 每次进出只给一次
+ */
+export function switchGate(): Promise<void> | null {
+  const t = transit;
+  if (!t || t.gated) return null;
+  t.gated = true;
+  clearTimeout(t.timer);
+  return t.out ? t.out.finished.then(() => undefined, () => undefined) : null;
+}
+/** hostio.ts 换上新白板以后：新白板淡入；出来时名字落到框上（量一下真实位置，和记下的不一样就改道） */
+export function boardShown() {
+  const t = transit;
+  if (!t) return;
+  transit = null;
+  clearTimeout(t.timer);
+  const world = worldEl();
+  const left = Math.max(FADE_IN_MIN * slow(), t.ms - (performance.now() - t.t0));
+  const fadeIn = t.enter
+    ? world?.animate([{ opacity: 0, scale: String(ZOOM), translate: zoomAround(ZOOM) }, { opacity: 1, scale: "1", translate: "0px 0px" }], { duration: left, easing: EASE_OUT })
+    : world?.animate([{ opacity: 0 }, { opacity: 1 }], { duration: left, easing: EASE_OUT });
+  t.out?.cancel();
+  // 面包屑：新的一组淡入，「当前」那一格等名字飞到了再出来
+  t.navOut?.cancel();
+  const nav = document.querySelector<HTMLElement>(".crumbs");
+  if (nav) { setCrumbMorph(!!t.ghost && t.enter); nav.animate([{ opacity: 0 }, { opacity: 1 }], { duration: left, easing: "ease-out" }); }
+  if (!t.enter && t.ghost && t.back && t.to) {
+    const el = titleEl(t.back.frame);
+    if (el) {
+      el.style.visibility = "hidden";
+      t.hidden.push(el);
+      const real = spotOf(el), at = titleAt.get(`${t.back.board}|${t.back.frame}`);
+      if (!t.fly || !at || Math.abs(at.r.left - real.r.left) + Math.abs(at.r.top - real.r.top) > 1) {
+        const now = getComputedStyle(t.ghost).transform;
+        t.fly?.cancel();
+        t.fly = t.ghost.animate([{ transform: now && now !== "none" ? now : "none" }, { transform: onTitle(real, t.to) }], { duration: left, easing: EASE_IN_OUT, fill: "forwards" });
+      }
+    } else { t.fly?.cancel(); t.fly = null; }
+  }
+  void Promise.all([fadeIn?.finished, t.fly?.finished].map((p) => p?.catch(() => undefined))).then(() => finish(t));
 }
 
 /** 讲解走到子白板框：镜头推进那张卡（箭头连到的）所在的框，进去从那张卡讲起，讲完回来 */
@@ -147,3 +311,21 @@ export async function deleteFrameBoard(id: string) {
 
 /** Esc：没有别的可取消的时候回上一级 */
 export const canLeave = () => crumbs().length > 0 && !sel.cards.length && !sel.links.length && !sel.sections.length;
+
+/** 点 [[引用]]：这块白板上的卡选中、带到眼前；子白板里的卡进那块子白板（更深的一路进去）再带到它 */
+export function openCardRef(id: string) {
+  if (cardById(id)) { selectCard(id); revealCard(id); return; }
+  const r = subRefs().find((x) => x.id === id);
+  if (r) enterFrame(r.frame, undefined, id);
+}
+/** 骨架到了以后，静态 Note 里的 [[引用]] 再认一遍（指向子白板里的卡的，骨架没到时显示成找不到） */
+export function refreshRefs() {
+  for (const r of document.querySelectorAll<HTMLElement>(".md .cref")) {
+    if (r.closest("[contenteditable=true]")) continue;
+    const hit = resolveCardRef(r.dataset.cardref ?? "");
+    r.classList.toggle("missing", !hit);
+    if (!hit) continue;
+    if (hit.title !== r.textContent) r.textContent = hit.title;
+    r.removeAttribute("title");
+  }
+}

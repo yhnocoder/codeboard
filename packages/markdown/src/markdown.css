@@ -14,6 +14,8 @@
 .katex { font-size: 1.08em; }
 math { font-size: 1.05em; }
 .math { overflow-x: auto; overflow-y: hidden; padding: 2px 0; }
+/* 比 Note 宽的公式在自己的框里横着滚（细滚动条，滚到头不带着白板走） */
+.math, .md-pm [data-type="block-math"] { scrollbar-width: thin; scrollbar-color: var(--hair) transparent; overscroll-behavior-x: contain; }
 /* 连字和编辑器里一样关掉（ProseMirror 要关，不然光标落不进连字中间）：进编辑时字形不变 */
 .md { font-variant-ligatures: none; }
 .md :is(p, h1, h2, h3, h4, h5, h6, li, td, th, summary) { white-space: pre-wrap; }
@@ -183,7 +185,7 @@ math { font-size: 1.05em; }
 .md-ico > path { transform: translate(calc(var(--ico-w, 1) * .5px - 1px), calc(var(--ico-w, 1) * .5px - 1px)); }
 .md-bubble .sep { width: 1px; height: 16px; background: var(--hair); margin: 0 3px; }
 /* 代码块右上角的语言名（editor/codelang.ts）：不占地方，显示、编辑时的排版一样。第一行伸到它下面时（.md-under）
-   只在悬停、列表开着时显示，不盖住代码 */
+   悬停在块上、光标在块里都不显示（不盖住代码），只在指着它那一角、用键盘走到它上面、列表开着时显示 */
 .md-pm pre.md-code > .md-lang { position: absolute; right: 10px; top: 6px; z-index: 1; display: flex; align-items: center; gap: 3px; max-width: 50%; margin: 0; padding: 0;
   border: 0; border-radius: 0; outline: none; background: none; box-shadow: none; color: var(--ink-3); font: 11px/18px var(--sys); letter-spacing: .01em; white-space: nowrap;
   cursor: default; user-select: none; -webkit-user-select: none;
@@ -191,7 +193,7 @@ math { font-size: 1.05em; }
 .md-pm pre.md-code > .md-lang .md-lang-nm { overflow: hidden; text-overflow: ellipsis; }
 .md-pm pre.md-code > .md-lang .md-lang-v { flex: none; opacity: 0; transition: opacity calc(var(--t, 1) * 120ms); }
 .md-pm pre.md-code:is(:hover, :focus-within) > .md-lang, .md-pm pre.md-code > .md-lang[aria-expanded="true"] { opacity: 1; }
-.md-pm pre.md-code:focus-within:not(:hover) > .md-lang.md-under:not([aria-expanded="true"]) { opacity: 0; }
+.md-pm pre.md-code > .md-lang.md-under:not(:hover, :focus-visible, [aria-expanded="true"]) { opacity: 0; }
 .md-pm pre.md-code > .md-lang:is(:hover, [aria-expanded="true"]) { color: var(--ink-2); }
 .md-pm pre.md-code:hover > .md-lang .md-lang-v, .md-pm pre.md-code > .md-lang[aria-expanded="true"] .md-lang-v { opacity: .8; }
 .md-pm pre.md-code > .md-lang:focus-visible { outline: 1.5px solid var(--accent); outline-offset: 1px; }
@@ -244,3 +246,29 @@ body .cm-tooltip.cbcm-ac.cm-tooltip-autocomplete > ul { max-height: 248px; }
 /* Note 里的代码块（editor/codeblock.ts）：pre 是 ProseMirror 的不可编辑节点，里面的 CodeMirror 照样不折行、没有内边距 */
 .md-pm pre .cbcm .cm-content { white-space: pre; padding: 0; }
 .md-pm pre .cbcm .cm-content.cm-lineWrapping { white-space: pre-wrap; }
+/* 写公式时的提示（editor/mathhints.ts）：\ 补全（.md-mathac）、行内公式的预览气泡（.md-mathtip）、出错时的说明（.md-matherr）。
+   补全和气泡挂在 body 上（position: fixed，由 place 摆）；公式块的说明在卡片里预览的下面 */
+.md-mathac, .md-mathtip { position: fixed; left: 0; top: 0; z-index: 60; box-sizing: border-box; background: var(--surface); color: var(--ink); border-radius: 10px; box-shadow: var(--sh-float); font: 12px/1.4 var(--sys); animation: md-pop calc(var(--t) * 120ms) cubic-bezier(.2, .8, .2, 1); }
+.md-mathac { width: 250px; padding: 4px; transform-origin: 0 0; }
+.md-mathac .it { display: grid; grid-template-columns: 62px 1fr; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 7px; cursor: pointer; }
+.md-mathac .it.on { background: var(--hlrow); }
+.md-mathac .pv { text-align: center; overflow: hidden; font-size: 13.5px; white-space: nowrap; }
+.md-mathac .pv .katex { font-size: 1em; }
+.md-mathac .nm { min-width: 0; }
+.md-mathac .nm b { display: block; font: 500 12px/1.3 var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-mathac .nm b em { font-style: normal; color: var(--accent); }
+.md-mathac .nm > span { display: block; font-size: 11px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-mathac .tag { display: inline-block; margin-left: 5px; font: 600 9.5px/1 var(--sys); color: var(--k-fn); background: color-mix(in srgb, var(--k-fn) 12%, transparent); padding: 2px 4px; border-radius: 4px; vertical-align: 1px; }
+.md-mathac .foot { padding: 4px 8px 2px; border-top: 1px solid var(--line); margin-top: 2px; font-size: 10.5px; color: var(--ink-3); }
+.md-mathtip { min-width: 120px; max-width: min(480px, calc(100vw - 16px)); padding: 8px 12px; transform-origin: 16px 0; transition: opacity calc(var(--t) * 120ms); }
+.md-mathtip.dim { opacity: .3; }
+.md-mathpv { overflow-x: auto; overflow-y: hidden; text-align: center; font-size: 14px; }
+.md-mathpv.md-mathempty { color: var(--ink-3); font-size: 12px; }
+.md-mathstale { opacity: .38; }
+.md-matherr { display: flex; gap: 7px; align-items: flex-start; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--line); font: 12px/1.5 var(--sys); color: var(--ink); text-align: left; cursor: default; }
+.md-matherr .dot { flex: none; width: 15px; height: 15px; margin-top: 1px; border-radius: 50%; corner-shape: round; background: var(--warn); color: #fff; font: 700 10px/15px var(--sys); text-align: center; }
+.md-matherr code { font: 11px var(--mono); background: var(--hlrow); padding: 0 3px; border-radius: 4px; }
+.md-matherr .fix { border: 0; cursor: pointer; font: 600 11px var(--mono); color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, transparent); padding: 1px 6px; border-radius: 5px; transition: background calc(var(--t) * 120ms), color calc(var(--t) * 120ms); }
+.md-matherr .fix:hover { background: var(--accent); color: var(--accent-ink); }
+.md-matherr .where { display: block; margin-top: 2px; font: 11px var(--mono); color: var(--ink-3); white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+.md-matherr .where u { text-decoration: none; color: var(--warn); box-shadow: inset 0 -1.5px 0 var(--warn); }

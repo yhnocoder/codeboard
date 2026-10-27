@@ -31,7 +31,7 @@ async function deletedParentCrumb(res: Record<string, unknown>) {
   const t = await subHost(P, [C]), h = t.h, page = h.page;
   await idle(h);
   await enter(t, "fC");
-  res.crumbsIn = await page.locator(".crumbs .crumb").allTextContents();
+  res.crumbsIn = await page.locator(".crumbs .crumb:not(.back)").allTextContents();
   await t.store.remove("bParent");
   await expect(page.locator(".crumbs .crumb")).toHaveCount(0);
   res.crumbsAfter = await page.locator(".crumbs .crumb").count();

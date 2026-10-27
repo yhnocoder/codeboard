@@ -314,6 +314,9 @@ export function separate(id: string) {
     const wa = defaultWidth(a), wc = defaultWidth(c);
     b.place[a.id] = { x: kp.x, y: kp.y, w: wa, section: kp.section };
     b.place[c.id] = { x: kp.x + wa + 40, y: kp.y, w: wc, section: kp.section };
+    // 两栏拆回来时和 Compare 斜得一样
+    const tilt = b.cards.find((x) => x.id === id)?.tilt;
+    a.tilt = c.tilt = tilt;
     // 连在 Compare 上的箭头、贴在它上面的 Sticker 改到左栏
     replaceCards(b, [id], () => ({ card: a.id }));
   });
@@ -474,6 +477,13 @@ export function renameSection(id: string, v: string) {
 // 无背景：Image 默认无背景，Code 可选
 
 export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && !!c.nobg);
+/** 倾斜：选中的几张卡里有没斜的就都斜，都斜着就都放正（Compare 的栏算整张 Compare） */
+export function toggleTilt(ids: string[]) {
+  const cs = [...new Set(ids.map((i) => cardById(i)?.host.id).filter(Boolean) as string[])];
+  if (!cs.length) return;
+  const on = !cs.every((i) => cardById(i)?.card.tilt);
+  mutate((b) => { for (const i of cs) { const k = findCard(b, i)?.card; if (k) k.tilt = on || undefined; } });
+}
 export function toggleNoBg(id: string) {
   mutate((b) => {
     const c = findCard(b, id)?.card;

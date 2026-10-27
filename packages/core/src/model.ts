@@ -62,6 +62,8 @@ type CardBase = {
   desc?: string; // 卡片说明（标题下一段话，Walkthrough 时显示）
   /** 进程标签：自由文字（rank 0、rank 1…N、Scheduler × TP）；light = 线程 / CUDA stream，浅一点的样式 */
   procs?: ProcTag[];
+  /** 像贴纸一样斜贴在白板上（转 TILT_DEG，编辑时回正） */
+  tilt?: true;
 };
 
 export type ProcTag = { text: string; light?: boolean };
@@ -160,7 +162,7 @@ export type CompareCard = CardBase & {
 };
 
 /**
- * 子白板：另一块白板嵌在这块白板上，画成带名字的骨架（卡片标题、调用图标记、连线、Section 色，不画代码）。
+ * 子白板：另一块白板嵌在这块白板上，框里按 Section 分栏画成能读的小卡片（种类图标、标题、一行摘要，不画代码和箭头）。
  * 只存是哪块白板；骨架由宿主按那块白板算好发来（白板界面里没有子白板的完整内容）。Place 总有 h（框的大小由用户定）。
  */
 export type BoardCard = CardBase & { kind: "board"; board: string };

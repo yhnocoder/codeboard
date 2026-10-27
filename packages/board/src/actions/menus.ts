@@ -12,7 +12,7 @@ import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, se
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
-import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem, fitSections, tidyUp } from "./edit";
+import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleTilt, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem, fitSections, tidyUp } from "./edit";
 import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
 import { openAddNote, setMarkColor, setNoteBg, showPeek } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
@@ -115,9 +115,11 @@ function cardItems(id: string, x: number, y: number): Item[] {
   const c = f.card;
   const host = f.host;
   const lockItem: Item = { label: placeOf(host.id).locked ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock([host.id]) };
+  const tiltItem: Item = { label: "Tilt", kbd: kbd("tilt"), checked: !!host.tilt, run: () => toggleTilt([host.id]) };
   // 每种卡同一个结构：常用操作 → Edit ▸ → Arrange ▸ → 分隔线 → Move to New Section、Delete（红）。
   // 界面上已经有的（双击改名、⌘D、拖圆点连线）不进菜单
   const tail: Item[] = [
+    tiltItem,
     arrangeItem(() => [host.id]),
     null,
     ...sectionItems(),
@@ -128,6 +130,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
   if (c.kind === "board") return [
     { label: "Open", kbd: kbd("enterBoard"), run: () => enterFrame(id) },
     { label: "Edit", sub: [lockItem] },
+    tiltItem,
     arrangeItem(() => [host.id]),
     null,
     ...sectionItems(),
@@ -192,7 +195,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
       { label: "Separate", run: () => separate(id) },
       { label: "Walk Through", kbd: "P", disabled: canWalk ? false : "No arrows go out of this card", run: () => startWalk(id) },
       ...sectionItems(),
-      lockItem, arrangeItem(() => [host.id]), null,
+      lockItem, tiltItem, arrangeItem(() => [host.id]), null,
       ...deleteItems(host.id),
     ];
   }
@@ -244,7 +247,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     // 我的改动：同一段代码的分支 / 工作区 / 另一个 worktree / 复制的文件 / PR
     ...(free || col || c.gen ? [] : [{ label: c.variants?.length ? "Add Another Variant…" : "Add Variant…", run: () => void addVariantMenu(c.id, x, y) } as Item]),
     { label: "Call Graph", sub: flow },
-    ...(col ? [] : [arrangeItem(() => [host.id])]),
+    ...(col ? [] : [tiltItem, arrangeItem(() => [host.id])]),
     null,
     ...(col ? [] : [...sectionItems(), turnItem()]),
     ...deleteItems(host.id),
@@ -282,6 +285,7 @@ function multiItems(): Item[] {
     ...sectionItems(),
     turnItem(),
     { label: lockAll ? "Unlock" : "Lock", kbd: kbd("lock"), run: () => toggleLock(sel.cards, sel.sections) },
+    { label: "Tilt", kbd: kbd("tilt"), checked: cs.every((c) => cardById(c.id)?.host.tilt), run: () => toggleTilt(sel.cards) },
     { label: "Tidy Up", kbd: kbd("tidyUp"), disabled: cs.length >= 2 ? false : "Select two or more cards", run: () => tidyUp() },
     arrangeItem(() => [...sel.cards]),
     null,

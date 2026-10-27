@@ -63,6 +63,12 @@ export function anchorOn(b: Box, side: Side, rowY: number): Anchor {
   return { x: cx(b), y: b.y + b.h, nx: n.x, ny: n.y };
 }
 
+/** 斜贴的卡（转了 rad，绕 b 的中心）：端点跟着边转过去，朝外的方向也一起转 */
+export function turnAnchor(a: Anchor, b: Box, rad: number): Anchor {
+  const c = Math.cos(rad), s = Math.sin(rad), dx = a.x - cx(b), dy = a.y - cy(b);
+  return { x: cx(b) + dx * c - dy * s, y: cy(b) + dx * s + dy * c, nx: a.nx * c - a.ny * s, ny: a.nx * s + a.ny * c };
+}
+
 /** 换边时端点滑过去：位置直线插值，朝向按角度插值（左右对调时从下面转过去） */
 export function slide(a: Anchor, b: Anchor, p: number): Anchor {
   if (p >= 1) return b;

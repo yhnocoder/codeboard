@@ -14,9 +14,11 @@ import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
 import { clipboardText } from "./clipboard";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
-import { CodeBlockView } from "./codeblock";
+import { CodeBlockView, codeGapClick } from "./codeblock";
 import type { CodeLang } from "./codelang";
 import { MathBlockView } from "./mathblock";
+import { mathHintsPlugin } from "./mathhints";
+import { mathMacros } from "../math";
 import { imageEditing, insertImageUrl, type SaveImage } from "./image";
 import { Typora, reconvert } from "./typora";
 import { sourceKey } from "./source";
@@ -315,13 +317,16 @@ function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   );
 }
 
+// 每次排版时读：公式预设换了也跟上，公式里的 \newcommand 不漏到别的公式
+const mathOptions = { throwOnError: false, get macros() { return mathMacros(); } };
+
 function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement | null, exit: () => void, complete: (b: string, a: string) => Promise<string | null>): AnyExtension[] {
   const onMath = (_n: PMNode, pos: number) => openMathAt(ed(), pos);
   // 公式：点一下在原处展开原文（行内的由 source.ts 换成 $…$，公式块自己的节点视图展开，见 mathblock.ts）
-  const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: { throwOnError: false } })
+  const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: mathOptions })
     : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
     : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
-    : x.name === "codeBlock" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
+    : x.name === "codeBlock" ? (x as TNode).extend({ addProseMirrorPlugins: () => [codeGapClick()], addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
     : x));
   const Slash = Extension.create({
     name: "cbSlash",
@@ -400,10 +405,12 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
       },
     })],
   });
+  // 行内公式的补全、预览：抢在列表、灰字、Esc 退出前面拿 ↑↓ 回车 Tab Esc
+  const MathHintsExt = Extension.create({ name: "cbMathHints", priority: 300, addProseMirrorPlugins: () => [mathHintsPlugin()] });
   return [
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
-    ...base, Slash, Ref, Emo, Rules, Last, Tail,
+    MathHintsExt, ...base, Slash, Ref, Emo, Rules, Last, Tail,
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
     ...(handle ? [DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } })] : []),
