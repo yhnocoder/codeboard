@@ -3,8 +3,8 @@
 //      tests and the demo all use; then typecheck, unit tests (core, markdown, board, host, extension) and the Markdown demo
 //      (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
 //      sources changed since the last one
-//   2. the harness scenarios this change needs (tools/test/pick.mjs), compared with origin/main, several at a time,
-//      within what is left of the 3 minutes
+//   2. as soon as the board is built (the scenarios need nothing else), the harness scenarios this change needs
+//      (tools/test/pick.mjs), compared with origin/main, several at a time, within what is left of the 3 minutes
 // Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness>]
 //   scenario names are always run (the problem being worked on); --all runs every scenario, with no time limit
 import { spawn, execFileSync } from "node:child_process";
@@ -50,19 +50,18 @@ const fresh = fs.existsSync(path.join(REPO, "extensions/vscode/media/board/board
 const build = fresh ? run("build (extension only; board unchanged)", "npm", ["run", "build", "-w", "codeboard-vscode"])
   : run("build", "sh", ["-c", "npm run build -w @codeboard/board && npm run build -w codeboard-vscode"]).then((ok) => { if (ok) fs.writeFileSync(stamp, hash); return ok; });
 
-const first = await Promise.all([
+const first = Promise.all([
   run("typecheck", "npm", ["run", "typecheck"]),
   run("unit tests", "npm", ["test"]),
-  build,
   run("markdown demo", "npm", ["test", "-w", "@codeboard/markdown-demo"]),
 ]);
-if (!first[2]) { console.log("build failed: no harness run"); process.exit(1); }
+if (!(await build)) { console.log("build failed: no harness run"); await first; process.exit(1); }
 
 let base = opt("base");
 if (!base) {
   try { execFileSync("git", ["fetch", "-q", "origin", "main"], { cwd: REPO, stdio: "ignore", timeout: 15000 }); } catch { /* offline: the last fetched main */ }
   try { base = execFileSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: REPO, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim(); }
-  catch { console.log("no merge base with origin/main (fetch it, or pass --base=<ref>): no harness run"); process.exit(1); }
+  catch { console.log("no merge base with origin/main (fetch it, or pass --base=<ref>): no harness run"); await first; process.exit(1); }
 }
 const workers = Math.min(4, os.availableParallelism());
 // Harness budget: what is left of the 3 minutes, times the workers, minus a margin for start-up and the slowest scenario finishing last
@@ -73,6 +72,6 @@ const ok = await new Promise((resolve) => {
   const p = spawn("node", ["tools/test/harness.mjs", ...harness, `--workers=${workers}`, "--json=test-out/check/harness.json"], { cwd: REPO, stdio: "inherit" });
   p.on("close", (code) => resolve(code === 0));
 });
-const all = first.every(Boolean) && ok;
+const all = (await first).every(Boolean) && ok;
 console.log(`\n${all ? "✓ all passed" : "✗ failures above"} in ${secs()} s${secs() > LIMIT ? ` (over the ${LIMIT} s target)` : ""}`);
 process.exit(all ? 0 : 1);
