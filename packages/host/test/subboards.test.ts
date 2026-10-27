@@ -46,11 +46,11 @@ describe("sub-boards", () => {
     expect(sk.nope).toBeNull();
   });
   it("enters the child in the same panel with a breadcrumb, the parent camera and the walkthrough hop", async () => {
-    await send({ type: "enterBoard", id: "bS", frame: "f", cam: { x: 1, y: 2, z: 0.5 }, walk: { into: { root: "r", i: 2 }, start: "n" } });
+    await send({ type: "enterBoard", id: "bS", frame: "f", cam: { x: 1, y: 2, z: 0.5 }, walk: { into: { root: "r", i: 2 } } });
     expect(p.id).toBe("bS");
     expect(switches[0].crumbs).toEqual([{ id: "bE", name: "Engine", frame: "f" }]);
     expect(switches[0].cams[0].z).toBe(0.5);
-    expect(switches[0].walk?.start).toBe("n");
+    expect(switches[0].walk).toEqual({ into: { root: "r", i: 2 } });
   });
   it("refuses to enter a cycle", async () => {
     // the parent placed inside the child: the board refuses first, the host checks again on entering

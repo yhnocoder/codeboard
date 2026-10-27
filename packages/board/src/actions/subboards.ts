@@ -4,7 +4,7 @@ import { cardTitle, descendants, escHtml, extractBoard, removeCards, uid, wouldC
 import { state, mutate, sel, select, clearSel, cardById, hostOf, rectOf, toast, flushSave, flows } from "../state/store";
 import { camTarget, camTo, fitRect, viewportCenter } from "../state/camera";
 import { iconHtml } from "../ui/icons";
-import { crumbs, frameOf, skelOf, subRect, subRefs, walkBack, setWalkBack, setCrumbMorph } from "../state/subboards";
+import { crumbs, frameOf, skelOf, subRefs, walkBack, setWalkBack, setCrumbMorph } from "../state/subboards";
 import { resolveCardRef, revealCard, selectCard } from "./common";
 import { walk, setWalk } from "../state/ui";
 import { settleHome } from "../state/sections";
@@ -202,18 +202,14 @@ export function boardShown() {
   void Promise.all([fadeIn?.finished, t.fly?.finished].map((p) => p?.catch(() => undefined))).then(() => finish(t));
 }
 
-/** 讲解走到子白板框：镜头推进那张卡（箭头连到的）所在的框，进去从那张卡讲起，讲完回来 */
+/** 讲解走到子白板框：镜头推进这个框，进去讲，讲完回来 */
 export function walkIntoFrame(frame: string, i: number) {
   const w = walk();
   if (!w) return;
-  const before = new Set(w.order.slice(0, i).map(hostOf));
-  const via = state.board.links.find((l) => l.to.card === frame && before.has(hostOf(l.from.card))) ?? state.board.links.find((l) => l.to.card === frame);
-  const sub = via?.to.sub;
-  const r = (sub !== undefined && subRect(frame, sub)) || rectOf(frame);
+  const r = rectOf(frame);
   const t = fitRect({ x: r.x - 20, y: r.y - 20, w: r.w + 40, h: r.h + 40 }, 2.5);
   camTo(t.x, t.y, t.z, true);
   const hop: WalkHop = { into: { root: w.root, i } };
-  if (sub !== undefined) hop.start = sub;
   setTimeout(() => { if (walk()?.i === i) { setWalk(null); enterFrame(frame, hop); } }, 420);
 }
 /** 子白板里的讲解讲完了：回父白板接着讲（dir = +1 下一步，-1 上一步） */

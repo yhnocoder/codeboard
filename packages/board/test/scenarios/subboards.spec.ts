@@ -60,7 +60,7 @@ test("turnIntoBoardUndo", async () => {
     // edited: enter, delete a card, come back, undo
     const f1 = (await turn([c.id, d.id], "Alloc"))!;
     let n = t.inits.length;
-    await page.locator(`.card[data-id="${f1.id}"] .sbhead`).dblclick({ position: { x: 200, y: 12 } }); await switched(t, n, "entering Alloc opens its board");
+    await page.locator(`.card[data-id="${f1.id}"] .sbname`).dblclick(); await switched(t, n, "entering Alloc opens its board");
     res.entered = t.cur() === f1.board;
     await page.keyboard.press("Shift+Digit1"); await idle(h);
     await page.locator(`.card[data-id="${d.id}"] .chead`).click({ position: { x: 120, y: 10 } });
@@ -103,7 +103,7 @@ test("lineSelectionStaysOnItsBoard", async () => {
   const t = await subHost(P, [C]);
   const h = t.h, page = h.page;
   let n = t.inits.length;
-  await page.locator(`.card[data-id="frLs"] .sbhead`).dblclick({ position: { x: 200, y: 12 } }); await switched(t, n, "entering Child opens its board");
+  await page.locator(`.card[data-id="frLs"] .sbname`).dblclick(); await switched(t, n, "entering Child opens its board");
   await page.locator(`.card[data-id="${c.id}"] .gutter .no`).nth(2).click();
   await expect(page.locator(`.card[data-id="${c.id}"] .gutter .no.sel`)).toHaveCount(1);
   n = t.inits.length;
@@ -139,7 +139,7 @@ test("walkHopWaitsForMeasure", async () => {
     });
   });
   const views: Record<string, never> = {};
-  await h.post({ type: "init", board: C, boards: [{ id: P.id, name: P.name, cards: 1 }, { id: C.id, name: C.name, cards: 1 }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never, crumbs: [{ id: P.id, name: P.name }], walk: { into: { root: "x", i: 0 }, start: "nTall" } } as never);
+  await h.post({ type: "init", board: C, boards: [{ id: P.id, name: P.name, cards: 1 }, { id: C.id, name: C.name, cards: 1 }], views, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never, crumbs: [{ id: P.id, name: P.name }], walk: { into: { root: "x", i: 0 } } } as never);
   await until(h, "the walk moves the camera", () => pg.evaluate(() => (window as unknown as { __hop?: number | null }).__hop != null));
   await idle(h);
   const r = await pg.evaluate(() => {
@@ -172,7 +172,7 @@ test("walkHopSkipsUnmeasuredCard", async () => {
   C.place.nZero = { x: 200, y: 200, w: 300 };
   C.cam = { x: 0, y: 0, z: 1 };
   const world = () => pg.evaluate(() => (document.querySelector(".world") as HTMLElement).style.transform);
-  await h.post({ type: "init", board: C, boards: [{ id: P.id, name: P.name, cards: 1 }, { id: C.id, name: C.name, cards: 2 }], views: {}, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never, crumbs: [{ id: P.id, name: P.name }], walk: { into: { root: "x", i: 0 }, start: "nStart" } } as never);
+  await h.post({ type: "init", board: C, boards: [{ id: P.id, name: P.name, cards: 1 }, { id: C.id, name: C.name, cards: 2 }], views: {}, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: DEFAULT_SETTINGS } as never, crumbs: [{ id: P.id, name: P.name }], walk: { into: { root: "x", i: 0 } } } as never);
   const at = await world();
   const moved = await until(h, "the walk moves the camera although one card is never measured", async () => (await world()) !== at, 3000).catch(() => false);
   check("walkHopSkipsUnmeasuredCard-moves", moved, { at });
@@ -232,10 +232,10 @@ async function run(res: Record<string, unknown>) {
     res.frame = !!frame && eng.cards.length === 2;
     res.child = child ? child.cards.length : 0;
     res.childLinks = child?.links.length;
-    res.subLinks = eng.links.filter((l) => l.to.card === frame?.id && l.to.sub).map((l) => l.to.sub === sch.id || l.to.sub === post.id);
+    // the calls into schedule / postprocess now go to the frame itself
+    res.inLinks = eng.links.filter((l) => l.to.card === frame?.id).map((l) => JSON.stringify(l.to));
     res.skelCards = await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub]`).count();
     res.title = await page.locator(`.card[data-id="${frame?.id}"] .sbhead`).textContent();
-    res.entry = await page.locator(".sbentry").count();
     await page.keyboard.press("Escape"); await page.keyboard.press("Shift+Digit1"); await idle(h);
     await shotPr(h, "subboards-1-frame");
 
@@ -257,16 +257,15 @@ async function run(res: Record<string, unknown>) {
     await page.locator(`.card[data-id="${opsFrame.id}"] .skel .sk-more`).waitFor(); await idle(h); // with the skeleton push
     res.more = await page.locator(`.card[data-id="${opsFrame.id}"] .skel .sk-more`).textContent();
 
-    // 4. A new arrow from LLMEngine.step into a skeleton card: Arrow tool, then click the card inside the frame
+    // 4. A new arrow from LLMEngine.step: Arrow tool, then click a mini card inside the frame: the arrow goes to the frame itself
     await page.keyboard.press("Escape");
     await page.keyboard.press("Shift+Digit1"); await idle(h);
     await page.locator(`.card[data-id="${step.id}"] .chead`).click({ timeout: 5000, position: { x: 120, y: 10 } });
     await page.locator('.bbar button[aria-label="Arrow"]').click(); await idle(h);
-    const target = child?.cards.find((c) => c.id === pre.id);
-    await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub="${target?.id}"]`).click({ force: true });
-    await until(h, "the arrow into the skeleton card is saved", () => t.store.peek("bEngine")!.links.some((l) => l.to.sub === pre.id && !l.call)); await idle(h);
-    const nl = t.store.peek("bEngine")!.links.find((l) => l.to.sub === pre.id && !l.call);
-    res.newArrow = !!nl;
+    await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub]`).first().click({ force: true });
+    const plainIn = () => t.store.peek("bEngine")!.links.find((l) => l.from.card === step.id && l.to.card === frame?.id && !l.call);
+    await until(h, "the arrow into the frame is saved", plainIn); await idle(h);
+    res.newArrow = JSON.stringify(plainIn()?.to);
     await expect(page.locator(".toast.show")).toHaveCount(0);
     // 骨架里那张卡在视口外时 Playwright 的点击会先把 #board 滚过去（线那层的 .wext 把世界层撑大了）：滚回来，后面按屏幕坐标点的地方才对得上
     await page.evaluate(() => { const b = document.querySelector("#board")!; b.scrollLeft = 0; b.scrollTop = 0; });
@@ -275,7 +274,7 @@ async function run(res: Record<string, unknown>) {
 
     // 5. Double-click enters the sub-board (same panel) with a breadcrumb; cycle refused; Esc returns
     let n = t.inits.length;
-    await page.locator(`.card[data-id="${frame?.id}"] .sbhead`).dblclick({ position: { x: 200, y: 12 } }); await switched(t, n, "entering Scheduler opens its board");
+    await page.locator(`.card[data-id="${frame?.id}"] .sbname`).dblclick(); await switched(t, n, "entering Scheduler opens its board");
     res.entered = t.cur() === (frame as any)?.board && t.crumbs().length === 1;
     res.crumbs = await page.locator(".crumbs").textContent();
     await shotPr(h, "subboards-3-breadcrumb");
@@ -285,19 +284,11 @@ async function run(res: Record<string, unknown>) {
     await page.locator(".toast").waitFor(); await idle(h);
     res.cycleToast = await page.locator(".toast").textContent();
     res.noCycle = !subBoardsOf(t.store.peek(t.cur())!).includes("bEngine");
-    // remove preempt in the child: the parent arrow into it goes lost (Esc here would leave: nothing is selected)
     res.lo = await page.locator(".card.lo-ov, .card.lo-map").count();
-    await page.keyboard.press("Shift+Digit1"); await idle(h);
-    await page.locator(`.card[data-id="${pre.id}"] .chead`).click({ timeout: 5000, position: { x: 120, y: 10 } });
-    await page.keyboard.press("Backspace"); await idle(h);
-    // nothing is selected after ⌫, so the first Esc already leaves; the second one lands on Engine
+    // nothing is selected: Esc leaves
     n = t.inits.length;
-    await page.keyboard.press("Escape"); await idle(h);
     await page.keyboard.press("Escape"); await switched(t, n, "Esc goes back to Engine");
     res.back = t.cur() === "bEngine" && !(await page.locator(".crumbs").count());
-    // the host's skeleton push (debounced, after the init) tells the board preempt is gone: the board marks the arrow lost and saves
-    await until(h, "the arrow into the deleted card is marked lost", () => t.store.peek("bEngine")!.links.filter((l) => l.to.sub === pre.id).every((l) => l.lost?.to)); await idle(h);
-    res.lost = t.store.peek("bEngine")!.links.filter((l) => l.to.sub === pre.id).every((l) => l.lost?.to);
 
     // 6. Walkthrough from LLMEngine.step: enters Scheduler at schedule, walks there, returns to Engine and goes on
     await page.locator(`.card[data-id="${step.id}"] .chead`).click({ timeout: 5000, position: { x: 120, y: 10 } });
@@ -315,15 +306,16 @@ async function run(res: Record<string, unknown>) {
 
     // 7. Remove only the frame: the Ops board stays in the library
     await page.keyboard.press("Shift+Digit1"); await idle(h);
-    await page.locator(`.card[data-id="${opsFrame?.id}"] .sbhead`).click({ position: { x: 150, y: 12 } });
+    await page.locator(`.card[data-id="${opsFrame?.id}"] .sbname`).click();
     await page.keyboard.press("Backspace");
     await until(h, "the Ops frame is removed", () => !t.store.peek("bEngine")!.cards.some((c) => c.id === opsFrame?.id)); await idle(h);
     res.removedFrame = !t.store.peek("bEngine")!.cards.some((c) => c.id === opsFrame?.id) && !!t.store.peek("bOps");
 
-    const ok = res.frame && res.child === 5 && res.childLinks === 3 && (res.subLinks as boolean[]).length === 2 && (res.subLinks as boolean[]).every(Boolean)
-      && (res.skelCards as number) >= 5 && /Scheduler.*5 cards.*bb823b3/.test(String(res.title)) && (res.entry as number) >= 2 && res.far === 1
-      && /\+4 more/.test(String(res.more)) && res.newArrow && res.entered && /Engine.*Scheduler/.test(String(res.crumbs))
-      && /Can’t put Engine inside Scheduler: Scheduler is already inside Engine/.test(String(res.cycleToast)) && res.noCycle && res.back && res.lost
+    const into = JSON.stringify({ card: frame?.id });
+    const ok = res.frame && res.child === 5 && res.childLinks === 3 && JSON.stringify(res.inLinks) === JSON.stringify([into, into])
+      && (res.skelCards as number) >= 1 && /Scheduler\s*5\s*bb823b3$/.test(String(res.title)) && res.far === 1
+      && /\+4 more/.test(String(res.more)) && res.newArrow === into && res.entered && /Engine.*Scheduler/.test(String(res.crumbs))
+      && /Can’t put Engine inside Scheduler: Scheduler is already inside Engine/.test(String(res.cycleToast)) && res.noCycle && res.back
       && res.walkIn && res.walkOut && res.removedFrame && res.lo === 0;
     check("subboards", ok, JSON.stringify(res));
     await h.page.context().close();

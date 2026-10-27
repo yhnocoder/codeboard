@@ -151,14 +151,14 @@ function handle(m: HostToBoard) {
   }
 }
 
-/** 跨白板的讲解：进了子白板就从 start 讲起（讲完回去），回到父白板就接着讲 */
+/** 跨白板的讲解：进了子白板就从它的调用图（没有就第一张卡）讲起（讲完回去），回到父白板就接着讲 */
 async function hopWalk(w: NonNullable<Extract<HostToBoard, { type: "init" }>["walk"]>) {
   // 镜头按卡的实际大小框：没量过的卡只有存下来的估计值
   const board = state.board.id;
   await cardsMeasured();
   if (state.board.id !== board) return;
   if (w.into) {
-    const start = w.start ?? flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
+    const start = flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
     if (!start) { A.leaveBoard(undefined, { resume: { root: w.into.root, i: w.into.i + 1 } }); return; }
     setWalkBack(w.into);
     A.startWalk(start, { single: true });

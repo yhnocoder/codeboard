@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { activeOf, clone, cornerAt, findCard, hostOf, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { activeOf, clone, cornerAt, findCard, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 import { escapeRegExp, type BoundVal, type CallAlt } from "@codeboard/analysis/basics";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
@@ -462,7 +462,7 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
   }
   const on = (id: string) => cards[id] ?? (!o.copy && have.has(id) ? id : undefined);
   const end = (e: End, card: string): End => ({ ...e, card, ...(e.seg ? { seg: segs[e.seg] ?? e.seg } : {}) });
-  const key = (l: Link) => JSON.stringify([l.from.card, l.from.seg, l.from.line, l.to.card, l.to.seg, l.to.line, l.to.sub]);
+  const key = (l: Link) => JSON.stringify([l.from.card, l.from.seg, l.from.line, l.to.card, l.to.seg, l.to.line]);
   const there = new Set(b.links.map(key));
   for (const l of o.links ?? []) {
     const from = on(l.from.card), to = on(l.to.card);
@@ -574,16 +574,15 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
 
 /**
  * Turn into Board 的父白板一侧：这些卡（含 Compare 的栏）换成子白板框 frame（叠放在它们里最早那张的位置，摆在 place），sections 一起删掉。
- * 外面连进来的箭头改连框里的那张卡（End.sub；连到 Compare 的栏的算那张 Compare），从里面连出去的改成从整个框出发（去掉行和出发边）；
+ * 外面连进来的箭头改连到整个框（去掉行），从里面连出去的改成从整个框出发（去掉行和出发边）；
  * 其余跟删卡一样（removeCards）：里面的箭头、挂在这些卡上的 Sidenote、贴纸、问题的解答
  */
 export function cardsToFrame(b: Board, ids: Iterable<string>, frame: Card, place: Place, sections: Iterable<string>): void {
   const want = new Set(withCols(b, ids));
-  const host = hostOf(b);
   for (const l of b.links) {
     const a = want.has(l.from.card), t = want.has(l.to.card);
     if (a === t) continue;
-    if (t) { l.to = { card: frame.id, sub: host(l.to.card) }; if (l.lost) delete l.lost.to; }
+    if (t) { l.to = { card: frame.id }; if (l.lost) delete l.lost.to; }
     else { l.from = { card: frame.id }; if (l.lost) delete l.lost.from; if (l.sides) delete l.sides.from; }
     if (l.lost && !l.lost.from && !l.lost.to) delete l.lost;
     if (l.sides && !l.sides.from && !l.sides.to) delete l.sides;

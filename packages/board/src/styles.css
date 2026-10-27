@@ -1089,17 +1089,22 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .cbody.wrap .src.ded .l { text-indent: 0; } /* 自动换行时不藏缩进：换行的续行会对不齐 */
 .cbody.wrap .dedm { display: none; }
 
-/* 子白板框：名字 + 分栏（cards/BoardBody.tsx），颜色都在这里按主题取 */
-.card.board { --cr: calc(var(--r-card) + 4px); border-radius: var(--cr); background: color-mix(in srgb, var(--surface) 70%, var(--bg)); box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--ink) 45%, transparent), var(--sh-card); }
+/* 子白板框：一张静态的预览（cards/BoardBody.tsx），颜色都在这里按主题取。名字和卡数在框外上方，框里只有分栏。
+   卡的类名 board 和画布的 .board 撞了：位置、裁切照普通的卡 */
+.card.board { position: absolute; right: auto; bottom: auto; overflow: visible; --cr: min(calc(var(--r-card) * 1.75), 30px); border-radius: var(--cr); background: color-mix(in srgb, var(--surface) 72%, var(--bg)); box-shadow: 0 0 0 1px var(--hair), var(--sh-card); }
+.card.board:hover:not(.lift) { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 28%, transparent), var(--sh-card); }
 .card.board.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
 .card.board.drop-hot { box-shadow: 0 0 0 2px var(--k-fn), var(--sh-card); }
-.sbhead { position: relative; z-index: 2; display: flex; align-items: center; gap: 8px; height: 42px; padding: 2px 16px 0; box-sizing: border-box; flex: none; color: var(--ink); white-space: nowrap; overflow: hidden; cursor: grab; }
-.sbhead svg { flex: none; color: var(--ink-2); }
-.sbname { overflow: hidden; text-overflow: ellipsis; font: 700 15px/1.2 var(--sys); letter-spacing: -.01em; }
-.sbmeta { flex: none; font: 500 13px/1.2 var(--sys); color: var(--ink-3); }
-.sbgone { position: relative; z-index: 2; padding: 6px 12px; font: 12px/1.4 var(--sys); color: var(--ink-3); }
-/* 分栏（state/subboards.ts miniLayout 算好位置，尺寸都是世界坐标、和那边一套）：一个 Section 一栏，小卡片字号固定，右边、下边超出的渐隐 */
-.sbcols { position: absolute; left: 0; right: 0; top: 46px; bottom: 0; overflow: hidden; cursor: grab; contain: strict; --fade: 40px;
+/* 只有字接指针（拖、双击进去）：名字右边的空白还是画布 */
+.sbhead { position: absolute; left: 6px; right: 0; bottom: calc(100% + 10px); display: flex; align-items: baseline; gap: 10px; white-space: nowrap; color: var(--ink); pointer-events: none; }
+.sbhead > * { pointer-events: auto; cursor: grab; }
+.sbhead .step { align-self: center; }
+.sbname { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 700 25px/1.2 var(--sys); letter-spacing: -.015em; }
+.sbmeta { flex: none; font: 500 25px/1.2 var(--sys); letter-spacing: -.015em; color: var(--ink-3); }
+.sbcommit { flex: none; font: 12px/1 var(--mono); color: var(--ink-3); }
+.sbgone { position: relative; z-index: 2; padding: 16px 18px; font: 12px/1.4 var(--sys); color: var(--ink-3); }
+/* 分栏（state/subboards.ts miniLayout 算好位置，尺寸都是世界坐标、和那边一套）：一个 Section 一栏，小卡片字号固定；不滚动，右边、下边放不下的渐隐 */
+.sbcols { position: absolute; left: 0; right: 0; top: 16px; bottom: 0; overflow: hidden; cursor: grab; contain: strict; --fade: 44px;
   --sb-sand: #ceaa6e; --sb-blue: #6091cd; --sb-green: #6ea55f; --sb-pink: #d77891; --sb-sticky: color-mix(in srgb, #f6d965 34%, var(--surface)); }
 .sbcols.fade-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent); mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent); }
 .sbcols.fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade)), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade)), transparent); }
@@ -1116,7 +1121,6 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .mini .src .ico { flex: none; width: 11px; height: 11px; }
 .mini .src span { overflow: hidden; text-overflow: ellipsis; }
 .mini .mk { flex: none; margin-left: auto; min-width: 10px; padding: 0 3px; border-radius: 3px; background: var(--row); font: 700 9px/12px var(--mono); color: var(--ink-2); text-align: center; }
-.mini .mk.joined { background: var(--accent); color: var(--accent-ink); }
 .mini .ti { margin-top: 4px; font: 600 11.5px/15px var(--sys); color: var(--ink); display: -webkit-box; -webkit-line-clamp: var(--tl); -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
 .mini.k-code .ti { font: 600 11px/15px var(--mono); letter-spacing: -.01em; word-break: normal; overflow-wrap: anywhere; } /* 符号名在 . 和 _ 后面换行（<wbr>） */
 .mini .sub { margin-top: 2px; font: 10.5px/14px var(--sys); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1126,17 +1130,13 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .mini.sticky .ti { font: 14px/18px var(--hand); font-weight: 400; }
 .mini.k-more { display: flex; align-items: center; background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink-3) 60%, transparent); }
 .mini.k-more .ti { margin: 0; font-weight: 500; color: var(--ink-2); }
-.mini.hot { box-shadow: 0 0 0 2px var(--k-fn); }
 .board .mini:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 10px -3px rgba(50,35,10,.15); }
-.card.board.sel .sbcols { cursor: default; }
-.sbentry { fill: var(--surface); stroke: var(--edge, var(--ink-2)); stroke-width: 1.6; }
-.sbentry.lost { stroke: var(--lk-lost, #d64545); }
-/* 地图档的名字：框里左上角一块底色（卡本身裁掉框外的东西，放框上面看不见） */
+/* 地图档的名字：框里左上角一块底色（框外的大名字在地图档太小，藏起来） */
 .sbfar { position: absolute; left: 0; top: 0; max-width: 100%; box-sizing: border-box; visibility: hidden; padding: calc(2px * var(--iz, 1)) calc(6px * var(--iz, 1)); border-radius: 0 0 calc(5.5px * var(--iz, 1)) 0;
   background: color-mix(in srgb, var(--surface) 88%, transparent); font: 700 calc(12px * var(--iz, 1))/1.25 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 1; --iz: inherit; }
 .card.board.lo-map > .cface { clip-path: none; --iz: inherit; }
 .card.board.lo-map .sbfar { visibility: visible; }
-.card.board.lo-map .sbhead > svg, .card.board.lo-map .sbname, .card.board.lo-map .sbmeta, .card.board.lo-map .sbgone { visibility: hidden; }
+.card.board.lo-map .sbhead, .card.board.lo-map .sbhead > *, .card.board.lo-map .sbgone { visibility: hidden; }
 /* 地图档：小卡片只剩色块（Section 色），字都不画 */
 .card.board.lo-map .sbcol, .card.board.lo-map .mini > * { visibility: hidden; }
 .card.board.lo-map .mini { background: color-mix(in srgb, var(--ink) 16%, transparent); box-shadow: none; }
@@ -1347,8 +1347,7 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .dialog.xdlg input[type="checkbox"] { width: auto; margin: 0; padding: 0; box-shadow: none; background: none; accent-color: var(--accent); }
 
 /* 子白板只画标题（设置 Sub-board Preview） */
-.card.board .sbonly { position: absolute; inset: 34px 0 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--ink-2); font-size: 15px; }
-.card.board .sbonly small { font: 11px var(--mono); color: var(--ink-3); }
+.card.board .sbonly { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--ink-3); opacity: .6; }
 /* 窄面板（白板放在右边一栏时常见）：底栏居中会压到右下的 dock，先靠左；再窄 dock 并进底栏（App.tsx NARROW） */
 @media (max-width: 900px) { .bbar { left: 12px; right: auto; margin-inline: 0; } }
 

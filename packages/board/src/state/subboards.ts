@@ -1,9 +1,9 @@
-// 骨架画在框里（cards/BoardBody.tsx），连到骨架里某张卡的箭头（End.sub）按同一套摆法找那张卡的位置（canvas/Links.tsx）。
+// 骨架画在框里（cards/BoardBody.tsx）：一张静态的预览，不滚动，箭头只连到整个框。
 import { batch, createEffect, createMemo, createSignal, untrack } from "solid-js";
 import { createStore, reconcile, unwrap } from "solid-js/store";
-import { skelHas, type BoardCard, type Crumb, type Rect, type Skeleton, type SkelCard } from "@codeboard/core";
+import type { BoardCard, Crumb, Skeleton, SkelCard } from "@codeboard/core";
 import { ask } from "../host";
-import { state, sync, rectOf } from "./store";
+import { state } from "./store";
 import { rooted } from "./root";
 
 /** 子白板 id → 骨架；null = 那块白板没了；没有这一项 = 还没拿到 */
@@ -27,7 +27,6 @@ export function resetSubboards(c: Crumb[] | undefined) {
   setSkels(reconcile({}));
   setSkelVer(reconcile({}));
   layouts.clear();
-  setColScroll(reconcile({}));
   setCrumbs(c ?? []);
   setWalkBack(null);
   asked.clear();
@@ -48,44 +47,20 @@ export function trackSkeletons() {
     for (const id of want) asked.add(id);
     void ask("skeletons", { ids: want }).then((r) => { if (r) putSkels(r); }, () => { for (const id of want) asked.delete(id); });
   });
-  // 连到骨架里某张卡的箭头：那张卡在子白板上没了 → lost（像代码更新后行没了一样，红色、等用户重连）；又出现了（子白板撤销）→ 去掉 lost。
-  // 跟宿主同步来的一样走 sync：存盘、不进撤销栈
-  createEffect(() => {
-    if (!state.loaded) return;
-    const fix: [string, boolean][] = [];
-    for (const l of state.board.links) {
-      if (l.to.sub === undefined) continue;
-      const f = frameOf(l.to.card);
-      if (!f) continue;
-      const sk = skels[f.board];
-      if (sk === undefined) continue; // 还没拿到
-      const gone = sk === null || !skelHas(sk, l.to.sub);
-      if (gone !== !!l.lost?.to) fix.push([l.id, gone]);
-    }
-    if (!fix.length) return;
-    untrack(() => sync((b) => {
-      for (const [id, gone] of fix) {
-        const l = b.links.find((k) => k.id === id);
-        if (!l || l.to.sub === undefined) continue;
-        if (gone) l.lost = { ...l.lost, to: true };
-        else if (l.lost) { delete l.lost.to; if (!l.lost.from) delete l.lost; }
-      }
-    }));
-  });
 }
 
 // ---------- 框里的分栏 ----------
 // 一个 Section 一栏（栏名 + 卡数；不在 Section 里的卡单独一栏），栏里是固定字号的小卡片。整个排布在这里算好（每张小卡片的位置、大小），
-// 框里只是按算好的位置摆（cards/BoardBody.tsx），箭头连到小卡片也按同一份位置（subRect）。只跟骨架有关：框改大小、平移缩放都不重算
+// 框里只是按算好的位置摆（cards/BoardBody.tsx），只摆框里看得见的那些。排布只跟骨架有关：框改大小、平移缩放都不重算
 
 /** 分栏的尺寸（世界坐标，和 styles.css 的 .sbcols 一套）：小卡片宽、间距、栏距、左右留白、分栏区离框顶、栏头高 */
-export const MINI_W = 124, MINI_GAP = 6, COL_GAP = 16, COLS_PAD = 16, COLS_TOP = 46, COL_HEAD = 39;
+export const MINI_W = 124, MINI_GAP = 6, COL_GAP = 16, COLS_PAD = 16, COLS_TOP = 16, COL_HEAD = 39;
 /** 小卡片里的几行（px）：上下留白、出处一行、标题每行、摘要一行、缩略图 */
 const PAD_T = 7, PAD_B = 8, SRC_H = 12, TI_GAP = 4, TI_LH = 15, SUB_H = 16, THUMB_H = 43;
 
 export type MiniBox = { c: SkelCard; x: number; y: number; w: number; h: number; tl: number };
 export type MiniCol = { key: string; t: string; color?: string; n: number; x: number; w: number; cards: MiniBox[] };
-export type MiniLayout = { cols: MiniCol[]; w: number; h: number; at: Map<string, MiniBox> };
+export type MiniLayout = { cols: MiniCol[]; w: number; h: number };
 
 let ctx: CanvasRenderingContext2D | null | undefined;
 /** 标题占几行（最多 max）：按字体量宽度，宁多勿少（少算了标题被截成 … 也不会压到下一行） */
@@ -105,7 +80,7 @@ export function miniLayout(sk: Skeleton): MiniLayout {
   for (const c of sk.cards) { const k = c.si ?? -1; groups.set(k, [...(groups.get(k) ?? []), c]); }
   const order = [...groups.keys()].filter((k) => k >= 0 && sk.secs[k]).sort((a, b) => reading(sk.secs[a], sk.secs[b]));
   if (groups.has(-1)) order.push(-1);
-  const cols: MiniCol[] = [], at = new Map<string, MiniBox>();
+  const cols: MiniCol[] = [];
   let x = COLS_PAD, h = 0;
   for (const k of order) {
     const cs = [...groups.get(k)!].sort(reading);
@@ -123,8 +98,7 @@ export function miniLayout(sk: Skeleton): MiniLayout {
         const tl = more ? 1 : lines(c.t, sticky ? `14px ${hand}` : c.k === "code" ? `600 11px ${mono}` : `600 11.5px ${sys}`, MINI_W - 16, sticky ? 4 : 2);
         const bh = PAD_T + (more ? 0 : SRC_H + TI_GAP) + tl * (sticky ? 18 : TI_LH) + (c.img ? THUMB_H : (c.d || c.l) && !sticky ? SUB_H : 0) + PAD_B;
         const b: MiniBox = { c, x: x + j * (MINI_W + MINI_GAP), y, w: MINI_W, h: bh, tl };
-        col.cards.push(b); at.set(c.id, b);
-        for (const id of c.ids ?? []) at.set(id, b);
+        col.cards.push(b);
         rh = Math.max(rh, bh);
       });
       y += rh + MINI_GAP;
@@ -133,7 +107,7 @@ export function miniLayout(sk: Skeleton): MiniLayout {
     cols.push(col);
     x += w + COL_GAP;
   }
-  return { cols, w: x - COL_GAP + COLS_PAD, h: h + 12, at };
+  return { cols, w: x - COL_GAP + COLS_PAD, h: h + 12 };
 }
 
 /** 每块子白板的骨架排一次（同一块子白板的几个框共用）：骨架换了（skelVer 加一）或者主题换了字体才重排 */
@@ -146,22 +120,6 @@ export function layoutOf(board: string): MiniLayout | null {
   const l = miniLayout(unwrap(sk));
   layouts.set(board, { key, l });
   return l;
-}
-
-/** 框里分栏滚到哪了（选中的框里滚轮滚的；箭头连到小卡片要跟着） */
-export const [colScroll, setColScroll] = createStore<Record<string, { x: number; y: number }>>({});
-
-/** 骨架里这张卡（或折进去的那个「+N」）的小卡片在画布上的矩形（名字那一截），夹在框里看得见的分栏区里；骨架还没到 / 卡没了时 null */
-export function subRect(frame: string, sub: string): Rect | null {
-  if (state.host.settings.subPreview === "title") return null; // 只画标题：箭头落在框上
-  const sk = skelOf(frame);
-  if (!sk) return null;
-  const b = layoutOf(frameOf(frame)!.board)?.at.get(sub);
-  if (!b) return null;
-  const r = rectOf(frame), s = colScroll[frame] ?? { x: 0, y: 0 };
-  const top = r.y + COLS_TOP, bottom = r.y + r.h - 6;
-  const x = Math.max(r.x, Math.min(r.x + r.w - 20, r.x + b.x - s.x)), y = Math.max(top, Math.min(bottom - 20, top + b.y - s.y));
-  return { x, y, w: Math.max(20, Math.min(b.w, r.x + r.w - x)), h: Math.min(b.h, 30) };
 }
 
 // ---------- [[ 链接到子白板里的卡 ----------

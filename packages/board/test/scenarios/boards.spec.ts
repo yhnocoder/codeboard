@@ -1,5 +1,5 @@
 // Boards and their storage: changes reach the host as they happen, copying connected cards between boards, empty questions,
-// undo across sub-boards (history per board, Turn into Board), arrows into a deleted sub-board card, crumbs to a deleted board.
+// undo across sub-boards (history per board, Turn into Board), crumbs to a deleted board.
 // Usage: npm run harness -- <scenario…>   (the test names below)
 import { emptyBoard, type Board } from "@codeboard/core";
 import { put, symCard, findSym, type Host } from "../harness";
@@ -21,8 +21,6 @@ test("undoafterpeek", () => verdict("undo-history-survives-a-visit-to-a-sub-boar
 
 test("undoturnintoboard", () => verdict("undoing-turn-into-board-removes-the-new-board", undoTurnIntoBoard));
 
-test("expandlostcall", () => verdict("a-call-whose-sub-board-card-was-deleted-expands-again", expandLostCall));
-
 test("deletedparentcrumb", () => verdict("a-deleted-parent-board-leaves-the-breadcrumbs", deletedParentCrumb));
 
 /** Inside a sub-board, its parent board is deleted (from the sidebar): the breadcrumb to it goes, Esc doesn't try to go back there */
@@ -43,31 +41,6 @@ async function deletedParentCrumb(res: Record<string, unknown>) {
   res.errors = errors.length;
   await page.context().close();
   return JSON.stringify(res.crumbsIn) === '["Parent","Child"]' && res.crumbsAfter === 0 && res.stillOn === "bChild" && res.errors === 0;
-}
-
-/** The call's arrow goes into a sub-board card that was deleted there: clicking the call expands it again and the broken arrow goes */
-async function expandLostCall(res: Record<string, unknown>) {
-  const P: Board = emptyBoard("bParent", "Parent"), C: Board = emptyBoard("bChild", "Child");
-  const step = nv("LLMEngine.step"), post = nv("Scheduler.postprocess");
-  put(P, step, 60, 80, 600);
-  put(C, post, 60, 80, 600);
-  P.cards.push({ id: "fC", kind: "board", board: C.id }); P.place.fC = { x: 760, y: 80, w: 520, h: 360 };
-  const s = step.segments[0], line = s.start + s.text.findIndex((x) => /schedule\(\)/.test(x));
-  P.links.push({ id: "lGone", from: { card: step.id, seg: s.id, line }, to: { card: "fC", sub: "cDeletedThere" }, call: { name: "schedule", col: 0 } });
-  const t = await subHost(P, [C]), h = t.h, page = h.page;
-  const gone = () => t.store.peek("bParent")!.links.find((l) => l.id === "lGone");
-  // the first skeletons mark the arrow lost
-  await until(h, "the arrow into the deleted card is marked lost", () => gone()?.lost?.to);
-  res.lost = !!gone()?.lost?.to;
-  await idle(h);
-  await page.locator(`.card[data-id="${step.id}"] .src .call`, { hasText: /^schedule$/ }).first().click();
-  await until(h, "the call expands into a new card", () => t.store.peek("bParent")!.cards.some((c) => c.kind === "code" && c.id !== step.id));
-  await idle(h);
-  const b = t.store.peek("bParent")!;
-  const calls = b.links.filter((l) => l.call?.name === "schedule");
-  res.calls = calls.map((l) => ({ to: b.cards.find((c) => c.id === l.to.card)?.kind, lost: !!l.lost }));
-  await page.context().close();
-  return res.lost === true && JSON.stringify(res.calls) === '[{"to":"code","lost":false}]';
 }
 
 /** Undo of Turn into Board puts the cards back and the new board goes away; redo makes it again */
@@ -121,7 +94,7 @@ async function switched(t: Sub, n: number, what: string) {
 }
 const enter = async (t: Sub, frame: string) => {
   const n = t.inits.length;
-  await t.h.page.locator(`.card[data-id="${frame}"] .sbhead`).dblclick({ position: { x: 200, y: 12 } });
+  await t.h.page.locator(`.card[data-id="${frame}"] .sbname`).dblclick();
   await switched(t, n, `entering ${frame} opens its board`);
 };
 const leave = async (t: Sub) => {
