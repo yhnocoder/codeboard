@@ -3,12 +3,12 @@
 //          notePasteIntoTableCell editorKeysReachVsCode sidenoteTextEditSaves noteCodeScratchClosed undoIsOneStep
 //          noteDisplayMathTypedAsBlock noteEditKeepsLayout noteTitleHeadingHiddenInBody headingMarkerTypedAtHeadingSize
 //          placeholderOnlyWhenNoteEmpty mathSourceInPlace noteEditorHasNoDragHandle noteFontSizeSettings
-//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight noteCodeBlockClickAwayEnds noteCodeBlockLanguagePicker
+//          noteEditKeepsHeightWithHeaderFolded noteHeightSameInWarmInkAndSoftLight noteCodeBlockClickAwayEnds noteCodeBlockLanguagePicker noteLanguagePickerOpenWhenBoardChanges
 //          noteRefChipOnBaseline noteEndingInCodeBlockNoExtraSpace
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { put, findSym, symCard, shot, OUT, type Host } from "../harness";
-import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
+import { emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { test, open, check, light, expect, until, idle, pmHasSelection, focusSettled } from "../fixtures";
 
@@ -831,5 +831,31 @@ test("noteCodeBlockLanguagePicker", async () => {
     && res.saved === `Intro\n\n\`\`\`cuda\n${CODE}\n\`\`\`\n\nafter`
     && JSON.stringify(res.away) === JSON.stringify({ md: `Intro\n\n\`\`\`rust\n${CODE}\n\`\`\`\n\nafter`, editing: 0, list: 0 });
   check("noteCodeBlockLanguagePicker", ok, res);
+  await close(h);
+});
+
+/** 语言列表开着（焦点在筛选框里）时编辑被宿主那边结束（换了白板）：拆掉代码块时列表跟着拿掉，不报错，
+ *  那一个编辑器还能接着用（下一次编辑照常进、照常保存） */
+test("noteLanguagePickerOpenWhenBoardChanges", async () => {
+  const h = await open({ board: board(["Intro\n\n```\nx = 1\n```\n\nafter"]), light });
+  const errors: string[] = [];
+  h.page.on("pageerror", (e) => errors.push(e.message));
+  await idle(h);
+  const pg = h.page;
+  await editNote(h, "n0");
+  await pg.locator('.card[data-id="n0"] .md-pm pre .cm-content').click();
+  await pg.locator('.card[data-id="n0"] .md-pm pre .md-lang').click();
+  await expect(pg.locator(".md-langbox .md-langq")).toBeFocused();
+  const b2 = emptyBoard("b2", "other");
+  put(b2, { id: "m0", kind: "note", md: "second", bg: true } as NoteCard, 60, 60, 520);
+  await h.post({ type: "init", board: b2, boards: [{ id: "b2", name: "other", cards: 1 }], views: {}, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } } });
+  await pg.locator('.card[data-id="n0"]').waitFor({ state: "detached" });
+  await idle(h);
+  const list = await pg.locator(".md-langbox").count();
+  await editNote(h, "m0");
+  await keys(pg, "{Control+End} board");
+  await exitEdit(h);
+  await until(h, "the second board's note is saved", () => h.sent.some((m) => JSON.stringify(m).includes("second board")));
+  check("noteLanguagePickerOpenWhenBoardChanges", !errors.length && list === 0, { errors, list });
   await close(h);
 });
