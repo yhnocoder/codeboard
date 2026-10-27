@@ -1,6 +1,6 @@
 // 代码结构分析：用 tree-sitter 解析，得到符号、调用、循环、注释 / docstring / 空行。
 // 纯语法判断，不依赖语言服务；「转到定义」由宿主问 VS Code。
-// Python 系（含 Triton、TileLang）用 python 语法；C / C++ / CUDA 用 cpp 语法（CUDA 的 <<<>>> 会被当成错误节点跳过）。
+// Python 系（含 Triton、TileLang）用 python 语法；C / C++ / CUDA 用 cpp 语法，载入的是 tree-sitter-cuda（C++ 加上 <<<>>>、__global__ 等）。
 import type { Node, QueryCapture } from "@vscode/tree-sitter-wasm";
 import { languageOf, query, treeOf, type Edit, type Grammar } from "./tree";
 import { grammarOf } from "../langs";
@@ -202,7 +202,6 @@ function run(g: Grammar, cx: Cx, caps: Cap[]) {
     }
   }
   comments(cmt, cx);
-  if (g === "cpp") cudaLaunches(cx);
 }
 
 function walk(n: Node, fn: (n: Node) => boolean | void) {
@@ -445,26 +444,39 @@ function cppCall({ out }: Cx, n: Node, loop: boolean, inRhs: boolean) {
   if (!fn) return;
   let nameNode: Node | null = null, recv: string | undefined;
   if (fn.type === "identifier") nameNode = fn;
-  else if (fn.type === "field_expression") { nameNode = fn.childForFieldName("field"); recv = fn.childForFieldName("argument")?.text; }
-  else if (fn.type === "qualified_identifier") { nameNode = lastName(fn); recv = fn.text.slice(0, fn.text.lastIndexOf("::")); }
-  else if (fn.type === "template_function") nameNode = fn.childForFieldName("name");
+  else if (fn.type === "field_expression") { nameNode = untemplated(fn.childForFieldName("field")); recv = fn.childForFieldName("argument")?.text; }
+  else if (fn.type === "qualified_identifier") ({ name: nameNode, recv } = qualified(fn));
+  else if (fn.type === "template_function") nameNode = untemplated(fn);
   if (!nameNode || CPP_SKIP.has(nameNode.text)) return;
   const al = n.childForFieldName("arguments");
   out.calls.push({
     line: nameNode.startPosition.row + 1, col: nameNode.startPosition.column, end: nameNode.startPosition.column + nameNode.text.length, name: nameNode.text, recv,
     loop, args: (al?.namedChildren ?? []).filter((a): a is Node => !!a && a.type !== "comment").map((a) => ({ text: oneLine(a.text), name: a.type === "identifier" ? a.text : undefined })),
     assigned: inRhs ? assignedTo(n, "cpp") : undefined,
+    // CUDA 的 kernel<<<grid, block>>>(…)：带 kernel_call_syntax 的 call_expression
+    ...(n.namedChildren.some((c) => c?.type === "kernel_call_syntax") ? { launch: "<<<" as const } : {}),
   });
 }
 
+/** a::b<T>::f<U> → 名字 f（不带模板实参）、recv a::b<T>：按 scope 一层层拼，不按文本切（模板实参里也可能有 ::） */
+function qualified(q: Node): { name: Node | null; recv: string } {
+  const scope: string[] = [];
+  let n: Node | null = q;
+  while (n?.type === "qualified_identifier") {
+    const s = n.childForFieldName("scope");
+    if (s) scope.push(s.text);
+    n = n.childForFieldName("name");
+  }
+  return { name: untemplated(n), recv: scope.join("::") };
+}
+/** f<T>、o.f<T>、o.template f<T> 的名字是 f */
+function untemplated(n: Node | null): Node | null {
+  if (n?.type === "dependent_name") n = n.firstNamedChild; // o.template f<T>
+  return n?.type === "template_function" || n?.type === "template_method" ? n.childForFieldName("name") : n;
+}
 function funcDeclarator(d: Node | null): Node | null {
   while (d && d.type !== "function_declarator") d = d.childForFieldName("declarator");
   return d;
-}
-function lastName(q: Node): Node | null {
-  let n: Node | null = q;
-  while (n?.type === "qualified_identifier") n = n.childForFieldName("name");
-  return n;
 }
 function cppParams(ps: Node | null): Param[] {
   const out: Param[] = [];
@@ -475,26 +487,6 @@ function cppParams(ps: Node | null): Param[] {
     if (d) out.push({ name: d.text, kind: "pos" });
   }
   return out;
-}
-
-// ---------- CUDA：kernel<<<grid, block>>>(…) ----------
-// tree-sitter 的 C++ 语法不认 <<<>>>（当成错误节点），按行认：名字（可带模板参数）后面紧跟 <<<
-
-const LAUNCH = /([A-Za-z_]\w*)\s*(?:<[^<>;]*(?:<[^<>;]*>[^<>;]*)*>)?\s*<<</g;
-function cudaLaunches(cx: Cx) {
-  const { lines, out } = cx;
-  for (let r = Math.max(0, cx.r0); r < lines.length && r <= cx.r1; r++) {
-    const t = lines[r];
-    if (!t.includes("<<<")) continue;
-    LAUNCH.lastIndex = 0;
-    for (let m; (m = LAUNCH.exec(t)); ) {
-      const col = m.index, name = m[1];
-      const at = out.calls.find((c) => c.line === r + 1 && c.col === col);
-      if (at) { at.launch = "<<<"; continue; }
-      out.calls.push({ line: r + 1, col, end: col + name.length, name, loop: false, args: [], launch: "<<<" });
-    }
-  }
-  out.calls.sort((a, b) => a.line - b.line || a.col - b.col);
 }
 
 // ---------- Rust ----------

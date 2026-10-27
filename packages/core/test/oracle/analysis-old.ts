@@ -23,7 +23,6 @@ export function analyzeOld(lang: string, text: string): FileAnalysis {
     if (g === "python") python(tree.rootNode, lines, out);
     else cpp(tree.rootNode, lines, out);
     comments(tree.rootNode, lines, out);
-    if (g === "cpp") launches(lines, out);
   } finally {
     tree.delete();
   }
@@ -282,8 +281,9 @@ function cpp(root: Node, lines: string[], out: FileAnalysis) {
     if (!fn) return;
     let nameNode: Node | null = null, recv: string | undefined;
     if (fn.type === "identifier") nameNode = fn;
-    else if (fn.type === "field_expression") { nameNode = fn.childForFieldName("field"); recv = fn.childForFieldName("argument")?.text; }
-    else if (fn.type === "qualified_identifier") { nameNode = lastName(fn); recv = fn.text.slice(0, fn.text.lastIndexOf("::")); }
+    // 照新实现改：名字不带模板实参，recv 按 scope 拼
+    else if (fn.type === "field_expression") { nameNode = untemplated(fn.childForFieldName("field")); recv = fn.childForFieldName("argument")?.text; }
+    else if (fn.type === "qualified_identifier") ({ name: nameNode, recv } = qualified(fn));
     else if (fn.type === "template_function") nameNode = fn.childForFieldName("name");
     if (!nameNode || CPP_SKIP.has(nameNode.text)) return;
     const al = n.childForFieldName("arguments");
@@ -291,6 +291,8 @@ function cpp(root: Node, lines: string[], out: FileAnalysis) {
       line: nameNode.startPosition.row + 1, col: col(nameNode, lines), end: col(nameNode, lines) + nameNode.text.length, name: nameNode.text, recv,
       loop: cppInLoop(n), args: (al?.namedChildren ?? []).filter((a): a is Node => !!a && a.type !== "comment").map((a) => ({ text: oneLine(a.text), name: a.type === "identifier" ? a.text : undefined })),
       assigned: assignedTo(n, "cpp"),
+      // v0.2 起：CUDA 的 kernel<<<…>>>(…)（照新实现补上）
+      ...(n.namedChildren.some((c) => c?.type === "kernel_call_syntax") ? { launch: "<<<" as const } : {}),
     });
   });
 }
@@ -299,10 +301,19 @@ function funcDeclarator(d: Node | null): Node | null {
   while (d && d.type !== "function_declarator") d = d.childForFieldName("declarator");
   return d;
 }
-function lastName(q: Node): Node | null {
+function qualified(q: Node): { name: Node | null; recv: string } {
+  const scope: string[] = [];
   let n: Node | null = q;
-  while (n?.type === "qualified_identifier") n = n.childForFieldName("name");
-  return n;
+  while (n?.type === "qualified_identifier") {
+    const s = n.childForFieldName("scope");
+    if (s) scope.push(s.text);
+    n = n.childForFieldName("name");
+  }
+  return { name: untemplated(n), recv: scope.join("::") };
+}
+function untemplated(n: Node | null): Node | null {
+  if (n?.type === "dependent_name") n = n.firstNamedChild; // o.template f<T>
+  return n?.type === "template_function" || n?.type === "template_method" ? n.childForFieldName("name") : n;
 }
 function cppParams(ps: Node | null): Param[] {
   const out: Param[] = [];
@@ -324,20 +335,4 @@ function cppInLoop(n: Node): boolean {
     p = p.parent;
   }
   return false;
-}
-
-
-// v0.2 起：CUDA 的 kernel<<<…>>>(…)（照新实现补上）
-function launches(lines: string[], out: FileAnalysis) {
-  const re = /([A-Za-z_]\w*)\s*(?:<[^<>;]*(?:<[^<>;]*>[^<>;]*)*>)?\s*<<</g;
-  lines.forEach((t, r) => {
-    if (!t.includes("<<<")) return;
-    re.lastIndex = 0;
-    for (let m; (m = re.exec(t)); ) {
-      const at = out.calls.find((c) => c.line === r + 1 && c.col === m!.index);
-      if (at) { at.launch = "<<<"; continue; }
-      out.calls.push({ line: r + 1, col: m.index, end: m.index + m[1].length, name: m[1], loop: false, args: [], launch: "<<<" });
-    }
-  });
-  out.calls.sort((a, b) => a.line - b.line || a.col - b.col);
 }

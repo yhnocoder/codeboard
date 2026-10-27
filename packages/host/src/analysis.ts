@@ -4,7 +4,8 @@ import { Lru } from "./ws";
 
 let ready = false;
 let started: Promise<void> | undefined;
-export async function startAnalysis(dir: string) {
+/** dir = 放全部 wasm 的目录（插件的 dist/）；Node 下不给，从 npm 包里找 */
+export async function startAnalysis(dir?: string) {
   return (started = (async () => {
     try {
       await initAnalysis(dir);

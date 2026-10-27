@@ -10,7 +10,6 @@ import { CODE_GLOB, useWorkspace } from "../src/ws";
 import { isCode, lookupName, resetIndex } from "../src/nameindex";
 import { nodeWorkspace } from "./node-workspace";
 
-const REPO = path.resolve(__dirname, "../../..");
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "cb-nameindex-"));
 
 beforeAll(async () => {
@@ -19,7 +18,7 @@ beforeAll(async () => {
   fs.writeFileSync(path.join(root, "notes.txt"), "int not_code(int n) { return n; }\n");
   useWorkspace(nodeWorkspace(root));
   resetIndex();
-  await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+  await startAnalysis();
 });
 
 describe("name index files", () => {

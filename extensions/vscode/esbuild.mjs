@@ -4,11 +4,15 @@ import { copyFileSync, mkdirSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-// tree-sitter 的运行时和 Python / C++ / Rust 语法（wasm）拷进 dist/，插件启动时 initAnalysis(dist)
+// tree-sitter 的运行时和 Python / Rust 语法、C / C++ / CUDA 共用的 tree-sitter-cuda（wasm）拷进 dist/，插件启动时 initAnalysis(dist)
 const require = createRequire(import.meta.url);
 const wasmDir = dirname(require.resolve("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm"));
 mkdirSync("dist", { recursive: true });
-for (const f of ["tree-sitter.wasm", "tree-sitter-python.wasm", "tree-sitter-cpp.wasm", "tree-sitter-rust.wasm"]) copyFileSync(join(wasmDir, f), join("dist", f));
+for (const f of ["tree-sitter.wasm", "tree-sitter-python.wasm", "tree-sitter-rust.wasm"]) copyFileSync(join(wasmDir, f), join("dist", f));
+const cudaWasm = require.resolve("@yhnocoder/tree-sitter-cuda/tree-sitter-cuda.wasm");
+copyFileSync(cudaWasm, join("dist", "tree-sitter-cuda.wasm"));
+// MIT 许可要求随附声明（tree-sitter-cpp 和 tree-sitter-cuda 的作者都在里面）
+copyFileSync(join(dirname(cudaWasm), "LICENSE"), join("dist", "LICENSE-tree-sitter-cuda.txt"));
 // ELK（Tidy Up 的排版）放在 dist/elk.js，第一次 Tidy Up 才 require：打进 extension.js 的话，插件每次启动都要多解析 3.5 MB（约 80 ms）
 copyFileSync(require.resolve("elkjs/lib/elk.bundled.js"), join("dist", "elk.js"));
 const elkApart = { name: "elk-apart", setup: (b) => b.onResolve({ filter: /^elkjs\// }, () => ({ path: "./elk.js", external: true })) };
