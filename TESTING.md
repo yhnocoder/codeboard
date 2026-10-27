@@ -13,7 +13,7 @@
 **大问题**：typecheck、单元测试（core、markdown、board、host、插件，都是 vitest；markdown 的包括 npm 包里装了什么的检查）、Markdown 示例（`examples/markdown-demo`：只用 `@yhnocoder/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
 
 **正在修的问题**：下面这几类场景不受时间预算限制，每次都跑：
-- 这次改动新增或改过的测试文件里的场景
+- 这次改动新增或改过的场景：场景自己的 `test(…)` 改了，或者它所在文件里测试以外的部分（import、共用的 helper）改了。只改注释、空白、类型不算
 - 昨晚还没有的新场景
 - 昨晚全量跑挂了的场景（会一直跑，直到修好）
 - 点名要跑的：本地 `npm run check -- 场景名 …`；PR 描述里写一行 `Tests: 场景名, 场景名`
@@ -27,7 +27,7 @@ harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.s
 `tools/test/harness.mjs` 分两轮调 Playwright：先在几个 worker 上一起跑，再一个一个单独跑。一起跑时挂了的场景会在第二轮单独再跑一次，单独跑过了就算过（报告里标"alone"）。对 CPU 负载敏感、并行时必挂的场景登记在 `tiers.json` 的 `solo`，放在第二轮单独跑（和 perf 一样）。
 
 每晚还有两件事单独报在 #19 的评论里（各自一节，不进 `nightly-failures`，所以不算"正在修的问题"、不带到 PR 上，也不让夜跑变红）：
-- **Flaky**：harness 全量跑完后，`repeat` job 把上一次跑完的定时夜跑（工作流运行列表里 `event=schedule` 的那次的 `head_sha`）以来改过的测试文件里的场景（新场景都在其中）各跑 3 遍（`harness.mjs --changed-since=<commit> --repeat=3`，4 个 worker 并行，`solo` 的仍一个一个跑，按估计用时最多 15 分钟，放不下的报出来），任何一遍挂了就算 flaky；全量里本来就挂的不重复算。找不到上一次定时夜跑或它的提交时报错，不拿别的场景凑合。
+- **Flaky**：harness 全量跑完后，`repeat` job 把上一次跑完的定时夜跑（工作流运行列表里 `event=schedule` 的那次的 `head_sha`）以来改过的场景（同上；新场景都在其中）各跑 3 遍（`harness.mjs --changed-since=<commit> --repeat=3`，4 个 worker 并行，`solo` 的仍一个一个跑，按估计用时最多 15 分钟，放不下的报出来），任何一遍挂了就算 flaky；全量里本来就挂的不重复算。找不到上一次定时夜跑或它的提交时报错，不拿别的场景凑合。
 - **只有单独跑才过**：全量里标了"alone"的场景。
 
 `tiers.json` 的 `known` 里登记的是已知、另有地方跟进的失败，按检查名（`check` 的名字开头）对上。它们照样会跑、出现在报告里，但不让 CI 变红。修好时把那一条删掉。

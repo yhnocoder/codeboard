@@ -3,7 +3,7 @@
 ## Setup
 
 ```bash
-git submodule update --init
+git submodule update --init examples/nano-vllm   # the repository the tests run on (under a second); sglang and DeepEP are only for trying things by hand: git submodule update --init --depth 1 examples/sglang examples/DeepEP
 npm install
 npm run build      # @yhnocoder/markdown (packages/markdown/dist), board UI + extension, compiled into extensions/vscode/dist (no .vsix)
 npm test           # unit tests (core, markdown, board, host, extension)
