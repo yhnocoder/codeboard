@@ -5,6 +5,9 @@
 #            into a Note, the sticker folder, the Note heading setting with cut and paste, code editing)
 #   perf     the full benchmark (base, head, head, base) against main as it was a day earlier, then the board benchmark again with
 #            100 animated GIF stickers on the board (run-perf.mjs --anim; never in the per-push run)
+#   storybook  build-storybook, then tools/test/storybook.mjs opens every story in Chromium (each in its own page, and all of them one
+#            after another in one preview) and fails on console errors, page errors, failed requests, story and play function
+#            exceptions and timeouts; never in the per-push run
 #   repeat   after the harness jobs: the flake repeat. The scenarios in test files changed since the previous finished scheduled
 #            nightly (its head_sha, from this workflow's run list), each run 3 times on 4 workers (the "solo" ones one at a time),
 #            within a 15 minute cap; any failed run is a flake. Flakes are reported in their own section of the issue comment and
@@ -92,6 +95,21 @@ jobs:
         if: ${{ !cancelled() }}
         with: { name: perf, path: test-out/perf, retention-days: 14 }
 
+  storybook:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      - uses: ./.github/actions/chromium
+      - name: Build Storybook
+        run: npm run build-storybook
+      - name: Open every story
+        run: node tools/test/storybook.mjs
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with: { name: storybook, path: test-out/storybook/result.json, retention-days: 14, if-no-files-found: ignore }
+
   repeat:
     needs: harness
     if: ${{ !cancelled() }}
@@ -131,7 +149,7 @@ jobs:
         with: { name: repeat, path: test-out/harness/repeat.json, retention-days: 14, if-no-files-found: ignore }
 
   publish:
-    needs: [harness, e2e, perf, repeat]
+    needs: [harness, e2e, perf, storybook, repeat]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 10

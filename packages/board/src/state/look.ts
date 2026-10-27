@@ -1,9 +1,9 @@
 // 材质主题（Settings → Theme）里少数要 JS 配合的东西：连线的走法、箭头和端口的形状，源文件的颜色。
 // 其余全在 themes.css。切主题时这里只重算一次连线几何，不加每帧的工作。
-import { createMemo, createSignal } from "solid-js";
+import { createMemo } from "solid-js";
 import type { ThemeId } from "@codeboard/core";
 import { state } from "./store";
-import { rooted } from "./root";
+import { rooted, boardSignal } from "./root";
 
 export const look = () => state.host.settings.theme;
 
@@ -36,4 +36,4 @@ const order = rooted(() => createMemo(() => {
 export const fileHue = (path: string | undefined) => (path ? order().get(path) ?? 0 : 0);
 
 /** City 的红绿灯（车流开关）：不存进设置，每次打开白板都是红灯（车不动，没有常驻动画）。绿灯时车沿路开（canvas/Traffic.tsx） */
-export const [traffic, setTraffic] = createSignal(false);
+export const [traffic, setTraffic] = boardSignal(false);

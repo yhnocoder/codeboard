@@ -54,7 +54,7 @@ export class LangBox {
   private i = -1;
   /** 打过字或用 ↑↓ 挑过：点了别处时照挑的定下来；没动过就不改 */
   private touched = false;
-  /** 正在定下来 / 取消（拿走焦点时的那一下 blur 不再定一次） */
+  /** 正在拿掉列表（筛选框被拿掉时的那一下 blur 不算离开） */
   private busy = false;
 
   constructor(private host: LangBoxHost) {
@@ -114,8 +114,13 @@ export class LangBox {
     q.focus();
   }
   private close() {
-    this.box?.remove();
+    // 筛选框还有焦点时拿掉列表，Chrome 会同步发 blur（拆掉代码块时就是这样）：那一下不是用户离开，不定下来、不替编辑器发 blur，
+    // 也不在 remove 里面再 remove 一次
+    const b = this.box;
     this.box = this.q = null;
+    this.busy = true;
+    b?.remove();
+    this.busy = false;
     this.i = -1;
     this.label.setAttribute("aria-expanded", "false");
   }
@@ -183,19 +188,15 @@ export class LangBox {
     const it = this.items[this.i], typed = this.q?.value ?? "";
     const all = this.all();
     const lang = it ? (it.name || null) : typed.trim() ? langOf(all, typed) : langOf(all, this.host.lang());
-    this.busy = true; // 拿掉列表时筛选框的 blur 不再定一次
     this.close();
     if (lang !== langOf(all, this.host.lang())) this.host.set(lang); // py 和 python 是同一种：不改
     this.sync();
-    this.busy = false;
     if (back) this.leave();
   }
   /** 不改（Esc），回到代码里 */
   private leave() {
-    this.busy = true;
     this.close();
     this.host.back();
-    this.busy = false;
   }
 
   destroy() { this.close(); }

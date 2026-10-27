@@ -4,6 +4,7 @@ import { cardTitle, versionLabel, baseName, isCode, langLabel, LANGS, guessLang,
 import { state, cardById, toast, sharedOn } from "../../state/store";
 import { pops, closePop, pinPop } from "../../state/pop";
 import { pickCardThen } from "../../state/mode";
+import { boardSignal } from "../../state/root";
 import { ask } from "../../host";
 import * as A from "../../actions";
 import { useListNav, useDebouncedAsk, useFinish } from "../hooks";
@@ -104,7 +105,7 @@ function noteMenu(n: Sidenote, x: number, y: number) {
 }
 // 旁注原地编辑：多行、自动增高，和 Note 卡一样是 Markdown + 公式，下面实时预览。
 // 和 Note、问题的编辑一样，Esc、⌘↵、点到外面都是保存（Cancel 才是放弃）。字删光了保存就是删掉这条：Text sidenote 就是那段字，加的时候也不让加空的
-const [snEditing, setSnEditing] = createSignal<string | null>(null);
+const [snEditing, setSnEditing] = boardSignal<string | null>(null);
 function editText(n: Sidenote) {
   if (n.kind !== "text") return;
   for (const q of pops()) if (q.pop.kind === "notes" && q.pop.ids.includes(n.id)) pinPop(q.id);

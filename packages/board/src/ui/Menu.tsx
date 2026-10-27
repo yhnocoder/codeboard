@@ -131,14 +131,20 @@ export function MenuLayer() {
 type DialogState = { title: string; text?: string; warn?: string; note?: string; options: string[]; def: number; done: (i: number | null) => void; input?: { value: string; placeholder?: string } };
 const [dialog, setDialog] = createSignal<DialogState | null>(null);
 
+/** 同一时间只有一个对话框：新的盖掉旧的时，旧的那个当作取消（null），等它的不会一直挂着 */
+function openDialog(d: DialogState) {
+  const old = dialog();
+  setDialog(d);
+  old?.done(null);
+}
 /** warn = 琥珀色的一行提醒；note = 按钮下面的小字说明 */
 export function choose(title: string, options: string[], opts: { text?: string; def?: number; warn?: string; note?: string } = {}): Promise<number | null> {
-  return new Promise((done) => setDialog({ title, text: opts.text, warn: opts.warn, note: opts.note, options, def: opts.def ?? 0, done }));
+  return new Promise((done) => openDialog({ title, text: opts.text, warn: opts.warn, note: opts.note, options, def: opts.def ?? 0, done }));
 }
 export function promptText(title: string, value = "", placeholder = "", ok = "OK"): Promise<string | null> {
   return new Promise((done) => {
     let v = value;
-    setDialog({ title, options: [ok, "Cancel"], def: 0, input: { value, placeholder }, done: (i) => done(i === 0 ? v.trim() || null : null) });
+    openDialog({ title, options: [ok, "Cancel"], def: 0, input: { value, placeholder }, done: (i) => done(i === 0 ? v.trim() || null : null) });
     queueMicrotask(() => {
       const inp = document.querySelector<HTMLInputElement>(".dialog input");
       if (inp) { inp.oninput = () => (v = inp.value); inp.focus(); inp.select(); }
