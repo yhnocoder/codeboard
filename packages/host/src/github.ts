@@ -4,7 +4,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { Emitter, parseGithubUrl, renderLine, type ReplyOf, type Commit, type GhFile, type GhQuery, type GhRepo, type GhTree, type GithubRef, type NewCard } from "@codeboard/core";
-import { planSelection } from "@codeboard/core/analysis";
+import { planSelection } from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
 import { cardsFromPlan, newCodeCard, withViews } from "./cards";
 import { log } from "./log";

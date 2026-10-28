@@ -1,4 +1,4 @@
-// Bundles bench-analysis.ts to run under Node. Usage: npm run bench:analysis -w @codeboard/core [-- <repository dir>]
+// Bundles bench-analysis.ts to run under Node. Usage: npm run bench:analysis -w @codeboard/analysis [-- <repository dir>]
 import { build } from "esbuild";
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";

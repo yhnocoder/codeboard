@@ -2,9 +2,10 @@ import { send } from "../host";
 import { createMemo, createSignal, Show, onMount, onCleanup, createEffect, For, type JSX, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import {
-  cardTitle, hiddenLang, codeGlyph, versionLabel, fileCount, mixedVersions, langLabel, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
+  cardTitle, hiddenLang, codeGlyph, versionLabel, fileCount, mixedVersions, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
   type Card, type CodeCard, type NoteCard, type ImageCard, type Graph, type LinkSide,
 } from "@codeboard/core";
+import { langLabel } from "@codeboard/analysis/langs";
 import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget } from "../state/ui";

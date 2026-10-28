@@ -1,8 +1,8 @@
-// 文件名只能是 .codeboard-scratch-<id>.<ext>：<id> 是 sanitizeId 之后的 [\w-]+，<ext> 是语言表（core langs.ts）里某个语言新建文件用的扩展名。
+// 文件名只能是 .codeboard-scratch-<id>.<ext>：<id> 是 sanitizeId 之后的 [\w-]+，<ext> 是语言表（@codeboard/analysis 的 langs.ts）里某个语言新建文件用的扩展名。
 // 用户自己的 .codeboard-notes.md、.codeboard-config、别的功能的 .codeboard-ref 都对不上。
 // 另一个 VS Code 窗口可能正在用同一个目录（同一个仓库、同一个 Note 目录）：打开期间每分钟刷一次文件的 mtime（心跳），
 // 清理只删 mtime 超过 STALE_MS 的文件，所以别的窗口还在用的文件不会被删。
-import { LANG_TABLE, langInfo } from "@codeboard/core";
+import { LANG_TABLE, langInfo } from "@codeboard/analysis/langs";
 
 export const SCRATCH_PREFIX = ".codeboard-scratch-";
 /** .git/info/exclude 里写的那一行 */

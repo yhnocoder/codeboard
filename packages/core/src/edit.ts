@@ -2,7 +2,8 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { activeOf, clone, cornerAt, escapeRegExp, findCard, hostOf, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type BoundVal, type CallAlt, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { activeOf, clone, cornerAt, findCard, hostOf, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { escapeRegExp, type BoundVal, type CallAlt } from "@codeboard/analysis/basics";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
 export function removeCards(b: Board, ids: Iterable<string>): void {

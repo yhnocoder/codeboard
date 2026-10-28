@@ -1,0 +1,26 @@
+{
+  "name": "@codeboard/analysis",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "bench:analysis": "node test/run-bench-analysis.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.4"
+  },
+  "dependencies": {
+    "@vscode/tree-sitter-wasm": "^0.3.1",
+    "@yhnocoder/tree-sitter-cuda": "https://github.com/yhnocoder/tree-sitter-cuda/releases/download/v0.21.2-cb.1/yhnocoder-tree-sitter-cuda-0.21.2-cb.1.tgz"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./basics": "./src/basics.ts",
+    "./langs": "./src/langs.ts"
+  }
+}

@@ -1,12 +1,14 @@
 // 跨语言下钻：Python → C++ / CUDA / Rust，C++ → CUDA kernel，Triton、TileLang。
-// 认边界用 core 的纯文本函数（analysis/bridge.ts），这里负责找文件、找符号、读取值。结果是「目标符号 + 要并进 Call 标记的边界和取值」。
+// 认边界用 @codeboard/analysis 的纯文本函数（bridge.ts），这里负责找文件、找符号、读取值。结果是「目标符号 + 要并进 Call 标记的边界和取值」。
 // 都是宿主上的异步工作：读文件、查名字索引，白板不等。
 import * as path from "node:path";
-import { grammarOf, grammarOfFile, type CallAlt, type CrossMark, type Grammar } from "@codeboard/core";
+import { instName, type CrossMark } from "@codeboard/core";
+import { grammarOf, grammarOfFile, type Grammar } from "@codeboard/analysis/langs";
+import type { CallAlt } from "@codeboard/analysis/basics";
 import {
-  bindLaunch, factoryVals, instName, jitKernels, launchMacro, launchTemplateArgs, launchVals, macroDefs, pybindDefs, pyo3Defs, templateParams,
+  bindLaunch, factoryVals, jitKernels, launchMacro, launchTemplateArgs, launchVals, macroDefs, pybindDefs, pyo3Defs, templateParams,
   tilelangInner, torchLibDefs, torchOpOf, tritonInfo, tritonVals, matchClose, symbolAt, type CallSite, type Sym,
-} from "@codeboard/core/analysis";
+} from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
 import { grepWord, lookupName, type IndexEntry } from "./nameindex";
 import { libOf } from "./scope";

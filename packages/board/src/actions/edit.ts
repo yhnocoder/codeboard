@@ -3,10 +3,11 @@ import {
   arrangeCards, makeCompare, overlaps, removeSections as removeSectionsIn, renameTitleRefs, replaceCards, removeLinks, placeCards, mergeCodeCards, unmergeCard, unlinkCard,
   uid, findCard, isCode, cardTitle, segOf,
   bounds, removeCards, SECTION_PAD, GAP,
-  copyText, cardRows, LANGS, langLabel, guessLang, pythonDialect, defaultWidth,
+  copyText, cardRows, guessLang, pythonDialect, defaultWidth,
   type Arrange, type Board, type Card, type CodeCard, type CompareCard, type Section, type Segment,
   type Rect,
 } from "@codeboard/core";
+import { LANGS, langLabel } from "@codeboard/analysis/langs";
 import {
   state, setState, mutate, isFresh, settleFresh, sel, select, clearSel, setLineSel, cardById, hostOf, rectOf, toast, placeOf, sharedOn,
   type LineSel,

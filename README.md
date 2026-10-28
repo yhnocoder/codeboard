@@ -123,7 +123,8 @@ The repository is an npm workspace:
 
 | Path | Contents |
 | --- | --- |
-| [`packages/core`](packages/core) | Data model, symbol resolution, and keeping cards in sync with the code. Pure TypeScript. |
+| [`packages/analysis`](packages/analysis) | Code analysis with tree-sitter: symbols, calls and cross-language boundaries in Python, C / C++ / CUDA and Rust. |
+| [`packages/core`](packages/core) | Data model and keeping cards in sync with the code. Pure TypeScript. |
 | [`packages/board`](packages/board) | The board UI, built with SolidJS. Independent of any editor. |
 | [`packages/host`](packages/host) | Reads code, highlights, resolves calls, tracks versions, and stores boards. Independent of any editor. |
 | [`packages/markdown`](packages/markdown) | The Markdown editor and renderer used by Notes, published on npm as [`@yhnocoder/markdown`](https://www.npmjs.com/package/@yhnocoder/markdown). |

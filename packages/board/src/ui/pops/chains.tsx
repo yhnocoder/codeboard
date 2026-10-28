@@ -1,6 +1,8 @@
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, createSignal, createMemo, createEffect } from "solid-js";
-import { varKey, varText, langLabel, RPC_MECHS, type GraphMark, type Var } from "@codeboard/core";
+import { varText, RPC_MECHS, type GraphMark } from "@codeboard/core";
+import { langLabel } from "@codeboard/analysis/langs";
+import { varKey, type Var } from "@codeboard/analysis/basics";
 import { state, flows } from "../../state/store";
 import { closePop } from "../../state/pop";
 import { Glyph } from "../../stickers/glyphs";

@@ -1,4 +1,4 @@
-// 白板界面也会引入这里，所以不放 tree-sitter（分析在 @codeboard/core/analysis）
+// 白板界面也会引入这里，所以不放 tree-sitter（分析在 @codeboard/analysis）
 export * from "./model";
 export * from "./migrate";
 export * from "./schema";
@@ -15,7 +15,6 @@ export * from "./web";
 export * from "./lines";
 export * from "./linklabel";
 export * from "./chip";
-export * from "./langs";
 export * from "./run";
 export * from "./questions";
 export * from "./export";

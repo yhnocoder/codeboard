@@ -1,7 +1,6 @@
 // 白板按它渲染，Link 端点、Sidenote 标记按它找位置。
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "@codeboard/analysis/basics";
 import { inRanges, type CodeCard, type HideFlags, type Segment } from "./model";
-
-export const F_BLANK = 1, F_COMMENT = 2, F_DOCSTRING = 4;
 
 /** 宿主为每一段算好的展示数据（不持久化） */
 export type SegView = {
