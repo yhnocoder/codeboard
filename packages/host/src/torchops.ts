@@ -6,7 +6,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse } from "yaml";
 import { grammarOfFile } from "@codeboard/analysis/langs";
-import { dispatchAll, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
+import { dispatchAll, lineIndex, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
 import { escapeRegExp } from "@codeboard/analysis/basics";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
 import { entriesOf, indexedFiles, isCode, knownEntries, type IndexEntry } from "./nameindex";
@@ -129,7 +129,7 @@ export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[]
 const isCudaFile = (abs: string) => /\.(cu|cuh)$/.test(abs) || /[\\/](cuda|cudnn|miopen)[\\/]/.test(abs);
 
 // 扫描：aten/src/ATen（yaml 往上两层）和 torch/csrc 下的代码文件，加上构建生成的 Ufunc*.cpp / .cu（名字索引跳过 build/）。
-// 只留定义位置和注册，不留文件文本：每个文件注册了什么、提到了哪些要找的名字（kernel、注册目标），以及那几个生成文件的 tree-sitter 符号。
+// 只留定义位置和注册，不留文件文本：每个文件注册了什么、哪些要找的名字（kernel、注册目标）可能定义在它里面，以及那几个生成文件的 tree-sitter 符号。
 
 /** 一处注册：文件和行、注册的目标（qual）；how = REGISTER_*DISPATCH、pybind .def / m.def、PyMethodDef */
 export type Reg = { abs: string; line: number; target?: string; lambda?: true; how: string };
@@ -148,7 +148,7 @@ type Scan = {
   files: Map<string, FileRec>;
   regs: Map<string, Reg[]>; pyRegs: Map<string, Reg[]>; macros: Map<string, MacroSite[]>; gen: Map<string, IndexEntry[]>;
   pasters: Map<string, { abs: string; p: Paster }[]>;
-  /** 要找的名字 → 提到它的文件 */
+  /** 要找的名字 → 它可能定义在里面的文件 */
   where: Map<string, Set<string>>;
   /** 第 1 遍完成：kernel、注册 */
   head: Promise<void>;
@@ -207,17 +207,19 @@ export async function genDirOf(root: string): Promise<string | undefined> {
 const UFUNC_PATH = /[\\/]aten[\\/]src[\\/]ATen[\\/]Ufunc\w*\.(cpp|cu)$/;
 const UFUNC_FILE_KEY = /"file"\s*:\s*("(?:[^"\\]|\\.)*Ufunc\w*\.(?:cpp|cu)")/g;
 
-/** 一个文件注册了什么、它的宏调用定义了哪些 kernel、提到了哪些要找的名字 */
-function scanText(x: Scan, abs: string, text: string): FileRec {
+/** 一个文件注册了什么、它的宏调用定义了哪些 kernel、哪些要找的名字可能定义在这里。生成的文件有几 MB：长循环里也让出 */
+async function scanText(x: Scan, abs: string, text: string, turn = slicer()): Promise<FileRec> {
   const rec: FileRec = { regs: [], pyRegs: [], macros: [], words: [], gen: [], pasters: [], pasted: [] };
   const aten = isGen(x, abs) || abs.startsWith(x.aten), csrc = abs.startsWith(x.csrc);
   if (aten) {
     for (const r of dispatchAll(text)) rec.regs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: own(r.macro) }]);
-    let starts: number[] | undefined, n = 0; // 宏调用按顺序出现：行号接着上一个往下数
-    const lineAt = (i: number) => { starts ??= [...text.matchAll(/\n/g)].map((m) => m.index); while (n < starts.length && starts[n] < i) n++; return n + 1; };
-    for (const m of text.matchAll(MACRO_CALL)) for (const id of m[2].match(/\b[A-Za-z_]\w*\b/g) ?? []) {
-      const k = x.wanted.get(id);
-      if (k) rec.macros.push([k, { abs, line: lineAt(m.index), macro: own(m[1]), sig: own(m[0].trim()) }]);
+    let lineAt: ((i: number) => number) | undefined;
+    for (const [i, m] of each(MACRO_CALL, text)) {
+      if (i % EVERY === 0) await turn();
+      for (const id of m[2].match(/\b[A-Za-z_]\w*\b/g) ?? []) {
+        const k = x.wanted.get(id);
+        if (k) rec.macros.push([k, { abs, line: (lineAt ??= lineIndex(text))(m.index), macro: own(m[1]), sig: own(m[0].trim()) }]);
+      }
     }
     if (!isGen(x, abs)) for (const [name, p] of pasteMacros(text)) rec.pasters.push([own(name), { params: p.params.map(own), names: p.names.map((n) => n.map((v) => (typeof v === "string" ? own(v) : v))) }]);
   }
@@ -227,13 +229,34 @@ function scanText(x: Scan, abs: string, text: string): FileRec {
   }
   if (isGen(x, abs)) {
     for (const s of symbolsOf(langOf(abs), text)) if (s.kind === "def") rec.gen.push({ name: own(s.name), qual: own(s.qual), kind: s.kind, abs, start: s.start, end: s.end, defLine: s.defLine, sig: own(s.sig) });
-  } else rec.words = wordsIn(x, text);
+  } else rec.words = await defNames(x, text, turn);
   return rec;
 }
 
-function wordsIn(x: Scan, text: string): string[] {
+/** 一个全局正则在文本里的每个匹配和它的序号（循环里每 EVERY 个让出一次：lastIndex 留在正则上，文本不变，接着找） */
+function* each(re: RegExp, text: string): Generator<[number, RegExpExecArray]> {
+  const r = new RegExp(re.source, re.flags);
+  for (let i = 0, m; (m = r.exec(text)); i++) yield [i, m];
+}
+const EVERY = 256;
+
+// 定义可能在这里的名字：名字后面是 (（或者模板实参再 (），而行首到名字只有类型、限定符、修饰（Tensor& at::native::add_out(、
+// template <> void f<float>(、static PyObject * THPVariable_add(）；或者名字是行首一个宏的唯一参数（TORCH_IMPL_FUNC(softmax_out)）。
+// 只提到名字的文件（调用、注释）不算：add、sum、clone 这样的名字几百个文件里都有，点击时每个都要分析一遍
+const NAME_PAREN = /\b([A-Za-z_]\w*)\s*(?:<[^;(){}\n]*>\s*)?([()])/g;
+const DECL_PREFIX = /^[\w:\s*&<>,[\]]*$/;
+const NOT_DECL = /^\s*(?:return|else|case|throw|new|delete|co_return|co_yield|goto|sizeof|if|while|for|switch|do)\b/;
+const MACRO_ARG = /^[ \t]*[A-Z][A-Z0-9_]*\s*\(\s*$/;
+
+async function defNames(x: Scan, text: string, turn: () => Promise<void>): Promise<string[]> {
   const seen = new Set<string>();
-  for (const m of text.matchAll(/\b[A-Za-z_]\w*/g)) { const k = x.wanted.get(m[0]); if (k) seen.add(k); }
+  for (const [i, m] of each(NAME_PAREN, text)) {
+    if (i % EVERY === 0) await turn();
+    const k = x.wanted.get(m[1]);
+    if (!k || seen.has(k)) continue;
+    const pre = text.slice(text.lastIndexOf("\n", m.index - 1) + 1, m.index);
+    if (m[2] === "(" ? DECL_PREFIX.test(pre) && !NOT_DECL.test(pre) : MACRO_ARG.test(pre)) seen.add(k);
+  }
   return [...seen];
 }
 
@@ -283,15 +306,16 @@ async function scanHead(x: Scan) {
   for (const abs of [...gen, ...files]) {
     if (x.dead) return;
     const text = await readText(abs, false);
-    if (text !== null) { const rec = scanText(x, abs, text); addRec(x, abs, rec); wantTargets(x, rec); }
+    if (text !== null) { const rec = await scanText(x, abs, text, turn); if (x.dead) return; addRec(x, abs, rec); wantTargets(x, rec); }
     await turn();
   }
   return Math.round(performance.now() - t0);
 }
 
-/** 所有文件都读过之后一个文件再加的：提到的注册目标、调用拼名字的宏拼出来的 kernel */
-function targetsIn(x: Scan, abs: string, rec: FileRec, text: string) {
-  const had = new Set(rec.words), words = wordsIn(x, text).filter((w) => !had.has(w));
+/** 所有文件都读过之后一个文件再加的：可能定义在这里的注册目标、调用拼名字的宏拼出来的 kernel */
+async function targetsIn(x: Scan, abs: string, rec: FileRec, text: string, turn = slicer()) {
+  const had = new Set(rec.words), words = (await defNames(x, text, turn)).filter((w) => !had.has(w));
+  if (x.dead || x.files.get(abs) !== rec) return; // 这期间文件事件已经重做过了
   rec.words.push(...words);
   for (const w of words) (x.where.get(w) ?? x.where.set(w, new Set()).get(w)!).add(abs);
   for (const [k, m] of rec.pasted) { const rest = (x.macros.get(k) ?? []).filter((v) => v !== m); if (rest.length) x.macros.set(k, rest); else x.macros.delete(k); }
@@ -313,7 +337,7 @@ async function scanTargets(x: Scan): Promise<number> {
     if (x.dead) break;
     if (isGen(x, abs) || x.files.get(abs) !== rec) continue; // 这期间文件事件已经重做过了
     const text = await readText(abs, false);
-    if (text !== null && x.files.get(abs) === rec) targetsIn(x, abs, rec, text);
+    if (text !== null && x.files.get(abs) === rec) await targetsIn(x, abs, rec, text, turn);
     await turn();
   }
   return Math.round(performance.now() - t0);
@@ -329,15 +353,16 @@ function rescanFile(x: Scan, abs: string) {
     await x.ready;
     if (x.dead) return;
     const text = await readText(abs, false);
+    const rec = text === null ? null : await scanText(x, abs, text);
+    if (x.dead) return;
     const mine = () => JSON.stringify(x.files.get(abs)?.pasters ?? []);
     const before = mine();
     dropRec(x, abs);
-    if (text !== null) {
-      const rec = scanText(x, abs, text);
+    if (rec) {
       addRec(x, abs, rec);
       // 新的注册目标：现在只在这个文件里找；别处的通过名字索引解析（regTarget）
       wantTargets(x, rec);
-      if (!isGen(x, abs)) targetsIn(x, abs, rec, text);
+      if (!isGen(x, abs)) await targetsIn(x, abs, rec, text!);
     }
     // 这里加、删、改了拼名字的宏，别的文件里的调用拼出来的东西也变了：重做第 2 遍
     if (!x.dead && mine() !== before) retarget(x);
@@ -538,7 +563,11 @@ export function opsBuildChanged() {
       if (x.dead) return;
       for (const abs of [...x.files.keys()]) if (isGen(x, abs)) dropRec(x, abs);
       x.genDir = await genDirOf(x.t.root);
-      for (const abs of await genFiles(x)) { const text = await readText(abs, false); if (text !== null) addRec(x, abs, scanText(x, abs, text)); }
+      for (const abs of await genFiles(x)) {
+        const text = await readText(abs, false);
+        const rec = text === null ? null : await scanText(x, abs, text);
+        if (rec && !x.dead) { dropRec(x, abs); addRec(x, abs, rec); }
+      }
     }).catch((e) => log("warn", `op index: cannot update the build folder: ${e instanceof Error ? e.message : e}`));
   }
 }
