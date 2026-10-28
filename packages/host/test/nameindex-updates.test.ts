@@ -86,7 +86,7 @@ describe("name index", () => {
     await nameIndexReady();
     expect((await indexedFiles()).every((f) => f.ents)).toBe(true);
   });
-  it("pauses for a click that never finishes only PAUSE_MAX, then builds to the end; the next click pauses it again", async () => {
+  it("pauses for a click that never finishes only PAUSE_MAX, then builds to the end; the next click pauses it again until it is done", async () => {
     resetIndex();
     const done = async () => (await indexedFiles()).filter((f) => f.ents).length;
     const turns = async (n: number) => { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)); };
@@ -113,10 +113,12 @@ describe("name index", () => {
     W.fire.create.fire([probe]);
     await turns(30);
     expect((await indexedFiles()).find((f) => f.abs === probe)?.ents).toBeUndefined();
-    second(); unstick();
-    await Promise.all([next, stuck]);
-    await nameIndexReady();
-    expect((await indexedFiles()).find((f) => f.abs === probe)?.ents?.map((e) => e.name)).toEqual(["probe_paused"]);
+    // and only until that click is done, though the first one is still stuck
+    second();
+    await next;
+    await vi.waitFor(async () => expect((await indexedFiles()).find((f) => f.abs === probe)?.ents?.map((e) => e.name)).toEqual(["probe_paused"]));
+    unstick();
+    await stuck;
     fs.rmSync(probe);
     W.fire.delete.fire([probe]);
   });

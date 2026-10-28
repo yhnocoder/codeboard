@@ -108,20 +108,21 @@ async function indexFile(abs: string, text?: string | null) {
 }
 
 // 点击和索引在同一个线程上等：点击解析期间索引不开始新文件（正在解析的文件照样做完）。
-// 一次暂停最多 PAUSE_MAX：卡在语言服务上的点击之后索引照常建完，直到下一次点击再停
-let clicks = 0;
-let pause: { done: Promise<void>; open: () => void } | undefined;
+// 一次暂停最多 PAUSE_MAX：卡在语言服务上的点击之后索引照常建完，直到下一次点击再停。
+// 点击数记在各自的暂停上：卡住的那个只算它那一次暂停的，之后的点击做完就放开
+let pause: { done: Promise<void>; open: () => void; clicks: number } | undefined;
 export const PAUSE_MAX = 5000;
 export async function pausingIndex<T>(fn: () => Promise<T>): Promise<T> {
-  clicks++;
   if (!pause) {
     let open!: () => void;
     const done = new Promise<void>((r) => (open = r));
     const timer = setTimeout(() => p.open(), PAUSE_MAX);
-    const p = { done, open: () => { clearTimeout(timer); if (pause === p) pause = undefined; open(); } };
+    const p = { done, clicks: 0, open: () => { clearTimeout(timer); if (pause === p) pause = undefined; open(); } };
     pause = p;
   }
-  try { return await fn(); } finally { if (--clicks === 0) pause?.open(); }
+  const p = pause;
+  p.clicks++;
+  try { return await fn(); } finally { if (--p.clicks === 0) p.open(); }
 }
 const unpaused = () => pause?.done;
 
