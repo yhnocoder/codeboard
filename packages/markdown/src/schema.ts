@@ -889,10 +889,21 @@ function mathify(ns: JSONContent[] | undefined): JSONContent[] | undefined {
   return out;
 }
 
-// 空段落写不进 Markdown（TipTap 会写成多余的空行或 &nbsp;）：写回时去掉；表格格子里的、容器里唯一的一段留着
+// 空段落写不进 Markdown（TipTap 会写成多余的空行或 &nbsp;）：写回时去掉；表格格子里的、容器里唯一的一段留着。
+// 夹在两个列表中间的留着，每个写成一行 &nbsp;（TipTap 的空段落写法，读回来还是空段落；TipTap 自己只给连着的第二个起写它）：
+// 去掉的话两个列表读回来就连成一个，编号也接着上一个排了
 const HOLDS = new Set(["blockquote", "listItem", "taskItem", "detailsContent", "footnote"]);
+const LISTS = new Set(["bulletList", "orderedList", "taskList"]);
+const NBSP: JSONContent = { type: "htmlBlock", attrs: { raw: "&nbsp;" } };
+const isEmptyP = (n: JSONContent | undefined) => n?.type === "paragraph" && !n.content?.length;
+function betweenLists(ns: JSONContent[], i: number) {
+  let a = i, b = i;
+  while (isEmptyP(ns[a])) a--;
+  while (isEmptyP(ns[b])) b++;
+  return LISTS.has(ns[a]?.type ?? "") && LISTS.has(ns[b]?.type ?? "");
+}
 function dropEmpty(ns: JSONContent[], holder = true): JSONContent[] {
-  const kept = holder ? ns.filter((n) => !(n.type === "paragraph" && !n.content?.length)) : ns;
+  const kept = holder ? ns.flatMap((n, i) => (!isEmptyP(n) ? [n] : betweenLists(ns, i) ? [NBSP] : [])) : ns;
   return (kept.length ? kept : ns.slice(0, 1)).map((n) => (n.content && n.type !== "paragraph" ? { ...n, content: dropEmpty(n.content, HOLDS.has(n.type!)) } : n));
 }
 

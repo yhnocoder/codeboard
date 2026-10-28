@@ -345,6 +345,24 @@ describe("empty paragraphs", () => {
     expect(serializeMd({ type: "doc", content: [p("a"), p(), p("b")] })).toBe("a\n\nb");
     expect(serializeMd({ type: "doc", content: [{ type: "blockquote", content: [p("q"), p()] }] })).toBe("> q");
   });
+  it("between two lists are kept (as &nbsp;), so the lists stay apart and keep their numbering", () => {
+    const p = (t?: string) => (t ? { type: "paragraph", content: [{ type: "text", text: t }] } : { type: "paragraph" });
+    const li = (t?: string) => ({ type: "listItem", content: [p(t)] });
+    const ti = (t: string) => ({ type: "taskItem", attrs: { checked: false }, content: [p(t)] });
+    const cases: [JSONContent[], string][] = [
+      [[{ type: "orderedList", content: [li("Line 1")] }, p(), { type: "orderedList", content: [li("Line 3"), li()] }], "1. Line 1\n\n&nbsp;\n\n1. Line 3\n2."],
+      [[{ type: "bulletList", content: [li("a")] }, p(), p(), { type: "bulletList", content: [li("b")] }], "- a\n\n&nbsp;\n\n&nbsp;\n\n- b"],
+      [[{ type: "taskList", content: [ti("a")] }, p(), { type: "taskList", content: [ti("b")] }], "- [ ] a\n\n&nbsp;\n\n- [ ] b"],
+      // 列表后面接的不是列表：照旧去掉
+      [[{ type: "orderedList", content: [li("a")] }, p(), p("x"), p()], "1. a\n\nx"],
+    ];
+    for (const [content, md] of cases) {
+      expect(serializeMd({ type: "doc", content })).toBe(md);
+      const back = parseMd(md);
+      if (md.includes("&nbsp;")) expect(back.content!.map((n) => [n.type, n.content?.length ?? 0])).toEqual(content.map((n) => [n.type, n.content?.length ?? 0]));
+      expect(serializeMd(back)).toBe(md);
+    }
+  });
 });
 
 describe("tables", () => {
