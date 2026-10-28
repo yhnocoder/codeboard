@@ -30,6 +30,20 @@ describe("new version check", () => {
     expect(await stale(c)).toBe("changed");
   });
 
+  it("pins a card on a file git ignores (generated build/ code) by its content, not as uncommitted, and the card stays current", async () => {
+    R = tempRepo("ignored", { ".gitignore": "build/\n", "f.py": "def f():\n    return 1\n" });
+    const gen = path.join(R, "build", "gen.py");
+    fs.mkdirSync(path.dirname(gen));
+    fs.writeFileSync(gen, "def kernel(x):\n    return x\n");
+    useWorkspace(nodeWorkspace(R));
+    const { seg } = await card(gen, "kernel");
+    expect(seg.version.kind).toBe("hash");
+    expect((await staleFor([seg]))[seg.id]?.state).toBe("ok");
+    const untracked = path.join(R, "new.py");
+    fs.writeFileSync(untracked, "def g():\n    return 2\n");
+    expect((await card(untracked, "g")).seg.version).toMatchObject({ kind: "git", uncommitted: true });
+  });
+
   it("moves the card to the new lines with the new commit as its pin when a commit only moves the code", async () => {
     const F = ["def can_allocate(x):", "    return x > 0", "", "", "def allocate(x):", "    y = x + 1", "    return y", ""];
     R = tempRepo("moved", { "blocks.py": F.join("\n") });

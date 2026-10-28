@@ -43,6 +43,9 @@ export function showFile(root: string, commit: string, rel: string): Promise<str
   return p;
 }
 
+/** git 忽略的文件（构建生成的 build/ 等）：不属于任何 commit，永远不会提交 */
+export const isIgnored = async (root: string, rel: string): Promise<boolean> => (await gitExit(root, ["check-ignore", "-q", "--", rel])) === 0;
+
 export async function resolveRef(root: string, ref: string): Promise<string | null> {
   if (!/^[\w./~^@{}-]+$/.test(ref)) return null;
   return (await git(root, ["rev-parse", "--verify", "--quiet", `${ref}^{commit}`]))?.trim() || null;
