@@ -3,7 +3,7 @@
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
 import { put, shot, type Host } from "../harness";
-import { test, open, check, until, idle } from "../fixtures";
+import { test, open, check, until, idle, focusSettled } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) as NoteCard | undefined)?.md ?? "").trim();
@@ -20,6 +20,9 @@ function noteBoard(texts: string[]): Board {
 async function editNote(h: Host, id: string) {
   await h.page.locator(`.card[data-id="${id}"] .nbody`).dblclick();
   await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
+  // 双击把光标放在点的地方；查找从光标往后数，这里从头开始，计数才是固定的
+  await focusSettled(h.page);
+  await h.page.keyboard.press("Control+Home");
 }
 
 const NOTE = "alpha beta Alpha\n\n**alpha** in bold and `alpha` in code\n\n```python\nalpha = 1\n```\n\nend alpha";
