@@ -27,7 +27,7 @@ import { offscreen } from "../state/cull";
 import { lodOf, izOf } from "../state/lodcards";
 import { whenIdle } from "../state/idle";
 import { landed } from "../canvas/Links";
-import { enterCard, leaveCard } from "../state/hover";
+import { enterCard, leaveCard, portStyle } from "../state/hover";
 import { merged, vlive } from "../state/variants";
 import { cardContextMenu, cardDblClick, cardPointerDown, cardWheel, justDragged, linkPortDown, resizeDown } from "../interact";
 import { kbd } from "../keymap";
@@ -126,7 +126,7 @@ export function CardView(p: { card: Card }) {
         <div class="cface" onWheel={(e) => { const b = (e.target as HTMLElement).closest<HTMLElement>(".nbody, .tx"); if (b) cardWheel(e, b); }}>
         <Dynamic component={BODIES[c().kind] as Component<{ card: Card }>} card={c()} />
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
-        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
+        <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" style={portStyle(c().id)} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
         <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
         <Show when={!pl().locked}>
           <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<>
@@ -208,7 +208,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={act.openQuestionsOn(c().id)}>{(n) => <button class="qcount" data-tip="Open questions on this card" data-nodrag onClick={() => act.openQuestionsOf(c().id)}>? {n()}</button>}</Show>
       <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" data-nodrag onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
       <Show when={linkedIn()}><button class="linkedin fold" data-tip={`← ${linkedIn()} · Linked here: show where the arrows come from`} data-nodrag onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}><span class="rw"><span class="rl">← {linkedIn()}</span></span></button></Show>
-      <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
+      <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id))} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
       <Show when={c().gen}>
         <span class="genrun" data-tip="The run or params this was generated from · click to edit" data-nodrag onClick={() => setEditing({ kind: "gen", id: c().id })}>
           <Editable class="grun" kind="gen" id={c().id} value={c().gen!.run ?? ""} placeholder="Run / params" onCommit={(v) => act.setGenRun(c().id, v)} />

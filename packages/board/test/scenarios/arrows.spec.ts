@@ -1,5 +1,5 @@
 import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
-import { emptyBoard, type Board, type CodeCard, type Link } from "@codeboard/core";
+import { emptyBoard, type Board, type CodeCard, type Link, type NoteCard } from "@codeboard/core";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
@@ -449,5 +449,51 @@ test("headPortHidden", async () => {
   await shot(h, "arrows-eportland-2");
   const ok = sides === "left|right" && r === "0" && l === "1" && ml === "0" && mrr === "1" && rh === "1";
   check("eport-land", ok, JSON.stringify({ sides, r, l, ml, mr: mrr, rh }));
+  await close(h);
+});
+
+/** Zoomed out, a card's edge port keeps its 100% size on screen, drawn and to hit (feedback #14: at 30% it was a 3 px target) */
+test("portSizeWhenZoomedOut", async () => {
+  const b = emptyBoard("b1", "portsize");
+  b.cards.push({ id: "n0", kind: "note", md: "A note to drag an arrow out of", bg: true } as NoteCard);
+  b.place.n0 = { x: 300, y: 200, w: 320, h: 160 };
+  b.cards.push({ id: "n1", kind: "note", md: "Another note", bg: true } as NoteCard);
+  b.place.n1 = { x: 700, y: 200, w: 200, h: 100 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1300, h: 800 });
+  const pg = h.page, N0 = `.card[data-id="n0"]`;
+  /** The top port as the pointer finds it: its drawn size, and how far right of its centre the pointer still hits it */
+  const measure = async (name: string) => {
+    const cb = (await pg.locator(N0).boundingBox())!;
+    await pg.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+    await until(h, "the hovered card shows its ports", () => pg.locator(`${N0} .eport.t`).evaluate((e) => getComputedStyle(e).opacity === "1")); await idle(h);
+    const m = await pg.evaluate((sel) => {
+      const e = document.querySelector(sel)!, r = e.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let hit = 0;
+      for (let d = 0; d <= 20; d += 0.5) { if (document.elementFromPoint(cx + d, cy)?.closest(".eport") !== e) break; hit = d; }
+      return { w: +r.width.toFixed(2), h: +r.height.toFixed(2), hit, cx, cy };
+    }, `${N0} .eport.t`);
+    await pg.screenshot({ path: path.join(OUT, `${name}.png`), clip: { x: m.cx - 120, y: m.cy - 60, width: 240, height: 120 } });
+    return m;
+  };
+  const at100 = await measure("arrows-portsize-100");
+  for (let i = 0; i < 5; i++) await pg.keyboard.press("Meta+Minus");
+  await idle(h);
+  const zoom = await pg.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector(".world")!).transform).a);
+  const at30 = await measure("arrows-portsize-zoomed");
+  const near = (a: number, b: number) => Math.abs(a - b) <= 0.5;
+  // The hit area keeps its 100% screen size; the drawn dot grows only by sqrt(1/zoom): bigger than plain scaling, smaller than 100%
+  const dot = at100.w * Math.sqrt(zoom);
+  check("portSizeWhenZoomedOut", zoom < 0.4 && near(at30.w, dot) && near(at30.h, dot) && at30.w < at100.w - 2 && near(at30.hit, at100.hit) && at100.hit >= 4,
+    JSON.stringify({ zoom, at100, at30 }));
+  // The enlarged hit area reaches outside the card: from the hovered card, a point just above its top edge still hits the top port
+  const top = (await pg.locator(N0).boundingBox())!.y, out = { x: at30.cx, y: at30.cy - (at30.hit - 0.5) };
+  await pg.mouse.move(out.x, out.y);
+  await idle(h);
+  const outside = await pg.evaluate(([x, y, sel]) => { const e = document.querySelector(sel as string)!; return { hit: document.elementFromPoint(x as number, y as number)?.closest(".eport") === e, shown: getComputedStyle(e).opacity === "1" }; }, [out.x, out.y, `${N0} .eport.t`] as const);
+  check("portSizeWhenZoomedOut outside the card edge", out.y < top - 1 && outside.hit && outside.shown, { out, top, outside });
+  // Only the hovered card's ports carry the zoomed-out sizes: a camera stop restyles those few ports, not every port on the board
+  const sized = await pg.evaluate(() => [...document.querySelectorAll<HTMLElement>(".eport, .lport")].filter((e) => e.style.getPropertyValue("--uv")).map((e) => e.closest(".card")?.getAttribute("data-id")));
+  check("portSizeWhenZoomedOut only the hovered card", sized.length === 4 && sized.every((id) => id === "n0") && (await pg.locator(".card[data-id=n1] .eport").count()) === 4, { sized });
   await close(h);
 });

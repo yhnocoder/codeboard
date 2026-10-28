@@ -112,12 +112,14 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const c = f.card;
   const isText = c.kind === "note" && !c.bg;
   const inHead = !!t.closest("[data-drag]");
-  if (!isText && !inHead) {
-    // 卡片内容：只选中，保留原生文本选择
-    if (e.shiftKey || e.metaKey || e.ctrlKey) A.selectCard(f.host.id, true);
-    else if (!isSel(f.host.id) || sel.cards.length > 1) A.selectCard(f.host.id);
+  const inBody = !isText && !inHead;
+  // 只选着这一张时，按在内容上是选字（原生文本选择）；没选中或选着好几张时，按在内容上和按卡头一样拖卡，
+  // 不动就松手：没选中的选中它，选着好几张的只留这一张（之后再按就能选字）
+  const multiBody = inBody && isSel(f.host.id) && sel.cards.length > 1;
+  if (inBody) {
     if (!t.closest(".src, .nbody, .cdesc, .tx")) { setLineSel(null); }
-    return;
+    if (e.shiftKey || e.metaKey || e.ctrlKey) return A.selectCard(f.host.id, true);
+    if (isSel(f.host.id) && sel.cards.length === 1) return;
   }
   e.preventDefault();
   // 拖的正是在编辑内容的这张卡（Note、手写代码）：接着编辑，焦点、光标都不动。拖动不算写完：
@@ -134,7 +136,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const freeHead = !!tc && isCode(tc) && tc.segments[0]?.src.kind === "free" && !tc.title;
   if (inHead && (t.closest(".ctitle") || freeHead) && isDbl(`t${target}`, e)) return setEditing({ kind: "title", id: target });
   // 调用图标记：点 = 改标记（字母 / 图标），拖 = 连同它往下调用的卡一起走
-  if (t.closest(".step")) {
+  if (inHead && t.closest(".step")) {
     const el = t.closest(".step")!;
     const was = [...sel.cards];
     A.selectSubtree(target, e.shiftKey); closeAllPops();
@@ -144,7 +146,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
   closeAllPops();
-  startCardDrag(e, f.host.id);
+  startCardDrag(e, f.host.id, multiBody ? () => A.selectCard(f.host.id) : undefined);
 }
 
 const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };
@@ -629,8 +631,8 @@ export function installKeys() {
     if (selSticker() && !t.closest?.("[data-sticker], .ctx")) setSelSticker(null);
   }, true);
   window.addEventListener("keydown", (e) => {
-    // 按住 ⌘：正在显示的弹窗固定下来
-    if (e.key === "Meta" || e.key === "Control") for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
+    // 按下 ⌘：正在显示的弹窗固定下来。按住不放时系统会一直重发 keydown（repeat），那些不算，不然按住 ⌘ 扫过的每个弹窗都会被固定
+    if ((e.key === "Meta" || e.key === "Control") && !e.repeat) for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
     if (typing() || modalOpen()) return;
     const kl = e.key.toLowerCase();
     if ((e.metaKey || e.ctrlKey) && state.host.forwardedKeys?.includes(e.shiftKey && (kl === "l" || kl === "b") ? `shift+${kl}` : kl)) { e.preventDefault(); return; } // 宿主会转回来
@@ -644,11 +646,13 @@ export function installKeys() {
     if (typing()) return;
     const items = [...(e.clipboardData?.items ?? [])];
     const file = items.find((i) => i.type.startsWith("image/"))?.getAsFile() ?? null;
+    const svg = file ? "" : e.clipboardData?.getData("image/svg+xml"); // SVG 作为数据（不是文件）放进剪贴板的
     const text = e.clipboardData?.getData("text/plain");
     const w = worldAt(lastPointer());
-    if (!file && !text) return;
+    if (!file && !text && !svg) return;
     e.preventDefault();
     const image = (f: File) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w); rd.readAsDataURL(f); };
+    if (!text && svg) return void A.pasteText(svg, w);
     if (!text) return image(file!);
     // 先看是不是白板上复制的卡（这块白板的，或者问宿主：别的白板上的就贴卡），否则照旧按图 / 文字粘贴
     void A.pasteFromBoard(text, w).then((done) => {

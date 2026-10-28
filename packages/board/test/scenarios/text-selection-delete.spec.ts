@@ -25,8 +25,11 @@ const freeText = (h: Host) => ((h.board().cards.find((c) => c.id === "c1") as Co
 const pmText = (pg: Page) => pg.evaluate(() => document.querySelector('.card[data-id="n0"] .md-pm')?.textContent ?? null);
 const cmText = (pg: Page) => pg.evaluate(() => [...document.querySelectorAll('.card[data-id="c1"] .cm-line')].map((l) => l.textContent).join("\n"));
 
-/** 用鼠标拖选 root 里的 word（第一个出现的地方）：从它第一个字的左边拖到最后一个字的右边 */
+/** 用鼠标拖选 root 里的 word（第一个出现的地方）：先点卡头只选中这张卡（没选中的卡按在内容上是拖卡），再从它第一个字的左边拖到最后一个字的右边 */
 async function dragSelect(pg: Page, root: string, word: string) {
+  const card = root.split(" ")[0];
+  await pg.locator(`${card} .chead`).first().click({ position: { x: 30, y: 10 } });
+  await pg.locator(`${card}.sel.solo`).waitFor();
   const r = await pg.evaluate(([root, word]) => {
     // 字可能分在几个文字节点里（代码着色）：连起来找
     const w = document.createTreeWalker(document.querySelector(root)!, NodeFilter.SHOW_TEXT);

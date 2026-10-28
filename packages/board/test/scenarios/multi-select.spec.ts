@@ -102,3 +102,60 @@ test("multiSelectToolbarTidyUp", async () => {
   check("tidyKey", locked.b.x !== before.b.x || locked.b.y !== before.b.y, locked.b);
   check("tidyLockedStays", locked.f.x === before.f.x && locked.f.y === before.f.y, locked.f);
 });
+
+/** Near any edge of the view the toolbar keeps its one-line width and slides inward instead of shrinking and wrapping its labels:
+ *  8px from the left / right edge, clear of the title bar on top and of the toolbar and zoom controls at the bottom (56px) */
+test("selectionToolbarAtEdge", async () => {
+  const W = 1400, H = 900, PAD = 8, CHROME_Y = 56;
+  const b = emptyBoard("b1", "nano-vllm · edge");
+  const long = Array.from({ length: 70 }, (_, i) => `Line ${i + 1} of the scheduler notes.`).join("\n\n");
+  put(b, { id: "a", kind: "note", bg: true, md: `# Scheduler\n\n${long}` } as NoteCard, 0, 0, 240);
+  put(b, { id: "b", kind: "note", bg: true, md: "# Sampler\n\nTemperature only." } as NoteCard, 300, 0, 240);
+  const h = await open({ board: b, light: true, w: W, h: H, settings: { theme: "warm-ink" } as never });
+  const { page } = h;
+  await page.keyboard.press("Meta+a");
+  await page.locator(".alignbar").waitFor(); await idle(h);
+  type Box = { x: number; y: number; w: number; h: number };
+  type Bar = Box & { btnH: number[]; iconW: number[]; lines: number[]; sel: Box; covered: boolean };
+  const measure = () => page.evaluate(() => {
+    const bar = document.querySelector<HTMLElement>(".alignbar")!.getBoundingClientRect();
+    const btns = [...document.querySelectorAll<HTMLElement>(".alignbar > .tbtn")];
+    // a label's line count: the distinct line tops of its text
+    const lines = btns.map((el) => { const r = document.createRange(); r.selectNodeContents([...el.childNodes].find((n) => n.nodeType === Node.TEXT_NODE)!); return new Set([...r.getClientRects()].map((q) => Math.round(q.top))).size; });
+    const cs = [...document.querySelectorAll<HTMLElement>(".card[data-id]")].map((e) => e.getBoundingClientRect());
+    const x0 = Math.min(...cs.map((r) => r.left)), y0 = Math.min(...cs.map((r) => r.top)), x1 = Math.max(...cs.map((r) => r.right)), y1 = Math.max(...cs.map((r) => r.bottom));
+    // overlaps the board's own toolbars (bottom bar, zoom dock, parent-board crumbs)
+    const covered = [...document.querySelectorAll<HTMLElement>(".over .pill, .crumbs")].some((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && r.left < bar.right && bar.left < r.right && r.top < bar.bottom && bar.top < r.bottom; });
+    return { covered, x: bar.x, y: bar.y, w: bar.width, h: bar.height, btnH: btns.map((e) => e.getBoundingClientRect().height), iconW: btns.map((e) => e.querySelector("svg")!.getBoundingClientRect().width), lines, sel: { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } };
+  }) as Promise<Bar>;
+  const normal = await measure();
+  const near = (a: number, b: number) => Math.abs(a - b) <= 1;
+  check("edgeToolbarCenteredWhenRoom", near(normal.x + normal.w / 2, normal.sel.x + normal.sel.w / 2) && normal.lines.every((n) => n === 1), normal);
+  /** pan the camera (wheel over empty canvas) so the selection's top-left corner lands at (sx, sy), then check the bar */
+  const at = async (name: string, sx: number, sy: number, overflow: (s: Box) => boolean) => {
+    const s = (await measure()).sel;
+    await page.mouse.move(s.x + s.w / 2 > W / 2 ? 60 : W - 60, 450);
+    await page.mouse.wheel(s.x - sx, s.y - sy);
+    await until(h, `${name}: the camera has panned`, async () => { const t = (await measure()).sel; return near(t.x, sx) && near(t.y, sy); });
+    await idle(h);
+    const m = await measure();
+    check(`${name}-wouldOverflow`, overflow(m.sel), "the centred bar would cross the edge here", m.sel);
+    check(`${name}-oneLine`, near(m.w, normal.w) && near(m.h, normal.h) && m.lines.every((n) => n === 1) && m.btnH.every((v, i) => near(v, normal.btnH[i])) && m.iconW.every((v, i) => near(v, normal.iconW[i])), { normal, m });
+    check(`${name}-inside`, m.x >= PAD - 0.5 && m.y >= CHROME_Y - 0.5 && m.x + m.w <= W - PAD + 0.5 && m.y + m.h <= H - CHROME_Y + 0.5 && !m.covered, m);
+    return m;
+  };
+  // right edge, the bar above the cards
+  const r = await at("edgeRight", W - 280, 200, (s) => s.x + s.w / 2 + normal.w / 2 > W);
+  check("edgeRight-hugsEdge", near(r.x + r.w, W - PAD), r);
+  await shot(h, "selectionToolbar-right");
+  // left edge
+  const l = await at("edgeLeft", -260, 200, (s) => s.x + s.w / 2 - normal.w / 2 < 0);
+  check("edgeLeft-hugsEdge", near(l.x, PAD), l);
+  // the cards' top under the title bar: the bar goes below them, and that is past the bottom toolbar
+  const d = await at("edgeBottom", 400, 20, (s) => s.y + s.h + 12 + normal.h > H - CHROME_Y);
+  check("edgeBottom-hugsEdge", near(d.y + d.h, H - CHROME_Y), d);
+  await shot(h, "selectionToolbar-bottom");
+  // the cards just above the top edge: the bar below them would be above it
+  const u = await at("edgeTop", 400, -20 - d.sel.h, (s) => s.y + s.h + 12 < 0);
+  check("edgeTop-hugsEdge", near(u.y, CHROME_Y), u);
+});

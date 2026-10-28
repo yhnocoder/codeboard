@@ -11,6 +11,7 @@ import { loadBoardFile, loadSharedCard } from "../schema";
 import { applyPatch, applySharedUpdate, cardCopies, deflate, diffBoards, inflate, mergeById, mergeFile, putShared, same, sharedOf, travels, type BoardPatch, type SharedUpdate } from "../patch";
 import { pruneRefs, removeCards, renameCard, unlinkCard, type CardCopy } from "../edit";
 import { subBoardsOf } from "../subboard";
+import { IMAGE_EXT, sniffImage, sniffSvg } from "../image";
 import { dirName, extName, type Fs } from "./fs";
 
 /** 写之前的样子（文件在哪、侧栏关心的部分、组）：写完比一比，侧栏要不要刷新、旧文件要不要删 */
@@ -704,12 +705,17 @@ export class Storage {
 
   fireChanged() { this.changed.fire(); }
 
-  /** 存一张图片到 assets/，按内容去重；返回文件名 */
+  /**
+   * 存一张图片到 assets/，按内容去重；返回文件名。扩展名按内容定（webview 按扩展名给资源的类型：内容是 SVG、名字是 .png 的图显示不出来），
+   * 认不出的（网页图标的 .ico 之类）才看名字和 mime
+   */
   async saveAsset(name: string, dataUrl: string): Promise<string> {
     const m = /^data:([\w/+.-]+);base64,(.*)$/s.exec(dataUrl);
     if (!m) throw new Error("Not an image");
     const buf = this.fs.fromBase64(m[2]);
-    const ext = extName(name) || `.${(m[1].split("/")[1] ?? "png").replace("jpeg", "jpg").replace("svg+xml", "svg")}`;
+    const bitmap = sniffImage(buf)?.mime;
+    const ext = bitmap ? `.${IMAGE_EXT[bitmap]}` : sniffSvg(buf) ? ".svg"
+      : extName(name) || `.${(m[1].split("/")[1] ?? "png").replace("jpeg", "jpg").replace("svg+xml", "svg")}`;
     const file = `${this.fs.sha1(buf).slice(0, 16)}${ext.toLowerCase()}`;
     await this.fs.mkdir(this.assetsDir());
     await this.fs.writeFile(this.fs.join(this.assetsDir(), file), buf);

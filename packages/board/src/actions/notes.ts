@@ -12,12 +12,11 @@ import { hostRect, revealCard } from "./common";
 import { lastPointer } from "../state/measure";
 
 let hoverT: number | undefined, leaveT: number | undefined;
-export function hoverMarker(el: Element, ids: string[], e: PointerEvent) {
+export function hoverMarker(el: Element, ids: string[]) {
   if (quietHover()) return;
   clearTimeout(leaveT);
-  const pin = e.metaKey || e.ctrlKey;
   clearTimeout(hoverT);
-  hoverT = window.setTimeout(() => showNotes(el, ids, pin), pin ? 0 : 120);
+  hoverT = window.setTimeout(() => showNotes(el, ids, false), 120);
   el.addEventListener("pointerleave", () => { clearTimeout(hoverT); scheduleHideNotes(); }, { once: true });
 }
 export function scheduleHideNotes() {

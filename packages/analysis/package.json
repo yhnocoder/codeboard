@@ -17,7 +17,7 @@
   },
   "dependencies": {
     "@vscode/tree-sitter-wasm": "^0.3.1",
-    "@yhnocoder/tree-sitter-cuda": "https://github.com/yhnocoder/tree-sitter-cuda/releases/download/v0.21.2-cb.1/yhnocoder-tree-sitter-cuda-0.21.2-cb.1.tgz"
+    "@yhnocoder/tree-sitter-cuda": "https://github.com/yhnocoder/tree-sitter-cuda/releases/download/v0.21.2-cb.2/yhnocoder-tree-sitter-cuda-0.21.2-cb.2.tgz"
   },
   "exports": {
     ".": "./src/index.ts",
