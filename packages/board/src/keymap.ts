@@ -110,6 +110,9 @@ export const KEYMAP: Bind[] = [
   { id: "front", keys: ["mod+shift+BracketRight"], label: "Bring to Front", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "front") },
   { id: "back", keys: ["mod+shift+BracketLeft"], label: "Send to Back", group: "Cards", when: hasCards, run: (a) => a.arrange([...sel.cards], "back") },
   { id: "deleteSticker", keys: ["Backspace", "Delete"], when: () => !!selSticker(), run: (a) => a.removeSticker(selSticker()!) },
+  // 只选着的那张 Note 的静态正文里选了字：不进编辑直接加粗 / 高亮（和编辑器里同样的键）；没有这样的选区就接着往下找
+  { id: "staticBold", keys: ["mod+b"], label: "Bold the text selected in a Note", group: "Cards", run: (a) => a.formatStaticSel("bold") },
+  { id: "staticHighlight", keys: ["mod+shift+h"], label: "Highlight the text selected in a Note", group: "Cards", run: (a) => a.formatStaticSel("highlight") },
   // 选中了一张卡里的一段字：进入编辑删掉这段字，不删卡
   { id: "deleteText", keys: ["Backspace", "Delete"], run: (a, e) => a.editTextSel(e.key === "Delete" ? "Delete" : "Backspace") },
   { id: "delete", keys: ["Backspace", "Delete"], show: "⌫", label: "Delete (linked card: remove from this board)", group: "Cards", run: (a) => { if (!lineSel() || sel.cards.length) a.deleteSel(); } },

@@ -50,6 +50,28 @@ export function staticTextRange(root: HTMLElement, range: Range): StaticTextRang
   return { from, to, text: text.slice(from, to) };
 }
 
+/** staticTextRange 反过来：root 里第 from 到第 to 个字的 DOM Range（重画以后把选区放回同一段字上）；数不到给 null */
+export function staticDomRange(root: HTMLElement, from: number, to: number): Range | null {
+  const r = document.createRange();
+  let n = 0, start = false;
+  const visit = (node: Node): boolean => {
+    let len = 0, leaf: HTMLElement | null = null;
+    if (node.nodeType === 3) len = (node as Text).data.length;
+    else if (node.nodeType === 1) {
+      const e = node as HTMLElement, mmd = e.classList.contains("mmd");
+      if (!mmd && !e.matches(LEAF)) { for (const k of e.childNodes) if (visit(k)) return true; return false; }
+      leaf = e;
+      len = mmd ? (e.dataset.src ?? "").length : LEAF_CHAR.length;
+    } else return false;
+    if (!start && from < n + len) { if (leaf) r.setStartBefore(leaf); else r.setStart(node, from - n); start = true; }
+    const end = start && to > n && to <= n + len;
+    if (end) { if (leaf) r.setEndAfter(leaf); else r.setEnd(node, to - n); }
+    n += len;
+    return end;
+  };
+  return visit(root) ? r : null;
+}
+
 /** 文档里第 k 个字的位置。start：块和块之间、叶子前面取后一个位置（下一块的开头）；否则取前一个（上一块的末尾） */
 function posAt(doc: PMNode, k: number, start: boolean): number | null {
   let n = 0, at: number | null = null;

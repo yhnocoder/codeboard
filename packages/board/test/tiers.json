@@ -97,7 +97,8 @@
         "packages/markdown/src/editor/{index,icons}.tsx",
         "packages/markdown/src/editor/{clipboard,codeblock,codelang,ghost,pairs,source,typora}.ts", "packages/markdown/src/ui/**",
         "packages/core/src/complete.ts", "packages/host/src/deepseek.ts", "packages/board/test/typing-sequence.json",
-        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence}.spec.ts"
+        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence}.spec.ts",
+        "packages/markdown/src/marks.ts", "packages/board/src/actions/format.ts", "packages/board/src/ui/StaticFormat.tsx", "packages/board/test/scenarios/static-format.spec.ts"
       ],
       "scenarios": [
         "notes", "markdownRender", "markdownEdit", "undoIsOneStep", "noteEditKeepsLayout", "headingMarkerTypedAtHeadingSize",
