@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  applyRun, callName, callTree, computeFlows, emptyBoard, loadBoard, loadRun, matchRun, rpcText, startCards, walkOrder,
+  altIsSeg, applyRun, callName, callTree, computeFlows, emptyBoard, loadBoard, loadRun, matchRun, rpcText, startCards, walkOrder,
   type Board, type Card, type RunApply, type RunRecord,
 } from "../src";
 
@@ -111,5 +111,16 @@ describe("run records", () => {
   it("callName: the name a call site uses", () => {
     expect(callName("Scheduler.schedule")).toBe("schedule");
     expect(callName("Sequence.__init__")).toBe("Sequence");
+  });
+});
+
+describe("alternatives of a call", () => {
+  it("are the expanded card only when the file matches too: a stub's CUDA and CPU kernels can share one qual", () => {
+    const cuda = (code("k", "at::native::add_kernel", "build/aten/src/ATen/UfuncCUDA_add.cu") as Extract<Card, { kind: "code" }>).segments[0];
+    const alt = (path: string) => ({ label: "CPU · at::native::add_kernel", qual: "at::native::add_kernel", path });
+    expect(altIsSeg(alt("build/aten/src/ATen/UfuncCPUKernel_add.cpp"), cuda)).toBe(false);
+    expect(altIsSeg(alt("build/aten/src/ATen/UfuncCUDA_add.cu"), cuda)).toBe(true);
+    expect(altIsSeg(alt("pytorch/build/aten/src/ATen/UfuncCUDA_add.cu"), cuda)).toBe(true); // workspace-relative, the repo one level down
+    expect(altIsSeg({ qual: "at::native::add_kernel" }, cuda)).toBe(true);
   });
 });

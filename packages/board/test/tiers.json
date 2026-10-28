@@ -72,7 +72,7 @@
       "about": "broken call chains (picking the implementation) and calls across languages (pybind, torch.ops, kernels)",
       "files": [
         "packages/board/src/actions/chains.ts", "packages/board/src/ui/pops/chains.tsx", "packages/analysis/src/bridge.ts",
-        "packages/host/src/bridge.ts", "packages/host/test/fixtures/crosslang/**", "packages/board/test/scenarios/chains.spec.ts"
+        "packages/host/src/bridge.ts", "packages/host/src/torchops.ts", "packages/host/test/fixtures/crosslang/**", "packages/board/test/scenarios/chains.spec.ts"
       ],
       "scenarios": ["crosslang", "implPickerKeyboard", "string-dispatch-offers-receiver-method"]
     },

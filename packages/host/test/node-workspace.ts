@@ -10,17 +10,17 @@ export const WS = "/tmp/codeboard-perf/ws";
 export type TestWorkspace = Workspace & {
   /** Unsaved editor buffers */
   open: Map<string, string>;
-  fire: { save: Emitter<string | undefined>; edit: Emitter<string | undefined>; create: Emitter<string[]>; delete: Emitter<string[]>; change: Emitter<string> };
+  fire: { save: Emitter<string | undefined>; edit: Emitter<string | undefined>; create: Emitter<string[]>; delete: Emitter<string[]>; rename: Emitter<{ from: string; to: string }[]>; change: Emitter<string> };
   /** Number of findFiles calls (the name index must not walk the workspace on every click) */
   finds: number;
 };
 
-const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "build", "dist", "__pycache__", ".mypy_cache", ".tox"]);
+const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "site-packages", "build", "dist", "__pycache__", ".mypy_cache", ".tox"]);
 
 export function nodeWorkspace(root = WS): TestWorkspace {
   const inRoot = (p: string) => p === root || p.startsWith(root + "/");
   const quiet = new Emitter<never>();
-  const fire = { save: new Emitter<string | undefined>(), edit: new Emitter<string | undefined>(), create: new Emitter<string[]>(), delete: new Emitter<string[]>(), change: new Emitter<string>() };
+  const fire = { save: new Emitter<string | undefined>(), edit: new Emitter<string | undefined>(), create: new Emitter<string[]>(), delete: new Emitter<string[]>(), rename: new Emitter<{ from: string; to: string }[]>(), change: new Emitter<string>() };
   const open = new Map<string, string>();
   const w: TestWorkspace = {
     open, fire, finds: 0,
@@ -35,11 +35,12 @@ export function nodeWorkspace(root = WS): TestWorkspace {
         const abs = fileURLToPath(uri);
         return fs.statSync(abs).size > max ? undefined : fs.readFileSync(abs);
       },
-      /** Code files under the root ("**\/*.{ext,…}" filters by extension, anything else = .py files), sorted, up to max */
+      /** Code files under the root ("**\/*.{ext,…}" filters by extension, "**\/a/b.yaml" by path, anything else = .py files), sorted, up to max */
       findFiles: async (include, _exclude, max) => {
         w.finds++;
         const ext = /^\*\*\/\*\.\{?([\w,]+)\}?$/.exec(include)?.[1].split(",");
-        const want = (p: string) => (ext ? ext.some((e) => p.endsWith(`.${e}`)) : p.endsWith(".py"));
+        const tail = /^\*\*\/([^*?{}[\]]+)$/.exec(include)?.[1];
+        const want = (p: string) => (ext ? ext.some((e) => p.endsWith(`.${e}`)) : tail ? p.endsWith(`/${tail}`) : p.endsWith(".py"));
         const out: string[] = [];
         const walk = (d: string) => {
           for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
@@ -59,7 +60,7 @@ export function nodeWorkspace(root = WS): TestWorkspace {
       onDidEdit: fire.edit.event,
       onDidCreate: fire.create.event,
       onDidDelete: fire.delete.event,
-      onDidRename: quiet.event,
+      onDidRename: fire.rename.event,
       onDidChangeRoots: quiet.event,
       onDidChangeGit: quiet.event,
     },

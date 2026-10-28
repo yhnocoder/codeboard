@@ -20,8 +20,9 @@ function pyFiles(dir: string, out: string[] = []): string[] {
 }
 const PY = pyFiles(repo).sort().map((p) => ({ name: p.slice(repo.length + 1), lang: "python", text: readFileSync(p, "utf8") }));
 
-const CPP = [
-  { name: "kernel.cu", lang: "cuda-cpp", text: `// 简单的 kernel
+/** extra = symbols the node walk missed (nested struct in a struct body, definitions inside an ERROR node) */
+const CPP: { name: string; lang: string; text: string; extra?: string[] }[] = [
+  { name: "kernel.cu", lang: "cuda-cpp", extra: ["flash::detail::Params::Inner", "flash::detail::Params::Inner::g"], text: `// 简单的 kernel
 #include <cuda_runtime.h>
 #include "utils.h"
 
@@ -95,7 +96,7 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
   m.def("rms_norm", &rms_norm, "RMSNorm");  // 绑定
 }
 ` },
-  { name: "broken.h", lang: "c", text: "struct A { int x; \nvoid f( { g(); }\n#define M(x) ((x) + 1)\nint h(void) { return M(k()); }\n" },
+  { name: "broken.h", lang: "c", extra: ["f", "h"], text: "struct A { int x; \nvoid f( { g(); }\n#define M(x) ((x) + 1)\nint h(void) { return M(k()); }\n" },
 ];
 
 beforeAll(() => initAnalysis());
@@ -127,7 +128,8 @@ describe("query-based analysis matches the v0.1.5 node walk", () => {
   for (const f of CPP) it(`c++ / cuda: ${f.name}`, () => {
     const a = analyze(f.lang, f.text);
     expect(a.calls.length).toBeGreaterThan(1);
-    same(a, analyzeOld(f.lang, f.text));
+    expect(a.symbols.filter((s) => f.extra?.includes(s.qual)).map((s) => s.qual)).toEqual(f.extra ?? []);
+    same({ ...a, symbols: a.symbols.filter((s) => !f.extra?.includes(s.qual)) }, analyzeOld(f.lang, f.text));
   });
   it("unknown languages only mark blank lines", () => same(analyze("go", "func main() {}\n\n"), analyzeOld("go", "func main() {}\n\n")));
 });

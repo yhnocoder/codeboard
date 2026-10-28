@@ -4,7 +4,8 @@ import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type Expand
 import { grammarOf, grammarOfFile } from "@codeboard/analysis/langs";
 import { escapeRegExp, type Var } from "@codeboard/analysis/basics";
 import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/analysis";
-import { crossBefore, decorate, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
+import { crossAfterDefs, crossBefore, decorate, viaOps, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
+import { opTableFor, pyOpEntry } from "./torchops";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
 import { sharedDefs, type Def } from "./defcache";
 import { cardForFileSym, symCard } from "./cards";
@@ -12,9 +13,9 @@ import { absOf, locOfFile, versionText, hasLocalFile } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
 import { libOf } from "./scope";
-import { entriesOf, indexedFiles, lookupName, type IndexEntry } from "./nameindex";
+import { entriesOf, indexedFiles, knownEntries, lookupName, pausingIndex, type IndexEntry } from "./nameindex";
 import { log } from "./log";
-import { exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
+import { exists, fromHostPath, hostPath, inExcludedDir, inWorkspace, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
 
 export { nameIndexReady, resetIndex, startNameIndex } from "./nameindex";
 
@@ -75,7 +76,10 @@ export const pickAbs = (seg: Segment, p: ExpandPick) => (p.rel ? absOf({ ...seg,
 
 const none = (reason: string): ExpandResult => ({ none: true, reason });
 
-export async function expand(m: ExpandReq): Promise<ExpandResult> {
+/** 点击解析时后台的名字索引先等着 */
+export const expand = (m: ExpandReq): Promise<ExpandResult> => pausingIndex(() => expandNow(m));
+
+async function expandNow(m: ExpandReq): Promise<ExpandResult> {
   const seg = m.seg;
   if (seg.src.kind === "free") return none("Free code has no source to follow.");
   if (seg.src.kind === "github") return none("Expanding calls in GitHub code is not supported yet.");
@@ -88,18 +92,33 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
 
   let targets: Target[] = [];
   let crossed: Crossed[] = [];
+  let stubs: Def[] = [];
   if (m.pick) {
     const abs = pickAbs(seg, m.pick);
     const t = abs && (await symAtDef({ abs, line: m.pick.line, col: 0 }, m.pick.rel ? m.name : undefined, m.pick.qual));
     if (t) targets = [t];
   } else {
-    // 跨语言：torch.ops、launch macro、JIT 编译点下去之前就认得出（语言服务答不了）
-    crossed = await crossBefore(site, seg.lang, here);
-    const wp = crossed.length ? null : await workingPlace(seg);
+    // 跨语言：torch.ops、launch macro、JIT 编译点下去之前就认得出（语言服务答不了）。语言服务只在要分清工作区里几个 PyTorch 时才问（同一个请求，后面接着用）
+    let place: ReturnType<typeof workingPlace> | undefined;
+    const lspAt = async () => { const p = await (place ??= workingPlace(seg)); return p?.exact ? (await lspDefs(p.abs, p.start + (m.line - seg.start), m.col)).map((d) => d.abs) : []; };
+    crossed = await crossBefore(site, seg.lang, here, lspAt);
+    const wp = crossed.length ? null : await (place ??= workingPlace(seg));
     resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
-      const defs = await clickDefs(wp.abs, line, m.col);
+      // 旁边有 .py 的 .pyi 存根代表那个 .py 里的定义。项目里旁边没有 .py 的（torch._C.*、Tensor.X、编译出来的扩展）不是实现：
+      // 跨语言注册和算子在前，存根留作备选，什么都找不到时才是答案。库的存根（typeshed 的 builtins.pyi、工作区外或仓库里 .venv 下的包）
+      // 照常是答案：同名的 pybind .def("get") 和 dict.get 无关
+      let defs: Def[] = [];
+      for (const d of await clickDefs(wp.abs, line, m.col)) {
+        const impl = isStub(d) ? (await stubImpl(d, m.name)) ?? (inWorkspace(d.abs) && !inExcludedDir(d.abs) ? null : d) : d;
+        if (!impl) stubs.push(d);
+        else if (!defs.some((x) => x.abs === impl.abs && x.line === impl.line)) defs.push(impl);
+      }
+      if (defs.length) stubs = [];
+      // C++ 落在生成的算子文件（at::_softmax → ops/_softmax.h）或 DEFINE_DISPATCH 上：走 yaml / REGISTER_DISPATCH
+      crossed = await crossAfterDefs(site, seg.lang, defs, here?.abs);
+      if (crossed.length) defs = [];
       lspN = defs.length;
       // 动态分发：定义处是基类的方法、有子类覆盖它 → 列出全部实现让人选
       // 转到实现在 Pylance 那边要在整个工作区里找子类（冷的时候、慢机器上要好几秒）：点击只等一小会儿（预取过的话已经在缓存里），
@@ -116,8 +135,19 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
       }
     }
     // Python 调到 C / C++ / Rust 扩展：语言服务找不到定义，先看 pybind / PyO3 的注册（再退到名字索引）
-    // 名字索引里有同名的 Python 定义就不算（self.model.forward 不去找 C++ 的 .def("forward")）
-    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && !(await lookupName(m.name)).some((e) => /\.pyi?$/.test(e.abs))) crossed = await viaRegistry(m.name);
+    // 名字索引里有同名的 Python 定义就不算（self.model.forward 不去找 C++ 的 .def("forward")）；.pyi 存根不算定义
+    // PyTorch（有算子索引）：只看已经分析过的文件，不为这个判断扫工作区
+    // PyTorch 的 x.X(…)：静态看不出 x 是不是 Tensor。X 是算子、又没有真的定义时，yaml 的 kernel 也是候选。
+    // 排在注册之前：Tensor 方法都有生成的 PyMethodDef 绑定（THPVariable_softmax），那只是胶水；而且先查注册时结果要看名字索引建到哪了
+    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && site && here) crossed = await tensorMethod(site, here);
+    const torch = seg.lang === "python" && !!(await opTableFor(here?.abs));
+    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && !(torch ? knownEntries(m.name) : await lookupName(m.name)).some((e) => /\.py$/.test(e.abs))) crossed = await viaRegistry(m.name, here?.abs);
+    for (const d of targets.length ? [] : stubs) {
+      const t = await symAtDef(d, m.name);
+      if (!t) continue;
+      if (crossed.length) { if (!crossed.some((x) => x.t.abs === t.abs && x.t.sym.qual === t.sym.qual)) crossed.push({ t, mark: {}, label: `stub · ${path.basename(t.abs)} ${t.sym.qual}` }); }
+      else if (!targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
+    }
     // 语言服务给了定义、只是那里不是函数 / 类（变量、属性、参数）：不扫工作区（大仓库建名字索引要几十秒），
     // 只在当前文件和已经分析过的文件里按名字找
     if (!crossed.length && !targets.length) {
@@ -143,11 +173,25 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   // 目标找到了：Triton 的 [grid]、CUDA 的 <<<>>>、TileLang 工厂补上边界和取值
   const x = crossed.length ? await withAlts(crossed) : await decorate(site, targets[0], caller);
   const t = x.t;
-  if (crossed.length) log("info", `expand ${m.name} → ${x.mark.bound} → ${t.sym.qual} (${hostPath(t.abs)}:${t.sym.defLine})${crossed.length > 1 ? ` +${crossed.length - 1} alternatives` : ""}`);
+  if (crossed.length) log("info", `expand ${m.name} → ${x.mark.bound ?? "definition"} → ${t.sym.qual} (${hostPath(t.abs)}:${t.sym.defLine})${crossed.length > 1 ? ` +${crossed.length - 1} alternatives` : ""}`);
   const nc = await cardForFileSym(t.abs, t.sym);
   if (!nc) { log("error", `expand ${m.name} → cannot read ${hostPath(t.abs)}`); return none(`Cannot read ${hostPath(t.abs)}.`); }
   const mark = Object.keys(x.mark).length ? x.mark : undefined;
   return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site && !t.sym.name.startsWith("<") ? await varsFor(site, t) : [], ...(mark ? { mark } : {}), ...(x.title ? { title: x.title } : {}), ...(dispatching && !crossed.length ? { dispatching: true as const } : {}) };
+}
+
+/**
+ * recv.X(…) 而 X 是有 method 变体的 PyTorch 算子：它的 kernel。名字索引里已有的同名 Python 方法只在 recv 明显是它们的类时接手；
+ * 它们从不和 kernel 一起当备选（索引建的过程中有哪些会变，同名的模块级函数、包括调用处自己，也不是方法）
+ */
+async function tensorMethod(site: CallSite, here: { abs: string; text: string }): Promise<Crossed[]> {
+  const t = await opTableFor(here.abs);
+  const e = t && pyOpEntry(t, site, here.text);
+  if (!t || e?.how !== "method") return [];
+  const methods = knownEntries(site.name).filter((x) => /\.py$/.test(x.abs) && x.kind === "def" && x.qual.includes(".") && !(x.abs === here.abs && site.line >= x.start && site.line <= x.end))
+    .map((x) => ({ ...x, path: hostPath(x.abs), line: x.defLine })); // 不为这个扫工作区
+  if (methods.length > 1 && rankByReceiver(methods, site.recv, { path: hostPath(here.abs) }).best) return [];
+  return viaOps(t, e.op);
 }
 
 /**
@@ -176,12 +220,42 @@ const within = <T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> => {
   let t: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([p, new Promise<typeof LATE>((r) => { t = setTimeout(() => r(LATE), ms); })]).finally(() => clearTimeout(t));
 };
+const isStub = (d: Def) => /\.pyi$/.test(d.abs);
+
+/** .pyi 存根声明的定义在旁边 .py 里的位置（typeshed 式的 Python 代码存根）；编译代码的存根返回 null */
+export async function stubImpl(d: Def, name?: string): Promise<Def | null> {
+  const py = d.abs.replace(/\.pyi$/, ".py");
+  const stub = await symAtDef(d, name);
+  const text = stub && (await readText(py, false));
+  if (!stub || !text) return null;
+  const sym = analysisOf("python", text).symbols.find((s) => s.qual === stub.sym.qual && s.kind === stub.sym.kind);
+  if (!sym) return null;
+  const col = splitLines(text)[sym.defLine - 1]?.indexOf(sym.name) ?? 0;
+  return { abs: py, line: sym.defLine, col: Math.max(0, col) };
+}
+
+/**
+ * 对一个定义去哪里问 Go to Implementation：存根的 .py；PyTorch 编译代码的存根不问，算子路由代替它
+ * （Pylance 在那里搜整个工作区 ~24 s，什么也找不到）
+ */
+async function implSite(d: Def, name: string): Promise<Def | null> {
+  if (!isStub(d)) return d;
+  const impl = await stubImpl(d, name);
+  if (impl) return impl;
+  return (await opTableFor(d.abs)) ? null : d;
+}
+
 /** dispatchOf 会去问转到实现的那种定义：Python 类里的方法 */
 async function mayDispatch(d: Def, name: string): Promise<boolean> {
   if (langOf(d.abs) !== "python") return false;
   const b = await symAtDef(d, name);
-  return !!b && !!b.sym.parent && b.sym.kind === "def";
+  return overridable(b, name);
 }
+/**
+ * 被调用的方法本身：类里的 def，名字就是调用的名字。名字不同的（x.foo 落到 __getattr__，torch.ops.aten.X 落到 _OpNamespace.__getattr__）
+ * 覆盖它的子类和这次调用无关，不为它问转到实现（Pylance 在大工作区里要找十几秒）
+ */
+const overridable = (b: Target | null, name: string): b is Target & { sym: { parent: string } } => !!b && !!b.sym.parent && b.sym.kind === "def" && b.sym.name === name;
 
 /** expand 回了 dispatching 之后白板来问：同一个调用点的定义处有没有被覆盖（定义、转到实现都走缓存，和 expand 发出去的是同一个请求） */
 export async function dispatchAt(m: { seg: Segment; line: number; col: number; name: string }): Promise<DispatchResult> {
@@ -198,10 +272,12 @@ export async function dispatchAt(m: { seg: Segment; line: number; col: number; n
  * 定义处是类里的方法：在它上面问「转到实现」（Pylance 回所有覆盖它的子类方法）。有覆盖就是动态分发：
  * 列出全部实现（基类自己不是抽象的也算一个），library 里的标上包名（⌥ 才展开）
  */
-export async function dispatchOf(d: Def, name: string): Promise<{ result: Extract<ExpandResult, { impls: unknown }>; n: number; base: string; abstract: boolean } | null> {
-  if (langOf(d.abs) !== "python") return null;
+export async function dispatchOf(def: Def, name: string): Promise<{ result: Extract<ExpandResult, { impls: unknown }>; n: number; base: string; abstract: boolean } | null> {
+  if (langOf(def.abs) !== "python") return null;
+  const d = await implSite(def, name);
+  if (!d) return null;
   const b = await symAtDef(d, name);
-  if (!b || !b.sym.parent || b.sym.kind !== "def") return null;
+  if (!overridable(b, name)) return null;
   let locs: Def[] = [];
   try { locs = await lspImpls(d); } catch { return null; }
   const impls: Target[] = [];

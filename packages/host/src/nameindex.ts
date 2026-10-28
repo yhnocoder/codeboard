@@ -7,18 +7,17 @@ import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
 import { log } from "./log";
-import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, workspace } from "./ws";
+import { CODE_EXCLUDE, CODE_GLOB, inExcludedDir, langOf, readText, workspace } from "./ws";
 
 export type IndexEntry = { name: string; qual: string; kind: Sym["kind"]; abs: string; start: number; end: number; defLine: number; sig: string };
 
 const MAX_FILES = 500_000; // 只防意外（几十万个代码文件的仓库）
 const MAX_TEXT = 2_000_000; // 更大的文件（生成的代码）不分析
 const PARALLEL = 16; // 按名字查时同时读几个文件
-const SKIP = /[\\/](node_modules|\.git|\.venv|venv|build|dist|__pycache__|\.mypy_cache|\.tox)[\\/]/;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 建索引（含后台）的文件：和 CODE_GLOB / CODE_EXCLUDE 一样的规则（语言表里有语法的扩展名） */
-export const isCode = (abs: string) => !!grammarOfFile(abs) && !SKIP.test(abs);
+export const isCode = (abs: string) => !!grammarOfFile(abs) && !inExcludedDir(abs);
 
 let order = new Map<string, number>(); // 文件 → 列表里的序号：结果按它排（同一个名字的候选顺序稳定）
 let seq = 0;
@@ -31,6 +30,14 @@ const stamps = new Map<string, number>(); // 文件改一次加一：分析到�
 let listing: Promise<void> | undefined;
 let running: Promise<void> | undefined;
 let wanted = false; // 有人要过后台建（白板打开过）：文件改了之后也在后台补上
+
+/**
+ * 跟着名字索引走的索引（PyTorch 的算子索引，torchops.ts）：同样的文件事件和重置；warm = 后台建名字索引之前先做完的事。
+ * 由它自己登记，名字索引不 import 它（它要用名字索引的文件列表和条目）
+ */
+export type IndexFollower = { changed(abs: string): void; removed(p: string): void; buildChanged(): void; reset(): void; warm(): Promise<void> };
+let follower: IndexFollower | undefined;
+export const followIndex = (f: IndexFollower) => { follower = f; };
 
 // 单词位图：4096 位，每个标识符按 FNV 哈希置一位（会误报、不会漏报）
 
@@ -100,6 +107,25 @@ async function indexFile(abs: string, text?: string | null) {
   for (const e of ents) (byName.get(e.name) ?? byName.set(e.name, []).get(e.name)!).push(e);
 }
 
+// 点击和索引在同一个线程上等：点击解析期间索引不开始新文件（正在解析的文件照样做完）。
+// 一次暂停最多 PAUSE_MAX：卡在语言服务上的点击之后索引照常建完，直到下一次点击再停。
+// 点击数记在各自的暂停上：卡住的那个只算它那一次暂停的，之后的点击做完就放开
+let pause: { done: Promise<void>; open: () => void; clicks: number } | undefined;
+export const PAUSE_MAX = 5000;
+export async function pausingIndex<T>(fn: () => Promise<T>): Promise<T> {
+  if (!pause) {
+    let open!: () => void;
+    const done = new Promise<void>((r) => (open = r));
+    const timer = setTimeout(() => p.open(), PAUSE_MAX);
+    const p = { done, clicks: 0, open: () => { clearTimeout(timer); if (pause === p) pause = undefined; open(); } };
+    pause = p;
+  }
+  const p = pause;
+  p.clicks++;
+  try { return await fn(); } finally { if (--p.clicks === 0) p.open(); }
+}
+const unpaused = () => pause?.done;
+
 /** 后台把 todo 里的文件都分析完（一次只跑一个；每个文件之间让出事件循环） */
 function drain(): Promise<void> {
   return (running ??= (async () => {
@@ -107,6 +133,8 @@ function drain(): Promise<void> {
     try {
       await list();
       while (todo.size && g === gen) {
+        const wait = unpaused();
+        if (wait) { await wait; continue; }
         const abs = todo.values().next().value!;
         await indexFile(abs); // 分析到一半文件又改了：还留在 todo 里，下一轮再做
         await sleep(0);
@@ -118,8 +146,10 @@ function drain(): Promise<void> {
 /** 打开白板之后：后台开始建（delay 毫秒后，让白板先把自己的事做完） */
 export function startNameIndex(delay = 0) {
   wanted = true;
-  if (delay) setTimeout(() => void drain(), delay);
-  else void drain();
+  // PyTorch：算子索引先读完它要的文件（几秒）再开始建名字索引，两个一起跑时算子索引每让一次事件循环就要等一个大文件分析完
+  const go = () => void (follower?.warm() ?? Promise.resolve()).finally(() => void drain());
+  if (delay) setTimeout(go, delay);
+  else go();
 }
 
 /** 整个索引建完（⌘K 搜符号要全部的名字） */
@@ -154,6 +184,9 @@ export async function lookupName(name: string): Promise<IndexEntry[]> {
   if (!wanted) startNameIndex(1000); // 用到了：剩下的也在后台建上
   return sorted(byName.get(name) ?? []);
 }
+
+/** 已经分析过的文件里叫这个名字的（不读、不分析任何文件；PyTorch 的算子索引先把它要的文件分析过） */
+export const knownEntries = (name: string): IndexEntry[] => sorted(byName.get(name) ?? []);
 
 /**
  * 文本里有这个词的代码文件和它们的文本（跨语言找注册、宏定义、按名字搜用）。先看单词位图（会误报、不会漏报），再读文件确认；
@@ -199,6 +232,7 @@ export async function entriesOf(abs: string): Promise<IndexEntry[]> {
 
 /** 文件改了（保存、新建、在外面改了）：重新排进待分析 */
 export function changedFile(abs: string) {
+  follower?.changed(abs);
   if (!isCode(abs) || !listing) return; // 还没列过：列的时候自然会读到
   drop(abs);
   sigs.delete(abs);
@@ -208,6 +242,7 @@ export function changedFile(abs: string) {
 }
 
 export function removedPath(p: string) {
+  follower?.removed(p);
   for (const abs of [...order.keys()]) if (abs === p || abs.startsWith(p + path.sep)) { drop(abs); todo.delete(abs); sigs.delete(abs); order.delete(abs); stamps.set(abs, (stamps.get(abs) ?? 0) + 1); }
 }
 
@@ -219,6 +254,7 @@ export function resetIndex() {
   listing = undefined;
   running = undefined;
   resetScope();
+  follower?.reset();
   if (wanted) startNameIndex(1000);
 }
 
@@ -233,6 +269,9 @@ export function watchNameIndex() {
     files.onDidChangeRoots(() => resetIndex()),
     // VS Code 外面的改动（git checkout、别的编辑器）：每个根一个监听
     ...files.roots().map((r) => files.watch(r, CODE_GLOB, (abs) => changedFile(abs))),
+    // PyTorch 的算子表和构建的 compile_commands.json（不是代码文件）
+    ...files.roots().map((r) => files.watch(r, "**/{native_functions.yaml,compile_commands.json}", (abs) => follower?.changed(abs))),
+    workspace().settings.onDidChange((e) => { if (e.affects("clangd.arguments")) follower?.buildChanged(); }),
   ];
   return { dispose: () => { for (const d of subs) d.dispose(); } };
 }

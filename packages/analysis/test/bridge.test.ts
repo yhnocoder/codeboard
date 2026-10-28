@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  initAnalysis, analyze, pybindDefs, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
-  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs,
+  initAnalysis, analyze, pybindDefs, pasteMacros, pastedNames, macroCalls, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
+  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs, pyMethodDefs, stubDevice, pybindAll, pyMethodAll, dispatchAll,
 } from "../src";
 
 beforeAll(() => initAnalysis());
@@ -27,6 +27,32 @@ describe("pybind", () => {
   });
 });
 
+describe("PyTorch's own bindings", () => {
+  it("pybind .def in a file that only includes torch/csrc/utils/pybind.h, through wrap_pybind_function(_no_gil)", () => {
+    const src = `#include <torch/csrc/utils/pybind.h>\nvoid init(py::module& m) {\n  m.def("_a", torch::wrap_pybind_function(is_available));\n  m.def("_b", wrap_pybind_function_no_gil(&ns::f));\n}\n`;
+    expect(pybindDefs(src, "_a")).toEqual([{ line: 3, target: "is_available", how: "m.def" }]);
+    expect(pybindDefs(src, "_b")).toEqual([{ line: 4, target: "ns::f", how: "m.def" }]);
+    expect(pybindAll(src).map((r) => r.name)).toEqual(["_a", "_b"]);
+  });
+  it("PyMethodDef tables: plain, castPyCFunction…, TypeError_to_NotImplemented_<…>", () => {
+    const src = `static PyMethodDef methods[] = {\n  {"_get_cudnn_enabled", THPModule_userEnabledCuDNN, METH_NOARGS, nullptr},\n  {"_set", castPyCFunctionWithKeywords(THPModule_set), METH_VARARGS | METH_KEYWORDS, nullptr},\n  {"__add__", castPyCFunctionWithKeywords(TypeError_to_NotImplemented_<THPVariable_add>), METH_VARARGS, NULL},\n};\n`;
+    expect(pyMethodDefs(src, "_get_cudnn_enabled")).toEqual([{ line: 2, target: "THPModule_userEnabledCuDNN", how: "PyMethodDef" }]);
+    expect(pyMethodDefs(src, "_set")[0].target).toBe("THPModule_set");
+    expect(pyMethodDefs(src, "__add__")[0].target).toBe("THPVariable_add");
+    expect(pyMethodDefs(src, "nope")).toEqual([]);
+    expect(pyMethodAll(src).map((r) => `${r.name} → ${r.target}`)).toEqual(["_get_cudnn_enabled → THPModule_userEnabledCuDNN", "_set → THPModule_set", "__add__ → THPVariable_add"]);
+  });
+  it("DispatchStub registrations and their device", () => {
+    const src = `#define REGISTER_DISPATCH(name, fn) X(name, fn)\nREGISTER_DISPATCH(abs_stub, &abs_kernel_cuda)\nREGISTER_ARCH_DISPATCH(abs_stub, DEFAULT, &abs_kernel)\nREGISTER_NO_CPU_DISPATCH(abs_stub);\nREGISTER_CUDA_DISPATCH(abs_stub, &qadd_kernel<false>);\n`;
+    expect(dispatchAll(src).map((r) => [r.name, r.line, r.macro, r.target])).toEqual([["abs_stub", 2, "REGISTER_DISPATCH", "abs_kernel_cuda"], ["abs_stub", 3, "REGISTER_ARCH_DISPATCH", "abs_kernel"], ["abs_stub", 5, "REGISTER_CUDA_DISPATCH", "qadd_kernel"]]);
+    expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/cuda/AbsKernel.cu")).toBe("CUDA");
+    expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/cpu/AbsKernel.cpp")).toBe("CPU");
+    expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/mps/operations/Unary.mm")).toBe("MPS");
+    expect(stubDevice("REGISTER_AVX512_DISPATCH", "x.cpp")).toBe("CPU");
+    expect(stubDevice("REGISTER_XPU_DISPATCH", "x.cpp")).toBe("XPU");
+  });
+});
+
 describe("torch.ops / TORCH_LIBRARY", () => {
   const src = `TORCH_LIBRARY_FRAGMENT(sgl_kernel, m) {
   m.def("dispose", &dispose);
@@ -45,6 +71,7 @@ describe("torch.ops / TORCH_LIBRARY", () => {
     expect(torchOpOf({ name: "awq_marlin_repack", recv: "torch.ops.sgl_kernel" })).toEqual({ ns: "sgl_kernel", op: "awq_marlin_repack" });
     expect(torchOpOf({ name: "default", recv: "torch.ops.sgl_kernel.awq_marlin_repack" })).toEqual({ ns: "sgl_kernel", op: "awq_marlin_repack" });
     expect(torchOpOf({ name: "forward", recv: "self.impl" })).toBeNull();
+    expect(torchOpOf({ name: "Tensor", recv: "torch.ops.aten.add" })).toEqual({ ns: "aten", op: "add", overload: "Tensor" });
   });
 });
 
@@ -251,3 +278,45 @@ describe("dynamic dispatch", () => {
     expect(["Base.forward", "Base.other", "Base.real", "Base.dots"].map((q) => isAbstractBody(ls, by(q)))).toEqual([true, true, false, true]);
   });
 });
+
+describe("token-pasting macros", () => {
+  const SRC = `#define CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC(func)            \\
+  TORCH_IMPL_FUNC(func##_Tensor_out)                                \\
+  (const Tensor& self, const Tensor& other, const Tensor& result) { \\
+    func##_stub(device_type(), *this);                              \\
+  }                                                                 \\
+  TORCH_IMPL_FUNC(func ## _Scalar_out)                              \\
+  (const Tensor& self, const Scalar& other, const Tensor& result) { \\
+    INNER_CALL(func);                                               \\
+  }
+
+#define FOREACH_BINARY_OP_SCALAR(FUNCTION, NAME, OP)                   \\
+  std::vector<Tensor> foreach_tensor_##NAME##_scalar_kernel_cuda(      \\
+      TensorList tensors, const Scalar& scalar) {                      \\
+    return FUNCTION<OP>(tensors, scalar);                               \\
+  }
+
+#define PLAIN(x) x
+
+CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC(eq);
+FOREACH_BINARY_OP_SCALAR(all_types_complex_bool_half_bfloat16, add, std::plus<opmath_t>);
+FOREACH_BINARY_OP_SCALAR(all_types, mul(x), std::multiplies);
+`;
+  it("finds the names a #define pastes from its parameters, not macros without ##", () => {
+    const ps = pasteMacros(SRC);
+    expect([...ps.keys()]).toEqual(["CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC", "FOREACH_BINARY_OP_SCALAR"]);
+    expect(ps.get("CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC")!.names).toEqual([[0, "_Tensor_out"], [0, "_stub"], [0, "_Scalar_out"]]);
+  });
+  it("makes the names of each call, at the call's line, skipping arguments that are not identifiers and calls inside a #define", () => {
+    const ps = pasteMacros(SRC);
+    const calls = macroCalls(SRC, (n) => ps.has(n));
+    expect(calls.map((c) => [c.macro, c.line, pastedNames(ps.get(c.macro)!, c.args)])).toEqual([
+      ["CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC", 19, ["eq_Tensor_out", "eq_stub", "eq_Scalar_out"]],
+      ["FOREACH_BINARY_OP_SCALAR", 20, ["foreach_tensor_add_scalar_kernel_cuda"]],
+      ["FOREACH_BINARY_OP_SCALAR", 21, []],
+    ]);
+    expect(calls[1].sig).toBe("FOREACH_BINARY_OP_SCALAR(all_types_complex_bool_half_bfloat16, add, std::plus<opmath_t>);");
+    expect(macroCalls(SRC, (n) => n === "TORCH_IMPL_FUNC" || n === "INNER_CALL")).toEqual([]);
+  });
+});
+

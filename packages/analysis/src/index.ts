@@ -402,10 +402,18 @@ function cppSymbols({ out }: Cx, root: Node) {
       if (!c) continue;
       let def = c;
       const start = c.startPosition.row;
-      if (c.type === "template_declaration") def = c.namedChildren.find((x) => x && /function_definition|class_specifier|struct_specifier/.test(x.type)) ?? c;
+      while (def.type === "template_declaration") {
+        const inner = def.namedChildren.find((x) => x && /function_definition|class_specifier|struct_specifier|template_declaration/.test(x.type)) ?? def.lastNamedChild;
+        if (!inner) break; // 写到一半、没有子节点的 template：不是定义
+        def = inner;
+      }
+      if (def.type === "friend_declaration") def = def.namedChildren.find((x) => x?.type === "function_definition") ?? def;
+      if (def.type === "field_declaration") { const t = def.childForFieldName("type"); if (t && /class_specifier|struct_specifier/.test(t.type)) def = t; }
       if (def.type === "function_definition") {
         const decl = funcDeclarator(def.childForFieldName("declarator"));
-        const nameNode = decl?.childForFieldName("declarator");
+        let nameNode = decl?.childForFieldName("declarator");
+        // TORCH_IMPL_FUNC(name) (params)：宏包着名字
+        if (nameNode?.type === "function_declarator" && nameNode.childForFieldName("parameters")?.namedChildCount === 1) nameNode = nameNode.childForFieldName("parameters")!.namedChildren[0]!.namedChildren[0] ?? nameNode.childForFieldName("parameters")!.namedChildren[0];
         const full = nameNode?.text ?? "?";
         const name = full.split("::").pop()!;
         const qual = [...scope, full].join("::");
@@ -415,7 +423,8 @@ function cppSymbols({ out }: Cx, root: Node) {
         continue;
       }
       if ((def.type === "class_specifier" || def.type === "struct_specifier") && def.childForFieldName("body")) {
-        const name = def.childForFieldName("name")?.text ?? "?";
+        const nn = def.childForFieldName("name");
+        const name = (nn?.type === "template_type" ? nn.childForFieldName("name")?.text : nn?.text) ?? "?";
         const qual = [...scope, name].join("::");
         out.symbols.push({ name, qual, kind: "class", start: start + 1, defLine: def.startPosition.row + 1, end: c.endPosition.row + 1, sig: oneLine(def.text.slice(0, def.childForFieldName("body")!.startIndex - def.startIndex)), params: [], parent: cls });
         visit(def.childForFieldName("body")!, [...scope, name], qual);
@@ -427,7 +436,7 @@ function cppSymbols({ out }: Cx, root: Node) {
         if (body) visit(body, name ? [...scope, name] : scope, cls);
         continue;
       }
-      if (c.namedChildCount && /declaration_list|field_declaration_list|linkage_specification|preproc_/.test(c.type)) visit(c, scope, cls);
+      if (c.namedChildCount && /declaration_list|field_declaration_list|linkage_specification|preproc_|^ERROR$/.test(c.type)) visit(c, scope, cls);
     }
   };
   visit(root, [], undefined);
@@ -469,7 +478,7 @@ function untemplated(n: Node | null): Node | null {
   return n?.type === "template_function" || n?.type === "template_method" ? n.childForFieldName("name") : n;
 }
 function funcDeclarator(d: Node | null): Node | null {
-  while (d && d.type !== "function_declarator") d = d.childForFieldName("declarator");
+  while (d && d.type !== "function_declarator") d = d.childForFieldName("declarator") ?? d.namedChildren.find((x) => x && /declarator$/.test(x.type)) ?? null;
   return d;
 }
 function cppParams(ps: Node | null): Param[] {

@@ -1,7 +1,7 @@
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import { fingerprint, locateSeg, parseDistInfo, sameLines, type Segment, type Source, type Version } from "@codeboard/core";
-import { headOf, repoRootOf, showFile } from "./git";
+import { headOf, isIgnored, repoRootOf, showFile } from "./git";
 import { exists, inWorkspace, posix, readText, splitLines, workspace, ws0 } from "./ws";
 import { analysisOf } from "./analysis";
 
@@ -114,9 +114,10 @@ export async function versionFor(loc: Loc, seg: Pick<Segment, "start" | "end" | 
   if (loc.src.kind !== "free") {
     const root = await repoRootOf(loc.abs);
     const head = root && (await headOf(root));
-    if (root && head) {
-      const rel = posix(path.relative(root, loc.abs));
-      const headText = await showFile(root, head, rel);
+    const rel = root && posix(path.relative(root, loc.abs));
+    const headText = root && head && rel ? await showFile(root, head, rel) : null;
+    // 忽略的文件不在 HEAD 里，但也不是未提交的改动：和仓库外的文件一样按内容记版本
+    if (root && head && rel && (headText !== null || !(await isIgnored(root, rel)))) {
       if (headText === null) return { version: { kind: "git", commit: head, uncommitted: true }, ...keep };
       const lines = splitLines(headText);
       if (sameLines(lines.slice(seg.start - 1, seg.end), seg.text)) return { version: { kind: "git", commit: head }, ...keep };

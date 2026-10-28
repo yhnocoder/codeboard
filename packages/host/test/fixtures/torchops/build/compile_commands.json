@@ -1,0 +1,7 @@
+[
+  {
+    "directory": "build",
+    "command": "c++ -c aten/src/ATen/UfuncCPU_add.cpp",
+    "file": "aten/src/ATen/UfuncCPU_add.cpp"
+  }
+]

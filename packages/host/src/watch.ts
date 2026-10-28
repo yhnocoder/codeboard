@@ -3,12 +3,12 @@
 // 只在有它的白板上（打字时每停一下都会触发：不重读、不重新分析别的文件）。
 import * as path from "node:path";
 import type { Disposable } from "@codeboard/core";
-import { gitDirOf, headOf, repoRootOf } from "./git";
+import { forgetIgnored, gitDirOf, headOf, repoRootOf } from "./git";
 import type { BoardHost } from "./boards";
 import { absOf, hasLocalFile } from "./source";
 import type { Storage } from "./storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
-import { debounce, workspace, wsRoots } from "./ws";
+import { debounce, inWorkspace, workspace, wsRoots } from "./ws";
 import { forgetDefs } from "./defcache";
 import { log } from "./log";
 
@@ -41,6 +41,10 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
     const gd = await gitDirOf(root);
     if (!gd) return;
     subs.push(files.watch(gd, "{HEAD,packed-refs,refs/heads/**}", () => onGit()));
+    // 忽略规则变了（保存、在 VS Code 外面改、checkout 都算）：check-ignore 记下的回答作废。
+    // 工作区里的仓库整棵树都看（VS Code 本来就在监听它），别的仓库只看根上的 .gitignore（不为它起递归的监听）
+    subs.push(files.watch(path.join(gd, "info"), "exclude", () => forgetIgnored()));
+    subs.push(files.watch(root, inWorkspace(root) ? "**/.gitignore" : ".gitignore", () => forgetIgnored()));
   };
 
   /**
@@ -63,6 +67,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
     }
     if (!changed) return;
     forgetDefs(); // checkout 之类：文件可能整批换了
+    forgetIgnored();
     await panels.refreshStale();
     await countClosed();
   }, GIT_PAUSE);

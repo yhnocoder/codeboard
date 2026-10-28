@@ -5,6 +5,14 @@ import { escapeRegExp, type BoundVal, type CallAlt } from "./basics";
 import type { Arg, CallSite, Sym } from "./index";
 
 const lineAt = (text: string, i: number) => text.slice(0, i).split("\n").length;
+/** 同一份文本里查很多次行号：先记下每行的开头，二分 */
+export function lineIndex(text: string): (i: number) => number {
+  const starts = [0];
+  for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
+  return (i) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= i) lo = mid; else hi = mid - 1; } return lo + 1; };
+}
+type Named<T> = T & { name: string };
+const unnamed = <T extends { name: string }>(xs: T[]) => xs.map(({ name: _, ...r }) => r);
 const short = (s: string, n = 24) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
 /** 一处注册：在第几行，注册到哪个 C++ / Rust 符号（qual，可能带命名空间）；lambda = 注册的是一个就地写的 lambda（目标就是那一行） */
@@ -46,9 +54,11 @@ export function splitArgs(s: string): string[] {
   return out;
 }
 
-/** &deep_ep::Buffer::intranode_dispatch、py::overload_cast<…>(&X::f)、TORCH_FN(f)、f → 符号名 */
+/** &deep_ep::Buffer::intranode_dispatch、py::overload_cast<…>(&X::f)、TORCH_FN(f)、wrap_pybind_function(f)、f → 符号名 */
 function targetOf(arg: string): string | undefined {
   const a = arg.trim();
+  const wrap = /^(?:[\w:]*::)?wrap_pybind_function(?:_no_gil)?\s*\(\s*&?\s*([A-Za-z_][\w:]*)\s*\)/.exec(a);
+  if (wrap) return wrap[1];
   const amp = /&\s*([A-Za-z_][\w:]*)/.exec(a);
   if (amp) return amp[1];
   const fnm = /^(?:TORCH_FN|TORCH_FN_TYPE)\s*\(\s*([A-Za-z_][\w:]*)\s*\)/.exec(a);
@@ -58,21 +68,77 @@ function targetOf(arg: string): string | undefined {
 }
 
 /** pybind11 / nanobind：m.def("name", &f)、.def("name", &Cls::f)、.def_static…；lambda 的目标是那一行 */
-export function pybindDefs(text: string, name: string): Registration[] {
-  if (!/pybind11|PYBIND11_MODULE|nanobind|NB_MODULE/.test(text)) return [];
-  const out: Registration[] = [];
-  const re = new RegExp(`\\.def(?:_static)?\\s*\\(\\s*"${escapeRegExp(name)}"\\s*,`, "g");
+export const pybindDefs = (text: string, name: string): Registration[] => unnamed(pybindScan(text, escapeRegExp(name)));
+/** 文件里全部的 .def("x", …)（一遍扫完，建索引用） */
+export const pybindAll = (text: string) => pybindScan(text, "\\w+");
+function pybindScan(text: string, pat: string): Named<Registration>[] {
+  if (!/pybind|PYBIND11_MODULE|nanobind|NB_MODULE/.test(text)) return []; // pybind11 本身，或者只 include 了包一层的头（torch/csrc/utils/pybind.h）
+  const out: Named<Registration>[] = [];
+  const lineAt = lineIndex(text);
+  const re = new RegExp(`\\.def(?:_static)?\\s*\\(\\s*"(${pat})"\\s*,`, "g");
   for (let m; (m = re.exec(text)); ) {
+    const name = m[1];
     const open = text.indexOf("(", m.index);
     const close = matchClose(text, open);
     const args = splitArgs(text.slice(open + 1, close < 0 ? undefined : close));
     const second = args[1] ?? "";
-    const line = lineAt(text, m.index);
+    const line = lineAt(m.index);
     const how = /\bm\s*\.def/.test(text.slice(Math.max(0, m.index - 3), m.index + 4)) ? "m.def" : ".def";
-    if (/^\[/.test(second)) out.push({ line, lambda: true, how });
-    else { const t = targetOf(second); if (t) out.push({ line, target: t, how }); }
+    if (/^\[/.test(second)) out.push({ name, line, lambda: true, how });
+    else { const t = targetOf(second); if (t) out.push({ name, line, target: t, how }); }
   }
   return out;
+}
+
+/** CPython 的方法表 PyMethodDef：{"_x", fn, METH_…}、{"_x", castPyCFunctionWithKeywords(fn), …}、TypeError_to_NotImplemented_<fn> → fn */
+export const pyMethodDefs = (text: string, name: string): Registration[] => unnamed(pyMethodScan(text, escapeRegExp(name)));
+/** 文件里全部的 PyMethodDef 条目（建索引用） */
+export const pyMethodAll = (text: string) => pyMethodScan(text, "\\w+");
+function pyMethodScan(text: string, pat: string): Named<Registration>[] {
+  if (!/METH_/.test(text)) return [];
+  const out: Named<Registration>[] = [];
+  const lineAt = lineIndex(text);
+  const re = new RegExp(`\\{\\s*"(${pat})"\\s*,\\s*([^,{}]*?)\\s*,\\s*METH_`, "g");
+  const NOT = /^(castPyCFunction\w*|TypeError_to_NotImplemented_|PyCFunction\w*|reinterpret_cast|static_cast|void)$/;
+  for (let m; (m = re.exec(text)); ) {
+    const ids = [...m[2].matchAll(/[A-Za-z_][\w]*(?:::[A-Za-z_]\w*)*/g)].map((x) => x[0]).filter((x) => !NOT.test(x));
+    const target = ids[ids.length - 1];
+    if (target) out.push({ name: m[1], line: lineAt(m.index), target, how: "PyMethodDef" });
+  }
+  return out;
+}
+
+/**
+ * 文件里全部的 DispatchStub 注册（name = stub；建索引用）：REGISTER_DISPATCH(stub, &fn)、REGISTER_CUDA_DISPATCH / REGISTER_ARCH_DISPATCH(stub, arch, fn)、
+ * REGISTER_ALL_CPU_DISPATCH…；macro = 用的哪个宏
+ */
+export function dispatchAll(text: string): Named<Registration & { macro: string }>[] {
+  if (!/REGISTER_\w*DISPATCH/.test(text)) return [];
+  const out: Named<Registration & { macro: string }>[] = [];
+  const lineAt = lineIndex(text);
+  const re = /\b((?:ALSO_)?REGISTER_\w*DISPATCH)\s*\(\s*(\w+)\s*,/g;
+  for (let m; (m = re.exec(text)); ) {
+    if (inDefine(text, m.index)) continue;
+    const open = text.indexOf("(", m.index);
+    const close = matchClose(text, open);
+    const args = splitArgs(text.slice(open + 1, close < 0 ? undefined : close));
+    const t = targetOf(args[args.length - 1] ?? "");
+    if (t && t !== "nullptr") out.push({ name: m[2], line: lineAt(m.index), target: t, how: m[1], macro: m[1] });
+  }
+  return out;
+}
+
+const inDefine = (text: string, i: number) => /^\s*#\s*define/.test(text.slice(text.lastIndexOf("\n", i) + 1));
+
+/** 注册 DispatchStub 的宏 + 文件 → 设备：REGISTER_CUDA_DISPATCH → CUDA；REGISTER_DISPATCH 看文件（.cu、cuda/ → CUDA，.mm、mps/ → MPS，其余 CPU） */
+export function stubDevice(macro: string, file: string): string {
+  const k = /^(?:ALSO_)?REGISTER_(CUDA|XPU|HPU|HIP|MPS|MTIA|PRIVATEUSE1)_DISPATCH$/.exec(macro)?.[1];
+  if (k) return k;
+  if (macro !== "REGISTER_DISPATCH") return "CPU"; // ARCH、AVX2、AVX512、ALL_CPU、SVE、VSX、ZVECTOR
+  const f = file.replace(/\\/g, "/");
+  if (/\.(cu|cuh)$/.test(f) || /\/(cuda|cudnn|miopen)\//.test(f)) return "CUDA";
+  if (/\.mm$/.test(f) || /\/mps\//.test(f)) return "MPS";
+  return "CPU";
 }
 
 /** TORCH_LIBRARY(ns, m) / TORCH_LIBRARY_IMPL / _FRAGMENT 里的 m.def("name", &f)、m.impl("name", kCUDA, &f)；只有 schema 的 m.def 不算 */
@@ -93,14 +159,12 @@ export function torchLibDefs(text: string, name: string): Registration[] {
   return out;
 }
 
-/** torch.ops.sgl_kernel.awq_marlin_repack(.default) → 命名空间和名字 */
-export function torchOpOf(call: Pick<CallSite, "name" | "recv">): { ns: string; op: string } | null {
+/** torch.ops.sgl_kernel.awq_marlin_repack(.default) → 命名空间、名字和 overload（torch.ops.aten.add.Tensor → Tensor；default 不算） */
+export function torchOpOf(call: Pick<CallSite, "name" | "recv">): { ns: string; op: string; overload?: string } | null {
   const full = `${call.recv ?? ""}.${call.name}`;
   const m = /(?:^|\.)torch\.ops\.(\w+)\.(\w+)(?:\.(\w+))?$/.exec(full);
   if (!m) return null;
-  // torch.ops.ns.op.default(…)：点的是 default
-  if (m[3]) return { ns: m[1], op: m[2] };
-  return { ns: m[1], op: m[2] };
+  return m[3] && m[3] !== "default" ? { ns: m[1], op: m[2], overload: m[3] } : { ns: m[1], op: m[2] };
 }
 
 /** Rust 里导出给 Python 的函数：#[pyfunction] fn name / #[pyo3(name = "name")]；#[pymethods] impl 里的方法 */
@@ -172,6 +236,48 @@ export function macroDefs(text: string): Map<string, { params: string[]; body: s
     while (/\\\s*$/.test(lines[k]) && k + 1 < lines.length) { body = body.replace(/\\\s*$/, " ") + lines[++k]; }
     body = body.replace(/\\\s*$/, "");
     out.set(m[1], { params: m[2].split(",").map((p) => p.trim()).filter(Boolean), body, line: i + 1 });
+  }
+  return out;
+}
+
+/** 把参数拼进标识符的 #define：每个拼出来的名字按片段存，数字 = 第几个参数 */
+export type Paster = { params: string[]; names: (string | number)[][] };
+
+/** 用 ## 把参数拼成标识符的宏（TORCH_IMPL_FUNC(func##_Scalar_out)、foreach_tensor_##NAME##_scalar_kernel_slow） */
+export function pasteMacros(text: string): Map<string, Paster> {
+  const out = new Map<string, Paster>();
+  if (!text.includes("##")) return out;
+  for (const [name, d] of macroDefs(text)) {
+    const names: (string | number)[][] = [];
+    for (const m of d.body.matchAll(/\w+(?:\s*##\s*\w+)+/g)) {
+      const pieces = m[0].split("##").map((p) => p.trim()).map((p) => { const i = d.params.indexOf(p); return i < 0 ? p : i; });
+      if (pieces.some((p) => typeof p === "number") && !names.some((n) => n.join("\0") === pieces.join("\0"))) names.push(pieces);
+    }
+    if (names.length) out.set(name, { params: d.params, names });
+  }
+  return out;
+}
+
+/** 拼名字的宏用一次调用的实参拼出来的标识符（只算本身就是标识符的实参） */
+export function pastedNames(p: Paster, args: string[]): string[] {
+  const out: string[] = [];
+  for (const n of p.names) {
+    const parts = n.map((x) => (typeof x === "number" ? args[x]?.trim() ?? "" : x));
+    if (n.every((x, i) => typeof x !== "number" || /^\w*$/.test(parts[i]))) out.push(parts.join(""));
+  }
+  return out;
+}
+
+/** 行首的、`want` 接受的宏的调用：宏名、拆开的实参、行号、调用的第一行 */
+export function macroCalls(text: string, want: (name: string) => boolean): { macro: string; args: string[]; line: number; sig: string }[] {
+  const out: { macro: string; args: string[]; line: number; sig: string }[] = [];
+  const lineOf = lineIndex(text);
+  for (const m of text.matchAll(/^[ \t]*([A-Z][A-Z0-9_]*)\s*\(/gm)) {
+    if (!want(m[1]) || inDefine(text, m.index) || /\\\s*$/.test(text.slice(text.lastIndexOf("\n", m.index - 2) + 1, m.index))) continue; // 在某个 #define 的宏体里
+    const open = m.index + m[0].length - 1, close = matchClose(text, open);
+    if (close < 0) continue;
+    const end = text.indexOf("\n", m.index);
+    out.push({ macro: m[1], args: splitArgs(text.slice(open + 1, close)), line: lineOf(m.index), sig: text.slice(m.index, end < 0 ? undefined : end).trim() });
   }
   return out;
 }

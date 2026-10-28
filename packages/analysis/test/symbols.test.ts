@@ -69,6 +69,32 @@ describe("analyze (c++ / cuda)", () => {
     expect(a.calls.find((c) => c.name === "foo")!.loop).toBe(true);
     expect(a.calls.find((c) => c.name === "bar")!.loop).toBe(false);
   });
+  it("names functions returning references, TORCH_IMPL_FUNC kernels, specialized and nested classes, friends and nested templates", () => {
+    const src = [
+      "namespace at::native {",
+      "Tensor& adaptive_out_cuda(const Tensor& x, Tensor& out) { return out; }",
+      "TORCH_IMPL_FUNC(softmax_cuda_out) (const Tensor& input, const Tensor& output) {",
+      "  host_softmax(input, output);",
+      "}",
+      "template <> struct Holder<float> { void run() {} };",
+      "struct Outer { struct Inner { int g() { return 1; } } inner; };",
+      "class F { friend bool operator==(const F& a, const F& b) { return true; } };",
+      "template <typename A> template <typename B> void W<A>::m(B b) {}",
+      "}",
+    ].join("\n");
+    expect(analyze("cuda-cpp", src).symbols.map((s) => s.qual)).toEqual([
+      "at::native::adaptive_out_cuda", "at::native::softmax_cuda_out", "at::native::Holder", "at::native::Holder::run", "at::native::Outer",
+      "at::native::Outer::Inner", "at::native::Outer::Inner::g", "at::native::F", "at::native::F::operator==", "at::native::W<A>::m",
+    ]);
+  });
+});
+
+describe("analyze (c++ / cuda), half-written templates", () => {
+  it("names nothing for a template with no declaration after it", () => {
+    for (const src of ["template", "template <>", "template <typename T>", "template <> template <>", "namespace a { template <class T> }", "struct S { template <typename T> };"]) {
+      expect(analyze("cuda-cpp", src).symbols.filter((s) => s.kind === "def")).toEqual([]);
+    }
+  });
 });
 
 describe("varCandidates", () => {
