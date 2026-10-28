@@ -106,4 +106,13 @@ test("notePasteMarkdownWithMath", async () => {
   await idle(h);
   const r = (await pg.locator(card("html")).boundingBox())!;
   await pg.screenshot({ path: path.join(OUT, "md-paste-math-warm-ink.png"), clip: { x: Math.max(0, r.x - 20), y: Math.max(0, r.y - 20), width: r.width + 40, height: r.height + 40 } });
+  // over a select-all (an AllSelection, not inside any block) the paste replaces the whole Note
+  const before = md(h, "plain");
+  await pg.locator(`${card("plain")} .nbody`).dblclick();
+  await pg.waitForSelector(`${card("plain")} .md-pm`, { timeout: 5000 });
+  await pg.keyboard.press("ControlOrMeta+A");
+  await paste({ "text/plain": "新的 $x$ 行" });
+  await pg.keyboard.press("Escape");
+  await until(h, "Esc saves the Note", () => md(h, "plain") !== before);
+  check("notePasteMarkdownWithMath over select-all", md(h, "plain") === "新的 $x$ 行", md(h, "plain"));
 });

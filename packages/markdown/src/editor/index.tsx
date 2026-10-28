@@ -423,7 +423,7 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slic
   const $f = e.state.selection.$from;
   if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴
   // 表格格子里只能有一段（GFM 存不下别的）：几行字用硬换行连起来（写回成 <br>），不变成代码块、列表
-  if (/cell/.test($f.node(-1).type.spec.tableRole ?? "") && text.includes("\n")) {
+  if ($f.depth && /cell/.test($f.node(-1).type.spec.tableRole ?? "") && text.includes("\n")) {
     const lines = text.replace(/\n$/, "").split("\n");
     e.chain().focus().insertContent(lines.flatMap((l, i): JSONContent[] => [...(i ? [{ type: "hardBreak" }] : []), ...(l ? [{ type: "text", text: l }] : [])])).run();
     return true;
