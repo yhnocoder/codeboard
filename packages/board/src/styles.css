@@ -327,6 +327,27 @@ input, textarea { font: inherit; color: var(--ink); }
 .hdot { width: 16px; height: 16px; border-radius: 50%; corner-shape: round; padding: 0; border: 0; background: var(--hc); box-shadow: 0 0 0 2px var(--glass); cursor: default; }
 .hdot.on { box-shadow: 0 0 0 2px var(--glass), 0 0 0 3.5px var(--ink); }
 .card.text.sel.solo:not(.editing) .ttb { display: inline-flex; }
+/* Box：没有卡框的圆角框，有底色，字居中；选中时上方是底色点、四角改大小。带着 .text（主题给卡片加的框、阴影都不碰它），这里再把框画回来 */
+.card.text.box {
+  --cr: var(--r-card); --bx: color-mix(in srgb, var(--ink) 34%, transparent); --fc: var(--bf-yellow);
+  --bf-yellow: color-mix(in srgb, var(--surface) 66%, #f0cf62); --bf-paper: var(--surface); --bf-blue: color-mix(in srgb, var(--surface) 78%, #8eb0dc);
+  --bf-green: color-mix(in srgb, var(--surface) 76%, #9cc48a); --bf-pink: color-mix(in srgb, var(--surface) 78%, #e3a0b4);
+  background: var(--fc); box-shadow: 0 0 0 1.25px var(--bx), 0 1px 2px rgba(50,35,10,.06); padding: 8px 14px; }
+.card.text.box > .cface { justify-content: center; }
+.card.text.box:hover:not(.sel) { outline: 1px solid color-mix(in srgb, var(--accent) 45%, transparent); outline-offset: 3px; }
+.card.text.box.sel { box-shadow: 0 0 0 1.25px var(--bx), 0 1px 2px rgba(50,35,10,.06); outline: 1.5px solid var(--accent); outline-offset: 3px; }
+.card.text.box .tx.bx { text-align: center; font: 500 13.5px/1.45 var(--sys); }
+.card.text.box .tx.bx.md:not(.editing):empty::before { content: none; }
+.card.text.box > .cface > .eport { display: block; }
+.card.text.box .ttb { left: 50%; top: -50px; translate: -50% 0; }
+.bxh { position: absolute; width: 9px; height: 9px; border-radius: 2.5px; background: var(--surface); box-shadow: 0 0 0 1.5px var(--accent); display: none; z-index: 5; }
+.card.box.sel.solo:not(.editing) .bxh { display: block; }
+.bxh-nw { left: -8px; top: -8px; cursor: nwse-resize; } .bxh-ne { right: -8px; top: -8px; cursor: nesw-resize; }
+.bxh-sw { left: -8px; bottom: -8px; cursor: nesw-resize; } .bxh-se { right: -8px; bottom: -8px; cursor: nwse-resize; }
+.ttb.bdots { gap: 4px; padding: 5px 8px; }
+.bdot { width: 18px; height: 18px; border-radius: 50%; corner-shape: round; padding: 0; border: 0; background: var(--fc); --bx: color-mix(in srgb, var(--ink) 30%, transparent); box-shadow: 0 0 0 1px var(--bx), 0 0 0 2px var(--glass); cursor: default; }
+.bdot.on { box-shadow: 0 0 0 1px var(--bx), 0 0 0 2.5px var(--glass), 0 0 0 4px var(--ink); }
+.bf-yellow { --fc: var(--bf-yellow); } .bf-paper { --fc: var(--bf-paper); } .bf-blue { --fc: var(--bf-blue); } .bf-green { --fc: var(--bf-green); } .bf-pink { --fc: var(--bf-pink); }
 /* Note 的字号走 Markdown 包的 --md-fs / --md-h1…h6。设置 → Notes 里改的（App 挂在根上的 --note-fs、--note-fs-h1…h6）优先；
    没改 = 主题的字号（这里和 themes.css 给），标题按正文的比例（没设的 --note-fs-hN 让 --md-hN 无效，回到包里的默认比例） */
 .card.note .nbody { --md-fs: var(--note-fs, 13.5px); --md-h1: var(--note-fs-h1); --md-h2: var(--note-fs-h2); --md-h3: var(--note-fs-h3); --md-h4: var(--note-fs-h4); --md-h5: var(--note-fs-h5); --md-h6: var(--note-fs-h6); }

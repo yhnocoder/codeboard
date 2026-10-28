@@ -4,8 +4,8 @@ import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, segOf, placeCards,
   besideFree, findFree, bounds, removeCards, retargetCards, GAP,
-  classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type Segment, type Place,
+  classifyPaste, guessLang, estSize, defaultWidth, BOX_FILLS,
+  type Board, type Card, type CodeCard, type NoteCard, type NoteLook, type Segment, type Place,
   type NewCard, type Rect,
 } from "@codeboard/core";
 import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf, type LineSel } from "../state/store";
@@ -63,25 +63,33 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; ex
   return ids;
 }
 
-export function newNote(at?: { x: number; y: number }, bg = true, text = "") {
-  const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 140, y: v.y - 40 }; })();
-  const id = uid("n");
-  const add = (b: Board) => { b.cards.push({ id, kind: "note", md: text, bg, size: "body" }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: bg ? 280 : 320 }; settleHome(b, id); };
-  if (text) mutate(add); else createFresh(id, add); // 空卡：写了内容才进撤销栈，什么都没写就消失
-  select({ cards: [id] });
-  if (!text) setEditing({ kind: "note", id });
-  popCard(id);
-  return id;
+export function newNote(at?: { x: number; y: number }, text = "") {
+  return newWriting("note", at, text);
+}
+export function newText(at?: { x: number; y: number }) {
+  return newWriting("text", at);
 }
 /** Mark（标注卡）：手写字、没有框；颜色接着上一张 Mark 用的 */
 export function newMark(at?: { x: number; y: number }) {
-  const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 80, y: v.y - 20 }; })();
+  return newWriting("mark", at);
+}
+export function newBox(at?: { x: number; y: number }) {
+  return newWriting("box", at);
+}
+const WRITE_SIZE: Record<NoteLook, { w: number; h?: number }> = { note: { w: 280 }, text: { w: 320 }, mark: { w: 180 }, box: { w: 150, h: 60 } };
+function newWriting(look: NoteLook, at?: { x: number; y: number }, text = "") {
+  const { w, h } = WRITE_SIZE[look];
+  const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - w / 2, y: v.y - (h ?? 80) / 2 }; })();
   const id = uid("n");
-  const last = [...state.board.cards].reverse().find((c) => c.kind === "note" && c.hand);
-  const hand = (last?.kind === "note" && last.hand) || "blue";
-  createFresh(id, (b) => { b.cards.push({ id, kind: "note", md: "", bg: false, hand }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: 180 }; settleHome(b, id); });
+  const card: NoteCard = { id, kind: "note", md: text, look };
+  if (look === "text") card.size = "body";
+  if (look === "box") card.fill = BOX_FILLS[0];
+  if (look === "mark") { const last = [...state.board.cards].reverse().find((c) => c.kind === "note" && c.look === "mark"); card.hand = (last?.kind === "note" && last.hand) || "blue"; }
+  const add = (b: Board) => { b.cards.push(card); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w, ...(h ? { h } : {}) }; settleHome(b, id); };
+  // 空的 Note / Text / Mark：写了内容才进撤销栈，什么都没写就消失；空的 Box 本身就是一个框，留着
+  if (text || look === "box") mutate(add); else createFresh(id, add);
   select({ cards: [id] });
-  setEditing({ kind: "note", id });
+  if (!text) setEditing({ kind: "note", id });
   popCard(id);
   return id;
 }
@@ -185,7 +193,7 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   const k = classifyPaste(text);
   if (k.kind === "web") return newWeb(at, k.url);
   if (k.kind === "links") return newLinkList(k.urls, at);
-  if (k.kind === "note") return newNote(at, true, text);
+  if (k.kind === "note") return newNote(at, text);
   if (k.kind === "svg") return addImage(svgDataUrl(text.trim()), "pasted.svg", at);
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";

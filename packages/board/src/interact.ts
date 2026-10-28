@@ -1,5 +1,5 @@
 import {
-  findCard, isCode, snapMove, snapResize, bounds, center,
+  findCard, frameless, isCode, snapMove, snapResize, bounds, center,
   type Board, type CallSpan, type Rect, type Anchor, type LinkSide,
 } from "@codeboard/core";
 import {
@@ -111,7 +111,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   const colEl = t.closest("[data-col]") as HTMLElement | null;
   const target = colEl?.dataset.col ?? id;
   const c = f.card;
-  const isText = c.kind === "note" && !c.bg;
+  const isText = frameless(c);
   const inHead = !!t.closest("[data-drag]");
   const inBody = !isText && !inHead;
   // 只选着这一张时，按在内容上是选字（原生文本选择）；没选中或选着好几张时，按在内容上和按卡头一样拖卡，
@@ -169,7 +169,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
   const g = cardById(grabbed)!.host;
   const mergeOk = ids.every((i) => cardById(i)!.card.kind === "code");
   const webOk = ids.every((i) => { const k = cardById(i)!.card.kind; return k === "web" || k === "links"; }); // Web 卡拖到另一张的标题上 → Link List
-  const noteOk = ids.length === 1 && g.kind === "note" && g.bg;
+  const noteOk = ids.length === 1 && g.kind === "note" && g.look === "note";
   const imageOk = ids.length === 1 && g.kind === "image"; // 图片卡拖到 Note / Text 上 → 放进它的 Markdown
   setDragging(new Set(ids));
   const pace = snapPace(e, (ev, still) => onMove(ev, still));
@@ -290,11 +290,11 @@ export function cardDblClick(e: MouseEvent, id: string) {
   if (lod() !== "full") { e.preventDefault(); const r = rectOf(cardById(id)!.host), w = view().w; return camTo(24 + Math.max(0, (w - 48 - r.w) / 2) - r.x, 72 - r.y, 1); }
   if (t.closest(".cdesc")) { e.preventDefault(); setEditing({ kind: "desc", id }); return; }
   const c = cardById(id)?.card;
-  if (c?.kind === "note" && c.bg && t.closest(".nbody")) { e.preventDefault(); setEditing({ kind: "note", id }); }
+  if (c?.kind === "note" && c.look === "note" && t.closest(".nbody")) { e.preventDefault(); setEditing({ kind: "note", id }); }
   if (c?.kind === "code" && c.segments[0]?.src.kind === "free" && t.closest(".src")) { e.preventDefault(); setEditing({ kind: "free", id }); }
 }
 
-export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean; right?: boolean; bottom?: boolean }) {
+export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean }) {
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
@@ -305,33 +305,34 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
   const targets = visibleCards().filter((k) => k.id !== id).map((k) => rectOf(k));
   const { end, moving, drop } = cardGesture([c.id]);
   const sx = e.clientX, sy = e.clientY;
-  const text = c.kind === "note" && !c.bg;
-  // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度
-  const nat = naturalSize(c.id);
-  const minW = text ? 80 : 160, minH = nat ? Math.min(nat.minH, 100) : 64;
+  const text = frameless(c), box = c.kind === "note" && c.look === "box";
+  // 最矮 = 头部 + 一行；拉到内容本来的高度附近就回到自动高度（Box 的高度就是框的大小，一直存着）
+  const nat = box ? undefined : naturalSize(c.id);
+  const minW = box ? 60 : text ? 80 : 160, minH = box ? 32 : nat ? Math.min(nat.minH, 100) : 64;
   const hx = c.kind === "code" ? chromeOf(c.id) : 0; // 代码卡存内容区高度：减掉卡头 / 底栏
   // 图片卡的高度跟着图片的宽高比（不存）：拖角只改宽度，往下拖按卡现在的比例折成宽度
   const image = c.kind === "image", bottom = !!edges.bottom && !image;
   track(e, (ev) => {
     moving();
     const z = cam.z, dx = (ev.clientX - sx) / z, dy = (ev.clientY - sy) / z;
-    let w = r0.w, h = r0.h, x = r0.x;
+    let w = r0.w, h = r0.h, x = r0.x, y = r0.y;
     const ddx = image && edges.bottom && Math.abs((dy * r0.w) / r0.h) > Math.abs(dx) ? (dy * r0.w) / r0.h : dx;
     if (edges.right) w = Math.max(minW, r0.w + ddx);
     if (edges.left) { w = Math.max(minW, r0.w - dx); x = r0.x + r0.w - w; }
     if (bottom) h = Math.max(minH, r0.h + dy);
+    if (edges.top) { h = Math.max(minH, r0.h - dy); y = r0.y + r0.h - h; }
     let hint: string | null = null;
-    if (!(ev.metaKey || ev.ctrlKey) && !edges.left) {
+    if (!(ev.metaKey || ev.ctrlKey) && !edges.left && !edges.top) {
       const sn = snapResize({ x, y: r0.y, w, h }, { right: edges.right, bottom }, targets, tune("snap") / z);
       w = sn.w; h = sn.h;
       setGuides(sn.guides.filter(() => !sn.same));
       if (sn.same === "w") hint = `same width · ${Math.round(w)}`;
       if (sn.same === "h") hint = `same height · ${Math.round(h)}`;
     } else setGuides([]);
-    setSizeHint(hint ? { x: x + w / 2, y: r0.y + h + 8, text: hint } : null);
+    setSizeHint(hint ? { x: x + w / 2, y: y + h + 8, text: hint } : null);
     // 拉到内容本来的高度附近（±8 屏幕像素）= 回到跟着内容的自动高度；别的高度照存（Note 可以比内容高，也可以矮了在正文里滚）
     const auto = bottom && nat && Math.abs(h - nat.h) < 8 / z;
-    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (bottom) k.h = auto ? undefined : Math.round(h - hx); });
+    live((b) => { const k = hostPlace(b, id)!; k.w = Math.round(w); k.x = Math.round(x); if (edges.top) k.y = Math.round(y); if (bottom || edges.top) k.h = auto ? undefined : Math.round(h - hx); });
   }, () => { setGuides([]); setSizeHint(null); end(); }, 3, drop);
 }
 
@@ -446,8 +447,8 @@ export function canvasPointerDown(e: PointerEvent) {
   closeAllPops();
   if (isDbl("canvas", e)) {
     const w = worldOf(e), k = state.host.settings.dblClick;
-    if (k === "text") A.newNote({ x: w.x, y: w.y - 12 }, false);
-    else if (k === "note") A.newNote({ x: w.x, y: w.y - 18 }, true);
+    if (k === "text") A.newText({ x: w.x, y: w.y - 12 });
+    else if (k === "note") A.newNote({ x: w.x, y: w.y - 18 });
     else if (k === "code") A.newFreeCode({ x: w.x, y: w.y - 18 });
     return;
   }

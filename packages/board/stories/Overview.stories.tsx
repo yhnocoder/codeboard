@@ -42,7 +42,7 @@ function hover(): Scene {
   const a = put(fn("h-a", "preempt"), { x: 420, y: 70, w: 440 });
   const b = put(fn("h-b", "deallocate"), { x: 560, y: 330, w: 440 });
   arrow(board, "h-ab", ln(a, "deallocate("), whole(b));
-  caption("Code, No Background", 420, 640, 400); put(fn("h-nobg", "allocate", { card: { nobg: true } }), { x: 420, y: 640, w: 440 });
+  caption("Code, Background off", 420, 640, 400); put(fn("h-nobg", "allocate", { card: { bg: false as const } }), { x: 420, y: 640, w: 440 });
   caption("Web", 1100, 70, 300); put(webCard("h-web", "full"), { x: 1100, y: 70, w: 380 });
   caption("Link List (second row)", 1100, 560, 300); put(linksCard("h-list", ["full", "noImage", "titleOnly"], { title: "KV Cache Reading" }), { x: 1100, y: 560, w: 380 });
   return { board, sel: ["h-text"], after: () => setHoverCard("h-a") };

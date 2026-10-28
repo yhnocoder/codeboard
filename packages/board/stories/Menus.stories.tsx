@@ -2,7 +2,7 @@
 // 所以每个菜单一个 story；Overview 是一块摆着所有能开菜单的东西的白板，开着代码卡的菜单和它的 Edit ▸
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { BoardCard, CompareCard, ImageCard, LinksCard, NoteCard, WebCard } from "@codeboard/core";
-import { Stage, scene, noteCard, codeCard, markCard, textCard, type Globals, type Scene } from "./support/board";
+import { Stage, scene, noteCard, codeCard, markCard, textCard, boxCard, type Globals, type Scene } from "./support/board";
 import { settled, rightClick, rightClickLink, key, el, forceHover } from "./support/play";
 import { SHORT, ONE } from "./support/groups";
 import { cardMenu, menuItem, menuButton, menu } from "./support/ui";
@@ -22,14 +22,15 @@ const links: LinksCard = {
   ],
 } as LinksCard;
 const image: ImageCard = { id: "img", kind: "image", src: "kv-blocks-320x120.png", alt: "KV cache blocks" };
-const msg: NoteCard = { id: "msg", kind: "note", md: "SequenceGroup", bg: true, msg: { where: "sequence.py" } };
+const msg: NoteCard = { id: "msg", kind: "note", md: "SequenceGroup", look: "note", msg: { where: "sequence.py" } };
 const frame: BoardCard = { id: "f1", kind: "board", board: "b-kv", title: "KV cache 调度" } as BoardCard;
 
 // 所有能开菜单的东西：各种卡、两条线（一条带标签）、两个 Section（一个套在另一个里）
 function board(a: Args): Scene {
   const { board, put, caption } = scene("KV cache 调度");
   caption("Note", 40, 70); put(noteCard("note", SHORT), { x: 40, y: 70, w: 280, ...(a.fixedHeight ? { h: 150 } : {}), locked: a.locked });
-  caption("Text", 40, 290); put(textCard("text", "Block Manager"), { x: 40, y: 290, w: 240 });
+  caption("Text", 40, 290); put(textCard("text", "Block Manager"), { x: 40, y: 290, w: 140 });
+  caption("Box", 200, 290); put(boxCard("box", "Model Runner"), { x: 200, y: 300, w: 130, h: 56 });
   caption("Mark", 60, 490); put(markCard("mark", ONE, "orange"), { x: 60, y: 490, w: 200 });
   caption("Message", 60, 630); put(msg, { x: 60, y: 630, w: 220 });
   caption("Code", 380, 70); put(codeCard("code", "schedule"), { x: 380, y: 70, w: 500, h: 240, locked: a.locked });
@@ -49,7 +50,7 @@ function board(a: Args): Scene {
     { id: "s1", title: "Scheduler", x: 20, y: 0, w: 940, h: 820, color: "sand" },
     { id: "s2", title: "Mark 和 Message", parent: "s1", x: 40, y: 410, w: 300, h: 310, color: "blue" },
   );
-  for (const id of ["note", "text", "code", "cmp"]) board.place[id].section = "s1";
+  for (const id of ["note", "text", "box", "code", "cmp"]) board.place[id].section = "s1";
   for (const id of ["mark", "msg"]) board.place[id].section = "s2";
   return { board };
 }
@@ -91,6 +92,7 @@ export const Note: Story = { play: open(() => cardMenu("note")) };
 export const NoteFits: Story = { name: "Note · Fit Content Disabled", args: { fixedHeight: false }, play: open(() => cardMenu("note")) };
 export const NoteLocked: Story = { name: "Note · Locked (Edit ▸)", args: { locked: true }, play: open(async () => { await cardMenu("note"); await menuItem("Edit", { sub: true }); }) };
 export const Text: Story = { play: open(() => rightClick(".card[data-id=text]")) };
+export const Box: Story = { play: open(() => rightClick(".card[data-id=box]")) };
 export const Mark: Story = { name: "Mark · Color ▸", play: open(async () => { await rightClick(".card[data-id=mark]"); await menuItem("Color", { sub: true }); }) };
 export const Message: Story = { play: open(() => rightClick(".card[data-id=msg]")) };
 export const Code: Story = { play: open(() => cardMenu("code")) };

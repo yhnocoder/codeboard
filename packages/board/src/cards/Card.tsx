@@ -1,8 +1,8 @@
 import { send } from "../host";
-import { createMemo, createSignal, Show, onMount, onCleanup, createEffect, For, type JSX, type Component } from "solid-js";
+import { createMemo, createSignal, Show, Switch, Match, onMount, onCleanup, createEffect, For, type JSX, type Component } from "solid-js";
 import { Dynamic } from "solid-js/web";
 import {
-  cardTitle, hiddenLang, codeGlyph, versionLabel, fileCount, mixedVersions, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
+  cardTitle, frameless, hiddenLang, codeGlyph, versionLabel, fileCount, mixedVersions, descendants, isMine, onVariant, upstreamSegs, activeOf, variantTitle, UPSTREAM,
   type Card, type CodeCard, type NoteCard, type ImageCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { langLabel } from "@codeboard/analysis/langs";
@@ -17,7 +17,7 @@ import { BoundStickers } from "../stickers/Picker";
 import { isBindHot, isBindAnchor } from "../state/stickers";
 import { fileHue, shape } from "../state/look";
 import { CompareBody } from "./CompareBody";
-import { NoteBody, TextToolbar } from "./NoteBody";
+import { NoteBody, WritingToolbar } from "./NoteBody";
 import { WebBody, LinksBody } from "./WebBody";
 import { BoardBody } from "./BoardBody";
 import { Editable } from "../ui/Editable";
@@ -70,13 +70,15 @@ export function CardView(p: { card: Card }) {
     // 代码卡的高度给内容区（.carea），卡头 / 底栏按主题撑开。
     // Note / Text：没存高度 = 跟着内容（删了字变矮、写多了变高）；存了高度 = 用户拖出来的固定高度，
     // 内容更高时在正文里滚（styles.css，边上渐隐），更矮时下面留空，直到 Fit Content 回到跟着内容
-    if (pl().h && c().kind !== "code") s.height = `${pl().h}px`;
+    // Box：存的高度是框的大小，字写多了框跟着长高
+    const k = c();
+    if (pl().h && k.kind !== "code") s[k.kind === "note" && k.look === "box" ? "min-height" : "height"] = `${pl().h}px`;
     const g = grow();
     if (g) { s.width = `${g.w}px`; if (c().kind !== "code") s.height = `${g.h}px`; }
     if (lodOf(c().id) === "map") (s as Record<string, string>)["--iz"] = String(izOf(c().id));
-    // Mark 的颜色：写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
-    const k = c();
-    if (k.kind === "note" && k.hand) (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand})`;
+    // Mark 的颜色、Box 的底色：写成变量，不进 class（class 一变，classList 管的 sel 等会被冲掉）
+    if (k.kind === "note" && k.look === "mark") (s as Record<string, string>)["--hc"] = `var(--hd-${k.hand ?? "blue"})`;
+    if (k.kind === "note" && k.look === "box") (s as Record<string, string>)["--fc"] = `var(--bf-${k.fill ?? "yellow"})`;
     // 斜贴：绕卡的中心转（箭头的端点按同一个中心转，Links.tsx）
     const a = tiltOf(k.id);
     if (a) Object.assign(s, { rotate: `${a}deg`, "transform-origin": "50% 50%" });
@@ -95,7 +97,7 @@ export function CardView(p: { card: Card }) {
   };
   const kindClass = () => {
     const k = c();
-    if (k.kind === "note") return k.msg ? "note msg" : k.bg ? "note" : k.hand ? "text mark" : "text";
+    if (k.kind === "note") return k.msg ? "note msg" : k.look === "note" ? "note" : k.look === "text" ? "text" : `text ${k.look}`;
     return k.kind === "compare" ? "cmp" : k.kind === "code" ? "ccard" : k.kind;
   };
   // 拖动中的卡、落点是所有卡共用的信号：直接写进 classList 的话，它们一变，241 张卡的整个 classList 都要重算一遍（松手那一帧 ~5ms）。
@@ -127,20 +129,26 @@ export function CardView(p: { card: Card }) {
         <Dynamic component={BODIES[c().kind] as Component<{ card: Card }>} card={c()} />
         {/* 拖动时由 .board.dragging 藏起来（CSS），不在每次拖动开始和结束时把几百张卡的圆点拆掉又建回来 */}
         <For each={["t", "r", "b", "l"] as const}>{(side) => <span class={`eport ${side}`} data-nodrag data-export="strip" style={portStyle(c().id)} classList={{ land: landed(`${c().id}|${EPORT_SIDE[side]}`) }} data-tip="Drag to link" onPointerDown={(e) => { const r = e.currentTarget.getBoundingClientRect(); linkPortDown(e, { card: c().id }, r.left + r.width / 2, r.top + r.height / 2, EPORT_SIDE[side]); }} />}</For>
-        <Show when={c().kind === "note" && !(c() as NoteCard).bg}><TextToolbar card={c() as NoteCard} /></Show>
+        <Show when={frameless(c())}><WritingToolbar card={c() as NoteCard} /></Show>
         <Show when={!pl().locked}>
-          <Show when={c().kind === "note" && !(c() as NoteCard).bg} fallback={<>
+          <Show when={frameless(c())} fallback={<>
             <div class="grip" data-nodrag data-export="strip" data-tip="Drag to resize · Double-click to fit content" onPointerDown={(e) => resizeDown(e, c().id, { right: true, bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} />
             {/* Note 的下边：只改高度（拖出来的高度会一直留着，直到 Fit Content） */}
             <Show when={c().kind === "note"}><span class="hb" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { bottom: true })} onDblClick={(e) => { e.stopPropagation(); act.fitContent([c().id]); }} /></Show>
           </>}>
-            {/* Mark：右下角一个小方块只改宽度，字号不变、字跟着折行 */}
-            <Show when={(c() as NoteCard).hand} fallback={<>
+            <Switch fallback={<>
               <span class="hw l" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { left: true })} />
               <span class="hw r" data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, { right: true })} />
             </>}>
-              <span class="mkgrip" data-nodrag data-export="strip" data-tip="Drag to change the width" onPointerDown={(e) => resizeDown(e, c().id, { right: true })} />
-            </Show>
+              {/* Mark：右下角一个小方块只改宽度，字号不变、字跟着折行 */}
+              <Match when={(c() as NoteCard).look === "mark"}>
+                <span class="mkgrip" data-nodrag data-export="strip" data-tip="Drag to change the width" onPointerDown={(e) => resizeDown(e, c().id, { right: true })} />
+              </Match>
+              <Match when={(c() as NoteCard).look === "box"}>
+                <For each={[["nw", { top: true, left: true }], ["ne", { top: true, right: true }], ["sw", { bottom: true, left: true }], ["se", { bottom: true, right: true }]] as const}>{([k, edges]) =>
+                  <span class={`bxh bxh-${k}`} data-nodrag data-export="strip" onPointerDown={(e) => resizeDown(e, c().id, edges)} />}</For>
+              </Match>
+            </Switch>
           </Show>
         </Show>
         </div>
