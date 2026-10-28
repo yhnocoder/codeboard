@@ -19,11 +19,16 @@ const qiClosed = (page, what = "the quick input") => qi(page).waitFor({ state: "
 // on the host page's <body>: only the end of VS Code's own timer says that no "focus" is coming. So the recorder follows the timers that _doFocus starts (by their call stack) until they have
 // run or been cancelled, the workbench numbers the "focus" messages it posts, by webview, and the host pages record the last one they
 // handled (wait.cjs). A message posted to a webview that closed before handling it is not waited for.
+// A webview that is still loading (a board panel just opened) has no MessagePort yet: WebviewElement keeps the delayer's "focus" with
+// its pending messages and posts it once the webview reports ready, which can be after the delayer ran and a quick input has opened.
+// The host page then takes the keyboard, and gives it to the board's frame when that frame's content has loaded. So a webview still
+// loading when a delayer ran counts as a hand-back until it is ready (the queued "focus" is then numbered like any other), and so does a
+// host page that is still loading its frame.
 // The recorder also logs the quick input showing, hiding, and losing the keyboard while it shows.
 const QI_RECORDER = () => {
   if (!/\/workbench[^/]*\.html$/.test(location.pathname)) return 0; // also an init script, which runs in every frame
   if (window.__e2eQi) return window.__e2eQi.ev.length;
-  const rec = window.__e2eQi = { ev: [], seq: 0, focus: new Map(), delayers: new Set() };
+  const rec = window.__e2eQi = { ev: [], seq: 0, focus: new Map(), delayers: new Set(), loading: new Set() };
   const widget = () => document.querySelector(".quick-input-widget");
   const shown = (w) => !!w && getComputedStyle(w).display !== "none";
   let was = false;
@@ -41,7 +46,11 @@ const QI_RECORDER = () => {
   const setT = window.setTimeout, clearT = window.clearTimeout;
   window.setTimeout = function (fn, ...rest) {
     if (typeof fn !== "function" || !/\._doFocus\b/.test(new Error().stack)) return setT.call(this, fn, ...rest);
-    const h = setT.call(this, function (...a) { rec.delayers.delete(h); return fn.apply(this, a); }, ...rest);
+    const h = setT.call(this, function (...a) {
+      rec.delayers.delete(h);
+      for (const f of document.querySelectorAll("iframe.webview:not(.ready)")) rec.loading.add(f);
+      return fn.apply(this, a);
+    }, ...rest);
     rec.delayers.add(h);
     return h;
   };
@@ -73,14 +82,20 @@ const qiSince = (page, mark) => page.evaluate((m) => window.__e2eQi.ev.slice(m),
 async function handBack(page) {
   const wb = await page.evaluate(() => ({
     delayers: window.__e2eQi?.delayers.size ?? 0,
+    loading: [...(window.__e2eQi?.loading ?? [])].filter((f) => f.isConnected && !f.classList.contains("ready")).map((f) => f.name),
     posted: [...(window.__e2eQi?.focus ?? [])].filter(([f]) => f.isConnected).map(([f, seq]) => ({ id: f.name, seq })),
   }));
   if (wb.delayers) return "VS Code has focused a webview's iframe and its _focusDelayer has not yet decided whether to post it \"focus\"";
+  if (wb.loading.length) return `VS Code's _focusDelayer ran while webview ${wb.loading[0]} was loading: the "focus" it queued is posted once that webview is ready`;
   const handled = new Map();
   for (const f of page.frames()) {
     if (!/^vscode-webview:.*\/index\.html/.test(f.url())) continue;
-    const seq = await f.evaluate(() => window.__e2eFocusSeq ?? 0).catch(() => null);
-    if (seq !== null) handled.set(new URL(f.url()).searchParams.get("id"), seq);
+    const id = new URL(f.url()).searchParams.get("id");
+    const at = await f.evaluate(() => ({ seq: window.__e2eFocusSeq ?? 0, loading: !!document.getElementById("pending-frame") })).catch(() => null);
+    if (!at) continue;
+    // the host page gives the frame it is loading the keyboard when it lands, if the page has it by then
+    if (at.loading) return `webview ${id} is still loading its content`;
+    handled.set(id, at.seq);
   }
   for (const { id, seq } of wb.posted) {
     const h = handled.get(id) ?? 0;
@@ -215,8 +230,10 @@ async function focusSettled(f) {
   await f.evaluate(() => new Promise((r) => setTimeout(r, 0)));
 }
 
-/** The board in frame f has the keyboard: the keys pressed next reach it. Its shortcuts that VS Code sends back need boardKeys too */
-const boardHasKeyboard = (f) => f.evaluate(() => document.hasFocus());
+/** The board in frame f has the keyboard: the keys pressed next reach it. That is when its frame has the keyboard, or its webview's
+ *  host page has it (VS Code left it there; the board takes a key that lands there, packages/board/src/focus.ts). Its shortcuts that
+ *  VS Code sends back need boardKeys too */
+const boardHasKeyboard = (f) => f.evaluate(() => (window.frameElement?.ownerDocument ?? document).hasFocus());
 /** VS Code's status bar while it waits for the second key of a chord ("(Ctrl+K) was pressed. Waiting for second key of chord...") */
 const inChord = (page) => page.locator(".part.statusbar", { hasText: /was pressed\. Waiting for (second|next) key of chord/ }).count();
 /** Who gets the board's shortcuts (Ctrl+K, Ctrl+, …: VS Code keybindings while its key context codeboard.boardFocused is on, which
