@@ -181,7 +181,7 @@ const inScan = (x: Scan, abs: string) => (isGen(x, abs) ? UFUNC_FILE.test(path.b
  * 所以文件是源码根目录下的一份副本时（PyTorch 的 setup.py 会拷一份过去）也能找到真正的目录
  */
 export async function genDirOf(root: string): Promise<string | undefined> {
-  const args = workspace().settings.get<unknown>("clangd.arguments");
+  const args = workspace().settings.get<unknown>("clangd.arguments", root);
   const ws = workspace().files.rootOf(root) ?? root;
   const dirs: string[] = [];
   if (Array.isArray(args)) {

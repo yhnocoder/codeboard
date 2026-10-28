@@ -153,7 +153,7 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       scratch: vscodeScratch(() => ctx.globalStorageUri.fsPath),
     },
     settings: {
-      get: (key) => { const [s, k] = splitKey(key); return vscode.workspace.getConfiguration(s).get(k); },
+      get: (key, scope) => { const [s, k] = splitKey(key); return vscode.workspace.getConfiguration(s, scope ? vscode.Uri.file(scope) : undefined).get(k); },
       set: async (key, v, scope) => { const [s, k] = splitKey(key); await vscode.workspace.getConfiguration(s).update(k, v, scope === "workspace" ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global); },
       onDidChange: (fn) => vscode.workspace.onDidChangeConfiguration((e) => fn({ affects: (k) => e.affectsConfiguration(k) })),
     },

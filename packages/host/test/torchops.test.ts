@@ -211,7 +211,8 @@ describe("the build folder", () => {
     const r = tree({ "cmake-out/compile_commands.json": cdb("/a/b.cpp"), "build/compile_commands.json": cdb("/c/d.cpp") });
     W.settings.get = <T>(k: string) => (k === "clangd.arguments" ? ["--background-index", "--compile-commands-dir=${workspaceFolder}/cmake-out"] : undefined) as T;
     expect(await genDirOf(r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
-    W.settings.get = <T>(k: string) => (k === "clangd.arguments" ? ["--compile-commands-dir", "cmake-out"] : undefined) as T;
+    // multi-root: the setting of the folder this PyTorch is in
+    W.settings.get = <T>(k: string, scope?: string) => (k === "clangd.arguments" && scope === r ? ["--compile-commands-dir", "cmake-out"] : undefined) as T;
     expect(await genDirOf(r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
     W.settings.get = () => undefined;
     expect(await genDirOf(r)).toBe(path.join(r, "build", "aten", "src", "ATen"));

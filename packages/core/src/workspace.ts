@@ -70,7 +70,8 @@ export interface WorkspaceScratch {
 
 /** 用户设置，键是完整的点分名字（codeboard.theme、editor.fontFamily） */
 export interface WorkspaceSettings {
-  get<T>(key: string): T | undefined;
+  /** scope = 一个文件或文件夹：多根工作区里取它所在的那个文件夹的设置（.vscode/settings.json 各根不同） */
+  get<T>(key: string, scope?: string): T | undefined;
   /** 写设置；undefined = 删掉。默认写用户级，"workspace" 写进当前项目（.vscode/settings.json） */
   set(key: string, value: unknown, scope?: "user" | "workspace"): Promise<void>;
   onDidChange: Event<{ affects(key: string): boolean }>;
