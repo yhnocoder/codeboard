@@ -7,6 +7,7 @@ import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./co
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
 import { githubCard, ghQuery } from "./github";
 import { webMeta } from "./web";
+import { tidy } from "@codeboard/core/tidy";
 import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
 import { openStickerDir, readPacks } from "./stickers";
@@ -87,6 +88,7 @@ export function makeHandler(panels: BoardHost): Handler {
     webMeta: (_p, m) => webMeta(store, m.url),
     gh: (_p, m) => ghQuery(m.q),
     stickerPacks: () => readPacks(),
+    tidy: async (_p, m) => Object.fromEntries(await tidy(m.cards, m.links, m.fixed)),
     openStickerDir: () => openStickerDir(),
     copyDiagnostics: (p, m) => copyDiagnostics(prompts(p), p.board, m.board),
     log: (_p, m) => log(m.level, m.text),

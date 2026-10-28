@@ -1,7 +1,7 @@
 // project / library code：工作区 + Study Scope 里的包是 project，其余是 library。
 // 宿主只标出「工作区外」的包名（CallSpan.pkg、PeekDef.lib），Study Scope 由白板对照设置判断，改设置不用重算。
 import * as path from "node:path";
-import { importPkg, type FileAnalysis } from "@codeboard/core/analysis";
+import { importPkg, type FileAnalysis } from "@codeboard/analysis";
 import type { Segment } from "@codeboard/core";
 import { exists, inWorkspace, wsRoots } from "./ws";
 import { hasLocalFile } from "./source";

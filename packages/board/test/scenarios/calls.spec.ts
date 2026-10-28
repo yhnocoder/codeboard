@@ -224,7 +224,7 @@ async function runtime(res: Record<string, unknown>) {
   execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "add", "-A"], { cwd: FIX });
   execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", "commit", "-qm", "fixture"], { cwd: FIX });
   useWorkspace(nodeWorkspace(FIX));
-  await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+  await startAnalysis();
   resetIndex(); startNameIndex(); await nameIndexReady();
   const card = async (rel: string, qual: string) => {
     const abs = path.join(FIX, rel);

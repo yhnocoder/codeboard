@@ -2,7 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { locateSeg, trackSeg, onlyHiddenChanged, mapLineTo, renderLine, tokenClass, rankByReceiver, parseDistInfo, parseGitLog, type Segment } from "../src";
-import { initAnalysis, analyze } from "../src/analysis";
+import { initAnalysis, analyze } from "@codeboard/analysis";
 
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm", import.meta.url));
 const show = (rev: string, path: string) => execFileSync("git", ["-C", repo, "show", `${rev}:${path}`], { encoding: "utf8" });

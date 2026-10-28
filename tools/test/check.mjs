@@ -37,7 +37,7 @@ function run(name, cmd, a, env = {}) {
 // The board build takes most of a minute: skip it when nothing it is built from changed since the last one
 function buildHash() {
   const h = createHash("sha1");
-  const files = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "packages/board/src", "packages/board/vite.config.ts", "packages/board/package.json", "packages/markdown/src", "packages/markdown/package.json", "packages/markdown/vite.config.ts", "packages/markdown/tsconfig.json", "packages/markdown/tsconfig.build.json", "packages/core/src", "package-lock.json"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
+  const files = execFileSync("git", ["ls-files", "-co", "--exclude-standard", "packages/board/src", "packages/board/vite.config.ts", "packages/board/package.json", "packages/markdown/src", "packages/markdown/package.json", "packages/markdown/vite.config.ts", "packages/markdown/tsconfig.json", "packages/markdown/tsconfig.build.json", "packages/analysis/src", "packages/core/src", "package-lock.json"], { cwd: REPO, encoding: "utf8" }).split("\n").filter(Boolean);
   for (const f of files.sort()) { h.update(f); try { h.update(fs.readFileSync(path.join(REPO, f))); } catch { /* deleted */ } }
   return h.digest("hex");
 }

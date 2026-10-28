@@ -3,7 +3,7 @@
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
-import { analyze, initAnalysis } from "@codeboard/core/analysis";
+import { analyze, initAnalysis } from "@codeboard/analysis";
 import { uid, type Segment } from "@codeboard/core";
 import { startAnalysis } from "../src/analysis";
 import { staleFor } from "../src/versions";
@@ -36,9 +36,8 @@ async function time<T>(f: () => Promise<T>) { const t = performance.now(); const
 
 void (async () => {
   if (!fs.existsSync(WS)) execFileSync("git", ["clone", "-q", path.join(REPO, "examples/nano-vllm"), WS]);
-  const wasm = path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm");
-  await initAnalysis(wasm);
-  await startAnalysis(wasm);
+  await initAnalysis();
+  await startAnalysis();
   const head = git("rev-parse", "HEAD");
   const old = git("rev-parse", "HEAD~6"); // predates the chunked prefill refactor: scheduler and block_manager both changed
   for (let r = 0; r < RUNS; r++) {

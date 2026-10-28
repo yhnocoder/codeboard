@@ -1,7 +1,7 @@
 // 粘贴到画布：工作区里能一字不差找到的代码 → 带位置和 commit 的代码卡；GitHub 链接 → GitHub Code 卡；
 // 其他像代码的文本 → Free code（猜语言）；网址、普通文字由白板自己建 Web / Note（回 null）。
 import { classifyPaste, pythonDialect, type NewCard } from "@codeboard/core";
-import { planSelection } from "@codeboard/core/analysis";
+import { planSelection } from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
 import { cardsFromPlan, freeCard, withViews } from "./cards";
 import { githubCard } from "./github";

@@ -2,29 +2,34 @@
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Language as TSLanguage, Tree, Edit, Query } from "@vscode/tree-sitter-wasm";
 
-import type { Grammar } from "../langs";
+import type { Grammar } from "./langs";
 export type { Edit, Grammar };
 
 let ready: Promise<void> | undefined;
 const langs = new Map<Grammar, TSLanguage>();
 let wasmDir: string | undefined;
 
-/** 宿主启动时调用一次；dir = 放 tree-sitter*.wasm 的目录（Node 下默认用 npm 包里的） */
+/**
+ * 宿主启动时调用一次；dir = 放全部 wasm 的目录（插件的 dist/）。
+ * Node 下不给：运行时和 Python / Rust 语法用 @vscode/tree-sitter-wasm 里的，C / C++ / CUDA 用 @yhnocoder/tree-sitter-cuda 里的
+ */
 export function initAnalysis(dir?: string): Promise<void> {
   if (dir) wasmDir = dir;
   return (ready ??= (async () => {
-    const base = wasmDir ?? defaultDir();
-    await TS.Parser.init({ locateFile: (f: string) => join(base, f) });
-    for (const g of ["python", "cpp", "rust"] as Grammar[]) langs.set(g, await TS.Language.load(join(base, `tree-sitter-${g}.wasm`)));
+    await TS.Parser.init({ locateFile: (f: string) => wasmPath(f) });
+    for (const [g, f] of WASM) langs.set(g, await TS.Language.load(wasmPath(f)));
   })());
 }
 
-function defaultDir() {
-  // vitest / node：从包里找
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const p = (globalThis as any).require?.resolve?.("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm") ?? import.meta.resolve?.("@vscode/tree-sitter-wasm/wasm/tree-sitter.wasm");
-  const s = String(p).replace(/^file:\/\//, "");
-  return s.slice(0, s.lastIndexOf("/"));
+// C / C++ / CUDA 都用 tree-sitter-cuda：C++ 语法加上 <<<>>>、__global__、__launch_bounds__ 等，节点名和 C++ 一样
+const WASM: [Grammar, string][] = [["python", "tree-sitter-python.wasm"], ["cpp", "tree-sitter-cuda.wasm"], ["rust", "tree-sitter-rust.wasm"]];
+const PKG: Record<string, string> = { "tree-sitter-cuda.wasm": "@yhnocoder/tree-sitter-cuda" };
+
+function wasmPath(f: string) {
+  if (wasmDir) return join(wasmDir, f);
+  // vitest / node：从包里找（esbuild 打成 cjs 的脚本里 import.meta 是空的，用 require.resolve）
+  const spec = `${PKG[f] ?? "@vscode/tree-sitter-wasm/wasm"}/${f}`;
+  return (import.meta.resolve?.(spec) ?? require.resolve(spec)).replace(/^file:\/\//, "");
 }
 const join = (a: string, b: string) => (a.endsWith("/") ? a + b : `${a}/${b}`);
 

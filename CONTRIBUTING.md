@@ -6,7 +6,7 @@
 git submodule update --init examples/nano-vllm   # the repository the tests run on (under a second); sglang and DeepEP are only for trying things by hand: git submodule update --init --depth 1 examples/sglang examples/DeepEP
 npm install
 npm run build      # @yhnocoder/markdown (packages/markdown/dist), board UI + extension, compiled into extensions/vscode/dist (no .vsix)
-npm test           # unit tests (core, markdown, board, host, extension)
+npm test           # unit tests (analysis, core, markdown, board, host, extension)
 npm run check      # local test tier: typecheck, unit tests and affected harness scenarios (~90 s)
 npm run e2e        # main flows in a real VS Code, with screenshots (needs VS Code and xvfb)
 npm run storybook  # Storybook for the board UI at http://localhost:6006 (cards and toolbar, every theme, light / dark, zoom); not part of check or the per-push CI. `npm run storybook:check` builds it and opens every story in Chromium; that runs nightly
@@ -30,7 +30,8 @@ Test tiers, time budgets and how scenarios are selected are described in [TESTIN
 
 ## Repository layout
 
-- `packages/core`: data model, symbol resolution, syncing cards with the current code (pure TypeScript, with tests)
+- `packages/analysis`: code analysis with tree-sitter (symbols, calls, loops, comment / docstring lines, selections, cross-language boundaries), the language table (`langs.ts`) and the few types and helpers that analysis results and the board model share (`basics.ts`; the board imports `@codeboard/analysis/langs` and `/basics`, never the tree-sitter entry). The tree-sitter wasm are its dependencies: the runtime, Python and Rust from `@vscode/tree-sitter-wasm`, C / C++ / CUDA from `@yhnocoder/tree-sitter-cuda` (our tree-sitter-cuda fork, installed from its GitHub release tarball). It imports no other CodeBoard package: core depends on it
+- `packages/core`: data model, syncing cards with the current code (pure TypeScript, with tests)
 - `packages/markdown`: the Markdown renderer and editor on their own (schema, static render and `hydrate`, the TipTap editor, the CodeMirror code editor and their stylesheet), with everything board-specific passed in as options or setters. Entries: `@yhnocoder/markdown` (read-only: schema, render, `hydrate`, clicks; no Solid), `/editor` (the editor, loaded lazily), `/code-editor` (CodeMirror on its own, as in Free code cards), `/ui` (the shared key forwarding, popover placement and measure batching the board uses too, and `holdGhosts` to pause AI completions while the board moves or resizes a card), `/style.css` and `/katex.css`. It is published to npm, and its build (`npm run build -w @yhnocoder/markdown`: `dist/` with the Solid JSX compiled, `.d.ts` declarations and the two stylesheets) is what the board and the demo use too, exactly as an npm user would; `solid-js` is a peer dependency. The root `npm run build` builds it first, and `npm run check` before anything else; after changing `packages/markdown/src`, rebuild it before typechecking or building the board on their own. Its README is the npm page
 - `packages/board`: the board UI (SolidJS), bundled into the extension's webview
 - `packages/host`: the editor-independent host: reads code, highlights, resolves calls, tracks versions, stores and coordinates boards

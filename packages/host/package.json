@@ -8,7 +8,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@codeboard/analysis": "^0.1.0",
     "@codeboard/core": "^0.1.0",
+    "htmlparser2": "12.0.0",
     "shiki": "^4.5.0"
   },
   "devDependencies": {

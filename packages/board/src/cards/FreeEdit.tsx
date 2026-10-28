@@ -1,7 +1,8 @@
 // 自由代码卡的编辑：CodeMirror，排版和显示时一模一样（同一个 .code 字体行高、54px 的行号栏、宿主给的着色），进出编辑字的位置不动。
 // 改了的行先留着挪过来的旧着色，宿主的着色回来就换上。CodeMirror 还没加载好时先照原样显示，加载好了再换上
 import { createEffect, For, onCleanup, onMount, Show, createSignal } from "solid-js";
-import { escHtml, langInfo } from "@codeboard/core";
+import { escHtml } from "@codeboard/core";
+import { langInfo } from "@codeboard/analysis/langs";
 import type { CodeCard, SegView } from "@codeboard/core";
 import { state } from "../state/store";
 import { loadCm, cmNow, lspHost, ghostHost, nearSeg, hostHighlight } from "../cm/load";

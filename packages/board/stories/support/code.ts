@@ -1,9 +1,10 @@
 // 代码卡、Compare、调用图、版本、Peek 小样共用：段和展示数据的拼法、假宿主多回答的几种请求、开浮层。
 // 状态还是照宿主和用户的路从外面喂（onHost、store / ui / pop 的 setter），不为小样改组件
 import {
-  F_BLANK, renderLine, viewKey, addVariant, switchVariant, UPSTREAM,
+  renderLine, viewKey, addVariant, switchVariant, UPSTREAM,
   type Board, type CallMark, type CallSpan, type CodeCard, type DiffData, type Link, type PeekDef, type Segment, type SegView, type Variant,
 } from "@codeboard/core";
+import { F_BLANK } from "@codeboard/analysis/basics";
 import { codeCard } from "./board";
 import { VIEWS, PASS, reply } from "./host";
 import { el, frames } from "./play";

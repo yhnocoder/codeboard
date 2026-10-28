@@ -5,8 +5,10 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { chromium, type Browser, type Page } from "playwright-core";
 import { CHROMIUM, CHROMIUM_ARGS } from "./chromium";
-import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, F_BLANK, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
-import { initAnalysis, analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
+import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
+import { F_BLANK } from "@codeboard/analysis/basics";
+import { tidy } from "@codeboard/core/tidy";
+import { initAnalysis, analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/analysis";
 
 /** The repo's root, defined by the builds that bundle this file (playwright.config.ts, run-perf.mjs) */
 declare const REPO_ROOT: string;
@@ -90,7 +92,7 @@ export type PageCoverage = Awaited<ReturnType<Page["coverage"]["stopJSCoverage"]
 
 export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void>; close: () => Promise<void> };
 
-export async function ready() { await initAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm")); if (!files.size) load(); }
+export async function ready() { await initAnalysis(); if (!files.size) load(); }
 
 /** Lets a scenario play part of the host: return true if handled */
 export type OnMsg = (m: BoardToHost & { req?: number }, reply: (req: number, data?: unknown, error?: string) => Promise<void>) => boolean | Promise<boolean>;
@@ -196,6 +198,7 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
         const fl = [...files.keys()].filter((f) => f.toLowerCase().includes(q)).slice(0, 5).map((f) => ({ kind: "file" as const, label: path.basename(f), detail: path.dirname(f), path: f }));
         return reply(m.req, [...syms, ...fl]);
       }
+      case "tidy": return reply(m.req, Object.fromEntries(await tidy(m.cards, m.links, m.fixed)));
       case "entryPoints": return reply(m.req, [{ kind: "entry", label: "LLM.generate", detail: "nanovllm/__init__.py export", path: "nanovllm/engine/llm_engine.py", line: 60, sym: "LLMEngine.generate" }]);
       case "searchPick": {
         const it = m.item as any;

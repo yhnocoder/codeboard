@@ -9,7 +9,7 @@ import type { BoardView } from "../src/boards";
 import { langOf } from "../src/ws";
 
 export const REPO = path.resolve(__dirname, "../../..");
-export const startTreeSitter = () => startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+export const startTreeSitter = () => startAnalysis();
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A card for the symbol `qual` in a file (as Add Function would make it) and its first segment */

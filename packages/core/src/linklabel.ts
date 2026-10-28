@@ -1,4 +1,5 @@
-import { escapeRegExp, type Segment, type Var } from "./model";
+import { type Segment } from "./model";
+import { escapeRegExp, type Var } from "@codeboard/analysis/basics";
 
 const lineText = (s: Segment, line: number) => s.text[line - s.start];
 const hasWord = (text: string, w: string) => new RegExp(`(^|[^\\w$])${escapeRegExp(w)}(?![\\w$])`).test(text);

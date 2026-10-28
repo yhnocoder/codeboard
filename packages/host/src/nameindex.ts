@@ -2,8 +2,8 @@
 // 不在点击时建：打开白板后在后台一个文件一个文件地建（每个文件之间让出事件循环），文件保存 / 新建 / 删除 / 在外面改了时只重做那个文件。
 // 还没建完时按名字查：没分析过的文件先看文本里有没有这个名字，有才分析，所以点击不用等整个索引。没有文件数上限。
 import * as path from "node:path";
-import { grammarOfFile, type Grammar } from "@codeboard/core";
-import type { Sym } from "@codeboard/core/analysis";
+import { grammarOfFile, type Grammar } from "@codeboard/analysis/langs";
+import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
 import { log } from "./log";

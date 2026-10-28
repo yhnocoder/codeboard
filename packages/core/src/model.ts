@@ -6,6 +6,8 @@
 // 宿主读白板时把引用换成内容（inflate），界面拿到的永远是完整的 Board。
 // Markdown 里转义的 \$ 总是字面的 $（旧编辑器写下的 \$…\$ 公式由 migrate.ts 改成 $…$）。
 
+import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
+
 export const BOARD_VERSION = 7;
 
 // ---------- 版本 ----------
@@ -191,9 +193,6 @@ export type Place = {
  */
 export type End = { card: string; seg?: string; line?: number; sub?: string };
 
-/** Call 上的变量：a = 调用处，b = 被调函数里的名字（名字不同才有）；ret = 返回值被谁接住 */
-export type Var = { a: string; b?: string; ret?: boolean; custom?: boolean };
-
 /** 箭头的一端从卡的哪一边进出（没有 = 自动） */
 export type LinkSide = "left" | "right" | "top" | "bottom";
 
@@ -226,10 +225,6 @@ export type CallMark = {
 export type CallEvidence = { kind: "manual" | "observed"; via?: string; cmd?: string; log?: string[]; at?: number; commit?: string; count?: number; run?: string; base?: "manual" };
 /** 运行时的一次调用：n = 第几次（从 1 数），args = [形参名, 值的简写]（tensor 只记 shape / dtype / device） */
 export type CallSample = { n: number; args: [string, string][] };
-/** 一个取值：name → value；opts = 可能的几个值（让人选一个，其余是灰色分支），from = 取值从哪来（SWITCH_RANKS(num_ranks)） */
-export type BoundVal = { name: string; value: string; opts?: string[]; from?: string };
-/** 一个备选：别的实现（path + line + qual，path 是宿主给的显示路径）或别的一组取值（vals）。lib = 在 library 里（不在 Study Scope，⌥ 才展开） */
-export type CallAlt = { label: string; detail?: string; path?: string; line?: number; qual?: string; lib?: string; vals?: BoundVal[] };
 
 /** 箭头的样子：dash = 虚线；width 默认 2；head 默认只有终点有箭头；color 默认灰 */
 export type LinkStyle = { dash?: true; width?: 1 | 2 | 3; head?: { start?: boolean; end?: boolean }; color?: string };
@@ -468,7 +463,6 @@ export function mdHeading(md: string): string {
 }
 /** Markdown 的第一行字（标题用）：图片换成它的 alt（只有一张没 alt 的图的行跳过：粘贴的截图） */
 export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1").replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
-export const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 /** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 export function domainOf(url: string) {
@@ -615,6 +609,5 @@ export function callName(qual: string): string {
 export const sameCallSite = (l: Pick<Link, "from" | "call">, at: { card: string; seg?: string; line?: number; name: string }) =>
   !!l.call && l.from.card === at.card && l.from.seg === at.seg && l.from.line === at.line && l.call.name === at.name;
 
-export const varKey = (v: Var) => `${v.ret ? "→" : ""}${v.a}|${v.b ?? ""}`;
 /** 线上显示的文字：名字相同只显示一个；不同显示 a → b；返回值 → logits */
 export const varText = (v: Var) => (v.ret ? `return → ${v.a}` : v.b ? `${v.a} → ${v.b}` : v.a);

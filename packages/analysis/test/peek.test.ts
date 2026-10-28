@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { initAnalysis, analyze, peekPlan, isModuleDef, docToMd, cleanDoc, importPkg } from "../src/analysis";
+import { initAnalysis, analyze, peekPlan, isModuleDef, docToMd, cleanDoc, importPkg } from "../src";
 
 const repo = fileURLToPath(new URL("../../../examples/nano-vllm/", import.meta.url));
 const read = (p: string) => readFileSync(repo + p, "utf8");

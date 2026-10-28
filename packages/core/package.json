@@ -6,8 +6,7 @@
   "main": "src/index.ts",
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit",
-    "bench:analysis": "node test/run-bench-analysis.mjs"
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",
@@ -15,13 +14,14 @@
     "vitest": "^5.0.4"
   },
   "dependencies": {
-    "@vscode/tree-sitter-wasm": "^0.3.1",
+    "@codeboard/analysis": "^0.1.0",
     "diff": "9.0.0",
+    "elkjs": "0.12.0",
     "valibot": "1.5.0"
   },
   "exports": {
     ".": "./src/index.ts",
-    "./analysis": "./src/analysis/index.ts",
-    "./storage": "./src/storage/index.ts"
+    "./storage": "./src/storage/index.ts",
+    "./tidy": "./src/tidy.ts"
   }
 }
