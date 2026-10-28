@@ -451,6 +451,8 @@ test("portSizeWhenZoomedOut", async () => {
   const b = emptyBoard("b1", "portsize");
   b.cards.push({ id: "n0", kind: "note", md: "A note to drag an arrow out of", bg: true } as NoteCard);
   b.place.n0 = { x: 300, y: 200, w: 320, h: 160 };
+  b.cards.push({ id: "n1", kind: "note", md: "Another note", bg: true } as NoteCard);
+  b.place.n1 = { x: 700, y: 200, w: 200, h: 100 };
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 1300, h: 800 });
   const pg = h.page, N0 = `.card[data-id="n0"]`;
@@ -478,5 +480,14 @@ test("portSizeWhenZoomedOut", async () => {
   const dot = at100.w * Math.sqrt(zoom);
   check("portSizeWhenZoomedOut", zoom < 0.4 && near(at30.w, dot) && near(at30.h, dot) && at30.w < at100.w - 2 && near(at30.hit, at100.hit) && at100.hit >= 4,
     JSON.stringify({ zoom, at100, at30 }));
+  // The enlarged hit area reaches outside the card: from the hovered card, a point just above its top edge still hits the top port
+  const top = (await pg.locator(N0).boundingBox())!.y, out = { x: at30.cx, y: at30.cy - (at30.hit - 0.5) };
+  await pg.mouse.move(out.x, out.y);
+  await idle(h);
+  const outside = await pg.evaluate(([x, y, sel]) => { const e = document.querySelector(sel as string)!; return { hit: document.elementFromPoint(x as number, y as number)?.closest(".eport") === e, shown: getComputedStyle(e).opacity === "1" }; }, [out.x, out.y, `${N0} .eport.t`] as const);
+  check("portSizeWhenZoomedOut outside the card edge", out.y < top - 1 && outside.hit && outside.shown, { out, top, outside });
+  // Only the hovered card's ports carry the zoomed-out sizes: a camera stop restyles those few ports, not every port on the board
+  const sized = await pg.evaluate(() => [...document.querySelectorAll<HTMLElement>(".eport, .lport")].filter((e) => e.style.getPropertyValue("--uv")).map((e) => e.closest(".card")?.getAttribute("data-id")));
+  check("portSizeWhenZoomedOut only the hovered card", sized.length === 4 && sized.every((id) => id === "n0") && (await pg.locator(".card[data-id=n1] .eport").count()) === 4, { sized });
   await close(h);
 });

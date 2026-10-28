@@ -1,6 +1,7 @@
 // 代码是一整块连续文本（选区连续），行号栏按实测行位置绝对定位；复制时不带行号（copy 事件里自己拼）。
 import { FreeEdit } from "./FreeEdit";
 import { lod } from "../state/camera";
+import { portStyle } from "../state/hover";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
@@ -410,7 +411,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   return (
     <>
     <Show when={portTop() !== null && !p.dim?.() && !freeEditing()}>
-      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} data-nodrag data-export="strip" style={{ top: `${portTop()}px` }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={(e) => portDown(e, side === "l" ? "left" : "right")} />}</For>
+      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} data-nodrag data-export="strip" style={{ top: `${portTop()}px`, ...portStyle(p.hostId) }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={(e) => portDown(e, side === "l" ? "left" : "right")} />}</For>
     </Show>
     <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
       <Show when={freeEditing()}>

@@ -26,12 +26,6 @@ const EXT = 2048;
 /** 正在写的字在屏幕上至少这么大（px） */
 const READ_PX = 11;
 
-const PORT = 9;
-function portZoomRule(z: number) {
-  const uz = Math.max(1, 1 / z), uv = Math.sqrt(uz);
-  return `.eport, .lport { --uv: ${uv}; --port-hit: ${(PORT - PORT * uz / uv) / 2}px; }`;
-}
-
 export function Canvas() {
   let el!: HTMLDivElement, world!: HTMLDivElement;
   trackOffscreen();
@@ -89,10 +83,6 @@ export function Canvas() {
   return (
     <div ref={el} id="board" class="board" data-mode={boardMode()} classList={{ walking: !!walk(), dragging: dragging().size > 0, "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
-      {/* Zoomed out, the link ports' hit area keeps its 100% size on screen, while the drawn dot grows only by the square root
-          (a full-size dot looks oversized on a small board). A rule only they match, not a variable on .world: changing an
-          inherited variable there restyles every element on the board, this restyles only the ports, once each time the camera stops */}
-      <style data-export="strip">{portZoomRule(stillZ())}</style>
       <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
         <LinkLayer bottom />
