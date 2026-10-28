@@ -1,0 +1,90 @@
+# A few ops in the shape of PyTorch's native_functions.yaml
+
+- func: add.Tensor(Tensor self, Tensor other, *, Scalar alpha=1) -> Tensor
+  device_check: NoCheck   # TensorIterator
+  structured_delegate: add.out
+  variants: function, method
+  dispatch:
+    SparseCPU, SparseCUDA: add_sparse
+    Meta: add_Tensor_meta
+
+- func: add.out(Tensor self, Tensor other, *, Scalar alpha=1, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  structured_inherits: TensorIteratorBase
+  ufunc_inner_loop:
+    Generic: add (AllAndComplex, BFloat16, Half, ComplexHalf)
+    ScalarOnly: add (Bool)
+  dispatch:
+    SparseCPU: add_out_sparse_cpu
+    SparseCUDA: add_out_sparse_cuda
+
+- func: softmax.int(Tensor self, int dim, ScalarType? dtype=None) -> Tensor
+  variants: function, method
+
+- func: softmax.int_out(Tensor self, int dim, ScalarType? dtype=None, *, Tensor(a!) out) -> Tensor(a!)
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: softmax_out
+
+- func: _softmax(Tensor self, int dim, bool half_to_float) -> Tensor
+  structured_delegate: _softmax.out
+  dispatch:
+    MkldnnCPU: mkldnn_softmax
+
+- func: _softmax.out(Tensor self, int dim, bool half_to_float, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    CPU: softmax_cpu_out
+    CUDA: softmax_cuda_out
+    MPS: softmax_mps_out
+
+- func: scatter_add(Tensor self, int dim, Tensor index, Tensor src) -> Tensor
+  structured_delegate: scatter_add.out
+  variants: function, method
+
+- func: scatter_add.out(Tensor self, int dim, Tensor index, Tensor src, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  variants: function
+  dispatch:
+    CPU, CUDA, MPS: scatter_add
+
+- func: fractional_max_pool2d.output(Tensor self, int[2] kernel_size, int[2] output_size, Tensor random_samples, *, Tensor(a!) output, Tensor(b!) indices) -> (Tensor(a!), Tensor(b!))
+  python_module: nn
+  structured: True
+  dispatch:
+    CPU: fractional_max_pool2d_out_cpu
+    CUDA: fractional_max_pool2d_out_cuda
+
+- func: fractional_max_pool2d(Tensor self, int[2] kernel_size, int[2] output_size, Tensor random_samples) -> (Tensor, Tensor)
+  python_module: nn
+  structured_delegate: fractional_max_pool2d.output
+
+- func: _upsample_bilinear2d_aa.out(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None, *, Tensor(a!) out) -> Tensor(a!)
+  python_module: nn
+  structured: True
+  dispatch:
+    CPU: _upsample_bilinear2d_aa_out_cpu
+    CUDA: _upsample_bilinear2d_aa_out_cuda
+
+- func: _upsample_bilinear2d_aa(Tensor self, SymInt[2] output_size, bool align_corners, float? scales_h=None, float? scales_w=None) -> Tensor
+  python_module: nn
+  structured_delegate: _upsample_bilinear2d_aa.out
+
+- func: gelu(Tensor self, *, str approximate='none') -> Tensor
+  python_module: nn
+  dispatch:
+    CPU, CUDA: gelu_kernel
+
+- func: split.Tensor(Tensor(a -> *) self, SymInt split_size, int dim=0) -> Tensor(a)[]
+  variants: function, method
+  dispatch:
+    CompositeExplicitAutograd: split
+
+- func: acos(Tensor self) -> Tensor
+  structured_delegate: acos.out
+  variants: function, method
+
+- func: acos.out(Tensor self, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    CPU, CUDA: acos_out

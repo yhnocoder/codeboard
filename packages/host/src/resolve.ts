@@ -4,7 +4,8 @@ import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type Expand
 import { grammarOf, grammarOfFile } from "@codeboard/analysis/langs";
 import { escapeRegExp, type Var } from "@codeboard/analysis/basics";
 import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/analysis";
-import { crossBefore, decorate, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
+import { crossAfterDefs, crossBefore, decorate, viaOps, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
+import { opTableFor, pyOpEntry } from "./torchops";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
 import { sharedDefs, type Def } from "./defcache";
 import { cardForFileSym, symCard } from "./cards";
@@ -12,7 +13,7 @@ import { absOf, locOfFile, versionText, hasLocalFile } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
 import { libOf } from "./scope";
-import { entriesOf, indexedFiles, lookupName, type IndexEntry } from "./nameindex";
+import { entriesOf, indexedFiles, knownEntries, lookupName, type IndexEntry } from "./nameindex";
 import { log } from "./log";
 import { exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
 
@@ -87,6 +88,7 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
 
   let targets: Target[] = [];
   let crossed: Crossed[] = [];
+  let stubs: Def[] = [];
   if (m.pick) {
     const abs = pickAbs(seg, m.pick);
     const t = abs && (await symAtDef({ abs, line: m.pick.line, col: 0 }, m.pick.rel ? m.name : undefined, m.pick.qual));
@@ -98,7 +100,13 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
     resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
-      const defs = await clickDefs(wp.abs, line, m.col);
+      const all = await clickDefs(wp.abs, line, m.col);
+      // 只有 .pyi 存根（torch._C.*、Tensor.X）：存根不是实现，先找跨语言的注册、算子（存根留作备选），都没有再用存根
+      let defs = all.filter((d) => !/\.pyi$/.test(d.abs));
+      if (!defs.length) stubs = all;
+      // C++ 落在生成的算子文件（at::_softmax → ops/_softmax.h）或 DEFINE_DISPATCH 上：走 yaml / REGISTER_DISPATCH
+      crossed = await crossAfterDefs(site, seg.lang, defs, here?.abs);
+      if (crossed.length) defs = [];
       lspN = defs.length;
       // 动态分发：定义处是基类的方法、有子类覆盖它 → 列出全部实现让人选
       // 转到实现在 Pylance 那边要在整个工作区里找子类（冷的时候、慢机器上要好几秒）：点击只等一小会儿（预取过的话已经在缓存里），
@@ -115,8 +123,18 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
       }
     }
     // Python 调到 C / C++ / Rust 扩展：语言服务找不到定义，先看 pybind / PyO3 的注册（再退到名字索引）
-    // 名字索引里有同名的 Python 定义就不算（self.model.forward 不去找 C++ 的 .def("forward")）
-    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && !(await lookupName(m.name)).some((e) => /\.pyi?$/.test(e.abs))) crossed = await viaRegistry(m.name);
+    // 名字索引里有同名的 Python 定义就不算（self.model.forward 不去找 C++ 的 .def("forward")）；.pyi 存根不算定义
+    // PyTorch（有算子索引）：只看已经分析过的文件，不为这个判断扫工作区
+    const torch = seg.lang === "python" && !!(await opTableFor(here?.abs));
+    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && !(torch ? knownEntries(m.name) : await lookupName(m.name)).some((e) => /\.py$/.test(e.abs))) crossed = await viaRegistry(m.name, here?.abs);
+    // PyTorch 的 x.X(…)：静态看不出 x 是不是 Tensor。X 是算子、又没有真的定义时，yaml 的 kernel 也是候选
+    if (!crossed.length && !targets.length && !lspN && seg.lang === "python" && site && here) crossed = await tensorMethod(site, here);
+    for (const d of targets.length ? [] : stubs) {
+      const t = await symAtDef(d, m.name);
+      if (!t) continue;
+      if (crossed.length) { if (!crossed.some((x) => x.t.abs === t.abs && x.t.sym.qual === t.sym.qual)) crossed.push({ t, mark: {}, label: `stub · ${path.basename(t.abs)} ${t.sym.qual}` }); }
+      else if (!targets.some((x) => x.abs === t.abs && x.sym.qual === t.sym.qual)) targets.push(t);
+    }
     // 语言服务给了定义、只是那里不是函数 / 类（变量、属性、参数）：不扫工作区（大仓库建名字索引要几十秒），
     // 只在当前文件和已经分析过的文件里按名字找
     if (!crossed.length && !targets.length) {
@@ -147,6 +165,26 @@ export async function expand(m: ExpandReq): Promise<ExpandResult> {
   if (!nc) { log("error", `expand ${m.name} → cannot read ${hostPath(t.abs)}`); return none(`Cannot read ${hostPath(t.abs)}.`); }
   const mark = Object.keys(x.mark).length ? x.mark : undefined;
   return { card: nc.card as CodeCard, views: nc.views, w: nc.w, vars: site && !t.sym.name.startsWith("<") ? await varsFor(site, t) : [], ...(mark ? { mark } : {}), ...(x.title ? { title: x.title } : {}), ...(dispatching && !crossed.length ? { dispatching: true as const } : {}) };
+}
+
+/**
+ * recv.X(…) 而 X 是有 method 变体的 PyTorch 算子：kernel 在前，名字索引里同名的 Python 方法跟在后面当备选；
+ * 但 recv 和某个 Python 类对得上（rankByReceiver 有把握）时照常走名字索引
+ */
+async function tensorMethod(site: CallSite, here: { abs: string; text: string }): Promise<Crossed[]> {
+  const t = await opTableFor(here.abs);
+  const e = t && pyOpEntry(t, site, analysisOf("python", here.text).imports);
+  if (!t || e?.how !== "method") return [];
+  const py = knownEntries(site.name).filter((x) => /\.py$/.test(x.abs)).map((x) => ({ ...x, path: hostPath(x.abs), line: x.defLine })); // 不为备选扫工作区
+  const { ranked, best } = rankByReceiver(py, site.recv, { path: hostPath(here.abs) });
+  if (best && py.length > 1) return [];
+  const ops = await viaOps(t, e.op);
+  if (!ops.length) return [];
+  // Python 的备选：和调用处同一个顶层目录的在前（torch/ 里的，不是 third_party/ 里的）
+  const top = (p: string) => p.split("/")[0];
+  const near = ranked.filter((x) => top(x.path) === top(hostPath(here.abs)));
+  const py3 = [...near, ...ranked.filter((x) => !near.includes(x))].slice(0, 3);
+  return [...ops, ...py3.map((x) => ({ t: { abs: x.abs, sym: toSym(x) }, mark: {}, label: `Python · ${x.qual}` }))];
 }
 
 /**

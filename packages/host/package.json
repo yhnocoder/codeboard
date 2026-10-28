@@ -11,7 +11,8 @@
     "@codeboard/analysis": "^0.1.0",
     "@codeboard/core": "^0.1.0",
     "htmlparser2": "12.0.0",
-    "shiki": "^4.5.0"
+    "shiki": "^4.5.0",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
     "@types/node": "^20.19.43",

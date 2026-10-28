@@ -30,11 +30,12 @@ export function nodeWorkspace(root = WS): TestWorkspace {
       unsavedText: (abs) => open.get(abs),
       openLanguage: () => undefined,
       openFiles: () => [...open].map(([abs, t]) => ({ abs, text: () => t })),
-      /** Code files under the root ("**\/*.{ext,…}" filters by extension, anything else = .py files), sorted, up to max */
+      /** Code files under the root ("**\/*.{ext,…}" filters by extension, "**\/a/b.yaml" by path, anything else = .py files), sorted, up to max */
       findFiles: async (include, _exclude, max) => {
         w.finds++;
         const ext = /^\*\*\/\*\.\{?([\w,]+)\}?$/.exec(include)?.[1].split(",");
-        const want = (p: string) => (ext ? ext.some((e) => p.endsWith(`.${e}`)) : p.endsWith(".py"));
+        const tail = /^\*\*\/([^*?{}[\]]+)$/.exec(include)?.[1];
+        const want = (p: string) => (ext ? ext.some((e) => p.endsWith(`.${e}`)) : tail ? p.endsWith(`/${tail}`) : p.endsWith(".py"));
         const out: string[] = [];
         const walk = (d: string) => {
           for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {

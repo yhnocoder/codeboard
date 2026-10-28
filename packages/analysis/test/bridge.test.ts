@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   initAnalysis, analyze, pybindDefs, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
-  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs,
+  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs, pyMethodDefs, dispatchRegs, stubDevice, pybindAll, pyMethodAll, dispatchAll,
 } from "../src";
 
 beforeAll(() => initAnalysis());
@@ -27,6 +27,33 @@ describe("pybind", () => {
   });
 });
 
+describe("PyTorch's own bindings", () => {
+  it("pybind .def in a file that only includes torch/csrc/utils/pybind.h, through wrap_pybind_function(_no_gil)", () => {
+    const src = `#include <torch/csrc/utils/pybind.h>\nvoid init(py::module& m) {\n  m.def("_a", torch::wrap_pybind_function(is_available));\n  m.def("_b", wrap_pybind_function_no_gil(&ns::f));\n}\n`;
+    expect(pybindDefs(src, "_a")).toEqual([{ line: 3, target: "is_available", how: "m.def" }]);
+    expect(pybindDefs(src, "_b")).toEqual([{ line: 4, target: "ns::f", how: "m.def" }]);
+    expect(pybindAll(src).map((r) => r.name)).toEqual(["_a", "_b"]);
+  });
+  it("PyMethodDef tables: plain, castPyCFunction…, TypeError_to_NotImplemented_<…>", () => {
+    const src = `static PyMethodDef methods[] = {\n  {"_get_cudnn_enabled", THPModule_userEnabledCuDNN, METH_NOARGS, nullptr},\n  {"_set", castPyCFunctionWithKeywords(THPModule_set), METH_VARARGS | METH_KEYWORDS, nullptr},\n  {"__add__", castPyCFunctionWithKeywords(TypeError_to_NotImplemented_<THPVariable_add>), METH_VARARGS, NULL},\n};\n`;
+    expect(pyMethodDefs(src, "_get_cudnn_enabled")).toEqual([{ line: 2, target: "THPModule_userEnabledCuDNN", how: "PyMethodDef" }]);
+    expect(pyMethodDefs(src, "_set")[0].target).toBe("THPModule_set");
+    expect(pyMethodDefs(src, "__add__")[0].target).toBe("THPVariable_add");
+    expect(pyMethodDefs(src, "nope")).toEqual([]);
+    expect(pyMethodAll(src).map((r) => `${r.name} → ${r.target}`)).toEqual(["_get_cudnn_enabled → THPModule_userEnabledCuDNN", "_set → THPModule_set", "__add__ → THPVariable_add"]);
+  });
+  it("DispatchStub registrations and their device", () => {
+    const src = `#define REGISTER_DISPATCH(name, fn) X(name, fn)\nREGISTER_DISPATCH(abs_stub, &abs_kernel_cuda)\nREGISTER_ARCH_DISPATCH(abs_stub, DEFAULT, &abs_kernel)\nREGISTER_NO_CPU_DISPATCH(abs_stub);\nREGISTER_CUDA_DISPATCH(abs_stub, &qadd_kernel<false>);\n`;
+    expect(dispatchRegs(src, "abs_stub").map((r) => [r.line, r.macro, r.target])).toEqual([[2, "REGISTER_DISPATCH", "abs_kernel_cuda"], [3, "REGISTER_ARCH_DISPATCH", "abs_kernel"], [5, "REGISTER_CUDA_DISPATCH", "qadd_kernel"]]);
+    expect(dispatchAll(src).map((r) => r.name)).toEqual(["abs_stub", "abs_stub", "abs_stub"]);
+    expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/cuda/AbsKernel.cu")).toBe("CUDA");
+    expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/cpu/AbsKernel.cpp")).toBe("CPU");
+    expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/mps/operations/Unary.mm")).toBe("MPS");
+    expect(stubDevice("REGISTER_AVX512_DISPATCH", "x.cpp")).toBe("CPU");
+    expect(stubDevice("REGISTER_XPU_DISPATCH", "x.cpp")).toBe("XPU");
+  });
+});
+
 describe("torch.ops / TORCH_LIBRARY", () => {
   const src = `TORCH_LIBRARY_FRAGMENT(sgl_kernel, m) {
   m.def("dispose", &dispose);
@@ -45,6 +72,7 @@ describe("torch.ops / TORCH_LIBRARY", () => {
     expect(torchOpOf({ name: "awq_marlin_repack", recv: "torch.ops.sgl_kernel" })).toEqual({ ns: "sgl_kernel", op: "awq_marlin_repack" });
     expect(torchOpOf({ name: "default", recv: "torch.ops.sgl_kernel.awq_marlin_repack" })).toEqual({ ns: "sgl_kernel", op: "awq_marlin_repack" });
     expect(torchOpOf({ name: "forward", recv: "self.impl" })).toBeNull();
+    expect(torchOpOf({ name: "Tensor", recv: "torch.ops.aten.add" })).toEqual({ ns: "aten", op: "add", overload: "Tensor" });
   });
 });
 

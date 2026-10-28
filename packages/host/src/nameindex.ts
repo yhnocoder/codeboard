@@ -6,6 +6,7 @@ import { grammarOfFile, type Grammar } from "@codeboard/analysis/langs";
 import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
+import { resetOpTables, warmOps } from "./torchops";
 import { log } from "./log";
 import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, workspace } from "./ws";
 
@@ -118,8 +119,10 @@ function drain(): Promise<void> {
 /** 打开白板之后：后台开始建（delay 毫秒后，让白板先把自己的事做完） */
 export function startNameIndex(delay = 0) {
   wanted = true;
-  if (delay) setTimeout(() => void drain(), delay);
-  else void drain();
+  // PyTorch：算子索引先读完它要的文件（几秒）再开始建名字索引，两个一起跑时算子索引每让一次事件循环就要等一个大文件分析完
+  const go = () => void warmOps().finally(() => void drain());
+  if (delay) setTimeout(go, delay);
+  else go();
 }
 
 /** 整个索引建完（⌘K 搜符号要全部的名字） */
@@ -154,6 +157,9 @@ export async function lookupName(name: string): Promise<IndexEntry[]> {
   if (!wanted) startNameIndex(1000); // 用到了：剩下的也在后台建上
   return sorted(byName.get(name) ?? []);
 }
+
+/** 已经分析过的文件里叫这个名字的（不读、不分析任何文件；PyTorch 的算子索引先把它要的文件分析过） */
+export const knownEntries = (name: string): IndexEntry[] => sorted(byName.get(name) ?? []);
 
 /**
  * 文本里有这个词的代码文件和它们的文本（跨语言找注册、宏定义、按名字搜用）。先看单词位图（会误报、不会漏报），再读文件确认；
@@ -219,6 +225,7 @@ export function resetIndex() {
   listing = undefined;
   running = undefined;
   resetScope();
+  resetOpTables();
   if (wanted) startNameIndex(1000);
 }
 
