@@ -1,7 +1,7 @@
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
 import { bounds, type AlignOp } from "@codeboard/core";
 import { state, sel, rectOf, cardById, hostOf, mutate, placed } from "../state/store";
-import { cam, setViewport, lod, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
+import { cam, setViewport, viewTracked, lod, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";
 import { trackSkeletons } from "../state/subboards";
@@ -19,6 +19,7 @@ import * as A from "../actions";
 import { align } from "@codeboard/core";
 import { boardMode } from "../state/mode";
 import { kbd } from "../keymap";
+import { observeResize, queueMeasure } from "@yhnocoder/markdown/ui";
 
 const EXT = 2048;
 
@@ -152,19 +153,34 @@ const AL: { op: AlignOp; icon: string; tip: string }[] = [
 
 /** 工具条的高度（4 + 30 + 4）：上面放不下时翻到选中的卡下面 */
 const BAR_H = 38;
+/** 工具条离视野左右两边至少留这么多 */
+const BAR_PAD = 8;
+/** 上下各让出的高度：顶上是白板的标题栏；底下是工具栏和右下角的缩放（bottom 12 + 高 36），再留 BAR_PAD */
+const CHROME_Y = 56;
 
 /** 选中 ≥2 张卡时浮在上方的工具条：Create Section、Create Sub-board、Tidy Up，··· 里是对齐和分布 */
 function AlignBar() {
   const rs = createMemo(() => sel.cards.map((id) => { const f = cardById(id); return f ? { id: f.host.id, ...rectOf(f.host) } : null; }).filter(Boolean) as ({ id: string; x: number; y: number; w: number; h: number })[]);
   const box = createMemo(() => bounds(rs()));
   const shown = () => rs().length >= 2 && dragging().size === 0 && !walk();
-  // 上方：卡的上边往上 12px；顶上 56px 内（白板的标题栏）放不下就放到卡的下边下面
+  // 工具条宽度只随按钮变，量一次存下来：镜头每动一帧都要按它夹进视野，不能每帧去读 DOM
+  const [barW, setBarW] = createSignal(0);
+  // 上方：卡的上边往上 12px；顶上 CHROME_Y 内（白板的标题栏）放不下就放到卡的下边下面。
+  // 再整条夹进视野（左右留 BAR_PAD，上下让开白板自己的工具栏）：靠边时平移进来，而不是让绝对定位的盒子缩到剩下的宽度、按钮文字折行
   const pos = () => {
-    const b = box()!, x = b.x * cam.z + cam.x + (b.w * cam.z) / 2, top = b.y * cam.z + cam.y - 12 - BAR_H;
-    return { x, y: top >= 56 ? top : (b.y + b.h) * cam.z + cam.y + 12 };
+    const b = box()!, v = viewTracked(), w = barW();
+    const cx = b.x * cam.z + cam.x + (b.w * cam.z) / 2, top = b.y * cam.z + cam.y - 12 - BAR_H;
+    const y = top >= CHROME_Y ? top : (b.y + b.h) * cam.z + cam.y + 12;
+    // 取整：落在半个像素上图标会发糊
+    return { x: Math.round(Math.max(BAR_PAD, Math.min(cx - w / 2, v.w - BAR_PAD - w))), y: Math.max(CHROME_Y, Math.min(y, v.h - CHROME_Y - BAR_H)) };
   };
   const [more, setMore] = createSignal(false);
   let el: HTMLDivElement | undefined;
+  const track = (e: HTMLDivElement) => {
+    el = e;
+    const off = observeResize(e, () => queueMeasure(e, () => { const w = e.offsetWidth; return () => setBarW(w); }));
+    onCleanup(off);
+  };
   createEffect(on(() => sel.cards.join(" "), () => setMore(false), { defer: true }));
   createEffect(on(shown, (s) => { if (!s) setMore(false); }));
   createEffect(() => {
@@ -182,7 +198,7 @@ function AlignBar() {
   const tip = (label: string, id?: string) => { const k = id && kbd(id); return k ? `${label} (${k})` : label; };
   return (
     <Show when={shown()}>
-      <div ref={el} class="alignbar pill show" data-nodrag style={{ left: `${pos().x}px`, top: `${pos().y}px` }}>
+      <div ref={track} class="alignbar pill show" data-nodrag style={{ left: `${pos().x}px`, top: `${pos().y}px` }}>
         <button class="tbtn" data-tip="Create Section" onClick={() => { setMore(false); A.moveToNewSection(); }}><Icon name="newSection" />Create Section</button>
         <button class="tbtn" data-tip={tip("Create Sub-board", "turnIntoBoard")} onClick={() => { setMore(false); void A.turnIntoBoard(); }}><Icon name="subBoard" />Create Sub-board</button>
         <button class="tbtn" data-tip={tip("Tidy Up", "tidyUp")} onClick={() => { setMore(false); void A.tidyUp(); }}><Icon name="tidy" />Tidy Up</button>

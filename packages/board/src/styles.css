@@ -494,7 +494,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .guide.v { border-left-width: 1px; width: 0; }
 .guide.h { border-top-width: 1px; height: 0; }
 .ghint { position: absolute; transform: translate(-50%, 0); font: 600 10.5px/1 var(--sys); color: #fff; background: var(--guide); padding: 4px 6px; border-radius: 5.5px; white-space: nowrap; }
-.alignbar.pill { position: absolute; z-index: 15; display: none; translate: -50% 0; }
+/* 宽度固定为一行的宽度（不随 left 缩），靠边时由 AlignBar 按量到的宽度整条平移进视野 */
+.alignbar.pill { position: absolute; z-index: 15; display: none; width: max-content; white-space: nowrap; }
 .alignbar.pill.show { display: inline-flex; }
 .alignbar .tbtn { height: 30px; color: var(--ink); }
 .alignbar > .ib { width: 30px; height: 30px; }
