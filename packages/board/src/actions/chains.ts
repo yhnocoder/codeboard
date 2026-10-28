@@ -65,7 +65,7 @@ export function pickImpl(p: ImplPop, i: number, why: string, alt: boolean): bool
     const L = state.board.links.find((l) => l.id === p.link);
     if (!L) return false;
     if (it.base) return true;
-    const k = altsOf(L).findIndex((a) => a.alt.qual === it.qual && !!a.alt.path);
+    const k = altsOf(L).findIndex((a) => a.alt.qual === it.qual && !!a.alt.path && a.alt.path === it.path);
     if (k >= 0) { void swapAlt(p.link, k, { label: why.trim() || undefined, dropOld: p.abstract }); return true; }
     // 这个实现从同一个调用点已经展开过（另一条分支）：照常再建一张
   }
