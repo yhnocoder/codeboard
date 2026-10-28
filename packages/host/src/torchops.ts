@@ -194,23 +194,37 @@ export async function genDirOf(root: string): Promise<string | undefined> {
   for (const d of dirs) {
     const text = await readText(path.join(d, "compile_commands.json"), false);
     if (text === null) continue;
-    // 只看 "file" 的值：command 也以同一个路径结尾（… -c <file>），引号里还有转义的引号。
-    // 文件可以有几十 MB：按行切成小段找，段之间让出（CMake 写的每个键值都在自己那一行）
-    const turn = slicer();
-    for (let i = 0; i < text.length; ) {
-      const nl = text.indexOf("\n", i + CDB_PIECE), j = nl < 0 ? text.length : nl + 1;
-      for (const m of text.slice(i, j).matchAll(UFUNC_FILE_KEY)) {
-        let file: unknown;
-        try { file = JSON.parse(m[1]); } catch { continue; }
-        if (typeof file === "string" && UFUNC_PATH.test(file)) return path.dirname(path.resolve(d, file));
-      }
-      i = j;
-      await turn();
-    }
-    return d === root ? undefined : path.join(d, "aten", "src", "ATen"); // 没有编译 Ufunc 文件的条目：按通常的布局
+    if (d === root) return await ufuncDir(text, d); // 源码根目录下的副本：只信它的条目
+    return (await ufuncDir(text, d)) ?? editorPath(path.join(d, "aten", "src", "ATen")); // 没有编译 Ufunc 文件的条目：按通常的布局
   }
   return undefined;
 }
+
+/**
+ * compile_commands.json 的文本里编译 Ufunc*.cpp / .cu 的条目所在的目录。只看 "file" 的值：command 也以同一个路径结尾
+ * （… -c <file>），引号里还有转义的引号。文件可以有几十 MB：按行切成小段找，段之间让出（CMake 写的每个键值都在自己那一行）
+ */
+export async function ufuncDir(cdb: string, dir: string, p: path.PlatformPath = path): Promise<string | undefined> {
+  const turn = slicer();
+  for (let i = 0; i < cdb.length; ) {
+    const nl = cdb.indexOf("\n", i + CDB_PIECE), j = nl < 0 ? cdb.length : nl + 1;
+    for (const m of cdb.slice(i, j).matchAll(UFUNC_FILE_KEY)) {
+      let file: unknown;
+      try { file = JSON.parse(m[1]); } catch { continue; }
+      const abs = typeof file === "string" ? p.resolve(dir, file) : "";
+      if (UFUNC_PATH.test(abs)) return editorPath(p.dirname(abs), p);
+    }
+    i = j;
+    await turn();
+  }
+  return undefined;
+}
+
+/**
+ * 路径写成编辑器文件事件里的样子，生成的文件才对得上（isGen 比较的是字符串）：Windows 上 VS Code 的盘符是小写的 c:，
+ * 而 CMake 写进 compile_commands.json 的、设置里手写的是 C:
+ */
+export const editorPath = (abs: string, p: path.PlatformPath = path) => (p === path.win32 ? abs.replace(/^[A-Z](?=:)/, (c) => c.toLowerCase()) : abs);
 const UFUNC_PATH = /[\\/]aten[\\/]src[\\/]ATen[\\/]Ufunc\w*\.(cpp|cu)$/;
 const CDB_PIECE = 1 << 20;
 const UFUNC_FILE_KEY = /"file"\s*:\s*("(?:[^"\\]|\\.)*Ufunc\w*\.(?:cpp|cu)")/g;

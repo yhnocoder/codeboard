@@ -8,7 +8,7 @@ import { dispatchOf, expand } from "../src/resolve";
 import { nameIndexReady, resetIndex, startNameIndex } from "../src/nameindex";
 import { forgetDefs } from "../src/defcache";
 import { useWorkspace } from "../src/ws";
-import { genDirOf, kernelsOf, opTable, opTables, parseOps } from "../src/torchops";
+import { genDirOf, kernelsOf, opTable, opTables, parseOps, ufuncDir } from "../src/torchops";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
 
@@ -215,6 +215,12 @@ describe("the build folder", () => {
     expect(await genDirOf(r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
     W.settings.get = () => undefined;
     expect(await genDirOf(r)).toBe(path.join(r, "build", "aten", "src", "ATen"));
+  });
+  it("on Windows is written with the lower-case drive letter of VS Code's file events, from backslash and forward-slash entries", async () => {
+    const win = (file: string) => JSON.stringify([{ directory: "C:\\pt\\build", command: `cl.exe /c ${file}`, file }], null, 1);
+    expect(await ufuncDir(win("C:\\pt\\build\\aten\\src\\ATen\\UfuncCPU_add.cpp"), "c:\\pt\\build", path.win32)).toBe("c:\\pt\\build\\aten\\src\\ATen");
+    expect(await ufuncDir(win("C:/pt/build/aten/src/ATen/UfuncCUDA_add.cu"), "c:\\pt\\build", path.win32)).toBe("c:\\pt\\build\\aten\\src\\ATen");
+    expect(await ufuncDir(win("aten/src/ATen/UfuncCPU_add.cpp"), "D:\\out", path.win32)).toBe("d:\\out\\aten\\src\\ATen");
   });
   it("is found in build/<preset>/, and is none without compile_commands.json or with only a root one that names no Ufunc file", async () => {
     expect(await genDirOf(tree({ "build/Release/compile_commands.json": cdb("/a/b.cpp") }))).toMatch(/build\/Release\/aten\/src\/ATen$/);
