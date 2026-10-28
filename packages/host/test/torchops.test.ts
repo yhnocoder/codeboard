@@ -5,7 +5,7 @@ import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ExpandResult, Segment } from "@codeboard/core";
 import { dispatchOf, expand } from "../src/resolve";
-import { resetIndex } from "../src/nameindex";
+import { nameIndexReady, resetIndex, startNameIndex } from "../src/nameindex";
 import { forgetDefs } from "../src/defcache";
 import { useWorkspace } from "../src/ws";
 import { genDirOf, kernelsOf, opTable, opTables, parseOps } from "../src/torchops";
@@ -144,6 +144,16 @@ describe("clicks into PyTorch ops", () => {
     const l = await click(await seg("aten/src/ATen/native/cpu/PaddingKernel.cpp", "at::native::reflection_pad_backward"), /add_stub\(/, "add_stub");
     expect(fileOf(l)).toBe("aten/src/ATen/native/cpu/PaddingKernel.cpp");
     expect(markOf(l)).toBeUndefined();
+  });
+});
+
+describe("with the name index built", () => {
+  it("x.softmax offers the kernels only: no Python functions or methods of that name, never the calling function itself", async () => {
+    startNameIndex();
+    await nameIndexReady();
+    const m = await click(await seg("torch/nn/functional.py", "softmax"), /input\.softmax/, "softmax");
+    expect(qualOf(m)).toBe("at::native::softmax");
+    expect(alts(m)).toEqual(["CompositeExplicitAutograd · at::native::softmax_out"]);
   });
 });
 

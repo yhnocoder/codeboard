@@ -176,23 +176,18 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
 }
 
 /**
- * recv.X(…) 而 X 是有 method 变体的 PyTorch 算子：kernel 在前，名字索引里同名的 Python 方法跟在后面当备选；
- * 但 recv 和某个 Python 类对得上（rankByReceiver 有把握）时照常走名字索引
+ * recv.X(…) where X is a PyTorch op with a method variant: its kernels. Python methods of that name already in the name index only
+ * take over when the receiver clearly is one of their classes; they are never offered next to kernels (which ones the index holds
+ * changes while it builds, and module functions of the same name, the caller included, are no methods)
  */
 async function tensorMethod(site: CallSite, here: { abs: string; text: string }): Promise<Crossed[]> {
   const t = await opTableFor(here.abs);
   const e = t && pyOpEntry(t, site, here.text);
   if (!t || e?.how !== "method") return [];
-  const py = knownEntries(site.name).filter((x) => /\.py$/.test(x.abs)).map((x) => ({ ...x, path: hostPath(x.abs), line: x.defLine })); // 不为备选扫工作区
-  const { ranked, best } = rankByReceiver(py, site.recv, { path: hostPath(here.abs) });
-  if (best && py.length > 1) return [];
-  const ops = await viaOps(t, e.op);
-  if (!ops.length) return [];
-  // Python 的备选：和调用处同一个顶层目录的在前（torch/ 里的，不是 third_party/ 里的）
-  const top = (p: string) => p.split("/")[0];
-  const near = ranked.filter((x) => top(x.path) === top(hostPath(here.abs)));
-  const py3 = [...near, ...ranked.filter((x) => !near.includes(x))].slice(0, 3);
-  return [...ops, ...py3.map((x) => ({ t: { abs: x.abs, sym: toSym(x) }, mark: {}, label: `Python · ${x.qual}` }))];
+  const methods = knownEntries(site.name).filter((x) => /\.py$/.test(x.abs) && x.kind === "def" && x.qual.includes(".") && !(x.abs === here.abs && site.line >= x.start && site.line <= x.end))
+    .map((x) => ({ ...x, path: hostPath(x.abs), line: x.defLine })); // no workspace scan for this
+  if (methods.length > 1 && rankByReceiver(methods, site.recv, { path: hostPath(here.abs) }).best) return [];
+  return viaOps(t, e.op);
 }
 
 /**
