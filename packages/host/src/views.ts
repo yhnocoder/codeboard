@@ -1,6 +1,6 @@
 // 分析尽量在「那个版本」的整个文件上做（片段在函数中间时语法才对），拿不到整个文件就分析段文本本身。
 import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore, type LanguageInput } from "shiki/core";
-import { createOnigurumaEngine } from "shiki/engine/oniguruma";
+import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
 import { langInfo } from "@codeboard/analysis/langs";
 import type { FileAnalysis } from "@codeboard/analysis";
@@ -21,13 +21,10 @@ const GRAMMAR: Record<string, LanguageInput> = {
   html: () => import("shiki/langs/html.mjs"),
 };
 const theme = createCssVariablesTheme({ name: "codeboard", variablePrefix: "--shiki-", fontStyle: true });
-// Oniguruma (the regex engine TextMate grammars are written for, inlined as wasm): the JavaScript engine translates each grammar's
-// patterns the first time they are used, which made the first C / C++ card take seconds (about 1.5 s for one line, 3 s for a
-// 20-line file on a loaded 4-core machine; about 0.5 s and 0.8 s here)
 let hl: Promise<HighlighterCore> | undefined;
 const loaded = new Map<string, Promise<void>>();
 async function highlighter(sl: string): Promise<HighlighterCore> {
-  const h = await (hl ??= createHighlighterCore({ themes: [theme], langs: [], engine: createOnigurumaEngine(import("shiki/wasm")) }));
+  const h = await (hl ??= createHighlighterCore({ themes: [theme], langs: [], engine: createJavaScriptRegexEngine({ forgiving: true }) }));
   let p = loaded.get(sl);
   if (!p) { p = h.loadLanguage(GRAMMAR[sl]); loaded.set(sl, p); }
   await p;
