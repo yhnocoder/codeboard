@@ -3,7 +3,7 @@ import { keepKey } from "../ui/editkeys";
 import { Editor, Extension, Node as TNode, posToDOMRect, type AnyExtension, type JSONContent, type Range } from "@tiptap/core";
 import Suggestion, { type SuggestionProps, type SuggestionKeyDownProps } from "@tiptap/suggestion";
 import { EditorState, NodeSelection, Plugin, PluginKey, Selection, TextSelection, type Transaction } from "@tiptap/pm/state";
-import type { Node as PMNode } from "@tiptap/pm/model";
+import type { Node as PMNode, Slice } from "@tiptap/pm/model";
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Placeholder } from "@tiptap/extensions";
 import DragHandle from "@tiptap/extension-drag-handle";
@@ -13,6 +13,7 @@ import { baseExtensions, parseMd, serializeMd } from "../schema";
 import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
 import { clipboardText } from "./clipboard";
+import { mathInSlice } from "./pastemath";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView, codeGapClick } from "./codeblock";
 import type { CodeLang } from "./codelang";
@@ -415,7 +416,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
 }
 
 const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\$\$|\|.*\|)|\*\*[^*]+\*\*|\[[^\]]+\]\([^)]+\)|\$[^$\s][^$]*\$/m;
-function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
+function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slice): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
   const text = cd.getData("text/plain").replace(/\r\n?/g, "\n");
@@ -446,16 +447,22 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent): boolean {
       }).run();
     return true;
   }
+  // 别处的 HTML（不是从编辑器里复制的：那里字面的 $ 是转义过的）：字里原样留着的 $…$ 变成公式
+  const html = cd.getData("text/html");
+  if (html && !html.includes("data-pm-slice")) {
+    const fixed = mathInSlice(slice, e.state.schema);
+    if (fixed) { e.view.dispatch(e.state.tr.replaceSelection(fixed).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste")); return true; }
+  }
   // 纯文字里有 Markdown 的样子：按 Markdown 解析（HTML 的交给 ProseMirror 按 schema 解析，写回时自然是干净的 Markdown）
   // 之后把光标所在的这一段再当 Markdown 解析一遍：粘进来的字补完了前面打了一半的记号（打了 $\frac{，粘贴 a}{b}$）也能变
-  if (text && !cd.getData("text/html") && MD_HINT.test(text)) {
+  if (text && !html && MD_HINT.test(text)) {
     const doc = parseMd(text);
     // 只有一段：把段里的东西插在光标处（不另起一段）
     const one = doc.content?.length === 1 && doc.content[0].type === "paragraph" ? doc.content[0].content ?? [] : doc.content!;
     e.chain().focus().insertContent(one as JSONContent[]).command(({ tr }) => { reconvert(tr); return true; }).run();
     return true;
   }
-  if (text && !cd.getData("text/html") && !text.includes("\n") && /[$*`~\]>]/.test(text)) {
+  if (text && !html && !text.includes("\n") && /[$*`~\]>]/.test(text)) {
     e.view.dispatch(reconvert(e.state.tr.insertText(text)));
     return true;
   }
@@ -496,7 +503,7 @@ function makeInst(dragHandle = false): Inst {
     injectCSS: false, // 基础样式在 markdown.css
     editorProps: {
       attributes: { class: "md-pm", spellcheck: "false" },
-      handlePaste: (_v, ev) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev) : false),
+      handlePaste: (_v, ev, slice) => (inst.sess ? handlePaste(inst.editor, inst.sess.o, ev, slice) : false),
       clipboardTextSerializer: clipboardText,
       // 白板上的 Note 一般不滚动（卡片跟着内容长高），白板本身也不滚（靠镜头）：不让 ProseMirror 去滚所有祖先。
       // 定了高度的 Note 正文自己会滚（overflow: auto）：光标只在正文里滚进来。找能滚的祖先先看样式，自动高度的卡不量排版。
