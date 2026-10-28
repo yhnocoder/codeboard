@@ -57,7 +57,10 @@ async function lambdaTarget(abs: string, line: number): Promise<Target | null> {
   return { abs, sym: { name: "<lambda>", qual: sym ? `${sym.qual} · lambda` : "lambda", kind: "def", start: line, defLine: line, end: line, sig: l.trim(), params: [] } };
 }
 
-/** Python 调用 obj.name(…)：语言服务说不出来（C 扩展），在 pybind / PyMethodDef / PyO3 的注册里找 name（PyTorch 里查算子索引扫过的 torch/csrc，不扫工作区） */
+/**
+ * Python 调用 obj.name(…)：语言服务说不出来（C 扩展），在 pybind / PyMethodDef / PyO3 的注册里找 name。
+ * PyTorch 里的文件先查算子索引扫过的 torch/csrc（不扫工作区），那里没有再照常在整个工作区里找
+ */
 export async function viaRegistry(name: string, here?: string): Promise<Crossed[]> {
   const out: Crossed[] = [];
   const ops = await opTableFor(here);
@@ -67,7 +70,7 @@ export async function viaRegistry(name: string, here?: string): Promise<Crossed[
       const t = r.lambda ? await lambdaTarget(r.abs, r.line) : e ? await entrySym(e) : null;
       if (t) out.push({ t, mark: { bound: r.how } });
     }
-    return out;
+    if (out.length) return out;
   }
   for (const { abs, text } of await grepWord(name, "cpp")) {
     for (const r of pybindDefs(text, name)) {

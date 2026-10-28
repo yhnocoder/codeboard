@@ -240,8 +240,7 @@ async function implSite(d: Def, name: string): Promise<Def | null> {
   if (!isStub(d)) return d;
   const impl = await stubImpl(d, name);
   if (impl) return impl;
-  const t = await opTableFor(d.abs);
-  return t && d.abs.startsWith(t.root + path.sep) ? null : d;
+  return (await opTableFor(d.abs)) ? null : d;
 }
 
 /** dispatchOf 会去问转到实现的那种定义：Python 类里的方法 */

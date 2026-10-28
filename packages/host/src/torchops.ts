@@ -473,10 +473,13 @@ export async function opTables(): Promise<OpTable[]> {
   }
   return out;
 }
-/** 点击的文件属于哪个 PyTorch（都不属于时取第一个） */
+/**
+ * 点击的文件属于哪个 PyTorch；不在任何一个里面就没有（vendored 的 PyTorch 旁边的项目自己的代码照常走 pybind / PyMethodDef / PyO3，
+ * 它的 .add、.get 也不是 PyTorch 的算子）
+ */
 export async function opTableFor(abs?: string): Promise<OpTable | undefined> {
-  const ts = await opTables();
-  return ts.find((t) => abs?.startsWith(t.root + path.sep)) ?? ts[0];
+  if (!abs) return undefined;
+  return (await opTables()).find((t) => abs.startsWith(t.root + path.sep));
 }
 
 function dropScan(root: string) {
