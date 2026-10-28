@@ -8,12 +8,12 @@ import type { Crumb } from "./protocol";
 
 /**
  * 骨架里的一张卡：框（相对骨架左上角，子白板的坐标）、名字、种类；g = 在子白板的第几张调用图里，m / i = 那张图的字母 / 图标；
- * sec = 所在 Section 的颜色，si = 那个 Section 在 secs 里的下标。k = "more" 是折起来的分支（「+N」），ids = 折进去的卡。
+ * sec = 所在 Section 的颜色，si = 那个 Section 在 secs 里的下标。k = "more" 是折起来的分支（「+N」）。
  * 框里的小卡片用的：f = 出处（代码的文件名、网页的域名），d = 一行摘要，l = 代码的行号范围，img = 图片（assets/ 下的文件名或小的 data: URL），
  * hand = 手写的 Mark（画成便签）
  */
 export type SkelCard = {
-  id: string; x: number; y: number; w: number; h: number; t: string; k: Card["kind"] | "more"; g?: number; m?: string; i?: string; sec?: string; si?: number; ids?: string[];
+  id: string; x: number; y: number; w: number; h: number; t: string; k: Card["kind"] | "more"; g?: number; m?: string; i?: string; sec?: string; si?: number;
   f?: string; d?: string; l?: [number, number]; img?: string; hand?: true;
 };
 /** [[ 能链接到的一张卡（有真正标题的）：via = 从这块子白板往下要经过的子白板（框的卡 id、白板 id、名字），直接在这块上的没有 */
@@ -119,7 +119,7 @@ export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = (
     const id = `more:${k}`;
     for (const t of away) fold.set(t, id);
     const r = rects.get(away[0])!;
-    mores.push({ id, x: r.x, y: r.y, w: Math.min(r.w, 220), h: 40, t: `+${away.length} more`, k: "more", ids: away });
+    mores.push({ id, x: r.x, y: r.y, w: Math.min(r.w, 220), h: 40, t: `+${away.length} more`, k: "more" });
   }
 
   const cards: SkelCard[] = [];
@@ -250,13 +250,8 @@ export function cardPath(b: Board, card: string, peek: (id: string) => Board | u
   return null;
 }
 
-/** 骨架里这张卡在不在（折进「+N」的也算在）：父白板上连到它的箭头据此标 lost */
-export function skelHas(sk: Skeleton, card: string): boolean {
-  return sk.cards.some((c) => c.id === card || !!c.ids?.includes(card));
-}
-
-/** 子白板框的标题栏高度、四周留白（世界坐标）：白板界面画骨架、箭头找入口点都按它 */
-export const FRAME_HEAD = 30, FRAME_PAD = 12;
+/** 子白板框里预览四周的留白（世界坐标）：名字在框外上方，框里只有分栏 */
+const FRAME_PAD = 16;
 
 /**
  * 把父白板上选中的卡（Compare 带上两栏）拆成一块新白板：新白板拿走这些卡、它们之间的箭头、跟着它们的 Sidenote 和贴纸、
@@ -285,10 +280,10 @@ export function extractBoard(parent: Board, ids: string[], rects: (id: string) =
   for (const s of child.sections) { s.x += dx; s.y += dy; }
   renumberBorn(child);
 
-  // 父白板：卡换成框。框比原来那片小（骨架是缩略的）：宽取一半左右，高按原来的长宽比，加标题栏
+  // 父白板：卡换成框。框比原来那片小（骨架是缩略的）：宽取一半左右，高按原来的长宽比
   const frame = o.frame ?? uid("c");
   const fw = Math.round(Math.max(360, Math.min(640, box.w * 0.45)));
-  const fh = Math.round(Math.max(220, Math.min(560, (fw - FRAME_PAD * 2) * (box.h / Math.max(1, box.w)) + FRAME_HEAD + FRAME_PAD + 4)));
+  const fh = Math.round(Math.max(220, Math.min(560, (fw - FRAME_PAD * 2) * (box.h / Math.max(1, box.w)) + FRAME_PAD * 2)));
   const fr: Place = { x: Math.round(box.x), y: Math.round(box.y), w: fw, h: fh };
   const sec0 = parent.place[top[0]].section;
   if (sec0 && !secs.has(sec0)) fr.section = sec0;

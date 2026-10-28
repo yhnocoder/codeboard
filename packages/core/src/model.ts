@@ -187,11 +187,8 @@ export type Place = {
 
 // ---------- Link（界面上叫 Arrow） ----------
 
-/**
- * Link 的一端：整张卡，或卡里某一段的某一行。
- * sub：card 是子白板（BoardCard）时，连到子白板里的哪张卡（线穿过框上的入口点落到骨架里那张卡上）；那张卡没了时 lost
- */
-export type End = { card: string; seg?: string; line?: number; sub?: string };
+/** Link 的一端：整张卡，或卡里某一段的某一行（子白板框只能整张连：框里的小卡片只是预览） */
+export type End = { card: string; seg?: string; line?: number };
 
 /** 箭头的一端从卡的哪一边进出（没有 = 自动） */
 export type LinkSide = "left" | "right" | "top" | "bottom";

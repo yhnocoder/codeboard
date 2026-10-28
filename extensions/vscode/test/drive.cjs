@@ -937,9 +937,9 @@ const finish = async (browser, errors) => {
     check(await soon(() => fr.count(), (n) => n === 1) === 1, "Insert Board puts a sub-board frame on the board");
     const subs = await soon(() => fr.locator(".skel [data-sub]").count(), (n) => n >= 1, 5000);
     check(subs >= 1, "the frame shows the sub-board's skeleton", subs);
-    check(/1 card/.test(await soon(() => text(fr.locator(".sbmeta")), (t) => /1 card/.test(t), 5000)), "the frame title bar shows the card count");
+    check((await soon(() => text(fr.locator(".sbmeta")), (t) => t.trim() === "1", 5000)).trim() === "1", "the title above the frame shows the card count");
     await shot(page, "9-subboard");
-    await fr.locator(".sbhead").dblclick();
+    await fr.locator(".sbhead .sbname").dblclick();
     let fb2 = await boardFrame(page);
     const crumbs = await soon(async () => { fb2 = await boardFrame(page); return text(fb2.locator(".crumbs")); }, (t) => /Shared E2E/.test(t), 10000);
     check(/Shared E2E/.test(crumbs), "double-click enters the sub-board with a breadcrumb");

@@ -299,6 +299,24 @@ describe("migrateBoard", () => {
     expect(b.place.i).toEqual({ x: 1, y: 2, w: 300 });
     expect(b.place.n.h).toBe(90);
   });
+  it("arrows into a card inside a sub-board card attach to the sub-board card itself; a lost mark that came from that card goes", () => {
+    const raw = {
+      version: 7, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 },
+      cards: [code("a"), { id: "f", kind: "board", board: "S" }], place: { a: { x: 0, y: 0, w: 400 }, f: { x: 600, y: 0, w: 500, h: 300 } },
+      links: [
+        { id: "c", from: { card: "a", seg: "sa", line: 3 }, to: { card: "f", sub: "inner" }, call: { name: "g", col: 0 } },
+        { id: "gone", from: { card: "a" }, to: { card: "f", sub: "deleted" }, lost: { to: true } },
+        { id: "both", from: { card: "a", seg: "sa", line: 9 }, to: { card: "f", sub: "deleted" }, lost: { from: true, to: true } },
+      ],
+    };
+    const b = loadBoard(structuredClone(raw));
+    expect(b.links).toEqual([
+      { id: "c", from: { card: "a", seg: "sa", line: 3 }, to: { card: "f" }, call: { name: "g", col: 0 } },
+      { id: "gone", from: { card: "a" }, to: { card: "f" } },
+      { id: "both", from: { card: "a", seg: "sa", line: 9 }, to: { card: "f" }, lost: { from: true } },
+    ]);
+    expect(migrateBoard(structuredClone(b))).toEqual(b);
+  });
   it("v3 → v4: code cards store the code area height (minus the 36px Warm Ink header), other cards keep theirs", () => {
     const a = { id: "a", kind: "code", segments: [seg("sa")], mergedFrom: [{ card: { id: "m", kind: "code", segments: [seg("sm")] }, place: { x: 0, y: 0, w: 300, h: 200 } }] };
     const raw = {

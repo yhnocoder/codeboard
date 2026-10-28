@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cutCrumbs, danglingRefs, emptyBoard, extractBoard, loadBoard, refTitle, skeletonOf, skelHas, subBoardsOf, wouldCycle, FAN_KEEP, type Board, type Card } from "../src";
+import { cutCrumbs, danglingRefs, emptyBoard, extractBoard, loadBoard, refTitle, skeletonOf, subBoardsOf, wouldCycle, FAN_KEEP, type Board, type Card } from "../src";
 
 const note = (id: string): Card => ({ id, kind: "note", md: `# ${id}\nbody`, bg: true });
 const code = (id: string, qual = id): Card => ({ id, kind: "code", segments: [{ id: `s${id}`, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start: 1, end: 10, text: Array(10).fill("x"), version: { kind: "git", commit: "bb823b3c0ffee" }, symbol: { qual, kind: "function" } }] });
@@ -22,7 +22,6 @@ describe("sub-board skeleton", () => {
     expect(Math.min(...sk.cards.map((c) => c.x), ...sk.secs.map((s) => s.x))).toBe(0);
     expect(sk.cards[1].sec).toBe("blue");
     expect(sk.secs[0]).toMatchObject({ t: "Alloc", color: "blue" });
-    expect(skelHas(sk, "b") && !skelHas(sk, "zz")).toBe(true);
   });
 
   it("folds many branches from one dispatch line into +N (only cards nothing else links to)", () => {
@@ -32,9 +31,8 @@ describe("sub-board skeleton", () => {
     const sk = skeletonOf(b);
     const more = sk.cards.find((c) => c.k === "more")!;
     expect(more.t).toBe("+4 more");
-    expect(more.ids).toEqual(["h3", "h4", "h5", "h6"]);
     expect(sk.cards.filter((c) => c.k === "note").map((c) => c.id)).toEqual(["h0", "h1", "h2", "h7"].slice(0, FAN_KEEP).concat("h7"));
-    expect(skelHas(sk, "h5")).toBe(true);
+    expect(sk.cards.filter((c) => /^h[3-6]$/.test(c.id))).toEqual([]);
   });
 
   it("names nested sub-boards", () => {
@@ -90,7 +88,7 @@ describe("sub-board cycles", () => {
 });
 
 describe("Turn into Board", () => {
-  it("moves the selection into a new board and leaves a frame; arrows in land on the card inside, arrows out leave from the frame", () => {
+  it("moves the selection into a new board and leaves a frame; arrows in and out attach to the frame itself", () => {
     const p = board("E", [[code("step"), 0, 0], [code("sch"), 800, 0], [code("can"), 1400, 0], [note("out"), 0, 900]]);
     p.links.push(call("in", "step", 2, "sch"), call("inner", "sch", 4, "can"), { id: "back", from: { card: "can", seg: "scan", line: 5 }, to: { card: "out" } });
     p.sections.push({ id: "sec", title: "Scheduling", x: 780, y: -30, w: 1100, h: 500, color: "sand" });
@@ -112,13 +110,13 @@ describe("Turn into Board", () => {
     expect(p.cards[1]).toEqual({ id: "fr", kind: "board", board: "S" });
     expect(p.place.fr).toMatchObject({ x: 800, y: 0 });
     expect(p.place.fr.h).toBeGreaterThan(200);
-    expect(p.links.find((l) => l.id === "in")!.to).toEqual({ card: "fr", sub: "sch" });
+    expect(p.links.find((l) => l.id === "in")!.to).toEqual({ card: "fr" });
     expect(p.links.find((l) => l.id === "in")!.call?.name).toBe("sch");
     expect(p.links.find((l) => l.id === "back")!.from).toEqual({ card: "fr" });
     expect(p.sections).toEqual([]);
     expect(danglingRefs(p)).toEqual([]);
     expect(danglingRefs(r.child)).toEqual([]);
-    // both load back through the schema (board card, End.sub)
+    // both load back through the schema
     expect(() => loadBoard(structuredClone(p))).not.toThrow();
     expect(() => loadBoard(structuredClone(r.child))).not.toThrow();
   });

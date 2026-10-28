@@ -21,10 +21,10 @@ export type BoardAsk =
 /** 子白板的面包屑：从最外层到当前白板的上一级（进入子白板时宿主记着；frame = 在那块白板上是哪个框） */
 export type Crumb = { id: string; name: string; frame: string };
 /**
- * 跨白板的讲解。进入子白板：into = 父白板的讲解走到了第几步（root 出发），start = 从子白板的这张卡讲起（没有 = 从第一张图的根）；
+ * 跨白板的讲解。进入子白板：into = 父白板的讲解走到了第几步（root 出发），子白板从它第一张图的根讲起；
  * 回到父白板：resume = 从 root 出发的讲解接着讲第 i 步。宿主只是转一下
  */
-export type WalkHop = { into?: { root: string; i: number }; start?: string; resume?: { root: string; i: number } };
+export type WalkHop = { into?: { root: string; i: number }; resume?: { root: string; i: number } };
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =

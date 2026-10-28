@@ -332,15 +332,14 @@ export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean;
 // 一次滚动手势从哪开始就一直归谁：画布上开始 → 一路平移，经过卡片也不停；停 ~200ms 才算结束。
 // 卡片里滚代码只在：卡片已选中，或者不是紧跟着一次画布平移开始的滚动
 let wheelOwner: HTMLElement | "canvas" | null = null, wheelLast = 0, panEnd = 0;
-/** selOnly：只有卡片选中了才归它（子白板框里的分栏） */
-function ownerFor(e: WheelEvent, el: HTMLElement | null, selOnly = false): HTMLElement | "canvas" {
+function ownerFor(e: WheelEvent, el: HTMLElement | null): HTMLElement | "canvas" {
   const now = performance.now();
   if (now - wheelLast > WHEEL_GESTURE) {
     if (wheelOwner === "canvas") panEnd = wheelLast;
     const card = el?.closest(".card") as HTMLElement | null;
     const can = !!el && (el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
     const selected = !!card && isSel(card.dataset.id!);
-    wheelOwner = can && !e.ctrlKey && !e.metaKey && (selected || (!selOnly && now - panEnd > 500)) ? el! : "canvas";
+    wheelOwner = can && !e.ctrlKey && !e.metaKey && (selected || now - panEnd > 500) ? el! : "canvas";
   }
   wheelLast = now;
   return wheelOwner!;
@@ -349,24 +348,6 @@ function ownerFor(e: WheelEvent, el: HTMLElement | null, selOnly = false): HTMLE
 export function cardWheel(e: WheelEvent, el: HTMLElement) {
   if (e.ctrlKey || e.metaKey) return; // 交给画布缩放
   if (ownerFor(e, el) === el) e.stopPropagation();
-}
-
-/**
- * 子白板框里的分栏：没选中的框上滚轮照常平移白板；选中了归分栏滚，滚到头就停在那，不会接着带动白板（返回 true = 滚了分栏）。
- * 分栏只能横着滚的时候，竖着的滚轮也拿来横着滚（鼠标滚轮只有竖的）
- */
-export function colsWheel(e: WheelEvent, el: HTMLElement, selected: boolean): boolean {
-  if (e.ctrlKey || e.metaKey || !selected) return false;
-  if (ownerFor(e, el, true) !== el) return false;
-  e.preventDefault();
-  e.stopPropagation();
-  const k = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? el.clientHeight : 1;
-  let dx = e.deltaX * k, dy = e.deltaY * k;
-  if (e.shiftKey && !dx) { dx = dy; dy = 0; }
-  if (!dx && el.scrollHeight <= el.clientHeight + 1) { dx = dy; dy = 0; }
-  el.scrollLeft += dx;
-  el.scrollTop += dy;
-  return true;
 }
 
 // 调用：点 = 展开；拖 = 接到已有卡 / 放到指定位置
@@ -412,7 +393,7 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
   if (e.button !== 0) return;
   e.preventDefault();
   e.stopPropagation();
-  let to: { card: string; seg?: string; line?: number; sub?: string } | null = null;
+  let to: { card: string; seg?: string; line?: number } | null = null;
   track(e, (ev) => {
     const a = local({ clientX: sx, clientY: sy }), b = local(ev);
     setRubber({ x1: a.x, y1: a.y, x2: b.x, y2: b.y, plain: true });
@@ -424,12 +405,10 @@ export function linkPortDown(e: PointerEvent, from: { card: string; seg?: string
       const row = under?.closest(".src > .l, .gutter .no") as HTMLElement | null;
       const at = row ? rowAnchor(row, ce.dataset.id!) : null;
       const colEl = under?.closest("[data-col]") as HTMLElement | null;
-      // 子白板框：松在骨架里的一张卡上 → 连到那张卡（线穿过框边的入口点）；松在框的别处 → 连到整个框
-      const sub = (under?.closest("[data-sub]") as HTMLElement | SVGElement | null)?.dataset.sub;
-      to = at ? { card: at.card, seg: at.seg, line: at.lines![0] } : sub && !sub.startsWith("more:") && cardById(ce.dataset.id!)?.card.kind === "board" ? { card: ce.dataset.id!, sub } : { card: colEl?.dataset.col ?? ce.dataset.id! };
+      to = at ? { card: at.card, seg: at.seg, line: at.lines![0] } : { card: colEl?.dataset.col ?? ce.dataset.id! };
       if (hostOf(to.card) === hostOf(from.card) && !to.line) to = null;
     }
-    setDropTarget(to ? { kind: to.line ? "line" : "card", card: hostOf(to.card), seg: to.seg, line: to.line, sub: to.sub } : null);
+    setDropTarget(to ? { kind: to.line ? "line" : "card", card: hostOf(to.card), seg: to.seg, line: to.line } : null);
   }, (_ev, moved) => {
     setRubber(null);
     setDropTarget(null);
@@ -447,8 +426,7 @@ function finishConnect(e: PointerEvent, id: string) {
   if (hostOf(to) === hostOf(from.card)) return toast("Connect cancelled");
   // 手动补的 Call 箭头（解析不到的调用）
   if (from.call) return A.manualCallTo({ ...from, call: from.call }, to);
-  const sub = ((e.target as Element).closest("[data-sub]") as HTMLElement | SVGElement | null)?.dataset.sub;
-  A.addLink(from, sub && !sub.startsWith("more:") && cardById(to)?.card.kind === "board" ? { card: to, sub } : { card: to });
+  A.addLink(from, { card: to });
 }
 
 export function canvasPointerDown(e: PointerEvent) {

@@ -1,12 +1,14 @@
-// The sub-board card (a board placed on another board): its columns (one per section, mini cards at a fixed text size), the wheel
-// over it, entering / leaving with the title morph, and [[ links to cards inside sub-boards.
+// The sub-board card (a board placed on another board), a static preview: the name and card count above the frame, its columns
+// (one per section; mini cards of one fixed size in one stack, or two masonry stacks from four cards on; only those that fit),
+// the same geometry as the design (feedback demo #12, option B2), the wheel and arrows treating it like any card,
+// entering / leaving with the title morph, and [[ links to cards inside sub-boards.
 // Usage: npm run harness -- <scenario…>   screenshots: test-out/harness/subboardcard-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type NoteCard } from "@codeboard/core";
+import { DEFAULT_SETTINGS, emptyBoard, type NoteCard } from "@codeboard/core";
 import { put, symCard, findSym, shot, OUT, type Host } from "../harness";
 import { subHost } from "../subhost";
-import { test, until, idle, hold, verdict } from "../fixtures";
+import { test, until, idle, hold, verdict, check } from "../fixtures";
 import { WHEEL_GESTURE } from "../../src/state/timing";
 
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
@@ -46,7 +48,7 @@ export function boards() {
     P.place[id] = { x: (s?.x ?? 1400) + 20 + (i % 2) * 290, y: (s?.y ?? 40) + 40 + Math.floor((i % 6) / 2) * 180, w: 260, ...(sec ? { section: sec } : {}) };
   });
   P.cards.push({ id: "pImg", kind: "image", src: svg(220, 120, "#6091cd"), alt: "CPU 与 GPU 架构对比" });
-  P.place.pImg = { x: 1000, y: 760, w: 260, section: "s3" };
+  P.place.pImg = { x: 330, y: 760, w: 260, section: "s2" };
 
   const D = emptyBoard("bDeep", "Deep");
   D.cards.push(note("d1", "## 深处的笔记\n两层下面"));
@@ -77,7 +79,7 @@ export function boards() {
   // on Main itself: a note named only by its first line and a picture, which [[ leaves out
   M.cards.push(note("mPlain", "1. 3"), { id: "mImg", kind: "image", src: svg(160, 90, "#d77891") });
   M.place.mPlain = { x: 60, y: 760, w: 200 }; M.place.mImg = { x: 300, y: 760, w: 200 };
-  M.cam = { x: -20, y: -20, z: 0.95 };
+  M.cam = { x: -20, y: 24, z: 0.95 };
   return { M, P, S, D, step };
 }
 
@@ -87,13 +89,53 @@ async function shotPr(h: Host, name: string) {
   const d = process.env.SHOTS_DIR;
   if (d) { fs.mkdirSync(d, { recursive: true }); fs.copyFileSync(path.join(OUT, `${name}.png`), path.join(d, `${name}.png`)); }
 }
+const hasMinis = (h: Host, frame: string) => h.page.locator(`.card[data-id="${frame}"] .mini`).count();
 
-/** One column per section (name + count), ungrouped cards last, mini cards at one fixed size whatever the frame's size, no arrows */
+/**
+ * In the page: a frame's built columns, each with its mini cards grouped into stacks (by their left edge), in world px at zoom 1
+ * (the positions BoardBody writes). fill = how far each mini card's height is off its content (last line + bottom padding), so a
+ * gap computed from the positions is also the gap you see
+ */
+function geometry(id: string) {
+  const f = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!, cols = f.querySelector<HTMLElement>(".sbcols")!;
+  const px = (v: string) => parseFloat(v) || 0;
+  const minis = [...cols.querySelectorAll<HTMLElement>(".mini")].map((m) => {
+    const last = m.lastElementChild as HTMLElement | null;
+    return { id: m.dataset.sub!, x: px(m.style.left), y: px(m.style.top), w: px(m.style.width), h: px(m.style.height), rw: m.offsetWidth, more: m.matches(".k-more"),
+      fill: last && !m.matches(".k-more") ? Math.abs(last.offsetTop + last.offsetHeight + px(getComputedStyle(m).paddingBottom) - m.offsetHeight) : 0 };
+  });
+  return [...cols.querySelectorAll<HTMLElement>(".sbcol")].map((c) => {
+    const x = px(c.style.left), w = px(c.style.width), n = +c.querySelector("em")!.textContent!;
+    const mine = minis.filter((m) => m.x >= x && m.x < x + w);
+    const stacks = [...new Set(mine.map((m) => m.x))].sort((a, b) => a - b).map((sx) => mine.filter((m) => m.x === sx).sort((a, b) => a.y - b.y));
+    return { t: c.querySelector("span")!.textContent!, n, x, w, fw: cols.offsetWidth, top: c.offsetTop, h: c.offsetHeight, stacks };
+  });
+}
+type Geo = ReturnType<typeof geometry>;
+/** Masonry: 3 or fewer cards one stack, 4 or more two; in a stack each card starts exactly MINI_GAP (6) below the one above; heights match content */
+function masonryOk(g: Geo) {
+  const bad: string[] = [];
+  for (const c of g) {
+    // a stack that starts past the frame's right edge isn't built
+    const want = c.n <= 3 ? 1 : 2, inside = [0, 1].slice(0, want).filter((k) => c.x + k * 130 < c.fw).length;
+    if (c.stacks.length !== inside) bad.push(`${c.t}: ${c.stacks.length} stacks for ${c.n} cards`);
+    if (Math.abs(c.w - (want * 124 + (want - 1) * 6)) > 0.01) bad.push(`${c.t}: width ${c.w}`);
+    for (const st of c.stacks) {
+      st.forEach((m, i) => {
+        if (m.fill > 1.5) bad.push(`${m.id}: ${m.fill}px between its content and its edge`);
+        if (i && Math.abs(m.y - (st[i - 1].y + st[i - 1].h) - 6) > 0.01) bad.push(`${m.id}: ${(m.y - st[i - 1].y - st[i - 1].h).toFixed(1)}px below ${st[i - 1].id}`);
+      });
+    }
+  }
+  return bad;
+}
+
+/** The columns the frame has room for (name + count), mini cards at one fixed size whatever the frame's size, in masonry stacks, no arrows; Warm Ink */
 test("subboardColumns", async () => {
   const { M, P, S, D } = boards();
-  M.place.fSch.w = 380; // a narrower frame: the mini cards keep their size; its two columns fit, so only the wide one fades out
+  M.place.fSch.w = 560; // a narrower frame: the mini cards keep their size; its two two-stack columns just fit, so only the wide one fades out
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "both frames show their boards", async () => (await page.locator(".card.board [data-sub]").count()) >= 27);
+  await until(h, "both frames show their boards", async () => (await hasMinis(h, "fPar")) && (await hasMinis(h, "fSch")));
   await idle(h);
   await verdict("subboardColumns", async (res) => {
     const r = await page.evaluate(() => {
@@ -103,6 +145,7 @@ test("subboardColumns", async () => {
       const font = (f: HTMLElement) => [...new Set(minis(f).filter((m) => !m.matches(".sticky, .k-more, .k-code")).map((m) => getComputedStyle(m.querySelector(".ti")!).fontSize))];
       const ms = minis(par);
       return {
+        look: document.documentElement.dataset.look,
         cols: [...par.querySelectorAll(".sbcol")].map((c) => `${c.querySelector("span")!.textContent}:${c.querySelector("em")!.textContent}`),
         widths: [...new Set([...ms, ...minis(sch)].map((m) => m.offsetWidth))],
         fonts: [...new Set([...font(par), ...font(sch)])],
@@ -117,45 +160,248 @@ test("subboardColumns", async () => {
       };
     });
     Object.assign(res, r);
+    const par = await page.evaluate(geometry, "fPar"), sch = await page.evaluate(geometry, "fSch");
+    res.stacks = [...par, ...sch].map((c) => `${c.t.slice(0, 6)}:${c.n}:${c.stacks.map((s) => s.length).join("+")}`);
+    res.masonry = [...masonryOk(par), ...masonryOk(sch)];
     await shotPr(h, "subboardcard-columns");
-    return JSON.stringify(r.cols) === JSON.stringify(["异构并行计算:6", "以 VectorAdd 为例介绍 Grid, Thread Block, Thread 的基本概念:5", "数据并行性:2", "CUDA 粗略介绍:3", "No section:2"])
-      && r.widths.length === 1 && r.fonts.length === 1 && r.arrows === 0 && r.image && r.code === "lines 25–73" && r.codeSrc === "scheduler.py" && r.sticky
-      && r.summary === "两种不同的设计目标" && r.fade && !r.overlap;
+    // 620 wide: three section columns start inside the frame (two of two stacks, one of one); the rest would start past its right edge and aren't built
+    return r.look === "warm-ink" && JSON.stringify(r.cols) === JSON.stringify(["异构并行计算:6", "以 VectorAdd 为例介绍 Grid, Thread Block, Thread 的基本概念:5", "数据并行性:3"])
+      && r.widths.length === 1 && r.widths[0] === 124 && r.fonts.length === 1 && r.arrows === 0 && r.image && r.code === "lines 25–73" && r.codeSrc === "scheduler.py" && r.sticky
+      && r.summary === "两种不同的设计目标" && r.fade && !r.overlap && !(res.masonry as string[]).length
+      && JSON.stringify(par.map((c) => c.stacks.length)) === "[2,2,1]" && JSON.stringify(sch.map((c) => c.stacks.length)) === "[2,2]";
   });
   await page.context().close();
 });
 
-/** The wheel over a sub-board pans the board until the frame is selected; then it scrolls the columns and stops at their end */
-test("subboardWheel", async () => {
+/** The board's name and card count sit above the frame, outside it; with Sub-board Preview = Title Only the frame draws no mini cards */
+test("subboardTitleAboveFrame", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frame shows its columns", async () => (await page.locator('.card[data-id="fPar"] [data-sub]').count()) >= 18);
+  await until(h, "the frame shows its board", () => hasMinis(h, "fSch"));
+  await idle(h);
+  const frame = page.locator('.card[data-id="fSch"]');
+  const title = async () => {
+    const [f, n, c] = await Promise.all([frame.boundingBox(), frame.locator(".sbname").boundingBox(), frame.locator(".sbmeta").boundingBox()]);
+    // drawn and taking the pointer there (not cut off at the frame's edge)
+    const hit = !!n && await page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest('.card[data-id="fSch"] .sbname'), [n.x + n.width / 2, n.y + n.height / 2]);
+    return { above: !!f && !!n && !!c && n.y + n.height <= f.y && c.y + c.height <= f.y && n.x >= f.x && c.x > n.x, hit, name: await frame.locator(".sbname").textContent(), count: await frame.locator(".sbmeta").textContent() };
+  };
+  const full = await title();
+  await shotPr(h, "subboardcard-title");
+  check("subboardTitleAboveFrame-outside", full.above && full.hit && full.name === "nano-vllm 调度器" && full.count === "9", full);
+  await h.post({ type: "host", host: { settings: { ...DEFAULT_SETTINGS, subPreview: "title" } } });
+  await until(h, "Title Only drops the mini cards", async () => (await hasMinis(h, "fSch")) === 0);
+  await idle(h);
+  const only = await title();
+  check("subboardTitleAboveFrame-titleOnly", only.above && only.hit && only.name === "nano-vllm 调度器" && only.count === "9", only);
+  await page.context().close();
+});
+
+/**
+ * A sub-board of 240 cards: the frame builds only the mini cards that start inside it (the cut ones under the fade too), and more
+ * once it is made bigger; resizing only reveals more: the mini cards already shown keep their size and place
+ */
+test("subboardDrawsOnlyWhatFits", async () => {
+  const B = emptyBoard("bBig", "Big");
+  for (let s = 0; s < 4; s++) {
+    B.sections.push({ id: `s${s}`, title: `Section ${s}`, x: s * 1000, y: 0, w: 900, h: 9000 });
+    for (let i = 0; i < 60; i++) {
+      const id = `b${s}-${i}`;
+      B.cards.push(note(id, `## Card ${s}.${i}\nA one-line summary of card ${i}`));
+      B.place[id] = { x: s * 1000 + 20 + (i % 3) * 290, y: 40 + Math.floor(i / 3) * 160, w: 260, section: `s${s}` };
+    }
+  }
+  const M = emptyBoard("bMain", "Main");
+  M.cards.push({ id: "fBig", kind: "board", board: "bBig" });
+  M.place.fBig = { x: 80, y: 120, w: 500, h: 300 };
+  M.cam = { x: 0, y: 0, z: 1 };
+  const t = await subHost(M, [B]), h = t.h, page = h.page;
+  const frame = page.locator('.card[data-id="fBig"]');
+  await until(h, "the frame shows its board", () => hasMinis(h, "fBig"));
+  await idle(h);
+  const drawn = () => frame.evaluate((f) => {
+    const cols = f.querySelector<HTMLElement>(".sbcols")!, w = cols.clientWidth, hh = cols.clientHeight;
+    const ms = [...cols.querySelectorAll<HTMLElement>(".mini")];
+    return {
+      n: ms.length, w, h: hh,
+      inside: ms.every((m) => m.offsetLeft < w && m.offsetTop < hh),
+      // what is built reaches past the right and bottom edges: nothing that shows is missing
+      reachR: Math.max(...ms.map((m) => m.offsetLeft + m.offsetWidth)) >= w, reachB: Math.max(...ms.map((m) => m.offsetTop + m.offsetHeight)) >= hh,
+      count: f.querySelector(".sbmeta")?.textContent,
+      boxes: Object.fromEntries(ms.map((m) => [m.dataset.sub!, `${m.style.left},${m.style.top},${m.offsetWidth}x${m.offsetHeight}`])),
+    };
+  });
+  const small = await drawn();
+  // 500 × 300: two columns of two stacks start inside, four cards deep each (a card is about 63px tall)
+  check("subboardDrawsOnlyWhatFits-small", small.count === "240" && small.n > 0 && small.n <= 16 && small.inside && small.reachR && small.reachB, { ...small, boxes: undefined });
+  const geoSmall = await page.evaluate(geometry, "fBig");
+  check("subboardDrawsOnlyWhatFits-masonry", JSON.stringify(geoSmall.map((c) => c.stacks.length)) === "[2,2]" && !masonryOk(geoSmall).length, masonryOk(geoSmall));
+  // bigger with its corner grip: more mini cards, still only those that start inside it
+  await frame.click({ position: { x: 250, y: 150 } }); await idle(h);
+  const grip = (await frame.locator(".grip").boundingBox())!;
+  await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(grip.x + 300, grip.y + 200, { steps: 8 });
+  await page.mouse.up();
+  await idle(h);
+  const big = await drawn();
+  check("subboardDrawsOnlyWhatFits-bigger", big.w > small.w && big.h > small.h && big.n > small.n && big.n <= 42 && big.inside && big.reachR && big.reachB, { ...big, boxes: undefined });
+  const moved = Object.entries(small.boxes).filter(([id, b]) => big.boxes[id] !== b).map(([id, b]) => `${id}: ${b} → ${big.boxes[id]}`);
+  check("subboardDrawsOnlyWhatFits-noRelayout", !moved.length && Object.values(big.boxes).every((b) => b.split(",")[2].startsWith("124x")), moved);
+  await page.context().close();
+});
+
+/**
+ * The design's sub-board card (feedback demo #12, option B2: 600 × 340, three sections of seven cards) rebuilt on a board at zoom
+ * 100%: the title 16px above the frame, the columns, their headers, the mini cards' sizes and text, the sticky note and the masonry
+ * stacks land where the demo puts them (its numbers, measured in Chromium). A picture of it is the board half of 12-demo-vs-board
+ */
+test("subboardMatchesDemo", async () => {
+  const B = emptyBoard("bDemo", "nano-vllm 调度器");
+  B.sections.push({ id: "sch", title: "Scheduler：每一步挑哪些序列", x: 0, y: 0, w: 760, h: 560, color: "sand" });
+  B.sections.push({ id: "bm", title: "BlockManager：KV cache 按块分配", x: 820, y: 0, w: 620, h: 560, color: "blue" });
+  B.sections.push({ id: "mr", title: "ModelRunner：把一批序列跑一步", x: 0, y: 620, w: 1440, h: 400, color: "green" });
+  // the demo's cards, at its positions (which set the reading order): [id or symbol, section, x, y, note text]
+  const cards: [string, string, number, number, string?][] = [
+    ["LLMEngine.step", "sch", 30, 50], ["Scheduler.schedule", "sch", 340, 50], ["n3", "sch", 30, 240, "## 先 prefill，后 decode\nwaiting 队列优先，凑满 max_num_batched_tokens"],
+    ["Scheduler.preempt", "sch", 340, 350], ["n5", "sch", 30, 350, "## 抢占：显存不够就把最后一个踢回 waiting\n释放它的块，之后重新 prefill"],
+    ["Scheduler.postprocess", "sch", 30, 460], ["n7", "sch", 640, 350, "待查：preempt 之后前缀缓存还能命中吗？"],
+    ["BlockManager.can_allocate", "bm", 850, 50], ["BlockManager.allocate", "bm", 850, 200], ["b3", "bm", 1160, 50, "## 前缀缓存：按块算 hash\ncompute_hash(token_ids, prefix) 一块接一块链起来"],
+    ["BlockManager.compute_hash", "bm", 1160, 160], ["BlockManager.may_append", "bm", 850, 410], ["b6", "bm", 1160, 300, "## ref_count 为 0 才真正释放\n共享前缀的块会被多个序列引用"],
+    ["BlockManager.deallocate", "bm", 1160, 420],
+    ["ModelRunner.run", "mr", 30, 670], ["ModelRunner.prepare_prefill", "mr", 330, 670], ["ModelRunner.prepare_decode", "mr", 670, 670], ["ModelRunner.run_model", "mr", 990, 670],
+    ["m5", "mr", 990, 830, "## decode 走 CUDA Graph\nbatch 不大时重放事先录好的图"], ["ModelRunner.capture_cudagraph", "mr", 670, 860],
+    ["m7", "mr", 30, 830, "## slot_mapping：每个 token 写进 KV cache 的哪一格\nprepare_prefill 和 prepare_decode 都要算"],
+  ];
+  for (const [k, sec, x, y, md] of cards) {
+    const c = md === undefined ? nv(k) : note(k, md, k === "n7" ? { bg: false, hand: "orange" } : {});
+    put(B, c, x, y, 260); B.place[c.id].section = sec;
+  }
+  // Main: the demo's stage (a note and LLMEngine.step pointing at the frame), 40px in from the top left
+  const M = emptyBoard("bMain", "Main");
+  M.cards.push(note("n12", "显存不够时 `can_allocate` 返回 False，调度器就会 `preempt` 最后一个序列。"));
+  M.place.n12 = { x: 64, y: 104, w: 272 };
+  const step = nv("LLMEngine.step");
+  put(M, step, 64, 276, 300);
+  M.cards.push({ id: "fDemo", kind: "board", board: "bDemo" });
+  M.place.fDemo = { x: 420, y: 110, w: 600, h: 340 };
+  M.links.push({ id: "L1", from: { card: "n12" }, to: { card: "fDemo" } }, { id: "L2", from: { card: step.id }, to: { card: "fDemo" } });
+  M.cam = { x: 0, y: 0, z: 1 };
+  // the demo is light Warm Ink: so is this board, whatever HARNESS_LIGHT says
+  const t = await subHost(M, [B], { light: true }), h = t.h, page = h.page;
+  await until(h, "the frame shows its board", () => hasMinis(h, "fDemo"));
+  await idle(h);
+  const r = await page.evaluate(() => {
+    const f = document.querySelector<HTMLElement>('.card[data-id="fDemo"]')!, fr = f.getBoundingClientRect();
+    const box = (sel: string) => { const e = f.querySelector(sel); if (!e) return null; const b = e.getBoundingClientRect(); return [b.left - fr.left, b.top - fr.top, b.width, b.height].map((v) => +v.toFixed(1)); };
+    const css = (sel: string, ...ks: string[]) => { const e = f.querySelector(sel); if (!e) return null; const s = getComputedStyle(e); return ks.map((k) => s.getPropertyValue(k)).join(" "); };
+    const T = ["font-size", "font-weight", "line-height", "color"];
+    return {
+      zoom: fr.width / f.offsetWidth, frame: [fr.width, fr.height], radius: getComputedStyle(f).borderRadius,
+      name: box(".sbname"), count: box(".sbmeta"),
+      nameCss: css(".sbname", ...T, "letter-spacing"), countCss: css(".sbmeta", ...T),
+      h4: box(".sbcol"), h4Css: css(".sbcol", ...T), emCss: css(".sbcol em", ...T),
+      bar: getComputedStyle(f.querySelector(".sbcol")!, "::before").backgroundColor,
+      code: css(".mini.k-code", "padding", "border-radius", "background-color", "box-shadow"),
+      src: css(".mini.k-code .src", ...T), ico: box(".mini.k-code .src .ico"),
+      codeTi: css(".mini.k-code .ti", ...T, "letter-spacing"), codeSub: css(".mini.k-code .sub", ...T),
+      noteTi: css(".mini.k-note:not(.sticky) .ti", ...T), noteSub: css(".mini.k-note:not(.sticky) .sub", ...T),
+      sticky: css(".mini.sticky", "background-color", "box-shadow", "border-radius"), stickySrc: css(".mini.sticky .src", "color"),
+      stickyIco: !!f.querySelector(".mini.sticky .src .ico"), stickyTi: css(".mini.sticky .ti", ...T, "-webkit-line-clamp"),
+      mask: css(".sbcols", "mask-image"), maskCls: f.querySelector(".sbcols")?.className,
+      rect: [fr.left, fr.top, fr.width, fr.height],
+    };
+  });
+  const g = await page.evaluate(geometry, "fDemo");
+  const titles: Record<string, string> = Object.fromEntries(await page.locator('.card[data-id="fDemo"] .mini').evaluateAll((ms) => ms.map((m) => [(m as HTMLElement).dataset.sub!, m.querySelector(".ti")!.textContent!])));
+  const stacks = g.map((c) => c.stacks.map((s) => s.map((m) => titles[m.id])));
+  const near = (a: number[] | null, b: number[]) => !!a && a.length === b.length && a.every((v, i) => Math.abs(v - b[i]) <= 0.6);
+  // demo numbers (feedback-demo.html #12 B2, Warm Ink, zoom 100%), relative to the frame's top left
+  check("subboardMatchesDemo-frame", r.zoom === 1 && r.frame.join() === "600,340" && r.radius === "22px", r);
+  check("subboardMatchesDemo-title", !!r.name && !!r.count && near(r.name, [6, -46, r.name[2], 30]) && near(r.count, [r.name[0] + r.name[2] + 10, -46, r.count[2], 30])
+    && r.nameCss === "25px 700 30px rgb(33, 31, 27) -0.375px" && r.countCss === "25px 500 30px rgb(154, 149, 139)", { name: r.name, count: r.count, nameCss: r.nameCss, countCss: r.countCss });
+  check("subboardMatchesDemo-columns", JSON.stringify(g.map((c) => [c.x, c.w])) === "[[18,254],[288,254],[558,254]]" && near(r.h4, [18, 18, 254, 32.4])
+    && r.h4Css === "12px 600 16.2px rgb(33, 31, 27)" && r.emCss === "11px 500 14.85px rgb(154, 149, 139)" && r.bar === "rgba(206, 170, 110, 0.16)"
+    && g.every((c) => c.stacks.every((s) => Math.abs(s[0].y - 39.4) < 0.01)), { cols: g.map((c) => [c.t, c.x, c.w, c.stacks[0]?.[0]?.y]), h4: r.h4, h4Css: r.h4Css, emCss: r.emCss, bar: r.bar });
+  check("subboardMatchesDemo-mini", r.code === "7px 8px 8px 8px rgb(253, 252, 250) rgba(60, 45, 20, 0.16) 0px 0px 0px 0.5px, rgba(50, 35, 10, 0.05) 0px 1px 2px 0px"
+    && r.src === "10px 400 12px rgb(154, 149, 139)" && !!r.ico && near(r.ico, [26, r.ico[1], 11, 11])
+    && r.codeTi === "11px 600 14.85px rgb(33, 31, 27) -0.11px" && r.codeSub === "10px 400 13.5px rgb(154, 149, 139)"
+    && r.noteTi === "11.5px 600 15.525px rgb(33, 31, 27)" && r.noteSub === "10.5px 400 14.175px rgb(98, 94, 86)", r);
+  check("subboardMatchesDemo-sticky", r.sticky === "rgb(251, 239, 182) rgba(150, 110, 20, 0.2) 0px 0px 0px 0.5px 8px" && r.stickySrc === "rgb(138, 106, 22)" && !r.stickyIco
+    && r.stickyTi === "11.5px 500 15.525px rgb(74, 60, 18) 4", { sticky: r.sticky, src: r.stickySrc, ico: r.stickyIco, ti: r.stickyTi });
+  check("subboardMatchesDemo-fade", r.mask === "linear-gradient(to right, rgb(0, 0, 0) calc(100% - 44px), rgba(0, 0, 0, 0)), linear-gradient(rgb(0, 0, 0) calc(100% - 40px), rgba(0, 0, 0, 0))", [r.mask, r.maskCls]);
+  // the masonry rule, not the demo's exact stacks: which stack a card lands in follows the measured heights, and those follow how the
+  // installed fonts wrap the CJK titles (CI's fonts wrap differently from the machine the demo was measured on). The third column's
+  // second stack starts past the frame's right edge, so it isn't built
+  check("subboardMatchesDemo-masonry", !masonryOk(g).length && JSON.stringify(g.map((c) => c.stacks.length)) === "[2,2,1]"
+    && JSON.stringify(stacks.map((c) => c.flat().length)) === "[7,7,4]", { stacks, bad: masonryOk(g) });
+  await shotPr(h, "subboardcard-demo");
+  // the frame with its title and a margin: the board half of the side-by-side picture
+  const [x, y, w, hh] = r.rect;
+  await page.screenshot({ path: path.join(OUT, "subboardcard-demo-frame.png"), clip: { x: x - 24, y: y - 60, width: w + 48, height: hh + 84 } });
+  await page.context().close();
+});
+
+/** The wheel over a sub-board card pans the board, selected or not: nothing in the frame scrolls */
+test("subboardWheelPansBoard", async () => {
+  const { M, P, S, D } = boards();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await until(h, "the frame shows its columns", () => hasMinis(h, "fPar"));
   await idle(h);
   const cam = () => page.evaluate(() => document.querySelector<HTMLElement>(".world")!.style.transform);
   const cols = page.locator('.card[data-id="fPar"] .skel');
-  const scrolled = () => cols.evaluate((e) => [e.scrollLeft, e.scrollWidth - e.clientWidth, e.scrollTop, e.scrollHeight - e.clientHeight]);
-  await verdict("subboardWheel", async (res) => {
+  await verdict("subboardWheelPansBoard", async (res) => {
     const c0 = await cam();
     const box = (await cols.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
     await page.mouse.wheel(120, 0); await idle(h);
     res.unselectedPans = (await cam()) !== c0;
-    res.unselectedScroll = (await scrolled())[0];
-    // select the frame (its title bar), then a new gesture over its columns
-    await page.locator('.card[data-id="fPar"] .sbhead').click({ position: { x: 200, y: 12 } }); await idle(h);
+    // select the frame (its name), then a new gesture over its columns
+    await page.locator('.card[data-id="fPar"] .sbname').click(); await idle(h);
+    res.selected = await page.locator('.card.sel[data-id="fPar"]').count();
     await hold(h, WHEEL_GESTURE, "the panning gesture is over: the next wheel starts a new one");
     const c1 = await cam();
     const moved = (await cols.boundingBox())!;
     await page.mouse.move(moved.x + moved.width / 2, moved.y + moved.height / 2);
-    await page.mouse.wheel(200, 0); await idle(h);
-    const [x1, maxX] = await scrolled();
-    // way past the end, both ways: the columns stop there and the board stays put
-    for (let i = 0; i < 12; i++) await page.mouse.wheel(400, 400);
-    await idle(h);
-    const [x2, , y2, maxY] = await scrolled();
-    Object.assign(res, { x1, maxX, x2, y2, maxY, selectedKeepsCamera: (await cam()) === c1 });
-    await shotPr(h, "subboardcard-scrolled");
-    return res.unselectedPans && res.unselectedScroll === 0 && x1 > 0 && x2 === maxX && maxX > 0 && y2 === maxY && res.selectedKeepsCamera;
+    await page.mouse.wheel(200, 200); await idle(h);
+    res.selectedPans = (await cam()) !== c1;
+    res.scrolled = await cols.evaluate((e) => e.scrollLeft + e.scrollTop);
+    return res.unselectedPans && res.selected === 1 && res.selectedPans && res.scrolled === 0;
+  });
+  await page.context().close();
+});
+
+/** An arrow dragged from a card's port onto a mini card inside the frame attaches to the frame itself: the frame lights up, the arrowhead is on its edge */
+test("subboardLinkAttachesToFrame", async () => {
+  const { M, P, S, D } = boards();
+  const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
+  await until(h, "the frame shows its columns", () => hasMinis(h, "fSch"));
+  await idle(h);
+  await verdict("subboardLinkAttachesToFrame", async (res) => {
+    const nb = (await page.locator('.card[data-id="mNote"]').boundingBox())!;
+    await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2); await idle(h);
+    const port = (await page.locator('.card[data-id="mNote"] .eport.r').boundingBox())!;
+    const mini = (await page.locator('.card[data-id="fSch"] .mini[data-sub]').first().boundingBox())!;
+    await page.mouse.move(port.x + port.width / 2, port.y + port.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(mini.x + mini.width / 2, mini.y + mini.height / 2, { steps: 10 });
+    res.frameHot = await page.locator('.card.drop-hot[data-id="fSch"]').count();
+    res.miniHot = await page.locator(".mini.hot").count();
+    await page.mouse.up();
+    const made = () => t.store.peek("bMain")!.links.find((l) => l.from.card === "mNote");
+    await until(h, "the arrow is saved", made); await idle(h);
+    res.to = made()!.to;
+    const f = (await page.locator('.card[data-id="fSch"]').boundingBox())!;
+    res.head = await page.evaluate((id) => {
+      const r = document.querySelector(`g.link[data-lk="${id}"] .ahead.end`)?.getBoundingClientRect();
+      return r ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null;
+    }, made()!.id);
+    const hd = res.head as { x: number; y: number } | null;
+    // the head sits on the frame's outline, not on a mini card inside it
+    const near = (m: number) => !!hd && hd.x > f.x - m && hd.x < f.x + f.width + m && hd.y > f.y - m && hd.y < f.y + f.height + m;
+    res.headAtEdge = near(14) && !near(-8);
+    await shotPr(h, "subboardcard-arrow");
+    return res.frameHot === 1 && res.miniHot === 0 && JSON.stringify(res.to) === JSON.stringify({ card: "fSch" }) && res.headAtEdge;
   });
   await page.context().close();
 });
@@ -187,7 +433,7 @@ function film(page: Host["page"], ms: number): Promise<Frame[]> {
 test("subboardEnterLeaveMorph", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frame shows its columns", async () => (await page.locator('.card[data-id="fPar"] [data-sub]').count()) >= 18);
+  await until(h, "the frame shows its columns", () => hasMinis(h, "fPar"));
   await idle(h);
   const cam = () => page.evaluate(() => document.querySelector<HTMLElement>(".world")!.style.transform);
   const title = page.locator('.card[data-id="fPar"] .sbname');
@@ -240,7 +486,7 @@ test("subboardEnterLeaveMorph", async () => {
 test("subboardLinkPicker", async () => {
   const { M, P, S, D } = boards();
   const t = await subHost(M, [P, S, D]), h = t.h, page = h.page;
-  await until(h, "the frames show their boards", async () => (await page.locator(".card.board [data-sub]").count()) >= 27);
+  await until(h, "the frames show their boards", async () => (await hasMinis(h, "fPar")) && (await hasMinis(h, "fSch")));
   await idle(h);
   await verdict("subboardLinkPicker", async (res) => {
     await page.locator('.card[data-id="mNote"] .nbody').dblclick({ position: { x: 300, y: 12 } });
