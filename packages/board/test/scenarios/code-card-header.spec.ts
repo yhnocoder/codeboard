@@ -129,7 +129,7 @@ test("codeHeaderHoverOnly", async () => {
 });
 
 test("freeCodeLanguageDetect", async () => {
-  const h = await open({ board: emptyBoard("b1", "lang"), light, w: 1000, h: 700 });
+  const h = await open({ board: emptyBoard("b1", "lang"), light, w: 1300, h: 700 }); // a new Free code card is 816 wide
   const seg = () => { const c = h.board().cards[0] as CodeCard | undefined; return c?.segments[0]; };
   /** act, then wait until the host has the card's code changed and the board has settled */
   const saved = async (what: string, act: () => Promise<unknown>) => {
