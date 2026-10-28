@@ -18,6 +18,7 @@ import { settleHome } from "../state/sections";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
 import { cleanImage, svgDataUrl } from "../md/images";
+import { undoubleTex } from "@yhnocoder/markdown";
 
 /** 新代码卡按设置默认隐藏注释 / 文档字符串 / 空行（卡上已经有设定的不动） */
 function withDefaults(c: Card): Card {
@@ -190,6 +191,9 @@ export async function requestViews(segs: Segment[]) {
 
 export async function pasteText(text: string, at?: { x: number; y: number }, exact = false) {
   if (!text.trim()) return;
+  // 网页、电子书里排好的公式按纯文字复制出来是"显示的字 + TeX"，留下 TeX 当公式；认出了就是 Note
+  const tex = undoubleTex(text);
+  if (tex !== text && classifyPaste(tex).kind === "note") return newNote(at, true, tex);
   const k = classifyPaste(text);
   if (k.kind === "web") return newWeb(at, k.url);
   if (k.kind === "links") return newLinkList(k.urls, at);

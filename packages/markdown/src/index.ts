@@ -6,3 +6,4 @@ export { hydrate, mdClick, toggleTask, setRefResolver, resolveRef, type RefTarge
 export { setCodeHighlighter, highlightCode, cachedCode, colorCode, type CodeHighlighter } from "./code";
 export { staticTextRange, docRange, type StaticTextRange } from "./selmap";
 export { setMathPreamble, mathMacros, mathPreambleErrors } from "./math";
+export { undoubleTex } from "./doubled";
