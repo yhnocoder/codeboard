@@ -1,7 +1,7 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   initAnalysis, analyze, pybindDefs, pasteMacros, pastedNames, macroCalls, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
-  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs, pyMethodDefs, dispatchRegs, stubDevice, pybindAll, pyMethodAll, dispatchAll,
+  jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs, pyMethodDefs, stubDevice, pybindAll, pyMethodAll, dispatchAll,
 } from "../src";
 
 beforeAll(() => initAnalysis());
@@ -44,8 +44,7 @@ describe("PyTorch's own bindings", () => {
   });
   it("DispatchStub registrations and their device", () => {
     const src = `#define REGISTER_DISPATCH(name, fn) X(name, fn)\nREGISTER_DISPATCH(abs_stub, &abs_kernel_cuda)\nREGISTER_ARCH_DISPATCH(abs_stub, DEFAULT, &abs_kernel)\nREGISTER_NO_CPU_DISPATCH(abs_stub);\nREGISTER_CUDA_DISPATCH(abs_stub, &qadd_kernel<false>);\n`;
-    expect(dispatchRegs(src, "abs_stub").map((r) => [r.line, r.macro, r.target])).toEqual([[2, "REGISTER_DISPATCH", "abs_kernel_cuda"], [3, "REGISTER_ARCH_DISPATCH", "abs_kernel"], [5, "REGISTER_CUDA_DISPATCH", "qadd_kernel"]]);
-    expect(dispatchAll(src).map((r) => r.name)).toEqual(["abs_stub", "abs_stub", "abs_stub"]);
+    expect(dispatchAll(src).map((r) => [r.name, r.line, r.macro, r.target])).toEqual([["abs_stub", 2, "REGISTER_DISPATCH", "abs_kernel_cuda"], ["abs_stub", 3, "REGISTER_ARCH_DISPATCH", "abs_kernel"], ["abs_stub", 5, "REGISTER_CUDA_DISPATCH", "qadd_kernel"]]);
     expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/cuda/AbsKernel.cu")).toBe("CUDA");
     expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/cpu/AbsKernel.cpp")).toBe("CPU");
     expect(stubDevice("REGISTER_DISPATCH", "aten/src/ATen/native/mps/operations/Unary.mm")).toBe("MPS");

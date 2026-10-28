@@ -6,7 +6,7 @@ import type { Arg, CallSite, Sym } from "./index";
 
 const lineAt = (text: string, i: number) => text.slice(0, i).split("\n").length;
 /** 同一份文本里查很多次行号：先记下每行的开头，二分 */
-function lineIndex(text: string): (i: number) => number {
+export function lineIndex(text: string): (i: number) => number {
   const starts = [0];
   for (let i = text.indexOf("\n"); i >= 0; i = text.indexOf("\n", i + 1)) starts.push(i + 1);
   return (i) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= i) lo = mid; else hi = mid - 1; } return lo + 1; };
@@ -108,15 +108,15 @@ function pyMethodScan(text: string, pat: string): Named<Registration>[] {
   return out;
 }
 
-/** DispatchStub 的注册：REGISTER_DISPATCH(stub, &fn)、REGISTER_CUDA_DISPATCH / REGISTER_ARCH_DISPATCH(stub, arch, fn)、REGISTER_ALL_CPU_DISPATCH…；macro = 用的哪个宏 */
-export const dispatchRegs = (text: string, stub: string): (Registration & { macro: string })[] => unnamed(dispatchScan(text, escapeRegExp(stub)));
-/** 文件里全部的 DispatchStub 注册（name = stub；建索引用） */
-export const dispatchAll = (text: string) => dispatchScan(text, "\\w+");
-function dispatchScan(text: string, pat: string): Named<Registration & { macro: string }>[] {
+/**
+ * 文件里全部的 DispatchStub 注册（name = stub；建索引用）：REGISTER_DISPATCH(stub, &fn)、REGISTER_CUDA_DISPATCH / REGISTER_ARCH_DISPATCH(stub, arch, fn)、
+ * REGISTER_ALL_CPU_DISPATCH…；macro = 用的哪个宏
+ */
+export function dispatchAll(text: string): Named<Registration & { macro: string }>[] {
   if (!/REGISTER_\w*DISPATCH/.test(text)) return [];
   const out: Named<Registration & { macro: string }>[] = [];
   const lineAt = lineIndex(text);
-  const re = new RegExp(`\\b((?:ALSO_)?REGISTER_\\w*DISPATCH)\\s*\\(\\s*(${pat})\\s*,`, "g");
+  const re = /\b((?:ALSO_)?REGISTER_\w*DISPATCH)\s*\(\s*(\w+)\s*,/g;
   for (let m; (m = re.exec(text)); ) {
     if (inDefine(text, m.index)) continue;
     const open = text.indexOf("(", m.index);
