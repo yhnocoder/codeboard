@@ -37,17 +37,12 @@ export async function pngOf(dataUrl: string): Promise<Blob> {
   return new Promise((ok, no) => cv.toBlob((b) => (b ? ok(b) : no(new Error("Could not encode the image"))), "image/png"));
 }
 
-/** Note 里能放的图（宿主只收 PNG、JPEG、WebP、GIF）：别的（SVG）先画成 PNG */
-const NOTE_TYPES = /^data:image\/(png|jpeg|webp|gif)[;,]/;
-
 /**
- * Image 卡的图存成 Note 的图（和 Note 里粘贴的图同一条路：宿主存进 assets/，见 host/src/images.ts），回 Markdown 里写的地址；
+ * Image 卡的图存成 Note 的图（和 Note 里粘贴的图同一条路：宿主存进 assets/，见 host/src/images.ts；SVG 还是 SVG），回 Markdown 里写的地址；
  * 网上的图直接写它的网址。存不了回 null（已经提示过）
  */
 export async function noteImageOf(c: ImageCard): Promise<string | null> {
   if (remote(c.src)) return c.src;
   const url = await imageDataUrl(c);
-  if (!url) return null;
-  const ok = NOTE_TYPES.test(url) ? url : await drawn(url).then((cv) => cv.toDataURL("image/png")).catch(() => null);
-  return ok ? saveNoteImage(ok) : null;
+  return url ? saveNoteImage(url) : null;
 }

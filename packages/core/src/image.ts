@@ -82,3 +82,28 @@ function exifTurned(dv: DataView, at: number, end: number): boolean {
   }
   return false;
 }
+
+// SVG 是文字，没有文件头：看开头（XML 声明、注释、DOCTYPE 之后）第一个元素是不是 <svg>。只认不清洗：SVG 只用 <img> 显示
+// （不跑脚本、不加载外面的东西），白板存之前另外清洗过
+const SVG_ROOT = /^\uFEFF?\s*(?:<\?xml[^>]*\?>\s*)?(?:(?:<!--[\s\S]*?-->|<!DOCTYPE\s+svg\b(?:[^>[]|\[[\s\S]*?\])*>)\s*)*<svg(?=[\s/>])([^>]*)>/;
+/** 显示出来的大小（像素）；width / height 没写或是百分比、又没有 viewBox 时认不出（空的） */
+export type SvgInfo = { w?: number; h?: number };
+
+/** 是 SVG 时回它的大小，不是回 null */
+export function sniffSvg(b: Uint8Array): SvgInfo | null {
+  const m = SVG_ROOT.exec(new TextDecoder().decode(b.subarray(0, 64 * 1024)));
+  return m ? svgSize(m[1]) : null;
+}
+
+/** <svg> 上的 width / height（像素）；缺的按 viewBox 的比例补，都没写就是 viewBox 的大小 */
+function svgSize(attrs: string): SvgInfo {
+  const attr = (n: string) => new RegExp(`\\s${n}\\s*=\\s*(["'])([^"']*)\\1`).exec(attrs)?.[2];
+  const px = (v?: string) => (v && /^\s*[\d.]+(?:e[+-]?\d+)?(?:px)?\s*$/i.test(v) ? parseFloat(v) : NaN);
+  let w = px(attr("width")), h = px(attr("height"));
+  const vb = (attr("viewBox") ?? "").trim().split(/[\s,]+/).map(Number);
+  const [vw, vh] = vb.length === 4 && vb[2] > 0 && vb[3] > 0 ? [vb[2], vb[3]] : [NaN, NaN];
+  if (!(w > 0) && h > 0) w = (h * vw) / vh;
+  else if (!(h > 0) && w > 0) h = (w * vh) / vw;
+  else if (!(w > 0) && !(h > 0)) { w = vw; h = vh; }
+  return w > 0 && h > 0 ? { w: Math.max(1, Math.round(w)), h: Math.max(1, Math.round(h)) } : {};
+}

@@ -17,10 +17,17 @@ const readUrl = (f: File) => new Promise<string>((ok, bad) => {
 });
 const imagesOf = (files: FileList | File[] | undefined | null) => [...(files ?? [])].filter((f) => f.type.startsWith("image/"));
 
+// 整段是一份 SVG 的文字（设计工具的 Copy as SVG）当图粘
+const SVG_DOC = /^\uFEFF?\s*(?:<\?xml[^>]*\?>\s*)?(?:(?:<!--[\s\S]*?-->|<!DOCTYPE\s+svg\b(?:[^>[]|\[[\s\S]*?\])*>)\s*)*<svg(?=[\s/>])(?:[^>]*\/>|[\s\S]*<\/svg>)\s*$/;
+function svgText(cd: DataTransfer): File[] {
+  const t = cd.getData("image/svg+xml") || cd.getData("text/plain");
+  return SVG_DOC.test(t) ? [new File([t.trim()], "pasted.svg", { type: "image/svg+xml" })] : [];
+}
+
 /** 剪贴板里有图又有字（从 Excel、网页复制的东西常带一张图）：有字就粘字（交给别的粘贴处理）；网页上复制一张图时 HTML 里只有那张图 */
 function pastedImages(cd: DataTransfer): File[] {
   const files = imagesOf(cd.files).length ? imagesOf(cd.files) : [...cd.items].filter((i) => i.kind === "file" && i.type.startsWith("image/")).map((i) => i.getAsFile()).filter((f): f is File => !!f);
-  if (!files.length) return [];
+  if (!files.length) return svgText(cd);
   const text = cd.getData("text/plain").trim(), html = cd.getData("text/html");
   const htmlText = html.replace(/<(style|script)[\s\S]*?<\/\1>/gi, "").replace(/<[^>]*>/g, "").replace(/&nbsp;|\s/g, "");
   return !text || (html && !htmlText) ? files : [];

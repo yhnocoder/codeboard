@@ -646,11 +646,13 @@ export function installKeys() {
     if (typing()) return;
     const items = [...(e.clipboardData?.items ?? [])];
     const file = items.find((i) => i.type.startsWith("image/"))?.getAsFile() ?? null;
+    const svg = file ? "" : e.clipboardData?.getData("image/svg+xml"); // SVG 作为数据（不是文件）放进剪贴板的
     const text = e.clipboardData?.getData("text/plain");
     const w = worldAt(lastPointer());
-    if (!file && !text) return;
+    if (!file && !text && !svg) return;
     e.preventDefault();
     const image = (f: File) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name || "pasted.png", w); rd.readAsDataURL(f); };
+    if (!text && svg) return void A.pasteText(svg, w);
     if (!text) return image(file!);
     // 先看是不是白板上复制的卡（这块白板的，或者问宿主：别的白板上的就贴卡），否则照旧按图 / 文字粘贴
     void A.pasteFromBoard(text, w).then((done) => {

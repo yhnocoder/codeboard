@@ -1,7 +1,7 @@
 // 白板发来的消息：带 req 的请求，处理函数的返回值就是回答（类型按 core 的 ReplyOf 检查；BoardHub 包成 reply）。
 import * as path from "node:path";
 import * as fs from "node:fs/promises";
-import { BOARD_VERSION, COMPLETE_SYSTEM, cardPath, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
+import { BOARD_VERSION, COMPLETE_SYSTEM, cardPath, sniffImage, sniffSvg, cleanCompletion, spaceChatReply, loadBoard, wouldCycle, completePrompt, findCard, isCode, locateSeg, mapLineTo, segOf, versionLabel, type AskType, type BoardToHost, type Commit, type DiffData, type ReplyOf, type Segment, type SegView } from "@codeboard/core";
 import { analysisOf } from "./analysis";
 import { codeDoc, codeDocClose, lspComplete, lspHover, lspSignature } from "./codeedit";
 import { commitInfo, headOf, logLines, repoRootOf, resolveRef, showFile, upstreamRef } from "./git";
@@ -369,8 +369,8 @@ async function pickImage(): Promise<string | null> {
   const file = await workspace().ui.openDialog({ filters: { Images: ["png", "jpg", "jpeg", "gif", "svg", "webp"] }, label: "Add Image" });
   if (!file) return null;
   const buf = await fs.readFile(file);
-  const ext = path.extname(file).slice(1).toLowerCase();
-  const mime = ext === "svg" ? "image/svg+xml" : ext === "jpg" ? "image/jpeg" : `image/${ext}`;
+  const mime = sniffImage(buf)?.mime ?? (sniffSvg(buf) ? "image/svg+xml" : null);
+  if (!mime) { void workspace().ui.warn(`${path.basename(file)} is not a PNG, JPEG, WebP, GIF or SVG image.`, {}); return null; }
   return `data:${mime};base64,${buf.toString("base64")}`;
 }
 

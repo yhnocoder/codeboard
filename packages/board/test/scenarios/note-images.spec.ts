@@ -162,11 +162,11 @@ test("noteNonImagePasteRefused", async () => {
   const { h, assets, done } = await imageHost(["keep"]);
   await idle(h);
   await editNote(h, "n0");
-  await pasteFiles(h.page, [{ b64: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>").toString("base64"), type: "image/png", name: "fake.png" }]);
+  await pasteFiles(h.page, [{ b64: Buffer.from("<html><body><script>alert(1)</script></body></html>").toString("base64"), type: "image/png", name: "fake.png" }]);
   const toast = await h.page.locator(".toast").first().innerText({ timeout: 3000 }); // the host's refusal
   const imgs = await h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').count();
   await exitEdit(h);
-  check("noteNonImagePasteRefused", /PNG, JPEG, WebP and GIF/.test(toast) && imgs === 0 && md(h, "n0") === "keep" && assets().length === 0, { toast, imgs, md: md(h, "n0"), assets: assets() });
+  check("noteNonImagePasteRefused", /PNG, JPEG, WebP, GIF and SVG/.test(toast) && imgs === 0 && md(h, "n0") === "keep" && assets().length === 0, { toast, imgs, md: md(h, "n0"), assets: assets() });
   await done();
 });
 
