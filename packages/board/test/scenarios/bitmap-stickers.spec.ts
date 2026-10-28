@@ -1,5 +1,5 @@
 // Bitmap and animated stickers from a folder pack (PNG, APNG, GIF, animated WebP): drawn as <img>, animated ones play only on screen
-// at full detail and in the picker under the pointer (npm run harness -- stickerBitmapsAnimate stickerBitmapsPicker)
+// at full detail and in the picker under the pointer
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, type Board, type StickerPack } from "@codeboard/core";
 import { animWebp, apng, faceFrames, gif, png, type Paint, type Rgba } from "@codeboard/host/test/images";

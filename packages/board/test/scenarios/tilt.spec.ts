@@ -1,8 +1,6 @@
 // Tilted cards: Tilt in the card menu / right-click menu / ⇧⌥T (also for a multi-selection) turns a card -1.2° like a sticky note,
 // as one undo step; the selection ring and the link ports turn with it and an arrow leaves from the turned edge. While the card is
 // edited it turns straight (and back when editing ends), and the arrow stays on the edge in every frame of that turn.
-// Usage: npm run harness -- tiltCardFromMenu tiltStraightensWhileEditing tiltShortcutMultiSelect
-// Screenshots: test-out/harness/tilt-*.png (HARNESS_LIGHT=1 for the light theme)
 import * as path from "node:path";
 import { symCard, findSym, put, OUT, type Host } from "../harness";
 import { emptyBoard, THEMES, type Board, type NoteCard } from "@codeboard/core";

@@ -1,5 +1,3 @@
-// The name index takes its files from the language table: every extension of a language with a grammar is indexed
-// (.hh / .inl headers included), nothing else is
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

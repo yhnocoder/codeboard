@@ -1,5 +1,3 @@
-// Expanding calls and previews without a language service (as in the cloud sandbox): members of a class card outside the workspace,
-// variable candidates, preview fallbacks, library calls, and retrying while Pylance starts
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { beforeAll, describe, expect, it, vi } from "vitest";

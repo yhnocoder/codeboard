@@ -6,8 +6,6 @@ import {
 import { codeCard } from "./board";
 import { NOTE_CODE } from "../fixtures/notecode";
 
-// ---------- 内容 ----------
-
 /** 每一级标题各一行，下面一句正文：看各级字号和间距 */
 export const HEADINGS = [
   "# H1 · Block Manager",
@@ -57,8 +55,6 @@ export const ALL_MD = [
 
 export const noteAt = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, bg: true, ...o });
 
-// ---------- 图片 ----------
-
 const svgUrl = (s: string) => `data:image/svg+xml;base64,${btoa(s)}`;
 const BROKEN = "data:image/png;base64,AAAA";
 const blocks = (w: number, h: number, a: string, b: string, label: string) => svgUrl(
@@ -77,8 +73,6 @@ export const IMAGES = {
 } as const;
 export type ImageKey = keyof typeof IMAGES;
 export const imageCard = (id: string, src: string, o: Partial<ImageCard> = {}): ImageCard => ({ id, kind: "image", src, alt: "KV cache blocks", ...o });
-
-// ---------- 网页 ----------
 
 const fav = (c: string, t: string) => svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32"><rect width="32" height="32" rx="7" fill="${c}"/><text x="16" y="22" font-family="Arial" font-weight="700" font-size="17" fill="#fff" text-anchor="middle">${t}</text></svg>`);
 const og = (a: string, b: string, t: string, w = 600, h = 315) => svgUrl(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="${w}" height="${h}" fill="url(#g)"/><text x="30" y="${h * 0.58}" font-family="Georgia" font-size="${Math.round(h * 0.13)}" fill="#fff">${t}</text></svg>`);
@@ -107,8 +101,6 @@ export const linksCard = (id: string, pages: PageKey[], o: { rich?: boolean; ric
   id, kind: "links", ...(o.rich ? { rich: true } : {}), ...(o.title ? { title: o.title } : {}),
   items: pages.map((k, i): LinkItem => ({ id: `${id}-i${i}`, url: PAGES[k].url, meta: { ...PAGES[k].meta, at: 1 }, ...(o.richRows?.includes(i) ? { rich: true } : {}) })),
 });
-
-// ---------- 子白板 ----------
 
 /** 一块真的子白板（三张代码卡连成调用图、一张 Note、两个 Section），骨架用 core 的 skeletonOf 算：和宿主发来的一样 */
 export function subBoard(id: string, name: string, o: { nested?: string; empty?: boolean } = {}): Board {

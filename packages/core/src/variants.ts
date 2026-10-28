@@ -1,4 +1,3 @@
-// 我的改动：一张代码卡的几个 Variant（上游、分支、工作区、另一个 worktree、复制出来的文件、PR）。
 // 当前显示的 Variant 的段在 card.segments，其余的存在 variant.segs，段 id 一一对应：Link、Sticker 的行号切换时按内容跟过去（rebaseSegment），
 // 「只在这个 Variant」的 Sidenote 行号按那个 Variant 的代码算，切换时不动。纯函数，读文件、跑 git 由宿主做。
 import { activeOf, clone, onVariant, UPSTREAM, versionLabel, type Board, type CodeCard, type Segment, type Sidenote, type Variant, type VariantFrom } from "./model";

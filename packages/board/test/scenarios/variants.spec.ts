@@ -1,7 +1,3 @@
-// My changes (wireframe 07): variant tabs on a code card, MINE, the Add Variant menu listing another worktree,
-// switching in one frame with the arrow end and sidenote following the code, the variant note, the diff base picker,
-// the three-way view, "Only in This Variant" sidenotes, the merged-upstream prompt and Convert.
-// Usage: npm run harness -- variants [--light]   screenshots: test-out/harness/variants-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { addVariant, emptyBoard, type CodeCard, type Segment, type SegView } from "@codeboard/core";

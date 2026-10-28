@@ -16,7 +16,6 @@
 //                               no height (follow their content) unless taller than the cap for cards without one
 //  fitContentFollowsCodeEdits   after ⌥F a Free code card follows its content: 3 lines added while editing grow it by 3 × 20px with no
 //                               scroll (Warm Ink, Soft Light); a height dragged with the corner handle is stored and stays fixed
-// Usage: npm run harness -- codeHeaderHoverOnly …   screenshots: test-out/harness/cchead-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type CodeCard } from "@codeboard/core";

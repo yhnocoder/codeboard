@@ -16,7 +16,6 @@ type Args = {
   color: (typeof LINK_COLORS)[number]; width: 1 | 2 | 3; dash: boolean; headStart: boolean; headEnd: boolean;
   label: string; at: number; loop: boolean; vars: boolean; lost: "none" | "from" | "to"; sideFrom: Side; sideTo: Side;
   state: "normal" | "hover" | "selected" | "dragging";
-  /** 只给下面几个小样用 */
   hand: HandColor; what: "line port" | "call" | "connect mode"; which: "plain (+ Call)" | "call (+ arguments)";
 };
 
@@ -62,8 +61,6 @@ function playground(a: Args): Scene {
     after: a.state === "hover" ? () => setHoverLink("L") : a.state === "dragging" ? () => setDragLink("L") : undefined,
   };
 }
-
-// ---------- Overview：种类、样式、端点 ----------
 
 /** 一对卡和一条线：preempt 的一行 → 右边一张卡 */
 function pair(g: Group, b: Board, id: string, x: number, y: number, cap: string, link: Partial<Link>, o: { from?: "line" | "card"; to?: "card" | "line" | "note"; gap?: number } = {}) {
@@ -115,8 +112,6 @@ function overview(): Scene {
   return { board: b, links: ["m-sel"] };
 }
 
-// ---------- 标签 ----------
-
 const SEEN = [
   { n: 1, args: [["seq", "Sequence(id=0, 37 tokens)"]] as [string, string][] },
   { n: 2, args: [["seq", "Sequence(id=3, 512 tokens)"]] as [string, string][] },
@@ -150,8 +145,6 @@ function labels(): Scene {
   cells.forEach(([cap, link, o], i) => pair(g, b, `lb${i}`, (i % 3) * 1000, 40 + Math.floor(i / 3) * 230, cap, link, { ...o, gap: 300 }));
   return { board: b, after: () => setEditing({ kind: "label", id: `lb${cells.length - 1}` }) };
 }
-
-// ---------- 走线 ----------
 
 function routing(): Scene {
   const { board: b, at } = scene("Arrow routing");
@@ -191,8 +184,6 @@ function routing(): Scene {
   return { board: b };
 }
 
-// ---------- 手绘线（从 Mark 出发） ----------
-
 function handDrawn(a: Args): Scene {
   const { board: b, at } = scene("Hand-drawn arrows");
   const g = at(0, 0);
@@ -211,8 +202,6 @@ function handDrawn(a: Args): Scene {
   arrow(b, "hdc", whole(m2), whole(c), { label: "和左边一起看" });
   return { board: b };
 }
-
-// ---------- 正在连 ----------
 
 function drawing(a: Args): Scene {
   const { board: b, put } = scene("Drawing an arrow");
@@ -234,8 +223,6 @@ function drawing(a: Args): Scene {
     },
   };
 }
-
-// ---------- 悬停 ----------
 
 /** 普通箭头、出发行其实调用了目标卡：悬停出「+ Call」；Call 箭头悬停出「+」（参数） */
 function hovering(a: Args): Scene {

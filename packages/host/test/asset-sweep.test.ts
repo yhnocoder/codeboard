@@ -1,6 +1,3 @@
-// Unused images in assets/ are cleaned up in the background: a file no board, shared card or open board refers to and not changed for
-// 7 days is deleted; referenced ones (from any board file, a shared card in cards/, the trash, or an open board's unsaved state) and
-// recent ones stay; each storage folder is swept at most once a day
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";

@@ -25,7 +25,6 @@ const izWant = rooted(() => createMemo(() => {
   else if (!camMoving()) held = 1 / cam.z;
   return +held.toFixed(4);
 }));
-/** 这张卡的 --iz（只在地图档用） */
 export const izOf = (id: string) => cardIz[id] ?? izWant();
 // 换完了的档：新出现的卡直接用它
 const [settled, setSettled] = createSignal<Lod>("full");

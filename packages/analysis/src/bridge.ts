@@ -57,8 +57,6 @@ function targetOf(arg: string): string | undefined {
   return undefined;
 }
 
-// ---------- pybind ----------
-
 /** pybind11 / nanobind：m.def("name", &f)、.def("name", &Cls::f)、.def_static…；lambda 的目标是那一行 */
 export function pybindDefs(text: string, name: string): Registration[] {
   if (!/pybind11|PYBIND11_MODULE|nanobind|NB_MODULE/.test(text)) return [];
@@ -76,8 +74,6 @@ export function pybindDefs(text: string, name: string): Registration[] {
   }
   return out;
 }
-
-// ---------- torch.ops / TORCH_LIBRARY ----------
 
 /** TORCH_LIBRARY(ns, m) / TORCH_LIBRARY_IMPL / _FRAGMENT 里的 m.def("name", &f)、m.impl("name", kCUDA, &f)；只有 schema 的 m.def 不算 */
 export function torchLibDefs(text: string, name: string): Registration[] {
@@ -107,8 +103,6 @@ export function torchOpOf(call: Pick<CallSite, "name" | "recv">): { ns: string; 
   return { ns: m[1], op: m[2] };
 }
 
-// ---------- PyO3 ----------
-
 /** Rust 里导出给 Python 的函数：#[pyfunction] fn name / #[pyo3(name = "name")]；#[pymethods] impl 里的方法 */
 export function pyo3Defs(text: string, syms: Sym[], name: string): Sym[] {
   if (!/#\[py(function|methods|module|class)/.test(text)) return [];
@@ -128,8 +122,6 @@ export function pyo3Defs(text: string, syms: Sym[], name: string): Sym[] {
   }
   return out;
 }
-
-// ---------- 模板参数 ----------
 
 /** template <int kNumRanks, int kNumThreads, typename T = float> → 参数名 */
 export function templateParams(head: string): string[] {
@@ -167,8 +159,6 @@ function bindTemplate(params: string[], args: string[], consts: Record<string, s
     return { name, value: v && literal(v) ? v : short(a.trim(), 32) };
   });
 }
-
-// ---------- launch macro：SWITCH_RANKS(DISPATCH_LAUNCH_CASE) ----------
 
 /** #define NAME(params) body（续行的 \ 接起来） */
 export function macroDefs(text: string): Map<string, { params: string[]; body: string; line: number }> {
@@ -260,7 +250,7 @@ export function launchTemplateArgs(lineText: string, col: number): string[] {
 }
 export const bindLaunch = (kernelHead: string, targs: string[], fnText: string) => bindTemplate(templateParams(kernelHead), targs, constexprs(fnText));
 
-// ---------- JIT 编译：jit->compile("dispatch", std::format(R"(#include <…/{}.cuh> … &ns::{})", header, func)) ----------
+// jit->compile("dispatch", std::format(R"(#include <…/{}.cuh> … &ns::{})", header, func))
 
 export type JitKernel = { header: string; kernel: string; targs: string[]; ns?: string };
 
@@ -283,8 +273,6 @@ export function jitKernels(callText: string, fnText: string): JitKernel[] {
     return { header: `${inc[1]}${h?.v ?? ""}${inc[2]}`, kernel: f.kernel, targs: f.targs, ns: ref[1].replace(/::$/, "") || undefined };
   });
 }
-
-// ---------- Triton ----------
 
 export type TritonInfo = { jit: boolean; constexprs: string[]; configs: BoundVal[][] };
 
@@ -330,8 +318,6 @@ export function tritonVals(info: TritonInfo, params: string[], args: Arg[]): { v
   return { vals, alts };
 }
 
-// ---------- TileLang ----------
-
 /** @tilelang.jit 的工厂函数：里面 @T.prim_func 的那个函数（跳过工厂直达 prim_func） */
 export function tilelangInner(lines: string[], factory: Pick<Sym, "start" | "defLine" | "qual">, syms: Sym[]): Sym | undefined {
   const head = lines.slice(factory.start - 1, factory.defLine - 1).join("\n");
@@ -353,8 +339,6 @@ export function factoryVals(params: Sym["params"], args: Arg[]): BoundVal[] {
   for (const a of args) if (a.kw) out.push({ name: a.kw, value: short(a.text, 28) });
   return out;
 }
-
-// ---------- 动态分发 ----------
 
 /** 基类方法是不是抽象的：@abstractmethod，或者函数体（去掉 docstring）只有 raise NotImplementedError / ... / pass */
 export function isAbstractBody(lines: string[], sym: Pick<Sym, "start" | "defLine" | "end">): boolean {

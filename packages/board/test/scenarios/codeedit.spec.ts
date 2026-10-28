@@ -1,6 +1,6 @@
 // 编辑代码（CodeMirror）：Free code 卡进出编辑时字、行号、颜色的位置一点不动（所有主题、亮暗）；打字、缩进、注释、保存；
 // 语言服务（宿主是假的）：补全菜单、签名提示、悬停、虚拟文档的消息；Note 里的代码块编辑时也和显示时一样。
-// Usage: npm run harness -- codeedit [--light]   LOOKS=warm-ink,graphite 只看这几个主题；SHOTS_DIR=… 存截图
+// LOOKS=warm-ink,graphite 只看这几个主题；SHOTS_DIR=… 存截图
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";

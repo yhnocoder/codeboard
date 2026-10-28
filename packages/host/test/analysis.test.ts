@@ -1,4 +1,3 @@
-// A card's segment is analyzed on its own lines only: the same as analyzing the whole file and clipping it
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";

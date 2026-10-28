@@ -1,4 +1,3 @@
-// scenarios for the shell, cards, arrows and stickers (npm run harness -- linkPlusDelay menusFitWindow emptyCardDiscard …)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { cornerAt, emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard } from "@codeboard/core";
 import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
@@ -117,6 +116,26 @@ test("menusFitWindow", async () => {
   await close(h);
 });
 
+test("arrangeMenuDisablesNoOps", async () => {
+  const b = richBoard(), [bottom, , top] = b.cards.map((c) => c.id);
+  const h = await open({ board: b, light, w: 1500, h: 950 });
+  const arrange = async (id: string) => {
+    await h.page.locator(`.card[data-id="${id}"] .chead`).click({ button: "right", position: { x: 200, y: 12 } });
+    await h.page.locator(".ctx button", { hasText: /^Arrange$/ }).hover();
+    const sub = h.page.locator(".ctx").last();
+    await sub.locator(":scope > button").first().waitFor(); await idle(h);
+    return Object.fromEntries(await sub.locator(":scope > button").evaluateAll((bs) => bs.map((x) => [x.querySelector(".lb")!.textContent!.trim(), (x as HTMLButtonElement).disabled])));
+  };
+  const onTop = await arrange(top);
+  check("arrange-top-card", onTop["Bring to Front"] && onTop["Bring Forward"] && !onTop["Send Backward"] && !onTop["Send to Back"], JSON.stringify(onTop));
+  await h.page.keyboard.press("Escape"); await h.page.keyboard.press("Escape"); await idle(h);
+  const atBack = await arrange(bottom);
+  check("arrange-bottom-card", !atBack["Bring to Front"] && !atBack["Bring Forward"] && atBack["Send Backward"] && atBack["Send to Back"], JSON.stringify(atBack));
+  await h.page.locator(".ctx").last().locator(":scope > button", { has: h.page.locator(".lb", { hasText: /^Bring to Front$/ }) }).click();
+  await until(h, "the bottom card moves to the front", () => h.board().cards.at(-1)?.id === bottom);
+  await close(h);
+});
+
 test("stickerPlace", async () => {
   const h = await open({ board: richBoard(), light, w: 1500, h: 950 });
   await h.page.locator('.bbar button[aria-label="Sticker"]').click(); await h.page.locator(".stkpick .scell").first().waitFor();
@@ -219,7 +238,7 @@ test("cardResizeFit", async () => {
   await close(h);
 });
 
-// Regression: the empty-space context menu stays fully inside the window at all four corners
+// the empty-space context menu stays fully inside the window at all four corners
 test("contextMenuCorners", async () => {
   const b = emptyBoard("b1", "ctx");
   put(b, card("Scheduler.schedule"), 80, 80, 560);
@@ -252,7 +271,6 @@ test("stickerBinding", async () => {
   // Covered: card nb is above post, k6 is below nb
   const covered = await h.page.evaluate(() => { const e = document.querySelector<HTMLElement>('[data-sticker="k6"]')!; const r = e.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) as HTMLElement; return !!top.closest('.card[data-id="nb"]'); });
   await shot(h, "board-bind-1");
-  // Drag post's title bar down 60
   const hd = h.page.locator(`.card[data-id="${post}"] .chead`).first();
   const r = (await hd.boundingBox())!;
   await h.page.mouse.move(r.x + 200, r.y + 15); await h.page.mouse.down(); await h.page.mouse.move(r.x + 200, r.y + 75, { steps: 6 }); await h.page.mouse.up();
@@ -596,7 +614,7 @@ test("themeKeepsHeight", async () => {
   const out: Record<string, number> = {};
   for (const theme of ["warm-ink", "classic", "soft-light", "colorful", "newspaper", "poster", "drafting", "graphite", "ink-wash", "city"]) {
     const b = richBoard();
-    b.place[b.cards[1].id].h = 164; // code area height (format v4): 200 tall in Warm Ink
+    b.place[b.cards[1].id].h = 164; // code area height: 200 tall in Warm Ink
     const h = await open({ board: b, light, w: 1500, h: 950, settings: { theme } as any });
     await idle(h);
     out[theme] = await h.page.locator(`.card[data-id="${b.cards[1].id}"] .cbody`).evaluate((e) => Math.round(e.getBoundingClientRect().height));
@@ -606,7 +624,7 @@ test("themeKeepsHeight", async () => {
   check("theme-fit", Math.max(...v) - Math.min(...v) <= 6, JSON.stringify(out));
 });
 
-/** Definition preview: closes when the mouse leaves (same moves as e2e step 5) */
+/** Definition preview: closes when the mouse leaves */
 test("peekClosesOnLeave", async () => {
   const b = emptyBoard("b1", "board");
   const sch = card("Scheduler.schedule"); put(b, sch, 200, 80, 560); b.cam = { x: 0, y: 0, z: 1 };
@@ -719,7 +737,6 @@ test("pasteNearOriginal", async () => {
   await close(h);
 });
 
-/** Variable boxes on links can be dragged along the link; position is stored as t */
 /** Drag from a line onto another card's line number → links to that line (the line highlights before release) */
 test("lineToLineLink", async () => {
   const b = richBoard();

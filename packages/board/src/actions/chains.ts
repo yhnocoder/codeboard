@@ -242,8 +242,6 @@ export function manualCallTo(from: { card: string; seg?: string; line?: number; 
   toast(`Linked to ${cardTitle(t.card)} (manual)`);
 }
 
-// Generated 卡：生成的代码 / 编译产物，钉在一次运行上
-
 const hhmm = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
 
 /** 从这一行（或这张卡）加 Generated 卡：内容来自剪贴板或选的文件；Generated from 的点线连回这一行 */

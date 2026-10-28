@@ -1,7 +1,3 @@
-// 写公式时的提示，只在编辑公式（公式块的原文框、展开成 $…$ 的行内公式）时出现：
-// - 打 \ 弹出命令补全（常用命令 + 公式预设里的「预设」+ 这个公式里 \newcommand 的「本式」），↑↓ 选，回车 / Tab 插入，Esc 关，光标落进第一个 {}
-// - 边打边预览（行内公式在下面的小气泡里）；写错时留着上一次排对的样子（淡下去），下面用大白话说错在哪、标出位置，常见的能一键改。
-//   命令名还没打完（\fr 还能补成 \frac）时不报错
 // 预览一帧最多排一次（打字快时几次输入并成一次）；补全的列表在按键时同步更新（紧接着的回车要用它），每条的样子排过就缓存
 import katex from "katex";
 import type { EditorState } from "@tiptap/pm/state";
@@ -155,8 +151,6 @@ function explain(e: { rawMessage?: string; message?: string; position?: number; 
   return { parts, at: at !== null && at <= src.length ? at : null };
 }
 
-// ---------- 界面 ----------
-
 /** 提示挂在哪个输入上：原文、光标、光标在屏幕上的位置、怎么改原文；行内公式另给原文在屏幕上的范围（预览气泡放在它下面） */
 export type HintHost = {
   text(): string;
@@ -206,7 +200,6 @@ export class MathHints {
   private items: MathCmd[] = [];
   private from = 0;
   private i = 0;
-  /** 行内公式的预览气泡 */
   private tip: HTMLDivElement | null = null;
   private pv: HTMLElement | null;
   private err: HTMLElement | null = null;
@@ -421,8 +414,7 @@ export function textareaCaret(ta: HTMLTextAreaElement, i: number): DOMRect {
   return out;
 }
 
-// ---------- 行内公式（编辑器里展开成 $…$ 原文的那一段，或刚打了开头的 $、还没打结尾的） ----------
-
+// 行内公式：编辑器里展开成 $…$ 原文的那一段，或刚打了开头的 $、还没打结尾的
 type Region = { from: number; to: number; text: string; caret: number; d: number };
 /** 光标所在的行内公式原文：LaTeX 在文档里的 [from, to)、字、光标在字里的位置、两头的 $ 有几个 */
 export function inlineMathAt(state: EditorState): Region | null {

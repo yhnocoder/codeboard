@@ -1,5 +1,3 @@
-// Capture Run: the injected tracer records only calls inside Study Scope, the record is saved under <storageDir>/runs/ and maps back
-// to workspace paths for the board
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

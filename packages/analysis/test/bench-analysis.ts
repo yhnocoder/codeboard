@@ -1,4 +1,4 @@
-// 分析耗时：一个仓库里最大的 40 个 .py（参数给的目录，默认 examples/sglang）。旧 = v0.1.5 逐节点遍历，新 = 查询 + 增量 + 按行
+// 分析耗时：一个仓库里最大的 40 个 .py（参数给的目录，默认 examples/sglang）。旧 = 逐节点遍历，新 = 查询 + 增量 + 按行
 // 跑法：npm run bench:analysis -w @codeboard/analysis [-- <目录>]（sglang 先 git submodule update --init --depth 1 examples/sglang）
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";

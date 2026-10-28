@@ -1,15 +1,4 @@
-# Publishes packages/markdown to npm as @yhnocoder/markdown. This file is the package's npm Trusted Publisher, so its name
-# (markdown-release.yml) must not change: npm trusts it through GitHub's OIDC token, no NPM_TOKEN secret, and every version
-# gets a provenance statement.
-#
-# To release: bump "version" in packages/markdown/package.json in a PR and merge it, then push the tag markdown-v<that version>
-# (or run this workflow by hand on that tag). A tag that names a different version, or a run that is not on a tag, fails.
-# The job builds the package, runs its unit tests (including the check of what the tarball holds) and the Markdown demo, which
-# uses the built package exactly as an npm user would, and then stages the version on npm (npm stage publish). The Trusted
-# Publisher only allows staging: the version goes live when the owner approves it with 2FA, on npmjs.com or with
-# npm stage approve <stage-id> (npm stage list @yhnocoder/markdown shows the id).
-#
-# The first version was published by hand, because only an existing package can have a Trusted Publisher. See CONTRIBUTING.md.
+# This file is the package's npm Trusted Publisher, so its name (markdown-release.yml) must not change.
 name: Markdown release
 on:
   push:
@@ -36,7 +25,7 @@ jobs:
           if [ "$REF_TYPE" != tag ] || [ "$TAG" != "markdown-v$V" ]; then
             echo "::error::$REF_TYPE $TAG does not match packages/markdown/package.json version $V. Bump the version there first, or run this on the tag markdown-v$V."; exit 1
           fi
-      # Node 22, npm 11.21.1 (npm stage publish needs npm 11.15.0 or later), npm ci, and only the markdown build
+      # npm stage publish needs npm 11.15.0 or later
       - uses: ./.github/actions/setup
         with: { build: npm run build -w @yhnocoder/markdown }
       - name: Check the npm version

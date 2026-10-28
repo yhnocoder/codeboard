@@ -1,4 +1,3 @@
-// 编辑器和静态显示共用这一套 schema，所以编辑和显示长得一样。
 // MarkdownManager 只建一个，用自己的 marked 实例（@tiptap/markdown 默认往全局 marked 上挂规则，建几个就叠几层，解析会越来越慢）。
 import { Mark, Node, getSchema, mergeAttributes, markInputRule, markPasteRule, parseIndentedBlocks, InputRule, type AnyExtension, type JSONContent } from "@tiptap/core";
 import type { Schema } from "@tiptap/pm/model";
@@ -25,7 +24,6 @@ import DOMPurify from "dompurify";
 import katex from "katex";
 import { EMOJI } from "./emoji";
 
-// ---------- 公式：照 Pandoc 的规则 ----------
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
 // 行内的 $$…$$ 是行内的大号公式
 const INLINE_MATH = /^\$\$([^$]+?)\$\$|^\$([^$\s](?:[^$]*[^$\s\\])?)\$(?!\d)/;
@@ -103,7 +101,6 @@ const Math2 = BlockMath.extend({
   },
 });
 
-// ---------- 代码块 ----------
 // isolating：编辑时代码块是一个自己管光标的代码编辑器（editor/codeblock.ts），对 ProseMirror 来说是封闭的块，
 // 两个代码块之间、文档头尾的代码块外面才停得住光标（gapcursor 只认两边封闭的位置）
 const Code = CodeBlock.extend({
@@ -125,11 +122,9 @@ const Code = CodeBlock.extend({
   },
 }).configure({ defaultLanguage: null, enableTabIndentation: true });
 
-// ---------- 折叠块：<details><summary>标题</summary> … </details>（GitHub 也认这个写法） ----------
 const escHtml = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 const unHtml = (s: string) => s.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&amp;/g, "&");
 function detailsAt(src: string) {
-  // 找配对的 </details>（可以嵌套）
   const open = /^ {0,3}<details(\s+open)?\s*>[ \t]*\n?/i.exec(src);
   if (!open) return;
   const re = /<details(\s[^>]*)?>|<\/details\s*>/gi;
@@ -176,7 +171,6 @@ const Det = Details.extend({
 const DetSum = DetailsSummary.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 const DetBody = DetailsContent.extend({ parseMarkdown: undefined, renderMarkdown: undefined, markdownTokenizer: undefined });
 
-// ---------- [toc]：目录 ----------
 // 单独一行的 [toc]（不分大小写）。目录里是这篇的所有标题，跟着标题变：显示时 render.ts 填，编辑时节点视图自己填
 const TOC_RE = /^ {0,3}\[toc\][ \t]*(?:\n|$)/i;
 export const tocEntries = (doc: { descendants: (f: (n: any) => boolean | void) => void }) => {
@@ -211,7 +205,6 @@ const Toc = Node.create({
   },
 });
 
-// ---------- :smile: 表情 ----------
 // 存成 :名字:（和 Typora、GitHub 一样），显示成表情字。只认 emoji.ts 里有的名字；前面紧挨着字母数字的不算（1:100: 是比例）
 const EMOJI_AT = /^:([a-z0-9_+-]+):/;
 const isEmoji = (name: string) => Object.prototype.hasOwnProperty.call(EMOJI, name);
@@ -240,30 +233,27 @@ const Emoji = Node.create({
   },
 });
 
-// ---------- [[引用]]（wiki 链接） ----------
 // 存成 [[标题]]：可读，复制到别处也能按标题找。指向什么由用的一方定（setRefResolver、编辑器的 refs）。
-// 节点名 cardRef、class、data 属性是最早的卡片引用留下的名字：改了就要动存下的文件和样式
 const WikiRef = Node.create({
-  name: "cardRef",
+  name: "wikiRef",
   group: "inline", inline: true, atom: true, selectable: true,
   addAttributes() { return { label: { default: "", rendered: false } }; },
-  parseHTML() { return [{ tag: "span[data-cardref]", getAttrs: (e) => ({ label: (e as HTMLElement).getAttribute("data-cardref") ?? "" }) }]; },
-  renderHTML({ node, HTMLAttributes }) { return ["span", mergeAttributes(HTMLAttributes, { class: "cref", "data-cardref": node.attrs.label }), node.attrs.label]; },
+  parseHTML() { return [{ tag: "span[data-ref]", getAttrs: (e) => ({ label: (e as HTMLElement).getAttribute("data-ref") ?? "" }) }]; },
+  renderHTML({ node, HTMLAttributes }) { return ["span", mergeAttributes(HTMLAttributes, { class: "md-ref", "data-ref": node.attrs.label }), node.attrs.label]; },
   renderText: ({ node }) => `[[${node.attrs.label}]]`,
-  parseMarkdown: (t) => ({ type: "cardRef", attrs: { label: t.label } }),
+  parseMarkdown: (t) => ({ type: "wikiRef", attrs: { label: t.label } }),
   renderMarkdown: (n) => `[[${n.attrs?.label ?? ""}]]`,
   markdownTokenizer: {
-    name: "cardRef", level: "inline",
+    name: "wikiRef", level: "inline",
     start: (src) => src.indexOf("[["),
     tokenize: (src) => {
       const m = /^\[\[([^\[\]\n]+?)\]\]/.exec(src);
       if (!m) return;
-      return { type: "cardRef", raw: m[0], label: m[1].trim() };
+      return { type: "wikiRef", raw: m[0], label: m[1].trim() };
     },
   },
 });
 
-// ---------- 脚注：正文 [^1]，定义 [^1]: 内容（写回时按出现顺序重新编号） ----------
 const FnRef = FootnoteReference.extend({
   // 打 [^1] 变引用；段首的先不变（可能是在写定义 [^1]: …，见 editor/typora.ts）
   addInputRules() {
@@ -320,7 +310,7 @@ const Img = Image.configure({ inline: true, allowBase64: true });
 const Para = Paragraph.extend({
   parseMarkdown(t, h) { return t.tokens?.length === 1 && t.tokens[0].type === "image" ? h.createNode("paragraph", undefined, h.parseInline(t.tokens)) : this.parent?.(t, h) ?? []; },
 });
-// ---------- 原样的 HTML：<u>、<kbd> 是格式，<br> 是硬换行；别的标签和注释一字不改地留着 ----------
+// 原样的 HTML：<u>、<kbd> 是格式，<br> 是硬换行；别的标签和注释一字不改地留着
 // 行内的（<span style=…>字</span>：开头标签到配对的结尾标签算一个）是 htmlInline，单独成块的（<div>…</div>、<!-- … -->）是 htmlBlock。
 // 显示的是清洗过的 HTML；注释不显示，编辑时显示成淡色的源码（看得见、删得掉）。打的字里的 < 照旧转义成 \<（是字，不是 HTML）
 export const isHtmlComment = (raw: string) => /^\s*<!--[\s\S]*-->\s*$/.test(raw);
@@ -366,12 +356,11 @@ const HtmlInline = htmlNode("htmlInline", "span").extend({
     tokenize: (src) => { const raw = htmlInlineAt(src); return raw ? { type: "htmlInline", raw } : undefined; },
   },
 });
-// 单独成块的 HTML：marked 的 html 块，原样留着
 const HtmlBlock = htmlNode("htmlBlock", "div").extend({
   markdownTokenName: "html",
   parseMarkdown: (t) => { const raw = (t.text || t.raw || "").replace(/\s+$/, ""); return raw.trim() ? { type: "htmlBlock", attrs: { raw } } : []; },
 });
-// ---------- 行内格式的 Markdown 记号：唯一的一份（写回、光标处显示的记号、展开成原文都按它） ----------
+// 行内格式的 Markdown 记号：唯一的一份（写回、光标处显示的记号、展开成原文都按它）
 // bold / italic / strike / code / link 的写回是 TipTap 自带的（和这里的记号一样），其余的写回用这张表
 export const MARK_MD: Record<string, (attrs: Record<string, any>) => readonly [string, string]> = {
   bold: () => ["**", "**"], italic: () => ["*", "*"], strike: () => ["~~", "~~"], code: () => ["`", "`"],
@@ -402,7 +391,6 @@ function mdSyntax(name: string, re: RegExp) {
     },
   };
 }
-// ---------- <u>、<kbd> ----------
 const U = Underline.extend(mdSyntax("underline", /^<u>([\s\S]+?)<\/u>/));
 const Kbd = Mark.create({
   name: "kbd",
@@ -411,7 +399,6 @@ const Kbd = Mark.create({
   renderHTML: ({ HTMLAttributes }) => ["kbd", HTMLAttributes, 0],
   ...mdSyntax("kbd", /^<kbd>([\s\S]+?)<\/kbd>/),
 });
-// ---------- ==高亮==、H~2~O、x^2^（Typora 的扩展语法） ----------
 // 下标、上标照 Pandoc：中间不能有空白（要空白写 \ ），~ 只有一个（~~ 是删除线）；高亮 == 里两头不是空白
 const SUB_RE = /^~(?!~)((?:\\.|[^~\s\\])+)~(?!~)/, SUP_RE = /^\^((?:\\.|[^\^\s\\])+)\^/, HL_RE = /^==(?=[^\s=])((?:\\.|[^\n\\])*?[^\s\\])==/;
 const tagMark = (name: string, tag: string, re: RegExp) => Mark.create({
@@ -422,7 +409,7 @@ const tagMark = (name: string, tag: string, re: RegExp) => Mark.create({
 });
 const Highlight = tagMark("highlight", "mark", HL_RE);
 
-// ---------- {字|批注}、{字|批注|purple below}：贴在字上的手写标注（注音 ruby 的写法） ----------
+// {字|批注}、{字|批注|purple below}：贴在字上的手写标注（注音 ruby 的写法）
 // 和 ==高亮== 是两回事，各用各的记号。第三段可选：颜色（blue purple orange green，默认 blue）和 below（标签写在字下面）。
 // 字和批注里的 { } | \ 写成 \{ \} \| \\；表格里 | 本来就要写成 \|。别的 Markdown 查看器里它原样显示成 {字|批注}，字不会丢
 export const ANNOT_COLORS = ["blue", "purple", "orange", "green"] as const;
@@ -464,7 +451,6 @@ const Sup = tagMark("superscript", "sup", SUP_RE);
 const Hr = HorizontalRule.extend({ addInputRules: () => [] });
 // 行内代码的打字规则在 editor/typora.ts（反引号按长度配对）
 const InlineCode = CodeMark.extend({ addInputRules: () => [] });
-// ---------- 列表 ----------
 // 空的列表项只写记号（"2."、"-"、"- [ ]"），后面不留空格：写回时末尾的空白会被去掉，而 marked 把行尾带空格的 "- " 读成段落里的字
 const bareEmpty = (n: JSONContent, md: string) => {
   const first = n.content?.[0];
@@ -505,7 +491,6 @@ const Tasks = TaskList.extend({
 });
 // 表格：GFM 存不下合并单元格和一格多段，所以一格只放一段
 const Cell = TableCell.extend({ content: "paragraph" });
-// 表格前后不多写空行
 const Tbl = Table.extend({
   renderMarkdown(n, h, c) { return String(this.parent?.(n, h, c) ?? "").replace(/^\n+|\n+$/g, ""); },
 }).configure({ resizable: false });
@@ -542,7 +527,6 @@ export const baseExtensions: AnyExtension[] = [
   WikiRef, Emoji, FnList, FnDef, FnRef, HtmlInline, HtmlBlock,
 ];
 
-// ---------- 写回：少转义 ----------
 // 原版把 \ ` * _ [ ] ~ 全部转义，还把 < & 变成实体：block_manager 会写成 block\_manager。这里只在重新解析会变样时才转义
 const PUNCT = /[!-/:-@[-`{-~]/;
 /**
@@ -571,7 +555,6 @@ function escText(s: string): string {
       // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
       case "^": out += SUP_RE.test(s.slice(i)) && prev !== "^" ? "\\^" : c; break;
       case "=": out += HL_RE.test(s.slice(i)) && prev !== "=" ? "\\=" : c; break;
-      // 字面的 {a|b}：会被读成标注的才转义
       case "{": out += ANNOT_RE.test(s.slice(i)) ? "\\{" : c; break;
       // 字面的 :smile:（会被读成表情的）：转义前一个冒号
       case ":": { const m = EMOJI_AT.exec(s.slice(i)); out += m && isEmoji(m[1]) && !/[\p{L}\p{N}_]/u.test(prev) ? "\\:" : c; break; }
@@ -592,10 +575,9 @@ const mm = new MarkdownManager({
   extensions: baseExtensions,
 });
 let schema: Schema | undefined;
-/** 这套扩展的 schema */
 export const mdSchema = () => (schema ??= getSchema(baseExtensions));
 
-// ---------- 包着行内原子节点的格式：**a $x$**、==:tada:==、[![i](u)](l) ----------
+// 包着行内原子节点的格式：**a $x$**、==:tada:==、[![i](u)](l)
 // @tiptap/markdown 只给字加格式（applyMarkToContent 只认 text，往下找 content），行内的公式、表情、图片、[[引用]] 这些没有内容的
 // 节点就没了外面的格式；写回时它又在每个非文字节点前把格式全关掉。两头都在这里补：读的时候行内原子节点也带上格式，
 // 写的时候带格式的原子节点先写成自己的 Markdown 字（见 toMd），和两边的字一起被同一对记号包住
@@ -648,7 +630,6 @@ function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }
 }
 
-/** 文档 JSON → Markdown */
 export function serializeMd(doc: JSONContent): string {
   const content = escPairs(unsource(doc.content ?? []));
   const fi = content.findIndex((n) => n.type === "footnotes");
@@ -682,7 +663,7 @@ export function parseSource(src: string, inline: boolean): JSONContent[] | null 
   return ns && restorePairs(ns);
 }
 
-// ---------- 光标处展开的 Markdown 原文（编辑器里的 mdSrc 标记，见 editor/source.ts） ----------
+// 光标处展开的 Markdown 原文（编辑器里的 mdSrc 标记，见 editor/source.ts）
 // 光标走进 **粗体**、链接、标题、行内公式时，那一段换成带 mdSrc 标记的原文（真的字，能改）；光标离开时把原文重新解析回去。
 // 写出 Markdown 之前（保存、复制、原文模式）先在这里把还展开着的原文收回去，所以 mdSrc 永远不会写进文件
 export const SRC_MARK = "mdSrc";
@@ -730,7 +711,7 @@ export function unsourceBlock(b: JSONContent, keep: (from: number, to: number, p
   if (type !== b.type) attrs = undefined;
   return { ...b, type, ...(attrs ? { attrs } : { attrs: undefined }), content: out };
 }
-// ---------- 打字时的反斜杠转义（编辑器里的 mdEsc 标记） ----------
+// 打字时的反斜杠转义（编辑器里的 mdEsc 标记）
 // 在编辑器里打 \* 时那个 \ 带 mdEsc 标记（光标不在旁边时不显示，Typora 一样）；写出时这一对原样写 \*，不再把 \ 当字转义成 \\\*。
 // 先换成一个私用区的字（写出时不会被转义、不影响旁边的记号），写完再换回 \X
 export const ESC_MARK = "mdEsc";

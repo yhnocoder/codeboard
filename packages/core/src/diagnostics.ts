@@ -1,4 +1,3 @@
-// Copy Diagnostics 的文本：home 目录一律换成 ~。
 import { escapeRegExp } from "@codeboard/analysis/basics";
 
 export type DiagInfo = {

@@ -1,4 +1,3 @@
-// 多选：选中 ≥ 2 张卡时上方浮出工具条（Create Section · Create Sub-board · Tidy Up · ···）；框选；卡、线、Section 一起选
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, noteCard, codeCard, markCard, textCard, type Globals, type Scene } from "./support/board";
 import { waitFor, $ } from "./support/play";

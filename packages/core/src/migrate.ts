@@ -39,8 +39,6 @@ export function migrateSharedCard(raw: any): SharedCardFile {
   return sc;
 }
 
-// ---------- 补成当前类型 ----------
-
 /** 可选字段写成 null 的（手改、旧版本）：当没有 */
 function dropNulls(x: any): any {
   if (Array.isArray(x)) return x.map(dropNulls);
@@ -112,8 +110,6 @@ function cornerStickers(b: any) {
     k.at = { kind: "canvas", ...cornerAt(b.place[card]?.w ?? 320, i), on: { card } };
   }
 }
-
-// ---------- 版本链 ----------
 
 /**
  * 第 6 版 → 第 7 版：Markdown 里转义的 \$ 从此总是字面的 $（Typora 一样）。之前每次解析都把两头都转义了的 \$…\$ 当成公式

@@ -108,7 +108,6 @@ async function insertPickedImage(e: Editor) {
   await insertImageUrl(e, saveImage(ui!.opts), url, "image.png");
 }
 
-/** /、[[、: 三个菜单共用 */
 function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { char: string; allowSpaces?: boolean; allowedPrefixes?: string[] | null; items: (q: string) => MenuItem[]; on?: () => boolean }) {
   return Suggestion<MenuItem, MenuItem>({
     editor,
@@ -116,7 +115,6 @@ function menuSuggestion(editor: Editor, kind: "slash" | "ref" | "emoji", o: { ch
     char: o.char, allowSpaces: o.allowSpaces, allowedPrefixes: o.allowedPrefixes,
     items: ({ query }) => o.items(query),
     command: ({ editor, range, props }) => props.run(editor, range),
-    // 代码里不弹
     allow: ({ state, range }) => (o.on?.() ?? true) && !state.doc.resolve(range.from).parent.type.spec.code,
     render: () => {
       let box: HTMLDivElement | undefined, unmount: (() => void) | undefined;
@@ -174,10 +172,8 @@ function MenuView(p: { ui: Ui; pick: (it: MenuItem) => void }) {
   );
 }
 
-/** 焦点去的地方还在编辑器（或它的浮层）里 */
 const isInside = (e: Editor, t: EventTarget | null) => t instanceof Node && (e.view.dom.contains(t) || !!(t as Element).closest?.(".mdui, .md-bubble"));
 
-// ---------- 选中工具条 ----------
 function Bubble(p: { editor: Editor; tick: Accessor<number>; ui: Ui }) {
   let el!: HTMLDivElement;
   const link = p.ui.link, setLink = p.ui.setLink;
@@ -351,7 +347,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
             .map(({ c }) => ({ title: c.title, hint: c.kind, key: c.id, run: (e: Editor, r: Range) => {
               // 自动配对补上的 ]] 也一起换掉（pairs.ts）
               const to = e.state.doc.textBetween(r.to, Math.min(r.to + 2, e.state.doc.content.size), "", "\ufffc") === "]]" ? r.to + 2 : r.to;
-              e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "cardRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run();
+              e.chain().focus().insertContentAt({ from: r.from, to }, [{ type: "wikiRef", attrs: { label: c.title } }, { type: "text", text: " " }]).run();
             } }));
         },
       })];
@@ -471,7 +467,6 @@ function dedent(s: string) {
   return Number.isFinite(ind) && ind > 0 ? ls.map((l) => l.slice(ind)).join("\n") : s;
 }
 
-// ---------- 挂载 ----------
 // 编辑器只建一次（空闲时预热好），每次编辑把它挪进这张卡、换一个新的 EditorState（文档、撤销、各插件状态都是新的）：
 // 不用每次重建 schema、扩展、插件和视图，进入编辑只剩把这份文档画出来
 type Sess = { o: MdEditorOpts; onTx: (tr: Transaction) => void; onFocus: () => void; onBlur: (ev: FocusEvent) => void; finish: () => void };

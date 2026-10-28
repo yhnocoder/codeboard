@@ -1,4 +1,3 @@
-// 代码卡的卡头：标题 / 文件:行 / 版本、新版本的琥珀点和横幅、共享、连进来的箭头、进程标签、START、锁、Sidenote、问题、Generated
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, SharedInfo, Stale } from "@codeboard/core";
 import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";

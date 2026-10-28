@@ -1,7 +1,6 @@
 import type { AskType, BoardToHost, HostToBoard, ReplyOf } from "@codeboard/core";
 import { onBoardSwitch } from "./state/root";
 
-// 宿主桥：VS Code webview 用 acquireVsCodeApi；以后 macOS app 换一个实现即可
 type Api = { postMessage(m: unknown): void };
 declare global {
   interface Window { acquireVsCodeApi?: () => Api; __cbSent?: unknown[] }

@@ -1,10 +1,4 @@
-# Study-task replay: the scripted study task in real VS Code (25+ steps), too long for every push. It runs:
-#   nightly    every day on main (and on demand from the Actions tab). Failures go to the issue labelled "replay-nightly":
-#              a comment when the set of failing checks changes, including when everything passes again.
-#   PR label   when the label "replay" is added to a PR (remove and add it again to re-run): base and head are both replayed
-#              with head's script, it fails on checks that fail on head but not on base, and it updates the replay section of
-#              the PR description.
-# Each replay is split into 3 parts, each in its own job. Screenshots go to the ci-screenshots branch.
+# Runs nightly, and on a PR when the label "replay" is added (remove and add it again to re-run).
 name: Replay
 on:
   schedule:

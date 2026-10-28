@@ -50,7 +50,6 @@ function Toolbar() {
   ];
   const more = (e: MouseEvent) => {
     const el = e.currentTarget as HTMLElement, [x, y] = at(el);
-    // 窄时收起来的新建按钮和侧栏开关
     const folded: Parameters<typeof openMenu>[0] = narrow() ? [
       ...tools.filter((t) => t.fold).map((t) => ({ label: t.fold!, run: () => t.run(el) })),
       null,

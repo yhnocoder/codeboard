@@ -1,4 +1,3 @@
-// A relative Sticker Folder setting is under the workspace root: Open Folder and the pack loader use the same folder
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";

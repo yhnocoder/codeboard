@@ -56,8 +56,6 @@ async function lambdaTarget(abs: string, line: number): Promise<Target | null> {
   return { abs, sym: { name: "<lambda>", qual: sym ? `${sym.qual} · lambda` : "lambda", kind: "def", start: line, defLine: line, end: line, sig: l.trim(), params: [] } };
 }
 
-// ---------- 定义找不到时：Python → C++（pybind）/ Rust（PyO3） ----------
-
 /** Python 调用 obj.name(…)：语言服务说不出来（C 扩展），在 pybind / PyO3 的注册里找 name */
 export async function viaRegistry(name: string): Promise<Crossed[]> {
   const out: Crossed[] = [];
@@ -72,8 +70,6 @@ export async function viaRegistry(name: string): Promise<Crossed[]> {
   }
   return out;
 }
-
-// ---------- 点下去之前就认得出的：torch.ops、launch macro、JIT 编译 ----------
 
 /** torch.ops.ns.op(…)：TORCH_LIBRARY 里注册的 C++ 函数 */
 async function viaTorchOps(site: CallSite): Promise<Crossed[]> {
@@ -163,8 +159,6 @@ export async function crossBefore(site: CallSite | undefined, lang: string, here
   } catch (e) { log("warn", `cross-language ${site.name}: ${e instanceof Error ? e.message : e}`); }
   return [];
 }
-
-// ---------- 找到了目标之后：kernel[grid]、<<<>>>、TileLang 工厂 ----------
 
 /** 目标找到了：Triton 的 [grid] 启动补上 constexpr / config；CUDA 的 <<<>>> 补模板取值；TileLang 工厂换成里面的 prim_func */
 export async function decorate(site: CallSite | undefined, t: Target, caller?: { lang: string; line: string; fnText: string }): Promise<Crossed> {

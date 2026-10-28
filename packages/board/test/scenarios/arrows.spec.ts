@@ -1,4 +1,3 @@
-// scenarios for links-core: call graph marks, several callers, Linked here + Back / Forward, Walkthrough order (npm run harness -- graphMarksLinked …)
 import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type Link } from "@codeboard/core";
 import * as fs from "node:fs";
@@ -71,7 +70,7 @@ test("graphMarkPicker", async () => {
   await close(h);
 });
 
-/** Walkthrough from the selected card: Call arrows depth-first, then plain arrows (W01 F) */
+/** Walkthrough from the selected card: Call arrows depth-first, then plain arrows */
 test("walkthroughOrder", async () => {
   const b = emptyBoard("b1", "walk");
   const step = card("LLMEngine.step"), sch = card("Scheduler.schedule"), alloc = card("BlockManager.allocate");
@@ -101,8 +100,8 @@ test("walkthroughOrder", async () => {
 });
 
 /**
- * W03 arrow sides: the 4×4 grid of A (line/card ends × target right / left / below-right / below-left), hysteresis while dragging (B),
- * converging arrows merged into one head (C), Compare column sides and the gutter line (E, W01 B 10–12), plus review screenshots
+ * Arrow sides: the 4×4 grid of A (line/card ends × target right / left / below-right / below-left), hysteresis while dragging (B),
+ * converging arrows merged into one head (C), Compare column sides and the gutter line (E), plus review screenshots
  */
 test("arrowSides", async () => {
   const out = process.env.ROUTING_OUT ?? path.join(OUT, "arrow-routing");
@@ -113,7 +112,7 @@ test("arrowSides", async () => {
   const ln = (c: CodeCard, d: number) => c.segments[0].start + d;
   const end = (c: CodeCard, line?: number) => (line === undefined ? { card: c.id } : { card: c.id, seg: c.segments[0].id, line });
 
-  // ---- A: 4 rows (line→line, line→card, card→line, card→card) × 4 columns (right, left, below-right, below-left)
+  // A: 4 rows (line→line, line→card, card→line, card→card) × 4 columns (right, left, below-right, below-left)
   {
     const b = emptyBoard("b1", "sides");
     const CW = 1000, CH = 640;
@@ -140,7 +139,7 @@ test("arrowSides", async () => {
     await close(h);
   }
 
-  // ---- B: hysteresis while dragging the target (line → line)
+  // B: hysteresis while dragging the target (line → line)
   {
     const b = emptyBoard("b1", "hyst");
     const s = card("Sequence.append_token"), t = card("Block.update");
@@ -162,7 +161,7 @@ test("arrowSides", async () => {
     await step(-92, "2-in-buffer");    // gap 8: inside the 16px buffer, no switch yet
     await step(-150, "3-past-buffer"); // overlap: same side (C shape)
     await step(-92, "3b-back-into-buffer"); // gap 8 again: stays on the same side
-    // slide (W03 6): right after the switch the end is still on its way
+    // slide: right after the switch the end is still on its way
     await h.page.mouse.move(x0 - 70, y0 + 8);
     const early = await h.page.evaluate(() => document.querySelector<SVGPathElement>('g.link[data-lk="H"] path.edge')!.getAttribute("d"));
     await idle(h);
@@ -178,7 +177,7 @@ test("arrowSides", async () => {
     await close(h);
   }
 
-  // ---- C: converging arrows → one stub and one head (to a card heading, and to one line); several from one line share the start
+  // C: converging arrows → one stub and one head (to a card heading, and to one line); several from one line share the start
   {
     const b = emptyBoard("b1", "merge");
     const dst = card("BlockManager.allocate"), dl = card("BlockManager.deallocate");
@@ -205,7 +204,7 @@ test("arrowSides", async () => {
     await close(h);
   }
 
-  // ---- D: slight misalignment, the arrow comes in at an angle (≤ 45°) instead of bending hard
+  // D: slight misalignment, the arrow comes in at an angle (≤ 45°) instead of bending hard
   {
     const b = emptyBoard("b1", "tilt");
     const pairs: [number, number, number, number][] = [[420, 80, 80, 140], [1060, 60, 720, 200], [1560, 40, 1300, 230]];
@@ -216,7 +215,7 @@ test("arrowSides", async () => {
     await close(h);
   }
 
-  // ---- E: Compare columns (left column → left side only, right → right), gutter line between columns, self-link arc, styles
+  // E: Compare columns (left column → left side only, right → right), gutter line between columns, self-link arc, styles
   {
     const b = emptyBoard("b1", "compare");
     const cl = card("BlockManager.can_allocate"), cr = card("BlockManager.allocate");
@@ -257,7 +256,7 @@ test("arrowSides", async () => {
   check("arrowSides", ok, JSON.stringify(results), "screenshots in", out);
 });
 
-/** Dots on a card's left / right edge sit on the heading row; a hand-dragged link starts on the dot it was dragged from (Linda 10-17 02:57) */
+/** Dots on a card's left / right edge sit on the heading row; a hand-dragged link starts on the dot it was dragged from */
 test("dragLinkSide", async () => {
   const b = emptyBoard("b1", "dragside");
   const a = card("Sequence.append_token"), t = card("Block.update");
@@ -290,7 +289,7 @@ test("dragLinkSide", async () => {
   await close(h);
 });
 
-/** Deep snippet: common indentation hidden, code starts near the left edge, fold lines show the hidden levels (Linda 10-17 03:03) */
+/** Deep snippet: common indentation hidden, code starts near the left edge, fold lines show the hidden levels */
 test("commonIndentHidden", async () => {
   const b = emptyBoard("b1", "dedent");
   const lm = card("load_model"), s = lm.segments[0];
@@ -336,7 +335,7 @@ test("constructorCall", async () => {
   await close(h);
 });
 
-/** File path and version in the heading: drag moves the card, a plain click still opens (Linda 10-17 03:05) */
+/** File path and version in the heading: drag moves the card, a plain click still opens */
 test("headingDrag", async () => {
   const b = emptyBoard("b1", "headdrag");
   const a = card("load_model");
@@ -361,7 +360,7 @@ test("headingDrag", async () => {
   await close(h);
 });
 
-/** An arrow the code doesn't show as a call (Process(target=…), cross-language, string dispatch): right-click → Call Mark still marks it (Linda 10-17 03:11) */
+/** An arrow the code doesn't show as a call (Process(target=…), cross-language, string dispatch): right-click → Call Mark still marks it */
 test("manualCallMark", async () => {
   const b = emptyBoard("b1", "manualcall");
   const eng = card("LLMEngine.__init__"), sch = card("Scheduler.schedule");
@@ -387,7 +386,7 @@ test("manualCallMark", async () => {
   await close(h);
 });
 
-/** 悬停一行、鼠标往右移到这一行的圆点：圆点一直在、行不变，邻行右边圆点上已经有箭头（owner 10-17 截图） */
+/** 悬停一行、鼠标往右移到这一行的圆点：圆点一直在、行不变，邻行右边圆点上已经有箭头 */
 test("linePortHover", async () => {
   const b = emptyBoard("b1", "lporthold");
   const eng = card("LLMEngine.__init__"), mr = card("ModelRunner.__init__");

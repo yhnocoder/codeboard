@@ -5,8 +5,6 @@ import { HANG, type Reply } from "./host";
 import { waitFor, settled, click } from "./play";
 import code from "../fixtures/code.json";
 
-// ---------- 菜单、工具栏 ----------
-
 /** 开着的第 level 级菜单（0 = 最外层），展开动画走完 */
 export const menu = (level = 0) => waitFor(() => document.querySelectorAll<HTMLElement>(".ctx.open")[level], `menu level ${level}`);
 /** 菜单里名字是 label 的那一项（不动它） */
@@ -28,8 +26,6 @@ export async function cardMenu(id: string) {
   return menu();
 }
 export const toolbar = (label: string) => click(`.bbar button[aria-label="${label}"]`);
-
-// ---------- 假数据 ----------
 
 export const SEARCH: SearchItem[] = [
   { kind: "entry", label: "nanovllm.LLM", detail: "nanovllm/__init__.py · __init__ export", path: "nanovllm/llm.py", line: 4, sym: "LLM" },

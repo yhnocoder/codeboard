@@ -69,7 +69,7 @@ function targetAt(cx: number, cy: number, shown = shownCards()): BindTarget | nu
   const o = boardOffset(), w = toWorld(cx - o.x, cy - o.y), z = cam.z;
   let best: BindTarget | null = null, bd = Infinity;
   for (const id of Object.keys(state.board.place)) {
-    if (!shown.has(id)) continue; // 折叠起来、看不见的不算
+    if (!shown.has(id)) continue;
     const r = rectOf(id);
     const dx = Math.max(r.x - w.x, 0, w.x - (r.x + r.w)), dy = Math.max(r.y - w.y, 0, w.y - (r.y + r.h));
     const d = Math.hypot(dx, dy) * z;

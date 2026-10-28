@@ -1,4 +1,3 @@
-// AI 续写（灰字补全）问模型的提示词、模型回来的字怎么收拾（complete.ts）
 import { describe, expect, it } from "vitest";
 import { cleanCompletion, completePrompt } from "../src/complete";
 

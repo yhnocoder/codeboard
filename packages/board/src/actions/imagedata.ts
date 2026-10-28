@@ -19,7 +19,6 @@ function blobOf(dataUrl: string): Blob | null {
   const s = m[2] ? atob(m[3]) : decodeURIComponent(m[3]);
   return new Blob([Uint8Array.from(s, (ch) => ch.charCodeAt(0))], { type: m[1] || "application/octet-stream" });
 }
-/** 解码后按原大小画到 canvas 上 */
 async function drawn(dataUrl: string): Promise<HTMLCanvasElement> {
   const img = new Image();
   img.src = dataUrl;

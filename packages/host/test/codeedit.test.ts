@@ -1,6 +1,3 @@
-// Code being edited on the board: with no language service completion, hover and signature come back empty without errors; with one
-// the virtual document is synced first and placed next to the linked file, items are narrowed and capped, a newer request drops the
-// older one, and closing the editor closes the document
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

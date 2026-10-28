@@ -192,7 +192,6 @@ function collectCss(): string {
   return out.join("\n");
 }
 
-/** Sidenote 的悬停内容（HTML） */
 function noteHtml(n: Sidenote): string {
   const esc = escHtml;
   const where = n.at.lines ? `<div class="xv-w">${n.at.lines[0] === n.at.lines[1] ? `line ${n.at.lines[0]}` : `lines ${n.at.lines[0]}–${n.at.lines[1]}`}${n.why ? ` · ${esc(n.why)}` : ""}</div>` : "";
@@ -205,7 +204,6 @@ function noteHtml(n: Sidenote): string {
   }
 }
 
-/** HTML 快照：克隆画布、按范围删、内联样式，配上只读的查看脚本 */
 async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Record<string, string>): Promise<string> {
   const keep = new Set(order);
   const whole = o.scope === "board";

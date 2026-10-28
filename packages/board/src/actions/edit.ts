@@ -107,7 +107,6 @@ export function editTextSel(key: "Backspace" | "Delete"): boolean {
     setEditing({ kind: "note", id });
     return true;
   }
-  // 代码卡的代码
   const src = a!.closest(".src");
   const map = src && src === b!.closest(".src") ? codeTextRange.get(src) : undefined;
   if (c?.kind !== "code" || !map) return false;
@@ -131,15 +130,25 @@ export function arrange(ids: string[], how: Arrange) {
   const rs = [...set].filter((id) => state.board.place[id]).map((id) => rectOf(id));
   mutate((b) => arrangeCards(b, set, how, (id) => { const r = rectOf(id); return rs.some((m) => overlaps(m, r)); }));
 }
-export const arrangeItem = (ids: () => string[]): Item => ({
-  label: "Arrange",
-  sub: [
-    { label: "Bring to Front", kbd: kbd("front"), run: () => arrange(ids(), "front") },
-    { label: "Bring Forward", kbd: kbd("forward"), run: () => arrange(ids(), "forward") },
-    { label: "Send Backward", kbd: kbd("backward"), run: () => arrange(ids(), "backward") },
-    { label: "Send to Back", kbd: kbd("back"), run: () => arrange(ids(), "back") },
-  ],
-});
+/** Forward / Backward with nothing overlapping go all the way, so they change nothing exactly when Front / Back don't */
+function atEdge(ids: string[], top: boolean) {
+  const set = new Set(ids.map(hostOf)), cards = state.board.cards;
+  const n = cards.filter((c) => set.has(c.id)).length;
+  const edge = top ? cards.slice(cards.length - n) : cards.slice(0, n);
+  return n > 0 && edge.every((c) => set.has(c.id));
+}
+export const arrangeItem = (ids: () => string[]): Item => {
+  const front = atEdge(ids(), true) && "Already in front", back = atEdge(ids(), false) && "Already at the back";
+  return {
+    label: "Arrange",
+    sub: [
+      { label: "Bring to Front", kbd: kbd("front"), disabled: front, run: () => arrange(ids(), "front") },
+      { label: "Bring Forward", kbd: kbd("forward"), disabled: front, run: () => arrange(ids(), "forward") },
+      { label: "Send Backward", kbd: kbd("backward"), disabled: back, run: () => arrange(ids(), "backward") },
+      { label: "Send to Back", kbd: kbd("back"), disabled: back, run: () => arrange(ids(), "back") },
+    ],
+  };
+};
 
 /**
  * Tidy Up：宿主排版（core/tidy.ts，ELK 分层布局），有箭头的按调用关系从左往右分列，没箭头的排成行放在下面。一步撤销；卡和线从旧位置滑过去。
@@ -479,8 +488,6 @@ export function fitSections(ids: string[]) {
 export function renameSection(id: string, v: string) {
   mutate((b) => { const s = b.sections.find((q) => q.id === id); if (s) s.title = v.trim() || "Untitled Section"; });
 }
-
-// 无背景：Image 默认无背景，Code 可选
 
 export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && !!c.nobg);
 /** 倾斜：选中的几张卡里有没斜的就都斜，都斜着就都放正（Compare 的栏算整张 Compare） */

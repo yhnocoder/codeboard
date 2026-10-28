@@ -1,5 +1,3 @@
-// 调用图：Call 箭头连起来的卡（图标记 A、B…或用户挑的字母、图标，START、进程标签、RPC、↩ back to、变量），折叠子树（▸ N），
-// Walkthrough 时卡上方的步数，侧栏 Call Tree、Arrow 图例、运行面板（Capture Run 的结果），图标记 / 变量的浮层
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { CodeCard, RunApply } from "@codeboard/core";
 import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./support/board";

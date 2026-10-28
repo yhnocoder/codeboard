@@ -1,9 +1,7 @@
-// Card header priority on narrow cards (CI UI audit "L2 truncated text" on pick_tokens / TopK.sample in the e2e):
 //  headnarrow — the same card at several widths, with "← N", the version chip and "+ uncommitted". As the card narrows,
 //               the version chip and "+ uncommitted" collapse to a small mark first, then "← N" goes,
 //               then the path truncates, and the title truncates last. Copy Code is hover-only and takes no width while hidden. Checked in light and dark on several themes,
 //               plus the generic UI audit (tools/review/audit.cjs) for L2.
-// Usage: npm run harness -- headnarrow   screenshots: test-out/harness/head-*.png (SHOTS_DIR=… copies them)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type CodeCard } from "@codeboard/core";

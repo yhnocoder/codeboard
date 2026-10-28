@@ -1,5 +1,3 @@
-// Undo on an "Added to board" notice removes only the cards that add put there, whether the board was opened (and changed) in between
-// or not. It used to write back the whole board as it was before the add, losing everything done since
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
