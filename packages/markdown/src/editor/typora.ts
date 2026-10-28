@@ -10,7 +10,7 @@ import { NodeSelection, Plugin, PluginKey, TextSelection, type EditorState, type
 import { Decoration, DecorationSet } from "@tiptap/pm/view";
 import { Fragment, type Mark, type Node as PMNode, type ResolvedPos, type Schema } from "@tiptap/pm/model";
 import { closeHistory } from "@tiptap/pm/history";
-import { ESC_MARK, MARK_MD, blockSource, parseSource } from "../schema";
+import { ESC_MARK, MARK_MD, SRC_MARK, blockSource, parseInlineSrc, parseSource } from "../schema";
 import { SourceMark, headPrefix, sourcePlugin, srcRuns } from "./source";
 import { pairsPlugin } from "./pairs";
 
@@ -180,6 +180,38 @@ export function codeSpanAtEnd(text: string) {
   return null;
 }
 
+type SrcFormat = { from: number; to: number; attrs: Record<string, string> };
+let lastSrc: { text: string; out: SrcFormat[] } | null = null;
+/**
+ * 一段原文里带格式的字：[from, to)（原文里的偏移）和画它的标签（格式自己的 renderHTML：strong、em、mark…）。
+ * 原文按解析器解析（和收回去时一样），解析出来的每段字按顺序在原文里找位置；找不到的（\* 这样转义过的）不画。
+ * 每次重画都会问：记住上一段的结果（光标在原文里移动、打字时原文多半没变或只变一点）
+ */
+function srcFormats(schema: Schema, text: string): SrcFormat[] {
+  if (lastSrc?.text === text) return lastSrc.out;
+  const out: SrcFormat[] = [];
+  let at = 0;
+  for (const n of parseInlineSrc(text)) {
+    if (n.type !== "text" || !n.text) continue;
+    const k = text.indexOf(n.text, at);
+    if (k < 0) continue;
+    at = k + n.text.length;
+    for (const m of n.marks ?? []) {
+      // 链接画成 <a> 会被点开；原文本身的标记不算
+      const t = schema.marks[m.type];
+      if (!t || m.type === "link" || m.type === SRC_MARK || !t.spec.toDOM) continue;
+      const spec = t.spec.toDOM(t.create(m.attrs), true);
+      if (!Array.isArray(spec) || typeof spec[0] !== "string") continue;
+      const a = spec[1] && typeof spec[1] === "object" && !Array.isArray(spec[1]) ? spec[1] as Record<string, unknown> : {};
+      const attrs: Record<string, string> = { nodeName: spec[0] };
+      for (const [key, v] of Object.entries(a)) if (v != null) attrs[key] = String(v);
+      out.push({ from: k, to: at, attrs });
+    }
+  }
+  lastSrc = { text, out };
+  return out;
+}
+
 /** 只看光标所在的那一段：标题的 ##，光标两边带的格式各自那一段的头尾 */
 function markerDecos(state: EditorState): DecorationSet | null {
   const sel = state.selection;
@@ -192,11 +224,12 @@ function markerDecos(state: EditorState): DecorationSet | null {
   if (!p.isTextblock || p.type.spec.code) return null;
   const start = $h.start(), off = $h.parentOffset;
   const ds: Decoration[] = [];
-  // 展开着的原文：里面的记号淡一点
+  // 展开着的原文：里面的记号淡一点，记号中间的字照解析出来的样子显示格式（照 Typora：**粗体** 展开了也还是粗的）
   for (const r of srcRuns(p)) {
     for (const m of r.text.matchAll(/^#{1,6}[ \t]+|\*+|_+|~+|==|\^|`+|\$+|\\(?=[!-/:-@[-`{-~])|!?\[|\]\([^)]*\)|\]/g)) {
       ds.push(Decoration.inline(start + r.from + m.index!, start + r.from + m.index! + m[0].length, { class: "md-mkc" }));
     }
+    for (const f of srcFormats(state.schema, r.text)) ds.push(Decoration.inline(start + r.from + f.from, start + r.from + f.to, f.attrs));
   }
   // 记号用 CSS 的 ::before / ::after 画（attr(data-mk…)）：插一个不可编辑的小部件的话，Home / End、上下键会卡在它上面
   if (p.type.name === "heading" && !srcRuns(p).some((r) => r.from === 0)) ds.push(Decoration.node($h.before(), $h.after(), { class: "md-mkh", "data-mka": `${"#".repeat(p.attrs.level)} ` }));
