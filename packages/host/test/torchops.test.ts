@@ -60,6 +60,15 @@ describe("native_functions.yaml", () => {
     ].join("\n")));
     expect(kernelsOf(m, "g", "").map((k) => `${k.key}: ${k.kernel} ${k.decl} via ${k.via}`)).toEqual(["CUDA: g_cuda g via g.out", "CPU: g_cpu g via g.out"]);
   });
+  it("splits at::_ops::<name>_<overload>::call at the underscore that names a known func", () => {
+    const e = (recv: string, name = "call") => cppOpEntry(t, { name, recv });
+    expect(e("at::_ops::add_Tensor")).toEqual({ op: "add", overload: "Tensor", how: "at" });
+    expect(e("at::_ops::fractional_max_pool2d_output")).toEqual({ op: "fractional_max_pool2d", overload: "output", how: "at" });
+    expect(e("::at::_ops::_softmax_out", "redispatch")).toEqual({ op: "_softmax", overload: "out", how: "at" });
+    expect(e("at::_ops::_softmax")).toEqual({ op: "_softmax", overload: "", how: "at" });
+    expect(e("at::_ops::add_Nope")).toBeNull();
+    expect(e("at::_ops::add_Tensor", "schema")).toBeNull();
+  });
   it("finds the yaml in the workspace", async () => {
     expect((await opTables()).map((x) => x.root)).toEqual([FIX]);
   });
