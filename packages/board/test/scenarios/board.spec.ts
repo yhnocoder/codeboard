@@ -63,10 +63,21 @@ test("zoomLevels", async () => {
     }
     await close(h);
   }
+});
+
+/** A Section folding from its label's button, with pictures mid-fold and folded: the fold is saved and its card is hidden */
+test("sectionFoldShots", async () => {
+  const b = richBoard();
+  b.sections.push({ id: "g1", title: "Scheduling", x: 740, y: 20, w: 640, h: 560, color: "blue" });
+  const inside = b.cards[1].id;
+  b.place[inside].section = "g1";
   const h = await open({ board: structuredClone({ ...b, cam: { x: 0, y: 0, z: 0.8 } }), light, w: 1400, h: 900 });
   await h.page.locator('.slabel[data-sect="g1"] button[aria-label="Collapse Section"]').click();
   await hold(h, 120, "a picture mid-fold"); await shot(h, "board-14-folding", "now");
   await shot(h, "board-15-folded");
+  await until(h, "the fold is saved", () => h.board().sections.find((q) => q.id === "g1")?.collapsed);
+  const shown = await h.page.locator(`.card[data-id="${inside}"]`).isVisible();
+  check("sectionFoldShots the folded Section hides its card", !shown, { shown });
   await close(h);
 });
 
