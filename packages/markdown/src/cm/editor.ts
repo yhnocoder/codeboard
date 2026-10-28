@@ -8,6 +8,7 @@ import { autocompletion, completionKeymap, completionStatus, currentCompletions,
 import { lspExtensions, dismissSig, type LspHost } from "./lsp";
 import { ghostExtension, acceptGhost, dropGhost, type GhostHost } from "./ghost";
 import { keepKey } from "../ui/editkeys";
+import { closeFind, findExtension } from "./find";
 
 export type { LspHost, GhostHost };
 export type { LspItem, LspKind, LspSignature } from "./lsp";
@@ -115,7 +116,7 @@ function escKey(exit: () => void): KeyBinding {
     run: (v) => {
       if (menuShown(v.state)) return closeCompletion(v);
       if (completionStatus(v.state)) closeCompletion(v);
-      if (dismissSig(v) || dropGhost(v)) return true;
+      if (dismissSig(v) || dropGhost(v) || closeFind(v)) return true;
       exit();
       return true;
     },
@@ -195,6 +196,8 @@ export type CodeEditorOpts = {
   onExit?: () => void;
   onChange?: (text: string) => void;
   onBlur?: (e: FocusEvent) => void;
+  /** ⌘F 查找、⌥⌘F 替换（ui/find.ts 的查找条，浮在右上角）。Note 里的代码块不要：查的是整篇 Note */
+  find?: { isMac?: boolean };
   /** 额外的按键（优先），比如 Note 里方向键走出代码块 */
   keys?: KeyBinding[];
   /** 自己的撤销（Note 里的代码块用 ProseMirror 的撤销：false） */
@@ -282,6 +285,7 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
     ...(o.gutter ? [lineNumbers({ formatNumber: (n) => String(o.gutter!.start + n - 1) }), highlightActiveLineGutter()] : []),
     ...(o.lsp ? lspExtensions(o.lsp) : []),
     ...(o.ghost ? [ghostExtension(o.ghost)] : []),
+    ...(o.find ? findExtension({ isMac: o.find.isMac, leave: (e) => { if (!exited) o.onBlur?.(e); } }) : []),
     // 根元素的 class 走 editorAttributes：CodeMirror 焦点一变就重写整个 class 属性，classList.add 加的会被抹掉
     EditorView.editorAttributes.of({ class: ["cbcm", o.gutter ? "cbcm-card" : "", o.className ?? ""].filter(Boolean).join(" ") }),
     ...(o.extensions ?? []),
@@ -291,7 +295,12 @@ export function codeEditor(o: CodeEditorOpts): CodeEditor {
   // 冒泡到这里时 CodeMirror 已经处理过（preventDefault 过的是它做了的）：按键不再往白板冒；按下不让白板当成拖卡片
   view.dom.addEventListener("keydown", keepKey);
   if (o.stopPointerDown) view.dom.addEventListener("pointerdown", (e) => e.stopPropagation());
-  view.contentDOM.addEventListener("blur", (e) => { if (completionStatus(view.state)) closeCompletion(view); if (!exited) o.onBlur?.(e); });
+  view.contentDOM.addEventListener("blur", (e) => {
+    if (completionStatus(view.state)) closeCompletion(view);
+    // 去了自己的查找条：还在编辑（从条上再离开时由它报，见 find.ts）
+    if (e.relatedTarget instanceof Node && view.dom.contains(e.relatedTarget)) return;
+    if (!exited) o.onBlur?.(e);
+  });
   if (o.html !== undefined) view.dispatch({ effects: setHl.of(parseHl(o.html)) });
   if (o.highlight && (o.html === undefined || parseHl(o.html).text !== o.text)) queueHl();
   return {

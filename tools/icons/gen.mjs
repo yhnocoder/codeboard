@@ -17,13 +17,13 @@ const put = (src, v, body, f) => {
   if (!re.test(src)) throw new Error(`no table ${v} in ${path.relative(root, f)}`);
   return src.replace(re, (_, a, b) => a + body + b);
 };
-// the board's icons (stroke table P and fill table F), and the Markdown editor's toolbar icons (strokes only)
+// the board's icons (stroke table P and fill table F), and the Markdown editor's toolbar and find bar icons (strokes only)
 write(file, put(put(fs.readFileSync(file, "utf8"), "P", rows(ICONS, 0), file), "F", rows(ICONS, 1), file));
 console.log(`icons.tsx: ${Object.keys(ICONS).length} icons`);
-const mdFile = path.join(root, "packages/markdown/src/editor/icons.tsx");
+const mdFile = path.join(root, "packages/markdown/src/ui/icons.ts");
 if (Object.values(MD_ICONS).some((v) => v[1])) throw new Error("MD_ICONS: the Markdown toolbar icons are strokes only");
 write(mdFile, put(fs.readFileSync(mdFile, "utf8"), "P", rows(MD_ICONS, 0), mdFile));
-console.log(`markdown icons.tsx: ${Object.keys(MD_ICONS).length} icons`);
+console.log(`markdown ui/icons.ts: ${Object.keys(MD_ICONS).length} icons`);
 
 // sticker built-ins: replace the d / fill of each BUILTIN row in glyphs.tsx
 const gfile = path.join(root, "packages/board/src/stickers/glyphs.tsx");

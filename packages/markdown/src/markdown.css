@@ -230,6 +230,30 @@ math { font-size: 1.05em; }
 .md-langbox .md-langs .md-lo.md-lo.md-lo:not([disabled]) small { color: var(--ink-3); }
 .md-langbox .md-langs .md-lo.md-lo.md-lo:not([disabled]) .ck { color: var(--accent); }
 .md-linkin { width: 240px; height: 26px; padding: 0 8px; border: 0; outline: none; background: transparent; font-size: 12.5px; }
+/* 查找 / 替换条（ui/find.ts）：浮在编辑器右上角，不占排版；Note 里挂在编辑框上（.md-findhost），代码编辑器里在 CodeMirror 的面板里 */
+.md-findhost { position: relative; }
+.md-find { position: absolute; top: 0; right: 0; z-index: 20; cursor: default; }
+.md-findbar { flex-direction: column; align-items: stretch; gap: 2px; padding: 3px; border-radius: 11px; font: 12.5px/1 var(--sys); color: var(--ink); white-space: nowrap;
+  transform-origin: 100% 0; animation: md-pop calc(var(--t, 1) * 140ms) cubic-bezier(.2, .8, .2, 1); }
+.md-findrow { display: flex; align-items: center; gap: 2px; }
+.md-replrow { display: none; }
+.md-findbar.repl .md-replrow { display: flex; }
+.md-findbar input { box-sizing: border-box; width: 160px; height: 24px; margin: 0; padding: 0 7px; border: 0; border-radius: 7px; outline: none;
+  background: color-mix(in srgb, var(--ink) 6%, transparent); color: var(--ink); font: inherit; }
+.md-findbar input::placeholder { color: var(--ink-3); }
+.md-findbar input:focus { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 65%, transparent); }
+.md-findn { min-width: 56px; padding: 0 4px; color: var(--ink-3); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: center; }
+.md-findn.none { color: var(--warn); }
+.md-findbar .tbtn { height: 24px; padding: 0 7px; border-radius: 7px; font-size: 12px; }
+.md-findbar .tbtn.md-ib { width: 24px; padding: 0; justify-content: center; }
+.md-findbar .md-case { width: 26px; padding: 0; justify-content: center; font-size: 11.5px; }
+.md-findbar .md-tog .md-ico { transition: rotate calc(var(--t, 1) * 120ms); }
+.md-findbar.repl .md-tog .md-ico { rotate: 90deg; }
+/* 替换那一行的输入框和上面的对齐（让开展开替换的按钮） */
+.md-findpad { width: 24px; flex: none; }
+/* 匹配的字：淡的强调色底，选中的那一个深一点。Note 正文里是 CSS Custom Highlight（editor/find.ts），代码块里是 CodeMirror 的装饰 */
+::highlight(md-find), .md-pm .md-find-hit { background-color: color-mix(in srgb, var(--accent) 20%, transparent); }
+::highlight(md-find-cur), .md-pm .md-find-on { background-color: color-mix(in srgb, var(--accent) 45%, transparent); }
 /* 代码编辑器（cm/editor.ts） */
 .cbcm .cm-content .call { cursor: text; }
 .cbcm .cm-content .call:hover { background: none; }

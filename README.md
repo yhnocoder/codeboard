@@ -54,6 +54,7 @@ It was built for studying LLM inference and training codebases such as [nano-vll
 
 - Present a board card by card with `P`, then `←` `→` to move and `Esc` to leave.
 - Draw, label and retype arrows; drop in images and web pages; highlight lines.
+- Find and replace while editing a Note or a code card: `⌘F` (`Ctrl+F`), `⌥⌘F` (`Ctrl+Alt+F`) for replace.
 - Compare a card across branches, worktrees or pull requests, with change marks and a three-way view.
 - Turn a group of cards into a sub-board, or share one card across several boards.
 - Copy or move a board to another project, with its sub-boards, shared cards and images.

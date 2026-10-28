@@ -70,8 +70,8 @@ for (const n of names) {
   }
   for (const s of segs(newF[n] ?? "")) if (s.k !== "M" && (!whole(s.x) || !whole(s.y))) problems.push(`${n}: fill vertex off grid (${s.x},${s.y})`);
 }
-// the Markdown editor's toolbar icons (packages/markdown/src/editor/icons.tsx) keep the same rule
-for (const [n, d] of Object.entries(block(cur("packages/markdown/src/editor/icons.tsx"), "P"))) for (const s of segs(d)) {
+// the Markdown editor's toolbar and find bar icons (packages/markdown/src/ui/icons.ts) keep the same rule
+for (const [n, d] of Object.entries(block(cur("packages/markdown/src/ui/icons.ts"), "P"))) for (const s of segs(d)) {
   if (s.k === "L" && s.x0 === s.x && s.y0 !== s.y && !whole(s.x)) problems.push(`markdown ${n}: vertical stroke at x=${s.x}`);
   if (s.k === "L" && s.y0 === s.y && s.x0 !== s.x && !whole(s.y)) problems.push(`markdown ${n}: horizontal stroke at y=${s.y}`);
 }
