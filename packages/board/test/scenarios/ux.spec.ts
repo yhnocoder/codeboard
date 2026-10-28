@@ -135,7 +135,7 @@ async function expandColumns(res: Record<string, unknown>) {
 async function nanoHost(cards: { rel: string; qual: string; x: number; y: number }[], o: { w?: number; h?: number; names?: (hs: NameHit[]) => NameHit[] } = {}) {
   const NV = path.join(REPO, "examples/nano-vllm");
   useWorkspace(nodeWorkspace(NV));
-  await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+  await startAnalysis();
   resetIndex(); startNameIndex(); await nameIndexReady();
   const B = emptyBoard("bNv", "nano-vllm");
   const ids: string[] = [];
@@ -268,7 +268,7 @@ async function readableNote(res: Record<string, unknown>) {
 /** ⌘K 在 nano-vllm 里搜 step：只列名字 / 全名里有 step 的符号（不列 main、Context、get_context、…__init__） */
 async function searchStep(res: Record<string, unknown>) {
   useWorkspace(nodeWorkspace(path.join(REPO, "examples/nano-vllm")));
-  await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+  await startAnalysis();
   resetIndex(); startNameIndex(); await nameIndexReady();
   const items = await search(null as unknown as Storage, "step", "symbols");
   res.labels = items.map((i) => i.label);

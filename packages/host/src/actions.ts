@@ -9,6 +9,7 @@ import { workingPlace } from "./versions";
 import { viewsFor } from "./views";
 import { copyDiagnostics } from "./diagnostics";
 import { applyFlow, captureFlow } from "./runs";
+import { prompts } from "./prompts";
 import { copyToProject, otherProjects, removeMoved } from "./transfer";
 import { langOf, readText, splitLines, workspace } from "./ws";
 
@@ -132,9 +133,10 @@ export function makeActions(panels: BoardHost, store: Storage) {
       p.view.reveal();
       p.post({ type: "key", action: "openSettings" });
     },
-    "codeboard.captureRun": async () => { await captureFlow(store.dir(), active() ?? (panels.target ? panels.get(panels.target) : undefined)); },
-    "codeboard.applyRun": async () => { await applyFlow(store.dir(), active() ?? (panels.target ? panels.get(panels.target) : undefined)); },
-    "codeboard.copyDiagnostics": () => copyDiagnostics((active() ?? (panels.target ? panels.get(panels.target) : undefined))?.board),
+    // Asked on the active board (where the keyboard is when the command runs from the palette over it), else in VS Code
+    "codeboard.captureRun": async () => { const a = active(); await captureFlow(store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(a)); },
+    "codeboard.applyRun": async () => { const a = active(); await applyFlow(store.dir(), a ?? (panels.target ? panels.get(panels.target) : undefined), prompts(a)); },
+    "codeboard.copyDiagnostics": () => { const a = active(); return copyDiagnostics(prompts(a), (a ?? (panels.target ? panels.get(panels.target) : undefined))?.board); },
 
     "codeboard.addToBoard": async () => {
       const b = await fromEditor();
@@ -228,7 +230,9 @@ export function makeActions(panels: BoardHost, store: Storage) {
       const id = boardArg(a) ?? panels.target;
       const b = id && (await store.load(id));
       if (!b) return;
-      const name = await ui().input({ prompt: "Rename board", value: b.name });
+      // From the sidebar (a): VS Code's input box, the keyboard is there; from the palette over the board: the board's dialog
+      const on = a === undefined ? active() : undefined;
+      const name = await prompts(on?.id === b.id ? on : undefined).input({ title: "Rename Board", ok: "Rename", prompt: "Rename board", value: b.name });
       if (!name?.trim() || name.trim() === b.name) return;
       const p = panels.get(b.id);
       if (p?.board) {

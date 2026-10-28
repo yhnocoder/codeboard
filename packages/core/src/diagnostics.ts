@@ -1,4 +1,4 @@
-import { escapeRegExp } from "./model";
+import { escapeRegExp } from "@codeboard/analysis/basics";
 
 export type DiagInfo = {
   ext: string;

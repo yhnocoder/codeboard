@@ -27,18 +27,9 @@ export function repoRootOfDir(dir: string): Promise<string | null> {
 }
 export const repoRootOf = (file: string) => repoRootOfDir(path.dirname(file));
 
-const heads = new Map<string, Promise<string | null>>();
-/** 仓库当前的 HEAD commit（HEAD 变了调用 forgetHeads） */
-export function headOf(root: string): Promise<string | null> {
-  let p = heads.get(root);
-  if (!p) {
-    p = git(root, ["rev-parse", "HEAD"]).then((s) => s?.trim() || null);
-    heads.set(root, p);
-  }
-  return p;
-}
-export function forgetHeads() { heads.clear(); }
-export const knownRoots = () => [...heads.keys()];
+/** The repo's HEAD commit, read every time: a cached HEAD outlives a commit until the .git watcher's debounce has run, and a version
+ *  check started in between compares with the commit before */
+export const headOf = (root: string): Promise<string | null> => git(root, ["rev-parse", "HEAD"]).then((s) => s?.trim() || null);
 
 const shows = new Lru<Promise<string | null>>(200);
 /** commit 里的文件内容（commit 是完整 sha 时缓存） */

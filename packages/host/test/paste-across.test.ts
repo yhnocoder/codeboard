@@ -8,7 +8,7 @@ import { useWorkspace } from "../src/ws";
 import { makeHandler } from "../src/handlers";
 import type { BoardHost, BoardPanel } from "../src/boards";
 import { nodeWorkspace } from "./node-workspace";
-import { sleep, tempRepo } from "./helpers";
+import { tempRepo } from "./helpers";
 
 const tmp: string[] = [];
 const mk = (p: string) => { const d = fs.mkdtempSync(`/tmp/codeboard-${p}-`); tmp.push(d); return d; };
@@ -63,9 +63,8 @@ async function source() {
 }
 
 async function copied(a: ReturnType<typeof windowOf>, text: string) {
+  // 跨窗口的剪贴板记进全局存储目录后才返回
   await a.send("bMain", { type: "copyCards", cards: ["note", "k1", "k2"], text });
-  for (let i = 0; i < 100 && !fs.existsSync(path.join(G, "clipboard.json")); i++) await sleep(10);
-  await sleep(20);
 }
 
 describe("paste cards from another window", () => {

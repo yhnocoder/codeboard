@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LANG_TABLE } from "@codeboard/core";
+import { LANG_TABLE } from "@codeboard/analysis/langs";
 import { HEARTBEAT_MS, STALE_MS, isScratchName, isStale, scratchName, staleScratch } from "../src/scratchnames";
 
 const now = Date.UTC(2026, 9, 18, 12);

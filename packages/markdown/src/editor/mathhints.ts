@@ -336,6 +336,8 @@ export class MathHints {
       document.body.append(this.tip);
     }
     const pv = this.pv!;
+    // what the preview and its error are drawn from: drawing waits for a frame, so this is how to tell it has caught up with the text
+    pv.dataset.src = src;
     let problem: MathProblem | null = null;
     if (!src.trim()) {
       this.last = "";

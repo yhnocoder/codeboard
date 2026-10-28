@@ -1,28 +1,17 @@
-import { uid, isCode, cardTitle, varKey, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide, type Var } from "@codeboard/core";
+import { uid, isCode, cardTitle, callName, canMark, type Link, type CallSpan, type LinkStyle, type LinkSide } from "@codeboard/core";
+import { varKey, type Var } from "@codeboard/analysis/basics";
 import { state, mutate, select, cardById, hostOf, toast } from "../state/store";
 import { setEditing, setHoverVar } from "../state/ui";
 import { setConnectFrom } from "../state/mode";
 import { openPop } from "../state/pop";
 import { lastPointer } from "../state/measure";
 import { askCands, attachCall, calleeMatches, callMark } from "./flow";
-import { skelOf } from "../state/subboards";
 
-/** 子白板骨架里那张卡的函数名（标题最后一段，去掉括号和行号） */
-function subName(to: EndRef): string | undefined {
-  if (to.sub === undefined) return;
-  const t = skelOf(to.card)?.cards.find((c) => c.id === to.sub);
-  if (!t || t.k !== "code") return;
-  return callName(t.t.split(/[\s(]/)[0]);
-}
-
-type EndRef = { card: string; seg?: string; line?: number; sub?: string };
+type EndRef = { card: string; seg?: string; line?: number };
 
 /** 这条箭头其实是调用：从代码行连到「这一行调用的函数」所在的卡（只有一种 Arrow，是不是调用自动判断） */
 export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
   if (from.line === undefined || !from.seg || to.line !== undefined) return;
-  // 连到子白板骨架里的卡：出发行调用了同名函数就是调用（并进这块白板的调用图）
-  const sn = subName(to);
-  if (sn) return state.views[from.seg]?.calls.find((c) => c.line === from.line && c.name === sn);
   const t = cardById(to.card)?.card;
   if (!isCode(t) || !isCode(cardById(from.card)?.card)) return;
   return state.views[from.seg]?.calls.find((c) => c.line === from.line && calleeMatches(t, c));
@@ -34,8 +23,6 @@ export function callOn(from: EndRef, to: EndRef): CallSpan | undefined {
  */
 export function manualCall(from: EndRef, to: EndRef): CallSpan | undefined {
   const f = cardById(from.card)?.card, t = cardById(to.card)?.card;
-  const sn = subName(to);
-  if (isCode(f) && sn) return { line: from.line ?? 0, col: 0, end: 0, name: sn, loop: false };
   if (!isCode(f) || !isCode(t) || hostOf(from.card) === hostOf(to.card)) return;
   const q = t.segments.find((s) => s.symbol)?.symbol?.qual;
   // 没有函数的卡（跨语言片段、自由代码）用卡名
@@ -52,12 +39,6 @@ export function addLink(from: EndRef, to: EndRef, side?: LinkSide) {
   if (hostOf(from.card) === hostOf(to.card) && from.line === to.line) return;
   const sides = side ? { from: side } : undefined;
   const call = callOn(from, to);
-  if (call && to.sub !== undefined) {
-    // 子白板骨架里的卡：变量候选要两边的代码，这里只记调用
-    const id = uid("l");
-    mutate((b) => { b.links.push({ id, from, to, call: callMark(call), ...(sides ? { sides } : {}) }); });
-    return id;
-  }
   if (call) return void attachCall(from.card, from.seg!, call, to.card, sides);
   const id = uid("l");
   mutate((b) => { b.links.push(sides ? { id, from, to, sides } : { id, from, to }); });
@@ -74,7 +55,7 @@ export function makeCall(id: string) {
     const l = b.links.find((k) => k.id === id);
     if (l && canMark(l)) l.call = callMark(call);
   });
-  if (found && L.to.sub === undefined) askCands(id, L.from.card, L.from.seg!, call, L.to.card);
+  if (found) askCands(id, L.from.card, L.from.seg!, call, L.to.card);
 }
 export function startConnect(id: string) {
   setConnectFrom({ card: id });

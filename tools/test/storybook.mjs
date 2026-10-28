@@ -7,8 +7,7 @@ import * as fs from "node:fs";
 import * as http from "node:http";
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
-import { chromium } from "playwright-core";
-import { CHROMIUM, CHROMIUM_ARGS } from "./chromium.mjs";
+import { launch } from "./chromium.mjs";
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "../../test-out/storybook");
 const JOBS = +(process.env.JOBS ?? 4);
@@ -132,7 +131,7 @@ const { server, base } = await serve();
 const index = await (await fetch(`${base}/index.json`)).json();
 const re = process.argv[2] && new RegExp(process.argv[2]);
 const ids = Object.entries(index.entries).filter(([id, e]) => e.type !== "docs" && (!re || re.test(id))).map(([id]) => id);
-const browser = await chromium.launch({ executablePath: CHROMIUM, args: CHROMIUM_ARGS });
+const browser = await launch();
 const t0 = Date.now();
 // The sequential pass is a long chain, mostly waiting: cut it into one contiguous chunk per page and run the chunks beside the
 // isolated pages. Each chunk but the first starts with the last story of the one before, so no story loses its predecessor.

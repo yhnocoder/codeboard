@@ -14,7 +14,8 @@ const viewsOf = (b: Board): Record<string, SegView> => {
   return v;
 };
 
-export async function subHost(start: Board, others: Board[]) {
+/** o.light: this scenario's theme whatever HARNESS_LIGHT says (for one that compares colours with a light design) */
+export async function subHost(start: Board, others: Board[], o: { light?: boolean } = {}) {
   const dir = path.join(OUT, `subboards-store-${process.pid}-${start.id}`); // one per worker and start board: workers run side by side
   fs.rmSync(dir, { recursive: true, force: true });
   const store = new Storage(nodeFs, { dir: () => dir });
@@ -72,7 +73,7 @@ export async function subHost(start: Board, others: Board[]) {
     push();
   };
   h = await open({
-    board: (await store.load(cur))!, light, w: 1400, h: 900,
+    board: (await store.load(cur))!, light: o.light ?? light, w: 1400, h: 900,
     on: async (m, reply) => {
       switch (m.type) {
         case "patch": await store.patch(cur, m.patch, { undo: m.undo }); await h?.post({ type: "boards", boards: await store.list() }); await reply(m.req, { skipped: 0 }); return true;

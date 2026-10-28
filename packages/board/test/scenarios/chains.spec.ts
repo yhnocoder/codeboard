@@ -31,7 +31,7 @@ async function fixture() {
   fs.cpSync(path.join(REPO, "packages/host/test/fixtures/crosslang"), FIX, { recursive: true });
   W = nodeWorkspace(FIX);
   useWorkspace(W);
-  await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+  await startAnalysis();
   resetIndex(); startNameIndex(); await nameIndexReady();
 }
 async function symCard(rel: string, qual: string, last = false): Promise<CodeCard> {

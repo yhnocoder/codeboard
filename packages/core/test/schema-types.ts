@@ -4,7 +4,8 @@
 // 不比可选 / 必填和 null：schema 故意更宽（可选字段允许 null；Board.id、Section.title、Segment.lang 在文件里可以缺；true 写成 boolean）
 import type * as v from "valibot";
 import type { BoardFileSchema, BoardSchema, CodeCardSchemaKeys, SharedCardSchema, VariantSchema } from "../src/schema";
-import type { Board, BoardFile, Variant, VariantFrom, BoundVal, CallAlt, CallEvidence, CallSample, RpcMark, Card, CodeCard, Link, Place, Section, Segment, SharedCardFile, SharedRef, Sidenote, Sticker } from "../src/model";
+import type { Board, BoardFile, Variant, VariantFrom, CallEvidence, CallSample, RpcMark, Card, CodeCard, Link, Place, Section, Segment, SharedCardFile, SharedRef, Sidenote, Sticker } from "../src/model";
+import type { BoundVal, CallAlt } from "@codeboard/analysis/basics";
 
 type In = v.InferInput<typeof BoardSchema>;
 type Out = v.InferOutput<typeof BoardSchema>;

@@ -9,7 +9,7 @@
 //          since <commit> (tools/test/pick.mjs repeatPick), each run N times (Playwright --repeat-each), within a wall-time cap
 //          (default 15 min). No second run alone: any failed repetition fails the scenario. A missing or unknown <commit> is an
 //          error, written to --json as { error } (no fallback to some other set of scenarios).
-// --json: { wall, workers, results: [{ name, why, ok, ms, fails, known, alone, files, runs, failed }], deferred, notes, base, repeat, error }
+// --json: { wall, workers, planned (estimated scenario seconds), results: [{ name, why, ok, ms, fails, known, alone, files, runs, failed }], deferred, notes, base, repeat, error }
 //   runs and failed (how many repetitions ran and failed) only with --repeat
 import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -163,6 +163,6 @@ console.log(`\n${failed.length ? `${failed.length} of ${results.length} scenario
   (knownHit.length ? `; ${knownHit.length} known failures (tiers.json)` : "") + (alone.length ? `; passed only when run alone: ${alone.join(", ")}` : ""));
 for (const r of failed) for (const f of r.fails.slice(0, 3)) console.log(`  ${r.name}: ${f.split("\n")[0]}`);
 if (plan?.deferred.length) console.log(`${since ? "not repeated (over the cap)" : "deferred to the nightly run"}: ${plan.deferred.join(", ")}`);
-writeJson({ wall, workers, results: results.map((r) => ({ ...r, why: why[r.name] })), deferred: plan?.deferred ?? [], notes: plan?.notes ?? [],
+writeJson({ wall, workers, planned: Math.round(list.reduce((t, x) => t + msOf(x.name), 0) * repeat / 1000), results: results.map((r) => ({ ...r, why: why[r.name] })), deferred: plan?.deferred ?? [], notes: plan?.notes ?? [],
   ...(since ? { base: since, repeat } : {}) });
 process.exit(failed.length ? 1 : 0);

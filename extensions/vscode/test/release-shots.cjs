@@ -10,7 +10,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, idle, track } = require("./wait.cjs");
-const { command, qiClosed, openFile, boardFrames, boardFrame, card, typingIn, focusSettled, fit } = require("./ui.cjs");
+const { command, watchKeyboard, boardDialog, boardDialogClosed, openFile, boardFrames, boardFrame, card, typingIn, focusSettled, fit } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 const SHOTS = (process.env.SHOTS || "features,themes").split(",");
 // Board themes in the order the Settings page lists them; City is experimental and left out
@@ -80,6 +80,7 @@ const leaveNote = async (page, f) => {
   const browser = await until("VS Code's debugging port answers", () => chromium.connectOverCDP(`http://127.0.0.1:${process.env.CDP_PORT || 9223}`).catch(() => null), 60000, 200);
   const page = await until("the VS Code window", () => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes("workbench")), 60000, 200);
   await track(page); // the board's requests to the host, for idle()
+  await watchKeyboard(page); // the keyboard hand-backs to webviews, before the first one opens
   // Reduced motion: the board's camera, card and arrow animations jump straight to where they end (the shots show the board at rest,
   // so they look the same), and every wait for the board to settle is short. Emulated for the window and its webviews
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -101,12 +102,16 @@ const leaveNote = async (page, f) => {
   console.log(`  … reduced motion: ${await f.evaluate(() => matchMedia("(prefers-reduced-motion: reduce)").matches)}`);
   // Name the board (the name shows on the editor tab and in some themes' board header)
   const boardTab = page.locator('.editor-group-container .tab:has-text("nano-vllm: one engine step")');
-  await command(page, "CodeBoard: Rename Board", "Rename board");
-  await page.keyboard.press("Control+a"); await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await qiClosed(page, "the Rename board box");
+  // From the palette over the board: CodeBoard asks on the board
+  await command(page, "CodeBoard: Rename Board");
+  await boardDialog(page, f, "Rename Board");
+  // The dialog opens with the name selected. No Ctrl+A: in a webview VS Code runs it and sends Select All back a moment later
+  await page.keyboard.type("nano-vllm: one engine step"); await page.keyboard.press("Enter"); await boardDialogClosed(f, "the Rename Board dialog");
   check(await soon(() => boardTab.count(), Boolean, 5000), "board renamed (its editor tab shows the new name)");
   // A dummy DeepSeek key: shots.sh points codeboard.ai.deepseekBaseUrl at a local mock that answers with a fixed completion
-  await command(page, "CodeBoard: Set DeepSeek API Key", "DeepSeek API Key");
-  await page.keyboard.type("sk-release-shots-mock"); await page.keyboard.press("Enter"); await qiClosed(page, "the DeepSeek API Key box");
+  await command(page, "CodeBoard: Set DeepSeek API Key");
+  await boardDialog(page, f, "DeepSeek API Key");
+  await page.keyboard.type("sk-release-shots-mock"); await page.keyboard.press("Enter"); await boardDialogClosed(f, "the DeepSeek API Key dialog");
   check(await soon(() => page.locator(".notification-list-item-message", { hasText: "key saved" }).count(), Boolean, 10000), "DeepSeek API key saved");
   // The toasts ("Added to …", the key) sit over the board's Fit to Window button: clear them now rather than when a click misses
   await command(page, "Notifications: Clear All Notifications");
@@ -114,6 +119,10 @@ const leaveNote = async (page, f) => {
   // Make the board's group the active one by clicking its tab (VS Code has "Focus Second Editor Group" only as the Ctrl+2 keybinding,
   // not in the palette, and a webview having the keyboard does not make its group the one Maximize acts on)
   await boardTab.click();
+  // The click puts the keyboard on the tab; VS Code focuses the tab's webview once the editor is open again (some 80 ms later), and a
+  // palette opened before that loses the keyboard to it. command() then waits for the hand-back that follows
+  const kb = () => page.evaluate(() => { const a = document.activeElement; return a?.matches("iframe.webview") ? "webview" : `${a?.tagName}.${a?.className}`; });
+  await until("VS Code focuses the clicked tab's webview", async () => await kb() === "webview").catch(async (e) => { throw new Error(`${e.message}: the keyboard is on ${await kb()}`); });
   await command(page, "View: Toggle Maximize Editor Group");
   const fills = async () => { const [b, e] = [await (await f.frameElement()).boundingBox(), await page.locator(".monaco-workbench .part.editor").boundingBox()]; return b && e && b.width > e.width * 0.9; };
   check(await soon(fills, Boolean, 5000), "board fills the editor area");

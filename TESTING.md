@@ -4,21 +4,20 @@
 
 | 层 | 什么时候 | 时间上限 | 跑什么 |
 |---|---|---|---|
-| 1 本地 | 每次改完：`npm run check` | 90 秒 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、单元测试（core、markdown、board、host、插件，一次 vitest 并行跑完）、Markdown 示例；这次改动需要的 harness 场景（白板构建完就开始，和前面这些同时跑） |
+| 1 本地 | 每次改完：`npm run check` | 90 秒 | 先构建 `@yhnocoder/markdown`（几秒）；typecheck、单元测试（analysis、core、markdown、board、host、插件，一次 vitest 并行跑完）、Markdown 示例；这次改动需要的 harness 场景（白板构建完就开始，和前面这些同时跑） |
 | 2 CI | 每次 push、每个 PR（`ci.yml`） | 5 分钟 | 第 1 层的全部；harness 两个 job 并行；e2e 拆两段并行；perf（只在改了被测代码时跑） |
 | 3 每晚 | 北京时间 02:30（`nightly.yml`），03:00 replay（`replay.yml`） | 不限 | 全部 harness 场景、整套 e2e（包括平时不跑的 export / variants / noteimage / stickerfolder / notesettings / codeedit）、完整 perf（另加一轮白板上 100 个动图贴纸的，`run-perf.mjs --anim`）、Storybook（构建后每个 story 都打开一遍）、study-task replay；harness 全量跑完后再做一轮 flaky 重复（见下） |
 
 ## 一定会测到的
 
-**大问题**：typecheck、单元测试（core、markdown、board、host、插件，都是 vitest；markdown 的包括 npm 包里装了什么的检查）、Markdown 示例（`examples/markdown-demo`：只用 `@yhnocoder/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
+**大问题**：typecheck、单元测试（analysis、core、markdown、board、host、插件，都是 vitest；markdown 的包括 npm 包里装了什么的检查）、Markdown 示例（`examples/markdown-demo`：只用 `@yhnocoder/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
 
 **正在修的问题**：下面这几类场景不受时间预算限制，每次都跑：
 - 这次改动新增或改过的场景：场景自己的 `test(…)` 改了，或者它所在文件里测试以外的部分（import、共用的 helper）改了。只改注释、空白、类型不算
-- 昨晚还没有的新场景
 - 昨晚全量跑挂了的场景（会一直跑，直到修好）
 - 点名要跑的：本地 `npm run check -- 场景名 …`；PR 描述里写一行 `Tests: 场景名, 场景名`
 
-**其余的**按"改到的源文件"挑：每晚全量跑时会记下每个场景执行到了哪些源文件（文件里有函数跑过才算），以及跑了多久（覆盖率，存在 `ci-screenshots` 分支的 `impact/`）。跑过改动文件的场景都算受影响，其中跑过的文件越少越靠前，直到用完预算；放不下的写进 CI 报告，标成"留给夜里全量"。CSS、构建配置、lockfile、harness 自己、没有场景跑过的源文件这类改动看不出影响哪些场景，就当所有场景都可能受影响，先跑快的。比较的基准（PR 的目标分支、本地的 `origin/main` 分叉点）找不到时直接报错，不会拿别的提交凑合。
+**其余的**先排昨晚还没有、这次改动又没碰到的新场景（别的分支加的，它们自己的 PR 已经跑过），快的在前；再按"改到的源文件"挑：每晚全量跑时会记下每个场景执行到了哪些源文件（文件里有函数跑过才算），以及跑了多久（覆盖率，存在 `ci-screenshots` 分支的 `impact/`）。跑过改动文件的场景都算受影响，其中跑过的文件越少越靠前，直到用完预算；放不下的写进 CI 报告，标成"留给夜里全量"。CSS、构建配置、lockfile、harness 自己、没有场景跑过的源文件这类改动看不出影响哪些场景，就当所有场景都可能受影响，先跑快的。比较的基准（PR 的目标分支、本地的 `origin/main` 分叉点）找不到时直接报错，不会拿别的提交凑合。
 
 ## 怎么算失败
 

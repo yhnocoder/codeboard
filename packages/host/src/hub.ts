@@ -198,6 +198,19 @@ export class BoardHub implements BoardHost, Disposable {
     if (now) run(); else this.sharedT = setTimeout(run, 120);
   }
 
+  private keyOn = false;
+  private keyApplied: Promise<unknown> = Promise.resolve();
+  async boardFocus(p: BoardPanel, has: boolean) {
+    p.hasKeyboard = has;
+    const on = this.all().some((x) => x.hasKeyboard);
+    if (on !== this.keyOn) {
+      this.keyOn = on;
+      const set = workspace().ui.boardFocusKey;
+      if (set) this.keyApplied = this.keyApplied.then(() => set(on)).catch((e) => log("warn", `boardFocused: ${e instanceof Error ? e.message : e}`));
+    }
+    await this.keyApplied;
+  }
+
   get(id: string) { return this.panels.get(id); }
   all() { return [...this.panels.values()]; }
   metas(): Promise<BoardMeta[]> { return this.store.list(); }
@@ -227,7 +240,7 @@ export class BoardHub implements BoardHost, Disposable {
     // p.id 会变（进入子白板），这里都按 p.id 取
     view.onDidActivate(() => this.setTarget(p.id));
     // 关界面：它最后的改动宿主已经收下了，马上写盘（不等定时器，窗口可能正在关）
-    view.onDidDispose(() => { void this.store.flush(p.id); if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.sharedSent.delete(p.id); this.skelSent.delete(p); this.saveOpen(); });
+    view.onDidDispose(() => { p.dropAsks(); void this.store.flush(p.id); if (this.panels.get(p.id) === p) this.panels.delete(p.id); this.sharedSent.delete(p.id); this.skelSent.delete(p); this.saveOpen(); });
     this.saveOpen();
     return p;
   }

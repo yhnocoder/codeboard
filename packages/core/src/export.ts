@@ -1,7 +1,7 @@
 // Markdown 原样写出用户的文字和标识符：不做转义（block_manager 不会变成 block\_manager）
 import { cardAndCols, cardTitle, colsOf, hostOf, stickerWhere, domainOf, findCard, isQuestion, rpcText, versionLabel, type Board, type Card, type CodeCard, type Segment, type Sidenote, type Link } from "./model";
 import { computeFlows, isCall, startCards, walkOrder } from "./flow";
-import { langInfo } from "./langs";
+import { langInfo } from "@codeboard/analysis/langs";
 
 export type ExportScope = { kind: "board" } | { kind: "sections"; ids: string[] } | { kind: "walk"; start: string };
 export type ExportFormat = "html" | "md" | "png";

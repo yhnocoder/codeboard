@@ -1,5 +1,5 @@
 import { uid, type CodeCard, type EditorState, type NewCard, type Segment } from "@codeboard/core";
-import { listsMembers, planSelection, symbolAtCursor, type Plan, type Range, type Sel, type Sym } from "@codeboard/core/analysis";
+import { listsMembers, planSelection, symbolAtCursor, type Plan, type Range, type Sel, type Sym } from "@codeboard/analysis";
 import * as path from "node:path";
 import { analysisOf } from "./analysis";
 import { locOfFile, type Loc } from "./source";

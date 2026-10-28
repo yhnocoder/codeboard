@@ -8,7 +8,8 @@ import { resetSubboards, putSkels, setCrumbs, setWalkBack } from "./state/subboa
 import { boardSwitched } from "./state/root";
 import * as A from "./actions";
 import { runKey } from "./keymap";
-import { choose } from "./ui/Menu";
+import { send } from "./host";
+import { choose, pickOne, promptText } from "./ui/Menu";
 import { setNoteAssets } from "./md/images";
 import { applyMathPreamble } from "./md/math";
 import { preloadEditor } from "./md/load";
@@ -138,6 +139,12 @@ function handle(m: HostToBoard) {
     case "run": A.applyRunMsg(m.apply); break;
     case "variants": A.applyVariantSync(m.cards); break;
     case "githubPicker": A.openGitHubPicker(m.repo); break;
+    case "ask": {
+      const a = m.ask;
+      void (a.kind === "text" ? promptText(a.title, a.value, a.placeholder, a.ok, { text: a.text, password: a.password }) : pickOne(a.title, a.items))
+        .then((value) => send({ type: "answer", id: m.id, value }));
+      break;
+    }
     case "shared": if (m.views) A.sharedShown(m.cards.map((sc) => sc.card)); syncShared(m.cards, m.views); break;
     case "sharedInfo": setShared(reconcile(m.cards)); break;
     case "merged": syncMerged(m.patch, m.views); break;
@@ -150,14 +157,14 @@ function handle(m: HostToBoard) {
   }
 }
 
-/** 跨白板的讲解：进了子白板就从 start 讲起（讲完回去），回到父白板就接着讲 */
+/** 跨白板的讲解：进了子白板就从它的调用图（没有就第一张卡）讲起（讲完回去），回到父白板就接着讲 */
 async function hopWalk(w: NonNullable<Extract<HostToBoard, { type: "init" }>["walk"]>) {
   // 镜头按卡的实际大小框：没量过的卡只有存下来的估计值
   const board = state.board.id;
   await cardsMeasured();
   if (state.board.id !== board) return;
   if (w.into) {
-    const start = w.start ?? flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
+    const start = flows().graphs[0]?.roots[0] ?? state.board.cards.find((c) => state.board.place[c.id])?.id;
     if (!start) { A.leaveBoard(undefined, { resume: { root: w.into.root, i: w.into.i + 1 } }); return; }
     setWalkBack(w.into);
     A.startWalk(start, { single: true });

@@ -42,7 +42,7 @@ export async function makeSegment(loc: Loc, lines: string[], start: number, end:
 
 const symsOf = (lang: string, text: string) => analysisOf(lang, text).symbols;
 
-export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Promise<Stale> {
+export async function staleOf(seg: Segment, o: { upstream?: boolean; head?: (root: string) => Promise<string | null> } = {}): Promise<Stale> {
   if (!hasLocalFile(seg.src)) return { state: "ok" };
   const root = rootOf(seg.src, seg.version);
   if (!root || !(await exists(root))) return { state: "missing" };
@@ -62,7 +62,7 @@ export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Pro
     }
   }
   if (v.kind === "git") {
-    const head = await headOf(root);
+    const head = await (o.head ?? headOf)(root);
     if (!head) return { state: "missing" };
     const headText = await showFile(root, head, seg.path);
     const work = await readText(abs);
@@ -97,8 +97,11 @@ export async function staleOf(seg: Segment, o: { upstream?: boolean } = {}): Pro
 
 export async function staleFor(segs: Segment[], up?: Set<string>): Promise<Record<string, Stale>> {
   const out: Record<string, Stale> = {};
+  // One HEAD per repo for the whole check
+  const heads = new Map<string, Promise<string | null>>();
+  const head = (root: string) => { let h = heads.get(root); if (!h) heads.set(root, h = headOf(root)); return h; };
   await Promise.all(segs.map(async (s) => {
-    try { out[s.id] = await staleOf(s, { upstream: up?.has(s.id) }); } catch { out[s.id] = { state: "ok" }; }
+    try { out[s.id] = await staleOf(s, { upstream: up?.has(s.id), head }); } catch { out[s.id] = { state: "ok" }; }
   }));
   return out;
 }

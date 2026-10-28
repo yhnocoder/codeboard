@@ -110,6 +110,8 @@ test("mathPreviewPlainErrors", async () => {
     return { text: e?.textContent ?? null, fix: e?.querySelector(".fix")?.textContent ?? null, where: e?.querySelector(".where u")?.textContent ?? null,
       stale: b.querySelector(".block-math-inner")!.classList.contains("md-mathstale"), tex: b.querySelector(".block-math-inner annotation")?.textContent ?? null };
   }, blk);
+  // the preview draws in the frame after an input: an error read before it has drawn the whole text is one of a keystroke on the way
+  const drawn = (src: string) => until(h, `the preview shows ${src}`, () => pg.evaluate(([blk, src]) => document.querySelector<HTMLElement>(`${blk} [data-src]`)?.dataset.src === src, [blk, src] as const));
   // still typing a command name that can complete: no error yet
   await pg.keyboard.type(" + \\fr");
   await frames(pg, 2);
@@ -118,6 +120,7 @@ test("mathPreviewPlainErrors", async () => {
   // a typo: \tims
   await pg.keyboard.press("Control+a");
   await pg.keyboard.type("a \\tims b");
+  await drawn("a \\tims b");
   await until(h, "the error shows", async () => (await err()).text);
   const typo = await err();
   await shot(h, "mathPreviewPlainErrors-typo");
@@ -127,6 +130,7 @@ test("mathPreviewPlainErrors", async () => {
   // a missing }
   await pg.keyboard.press("Control+a");
   await pg.keyboard.type("\\frac{n + 255}{256");
+  await drawn("\\frac{n + 255}{256");
   await until(h, "the error shows", async () => (await err()).text);
   const brace = await err();
   await shot(h, "mathPreviewPlainErrors-brace");

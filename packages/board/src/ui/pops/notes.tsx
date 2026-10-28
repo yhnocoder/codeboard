@@ -1,6 +1,7 @@
 import { keepKey } from "@yhnocoder/markdown/ui";
 import { For, Show, Switch, Match, createSignal, createEffect } from "solid-js";
-import { cardTitle, versionLabel, baseName, isCode, langLabel, LANGS, guessLang, escHtml, type Sidenote, type SearchItem, type SegView } from "@codeboard/core";
+import { cardTitle, versionLabel, baseName, isCode, guessLang, escHtml, type Sidenote, type SearchItem, type SegView } from "@codeboard/core";
+import { langLabel, LANGS } from "@codeboard/analysis/langs";
 import { state, cardById, toast, sharedOn } from "../../state/store";
 import { pops, closePop, pinPop } from "../../state/pop";
 import { pickCardThen } from "../../state/mode";

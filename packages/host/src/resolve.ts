@@ -1,7 +1,9 @@
 // 先问 VS Code 的「转到定义」（装了 Pylance、clangd 时最准）；钉的版本不是工作区当前内容、或者语言服务没给结果时，按名字在索引里找。
 import * as path from "node:path";
-import { escapeRegExp, grammarOf, grammarOfFile, rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment, type Var } from "@codeboard/core";
-import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
+import { rankByReceiver, renderLine, type CodeCard, type ExpandPick, type ExpandResult, type ImplPick, type DispatchResult, type PeekDef, type PeekResult, type Segment } from "@codeboard/core";
+import { grammarOf, grammarOfFile } from "@codeboard/analysis/langs";
+import { escapeRegExp, type Var } from "@codeboard/analysis/basics";
+import { isAbstractBody, isModuleDef, peekPlan, splitHover, symbolAt, varCandidates, type CallSite, type FileAnalysis, type Sym } from "@codeboard/analysis";
 import { crossBefore, decorate, viaRegistry, withAlts, type Crossed, type Target } from "./bridge";
 import { analysisOf, cachedAnalysis, segAnalysis } from "./analysis";
 import { sharedDefs, type Def } from "./defcache";

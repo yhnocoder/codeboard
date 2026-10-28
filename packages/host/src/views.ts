@@ -1,14 +1,15 @@
 // 分析尽量在「那个版本」的整个文件上做（片段在函数中间时语法才对），拿不到整个文件就分析段文本本身。
 import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore, type LanguageInput } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
-import { escHtml, fingerprint, langInfo, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
-import type { FileAnalysis } from "@codeboard/core/analysis";
+import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
+import { langInfo } from "@codeboard/analysis/langs";
+import type { FileAnalysis } from "@codeboard/analysis";
 import { analysisOf, segAnalysis } from "./analysis";
 import { absOf, versionText } from "./source";
 import { callPkgs } from "./scope";
 import { Lru, readText, splitLines } from "./ws";
 
-// 语法按语言表（core 的 langs.ts）的 shiki 名字，第一次用到时才加载
+// 语法按语言表（@codeboard/analysis 的 langs.ts）的 shiki 名字，第一次用到时才加载
 const GRAMMAR: Record<string, LanguageInput> = {
   python: () => import("shiki/langs/python.mjs"), cpp: () => import("shiki/langs/cpp.mjs"), c: () => import("shiki/langs/c.mjs"),
   rust: () => import("shiki/langs/rust.mjs"), typescript: () => import("shiki/langs/typescript.mjs"), javascript: () => import("shiki/langs/javascript.mjs"),

@@ -7,8 +7,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
-import { chromium } from "playwright-core";
-import { CHROMIUM } from "../test/chromium.mjs";
+import { launch } from "../test/chromium.mjs";
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), "../..");
 const arg = (k, d) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : d; };
@@ -77,7 +76,7 @@ for (const [n, d] of Object.entries(block(cur("packages/markdown/src/editor/icon
   if (s.k === "L" && s.y0 === s.y && s.x0 !== s.x && !whole(s.y)) problems.push(`markdown ${n}: horizontal stroke at y=${s.y}`);
 }
 
-const browser = await chromium.launch({ executablePath: CHROMIUM });
+const browser = await launch();
 const GAP = 8, CELL = 16 + GAP;
 const LOOK = { light: { bg: "#fbfaf7", ink: "#3a3530" }, dark: { bg: "#2a2725", ink: "#e9e4dc" }, alpha: { bg: "transparent", ink: "#000" } };
 async function strip(set, w, dpr, look) {

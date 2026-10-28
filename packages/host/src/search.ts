@@ -1,6 +1,8 @@
 import * as path from "node:path";
-import { allCodeCards, cardTitle, codeExts, computeFlows, escapeRegExp, fuzzy, guessLang, LANG_TABLE, substr, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
-import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/core/analysis";
+import { allCodeCards, cardTitle, computeFlows, fuzzy, guessLang, substr, type GenSource, type NameHit, type NewCard, type SearchItem } from "@codeboard/core";
+import { codeExts, LANG_TABLE } from "@codeboard/analysis/langs";
+import { escapeRegExp } from "@codeboard/analysis/basics";
+import { initExports, moduleFiles, pyprojectScripts } from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
 import { cardForFileSym, freeCard, newCodeCard, withViews } from "./cards";
 import { locOfFile } from "./source";

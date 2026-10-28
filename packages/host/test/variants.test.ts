@@ -4,7 +4,6 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { addVariant as addV, emptyBoard, switchVariant, type Board, type CodeCard, type Segment } from "@codeboard/core";
 import { addVariant, syncVariants, variantSources } from "../src/variants";
 import { staleFor, staleSegments } from "../src/versions";
-import { forgetHeads } from "../src/git";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { card, git, startTreeSitter } from "./helpers";
@@ -27,10 +26,9 @@ describe("variants", () => {
     fs.writeFileSync(path.join(WT, "sampler.py"), MINE.join("\n"));
     git(WT, "commit", "-qam", "fix all-accepted rows");
     useWorkspace(nodeWorkspace(R));
-    forgetHeads();
     ({ card: c, seg } = await card(path.join(R, "sampler.py"), "RejectionSampler.forward"));
   });
-  afterAll(() => { git(R, "worktree", "remove", "--force", WT); fs.rmSync(FIX, { recursive: true, force: true }); forgetHeads(); });
+  afterAll(() => { git(R, "worktree", "remove", "--force", WT); fs.rmSync(FIX, { recursive: true, force: true }); });
 
   let wt: Awaited<ReturnType<typeof addVariant>>, br: Awaited<ReturnType<typeof addVariant>>;
   const b: Board = emptyBoard("bv", "variants");
@@ -111,7 +109,6 @@ describe("variants", () => {
   });
   it("re-anchors the variants by function name after a rebase", async () => {
     git(WT, "rebase", "-q", "main");
-    forgetHeads();
     const r = (await syncVariants(b, sent))[c.id];
     expect(r?.rebased).toEqual(expect.arrayContaining(["vb", "vw"]));
     expect(r?.segs?.vb?.[0].start).toBe(seg.start + 3);
@@ -120,7 +117,6 @@ describe("variants", () => {
   it("offers to turn back into a normal card once merged into main, and shows main's new version", async () => {
     const main2 = git(R, "rev-parse", "HEAD");
     git(R, "merge", "-q", "--ff-only", "exp-overlap");
-    forgetHeads();
     const r = (await syncVariants(b, sent))[c.id];
     const tip = git(R, "rev-parse", "HEAD");
     expect(tip).not.toBe(main2);
@@ -142,7 +138,6 @@ describe("variants in a submodule", () => {
     git(LIB, "init", "-q", "-b", "main"); git(LIB, "add", "-A"); git(LIB, "commit", "-qm", "lib");
     git(SUP, "init", "-q", "-b", "main"); git(SUP, "submodule", "add", "-q", LIB, "examples/lib"); git(SUP, "commit", "-qm", "sub");
     useWorkspace(nodeWorkspace(SUP));
-    forgetHeads();
     ({ seg } = await card(path.join(SUB, "m.py"), "f"));
   });
   afterAll(() => fs.rmSync(FIX, { recursive: true, force: true }));

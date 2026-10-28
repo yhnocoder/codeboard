@@ -1,7 +1,8 @@
-import { createSignal, For, Show, onCleanup, onMount, createEffect } from "solid-js";
+import { createSignal, For, Show, onCleanup, onMount, createEffect, createMemo, on } from "solid-js";
 import { Icon } from "./icons";
 import { place, virtual } from "@yhnocoder/markdown/ui";
 import { useOverlay } from "./overlay";
+import { useListNav } from "./hooks";
 
 export type Item =
   | { label: string; kbd?: string; run?: () => void; disabled?: boolean | string; checked?: boolean; danger?: boolean; sub?: Item[]; hint?: string; head?: true }
@@ -128,7 +129,13 @@ export function MenuLayer() {
   return <Show when={menu()} keyed>{(m) => <RootMenu m={m} />}</Show>;
 }
 
-type DialogState = { title: string; text?: string; warn?: string; note?: string; options: string[]; def: number; done: (i: number | null) => void; input?: { value: string; placeholder?: string } };
+export type PickRow = { label: string; description?: string; detail?: string };
+type DialogState = {
+  title: string; text?: string; warn?: string; note?: string; options: string[]; def: number; done: (i: number | null) => void;
+  input?: { value: string; placeholder?: string; password?: boolean };
+  /** A list to choose from (pickOne): done gets the index of the row chosen */
+  pick?: PickRow[];
+};
 const [dialog, setDialog] = createSignal<DialogState | null>(null);
 
 /** 同一时间只有一个对话框：新的盖掉旧的时，旧的那个当作取消（null），等它的不会一直挂着 */
@@ -141,31 +148,86 @@ function openDialog(d: DialogState) {
 export function choose(title: string, options: string[], opts: { text?: string; def?: number; warn?: string; note?: string } = {}): Promise<number | null> {
   return new Promise((done) => openDialog({ title, text: opts.text, warn: opts.warn, note: opts.note, options, def: opts.def ?? 0, done }));
 }
-export function promptText(title: string, value = "", placeholder = "", ok = "OK"): Promise<string | null> {
+/** o.text: a line under the title; o.password: the text is a secret (shown as dots) */
+export function promptText(title: string, value = "", placeholder = "", ok = "OK", o: { text?: string; password?: boolean } = {}): Promise<string | null> {
   return new Promise((done) => {
     let v = value;
-    openDialog({ title, options: [ok, "Cancel"], def: 0, input: { value, placeholder }, done: (i) => done(i === 0 ? v.trim() || null : null) });
+    openDialog({ title, text: o.text, options: [ok, "Cancel"], def: 0, input: { value, placeholder, password: o.password }, done: (i) => done(i === 0 ? v.trim() || null : null) });
     queueMicrotask(() => {
       const inp = document.querySelector<HTMLInputElement>(".dialog input");
       if (inp) { inp.oninput = () => (v = inp.value); inp.focus(); inp.select(); }
     });
   });
 }
+/** One of rows: typing filters them (by label and description), ↑↓ move, ↵ or a click chooses. Resolves to the row's index */
+export function pickOne(title: string, rows: PickRow[]): Promise<number | null> {
+  return new Promise((done) => openDialog({ title, options: [], def: 0, pick: rows, done }));
+}
 
 const finish = (i: number | null) => { const d = dialog(); setDialog(null); d?.done(i); };
+function PickList(p: { rows: PickRow[]; nav: (k: (e: KeyboardEvent) => boolean, chosen: () => number | undefined) => void }) {
+  const [q, setQ] = createSignal("");
+  const shown = createMemo(() => {
+    const t = q().trim().toLowerCase();
+    return p.rows.map((r, i) => ({ r, i })).filter(({ r }) => !t || `${r.label} ${r.description ?? ""}`.toLowerCase().includes(t));
+  });
+  const { i, setI, key } = useListNav(() => shown().length);
+  createEffect(on(q, () => setI(0), { defer: true }));
+  let list!: HTMLDivElement, inp!: HTMLInputElement;
+  createEffect(() => { i(); list?.querySelector(".cand.on")?.scrollIntoView({ block: "nearest" }); });
+  p.nav(key, () => shown()[i()]?.i);
+  onMount(() => inp.focus());
+  return (
+    <>
+      <input ref={inp} type="text" placeholder="Type to filter" spellcheck={false} value={q()} onInput={(e) => setQ(e.currentTarget.value)} />
+      <div ref={list} class="plist dpick" role="listbox">
+        <For each={shown()}>{(x, k) => (
+          <button class="cand" classList={{ on: k() === i(), two: !!x.r.detail }} role="option" aria-selected={k() === i()}
+            onPointerMove={(e) => { if (e.movementX || e.movementY) setI(k()); }} onClick={() => finish(x.i)}>
+            <span class="lb">{x.r.label}<Show when={x.r.detail}><span class="dd">{x.r.detail}</span></Show></span>
+            <Show when={x.r.description}><small>{x.r.description}</small></Show>
+          </button>
+        )}</For>
+        <Show when={!shown().length}><div class="empty">No matches</div></Show>
+      </div>
+    </>
+  );
+}
 function Dialog(p: { d: DialogState }) {
-  // Esc = 取消，↵ = 默认按钮（焦点在输入框里也一样）
-  useOverlay({ close: () => finish(null), grab: true, modal: true, keys: (e) => e.key === "Enter" && !e.isComposing && (finish(p.d.def), true) });
-  if (!p.d.input) queueMicrotask(() => document.querySelector<HTMLButtonElement>(".dialog .def")?.focus({ preventScroll: true }));
+  // Esc = 取消，↵ = 默认按钮（焦点在输入框里也一样）；选列表的对话框：↵ 选高亮的那行，↑↓ 换行
+  let navKey: ((e: KeyboardEvent) => boolean) | undefined, chosen: (() => number | undefined) | undefined;
+  const keys = (e: KeyboardEvent) => {
+    if (!p.d.pick) return e.key === "Enter" && !e.isComposing && (finish(p.d.def), true);
+    if (navKey?.(e)) return true;
+    if (e.key !== "Enter" || e.isComposing) return false;
+    const c = chosen?.();
+    if (c !== undefined) finish(c);
+    return true;
+  };
+  useOverlay({ close: () => finish(null), grab: true, modal: true, keys });
+  if (!p.d.input && !p.d.pick) queueMicrotask(() => document.querySelector<HTMLButtonElement>(".dialog .def")?.focus({ preventScroll: true }));
+  // VS Code gives a webview the keyboard in two steps, its host page first and then the board's frame, and Chrome delivers the first
+  // one to the webview's process on its own time: a dialog asked for right after (a palette command) can focus its field before that
+  // lands, and the landing takes the focus out of the board's frame and clears it. When the frame then gets the keyboard back with
+  // nothing in the dialog focused, it goes to the dialog's field (a text field keeps its selection)
+  let box!: HTMLDivElement;
+  const takeKeyboard = () => {
+    if (box.contains(document.activeElement)) return;
+    (box.querySelector("input") ?? box.querySelector<HTMLButtonElement>(".def"))?.focus({ preventScroll: true });
+  };
+  window.addEventListener("focus", takeKeyboard);
+  onCleanup(() => window.removeEventListener("focus", takeKeyboard));
   const d = () => p.d;
   return (
         <div class="scrim" onPointerDown={(e) => { if (e.target === e.currentTarget) finish(null); }}>
-          <div class="dialog" classList={{ wide: d().options.length > 2 }} role="dialog" aria-label={d().title}>
+          <div ref={box} class="dialog" classList={{ wide: d().options.length > 2 || !!d().pick }} role="dialog" aria-label={d().title}>
             <div class="dt">{d().title}</div>
             <Show when={d().text}><div class="dx">{d().text}</div></Show>
             <Show when={d().warn}><div class="dw">{d().warn}</div></Show>
-            <Show when={d().input}><input type="text" value={d().input!.value} placeholder={d().input!.placeholder} spellcheck={false} /></Show>
+            <Show when={d().input}><input type={d().input!.password ? "password" : "text"} value={d().input!.value} placeholder={d().input!.placeholder} spellcheck={false} /></Show>
+            <Show when={d().pick}><PickList rows={d().pick!} nav={(k, c) => { navKey = k; chosen = c; }} /></Show>
             <div class="db">
+              <Show when={d().pick}><button onClick={() => finish(null)}>Cancel</button></Show>
               <For each={d().options}>{(o, i) => <button class={i() === d().def ? "def" : ""} onClick={() => finish(i())}>{o}</button>}</For>
             </div>
             <Show when={d().note}><div class="dn">{d().note}</div></Show>

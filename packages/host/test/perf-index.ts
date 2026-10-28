@@ -50,7 +50,7 @@ void (async () => {
   makeRepo();
   const W = nodeWorkspace(BIG);
   useWorkspace(W);
-  await startAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm"));
+  await startAnalysis();
   const main = path.join(BIG, "app/main.py");
   const text = fs.readFileSync(main, "utf8");
   const sym = analysisOf("python", text).symbols.find((s) => s.qual === "main")!;

@@ -1,6 +1,5 @@
+import { F_BLANK, F_COMMENT, F_DOCSTRING } from "@codeboard/analysis/basics";
 import { inRanges, type CodeCard, type HideFlags, type Segment } from "./model";
-
-export const F_BLANK = 1, F_COMMENT = 2, F_DOCSTRING = 4;
 
 /** 宿主为每一段算好的展示数据（不持久化） */
 export type SegView = {

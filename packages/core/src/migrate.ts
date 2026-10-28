@@ -78,6 +78,12 @@ function normLink(l: Link) {
   if (l.gen && (l.call || l.rpc || l.back)) delete (l as { gen?: true }).gen;
   dropFalse(l.style, ["dash"]);
   dropFalse(l.lost, ["from", "to"]);
+  // 旧的 End.sub（连到子白板框里的某张小卡片）：框只是预览，箭头改连整个框；那张小卡片没了时标的 lost 跟着去掉（框还在）
+  delete (l.from as { sub?: string }).sub;
+  if ("sub" in l.to) {
+    delete (l.to as { sub?: string }).sub;
+    if (l.lost) { delete l.lost.to; if (!l.lost.from) delete l.lost; }
+  }
 }
 
 function normalize(b: any) {

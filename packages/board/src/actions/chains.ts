@@ -1,8 +1,9 @@
 import { unwrap } from "solid-js/store";
 import {
   uid, isCode, segOf, cardTitle, instName, genWhat, rankByReceiver, sameCallSite, baseName, swapCallTarget,
-  type CallAlt, type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type BoundVal, type SearchItem,
+  type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type SearchItem,
 } from "@codeboard/core";
+import type { CallAlt, BoundVal } from "@codeboard/analysis/basics";
 import { state, setState, mutate, cardById, hostOf, toast, placeOf, select } from "../state/store";
 import { setConnectFrom } from "../state/mode";
 import { openPop, updatePop, type ImplPop, type NamesPop } from "../state/pop";

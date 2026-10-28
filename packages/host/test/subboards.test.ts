@@ -18,7 +18,7 @@ const toasts = () => posted.flatMap((m) => (m.type === "toast" ? [m.text] : []))
 const panels: BoardHost = {
   store, target: undefined, clip: undefined,
   get: () => undefined, all: () => [], metas: () => store.list(), show: async () => undefined, setTarget: () => undefined, broadcast: () => undefined,
-  pushBoards: async () => undefined, staleChanged: () => undefined, refreshStale: async () => undefined, refreshShared: () => undefined, refreshSkeletons: () => undefined,
+  pushBoards: async () => undefined, staleChanged: () => undefined, refreshStale: async () => undefined, refreshShared: () => undefined, refreshSkeletons: () => undefined, boardFocus: async () => undefined,
   skeleton: (id) => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)) : null; },
   switchBoard: async (p, to, o) => { switches.push({ to, ...o }); p.id = to; p.crumbs = o.crumbs; p.cams = o.cams; return true; },
 };
@@ -44,11 +44,11 @@ describe("sub-boards", () => {
     expect(sk.nope).toBeNull();
   });
   it("enters the child in the same panel with a breadcrumb, the parent camera and the walkthrough hop", async () => {
-    await send({ type: "enterBoard", id: "bS", frame: "f", cam: { x: 1, y: 2, z: 0.5 }, walk: { into: { root: "r", i: 2 }, start: "n" } });
+    await send({ type: "enterBoard", id: "bS", frame: "f", cam: { x: 1, y: 2, z: 0.5 }, walk: { into: { root: "r", i: 2 } } });
     expect(p.id).toBe("bS");
     expect(switches[0].crumbs).toEqual([{ id: "bE", name: "Engine", frame: "f" }]);
     expect(switches[0].cams[0].z).toBe(0.5);
-    expect(switches[0].walk?.start).toBe("n");
+    expect(switches[0].walk).toEqual({ into: { root: "r", i: 2 } });
   });
   it("refuses to enter a cycle", async () => {
     // the parent placed inside the child: the board refuses first, the host checks again on entering

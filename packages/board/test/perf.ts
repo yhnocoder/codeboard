@@ -59,21 +59,20 @@ export function bigBoard(n: number): Board {
 }
 
 /**
- * --frames N：把镜头附近的 N 张卡原地换成子白板框（骨架 = 一块 12 张卡的白板），连进来的箭头改连到骨架里第一张卡（End.sub），
+ * --frames N：把镜头附近的 N 张卡原地换成子白板框（骨架 = 一块 12 张卡的白板），连进来的箭头改连到整个框（去掉行），
  * 连出去的改成从框出。宿主那边的 skeletons 请求由 open 的 on 回答
  */
 export function withFrames(b: Board, n: number): Skeleton {
   const child = bigBoard(12);
   child.id = "perf-sub"; child.name = "Sub board";
   const sk = skeletonOf(child);
-  const first = sk.cards[0].id;
   const ids = new Set<string>();
   // 第 0 张（LLMEngine.step）留给 expand；从第一、二行里隔着挑
   for (let i = 2; ids.size < n && i < b.cards.length; i += 5) ids.add(b.cards[i].id);
   b.cards = b.cards.map((c) => (ids.has(c.id) ? ({ id: c.id, kind: "board", board: child.id } satisfies BoardCard) : c));
   for (const id of ids) b.place[id] = { ...b.place[id], h: 360 };
   for (const l of b.links) {
-    if (ids.has(l.to.card)) l.to = { card: l.to.card, sub: first };
+    if (ids.has(l.to.card)) l.to = { card: l.to.card };
     if (ids.has(l.from.card)) { l.from = { card: l.from.card }; delete l.call; }
   }
   b.sidenotes = b.sidenotes.filter((s) => !ids.has(s.at.card));

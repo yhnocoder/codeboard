@@ -8,7 +8,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, THEMES, emptyBoard, type CodeCard } from "@codeboard/core";
 import { shot, put, symCard, findSym, files, ready, OUT, REPO, type Host } from "../harness";
-import { analyze } from "@codeboard/core/analysis";
+import { analyze } from "@codeboard/analysis";
 import { uid, type Segment } from "@codeboard/core";
 import { test, open, light, verdict, expect, until, idle } from "../fixtures";
 

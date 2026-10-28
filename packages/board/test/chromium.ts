@@ -1,1 +1,1 @@
-export { CHROMIUM, CHROMIUM_ARGS } from "../../../tools/test/chromium.mjs";
+export { CHROMIUM, CHROMIUM_ARGS, launch } from "../../../tools/test/chromium.mjs";

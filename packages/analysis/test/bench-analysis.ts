@@ -1,9 +1,9 @@
 // 分析耗时：一个仓库里最大的 40 个 .py（参数给的目录，默认 examples/sglang）。旧 = 逐节点遍历，新 = 查询 + 增量 + 按行
-// 跑法：npm run bench:analysis -w @codeboard/core [-- <目录>]（sglang 先 git submodule update --init --depth 1 examples/sglang）
+// 跑法：npm run bench:analysis -w @codeboard/analysis [-- <目录>]（sglang 先 git submodule update --init --depth 1 examples/sglang）
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import TS from "@vscode/tree-sitter-wasm";
-import { initAnalysis, analyze, languageOf, forgetTree, setTreeCacheSize } from "../src/analysis";
+import { initAnalysis, analyze, languageOf, forgetTree, setTreeCacheSize } from "../src";
 import { analyzeOld } from "./oracle/analysis-old";
 
 const dir = process.argv[2] ?? new URL("../../../examples/sglang", import.meta.url).pathname;

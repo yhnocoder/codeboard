@@ -1,7 +1,8 @@
 // 宿主 ↔ 白板的消息。白板持有白板状态，改动后把变了的项发回来保存（patch）；宿主负责读代码、高亮、版本、跳转，
 // 以及把共享卡的改动转给开着同一张卡的别的白板（shared）。
 // 需要回答的请求带 req，宿主用 { type: "reply", req, … } 回。
-import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Var, Version, HideFlags, WebMeta, CallMark, BoundVal, CallAlt, VariantFrom, Link } from "./model";
+import type { Board, BoardMeta, Camera, CodeCard, Segment, Card, Version, HideFlags, WebMeta, CallMark, VariantFrom, Link } from "./model";
+import type { Var, BoundVal, CallAlt } from "@codeboard/analysis/basics";
 import type { SegView } from "./lines";
 import type { BoardPatch, SharedUpdate } from "./patch";
 import type { CardCopy } from "./edit";
@@ -12,13 +13,18 @@ import type { Rect } from "./layout";
 import type { QuestionItem } from "./questions";
 import type { LspItem, LspSignature } from "./workspace";
 
+/** A question for the user in a board dialog (HostToBoard "ask"): a line of text, or one of a list */
+export type BoardAsk =
+  | { kind: "text"; title: string; text?: string; value?: string; placeholder?: string; ok: string; password?: boolean }
+  | { kind: "pick"; title: string; items: { label: string; description?: string; detail?: string }[] };
+
 /** 子白板的面包屑：从最外层到当前白板的上一级（进入子白板时宿主记着；frame = 在那块白板上是哪个框） */
 export type Crumb = { id: string; name: string; frame: string };
 /**
- * 跨白板的讲解。进入子白板：into = 父白板的讲解走到了第几步（root 出发），start = 从子白板的这张卡讲起（没有 = 从第一张图的根）；
+ * 跨白板的讲解。进入子白板：into = 父白板的讲解走到了第几步（root 出发），子白板从它第一张图的根讲起；
  * 回到父白板：resume = 从 root 出发的讲解接着讲第 i 步。宿主只是转一下
  */
-export type WalkHop = { into?: { root: string; i: number }; start?: string; resume?: { root: string; i: number } };
+export type WalkHop = { into?: { root: string; i: number }; resume?: { root: string; i: number } };
 
 /** 一段代码和当前代码的关系（「新版本」） */
 export type Stale =
@@ -184,6 +190,9 @@ export type HostToBoard =
   | { type: "toast"; text: string }
   /** 侧栏 GITHUB FILES 的 Add Repo…：打开 From GitHub… 面板 */
   | { type: "githubPicker"; repo?: string }
+  /** A question CodeBoard asks while this board is where the user works (its own requests, a palette command on it): the board shows it
+   *  as one of its dialogs and sends { type: "answer", id } back */
+  | { type: "ask"; id: number; ask: BoardAsk }
   /** 共享卡在别的白板上改了（或这块白板撤销时被跳过的项）：卡和跟着它走的 Sidenote 的新内容。白板用 sync 换上（不进撤销栈），不再发回来 */
   | { type: "shared"; cards: SharedUpdate[]; views?: Record<string, SegView> }
   /** 这块白板上的共享卡在几块白板上、别的白板上谁连到它（宿主在存盘后算，整个换掉） */
@@ -207,6 +216,10 @@ export type BoardToHost =
   /** 自动保存：变了的项（undo = 这批改动里有撤销 / 重做）。回跳过的共享项数；写盘失败回 error，白板过一会儿整块重发 */
   | { type: "patch"; req: number; patch: BoardPatch; undo?: true }
   | { type: "selection"; cards: string[]; lines?: { card: string; seg: string; start: number; end: number } }
+  /** The board's frame got or lost the keyboard. VS Code's API has no webview focus event (VS Code itself polls it every 250 ms) */
+  | { type: "focus"; has: boolean }
+  /** The answer to the host's "ask" id: the text typed, the index of the item picked, or null when cancelled */
+  | { type: "answer"; id: number; value: string | number | null }
   /** Open in Editor：钉的 commit 不是当前代码时开只读版本 */
   | { type: "open"; card: string; seg?: string; line?: number }
   | { type: "openPath"; path: string; line?: number }
@@ -354,7 +367,7 @@ export type DispatchResult = { impls: ImplPick[]; base: string; abstract?: true 
 export type CrossMark = Pick<CallMark, "bound" | "vals" | "alts" | "impls" | "ev">;
 /** 动态分发的一个实现：qual / 路径 / 行；lib = 在 library 里（包名）；base = 基类自己的实现（不是抽象的） */
 export type ImplPick = { label: string; detail: string; path: string; line: number; qual: string; lib?: string; base?: true };
-/** 跨语言按名字搜到的一处：lang = 语言表（langs.ts）的 id；def = 定义，否则是字符串注册（"name"） */
+/** 跨语言按名字搜到的一处：lang = 语言表（@codeboard/analysis 的 langs.ts）的 id；def = 定义，否则是字符串注册（"name"） */
 export type NameHit = { lang: string; label: string; detail: string; path: string; line: number; def: boolean; qual?: string };
 /** Generated 卡的来源：文本、语言、文件名（剪贴板为空串） */
 export type GenSource = { text: string; lang: string; name: string };

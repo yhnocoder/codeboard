@@ -103,14 +103,17 @@ export interface WorkspaceEditor {
 }
 
 export type PickItem = { label: string; description?: string; detail?: string };
+export type PickOpts = { placeHolder?: string; title?: string; matchOnDescription?: boolean };
+/** title: what is asked (the dialog's title on a board); ok: the button that accepts it there; password: the text is a secret */
+export type InputOpts = { prompt: string; value?: string; placeHolder?: string; title?: string; ok?: string; password?: boolean };
 
 export interface WorkspaceUi {
   info(text: string, ...actions: string[]): Promise<string | undefined>;
   warn(text: string, opts: { modal?: boolean; detail?: string }, ...actions: string[]): Promise<string | undefined>;
   error(text: string): void;
   /** 选一项；回的是传进来的那个对象 */
-  pick<T extends PickItem>(items: T[], opts?: { placeHolder?: string; title?: string; matchOnDescription?: boolean }): Promise<T | undefined>;
-  input(opts: { prompt: string; value?: string; placeHolder?: string }): Promise<string | undefined>;
+  pick<T extends PickItem>(items: T[], opts?: PickOpts): Promise<T | undefined>;
+  input(opts: InputOpts): Promise<string | undefined>;
   /** 选一个文件（filters）或文件夹（folders） */
   openDialog(opts: { folders?: boolean; filters?: Record<string, string[]>; label: string; title?: string }): Promise<string | undefined>;
   saveDialog(opts: { defaultPath: string; filters: Record<string, string[]> }): Promise<string | undefined>;
@@ -121,6 +124,8 @@ export interface WorkspaceUi {
   clipboard(): Promise<string>;
   /** 编辑器里接着按 ⌘Z 撤销刚加到白板上的卡（codeboard.undoAdd）：打开后，编辑器里一改字、动光标、换编辑器就自己关掉 */
   undoAddKey?(on: boolean): void;
+  /** The editor's key context for "a board has the keyboard" (the board's own keys are bound on it); resolves once it applies */
+  boardFocusKey?(on: boolean): Promise<void>;
 }
 
 /** 语言模型（VS Code 的 Language Model API 之类）：可选，宿主没有就不给 */

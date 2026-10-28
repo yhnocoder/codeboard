@@ -1,7 +1,7 @@
 // 跨语言的边界：从调用处认出它跨了什么（pybind、torch.ops、TORCH_LIBRARY、PyO3、kernel[grid]、launch macro、JIT 编译、TileLang 工厂），
 // 以及跨过去之后「实际跑哪个函数、参数取几」。纯文本 / 语法判断，不读文件；找文件、找符号由宿主做。
 // 宏和模板只展开到「实际跑哪个 kernel、参数取几」，不做完整的预处理。
-import { escapeRegExp, type BoundVal, type CallAlt } from "../model";
+import { escapeRegExp, type BoundVal, type CallAlt } from "./basics";
 import type { Arg, CallSite, Sym } from "./index";
 
 const lineAt = (text: string, i: number) => text.slice(0, i).split("\n").length;
@@ -339,8 +339,6 @@ export function factoryVals(params: Sym["params"], args: Arg[]): BoundVal[] {
   for (const a of args) if (a.kw) out.push({ name: a.kw, value: short(a.text, 28) });
   return out;
 }
-
-export { instName } from "../chip";
 
 /** 基类方法是不是抽象的：@abstractmethod，或者函数体（去掉 docstring）只有 raise NotImplementedError / ... / pass */
 export function isAbstractBody(lines: string[], sym: Pick<Sym, "start" | "defLine" | "end">): boolean {

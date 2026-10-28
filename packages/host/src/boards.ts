@@ -1,5 +1,5 @@
 // 白板状态由界面持有，改动后把变了的项发回来保存（patch，存储改它缓存的那份再写盘）。
-import { boardQuestions, type Board, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
+import { boardQuestions, type Board, type BoardAsk, type BoardMeta, type BoardToHost, type Camera, type Crumb, type Event, type HostInfo, type HostToBoard, type Segment, type Settings, type Skeleton, type Stale, type WalkHop } from "@codeboard/core";
 import type { CardClip, Storage } from "@codeboard/core/storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
 import { syncVariants } from "./variants";
@@ -21,6 +21,9 @@ export interface BoardView {
   readonly visible: boolean;
   readonly active: boolean;
   reveal(preserveFocus?: boolean): void;
+  /** Give the active board the keyboard; resolves once the editor has started to (the keyboard reaches the board's frame a moment
+   *  later), where reveal resolves nothing */
+  focus(): Promise<void>;
   dispose(): void;
   /** 本机目录在界面里的地址（图片卡的 assets/） */
   resourceUrl(dir: string): string;
@@ -59,6 +62,8 @@ export interface BoardHost {
   firstAdd?(): boolean;
   /** 跨工作区的状态（HostEnv.globalState）：Copy / Move to Another Project… 在里面找别的项目 */
   readonly globalState?: StateStore;
+  /** The board's "focus" message */
+  boardFocus(p: BoardPanel, has: boolean): Promise<void>;
 }
 
 const DAY = 864e5;
@@ -89,6 +94,11 @@ export class BoardPanel {
   /** 下一次 init 要带上的：接着讲解、换掉存着的镜头（回到父白板时） */
   next: { walk?: WalkHop; cam?: Camera } = {};
 
+  /** What the board last said about the keyboard (its "focus" messages) */
+  hasKeyboard = false;
+  private asks = new Map<number, (v: string | number | null) => void>();
+  private askN = 0;
+
   /** id 会变：进入子白板时同一个面板换成那块白板（BoardHub.switchBoard） */
   constructor(public id: string, readonly view: BoardView, private mgr: BoardHost) {}
 
@@ -100,8 +110,17 @@ export class BoardPanel {
   }
   toast(text: string) { this.post({ type: "toast", text }); }
 
+  /** Ask in a board dialog (HostToBoard "ask"); null when cancelled, or when the board closes or reloads first */
+  ask(a: BoardAsk): Promise<string | number | null> {
+    const id = ++this.askN;
+    return new Promise((r) => { this.asks.set(id, r); this.post({ type: "ask", id, ask: a }); });
+  }
+  answer(id: number, v: string | number | null) { this.asks.get(id)?.(v); this.asks.delete(id); }
+  dropAsks() { for (const r of this.asks.values()) r(null); this.asks.clear(); }
+
   /** webview 说 ready：读白板、算所有段的展示数据和版本状态，发 init */
   async init() {
+    this.dropAsks(); // a reloaded webview has no dialogs open
     const b = await this.mgr.store.load(this.id);
     if (!b) { this.view.dispose(); return; }
     const next = this.next;
@@ -176,7 +195,14 @@ export class BoardPanel {
   }
 
   /** 重算版本状态并推给白板；paths = 只重查这些文件里的段（别的段留着上次的结果） */
-  async refreshStale(paths?: ReadonlySet<string>) {
+  refreshStale(paths?: ReadonlySet<string>): Promise<void> {
+    // One at a time: a check started before a commit can end after the one the commit started, and the older result would stay
+    const run = this.staleRun.then(() => this.checkStale(paths));
+    this.staleRun = run.catch(() => undefined);
+    return run;
+  }
+  private staleRun: Promise<void> = Promise.resolve();
+  private async checkStale(paths?: ReadonlySet<string>) {
     if (!this.board || !this.ready) return;
     void this.refreshVariants();
     const ss = staleSegments(this.board);

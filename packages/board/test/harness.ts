@@ -1,10 +1,11 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { chromium, type Browser, type Page } from "playwright-core";
-import { CHROMIUM, CHROMIUM_ARGS } from "./chromium";
-import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, F_BLANK, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
+import type { Browser, Page } from "playwright-core";
+import { launch } from "./chromium";
+import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
+import { F_BLANK } from "@codeboard/analysis/basics";
 import { tidy } from "@codeboard/core/tidy";
-import { initAnalysis, analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/core/analysis";
+import { initAnalysis, analyze, varCandidates, importPkg, peekPlan, type FileAnalysis, type Sym } from "@codeboard/analysis";
 
 /** The repo's root, defined by the builds that bundle this file (playwright.config.ts, run-perf.mjs) */
 declare const REPO_ROOT: string;
@@ -86,7 +87,7 @@ export type PageCoverage = Awaited<ReturnType<Page["coverage"]["stopJSCoverage"]
 
 export type Host = { page: Page; board: () => Board; sent: BoardToHost[]; post: (m: HostToBoard) => Promise<void>; close: () => Promise<void> };
 
-export async function ready() { await initAnalysis(path.join(REPO, "node_modules/@vscode/tree-sitter-wasm/wasm")); if (!files.size) load(); }
+export async function ready() { await initAnalysis(); if (!files.size) load(); }
 
 /** Lets a scenario play part of the host: return true if handled */
 export type OnMsg = (m: BoardToHost & { req?: number }, reply: (req: number, data?: unknown, error?: string) => Promise<void>) => boolean | Promise<boolean>;
@@ -98,7 +99,7 @@ export type OpenOptions = { board?: Board; settings?: Partial<typeof DEFAULT_SET
 /** What the caller does with the board's self-checks (a failed one is named by `check`) and, if given, with the page's coverage */
 export type Watch = { fail: (check: string, detail: string) => void; coverage?: (entries: PageCoverage) => void };
 
-export const launch = () => chromium.launch({ executablePath: CHROMIUM, args: CHROMIUM_ARGS });
+export { launch };
 
 /**
  * The sandbox is offline: a web address in a Note (an image at https://x.y/cat.png) can't load. Chromium reports that as a console

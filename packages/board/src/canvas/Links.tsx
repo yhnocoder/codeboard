@@ -19,8 +19,6 @@ import { LinkLabel } from "./Labels";
 import { LinkStickers } from "../stickers/Picker";
 import { holdPointer } from "../ui/guard";
 import { isBindHot } from "../state/stickers";
-import { subRect, frameOf } from "../state/subboards";
-import { FRAME_HEAD } from "@codeboard/core";
 import { chooseMode, sidesOf, anchorOn, turnAnchor, slide, connect, selfArc, gutterLine, headPath, type Anchor, type Box, type Mode, type Side, type Shape } from "./route";
 import { handLine } from "./hand";
 import { carAt, type CarPose, type Road } from "./city";
@@ -53,8 +51,6 @@ function headY(id: string, r: Rect) {
 /** y：行的 y（看不到那一行时 = 卡头） */
 type End = {
   box: Box; /** 整张卡（Compare 栏 → 整张 Compare）：绕路时要避开的 */ outer: Box; line: boolean; y: number; /** 卡头那一行的 y（行端的卡在地图档时用） */ hy: number; col?: "left" | "right"; host: string; card: string; pill: boolean;
-  /** 连到子白板骨架里的一张卡（End.sub）：那张卡在画布上的矩形。线先走到框边上的入口点（box 左右两边、对着那张卡的高度），再进去落到它上面 */
-  inner?: Box;
 };
 type Base = { a: End; b: End; kind: "normal" | "self" | "gutter"; gx?: number };
 
@@ -78,11 +74,6 @@ function endOf(e: Link["from"]): End | null {
   let col: End["col"];
   const g = geo[e.card];
   if (!er.pill && f.host.id !== e.card && g?.colX !== undefined && (g.colW ?? 0) < rectOf(f.host).w - 1) col = g.colX > 1 ? "right" : "left";
-  // 子白板骨架里的一张卡：像行端一样只走左右两边，入口点在框边上、对着那张卡（夹在标题栏下面）
-  if (e.sub !== undefined && !er.pill && frameOf(e.card)) {
-    const ir = subRect(e.card, e.sub);
-    if (ir) return { box: r, outer: r, line: true, y: Math.max(r.y + FRAME_HEAD + 4, Math.min(r.y + r.h - 6, ir.y + ir.h / 2)), hy, host: f.host.id, card: e.card, pill: false, inner: ir };
-  }
   let outer = r;
   if (col) { const h = rectOf(f.host), pi = popIn()[f.host.id]; outer = pi ? { ...h, x: h.x + (1 - pi.v) * pi.ox, y: h.y + (1 - pi.v) * pi.oy } : h; }
   return { box: r, outer, line, y, hy, col, host: f.host.id, card: e.card, pill: er.pill };
@@ -130,7 +121,7 @@ function tilted(e: End, a: Anchor): Anchor {
 }
 
 export type Geo = {
-  d: string; mx: number; my: number; head?: string | CarPose; tail?: string | CarPose; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[]; /** 子白板框上的入口点 */ entry?: { x: number; y: number };
+  d: string; mx: number; my: number; head?: string | CarPose; tail?: string | CarPose; port?: { x: number; y: number }; port2?: { x: number; y: number }; pts: number[];
   /** 手绘线（从 Mark 出发）：第二笔；head / tail 是手绘的箭头 path */
   d2?: string;
 };
@@ -173,18 +164,6 @@ function geoFrom(L: Link, bs: Base, p: Anchor, q: Anchor, merged: boolean): Geo 
   else {
     const boxes = { a: bs.a.pill ? undefined : bs.a.outer, b: bs.b.pill ? undefined : bs.b.outer };
     sh = merged ? connect(p, { ...q, x: q.x + q.nx * STUB, y: q.y + q.ny * STUB }, route, { start: true, end: false }, boxes, clear) : connect(p, q, route, undefined, boxes, clear);
-    // 子白板：线到框边上的入口点，再直着进去落到骨架里那张卡的名字上（箭头画在那里）
-    const inn = bs.b.inner;
-    if (inn && !merged) {
-      const left = q.nx < 0, tx = left ? inn.x : inn.x + inn.w, ty = inn.y + inn.h / 2;
-      const ux = Math.sign(tx - q.x) || (left ? 1 : -1);
-      return {
-        d: `${sh.d} L${tx} ${ty}`, mx: sh.mx, my: sh.my, pts: sh.pts,
-        head: hd.end ? headOrCar(hk, tx, ty, ux, 0, s) : undefined,
-        tail: hd.start ? headOrCar(hk, sh.pts[0], sh.pts[1], sh.outDir.x, sh.outDir.y, s) : undefined,
-        port: { x: p.x, y: p.y }, entry: { x: q.x, y: q.y },
-      };
-    }
   }
   return {
     d: sh.d, mx: sh.mx, my: sh.my, pts: sh.pts,
@@ -254,13 +233,13 @@ function makeRoute(L: Link): Route {
   });
   const sig = createMemo(() => {
     const bs = base(), s = sides();
-    if (!bs || !s || bs.kind !== "normal" || bs.b.inner || handOf(L)) return ""; // 连进子白板骨架的不合并（各自落到骨架里的卡上）；手绘线各画各的
+    if (!bs || !s || bs.kind !== "normal" || handOf(L)) return ""; // 手绘线各画各的
     return `${s.split("|")[1]}|${headOf(L).end ? 1 : 0}`;
   });
   return { L, base, sides, ends, sig };
 }
 
-const toKey = (L: Link) => `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? ""}${L.to.sub !== undefined ? `|${L.to.sub}` : ""}`;
+const toKey = (L: Link) => `${L.to.card}|${L.to.seg ?? ""}|${L.to.line ?? ""}`;
 
 // 线的三次贝塞尔控制点（贴纸、标签沿线走时用）：登记给 state/geo 的 linkCurve
 setCurveSource((id) => {
@@ -331,7 +310,7 @@ export const landed = rooted(() => {
       if (!s) continue;
       const [a, b] = s.split("|");
       if (r.L.from.line === undefined) out.add(`${r.L.from.card}|${a}`);
-      if (r.L.to.line === undefined && r.L.to.sub === undefined) out.add(`${r.L.to.card}|${b}`);
+      if (r.L.to.line === undefined) out.add(`${r.L.to.card}|${b}`);
     }
     return out;
   }, new Set<string>(), { equals: (x, y) => x.size === y.size && [...x].every((k) => y.has(k)) });
@@ -597,7 +576,6 @@ function linkDom(r: Route, g: Accessor<Geo | null>, merged: Accessor<boolean>, c
         <Show when={g()!.port}><path class={`port fc-${toHue()}${L.lost?.from ? " lost" : ""}`} data-x={g()!.port!.x} d={portPath(g()!.port!.x, g()!.port!.y)} />
           <Show when={on() && L.from.line !== undefined && r.base()?.kind === "normal"}><circle class="porthit" data-export="strip" onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-tip="Drag to the other end of the line" r={7 / stillZ()} cx={g()!.port!.x} cy={g()!.port!.y} onPointerDown={(e) => portDrag(e, L.id)} /></Show></Show>
         <Show when={g()!.port2}><path class={`port fc-${toHue()}`} d={portPath(g()!.port2!.x, g()!.port2!.y)} /></Show>
-        <Show when={g()!.entry}><circle class={`sbentry${L.lost?.to ? " lost" : ""}`} r="4" cx={g()!.entry!.x} cy={g()!.entry!.y} /></Show>
       </Show>
     </g>
   ) as SVGGElement;
