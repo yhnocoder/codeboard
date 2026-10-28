@@ -103,10 +103,15 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
     resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
-      const all = await clickDefs(wp.abs, line, m.col);
-      // 只有 .pyi 存根（torch._C.*、Tensor.X）：存根不是实现，先找跨语言的注册、算子（存根留作备选），都没有再用存根
-      let defs = all.filter((d) => !/\.pyi$/.test(d.abs));
-      if (!defs.length) stubs = all;
+      // A .pyi stub with a .py beside it stands for that .py's definition. A stub with none (torch._C.*, Tensor.X, a compiled extension)
+      // is no implementation: cross-language registrations and ops come first, the stub stays as an alternative, or the answer when nothing else is found
+      let defs: Def[] = [];
+      for (const d of await clickDefs(wp.abs, line, m.col)) {
+        const impl = isStub(d) ? await stubImpl(d, m.name) : d;
+        if (!impl) stubs.push(d);
+        else if (!defs.some((x) => x.abs === impl.abs && x.line === impl.line)) defs.push(impl);
+      }
+      if (defs.length) stubs = [];
       // C++ 落在生成的算子文件（at::_softmax → ops/_softmax.h）或 DEFINE_DISPATCH 上：走 yaml / REGISTER_DISPATCH
       crossed = await crossAfterDefs(site, seg.lang, defs, here?.abs);
       if (crossed.length) defs = [];
@@ -216,6 +221,32 @@ const within = <T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> => {
   let t: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([p, new Promise<typeof LATE>((r) => { t = setTimeout(() => r(LATE), ms); })]).finally(() => clearTimeout(t));
 };
+const isStub = (d: Def) => /\.pyi$/.test(d.abs);
+
+/** The definition a .pyi stub declares, in the .py beside it (typeshed-style stubs of Python code); null for stubs of compiled code */
+export async function stubImpl(d: Def, name?: string): Promise<Def | null> {
+  const py = d.abs.replace(/\.pyi$/, ".py");
+  const stub = await symAtDef(d, name);
+  const text = stub && (await readText(py, false));
+  if (!stub || !text) return null;
+  const sym = analysisOf("python", text).symbols.find((s) => s.qual === stub.sym.qual && s.kind === stub.sym.kind);
+  if (!sym) return null;
+  const col = splitLines(text)[sym.defLine - 1]?.indexOf(sym.name) ?? 0;
+  return { abs: py, line: sym.defLine, col: Math.max(0, col) };
+}
+
+/**
+ * Where to ask Go to Implementation for a definition: a stub's .py; none for a stub of PyTorch's compiled code, which op routing
+ * replaces (Pylance searches the whole workspace for ~24 s there and finds nothing)
+ */
+async function implSite(d: Def, name: string): Promise<Def | null> {
+  if (!isStub(d)) return d;
+  const impl = await stubImpl(d, name);
+  if (impl) return impl;
+  const t = await opTableFor(d.abs);
+  return t && d.abs.startsWith(t.root + path.sep) ? null : d;
+}
+
 /** dispatchOf 会去问转到实现的那种定义：Python 类里的方法 */
 async function mayDispatch(d: Def, name: string): Promise<boolean> {
   if (langOf(d.abs) !== "python") return false;
@@ -238,8 +269,10 @@ export async function dispatchAt(m: { seg: Segment; line: number; col: number; n
  * 定义处是类里的方法：在它上面问「转到实现」（Pylance 回所有覆盖它的子类方法）。有覆盖就是动态分发：
  * 列出全部实现（基类自己不是抽象的也算一个），library 里的标上包名（⌥ 才展开）
  */
-export async function dispatchOf(d: Def, name: string): Promise<{ result: Extract<ExpandResult, { impls: unknown }>; n: number; base: string; abstract: boolean } | null> {
-  if (langOf(d.abs) !== "python") return null;
+export async function dispatchOf(def: Def, name: string): Promise<{ result: Extract<ExpandResult, { impls: unknown }>; n: number; base: string; abstract: boolean } | null> {
+  if (langOf(def.abs) !== "python") return null;
+  const d = await implSite(def, name);
+  if (!d) return null;
   const b = await symAtDef(d, name);
   if (!b || !b.sym.parent || b.sym.kind !== "def") return null;
   let locs: Def[] = [];

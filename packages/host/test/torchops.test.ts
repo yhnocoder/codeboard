@@ -4,7 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ExpandResult, Segment } from "@codeboard/core";
-import { expand } from "../src/resolve";
+import { dispatchOf, expand } from "../src/resolve";
 import { resetIndex } from "../src/nameindex";
 import { forgetDefs } from "../src/defcache";
 import { useWorkspace } from "../src/ws";
@@ -150,6 +150,13 @@ describe("with a language server that answers with stubs and generated headers",
     const m = await click(await seg("torch/nn/functional.py", "softmax"), /input\.softmax/, "softmax");
     expect(qualOf(m)).toBe("at::native::softmax");
     expect(alts(m)).toContain("stub · __init__.pyi TensorBase.softmax");
+  });
+  it("does not ask Go to Implementation on a stub of PyTorch's compiled code (hover prefetch, peek, late dispatch)", async () => {
+    const asked: number[] = [];
+    W.language.implementations = async (_a, line) => { asked.push(line); return []; };
+    expect(await dispatchOf({ abs: path.join(FIX, "torch/_C/__init__.pyi"), line: 5, col: 8 }, "softmax")).toBeNull();
+    expect(asked).toEqual([]);
+    W.language.implementations = async () => [];
   });
   it("Pylance's stub for torch._C._get_cudnn_enabled: the PyMethodDef target first, the stub as an alternative", async () => {
     forgetDefs();

@@ -1,0 +1,57 @@
+// Go to definition that lands on a .pyi stub, in a project that is not PyTorch: a stub with its .py beside it stands for that .py
+// (dynamic dispatch included); a stub of compiled code gives way to the C++ registration and stays an alternative
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { ExpandResult, Segment } from "@codeboard/core";
+import { expand } from "../src/resolve";
+import { resetIndex } from "../src/nameindex";
+import { forgetDefs } from "../src/defcache";
+import { useWorkspace } from "../src/ws";
+import { nodeWorkspace } from "./node-workspace";
+import { at, card, startTreeSitter, tempRepo } from "./helpers";
+
+const ROOT = tempRepo("stubs", {
+  "pkg/shapes.py": "class Shape:\n    def area(self):\n        return 0\n\n\ndef make(kind):\n    return Shape()\n",
+  "pkg/shapes.pyi": "class Shape:\n    def area(self) -> float: ...\n\ndef make(kind: str) -> Shape: ...\n",
+  "pkg/circle.py": "from pkg.shapes import Shape\n\n\nclass Circle(Shape):\n    def area(self):\n        return 3\n",
+  "pkg/fast.pyi": "def fast_sum(xs: list[int]) -> int: ...\ndef only_stub(x: int) -> int: ...\n",
+  "csrc/fast.cpp": "#include <pybind11/pybind11.h>\n\nint fast_sum(std::vector<int> xs) {\n  return 0;\n}\n\nPYBIND11_MODULE(fast, m) {\n  m.def(\"fast_sum\", &fast_sum);\n}\n",
+  "main.py": "from pkg import shapes, fast\n\n\ndef run(s):\n    a = shapes.make('c')\n    b = s.area()\n    c = fast.fast_sum([1])\n    return fast.only_stub(c)\n",
+});
+const W = nodeWorkspace(ROOT);
+const abs = (rel: string) => path.join(ROOT, rel);
+const answer = (rel: string, line: number) => { forgetDefs(); W.language.definitions = async () => [{ abs: abs(rel), line, col: 4 }]; };
+const target = (r: ExpandResult) => ("card" in r ? `${r.card.segments[0].path} ${r.card.segments[0].symbol?.qual}` : "impls" in r ? r.impls.map((i) => i.qual) : r);
+let run: Segment;
+
+beforeAll(async () => {
+  useWorkspace(W);
+  resetIndex();
+  await startTreeSitter();
+  run = (await card(abs("main.py"), "run")).seg;
+});
+afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
+
+describe("a .pyi stub from the language server", () => {
+  it("stands for the definition in the .py beside it", async () => {
+    answer("pkg/shapes.pyi", 4);
+    expect(target(await expand({ ...at(run, /shapes\.make/, "make"), name: "make" }))).toBe("pkg/shapes.py make");
+  });
+  it("keeps dynamic dispatch, asking Go to Implementation at the .py", async () => {
+    answer("pkg/shapes.pyi", 2);
+    const asked: string[] = [];
+    W.language.implementations = async (a, line) => { asked.push(`${path.relative(ROOT, a)}:${line}`); return a === abs("pkg/shapes.py") ? [{ abs: abs("pkg/circle.py"), line: 5, col: 8 }] : []; };
+    expect(target(await expand({ ...at(run, /s\.area/, "area"), name: "area" }))).toEqual(["Shape.area", "Circle.area"]);
+    expect(asked).toEqual(["pkg/shapes.py:2"]);
+    W.language.implementations = async () => [];
+  });
+  it("of compiled code gives way to the pybind registration and stays as an alternative; alone, it is the answer", async () => {
+    answer("pkg/fast.pyi", 1);
+    const r = await expand({ ...at(run, /fast\.fast_sum/, "fast_sum"), name: "fast_sum" });
+    expect(target(r)).toBe("csrc/fast.cpp fast_sum");
+    expect("card" in r && r.mark?.alts?.map((a) => a.label)).toEqual(["stub · fast.pyi fast_sum"]);
+    answer("pkg/fast.pyi", 2);
+    expect(target(await expand({ ...at(run, /fast\.only_stub/, "only_stub"), name: "only_stub" }))).toBe("pkg/fast.pyi only_stub");
+  });
+});
