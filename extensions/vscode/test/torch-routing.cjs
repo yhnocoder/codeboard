@@ -24,7 +24,7 @@ const ROWS = [
   { id: "scatter_add_stub", file: "aten/src/ATen/native/TensorAdvancedIndexing.cpp", fn: 2352, line: 2384, name: "scatter_add_stub", want: "at::native::scatter_add_cuda_kernel", key: "CUDA", alts: ["CPU · at::native::scatter_add_cpu_kernel"], bound: "REGISTER_DISPATCH" },
   { id: "add_stub", file: "aten/src/ATen/native/BinaryOps.cpp", fn: 435, line: 438, name: "add_stub", want: "at::native::add_kernel", key: "CUDA", alts: ["CPU · at::native::add_kernel"], generated: true },
   { id: "PaddingKernel add_stub", file: "aten/src/ATen/native/cpu/PaddingKernel.cpp", fn: 396, line: 440, name: "add_stub", want: "at::native::add_stub" },
-  { id: "torch.add", file: "torch/nn/utils/parametrizations.py", fn: 70, line: 96, name: "add", pre: "torch.", want: "at::native::ufunc_add_CUDA", key: "CUDA", alts: ["CPU · at::native::ufunc_add_CPU", "at::native::add"], generated: true },
+  { id: "torch.add", file: "torch/nn/utils/parametrizations.py", fn: 70, line: 96, name: "add", pre: "torch.", want: "at::native::ufunc_add_CUDA", key: "CUDA", alts: ["CPU · at::native::ufunc_add_CPU", "at::native::add", "MPS · at::native::add_out_mps"], generated: true },
 ];
 
 module.exports = async (page, t) => {
