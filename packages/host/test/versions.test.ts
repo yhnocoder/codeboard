@@ -4,6 +4,10 @@ import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import type { CodeCard } from "@codeboard/core";
 import { staleFor, staleSegments } from "../src/versions";
 import { forgetIgnored, isIgnored } from "../src/git";
+import { watchVersions } from "../src/watch";
+import type { BoardHost } from "../src/boards";
+import { nodeFs } from "../src/nodefs";
+import { Storage } from "@codeboard/core/storage";
 import { useWorkspace } from "../src/ws";
 import { nodeWorkspace } from "./node-workspace";
 import { card, git, startTreeSitter, tempRepo } from "./helpers";
@@ -52,6 +56,24 @@ describe("new version check", () => {
     expect(await isIgnored(R, "build/gen.py")).toBe(true);
     forgetIgnored();
     expect(await isIgnored(R, "build/gen.py")).toBe(false);
+  });
+
+  it("asks git again once .gitignore or .git/info/exclude changed outside the editor", async () => {
+    R = tempRepo("ignore-watch", { ".gitignore": "build/\n" });
+    const W = nodeWorkspace(R);
+    useWorkspace(W);
+    const panels = { refreshStale: async () => {}, get: () => undefined, staleChanged: () => undefined } as unknown as BoardHost;
+    const w = watchVersions(panels, new Storage(nodeFs, { dir: () => path.join(R, ".boards") }));
+    try {
+      await w.ready;
+      expect(await isIgnored(R, "build/gen.py")).toBe(true);
+      fs.writeFileSync(path.join(R, ".gitignore"), "");
+      W.fire.change.fire(path.join(R, ".gitignore"));
+      expect(await isIgnored(R, "build/gen.py")).toBe(false);
+      fs.writeFileSync(path.join(R, ".git/info/exclude"), "build/\n");
+      W.fire.change.fire(path.join(R, ".git/info/exclude"));
+      expect(await isIgnored(R, "build/gen.py")).toBe(true);
+    } finally { w.dispose(); }
   });
 
   it("moves the card to the new lines with the new commit as its pin when a commit only moves the code", async () => {

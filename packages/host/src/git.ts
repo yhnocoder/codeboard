@@ -46,7 +46,7 @@ export function showFile(root: string, commit: string, rel: string): Promise<str
 const ignored = new Lru<Promise<boolean>>(2000);
 /**
  * git 忽略的文件（构建生成的 build/ 等）：不属于任何 commit，永远不会提交。每次查过期都要问：记下来，不每次起一个 git；
- * 换了 HEAD（checkout 可能带来另一份 .gitignore）时 forgetIgnored 清掉
+ * 换了 HEAD（checkout 可能带来另一份 .gitignore）、.gitignore 或 .git/info/exclude 变了时 forgetIgnored 清掉（watch.ts）
  */
 export function isIgnored(root: string, rel: string): Promise<boolean> {
   const k = `${root}\0${rel}`;

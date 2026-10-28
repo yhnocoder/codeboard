@@ -8,7 +8,7 @@ import type { BoardHost } from "./boards";
 import { absOf, hasLocalFile } from "./source";
 import type { Storage } from "./storage";
 import { boardSegments, countStale, staleFor, staleSegments, variantSegments } from "./versions";
-import { debounce, workspace, wsRoots } from "./ws";
+import { debounce, inWorkspace, workspace, wsRoots } from "./ws";
 import { forgetDefs } from "./defcache";
 import { log } from "./log";
 
@@ -41,6 +41,10 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
     const gd = await gitDirOf(root);
     if (!gd) return;
     subs.push(files.watch(gd, "{HEAD,packed-refs,refs/heads/**}", () => onGit()));
+    // 忽略规则变了（保存、在 VS Code 外面改、checkout 都算）：check-ignore 记下的回答作废。
+    // 工作区里的仓库整棵树都看（VS Code 本来就在监听它），别的仓库只看根上的 .gitignore（不为它起递归的监听）
+    subs.push(files.watch(path.join(gd, "info"), "exclude", () => forgetIgnored()));
+    subs.push(files.watch(root, inWorkspace(root) ? "**/.gitignore" : ".gitignore", () => forgetIgnored()));
   };
 
   /**
@@ -80,7 +84,7 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable & {
   const changed = new Set<string>();
   const flush = debounce(() => { const paths = new Set(changed); changed.clear(); void panels.refreshStale(paths); }, RECHECK_PAUSE);
   const recheck = (abs: string) => { changed.add(abs); flush(); };
-  subs.push(files.onDidSave((abs) => { if (!abs) return; if (/(^|[\\/])\.gitignore$/.test(abs)) forgetIgnored(); recheck(abs); }));
+  subs.push(files.onDidSave((abs) => { if (abs) recheck(abs); }));
   // 在 VS Code 外面改了卡片用到的文件（git checkout -- f、别的编辑器）：也重算。每个文件一个监听。
   // Variant 的文件也算（另一个 worktree、复制出来的文件：在别处保存后卡上跟着刷新）
   const watchedFiles = new Set<string>();
