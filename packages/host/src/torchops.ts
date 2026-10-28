@@ -537,13 +537,27 @@ export async function opTables(): Promise<OpTable[]> {
   }
   return out;
 }
+const tableHolding = (ts: OpTable[], abs: string) => ts.find((t) => abs.startsWith(t.root + path.sep));
+
 /**
- * 点击的文件属于哪个 PyTorch；不在任何一个里面就没有（vendored 的 PyTorch 旁边的项目自己的代码照常走 pybind / PyMethodDef / PyO3，
- * 它的 .add、.get 也不是 PyTorch 的算子）
+ * 点击的文件属于哪个 PyTorch；不在任何一个里面就没有。Tensor 方法（x.add）和 PyTorch 自己的 pybind / PyMethodDef 注册只在 PyTorch 里面认：
+ * vendored 的 PyTorch 旁边的项目自己的 .add、.get 不是 PyTorch 的算子，它的注册照常在工作区里找
  */
 export async function opTableFor(abs?: string): Promise<OpTable | undefined> {
-  if (!abs) return undefined;
-  return (await opTables()).find((t) => abs.startsWith(t.root + path.sep));
+  return abs ? tableHolding(await opTables(), abs) : undefined;
+}
+
+/**
+ * 写明了是 PyTorch 的入口（torch.X、F.X、torch.ops.aten.X、torch._C._nn.X、at::X）用哪个 PyTorch：点击的文件所在的那个；
+ * 项目自己的代码调 PyTorch 时，语言服务的定义（存根、生成的头文件）所在的那个；工作区里只有一个 PyTorch 就是它。
+ * 有几个、又看不出是哪个时没有（不猜）。defs 只在有几个 PyTorch 时才问
+ */
+export async function entryTable(here: string | undefined, defs: () => Promise<string[]>): Promise<OpTable | undefined> {
+  const ts = await opTables();
+  const mine = here && tableHolding(ts, here);
+  if (mine || ts.length < 2) return mine || ts[0];
+  for (const d of await defs()) { const t = tableHolding(ts, d); if (t) return t; }
+  return undefined;
 }
 
 function dropScan(root: string) {
@@ -645,15 +659,17 @@ export function cppOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">): O
 
 /**
  * 有 Python 定义的 torch.X / torch.nn.functional.X（torch/functional.py、torch/__init__.py、torch/nn/functional.py 里的顶层 def）
- * 照常去 Python（在 F.softmax 的 def 里再点 input.softmax）。路径相对 yaml 所在的 PyTorch
+ * 照常去 Python（在 F.softmax 的 def 里再点 input.softmax）：就是这个 def。路径相对 yaml 所在的 PyTorch，
+ * 所以 vendored 的 PyTorch 不在 Python 路径上、语言服务找不到时也对
  */
-export async function pyDefinedInTorch(t: OpTable, name: string, how: OpEntry["how"]): Promise<boolean> {
+export async function pyDefInTorch(t: OpTable, name: string, how: OpEntry["how"]): Promise<{ abs: string; sym: Sym } | null> {
   for (const f of how === "functional" ? ["torch/nn/functional.py"] : ["torch/functional.py", "torch/__init__.py"]) {
     const abs = path.join(t.root, f);
     const text = await readText(abs, false);
-    if (text !== null && analysisOf("python", text).symbols.some((s) => s.qual === name && s.kind === "def")) return true;
+    const sym = text === null ? undefined : analysisOf("python", text).symbols.find((s) => s.qual === name && s.kind === "def");
+    if (sym) return { abs, sym };
   }
-  return false;
+  return null;
 }
 
 /** DispatchStub 调用：第一个参数是设备（iter.device_type()、self.device().type()、kCPU、DeviceType::CUDA） */

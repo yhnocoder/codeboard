@@ -98,9 +98,11 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
     const t = abs && (await symAtDef({ abs, line: m.pick.line, col: 0 }, m.pick.rel ? m.name : undefined, m.pick.qual));
     if (t) targets = [t];
   } else {
-    // 跨语言：torch.ops、launch macro、JIT 编译点下去之前就认得出（语言服务答不了）
-    crossed = await crossBefore(site, seg.lang, here);
-    const wp = crossed.length ? null : await workingPlace(seg);
+    // 跨语言：torch.ops、launch macro、JIT 编译点下去之前就认得出（语言服务答不了）。语言服务只在要分清工作区里几个 PyTorch 时才问（同一个请求，后面接着用）
+    let place: ReturnType<typeof workingPlace> | undefined;
+    const lspAt = async () => { const p = await (place ??= workingPlace(seg)); return p?.exact ? (await lspDefs(p.abs, p.start + (m.line - seg.start), m.col)).map((d) => d.abs) : []; };
+    crossed = await crossBefore(site, seg.lang, here, lspAt);
+    const wp = crossed.length ? null : await (place ??= workingPlace(seg));
     resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
@@ -171,7 +173,7 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
   // 目标找到了：Triton 的 [grid]、CUDA 的 <<<>>>、TileLang 工厂补上边界和取值
   const x = crossed.length ? await withAlts(crossed) : await decorate(site, targets[0], caller);
   const t = x.t;
-  if (crossed.length) log("info", `expand ${m.name} → ${x.mark.bound} → ${t.sym.qual} (${hostPath(t.abs)}:${t.sym.defLine})${crossed.length > 1 ? ` +${crossed.length - 1} alternatives` : ""}`);
+  if (crossed.length) log("info", `expand ${m.name} → ${x.mark.bound ?? "definition"} → ${t.sym.qual} (${hostPath(t.abs)}:${t.sym.defLine})${crossed.length > 1 ? ` +${crossed.length - 1} alternatives` : ""}`);
   const nc = await cardForFileSym(t.abs, t.sym);
   if (!nc) { log("error", `expand ${m.name} → cannot read ${hostPath(t.abs)}`); return none(`Cannot read ${hostPath(t.abs)}.`); }
   const mark = Object.keys(x.mark).length ? x.mark : undefined;

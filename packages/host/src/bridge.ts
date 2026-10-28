@@ -12,7 +12,7 @@ import {
 import { analysisOf } from "./analysis";
 import { entriesOf, grepWord, knownEntries, lookupName, type IndexEntry } from "./nameindex";
 import { libOf } from "./scope";
-import { cppOpEntry, defsOf, isStubCall, keyRank, kernelsOf, kernelTarget, opTableFor, pyDefinedInTorch, pyOpEntry, pyRegs, stubRegs, type OpTable, type Reg } from "./torchops";
+import { cppOpEntry, defsOf, entryTable, isStubCall, keyRank, kernelsOf, kernelTarget, opTableFor, pyDefInTorch, pyOpEntry, pyRegs, stubRegs, type OpTable, type Reg } from "./torchops";
 import { hostPath, langOf, readText, splitLines } from "./ws";
 import { log } from "./log";
 
@@ -168,7 +168,7 @@ const GENERATED_OP = /[\\/]ATen[\\/](ops[\\/]\w+\.h|Operators(_\d+)?\.(cpp|h)|Fu
 export async function crossAfterDefs(site: CallSite | undefined, lang: string, defs: { abs: string; line: number }[], here?: string): Promise<Crossed[]> {
   if (!site || !isCpp(lang) || !defs.length) return [];
   try {
-    const ops = await opTableFor(here);
+    const ops = await entryTable(here, async () => defs.map((d) => d.abs));
     if (!ops) return [];
     if (defs.some((d) => GENERATED_OP.test(d.abs))) {
       const fromFile = defs.map((d) => /[\\/]ops[\\/](\w+?)(?:_ops|_native|_compositeimplicitautograd_dispatch|_cpu_dispatch|_cuda_dispatch)?\.h$/.exec(d.abs)?.[1]).find((n) => n && ops.byName.has(n));
@@ -248,32 +248,37 @@ async function viaJit(site: CallSite, abs: string, text: string): Promise<Crosse
 
 /**
  * 点下去之前：PyTorch 算子（torch.ops.aten.X、torch._C._nn.X、torch.X；at::X）、DispatchStub、torch.ops（Python）、launch macro / JIT 编译（C++）。
- * 认不出回空
+ * defs = 语言服务的定义所在的文件（工作区里有几个 PyTorch 时，项目自己的代码调的是哪个）。认不出回空
  */
-export async function crossBefore(site: CallSite | undefined, lang: string, here: { abs: string; text: string } | null): Promise<Crossed[]> {
+export async function crossBefore(site: CallSite | undefined, lang: string, here: { abs: string; text: string } | null, defs: () => Promise<string[]>): Promise<Crossed[]> {
   if (!site) return [];
   try {
-    const ops = await opTableFor(here?.abs);
     if (!isCpp(lang)) {
-      const e = ops && here && lang === "python" ? pyOpEntry(ops, site, here.text) : null;
-      if (e && (e.how === "explicit" || ((e.how === "torch" || e.how === "functional") && !(await pyDefinedInTorch(ops!, e.op, e.how))))) {
+      const ops = lang === "python" && here ? await entryTable(here.abs, defs) : undefined;
+      const e = ops ? pyOpEntry(ops, site, here!.text) : null;
+      if (e && (e.how === "torch" || e.how === "functional")) {
+        const py = await pyDefInTorch(ops!, e.op, e.how);
+        if (py) return [{ t: py, mark: {} }];
+      }
+      if (e && (e.how === "explicit" || e.how === "torch" || e.how === "functional")) {
         const r = await viaOps(ops!, e.op, e.overload);
         // yaml 认识的 torch.ops.aten.X 不再去找 TORCH_LIBRARY_IMPL(aten, …) 里同名的 m.impl（batch rule、autocast）
         if (r.length || site.recv?.includes("torch.ops")) return r;
       }
       return site.recv?.includes("torch.ops") ? await viaTorchOps(site) : [];
     }
-    if (ops) {
-      const e = cppOpEntry(ops, site);
-      // at::native::X 是直接调用：索引里有这个函数就照常找
-      if (e && !(site.recv?.endsWith("native") && (await defsOf(ops, site.name)).some((x) => x.kind === "def" && x.qual.endsWith(`native::${site.name}`)))) {
-        const r = await viaOps(ops, e.op, e.overload);
-        if (r.length) return r;
-      }
-      if (isStubCall(site)) {
-        const r = await viaStub(site.name, ops);
-        if (r.length) return r;
-      }
+    const ops = await entryTable(here?.abs, defs);
+    const e = ops && cppOpEntry(ops, site);
+    // at::native::X 是直接调用：索引里有这个函数就照常找
+    if (e && !(site.recv?.endsWith("native") && (await defsOf(ops, site.name)).some((x) => x.kind === "def" && x.qual.endsWith(`native::${site.name}`)))) {
+      const r = await viaOps(ops, e.op, e.overload);
+      if (r.length) return r;
+    }
+    // DispatchStub 只在 PyTorch 自己的代码里
+    const inner = await opTableFor(here?.abs);
+    if (inner && isStubCall(site)) {
+      const r = await viaStub(site.name, inner);
+      if (r.length) return r;
     }
     if (!here) return [];
     const lm = await viaLaunchMacro(site, here.abs, here.text);
