@@ -208,7 +208,7 @@ export function CodeHead(p: { card: CodeCard; col?: boolean }) {
       <Show when={act.openQuestionsOn(c().id)}>{(n) => <button class="qcount" data-tip="Open questions on this card" data-nodrag onClick={() => act.openQuestionsOf(c().id)}>? {n()}</button>}</Show>
       <Show when={onBoards() > 1}><button class="shb" data-tip="Linked card on several boards: show where" data-nodrag onClick={(e) => act.showBoardsOf(c().id, e.currentTarget)}><Icon name="boards" size={12} />{onBoards()} boards</button></Show>
       <Show when={linkedIn()}><button class="linkedin fold" data-tip={`← ${linkedIn()} · Linked here: show where the arrows come from`} data-nodrag onClick={(e) => act.showLinkedHere(c().id, e.currentTarget)}><span class="rw"><span class="rl">← {linkedIn()}</span></span></button></Show>
-      <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id), e)} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
+      <Show when={notes().length}><button class="mk inline" data-notes={notes().map((n) => n.id).join(",")} data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, notes().map((n) => n.id))} onClick={(e) => act.pinMarker(e.currentTarget, notes().map((n) => n.id))}>{notes().length}</button></Show>
       <Show when={c().gen}>
         <span class="genrun" data-tip="The run or params this was generated from · click to edit" data-nodrag onClick={() => setEditing({ kind: "gen", id: c().id })}>
           <Editable class="grun" kind="gen" id={c().id} value={c().gen!.run ?? ""} placeholder="Run / params" onCommit={(v) => act.setGenRun(c().id, v)} />

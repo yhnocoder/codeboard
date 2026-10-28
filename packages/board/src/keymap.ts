@@ -131,7 +131,7 @@ export const KEYMAP: Bind[] = [
   { id: "hide", keys: ["h"], label: "Hide lines", group: "Code", when: () => !!lineSel(), run: (a) => a.hideLines(lineSel()!) },
   { id: "copyCode", show: "⌘C", label: "Copy code without line numbers", group: "Code" },
   { id: "peek", show: "Hover a name", label: "Definition peek", group: "Code" },
-  { id: "pinPop", show: "⌘ + hover", label: "Pin a popup", group: "Code" },
+  { id: "pinPop", show: "Press ⌘ on a popup", label: "Pin a popup", group: "Code" },
   { id: "walk", keys: ["p"], label: "Walk Through from the selected card", group: "Walkthrough", run: (a) => a.startWalk() },
   { id: "walkNext", keys: ["ArrowRight", "ArrowDown"], show: "→", label: "Next Step", group: "Walkthrough", when: () => !!walk(), run: (a) => a.walkTo(walk()!.i + 1) },
   { id: "walkPrev", keys: ["ArrowLeft", "ArrowUp"], show: "←", label: "Previous Step", group: "Walkthrough", when: () => !!walk(), run: (a) => a.walkTo(walk()!.i - 1) },

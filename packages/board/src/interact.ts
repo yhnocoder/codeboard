@@ -631,8 +631,8 @@ export function installKeys() {
     if (selSticker() && !t.closest?.("[data-sticker], .ctx")) setSelSticker(null);
   }, true);
   window.addEventListener("keydown", (e) => {
-    // 按住 ⌘：正在显示的弹窗固定下来
-    if (e.key === "Meta" || e.key === "Control") for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
+    // 按下 ⌘：正在显示的弹窗固定下来。按住不放时系统会一直重发 keydown（repeat），那些不算，不然按住 ⌘ 扫过的每个弹窗都会被固定
+    if ((e.key === "Meta" || e.key === "Control") && !e.repeat) for (const p of pops()) if (!p.pinned && (p.pop.kind === "peek" || p.pop.kind === "notes")) pinPop(p.id);
     if (typing() || modalOpen()) return;
     const kl = e.key.toLowerCase();
     if ((e.metaKey || e.ctrlKey) && state.host.forwardedKeys?.includes(e.shiftKey && (kl === "l" || kl === "b") ? `shift+${kl}` : kl)) { e.preventDefault(); return; } // 宿主会转回来
