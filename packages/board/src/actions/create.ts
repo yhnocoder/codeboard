@@ -76,7 +76,8 @@ export function newMark(at?: { x: number; y: number }) {
 export function newBox(at?: { x: number; y: number }) {
   return newWriting("box", at);
 }
-const WRITE_SIZE: Record<NoteLook, { w: number; h?: number }> = { note: { w: 280 }, text: { w: 320 }, mark: { w: 180 }, box: { w: 150, h: 60 } };
+const WRITE_SIZE: Record<NoteLook, { w: number; h?: number }> = { note: { w: 476 }, text: { w: 544 }, mark: { w: 180 }, box: { w: 150, h: 60 } };
+const FREE_CODE_W = 816;
 function newWriting(look: NoteLook, at?: { x: number; y: number }, text = "") {
   const { w, h } = WRITE_SIZE[look];
   const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - w / 2, y: v.y - (h ?? 80) / 2 }; })();
@@ -168,11 +169,11 @@ export function newFreeCode(at?: { x: number; y: number }, text = "", lang = "py
   const seg: Segment = { id: sid, src: { kind: "free", url }, path: "", lang, start: 1, end: Math.max(1, text.split("\n").length), text: text ? text.split("\n") : [""], version: { kind: "none" } };
   const id = uid("c");
   if (text) {
-    addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: 480 }], { at, exact });
+    addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: FREE_CODE_W }], { at, exact });
   } else {
     // 空卡：写了代码才进撤销栈，什么都没写就消失
-    const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 240, y: v.y - 60 }; })();
-    createFresh(id, (b) => { b.cards.push({ id, kind: "code", segments: [seg] }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: 480 }; settleHome(b, id); });
+    const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - FREE_CODE_W / 2, y: v.y - 60 }; })();
+    createFresh(id, (b) => { b.cards.push({ id, kind: "code", segments: [seg] }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: FREE_CODE_W }; settleHome(b, id); });
     select({ cards: [id] });
     popCard(id);
   }

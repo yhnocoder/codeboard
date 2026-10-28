@@ -105,3 +105,37 @@ test("newTextReachesHostWhenShown", async () => {
   }
   check("newTextReachesHostWhenShown posted when shown", runs.every((r) => r.shown && r.posted), { runs });
 });
+
+/** New cards start wide enough to write in: Note 476, Text 544, Free code 816 board px (1.7 times the old 280 / 320 / 480); Box and
+ *  Mark keep their size. Each is made at the pointer with its key or the toolbar menu, written in and closed with Esc */
+test("newCardsDefaultWidths", async () => {
+  const h = await open({ board: emptyBoard("b1", "widths"), light: true, w: 1800, h: 1000, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await idle(h);
+  const made = async (what: string, start: () => Promise<void>, text: string) => {
+    const n = h.board().cards.length;
+    await start();
+    await pg.waitForFunction(() => !!document.activeElement?.closest(".card[data-id] .md-pm, .card[data-id] .cm-content"), null, { timeout: 5000 });
+    await pg.keyboard.type(text);
+    await pg.keyboard.press("Escape");
+    await until(h, `the new ${what} reaches the host`, () => h.board().cards.length > n);
+    await idle(h);
+    const c = h.board().cards[h.board().cards.length - 1];
+    return h.board().place[c.id].w;
+  };
+  const key = (x: number, y: number, k: string) => async () => { await pg.mouse.click(x, y); await idle(h); await pg.keyboard.press(k); };
+  const menu = (tool: string, item: string) => async () => {
+    await pg.locator(`.bbar button[aria-label="${tool}"]`).click();
+    await pg.locator(".ctx button", { hasText: item }).click();
+  };
+  const w = {
+    note: await made("Note", key(80, 120, "n"), "A new note, wide enough for a sentence or two"),
+    text: await made("Text", key(80, 480, "t"), "A new text"),
+    box: await made("Box", key(1500, 120, "r"), "Box"),
+    mark: await made("Mark", key(1500, 300, "m"), "Mark"),
+    code: await made("Free code", menu("Code", "New Code"), "def step(self):\n    return self.scheduler.schedule()"),
+  };
+  await pg.mouse.click(1700, 950); await idle(h);
+  await pg.screenshot({ path: path.join(OUT, "new-card-widths.png") });
+  check("newCardsDefaultWidths", w.note === 476 && w.text === 544 && w.code === 816 && w.box === 150 && w.mark === 180, w);
+});
