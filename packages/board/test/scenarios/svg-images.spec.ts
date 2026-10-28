@@ -245,7 +245,7 @@ test("svgImageCardDropsIntoNoteStaysSvg", async () => {
   const to = (await pg.locator('.card[data-id="n1"] .nbody').boundingBox())!;
   await pg.mouse.move(from.x + 60, from.y + 40);
   await pg.mouse.down();
-  for (let i = 1; i <= 14; i++) { await pg.mouse.move(from.x + 60 + ((to.x + 120 - from.x - 60) * i) / 14, from.y + 40 + ((to.y + 20 - from.y - 40) * i) / 14); await frames(pg); }
+  for (let i = 1; i <= 14; i++) { await pg.mouse.move(from.x + 60 + ((to.x + 120 - from.x - 60) * i) / 14, from.y + 40 + ((to.y + to.height - 8 - from.y - 40) * i) / 14); await frames(pg); } // below the text: at the end
   await pg.mouse.up();
   await until(h, "the drop is saved", () => noteMd(h) !== md0).catch(() => {});
   await idle(h);

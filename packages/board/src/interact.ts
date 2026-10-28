@@ -15,6 +15,7 @@ import { pops, closeAllPops, pinPop } from "./state/pop";
 import { connectFrom, modeIs, idle, takePick, endDraw, cancelMode, placing, spaceDown, setSpaceDown, setPanning } from "./state/mode";
 import { selSticker, setSelSticker } from "./state/stickers";
 import { ghostOut } from "./state/ghost";
+import { overNote, leaveNote, noteDropAt } from "./notedrop";
 import { boardPoint, worldAt, lastPointer, trackPointer, naturalSize, chromeOf } from "./state/measure";
 import { installOverlays, modalOpen, typing } from "./ui/overlay";
 import { NODRAG, CARD_CONTROL, OWNS_POINTER, BOARD_CHROME, holdPointer } from "./ui/guard";
@@ -207,6 +208,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     }
     if (drop?.kind === "merge" && dropTarget()?.kind === "merge" && dropTarget()!.card === drop.card && dropTarget()!.armed) drop = dropTarget();
     setDropTarget(drop);
+    if (drop?.kind === "note") overNote(drop.card, { x: ev.clientX, y: ev.clientY }); else leaveNote();
     if (!(ev.metaKey || ev.ctrlKey) && !drop && !fast) {
       const sn = snapMove({ ...box, x: box.x + dx, y: box.y + dy }, targets, tune("snap") / z);
       dx += sn.dx; dy += sn.dy;
@@ -223,8 +225,10 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     setDragging(new Set<string>());
     setMovingHome(null);
     const drop = dropTarget();
+    const noteAt = drop?.kind === "note" ? noteDropAt(drop.card) : undefined;
     setDropTarget(null);
-    if (!moved) { end(); onClick?.(); return; }
+    if (drop?.kind !== "note") leaveNote();
+    if (!moved) { leaveNote(); end(); onClick?.(); return; }
     dragEndAt = performance.now();
     if (drop?.kind === "merge" && drop.armed) {
       live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
@@ -238,9 +242,10 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
       void A.noteImageFor(ids[0]).then((src) => {
         if (src) ghostOut([ids[0]]);
         setDropTarget(null);
+        leaveNote();
         live((b) => { for (const it of items) { const c = hostPlace(b, it.id); if (c) { c.x = it.ox; c.y = it.oy; } } });
         end();
-        if (src) A.putImageInNote(ids[0], drop.card, src);
+        if (src) A.putImageInNote(ids[0], drop.card, src, noteAt);
       });
       return;
     }
@@ -259,7 +264,7 @@ function startCardDrag(e: PointerEvent, grabbed: string, onClick?: () => void) {
     });
     end();
     void ev;
-  }, 3, () => { pace.stop(); clearTimeout(mergeT); dropGesture(); });
+  }, 3, () => { pace.stop(); clearTimeout(mergeT); leaveNote(); dropGesture(); });
 }
 
 function rowAnchor(row: HTMLElement, hostId: string): Anchor | null {

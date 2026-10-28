@@ -463,11 +463,12 @@ input, textarea { font: inherit; color: var(--ink); }
 .card.merge-arm { box-shadow: 0 0 0 1.5px color-mix(in srgb, var(--k-fn) 60%, transparent), var(--sh-card); }
 .card.merge-hot { box-shadow: 0 0 0 2.5px var(--k-fn), 0 0 0 6px var(--hi), var(--sh-card); }
 .card.merge-hot::after { content: "Release to merge"; position: absolute; left: 50%; top: -30px; transform: translateX(-50%); font: 600 11.5px/1 var(--sys); color: #fff; background: var(--k-fn); padding: 6px 10px; border-radius: 8.5px; white-space: nowrap; box-shadow: var(--sh-float); z-index: 5; }
-/* An image card dragged over a Note / Text: the Note lights up (the card's box-shadow transition) and a caret line grows in under its
-   text where the image will go; a label says what releasing does. Only transform / opacity animate, so the drag stays at 60 fps. */
+/* An image card dragged over a Note / Text: the Note lights up (the card's box-shadow transition) and a caret line grows in between
+   the two blocks where the image will go (--drop-y, set by notedrop.ts only when that place changes); a label says what releasing
+   does. Only transform / translate / opacity animate, so the drag stays at 60 fps. */
 .card.img-drop { box-shadow: 0 0 0 2.5px var(--accent), 0 0 0 7px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
-.card.img-drop > .cface::after { content: ""; position: absolute; left: 14px; right: 14px; bottom: 9px; height: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; z-index: 4;
-  transform-origin: 0 50%; animation: imgdrop-caret calc(var(--t) * 220ms) var(--out) both, imgdrop-pulse calc(var(--t) * 1100ms) calc(var(--t) * 220ms) ease-in-out infinite alternate; }
+.card.img-drop > .cface::after { content: ""; position: absolute; left: 14px; right: 14px; top: 0; height: 3px; border-radius: 2px; background: var(--accent); pointer-events: none; z-index: 4;
+  translate: 0 calc(var(--drop-y, 0px) - 1.5px); transition: translate calc(var(--t) * 90ms) var(--out); transform-origin: 0 50%; animation: imgdrop-caret calc(var(--t) * 220ms) var(--out) both, imgdrop-pulse calc(var(--t) * 1100ms) calc(var(--t) * 220ms) ease-in-out infinite alternate; }
 .card.img-drop::after { content: "Release to add the image"; position: absolute; left: 50%; top: -30px; translate: -50% 0; font: 600 11.5px/1 var(--sys); color: #fff; background: var(--accent); padding: 6px 10px; border-radius: 8.5px; white-space: nowrap; box-shadow: var(--sh-float); z-index: 5; pointer-events: none;
   animation: imgdrop-label calc(var(--t) * 180ms) var(--out) both; }
 @keyframes imgdrop-caret { from { transform: scaleX(0); opacity: 0; } to { transform: scaleX(1); opacity: 1; } }

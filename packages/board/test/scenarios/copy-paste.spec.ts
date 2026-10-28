@@ -6,6 +6,8 @@
 //   imageCardDropsIntoNote                dragging an image card onto a Note lights the Note up; releasing puts the image into the
 //                                         Note's Markdown (saved under assets/ like a pasted image) and removes the image card, in one
 //                                         undo step
+//   imageCardDropsAtPointerInNote         while the image card hovers over the Note, a line between two blocks shows where it goes and
+//                                         follows the pointer (no layout reads per move); releasing puts the image there
 //   pasteIntoEditorMakesNoCard            ⌘V while editing a Note (into its code block, and into its text) pastes there only: the
 //                                         board does not also turn the paste into a card. In VS Code the paste event's target is the
 //                                         highlighted span the selection starts on, and the code editor replaces that span before the
@@ -179,7 +181,7 @@ test("imageCardDropsIntoNote", async () => {
   const to = (await cardEl(h, "n1").locator(".nbody").boundingBox())!;
   await pg.mouse.move(from.x + 60, from.y + 40);
   await pg.mouse.down();
-  for (let i = 1; i <= 14; i++) { await pg.mouse.move(from.x + 60 + ((to.x + 120 - from.x - 60) * i) / 14, from.y + 40 + ((to.y + 20 - from.y - 40) * i) / 14); await frames(pg); }
+  for (let i = 1; i <= 14; i++) { await pg.mouse.move(from.x + 60 + ((to.x + 120 - from.x - 60) * i) / 14, from.y + 40 + ((to.y + to.height - 8 - from.y - 40) * i) / 14); await frames(pg); } // below the text: at the end
   await frames(pg, 3);
   const hover = await cardEl(h, "n1").evaluate((el) => ({ on: el.classList.contains("img-drop"), anim: getComputedStyle(el).transitionDuration, bar: getComputedStyle(el.querySelector(".cface")!, "::after").content }));
   await shotTo(h, "image-over-note", { x: 40, y: 30, width: 900, height: 500 });
@@ -203,6 +205,63 @@ test("imageCardDropsIntoNote", async () => {
   await until(h, "the undo is saved", () => h.board().place.i1); await idle(h);
   const back = h.board().place.i1;
   check("imageCardDropsIntoNote one undo restores both", note().md === md0 && !!back && back.x === place0.x && back.y === place0.y && back.w === place0.w, { md: note().md, back, place0 });
+  await done();
+});
+
+/** #25: an image card dragged over a Note shows a line between the two blocks under the pointer, following it, and releasing puts
+ *  the image there (its own paragraph), not at the end; while it hovers, the board reads no layout per pointer move */
+test("imageCardDropsAtPointerInNote", async () => {
+  const b = emptyBoard("b1", "drop");
+  const md0 = "## Prefill first\n\nThe scheduler fills the batch with waiting sequences.\n\nThen it decodes one token per sequence.\n\nUntil every sequence is done.";
+  put(b, { id: "n1", kind: "note", md: md0, bg: true } as NoteCard, 80, 80, 420);
+  put(b, { id: "i1", kind: "image", src: "card.png" } as Card, 640, 140, 240);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const { h, assets, done } = await boardWith(b);
+  const pg = h.page, note = cardEl(h, "n1");
+  const paras = await note.locator(".nbody > p").evaluateAll((ps) => ps.map((p) => { const r = p.getBoundingClientRect(); return { top: r.top, bottom: r.bottom, text: p.textContent }; }));
+  const face = (await note.locator(".cface").boundingBox())!;
+  /** Where the line is drawn, in screen pixels (its centre) */
+  const line = () => note.locator(".cface").evaluate((el) => {
+    const s = getComputedStyle(el, "::after"), r = el.getBoundingClientRect();
+    return s.content === "none" ? null : r.top + parseFloat(s.translate.split(" ")[1] ?? "0") + parseFloat(s.height) / 2;
+  });
+  const from = (await cardEl(h, "i1").locator(".imgb").boundingBox())!;
+  const x = face.x + 200;
+  const gap12 = (paras[0].bottom + paras[1].top) / 2, gap23 = (paras[1].bottom + paras[2].top) / 2;
+  await pg.mouse.move(from.x + 60, from.y + 40);
+  await pg.mouse.down();
+  // over the lower half of the second paragraph ("Then it decodes"; the heading is the card's title): the line between it and the third
+  const y1 = paras[1].bottom - 3;
+  for (let i = 1; i <= 14; i++) { await pg.mouse.move(from.x + 60 + ((x - from.x - 60) * i) / 14, from.y + 40 + ((y1 - from.y - 40) * i) / 14); await frames(pg); }
+  await until(h, "the Note shows the drop", () => note.evaluate((el) => el.classList.contains("img-drop")));
+  await idle(h);
+  const at23 = await line();
+  // up over its top half: the line moves to between the first paragraph and the second, without reading layout
+  const reads = await pg.evaluate(() => {
+    const w = window as unknown as { __reads: number };
+    w.__reads = 0;
+    for (const k of ["getBoundingClientRect", "getClientRects"] as const) { const f = Element.prototype[k]; (Element.prototype as any)[k] = function (this: Element) { w.__reads++; return (f as any).call(this); }; }
+    return true;
+  });
+  const y2 = paras[1].top + 3;
+  for (let i = 1; i <= 6; i++) { await pg.mouse.move(x, y1 + ((y2 - y1) * i) / 6); await frames(pg); }
+  const counted = await pg.evaluate(() => (window as unknown as { __reads: number }).__reads);
+  await idle(h);
+  const at12 = await line();
+  await pg.screenshot({ path: path.join(OUT, "25-image-drop-indicator.png"), clip: { x: face.x - 40, y: face.y - 50, width: face.width + 360, height: face.height + 120 } });
+  // back down to between the second and the third, and release there
+  for (let i = 1; i <= 6; i++) { await pg.mouse.move(x, y2 + ((y1 - y2) * i) / 6); await frames(pg); }
+  await idle(h);
+  const back = await line();
+  await pg.mouse.up();
+  const md = () => (h.board().cards.find((c) => c.id === "n1") as NoteCard).md;
+  await until(h, "the drop is saved", () => md() !== md0); await idle(h);
+  const files = assets().filter((f) => f !== "card.png");
+  check("imageCardDropsAtPointerInNote the line follows the pointer between blocks", reads && at23 !== null && at12 !== null && Math.abs(at23 - gap23) < 3 && Math.abs(at12 - gap12) < 3 && back !== null && Math.abs(back - gap23) < 3, { at23, gap23, at12, gap12, back });
+  check("imageCardDropsAtPointerInNote no layout reads while hovering", counted === 0, counted);
+  check("imageCardDropsAtPointerInNote the image goes where it was released", files.length === 1 && md() === md0.replace("\n\nUntil every", `\n\n![](assets/${files[0]})\n\nUntil every`), { md: md(), files });
+  const order = await note.locator(".nbody > *").evaluateAll((es) => es.map((e) => (e.querySelector("img") ? "[img]" : e.textContent!.slice(0, 12))));
+  check("imageCardDropsAtPointerInNote shown in place", JSON.stringify(order) === JSON.stringify(["Prefill firs", "The schedule", "Then it deco", "[img]", "Until every "]), order);
   await done();
 });
 

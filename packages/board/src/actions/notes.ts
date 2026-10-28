@@ -111,10 +111,10 @@ export async function noteImageFor(imageId: string): Promise<string | null> {
   const c = cardById(imageId)?.card;
   return c?.kind === "image" ? noteImageOf(unwrap(c)) : null;
 }
-/** 图放进 Note 的 Markdown 末尾，图片卡删掉：一步撤销 */
-export function putImageInNote(imageId: string, noteId: string, src: string) {
+/** 图放进 Note 的 Markdown（at = 第几个字，一块的开头；不给 = 末尾），图片卡删掉：一步撤销 */
+export function putImageInNote(imageId: string, noteId: string, src: string, at?: number) {
   let ok = false;
-  if (!mutate((b) => { ok = imageIntoNote(b, imageId, noteId, src); }) || !ok) return;
+  if (!mutate((b) => { ok = imageIntoNote(b, imageId, noteId, src, at); }) || !ok) return;
   select({ cards: [noteId] });
   toast("Added the image to the Note");
 }

@@ -669,16 +669,18 @@ export function cardIntoSidenote(b: Board, cardId: string, n: Sidenote): void {
 }
 
 /**
- * Image 卡拖进 Note：Note 的 Markdown 末尾接上这张图（src = Note 里写的地址，如 assets/…；图的说明接在图下面），Image 卡连同它的箭头删掉。
+ * Image 卡拖进 Note：图作为单独的一段放进 Note 的 Markdown（src = Note 里写的地址，如 assets/…；图的说明接在图下面），Image 卡连同它的箭头删掉。
+ * at = 放在 Markdown 的第几个字（一块的开头，见 @yhnocoder/markdown 的 mdBlockStarts），不给就接在末尾。
  * 不是 Image 卡 / Note 时什么都不改，返回 false
  */
-export function imageIntoNote(b: Board, imageId: string, noteId: string, src: string): boolean {
+export function imageIntoNote(b: Board, imageId: string, noteId: string, src: string, at?: number): boolean {
   const img = b.cards.find((c) => c.id === imageId), note = b.cards.find((c) => c.id === noteId);
   if (img?.kind !== "image" || note?.kind !== "note") return false;
   const alt = (img.alt ?? "").replace(/[[\]\s]+/g, " ").trim();
   const block = `![${alt}](${src})${img.desc?.trim() ? `\n\n${img.desc.trim()}` : ""}`;
-  const md = note.md.replace(/\s+$/, "");
-  note.md = md ? `${md}\n\n${block}` : block;
+  const cut = at === undefined ? note.md.length : Math.max(0, Math.min(at, note.md.length));
+  const head = note.md.slice(0, cut).replace(/\s+$/, ""), tail = note.md.slice(cut).replace(/\s+$/, "");
+  note.md = [head, block, tail].filter(Boolean).join("\n\n");
   removeCards(b, [imageId]);
   return true;
 }

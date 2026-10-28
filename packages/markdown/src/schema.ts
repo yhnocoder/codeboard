@@ -696,6 +696,21 @@ export function parseMd(src: string): JSONContent {
   if (!rest.length) rest.push({ type: "paragraph" });
   return { type: "doc", content: unDollar(mathify(rest)!) };
 }
+/**
+ * 每个顶层块（parseMd 的 content，文末的脚注块不算）在 src 里从第几个字开始：往两块之间插一段 Markdown 时用（比如拖进来的图放在松手的那两块之间）。
+ * 按 marked 的顶层分词：一个不是空行的词对应一块。对不上（多出来的空行读成了空段落、脚注定义、链接定义这些）就给 null
+ */
+export function mdBlockStarts(src: string): number[] | null {
+  if (src.includes("\r")) return null;
+  const mgr = mm as unknown as { createLexer(): { lex(s: string): { type: string; raw: string }[] }; parse(s: string): JSONContent };
+  const toks = mgr.createLexer().lex(src);
+  if (toks.reduce((n, t) => n + t.raw.length, 0) !== src.length) return null;
+  const starts: number[] = [];
+  let at = 0;
+  for (const t of toks) { if (t.type !== "space") starts.push(at); at += t.raw.length; }
+  const blocks = mgr.parse(src).content ?? [];
+  return blocks.length === starts.length && blocks.every((b) => b.type !== "footnote") ? starts : null;
+}
 function walk(ns: JSONContent[] | undefined, f: (n: JSONContent) => void) {
   for (const n of ns ?? []) { f(n); walk(n.content, f); }
 }

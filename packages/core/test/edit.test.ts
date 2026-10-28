@@ -665,6 +665,21 @@ describe("board action edits (core edit)", () => {
     expect(danglingRefs(b)).toEqual([]);
   });
 
+  it("imageIntoNote at a block's start puts the image there as its own paragraph", () => {
+    const b = base([]);
+    const md = "# Plan\n\nStep one\n\n- a\n- b\n";
+    placeCards(b, [
+      { card: { id: "n", kind: "note", md, bg: true }, place: { x: 0, y: 0, w: 300 } },
+      { card: { id: "i", kind: "image", src: "abc.png" }, place: { x: 400, y: 0, w: 200 } },
+      { card: { id: "j", kind: "image", src: "def.png" }, place: { x: 400, y: 300, w: 200 } },
+    ], { copy: false });
+    expect(imageIntoNote(b, "i", "n", "assets/abc.png", md.indexOf("- a"))).toBe(true);
+    expect((b.cards[0] as { md: string }).md).toBe("# Plan\n\nStep one\n\n![](assets/abc.png)\n\n- a\n- b");
+    expect(imageIntoNote(b, "j", "n", "assets/def.png", 0)).toBe(true);
+    expect((b.cards[0] as { md: string }).md).toBe("![](assets/def.png)\n\n# Plan\n\nStep one\n\n![](assets/abc.png)\n\n- a\n- b");
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
   it("makeCompare unplaces the columns and moves their card stickers onto the compare", () => {
     const b = base([code("p"), code("q")]);
     b.stickers = [{ id: "s", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 1, y: 2, on: { card: "q" } } }];
