@@ -54,6 +54,8 @@ E2E_WS=/path/to/repo E2E_FLOW=my-flow.cjs npm run e2e    # 同上，打开的是
 ## 加新测试时
 
 - 宿主（`packages/host`）的测试写成 `packages/host/test/<功能>.test.ts`（vitest，跑在 nano-vllm 的副本和测试自己建的小 git 仓库上），`npm test` 会跑。
+- 单元测试里也不写固定的等待，不按墙钟时间断言：等被测代码自己给的 promise（比如 `watchVersions` 的 `ready`）、让假的语言服务等测试放行、用 vitest 的假时钟（`vi.useFakeTimers`）走产品里有名字的延迟（`RECHECK_PAUSE`、`WARM_DELAY`、`RETRY_GAP`…），或者 `vi.waitFor` 轮询真实状态（超时只是上限）。要限时的（防止算法退化成平方）量 CPU 时间（`process.cpuUsage`），机器忙时不会误报。宿主测试由 `packages/host/test/test-waits.test.ts` 按形状检查。
+- core 和 analysis 的测试文件在同一个 worker 里接着跑、共用模块缓存（`isolate: false`，省掉每个文件起 worker、重新 import 的时间）：这两个包的测试不能依赖模块状态是新的，也不用 `vi.mock`。
 - 新场景是 `packages/board/test/scenarios/` 里某个 `*.spec.ts` 中的一个 `test("名字", …)`，从 `../fixtures` 引 `test`、`open`、`check`；新文件不用登记。场景名在所有文件里不能重名，也不带空格（`tiers.json`、覆盖率、`Tests:` 行都按名字对）。
 - 场景里不写固定的等待（`waitForTimeout`、`setTimeout` 凑的 sleep、自己的 `wait`）：等真实的状态，用 `until(h, 说明, 条件)`（宿主那份白板、`h.sent`、元素个数）、`idle(h)`（白板静下来了）或 Playwright 自己的等待（`waitFor`、`toHaveCount`）。`packages/board/test/unit/scenario-waits.test.ts` 按形状检查，`npm test` 会跑。
 - 真得等一段固定时间的（检查某个产品定时器到点前什么都不发生、悬停延迟、测量）用 `hold(h, 毫秒, 原因)`，毫秒取产品里有名字的常量（`packages/board/src/state/timing.ts`，Markdown 编辑器的在 `@yhnocoder/markdown/ui`），原因写清这段时间里不该发生什么。

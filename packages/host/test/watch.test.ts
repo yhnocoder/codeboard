@@ -45,7 +45,7 @@ afterAll(() => { off.dispose(); W.open.clear(); fs.rmSync(dir, { recursive: true
  * Fire events on a fake clock and let the pause run out: nothing is re-checked a moment before the end of the pause, then exactly
  * what the watcher collected, and no other re-check is left waiting
  */
-function pause(fire: () => void) {
+function onePause(fire: () => void) {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   try {
     rechecks.length = 0;
@@ -59,25 +59,25 @@ function pause(fire: () => void) {
 
 describe("version re-checks", () => {
   it("re-check only the edited file, once per pause, and not for files no board uses", async () => {
-    pause(() => {
+    onePause(() => {
       W.fire.edit.fire(schAbs); W.fire.edit.fire(schAbs);
       W.fire.edit.fire(llmAbs); // a file no board uses
     });
     expect(rechecks).toEqual([[schAbs]]);
   });
   it("collect the files edited within one pause into one re-check", async () => {
-    pause(() => { W.fire.edit.fire(schAbs); W.fire.save.fire(seqAbs); });
+    onePause(() => { W.fire.edit.fire(schAbs); W.fire.save.fire(seqAbs); });
     expect(rechecks).toEqual([[seqAbs, schAbs].sort()]);
   });
   it("re-check a file changed outside the editor", async () => {
-    pause(() => W.fire.change.fire(schAbs));
+    onePause(() => W.fire.change.fire(schAbs));
     expect(rechecks).toEqual([[schAbs]]);
   });
   it("notice a reverted unsaved edit without a save: the card's code is gone", async () => {
     const seg = typed.segments[0];
     expect(seg.version).toMatchObject({ kind: "git", uncommitted: true });
     W.open.set(seqAbs, fs.readFileSync(seqAbs, "utf8")); // File: Revert File
-    pause(() => W.fire.edit.fire(seqAbs));
+    onePause(() => W.fire.edit.fire(seqAbs));
     expect(rechecks).toEqual([[seqAbs]]);
     expect((await staleFor([seg]))[seg.id]?.state).toBe("lost");
   });
