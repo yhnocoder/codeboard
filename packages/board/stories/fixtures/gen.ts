@@ -44,7 +44,7 @@ console.log(`Wrote ${Object.keys(out).length} segments to ${path.relative(proces
   const { highlight } = await import("@codeboard/host/views");
   // C / C++ / CUDA 的着色用宿主的 tree-sitter，要它先起来
   await (await import("@codeboard/host/analysis")).startAnalysis();
-  const { langId } = await import("@codeboard/core");
+  const { langId } = await import("@codeboard/analysis/langs");
   const { NOTE_CODE, NOTE_CODE_EXTRA, noteCodeKey } = await import("./notecode");
   const notes: Record<string, string[]> = {};
   for (const [lang, text] of [...Object.entries(NOTE_CODE), ...NOTE_CODE_EXTRA]) {
