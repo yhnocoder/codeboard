@@ -290,3 +290,72 @@ test("noteImageNoFrame", async () => {
   await exitEdit(h);
   await done();
 });
+
+/** The client point at the end of `word` in the Note's editor (where a drop puts the image between that word and the next) */
+const afterWord = (h: Host, id: string, word: string) => h.page.evaluate(([id, word]) => {
+  const root = document.querySelector(`.card[data-id="${id}"] .md-pm`)!, w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode() as Text | null; n; n = w.nextNode() as Text | null) {
+    const i = n.data.indexOf(word);
+    if (i < 0) continue;
+    const rg = document.createRange();
+    rg.setStart(n, i + word.length - 1); rg.setEnd(n, i + word.length);
+    const r = rg.getBoundingClientRect();
+    return { x: r.right, y: r.top + r.height / 2 };
+  }
+  throw new Error(`no "${word}"`);
+}, [id, word] as const);
+const paras = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"] .md-pm`).evaluate((el) => [...el.querySelectorAll(":scope > p")].map((p) => (p.textContent ?? "") + (p.querySelector(".md-img") ? "[img]" : "")));
+
+/** #24: while editing a Note, pressing on an image and dragging it moves it (not a copy) to where it is released, inside a
+ *  paragraph too, with the drop cursor showing where; the paragraph it left goes away; the card stays put; one undo step puts it
+ *  back; a click still selects the image and its resize grips still work */
+test("noteImageDragMoves", async () => {
+  const { h, done } = await imageHost([`First paragraph of text.\n\n![](${PAGE_SRC})\n\nSecond paragraph of text here.`]);
+  const pg = h.page, card = pg.locator('.card[data-id="n0"]');
+  const img = card.locator(".md-pm img:not(.ProseMirror-separator)").first();
+  await idle(h);
+  const place0 = JSON.stringify(h.board().place.n0);
+  await editNote(h, "n0");
+  await imgBox(h, "n0", ".md-pm");
+  await img.click();
+  const selected = await card.locator(".md-pm .md-img.ProseMirror-selectednode").count();
+  const r = (await img.boundingBox())!, to = await afterWord(h, "n0", "Second");
+  const from = { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+  await pg.mouse.move(from.x, from.y);
+  await pg.mouse.down();
+  for (let i = 1; i <= 12; i++) { await pg.mouse.move(from.x + ((to.x + 1 - from.x) * i) / 12, from.y + ((to.y - from.y) * i) / 12); await frames(pg); }
+  const caret = await until(h, "the drop cursor shows where the image goes", () => pg.locator(".md-dropcursor").evaluate((el) => {
+    const r = el.getBoundingClientRect();
+    return r.height > 4 ? { x: r.x, y: r.y, w: r.width, h: r.height, bg: getComputedStyle(el).backgroundColor } : null;
+  }).catch(() => null));
+  const mid = { place: JSON.stringify(h.board().place.n0), lifted: await card.evaluate((el) => el.classList.contains("lift")) };
+  await pg.screenshot({ path: path.join(OUT, "24-note-image-mid-drag.png"), clip: { x: r.x - 60, y: r.y - 120, width: 640, height: r.height + 260 } });
+  await pg.mouse.up();
+  await until(h, "the image moves into the second paragraph", async () => (await card.locator(".md-pm > p").count()) === 2);
+  const moved = await paras(h, "n0");
+  const imgs = await card.locator(".md-pm img:not(.ProseMirror-separator)").count();
+  check("noteImageDragMoves click selects", selected === 1, selected);
+  check("noteImageDragMoves drop cursor at the release point", Math.abs(caret.x + caret.w / 2 - to.x) < 4 && Math.abs(caret.y + caret.h / 2 - to.y) < caret.h && caret.bg !== "rgba(0, 0, 0, 0)", { caret, to });
+  check("noteImageDragMoves card does not move", mid.place === place0 && !mid.lifted && JSON.stringify(h.board().place.n0) === place0, { mid, place0 });
+  check("noteImageDragMoves moved not copied", imgs === 1 && JSON.stringify(moved) === JSON.stringify(["First paragraph of text.", "Second paragraph of text here.[img]"]), { moved, imgs });
+  // one undo puts the image back where it was (and the paragraph it left)
+  await pg.keyboard.press("Control+z");
+  await until(h, "undo puts the image back", async () => (await card.locator(".md-pm > p").count()) === 3);
+  const undone = await paras(h, "n0");
+  check("noteImageDragMoves one undo step", JSON.stringify(undone) === JSON.stringify(["First paragraph of text.", "[img]", "Second paragraph of text here."]), undone);
+  await pg.keyboard.press("Control+Shift+z");
+  await until(h, "redo moves it again", async () => (await card.locator(".md-pm > p").count()) === 2);
+  // the grip still resizes the image (it does not start a drag of its own)
+  await img.click();
+  const g = card.locator(".md-pm .md-imgrip.r").first();
+  await g.waitFor({ state: "visible" });
+  const gb = (await g.boundingBox())!;
+  await pg.mouse.move(gb.x + gb.width / 2, gb.y + gb.height / 2);
+  await pg.mouse.down();
+  for (let i = 1; i <= 8; i++) { await pg.mouse.move(gb.x + gb.width / 2 - 10 * i, gb.y + gb.height / 2 + i); await frames(pg); }
+  await pg.mouse.up();
+  await exitEdit(h);
+  const text = md(h, "n0").replace(PAGE_SRC, "SRC");
+  check("noteImageDragMoves saved", /^First paragraph of text\.\n\nSecond!\[\]\(SRC\)\{width=\d+%\} paragraph of text here\.$/.test(text), text);
+  await done();
+});

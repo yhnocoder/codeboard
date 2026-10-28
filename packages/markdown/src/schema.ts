@@ -556,6 +556,8 @@ export const baseExtensions: AnyExtension[] = [
   StarterKit.configure({
     document: false, paragraph: false, codeBlock: false, underline: false, trailingNode: false, bold: false, italic: false, strike: false, horizontalRule: false, code: false, link: false, listItem: false, orderedList: false,
     heading: { levels: [1, 2, 3, 4, 5, 6] },
+    // 拖图时的落点线：颜色在 markdown.css（.md-dropcursor，跟着主题）
+    dropcursor: { color: false, width: 2, class: "md-dropcursor" },
   }),
   // 打字时的 **b** *i* ~~s~~ 不用 TipTap 自带的正则（要求开头记号前是空白：中文后面紧跟的 **粗体** 不变；整行的字连行内代码里的 ** 一起配对，
   // 会把代码里的记号吃掉），由编辑器按解析器重解析（editor/typora.ts 的 retype），和存回去再读进来的一样。
