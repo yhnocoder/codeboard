@@ -12,8 +12,8 @@ import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, se
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
-import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleTilt, toggleSection, toggleWrap, unmerge, toggleBg, arrangeItem, fitSections, tidyUp } from "./edit";
-import { newFreeCode, newNote, newText, pasteText, cardFromLines } from "./create";
+import { compareCheck, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleTilt, toggleSection, toggleWrap, unmerge, toggleBg, arrangeItem, fitSections, tidyUp } from "./edit";
+import { newFreeCode, newNote, newText, pasteText } from "./create";
 import { openAddNote, setMarkColor, showPeek, turnNote } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { unlinkShared } from "./edit";
@@ -85,10 +85,8 @@ function lineItems(ls: LineSel): Item[] {
     { label: "Add Sidenote", kbd: "S", run: () => openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) },
     // 疑问：在第一行贴「?」并直接写问题
     { label: "Ask a Question", run: () => askQuestion({ card: ls.card, seg: ls.seg, line: ls.start }) },
-    { label: "New Card from Lines", run: () => cardFromLines(ls) },
     // 生成的代码 / 编译产物：钉在一次运行上，点线连回这一行
     { label: "Add Generated Code", sub: genItems({ card: ls.card, seg: ls.seg, line: ls.start }) },
-    { label: "Copy", kbd: kbd("copy"), run: () => copyLines(ls) },
   ];
 }
 const genItems = (at: { card: string; seg?: string; line?: number }): Item[] => [
