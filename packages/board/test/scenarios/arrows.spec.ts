@@ -475,7 +475,9 @@ test("portSizeWhenZoomedOut", async () => {
   const zoom = await pg.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector(".world")!).transform).a);
   const at30 = await measure("arrows-portsize-zoomed");
   const near = (a: number, b: number) => Math.abs(a - b) <= 0.5;
-  check("portSizeWhenZoomedOut", zoom < 0.4 && near(at30.w, at100.w) && near(at30.h, at100.h) && near(at30.hit, at100.hit) && at100.hit >= 4,
+  // The hit area keeps its 100% screen size; the drawn dot grows only by sqrt(1/zoom): bigger than plain scaling, smaller than 100%
+  const dot = at100.w * Math.sqrt(zoom);
+  check("portSizeWhenZoomedOut", zoom < 0.4 && near(at30.w, dot) && near(at30.h, dot) && at30.w < at100.w - 2 && near(at30.hit, at100.hit) && at100.hit >= 4,
     JSON.stringify({ zoom, at100, at30 }));
   await close(h);
 });

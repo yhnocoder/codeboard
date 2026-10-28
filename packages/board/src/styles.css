@@ -731,8 +731,9 @@ kbd { font: 10.5px var(--mono); }
 .card .code .cbcm-card .cm-line { padding-right: var(--code-pr); margin-right: calc(-1 * var(--code-pr)); }
 .card .code .cbcm-card .cm-lineNumbers { width: var(--gutter); }
 .card .code .cbcm-card .cm-lineNumbers .cm-gutterElement { width: calc(var(--code-pl) + var(--nd, 3) * 1ch); padding-left: var(--code-pl); }
-.lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); z-index: 4; cursor: crosshair; opacity: .0; transition: opacity .1s; scale: var(--uz, 1); }
+.lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); z-index: 4; cursor: crosshair; opacity: .0; transition: opacity .1s; scale: var(--uv, 1); }
 .lport.l { left: -5px; } .lport.r { right: -5px; }
+.eport::after, .lport::after { content: ""; position: absolute; inset: var(--port-hit, 0); border-radius: 50%; } /* 缩小时可点范围保持 100% 的屏幕大小，圆点本身只放大一点 */
 .lport { opacity: 1; }
 .card:hover .lport { opacity: 1; }
 .lport:hover { box-shadow: 0 0 0 1.5px var(--accent); background: var(--accent); }
@@ -766,7 +767,7 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .imgb img { width: 100%; height: auto; display: block; pointer-events: none; }
 
 /* edge ports (drag out an arrow) */
-.eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair; scale: var(--uz, 1); }
+.eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair; scale: var(--uv, 1); }
 .card:hover > .cface > .eport { opacity: 1; }
 .card.text > .cface > .eport { display: none; }
 .card.lift > .cface > .eport { visibility: hidden; transition: none; } /* 不用 display：拿起、放下时不用重新排版。transition: none 跟 display: none 一样：藏着时不留半截淡入淡出 */
