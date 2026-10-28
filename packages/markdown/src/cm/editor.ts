@@ -218,7 +218,7 @@ export type CodeEditor = {
   destroy(): void;
 };
 
-/** 和显示时一样的排版：字体、行高从外面继承，没有内边距；行号栏和显示时的 .gutter .no 一样（左 2px、宽 30px、右对齐） */
+/** 和显示时一样的排版：字体、行高从外面继承，没有内边距；行号栏和显示时的 .gutter .no 一样（左 2px、宽 30px、右对齐，再空 22px 到代码） */
 const look = EditorView.theme({
   "&": { font: "inherit", color: "inherit", background: "transparent" },
   "&.cm-focused": { outline: "none" },
@@ -229,7 +229,8 @@ const look = EditorView.theme({
   "&.cbcm-card .cm-line": { padding: "0 24px 0 0", marginRight: "-24px" },
   ".cm-gutters": { background: "transparent", border: "none", color: "var(--ink-3)", position: "relative", minHeight: "0" },
   ".cm-lineNumbers": { width: "54px" },
-  ".cm-lineNumbers .cm-gutterElement": { boxSizing: "border-box", width: "32px", minWidth: "0", padding: "0 0 0 2px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "color-mix(in srgb, var(--ink-3) calc(var(--no-o, .65) * 100%), transparent)" },
+  // 行号格占满整个行号栏（字靠右空 22px）：当前行的底色从行号连到代码，中间不断
+  ".cm-lineNumbers .cm-gutterElement": { boxSizing: "border-box", width: "54px", minWidth: "0", padding: "0 22px 0 2px", textAlign: "right", fontVariantNumeric: "tabular-nums", color: "color-mix(in srgb, var(--ink-3) calc(var(--no-o, .65) * 100%), transparent)" },
   ".cm-activeLine, .cm-activeLineGutter": { background: "var(--hlrow)" },
   ".cm-lineWrapping": { whiteSpace: "pre-wrap", wordBreak: "break-all", overflowWrap: "normal" },
   ".cm-content ::selection, .cm-line::selection": { background: "color-mix(in srgb, var(--accent) 26%, transparent)" },

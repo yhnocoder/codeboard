@@ -738,7 +738,7 @@ kbd { font: 10.5px var(--mono); }
 .card .code .cbcm-card .cm-content { padding-right: var(--code-pr); }
 .card .code .cbcm-card .cm-line { padding-right: var(--code-pr); margin-right: calc(-1 * var(--code-pr)); }
 .card .code .cbcm-card .cm-lineNumbers { width: var(--gutter); }
-.card .code .cbcm-card .cm-lineNumbers .cm-gutterElement { width: calc(var(--code-pl) + var(--nd, 3) * 1ch); padding-left: var(--code-pl); }
+.card .code .cbcm-card .cm-lineNumbers .cm-gutterElement { width: var(--gutter); padding: 0 22px 0 var(--code-pl); } /* 格子占满行号栏、数字右边空 22px：当前行的底色从卡边连到代码 */
 .lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); z-index: 4; cursor: crosshair; opacity: .0; transition: opacity .1s; scale: var(--uv, 1); }
 .lport.l { left: -5px; } .lport.r { right: -5px; }
 .eport::after, .lport::after { content: ""; position: absolute; inset: var(--port-hit, 0); border-radius: 50%; } /* 缩小时可点范围保持 100% 的屏幕大小，圆点本身只放大一点 */
