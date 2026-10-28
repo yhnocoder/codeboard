@@ -1,10 +1,12 @@
 // 卡在几块白板上、谁连到它由宿主算好（state/store 的 shared），这里只读。
 import { unwrap } from "solid-js/store";
 import {
-  bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel, cardCopies,
+  bounds, cardTitle, isCode, placeCards, findFree, removeCards, unlinkCard, notesOnChangedLines, versionLabel, cardCopies, makeTwin, detachTwin,
   type Card, type CardCopy, type DiffData, type ImageCard, type Link, type PastedCards, type SegView,
 } from "@codeboard/core";
-import { state, setState, mutate, sel, select, clearSel, cardById, hostOf, toast, flushSave, shared, sharedOn, rectOf } from "../state/store";
+import { state, setState, mutate, sel, select, clearSel, cardById, hostOf, toast, flushSave, shared, sharedOn, rectOf, twinsOf } from "../state/store";
+import { boardSignal } from "../state/root";
+import { PASTE_CHIP_IDLE } from "../state/timing";
 import { isHidden, settleHome } from "../state/sections";
 import { camTo, camTarget, fitTop, isVisible } from "../state/camera";
 import { ghostOut } from "../state/ghost";
@@ -62,8 +64,57 @@ function pasteCopied(text: string | undefined): boolean {
   if (!box) return false;
   const k = ++c.n;
   const made = putCards(items, links, true, { x: box.x + 36 * k, y: box.y + 36 * k }, unwrap(state.views), true);
-  if (made) toast(made.length > 1 ? `Pasted ${made.length} copies` : "Pasted a copy");
+  if (made) { toast(made.length > 1 ? `Pasted ${made.length} copies` : "Pasted a copy"); offerReference(made); }
   return true;
+}
+
+/**
+ * 粘贴 / ⌘D 出来的副本右下角的小条：Copy ✓ | Reference。pairs = [副本, 原卡]；ref = 现在是 Reference。
+ * 指针不在上面 PASTE_CHIP_IDLE 后、点了别处、副本挪了或改了（Canvas.tsx PasteChip 看着）就收起
+ */
+export const [pasteChip, setPasteChip] = boardSignal<{ pairs: [string, string][]; ref: boolean } | null>(null);
+let chipTimer: number | undefined;
+export function offerReference(pairs: [string, string][]) {
+  const ok = pairs.filter(([n, o]) => { const a = cardById(n)?.card, b = cardById(o)?.card; return a && b && a.kind !== "compare" && a.kind !== "board" && a.kind === b.kind; });
+  setPasteChip(ok.length ? { pairs: ok, ref: false } : null);
+  if (ok.length) armChip();
+}
+/** 指针离开小条后重新计时；hold = 指针在上面，不收 */
+export function armChip(hold = false) {
+  clearTimeout(chipTimer);
+  if (!hold) chipTimer = window.setTimeout(() => setPasteChip(null), PASTE_CHIP_IDLE);
+}
+export function closeChip() { clearTimeout(chipTimer); setPasteChip(null); }
+/** 小条上选了 Copy / Reference：Reference = 副本变成原卡的另一处（一步撤销），再选 Copy 变回独立副本 */
+export function pasteAs(ref: boolean) {
+  const c = pasteChip();
+  if (!c || c.ref === ref) return;
+  if (ref) {
+    let n = 0;
+    if (!mutate((b) => { for (const [id, of] of c.pairs) if (makeTwin(b, id, of)) n++; }) || !n) return;
+    toast(n > 1 ? `${n} cards are now the same cards as the originals: editing one changes the other` : "Same card in 2 places: editing one changes the other");
+  } else detachTwins(c.pairs.map(([id]) => id));
+  setPasteChip({ ...c, ref });
+}
+
+/** Detach：摆在几处的同一张卡，这几处变成独立副本（一步撤销）；段换了新 id，展示数据跟过去 */
+export function detachTwins(ids: string[]) {
+  const segs: Record<string, string> = {};
+  if (!mutate((b) => { for (const id of ids) Object.assign(segs, detachTwin(b, id)); })) return;
+  setState("views", (v) => { const n = { ...v }; for (const [o, k] of Object.entries(segs)) if (v[o]) n[k] = v[o]; return n; });
+  toast(ids.length > 1 ? `Detached ${ids.length} cards: each is its own copy now` : "Detached: this is its own copy now");
+}
+/** 卡上「同一张卡在几处」的记号：点一下跳到下一处 */
+export function showNextTwin(id: string) {
+  const ts = twinsOf(id);
+  const next = ts[(ts.indexOf(id) + 1) % ts.length];
+  if (!next || next === id) return;
+  select({ cards: [hostOf(next)] });
+  revealCard(next);
+}
+export function twinText(id: string) {
+  const n = twinsOf(id).length;
+  return `Same card in ${n} places on this board: editing one changes the other · Click to go to the next`;
 }
 
 /** ⌘X 剪下的卡：内容、Sidenote、连着它们的箭头。这块白板上 ⌘V（剪贴板里还是这些字）时原样放回：同一个 id，箭头接回还在的卡 */
@@ -93,7 +144,7 @@ function pasteCut(text: string | undefined, at: { x: number; y: number }): boole
   if (!c || c.board !== state.board.id) return false;
   if (text !== undefined ? norm(text) !== norm(c.text) : state.host.clip?.board !== state.board.id) return false;
   const back = c.cards.every((x) => !cardById(x.card.id));
-  const ids = putCards(c.cards, c.links, !back, at, c.views);
+  const ids = putCards(c.cards, c.links, !back, at, c.views)?.map(([id]) => id);
   if (ids) toast(back ? `Pasted ${ids.length} card${ids.length > 1 ? "s" : ""}` : `Pasted ${ids.length > 1 ? `${ids.length} copies` : "a copy"}`);
   return true;
 }
@@ -141,26 +192,27 @@ export function placePasted(r: PastedCards, at: { x: number; y: number }) {
     revealCard(id);
     return toast("Already on this board");
   }
-  const ids = putCards(r.cards, r.links, !r.shared, at, r.views);
+  const ids = putCards(r.cards, r.links, !r.shared, at, r.views)?.map(([id]) => id);
   if (!ids) return;
   const n = ids.length;
   toast(r.shared ? `Pasted as linked card${n > 1 ? "s" : ""} · also on ${r.from}` : `Pasted ${n > 1 ? `${n} copies` : "a copy"} from ${r.from}`);
 }
 /**
  * 把卡放到指针 at 附近的空地上（一步撤销），组内的相对位置不变；落在哪个 Section 里（卡的中心，和拖卡同一个算法）就进哪个。
- * copy = 独立副本（新 id），否则原样放（同一个 id）。返回放下的卡（摆着的那几张），没有可放的返回 null
+ * copy = 独立副本（新 id），否则原样放（同一个 id）。返回放下的卡（摆着的那几张）和各自是哪张卡的副本：[新 id, 原 id]，没有可放的返回 null
  */
-function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: number; y: number }, views: Record<string, SegView>, exact = false): string[] | null {
+function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: number; y: number }, views: Record<string, SegView>, exact = false): [string, string][] | null {
   const tops = items.filter((x) => x.place);
   const box = bounds(tops.map((x) => ({ x: x.place!.x, y: x.place!.y, w: x.place!.w, h: (x.place!.h ?? 300) + 40 })));
   if (!box) return null;
   // exact = 就放在 at（可以压住别的卡）
   const free = exact ? at : findFree({ ...box, x: at.x, y: at.y }, state.board.cards.filter((c) => state.board.place[c.id]).map((c) => rectOf(c)));
   const dx = Math.round(free.x - box.x), dy = Math.round(free.y - box.y);
-  let ids: string[] = [], segs: Record<string, string> = {};
+  let ids: string[] = [], segs: Record<string, string> = {}, pairs: [string, string][] = [];
   mutate((b) => {
     const m = placeCards(b, items, { copy, links, at: (p) => ({ ...p, x: p.x + dx, y: p.y + dy }) });
-    ids = tops.map((x) => m.cards[x.card.id]).filter(Boolean);
+    pairs = tops.filter((x) => m.cards[x.card.id]).map((x) => [m.cards[x.card.id], x.card.id]);
+    ids = pairs.map(([id]) => id);
     segs = m.segs;
     for (const id of ids) settleHome(b, id);
   });
@@ -171,7 +223,7 @@ function putCards(items: CardCopy[], links: Link[], copy: boolean, at: { x: numb
     if (u && !isVisible(u)) { const f = fitTop(u, camTarget().z); camTo(f.x, f.y, f.z); }
     ids.forEach((id) => popCard(id));
   });
-  return ids;
+  return pairs;
 }
 
 /** 卡头的徽标：列出它在哪几块白板上（各自的调用图标记），点一块跳过去并定位 */

@@ -23,3 +23,5 @@ export const TILT_MS = 200;
 /** A wheel gesture ends after this long without a wheel event: until then it stays with whatever it started on, the canvas or a
  *  scrollable part of a card (interact.ts ownerFor) */
 export const WHEEL_GESTURE = 200;
+/** The Copy | Reference chip under a pasted or duplicated card goes away after this long without the pointer on it (actions/shared.ts) */
+export const PASTE_CHIP_IDLE = 6000;

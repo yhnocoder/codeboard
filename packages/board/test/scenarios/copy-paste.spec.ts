@@ -8,13 +8,17 @@
 //                                         undo step
 //   imageCardDropsAtPointerInNote         while the image card hovers over the Note, a line between two blocks shows where it goes and
 //                                         follows the pointer (no layout reads per move); releasing puts the image there
+//   pasteAsReference                      after ⌘C ⌘V (and ⌘D) a Copy ✓ | Reference chip sits at the copy's bottom-right corner;
+//                                         Reference makes the copy the same card as the original (one undo step): editing either one
+//                                         changes both, both show the "same card" mark, Detach makes it a copy again; for code cards
+//                                         the two places share the original's segments. A click elsewhere puts the chip away
 //   pasteIntoEditorMakesNoCard            ⌘V while editing a Note (into its code block, and into its text) pastes there only: the
 //                                         board does not also turn the paste into a card. In VS Code the paste event's target is the
 //                                         highlighted span the selection starts on, and the code editor replaces that span before the
 //                                         event reaches the board
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { emptyBoard, type Board, type Card, type NoteCard } from "@codeboard/core";
+import { emptyBoard, type Board, type Card, type CodeCard, type NoteCard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "@codeboard/host/nodefs";
 import { readAsset, saveNoteImage } from "@codeboard/host/images";
@@ -262,6 +266,102 @@ test("imageCardDropsAtPointerInNote", async () => {
   check("imageCardDropsAtPointerInNote the image goes where it was released", files.length === 1 && md() === md0.replace("\n\nUntil every", `\n\n![](assets/${files[0]})\n\nUntil every`), { md: md(), files });
   const order = await note.locator(".nbody > *").evaluateAll((es) => es.map((e) => (e.querySelector("img") ? "[img]" : e.textContent!.slice(0, 12))));
   check("imageCardDropsAtPointerInNote shown in place", JSON.stringify(order) === JSON.stringify(["Prefill firs", "The schedule", "Then it deco", "[img]", "Until every "]), order);
+  await done();
+});
+
+test("pasteAsReference", async () => {
+  const b = emptyBoard("b1", "reference");
+  put(b, { id: "n1", kind: "note", md: "## Prefill first\n\nThe scheduler fills the batch.", look: "note" } as NoteCard, 60, 80, 380);
+  const sched = findSym("Scheduler.schedule"), code = symCard(sched.f, sched.s);
+  put(b, code, 560, 80, 620);
+  b.place[code.id].h = 220;
+  b.cam = { x: 0, y: 0, z: 1 };
+  const { h, done } = await boardWith(b);
+  const pg = h.page;
+  const card = (id: string) => h.board().cards.find((c) => c.id === id);
+  const md = (id: string) => (card(id) as NoteCard | undefined)?.md ?? "";
+  const chip = pg.locator(".pastechip");
+
+  // ⌘C ⌘V on the same board: a copy, and the chip at its bottom-right corner with Copy picked
+  await cardEl(h, "n1").locator(".chead").click();
+  await pg.keyboard.press("Meta+c");
+  const copied = await until(h, "the copy reaches the host", () => [...h.sent].reverse().find((m) => m.type === "copyCards") as { text: string } | undefined);
+  await pg.evaluate((t) => { const dt = new DataTransfer(); dt.setData("text/plain", t); window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })); }, copied.text);
+  const id = await until(h, "the paste is saved", () => h.board().cards.find((c) => c.kind === "note" && c.id !== "n1")?.id); await idle(h);
+  await chip.waitFor();
+  const at = await pg.evaluate((id) => {
+    const c = document.querySelector(`.card[data-id="${id}"]`)!.getBoundingClientRect(), k = document.querySelector(".pastechip")!.getBoundingClientRect();
+    return { dr: Math.round(k.right - c.right), dy: Math.round(k.top - c.bottom), picked: document.querySelector(".pastechip .tbtn.on")?.textContent };
+  }, id);
+  check("pasteAsReference chip at the copy's bottom-right", Math.abs(at.dr) <= 2 && at.dy >= 0 && at.dy <= 16, at);
+  check("pasteAsReference the paste is a copy until Reference is picked", at.picked === "Copy" && !card(id)?.same && !card("n1")?.same, at);
+  await shotTo(h, "reference-chip", { x: 20, y: 40, width: 900, height: 520 });
+
+  // Reference: one card in two places; both show the mark
+  await chip.locator(".tbtn", { hasText: "Reference" }).click();
+  await until(h, "the copy is the same card as the original", () => card("n1")?.same && card("n1")?.same === card(id)?.same);
+  check("pasteAsReference Reference is picked on the chip", (await chip.locator(".tbtn.on").textContent()) === "Reference");
+  await until(h, "both places show the mark", async () => (await pg.locator(`.card[data-id="n1"] > .twinmk, .card[data-id="${id}"] > .twinmk`).count()) === 2);
+  check("pasteAsReference the mark says where", /Same card in 2 places/.test((await cardEl(h, id).locator("> .twinmk").getAttribute("data-tip")) ?? ""));
+
+  // a click elsewhere puts the chip away
+  await pg.mouse.click(1250, 760);
+  await until(h, "the chip goes away", async () => !(await chip.count()));
+  // the copy moves off the original (the copy lands over it), so both can be clicked
+  const nh = (await cardEl(h, id).locator(".chead").boundingBox())!;
+  await pg.mouse.move(nh.x + 120, nh.y + 10); await pg.mouse.down(); await pg.mouse.move(nh.x + 120, nh.y + 300, { steps: 8 }); await pg.mouse.up();
+  await until(h, "the copy is moved", () => h.board().place[id].y > 300); await idle(h);
+
+  // editing the copy changes the original (and the other way round)
+  await cardEl(h, id).locator(".nbody p").last().dblclick();
+  await cardEl(h, id).locator(".md-pm").waitFor();
+  await pg.keyboard.press("Control+End");
+  await pg.keyboard.type(" Then decode.");
+  for (let k = 0; k < 3 && (await pg.locator(".md-pm").count()); k++) { await pg.keyboard.press("Escape"); await idle(h); }
+  await until(h, "the original follows the edit", () => md("n1").includes("Then decode.") && md(id) === md("n1"));
+  check("pasteAsReference the original shows the edit", /Then decode\./.test((await cardEl(h, "n1").locator(".nbody").textContent()) ?? ""));
+  await shotTo(h, "reference-pair", { x: 20, y: 40, width: 900, height: 620 });
+  await cardEl(h, "n1").locator(".nbody p").last().dblclick();
+  await cardEl(h, "n1").locator(".md-pm").waitFor();
+  await pg.keyboard.press("Control+End");
+  await pg.keyboard.type(" Back.");
+  for (let k = 0; k < 3 && (await pg.locator(".md-pm").count()); k++) { await pg.keyboard.press("Escape"); await idle(h); }
+  await until(h, "the copy follows the original", () => md(id).includes("Back.") && md(id) === md("n1"));
+
+  // undo takes each edit back from both places; then the move, then the Reference (two separate cards again)
+  await pg.mouse.click(1250, 760);
+  await pg.keyboard.press("Meta+z");
+  await until(h, "undo takes the second edit back from both", () => !md("n1").includes("Back.") && !md(id).includes("Back.") && md(id).includes("Then decode."));
+  await pg.keyboard.press("Meta+z");
+  await until(h, "undo takes the first edit back from both", () => !md("n1").includes("Then decode.") && md(id) === md("n1"));
+  await pg.keyboard.press("Meta+z"); // the move
+  await until(h, "undo takes the move back", () => h.board().place[id].y < 300);
+  await pg.keyboard.press("Meta+z");
+  await until(h, "undo takes the Reference back", () => !card("n1")?.same && !card(id)?.same);
+  await until(h, "no mark after undo", async () => !(await pg.locator(".twinmk").count()));
+  await pg.keyboard.press("Meta+Shift+z");
+  await until(h, "redo makes them the same card again", () => card("n1")?.same && card("n1")?.same === card(id)?.same);
+
+  // Detach from the card menu: its own copy again; edits stay in it
+  await cardEl(h, id).locator(".chead").click({ button: "right" });
+  await pg.locator(".ctx button", { hasText: "Detach (Make This a Copy)" }).click();
+  await until(h, "Detach makes it a copy", () => !card("n1")?.same && !card(id)?.same);
+  await until(h, "no mark after Detach", async () => !(await pg.locator(".twinmk").count()));
+
+  // a code card through ⌘D: Reference shares the original's segments; moving the copy puts the chip away
+  await pg.mouse.click(1250, 760);
+  await cardEl(h, code.id).locator(".chead").click({ position: { x: 200, y: 12 } });
+  await pg.keyboard.press("Meta+d");
+  const cid = await until(h, "the duplicate is saved", () => h.board().cards.find((c) => c.kind === "code" && c.id !== code.id)?.id); await idle(h);
+  await chip.waitFor();
+  await chip.locator(".tbtn", { hasText: "Reference" }).click();
+  await until(h, "the code copy is the same card", () => card(code.id)?.same && card(code.id)?.same === card(cid)?.same);
+  const segs = (k: string) => (card(k) as CodeCard).segments.map((s) => s.id).join();
+  check("pasteAsReference code places share the original's segments", segs(cid) === segs(code.id), { copy: segs(cid), orig: segs(code.id) });
+  await until(h, "the copy shows the code", async () => (await cardEl(h, cid).locator(".src .l").count()) > 3);
+  const head = (await cardEl(h, cid).locator(".chead").boundingBox())!;
+  await pg.mouse.move(head.x + 200, head.y + 12); await pg.mouse.down(); await pg.mouse.move(head.x + 260, head.y + 70, { steps: 6 }); await pg.mouse.up();
+  await until(h, "moving the copy puts the chip away", async () => !(await chip.count()));
   await done();
 });
 

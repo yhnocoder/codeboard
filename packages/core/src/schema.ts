@@ -43,7 +43,7 @@ export const VariantSchema = obj({
 
 const Place = obj({ x: num, y: num, w: num, h: opt(num), section: opt(str), locked: opt(bool), collapsed: opt(bool), start: opt(bool) });
 
-const base = { id: str, title: opt(str), desc: opt(str), procs: opt(v.array(obj({ text: str, light: opt(bool) }))), tilt: opt(yes) };
+const base = { id: str, title: opt(str), desc: opt(str), procs: opt(v.array(obj({ text: str, light: opt(bool) }))), tilt: opt(yes), same: opt(str) };
 const WebMeta = obj({ title: opt(str), desc: opt(str), site: opt(str), image: opt(str), icon: opt(str), at: opt(num), failed: opt(bool) });
 const codeEntries = {
   ...base, kind: v.literal("code"), segments: v.array(Segment),

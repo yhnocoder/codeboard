@@ -1,7 +1,7 @@
 import {
   findCard, isCode, cardTitle, segOf, allCodeCards, walkOrder, headOf, canMark, type CodeCard, type CompareCard, type LinkSide, type Section, type CallSpan,
 } from "@codeboard/core";
-import { state, mutate, sel, select, lineSel, isSel, flows, cardById, hostOf, toast, placeOf, sharedOn, type LineSel } from "../state/store";
+import { state, mutate, sel, select, lineSel, isSel, flows, cardById, hostOf, toast, placeOf, sharedOn, twinsOf, type LineSel } from "../state/store";
 import { hiddenByAncestor, fitFrame } from "../state/sections";
 import { toWorld } from "../state/camera";
 import { setEditing, setPaletteOpen } from "../state/ui";
@@ -17,7 +17,7 @@ import { newFreeCode, newNote, newText, pasteText } from "./create";
 import { openAddNote, setMarkColor, showPeek, turnNote } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { unlinkShared } from "./edit";
-import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel } from "./shared";
+import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel, detachTwins } from "./shared";
 import { enterFrame, turnIntoBoard, insertBoard, insertable, deleteFrameBoard } from "./subboards";
 import { addProc, clearRpc, legendOf, markRpc, toggleBack, toggleStart } from "./calls";
 import { setLegendOpen } from "../state/calls";
@@ -31,8 +31,11 @@ import { kbd } from "../keymap";
  * 普通卡就是 Delete
  */
 function deleteItems(id: string): Item[] {
+  // 同一张卡摆在这块白板上的几处：这一处变成独立副本
+  const twins = twinsOf(id).length;
+  const detach: Item[] = twins ? [{ label: "Detach (Make This a Copy)", hint: `The same card is in ${twins} places on this board`, run: () => detachTwins([id]) }] : [];
   const n = sharedOn(id);
-  if (n < 2) return [{ label: "Delete", kbd: "⌫", danger: true, run: deleteSel }];
+  if (n < 2) return [...detach, { label: "Delete", kbd: "⌫", danger: true, run: deleteSel }];
   const c = cardById(id)?.card;
   return [
     { label: `${c ? cardTitle(c, state.board) : "Card"} · on ${n} boards`, head: true },
@@ -40,6 +43,7 @@ function deleteItems(id: string): Item[] {
     { label: "Delete Everywhere…", kbd: kbd("deleteEverywhere"), danger: true, run: () => void deleteEverywhere([id]) },
     null,
     { label: "Unlink (Make This a Copy)", run: () => unlinkShared(id) },
+    ...detach,
   ];
 }
 

@@ -1,7 +1,7 @@
 // 白板 → 宿主的增量保存：每类东西只发变了的项和删掉的 id，白板本身的字段整个发。宿主按它改自己那份白板再写盘。
 // 共享卡：白板文件里是引用，内容在卡库；inflate / deflate 在两种样子之间换，putShared 把卡库里的新内容放进一块白板。
 // 直接改传进来的对象。
-import { clone, sameVersion, versionLabel, withCols, type Board, type BoardFile, type Camera, type Card, type Link, type Place, type Section, type SharedCard, type Sidenote, type Sticker } from "./model";
+import { clone, copyTwinContent, sameVersion, versionLabel, withCols, type Board, type BoardFile, type Camera, type Card, type Link, type Place, type Section, type SharedCard, type Sidenote, type Sticker } from "./model";
 import { lineMapOf, moveLineRefs, type CardCopy } from "./edit";
 
 /** 一类有 id 的东西的改动。order = 改完之后的完整 id 顺序（只在顺序变了时发：叠放顺序、Bring to Front） */
@@ -127,6 +127,9 @@ export function applySharedUpdate(b: Board, sc: SharedUpdate): boolean {
   if (sc.items.includes(id)) {
     moved = followShared(b, b.cards[i], sc.card);
     b.cards[i] = clone(sc.card);
+    // 这块白板上同一张卡的另几处（same）跟着换
+    const g = sc.card.same;
+    if (g) for (const t of b.cards) if (t.same === g && t.id !== id) copyTwinContent(sc.card, t);
   }
   for (const nid of sc.items) {
     if (nid === id) continue;

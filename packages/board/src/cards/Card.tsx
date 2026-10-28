@@ -6,7 +6,7 @@ import {
   type Card, type CodeCard, type NoteCard, type ImageCard, type Graph, type LinkSide,
 } from "@codeboard/core";
 import { langLabel } from "@codeboard/analysis/langs";
-import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn } from "../state/store";
+import { state, setSizes, isSel, flows, collapsedSet, sel, placeOf, rectOf, shared, sharedOn, twinsOf } from "../state/store";
 import { Glyph } from "../stickers/glyphs";
 import { editing, setEditing, dragging, popIn, sizeIn, walk, pingCard, dropTarget } from "../state/ui";
 import { Icon } from "../ui/icons";
@@ -152,6 +152,10 @@ export function CardView(p: { card: Card }) {
           </Show>
         </Show>
         </div>
+        {/* 同一张卡摆在这块白板上的几处：左下角一个小记号，点一下去下一处 */}
+        <Show when={twinsOf(c().id).length}>{(n) =>
+          <button class="twinmk" data-nodrag data-export="strip" data-tip={act.twinText(c().id)} aria-label={act.twinText(c().id)} onClick={(e) => { e.stopPropagation(); act.showNextTwin(c().id); }}><Icon name="link" size={11} />{n()}</button>}
+        </Show>
         {/* 地图档只留下面这些：.cface 整块藏起来 */}
         <BoundStickers card={c().id} />
         {/* 地图档的名字空闲时就建好、藏着（styles.css），切到地图档只是显示出来 */}
