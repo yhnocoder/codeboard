@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 // 换白板（宿主发 init）时界面状态怎么处理：这块白板的临时状态回到初值，宿主状态整个换掉，浮层关掉（设置页留着）
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { DEFAULT_SETTINGS, emptyBoard, type HostInfo, type HostToBoard, type Stale } from "@codeboard/core";
 import { onHost } from "../../src/hostio";
-import { state, lineSel, setLineSel } from "../../src/state/store";
+import { state, lineSel, setLineSel, reportSelection } from "../../src/state/store";
 import { dropTarget, setDropTarget, editing, setEditing, settingsOpen, setSettingsOpen } from "../../src/state/ui";
 import { traffic, setTraffic } from "../../src/state/look";
 import { pushLayer, closeOverlays } from "../../src/ui/overlay";
@@ -17,6 +17,14 @@ function init(id: string, o: { stale?: Record<string, Stale>; host?: Partial<Hos
 }
 /** 还没 resolve 的 Promise 给 "pending"（先让已经排好的微任务跑完） */
 const settled = <T>(p: Promise<T>) => Promise.race([p, new Promise<"pending">((r) => setTimeout(() => r("pending"), 0))]);
+
+// A board switch clears the selection, and the board reports the selection to the host a moment after it changes (a timer): the
+// last report goes out before happy-dom is torn down, or it fires on a window that is gone (an uncaught error in the run)
+afterAll(async () => {
+  const before = window.__cbSent?.length ?? 0;
+  reportSelection();
+  await vi.waitFor(() => expect((window.__cbSent ?? []).slice(before).some((m) => (m as { type: string }).type === "selection")).toBe(true), { timeout: 5000, interval: 5 });
+});
 
 describe("board switch", () => {
   it("resets a signal declared with boardSignal to its initial value", () => {
