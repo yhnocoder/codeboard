@@ -93,14 +93,15 @@ export function makeHandler(panels: BoardHost): Handler {
     copyDiagnostics: (p, m) => copyDiagnostics(prompts(p), p.board, m.board),
     log: (_p, m) => log(m.level, m.text),
     openBoard: (_p, m) => openOnBoard(panels, m.id, m.card, m.line, m.sticker),
-    copyCards: (p, m) => {
+    copyCards: async (p, m) => {
       panels.clip = { board: p.id, cards: m.cards, text: m.text };
       // 别的窗口（别的项目）也能贴：记进全局存储目录
-      void recordClip(store.dir(), panels.clip).catch((e) => log("warn", `copyCards: ${e instanceof Error ? e.message : e}`));
+      const recorded = recordClip(store.dir(), panels.clip).catch((e) => log("warn", `copyCards: ${e instanceof Error ? e.message : e}`));
       panels.broadcast({ type: "host", host: { clip: { board: p.id, n: m.cards.length } } });
       // 白板里写剪贴板可能被 webview 拦下：宿主再写一次，⌘V 收到的文字和记下的一样。
       // rich = 白板自己写了文字 + 图片：宿主再写只有文字的会把图盖掉（白板写不了时会再发 copyText）
       if (m.text && !m.rich) void workspace().ui.copy(m.text);
+      await recorded;
     },
     pasteCards: async (p, m) => {
       const o = { text: m.text, copy: !!m.copy };
