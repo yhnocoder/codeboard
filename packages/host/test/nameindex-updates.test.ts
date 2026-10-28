@@ -1,10 +1,10 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Disposable } from "@codeboard/core";
 import { analysisOf } from "../src/analysis";
-import { allNames, indexedFiles, lookupName, nameIndexReady, pausingIndex, resetIndex, startNameIndex, watchNameIndex, type IndexEntry } from "../src/nameindex";
+import { PAUSE_MAX, allNames, indexedFiles, lookupName, nameIndexReady, pausingIndex, resetIndex, startNameIndex, watchNameIndex, type IndexEntry } from "../src/nameindex";
 import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { startTreeSitter } from "./helpers";
@@ -85,5 +85,39 @@ describe("name index", () => {
     expect(during[1]).toBeLessThan((await indexedFiles()).length);
     await nameIndexReady();
     expect((await indexedFiles()).every((f) => f.ents)).toBe(true);
+  });
+  it("pauses for a click that never finishes only PAUSE_MAX, then builds to the end; the next click pauses it again", async () => {
+    resetIndex();
+    const done = async () => (await indexedFiles()).filter((f) => f.ents).length;
+    const turns = async (n: number) => { for (let i = 0; i < n; i++) await new Promise((r) => setImmediate(r)); };
+    startNameIndex();
+    while (!(await done())) await turns(1);
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    let unstick!: () => void;
+    const stuck = pausingIndex(() => new Promise<void>((r) => (unstick = r))); // a language server that never answers
+    const first = await done();
+    await vi.advanceTimersByTimeAsync(0); // the index's own zero-delay yields
+    await turns(30);
+    expect((await done()) - first).toBeLessThanOrEqual(1);
+    vi.advanceTimersByTime(PAUSE_MAX - 1);
+    await turns(30);
+    expect((await done()) - first).toBeLessThanOrEqual(1);
+    vi.advanceTimersByTime(1);
+    vi.useRealTimers();
+    await nameIndexReady();
+    expect((await indexedFiles()).every((f) => f.ents)).toBe(true);
+    // a new click pauses it again while the first is still stuck
+    let second!: () => void;
+    const next = pausingIndex(() => new Promise<void>((r) => (second = r)));
+    fs.writeFileSync(probe, "def probe_paused():\n    pass\n");
+    W.fire.create.fire([probe]);
+    await turns(30);
+    expect((await indexedFiles()).find((f) => f.abs === probe)?.ents).toBeUndefined();
+    second(); unstick();
+    await Promise.all([next, stuck]);
+    await nameIndexReady();
+    expect((await indexedFiles()).find((f) => f.abs === probe)?.ents?.map((e) => e.name)).toEqual(["probe_paused"]);
+    fs.rmSync(probe);
+    W.fire.delete.fire([probe]);
   });
 });
