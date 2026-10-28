@@ -6,7 +6,7 @@ runs:
     - id: v
       shell: bash
       run: echo "v=$(node -p "require('playwright-core/package.json').version")" >> $GITHUB_OUTPUT
-    - uses: actions/cache@v4
+    - uses: actions/cache@v5
       with: { path: ~/.cache/ms-playwright, key: "chromium-${{ steps.v.outputs.v }}" }
     # The runner image already has Chromium's system libraries; install them with apt only when one is missing
     # (apt mirrors are sometimes very slow: --with-deps on every job once took 8.5 minutes)

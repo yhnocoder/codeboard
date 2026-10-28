@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 } # unit tests need nano-vllm commit history
       - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
@@ -37,7 +37,7 @@ jobs:
     outputs:
       shards: ${{ steps.plan.outputs.shards }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 } # the scenarios are picked from the files changed since the base commit
       - run: git submodule update --init examples/nano-vllm # listing the scenarios loads their files, which read it
       - uses: ./.github/actions/setup
@@ -50,7 +50,7 @@ jobs:
         run: |
           node tools/test/harness.mjs --select --ci --base="$BASE_SHA" --per-shard=600 --max-shards=6 --dry --json=test-out/harness/plan.json
           echo "shards=$(node -p 'JSON.stringify(Array.from({ length: require("./test-out/harness/plan.json").shards }, (_, i) => i + 1))')" >> "$GITHUB_OUTPUT"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: { name: harness-plan, path: test-out/harness/plan.json, retention-days: 14 }
 
   harness:
@@ -63,15 +63,15 @@ jobs:
         shard: ${{ fromJSON(needs.harness-plan.outputs.shards) }}
     name: harness (${{ matrix.shard }}/${{ strategy.job-total }})
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with: { name: harness-plan, path: test-out/harness-plan }
       - name: Harness scenarios this change needs, this job's part
         run: node tools/test/harness.mjs --plan=test-out/harness-plan/plan.json --shard=${{ matrix.shard }}/${{ strategy.job-total }} --json=test-out/harness/result.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }
 
@@ -83,13 +83,13 @@ jobs:
       matrix: { part: [1, 2] }
     name: e2e (${{ matrix.part }}/2)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/vscode
       - name: VS Code e2e (Pylance + UI audit)
         run: E2E_PART=${{ matrix.part }} E2E_OUT=$PWD/test-out/e2e npm run e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: "e2e-${{ matrix.part }}", path: test-out/e2e, retention-days: 14 }
 
@@ -97,7 +97,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - name: Does the change touch code the benchmarks run?
         id: need
@@ -119,7 +119,7 @@ jobs:
         # takes about 4 minutes; a stuck runner shows no output, so fail it instead of waiting out the job
         timeout-minutes: 10
         run: tools/review/perf-ab.sh "${{ env.BASE_SHA != '' && 'base' || '' }}" test-out/perf quick
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() && steps.need.outputs.run == 'true' }}
         with: { name: perf, path: test-out/perf, retention-days: 14 }
 
@@ -130,13 +130,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
         with: { node-version: 22, cache: npm }
       - run: npm i -g npm@11.21.1
       - run: npm ci --no-audit --no-fund
       - uses: ./.github/actions/chromium
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with: { path: test-out/artifacts }
       - name: Diff and publish screenshots
         if: ${{ !cancelled() }}
@@ -156,7 +156,7 @@ jobs:
           if ls $A/e2e/*.png >/dev/null 2>&1; then tools/review/publish-shots.sh $A/e2e "$KEY" "$BASEKEY" test-out/e2e-summary.md; fi
       - name: Update the CI section in the PR description
         if: ${{ !cancelled() && github.event_name == 'pull_request' }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           JOBS: ${{ toJSON(needs) }}
         with:
