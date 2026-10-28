@@ -6,7 +6,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse } from "yaml";
 import { grammarOfFile } from "@codeboard/analysis/langs";
-import { dispatchAll, lineIndex, stubDevice, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
+import { dispatchAll, lineIndex, matchClose, stubDevice, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
 import { escapeRegExp } from "@codeboard/analysis/basics";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
 import { entriesOf, followIndex, indexedFiles, isCode, type IndexEntry } from "./nameindex";
@@ -278,10 +278,18 @@ function* each(re: RegExp, text: string): Generator<[number, RegExpExecArray]> {
 const EVERY = 256;
 
 // 定义可能在这里的名字：名字后面是 (（或者模板实参再 (），而行首到名字只有类型、限定符、修饰（Tensor& at::native::add_out(、
-// template <> void f<float>(、static PyObject * THPVariable_add(）；或者名字是行首一个宏的唯一参数（TORCH_IMPL_FUNC(softmax_out)）。
+// template <> void f<float>(、static PyObject * THPVariable_add(），配对的 ) 后面（跳过 const、noexcept、__ubsan_ignore_undefined__ 这样的词）
+// 是 {、-> 或 :（行首的调用 at::native::add_out(r, …); 和声明后面是 ;）；或者名字是行首一个宏的唯一参数（TORCH_IMPL_FUNC(softmax_out)）。
 // 只提到名字的文件（调用、注释）不算：add、sum、clone 这样的名字几百个文件里都有，点击时每个都要分析一遍
 const NAME_PAREN = /\b([A-Za-z_]\w*)\s*(?:<[^;(){}<>\n]*>\s*)?([()])/g;
 const DECL_PREFIX = /^[\w:\s*&<>,[\]]*$/;
+const DEF_AFTER = /^\s*(?:[A-Za-z_]\w*\b\s*(?:\([^()]*\)\s*)?)*(?:\{|->|:(?!:))/;
+/** 参数表最多看这么长（文件写坏了括号不配对时不一直找到文件尾） */
+const PARAMS_MAX = 4096;
+const defAfter = (text: string, open: number) => {
+  const piece = text.slice(open, open + PARAMS_MAX), close = matchClose(piece, 0);
+  return close >= 0 && DEF_AFTER.test(piece.slice(close + 1));
+};
 const NOT_DECL = /^\s*(?:return|else|case|throw|new|delete|co_return|co_yield|goto|sizeof|if|while|for|switch|do)\b/;
 const MACRO_ARG = /^[ \t]*[A-Z][A-Z0-9_]*\s*\(\s*$/;
 
@@ -292,7 +300,7 @@ async function defNames(x: Scan, text: string, turn: () => Promise<void>): Promi
     const k = x.wanted.get(m[1]);
     if (!k || seen.has(k)) continue;
     const pre = text.slice(text.lastIndexOf("\n", m.index - 1) + 1, m.index);
-    if (m[2] === "(" ? DECL_PREFIX.test(pre) && !NOT_DECL.test(pre) : MACRO_ARG.test(pre)) seen.add(k);
+    if (m[2] === "(" ? DECL_PREFIX.test(pre) && !NOT_DECL.test(pre) && defAfter(text, m.index + m[0].length - 1) : MACRO_ARG.test(pre)) seen.add(k);
   }
   return [...seen];
 }

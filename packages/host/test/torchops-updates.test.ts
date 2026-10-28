@@ -188,7 +188,7 @@ describe("op index updates", () => {
 describe("op index's files for a name", () => {
   it("are the files that may define it, not every file that mentions it", async () => {
     const files = async (name: string) => [...(scanOf((await opTables())[0]).where.get(name) ?? [])].map((f) => path.relative(FIX, f)).filter((f) => /Caller|Defs/.test(f)).sort();
-    fs.writeFileSync(abs("aten/src/ATen/native/Caller.cpp"), "// softmax_cpu_out(x) is the CPU kernel\nnamespace at::native {\nTensor f(const Tensor& x) {\n  auto y = softmax_cpu_out(x);\n  if (softmax_cpu_out(y)) {}\n  return softmax_cpu_out(y);\n}\n}\n");
+    fs.writeFileSync(abs("aten/src/ATen/native/Caller.cpp"), "// softmax_cpu_out(x) is the CPU kernel\nnamespace at::native {\nTensor f(const Tensor& x) {\n  auto y = softmax_cpu_out(x);\n  if (softmax_cpu_out(y)) {}\n  at::native::fractional_max_pool2d_out_cuda(x,\n      y);\n  return softmax_cpu_out(y);\n}\nTensor& acos_out(const Tensor& self, Tensor& out);\n}\n");
     fs.writeFileSync(abs("aten/src/ATen/native/Defs.cpp"), "namespace at::native {\nstatic inline Tensor&\nsoftmax_cpu_out(const Tensor& x) {\n}\ntemplate <> std::tuple<Tensor, Tensor> at::native::fractional_max_pool2d_out_cuda<float>(const Tensor& x) {\n}\nTORCH_IMPL_FUNC(acos_out) (const Tensor& self) {\n}\n}\n");
     W.fire.create.fire([abs("aten/src/ATen/native/Caller.cpp"), abs("aten/src/ATen/native/Defs.cpp")]);
     await drained();
