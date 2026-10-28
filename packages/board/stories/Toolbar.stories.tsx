@@ -31,6 +31,7 @@ const renameOnce = async () => { await more(); await menuItem("Rename Board…")
 export const Overview: Story = { play: async () => { await more(); await menuItem("Theme", { sub: true }); } };
 export const Wide: Story = {};
 export const CodeMenu: Story = { name: "Code Menu", play: async () => { await settled(); await toolbar("Code"); } };
+export const WriteMenu: Story = { name: "Text Menu (New Text, Box, Mark)", play: async () => { await settled(); await toolbar("Text"); } };
 export const MoreMenu: Story = { name: "More Menu", play: more };
 export const MoreUndo: Story = { name: "More · Undo Enabled", play: async () => { await renameOnce(); await more(); } };
 export const MoreRedo: Story = { name: "More · Undo and Redo Enabled", play: async () => { await renameOnce(); await renameOnce(); await more(); await menuItem("Undo"); await more(); } };

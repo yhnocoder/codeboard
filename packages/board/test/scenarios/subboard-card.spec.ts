@@ -7,7 +7,7 @@ import { test, until, idle, hold, verdict, check } from "../fixtures";
 import { WHEEL_GESTURE } from "../../src/state/timing";
 
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
-const note = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, bg: true, ...o });
+const note = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, look: "note", ...o });
 const svg = (w: number, h: number, c: string) => `data:image/svg+xml;utf8,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}"><rect width="${w}" height="${h}" fill="${c}"/><circle cx="${w / 2}" cy="${h / 2}" r="${h / 3}" fill="#fff8"/></svg>`)}`;
 
 /**
@@ -55,7 +55,7 @@ export function boards() {
   const codes: [string, string, number, number][] = [["Scheduler.schedule", "sch", 40, 40], ["Scheduler.preempt", "sch", 640, 40], ["Scheduler.postprocess", "sch", 40, 500],
     ["BlockManager.can_allocate", "bm", 1440, 40], ["BlockManager.allocate", "bm", 2040, 40], ["BlockManager.deallocate", "bm", 1440, 500]];
   for (const [q, sec, x, y] of codes) { const c = nv(q); put(S, c, x, y, 520); S.place[c.id].section = sec; }
-  S.cards.push(note("sMark", "待查：preempt 之后前缀缓存还能命中吗？", { bg: false, hand: "orange" }));
+  S.cards.push(note("sMark", "待查：preempt 之后前缀缓存还能命中吗？", { look: "mark", hand: "orange" }));
   S.place.sMark = { x: 700, y: 520, w: 220, section: "sch" };
   S.cards.push(note("sNote", "## 抢占\n显存不够就把最后一个踢回 waiting"));
   S.place.sNote = { x: 700, y: 700, w: 260, section: "sch" };
@@ -269,7 +269,7 @@ test("subboardMatchesDemo", async () => {
     ["m7", "mr", 30, 830, "## slot_mapping：每个 token 写进 KV cache 的哪一格\nprepare_prefill 和 prepare_decode 都要算"],
   ];
   for (const [k, sec, x, y, md] of cards) {
-    const c = md === undefined ? nv(k) : note(k, md, k === "n7" ? { bg: false, hand: "orange" } : {});
+    const c = md === undefined ? nv(k) : note(k, md, k === "n7" ? { look: "mark", hand: "orange" } : {});
     put(B, c, x, y, 260); B.place[c.id].section = sec;
   }
   // Main: the demo's stage (a note and LLMEngine.step pointing at the frame), 40px in from the top left

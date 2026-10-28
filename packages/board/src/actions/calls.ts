@@ -82,7 +82,7 @@ export function toggleMsgCard(id: string) {
   const others = placed().map((k) => rectOf(k));
   const at = findFree({ x: cx - w / 2, y: cy - 20, w, h: 56 }, others);
   const mid = uid("n"), l2 = uid("l");
-  const card: NoteCard = { id: mid, kind: "note", md: name, bg: true, msg: {} };
+  const card: NoteCard = { id: mid, kind: "note", md: name, look: "note", msg: {} };
   const sec = placeOf(hostOf(L.from.card)).section;
   mutate((b) => {
     if (!b.links.some((k) => k.id === id && k.rpc)) return;

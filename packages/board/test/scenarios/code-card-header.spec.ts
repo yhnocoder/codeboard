@@ -33,7 +33,7 @@ const repo = (qual: string, id: string) => { const s = findSym(qual); const c = 
 function board(): Board {
   const b = emptyBoard("b1", "cchead");
   put(b, free("f1", C_CODE, { title: "vecAdd - cpu" }), 60, 60, 480);
-  put(b, { id: "n1", kind: "note", md: "The plain way: one loop, **one pair of elements at a time**.\n\nNext step: a CUDA kernel where each thread computes one `C_h[i]`.", bg: true } as never, 600, 60, 360);
+  put(b, { id: "n1", kind: "note", md: "The plain way: one loop, **one pair of elements at a time**.\n\nNext step: a CUDA kernel where each thread computes one `C_h[i]`.", look: "note" } as never, 600, 60, 360);
   put(b, repo("Scheduler.preempt", "r1"), 60, 300, 480);
   put(b, free("f2", LONG, { title: "vecAdd - fit" }), 60, 520, 320);
   b.place.f2.h = 70; // set too short by hand: Fit Content has to bring the height back too

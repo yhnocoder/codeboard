@@ -39,8 +39,9 @@ const atPointer = () => worldAt(lastPointer());
 const hasCards = () => sel.cards.length > 0;
 
 export const KEYMAP: Bind[] = [
-  { id: "newNote", keys: ["n"], label: "New Note", group: "Create", run: (a) => void a.newNote(atPointer(), true) },
-  { id: "newText", keys: ["t"], label: "New Text", group: "Create", run: (a) => void a.newNote(atPointer(), false) },
+  { id: "newNote", keys: ["n"], label: "New Note", group: "Create", run: (a) => void a.newNote(atPointer()) },
+  { id: "newText", keys: ["t"], label: "New Text", group: "Create", run: (a) => void a.newText(atPointer()) },
+  { id: "newBox", keys: ["r"], label: "New Box", group: "Create", run: (a) => void a.newBox(atPointer()) },
   { id: "newMark", keys: ["m"], label: "New Mark", group: "Create", run: (a) => void a.newMark(atPointer()) },
   { id: "dblText", show: "Double-click empty space", label: "New Text (change in Settings)", group: "Create" },
   { id: "addSidenote", keys: ["s"], label: "Add Sidenote", group: "Create", run: (a) => a.addSidenoteUI() },

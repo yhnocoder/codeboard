@@ -151,7 +151,7 @@ export function inflate(f: BoardFile, get: (id: string) => SharedCard | undefine
     if (c.kind !== "shared") { cards.push(c); continue; }
     const sc = get(c.id);
     if (sc) { refs.push(c.id); cards.push(sc.card); shared.push(sc); }
-    else { missing.push(c.id); cards.push({ id: c.id, kind: "note", md: "Shared card not found in the card library.", bg: true }); }
+    else { missing.push(c.id); cards.push({ id: c.id, kind: "note", md: "Shared card not found in the card library.", look: "note" }); }
   }
   const board = { ...f, cards } as Board;
   board.sidenotes = [...f.sidenotes, ...shared.flatMap((s) => s.sidenotes)];

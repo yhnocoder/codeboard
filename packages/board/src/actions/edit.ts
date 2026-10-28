@@ -215,7 +215,9 @@ export function setDesc(id: string, v: string) {
 }
 /** 改 Note 的字；字删光了这张 Note 就删掉（同一步，一次撤销就回来） */
 export function setNoteText(id: string, v: string) {
-  const keep = !!v.trim();
+  // 写空了的 Note / Text / Mark 删掉；空的 Box 还是一个框
+  const c0 = cardById(id)?.card;
+  const keep = !!v.trim() || (c0?.kind === "note" && c0.look === "box");
   if (isFresh(id)) return settleFresh(id, keep, (b) => { const c = findCard(b, id)?.card; if (c?.kind === "note") c.md = v; });
   mutate((b) => { const c = findCard(b, id)?.card; if (c?.kind !== "note") return; if (keep) c.md = v; else removeCards(b, [id]); });
 }
@@ -489,7 +491,7 @@ export function renameSection(id: string, v: string) {
   mutate((b) => { const s = b.sections.find((q) => q.id === id); if (s) s.title = v.trim() || "Untitled Section"; });
 }
 
-export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && !!c.nobg);
+export const noBg = (c: Card) => (c.kind === "image" && !c.bg) || (c.kind === "code" && c.bg === false);
 /** 倾斜：选中的几张卡里有没斜的就都斜，都斜着就都放正（Compare 的栏算整张 Compare） */
 export function toggleTilt(ids: string[]) {
   const cs = [...new Set(ids.map((i) => cardById(i)?.host.id).filter(Boolean) as string[])];
@@ -497,10 +499,11 @@ export function toggleTilt(ids: string[]) {
   const on = !cs.every((i) => cardById(i)?.card.tilt);
   mutate((b) => { for (const i of cs) { const k = findCard(b, i)?.card; if (k) k.tilt = on || undefined; } });
 }
-export function toggleNoBg(id: string) {
+/** 卡框开关：图片默认没有，代码卡默认有 */
+export function toggleBg(id: string) {
   mutate((b) => {
     const c = findCard(b, id)?.card;
     if (c?.kind === "image") c.bg = !c.bg || undefined;
-    else if (c?.kind === "code") c.nobg = !c.nobg || undefined;
+    else if (c?.kind === "code") c.bg = c.bg === false ? undefined : false;
   });
 }

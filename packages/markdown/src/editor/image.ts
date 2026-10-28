@@ -1,6 +1,7 @@
 import type { Editor, Node as TNode } from "@tiptap/core";
 import { Plugin, PluginKey } from "@tiptap/pm/state";
 import { closeHistory } from "@tiptap/pm/history";
+import { Mapping } from "@tiptap/pm/transform";
 import type { Node as PMNode } from "@tiptap/pm/model";
 import type { EditorView } from "@tiptap/pm/view";
 import { imageAttrs } from "../image";
@@ -152,6 +153,8 @@ function blockOf(el: HTMLElement): HTMLElement {
   return p;
 }
 
+const imageOnly = (p: PMNode) => { let y = true; p.forEach((c) => { if (c.type.name !== "image" && c.type.name !== "hardBreak") y = false; }); return y; };
+
 /** save 每次粘贴时才取（编辑器是共用的，选项跟着这一次编辑） */
 export function imageEditing(base: TNode, editor: () => Editor, save: () => SaveImage) {
   return base.extend({
@@ -159,6 +162,23 @@ export function imageEditing(base: TNode, editor: () => Editor, save: () => Save
     addProseMirrorPlugins() {
       return [...(this.parent?.() ?? []), new Plugin({
         key: new PluginKey("cbImage"),
+        // 把单独一段的图拖到别处：那一段空了，一起拿掉（同一步撤销：history 把追加的这一笔并进拖放那一步）
+        appendTransaction: (trs, old, now) => {
+          if (!trs.some((t) => t.docChanged && t.getMeta("uiEvent") === "drop")) return null;
+          const map = new Mapping(trs.flatMap((t) => t.mapping.maps));
+          const empty: number[] = [];
+          old.doc.descendants((n, pos) => {
+            if (n.type.name !== "paragraph") return true;
+            if (!n.childCount || !imageOnly(n)) return false;
+            const r = map.mapResult(pos, 1), p = now.doc.nodeAt(r.pos);
+            if (!r.deleted && p?.type.name === "paragraph" && !p.childCount && now.doc.resolve(r.pos).parent.childCount > 1) empty.push(r.pos);
+            return false;
+          });
+          if (!empty.length) return null;
+          const tr = now.tr;
+          for (const pos of empty.sort((a, b) => b - a)) tr.delete(pos, pos + 2);
+          return tr;
+        },
         props: {
           handlePaste: (view: EditorView, ev: ClipboardEvent) => {
             const files = ev.clipboardData && !view.state.selection.$from.parent.type.spec.code ? pastedImages(ev.clipboardData) : [];

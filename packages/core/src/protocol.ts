@@ -245,6 +245,7 @@ export type BoardToHost =
   | { type: "gh"; req: number; q: GhQuery }
   | { type: "saveAsset"; req: number; name: string; dataUrl: string }
   | { type: "saveImage"; req: number; dataUrl: string } // Note 里的图：宿主验过、存进 assets/，回 Markdown 里写的地址
+  | { type: "readImageUri"; req: number; uri: string } // 拖到白板上的图片文件只给了 URI（VS Code 资源管理器、只带 URI 的系统拖放）：宿主读出来，回 data: URL
   | { type: "readAsset"; req: number; file: string } // Image 卡的图（assets/ 里的文件名）：回 data: URL（复制到剪贴板、拖进 Note 用）
   | { type: "exportPng"; dataUrl: string; name: string }
   | { type: "views"; req: number; segs: Segment[] } // 白板生成的新段（合并、拆开）要展示数据
@@ -396,6 +397,7 @@ type Replies = {
   saveAsset: string; // assets/ 里的文件名
   saveImage: string; // Markdown 里写的地址（assets/…）
   readAsset: string; // data: URL
+  readImageUri: string; // data: URL
   views: Record<string, SegView>;
   webMeta: WebMeta;
   stickerPacks: StickerPack[];

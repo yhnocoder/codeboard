@@ -13,6 +13,7 @@ import { visible, type Geo } from "./Links";
 import { dragT, placeT, type Box } from "./labelpos";
 import { bezAt } from "./geom";
 import { NODRAG, holdPointer } from "../ui/guard";
+import { addExtra, keepSize, keptSize } from "../state/extent";
 
 // 框的大小（世界坐标）：一个共用的 ResizeObserver，只在框的内容变了时回调，平移 / 缩放 / 拖卡时不读布局
 const sizeCbs = new WeakMap<Element, (b: Box) => void>();
@@ -65,6 +66,9 @@ const NONE = new Set<string>();
 /** 证据标签的悬停：三档证据都列出来（线上只画最强的那档） */
 const evTip = (L: Link) => ["Evidence for this call", ...A.evidenceLines(L)].join("\n");
 
+/** The alternatives column: this far right of the target card, this wide (styles.css .altcol) */
+const ALT_GAP = 28, ALT_W = 240;
+
 /** 灰色备选：同一个调用点的别的实现 / 别的取值，虚线灰框排在目标卡右边；点一下换成它（原来的变灰）。map 缩放级别不画 */
 export function AltBoxes() {
   const links = createMemo(() => state.board.links.filter((l) => l.call && (l.call.alts?.length || l.call.vals?.some((v) => (v.opts?.length ?? 0) > 1)) && visible(l)));
@@ -73,9 +77,18 @@ export function AltBoxes() {
 function AltsOf(p: { L: Link }) {
   const items = createMemo(() => A.altsOf(p.L));
   const r = () => { const t = cardById(p.L.to.card); return t ? rectOf(t.host) : null; };
+  const at = () => { const q = r(); return q && { x: q.x + q.w + ALT_GAP, y: q.y }; };
+  const key = `alts:${p.L.id}`;
+  // Not measured yet (the board opened at the map level, where the column is not drawn): the CSS width, about one box per item
+  onCleanup(addExtra({ kind: "alts", link: p.L.id, rect: () => {
+    const q = at(), n = items().length;
+    if (!q || !n) return null;
+    const s = keptSize(key) ?? { w: ALT_W, h: 26 + n * 44 };
+    return { ...q, ...s };
+  } }));
   return (
-    <Show when={items().length && r()}>
-      <div class="altcol" data-link={p.L.id} style={{ left: `${r()!.x + r()!.w + 28}px`, top: `${r()!.y}px` }}>
+    <Show when={items().length && at()}>
+      <div class="altcol" data-link={p.L.id} style={{ left: `${at()!.x}px`, top: `${at()!.y}px` }} ref={(el) => watchSize(el, (b) => keepSize(key, b))}>
         <div class="alt-h">{p.L.call!.impls ? `${items().length} other implementation${items().length > 1 ? "s" : ""}` : "Other branches"}</div>
         <For each={items()}>{(it, k) => (
           <button class="altbox" classList={{ lib: !!it.alt.lib }} data-tip={it.alt.lib ? `Library code (${it.alt.lib}) · ${A.K.alt}-click to swap in` : "Click to swap in · the current one turns grey"}
@@ -157,6 +170,11 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
     return bezAt(gg.pts, bx ? placeT(gg.pts, L.at, bx, ends()) : L.at);
   });
   const style = () => { const q = pos()!; return { left: `${q.x}px`, top: `${q.y}px` }; };
+  const key = `label:${L.id}`;
+  onCleanup(addExtra({ kind: "label", link: L.id, rect: () => {
+    const q = has() ? pos() : null, s = keptSize(key);
+    return q && s ? { x: q.x - s.w / 2, y: q.y - s.h / 2, w: s.w, h: s.h } : null;
+  } }));
   const plusBtn = (inside: boolean) => (
     <button class="vplus" classList={{ in: inside }} data-link={inside ? undefined : L.id} style={inside ? undefined : style()} data-tip="Arguments" aria-label="Arguments"
       onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink} data-nodrag onClick={() => A.openVars(L.id)}>+</button>
@@ -170,7 +188,7 @@ export function LinkLabel(p: { L: Link; g: Accessor<Geo | null> }) {
     <Show when={pos()}>
       <Show when={has()} fallback={<><Show when={plus()}>{plusBtn(false)}</Show><Show when={mk() && hov()}>{callBtn(false)}</Show></>}>
         <div class="vchips" classList={{ user: !L.call && !L.gen && !L.rpc && !L.back, rpc: !!L.rpc, on: sel.links.includes(L.id), argsonly: !head() && !top(), gen: !!L.gen, [`ev-${ev()?.kind}`]: !!ev() }} data-link={L.id} style={style()}
-          ref={(el) => watchSize(el, setBox)}
+          ref={(el) => watchSize(el, (b) => { keepSize(key, b); setBox(b); })}
           onPointerEnter={() => enterLink(L.id)} onPointerLeave={leaveLink}
           onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); A.labelMenu(L.id, e.clientX, e.clientY); }}
           onPointerDown={(e) => {

@@ -3,6 +3,9 @@ import { cardTitle, isCode, segOf, bounds, type Card, type Section, type Rect } 
 import { state, mutate, sel, select, isSel, cardById, hostOf, rectOf, placeOf, placed, flows } from "../state/store";
 import { frames, isHidden, visibleCards } from "../state/sections";
 import { subRef } from "../state/subboards";
+import { linkCurve } from "../state/geo";
+import { extraList } from "../state/extent";
+import { bezAt, bezBox } from "../canvas/geom";
 import { camTo, camRest, ensureVisible, fitRect, animate, Spring, reduceMotion } from "../state/camera";
 import { notesOf, ping, setPopIn, popIn, setPaletteOpen, setSizeIn, type SizeAnim } from "../state/ui";
 import { openPop, updatePop } from "../state/pop";
@@ -89,16 +92,47 @@ function unhide(id: string): boolean {
     for (let s = b.sections.find((q) => q.id === b.place[h]?.section); s && !seen.has(s.id); s = b.sections.find((q) => q.id === s!.parent)) { seen.add(s.id); if (s.collapsed) s.collapsed = undefined; }
   });
 }
+/**
+ * What is drawn outside the cards for these host cards (null = every visible card): the lines between them (a curve can
+ * bulge past both cards), their label boxes, the alternatives column beside a call's target, and stickers on the canvas,
+ * on the cards or on the lines. Only model geometry and sizes measured earlier: no layout read
+ */
+function drawnAround(hosts: Set<string> | null): Rect[] {
+  const ours = (card: string) => { const f = cardById(card); return !!f && (hosts ? hosts.has(f.host.id) : !isHidden(f.host.id)); };
+  const out: Rect[] = [];
+  const lines = new Set<string>();
+  for (const L of state.board.links) {
+    if (!ours(L.from.card) || !ours(L.to.card)) continue;
+    const c = linkCurve(L.id);
+    if (c) { out.push(bezBox(c)); lines.add(L.id); }
+  }
+  for (const e of extraList()) {
+    if (e.kind === "label" ? !lines.has(e.link) : !ours(state.board.links.find((l) => l.id === e.link)?.to.card ?? "")) continue;
+    const r = e.rect();
+    if (r) out.push(r);
+  }
+  for (const s of state.board.stickers) {
+    if (s.at.kind !== "canvas") continue;
+    const { x, y, on } = s.at, n = s.at.size ?? 32;
+    if (!on) { if (!hosts) out.push({ x, y, w: n, h: n }); continue; }
+    if ("card" in on) { if (ours(on.card)) { const p = placeOf(on.card); out.push({ x: p.x + x, y: p.y + y, w: n, h: n }); } continue; }
+    const c = lines.has(on.link) ? linkCurve(on.link) : null;
+    if (c) { const q = bezAt(c, on.t); out.push({ x: q.x + x, y: q.y + y, w: n, h: n }); }
+  }
+  return out;
+}
+
 /** 适应窗口：只框看得见的（折叠的调用子树里的卡不算，折叠的 Section 只算它的标题条） */
 export function fitAll() {
-  const rs = [...visibleCards().map((c) => rectOf(c)), ...frames().values()];
+  const rs = [...visibleCards().map((c) => rectOf(c)), ...frames().values(), ...drawnAround(null)];
   const b = bounds(rs);
   if (!b) return camTo(80, 80, 1);
   const f = fitRect(b, 1);
   camTo(f.x, f.y, f.z);
 }
 export function fitSelection() {
-  const rs = sel.cards.map((id) => hostRect(id)).filter(Boolean) as Rect[];
+  const hosts = new Set(sel.cards.flatMap((id) => { const f = cardById(id); return f ? [f.host.id] : []; }));
+  const rs = [...[...hosts].map((id) => hostRect(id)).filter(Boolean) as Rect[], ...(hosts.size ? drawnAround(hosts) : [])];
   const b = bounds(rs);
   if (!b) return fitAll();
   const f = fitRect(b, 1.4);

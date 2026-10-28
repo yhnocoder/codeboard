@@ -12,7 +12,7 @@ function markBoard(): { b: Board; step: CodeCard; sch: CodeCard } {
   const step = sym("LLMEngine.step"), sch = sym("Scheduler.schedule");
   put(b, step, 60, 160, 560); put(b, sch, 780, 120, 560);
   const mark = (id: string, md: string, hand: NoteCard["hand"], x: number, y: number, w: number) => {
-    b.cards.push({ id, kind: "note", md, bg: false, hand } as NoteCard);
+    b.cards.push({ id, kind: "note", md, look: "mark", hand } as NoteCard);
     b.place[id] = { x, y, w };
   };
   mark("m1", "picks this batch", "blue", 420, 40, 200);
@@ -125,7 +125,7 @@ test("noteAnnotations", async () => {
     "",
     "A plain line without annotations.",
   ].join("\n");
-  b.cards.push({ id: "n1", kind: "note", md, bg: true } as NoteCard);
+  b.cards.push({ id: "n1", kind: "note", md, look: "note" } as NoteCard);
   b.place.n1 = { x: 80, y: 80, w: 520 };
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 900, h: 700 });
@@ -276,7 +276,7 @@ const annotGeo = (pg: Host["page"], sel: string) => pg.evaluate((sel) => [...doc
  *  in the static Note and in its editor */
 test("noteAnnotationLabelCentered", async () => {
   const b = emptyBoard("b1", "annotations");
-  b.cards.push({ id: "n1", kind: "note", md: CUDA_MD, bg: true } as NoteCard);
+  b.cards.push({ id: "n1", kind: "note", md: CUDA_MD, look: "note" } as NoteCard);
   b.place.n1 = { x: 80, y: 80, w: 520 };
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 760, h: 420, settings: { theme: "warm-ink" } as never });
@@ -300,7 +300,7 @@ test("noteAnnotationLabelCentered", async () => {
  *  the computed font is the hand font, both faces are loaded, and the glyphs really come from them (not a system fallback) */
 test("noteAnnotationHandFont", async () => {
   const b = emptyBoard("b1", "annotations");
-  b.cards.push({ id: "n1", kind: "note", md: CUDA_MD, bg: true } as NoteCard);
+  b.cards.push({ id: "n1", kind: "note", md: CUDA_MD, look: "note" } as NoteCard);
   b.place.n1 = { x: 80, y: 80, w: 520 };
   const h = await open({ board: b, light: true, w: 760, h: 420, settings: { theme: "warm-ink" } as never });
   const pg = h.page;
@@ -328,7 +328,7 @@ test("noteAnnotationHandFont", async () => {
  *  as you type) → Enter; one undo takes it off; on an annotated selection the button is on and opens with its note, Escape keeps it */
 test("noteAnnotationFromToolbar", async () => {
   const b = emptyBoard("b1", "annotations");
-  b.cards.push({ id: "n1", kind: "note", md: "Prefill and decode never share a batch in nano-vllm.", bg: true } as NoteCard);
+  b.cards.push({ id: "n1", kind: "note", md: "Prefill and decode never share a batch in nano-vllm.", look: "note" } as NoteCard);
   b.place.n1 = { x: 80, y: 80, w: 460 };
   b.cam = { x: 0, y: 0, z: 1.25 };
   const h = await open({ board: b, light: true, w: 820, h: 420, settings: { theme: "warm-ink" } as never });

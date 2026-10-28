@@ -9,7 +9,7 @@ const ONE = "Scheduler：先 prefill，再 decode";
 const PARA = "prefill 的 token 多，一步算得满；decode 每个请求只有一个 token，攒多一点再算更划算。";
 const MDTEXT = "# Reading notes\nTwo lines, old style\n- a list\n- with **block_manager**";
 
-const text = (id: string, md: string, size: Size, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, bg: false, size, ...o });
+const text = (id: string, md: string, size: Size, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, look: "text", size, ...o });
 
 function single(a: Args): Scene {
   const { board, put } = scene("Text");
@@ -28,8 +28,7 @@ function overview(): Scene {
   caption("Markdown in a Text", 320, 400); put(text("t-md", MDTEXT, "body"), { x: 320, y: 400, w: 300 });
   caption("Empty (placeholder)", 680, 400); put(text("t-empty", "", "body"), { x: 680, y: 400, w: 220 });
   caption("Locked", 960, 400); put(text("t-lock", ONE, "heading"), { x: 960, y: 400, w: 300, locked: true });
-  // 选中时小工具栏在卡上方：名字再往上让开
-  caption("Selected (toolbar, side handles)", 40, 620); put(text("t-sel", ONE, "heading"), { x: 40, y: 660, w: 420 });
+  caption("Selected (side handles, no toolbar)", 40, 640); put(text("t-sel", ONE, "heading"), { x: 40, y: 660, w: 420 });
   caption("Editing", 620, 640); put(text("t-edit", PARA, "body"), { x: 620, y: 640, w: 420 });
   return { board, sel: ["t-sel"], editing: "t-edit" };
 }
@@ -61,10 +60,8 @@ export const MarkdownText: Story = { name: "Markdown in a Text", args: { md: MDT
 export const Empty: Story = { name: "Empty (placeholder)", args: { md: "" } };
 export const EmptyEditing: Story = { name: "Empty, Editing", args: { md: "", state: "editing" } };
 export const Selected: Story = { args: { size: "heading", state: "selected" } };
-export const BoldSelected: Story = { name: "Bold, Selected (B on)", args: { size: "heading", bold: true, state: "selected" } };
 export const Editing: Story = { args: { md: PARA, state: "editing" } };
 export const Locked: Story = { args: { size: "heading", locked: true, state: "selected" } };
 export const Map: Story = { name: "Map Level (20%)", args: { size: "title", lod: "map" } };
-// 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：Text 没有框，悬停时才出一圈虚线框；选中时上方的小工具条里的按钮也有悬停色
+// 悬停（CSS :hover，story 的 globals.pseudo 摆出来）：Text 没有框，悬停时才出一圈虚线框
 export const Hover: Story = { name: "Hover (dashed frame)", args: { size: "heading" }, globals: { pseudo: { hover: [".card"] } } };
-export const HoverToolbar: Story = { name: "Hover: Toolbar Button", args: { size: "heading", state: "selected" }, globals: { pseudo: { hover: [".card .ttb .tbtn:last-child"] } } };

@@ -113,6 +113,10 @@ export function vscodeWorkspace(ctx: vscode.ExtensionContext): Workspace {
       unsavedText: (abs) => vscode.workspace.textDocuments.find((d) => d.uri.scheme === "file" && d.uri.fsPath === abs && d.isDirty)?.getText(),
       openLanguage: (abs) => vscode.workspace.textDocuments.find((d) => d.uri.fsPath === abs)?.languageId,
       openFiles: () => vscode.workspace.textDocuments.filter((d) => d.uri.scheme === "file").map((d) => ({ abs: d.uri.fsPath, text: () => d.getText() })),
+      readBytes: async (uri, max) => {
+        const u = vscode.Uri.parse(uri, true);
+        return (await vscode.workspace.fs.stat(u)).size > max ? undefined : vscode.workspace.fs.readFile(u);
+      },
       findFiles: async (include, exclude, max) => (await vscode.workspace.findFiles(include, exclude, max)).map((u) => u.fsPath),
       watch: (base, glob, fn) => {
         const w = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(vscode.Uri.file(base), glob));

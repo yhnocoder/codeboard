@@ -10,7 +10,7 @@ function twoSections(): Board {
   const s = findSym("Scheduler.schedule");
   const code = symCard(s.f, s.s);
   put(b, code, 100, 110, 480);
-  const note: NoteCard = { id: "n1", kind: "note", bg: true, md: "# KV cache budget\n\nPrefill first, then decode." };
+  const note: NoteCard = { id: "n1", kind: "note", look: "note", md: "# KV cache budget\n\nPrefill first, then decode." };
   put(b, note, 760, 110, 320);
   b.sections.push({ id: "S1", title: "异构并行计算", x: 60, y: 60, w: 560, h: 760 });
   b.sections.push({ id: "S2", title: "Scheduling", x: 720, y: 60, w: 520, h: 420 });
@@ -49,8 +49,8 @@ test("sectionLook", async () => {
  *  for the title), animated; one undo step brings the old frame back */
 test("sectionFitContent", async () => {
   const b = emptyBoard("b1", "fit section");
-  put(b, { id: "a", kind: "note", bg: true, md: "# Prefill\n\nChecks the free KV blocks." } as NoteCard, 240, 220, 300);
-  put(b, { id: "c", kind: "note", bg: true, md: "# Decode\n\nOne token per step." } as NoteCard, 600, 300, 260);
+  put(b, { id: "a", kind: "note", look: "note", md: "# Prefill\n\nChecks the free KV blocks." } as NoteCard, 240, 220, 300);
+  put(b, { id: "c", kind: "note", look: "note", md: "# Decode\n\nOne token per step." } as NoteCard, 600, 300, 260);
   b.sections.push({ id: "S", title: "Scheduling", x: 80, y: 60, w: 1100, h: 760 });
   b.place.a.section = "S"; b.place.c.section = "S";
   b.cam = { x: 0, y: 0, z: 1 };
@@ -98,7 +98,7 @@ test("sectionCollapsedPill", async () => {
   const code = symCard(s.f, s.s);
   put(b, code, 120, 140, 480);
   const titles = ["Prefill", "Decode", "Preemption", "Block manager", "Prefix cache", "KV budget", "Sampling"];
-  titles.forEach((t, i) => put(b, { id: `n${i}`, kind: "note", bg: true, md: `# ${t}\n\nNotes.` } as NoteCard, 660 + (i % 2) * 300, 140 + Math.floor(i / 2) * 160, 260));
+  titles.forEach((t, i) => put(b, { id: `n${i}`, kind: "note", look: "note", md: `# ${t}\n\nNotes.` } as NoteCard, 660 + (i % 2) * 300, 140 + Math.floor(i / 2) * 160, 260));
   for (const id of Object.keys(b.place)) b.place[id].section = "S";
   b.sections.push({ id: "S", title: "异构并行计算", x: 80, y: 80, w: 1200, h: 800, collapsed: true });
   b.cam = { x: 0, y: 0, z: 1 };
@@ -154,7 +154,7 @@ test("sectionCollapsedPill", async () => {
 test("revealFramesRegrownCard", async () => {
   const b = emptyBoard("b1", "reveal regrown");
   const md = Array.from({ length: 8 }, (_, i) => `Line ${i + 1} of the Note`).join("\n\n");
-  put(b, { id: "n", kind: "note", bg: true, md } as NoteCard, 2600, 1800, 420);
+  put(b, { id: "n", kind: "note", look: "note", md } as NoteCard, 2600, 1800, 420);
   b.place.n.section = "S";
   b.sections.push({ id: "S", title: "Far", x: 2560, y: 1740, w: 500, h: 900 });
   b.cam = { x: 0, y: 0, z: 1 };
@@ -223,8 +223,8 @@ const SNAP_SETTLE = 110;
  *  snaps onto it and a guide line shows; holding Ctrl turns snapping off. The cards inside move along; one undo puts it back */
 test("sectionDragSnapsToSection", async () => {
   const b = emptyBoard("b1", "section snapping");
-  put(b, { id: "a", kind: "note", bg: true, md: "Prefill" } as NoteCard, 120, 140, 220);
-  put(b, { id: "c", kind: "note", bg: true, md: "Decode" } as NoteCard, 660, 500, 200);
+  put(b, { id: "a", kind: "note", look: "note", md: "Prefill" } as NoteCard, 120, 140, 220);
+  put(b, { id: "c", kind: "note", look: "note", md: "Decode" } as NoteCard, 660, 500, 200);
   b.sections.push({ id: "S1", title: "Scheduling", x: 60, y: 60, w: 400, h: 300 });
   b.sections.push({ id: "S2", title: "KV cache", x: 600, y: 420, w: 320, h: 220 });
   b.place.a.section = "S1"; b.place.c.section = "S2";
@@ -277,9 +277,9 @@ test("sectionDragSnapsToSection", async () => {
  *  a card over two Sections joins the one it overlaps more */
 test("sectionMembershipByOverlap", async () => {
   const b = emptyBoard("b1", "membership");
-  put(b, { id: "c1", kind: "note", bg: true, md: "A quarter inside" } as NoteCard, 100, 620, 200);
-  put(b, { id: "m1", kind: "note", bg: true, md: "Over two Sections" } as NoteCard, 100, 760, 400);
-  put(b, { id: "w1", kind: "note", bg: true, md: "# A wide card\n\nA bit under half of it inside." } as NoteCard, 560, 560, 560);
+  put(b, { id: "c1", kind: "note", look: "note", md: "A quarter inside" } as NoteCard, 100, 620, 200);
+  put(b, { id: "m1", kind: "note", look: "note", md: "Over two Sections" } as NoteCard, 100, 760, 400);
+  put(b, { id: "w1", kind: "note", look: "note", md: "# A wide card\n\nA bit under half of it inside." } as NoteCard, 560, 560, 560);
   b.sections.push({ id: "S", title: "Scheduling", x: 600, y: 100, w: 400, h: 300 });
   b.sections.push({ id: "T", title: "Memory", x: 1100, y: 100, w: 400, h: 300 });
   b.cam = { x: 0, y: 0, z: 1 };
@@ -320,9 +320,9 @@ test("sectionMembershipByOverlap", async () => {
 /** A Note whose Markdown starts with a heading shows the heading as its title; a title set by the user wins; no heading = "Note" */
 test("noteTitleFromHeading", async () => {
   const b = emptyBoard("b1", "titles");
-  put(b, { id: "n1", kind: "note", bg: true, md: "## KV cache **budget**\n\nPrefill first." } as NoteCard, 80, 80, 300);
-  put(b, { id: "n2", kind: "note", bg: true, md: "Just a paragraph, no heading." } as NoteCard, 440, 80, 300);
-  put(b, { id: "n3", kind: "note", bg: true, md: "# From heading", title: "Chosen by me" } as NoteCard, 800, 80, 300);
+  put(b, { id: "n1", kind: "note", look: "note", md: "## KV cache **budget**\n\nPrefill first." } as NoteCard, 80, 80, 300);
+  put(b, { id: "n2", kind: "note", look: "note", md: "Just a paragraph, no heading." } as NoteCard, 440, 80, 300);
+  put(b, { id: "n3", kind: "note", look: "note", md: "# From heading", title: "Chosen by me" } as NoteCard, 800, 80, 300);
   const h = await open({ board: b, light, w: 1200, h: 600 });
   await idle(h);
   const title = (id: string) => h.page.locator(`.card[data-id="${id}"] .chead .ctitle`).textContent();

@@ -2,6 +2,7 @@
 // "open editors" are a map of path → text, events are fired by the test.
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 import { Emitter, type Workspace } from "@codeboard/core";
 
 export const WS = "/tmp/codeboard-perf/ws";
@@ -30,6 +31,10 @@ export function nodeWorkspace(root = WS): TestWorkspace {
       unsavedText: (abs) => open.get(abs),
       openLanguage: () => undefined,
       openFiles: () => [...open].map(([abs, t]) => ({ abs, text: () => t })),
+      readBytes: async (uri, max) => {
+        const abs = fileURLToPath(uri);
+        return fs.statSync(abs).size > max ? undefined : fs.readFileSync(abs);
+      },
       /** Code files under the root ("**\/*.{ext,…}" filters by extension, "**\/a/b.yaml" by path, anything else = .py files), sorted, up to max */
       findFiles: async (include, _exclude, max) => {
         w.finds++;
