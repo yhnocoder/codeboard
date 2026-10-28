@@ -4,6 +4,10 @@
 /** tree-sitter 语法：有它的语言才分析符号、调用（建名字索引、找定义） */
 export type Grammar = "python" | "cpp" | "rust";
 
+/** C / C++ / CUDA 走 tree-sitter：shiki 的 C++ 语法第一次用时编译两百多个正则，会话里第一张 C++ 卡要等一两秒 */
+export type Highlight = { by: "shiki"; lang: string } | { by: "tree-sitter" };
+const shiki = (lang: string): Highlight => ({ by: "shiki", lang });
+
 export type LangInfo = {
   /** 段的 lang，也是 Markdown 围栏里的正式名字 */
   id: string;
@@ -18,8 +22,8 @@ export type LangInfo = {
   vscodeId: string;
   /** 导出 Markdown 时围栏写的名字（GitHub 认的）；空串 = 不写 */
   md: string;
-  /** 着色用的 shiki 语法；没有就不着色 */
-  shiki?: string;
+  /** 用哪个着色：shiki（它的语法名），或 tree-sitter（grammar 的高亮查询，analysis 的 highlight.ts）；一种语言只走其中一个，没有就不着色 */
+  highlight?: Highlight;
   /** 有语言服务（补全、悬停、签名）；别的语言问了也是空，不白发 */
   lsp?: boolean;
   /** 关键字和内建类型名（悬停时不查定义） */
@@ -31,8 +35,8 @@ export type LangInfo = {
 const words = (s: string): ReadonlySet<string> => new Set(s.split(" "));
 const PY_KW = words("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set");
 const C_KW = words("return for if else while do break continue switch case default goto sizeof typedef struct union enum class template typename namespace using public private protected virtual static const constexpr auto void int char bool float double long short unsigned signed inline extern volatile new delete this nullptr true false");
-const py = { comment: "#", vscodeId: "python", md: "python", shiki: "python", lsp: true, keywords: PY_KW, grammar: "python" as const };
-const cpp = { comment: "//", shiki: "cpp", lsp: true, keywords: C_KW, grammar: "cpp" as const };
+const py = { comment: "#", vscodeId: "python", md: "python", highlight: shiki("python"), lsp: true, keywords: PY_KW, grammar: "python" as const };
+const cpp = { comment: "//", highlight: { by: "tree-sitter" } as const, lsp: true, keywords: C_KW, grammar: "cpp" as const };
 
 export const LANG_TABLE: readonly LangInfo[] = [
   { id: "python", label: "Python", pick: true, aliases: ["py", "python3"], ext: ["py", "pyi"], ...py },
@@ -40,26 +44,26 @@ export const LANG_TABLE: readonly LangInfo[] = [
   { id: "tilelang", label: "TileLang", pick: true, aliases: [], ext: [], ...py },
   { id: "cuda-cpp", label: "CUDA", pick: true, aliases: ["cuda", "cu"], ext: ["cu", "cuh"], vscodeId: "cuda-cpp", md: "cuda", ...cpp },
   { id: "cpp", label: "C++", pick: true, aliases: ["c++", "cc", "cxx", "hpp", "objective-cpp"], ext: ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl"], vscodeId: "cpp", md: "cpp", ...cpp },
-  { id: "c", label: "C", pick: true, aliases: ["objective-c"], ext: ["c"], vscodeId: "c", md: "c", ...cpp, shiki: "c" },
-  { id: "rust", label: "Rust", pick: true, aliases: ["rs"], ext: ["rs"], comment: "//", vscodeId: "rust", md: "rust", shiki: "rust", lsp: true, grammar: "rust" },
-  { id: "typescript", label: "TypeScript", pick: true, aliases: ["ts", "tsx"], ext: ["ts", "tsx"], comment: "//", vscodeId: "typescript", md: "typescript", shiki: "typescript", lsp: true },
-  { id: "javascript", label: "JavaScript", pick: true, aliases: ["js", "jsx", "mjs", "cjs"], ext: ["js", "jsx", "mjs", "cjs"], comment: "//", vscodeId: "javascript", md: "javascript", shiki: "javascript", lsp: true },
-  { id: "go", label: "Go", pick: true, aliases: ["golang"], ext: ["go"], comment: "//", vscodeId: "go", md: "go", shiki: "go", lsp: true },
-  { id: "java", label: "Java", aliases: [], ext: ["java"], comment: "//", vscodeId: "java", md: "java", shiki: "java", lsp: true },
-  { id: "shellscript", label: "Shell", pick: true, aliases: ["bash", "sh", "zsh", "shell", "console"], ext: ["sh", "bash", "zsh"], comment: "#", vscodeId: "shellscript", md: "bash", shiki: "shellscript" },
-  { id: "json", label: "JSON", aliases: ["jsonc"], ext: ["json"], comment: "//", vscodeId: "json", md: "json", shiki: "json" },
-  { id: "yaml", label: "YAML", aliases: ["yml"], ext: ["yaml", "yml"], comment: "#", vscodeId: "yaml", md: "yaml", shiki: "yaml" },
-  { id: "toml", label: "TOML", aliases: [], ext: ["toml"], comment: "#", vscodeId: "toml", md: "toml", shiki: "toml" },
-  { id: "ini", label: "INI", aliases: ["cfg"], ext: ["ini", "cfg"], comment: ";", vscodeId: "ini", md: "ini", shiki: "ini" },
-  { id: "sql", label: "SQL", aliases: [], ext: ["sql"], comment: "--", vscodeId: "sql", md: "sql", shiki: "sql" },
-  { id: "lua", label: "Lua", aliases: [], ext: ["lua"], comment: "--", vscodeId: "lua", md: "lua", shiki: "lua" },
-  { id: "ruby", label: "Ruby", aliases: ["rb"], ext: ["rb"], comment: "#", vscodeId: "ruby", md: "ruby", shiki: "ruby" },
-  { id: "r", label: "R", aliases: [], ext: ["r"], comment: "#", vscodeId: "r", md: "r", shiki: "r" },
-  { id: "perl", label: "Perl", aliases: ["pl"], ext: ["pl", "pm"], comment: "#", vscodeId: "perl", md: "perl", shiki: "perl" },
-  { id: "haskell", label: "Haskell", aliases: ["hs"], ext: ["hs"], comment: "--", vscodeId: "haskell", md: "haskell", shiki: "haskell" },
-  { id: "diff", label: "Diff", aliases: ["patch"], ext: ["diff", "patch"], comment: "#", vscodeId: "diff", md: "diff", shiki: "diff" },
-  { id: "css", label: "CSS", aliases: [], ext: ["css"], comment: "//", vscodeId: "css", md: "css", shiki: "css" },
-  { id: "html", label: "HTML", aliases: ["xml", "svg"], ext: ["html", "htm"], comment: "//", vscodeId: "html", md: "html", shiki: "html" },
+  { id: "c", label: "C", pick: true, aliases: ["objective-c"], ext: ["c"], vscodeId: "c", md: "c", ...cpp },
+  { id: "rust", label: "Rust", pick: true, aliases: ["rs"], ext: ["rs"], comment: "//", vscodeId: "rust", md: "rust", highlight: shiki("rust"), lsp: true, grammar: "rust" },
+  { id: "typescript", label: "TypeScript", pick: true, aliases: ["ts", "tsx"], ext: ["ts", "tsx"], comment: "//", vscodeId: "typescript", md: "typescript", highlight: shiki("typescript"), lsp: true },
+  { id: "javascript", label: "JavaScript", pick: true, aliases: ["js", "jsx", "mjs", "cjs"], ext: ["js", "jsx", "mjs", "cjs"], comment: "//", vscodeId: "javascript", md: "javascript", highlight: shiki("javascript"), lsp: true },
+  { id: "go", label: "Go", pick: true, aliases: ["golang"], ext: ["go"], comment: "//", vscodeId: "go", md: "go", highlight: shiki("go"), lsp: true },
+  { id: "java", label: "Java", aliases: [], ext: ["java"], comment: "//", vscodeId: "java", md: "java", highlight: shiki("java"), lsp: true },
+  { id: "shellscript", label: "Shell", pick: true, aliases: ["bash", "sh", "zsh", "shell", "console"], ext: ["sh", "bash", "zsh"], comment: "#", vscodeId: "shellscript", md: "bash", highlight: shiki("shellscript") },
+  { id: "json", label: "JSON", aliases: ["jsonc"], ext: ["json"], comment: "//", vscodeId: "json", md: "json", highlight: shiki("json") },
+  { id: "yaml", label: "YAML", aliases: ["yml"], ext: ["yaml", "yml"], comment: "#", vscodeId: "yaml", md: "yaml", highlight: shiki("yaml") },
+  { id: "toml", label: "TOML", aliases: [], ext: ["toml"], comment: "#", vscodeId: "toml", md: "toml", highlight: shiki("toml") },
+  { id: "ini", label: "INI", aliases: ["cfg"], ext: ["ini", "cfg"], comment: ";", vscodeId: "ini", md: "ini", highlight: shiki("ini") },
+  { id: "sql", label: "SQL", aliases: [], ext: ["sql"], comment: "--", vscodeId: "sql", md: "sql", highlight: shiki("sql") },
+  { id: "lua", label: "Lua", aliases: [], ext: ["lua"], comment: "--", vscodeId: "lua", md: "lua", highlight: shiki("lua") },
+  { id: "ruby", label: "Ruby", aliases: ["rb"], ext: ["rb"], comment: "#", vscodeId: "ruby", md: "ruby", highlight: shiki("ruby") },
+  { id: "r", label: "R", aliases: [], ext: ["r"], comment: "#", vscodeId: "r", md: "r", highlight: shiki("r") },
+  { id: "perl", label: "Perl", aliases: ["pl"], ext: ["pl", "pm"], comment: "#", vscodeId: "perl", md: "perl", highlight: shiki("perl") },
+  { id: "haskell", label: "Haskell", aliases: ["hs"], ext: ["hs"], comment: "--", vscodeId: "haskell", md: "haskell", highlight: shiki("haskell") },
+  { id: "diff", label: "Diff", aliases: ["patch"], ext: ["diff", "patch"], comment: "#", vscodeId: "diff", md: "diff", highlight: shiki("diff") },
+  { id: "css", label: "CSS", aliases: [], ext: ["css"], comment: "//", vscodeId: "css", md: "css", highlight: shiki("css") },
+  { id: "html", label: "HTML", aliases: ["xml", "svg"], ext: ["html", "htm"], comment: "//", vscodeId: "html", md: "html", highlight: shiki("html") },
   { id: "plaintext", label: "Plain Text", aliases: ["text", "txt"], ext: ["txt"], comment: "#", vscodeId: "plaintext", md: "" },
 ];
 
