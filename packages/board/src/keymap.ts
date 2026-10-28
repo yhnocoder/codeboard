@@ -5,7 +5,8 @@
 // 动作拿到的 A 是 actions 的命名空间（类型 import，运行时不引用 actions：菜单要 import 这里拿快捷键文字）
 import type { KeyAction } from "@codeboard/core";
 import type * as Actions from "./actions";
-import { state, sel, lineSel, undo, redo, mutate, toast, clearSel, hostOf } from "./state/store";
+import { state, sel, lineSel, undo, redo, live, beginGesture, toast, clearSel, hostOf } from "./state/store";
+import { NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "./state/timing";
 import { camTarget, zoomAt } from "./state/camera";
 import { walk, keysOpen, setKeysOpen, setPaletteOpen, setEditing } from "./state/ui";
 import { setSpaceDown, cancelMode } from "./state/mode";
@@ -27,13 +28,58 @@ export type Bind = {
   run?: (a: A, e: KeyboardEvent) => boolean | void;
 };
 
-let nudgeRun = 0;
+/**
+ * Arrow keys held now. A press moves one step at once; held past NUDGE_HOLD the cards glide on every frame, speeding up the longer
+ * the key is held (the OS key repeat would move in uneven jumps at one fixed speed, so its repeats are ignored). From the first
+ * arrow down to the last one up is one gesture: one undo step, however long it was held
+ */
+let held: { dirs: Map<string, [number, number]>; shift: boolean; t0: number; last: number; acc: [number, number]; a: A; end: (record?: boolean) => void; raf: number } | null = null;
+const moveSel = (a: A, dx: number, dy: number) =>
+  live((b) => { for (const id of sel.cards) { const c = b.place[hostOf(id)]; if (c && !a.isLocked(id)) { c.x += dx; c.y += dy; } } });
+const glide = (now: number) => {
+  const h = held;
+  if (!h) return;
+  const dt = Math.min(50, now - h.last), t = now - h.t0;
+  h.last = now;
+  if (t > NUDGE_HOLD) {
+    const r = Math.min(1, (t - NUDGE_HOLD) / NUDGE_RAMP), ease = r * r * (3 - 2 * r);
+    const v = NUDGE_SPEED * (1 + (NUDGE_MAX - 1) * ease) * (h.shift ? 10 : 1) / camTarget().z;
+    let vx = 0, vy = 0;
+    for (const [x, y] of h.dirs.values()) { vx += x; vy += y; }
+    h.acc[0] += Math.sign(vx) * v * dt; h.acc[1] += Math.sign(vy) * v * dt;
+    // whole world pixels like every other placement; the rest carries over to the next frame
+    const mx = Math.trunc(h.acc[0]), my = Math.trunc(h.acc[1]);
+    h.acc[0] -= mx; h.acc[1] -= my;
+    if (mx || my) moveSel(h.a, mx, my);
+  }
+  h.raf = requestAnimationFrame(glide);
+};
+const nudgeKeys = (e: KeyboardEvent) => {
+  const h = held;
+  if (!h) return;
+  if (e.key === "Shift") h.shift = e.type === "keydown";
+  if (e.type === "keyup" && h.dirs.delete(e.key) && !h.dirs.size) stopNudge();
+};
+function stopNudge() {
+  const h = held;
+  if (!h) return;
+  held = null;
+  cancelAnimationFrame(h.raf);
+  window.removeEventListener("keydown", nudgeKeys, true); window.removeEventListener("keyup", nudgeKeys, true); window.removeEventListener("blur", stopNudge);
+  h.end();
+}
 const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
+  if (e.repeat && held) return;
   // The step is on screen (1 px, Shift 10 px), so zoomed out a press still moves visibly; whole world pixels like every other placement
   const d = Math.max(1, Math.round((e.shiftKey ? 10 : 1) / camTarget().z));
-  // 按住方向键（自动重复）是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了；每按一下是一步
-  if (!e.repeat) nudgeRun++;
-  mutate((b) => { for (const id of sel.cards) { const c = b.place[hostOf(id)]; if (c && !a.isLocked(id)) { c.x += dx * d; c.y += dy * d; } } }, { merge: `nudge:${nudgeRun}` });
+  const now = performance.now();
+  if (!held) {
+    held = { dirs: new Map(), shift: e.shiftKey, t0: now, last: now, acc: [0, 0], a, end: beginGesture(), raf: requestAnimationFrame(glide) };
+    window.addEventListener("keydown", nudgeKeys, true); window.addEventListener("keyup", nudgeKeys, true); window.addEventListener("blur", stopNudge);
+  }
+  // another arrow joining the hold (a diagonal) starts the speed-up over
+  held.dirs.set(e.key, [dx, dy]); held.shift = e.shiftKey; held.t0 = now; held.acc = [0, 0];
+  moveSel(a, dx * d, dy * d);
 };
 const atPointer = () => worldAt(lastPointer());
 const hasCards = () => sel.cards.length > 0;

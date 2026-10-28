@@ -25,3 +25,10 @@ export const TILT_MS = 200;
 export const WHEEL_GESTURE = 200;
 /** The Copy | Reference chip under a pasted or duplicated card goes away after this long without the pointer on it (actions/shared.ts) */
 export const PASTE_CHIP_IDLE = 6000;
+/** Holding an arrow key: one step at once, then after this long the selected cards glide on, every frame (keymap.ts nudge) */
+export const NUDGE_HOLD = 300;
+/** …starting at NUDGE_SPEED and easing up to NUDGE_MAX times that over this long */
+export const NUDGE_RAMP = 1500;
+/** The speed a held arrow key starts gliding at, in screen px per ms (Shift: 10 times) */
+export const NUDGE_SPEED = 0.04;
+export const NUDGE_MAX = 6;
