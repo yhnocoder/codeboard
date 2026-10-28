@@ -10,7 +10,6 @@ import { langOf } from "../src/ws";
 
 export const REPO = path.resolve(__dirname, "../../..");
 export const startTreeSitter = () => startAnalysis();
-export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** A card for the symbol `qual` in a file (as Add Function would make it) and its first segment */
 export async function card(abs: string, qual: string, text = fs.readFileSync(abs, "utf8")): Promise<{ card: CodeCard; seg: Segment }> {

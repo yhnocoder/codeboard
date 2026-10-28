@@ -31,7 +31,8 @@ const lspImpls = (d: Def): Promise<Def[]> => sharedDefs(d.abs, d.line, d.col, as
 }, "impl");
 
 // Pylance 刚启动时会先回空：还没见它答过话时，空的回答隔一会儿再问几次，再退到名字索引
-const RETRY = 3, RETRY_GAP = 600, RETRY_CLICKS = 3;
+export const RETRY_GAP = 600;
+const RETRY = 3, RETRY_CLICKS = 3;
 let lspSeen = false, retryClicks = 0;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** 测试用：当作语言服务还没答过话 */

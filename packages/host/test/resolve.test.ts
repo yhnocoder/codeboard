@@ -2,9 +2,9 @@
 // variable candidates, preview fallbacks, library calls, and retrying while Pylance starts
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import type { ExpandResult, PeekDef, Segment } from "@codeboard/core";
-import { callVars, expand, forgetLspSeen, peek } from "../src/resolve";
+import { RETRY_GAP, callVars, expand, forgetLspSeen, peek } from "../src/resolve";
 import { forgetDefs } from "../src/defcache";
 import { analysisOf } from "../src/analysis";
 import { viewsFor } from "../src/views";
@@ -114,18 +114,27 @@ describe("while Pylance starts", () => {
     let asks = 0;
     const orig = W.language.definitions, origHas = W.about.hasExtension;
     W.about.hasExtension = (id) => id === "ms-python.vscode-pylance";
+    // the gaps between retries on a fake clock: let it run a gap at a time until the click is answered
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const settle = async <T>(p: Promise<T>): Promise<T> => {
+      let done = false;
+      void p.finally(() => { done = true; });
+      await vi.waitFor(async () => { await vi.advanceTimersByTimeAsync(RETRY_GAP); expect(done).toBe(true); }, { timeout: 10000, interval: 5 });
+      return p;
+    };
     try {
       forgetLspSeen();
       W.language.definitions = async () => (++asks < 3 ? [] : [{ abs: schAbs, line: defLine, col: 8 }]);
       forgetDefs();
-      expect(qualOf(await expand(req))).toBe("Scheduler.schedule");
+      expect(qualOf(await settle(expand(req)))).toBe("Scheduler.schedule");
       expect(asks).toBe(3);
       asks = 0;
       W.language.definitions = async () => { asks++; return []; };
       forgetDefs();
-      await expand(req);
+      await settle(expand(req));
       expect(asks).toBe(1);
     } finally {
+      vi.useRealTimers();
       W.language.definitions = orig; W.about.hasExtension = origHas;
     }
   });

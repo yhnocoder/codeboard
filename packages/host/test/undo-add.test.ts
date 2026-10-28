@@ -2,7 +2,7 @@
 // or not. It used to write back the whole board as it was before the add, losing everything done since
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { emptyBoard } from "@codeboard/core";
 import { Storage } from "@codeboard/core/storage";
 import { nodeFs } from "../src/nodefs";
@@ -10,7 +10,7 @@ import { makeActions } from "../src/actions";
 import { BoardPanel, type BoardHost } from "../src/boards";
 import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
-import { sleep, startTreeSitter, stubView } from "./helpers";
+import { startTreeSitter, stubView } from "./helpers";
 
 const W = nodeWorkspace();
 const dir = fs.mkdtempSync("/tmp/codeboard-undoadd-");
@@ -40,15 +40,15 @@ afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));
 describe("Undo on an add notice", () => {
   it("removes only that card when the board is closed; later work stays", async () => {
     expect(notices).toHaveLength(2);
-    notices[0]("Undo"); await sleep(200);
-    expect(await quals()).toEqual(["Scheduler.schedule", "nLater"]);
+    notices[0]("Undo");
+    await vi.waitFor(async () => expect(await quals()).toEqual(["Scheduler.schedule", "nLater"]), { timeout: 10000, interval: 5 });
   });
   it("asks the board to remove that card when the board is open (its own undo step), without rewriting the file", async () => {
     const { view, posted } = stubView({ visible: false, active: false });
     open = new BoardPanel("bU", view, panels); open.ready = true; open.board = store.peek("bU");
     const id = (await store.load("bU"))!.cards[0].id;
-    notices[1]("Undo"); await sleep(200);
-    expect(posted.find((m) => m.type === "undoAdd")).toMatchObject({ type: "undoAdd", cards: [id] });
+    notices[1]("Undo");
+    await vi.waitFor(() => expect(posted.find((m) => m.type === "undoAdd")).toMatchObject({ type: "undoAdd", cards: [id] }), { timeout: 10000, interval: 5 });
     expect((await store.load("bU"))!.cards).toHaveLength(2);
   });
 });
