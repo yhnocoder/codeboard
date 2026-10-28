@@ -148,7 +148,7 @@ async function exportStep(page) {
   const html = await soon(() => fs.readFileSync(out, "utf8"), (h) => /<\/html>\s*$/.test(h));
   check(!/cbres:/.test(html) && /data:font\/woff2;base64/.test(html), "fonts are inlined, no unresolved references", html.length);
   // VS Code 的 CDP 连接开不了新上下文：另起一个和 harness 同一个 Chromium，断网打开
-  const vb = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+  const vb = await (await import("../../../tools/test/chromium.mjs")).launch();
   const ctx = await vb.newContext({ offline: true, viewport: { width: 1400, height: 900 } }); const v = await ctx.newPage();
   const net = [], errs = [];
   v.on("request", (r) => { if (!/^(file|data|about):/.test(r.url())) net.push(r.url()); });
