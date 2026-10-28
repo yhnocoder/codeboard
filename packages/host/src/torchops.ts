@@ -9,7 +9,7 @@ import { grammarOfFile } from "@codeboard/analysis/langs";
 import { dispatchAll, lineIndex, stubDevice, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
 import { escapeRegExp } from "@codeboard/analysis/basics";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
-import { entriesOf, indexedFiles, isCode, knownEntries, type IndexEntry } from "./nameindex";
+import { entriesOf, indexedFiles, isCode, type IndexEntry } from "./nameindex";
 import { exists, langOf, readText, workspace } from "./ws";
 import { log } from "./log";
 
@@ -386,7 +386,7 @@ function rescanFile(x: Scan, abs: string) {
     dropRec(x, abs);
     if (rec) {
       addRec(x, abs, rec);
-      // 新的注册目标：现在只在这个文件里找；别处的通过名字索引解析（regTarget）
+      // 新的注册目标：现在只在这个文件里找；别处的通过名字索引解析（bridge 的 regSym）
       wantTargets(x, rec);
       if (!isGen(x, abs)) await targetsIn(x, abs, rec, text!);
     }
@@ -484,7 +484,7 @@ export async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string;
 }
 
 /** 名字索引的一条 → 带完整分析（参数）的符号 */
-export async function entrySym(e: IndexEntry): Promise<{ abs: string; sym: Sym } | null> {
+async function entrySym(e: IndexEntry): Promise<{ abs: string; sym: Sym } | null> {
   const text = await readText(e.abs);
   if (text === null) return null;
   const sym = analysisOf(langOf(e.abs), text).symbols.find((s) => s.qual === e.qual && s.defLine === e.defLine)
@@ -496,18 +496,6 @@ export async function entrySym(e: IndexEntry): Promise<{ abs: string; sym: Sym }
 export async function kernelTarget(t: OpTable, k: Kernel): Promise<{ abs: string; sym: Sym } | null> {
   const best = await kernelEntry(t, k);
   return best ? entrySym(best) : macroKernel(t, k);
-}
-
-/** 注册目标（qual）→ 它的定义：qual 的尾部对得上，注册所在的文件优先 */
-export async function regTarget(t: OpTable, r: Reg): Promise<IndexEntry | undefined> {
-  const parts = r.target!.split("::");
-  const name = parts[parts.length - 1];
-  const fit = (e: IndexEntry) => e.kind === "def" && grammarOfFile(e.abs) === "cpp" && e.qual.split("::").slice(-parts.length).join("::") === parts.join("::");
-  // 注册所在的文件优先：目标通常就在那里，而且只要第 1 遍
-  const near = (await entriesOf(r.abs)).find((e) => e.name === name && fit(e));
-  if (near) return near;
-  // 扫描之后编辑加上的目标只有名字索引知道
-  return (await defsOf(t, name)).find(fit) ?? knownEntries(name).find(fit);
 }
 
 // 找 yaml、解析 yaml（同一份文本只一次；文件事件把它丢掉）

@@ -10,9 +10,9 @@ import {
   templateParams, tilelangInner, torchLibDefs, torchOpOf, tritonInfo, tritonVals, matchClose, symbolAt, type CallSite, type Sym,
 } from "@codeboard/analysis";
 import { analysisOf } from "./analysis";
-import { grepWord, lookupName, type IndexEntry } from "./nameindex";
+import { entriesOf, grepWord, knownEntries, lookupName, type IndexEntry } from "./nameindex";
 import { libOf } from "./scope";
-import { cppOpEntry, defsOf, entrySym, isStubCall, keyRank, kernelsOf, kernelTarget, opTableFor, pyDefinedInTorch, pyOpEntry, pyRegs, regTarget, stubRegs, type OpTable } from "./torchops";
+import { cppOpEntry, defsOf, isStubCall, keyRank, kernelsOf, kernelTarget, opTableFor, pyDefinedInTorch, pyOpEntry, pyRegs, stubRegs, type OpTable, type Reg } from "./torchops";
 import { hostPath, langOf, readText, splitLines } from "./ws";
 import { log } from "./log";
 
@@ -24,11 +24,14 @@ const isCpp = (lang: string) => grammarOf(lang) === "cpp";
 
 const toSym = (e: IndexEntry): Sym => ({ name: e.name, qual: e.qual, kind: e.kind, start: e.start, end: e.end, defLine: e.defLine, sig: e.sig, params: [] });
 
-/** 按 qual 找 C++ / Rust 的定义（near = 同一个文件里的优先）：名字索引里同名的，qual 的后缀对上（deep_ep::Buffer::f 对 Buffer::f）；带上完整分析的参数 */
-async function symByQual(qual: string, grammar: Grammar, prefer?: (e: IndexEntry, text: string) => boolean, near?: string): Promise<Target | null> {
+/**
+ * 按 qual 找 C++ / Rust 的定义（near = 同一个文件里的优先）：同名的（cands，默认名字索引），qual 的后缀对上（deep_ep::Buffer::f 对 Buffer::f）；
+ * 带上完整分析的参数
+ */
+async function symByQual(qual: string, grammar: Grammar, prefer?: (e: IndexEntry, text: string) => boolean, near?: string, cands: (name: string) => Promise<IndexEntry[]> = lookupName): Promise<Target | null> {
   const parts = qual.split("::").filter(Boolean);
   const name = parts[parts.length - 1];
-  const ents = (await lookupName(name)).filter((e) => grammarOfFile(e.abs) === grammar && e.kind === "def");
+  const ents = (await cands(name)).filter((e) => e.name === name && grammarOfFile(e.abs) === grammar && e.kind === "def");
   const tail = (q: string) => q.split("::");
   const score = (e: IndexEntry) => {
     const t = tail(e.qual);
@@ -45,6 +48,15 @@ async function symByQual(qual: string, grammar: Grammar, prefer?: (e: IndexEntry
     return { abs: e.abs, sym };
   }
   return null;
+}
+
+/**
+ * PyTorch 里一处注册的目标：注册所在的文件优先（目标通常就在那里，而且只要算子索引的第 1 遍），再找算子索引扫过的文件；
+ * 扫描之后编辑加上的目标只有名字索引已经分析过的文件知道（不为它扫工作区）
+ */
+async function regSym(t: OpTable, r: Reg): Promise<Target | null> {
+  return (await symByQual(r.target!, "cpp", undefined, r.abs, () => entriesOf(r.abs)))
+    ?? (await symByQual(r.target!, "cpp", undefined, r.abs, async (name) => [...(await defsOf(t, name)), ...knownEntries(name)]));
 }
 
 /** 注册在 lambda 里：目标是那一行所在的 lambda（当成一段，用包着它的符号或那一行） */
@@ -66,8 +78,7 @@ export async function viaRegistry(name: string, here?: string): Promise<Crossed[
   const ops = await opTableFor(here);
   if (ops) {
     for (const r of await pyRegs(ops, name)) {
-      const e = r.lambda ? null : await regTarget(ops, r);
-      const t = r.lambda ? await lambdaTarget(r.abs, r.line) : e ? await entrySym(e) : null;
+      const t = r.lambda ? await lambdaTarget(r.abs, r.line) : await regSym(ops, r);
       if (t) out.push({ t, mark: { bound: r.how } });
     }
     if (out.length) return out;
@@ -129,8 +140,7 @@ export async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
   const out: Crossed[] = [];
   for (const r of await stubRegs(t, stub)) {
     const key = stubDevice(r.how, r.abs);
-    const e = await regTarget(t, r);
-    const tg = e && (await entrySym(e));
+    const tg = await regSym(t, r);
     if (!tg) continue;
     const same = out.find((o) => o.t.abs === tg.abs && o.t.sym.qual === tg.sym.qual);
     if (same) { if (!same.mark.vals![0].value.split(", ").includes(key)) same.mark.vals![0].value += `, ${key}`; continue; }
