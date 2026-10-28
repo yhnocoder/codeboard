@@ -311,6 +311,12 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   let leaveT: number | undefined;
   const onLeave = () => { clearPeek(); clearTimeout(leaveT); leaveT = window.setTimeout(() => setHoverRow(-1), 200); };
   const keepRow = () => clearTimeout(leaveT);
+  /** A line number hovered: that line's ports show, as on its code */
+  const hoverNo = (e: PointerEvent, row: number) => {
+    if (e.buttons || dragging().size) return;
+    clearTimeout(leaveT); clearPeek();
+    setHoverRow(row);
+  };
   // 拖箭头松手会连到这一行：行号和这一行都亮起来
   const dropAt = (seg: string, line: number) => { const d = dropTarget(); return d?.kind === "line" && d.seg === seg && d.line === line; };
   const lportY = createMemo(() => { const i = hoverRow(); const r = rows()[i]; return i >= 0 && r?.t === "line" && ys()[i] ? { y: ys()[i].y, r } : null; });
@@ -439,7 +445,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               <Show when={ys()[i()] && lineRow(r)}>
                 {(l) => (
                   <span class="no" data-r={i()} classList={{ link: fromLines().has(`${l().seg}:${l().line}`), jump: l().skipped, sel: inSel(l().seg, l().line), drop: dropAt(l().seg, l().line) }}
-                    style={{ top: `${ys()[i()].y}px` }} data-nodrag onClick={(e) => clickNo(l(), e)} onContextMenu={(e) => lineCtx(l(), e)}>{l().line}</span>
+                    style={{ top: `${ys()[i()].y}px` }} data-nodrag onPointerMove={(e) => hoverNo(e, i())} onPointerLeave={onLeave} onClick={(e) => clickNo(l(), e)} onContextMenu={(e) => lineCtx(l(), e)}>{l().line}</span>
                 )}
               </Show>
             )}

@@ -497,3 +497,29 @@ test("portSizeWhenZoomedOut", async () => {
   check("portSizeWhenZoomedOut only the hovered card", sized.length === 4 && sized.every((id) => id === "n0") && (await pg.locator(".card[data-id=n1] .eport").count()) === 4, { sized });
   await close(h);
 });
+
+/** Hovering a line number shows that line's two ports, at the same place as hovering the line's code does */
+test("lineNumberHoverShowsPorts", async () => {
+  const b = emptyBoard("b1", "lnoports");
+  const eng = card("LLMEngine.__init__");
+  put(b, eng, 80, 80, 640);
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 1100, h: 700 });
+  const ce = h.page.locator(`.card[data-id="${eng.id}"]`);
+  const ports = () => ce.evaluate((c) => [...c.querySelectorAll(".lport")].map((e) => { const r = e.getBoundingClientRect(); return { cls: e.getAttribute("class"), y: Math.round(r.y + r.height / 2), shown: r.width > 0 && getComputedStyle(e).visibility !== "hidden" }; }));
+  const no = (await ce.locator(".gutter .no").nth(3).boundingBox())!;
+  await h.page.mouse.move(no.x + no.width / 2, no.y + no.height / 2); await idle(h);
+  const onNo = await ports();
+  await shot(h, "arrows-lno-ports");
+  // the same line's code, for where its ports go
+  const row = (await ce.locator(".src .l").nth(3).boundingBox())!;
+  await h.page.mouse.move(row.x + 20, row.y + row.height / 2); await idle(h);
+  const onCode = await ports();
+  // back to the line number of another line: the ports follow it
+  const no5 = (await ce.locator(".gutter .no").nth(5).boundingBox())!;
+  await h.page.mouse.move(no5.x + no5.width / 2, no5.y + no5.height / 2); await idle(h);
+  const onNo5 = await ports();
+  check("lineNumberHoverShowsPorts", onNo.length === 2 && onNo.every((p) => p.shown) && JSON.stringify(onNo) === JSON.stringify(onCode)
+    && onNo5.length === 2 && Math.abs(onNo5[0].y - onNo[0].y - 2 * row.height) < 2, { onNo, onCode, onNo5, rowH: row.height });
+  await close(h);
+});
