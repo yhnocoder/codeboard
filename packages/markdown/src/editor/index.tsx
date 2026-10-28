@@ -14,6 +14,7 @@ import { Ghost } from "./ghost";
 import { Icon, type IconName } from "./icons";
 import { clipboardText } from "./clipboard";
 import { mathInSlice } from "./pastemath";
+import { undoubleTex } from "../doubled";
 import { EMOJI, EMOJI_NAMES } from "../emoji";
 import { CodeBlockView, codeGapClick } from "./codeblock";
 import type { CodeLang } from "./codelang";
@@ -419,9 +420,12 @@ const MD_HINT = /^(#{1,6}\s|[-*+]\s|\d+[.)]\s|>\s|```|\$\$|\|.*\|)|\*\*[^*]+\*\*
 function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slice): boolean {
   const cd = ev.clipboardData;
   if (!cd) return false;
-  const text = cd.getData("text/plain").replace(/\r\n?/g, "\n");
+  const raw = cd.getData("text/plain").replace(/\r\n?/g, "\n");
   const $f = e.state.selection.$from;
   if ($f.parent.type.spec.code) return false; // 代码块里原样粘贴
+  const html = cd.getData("text/html");
+  // 只有纯文字时（电子书、网页里排好的公式）"显示的字 + TeX" 只留 $TeX$；HTML 里的在 mathInSlice 里认
+  const text = html || cd.getData("vscode-editor-data") ? raw : undoubleTex(raw);
   // 表格格子里只能有一段（GFM 存不下别的）：几行字用硬换行连起来（写回成 <br>），不变成代码块、列表
   if ($f.depth && /cell/.test($f.node(-1).type.spec.tableRole ?? "") && text.includes("\n")) {
     const lines = text.replace(/\n$/, "").split("\n");
@@ -448,7 +452,6 @@ function handlePaste(e: Editor, o: MdEditorOpts, ev: ClipboardEvent, slice: Slic
     return true;
   }
   // 别处的 HTML（不是从编辑器里复制的：那里字面的 $ 是转义过的）：字里原样留着的 $…$ 变成公式
-  const html = cd.getData("text/html");
   if (html && !html.includes("data-pm-slice")) {
     const fixed = mathInSlice(slice, e.state.schema);
     if (fixed) { e.view.dispatch(e.state.tr.replaceSelection(fixed).scrollIntoView().setMeta("paste", true).setMeta("uiEvent", "paste")); return true; }

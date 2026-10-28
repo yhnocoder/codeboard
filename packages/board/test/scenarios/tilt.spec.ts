@@ -55,8 +55,9 @@ test("tiltCardFromMenu", async () => {
   check("tilt-card-turns", Math.abs(on.deg - TILT) < 0.01, on);
   check("tilt-ports-turn-with-card", Math.abs(on.ports - TILT) < 0.3, on);
   check("tilt-arrow-on-turned-edge", on.off < 0.75, on);
-  // still tilted while merely selected
-  await pg.locator('.card[data-id="n"] .nbody').click();
+  // still tilted while merely selected (a click on the header: one on the selected Note's body would open the editor)
+  await pg.locator('.card[data-id="n"] .chead').click();
+  await pg.locator('.card.sel[data-id="n"]').waitFor();
   await idle(h);
   check("tilt-stays-when-selected", Math.abs((await probe(h)).deg - TILT) < 0.01);
   await shot(h, "selected");

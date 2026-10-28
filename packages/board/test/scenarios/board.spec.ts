@@ -427,25 +427,6 @@ test("freeCodeLanguage", async () => {
   await close(h);
 });
 
-/** Select lines → context menu New Card from Lines: new card has only those lines; no + button in the gutter */
-test("cardFromLines", async () => {
-  const b = emptyBoard("b1", "lines");
-  put(b, card("Scheduler.schedule"), 80, 80, 560);
-  const h = await open({ board: b, light, w: 1400, h: 800 });
-  const no = h.page.locator(".card .gutter .no");
-  await no.nth(5).click(); await no.nth(8).click({ modifiers: ["Shift"] }); await idle(h);
-  const plus = await h.page.locator(".addn").count();
-  const lb = (await h.page.locator(".card .src .l").nth(6).boundingBox())!; // click by coordinates: locator.click would scroll wide lines horizontally into view
-  await h.page.mouse.click(lb.x + 60, lb.y + 8, { button: "right" });
-  await h.page.locator(".ctx button", { hasText: "New Card from Lines" }).click();
-  await until(h, "the new card is saved", () => h.board().cards.length === 2); await idle(h);
-  const cs = h.board().cards as any[];
-  const nc = cs[1]?.segments?.[0];
-  await shot(h, "board-fromlines");
-  check("card-from-lines", cs.length === 2 && nc?.text.length === 4 && plus === 0, JSON.stringify({ n: cs.length, lines: nc?.text.length, start: nc?.start, plus }));
-  await close(h);
-});
-
 /** With codeboard.debug.enabled, Settings has a Debug section; drag the slider to change Peek delay */
 test("debugSettings", async () => {
   const h = await open({ board: emptyBoard("b1", "dbg"), light, w: 1200, h: 900, settings: { debug: true } });

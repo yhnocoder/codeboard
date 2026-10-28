@@ -155,3 +155,46 @@ test("notePasteMarkdownWithMath", async () => {
   await until(h, "Esc saves the Note", () => md(h, "plain") !== before);
   check("notePasteMarkdownWithMath over select-all", md(h, "plain") === "新的 $x$ 行", md(h, "plain"));
 });
+
+// Text copied from a web page or an e-book whose formulas are typeset: each comes out as the shown text and then its TeX
+const DOUBLED = "假设我们选择 16×1616\\times16 的 thread block，因此总共需要 4×5=204\\times5=20 个 thread block，处理 N×NN\\times N 像素块。";
+const DOUBLED_MD = "假设我们选择 $16\\times16$ 的 thread block，因此总共需要 $4\\times5=20$ 个 thread block，处理 $N\\times N$ 像素块。";
+
+/** Pasting that text keeps only the TeX, as formulas: into a Note being edited, and with ⌘V on the board (a new Note) */
+test("pasteDoubledFormulas", async () => {
+  const b = emptyBoard("b1", "doubled formulas");
+  put(b, { id: "n", kind: "note", md: "n", look: "note" } as NoteCard, 40, 40, 440);
+  const h = await open({ board: b, light: true, w: 1200, h: 800, settings: { theme: "warm-ink" } as any });
+  const pg = h.page;
+  await idle(h);
+  await pg.locator(`${card("n")} .nbody`).dblclick();
+  await pg.waitForSelector(`${card("n")} .md-pm`, { timeout: 5000 });
+  await focusSettled(pg);
+  await pg.keyboard.press("ControlOrMeta+End");
+  await pg.keyboard.press("Shift+Home");
+  await pmHasSelection(pg);
+  await pg.evaluate((t) => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", t);
+    document.activeElement!.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, DOUBLED);
+  const ed = await look(h, `${card("n")} .md-pm`);
+  check("pasteDoubledFormulas formulas in the editor", JSON.stringify(ed.tex) === JSON.stringify(["16\\times16", "4\\times5=20", "N\\times N"]) && !/×|\\times/.test(ed.text), ed);
+  await pg.keyboard.press("Escape");
+  await until(h, "Esc saves the Note", () => md(h, "n") !== "n");
+  check("pasteDoubledFormulas Note saved with only the TeX", md(h, "n") === DOUBLED_MD, md(h, "n"));
+  await pg.waitForSelector(`${card("n")} .md-pm`, { state: "detached", timeout: 5000 });
+  await idle(h);
+  await pg.mouse.move(700, 500);
+  await pg.evaluate((t) => {
+    const dt = new DataTransfer();
+    dt.setData("text/plain", t);
+    window.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true }));
+  }, DOUBLED);
+  const made = await until(h, "⌘V on the board adds a card", () => h.board().cards.find((c) => c.id !== "n")).catch(() => undefined);
+  check("pasteDoubledFormulas ⌘V on the board makes a Note with only the TeX", made?.kind === "note" && (made as NoteCard).md === DOUBLED_MD, made);
+  await idle(h);
+  await pg.mouse.move(2, 2);
+  await idle(h);
+  await pg.screenshot({ path: path.join(OUT, "md-paste-doubled-warm-ink.png") });
+});

@@ -1,7 +1,8 @@
-// 粘贴的 HTML 里没排出来的公式：聊天应用、网页常把 $…$ 原样当字放进 <p>。ProseMirror 按 schema 读 HTML 时它们只是字，
+// 粘贴的 HTML 里没排出来的公式：聊天应用、网页常把 $…$ 原样当字放进 <p>，电子书常把"显示的字 + TeX"连着放（doubled.ts）。ProseMirror 按 schema 读 HTML 时它们只是字，
 // 这里照解析器的行内公式规则（schema.ts 的 mathAt）把它们变成公式，和打字、粘贴纯文字的 Markdown 一样
 import { Fragment, Slice, type Node as PMNode, type Schema } from "@tiptap/pm/model";
 import { parseSource, splitMath } from "../schema";
+import { undoubleTex } from "../doubled";
 
 /** slice 里字中的 $…$ / $$…$$ 变成公式；一段只有一个 $$…$$（或几行 $$ … $$）的变成公式块。没变返回 null */
 export function mathInSlice(slice: Slice, schema: Schema): Slice | null {
@@ -22,7 +23,7 @@ export function mathInSlice(slice: Slice, schema: Schema): Slice | null {
 }
 
 function mathInBlock(b: PMNode, schema: Schema, cell: boolean): PMNode {
-  if (!b.textContent.includes("$")) return b;
+  if (!/[$\\^_]/.test(b.textContent)) return b;
   const math = schema.nodes.inlineMath, block = schema.nodes.blockMath;
   // 公式块：$$、TeX、$$ 各占一行（<br> 断开）；整段当 Markdown 读出来正好是一个公式块才算
   if (!cell && block && b.type.name === "paragraph" && b.textContent.trimStart().startsWith("$$")) {
@@ -34,8 +35,9 @@ function mathInBlock(b: PMNode, schema: Schema, cell: boolean): PMNode {
   const out: PMNode[] = [];
   let prev = "", changed = false;
   b.forEach((c) => {
-    if (!c.isText || c.marks.some((m) => m.type.spec.code) || !c.text!.includes("$")) { out.push(c); prev = c.isText ? c.text!.slice(-1) : ""; return; }
-    for (const p of splitMath(c.text!, prev)) {
+    const src = c.isText && !c.marks.some((m) => m.type.spec.code) ? undoubleTex(c.text!) : "";
+    if (!src.includes("$")) { out.push(c); prev = c.isText ? c.text!.slice(-1) : ""; return; }
+    for (const p of splitMath(src, prev)) {
       if ("text" in p) out.push(schema.text(p.text, c.marks));
       else { out.push(math.create({ latex: p.latex, display: p.display }, null, c.marks.filter((m) => b.type.allowsMarkType(m.type)))); changed = true; }
     }

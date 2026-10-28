@@ -95,13 +95,20 @@ function MdEdit(p: P) {
     if (done() || !el.isConnected) return;
     el.textContent = "";
     ed = m.mountEditor(el, { ...editorOpts(), value: start, placeholder: p.placeholder ?? NOTE_PLACEHOLDER, onDone: finish });
-    const e = ed.editor(), r = entry && docRange(e.state.doc, entry.range);
+    const e = ed.editor();
+    if (entry && "at" in entry) {
+      // 编辑器和静态内容排得一样：点在静态内容哪个字上，编辑器里同一个地方就是那个字
+      const at = e.view.posAtCoords({ left: entry.at.x, top: entry.at.y });
+      if (at) e.commands.setTextSelection(at.pos);
+      return;
+    }
+    const r = entry && docRange(e.state.doc, entry.range);
     if (!r) return;
     e.commands.setTextSelection(r);
     // 编辑器拿到焦点（mountEditor 放进了微任务）以后，和在编辑器里按这个键一样走它的键表；键表没接（不会发生）就直接删
     queueMicrotask(() => {
       if (e.isDestroyed) return;
-      const ev = new KeyboardEvent("keydown", { key: entry!.key, code: entry!.key, bubbles: true, cancelable: true });
+      const ev = new KeyboardEvent("keydown", { key: entry.key, code: entry.key, bubbles: true, cancelable: true });
       e.view.dom.dispatchEvent(ev);
       if (!ev.defaultPrevented) e.commands.deleteSelection();
     });

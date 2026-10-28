@@ -2,22 +2,22 @@ import { createEffect } from "solid-js";
 import { rooted } from "../state/root";
 import { unwrap } from "solid-js/store";
 import {
-  uid, findCard, isCode, segOf, placeCards,
+  uid, findCard, isCode, placeCards,
   besideFree, findFree, bounds, removeCards, retargetCards, GAP,
   classifyPaste, guessLang, estSize, defaultWidth, BOX_FILLS,
   type Board, type Card, type CodeCard, type NoteCard, type NoteLook, type Segment, type Place,
   type NewCard, type Rect,
 } from "@codeboard/core";
-import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf, type LineSel } from "../state/store";
+import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf } from "../state/store";
 import { camTo, camTarget, fitTop, isVisible, viewportCenter } from "../state/camera";
 import { editing, setEditing } from "../state/ui";
 import { promptText } from "../ui/Menu";
 import { ask } from "../host";
-import { lineY } from "../state/geo";
 import { settleHome } from "../state/sections";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
 import { cleanImage, svgDataUrl } from "../md/images";
+import { undoubleTex } from "@yhnocoder/markdown";
 
 /** 新代码卡按设置默认隐藏注释 / 文档字符串 / 空行（卡上已经有设定的不动） */
 function withDefaults(c: Card): Card {
@@ -190,6 +190,9 @@ export async function requestViews(segs: Segment[]) {
 
 export async function pasteText(text: string, at?: { x: number; y: number }, exact = false) {
   if (!text.trim()) return;
+  // 网页、电子书里排好的公式按纯文字复制出来是"显示的字 + TeX"，留下 TeX 当公式；认出了就是 Note
+  const tex = undoubleTex(text);
+  if (tex !== text && classifyPaste(tex).kind === "note") return newNote(at, tex);
   const k = classifyPaste(text);
   if (k.kind === "web") return newWeb(at, k.url);
   if (k.kind === "links") return newLinkList(k.urls, at);
@@ -202,24 +205,6 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   // GitHub 文件拿不到（离线、私有仓库没登录）：先留一张书签，链接不丢
   if (k.kind === "github") { toast(`Could not fetch this GitHub file${err ? `: ${err}` : ""}`); return newWeb(at, text.trim()); }
   newFreeCode(at, text.replace(/\s+$/, ""), guessLang(text) ?? "python", undefined, exact);
-}
-
-/** 选中的几行另起一张卡：同一个文件、同一个版本，放在原卡右边那几行的高度 */
-export function cardFromLines(ls: LineSel) {
-  const f = cardById(ls.card);
-  if (!f || !isCode(f.card)) return;
-  const s = segOf(f.card, ls.seg);
-  if (!s) return;
-  const seg: Segment = {
-    ...structuredClone(unwrap(s)), id: uid("s"), start: ls.start, end: ls.end, text: s.text.slice(ls.start - s.start, ls.end - s.start + 1),
-    hidden: s.hidden?.map(([a, b]) => [Math.max(a, ls.start), Math.min(b, ls.end)] as [number, number]).filter(([a, b]) => a <= b),
-    hl: s.hl?.filter((l) => l >= ls.start && l <= ls.end),
-  };
-  const r = hostRect(f.host.id)!;
-  const y = lineY(ls.card, ls.seg, ls.start)?.y ?? r.y;
-  const id = uid("c");
-  addCards([{ card: { id, kind: "code", segments: [seg] }, views: {}, w: Math.min(r.w, 560) }], { at: { x: r.x + r.w + 48, y: y - 40 } });
-  requestViews([seg]);
 }
 
 /** 选中的片段跨了几个顶层函数：按函数拆成几张卡，或一张多段卡 */

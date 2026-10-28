@@ -32,7 +32,7 @@
         "packages/board/src/actions/{index,common,edit,create}.ts", "packages/board/src/ui/{guard,hooks,overlay}.ts",
         "packages/board/src/ui/icons.tsx", "packages/core/src/{index,model,edit,layout,tidy,emitter,paste}.ts",
         "packages/core/src/storage/clip.ts", "packages/host/src/paste.ts",
-        "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete}.spec.ts"
+        "packages/board/test/scenarios/{board,fit,drag-by-body,drag-controls,copy-paste,multi-select,text-selection-delete,click-to-edit}.spec.ts"
       ],
       "scenarios": [
         "zoomLevels", "syncundo", "dragUnselectedCardByBody", "dragMultiSelectionByBody", "pastedCardsKeepTheirSize",
@@ -47,11 +47,11 @@
         "packages/markdown/src/cm/**", "packages/markdown/src/code.ts",
         "packages/analysis/src/{index,tree,highlight,langs,select,basics}.ts", "packages/core/src/{render,lines,chip}.ts",
         "packages/host/src/{cards,source,views,analysis,codeedit,scratchnames}.ts",
-        "packages/board/test/scenarios/{code-cards,code-card-header,codeedit,fixq,text-selection-delete}.spec.ts"
+        "packages/board/test/scenarios/{code-cards,code-card-header,codeedit,fixq,text-selection-delete,code-line-band}.spec.ts"
       ],
       "scenarios": [
         "dataclass", "segsep", "fithide", "commonIndentHidden", "fitContentWidthCodeCard", "softLightCodeHeaderOneRow", "codeAreaPadding",
-        "deleteKeyWithTextSelectionEditsFreeCode", "freeCodeLanguageDetect", "cardFromLines", "fitFramesVisibleContent"
+        "deleteKeyWithTextSelectionEditsFreeCode", "freeCodeLanguageDetect", "fitFramesVisibleContent"
       ]
     },
     "calls": {
@@ -108,7 +108,7 @@
     "math": {
       "about": "formulas: KaTeX rendering, the preamble, math blocks, math hints, pasted formulas",
       "files": [
-        "packages/markdown/src/math.ts", "packages/markdown/src/katex.css",
+        "packages/markdown/src/{math,doubled}.ts", "packages/markdown/src/katex.css",
         "packages/markdown/src/editor/{mathblock,mathhints,pastemath}.ts", "packages/board/src/md/math.ts",
         "packages/board/test/scenarios/{math-hints,md-paste-math}.spec.ts"
       ],

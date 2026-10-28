@@ -29,7 +29,7 @@ import { whenIdle } from "../state/idle";
 import { landed } from "../canvas/Links";
 import { enterCard, leaveCard, portStyle } from "../state/hover";
 import { merged, vlive } from "../state/variants";
-import { cardContextMenu, cardDblClick, cardPointerDown, cardWheel, justDragged, linkPortDown, resizeDown } from "../interact";
+import { cardClick, cardContextMenu, cardDblClick, cardPointerDown, cardWheel, justDragged, linkPortDown, resizeDown } from "../interact";
 import { kbd } from "../keymap";
 import { tiltOf, trackTilt } from "../state/tilt";
 
@@ -123,7 +123,7 @@ export function CardView(p: { card: Card }) {
           "bind-anchor": isBindAnchor(c().id),
         }}
         onPointerEnter={() => enterCard(c().id)} onPointerLeave={() => leaveCard(c().id)}
-        onPointerDown={(e) => cardPointerDown(e, c().id)} onContextMenu={(e) => cardContextMenu(e, c().id)} onDblClick={(e) => cardDblClick(e, c().id)}>
+        onPointerDown={(e) => cardPointerDown(e, c().id)} onContextMenu={(e) => cardContextMenu(e, c().id)} onClick={(e) => cardClick(e, c().id)} onDblClick={(e) => cardDblClick(e, c().id)}>
         {/* 定了高度的 Note / Text 正文放不下时自己滚（styles.css）：滚轮和代码卡的 .cbody 一样归 cardWheel 判 */}
         <div class="cface" onWheel={(e) => { const b = (e.target as HTMLElement).closest<HTMLElement>(".nbody, .tx"); if (b) cardWheel(e, b); }}>
         <Dynamic component={BODIES[c().kind] as Component<{ card: Card }>} card={c()} />
