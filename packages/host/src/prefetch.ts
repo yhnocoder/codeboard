@@ -16,6 +16,9 @@ const MAX_WAIT = 4; // 排队的只留最新的几个（鼠标扫过一串调用
 let running = 0;
 const queue: (() => Promise<void>)[] = [];
 
+/** 测试用：悬停预取没有在跑、也没有在排队的 */
+export const prefetchIdle = () => running === 0 && queue.length === 0;
+
 function pump() {
   while (running < MAX_RUN && queue.length) {
     const job = queue.shift()!;
@@ -42,7 +45,8 @@ async function warmCall(seg: Segment, line: number, col: number, name: string) {
   await Promise.all([t && cardForFileSym(t.abs, t.sym), dispatchOf(defs[0], name)]);
 }
 
-const WARM_DELAY = 1500, WARM_FILES = 6, WARM_GAP = 200, WARM_RETRY = 6;
+export const WARM_DELAY = 1500, WARM_GAP = 200;
+const WARM_FILES = 6, WARM_RETRY = 6;
 const warmed = new Map<string, number>(); // 文件 → 上次预热的时间
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

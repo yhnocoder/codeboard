@@ -2,7 +2,7 @@ import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
 import { emptyBoard, type Board, type CodeCard, type Link, type NoteCard } from "@codeboard/core";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { test, open, check, light, until, idle, hold } from "../fixtures";
+import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
 import { LINK_LEAVE } from "../../src/state/timing";
 
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
@@ -83,9 +83,15 @@ test("walkthroughOrder", async () => {
   b.cam = { x: 0, y: 0, z: 0.6 };
   const h = await open({ board: b, light, w: 1500, h: 950 });
   await h.page.locator(`.card[data-id="${step.id}"] .chead .ctitle`).click(); await h.page.locator(`.card.sel[data-id="${step.id}"]`).waitFor();
-  await h.page.keyboard.press("p"); await h.page.locator(".present .ptitle").waitFor(); await idle(h);
+  await h.page.keyboard.press("p"); await expect(h.page.locator(".present .cnt")).toHaveText("1 / 4");
   const titles: string[] = [];
-  for (let i = 0; i < 4; i++) { titles.push((await h.page.locator(".present .ptitle").textContent()) ?? ""); await h.page.keyboard.press("ArrowRight"); await idle(h); }
+  // P and each → move the walk on at once (the counter and the title), while the camera is still flying to the step: wait for the
+  // counter, not for the flight; the fourth → is past the last step and stays there
+  for (let i = 0; i < 4; i++) {
+    titles.push((await h.page.locator(".present .ptitle").textContent()) ?? "");
+    await h.page.keyboard.press("ArrowRight");
+    if (i < 3) await expect(h.page.locator(".present .cnt")).toHaveText(`${i + 2} / 4`);
+  }
   const cnt = await h.page.locator(".present .cnt").textContent();
   await h.page.keyboard.press("Escape");
   const ok = titles.join() === "LLMEngine.step,Scheduler.schedule,BlockManager.allocate,Why batches" && cnt === "4 / 4";

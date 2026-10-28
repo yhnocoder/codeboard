@@ -31,13 +31,13 @@ describe("code editing with a language service", () => {
   // a stub language service: logs what was synced and what the document was when asked
   const log: string[] = [];
   const docs = new Map<string, string>();
-  let slow = 0;
+  let slow: Promise<void> | undefined; // a slow language service: completions wait for this
   beforeAll(async () => {
     W.language.scratch = {
       sync: async (id, lang, text, near) => { log.push(`sync ${id} ${lang} ${near ? path.relative(WS, near) : "-"} ${JSON.stringify(text)}`); docs.set(id, text); },
       close: async (id) => { log.push(`close ${id}`); docs.delete(id); },
       completions: async (id, line, col) => {
-        if (slow) await new Promise((r) => setTimeout(r, slow));
+        await slow;
         log.push(`complete ${JSON.stringify(docs.get(id))} ${line}:${col}`);
         return [...Array.from({ length: 1000 }, (_, i) => ({ label: `zz${i}` })), { label: "schedule", kind: "method" as const }, { label: "is_finished", kind: "method" as const }, { label: "reschedule" }];
       },
@@ -59,12 +59,15 @@ describe("code editing with a language service", () => {
     expect(await send({ type: "lspComplete", req: 5, id: "free-b", text: "self.scheduler.", line: 0, col: 15 })).toHaveLength(300);
   });
   it("drops an older request before it reaches the language service when a newer one comes", async () => {
-    slow = 80;
-    const [a, b] = await Promise.all([
+    let answer!: () => void;
+    slow = new Promise((r) => { answer = r; });
+    const both = Promise.all([
       send({ type: "lspComplete", req: 6, id: "free-b", text: "self.scheduler.s", line: 0, col: 16 }),
       send({ type: "lspComplete", req: 7, id: "free-b", text: "self.scheduler.sc", line: 0, col: 17 }),
-    ]) as unknown[][];
-    slow = 0;
+    ]);
+    answer(); // both were asked while the language service was still busy
+    const [a, b] = await both as unknown[][];
+    slow = undefined;
     expect([a.length, b.length]).toEqual([0, 2]);
     expect(log).not.toContain(`complete "self.scheduler.s" 0:16`);
   });

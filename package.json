@@ -4,6 +4,7 @@
   "packageManager": "npm@11.21.1",
   "workspaces": ["packages/*", "extensions/*", "examples/markdown-demo"],
   "scripts": {
+    "examples": "sh tools/examples.sh",
     "build": "npm run build -w @yhnocoder/markdown && npm run build -w @codeboard/board && npm run build -w codeboard-vscode",
     "package": "npm run build && npm run package -w codeboard-vscode",
     "test": "vitest run",

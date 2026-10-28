@@ -131,14 +131,20 @@ describe("dynamic dispatch", () => {
     expect(pv.dispatch).toMatchObject({ n: 2, base: "AttentionImpl", abstract: true });
   });
   it("expands the definition at once when Go to Implementation is slow, and gives the implementations once they arrive", async () => {
-    W.language.implementations = async (abs, line) => { await new Promise((r) => setTimeout(r, 800)); return impls(abs, line); };
+    // Go to Implementation answers only when the test lets it: the click must not wait for it
+    let answer!: () => void, answered = false;
+    const gate = new Promise<void>((r) => { answer = r; });
+    let asked = 0;
+    W.language.implementations = async (abs, line) => { asked++; await gate; answered = true; return impls(abs, line); };
     forgetDefs();
-    const t0 = Date.now();
     const r = await click(lay, /self\.impl\.forward/, "forward");
-    expect(Date.now() - t0).toBeLessThan(600);
+    expect(asked).toBe(1);
+    expect(answered).toBe(false); // the card came before the implementations
     expect(qualOf(r)).toBe("AttentionImpl.forward");
     expect("card" in r && r.dispatching).toBe(true);
+    answer();
     const da = await dispatchAt({ ...site(), name: "forward" });
+    expect(asked).toBe(1); // the board's follow-up shares the click's request
     expect(da).toMatchObject({ base: "AttentionImpl.forward", abstract: true });
     expect(da?.impls.map((i) => i.qual)).toEqual(["FlashAttentionImpl.forward", "TritonAttentionImpl.forward"]);
   });

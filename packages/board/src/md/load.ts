@@ -83,8 +83,8 @@ function codeLsp(lang: () => string) {
   return lspHost(id, () => langInfo(lang())?.vscodeId ?? lang());
 }
 
-/** Note 代码块语言框里的语言：着色认得的（有 shiki 语法的）。写进围栏的是 GitHub 认的名字（cuda、bash），它指的不是这种语言时（Triton 的是 python）写 id */
-const CODE_LANGS = LANG_TABLE.filter((l) => l.shiki).map((l) => ({ name: l.md && langInfo(l.md) === l ? l.md : l.id, label: l.label, aliases: [l.id, ...l.aliases] }));
+/** Note 代码块语言框里的语言：着色认得的（语言表里有 highlight 的）。写进围栏的是 GitHub 认的名字（cuda、bash），它指的不是这种语言时（Triton 的是 python）写 id */
+const CODE_LANGS = LANG_TABLE.filter((l) => l.highlight).map((l) => ({ name: l.md && langInfo(l.md) === l ? l.md : l.id, label: l.label, aliases: [l.id, ...l.aliases] }));
 
 /** 编辑器要的白板能力：[[ 引用卡片、存图、AI 补全（宿主没有就什么都不做）、代码块的注释记号和语言服务 */
 export function editorOpts(): Omit<MdEditorOpts, "value" | "onDone" | "placeholder"> {

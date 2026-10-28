@@ -2,16 +2,16 @@
 import { createHighlighterCore, createCssVariablesTheme, type HighlighterCore, type LanguageInput } from "shiki/core";
 import { createJavaScriptRegexEngine } from "shiki/engine/javascript";
 import { escHtml, fingerprint, renderLine, tokenClass, type CallSpan, type Mark, type Segment, type SegView, type Tok } from "@codeboard/core";
-import { langInfo } from "@codeboard/analysis/langs";
-import type { FileAnalysis } from "@codeboard/analysis";
-import { analysisOf, segAnalysis } from "./analysis";
+import { grammarOf, langInfo, type Grammar } from "@codeboard/analysis/langs";
+import { highlightLines, type FileAnalysis } from "@codeboard/analysis";
+import { analysisOf, analysisReady, segAnalysis, whenAnalysisReady } from "./analysis";
 import { absOf, versionText } from "./source";
 import { callPkgs } from "./scope";
 import { Lru, readText, splitLines } from "./ws";
 
-// 语法按语言表（@codeboard/analysis 的 langs.ts）的 shiki 名字，第一次用到时才加载
+// 语言表（@codeboard/analysis 的 langs.ts）里 highlight 选 shiki 的语言：语法按它的名字，第一次用到时才加载
 const GRAMMAR: Record<string, LanguageInput> = {
-  python: () => import("shiki/langs/python.mjs"), cpp: () => import("shiki/langs/cpp.mjs"), c: () => import("shiki/langs/c.mjs"),
+  python: () => import("shiki/langs/python.mjs"),
   rust: () => import("shiki/langs/rust.mjs"), typescript: () => import("shiki/langs/typescript.mjs"), javascript: () => import("shiki/langs/javascript.mjs"),
   go: () => import("shiki/langs/go.mjs"), java: () => import("shiki/langs/java.mjs"), shellscript: () => import("shiki/langs/shellscript.mjs"),
   json: () => import("shiki/langs/json.mjs"), yaml: () => import("shiki/langs/yaml.mjs"), toml: () => import("shiki/langs/toml.mjs"),
@@ -32,20 +32,30 @@ async function highlighter(sl: string): Promise<HighlighterCore> {
 }
 
 function shikiLang(lang: string): string | null {
-  const s = langInfo(lang)?.shiki;
-  return s && s in GRAMMAR ? s : null;
+  const h = langInfo(lang)?.highlight;
+  return h?.by === "shiki" && h.lang in GRAMMAR ? h.lang : null;
 }
 
 const tokCache = new Lru<Promise<Tok[][]>>(60);
 
-/** 每行的 token（带白板的颜色 class）。缓存的是 promise：同一份文本同时被几个段要时只分词一次 */
-export function tokensOf(lang: string, text: string): Promise<Tok[][]> {
+/**
+ * 每行的 token（带白板的颜色 class）。缓存的是 promise：同一份文本同时被几个段要时只分词一次。
+ * file = 文本是这个文件（那个版本）的全文：tree-sitter 着色的语言和分析共用这个文件的语法树
+ */
+export function tokensOf(lang: string, text: string, file?: string): Promise<Tok[][]> {
+  const g = langInfo(lang)?.highlight?.by === "tree-sitter" ? grammarOf(lang) : null;
   const sl = shikiLang(lang);
-  if (!sl) return Promise.resolve(splitLines(text).map((l) => [{ text: l }]));
-  const k = `${sl}\0${text.length}\0${fingerprint(text)}`;
+  if (!g && !sl) return Promise.resolve(splitLines(text).map((l) => [{ text: l }]));
+  const k = `${g ? `ts:${g}` : sl}\0${text.length}\0${fingerprint(text)}`;
   let p = tokCache.get(k);
-  if (!p) { p = tokenize(sl, text); tokCache.set(k, p); }
+  if (!p) { p = g ? treeTokens(g, text, file) : tokenize(sl!, text); tokCache.set(k, p); }
   return p;
+}
+
+async function treeTokens(g: Grammar, text: string, file?: string): Promise<Tok[][]> {
+  // 宿主刚启动、语法还在加载时先等它：缓存里别留一份没颜色的
+  await whenAnalysisReady();
+  return analysisReady() ? highlightLines(g, text, file) : splitLines(text).map((l) => [{ text: l }]);
 }
 
 async function tokenize(sl: string, text: string): Promise<Tok[][]> {
@@ -105,7 +115,7 @@ export async function segView(seg: Segment): Promise<SegView> {
     const toks = await tokensOf(lang, seg.text.join("\n"));
     return build(seg, fa, (i) => toks[i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
   }
-  const toks = await tokensOf(lang, full);
+  const toks = await tokensOf(lang, full, absOf(seg) ?? undefined);
   return build(seg, fa, (i) => toks[seg.start - 1 + i], 0, 0, await callPkgs(seg, fa.imports, absOf(seg)));
 }
 

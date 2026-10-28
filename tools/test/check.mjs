@@ -78,8 +78,10 @@ const rate = (() => {
 const budget = opt("budget") ?? Math.max(30, Math.round((LIMIT - secs() - 25) * rate));
 const harness = args.includes("--all") ? [...focus] : ["--select", `--base=${base}`, `--budget=${budget}`, ...(focus.length ? [`--focus=${focus.join(",")}`] : [])];
 console.log(`harness: ${args.includes("--all") ? "every scenario" : `changes since ${base.slice(0, 7)}, budget ${budget} s of scenario time`} on ${workers} workers`);
+// The harness at a lower priority: the unit tests are the longest of the jobs it shares the CPU with, and a harness that uses up
+// any CPU left over finishes no later, while unit tests starved by its workers (63 s instead of 20 s on 4 cores) end the run last
 const ok = await new Promise((resolve) => {
-  const p = spawn("node", ["tools/test/harness.mjs", ...harness, `--workers=${workers}`, `--json=${JSON_OUT}`], { cwd: REPO, stdio: "inherit" });
+  const p = spawn("nice", ["-n", "10", "node", "tools/test/harness.mjs", ...harness, `--workers=${workers}`, `--json=${JSON_OUT}`], { cwd: REPO, stdio: "inherit" });
   p.on("close", (code) => resolve(code === 0));
 });
 const all = (await first).every(Boolean) && ok;

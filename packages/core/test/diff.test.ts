@@ -81,9 +81,11 @@ describe("diff (jsdiff) on nano-vllm history", () => {
 describe("diff on 10k-line inputs", () => {
   const N = 10000;
   const a = Array.from({ length: N }, (_, i) => `line ${i} ${i % 7}`);
+  // "in time" is CPU time of this process (user + system, ms), not wall time: other work on a busy machine doesn't count against it,
+  // and an uncapped diff (an n·m table) would still take many seconds of it
   const check = (b: string[]) => {
-    const t = performance.now(), d = diffLines(a, b);
-    expect(performance.now() - t).toBeLessThan(3000);
+    const t = process.cpuUsage(), d = diffLines(a, b), u = process.cpuUsage(t);
+    expect((u.user + u.system) / 1000).toBeLessThan(3000);
     valid(d, a, b);
     return d;
   };
