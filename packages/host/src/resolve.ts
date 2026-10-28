@@ -13,7 +13,7 @@ import { absOf, locOfFile, versionText, hasLocalFile } from "./source";
 import { makeSegment, workingPlace } from "./versions";
 import { highlight, tokensOf } from "./views";
 import { libOf } from "./scope";
-import { entriesOf, indexedFiles, knownEntries, lookupName, type IndexEntry } from "./nameindex";
+import { entriesOf, indexedFiles, knownEntries, lookupName, pausingIndex, type IndexEntry } from "./nameindex";
 import { log } from "./log";
 import { exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
 
@@ -75,7 +75,10 @@ export const pickAbs = (seg: Segment, p: ExpandPick) => (p.rel ? absOf({ ...seg,
 
 const none = (reason: string): ExpandResult => ({ none: true, reason });
 
-export async function expand(m: ExpandReq): Promise<ExpandResult> {
+/** The background name index waits while a click resolves */
+export const expand = (m: ExpandReq): Promise<ExpandResult> => pausingIndex(() => expandNow(m));
+
+async function expandNow(m: ExpandReq): Promise<ExpandResult> {
   const seg = m.seg;
   if (seg.src.kind === "free") return none("Free code has no source to follow.");
   if (seg.src.kind === "github") return none("Expanding calls in GitHub code is not supported yet.");

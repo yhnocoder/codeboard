@@ -101,6 +101,16 @@ async function indexFile(abs: string, text?: string | null) {
   for (const e of ents) (byName.get(e.name) ?? byName.set(e.name, []).get(e.name)!).push(e);
 }
 
+// A click waits on the same thread: the build starts no new file while one is resolving (a file already being parsed still finishes)
+let clicks = 0;
+let resume: (() => void)[] = [];
+export async function pausingIndex<T>(fn: () => Promise<T>): Promise<T> {
+  clicks++;
+  try { return await fn(); } finally { if (--clicks === 0) for (const r of resume.splice(0)) r(); }
+}
+const PAUSE_MAX = 5000; // a click stuck on a language server must not stop the index for good
+const unpaused = () => (clicks ? Promise.race([new Promise<void>((r) => resume.push(r)), sleep(PAUSE_MAX)]) : undefined);
+
 /** 后台把 todo 里的文件都分析完（一次只跑一个；每个文件之间让出事件循环） */
 function drain(): Promise<void> {
   return (running ??= (async () => {
@@ -108,6 +118,8 @@ function drain(): Promise<void> {
     try {
       await list();
       while (todo.size && g === gen) {
+        const wait = unpaused();
+        if (wait) { await wait; continue; }
         const abs = todo.values().next().value!;
         await indexFile(abs); // 分析到一半文件又改了：还留在 todo 里，下一轮再做
         await sleep(0);

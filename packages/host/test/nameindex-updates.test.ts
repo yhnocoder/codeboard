@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Disposable } from "@codeboard/core";
 import { analysisOf } from "../src/analysis";
-import { allNames, lookupName, nameIndexReady, resetIndex, startNameIndex, watchNameIndex, type IndexEntry } from "../src/nameindex";
+import { allNames, indexedFiles, lookupName, nameIndexReady, pausingIndex, resetIndex, startNameIndex, watchNameIndex, type IndexEntry } from "../src/nameindex";
 import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 import { startTreeSitter } from "./helpers";
@@ -69,5 +69,21 @@ describe("name index", () => {
     await nameIndexReady();
     clearInterval(t);
     expect(ticks).toBeGreaterThan(3);
+  });
+  it("starts no new file while a click resolves, and finishes after it", async () => {
+    resetIndex();
+    const done = async () => (await indexedFiles()).filter((f) => f.ents).length;
+    startNameIndex();
+    while (!(await done())) await new Promise((r) => setImmediate(r));
+    const during = await pausingIndex(async () => {
+      const first = await done();
+      // as many file reads as the build would need to analyze several files
+      for (let i = 0; i < 30; i++) { await fs.promises.readFile(probe.replace("zz_index_probe.py", "llm.py")); await new Promise((r) => setTimeout(r)); }
+      return [first, await done()];
+    });
+    expect(during[1] - during[0]).toBeLessThanOrEqual(1); // the file being parsed when the click came
+    expect(during[1]).toBeLessThan((await indexedFiles()).length);
+    await nameIndexReady();
+    expect((await indexedFiles()).every((f) => f.ents)).toBe(true);
   });
 });
