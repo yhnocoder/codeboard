@@ -1,7 +1,9 @@
 // Usage: node tools/test/harness.mjs [scenario…] [--workers=N] [--shard=i/n] [--coverage] [--light] [--json=out.json]
 //          no names: every scenario except the manual ones
-//        --select [--base=<commit>] [--budget=<seconds>] [--focus=a,b]: only the scenarios the change since <commit> (default HEAD)
-//          needs (tools/test/pick.mjs; a "Tests:" line in PR_BODY counts as --focus)
+//        --select [--base=<commit>] [--budget=<seconds>] [--focus=a,b] [--defer-to=<who>]: only the scenarios the change since
+//          <commit> (default HEAD) needs (tools/test/pick.mjs; a "Tests:" line in PR_BODY counts as --focus). What doesn't fit the
+//          budget is reported as left to <who> (default: the nightly run; npm run check says CI)
+//        --dry: print what would run (and what is deferred), run nothing
 //        --coverage: also record which source files each scenario runs (nightly, for --select)
 //        --against=<ref>: run the scenarios (as they are now) on the board built from <ref>: does a new scenario fail on the old code?
 //          The build is made once per commit in a git worktree, test-out/against/<commit>
@@ -9,7 +11,7 @@
 //          since <commit> (tools/test/pick.mjs repeatPick), each run N times (Playwright --repeat-each), within a wall-time cap
 //          (default 15 min). No second run alone: any failed repetition fails the scenario. A missing or unknown <commit> is an
 //          error, written to --json as { error } (no fallback to some other set of scenarios).
-// --json: { wall, workers, planned (estimated scenario seconds), results: [{ name, why, ok, ms, fails, known, alone, files, runs, failed }], deferred, notes, base, repeat, error }
+// --json: { wall, workers, planned (estimated scenario seconds), results: [{ name, why, ok, ms, fails, known, alone, files, runs, failed }], deferred, deferredChanged, notes, base, repeat, error }
 //   runs and failed (how many repetitions ran and failed) only with --repeat
 import { spawn, spawnSync } from "node:child_process";
 import * as fs from "node:fs";
@@ -77,6 +79,17 @@ if (sinceMode) {
 const sh = opt("shard")?.split("/").map(Number);
 if (sh) list = shard(list, sh[0], sh[1], (it) => msOf(it.name));
 
+const left = since ? "not repeated (over the cap)" : `left to ${opt("defer-to") ?? "the nightly run"}`;
+const workers = Math.max(1, Math.min(workersWanted, list.length * repeat));
+const why = Object.fromEntries(list.map((x) => [x.name, x.why]));
+const counts = Object.entries(Object.groupBy(list, (x) => x.why)).map(([w, xs]) => `${xs.length} ${w}`).join(", ");
+const planned = Math.round(list.reduce((t, x) => t + msOf(x.name), 0) * repeat / 1000);
+console.log(`${has("dry") ? "would run" : "running"} ${list.length} scenarios${repeat > 1 ? ` ${repeat} times each` : ""} (${counts || "none"}), about ${planned} s of scenario time, on ${workers} worker${workers > 1 ? "s" : ""}${plan?.deferred.length ? `; ${plan.deferred.length} ${left}` : ""}`);
+if (has("dry")) {
+  if (plan?.deferred.length) console.log(`${left}: ${plan.deferred.join(", ")}`);
+  process.exit(0);
+}
+
 const against = opt("against");
 if (against) {
   const git = (...a) => spawnSync("git", a, { cwd: REPO, encoding: "utf8" });
@@ -99,10 +112,6 @@ if (against) {
 
 if (!against && !fs.existsSync(path.join(REPO, "extensions/vscode/media/board/board.js"))) die("the board is not built (extensions/vscode/media/board/board.js): run npm run build first");
 
-const workers = Math.max(1, Math.min(workersWanted, list.length * repeat));
-const why = Object.fromEntries(list.map((x) => [x.name, x.why]));
-const counts = Object.entries(Object.groupBy(list, (x) => x.why)).map(([w, xs]) => `${xs.length} ${w}`).join(", ");
-console.log(`running ${list.length} scenarios${repeat > 1 ? ` ${repeat} times each` : ""} (${counts || "none"}) on ${workers} worker${workers > 1 ? "s" : ""}${plan?.deferred.length ? `; ${plan.deferred.length} ${since ? "not repeated (over the cap)" : "deferred to the nightly run"}` : ""}`);
 
 const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const strip = (s) => s.replace(/\x1b\[[0-9;]*m/g, "");
@@ -162,7 +171,7 @@ const wall = Math.round((Date.now() - t0) / 1000);
 console.log(`\n${failed.length ? `${failed.length} of ${results.length} scenarios failed: ${failed.map((r) => r.name).join(", ")}` : `all ${results.length} scenarios passed`} in ${wall} s` +
   (knownHit.length ? `; ${knownHit.length} known failures (tiers.json)` : "") + (alone.length ? `; passed only when run alone: ${alone.join(", ")}` : ""));
 for (const r of failed) for (const f of r.fails.slice(0, 3)) console.log(`  ${r.name}: ${f.split("\n")[0]}`);
-if (plan?.deferred.length) console.log(`${since ? "not repeated (over the cap)" : "deferred to the nightly run"}: ${plan.deferred.join(", ")}`);
-writeJson({ wall, workers, planned: Math.round(list.reduce((t, x) => t + msOf(x.name), 0) * repeat / 1000), results: results.map((r) => ({ ...r, why: why[r.name] })), deferred: plan?.deferred ?? [], notes: plan?.notes ?? [],
+if (plan?.deferred.length) console.log(`${left}: ${plan.deferred.join(", ")}`);
+writeJson({ wall, workers, planned, results: results.map((r) => ({ ...r, why: why[r.name] })), deferred: plan?.deferred ?? [], deferredChanged: plan?.deferredChanged ?? [], notes: plan?.notes ?? [],
   ...(since ? { base: since, repeat } : {}) });
 process.exit(failed.length ? 1 : 0);

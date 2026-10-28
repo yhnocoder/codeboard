@@ -4,7 +4,8 @@
 //      (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
 //      sources changed since the last one
 //   2. as soon as the board is built (the scenarios need nothing else), the harness scenarios this change needs
-//      (tools/test/pick.mjs), compared with origin/main, several at a time, within what is left of the 90 seconds
+//      (tools/test/pick.mjs), compared with origin/main, several at a time, within what is left of the 90 seconds; what doesn't
+//      fit is listed as left to CI
 // Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness>]
 //   scenario names are always run (the problem being worked on); --all runs every scenario, with no time limit
 import { spawn, execFileSync } from "node:child_process";
@@ -76,7 +77,7 @@ const rate = (() => {
   return workers * 0.8;
 })();
 const budget = opt("budget") ?? Math.max(30, Math.round((LIMIT - secs() - 25) * rate));
-const harness = args.includes("--all") ? [...focus] : ["--select", `--base=${base}`, `--budget=${budget}`, ...(focus.length ? [`--focus=${focus.join(",")}`] : [])];
+const harness = args.includes("--all") ? [...focus] : ["--select", `--base=${base}`, `--budget=${budget}`, "--defer-to=CI", ...(focus.length ? [`--focus=${focus.join(",")}`] : [])];
 console.log(`harness: ${args.includes("--all") ? "every scenario" : `changes since ${base.slice(0, 7)}, budget ${budget} s of scenario time`} on ${workers} workers`);
 // The harness at a lower priority: the unit tests are the longest of the jobs it shares the CPU with, and a harness that uses up
 // any CPU left over finishes no later, while unit tests starved by its workers (63 s instead of 20 s on 4 cores) end the run last

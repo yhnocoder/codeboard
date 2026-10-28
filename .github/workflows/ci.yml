@@ -147,7 +147,7 @@ jobs:
             const jobs = JSON.parse(process.env.JOBS);
             // Harness: what ran, why, what failed, what was left to the nightly run
             const hr = [1, 2].map((k) => json(`${A}/harness-${k}/result.json`)).filter((x) => x.results);
-            const res = hr.flatMap((x) => x.results), deferred = hr[0]?.deferred ?? [];
+            const res = hr.flatMap((x) => x.results), deferred = hr[0]?.deferred ?? [], deferredChanged = hr[0]?.deferredChanged ?? [];
             const by = Object.entries(res.reduce((m, r) => ((m[r.why] = (m[r.why] || 0) + 1), m), {})).map(([w, n]) => `${n} ${w}`).join(", ");
             const known = [...new Set(res.flatMap((r) => r.known || []))], alone = res.filter((r) => r.alone).map((r) => r.name);
             const harness = !hr.length ? ["**Harness**: no results."] : [
@@ -155,6 +155,7 @@ jobs:
               ...res.filter((r) => !r.ok).map((r) => `- ❌ ${r.name}: ${(r.fails[0] || r.error || "").slice(0, 200)}`),
               ...(known.length ? [`- known failures (tiers.json): ${known.length}`] : []),
               ...(alone.length ? [`- passed only when run alone: ${alone.join(", ")}`] : []),
+              ...(deferredChanged.length ? [`- changed scenarios over the budget, deferred to the nightly run (name them on a \`Tests:\` line to run them here): ${deferredChanged.length}`] : []),
               ...(deferred.length ? ["", `<details><summary>Deferred</summary>${deferred.join(", ")}</details>`] : []),
             ];
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;

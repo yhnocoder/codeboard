@@ -1,6 +1,6 @@
 # 测试规则
 
-三层，各有时间上限。可以漏掉小问题，但大问题和正在修的问题每一层都一定会测到。
+三层，各有时间上限。可以漏掉小问题，但大问题和正在修的问题每一层都一定会测到；只是改过的场景在预算里排最前，一次改了太多时放不下的交给下一层（本地 → CI → 每晚全量）。
 
 | 层 | 什么时候 | 时间上限 | 跑什么 |
 |---|---|---|---|
@@ -13,9 +13,11 @@
 **大问题**：typecheck、单元测试（analysis、core、markdown、board、host、插件，都是 vitest；markdown 的包括 npm 包里装了什么的检查）、Markdown 示例（`examples/markdown-demo`：只用 `@yhnocoder/markdown` 的页面，构建后在 Chromium 里显示、编辑、保存走一遍，几秒）、e2e 主流程每次都跑。`packages/board/test/tiers.json` 里的 `smoke` 列表也每次都跑，每个主要功能一个跑得快的场景。
 
 **正在修的问题**：下面这几类场景不受时间预算限制，每次都跑：
-- 这次改动新增或改过的场景：场景自己的 `test(…)` 改了，或者它所在文件里测试以外的部分（import、共用的 helper）改了。只改注释、空白、类型不算
+- 这次改动新增的场景：基准版本的文件里没有、昨晚全量也没跑过的（只是挪到别的文件、或者文件改了名的不算新增，算改过）
 - 昨晚全量跑挂了的场景（会一直跑，直到修好）
 - 点名要跑的：本地 `npm run check -- 场景名 …`；PR 描述里写一行 `Tests: 场景名, 场景名`
+
+**改过的场景**在预算里排第一，快的在前：场景自己的 `test(…)` 改了，或者它所在文件里测试以外的部分（import、共用的 helper）改了。只改注释、空白、类型不算。它们要占预算，不再无条件跑：一次机械的改动（改了一个字段名、给共用 helper 加了个参数）会碰到几十个文件、上百个场景，不限时就能把本地 90 秒撑到十分钟（#99：172 个改过的场景，约 1050 秒场景时间）。放不下的不会悄悄丢掉：本地列成"left to CI"，CI 列进报告（"deferred to the nightly run"，改过的单独数一行），每晚全量都会跑到。真要在 PR 上跑某几个，写进 `Tests:` 行。也不去猜一段改动"只是改名"就不算：字段名、字面量正是被测代码读的东西，这种判断靠不住。
 
 **其余的**先排昨晚还没有、这次改动又没碰到的新场景（别的分支加的，它们自己的 PR 已经跑过），快的在前；再按"改到的源文件"挑：每晚全量跑时会记下每个场景执行到了哪些源文件（文件里有函数跑过才算），以及跑了多久（覆盖率，存在 `ci-screenshots` 分支的 `impact/`）。跑过改动文件的场景都算受影响，其中跑过的文件越少越靠前，直到用完预算；放不下的写进 CI 报告，标成"留给夜里全量"。CSS、构建配置、lockfile、harness 自己、没有场景跑过的源文件这类改动看不出影响哪些场景，就当所有场景都可能受影响，先跑快的。比较的基准（PR 的目标分支、本地的 `origin/main` 分叉点）找不到时直接报错，不会拿别的提交凑合。
 
@@ -26,7 +28,7 @@ harness 场景是 Playwright Test 的测试（`packages/board/test/scenarios/*.s
 `tools/test/harness.mjs` 分两轮调 Playwright：先在几个 worker 上一起跑，再一个一个单独跑。一起跑时挂了的场景会在第二轮单独再跑一次，单独跑过了就算过（报告里标"alone"）。对 CPU 负载敏感、并行时必挂的场景登记在 `tiers.json` 的 `solo`，放在第二轮单独跑（和 perf 一样）。
 
 每晚还有两件事单独报在 #19 的评论里（各自一节，不进 `nightly-failures`，所以不算"正在修的问题"、不带到 PR 上，也不让夜跑变红）：
-- **Flaky**：harness 全量跑完后，`repeat` job 把上一次跑完的定时夜跑（工作流运行列表里 `event=schedule` 的那次的 `head_sha`）以来改过的场景（同上；新场景都在其中）各跑 3 遍（`harness.mjs --changed-since=<commit> --repeat=3`，4 个 worker 并行，`solo` 的仍一个一个跑，按估计用时最多 15 分钟，放不下的报出来），任何一遍挂了就算 flaky；全量里本来就挂的不重复算。找不到上一次定时夜跑或它的提交时报错，不拿别的场景凑合。
+- **Flaky**：harness 全量跑完后，`repeat` job 把上一次跑完的定时夜跑（工作流运行列表里 `event=schedule` 的那次的 `head_sha`）以来新增和改过的场景（同上）各跑 3 遍，新增的排在前面（从没和别的场景一起跑过，最可能 flaky），各自快的在前（`harness.mjs --changed-since=<commit> --repeat=3`，4 个 worker 并行，`solo` 的仍一个一个跑，按估计用时最多 15 分钟，放不下的报出来），任何一遍挂了就算 flaky；全量里本来就挂的不重复算。找不到上一次定时夜跑或它的提交时报错，不拿别的场景凑合。
 - **只有单独跑才过**：全量里标了"alone"的场景。
 
 `tiers.json` 的 `known` 里登记的是已知、另有地方跟进的失败，按检查名（`check` 的名字开头）对上。它们照样会跑、出现在报告里，但不让 CI 变红。修好时把那一条删掉。
@@ -39,6 +41,7 @@ npm run check -- markdownRender notes          # 加上点名的场景
 npm run check -- --all                # 所有场景，不限时间
 npm run harness -- markdownRender     # 只跑点名的场景（HARNESS_LIGHT=1 用亮色主题）
 npm run harness -- --workers=4        # 所有场景（manual 除外），4 个 worker 一起跑
+npm run harness -- --select --base=origin/main --budget=110 --dry   # 只看挑选：这次改动会跑哪些场景、为什么、约多少秒场景时间、哪些放不下，什么都不跑
 npm run harness -- --against=origin/main markdownRender   # 用现在的场景跑 origin/main 构建出来的白板：新场景在旧代码上是不是真的会挂（每个提交第一次要构建，约 20 秒，在 test-out/against/）
 npx playwright test -c packages/board -g markdownRender    # 直接用 Playwright（不管 tiers.json；-g 按标题匹配，--ui、--debug 都能用）
 npm run build -w @yhnocoder/markdown                      # 只构建 Markdown 包（packages/markdown/dist，几秒）：白板、它的 typecheck、Markdown 示例用的都是这份构建，和 npm 上的一样；改了 packages/markdown/src 单独跑这些之前先跑它

@@ -1,20 +1,25 @@
 // Picks the harness scenarios a change needs, within a time budget. Used by tools/test/harness.mjs --select (CI and npm run check).
 //
 // Always run, whatever the budget:
-//   focus   scenarios being worked on: named with --focus or on a "Tests:" line of the PR description, changed by this change
-//           (changedScenarios), or failing in the last nightly run
-//   smoke   the fixed list in packages/board/test/tiers.json: one quick scenario per main feature, so a big break never slips through
+//   asked     named with --focus or on a "Tests:" line of the PR description
+//   added     scenarios this change adds: in neither the base version of their file nor the last nightly run (a scenario moved to
+//             another file, or a renamed file, adds nothing)
+//   failing   failing in the last nightly run
+//   smoke     the fixed list in packages/board/test/tiers.json: one quick scenario per main feature, so a big break never slips through
 // Then, while the budget lasts:
+//   changed   scenarios whose code this change edits (scenarioChanges), the quickest first. Budgeted rather than always run: a
+//             mechanical edit of many spec files (a renamed field, a new helper argument) would outgrow any budget several times over
 //   new       scenarios the last nightly run doesn't have yet that this change doesn't touch (another branch added them; their own
 //             PR ran them), the quickest first
 //   affected  scenarios that ran a changed source file in the last nightly run (impact map), those that ran the fewest other
 //             files first. A change the map can't place (CSS, build config, lockfile, the harness itself, a source file no scenario
 //             ran) counts every scenario as affected, the quickest first. A new source file is placed through the changed files
 //             that import it; only when nothing else changed it can't be placed.
-// What doesn't fit is reported as deferred: the nightly run covers it.
+// What doesn't fit is reported as deferred, changed scenarios first: CI runs what npm run check left out, the nightly run (every
+// scenario) what CI left out.
 //
-// repeatPick (harness.mjs --changed-since, the nightly flake repeat): the scenarios defined in test files changed since a commit,
-// the quickest first, within a wall-time cap for running each of them several times.
+// repeatPick (harness.mjs --changed-since, the nightly flake repeat): the scenarios added, then those changed, since a commit, the
+// quickest first within each, within a wall-time cap for running each of them several times.
 import { execFileSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
@@ -81,51 +86,57 @@ const GLOBAL = [
 const SRC = /^packages\/(board|core|host|markdown)\/src\//;
 
 /**
- * all: { name: defining test file }, change: changes(), impact: loadImpact(), tiers: tiers.json, focus: [names], budgetMs: total scenario time
- * → { run: [{ name, why, ms }], deferred: [names], notes: [strings] }
+ * all: { name: defining test file }, change: changes(), impact: loadImpact(), tiers: tiers.json, focus: [names], budgetMs: total scenario
+ * time, changed: scenarioChanges()
+ * → { run: [{ name, why, ms }], deferred: [names], deferredChanged: [the changed scenarios among them], notes: [strings] }
  */
-export function pick({ all, change, impact, tiers, focus = [], budgetMs }) {
+export function pick({ all, change, impact, tiers, focus = [], budgetMs, changed = scenarioChanges(all, change, tiers, impact) }) {
   const names = Object.keys(all).filter((n) => !(tiers.manual ?? []).includes(n));
   const map = impact.map?.scenarios ?? {};
   const ms = msOf(impact);
+  const quick = (a, b) => ms(a) - ms(b) || a.localeCompare(b);
   const notes = [];
   const why = new Map();
   const add = (n, w) => { if (all[n] && !why.has(n)) why.set(n, w); };
   for (const n of focus) { if (all[n]) add(n, "asked"); else notes.push(`unknown scenario: ${n}`); }
-  for (const n of changedScenarios(all, change, tiers)) add(n, "test changed");
+  for (const n of changed.added) add(n, "test added");
   for (const n of impact.failing ?? []) add(n, "failing last night");
   for (const n of tiers.smoke ?? []) add(n, "smoke");
+  const edited = changed.edited.filter((n) => all[n] && !why.has(n)).sort(quick);
 
   const global = change.files.filter((f) => GLOBAL.some((re) => re.test(f)));
   const seen = new Set(Object.values(map).flatMap((s) => s.files ?? []));
   const src = change.files.filter((f) => SRC.test(f) && !global.includes(f));
   const placed = src.filter((f) => seen.has(f));
   const unplaced = src.filter((f) => !seen.has(f) && !(placed.length && change.added.includes(f)));
-  const fresh = impact.map ? names.filter((n) => !why.has(n) && !map[n]).sort((a, b) => ms(a) - ms(b) || a.localeCompare(b)) : [];
-  const rest = names.filter((n) => !why.has(n) && !fresh.includes(n));
+  const fresh = impact.map ? names.filter((n) => !why.has(n) && !edited.includes(n) && !map[n]).sort(quick) : [];
+  const rest = names.filter((n) => !why.has(n) && !edited.includes(n) && !fresh.includes(n));
   let affected = [];
   if (global.length || unplaced.length || (src.length && !impact.map)) {
     const causes = [...global, ...unplaced];
     notes.push(`every scenario may be affected (${causes.length ? causes.slice(0, 4).join(", ") + (causes.length > 4 ? ", …" : "") : "no impact map yet"}): quickest first`);
-    affected = rest.sort((a, b) => ms(a) - ms(b) || a.localeCompare(b));
+    affected = rest.sort(quick);
   } else if (placed.length) {
     const files = (n) => map[n]?.files ?? [];
     const hit = (n) => files(n).filter((f) => placed.includes(f)).length;
-    affected = rest.filter((n) => hit(n) > 0).sort((a, b) => files(a).length - files(b).length || ms(a) - ms(b) || a.localeCompare(b));
+    affected = rest.filter((n) => hit(n) > 0).sort((a, b) => files(a).length - files(b).length || quick(a, b));
   }
   let used = [...why.keys()].reduce((t, n) => t + ms(n), 0);
-  if (used > budgetMs) notes.push(`focus and smoke alone take ${Math.round(used / 1000)} s of scenario time, over the ${Math.round(budgetMs / 1000)} s budget`);
+  if (used > budgetMs) notes.push(`asked, added, failing and smoke scenarios alone take ${Math.round(used / 1000)} s of scenario time, over the ${Math.round(budgetMs / 1000)} s budget`);
   const deferred = [];
-  for (const [n, w] of [...fresh.map((n) => [n, "new"]), ...affected.map((n) => [n, "affected"])]) {
+  for (const [n, w] of [...edited.map((n) => [n, "test changed"]), ...fresh.map((n) => [n, "new"]), ...affected.map((n) => [n, "affected"])]) {
     if (used + ms(n) <= budgetMs) { why.set(n, w); used += ms(n); } else deferred.push(n);
   }
-  return { run: [...why].map(([name, w]) => ({ name, why: w, ms: ms(name) })), deferred, notes };
+  const deferredChanged = deferred.filter((n) => edited.includes(n));
+  if (deferredChanged.length) notes.push(`${deferredChanged.length} of ${edited.length} changed scenarios over the budget, deferred (the quickest ones ran)`);
+  return { run: [...why].map(([name, w]) => ({ name, why: w, ms: ms(name) })), deferred, deferredChanged, notes };
 }
 
 /** Scenarios (manual ones left out) whose code the change touches: the scenario's own test(…) block, or the part of its file before
  *  the first test (imports, shared helpers). Comments, whitespace and types don't count, so a comment-only cleanup of many test files
- *  doesn't rerun all their scenarios. A new scenario is always changed */
-export function changedScenarios(all, change, tiers) {
+ *  doesn't rerun all their scenarios. → { added, edited } (names). Added: in neither the base version of its file nor the last
+ *  nightly run, so that moving a scenario to another file, or renaming its file, only edits it */
+export function scenarioChanges(all, change, tiers, impact = {}) {
   const cache = new Map();
   const parts = (file) => {
     if (!cache.has(file)) {
@@ -137,11 +148,15 @@ export function changedScenarios(all, change, tiers) {
     }
     return cache.get(file);
   };
-  return Object.keys(all).filter((n) => {
-    if ((tiers.manual ?? []).includes(n) || !change.files.includes(all[n])) return false;
+  const ran = impact.map?.scenarios ?? {};
+  const added = [], edited = [];
+  for (const n of Object.keys(all)) {
+    if ((tiers.manual ?? []).includes(n) || !change.files.includes(all[n])) continue;
     const [a, b] = parts(all[n]);
-    return a.head !== b.head || !a.tests.has(n) || a.tests.get(n) !== b.tests.get(n);
-  });
+    if (!a.tests.has(n) && !ran[n]) added.push(n);
+    else if (a.head !== b.head || !a.tests.has(n) || a.tests.get(n) !== b.tests.get(n)) edited.push(n);
+  }
+  return { added, edited };
 }
 /** A scenario file as { head, tests: name → code }: each top-level `test("name", …)` (one line, or up to its closing `});` line), and
  *  the rest of the file (imports, helpers, wherever they stand). Each part has comments, whitespace and types stripped (esbuild; imports kept, though the tests that use them are elsewhere); a part esbuild can't
@@ -159,20 +174,22 @@ export function chunks(src) {
 }
 
 /**
- * The flake repeat: changedScenarios, the quickest first, while the estimated wall time of `repeat` runs of each fits in capMs:
- * the "solo" ones (tiers.json) one at a time, the others on `workers` workers.
+ * The flake repeat: the scenarios added since the commit, then those changed (scenarioChanges), the quickest first within each, while
+ * the estimated wall time of `repeat` runs of each fits in capMs: the "solo" ones (tiers.json) one at a time, the others on `workers`
+ * workers. Added ones first: one that has never run beside the others in a nightly run is the likeliest to be flaky.
  * → { run: [{ name, why, ms }], deferred: [names], notes: [strings] }
  */
-export function repeatPick({ all, change, impact, tiers, repeat, workers, capMs }) {
+export function repeatPick({ all, change, impact, tiers, repeat, workers, capMs, changed = scenarioChanges(all, change, tiers, impact) }) {
   const ms = msOf(impact);
   const cost = (n) => (ms(n) * repeat) / ((tiers.solo ?? []).includes(n) ? 1 : workers);
-  const names = changedScenarios(all, change, tiers).sort((a, b) => ms(a) - ms(b) || a.localeCompare(b));
+  const quick = (a, b) => ms(a) - ms(b) || a.localeCompare(b);
+  const names = [...[...changed.added].sort(quick).map((n) => [n, "test added"]), ...[...changed.edited].sort(quick).map((n) => [n, "test changed"])];
   const run = [], deferred = [];
   let used = 0;
-  for (const n of names) {
-    if (used + cost(n) <= capMs) { run.push({ name: n, why: "test changed", ms: ms(n) }); used += cost(n); } else deferred.push(n);
+  for (const [n, w] of names) {
+    if (used + cost(n) <= capMs) { run.push({ name: n, why: w, ms: ms(n) }); used += cost(n); } else deferred.push(n);
   }
-  const notes = deferred.length ? [`${deferred.length} changed scenarios over the ${+(capMs / 60000).toFixed(1)} min cap, not repeated: ${deferred.join(", ")}`] : [];
+  const notes = deferred.length ? [`${deferred.length} added or changed scenarios over the ${+(capMs / 60000).toFixed(1)} min cap, not repeated: ${deferred.join(", ")}`] : [];
   return { run, deferred, notes };
 }
 
