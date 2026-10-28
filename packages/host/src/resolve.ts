@@ -15,7 +15,7 @@ import { highlight, tokensOf } from "./views";
 import { libOf } from "./scope";
 import { entriesOf, indexedFiles, knownEntries, lookupName, pausingIndex, type IndexEntry } from "./nameindex";
 import { log } from "./log";
-import { exists, fromHostPath, hostPath, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
+import { exists, fromHostPath, hostPath, inWorkspace, langOf, mkUid, readText, recentFiles, splitLines, workspace, wsRoots } from "./ws";
 
 export { nameIndexReady, resetIndex, startNameIndex } from "./nameindex";
 
@@ -104,11 +104,12 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
     resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
-      // 旁边有 .py 的 .pyi 存根代表那个 .py 里的定义。旁边没有的（torch._C.*、Tensor.X、编译出来的扩展）不是实现：
-      // 跨语言注册和算子在前，存根留作备选，什么都找不到时才是答案
+      // 旁边有 .py 的 .pyi 存根代表那个 .py 里的定义。工作区里旁边没有 .py 的（torch._C.*、Tensor.X、编译出来的扩展）不是实现：
+      // 跨语言注册和算子在前，存根留作备选，什么都找不到时才是答案。工作区外的存根（typeshed 的 builtins.pyi、库的存根）
+      // 照常是答案：同名的 pybind .def("get") 和 dict.get 无关
       let defs: Def[] = [];
       for (const d of await clickDefs(wp.abs, line, m.col)) {
-        const impl = isStub(d) ? await stubImpl(d, m.name) : d;
+        const impl = isStub(d) ? (await stubImpl(d, m.name)) ?? (inWorkspace(d.abs) ? null : d) : d;
         if (!impl) stubs.push(d);
         else if (!defs.some((x) => x.abs === impl.abs && x.line === impl.line)) defs.push(impl);
       }

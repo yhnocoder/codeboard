@@ -18,8 +18,12 @@ const ROOT = tempRepo("stubs", {
   "pkg/fast.pyi": "def fast_sum(xs: list[int]) -> int: ...\ndef only_stub(x: int) -> int: ...\n",
   "csrc/fast.cpp": "#include <pybind11/pybind11.h>\n\nint fast_sum(std::vector<int> xs) {\n  return 0;\n}\n\nPYBIND11_MODULE(fast, m) {\n  m.def(\"fast_sum\", &fast_sum);\n}\n",
   "pkg/ns.py": "class Namespace:\n    def __getattr__(self, name):\n        return name\n",
-  "main.py": "from pkg import shapes, fast\n\n\ndef run(s, ns):\n    a = shapes.make('c')\n    b = s.area()\n    c = fast.fast_sum([1])\n    ns.anything()\n    return fast.only_stub(c)\n",
+  "csrc/cfg.cpp": "#include <pybind11/pybind11.h>\n\nstruct Config {\n  int get(const char* k) { return 0; }\n};\n\nPYBIND11_MODULE(cfg, m) {\n  py::class_<Config>(m, \"Config\").def(\"get\", &Config::get);\n}\n",
+  "main.py": "from pkg import shapes, fast\n\n\ndef run(s, ns, d):\n    a = shapes.make('c')\n    b = s.area()\n    c = fast.fast_sum([1])\n    ns.anything()\n    d.get('k')\n    return fast.only_stub(c)\n",
 });
+// A stub outside the workspace, like the typeshed stubs Pylance bundles
+const TYPESHED = fs.mkdtempSync("/tmp/codeboard-typeshed-");
+fs.writeFileSync(path.join(TYPESHED, "builtins.pyi"), "class dict:\n    def get(self, key): ...\n");
 const W = nodeWorkspace(ROOT);
 const abs = (rel: string) => path.join(ROOT, rel);
 const answer = (rel: string, line: number) => { forgetDefs(); W.language.definitions = async () => [{ abs: abs(rel), line, col: 4 }]; };
@@ -32,7 +36,7 @@ beforeAll(async () => {
   await startTreeSitter();
   run = (await card(abs("main.py"), "run")).seg;
 });
-afterAll(() => fs.rmSync(ROOT, { recursive: true, force: true }));
+afterAll(() => { fs.rmSync(ROOT, { recursive: true, force: true }); fs.rmSync(TYPESHED, { recursive: true, force: true }); });
 
 describe("a .pyi stub from the language server", () => {
   it("stands for the definition in the .py beside it", async () => {
@@ -54,6 +58,14 @@ describe("a .pyi stub from the language server", () => {
     expect("card" in r && r.mark?.alts?.map((a) => a.label)).toEqual(["stub · fast.pyi fast_sum"]);
     answer("pkg/fast.pyi", 2);
     expect(target(await expand({ ...at(run, /fast\.only_stub/, "only_stub"), name: "only_stub" }))).toBe("pkg/fast.pyi only_stub");
+  });
+  it("outside the workspace stays the answer: a pybind .def of the same name in the workspace is not it", async () => {
+    forgetDefs();
+    W.language.definitions = async () => [{ abs: path.join(TYPESHED, "builtins.pyi"), line: 2, col: 8 }];
+    const r = await expand({ ...at(run, /d\.get/, "get"), name: "get" });
+    expect("card" in r && `${r.card.segments[0].symbol?.qual}`).toBe("dict.get");
+    expect("card" in r && r.card.segments[0].path).toMatch(/builtins\.pyi$/);
+    expect("card" in r && r.mark?.alts).toBeFalsy();
   });
 });
 
