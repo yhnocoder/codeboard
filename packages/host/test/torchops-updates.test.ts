@@ -196,16 +196,48 @@ describe("op index without blocking the host", () => {
     const ops = parseOps("# header\n\n- func: a(Tensor self) -> Tensor\n  dispatch:\n    CPU: a_cpu\n\n- func: b(Tensor self) -> Tensor\n  dispatch: [\n\n- func: c(Tensor self) -> Tensor\n");
     expect(ops.map((d) => `${d.name}:${d.line}`)).toEqual(["a:3", "c:10"]);
   });
-  it("lets timers run while it parses a large yaml and scans, and answers a click made before the scan is done", async () => {
+  // A turn of the event loop is counted by a setImmediate chain: a step that never yields lets none through, however long it takes
+  const turnCounter = () => {
+    const c = { n: 0, on: true };
+    const tick = () => { c.n++; if (c.on) setImmediate(tick); };
+    setImmediate(tick);
+    return c;
+  };
+  it("lets the event loop run while it parses a large yaml, and answers a click made before the scan is done", async () => {
     const yaml = abs("aten/src/ATen/native/native_functions.yaml");
     fs.appendFileSync(yaml, Array.from({ length: 4000 }, (_, i) => `\n- func: filler_${i}(Tensor self, int dim) -> Tensor\n  variants: function, method\n  dispatch:\n    CPU: filler_${i}_cpu\n    CUDA: filler_${i}_cuda\n`).join(""));
     resetIndex();
-    let ticks = 0;
-    const timer = setInterval(() => ticks++, 1);
+    const turns = turnCounter();
+    let parsing = -1, parsed = -1;
+    onRead.set(yaml, () => { parsing = turns.n; });
+    const log = W.log;
+    W.log = (level, text) => { if (/ops from .*native_functions\.yaml/.test(text)) parsed = turns.n; log(level, text); };
     const r = await click(await seg("aten/src/ATen/native/SoftMax.cpp", "at::native::softmax"), /at::_softmax/, "_softmax");
     await warmOps();
-    clearInterval(timer);
+    turns.on = false;
+    W.log = log;
     expect(target(r)).toBe("aten/src/ATen/native/cuda/SoftMaxNew.cu at::native::softmax_cuda_out");
-    expect(ticks).toBeGreaterThan(3);
+    expect(parsing).toBeGreaterThanOrEqual(0);
+    expect(parsed - parsing).toBeGreaterThanOrEqual(3);
+  });
+  it("lets the event loop run inside a large generated file it scans", async () => {
+    const big = abs("torch/csrc/autograd/generated/VariableTypeEverything.cpp");
+    fs.mkdirSync(path.dirname(big), { recursive: true });
+    fs.writeFileSync(big, "");
+    // an unsaved buffer: reading it takes no I/O, so every turn while it is scanned comes from the scan yielding
+    W.open.set(big, Array.from({ length: 200_000 }, (_, i) => `  auto r${i} = filler_${i % 4000}_cpu(self, ${i});\n`).join(""));
+    const order: [string, number][] = [];
+    const unsavedBefore = W.files.unsavedText;
+    resetIndex();
+    const turns = turnCounter();
+    W.files.unsavedText = (a) => { order.push([a, turns.n]); return unsavedBefore(a); };
+    await warmOps();
+    turns.on = false;
+    W.files.unsavedText = unsavedBefore;
+    W.open.delete(big);
+    fs.rmSync(big);
+    const at = order.findIndex(([a]) => a === big);
+    expect(at).toBeGreaterThanOrEqual(0);
+    expect(order[at + 1][1] - order[at][1]).toBeGreaterThanOrEqual(3);
   });
 });
