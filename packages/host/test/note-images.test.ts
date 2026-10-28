@@ -8,7 +8,9 @@ import { nodeFs } from "../src/nodefs";
 import { makeHandler } from "../src/handlers";
 import { MAX_NOTE_IMAGE, saveNoteImage } from "../src/images";
 import type { BoardHost, BoardPanel } from "../src/boards";
+import { useWorkspace } from "../src/ws";
 import { gif, png, WEBP_1PX } from "./images";
+import { nodeWorkspace } from "./node-workspace";
 
 const tmp = fs.mkdtempSync("/tmp/codeboard-img-");
 afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
@@ -64,10 +66,21 @@ describe("saving a pasted image", () => {
     expect(sniffImage(jpeg(64, 48, 3))).toEqual({ mime: "image/jpeg", anim: false, w: 64, h: 48 });
   });
 
-  it("refuses SVG, other files, a wrong signature and a cut-off image, and writes nothing", async () => {
+  it("keeps an SVG as .svg, named with the size its width / height or viewBox give (none when it has neither)", async () => {
     const { save, assets } = setup();
-    const msg = "Only PNG, JPEG, WebP and GIF images can go into a Note";
-    await expect(save(url(Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"), "image/svg+xml"))).rejects.toThrow(msg);
+    const svg = (attrs: string) => Buffer.from(`<?xml version="1.0"?>\n<!-- made by hand -->\n<svg xmlns="http://www.w3.org/2000/svg" ${attrs}><rect width="8" height="4"/></svg>`);
+    expect(await save(url(svg('width="240" height="160"'), "image/png"))).toMatch(/^assets\/[0-9a-f]{16}-240x160\.svg$/);
+    expect(await save(url(svg('viewBox="0 0 120 80"'), "image/svg+xml"))).toMatch(/-120x80\.svg$/);
+    expect(await save(url(svg('width="60" viewBox="0 0 120 80"')))).toMatch(/-60x40\.svg$/);
+    expect(await save(url(svg('width="100%" height="100%" viewBox="0 0 30 10"')))).toMatch(/-30x10\.svg$/);
+    expect(await save(url(svg("")))).toMatch(/^assets\/[0-9a-f]{16}\.svg$/);
+    expect(assets()).toHaveLength(5);
+  });
+
+  it("refuses other files, a wrong signature and a cut-off image, and writes nothing", async () => {
+    const { save, assets } = setup();
+    const msg = "Only PNG, JPEG, WebP, GIF and SVG images can go into a Note";
+    await expect(save(url(Buffer.from("<html><svg xmlns='http://www.w3.org/2000/svg'/></html>"), "image/svg+xml"))).rejects.toThrow(msg);
     await expect(save(url(Buffer.from("just some text pretending to be an image")))).rejects.toThrow(msg);
     const bad = Buffer.from(PNG); bad[1] = 0x51;
     await expect(save(url(bad))).rejects.toThrow(msg);
@@ -118,5 +131,35 @@ describe("reading an image card's picture", () => {
     await expect(read(s, "../boards.json")).rejects.toThrow(/Bad asset name/);
     await expect(read(s, "missing.png")).rejects.toThrow();
     await expect(read(s, "notes.txt")).rejects.toThrow(/Not an image/);
+  });
+});
+
+describe("adding an image card's picture", () => {
+  const SVG = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 80"><rect width="120" height="80"/></svg>`);
+  const handler = (s: ReturnType<typeof setup>) => makeHandler({ store: s.store } as unknown as BoardHost);
+
+  it("stores it under the extension its content gives, whatever name the board sends (webviews type a file by its extension)", async () => {
+    const s = setup();
+    const add = (name: string, dataUrl: string) => handler(s)({} as BoardPanel, { type: "saveAsset", req: 1, name, dataUrl } as BoardToHost) as Promise<string>;
+    expect(await add("image.png", url(SVG, "image/svg+xml"))).toBe(`${sha(SVG)}.svg`);
+    expect(await add("diagram.svg", url(PNG, "image/svg+xml"))).toBe(`${sha(PNG)}.png`);
+    expect(await add("icon.ico", url(Buffer.from([0, 0, 1, 0, 1, 0]), "image/x-icon"))).toMatch(/^[0-9a-f]{16}\.ico$/);
+  });
+
+  it("answers a picked .svg (or a picture under the wrong extension) as a data URL typed by its content", async () => {
+    const s = setup(), W = nodeWorkspace(tmp);
+    const warned: string[] = [];
+    let picked = "";
+    W.ui.openDialog = async () => picked;
+    W.ui.warn = async (text: string) => { warned.push(text); return undefined; };
+    useWorkspace(W);
+    const pick = () => handler(s)({} as BoardPanel, { type: "pickFile", req: 1, kind: "image" } as BoardToHost) as Promise<string | null>;
+    fs.writeFileSync(picked = path.join(tmp, "diagram.svg"), SVG);
+    expect(await pick()).toBe(url(SVG, "image/svg+xml"));
+    fs.writeFileSync(picked = path.join(tmp, "photo.jpg"), PNG);
+    expect(await pick()).toBe(url(PNG, "image/png"));
+    fs.writeFileSync(picked = path.join(tmp, "notes.svg"), "not a picture");
+    expect(await pick()).toBeNull();
+    expect(warned).toEqual(["notes.svg is not a PNG, JPEG, WebP, GIF or SVG image."]);
   });
 });

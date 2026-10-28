@@ -17,6 +17,7 @@ import { lineY } from "../state/geo";
 import { settleHome } from "../state/sections";
 import { hostRect, popCard } from "./common";
 import { fetchMeta, newLinkList } from "./web";
+import { cleanImage, svgDataUrl } from "../md/images";
 
 /** 新代码卡按设置默认隐藏注释 / 文档字符串 / 空行（卡上已经有设定的不动） */
 function withDefaults(c: Card): Card {
@@ -90,6 +91,7 @@ export async function newImage(at?: { x: number; y: number }) {
   return addImage(dataUrl, "image.png", at);
 }
 export async function addImage(dataUrl: string, name: string, at?: { x: number; y: number }) {
+  try { dataUrl = cleanImage(dataUrl); } catch (e) { toast((e as Error).message); return; }
   const file = await ask("saveAsset", { name, dataUrl }).catch(() => null);
   const src = file ?? dataUrl;
   const img = new Image();
@@ -139,6 +141,7 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   if (k.kind === "web") return newWeb(at, k.url);
   if (k.kind === "links") return newLinkList(k.urls, at);
   if (k.kind === "note") return newNote(at, true, text);
+  if (k.kind === "svg") return addImage(svgDataUrl(text.trim()), "pasted.svg", at);
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";
   const r = await ask("paste", { text }).catch((e) => { err = (e as Error).message; return null; });

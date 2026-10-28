@@ -1,12 +1,26 @@
 // 指针下的卡和线：它们的线临时浮到所有卡上面（canvas/Links.tsx 的图层）。卡片、标签、贴纸都从这里读写，不从组件 import
-import { createEffect, on, onCleanup, untrack } from "solid-js";
+import { createEffect, createMemo, createSelector, on, onCleanup, untrack } from "solid-js";
 import { state, hostOf } from "./store";
-import { camMoving } from "./camera";
+import { camMoving, stillZ } from "./camera";
 import { tune } from "./tune";
-import { boardSignal } from "./root";
+import { boardSignal, rooted } from "./root";
 
 export const [hoverLink, setHoverLink] = boardSignal<string | null>(null);
 export const [hoverCard, setHoverCard] = boardSignal<string | null>(null);
+const isHovered = rooted(() => createSelector(hoverCard));
+
+const PORT = 9;
+const portZoom = rooted(() => createMemo(() => {
+  const uz = Math.max(1, 1 / stillZ()), uv = Math.sqrt(uz);
+  return { "--uv": String(uv), "--port-hit": `${(PORT - PORT * uz / uv) / 2}px` };
+}));
+/**
+ * Zoomed out, the link ports (.eport, .lport) keep their 100% hit area on screen while the drawn dot grows only by the square root
+ * (a full-size dot looks oversized on a small board). Only the hovered card's ports get the sizes (inline, on the ports themselves):
+ * the others are hidden, and the pointer reaches a port through its card. Updating every port on each camera stop, through a rule
+ * or an inherited variable, made zooming restyle the board (+18% work per zoom step)
+ */
+export const portStyle = (card: string) => (isHovered(card) ? portZoom() : undefined);
 
 // 指针下的卡：离开后过 linkLeave 才算离开，鼠标从卡移到它的线上时线不掉下去。镜头动的时候不换（内容从指针下滑过也会进出卡），停下再按最后的那张算
 let hovNow: string | null = null, cardT: number | undefined;

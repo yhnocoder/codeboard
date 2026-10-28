@@ -35,13 +35,15 @@ export type PasteKind =
   | { kind: "web"; url: string }
   | { kind: "links"; urls: string[] } // 一次贴多个链接（每行一个）→ 一张 Link List
   | { kind: "code"; lang: string }
-  | { kind: "note" };
+  | { kind: "note" }
+  | { kind: "svg" }; // 一整份 SVG（设计工具的 Copy as SVG、编辑器里复制的 .svg 文件内容）→ Image 卡
 
 const URL_RE = /^https?:\/\/\S+$/;
 
 /** 纯文本剪贴板内容建什么卡（工作区代码、图片由宿主 / 白板单独判断） */
 export function classifyPaste(text: string): PasteKind {
   const t = text.trim();
+  if (isSvgMarkup(t)) return { kind: "svg" };
   if (URL_RE.test(t)) {
     const g = parseGithubUrl(t);
     if (g && isGithubCode(t, g)) return { kind: "github", ref: g };
@@ -52,6 +54,11 @@ export function classifyPaste(text: string): PasteKind {
   const lang = guessLang(t);
   return lang ? { kind: "code", lang } : { kind: "note" };
 }
+
+// 和 @yhnocoder/markdown 编辑器里粘贴 SVG 的判断一样（那个包不依赖 core）
+const SVG_DOC = /^\uFEFF?\s*(?:<\?xml[^>]*\?>\s*)?(?:(?:<!--[\s\S]*?-->|<!DOCTYPE\s+svg\b(?:[^>[]|\[[\s\S]*?\])*>)\s*)*<svg(?=[\s/>])(?:[^>]*\/>|[\s\S]*<\/svg>)\s*$/;
+/** 整段文字是一份 SVG（从开头的 <svg> 到结尾） */
+export const isSvgMarkup = (text: string) => SVG_DOC.test(text);
 
 /** 像不像代码；像的话猜语言：python / shellscript，或花括号家族里的 c / cpp / cuda-cpp / javascript / typescript / rust / go
  *  （Triton、TileLang 归 python，由 pythonDialect 单独标出）。按行打分：花括号、分号结尾这类家族共有的特征记在 c 里，

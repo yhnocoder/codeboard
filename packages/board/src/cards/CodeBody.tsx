@@ -1,6 +1,7 @@
 // 代码是一整块连续文本（选区连续），行号栏按实测行位置绝对定位；复制时不带行号（copy 事件里自己拼）。
 import { FreeEdit } from "./FreeEdit";
 import { lod } from "../state/camera";
+import { portStyle } from "../state/hover";
 import { menuOpen } from "../ui/Menu";
 import { tune } from "../state/tune";
 import { createMemo, For, Show, onMount, onCleanup, createEffect, createSignal, Switch, Match } from "solid-js";
@@ -297,14 +298,14 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
     // 选中的行上不弹（选行时很容易扫过名字）
     if (inSel(r.seg, r.line)) return clearPeek();
     const key = `${r.seg}:${r.line}:${a}`;
-    const pin = e.metaKey || e.ctrlKey;
+    // 按住 ⌘ 移动和不按一样：同时只一个、不固定。固定只靠按下 ⌘ 那一下（interact.ts）或菜单的 Peek Definition
     // 同一个词上：鼠标还在晃就重新计时，停稳了才弹
-    if (key === peekKey && !pin) {
+    if (key === peekKey) {
       if (Math.hypot(e.clientX - peekPt.x, e.clientY - peekPt.y) <= tune("peekStill")) return;
       clearTimeout(peekTimer);
     } else { clearPeek(); peekKey = key; }
     peekPt = { x: e.clientX, y: e.clientY };
-    peekTimer = window.setTimeout(() => { if (peekKey === key) act.showPeek(rowE, c().id, r.seg, r.line, a, word, pin); }, pin ? 0 : tune("peekDelay"));
+    peekTimer = window.setTimeout(() => { if (peekKey === key) act.showPeek(rowE, c().id, r.seg, r.line, a, word); }, tune("peekDelay"));
   };
   const clearPeek = () => { if (peekKey) { peekKey = ""; clearTimeout(peekTimer); act.scheduleHidePeek(); } };
   let leaveT: number | undefined;
@@ -410,7 +411,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
   return (
     <>
     <Show when={portTop() !== null && !p.dim?.() && !freeEditing()}>
-      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} data-nodrag data-export="strip" style={{ top: `${portTop()}px` }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={(e) => portDown(e, side === "l" ? "left" : "right")} />}</For>
+      <For each={["l", "r"] as const}>{(side) => <span class={`lport ${side}`} data-nodrag data-export="strip" style={{ top: `${portTop()}px`, ...portStyle(p.hostId) }} data-tip="Drag to link this line" onPointerEnter={keepRow} onPointerLeave={onLeave} onPointerDown={(e) => portDown(e, side === "l" ? "left" : "right")} />}</For>
     </Show>
     <div ref={scrollEl} class="cbody" classList={{ wrap: !!c().wrap }} onScroll={onScroll} onWheel={(e) => cardWheel(e, scrollEl)} onPointerLeave={onLeave}>
       <Show when={freeEditing()}>
@@ -448,7 +449,7 @@ export function CodeBody(p: { card: CodeCard; hostId: string; maxH?: boolean; di
               <Show when={ys()[m.row]}>
                 <Show when={m.span}><span class="mkr" style={{ top: `${ys()[m.row].y + 10}px`, height: `${(ys()[m.row + m.span!]?.y ?? ys()[m.row].y) - ys()[m.row].y}px` }} /></Show>
                 <button class="mk" classList={{ rv: !!m.review }} style={{ top: `${ys()[m.row].y}px` }} data-card={c().id} data-notes={m.ids.join(",")}
-                  data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids, e)} onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}>{m.n}</button>
+                  data-nodrag onPointerEnter={(e) => act.hoverMarker(e.currentTarget, m.ids)} onClick={(e) => act.pinMarker(e.currentTarget, m.ids)}>{m.n}</button>
               </Show>
             )}
           </For>

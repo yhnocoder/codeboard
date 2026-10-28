@@ -128,6 +128,7 @@ async function exportPng() {
   const W = Math.ceil(box.w + pad * 2), H = Math.ceil(box.h + pad * 2);
   const world = await cloneForExport(b, { kind: "board" }, exportOrder(b, { kind: "board" }));
   world.style.transform = `translate(${-box.x + pad}px, ${-box.y + pad}px)`;
+  await inlineAssets(world);
   const css = [...document.styleSheets].map((s) => { try { return [...s.cssRules].map((r) => r.cssText).join("\n"); } catch { return ""; } }).join("\n");
   const bg = getComputedStyle(document.body).getPropertyValue("--canvas") || getComputedStyle(document.body).backgroundColor;
   const rootStyle = document.body.getAttribute("style") ?? "";
@@ -143,6 +144,19 @@ async function exportPng() {
   g.drawImage(img, 0, 0);
   try { send({ type: "exportPng", dataUrl: cv.toDataURL("image/png"), name: `${fileName()}.png` }); }
   catch { toast("Export failed: an image on the board blocks export"); }
+}
+
+/** SVG 当图片画的时候不加载外面的东西：assets/ 里的图（Image 卡、Note 里的图）先换成宿主读出来的 data: URL，同一个文件只读一次 */
+async function inlineAssets(world: HTMLElement) {
+  const assets = state.host.assetBase ? new URL(state.host.assetBase + "/", location.href).href : "";
+  if (!assets) return;
+  const read = new Map<string, Promise<string | null>>();
+  await Promise.all([...world.querySelectorAll<HTMLImageElement>("img[src]")].filter((im) => im.src.startsWith(assets)).map(async (im) => {
+    const file = decodeURIComponent(im.src.slice(assets.length).split(/[?#]/)[0]);
+    if (!read.has(file)) read.set(file, ask("readAsset", { file }).catch(() => null));
+    const url = await read.get(file);
+    if (url) { im.removeAttribute("loading"); im.setAttribute("src", url); }
+  }));
 }
 
 /** 页面上的地址 → cbres: 引用（插件的 media/board、存储目录的 assets/），宿主换成 data: URL */
@@ -207,7 +221,8 @@ function noteHtml(n: Sidenote): string {
 async function snapshotHtml(b: Board, order: string[], o: ExportOpts, links: Record<string, string>): Promise<string> {
   const keep = new Set(order);
   const whole = o.scope === "board";
-  const world = await cloneForExport(b, scopeOf(o), order);
+  // 放进一个不显示的文档里再改 <img> 的地址：这个页面里的克隆一改 src 就会去加载（cbres: 加载不了，控制台报错）
+  const world = document.implementation.createHTMLDocument("").adoptNode(await cloneForExport(b, scopeOf(o), order));
   // 贴纸：问题不带出去时删掉；画布上没绑东西的只在整块导出时留
   const qs = new Set(b.stickers.filter((s) => isQuestion(s)).map((s) => s.id));
   world.querySelectorAll<HTMLElement>("[data-sticker]").forEach((el) => {

@@ -13,7 +13,7 @@ import CodeMark from "@tiptap/extension-code";
 import Document from "@tiptap/extension-document";
 import Paragraph from "@tiptap/extension-paragraph";
 import { MarkdownManager } from "@tiptap/markdown";
-import { Marked } from "marked";
+import { Marked, Tokenizer } from "marked";
 import { TaskList, TaskItem, ListItem, OrderedList } from "@tiptap/extension-list";
 import Image from "@tiptap/extension-image";
 import { Details, DetailsSummary, DetailsContent } from "@tiptap/extension-details";
@@ -27,6 +27,30 @@ import { EMOJI } from "./emoji";
 // 行内 $…$：$ 后紧跟非空白，结尾 $ 前是非空白、后面不是数字，所以 "$5 and $10" 不算公式；紧跟在 \ 或 $ 后面的 $ 不开头。
 // 行内的 $$…$$ 是行内的大号公式
 const INLINE_MATH = /^\$\$([^$]+?)\$\$|^\$([^$\s](?:[^$]*[^$\s\\])?)\$(?!\d)/;
+/** 排好的公式（KaTeX、MathML）里的 TeX 原文；没有的不当公式（按字读进来） */
+const texAttrs = (e: HTMLElement) => { const tex = e.querySelector('annotation[encoding="application/x-tex"]')?.textContent?.trim(); return tex ? { latex: tex } : false; };
+export type MathToken = { raw: string; latex: string; display: boolean };
+/** 行内公式的分词规则，解析、粘贴进来的 HTML 里的字、写回时的转义都照它：src 从一个 $ 开始，prev 是紧挨在它前面的那个字 */
+export function mathAt(src: string, prev: string): MathToken | null {
+  if (prev === "\\" || prev === "$") return null;
+  const m = INLINE_MATH.exec(src);
+  return m && { raw: m[0], latex: (m[1] ?? m[2]).trim(), display: m[1] !== undefined };
+}
+/** 一段字里的行内公式（粘贴进来的 HTML 里，网页没排出来、原样留着 $ 的）：拆成字和公式，prev 是这段字前面的那个字 */
+export function splitMath(t: string, prev = ""): ({ text: string } | MathToken)[] {
+  const out: ({ text: string } | MathToken)[] = [];
+  let last = 0;
+  for (let i = t.indexOf("$"); i >= 0; i = t.indexOf("$", i + 1)) {
+    const m = mathAt(t.slice(i), i ? t[i - 1] : prev);
+    if (!m) continue;
+    if (i > last) out.push({ text: t.slice(last, i) });
+    out.push(m);
+    last = i + m.raw.length;
+    i = last - 1;
+  }
+  if (last < t.length) out.push({ text: t.slice(last) });
+  return out;
+}
 /** 交给 KaTeX 排的 TeX：行内的 $$…$$ 留在行内（displayMode 关着），用 \displaystyle 排成大号的；原文不改 */
 export const mathTex = (latex: string, display: boolean) => (display ? `\\displaystyle ${latex}` : latex);
 const Math1 = InlineMath.extend({
@@ -59,6 +83,8 @@ const Math1 = InlineMath.extend({
       return { dom, destroy: () => dom.removeEventListener("click", click) };
     };
   },
+  // 别处排好的公式（网页、聊天应用里 KaTeX / MathML 画的）粘贴进来：TeX 原文在 MathML 的 annotation 里
+  parseHTML() { return [...(this.parent?.() ?? []), { tag: "span.katex", getAttrs: texAttrs }, { tag: "math", getAttrs: texAttrs }]; },
   // 打字时由编辑器按这里的解析规则重解析（editor/typora.ts；TipTap 自带的把 $$x$$ 当行内小公式）
   addInputRules: () => [],
   parseMarkdown: (t) => ({ type: "inlineMath", attrs: { latex: t.latex, display: !!t.display } }),
@@ -67,11 +93,8 @@ const Math1 = InlineMath.extend({
     name: "inlineMath", level: "inline",
     start: (src) => src.indexOf("$"),
     tokenize: (src, tokens) => {
-      const prev = tokens[tokens.length - 1]?.raw;
-      if (prev && /[\\$]$/.test(prev)) return;
-      const m = INLINE_MATH.exec(src);
-      if (!m) return;
-      return { type: "inlineMath", raw: m[0], latex: (m[1] ?? m[2]).trim(), display: m[1] !== undefined };
+      const m = mathAt(src, tokens[tokens.length - 1]?.raw?.slice(-1) ?? "");
+      return m ? { type: "inlineMath", ...m } : undefined;
     },
   },
 });
@@ -88,6 +111,7 @@ const lineStart = (re: RegExp) => (src: string) => { const m = re.exec(src); ret
  */
 const NO_OL_TOKENIZER = { name: "orderedList", level: "block" as const, start: () => -1, tokenize: () => undefined };
 const Math2 = BlockMath.extend({
+  parseHTML() { return [...(this.parent?.() ?? []), { tag: ".katex-display", getAttrs: texAttrs }, { tag: 'math[display="block"]', priority: 60, getAttrs: texAttrs }]; },
   addInputRules: () => [],
   renderMarkdown: (n) => `$$\n${n.attrs?.latex ?? ""}\n$$`,
   markdownTokenizer: {
@@ -304,8 +328,26 @@ const FnList = Footnotes.extend({ markdownTokenName: "footnotes", markdownTokeni
 // （停住以后打字、回车照样新起一段：它们找的是最近的文字块）
 const Doc = Document.extend({ content: "block+ footnotes?", allowGapCursor: true });
 
-// 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）
-const Img = Image.configure({ inline: true, allowBase64: true });
+// 图片是行内的：和字混在一段里照原样放（单独一段的图就是一段里只有它）。
+// 缩小了的图写成 ![a](u){width=40%}（Pandoc 的写法）：宽度是正文宽的百分之几，卡片变宽变窄时图跟着缩放；没写的占满（最宽就是正文宽）
+const IMG_WIDTH = /^\{width=(\d{1,3}(?:\.\d+)?)%\}/;
+/** s 开头是图片的宽度写法时给它（0 < 宽度 ≤ 100，别的数不认，照字留着） */
+function imageWidthAt(s: string): { width: number; raw: string } | undefined {
+  const m = IMG_WIDTH.exec(s), w = m ? Number(m[1]) : 0;
+  return m && w > 0 && w <= 100 ? { width: w, raw: m[0] } : undefined;
+}
+const pct = (v: string) => { const m = /^(\d+(?:\.\d+)?)%$/.exec(v.trim()); const w = m ? Number(m[1]) : 0; return w > 0 && w <= 100 ? w : null; };
+const Img = Image.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      // TipTap 自带的 width 是像素，这里是百分比（null = 占满）；HTML 里是 style 的 width（复制粘贴时跟着走）
+      width: { default: null, parseHTML: (e) => pct(e.style.width), renderHTML: (a) => (a.width ? { style: `width: ${a.width}%` } : {}) },
+    };
+  },
+  parseMarkdown: (t, h) => h.createNode("image", { src: t.href, title: t.title, alt: t.text, width: t.width ?? null }),
+  renderMarkdown(n, h, cx) { const md = this.parent!(n, h, cx); return n.attrs?.width ? `${md}{width=${n.attrs.width}%}` : md; },
+}).configure({ inline: true, allowBase64: true });
 // TipTap 的段落把只有一张图的一段解析成块级的图：这里图片是行内的，照样是一段
 const Para = Paragraph.extend({
   parseMarkdown(t, h) { return t.tokens?.length === 1 && t.tokens[0].type === "image" ? h.createNode("paragraph", undefined, h.parseInline(t.tokens)) : this.parent?.(t, h) ?? []; },
@@ -541,6 +583,7 @@ function escText(s: string): string {
   // 只数可能成对的（不是两边都空白的）
   const pairs = (c: string) => { let n = 0; for (let i = 0; i < s.length; i++) if (s[i] === c && !(/\s/.test(s[i - 1] ?? " ") && /\s/.test(s[i + 1] ?? " "))) n++; return n > 1; };
   const star = pairs("*"), tilde = pairs("~"), tick = pairs("`");
+  const dollars = openingDollars(s);
   let out = "";
   for (let i = 0; i < s.length; i++) {
     const c = s[i], next = s[i + 1] ?? "", prev = s[i - 1] ?? "";
@@ -550,7 +593,7 @@ function escText(s: string): string {
       case "`": out += tick ? "\\`" : c; break;
       case "*": case "~": out += (c === "*" ? star : tilde) && !(/\s/.test(prev || " ") && /\s/.test(next || " ")) ? `\\${c}` : c; break;
       case "[": out += next === "[" || next === "^" || /^[^\]]*\]\s*[(\[]/.test(s.slice(i + 1)) ? "\\[" : c; break;
-      case "$": out += INLINE_MATH.test(s.slice(i)) ? "\\$" : c; break;
+      case "$": out += dollars.has(i) ? "\\$" : c; break;
       case "<": out += /[A-Za-z/!?]/.test(next) ? "\\<" : c; break;
       // 字面的 ^2^、==x==：会被读成上标、高亮的才转义
       case "^": out += SUP_RE.test(s.slice(i)) && prev !== "^" ? "\\^" : c; break;
@@ -565,11 +608,35 @@ function escText(s: string): string {
   return out;
 }
 
+/**
+ * 字里要写成 \$ 的 $：读回来时会开头一个公式的（照 mathAt）。转义过的 \$ 读回来不再是 $，原来配给它的那个 $ 就可能和更后面的
+ * $ 配成公式（$a$ 只转义开头写成 \$a$，后面那个 $ 会和下一个 $ 配上），所以按写出来的样子反复看，直到没有新的要转义
+ */
+function openingDollars(s: string): Set<number> {
+  const esc = new Set<number>();
+  if (!s.includes("$")) return esc;
+  for (let grew = true; grew;) {
+    grew = false;
+    const out = s.split("").map((c, i) => (esc.has(i) ? ESC_DOLLAR : c)).join("");
+    for (let i = s.indexOf("$"); i >= 0; i = s.indexOf("$", i + 1)) {
+      if (!esc.has(i) && mathAt(out.slice(i), out[i - 1] ?? "")) { esc.add(i); grew = true; }
+    }
+  }
+  return esc;
+}
+
 const mm = new MarkdownManager({
   marked: (() => {
     const m = new Marked();
     // _ 不当强调：__init__、block_manager 都是代码里的名字
-    m.use({ tokenizer: { emStrong(src: string) { return src[0] === "_" ? undefined : false; } } as any });
+    m.use({ tokenizer: {
+      emStrong(src: string) { return src[0] === "_" ? undefined : false; },
+      // 图片后面紧跟的 {width=…%} 是它的宽度（见 Img），连同图片一起读掉
+      link(this: Tokenizer, src: string) {
+        const t = Tokenizer.prototype.link.call(this, src), w = t?.type === "image" ? imageWidthAt(src.slice(t.raw.length)) : undefined;
+        return w ? { ...t!, raw: t!.raw + w.raw, width: w.width } : t ?? false;
+      },
+    } as any });
     return m as any;
   })(),
   extensions: baseExtensions,
@@ -594,11 +661,12 @@ const unshield = (s: string) => s.replace(/[-]/g, (c) => String.fromCharCo
 /** 文档内容 → Markdown。raw：字原样写出（不转义），把一段当 Markdown 源码重新解析时用（见 blockSource） */
 function toMd(content: JSONContent[], raw: boolean): string {
   const { nodes, marks } = mdSchema();
-  const prep = (ns: JSONContent[], code: boolean): JSONContent[] => ns.map((n) => {
+  const prep = (ns: JSONContent[], code: boolean): JSONContent[] => ns.map((n, i) => {
     if (n.type === "text") {
       if (code || n.marks?.some((m) => marks[m.type]?.spec.code)) return n;
-      // 标注里的字：{ } | 也要转义（它们会断开标注的写法）
-      const t = raw ? n.text! : escText(n.text!);
+      // 标注里的字：{ } | 也要转义（它们会断开标注的写法）；紧跟在图片后面、会被读成它的宽度的 {width=…%} 也转义
+      let t = raw ? n.text! : escText(n.text!);
+      if (!raw && ns[i - 1]?.type === "image" && imageWidthAt(t)) t = `\\${t}`;
       return { ...n, text: shield(n.marks?.some((m) => m.type === "annot") && !raw ? t.replace(/(?<!\\)[{}|]/g, "\\$&") : t) };
     }
     // 带格式的行内原子节点：先写成它自己的 Markdown，当作带同样格式的字（不转义），格式的记号就包在它外面

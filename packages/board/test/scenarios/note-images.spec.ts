@@ -7,7 +7,7 @@ import { saveNoteImage } from "@codeboard/host/images";
 import { png, type Rgba } from "@codeboard/host/test/images";
 import type { Page } from "playwright-core";
 import { OUT, put, shot, type Host } from "../harness";
-import { test, open, check, light, until, idle } from "../fixtures";
+import { test, open, check, light, until, idle, frames } from "../fixtures";
 
 const BASE = "https://cb-assets.test/res";
 
@@ -162,10 +162,96 @@ test("noteNonImagePasteRefused", async () => {
   const { h, assets, done } = await imageHost(["keep"]);
   await idle(h);
   await editNote(h, "n0");
-  await pasteFiles(h.page, [{ b64: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'><script>alert(1)</script></svg>").toString("base64"), type: "image/png", name: "fake.png" }]);
+  await pasteFiles(h.page, [{ b64: Buffer.from("<html><body><script>alert(1)</script></body></html>").toString("base64"), type: "image/png", name: "fake.png" }]);
   const toast = await h.page.locator(".toast").first().innerText({ timeout: 3000 }); // the host's refusal
   const imgs = await h.page.locator('.card[data-id="n0"] .md-pm img:not(.ProseMirror-separator)').count();
   await exitEdit(h);
-  check("noteNonImagePasteRefused", /PNG, JPEG, WebP and GIF/.test(toast) && imgs === 0 && md(h, "n0") === "keep" && assets().length === 0, { toast, imgs, md: md(h, "n0"), assets: assets() });
+  check("noteNonImagePasteRefused", /PNG, JPEG, WebP, GIF and SVG/.test(toast) && imgs === 0 && md(h, "n0") === "keep" && assets().length === 0, { toast, imgs, md: md(h, "n0"), assets: assets() });
+  await done();
+});
+
+/** The image's width as a fraction of its paragraph (the Note body's width), on screen, and how far its centre is off the paragraph's */
+const imgFrac = (h: Host, id: string, sel: string) => h.page.locator(`.card[data-id="${id}"] ${sel} img:not(.ProseMirror-separator)`).first().evaluate((el) => {
+  const p = el.closest("p")!, r = el.getBoundingClientRect(), pr = p.getBoundingClientRect(), cs = getComputedStyle(p);
+  const k = pr.width / p.offsetWidth, inner = (p.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) * k;
+  return { frac: Math.round((r.width / inner) * 1000) / 1000, w: Math.round(r.width * 10) / 10, h: Math.round(r.height * 10) / 10, off: Math.round((r.left + r.width / 2 - (pr.left + pr.width / 2)) * 10) / 10 };
+});
+const widthIn = (text: string) => { const m = /\)\{width=(\d+(?:\.\d+)?)%\}/.exec(text); return m ? +m[1] : null; };
+/** Click the image in the editor (selects it), take the screenshot `name` if given, and give the centre of its left or right resize grip */
+async function imgGrip(h: Host, id: string, name?: string, side: "l" | "r" = "r") {
+  await h.page.locator(`.card[data-id="${id}"] .md-pm img:not(.ProseMirror-separator)`).first().click();
+  if (name) await shot(h, name);
+  const g = h.page.locator(`.card[data-id="${id}"] .md-pm .md-imgrip.${side}`).first();
+  await g.waitFor({ state: "visible", timeout: 3000 });
+  const r = (await g.boundingBox())!;
+  return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+}
+/** A pointer drag by dx (and a little down), each move in a frame of its own */
+async function dragBy(h: Host, at: { x: number; y: number }, dx: number, steps = 10) {
+  await h.page.mouse.move(at.x, at.y);
+  await h.page.mouse.down();
+  for (let i = 1; i <= steps; i++) { await h.page.mouse.move(at.x + (dx * i) / steps, at.y + (Math.abs(dx) * 0.3 * i) / steps); await frames(h.page); }
+  await h.page.mouse.up();
+}
+
+/** #17: a Note's image shrinks by dragging the grip on its corner while it is selected: the width goes into the Markdown as a
+ *  percentage of the body ({width=N%}), centered, the same in the static render, scales with the card, one undo step per drag;
+ *  either side's grip changes the width around the centre, and a double-click on a grip gives the full width back */
+test("noteImageResize", async () => {
+  const { h, done } = await imageHost(["A figure of the grid:"]);
+  const pg = h.page;
+  await idle(h);
+  await editNote(h, "n0");
+  await pg.keyboard.press("Control+End");
+  await pg.keyboard.press("Enter");
+  await pasteFiles(pg, [pngFile]);
+  await imgBox(h, "n0", ".md-pm");
+  const full = await imgFrac(h, "n0", ".md-pm");
+  check("noteImageResize full width at first", full.frac > 0.99, full);
+  check("noteImageResize grip hidden until selected", (await pg.locator('.card[data-id="n0"] .md-pm .md-imgrip:visible').count()) === 0);
+  const g = await imgGrip(h, "n0", "17-note-image-selected");
+  const place0 = JSON.stringify(h.board().place.n0);
+  await dragBy(h, g, -full.w * 0.35);
+  await until(h, "the drag shrinks the image", async () => (await imgFrac(h, "n0", ".md-pm")).frac < 0.4);
+  const right = await imgFrac(h, "n0", ".md-pm");
+  // the left grip, dragged outwards by a tenth of the body: the image grows by a fifth, still centered
+  const gl = await imgGrip(h, "n0", undefined, "l");
+  await dragBy(h, gl, -full.w * 0.1);
+  await until(h, "the left grip widens the image", async () => (await imgFrac(h, "n0", ".md-pm")).frac > right.frac + 0.1);
+  const edit = await imgFrac(h, "n0", ".md-pm");
+  await shot(h, "17-note-image-resized-edit");
+  // one undo step per drag: ⌘Z takes back the second drag, again the first (full width); redo puts both back
+  const frac = async () => (await imgFrac(h, "n0", ".md-pm")).frac;
+  await pg.keyboard.press("Control+z");
+  await until(h, "undo takes back the left grip's drag", async () => Math.abs((await frac()) - right.frac) < 0.01);
+  await pg.keyboard.press("Control+z");
+  await until(h, "undo again gives the full width back", async () => (await frac()) > 0.99);
+  await pg.keyboard.press("Control+Shift+z");
+  await pg.keyboard.press("Control+Shift+z");
+  await until(h, "redo puts both drags back", async () => Math.abs((await frac()) - edit.frac) < 0.01);
+  const editH = await cardH(h, "n0");
+  await exitEdit(h);
+  const text = md(h, "n0"), w = widthIn(text);
+  const disp = await imgFrac(h, "n0", ".nbody"), dispH = await cardH(h, "n0");
+  await shot(h, "17-note-image-resized");
+  check("noteImageResize card stays put", JSON.stringify(h.board().place.n0) === place0, { before: place0, after: h.board().place.n0 });
+  check("noteImageResize width saved", w !== null && Math.abs(w / 100 - edit.frac) < 0.012 && w > 40 && w < 60, { text, edit });
+  check("noteImageResize right grip shrinks around the centre", Math.abs(right.frac - 0.3) < 0.015 && Math.abs(right.off) < 1, right);
+  check("noteImageResize left grip grows around the centre", Math.abs(edit.frac - right.frac - 0.2) < 0.015, { right, edit });
+  check("noteImageResize centered", Math.abs(edit.off) < 1 && Math.abs(disp.off) < 1, { edit, disp });
+  check("noteImageResize same size in both modes", Math.abs(edit.w - disp.w) < 0.6 && Math.abs(edit.h - disp.h) < 0.6 && Math.abs(editH - dispH) <= 2, { edit, disp, editH, dispH });
+  // a wider card: the image keeps its share of the body
+  const c = (await pg.locator('.card[data-id="n0"] .grip').boundingBox())!;
+  await dragBy(h, { x: c.x + c.width / 2, y: c.y + c.height / 2 }, 240);
+  await idle(h);
+  const wide = await imgFrac(h, "n0", ".nbody");
+  check("noteImageResize scales with the card", wide.w > disp.w + 80 && Math.abs(wide.frac - disp.frac) < 0.01 && widthIn(md(h, "n0")) === w, { disp, wide });
+  // double-click on the grip: full width again, nothing written for the width
+  await editNote(h, "n0");
+  const g2 = await imgGrip(h, "n0");
+  await pg.mouse.dblclick(g2.x, g2.y);
+  await until(h, "double-click gives the full width back", async () => (await imgFrac(h, "n0", ".md-pm")).frac > 0.99);
+  await exitEdit(h);
+  check("noteImageResize double-click resets", widthIn(md(h, "n0")) === null && /!\[\]\(assets\/[^)]+\)$/.test(md(h, "n0")) && (await imgFrac(h, "n0", ".nbody")).frac > 0.99, { md: md(h, "n0") });
   await done();
 });

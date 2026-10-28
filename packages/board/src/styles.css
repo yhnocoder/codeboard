@@ -85,6 +85,8 @@ body { background: var(--canvas); color: var(--ink); font: 13px/1.5 var(--sys); 
 :where(button) { cursor: default; } /* before the regions, so a button inside code or a peek takes the region's cursor */
 :where(.chrome, .chrome *) { user-select: none; -webkit-user-select: none; cursor: default; -webkit-user-drag: none; -webkit-tap-highlight-color: transparent; }
 :where(.chrome .src, .chrome .src *) { user-select: text; -webkit-user-select: text; cursor: text; }
+/* 代码只在这张卡单独选中时按下去是选字，别的时候按下去拖卡（interact.ts cardPointerDown） */
+:where(.chrome .card:not(.sel.solo) .src, .chrome .card:not(.sel.solo) .src *) { cursor: default; }
 :where(.chrome .pcode, .chrome .pcode *) { user-select: text; -webkit-user-select: text; cursor: text; }
 :where(.chrome .nbody, .chrome .nbody *, .chrome .cdesc, .chrome .cdesc *, .chrome .tx, .chrome .tx *, .chrome .inote, .chrome .inote *, .chrome .sn-text, .chrome .sn-text *, .chrome .fld, .chrome .pin) { user-select: text; -webkit-user-select: text; }
 :where(.chrome .nbody, .chrome .cdesc, .chrome .tx) { cursor: default; }
@@ -484,7 +486,8 @@ input, textarea { font: inherit; color: var(--ink); }
 .guide.v { border-left-width: 1px; width: 0; }
 .guide.h { border-top-width: 1px; height: 0; }
 .ghint { position: absolute; transform: translate(-50%, 0); font: 600 10.5px/1 var(--sys); color: #fff; background: var(--guide); padding: 4px 6px; border-radius: 5.5px; white-space: nowrap; }
-.alignbar.pill { position: absolute; z-index: 15; display: none; translate: -50% 0; }
+/* 宽度固定为一行的宽度（不随 left 缩），靠边时由 AlignBar 按量到的宽度整条平移进视野 */
+.alignbar.pill { position: absolute; z-index: 15; display: none; width: max-content; white-space: nowrap; }
 .alignbar.pill.show { display: inline-flex; }
 .alignbar .tbtn { height: 30px; color: var(--ink); }
 .alignbar > .ib { width: 30px; height: 30px; }
@@ -714,8 +717,9 @@ kbd { font: 10.5px var(--mono); }
 .card .code .cbcm-card .cm-line { padding-right: var(--code-pr); margin-right: calc(-1 * var(--code-pr)); }
 .card .code .cbcm-card .cm-lineNumbers { width: var(--gutter); }
 .card .code .cbcm-card .cm-lineNumbers .cm-gutterElement { width: calc(var(--code-pl) + var(--nd, 3) * 1ch); padding-left: var(--code-pl); }
-.lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); z-index: 4; cursor: crosshair; opacity: .0; transition: opacity .1s; }
+.lport { position: absolute; width: 9px; height: 9px; margin-top: -4.5px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); z-index: 4; cursor: crosshair; opacity: .0; transition: opacity .1s; scale: var(--uv, 1); }
 .lport.l { left: -5px; } .lport.r { right: -5px; }
+.eport::after, .lport::after { content: ""; position: absolute; inset: var(--port-hit, 0); border-radius: 50%; } /* 缩小时可点范围保持 100% 的屏幕大小，圆点本身只放大一点 */
 .lport { opacity: 1; }
 .card:hover .lport { opacity: 1; }
 .lport:hover { box-shadow: 0 0 0 1.5px var(--accent); background: var(--accent); }
@@ -746,7 +750,7 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 /* 图片卡跟着图片的宽高比：宽度是卡的，高度是图片按比例算的（卡不存高度），不会有上下 / 左右的空白条 */
 .imgb img { width: 100%; height: auto; display: block; pointer-events: none; }
 
-.eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair; }
+.eport { position: absolute; width: 9px; height: 9px; border-radius: var(--port-r, 50%); corner-shape: round; rotate: var(--port-rot, none); background: var(--port-bg, var(--surface)); box-shadow: 0 0 0 var(--port-ring, 1.5px) var(--port-ring-c, var(--edge)); opacity: 0; transition: opacity .12s; z-index: 4; cursor: crosshair; scale: var(--uv, 1); }
 .card:hover > .cface > .eport { opacity: 1; }
 .card.text > .cface > .eport { display: none; }
 .card.lift > .cface > .eport { visibility: hidden; transition: none; } /* 不用 display：拿起、放下时不用重新排版。transition: none 跟 display: none 一样：藏着时不留半截淡入淡出 */

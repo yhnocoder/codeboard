@@ -3,6 +3,7 @@
 //  revealShowsHiddenCard      — Reveal on Board / clicking the already-expanded call on a card in a collapsed subtree expands it
 //  fitFramesVisibleContent    — Fit to Window frames what is shown: no hidden call-tree cards, a collapsed section counts as its title pill
 //  nudgeHoldIsOneUndoStep     — holding an arrow key is one undo step; each separate press is its own step
+//  nudgeStepFollowsZoom       — zoomed out, an arrow key moves a card 1 px on screen (Shift 10 px), not 1 px on the board
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 //  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
 //  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Open board frame (Mac order: ⇧⌘B)
@@ -54,6 +55,8 @@ test("revealShowsHiddenCard", () => verdict("revealShowsHiddenCard", revealShows
 test("fitFramesVisibleContent", () => verdict("fitFramesVisibleContent", fitFramesVisibleContent));
 
 test("nudgeHoldIsOneUndoStep", () => verdict("nudgeHoldIsOneUndoStep", nudgeHoldIsOneUndoStep));
+
+test("nudgeStepFollowsZoom", () => verdict("nudgeStepFollowsZoom", nudgeStepFollowsZoom));
 
 test("farClicksNotDoubleClick", () => verdict("farClicksNotDoubleClick", farClicksNotDoubleClick));
 
@@ -186,6 +189,33 @@ async function nudgeHoldIsOneUndoStep(res: Record<string, unknown>) {
   res.deletedBack = h.board().cards.some((k) => k.id === c.id);
   await close(h);
   return JSON.stringify(res.moved) === "[85,82]" && JSON.stringify(undos) === "[[85,81],[85,80],[80,80]]" && !!res.deletedBack;
+}
+
+/** Zoomed out to 25%, an arrow key moves a card 1 px on screen (4 px on the board), Shift 10 px; holding the key is still one undo step */
+async function nudgeStepFollowsZoom(res: Record<string, unknown>) {
+  const b = emptyBoard("bNudgeZ", "nudgezoom");
+  const a = nv("LLMEngine.step");
+  put(b, a, 80, 80, 560);
+  b.cam = { x: 40, y: 40, z: 0.25 };
+  const h = await open({ board: b });
+  await clickHead(h, a.id);
+  const at = () => [h.board().place[a.id].x, h.board().place[a.id].y];
+  const screenX = async () => (await h.page.locator(`.card[data-id="${a.id}"]`).boundingBox())!.x;
+  const x0 = await screenX();
+  await h.page.keyboard.press("ArrowRight"); await idle(h);
+  res.one = at(); const x1 = await screenX();
+  await h.page.keyboard.press("Shift+ArrowRight"); await idle(h);
+  res.shift = at(); const x2 = await screenX();
+  res.screen = [+(x1 - x0).toFixed(2), +(x2 - x1).toFixed(2)];
+  for (let i = 0; i < 3; i++) await h.page.keyboard.down("ArrowDown");
+  await h.page.keyboard.up("ArrowDown"); await idle(h);
+  res.held = at();
+  const undos: number[][] = [];
+  for (let i = 0; i < 3; i++) { await h.page.keyboard.press("Meta+z"); await idle(h); undos.push(at()); }
+  res.undos = undos;
+  await close(h);
+  return JSON.stringify(res.one) === "[84,80]" && JSON.stringify(res.shift) === "[124,80]" && JSON.stringify(res.screen) === "[1,10]"
+    && JSON.stringify(res.held) === "[124,92]" && JSON.stringify(undos) === "[[124,80],[84,80],[80,80]]";
 }
 
 async function farClicksNotDoubleClick(res: Record<string, unknown>) {

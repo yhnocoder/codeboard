@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
-import { baseName, escHtml } from "@codeboard/core";
-import { state } from "../../state/store";
+import { baseName, escHtml, isCode, segOf } from "@codeboard/core";
+import { langInfo } from "@codeboard/analysis/langs";
+import { state, cardById } from "../../state/store";
 import { closePop, updatePop } from "../../state/pop";
 import { send } from "../../host";
 import * as A from "../../actions";
@@ -14,6 +15,13 @@ export function PeekPop(p: PopProps<"peek">) {
   const lib = () => { const l = def()?.lib; return l && !state.host.settings.studyScope.includes(l) ? l : ""; };
   const pin = () => { const x = def(); if (x) A.pinPeek(p.inst.id, p.pop, x); };
   const place = () => { const x = def(); if (x) A.placePeek(p.inst.id, p.pop, x); };
+  // 找不到定义的原因按语言说：Python 的 setattr，C++ 要装 clangd / cpptools…
+  const noDef = () => {
+    const c = cardById(p.pop.card)?.card;
+    const lang = p.pop.trail?.at(-1)?.seg.lang ?? (isCode(c) ? segOf(c, p.pop.seg)?.lang : undefined);
+    const l = langInfo(lang);
+    return l?.noDef ?? `no language extension${l ? ` for ${l.label}` : ""}`;
+  };
   return (
     <>
       <Show when={def()} fallback={
@@ -21,7 +29,7 @@ export function PeekPop(p: PopProps<"peek">) {
           <Show when={picks()} fallback={
             <>
               <PopHead title={<>No definition found · <code>{p.pop.word}</code></>} inst={p.inst} />
-              <div class="empty">The language server has no definition for this name (setattr, dispatch by string, or no Python extension).</div>
+              <div class="empty">The language server has no definition for this name ({noDef()}).</div>
               <div class="sn-acts"><button class="tbtn" onClick={() => { closePop(p.inst.id); A.searchWorkspace(p.pop.word); }}>Search Workspace</button></div>
             </>}>
             <PopHead title={<>{picks()!.length} definitions · <code>{p.pop.word}</code></>} inst={p.inst} />

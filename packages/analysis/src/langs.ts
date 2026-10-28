@@ -24,6 +24,8 @@ export type LangInfo = {
   lsp?: boolean;
   /** 关键字和内建类型名（悬停时不查定义） */
   keywords?: ReadonlySet<string>;
+  /** Peek 找不到定义时，括号里说可能的原因（语言服务是哪个扩展）；没有就用通用的一句 */
+  noDef?: string;
   /** 用哪个 tree-sitter 语法分析；没有 = 不分析 */
   grammar?: Grammar;
 };
@@ -31,8 +33,11 @@ export type LangInfo = {
 const words = (s: string): ReadonlySet<string> => new Set(s.split(" "));
 const PY_KW = words("def return for in if else elif while and or not is None True False class break continue del import from as with lambda yield assert pass raise try except finally global nonlocal async await self cls int str float bool list dict tuple set");
 const C_KW = words("return for if else while do break continue switch case default goto sizeof typedef struct union enum class template typename namespace using public private protected virtual static const constexpr auto void int char bool float double long short unsigned signed inline extern volatile new delete this nullptr true false");
-const py = { comment: "#", vscodeId: "python", md: "python", shiki: "python", lsp: true, keywords: PY_KW, grammar: "python" as const };
-const cpp = { comment: "//", shiki: "cpp", lsp: true, keywords: C_KW, grammar: "cpp" as const };
+// C++ 和 CUDA 的限定符（__global__ 这些不是名字，语言服务也找不到定义）
+const CPP_KW = words("noexcept override final mutable explicit friend operator static_cast dynamic_cast reinterpret_cast const_cast decltype throw try catch concept requires co_await co_return co_yield thread_local alignas alignof static_assert register restrict export __restrict __restrict__ __inline__ __forceinline__ __noinline__ __attribute__ __global__ __device__ __host__ __shared__ __constant__ __managed__ __grid_constant__ __launch_bounds__");
+const RUST_KW = words("as break const continue crate else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while async await dyn i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 bool char str");
+const py = { comment: "#", vscodeId: "python", md: "python", shiki: "python", lsp: true, keywords: PY_KW, noDef: "setattr, dispatch by string, or no Python extension", grammar: "python" as const };
+const cpp = { comment: "//", shiki: "cpp", lsp: true, keywords: new Set([...C_KW, ...CPP_KW]), noDef: "a macro, a header it cannot find, or no C/C++ extension: clangd or ms-vscode.cpptools", grammar: "cpp" as const };
 
 export const LANG_TABLE: readonly LangInfo[] = [
   { id: "python", label: "Python", pick: true, aliases: ["py", "python3"], ext: ["py", "pyi"], ...py },
@@ -41,7 +46,7 @@ export const LANG_TABLE: readonly LangInfo[] = [
   { id: "cuda-cpp", label: "CUDA", pick: true, aliases: ["cuda", "cu"], ext: ["cu", "cuh"], vscodeId: "cuda-cpp", md: "cuda", ...cpp },
   { id: "cpp", label: "C++", pick: true, aliases: ["c++", "cc", "cxx", "hpp", "objective-cpp"], ext: ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl"], vscodeId: "cpp", md: "cpp", ...cpp },
   { id: "c", label: "C", pick: true, aliases: ["objective-c"], ext: ["c"], vscodeId: "c", md: "c", ...cpp, shiki: "c" },
-  { id: "rust", label: "Rust", pick: true, aliases: ["rs"], ext: ["rs"], comment: "//", vscodeId: "rust", md: "rust", shiki: "rust", lsp: true, grammar: "rust" },
+  { id: "rust", label: "Rust", pick: true, aliases: ["rs"], ext: ["rs"], comment: "//", vscodeId: "rust", md: "rust", shiki: "rust", lsp: true, keywords: RUST_KW, noDef: "a macro, or no rust-analyzer", grammar: "rust" },
   { id: "typescript", label: "TypeScript", pick: true, aliases: ["ts", "tsx"], ext: ["ts", "tsx"], comment: "//", vscodeId: "typescript", md: "typescript", shiki: "typescript", lsp: true },
   { id: "javascript", label: "JavaScript", pick: true, aliases: ["js", "jsx", "mjs", "cjs"], ext: ["js", "jsx", "mjs", "cjs"], comment: "//", vscodeId: "javascript", md: "javascript", shiki: "javascript", lsp: true },
   { id: "go", label: "Go", pick: true, aliases: ["golang"], ext: ["go"], comment: "//", vscodeId: "go", md: "go", shiki: "go", lsp: true },
