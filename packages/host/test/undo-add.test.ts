@@ -19,7 +19,9 @@ let open: BoardPanel | undefined;
 const panels = { store, target: "bU", get: (id: string) => (id === "bU" ? open : undefined), all: () => (open ? [open] : []), setTarget: () => undefined, show: async () => open } as unknown as BoardHost;
 // each notice waits until the user clicks: hold them and click Undo later
 const notices: ((r: string | undefined) => void)[] = [];
-W.ui.info = ((msg: string) => (msg.startsWith("Added") ? new Promise((r) => notices.push(r as (r: string | undefined) => void)) : Promise.resolve(undefined))) as typeof W.ui.info;
+// the other messages (Removed from …) are recorded: the closed board's undo shows one once its file is written
+const infos: string[] = [];
+W.ui.info = ((msg: string) => (msg.startsWith("Added") ? new Promise((r) => notices.push(r as (r: string | undefined) => void)) : (infos.push(msg), Promise.resolve(undefined)))) as typeof W.ui.info;
 const quals = async () => ((await store.load("bU"))?.cards ?? []).map((c) => (c.kind === "code" ? c.segments[0].symbol?.qual : c.id));
 const sched = path.join(WS, "nanovllm/engine/scheduler.py");
 
@@ -41,7 +43,8 @@ describe("Undo on an add notice", () => {
   it("removes only that card when the board is closed; later work stays", async () => {
     expect(notices).toHaveLength(2);
     notices[0]("Undo");
-    await vi.waitFor(async () => expect(await quals()).toEqual(["Scheduler.schedule", "nLater"]), { timeout: 10000, interval: 5 });
+    await vi.waitFor(() => expect(infos).toContain("Removed from “Undo Add”"), { timeout: 10000, interval: 5 });
+    expect(await quals()).toEqual(["Scheduler.schedule", "nLater"]);
   });
   it("asks the board to remove that card when the board is open (its own undo step), without rewriting the file", async () => {
     const { view, posted } = stubView({ visible: false, active: false });
