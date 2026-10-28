@@ -402,7 +402,11 @@ function cppSymbols({ out }: Cx, root: Node) {
       if (!c) continue;
       let def = c;
       const start = c.startPosition.row;
-      while (def.type === "template_declaration") def = def.namedChildren.find((x) => x && /function_definition|class_specifier|struct_specifier|template_declaration/.test(x.type)) ?? def.lastNamedChild ?? def;
+      while (def.type === "template_declaration") {
+        const inner = def.namedChildren.find((x) => x && /function_definition|class_specifier|struct_specifier|template_declaration/.test(x.type)) ?? def.lastNamedChild;
+        if (!inner) break; // 写到一半、没有子节点的 template：不是定义
+        def = inner;
+      }
       if (def.type === "friend_declaration") def = def.namedChildren.find((x) => x?.type === "function_definition") ?? def;
       if (def.type === "field_declaration") { const t = def.childForFieldName("type"); if (t && /class_specifier|struct_specifier/.test(t.type)) def = t; }
       if (def.type === "function_definition") {

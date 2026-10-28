@@ -89,6 +89,14 @@ describe("analyze (c++ / cuda)", () => {
   });
 });
 
+describe("analyze (c++ / cuda), half-written templates", () => {
+  it("names nothing for a template with no declaration after it", () => {
+    for (const src of ["template", "template <>", "template <typename T>", "template <> template <>", "namespace a { template <class T> }", "struct S { template <typename T> };"]) {
+      expect(analyze("cuda-cpp", src).symbols.filter((s) => s.kind === "def")).toEqual([]);
+    }
+  });
+});
+
 describe("varCandidates", () => {
   it("pairs args with params, keeps names that differ, and adds the return value", () => {
     const eng = analyze("python", show(NEW, ENGINE));
