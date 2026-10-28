@@ -30,7 +30,8 @@ export type Bind = {
 /** 第几次按下方向键（自动重复不算）：同一次按住的微移并成一步撤销 */
 let nudgeRun = 0;
 const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
-  const d = e.shiftKey ? 10 : 1;
+  // The step is on screen (1 px, Shift 10 px), so zoomed out a press still moves visibly; whole world pixels like every other placement
+  const d = Math.max(1, Math.round((e.shiftKey ? 10 : 1) / camTarget().z));
   // 按住方向键（自动重复）是一个动作：并成一步撤销，不然按住一会儿就把撤销栈挤满了；每按一下是一步
   if (!e.repeat) nudgeRun++;
   mutate((b) => { for (const id of sel.cards) { const c = b.place[hostOf(id)]; if (c && !a.isLocked(id)) { c.x += dx * d; c.y += dy * d; } } }, { merge: `nudge:${nudgeRun}` });
@@ -121,7 +122,7 @@ export const KEYMAP: Bind[] = [
   // ⌥T 已经是 Tidy Up
   { id: "tilt", keys: ["alt+shift+KeyT"], label: "Tilt", group: "Cards", when: hasCards, run: (a) => a.toggleTilt(sel.cards.slice()) },
   { id: "wrap", keys: ["alt+KeyZ"], label: "Wrap Lines", group: "Cards", run: (a) => a.toggleWrap(sel.cards.slice()) },
-  { id: "nudgeL", keys: ["ArrowLeft", "shift+ArrowLeft"], show: "Arrows", label: "Nudge (⇧ = 10px)", group: "Cards", when: () => hasCards() && !walk(), run: nudge(-1, 0) },
+  { id: "nudgeL", keys: ["ArrowLeft", "shift+ArrowLeft"], show: "Arrows", label: "Nudge (⇧ = 10px on screen)", group: "Cards", when: () => hasCards() && !walk(), run: nudge(-1, 0) },
   { id: "nudgeR", keys: ["ArrowRight", "shift+ArrowRight"], when: () => hasCards() && !walk(), run: nudge(1, 0) },
   { id: "nudgeU", keys: ["ArrowUp", "shift+ArrowUp"], when: () => hasCards() && !walk(), run: nudge(0, -1) },
   { id: "nudgeD", keys: ["ArrowDown", "shift+ArrowDown"], when: () => hasCards() && !walk(), run: nudge(0, 1) },
