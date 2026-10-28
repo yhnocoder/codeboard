@@ -1,6 +1,6 @@
 import { unwrap } from "solid-js/store";
 import {
-  uid, isCode, segOf, cardTitle, instName, genWhat, rankByReceiver, sameCallSite, baseName, swapCallTarget,
+  uid, isCode, segOf, cardTitle, instName, genWhat, rankByReceiver, sameCallSite, altIsSeg, baseName, swapCallTarget,
   type CallSpan, type CodeCard, type DispatchResult, type ExpandResult, type ImplPick, type Link, type NameHit, type Segment, type SearchItem,
 } from "@codeboard/core";
 import type { CallAlt, BoundVal } from "@codeboard/analysis/basics";
@@ -82,13 +82,12 @@ export function altsOf(L: Link): AltItem[] {
   const c = L.call;
   if (!c) return [];
   const out: AltItem[] = [];
-  const open = new Set<string>();
+  const open: Segment[] = [];
   for (const l of linksInto(L.to.card).length ? siblings(L) : []) {
     const t = cardById(l.to.card)?.card;
-    const q = isCode(t) ? t.segments[0]?.symbol?.qual : undefined;
-    if (q) open.add(q);
+    if (isCode(t) && t.segments[0]) open.push(t.segments[0]);
   }
-  (c.alts ?? []).forEach((a, i) => { if (!a.qual || !open.has(a.qual)) out.push({ alt: a, i }); });
+  (c.alts ?? []).forEach((a, i) => { if (!open.some((s) => altIsSeg(a, s))) out.push({ alt: a, i }); });
   (c.vals ?? []).forEach((v, vi) => {
     for (const o of v.opts ?? []) if (o !== v.value) out.push({ alt: { label: `${v.name} → ${o}`, vals: (c.vals ?? []).map((x, k) => (k === vi ? { ...x, value: o } : x)) }, opt: { val: vi, value: o } });
   });
