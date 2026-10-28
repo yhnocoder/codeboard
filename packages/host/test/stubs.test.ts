@@ -17,7 +17,8 @@ const ROOT = tempRepo("stubs", {
   "pkg/circle.py": "from pkg.shapes import Shape\n\n\nclass Circle(Shape):\n    def area(self):\n        return 3\n",
   "pkg/fast.pyi": "def fast_sum(xs: list[int]) -> int: ...\ndef only_stub(x: int) -> int: ...\n",
   "csrc/fast.cpp": "#include <pybind11/pybind11.h>\n\nint fast_sum(std::vector<int> xs) {\n  return 0;\n}\n\nPYBIND11_MODULE(fast, m) {\n  m.def(\"fast_sum\", &fast_sum);\n}\n",
-  "main.py": "from pkg import shapes, fast\n\n\ndef run(s):\n    a = shapes.make('c')\n    b = s.area()\n    c = fast.fast_sum([1])\n    return fast.only_stub(c)\n",
+  "pkg/ns.py": "class Namespace:\n    def __getattr__(self, name):\n        return name\n",
+  "main.py": "from pkg import shapes, fast\n\n\ndef run(s, ns):\n    a = shapes.make('c')\n    b = s.area()\n    c = fast.fast_sum([1])\n    ns.anything()\n    return fast.only_stub(c)\n",
 });
 const W = nodeWorkspace(ROOT);
 const abs = (rel: string) => path.join(ROOT, rel);
@@ -53,5 +54,16 @@ describe("a .pyi stub from the language server", () => {
     expect("card" in r && r.mark?.alts?.map((a) => a.label)).toEqual(["stub · fast.pyi fast_sum"]);
     answer("pkg/fast.pyi", 2);
     expect(target(await expand({ ...at(run, /fast\.only_stub/, "only_stub"), name: "only_stub" }))).toBe("pkg/fast.pyi only_stub");
+  });
+});
+
+describe("dynamic dispatch", () => {
+  it("asks Go to Implementation only for the called method itself, not for a __getattr__ the call lands on", async () => {
+    answer("pkg/ns.py", 2);
+    const asked: string[] = [];
+    W.language.implementations = async (a, line) => { asked.push(`${path.relative(ROOT, a)}:${line}`); return []; };
+    expect(target(await expand({ ...at(run, /ns\.anything/, "anything"), name: "anything" }))).toBe("pkg/ns.py Namespace.__getattr__");
+    expect(asked).toEqual([]);
+    W.language.implementations = async () => [];
   });
 });

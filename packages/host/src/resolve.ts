@@ -245,8 +245,13 @@ async function implSite(d: Def, name: string): Promise<Def | null> {
 async function mayDispatch(d: Def, name: string): Promise<boolean> {
   if (langOf(d.abs) !== "python") return false;
   const b = await symAtDef(d, name);
-  return !!b && !!b.sym.parent && b.sym.kind === "def";
+  return overridable(b, name);
 }
+/**
+ * 被调用的方法本身：类里的 def，名字就是调用的名字。名字不同的（x.foo 落到 __getattr__，torch.ops.aten.X 落到 _OpNamespace.__getattr__）
+ * 覆盖它的子类和这次调用无关，不为它问转到实现（Pylance 在大工作区里要找十几秒）
+ */
+const overridable = (b: Target | null, name: string): b is Target & { sym: { parent: string } } => !!b && !!b.sym.parent && b.sym.kind === "def" && b.sym.name === name;
 
 /** expand 回了 dispatching 之后白板来问：同一个调用点的定义处有没有被覆盖（定义、转到实现都走缓存，和 expand 发出去的是同一个请求） */
 export async function dispatchAt(m: { seg: Segment; line: number; col: number; name: string }): Promise<DispatchResult> {
@@ -268,7 +273,7 @@ export async function dispatchOf(def: Def, name: string): Promise<{ result: Extr
   const d = await implSite(def, name);
   if (!d) return null;
   const b = await symAtDef(d, name);
-  if (!b || !b.sym.parent || b.sym.kind !== "def") return null;
+  if (!overridable(b, name)) return null;
   let locs: Def[] = [];
   try { locs = await lspImpls(d); } catch { return null; }
   const impls: Target[] = [];
