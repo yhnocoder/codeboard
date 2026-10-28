@@ -102,6 +102,51 @@ export async function addImage(dataUrl: string, name: string, at?: { x: number; 
   addCards([{ card: { id, kind: "image", src }, views: {}, w }], { at });
   return id;
 }
+const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg)$/i;
+const fileUri = (p: string) => { const s = p.replace(/\\/g, "/"); return `file://${s.startsWith("/") ? "" : "/"}${encodeURI(s).replace(/[?#]/g, encodeURIComponent)}`; };
+const uriName = (u: string) => { const n = u.replace(/[?#].*$/, "").split("/").pop() ?? ""; try { return decodeURIComponent(n); } catch { return n; } };
+
+/**
+ * Files dragged in as URIs only, without File objects. VS Code's Explorer and editor tabs put every file in
+ * application/vnd.code.uri-list, the same list as JSON in ResourceURLs, the file paths in CodeFiles, and only the first file in
+ * text/uri-list; an OS drop may carry only text/uri-list. Web addresses (a link dragged from a page) are not files
+ */
+export function droppedUris(dt: DataTransfer): string[] {
+  const lines = (t: string) => dt.getData(t).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+  const json = (t: string) => { try { const v: unknown = JSON.parse(dt.getData(t) || "[]"); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; } };
+  const uris = [() => lines("application/vnd.code.uri-list"), () => json("resourceurls"), () => json("codefiles").map(fileUri), () => lines("text/uri-list")]
+    .reduce<string[]>((got, f) => (got.length ? got : f()), []);
+  return uris.filter((u) => /^[a-z][\w+.-]*:/i.test(u) && !/^(https?|data|blob|javascript|mailto):/i.test(u));
+}
+
+/**
+ * Files dropped on the board: each image becomes an image card from the drop point on, read here when the drop has File objects
+ * (an OS drop), else by the host from its URI (VS Code's Explorer). Anything else isn't an image: said in a toast, not added.
+ * Returns whether the drop held any file (so it's the board's)
+ */
+export function dropFiles(dt: DataTransfer, at: { x: number; y: number }): boolean {
+  const files = [...dt.files], uris = files.length ? [] : droppedUris(dt);
+  if (!files.length && !uris.length) return false;
+  const isImage = (f: File) => f.type.startsWith("image/") || IMAGE_FILE.test(f.name);
+  const others = [...files.filter((f) => !isImage(f)).map((f) => f.name), ...uris.map(uriName).filter((n) => !IMAGE_FILE.test(n))];
+  if (others.length) toast(`${others.length > 1 ? `${others[0]} and ${others.length - 1} more aren't images` : `${others[0]} isn't an image`}: only PNG, JPEG, GIF, WebP and SVG files can be dropped on the board`);
+  // read all at once, add in the drop's order, in a row from the drop point
+  const read = (f: File) => new Promise<string>((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(String(rd.result)); rd.onerror = () => no(rd.error); rd.readAsDataURL(f); });
+  const failed = (name: string) => (e: Error) => { toast(e?.message || `Could not add ${name}`); return null; };
+  const loads = [
+    ...files.filter(isImage).map((f) => ({ name: f.name, data: read(f).catch(failed(f.name)) })),
+    ...uris.map((u) => ({ u, name: uriName(u) })).filter((x) => IMAGE_FILE.test(x.name)).map((x) => ({ name: x.name, data: ask("readImageUri", { uri: x.u }).catch(failed(x.name)) })),
+  ];
+  void (async () => {
+    let x = at.x;
+    for (const l of loads) {
+      const data = await l.data;
+      const id = data && (await addImage(data, l.name, { x, y: at.y }));
+      if (id) x = placeOf(id).x + placeOf(id).w + GAP;
+    }
+  })();
+  return true;
+}
 export async function newWeb(at?: { x: number; y: number }, url?: string) {
   url = url ?? (await promptText("Add Web Link", "", "https://…", "Add")) ?? undefined;
   if (!url) return;

@@ -11,7 +11,7 @@ import { tidy } from "@codeboard/core/tidy";
 import { pasteCard } from "./paste";
 import { writeSetting } from "./settings";
 import { openStickerDir, readPacks } from "./stickers";
-import { readAsset, saveNoteImage } from "./images";
+import { readAsset, readImageUri, saveNoteImage } from "./images";
 import { log } from "./log";
 import { copyDiagnostics } from "./diagnostics";
 import type { BoardHost, BoardPanel } from "./boards";
@@ -79,6 +79,7 @@ export function makeHandler(panels: BoardHost): Handler {
     saveAsset: (_p, m) => store.saveAsset(m.name, m.dataUrl),
     saveImage: (_p, m) => saveNoteImage(store, m.dataUrl),
     readAsset: (_p, m) => readAsset(store, m.file),
+    readImageUri: (_p, m) => readImageUri(m.uri),
     exportPng: (_p, m) => exportPng(m.dataUrl, m.name),
     views: (_p, m) => viewsFor(m.segs),
     checkVersions: (p) => p.refreshStale(),

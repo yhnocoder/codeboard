@@ -662,13 +662,13 @@ export function installKeys() {
       A.pasteText(text, near ?? w, !!near);
     });
   });
-  window.addEventListener("dragover", (e) => { if ([...(e.dataTransfer?.items ?? [])].some((i) => i.kind === "file")) e.preventDefault(); });
-  window.addEventListener("drop", (e) => {
-    if (e.defaultPrevented) return; // 拖进正在编辑的 Note：编辑器已经插进去了
-    const files = [...(e.dataTransfer?.files ?? [])].filter((f) => f.type.startsWith("image/"));
-    if (!files.length) return;
-    e.preventDefault();
-    const w = worldOf(e);
-    files.forEach((f, i) => { const rd = new FileReader(); rd.onload = () => A.addImage(String(rd.result), f.name, { x: w.x + i * 24, y: w.y + i * 24 }); rd.readAsDataURL(f); });
+  // Files dragged in from the OS (Finder) or from VS Code's Explorer (both only reach the board with Shift held). VS Code's
+  // webview wrapper cancels every dragover and drop on this window, before the board's own listeners run: listen on the document,
+  // which the drop passes first, so defaultPrevented still says only whether a Note being edited took it
+  const FILE_TYPES = ["Files", "text/uri-list", "application/vnd.code.uri-list", "resourceurls", "codefiles"];
+  document.addEventListener("dragover", (e) => { if (e.dataTransfer?.types.some((t) => FILE_TYPES.includes(t))) e.preventDefault(); });
+  document.addEventListener("drop", (e) => {
+    if (e.defaultPrevented || !e.dataTransfer) return;
+    if (A.dropFiles(e.dataTransfer, worldOf(e))) e.preventDefault();
   });
 }
