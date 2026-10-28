@@ -101,12 +101,13 @@ export function isDbl(key: string, e: { clientX: number; clientY: number }) {
 
 /**
  * 只选着这一张时单击正文就进编辑，光标放在点的地方：Note 的 .nbody、Text / Box / Mark 的 .tx、手写代码卡的 .src。
+ * 卡比内容高时正文下面、旁边的空白（.cface 自己）也算 Note 的正文：光标放到最近的地方，下面就是最后。
  * 正文里自己管点击的东西（引用、任务勾选框、折叠块的标题）不算；链接、按钮在 CARD_CONTROL 里，按下就不归卡
  */
 const OWN_CLICK = ".md-ref, label, summary";
 function clickEditKind(c: Card, t: HTMLElement): "note" | "free" | null {
   if (lod() !== "full" || t.closest(OWN_CLICK)) return null;
-  if (c.kind === "note") return t.closest(c.look === "note" ? ".nbody" : ".tx") ? "note" : null;
+  if (c.kind === "note") return t.closest(c.look === "note" ? ".nbody" : ".tx") || t.classList.contains("cface") ? "note" : null;
   return c.kind === "code" && c.segments[0]?.src.kind === "free" && t.closest(".src") ? "free" : null;
 }
 function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number }) {

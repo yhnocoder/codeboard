@@ -222,3 +222,41 @@ test("doubleClickEditsAtCaret", async () => {
   await h.close();
 });
 
+/** A Note taller than its text: a click (selected) or a double click (unselected) on the blank part of the body below the text edits
+ *  it with the caret at the end of the last block; one to the right of a short line puts the caret at the end of that line */
+test("clickBlankNoteBodyEdits", async () => {
+  const b = emptyBoard("b1", "blank below");
+  put(b, { id: "tall", kind: "note", md: "short line\n\nThe last paragraph ends here", look: "note" } as NoteCard, 80, 80, 420);
+  b.place.tall.h = 420;
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light, w: 900, h: 700, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await idle(h);
+  const card = (await pg.locator('.card[data-id="tall"]').boundingBox())!;
+  const below = { x: card.x + card.width / 2, y: card.y + card.height - 60 };
+  const short = await wordAt(pg, '.card[data-id="tall"] .nbody', "line");
+  const right = { x: card.x + card.width - 60, y: short.y };
+  const edit = async (what: string, act: () => Promise<void>) => {
+    await act();
+    const ok = await until(h, `${what}: the Note is being edited`, async () => (await pg.locator('.card[data-id="tall"] .md-pm').count()) > 0).catch(() => false);
+    if (ok && what === "click below") { await idle(h); await shot(h, "clickBlankNoteBodyEdits-editing"); }
+    const got = ok ? await typedNote(h, "tall") : "";
+    await deselect(h);
+    return got;
+  };
+  const selectIt = async () => {
+    await pg.locator('.card[data-id="tall"] .chead').click({ position: { x: 30, y: 10 } });
+    await until(h, "tall selected", async () => (await selected(pg)) === "tall");
+    await apart(h);
+  };
+  await shot(h, "clickBlankNoteBodyEdits-before");
+  const clickBelow = await edit("click below", async () => { await selectIt(); await pg.mouse.click(below.x, below.y); });
+  const dblBelow = await edit("double click below", () => pg.mouse.dblclick(below.x, below.y));
+  const clickRight = await edit("click right of a short line", async () => { await selectIt(); await pg.mouse.click(right.x, right.y); });
+  const dblRight = await edit("double click right of a short line", () => pg.mouse.dblclick(right.x, right.y));
+  // each edit's Z stays in the text
+  const want = ["short line\n\nThe last paragraph ends hereZ", "short line\n\nThe last paragraph ends hereZZ", "short lineZ\n\nThe last paragraph ends hereZZ", "short lineZZ\n\nThe last paragraph ends hereZZ"];
+  check("clickBlankNoteBodyEdits below", clickBelow === want[0] && dblBelow === want[1], { clickBelow, dblBelow, want });
+  check("clickBlankNoteBodyEdits right of a short line", clickRight === want[2] && dblRight === want[3], { clickRight, dblRight, want });
+  await h.close();
+});
