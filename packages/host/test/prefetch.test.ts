@@ -63,7 +63,8 @@ describe("hover prefetch", () => {
   it("is not reused by the click when the answer was empty (language server still starting)", async () => {
     empty = true;
     prefetchCall(req);
-    await sleep(delay + 30);
+    // the empty answer has come back (a fixed wait could still find it in flight on a loaded machine, and then it answers non-empty)
+    await vi.waitFor(() => expect({ calls, live }).toEqual({ calls: 1, live: 0 }), { timeout: 5000, interval: 1 });
     empty = false;
     expect(isSchedule(await expand(req))).toBe(true);
     expect(calls).toBe(2);
