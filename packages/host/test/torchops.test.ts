@@ -14,6 +14,10 @@ import { at, card, startTreeSitter } from "./helpers";
 
 const FIX = fs.mkdtempSync("/tmp/codeboard-torchops-");
 fs.cpSync(path.join(__dirname, "fixtures/torchops"), FIX, { recursive: true });
+// a Python name PyTorch does not register, but a test of a third-party library inside the checkout does
+fs.writeFileSync(path.join(FIX, "torch/cache.py"), "def lookup(c):\n    return c.fetch(1)\n");
+fs.mkdirSync(path.join(FIX, "third_party/pybind11/tests"), { recursive: true });
+fs.writeFileSync(path.join(FIX, "third_party/pybind11/tests/t.cpp"), "struct Foo {};\n\nPYBIND11_MODULE(t, m) {\n  py::class_<Foo>(m, \"Foo\").def(\"fetch\", [](Foo& f, int k) { return k; });\n}\n");
 const YAML = "aten/src/ATen/native/native_functions.yaml";
 const seg = async (rel: string, qual: string) => (await card(path.join(FIX, rel), qual)).seg;
 const click = (s: Segment, re: RegExp, name: string) => expand({ ...at(s, re, name), name });
@@ -128,6 +132,10 @@ describe("clicks into PyTorch ops", () => {
     const a = await click(await seg("model.py", "run"), /_mtia_is_available/, "_mtia_is_available");
     expect(qualOf(a)).toBe("torch::mtia::is_available");
     expect(markOf(a)?.bound).toBe("pybind · Module.cpp m.def");
+  });
+  it("a name PyTorch does not register is not looked for in the registrations of the rest of the workspace", async () => {
+    const r = await click(await seg("torch/cache.py", "lookup"), /c\.fetch/, "fetch");
+    expect(fileOf(r)).toBeUndefined();
   });
   it("x.scatter_add → the structured kernel; scatter_add_stub(device, …) → REGISTER_DISPATCH targets, CUDA first", async () => {
     const r = await click(await seg("model.py", "run"), /x\.scatter_add/, "scatter_add");

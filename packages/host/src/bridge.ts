@@ -71,7 +71,8 @@ async function lambdaTarget(abs: string, line: number): Promise<Target | null> {
 
 /**
  * Python 调用 obj.name(…)：语言服务说不出来（C 扩展），在 pybind / PyMethodDef / PyO3 的注册里找 name。
- * PyTorch 里的文件先查算子索引扫过的 torch/csrc（不扫工作区），那里没有再照常在整个工作区里找
+ * PyTorch 里的文件只查算子索引扫过的 torch/csrc：不扫工作区（索引建好之前要读每个 C++ 文件），
+ * third_party 里别的库的测试注册的同名方法也不是它
  */
 export async function viaRegistry(name: string, here?: string): Promise<Crossed[]> {
   const out: Crossed[] = [];
@@ -81,7 +82,7 @@ export async function viaRegistry(name: string, here?: string): Promise<Crossed[
       const t = r.lambda ? await lambdaTarget(r.abs, r.line) : await regSym(ops, r);
       if (t) out.push({ t, mark: { bound: r.how } });
     }
-    if (out.length) return out;
+    return out;
   }
   for (const { abs, text } of await grepWord(name, "cpp")) {
     for (const r of pybindDefs(text, name)) {
