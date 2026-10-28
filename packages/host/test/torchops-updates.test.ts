@@ -132,6 +132,15 @@ describe("op index updates", () => {
     await drained();
     expect(target(await click(await seg("model.py", "run"), /torch\.eq/, "eq"))).toBe("aten/src/ATen/native/BinaryOps.cpp CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC(eq_Scalar_out)");
   });
+  it("follows a kernel file renamed in the editor", async () => {
+    const pool = async () => target(await click(await seg("model.py", "run"), /fractional_max_pool2d/, "fractional_max_pool2d"));
+    expect(await pool()).toBe("aten/src/ATen/native/cuda/FractionalMaxPool2d.cu at::native::fractional_max_pool2d_out_cuda");
+    const from = abs("aten/src/ATen/native/cuda/FractionalMaxPool2d.cu"), to = abs("aten/src/ATen/native/cuda/FractionalMaxPooling.cu");
+    fs.renameSync(from, to);
+    W.fire.rename.fire([{ from, to }]);
+    await drained();
+    expect(await pool()).toBe("aten/src/ATen/native/cuda/FractionalMaxPooling.cu at::native::fractional_max_pool2d_out_cuda");
+  });
   it("finds the generated kernels again when compile_commands.json moves", async () => {
     const add = async () => target(await click(await seg("model.py", "run"), /torch\.add/, "add"));
     expect(await add()).toBe("build/aten/src/ATen/UfuncCUDA_add.cu at::native::ufunc_add_CUDA");
