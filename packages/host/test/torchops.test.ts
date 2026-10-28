@@ -41,16 +41,16 @@ describe("native_functions.yaml", () => {
     expect(t.byFull.get("add.out")).toMatchObject({ structured: true, ufunc: true, out: true });
     expect(t.byFull.get("gelu")!.dispatch).toEqual([["CPU", "gelu_kernel"], ["CUDA", "gelu_kernel"]]);
   });
-  it("structured_delegate reaches the structured kernels; CUDA first, then CPU; other keys dropped", () => {
-    expect(ks("_softmax")).toEqual(["CUDA: softmax_cuda_out (via _softmax.out)", "CPU: softmax_cpu_out (via _softmax.out)"]);
-    expect(ks("_softmax", "out")).toEqual(["CUDA: softmax_cuda_out", "CPU: softmax_cpu_out"]);
+  it("structured_delegate reaches the structured kernels; CUDA first, then CPU, then the other keys (MPS, MkldnnCPU…)", () => {
+    expect(ks("_softmax")).toEqual(["CUDA: softmax_cuda_out (via _softmax.out)", "CPU: softmax_cpu_out (via _softmax.out)", "MkldnnCPU: mkldnn_softmax", "MPS: softmax_mps_out (via _softmax.out)"]);
+    expect(ks("_softmax", "out")).toEqual(["CUDA: softmax_cuda_out", "CPU: softmax_cpu_out", "MPS: softmax_mps_out"]);
   });
   it("no dispatch and no delegate = CompositeImplicitAutograd with the op's C++ name", () => {
     expect(ks("softmax")).toEqual(["CompositeImplicitAutograd: softmax", "CompositeExplicitAutograd: softmax_out"]);
   });
   it("ufunc ops: CPU / CUDA are the generated ufunc_add_CUDA / _CPU; keys sharing a kernel are joined", () => {
-    expect(ks("add", "Tensor")).toEqual(["CUDA: ufunc:ufunc_add_CUDA (via add.out)", "CPU: ufunc:ufunc_add_CPU (via add.out)"]);
-    expect(ks("scatter_add")).toEqual(["CUDA, CPU: scatter_add (via scatter_add.out)"]);
+    expect(ks("add", "Tensor")).toEqual(["CUDA: ufunc:ufunc_add_CUDA (via add.out)", "CPU: ufunc:ufunc_add_CPU (via add.out)", "SparseCPU, SparseCUDA: add_sparse", "Meta: add_Tensor_meta"]);
+    expect(ks("scatter_add")).toEqual(["CUDA, CPU, MPS: scatter_add (via scatter_add.out)"]);
   });
   it("finds the yaml in the workspace", async () => {
     expect((await opTables()).map((x) => x.root)).toEqual([FIX]);
@@ -77,7 +77,9 @@ describe("clicks into PyTorch ops", () => {
     expect(fileOf(s)).toBe("aten/src/ATen/native/cuda/SoftMax.cu");
     expect(markOf(s)?.bound).toBe("native_functions.yaml · _softmax via _softmax.out");
     expect(key(s)).toBe("CUDA");
-    expect(alts(s)).toEqual(["CPU · at::native::softmax_cpu_out"]);
+    // MPS (an Objective-C++ .mm file) after CPU: on a Mac that is the kernel that runs
+    expect(alts(s)).toEqual(["CPU · at::native::softmax_cpu_out", "MPS · at::native::softmax_mps_out"]);
+    expect(markOf(s)?.alts?.[1].detail).toBe("aten/src/ATen/native/mps/operations/SoftMax.mm:11");
     expect(markOf(s)?.alts?.[0].vals).toEqual([{ name: "dispatch", value: "CPU" }]);
   });
   it("F.gelu (an assignment, not a def) and torch._C._nn.X go to the kernels", async () => {

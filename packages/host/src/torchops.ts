@@ -107,7 +107,7 @@ export function declKernels(t: OpTable, d: OpDecl): Kernel[] {
 export const keyRank = (key: string) => (key === "CUDA" ? 0 : key === "CPU" ? 1 : /^Composite/.test(key) ? 2 : 3);
 
 /**
- * 算子 name（overload 可选）的 kernel：CUDA 在前，然后 CPU、Composite；这些都没有时才给别的 key。
+ * 算子 name（overload 可选）的 kernel：CUDA 在前，然后 CPU、Composite，再是别的 key（MPS、XPU…：Mac 上要看的是 MPS 的）。
  * 同一个 C++ 名字的几个 key 合成一条（key 用逗号连起来）
  */
 export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[] {
@@ -115,9 +115,7 @@ export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[]
   const rank = (d: OpDecl) => (!d.overload ? 0 : d.out ? 2 : 1);
   const decls = overload !== undefined ? [t.byFull.get(overload ? `${name}.${overload}` : name)].filter((d): d is OpDecl => !!d)
     : [...(t.byName.get(name) ?? [])].sort((a, b) => rank(a) - rank(b));
-  const all = decls.flatMap((d) => declKernels(t, d));
-  const main = all.filter((k) => keyRank(k.key) <= 2);
-  const list = (main.length ? main : all).map((k, i) => ({ k, i })).sort((a, b) => keyRank(a.k.key) - keyRank(b.k.key) || a.i - b.i).map((x) => x.k);
+  const list = decls.flatMap((d) => declKernels(t, d)).map((k, i) => ({ k, i })).sort((a, b) => keyRank(a.k.key) - keyRank(b.k.key) || a.i - b.i).map((x) => x.k);
   const out: Kernel[] = [];
   for (const k of list) {
     const same = out.find((o) => o.kernel === k.kernel);

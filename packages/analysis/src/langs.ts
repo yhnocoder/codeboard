@@ -48,7 +48,7 @@ export const LANG_TABLE: readonly LangInfo[] = [
   { id: "triton", label: "Triton", pick: true, aliases: [], ext: [], ...py },
   { id: "tilelang", label: "TileLang", pick: true, aliases: [], ext: [], ...py },
   { id: "cuda-cpp", label: "CUDA", pick: true, aliases: ["cuda", "cu"], ext: ["cu", "cuh"], vscodeId: "cuda-cpp", md: "cuda", ...cpp },
-  { id: "cpp", label: "C++", pick: true, aliases: ["c++", "cc", "cxx", "hpp", "objective-cpp"], ext: ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl"], vscodeId: "cpp", md: "cpp", ...cpp },
+  { id: "cpp", label: "C++", pick: true, aliases: ["c++", "cc", "cxx", "hpp", "objective-cpp"], ext: ["cpp", "cc", "cxx", "hpp", "hh", "hxx", "h", "inl", "mm"], vscodeId: "cpp", md: "cpp", ...cpp },
   { id: "c", label: "C", pick: true, aliases: ["objective-c"], ext: ["c"], vscodeId: "c", md: "c", ...cpp },
   { id: "rust", label: "Rust", pick: true, aliases: ["rs"], ext: ["rs"], comment: "//", vscodeId: "rust", md: "rust", highlight: shiki("rust"), lsp: true, keywords: RUST_KW, noDef: "a macro, or no rust-analyzer", grammar: "rust" },
   { id: "typescript", label: "TypeScript", pick: true, aliases: ["ts", "tsx"], ext: ["ts", "tsx"], comment: "//", vscodeId: "typescript", md: "typescript", highlight: shiki("typescript"), lsp: true },
