@@ -20,7 +20,10 @@ WS=$TMP/ws
 UD=$TMP/user
 pkill -f -- "--user-data-dir=$UD" 2>/dev/null && sleep 1   # wait only when an earlier run was still there
 rm -rf "$TMP" "$OUT"; mkdir -p "$OUT" "$UD/User"
-git clone -q "$REPO/examples/nano-vllm" "$WS"
+# E2E_WS=<dir> opens a copy of another workspace instead of nano-vllm (for E2E_FLOW flows; drive.cjs's own steps expect nano-vllm):
+# a git repository is cloned, so its history is there for version checks; any other folder is copied
+SRC=${E2E_WS:-$REPO/examples/nano-vllm}
+if [ "$(git -C "$SRC" rev-parse --show-toplevel 2>/dev/null)" = "$(cd "$SRC" && pwd -P)" ]; then git clone -q "$SRC" "$WS"; else cp -r "$SRC" "$WS"; fi
 # E2E_EXTENSIONS="ms-python.python ms-python.vscode-pylance": install into a cache dir first (skipped if already there), then copy into this run's extensions dir
 if [ -n "$E2E_EXTENSIONS" ]; then
   CACHE=${E2E_EXT_CACHE:-/tmp/codeboard-ext-cache}
