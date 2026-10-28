@@ -9,7 +9,7 @@ import { grammarOfFile } from "@codeboard/analysis/langs";
 import { dispatchAll, pybindAll, pyMethodAll, type CallSite, type FileAnalysis, type Sym } from "@codeboard/analysis";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
 import { entriesOf, indexedFiles, isCode, knownEntries, type IndexEntry } from "./nameindex";
-import { exists, langOf, readText } from "./ws";
+import { exists, langOf, readText, workspace } from "./ws";
 import { log } from "./log";
 
 // Everything here runs on the extension host's thread next to the board: long loops give the event loop a turn every few ms.
@@ -139,7 +139,9 @@ type MacroSite = { abs: string; line: number; macro: string; sig: string };
 /** What one file adds to the scan's tables */
 type FileRec = { regs: [string, Reg][]; pyRegs: [string, Reg][]; macros: [string, MacroSite][]; words: string[]; gen: IndexEntry[] };
 type Scan = {
-  t: OpTable; aten: string; csrc: string; genDir: string;
+  t: OpTable; aten: string; csrc: string;
+  /** <build>/aten/src/ATen, where torchgen writes the Ufunc kernels (none: not built, or no compile_commands.json) */
+  genDir?: string;
   /** Names to find in files: kernels and ufunc inner loops from the yaml, then registration targets; values are flat copies */
   wanted: Map<string, string>;
   files: Map<string, FileRec>;
@@ -166,8 +168,39 @@ const UFUNC_FILE = /^Ufunc\w*\.(cpp|cu)$/;
 // Substrings of a file text keep the whole text alive (V8 sliced strings): every string the scan keeps is copied out
 const own = (s: string) => Buffer.from(s, "utf8").toString("utf8");
 
-const inScan = (x: Scan, abs: string) => (path.dirname(abs) === x.genDir ? UFUNC_FILE.test(path.basename(abs)) : isCode(abs) && (abs.startsWith(x.aten) || abs.startsWith(x.csrc)));
-const isGen = (x: Scan, abs: string) => path.dirname(abs) === x.genDir;
+const isGen = (x: Scan, abs: string) => !!x.genDir && path.dirname(abs) === x.genDir;
+const inScan = (x: Scan, abs: string) => (isGen(x, abs) ? UFUNC_FILE.test(path.basename(abs)) : isCode(abs) && (abs.startsWith(x.aten) || abs.startsWith(x.csrc)));
+
+/**
+ * The build's generated ATen folder, from the compile_commands.json clangd uses: the folder of clangd's --compile-commands-dir,
+ * else the first of <root>, <root>/build, <root>/build/* that has one. Its entries name the generated Ufunc*.cpp they compile,
+ * which gives the folder even when the file is a copy in the source root (PyTorch's setup.py writes one there)
+ */
+export async function genDirOf(root: string): Promise<string | undefined> {
+  const args = workspace().settings.get<unknown>("clangd.arguments");
+  const ws = workspace().files.rootOf(root) ?? root;
+  const dirs: string[] = [];
+  if (Array.isArray(args)) {
+    const i = args.findIndex((a) => typeof a === "string" && /^--compile-commands-dir(=|$)/.test(a));
+    const v = i < 0 ? undefined : /=/.test(args[i]) ? String(args[i]).replace(/^[^=]*=/, "") : args[i + 1];
+    if (typeof v === "string" && v) dirs.push(path.resolve(ws, v.replace(/\$\{(workspaceFolder|workspaceRoot)\}/g, ws)));
+  }
+  dirs.push(root, path.join(root, "build"));
+  try { for (const d of (await fs.readdir(path.join(root, "build"), { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name))) if (d.isDirectory()) dirs.push(path.join(root, "build", d.name)); } catch { /* no build/ */ }
+  for (const d of dirs) {
+    const text = await readText(path.join(d, "compile_commands.json"), false);
+    if (text === null) continue;
+    for (let i = text.indexOf("Ufunc"); i >= 0; i = text.indexOf("Ufunc", i + 1)) {
+      const a = text.lastIndexOf('"', i), b = text.indexOf('"', i);
+      let file: unknown;
+      try { file = JSON.parse(text.slice(a, b + 1)); } catch { continue; }
+      if (typeof file === "string" && UFUNC_PATH.test(file)) return path.dirname(path.resolve(d, file));
+    }
+    return d === root ? undefined : path.join(d, "aten", "src", "ATen"); // nothing compiled from Ufunc files: the usual layout
+  }
+  return undefined;
+}
+const UFUNC_PATH = /[\\/]aten[\\/]src[\\/]ATen[\\/]Ufunc\w*\.(cpp|cu)$/;
 
 /** What a file registers, the kernels its macro calls define, and the wanted names it mentions */
 function scanText(x: Scan, abs: string, text: string): FileRec {
@@ -226,12 +259,18 @@ function wantTargets(x: Scan, rec: FileRec) {
   for (const [, r] of [...rec.regs, ...rec.pyRegs]) if (r.target) { const n = r.target.split("::").pop()!; if (!x.wanted.has(n)) x.wanted.set(n, own(n)); }
 }
 
+async function genFiles(x: Scan): Promise<string[]> {
+  const dir = x.genDir;
+  if (!dir) return [];
+  try { return (await fs.readdir(dir)).filter((f) => UFUNC_FILE.test(f)).map((f) => path.join(dir, f)); } catch { return []; }
+}
+
 /** Pass 1: registrations, macro-made kernels and the files of the yaml's names; enough for most clicks */
 async function scanHead(x: Scan) {
   const t0 = performance.now(), turn = slicer();
   const files = (await indexedFiles()).map((f) => f.abs).filter((a) => inScan(x, a));
-  let gen: string[] = [];
-  try { gen = (await fs.readdir(x.genDir)).filter((f) => UFUNC_FILE.test(f)).map((f) => path.join(x.genDir, f)); } catch { /* never built */ }
+  x.genDir = await genDirOf(x.t.root);
+  const gen = await genFiles(x);
   for (const abs of [...gen, ...files]) {
     if (x.dead) return;
     const text = await readText(abs, false);
@@ -288,7 +327,7 @@ export function scanOf(t: OpTable): Scan {
     const wanted = new Map<string, string>();
     for (const d of t.decls) for (const k of declKernels(t, d)) for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
     const s: Scan = {
-      t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, csrc: path.join(t.root, "torch", "csrc") + path.sep, genDir: path.join(t.root, "build", "aten", "src", "ATen"),
+      t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, csrc: path.join(t.root, "torch", "csrc") + path.sep,
       wanted, yamlNames: new Set(wanted.keys()), files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), where: new Map(),
       head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(),
     };
@@ -422,6 +461,7 @@ export function resetOpTables() { found = undefined; tables.clear(); for (const 
 
 /** A file was saved, created, changed outside the editor or deleted: the yaml drops its table and scan, a scanned file is redone */
 export function opsFileChanged(abs: string) {
+  if (path.basename(abs) === "compile_commands.json") { opsBuildChanged(); return; }
   if (abs.endsWith(path.sep + OPS_YAML.split("/").join(path.sep))) {
     if (!tables.has(abs)) { found = undefined; return; } // a new PyTorch in the workspace
     tables.delete(abs);
@@ -430,6 +470,19 @@ export function opsFileChanged(abs: string) {
   }
   for (const x of scans.values()) if (inScan(x, abs)) rescanFile(x, abs);
 }
+/** compile_commands.json or clangd's arguments changed: the generated files may be elsewhere now */
+export function opsBuildChanged() {
+  for (const x of scans.values()) {
+    x.queue = x.queue.then(async () => {
+      await x.ready;
+      if (x.dead) return;
+      for (const abs of [...x.files.keys()]) if (isGen(x, abs)) dropRec(x, abs);
+      x.genDir = await genDirOf(x.t.root);
+      for (const abs of await genFiles(x)) { const text = await readText(abs, false); if (text !== null) addRec(x, abs, scanText(x, abs, text)); }
+    }).catch((e) => log("warn", `op index: cannot update the build folder: ${e instanceof Error ? e.message : e}`));
+  }
+}
+
 /** A file or folder was deleted */
 export function opsPathRemoved(p: string) {
   for (const yaml of [...tables.keys()]) if (yaml === p || yaml.startsWith(p + path.sep)) opsFileChanged(yaml);

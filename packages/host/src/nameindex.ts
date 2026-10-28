@@ -6,7 +6,7 @@ import { grammarOfFile, type Grammar } from "@codeboard/analysis/langs";
 import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
-import { opsFileChanged, opsPathRemoved, resetOpTables, warmOps } from "./torchops";
+import { opsBuildChanged, opsFileChanged, opsPathRemoved, resetOpTables, warmOps } from "./torchops";
 import { log } from "./log";
 import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, workspace } from "./ws";
 
@@ -254,8 +254,9 @@ export function watchNameIndex() {
     files.onDidChangeRoots(() => resetIndex()),
     // VS Code 外面的改动（git checkout、别的编辑器）：每个根一个监听
     ...files.roots().map((r) => files.watch(r, CODE_GLOB, (abs) => changedFile(abs))),
-    // PyTorch's op table (not a code file)
-    ...files.roots().map((r) => files.watch(r, "**/native_functions.yaml", (abs) => opsFileChanged(abs))),
+    // PyTorch's op table and the build's compile_commands.json (not code files)
+    ...files.roots().map((r) => files.watch(r, "**/{native_functions.yaml,compile_commands.json}", (abs) => opsFileChanged(abs))),
+    workspace().settings.onDidChange((e) => { if (e.affects("clangd.arguments")) opsBuildChanged(); }),
   ];
   return { dispose: () => { for (const d of subs) d.dispose(); } };
 }

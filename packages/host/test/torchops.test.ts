@@ -8,7 +8,7 @@ import { expand } from "../src/resolve";
 import { resetIndex } from "../src/nameindex";
 import { forgetDefs } from "../src/defcache";
 import { useWorkspace } from "../src/ws";
-import { kernelsOf, opTable, opTables, parseOps } from "../src/torchops";
+import { genDirOf, kernelsOf, opTable, opTables, parseOps } from "../src/torchops";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
 
@@ -158,6 +158,34 @@ describe("with a language server that answers with stubs and generated headers",
     set("aten/src/ATen/native/TensorAdvancedIndexing.h", 5);
     const s = await click(await seg("aten/src/ATen/native/SoftMax.cpp", "at::native::scatter_on"), /scatter_add_stub\(/, "scatter_add_stub");
     expect(qualOf(s)).toBe("at::native::scatter_add_cuda_kernel");
+  });
+});
+
+describe("the build folder", () => {
+  const tree = (files: Record<string, string>) => {
+    const r = fs.mkdtempSync("/tmp/codeboard-torchbuild-");
+    for (const [f, t] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(r, f)), { recursive: true }); fs.writeFileSync(path.join(r, f), t); }
+    return r;
+  };
+  const cdb = (...files: string[]) => JSON.stringify(files.map((file) => ({ directory: "/x", command: "c++", file })));
+  afterAll(() => { W.settings.get = () => undefined; });
+  it("is where compile_commands.json's Ufunc entries are, also from a copy in the source root", async () => {
+    const r = tree({ "compile_commands.json": cdb("/src/aten/src/ATen/native/SoftMax.cpp", "/elsewhere/out/aten/src/ATen/UfuncCPU_add.cpp") });
+    expect(await genDirOf(r)).toBe("/elsewhere/out/aten/src/ATen");
+  });
+  it("follows clangd's --compile-commands-dir, with ${workspaceFolder}, before build/", async () => {
+    const r = tree({ "cmake-out/compile_commands.json": cdb("/a/b.cpp"), "build/compile_commands.json": cdb("/c/d.cpp") });
+    W.settings.get = <T>(k: string) => (k === "clangd.arguments" ? ["--background-index", "--compile-commands-dir=${workspaceFolder}/cmake-out"] : undefined) as T;
+    expect(await genDirOf(r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
+    W.settings.get = <T>(k: string) => (k === "clangd.arguments" ? ["--compile-commands-dir", "cmake-out"] : undefined) as T;
+    expect(await genDirOf(r)).toBe(path.join(r, "cmake-out", "aten", "src", "ATen"));
+    W.settings.get = () => undefined;
+    expect(await genDirOf(r)).toBe(path.join(r, "build", "aten", "src", "ATen"));
+  });
+  it("is found in build/<preset>/, and is none without compile_commands.json or with only a root one that names no Ufunc file", async () => {
+    expect(await genDirOf(tree({ "build/Release/compile_commands.json": cdb("/a/b.cpp") }))).toMatch(/build\/Release\/aten\/src\/ATen$/);
+    expect(await genDirOf(tree({ "build/aten/src/ATen/UfuncCPU_add.cpp": "" }))).toBeUndefined();
+    expect(await genDirOf(tree({ "compile_commands.json": cdb("/a/b.cpp") }))).toBeUndefined();
   });
 });
 

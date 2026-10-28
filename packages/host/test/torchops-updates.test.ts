@@ -50,6 +50,16 @@ describe("op index updates", () => {
     W.fire.delete.fire([cu]);
     expect(target(await click(await stub(), /scatter_add_stub\(/, "scatter_add_stub"))).toBe("aten/src/ATen/native/cpu/ScatterGatherKernel.cpp at::native::scatter_add_cpu_kernel");
   });
+  it("finds the generated kernels again when compile_commands.json moves", async () => {
+    const add = async () => target(await click(await seg("model.py", "run"), /torch\.add/, "add"));
+    expect(await add()).toBe("build/aten/src/ATen/UfuncCUDA_add.cu at::native::ufunc_add_CUDA");
+    fs.renameSync(abs("build"), abs("out"));
+    W.fire.change.fire(abs("build/compile_commands.json"));
+    expect(await add()).toBe("aten/src/ATen/native/ufunc/add.h at::native::ufunc::add");
+    W.settings.get = <T>(k: string) => (k === "clangd.arguments" ? ["--compile-commands-dir=out"] : undefined) as T;
+    W.fire.change.fire(abs("out/compile_commands.json"));
+    expect(await add()).toBe("out/aten/src/ATen/UfuncCUDA_add.cu at::native::ufunc_add_CUDA");
+  });
   it("reparses an edited native_functions.yaml and rescans for its new kernels", async () => {
     const before = scanOf((await opTables())[0]);
     edit("aten/src/ATen/native/native_functions.yaml", "CPU, CUDA: gelu_kernel", "CPU, CUDA: gelu_new_kernel");
