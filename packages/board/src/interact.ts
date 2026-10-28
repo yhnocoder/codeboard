@@ -110,9 +110,11 @@ function clickEditKind(c: Card, t: HTMLElement): "note" | "free" | null {
   if (c.kind === "note") return t.closest(c.look === "note" ? ".nbody" : ".tx") || t.classList.contains("cface") ? "note" : null;
   return c.kind === "code" && c.segments[0]?.src.kind === "free" && t.closest(".src") ? "free" : null;
 }
-function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number }) {
+/** first：这是单击（可能是双击的第一下）；双击的第二下进来的不用再拦下一下 */
+function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number }, first = false) {
   if (kind === "note") setEditEntry({ kind: "note", id, at }); // 手写代码卡的编辑器自己按最近一次按下的地方放光标（lastDown）
   setEditing({ kind, id });
+  if (!first) return;
   // 这一下是双击的第一下时，第二下落在刚挂上的编辑器里：只放光标，不让浏览器 / 编辑器选中一个词
   const t0 = performance.now();
   const second = (e: PointerEvent) => {
@@ -130,7 +132,7 @@ export function cardClick(e: MouseEvent, id: string) {
   // 拖着选了字的不算；任务勾选框、引用的点击 MdStatic 自己处理了（停止冒泡，到不了这里）
   if (Math.hypot(e.clientX - a.x, e.clientY - a.y) >= 3 || !window.getSelection()?.isCollapsed) return;
   if ((e.target as HTMLElement).closest(OWN_CLICK) || !(isSel(id) && sel.cards.length === 1) || editing()?.id === id) return;
-  clickEdit(a.kind, id, a);
+  clickEdit(a.kind, id, a, true);
 }
 
 export function cardPointerDown(e: PointerEvent, id: string) {
@@ -188,7 +190,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
   closeAllPops();
   const at = { x: e.clientX, y: e.clientY };
-  startCardDrag(e, f.host.id, multiBody ? () => A.selectCard(f.host.id) : isText && solo && editKind ? () => clickEdit("note", id, at) : undefined);
+  startCardDrag(e, f.host.id, multiBody ? () => A.selectCard(f.host.id) : isText && solo && editKind ? () => clickEdit("note", id, at, true) : undefined);
 }
 
 const hostPlace = (b: Board, id: string) => { const h = findCard(b, id)?.host; return h ? b.place[h.id] : undefined; };
