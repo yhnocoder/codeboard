@@ -12,7 +12,7 @@ import {
 import { analysisOf } from "./analysis";
 import { grepWord, lookupName, type IndexEntry } from "./nameindex";
 import { libOf } from "./scope";
-import { cppOpEntry, defsOf, entrySym, isStubCall, kernelsOf, kernelTarget, opTableFor, pyDefinedInTorch, pyOpEntry, pyRegs, regTarget, stubRegs, type OpTable } from "./torchops";
+import { cppOpEntry, defsOf, entrySym, isStubCall, keyRank, kernelsOf, kernelTarget, opTableFor, pyDefinedInTorch, pyOpEntry, pyRegs, regTarget, stubRegs, type OpTable } from "./torchops";
 import { hostPath, langOf, readText, splitLines } from "./ws";
 import { log } from "./log";
 
@@ -127,7 +127,6 @@ export async function viaOps(t: OpTable, op: string, overload?: string): Promise
  */
 export async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
   const out: Crossed[] = [];
-  const order = (k: string) => (k === "CUDA" ? 0 : k === "CPU" ? 1 : 2);
   for (const r of await stubRegs(t, stub)) {
     const key = stubDevice(r.how, r.abs);
     const e = await regTarget(t, r);
@@ -145,7 +144,8 @@ export async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
       return ufunc;
     }
   }
-  return out.sort((a, b) => order(a.mark.vals![0].value) - order(b.mark.vals![0].value));
+  const rank = (c: Crossed) => keyRank(c.mark.vals![0].value.split(", ")[0]);
+  return out.sort((a, b) => rank(a) - rank(b));
 }
 
 /** 生成的算子文件（build/…/ATen/ops/_softmax.h、Operators_3.cpp、Functions.h、TensorBody.h）：clangd 会落到这里，再往下是 dispatcher 的环 */

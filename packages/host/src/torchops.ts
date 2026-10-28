@@ -6,7 +6,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse } from "yaml";
 import { grammarOfFile } from "@codeboard/analysis/langs";
-import { dispatchAll, lineIndex, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
+import { dispatchAll, lineIndex, stubDevice, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
 import { escapeRegExp } from "@codeboard/analysis/basics";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
 import { entriesOf, indexedFiles, isCode, knownEntries, type IndexEntry } from "./nameindex";
@@ -126,7 +126,11 @@ export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[]
   return out;
 }
 
-const isCudaFile = (abs: string) => /\.(cu|cuh)$/.test(abs) || /[\\/](cuda|cudnn|miopen)[\\/]/.test(abs);
+/** 一个 kernel 的第一个 key 在不在这个文件的设备上（文件的设备和 REGISTER_DISPATCH 认的一样：.cu、cuda/ → CUDA，.mm、mps/ → MPS，其余 CPU） */
+const onDevice = (abs: string, key: string) => {
+  const dev = stubDevice("REGISTER_DISPATCH", abs), k = key.split(", ")[0];
+  return dev === (k === "CUDA" || k === "MPS" ? k : "CPU");
+};
 
 // 扫描：aten/src/ATen（yaml 往上两层）和 torch/csrc 下的代码文件，加上构建生成的 Ufunc*.cpp / .cu（名字索引跳过 build/）。
 // 只留定义位置和注册，不留文件文本：每个文件注册了什么、哪些要找的名字（kernel、注册目标）可能定义在它里面，以及那几个生成文件的 tree-sitter 符号。
@@ -457,14 +461,13 @@ export async function defsOf(t: OpTable, name: string): Promise<IndexEntry[]> {
   return [...out, ...(x.gen.get(name) ?? [])];
 }
 
-/** kernel 的 C++ 定义：at::native::name 优先；CUDA key 优先 .cu / cuda/ 里的，其他 key 优先别处的；ufunc：生成的 ufunc_add_CUDA，没有就是 ufunc::add */
+/** kernel 的 C++ 定义：at::native::name 优先；CUDA key 优先 .cu / cuda/ 里的，MPS 优先 mps/ 里的，其他 key 优先别处的；ufunc：生成的 ufunc_add_CUDA，没有就是 ufunc::add */
 export async function kernelEntry(t: OpTable, k: Kernel): Promise<IndexEntry | undefined> {
   const x = scanOf(t);
   const ok = (e: IndexEntry) => e.kind === "def" && (e.abs.startsWith(x.aten) || isGen(x, e.abs)) && grammarOfFile(e.abs) === "cpp";
   let ents = (await defsOf(t, k.kernel)).filter(ok);
   if (!ents.length && k.inner) ents = (await defsOf(t, k.inner)).filter((e) => ok(e) && /(^|::)ufunc::/.test(e.qual));
-  const cuda = k.key.split(", ")[0] === "CUDA";
-  const score = (e: IndexEntry) => (e.qual.endsWith(`native::${k.kernel}`) ? 2 : 0) + (isCudaFile(e.abs) === cuda ? 1 : 0);
+  const score = (e: IndexEntry) => (e.qual.endsWith(`native::${k.kernel}`) ? 2 : 0) + (onDevice(e.abs, k.key) ? 1 : 0);
   return ents.map((e, i) => ({ e, i, s: score(e) })).sort((a, b) => b.s - a.s || a.i - b.i)[0]?.e;
 }
 
@@ -476,8 +479,7 @@ export async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string;
   const x = scanOf(t);
   await settled(x, "head");
   if (!x.macros.has(k.kernel)) await settled(x); // 拼名字的宏拼出来的：第 2 遍之后才知道
-  const cuda = k.key.split(", ")[0] === "CUDA";
-  const m = [...(x.macros.get(k.kernel) ?? [])].sort((a, b) => (isCudaFile(a.abs) === cuda ? 0 : 1) - (isCudaFile(b.abs) === cuda ? 0 : 1))[0];
+  const m = [...(x.macros.get(k.kernel) ?? [])].sort((a, b) => (onDevice(a.abs, k.key) ? 0 : 1) - (onDevice(b.abs, k.key) ? 0 : 1))[0];
   return m ? { abs: m.abs, sym: { name: k.kernel, qual: `${m.macro}(${k.kernel})`, kind: "def", start: m.line, defLine: m.line, end: m.line, sig: m.sig, params: [] } } : null;
 }
 
