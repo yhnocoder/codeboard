@@ -61,11 +61,13 @@ export type Editing =
 export const [editing, setEditing] = boardSignal<Editing>(null);
 /**
  * 显示时选中一段字再按 ⌫ / Delete：进入编辑，把同一段选上，再把这个键交给编辑器（和在编辑器里按一样）。
- * note：静态 Markdown 上数出来的一段（staticTextRange）；free：自由代码卡的第几行第几个字（行从 0 数）。编辑器挂上时取走（takeEditEntry）
+ * note：静态 Markdown 上数出来的一段（staticTextRange）；free：自由代码卡的第几行第几个字（行从 0 数）。
+ * 单击选着的 Note 进来的（at，屏幕坐标）：光标放在点的地方。编辑器挂上时取走（takeEditEntry）
  */
-export type EditEntry = { key: "Backspace" | "Delete"; id: string } & (
-  | { kind: "note"; range: StaticTextRange }
-  | { kind: "free"; from: [line: number, col: number]; to: [line: number, col: number] }
+export type EditEntry = { id: string } & (
+  | { kind: "note"; key: "Backspace" | "Delete"; range: StaticTextRange }
+  | { kind: "note"; at: { x: number; y: number } }
+  | { kind: "free"; key: "Backspace" | "Delete"; from: [line: number, col: number]; to: [line: number, col: number] }
 );
 /** 代码卡显示的代码（.src）→ 选区两头在第几段第几行第几个字（行从 0 数，按原文算）；两头不在同一段的代码行里给 null。CodeBody 挂上 */
 export const codeTextRange = new WeakMap<Element, (rg: Range) => { seg: string; from: [number, number]; to: [number, number] } | null>();

@@ -3,7 +3,7 @@
 import { put, findSym, symCard, type Host } from "../harness";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import type { Page } from "playwright-core";
-import { test, open, check, expect, idle, pmHasSelection, focusSettled, frames } from "../fixtures";
+import { test, open, check, expect, until, idle, pmHasSelection, focusSettled, frames } from "../fixtures";
 
 const close = (h: Host) => h.page.context().close();
 const card = (q: string) => { const s = findSym(q); return symCard(s.f, s.s); };
@@ -44,6 +44,10 @@ const md = (h: Host, id: string) => ((h.board().cards.find((c) => c.id === id) a
 async function editNote(h: Host, id: string, pre?: (pg: Page) => Promise<void>) {
   await h.post({ type: "reveal", card: id } as any);
   await idle(h); // the camera flies to the card
+  // reveal selects the card, and a click on the only selected card already edits with the caret where clicked: deselect it
+  // first, so the double click opens the editor with the caret at the end as these cases expect
+  await h.page.keyboard.press("Escape");
+  await until(h, "nothing selected", async () => (await h.page.locator(".card.sel").count()) === 0);
   if (pre) await pre(h.page); // slow frames from here on: opening the editor, not the camera flight before it
   await h.page.locator(`.card[data-id="${id}"] .nbody`).dblclick();
   await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });

@@ -34,6 +34,10 @@ const editing = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"] 
 async function editNote(h: Host, id: string) {
   await h.post({ type: "reveal", card: id } as any);
   await idle(h); // the camera flies to the card
+  // reveal selects the card, and a click on the only selected card already edits with the caret where clicked: deselect it
+  // first, so the double click opens the editor with the caret at the end as these cases expect
+  await h.page.keyboard.press("Escape");
+  await until(h, "nothing selected", async () => (await h.page.locator(".card.sel").count()) === 0);
   await h.page.locator(`.card[data-id="${id}"] .nbody`).dblclick();
   await h.page.waitForSelector(`.card[data-id="${id}"] .md-pm`, { timeout: 5000 });
 }
