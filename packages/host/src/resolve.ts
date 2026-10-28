@@ -75,7 +75,7 @@ export const pickAbs = (seg: Segment, p: ExpandPick) => (p.rel ? absOf({ ...seg,
 
 const none = (reason: string): ExpandResult => ({ none: true, reason });
 
-/** The background name index waits while a click resolves */
+/** 点击解析时后台的名字索引先等着 */
 export const expand = (m: ExpandReq): Promise<ExpandResult> => pausingIndex(() => expandNow(m));
 
 async function expandNow(m: ExpandReq): Promise<ExpandResult> {
@@ -103,8 +103,8 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
     resolved = wp ? `${hostPath(wp.abs)}:${wp.start + (m.line - seg.start)}${wp.exact ? "" : " (inexact)"}` : undefined;
     if (wp?.exact) {
       const line = wp.start + (m.line - seg.start);
-      // A .pyi stub with a .py beside it stands for that .py's definition. A stub with none (torch._C.*, Tensor.X, a compiled extension)
-      // is no implementation: cross-language registrations and ops come first, the stub stays as an alternative, or the answer when nothing else is found
+      // 旁边有 .py 的 .pyi 存根代表那个 .py 里的定义。旁边没有的（torch._C.*、Tensor.X、编译出来的扩展）不是实现：
+      // 跨语言注册和算子在前，存根留作备选，什么都找不到时才是答案
       let defs: Def[] = [];
       for (const d of await clickDefs(wp.abs, line, m.col)) {
         const impl = isStub(d) ? await stubImpl(d, m.name) : d;
@@ -176,16 +176,15 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
 }
 
 /**
- * recv.X(…) where X is a PyTorch op with a method variant: its kernels. Python methods of that name already in the name index only
- * take over when the receiver clearly is one of their classes; they are never offered next to kernels (which ones the index holds
- * changes while it builds, and module functions of the same name, the caller included, are no methods)
+ * recv.X(…) 而 X 是有 method 变体的 PyTorch 算子：它的 kernel。名字索引里已有的同名 Python 方法只在 recv 明显是它们的类时接手；
+ * 它们从不和 kernel 一起当备选（索引建的过程中有哪些会变，同名的模块级函数、包括调用处自己，也不是方法）
  */
 async function tensorMethod(site: CallSite, here: { abs: string; text: string }): Promise<Crossed[]> {
   const t = await opTableFor(here.abs);
   const e = t && pyOpEntry(t, site, here.text);
   if (!t || e?.how !== "method") return [];
   const methods = knownEntries(site.name).filter((x) => /\.py$/.test(x.abs) && x.kind === "def" && x.qual.includes(".") && !(x.abs === here.abs && site.line >= x.start && site.line <= x.end))
-    .map((x) => ({ ...x, path: hostPath(x.abs), line: x.defLine })); // no workspace scan for this
+    .map((x) => ({ ...x, path: hostPath(x.abs), line: x.defLine })); // 不为这个扫工作区
   if (methods.length > 1 && rankByReceiver(methods, site.recv, { path: hostPath(here.abs) }).best) return [];
   return viaOps(t, e.op);
 }
@@ -218,7 +217,7 @@ const within = <T>(p: Promise<T>, ms: number): Promise<T | typeof LATE> => {
 };
 const isStub = (d: Def) => /\.pyi$/.test(d.abs);
 
-/** The definition a .pyi stub declares, in the .py beside it (typeshed-style stubs of Python code); null for stubs of compiled code */
+/** .pyi 存根声明的定义在旁边 .py 里的位置（typeshed 式的 Python 代码存根）；编译代码的存根返回 null */
 export async function stubImpl(d: Def, name?: string): Promise<Def | null> {
   const py = d.abs.replace(/\.pyi$/, ".py");
   const stub = await symAtDef(d, name);
@@ -231,8 +230,8 @@ export async function stubImpl(d: Def, name?: string): Promise<Def | null> {
 }
 
 /**
- * Where to ask Go to Implementation for a definition: a stub's .py; none for a stub of PyTorch's compiled code, which op routing
- * replaces (Pylance searches the whole workspace for ~24 s there and finds nothing)
+ * 对一个定义去哪里问 Go to Implementation：存根的 .py；PyTorch 编译代码的存根不问，算子路由代替它
+ * （Pylance 在那里搜整个工作区 ~24 s，什么也找不到）
  */
 async function implSite(d: Def, name: string): Promise<Def | null> {
   if (!isStub(d)) return d;

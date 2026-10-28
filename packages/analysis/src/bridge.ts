@@ -134,7 +134,7 @@ const inDefine = (text: string, i: number) => /^\s*#\s*define/.test(text.slice(t
 export function stubDevice(macro: string, file: string): string {
   const k = /^(?:ALSO_)?REGISTER_(CUDA|XPU|HPU|HIP|MPS|MTIA|PRIVATEUSE1)_DISPATCH$/.exec(macro)?.[1];
   if (k) return k;
-  if (macro !== "REGISTER_DISPATCH") return "CPU"; // ARCH / AVX2 / AVX512 / ALL_CPU / SVE / VSX / ZVECTOR
+  if (macro !== "REGISTER_DISPATCH") return "CPU"; // ARCH、AVX2、AVX512、ALL_CPU、SVE、VSX、ZVECTOR
   const f = file.replace(/\\/g, "/");
   if (/\.(cu|cuh)$/.test(f) || /\/(cuda|cudnn|miopen)\//.test(f)) return "CUDA";
   if (/\.mm$/.test(f) || /\/mps\//.test(f)) return "MPS";
@@ -240,10 +240,10 @@ export function macroDefs(text: string): Map<string, { params: string[]; body: s
   return out;
 }
 
-/** A #define that pastes a parameter into an identifier: each pasted name as pieces, a number = that parameter */
+/** 把参数拼进标识符的 #define：每个拼出来的名字按片段存，数字 = 第几个参数 */
 export type Paster = { params: string[]; names: (string | number)[][] };
 
-/** Macros that build identifiers with ## from their parameters (TORCH_IMPL_FUNC(func##_Scalar_out), foreach_tensor_##NAME##_scalar_kernel_slow) */
+/** 用 ## 把参数拼成标识符的宏（TORCH_IMPL_FUNC(func##_Scalar_out)、foreach_tensor_##NAME##_scalar_kernel_slow） */
 export function pasteMacros(text: string): Map<string, Paster> {
   const out = new Map<string, Paster>();
   if (!text.includes("##")) return out;
@@ -258,7 +258,7 @@ export function pasteMacros(text: string): Map<string, Paster> {
   return out;
 }
 
-/** The identifiers a pasting macro makes from a call's arguments (only arguments that are identifiers themselves) */
+/** 拼名字的宏用一次调用的实参拼出来的标识符（只算本身就是标识符的实参） */
 export function pastedNames(p: Paster, args: string[]): string[] {
   const out: string[] = [];
   for (const n of p.names) {
@@ -268,12 +268,12 @@ export function pastedNames(p: Paster, args: string[]): string[] {
   return out;
 }
 
-/** Calls of the macros `want` accepts, at the start of a line: macro name, split arguments, line and the call's first line */
+/** 行首的、`want` 接受的宏的调用：宏名、拆开的实参、行号、调用的第一行 */
 export function macroCalls(text: string, want: (name: string) => boolean): { macro: string; args: string[]; line: number; sig: string }[] {
   const out: { macro: string; args: string[]; line: number; sig: string }[] = [];
   const lineOf = lineIndex(text);
   for (const m of text.matchAll(/^[ \t]*([A-Z][A-Z0-9_]*)\s*\(/gm)) {
-    if (!want(m[1]) || inDefine(text, m.index) || /\\\s*$/.test(text.slice(text.lastIndexOf("\n", m.index - 2) + 1, m.index))) continue; // inside a #define's body
+    if (!want(m[1]) || inDefine(text, m.index) || /\\\s*$/.test(text.slice(text.lastIndexOf("\n", m.index - 2) + 1, m.index))) continue; // 在某个 #define 的宏体里
     const open = m.index + m[0].length - 1, close = matchClose(text, open);
     if (close < 0) continue;
     const end = text.indexOf("\n", m.index);

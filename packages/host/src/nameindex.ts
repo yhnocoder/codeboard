@@ -101,14 +101,14 @@ async function indexFile(abs: string, text?: string | null) {
   for (const e of ents) (byName.get(e.name) ?? byName.set(e.name, []).get(e.name)!).push(e);
 }
 
-// A click waits on the same thread: the build starts no new file while one is resolving (a file already being parsed still finishes)
+// 点击和索引在同一个线程上等：点击解析期间索引不开始新文件（正在解析的文件照样做完）
 let clicks = 0;
 let resume: (() => void)[] = [];
 export async function pausingIndex<T>(fn: () => Promise<T>): Promise<T> {
   clicks++;
   try { return await fn(); } finally { if (--clicks === 0) for (const r of resume.splice(0)) r(); }
 }
-const PAUSE_MAX = 5000; // a click stuck on a language server must not stop the index for good
+const PAUSE_MAX = 5000; // 卡在语言服务上的点击不能让索引永远停着
 const unpaused = () => (clicks ? Promise.race([new Promise<void>((r) => resume.push(r)), sleep(PAUSE_MAX)]) : undefined);
 
 /** 后台把 todo 里的文件都分析完（一次只跑一个；每个文件之间让出事件循环） */
@@ -254,7 +254,7 @@ export function watchNameIndex() {
     files.onDidChangeRoots(() => resetIndex()),
     // VS Code 外面的改动（git checkout、别的编辑器）：每个根一个监听
     ...files.roots().map((r) => files.watch(r, CODE_GLOB, (abs) => changedFile(abs))),
-    // PyTorch's op table and the build's compile_commands.json (not code files)
+    // PyTorch 的算子表和构建的 compile_commands.json（不是代码文件）
     ...files.roots().map((r) => files.watch(r, "**/{native_functions.yaml,compile_commands.json}", (abs) => opsFileChanged(abs))),
     workspace().settings.onDidChange((e) => { if (e.affects("clangd.arguments")) opsBuildChanged(); }),
   ];
