@@ -209,7 +209,9 @@ const leaveNote = async (page, f) => {
     check(await f.locator(".pop.k-peek").count() === 1, "Definition Peek opens");
     await boardShot(page, f, "2-peek.png");
     const cb = await card(f, "Scheduler.schedule").boundingBox();
-    await page.mouse.move(cb.x + cb.width + 40, cb.y + 20, { steps: 6 }); await page.mouse.move(5, 300, { steps: 12 });
+    // The mouse comes to rest on empty board above the card: resting on code (the board's left edge shows LLMEngine.step's lines)
+    // opens that word's Peek after the hover delay, so the check would only pass if it looked before then
+    await page.mouse.move(cb.x + cb.width + 40, cb.y + 20, { steps: 6 }); await page.mouse.move(cb.x + cb.width / 2, cb.y - 40, { steps: 12 });
     await until("the Peek closes once the mouse leaves", async () => !(await f.locator(".pop.k-peek").count()), 5000); await idle(f);
 
     // 4. Notes: zoomed to the Note and Scheduler.schedule, the Sidenote always shown beside its lines,
