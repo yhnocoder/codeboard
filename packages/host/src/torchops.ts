@@ -9,7 +9,7 @@ import { grammarOfFile } from "@codeboard/analysis/langs";
 import { dispatchAll, lineIndex, stubDevice, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
 import { escapeRegExp } from "@codeboard/analysis/basics";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
-import { entriesOf, indexedFiles, isCode, type IndexEntry } from "./nameindex";
+import { entriesOf, followIndex, indexedFiles, isCode, type IndexEntry } from "./nameindex";
 import { exists, langOf, readText, workspace } from "./ws";
 import { log } from "./log";
 
@@ -659,3 +659,5 @@ export async function pyDefinedInTorch(t: OpTable, name: string, how: OpEntry["h
 
 /** DispatchStub 调用：第一个参数是设备（iter.device_type()、self.device().type()、kCPU、DeviceType::CUDA） */
 export const isStubCall = (site: Pick<CallSite, "args">) => /device|DeviceType|^(at::|c10::)?k[A-Z][A-Za-z]+$/.test(site.args[0]?.text.trim() ?? "");
+
+followIndex({ changed: opsFileChanged, removed: opsPathRemoved, buildChanged: opsBuildChanged, reset: resetOpTables, warm: warmOps });

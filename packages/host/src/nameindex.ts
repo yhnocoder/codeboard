@@ -6,7 +6,6 @@ import { grammarOfFile, type Grammar } from "@codeboard/analysis/langs";
 import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
-import { opsBuildChanged, opsFileChanged, opsPathRemoved, resetOpTables, warmOps } from "./torchops";
 import { log } from "./log";
 import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, workspace } from "./ws";
 
@@ -32,6 +31,14 @@ const stamps = new Map<string, number>(); // 文件改一次加一：分析到�
 let listing: Promise<void> | undefined;
 let running: Promise<void> | undefined;
 let wanted = false; // 有人要过后台建（白板打开过）：文件改了之后也在后台补上
+
+/**
+ * 跟着名字索引走的索引（PyTorch 的算子索引，torchops.ts）：同样的文件事件和重置；warm = 后台建名字索引之前先做完的事。
+ * 由它自己登记，名字索引不 import 它（它要用名字索引的文件列表和条目）
+ */
+export type IndexFollower = { changed(abs: string): void; removed(p: string): void; buildChanged(): void; reset(): void; warm(): Promise<void> };
+let follower: IndexFollower | undefined;
+export const followIndex = (f: IndexFollower) => { follower = f; };
 
 // 单词位图：4096 位，每个标识符按 FNV 哈希置一位（会误报、不会漏报）
 
@@ -140,7 +147,7 @@ function drain(): Promise<void> {
 export function startNameIndex(delay = 0) {
   wanted = true;
   // PyTorch：算子索引先读完它要的文件（几秒）再开始建名字索引，两个一起跑时算子索引每让一次事件循环就要等一个大文件分析完
-  const go = () => void warmOps().finally(() => void drain());
+  const go = () => void (follower?.warm() ?? Promise.resolve()).finally(() => void drain());
   if (delay) setTimeout(go, delay);
   else go();
 }
@@ -225,7 +232,7 @@ export async function entriesOf(abs: string): Promise<IndexEntry[]> {
 
 /** 文件改了（保存、新建、在外面改了）：重新排进待分析 */
 export function changedFile(abs: string) {
-  opsFileChanged(abs);
+  follower?.changed(abs);
   if (!isCode(abs) || !listing) return; // 还没列过：列的时候自然会读到
   drop(abs);
   sigs.delete(abs);
@@ -235,7 +242,7 @@ export function changedFile(abs: string) {
 }
 
 export function removedPath(p: string) {
-  opsPathRemoved(p);
+  follower?.removed(p);
   for (const abs of [...order.keys()]) if (abs === p || abs.startsWith(p + path.sep)) { drop(abs); todo.delete(abs); sigs.delete(abs); order.delete(abs); stamps.set(abs, (stamps.get(abs) ?? 0) + 1); }
 }
 
@@ -247,7 +254,7 @@ export function resetIndex() {
   listing = undefined;
   running = undefined;
   resetScope();
-  resetOpTables();
+  follower?.reset();
   if (wanted) startNameIndex(1000);
 }
 
@@ -263,8 +270,8 @@ export function watchNameIndex() {
     // VS Code 外面的改动（git checkout、别的编辑器）：每个根一个监听
     ...files.roots().map((r) => files.watch(r, CODE_GLOB, (abs) => changedFile(abs))),
     // PyTorch 的算子表和构建的 compile_commands.json（不是代码文件）
-    ...files.roots().map((r) => files.watch(r, "**/{native_functions.yaml,compile_commands.json}", (abs) => opsFileChanged(abs))),
-    workspace().settings.onDidChange((e) => { if (e.affects("clangd.arguments")) opsBuildChanged(); }),
+    ...files.roots().map((r) => files.watch(r, "**/{native_functions.yaml,compile_commands.json}", (abs) => follower?.changed(abs))),
+    workspace().settings.onDidChange((e) => { if (e.affects("clangd.arguments")) follower?.buildChanged(); }),
   ];
   return { dispose: () => { for (const d of subs) d.dispose(); } };
 }
