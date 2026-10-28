@@ -30,7 +30,7 @@ beforeAll(async () => {
   await acts["codeboard.addSymbol"](sched, "Scheduler.schedule");
   // later work on the board (saved while it was open)
   const later = (await store.load("bU"))!;
-  later.cards.push({ id: "nLater", kind: "note", md: "later work", bg: true }); later.place.nLater = { x: 0, y: 900, w: 200 };
+  later.cards.push({ id: "nLater", kind: "note", md: "later work", look: "note" }); later.place.nLater = { x: 0, y: 900, w: 200 };
   await store.save(later);
 });
 afterAll(() => fs.rmSync(dir, { recursive: true, force: true }));

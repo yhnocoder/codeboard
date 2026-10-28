@@ -73,7 +73,7 @@ export function refTitle(c: Card, nameOf: (board: string) => string | undefined 
   switch (c.kind) {
     case "note": {
       const head = c.md.split("\n").find((l) => l.trim());
-      return head && (/^\s{0,3}#{1,6}\s/.test(head) || (!c.bg && !c.hand && (c.size === "title" || c.size === "heading"))) ? firstLine(head) || undefined : undefined;
+      return head && (/^\s{0,3}#{1,6}\s/.test(head) || (c.look === "text" && (c.size === "title" || c.size === "heading"))) ? firstLine(head) || undefined : undefined;
     }
     case "code": return c.segments[0]?.symbol ? cardTitle(c) : undefined;
     case "board": return nameOf(c.board) ?? "Board";
@@ -158,7 +158,7 @@ export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = (
 
 function titleOf(c: Card, b: Board, nameOf: (id: string) => string | undefined): string {
   if (c.kind === "board") return c.title || nameOf(c.board) || "Board";
-  if (c.kind === "note") return (c.hand ? textLines(c.md).join(" ").slice(0, 160) : (c.title || firstLine(c.md) || "Note").slice(0, 80)) || "Mark";
+  if (c.kind === "note") return (c.look === "mark" ? textLines(c.md).join(" ").slice(0, 160) : (c.title || firstLine(c.md) || "Note").slice(0, 80)) || "Mark";
   return cardTitle(c, b).slice(0, 120);
 }
 
@@ -167,7 +167,7 @@ function miniOf(c: Card, nameOf: (id: string) => string | undefined): Partial<Sk
   const o: Partial<SkelCard> = {};
   switch (c.kind) {
     case "note": {
-      if (c.hand) { o.hand = true; break; }
+      if (c.look === "mark") { o.hand = true; break; }
       const ls = textLines(c.md), d = c.title ? ls[0] : ls[1];
       if (d) o.d = d.slice(0, 120);
       break;

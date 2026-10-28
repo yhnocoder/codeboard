@@ -1,8 +1,8 @@
-// 旧白板文件 → 当前版本（第 7 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
+// 旧白板文件 → 当前版本（第 8 版）。项目里唯一的兼容代码：旧版本的结构、缺省的字段、手改出来的 null 都在这里补成
 // 和 model.ts 的类型一模一样，读进来之后的代码只认当前结构。schema.ts 校验的是这里的结果。
 import { BOARD_VERSION, cornerAt, emptyBoard, isCode, uid, type BoardFile, type Card, type Link, type LinkStyle, type Place, type Segment, type SharedCardFile, type Sidenote, type Sticker } from "./model";
 
-/** 读进来的白板文件（第 1–7 版）→ 第 7 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
+/** 读进来的白板文件（第 1–8 版）→ 第 8 版白板文件（共享卡还是引用，由宿主的存储换成内容） */
 export function migrateBoard(raw: any): BoardFile {
   // 更新的版本写的文件：读不懂就别碰（当第 1 版迁移会丢掉所有卡，下次自动保存把空白板写回去）
   if (typeof raw?.version === "number" && raw.version > BOARD_VERSION) throw new Error(`Board file version ${raw.version} is newer than this CodeBoard (${BOARD_VERSION}). Update CodeBoard to open it.`);
@@ -19,6 +19,7 @@ export function migrateBoard(raw: any): BoardFile {
   // 第 5 版 → 第 6 版：多了共享卡的引用和 Sidenote 的 boardOnly，旧文件里都没有
   // 第 6 版 → 第 7 版：所见即所得编辑器（v0.1.8 起，写第 5、6 版）写下的 \$…\$ 公式，见 v6to7
   if (from === 5 || from === 6) v6to7(b);
+  if (from < 8) for (const c of b.cards) if (c.kind !== "shared") v7to8Card(c);
   b.version = BOARD_VERSION;
   normalize(b);
   return b;
@@ -32,6 +33,9 @@ export function migrateSharedCard(raw: any): SharedCardFile {
   if (sc?.version === 6) {
     if (sc.card) v6to7Card(sc.card);
     (sc.sidenotes ?? []).forEach(v6to7Note);
+  }
+  if (sc?.version === 6 || sc?.version === 7) {
+    if (sc.card) v7to8Card(sc.card);
     sc.version = BOARD_VERSION;
   }
   if (sc?.card) normCard(sc.card);
@@ -59,9 +63,9 @@ function normSeg(s: Segment) {
 
 function normCard(c: Card) {
   dropFalse(c, ["tilt"]);
-  if (c.kind === "note") c.bg ??= false;
   if (c.kind !== "code") return;
   dropFalse(c, ["keepOld"]);
+  if ((c.bg as boolean | undefined) === true) delete c.bg; // 代码卡默认有卡框：只存 false
   c.segments.forEach(normSeg);
   for (const v of c.variants ?? []) v.segs?.forEach(normSeg);
   for (const m of c.mergedFrom ?? []) normCard(m.card);
@@ -108,6 +112,23 @@ function cornerStickers(b: any) {
     const i = row.get(card) ?? 0;
     row.set(card, i + 1);
     k.at = { kind: "canvas", ...cornerAt(b.place[card]?.w ?? 320, i), on: { card } };
+  }
+}
+
+/**
+ * 第 7 版 → 第 8 版：Note 和 Text 不再是同一张卡的有 / 没有背景（bg），而是四种样子之一（look）：
+ * 有背景 = Note，没背景 = Text，没背景又是手写的（hand）= Mark（有背景时 hand 当时不显示，去掉）。
+ * 代码卡的 nobg（没有卡框）换成和图片卡一样的 bg，只是代码卡默认有卡框，所以只存 bg: false
+ */
+function v7to8Card(c: any) {
+  if (c.kind === "note") {
+    c.look = c.bg ? "note" : c.hand ? "mark" : "text";
+    delete c.bg;
+    if (c.look !== "mark") delete c.hand;
+  } else if (c.kind === "code") {
+    if (c.nobg) c.bg = false;
+    delete c.nobg;
+    for (const m of c.mergedFrom ?? []) if (m?.card) v7to8Card(m.card);
   }
 }
 
