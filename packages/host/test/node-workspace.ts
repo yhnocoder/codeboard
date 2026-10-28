@@ -14,7 +14,7 @@ export type TestWorkspace = Workspace & {
   finds: number;
 };
 
-const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "build", "dist", "__pycache__", ".mypy_cache", ".tox"]);
+const SKIP = new Set(["node_modules", ".git", ".venv", "venv", "site-packages", "build", "dist", "__pycache__", ".mypy_cache", ".tox"]);
 
 export function nodeWorkspace(root = WS): TestWorkspace {
   const inRoot = (p: string) => p === root || p.startsWith(root + "/");

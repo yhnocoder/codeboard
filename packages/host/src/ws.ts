@@ -3,6 +3,7 @@ import * as path from "node:path";
 import * as fs from "node:fs/promises";
 import type { Workspace } from "@codeboard/core";
 import { codeExts, langOfExt } from "@codeboard/analysis/langs";
+import { escapeRegExp } from "@codeboard/analysis/basics";
 
 let current: Workspace | undefined;
 export function useWorkspace(w: Workspace) { current = w; }
@@ -56,7 +57,15 @@ export function langOf(file: string): string {
 }
 
 export const CODE_GLOB = `**/*.{${codeExts().join(",")}}`;
-export const CODE_EXCLUDE = "**/{node_modules,.git,.venv,venv,build,dist,__pycache__,.mypy_cache,.tox}/**";
+/** 不是项目自己代码的目录：依赖、虚拟环境、装好的包、构建输出、缓存。名字索引不建它们；里面的 .pyi 是库的存根 */
+const NOT_PROJECT = ["node_modules", ".git", ".venv", "venv", "site-packages", "build", "dist", "__pycache__", ".mypy_cache", ".tox"];
+export const CODE_EXCLUDE = `**/{${NOT_PROJECT.join(",")}}/**`;
+const NOT_PROJECT_DIR = new RegExp(`[\\\\/](${NOT_PROJECT.map(escapeRegExp).join("|")})[\\\\/]`);
+/** 在 CODE_EXCLUDE 排除的目录里：和 findFiles 一样只看工作区根下面的那段（打开的文件夹本身在 site-packages、build 里不算） */
+export const inExcludedDir = (abs: string) => {
+  const root = workspace().files.rootOf(abs);
+  return NOT_PROJECT_DIR.test(path.sep + (root ? path.relative(root, abs) : abs));
+};
 
 export function mkUid(p: string) {
   return `${p}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;

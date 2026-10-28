@@ -20,6 +20,8 @@ const ROOT = tempRepo("stubs", {
   "pkg/ns.py": "class Namespace:\n    def __getattr__(self, name):\n        return name\n",
   "csrc/cfg.cpp": "#include <pybind11/pybind11.h>\n\nstruct Config {\n  int get(const char* k) { return 0; }\n};\n\nPYBIND11_MODULE(cfg, m) {\n  py::class_<Config>(m, \"Config\").def(\"get\", &Config::get);\n}\n",
   "main.py": "from pkg import shapes, fast\n\n\ndef run(s, ns, d):\n    a = shapes.make('c')\n    b = s.area()\n    c = fast.fast_sum([1])\n    ns.anything()\n    d.get('k')\n    return fast.only_stub(c)\n",
+  // a library's stub in the virtual environment uv creates inside the repository
+  ".venv/lib/python3.12/site-packages/cfglib/__init__.pyi": "class Cfg:\n    def get(self, key: str) -> str: ...\n",
 });
 // A stub outside the workspace, like the typeshed stubs Pylance bundles
 const TYPESHED = fs.mkdtempSync("/tmp/codeboard-typeshed-");
@@ -65,6 +67,13 @@ describe("a .pyi stub from the language server", () => {
     const r = await expand({ ...at(run, /d\.get/, "get"), name: "get" });
     expect("card" in r && `${r.card.segments[0].symbol?.qual}`).toBe("dict.get");
     expect("card" in r && r.card.segments[0].path).toMatch(/builtins\.pyi$/);
+    expect("card" in r && r.mark?.alts).toBeFalsy();
+  });
+
+  it("of a library in an in-repo virtual environment stays the answer: a pybind .def of the same name in the project is not it", async () => {
+    answer(".venv/lib/python3.12/site-packages/cfglib/__init__.pyi", 2);
+    const r = await expand({ ...at(run, /d\.get/, "get"), name: "get" });
+    expect(target(r)).toBe(".venv/lib/python3.12/site-packages/cfglib/__init__.pyi Cfg.get");
     expect("card" in r && r.mark?.alts).toBeFalsy();
   });
 });

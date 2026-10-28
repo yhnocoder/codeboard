@@ -27,6 +27,12 @@ describe("name index files", () => {
     expect(isCode("/w/a/kernel.hh") && isCode("/w/a/impl.inl")).toBe(true);
     expect(isCode("/w/a/notes.txt") || isCode("/w/node_modules/x/kernel.hh")).toBe(false);
   });
+  it("leave out installed packages, by the folders under the workspace root only", () => {
+    expect(isCode(path.join(root, "env/lib/python3.12/site-packages/pkg/core.py"))).toBe(false);
+    const pkg = path.join(root, "lib/site-packages/pkg");
+    useWorkspace(nodeWorkspace(pkg));
+    try { expect(isCode(path.join(pkg, "core.py"))).toBe(true); } finally { useWorkspace(nodeWorkspace(root)); }
+  });
   it("finds definitions in .hh and .inl files", async () => {
     expect((await lookupName("launch_hh")).map((e) => path.basename(e.abs))).toEqual(["kernel.hh"]);
     expect((await lookupName("scale_inl")).map((e) => path.basename(e.abs))).toEqual(["impl.inl"]);

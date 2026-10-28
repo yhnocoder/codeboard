@@ -7,18 +7,17 @@ import type { Sym } from "@codeboard/analysis";
 import { symbolsOf, whenAnalysisReady } from "./analysis";
 import { resetScope } from "./scope";
 import { log } from "./log";
-import { CODE_EXCLUDE, CODE_GLOB, langOf, readText, workspace } from "./ws";
+import { CODE_EXCLUDE, CODE_GLOB, inExcludedDir, langOf, readText, workspace } from "./ws";
 
 export type IndexEntry = { name: string; qual: string; kind: Sym["kind"]; abs: string; start: number; end: number; defLine: number; sig: string };
 
 const MAX_FILES = 500_000; // 只防意外（几十万个代码文件的仓库）
 const MAX_TEXT = 2_000_000; // 更大的文件（生成的代码）不分析
 const PARALLEL = 16; // 按名字查时同时读几个文件
-const SKIP = /[\\/](node_modules|\.git|\.venv|venv|build|dist|__pycache__|\.mypy_cache|\.tox)[\\/]/;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /** 建索引（含后台）的文件：和 CODE_GLOB / CODE_EXCLUDE 一样的规则（语言表里有语法的扩展名） */
-export const isCode = (abs: string) => !!grammarOfFile(abs) && !SKIP.test(abs);
+export const isCode = (abs: string) => !!grammarOfFile(abs) && !inExcludedDir(abs);
 
 let order = new Map<string, number>(); // 文件 → 列表里的序号：结果按它排（同一个名字的候选顺序稳定）
 let seq = 0;
