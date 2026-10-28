@@ -194,17 +194,25 @@ export async function genDirOf(root: string): Promise<string | undefined> {
   for (const d of dirs) {
     const text = await readText(path.join(d, "compile_commands.json"), false);
     if (text === null) continue;
-    // 只看 "file" 的值：command 也以同一个路径结尾（… -c <file>），引号里还有转义的引号
-    for (const m of text.matchAll(UFUNC_FILE_KEY)) {
-      let file: unknown;
-      try { file = JSON.parse(m[1]); } catch { continue; }
-      if (typeof file === "string" && UFUNC_PATH.test(file)) return path.dirname(path.resolve(d, file));
+    // 只看 "file" 的值：command 也以同一个路径结尾（… -c <file>），引号里还有转义的引号。
+    // 文件可以有几十 MB：按行切成小段找，段之间让出（CMake 写的每个键值都在自己那一行）
+    const turn = slicer();
+    for (let i = 0; i < text.length; ) {
+      const nl = text.indexOf("\n", i + CDB_PIECE), j = nl < 0 ? text.length : nl + 1;
+      for (const m of text.slice(i, j).matchAll(UFUNC_FILE_KEY)) {
+        let file: unknown;
+        try { file = JSON.parse(m[1]); } catch { continue; }
+        if (typeof file === "string" && UFUNC_PATH.test(file)) return path.dirname(path.resolve(d, file));
+      }
+      i = j;
+      await turn();
     }
     return d === root ? undefined : path.join(d, "aten", "src", "ATen"); // 没有编译 Ufunc 文件的条目：按通常的布局
   }
   return undefined;
 }
 const UFUNC_PATH = /[\\/]aten[\\/]src[\\/]ATen[\\/]Ufunc\w*\.(cpp|cu)$/;
+const CDB_PIECE = 1 << 20;
 const UFUNC_FILE_KEY = /"file"\s*:\s*("(?:[^"\\]|\\.)*Ufunc\w*\.(?:cpp|cu)")/g;
 
 /** 一个文件注册了什么、它的宏调用定义了哪些 kernel、哪些要找的名字可能定义在这里。生成的文件有几 MB：长循环里也让出 */
