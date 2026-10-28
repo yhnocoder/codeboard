@@ -93,6 +93,11 @@ describe("clicks into PyTorch ops", () => {
     expect(qualOf(r)).toBe("at::native::_upsample_bilinear2d_aa_out_cuda");
     expect(markOf(r)?.bound).toBe("native_functions.yaml · _upsample_bilinear2d_aa → _upsample_bilinear2d_aa.out");
   });
+  it("a module-level alias of torch.ops.aten (aten = torch._ops.ops.aten) goes to the yaml kernels too", async () => {
+    const r = await click(await seg("model.py", "run"), /aten\._upsample_bilinear2d_aa\.default/, "default");
+    expect(qualOf(r)).toBe("at::native::_upsample_bilinear2d_aa_out_cuda");
+    expect(markOf(r)?.bound).toBe("native_functions.yaml · _upsample_bilinear2d_aa → _upsample_bilinear2d_aa.out");
+  });
   it("torch.X defined in Python (torch/functional.py) stays Python", async () => {
     const r = await click(await seg("model.py", "run"), /torch\.split/, "split");
     expect(fileOf(r)).toBe("torch/functional.py");

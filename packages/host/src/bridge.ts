@@ -242,7 +242,7 @@ export async function crossBefore(site: CallSite | undefined, lang: string, here
   try {
     const ops = await opTableFor(here?.abs);
     if (!isCpp(lang)) {
-      const e = ops && here && lang === "python" ? pyOpEntry(ops, site, analysisOf(lang, here.text).imports) : null;
+      const e = ops && here && lang === "python" ? pyOpEntry(ops, site, here.text) : null;
       if (e && (e.how === "explicit" || ((e.how === "torch" || e.how === "functional") && !(await pyDefinedInTorch(ops!, e.op, e.how))))) {
         const r = await viaOps(ops!, e.op, e.overload);
         // yaml 认识的 torch.ops.aten.X 不再去找 TORCH_LIBRARY_IMPL(aten, …) 里同名的 m.impl（batch rule、autocast）

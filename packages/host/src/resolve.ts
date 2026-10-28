@@ -181,7 +181,7 @@ async function expandNow(m: ExpandReq): Promise<ExpandResult> {
  */
 async function tensorMethod(site: CallSite, here: { abs: string; text: string }): Promise<Crossed[]> {
   const t = await opTableFor(here.abs);
-  const e = t && pyOpEntry(t, site, analysisOf("python", here.text).imports);
+  const e = t && pyOpEntry(t, site, here.text);
   if (!t || e?.how !== "method") return [];
   const py = knownEntries(site.name).filter((x) => /\.py$/.test(x.abs)).map((x) => ({ ...x, path: hostPath(x.abs), line: x.defLine })); // 不为备选扫工作区
   const { ranked, best } = rankByReceiver(py, site.recv, { path: hostPath(here.abs) });

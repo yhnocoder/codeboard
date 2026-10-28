@@ -6,7 +6,8 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse } from "yaml";
 import { grammarOfFile } from "@codeboard/analysis/langs";
-import { dispatchAll, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type FileAnalysis, type Paster, type Sym } from "@codeboard/analysis";
+import { dispatchAll, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type Paster, type Sym } from "@codeboard/analysis";
+import { escapeRegExp } from "@codeboard/analysis/basics";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
 import { entriesOf, indexedFiles, isCode, knownEntries, type IndexEntry } from "./nameindex";
 import { exists, langOf, readText, workspace } from "./ws";
@@ -518,12 +519,16 @@ export function opsPathRemoved(p: string) {
 
 export type OpEntry = { op: string; overload?: string; how: "explicit" | "torch" | "functional" | "method" | "at" };
 
-/** The recv's first part through the imports, as a full module name: F.x → torch.nn.functional; from torch import _C → torch._C */
-export function resolveRecv(recv: string, imports: FileAnalysis["imports"]): string {
+/**
+ * The recv's first part as a full module name, through the imports and module-level aliases of torch.ops:
+ * F.x → torch.nn.functional; from torch import _C → torch._C; aten = torch._ops.ops.aten → torch.ops.aten
+ */
+export function resolveRecv(recv: string, text: string): string {
   const [head, ...rest] = recv.split(".");
-  const im = imports.find((i) => i.name === head);
-  const mod = !im ? head : im.from ? (im.module === head ? head : `${im.module}.${head}`) : im.module;
-  return [mod, ...rest].join(".");
+  const im = analysisOf("python", text).imports.find((i) => i.name === head);
+  const alias = im ? undefined : new RegExp(`^${escapeRegExp(head)}\\s*=\\s*(torch(?:\\._ops)?\\.ops(?:\\.\\w+)?)\\s*(?:#.*)?$`, "m").exec(text)?.[1];
+  const mod = alias ?? (!im ? head : im.from ? (im.module === head ? head : `${im.module}.${head}`) : im.module);
+  return [mod, ...rest].join(".").replace(/^torch\._ops\.ops\b/, "torch.ops");
 }
 
 const C_NS = /^torch\.(_C\._(VariableFunctions|nn|linalg|fft|special|nested|sparse)|_VF)$/;
@@ -532,9 +537,10 @@ const C_NS = /^torch\.(_C\._(VariableFunctions|nn|linalg|fft|special|nested|spar
  * Python call site → op: torch.ops.aten.X(.overload), torch._C._nn.X, torch._VF.X, torch.linalg.X… (explicit); torch.X; torch.nn.functional.X;
  * any other recv.X (a Tensor method: whether recv is a Tensor is not known statically, so only a candidate). self / cls and other imported modules are not
  */
-export function pyOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">, imports: FileAnalysis["imports"]): OpEntry | null {
+export function pyOpEntry(t: OpTable, site: Pick<CallSite, "name" | "recv">, text: string): OpEntry | null {
   if (!site.recv) return null;
-  const full = resolveRecv(site.recv, imports);
+  const full = resolveRecv(site.recv, text);
+  const imports = analysisOf("python", text).imports;
   const ops = /^torch\.ops\.aten\.(\w+)(?:\.(\w+))?$/.exec(`${full}.${site.name}`);
   if (ops) return t.byName.has(ops[1]) ? { op: ops[1], overload: ops[2] === "default" ? "" : ops[2], how: "explicit" } : null;
   // torch.linalg.norm → linalg_norm (torch/linalg has _add_docstr(_linalg.linalg_norm, …))
