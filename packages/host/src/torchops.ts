@@ -104,19 +104,26 @@ export function declKernels(t: OpTable, d: OpDecl): Kernel[] {
   return out;
 }
 
-/** 0 = CUDA，1 = CPU，2 = Composite*，3 = 其他（MPS、XPU、Sparse、Nested、Meta…） */
-export const keyRank = (key: string) => (key === "CUDA" ? 0 : key === "CPU" ? 1 : /^Composite/.test(key) ? 2 : 3);
+/**
+ * 0 = CUDA，1 = CPU，2 = Composite*，3 = 别的设备（MPS、XPU、HPU、MTIA…），4 = 布局（Sparse*、SparseCsr*、Nested*、Mkldnn*、Quantized*），
+ * 5 = Meta（只算形状）、ZeroTensor
+ */
+export const keyRank = (key: string) => (key === "CUDA" ? 0 : key === "CPU" ? 1 : /^Composite/.test(key) ? 2
+  : /Meta$|^ZeroTensor$/.test(key) ? 5 : /^(Sparse|Nested|Mkldnn|Quantized)/.test(key) ? 4 : 3);
 
 /**
- * 算子 name（overload 可选）的 kernel：CUDA 在前，然后 CPU、Composite，再是别的 key（MPS、XPU…：Mac 上要看的是 MPS 的）。
+ * 算子 name（overload 可选）的 kernel，按 keyRank 排：CUDA、CPU、Composite，再是别的设备（Mac 上要看的是 MPS 的）、布局、Meta。
  * 同一个 C++ 名字的几个 key 合成一条（key 用逗号连起来）
  */
 export function kernelsOf(t: OpTable, name: string, overload?: string): Kernel[] {
-  // 没给 overload：默认的 func 在前，然后别的非 out 的，out 变体最后（边界标的是最像这次调用的那个）
+  // 没给 overload：默认的 func 在前，然后别的非 out 的，out 变体最后（边界标的是最像这次调用的那个）。
+  // 非 out 的已经有的 key，out 变体的 kernel 不要：调用 torch.add(a, b) 跑的是 add.Tensor 的那个，out= 的只是同一个 key 的另一个入口
   const rank = (d: OpDecl) => (!d.overload ? 0 : d.out ? 2 : 1);
   const decls = overload !== undefined ? [t.byFull.get(overload ? `${name}.${overload}` : name)].filter((d): d is OpDecl => !!d)
     : [...(t.byName.get(name) ?? [])].sort((a, b) => rank(a) - rank(b));
-  const list = decls.flatMap((d) => declKernels(t, d)).map((k, i) => ({ k, i })).sort((a, b) => keyRank(a.k.key) - keyRank(b.k.key) || a.i - b.i).map((x) => x.k);
+  const plain = new Set(decls.filter((d) => !d.out).flatMap((d) => declKernels(t, d).map((k) => k.key)));
+  const list = decls.flatMap((d) => declKernels(t, d).filter((k) => overload !== undefined || !d.out || !plain.has(k.key)))
+    .map((k, i) => ({ k, i })).sort((a, b) => keyRank(a.k.key) - keyRank(b.k.key) || a.i - b.i).map((x) => x.k);
   const out: Kernel[] = [];
   for (const k of list) {
     const same = out.find((o) => o.kernel === k.kernel);

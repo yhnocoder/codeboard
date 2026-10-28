@@ -45,8 +45,8 @@ describe("native_functions.yaml", () => {
     expect(t.byFull.get("add.out")).toMatchObject({ structured: true, ufunc: true, out: true });
     expect(t.byFull.get("gelu")!.dispatch).toEqual([["CPU", "gelu_kernel"], ["CUDA", "gelu_kernel"]]);
   });
-  it("structured_delegate reaches the structured kernels; CUDA first, then CPU, then the other keys (MPS, MkldnnCPU…)", () => {
-    expect(ks("_softmax")).toEqual(["CUDA: softmax_cuda_out (via _softmax.out)", "CPU: softmax_cpu_out (via _softmax.out)", "MkldnnCPU: mkldnn_softmax", "MPS: softmax_mps_out (via _softmax.out)"]);
+  it("structured_delegate reaches the structured kernels; CUDA first, then CPU, then other devices (MPS), then layouts (MkldnnCPU)", () => {
+    expect(ks("_softmax")).toEqual(["CUDA: softmax_cuda_out (via _softmax.out)", "CPU: softmax_cpu_out (via _softmax.out)", "MPS: softmax_mps_out (via _softmax.out)", "MkldnnCPU: mkldnn_softmax"]);
     expect(ks("_softmax", "out")).toEqual(["CUDA: softmax_cuda_out", "CPU: softmax_cpu_out", "MPS: softmax_mps_out"]);
   });
   it("no dispatch and no delegate = CompositeImplicitAutograd with the op's C++ name", () => {
@@ -55,6 +55,17 @@ describe("native_functions.yaml", () => {
   it("ufunc ops: CPU / CUDA are the generated ufunc_add_CUDA / _CPU; keys sharing a kernel are joined", () => {
     expect(ks("add", "Tensor")).toEqual(["CUDA: ufunc:ufunc_add_CUDA (via add.out)", "CPU: ufunc:ufunc_add_CPU (via add.out)", "SparseCPU, SparseCUDA: add_sparse", "Meta: add_Tensor_meta"]);
     expect(ks("scatter_add")).toEqual(["CUDA, CPU, MPS: scatter_add (via scatter_add.out)"]);
+  });
+  it("without an overload, leaves out the out= kernels of keys a plain overload already has", () => {
+    expect(ks("add")).toEqual(["CUDA: ufunc:ufunc_add_CUDA (via add.out)", "CPU: ufunc:ufunc_add_CPU (via add.out)", "SparseCPU, SparseCUDA: add_sparse", "Meta: add_Tensor_meta"]);
+    expect(ks("add", "out")).toEqual(["CUDA: ufunc:ufunc_add_CUDA", "CPU: ufunc:ufunc_add_CPU", "SparseCPU: add_out_sparse_cpu", "SparseCUDA: add_out_sparse_cuda"]);
+  });
+  it("ranks devices, then layouts, then Meta and ZeroTensor", () => {
+    const m = opTable("/x", "/x/y", parseOps([
+      "- func: k(Tensor self) -> Tensor", "  dispatch:",
+      ...["ZeroTensor", "SparseMeta", "QuantizedCPU", "NestedTensorCUDA", "MkldnnCPU", "SparseCsrCUDA", "Meta", "XPU", "MPS", "CompositeExplicitAutograd", "CPU", "CUDA"].map((k) => `    ${k}: k_${k}`), "",
+    ].join("\n")));
+    expect(kernelsOf(m, "k").map((k) => k.key)).toEqual(["CUDA", "CPU", "CompositeExplicitAutograd", "XPU", "MPS", "QuantizedCPU", "NestedTensorCUDA", "MkldnnCPU", "SparseCsrCUDA", "ZeroTensor", "SparseMeta", "Meta"]);
   });
   it("follows structured_delegate over several levels to the func the kernels are written on", () => {
     const m = opTable("/x", "/x/y", parseOps([
