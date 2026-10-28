@@ -160,3 +160,65 @@ test("clickSelectedCardEdits", async () => {
   check("doubleClickUnselectedNoteEdits", dbl);
   await h.close();
 });
+
+const LOOKS: [id: string, look: NoteCard["look"], md: string, word: string, want: string][] = [
+  ["dn", "note", "foxtrot golf hotel", "golf", "foxtrot Zgolf hotel"],
+  ["dt", "text", "india juliet kilo", "juliet", "india Zjuliet kilo"],
+  ["db", "box", "mike november", "november", "mike Znovember"],
+  ["dm", "mark", "oscar papa", "papa", "oscar Zpapa"],
+];
+function dblBoard(): Board {
+  const b = emptyBoard("b1", "double click to edit");
+  LOOKS.forEach(([id, look, md], i) => put(b, { id, kind: "note", md, look, ...(look === "box" ? { fill: "yellow" } : {}), ...(look === "mark" ? { hand: "blue" } : {}) } as NoteCard, 80 + (i % 2) * 460, 80 + Math.floor(i / 2) * 220, 360));
+  b.cards.push({ id: "dc", kind: "code", segments: [{ id: "s1", src: { kind: "free" }, path: "", lang: "python", start: 1, end: CODE.length, text: CODE.slice(), version: { kind: "none" } }] } as unknown as CodeCard);
+  b.place.dc = { x: 80, y: 560, w: 420 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  return b;
+}
+const deselect = async (h: Host) => { await h.page.keyboard.press("Escape"); await until(h, "nothing selected", async () => (await selected(h.page)) === ""); await idle(h); };
+
+/** A double click on a Note in any look or a Free code card, selected or not, edits it with the caret where the double click was:
+ *  no word selected (typing goes in before the clicked word), not at the end */
+test("doubleClickEditsAtCaret", async () => {
+  const h = await open({ board: dblBoard(), light, w: 1100, h: 800, settings: { theme: "warm-ink" } as never });
+  const pg = h.page;
+  await idle(h);
+  for (const [id, , , word, want] of LOOKS) for (const first of ["unselected", "selected"] as const) {
+    const root = `.card[data-id="${id}"] ${id === "dn" ? ".nbody" : ".tx"}`;
+    if (first === "selected") {
+      await pg.locator(`.card[data-id="${id}"]`).click({ position: { x: 2, y: 2 } });
+      await until(h, `${id} selected`, async () => (await selected(pg)) === id);
+      await apart(h);
+    }
+    const w = await wordAt(pg, root, word);
+    await pg.mouse.dblclick(w.x, w.y);
+    const ok = await until(h, `${id} is being edited`, async () => (await pg.locator(`.card[data-id="${id}"] .md-pm`).count()) > 0).catch(() => false);
+    const got = ok ? await typedNote(h, id) : "";
+    if (id === "dn" && first === "unselected") await shot(h, "doubleClickEditsAtCaret-note");
+    // the first run's Z stays in the text
+    const now = first === "selected" ? want.replace("Z", "ZZ") : want;
+    check(`doubleClickEditsAtCaret ${id} ${first}`, got === now, { got, want: now });
+    await deselect(h);
+  }
+  for (const first of ["unselected", "selected"] as const) {
+    if (first === "selected") {
+      await pg.locator('.card[data-id="dc"] .chead').click({ position: { x: 30, y: 10 } });
+      await until(h, "dc selected", async () => (await selected(pg)) === "dc");
+      await apart(h);
+    }
+    const w = await wordAt(pg, '.card[data-id="dc"] .src', "return");
+    await pg.mouse.dblclick(w.x, w.y);
+    const ok = await pg.locator('.card[data-id="dc"] .cm-content:focus').waitFor({ timeout: 5000 }).then(() => true, () => false);
+    let line = "";
+    if (ok) {
+      await pg.keyboard.type("Z");
+      line = (await pg.locator('.card[data-id="dc"] .cm-line').nth(2).innerText()).trim();
+      await pg.keyboard.press("Escape");
+      await until(h, "the code editor closed", async () => (await editors(pg)) === 0);
+    }
+    check(`doubleClickEditsAtCaret free code ${first}`, line === (first === "selected" ? "ZZreturn y" : "Zreturn y"), line); // the first run's Z stays
+    await deselect(h);
+  }
+  await h.close();
+});
+

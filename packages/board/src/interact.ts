@@ -112,6 +112,13 @@ function clickEditKind(c: Card, t: HTMLElement): "note" | "free" | null {
 function clickEdit(kind: "note" | "free", id: string, at: { x: number; y: number }) {
   if (kind === "note") setEditEntry({ kind: "note", id, at }); // 手写代码卡的编辑器自己按最近一次按下的地方放光标（lastDown）
   setEditing({ kind, id });
+  // 这一下是双击的第一下时，第二下落在刚挂上的编辑器里：只放光标，不让浏览器 / 编辑器选中一个词
+  const t0 = performance.now();
+  const second = (e: PointerEvent) => {
+    removeEventListener("pointerdown", second, true);
+    if (performance.now() - t0 < tune("dblClick") && Math.hypot(e.clientX - at.x, e.clientY - at.y) <= DBL_SLOP) e.preventDefault();
+  };
+  addEventListener("pointerdown", second, true);
 }
 // 按在只选着的这一张的正文上（Note、手写代码）：按下时不知道是点还是选字（原生文本选择），等 click 再看
 let armed: { id: string; kind: "note" | "free"; x: number; y: number } | null = null;
@@ -144,13 +151,14 @@ export function cardPointerDown(e: PointerEvent, id: string) {
   // 只选着这一张时，按在内容上是选字（原生文本选择）；没选中或选着好几张时，按在内容上和按卡头一样拖卡，
   // 不动就松手：没选中的选中它，选着好几张的只留这一张（之后再按就能选字）
   const multiBody = inBody && isSel(f.host.id) && sel.cards.length > 1;
-  // 按下之前就只选着这一张：单击正文进编辑。双击的第二下（第一下刚选中它）不算，还照双击进（光标不跟着点的地方）
+  // 按下之前就只选着这一张：单击正文进编辑。双击的第二下（第一下刚选中它）就在这一下进，光标放在双击的地方、不选词
   const solo = isSel(f.host.id) && sel.cards.length === 1;
   const editKind = clickEditKind(c, t);
   if (inBody) {
     if (!t.closest(".src, .nbody, .cdesc, .tx")) { setLineSel(null); }
     if (e.shiftKey || e.metaKey || e.ctrlKey) return A.selectCard(f.host.id, true);
     const second = !!editKind && isDbl(`e${id}`, e);
+    if (solo && second && editing()?.id !== id) { e.preventDefault(); return clickEdit(editKind!, id, { x: e.clientX, y: e.clientY }); }
     if (solo) { if (editKind && !second) armed = { id, kind: editKind, x: e.clientX, y: e.clientY }; return; }
   }
   e.preventDefault();
@@ -174,7 +182,7 @@ export function cardPointerDown(e: PointerEvent, id: string) {
     A.selectSubtree(target, e.shiftKey); closeAllPops();
     return startCardDrag(e, f.host.id, () => { select({ cards: was.length ? was : [f.host.id] }); A.openMarkPicker(target, el); });
   }
-  if (isText && isDbl(`x${id}`, e)) return setEditing({ kind: "note", id });
+  if (isText && isDbl(`x${id}`, e)) return void (editing()?.id !== id && clickEdit("note", id, { x: e.clientX, y: e.clientY }));
   if (e.shiftKey || e.metaKey || e.ctrlKey) { toggleSel("cards", f.host.id); return; }
   if (!isSel(f.host.id)) A.selectCard(f.host.id);
   closeAllPops();
@@ -323,8 +331,9 @@ export function cardDblClick(e: MouseEvent, id: string) {
   if (t.closest(".cdesc")) { e.preventDefault(); setEditing({ kind: "desc", id }); return; }
   const c = cardById(id)?.card, ed = editing();
   if (ed?.id === id && (ed.kind === "note" || ed.kind === "free")) return; // 双击的第一下已经进了编辑（单击选中的卡），第二下落在编辑器里
-  if (c?.kind === "note" && c.look === "note" && t.closest(".nbody")) { e.preventDefault(); setEditing({ kind: "note", id }); }
-  if (c?.kind === "code" && c.segments[0]?.src.kind === "free" && t.closest(".src")) { e.preventDefault(); setEditing({ kind: "free", id }); }
+  // Text / Box / Mark 的双击在第二下按下时就进了
+  const kind = c && !(c.kind === "note" && c.look !== "note") ? clickEditKind(c, t) : null;
+  if (kind) { e.preventDefault(); clickEdit(kind, id, { x: e.clientX, y: e.clientY }); }
 }
 
 export function resizeDown(e: PointerEvent, id: string, edges: { left?: boolean; right?: boolean; top?: boolean; bottom?: boolean }) {
