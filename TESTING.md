@@ -46,6 +46,7 @@ npm test -w @codeboard/markdown-demo                      # Markdown 示例：�
 npm run storybook:check                                   # Storybook：构建后在 Chromium 里打开每个 story（各开一页，再在同一个预览里一个接一个），控制台报错、页面异常、请求失败、story 或 play 抛异常、超时都算失败；只在每晚跑，不进 check 和 ci.yml。构建过了就直接 node tools/test/storybook.mjs [story id 的正则]，结果在 test-out/storybook/result.json
 npm run e2e                                               # 整套 e2e（E2E_PART=1|2|3 或 E2E_ONLY=capture,addsel 只跑一部分）
 E2E_FLOW=my-flow.cjs npm run e2e                          # 在真的 VS Code 里跑一段自己写的流程（文件导出 async (page, t) => {…}，t 是 drive.cjs 的 helper：newBoard、newNote、check、until…），复现问题不用改 drive.cjs
+# extensions/vscode/test/torch-routing.cjs 是手动的 E2E_FLOW（不进 CI）：在配好的 PyTorch checkout 上点 12 个调用，看路由到的 kernel；要原地打开那个 checkout，run.sh 做不到，见文件开头
 ```
 
 截图在 `test-out/harness/`，Playwright 自己的输出（失败时的上下文）在 `test-out/harness/results/`。
