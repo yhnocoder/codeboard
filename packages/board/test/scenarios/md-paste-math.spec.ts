@@ -163,7 +163,7 @@ const DOUBLED_MD = "假设我们选择 $16\\times16$ 的 thread block，因此�
 /** Pasting that text keeps only the TeX, as formulas: into a Note being edited, and with ⌘V on the board (a new Note) */
 test("pasteDoubledFormulas", async () => {
   const b = emptyBoard("b1", "doubled formulas");
-  put(b, { id: "n", kind: "note", md: "n", bg: true } as NoteCard, 40, 40, 440);
+  put(b, { id: "n", kind: "note", md: "n", look: "note" } as NoteCard, 40, 40, 440);
   const h = await open({ board: b, light: true, w: 1200, h: 800, settings: { theme: "warm-ink" } as any });
   const pg = h.page;
   await idle(h);
