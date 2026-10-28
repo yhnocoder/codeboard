@@ -5,6 +5,7 @@ import { walk, setKeysOpen, setPaletteOpen } from "./state/ui";
 import { kbd } from "./keymap";
 import { openMenu, promptText } from "./ui/Menu";
 import { Icon } from "./ui/icons";
+import { StaticFormat } from "./ui/StaticFormat";
 import { startDraw } from "./state/mode";
 import { THEMES, EXPERIMENTAL_THEMES } from "@codeboard/core";
 import * as A from "./actions";
@@ -21,6 +22,7 @@ export function Chrome() {
   return <>
     <Show when={!walk()}><Toolbar /></Show>
     <Show when={!narrow() || walk()}><Dock /></Show>
+    <StaticFormat />
   </>;
 }
 

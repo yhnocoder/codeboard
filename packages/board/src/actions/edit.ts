@@ -20,6 +20,7 @@ import { ghostOut } from "../state/ghost";
 import { frameOf, fitFrame, setFitting, allMembers, isHidden } from "../state/sections";
 import { popCard, revealCard, sectionById, sectionLocked, selCards, isLocked, slideFrom } from "./common";
 import { requestViews } from "./create";
+import { offerReference } from "./shared";
 import { kbd } from "../keymap";
 import { ask } from "../host";
 
@@ -185,6 +186,7 @@ export function duplicateSel() {
   select({ cards: made });
   made.forEach((id) => popCard(id));
   toast(made.length > 1 ? `Duplicated ${made.length} cards (no arrows)` : "Duplicated. The copy has no arrows.");
+  offerReference(made.map((id, i) => [id, cs[i].id]));
 }
 /** 代码卡上看得见的行（复制用） */
 export function cardText(c: CodeCard): string[] {

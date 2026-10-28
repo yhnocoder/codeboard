@@ -38,6 +38,7 @@ export function FreeEdit(p: { card: () => CodeCard; wrap: () => boolean; onBlur:
       lsp,
       stopPointerDown: true, // 按下不让白板当成拖卡片
       ghost: ghostHost(),
+      find: { isMac: state.host.isMac }, // ⌘F 查找、⌥⌘F 替换
       onExit: () => p.onExit(e.text()),
       onBlur: (ev) => p.onBlur(ev, { text: () => e.text(), focus: () => e.view.focus(), el: e.view.contentDOM }),
     });

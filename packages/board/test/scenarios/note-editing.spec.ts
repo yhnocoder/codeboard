@@ -34,8 +34,8 @@ const editing = (h: Host, id: string) => h.page.locator(`.card[data-id="${id}"] 
 async function editNote(h: Host, id: string) {
   await h.post({ type: "reveal", card: id } as any);
   await idle(h); // the camera flies to the card
-  // reveal selects the card, and a click on the only selected card already edits with the caret where clicked: deselect it
-  // first, so the double click opens the editor with the caret at the end as these cases expect
+  // reveal selects the card: deselect it first, so the double click is the same gesture on every case (an unselected Note
+  // edited from a double click, with the caret where it lands: the cases that need it elsewhere move it themselves)
   await h.page.keyboard.press("Escape");
   await until(h, "nothing selected", async () => (await h.page.locator(".card.sel").count()) === 0);
   await h.page.locator(`.card[data-id="${id}"] .nbody`).dblclick();
@@ -854,5 +854,80 @@ test("noteLanguagePickerOpenWhenBoardChanges", async () => {
   await exitEdit(h);
   await until(h, "the second board's note is saved", () => h.sent.some((m) => JSON.stringify(m).includes("second board")));
   check("noteLanguagePickerOpenWhenBoardChanges", !errors.length && list === 0, { errors, list });
+  await close(h);
+});
+
+/** #41：光标走进 **粗体**（方向键）展开成原文时，照 Typora 记号淡色、中间的字还是粗体（紧挨中文和中文标点的也一样）；
+ *  不在编辑时也是粗体，退出后存的字不变 */
+test("noteBoldStaysBoldInSource", async () => {
+  const P = "GPU 的资源有限，而且**每个 SM 能同时分配的 thread block** 数量也**有限**，所以设备能够**同时执行的 thread block 总数存在上限**。但是，一个 grid 可以远多于该上限的 thread block。";
+  const NEST = "x **a *b* c** y";
+  const h = await open({ board: board([P, NEST]), light: true, w: 1200, h: 800, settings: { theme: "warm-ink" } as never });
+  await idle(h);
+  const pg = h.page;
+  const tags = (sel: string) => pg.evaluate((sel) => [...document.querySelectorAll(sel)].map((e) => `${e.tagName.toLowerCase()}:${e.textContent}`), sel);
+  const shown = await tags('.card[data-id="n0"] .nbody strong');
+  /** 点进第 i 个粗体，再按一下右方向键：展开成原文 */
+  const into = async (id: string, i: number) => {
+    await editNote(h, id);
+    // 粗体可能折行：点它第一行的中间
+    const r = await pg.locator(`.card[data-id="${id}"] .md-pm strong`).nth(i).evaluate((e) => { const q = e.getClientRects()[0]; return { x: q.x + q.width / 2, y: q.y + q.height / 2 }; });
+    await pg.mouse.click(r.x, r.y);
+    await keys(pg, "{ArrowRight}");
+    await until(h, "the bold opened as source", async () => (await pg.locator(`.card[data-id="${id}"] .md-pm .md-src`).count()) > 0);
+  };
+  await into("n0", 2);
+  const src = await tags('.card[data-id="n0"] .md-pm .md-src :is(strong, em)');
+  const marks = await tags('.card[data-id="n0"] .md-pm .md-src .md-mkc');
+  await shot(h, "noteBoldStaysBoldInSource");
+  await exitEdit(h);
+  await into("n1", 0);
+  const nested = await tags('.card[data-id="n1"] .md-pm .md-src :is(strong, em)');
+  await exitEdit(h);
+  await idle(h);
+  const r = { shown, src, marks, nested, md: [md(h, "n0"), md(h, "n1")] };
+  check("noteBoldStaysBoldInSource", JSON.stringify(shown) === JSON.stringify(["strong:每个 SM 能同时分配的 thread block", "strong:有限", "strong:同时执行的 thread block 总数存在上限"])
+    && JSON.stringify(src) === '["strong:同时执行的 thread block 总数存在上限"]' && JSON.stringify(marks) === '["span:**","span:**"]'
+    && JSON.stringify(nested) === '["strong:a ","strong:b","em:b","strong: c"]' && r.md[0] === P && r.md[1] === NEST, r);
+  await close(h);
+});
+
+/** #43：有序列表中间的空项按 Backspace 变成空段落，列表断成两段（下面那段从 1. 重新编号）：存下来、再显示、再打开编辑都还是这样，
+ *  空段落不被去掉、两段不被连回去。无序列表、任务列表一样 */
+test("noteEmptyLineBetweenListsKept", async () => {
+  const cases = [
+    { init: "1. Line 1\n2.\n3. Line 3\n4.", md: "1. Line 1\n\n&nbsp;\n\n1. Line 3\n2.", list: "ol" },
+    { init: "- a\n-\n- b", md: "- a\n\n&nbsp;\n\n- b", list: "ul" },
+    { init: "- [ ] a\n- [ ]\n- [ ] b", md: "- [ ] a\n\n&nbsp;\n\n- [ ] b", list: "ul" },
+  ];
+  const h = await open({ board: board(cases.map((c) => c.init)), light: true, w: 1400, h: 900, settings: { theme: "warm-ink" } as never });
+  await idle(h);
+  const pg = h.page;
+  /** 顶层的块：标签（空段落记成 p:empty）和有序列表的起始编号 */
+  const blocks = (sel: string) => pg.evaluate((sel) => [...document.querySelector(sel)!.children]
+    .map((e) => (e.tagName === "P" && !e.textContent ? "p:empty" : e.tagName === "OL" ? `ol:${(e as HTMLOListElement).start}` : e.tagName.toLowerCase())), sel);
+  const res: Record<string, unknown>[] = [];
+  for (let i = 0; i < cases.length; i++) {
+    const id = `n${i}`;
+    await editNote(h, id);
+    // 光标放到第二项（空的）里：从第一项的末尾往下走一行
+    await pg.locator(`.card[data-id="${id}"] .md-pm li p`).first().click();
+    await keys(pg, "{End}{ArrowDown}{Backspace}");
+    const edited = await blocks(`.card[data-id="${id}"] .md-pm`);
+    if (i === 0) await shot(h, "noteEmptyLineBetweenListsKept");
+    await exitEdit(h);
+    await idle(h);
+    const shown = await blocks(`.card[data-id="${id}"] .nbody`);
+    if (i === 0) await shot(h, "noteEmptyLineBetweenListsKept-saved");
+    await editNote(h, id);
+    const reopened = await blocks(`.card[data-id="${id}"] .md-pm`);
+    await exitEdit(h);
+    res.push({ edited, shown, reopened, md: md(h, id) });
+  }
+  await idle(h);
+  cases.forEach((c, i) => {
+    const r = res[i], want = c.list === "ol" ? ["ol:1", "p:empty", "ol:1"] : ["ul", "p:empty", "ul"];
+    check(`noteEmptyLineBetweenListsKept ${c.init}`, r.md === c.md && [r.edited, r.shown, r.reopened].every((b) => JSON.stringify(b) === JSON.stringify(want)), r);
+  });
   await close(h);
 });

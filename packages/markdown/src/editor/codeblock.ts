@@ -6,8 +6,8 @@ import { GapCursor } from "@tiptap/pm/gapcursor";
 import { closeHistory } from "@tiptap/pm/history";
 import type { EditorView as PMView, NodeView } from "@tiptap/pm/view";
 import type { Editor } from "@tiptap/core";
-import type { ViewUpdate, KeyBinding } from "@codemirror/view";
-import { EditorSelection } from "@codemirror/state";
+import { Decoration as CmDeco, EditorView as CmView, type DecorationSet as CmDecos, type ViewUpdate, type KeyBinding } from "@codemirror/view";
+import { EditorSelection, StateEffect, StateField } from "@codemirror/state";
 import { completionStatus } from "@codemirror/autocomplete";
 import { codeEditor, type CodeEditor, type LspHost } from "../cm/editor";
 import { cachedCode, highlightCode } from "../code";
@@ -54,6 +54,21 @@ function edge(el: HTMLElement, side: "top" | "bottom") {
   return side === "top" ? r.top + parseFloat(cs.paddingTop) : r.bottom - parseFloat(cs.paddingBottom);
 }
 
+// Note 的查找（editor/find.ts）在代码块里的匹配：代码块是 CodeMirror 自己画的，匹配用它的装饰画（class 和正文里的高亮同名）
+export type Found = { from: number; to: number; cls: string };
+const setFound = StateEffect.define<Found[]>();
+const foundField = StateField.define<CmDecos>({
+  create: () => CmDeco.none,
+  update(v, tr) {
+    v = v.map(tr.changes);
+    for (const e of tr.effects) if (e.is(setFound)) v = CmDeco.set(e.value.map((r) => CmDeco.mark({ class: r.cls }).range(r.from, r.to)), true);
+    return v;
+  },
+  provide: (f) => CmView.decorations.from(f),
+});
+/** 代码块的根元素（pre）→ 它的节点视图 */
+export const codeBlockAt = new WeakMap<Element, CodeBlockView>();
+
 /** comment 不给就是 // */
 export type CodeBlockHost = {
   editor: () => Editor; exit: () => void; complete: (before: string, after: string) => Promise<string | null>;
@@ -72,6 +87,7 @@ export class CodeBlockView implements NodeView {
   langBox: LangBox;
   updating = false;
   private fitting = 0;
+  private found = "";
   constructor(public node: PMNode, public view: PMView, public getPos: () => number | undefined, host: CodeBlockHost) {
     const lang = () => (this.node.attrs.language as string | null) ?? "";
     this.dom = document.createElement("pre");
@@ -110,7 +126,9 @@ export class CodeBlockView implements NodeView {
       },
       onUpdate: (u) => this.forward(u),
       className: "cbcm-md",
+      extensions: [foundField],
     });
+    codeBlockAt.set(this.dom, this);
     this.langBox = new LangBox({
       lang,
       langs: () => host.langs?.() ?? [],
@@ -191,6 +209,14 @@ export class CodeBlockView implements NodeView {
     this.view.dispatch(tr);
     this.view.focus();
     return true;
+  }
+
+  /** 查找的匹配（块里的偏移）：和上次一样就不动 */
+  showFound(rs: Found[]) {
+    const n = this.cm.view.state.doc.length, key = JSON.stringify(rs = rs.filter((r) => r.from < r.to && r.to <= n));
+    if (key === this.found) return;
+    this.found = key;
+    this.cm.view.dispatch({ effects: setFound.of(rs) });
   }
 
   /** ProseMirror → CodeMirror（撤销、别处的改动） */

@@ -3,6 +3,7 @@
 //  revealShowsHiddenCard      — Reveal on Board / clicking the already-expanded call on a card in a collapsed subtree expands it
 //  fitFramesVisibleContent    — Fit to Window frames what is shown: no hidden call-tree cards, a collapsed section counts as its title pill
 //  nudgeHoldIsOneUndoStep     — holding an arrow key is one undo step; each separate press is its own step
+//  nudgeHoldAccelerates       — a held arrow key moves one step, then glides every frame, faster the longer it is held; stops at keyup
 //  nudgeStepFollowsZoom       — zoomed out, an arrow key moves a card 1 px on screen (Shift 10 px), not 1 px on the board
 //  farClicksNotDoubleClick    — two quick clicks far apart on empty canvas are not a double-click (no Text note)
 //  implPickerKeyboard         — the Go to Implementation picker takes ↑ / ↓ / Enter instead of nudging the card behind it
@@ -12,7 +13,7 @@
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { put, symCard, findSym, viewOf, type Host } from "../harness";
 import { test, open, verdict, until, idle, hold } from "../fixtures";
-import { SEL_REPORT } from "../../src/state/timing";
+import { SEL_REPORT, NUDGE_HOLD, NUDGE_RAMP, NUDGE_SPEED, NUDGE_MAX } from "../../src/state/timing";
 
 const nv = (qual: string) => { const s = findSym(qual); return symCard(s.f, s.s); };
 const lineOf = (c: CodeCard, re: RegExp) => { const s = c.segments[0]; return s.start + s.text.findIndex((t) => re.test(t)); };
@@ -55,6 +56,8 @@ test("revealShowsHiddenCard", () => verdict("revealShowsHiddenCard", revealShows
 test("fitFramesVisibleContent", () => verdict("fitFramesVisibleContent", fitFramesVisibleContent));
 
 test("nudgeHoldIsOneUndoStep", () => verdict("nudgeHoldIsOneUndoStep", nudgeHoldIsOneUndoStep));
+
+test("nudgeHoldAccelerates", () => verdict("nudgeHoldAccelerates", nudgeHoldAccelerates));
 
 test("nudgeStepFollowsZoom", () => verdict("nudgeStepFollowsZoom", nudgeStepFollowsZoom));
 
@@ -174,13 +177,16 @@ async function nudgeHoldIsOneUndoStep(res: Record<string, unknown>) {
   await clickHead(h, c.id);
   await h.page.keyboard.press("Delete"); await idle(h);
   await clickHead(h, a.id);
-  // hold → (the browser repeats the key down while it is held: Playwright sends repeats for a key already down)
+  // hold → past NUDGE_HOLD (Playwright sends repeats for a key already down, as the browser does while a key is held)
   for (let i = 0; i < 5; i++) await h.page.keyboard.down("ArrowRight");
+  await hold(h, NUDGE_HOLD + 300, "the held key glides the card on");
   await h.page.keyboard.up("ArrowRight");
+  await idle(h); // the hold is sent when the key comes up
+  const at = () => [h.board().place[a.id].x, h.board().place[a.id].y];
+  const x = at()[0];
   // then two separate presses of ↓
   for (let i = 0; i < 2; i++) await h.page.keyboard.press("ArrowDown");
   await idle(h); // each nudge is sent at once
-  const at = () => [h.board().place[a.id].x, h.board().place[a.id].y];
   res.moved = at();
   const undos: number[][] = [];
   for (let i = 0; i < 3; i++) { await h.page.keyboard.press("Meta+z"); await idle(h); undos.push(at()); }
@@ -188,7 +194,55 @@ async function nudgeHoldIsOneUndoStep(res: Record<string, unknown>) {
   await h.page.keyboard.press("Meta+z"); await idle(h);
   res.deletedBack = h.board().cards.some((k) => k.id === c.id);
   await close(h);
-  return JSON.stringify(res.moved) === "[85,82]" && JSON.stringify(undos) === "[[85,81],[85,80],[80,80]]" && !!res.deletedBack;
+  return x > 85 && JSON.stringify(res.moved) === JSON.stringify([x, 82]) && JSON.stringify(undos) === JSON.stringify([[x, 81], [x, 80], [80, 80]]) && !!res.deletedBack;
+}
+
+/**
+ * Holding → on a card: one step at once and nothing more until NUDGE_HOLD; then it glides every frame (sampled in the page), at
+ * about NUDGE_SPEED first and several times that once NUDGE_RAMP is over; it stops the frame the key comes up, and the whole hold
+ * is one undo step. Playwright sends no key repeats here, so key repeat jumps would leave it at the first step
+ */
+async function nudgeHoldAccelerates(res: Record<string, unknown>) {
+  const b = emptyBoard("bNudgeAcc", "nudgeacc");
+  const a = nv("LLMEngine.step");
+  put(b, a, 80, 80, 560);
+  const h = await open({ board: b });
+  await clickHead(h, a.id);
+  await h.page.evaluate((id) => {
+    const el = document.querySelector<HTMLElement>(`.card[data-id="${id}"]`)!;
+    const w = window as unknown as { nudgeLog: { down: number; up: number; s: [number, number][] } };
+    const log = (w.nudgeLog = { down: 0, up: 0, s: [] });
+    addEventListener("keydown", (e) => { if (e.key === "ArrowRight" && !log.down) log.down = performance.now(); }, true);
+    addEventListener("keyup", (e) => { if (e.key === "ArrowRight") log.up = performance.now(); }, true);
+    const tick = (t: number) => { log.s.push([t, el.getBoundingClientRect().left]); requestAnimationFrame(tick); };
+    requestAnimationFrame(tick);
+  }, a.id);
+  await until(h, "the page samples the card every frame", () => h.page.evaluate(() => (window as unknown as { nudgeLog: { s: unknown[] } }).nudgeLog.s.length > 2));
+  await h.page.keyboard.down("ArrowRight");
+  await hold(h, NUDGE_HOLD + NUDGE_RAMP + 500, "held through the speed-up and on at full speed");
+  await h.page.keyboard.up("ArrowRight");
+  await idle(h);
+  const log = await h.page.evaluate(() => (window as unknown as { nudgeLog: { down: number; up: number; s: [number, number][] } }).nudgeLog);
+  const s = log.s, x0 = s[0][1];
+  const xAt = (t: number) => s.reduce((x, [ts, v]) => (ts <= t ? v : x), x0);
+  /** Screen px per ms between two times after the key went down */
+  const speed = (from: number, to: number) => (xAt(log.down + to) - xAt(log.down + from)) / (to - from);
+  res.beforeGlide = xAt(log.down + NUDGE_HOLD - 60) - x0;
+  res.early = +speed(NUDGE_HOLD + 50, NUDGE_HOLD + 350).toFixed(3);
+  res.late = +speed(NUDGE_HOLD + NUDGE_RAMP + 50, NUDGE_HOLD + NUDGE_RAMP + 450).toFixed(3);
+  // the frame sampled right at keyup may come before that frame's step: a frame later it must be still
+  const endX = s[s.length - 1][1];
+  res.afterUp = endX - xAt(log.up + 40);
+  res.board = h.board().place[a.id].x - 80;
+  res.screen = Math.round(endX - x0);
+  // gliding is smooth: at full speed no frame jumps much more than the speed allows for its time
+  res.jumps = s.filter(([t, x], i) => i > 0 && t > log.down + NUDGE_HOLD + NUDGE_RAMP && t < log.up
+    && x - s[i - 1][1] > NUDGE_SPEED * NUDGE_MAX * (t - s[i - 1][0]) * 1.5 + 1).length;
+  await h.page.keyboard.press("Meta+z"); await idle(h);
+  res.undone = h.board().place[a.id].x;
+  await close(h);
+  return res.beforeGlide === 1 && (res.early as number) > 0 && (res.late as number) > 3 * (res.early as number)
+    && (res.late as number) > NUDGE_SPEED * (NUDGE_MAX - 1) && res.afterUp === 0 && res.board === res.screen && res.jumps === 0 && res.undone === 80;
 }
 
 /** Zoomed out to 25%, an arrow key moves a card 1 px on screen (4 px on the board), Shift 10 px; holding the key is still one undo step */
@@ -207,15 +261,17 @@ async function nudgeStepFollowsZoom(res: Record<string, unknown>) {
   await h.page.keyboard.press("Shift+ArrowRight"); await idle(h);
   res.shift = at(); const x2 = await screenX();
   res.screen = [+(x1 - x0).toFixed(2), +(x2 - x1).toFixed(2)];
-  for (let i = 0; i < 3; i++) await h.page.keyboard.down("ArrowDown");
+  await h.page.keyboard.down("ArrowDown");
+  await hold(h, NUDGE_HOLD + 300, "the held key glides the card on");
   await h.page.keyboard.up("ArrowDown"); await idle(h);
   res.held = at();
   const undos: number[][] = [];
   for (let i = 0; i < 3; i++) { await h.page.keyboard.press("Meta+z"); await idle(h); undos.push(at()); }
   res.undos = undos;
   await close(h);
+  const [hx, hy] = res.held as number[];
   return JSON.stringify(res.one) === "[84,80]" && JSON.stringify(res.shift) === "[124,80]" && JSON.stringify(res.screen) === "[1,10]"
-    && JSON.stringify(res.held) === "[124,92]" && JSON.stringify(undos) === "[[124,80],[84,80],[80,80]]";
+    && hx === 124 && hy > 84 && JSON.stringify(undos) === "[[124,80],[84,80],[80,80]]";
 }
 
 async function farClicksNotDoubleClick(res: Record<string, unknown>) {

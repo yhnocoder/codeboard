@@ -271,6 +271,12 @@ async function runProbe(pr: Probe): Promise<Record<string, unknown>> {
   try {
     await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 20, y: 10 } });
     await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
+    // the double click put the caret where it was: the cases start typing at the end
+    await pg.evaluate(() => {
+      const v = (document.querySelector('.card[data-id="n1"] .md-pm') as any).editor.view;
+      v.dispatch(v.state.tr.setSelection(v.state.selection.constructor.atEnd(v.state.doc))); // Selection.atEnd, inherited
+      v.focus(); // out of a code block's own editor, if the double click landed in one
+    });
     if (!pr.start) { await pg.keyboard.press("ControlOrMeta+a"); await pg.keyboard.press("Backspace"); }
     await pr.run({ pg, h, info });
     await idle(h);

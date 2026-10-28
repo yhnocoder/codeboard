@@ -61,6 +61,11 @@ type CardBase = {
   procs?: ProcTag[];
   /** 像贴纸一样斜贴在白板上（转 TILT_DEG，编辑时回正） */
   tilt?: true;
+  /**
+   * 同一张卡摆在这块白板上的几处（粘贴后选了 Reference）：same 一样的几张卡内容永远一样（twinContent），改一张，store 把别的跟着改；
+   * 各自的 id、摆放、斜贴、连着的箭头和 Sidenote 不同。段 id 也一样（展示数据按段 id 存，同一份）
+   */
+  same?: string;
 };
 
 export type ProcTag = { text: string; light?: boolean };
@@ -460,6 +465,24 @@ export function mdHeading(md: string): string {
 export const firstLine = (md: string) => md.split("\n").map((l) => l.replace(/!\[([^\]\n]*)\]\([^)\n]*\)/g, "$1").replace(/^[#>\-*\s]+/, "").replace(/\*\*|`/g, "").trim()).find(Boolean) ?? "";
 /** 深拷贝。白板在 mutate 里传进来的是 store 的代理，structuredClone 拷不了，所以走 JSON（白板数据本来就是 JSON） */
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
+
+/** 摆在几处的同一张卡（same）共用的内容：除了 id、same 和斜贴（tilt 跟着摆放走） */
+const OWN = new Set(["id", "same", "tilt"]);
+export function twinContent(c: Card): string {
+  const o: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(c)) if (!OWN.has(k)) o[k] = v;
+  return JSON.stringify(o);
+}
+/** to 的内容换成 from 的（from 是普通对象；to 可以是白板 store 里的代理）：只写变了的字段，别的字段不通知 */
+export function copyTwinContent(from: Card, to: Card, raw: <T>(x: T) => T = (x) => x): void {
+  const f = from as Record<string, unknown>, t = to as Record<string, unknown>, r = raw(to) as Record<string, unknown>;
+  for (const k of Object.keys(r)) if (!OWN.has(k) && !(k in f)) delete t[k];
+  for (const [k, v] of Object.entries(f)) {
+    if (OWN.has(k)) continue;
+    if (typeof v !== "object" || v === null) { if (r[k] !== v) t[k] = v; }
+    else if (JSON.stringify(r[k]) !== JSON.stringify(v)) t[k] = clone(v);
+  }
+}
 export function domainOf(url: string) {
   try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
 }

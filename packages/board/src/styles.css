@@ -509,6 +509,16 @@ input, textarea { font: inherit; color: var(--ink); }
 .guide.h { border-top-width: 1px; height: 0; }
 .ghint { position: absolute; transform: translate(-50%, 0); font: 600 10.5px/1 var(--sys); color: #fff; background: var(--guide); padding: 4px 6px; border-radius: 5.5px; white-space: nowrap; }
 /* 宽度固定为一行的宽度（不随 left 缩），靠边时由 AlignBar 按量到的宽度整条平移进视野 */
+/* 粘贴出来的副本右下角的 Copy | Reference（Canvas.tsx PasteChip）：右边对齐卡的右边，大小不随缩放 */
+.pastechip { position: absolute; z-index: 15; transform-origin: 0 0; padding: 3px; white-space: nowrap; }
+.pastechip .tbtn { height: 24px; padding: 0 8px; gap: 4px; font: 500 12px/1 var(--sys); }
+.pastechip .tbtn:hover { color: var(--ink); }
+.pastechip .sep { width: 1px; height: 14px; background: var(--hair); margin: 0 2px; }
+/* 同一张卡在几处的记号：卡的左下角，压在卡边上 */
+.card > .twinmk { position: absolute; left: 10px; bottom: -9px; z-index: 3; display: inline-flex; align-items: center; gap: 3px; height: 18px; padding: 0 6px; border-radius: 9px;
+  font: 600 10.5px/1 var(--sys); color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--surface)); cursor: pointer; }
+.card > .twinmk:hover { background: var(--accent); color: var(--accent-ink); }
+.lo-map > .twinmk { display: none; }
 .alignbar.pill { position: absolute; z-index: 15; display: none; width: max-content; white-space: nowrap; }
 .alignbar.pill.show { display: inline-flex; }
 .alignbar .tbtn { height: 30px; color: var(--ink); }

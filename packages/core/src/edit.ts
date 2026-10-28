@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { activeOf, clone, cornerAt, findCard, mdHeading, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { activeOf, clone, copyTwinContent, twinContent, cornerAt, findCard, mdHeading, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 import { escapeRegExp, type BoundVal, type CallAlt } from "@codeboard/analysis/basics";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
@@ -241,6 +241,12 @@ export function danglingRefs(b: Board): string[] {
   for (const id of Object.keys(b.marks ?? {})) if (!cards.has(id)) out.push(`graph mark for missing card ${id}`);
   for (const id of Object.keys(b.born ?? {})) if (!cards.has(id)) out.push(`creation order for missing card ${id}`);
   for (const c of b.cards) if (c.kind === "code" && c.variants) out.push(...variantProblems(c));
+  const twins = new Map<string, string>();
+  for (const c of b.cards) {
+    if (!c.same) continue;
+    const k = twinContent(c), p = twins.get(c.same);
+    if (p === undefined) twins.set(c.same, k); else if (p !== k) out.push(`card ${c.id} differs from the other places of the same card`);
+  }
   return out;
 }
 
@@ -433,15 +439,20 @@ export type CardCopy = { card: Card; place?: Place; sidenotes?: Sidenote[] };
  */
 export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?: (p: Place) => Place; links?: Link[] }): { cards: Record<string, string>; segs: Record<string, string> } {
   const cards: Record<string, string> = {}, segs: Record<string, string> = {};
+  // 每张卡自己的段 旧 → 新：摆在几处的同一张卡（same）段 id 一样，副本各换各的
+  const segsOf = new Map<string, Record<string, string>>();
   const have = new Set(b.cards.map((c) => c.id));
   const todo = items.filter((it) => o.copy || !have.has(it.card.id));
   for (const it of todo) cards[it.card.id] = o.copy ? uid(it.card.kind === "code" ? "c" : it.card.kind[0]) : it.card.id;
   for (const it of todo) {
     const c = clone(it.card);
     c.id = cards[it.card.id];
+    if (o.copy) delete c.same; // 副本是另一张卡；要同一张卡，粘贴后选 Reference（makeTwin）
+    const own: Record<string, string> = {};
+    segsOf.set(it.card.id, own);
     if (c.kind === "code") {
-      for (const s of c.segments) { const n = o.copy ? uid("s") : s.id; segs[s.id] = n; s.id = n; }
-      for (const v of c.variants ?? []) for (const s of v.segs ?? []) s.id = segs[s.id] ?? s.id; // Variant 的段和卡上的段同一个 id
+      for (const s of c.segments) { const n = o.copy ? uid("s") : s.id; segs[s.id] = n; own[s.id] = n; s.id = n; }
+      for (const v of c.variants ?? []) for (const s of v.segs ?? []) s.id = own[s.id] ?? s.id; // Variant 的段和卡上的段同一个 id
     }
     if (c.kind === "compare") c.cols = [cards[c.cols[0]] ?? c.cols[0], cards[c.cols[1]] ?? c.cols[1]];
     b.cards.push(c);
@@ -455,13 +466,13 @@ export function placeCards(b: Board, items: CardCopy[], o: { copy: boolean; at?:
       if (n.kind === "card" || n.at.card !== it.card.id) continue; // 指着别的卡的 Sidenote 不带（那张卡不在这块白板上）
       const m = clone(n);
       if (o.copy) m.id = uid("n"); else if (nids.has(m.id)) continue;
-      m.at = { ...m.at, card: c.id, seg: m.at.seg && segs[m.at.seg] };
+      m.at = { ...m.at, card: c.id, seg: m.at.seg && own[m.at.seg] };
       if (!m.at.seg) delete m.at.seg;
       b.sidenotes.push(m);
     }
   }
   const on = (id: string) => cards[id] ?? (!o.copy && have.has(id) ? id : undefined);
-  const end = (e: End, card: string): End => ({ ...e, card, ...(e.seg ? { seg: segs[e.seg] ?? e.seg } : {}) });
+  const end = (e: End, card: string): End => ({ ...e, card, ...(e.seg ? { seg: segsOf.get(e.card)?.[e.seg] ?? e.seg } : {}) });
   const key = (l: Link) => JSON.stringify([l.from.card, l.from.seg, l.from.line, l.to.card, l.to.seg, l.to.line]);
   const there = new Set(b.links.map(key));
   for (const l of o.links ?? []) {
@@ -486,6 +497,92 @@ export function unlinkCard(b: Board, id: string, to = uid("c")): string {
   if (c.kind === "compare") for (const k of [...c.cols]) renameCard(b, k, uid("c"));
   renameCard(b, id, to);
   return to;
+}
+
+/**
+ * 粘贴出来的副本 id 变成 of 的另一处（Reference）：内容换成 of 的（段 id 也用 of 的），两张卡记上同一个 same。
+ * 副本自己的摆放、斜贴、箭头、Sidenote、Sticker 留着，指着它的段的按段的先后换到 of 的段上（对不上的箭头 / Sidenote 退到整张卡，行上的 Sticker 删掉）。
+ * Compare 不行（栏是别的卡）。返回 false = 没做
+ */
+export function makeTwin(b: Board, id: string, of: string): boolean {
+  const c = b.cards.find((k) => k.id === id), o = b.cards.find((k) => k.id === of);
+  if (!c || !o || c === o || c.kind === "compare" || o.kind === "compare" || (c.same && c.same === o.same)) return false;
+  const old = c.kind === "code" ? c.segments.map((s) => s.id) : [];
+  const now = o.kind === "code" ? o.segments.map((s) => s.id) : [];
+  o.same ??= uid("t");
+  c.same = o.same;
+  copyTwinContent(clone(o), c);
+  resegCard(b, id, new Map(old.map((s, i) => [s, now[i]])));
+  return true;
+}
+
+/**
+ * 摆在几处的同一张卡，这一处变成独立副本（Detach）：去掉 same，段换新 id（展示数据按段 id 存，以后两边不一样了不能再共用），
+ * 这张卡上的箭头、Sidenote、Sticker 跟着换。只剩一处的那一组也去掉 same。返回 旧段 id → 新段 id（白板把展示数据复制过去）
+ */
+export function detachTwin(b: Board, id: string): Record<string, string> {
+  const c = b.cards.find((k) => k.id === id);
+  if (!c?.same) return {};
+  const g = c.same;
+  delete c.same;
+  const rest = b.cards.filter((k) => k.same === g);
+  if (rest.length === 1) delete rest[0].same;
+  const segs: Record<string, string> = {};
+  if (c.kind !== "code") return segs;
+  for (const sg of c.segments) { segs[sg.id] = uid("s"); sg.id = segs[sg.id]; }
+  for (const v of c.variants ?? []) for (const sg of v.segs ?? []) sg.id = segs[sg.id] ?? sg.id;
+  resegCard(b, id, new Map(Object.entries(segs)));
+  return segs;
+}
+
+/** 卡 id 上指着段的引用换段 id（map 里没有的：箭头、Sidenote 退到整张卡，行上的 Sticker 删掉） */
+function resegCard(b: Board, id: string, map: Map<string, string | undefined>): void {
+  if (!map.size) return;
+  for (const l of b.links) for (const e of [l.from, l.to]) {
+    if (e.card !== id || !e.seg) continue;
+    const n = map.get(e.seg);
+    if (n) e.seg = n;
+    else { delete e.seg; delete e.line; }
+  }
+  for (const n of b.sidenotes) {
+    if (n.at.card !== id || !n.at.seg) continue;
+    const k = map.get(n.at.seg);
+    if (k) n.at.seg = k;
+    else { delete n.at.seg; delete n.at.lines; }
+  }
+  const gone: string[] = [];
+  for (const k of b.stickers) {
+    if (k.at.kind !== "line" || k.at.card !== id) continue;
+    const n = map.get(k.at.seg);
+    if (n) k.at.seg = n; else gone.push(k.id);
+  }
+  if (gone.length) removeStickers(b, gone);
+}
+
+/**
+ * 摆在几处的同一张卡保持一样：每次改白板之后调（store 的 mutate / sync / live 里）。seen = 上一次看到的每张卡的内容（twinContent），
+ * 内容和上次不一样的那张就是改了的，别的跟着它；新进这一组的（撤销回来、拆回来的）跟着原来就在的。raw：store 里读普通对象（代理太慢、不能 clone）
+ */
+export function syncTwins(b: Board, seen: Map<string, string>, raw: <T>(x: T) => T = (x) => x): void {
+  const groups = new Map<string, Card[]>();
+  for (const c of b.cards) {
+    const g = raw(c).same;
+    if (!g) continue;
+    const a = groups.get(g);
+    if (a) a.push(c); else groups.set(g, [c]);
+  }
+  const next = new Map<string, string>();
+  for (const cs of groups.values()) {
+    if (cs.length < 2) continue;
+    const keys = cs.map((c) => twinContent(raw(c)));
+    let src = cs.findIndex((c, i) => seen.has(c.id) && seen.get(c.id) !== keys[i]);
+    if (src < 0) src = Math.max(0, cs.findIndex((c) => seen.has(c.id)));
+    const from = clone(raw(cs[src]));
+    for (let i = 0; i < cs.length; i++) if (keys[i] !== keys[src]) copyTwinContent(from, cs[i], raw);
+    for (const c of cs) next.set(c.id, keys[src]);
+  }
+  seen.clear();
+  for (const [k, v] of next) seen.set(k, v);
 }
 
 /**

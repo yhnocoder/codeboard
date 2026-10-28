@@ -28,6 +28,8 @@ import { place, virtual } from "../ui/place";
 import { revealIn, scroller } from "../ui/reveal";
 import { TOOLBAR_SETTLE } from "../ui/timing";
 import type { LspHost } from "../cm/editor";
+import { FindExt, noteFind } from "./find";
+import { findKey } from "../ui/find";
 
 export type MdEditorOpts = {
   value: string;
@@ -82,6 +84,8 @@ type Ui = {
   /** 工具条里的链接输入框（null = 没打开） */
   link: Accessor<string | null>;
   setLink: (v: string | null) => void;
+  /** 查找条开着就关上（Esc） */
+  closeFind: () => boolean;
   opts: MdEditorOpts;
 };
 const uiOf = new WeakMap<Editor, Ui>();
@@ -324,7 +328,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   const base = baseExtensions.map((x) => (x.name === "inlineMath" ? x.configure({ onClick: onMath, katexOptions: mathOptions })
     : x.name === "blockMath" ? (x as TNode).extend({ addNodeView: () => ({ node, view, getPos }) => new MathBlockView(node, view, getPos as () => number | undefined) })
     : x.name === "image" ? imageEditing(x as TNode, ed, () => saveImage(o))
-    : x.name === "codeBlock" ? (x as TNode).extend({ addProseMirrorPlugins: () => [codeGapClick()], addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
+    : x.name === "codeBlock" ? (x as TNode).extend({ addProseMirrorPlugins: () => [codeGapClick()], addNodeView: () => ({ node, view, getPos }) => new CodeBlockView(node, view, getPos as () => number | undefined, { editor: ed, exit: () => { if (!uiOf.get(ed())?.closeFind()) exit(); }, complete, comment: (l) => o.code?.comment?.(l), lsp: (l) => o.code?.lsp?.(l), stopPointerDown: o.code?.stopPointerDown, langs: () => o.code?.langs ?? [] }) })
     : x));
   const Slash = Extension.create({
     name: "cbSlash",
@@ -408,7 +412,7 @@ function editorExtensions(o: MdEditorOpts, ed: () => Editor, handle: HTMLElement
   return [
     // ⌘↵ 要抢在换行（hardBreak 也绑了 Mod-Enter）前面
     Extension.create({ name: "cbSave", priority: 200, addKeyboardShortcuts() { return { "Mod-Enter": () => { exit(); return true; } }; } }),
-    MathHintsExt, ...base, Slash, Ref, Emo, Rules, Last, Tail,
+    MathHintsExt, ...base, Slash, Ref, Emo, Rules, Last, Tail, FindExt(() => uiOf.get(ed())?.closeFind() ?? false),
     Typora.configure({ openMath: openMathAt, openLink: (e) => uiOf.get(e)?.setLink(e.getAttributes("link").href ?? "") }),
     Placeholder.configure({ placeholder: () => o.placeholder ?? "Type / for blocks", showOnlyCurrent: true }),
     ...(handle ? [DragHandle.configure({ render: () => handle, computePositionConfig: { placement: "left-start", strategy: "fixed" } })] : []),
@@ -595,6 +599,7 @@ export function warmUp(extra?: string) {
 
 export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle {
   let changed = false, raw: HTMLTextAreaElement | null = null, rawStart = "", done = false;
+  let find: ReturnType<typeof noteFind> | undefined;
   const [tick, setTick] = createSignal(0);
   const [menu, setMenu] = createSignal<ReturnType<Ui["menu"]>>(null);
   // 那一个正被别的 Note 用着（两次编辑交接的那一下），或者要不要拖动把手和它不一样：这次单独建一个，用完拆掉
@@ -605,7 +610,7 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
   const editor = inst.editor;
   const sess: Sess = {
     o,
-    onTx: (tr) => { if (tr.docChanged) changed = true; setTick((t) => t + 1); },
+    onTx: (tr) => { if (tr.docChanged) changed = true; setTick((t) => t + 1); find?.refresh(); },
     onFocus: () => setTick((t) => t + 1),
     onBlur: (ev) => { setTick((t) => t + 1); blurred(ev); },
     finish: () => finish(),
@@ -631,11 +636,13 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     });
   }
   const [link, setLink] = createSignal<string | null>(null);
-  const ui: Ui = { menu, setMenu, link, setLink, opts: o };
-  uiOf.set(editor, ui);
   const layer = document.createElement("div");
   layer.className = "mdui";
   document.body.append(layer);
+  // 查找条在 host 里（编辑器右上角）：焦点在它和编辑器之间来回不算离开
+  find = noteFind(editor.view, host, { isMac: o.isMac, owns: (n) => host.contains(n) || layer.contains(n), leave: (ev) => blurred(ev) });
+  const ui: Ui = { menu, setMenu, link, setLink, closeFind: () => !!find?.close(), opts: o };
+  uiOf.set(editor, ui);
   const disposeUi = render(() => <Bubble editor={editor} tick={tick} ui={ui} />, layer);
 
   const value = (): string | null => {
@@ -692,9 +699,20 @@ export function mountEditor(host: HTMLElement, o: MdEditorOpts): MdEditorHandle 
     if (!raw) return;
     if (ev.key === "Escape" || (ev.key === "Enter" && mod)) { ev.preventDefault(); finish(); }
   };
+  // ⌘F / ⌥⌘F 在捕获阶段拿：光标在代码块（CodeMirror，自己不往外冒按键）里也是查整篇 Note
+  const onFind = (ev: KeyboardEvent) => {
+    const k = findKey(ev);
+    if (!k || raw) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    find?.open(k === "replace");
+  };
   host.addEventListener("keydown", onKey);
+  host.addEventListener("keydown", onFind, true);
   const destroy = () => {
     host.removeEventListener("keydown", onKey);
+    host.removeEventListener("keydown", onFind, true);
+    find?.destroy();
     inst.sess = null;
     // 收尾放到这一帧画完以后：退出那一帧只做换回静态内容（卡片那边会把整个编辑框连同编辑器一起拿掉）
     requestAnimationFrame(() => setTimeout(() => {

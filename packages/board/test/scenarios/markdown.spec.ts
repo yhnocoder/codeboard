@@ -124,6 +124,9 @@ test("markdownEdit", async () => {
   await pg.locator('.card[data-id="n1"] .nbody').dblclick({ position: { x: 200, y: 40 } });
   await pg.waitForSelector('.card[data-id="n1"] .md-pm', { timeout: 5000 });
   const focus = await pg.evaluate(() => !!document.activeElement?.closest(".md-pm"));
+  // 双击把光标放在双击处：先到文末
+  await focusSettled(pg);
+  await pg.keyboard.press("ControlOrMeta+End");
   // 文末打字：**x** 自动变粗体，板子的快捷键不响应（t 不会新建 Text）
   await pg.keyboard.press("Enter");
   await pg.keyboard.type("Hello **world** and t");

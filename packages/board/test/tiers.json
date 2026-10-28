@@ -6,7 +6,7 @@
     "stickerBitmapsPicker", "notePastedImageSameSizeInBothModes"
   ],
   "manual": ["markdownRecord"],
-  "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime", "changesReachHostTime", "mathHintsKeystrokeTime"],
+  "solo": ["markdownLazyRender", "codeEditKeystrokeLatency", "variantTabSwitchTime", "changesReachHostTime", "mathHintsKeystrokeTime", "noteFindTypingLatency", "nudgeHoldAccelerates"],
   "known": {},
   "limits": {"area": 30, "smoke": 90, "local": 180},
   "broad": {
@@ -47,7 +47,7 @@
         "packages/markdown/src/cm/**", "packages/markdown/src/code.ts",
         "packages/analysis/src/{index,tree,highlight,langs,select,basics}.ts", "packages/core/src/{render,lines,chip}.ts",
         "packages/host/src/{cards,source,views,analysis,codeedit,scratchnames}.ts",
-        "packages/board/test/scenarios/{code-cards,code-card-header,codeedit,fixq,text-selection-delete,code-line-band}.spec.ts"
+        "packages/board/test/scenarios/{code-cards,code-card-header,codeedit,fixq,text-selection-delete,code-line-band,find}.spec.ts"
       ],
       "scenarios": [
         "dataclass", "segsep", "fithide", "commonIndentHidden", "fitContentWidthCodeCard", "softLightCodeHeaderOneRow", "codeAreaPadding",
@@ -95,9 +95,10 @@
         "packages/board/src/md/{lazy,load}.ts", "packages/board/src/actions/notes.ts", "packages/board/src/ui/vscodekeys.ts",
         "packages/markdown/src/{index,render,schema,selmap,view,diagram,emoji,emoji-data}.ts", "packages/markdown/src/markdown.css",
         "packages/markdown/src/editor/{index,icons}.tsx",
-        "packages/markdown/src/editor/{clipboard,codeblock,codelang,ghost,pairs,source,typora}.ts", "packages/markdown/src/ui/**",
+        "packages/markdown/src/editor/{clipboard,codeblock,codelang,find,ghost,pairs,source,typora}.ts", "packages/markdown/src/ui/**",
         "packages/core/src/complete.ts", "packages/host/src/deepseek.ts", "packages/board/test/typing-sequence.json",
-        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence}.spec.ts"
+        "packages/board/test/scenarios/{markdown,md-blocks,mdreview,note-editing,note-fold,note-fresh,note-sizing,writing,typing,typing-sequence,find}.spec.ts",
+        "packages/markdown/src/marks.ts", "packages/board/src/actions/format.ts", "packages/board/src/ui/StaticFormat.tsx", "packages/board/test/scenarios/static-format.spec.ts"
       ],
       "scenarios": [
         "notes", "markdownRender", "markdownEdit", "undoIsOneStep", "noteEditKeepsLayout", "headingMarkerTypedAtHeadingSize",

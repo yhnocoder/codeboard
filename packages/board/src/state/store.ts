@@ -1,7 +1,7 @@
 import { createStore, produce, reconcile, unwrap } from "solid-js/store";
 import { batch, createMemo, createSignal } from "solid-js";
 import {
-  applyPatch, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, DEFAULT_SETTINGS, CODE_HEAD,
+  applyPatch, danglingRefs, computeFlows, emptyBoard, hiddenByCollapse, removeCards, stampBorn, applySharedUpdate, syncTwins, DEFAULT_SETTINGS, CODE_HEAD,
   type Board, type BoardMeta, type BoardPatch, type Camera, type Card, type HostInfo, type ListPatch, type Place, type SegView, type SharedInfo, type SharedUpdate, type Stale,
 } from "@codeboard/core";
 import { ask, send } from "../host";
@@ -168,6 +168,29 @@ function stamp(b: Board) {
   b.seq = tmp.seq;
 }
 
+// 摆在几处的同一张卡（same）：每次改完白板，把改了的那一处的内容抄给别的几处（core syncTwins），和这次修改算同一步。
+// twinSeen = 上次看到的每处的内容；撤销 / 换白板之后按那时的白板重记
+const twinSeen = new Map<string, string>();
+function twins(b: Board) {
+  if (unwrap(b).cards.some((c) => c.same)) syncTwins(b, twinSeen, unwrap);
+  else twinSeen.clear();
+}
+function reseeTwins() {
+  twinSeen.clear();
+  setState("board", produce(twins));
+}
+/** 和 id 是同一张卡的几处（含它自己，按叠放顺序）；不是的话空 */
+const twinIndex = rooted(() => createMemo(() => {
+  const m = new Map<string, string[]>();
+  for (const c of state.board.cards) if (c.same) { const a = m.get(c.same); if (a) a.push(c.id); else m.set(c.same, [c.id]); }
+  return m;
+}));
+export const twinsOf = (id: string): string[] => {
+  const g = cardById(id)?.card.same;
+  const a = g ? twinIndex().get(g) : undefined;
+  return a && a.length > 1 ? a : [];
+};
+
 /**
  * 一次可撤销的修改。fn 里直接改 board（immer 风格）。
  * fn 抛错就整次撤回、提示一下，返回 false；什么都没改不进撤销栈。
@@ -176,7 +199,7 @@ function stamp(b: Board) {
 export function mutate(fn: (b: Board) => void, opts: { merge?: string; fx?: Effect } = {}): boolean {
   const before = snap();
   cur = null;
-  try { setState("board", produce((b: Board) => { fn(b); stamp(b); })); }
+  try { setState("board", produce((b: Board) => { fn(b); twins(b); stamp(b); })); }
   catch (e) {
     // 改到一半抛错：produce 已经改了一部分，整次撤回，别留下半截的白板
     restore(before);
@@ -245,7 +268,7 @@ const held = new Set<Snap>();
 /** 拖动中的修改（不进撤销栈） */
 export function live(fn: (b: Board) => void) {
   cur = null;
-  setState("board", produce(fn));
+  setState("board", produce((b: Board) => { fn(b); twins(b); }));
   changedLive();
 }
 /** 镜头停下来时记进白板（不进撤销栈）。快照里没有镜头，所以快照缓存还能用，自动保存只发镜头 */
@@ -265,7 +288,7 @@ const SYNC_MAX = 2000;
  */
 export function sync(fn: (b: Board) => void, shared?: string[]) {
   cur = null;
-  setState("board", produce((b: Board) => { fn(b); stamp(b); }));
+  setState("board", produce((b: Board) => { fn(b); twins(b); stamp(b); }));
   syncLog.push({ n: ++syncN, fn, shared });
   trimSync();
   changed();
@@ -314,7 +337,7 @@ function replaySync(s: Snap): { any: boolean; shared: Set<string> } {
   const xs = syncLog.filter((x) => x.n > s.epoch);
   const shared = new Set(xs.flatMap((x) => x.shared ?? []));
   if (!xs.length) return { any: false, shared };
-  setState("board", produce((b: Board) => { for (const x of xs) x.fn(b); }));
+  setState("board", produce((b: Board) => { for (const x of xs) x.fn(b); twins(b); }));
   return { any: true, shared };
 }
 
@@ -339,6 +362,7 @@ function restore(s: Snap, now?: Snap) {
     b.cam = { ...state.board.cam };
     setState("board", reconcile(b));
   }
+  reseeTwins();
   // 快照之后宿主同步来的改动再做一遍（不然 ⌘Z 会把行号退回去）；重放过的白板和快照不一样了，快照缓存作废
   const r = replaySync(s);
   cur = r.any ? null : { ...s, epoch: syncN, step: undefined, fx: undefined };
@@ -403,6 +427,7 @@ export function setBoard(b: Board, crumbs: readonly string[]) {
     histories.set(state.board.id, { undo: undoStack.splice(0), redo: redoStack.splice(0), sync: syncLog.splice(0), at: snapNow() });
   }
   setState("board", reconcile(b));
+  reseeTwins();
   cur = null; lastIds = null; topMerge = undefined; last.clear();
   const h = histories.get(b.id);
   histories.delete(b.id);

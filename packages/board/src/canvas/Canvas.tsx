@@ -1,6 +1,6 @@
 import { For, Show, onMount, onCleanup, createMemo, createEffect, createSignal, on } from "solid-js";
-import { bounds, type AlignOp } from "@codeboard/core";
-import { state, sel, rectOf, cardById, hostOf, mutate, placed } from "../state/store";
+import { bounds, twinContent, type AlignOp } from "@codeboard/core";
+import { state, sel, rectOf, cardById, hostOf, mutate, placed, placeOf } from "../state/store";
 import { cam, setViewport, viewTracked, lod, camMoving, stillZ, camTarget, camTo, fitRect } from "../state/camera";
 import { trackOffscreen } from "../state/cull";
 import { trackCardLod, izMap } from "../state/lodcards";
@@ -97,6 +97,7 @@ export function Canvas() {
         <LinkLayer top />
         {/* Walkthrough 的步数：卡上方的小号码（算出来的，不存；走过的卡不再走），在卡外面一层，变暗的卡也看得清 */}
         <Show when={walk()}><WalkSteps /></Show>
+        <Show when={A.pasteChip()}>{(p) => <PasteChip chip={p()} />}</Show>
         <div class="guides" data-export="strip">
           <For each={guides()}>
             {(g) => g.axis === "x"
@@ -126,6 +127,35 @@ function WalkSteps() {
         return <span class="wstep" classList={{ cur: cur() === id }} data-card={id} style={{ left: `${r().x}px`, top: `${r().y - 6}px`, transform: `translateY(-100%) scale(${k()})` }}>{n}</span>;
       }}</For>
     </div>
+  );
+}
+
+/**
+ * 粘贴 / ⌘D 出来的副本右下角：Copy ✓ | Reference。副本挪了、改了（选这两个本身的修改不算）、点了别处就收起；大小不随缩放
+ */
+function PasteChip(p: { chip: { pairs: [string, string][]; ref: boolean } }) {
+  const ids = () => p.chip.pairs.map(([id]) => id);
+  const box = createMemo(() => bounds(ids().filter((id) => cardById(id)).map((id) => rectOf(id))));
+  // 副本的摆放和内容（段 id 不算：Reference 换成原卡的段）
+  const key = () => ids().map((id) => { const c = cardById(id)?.card, q = placeOf(id); return c ? `${q.x},${q.y},${q.w}|${twinContent(c).replace(/"id":"[^"]*"/g, "")}` : ""; }).join("\n");
+  let was = key(), choosing = false;
+  createEffect(on(key, (k) => { if (k !== was && !choosing) A.closeChip(); }, { defer: true }));
+  const choose = (ref: boolean) => { choosing = true; A.pasteAs(ref); choosing = false; was = key(); };
+  onMount(() => {
+    const away = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.(".pastechip")) A.closeChip(); };
+    window.addEventListener("pointerdown", away, true);
+    onCleanup(() => window.removeEventListener("pointerdown", away, true));
+  });
+  return (
+    <Show when={box()}>{(r) =>
+      <div class="pill pastechip" data-export="strip" role="group" aria-label="Paste as"
+        style={{ left: `${r().x + r().w}px`, top: `${r().y + r().h + 8}px`, transform: `scale(${1 / cam.z}) translateX(-100%)` }}
+        onPointerDown={(e) => e.stopPropagation()} onPointerEnter={() => A.armChip(true)} onPointerLeave={() => A.armChip()}>
+        <button class="tbtn" classList={{ on: !p.chip.ref }} data-tip="An independent copy" onClick={() => choose(false)}>Copy<Show when={!p.chip.ref}><Icon name="check" size={12} /></Show></button>
+        <span class="sep" />
+        <button class="tbtn" classList={{ on: p.chip.ref }} data-tip="The same card in two places: editing one changes the other" onClick={() => choose(true)}><Icon name="link" size={12} />Reference<Show when={p.chip.ref}><Icon name="check" size={12} /></Show></button>
+      </div>}
+    </Show>
   );
 }
 

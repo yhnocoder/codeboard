@@ -411,3 +411,29 @@ test("editingKeepsCardCorners", async () => {
     await pg.context().close();
   }
 });
+
+/** Soft Light: a Note's body text is regular weight (Jost and the CJK fallback both have a 400), not the light 300 that read too thin;
+ *  bold stays bold, and a Text card's body is unchanged. Screenshots of both in Soft Light, and the Note in Warm Ink to compare */
+test("softLightNoteBodyWeight", async () => {
+  const b = emptyBoard("b1", "weights");
+  b.cards.push({ id: "n1", kind: "note", look: "note", md: "在 **thread block cluster** 层次，CUDA 通过 Cooperative Groups API 提供 cluster 范围同步机制。The grid waits at the barrier." } as any);
+  b.place.n1 = { x: 60, y: 60, w: 476 };
+  b.cards.push({ id: "t1", kind: "note", look: "text", size: "body", md: "Text 卡的正文 · body text" } as any);
+  b.place.t1 = { x: 60, y: 300, w: 544 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const weights = () => h.page.evaluate(() => {
+    const w = (sel: string) => +getComputedStyle(document.querySelector(sel)!).fontWeight;
+    return { note: w('.card[data-id="n1"] .nbody p'), bold: w('.card[data-id="n1"] .nbody strong'), text: w('.card[data-id="t1"] .tx p') };
+  });
+  const h = await open({ board: b, light: true, w: 800, h: 480, settings: { theme: "soft-light" } as never });
+  await idle(h);
+  const soft = await weights();
+  await h.page.screenshot({ path: path.join(OUT, "soft-light-note-weight.png"), clip: { x: 30, y: 30, width: 620, height: 360 } });
+  await h.page.context().close();
+  const h2 = await open({ board: b, light: true, w: 800, h: 480, settings: { theme: "warm-ink" } as never });
+  await idle(h2);
+  const warm = await h2.page.evaluate(() => +getComputedStyle(document.querySelector('.card[data-id="n1"] .nbody p')!).fontWeight);
+  await h2.page.screenshot({ path: path.join(OUT, "warm-ink-note-weight.png"), clip: { x: 30, y: 30, width: 620, height: 360 } });
+  await h2.page.context().close();
+  check("softLightNoteBodyWeight", soft.note === 400 && soft.bold >= 600 && soft.text === 400 && warm === 400, { soft, warm });
+});
