@@ -18,7 +18,7 @@ const CELLS: Record<State, { cap: string; f: Fx; w?: number; h?: number }> = {
   wide: { cap: "Very wide", f: "prepareDecode", w: 1100 },
   selected: { cap: "Selected (corner handle, toolbar)", f: "allocate" },
   locked: { cap: "Locked", f: "allocate" },
-  nobg: { cap: "No Background (code on the canvas)", f: "allocate" },
+  nobg: { cap: "Background off (code on the canvas)", f: "allocate" },
   mergeArmed: { cap: "Dragged near: can merge", f: "deallocate" },
   mergeHot: { cap: "Dragged onto: release to merge", f: "deallocate" },
   lifted: { cap: "Picked up (dragging)", f: "deallocate" },
@@ -27,7 +27,7 @@ const STATES = Object.keys(CELLS) as State[];
 
 function put(g: ReturnType<typeof scene>, s: State, id: string, x: number, y: number, w: number) {
   const c = CELLS[s];
-  g.put(fn(id, c.f, { card: s === "nobg" ? { nobg: true } : {} }), { x, y, w: c.w ?? w, ...(c.h ? { h: c.h } : {}), ...(s === "locked" ? { locked: true } : {}) });
+  g.put(fn(id, c.f, { card: s === "nobg" ? { bg: false as const } : {} }), { x, y, w: c.w ?? w, ...(c.h ? { h: c.h } : {}), ...(s === "locked" ? { locked: true } : {}) });
 }
 function apply(s: State, id: string) {
   if (s === "mergeArmed") setDropTarget({ kind: "merge", card: id, armed: false });
@@ -105,4 +105,4 @@ export const HoverPorts: Story = {
     await forceHover(await el(`${card("c1")} .lport.r`));
   },
 };
-export const HoverNoBackground: Story = { name: "Hover: No Background (hairline, header)", args: { state: "nobg" }, globals: { pseudo: { hover: [".card"] } } };
+export const HoverNoBackground: Story = { name: "Hover: Background off (hairline, header)", args: { state: "nobg" }, globals: { pseudo: { hover: [".card"] } } };

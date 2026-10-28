@@ -29,7 +29,7 @@ function labelBoard() {
   const b = emptyBoard("b1", "labels");
   const sch = card("Scheduler.schedule"), alloc = card("BlockManager.allocate"), can = card("BlockManager.can_allocate");
   put(b, sch, 60, 60, 640); put(b, alloc, 1000, 40, 520); put(b, can, 1000, 560, 520);
-  b.cards.push({ id: "note", kind: "note", md: "Why batches?", bg: true }); b.place.note = { x: 320, y: 1180, w: 240 };
+  b.cards.push({ id: "note", kind: "note", md: "Why batches?", look: "note" }); b.place.note = { x: 320, y: 1180, w: 240 };
   const s0 = sch.segments[0];
   const la = lineOf(sch, /block_manager\.allocate\(/), lb = lineOf(sch, /block_manager\.can_allocate\(/), lc = lineOf(sch, /remaining = /);
   b.links.push({ id: "LA", from: { card: sch.id, seg: s0.id, line: la }, to: { card: alloc.id }, label: "prefill only",

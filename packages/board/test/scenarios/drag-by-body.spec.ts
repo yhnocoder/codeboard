@@ -12,7 +12,7 @@ const CODE = ["def f(x):", "    y = x + 1", "    return y"];
 
 function board(): Board {
   const b = emptyBoard("b1", "drag by body");
-  put(b, { id: "n0", kind: "note", md: "## Plan\n\nalpha brave charlie delta echo\n\nsecond **line** here", bg: true } as NoteCard, 80, 80, 360);
+  put(b, { id: "n0", kind: "note", md: "## Plan\n\nalpha brave charlie delta echo\n\nsecond **line** here", look: "note" } as NoteCard, 80, 80, 360);
   b.cards.push({ id: "c1", kind: "code", segments: [{ id: "s1", src: { kind: "free" }, path: "", lang: "python", start: 1, end: CODE.length, text: CODE.slice(), version: { kind: "none" } }] } as unknown as CodeCard);
   b.place.c1 = { x: 560, y: 80, w: 420 };
   const s = findSym("Scheduler.schedule");

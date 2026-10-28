@@ -47,7 +47,7 @@ afterAll(() => { for (const d of tmp) fs.rmSync(d, { recursive: true, force: tru
 async function source() {
   const a = windowOf(A);
   const M = emptyBoard("bMain", "Main");
-  put(M, { id: "note", kind: "note", md: "see ![x](assets/def456-40x30.png)", bg: true });
+  put(M, { id: "note", kind: "note", md: "see ![x](assets/def456-40x30.png)", look: "note" });
   const k = code("k1", seg({ kind: "repo", repo: "" }));
   k.gen = { what: "CUDA source", run: "r1" };
   put(M, k, 500);

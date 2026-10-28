@@ -240,9 +240,9 @@ async function realComplete(before: string, after: string) {
 
 async function runProbe(pr: Probe): Promise<Record<string, unknown>> {
   const b = emptyBoard("b1", "review");
-  const note: NoteCard = { id: "n1", kind: "note", md: pr.start ?? "seed", bg: true };
+  const note: NoteCard = { id: "n1", kind: "note", md: pr.start ?? "seed", look: "note" };
   b.cards.push(note); b.place.n1 = { x: 60, y: 60, w: 520 };
-  b.cards.push({ id: "n2", kind: "note", md: "## Scheduler.schedule", bg: true } as NoteCard); b.place.n2 = { x: 700, y: 60, w: 300 };
+  b.cards.push({ id: "n2", kind: "note", md: "## Scheduler.schedule", look: "note" } as NoteCard); b.place.n2 = { x: 700, y: 60, w: 300 };
   b.cam = { x: 0, y: 0, z: 1 };
   let lastAsk: unknown;
   let P!: Page;

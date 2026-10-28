@@ -1,5 +1,5 @@
 import { shot, symCard, findSym, put, type Host } from "../harness";
-import { cornerAt, emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard } from "@codeboard/core";
+import { cornerAt, emptyBoard, DEFAULT_SETTINGS, type Board, type CodeCard, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, expect, until, idle, hold } from "../fixtures";
 import { DBL_CLICK, LINK_LEAVE, LIVE_DELAY } from "../../src/state/timing";
 
@@ -263,7 +263,7 @@ test("stickerBinding", async () => {
   const post = b.cards[2].id;
   b.stickers.push({ id: "k6", icon: { pack: "builtin", name: "star" }, at: { kind: "canvas", x: 420, y: 70, size: 32, on: { card: post } } });
   b.stickers.push({ id: "k7", icon: { pack: "builtin", name: "todo-text" }, at: { kind: "canvas", x: 10, y: -40, size: 28, on: { link: "L2", t: 0.5 } } });
-  b.cards.push({ id: "nb", kind: "note", md: "Covers the star", bg: true });
+  b.cards.push({ id: "nb", kind: "note", md: "Covers the star", look: "note" });
   b.place.nb = { x: 520, y: 470, w: 260 };
   const h = await open({ board: b, light, w: 1400, h: 900 });
   const pos = () => h.page.evaluate(() => Object.fromEntries([...document.querySelectorAll<HTMLElement>("[data-sticker]")].map((e) => { const r = e.getBoundingClientRect(); return [e.dataset.sticker, [Math.round(r.left), Math.round(r.top)]]; })));
@@ -317,23 +317,29 @@ test("childArrowAnchor", async () => {
   check("call-side", auto > 1000 && user < 100, JSON.stringify({ auto, user }));
 });
 
-/** Note Show / Hide Background toggle: text position, size and width unchanged */
-test("noteBackgroundToggle", async () => {
+/** Turn into Text / Turn into Note on a Note without a title: the words stay where they are, same size and wrap width */
+test("noteTurnIntoTextKeepsWordsInPlace", async () => {
   const b = emptyBoard("b1", "notebg");
-  b.cards.push({ id: "n1", kind: "note", md: "Hello\n$a$\n\n$$aaa$$", bg: true });
+  b.cards.push({ id: "n1", kind: "note", md: "Hello\n$a$\n\n$$aaa$$", look: "note" });
   b.place.n1 = { x: 120, y: 120, w: 300 };
   const h = await open({ board: b, light, w: 900, h: 600 });
   const first = () => h.page.evaluate(() => { const c = document.querySelector('.card[data-id="n1"]')!; const t = c.querySelector(".nbody, .tx")!; const r = document.createRange(); r.selectNodeContents(t); const q = r.getClientRects()[0]; const f = getComputedStyle(t).fontSize; const cs = getComputedStyle(t); return { x: Math.round(q.left), y: Math.round(q.top), f, w: Math.round(t.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight)) }; });
+  const turn = async (to: string) => {
+    const box = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
+    await h.page.mouse.click(box.x + 100, box.y + box.height - 12, { button: "right" });
+    await h.page.locator(".ctx button", { hasText: to }).click(); await idle(h);
+    await h.page.mouse.click(10, 500); await idle(h);
+  };
   const a = await first();
   await shot(h, "board-notebg-1");
-  const box = (await h.page.locator('.card[data-id="n1"]').boundingBox())!;
-  await h.page.mouse.click(box.x + 100, box.y + 60, { button: "right" });
-  await h.page.locator(".ctx button", { hasText: "Hide Background" }).click(); await idle(h);
-  await h.page.mouse.click(10, 500); await idle(h);
+  await turn("Turn into Text");
   const c = await first();
   await shot(h, "board-notebg-2");
-  const ok = Math.abs(a.x - c.x) <= 1 && Math.abs(a.y - c.y) <= 1 && a.f === c.f && Math.abs(a.w - c.w) <= 1;
-  check("note-bg-same-layout", ok, JSON.stringify({ a, c }));
+  const same = (p: typeof a, q: typeof a) => Math.abs(p.x - q.x) <= 1 && Math.abs(p.y - q.y) <= 1 && p.f === q.f && Math.abs(p.w - q.w) <= 1;
+  check("noteTurnIntoTextKeepsWordsInPlace text", h.board().cards[0].kind === "note" && (h.board().cards[0] as NoteCard).look === "text" && same(a, c), { a, c });
+  await turn("Turn into Note");
+  const d = await first();
+  check("noteTurnIntoTextKeepsWordsInPlace back", (h.board().cards[0] as NoteCard).look === "note" && same(a, d), { a, d });
   await close(h);
 });
 
@@ -454,7 +460,7 @@ test("debugSettings", async () => {
 /** Fast drag: no snapping; slow drag with a pause: alignment snap (left edge to another card) */
 test("dragSnap", async () => {
   const b = emptyBoard("b1", "snap");
-  b.cards.push({ id: "a", kind: "note", md: "A", bg: true }, { id: "m", kind: "note", md: "moving", bg: true });
+  b.cards.push({ id: "a", kind: "note", md: "A", look: "note" }, { id: "m", kind: "note", md: "moving", look: "note" });
   b.place.a = { x: 100, y: 100, w: 260 }; b.place.m = { x: 500, y: 400, w: 260 };
   const h = await open({ board: b, light, w: 1200, h: 800 });
   const hd = h.page.locator('.card[data-id="m"] .chead');
@@ -514,7 +520,7 @@ test("expandStaysInView", async () => {
   const b = emptyBoard("b1", "board");
   const step = card("LLMEngine.step");
   put(b, step, 80, 80, 600);
-  for (let i = 0; i < 3; i++) { const id = `wall${i}`; b.cards.push({ id, kind: "note", md: `wall ${i}`, bg: true } as any); b.place[id] = { x: -200 + i * 900, y: 640, w: 860, h: 3000 }; }
+  for (let i = 0; i < 3; i++) { const id = `wall${i}`; b.cards.push({ id, kind: "note", md: `wall ${i}`, look: "note" } as any); b.place[id] = { x: -200 + i * 900, y: 640, w: 860, h: 3000 }; }
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 1500, h: 950 });
   await h.page.locator(`.card[data-id="${step.id}"] .src .call`, { hasText: /^schedule$/ }).first().click();
@@ -548,8 +554,8 @@ test("sidenoteDelete", async () => {
 /** # headings in Notes have levels; ⌘A in the editor selects only that note's text */
 test("noteHeadings", async () => {
   const b = emptyBoard("b1", "board");
-  b.cards.push({ id: "t1", kind: "note", md: "# Head\n\n## Sub\n\nBody text here." } as any); b.place.t1 = { x: 60, y: 60, w: 320 };
-  b.cards.push({ id: "t2", kind: "note", md: "# Head\n\nBody text here.", bg: true } as any); b.place.t2 = { x: 460, y: 60, w: 320 };
+  b.cards.push({ id: "t1", kind: "note", md: "# Head\n\n## Sub\n\nBody text here.", look: "text" } as any); b.place.t1 = { x: 60, y: 60, w: 320 };
+  b.cards.push({ id: "t2", kind: "note", md: "# Head\n\nBody text here.", look: "note" } as any); b.place.t2 = { x: 460, y: 60, w: 320 };
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light, w: 900, h: 500 });
   const fs = await h.page.evaluate(() => [...document.querySelectorAll(".card h1, .card h2, .card p")].map((e) => [e.tagName, parseFloat(getComputedStyle(e).fontSize)]));

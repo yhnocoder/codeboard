@@ -4,8 +4,8 @@ import { unwrap } from "solid-js/store";
 import {
   uid, findCard, isCode, segOf, placeCards,
   besideFree, findFree, bounds, removeCards, retargetCards, GAP,
-  classifyPaste, guessLang, estSize, defaultWidth,
-  type Board, type Card, type CodeCard, type Segment, type Place,
+  classifyPaste, guessLang, estSize, defaultWidth, BOX_FILLS,
+  type Board, type Card, type CodeCard, type NoteCard, type NoteLook, type Segment, type Place,
   type NewCard, type Rect,
 } from "@codeboard/core";
 import { state, setState, mutate, createFresh, isFresh, settleFresh, sel, select, cardById, rectOf, toast, placeOf, type LineSel } from "../state/store";
@@ -63,25 +63,33 @@ export function addCards(list: NewCard[], o: { at?: { x: number; y: number }; ex
   return ids;
 }
 
-export function newNote(at?: { x: number; y: number }, bg = true, text = "") {
-  const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 140, y: v.y - 40 }; })();
-  const id = uid("n");
-  const add = (b: Board) => { b.cards.push({ id, kind: "note", md: text, bg, size: "body" }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: bg ? 280 : 320 }; settleHome(b, id); };
-  if (text) mutate(add); else createFresh(id, add); // 空卡：写了内容才进撤销栈，什么都没写就消失
-  select({ cards: [id] });
-  if (!text) setEditing({ kind: "note", id });
-  popCard(id);
-  return id;
+export function newNote(at?: { x: number; y: number }, text = "") {
+  return newWriting("note", at, text);
+}
+export function newText(at?: { x: number; y: number }) {
+  return newWriting("text", at);
 }
 /** Mark（标注卡）：手写字、没有框；颜色接着上一张 Mark 用的 */
 export function newMark(at?: { x: number; y: number }) {
-  const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - 80, y: v.y - 20 }; })();
+  return newWriting("mark", at);
+}
+export function newBox(at?: { x: number; y: number }) {
+  return newWriting("box", at);
+}
+const WRITE_SIZE: Record<NoteLook, { w: number; h?: number }> = { note: { w: 280 }, text: { w: 320 }, mark: { w: 180 }, box: { w: 150, h: 60 } };
+function newWriting(look: NoteLook, at?: { x: number; y: number }, text = "") {
+  const { w, h } = WRITE_SIZE[look];
+  const p = at ?? (() => { const v = viewportCenter(); return { x: v.x - w / 2, y: v.y - (h ?? 80) / 2 }; })();
   const id = uid("n");
-  const last = [...state.board.cards].reverse().find((c) => c.kind === "note" && c.hand);
-  const hand = (last?.kind === "note" && last.hand) || "blue";
-  createFresh(id, (b) => { b.cards.push({ id, kind: "note", md: "", bg: false, hand }); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w: 180 }; settleHome(b, id); });
+  const card: NoteCard = { id, kind: "note", md: text, look };
+  if (look === "text") card.size = "body";
+  if (look === "box") card.fill = BOX_FILLS[0];
+  if (look === "mark") { const last = [...state.board.cards].reverse().find((c) => c.kind === "note" && c.look === "mark"); card.hand = (last?.kind === "note" && last.hand) || "blue"; }
+  const add = (b: Board) => { b.cards.push(card); b.place[id] = { x: Math.round(p.x), y: Math.round(p.y), w, ...(h ? { h } : {}) }; settleHome(b, id); };
+  // 空的 Note / Text / Mark：写了内容才进撤销栈，什么都没写就消失；空的 Box 本身就是一个框，留着
+  if (text || look === "box") mutate(add); else createFresh(id, add);
   select({ cards: [id] });
-  setEditing({ kind: "note", id });
+  if (!text) setEditing({ kind: "note", id });
   popCard(id);
   return id;
 }
@@ -101,6 +109,51 @@ export async function addImage(dataUrl: string, name: string, at?: { x: number; 
   const id = uid("i");
   addCards([{ card: { id, kind: "image", src }, views: {}, w }], { at });
   return id;
+}
+const IMAGE_FILE = /\.(png|jpe?g|gif|webp|svg)$/i;
+const fileUri = (p: string) => { const s = p.replace(/\\/g, "/"); return `file://${s.startsWith("/") ? "" : "/"}${encodeURI(s).replace(/[?#]/g, encodeURIComponent)}`; };
+const uriName = (u: string) => { const n = u.replace(/[?#].*$/, "").split("/").pop() ?? ""; try { return decodeURIComponent(n); } catch { return n; } };
+
+/**
+ * Files dragged in as URIs only, without File objects. VS Code's Explorer and editor tabs put every file in
+ * application/vnd.code.uri-list, the same list as JSON in ResourceURLs, the file paths in CodeFiles, and only the first file in
+ * text/uri-list; an OS drop may carry only text/uri-list. Web addresses (a link dragged from a page) are not files
+ */
+export function droppedUris(dt: DataTransfer): string[] {
+  const lines = (t: string) => dt.getData(t).split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith("#"));
+  const json = (t: string) => { try { const v: unknown = JSON.parse(dt.getData(t) || "[]"); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; } };
+  const uris = [() => lines("application/vnd.code.uri-list"), () => json("resourceurls"), () => json("codefiles").map(fileUri), () => lines("text/uri-list")]
+    .reduce<string[]>((got, f) => (got.length ? got : f()), []);
+  return uris.filter((u) => /^[a-z][\w+.-]*:/i.test(u) && !/^(https?|data|blob|javascript|mailto):/i.test(u));
+}
+
+/**
+ * Files dropped on the board: each image becomes an image card from the drop point on, read here when the drop has File objects
+ * (an OS drop), else by the host from its URI (VS Code's Explorer). Anything else isn't an image: said in a toast, not added.
+ * Returns whether the drop held any file (so it's the board's)
+ */
+export function dropFiles(dt: DataTransfer, at: { x: number; y: number }): boolean {
+  const files = [...dt.files], uris = files.length ? [] : droppedUris(dt);
+  if (!files.length && !uris.length) return false;
+  const isImage = (f: File) => f.type.startsWith("image/") || IMAGE_FILE.test(f.name);
+  const others = [...files.filter((f) => !isImage(f)).map((f) => f.name), ...uris.map(uriName).filter((n) => !IMAGE_FILE.test(n))];
+  if (others.length) toast(`${others.length > 1 ? `${others[0]} and ${others.length - 1} more aren't images` : `${others[0]} isn't an image`}: only PNG, JPEG, GIF, WebP and SVG files can be dropped on the board`);
+  // read all at once, add in the drop's order, in a row from the drop point
+  const read = (f: File) => new Promise<string>((ok, no) => { const rd = new FileReader(); rd.onload = () => ok(String(rd.result)); rd.onerror = () => no(rd.error); rd.readAsDataURL(f); });
+  const failed = (name: string) => (e: Error) => { toast(e?.message || `Could not add ${name}`); return null; };
+  const loads = [
+    ...files.filter(isImage).map((f) => ({ name: f.name, data: read(f).catch(failed(f.name)) })),
+    ...uris.map((u) => ({ u, name: uriName(u) })).filter((x) => IMAGE_FILE.test(x.name)).map((x) => ({ name: x.name, data: ask("readImageUri", { uri: x.u }).catch(failed(x.name)) })),
+  ];
+  void (async () => {
+    let x = at.x;
+    for (const l of loads) {
+      const data = await l.data;
+      const id = data && (await addImage(data, l.name, { x, y: at.y }));
+      if (id) x = placeOf(id).x + placeOf(id).w + GAP;
+    }
+  })();
+  return true;
 }
 export async function newWeb(at?: { x: number; y: number }, url?: string) {
   url = url ?? (await promptText("Add Web Link", "", "https://…", "Add")) ?? undefined;
@@ -140,7 +193,7 @@ export async function pasteText(text: string, at?: { x: number; y: number }, exa
   const k = classifyPaste(text);
   if (k.kind === "web") return newWeb(at, k.url);
   if (k.kind === "links") return newLinkList(k.urls, at);
-  if (k.kind === "note") return newNote(at, true, text);
+  if (k.kind === "note") return newNote(at, text);
   if (k.kind === "svg") return addImage(svgDataUrl(text.trim()), "pasted.svg", at);
   // 代码：先问宿主是不是工作区里的代码 / GitHub 链接
   let err = "";

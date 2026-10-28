@@ -129,7 +129,7 @@ export type Geo = {
 /** 从 Mark 出发的箭头画成手绘线：返回 Mark 的颜色，别的箭头 undefined */
 export function handOf(L: Pick<Link, "from">) {
   const c = cardById(L.from.card)?.card;
-  return c?.kind === "note" ? c.hand : undefined;
+  return c?.kind === "note" && c.look === "mark" ? c.hand : undefined;
 }
 
 const headScale = (L: Link) => (L.style?.width === 1 ? 0.85 : L.style?.width === 3 ? 1.25 : 1);

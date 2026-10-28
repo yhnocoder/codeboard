@@ -82,8 +82,8 @@ const look = (h: Host, root: string) => h.page.evaluate((root) => {
 test("notePasteMarkdownWithMath", async () => {
   const b = emptyBoard("b1", "paste math");
   const ids = ["plain", "html", "katex"];
-  ids.forEach((id, i) => put(b, { id, kind: "note", md: id, bg: true } as NoteCard, 40 + i * 480, 40, 440));
-  LINES.forEach(([id], i) => put(b, { id, kind: "note", md: LINE_NOTE, bg: true } as NoteCard, 1480, 40 + i * 320, 440));
+  ids.forEach((id, i) => put(b, { id, kind: "note", md: id, look: "note" } as NoteCard, 40 + i * 480, 40, 440));
+  LINES.forEach(([id], i) => put(b, { id, kind: "note", md: LINE_NOTE, look: "note" } as NoteCard, 1480, 40 + i * 320, 440));
   b.cam = { x: 0, y: 0, z: 0.75 };
   const h = await open({ board: b, light: true, w: 1500, h: 1500, settings: { theme: "warm-ink" } as any });
   const pg = h.page;

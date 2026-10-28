@@ -96,7 +96,7 @@ export function notesBoard(n: number): Board {
       ...(k === 3 ? ["> 抢占时把最后一个 running 的序列放回 waiting，释放它的块", "", "1. schedule", "2. run", "3. postprocess", ""] : []),
       `See also the next note, ${fns[(i + 1) % fns.length]}, and the decode path.`,
     ].join("\n");
-    const c = { id: `n${i}`, kind: "note", md, ...(i % 3 ? { bg: true } : {}) } as Board["cards"][number];
+    const c = { id: `n${i}`, kind: "note", md, look: i % 3 ? "note" : "text" } as Board["cards"][number];
     b.cards.push(c);
     b.place[c.id] = { x: (i % COLS) * 480, y: Math.floor(i / COLS) * 620, w: 420 };
   }

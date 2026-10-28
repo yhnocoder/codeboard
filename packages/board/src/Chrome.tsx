@@ -32,11 +32,16 @@ function Toolbar() {
     { label: "From GitHub…", run: () => A.openGitHubPicker() },
     { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },
   ], x, y, { up: true }); };
+  // 写在白板上、没有卡框的三种：和 Code 一样只开菜单
+  const writeMenu = (el: HTMLElement) => { const [x, y] = at(el); openMenu([
+    { label: "New Text", kbd: kbd("newText"), run: () => A.newText() },
+    { label: "New Box", kbd: kbd("newBox"), run: () => A.newBox() },
+    { label: "New Mark", kbd: kbd("newMark"), run: () => A.newMark() },
+  ], x, y, { up: true }); };
   // fold：窄时收进 ⋯ 时的菜单名
   const tools: { icon: string; label: string; run: (el: HTMLElement) => void; tip?: string; kbd?: string; more?: boolean; fold?: string }[] = [
     { icon: "note", label: "Note", kbd: kbd("newNote"), run: () => A.newNote() },
-    { icon: "text", label: "Text", kbd: kbd("newText"), run: () => A.newNote(undefined, false) },
-    { icon: "mark", label: "Mark", kbd: kbd("newMark"), tip: "New Mark: a handwritten note whose arrows are hand-drawn", run: () => A.newMark() },
+    { icon: "text", label: "Text", tip: "New Text, New Box, New Mark", more: true, run: writeMenu },
     { icon: "code", label: "Code", tip: "New Code, From GitHub, Add Function", more: true, run: codeMenu },
     { icon: "image", label: "Image", fold: "New Image", run: () => A.newImage() },
     { icon: "web", label: "Web", fold: "New Web Card", tip: "New Web Card", run: () => A.newWeb() },

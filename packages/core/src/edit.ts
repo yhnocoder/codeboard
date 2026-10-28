@@ -2,7 +2,7 @@
 // 一段代码换了行号（新版本、挪了位置、Relocate）时，指着这段的行号都要跟着走。
 // 纯函数，直接改传进来的 board（白板里在 mutate 的 produce 里调用）。
 import { mapLines } from "./diff";
-import { activeOf, clone, cornerAt, findCard, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
+import { activeOf, clone, cornerAt, findCard, mdHeading, sameVersion, UPSTREAM, withCols, sortSegments, mergeOverlapping, uid, type Board, type Card, type CodeCard, type End, type Link, type Place, type Segment, type Sidenote, type Sticker, type StickerAt } from "./model";
 import { escapeRegExp, type BoundVal, type CallAlt } from "@codeboard/analysis/basics";
 
 /** 删掉这些卡（Compare 连同两栏）和它们的摆放，以及连着它们的 Link、挂在它们上面或指向它们的 Sidenote、贴在它们上面的 Sticker */
@@ -404,7 +404,7 @@ export function sidenoteCard(n: Sidenote, id = uid("c")): Card | null {
       const text = n.text.split("\n");
       return { id, kind: "code", segments: [{ id: uid("s"), src: { kind: "free", url: n.url }, path: "", lang: n.lang, start: 1, end: text.length, text, version: { kind: "none" } }], desc: n.why };
     }
-    case "text": return { id, kind: "note", md: n.md, bg: true };
+    case "text": return { id, kind: "note", md: n.md, look: "note" };
     case "link": return { id, kind: "web", url: n.url, meta: n.title ? { title: n.title } : undefined, desc: n.why };
     case "card": return null;
   }
@@ -669,18 +669,44 @@ export function cardIntoSidenote(b: Board, cardId: string, n: Sidenote): void {
 }
 
 /**
- * Image 卡拖进 Note：Note 的 Markdown 末尾接上这张图（src = Note 里写的地址，如 assets/…；图的说明接在图下面），Image 卡连同它的箭头删掉。
+ * Image 卡拖进 Note：图作为单独的一段放进 Note 的 Markdown（src = Note 里写的地址，如 assets/…；图的说明接在图下面），Image 卡连同它的箭头删掉。
+ * at = 放在 Markdown 的第几个字（一块的开头，见 @yhnocoder/markdown 的 mdBlockStarts），不给就接在末尾。
  * 不是 Image 卡 / Note 时什么都不改，返回 false
  */
-export function imageIntoNote(b: Board, imageId: string, noteId: string, src: string): boolean {
+export function imageIntoNote(b: Board, imageId: string, noteId: string, src: string, at?: number): boolean {
   const img = b.cards.find((c) => c.id === imageId), note = b.cards.find((c) => c.id === noteId);
   if (img?.kind !== "image" || note?.kind !== "note") return false;
   const alt = (img.alt ?? "").replace(/[[\]\s]+/g, " ").trim();
   const block = `![${alt}](${src})${img.desc?.trim() ? `\n\n${img.desc.trim()}` : ""}`;
-  const md = note.md.replace(/\s+$/, "");
-  note.md = md ? `${md}\n\n${block}` : block;
+  const cut = at === undefined ? note.md.length : Math.max(0, Math.min(at, note.md.length));
+  const head = note.md.slice(0, cut).replace(/\s+$/, ""), tail = note.md.slice(cut).replace(/\s+$/, "");
+  note.md = [head, block, tail].filter(Boolean).join("\n\n");
   removeCards(b, [imageId]);
   return true;
+}
+
+// Note 的字在标题栏（36，含下边线）下面、内边距 10 / 14；Text 的内边距 2 / 4
+const NOTE_PAD_X = 14 - 4, NOTE_HEAD = 36 + 10 - 2;
+/**
+ * Note ↔ Text（只有这两种互转）。看到的就是全部：Note 卡头的名字（改过的名字）变成 Text 正文的第一行 # 标题；
+ * Text 开头的 # 标题本来就显示在 Note 的卡头上（mdHeading），所以 Turn into Note 不用搬字，来回转看起来不变。
+ * 卡挪一下：标题落在原来卡头那一行，没有标题时正文留在原地。高度回到跟着内容（Text 没有改高度的把手）
+ */
+export function turnNoteInto(b: Board, id: string, look: "note" | "text"): void {
+  const n = b.cards.find((c) => c.id === id);
+  if (n?.kind !== "note" || n.look === look || (n.look !== "note" && n.look !== "text")) return;
+  if (look === "text" && n.title) {
+    if (mdHeading(n.md) !== n.title) n.md = n.md.trim() ? `# ${n.title}\n\n${n.md}` : `# ${n.title}`;
+    delete n.title;
+  }
+  if (look === "note") { delete n.size; delete n.bold; }
+  const headed = !!(n.title || mdHeading(n.md));
+  n.look = look;
+  const p = b.place[id];
+  if (!p) return;
+  const s = look === "text" ? 1 : -1, dy = headed ? 4 : NOTE_HEAD;
+  p.x += s * NOTE_PAD_X; p.y += s * dy; p.w -= s * 2 * NOTE_PAD_X;
+  delete p.h;
 }
 
 /** 卡改了名：Note、卡片说明、Text sidenote 里写着 [[旧名]] 的引用跟着改 */

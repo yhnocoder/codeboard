@@ -7,7 +7,7 @@
 
 import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 
-export const BOARD_VERSION = 7;
+export const BOARD_VERSION = 8;
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
@@ -73,8 +73,8 @@ export type CodeCard = CardBase & {
   segments: Segment[];
   hide?: HideFlags;
   wrap?: boolean;
-  /** 无背景：代码直接写在画布上，头部和边框只在悬停 / 选中时浮出 */
-  nobg?: boolean;
+  /** false = 没有卡框：代码直接写在画布上，头部和边框只在悬停 / 选中时浮出（和图片卡的 bg 同一个意思，只是代码卡默认有） */
+  bg?: false;
   /** 类卡：只列成员签名；shown = 卡上显示的成员（qual），其余收在「+ N more methods」 */
   members?: { shown: string[] };
   /** 合并来的卡：合并前的原卡和它们的摆放（Unmerge 时拆回） */
@@ -118,17 +118,31 @@ export function parseViewKey(k: string): { sid: string; vid?: string } {
 /** 这张卡某个 Variant 的段的展示数据存在哪：正显示着 = 段 id，否则 viewKey */
 export const viewKeyOf = (c: Pick<CodeCard, "active">, sid: string, vid: string) => (activeOf(c) === vid ? sid : viewKey(sid, vid));
 
+/**
+ * 写在白板上的字的四种样子：Note = 卡片（卡框、「¶ 标题」栏）；Text、Box、Mark 没有卡框。
+ * 只有 Note ↔ Text 能互转（turnNoteInto），Box、Mark 不和别的互转
+ */
+export const NOTE_LOOKS = ["note", "text", "box", "mark"] as const;
+export type NoteLook = (typeof NOTE_LOOKS)[number];
+/** Box 的底色：新 Box 是第一个（黄色） */
+export const BOX_FILLS = ["yellow", "paper", "blue", "green", "pink"] as const;
+export type BoxFill = (typeof BOX_FILLS)[number];
+
 export type NoteCard = CardBase & {
   kind: "note";
   md: string;
-  bg: boolean; // false = Text（没有背景、边框、标题栏，直接写在画布上）
+  look: NoteLook;
   size?: "title" | "heading" | "body"; // Text 的字号
   bold?: boolean;
-  /** Mark（标注卡）：手写字、统一字号、这一种颜色、没有框（bg 为 false）；从它出发的箭头画成这个颜色的手绘线 */
+  /** Box 的底色（只有 Box 有） */
+  fill?: BoxFill;
+  /** Mark 的颜色（只有 Mark 有）：手写字、统一字号；从它出发的箭头画成这个颜色的手绘线 */
   hand?: HandColor;
   /** 消息卡：跨进程时夹在发送点和接收处之间的消息类型（md = 类型名，where = 定义在哪，如 io_struct.py） */
   msg?: { where?: string };
 };
+/** 没有卡框、字直接写在画布上的（Text、Box、Mark） */
+export const frameless = (c: Card | undefined): c is NoteCard => c?.kind === "note" && c.look !== "note";
 /** 图片：默认无背景（只显示图片本身），bg = 有卡片外框 */
 export type ImageCard = CardBase & { kind: "image"; src: string; alt?: string; bg?: boolean }; // src = assets/ 下的文件名，或 data: URL
 
@@ -322,7 +336,7 @@ export const isQuestion = (s: Pick<Sticker, "icon" | "q">) => !!s.q || (s.icon.p
 export type Camera = { x: number; y: number; z: number };
 
 export type Board = {
-  version: 7;
+  version: 8;
   id: string;
   name: string;
   cam: Camera;
@@ -360,7 +374,7 @@ export type BoardFile = Omit<Board, "cards"> & { cards: (Card | SharedRef)[] };
 /** 一张共享卡的内容：卡本身 + 跟着它走的 Sidenote（挂在它上面、不是 boardOnly、不是 kind card） */
 export type SharedCard = { card: Card; sidenotes: Sidenote[] };
 /** 卡库里的文件 cards/<id>.json。写盘时按项（卡、每条 Sidenote）和磁盘上的合并（storage/boards.ts merged） */
-export type SharedCardFile = SharedCard & { version: 7 };
+export type SharedCardFile = SharedCard & { version: 8 };
 
 /** subs = 这块白板上嵌着的子白板（去重，按出现的先后；侧栏按它缩进成树） */
 export type BoardMeta = { id: string; name: string; group?: string; cards: number; stale?: number; subs?: string[] };
@@ -375,11 +389,13 @@ export const uid = (p: string) => `${p}${Date.now().toString(36)}${(seq++).toStr
 
 export const isCode = (c: Card | undefined): c is CodeCard => c?.kind === "code";
 
+const LOOK_NAME: Record<NoteLook, string> = { note: "Note", text: "Text", box: "Box", mark: "Mark" };
+
 export function cardTitle(c: Card, b?: Pick<Board, "cards">): string {
   if (c.title) return c.title;
   switch (c.kind) {
     case "code": return codeTitle(c);
-    case "note": return firstLine(c.md) || (c.hand ? "Mark" : c.bg ? "Note" : "Text");
+    case "note": return firstLine(c.md) || LOOK_NAME[c.look];
     case "image": return c.alt || "Image";
     case "web": return c.meta?.title || domainOf(c.url);
     case "links": return "Links";

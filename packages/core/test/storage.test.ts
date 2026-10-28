@@ -253,7 +253,7 @@ describe("core storage", () => {
 });
 
 describe("card library (shared cards)", () => {
-  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, look: "note" as const });
   /** Two boards with the same card "s" (one shared through the library) and a board-only card each */
   async function two() {
     const t = setup();
@@ -277,7 +277,7 @@ describe("card library (shared cards)", () => {
     expect(file(fs, "A").cards).toEqual([{ id: "s", kind: "shared" }, note("la")]);
     expect(file(fs, "A").sidenotes.map((n: any) => n.id)).toEqual(["n2"]);
     const c = card(fs, "s");
-    expect(c).toMatchObject({ version: 7, card: note("s") });
+    expect(c).toMatchObject({ version: 8, card: note("s") });
     expect(c.rev).toBeUndefined();
     expect(c.sidenotes.map((n: any) => n.id)).toEqual(["n1"]);
     // Loading inflates
@@ -562,7 +562,7 @@ describe("card library (shared cards)", () => {
 });
 
 describe("two windows on one storage folder", () => {
-  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, look: "note" as const });
   it("a board edit in one window keeps the cards another window added to the same board", async () => {
     const fs = new MemFs();
     const w1 = new Storage(fs, { dir: () => ROOT }), w2 = new Storage(fs, { dir: () => ROOT });
@@ -760,7 +760,7 @@ describe("two windows on one storage folder", () => {
 });
 
 describe("read-modify-write in the write queue", () => {
-  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, look: "note" as const });
   it("rename, move and update never overwrite a patch that arrived before them with an older copy", async () => {
     const { fs, store } = setup();
     const a = emptyBoard("A", "A");
@@ -785,7 +785,7 @@ describe("read-modify-write in the write queue", () => {
 });
 
 describe("undo and redo of Turn into Board", () => {
-  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, look: "note" as const });
   const made = () => { const b = emptyBoard("child", "Child"); b.cards.push(note("x")); b.place.x = { x: 0, y: 0, w: 100 }; return b; };
   it("undo keeps a sub-board edited since it was made; redo links to that board", async () => {
     const { fs, store } = setup();
@@ -825,7 +825,7 @@ describe("removing boards", () => {
 });
 
 describe("writing boards to disk", () => {
-  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, bg: true });
+  const note = (id: string, md = id) => ({ id, kind: "note" as const, md, look: "note" as const });
   const at = { x: 0, y: 0, w: 1 };
   const onDisk = (fs: MemFs, f: string) => JSON.parse(fs.files.get(f)!.data as string);
 

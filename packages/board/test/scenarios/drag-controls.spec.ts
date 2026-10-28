@@ -10,7 +10,7 @@ import { test, open, check, light, idle, hold, frames } from "../fixtures";
 function board(): Board {
   const b = emptyBoard("b1", "drag over controls");
   const put = (id: string, x: number, y: number, w: number, h: number) => {
-    b.cards.push({ id, kind: "note", md: `Note ${id}`, bg: true } as NoteCard);
+    b.cards.push({ id, kind: "note", md: `Note ${id}`, look: "note" } as NoteCard);
     b.place[id] = { x, y, w, h };
   };
   put("n0", 60, 400, 300, 160);
@@ -117,7 +117,7 @@ test("dragPassesOverCardControls", async () => {
 function panBoard(): Board {
   const b = emptyBoard("b2", "pan over cards");
   const md = Array.from({ length: 30 }, (_, i) => `Line ${i + 1} of a long note that scrolls inside its body.`).join("\n\n");
-  b.cards.push({ id: "n0", kind: "note", md, bg: true } as NoteCard);
+  b.cards.push({ id: "n0", kind: "note", md, look: "note" } as NoteCard);
   b.place.n0 = { x: 300, y: 60, w: 420, h: 240 };
   b.cam = { x: 0, y: 0, z: 1 };
   return b;

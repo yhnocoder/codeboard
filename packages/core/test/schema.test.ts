@@ -12,7 +12,7 @@ function full() {
   const code = { id: "c", kind: "code" as const, segments: [{ ...seg("s1"), hidden: [[2, 2]] as [number, number][], hl: [1], symbol: { qual: "f", kind: "function" as const } }], hide: { comments: true }, wrap: true, members: { shown: ["A.f"] } };
   b.cards.push(
     { ...code, mergedFrom: [{ card: { ...code, id: "old" }, place: { x: 0, y: 0, w: 300 } }] },
-    { id: "n", kind: "note", md: "# hi", bg: false, size: "title", bold: true },
+    { id: "n", kind: "note", md: "# hi", look: "text", size: "title", bold: true },
     { id: "i", kind: "image", src: "a.png", bg: true },
     { id: "w", kind: "web", url: "https://x.org", meta: { title: "X", at: 1, failed: false }, style: "side" },
     { id: "l", kind: "links", items: [{ id: "i1", url: "https://y.org", rich: true }] },
@@ -55,7 +55,7 @@ describe("loadBoard", () => {
     const v1 = loadBoard({ id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, version: 1,
       cards: [{ id: "c1", type: "code", x: 0, y: 0, w: 500, path: "a.py", start: 1, end: 2, lang: "python", snapshot: ["a", "b"], commit: "abc", hl: [2], symbol: "f" }, { id: "g", type: "group", x: 0, y: 0, w: 9, h: 9, label: "G" }],
       edges: [{ id: "e", from: { card: "c1", line: 2 }, to: { card: "c1" }, kind: "call" }] });
-    expect(v1.version).toBe(7);
+    expect(v1.version).toBe(8);
     const col = (id: string) => ({ id, kind: "code", x: 5, y: 6, w: 300, segments: [seg(`s${id}`)] });
     const v2 = loadBoard({ version: 2, id: "b", name: "x", cam: { x: 0, y: 0, z: 1 }, sidenotes: [],
       cards: [{ id: "k", kind: "compare", x: 10, y: 20, w: 900, cols: [col("p"), col("q")] }, { id: "w", kind: "web", x: 0, y: 0, w: 300, url: "https://x.org", pageTitle: "X" }],

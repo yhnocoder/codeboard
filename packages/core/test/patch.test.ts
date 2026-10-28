@@ -4,7 +4,7 @@ import {
   type Board, type Card, type Sidenote,
 } from "../src";
 
-const note = (id: string, md = id): Card => ({ id, kind: "note", md, bg: true });
+const note = (id: string, md = id): Card => ({ id, kind: "note", md, look: "note" });
 const text = (id: string, card: string, extra: Partial<Sidenote> = {}): Sidenote => ({ id, kind: "text", md: id, at: { card }, ...extra } as Sidenote);
 
 function board(): Board {
@@ -44,7 +44,7 @@ describe("applyPatch", () => {
     expect(b.name).toBe("New");
     expect(b.hideNumbers).toBeUndefined();
     expect(b.id).toBe("b");
-    expect(b.version).toBe(7);
+    expect(b.version).toBe(8);
     expect(b.cam).toEqual({ x: 1, y: 2, z: 3 });
     expect(b.cards.length).toBe(3);
   });
@@ -116,11 +116,10 @@ describe("shared cards: inflate / deflate / putShared", () => {
 });
 
 describe("board format v6 and v7", () => {
-  it("v5 → v7 only bumps the version when no Markdown has escaped dollars; boards keep sidenote boardOnly", () => {
-    const v5 = { ...board(), version: 5 } as any;
+  it("v5 → v8 only bumps the version and turns bg into look when no Markdown has escaped dollars; boards keep sidenote boardOnly", () => {
+    const v5 = { ...board(), version: 5, cards: board().cards.map(({ look: _, ...c }: any) => ({ ...c, bg: true })) } as any;
     const b = loadBoard(structuredClone(v5));
-    expect(b.version).toBe(7);
-    expect({ ...b, version: 5 }).toEqual(v5);
+    expect(b).toEqual(board());
     const c = board();
     c.sidenotes[0].boardOnly = true;
     expect(loadBoard(structuredClone(c)).sidenotes[0].boardOnly).toBe(true);
@@ -146,7 +145,7 @@ describe("board format v6 and v7", () => {
   };
   it("v6 → v7: an old board's \\$a\\$ becomes math once; code, half-escaped and unsure text stay as written", () => {
     const b = loadBoard(oldMath(6));
-    expect(b.version).toBe(7);
+    expect(b.version).toBe(8);
     expect((b.cards[0] as any).md).toBe("a $x^2$ b, $\\frac{a}{b}$ and ${n}$");
     expect(b.cards[1].desc).toBe("cost $O(n)$");
     expect((b.cards[3] as any).mergedFrom[0].card.desc).toBe("$y$");
@@ -163,19 +162,19 @@ describe("board format v6 and v7", () => {
     delete raw.born; delete raw.seq;
     expect((loadBoard(raw).cards[0] as any).md).toBe(oldMath(6).cards[0].md);
   });
-  it("a v7 board's escaped \\$a\\$ is literal text and stays as written", () => {
+  it("a v8 board's escaped \\$a\\$ is literal text and stays as written", () => {
     const b = board();
     (b.cards[0] as any).md = "\\$a\\$";
     const again = loadBoard(structuredClone(loadBoard(structuredClone(b))));
     expect((again.cards[0] as any).md).toBe("\\$a\\$");
   });
-  it("v6 → v7 upgrades shared card files (the card and its travelling sidenotes) once, and refuses newer ones", () => {
+  it("v6 → v8 upgrades shared card files (the card and its travelling sidenotes) once, and refuses newer ones", () => {
     const sc = loadSharedCard({ version: 6, card: { ...note("s", "\\$a\\$"), desc: "\\$d\\$" }, sidenotes: [text("n", "s", { md: "\\$t\\$" } as any)] });
-    expect(sc.version).toBe(7);
+    expect(sc.version).toBe(8);
     expect(sc.card).toMatchObject({ md: "$a$", desc: "$d$" });
     expect((sc.sidenotes[0] as any).md).toBe("$t$");
-    expect((loadSharedCard({ version: 7, card: note("s", "\\$a\\$"), sidenotes: [] }).card as any).md).toBe("\\$a\\$");
-    expect(() => loadSharedCard({ version: 8, card: note("s"), sidenotes: [] })).toThrow(/newer/);
+    expect((loadSharedCard({ version: 8, card: note("s", "\\$a\\$"), sidenotes: [] }).card as any).md).toBe("\\$a\\$");
+    expect(() => loadSharedCard({ version: 9, card: note("s"), sidenotes: [] })).toThrow(/newer/);
   });
 });
 

@@ -7,7 +7,7 @@ import {
 const code = (id: string, path: string, text: string[], start = 10): CodeCard => ({
   id, kind: "code", segments: [{ id: `s${id}`, src: { kind: "repo", repo: "" }, path, lang: "python", start, end: start + text.length - 1, text, version: { kind: "git", commit: "bb823b3c0ffee12" }, symbol: { qual: id, kind: "function" } }],
 });
-const note = (id: string, md: string): Card => ({ id, kind: "note", md, bg: true });
+const note = (id: string, md: string): Card => ({ id, kind: "note", md, look: "note" });
 function board(id: string, name: string, cards: Card[], at: Record<string, [number, number]> = {}): Board {
   const b = { ...emptyBoard(id, name), cards };
   cards.forEach((c, i) => { const p = at[c.id] ?? [i * 600, 0]; b.place[c.id] = { x: p[0], y: p[1], w: 500 }; });

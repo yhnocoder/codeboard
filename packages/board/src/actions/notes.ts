@@ -1,5 +1,5 @@
 import { unwrap } from "solid-js/store";
-import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, type Sidenote, type SegView, type Anchor, type HandColor } from "@codeboard/core";
+import { uid, findCard, isCode, cardTitle, segOf, cardIntoSidenote, imageIntoNote, removeSidenotes, sidenoteCard, sidenoteToCard, turnNoteInto, type Sidenote, type SegView, type Anchor, type BoxFill, type HandColor } from "@codeboard/core";
 import { state, setState, mutate, sel, select, clearSel, lineSel, cardById, hostOf, toast } from "../state/store";
 import { noteImageOf } from "./imagedata";
 import { quietHover } from "../state/camera";
@@ -111,10 +111,10 @@ export async function noteImageFor(imageId: string): Promise<string | null> {
   const c = cardById(imageId)?.card;
   return c?.kind === "image" ? noteImageOf(unwrap(c)) : null;
 }
-/** 图放进 Note 的 Markdown 末尾，图片卡删掉：一步撤销 */
-export function putImageInNote(imageId: string, noteId: string, src: string) {
+/** 图放进 Note 的 Markdown（at = 第几个字，一块的开头；不给 = 末尾），图片卡删掉：一步撤销 */
+export function putImageInNote(imageId: string, noteId: string, src: string, at?: number) {
   let ok = false;
-  if (!mutate((b) => { ok = imageIntoNote(b, imageId, noteId, src); }) || !ok) return;
+  if (!mutate((b) => { ok = imageIntoNote(b, imageId, noteId, src, at); }) || !ok) return;
   select({ cards: [noteId] });
   toast("Added the image to the Note");
 }
@@ -143,21 +143,13 @@ export async function showPeek(el: Element, cardId: string, segId: string, line:
 
 /** Mark 的颜色（它的箭头跟着变） */
 export function setMarkColor(id: string, hand: HandColor) {
-  mutate((b) => { const n = findCard(b, id)?.card; if (n?.kind === "note" && n.hand) n.hand = hand; });
+  mutate((b) => { const n = findCard(b, id)?.card; if (n?.kind === "note" && n.look === "mark") n.hand = hand; });
 }
 
-/** Note 背景开关：打开时卡至少 260 宽 */
-export function setNoteBg(id: string, on: boolean) {
-  mutate((b) => {
-    const n = findCard(b, id)?.card;
-    if (n?.kind !== "note") return;
-    if (!!n.bg === on) return;
-    n.bg = on;
-    // 字留在原地：Note 的字在标题栏（36，含下边线）下面、内边距 10 / 14；Text 的内边距 2 / 4。卡挪一下、宽度跟着变，字的位置和折行都不变
-    const p = b.place[id];
-    if (!p) return;
-    const dx = 14 - 4, dy = 36 + 10 - 2;
-    if (on) { p.x -= dx; p.y -= dy; p.w += 2 * dx; if (p.h) p.h += dy + 12 - 2; }
-    else { p.x += dx; p.y += dy; p.w -= 2 * dx; if (p.h) p.h = Math.max(24, p.h - dy - 12 + 2); }
-  });
+export function setBoxFill(id: string, fill: BoxFill) {
+  mutate((b) => { const n = findCard(b, id)?.card; if (n?.kind === "note" && n.look === "box") n.fill = fill; });
+}
+
+export function turnNote(id: string, look: "note" | "text") {
+  mutate((b) => turnNoteInto(b, id, look));
 }

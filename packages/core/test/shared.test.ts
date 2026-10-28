@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { emptyBoard, sharedInfo, type Board, type Card } from "../src";
 
-const note = (id: string): Card => ({ id, kind: "note", md: id, bg: true });
+const note = (id: string): Card => ({ id, kind: "note", md: id, look: "note" });
 const code = (id: string): Card => ({ id, kind: "code", segments: [{ id: `s${id}`, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start: 1, end: 3, text: ["a", "b", "c"], version: { kind: "none" } }] });
 function b(id: string, name: string, cards: Card[]): Board {
   const x = { ...emptyBoard(id, name), cards };

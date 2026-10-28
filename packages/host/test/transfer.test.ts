@@ -42,7 +42,7 @@ describe("copy to another project", () => {
     shared.gen = { what: "CUDA source", run: "r1" };
     put(M, shared);
     put(M, { id: "img", kind: "image", src: "abc123.png" }, 500);
-    put(M, { id: "note", kind: "note", md: "see ![x](assets/def456.png)", bg: true }, 900);
+    put(M, { id: "note", kind: "note", md: "see ![x](assets/def456.png)", look: "note" }, 900);
     put(M, { id: "fr", kind: "board", board: "bSub" }, 1300);
     await store.save(S, { group: "g" });
     await store.save(M, { group: "g" });
@@ -125,7 +125,7 @@ describe("copy to another project", () => {
     const src = mk("xsrc"), dst = mk("xdst");
     const store = new Storage(nodeFs, { dir: () => src });
     const S = emptyBoard("bSub", "Sub");
-    put(S, { id: "n1", kind: "note", md: "mine", bg: true });
+    put(S, { id: "n1", kind: "note", md: "mine", look: "note" });
     const M = emptyBoard("bTop", "Top");
     put(M, { id: "fr", kind: "board", board: "bSub" });
     put(M, code("sh", seg({ kind: "repo", repo: "" })), 500);
