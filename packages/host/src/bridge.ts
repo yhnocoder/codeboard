@@ -115,7 +115,7 @@ async function viaTorchOps(site: CallSite): Promise<Crossed[]> {
 
 /**
  * PyTorch 算子 → native_functions.yaml 的 dispatch 表 → 每个键的 kernel：一个设备一个候选（CUDA 在前，然后 CPU、Composite）。
- * 边界写 yaml 里的那条 func（经 structured_delegate 的写 a → b），dispatch key 放在取值里（换备选时跟着换）
+ * 边界写 yaml 里的那条 func（经 structured_delegate 的写 a via b：箭头上的 → 是取值），dispatch key 放在取值里（换备选时跟着换）
  */
 export async function viaOps(t: OpTable, op: string, overload?: string): Promise<Crossed[]> {
   const out: Crossed[] = [];
@@ -125,7 +125,7 @@ export async function viaOps(t: OpTable, op: string, overload?: string): Promise
     const same = out.find((x) => x.t.abs === tg.abs && x.t.sym.qual === tg.sym.qual && x.t.sym.defLine === tg.sym.defLine);
     if (same) { same.mark.vals![0].value += `, ${k.key}`; same.label = `${same.mark.vals![0].value} · ${tg.sym.qual}`; continue; }
     const ufunc = k.inner ? (tg.sym.name === k.kernel ? " ufunc (generated)" : " ufunc_inner_loop") : "";
-    const bound = `native_functions.yaml · ${k.via ? `${k.decl} → ${k.via}` : k.decl}${ufunc}`;
+    const bound = `native_functions.yaml · ${k.via ? `${k.decl} via ${k.via}` : k.decl}${ufunc}`;
     out.push({ t: tg, mark: { bound, vals: [{ name: "dispatch", value: k.key }] }, label: `${k.key} · ${tg.sym.qual}` });
   }
   if (out.length) log("info", `op ${op}${overload ? `.${overload}` : ""} → ${out.map((x) => x.label).join("; ")}`);
@@ -150,7 +150,7 @@ export async function viaStub(stub: string, t: OpTable): Promise<Crossed[]> {
     const op = stub.replace(/_stub$/, "");
     if (op !== stub && t.byName.get(op)?.some((d) => d.ufunc)) {
       const ufunc = (await viaOps(t, op)).filter((c) => /ufunc/.test(c.mark.bound ?? ""));
-      for (const c of ufunc) c.mark.bound = `DispatchStub · ${stub} (registered by generated code) → ufunc ${op}`;
+      for (const c of ufunc) c.mark.bound = `DispatchStub · ${stub} (registered by generated code) · ufunc ${op}`;
       return ufunc;
     }
   }

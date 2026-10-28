@@ -62,7 +62,7 @@ describe("clicks into PyTorch ops", () => {
     const r = await click(await seg("model.py", "run"), /torch\.add/, "add");
     expect(qualOf(r)).toBe("at::native::ufunc_add_CUDA");
     expect(fileOf(r)).toBe("build/aten/src/ATen/UfuncCUDA_add.cu");
-    expect(markOf(r)?.bound).toBe("native_functions.yaml · add.Tensor → add.out ufunc (generated)");
+    expect(markOf(r)?.bound).toBe("native_functions.yaml · add.Tensor via add.out ufunc (generated)");
     expect(alts(r)).toEqual(["CPU · at::native::ufunc_add_CPU"]);
   });
   // F.softmax → its Python def is the language server's job (no language server here)
@@ -75,7 +75,7 @@ describe("clicks into PyTorch ops", () => {
     const s = await click(await seg("aten/src/ATen/native/SoftMax.cpp", "at::native::softmax"), /at::_softmax/, "_softmax");
     expect(qualOf(s)).toBe("at::native::softmax_cuda_out");
     expect(fileOf(s)).toBe("aten/src/ATen/native/cuda/SoftMax.cu");
-    expect(markOf(s)?.bound).toBe("native_functions.yaml · _softmax → _softmax.out");
+    expect(markOf(s)?.bound).toBe("native_functions.yaml · _softmax via _softmax.out");
     expect(key(s)).toBe("CUDA");
     expect(alts(s)).toEqual(["CPU · at::native::softmax_cpu_out"]);
     expect(markOf(s)?.alts?.[0].vals).toEqual([{ name: "dispatch", value: "CPU" }]);
@@ -91,12 +91,12 @@ describe("clicks into PyTorch ops", () => {
   it("torch.ops.aten.X goes to the yaml kernels, not to a TORCH_LIBRARY_IMPL(aten, …) m.impl", async () => {
     const r = await click(await seg("model.py", "run"), /torch\.ops\.aten/, "_upsample_bilinear2d_aa");
     expect(qualOf(r)).toBe("at::native::_upsample_bilinear2d_aa_out_cuda");
-    expect(markOf(r)?.bound).toBe("native_functions.yaml · _upsample_bilinear2d_aa → _upsample_bilinear2d_aa.out");
+    expect(markOf(r)?.bound).toBe("native_functions.yaml · _upsample_bilinear2d_aa via _upsample_bilinear2d_aa.out");
   });
   it("a module-level alias of torch.ops.aten (aten = torch._ops.ops.aten) goes to the yaml kernels too", async () => {
     const r = await click(await seg("model.py", "run"), /aten\._upsample_bilinear2d_aa\.default/, "default");
     expect(qualOf(r)).toBe("at::native::_upsample_bilinear2d_aa_out_cuda");
-    expect(markOf(r)?.bound).toBe("native_functions.yaml · _upsample_bilinear2d_aa → _upsample_bilinear2d_aa.out");
+    expect(markOf(r)?.bound).toBe("native_functions.yaml · _upsample_bilinear2d_aa via _upsample_bilinear2d_aa.out");
   });
   it("torch.X defined in Python (torch/functional.py) stays Python", async () => {
     const r = await click(await seg("model.py", "run"), /torch\.split/, "split");
@@ -238,9 +238,10 @@ describe("without generated files", () => {
     resetIndex();
     const r = await click(await seg("model.py", "run"), /torch\.add/, "add");
     expect(qualOf(r)).toBe("at::native::ufunc::add");
-    expect(markOf(r)?.bound).toBe("native_functions.yaml · add.Tensor → add.out ufunc_inner_loop");
+    expect(markOf(r)?.bound).toBe("native_functions.yaml · add.Tensor via add.out ufunc_inner_loop");
     expect(key(r)).toBe("CUDA, CPU");
     const s = await click(await seg("aten/src/ATen/native/TensorAdvancedIndexing.cpp", "at::native::index_add_cpu_"), /add_stub\(/, "add_stub");
     expect(qualOf(s)).toBe("at::native::ufunc::add");
+    expect(markOf(s)?.bound).toBe("DispatchStub · add_stub (registered by generated code) · ufunc add");
   });
 });
