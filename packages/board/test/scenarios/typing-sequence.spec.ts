@@ -1,5 +1,4 @@
-// 打字过程逐键对照（npm run harness -- typingKeyByKey）：每打一个键记下编辑器里这一段的样子（字 + 格式），和 typing-sequence.json
-// （换掉旧的 Markdown 解析之前在 main 上录的）逐键比。RECORD=1 时重新录
+// 每打一个键记下编辑器里这一段的样子（字 + 格式），和 typing-sequence.json 逐键比。RECORD=1 时重新录
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { REPO, put } from "../harness";

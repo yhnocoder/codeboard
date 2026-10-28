@@ -1,6 +1,3 @@
-// Images pasted or dropped into a Note: the host saves them as files in the storage folder's assets/ (content-hashed name with the
-// displayed size, one file per image), takes only PNG, JPEG, WebP and GIF by their bytes, caps the size, and answers the relative
-// path the Note's Markdown references
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { createHash } from "node:crypto";

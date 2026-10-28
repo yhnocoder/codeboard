@@ -1,5 +1,3 @@
-// In a workspace without a board, commands that run at once (Alt+B and Open Board pressed together) use the same new board: each used
-// to find no board and create its own "New Board", so the card went into one and the other was shown empty
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

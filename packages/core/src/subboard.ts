@@ -147,7 +147,6 @@ export function skeletonOf(b: Board, peek: (id: string) => Board | undefined = (
     return o;
   });
 
-  // 挪到从 (0, 0) 开始，取整
   const box = bounds([...cards, ...secs]) ?? { x: 0, y: 0, w: 1, h: 1 };
   const r0 = (n: number) => Math.round(n);
   for (const o of [...cards, ...secs]) { o.x = r0(o.x - box.x); o.y = r0(o.y - box.y); o.w = r0(o.w); o.h = r0(o.h); }

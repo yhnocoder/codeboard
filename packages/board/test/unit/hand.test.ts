@@ -1,4 +1,3 @@
-// Mark 的手绘箭头：同一条线笔迹不变，两端落在端点上，path 里只有整数坐标
 import { describe, expect, it } from "vitest";
 import { handLine } from "../../src/canvas/hand";
 

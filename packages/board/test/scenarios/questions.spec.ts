@@ -1,8 +1,3 @@
-// Questions, export and settings (wireframes 06, 08, 09): ? stickers with a written question, Mark Answered / Link Answer (✓),
-// the Questions panel across boards, Copy as List, the welcome-back hint; the Export dialog, an offline HTML snapshot opened in Chromium,
-// a Markdown export; the new settings rows.
-// Usage: npm run harness -- questions export settingsPage [--light]   screenshots: test-out/harness/{questions,export,settings}-*.png
-// SHOTS_DIR=… also copies them there.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type BoardToHost, type CodeCard, type HostToBoard, type QuestionItem, type SegView } from "@codeboard/core";

@@ -1,5 +1,3 @@
-// The name index on nano-vllm: a lookup doesn't wait for the whole index and gives the same entries as a full scan; created, changed,
-// saved and deleted files update just that file; the background build yields between files
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";

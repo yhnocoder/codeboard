@@ -1,5 +1,3 @@
-// 断开的调用链：动态分发（1 of N、灰色的其他实现）、跨边界的取值（bound、vals，灰色的其他取值）、运行时看到的（OBSERVED）、
-// Generated from；选实现、选取值、按名字跨语言搜的浮层
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { CallSpan, ImplPick, NameHit } from "@codeboard/core";
 import { Stage, scene, type Globals, type Scene } from "./support/board";

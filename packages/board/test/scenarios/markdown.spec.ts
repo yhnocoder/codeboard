@@ -1,5 +1,3 @@
-// Markdown: static rendering on Notes / Text / descriptions / sidenotes, the WYSIWYG editor (lazy chunk), slash menu,
-// bubble toolbar, [[card refs]], raw mode, task toggle on static notes (npm run harness -- markdownRender markdownEdit … [--light])
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT, REPO, type Host } from "../harness";
@@ -87,7 +85,7 @@ test("markdownRender", async () => {
         katex: n.querySelectorAll(".katex").length,
         hl: n.querySelectorAll("pre.md-code .kw").length,
         kwColor: cs(n.querySelector("pre.md-code .kw"))?.color, tasks: n.querySelectorAll("li[data-type=taskItem] input").length,
-        table: n.querySelectorAll("table td").length, chips: n.querySelectorAll(".cref").length, chipMissing: n.querySelectorAll(".cref.missing").length,
+        table: n.querySelectorAll("table td").length, chips: n.querySelectorAll(".md-ref").length, chipMissing: n.querySelectorAll(".md-ref.missing").length,
         fn: n.querySelectorAll("sup.fnref").length, details: n.querySelectorAll("details summary").length,
         raw: /\*\*|block\\_/.test((n as HTMLElement).innerText), under: (n as HTMLElement).innerText.includes("__init__"),
         desc: document.querySelector(".cdesc strong")?.textContent, text2: document.querySelector('.card[data-id="t1"] .tx h1')?.textContent,
@@ -103,7 +101,7 @@ test("markdownRender", async () => {
     await h.page.locator('.card[data-id="n1"] a.lnk').first().click();
     await until(h, "the link goes to the host", () => h.sent.some((m) => m.type === "openLink"));
     const opened = h.sent.some((m) => m.type === "openLink");
-    await h.page.locator('.card[data-id="n1"] .cref').first().click();
+    await h.page.locator('.card[data-id="n1"] .md-ref').first().click();
     await until(h, "the chip selects a card", () => h.page.locator(".card.sel").count());
     await idle(h);
     const selId = await h.page.locator(".card.sel").evaluateAll((es) => es.map((e) => (e as HTMLElement).dataset.id));
@@ -147,7 +145,7 @@ test("markdownEdit", async () => {
   const refItems = await pg.locator(".md-menu button .lb").allTextContents();
   await saveShot(h, "md-edit-ref");
   await pg.keyboard.press("Enter");
-  const chip = await pg.locator('.card[data-id="n1"] .md-pm .cref').count();
+  const chip = await pg.locator('.card[data-id="n1"] .md-pm .md-ref').count();
   // 选中几个字：出工具条，点 I 变斜体
   await pg.keyboard.type("tail words");
   for (let i = 0; i < 5; i++) await pg.keyboard.press("Shift+ArrowLeft");
@@ -165,7 +163,7 @@ test("markdownEdit", async () => {
   await pg.keyboard.press("Control+/");
   const rawVal = await pg.locator(".md-raw").inputValue({ timeout: 5000 });
   await pg.keyboard.type("\nraw line");
-  // 切回来时焦点要立刻（同一个按键里）回到编辑器：之前要等下一帧，CI 上紧接着的 Esc 落到了白板上，没保存也没退出
+  // 切回来时焦点要立刻（同一个按键里）回到编辑器，不然紧接着的 Esc 会落到白板上
   await pg.keyboard.press("Control+/");
   const focusBack = await pg.evaluate(() => !!document.activeElement?.closest(".md-pm"));
   const backWys = await pg.locator('.card[data-id="n1"] .md-pm').isVisible();
@@ -305,7 +303,7 @@ test("markdownHighlight", async () => {
   await close(h);
 });
 
-/** ==highlight== is a flat marker band under the lower part of the text (the reference look in #35): no rounded corners or padding,
+/** ==highlight== is a flat marker band under the lower part of the text: no rounded corners or padding,
  *  the upper part of the line stays the card's background, the band runs unbroken under spaces and CJK, and the editor and the static
  *  Note draw it in exactly the same place (no layout shift on entering or leaving edit). Checked in Warm Ink light and dark */
 test("markdownHighlightBand", async () => {
@@ -612,7 +610,7 @@ test("markdownLazyRender", async () => {
         w.__lz.pendSeen++;
         const r = e.getBoundingClientRect();
         if (r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth) {
-          if (e.closest(".card.off")) w.__lz.culled++; // 卡片自己被 cull.ts 藏着（原来就有的行为），不算
+          if (e.closest(".card.off")) w.__lz.culled++; // 卡片自己被 cull.ts 藏着，不算
           else if (getComputedStyle(e).visibility === "hidden") w.__lz.hiddenInView++; else w.__lz.rawShown++;
         }
       }

@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-// 公式预设（setMathPreamble → KaTeX 的 macros）和写公式时的提示（补全、大白话报错）的规则部分，不建编辑器
 import { afterEach, describe, expect, it } from "vitest";
 import { renderMd } from "../src/render";
 import { mathMacros, mathPreambleDefs, mathPreambleErrors, setMathPreamble } from "../src/math";

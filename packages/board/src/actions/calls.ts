@@ -165,8 +165,6 @@ export const treeFrom = () => treeRoots().from;
 /** 只在侧栏开着时算（关着不读 flows） */
 export const treeRows = rooted(() => createMemo((): TreeRow[] => (treeOpen() ? callTree(flows(), treeRoots().ids) : [])));
 
-// 运行记录：observed 证据和实参
-
 export function captureRun() { send({ type: "captureRun" }); }
 export function pickRun() { send({ type: "applyRun" }); }
 

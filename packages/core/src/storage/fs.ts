@@ -4,7 +4,7 @@ export type DirEnt = { name: string; isFile: boolean; isDir: boolean };
 export type FileStat = { mtimeMs: number; birthtimeMs: number; ctimeMs: number };
 
 export interface Fs {
-  /** 目录项（带类型）；目录不存在时抛错 */
+  /** 目录不存在时抛错 */
   readdir(dir: string): Promise<DirEnt[]>;
   stat(p: string): Promise<FileStat>;
   readFile(p: string): Promise<string>;

@@ -88,10 +88,10 @@ math { font-size: 1.05em; }
 .md details[open] > summary::before { transform: rotate(90deg); }
 /* [[引用]]（白板上指向卡片）。坐在字的基线上（和旁边的字同一条线，换字体也一样）：行内块 overflow 不是 visible 时基线默认是它的下边缘，
    baseline-source: first 让它用里面那行字的基线（写在 vertical-align 后面：vertical-align 是简写，会把它重设成 auto）；框（line-height 1.45、字小一号）比正文的行矮，这一行不变高 */
-.cref { display: inline-block; padding: 0 6px; margin: 0 1px; border-radius: 5px; line-height: 1.45; font-size: .94em; color: var(--k-fn); background: color-mix(in srgb, var(--k-fn) 11%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--k-fn) 30%, transparent); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: baseline; baseline-source: first; }
-.cref::before { content: "↗ "; opacity: .6; }
-.cref:hover { background: color-mix(in srgb, var(--k-fn) 18%, transparent); }
-.cref.missing { color: var(--ink-3); background: var(--hlrow); box-shadow: inset 0 0 0 .5px var(--hair); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 50%, transparent); }
+.md-ref { display: inline-block; padding: 0 6px; margin: 0 1px; border-radius: 5px; line-height: 1.45; font-size: .94em; color: var(--k-fn); background: color-mix(in srgb, var(--k-fn) 11%, transparent); box-shadow: inset 0 0 0 .5px color-mix(in srgb, var(--k-fn) 30%, transparent); cursor: pointer; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; vertical-align: baseline; baseline-source: first; }
+.md-ref::before { content: "↗ "; opacity: .6; }
+.md-ref:hover { background: color-mix(in srgb, var(--k-fn) 18%, transparent); }
+.md-ref.missing { color: var(--ink-3); background: var(--hlrow); box-shadow: inset 0 0 0 .5px var(--hair); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--ink-3) 50%, transparent); }
 .md sup.fnref { color: var(--k-fn); font-size: .75em; padding: 0 1px; }
 .md ol.footnotes { margin-top: 8px; padding-top: 4px; border-top: 1px solid var(--line); font-size: .9em; color: var(--ink-2); }
 /* Mermaid（pele 画的 SVG）的颜色和字体是 CSS 变量：接到主题变量上，换明暗 / 配色不用重画 */

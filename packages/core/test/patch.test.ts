@@ -126,8 +126,7 @@ describe("board format v6 and v7", () => {
     expect(loadBoard(structuredClone(c)).sidenotes[0].boardOnly).toBe(true);
   });
 
-  // The WYSIWYG editor of v0.1.8–v0.2 (board files v5 and v6) wrote formulas it did not convert as \$…\$; a parse-time rule read them
-  // as math. Now \$ is always a literal $: v6 → v7 rewrites that text to $…$ once, wherever Markdown is stored.
+  // Board files v5 and v6 may hold formulas the old editor wrote as \$…\$; \$ is now always a literal $, so v6 → v7 rewrites them to $…$ once.
   const oldMath = (version: number) => {
     const b = board() as any;
     b.version = version;

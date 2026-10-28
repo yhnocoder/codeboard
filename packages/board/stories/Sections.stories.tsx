@@ -1,4 +1,3 @@
-// Section：框在卡下面，标签在卡上面；折叠成一条「▸ 名字 · N cards」，指着它停一会儿摊开成员的预览
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Section } from "@codeboard/core";
 import { Stage, scene, codeCard, noteCard, textCard, markCard, type Globals, type Group, type Scene } from "./support/board";

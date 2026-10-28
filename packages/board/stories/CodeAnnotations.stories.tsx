@@ -1,4 +1,3 @@
-// 贴在代码字上的手写标注：四种颜色、在行上面 / 下面、一行几条、编辑、新加的草稿、右键菜单
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { HAND_COLORS, type CodeAnnot, type HandColor, type Segment } from "@codeboard/core";
 import { Stage, scene, type Globals, type Scene } from "./support/board";

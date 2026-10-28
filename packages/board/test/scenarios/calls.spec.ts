@@ -1,7 +1,3 @@
-// Calls (wireframes 03, 12, 13): RPC arrows, process tags, message cards, ↩ back to; Start card, step counter, Arrow legend;
-// call tree sidebar; Capture Run on a tiny fixture package (no torch / GPU) through the real host and Python.
-// Usage: npm run harness -- rpc walkstart calltree runtime [--light]   screenshots: test-out/harness/{rpc,walkstart,legend,calltree,runtime}-*.png
-// SHOTS_DIR=… also copies them there.
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { execFileSync } from "node:child_process";

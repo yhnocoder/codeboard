@@ -1,4 +1,3 @@
-// 白板的持久化数据模型，宿主和白板界面共用。
 // 卡片内容（Card）和它在这块白板上的摆放（Place）分开存：共享卡、子白板让同一张卡出现在几块白板上，
 // 内容只有一份，摆放每块白板各一份。Compare 只引用两张卡的 id，那两张卡在 cards 里但没有 Place（不单独出现在画布上）。
 // 基本元素：Card、Place、Link、Section、Sidenote、Sticker。流程、讲解、Compare 都由它们派生。
@@ -9,8 +8,6 @@
 import type { BoundVal, CallAlt, Var } from "@codeboard/analysis/basics";
 
 export const BOARD_VERSION = 7;
-
-// ---------- 版本 ----------
 
 /** 一段代码钉在哪个版本上 */
 export type Version =
@@ -55,8 +52,6 @@ export type HandColor = (typeof HAND_COLORS)[number];
  * 标签写在那一行上面（below = 下面）新开的一条窄轨道里。color 没有 = blue
  */
 export type CodeAnnot = { line: number; from: number; to: number; text: string; color?: HandColor; below?: true };
-
-// ---------- 卡片（内容） ----------
 
 type CardBase = {
   id: string;
@@ -172,8 +167,6 @@ export type BoardCard = CardBase & { kind: "board"; board: string };
 export type Card = CodeCard | NoteCard | ImageCard | WebCard | LinksCard | CompareCard | BoardCard;
 export type CardKind = Card["kind"];
 
-// ---------- 摆放 ----------
-
 export type Place = {
   x: number;
   y: number;
@@ -185,8 +178,7 @@ export type Place = {
   start?: boolean; // 起点卡：不选卡直接 Walkthrough、调用树从这里开始
 };
 
-// ---------- Link（界面上叫 Arrow） ----------
-
+// Link 在界面上叫 Arrow
 /** Link 的一端：整张卡，或卡里某一段的某一行（子白板框只能整张连：框里的小卡片只是预览） */
 export type End = { card: string; seg?: string; line?: number };
 
@@ -271,8 +263,6 @@ export const headOf = (l: Pick<Link, "style">) => ({ start: !!l.style?.head?.sta
 /** 调用图的标记：字母，或一个内置贴纸图标的名字 */
 export type GraphMark = { letter: string } | { icon: string };
 
-// ---------- Section ----------
-
 export type Section = {
   id: string;
   title: string;
@@ -286,8 +276,6 @@ export type Section = {
   locked?: boolean;
   desc?: string;
 };
-
-// ---------- Sidenote ----------
 
 /** 挂在哪：整张卡、一行或几行 */
 export type Anchor = { card: string; seg?: string; lines?: [number, number] };
@@ -308,8 +296,6 @@ export type Sidenote = {
   | { kind: "card"; card: string }
 );
 export type SidenoteKind = Sidenote["kind"];
-
-// ---------- Sticker ----------
 
 /** 图标：包名 + 图标名。builtin = 内置的十几个；emoji = 系统 emoji（name 就是那个字符）；其余是 Sticker Packs 目录里的包 */
 export type IconRef = { pack: string; name: string };
@@ -332,8 +318,6 @@ export type Sticker = { id: string; icon: IconRef; color?: string; at: StickerAt
 export const cornerAt = (w: number, i = 0) => ({ x: w - 56 - i * 25, y: -11, size: 22 });
 /** 内置的「?」贴纸，或写了问题的贴纸 */
 export const isQuestion = (s: Pick<Sticker, "icon" | "q">) => !!s.q || (s.icon.pack === "builtin" && s.icon.name === "question");
-
-// ---------- 白板 ----------
 
 export type Camera = { x: number; y: number; z: number };
 
@@ -368,8 +352,6 @@ export type Board = {
 export const LEGEND = [["call", "Call"], ["rpc", "RPC"], ["observed", "Observed"], ["gen", "Generated from"], ["see", "See also"]] as const;
 export type LegendKey = (typeof LEGEND)[number][0];
 export const legendName = (b: Pick<Board, "legend">, k: LegendKey) => b.legend?.[k] || LEGEND.find((x) => x[0] === k)![1];
-
-// ---------- 共享卡 ----------
 
 /** 白板文件里共享卡的位置：只有 id，内容在卡库里。在 cards 里占着叠放顺序 */
 export type SharedRef = { id: string; kind: "shared" };

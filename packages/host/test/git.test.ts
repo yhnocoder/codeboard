@@ -1,5 +1,3 @@
-// isAncestor remembers only answers git actually gave (exit 0 = ancestor, 1 = not) for two full shas; a failure (a commit not fetched
-// yet, no repo) is "not an ancestor" this time and asked again next time. It used to cache failures as false forever
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";

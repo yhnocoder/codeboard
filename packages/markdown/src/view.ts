@@ -12,9 +12,9 @@ export const resolveRef = (label: string) => resolve(label);
 
 /** renderMd 的 HTML 用 innerHTML 放进 el 以后调用：认 [[引用]]、代码块着色、Mermaid 换成图、摆批注标签 */
 export function hydrate(el: HTMLElement, html: string) {
-  if (html.includes('class="cref"')) {
-    for (const r of el.querySelectorAll<HTMLElement>(".cref")) {
-      const hit = resolve(r.dataset.cardref ?? "");
+  if (html.includes('class="md-ref"')) {
+    for (const r of el.querySelectorAll<HTMLElement>(".md-ref")) {
+      const hit = resolve(r.dataset.ref ?? "");
       r.classList.toggle("missing", !hit);
       if (hit && hit.title !== r.textContent) r.textContent = hit.title;
       if (!hit) r.title = missing;
@@ -75,10 +75,10 @@ export function mdClick(e: MouseEvent, src: string, o: { openLink: (u: string) =
   const t = e.target as HTMLElement;
   const a = t.closest?.("a.lnk") as HTMLElement | null;
   if (a?.dataset.href) { e.preventDefault(); e.stopPropagation(); o.openLink(a.dataset.href); return true; }
-  const r = t.closest?.(".cref") as HTMLElement | null;
+  const r = t.closest?.(".md-ref") as HTMLElement | null;
   if (r) {
     e.preventDefault(); e.stopPropagation();
-    const hit = resolve(r.dataset.cardref ?? "");
+    const hit = resolve(r.dataset.ref ?? "");
     if (hit) o.openRef(hit.id);
     return true;
   }

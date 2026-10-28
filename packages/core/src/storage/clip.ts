@@ -1,5 +1,3 @@
-// 卡片剪贴板：⌘C 记下哪块白板的哪几张卡（宿主记，白板之间不共享内存）；⌘V 贴到别的白板上默认是共享卡（同一张卡，内容同步），
-// ⌥⌘V 或设置成 Copy 时是独立副本。同一块白板上的粘贴不走这里（还是原来的文字粘贴）。
 import type { CardCopy } from "../edit";
 import type { Link } from "../model";
 import type { Storage } from "./boards";

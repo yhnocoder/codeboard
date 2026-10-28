@@ -10,8 +10,6 @@
 //                                         board does not also turn the paste into a card. In VS Code the paste event's target is the
 //                                         highlighted span the selection starts on, and the code editor replaces that span before the
 //                                         event reaches the board
-// Usage: npm run harness -- copiedCardsGiveOtherAppsTheirContent pastedCardsKeepTheirSize imageCardDropsIntoNote pasteIntoEditorMakesNoCard
-// Screenshots: test-out/harness/copy-paste-*.png (Warm Ink)
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type Card, type NoteCard } from "@codeboard/core";

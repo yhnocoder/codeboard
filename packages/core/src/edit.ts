@@ -386,7 +386,7 @@ function findOwner(b: Board, cardId: string) {
 }
 const findSeg = (b: Board, cardId: string, segId: string) => findOwner(b, cardId)?.segments.find((s) => s.id === segId);
 
-// ---------- 共享卡、拷贝、合并 / 拆开（白板动作里的领域改动都在这里，白板只管选中、动画、提示） ----------
+// 白板动作里的领域改动都在这里，白板只管选中、动画、提示
 
 export function removeSidenotes(b: Board, ids: Iterable<string>): void {
   const gone = new Set(ids);
@@ -569,8 +569,6 @@ export function unmergeCard(b: Board, id: string): { made: string[]; segments: S
   });
   return { made, segments };
 }
-
-// ---------- Section、叠放、Compare、箭头中转、Sidenote ↔ 卡、改名引用、子白板框 ----------
 
 /**
  * Turn into Board 的父白板一侧：这些卡（含 Compare 的栏）换成子白板框 frame（叠放在它们里最早那张的位置，摆在 place），sections 一起删掉。

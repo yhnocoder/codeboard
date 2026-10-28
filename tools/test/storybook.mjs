@@ -1,11 +1,7 @@
-// Nightly Storybook check (TESTING.md tier 3): opens every story of the static build in test-out/storybook
-// (npm run build-storybook) in Playwright's Chromium and fails on anything that goes wrong while it renders.
 //   isolated    every story in a fresh iframe, a few pages in parallel
 //   sequential  every story one after another in a manager page (a few chunks of the list in parallel), so the preview iframe is reused like when a person clicks
 //               through the sidebar; leftovers of one story that break the next (the production build's module order, state
 //               that was not reset) only show up here
-// A story fails on: a console error, an uncaught page error, a failed request (favicon excepted), an exception in the story or
-// its play function, a story that is missing or never finishes. Writes test-out/storybook/result.json, exits 1 on any failure.
 // Usage: node tools/test/storybook.mjs [idRegex]      env: JOBS (parallel pages, default 4), SCHEME=light|dark, STORY_TIMEOUT (ms)
 import * as fs from "node:fs";
 import * as http from "node:http";

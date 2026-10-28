@@ -1,7 +1,3 @@
-// Markdown blocks in a Note: empty list items survive leaving the editor, a mid-line $$…$$ stays inline in editing and display,
-// a display formula wider than the Note scrolls on its own instead of overlapping, and the cursor can stop between two code blocks.
-// Usage: npm run harness -- noteEmptyListItem inlineDisplayMath wideDisplayMath codeBlockGapCursor codeBlockLabelClear
-// Screenshots: test-out/harness/md-blocks-*.png (HARNESS_LIGHT=1 for the light theme)
 import * as path from "node:path";
 import { OUT, put, type Host } from "../harness";
 import { emptyBoard, type NoteCard } from "@codeboard/core";

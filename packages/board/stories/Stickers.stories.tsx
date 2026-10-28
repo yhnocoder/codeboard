@@ -1,4 +1,3 @@
-// 贴纸：内置图标、Emoji、文件夹包里的位图和动图；贴在画布上、卡上、卡角、代码行、箭头上；选中、疑问、选图标面板、放的时候跟着指针的影子
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { cornerAt, type IconRef, type Sticker, type StickerAt } from "@codeboard/core";
 import { Stage, scene, codeCard, noteCard, type Globals, type Scene } from "./support/board";

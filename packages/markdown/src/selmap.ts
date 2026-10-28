@@ -6,7 +6,7 @@ import type { Node as PMNode } from "@tiptap/pm/model";
 
 const LEAF_CHAR = "￼";
 /** 静态显示里一个节点占一整块、在文档里是一个叶子节点的：算一个字 */
-const LEAF = ".katex, .math, .cref, .fnref, .md-emoji, .md-toc, .md-html, img, br, hr";
+const LEAF = ".katex, .math, .md-ref, .fnref, .md-emoji, .md-toc, .md-html, img, br, hr";
 
 /** 静态显示上的一段：从第几个字到第几个字（按上面的数法），和这一段的字（叶子是 ￼） */
 export type StaticTextRange = { from: number; to: number; text: string };

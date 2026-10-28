@@ -1,5 +1,3 @@
-// When versions are re-checked: editing or saving a file on a board re-checks that file only (N6: typing pauses used to re-check every
-// segment of every open board); an unsaved edit that is reverted is noticed without a save
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

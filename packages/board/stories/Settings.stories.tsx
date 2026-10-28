@@ -110,5 +110,4 @@ export const Debug: Story = { args: { section: "debug", debug: true }, play: ope
 export const Shortcuts: Story = { args: { section: "shortcuts" }, play: open };
 export const ShortcutsFiltered: Story = { name: "Shortcuts · Filtered", args: { section: "shortcuts" }, play: async (c) => { await open(c); await type(".st-filter", "zoom"); } };
 export const ShortcutsNoMatch: Story = { name: "Shortcuts · No Match", args: { section: "shortcuts" }, play: async (c) => { await open(c); await type(".st-filter", "paged attention"); } };
-// 真的点：⋯ → Settings…
 export const FromMoreMenu: Story = { name: "From the More Menu", play: async () => { await settled(); await toolbar("More"); await menu(); await menuItem("Settings…"); } };

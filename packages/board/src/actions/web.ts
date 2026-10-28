@@ -202,5 +202,4 @@ export function rowGripDown(e: PointerEvent, id: string, item: string) {
   window.addEventListener("pointercancel", onUp, true);
 }
 
-/** 打开 From GitHub… 面板（工具栏 Code ▾、侧栏 Add Repo… 都走这里）；repo 可以预填 owner/repo 或链接 */
 export function openGitHubPicker(repo?: string) { setGhPicker({ repo }); }

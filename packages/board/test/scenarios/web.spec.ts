@@ -34,8 +34,7 @@ const webHost: OnMsg = async (m, reply) => {
   return false;
 };
 
-// ---------- Fake GitHub data: nano-vllm files stand in for vllm-project/vllm ----------
-
+// Fake GitHub data: nano-vllm files stand in for vllm-project/vllm
 const SHA = { main: "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678", "v0.6.0": "0f1e2d3c4b5a69788796a5b4c3d2e1f0a9b8c7d6" } as Record<string, string>;
 function ghTree(commit: string): GhTree {
   const ps = new Set<string>();
@@ -100,7 +99,7 @@ test("web", async () => {
   await t.dblclick();
   await until(h, "double-clicking the title opens the link", () => h.sent.some((m) => m.type === "openLink"));
   const opened = h.sent.filter((m) => m.type === "openLink").length;
-  // A2 third variant: Edit Title / Retry
+  // third variant: Edit Title / Retry
   await h.page.locator(".card.web .wlink", { hasText: "Edit Title" }).first().click();
   await h.page.keyboard.type("KV cache design notes"); await h.page.keyboard.press("Enter");
   await until(h, "the edited title is saved", () => (h.board().cards as WebCard[]).some((c) => c.title === "KV cache design notes"));
@@ -118,7 +117,7 @@ test("web", async () => {
   await close(h);
 });
 
-/** A loaded bookmark (title, description, image) drags from anywhere in its content, not only its edge (C2) */
+/** A loaded bookmark (title, description, image) drags from anywhere in its content, not only its edge */
 test("webdrag", async () => {
   const b: Board = emptyBoard("b1", "Drag");
   const url = "https://arxiv.org/abs/2309.06180";
@@ -139,7 +138,7 @@ test("webdrag", async () => {
     const after = (await c.boundingBox())!;
     if (Math.hypot(after.x - before.x, after.y - before.y) < 30) bad.push(`${name}: card did not move`);
   }
-  // The replay's way (r18): select by a click near the top, zoom to the card (Shift+2), drag from 60% down the middle
+  // The replay's way: select by a click near the top, zoom to the card (Shift+2), drag from 60% down the middle
   {
     const r0 = (await c.boundingBox())!;
     await h.page.mouse.click(r0.x + r0.width / 2, r0.y + 4); await h.page.keyboard.press("Shift+@"); await idle(h);
@@ -156,7 +155,6 @@ test("webdrag", async () => {
   await close(h);
 });
 
-/** Link List: drop on title to merge, multi-line paste, Compact / Rich, hover, context menu, reorder, drag out */
 /** Five styles side by side; ↗ appears only on hover */
 test("webstyles", async () => {
   const b = emptyBoard("b1", "v0.1.5");
@@ -184,6 +182,7 @@ test("webstyles", async () => {
   await close(h);
 });
 
+/** Link List: drop on title to merge, multi-line paste, Compact / Rich, hover, context menu, reorder, drag out */
 test("linklist", async () => {
   const b: Board = emptyBoard("b1", "KV Cache Reading");
   const a = web("https://arxiv.org/abs/2309.06180"), c = web("https://github.com/GeeeekExplorer/nano-vllm/blob/main/nanovllm/engine/block_manager.py");
@@ -218,24 +217,19 @@ test("linklist", async () => {
   const rows = h.page.locator(".card.links .lrow");
   await rows.nth(2).hover(); await h.page.locator(".lpeek").waitFor(); // the peek shows 550 ms after the hover (WebBody.tsx)
   await shot(h, "ll-03-hover-peek");
-  // Switch a single row to Rich
   await rows.nth(1).hover(); await rows.nth(1).locator('.ltools .lb[aria-label="Show as Rich"]').click(); await expect(rows.nth(1)).toHaveClass(/\brich\b/);
   await rows.nth(0).hover(); await rows.nth(0).locator('.ltools .lb[aria-label="Show as Rich"]').click(); await expect(rows.nth(0)).toHaveClass(/\brich\b/);
   await h.page.mouse.move(1300, 860);
   await shot(h, "ll-04-mixed");
   await rows.nth(1).hover();
   await shot(h, "ll-05-rich-hover");
-  // Right-click a row
   await rows.nth(3).click({ button: "right" }); await h.page.locator(".ctx button").first().waitFor();
   await shot(h, "ll-06-row-menu");
   await h.page.keyboard.press("Escape");
-  // ⋯ → View ▸ Rich
   await h.page.locator(".card.links .chead").click({ button: "right", position: { x: 30, y: 12 } });
   await h.page.locator(".ctx button", { hasText: "View" }).hover();
   await shot(h, "ll-06b-view");
-  // Submenus are currently drawn in the parent menu's coordinate space (old Menu.tsx issue, to be fixed in the menu rewrite); click directly here
-  await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().waitFor({ state: "attached" });
-  await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().dispatchEvent("click");
+  await h.page.locator(".ctx button", { hasText: /^Rich/ }).last().click();
   await until(h, "View ▸ Rich is saved", () => L()?.rich);
   await h.page.mouse.move(1300, 860);
   await shot(h, "ll-07-all-rich");

@@ -1,6 +1,3 @@
-// Sections and card edits: the Section look (idle, hover, selected), moving a card from one Section into another,
-// dragging a Section snaps it to other Sections, a Note's title from its first heading, and ⌘X on cards
-// (npm run harness -- sectionLook dragCardIntoOtherSection sectionDragSnapsToSection …)
 import { shot, symCard, findSym, put, type Host } from "../harness";
 import { DEFAULT_SETTINGS, emptyBoard, type Board, type NoteCard } from "@codeboard/core";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
@@ -220,10 +217,10 @@ test("dragCardIntoOtherSection", async () => {
   await close(h);
 });
 
-/** Dragging a Section by its label aligns it with other Sections like a card drag: slowed down near another Section's edge it
- *  snaps onto it and a guide line shows; holding Ctrl turns snapping off. The cards inside move along; one undo puts it back */
 /** A drag that comes to rest is looked at again this long after its last move, as a slow one, so it snaps (interact.ts snapPace) */
 const SNAP_SETTLE = 110;
+/** Dragging a Section by its label aligns it with other Sections like a card drag: slowed down near another Section's edge it
+ *  snaps onto it and a guide line shows; holding Ctrl turns snapping off. The cards inside move along; one undo puts it back */
 test("sectionDragSnapsToSection", async () => {
   const b = emptyBoard("b1", "section snapping");
   put(b, { id: "a", kind: "note", bg: true, md: "Prefill" } as NoteCard, 120, 140, 220);

@@ -70,10 +70,8 @@ for (const l of LANG_TABLE) {
   for (const e of l.ext) if (!byExt.has(e)) byExt.set(e, l);
 }
 
-/** 名字（id 或别名，不分大小写）→ 语言；不认识的给 undefined */
 export const langInfo = (name: string | null | undefined): LangInfo | undefined => (name ? byName.get(name.toLowerCase()) : undefined);
 export const langOfExt = (file: string): LangInfo | undefined => byExt.get(/\.([^./\\]+)$/.exec(file)?.[1].toLowerCase() ?? "");
-/** 代码卡语言下拉里的语言 */
 export const LANGS: readonly LangInfo[] = LANG_TABLE.filter((l) => l.pick);
 export const langLabel = (name: string) => langInfo(name)?.label ?? name;
 export const langId = (name: string) => langInfo(name)?.id ?? name;

@@ -1,6 +1,3 @@
-// Boards and their storage: changes reach the host as they happen, copying connected cards between boards, empty questions,
-// undo across sub-boards (history per board, Turn into Board), crumbs to a deleted board.
-// Usage: npm run harness -- <scenario…>   (the test names below)
 import { emptyBoard, type Board } from "@codeboard/core";
 import { put, symCard, findSym, type Host } from "../harness";
 import { subHost } from "../subhost";
@@ -180,7 +177,7 @@ async function emptyQuestion(res: Record<string, unknown>) {
   return res.editor === 1 && res.emptyLeft === 0 && res.emptyShown === 0 && JSON.stringify(res.written) === '["why?"]' && res.afterUndo === 0 && res.afterSecondUndo === 0;
 }
 
-/** Each change goes to the host right away (the host writes it to disk and finishes the write when the panel closes), so closing the tab right after a change can't lose it; a settled camera waits for the live debounce */
+// Each change goes to the host right away (the host writes it to disk and finishes the write when the panel closes), so closing the tab right after a change can't lose it; a settled camera waits for the live debounce
 /** A board whose patches to the host are recorded with the time they arrived */
 async function saveBoard() {
   const b: Board = emptyBoard("bSave", "Save");

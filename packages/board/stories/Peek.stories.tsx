@@ -1,4 +1,3 @@
-// Peek：悬停在代码里的名字上弹出的定义。函数、字段（带下一跳 Follow）、模块、library、动态分发、几个定义选一个、找不到、还在查
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, type Globals, type Scene } from "./support/board";
 import { el } from "./support/play";

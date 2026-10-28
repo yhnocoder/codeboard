@@ -1,4 +1,3 @@
-// Board interaction scenarios: each one opens a board, performs a series of actions, and takes screenshots.
 import { shot, symCard, findSym, viewOf, put, type Host } from "../harness";
 import { emptyBoard, putShared, type Board } from "@codeboard/core";
 import { RESEND_DELAY } from "../../src/state/timing";
@@ -139,7 +138,7 @@ test("compare", async () => {
   await until(h, "Compare makes a compare card", () => h.board().cards.some((c) => c.kind === "compare"));
   await shot(h, "cmp-02-compare");
   console.log("kinds:", h.board().cards.map((c) => c.kind).join(","));
-  // Unified: switching turns it into a single-column diff (previously rows weren't redrawn and stayed side by side)
+  // Unified: switching turns it into a single-column diff
   await h.page.locator(".cmpwrap .tools button", { hasText: "Unified" }).click();
   await h.page.locator(".cmpwrap .urow").first().waitFor(); await idle(h);
   const u = { urow: await h.page.locator(".cmpwrap .urow").count(), crow: await h.page.locator(".cmpwrap .crow").count() };
@@ -252,7 +251,7 @@ test("linkMergeSection", async () => {
   await h.page.context().close();
 });
 
-// The Compare one-flow rule is gone: each column can expand into its own call graph, and the Compare shows both marks
+// Each column of a Compare can expand into its own call graph, and the Compare shows both marks
 test("cmptree", async () => {
   const h = await open({ board: boardWith("LLMEngine.step", "Scheduler.schedule"), light });
   await h.page.keyboard.press("Shift+!"); await idle(h);
@@ -306,7 +305,7 @@ test("cmpdel", async () => {
   await h.page.context().close();
 });
 
-// Regression: Relocate changes the snippet, or the snippet moved at HEAD: Link endpoints, Sidenotes and hidden lines follow; moves don't go on the undo stack
+// Relocate changes the snippet, or the snippet moved at HEAD: Link endpoints, Sidenotes and hidden lines follow; moves don't go on the undo stack
 test("rebase", async () => {
   const b = boardWith("Scheduler.schedule", "Scheduler.postprocess");
   const [A, B] = b.cards as any[];
@@ -455,7 +454,7 @@ test("sharedsync", async () => {
   await h.page.context().close();
 });
 
-// Regression: after Update, Sidenotes and highlights follow edited lines instead of being treated as deleted
+// After Update, Sidenotes and highlights follow edited lines instead of being treated as deleted
 test("follow", async () => {
   const b = boardWith("Scheduler.schedule");
   const c = b.cards[0] as any, s0 = c.segments[0];
@@ -472,7 +471,7 @@ test("follow", async () => {
   await h.page.context().close();
 });
 
-// Regression: draw the inner frame first, then the outer one; the outer frame is the parent
+// Draw the inner frame first, then the outer one; the outer frame is the parent
 test("secout", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
   const r = await h.page.locator(".card").first().boundingBox();
@@ -491,7 +490,7 @@ test("secout", async () => {
   await h.page.context().close();
 });
 
-// Regression: subtrees expanded by Walkthrough are not written to the board
+// Subtrees expanded by Walkthrough are not written to the board
 test("walkview", async () => {
   const h = await open({ board: boardWith("LLMEngine.step"), light });
   await h.page.locator(".card .src .call", { hasText: /^schedule$/ }).first().click(); await until(h, "schedule() expands", () => h.board().cards.length > 1); await idle(h);
@@ -540,7 +539,7 @@ test("peek", async () => {
   await h.page.context().close();
 });
 
-// #3 #4: field / function / module / library previews
+// field / function / module / library previews
 test("peekkinds", async () => {
   const h = await open({ board: boardWith("LLMEngine.__init__", "ModelRunner.__init__"), light });
   type Info = Record<string, string | boolean | null | undefined>;
@@ -570,7 +569,7 @@ test("peekkinds", async () => {
   await h.page.context().close();
 });
 
-// #34: library calls get no underline and don't expand on click; ⌥-click / context menu Expand Anyway; restored after adding to Study Scope
+// library calls get no underline and don't expand on click; ⌥-click / context menu Expand Anyway; restored after adding to Study Scope
 test("libcalls", async () => {
   const h = await open({ board: boardWith("ModelRunner.warmup_model"), light });
   const lib = h.page.locator(`.card .src .call[data-p="torch"]`).first();
@@ -597,7 +596,7 @@ test("libcalls", async () => {
   await h.page.context().close();
 });
 
-// #32: dragging onto an existing card also offers variable candidates
+// dragging onto an existing card also offers variable candidates
 test("attachvars", async () => {
   const h = await open({ board: boardWith("ModelRunner.__init__", "Qwen3ForCausalLM"), light });
   const c = await callEl(h, "Qwen3ForCausalLM").boundingBox();
@@ -623,7 +622,7 @@ test("themes", async () => {
   const [a] = b.cards;
   const kids = b.links.filter((l) => l.call).map((l) => l.to.card);
   b.place[a.id] = { x: 80, y: 200, w: 520 };
-  kids.forEach((id, i) => { b.place[id] = { x: 760, y: 60 + i * 420, w: 470, h: i ? 264 : 324 }; }); // code area height (format v4): 300 / 360 tall in Warm Ink
+  kids.forEach((id, i) => { b.place[id] = { x: 760, y: 60 + i * 420, w: 470, h: i ? 264 : 324 }; }); // code area height: 300 / 360 tall in Warm Ink
   const vars = [[{ a: "seqs" }, { a: "is_prefill" }], [{ a: "token_ids", ret: true }]];
   b.links.filter((l) => l.call).forEach((l, i) => { l.call!.vars = vars[i] ?? []; });
   const note = { id: "n1", kind: "note" as const, md: "# Why chunked prefill\nKeeps memory **bounded**: prefill admits waiting seqs until the `max_num_batched_tokens` budget runs out.", bg: true };

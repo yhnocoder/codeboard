@@ -14,7 +14,6 @@ const viewsOf = (b: Board): Record<string, SegView> => {
   return v;
 };
 
-/** A host for one board panel that switches between boards */
 /** o.light: this scenario's theme whatever HARNESS_LIGHT says (for one that compares colours with a light design) */
 export async function subHost(start: Board, others: Board[], o: { light?: boolean } = {}) {
   const dir = path.join(OUT, `subboards-store-${process.pid}-${start.id}`); // one per worker and start board: workers run side by side

@@ -445,8 +445,6 @@ export class Storage {
     return items;
   }
 
-  // ---------- 卡库 ----------
-
   /** 缓存里的所有白板（只读，不扫描目录）：算共享卡在哪些白板上、谁连到它 */
   cached(): { id: string; board: Board; refs: ReadonlySet<string> }[] {
     return [...this.cache.values()].map((e) => ({ id: e.id, board: e.board, refs: e.refs }));

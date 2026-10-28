@@ -1,6 +1,3 @@
-// Variants ("my changes"): read from another worktree, a branch, a copied file or the working tree, found by function name; refreshed
-// when the other worktree saves, the branch is rebased (re-anchored by name) or merged; a card with Variants compares new versions
-// with main, not with HEAD. In a submodule, its own checkout is not another worktree
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";

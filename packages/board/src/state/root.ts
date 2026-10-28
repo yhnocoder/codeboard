@@ -18,5 +18,4 @@ export function boardSignal<T>(init: T, o?: SignalOptions<T>): Signal<T> {
   resets.push(() => s[1](() => init));
   return s;
 }
-/** hostio 的 init 调：所有登记过的重置一起做 */
 export function boardSwitched() { batch(() => { for (const f of resets) f(); }); }

@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-// Ghost completion asker: debounced asks, and holdGhosts (the board holds completions while a card is moved or resized)
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { GhostAsker, holdGhosts, type GhostQuery } from "../src/ui/ghost";
 

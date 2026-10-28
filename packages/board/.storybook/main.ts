@@ -1,4 +1,3 @@
-// 小样只是看和调界面的工具：不进 npm run check、CI，也不打进插件包
 import type { StorybookConfig } from "storybook-solidjs-vite";
 
 const config: StorybookConfig = {

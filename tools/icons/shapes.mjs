@@ -29,7 +29,6 @@ export function poly(points, closed = false) {
 }
 /** Rounded rectangle by its stroke centre lines. */
 export const rect = (x0, y0, x1, y1, r = 0) => poly([[x0, y0, r], [x1, y0, r], [x1, y1, r], [x0, y1, r]], true);
-/** Circle as two arcs. */
 export const circle = (cx, cy, r) => `M${pt(cx + r, cy)}A${f(r)} ${f(r)} 0 1 1 ${pt(cx - r, cy)}A${f(r)} ${f(r)} 0 1 1 ${pt(cx + r, cy)}Z`;
 export const line = (x0, y0, x1, y1) => `M${pt(x0, y0)}L${pt(x1, y1)}`;
 export { f as fmt };

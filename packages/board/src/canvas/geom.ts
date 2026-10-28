@@ -1,4 +1,4 @@
-// 画布上的纯几何（不碰 DOM、不读 store）：箭头、标签框、贴纸共用。
+// 画布上的纯几何（不碰 DOM、不读 store）。
 // 线都是三次贝塞尔 [x1 y1 c1x c1y c2x c2y x2 y2]
 
 export const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
