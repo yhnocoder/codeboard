@@ -17,9 +17,11 @@ OUT=${E2E_OUT:-$REPO/test-out/$TAG}
 TMP=${E2E_TMP:-/tmp/codeboard-e2e}
 export CDP_PORT=${CDP_PORT:-9223}
 WS=$TMP/ws
-UD=$TMP/user
+# VS Code puts its IPC socket in the user data dir, and a socket path over 107 bytes fails (listen EINVAL): keep it short and
+# out of E2E_TMP, one per E2E_TMP so side-by-side runs still get their own
+UD=/tmp/cb-ud-$(echo "$TMP" | md5sum | cut -c1-8)
 pkill -f -- "--user-data-dir=$UD" 2>/dev/null && sleep 1   # wait only when an earlier run was still there
-rm -rf "$TMP" "$OUT"; mkdir -p "$OUT" "$UD/User"
+rm -rf "$TMP" "$UD" "$OUT"; mkdir -p "$OUT" "$UD/User"
 # E2E_WS=<dir> opens a copy of another workspace instead of nano-vllm (for E2E_FLOW flows; drive.cjs's own steps expect nano-vllm):
 # a git repository is cloned, so its history is there for version checks; any other folder is copied
 SRC=${E2E_WS:-$REPO/examples/nano-vllm}
