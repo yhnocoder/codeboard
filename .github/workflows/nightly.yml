@@ -154,6 +154,7 @@ jobs:
             const issue = open.data[0] || (await github.rest.issues.create({ ...context.repo, title: "Nightly test results", labels: [LABEL],
               body: "The nightly runs (`.github/workflows/nightly.yml`, `replay.yml`) comment here when their set of failures changes, including when everything passes again." })).data;
             const comments = await github.paginate(github.rest.issues.listComments, { ...context.repo, issue_number: issue.number, per_page: 100 });
-            const r = nightlyReport({ dir: "test-out/artifacts", jobs: JSON.parse(process.env.JOBS), comments: comments.map((c) => c.body || ""), run, sha: context.sha.slice(0, 7) });
-            core.info(`failing: ${r.fails.length}, flakes: ${r.flaky.flakes.length}, alone: ${r.flaky.alone.length}${r.flaky.error ? `, repeat error: ${r.flaky.error}` : ""}; comment: ${r.due}`);
+            const r = nightlyReport({ dir: "test-out/artifacts", jobs: JSON.parse(process.env.JOBS), comments: comments.map((c) => c.body || ""), run, sha: context.sha.slice(0, 7),
+              tiers: JSON.parse(require("fs").readFileSync(`${process.env.GITHUB_WORKSPACE}/packages/board/test/tiers.json`, "utf8")) });
+            core.info(`failing: ${r.fails.length}, flakes: ${r.flaky.flakes.length}, alone: ${r.flaky.alone.length}${r.flaky.error ? `, repeat error: ${r.flaky.error}` : ""}, groups over their limits: ${r.groups.length}; comment: ${r.due}`);
             if (r.due) await github.rest.issues.createComment({ ...context.repo, issue_number: issue.number, body: r.body });

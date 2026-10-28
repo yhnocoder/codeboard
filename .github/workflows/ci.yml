@@ -29,24 +29,48 @@ jobs:
       - name: Markdown demo (@yhnocoder/markdown on its own, built and driven in Chromium)
         run: npm test -w @codeboard/markdown-demo
 
+  # Picks the harness scenarios once (tools/test/pick.mjs) and how many harness jobs they need, so that every changed scenario runs
+  # here and the jobs still end in about 3 minutes
+  harness-plan:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      shards: ${{ steps.plan.outputs.shards }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 } # the scenarios are picked from the files changed since the base commit
+      - run: git submodule update --init examples/nano-vllm # listing the scenarios loads their files, which read it
+      - uses: ./.github/actions/setup
+        with: { build: npm run build -w @yhnocoder/markdown } # the scenario files import the package's build
+      - name: Pick the scenarios
+        id: plan
+        # per shard: 600 s of scenario time, about 3 minutes on a job's 4 workers
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          node tools/test/harness.mjs --select --ci --base="$BASE_SHA" --per-shard=600 --max-shards=6 --dry --json=test-out/harness/plan.json
+          echo "shards=$(node -p 'JSON.stringify(Array.from({ length: require("./test-out/harness/plan.json").shards }, (_, i) => i + 1))')" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with: { name: harness-plan, path: test-out/harness/plan.json, retention-days: 14 }
+
   harness:
+    needs: harness-plan
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     strategy:
       fail-fast: false
-      matrix: { shard: [1, 2] }
-    name: harness (${{ matrix.shard }}/2)
+      matrix:
+        shard: ${{ fromJSON(needs.harness-plan.outputs.shards) }}
+    name: harness (${{ matrix.shard }}/${{ strategy.job-total }})
     steps:
       - uses: actions/checkout@v4
-        with: { fetch-depth: 0 } # the scenarios are picked from the files changed since the base commit
       - run: git submodule update --init examples/nano-vllm # the other examples (sglang, DeepEP) are large manual testbeds
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
-      - name: Harness scenarios this change needs
-        # budget: seconds of scenario time for both jobs together (2 jobs × 4 workers × ~170 s)
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-        run: node tools/test/harness.mjs --select --base="$BASE_SHA" --budget=1300 --shard=${{ matrix.shard }}/2 --json=test-out/harness/result.json
+      - uses: actions/download-artifact@v4
+        with: { name: harness-plan, path: test-out/harness-plan }
+      - name: Harness scenarios this change needs, this job's part
+        run: node tools/test/harness.mjs --plan=test-out/harness-plan/plan.json --shard=${{ matrix.shard }}/${{ strategy.job-total }} --json=test-out/harness/result.json
       - uses: actions/upload-artifact@v4
         if: ${{ !cancelled() }}
         with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }
@@ -100,7 +124,7 @@ jobs:
         with: { name: perf, path: test-out/perf, retention-days: 14 }
 
   report:
-    needs: [harness, e2e, perf]
+    needs: [harness-plan, harness, e2e, perf]
     # !cancelled(), not always(): a run superseded by a newer push must stop at once, since the newer run waits for it (concurrency group)
     if: ${{ !cancelled() && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository) }}
     runs-on: ubuntu-24.04
@@ -145,18 +169,22 @@ jobs:
             const { report } = require(`${process.env.GITHUB_WORKSPACE}/tools/review/audit.cjs`);
             const audit = json(`${A}/e2e/audit.json`);
             const jobs = JSON.parse(process.env.JOBS);
-            // Harness: what ran, why, what failed, what was left to the nightly run
-            const hr = [1, 2].map((k) => json(`${A}/harness-${k}/result.json`)).filter((x) => x.results);
-            const res = hr.flatMap((x) => x.results), deferred = hr[0]?.deferred ?? [], deferredChanged = hr[0]?.deferredChanged ?? [];
+            // Harness: what ran, why, what failed, what was left to the nightly run (the plan: tools/test/pick.mjs in the harness-plan job)
+            const plan = json(`${A}/harness-plan/plan.json`);
+            const hr = fs.readdirSync(A).filter((d) => /^harness-\d+$/.test(d)).map((d) => json(`${A}/${d}/result.json`)).filter((x) => x.results);
+            const res = hr.flatMap((x) => x.results), deferred = plan.deferred ?? [];
             const by = Object.entries(res.reduce((m, r) => ((m[r.why] = (m[r.why] || 0) + 1), m), {})).map(([w, n]) => `${n} ${w}`).join(", ");
             const known = [...new Set(res.flatMap((r) => r.known || []))], alone = res.filter((r) => r.alone).map((r) => r.name);
+            const missing = (plan.run ?? []).filter((x) => !res.some((r) => r.name === x.name)).map((x) => x.name);
             const harness = !hr.length ? ["**Harness**: no results."] : [
-              `**Harness**: ${res.length} scenarios (${by}), ${res.filter((r) => !r.ok).length} failed` + (deferred.length ? `, ${deferred.length} deferred to the nightly run` : ""),
+              `**Harness**: ${res.length} scenarios (${by}), ${res.filter((r) => !r.ok).length} failed, on ${hr.length} of ${plan.shards ?? "?"} jobs` + (deferred.length ? `, ${deferred.length} deferred to the nightly run` : ""),
               ...res.filter((r) => !r.ok).map((r) => `- ❌ ${r.name}: ${(r.fails[0] || r.error || "").slice(0, 200)}`),
+              ...(missing.length ? [`- ❌ picked but no result (a harness job failed before reporting): ${missing.length}`] : []),
               ...(known.length ? [`- known failures (tiers.json): ${known.length}`] : []),
               ...(alone.length ? [`- passed only when run alone: ${alone.join(", ")}`] : []),
-              ...(deferredChanged.length ? [`- changed scenarios over the budget, deferred to the nightly run (name them on a \`Tests:\` line to run them here): ${deferredChanged.length}`] : []),
-              ...(deferred.length ? ["", `<details><summary>Deferred</summary>${deferred.join(", ")}</details>`] : []),
+              ...(plan.areas?.length ? [`- area groups: ${plan.areas.map((g) => g.name).join(", ")}`] : []),
+              ...(plan.notes ?? []).filter((n) => /^(the scenarios this change needs|group )/.test(n)).map((n) => `- ⚠️ ${n}`),
+              ...(deferred.length ? ["", `<details><summary>Deferred (extra coverage that didn't fit)</summary>${deferred.join(", ")}</details>`] : []),
             ];
             const run = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const section = [
