@@ -20,7 +20,14 @@ WS=$TMP/ws
 # VS Code puts its IPC socket in the user data dir, and a socket path over 107 bytes fails (listen EINVAL): keep it short and
 # out of E2E_TMP, one per E2E_TMP so side-by-side runs still get their own
 UD=/tmp/cb-ud-$(echo "$TMP" | md5sum | cut -c1-8)
-pkill -f -- "--user-data-dir=$UD" 2>/dev/null && sleep 1   # wait only when an earlier run was still there
+# Stop this user data dir's VS Code and wait until it has exited: a window left running keeps the debugging port, and the next run's
+# driver would attach to it. It can ignore SIGTERM while shutting down, so it gets SIGKILL after 10 s
+stop_code() {
+  pkill -f -- "--user-data-dir=$UD" 2>/dev/null || return 0
+  for _ in $(seq 100); do pgrep -f -- "--user-data-dir=$UD" >/dev/null || return 0; sleep 0.1; done
+  pkill -9 -f -- "--user-data-dir=$UD" 2>/dev/null || true
+}
+stop_code
 rm -rf "$TMP" "$UD" "$OUT"; mkdir -p "$OUT" "$UD/User"
 # E2E_WS=<dir> opens a copy of another workspace instead of nano-vllm (for E2E_FLOW flows; drive.cjs's own steps expect nano-vllm):
 # a git repository is cloned, so its history is there for version checks; any other folder is copied
@@ -52,7 +59,7 @@ PID=$!
 set +e
 node "$HERE/$DRIVER" "$OUT" "$WS" "$UD" 2>&1 | tee "$OUT/e2e.log"
 RC=${PIPESTATUS[0]}
-kill $PID 2>/dev/null; pkill -f -- "--user-data-dir=$UD" 2>/dev/null || true
+kill $PID 2>/dev/null; stop_code
 # The extension's output channel (host-side logs) goes with the screenshots, so a failure in CI comes with them: one per window
 N=0; for L in $(find "$UD/logs" -name CodeBoard.log 2>/dev/null | sort); do N=$((N + 1)); cp "$L" "$OUT/CodeBoard-$N.log"; done
 exit $RC
