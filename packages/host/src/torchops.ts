@@ -364,6 +364,8 @@ const settled = (x: Scan, head?: "head") => (head ? x.head : x.ready);
 /** 这个 PyTorch 的扫描（第一次被要时开始；点击等它完成，之后只查表） */
 export function scanOf(t: OpTable): Scan {
   let x = scans.get(t.root);
+  // 解析 yaml 期间它又存了：旧表的扫描不能占着这个根，新表的 kernel 才会被找（还拿着旧表的点击不换掉新表的扫描）
+  if (x && x.t !== t && latest.get(t.yaml) === t) { dropScan(t.root); x = undefined; }
   if (!x) {
     const wanted = new Map<string, string>();
     for (const d of t.decls) for (const k of declKernels(t, d)) for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
@@ -463,6 +465,8 @@ export async function regTarget(t: OpTable, r: Reg): Promise<IndexEntry | undefi
 
 let found: Promise<string[]> | undefined;
 const tables = new Map<string, Promise<OpTable | null>>();
+/** 每个 yaml 现在的表（opTables 给出去的） */
+const latest = new Map<string, OpTable>();
 
 async function loadTable(yaml: string): Promise<OpTable | null> {
   const text = await readText(yaml, false);
@@ -486,10 +490,14 @@ export async function opTables(): Promise<OpTable[]> {
   })().catch(() => []);
   const out: OpTable[] = [];
   for (const yaml of await found) {
-    let p = tables.get(yaml);
-    if (!p) tables.set(yaml, (p = loadTable(yaml)));
-    const t = await p;
-    if (t) out.push(t);
+    for (;;) {
+      let p = tables.get(yaml);
+      if (!p) tables.set(yaml, (p = loadTable(yaml)));
+      const t = await p;
+      if (tables.get(yaml) !== p) continue; // 解析期间 yaml 又存了：用新的那份
+      if (t) { latest.set(yaml, t); out.push(t); }
+      break;
+    }
   }
   return out;
 }
@@ -506,7 +514,7 @@ function dropScan(root: string) {
   const x = scans.get(root);
   if (x) { x.dead = true; scans.delete(root); }
 }
-export function resetOpTables() { found = undefined; tables.clear(); for (const r of [...scans.keys()]) dropScan(r); }
+export function resetOpTables() { found = undefined; tables.clear(); latest.clear(); for (const r of [...scans.keys()]) dropScan(r); }
 
 /** 文件保存、新建、在编辑器外改了或删了：yaml 丢掉它的表和扫描，扫描过的文件重做 */
 export function opsFileChanged(abs: string) {

@@ -22,8 +22,16 @@ const edit = (rel: string, from: string | RegExp, to: string) => fs.writeFileSyn
 let watch: Disposable;
 /** How often each file was read (readText asks for an editor buffer first, every time) */
 const reads = new Map<string, number>();
+/** Runs once at the next read of that file, as the read begins */
+const onRead = new Map<string, () => void>();
 const unsaved = W.files.unsavedText;
-W.files.unsavedText = (a) => { reads.set(a, (reads.get(a) ?? 0) + 1); return unsaved(a); };
+W.files.unsavedText = (a) => {
+  reads.set(a, (reads.get(a) ?? 0) + 1);
+  const t = unsaved(a), f = onRead.get(a);
+  onRead.delete(a);
+  f?.();
+  return t;
+};
 /** Waits until no update is queued behind the scan */
 async function drained() {
   const x = scanOf((await opTables())[0]);
@@ -145,6 +153,25 @@ describe("op index updates", () => {
     await drained();
     expect(target(await click(await seg("model.py", "run"), /F\.gelu/, "gelu"))).toBe("aten/src/ATen/native/Gelu.cpp at::native::gelu_new_kernel");
     expect(scanOf((await opTables())[0])).not.toBe(before);
+  });
+});
+
+describe("op index and a yaml saved while it is parsed", () => {
+  it("uses the table of the saved yaml and scans for its kernels", async () => {
+    const yaml = abs("aten/src/ATen/native/native_functions.yaml"), old = fs.readFileSync(yaml, "utf8");
+    fs.writeFileSync(abs("aten/src/ATen/native/Gelu.cpp"), "namespace at::native {\n\nTensor gelu_newer_kernel(const Tensor& self) {\n  return self;\n}\n\n}\n");
+    W.fire.change.fire(abs("aten/src/ATen/native/Gelu.cpp"));
+    W.open.set(yaml, old);
+    resetIndex();
+    // saved after the parse has read the old text, before the table is done
+    onRead.set(yaml, () => queueMicrotask(() => {
+      W.open.delete(yaml);
+      fs.writeFileSync(yaml, old.replace(/CPU, CUDA: gelu_\w+/, "CPU, CUDA: gelu_newer_kernel"));
+      W.fire.save.fire(yaml);
+    }));
+    const [t] = await opTables();
+    expect(t.byName.get("gelu")?.[0].dispatch[0]).toEqual(["CPU", "gelu_newer_kernel"]);
+    expect(target(await click(await seg("model.py", "run"), /F\.gelu/, "gelu"))).toBe("aten/src/ATen/native/Gelu.cpp at::native::gelu_newer_kernel");
   });
 });
 
