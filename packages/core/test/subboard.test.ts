@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { cutCrumbs, danglingRefs, emptyBoard, extractBoard, loadBoard, refTitle, skeletonOf, subBoardsOf, wouldCycle, FAN_KEEP, type Board, type Card } from "../src";
 
-const note = (id: string): Card => ({ id, kind: "note", md: `# ${id}\nbody`, bg: true });
+const note = (id: string): Card => ({ id, kind: "note", md: `# ${id}\nbody`, look: "note" });
 const code = (id: string, qual = id): Card => ({ id, kind: "code", segments: [{ id: `s${id}`, src: { kind: "repo", repo: "" }, path: "a.py", lang: "python", start: 1, end: 10, text: Array(10).fill("x"), version: { kind: "git", commit: "bb823b3c0ffee" }, symbol: { qual, kind: "function" } }] });
 function board(id: string, cards: [Card, number, number][]): Board {
   const b = emptyBoard(id, id);
@@ -44,7 +44,7 @@ describe("sub-board skeleton", () => {
 
   it("gives each card what its mini card shows: section, source, summary, line range, picture, Mark", () => {
     const b = board("M", [[code("a", "Scheduler.schedule"), 0, 0], [note("n"), 500, 0]]);
-    b.cards.push({ id: "t", kind: "note", md: "**first** line\nsecond line", bg: true, title: "Own title" }, { id: "h", kind: "note", md: "check\nthis", bg: false, hand: "orange" },
+    b.cards.push({ id: "t", kind: "note", md: "**first** line\nsecond line", look: "note", title: "Own title" }, { id: "h", kind: "note", md: "check\nthis", look: "mark", hand: "orange" },
       { id: "i", kind: "image", src: "pic-120x80.png" }, { id: "big", kind: "image", src: `data:image/png;base64,${"A".repeat(20_000)}` });
     for (const id of ["t", "h", "i", "big"]) b.place[id] = { x: 0, y: 600, w: 200 };
     b.sections.push({ id: "s0", title: "Other", x: 2000, y: 0, w: 10, h: 10 }, { id: "s1", title: "Notes", x: 450, y: -50, w: 500, h: 400, color: "sand" });
@@ -62,7 +62,7 @@ describe("sub-board skeleton", () => {
     const deep = board("D", [[note("deep"), 0, 0]]);
     const mid = board("C", [[code("c", "BlockManager.allocate"), 0, 0], [{ id: "fd", kind: "board", board: "D" }, 0, 400]]);
     mid.name = "Child"; deep.name = "Deep";
-    mid.cards.push({ id: "plain", kind: "note", md: "1. 3", bg: true }, { id: "img", kind: "image", src: "x.png", title: "Named picture" }, { id: "free", kind: "code", segments: [{ ...(code("z") as Extract<Card, { kind: "code" }>).segments[0], symbol: undefined, start: 3, end: 4 }] });
+    mid.cards.push({ id: "plain", kind: "note", md: "1. 3", look: "note" }, { id: "img", kind: "image", src: "x.png", title: "Named picture" }, { id: "free", kind: "code", segments: [{ ...(code("z") as Extract<Card, { kind: "code" }>).segments[0], symbol: undefined, start: 3, end: 4 }] });
     for (const id of ["plain", "img", "free"]) mid.place[id] = { x: 0, y: 900, w: 200 };
     const all: Record<string, Board> = { C: mid, D: deep };
     expect(skeletonOf(mid, (id) => all[id]).refs).toEqual([
@@ -70,8 +70,8 @@ describe("sub-board skeleton", () => {
       { id: "fd", t: "Deep", k: "board" },
       { id: "deep", t: "deep", k: "note", via: [{ f: "fd", b: "D", n: "Deep" }] },
     ]);
-    expect(refTitle({ id: "x", kind: "note", md: "big words", bg: false, size: "title" })).toBe("big words");
-    expect(refTitle({ id: "x", kind: "note", md: "1. 增加 shape(圆角矩形、圆形等)", bg: true })).toBeUndefined();
+    expect(refTitle({ id: "x", kind: "note", md: "big words", look: "text", size: "title" })).toBe("big words");
+    expect(refTitle({ id: "x", kind: "note", md: "1. 增加 shape(圆角矩形、圆形等)", look: "note" })).toBeUndefined();
   });
 });
 

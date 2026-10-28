@@ -248,7 +248,7 @@ async function typing() {
 async function note() {
   for (const light of [true, false]) {
     const b = emptyBoard("b1", "note");
-    put(b, { id: "n0", kind: "note", md: "intro\n\n```python\ndef f(x):\n    return x + 1\n```\n\nend", bg: true } as NoteCard, 60, 60, 520);
+    put(b, { id: "n0", kind: "note", md: "intro\n\n```python\ndef f(x):\n    return x + 1\n```\n\nend", look: "note" } as NoteCard, 60, 60, 520);
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light, w: 1200, h: 800, on: lspStub });
     const pg = h.page;

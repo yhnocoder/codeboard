@@ -2,7 +2,7 @@
 // 校验的是迁移之后的结果，结构和 model.ts 的类型一一对应；旧文件的样子（缺省、null）由迁移负责。
 // 只拦会让白板读坏的东西（类型不对、缺必填字段、kind 不认得），不认得的字段原样保留。
 import * as v from "valibot";
-import { BOARD_VERSION, HAND_COLORS, type Board, type BoardFile, type SharedCardFile } from "./model";
+import { BOARD_VERSION, BOX_FILLS, HAND_COLORS, NOTE_LOOKS, type Board, type BoardFile, type SharedCardFile } from "./model";
 import { migrateBoard, migrateSharedCard } from "./migrate";
 
 const str = v.string(), num = v.number(), bool = v.boolean(), yes = v.literal(true);
@@ -47,7 +47,7 @@ const base = { id: str, title: opt(str), desc: opt(str), procs: opt(v.array(obj(
 const WebMeta = obj({ title: opt(str), desc: opt(str), site: opt(str), image: opt(str), icon: opt(str), at: opt(num), failed: opt(bool) });
 const codeEntries = {
   ...base, kind: v.literal("code"), segments: v.array(Segment),
-  hide: opt(obj({ comments: opt(bool), docstrings: opt(bool), blank: opt(bool) })), wrap: opt(bool), nobg: opt(bool),
+  hide: opt(obj({ comments: opt(bool), docstrings: opt(bool), blank: opt(bool) })), wrap: opt(bool), bg: opt(v.literal(false)),
   members: opt(obj({ shown: v.array(str) })),
   mergedFrom: opt(v.array(obj({ card: v.lazy(() => CodeCard), place: Place }))), keepOld: opt(yes),
   gen: opt(obj({ what: str, run: opt(str) })),
@@ -59,7 +59,7 @@ const CodeCard: v.GenericSchema = obj(codeEntries);
 export type CodeCardSchemaKeys = keyof typeof codeEntries;
 const Card = v.variant("kind", [
   CodeCard as v.LooseObjectSchema<{ kind: v.LiteralSchema<"code", undefined> }, undefined>,
-  obj({ ...base, kind: v.literal("note"), md: str, bg: bool, size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), hand: opt(v.picklist(HAND_COLORS)), msg: opt(obj({ where: opt(str) })) }),
+  obj({ ...base, kind: v.literal("note"), md: str, look: v.picklist(NOTE_LOOKS), size: opt(v.picklist(["title", "heading", "body"])), bold: opt(bool), fill: opt(v.picklist(BOX_FILLS)), hand: opt(v.picklist(HAND_COLORS)), msg: opt(obj({ where: opt(str) })) }),
   obj({ ...base, kind: v.literal("image"), src: str, alt: opt(str), bg: opt(bool) }),
   obj({ ...base, kind: v.literal("web"), url: str, meta: opt(WebMeta), style: opt(v.picklist(["banner", "side", "text", "compact"])) }),
   obj({ ...base, kind: v.literal("links"), items: v.array(obj({ id: str, url: str, title: opt(str), meta: opt(WebMeta), rich: opt(bool) })), rich: opt(bool) }),

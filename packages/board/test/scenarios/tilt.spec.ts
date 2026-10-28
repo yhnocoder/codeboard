@@ -11,7 +11,7 @@ const TILT = -1.2;
 /** A tall Note n (so the arrow's start, level with its title row, is far from the card's center) → a code card */
 function board(tilt = false): Board {
   const b = emptyBoard("b1", "tilt");
-  const n: NoteCard = { id: "n", kind: "note", md: "Why is the block size **256**?\n\nA multiple of 32 that leaves each thread enough registers.", bg: true, ...(tilt ? { tilt: true } : {}) };
+  const n: NoteCard = { id: "n", kind: "note", md: "Why is the block size **256**?\n\nA multiple of 32 that leaves each thread enough registers.", look: "note", ...(tilt ? { tilt: true } : {}) };
   b.cards.push(n);
   b.place.n = { x: 80, y: 120, w: 320, h: 380 };
   const s = findSym("LLMEngine.step");

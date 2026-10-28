@@ -11,7 +11,7 @@ const seg = (text: string[], start = 10, commit = "bb823b3"): Segment => ({ id: 
 function board(): Board {
   const b = emptyBoard("b", "B");
   const c: CodeCard = { id: "c1", kind: "code", segments: [seg(UP)] };
-  b.cards.push(c, { id: "c2", kind: "note", md: "x", bg: true });
+  b.cards.push(c, { id: "c2", kind: "note", md: "x", look: "note" });
   b.place.c1 = { x: 0, y: 0, w: 400 };
   b.place.c2 = { x: 500, y: 0, w: 200 };
   // 第 14 行（return out）连到 c2；第 12 行（r = …）有一条 Sidenote

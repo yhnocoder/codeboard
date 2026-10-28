@@ -6,7 +6,7 @@ import { test, open, check, idle } from "../fixtures";
 test("noteTextStaysPutLeavingEdit", async () => {
   for (const theme of ["soft-light", "warm-ink"]) {
   const b = emptyBoard("b1", "p");
-  put(b, { id: "n0", kind: "note", md: "# 列：彩色图像转灰度\n\n![](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMTIwIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjEyMCIgZmlsbD0iI2M4NCIvPjwvc3ZnPg==)\n\n该图是由许多像素组成的彩色图像，每个像素包含红、绿、蓝三个分数值 $(r, g, b)$，要计算亮度值 $L$:\n\n$$L = r \\times 0.299 + g$$\n\n第二段。", bg: true } as NoteCard, 60, 60, 380); (b.place.n0 as any).h = 260; b.cam = { x: 0, y: 0, z: 1 };
+  put(b, { id: "n0", kind: "note", md: "# 列：彩色图像转灰度\n\n![](data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIzMDAiIGhlaWdodD0iMTIwIj48cmVjdCB3aWR0aD0iMzAwIiBoZWlnaHQ9IjEyMCIgZmlsbD0iI2M4NCIvPjwvc3ZnPg==)\n\n该图是由许多像素组成的彩色图像，每个像素包含红、绿、蓝三个分数值 $(r, g, b)$，要计算亮度值 $L$:\n\n$$L = r \\times 0.299 + g$$\n\n第二段。", look: "note" } as NoteCard, 60, 60, 380); (b.place.n0 as any).h = 260; b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 900, h: 500, settings: { theme } as never });
   const pg = h.page;
   await pg.locator('.card[data-id="n0"] .nbody img').evaluate((e) => (e as HTMLImageElement).decode()); await idle(h);

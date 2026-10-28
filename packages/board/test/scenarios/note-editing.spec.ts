@@ -25,7 +25,7 @@ function board(init: string[] = []): Board {
   const b = emptyBoard("b1", "note editing");
   const s = findSym("Scheduler.schedule");
   put(b, symCard(s.f, s.s), 2400, 60, 420);
-  init.forEach((md, i) => put(b, { id: `n${i}`, kind: "note", md, bg: true } as NoteCard, 60 + (i % 4) * 560, 60 + Math.floor(i / 4) * 360, 520));
+  init.forEach((md, i) => put(b, { id: `n${i}`, kind: "note", md, look: "note" } as NoteCard, 60 + (i % 4) * 560, 60 + Math.floor(i / 4) * 360, 520));
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
@@ -485,9 +485,9 @@ test("noteFontSizeSettings", async () => {
   try { fs.mkdirSync(SHOTS, { recursive: true }); } catch { /* harness output only */ }
   const b = emptyBoard("b1", "note fonts");
   const doc = "# Scheduler\n\n## Prefill first\n\nEach step picks waiting sequences while the KV cache has room, then decodes the running ones.\n\n### Preemption\n\nWhen blocks run out, the newest sequence goes back to waiting.";
-  put(b, { id: "n0", kind: "note", md: doc, bg: true } as NoteCard, 60, 60, 420);
-  put(b, { id: "n1", kind: "note", md: "Below the first Note.", bg: true } as NoteCard, 60, 305, 420);
-  put(b, { id: "t0", kind: "note", md: "A Text card", bg: false } as NoteCard, 560, 60, 240);
+  put(b, { id: "n0", kind: "note", md: doc, look: "note" } as NoteCard, 60, 60, 420);
+  put(b, { id: "n1", kind: "note", md: "Below the first Note.", look: "note" } as NoteCard, 60, 305, 420);
+  put(b, { id: "t0", kind: "note", md: "A Text card", look: "text" } as NoteCard, 560, 60, 240);
   b.cam = { x: 0, y: 0, z: 1 };
   const h = await open({ board: b, light: true, w: 1200, h: 820, settings: { theme: "warm-ink", noteHeadingInBody: true } as never });
   const pg = h.page;
@@ -562,7 +562,7 @@ const FOLD_NOTES = [`# 加速比、Amdahl's Law\n\n${FOLD_TEXT}`, FOLD_TEXT, `##
 test("noteEditKeepsHeightWithHeaderFolded", async () => {
   for (const theme of ["warm-ink", "soft-light"]) {
     const b = emptyBoard("b1", "fold");
-    FOLD_NOTES.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * 420, 60, 380));
+    FOLD_NOTES.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, look: "note" } as NoteCard, 60 + i * 420, 60, 380));
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light: true, w: 1400, h: 520, settings: { theme } as never });
     const pg = h.page;
@@ -606,7 +606,7 @@ test("noteHeightSameInWarmInkAndSoftLight", async () => {
   for (const theme of ["warm-ink", "soft-light"]) {
     const b = emptyBoard("b1", "same height");
     const notes = ["# Title\n\nShort line one.\n\nShort line two.\n\n- item a\n- item b", "一行中文和 English.\n\n第二段。", "### Small title\n\nOne line."];
-    notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * 420, 60, 380));
+    notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, look: "note" } as NoteCard, 60 + i * 420, 60, 380));
     b.cam = { x: 0, y: 0, z: 1 };
     const h = await open({ board: b, light: true, w: 1400, h: 520, settings: { theme } as never });
     await idle(h);
@@ -620,7 +620,7 @@ const THEMES = ["warm-ink", "soft-light"] as const;
 /** Notes in a row, `w` wide each */
 function noteRow(notes: string[], w = 380): Board {
   const b = emptyBoard("b1", "notes");
-  notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, bg: true } as NoteCard, 60 + i * (w + 40), 60, w));
+  notes.forEach((m, i) => put(b, { id: `n${i}`, kind: "note", md: m, look: "note" } as NoteCard, 60 + i * (w + 40), 60, w));
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }
@@ -840,7 +840,7 @@ test("noteLanguagePickerOpenWhenBoardChanges", async () => {
   await pg.locator('.card[data-id="n0"] .md-pm pre .md-lang').click();
   await expect(pg.locator(".md-langbox .md-langq")).toBeFocused();
   const b2 = emptyBoard("b2", "other");
-  put(b2, { id: "m0", kind: "note", md: "second", bg: true } as NoteCard, 60, 60, 520);
+  put(b2, { id: "m0", kind: "note", md: "second", look: "note" } as NoteCard, 60, 60, 520);
   await h.post({ type: "init", board: b2, boards: [{ id: "b2", name: "other", cards: 1 }], views: {}, stale: {}, host: { isMac: true, assetBase: "", target: true, settings: { ...DEFAULT_SETTINGS } } });
   await pg.locator('.card[data-id="n0"]').waitFor({ state: "detached" });
   await idle(h);

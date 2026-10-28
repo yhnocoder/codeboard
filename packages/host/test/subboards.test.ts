@@ -30,7 +30,7 @@ beforeAll(async () => {
   useWorkspace(nodeWorkspace());
   E = emptyBoard("bE", "Engine"); S = emptyBoard("bS", "Scheduler"); X = emptyBoard("bX", "Other");
   E.cards.push({ id: "f", kind: "board", board: "bS" }); E.place.f = { x: 0, y: 0, w: 560, h: 360 };
-  S.cards.push({ id: "n", kind: "note", md: "hi", bg: true }); S.place.n = { x: 0, y: 0, w: 200 };
+  S.cards.push({ id: "n", kind: "note", md: "hi", look: "note" }); S.place.n = { x: 0, y: 0, w: 200 };
   await store.save(E, { group: "g1" }); await store.save(S); await store.save(X);
   p.ready = true;
   p.board = store.peek("bE");
@@ -68,7 +68,7 @@ describe("sub-boards", () => {
     const T = emptyBoard("bT", "Top"), U = emptyBoard("bU", "Mid"), V = emptyBoard("bV", "Deep");
     T.cards.push({ id: "fu", kind: "board", board: "bU" }); T.place.fu = { x: 0, y: 0, w: 560, h: 360 };
     U.cards.push({ id: "fv", kind: "board", board: "bV" }); U.place.fv = { x: 0, y: 0, w: 560, h: 360 }; U.cam = { x: 7, y: 8, z: 0.75 };
-    V.cards.push({ id: "v1", kind: "note", md: "# deep", bg: true }); V.place.v1 = { x: 0, y: 0, w: 200 };
+    V.cards.push({ id: "v1", kind: "note", md: "# deep", look: "note" }); V.place.v1 = { x: 0, y: 0, w: 200 };
     for (const b of [T, U, V]) await store.save(b);
     const q = new BoardPanel("bT", view, panels);
     q.ready = true; q.board = store.peek("bT");
@@ -79,7 +79,7 @@ describe("sub-boards", () => {
     expect(posted.slice(before)).toContainEqual({ type: "reveal", card: "v1" });
   });
   it("saves Turn into Board's new board in the parent's group", async () => {
-    const nb = emptyBoard("bN", "New"); nb.cards.push({ id: "c1", kind: "note", md: "x", bg: true }); nb.place.c1 = { x: 80, y: 80, w: 200 };
+    const nb = emptyBoard("bN", "New"); nb.cards.push({ id: "c1", kind: "note", md: "x", look: "note" }); nb.place.c1 = { x: 80, y: 80, w: 200 };
     expect(await send({ type: "newBoard", req: 2, board: nb })).toBe(true);
     expect(store.groupOf("bN")).toBe("g1");
     expect((await store.load("bN"))?.cards).toHaveLength(1);

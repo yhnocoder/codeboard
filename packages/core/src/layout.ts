@@ -26,7 +26,7 @@ export function defaultWidth(c: Card): number {
       const longest = Math.max(20, ...c.segments.flatMap((s) => s.text.map((l) => l.replace(/\t/g, "    ").length)));
       return Math.round(Math.min(760, Math.max(380, longest * 7.4 + 70)));
     }
-    case "note": return c.bg ? 280 : 320;
+    case "note": return c.look === "note" ? 280 : c.look === "box" ? 160 : 320;
     case "image": return 320;
     case "web": return 420;
     case "links": return 380;

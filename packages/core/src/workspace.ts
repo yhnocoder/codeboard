@@ -15,6 +15,11 @@ export interface WorkspaceFiles {
   /** 打开着的文件的语言（VS Code languageId）；没打开返回 undefined */
   openLanguage(abs: string): string | undefined;
   openFiles(): { abs: string; text(): string }[];
+  /**
+   * 按 URI 读一个文件的字节（file:、vscode-remote: 等编辑器认得的 scheme，不限于工作区里）：拖到白板上的文件只给 URI。
+   * 比 max 字节大时回 undefined（不读）；不存在、读不了时抛错
+   */
+  readBytes(uri: string, max: number): Promise<Uint8Array | undefined>;
   /** 按 glob 找工作区里的文件（绝对路径） */
   findFiles(include: string, exclude?: string, max?: number): Promise<string[]>;
   /** 监听 base 目录下匹配 glob 的文件：新建、删除、修改（含 VS Code 外面的改动） */

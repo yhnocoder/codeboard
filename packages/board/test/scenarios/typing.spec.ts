@@ -36,7 +36,7 @@ const fastFrames = (pg: Page) => pg.evaluate(() => { const w = window as any; if
 function board(n: number, init: (string | undefined)[] = []): Board {
   const b = emptyBoard("b1", "typora");
   put(b, card("Scheduler.schedule"), 2400, 60, 420);
-  for (let i = 0; i < n; i++) put(b, { id: `n${i}`, kind: "note", md: init[i] ?? "", bg: true } as NoteCard, 60 + (i % 4) * 560, 60 + Math.floor(i / 4) * 360, 520);
+  for (let i = 0; i < n; i++) put(b, { id: `n${i}`, kind: "note", md: init[i] ?? "", look: "note" } as NoteCard, 60 + (i % 4) * 560, 60 + Math.floor(i / 4) * 360, 520);
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }

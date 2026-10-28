@@ -115,9 +115,12 @@ export async function openBoard(browser: Browser, o: OpenOptions = {}, watch: Wa
   fs.mkdirSync(OUT, { recursive: true });
   // one page file per board: several Playwright workers run side by side
   const html = path.join(OUT, `index-${process.pid}-${++pages}.html`);
+  // Like VS Code's webview wrapper (workbench/contrib/webview/browser/pre/index.html), the page cancels every dragover and drop on
+  // the board's window with listeners added before the board's own
   fs.writeFileSync(html, `<!doctype html><html><head><meta charset="utf-8"><link rel="stylesheet" href="file://${MEDIA}/board.css"></head>
 <body class="${o.light ? "vscode-light" : "vscode-dark"}"><div id="root"></div>
 <script>addEventListener("message", (e) => { if (e.data?.type === "init") window.__tInit = performance.now(); }, true); addEventListener("pointerdown", () => { window.__tDown = performance.now(); }, true);</script>
+<script>addEventListener("dragover", (e) => e.preventDefault()); addEventListener("drop", (e) => e.preventDefault());</script>
 <script>window.__inflight = 0; window.acquireVsCodeApi = () => ({ postMessage: (m) => { window.__inflight++; window.__host(JSON.stringify(m)).finally(() => window.__inflight--); } });</script>
 <script type="module" src="file://${MEDIA}/board.js"></script></body></html>`);
   const context = await browser.newContext({ viewport: { width: o.w ?? 1400, height: o.h ?? 900 }, deviceScaleFactor: 1 });

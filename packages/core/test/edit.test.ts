@@ -6,6 +6,7 @@ import {
   danglingRefs, emptyBoard, migrateBoard, rebaseSegment, removeCards, removeLinks, replaceCards, retargetCards, shiftBy, stampBorn,
   placeCards, unlinkCard, mergeCodeCards, removeLostCalls, unmergeCard, removeSidenotes, removeStickers, notesOnChangedLines, sidenoteCard, sidenoteToCard,
   arrangeCards, cardIntoSidenote, imageIntoNote, joinLinks, makeCompare, removeSections, renameTitleRefs, splitLink, swapCallTarget, renumberBorn,
+  loadBoard, loadSharedCard, turnNoteInto, cardTitle,
   type Board, type Card, type CodeCard, type Link, type Segment,
 } from "../src";
 
@@ -202,7 +203,68 @@ describe("danglingRefs", () => {
 
 describe("migrateBoard", () => {
   it("refuses a board written by a newer CodeBoard instead of wiping it", () => {
-    expect(() => migrateBoard({ version: 8, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
+    expect(() => migrateBoard({ version: 9, id: "b", name: "B", cards: [{ id: "a", kind: "code", segments: [] }] })).toThrow(/newer/);
+  });
+  it("v7 → v8: a note's background and handwriting become one of Note / Text / Mark, code's nobg becomes bg: false", () => {
+    const old = (o: object) => ({ id: "x", kind: "note", md: "x", ...o });
+    const b = loadBoard({
+      version: 7, id: "b", name: "B", cam: { x: 0, y: 0, z: 1 },
+      cards: [
+        old({ id: "n", bg: true }), old({ id: "t", bg: false, size: "title", bold: true }), old({ id: "m", bg: false, hand: "orange" }),
+        old({ id: "nh", bg: true, hand: "blue" }), old({ id: "bare" }),
+        { ...code("c"), nobg: true, mergedFrom: [{ card: { ...code("old"), nobg: true }, place: { x: 0, y: 0, w: 1 } }] }, { ...code("f"), nobg: false },
+      ],
+      place: {},
+    });
+    const by = Object.fromEntries(b.cards.map((c) => [c.id, c]));
+    expect(by.n).toEqual({ id: "n", kind: "note", md: "x", look: "note" });
+    expect(by.t).toEqual({ id: "t", kind: "note", md: "x", look: "text", size: "title", bold: true });
+    expect(by.m).toEqual({ id: "m", kind: "note", md: "x", look: "mark", hand: "orange" });
+    expect(by.nh).toEqual({ id: "nh", kind: "note", md: "x", look: "note" }); // a Note never showed its hand color
+    expect(by.bare).toMatchObject({ look: "text" });
+    expect(by.c).toMatchObject({ bg: false });
+    expect((by.c as CodeCard).mergedFrom![0].card).toMatchObject({ bg: false });
+    expect("nobg" in by.c || "bg" in by.f || "nobg" in by.f).toBe(false);
+    expect(loadBoard(structuredClone(b))).toEqual(b); // v8 is read as is
+  });
+  it("v7 → v8 upgrades shared card files too", () => {
+    expect(loadSharedCard({ version: 7, card: { id: "s", kind: "note", md: "x", bg: false, hand: "green" }, sidenotes: [] }))
+      .toEqual({ version: 8, card: { id: "s", kind: "note", md: "x", look: "mark", hand: "green" }, sidenotes: [] });
+    expect(loadSharedCard({ version: 6, card: { ...code("s"), nobg: true }, sidenotes: [] }).card).toMatchObject({ bg: false });
+  });
+});
+
+describe("turnNoteInto (Note ↔ Text)", () => {
+  const board = (card: Card) => ({ ...emptyBoard("b", "B"), cards: [card], place: { [card.id]: { x: 100, y: 100, w: 280, h: 200 } } });
+  it("puts a renamed Note's title on the text's first line as a heading, and back in the header on the way back", () => {
+    const b = board({ id: "n", kind: "note", md: "body **bold**\n\n- item", look: "note", title: "Scheduler" });
+    turnNoteInto(b, "n", "text");
+    expect(b.cards[0]).toEqual({ id: "n", kind: "note", md: "# Scheduler\n\nbody **bold**\n\n- item", look: "text" });
+    expect(b.place.n).toEqual({ x: 110, y: 104, w: 260 });
+    turnNoteInto(b, "n", "note");
+    expect(b.cards[0]).toMatchObject({ look: "note", md: "# Scheduler\n\nbody **bold**\n\n- item" });
+    expect(cardTitle(b.cards[0])).toBe("Scheduler"); // the header shows the heading (mdHeading), the body hides it
+    expect(b.place.n).toEqual({ x: 100, y: 100, w: 280 });
+  });
+  it("keeps a heading that already is the title, and an untitled note's words in place", () => {
+    const h = board({ id: "n", kind: "note", md: "# Plan\nstep", look: "note", title: "Plan" });
+    turnNoteInto(h, "n", "text");
+    expect(h.cards[0]).toMatchObject({ md: "# Plan\nstep", look: "text" });
+    const u = board({ id: "u", kind: "note", md: "just words", look: "note" });
+    turnNoteInto(u, "u", "text");
+    expect(u.cards[0]).toEqual({ id: "u", kind: "note", md: "just words", look: "text" });
+    expect(u.place.u).toEqual({ x: 110, y: 144, w: 260 });
+  });
+  it("drops Text-only styling on the way to a Note and never converts a Box or a Mark", () => {
+    const t = board({ id: "t", kind: "note", md: "big", look: "text", size: "title", bold: true });
+    turnNoteInto(t, "t", "note");
+    expect(t.cards[0]).toEqual({ id: "t", kind: "note", md: "big", look: "note" });
+    for (const look of ["box", "mark"] as const) {
+      const b = board({ id: "x", kind: "note", md: "# hi", look });
+      turnNoteInto(b, "x", "note");
+      turnNoteInto(b, "x", "text");
+      expect(b.cards[0]).toMatchObject({ look, md: "# hi" });
+    }
   });
 });
 
@@ -581,7 +643,7 @@ describe("placing a sidenote on the board", () => {
     expect([c.id, c.kind, c.desc, c.segments[0].text, c.segments[0].id === "s1"]).toEqual(["c1", "code", "because", ["x = 1"], false]);
     const p = sidenoteCard({ id: "n", at, kind: "paste", text: "a\nb", lang: "python", url: "https://x.y" }) as CodeCard;
     expect([p.segments[0].src, p.segments[0].start, p.segments[0].end, p.segments[0].text]).toEqual([{ kind: "free", url: "https://x.y" }, 1, 2, ["a", "b"]]);
-    expect(sidenoteCard({ id: "n", at, kind: "text", md: "hi" }, "c2")).toEqual({ id: "c2", kind: "note", md: "hi", bg: true });
+    expect(sidenoteCard({ id: "n", at, kind: "text", md: "hi" }, "c2")).toEqual({ id: "c2", kind: "note", md: "hi", look: "note" });
     expect(sidenoteCard({ id: "n", at, kind: "link", url: "https://x.y", title: "T" })).toMatchObject({ kind: "web", url: "https://x.y", meta: { title: "T" } });
     expect(sidenoteCard({ id: "n", at, kind: "card", card: "b" })).toBeNull();
   });
@@ -625,7 +687,7 @@ describe("board action edits (core edit)", () => {
   it("splitLink and joinLinks are inverses", () => {
     const b = base([code("a"), code("b")]);
     b.links = [{ id: "l", from: { card: "a" }, to: { card: "b" }, rpc: { mech: "shm" } }];
-    placeCards(b, [{ card: { id: "m", kind: "note", md: "m", bg: true, msg: {} }, place: { x: 0, y: 0, w: 50 } }], { copy: false });
+    placeCards(b, [{ card: { id: "m", kind: "note", md: "m", look: "note", msg: {} }, place: { x: 0, y: 0, w: 50 } }], { copy: false });
     splitLink(b, "l", "m", "l2");
     expect(b.links.map((l) => [l.id, l.from.card, l.to.card, l.style?.head?.end, !!l.rpc])).toEqual([["l", "a", "m", false, true], ["l2", "m", "b", undefined, true]]);
     expect(danglingRefs(b)).toEqual([]);
@@ -638,7 +700,7 @@ describe("board action edits (core edit)", () => {
   it("sidenoteToCard swaps the note for a linked card; cardIntoSidenote goes back", () => {
     const b = base([code("a")]);
     b.sidenotes = [{ id: "n", at: { card: "a", seg: "sa", lines: [1, 1] }, kind: "text", md: "hi" }];
-    placeCards(b, [{ card: { id: "t", kind: "note", md: "hi", bg: false }, place: { x: 0, y: 0, w: 50 } }], { copy: false });
+    placeCards(b, [{ card: { id: "t", kind: "note", md: "hi", look: "text" }, place: { x: 0, y: 0, w: 50 } }], { copy: false });
     sidenoteToCard(b, "n", "t");
     expect(b.sidenotes).toEqual([]);
     expect(b.links).toMatchObject([{ from: { card: "a", seg: "sa", line: 1 }, to: { card: "t" } }]);
@@ -652,7 +714,7 @@ describe("board action edits (core edit)", () => {
   it("imageIntoNote appends the image (and its caption) to the Note and removes the image card with its arrows", () => {
     const b = base([code("a")]);
     placeCards(b, [
-      { card: { id: "n", kind: "note", md: "# Plan\n\nStep one\n\n", bg: true }, place: { x: 0, y: 0, w: 300 } },
+      { card: { id: "n", kind: "note", md: "# Plan\n\nStep one\n\n", look: "note" }, place: { x: 0, y: 0, w: 300 } },
       { card: { id: "i", kind: "image", src: "abc.png", alt: "the [batch]", desc: "Prefill first" }, place: { x: 400, y: 0, w: 200 } },
     ], { copy: false });
     b.links.push({ id: "l", from: { card: "a" }, to: { card: "i" } });
@@ -662,6 +724,21 @@ describe("board action edits (core edit)", () => {
     expect((b.cards[1] as { md: string }).md).toBe("# Plan\n\nStep one\n\n![the batch](assets/abc-40x30.png)\n\nPrefill first");
     expect(b.links).toEqual([]);
     expect(b.place.i).toBeUndefined();
+    expect(danglingRefs(b)).toEqual([]);
+  });
+
+  it("imageIntoNote at a block's start puts the image there as its own paragraph", () => {
+    const b = base([]);
+    const md = "# Plan\n\nStep one\n\n- a\n- b\n";
+    placeCards(b, [
+      { card: { id: "n", kind: "note", md, look: "note" }, place: { x: 0, y: 0, w: 300 } },
+      { card: { id: "i", kind: "image", src: "abc.png" }, place: { x: 400, y: 0, w: 200 } },
+      { card: { id: "j", kind: "image", src: "def.png" }, place: { x: 400, y: 300, w: 200 } },
+    ], { copy: false });
+    expect(imageIntoNote(b, "i", "n", "assets/abc.png", md.indexOf("- a"))).toBe(true);
+    expect((b.cards[0] as { md: string }).md).toBe("# Plan\n\nStep one\n\n![](assets/abc.png)\n\n- a\n- b");
+    expect(imageIntoNote(b, "j", "n", "assets/def.png", 0)).toBe(true);
+    expect((b.cards[0] as { md: string }).md).toBe("![](assets/def.png)\n\n# Plan\n\nStep one\n\n![](assets/abc.png)\n\n- a\n- b");
     expect(danglingRefs(b)).toEqual([]);
   });
 
@@ -692,12 +769,12 @@ describe("board action edits (core edit)", () => {
     makeCompare(k2, "k", ["p", "q"], { x: 0, y: 0, w: 300 });
     expect(k2.cards.find((x) => x.id === "k")!.tilt).toBeUndefined();
     const into = base([]);
-    const ids = placeCards(into, [{ card: { id: "n", kind: "note", md: "x", bg: true, tilt: true }, place: { x: 0, y: 0, w: 100 } }], { copy: true });
+    const ids = placeCards(into, [{ card: { id: "n", kind: "note", md: "x", look: "note", tilt: true }, place: { x: 0, y: 0, w: 100 } }], { copy: true });
     expect(into.cards.find((x) => x.id === ids.cards.n)!.tilt).toBe(true);
   });
 
   it("renameTitleRefs rewrites [[old]] in notes, descriptions and text sidenotes", () => {
-    const b = base([{ id: "n", kind: "note", md: "see [[ Foo ]] and [[foo.bar]]", bg: false }, { ...code("a"), desc: "[[foo]]" }]);
+    const b = base([{ id: "n", kind: "note", md: "see [[ Foo ]] and [[foo.bar]]", look: "text" }, { ...code("a"), desc: "[[foo]]" }]);
     b.sidenotes = [{ id: "s", at: { card: "a" }, kind: "text", md: "[[FOO]]" }];
     renameTitleRefs(b, "foo", "Baz");
     expect((b.cards[0] as { md: string }).md).toBe("see [[Baz]] and [[foo.bar]]");

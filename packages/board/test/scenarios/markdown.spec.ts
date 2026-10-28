@@ -52,9 +52,9 @@ export function mdBoard(): { b: Board; note: NoteCard; text: NoteCard } {
   const sch = card("Scheduler.schedule");
   sch.desc = "Picks **prefill** first, then `decode`; see [[Notes on allocate]]";
   put(b, sch, 640, 60, 520);
-  const note: NoteCard = { id: "n1", kind: "note", md: RICH, bg: true };
+  const note: NoteCard = { id: "n1", kind: "note", md: RICH, look: "note" };
   put(b, note, 60, 60, 520);
-  const text: NoteCard = { id: "t1", kind: "note", md: "# Reading notes\nTwo lines, old style\n- a list\n- with block_manager", size: "body" };
+  const text: NoteCard = { id: "t1", kind: "note", md: "# Reading notes\nTwo lines, old style\n- a list\n- with block_manager", look: "text", size: "body" };
   put(b, text, 60, 900, 360);
   b.sidenotes.push({ id: "sn1", at: { card: sch.id }, kind: "text", md: "Sidenote with $x^2$ and **bold**" } as any);
   b.cam = { x: 0, y: 0, z: 0.8 };
@@ -75,7 +75,7 @@ async function renderIn(themes: string[]) {
   for (const theme of themes) {
     const { b } = mdBoard();
     // 视野外很远的一张：先放纯文字，空闲时补渲染
-    put(b, { id: "far", kind: "note", md: "far **away** $y^2$", bg: true } as NoteCard, 9000, 6000, 300);
+    put(b, { id: "far", kind: "note", md: "far **away** $y^2$", look: "note" } as NoteCard, 9000, 6000, 300);
     const h = await open({ board: b, light, w: 1400, h: 950, settings: { theme } as any });
     // the far Note renders when the board is idle (its plain text first)
     await until(h, "the far Note is rendered", () => h.page.evaluate(() => !!document.querySelector('.card[data-id="far"] .nbody strong') && !!document.querySelector('.card[data-id="far"] .katex')));
@@ -191,7 +191,7 @@ test("markdownEdit", async () => {
  *  and the static Note draws the same highlighter as the editor: one unbroken band over a phrase, its spaces and bold inside it */
 test("markdownHighlight", async () => {
   const b = emptyBoard("b1", "highlight");
-  put(b, { id: "n1", kind: "note", md: "Plain words in a note with **bold** inside", bg: true } as NoteCard, 60, 60, 460);
+  put(b, { id: "n1", kind: "note", md: "Plain words in a note with **bold** inside", look: "note" } as NoteCard, 60, 60, 460);
   b.cam = { x: 0, y: 0, z: 1.4 };
   const h = await open({ board: b, light, w: 1000, h: 640 });
   const pg = h.page;
@@ -315,7 +315,7 @@ test("markdownHighlightBand", async () => {
   const ok: Record<string, boolean> = {};
   for (const lightPass of [true, false]) {
     const b = emptyBoard("b1", "highlight band");
-    put(b, { id: "n1", kind: "note", md: "Before ==marker band over words and 中文的某个中间量== end", bg: true } as NoteCard, 60, 60, 640);
+    put(b, { id: "n1", kind: "note", md: "Before ==marker band over words and 中文的某个中间量== end", look: "note" } as NoteCard, 60, 60, 640);
     b.cam = { x: 0, y: 0, z: 1.4 };
     const h = await open({ board: b, light: lightPass, w: 1100, h: 400, settings: { theme: "warm-ink" } as never });
     const pg = h.page;
@@ -391,7 +391,7 @@ test("markdownHighlightBand", async () => {
  *  after the mouse is let go / the last key, and it goes at once when the selection collapses */
 test("markdownToolbarWaitsForStillSelection", async () => {
   const b = emptyBoard("b1", "settle");
-  put(b, { id: "n1", kind: "note", md: "Select some of these words slowly with the mouse", bg: true } as NoteCard, 60, 60, 520);
+  put(b, { id: "n1", kind: "note", md: "Select some of these words slowly with the mouse", look: "note" } as NoteCard, 60, 60, 520);
   b.cam = { x: 0, y: 0, z: 1.4 };
   const h = await open({ board: b, light, w: 1000, h: 640 });
   const pg = h.page;
@@ -442,7 +442,7 @@ test("markdownToolbarWaitsForStillSelection", async () => {
 test("markdownMarksAroundFormula", async () => {
   const b = emptyBoard("b1", "marks");
   const src = "**bold with $x^2$ inside** and ==marked :tada: emoji== and *a $y$* done";
-  put(b, { id: "n1", kind: "note", md: src, bg: true } as NoteCard, 60, 60, 560);
+  put(b, { id: "n1", kind: "note", md: src, look: "note" } as NoteCard, 60, 60, 560);
   b.cam = { x: 0, y: 0, z: 1.4 };
   const h = await open({ board: b, light, w: 1000, h: 640 });
   const pg = h.page;
@@ -474,7 +474,7 @@ test("markdownMarksAroundFormula", async () => {
 test("copyPartialMarkBalanced", async () => {
   const b = emptyBoard("b1", "copy");
   const src = "==Plain words== **Bold words** *Ital words* ~~Gone words~~ `Code words` [Link words](https://e.com/p) ==aa $x$ bb== end";
-  put(b, { id: "n1", kind: "note", md: src, bg: true } as NoteCard, 60, 60, 760);
+  put(b, { id: "n1", kind: "note", md: src, look: "note" } as NoteCard, 60, 60, 760);
   b.cam = { x: 0, y: 0, z: 1.2 };
   const h = await open({ board: b, light, w: 1100, h: 700 });
   const pg = h.page;
@@ -597,7 +597,7 @@ test("markdownLazyRender", async () => {
   const b = emptyBoard("b1", "lazy");
   const cols = 16;
   for (let i = 0; i < 320; i++) {
-    const c: NoteCard = { id: `z${i}`, kind: "note", md: `## Note ${i}\n\nsome **bold** and $x_${i % 9}^2$ text\n\n- [ ] task ${i}\n- item\n\n\`\`\`python\ndef f${i}(x):\n    return x * ${i}\n\`\`\``, ...(i % 2 ? { bg: true } : {}) };
+    const c: NoteCard = { id: `z${i}`, kind: "note", md: `## Note ${i}\n\nsome **bold** and $x_${i % 9}^2$ text\n\n- [ ] task ${i}\n- item\n\n\`\`\`python\ndef f${i}(x):\n    return x * ${i}\n\`\`\``, look: i % 2 ? "note" : "text" };
     put(b, c, (i % cols) * 460, Math.floor(i / cols) * 520, 400);
   }
   b.cam = { x: 40, y: 40, z: 1 };
@@ -705,7 +705,7 @@ test("mermaidThemes", async () => {
   const looks = want === "all" ? LOOKS : want ? want.split(",") : ["warm-ink", "newspaper"];
   for (const theme of looks) {
     const b = emptyBoard("b1", "mermaid");
-    DIAGRAMS.forEach(([k, src], i) => put(b, { id: `m${i}`, kind: "note", md: `**${k}**\n\n\`\`\`mermaid\n${src}\n\`\`\``, bg: true } as NoteCard, 40 + (i % 3) * 470, 40 + Math.floor(i / 3) * 880, 440));
+    DIAGRAMS.forEach(([k, src], i) => put(b, { id: `m${i}`, kind: "note", md: `**${k}**\n\n\`\`\`mermaid\n${src}\n\`\`\``, look: "note" } as NoteCard, 40 + (i % 3) * 470, 40 + Math.floor(i / 3) * 880, 440));
     b.cam = { x: 0, y: 0, z: 0.72 };
     const h = await open({ board: b, light: true, w: 1400, h: 1260, settings: { theme } as any });
     const pg = h.page;
@@ -732,7 +732,7 @@ test("mermaidThemes", async () => {
   }
   // 换到字体不一样的主题：图按新字体重画
   const b = emptyBoard("b1", "mermaid");
-  put(b, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[0][1]}\n\`\`\``, bg: true } as NoteCard, 40, 40, 440);
+  put(b, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[0][1]}\n\`\`\``, look: "note" } as NoteCard, 40, 40, 440);
   const h = await open({ board: b, light: true, w: 900, h: 700, settings: { theme: "warm-ink" } as any });
   const pg = h.page;
   await pg.waitForSelector(".mmd.ok svg", { timeout: 5000 });
@@ -743,7 +743,7 @@ test("mermaidThemes", async () => {
   await close(h);
   // Note 变宽：放得下了，mindmap 换回横着排
   const b2 = emptyBoard("b1", "mermaid");
-  put(b2, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[5][1]}\n\`\`\``, bg: true } as NoteCard, 40, 40, 300);
+  put(b2, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[5][1]}\n\`\`\``, look: "note" } as NoteCard, 40, 40, 300);
   const h2 = await open({ board: b2, light: true, w: 1100, h: 600 });
   await h2.page.waitForSelector(".mmd.ok svg", { timeout: 5000 });
   const size = () => h2.page.evaluate(() => { const s = document.querySelector(".mmd.ok svg")!; return [+s.getAttribute("width")!, +s.getAttribute("height")!]; });
@@ -773,7 +773,7 @@ test("mermaidThemeFontLoads", async () => {
       if (preload) void document.fonts.load('1em "SlowTest"');
     }), [CSS, preload] as const);
   };
-  const diagram = () => { const b = emptyBoard("b1", "mermaid"); put(b, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[0][1]}\n\`\`\``, bg: true } as NoteCard, 40, 40, 440); return b; };
+  const diagram = () => { const b = emptyBoard("b1", "mermaid"); put(b, { id: "m0", kind: "note", md: `\`\`\`mermaid\n${DIAGRAMS[0][1]}\n\`\`\``, look: "note" } as NoteCard, 40, 40, 440); return b; };
   const size = (pg: Page) => pg.evaluate(() => { const s = document.querySelector(".mmd.ok svg")!; return { w: +s.getAttribute("width")!, h: +s.getAttribute("height")!, rects: [...s.querySelectorAll("rect")].map((r) => +(+r.getAttribute("width")!).toFixed(1)) }; });
 
   // the diagram drawn with the font loaded from the start

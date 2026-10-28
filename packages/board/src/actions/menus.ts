@@ -12,9 +12,9 @@ import { addLink, callOn, manualCall, openVars, setLinkEditing, setLinkStyle, se
 import { addToStudyScope, attachCall, calleeMatches, expandCall, expandedTo, isLibCall, openMarkPicker, selectFlow, startWalk } from "./flow";
 import { jumpTo } from "./nav";
 import { searchAllLangs, drawManual, addGenerated } from "./chains";
-import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleTilt, toggleSection, toggleWrap, unmerge, toggleNoBg, arrangeItem, fitSections, tidyUp } from "./edit";
-import { newFreeCode, newNote, pasteText, cardFromLines } from "./create";
-import { openAddNote, setMarkColor, setNoteBg, showPeek } from "./notes";
+import { compareCheck, copyLines, deleteLinks, deleteSel, doCompare, duplicateSel, hideLines, mergeCards, mergeCheck, moveToNewSection, moveToSection, removeSections, separate, toggleCollapse, toggleHide, toggleHl, toggleLock, toggleTilt, toggleSection, toggleWrap, unmerge, toggleBg, arrangeItem, fitSections, tidyUp } from "./edit";
+import { newFreeCode, newNote, newText, pasteText, cardFromLines } from "./create";
+import { openAddNote, setMarkColor, showPeek, turnNote } from "./notes";
 import { canLinkList, mergeIntoLinkList, retryMeta, setListRich, setWebStyle } from "./web";
 import { unlinkShared } from "./edit";
 import { deleteEverywhere, pasteFromBoard, copyCardsSel, cutCardsSel } from "./shared";
@@ -143,18 +143,20 @@ function cardItems(id: string, x: number, y: number): Item[] {
     { label: "Start Card", checked: !!placeOf(id).start, run: () => toggleStart(id) },
     ...tail,
   ];
-  if (c.kind === "note" && c.hand) return [
-    { label: "Color", sub: HAND_COLORS.map((k) => ({ label: k[0].toUpperCase() + k.slice(1), checked: c.hand === k, run: () => setMarkColor(id, k) })) },
-    { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
-    ...tail,
-  ];
-  if (c.kind === "note") return [
-    { label: c.bg ? "Hide Background" : "Show Background", run: () => setNoteBg(id, !c.bg) },
-    // Note / Text 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高
-    { label: "Fit Content", kbd: kbd("fitContent"), disabled: placeOf(id).h ? false : "Already as tall as its content", run: () => fitContent([id]) },
-    { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] },
-    ...tail,
-  ];
+  if (c.kind === "note") {
+    const edit: Item = { label: "Edit", sub: [{ label: "Text", kbd: "Double-click", run: () => setEditing({ kind: "note", id }) }, lockItem] };
+    if (c.look === "mark") return [
+      { label: "Color", sub: HAND_COLORS.map((k) => ({ label: k[0].toUpperCase() + k.slice(1), checked: c.hand === k, run: () => setMarkColor(id, k) })) },
+      edit,
+      ...tail,
+    ];
+    // Box 不和别的互转（底色在选中时的工具条上）
+    if (c.look === "box") return [edit, ...tail];
+    // Note 只定高度（宽度是折行用的，不动）：Fit Content = 回到跟着内容长高。Text 没有改高度的把手，只有旧白板里定了高度的才需要它
+    const fit: Item = { label: "Fit Content", kbd: kbd("fitContent"), disabled: placeOf(id).h ? false : "Already as tall as its content", run: () => fitContent([id]) };
+    if (c.look === "text") return [{ label: "Turn into Note", run: () => turnNote(id, "note") }, ...(placeOf(id).h ? [fit] : []), edit, ...tail];
+    return [{ label: "Turn into Text", run: () => turnNote(id, "text") }, fit, edit, ...tail];
+  }
   if (c.kind === "web") return [
     { label: "Open in Browser", kbd: "Double-click", run: () => openLink(c.url) },
     { label: "Refresh Preview", run: () => retryMeta(c.id) },
@@ -178,7 +180,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
   ];
   if (c.kind === "image") return [
     { label: "Fit Content", kbd: kbd("fitContent"), run: () => fitContent([id]) },
-    { label: "Background", checked: !!c.bg, run: () => toggleNoBg(id) },
+    { label: "Background", checked: !!c.bg, run: () => toggleBg(id) },
     { label: "Edit", sub: [
       { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id }) },
       lockItem,
@@ -215,7 +217,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     { label: "Show All Hidden Lines", disabled: !anyHidden, run: () => mutate((b) => { const k = findCard(b, c.id)!.card as CodeCard; k.segments.forEach((s) => (s.hidden = undefined)); }) },
     null,
     { label: "Wrap Lines", kbd: kbd("wrap"), checked: !!c.wrap, run: () => toggleWrap([c.id]) },
-    ...(col ? [] : [{ label: "No Background", checked: !!c.nobg, run: () => toggleNoBg(c.id) } as Item]),
+    ...(col ? [] : [{ label: "Background", checked: c.bg !== false, run: () => toggleBg(c.id) } as Item]),
   ];
   // 界面上已经有的（双击标题改名、标题栏的 commit 按钮、Copy Code 图标、⌘D）不进菜单
   const edit: Item[] = [
@@ -299,8 +301,8 @@ function multiItems(): Item[] {
 export function canvasMenu(x: number, y: number) {
   const w = toWorld(x - boardOffset().x, y - boardOffset().y);
   openMenu([
-    { label: "New Text", kbd: "T", run: () => newNote(w, false) },
-    { label: "New Note", kbd: "N", run: () => newNote(w, true) },
+    { label: "New Text", kbd: kbd("newText"), run: () => newText(w) },
+    { label: "New Note", kbd: kbd("newNote"), run: () => newNote(w) },
     { label: "New Code", run: () => newFreeCode(w) },
     { label: "Add Function…", kbd: kbd("search"), run: () => setPaletteOpen({ mode: "code" }) },
     // 复制的是别的白板上的卡：默认贴成共享卡（设置里可以换），⌥ 是另一种

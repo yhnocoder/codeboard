@@ -53,7 +53,7 @@ export const ALL_MD = [
   "# KV cache 笔记", "", MD.inline, "", MD.lists, "", MD.tasks, "", MD.table, "", MD.quote, "", MD.refs, "", MD.math, "", codeBlock("python"), "", MD.image, "", MD.annot, "", MD.footnote, "", MD.details,
 ].join("\n");
 
-export const noteAt = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, bg: true, ...o });
+export const noteAt = (id: string, md: string, o: Partial<NoteCard> = {}): NoteCard => ({ id, kind: "note", md, look: "note", ...o });
 
 const svgUrl = (s: string) => `data:image/svg+xml;base64,${btoa(s)}`;
 const BROKEN = "data:image/png;base64,AAAA";
@@ -109,7 +109,7 @@ export function subBoard(id: string, name: string, o: { nested?: string; empty?:
   const put = (c: Board["cards"][0], x: number, y: number, w: number, h?: number) => { b.cards.push(c); b.place[c.id] = { x, y, w, ...(h ? { h } : {}) }; };
   const s = codeCard(`${id}-s`, "schedule"), p = codeCard(`${id}-p`, "preempt"), a = codeCard(`${id}-a`, "canAppend");
   put(s, 40, 80, 520); put(p, 640, 80, 420); put(a, 640, 420, 420);
-  put({ id: `${id}-n`, kind: "note", md: "## 抢占\n\nblock 不够就抢占最后进来的请求。", bg: true }, 40, 700, 360);
+  put({ id: `${id}-n`, kind: "note", md: "## 抢占\n\nblock 不够就抢占最后进来的请求。", look: "note" }, 40, 700, 360);
   if (o.nested) put({ id: `${id}-sub`, kind: "board", board: o.nested, title: "Block Manager" }, 460, 700, 420, 260);
   const line = (c: typeof s, word: string) => { const sg = c.segments[0]; return sg.start + Math.max(0, sg.text.findIndex((t) => t.includes(word))); };
   b.links.push(

@@ -110,7 +110,7 @@ async function questions(res: Record<string, unknown>) {
   const b = emptyBoard("bQ", "nano-vllm · Scheduler");
   const alloc = nv("BlockManager.allocate");
   put(b, alloc, 60, 80, 640);
-  const note = { id: "nAns", kind: "note" as const, md: "**prefix caching 是一条链**\n\n每块的 hash 带上前一块的 h：block_manager 只认整条前缀，中间一块不同后面全不命中。", bg: true };
+  const note = { id: "nAns", kind: "note" as const, md: "**prefix caching 是一条链**\n\n每块的 hash 带上前一块的 h：block_manager 只认整条前缀，中间一块不同后面全不命中。", look: "note" };
   b.cards.push(note); b.place[note.id] = { x: 760, y: 80, w: 360 };
   const other: QuestionItem[] = [
     { board: "bMR", boardName: "nano-vllm · ModelRunner", sticker: "k1", card: "c1", title: "ModelRunner.capture_cudagraph", file: "model_runner.py", line: 216, md: "CUDA graph 为什么只在 decode 用？", done: false },
@@ -198,7 +198,7 @@ function schedBoard() {
   const sch = nv("Scheduler.schedule"), can = nv("BlockManager.can_allocate"), alloc = nv("BlockManager.allocate");
   put(b, sch, 60, 80, 640); put(b, can, 780, 80, 600); put(b, alloc, 780, 640, 600);
   b.place[sch.id].start = true;
-  const note = { id: "nPC", kind: "note" as const, md: "## prefix caching\n\n`block_manager.can_allocate` 只认整条前缀：cost $O(n)$ per seq, see __init__.", bg: true };
+  const note = { id: "nPC", kind: "note" as const, md: "## prefix caching\n\n`block_manager.can_allocate` 只认整条前缀：cost $O(n)$ per seq, see __init__.", look: "note" };
   b.cards.push(note); b.place[note.id] = { x: 1460, y: 80, w: 380 };
   b.sections.push({ id: "secPC", title: "Prefix caching", x: 1430, y: 30, w: 440, h: 360 });
   b.place[note.id].section = "secPC";

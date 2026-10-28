@@ -29,7 +29,7 @@ function setup() {
   const left = () => fs.readdirSync(path.join(dir, "assets")).sort();
   return { dir, store, asset, json, left };
 }
-const note = (id: string, md: string): NoteCard => ({ id, kind: "note", md, bg: true });
+const note = (id: string, md: string): NoteCard => ({ id, kind: "note", md, look: "note" });
 
 describe("sweeping unused images", () => {
   it("deletes an unreferenced image older than 7 days and keeps referenced and recent ones", async () => {
@@ -47,7 +47,7 @@ describe("sweeping unused images", () => {
     const { store, asset, json, left } = setup();
     for (const k of ["1", "2", "3", "4"]) asset(`${k.repeat(16)}-1x1.png`, 30);
     json("group/b2.json", { ...emptyBoard("b2", "two"), cards: [note("n", "![](assets/1111111111111111-1x1.png)")] });
-    json("cards/n9.json", { version: 7, card: note("n9", "![x](assets/2222222222222222-1x1.png)"), sidenotes: [] });
+    json("cards/n9.json", { version: 8, card: note("n9", "![x](assets/2222222222222222-1x1.png)"), sidenotes: [] });
     json(".trash/b3.json", { ...emptyBoard("b3", "deleted"), cards: [note("n", "![](assets/3333333333333333-1x1.png)")] });
     const b = { ...emptyBoard("b4", "open"), cards: [note("n", "")] };
     await store.save(b);

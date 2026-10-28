@@ -7,7 +7,7 @@ const card = (id: string) => `.card[data-id="${id}"]`;
 const md = (h: Host, id: string) => (h.board().cards.find((c) => c.id === id) as NoteCard).md;
 function board(notes: { id: string; md: string; w: number; x?: number; y?: number }[]) {
   const b = emptyBoard("b1", "markdown blocks");
-  notes.forEach((n, i) => put(b, { id: n.id, kind: "note", md: n.md, bg: true } as NoteCard, n.x ?? 60 + i * 470, n.y ?? 80, n.w));
+  notes.forEach((n, i) => put(b, { id: n.id, kind: "note", md: n.md, look: "note" } as NoteCard, n.x ?? 60 + i * 470, n.y ?? 80, n.w));
   b.cam = { x: 0, y: 0, z: 1 };
   return b;
 }

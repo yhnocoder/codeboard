@@ -18,10 +18,10 @@ const LONG = [
 ].join("\n");
 
 /** Notes n0…, each `w` wide; `h` (if given) is a fixed height */
-function board(notes: { md: string; h?: number; bg?: boolean }[]): Board {
+function board(notes: { md: string; h?: number; look?: "note" | "text" }[]): Board {
   const b = emptyBoard("b1", "note sizing");
   notes.forEach((n, i) => {
-    b.cards.push({ id: `n${i}`, kind: "note", md: n.md, bg: n.bg ?? true } as NoteCard);
+    b.cards.push({ id: `n${i}`, kind: "note", md: n.md, look: n.look ?? "note" } as NoteCard);
     b.place[`n${i}`] = { x: 60 + i * 460, y: 120, w: 400, ...(n.h ? { h: n.h } : {}) };
   });
   b.cam = { x: 0, y: 0, z: 1 };
@@ -111,9 +111,9 @@ test("noteGhostStaysInCard", async () => {
   check("noteGhostStaysInCard ghost visible in body", !!gh && gh.bottom <= Math.min(body.bottom, c.bottom) + 0.5 && gh.top >= body.top - 0.5, { gh, body, card: c });
 });
 
-/** Fit Content is in the menu of a Note and of a Text; it grows the card to its content, animated, in one undo step */
+/** Fit Content is in the menu of a Note and of a Text with a fixed height (an old board's); it grows the card to its content, animated, in one undo step */
 test("noteTextFitContent", async () => {
-  const h = await open({ board: board([{ md: LONG, h: 150 }, { md: "A Text card that was a Note with a fixed height.\n\nSecond paragraph.\n\nThird.", h: 40, bg: false }]), light, w: 1100, h: 700 });
+  const h = await open({ board: board([{ md: LONG, h: 150 }, { md: "A Text card that was a Note with a fixed height.\n\nSecond paragraph.\n\nThird.", h: 40, look: "text" }]), light, w: 1100, h: 700 });
   const pg = h.page;
   await idle(h);
   await cardShot(h, "n0", "05-fit-content-before");

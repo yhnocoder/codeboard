@@ -1,6 +1,6 @@
-import { For, Show, createEffect, createMemo, createSignal, on } from "solid-js";
-import { findCard, mdHeading, HAND_COLORS, type NoteCard } from "@codeboard/core";
-import { state, mutate, isSel, sel, placeOf } from "../state/store";
+import { For, Match, Show, Switch, createEffect, createMemo, createSignal, on } from "solid-js";
+import { mdHeading, BOX_FILLS, HAND_COLORS, type NoteCard } from "@codeboard/core";
+import { state, isSel, sel, placeOf } from "../state/store";
 import { editing } from "../state/ui";
 import { reduceMotion } from "../state/camera";
 import { Editable } from "../ui/Editable";
@@ -11,7 +11,7 @@ import { below } from "../ui/Menu";
 export function NoteBody(p: { card: NoteCard }) {
   const c = () => p.card;
   // 卡头：用户改过的名字 → Markdown 开头的标题 → Note。只在 md 变了时重算（只看第一行非空的）
-  const heading = createMemo(() => (c().bg ? mdHeading(c().md) : ""));
+  const heading = createMemo(() => (c().look === "note" ? mdHeading(c().md) : ""));
   // 卡头的名字就是开头的标题时，正文里不再显示它（设置 noteHeadingInBody 可以留着）：只是显示上藏起来，Markdown 里还在，编辑时照常出现。
   // 编辑时整行卡头收起（folded，··· 留在右上角），标题从正文上沿滑出来，卡片高度不变（foldHeader）；退出时反过来，滑回去的那一会儿 sliding 让它先别藏
   const hideHead = () => !c().title && !!heading() && !state.host.settings.noteHeadingInBody;
@@ -24,22 +24,26 @@ export function NoteBody(p: { card: NoteCard }) {
     queueMicrotask(() => foldHeader(c().id, now, setFolded, () => setSliding(false)));
   }));
   return (
-    <Show when={c().bg} fallback={
-      <Show when={c().hand} fallback={
-        <Editable class={`tx st-${c().size ?? "body"}`} kind="note" id={c().id} value={c().md} multiline md placeholder="Type something…"
-          style={c().bold ? { "font-weight": 650 } : undefined} onCommit={(v) => A.setNoteText(c().id, v)} />
-      }>
-        {/* Mark：手写字，统一字号，颜色在卡上（hc-*） */}
-        <Editable class="tx hand" kind="note" id={c().id} value={c().md} multiline md placeholder="Write a mark…" onCommit={(v) => A.setNoteText(c().id, v)} />
-      </Show>
+    <Switch fallback={
+      <Editable class={`tx st-${c().size ?? "body"}`} kind="note" id={c().id} value={c().md} multiline md placeholder="Type something…"
+        style={c().bold ? { "font-weight": 650 } : undefined} onCommit={(v) => A.setNoteText(c().id, v)} />
     }>
+      {/* Mark：手写字，统一字号，颜色在卡上（--hc） */}
+      <Match when={c().look === "mark"}>
+        <Editable class="tx hand" kind="note" id={c().id} value={c().md} multiline md placeholder="Write a mark…" onCommit={(v) => A.setNoteText(c().id, v)} />
+      </Match>
+      <Match when={c().look === "box"}>
+        <Editable class="tx bx" kind="note" id={c().id} value={c().md} multiline md placeholder="Type…" onCommit={(v) => A.setNoteText(c().id, v)} />
+      </Match>
+      <Match when={c().look === "note"}>
       <div class="chead" classList={{ fold: folded() }} data-drag>
         <Show when={placeOf(c().id).locked}><button class="lockb" data-tip="Unlock" data-nodrag onClick={() => A.toggleLock([c().id])}><Icon name="lock" /></button></Show>
         <span class="kind">¶</span><span class="ctitle sys" classList={{ untitled: !c().title && !heading() }}>{c().title || heading() || "Note"}</span><span class="grow" />
         <button class="ib" aria-label="Note Menu" data-tip="More Actions" data-nodrag onClick={(e) => A.cardMenu(c().id, ...below(e.currentTarget))}><Icon name="more" /></button>
       </div>
       <Editable class={`nbody${hideHead() && !sliding() ? " hidehead" : ""}${folded() ? " fold" : ""}`} kind="note" id={c().id} value={c().md} multiline md placeholder="Write a note… Markdown and $math$ work" onCommit={(v) => A.setNoteText(c().id, v)} />
-    </Show>
+      </Match>
+    </Switch>
   );
 }
 
@@ -94,22 +98,22 @@ function foldHeader(id: string, entering: boolean, setFolded: (v: boolean) => vo
   anims[0].onfinish = anims[0].oncancel = () => { setFolded(false); done(); for (const a of anims) a.cancel(); };
 }
 
-/** Text 选中时上方的小工具条：粗体、加背景；Mark 的是四个颜色点 */
-export function TextToolbar(p: { card: NoteCard }) {
-  const set = (f: (n: NoteCard) => void) => mutate((b) => { const n = findCard(b, p.card.id)?.card; if (n?.kind === "note") f(n); });
+/** 选中时上方的小工具条：Box 的底色、Mark 的颜色；Text 没有 */
+export function WritingToolbar(p: { card: NoteCard }) {
   return (
     <Show when={isSel(p.card.id) && sel.cards.length === 1 && editing()?.id !== p.card.id}>
-      <Show when={p.card.hand} fallback={
-        <div class="ttb pill" data-nodrag>
-          <button class="tbtn" classList={{ on: !!p.card.bold }} style={{ "font-weight": 700 }} onClick={() => set((n) => { n.bold = !n.bold || undefined; })}>B</button>
-          <span class="sep" />
-          <button class="tbtn" onClick={() => A.setNoteBg(p.card.id, true)}>Show Background</button>
-        </div>
-      }>
-        <div class="ttb pill hdots" data-nodrag>
-          <For each={HAND_COLORS}>{(k) => <button class={`hdot hc-${k}`} classList={{ on: p.card.hand === k }} aria-label={k} data-tip={k[0].toUpperCase() + k.slice(1)} onClick={() => A.setMarkColor(p.card.id, k)} />}</For>
-        </div>
-      </Show>
+      <Switch>
+        <Match when={p.card.look === "box"}>
+          <div class="ttb pill bdots" data-nodrag>
+            <For each={BOX_FILLS}>{(k) => <button class={`bdot bf-${k}`} classList={{ on: (p.card.fill ?? "yellow") === k }} aria-label={k} data-tip={k[0].toUpperCase() + k.slice(1)} onClick={() => A.setBoxFill(p.card.id, k)} />}</For>
+          </div>
+        </Match>
+        <Match when={p.card.look === "mark"}>
+          <div class="ttb pill hdots" data-nodrag>
+            <For each={HAND_COLORS}>{(k) => <button class={`hdot hc-${k}`} classList={{ on: p.card.hand === k }} aria-label={k} data-tip={k[0].toUpperCase() + k.slice(1)} onClick={() => A.setMarkColor(p.card.id, k)} />}</For>
+          </div>
+        </Match>
+      </Switch>
     </Show>
   );
 }

@@ -67,7 +67,7 @@ const PEEK_DELAY = 260;
 /** 预览里最多几格（两栏）：卡更多时最后一格是「+N more」 */
 const PEEK_SLOTS = 6;
 const KIND_ICON: Record<Card["kind"], string> = { code: "code", note: "note", image: "image", web: "web", links: "link", compare: "swap", board: "boards" };
-const iconFor = (c: Card) => (c.kind === "note" && !c.bg ? "text" : KIND_ICON[c.kind]);
+const iconFor = (c: Card) => (c.kind === "note" ? c.look : KIND_ICON[c.kind]);
 
 /** 折叠的 Section 里的卡：从左上往下排的前几张（种类图标 + 名字），点一张 = 展开 Section、镜头移到那张卡 */
 function Peek(p: { id: string; out: boolean }) {

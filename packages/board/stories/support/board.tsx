@@ -2,7 +2,7 @@
 // 这样小样里看到的和插件里一样
 import { createEffect, createMemo, on, onCleanup, onMount, untrack } from "solid-js";
 import {
-  DEFAULT_SETTINGS, emptyBoard, type Board, type Card, type CodeAnnot, type CodeCard, type NoteCard, type HandColor, type Place, type Settings, type SharedInfo,
+  DEFAULT_SETTINGS, emptyBoard, type Board, type Card, type CodeAnnot, type CodeCard, type NoteCard, type BoxFill, type HandColor, type Place, type Settings, type SharedInfo,
   type Skeleton, type Stale, type ThemeId, type HostToBoard,
 } from "@codeboard/core";
 import { App } from "../../src/App";
@@ -130,9 +130,10 @@ export function scene(name: string) {
 }
 export type Group = ReturnType<ReturnType<typeof scene>["at"]>;
 
-export const noteCard = (id: string, md: string, title?: string): NoteCard => ({ id, kind: "note", md, bg: true, ...(title ? { title } : {}) });
-export const textCard = (id: string, md: string): NoteCard => ({ id, kind: "note", md, bg: false, size: "body" });
-export const markCard = (id: string, md: string, hand: HandColor): NoteCard => ({ id, kind: "note", md, bg: false, hand });
+export const noteCard = (id: string, md: string, title?: string): NoteCard => ({ id, kind: "note", md, look: "note", ...(title ? { title } : {}) });
+export const textCard = (id: string, md: string): NoteCard => ({ id, kind: "note", md, look: "text", size: "body" });
+export const markCard = (id: string, md: string, hand: HandColor): NoteCard => ({ id, kind: "note", md, look: "mark", hand });
+export const boxCard = (id: string, md: string, fill: BoxFill = "yellow"): NoteCard => ({ id, kind: "note", md, look: "box", fill });
 
 // 段 id 按卡另起：同一段代码要在一块白板上放几张，新版本状态又是按段 id 算的
 export function codeCard(id: string, f: Fixture, o: { title?: string; annots?: (seg: CodeCard["segments"][0]) => CodeAnnot[] } = {}): CodeCard {
