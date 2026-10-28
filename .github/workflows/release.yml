@@ -31,7 +31,7 @@ jobs:
     outputs:
       version: ${{ steps.v.outputs.version }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - id: v
         env:
           REF_TYPE: ${{ github.ref_type }}
@@ -46,7 +46,7 @@ jobs:
       - name: Package the extension
         working-directory: extensions/vscode
         run: npm run package
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with: { name: vsix, path: extensions/vscode/*.vsix, retention-days: 30 }
 
   shots:
@@ -54,14 +54,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { submodules: true }
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/vscode
       - uses: ./.github/actions/chromium
       - name: Screenshots (2x, light and dark)
         run: tools/release/shots.sh test-out/release-shots
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: shots, path: test-out/release-shots, retention-days: 30 }
 
@@ -71,7 +71,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with: { path: out }
       - name: Create the draft release
         env:
@@ -95,8 +95,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+      - uses: actions/setup-node@v6
+        with: { node-version: 22, package-manager-cache: false }
       - name: Check VSCE_PAT for publisher yhnocoder
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
@@ -119,8 +119,8 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/setup-node@v4
-        with: { node-version: 22 }
+      - uses: actions/setup-node@v6
+        with: { node-version: 22, package-manager-cache: false }
       - name: Download the .vsix of the release
         id: vsix
         env:

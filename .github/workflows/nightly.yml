@@ -21,7 +21,7 @@ jobs:
       matrix: { shard: [1, 2] }
     name: harness (${{ matrix.shard }}/2)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: git submodule update --init examples/nano-vllm
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
@@ -32,7 +32,7 @@ jobs:
       - name: Markdown demo
         if: ${{ !cancelled() && matrix.shard == 1 }}
         run: npm test -w @codeboard/markdown-demo
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: "harness-${{ matrix.shard }}", path: test-out/harness/result.json, retention-days: 14, if-no-files-found: ignore }
 
@@ -44,7 +44,7 @@ jobs:
       matrix: { part: [1, 2, 3] }
     name: e2e (${{ matrix.part }}/3)
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - run: git submodule update --init examples/nano-vllm
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/vscode
@@ -53,7 +53,7 @@ jobs:
         if: matrix.part == 3
       - name: VS Code e2e
         run: E2E_PART=${{ matrix.part }} E2E_OUT=$PWD/test-out/e2e npm run e2e
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: "e2e-${{ matrix.part }}", path: test-out/e2e, retention-days: 14 }
 
@@ -61,7 +61,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 }
       - run: git submodule update --init examples/nano-vllm
       - uses: ./.github/actions/setup
@@ -72,7 +72,7 @@ jobs:
           if [ -n "$BASE" ] && [ "$BASE" != "$(git rev-parse HEAD)" ]; then tools/review/checkout-base.sh "$BASE" base; fi
       - name: Perf, a day earlier vs now (and with animated stickers)
         run: tools/review/perf-ab.sh "$([ -d base ] && echo base)" test-out/perf
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: perf, path: test-out/perf, retention-days: 14 }
 
@@ -80,14 +80,14 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: ./.github/actions/setup
       - uses: ./.github/actions/chromium
       - name: Build Storybook
         run: npm run build-storybook
       - name: Open every story
         run: node tools/test/storybook.mjs
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: storybook, path: test-out/storybook/result.json, retention-days: 14, if-no-files-found: ignore }
 
@@ -98,7 +98,7 @@ jobs:
     timeout-minutes: 30
     permissions: { contents: read, actions: read }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with: { fetch-depth: 0 } # the base commit and the diff to it
       - name: Find the previous scheduled nightly run
         id: base
@@ -125,7 +125,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 20
         run: node tools/test/harness.mjs --changed-since="${{ steps.base.outputs.sha }}" --repeat=3 --workers=4 --cap=15 --json=test-out/harness/repeat.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: ${{ !cancelled() }}
         with: { name: repeat, path: test-out/harness/repeat.json, retention-days: 14, if-no-files-found: ignore }
 
@@ -135,13 +135,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v7
         with: { path: test-out/artifacts }
       - name: Publish the impact map
         run: tools/test/publish-impact.sh test-out/artifacts
       - name: Report to the nightly issue
-        uses: actions/github-script@v7
+        uses: actions/github-script@v8
         env:
           JOBS: ${{ toJSON(needs) }}
         with:
