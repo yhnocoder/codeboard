@@ -592,7 +592,7 @@ export const sameCallSite = (l: Pick<Link, "from" | "call">, at: { card: string;
  * 备选就是这一段的代码：qual 一样、文件也一样（备选的 path 相对工作区，段的相对仓库）。只比 qual 不够：同一个
  * DispatchStub 的 CUDA 和 CPU 注册常是两个文件里同名的 at::native::add_kernel
  */
-export const altIsSeg = (a: Pick<CallAlt, "qual" | "path">, s: Pick<Segment, "path" | "symbol">) =>
+export const altIsSeg = (a: Pick<CallAlt, "qual" | "path">, s: Pick<Segment, "path"> & { symbol?: Pick<SymRef, "qual"> }) =>
   !!a.qual && a.qual === s.symbol?.qual && (!a.path || a.path === s.path || a.path.endsWith(`/${s.path}`));
 
 /** 线上显示的文字：名字相同只显示一个；不同显示 a → b；返回值 → logits */
