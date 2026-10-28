@@ -156,9 +156,11 @@ type Scan = {
   ready: Promise<void>;
   /** 文件更新在扫描之后一个接一个跑 */
   queue: Promise<void>;
+  /** 排着、还没开始的文件更新（同一个文件再变只排一次：git checkout 一下来几千个事件，保存还会从 onDidSave 和监听各来一次） */
+  pending: Set<string>;
+  /** 排着、还没开始的第 2 遍重做 / 构建目录重找（一次就够） */
+  retarget?: true; rebuild?: true;
   dead?: true;
-  /** 两遍各用了多少 ms */
-  ms?: number[];
   /** 来自 yaml 的名字（第 1 遍就找它们的文件） */
   yamlNames: Set<string>;
 };
@@ -284,7 +286,7 @@ async function scanHead(x: Scan) {
     if (text !== null) { const rec = scanText(x, abs, text); addRec(x, abs, rec); wantTargets(x, rec); }
     await turn();
   }
-  x.ms = [Math.round(performance.now() - t0)];
+  return Math.round(performance.now() - t0);
 }
 
 /** 所有文件都读过之后一个文件再加的：提到的注册目标、调用拼名字的宏拼出来的 kernel */
@@ -305,22 +307,25 @@ function targetsIn(x: Scan, abs: string, rec: FileRec, text: string) {
 }
 
 /** 第 2 遍：第 1 遍找到的注册目标、拼名字的宏拼出来的 kernel 在哪些文件。文件重新读而不是留着：文本有 ~80 MB 堆 */
-async function scanTargets(x: Scan) {
+async function scanTargets(x: Scan): Promise<number> {
   const t0 = performance.now(), turn = slicer();
   for (const [abs, rec] of [...x.files]) {
-    if (x.dead) return;
+    if (x.dead) break;
     if (isGen(x, abs) || x.files.get(abs) !== rec) continue; // 这期间文件事件已经重做过了
     const text = await readText(abs, false);
     if (text !== null && x.files.get(abs) === rec) targetsIn(x, abs, rec, text);
     await turn();
   }
-  x.ms?.push(Math.round(performance.now() - t0));
-  log("info", `op index: ${x.files.size} files of ${x.t.root} read, ${x.regs.size} dispatch stubs, ${x.pyRegs.size} Python names, ${x.ms?.join(" + ")} ms`);
+  return Math.round(performance.now() - t0);
 }
+const counts = (x: Scan) => `${x.files.size} files of ${x.t.root}, ${x.regs.size} dispatch stubs, ${x.pyRegs.size} Python names`;
 
 /** 扫描范围里的文件变了（保存、新建、在外面改了、删了）：扫描完后只重做这一个文件 */
 function rescanFile(x: Scan, abs: string) {
+  if (x.pending.has(abs)) return;
+  x.pending.add(abs);
   x.queue = x.queue.then(async () => {
+    x.pending.delete(abs); // 从这里开始的改动要再排一次：这次读到的可能是改之前的
     await x.ready;
     if (x.dead) return;
     const text = await readText(abs, false);
@@ -335,15 +340,26 @@ function rescanFile(x: Scan, abs: string) {
       if (!isGen(x, abs)) targetsIn(x, abs, rec, text);
     }
     // 这里加、删、改了拼名字的宏，别的文件里的调用拼出来的东西也变了：重做第 2 遍
-    if (!x.dead && mine() !== before) await scanTargets(x);
+    if (!x.dead && mine() !== before) retarget(x);
   }).catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`));
 }
 
+function retarget(x: Scan) {
+  if (x.retarget) return;
+  x.retarget = true;
+  x.queue = x.queue.then(async () => {
+    x.retarget = undefined;
+    if (x.dead) return;
+    const ms = await scanTargets(x);
+    log("info", `op index: second pass again after a macro changed, ${ms} ms`);
+  }).catch((e) => log("warn", `op index: cannot redo the second pass: ${e instanceof Error ? e.message : e}`));
+}
+
 /**
- * 扫描和目前排着的文件更新都完成了；head = 只等第 1 遍，白板刚打开时点击等 ~2 s 而不是 ~5 s
- * （更新排在整个扫描后面，所以有更新排着时等的也是整个扫描）
+ * 点击只等扫描（head = 只等第 1 遍，白板刚打开时点击等 ~2 s 而不是 ~5 s），不等排着的文件更新：
+ * 每个文件的更新是同步地换掉它那一份（dropRec / addRec），表任何时候都是一致的；git checkout 之后排着的几千个更新不挡点击
  */
-const settled = (x: Scan, head?: "head") => (head ? x.head : x.ready).then(() => x.queue);
+const settled = (x: Scan, head?: "head") => (head ? x.head : x.ready);
 
 /** 这个 PyTorch 的扫描（第一次被要时开始；点击等它完成，之后只查表） */
 export function scanOf(t: OpTable): Scan {
@@ -354,11 +370,15 @@ export function scanOf(t: OpTable): Scan {
     const s: Scan = {
       t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, csrc: path.join(t.root, "torch", "csrc") + path.sep,
       wanted, yamlNames: new Set(wanted.keys()), files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), pasters: new Map(), where: new Map(),
-      head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(),
+      head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(), pending: new Set(),
     };
     const fail = (e: unknown) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`);
-    s.head = whenAnalysisReady().then(() => scanHead(s)).catch(fail);
-    s.ready = s.head.then(() => scanTargets(s)).catch(fail);
+    const first = whenAnalysisReady().then(() => scanHead(s));
+    s.head = first.then(() => undefined, fail);
+    s.ready = first.then(async (a) => {
+      const b = await scanTargets(s);
+      if (!s.dead) log("info", `op index: ${counts(s)}, ${a} + ${b} ms`);
+    }).catch(fail);
     scans.set(t.root, (x = s));
   }
   return x;
@@ -502,7 +522,10 @@ export function opsFileChanged(abs: string) {
 /** compile_commands.json 或 clangd 的参数变了：生成的文件现在可能在别处 */
 export function opsBuildChanged() {
   for (const x of scans.values()) {
+    if (x.rebuild) continue;
+    x.rebuild = true;
     x.queue = x.queue.then(async () => {
+      x.rebuild = undefined;
       await x.ready;
       if (x.dead) return;
       for (const abs of [...x.files.keys()]) if (isGen(x, abs)) dropRec(x, abs);

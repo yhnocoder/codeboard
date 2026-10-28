@@ -1,7 +1,8 @@
 // The op index follows file events after its scan: edited kernels, registrations and the yaml itself, without a new scan
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { execFileSync } from "node:child_process";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Disposable, ExpandResult, Segment } from "@codeboard/core";
 import { expand } from "../src/resolve";
 import { resetIndex, watchNameIndex } from "../src/nameindex";
@@ -19,6 +20,31 @@ const click = (s: Segment, re: RegExp, name: string) => expand({ ...at(s, re, na
 const target = (r: ExpandResult) => ("card" in r ? `${r.card.segments[0].path} ${r.card.segments[0].symbol?.qual}` : r);
 const edit = (rel: string, from: string | RegExp, to: string) => fs.writeFileSync(abs(rel), fs.readFileSync(abs(rel), "utf8").replace(from, to));
 let watch: Disposable;
+/** How often each file was read (readText asks for an editor buffer first, every time) */
+const reads = new Map<string, number>();
+const unsaved = W.files.unsavedText;
+W.files.unsavedText = (a) => { reads.set(a, (reads.get(a) ?? 0) + 1); return unsaved(a); };
+/** Waits until no update is queued behind the scan */
+async function drained() {
+  const x = scanOf((await opTables())[0]);
+  for (let q = x.queue; ; q = x.queue) { await q; if (q === x.queue) return; }
+}
+/**
+ * A generated Ufunc file whose next read hangs until release(): a named pipe, read in the libuv thread pool. release() writes
+ * `text` into it once the read has begun and leaves a plain file with that text in its place for any later read
+ */
+async function blockingFile(name: string) {
+  const dir = scanOf((await opTables())[0]).genDir!;
+  const p = path.join(dir, name);
+  execFileSync("mkfifo", [p]);
+  const before = reads.get(p) ?? 0;
+  W.fire.change.fire(p);
+  await vi.waitFor(() => expect(reads.get(p) ?? 0).toBe(before + 1));
+  return {
+    p,
+    release(text: string) { fs.writeFileSync(p, text); fs.rmSync(p); fs.writeFileSync(p, text); },
+  };
+}
 
 beforeAll(async () => {
   useWorkspace(W);
@@ -35,8 +61,10 @@ describe("op index updates", () => {
     expect(target(await click(await softmax(), /at::_softmax/, "_softmax"))).toBe("aten/src/ATen/native/cuda/SoftMax.cu at::native::softmax_cuda_out");
     edit("aten/src/ATen/native/cuda/SoftMax.cu", "TORCH_IMPL_FUNC(softmax_cuda_out)", "TORCH_IMPL_FUNC(host_softmax_entry)");
     W.fire.change.fire(abs("aten/src/ATen/native/cuda/SoftMax.cu"));
+    await drained();
     fs.writeFileSync(abs("aten/src/ATen/native/cuda/SoftMaxNew.cu"), "namespace at::native {\n\nTORCH_IMPL_FUNC(softmax_cuda_out) (const Tensor& input, const Tensor& output) {\n}\n\n}\n");
     W.fire.create.fire([abs("aten/src/ATen/native/cuda/SoftMaxNew.cu")]);
+    await drained();
     expect(target(await click(await softmax(), /at::_softmax/, "_softmax"))).toBe("aten/src/ATen/native/cuda/SoftMaxNew.cu at::native::softmax_cuda_out");
   });
   it("follows a registration changed in an unsaved-then-saved editor and a deleted file", async () => {
@@ -44,10 +72,12 @@ describe("op index updates", () => {
     const cu = abs("aten/src/ATen/native/cuda/ScatterGatherKernel.cu");
     W.open.set(cu, fs.readFileSync(cu, "utf8").replace("REGISTER_DISPATCH(scatter_add_stub, &scatter_add_cuda_kernel)", "void scatter_add_fast_kernel(const Tensor& self) {\n}\n\nREGISTER_DISPATCH(scatter_add_stub, &scatter_add_fast_kernel)"));
     W.fire.save.fire(cu);
+    await drained();
     expect(target(await click(await stub(), /scatter_add_stub\(/, "scatter_add_stub"))).toBe("aten/src/ATen/native/cuda/ScatterGatherKernel.cu at::native::scatter_add_fast_kernel");
     W.open.clear();
     fs.rmSync(cu);
     W.fire.delete.fire([cu]);
+    await drained();
     expect(target(await click(await stub(), /scatter_add_stub\(/, "scatter_add_stub"))).toBe("aten/src/ATen/native/cpu/ScatterGatherKernel.cpp at::native::scatter_add_cpu_kernel");
   });
   it("follows a pasting macro changed in a header to the calls in other files", async () => {
@@ -55,19 +85,55 @@ describe("op index updates", () => {
     expect(await foreach()).toEqual(["aten/src/ATen/native/ForeachOpsKernels.cpp:5"]);
     edit("aten/src/ATen/native/ForeachUtils.h", "foreach_tensor_##OP##_scalar_kernel_slow", "foreach_tensor_##OP##_scalar_slow");
     W.fire.change.fire(abs("aten/src/ATen/native/ForeachUtils.h"));
+    await drained();
     expect(await foreach()).toBeUndefined();
     edit("aten/src/ATen/native/ForeachUtils.h", "foreach_tensor_##OP##_scalar_slow", "foreach_tensor_##OP##_scalar_kernel_slow");
     W.fire.change.fire(abs("aten/src/ATen/native/ForeachUtils.h"));
+    await drained();
     expect(await foreach()).toEqual(["aten/src/ATen/native/ForeachOpsKernels.cpp:5"]);
+  });
+  it("answers a click while a file update waits to be read, and reads a file changed many times while it waited only once more", async () => {
+    const b = await blockingFile("UfuncCPU_blocked.cpp");
+    expect(target(await click(await seg("model.py", "run"), /torch\.add/, "add"))).toBe("build/aten/src/ATen/UfuncCUDA_add.cu at::native::ufunc_add_CUDA");
+    for (let i = 0; i < 20; i++) W.fire.change.fire(b.p);
+    b.release("REGISTER_DISPATCH(blocked_stub, &blocked_kernel)\n");
+    await drained();
+    expect(reads.get(b.p)).toBe(2);
+    expect(scanOf((await opTables())[0]).regs.has("blocked_stub")).toBe(true);
+    fs.rmSync(b.p);
+    W.fire.delete.fire([b.p]);
+    await drained();
+  });
+  it("redoes the second pass once for several pasting macros changed while updates were queued", async () => {
+    const b = await blockingFile("UfuncCPU_blocked2.cpp");
+    const other = abs("aten/src/ATen/native/UnaryOps.cpp"), before = reads.get(other) ?? 0;
+    edit("aten/src/ATen/native/ForeachUtils.h", "foreach_tensor_##OP##_scalar_kernel_slow", "foreach_tensor_##OP##_scalar_kernel_slower");
+    edit("aten/src/ATen/native/BinaryOps.cpp", "TORCH_IMPL_FUNC(func##_Scalar_out)", "TORCH_IMPL_FUNC(func##_Scalar_outer)");
+    W.fire.change.fire(abs("aten/src/ATen/native/ForeachUtils.h"));
+    W.fire.change.fire(abs("aten/src/ATen/native/BinaryOps.cpp"));
+    b.release("");
+    await drained();
+    expect((reads.get(other) ?? 0) - before).toBe(1);
+    edit("aten/src/ATen/native/ForeachUtils.h", "_scalar_kernel_slower", "_scalar_kernel_slow");
+    edit("aten/src/ATen/native/BinaryOps.cpp", "TORCH_IMPL_FUNC(func##_Scalar_outer)", "TORCH_IMPL_FUNC(func##_Scalar_out)");
+    W.fire.change.fire(abs("aten/src/ATen/native/ForeachUtils.h"));
+    W.fire.change.fire(abs("aten/src/ATen/native/BinaryOps.cpp"));
+    await drained();
+    fs.rmSync(b.p);
+    W.fire.delete.fire([b.p]);
+    await drained();
+    expect(target(await click(await seg("model.py", "run"), /torch\.eq/, "eq"))).toBe("aten/src/ATen/native/BinaryOps.cpp CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC(eq_Scalar_out)");
   });
   it("finds the generated kernels again when compile_commands.json moves", async () => {
     const add = async () => target(await click(await seg("model.py", "run"), /torch\.add/, "add"));
     expect(await add()).toBe("build/aten/src/ATen/UfuncCUDA_add.cu at::native::ufunc_add_CUDA");
     fs.renameSync(abs("build"), abs("out"));
     W.fire.change.fire(abs("build/compile_commands.json"));
+    await drained();
     expect(await add()).toBe("aten/src/ATen/native/ufunc/add.h at::native::ufunc::add");
     W.settings.get = <T>(k: string) => (k === "clangd.arguments" ? ["--compile-commands-dir=out"] : undefined) as T;
     W.fire.change.fire(abs("out/compile_commands.json"));
+    await drained();
     expect(await add()).toBe("out/aten/src/ATen/UfuncCUDA_add.cu at::native::ufunc_add_CUDA");
   });
   it("reparses an edited native_functions.yaml and rescans for its new kernels", async () => {
@@ -76,6 +142,7 @@ describe("op index updates", () => {
     fs.writeFileSync(abs("aten/src/ATen/native/Gelu.cpp"), "namespace at::native {\n\nTensor gelu_new_kernel(const Tensor& self) {\n  return self;\n}\n\n}\n");
     W.fire.create.fire([abs("aten/src/ATen/native/Gelu.cpp")]);
     W.fire.change.fire(abs("aten/src/ATen/native/native_functions.yaml"));
+    await drained();
     expect(target(await click(await seg("model.py", "run"), /F\.gelu/, "gelu"))).toBe("aten/src/ATen/native/Gelu.cpp at::native::gelu_new_kernel");
     expect(scanOf((await opTables())[0])).not.toBe(before);
   });
