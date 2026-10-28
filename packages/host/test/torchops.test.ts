@@ -200,7 +200,8 @@ describe("the build folder", () => {
     for (const [f, t] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(r, f)), { recursive: true }); fs.writeFileSync(path.join(r, f), t); }
     return r;
   };
-  const cdb = (...files: string[]) => JSON.stringify(files.map((file) => ({ directory: "/x", command: "c++", file })));
+  // like CMake's: the command ends with the file, and quotes inside it are escaped
+  const cdb = (...files: string[]) => JSON.stringify(files.map((file) => ({ directory: "/x", command: `c++ -DNAME="x" -o ${path.basename(file)}.o -c ${file}`, file })), null, 1);
   afterAll(() => { W.settings.get = () => undefined; });
   it("is where compile_commands.json's Ufunc entries are, also from a copy in the source root", async () => {
     const r = tree({ "compile_commands.json": cdb("/src/aten/src/ATen/native/SoftMax.cpp", "/elsewhere/out/aten/src/ATen/UfuncCPU_add.cpp") });

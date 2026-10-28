@@ -192,10 +192,10 @@ export async function genDirOf(root: string): Promise<string | undefined> {
   for (const d of dirs) {
     const text = await readText(path.join(d, "compile_commands.json"), false);
     if (text === null) continue;
-    for (let i = text.indexOf("Ufunc"); i >= 0; i = text.indexOf("Ufunc", i + 1)) {
-      const a = text.lastIndexOf('"', i), b = text.indexOf('"', i);
+    // 只看 "file" 的值：command 也以同一个路径结尾（… -c <file>），引号里还有转义的引号
+    for (const m of text.matchAll(UFUNC_FILE_KEY)) {
       let file: unknown;
-      try { file = JSON.parse(text.slice(a, b + 1)); } catch { continue; }
+      try { file = JSON.parse(m[1]); } catch { continue; }
       if (typeof file === "string" && UFUNC_PATH.test(file)) return path.dirname(path.resolve(d, file));
     }
     return d === root ? undefined : path.join(d, "aten", "src", "ATen"); // 没有编译 Ufunc 文件的条目：按通常的布局
@@ -203,6 +203,7 @@ export async function genDirOf(root: string): Promise<string | undefined> {
   return undefined;
 }
 const UFUNC_PATH = /[\\/]aten[\\/]src[\\/]ATen[\\/]Ufunc\w*\.(cpp|cu)$/;
+const UFUNC_FILE_KEY = /"file"\s*:\s*("(?:[^"\\]|\\.)*Ufunc\w*\.(?:cpp|cu)")/g;
 
 /** 一个文件注册了什么、它的宏调用定义了哪些 kernel、提到了哪些要找的名字 */
 function scanText(x: Scan, abs: string, text: string): FileRec {
