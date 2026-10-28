@@ -1,5 +1,5 @@
 // 不固定的同时只开一个；⌘ + 悬停 / Pin 固定后变成独立的一个，可以开好几个对照着看。
-import { createSignal } from "solid-js";
+import { boardSignal } from "./root";
 import type { Anchor, DiffData, PeekDef, Commit, Segment, CallSpan, ImplPick, NameHit } from "@codeboard/core";
 
 /** 浮层挂在哪：一个元素（跟着它走，镜头动也跟），或一个屏幕坐标 */
@@ -35,7 +35,9 @@ export type NamesPop = { card: string; seg: string; call: CallSpan; hits?: NameH
 export type PopInst = { id: number; pop: Pop; at: At; pinned: boolean };
 
 let n = 0;
-export const [pops, setPops] = createSignal<PopInst[]>([]);
+// 浮层说的都是这块白板的卡：换白板时清掉，固定的也清。不能只靠浮层那一层（Popovers 挂着时才压栈）：白板视图先卸下、再收到 init 时，
+// 留下的浮层会在新白板上找不到它的卡
+export const [pops, setPops] = boardSignal<PopInst[]>([]);
 
 /** 开一个浮层：替换掉没固定的那个 */
 export function openPop(pop: Pop, at: At): number {

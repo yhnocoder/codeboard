@@ -4,8 +4,10 @@
 //      (examples/markdown-demo, built and run in Chromium) side by side with the board build, which runs only when its
 //      sources changed since the last one
 //   2. as soon as the board is built (the scenarios need nothing else), the harness scenarios this change needs
-//      (tools/test/pick.mjs), compared with origin/main, several at a time, within what is left of the 90 seconds
-// Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness>]
+//      (tools/test/pick.mjs), compared with origin/main, several at a time: asked, added, failing, smoke and the whole group of
+//      every area the change touches. Never cut to fit: an estimate over what is left of the 90 seconds is reported with the
+//      groups behind it; edited scenarios outside those groups are listed as run in CI
+// Usage: npm run check [-- <scenario…>] [-- --all] [-- --base=<ref>] [-- --budget=<seconds of harness, for the warning>]
 //   scenario names are always run (the problem being worked on); --all runs every scenario, with no time limit
 import { spawn, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -64,7 +66,7 @@ if (!base) {
   catch { console.log("no merge base with origin/main (fetch it, or pass --base=<ref>): no harness run"); await first; process.exit(1); }
 }
 const workers = Math.min(4, os.availableParallelism());
-// Harness budget: what is left of the 90 seconds, minus a margin for start-up and the slowest scenario finishing last, times the
+// Harness budget, for the over-budget warning: what is left of the 90 seconds, minus a margin for start-up and the slowest scenario finishing last, times the
 // scenario seconds this machine got through per second of wall time in the last check (the nightly estimates come from another
 // machine, and here the scenarios share the CPU with typecheck and unit tests); 0.8 per worker before the first run
 const JSON_OUT = path.join(REPO, "test-out/check/harness.json");
@@ -76,14 +78,17 @@ const rate = (() => {
   return workers * 0.8;
 })();
 const budget = opt("budget") ?? Math.max(30, Math.round((LIMIT - secs() - 25) * rate));
-const harness = args.includes("--all") ? [...focus] : ["--select", `--base=${base}`, `--budget=${budget}`, ...(focus.length ? [`--focus=${focus.join(",")}`] : [])];
-console.log(`harness: ${args.includes("--all") ? "every scenario" : `changes since ${base.slice(0, 7)}, budget ${budget} s of scenario time`} on ${workers} workers`);
+const harness = args.includes("--all") ? [...focus] : ["--select", `--base=${base}`, `--budget=${budget}`,...(focus.length ? [`--focus=${focus.join(",")}`] : [])];
+console.log(`harness: ${args.includes("--all") ? "every scenario" : `changes since ${base.slice(0, 7)}, about ${budget} s of scenario time fit`} on ${workers} workers`);
 // The harness at a lower priority: the unit tests are the longest of the jobs it shares the CPU with, and a harness that uses up
 // any CPU left over finishes no later, while unit tests starved by its workers (63 s instead of 20 s on 4 cores) end the run last
+fs.rmSync(JSON_OUT, { force: true });
 const ok = await new Promise((resolve) => {
   const p = spawn("nice", ["-n", "10", "node", "tools/test/harness.mjs", ...harness, `--workers=${workers}`, `--json=${JSON_OUT}`], { cwd: REPO, stdio: "inherit" });
   p.on("close", (code) => resolve(code === 0));
 });
 const all = (await first).every(Boolean) && ok;
+// said again last: it names the area groups to trim, and the scenario log has pushed it out of sight
+try { for (const n of JSON.parse(fs.readFileSync(JSON_OUT, "utf8")).notes ?? []) if (/^(over the budget|group )/.test(n)) console.log(`note: ${n}`); } catch { /* no harness result */ }
 console.log(`\n${all ? "✓ all passed" : "✗ failures above"} in ${secs()} s${secs() > LIMIT ? ` (over the ${LIMIT} s target)` : ""}`);
 process.exit(all ? 0 : 1);
