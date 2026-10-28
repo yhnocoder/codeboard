@@ -40,7 +40,7 @@ export function stubView(o: { visible?: boolean; active?: boolean } = {}) {
   const message = new Emitter<Parameters<Parameters<BoardView["onMessage"]>[0]>[0]>(), activate = new Emitter<void>(), dispose = new Emitter<void>();
   const view: BoardView = {
     postMessage: (m) => { posted.push(m); }, title: "", visible: o.visible ?? true, active: o.active ?? true,
-    reveal: () => undefined, dispose: () => dispose.fire(), resourceUrl: () => "",
+    reveal: () => undefined, focus: async () => undefined, dispose: () => dispose.fire(), resourceUrl: () => "",
     onMessage: message.event, onDidActivate: activate.event, onDidDispose: dispose.event,
   };
   return { view, posted, message, activate, dispose };

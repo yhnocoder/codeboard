@@ -8,7 +8,6 @@ import { uid, type Segment } from "@codeboard/core";
 import { startAnalysis } from "../src/analysis";
 import { staleFor } from "../src/versions";
 import { viewsFor } from "../src/views";
-import { forgetHeads } from "../src/git";
 import { useWorkspace } from "../src/ws";
 import { WS, nodeWorkspace } from "./node-workspace";
 
@@ -42,8 +41,7 @@ void (async () => {
   const head = git("rev-parse", "HEAD");
   const old = git("rev-parse", "HEAD~6"); // predates the chunked prefill refactor: scheduler and block_manager both changed
   for (let r = 0; r < RUNS; r++) {
-    // A fresh process per run would be fairest (caches); approximated here with fresh snippets (new ids) + clearing the HEAD cache
-    forgetHeads();
+    // A fresh process per run would be fairest (caches); approximated here with fresh snippets (new ids)
     const atHead = segments(head, N), atOld = segments(old, N);
     const [coldCheck] = r === 0 ? await time(() => staleFor(atOld)) : [0];
     const [open] = await time(() => Promise.all([viewsFor(atHead), staleFor(atHead)]));

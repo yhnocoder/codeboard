@@ -26,6 +26,8 @@ One-time setup for the stores: create the Marketplace publisher `yhnocoder`; add
 
 To debug the extension, open this repository in VS Code, press `F5` and pick **CodeBoard：在 nano-vllm 上调试插件**. A new window opens with the extension installed and `examples/nano-vllm` loaded.
 
+A script that needs a browser launches it with `launch()` from `tools/test/chromium.mjs` (the repo's `playwright-core` with the browser CI or the cloud image provides), not with a bare `require("playwright")`, whose pinned browser revision the cloud image may not have.
+
 Test tiers, time budgets and how scenarios are selected are described in [TESTING.md](TESTING.md).
 
 ## Repository layout

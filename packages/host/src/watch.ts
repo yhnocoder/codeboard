@@ -3,7 +3,7 @@
 // 只在有它的白板上（打字时每停一下都会触发：不重读、不重新分析别的文件）。
 import * as path from "node:path";
 import type { Disposable } from "@codeboard/core";
-import { forgetHeads, gitDirOf, headOf, repoRootOf } from "./git";
+import { gitDirOf, headOf, repoRootOf } from "./git";
 import type { BoardHost } from "./boards";
 import { absOf, hasLocalFile } from "./source";
 import type { Storage } from "./storage";
@@ -52,7 +52,6 @@ export function watchVersions(panels: BoardHost, store: Storage): Disposable {
   };
 
   const onGit = debounce(async () => {
-    forgetHeads();
     let changed = false;
     for (const r of watched) {
       const h = await headOf(r);

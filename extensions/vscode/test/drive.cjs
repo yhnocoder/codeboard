@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { execSync } = require("child_process");
 const { until, soon, hold, idle, track, fromSource } = require("./wait.cjs");
-const { command, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit } = require("./ui.cjs");
+const { command, watchKeyboard, boardDialog, boardDialogClosed, inputBox, qiClosed, openFile, goToLine, statusSel, text, typingIn, pmHasSelection, focusSettled, boardFrame, boardFrames, card, fit, boardHasKeyboard, boardKeys, ctrlK } = require("./ui.cjs");
 const [OUT, WS, UD] = process.argv.slice(2);
 /** The board file format the extension writes (core's model.ts), so the autosave check follows a format bump */
 const { BOARD_VERSION } = fromSource("packages/core/src/model.ts");
@@ -54,7 +54,7 @@ const boardJson = () => {
 const boardNamed = (name) => { const d = boardsDir(); return d ? fs.readdirSync(d).filter((n) => n.endsWith(".json")).map((n) => JSON.parse(fs.readFileSync(path.join(d, n), "utf8"))).find((b) => b.name === name) : undefined; };
 const editorFocused = (page) => page.locator(".editor-group-container .monaco-editor.focused").count();
 /** Click on the board's canvas, then wait until its webview has the keyboard (keys pressed next go to the board) */
-const clickBoard = async (f, opts = { position: { x: 30, y: 300 } }) => { await f.locator("#board").click(opts); await until("the board has the keyboard", () => f.evaluate(() => document.hasFocus())); };
+const clickBoard = async (f, opts = { position: { x: 30, y: 300 } }) => { await f.locator("#board").click(opts); await until("the board has the keyboard", () => boardHasKeyboard(f)); };
 /** Alt+B in the code editor: resolves once the board on screen shows the card */
 async function altB(page, title, keys = "Alt+b") {
   await page.keyboard.press(keys);
@@ -88,9 +88,12 @@ async function captureStep(page) {
   await command(page, "CodeBoard: Open Board");
   let f = await boardFrame(page);
   check(await soon(() => card(f, "mid").count(), (n) => n === 1, 20000) === 1, "Alt+B puts mid on the board");
-  await command(page, "CodeBoard: Capture Run…", "Run a Python entry");
-  await page.keyboard.press("Control+a"); await page.keyboard.type("e2e_capture.py"); await page.keyboard.press("Enter");
-  await qiClosed(page, "the Capture Run input box");
+  // Run from the palette over the board: it asks on the board
+  await command(page, "CodeBoard: Capture Run…");
+  await boardDialog(page, f, "Capture Run");
+  // The dialog opens with its text selected. No Ctrl+A: in a webview VS Code runs it and sends Select All back a moment later
+  await page.keyboard.type("e2e_capture.py"); await page.keyboard.press("Enter");
+  await boardDialogClosed(f, "the Capture Run dialog");
   const panel = await soon(async () => { f = await boardFrame(page); return f.locator(".cpanel.runp").count(); }, (n) => n === 1, 30000);
   check(panel === 1, "Capture Run opens the Run panel on the board");
   const runs = execSync(`ls -d ${UD}/User/workspaceStorage/*/*codeboard*/boards/runs 2>/dev/null || true`).toString().trim().split("\n")[0];
@@ -145,7 +148,7 @@ async function exportStep(page) {
   const html = await soon(() => fs.readFileSync(out, "utf8"), (h) => /<\/html>\s*$/.test(h));
   check(!/cbres:/.test(html) && /data:font\/woff2;base64/.test(html), "fonts are inlined, no unresolved references", html.length);
   // VS Code 的 CDP 连接开不了新上下文：另起一个和 harness 同一个 Chromium，断网打开
-  const vb = await chromium.launch({ executablePath: process.env.CHROMIUM ?? "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" });
+  const vb = await (await import("../../../tools/test/chromium.mjs")).launch();
   const ctx = await vb.newContext({ offline: true, viewport: { width: 1400, height: 900 } }); const v = await ctx.newPage();
   const net = [], errs = [];
   v.on("request", (r) => { if (!/^(file|data|about):/.test(r.url())) net.push(r.url()); });
@@ -269,7 +272,12 @@ async function closeStep(page) {
   const el = f.locator(`.card[data-id="${code.id}"]`);
   // select it by its title: the file path next to it opens the code in the editor (and the keys would go there)
   await el.locator(".chead .ctitle").first().click();
-  await until("the code card is selected and the board has the keyboard", async () => /\bsel\b/.test(await el.getAttribute("class")) && await f.evaluate(() => document.hasFocus()));
+  await until("the code card is selected and the board has the keyboard", async () => /\bsel\b/.test(await el.getAttribute("class")) && await boardHasKeyboard(f))
+    .catch(async (e) => {
+      const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}` }));
+      const workbench = await page.evaluate(() => `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`);
+      throw new Error(`${e.message}: ${JSON.stringify({ card: await el.getAttribute("class"), board, workbench })}`);
+    });
   await page.keyboard.press("Alt+z");
   // close the tab as soon as the card shows the change: the board has sent it, the host has not necessarily written it yet
   await until("Alt+Z wraps the card's lines", async () => (await el.locator(".cbody.wrap").count() > 0) !== !!code.wrap, 5000, 10);
@@ -297,6 +305,38 @@ async function closeStep(page) {
   await idle(await boardFrame(page));
 }
 
+// The board's own shortcuts (Ctrl+=, Ctrl+,, Ctrl+K…) are VS Code keybindings that send the key back to the board. They used to apply
+// whenever the board was the active editor, so with the keyboard in the Explorer Ctrl+= zoomed the board instead of the window.
+// E2E_ONLY=keyscope runs only this step
+async function keyscopeStep(page) {
+  await openFile(page, SCHED, 26);
+  await page.keyboard.press("Alt+b");
+  await command(page, "CodeBoard: Open Board");
+  const f = await boardFrame(page);
+  check(await soon(() => f.locator(".card").count(), (n) => n >= 1, 20000) >= 1, "keyscope: Alt+B puts a card on the board");
+  await idle(f);
+  await command(page, "File: Focus on Files Explorer");
+  await until("the Explorer has the keyboard", () => page.evaluate(() => !!document.activeElement?.closest(".explorer-folders-view")));
+  // The board reported losing the keyboard when the palette took it, so its shortcuts are VS Code's own again
+  check(await ctrlK(page, f) === "vscode", "keyscope: with the keyboard in the Explorer, Ctrl+K begins VS Code's chord, not the board's search");
+  check(await page.evaluate(() => document.querySelector(".editor-group-container.active .tab.active")?.textContent ?? ""), "keyscope: the board is still the active editor");
+  const camZoom = () => text(f.locator(".zoom"));
+  const [z0, dpr0] = [await camZoom(), await page.evaluate(() => window.devicePixelRatio)];
+  await page.keyboard.press("Control+=");
+  const dpr = await soon(() => page.evaluate(() => window.devicePixelRatio), (d) => d > dpr0);
+  check(dpr > dpr0, "keyscope: Ctrl+= with the keyboard in the Explorer zooms the window", { dpr0, dpr });
+  await idle(f);
+  check(await camZoom() === z0, "keyscope: and leaves the board's zoom alone", { before: z0, after: await camZoom() });
+  await command(page, "View: Reset Zoom");
+  await until("the window is back at 100%", async () => await page.evaluate(() => window.devicePixelRatio) === dpr0);
+  // A command run from the palette with the keyboard in the Explorer asks on the active board, which then gets the keyboard
+  await command(page, "File: Focus on Files Explorer");
+  await until("the Explorer has the keyboard again", () => page.evaluate(() => !!document.activeElement?.closest(".explorer-folders-view")));
+  await command(page, "CodeBoard: Rename Board");
+  await boardDialog(page, f, "Rename Board");
+  await page.keyboard.press("Escape"); await boardDialogClosed(f, "the Rename Board dialog");
+  check(true, "keyscope: Rename Board from the palette over the Explorer gives the board's dialog the keyboard");
+}
 // Clicking a card takes keyboard focus from a file editor: select text in context.py, click a card (its header, then its code),
 // press Backspace. The card is deleted and the file is untouched. E2E_ONLY=cardfocus runs only this step
 async function cardfocusStep(page) {
@@ -350,7 +390,7 @@ async function cardfocusStep(page) {
     await target.click({ position: { x: pt.x, y: pt.y }, timeout: 5000 });
     const took = await soon(() => editorFocused(page), (n) => n === 0, 5000);
     check(took === 0, `clicking the card's ${where} takes focus from the file editor`);
-    await until("the board has the keyboard", () => f.evaluate(() => document.hasFocus()));
+    await until("the board has the keyboard", () => boardHasKeyboard(f));
     await page.keyboard.press("Backspace");
     const gone = await soon(async () => [await f.locator(".card").count(), await card(f, "get_context").count()], ([n, k]) => n === n0 - 1 && k === 0);
     check(await editorText() === before && !(await dirty()), `…Backspace leaves the selected text in context.py alone (${where})`);
@@ -474,7 +514,7 @@ async function newBoard(page, name) {
 async function newNote(page, f) {
   const fb = await (await f.frameElement()).boundingBox(), sp = await emptySpot(f);
   await page.mouse.click(fb.x + sp.x, fb.y + sp.y);
-  await until("the board has the keyboard", () => f.evaluate(() => document.hasFocus()));
+  await until("the board has the keyboard", () => boardHasKeyboard(f));
   await page.keyboard.press("n");
   return f.waitForFunction(() => !!document.activeElement?.closest(".card.note .md-pm"), null, { timeout: 5000 }).then(() => true, () => false);
 }
@@ -570,7 +610,7 @@ async function stickerfolderStep(page) {
   setUserSetting("codeboard.stickerFolder", dir);
   // The picker reads the packs once per board, when it first opens: open it only once VS Code has the new setting. The board's own
   // Settings page shows the folder the host passed on (live)
-  await clickBoard(f);
+  await clickBoard(f); await boardKeys(page, f);
   await page.keyboard.press("Control+,");
   await until("the board's Settings page shows the new sticker folder", async () => /stickers$/.test(await f.locator(".settings .st-path").inputValue({ timeout: 1000 })), 15000);
   await page.keyboard.press("Control+,");
@@ -634,7 +674,7 @@ async function notesettingsStep(page) {
   // Ctrl+X / Ctrl+V on the same board
   const before = await soon(() => (boardNamed("Note Settings E2E")?.cards ?? []).find((c) => c.kind === "note"), (c) => c?.md === "# Plan\n\nSchedule, then run, then postprocess.");
   await note.locator(".chead .ctitle").click();
-  await until("the Note is selected and the board has the keyboard", async () => /\bsel\b/.test(await note.getAttribute("class")) && await f.evaluate(() => document.hasFocus()));
+  await until("the Note is selected and the board has the keyboard", async () => /\bsel\b/.test(await note.getAttribute("class")) && await boardHasKeyboard(f));
   await page.keyboard.press("Control+x");
   const cut = await soon(async () => [await f.locator(".card.note").count(), (boardNamed("Note Settings E2E")?.cards ?? []).filter((c) => c.kind === "note").length], ([a, b]) => a === 0 && b === 0);
   check(cut[0] === 0 && cut[1] === 0, "notesettings: Ctrl+X removes the Note from the board", { onScreen: cut[0], saved: cut[1] });
@@ -668,14 +708,15 @@ const finish = async (browser, errors) => {
   const browser = await until("VS Code's debugging port answers", () => chromium.connectOverCDP(`http://127.0.0.1:${port}`).catch(() => null), 60000, 500);
   const page = await until("the VS Code window", () => browser.contexts().flatMap((c) => c.pages()).find((p) => p.url().includes("workbench")), 60000, 200);
   await track(page); // before the first board's webview exists
+  await watchKeyboard(page); // the keyboard hand-backs to webviews, likewise
   await page.locator(".monaco-workbench .part.editor").waitFor({ timeout: 60000 });
   const errors = [];
   page.on("console", (m) => { if (m.type() === "error" && /codeboard|board\.js/i.test(m.text())) errors.push(m.text()); });
   // E2E_ONLY=capture,addsel runs only those steps, in that order. E2E_PART splits the run for parallel CI jobs:
   // 1 = the main flow, 2 = the steps after it, 3 = the steps the default run leaves out (nightly)
-  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, close: closeStep, noteimage: noteimageStep, notepaste: notepasteStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep, projects: projectsStep };
+  const STEPS = { capture: captureStep, export: exportStep, variants: variantsStep, codeedit: codeeditStep, addsel: addselStep, cardfocus: cardfocusStep, keyscope: keyscopeStep, close: closeStep, noteimage: noteimageStep, notepaste: notepasteStep, stickerfolder: stickerfolderStep, notesettings: notesettingsStep, projects: projectsStep };
   // Part 3 holds the slow steps (each 20 s or more on its own board); codeedit reloads the window, so it goes last
-  const PARTS = { 2: "capture,addsel,cardfocus,close,notepaste,projects", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
+  const PARTS = { 2: "capture,addsel,cardfocus,keyscope,close,notepaste,projects", 3: "export,variants,noteimage,stickerfolder,notesettings,codeedit" };
   // E2E_FLOW=<file.cjs> runs a flow of your own after the E2E_ONLY steps (or alone): the file exports async (page, t) => { … }, t holds
   // this driver's helpers. For reproducing a problem in the real VS Code without editing this file
   const flow = process.env.E2E_FLOW && path.resolve(process.env.INIT_CWD || process.cwd(), process.env.E2E_FLOW);
@@ -810,7 +851,7 @@ const finish = async (browser, errors) => {
   check(saved(b), `board autosaved (v${BOARD_VERSION} format)`, b && { cards: b.cards.length, links: b.links.length, notes: b.sidenotes?.length });
 
   // 8b. Settings: Ctrl+, inside the board opens the Settings page (the extension routes VS Code's own Ctrl+, back to the board); changing the theme writes codeboard.theme
-  await clickBoard(f);
+  await clickBoard(f); await boardKeys(page, f);
   await page.keyboard.press("Control+,");
   check(await soon(() => f.locator(".settings").count(), (n) => n === 1) === 1, "Ctrl+, opens the Settings page in the board");
   await f.locator(".st-sw", { hasText: "Graphite" }).click();
@@ -826,8 +867,9 @@ const finish = async (browser, errors) => {
   await until("the board switches to Warm Ink", () => f.evaluate(() => document.documentElement.dataset.look === "warm-ink"));
   await page.keyboard.press("Escape"); await idle(f);
   // Copy Diagnostics: asks whether to include the board JSON, then says it was copied
-  await command(page, "CodeBoard: Copy Diagnostics", "Copy Diagnostics");
-  await page.keyboard.press("Enter"); await qiClosed(page, "the Copy Diagnostics pick");
+  await command(page, "CodeBoard: Copy Diagnostics");
+  await boardDialog(page, f, "Copy Diagnostics");
+  await page.keyboard.press("Enter"); await boardDialogClosed(f, "the Copy Diagnostics dialog");
   check(await soon(() => page.locator(".notifications-toasts", { hasText: "Diagnostics copied to clipboard" }).count(), (n) => n > 0) > 0, "Copy Diagnostics says it was copied");
   await shot(page, "7b-diagnostics");
 
@@ -849,7 +891,7 @@ const finish = async (browser, errors) => {
   const sch1 = card(f, "Scheduler.schedule");
   const mk0 = await sch1.locator(".mk").count();
   await sch1.locator(".chead .ctitle").click();
-  await until("Scheduler.schedule is selected and the board has the keyboard", async () => /\bsel\b/.test(await sch1.getAttribute("class")) && await f.evaluate(() => document.hasFocus()));
+  await until("Scheduler.schedule is selected and the board has the keyboard", async () => /\bsel\b/.test(await sch1.getAttribute("class")) && await boardHasKeyboard(f));
   await page.keyboard.press("Control+c");
   await until("the board says the card was copied", async () => /^Copied/.test(await text(f.locator(".toast"))), 5000);
   const g = await newBoard(page, "Shared E2E");
@@ -956,6 +998,6 @@ const finish = async (browser, errors) => {
     await shot(page, "10-pick-impl");
   } else console.log("- skip pick-implementation step (no Pylance in E2E_EXTENSIONS)");
 
-  if (process.env.E2E_PART !== "1") { await captureStep(page); await addselStep(page); await cardfocusStep(page); await closeStep(page); await projectsStep(); }
+  if (process.env.E2E_PART !== "1") { await captureStep(page); await addselStep(page); await cardfocusStep(page); await keyscopeStep(page); await closeStep(page); await projectsStep(); }
   await finish(browser, errors);
 })().catch((e) => { console.error(e); process.exit(2); });

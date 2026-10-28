@@ -17,6 +17,8 @@ function webviewView(panel: vscode.WebviewPanel): BoardView {
     get visible() { return panel.visible; },
     get active() { return panel.active; },
     reveal: (preserveFocus) => panel.reveal(undefined, preserveFocus),
+    // The board is the active editor when this is called: focusing its group focuses it
+    focus: async () => { await vscode.commands.executeCommand("workbench.action.focusActiveEditorGroup"); },
     dispose: () => panel.dispose(),
     resourceUrl: (dir) => panel.webview.asWebviewUri(vscode.Uri.file(dir)).toString(),
     onMessage: (fn) => panel.webview.onDidReceiveMessage((m: BoardToHost) => fn(m)),

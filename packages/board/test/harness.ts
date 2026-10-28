@@ -3,8 +3,8 @@
 // No VS Code needed. Screenshots go to test-out/harness/.
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { chromium, type Browser, type Page } from "playwright-core";
-import { CHROMIUM, CHROMIUM_ARGS } from "./chromium";
+import type { Browser, Page } from "playwright-core";
+import { launch } from "./chromium";
 import { uid, emptyBoard, loadBoard, applyPatch, DEFAULT_SETTINGS, renderLine, type Board, type BoardToHost, type Card, type CodeCard, type Segment, type SegView, type HostToBoard, type CallSpan } from "@codeboard/core";
 import { F_BLANK } from "@codeboard/analysis/basics";
 import { tidy } from "@codeboard/core/tidy";
@@ -104,7 +104,7 @@ export type OpenOptions = { board?: Board; settings?: Partial<typeof DEFAULT_SET
 /** What the caller does with the board's self-checks (a failed one is named by `check`) and, if given, with the page's coverage */
 export type Watch = { fail: (check: string, detail: string) => void; coverage?: (entries: PageCoverage) => void };
 
-export const launch = () => chromium.launch({ executablePath: CHROMIUM, args: CHROMIUM_ARGS });
+export { launch };
 
 /**
  * The sandbox is offline: a web address in a Note (an image at https://x.y/cat.png) can't load. Chromium reports that as a console

@@ -20,7 +20,7 @@ const toasts = () => posted.flatMap((m) => (m.type === "toast" ? [m.text] : []))
 const panels: BoardHost = {
   store, target: undefined, clip: undefined,
   get: () => undefined, all: () => [], metas: () => store.list(), show: async () => undefined, setTarget: () => undefined, broadcast: () => undefined,
-  pushBoards: async () => undefined, staleChanged: () => undefined, refreshStale: async () => undefined, refreshShared: () => undefined, refreshSkeletons: () => undefined,
+  pushBoards: async () => undefined, staleChanged: () => undefined, refreshStale: async () => undefined, refreshShared: () => undefined, refreshSkeletons: () => undefined, boardFocus: async () => undefined,
   skeleton: (id) => { const b = store.peek(id); return b ? skeletonOf(b, (x) => store.peek(x)) : null; },
   switchBoard: async (p, to, o) => { switches.push({ to, ...o }); p.id = to; p.crumbs = o.crumbs; p.cams = o.cams; return true; },
 };
