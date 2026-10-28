@@ -270,13 +270,20 @@ async function closeStep(page) {
   check(!!code, "closeStep: the open board has a code card", name);
   if (!code) return;
   const el = f.locator(`.card[data-id="${code.id}"]`);
+  // CI has seen this click leave the board as it was (no selection, no keyboard) while Playwright reported it done, which it does
+  // when no mouse event reaches the frame: record which document the press reached, to tell that apart from a lost hand-back
+  const pressed = (kind) => { window.__e2ePress = null; document.addEventListener(kind, (e) => { window.__e2ePress = `${e.target.tagName}.${String(e.target.className).slice(0, 40)}`; }, { capture: true, once: true }); };
+  await f.evaluate(pressed, "pointerdown");
+  await page.evaluate(pressed, "mousedown");
   // select it by its title: the file path next to it opens the code in the editor (and the keys would go there)
   await el.locator(".chead .ctitle").first().click();
   await until("the code card is selected and the board has the keyboard", async () => /\bsel\b/.test(await el.getAttribute("class")) && await boardHasKeyboard(f))
     .catch(async (e) => {
-      const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}` }));
-      const workbench = await page.evaluate(() => `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`);
-      throw new Error(`${e.message}: ${JSON.stringify({ card: await el.getAttribute("class"), board, workbench })}`);
+      const board = await f.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${document.activeElement?.className}`, press: window.__e2ePress }));
+      const host = await f.parentFrame().evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}#${document.activeElement?.id}` }));
+      const workbench = await page.evaluate(() => ({ focus: document.hasFocus(), active: `${document.activeElement?.tagName}.${String(document.activeElement?.className).slice(0, 40)}`, press: window.__e2ePress }));
+      await page.screenshot({ path: path.join(OUT, "close-click.png") });
+      throw new Error(`${e.message}: ${JSON.stringify({ card: await el.getAttribute("class"), board, host, workbench })}`);
     });
   await page.keyboard.press("Alt+z");
   // close the tab as soon as the card shows the change: the board has sent it, the host has not necessarily written it yet
