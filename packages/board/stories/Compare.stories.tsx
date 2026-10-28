@@ -1,4 +1,3 @@
-// Compare：两张代码卡原地并成两栏。同一个函数的两个版本 / 两个不同的函数；Swap、Unified、Hide Same Lines、选中
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { Board, CodeCard, CompareCard } from "@codeboard/core";
 import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";

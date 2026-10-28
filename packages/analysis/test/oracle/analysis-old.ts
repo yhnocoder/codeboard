@@ -1,4 +1,4 @@
-// v0.1.5 的分析实现（JS 逐节点遍历），留作对比测试的基准：新实现的结果必须和它逐字段一致。
+// 旧的分析实现（JS 逐节点遍历），留作对比测试的基准：新实现的结果必须和它逐字段一致。
 import TS from "@vscode/tree-sitter-wasm";
 import type { Parser as TSParser, Node } from "@vscode/tree-sitter-wasm";
 import { BLANK, COMMENT, DOCSTRING, grammarOf, cleanDoc, languageOf, type FileAnalysis, type Sym, type Param, type Arg, type CallSite } from "../../src";
@@ -30,8 +30,6 @@ export function analyzeOld(lang: string, text: string): FileAnalysis {
   return out;
 }
 
-// ---------- 通用 ----------
-
 function walk(n: Node, fn: (n: Node) => boolean | void) {
   if (fn(n) === false) return;
   for (const c of n.namedChildren) if (c) walk(c, fn);
@@ -58,8 +56,6 @@ function comments(root: Node, lines: string[], out: FileAnalysis) {
 const colOfByte = (_line: string, c: number) => c;
 const col = (n: Node, lines: string[]) => colOfByte(lines[n.startPosition.row] ?? "", n.startPosition.column);
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
-
-// ---------- Python ----------
 
 const PY_LOOP_BODY = new Set(["list_comprehension", "set_comprehension", "dictionary_comprehension", "generator_expression"]);
 
@@ -110,7 +106,7 @@ function python(root: Node, lines: string[], out: FileAnalysis) {
     let fn = n.childForFieldName("function");
     if (!fn) return;
     let nameNode: Node | null = null, recv: string | undefined;
-    // v0.2 起：Triton 的 kernel[grid](…)（照新实现补上）
+    // Triton 的 kernel[grid](…)：照新实现补上
     let launch: "grid" | undefined;
     if (fn.type === "subscript") { const v = fn.childForFieldName("value"); if (v?.type === "identifier" || v?.type === "attribute") { fn = v; launch = "grid"; } }
     if (fn.type === "identifier") nameNode = fn;
@@ -234,8 +230,6 @@ function assignedTo(n: Node, g: Grammar): string[] | undefined {
   }
   return undefined;
 }
-
-// ---------- C / C++ / CUDA ----------
 
 const CPP_SKIP = new Set("sizeof static_cast reinterpret_cast const_cast dynamic_cast printf assert".split(" "));
 

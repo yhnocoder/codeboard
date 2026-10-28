@@ -31,7 +31,7 @@ const oldStk = stickers(git(GLYPHS)), newStk = stickers(cur(GLYPHS));
 
 const oldSrc = git(ICONS), newSrc = cur(ICONS);
 const oldP = block(oldSrc, "P"), newP = block(newSrc, "P"), newF = block(newSrc, "F");
-// v0.1.6 drew two icons inline in the code card foot; they are Icon names now
+// the old set drew these two inline in the code card foot
 const oldInline = { clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3l2 1.5"/>', arrowR: '<path d="M3.5 8h9M9 4.5 12.5 8 9 11.5"/>' };
 const names = [...new Set([...Object.keys(newP), ...Object.keys(newF)])];
 const SETS = {
@@ -39,7 +39,7 @@ const SETS = {
   new: { css: icoCss(cur(CSS)), svg: (n) => `<svg class="ico" viewBox="0 0 16 16" width="16" height="16">${newP[n] ? `<path d="${newP[n]}"/>` : ""}${newF[n] ? `<path class="f" d="${newF[n]}"/>` : ""}</svg>`, has: () => true },
 };
 
-// ---- lint: in the 2 px geometry every horizontal / vertical stroke sits on whole pixels, fills on whole pixels ----
+// lint: in the 2 px geometry every horizontal / vertical stroke sits on whole pixels, fills on whole pixels
 function segs(d) {
   const t = d.match(/[a-zA-Z]|-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/g) ?? []; let i = 0, cmd = "", x = 0, y = 0, sx = 0, sy = 0; const out = [];
   const num = () => +t[i++];
@@ -76,7 +76,6 @@ for (const [n, d] of Object.entries(block(cur("packages/markdown/src/editor/icon
   if (s.k === "L" && s.y0 === s.y && s.x0 !== s.x && !whole(s.y)) problems.push(`markdown ${n}: horizontal stroke at y=${s.y}`);
 }
 
-// ---- render ----
 const browser = await launch();
 const GAP = 8, CELL = 16 + GAP;
 const LOOK = { light: { bg: "#fbfaf7", ink: "#3a3530" }, dark: { bg: "#2a2725", ink: "#e9e4dc" }, alpha: { bg: "transparent", ink: "#000" } };
@@ -104,7 +103,7 @@ async function measure(png, dpr) {
     return per;
   }, { src: "data:image/png;base64," + png.toString("base64"), dpr, n: names.length, CELL, GAP });
 }
-// the 26 icons W02 section D measured (its table: v0.1.6 set at 1 px stroke = 60% at 1x, 26% at 2x)
+// the 26 icons of the earlier softness measurement (old set at 1 px stroke: 60% at 1x, 26% at 2x)
 const W02 = ["plus", "minus", "fit", "more", "chev", "close", "play", "search", "note", "code", "image", "web", "section", "link", "text", "undo", "redo", "lock", "pin", "eye", "copy", "trash", "external", "sticker", "check", "alignL"];
 const shots = {}, stats = {};
 for (const set of ["old", "new"]) for (const w of [1, 2]) for (const dpr of [1, 2]) {

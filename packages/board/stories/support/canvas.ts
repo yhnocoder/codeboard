@@ -4,8 +4,6 @@ import type { Board, Card, CodeCard, End, Link, Section, StickerPack } from "@co
 import { loadPacks } from "../../src/stickers/glyphs";
 import { addReplies } from "./host";
 
-// ---------- 搭白板 ----------
-
 /** 代码卡里第一行含 word 的那一行（行端） */
 export function ln(c: CodeCard, word: string): End {
   const s = c.segments[0];
@@ -30,8 +28,6 @@ export function section(b: Board, s: Section, members: string[] = []): Section {
 
 export const SECTION_COLORS = ["none", "sand", "blue", "green", "pink"] as const;
 export const LINK_COLORS = ["grey", "orange", "blue", "green"] as const;
-
-// ---------- 贴纸包 ----------
 
 // 假宿主（host.ts）对 stickerPacks 回空的；贴纸的小样挂着时多一个文件夹包（位图、动图）。
 // 图在 fixtures/assets/stickers，宿主给的是 data: URL（动图的第一帧要从它解码），所以先取回来转一次

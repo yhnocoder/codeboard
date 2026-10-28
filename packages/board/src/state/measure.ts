@@ -52,7 +52,6 @@ export const DED_PAD = 16;
 /** 没存高度的代码卡（新卡、Fit Content 过的卡）代码区最高多少，更长的在里面滚（BoardView 挂到 body 上的 --code-max） */
 export const CODE_MAX = 460;
 let charW = 0;
-/** 等宽字体一个字的宽度（量一次） */
 export function monoWidth(el: Element) {
   if (charW) return charW;
   const ctx = document.createElement("canvas").getContext("2d")!;

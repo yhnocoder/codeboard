@@ -1,6 +1,3 @@
-// ⌫ / Delete 时卡片里选着一段字（#69）：不删卡，进入编辑、选上同一段、删掉这段字（编辑器里一步撤销）；没选字时照旧删选中的卡。
-// Usage: npm run harness -- deleteKeyWithTextSelectionEditsNote deleteKeyWithTextSelectionEditsFreeCode deleteKeyWithoutTextSelectionDeletesCard
-//        SHOTS_DIR=… 另存一份截图
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type CodeCard, type NoteCard } from "@codeboard/core";

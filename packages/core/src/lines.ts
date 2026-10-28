@@ -1,4 +1,3 @@
-// 白板按它渲染，Link 端点、Sidenote 标记按它找位置。
 import { F_BLANK, F_COMMENT, F_DOCSTRING } from "@codeboard/analysis/basics";
 import { inRanges, type CodeCard, type HideFlags, type Segment } from "./model";
 

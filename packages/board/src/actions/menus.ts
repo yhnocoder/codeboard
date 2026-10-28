@@ -217,7 +217,7 @@ function cardItems(id: string, x: number, y: number): Item[] {
     { label: "Wrap Lines", kbd: kbd("wrap"), checked: !!c.wrap, run: () => toggleWrap([c.id]) },
     ...(col ? [] : [{ label: "No Background", checked: !!c.nobg, run: () => toggleNoBg(c.id) } as Item]),
   ];
-  // 界面上已经有的（双击标题改名、标题栏的 commit 按钮、Copy Code 图标、⌘D）不进菜单。先这样分组，用一阵看哪些高频再拿出来
+  // 界面上已经有的（双击标题改名、标题栏的 commit 按钮、Copy Code 图标、⌘D）不进菜单
   const edit: Item[] = [
     { label: c.desc ? "Description" : "Add Description", run: () => setEditing({ kind: "desc", id: c.id }) },
     { label: "Add Sidenote", kbd: "S", run: () => (ls?.card === c.id ? openAddNote({ card: ls.card, seg: ls.seg, lines: [ls.start, ls.end] }) : openAddNote({ card: c.id })) },

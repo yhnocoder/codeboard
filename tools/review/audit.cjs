@@ -1,6 +1,4 @@
 // Generic UI audit: checks in the board page for mistakes you can spot without knowing the feature; runs on every replay step.
-// Maps to the review checklist: K1 overlapping hit targets, L1 popup outside viewport, L2 truncated text, L4 clipped by container, L8 overlapping cards,
-// L10 popup lost its anchor and jumped to the top-left (C4), L11 submenu covers its parent menu (C5).
 // Usage: const { audit } = require("tools/review/audit.cjs"); const r = await audit(frameOrPage, "step name");
 // Returns { step, issues: [{ rule, what }] }; with AUDIT_STRICT=1 the caller should fail any step with issues.
 // Report: report(audits, "UI audit") gives Markdown lines for the PR description, one per unique warning (rule + element)

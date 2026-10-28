@@ -111,8 +111,6 @@ export function Stage(p: { scene: () => Scene; globals: Globals; replies?: Repli
   return app;
 }
 
-// ---------- 搭白板 ----------
-
 type Fixture = keyof typeof code;
 
 export function scene(name: string) {

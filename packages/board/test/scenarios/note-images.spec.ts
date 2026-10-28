@@ -1,7 +1,3 @@
-// Images in a Note: a screenshot pasted from the clipboard (or an image file dropped) while editing is saved by the host as a file in
-// the storage folder's assets/ (the host's real code, packages/host/src/images.ts, on a temp folder), the Markdown gets ![](assets/…),
-// and the image shows at the same size in edit and display mode. Undo takes the paste back in one step.
-// Usage: npm run harness -- notePastedImageSameSizeInBothModes notePasteImageIsOneUndoStep noteDropImageFileInserts noteNonImagePasteRefused
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { emptyBoard, type Board, type NoteCard } from "@codeboard/core";

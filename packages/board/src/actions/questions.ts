@@ -140,8 +140,6 @@ export function exportQuestions(items: QuestionItem[]) {
   void ask("exportFile", { kind: "md", name: `${state.board.name || "board"} questions`, text: questionsMarkdown(items, { title: "Questions" }) }).catch((e) => toast(`Export failed: ${(e as Error).message}`));
 }
 
-// 隔几天回来时的提示
-
 export function showWelcomeQuestions() {
   setWelcome(null);
   setQTab("open");

@@ -1,4 +1,3 @@
-// Folder packs with bitmap stickers (PNG / WebP / GIF, animated too): recognised by their bytes, sent as data: URLs, oversize and fake files skipped
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";

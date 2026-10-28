@@ -1,4 +1,3 @@
-// 版本：点琥珀点看新版本的 diff（Update / Keep / Duplicate），点版本号挑 commit；diff 还在取、取不到
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import type { CodeCard, Stale } from "@codeboard/core";
 import { Stage, scene, type Globals, type Scene } from "./support/board";

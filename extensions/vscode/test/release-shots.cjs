@@ -184,7 +184,7 @@ const leaveNote = async (page, f) => {
   await leaveNote(page, f);
   await page.keyboard.press("Escape"); await idle(f);
   check(await f.locator(".card.note").count() === 1, "Note created");
-  check(await f.locator(".card.note .cref").count() >= 1, "Note links to Scheduler.schedule");
+  check(await f.locator(".card.note .md-ref").count() >= 1, "Note links to Scheduler.schedule");
   // Size the Note to its content
   await blank(f); await f.locator(".card.note .chead").first().click();
   await page.keyboard.press("Alt+f"); await idle(f);

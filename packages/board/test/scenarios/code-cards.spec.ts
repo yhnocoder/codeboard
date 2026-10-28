@@ -1,4 +1,3 @@
-// Code cards on the canvas: what the user can see is what selection, Delete, Fit and Reveal act on; keyboard and pointer details.
 //  tabKeepsCanvasStill        — Tab walking focus to a button of a card past the edge does not scroll the canvas (Fit and box select stay right)
 //  hiddenCardsNotSelectable   — cards hidden in a collapsed call subtree: box select and Select All skip them, Delete never removes them
 //  revealShowsHiddenCard      — Reveal on Board / clicking the already-expanded call on a card in a collapsed subtree expands it
@@ -10,7 +9,6 @@
 //  shortcutHelpComplete       — the shortcut help lists Fit Content, Turn into Board and Open board frame (Mac order: ⇧⌘B)
 //  undoAddKeepsLaterWork      — the editor's undo of an add removes only those cards, even after the board changed
 //  secondCallUnderFirstCall   — in a short panel the second expanded call still goes in the caller's column, under the first call
-// Usage: npm run harness -- tabKeepsCanvasStill hiddenCardsNotSelectable …
 import { emptyBoard, type Board, type CodeCard } from "@codeboard/core";
 import { put, symCard, findSym, viewOf, type Host } from "../harness";
 import { test, open, verdict, until, idle, hold } from "../fixtures";

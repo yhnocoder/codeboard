@@ -96,7 +96,7 @@ function reflowAfterTheme(before: Map<string, R>) {
   sync((bd) => { for (const [id, y, d] of moves) { const p = bd.place[id]; if (p && p.y === y) p.y = y + d; } });
 }
 
-/** Copy Diagnostics（⋯ 菜单用）：宿主收集版本、工作区、日志，问要不要附上白板 JSON */
+/** Copy Diagnostics：宿主收集版本、工作区、日志，问要不要附上白板 JSON */
 export function copyDiagnostics() {
   send({ type: "copyDiagnostics" });
 }

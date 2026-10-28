@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// Markdown 往返（jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素）：解析成文档再写回，要稳定，不乱转义；旧版手写渲染器写的 Note 照样显示得合理
+// jsdom：静态显示整篇过 DOMPurify，happy-dom 解析时会丢掉开头的元素
 import { describe, expect, it } from "vitest";
 import { parseMd, serializeMd } from "../src/schema";
 import { renderMd } from "../src/render";
@@ -60,12 +60,11 @@ describe("markdown round trip", () => {
     const s = "<details>\n<summary>More & less</summary>\n\nbody **text**\n\n- a\n- b\n\n</details>";
     expect(stable(s)).toBe("<details>\n<summary>More &amp; less</summary>\n\nbody **text**\n\n- a\n- b\n\n</details>");
     expect(rt("<details><summary>T</summary>\n\nx\n\n</details>\n\nafter")).toBe("<details>\n<summary>T</summary>\n\nx\n\n</details>\n\nafter");
-    // 嵌套
     stable("<details>\n<summary>A</summary>\n\n<details>\n<summary>B</summary>\n\ninner\n\n</details>\n\n</details>");
   });
   it("[[card ref]]", () => {
     same("see [[Scheduler.schedule]] and [[My note]]");
-    expect(JSON.stringify(parseMd("[[A b]]"))).toContain('"cardRef"');
+    expect(JSON.stringify(parseMd("[[A b]]"))).toContain('"wikiRef"');
   });
   it("footnotes", () => {
     same("text[^1] more[^2]\n\n[^1]: first note\n[^2]: second");
@@ -128,7 +127,7 @@ describe("static render", () => {
     expect(h).toContain('<pre class="md-code" data-lang="python"><code>def f(): return 1</code></pre>');
     expect(h).toContain('data-type="taskItem"');
     expect(h).toContain('checked="checked"');
-    expect(h).toContain('<span class="cref" data-cardref="Card">Card</span>');
+    expect(h).toContain('<span class="md-ref" data-ref="Card">Card</span>');
     expect(h).toContain('<sup class="fnref">1</sup>');
     expect(h).toContain('<ol class="footnotes">');
   });
@@ -179,7 +178,7 @@ describe("typed math and block source", () => {
     expect(serializeMd(lit)).toBe("\\$a\\$b$");
     expect(parseMd(serializeMd(lit))).toEqual(lit);
   });
-  // N1：打 $x$ 变成公式后 ⌘Z 撤回，存下的是 \$x$；显示和再次编辑都要是字面的 $x$（Typora 一样），不能又变回公式
+  // 打 $x$ 变成公式后 ⌘Z 撤回，存下的是 \$x$；显示和再次编辑都要是字面的 $x$（Typora 一样），不能又变回公式
   it("an escaped \\$ stays a literal dollar, shown and re-parsed", () => {
     const has = (s: string) => JSON.stringify(parseMd(s)).includes('"inlineMath"');
     expect(has("a \\$x$ b")).toBe(false);
@@ -194,7 +193,7 @@ describe("typed math and block source", () => {
     same("```\n\\$a$\n```");
     expect(rt("[t](http://x/\\$y)")).toBe("[t](http://x/$y)");
   });
-  // #11：编辑器里光标处展开的原文（mdSrc 标记）写出来时先收回去，不会被当成字转义，也不会把 "## " 写两遍
+  // 编辑器里光标处展开的原文（mdSrc 标记）写出来时先收回去，不会被当成字转义，也不会把 "## " 写两遍
   it("open source at the caret is written back as Markdown, not as escaped text", () => {
     const src = (text: string) => ({ type: "text", text, marks: [{ type: "mdSrc" }] });
     const p = (...content: object[]) => ({ type: "doc", content: [{ type: "paragraph", content }] });
@@ -209,7 +208,7 @@ describe("typed math and block source", () => {
     expect(bad.type).toBe("paragraph");
     expect(bad.content?.map((c) => c.text).join("")).toBe("##hd");
   });
-  // #27：编辑器里打的 \*（\ 带 mdEsc 标记）写出来就是 \*，不会变成 \\\*；读回来是字面的 *
+  // 编辑器里打的 \*（\ 带 mdEsc 标记）写出来就是 \*，不会变成 \\\*；读回来是字面的 *
   it("a typed backslash escape is written as typed", () => {
     const esc = { type: "text", text: "\\", marks: [{ type: "mdEsc" }] };
     const doc = (...content: object[]) => ({ type: "doc", content: [{ type: "paragraph", content }] });
@@ -221,7 +220,7 @@ describe("typed math and block source", () => {
     // 后面没有字的 \：就是一个 \
     expect(serializeMd(doc({ type: "text", text: "end " }, esc))).toBe(serializeMd(doc({ type: "text", text: "end \\" })));
   });
-  // #32：==高亮==、H~2~O、x^2^；~~删除线~~ 照旧；读不成这些的 ~ ^ == 不转义（以前 H~2~O 会存成 H\~2\~O）
+  // ==高亮==、H~2~O、x^2^；~~删除线~~ 照旧；读不成这些的 ~ ^ == 不转义
   it("highlight, subscript and superscript", () => {
     same("==hi== and H~2~O and x^2^");
     const j = JSON.stringify(parseMd("==hi== and H~2~O and x^2^"));
@@ -271,7 +270,7 @@ describe("typed math and block source", () => {
     ] }] };
     expect(serializeMd(d)).toBe("**see $x^2$** now");
   });
-  // #30：单独一行的 [toc] 是目录，显示时列出所有标题；段落里的 [toc] 字照留
+  // 单独一行的 [toc] 是目录，显示时列出所有标题；段落里的 [toc] 字照留
   it("[toc] is a table of contents", () => {
     same("[toc]\n\n# A\n\n## B");
     expect(JSON.stringify(parseMd("[TOC]\n\n# A"))).toContain('"toc"');
@@ -283,7 +282,7 @@ describe("typed math and block source", () => {
     const lit = stable("\\[toc]");
     expect(JSON.stringify(parseMd(lit))).not.toContain('"toc"');
   });
-  // #31：:smile: 存成短名，显示成表情字；不认识的名字、紧跟在字母数字后面的（1:100:）、代码里的照留；字面的 :smile: 转义冒号
+  // :smile: 存成短名，显示成表情字；不认识的名字、紧跟在字母数字后面的（1:100:）、代码里的照留；字面的 :smile: 转义冒号
   it(":name: is an emoji", () => {
     same("hi :smile: and :+1:");
     expect(JSON.stringify(parseMd("hi :smile:"))).toContain('"emoji"');

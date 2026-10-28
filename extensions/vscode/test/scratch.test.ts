@@ -1,5 +1,3 @@
-// The scratch document behind code edited on a board: a sync writes the file and returns only once VS Code has read that text back
-// into the document, so the language service never answers for older text; when the reload cannot come, the sync fails
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 type Listener<T> = (e: T) => void;
@@ -46,7 +44,6 @@ describe("scratch setText", () => {
     const s = settled(setText(d, "new text"));
     await tick();
     expect(writes).toEqual([{ path: "/w/.codeboard-scratch-a.py", text: "new text" }]);
-    // the old 1500 ms carry-on is gone: still waiting well past it
     vi.advanceTimersByTime(RELOAD_LIMIT_MS - 1);
     await tick();
     expect(s.done).toBe(false);

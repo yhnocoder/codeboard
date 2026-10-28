@@ -1,6 +1,4 @@
 // Image cards follow their image's aspect ratio: no blank bands beside or above the picture, after loading and after a resize.
-// Usage: npm run harness -- imageFollowsAspectRatio
-// Screenshots: test-out/harness/image-*.png (HARNESS_LIGHT=1 for the light theme)
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard, migrateBoard, type Board } from "@codeboard/core";

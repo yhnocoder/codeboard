@@ -27,7 +27,6 @@ export type Bind = {
   run?: (a: A, e: KeyboardEvent) => boolean | void;
 };
 
-/** 第几次按下方向键（自动重复不算）：同一次按住的微移并成一步撤销 */
 let nudgeRun = 0;
 const nudge = (dx: number, dy: number) => (a: A, e: KeyboardEvent) => {
   // The step is on screen (1 px, Shift 10 px), so zoomed out a press still moves visibly; whole world pixels like every other placement

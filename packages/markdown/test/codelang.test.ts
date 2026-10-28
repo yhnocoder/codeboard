@@ -1,4 +1,3 @@
-// 代码块的语言框（#68）：打的字筛出语言、定下来写进围栏的名字
 import { describe, expect, it } from "vitest";
 import { langLabel, langOf, matchLangs, type CodeLang } from "../src/editor/codelang";
 

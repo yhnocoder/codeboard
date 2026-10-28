@@ -1,4 +1,3 @@
-// Mark：手写字的便签（四种颜色），可以带 Markdown、几段；锁定、几张一起选中（颜色条不出）、从 Mark 出发的手绘箭头（Mark 的颜色）、地图档
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { HAND_COLORS, type HandColor } from "@codeboard/core";
 import { Stage, scene, markCard, codeCard, type Globals, type Scene } from "./support/board";

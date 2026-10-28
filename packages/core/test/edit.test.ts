@@ -206,7 +206,6 @@ describe("migrateBoard", () => {
   });
 });
 
-// v0.1.6 S3: the board actions keep references through these primitives (see the guard test at the end)
 describe("reference upkeep in board actions", () => {
   const sw = (commit: string, start: number, text: string[]): Segment => ({ ...seg("s1", start, text), version: { kind: "git", commit } });
   it("switching a card to another commit (switchCommit) rebases: hidden lines, links, sidenotes and stickers follow the content", () => {
@@ -463,7 +462,6 @@ describe("guard: reference upkeep only in core/src/edit.ts", () => {
 });
 
 
-// v0.2 共享卡 / D2：拷卡、拆成副本、合并 / 拆开、删 Sidenote / Sticker、Update 后的复查标记
 describe("card copies, unlink, merge and unmerge (core edit, D2)", () => {
   const two = (): Board => ({
     ...emptyBoard("b", "B"),

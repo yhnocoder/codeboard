@@ -8,7 +8,6 @@ const qi = (page) => page.locator(".quick-input-widget");
 const qiValue = (page) => page.locator(".quick-input-widget .quick-input-box input").inputValue();
 const qiFocused = (page) => page.evaluate(() => !!document.activeElement?.closest(".quick-input-widget"));
 const qiOpen = async (page) => await qi(page).isVisible() && await qiFocused(page);
-/** Wait until the quick input is closed */
 const qiClosed = (page, what = "the quick input") => qi(page).waitFor({ state: "hidden", timeout: 10000 }).catch(() => { throw new Error(`${what} did not close`); });
 // VS Code hands the keyboard back to a board's webview when a quick input it took it from closes (VS Code 1.143, webviewElement.ts and
 // webview/browser/pre/index.html): WebviewElement._doFocus focuses the webview's iframe and starts _focusDelayer (50 ms), whose task

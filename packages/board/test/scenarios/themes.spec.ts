@@ -1,4 +1,3 @@
-// Theme looks (Ink Wash, City): npm run harness -- themeLooks [--light]; City roads, cars and traffic: cityTheme
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { shot, symCard, findSym, put, OUT } from "../harness";

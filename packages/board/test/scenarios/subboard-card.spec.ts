@@ -1,8 +1,3 @@
-// The sub-board card (a board placed on another board), a static preview: the name and card count above the frame, its columns
-// (one per section; mini cards of one fixed size in one stack, or two masonry stacks from four cards on; only those that fit),
-// the same geometry as the design (feedback demo #12, option B2), the wheel and arrows treating it like any card,
-// entering / leaving with the title morph, and [[ links to cards inside sub-boards.
-// Usage: npm run harness -- <scenario…>   screenshots: test-out/harness/subboardcard-*.png
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { DEFAULT_SETTINGS, emptyBoard, type NoteCard } from "@codeboard/core";
@@ -507,7 +502,7 @@ test("subboardLinkPicker", async () => {
     await page.keyboard.press("Escape");
     await until(h, "the link is saved", () => (t.store.peek("bMain")!.cards.find((c) => c.id === "mNote") as NoteCard).md.includes("[[nano-vllm 调度器 › Deep › 深处的笔记]]"));
     await idle(h);
-    const chip = page.locator('.card[data-id="mNote"] .cref', { hasText: "深处" });
+    const chip = page.locator('.card[data-id="mNote"] .md-ref', { hasText: "深处" });
     res.resolved = await chip.evaluate((e) => !e.classList.contains("missing"));
     const n = t.inits.length;
     await chip.click();

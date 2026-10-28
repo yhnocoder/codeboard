@@ -1,4 +1,4 @@
-// Drive VS Code through the main v0.1 flows, checking results and taking a screenshot at each step.
+// Drive VS Code through the main flows, checking results and taking a screenshot at each step.
 // Every step waits for the state it needs (wait.cjs, ui.cjs), never for a fixed time
 const { chromium } = require("playwright-core");
 const fs = require("fs");
@@ -74,7 +74,7 @@ async function sidenote(page, f, c, a, b, words) {
 /** The text the system clipboard holds, read in the board's webview (which has the keyboard): what ⌘V there will paste */
 const clipboard = (f) => f.evaluate(() => navigator.clipboard.readText());
 
-// 13. Capture Run（线框 13）：跑一次工作区里的小脚本（nano-vllm 要 torch，这里没有），tracer 只记 Study Scope 里的调用；
+// 13. Capture Run：跑一次工作区里的小脚本（nano-vllm 要 torch，这里没有），tracer 只记 Study Scope 里的调用；
 // 白板上已有的 Call 箭头变 Observed，没有箭头的调用列在 Run 面板里。E2E_ONLY=capture 只跑这一步
 async function captureStep(page) {
   fs.writeFileSync(path.join(WS, "e2e_capture.py"), [
@@ -413,7 +413,7 @@ async function cardfocusStep(page) {
   check(all.bar > 0 && all.lens > 0 && lens.bar === 0 && lens.lens > 0 && off.bar === 0 && off.lens === 0 && back.bar > 0 && back.lens > 0, "codeboard.editorMarks all / lens / off switches the bar and the CodeLens live", { all, lens, off, back });
 }
 
-// PR9 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
+// 编辑代码：Free code 卡用 CodeMirror 编辑，补全 / 签名提示来自 VS Code 的语言服务（Pylance）。虚拟文档是白板上同语言代码
 // 旁边的隐藏文件（这里是 nanovllm/engine/.codeboard-scratch-<卡>.py），import 按那个目录找；git status 里看不到，编辑完就删掉，
 // 也不会冒出未保存的标签页（重新加载窗口后也没有）。要 E2E_EXTENSIONS 里有 Pylance。E2E_ONLY=codeedit 只跑这一步
 async function codeeditStep(page) {
@@ -958,7 +958,7 @@ const finish = async (browser, errors) => {
     f = fb2; await idle(f);
   }
 
-  // 12. 动态分发选实现（线框 01）：调用处的静态类型是基类，Pylance 的 Implementation 列出两个子类；选一个建卡，另一个是灰色备选框。
+  // 12. 动态分发选实现：调用处的静态类型是基类，Pylance 的 Implementation 列出两个子类；选一个建卡，另一个是灰色备选框。
   // 没装 Pylance（E2E_EXTENSIONS 里没有）时 Python 没有语言服务，跳过
   if (/pylance/i.test(process.env.E2E_EXTENSIONS || "")) {
     const DISPATCH = W("nanovllm/e2e_dispatch.py");

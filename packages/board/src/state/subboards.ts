@@ -12,7 +12,7 @@ export const [skels, setSkels] = createStore<Record<string, Skeleton | null>>({}
 const [skelVer, setSkelVer] = createStore<Record<string, number>>({});
 /** 面包屑（从最外层到上一级）；顶层白板是空的 */
 export const [crumbs, setCrumbs] = createSignal<Crumb[]>([]);
-/** 进子白板时名字正飞向面包屑：面包屑上「当前」那一格先不显示（actions/subboards.ts） */
+/** 进子白板时名字正飞向面包屑：面包屑上「当前」那一格先不显示 */
 export const [crumbMorph, setCrumbMorph] = createSignal(false);
 /** 从父白板的讲解进来的：讲完（→ 走过最后一步 / ← 退过第一步）回到父白板，从这里接着讲 */
 export const [walkBack, setWalkBack] = createSignal<{ root: string; i: number } | null>(null);
@@ -22,7 +22,6 @@ const frameById = rooted(() => createMemo(() => new Map(frames().map((c) => [c.i
 export const frameOf = (id: string) => frameById().get(id);
 export const skelOf = (frame: string): Skeleton | null | undefined => { const f = frameOf(frame); return f ? skels[f.board] : undefined; };
 
-/** 换白板（init）时：骨架、面包屑都换掉 */
 export function resetSubboards(c: Crumb[] | undefined) {
   setSkels(reconcile({}));
   setSkelVer(reconcile({}));
@@ -32,7 +31,6 @@ export function resetSubboards(c: Crumb[] | undefined) {
   asked.clear();
 }
 
-/** 宿主发来的骨架（变了的那几块） */
 export function putSkels(m: Record<string, Skeleton | null>) {
   batch(() => { for (const [id, s] of Object.entries(m)) { setSkels(id, reconcile(s)); setSkelVer(id, (v) => (v ?? 0) + 1); } });
 }
@@ -49,7 +47,6 @@ export function trackSkeletons() {
   });
 }
 
-// ---------- 框里的分栏 ----------
 // 一个 Section 一栏（栏名 + 卡数；不在 Section 里的卡单独一栏）。栏里是固定宽度的小卡片：3 张以内一列，4 张起两列瀑布流
 // （按阅读顺序，每张放进当前较矮的那一列，列里卡片间距固定，两列不按行对齐，短卡下面不留空）。整个排布在这里算好（每张小卡片的位置、大小），
 // 框里只是按算好的位置摆（cards/BoardBody.tsx），只摆框里看得见的那些。排布只跟骨架有关：框改大小只是多露出或盖住一些，平移缩放都不重算
@@ -114,14 +111,11 @@ export function layoutOf(board: string, measure: MeasureMinis): MiniLayout | nul
   return l;
 }
 
-// ---------- [[ 链接到子白板里的卡 ----------
 // 骨架带着子白板（一路往下）上有真正标题的卡（Skeleton.refs）。链接写成 [[子白板 › 卡]]（更深的一层层接上），按名字找回来
 
-/** 框在链接里叫什么：框自己起的名字，否则子白板的名字 */
 export const frameName = (f: BoardCard) => f.title || skels[f.board]?.name || state.boards.find((m) => m.id === f.board)?.name || "Board";
 export const REF_SEP = " › ";
 type SubRef = { id: string; label: string; k: string; frame: string };
-/** 这块白板上所有框里能链接的卡 */
 export function subRefs(): SubRef[] {
   const out: SubRef[] = [], seen = new Set<string>();
   for (const f of frames()) {

@@ -62,11 +62,9 @@ export function BoardView(p: { children?: JSX.Element }) {
       <Show when={crumbs().length}><Crumbs /></Show>
       <Show when={banner() && A.staleCount() > 0 && !walk()}><Banner /></Show>
       {p.children}
-      {/* 调用树侧栏、Arrow 图例、运行面板：开着才有 */}
       <Show when={treeOpen()}><CallTreePanel /></Show>
       <Show when={legendOpen()}><LegendPanel /></Show>
       <Show when={runState()}><RunPanel /></Show>
-      {/* 疑问：Questions 面板、隔几天回来的提示 */}
       <Show when={questionsOpen()}><QuestionsPanel /></Show>
       <Show when={welcome() && !walk()}><WelcomeHint /></Show>
       <Show when={walk()}><WalkBar /></Show>

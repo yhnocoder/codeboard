@@ -1,4 +1,4 @@
-// 卡头的语言标签：PY / C++ / CUDA / TRITON / TILELANG / RUST。Triton、TileLang 的文件也是 python，看装饰器认。
+// Triton、TileLang 的文件也是 python，看装饰器认。
 import type { CodeCard, Segment } from "./model";
 
 export type LangChip = "PY" | "C++" | "CUDA" | "TRITON" | "TILELANG" | "RUST";

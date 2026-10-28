@@ -1,4 +1,3 @@
-// 我的改动（Variant）：标签页、MINE、改过的行（~ / +）、对比基准、落后几个 commit、一行说明、合进上游的提示点、三方对照、菜单
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { type Board, type CodeCard, type Segment } from "@codeboard/core";
 import { Stage, scene, type Globals, type Group, type Scene } from "./support/board";

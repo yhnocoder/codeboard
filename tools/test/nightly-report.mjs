@@ -1,9 +1,5 @@
-// The nightly run's comment on the "replay-nightly" issue (nightly.yml, publish job), built from the downloaded artifacts:
 //   failures      harness (harness-<k>/result.json), e2e (e2e-<k>/e2e.log), perf and Storybook (storybook/result.json); kept in the hidden marker
 //                 <!-- nightly-failures: [...] --> that the next night's "Passing again" diff and the PR carry-over read
-//   flakes        the flake repeat (repeat/repeat.json, harness.mjs --changed-since --repeat): new or changed scenarios that failed
-//                 a repetition. They don't make the run red, and never go into nightly-failures
-//   alone         scenarios of the full run that failed beside others and passed only when run alone (alone: true)
 // Flakes, alone-passes and a repeat error go into their own marker, <!-- nightly-flaky: {...} -->.
 // A comment is due when the set of failures changes, when the repeat found a flake or could not run, or when the alone set changes.
 // Usage (github-script): const { nightlyReport } = await import(`${process.env.GITHUB_WORKSPACE}/tools/test/nightly-report.mjs`)
@@ -45,7 +41,6 @@ export function nightlyReport({ dir, jobs, comments, run, sha }) {
   const flakes = repeated.filter((x) => !x.ok && !fullFailing.has(x.name));
   const alsoFull = repeated.filter((x) => !x.ok && fullFailing.has(x.name)).map((x) => x.name);
 
-  // Last night's markers
   const mark = (re) => [...comments].reverse().map((c) => re.exec(c || "")).find(Boolean);
   const lastFails = mark(/<!-- nightly-failures: (.*) -->/);
   const lastFlaky = mark(/<!-- nightly-flaky: (.*) -->/);

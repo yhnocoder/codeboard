@@ -11,7 +11,7 @@ const PICK = {
   schedule: "Scheduler.schedule",
   preempt: "Scheduler.preempt",
   canAppend: "BlockManager.can_append",
-  // ---- Code 和 Canvas 小样共用（stories/support/code.tsx、canvas.tsx）：调用图、Compare、类卡、多段卡、箭头、LOD ----
+  // Code 和 Canvas 小样共用：调用图、Compare、类卡、多段卡、箭头、LOD
   step: "LLMEngine.step",
   postprocess: "Scheduler.postprocess",
   canAllocate: "BlockManager.can_allocate",
@@ -39,7 +39,6 @@ for (const [key, qual] of Object.entries(PICK)) {
 fs.writeFileSync(OUT_FILE, JSON.stringify(out, null, 1) + "\n");
 console.log(`Wrote ${Object.keys(out).length} segments to ${path.relative(process.cwd(), OUT_FILE)}`);
 
-// ---------- Note 里代码块的着色（Cards/Note Markdown、Cards/Note Editing）----------
 // 白板把 Note 的代码块交给宿主着色（cm/load.ts noteHighlight → views）；这里用宿主同一个 highlight 预先算好，假宿主按「语言 + 代码」查表
 {
   const { highlight } = await import("@codeboard/host/views");

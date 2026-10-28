@@ -1,4 +1,3 @@
-// Free code：手写 / 粘贴的代码。显示、有 / 没有标题、贴来的来源地址、折行、编辑中（CodeMirror）、语言菜单
 import type { Meta, StoryObj } from "storybook-solidjs-vite";
 import { Stage, scene, type Globals, type Scene } from "./support/board";
 import { el, frames } from "./support/play";

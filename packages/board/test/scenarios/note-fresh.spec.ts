@@ -1,6 +1,3 @@
-// A new, still empty Note: moving or resizing it keeps it (and its first edit); it still goes away when editing ends empty.
-// Usage: npm run harness -- emptyNewNoteSurvivesDrag
-// Screenshots: test-out/harness/note-fresh-*.png (HARNESS_LIGHT=1 for the light theme)
 import * as path from "node:path";
 import { OUT, type Host } from "../harness";
 import { emptyBoard } from "@codeboard/core";
@@ -34,7 +31,6 @@ test("emptyNewNoteSurvivesDrag", async () => {
   const pg = h.page;
   await idle(h);
 
-  // move by the header
   await newNote(h);
   const a = await box(h, ".card.note .chead");
   await drag(h, a.x + 60, a.y + a.h / 2, -220, -140);
@@ -52,7 +48,6 @@ test("emptyNewNoteSurvivesDrag", async () => {
   await until(h, "undo takes the note away", async () => (await notes(h)) === 0);
   check("emptyNewNoteSurvivesDrag one undo step", (await notes(h)) === 0, { notes: await notes(h) });
 
-  // resize by the corner: still there, still editing
   await newNote(h);
   const g = await box(h, ".card.note .grip");
   await drag(h, g.x + g.w / 2, g.y + g.h / 2, 80, 60);

@@ -1,4 +1,3 @@
-// 复制选中的一部分（editor/clipboard.ts）：text/plain 是 Markdown，选了格式里的一部分时记号成对包住选中的字；粘贴（按 Markdown 解析）回来格式还在
 import { describe, expect, it } from "vitest";
 import { getSchema } from "@tiptap/core";
 import { baseExtensions, parseMd } from "../src/schema";
@@ -52,7 +51,6 @@ describe("copying part of a formatted span", () => {
     it(`${md} → "${sel.replace("\u0000", "$x$")}"`, () => {
       const text = copy(md, sel);
       expect(text).toBe(want);
-      // pasted back as Markdown the format is still there
       expect(marksIn(text)).toEqual(marks);
     });
   }

@@ -70,5 +70,4 @@ export const NoSectionTicked: Story = { name: "Selected Sections · None Ticked 
 export const Walkthrough: Story = { args: { scope: "walk" }, play: open };
 export const NothingToPick: Story = { name: "No Sections, No Start Card", args: { sections: false, start: false }, play: open };
 export const Busy: Story = { name: "Exporting…", args: { busy: true }, play: open };
-// 真的点：⋯ → Export…（默认值来自设置）
 export const FromMoreMenu: Story = { name: "From the More Menu", play: async () => { await settled(); await toolbar("More"); await menu(); await menuItem("Export…"); } };

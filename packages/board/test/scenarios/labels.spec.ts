@@ -1,4 +1,4 @@
-// one label box per arrow (↺ + own text, then arguments), drag along the arrow, Arrow / Label right-click menus (npm run harness -- arrowLabelsMenus)
+// one label box per arrow (↺ + own text, then arguments), drag along the arrow, Arrow / Label right-click menus
 import * as fs from "node:fs";
 import { symCard, findSym, put, OUT, type Host } from "../harness";
 import * as path from "node:path";
@@ -92,7 +92,7 @@ test("arrowLabelsMenus", async () => {
   const { b, sch, alloc, can, lines } = labelBoard();
   const h = await open({ board: b, light, w: 1500, h: 950 });
 
-  // ---- the three kinds (W01 C 13–16) and vanished arguments ----
+  // the three kinds and vanished arguments
   const A = box(h, "LA"), B = box(h, "LB"), C = box(h, "LC");
   const kinds = {
     boxes: await h.page.locator(".vchips").count(),
@@ -115,14 +115,14 @@ test("arrowLabelsMenus", async () => {
     await idle(h);
   }
 
-  // hover an argument: its names light up in both cards (W01 C 17)
+  // hover an argument: its names light up in both cards
   await A.locator(".vrow").first().hover(); await idle(h);
   const hiFrom = await h.page.locator(`.card[data-id="${sch.id}"] .rowbg.vhi`).count(), hiTo = await h.page.locator(`.card[data-id="${alloc.id}"] .rowbg.vhi`).count();
   check("arg-hover-highlight", hiFrom > 0 && hiTo > 0, { hiFrom, hiTo });
   await snap(h, "labels-2-arg-hover");
   await h.page.mouse.move(5, 900); await idle(h);
 
-  // hover the arrow: "+" opens the Arguments picker with the candidates (W01 C 18)
+  // hover the arrow: "+" opens the Arguments picker with the candidates
   const pB = await onArrow(h, "LB", 0.3);
   await h.page.mouse.move(pB.x, pB.y);
   await h.page.locator(".vplus").first().click();
@@ -146,7 +146,7 @@ test("arrowLabelsMenus", async () => {
     await idle(h);
   }
 
-  // ---- drag along the arrow, ratio kept when a card moves (W01 C 19–20) ----
+  // drag along the arrow, ratio kept when a card moves
   const r0 = (await A.boundingBox())!;
   await h.page.mouse.move(r0.x + 12, r0.y + 8); await h.page.mouse.down();
   await h.page.mouse.move(r0.x + 400, r0.y - 300, { steps: 10 }); await h.page.mouse.up();
@@ -173,7 +173,6 @@ test("arrowLabelsMenus", async () => {
   check("ratio-after-card-move", moved && at3 === at2 && on3.d < 4 && !on3.hit, { moved, at3, ...on3 });
   await snap(h, "labels-4-dragged");
 
-  // ---- Label menu (W01 D 23) ----
   await labelMenu(h, "LA");
   const lm = await menuLabels(h);
   check("label-menu-items", lm.join("|") === "Edit Label|Arguments…|Loop Mark|Reset Label Position|Delete Label", lm);
@@ -204,7 +203,6 @@ test("arrowLabelsMenus", async () => {
   await h.page.keyboard.press("Escape"); await idle(h);
   check("enter-edits-label", enterEdits === 1, { enterEdits });
 
-  // ---- Arrow menu (W01 D 22, 24, 25) ----
   await arrowMenu(h, "LA");
   const am = await menuLabels(h);
   // Mark as RPC…, ↩ Back to Start (call chains) and the Style presets
