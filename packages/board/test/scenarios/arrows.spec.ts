@@ -1,6 +1,6 @@
 // scenarios for links-core: call graph marks, several callers, Linked here + Back / Forward, Walkthrough order (npm run harness -- graphMarksLinked …)
 import { shot, symCard, findSym, put, OUT, type Host } from "../harness";
-import { emptyBoard, type Board, type CodeCard, type Link } from "@codeboard/core";
+import { emptyBoard, type Board, type CodeCard, type Link, type NoteCard } from "@codeboard/core";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { test, open, check, light, until, idle, hold } from "../fixtures";
@@ -444,5 +444,38 @@ test("headPortHidden", async () => {
   await shot(h, "arrows-eportland-2");
   const ok = sides === "left|right" && r === "0" && l === "1" && ml === "0" && mrr === "1" && rh === "1";
   check("eport-land", ok, JSON.stringify({ sides, r, l, ml, mr: mrr, rh }));
+  await close(h);
+});
+
+/** Zoomed out, a card's edge port keeps its 100% size on screen, drawn and to hit (feedback #14: at 30% it was a 3 px target) */
+test("portSizeWhenZoomedOut", async () => {
+  const b = emptyBoard("b1", "portsize");
+  b.cards.push({ id: "n0", kind: "note", md: "A note to drag an arrow out of", bg: true } as NoteCard);
+  b.place.n0 = { x: 300, y: 200, w: 320, h: 160 };
+  b.cam = { x: 0, y: 0, z: 1 };
+  const h = await open({ board: b, light: true, w: 1300, h: 800 });
+  const pg = h.page, N0 = `.card[data-id="n0"]`;
+  /** The top port as the pointer finds it: its drawn size, and how far right of its centre the pointer still hits it */
+  const measure = async (name: string) => {
+    const cb = (await pg.locator(N0).boundingBox())!;
+    await pg.mouse.move(cb.x + cb.width / 2, cb.y + cb.height / 2);
+    await until(h, "the hovered card shows its ports", () => pg.locator(`${N0} .eport.t`).evaluate((e) => getComputedStyle(e).opacity === "1")); await idle(h);
+    const m = await pg.evaluate((sel) => {
+      const e = document.querySelector(sel)!, r = e.getBoundingClientRect(), cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+      let hit = 0;
+      for (let d = 0; d <= 20; d += 0.5) { if (document.elementFromPoint(cx + d, cy)?.closest(".eport") !== e) break; hit = d; }
+      return { w: +r.width.toFixed(2), h: +r.height.toFixed(2), hit, cx, cy };
+    }, `${N0} .eport.t`);
+    await pg.screenshot({ path: path.join(OUT, `${name}.png`), clip: { x: m.cx - 120, y: m.cy - 60, width: 240, height: 120 } });
+    return m;
+  };
+  const at100 = await measure("arrows-portsize-100");
+  for (let i = 0; i < 5; i++) await pg.keyboard.press("Meta+Minus");
+  await idle(h);
+  const zoom = await pg.evaluate(() => new DOMMatrix(getComputedStyle(document.querySelector(".world")!).transform).a);
+  const at30 = await measure("arrows-portsize-zoomed");
+  const near = (a: number, b: number) => Math.abs(a - b) <= 0.5;
+  check("portSizeWhenZoomedOut", zoom < 0.4 && near(at30.w, at100.w) && near(at30.h, at100.h) && near(at30.hit, at100.hit) && at100.hit >= 4,
+    JSON.stringify({ zoom, at100, at30 }));
   await close(h);
 });

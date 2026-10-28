@@ -82,6 +82,9 @@ export function Canvas() {
   return (
     <div ref={el} id="board" class="board" data-mode={boardMode()} classList={{ walking: !!walk(), dragging: dragging().size > 0, "lod-overview": lod() === "overview", "lod-map": lod() === "map" }}
       onPointerDown={canvasPointerDown} onContextMenu={canvasContextMenu}>
+      {/* The link ports keep at least their 100% size on screen. A rule only they match, not a variable on .world: changing an
+          inherited variable there restyles every element on the board, this restyles only the ports, once each time the camera stops */}
+      <style data-export="strip">{`.eport, .lport { --uz: ${Math.max(1, 1 / stillZ())}; }`}</style>
       <div ref={world} class="world" classList={{ moving: camMoving(), settle: settle() }} style={{ transform: `translate(${cam.x}px, ${cam.y}px) scale(${cam.z})`, "--izmap": String(izMap()) }}>
         <SectionFrames />
         <LinkLayer bottom />
