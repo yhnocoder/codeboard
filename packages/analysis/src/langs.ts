@@ -37,7 +37,7 @@ const C_KW = words("return for if else while do break continue switch case defau
 const CPP_KW = words("noexcept override final mutable explicit friend operator static_cast dynamic_cast reinterpret_cast const_cast decltype throw try catch concept requires co_await co_return co_yield thread_local alignas alignof static_assert register restrict export __restrict __restrict__ __inline__ __forceinline__ __noinline__ __attribute__ __global__ __device__ __host__ __shared__ __constant__ __managed__ __grid_constant__ __launch_bounds__");
 const RUST_KW = words("as break const continue crate else enum extern false fn for if impl in let loop match mod move mut pub ref return self Self static struct super trait true type unsafe use where while async await dyn i8 i16 i32 i64 i128 isize u8 u16 u32 u64 u128 usize f32 f64 bool char str");
 const py = { comment: "#", vscodeId: "python", md: "python", shiki: "python", lsp: true, keywords: PY_KW, noDef: "setattr, dispatch by string, or no Python extension", grammar: "python" as const };
-const cpp = { comment: "//", shiki: "cpp", lsp: true, keywords: new Set([...C_KW, ...CPP_KW]), noDef: "a macro, or no C/C++ extension: clangd or ms-vscode.cpptools", grammar: "cpp" as const };
+const cpp = { comment: "//", shiki: "cpp", lsp: true, keywords: new Set([...C_KW, ...CPP_KW]), noDef: "a macro, a header it cannot find, or no C/C++ extension: clangd or ms-vscode.cpptools", grammar: "cpp" as const };
 
 export const LANG_TABLE: readonly LangInfo[] = [
   { id: "python", label: "Python", pick: true, aliases: ["py", "python3"], ext: ["py", "pyi"], ...py },
