@@ -7,7 +7,7 @@ import { subBoard, skelOfBoard, boardFrame } from "./support/cards";
 import { setDropTarget } from "../src/state/ui";
 
 /** 框外名字的高度：框的说明文字摆在名字上面 */
-const T = 44;
+const T = 50;
 
 type Kind = "skeleton" | "empty" | "nested" | "loading" | "deleted";
 type Args = { kind: Kind; title: string; w: number; h: number; titleOnly: boolean; selected: boolean; lod: "toolbar" | "map" };
@@ -28,9 +28,9 @@ function single(a: Args): Scene {
 
 function overview(): Scene {
   const { board, put, caption } = scene("Sub-board overview");
-  caption("Skeleton (sections, call marks, arrows)", 40, 40, 420); put(boardFrame("o-sk", SCHED.id), { x: 40, y: 40 + T, w: 520, h: 340 });
+  caption("Columns (one per section, masonry stacks)", 40, 40, 420); put(boardFrame("o-sk", SCHED.id), { x: 40, y: 40 + T, w: 520, h: 340 });
   caption("Nested (a sub-board inside)", 620, 40); put(boardFrame("o-nest", NESTED.id), { x: 620, y: 40 + T, w: 460, h: 340 });
-  caption("Small frame (skeleton scaled down)", 1140, 40, 300); put(boardFrame("o-small", SCHED.id, "Scheduler（小框）"), { x: 1140, y: 40 + T, w: 240, h: 170 });
+  caption("Small frame (only what fits, faded)", 1140, 40, 300); put(boardFrame("o-small", SCHED.id, "Scheduler（小框）"), { x: 1140, y: 40 + T, w: 240, h: 170 });
   caption("Empty board", 1140, 290); put(boardFrame("o-empty", EMPTY.id), { x: 1140, y: 290 + T, w: 240, h: 140 });
   caption("Loading (no skeleton yet)", 40, 460); put(boardFrame("o-load", "sb-not-yet"), { x: 40, y: 460 + T, w: 300, h: 180 });
   caption("Deleted / unreadable", 400, 460); put(boardFrame("o-gone", "sb-gone"), { x: 400, y: 460 + T, w: 300, h: 180 });

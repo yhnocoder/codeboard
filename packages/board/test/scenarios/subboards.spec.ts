@@ -236,6 +236,7 @@ async function run(res: Record<string, unknown>) {
     res.inLinks = eng.links.filter((l) => l.to.card === frame?.id).map((l) => JSON.stringify(l.to));
     res.skelCards = await page.locator(`.card[data-id="${frame?.id}"] .skel [data-sub]`).count();
     res.title = await page.locator(`.card[data-id="${frame?.id}"] .sbhead`).textContent();
+    res.tip = await page.locator(`.card[data-id="${frame?.id}"] .sbname`).getAttribute("title");
     await page.keyboard.press("Escape"); await page.keyboard.press("Shift+Digit1"); await idle(h);
     await shotPr(h, "subboards-1-frame");
 
@@ -313,7 +314,7 @@ async function run(res: Record<string, unknown>) {
 
     const into = JSON.stringify({ card: frame?.id });
     const ok = res.frame && res.child === 5 && res.childLinks === 3 && JSON.stringify(res.inLinks) === JSON.stringify([into, into])
-      && (res.skelCards as number) >= 1 && /Scheduler\s*5\s*bb823b3$/.test(String(res.title)) && res.far === 1
+      && (res.skelCards as number) >= 1 && /Scheduler\s*5$/.test(String(res.title)) && res.tip === "Scheduler · bb823b3" && res.far === 1
       && /\+4 more/.test(String(res.more)) && res.newArrow === into && res.entered && /Engine.*Scheduler/.test(String(res.crumbs))
       && /Can’t put Engine inside Scheduler: Scheduler is already inside Engine/.test(String(res.cycleToast)) && res.noCycle && res.back
       && res.walkIn && res.walkOut && res.removedFrame && res.lo === 0;

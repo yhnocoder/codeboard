@@ -15,6 +15,8 @@
   --hatch: rgba(60,45,20,.07);
   --edge: #9a958b;
   --s-sand: rgba(206,170,110,.16); --s-blue: rgba(96,145,205,.12); --s-green: rgba(110,165,95,.13); --s-pink: rgba(215,120,145,.12);
+  /* 便签（子白板框里手写的 Mark）：底色、字、出处、描边 */
+  --sticky: #fbefb6; --sticky-ink: #4a3c12; --sticky-src: #8a6a16; --sticky-edge: rgba(150,110,20,.2);
   --lk-orange: #c46a2a; --lk-blue: #3a72aa; --lk-green: #4c8a3a; --guide: #2f7de1;
   /* 手写的 Mark 卡、标注和它们的箭头：四种颜色（主题不另配，亮暗各一份）和手写字体 */
   --hd-blue: #3a72aa; --hd-purple: #7d55b0; --hd-orange: #c46a2a; --hd-green: #4c8a3a;
@@ -55,6 +57,7 @@
   --hatch: rgba(255,240,220,.06);
   --edge: #78746c;
   --s-sand: rgba(214,180,120,.10); --s-blue: rgba(120,165,225,.09); --s-green: rgba(140,195,120,.09); --s-pink: rgba(230,140,165,.09);
+  --sticky: #4a4127; --sticky-ink: #f1e6c2; --sticky-src: #d2b56a; --sticky-edge: rgba(240,200,110,.22);
   --lk-orange: #e3955a; --lk-blue: #7fb0e0; --lk-green: #96c47e; --guide: #5aa2ff;
   --hd-blue: #7fb0e0; --hd-purple: #b89be6; --hd-orange: #e3955a; --hd-green: #96c47e;
   --glass: rgba(42,41,38,.94);
@@ -1090,47 +1093,54 @@ mark.wdiff { background: var(--chg-strong); color: inherit; border-radius: 2px; 
 .cbody.wrap .dedm { display: none; }
 
 /* 子白板框：一张静态的预览（cards/BoardBody.tsx），颜色都在这里按主题取。名字和卡数在框外上方，框里只有分栏。
-   卡的类名 board 和画布的 .board 撞了：位置、裁切照普通的卡 */
-.card.board { position: absolute; right: auto; bottom: auto; overflow: visible; --cr: min(calc(var(--r-card) * 1.75), 30px); border-radius: var(--cr); background: color-mix(in srgb, var(--surface) 72%, var(--bg)); box-shadow: 0 0 0 1px var(--hair), var(--sh-card); }
+   卡的类名 board 和画布的 .board 撞了：位置、裁切照普通的卡。尺寸、字号都是世界坐标（缩放 100% 时的 px） */
+.card.board { position: absolute; right: auto; bottom: auto; overflow: visible; --cr: calc(var(--r-card) * 1.76); border-radius: var(--cr); background: color-mix(in srgb, var(--surface) 72%, var(--bg)); box-shadow: 0 0 0 1px var(--hair), var(--sh-card); }
 .card.board:hover:not(.lift) { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 28%, transparent), var(--sh-card); }
 .card.board.sel { box-shadow: 0 0 0 2px var(--accent), 0 0 0 5px color-mix(in srgb, var(--accent) 16%, transparent), var(--sh-card); }
 .card.board.drop-hot { box-shadow: 0 0 0 2px var(--k-fn), var(--sh-card); }
-/* 只有字接指针（拖、双击进去）：名字右边的空白还是画布 */
-.sbhead { position: absolute; left: 6px; right: 0; bottom: calc(100% + 10px); display: flex; align-items: baseline; gap: 10px; white-space: nowrap; color: var(--ink); pointer-events: none; }
+/* 名字一行 30px，底边离框 16px；只有字接指针（拖、双击进去）：名字右边的空白还是画布 */
+.sbhead { position: absolute; left: 6px; right: 0; bottom: calc(100% + 16px); display: flex; align-items: baseline; gap: 10px; white-space: nowrap; color: var(--ink); pointer-events: none; }
 .sbhead > * { pointer-events: auto; cursor: grab; }
 .sbhead .step { align-self: center; }
 .sbname { min-width: 0; overflow: hidden; text-overflow: ellipsis; font: 700 25px/1.2 var(--sys); letter-spacing: -.015em; }
 .sbmeta { flex: none; font: 500 25px/1.2 var(--sys); letter-spacing: -.015em; color: var(--ink-3); }
-.sbcommit { flex: none; font: 12px/1 var(--mono); color: var(--ink-3); }
 .sbgone { position: relative; z-index: 2; padding: 16px 18px; font: 12px/1.4 var(--sys); color: var(--ink-3); }
-/* 分栏（state/subboards.ts miniLayout 算好位置，尺寸都是世界坐标、和那边一套）：一个 Section 一栏，小卡片字号固定；不滚动，右边、下边放不下的渐隐 */
-.sbcols { position: absolute; left: 0; right: 0; top: 16px; bottom: 0; overflow: hidden; cursor: grab; contain: strict; --fade: 44px;
-  --sb-sand: #ceaa6e; --sb-blue: #6091cd; --sb-green: #6ea55f; --sb-pink: #d77891; --sb-sticky: color-mix(in srgb, #f6d965 34%, var(--surface)); }
-.sbcols.fade-r { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent); mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent); }
-.sbcols.fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade)), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - var(--fade)), transparent); }
-.sbcols.fade-r.fade-b { -webkit-mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent), linear-gradient(to bottom, #000 calc(100% - var(--fade)), transparent);
-  -webkit-mask-composite: source-in; mask-image: linear-gradient(to right, #000 calc(100% - var(--fade)), transparent), linear-gradient(to bottom, #000 calc(100% - var(--fade)), transparent); mask-composite: intersect; }
+/* 分栏（state/subboards.ts miniLayout 算好位置，尺寸和那边一套：离框顶、左右各 18px，栏距 16px，小卡片宽 124px、间距 6px）。
+   不滚动，右边（44px）、下边（40px）放不下的渐隐 */
+.sbcols { position: absolute; left: 0; right: 0; top: 18px; bottom: 0; overflow: hidden; cursor: grab; contain: strict;
+  --sb-fade-r: linear-gradient(to right, #000 calc(100% - 44px), transparent); --sb-fade-b: linear-gradient(to bottom, #000 calc(100% - 40px), transparent); }
+.sbcols.fade-r { -webkit-mask-image: var(--sb-fade-r); mask-image: var(--sb-fade-r); }
+.sbcols.fade-b { -webkit-mask-image: var(--sb-fade-b); mask-image: var(--sb-fade-b); }
+.sbcols.fade-r.fade-b { -webkit-mask-image: var(--sb-fade-r), var(--sb-fade-b); -webkit-mask-composite: source-in; mask-image: var(--sb-fade-r), var(--sb-fade-b); mask-composite: intersect; }
 .sbin { position: relative; }
-.sbcol { position: absolute; top: 0; height: 32px; margin: 0; display: flex; align-items: baseline; gap: 6px; font: 600 12px/16px var(--sys); color: var(--ink); --sc: var(--hair); }
+/* 栏头两行高（2.7em），左边一道 Section 色 */
+.sbcol { position: absolute; top: 0; height: 2.7em; margin: 0; display: flex; align-items: baseline; gap: 6px; font: 600 12px/1.35 var(--sys); color: var(--ink); --sc: var(--hair); }
 .sbcol::before { content: ""; flex: none; width: 3px; align-self: stretch; border-radius: 2px; background: var(--sc); }
-.sbcol.c-sand { --sc: var(--sb-sand); } .sbcol.c-blue { --sc: var(--sb-blue); } .sbcol.c-green { --sc: var(--sb-green); } .sbcol.c-pink { --sc: var(--sb-pink); }
+.sbcol.c-sand { --sc: var(--s-sand); } .sbcol.c-blue { --sc: var(--s-blue); } .sbcol.c-green { --sc: var(--s-green); } .sbcol.c-pink { --sc: var(--s-pink); }
 .sbcol span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-.sbcol em { flex: none; font: 500 11px/16px var(--sys); font-style: normal; color: var(--ink-3); }
-.mini { position: absolute; box-sizing: border-box; padding: 7px 8px 8px; border-radius: 8px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(50,35,10,.05); overflow: hidden; }
-.mini .src { display: flex; align-items: center; gap: 4px; height: 12px; font: 10px/12px var(--sys); color: var(--ink-3); white-space: nowrap; overflow: hidden; }
+.sbcol em { flex: none; font-style: normal; font-weight: 500; font-size: 11px; color: var(--ink-3); }
+/* 小卡片：高度按内容（BoardBody 的 measureMinis 量一次，摆的时候写死），这里的行高、留白改了，量出来的跟着变 */
+.mini { position: absolute; box-sizing: border-box; padding: 7px 8px 8px; border-radius: 8px; background: var(--surface); box-shadow: 0 0 0 .5px var(--hair), 0 1px 2px rgba(50,35,10,.05); overflow: hidden;
+  transition: box-shadow 120ms, transform 120ms var(--out); }
+.mini .src { display: flex; align-items: center; gap: 4px; font: 10px/1.2 var(--sys); color: var(--ink-3); white-space: nowrap; overflow: hidden; }
 .mini .src .ico { flex: none; width: 11px; height: 11px; }
 .mini .src span { overflow: hidden; text-overflow: ellipsis; }
 .mini .mk { flex: none; margin-left: auto; min-width: 10px; padding: 0 3px; border-radius: 3px; background: var(--row); font: 700 9px/12px var(--mono); color: var(--ink-2); text-align: center; }
-.mini .ti { margin-top: 4px; font: 600 11.5px/15px var(--sys); color: var(--ink); display: -webkit-box; -webkit-line-clamp: var(--tl); -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
-.mini.k-code .ti { font: 600 11px/15px var(--mono); letter-spacing: -.01em; word-break: normal; overflow-wrap: anywhere; } /* 符号名在 . 和 _ 后面换行（<wbr>） */
-.mini .sub { margin-top: 2px; font: 10.5px/14px var(--sys); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.mini.k-code .sub { font: 10px/14px var(--mono); color: var(--ink-3); }
+.mini .ti { margin-top: 4px; font: 600 11.5px/1.35 var(--sys); color: var(--ink); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; word-break: break-word; }
+.mini.k-code .ti { font: 600 11px/1.35 var(--mono); letter-spacing: -.01em; }
+.mini .sub { margin-top: 2px; font: 10.5px/1.35 var(--sys); color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mini.k-code .sub { font: 10px/1.35 var(--mono); color: var(--ink-3); }
 .mini .thumb { display: block; margin-top: 5px; width: 100%; height: 38px; border-radius: 5px; object-fit: cover; background: var(--head); box-shadow: inset 0 0 0 .5px var(--hair); }
-.mini.sticky { border-radius: 4px; padding: 7px 9px 8px; background: var(--sb-sticky); box-shadow: 0 0 0 .5px color-mix(in srgb, #9a7414 30%, transparent); }
-.mini.sticky .ti { font: 14px/18px var(--hand); font-weight: 400; }
+/* 手写的 Mark 画成便签：便签色，标题最多四行 */
+.mini.sticky { background: var(--sticky); box-shadow: 0 0 0 .5px var(--sticky-edge); }
+.mini.sticky .src { color: var(--sticky-src); }
+.mini.sticky .ti { -webkit-line-clamp: 4; font-weight: 500; color: var(--sticky-ink); }
 .mini.k-more { display: flex; align-items: center; background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink-3) 60%, transparent); }
 .mini.k-more .ti { margin: 0; font-weight: 500; color: var(--ink-2); }
-.board .mini:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 10px -3px rgba(50,35,10,.15); }
+.board .mini:hover { box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent), 0 4px 10px -3px rgba(50,35,10,.15); transform: translateY(-1px); }
+/* 量小卡片高度用的（BoardBody 的 measureMinis）：看不见、不占地方，小卡片按内容自然排 */
+.sbmeasure { position: absolute; left: -10000px; top: 0; visibility: hidden; pointer-events: none; contain: layout style; }
+.sbmeasure > .mini { position: relative; }
 /* 地图档的名字：框里左上角一块底色（框外的大名字在地图档太小，藏起来） */
 .sbfar { position: absolute; left: 0; top: 0; max-width: 100%; box-sizing: border-box; visibility: hidden; padding: calc(2px * var(--iz, 1)) calc(6px * var(--iz, 1)); border-radius: 0 0 calc(5.5px * var(--iz, 1)) 0;
   background: color-mix(in srgb, var(--surface) 88%, transparent); font: 700 calc(12px * var(--iz, 1))/1.25 var(--sys); color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; z-index: 1; --iz: inherit; }
