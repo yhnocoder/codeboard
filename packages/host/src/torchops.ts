@@ -141,7 +141,9 @@ const onDevice = (abs: string, key: string) => {
   return dev === (/CUDA$/.test(k) ? "CUDA" : /MPS$/.test(k) ? "MPS" : "CPU");
 };
 
-// 扫描：aten/src/ATen（yaml 往上两层）和 torch/csrc 下的代码文件，加上构建生成的 Ufunc*.cpp / .cu（名字索引跳过 build/）。
+// 扫描：aten/src/ATen（yaml 往上两层）下的代码文件找 kernel 和 DispatchStub 注册；PyTorch 里别处的 C / C++ 文件找 Python 绑定
+// （torch/csrc，还有 functorch/csrc、torch/nativert 这样的目录：不列目录，第三方库、测试、代码生成的模板除外）；
+// 加上构建生成的 Ufunc*.cpp / .cu（名字索引跳过 build/）。
 // 只留定义位置和注册，不留文件文本：每个文件注册了什么、哪些要找的名字（kernel、注册目标）可能定义在它里面，以及那几个生成文件的 tree-sitter 符号。
 
 /** 一处注册：文件和行、注册的目标（qual）；how = REGISTER_*DISPATCH、pybind .def / m.def、PyMethodDef */
@@ -153,7 +155,7 @@ type MacroSite = { abs: string; line: number; macro: string; sig: string };
  */
 type FileRec = { regs: [string, Reg][]; pyRegs: [string, Reg][]; macros: [string, MacroSite][]; words: string[]; gen: IndexEntry[]; pasters: [string, Paster][]; pasted: [string, MacroSite][] };
 type Scan = {
-  t: OpTable; aten: string; csrc: string;
+  t: OpTable; aten: string; root: string;
   /** <build>/aten/src/ATen，torchgen 把 Ufunc kernel 写在这里（没有：没构建过，或者没有 compile_commands.json） */
   genDir?: string;
   /** 要在文件里找的名字：yaml 里的 kernel 和 ufunc inner loop，再加注册目标；值是拷贝出来的扁平字符串 */
@@ -188,7 +190,10 @@ const UFUNC_FILE = /^Ufunc\w*\.(cpp|cu)$/;
 const own = (s: string) => Buffer.from(s, "utf8").toString("utf8");
 
 const isGen = (x: Scan, abs: string) => !!x.genDir && path.dirname(abs) === x.genDir;
-const inScan = (x: Scan, abs: string) => (isGen(x, abs) ? UFUNC_FILE.test(path.basename(abs)) : isCode(abs) && (abs.startsWith(x.aten) || abs.startsWith(x.csrc)));
+/** 不找 Python 绑定的目录：第三方库（自己的 pybind 测试、示例）、测试、benchmark、代码生成的模板（生成的文件在 torch/csrc 里，模板再算一遍就重复了） */
+const NOT_BINDINGS = /[\\/](third_party|test|tests|benchmarks|templates)[\\/]/;
+const isBindings = (x: Scan, abs: string) => abs.startsWith(x.root) && !abs.startsWith(x.aten) && grammarOfFile(abs) === "cpp" && !NOT_BINDINGS.test(abs.slice(x.root.length - 1));
+const inScan = (x: Scan, abs: string) => (isGen(x, abs) ? UFUNC_FILE.test(path.basename(abs)) : isCode(abs) && (abs.startsWith(x.aten) || isBindings(x, abs)));
 
 /**
  * 构建生成的 ATen 目录，从 clangd 用的 compile_commands.json 找：clangd 的 --compile-commands-dir 指的目录，
@@ -247,7 +252,7 @@ const UFUNC_FILE_KEY = /"file"\s*:\s*("(?:[^"\\]|\\.)*Ufunc\w*\.(?:cpp|cu)")/g;
 /** 一个文件注册了什么、它的宏调用定义了哪些 kernel、哪些要找的名字可能定义在这里。生成的文件有几 MB：长循环里也让出 */
 async function scanText(x: Scan, abs: string, text: string, turn = slicer()): Promise<FileRec> {
   const rec: FileRec = { regs: [], pyRegs: [], macros: [], words: [], gen: [], pasters: [], pasted: [] };
-  const aten = isGen(x, abs) || abs.startsWith(x.aten), csrc = abs.startsWith(x.csrc);
+  const aten = isGen(x, abs) || abs.startsWith(x.aten), binds = isBindings(x, abs);
   if (aten) {
     for (const r of dispatchAll(text)) rec.regs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: own(r.macro) }]);
     let lineAt: ((i: number) => number) | undefined;
@@ -260,9 +265,12 @@ async function scanText(x: Scan, abs: string, text: string, turn = slicer()): Pr
     }
     if (!isGen(x, abs)) for (const [name, p] of pasteMacros(text)) rec.pasters.push([own(name), { params: p.params.map(own), names: p.names.map((n) => n.map((v) => (typeof v === "string" ? own(v) : v))) }]);
   }
-  if (csrc) {
-    for (const r of pybindAll(text)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), lambda: r.lambda, how: `pybind · ${path.basename(abs)} ${r.how}` }]);
-    for (const r of pyMethodAll(text)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: `PyMethodDef · ${path.basename(abs)}` }]);
+  if (binds) {
+    // 头文件文档注释里的示例（torch/library.h 的 /// m.def("add", add_fn);）不是注册
+    let lines: string[] | undefined;
+    const comment = (line: number) => /^\s*(\/\/|\/?\*)/.test((lines ??= text.split("\n"))[line - 1] ?? "");
+    for (const r of pybindAll(text)) if (!comment(r.line)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), lambda: r.lambda, how: `pybind · ${path.basename(abs)} ${r.how}` }]);
+    for (const r of pyMethodAll(text)) if (!comment(r.line)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: `PyMethodDef · ${path.basename(abs)}` }]);
   }
   if (isGen(x, abs)) {
     for (const s of symbolsOf(langOf(abs), text)) if (s.kind === "def") rec.gen.push({ name: own(s.name), qual: own(s.qual), kind: s.kind, abs, start: s.start, end: s.end, defLine: s.defLine, sig: own(s.sig) });
@@ -459,7 +467,7 @@ export function scanOf(t: OpTable): Scan {
     const wanted = new Map<string, string>();
     for (const d of t.decls) for (const k of declKernels(t, d)) for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
     const s: Scan = {
-      t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, csrc: path.join(t.root, "torch", "csrc") + path.sep,
+      t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, root: t.root + path.sep,
       wanted, yamlNames: new Set(wanted.keys()), files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), pasters: new Map(), where: new Map(),
       head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(), pending: new Set(), updating: new Map(),
     };

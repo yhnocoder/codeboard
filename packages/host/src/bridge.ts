@@ -71,7 +71,7 @@ async function lambdaTarget(abs: string, line: number): Promise<Target | null> {
 
 /**
  * Python 调用 obj.name(…)：语言服务说不出来（C 扩展），在 pybind / PyMethodDef / PyO3 的注册里找 name。
- * PyTorch 里的文件只查算子索引扫过的 torch/csrc：不扫工作区（索引建好之前要读每个 C++ 文件），
+ * PyTorch 里的文件只查算子索引扫过的绑定（torch/csrc、functorch/csrc…）：不扫工作区（索引建好之前要读每个 C++ 文件），
  * third_party 里别的库的测试注册的同名方法也不是它
  */
 export async function viaRegistry(name: string, here?: string): Promise<Crossed[]> {
