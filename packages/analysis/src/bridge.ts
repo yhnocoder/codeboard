@@ -240,6 +240,48 @@ export function macroDefs(text: string): Map<string, { params: string[]; body: s
   return out;
 }
 
+/** A #define that pastes a parameter into an identifier: each pasted name as pieces, a number = that parameter */
+export type Paster = { params: string[]; names: (string | number)[][] };
+
+/** Macros that build identifiers with ## from their parameters (TORCH_IMPL_FUNC(func##_Scalar_out), foreach_tensor_##NAME##_scalar_kernel_slow) */
+export function pasteMacros(text: string): Map<string, Paster> {
+  const out = new Map<string, Paster>();
+  if (!text.includes("##")) return out;
+  for (const [name, d] of macroDefs(text)) {
+    const names: (string | number)[][] = [];
+    for (const m of d.body.matchAll(/\w+(?:\s*##\s*\w+)+/g)) {
+      const pieces = m[0].split("##").map((p) => p.trim()).map((p) => { const i = d.params.indexOf(p); return i < 0 ? p : i; });
+      if (pieces.some((p) => typeof p === "number") && !names.some((n) => n.join("\0") === pieces.join("\0"))) names.push(pieces);
+    }
+    if (names.length) out.set(name, { params: d.params, names });
+  }
+  return out;
+}
+
+/** The identifiers a pasting macro makes from a call's arguments (only arguments that are identifiers themselves) */
+export function pastedNames(p: Paster, args: string[]): string[] {
+  const out: string[] = [];
+  for (const n of p.names) {
+    const parts = n.map((x) => (typeof x === "number" ? args[x]?.trim() ?? "" : x));
+    if (n.every((x, i) => typeof x !== "number" || /^\w*$/.test(parts[i]))) out.push(parts.join(""));
+  }
+  return out;
+}
+
+/** Calls of the macros `want` accepts, at the start of a line: macro name, split arguments, line and the call's first line */
+export function macroCalls(text: string, want: (name: string) => boolean): { macro: string; args: string[]; line: number; sig: string }[] {
+  const out: { macro: string; args: string[]; line: number; sig: string }[] = [];
+  const lineOf = lineIndex(text);
+  for (const m of text.matchAll(/^[ \t]*([A-Z][A-Z0-9_]*)\s*\(/gm)) {
+    if (!want(m[1]) || inDefine(text, m.index) || /\\\s*$/.test(text.slice(text.lastIndexOf("\n", m.index - 2) + 1, m.index))) continue; // inside a #define's body
+    const open = m.index + m[0].length - 1, close = matchClose(text, open);
+    if (close < 0) continue;
+    const end = text.indexOf("\n", m.index);
+    out.push({ macro: m[1], args: splitArgs(text.slice(open + 1, close)), line: lineOf(m.index), sig: text.slice(m.index, end < 0 ? undefined : end).trim() });
+  }
+  return out;
+}
+
 export type LaunchMacro = {
   kernel: string; // 被启动的 kernel 名字（dispatch）
   targs: string[]; // 模板实参（宏参数名原样留着：ranks, kNumThreads, …）

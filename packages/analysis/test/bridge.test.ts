@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it } from "vitest";
 import {
-  initAnalysis, analyze, pybindDefs, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
+  initAnalysis, analyze, pybindDefs, pasteMacros, pastedNames, macroCalls, torchLibDefs, torchOpOf, pyo3Defs, macroDefs, launchMacro, launchVals, templateParams, constexprs,
   jitKernels, tritonInfo, tritonVals, tilelangInner, factoryVals, launchTemplateArgs, bindLaunch, splitArgs, pyMethodDefs, dispatchRegs, stubDevice, pybindAll, pyMethodAll, dispatchAll,
 } from "../src";
 
@@ -279,3 +279,45 @@ describe("dynamic dispatch", () => {
     expect(["Base.forward", "Base.other", "Base.real", "Base.dots"].map((q) => isAbstractBody(ls, by(q)))).toEqual([true, true, false, true]);
   });
 });
+
+describe("token-pasting macros", () => {
+  const SRC = `#define CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC(func)            \\
+  TORCH_IMPL_FUNC(func##_Tensor_out)                                \\
+  (const Tensor& self, const Tensor& other, const Tensor& result) { \\
+    func##_stub(device_type(), *this);                              \\
+  }                                                                 \\
+  TORCH_IMPL_FUNC(func ## _Scalar_out)                              \\
+  (const Tensor& self, const Scalar& other, const Tensor& result) { \\
+    INNER_CALL(func);                                               \\
+  }
+
+#define FOREACH_BINARY_OP_SCALAR(FUNCTION, NAME, OP)                   \\
+  std::vector<Tensor> foreach_tensor_##NAME##_scalar_kernel_cuda(      \\
+      TensorList tensors, const Scalar& scalar) {                      \\
+    return FUNCTION<OP>(tensors, scalar);                               \\
+  }
+
+#define PLAIN(x) x
+
+CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC(eq);
+FOREACH_BINARY_OP_SCALAR(all_types_complex_bool_half_bfloat16, add, std::plus<opmath_t>);
+FOREACH_BINARY_OP_SCALAR(all_types, mul(x), std::multiplies);
+`;
+  it("finds the names a #define pastes from its parameters, not macros without ##", () => {
+    const ps = pasteMacros(SRC);
+    expect([...ps.keys()]).toEqual(["CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC", "FOREACH_BINARY_OP_SCALAR"]);
+    expect(ps.get("CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC")!.names).toEqual([[0, "_Tensor_out"], [0, "_stub"], [0, "_Scalar_out"]]);
+  });
+  it("makes the names of each call, at the call's line, skipping arguments that are not identifiers and calls inside a #define", () => {
+    const ps = pasteMacros(SRC);
+    const calls = macroCalls(SRC, (n) => ps.has(n));
+    expect(calls.map((c) => [c.macro, c.line, pastedNames(ps.get(c.macro)!, c.args)])).toEqual([
+      ["CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC", 19, ["eq_Tensor_out", "eq_stub", "eq_Scalar_out"]],
+      ["FOREACH_BINARY_OP_SCALAR", 20, ["foreach_tensor_add_scalar_kernel_cuda"]],
+      ["FOREACH_BINARY_OP_SCALAR", 21, []],
+    ]);
+    expect(calls[1].sig).toBe("FOREACH_BINARY_OP_SCALAR(all_types_complex_bool_half_bfloat16, add, std::plus<opmath_t>);");
+    expect(macroCalls(SRC, (n) => n === "TORCH_IMPL_FUNC" || n === "INNER_CALL")).toEqual([]);
+  });
+});
+

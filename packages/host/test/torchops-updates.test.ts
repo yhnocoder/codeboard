@@ -50,6 +50,16 @@ describe("op index updates", () => {
     W.fire.delete.fire([cu]);
     expect(target(await click(await stub(), /scatter_add_stub\(/, "scatter_add_stub"))).toBe("aten/src/ATen/native/cpu/ScatterGatherKernel.cpp at::native::scatter_add_cpu_kernel");
   });
+  it("follows a pasting macro changed in a header to the calls in other files", async () => {
+    const foreach = async () => { const r = await click(await seg("model.py", "run"), /_foreach_add/, "_foreach_add"); return "card" in r ? r.mark?.alts?.map((a) => a.detail) : r; };
+    expect(await foreach()).toEqual(["aten/src/ATen/native/ForeachOpsKernels.cpp:5"]);
+    edit("aten/src/ATen/native/ForeachUtils.h", "foreach_tensor_##OP##_scalar_kernel_slow", "foreach_tensor_##OP##_scalar_slow");
+    W.fire.change.fire(abs("aten/src/ATen/native/ForeachUtils.h"));
+    expect(await foreach()).toBeUndefined();
+    edit("aten/src/ATen/native/ForeachUtils.h", "foreach_tensor_##OP##_scalar_slow", "foreach_tensor_##OP##_scalar_kernel_slow");
+    W.fire.change.fire(abs("aten/src/ATen/native/ForeachUtils.h"));
+    expect(await foreach()).toEqual(["aten/src/ATen/native/ForeachOpsKernels.cpp:5"]);
+  });
   it("finds the generated kernels again when compile_commands.json moves", async () => {
     const add = async () => target(await click(await seg("model.py", "run"), /torch\.add/, "add"));
     expect(await add()).toBe("build/aten/src/ATen/UfuncCUDA_add.cu at::native::ufunc_add_CUDA");

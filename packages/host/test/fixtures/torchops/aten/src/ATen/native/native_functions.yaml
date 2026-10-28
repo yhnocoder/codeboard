@@ -88,3 +88,14 @@
   structured: True
   dispatch:
     CPU, CUDA: acos_out
+
+- func: eq.Scalar_out(Tensor self, Scalar other, *, Tensor(a!) out) -> Tensor(a!)
+  structured: True
+  dispatch:
+    CPU, CUDA: eq_Scalar_out
+
+- func: _foreach_add.Scalar(Tensor[] self, Scalar scalar) -> Tensor[]
+  variants: function
+  dispatch:
+    CompositeExplicitAutograd: foreach_tensor_add_scalar_kernel_slow
+    CUDA: foreach_tensor_add_scalar_kernel_cuda

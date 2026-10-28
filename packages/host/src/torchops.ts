@@ -6,7 +6,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { parse } from "yaml";
 import { grammarOfFile } from "@codeboard/analysis/langs";
-import { dispatchAll, pybindAll, pyMethodAll, type CallSite, type FileAnalysis, type Sym } from "@codeboard/analysis";
+import { dispatchAll, macroCalls, pasteMacros, pastedNames, pybindAll, pyMethodAll, type CallSite, type FileAnalysis, type Paster, type Sym } from "@codeboard/analysis";
 import { analysisOf, symbolsOf, whenAnalysisReady } from "./analysis";
 import { entriesOf, indexedFiles, isCode, knownEntries, type IndexEntry } from "./nameindex";
 import { exists, langOf, readText, workspace } from "./ws";
@@ -137,7 +137,8 @@ export type Reg = { abs: string; line: number; target?: string; lambda?: true; h
 /** A kernel defined by a macro call (CREATE_UNARY_TORCH_IMPL_FUNC(acos_out, acos_stub)) */
 type MacroSite = { abs: string; line: number; macro: string; sig: string };
 /** What one file adds to the scan's tables */
-type FileRec = { regs: [string, Reg][]; pyRegs: [string, Reg][]; macros: [string, MacroSite][]; words: string[]; gen: IndexEntry[] };
+/** pasters = its #defines that paste names with ##; pasted = kernels made by its calls of those (pass 2: the #define may be in another file) */
+type FileRec = { regs: [string, Reg][]; pyRegs: [string, Reg][]; macros: [string, MacroSite][]; words: string[]; gen: IndexEntry[]; pasters: [string, Paster][]; pasted: [string, MacroSite][] };
 type Scan = {
   t: OpTable; aten: string; csrc: string;
   /** <build>/aten/src/ATen, where torchgen writes the Ufunc kernels (none: not built, or no compile_commands.json) */
@@ -146,6 +147,7 @@ type Scan = {
   wanted: Map<string, string>;
   files: Map<string, FileRec>;
   regs: Map<string, Reg[]>; pyRegs: Map<string, Reg[]>; macros: Map<string, MacroSite[]>; gen: Map<string, IndexEntry[]>;
+  pasters: Map<string, { abs: string; p: Paster }[]>;
   /** Wanted name → files that mention it */
   where: Map<string, Set<string>>;
   /** Pass 1 done: kernels, registrations */
@@ -204,7 +206,7 @@ const UFUNC_PATH = /[\\/]aten[\\/]src[\\/]ATen[\\/]Ufunc\w*\.(cpp|cu)$/;
 
 /** What a file registers, the kernels its macro calls define, and the wanted names it mentions */
 function scanText(x: Scan, abs: string, text: string): FileRec {
-  const rec: FileRec = { regs: [], pyRegs: [], macros: [], words: [], gen: [] };
+  const rec: FileRec = { regs: [], pyRegs: [], macros: [], words: [], gen: [], pasters: [], pasted: [] };
   const aten = isGen(x, abs) || abs.startsWith(x.aten), csrc = abs.startsWith(x.csrc);
   if (aten) {
     for (const r of dispatchAll(text)) rec.regs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), how: own(r.macro) }]);
@@ -214,6 +216,7 @@ function scanText(x: Scan, abs: string, text: string): FileRec {
       const k = x.wanted.get(id);
       if (k) rec.macros.push([k, { abs, line: lineAt(m.index), macro: own(m[1]), sig: own(m[0].trim()) }]);
     }
+    if (!isGen(x, abs)) for (const [name, p] of pasteMacros(text)) rec.pasters.push([own(name), { params: p.params.map(own), names: p.names.map((n) => n.map((v) => (typeof v === "string" ? own(v) : v))) }]);
   }
   if (csrc) {
     for (const r of pybindAll(text)) rec.pyRegs.push([own(r.name), { abs, line: r.line, target: r.target && own(r.target), lambda: r.lambda, how: `pybind · ${path.basename(abs)} ${r.how}` }]);
@@ -237,6 +240,8 @@ function addRec(x: Scan, abs: string, rec: FileRec) {
   for (const [k, r] of rec.pyRegs) push(x.pyRegs, k, r);
   for (const [k, m] of rec.macros) push(x.macros, k, m);
   for (const e of rec.gen) push(x.gen, e.name, e);
+  for (const [k, p] of rec.pasters) push(x.pasters, k, { abs, p });
+  for (const [k, m] of rec.pasted) push(x.macros, k, m);
   for (const w of rec.words) (x.where.get(w) ?? x.where.set(w, new Set()).get(w)!).add(abs);
 }
 
@@ -249,7 +254,8 @@ function dropRec(x: Scan, abs: string) {
   };
   drop(x.regs, rec.regs.map(([k]) => k));
   drop(x.pyRegs, rec.pyRegs.map(([k]) => k));
-  drop(x.macros, rec.macros.map(([k]) => k));
+  drop(x.macros, [...rec.macros, ...rec.pasted].map(([k]) => k));
+  drop(x.pasters, rec.pasters.map(([k]) => k));
   drop(x.gen, rec.gen.map((e) => e.name));
   for (const w of rec.words) { const s = x.where.get(w); s?.delete(abs); if (s && !s.size) x.where.delete(w); }
 }
@@ -280,17 +286,31 @@ async function scanHead(x: Scan) {
   x.ms = [Math.round(performance.now() - t0)];
 }
 
-/** Pass 2: the files of the registration targets pass 1 found. Files are read again rather than kept: their texts are ~80 MB of heap */
+/** What a file adds once all files were read: mentions of registration targets, kernels made by calls of pasting macros */
+function targetsIn(x: Scan, abs: string, rec: FileRec, text: string) {
+  const had = new Set(rec.words), words = wordsIn(x, text).filter((w) => !had.has(w));
+  rec.words.push(...words);
+  for (const w of words) (x.where.get(w) ?? x.where.set(w, new Set()).get(w)!).add(abs);
+  for (const [k, m] of rec.pasted) { const rest = (x.macros.get(k) ?? []).filter((v) => v !== m); if (rest.length) x.macros.set(k, rest); else x.macros.delete(k); }
+  rec.pasted = [];
+  if (!abs.startsWith(x.aten)) return;
+  for (const c of macroCalls(text, (n) => x.pasters.has(n))) {
+    const defs = x.pasters.get(c.macro)!, here = defs.filter((d) => d.abs === abs);
+    // a macro name can mean different #defines in different files (FOREACH_BINARY_OP_SCALAR in the CPU and the CUDA file)
+    const made = new Set((here.length ? here : defs.filter((d) => d.p.params.length === c.args.length)).flatMap((d) => pastedNames(d.p, c.args)));
+    for (const n of made) { const k = x.yamlNames.has(n) && x.wanted.get(n); if (k) rec.pasted.push([k, { abs, line: c.line, macro: own(c.macro), sig: own(c.sig) }]); }
+  }
+  for (const [k, m] of rec.pasted) push(x.macros, k, m);
+}
+
+/** Pass 2: the files of the registration targets and kernels of pasting macros pass 1 found. Files are read again rather than kept: their texts are ~80 MB of heap */
 async function scanTargets(x: Scan) {
   const t0 = performance.now(), turn = slicer();
   for (const [abs, rec] of [...x.files]) {
     if (x.dead) return;
     if (isGen(x, abs) || x.files.get(abs) !== rec) continue; // redone by a file event meanwhile
     const text = await readText(abs, false);
-    if (text === null) continue;
-    const had = new Set(rec.words), words = wordsIn(x, text).filter((w) => !had.has(w));
-    rec.words.push(...words);
-    for (const w of words) (x.where.get(w) ?? x.where.set(w, new Set()).get(w)!).add(abs);
+    if (text !== null && x.files.get(abs) === rec) targetsIn(x, abs, rec, text);
     await turn();
   }
   x.ms?.push(Math.round(performance.now() - t0));
@@ -303,14 +323,18 @@ function rescanFile(x: Scan, abs: string) {
     await x.ready;
     if (x.dead) return;
     const text = await readText(abs, false);
+    const mine = () => JSON.stringify(x.files.get(abs)?.pasters ?? []);
+    const before = mine();
     dropRec(x, abs);
-    if (text === null) return;
-    const rec = scanText(x, abs, text);
-    addRec(x, abs, rec);
-    // New registration targets: look for them in this file now; elsewhere they resolve through the name index (regTarget)
-    const before = x.wanted.size;
-    wantTargets(x, rec);
-    if (x.wanted.size !== before) { dropRec(x, abs); addRec(x, abs, scanText(x, abs, text)); }
+    if (text !== null) {
+      const rec = scanText(x, abs, text);
+      addRec(x, abs, rec);
+      // New registration targets: looked for in this file now; elsewhere they resolve through the name index (regTarget)
+      wantTargets(x, rec);
+      if (!isGen(x, abs)) targetsIn(x, abs, rec, text);
+    }
+    // a pasting macro added, removed or changed here changes what calls in other files make: redo pass 2
+    if (!x.dead && mine() !== before) await scanTargets(x);
   }).catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`));
 }
 
@@ -328,7 +352,7 @@ export function scanOf(t: OpTable): Scan {
     for (const d of t.decls) for (const k of declKernels(t, d)) for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
     const s: Scan = {
       t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, csrc: path.join(t.root, "torch", "csrc") + path.sep,
-      wanted, yamlNames: new Set(wanted.keys()), files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), where: new Map(),
+      wanted, yamlNames: new Set(wanted.keys()), files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), pasters: new Map(), where: new Map(),
       head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(),
     };
     const fail = (e: unknown) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`);
@@ -381,6 +405,7 @@ export async function kernelEntry(t: OpTable, k: Kernel): Promise<IndexEntry | u
 export async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string; sym: Sym } | null> {
   const x = scanOf(t);
   await settled(x, "head");
+  if (!x.macros.has(k.kernel)) await settled(x); // made by a pasting macro: known after pass 2
   const cuda = k.key.split(", ")[0] === "CUDA";
   const m = [...(x.macros.get(k.kernel) ?? [])].sort((a, b) => (isCudaFile(a.abs) === cuda ? 0 : 1) - (isCudaFile(b.abs) === cuda ? 0 : 1))[0];
   return m ? { abs: m.abs, sym: { name: k.kernel, qual: `${m.macro}(${k.kernel})`, kind: "def", start: m.line, defLine: m.line, end: m.line, sig: m.sig, params: [] } } : null;

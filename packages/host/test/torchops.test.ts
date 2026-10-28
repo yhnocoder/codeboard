@@ -120,6 +120,17 @@ describe("clicks into PyTorch ops", () => {
     expect("card" in r && r.card.segments[0].text).toEqual(["CREATE_UNARY_TORCH_IMPL_FUNC(acos_out, acos_stub)"]);
     expect(key(r)).toBe("CUDA, CPU");
   });
+  it("a kernel named with ## by a macro → the line calling the macro, also when the #define is in a header", async () => {
+    const e = await click(await seg("model.py", "run"), /torch\.eq/, "eq");
+    expect(qualOf(e)).toBe("CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC(eq_Scalar_out)");
+    expect(fileOf(e)).toBe("aten/src/ATen/native/BinaryOps.cpp");
+    expect("card" in e && e.card.segments[0].text).toEqual(["CREATE_COMPARISON_SCALAR_TENSOR_IMPL_FUNC(eq);"]);
+    const f = await click(await seg("model.py", "run"), /_foreach_add/, "_foreach_add");
+    expect(qualOf(f)).toBe("FOREACH_BINARY_OP_SCALAR(foreach_tensor_add_scalar_kernel_cuda)");
+    expect(fileOf(f)).toBe("aten/src/ATen/native/cuda/ForeachBinaryOpScalar.cu");
+    expect(alts(f)).toEqual(["CompositeExplicitAutograd · FOREACH_BINARY_OP_SCALAR(foreach_tensor_add_scalar_kernel_slow)"]);
+    expect(markOf(f)?.alts?.[0].detail).toBe("aten/src/ATen/native/ForeachOpsKernels.cpp:5");
+  });
   it("add_stub → REGISTER_DISPATCH in the generated Ufunc files; a local function called add_stub stays local", async () => {
     const s = await click(await seg("aten/src/ATen/native/TensorAdvancedIndexing.cpp", "at::native::index_add_cpu_"), /add_stub\(/, "add_stub");
     expect(fileOf(s)).toBe("build/aten/src/ATen/UfuncCUDA_add.cu");

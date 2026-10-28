@@ -12,4 +12,6 @@ def run(x, idx, w):
     c = torch._C._get_cudnn_enabled()
     q = torch.acos(x)
     a = torch._C._mtia_is_available()
+    e = torch.eq(x, 1)
+    f = torch._foreach_add([x], 1)
     return x.scatter_add(0, idx, w)
