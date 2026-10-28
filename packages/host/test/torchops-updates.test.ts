@@ -6,7 +6,7 @@ import type { Disposable, ExpandResult, Segment } from "@codeboard/core";
 import { expand } from "../src/resolve";
 import { resetIndex, watchNameIndex } from "../src/nameindex";
 import { useWorkspace } from "../src/ws";
-import { opTables, scanOf, warmOps } from "../src/torchops";
+import { opTables, parseOps, scanOf, warmOps } from "../src/torchops";
 import { nodeWorkspace } from "./node-workspace";
 import { at, card, startTreeSitter } from "./helpers";
 
@@ -58,5 +58,24 @@ describe("op index updates", () => {
     W.fire.change.fire(abs("aten/src/ATen/native/native_functions.yaml"));
     expect(target(await click(await seg("model.py", "run"), /F\.gelu/, "gelu"))).toBe("aten/src/ATen/native/Gelu.cpp at::native::gelu_new_kernel");
     expect(scanOf((await opTables())[0])).not.toBe(before);
+  });
+});
+
+describe("op index without blocking the host", () => {
+  it("parses the yaml item by item: a broken item loses only its own func, line numbers stay right", () => {
+    const ops = parseOps("# header\n\n- func: a(Tensor self) -> Tensor\n  dispatch:\n    CPU: a_cpu\n\n- func: b(Tensor self) -> Tensor\n  dispatch: [\n\n- func: c(Tensor self) -> Tensor\n");
+    expect(ops.map((d) => `${d.name}:${d.line}`)).toEqual(["a:3", "c:10"]);
+  });
+  it("lets timers run while it parses a large yaml and scans, and answers a click made before the scan is done", async () => {
+    const yaml = abs("aten/src/ATen/native/native_functions.yaml");
+    fs.appendFileSync(yaml, Array.from({ length: 4000 }, (_, i) => `\n- func: filler_${i}(Tensor self, int dim) -> Tensor\n  variants: function, method\n  dispatch:\n    CPU: filler_${i}_cpu\n    CUDA: filler_${i}_cuda\n`).join(""));
+    resetIndex();
+    let ticks = 0;
+    const timer = setInterval(() => ticks++, 1);
+    const r = await click(await seg("aten/src/ATen/native/SoftMax.cpp", "at::native::softmax"), /at::_softmax/, "_softmax");
+    await warmOps();
+    clearInterval(timer);
+    expect(target(r)).toBe("aten/src/ATen/native/cuda/SoftMaxNew.cu at::native::softmax_cuda_out");
+    expect(ticks).toBeGreaterThan(3);
   });
 });

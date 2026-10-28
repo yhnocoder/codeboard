@@ -12,7 +12,18 @@ import { entriesOf, indexedFiles, isCode, knownEntries, type IndexEntry } from "
 import { exists, langOf, readText } from "./ws";
 import { log } from "./log";
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+// Everything here runs on the extension host's thread next to the board: long loops give the event loop a turn every few ms.
+// (A worker thread would need its own bundle and could not read unsaved editor buffers or share the name index; the work is
+// mostly file reads and regular expressions, which slice well.)
+const SLICE_MS = 8;
+function slicer() {
+  let t = performance.now();
+  return async () => {
+    if (performance.now() - t < SLICE_MS) return;
+    await new Promise((r) => setImmediate(r));
+    t = performance.now();
+  };
+}
 
 export const OPS_YAML = "aten/src/ATen/native/native_functions.yaml";
 
@@ -30,24 +41,44 @@ export type Kernel = { key: string; kernel: string; decl: string; via?: string; 
 
 const fullName = (d: Pick<OpDecl, "name" | "overload">) => (d.overload ? `${d.name}.${d.overload}` : d.name);
 
-/** native_functions.yaml text → every func */
-export function parseOps(text: string): OpDecl[] {
-  const raw = parse(text) as Record<string, unknown>[] | null;
-  const lines: number[] = [];
-  text.split("\n").forEach((l, i) => { if (/^- func:/.test(l)) lines.push(i + 1); });
-  const out: OpDecl[] = [];
-  (raw ?? []).forEach((e, i) => {
-    const m = /^([\w]+)(?:\.(\w+))?\s*\(([\s\S]*)\)\s*->/.exec(String(e.func ?? ""));
-    if (!m) return;
-    const dispatch: [string, string][] = [];
-    for (const [keys, k] of Object.entries((e.dispatch ?? {}) as Record<string, unknown>)) for (const key of keys.split(",")) dispatch.push([key.trim(), String(k)]);
-    out.push({
-      name: m[1], overload: m[2] ?? "", line: lines[i] ?? 0, dispatch, structured: e.structured === true,
-      delegate: typeof e.structured_delegate === "string" ? e.structured_delegate : undefined,
-      ufunc: !!e.ufunc_inner_loop, variants: String(e.variants ?? "function").split(",").map((v) => v.trim()),
-      out: /\*[^]*Tensor\(\w!\)/.test(m[3]), // a writable Tensor among the keyword arguments: an out variant
-    });
-  });
+/**
+ * native_functions.yaml text → its funcs, one at a time: every top-level "- " item is parsed on its own (the file has no anchors across
+ * items), so a caller can yield between them and one broken item while editing loses only that func
+ */
+function* opEntries(text: string, bad: { n: number }): Generator<OpDecl> {
+  const lines = text.split("\n");
+  let start = -1;
+  for (let i = 0; i <= lines.length; i++) {
+    if (i < lines.length && !lines[i].startsWith("- ")) continue;
+    if (start >= 0) {
+      let e: Record<string, unknown> | undefined;
+      try { e = (parse(lines.slice(start, i).join("\n")) as Record<string, unknown>[] | null)?.[0]; } catch { bad.n++; }
+      const d = e && declOf(e, start + 1);
+      if (d) yield d;
+    }
+    start = i;
+  }
+}
+
+function declOf(e: Record<string, unknown>, line: number): OpDecl | null {
+  const m = /^([\w]+)(?:\.(\w+))?\s*\(([\s\S]*)\)\s*->/.exec(String(e.func ?? ""));
+  if (!m) return null;
+  const dispatch: [string, string][] = [];
+  for (const [keys, k] of Object.entries((e.dispatch ?? {}) as Record<string, unknown>)) for (const key of keys.split(",")) dispatch.push([key.trim(), String(k)]);
+  return {
+    name: m[1], overload: m[2] ?? "", line, dispatch, structured: e.structured === true,
+    delegate: typeof e.structured_delegate === "string" ? e.structured_delegate : undefined,
+    ufunc: !!e.ufunc_inner_loop, variants: String(e.variants ?? "function").split(",").map((v) => v.trim()),
+    out: /\*[^]*Tensor\(\w!\)/.test(m[3]), // a writable Tensor among the keyword arguments: an out variant
+  };
+}
+
+export const parseOps = (text: string): OpDecl[] => [...opEntries(text, { n: 0 })];
+
+/** parseOps without blocking: the whole file takes 300–600 ms */
+async function parseOpsSliced(text: string, bad: { n: number }): Promise<OpDecl[]> {
+  const out: OpDecl[] = [], turn = slicer();
+  for (const d of opEntries(text, bad)) { out.push(d); await turn(); }
   return out;
 }
 
@@ -115,11 +146,17 @@ type Scan = {
   regs: Map<string, Reg[]>; pyRegs: Map<string, Reg[]>; macros: Map<string, MacroSite[]>; gen: Map<string, IndexEntry[]>;
   /** Wanted name → files that mention it */
   where: Map<string, Set<string>>;
+  /** Pass 1 done: kernels, registrations */
+  head: Promise<void>;
+  /** Pass 2 done: registration targets */
   ready: Promise<void>;
   /** File updates run one after another, after the scan */
   queue: Promise<void>;
   dead?: true;
-  ms?: number;
+  /** The two passes' ms */
+  ms?: number[];
+  /** Names from the yaml (pass 1 finds their files) */
+  yamlNames: Set<string>;
 };
 const scans = new Map<string, Scan>();
 
@@ -189,32 +226,36 @@ function wantTargets(x: Scan, rec: FileRec) {
   for (const [, r] of [...rec.regs, ...rec.pyRegs]) if (r.target) { const n = r.target.split("::").pop()!; if (!x.wanted.has(n)) x.wanted.set(n, own(n)); }
 }
 
-async function scan(x: Scan) {
-  const t0 = performance.now();
+/** Pass 1: registrations, macro-made kernels and the files of the yaml's names; enough for most clicks */
+async function scanHead(x: Scan) {
+  const t0 = performance.now(), turn = slicer();
   const files = (await indexedFiles()).map((f) => f.abs).filter((a) => inScan(x, a));
   let gen: string[] = [];
   try { gen = (await fs.readdir(x.genDir)).filter((f) => UFUNC_FILE.test(f)).map((f) => path.join(x.genDir, f)); } catch { /* never built */ }
-  // Two passes: the first finds the registrations (and the kernels' files), whose targets the second looks for.
-  // Files are read twice rather than kept: 4k files of text are ~80 MB of heap
-  let n = 0;
   for (const abs of [...gen, ...files]) {
     if (x.dead) return;
     const text = await readText(abs, false);
     if (text !== null) { const rec = scanText(x, abs, text); addRec(x, abs, rec); wantTargets(x, rec); }
-    if (++n % 64 === 0) await sleep(0);
+    await turn();
   }
-  for (const abs of files) {
+  x.ms = [Math.round(performance.now() - t0)];
+}
+
+/** Pass 2: the files of the registration targets pass 1 found. Files are read again rather than kept: their texts are ~80 MB of heap */
+async function scanTargets(x: Scan) {
+  const t0 = performance.now(), turn = slicer();
+  for (const [abs, rec] of [...x.files]) {
     if (x.dead) return;
-    const rec = x.files.get(abs);
-    const text = rec && (await readText(abs, false));
-    if (!rec || !text) continue;
+    if (isGen(x, abs) || x.files.get(abs) !== rec) continue; // redone by a file event meanwhile
+    const text = await readText(abs, false);
+    if (text === null) continue;
     const had = new Set(rec.words), words = wordsIn(x, text).filter((w) => !had.has(w));
     rec.words.push(...words);
     for (const w of words) (x.where.get(w) ?? x.where.set(w, new Set()).get(w)!).add(abs);
-    if (++n % 64 === 0) await sleep(0);
+    await turn();
   }
-  x.ms = Math.round(performance.now() - t0);
-  log("info", `op index: ${x.files.size} files of ${x.t.root} read, ${x.regs.size} dispatch stubs, ${x.pyRegs.size} Python names, ${x.ms} ms`);
+  x.ms?.push(Math.round(performance.now() - t0));
+  log("info", `op index: ${x.files.size} files of ${x.t.root} read, ${x.regs.size} dispatch stubs, ${x.pyRegs.size} Python names, ${x.ms?.join(" + ")} ms`);
 }
 
 /** A file in the scan changed (saved, created, changed outside, deleted): redo just that file once the scan is done */
@@ -234,8 +275,11 @@ function rescanFile(x: Scan, abs: string) {
   }).catch((e) => log("warn", `op index: cannot update ${abs}: ${e instanceof Error ? e.message : e}`));
 }
 
-/** The scan and the file updates queued so far are done */
-const settled = (x: Scan) => x.ready.then(() => x.queue);
+/**
+ * The scan and the file updates queued so far are done; head = only pass 1, so a click right after a board opens waits ~2 s, not ~5 s
+ * (updates queue behind the whole scan, so with an update pending this is the whole scan too)
+ */
+const settled = (x: Scan, head?: "head") => (head ? x.head : x.ready).then(() => x.queue);
 
 /** This PyTorch's scan (starts the first time it is asked for; clicks wait for it, then only look up tables) */
 export function scanOf(t: OpTable): Scan {
@@ -245,9 +289,12 @@ export function scanOf(t: OpTable): Scan {
     for (const d of t.decls) for (const k of declKernels(t, d)) for (const n of [k.kernel, k.inner]) if (n && !wanted.has(n)) wanted.set(n, own(n));
     const s: Scan = {
       t, aten: path.dirname(path.dirname(t.yaml)) + path.sep, csrc: path.join(t.root, "torch", "csrc") + path.sep, genDir: path.join(t.root, "build", "aten", "src", "ATen"),
-      wanted, files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), where: new Map(), ready: Promise.resolve(), queue: Promise.resolve(),
+      wanted, yamlNames: new Set(wanted.keys()), files: new Map(), regs: new Map(), pyRegs: new Map(), macros: new Map(), gen: new Map(), where: new Map(),
+      head: Promise.resolve(), ready: Promise.resolve(), queue: Promise.resolve(),
     };
-    s.ready = whenAnalysisReady().then(() => scan(s)).catch((e) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`));
+    const fail = (e: unknown) => log("warn", `op index: scan failed: ${e instanceof Error ? e.message : e}`);
+    s.head = whenAnalysisReady().then(() => scanHead(s)).catch(fail);
+    s.ready = s.head.then(() => scanTargets(s)).catch(fail);
     scans.set(t.root, (x = s));
   }
   return x;
@@ -258,20 +305,20 @@ export async function warmOps() { await Promise.all((await opTables()).map((t) =
 /** The registrations of a DispatchStub */
 export async function stubRegs(t: OpTable, stub: string): Promise<Reg[]> {
   const x = scanOf(t);
-  await settled(x);
+  await settled(x, "head");
   return x.regs.get(stub) ?? [];
 }
 /** The pybind / PyMethodDef registrations of a Python name */
 export async function pyRegs(t: OpTable, name: string): Promise<Reg[]> {
   const x = scanOf(t);
-  await settled(x);
+  await settled(x, "head");
   return x.pyRegs.get(name) ?? [];
 }
 
 /** Definitions of name: in the files that mention it (analyzed into the name index, once) and in the generated files */
 export async function defsOf(t: OpTable, name: string): Promise<IndexEntry[]> {
   const x = scanOf(t);
-  await settled(x);
+  await settled(x, x.yamlNames.has(name) ? "head" : undefined);
   const out: IndexEntry[] = [];
   for (const abs of x.where.get(name) ?? []) for (const e of await entriesOf(abs)) if (e.name === name) out.push(e);
   return [...out, ...(x.gen.get(name) ?? [])];
@@ -294,7 +341,7 @@ export async function kernelEntry(t: OpTable, k: Kernel): Promise<IndexEntry | u
  */
 export async function macroKernel(t: OpTable, k: Kernel): Promise<{ abs: string; sym: Sym } | null> {
   const x = scanOf(t);
-  await settled(x);
+  await settled(x, "head");
   const cuda = k.key.split(", ")[0] === "CUDA";
   const m = [...(x.macros.get(k.kernel) ?? [])].sort((a, b) => (isCudaFile(a.abs) === cuda ? 0 : 1) - (isCudaFile(b.abs) === cuda ? 0 : 1))[0];
   return m ? { abs: m.abs, sym: { name: k.kernel, qual: `${m.macro}(${k.kernel})`, kind: "def", start: m.line, defLine: m.line, end: m.line, sig: m.sig, params: [] } } : null;
@@ -320,10 +367,11 @@ export async function regTarget(t: OpTable, r: Reg): Promise<IndexEntry | undefi
   const parts = r.target!.split("::");
   const name = parts[parts.length - 1];
   const fit = (e: IndexEntry) => e.kind === "def" && grammarOfFile(e.abs) === "cpp" && e.qual.split("::").slice(-parts.length).join("::") === parts.join("::");
-  const ents = (await defsOf(t, name)).filter(fit);
-  // a target added by an edit after the scan is only known in its own file and to the name index
-  if (!ents.length) ents.push(...(await entriesOf(r.abs)).filter((e) => e.name === name && fit(e)), ...knownEntries(name).filter(fit));
-  return ents.find((e) => e.abs === r.abs) ?? ents[0];
+  // the registering file first: usually the target is there, and it needs only pass 1
+  const near = (await entriesOf(r.abs)).find((e) => e.name === name && fit(e));
+  if (near) return near;
+  // a target added by an edit after the scan is known only to the name index
+  return (await defsOf(t, name)).find(fit) ?? knownEntries(name).find(fit);
 }
 
 // Finding and parsing the yaml (once per text; file events drop it)
@@ -334,15 +382,10 @@ const tables = new Map<string, Promise<OpTable | null>>();
 async function loadTable(yaml: string): Promise<OpTable | null> {
   const text = await readText(yaml, false);
   if (text === null) return null;
-  const t0 = performance.now();
-  try {
-    const t = opTable(yaml.slice(0, yaml.length - OPS_YAML.length - 1), yaml, parseOps(text));
-    log("info", `op index: ${t.decls.length} ops from ${yaml}, ${Math.round(performance.now() - t0)} ms`);
-    return t;
-  } catch (e) {
-    log("warn", `op index: cannot parse ${yaml}: ${e instanceof Error ? e.message : e}`);
-    return null;
-  }
+  const t0 = performance.now(), bad = { n: 0 };
+  const t = opTable(yaml.slice(0, yaml.length - OPS_YAML.length - 1), yaml, await parseOpsSliced(text, bad));
+  log(bad.n ? "warn" : "info", `op index: ${t.decls.length} ops from ${yaml}${bad.n ? `, ${bad.n} entries not valid YAML` : ""}, ${Math.round(performance.now() - t0)} ms`);
+  return t;
 }
 
 /** One table per native_functions.yaml in the workspace (none: this workspace is not PyTorch) */
