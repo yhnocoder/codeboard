@@ -67,6 +67,8 @@ const DISPLAY_MARKS: Record<string, (m: Mark) => DOMOutputSpec> = {
 };
 /** 只有一段（非空）的列表项、脚注、表格格子不画那层 <p>：外观一样（它本来就没有边距），少画一些节点 */
 const SLIM = new Set(["listItem", "footnote", "tableCell", "tableHeader"]);
+/** 段里有缩小了的图时留着 <p>：居中只认 p:has(img.sized)（markdown.css），不用再匹配列表项、格子和它们下面的任意一层 */
+const sizedImg = (p: PMNode) => { let y = false; p.forEach((c) => { if (c.type.name === "image" && c.attrs.width) y = true; }); return y; };
 
 function markParts(m: Mark, display: boolean): [string, string] {
   const spec = (display && DISPLAY_MARKS[m.type.name]?.(m)) || m.type.spec.toDOM!(m, true);
@@ -95,7 +97,7 @@ function nodeHtml(n: PMNode, cx: Cx | null): string {
 function contentHtml(n: PMNode, cx: Cx | null): string {
   if (n.inlineContent) return inlineHtml(n.content, cx);
   const one = n.childCount === 1 ? n.firstChild! : null;
-  if (cx && one && SLIM.has(n.type.name) && one.type.name === "paragraph" && one.content.size) return inlineHtml(one.content, cx);
+  if (cx && one && SLIM.has(n.type.name) && one.type.name === "paragraph" && one.content.size && !sizedImg(one)) return inlineHtml(one.content, cx);
   let s = "";
   n.forEach((c) => { s += nodeHtml(c, cx); });
   return s;
